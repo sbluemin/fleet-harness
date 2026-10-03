@@ -142,6 +142,10 @@ describe("wiki patch queue", () => {
     expect(await listConflicts(paths)).toHaveLength(1);
     expect(await readPatchFile(path.join(paths.wikiDir, "entry.md"))).toBe(session.baseDraft);
     expect((await parseLog(paths)).some(entry => entry.event === "patch apply rolled back")).toBe(true);
+
+    await rejectPatch(patchId, "Replaced by the current entry", paths);
+    expect((await readConflict(conflicts[0]!.id, paths)).meta).toMatchObject({ status: "resolved", resolution: "rejected", note: "Patch rejected: Replaced by the current entry" });
+    expect((await parseLog(paths)).findLast(entry => entry.event === "patch rejected")?.payload).toMatchObject({ conflict_id: conflicts[0]!.id, conflict_resolution: "rejected" });
   });
 
   it("reports partial patch set approval when members are missing", async () => {

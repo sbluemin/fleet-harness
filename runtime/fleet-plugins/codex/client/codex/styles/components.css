@@ -3010,7 +3010,7 @@ button.chip:focus-visible {
 .cowork-block { border-left: 2px solid transparent; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; padding: 2px var(--space-2); margin: 2px 0; }
 .cowork-block--added { border-left-color: var(--positive); background: color-mix(in oklch, var(--positive) 10%, transparent); }
 .cowork-block--removed { border-left-color: var(--coral); background: color-mix(in oklch, var(--coral) 8%, transparent); color: var(--text-secondary); text-decoration: line-through; }
-.queue-diff-block-label { display: block; font-family: var(--font-mono); font-size: var(--t-xs); font-weight: var(--weight-medium); text-decoration: none; color: var(--text-primary); }
+.queue-diff-block-label { display: inline-block; font-family: var(--font-mono); font-size: var(--t-xs); font-weight: var(--weight-medium); text-decoration: none; color: var(--text-primary); }
 
 /* ── 도크 존 — 프레임 아래 고정 행. 스레드는 자기 안에서 스크롤한다. ── */
 .cowork-dock-zone { display: none; }

@@ -347,15 +347,22 @@ export function mountReadingInto(
     reason: string | undefined,
   ): Promise<void> {
     if (!currentDetailPatchId) return;
+    const patchId = currentDetailPatchId;
+    const theaterId = liveOpts.theaterId;
+    const requestEpoch = subRequestEpoch;
     decisionPhase = "submitting";
     decisionError = null;
     redrawDecisionBar();
     try {
-      await decideDrydock(liveOpts.theaterId, currentDetailPatchId, action, reason);
+      await decideDrydock(theaterId, patchId, action, reason);
+      if (!isCurrentSubRequest("drydock", patchId, requestEpoch) || liveOpts.theaterId !== theaterId) return;
       liveOpts.onDecided?.();
     } catch (err) {
+      if (!isCurrentSubRequest("drydock", patchId, requestEpoch) || liveOpts.theaterId !== theaterId) return;
       if (err instanceof CodexRequestError && err.code === "stale_base") {
         approvalBlocked = patchBaseConflictMessage(err.baseConflict);
+        const version = readContainer.querySelector<HTMLElement>("[data-patch-version]");
+        if (version && err.baseConflict) version.textContent = stalePatchVersionLabel(err.baseConflict);
         decisionPhase = "idle";
       } else {
         decisionPhase = action === "approve" ? "approving" : "rejecting";
@@ -990,12 +997,30 @@ function renderDrydockList(list: DrydockListResponse, segment: "pending" | "deci
   `;
 }
 
+function localizedQueueSummary(item: DrydockListItem, t: T): string {
+  const summary = item.summary ?? "";
+  const id = item.target?.split("/").at(-1)?.replace(/\.md$/u, "");
+  if (id && item.op === "delete_wiki" && summary === `Delete ${id}`.slice(0, 120)) {
+    return t("codex.reading.deleteProposalSummary");
+  }
+  if (id && item.proposer === "codex-cowork" && summary === `Cowork update ${id}`) {
+    return t("codex.reading.coworkProposalSummary");
+  }
+  if (item.proposer === "tool:wiki_compile_source") {
+    if (summary.startsWith("Compile source page ")) return t("codex.reading.compileSourceSummary", { title: summary.slice("Compile source page ".length) });
+    if (summary.startsWith("Compile note for ")) return t("codex.reading.compileNoteSummary", { title: summary.slice("Compile note for ".length) });
+  }
+  // 사용자가 쓴 요약과 콘텐츠 제목은 번역하거나 가리지 않는다.
+  return summary;
+}
+
 function renderQueueRow(item: DrydockListItem): string {
   const t = consoleT();
   const op = item.op ?? "create_wiki";
   const glyph = OP_BADGE_GLYPHS[op] ?? "?";
   const label = opLabel(op, t);
   const target = item.target ?? item.id;
+  const summary = localizedQueueSummary(item, t);
   const decidedAtMs = new Date(item.meta.decidedAt ?? "").getTime();
   const createdAtMs = new Date(item.meta.createdAt).getTime();
   const timeSource = item.meta.status === "pending" ? createdAtMs : (Number.isNaN(decidedAtMs) ? createdAtMs : decidedAtMs);
@@ -1021,7 +1046,7 @@ function renderQueueRow(item: DrydockListItem): string {
           ${diffstat}
           ${decided}
         </span>
-        ${item.summary ? `<span class="queue-row-summary">${escapeHtml(item.summary)}</span>` : ""}
+        ${summary ? `<span class="queue-row-summary">${escapeHtml(summary)}</span>` : ""}
         ${metaParts.length > 0 ? `<span class="queue-row-meta">${metaParts.join(" \u00b7 ")}</span>` : ""}
       </span>
     </button>
@@ -1042,9 +1067,11 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string, 
   const label = opLabel(op, t);
   const targetLabel = op === "delete_wiki" ? t("codex.reading.opDelete") : targetExists ? t("codex.reading.replaceExisting") : t("codex.reading.createNew");
   const isPending = meta.status === "pending";
-  const versionLabel = options.currentVersion !== null
-    ? `v${options.currentVersion} \u2192 v${wikiEntry.version}`
-    : `v${wikiEntry.version}`;
+  const versionLabel = detail.baseConflict
+    ? stalePatchVersionLabel(detail.baseConflict)
+    : options.currentVersion !== null
+      ? `v${options.currentVersion} \u2192 v${wikiEntry.version}`
+      : `v${wikiEntry.version}`;
   const diffstat = options.diffBlocks ? countDiffLines(options.diffBlocks) : null;
   const diffstatHtml = diffstat
     ? `<span class="queue-row-diffstat" aria-label="${escapeAttribute(t("codex.reading.diffStatAria", { added: diffstat.added, removed: diffstat.removed }))}"><ins>+${diffstat.added}</ins><del>\u2212${diffstat.removed}</del></span>`
@@ -1079,7 +1106,7 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string, 
       <div class="queue-decision-dock">
         <div class="queue-decision-dock-copy">
           <span class="queue-decision-dock-title"><span class="op-badge" aria-label="${escapeAttribute(label)}">${glyph}</span> ${escapeHtml(wikiEntry.title)}</span>
-          <span class="queue-decision-dock-meta">${escapeHtml(patch.frontmatter.target)} \u00b7 ${escapeHtml(versionLabel)} \u00b7 ${escapeHtml(targetLabel)}${patch.frontmatter.proposer ? ` \u00b7 ${renderProposer(patch.frontmatter.proposer)}` : ""} ${diffstatHtml}</span>
+          <span class="queue-decision-dock-meta">${escapeHtml(patch.frontmatter.target)} \u00b7 <span data-patch-version>${escapeHtml(versionLabel)}</span> \u00b7 ${escapeHtml(targetLabel)}${patch.frontmatter.proposer ? ` \u00b7 ${renderProposer(patch.frontmatter.proposer)}` : ""} ${diffstatHtml}</span>
         </div>
         <div class="queue-decision-dock-actions" data-decision-bar-wrap>
           ${isPending ? renderDecisionBarContent("idle", null, detail.baseConflict ? patchBaseConflictMessage(detail.baseConflict) : null) : renderDecidedState(meta)}
@@ -1180,6 +1207,15 @@ function renderPatchMetaChips(proposer: string, tags: string[]): string {
   if (tags.length > 0) parts.push(renderTagChips(tags));
   if (parts.length === 0) return "";
   return `<div class="meta-chips">${parts.join("")}</div>`;
+}
+
+function stalePatchVersionLabel(conflict: DrydockBaseConflict): string {
+  const t = consoleT();
+  if (conflict.currentVersion === null) return t("codex.reading.staleVersionMissing");
+  if (conflict.baseVersion !== undefined) {
+    return t("codex.reading.staleVersionLabel", { base: conflict.baseVersion, current: conflict.currentVersion });
+  }
+  return t("codex.reading.staleVersionChanged", { current: conflict.currentVersion });
 }
 
 function patchBaseConflictMessage(conflict?: DrydockBaseConflict): string {

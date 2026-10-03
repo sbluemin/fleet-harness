@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { getClaimsFile, listClaims } from "./claims.js";
-import { createConflict } from "./conflicts.js";
+import { createConflict, resolveConflict } from "./conflicts.js";
 import { appendLog } from "./log.js";
 import { ensureMemoryRoot } from "./paths.js";
 import { ensureWorkspaceSchema, inferTemplateIdFromTarget, scanTemplates, validateTemplateCompliance } from "./schema.js";
@@ -555,8 +555,13 @@ export async function rejectPatch(id: string, reason: string, paths: MemoryPaths
       decidedAt: new Date().toISOString(),
       reason,
     };
+    if (meta.conflictId) {
+      await resolveConflict(meta.conflictId, { resolution: "rejected", note: `Patch rejected: ${reason}` }, paths);
+    }
     await archiveQueueEntry(id, paths, nextMeta);
     await appendLog(paths, "patch rejected", {
+      conflict_id: meta.conflictId ?? null,
+      conflict_resolution: meta.conflictId ? "rejected" : null,
       patch_id: id,
       patch_set_id: nextMeta.patch_set_id ?? null,
       reason,
