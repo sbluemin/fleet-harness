@@ -2225,20 +2225,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  let computerCaptureVerification: Promise<void> | null = null;
+
   async function verifyComputerCapture(): Promise<void> {
     const candidate = computerCaptureTarget;
     if (!candidate) return;
-    // 이전 화면 조회는 3초에 실패로 닫혔다. Cua Driver의 긴 native timeout을 그대로 기다리면 표시가 늦어진다.
+    // 감시와 GET은 진행 중인 검증을 공유한다. 늦은 결과도 같은 대상의 명시적 false일 때만 해제한다.
+    const verification = computerCaptureVerification ??= computerUse.verifyCaptureTarget(candidate)
+      .then((valid) => {
+        if (valid === false && computerCaptureTarget?.id === candidate.id) {
+          computerCaptureTarget = null;
+          broadcastComputerCapture();
+          watchComputerCapture();
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => { computerCaptureVerification = null; });
+    // 3초는 응답 대기 한도일 뿐 창 소멸의 증거가 아니다. 시간 초과에는 대상과 감시를 유지한다.
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    const valid = await Promise.race([
-      computerUse.verifyCaptureTarget(candidate).catch(() => false),
-      new Promise<boolean>((resolve) => { timeout = setTimeout(() => resolve(false), 3000); timeout.unref(); }),
+    await Promise.race([
+      verification,
+      new Promise<void>((resolve) => { timeout = setTimeout(resolve, 3000); timeout.unref(); }),
     ]).finally(() => { if (timeout) clearTimeout(timeout); });
-    if (!valid && computerCaptureTarget?.id === candidate.id) {
-      computerCaptureTarget = null;
-      broadcastComputerCapture();
-      watchComputerCapture();
-    }
   }
 
   /** 네이티브 창 소멸은 도구 호출 없이도 일어난다. 기존 700ms 검증은 활성 대상에만 남기고 유휴에는 멈춘다. */
