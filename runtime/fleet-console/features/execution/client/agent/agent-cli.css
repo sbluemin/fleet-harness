@@ -1406,7 +1406,7 @@
 }
 
 .compact-timing-track.is-warn .compact-timing-fill {
-  background: color-mix(in oklch, var(--warn) 42%, var(--ink-mid));
+  background: var(--gauge-fill-warn);
 }
 
 /* 손잡이·포커스 링은 공유 `.fleet-slider`의 것이고, 이 카드는 그 트랙을 비워 아래 막대를 드러낸다.

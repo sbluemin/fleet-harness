@@ -121,6 +121,9 @@
   /* 중립 채움 — 신호도 brass도 아닌 평상 값을 싣는 불투명 채움(압축 시점 트랙). 다크는 pearl을 mid에
      얹은 값이라 반투명 rim 막대 위에서 밝게 떠오른다. */
   --gauge-fill-neutral: color-mix(in oklch, var(--ink-pearl) 18%, var(--ink-mid));
+  /* 경고 채움 — 같은 트랙이 경고 단에 오를 때의 불투명 채움. 다크는 warn을 mid에 42%만 섞어 평상 위로
+     한 단 무겁게 선다. */
+  --gauge-fill-warn: color-mix(in oklch, var(--warn) 42%, var(--ink-mid));
 
   /* Operations 캔버스(Map)는 bg0 근방의 저채도 심층 계조만 사용한다. */
   --canvas-abyss: oklch(11% 0.014 245);
@@ -907,6 +910,9 @@
   /* 다크 공식(pearl 18% → mid)을 종이 위로 그대로 옮기면 채움이 L80.3이 되어 반투명 rim 막대와 같은
      명도로 사라진다. 평상 무게(fog × quiet)를 veil에 합성한 L58.2 — 쿼터 막대의 평상 채움과 같은 자리다. */
   --gauge-fill-neutral: color-mix(in oklch, var(--ink-fog) var(--gauge-weight-quiet), var(--ink-veil));
+  /* 다크 공식(warn 42% → mid)은 종이 위에서 L77/C0.05가 되어 평상(L58.2)보다 가벼워 사다리가 뒤집힌다.
+     경고 무게(warn × warn 무게)를 veil에 합성한 L55 — 쿼터 막대의 경고 채움과 같은 자리다. */
+  --gauge-fill-warn: color-mix(in oklch, var(--warn) var(--gauge-weight-warn), var(--ink-veil));
 
   --canvas-abyss: oklch(97.8% 0.003 100);
   --canvas-sea-core: oklch(94% 0.006 98);
