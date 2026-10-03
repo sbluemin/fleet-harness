@@ -45,4 +45,6 @@ Wiki entry writes normally use the patch queue; the Cowork exception moves the a
 - `index.md` at `.fleet/knowledge/wiki/index.md` provides deterministic markdown catalog with id ordering and tag grouping.
 - `log.md` at `.fleet/knowledge/log.md` append-only operational chronicle of ingest, patch, rebuild, drydock, and conflict events.
 - `conflicts/{id}/` stores `meta.json` + `current.md` + `proposed.md` + `raw-source.md` (when applicable). Surfaced via `wiki_drydock` `conflict_unresolved` warnings and the web `/conflicts` route (the `unresolved_conflict` code is reserved for corrupted conflict entries).
+- 새 update/delete 패치는 제공된 기준 버전·해시와 실제 현재본이 일치할 때 `queue/{patch_id}/base.md`와 `meta.json`의 `baseSnapshotHash`를 저장한다. UTF-8 기준본은 최대 1MiB이며 해시 검증 후에만 비교·재적용에 사용한다. 승인·반려 시 패치 디렉터리와 함께 `archive/`로 이동한다. 기존 기준본 없는 패치는 자동 마이그레이션하지 않는다.
+- Console의 충돌 결정은 Wiki를 직접 수정하지 않는다. 반려·수동 해결은 연결된 pending 패치를 반려·보관하며, 다시 제안은 검증된 기준본과 검토한 현재 해시를 사용해 독립 변경만 3-way 재적용한 새 pending 패치를 만든다. 겹치는 변경은 거절한다. 모든 결정은 `conflict resolved` 감사 이벤트를 남기고, 연결 패치의 반려도 별도로 기록한다.
 - `wiki/.claims/{id}.json` claim sidecars are optional but enable provenance-tracked `wiki_resolve` facts. Schema: `{ entryId, claims: [{ id, text, sourceRefs: [{ ref, quote, span }], confidence }] }`.

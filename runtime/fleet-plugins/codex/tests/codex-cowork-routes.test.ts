@@ -13,7 +13,7 @@ import { EventEmitter } from "node:events";
 describe("Cowork DTO", () => {
   it("does not expose the server-only target path", () => {
     const service = Object.create(CoworkService.prototype) as CoworkService;
-    expect(service.dto({ id: "s", workspaceId: "w", entryId: "e", state: "idle", revision: 0, draft: "x", baseDraft: "x", baseHash: "h", baseVersion: 0, selection: null, annotations: [], createdAt: "now", updatedAt: "now", targetPath: "wiki/secret/e.md" })).not.toHaveProperty("targetPath");
+    expect(service.dto({ id: "s", workspaceId: "w", entryId: "e", state: "idle", revision: 0, stateSequence: 0, draft: "x", baseDraft: "x", baseHash: "h", baseVersion: 0, selection: null, annotations: [], createdAt: "now", updatedAt: "now", targetPath: "wiki/secret/e.md" })).not.toHaveProperty("targetPath");
   });
 
   it("maps a running re-prompt to cowork_busy with HTTP 409", async () => {

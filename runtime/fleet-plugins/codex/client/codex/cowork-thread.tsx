@@ -56,6 +56,7 @@ export interface CoworkThreadState {
   readonly panelOpen: boolean;
   readonly promptText: string;
   readonly dirty: boolean;
+  readonly applyBlocked?: boolean;
   readonly changed: number;
   readonly draftVersion: number;
   readonly diffVisible: boolean;
@@ -312,7 +313,7 @@ function ReviewDock({ state, actions }: { readonly state: CoworkThreadState; rea
     return (
       <div className="cowork-review is-confirm">
         <span className="cowork-review-text">{apply ? t("codex.cowork.applyConfirm") : t("codex.cowork.discardConfirm")}</span>
-        <button type="button" className={`cowork-solid${apply ? "" : " cowork-solid--danger"}`} onClick={apply ? actions.onApplyConfirm : actions.onDiscardConfirm}>
+        <button type="button" className={`cowork-solid${apply ? "" : " cowork-solid--danger"}`} onClick={apply ? actions.onApplyConfirm : actions.onDiscardConfirm} disabled={apply && state.applyBlocked}>
           {apply ? t("codex.cowork.apply") : t("codex.cowork.discard")}
         </button>
         <button type="button" className="cowork-ghost" onClick={actions.onConfirmBack}>{t("codex.cowork.back")}</button>
@@ -333,7 +334,7 @@ function ReviewDock({ state, actions }: { readonly state: CoworkThreadState; rea
         <button type="button" aria-pressed={state.diffVisible} onClick={() => actions.onDiffMode("changes")}>{t("codex.cowork.viewDiff")}</button>
         <button type="button" aria-pressed={!state.diffVisible} onClick={() => actions.onDiffMode("full")}>{t("codex.cowork.viewDraft")}</button>
       </span>
-      <button type="button" className="cowork-solid" onClick={actions.onApplyArm}>{t("codex.cowork.apply")}</button>
+      <button type="button" className="cowork-solid" onClick={actions.onApplyArm} disabled={state.applyBlocked}>{t("codex.cowork.apply")}</button>
       <button type="button" className="cowork-ghost" onClick={actions.onDiscardArm}>{t("codex.cowork.discard")}</button>
     </div>
   );

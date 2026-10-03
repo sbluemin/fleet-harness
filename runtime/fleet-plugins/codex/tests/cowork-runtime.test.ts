@@ -26,16 +26,28 @@ describe("Cowork MCP runtime", () => {
 
   it("preserves draft and session when the Wiki base has gone stale", async () => {
     const { service, store, paths } = await fixture();
+    await writeWikiEntry({ ...entry(), body: "Original\nStable" }, paths);
     const session = await service.create("workspace", "entry");
-    const changedDraft = draft({ body: "Cowork draft", version: 1 });
+    const changedDraft = draft({ body: "Cowork draft\nStable", version: 1 });
     await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
     await store.draftPort("workspace", session.id).write({ body: changedDraft, expectedRevision: 0 });
     await store.update("workspace", session.id, s => ({ ...s, state: "idle" }));
-    await writeWikiEntry({ ...entry(), body: "External", version: 2 }, paths);
+    await writeWikiEntry({ ...entry(), body: "External\nStable", version: 2 }, paths);
 
     await expect(service.apply("workspace", session.id)).rejects.toThrow("cowork_apply_stale");
+    expect((await service.describe((await service.get("workspace", session.id))!)).freshness).toEqual({ stale: true, currentVersion: 2 });
+    await expect(service.rebase("workspace", session.id, 1)).rejects.toThrow("cowork_reapply_conflict");
     expect(await store.draftPort("workspace", session.id).read()).toEqual({ body: changedDraft, revision: 1 });
     expect((await service.get("workspace", session.id))?.state).toBe("idle");
+
+    await writeWikiEntry({ ...entry(), body: "Original\nServer", version: 2 }, paths);
+    const rebased = await service.rebase("workspace", session.id, 1);
+    expect(rebased).toMatchObject({ state: "idle", baseVersion: 2, revision: 2 });
+    expect(rebased.draft).toContain("Cowork draft\nServer");
+    expect((await readWikiEntry("entry", paths))?.body).toBe("Original\nServer");
+    await expect(service.apply("workspace", session.id, 1)).rejects.toThrow("cowork_apply_stale_revision");
+    await service.apply("workspace", session.id, 2);
+    expect(await readWikiEntry("entry", paths)).toMatchObject({ version: 3, body: "Cowork draft\nServer" });
   });
 
   it("safely rejects a malformed draft before it can be applied", async () => {

@@ -7,7 +7,7 @@ import { CoworkService, CoworkStore } from "../../server/codex/cowork/index.js";
 import { listConflicts, readConflict } from "../../server/wiki/conflicts.js";
 import { parseLog } from "../../server/wiki/log.js";
 import { buildPatchSetId, writePatchSet } from "../../server/wiki/patch.js";
-import { approvePatch, approvePatchSet, enqueuePatch, listQueue, parsePatch, rejectPatch, resolveQueueSelection, showQueue, stageWikiDeletions, validatePatch } from "../../server/wiki/patch.js";
+import { approvePatch, approvePatchSet, decideWikiConflict, enqueuePatch, listQueue, parsePatch, readPatchBaseSnapshot, rejectPatch, resolveQueueSelection, showQueue, stageWikiDeletions, validatePatch } from "../../server/wiki/patch.js";
 import { resolveMemoryPaths } from "../../server/wiki/paths.js";
 import { computeContentHash, pathExists, readJsonFile, readPatchFile, rebuildIndex, writeWikiEntry } from "../../server/wiki/store.js";
 import { buildPatchQueueToolConfig } from "../../server/wiki/tools/patch-queue.js";
@@ -146,6 +146,35 @@ describe("wiki patch queue", () => {
     await rejectPatch(patchId, "Replaced by the current entry", paths);
     expect((await readConflict(conflicts[0]!.id, paths)).meta).toMatchObject({ status: "resolved", resolution: "rejected", note: "Patch rejected: Replaced by the current entry" });
     expect((await parseLog(paths)).findLast(entry => entry.event === "patch rejected")?.payload).toMatchObject({ conflict_id: conflicts[0]!.id, conflict_resolution: "rejected" });
+    expect(await pathExists(path.join(paths.queueDir, patchId, "base.md"))).toBe(false);
+    const archived = await readJsonFile<PatchMeta>(path.join(paths.archiveDir, patchId, "meta.json"));
+    expect(await readPatchBaseSnapshot(patchId, archived, paths)).toBe(session.baseDraft);
+
+    const reviewBase = { ...original, id: "review", body: "Original\nStable" };
+    await writeWikiEntry(reviewBase, paths);
+    const staged = await enqueuePatch({ frontmatter: { op: "update_wiki", target: "wiki/review.md", summary: "Reapply review", proposer: "test", created: timestamp }, body: JSON.stringify({ ...reviewBase, version: 2, body: "Proposed\nStable" }) }, paths);
+    await writeWikiEntry({ ...reviewBase, version: 2, body: "Original\nServer" }, paths);
+    await expect(approvePatch(staged, paths)).rejects.toThrow(/stale base/);
+    const conflictId = (await showQueue(staged, paths)).meta.conflictId!;
+    const latest = await readPatchFile(path.join(paths.wikiDir, "review.md"));
+    await expect(decideWikiConflict(conflictId, "repropose", "Reapply", paths, "old hash")).rejects.toThrow("conflict_current_changed");
+    const snapshotPath = path.join(paths.queueDir, staged, "base.md");
+    const snapshot = await readPatchFile(snapshotPath);
+    await writeFile(snapshotPath, snapshot.replace("Original", "Forged"));
+    await expect(decideWikiConflict(conflictId, "repropose", "Reapply", paths, computeContentHash(latest))).rejects.toThrow("conflict_reapply_unavailable");
+    expect((await showQueue(staged, paths)).meta.status).toBe("pending");
+    await writeFile(snapshotPath, snapshot);
+    const result = await decideWikiConflict(conflictId, "repropose", "Reapply", paths, computeContentHash(latest));
+    expect(result.patchId).toBeDefined();
+    expect(await readPatchFile(path.join(paths.wikiDir, "review.md"))).toBe(latest);
+    const replacement = await showQueue(result.patchId!, paths);
+    expect(replacement.meta).toMatchObject({ status: "pending", baseVersion: 2, baseHash: computeContentHash(latest) });
+    expect(JSON.parse(replacement.patch.body).body).toBe("Proposed\nServer");
+    expect((await readConflict(conflictId, paths)).meta).toMatchObject({ status: "resolved", resolution: "queued" });
+    await expect(decideWikiConflict(conflictId, "repropose", "Again", paths, computeContentHash(latest))).rejects.toThrow("conflict_not_open");
+    await approvePatch(result.patchId!, paths);
+    expect((await readPatchBaseSnapshot(result.patchId!, await readJsonFile<PatchMeta>(path.join(paths.archiveDir, result.patchId!, "meta.json")), paths))).toBe(latest);
+    expect((await parseLog(paths)).findLast(entry => entry.event === "conflict resolved")?.payload).toMatchObject({ action: "repropose", replacement_patch_id: result.patchId });
   });
 
   it("reports partial patch set approval when members are missing", async () => {

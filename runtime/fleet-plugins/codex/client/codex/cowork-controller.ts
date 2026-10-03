@@ -7,7 +7,7 @@ import { getT, markdownCopyOptions } from "../i18n/index.js";
 import { resolveActiveLocale } from "../i18n/index.js";
 import {
   applyCowork, cancelCowork, closeCowork, CoworkRequestError, createCoworkSession,
-  fetchCoworkOptions, peekCoworkEntrySession, promptCowork, subscribeCoworkEvents,
+  fetchCoworkOptions, peekCoworkEntrySession, promptCowork, rebaseCowork, subscribeCoworkEvents,
   updateCoworkAnnotations, updateCoworkSelection, updateCoworkSettings,
 } from "./api.js";
 import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
@@ -23,7 +23,7 @@ function consoleT() {
   return getT(resolveActiveLocale());
 }
 
-export interface CoworkController { destroy(): void; }
+export interface CoworkController { destroy(): void; refresh(): Promise<void>; engaged(): boolean; }
 
 export interface MountCoworkInlineOptions {
   theaterId: string | null;
@@ -86,6 +86,9 @@ const NOTICE_BY_CODE: Readonly<Record<string, CoworkNotice["kind"]>> = {
  */
 export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkController {
   let disposed = false;
+  let freshnessEpoch = 0;
+  let rebasePending = false;
+  let staleDiscardArmed = false;
   let session: CoworkSessionDto | null = null;
   let unsubscribe: (() => void) | null = null;
   let lastEventId = 0;
@@ -127,6 +130,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   };
 
   const publishedHtml = options.body.innerHTML;
+  const freshnessBanner = document.createElement("div");
+  freshnessBanner.className = "cowork-freshness";
+  freshnessBanner.setAttribute("role", "status");
+  freshnessBanner.hidden = true;
+  options.body.before(freshnessBanner);
   const anchor = document.createElement("div");
   anchor.className = "cowork-anchor";
   const dockZone = document.createElement("div");
@@ -226,6 +234,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       panelOpen,
       promptText,
       dirty,
+      applyBlocked: session?.freshness?.stale === true || rebasePending,
       changed,
       draftVersion: session ? session.baseVersion + 1 : 0,
       diffVisible,
@@ -262,8 +271,19 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     onDismissNotice: () => { notice = null; renderDock(); },
   };
 
+  const renderFreshness = () => {
+    const t = consoleT();
+    const stale = !!session?.freshness?.stale && session.state !== "closed" && session.state !== "applied";
+    freshnessBanner.hidden = !stale;
+    if (!stale || !session) { freshnessBanner.innerHTML = ""; return; }
+    const label = session.freshness!.currentVersion === null ? t("codex.cowork.baseMissing") : t("codex.cowork.baseStale", { base: session.baseVersion, current: session.freshness!.currentVersion });
+    const disabled = rebasePending || session.state === "running" ? " disabled" : "";
+    freshnessBanner.innerHTML = `<span>${escapeHtml(label)}</span><div><button type="button" class="cowork-ghost" data-cowork-action="rebase"${disabled}>${escapeHtml(t("codex.cowork.rebase"))}</button><button type="button" class="cowork-ghost" data-cowork-action="stale-discard"${disabled}>${escapeHtml(t(staleDiscardArmed ? "codex.cowork.discardConfirm" : "codex.cowork.discard"))}</button>${staleDiscardArmed ? `<button type="button" class="cowork-ghost" data-cowork-action="stale-back">${escapeHtml(t("common.cancel"))}</button>` : ""}</div>`;
+  };
+
   const renderDock = () => {
     if (disposed) return;
+    renderFreshness();
     // 도크는 세션 유무와 무관하게 엔트리를 열면 항상 떠 있다. 세션은 첫 전송/코멘트 시점에 지연 생성된다.
     dockZone.classList.add("is-open");
     const running = isRunning();
@@ -410,7 +430,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         settingsSyncQueued = false;
         try {
           const next = await updateCoworkSettings(options.theaterId, session!.id, settings);
-          if (!disposed) session = next;
+          adoptSession(next);
         } catch (cause) {
           notice = noticeFrom(cause);
           renderDock();
@@ -437,6 +457,14 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   // ── 세션 수명주기 ───────────────────────────────────────────────────────────
 
+  // HTTP 응답과 SSE는 서로 다른 전송이다. 최신 이벤트 뒤에 도착한 옛 응답이
+  // 완료 상태나 초안을 되돌리지 않도록 서버의 상태 순서를 공통으로 적용한다.
+  function adoptSession(next: CoworkSessionDto): boolean {
+    if (disposed || session && (next.id !== session.id || next.stateSequence < session.stateSequence)) return false;
+    session = next;
+    return true;
+  }
+
   const engage = async (next: CoworkSessionDto) => {
     session = next;
     // 지연 생성 경로에서는 서버에 아직 저장되지 않은 로컬 카드(첫 코멘트)를 보존해야 한다.
@@ -448,7 +476,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     // 세션에 저장된 좌표가 지금 Settings와 다르면(설정이 바뀌었거나 모델이 사라짐), 첫 실행이
     // 옛 좌표로 접속하지 않도록 서버 세션 설정을 즉시 동기화한다.
     if (session && (session.model !== settings.model || session.effort !== settings.effort)) {
-      try { session = await updateCoworkSettings(options.theaterId, session.id, settings); } catch { /* 전송 시 오류로 표면화된다. */ }
+      try { adoptSession(await updateCoworkSettings(options.theaterId, session.id, settings)); } catch { /* 전송 시 오류로 표면화된다. */ }
     }
     if (disposed) return;
     // 복원된 세션이 이미 돌고 있으면 — 다른 탭이 보냈거나 새로고침 — 스트림을 받을 턴을 세운다.
@@ -483,7 +511,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       if (id && id <= lastEventId) return;
       lastEventId = Math.max(lastEventId, id);
       const wasRunning = session?.state === "running";
-      if (event.session) session = event.session;
+      if (event.session && !adoptSession(event.session)) return;
       // 다른 창이 보낸 지시로 세션이 돌기 시작하면 이 창에도 스트림을 받을 턴이 있어야 한다 —
       // 턴이 없으면 transcript가 버려지고 중지 버튼도 서지 않는다(마운트 시 복원과 같은 계약).
       if (event.type === "session" && !wasRunning && session?.state === "running" && !currentTurn()) {
@@ -626,8 +654,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       attempt.submitted = true;
       const turn = currentTurn();
       if (turn) patchTurn(turn.id, { state: "running" });
-      await mutate(() => promptCowork(options.theaterId, session!.id, prompt));
       awaitingResult = true;
+      await mutate(() => promptCowork(options.theaterId, session!.id, prompt));
     } catch (cause) {
       if (!attempt.cancelled && promptAttempt === attempt) {
         awaitingResult = false;
@@ -671,8 +699,33 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     }).catch(() => undefined);
   }
 
+  async function rebase(): Promise<void> {
+    if (!session || rebasePending || session.state !== "idle") return;
+    rebasePending = true;
+    staleDiscardArmed = false;
+    renderDock();
+    try {
+      await mutate(() => rebaseCowork(options.theaterId, session!.id, session!.revision));
+      if (!disposed) options.onApplied();
+    } catch { /* 원래 초안과 최신성 안내를 보존한다. */ }
+    finally { rebasePending = false; if (!disposed) renderDock(); }
+  }
+
+  async function refresh(): Promise<void> {
+    const epoch = ++freshnessEpoch;
+    const id = session?.id;
+    try {
+      const latest = await peekCoworkEntrySession(options.theaterId, options.entryId);
+      if (disposed || epoch !== freshnessEpoch) return;
+      if (latest && (!id || latest.id === id)) {
+        if (!session) await engage(latest);
+        else { adoptSession(latest); redraw(); }
+      }
+    } catch { /* 알 수 없는 최신성을 최신이라고 표시하지 않는다. */ }
+  }
+
   async function apply(): Promise<void> {
-    if (!session) return;
+    if (!session || session.freshness?.stale || rebasePending) return;
     confirmAction = null;
     const from = session.baseVersion;
     const lastTurn = turns[turns.length - 1] ?? null;
@@ -689,8 +742,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   }
 
   // Discard는 초안만 버린다 — 도크(작업 흐름)는 유지해야 하므로 곧바로 새 세션을 연다.
-  async function discard(): Promise<void> {
-    if (!session) return;
+  async function discard(): Promise<boolean> {
+    if (!session) return false;
     const closing = session.id;
     confirmAction = null;
     try {
@@ -699,7 +752,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     } catch (cause) {
       notice = noticeFrom(cause);
       renderDock();
-      return;
+      return false;
     }
     unsubscribe?.();
     unsubscribe = null;
@@ -717,12 +770,13 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       session = null;
       redraw();
     }
+    return true;
   }
 
   async function mutate(run: () => Promise<CoworkSessionDto>): Promise<void> {
     try {
       notice = notice?.kind === "applied" ? null : notice;
-      session = await run();
+      adoptSession(await run());
       redraw();
     } catch (cause) {
       notice = noticeFrom(cause);
@@ -739,6 +793,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   function noticeFromCode(code: string): CoworkNotice {
     const t = consoleT();
+    if (code === "cowork_reapply_conflict" || code === "cowork_reapply_limit") return { kind: "stale", message: t(code === "cowork_reapply_conflict" ? "codex.cowork.reapplyConflict" : "codex.cowork.reapplyLimit") };
     const kind = NOTICE_BY_CODE[code] ?? (code.startsWith("cowork_") ? "turn" : "generic");
     const message = kind === "gateway" ? t("codex.cowork.gatewayUnavailable")
       : kind === "timeout" ? t("codex.cowork.turnTimeout")
@@ -807,6 +862,14 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const target = event.target.closest<HTMLElement>("[data-cowork-action]");
     if (!target) return;
     const action = target.dataset.coworkAction;
+    if (action === "rebase") { void rebase(); return; }
+    if (action === "stale-back") { staleDiscardArmed = false; renderDock(); return; }
+    if (action === "stale-discard") {
+      if (rebasePending || session?.state === "running") return;
+      if (!staleDiscardArmed) { staleDiscardArmed = true; renderDock(); }
+      else { staleDiscardArmed = false; void discard().then(success => { if (success && !disposed) options.onApplied(); }); }
+      return;
+    }
     if (action === "comment") { composerOpen = true; renderAnchor(); }
     if (action === "cancel-comment") { selection = null; composerOpen = false; renderAnchor(); }
     if (action === "add-comment") submitComposer();
@@ -834,8 +897,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   }
 
   return {
+    refresh,
+    engaged: () => !!session && session.state !== "closed" && session.state !== "applied",
     destroy() {
       disposed = true;
+      freshnessEpoch++;
+      freshnessBanner.remove();
       cancelRevisionRender();
       clearSettle();
       syncTick(false);

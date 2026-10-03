@@ -171,11 +171,13 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
         setSwitcherIndex(0);
         setOverlay("switcher");
       },
-      onDecided: () => {
+      onDecided: (kind) => {
         void loadInitialData();
         refreshCodexHealth();
-        openCodexReader({ kind: "drydock", patchId: undefined });
-        expandCodexReader();
+        if (kind !== "conflicts") {
+          openCodexReader({ kind: "drydock", patchId: undefined });
+          expandCodexReader();
+        }
       },
     });
 

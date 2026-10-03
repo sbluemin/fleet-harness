@@ -1,4 +1,23 @@
 .codex-panel-body { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.cowork-freshness { position: sticky; top: 0; z-index: 3; display: grid; gap: var(--space-2); padding: var(--space-3); margin-bottom: var(--space-3); border: 1px solid var(--warn); border-radius: var(--radius-md); background: var(--surface-panel); color: var(--warn-ink); font-size: var(--t-sm); }
+.cowork-freshness[hidden] { display: none; }
+.cowork-freshness > div { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.cowork-solid:disabled, .cowork-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+.entry-pending-patches, .queue-row-stale { display: inline-block; padding: var(--space-1) var(--space-2); border: 1px solid var(--warn); border-radius: var(--radius-xs); color: var(--warn-ink); font-size: var(--t-xs); }
+.queue-row-stale { flex: none; }
+.queue-row-top { flex-wrap: wrap; }
+.queue-row.conflict-row { grid-template-columns: minmax(0, 1fr); }
+.conflict-row .queue-row-target { white-space: normal; overflow-wrap: anywhere; word-break: keep-all; }
+.conflict-comparison { display: grid; gap: var(--space-3); }
+.conflict-compare-panel { min-width: 0; padding: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel); }
+.conflict-compare-panel > h2 { margin: 0 0 var(--space-2); font-size: var(--t-sm); color: var(--text-secondary); }
+.conflict-compare-panel pre { max-height: 320px; overflow: auto; }
+.conflict-base-warning { color: var(--warn-ink); font-size: var(--t-sm); }
+.conflict-resolved { color: var(--positive-ink); font-size: var(--t-sm); }
+[data-conflict-controls] { display: grid; gap: var(--space-3); margin-bottom: var(--space-4); }
+[data-conflict-controls] textarea { width: 100%; padding: var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: inherit; font-size: var(--t-sm); resize: vertical; }
+[data-conflict-controls] textarea:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.queue-action-btn { background: var(--surface-panel); border: 1px solid var(--surface-rim); color: var(--text-primary); }
 .codex-panel-body > .codex-rail-host { flex: 1; min-height: 0; height: auto; }
 .codex-theater-context { flex: none; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--hairline); }
 .markdown-body code.codex-file-missing { color: var(--text-tertiary); border-style: dashed; opacity: 0.7; }
