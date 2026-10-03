@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 import { ZenIslandControls } from "../../../../../features/workspace/client/zen/zen-island-controls.js";
 import { useAttentionQueue } from "../../../../../features/workspace/client/zen/use-attention-queue.js";
-import { useSnapFullOperationId } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { useHasBottomSnappedOperation, useSnapFullOperationId } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { useTriageActive, useTriageMapOpen, useTriageStage } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { useT } from "../../i18n/index.js";
@@ -11,7 +11,7 @@ import { useZenModeState, useZenTransitionActive } from "../../integration/zen-m
 import { BrandMarkIcon, BrandWordmark } from "../components/command-band.js";
 import { useRailDragDeltaPx, useRailSettledPx } from "../rail/rail-store.js";
 
-/** 같은 도구 DOM을 보존하되, 전체 칸·무대를 보는 동안에는 아레나 모서리의 손잡이로 물러난다. */
+/** 같은 도구 DOM을 보존하되, 전체 칸·스냅 칸·무대를 보는 동안에는 아레나 모서리의 손잡이로 물러난다. */
 const EDGE = 12;
 /** 크롬 카드와 아레나 사이 틈 — Operations의 CHROME_FLOAT_GUTTER와 같은 값. */
 const CHROME_GUTTER = 24;
@@ -30,9 +30,10 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
   const staged = useTriageStage();
   const mapOpen = useTriageMapOpen();
   const snapFull = useSnapFullOperationId();
+  const snapBottomTouching = useHasBottomSnappedOperation();
   const transitionActive = useZenTransitionActive();
   const { queue } = useAttentionQueue();
-  const watching = warRoom ? staged !== null && !mapOpen : snapFull !== null;
+  const watching = warRoom ? staged !== null && !mapOpen : snapFull !== null || snapBottomTouching;
   const receded = watching && !expanded && !held && !transitionActive;
   const zenState = useZenModeState();
   const sidebar = useSideBarState();
