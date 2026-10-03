@@ -3,6 +3,36 @@ import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { BrowserPolicyError, type BrowserService } from "./service.js";
 import { writeImageToClipboard } from "./clipboard.js";
 
+export interface BrowserGlobalTabsInput {
+  readonly action: "create" | "close" | "select";
+  readonly tabId?: string | null;
+  readonly url?: string | null;
+}
+
+export interface BrowserGlobalNavigateInput {
+  readonly url: string;
+  readonly tabId?: string | null;
+}
+
+export interface BrowserGlobalViewportInput {
+  readonly preset?: "responsive" | "mobile" | "tablet";
+  readonly width?: number;
+  readonly height?: number;
+  readonly colorScheme?: "light" | "dark" | null;
+}
+
+export interface BrowserGlobalPlaceInput {
+  readonly x?: number | null;
+  readonly y?: number | null;
+  readonly width?: number | null;
+  readonly height?: number | null;
+  readonly visible?: boolean;
+}
+
+export interface BrowserSetShortcutsInput {
+  readonly shortcuts: readonly string[];
+}
+
 interface BrowserRouteDeps {
   readonly browserService: BrowserService;
   readonly browserMcp: { interruptOperation(id: string): number; pasteIntoTerminal(id: string): boolean };

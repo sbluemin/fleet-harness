@@ -41,7 +41,19 @@ export interface BrowserAvailability {
 export type ViewportPreset = "responsive" | "mobile" | "tablet";
 export interface BrowserViewport { readonly width: number; readonly height: number; /** 뷰가 놓인 화면의 배율 — 스크린샷 픽셀을 CSS px 로 되돌릴 때 쓴다. */ readonly scale: number; readonly preset: ViewportPreset; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 export interface BrowserTabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean }
+export const GLOBAL_BROWSER_OWNER_ID = "global" as const;
+
+export type BrowserOwner =
+  | { readonly kind: "operation"; readonly operationId: string }
+  | { readonly kind: "global" };
+
+export interface BrowserClosedTab {
+  readonly url: string;
+  readonly title: string;
+}
+
 export interface BrowserOperationState {
+  readonly owner?: { readonly kind: "operation"; readonly operationId: string };
   readonly operationId: string;
   /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션이다 — 닫히면 로그인이 사라진다. */
   readonly profile: string | null;
@@ -58,12 +70,33 @@ export interface BrowserOperationState {
   readonly available: boolean;
   readonly reason: BrowserUnavailableReason | null;
 }
+
+export interface BrowserGlobalState {
+  readonly owner: { readonly kind: "global" };
+  /** 기존 DTO/SSE 수신 호환을 위한 고정 식별자. Operation ID 와 충돌하지 않는 예약어다. */
+  readonly operationId: "global";
+  readonly profile: string | null;
+  readonly defaultProfile: string | null;
+  readonly available: boolean;
+  readonly reason: BrowserUnavailableReason | null;
+  readonly tabs: readonly BrowserTabState[];
+  readonly activeTabId: string | null;
+  readonly viewport: BrowserViewport;
+  readonly consoleErrors: number;
+  readonly engine: "idle" | "starting" | "ready" | "failed";
+  readonly engineError: string | null;
+  /** 비정상 종료(shared 일시정지, 호스트 교체 등) 시 기억해 둔 마지막 탭 목록. 복원하거나 닫으면 비워진다. */
+  readonly closedTabs: readonly BrowserClosedTab[];
+}
+
+export type BrowserState = BrowserOperationState | BrowserGlobalState;
+
 /**
  * 상태를 듣는 쪽. 구독은 Operation 마다가 아니라 서비스 하나에 걸린다 — 화면으로 나가는 길이 이미 열려 있는 Operation
  * 스트림 하나이기 때문이다. 브라우저 상태만을 위해 화면이 스트림을 하나 더 열면 그 연결이 origin 당 여섯 개뿐인
  * 예산을 먹고, 다 차는 순간 그 화면에서 나가는 모든 요청이 큐에 갇힌다.
  */
-export type BrowserStateListener = (state: BrowserOperationState) => void;
+export type BrowserStateListener = (state: BrowserState) => void;
 
 export interface ConsoleEntry { readonly at: number; readonly level: string; readonly text: string; readonly url?: string; readonly line?: number }
 export interface NetworkEntry { requestId: string; loaderId: string; at: number; method: string; url: string; type: string; status: number | null; mimeType: string | null; size: number; failed: string | null; finished: boolean }
