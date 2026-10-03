@@ -328,3 +328,17 @@ export async function clearGlobalProfile(): Promise<boolean> {
   const response = await postGlobal("clear-profile", { profile: "default" });
   return response !== null && response.ok;
 }
+
+/**
+ * Chrome 프로필의 쿠키를 전역 브라우저가 지금 쓰는 세션에 넣는다. 성공하면 넣은 수를, 실패하면 사람에게 보일 까닭을 돌려준다
+ * (서버가 준 `message` — Chrome 이 없거나 복사본을 못 열었다는 말이 그대로 온다).
+ */
+export async function importGlobalFromChrome(profileId: string): Promise<{ readonly cookies: number } | { readonly error: string | null }> {
+  const response = await postGlobal("import", { profileId });
+  if (response === null) return { error: null };
+  try {
+    const body = await response.json() as { cookies?: unknown; message?: unknown };
+    if (response.ok && typeof body.cookies === "number") return { cookies: body.cookies };
+    return { error: typeof body.message === "string" ? body.message : null };
+  } catch { return { error: null }; }
+}
