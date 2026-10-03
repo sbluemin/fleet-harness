@@ -471,7 +471,7 @@ async function runRipgrep(root: string, args: readonly string[], signal?: AbortS
       child.once("error", reject);
       child.once("close", (code, killedSignal) => {
         if (signal?.aborted || killedSignal) { resolve(); return; }
-        if (code === 0 || code === 1 || (code === 2 && stdout.length > 0 && countSkippedPaths(stderr) > 0)) resolve();
+        if (code === 0 || code === 1 || (code === 2 && countSkippedPaths(stderr) > 0)) resolve();
         else reject(new Error(stderr.trim() || `ripgrep exited ${code}`));
       });
     });
