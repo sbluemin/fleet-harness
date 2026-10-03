@@ -90,6 +90,14 @@ export type ConsoleCoordinatesResult =
   | { readonly ok: false; readonly error: "unknown_operation" | "forbidden" | "chat_not_active" | "invalid_model" | "invalid_effort" | "context_exceeds_window" | "coordinates_apply_failed" };
 
 /** 떠 있는 채팅 세션의 지금 좌표와 턴 경계를 기다리는 예약. 예약은 적용이 끝나는 순간에야 비워진다. `effort` 는 런치 어휘다. */
+/** Operation 전사의 한 쪽 — 사람의 말·답·도구·질문·턴 결말 줄. 본문은 마스킹을 지난 신뢰할 수 없는 데이터다. `nextCursor` 가 null 이면 끝까지 읽었거나 꼬리 읽기다. */
+export interface ConsoleTranscriptPage {
+  readonly source: "chat" | "terminal";
+  readonly entries: readonly Record<string, unknown>[];
+  readonly nextCursor: string | null;
+  readonly truncated: boolean;
+}
+
 export interface ConsoleCoordinates {
   readonly model: string;
   readonly effort: string | null;

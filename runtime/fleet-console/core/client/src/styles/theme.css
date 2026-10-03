@@ -225,6 +225,10 @@
      게이트가 닫히면(@supports 미달·prefers-reduced-transparency·라이트 테마) 모든
      소비처가 자동으로 오늘의 불투명 계약으로 되돌아간다. */
   --glass-underlay: var(--ink-deep);
+  /* 팝업(메뉴·팝오버·다이얼로그·시트·토스트·말풍선) 전용 바탕층 — 게이트가 덮어쓰지 않아 다크에서도 불투명이고, 틴트·rim·sheen·lift만 유리 채널을 따른다. */
+  --float-underlay: var(--ink-deep);
+  /* 라이트에서 일부러 비치게 둔 부유 표면(Snap Assist)의 바탕층 — 다크 게이트에서만 --float-underlay로 채운다. */
+  --float-underlay-dark: transparent;
   --glass-tint-strong: var(--surface-glass-strong);
   --glass-tint-rail: var(--surface-glass-strong);
   --glass-tint-expanded: color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
@@ -283,9 +287,9 @@
      알파 44~62% 대역으로 눕는다. 틴트 알파를 더 낮추려면 겹친 콘텐츠 위 판독 대비를 재실측할 것. */
   --glass-on-underlay: transparent;
   --glass-on-tint-strong: oklch(24% 0.02 245 / 50%);
-  /* 확장 표면 재질 — 소비처가 이 틴트를 불투명 --ink-deep과 94:6으로 섞는다. 섞인 알파는 작업 창
-     슬라이더를 따른다: 60%(미조작)에서 오늘 값, 100%에서 완전 불투명, 그 아래는 비례. 6:94로 역산한다. */
-  --glass-on-tint-expanded: oklch(24% 0.02 245 / calc((max(var(--glass-window-alpha, 60%) * 53 / 60, 53% + (var(--glass-window-alpha, 60%) - 60%) * 47 / 40) - 6%) / 0.94));
+  /* 확장 표면·Codex 리딩 시트 재질 — 읽는 시트라 작업 창 슬라이더를 따르지 않고 --float-underlay(불투명)
+     위에 얹힌다. 슬라이더 미조작(60%)일 때의 옛 값이 strong 틴트와 같은 색·알파여서 그대로 별칭한다. */
+  --glass-on-tint-expanded: var(--glass-on-tint-strong);
   /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
      섞인 결과가 슬라이더 수치와 같게 한다. 폴백 54%는 오늘 이 테마의 섞인 알파다. */
   --glass-on-tint-rail: oklch(24% 0.02 245 / calc((var(--glass-rail-alpha, 54%) - 8%) / 0.92));
@@ -541,9 +545,6 @@
   --surface-band: var(--ink-deep);
 
   --glass-on-tint-strong: oklch(32% 0.045 248 / 46%);
-  /* 확장 표면 재질 — 소비처가 이 틴트를 불투명 --ink-deep과 94:6으로 섞는다. 섞인 알파는 작업 창
-     슬라이더를 따른다: 60%(미조작)에서 오늘 값, 100%에서 완전 불투명, 그 아래는 비례. 6:94로 역산한다. */
-  --glass-on-tint-expanded: oklch(32% 0.045 248 / calc((max(var(--glass-window-alpha, 60%) * 49.24 / 60, 49.24% + (var(--glass-window-alpha, 60%) - 60%) * 50.76 / 40) - 6%) / 0.94));
   /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
      섞인 결과가 슬라이더 수치와 같게 한다. 폴백 50%는 오늘 이 테마의 섞인 알파다. */
   --glass-on-tint-rail: oklch(32% 0.045 248 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92));
@@ -658,9 +659,6 @@
   --surface-band: var(--ink-deep);
 
   --glass-on-tint-strong: oklch(29% 0.007 252 / 46%);
-  /* 확장 표면 재질 — 소비처가 이 틴트를 불투명 --ink-deep과 94:6으로 섞는다. 섞인 알파는 작업 창
-     슬라이더를 따른다: 60%(미조작)에서 오늘 값, 100%에서 완전 불투명, 그 아래는 비례. 6:94로 역산한다. */
-  --glass-on-tint-expanded: oklch(29% 0.007 252 / calc((max(var(--glass-window-alpha, 60%) * 49.24 / 60, 49.24% + (var(--glass-window-alpha, 60%) - 60%) * 50.76 / 40) - 6%) / 0.94));
   /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
      섞인 결과가 슬라이더 수치와 같게 한다. 폴백 50%는 오늘 이 테마의 섞인 알파다. */
   --glass-on-tint-rail: oklch(29% 0.007 252 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92));
@@ -884,6 +882,7 @@
    두 게이트 선택자는 같은 :not(...) 목록으로 특이도 (0,2,0)을 유지한다. */
 :root:not([data-theme="whites"]) {
   --glass-underlay: var(--glass-on-underlay);
+  --float-underlay-dark: var(--float-underlay);
   --glass-tint-strong: var(--glass-on-tint-strong);
   --glass-tint-rail: var(--glass-on-tint-rail);
   --glass-tint-expanded: color-mix(in oklch, var(--glass-on-tint-expanded) 94%, var(--ink-deep));

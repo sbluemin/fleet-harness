@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@fleet-console/infra";
 import { sanitizeLaunchPrompt } from "@fleet-console/agent-runtime/fleet";
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
+import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
 import { LaunchKeyError, type LaunchKeyLedger, type LaunchKeyState } from "./launch-keys.js";
@@ -75,6 +75,8 @@ export interface ConsoleExecutionAdapter {
   /** 떠 있는 채팅의 모델·강도 변경 — 채팅 화면의 라우트와 같은 검증·같은 세션 메서드를 지난다. 소유는 여기서 이미 따졌다. */
   coordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
   readCoordinates?(operationId: string): ConsoleCoordinates | null;
+  /** 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 함수다. 소유는 여기서 이미 따졌다. */
+  transcript?(operationId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
 }
 export interface ConsoleControlDeps {
   readonly directory: string;
@@ -394,20 +396,34 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   async function coordinates(caller: ConsoleCaller, operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
     const op = node(operationId);
     if (!op) return { ok: false, error: "unknown_operation" };
-    const owners = [op, ...(op.parentOperationId ? [node(op.parentOperationId)] : [])];
-    const ownedBy = (candidate: OperationNode | undefined | null) => {
-      const by = candidate?.payload.launchedBy;
-      return caller.kind === "plugin" && !!by && typeof by === "object" && (by as { kind?: unknown }).kind === "plugin" && (by as { pluginId?: unknown }).pluginId === caller.pluginId;
-    };
-    if (!owners.some(ownedBy)) return { ok: false, error: "forbidden" };
+    if (!launchedByPlugin(caller, op)) return { ok: false, error: "forbidden" };
     if (!adapter?.coordinates) return { ok: false, error: "chat_not_active" };
     return adapter.coordinates(operationId, input);
+  }
+  /** 그 플러그인이 띄운 Operation(또는 그 자식)인가 — 살아 있는 세션을 바꾸거나 전사를 읽는 문의 소유 규칙. */
+  function launchedByPlugin(caller: ConsoleCaller, op: OperationNode): boolean {
+    const owners = [op, ...(op.parentOperationId ? [node(op.parentOperationId)] : [])];
+    return owners.some((candidate) => {
+      const by = candidate?.payload.launchedBy;
+      return caller.kind === "plugin" && !!by && typeof by === "object" && (by as { kind?: unknown }).kind === "plugin" && (by as { pluginId?: unknown }).pluginId === caller.pluginId;
+    });
+  }
+  /**
+   * 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 줄과 마스킹이다. 세션의 말은 민감한 상태라 좌표 바꾸기와 같은 소유 규칙을 지난다:
+   * 그 플러그인이 띄운 Operation(또는 그 자식)만.
+   */
+  async function transcript(caller: ConsoleCaller, operationId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }> {
+    const op = node(operationId);
+    if (!op) return { error: "unknown_operation" };
+    if (!launchedByPlugin(caller, op)) return { error: "forbidden" };
+    if (!adapter?.transcript) return { error: "capability_unavailable" };
+    return adapter.transcript(operationId, { ...input, limit: Math.max(1, Math.min(200, input.limit)) }, signal);
   }
   function code(error: unknown) { return error instanceof ConsoleControlError ? error.code : error instanceof z.ZodError ? "invalid_arguments" : "execution_unavailable"; }
   return {
     attach(value: ConsoleExecutionAdapter) { if (adapter) throw new Error("Console execution already attached"); adapter = value; return () => { if (adapter === value) adapter = null; }; },
     observe, request, automation, readEvents, briefing, tick,
-    launchKeyState, coordinates,
+    launchKeyState, coordinates, transcript,
     readCoordinates(operationId: string): ConsoleCoordinates | null { return adapter?.readCoordinates?.(operationId) ?? null; },
     reserveLaunchKeys(caller: ConsoleCaller, theaterId: string, keys: readonly string[]) {
       if (caller.kind !== "plugin") return fail("invalid_launch_option");

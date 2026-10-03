@@ -16,7 +16,8 @@ import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState,
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
-import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../chrome/rail/rail-store.js";
+import { closeRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
+import { getCanvasArenaInsets, subscribeCanvasArenaInsets } from "../../../../features/workspace/client/canvas/canvas-store.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
@@ -148,6 +149,17 @@ export function createHostCapabilities(
       getSelectedOperationId: () => getState().selectedOperationId,
       setActiveTheater: (theaterId) => setActiveTheater(theaterId),
       subscribe: (listener) => subscribe(listener),
+      // 확정 인셋은 아레나 스토어에서, 레일을 끄는 동안의 차이는 레일 스토어에서 — 캔버스가 --arena-right 를 따라가는 것과 같은 셈.
+      getMapInsets: () => {
+        const settled = getCanvasArenaInsets();
+        const { railOccupiedPx, railSettledPx } = getRailStoreSnapshot();
+        return { left: settled.left, right: Math.max(0, settled.right + railOccupiedPx - railSettledPx) };
+      },
+      subscribeMapInsets: (listener) => {
+        const offRail = subscribeRailStore(listener);
+        const offArena = subscribeCanvasArenaInsets(listener);
+        return () => { offRail(); offArena(); };
+      },
     },
     navigate: {
       openFile: async (request) => {

@@ -190,6 +190,11 @@ describe("agent chat mode routes", () => {
     expect(harness.operation(owned)?.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
     expect(harness.consoleControl.readCoordinates(owned)).toEqual({ model: "sonnet", effort: "low", pending: null });
     await expect(harness.consoleControl.coordinates(plugin, commander, { model: "sonnet", effort: null })).resolves.toEqual({ ok: false, error: "forbidden" });
+    // 전사도 같은 소유 규칙이다 — 띄운 Operation 은 마지막 줄부터 읽고, 남이 띄운 세션의 말은 읽지 못한다.
+    const tail = await harness.consoleControl.transcript(plugin, owned, { limit: 5, tail: true });
+    expect(tail).toMatchObject({ source: "chat", nextCursor: null });
+    expect("entries" in tail && tail.entries.some((entry) => entry.kind === "user" && String(entry.text).includes("Own work"))).toBe(true);
+    await expect(harness.consoleControl.transcript(plugin, commander, { limit: 5, tail: true })).resolves.toEqual({ error: "forbidden" });
   });
   it("converts an idle live claude-gateway session: marks payload, invalidates tickets, terminates the pty", async () => {
     const harness = await createHarness();

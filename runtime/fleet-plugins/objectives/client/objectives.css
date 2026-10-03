@@ -563,7 +563,7 @@ span.objectives-row-main { cursor: default; }
   border-radius: var(--radius-md);
   background:
     linear-gradient(color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)), color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent));
   display: flex; flex-direction: column;
   max-height: min(520px, calc(100vh - 24px)); overflow-y: auto; scrollbar-width: none;
@@ -869,7 +869,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)), var(--glass-underlay);
+  background: linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)), var(--float-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -888,7 +888,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 @keyframes objectives-att-spin { to { transform: rotate(360deg); } }
 .objectives-att-err { font-size: var(--t-xs); color: var(--coral); }
 /* 크게 보기 — 채팅 첨부 보기와 같은 틀(유리 틀·모서리 원형 닫기). */
-.objectives-att-view { position: relative; display: grid; gap: var(--space-2); justify-items: center; margin: 0; max-width: min(960px, 100%); padding: var(--space-2); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); box-shadow: var(--shadow-floating); }
+.objectives-att-view { position: relative; display: grid; gap: var(--space-2); justify-items: center; margin: 0; max-width: min(960px, 100%); padding: var(--space-2); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--float-underlay); box-shadow: var(--shadow-floating); }
 .objectives-att-view-stage { position: relative; display: grid; place-items: center; max-width: 100%; }
 /* 이미지는 캡션이 실제로 차지한 높이만큼 덜어 낸다(--objectives-att-caption 은 보기가 잰다). 캡션은 화면의 1/3 을 넘으면 안에서 스크롤한다. */
 .objectives-att-view img { display: block; max-width: 100%; max-height: calc(100dvh - 100px - var(--objectives-att-caption, 20px)); object-fit: contain; border-radius: var(--radius-xs); }
@@ -1451,3 +1451,333 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   .objectives-routing-row { grid-template-columns: 20px minmax(0, 1fr); grid-template-areas: "mark who" ". pick" ". why"; }
   .objectives-routing-pick { justify-content: flex-start; }
 }
+
+/* ─── 사령관(자율 운영) ──────────────────────────────────────────────────────
+   Theater 머리 아래의 사령관 줄과 「사령관 기록」 서랍. 줄은 사이드바 목표 줄과 같은 격자(24px 글리프 칸 · 6/8 안쪽 여백 ·
+   7px 모서리)를 쓴다 — 섞여 선 목록에서 한 문법으로 읽힌다. 글리프가 자율 운영 스위치이고, 켬은 채운 brass 사각(선택),
+   끔은 빈 사각이다. 왼쪽 띠·상자형 필터 단추는 두지 않는다. */
+/* 한 줄 — 제목 오른쪽에 메타가 선다(Operation 한 줄과 같은 38px). 줄이 모자라면 메타만 말줄임한다. */
+.objectives-commodore-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  margin: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
+}
+.objectives-commodore-row:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); }
+.objectives-commodore-row:has(.objectives-commodore-row-main:focus-visible) {
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
+}
+/* 서랍이 열린 줄 — 사이드바의 열린 목표 줄과 같은 위치 채널. */
+.objectives-commodore-row.is-open {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
+}
+.objectives-commodore-row.is-open .objectives-commodore-row-title { color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary)); }
+
+/* 글리프 스위치 — 누르는 자리는 24px, 보이는 사각은 12px. 제목 줄(13px × 1.3)의 세로 가운데에 선다. */
+.objectives-commodore-switch {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.objectives-commodore-switch i {
+  display: block;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--brass);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--brass) 16%, transparent);
+  transition: background var(--duration-fast) var(--ease-spring), box-shadow var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
+}
+.objectives-commodore-switch[aria-checked="false"] i { background: transparent; border: 1.5px solid var(--text-tertiary); box-shadow: none; }
+.objectives-commodore-switch:hover:not(:disabled) { background: color-mix(in oklch, var(--ink-spectral) 10%, transparent); }
+.objectives-commodore-switch:hover:not(:disabled)[aria-checked="false"] i { border-color: var(--text-secondary); }
+.objectives-commodore-switch:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-switch:disabled { cursor: default; opacity: 0.6; }
+.objectives-commodore-switch[aria-busy="true"] i { opacity: 0.6; }
+.objectives-commodore-switch.is-large { width: 28px; height: 28px; margin-top: 0; flex: none; }
+.objectives-commodore-switch.is-large i { width: 20px; height: 20px; border-radius: 5px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--brass) 14%, transparent); }
+.objectives-commodore-switch.is-large[aria-checked="false"] i { box-shadow: none; }
+@media (prefers-reduced-motion: reduce) {
+  .objectives-commodore-row, .objectives-commodore-switch i { transition: none; }
+}
+
+/* 제목과 메타는 기준선을 맞추고, 그 한 줄(13px × 1.3)을 24px 칸의 세로 가운데에 둔다 — 글리프 사각과 같은 중심선. */
+.objectives-commodore-row-main {
+  box-sizing: border-box;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  height: 24px;
+  padding: calc((24px - var(--t-md) * 1.3) / 2) 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.objectives-commodore-row-main:focus-visible { outline: none; }
+.objectives-commodore-row-title {
+  flex: none;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+.objectives-commodore-row-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
+.objectives-commodore-row-meta .is-on { color: var(--brass-ink); }
+.objectives-commodore-row-meta .is-warn { color: var(--warn-ink); }
+
+/* 「…」 메뉴의 「사령관 지시…」 — 머리 글리프는 줄의 켬 사각을 작게. */
+.objectives-commodore-menu-glyph i { display: block; width: 9px; height: 9px; border-radius: 2px; background: var(--brass); }
+
+/* 「사령관 기록」 시트 — Fleet 브라우저 시트와 같은 면: 지도 안쪽 틀(좌우 24px, 위·아래 사이드바 카드 선) 가운데의 맞춤 크기, 불투명 패널·카드와 같은
+   테두리·그림자. 뒤는 지도만 덮는 투명한 닫기 영역이라 뒤 화면이 원래 밝기로 보이고, 사이드바·레일은 그대로 조작된다. */
+.objectives-commodore-scrim { position: fixed; z-index: 54; background: transparent; }
+.objectives-commodore-sheet {
+  position: fixed;
+  z-index: 55;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-panel);
+  background-clip: padding-box;
+  color: var(--text-primary);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
+  font-size: var(--t-md);
+}
+html[data-view-mode="mobile"] .objectives-commodore-sheet,
+html[data-view-mode="mobile"] .objectives-commodore-scrim { display: none; }
+
+/* 왼쪽 — 사령관의 지금과 구역 목록. 설정 화면의 목차와 같은 줄 문법(글리프 + 낱말, 고른 줄은 면이 밝아진다). */
+.objectives-commodore-nav { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 20px 12px 16px; border-right: 1px solid var(--hairline); }
+.objectives-commodore-nav-id { display: grid; gap: 3px; min-width: 0; padding: 0 10px; }
+.objectives-commodore-nav-kicker { margin: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }
+.objectives-commodore-nav-theater { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-ui); font-size: var(--t-lg); font-weight: var(--weight-bold); line-height: 1.25; }
+.objectives-commodore-nav-status { margin: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 1.45; font-variant-numeric: tabular-nums; }
+.objectives-commodore-nav-list { display: grid; gap: 2px; }
+.objectives-commodore-nav-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0;
+  padding: 8px 10px; border: 0; border-radius: var(--radius-xs);
+  background: transparent; color: var(--text-secondary);
+  font-family: var(--font-ui); font-size: var(--t-md); text-align: left; cursor: pointer;
+  transition: color var(--duration-fast), background var(--duration-fast);
+}
+.objectives-commodore-nav-item:hover { color: var(--text-primary); background: var(--control-hover-fill); }
+.objectives-commodore-nav-item[aria-selected="true"] { color: var(--text-primary); background: var(--control-wash); font-weight: var(--weight-medium); }
+.objectives-commodore-nav-item:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.objectives-commodore-nav-glyph { display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; color: var(--text-tertiary); }
+.objectives-commodore-nav-item[aria-selected="true"] .objectives-commodore-nav-glyph, .objectives-commodore-nav-item:hover .objectives-commodore-nav-glyph { color: var(--text-primary); }
+.objectives-commodore-nav-glyph svg { width: 18px; height: 18px; }
+.objectives-commodore-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-commodore-nav-foot { margin: auto 0 0; padding: 0 10px; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+/* 좁은 시트 — 목록은 글리프만 남고 사령관의 지금은 오른쪽 머리가 아니라 글리프 제목(title)이 말한다. */
+.objectives-commodore-sheet.is-compact { grid-template-columns: 60px minmax(0, 1fr); }
+.objectives-commodore-sheet.is-compact .objectives-commodore-nav { padding-inline: 8px; }
+.objectives-commodore-sheet.is-compact :is(.objectives-commodore-nav-id, .objectives-commodore-nav-label, .objectives-commodore-nav-foot) { display: none; }
+.objectives-commodore-sheet.is-compact .objectives-commodore-nav-item { justify-content: center; padding-inline: 0; }
+
+/* 오른쪽 — 구역 제목과 닫기, 그 아래 내용. 글 폭은 읽는 폭으로 묶고 왼쪽에 붙인다. */
+.objectives-commodore-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.objectives-commodore-main-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 16px 6px 28px; }
+.objectives-commodore-main-title { margin: 0; font-family: var(--font-ui); font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 1.3; }
+.objectives-commodore-sheet.is-compact .objectives-commodore-main-head { padding-left: 20px; }
+/* 순찰 간격 — 모델 칩과 같은 트리거 문법. 글리프는 공급자 글리프 자리와 같은 크기·잉크이고, 메뉴는 같은 유리 메뉴다. */
+.objectives-commodore-patrol { gap: 5px; font-variant-numeric: tabular-nums; }
+.objectives-commodore-patrol-glyph { display: inline-grid; place-items: center; width: 14px; height: 14px; color: var(--text-tertiary); transition: color var(--duration-fast); }
+.objectives-commodore-patrol-glyph svg { width: 14px; height: 14px; }
+.objectives-commodore-patrol:hover .objectives-commodore-patrol-glyph, .objectives-commodore-patrol[aria-expanded="true"] .objectives-commodore-patrol-glyph { color: var(--brass-ink); }
+.objectives-commodore-patrol-menu .objectives-menu-head span { font-size: var(--t-2xs); }
+.objectives-commodore-patrol-menu .objectives-menu-item { font-variant-numeric: tabular-nums; }
+.objectives-commodore-patrol-menu .objectives-menu-hint { flex: none; }
+.objectives-commodore-patrol-check { color: var(--brass-ink); }
+
+/* 설정 — Console 설정과 같은 줄(SettingsRow·SettingsToggle). 시트 안에서는 형제 사이 hairline 과 위아래 숨구멍을 같은 값으로. */
+.objectives-commodore-settings { display: grid; }
+.objectives-commodore-settings .fc-settings-row { padding: 18px 0; }
+.objectives-commodore-settings .fc-settings-row + .fc-settings-row { padding-top: 18px; }
+.objectives-commodore-settings .fc-settings-row__copy { max-width: 60ch; }
+.objectives-commodore-settings .fc-settings-row__label { font-size: var(--t-md); }
+.objectives-commodore-settings .fc-settings-row__hint { font-size: var(--t-sm); line-height: 1.55; }
+.objectives-commodore-settings-divider { height: 1px; margin: 6px 0; background: var(--surface-rim); }
+.objectives-commodore-default {
+  padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; cursor: pointer;
+  text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px;
+}
+.objectives-commodore-default:hover { color: var(--text-primary); text-decoration-color: currentColor; }
+.objectives-commodore-default:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
+/* 선택 상자 — 지휘관 메뉴·순찰 메뉴의 트리거를 설정 줄의 선택 칸 모양으로. 메뉴는 같은 Objectives 메뉴다. */
+.objectives-commodore-select { display: inline-flex; }
+.objectives-commodore-select > .objectives-launch {
+  position: relative; justify-content: flex-start;
+  width: 240px; min-height: 36px; margin-left: 0; padding: 0 34px 0 12px;
+  border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs);
+  background: var(--control-field); font-size: var(--t-sm); letter-spacing: 0.02em;
+}
+.objectives-commodore-select > .objectives-launch::after {
+  content: ""; position: absolute; right: 14px; top: 50%;
+  width: 6px; height: 6px; margin-top: -5px;
+  border-right: 1.4px solid var(--text-tertiary); border-bottom: 1.4px solid var(--text-tertiary);
+  transform: rotate(45deg);
+}
+.objectives-commodore-select > .objectives-launch:hover, .objectives-commodore-select > .objectives-launch[aria-expanded="true"] { border-color: var(--control-hover-rim); background: var(--control-field); }
+.objectives-commodore-select > .objectives-launch:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-select .objectives-launch-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-commodore-close {
+  display: grid; place-items: center; flex: none;
+  width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: 6px; background: transparent;
+  color: var(--text-tertiary); cursor: pointer;
+}
+.objectives-commodore-close svg { width: 14px; height: 14px; }
+.objectives-commodore-close:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-primary); }
+.objectives-commodore-close:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+.objectives-commodore-retry { display: flex; align-items: center; gap: 10px; margin: 0 28px 8px; color: var(--warn-ink); font-size: var(--t-xs); }
+
+/* 스크롤바는 Operation 패널과 같은 전역 문법을 그대로 입는다(자체 규칙 없음). 가로로는 흐르지 않는다 — 내용이 줄을 바꾼다. */
+.objectives-commodore-body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 10px 28px 24px; display: grid; grid-template-columns: minmax(0, 880px); gap: 14px; align-content: start; overflow-wrap: anywhere; }
+.objectives-commodore-sheet.is-compact .objectives-commodore-body { padding-inline: 20px; }
+.objectives-commodore-empty { margin: 0; padding: 24px 4px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.6; text-align: center; }
+
+.objectives-commodore-log { display: grid; gap: 16px; align-content: start; }
+.objectives-commodore-wake { display: grid; gap: 7px; }
+.objectives-commodore-wake-head { display: flex; gap: 8px; align-items: baseline; margin: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-wake-head b { color: var(--aurora); font-weight: var(--weight-medium); }
+.objectives-commodore-wake.is-message .objectives-commodore-wake-head b { color: var(--text-secondary); }
+.objectives-commodore-wake-text { margin: 0; min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.6; overflow-wrap: anywhere; }
+.objectives-commodore-wake.is-message .objectives-commodore-wake-text { white-space: pre-wrap; }
+/* 사령관의 Markdown — 공용 렌더러의 코드·표는 가로로 흐르는 상자다. 서랍 안에서는 줄을 바꾼다. */
+/* 공용 본문의 읽기 폭(78ch) 대신 기록 칸 폭을 따른다 — 구분선·도구 줄과 같은 오른쪽 끝에서 줄을 바꾼다. */
+.objectives-commodore-sheet .markdown-body { max-inline-size: none; margin-inline: 0; }
+.objectives-commodore-sheet .markdown-body pre,
+.objectives-commodore-sheet .markdown-body pre code,
+.objectives-commodore-sheet .markdown-body .code-block code { white-space: pre-wrap; overflow-x: hidden; overflow-wrap: anywhere; }
+.objectives-commodore-sheet .markdown-body table { overflow-x: hidden; overflow-wrap: anywhere; table-layout: fixed; }
+.objectives-commodore-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.objectives-commodore-act {
+  display: inline-flex; gap: 6px; max-width: 100%; min-width: 0;
+  padding: 4px 9px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-pill);
+  color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 1.3;
+}
+.objectives-commodore-act b { flex: none; color: var(--brass-ink); font-weight: var(--weight-bold); }
+.objectives-commodore-act span { min-width: 0; overflow-wrap: anywhere; }
+.objectives-commodore-note { margin: 0; font-size: var(--t-xs); }
+.objectives-commodore-note.is-warn { color: var(--warn-ink); }
+.objectives-commodore-note.is-dim { color: var(--text-tertiary); }
+.objectives-commodore-tools { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 1.5; }
+.objectives-commodore-tools summary { cursor: pointer; list-style: none; max-width: 100%; overflow-wrap: anywhere; }
+.objectives-commodore-tools summary::-webkit-details-marker { display: none; }
+.objectives-commodore-tools summary::after { content: " ›"; }
+.objectives-commodore-tools[open] summary::after { content: " ⌄"; }
+.objectives-commodore-tools summary:hover { color: var(--text-secondary); }
+.objectives-commodore-tools summary:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
+.objectives-commodore-tools ul { margin: 6px 0 0; padding: 0 0 0 10px; list-style: none; display: grid; gap: 3px; }
+.objectives-commodore-tools li { display: flex; flex-wrap: wrap; column-gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.objectives-commodore-tools li.is-failed { color: var(--warn-ink); }
+.objectives-commodore-tool-name { min-width: 0; font-family: var(--font-code); color: var(--text-secondary); overflow-wrap: anywhere; }
+.objectives-commodore-marker { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-marker::after { content: ""; flex: 1; height: 1px; background: var(--surface-rim); }
+.objectives-commodore-older { justify-self: center; }
+
+.objectives-commodore-section { display: grid; gap: 8px; }
+.objectives-commodore-section + .objectives-commodore-section { border-top: 1px solid var(--surface-rim); padding-top: 14px; }
+.objectives-commodore-section-title { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.objectives-commodore-later { color: var(--text-tertiary); font-weight: var(--weight-regular); }
+.objectives-commodore-section-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.objectives-commodore-hint { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
+.objectives-commodore-hint.is-done { color: var(--positive); }
+
+.objectives-commodore-input {
+  box-sizing: border-box; width: 100%; min-height: 38px; max-height: 120px; resize: vertical;
+  padding: 8px 10px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs);
+  background: var(--control-field); color: var(--text-primary);
+  font: inherit; font-size: var(--t-sm); line-height: 1.5;
+}
+.objectives-commodore-input.is-tall { min-height: 140px; max-height: none; }
+.objectives-commodore-input.is-medium { min-height: 64px; }
+.objectives-commodore-input::placeholder { color: var(--text-tertiary); }
+.objectives-commodore-input:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+.objectives-commodore-intel-list, .objectives-commodore-sources { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.objectives-commodore-intel-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
+.objectives-commodore-intel-when { color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-intel-text { overflow-wrap: anywhere; white-space: pre-wrap; }
+.objectives-commodore-intel-source { margin-left: 8px; color: var(--text-tertiary); font-size: var(--t-2xs); }
+.objectives-commodore-sources li { display: flex; gap: 8px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); }
+.objectives-commodore-source-locator { color: var(--text-tertiary); font-size: var(--t-2xs); overflow-wrap: anywhere; }
+
+.objectives-commodore-text-button {
+  padding: 2px 4px; border: 0; border-radius: var(--radius-xs); background: transparent;
+  color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; white-space: nowrap;
+}
+.objectives-commodore-text-button:hover:not(:disabled) { color: var(--brass-ink); }
+.objectives-commodore-text-button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-text-button:disabled { opacity: 0.45; cursor: default; }
+.objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 2px; }
+
+.objectives-commodore-failure { margin: 0 28px 8px; color: var(--coral); font-size: var(--t-xs); }
+/* 입력 — 채팅 화면의 컴포저와 같은 상자(헤어라인·필드 면·md 모서리, 초점이면 brass)와 30px 원형 전송. 폭은 기록 칸과 같은 선. */
+.objectives-commodore-foot { flex: none; padding: 8px 28px 16px; }
+.objectives-commodore-sheet.is-compact .objectives-commodore-foot { padding-inline: 20px; }
+.objectives-commodore-composer {
+  display: flex; align-items: flex-end; gap: 6px; max-width: 880px;
+  padding: 6px 6px 6px var(--space-3);
+  border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--control-field);
+  cursor: text;
+  transition: border-color var(--duration-base) var(--ease-spring), box-shadow var(--duration-base) var(--ease-spring);
+}
+.objectives-commodore-composer:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); }
+.objectives-commodore-composer-input {
+  display: block; flex: 1 1 100%; width: 100%; min-width: 0;
+  min-height: 30px; max-height: calc(1.5em * 6 + 10px); padding: 5px 0;
+  border: 0; background: transparent; resize: none;
+  color: var(--text-primary); font-family: inherit; font-size: var(--font-body-size); line-height: 1.5;
+  scrollbar-width: none;
+}
+.objectives-commodore-composer-input::-webkit-scrollbar { display: none; }
+.objectives-commodore-composer-input:placeholder-shown { overflow-y: hidden; }
+.objectives-commodore-composer-input::placeholder { color: var(--text-tertiary); }
+.objectives-commodore-composer-input:focus { outline: none; }
+.objectives-commodore-composer-send {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--surface-panel-raised); color: var(--text-tertiary); cursor: pointer;
+}
+.objectives-commodore-composer-send svg { width: 16px; height: 16px; }
+.objectives-commodore-composer-send.is-armed { background: var(--brass); color: var(--text-on-brass); }
+.objectives-commodore-composer-send:disabled { cursor: default; }
+.objectives-commodore-composer-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+/* 자율 운영 중 결정 요청 머리의 「사령관이 답하는 중」 — 사이드바 줄 메모와 같은 brass 잉크. */
+.objectives-decision-handler { margin-left: auto; color: var(--brass-ink); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; }

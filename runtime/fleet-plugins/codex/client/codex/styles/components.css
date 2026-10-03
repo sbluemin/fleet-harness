@@ -1285,7 +1285,8 @@ button.chip:focus-visible {
   opacity: 0;
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
-  background: var(--surface-pillar);
+  /* --surface-pillar는 반투명 리터럴이라 같은 색을 팝업 바탕층(불투명) 위에 얹는다. */
+  background: linear-gradient(var(--surface-pillar), var(--surface-pillar)), var(--float-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   padding: 11px 16px;
@@ -2685,14 +2686,13 @@ button.chip:focus-visible {
   padding: var(--space-3);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 틴트 아래 불투명 fallback 언더레이를 유지하고,
-     유리 게이트가 열릴 때만 body 뒤의 화면을 흐린다. */
+  /* 팝업 판독성 계약: 다크 유리 게이트와 무관한 불투명 팝업 바탕층 위에 틴트를 얹는다. */
   background:
     linear-gradient(
       var(--glass-tint-expanded),
       var(--glass-tint-expanded)
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-soft);
   color: var(--text-secondary);
 }

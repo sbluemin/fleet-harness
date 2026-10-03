@@ -34,7 +34,8 @@ export interface SettingsCardProps {
 
 export interface SettingsRowProps {
   readonly label: string;
-  readonly hint?: string;
+  /** 설명 — 글자, 또는 끝에 「기본값 사용」 같은 글자 단추를 단 노드. */
+  readonly hint?: React.ReactNode;
   /** 라벨 오른쪽에 서는 도움말 팁 — `<SettingsHelpTip>` 노드를 그대로 받는다. */
   readonly helpTip?: React.ReactNode;
   readonly children: React.ReactNode;

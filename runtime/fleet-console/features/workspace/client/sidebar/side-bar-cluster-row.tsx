@@ -1,6 +1,7 @@
 import { useRef, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationClusterRow } from "@fleet-console/sdk/plugin";
 import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 
@@ -172,11 +173,15 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const selected = !active && anchor?.selected === true;
   const selectMode = onSelect !== undefined && anchor !== null;
   const minimized = anchor?.minimized === true;
-  const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" }[] = [];
+  const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" | "accent" | "warn" }[] = [];
   if (row.decisionRequestedAt !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions ?? 1 }), tone: "req" });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `✓ ${row.progress.done}/${row.progress.total}` });
   if (row.due) meta.push({ key: "due", text: formatDue(row.due.date, locale), ...(row.due.overdue ? { tone: "late" as const } : {}) });
   if (row.followup) meta.push({ key: "from", text: row.followup.originTitle ? t("sidebar.row.followupOf", { title: row.followup.originTitle }) : t("sidebar.row.followup"), tone: "from" });
+  row.notes?.forEach((note, index) => {
+    const text = resolveLocalizedText(note.text, locale);
+    if (text) meta.push({ key: `note-${index}`, text, ...(note.tone ? { tone: note.tone } : {}) });
+  });
   // 끌어 놓은 줄은 포인터를 따라왔으니 놓는 순간의 클릭도 이 줄에 떨어진다 — 칩처럼 그 클릭은 여는 동작이 아니다.
   const suppressClickRef = useRef(false);
   const pointerTypeRef = useRef("mouse");
@@ -282,15 +287,23 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   );
 }
 
-/** 구역 머리 — 「결정 요청 N」 「오늘 N」. 접지 않는다. */
-export function SideBarRowZone({ zone, count, children }: { readonly zone: "decisions" | "today"; readonly count: number; readonly children: ReactNode }) {
+/** 구역의 줄들이 낸 구역 머리 말 — 처음 나온 말 하나만, 같은 말은 한 번. */
+export function zoneNoteOf(items: readonly SideBarRowItem[]): LocalizedText | null {
+  return items.find((item) => item.row.zoneNote !== undefined)?.row.zoneNote ?? null;
+}
+
+/** 구역 머리 — 「결정 요청 N」 「오늘 N」. 접지 않는다. 줄이 낸 말(`zoneNote`)이 있으면 개수 옆에 선다. */
+export function SideBarRowZone({ zone, count, note = null, children }: { readonly zone: "decisions" | "today"; readonly count: number; readonly note?: LocalizedText | null; readonly children: ReactNode }) {
   const t = useT();
+  const locale = useConsoleLocale();
   const title = zone === "decisions" ? t("sidebar.zone.decisions") : t("sidebar.zone.today");
+  const noteText = note === null ? "" : resolveLocalizedText(note, locale);
   return (
     <li className={`side-bar-row-zone is-${zone}`} data-row-zone={zone}>
       <div className="side-bar-row-zone-pin pin">
         <span>{title}</span>
         <span className="side-bar-row-zone-count">{count}</span>
+        {noteText ? <span className="side-bar-row-zone-note">{noteText}</span> : null}
         <span className="side-bar-row-zone-rim" aria-hidden="true" />
       </div>
       <ol className="side-bar-group-chips side-bar-row-zone-list" aria-label={title}>{children}</ol>

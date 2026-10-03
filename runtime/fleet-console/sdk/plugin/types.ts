@@ -2,7 +2,7 @@ import type { ClientNavigateCapability, ClientShellCapability } from "../navigat
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
-import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation } from "../mcp/control.js";
+import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
@@ -181,6 +181,14 @@ export interface ClientExecutionProvider {
    * 액션 무리 앞과 칩의 이름 뒤에 그린다. 그릴 것이 없으면 null 을 돌려주고, 그러면 자리도 없다.
    */
   readonly operationCaptionContributions?: readonly OperationCaptionContribution[];
+  /**
+   * Theater 하나에 딸린 플러그인의 자리 — 사이드바 Theater 머리 바로 아래 줄과 Theater 「…」 동작 메뉴의 항목.
+   *
+   * Theater 머리와 메뉴는 코어가 소유하지만, Theater 단위로 도는 플러그인의 상태(예: 그 Theater 를 운영하는 세션)는
+   * 플러그인이 안다. 호스트는 자리·순서·접힘·메뉴의 키보드 이동만 소유하고 본문은 플러그인이 그린다. Operation 단위의
+   * `operationMenu`·`operationMarks` 와 같은 모양이다.
+   */
+  readonly theaterContributions?: readonly TheaterContribution[];
   /**
    * 한 실행 구조에 묶인 Operation 들 — 뿌리(조율자) 하나와 선후 관계를 가진 구성원(단계)들.
    *
@@ -462,6 +470,14 @@ export interface ClientConsoleStateCapability {
   getSelectedOperationId?(): string | null;
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
+  /**
+   * 지도(캔버스) 영역의 가로 인셋(px) — 왼쪽은 사이드바가, 오른쪽은 레일이 덮는 폭(띄움 간격 포함). 레일을 끄는 동안에도
+   * 실시간으로 바뀐다. 화면 위에 따로 뜨는 플러그인 면(서랍 등)이 지도를 넘지 않게 제 폭을 정할 때 쓴다.
+   * 구버전 호스트에는 없을 수 있다 — 없으면 창 전체를 지도로 다룬다.
+   */
+  getMapInsets?(): { readonly left: number; readonly right: number };
+  /** `getMapInsets` 가 바뀔 때마다 — 사이드바 여닫기·폭 조절, 레일 열기·닫기·끌기. */
+  subscribeMapInsets?(listener: () => void): () => void;
 }
 
 export type ConsoleConnectionState = "connecting" | "live" | "offline";
@@ -539,6 +555,35 @@ export interface OperationCaptionContributionContext {
 export interface OperationCaptionContribution {
   readonly id: string;
   readonly render: (context: OperationCaptionContributionContext) => ReactNode;
+}
+
+/** What a Theater contribution knows: the Theater as the sidebar shows it, whether it is the mounted one, and the UI language. */
+export interface TheaterContributionContext {
+  readonly theater: ConsoleTheaterSummary;
+  /** The Theater whose canvas is mounted. Inactive Theaters still show their rows in the sidebar. */
+  readonly active: boolean;
+  readonly language: "en" | "ko";
+}
+
+/** A Theater menu section also knows how to close the menu; close it before opening another surface. */
+export interface TheaterMenuContext extends TheaterContributionContext {
+  readonly onClose: () => void;
+}
+
+export interface TheaterContribution {
+  readonly id: string;
+  /**
+   * A row the host shows directly under this Theater's sidebar header, above its Operation list, while the
+   * section is expanded. It is a standing fact about the Theater, laid out on the sidebar row grammar; return
+   * nothing to take no space. The host wraps each contribution in its own error boundary.
+   */
+  readonly row?: (context: TheaterContributionContext) => ReactNode;
+  /**
+   * Items in this Theater's 「…」 actions menu, after the host's system-prompt item and before the host's own
+   * divider. Rows are `button.theater-menu-item` with a `menuitem*` role so the host's arrow-key travel and
+   * Escape reach them; call `onClose` before opening another surface.
+   */
+  readonly menu?: (context: TheaterMenuContext) => ReactNode;
 }
 
 /** 구성원(단계)의 진행 — 세션 활동이 아니라 구조 안의 자리다. 막힘은 선행이 안 끝난 것, 열림은 시작을 기다리는 것. */
@@ -629,6 +674,16 @@ export interface OperationClusterRow {
   /** 다른 목표의 후속으로 태어난 줄. `originTitle` 이 null 이면 원래 목표를 더는 찾을 수 없다. */
   readonly followup?: { readonly originTitle: string | null };
   /**
+   * 둘째 줄 끝에 붙는 짧은 사실 — 지금 누가 이 줄을 맡고 있는지, 멈췄는지처럼 진행 셈으로는 말할 수 없는 것. 호스트가
+   * 다른 메타 뒤에 같은 크기로 적고 `tone` 으로만 칠한다(`accent` 는 맡은 이, `warn` 은 주의).
+   */
+  readonly notes?: readonly OperationClusterRowNote[];
+  /**
+   * 이 줄이 「결정 요청」·「오늘」 구역에 올라갔을 때 그 구역 머리의 개수 옆에 서는 짧은 말. 같은 구역의 줄들이 같은 말을
+   * 내면 한 번만 선다.
+   */
+  readonly zoneNote?: LocalizedText;
+  /**
    * 플러그인 표면이 지금 이 줄을 보고 있다. 호스트는 Operation 이 없는 줄만 이 값으로 하이라이트한다 — 뿌리가 선 줄은 칩처럼
    * 그 Operation 이 캔버스에서 활성일 때 하이라이트한다.
    */
@@ -637,6 +692,11 @@ export interface OperationClusterRow {
   readonly review?: (language: "en" | "ko") => void;
   /** 뿌리가 없는 줄을 다른 그룹으로 끌어 놓았을 때. 뿌리가 있으면 호스트가 뿌리 Operation 의 그룹을 바꾼다. */
   readonly moveToGroup?: (groupId: string | null) => void;
+}
+
+export interface OperationClusterRowNote {
+  readonly text: LocalizedText;
+  readonly tone?: "accent" | "warn";
 }
 
 export interface ArchiveSectionContext {
@@ -999,6 +1059,12 @@ export interface FleetPluginConsoleControlHost {
   setCoordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
   /** 떠 있는 채팅 세션의 지금 좌표와 예약. 떠 있는 채팅이 아니면 null. */
   coordinates?(operationId: string): ConsoleCoordinates | null;
+  /**
+   * Agent Operation 의 전사 한 쪽 — Console Use `console_operation` 의 transcript 읽기와 같은 줄(사람의 말·답·도구·질문·턴 결말)이고
+   * 본문은 자격증명 마스킹을 지난 신뢰할 수 없는 데이터다. 이 플러그인이 띄운 Operation(또는 그 자식)만 받는다 — 아니면 `forbidden`.
+   * 커서 없이 `tail` 이면 마지막 `limit` 줄(그 앞이 남았으면 truncated)이고, 아니면 커서부터 앞으로 읽는다.
+   */
+  transcript?(operationId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
   /**
    * 이 플러그인의 멱등 기동 키(`ConsoleActionInput.launchKey`) 상태 — absent(영속된 적 없음) · reserved(예약만) · pending(이 호스트에서
    * 기동 중) · live · deleting(삭제 유예) · purged. 다른 Theater 에 선 키는 `launch_key_conflict` 로 거절하고 그 Operation 을

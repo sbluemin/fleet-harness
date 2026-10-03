@@ -4,6 +4,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { MAX_CONTEXT, ROUTING_PREVIEW_TTL_MS, type ObjectiveEditKind, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { LaunchControl, LaunchedText, launchedWords, routingReason, useLaunchRows } from "./launch-control.js";
+import { nonHumanEditors } from "./actors.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import {
   clearSelection,
@@ -274,7 +275,9 @@ export function ActionBand(props: ActionBandProps) {
   };
 
   const kinds = (objective.edited?.kinds ?? []).map((kind) => t(EDIT_KEYS[kind]));
-  const kindText = kinds.join("·");
+  // 사람 아닌 손이 바꾼 보드면 그 이름을 붙인다 — 「임무·기준 · 사령관」.
+  const editors = nonHumanEditors(t, objective.edited?.actors);
+  const kindText = [kinds.join("·"), ...editors].filter(Boolean).join(" · ");
   const objectiveId = objective.id;
   const members = objective.members.length;
   const proposals = objective.criteriaProposals.length;

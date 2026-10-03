@@ -5,6 +5,8 @@
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
+import type { ObjectiveActor } from "../server/types.js";
+import { handedOffWithoutRetro } from "./actors.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 
@@ -19,7 +21,7 @@ export interface RetroPair {
 export interface RetrospectiveProps {
   readonly t: T;
   /** 누가 넘겼나 — 사람이면 회고가 없다. */
-  readonly by: "commander" | "human";
+  readonly by: ObjectiveActor;
   readonly good: readonly RetroPair[];
   readonly regret: readonly RetroPair[];
 }
@@ -36,7 +38,8 @@ function RetroTable({ head, asideHead, pairs }: { readonly head: string; readonl
 }
 
 export function Retrospective({ t, by, good, regret }: RetrospectiveProps) {
-  if (by === "human" || (good.length === 0 && regret.length === 0)) return <div className="objectives-retro-none">{t("objectives.retro.byHuman")}</div>;
+  // 회고는 지휘관만 쓴다 — 다른 손(사람·사령관·다른 세션)이 넘겼거나 회고가 비었으면 누가 넘겼는지만 적는다.
+  if (by !== "commander" || (good.length === 0 && regret.length === 0)) return <div className="objectives-retro-none">{handedOffWithoutRetro(t, by)}</div>;
   return (
     <div className="objectives-retro">
       {good.length ? <RetroTable head={t("objectives.retro.good")} asideHead={t("objectives.retro.goodWhy")} pairs={good} /> : null}

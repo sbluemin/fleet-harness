@@ -10,7 +10,8 @@ import { z } from "zod";
 import objectivesPlugin from "../routes.js";
 import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../server/attachments.js";
-import { createObjectiveConsoleTools } from "../server/console-tools.js";
+import { inboxReasons } from "../server/board-state.js";
+import { createCommodoreBoardTools, createObjectiveConsoleTools } from "../server/console-tools.js";
 import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
 import { createObjectiveRoutes } from "../server/routes.js";
@@ -186,6 +187,8 @@ function harness(routingOrigin: () => string | null = () => null) {
           if (input.launchKey && hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
           return { operationId: id };
         },
+        // 전사 — 호스트가 소유를 따진 뒤 돌려주는 한 쪽. 어느 세션을 읽었는지만 남긴다.
+        transcript: async (operationId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${operationId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
         observe: (id: string) => {
           const state = activity.get(id);
           return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"), supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
@@ -664,7 +667,8 @@ describe("Objectives contract", () => {
     activity.set(research, "idle");
     // 완료는 Core에 지휘관 ID 하나만 요청한다. active 목록에서 빠져도 기록·연결은 계속 보인다.
     activity.set(objective.id, "awaiting");
-    expect((await launch.complete(objective.id)).done).toBeTruthy();
+    const commodore = { kind: "commodore", theaterId: "t1" } as const;
+    expect((await launch.complete(objective.id, { actor: commodore })).done).toMatchObject({ by: commodore });
     expect(archiveCalls.filter((id) => id === objective.id)).toEqual([objective.id]);
     expect(operations.has(objective.id)).toBe(false);
     expect(archivedOperations.has(objective.id)).toBe(true);
@@ -686,12 +690,14 @@ describe("Objectives contract", () => {
     // 저장 — 목표마다 자기 디렉터리의 objective.json 하나, Operation 이 가진 값은 싣지 않는다.
     expect(savedIds()).toEqual([objective.id]);
     const saved = savedObjective(objective.id);
-    expect(Object.keys(saved).sort()).toEqual(["commenced", "enlisted", "members", "missions", "note", "operationId", "rank"]);
+    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "boardUpdatedAt", "commenced", "enlisted", "members", "missions", "note", "operationId", "rank"]);
     expect(saved.operationId).toBe(objective.id);
-    for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(JSON.stringify(saved)).not.toContain(`"${key}"`);
+    for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
-    expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [] });
+    expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [], actionCounts: { complete: 3, reopen: 3 } });
+    expect(reloaded.find(objective.id)!.actions).toContainEqual(expect.objectContaining({ kind: "complete", by: commodore }));
+    expect(reloaded.find(objective.id)!.actions).toContainEqual(expect.objectContaining({ kind: "reopen", by: "human" }));
     expect(reloaded.find(objective.id)!.missions[0]!.records.map((record) => [record.kind, record.lines])).toEqual([["done", ["a done"]], ["redone", ["a redone", "fixed the gap"]]]);
     // 완료 기록과 결과물을 함께 저장한다. 재완료는 기록을 더하고 결과물은 임무의 현재 연결로 남는다.
     expect(reloaded.find(objective.id)!.results).toEqual([]);
@@ -1028,10 +1034,10 @@ describe("Objectives contract", () => {
     const id = created.structuredContent.objectiveId as string;
     // 브리핑·기준은 기본 요구사항으로, 임무·구성원 없이, 호출 Operation 의 그룹과 만든 표시를 들고 태어난다.
     expect(store.find(id)).toMatchObject({ note: "brief", groupId: "g-console", missions: [], members: [], addedBy: { operationId: caller.id } });
-    expect(store.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
+    expect(store.find(id)!.criteria).toMatchObject([{ text: "ships", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }, { text: "tested", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }]);
     // 저장 무결성 — 파일에서 다시 읽어도 기준이 기본 요구사항으로 남는다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
-    expect(reloaded.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
+    expect(reloaded.find(id)!.criteria).toMatchObject([{ text: "ships", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }, { text: "tested", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }]);
     // 편성 키도 오타도 add 에 없다 — 선검사에서 막혀 사람의 권한 요청까지 가지 않는다.
     for (const args of [{ add: { title: "Typo", criterai: ["x"] } }, { add: { title: "Missions inline", missions: ["x"] } }, { add: { title: "Top-level missions" }, missions: ["x"] }]) {
       expect(gate.safeParse(args).success).toBe(false);
@@ -1442,8 +1448,11 @@ describe("Objectives contract", () => {
     await vi.waitFor(() => { expect(store.find(commander)!.decisionRequest).not.toBeNull(); });
     const live = store.find(commander)!.decisionRequest!;
     const beforeAnswer = sent.length;
-    expect((await route("decision/answer", { objectiveId: commander, requestId: live.id, answers: [{ questionId: live.questions[0]!.id, selectedOptionIds: [live.questions[0]!.options[0]!.id], text: "" }] })).status).toBe(200);
-    expect((await pendingAsk).structuredContent).toMatchObject({ answered: true, answers: [{ question: "Publish?", selected: ["Yes"] }] });
+    const actor = { kind: "commodore", theaterId: "t1" } as const;
+    await launch.answerDecision(commander, { requestId: live.id, answers: [{ questionId: live.questions[0]!.id, selectedOptionIds: [live.questions[0]!.options[0]!.id], text: "" }] }, { actor });
+    expect((await pendingAsk).structuredContent).toMatchObject({ answered: true, answers: [{ question: "Publish?", selected: ["Yes"], by: actor }] });
+    const afterAnswer = createObjectiveStore({ dirOf: () => objectivesDir, operations: operationsHost, emit: () => {} });
+    expect(afterAnswer.find(commander)!.decisions.at(-1)).toMatchObject({ by: actor });
     expect(sent.length).toBe(beforeAnswer);
     expect(store.find(commander)).toMatchObject({ decisionRequest: null });
     expect(store.find(commander)!.decisions.at(-1)).toMatchObject({ requestId: live.id });
@@ -1583,6 +1592,10 @@ describe("Objectives contract", () => {
     expect(store.find(as)!.criteria[0]).toMatchObject({ id: first.id, by: "human", text: "tests pass in both languages" });
     expect((await route("criterion/approve-all", { objectiveId: as })).status).toBe(200);
     expect(store.find(as)!.criteria[2]).toMatchObject({ by: "commander", text: "lint passes" });
+    expect(savedObjective(as)).toMatchObject({ actions: expect.arrayContaining([
+      expect.objectContaining({ kind: "criteria-rejected", by: "human", proposal: retire }),
+      expect.objectContaining({ kind: "criteria-approved", by: "human", proposal: replacement }),
+    ]) });
     expect((await route("commander/start", { objectiveId: as })).status).toBe(200);
     expect(store.find(as)!.criteriaOpen).toBe(false);
     // 마지막 임무를 마친 뒤에도 지휘관이 근거를 적기 전에는 검토 대기가 아니다.
@@ -1656,6 +1669,96 @@ describe("Objectives contract", () => {
     expect(store.list("t1").filter((entry) => entry.id === targetId)).toHaveLength(1);
     launch.remove(targetId);
     expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("deleted");
+  });
+
+  // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
+  it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
+    const { ctx, store, launch, call, consoleTool, workspace, launches, activity, operationsHost, objectivesDir } = harness();
+    const commodore = createCommodoreBoardTools(ctx, store, launch, "t1")[0]!;
+    const schema = z.fromJSONSchema(commodore.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
+    const board = async (args: Record<string, unknown>) => {
+      const parsed = schema.safeParse(args);
+      expect(parsed.success).toBe(true);
+      if (!parsed.success) throw new Error("invalid board input");
+      const result = await commodore.execute(parsed.data, { cwd: workspace }) as { isError: boolean; structuredContent: Record<string, unknown> };
+      expect(result.isError).toBe(false);
+      return result.structuredContent;
+    };
+    const command = async (name: string, args: Record<string, unknown>, objectiveId: string) => {
+      const result = await call(name, { objectiveId, ...args }, objectiveId);
+      expect(result.isError).toBe(false);
+      return result.structuredContent;
+    };
+    const actor = { kind: "commodore", theaterId: "t1" };
+    const created = await board({ add: { title: "Sealed loop", note: "Verify and hand off", criteria: ["Output preserved"] } });
+    const id = created.objectiveId as string;
+    expect((await board({ objectiveId: id })).objective).toMatchObject({ addedBy: actor });
+    expect((await board({ view: "objectives", filter: "agent" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor }));
+    const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
+    expect(reloaded.find(id)?.addedBy).toEqual(actor);
+    expect(launches).toHaveLength(0);
+    expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["pending"] }));
+    await board({ objectiveId: id, plan: true });
+    await command("plan", { missions: [{ text: "verify", member: "worker" }], members: [{ role: "worker" }], criteria: [{ text: "Decision applied" }] }, id);
+    const beforeStart = (await board({ objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
+    expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
+    await board({ objectiveId: id, criteria: { approve: beforeStart.criteriaProposals[0]!.id } });
+    // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 순찰까지 멈추지 않는다.
+    expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);
+    activity.set(id, "running");
+    expect((await board({ view: "inbox" })).objectives).not.toContainEqual(expect.objectContaining({ id, reasons: expect.arrayContaining(["planned"]) }));
+    activity.set(id, "idle");
+    expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
+    expect(await board({ objectiveId: id, commence: true })).toMatchObject({ objectiveId: id, failed: [] });
+    expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.objectContaining({ state: "idle" })] }) }));
+    const executing = (await board({ objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };
+    const memberId = executing.members[0]!.id;
+    const missionId = executing.graph.missions[0]!.missionId;
+    // 지휘관·구성원은 자기 목표를 외부 행위자로 승인할 수 없다. 요청을 지우거나 기록하지 않는 거절이다.
+    for (const operationId of [id, memberId]) {
+      const result = await consoleTool.execute({ objectiveId: id, complete: true }, { cwd: workspace, caller: { kind: "operation", operationId } }) as { structuredContent: Record<string, unknown> };
+      expect(result.structuredContent.error).toBe("own_objective");
+    }
+    // 세션 전사 — 사령관은 지휘관·구성원 세션을 마지막 줄부터 읽는다. Operation 호출자는 console_operation 의 읽기 허가를 지나야 하므로 보드로는 읽지 못한다.
+    expect(await board({ view: "transcript", objectiveId: id })).toMatchObject({ session: { kind: "commander" }, latest: true, entries: [{ text: `from ${id}` }] });
+    expect(await board({ view: "transcript", objectiveId: id, memberId, cursor: "0" })).toMatchObject({ session: { kind: "member", memberId }, latest: false, nextCursor: "7", entries: [{ text: `from ${memberId}` }] });
+    const outsider = await consoleTool.execute({ view: "transcript", objectiveId: id }, { cwd: workspace, caller: { kind: "operation", operationId: "outsider" } }) as { structuredContent: Record<string, unknown> };
+    expect(outsider.structuredContent.error).toBe("commodore_only");
+    const mine = await command("read", {}, id);
+    const revision = (mine.objective as { decisionRequestRevision: number }).decisionRequestRevision;
+    await command("request_decision", { expectedRevision: revision, questions: [{ text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }] }, id);
+    const inbox = await board({ view: "inbox" });
+    const request = (inbox.objectives as readonly { id: string; decisionRequest: { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] } }[]).find((row) => row.id === id)!.decisionRequest;
+    await board({ objectiveId: id, answer: { requestId: request.id, answers: [{ questionId: request.questions[0]!.id, selectedOptionIds: [request.questions[0]!.options[0]!.id], text: "Preserve the output" }] } });
+    expect((await board({ objectiveId: id })).objective).toMatchObject({ decisionRequest: null, decisions: [{ by: actor, text: "Preserve the output" }] });
+    const evidenceRoot = (await command("evidence_dir", {}, id)).root as string;
+    fs.writeFileSync(path.join(evidenceRoot, "proof.txt"), "Verified output\n");
+    const sealed = await command("seal_evidence_from_path", { path: "proof.txt" }, id);
+    const finished = await command("complete_mission", { missionId, summary: ["Verified"], results: [{ kind: "evidence", evidenceId: sealed.evidenceId }] }, id);
+    const resultId = (finished.resultIds as readonly string[])[0]!;
+    await command("mark_criterion", { n: 1, met: true, evidence: "Preserved" }, id);
+    await command("mark_criterion", { n: 2, met: true, evidence: "Applied" }, id);
+    await command("followup", { add: { title: "Next round", summary: "Follow up", userImpact: "Improved output", fromMission: missionId, brief: "Continue improvement", criteria: ["Improved"], evidence: [{ kind: "command", text: "verification" }] } }, id);
+    const retrospective = { wentWell: [{ point: "Output preserved", because: "Evidence tool" }], fellShort: [{ point: "Review delayed", ifOnly: "Earlier decision" }] };
+    await command("hand_off", { retrospective }, id);
+    expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["review", "followup"] }));
+    expect(await board({ view: "evidence", objectiveId: id, resultId })).toMatchObject({ text: "Verified output\n", nextOffset: null });
+    const reviewed = (await board({ objectiveId: id })).objective as { followups: readonly { id: string; rev: number }[] };
+    const candidate = reviewed.followups[0]!;
+    await board({ objectiveId: id, complete: { batchId: "3f1c8f3e-1111-4a8b-9c0d-000000000003", followups: [{ id: candidate.id, rev: candidate.rev }] } });
+    let nextId = "";
+    await vi.waitFor(async () => {
+      const completed = (await board({ objectiveId: id })).objective as { followupBatches: readonly { items: readonly { operationId: string; state: string }[] }[] };
+      expect(completed.followupBatches[0]!.items[0]!.state).toBe("created");
+      nextId = completed.followupBatches[0]!.items[0]!.operationId;
+    });
+    expect((await board({ view: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ retrospective })] }));
+    expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"] }));
+    await board({ objectiveId: nextId, commence: true });
+    expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, commenced: true }));
+    expect(store.find(id)!.done?.by).toEqual(actor);
+    expect(store.find(nextId)!.commenced).toBe(true);
+    launch.dispose();
   });
 
   it("registers even when a registered Theater folder is gone", () => {

@@ -365,6 +365,25 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   // 조용히 앞을 버리면 호출자가 부분 메시지를 전체로 오해한다.
   const safeText = (operationId: string, raw: string) => { const payload = ctx.host.operations.get(operationId)?.payload; return maskChatText(raw, { cwd: payload ? readPayloadString(payload, "cwd") ?? undefined : undefined }); };
   const textEntry = (base: Record<string, unknown>, kind: string, operationId: string, raw: string) => { const masked = safeText(operationId, raw); return { ...base, kind, text: masked.text, ...(masked.truncated ? { truncated: true } : {}) }; };
+  /** 터미널 전사 한 줄(JSONL) → 사람이 읽는 줄들. 사이드체인(서브에이전트)과 깨진 줄은 건너뛴다. */
+  const terminalTranscriptEntries = (operationId: string, line: string, entries: Record<string, unknown>[]) => {
+    if (!line.trim()) return;
+    try {
+      const record = JSON.parse(line);
+      if (record.isSidechain === true) return;
+      const content = record.message?.content;
+      const at = typeof record.timestamp === "string" ? record.timestamp : undefined;
+      if (record.type === "user") {
+        const parts = typeof content === "string" ? [content] : Array.isArray(content) ? content.flatMap((part: { type?: string; text?: string }) => part.type === "text" && typeof part.text === "string" ? [part.text] : []) : [];
+        if (parts.length) entries.push(textEntry({ at }, "user", operationId, parts.join("\n\n")));
+      } else if (record.type === "assistant" && Array.isArray(content)) {
+        for (const part of content) {
+          if (part.type === "text" && typeof part.text === "string") entries.push(textEntry({ at }, "assistant", operationId, part.text));
+          else if (part.type === "tool_use" && typeof part.name === "string") entries.push({ kind: "tool", at, name: part.name });
+        }
+      }
+    } catch { /* 깨진 줄은 건너뛴다. */ }
+  };
   const actions: ConsoleUseActions = {
     resume: async (operationId) => {
       const result = await resumeOperation(operationId, false);
@@ -427,14 +446,16 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (!catalog) return { error: "chat_catalog_unavailable" };
       return { commands: catalog.commands, skills: catalog.skills, agents: catalog.agents };
     },
-    transcript: async (operationId, cursor, limit, signal) => {
+    transcript: async (operationId, cursor, limit, signal, options) => {
       const node = ctx.host.operations.get(operationId);
       if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { error: "unknown_operation" };
+      // 꼬리 읽기 — 커서 없이 마지막 limit 줄. 그 앞으로 이어 읽을 커서는 없다(처음부터 읽으려면 tail 없이).
+      const tail = options?.tail === true && !cursor;
       const chat = chatRegistry.get(operationId);
       if (chat) {
         const after = cursor ? Number(cursor) : 0;
         if (!Number.isSafeInteger(after) || after < 0) return { error: "cursor_expired" };
-        const page = chat.readJournalPage(after, limit);
+        const page = tail ? (() => { const read = chat.readJournalTail(limit); return { entries: read.entries, nextSeq: null, headCut: read.earlier }; })() : chat.readJournalPage(after, limit);
         const entries = page.entries.map(({ seq, at, event }) => {
           const base = { seq, at: at ? new Date(at).toISOString() : undefined };
           switch (event.kind) {
@@ -464,6 +485,18 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       try {
         const stat = await handle.stat();
         if (!stat.isFile() || offset > stat.size) return { error: "cursor_expired" };
+        if (tail) {
+          // 마지막 한 쪽 — 앞이 잘렸으면 첫 줄은 반쪽이라 버린다. 그 쪽의 줄을 모두 읽고 끝의 limit 개를 남긴다.
+          const start = Math.max(0, stat.size - TRANSCRIPT_PAGE_BYTES);
+          const buffer = Buffer.alloc(stat.size - start);
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+          if (signal?.aborted) return { error: "cancelled" };
+          const lines = buffer.subarray(0, bytesRead).toString("utf8").split("\n");
+          if (start > 0) lines.shift();
+          const entries: Record<string, unknown>[] = [];
+          for (const line of lines) terminalTranscriptEntries(operationId, line, entries);
+          return { source: "terminal", entries: entries.slice(-limit), nextCursor: null, truncated: start > 0 || entries.length > limit };
+        }
         const buffer = Buffer.alloc(Math.min(TRANSCRIPT_PAGE_BYTES, stat.size - offset));
         const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
         if (signal?.aborted) return { error: "cancelled" };
@@ -492,22 +525,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         let processed = 0;
         for (const line of text.split("\n")) {
           processed += Buffer.byteLength(line, "utf8") + 1;
-          if (!line.trim()) continue;
-          try {
-            const record = JSON.parse(line);
-            if (record.isSidechain === true) continue;
-            const content = record.message?.content;
-            const at = typeof record.timestamp === "string" ? record.timestamp : undefined;
-            if (record.type === "user") {
-              const parts = typeof content === "string" ? [content] : Array.isArray(content) ? content.flatMap((part: { type?: string; text?: string }) => part.type === "text" && typeof part.text === "string" ? [part.text] : []) : [];
-              if (parts.length) entries.push(textEntry({ at }, "user", operationId, parts.join("\n\n")));
-            } else if (record.type === "assistant" && Array.isArray(content)) {
-              for (const part of content) {
-                if (part.type === "text" && typeof part.text === "string") entries.push(textEntry({ at }, "assistant", operationId, part.text));
-                else if (part.type === "tool_use" && typeof part.name === "string") entries.push({ kind: "tool", at, name: part.name });
-              }
-            }
-          } catch { /* 깨진 줄은 건너뛴다. */ }
+          terminalTranscriptEntries(operationId, line, entries);
           if (entries.length >= limit) { consumed = Math.min(consumed, processed); break; }
         }
         const next = offset + consumed;
@@ -629,6 +647,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return applyChatCoordinates(chat, input.model, input.effort);
     },
     readCoordinates: (operationId) => chatRegistry.get(operationId)?.readCoordinates() ?? null,
+    transcript: (operationId, input, signal) => actions.transcript!(operationId, input.cursor, input.limit, signal, input.tail ? { tail: true } : undefined),
   });
   if (detachControl) ctx.host.lifecycle.registerCleanup(detachControl);
 
