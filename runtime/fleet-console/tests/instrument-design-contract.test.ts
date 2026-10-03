@@ -3721,6 +3721,7 @@ describe("Effort track interaction grammar", () => {
       "--gauge-fill", "--gauge-apex", "--gauge-crest", "--gauge-rim",
       "--gauge-texture", "--gauge-drift",
       "--gauge-weight-quiet", "--gauge-weight-warn", "--gauge-weight-critical",
+      "--gauge-fill-neutral",
     ] as const;
     for (const token of GAUGE_TOKENS) {
       expect(base).toContain(`${token}:`);
