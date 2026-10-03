@@ -4,13 +4,15 @@ branch: global-fleet-browser
 
 ### fleet-console
 #### Added
-- Add a Console-wide Fleet Browser floating sheet accessible via the toolbar and Mod+Shift+B, open external links into it with unified modifier gestures, and offer restoring closed tabs after reconnection.
-  ko: 도구모음과 Mod+Shift+B로 열 수 있는 전역 Fleet 브라우저 떠 있는 시트를 추가하고, 통일된 수정키로 외부 링크를 열며, 재연결 시 닫힌 탭 복구 제안을 지원합니다.
+- Open web pages in the Fleet Browser, a Console-wide browser that floats over your current view from the toolbar, and links across Console now open there instead of leaving the app.
+  ko: 도구모음에서 지금 보던 화면 위에 띄우는 Console 전역 Fleet 브라우저가 생겼고, Console 곳곳의 링크가 앱 밖으로 나가지 않고 그 안에서 열립니다.
+- When connecting another screen closes Fleet Browser tabs, Console offers to reopen them afterwards.
+  ko: 다른 화면이 연결되어 Fleet 브라우저 탭이 닫히면, 다시 쓸 수 있을 때 닫힌 탭을 다시 열 수 있게 제안합니다.
 #### Changed
-- Clarify the companion browser in each Operation as the Operation Browser, distinguishing it from the person-facing Fleet Browser while preserving the fleet-browser MCP server identifier for agent compatibility.
-  ko: 에이전트 호환성을 위해 fleet-browser MCP 서버 식별자는 유지하면서, 사람용 전역 Fleet 브라우저와 구분되도록 각 Operation의 companion 브라우저 명칭을 Operation 브라우저로 정리합니다.
+- Links in Operation chat and CLI let you choose the Fleet Browser, the Operation Browser, or your own browser, and the browser inside each Operation is now called the Operation Browser.
+  ko: Operation 채팅과 CLI의 링크를 Fleet 브라우저, Operation 브라우저, 내 브라우저 중 골라 열 수 있고, 각 Operation 안의 브라우저는 이제 Operation 브라우저라고 부릅니다.
 
 ### fleet-desktop
-#### Added
-- Forward registered Console keyboard shortcuts from native browser views so navigation shortcuts work while browsing.
-  ko: 네이티브 브라우저 뷰에 포커스가 있을 때도 등록된 Console 단축키를 중계하여 키보드 탐색을 유지합니다.
+#### Fixed
+- Console keyboard shortcuts keep working while a browser page has focus.
+  ko: 브라우저 페이지에 포커스가 있어도 Console 단축키가 동작합니다.
