@@ -192,7 +192,7 @@ describe("antigravity adapter", () => {
     }
   });
 
-  it("translates MAX_TOKENS to max_output_tokens, safety filters to content_filter, and leaves STOP complete", async () => {
+  it("translates MAX_TOKENS and safety filters, leaves STOP complete, and keeps every other stop as its own reason", async () => {
     async function streamCompleted(finishReason?: string, extra: Record<string, unknown> = {
       candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason }],
     }) {
@@ -213,13 +213,18 @@ describe("antigravity adapter", () => {
 
     expect((await streamCompleted("MAX_TOKENS")).incomplete).toEqual({ reason: "max_output_tokens" });
     expect((await streamCompleted("SAFETY")).incomplete).toEqual({ reason: "content_filter" });
-    expect((await streamCompleted("RECITATION")).incomplete).toEqual({ reason: "content_filter" });
     expect((await streamCompleted("STOP")).incomplete).toBeUndefined();
     expect((await streamCompleted("FINISH_REASON_UNSPECIFIED")).incomplete).toBeUndefined();
+    // 대응하는 Anthropic stop reason이 없는 종료는 원래 값을 그대로 넘겨 하류가 오류로 낸다.
+    expect((await streamCompleted("MALFORMED_FUNCTION_CALL")).incomplete).toEqual({ reason: "MALFORMED_FUNCTION_CALL" });
     // 프롬프트 자체가 차단되면 candidates 없이 promptFeedback.blockReason만 온다.
     expect((await streamCompleted(undefined, {
       candidates: [],
       promptFeedback: { blockReason: "PROHIBITED_CONTENT" },
     })).incomplete).toEqual({ reason: "content_filter" });
+    expect((await streamCompleted(undefined, {
+      candidates: [],
+      promptFeedback: { blockReason: "OTHER" },
+    })).incomplete).toEqual({ reason: "prompt blocked: OTHER" });
   });
 });
