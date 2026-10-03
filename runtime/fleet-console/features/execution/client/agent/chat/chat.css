@@ -363,8 +363,6 @@
   place-items: center;
   padding: var(--space-6);
   background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
-  -webkit-backdrop-filter: var(--glass-backdrop-scrim);
-  backdrop-filter: var(--glass-backdrop-scrim);
 }
 
 .agent-chat-attachment-frame {
@@ -376,8 +374,6 @@
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
   background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 
@@ -2076,8 +2072,6 @@
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 
@@ -2852,8 +2846,6 @@
   background:
     linear-gradient(color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)), color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   font-variant-numeric: tabular-nums;
 }

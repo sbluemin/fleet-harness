@@ -737,7 +737,6 @@
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-deep) 94%, transparent);
   box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(14px);
 }
 
 .ai-gateway-palette.is-resizing {
@@ -875,7 +874,6 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-2) var(--space-1);
   background: color-mix(in oklch, var(--ink-deep) 96%, transparent);
-  backdrop-filter: blur(8px);
 }
 
 .ai-gateway-palette-group .ai-gateway-provider-glyph {
@@ -1547,8 +1545,6 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: raised 틴트 + glass 언더레이 채널(canonical 주석: whatsnew-card) */
   background: linear-gradient(var(--glass-tint-raised), var(--glass-tint-raised)), var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   animation: fleet-pop var(--duration-fast) var(--ease-spring) both;
 }
@@ -1859,8 +1855,6 @@
   border: 1px solid color-mix(in oklch, var(--aurora) 26%, var(--surface-rim));
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 .use-corner-panel.is-late { border-color: color-mix(in oklch, var(--aurora) 48%, var(--surface-rim)); }
@@ -2108,8 +2102,6 @@
   border: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--surface-rim));
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font: var(--weight-medium) var(--t-sm) var(--font-body);

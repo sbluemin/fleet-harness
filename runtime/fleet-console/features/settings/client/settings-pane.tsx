@@ -20,13 +20,6 @@ import {
   type GlassGroup,
 } from "../../../core/client/src/integration/glass-opacity-store.js";
 import {
-  setSideBarGlassBlur,
-  SIDE_BAR_GLASS_BLUR_DEFAULT,
-  SIDE_BAR_GLASS_BLUR_MAX,
-  SIDE_BAR_GLASS_BLUR_MIN,
-  useSideBarGlass,
-} from "../../workspace/client/sidebar/operations-side-bar-store.js";
-import {
   buildCoreSettingsSections,
   collectPluginSettingsSections,
   renderSettingsSection,
@@ -43,7 +36,7 @@ import {
  * 설정 표면 — 페이지의 후계자.
  *
  * 설정은 더 이상 가는 곳이 아니라 부르는 것이다. 옛 `/settings` 페이지는 콘솔 전체를 치우고
- * 섰기 때문에, 콘솔을 보면서 돌려야 하는 설정(테마·유리·흐리기·서체)을 위해 콘솔의 축소
+ * 섰기 때문에, 콘솔을 보면서 돌려야 하는 설정(테마·유리·서체)을 위해 콘솔의 축소
  * 모형까지 지어야 했다. 이 표면은 레일 페인으로 서서 뒤의 콘솔을 살려 둔다 — 콘솔 자체가
  * 미리보기다.
  *
@@ -308,7 +301,7 @@ function SettingsChip({ label, help, active, onSelect }: {
  * 기준은 저장 위치가 아니라 하는 일이다.
  *
  * "비포커스 패널 흐리기" 아래에 「유리 효과」 소제목으로 선다. 순서는 화면에서 큰 면부터다:
- * 작업 창 → 상단 바·작업 표시줄 → 좌측 사이드바 → 도구 패널 → 좌측 사이드바 흐림. 이 묶음
+ * 작업 창 → 상단 바·작업 표시줄 → 좌측 사이드바 → 도구 패널. 이 묶음
  * 전체는 데스크톱 페인만 주입한다: 같은 헬퍼가 사이드바도 레일도 없는 모바일의 본문이라, 직접
  * 넣으면 폰에 죽은 슬라이더가 선다.
  */
@@ -321,13 +314,12 @@ function ChromeMaterialRows() {
       <GlassOpacityRow group="bar" titleKey="settings.theme.barOpacity" helpKey="settings.theme.barOpacityHelp" />
       <GlassOpacityRow group="side-bar" titleKey="settings.theme.sideBarOpacity" helpKey="settings.theme.sideBarOpacityHelp" />
       <GlassOpacityRow group="rail" titleKey="settings.theme.railOpacity" helpKey="settings.theme.railOpacityHelp" />
-      <SideBarBlurRow />
     </>
   );
 }
 
 /**
- * 묶음 하나의 틴트 불투명도. 게이트가 닫힌 화면(라이트·투명도 줄이기·유리 미지원)은 언제나
+ * 묶음 하나의 틴트 불투명도. 게이트가 닫힌 화면(라이트·투명도 줄이기)은 언제나
  * 불투명이라 손잡이가 화면에 닿지 않는다 — 비활성으로 두고 이유를 말한다. 저장값은 건드리지 않아
  * 유리가 돌아오면 고른 값이 그대로 다시 선다.
  */
@@ -372,15 +364,14 @@ function GlassOpacityRow({ group, titleKey, helpKey }: {
 
 /**
  * 유리 게이트가 지금 이 화면에서 닫혀 있는가 — 판정은 테마·설정 추론이 아니라 **채널의 계산값**을
- * 읽어서 한다. theme.css의 게이트는 셋이고(@supports 미달 · prefers-reduced-transparency ·
- * 라이트 테마), 그중 둘은 CSS에만 있어 TS가 볼 수 있는 상태가 아니다.
+ * 읽어서 한다. theme.css의 게이트는 투명도 축소 선호와
+ * 라이트 테마이며, 투명도 축소 선호는 CSS가 진다.
  * 조건을 여기서 복제하면 반드시 원본보다 좁아진다(적대 리뷰 적발: OS 투명도 줄이기에서 손잡이가
  * 살아 남아 화면에 닿지 않는 값을 저장했다). 채널을 읽으면 게이트가 몇 개든 CSS 하나가 진실이다.
  *
  * 다시 읽어야 할 계기도 CSS를 여는 것들이다: 루트의 data-theme 속성 변화와 OS 투명도
  * 선호의 변화. 저장값 스토어가 아니라 루트 속성을 보는 이유는, 테마가 서버 하이드레이션·낙관
  * 적용·데스크톱 주입 어느 경로로 바뀌든 게이트를 실제로 여닫는 것은 이 속성이기 때문이다.
- * @supports는 런타임에 바뀌지 않으므로 최초 1회로 충분하다.
  */
 function useGlassGateClosed(): boolean {
   const [closed, setClosed] = useState(readGlassGateClosed);
@@ -402,45 +393,5 @@ function useGlassGateClosed(): boolean {
 
 function readGlassGateClosed(): boolean {
   if (typeof document === "undefined") return false;
-  return getComputedStyle(document.documentElement).getPropertyValue("--glass-backdrop-side-bar").trim() === "none";
-}
-
-/**
- * 좌측 사이드바 유리의 blur 반경. 불투명도와 달리 이 손잡이는 유리 게이트에 종속된다 — 게이트가
- * 닫힌 화면에는 blur가 아예 없다. 불투명도 줄과 같은 실패 양식을 따른다:
- * 화면에 없는 재질을 켜진 손잡이로 말하지 않고, 저장값은 건드리지 않아 유리가 돌아오면 고른 값이
- * 그대로 다시 선다.
- */
-function SideBarBlurRow() {
-  const t = useT();
-  const glass = useSideBarGlass();
-  const glassOff = useGlassGateClosed();
-  return (
-    <div className="global-settings-row">
-      <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">
-          {t("settings.theme.sideBarBlur")}
-          <SettingsHelp title={t("settings.theme.sideBarBlur")}>
-            {t(glassOff ? "settings.theme.sideBarBlurOffHelp" : "settings.theme.sideBarBlurHelp")}
-          </SettingsHelp>
-        </p>
-      </div>
-      <SettingsSlider
-        value={glass.blur}
-        min={SIDE_BAR_GLASS_BLUR_MIN}
-        max={SIDE_BAR_GLASS_BLUR_MAX}
-        step={2}
-        disabled={glassOff}
-        label={t("settings.theme.sideBarBlur")}
-        formatValue={(value) => `${value}px`}
-        decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.sideBarBlur") })}
-        increaseLabel={t("settings.slider.increase", { title: t("settings.theme.sideBarBlur") })}
-        onPreview={setSideBarGlassBlur}
-        onCommit={setSideBarGlassBlur}
-        defaultValue={SIDE_BAR_GLASS_BLUR_DEFAULT}
-        resetLabel={t("settings.slider.reset")}
-        resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.sideBarBlur") })}
-      />
-    </div>
-  );
+  return getComputedStyle(document.documentElement).getPropertyValue("--glass-panel-face").trim() !== "transparent";
 }

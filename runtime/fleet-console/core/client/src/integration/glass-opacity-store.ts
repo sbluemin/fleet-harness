@@ -95,6 +95,12 @@ function apply(group: GlassGroup, value: number | null): void {
 
 /** 부팅이 저장된 취향을 첫 페인트 앞에서 한 번 싣는다 — 재료의 폴백이 곧 기본값이라 미호출도 안전하다. */
 export function applyStoredGlassOpacity(): void {
+  // 흐림 손잡이는 퇴역했다. 구 값을 읽거나 다시 적용하지 않고 부팅 때 한 번 정리한다.
+  try {
+    if (typeof window !== "undefined") localStorage.removeItem("fleet-console.operations.side-glass-blur");
+  } catch {
+    // 저장소 접근 불가 환경에서도 불투명도 적용은 계속한다.
+  }
   for (const group of GROUPS) apply(group, opacity[group]);
 }
 

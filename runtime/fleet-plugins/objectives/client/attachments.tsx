@@ -56,7 +56,7 @@ const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="n
 
 /**
  * 브리핑 머리의 첨부 글리프 — 파일 픽커 입구. 이름은 aria-label 에, 형식·크기 안내는 hover·focus 로 여닫는 말풍선에 싣는다
- * (Scuttlebutt 머리 조작·설정 도움말과 같은 계약). 말풍선은 문서 끝으로 포털한다 — 패널이 backdrop-filter 를 지면 안의 말풍선은 흐려 보인다.
+ * (Scuttlebutt 머리 조작·설정 도움말과 같은 계약). 말풍선은 문서 끝으로 포털해 패널의 클리핑·스태킹과 분리한다.
  */
 export function AttachButton({ objective, t, upload, sending }: {
   readonly objective: Objective;
