@@ -276,7 +276,12 @@ describe("commodore supervisor", () => {
       const supervisor = createCommodoreSupervisor({
         store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "fleet-harness", root: theaterRoot }),
         objectives: () => objectives, subscribeObjectives: (listener) => { boardListeners.push(listener); return () => undefined; },
-        boardTools: () => [], observe: () => ({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: [], attention: { kind: "none" }, output: { revision: 0, outcome: "none" } } as never),
+        // 사령관의 보드 쓰기 — 개시하면 그 목표가 진행 중이 되고 사건이 난다(실제 도구처럼 쓰는 동안).
+        boardTools: () => [{ name: "console_objectives", description: "", inputSchema: {}, execute: async (args) => {
+          const target = objectives.find((objective) => objective.id === (args as { objectiveId?: string }).objectiveId);
+          if (target) { (target as unknown as { commenced: boolean }).commenced = true; for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: target.id }); }
+          return { content: [] };
+        } }], observe: () => ({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: [], attention: { kind: "none" }, output: { revision: 0, outcome: "none" } } as never),
         emit: (event) => { if (event.op === "run") runs.push(event); },
       });
       const tokens = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "wake" ? [entry.reasons] : []);
@@ -314,40 +319,34 @@ describe("commodore supervisor", () => {
       expect(note).toContain("> Keep objectives small.");
       expect(note).not.toContain("Ship remote first.");
 
-      // 보드 — 대기 상태의 서명이 바뀔 때만, 지금 그 상태인 목표 수로.
+      // 보드 — 목표 상태가 한 단계 옮겨 갈 때마다(새 목표 포함) 깨우고, 대기 상태는 지금 그 상태인 목표 수로 함께 싣는다.
       objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", createdAt: Date.now(), done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: { id: "q1" }, decisionRequestRevision: 1, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(tokens().at(-1)).toEqual(["decision:1"]);
+      expect(tokens().at(-1)).toEqual(["decision:1", "status:1"]);
+      expect(sessions[0]!.sent.at(-1)).toContain('1 objective status change: "Remote pairing" new → in progress');
       expect(sessions[0]!.sent).toHaveLength(3);
-      // 구상이 내려앉으면(미션이 생긴 시작 전 목표) pending 은 그대로여도 planned 로 깨운다.
+      // 구상이 내려앉으면(미션이 생긴 시작 전 목표) planned 로도 깨운다.
       objectives.push({ id: "o2", theaterId: "t1", title: "Lineup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o2" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(tokens().at(-1)).toEqual(["planned:1"]);
+      expect(tokens().at(-1)).toEqual(["planned:1", "status:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain("1 objective has a lineup ready to commence");
-      // 수는 턴 직전의 보드로 센다 — 모이는 동안 사령관이 끝낸 검토 대기는 빠지고, 다 사라지면 턴도 없다.
+      // 지휘관이 옮긴 상태 — 진행 중에서 검토 대기로.
       (objectives[0] as { awaitingReview: boolean }).awaitingReview = true;
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
-      (objectives[1] as { awaitingReview: boolean }).awaitingReview = true;
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o2" });
-      (objectives[0] as { awaitingReview: boolean }).awaitingReview = false;
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(tokens().at(-1)).toEqual(["review:1"]);
-      (objectives[1] as { awaitingReview: boolean }).awaitingReview = false;
-      (objectives[0] as { awaitingReview: boolean }).awaitingReview = true;
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
-      (objectives[0] as { awaitingReview: boolean }).awaitingReview = false;
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(tokens().at(-1)).toEqual(["review:1"]);
+      expect(tokens().at(-1)).toEqual(["review:1", "status:1"]);
+      expect(sessions[0]!.sent.at(-1)).toContain('"Remote pairing" in progress → awaiting review');
       expect(sessions[0]!.sent).toHaveLength(5);
-      // 대기 상태가 줄기만 하면(사령관 자신의 개시·완료) 깨우지 않는다 — 빈 inbox 를 읽으러 깨어나지 않게.
-      (objectives[1] as unknown as { commenced: boolean; missions: { done: boolean }[] }).commenced = true;
+      // 사령관 자신의 쓰기(개시)로 바뀐 상태는 깨우지 않는다 — 제가 한 일을 다시 듣는 빈 턴을 만들지 않게.
+      const board = sessions[0]!.options.tools!.custom!.find((group) => group.tools.some((tool) => tool.name === "console_objectives"))!.tools.find((tool) => tool.name === "console_objectives")!;
+      await board.execute({ objectiveId: "o2", commence: true }, { cwd: theaterRoot });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(5);
+      (objectives[0] as { awaitingReview: boolean }).awaitingReview = false;
       (objectives[1] as unknown as { missions: { done: boolean }[] }).missions[0]!.done = true;
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o2" });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(5);
 
       // 정체 — 임무가 남았는데 지휘관이 30분 넘게 쉬면 한 번 깨우고, 상태에 그 목표 id 가 선다.
       (objectives[0] as { decisionRequest: unknown }).decisionRequest = null;

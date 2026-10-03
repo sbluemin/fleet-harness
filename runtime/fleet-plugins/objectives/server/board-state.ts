@@ -6,6 +6,20 @@ export type BoardObservation = Pick<ConsoleOperationObservation, "activity" | "l
 export type BoardObserver = (operationId: string) => BoardObservation | null | undefined;
 export type InboxReason = "decision" | "criteria" | "review" | "followup" | "followup-failed" | "pending" | "planned" | "stalled";
 
+/**
+ * 목표의 상태 — 목록의 구역보다 잘게, 사람이 「목표가 어디까지 왔나」로 읽는 단계. 대기 이유(inbox)와 달리 지금 서 있는 한 자리다.
+ * 사령관은 이 값이 바뀔 때마다 깨어난다(자기 손으로 바꾼 것은 빼고).
+ */
+export type ObjectiveStatus = "pending" | "planning" | "planned" | "running" | "missions-done" | "review" | "done" | "removed";
+export function objectiveStatus(objective: Objective): ObjectiveStatus {
+  if (objective.removed) return "removed";
+  if (objective.done) return "done";
+  if (objective.awaitingReview) return "review";
+  if (!objective.commenced) return objective.planning ? "planning" : objective.missions.length ? "planned" : "pending";
+  if (objective.awaitingHandoff) return "missions-done";
+  return "running";
+}
+
 /** 임무가 남고 보드가 오래 그대로인 목표. 관측할 수 없는 세션을 유휴라고 추측하지 않는다. */
 export function stalledObjectives(objectives: readonly Objective[], observe: BoardObserver, now = Date.now()): readonly string[] {
   return objectives.filter((objective) => {

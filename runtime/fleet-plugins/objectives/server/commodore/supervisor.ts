@@ -2,7 +2,7 @@ import type { AgentHost } from "@fleet-console/sdk/agent";
 import type { ConsoleOperationObservation, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
-import { inboxReasons, STALL_MS, stalledObjectives } from "../board-state.js";
+import { inboxReasons, objectiveStatus, STALL_MS, stalledObjectives, type ObjectiveStatus } from "../board-state.js";
 import type { Objective, ObjectiveEvent } from "../types.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
@@ -68,7 +68,16 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 만 누적이다.
  */
-export type WakeCode = "patrol" | "directive" | "intel" | "message" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated";
+export type WakeCode = "patrol" | "directive" | "intel" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated";
+
+/** 사령관 자신의 보드 쓰기가 끝난 뒤에도 그 목표의 상태 변화를 제 것으로 보는 시간 — 기동처럼 쓰기 뒤에 이어지는 사건까지. */
+const SELF_WRITE_GRACE_MS = 5_000;
+/** 깨움 문장에 싣는 상태 변화 줄 수 — 나머지는 수로만. 내용은 사령관이 보드에서 읽는다. */
+const STATUS_DETAILS = 8;
+const STATUS_WORDS: Record<ObjectiveStatus | "new", string> = {
+  new: "new", pending: "not started", planning: "planning", planned: "lineup ready", running: "in progress",
+  "missions-done": "missions done, awaiting hand-off", review: "awaiting review", done: "done", removed: "removed",
+};
 
 interface PendingReason {
   count?: number;
@@ -91,6 +100,11 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "directive": return `directive changed${tail}`;
     case "intel": return `${plural("new intel item")}`;
     case "message": return "the person sent you a message (quoted below)";
+    case "status": {
+      const shown = reason.details.slice(-STATUS_DETAILS);
+      const more = reason.details.length - shown.length;
+      return `${plural("objective status change")}: ${shown.join("; ")}${more > 0 ? `; and ${more} more` : ""}`;
+    }
     case "decision": return `inbox: ${plural("decision request")}`;
     case "review": return `inbox: ${n} awaiting review`;
     case "criteria": return `inbox: ${plural("criteria proposal")}`;
@@ -139,6 +153,10 @@ interface Runner {
   seen: Set<string>;
   stalledReported: Set<string>;
   emptyReported: boolean;
+  /** 사령관이 아는 목표 상태 — 바뀌면 깨운다. */
+  statuses: Map<string, ObjectiveStatus>;
+  /** 사령관 자신이 쓰는 중(또는 막 쓴) 목표 — 그 상태 변화는 깨울 일이 아니다. 값은 유효 시각(쓰는 중이면 Infinity). */
+  selfWrites: Map<string, number>;
 }
 
 export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): CommodoreSupervisor {
@@ -221,7 +239,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const language = resolveLanguage(runner.theaterId);
     const session = createCommodoreSession({
       theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates,
-      boardTools: deps.boardTools(runner.theaterId), now,
+      boardTools: deps.boardTools(runner.theaterId).map((tool) => selfAttributed(runner, tool)), now,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       ...(deps.execute ? { execute: deps.execute } : {}),
     });
@@ -311,7 +329,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const start = (theaterId: string, reason: WakeCode) => {
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     wake(runner, reason);
@@ -379,7 +397,43 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const empty = !objectives.some((objective) => !objective.done && !objective.removed);
     if (empty && !runner.emptyReported) wake(runner, "empty");
     runner.emptyReported = empty;
+    // 상태 변화 — 목표가 한 단계 옮겨 갈 때마다(새 목표·지워짐 포함). 사령관 자신의 쓰기와 그 쓰기로 생긴 목표는 뺀다.
+    for (const change of statusChanges(runner, objectives)) wake(runner, "status", { bump: true, detail: change });
   }));
+
+  /** 보드 도구를 감싸 사령관이 쓰는 목표를 표시한다 — 쓰는 동안과 끝난 뒤 잠깐, 그 목표의 상태 변화는 사령관 자신의 것이다. */
+  const selfAttributed = (runner: Runner, tool: PluginMcpTool): PluginMcpTool => ({
+    ...tool,
+    execute: async (args, context) => {
+      const targets = writeTargets(args);
+      for (const id of targets) runner.selfWrites.set(id, Number.POSITIVE_INFINITY);
+      try { return await tool.execute(args, context); }
+      finally { const until = now() + SELF_WRITE_GRACE_MS; for (const id of targets) runner.selfWrites.set(id, until); }
+    },
+  });
+
+  const statusChanges = (runner: Runner, objectives: readonly Objective[]): string[] => {
+    const at = now();
+    for (const [id, until] of runner.selfWrites) if (until < at) runner.selfWrites.delete(id);
+    const changes: string[] = [];
+    const seen = new Set<string>();
+    for (const objective of objectives) {
+      seen.add(objective.id);
+      const next = objectiveStatus(objective);
+      const previous = runner.statuses.get(objective.id);
+      if (previous === next) continue;
+      runner.statuses.set(objective.id, next);
+      if (runner.selfWrites.has(objective.id) || (previous === undefined && createdByCommodore(objective, objectives))) continue;
+      changes.push(`"${objective.title}" ${STATUS_WORDS[previous ?? "new"]} → ${STATUS_WORDS[next]}`);
+    }
+    // 보드에서 영영 사라진 목표(영구 삭제)도 지워짐이다.
+    for (const [id, previous] of [...runner.statuses]) {
+      if (seen.has(id)) continue;
+      runner.statuses.delete(id);
+      if (previous !== "removed" && !runner.selfWrites.has(id)) changes.push(`${id} ${STATUS_WORDS[previous]} → ${STATUS_WORDS.removed}`);
+    }
+    return changes;
+  };
 
   if (deps.subscribeExperiments) cleanups.push(deps.subscribeExperiments(() => sync("autonomy")));
 
@@ -425,6 +479,27 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     },
   };
 
+}
+
+function statusMap(objectives: readonly Objective[]): Map<string, ObjectiveStatus> {
+  return new Map(objectives.map((objective) => [objective.id, objectiveStatus(objective)]));
+}
+
+/** 사령관이 만든 목표 — 직접 추가했거나, 사령관이 고른 후속 후보에서 생겼다. */
+function createdByCommodore(objective: Objective, objectives: readonly Objective[]): boolean {
+  if (objective.addedBy && "kind" in objective.addedBy && objective.addedBy.kind === "commodore") return true;
+  const origin = objective.origin;
+  if (!origin) return false;
+  const source = objectives.find((candidate) => candidate.id === origin.objectiveId);
+  return !!source?.followupBatches.some((batch) => typeof batch.by === "object" && batch.by.kind === "commodore" && batch.items.some((item) => item.candidateId === origin.candidateId));
+}
+
+/** 보드 도구 입력이 가리키는 목표 — 읽기는 상태를 바꾸지 않으니 함께 표시돼도 해가 없다. */
+function writeTargets(args: unknown): readonly string[] {
+  if (!args || typeof args !== "object") return [];
+  const input = args as { objectiveId?: unknown; remove?: { objectiveIds?: unknown }; merge?: { into?: unknown; from?: unknown }; restore?: unknown };
+  const ids = [input.objectiveId, ...(Array.isArray(input.remove?.objectiveIds) ? input.remove.objectiveIds : []), input.merge?.into, ...(Array.isArray(input.merge?.from) ? input.merge.from : []), ...(Array.isArray(input.restore) ? input.restore : [])];
+  return ids.filter((id): id is string => typeof id === "string");
 }
 
 /** 보드의 대기 상태 항목 — `code:objectiveId`, 결정 요청은 개정까지(같은 목표의 새 요청도 새 항목). 이유는 inbox 보기와 같다. */
