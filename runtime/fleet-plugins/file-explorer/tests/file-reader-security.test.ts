@@ -68,7 +68,9 @@ describe("readFileForTheater — symlink containment", () => {
 
 describe("Files bounded reads", () => {
   it("reads a large text file through bounded head, range and tail requests at the public endpoint", async () => {
-    const content = "HEAD\n" + "x".repeat(2 * 1024 * 1024) + "\nTAIL";
+    const cap = 1024 * 1024;
+    // 뒤쪽 한글은 head의 마지막 바이트에 걸치고, tail의 시작점은 앞쪽 한글 중간에 선다.
+    const content = "HEAD\nx한" + "x".repeat(cap - 10) + "한\nTAIL";
     await fs.promises.writeFile(path.join(theaterPath, "large.log"), content);
     const read = async (window: unknown) => {
       let status = 0;
@@ -89,10 +91,15 @@ describe("Files bounded reads", () => {
     const range = await read({ mode: "range", offset: head.payload.window!.endByte });
     expect(range.status).toBe(200);
     expect(range.payload.window!.startByte).toBe(head.payload.window!.endByte);
+    expect(Buffer.from(head.payload.content + range.payload.content)).toEqual(Buffer.from(content));
     const tail = await read({ mode: "tail" });
     expect(tail.status).toBe(200);
     expect(tail.payload.content.endsWith("TAIL")).toBe(true);
     expect(tail.payload.window!.endByte).toBe(Buffer.byteLength(content));
+    expect(Buffer.from(tail.payload.content)).toEqual(Buffer.from(content).subarray(tail.payload.window!.startByte, tail.payload.window!.endByte));
+    const insideCharacter = await read({ mode: "range", offset: cap });
+    expect(insideCharacter.payload.window!.startByte).toBe(head.payload.window!.endByte + Buffer.byteLength("한"));
+    expect(insideCharacter.payload.content).toBe("\nTAIL");
     expect((await read({ mode: "range", offset: -1 })).status).toBe(400);
   });
 });

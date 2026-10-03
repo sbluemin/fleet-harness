@@ -109,17 +109,26 @@ export async function readFileForTheater(theaterPath: string, relativePath: stri
       const mode = options.window?.mode ?? "head";
       const requestedStart = mode === "tail" ? Math.max(0, stat.size - FILE_SIZE_CAP)
         : mode === "range" ? Math.min(stat.size, Math.max(0, options.window?.offset ?? 0)) : 0;
-      const startByte = encoding === "utf-8" ? requestedStart : requestedStart - requestedStart % 2;
+      let startByte = encoding === "utf-8" ? requestedStart : requestedStart - requestedStart % 2;
       const byteLength = Math.min(FILE_SIZE_CAP, Math.max(0, stat.size - startByte));
       const chunk = Buffer.alloc(byteLength);
       const { bytesRead } = await fd.read(chunk, 0, byteLength, startByte);
       let buffer = chunk.subarray(0, bytesRead);
-      const endByte = startByte + bytesRead;
-      // UTF-8 범위가 문자 중간에서 시작하면 이어지는 바이트만 버린다. 끝은 streaming decoder가 지킨다.
-      if (encoding === "utf-8" && startByte > 0) {
-        let skip = 0;
-        while (skip < Math.min(3, buffer.length) && (buffer[skip]! & 0xc0) === 0x80) skip++;
-        buffer = buffer.subarray(skip);
+      let endByte = startByte + bytesRead;
+      if (encoding === "utf-8") {
+        // 직접 지정한 시작점이 문자 중간이면 최대 세 continuation 바이트를 건너뛰고 실제 위치를 알린다.
+        if (startByte > 0) {
+          let skip = 0;
+          while (skip < Math.min(3, buffer.length) && (buffer[skip]! & 0xc0) === 0x80) skip++;
+          buffer = buffer.subarray(skip);
+          startByte += skip;
+        }
+        if (endByte < stat.size) {
+          // decoder가 보류할 불완전한 끝은 범위에서도 빼야 다음 읽기가 그 문자부터 다시 시작한다.
+          const completeLength = completeUtf8PrefixLength(buffer);
+          endByte -= buffer.length - completeLength;
+          buffer = buffer.subarray(0, completeLength);
+        }
       }
       const canonicalRelativePath = path.relative(root, resolved).split(path.sep).join("/");
       const movedEntryId = await migratedWikiEntryId(root, canonicalRelativePath);
@@ -141,6 +150,21 @@ export async function readFileForTheater(theaterPath: string, relativePath: stri
 function isWithinRoot(resolved: string, root: string): boolean {
   const normalizedRoot = root.endsWith(path.sep) ? root : root + path.sep;
   return resolved === root || resolved.startsWith(normalizedRoot);
+}
+
+/** 스트리밍 UTF-8 decoder가 보류할 수 있는 끝(최대 3바이트)만 다음 범위로 넘긴다. */
+function completeUtf8PrefixLength(buffer: Buffer): number {
+  if (buffer.length === 0) return 0;
+  let start = buffer.length - 1;
+  while (start > 0 && buffer.length - start <= 3 && (buffer[start]! & 0xc0) === 0x80) start--;
+  const lead = buffer[start]!;
+  const expected = lead >= 0xc2 && lead <= 0xdf ? 2 : lead >= 0xe0 && lead <= 0xef ? 3 : lead >= 0xf0 && lead <= 0xf4 ? 4 : 0;
+  if (expected === 0 || buffer.length - start >= expected) return buffer.length;
+  const second = buffer[start + 1];
+  // 잘못된 시퀀스는 decoder가 이미 replacement로 처리한다. 유효한 미완성 문자만 보류한다.
+  if (second !== undefined && ((lead === 0xe0 && second < 0xa0) || (lead === 0xed && second > 0x9f)
+    || (lead === 0xf0 && second < 0x90) || (lead === 0xf4 && second > 0x8f))) return buffer.length;
+  return start;
 }
 
 type TextEncoding = "utf-8" | "utf-16le" | "utf-16be";
