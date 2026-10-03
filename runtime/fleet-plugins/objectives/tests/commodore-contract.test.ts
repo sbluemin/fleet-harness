@@ -241,6 +241,36 @@ describe("commodore session", () => {
 });
 
 describe("commodore supervisor", () => {
+  it("disposes a session that finishes opening after autonomy is turned off", async () => {
+    const h = harness();
+    h.setExperiments({ commodore: true });
+    h.store.setAutonomy("t1", true);
+    const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
+    fs.mkdirSync(theaterRoot, { recursive: true });
+    let release: () => void = () => undefined;
+    const opened = { disposed: false, sent: 0 };
+    const agent: AgentHost = {
+      createSession: async () => {
+        await new Promise<void>((resolve) => { release = resolve; });
+        return { send: async () => { opened.sent += 1; }, cancel: () => undefined, dispose: async () => { opened.disposed = true; } };
+      },
+    };
+    const supervisor = createCommodoreSupervisor({
+      store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }),
+      objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined,
+    });
+    supervisor.sync("autonomy");
+    await vi.waitFor(() => expect(release).not.toBeUndefined());
+    await new Promise((resolve) => setTimeout(resolve, COALESCE_MS + 50));
+    // 세션이 열리는 중에 끈다 — 늦게 열린 세션도 닫히고 턴은 가지 않는다(살아남은 자식 프로세스가 보드를 바꾸지 못하게).
+    h.store.setAutonomy("t1", false);
+    release();
+    await vi.waitFor(() => expect(opened.disposed).toBe(true));
+    expect(opened.sent).toBe(0);
+    expect(supervisor.status("t1")).toBeNull();
+    await supervisor.dispose();
+  });
+
   it("restores on register, coalesces wake reasons, patrols within the ceiling, retries failures, rotates long sessions and stops with autonomy", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));

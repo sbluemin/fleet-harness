@@ -272,9 +272,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           session = await openSession(runner, event);
         }
       } catch (error) {
+        if (runner.stopping) return;
         scheduleRetry(runner, failureCode(error, "session_failed"));
         return;
       }
+      // 여는 동안 꺼졌다 — 막 연 세션은 stop() 이 거둔다. 턴도 상태 방송도 하지 않는다.
+      if (runner.stopping) return;
       // 이유는 세션이 열린 뒤에 거둔다 — 열지 못하면 그대로 남아 재시도 턴에 실린다. 보드 대기 상태의 수는 지금 보드에서 다시 센다
       // (모인 동안 사령관 자신이 완료한 목표는 빠진다); 그새 사라진 대기 상태는 이유에서 내린다.
       const digest = new Map(inboxDigest(deps.objectives(runner.theaterId)));
@@ -303,7 +306,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.retryAttempt = 0;
       runner.lastTurnAt = now();
       setPhase(runner, "idle");
-      if (!runner.patrolSet && !runner.patrol) { runner.patrolRequest = null; schedulePatrol(runner, now() + patrolInterval(runner.theaterId), ""); }
+      // 이번 턴이 순찰을 예약하지 않았으면 기본 순찰은 이 턴 끝에서 한 간격 뒤다 — 앞 턴의 타이머를 남기지 않는다.
+      if (!runner.patrolSet) { runner.patrolRequest = null; schedulePatrol(runner, now() + patrolInterval(runner.theaterId), ""); }
     })().finally(() => {
       runner.inflight = null;
       // 턴 중에 온 이유는 다음 턴 하나로.
@@ -350,8 +354,13 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const session = runner.session;
     runner.session = null;
     try { await runner.inflight; } catch { /* 턴 결말은 세션이 삼킨다 */ }
+    // 끄는 동안 열리고 있던 세션 — 진행 중이던 일이 끝난 뒤 붙어 있으면 그것도 닫는다.
+    // TS 는 위에서 비운 값으로 좁히지만, 기다리는 동안 runTurn 의 openSession 이 다시 붙일 수 있다.
+    const opened = runner.session as CommodoreSession | null;
+    runner.session = null;
     record(runner, { kind: "session", event: "stopped", reason });
     await session?.dispose();
+    if (opened && opened !== session) await opened.dispose();
   };
 
   const sync = (reason: WakeCode = "autonomy") => {
