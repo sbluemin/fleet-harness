@@ -35,6 +35,7 @@ function searchContext(body: {
   readonly limit?: unknown;
   readonly kinds?: unknown;
   readonly includeHidden?: unknown;
+  readonly scope?: unknown;
 }): {
   readonly ctx: FleetPluginServerContext;
   readonly writes: Array<{ readonly status: number; readonly body: unknown }>;
@@ -104,7 +105,7 @@ describe("Files palette search", () => {
     expect(writes[0]?.body).toMatchObject({
       totalMatches: 2,
       ignoredSkipped: true,
-      complete: false,
+      complete: true,
       files: [
         { relativePath: "src/needle.ts", kind: "file" },
         { relativePath: "src/nested/needle.test.ts", kind: "file" },
@@ -112,6 +113,28 @@ describe("Files palette search", () => {
     });
     expect(JSON.stringify(writes[0]?.body)).not.toContain(temporaryDirectory);
     expect(JSON.stringify(writes[0]?.body)).not.toContain(await fs.realpath(theaterPath));
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("returns readable content with a partial-search notice when a folder is inaccessible", async () => {
+    const lockedPath = path.join(theaterPath, "locked");
+    await fs.mkdir(lockedPath);
+    await fs.writeFile(path.join(lockedPath, "secret.txt"), "export secret");
+    await fs.chmod(lockedPath, 0);
+    try {
+      const { ctx, writes } = searchContext({ theaterId: "theater-a", query: "export", limit: 8, scope: "contents" });
+      await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+      expect(writes[0]?.status).toBe(200);
+      expect(writes[0]?.body).toMatchObject({
+        engine: "ripgrep",
+        complete: false,
+        skippedPaths: 1,
+        files: [{ relativePath: "src/needle.ts", source: "content", preview: { lineNumber: 1, text: "export {}" } }],
+      });
+      expect(JSON.stringify(writes[0]?.body)).not.toContain(temporaryDirectory);
+      expect(JSON.stringify(writes[0]?.body)).not.toContain("secret");
+    } finally {
+      await fs.chmod(lockedPath, 0o700);
+    }
   });
 
   it("aborts the walk when the response socket closes before it answers", async () => {

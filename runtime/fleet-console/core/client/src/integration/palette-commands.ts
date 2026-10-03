@@ -198,6 +198,7 @@ export function buildPaletteCommands(
     const title = resolveLocalizedText(panel.title, language);
     push({
       commandId: `open-rail-panel:${panel.id}`,
+      ...(panel.id === "global-shell" ? { extraAliases: ["셸", "쉘", "터미널", "terminal", "console"] } : {}),
       label: t("palette.openPanel", { title }),
       aliasLabel: alias("palette.openPanel", { title: resolveLocalizedText(panel.title, language === "ko" ? "en" : "ko") }),
       action: { kind: "open-rail-panel", panelId: panel.id, ...(panel.surfaceId === undefined ? {} : { surfaceId: panel.surfaceId }) },

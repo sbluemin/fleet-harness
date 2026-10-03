@@ -11736,6 +11736,21 @@ body[data-companion-resizing="true"] .canvas-operation {
   font-size: var(--t-sm);
 }
 
+.terminal-copy-notice {
+  position: absolute;
+  inset-inline-end: var(--space-3);
+  inset-block-end: var(--space-3);
+  z-index: 1;
+  pointer-events: none;
+  max-inline-size: calc(100% - 2 * var(--space-3));
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--ink-deep);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+}
+
 .terminal-viewer-badge-dot {
   width: 8px;
   height: 8px;
@@ -15558,6 +15573,8 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   /* 부유 조작(닫기·tools)이 차지하는 오른쪽 폭. 레이어가 실측으로 덮어쓴다 — 여기 값은 첫 그림용.
      본문 첫 줄에 도구를 두는 표면은 이 변수만큼 오른쪽 여백을 갖는다(레일 마운트에서는 0). */
   --expanded-surface-float-inset: 42px;
+  /* 같은 무리의 아래 끝(+숨). 첫 줄만 비울 수 없는 격자 본문(터미널)이 이 아래에서 시작한다. */
+  --expanded-surface-float-block: 38px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -15598,7 +15615,11 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   backdrop-filter: var(--glass-backdrop-terminal);
 }
 
+/* 터미널은 cols×rows 격자라 첫 줄 끝만 비울 수 없다 — 부유 닫기가 우상단 글자(RPROMPT·TUI 상태)를
+   덮지 않도록 격자 전체를 조작 무리 아래에서 시작한다. 좁은 분할에서 열을 잃는 것보다 행 하나를
+   내주는 편이 싸다. */
 .expanded-surface-pane .terminal-shell {
+  padding-top: var(--expanded-surface-float-block, 0px);
   background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -15669,10 +15690,14 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   outline-offset: -1px;
 }
 
+/* 본문을 독립 쌓임 맥락으로 가둔다 — 표면 내부의 z-index(xterm link layer z 2 등)가 같은 z의
+   부유 조작과 DOM 순서로 겨뤄 닫기를 덮으면 클릭이 본문으로 샌다. 가두면 본문 전체가 z 0 한
+   층이 되어 부유 조작(z 2)이 언제나 위에 그려지고 히트를 받는다. */
 .expanded-surface-pane-body {
   flex: 1;
   min-height: 0;
   display: flex;
+  isolation: isolate;
 }
 
 .expanded-surface-pane-aside {

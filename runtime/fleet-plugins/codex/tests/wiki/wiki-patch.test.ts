@@ -3,7 +3,9 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { CoworkService, CoworkStore } from "../../server/codex/cowork/index.js";
 import { listConflicts, readConflict } from "../../server/wiki/conflicts.js";
+import { parseLog } from "../../server/wiki/log.js";
 import { buildPatchSetId, writePatchSet } from "../../server/wiki/patch.js";
 import { approvePatch, approvePatchSet, enqueuePatch, listQueue, parsePatch, rejectPatch, resolveQueueSelection, showQueue, stageWikiDeletions, validatePatch } from "../../server/wiki/patch.js";
 import { resolveMemoryPaths } from "../../server/wiki/paths.js";
@@ -101,6 +103,49 @@ describe("wiki patch queue", () => {
     expect((await approvePatchSet(batch.patchSetId!, paths)).status).toBe("accepted");
     expect(await pathExists(path.join(paths.wikiDir, "delta.md"))).toBe(false);
     expect(await pathExists(path.join(paths.wikiDir, "epsilon.md"))).toBe(false);
+  });
+
+  it("keeps stale approval retries idempotent and rolls back failed Cowork Apply registrations", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const timestamp = "2026-04-26T00:00:00.000Z";
+    const original = { id: "entry", title: "Entry", tags: [], created: timestamp, updated: timestamp, version: 1, body: "Original" };
+    await writeWikiEntry(original, paths);
+    const store = new CoworkStore();
+    const service = new CoworkService(store, paths, root, { connect: async () => { throw new Error("no provider expected"); } });
+    const session = await service.create("workspace", "entry");
+    const patchId = await enqueuePatch({
+      frontmatter: { op: "update_wiki", target: "wiki/entry.md", summary: "Proposal", proposer: "test", created: timestamp },
+      body: JSON.stringify({ ...original, version: 2, body: "Proposed" }),
+    }, paths, { baseVersion: 1 });
+    await writeWikiEntry({ ...original, version: 2, body: "External update" }, paths);
+    const current = await readPatchFile(path.join(paths.wikiDir, "entry.md"));
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(approvePatch(patchId, paths)).rejects.toThrow(/stale base_version/);
+      await expect(service.apply("workspace", session.id)).rejects.toThrow("cowork_apply_stale");
+    }
+    expect(await listQueue(paths)).toHaveLength(1);
+    const conflicts = await listConflicts(paths);
+    expect(conflicts).toHaveLength(1);
+    expect((await showQueue(patchId, paths)).meta.conflictId).toBe(conflicts[0]!.id);
+    expect(await readPatchFile(path.join(paths.wikiDir, "entry.md"))).toBe(current);
+    expect(await service.get("workspace", session.id)).toMatchObject({ state: "idle", draft: session.draft });
+
+    // 등록 이후 검증 실패도 회수해야 한다 — 오래된 base 사전 검사만으로는 부족하다.
+    await writeWikiEntry(original, paths);
+    await store.update("workspace", session.id, s => ({ ...s, state: "running" }));
+    await store.draftPort("workspace", session.id).write({ body: session.draft.replace('id: "entry"', 'id: "other"'), expectedRevision: 0 });
+    await store.update("workspace", session.id, s => ({ ...s, state: "idle" }));
+    await expect(service.apply("workspace", session.id)).rejects.toThrow("cowork_apply_failed");
+    expect(await listQueue(paths)).toHaveLength(1);
+    expect(await listConflicts(paths)).toHaveLength(1);
+    expect(await readPatchFile(path.join(paths.wikiDir, "entry.md"))).toBe(session.baseDraft);
+    expect((await parseLog(paths)).some(entry => entry.event === "patch apply rolled back")).toBe(true);
+
+    await rejectPatch(patchId, "Replaced by the current entry", paths);
+    expect((await readConflict(conflicts[0]!.id, paths)).meta).toMatchObject({ status: "resolved", resolution: "rejected", note: "Patch rejected: Replaced by the current entry" });
+    expect((await parseLog(paths)).findLast(entry => entry.event === "patch rejected")?.payload).toMatchObject({ conflict_id: conflicts[0]!.id, conflict_resolution: "rejected" });
   });
 
   it("reports partial patch set approval when members are missing", async () => {

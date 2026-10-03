@@ -118,10 +118,9 @@
 
 .fexp-viewer-pane {
   display: grid;
-  /* 탭 띠(auto) · 경로 줄(32px) · 본문(1fr) · 메타 바(auto)
-     이력·낡음·줄바꿈은 호스트 캡션으로 올라갔고, 여기 남은 머리는 경로와 보기 모드뿐이라
-     46px이던 자리가 32px로 줄었다 — 캡션이 새로 먹는 세로를 그만큼 되돌린다. */
-  grid-template-rows: auto 32px minmax(0, 1fr) auto;
+  /* 탭 띠 · 경로 줄 · 읽기 전용/동작 안내 · 본문 · 메타 바.
+     선택적 오류도 안내 행 안에 두어 본문이 항상 남은 높이를 차지한다. */
+  grid-template-rows: auto 32px auto minmax(0, 1fr) auto;
   /* .fexp-tree-pane과 동일한 암시적 auto 열 클램프 */
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
@@ -217,6 +216,43 @@
   }
 }
 .fexp-view-mode button:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+
+.fexp-viewer-access {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 4px 12px;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.fexp-viewer-access button {
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.fexp-viewer-access button:hover,
+.fexp-viewer-access button:focus-visible {
+  color: var(--brass-ink);
+}
+
+.fexp-viewer-access button:disabled {
+  color: var(--text-tertiary);
+  cursor: wait;
+}
+
+.fexp-viewer-action-error {
+  padding: 4px 12px;
+  font-size: var(--t-xs);
+  color: var(--warn-ink);
+}
 
 .fexp-viewer-meta {
   display: flex;
@@ -944,6 +980,8 @@
 
 .fexp-status.is-warn {
   color: var(--warn-ink);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .fexp-status.is-inline {
@@ -1012,11 +1050,11 @@
 
 .fexp-tree-row.is-sticky {
   position: relative;
-  background: var(--glass-tint-panel);
+  background: var(--surface-panel);
 }
 
 .fexp-tree-row.is-sticky:hover {
-  background: var(--surface-glass-strong);
+  background: var(--surface-panel-raised);
 }
 
 /* ── 행 ── */

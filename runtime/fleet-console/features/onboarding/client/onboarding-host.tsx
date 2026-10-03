@@ -84,8 +84,8 @@ export function OnboardingHost({ core, plugins, language, welcomeReady, firstRun
 
   return (
     <>
-      <WelcomeDeck candidates={welcomes} ready={welcomeReady} firstRun={firstRun} seen={seen} language={language} />
-      <EntryHints candidates={hints} seen={seen} language={language} ports={ports} held={welcomeHeld} />
+      <WelcomeDeck candidates={welcomes} ready={welcomeReady && !toursSuspended} firstRun={firstRun} seen={seen} language={language} />
+      <EntryHints candidates={hints} seen={seen} language={language} ports={ports} held={welcomeHeld || toursSuspended} />
       <TourOverlay tours={tours} language={language} blocked={toursBlocked} suspended={toursSuspended} />
     </>
   );

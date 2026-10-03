@@ -351,9 +351,9 @@ export function mountNavigatorInto(
     popover.setAttribute("aria-label", t("codex.nav.healthDetailsAria"));
     popover.innerHTML = `
       ${logUnreadable ? `<div><span>${escapeHtml(t("codex.nav.healthLogUnreadable"))}</span><strong>${escapeHtml(t("codex.nav.healthAttention"))}</strong></div>` : ""}
-      <div><span>${escapeHtml(t("codex.nav.healthErrors"))}</span><strong>${drydock?.errorCount ?? 0}</strong></div>
-      <div><span>${escapeHtml(t("codex.nav.healthWarnings"))}</span><strong>${drydock?.warningCount ?? 0}</strong></div>
-      <div><span>${escapeHtml(t("codex.nav.healthInfos"))}</span><strong>${drydock?.infoCount ?? 0}</strong></div>
+      <div><span>${escapeHtml(t("codex.nav.healthErrors"))}</span><strong>${drydock?.errorCount ?? "—"}</strong></div>
+      <div><span>${escapeHtml(t("codex.nav.healthWarnings"))}</span><strong>${drydock?.warningCount ?? "—"}</strong></div>
+      <div><span>${escapeHtml(t("codex.nav.healthInfos"))}</span><strong>${drydock?.infoCount ?? "—"}</strong></div>
       <div><span>${escapeHtml(t("codex.nav.healthConflicts"))}</span><strong>${health.conflictCount}</strong></div>
       <div><span>${escapeHtml(t("codex.nav.healthPending"))}</span><strong>${health.pendingCount}</strong></div>
       <div><span>${escapeHtml(t("codex.nav.healthWatch"))}</span><strong>${escapeHtml(
@@ -391,12 +391,14 @@ export function mountNavigatorInto(
       return;
     }
     const attention = logUnreadable || (drydock !== null && (!drydock.ok || issueCount > 0));
-    const tone = (drydock?.errorCount ?? 0) > 0 ? "coral" : attention ? "warn" : "ok";
+    const tone = (drydock?.errorCount ?? 0) > 0 ? "coral" : attention ? "warn" : drydock === null ? "unknown" : "ok";
     const label = logUnreadable
       ? t("codex.nav.healthLogUnreadable")
-      : attention
-        ? t("codex.nav.healthIssues", { count: issueCount })
-        : t("codex.nav.healthOk");
+      : drydock === null
+        ? t("codex.nav.healthNotRun")
+        : attention
+          ? t("codex.nav.healthIssues", { count: issueCount })
+          : t("codex.nav.healthOk");
     healthStrip.innerHTML = `
       <button class="codex-nav-health-chip" data-health-detail type="button" aria-expanded="false" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
         <span class="codex-nav-health-dot is-${tone}" aria-hidden="true"></span>${escapeHtml(label)}

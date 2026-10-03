@@ -515,6 +515,7 @@ interface RailIconProps {
 }
 
 function RailIcon({ entry, context, language, isActive }: RailIconProps) {
+  const t = useT();
   const handleClick = useCallback(() => {
     if (entry.activate) {
       if (context.theaterId === null) return;
@@ -536,7 +537,9 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   const attentionTheaterId = entry.scope === "fleet" ? null : context.theaterId;
   const readAttention = () => (attention ? Math.max(0, Math.floor(attention.count(attentionTheaterId))) : 0);
   const attentionCount = useSyncExternalStore(attention?.subscribe ?? subscribeNothing, readAttention, readAttention);
-  const named = attention && attentionCount > 0 ? `${title} · ${attention.label(attentionCount, language)}` : title;
+  const named = entry.id === "global-shell" && context.theaterId === null
+    ? `${title} — ${t("chrome.toast.shellNeedsTheater")}`
+    : attention && attentionCount > 0 ? `${title} · ${attention.label(attentionCount, language)}` : title;
 
   return (
     <button

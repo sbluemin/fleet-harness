@@ -60,8 +60,8 @@ interface WatchEntry {
 const DEBOUNCE_MS = 200;
 
 /**
- * 목록에 영향을 주는 지점만 본다. raw/는 불변 증거라 대량으로 쓰이고, log.md·cowork는
- * 카탈로그·대기열·상태 칩 중 무엇도 바꾸지 않는다 — 감시 범위를 넓히면 그 쓰기가 폭풍이 된다.
+ * 목록·상태에 영향을 주는 지점만 본다. raw/·cowork의 대량 쓰기는 제외한다.
+ * log.md는 drydock 결과의 출처라 health만 무효화하고 기존 디바운스로 합친다.
  */
 const DIRECTORY_SCOPES: ReadonlyMap<string, CodexKnowledgeScope> = new Map([
   ["queue", "queue"],
@@ -104,6 +104,7 @@ export function createCodexKnowledgeWatcher(deps: CodexKnowledgeWatcherDeps): Co
     const normalized = relative.split(path.sep).join("/");
     const [head, ...rest] = normalized.split("/");
     if (head === INDEX_FILENAME && rest.length === 0) return "index";
+    if (head === "log.md" && rest.length === 0) return "health";
     return DIRECTORY_SCOPES.get(head ?? "") ?? null;
   }
 

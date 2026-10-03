@@ -21,6 +21,7 @@ export interface TerminalCopyOnSelectOptions {
   readonly selectionTarget: EventTargetLike;
   readonly windowTarget: EventTargetLike;
   readonly clipboard?: ClipboardWriter;
+  readonly onCopied?: () => void;
 }
 
 export interface TerminalCopyOnSelectController {
@@ -39,6 +40,7 @@ export function createTerminalCopyOnSelect({
   selectionTarget,
   windowTarget,
   clipboard,
+  onCopied,
 }: TerminalCopyOnSelectOptions): TerminalCopyOnSelectController {
   let disposed = false;
   let primaryGestureActive = false;
@@ -64,7 +66,9 @@ export function createTerminalCopyOnSelect({
     const selection = terminal.getSelection();
     if (!selection || !clipboard) return;
     try {
-      void clipboard.writeText(selection).catch(() => undefined);
+      void clipboard.writeText(selection).then(() => {
+        if (!disposed) onCopied?.();
+      }).catch(() => undefined);
     } catch {
       // Clipboard access is best-effort; selection must remain usable if it is blocked.
     }

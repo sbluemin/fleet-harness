@@ -152,6 +152,7 @@ export const terminalEn = {
   "terminal.analysis.error.unavailable": "Analysis is unavailable.",
   "terminal.kind.agent": "Agent",
   "terminal.kind.shell": "Shell",
+  "terminal.selection.copied": "Copied",
   "terminal.settings.general": "Terminal",
   "terminal.settings.harness": "Harness",
   "terminal.settings.agentCli": "AI Gateway",
@@ -740,7 +741,7 @@ export const terminalEn = {
   // 실패 화법: 무슨 일(title) · 왜와 지금 할 일(cause). 재연결 루프가 계속 돌므로 대부분의
   // 문장은 버튼 대신 "무엇을 하면 저절로 이어지는지"를 말한다.
   "terminal.failure.theaterMissing.title": "Shell cannot open yet",
-  "terminal.failure.theaterMissing.cause": "No Theater is selected. Pick a project folder in the Theater control at the top and this connects on its own.",
+  "terminal.failure.theaterMissing.cause": "No Theater is selected. Pick a project folder in the Theater control and this connects on its own.",
   "terminal.failure.operationMissing.title": "This terminal has no session yet",
   "terminal.failure.operationMissing.cause": "The Operation it should attach to is not chosen. Start or select one and this connects on its own.",
   "terminal.failure.sessionGone.title": "This session is gone",
@@ -905,6 +906,7 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.analysis.error.unavailable": "분석을 사용할 수 없습니다.",
   "terminal.kind.agent": "Agent",
   "terminal.kind.shell": "Shell",
+  "terminal.selection.copied": "복사됨",
   "terminal.settings.general": "터미널",
   "terminal.settings.harness": "하네스",
   "terminal.settings.agentCli": "AI Gateway",
@@ -1482,7 +1484,7 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.connection.connecting": "연결 중…",
   "terminal.connection.closed": "연결 끊김",
   "terminal.failure.theaterMissing.title": "아직 Shell을 열 수 없습니다",
-  "terminal.failure.theaterMissing.cause": "선택된 Theater가 없습니다. 상단 Theater 컨트롤에서 프로젝트 폴더를 고르면 저절로 연결됩니다.",
+  "terminal.failure.theaterMissing.cause": "선택된 Theater가 없습니다. Theater 컨트롤에서 프로젝트 폴더를 고르면 저절로 연결됩니다.",
   "terminal.failure.operationMissing.title": "이 터미널에 아직 세션이 없습니다",
   "terminal.failure.operationMissing.cause": "붙을 Operation이 정해지지 않았습니다. Operation을 시작하거나 고르면 저절로 연결됩니다.",
   "terminal.failure.sessionGone.title": "이 세션은 사라졌습니다",

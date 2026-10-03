@@ -60,13 +60,17 @@ export interface FileSearchItem {
 
 export interface FileSearchResult {
   readonly files: readonly FileSearchItem[];
-  /** complete=true일 때만 limit로 자르기 전의 정확한 전체 매치 수다. */
+  /** complete=true일 때 검색 범위 안에서 limit로 자르기 전의 정확한 매치 수다. */
   readonly totalMatches: number;
-  /** false면 top-K를 먼저 반환했으며 totalMatches는 현재까지 확인한 수다. */
+  /** 상한이나 접근 오류로 검색 범위를 끝까지 확인하지 못하면 false다. ignore 제외는 별도 안내한다. */
   readonly complete?: boolean;
   readonly elapsedMs?: number;
   readonly engine?: "ripgrep" | "walker";
   readonly degraded?: "walker";
+  /** 파일시스템 오류로 건너뛴 경로 수 — 호스트 경로는 노출하지 않는다. */
+  readonly skippedPaths?: number;
+  /** 결과가 limit에서 잘렸을 때만 존재 — complete=false의 원인이 접근 오류뿐인지 구분한다. */
+  readonly truncated?: true;
   /** 탐색 상한(디렉터리/엔트리 캡)에 걸려 전체를 탐색하지 못한 경우에만 존재 */
   readonly walkCapped?: true;
   /** ignore 규칙 때문에 검색하지 않은 경로가 있을 수 있으면 true. */

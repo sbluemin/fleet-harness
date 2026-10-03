@@ -10,6 +10,7 @@ const LOG_EVENTS: WikiLogEvent[] = [
   "patch enqueued",
   "patch edited",
   "patch approved",
+  "patch apply rolled back",
   "patch rejected",
   "patch set staged",
   "patch set approved",

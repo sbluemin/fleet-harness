@@ -8,6 +8,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { diagramHydratorLabels, formatRelativeTime, getT, markdownCopyOptions, type CoreMessageKey } from "../i18n/index.js";
 import { resolveActiveLocale } from "../i18n/index.js";
 import {
+  CodexRequestError,
   decideDrydock,
   fetchConflictDetail,
   fetchConflicts,
@@ -20,6 +21,7 @@ import {
 import type {
   ConflictDetailResponse,
   ConflictListItem,
+  DrydockBaseConflict,
   DrydockDetailResponse,
   DrydockListItem,
   DrydockListResponse,
@@ -132,6 +134,7 @@ export function mountReadingInto(
   type DecisionPhase = "idle" | "approving" | "rejecting" | "submitting";
   let decisionPhase: DecisionPhase = "idle";
   let decisionError: string | null = null;
+  let approvalBlocked: string | null = null;
   let currentDetailMeta: DrydockMeta | null = null;
   let currentDetailPatchId: string | null = null;
   // 대기열 세그먼트·diff 표시 상태 — 목록은 pending/결정됨을 오가고,
@@ -296,6 +299,9 @@ export function mountReadingInto(
       return;
     }
 
+    if (decisionPhase === "submitting") return;
+    if ((action === "approve" || action === "approve-confirm") && approvalBlocked) return;
+
     if (action === "approve") {
       decisionPhase = "approving";
       decisionError = null;
@@ -341,15 +347,27 @@ export function mountReadingInto(
     reason: string | undefined,
   ): Promise<void> {
     if (!currentDetailPatchId) return;
+    const patchId = currentDetailPatchId;
+    const theaterId = liveOpts.theaterId;
+    const requestEpoch = subRequestEpoch;
     decisionPhase = "submitting";
     decisionError = null;
     redrawDecisionBar();
     try {
-      await decideDrydock(liveOpts.theaterId, currentDetailPatchId, action, reason);
+      await decideDrydock(theaterId, patchId, action, reason);
+      if (!isCurrentSubRequest("drydock", patchId, requestEpoch) || liveOpts.theaterId !== theaterId) return;
       liveOpts.onDecided?.();
     } catch (err) {
-      decisionPhase = action === "approve" ? "approving" : "rejecting";
-      decisionError = err instanceof Error ? err.message : String(err);
+      if (!isCurrentSubRequest("drydock", patchId, requestEpoch) || liveOpts.theaterId !== theaterId) return;
+      if (err instanceof CodexRequestError && err.code === "stale_base") {
+        approvalBlocked = patchBaseConflictMessage(err.baseConflict);
+        const version = readContainer.querySelector<HTMLElement>("[data-patch-version]");
+        if (version && err.baseConflict) version.textContent = stalePatchVersionLabel(err.baseConflict);
+        decisionPhase = "idle";
+      } else {
+        decisionPhase = action === "approve" ? "approving" : "rejecting";
+        decisionError = err instanceof Error ? err.message : String(err);
+      }
       redrawDecisionBar();
     }
   }
@@ -357,7 +375,7 @@ export function mountReadingInto(
   function redrawDecisionBar(): void {
     const wrap = readContainer.querySelector<HTMLElement>("[data-decision-bar-wrap]");
     if (!wrap) return;
-    wrap.innerHTML = renderDecisionBarContent(decisionPhase, decisionError);
+    wrap.innerHTML = renderDecisionBarContent(decisionPhase, decisionError, approvalBlocked);
   }
 
   // diff 모드 전환은 본문만 다시 그린다 — 결정 바 상태(확인/사유 입력)를 보존한다.
@@ -665,6 +683,7 @@ export function mountReadingInto(
     renderedPatchStamp = null;
     decisionPhase = "idle";
     decisionError = null;
+    approvalBlocked = null;
     detailDiffBlocks = null;
     detailProposedToc = "";
     detailProposedTocItems = [];
@@ -677,6 +696,7 @@ export function mountReadingInto(
 
         currentDetailMeta = detail.meta;
         currentDetailPatchId = patchId;
+        approvalBlocked = detail.baseConflict ? patchBaseConflictMessage(detail.baseConflict) : null;
         renderedPatchStamp = patchStampOf(detail);
 
         // 대기 중인 update 패치는 현행 본문을 함께 읽어 "무엇이 바뀌는가"를 보여준다.
@@ -977,12 +997,30 @@ function renderDrydockList(list: DrydockListResponse, segment: "pending" | "deci
   `;
 }
 
+function localizedQueueSummary(item: DrydockListItem, t: T): string {
+  const summary = item.summary ?? "";
+  const id = item.target?.split("/").at(-1)?.replace(/\.md$/u, "");
+  if (id && item.op === "delete_wiki" && summary === `Delete ${id}`.slice(0, 120)) {
+    return t("codex.reading.deleteProposalSummary");
+  }
+  if (id && item.proposer === "codex-cowork" && summary === `Cowork update ${id}`) {
+    return t("codex.reading.coworkProposalSummary");
+  }
+  if (item.proposer === "tool:wiki_compile_source") {
+    if (summary.startsWith("Compile source page ")) return t("codex.reading.compileSourceSummary", { title: summary.slice("Compile source page ".length) });
+    if (summary.startsWith("Compile note for ")) return t("codex.reading.compileNoteSummary", { title: summary.slice("Compile note for ".length) });
+  }
+  // 사용자가 쓴 요약과 콘텐츠 제목은 번역하거나 가리지 않는다.
+  return summary;
+}
+
 function renderQueueRow(item: DrydockListItem): string {
   const t = consoleT();
   const op = item.op ?? "create_wiki";
   const glyph = OP_BADGE_GLYPHS[op] ?? "?";
   const label = opLabel(op, t);
   const target = item.target ?? item.id;
+  const summary = localizedQueueSummary(item, t);
   const decidedAtMs = new Date(item.meta.decidedAt ?? "").getTime();
   const createdAtMs = new Date(item.meta.createdAt).getTime();
   const timeSource = item.meta.status === "pending" ? createdAtMs : (Number.isNaN(decidedAtMs) ? createdAtMs : decidedAtMs);
@@ -1008,7 +1046,7 @@ function renderQueueRow(item: DrydockListItem): string {
           ${diffstat}
           ${decided}
         </span>
-        ${item.summary ? `<span class="queue-row-summary">${escapeHtml(item.summary)}</span>` : ""}
+        ${summary ? `<span class="queue-row-summary">${escapeHtml(summary)}</span>` : ""}
         ${metaParts.length > 0 ? `<span class="queue-row-meta">${metaParts.join(" \u00b7 ")}</span>` : ""}
       </span>
     </button>
@@ -1029,9 +1067,11 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string, 
   const label = opLabel(op, t);
   const targetLabel = op === "delete_wiki" ? t("codex.reading.opDelete") : targetExists ? t("codex.reading.replaceExisting") : t("codex.reading.createNew");
   const isPending = meta.status === "pending";
-  const versionLabel = options.currentVersion !== null
-    ? `v${options.currentVersion} \u2192 v${wikiEntry.version}`
-    : `v${wikiEntry.version}`;
+  const versionLabel = detail.baseConflict
+    ? stalePatchVersionLabel(detail.baseConflict)
+    : options.currentVersion !== null
+      ? `v${options.currentVersion} \u2192 v${wikiEntry.version}`
+      : `v${wikiEntry.version}`;
   const diffstat = options.diffBlocks ? countDiffLines(options.diffBlocks) : null;
   const diffstatHtml = diffstat
     ? `<span class="queue-row-diffstat" aria-label="${escapeAttribute(t("codex.reading.diffStatAria", { added: diffstat.added, removed: diffstat.removed }))}"><ins>+${diffstat.added}</ins><del>\u2212${diffstat.removed}</del></span>`
@@ -1066,10 +1106,10 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string, 
       <div class="queue-decision-dock">
         <div class="queue-decision-dock-copy">
           <span class="queue-decision-dock-title"><span class="op-badge" aria-label="${escapeAttribute(label)}">${glyph}</span> ${escapeHtml(wikiEntry.title)}</span>
-          <span class="queue-decision-dock-meta">${escapeHtml(patch.frontmatter.target)} \u00b7 ${escapeHtml(versionLabel)} \u00b7 ${escapeHtml(targetLabel)}${patch.frontmatter.proposer ? ` \u00b7 ${renderProposer(patch.frontmatter.proposer)}` : ""} ${diffstatHtml}</span>
+          <span class="queue-decision-dock-meta">${escapeHtml(patch.frontmatter.target)} \u00b7 <span data-patch-version>${escapeHtml(versionLabel)}</span> \u00b7 ${escapeHtml(targetLabel)}${patch.frontmatter.proposer ? ` \u00b7 ${renderProposer(patch.frontmatter.proposer)}` : ""} ${diffstatHtml}</span>
         </div>
         <div class="queue-decision-dock-actions" data-decision-bar-wrap>
-          ${isPending ? renderDecisionBarContent("idle", null) : renderDecidedState(meta)}
+          ${isPending ? renderDecisionBarContent("idle", null, detail.baseConflict ? patchBaseConflictMessage(detail.baseConflict) : null) : renderDecidedState(meta)}
         </div>
       </div>
       <header class="document-header">
@@ -1110,7 +1150,10 @@ function renderDiffBlocks(blocks: readonly DraftBlock[], mode: "changes" | "full
       resolveWikiLink: (id) => entryPath(id),
       ...markdownCopyOptions(t),
     }).html;
-    return block.kind === "same" ? html : `<div class="cowork-block cowork-block--${block.kind}">${html}</div>`;
+    if (block.kind === "same") return html;
+    const label = block.kind === "added" ? t("codex.reading.diffAdded") : t("codex.reading.diffRemoved");
+    const symbol = block.kind === "added" ? "+" : "−";
+    return `<div class="cowork-block cowork-block--${block.kind}"><span class="queue-diff-block-label">${symbol} ${escapeHtml(label)}</span>${html}</div>`;
   };
   if (mode === "full") return remapDiffHeadingIds(blocks.map(renderBlock).join(""));
   return blocks
@@ -1166,11 +1209,30 @@ function renderPatchMetaChips(proposer: string, tags: string[]): string {
   return `<div class="meta-chips">${parts.join("")}</div>`;
 }
 
+function stalePatchVersionLabel(conflict: DrydockBaseConflict): string {
+  const t = consoleT();
+  if (conflict.currentVersion === null) return t("codex.reading.staleVersionMissing");
+  if (conflict.baseVersion !== undefined) {
+    return t("codex.reading.staleVersionLabel", { base: conflict.baseVersion, current: conflict.currentVersion });
+  }
+  return t("codex.reading.staleVersionChanged", { current: conflict.currentVersion });
+}
+
+function patchBaseConflictMessage(conflict?: DrydockBaseConflict): string {
+  const t = consoleT();
+  if (conflict?.reason === "base_version" && conflict.baseVersion !== undefined && conflict.currentVersion !== null) {
+    return t("codex.reading.staleBaseVersion", { base: conflict.baseVersion, current: conflict.currentVersion });
+  }
+  return t("codex.reading.staleBase");
+}
+
 function renderDecisionBarContent(
   phase: "idle" | "approving" | "rejecting" | "submitting",
   error: string | null,
+  approvalBlocked: string | null,
 ): string {
   const t = consoleT();
+  const warning = approvalBlocked ? `<p class="queue-action-error" role="alert">${escapeHtml(approvalBlocked)}</p>` : "";
   if (phase === "submitting") {
     return `<span class="queue-action-spinner" role="status" aria-label="${escapeAttribute(t("codex.reading.processingAria"))}"></span>`;
   }
@@ -1186,6 +1248,7 @@ function renderDecisionBarContent(
   }
   if (phase === "rejecting") {
     return `
+      ${warning}
       <div class="queue-reject-form">
         <textarea class="queue-reject-textarea" id="queue-reject-reason" placeholder="${escapeAttribute(t("codex.reading.rejectPlaceholder"))}" rows="3"></textarea>
         <div class="queue-action-buttons">
@@ -1198,8 +1261,9 @@ function renderDecisionBarContent(
   }
   // idle
   return `
+    ${warning}
     <div class="queue-action-buttons">
-      <button type="button" class="queue-action-btn queue-action-btn--approve" data-drydock-action="approve">${escapeHtml(t("codex.reading.approve"))}</button>
+      <button type="button" class="queue-action-btn queue-action-btn--approve" data-drydock-action="approve"${approvalBlocked ? " disabled" : ""}>${escapeHtml(t("codex.reading.approve"))}</button>
       <button type="button" class="queue-action-btn queue-action-btn--reject" data-drydock-action="reject">${escapeHtml(t("codex.reading.reject"))}</button>
     </div>
   `;
@@ -1214,9 +1278,16 @@ function renderDecidedState(meta: DrydockMeta): string {
   return `<p class="queue-decision-decided ${cls}">${escapeHtml(label)}${reason}</p>`;
 }
 
+function conflictStatusLabel(status: string | undefined, t: T): string {
+  if (status === "resolved") return t("codex.reading.conflictResolved");
+  if (status === "unresolved") return t("codex.reading.conflictUnresolved");
+  if (!status || status === "open") return t("codex.reading.conflictOpen");
+  return status;
+}
+
 function renderConflictDetail(detail: ConflictDetailResponse): string {
   const t = consoleT();
-  const status = (detail.meta?.status as string | undefined) ?? t("codex.reading.conflictOpen");
+  const status = conflictStatusLabel(detail.meta?.status as string | undefined, t);
   return `
     <article class="document">
       <header class="document-header">
@@ -1290,7 +1361,7 @@ function renderConflictList(conflicts: ConflictListItem[]): string {
                   <button class="queue-row conflict-row" type="button" data-conflict-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("codex.reading.openConflict", { title: item.title || item.id }))}">
                     <span class="queue-row-body">
                       <strong class="queue-row-target">${escapeHtml(item.title || item.id)}</strong>
-                      <span class="eyebrow">${escapeHtml(item.status)}</span>
+                      <span class="eyebrow">${escapeHtml(conflictStatusLabel(item.status, t))}</span>
                     </span>
                   </button>
                 </li>`,

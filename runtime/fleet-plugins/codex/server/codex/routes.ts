@@ -7,6 +7,8 @@ import { diffDraftBlocks } from "@fleet-console/markdown/diff";
 
 import {
   approvePatch,
+  readPatchBaseConflict,
+  StalePatchBaseError,
   currentDeletionImpact,
   stageWikiDeletions,
   briefingQuery,
@@ -103,7 +105,7 @@ const PATCH_ERROR_MAP: ReadonlyArray<[string | ((m: string) => boolean), number,
   ["wiki patch must target wiki/", 400, "invalid_patch"],
   ["update_wiki target does not exist", 409, "update_target_missing"],
   [(m) => m.includes("delete_wiki target does not exist"), 409, "delete_target_missing"],
-  [(m) => m.includes("approve stale base_hash"), 409, "stale_base"],
+  [(m) => m.includes("approve stale base_hash") || m.includes("approve stale base_version"), 409, "stale_base"],
   [(m) => m.includes("create_wiki target already exists"), 409, "create_target_exists"],
   ["wiki patch body id must match target filename", 400, "invalid_patch"],
   ["conflicting raw source provenance in wiki patch", 400, "invalid_patch"],
@@ -577,6 +579,9 @@ async function handleDrydockDetail(rawSegment: string, response: ServerResponse,
     const targetPath = resolvePatchTargetPath(patch.frontmatter.target, context.paths);
     const targetExists = await fileExists(targetPath);
     const patchSet = meta.patch_set_id ? await readPatchSetResponse(meta.patch_set_id, context.paths) : null;
+    const baseConflict = source === "queue" && meta.status === "pending"
+      ? await readPatchBaseConflict(patch, meta, context.paths)
+      : null;
     const impact = deletionSnapshot && source === "queue"
       ? await currentDeletionImpact(patch.body, context.paths, meta.patch_set_id)
       : null;
@@ -587,6 +592,7 @@ async function handleDrydockDetail(rawSegment: string, response: ServerResponse,
       wikiEntry,
       targetExists,
       patchSet,
+      ...(baseConflict ? { baseConflict } : {}),
       ...(deletionSnapshot ? { deletion: {
         snapshot: deletionSnapshot.snapshot,
         claims: deletionSnapshot.claims,
@@ -665,6 +671,14 @@ async function runDecisionAction(
     }
     sendJson(response, 200, { ok: true, meta: await rejectPatch(patchId, reason, context.paths) });
   } catch (error) {
+    if (error instanceof StalePatchBaseError) {
+      sendJson(response, 409, {
+        error: "stale_base",
+        message: "The entry changed since this proposal was created. Review the current entry and revise or reject the proposal.",
+        baseConflict: error.conflict,
+      });
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     const mapped = mapPatchError(message);
     if (mapped) {
