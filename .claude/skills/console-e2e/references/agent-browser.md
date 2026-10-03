@@ -60,6 +60,7 @@ cat > "$INIT" <<'EOF'
   window.WebSocket = Tracked;
 })();
 EOF
+cat "$E2E_DIR/whats-new.js" >> "$INIT"   # from the setup onboarding seed, unless What's New is under test
 
 AGENT_BROWSER_IDLE_TIMEOUT_MS=1800000 ab --session fleet-console-e2e-20260725-a7c3 --headed false open --init-script "$INIT" "http://127.0.0.1:<port>/console/operations"
 ab --session fleet-console-e2e-20260725-a7c3 wait --load domcontentloaded
