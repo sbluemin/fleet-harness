@@ -23,3 +23,85 @@
   width: 100%;
   height: 100%;
 }
+
+/* Shell 위치 배지 — 부유 조작 무리(닫기 왼쪽)에 선다. 무리의 칩 높이(26px)에 맞추고, 긴 상대 경로는
+   말줄임으로 접는다. */
+.global-shell-badge {
+  display: inline-flex;
+  max-inline-size: min(360px, 40vw);
+  min-inline-size: 0;
+}
+
+.global-shell-badge .theater-badge {
+  block-size: 26px;
+  box-sizing: border-box;
+}
+
+/* 활성 Theater와 Shell 위치가 갈렸을 때만 서는 띠. 페인에는 머리 줄이 없으므로 이 띠가 그 줄
+   노릇을 한다 — 높이를 부유 조작 무리 아래 끝까지 채우고 오른쪽을 그 폭만큼 비운다. 띠가 서면
+   터미널은 띠 아래에서 시작하므로 따로 위 여백을 두지 않는다. */
+.global-shell-band {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-block-size: var(--expanded-surface-float-block, 38px);
+  box-sizing: border-box;
+  padding: var(--space-1) calc(var(--space-2) + var(--expanded-surface-float-inset, 0px)) var(--space-1) var(--space-3);
+  border-bottom: 1px solid color-mix(in oklch, var(--warn) 52%, var(--surface-rim));
+  background: var(--warn-glow);
+  font-size: var(--t-sm);
+}
+
+.expanded-surface-pane .global-shell-band ~ .global-shell-mount .terminal-shell {
+  padding-top: 0;
+}
+
+.global-shell-band-text {
+  flex: 1 1 240px;
+  min-inline-size: 0;
+  color: var(--warn-ink);
+}
+
+.global-shell-band-refusal {
+  display: block;
+  color: var(--text-primary);
+}
+
+.global-shell-band-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.global-shell-band-action {
+  min-block-size: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background: var(--ink-deep);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.global-shell-band-action:hover:not(:disabled),
+.global-shell-band-action:focus-visible {
+  border-color: var(--brass);
+}
+
+.global-shell-band-action:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.global-shell-band-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.global-shell-band-action.is-danger {
+  border-color: var(--coral);
+  color: var(--coral-ink);
+}

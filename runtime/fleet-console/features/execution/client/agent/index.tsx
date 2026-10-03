@@ -1,5 +1,6 @@
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
+import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, type SystemFontRecord } from "@fleet-console/font-picker/system-fonts";
@@ -43,7 +44,7 @@ import { gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } fro
 import { fontCjkScripts, type CjkScript } from "../terminal/shared/cjk-coverage.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
-import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, getTerminalPrefsSnapshot, setChatReadingWidth, setInstalledTerminalFont, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, setTerminalInactiveFlush, setTerminalRenderer, terminalFontFallbackStack, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
+import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, getTerminalPrefsSnapshot, setChatReadingWidth, setInstalledTerminalFont, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, setTerminalCopyOnSelect, setTerminalInactiveFlush, setTerminalRenderer, setTerminalScrollback, TERMINAL_SCROLLBACK_CHOICES, terminalFontFallbackStack, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
 import { BROWSER_COMPANION_ID } from "./browser-companion.js";
 import { createChatLinkInterceptor, useLinkOpenChoice } from "./link-open.js";
@@ -148,6 +149,8 @@ export const generalSettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.chatReadingWidthTitle"),
       getT(locale)("terminal.settings.terminalRenderer"),
       getT(locale)("terminal.settings.inactiveFlush"),
+      getT(locale)("terminal.settings.scrollback"),
+      getT(locale)("terminal.settings.copyOnSelect"),
     ].join(" "),
     "terminal font typeface monospace renderer webgl canvas reading width cjk fallback korean japanese chinese hangul kana han glyph coverage",
     "터미널 글꼴 서체 고정폭 렌더러 읽기 폭 폴백 한글 일본어 중국어 가나 한자 글리프 커버리지",
@@ -805,6 +808,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const linkOpen = useLinkOpenChoice(context);
   const onChatLinkClick = React.useMemo(() => createChatLinkInterceptor(linkOpen.choose), [linkOpen.choose]);
   const fileLinks = React.useMemo(() => createChatFileLinkPorts(context.operation.theaterId, context.navigate), [context.operation.theaterId, context.navigate]);
+  const terminalFileLinks = useAgentTerminalFileLinks(context.operationId, context.operation.theaterId, context.navigate);
 
   if (chatMode) {
     // 채팅에도 휴면이 있다 — 자식과 원장이 거둬진 자리에는 대화 대신 재개 카드가 선다.
@@ -855,6 +859,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onOpenLink={linkOpen.choose}
         knownLinks={(text) => confirmAgentSessionLinks(session.sessionId, text)}
+        fileLinks={terminalFileLinks}
         onExit={() => removeExitedSession(session.sessionId, session.generation)}
       />
       <ComputerScreenShare operationId={context.operationId} />
@@ -1059,6 +1064,7 @@ function GeneralSection() {
       <TerminalFontSettingsCard terminalFont={terminalFont} />
       <ChatReadingWidthSettingsCard />
       <TerminalDrawingCard terminalRenderer={terminalRenderer} terminalInactiveFlush={terminalInactiveFlush} />
+      <TerminalBehaviorCard />
     </>
   );
 }
@@ -1862,6 +1868,73 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
                 onClick={() => setTerminalInactiveFlush(inactiveFlushId)}
               >
                 {inactiveFlushLabels[inactiveFlushId]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// 스크롤백과 선택 복사는 터미널이 출력을 **다루는** 방식이다 — 그리는 방식(위 카드)과 갈라 둔다.
+// 둘 다 서버 영속이라 콘솔을 따라다니고, 바꾸면 열린 터미널에도 곧바로 적용된다.
+function TerminalBehaviorCard() {
+  const locale = useTerminalLocale();
+  const t = getT(locale);
+  const { scrollback, copyOnSelect } = useTerminalPrefs();
+  const numberFormat = new Intl.NumberFormat(locale);
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.terminalBehaviorAria")}>
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            {t("terminal.settings.scrollback")}
+            <SettingsHelp title={t("terminal.settings.scrollback")}>
+              <p>{t("terminal.settings.scrollbackHelp")}</p>
+            </SettingsHelp>
+          </p>
+        </div>
+        <div className="segmented" role="group" aria-label={t("terminal.settings.scrollbackAria")}>
+          <SegmentedThumb />
+          {TERMINAL_SCROLLBACK_CHOICES.map((choice) => {
+            const isActive = choice === scrollback;
+            return (
+              <button
+                key={choice}
+                type="button"
+                aria-pressed={isActive}
+                className={`segmented-option ${isActive ? "is-active" : ""}`}
+                onClick={() => setTerminalScrollback(choice)}
+              >
+                {t("terminal.settings.scrollbackLines", { count: numberFormat.format(choice) })}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            {t("terminal.settings.copyOnSelect")}
+            <SettingsHelp title={t("terminal.settings.copyOnSelect")}>
+              <p>{t("terminal.settings.copyOnSelectHelp")}</p>
+            </SettingsHelp>
+          </p>
+        </div>
+        <div className="segmented" role="group" aria-label={t("terminal.settings.copyOnSelect")}>
+          <SegmentedThumb />
+          {([true, false] as const).map((value) => {
+            const isActive = value === copyOnSelect;
+            return (
+              <button
+                key={String(value)}
+                type="button"
+                aria-pressed={isActive}
+                className={`segmented-option ${isActive ? "is-active" : ""}`}
+                onClick={() => setTerminalCopyOnSelect(value)}
+              >
+                {t(value ? "terminal.settings.toggleOn" : "terminal.settings.toggleOff")}
               </button>
             );
           })}

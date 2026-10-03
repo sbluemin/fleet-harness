@@ -3,6 +3,7 @@ import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection, harnessSettingsSection } from "../../../../features/execution/client/agent/index.js";
 import { globalShellEntry } from "../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { PersistentShellHost, shellSurface } from "../../../../features/execution/client/terminal/shell/index.js";
+import { connectShellSession } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { preloadTerminalFallbackFonts } from "../../../../features/execution/client/terminal/shared/terminal-fallback-fonts.js";
 import { connectTerminalSettings } from "../../../../features/execution/client/terminal/shared/terminal-preferences.js";
 import "../../../../features/execution/client/terminal/assets/fonts/symbols-nerd-font-mono.css";
@@ -24,6 +25,11 @@ export const consoleExecution: ClientExecutionProvider = {
   install: (ctx) => {
     void preloadTerminalFallbackFonts();
     connectTerminalSettings(ctx.settings);
-    return agentExecution.install?.(ctx);
+    const disconnectShellSession = connectShellSession(ctx.consoleEvents);
+    const disposeAgent = agentExecution.install?.(ctx);
+    return () => {
+      disconnectShellSession();
+      if (typeof disposeAgent === "function") disposeAgent();
+    };
   },
 };

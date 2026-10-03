@@ -102,6 +102,34 @@ describe("OSC title session wiring", () => {
     expect(socket.sent[0]?.toString("utf8")).toContain(rawTitle);
     await manager.stop();
   });
+
+  /**
+   * Shell의 `cd` 주입(open-at)은 프롬프트 줄이 비었을 때만 허용된다. 명령이 도는 동안 미리 친 글자는
+   * 다음 프롬프트 줄에 다시 올라오므로, 그 프롬프트의 cwd 보고가 "입력 중"을 지우면 치다 만 줄 뒤에
+   * `cd …`가 붙어 실행된다.
+   */
+  it("keeps the prompt line dirty for typed-ahead input until a line is ended", async () => {
+    let pty: MockPty | null = null;
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({ bin: "zsh", args: [], cwd: cwd ?? "/", env: {} }),
+      startShell: () => (pty = createMockPty()),
+      resolveCwdListener: () => () => undefined,
+    });
+    const socket = createMockSocket();
+    await manager.attach(socket, { sessionId: "console-shell", cwd: "/work", operationType: "shell" });
+    const prompt = () => pty!.emitData("\x1b]7;file:///work\x07% ");
+
+    prompt();
+    socket.type("sleep 3\r");
+    socket.type("abc");
+    prompt();
+    expect(manager.hasInputSinceCwdReport("console-shell")).toBe(true);
+
+    socket.type("\r");
+    prompt();
+    expect(manager.hasInputSinceCwdReport("console-shell")).toBe(false);
+    await manager.stop();
+  });
 });
 
 interface MockPty extends TerminalPtyHandle {
@@ -131,17 +159,25 @@ function createMockPty(): MockPty {
 
 interface MockSocket extends TerminalSocket {
   readonly sent: Buffer[];
+  /** 브라우저가 키 입력을 보내듯 binary 프레임을 넣는다. */
+  type(text: string): void;
 }
 
 function createMockSocket(): MockSocket {
+  const messageListeners: Array<(data: TerminalSocketData, isBinary: boolean) => void> = [];
   return {
     readyState: 1,
     sent: [],
     send(data, options) {
       if (options.binary) this.sent.push(Buffer.from(data));
     },
+    type(text) {
+      for (const listener of messageListeners) listener(Buffer.from(text, "utf8"), true);
+    },
     close() {},
-    on(_event: "message", _listener: (data: TerminalSocketData, isBinary: boolean) => void) {},
+    on(_event: "message", listener: (data: TerminalSocketData, isBinary: boolean) => void) {
+      messageListeners.push(listener);
+    },
     once(_event: "close", _listener: () => void) {},
   };
 }

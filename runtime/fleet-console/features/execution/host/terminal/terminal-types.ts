@@ -95,6 +95,8 @@ export interface TerminalPtyHandle {
   readonly fd?: number;
   /** PTY 자식의 프로세스 id. 종료를 확인할 때만 쓴다. */
   readonly pid?: number;
+  /** 전경 프로세스 이름(node-pty unix). 플랫폼이 알려 주지 않으면 없다. */
+  readonly process?: string;
   onData(callback: (data: string) => void): TerminalPtyDataDisposable;
   onExit(callback: () => void): TerminalPtyDataDisposable;
   write(data: string | Buffer): void;
@@ -116,6 +118,9 @@ export type TerminalSocketData = Buffer | ArrayBuffer | Buffer[];
 
 export type TerminalTitleListener = (sessionId: string, title: string) => unknown;
 
+/** OSC 7로 보고된 cwd. 이 기계의 절대 경로이며 서버 안에서만 쓴다. */
+export type TerminalCwdListener = (sessionId: string, cwd: string) => unknown;
+
 export interface TerminalSessionManager {
   canAttach(sessionId: string): boolean;
   createSession(context: TerminalTicketContext): Promise<void>;
@@ -133,6 +138,11 @@ export interface TerminalSessionManager {
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   getSessionRenameCommand(sessionId: string): string | undefined;
   getSessionLastActivityAt(sessionId: string): number | null;
+  /** 이 id의 PTY가 지금 살아 있는가. */
+  hasSession(sessionId: string): boolean;
+  /** 마지막 OSC 7 보고 뒤로 소켓에서 입력 바이트가 들어왔는가. 보고하지 않는 세션에서는 의미가 없다. */
+  hasInputSinceCwdReport(sessionId: string): boolean;
+  getForegroundProcess(sessionId: string): string | null;
   resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null>;
   terminate(sessionId: string): boolean;
   /** `terminate`와 같이 접고, PTY 자식 프로세스가 실제로 끝날 때까지 기다린다. 제한 시간 안에 확인하지 못하면 false. */
