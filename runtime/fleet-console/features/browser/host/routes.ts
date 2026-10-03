@@ -209,7 +209,8 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const operationId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
-    const operation = operations.get(operationId);
+    // 전역 소유자 id는 Operation 경로로 열리지 않는다 — 전역 브라우저는 /global/* 로만 다룬다.
+    const operation = operationId === GLOBAL_BROWSER_OWNER_ID ? null : operations.get(operationId);
     if (!operation) { writeJson(res, 404, { error: "operation_not_found" }); return true; }
     // 상태는 쓸 수 없을 때도 답한다 — 패널이 왜 닫혀 있는지 그 답으로 듣는다.
     if (action !== "state" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }

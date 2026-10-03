@@ -3,7 +3,7 @@ import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-consol
 import { z } from "zod";
 import type { AdmiralMcpSession } from "@fleet-console/sdk/mcp";
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import { invalidTargetMessage, type BrowserService } from "./service.js";
+import { GLOBAL_BROWSER_OWNER_ID, invalidTargetMessage, type BrowserService } from "./service.js";
 import { createBrowserToolSpecs, type BrowserToolDeps } from "./tools.js";
 import { operationIdFromSessionLabel } from "../../computer-use/host/mcp.js";
 
@@ -47,7 +47,8 @@ function refuse(reason: BrowserRefusal, operationId: string | null, language: "e
 function deny(deps: BrowserMcpDeps, sessionLabel: string | undefined) {
   const id = operationIdFromSessionLabel(sessionLabel);
   const fallback = deps.language?.() ?? "en";
-  const operation = deps.resolveOperation?.(id) ?? deps.operations().find((op) => op.id === id);
+  // 전역 Fleet 브라우저의 소유자 id는 어떤 경로로 상태에 들어왔든 Operation으로 풀지 않는다 — 에이전트가 사람의 탭에 닿지 않게.
+  const operation = id === GLOBAL_BROWSER_OWNER_ID ? null : deps.resolveOperation?.(id) ?? deps.operations().find((op) => op.id === id);
   if (!operation) return { denied: refuse("caller_unresolved", null, fallback), operationId: null };
   // 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 있고 브라우저·모바일 화면이 없을 때만 열린다.
   const availability = deps.service.availability();

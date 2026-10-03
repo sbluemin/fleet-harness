@@ -289,6 +289,13 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     setNotice(null);
     void task().then((ok) => fail(ok)).catch(() => setNotice(t("terminal.browser.requestFailed"))).finally(() => setBusy(false));
   };
+  const pickProfile = (value: string | null) => {
+    setProfileMenu(false);
+    setConfirming(null);
+    if (profile === value) return;
+    if ((state?.tabs.length ?? 0) > 0) { setPendingProfile(value); setConfirming("profile"); setProfileMenu(true); return; }
+    runTab(() => chooseGlobalProfile(value));
+  };
   const submitUrl = () => {
     const raw = urlDraft.trim();
     if (!raw) return;
@@ -393,18 +400,12 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
                     tabIndex={0}
                     aria-checked={profile === value}
                     className="op-browser__menu-item"
-                    onClick={() => {
-                      setProfileMenu(false);
-                      setConfirming(null);
-                      if (profile === value) return;
-                      if ((state?.tabs.length ?? 0) > 0) { setPendingProfile(value); setConfirming("profile"); setProfileMenu(true); return; }
-                      runTab(() => chooseGlobalProfile(value));
-                    }}
+                    onClick={() => pickProfile(value)}
                     onKeyDown={(event) => {
                       if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
                         event.preventDefault();
-                        setProfileMenu(false);
-                        if (profile !== value) runTab(() => chooseGlobalProfile(value));
+                        // 키보드로 골라도 마우스와 같은 확인을 거친다 — 세션을 바꾸면 열린 탭이 모두 닫힌다.
+                        pickProfile(value);
                       }
                     }}
                   >

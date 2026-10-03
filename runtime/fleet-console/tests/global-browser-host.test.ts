@@ -84,6 +84,13 @@ describe("global fleet browser host contract", () => {
       operationId: "global",
     });
 
+    // 1-1. 옛 상태·복원으로 id "global"인 Operation이 들어와 있어도 Operation 경로는 전역 브라우저에 닿지 않는다.
+    operations.set("global", { id: "global", payload: {} });
+    const spoofRes = {} as ServerResponse;
+    await router({ req: { method: "GET" } as IncomingMessage, res: spoofRes, pathname: "/api/v1/browser/operations/global/state" });
+    expect((spoofRes as unknown as { status: number }).status).toBe(404);
+    operations.delete("global");
+
     // 2. POST /api/v1/browser/shortcuts — 단축키 설정
     const shortcutsRes = {} as ServerResponse;
     const handledShortcuts = await router({
