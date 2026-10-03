@@ -213,8 +213,8 @@ function formatBeforeInputChord(input: {
   readonly shift: boolean;
   readonly code: string;
 }): string | null {
-  // AltGr (Windows) 제외: Ctrl+Alt 동시 활성
-  if (input.alt && input.control) return null;
+  // AltGr 는 Windows·Linux 에서만 Alt+Ctrl 동시 활성으로 나타난다. macOS 의 Ctrl+Alt 는 정상 단축키다.
+  if (process.platform !== "darwin" && input.alt && input.control) return null;
   if (!input.code) return null;
 
   const isMac = process.platform === "darwin";
@@ -229,6 +229,20 @@ function formatBeforeInputChord(input: {
   if (input.shift) parts.push("Shift");
   parts.push(input.code);
   return parts.join("+");
+}
+
+/** 물리 코드(event.code)를 Electron sendInputEvent 가 인식하는 keyCode 로 변환한다. */
+function codeToKeyCode(code: string): string {
+  if (code.startsWith("Key") && code.length === 4) return code.slice(3).toUpperCase();
+  if (code.startsWith("Digit") && code.length === 6) return code.slice(5);
+  if (code === "Space") return "Space";
+  if (code === "Backquote") return "`";
+  if (code === "Slash") return "/";
+  if (code === "ArrowLeft") return "ArrowLeft";
+  if (code === "ArrowRight") return "ArrowRight";
+  if (code === "ArrowUp") return "ArrowUp";
+  if (code === "ArrowDown") return "ArrowDown";
+  return code;
 }
 
 function matchesRegisteredShortcut(input: {
@@ -438,11 +452,19 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       const shellWindow = deps.shell();
       const consoleContents = shellWindow?.consoleView.webContents;
       if (consoleContents && !consoleContents.isDestroyed()) {
+        const keyCode = codeToKeyCode(input.code);
+        const modifiers = beforeInputModifiers(input);
         consoleContents.focus();
+        // 눌림 상태 고착 방지를 위해 keyDown 직후 keyUp 도 함께 전송한다.
         consoleContents.sendInputEvent({
           type: "keyDown",
-          keyCode: input.key,
-          modifiers: beforeInputModifiers(input),
+          keyCode,
+          modifiers,
+        });
+        consoleContents.sendInputEvent({
+          type: "keyUp",
+          keyCode,
+          modifiers,
         });
       }
     });

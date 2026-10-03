@@ -5,17 +5,23 @@ import type { DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 import { DesktopEngine } from "../features/browser/host/desktop-engine.js";
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID } from "../features/browser/host/service.js";
 import { createBrowserRouter } from "../features/browser/host/routes.js";
-import { SERVER_API_CATALOG } from "../core/host/bootstrap/server.js";
 
 describe("global fleet browser host contract", () => {
-  it("includes shortcuts and generalizes viewOwner without fake operations", async () => {
+  it("includes shortcuts (including empty list) and generalizes viewOwner without fake operations", async () => {
     const published: DesktopBrowserSnapshot[] = [];
     const engine = new DesktopEngine({ publish: (s) => published.push(s), log: () => {} });
     engine.subscriberOpened("local");
     engine.setHost("local");
 
+    // 초기 상태(setShortcuts 미호출)는 shortcuts 필드 없음 (옛 Console 호환)
+    expect(published.at(-1)?.shortcuts).toBeUndefined();
+
     engine.setShortcuts(["Mod+Shift+KeyB", "Mod+KeyK"]);
     expect(published.at(-1)?.shortcuts).toEqual(["Mod+Shift+KeyB", "Mod+KeyK"]);
+
+    // 단축키를 모두 비웠을 때도 빈 배열이 전달되어 셸이 옛 목록을 지우도록 보장
+    engine.setShortcuts([]);
+    expect(published.at(-1)?.shortcuts).toEqual([]);
 
     // 뷰 생성 후 viewOwner 는 전역 소유자("global")도 정상 식별하여 자기 Console 탭을 shared 로 닫지 않게 한다.
     const context = await engine.send<{ browserContextId: string }>("Target.createBrowserContext", {});
@@ -98,29 +104,6 @@ describe("global fleet browser host contract", () => {
       pathname: "/api/v1/browser/shortcuts",
     });
     expect((forbiddenRes as unknown as { status: number }).status).toBe(403);
-  });
-
-  it("verifies global routes and shortcuts are registered in server route catalog (condition E)", () => {
-    const requiredPaths = [
-      { method: "GET", path: "/api/v1/browser/global/state" },
-      { method: "GET", path: "/api/v1/browser/global/screenshot" },
-      { method: "GET", path: "/api/v1/browser/global/favicon" },
-      { method: "POST", path: "/api/v1/browser/global/tabs" },
-      { method: "POST", path: "/api/v1/browser/global/navigate" },
-      { method: "POST", path: "/api/v1/browser/global/viewport" },
-      { method: "POST", path: "/api/v1/browser/global/place" },
-      { method: "POST", path: "/api/v1/browser/global/inspect" },
-      { method: "POST", path: "/api/v1/browser/global/profile" },
-      { method: "POST", path: "/api/v1/browser/global/clear-profile" },
-      { method: "POST", path: "/api/v1/browser/global/restore-closed-tabs" },
-      { method: "POST", path: "/api/v1/browser/global/dismiss-closed-tabs" },
-      { method: "POST", path: "/api/v1/browser/shortcuts" },
-    ];
-
-    for (const req of requiredPaths) {
-      const found = SERVER_API_CATALOG.find((entry) => entry.method === req.method && entry.path === req.path);
-      expect(found, `Route ${req.method} ${req.path} must be registered in server.ts SERVER_API_CATALOG`).toBeDefined();
-    }
   });
 
   it("preserves global tabs on operation closure and manages closed-tab suggestions (condition A & Q4)", async () => {

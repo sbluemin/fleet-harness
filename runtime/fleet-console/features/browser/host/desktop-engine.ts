@@ -42,7 +42,7 @@ export class DesktopEngine implements CdpClient {
   private readonly listeners = new Set<CdpListener>();
   private readonly subscribers = new Map<string, number>();
   private readonly identities = new Map<string, { product: string; userAgent: string }>();
-  private shortcuts: readonly string[] = [];
+  private shortcuts: readonly string[] | null = null;
   private nextCommandId = 1;
   private generation = 0;
   private host: string | null = null;
@@ -108,7 +108,7 @@ export class DesktopEngine implements CdpClient {
       generation: this.generation,
       views,
       commands: [...this.pending.values()].map((entry) => entry.command),
-      ...(this.shortcuts.length > 0 ? { shortcuts: this.shortcuts } : {}),
+      ...(this.shortcuts !== null ? { shortcuts: this.shortcuts } : {}),
     };
   }
 
