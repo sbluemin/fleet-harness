@@ -395,38 +395,213 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* 부유 섬 — 사이드바 카드와 같은 유리. 별도 배경 층이라 안쪽 메뉴를 가두지 않는다. */
+/* 부유 섬 — 사이드바 카드와 같은 유리. 별도 배경 층이라 안쪽 메뉴를 가두지 않는다.
+   자리 계산은 오른쪽 끝 기준(translate -100% 0 고정).
+   모션 B(스냅과 한 호흡): 정렬은 360ms glide, 호버는 220ms spring / 240ms glide. */
 .zen-bar {
+  --pos-dur: var(--duration-slow);
+  --pos-delay: 0ms;
+  --pos-ease: var(--ease-glide);
+  --width-dur: var(--duration-slow);
+  --width-delay: 0ms;
+  --width-ease: var(--ease-glide);
+  --content-dur: var(--duration-fast);
+  --content-delay: 0ms;
+  --content-ease: var(--ease-glide);
+  --badge-dur: 160ms;
+  --badge-delay: 300ms;
+  --badge-ease: var(--ease-glide);
+  --zen-drift: 6px;
+
   position: fixed;
   z-index: calc(var(--z-rail, 10) + 1);
   display: flex;
   align-items: center;
   gap: 2px;
   width: max-content;
+  min-width: 40px;
   height: 40px;
+  box-sizing: border-box;
   padding: 0 8px 0 6px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
-  /* 자리는 아레나 가운데 한 점(left)과 -50%로만 정한다 — 폭(내용)과 되먹임하지 않는다. */
-  translate: -50% 0;
-  transition: left var(--duration-base) var(--ease-spring), translate var(--duration-base) var(--ease-spring);
+  translate: -100% 0;
+  transition:
+    left var(--pos-dur) var(--pos-ease) var(--pos-delay),
+    padding var(--width-dur) var(--width-ease) var(--width-delay),
+    gap var(--width-dur) var(--width-ease) var(--width-delay);
 }
-/* 접힌 섬의 히트 영역은 40px 손잡이뿐이다. 도구 DOM과 portal의 수명은 보존한다. */
-.zen-bar-content { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.zen-bar.is-watching { translate: -100% 0; max-width: calc(100vw - 24px); }
-.zen-bar.is-receded { width: 40px; padding: 0; }
-.zen-bar.is-receded .zen-bar-content,
-.zen-bar.is-receded .zen-bar-brand-wordmark { display: none; }
+
+/* 4가지 전이 원인·방향별 타이밍 (모션 B)
+   1. 물러남(정렬 snap): 위치 0+360 glide, 폭 0+360 glide, 도구 0+140 glide(6px drift), 배지 300+160 glide */
+.zen-bar.is-receded[data-cause="snap"] {
+  --pos-dur: var(--duration-slow);
+  --pos-delay: 0ms;
+  --pos-ease: var(--ease-glide);
+  --width-dur: var(--duration-slow);
+  --width-delay: 0ms;
+  --width-ease: var(--ease-glide);
+  --content-dur: var(--duration-fast);
+  --content-delay: 0ms;
+  --content-ease: var(--ease-glide);
+  --badge-dur: 160ms;
+  --badge-delay: 300ms;
+  --badge-ease: var(--ease-glide);
+  --zen-drift: 6px;
+}
+
+/* 2. 귀환(정렬 해제 snap): 위치 0+360 glide, 폭 0+360 glide, 도구 120+220 glide, 배지 0+100 glide */
+.zen-bar:not(.is-watching)[data-cause="snap"] {
+  --pos-dur: var(--duration-slow);
+  --pos-delay: 0ms;
+  --pos-ease: var(--ease-glide);
+  --width-dur: var(--duration-slow);
+  --width-delay: 0ms;
+  --width-ease: var(--ease-glide);
+  --content-dur: var(--duration-base);
+  --content-delay: 120ms;
+  --content-ease: var(--ease-glide);
+  --badge-dur: 100ms;
+  --badge-delay: 0ms;
+  --badge-ease: var(--ease-glide);
+  --zen-drift: 0px;
+}
+
+/* 3. 펼침(손잡이 호버·포커스 hover): 폭 0+220 spring, 도구 60+160 glide, 배지 0+100 glide */
+.zen-bar.is-watching:not(.is-receded)[data-cause="hover"] {
+  --width-dur: var(--duration-base);
+  --width-delay: 0ms;
+  --width-ease: var(--ease-spring);
+  --content-dur: 160ms;
+  --content-delay: 60ms;
+  --content-ease: var(--ease-glide);
+  --badge-dur: 100ms;
+  --badge-delay: 0ms;
+  --badge-ease: var(--ease-glide);
+  --zen-drift: 0px;
+}
+
+/* 4. 접힘(벗어남·Esc hover): 폭 0+240 glide, 도구 0+120 glide, 배지 200+140 glide */
+.zen-bar.is-receded[data-cause="hover"] {
+  --width-dur: 240ms;
+  --width-delay: 0ms;
+  --width-ease: var(--ease-glide);
+  --content-dur: 120ms;
+  --content-delay: 0ms;
+  --content-ease: var(--ease-glide);
+  --badge-dur: 140ms;
+  --badge-delay: 200ms;
+  --badge-ease: var(--ease-glide);
+  --zen-drift: 6px;
+}
+
+.zen-bar.is-watching { max-width: calc(100vw - 24px); }
+
+/* 도구 트랙: grid 1fr ↔ 0fr로 max-content 폭을 측정 없이 자연스럽게 보간 */
+.zen-bar-track {
+  display: grid;
+  grid-template-columns: 1fr;
+  flex: none;
+  min-width: 0;
+  transition: grid-template-columns var(--width-dur) var(--width-ease) var(--width-delay);
+}
+.zen-bar-content {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  transition:
+    opacity var(--content-dur) var(--content-ease) var(--content-delay),
+    transform var(--width-dur) var(--width-ease) var(--width-delay);
+}
+
+/* 워드마크 트랙 */
+.zen-bar-wordmark-track {
+  display: grid;
+  grid-template-columns: 1fr;
+  flex: none;
+  min-width: 0;
+  transition: grid-template-columns var(--width-dur) var(--width-ease) var(--width-delay);
+}
+.zen-bar-brand-wordmark {
+  min-width: 0;
+  color: var(--text-primary);
+  line-height: 1;
+  transition: opacity var(--content-dur) var(--content-ease) var(--content-delay);
+}
+
+/* 접혀 있거나 전이(접힘·펼침) 중일 때만 overflow-x: clip을 걸어 열린 메뉴·말풍선이 잘리지 않게 보호 */
+.zen-bar:is(.is-receded, .is-receding) .zen-bar-content,
+.zen-bar:is(.is-receded, .is-receding) .zen-bar-brand-wordmark {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+/* 물러난 상태(is-receded): 40px 손잡이로 수축 */
+.zen-bar.is-receded {
+  padding: 0;
+  gap: 0;
+}
+.zen-bar.is-receded .zen-bar-track {
+  grid-template-columns: 0fr;
+}
+.zen-bar.is-receded .zen-bar-content {
+  opacity: 0;
+  transform: translateX(var(--zen-drift));
+}
+.zen-bar.is-receded .zen-bar-wordmark-track {
+  grid-template-columns: 0fr;
+}
+.zen-bar.is-receded .zen-bar-brand-wordmark {
+  opacity: 0;
+}
 .zen-bar.is-receded .zen-bar-brand {
   width: 38px;
   height: 38px;
   margin: 0;
   padding: 0;
+  gap: 0;
   justify-content: center;
   background: none;
 }
-.zen-bar-handle-count { position: absolute; top: -5px; right: -5px; pointer-events: none; }
+.zen-bar.is-receded .zen-bar-brand::before {
+  opacity: 0;
+}
+
+/* 대기 수 배지 및 업데이트 점: 평상시 숨김(scale 0.6 + opacity 0), 물러나면 부드럽게 등장 */
+.zen-bar-handle-count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--badge-dur) var(--badge-ease) var(--badge-delay),
+    transform var(--badge-dur) var(--badge-ease) var(--badge-delay);
+}
+.zen-bar.is-receded .zen-bar-handle-count {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.zen-bar .command-band-update-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--badge-dur) var(--badge-ease) var(--badge-delay),
+    transform var(--badge-dur) var(--badge-ease) var(--badge-delay);
+}
+.zen-bar.is-receded .command-band-update-dot {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .zen-bar-brand:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 .zen-bar::before {
   content: "";
@@ -485,7 +660,30 @@
 .zen-island-sidebar:hover,
 .zen-island-war-tools .war-room-tool:hover { background: var(--control-hover-fill); color: var(--text-primary); }
 @media (prefers-reduced-motion: reduce) {
-  .zen-bar { transition: none; }
+  .zen-bar {
+    --pos-dur: 0ms !important;
+    --pos-delay: 0ms !important;
+    --width-dur: 0ms !important;
+    --width-delay: 0ms !important;
+    --content-dur: 120ms !important;
+    --content-delay: 0ms !important;
+    --content-ease: linear !important;
+    --badge-dur: 120ms !important;
+    --badge-delay: 0ms !important;
+    --badge-ease: linear !important;
+    --zen-drift: 0px !important;
+    transition: none !important;
+  }
+  /* 사람 결정 예외: 위치·폭은 즉시 바꾸되, 도구와 배지만 은은하게 120ms linear 페이드한다(drift/scale 없이 opacity만). */
+  .zen-bar .zen-bar-content,
+  .zen-bar .zen-bar-brand-wordmark,
+  .zen-bar .zen-bar-handle-count,
+  .zen-bar .command-band-update-dot {
+    transition-property: opacity !important;
+    transition-duration: 120ms !important;
+    transition-delay: 0ms !important;
+    transition-timing-function: linear !important;
+  }
 }
 
 /* ── 도구모음 ─────────────────────────────────────────────────────
@@ -672,11 +870,28 @@
   flex: none;
   align-items: center;
   gap: 7px;
+  min-width: 38px;
+  box-sizing: border-box;
   margin-inline-start: var(--space-1);
   padding-inline-start: var(--space-2);
-  /* 구분선은 16px 곧은 선이다. 28px 칸에 테두리를 쓰면 선이 칸 높이만큼 길어진다. */
-  background: linear-gradient(var(--surface-rim-strong), var(--surface-rim-strong)) left center / 1px 16px no-repeat;
   height: 28px;
+  transition:
+    margin var(--width-dur) var(--width-ease) var(--width-delay),
+    padding var(--width-dur) var(--width-ease) var(--width-delay),
+    gap var(--width-dur) var(--width-ease) var(--width-delay),
+    width var(--width-dur) var(--width-ease) var(--width-delay),
+    height var(--width-dur) var(--width-ease) var(--width-delay);
+}
+.zen-bar-brand::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 1px;
+  height: 16px;
+  background: var(--surface-rim-strong);
+  transition: opacity var(--content-dur) var(--content-ease) var(--content-delay);
+  pointer-events: none;
 }
 .zen-bar-brand-glyph { width: 18px; height: 18px; flex: none; }
 /* 워드마크의 서체·크기는 밴드 워드마크(.command-band-brand-wordmark)를 함께 입어 받는다 — 같은 브랜드, 같은 글자. */
