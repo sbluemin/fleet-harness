@@ -80,12 +80,25 @@ export class CoworkService {
     let session = await this.required(workspaceId, id);
     if (session.state === "running") throw new Error("cowork_busy");
     if (session.state !== "idle") throw new Error("cowork_session_not_editable");
+    // 최신본을 읽지 못한 상태는 실행 전에 알린다 — idle과 코멘트를 그대로 보존한다.
+    if ((await this.describe(session)).freshness?.currentVersion === null) {
+      await this.changed(session);
+      throw new Error("cowork_entry_unavailable");
+    }
     const annotations = session.annotations;
     // 원샷 실행이라 provider는 이전 턴을 모른다 — 이번 프롬프트 이전까지의 대화를 실어 맥락을 복원한다.
     const history = (await this.store.transcript(workspaceId, id)).slice(-HISTORY_TURNS).map(turn => ({ role: turn.role, text: clipText(turn.text, 2000) }));
-    session = await this.changed(await this.store.update(workspaceId, id, s => ({ ...s, state: "running", annotations: [] })));
-    await this.store.appendTranscript(workspaceId, id, { role: "user", text: prompt, at: new Date().toISOString() });
+    let started = false;
     try {
+      session = await this.store.update(workspaceId, id, s => {
+        // 최신성 조회를 기다리는 사이 시작되거나 닫힌 세션을 덮어쓰지 않는다.
+        if (s.state === "running") throw new Error("cowork_busy");
+        if (s.state !== "idle") throw new Error("cowork_session_not_editable");
+        return { ...s, state: "running", annotations: [] };
+      });
+      started = true;
+      await this.changed(session);
+      await this.store.appendTranscript(workspaceId, id, { role: "user", text: prompt, at: new Date().toISOString() });
       const tools = createCoworkTools(this.store, workspaceId, id, this.cwd, this.resolver);
       const client = await this.connector.connect({ model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, tools });
       this.releaseLive(id);
@@ -108,6 +121,7 @@ export class CoworkService {
       });
       return session;
     } catch (error) {
+      if (!started) throw error;
       console.error(`[cowork] prompt setup failed (session ${id}):`, error instanceof Error ? error.message : error);
       this.releaseLive(id);
       await this.flushAssistantTurn(workspaceId, id);
@@ -136,11 +150,14 @@ export class CoworkService {
 
   async describe(session: CoworkSessionRecord): Promise<CoworkSessionDto> {
     let markdown: string | null = null;
+    let version: number | null = null;
     try {
       const target = await resolveWikiEntryPath(session.entryId, this.paths);
-      if (target) markdown = await readPatchFile(join(this.paths.root, target));
-    } catch { /* 최신본을 읽지 못해도 초안의 완료·복원 이벤트는 잃지 않는다. */ }
-    const version = markdown ? parseWikiEntry(markdown).version : null;
+      if (target) {
+        markdown = await readPatchFile(join(this.paths.root, target));
+        version = parseWikiEntry(markdown).version;
+      }
+    } catch { markdown = null; /* 파싱 실패도 최신본을 읽지 못한 상태다 — 완료·복원 이벤트는 보존한다. */ }
     return { ...this.dto(session), freshness: { stale: version !== session.baseVersion || markdown === null || computeContentHash(markdown) !== session.baseHash, currentVersion: version } };
   }
 

@@ -70,6 +70,7 @@ const NOTICE_BY_CODE: Readonly<Record<string, CoworkNotice["kind"]>> = {
   cowork_turn_incomplete: "turn",
   cowork_turn_failed: "turn",
   cowork_model_not_enabled: "noModel",
+  cowork_entry_unavailable: "stale",
   cowork_apply_stale: "stale",
   cowork_apply_stale_revision: "stale",
   cowork_apply_busy: "stale",

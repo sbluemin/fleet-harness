@@ -28,6 +28,11 @@ describe("Cowork contract defects", () => {
     const { service } = await fixture(connector);
     const session = await service.create("workspace", "entry");
     await service.annotations("workspace", session.id, [{ id: "a1", quote: "quote", comment: "fix this" }]);
+    const connect = connector.connect.bind(connector);
+    connector.connect = async () => { throw new Error("setup failed"); };
+    await expect(service.prompt("workspace", session.id, "go")).rejects.toThrow("cowork_provider_unavailable");
+    expect(await service.get("workspace", session.id)).toMatchObject({ state: "idle", annotations: [{ id: "a1", quote: "quote", comment: "fix this" }] });
+    connector.connect = connect;
     await service.prompt("workspace", session.id, "go");
     await until(async () => (await service.get("workspace", session.id))?.state === "idle");
 
