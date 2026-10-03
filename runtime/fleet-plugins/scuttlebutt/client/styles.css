@@ -76,8 +76,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   color: var(--text-secondary);
@@ -106,8 +104,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -436,8 +432,6 @@
   background:
     linear-gradient(var(--scuttlebutt-notice-wash, var(--glass-tint-strong)), var(--scuttlebutt-notice-wash, var(--glass-tint-strong))),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-sm);
@@ -605,8 +599,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-md);
@@ -757,8 +749,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
 }
@@ -771,8 +761,6 @@
   border: 0;
   border-radius: 0;
   background: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
   box-shadow: none;
   animation: none;
   overflow: visible;
@@ -883,8 +871,6 @@
   background:
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-secondary);
   font-family: var(--font-body);
@@ -1693,8 +1679,6 @@
   background:
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 

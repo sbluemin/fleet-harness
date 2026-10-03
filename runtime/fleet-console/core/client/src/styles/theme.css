@@ -229,7 +229,7 @@
   --glass-tint-rail: var(--surface-glass-strong);
   --glass-tint-expanded: color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
   /* 유리 표면(도구 패널 슬롯·확장 표면) 안에 사는 플러그인 본문의 바탕. 게이트가 닫히면 오늘의
-     불투명 패널, 열리면 비워서 담는 표면의 재질(알파·흐림)이 그대로 비치게 한다. */
+     불투명 패널, 열리면 비워서 담는 표면의 재질(알파)이 그대로 비치게 한다. */
   --glass-panel-face: var(--surface-panel);
   --glass-tint-soft: var(--surface-glass);
   --glass-tint-pillar: var(--surface-pillar);
@@ -257,26 +257,18 @@
      같은 색이 되어 보이지 않는다 — 알파는 terminal-surface가 0으로 눕혀 유리를 그대로 통과시킨다. */
   --glass-tint-terminal-floor: var(--glass-tint-terminal);
   --glass-tint-band: var(--surface-band);
-  /* 패널 광원(pane-light) — 유리 뒤가 앱에서 가장 어두운 캔버스라 blur가 굴절시킬 빛이 없다.
+  /* 패널 광원(pane-light) — 유리 뒤가 앱에서 가장 어두운 캔버스라 뒤로 비칠 빛이 적다.
      그래서 다크 유리는 자기 위쪽에 광원을 하나 얹어 재질을 명도가 아니라 기울기로 말한다.
      이 채널은 광원의 **색**만 진다 — 기하(반경·중심)는 창의 구조라 components.css가 쓴다. */
   --glass-pane-light: transparent;
-  /* 캔버스 대기광 — 유리가 실제로 굴절할 것을 뒤에 놓는다. 닫히면 원래의 심해 계조. */
+  /* 캔버스 대기광 — 반투명 유리에 비칠 바탕을 뒤에 놓는다. 닫히면 원래의 심해 계조. */
   --canvas-ambience: var(--canvas-sea-core);
-  /* 캔버스 워시·블룸 — 대기광과 같은 일을 계조와 방위 라디알에서 한다. 유리는 뒤에 있는 것을
-     흐리고 채도를 올릴 뿐이라, 뒤가 무채색 평면이면 blur도 saturate도 항등함수가 된다.
-     기본값이 현행 sea·현행 혼합률이라 게이트가 닫히면 지금 화면 그대로다. */
+  /* 캔버스 워시·블룸 — 대기광과 같은 일을 계조와 방위 라디알에서 한다. 기본값이 현행 sea·현행 혼합률이라 게이트가 닫히면 지금 화면 그대로다. */
   --canvas-wash-near: var(--canvas-sea-near);
   --canvas-wash-mid: var(--canvas-sea-mid);
   --canvas-wash-far: var(--canvas-sea-far);
   --canvas-bloom-aurora: 7%;
   --canvas-bloom-brass: 5%;
-  --glass-backdrop-strong: none;
-  --glass-backdrop-soft: none;
-  --glass-backdrop-side-bar: none;
-  --glass-backdrop-panel: none;
-  --glass-backdrop-terminal: none;
-  --glass-backdrop-scrim: none;
   --glass-rim: transparent;
   /* 아래쪽 어두운 베벨. 밝은 바탕에서는 흰 하이라이트에 여유가 없어(라이트 유리 본체 L*94.7,
      흰 천장까지 5.3포인트) 판의 두께를 그늘 쪽이 말한다. 다크는 위쪽 rim이 이미 이기므로
@@ -288,9 +280,7 @@
   /* 게이트가 켜질 때 채널에 실릴 테마별 유리 재료 — 여기(base)와 각 테마 블록에만
      리터럴을 둔다. 게이트 블록은 값 없이 이 재료를 채널로 옮기기만 한다.
      틴트 사다리는 기존 표면 사다리(strong/soft/pillar/raised/deep)를 1:1로 비추되
-     알파 44~62% 대역으로 눕는다 — 블러 24px가 뒤 콘텐츠의 국소 대비를 뭉개 주므로
-     틴트가 이만큼 물러나도 위 텍스트의 판독 대비가 유지됨을 실측으로 확인했다.
-     알파를 더 내리려면 블러/스크림 보조와 함께 AA를 재실측할 것. */
+     알파 44~62% 대역으로 눕는다. 틴트 알파를 더 낮추려면 겹친 콘텐츠 위 판독 대비를 재실측할 것. */
   --glass-on-underlay: transparent;
   --glass-on-tint-strong: oklch(24% 0.02 245 / 50%);
   /* 확장 표면 재질 — 소비처가 이 틴트를 불투명 --ink-deep과 94:6으로 섞는다. 섞인 알파는 작업 창
@@ -307,8 +297,7 @@
   --glass-on-tint-chrome: oklch(19% 0.018 245 / var(--glass-side-bar-alpha, 50%));
   /* 다크 유리의 smoked-glass 문법 — Operation·War Room 카드는 blur 없이 60% 틴트와
      22% pane-light만으로 캔버스·겹친 창 윤곽을 그대로 통과시킨다. 패널 수에 따라 재질을 바꾸지
-     않아 모든 모드가 같은 투과도를 유지한다. Shell은 같은 60% terminal tint 위에서만 20px blur를
-     사용해 글자 밀도가 높은 단일 작업면의 판독성을 지킨다. 알파·명도를 다시 만지면 ANSI black과의
+     않아 모든 모드가 같은 투과도를 유지한다. Shell도 같은 60% terminal tint를 사용한다. 알파·명도를 다시 만지면 ANSI black과의
      부호(필드보다 어두울 것)와 dim 셀 floor를 반드시 재실측할 것. */
   --glass-on-tint-panel: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));
   --glass-on-tint-field: transparent;
@@ -318,15 +307,6 @@
   --glass-on-tint-terminal: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));
   --glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);
   --glass-on-tint-band: oklch(13% 0.018 245 / var(--glass-bar-alpha, 55%));
-  --glass-on-backdrop-strong: blur(24px) saturate(1.7);
-  /* 좌측 사이드바 전용 재료 — strong과 같은 채도 보정 위에 blur 반경만 사용자 손잡이가 잡는다.
-     반경 변수는 :root에 실려야 여기서 치환된다(operations-side-bar-store 주석 참조). 기본 24px는
-     캔버스 위브(48px 눈금) 위 실측으로 정해진 값이며, 낮출수록 그 잔물결이 틴트 위에 되살아난다. */
-  --glass-on-backdrop-side-bar: blur(var(--side-bar-glass-blur, 24px)) saturate(1.7);
-  --glass-on-backdrop-soft: blur(12px) saturate(1.5);
-  --glass-on-backdrop-panel: none;
-  --glass-on-backdrop-terminal: blur(20px) saturate(1.45);
-  --glass-on-backdrop-scrim: blur(3px);
   --glass-on-rim: oklch(96% 0.01 90 / 16%);
   /* 유리 광택(sheen) — 대각 하이라이트 한 겹. 무채색 리터럴만 쓰는 독트린 예외 채널이며,
      평평한 배경 위에서도 유리가 재질로 읽히게 하는 최소 광학 신호다. */
@@ -894,87 +874,64 @@
   --scrollbar-thumb-classic: oklch(44% 0.015 95 / 45%);
 }
 
-/* ── 리퀴드 글래스 게이트 ────────────────────────────────────────────────
-   유리는 기본 재질이며 끄는 스위치가 없다 — 사람은 묶음별 불투명도(100%는 완전 불투명)로
-   조절한다. 블러를 그릴 수 없는 엔진은 @supports가 걸러내고,
-   투명도 축소 선호는 아래 media 블록이 같은 특이도로 나중에 서서 기본값(불투명
-   언더레이)으로 되돌린다 — 세 게이트 중 하나만 닫혀도 유리는 꺼지고, 소비처는
-   아무것도 몰라도 된다(채널 기본값이 곧 현행 계약이므로).
+/* ── 반투명 유리 게이트 ────────────────────────────────────────────────
+   유리는 흐림 없이 틴트·언더레이로 표현하며, 사람은 묶음별 불투명도(100%는 완전 불투명)를
+   조절한다. 다크 테마에서만 열고, 투명도 축소 선호는 같은 특이도의 뒤쪽 media 블록에서
+   불투명 채널로 되돌린다. Whites는 기본 불투명 채널을 유지하며 저장값은 보존한다.
+   두 게이트 선택자는 같은 :not(...) 목록으로 특이도 (0,2,0)을 유지한다. */
+:root:not([data-theme="whites"]) {
+  --glass-underlay: var(--glass-on-underlay);
+  --glass-tint-strong: var(--glass-on-tint-strong);
+  --glass-tint-rail: var(--glass-on-tint-rail);
+  --glass-tint-expanded: color-mix(in oklch, var(--glass-on-tint-expanded) 94%, var(--ink-deep));
+  --glass-panel-face: transparent;
+  --glass-tint-soft: var(--glass-on-tint-soft);
+  --glass-tint-pillar: var(--glass-on-tint-pillar);
+  --glass-tint-raised: var(--glass-on-tint-raised);
+  --glass-tint-deep: var(--glass-on-tint-deep);
+  --glass-tint-abyss: var(--glass-on-tint-abyss);
+  --glass-tint-chrome: var(--glass-on-tint-chrome);
+  --glass-tint-panel: var(--glass-on-tint-panel);
+  --glass-tint-panel-face: transparent;
+  --glass-tint-caption: var(--glass-on-tint-caption);
+  --glass-tint-field: var(--glass-on-tint-field);
+  --glass-tint-terminal: var(--glass-on-tint-terminal);
+  --glass-tint-terminal-floor: var(--glass-on-tint-terminal-floor);
+  --glass-pane-light: var(--glass-on-pane-light);
+  --canvas-ambience: var(--canvas-on-ambience);
+  --glass-tint-band: var(--glass-on-tint-band);
+  --glass-rim: var(--glass-on-rim);
+  /* 베벨·부양·워시·블룸 채널은 여기서 싣지 않는다 — 재료를 가진 테마가 라이트뿐이었고,
+     라이트가 게이트에서 빠지면서 재료가 사라졌다. 채널 자체는 base에 그대로 살아 있으니
+     (--glass-bevel: transparent 외 6종), 나중에 어느 테마가 재료를 갖게 되면 그때
+     테마 블록에 리터럴을 두고 이 자리에 한 줄을 되살리면 된다. */
+  --glass-sheen: var(--glass-on-sheen);
+}
 
-   셋째 게이트는 테마 극성이다. 라이트(Whites)는 유리를 아예 받지 않는다 — 종이 위
-   백유리는 지각 불가에 가깝고, 뒤가 이미 밝아 blur가 굴절시킬 명도차가 없다. 불투명도
-   저장값은 다크로 돌아갈 때를 위해 그대로 보존되고, 화면을 닫는 일은 여기서만 한다.
-
-   아래 축소-투명도 되돌림 블록은 주 블록과 같은 특이도로 나중에 서서 이긴다(@media는
-   특이도를 더하지 않는다). 제외 조건을 늘릴 때는 :not(A, B) 목록 한 겹으로 써서 특이도를
-   (0,2,0)에 묶어 둔다. 두 선택자는 언제나 글자까지 같아야 한다. */
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+@media (prefers-reduced-transparency: reduce) {
   :root:not([data-theme="whites"]) {
-    --glass-underlay: var(--glass-on-underlay);
-    --glass-tint-strong: var(--glass-on-tint-strong);
-    --glass-tint-rail: var(--glass-on-tint-rail);
-    --glass-tint-expanded: color-mix(in oklch, var(--glass-on-tint-expanded) 94%, var(--ink-deep));
-    --glass-panel-face: transparent;
-    --glass-tint-soft: var(--glass-on-tint-soft);
-    --glass-tint-pillar: var(--glass-on-tint-pillar);
-    --glass-tint-raised: var(--glass-on-tint-raised);
-    --glass-tint-deep: var(--glass-on-tint-deep);
-    --glass-tint-abyss: var(--glass-on-tint-abyss);
-    --glass-tint-chrome: var(--glass-on-tint-chrome);
-    --glass-tint-panel: var(--glass-on-tint-panel);
-    --glass-tint-panel-face: transparent;
-    --glass-tint-caption: var(--glass-on-tint-caption);
-    --glass-tint-field: var(--glass-on-tint-field);
-    --glass-tint-terminal: var(--glass-on-tint-terminal);
-    --glass-tint-terminal-floor: var(--glass-on-tint-terminal-floor);
-    --glass-pane-light: var(--glass-on-pane-light);
-    --canvas-ambience: var(--canvas-on-ambience);
-    --glass-tint-band: var(--glass-on-tint-band);
-    --glass-backdrop-strong: var(--glass-on-backdrop-strong);
-    --glass-backdrop-soft: var(--glass-on-backdrop-soft);
-    --glass-backdrop-side-bar: var(--glass-on-backdrop-side-bar);
-    --glass-backdrop-panel: var(--glass-on-backdrop-panel);
-    --glass-backdrop-terminal: var(--glass-on-backdrop-terminal);
-    --glass-backdrop-scrim: var(--glass-on-backdrop-scrim);
-    --glass-rim: var(--glass-on-rim);
-    /* 베벨·부양·워시·블룸 채널은 여기서 싣지 않는다 — 재료를 가진 테마가 라이트뿐이었고,
-       라이트가 게이트에서 빠지면서 재료가 사라졌다. 채널 자체는 base에 그대로 살아 있으니
-       (--glass-bevel: transparent 외 6종), 나중에 어느 테마가 재료를 갖게 되면 그때
-       테마 블록에 리터럴을 두고 이 자리에 한 줄을 되살리면 된다. */
-    --glass-sheen: var(--glass-on-sheen);
-  }
-
-  @media (prefers-reduced-transparency: reduce) {
-    :root:not([data-theme="whites"]) {
-      --glass-underlay: var(--ink-deep);
-      --glass-tint-strong: var(--surface-glass-strong);
-      --glass-tint-rail: var(--surface-glass-strong);
-      --glass-tint-expanded: color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
-      --glass-panel-face: var(--surface-panel);
-      --glass-tint-soft: var(--surface-glass);
-      --glass-tint-pillar: var(--surface-pillar);
-      --glass-tint-raised: var(--surface-panel-raised);
-      --glass-tint-deep: var(--ink-deep);
-      --glass-tint-abyss: var(--ink-abyss);
-      --glass-tint-chrome: var(--surface-chrome);
-      --glass-tint-panel: var(--surface-panel);
-      --glass-tint-panel-face: var(--surface-panel);
-      --glass-tint-caption: var(--surface-panel);
-      --glass-tint-field: var(--surface-panel);
-      --glass-tint-terminal: var(--surface-panel);
-      --glass-tint-terminal-floor: var(--surface-panel);
-      --glass-pane-light: transparent;
-      --canvas-ambience: var(--canvas-sea-core);
-      --glass-tint-band: var(--surface-band);
-      --glass-backdrop-strong: none;
-      --glass-backdrop-soft: none;
-      --glass-backdrop-side-bar: none;
-      --glass-backdrop-panel: none;
-      --glass-backdrop-terminal: none;
-      --glass-backdrop-scrim: none;
-      --glass-rim: transparent;
-      --glass-sheen: linear-gradient(transparent, transparent);
-    }
+    --glass-underlay: var(--ink-deep);
+    --glass-tint-strong: var(--surface-glass-strong);
+    --glass-tint-rail: var(--surface-glass-strong);
+    --glass-tint-expanded: color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
+    --glass-panel-face: var(--surface-panel);
+    --glass-tint-soft: var(--surface-glass);
+    --glass-tint-pillar: var(--surface-pillar);
+    --glass-tint-raised: var(--surface-panel-raised);
+    --glass-tint-deep: var(--ink-deep);
+    --glass-tint-abyss: var(--ink-abyss);
+    --glass-tint-chrome: var(--surface-chrome);
+    --glass-tint-panel: var(--surface-panel);
+    --glass-tint-panel-face: var(--surface-panel);
+    --glass-tint-caption: var(--surface-panel);
+    --glass-tint-field: var(--surface-panel);
+    --glass-tint-terminal: var(--surface-panel);
+    --glass-tint-terminal-floor: var(--surface-panel);
+    --glass-pane-light: transparent;
+    --canvas-ambience: var(--canvas-sea-core);
+    --glass-tint-band: var(--surface-band);
+    --glass-rim: transparent;
+    --glass-sheen: linear-gradient(transparent, transparent);
   }
 }
 

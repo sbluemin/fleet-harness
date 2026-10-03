@@ -867,12 +867,12 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
    필드와 남는 거터가 서로 다른 층을 칠하면 경계 띠가 어긋난다(실측). 그래서:
    - 다크 + 게이트 열림: xterm 배경은 알파 0으로 비우고(RGB는 아래 glassFieldClearColor 참조),
      Agent Operation은 .canvas-operation 루트의 panel tint를, 독립 Shell은 .terminal-shell/expanded
-     slot의 terminal tint와 blur를 필드·거터 한 겹으로 공유한다. 다크는 minimumContrastRatio=1이라
+     slot의 terminal tint를 필드·거터 한 겹으로 공유한다. 다크는 minimumContrastRatio=1이라
      투명 배경이 대비 보정에 관여하지 않는다.
    - 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값(불투명 --surface-panel)을
      그대로 받는다 — 컨테이너도 같은 채널을 칠해 필드·거터가 같은 값으로 만난다.
-     라이트(Whites)는 언제나 이쪽이다. 테마 극성 자체가 유리 게이트의 넷째 닫힘 조건이라
-     (theme.css), 라이트에서 --glass-backdrop-*는 설정과 무관하게 none이고
+     라이트(Whites)는 언제나 이쪽이다. theme.css가 라이트의
+     --glass-panel-face를 설정과 무관하게 불투명으로 유지하므로
      readLiquidGlassPaneActive()는 false다. 아래 LIGHT_TERMINAL_THEMES 조건은 그래서
      제품 경로에서는 이미 참인 조건을 한 번 더 세우는 둘째 자물쇠다 — 남겨 둔다. 이 한 곳이
      틀리면 밝은 바탕에서 allowTransparency가 켜져 획 잉크가 18.2% 사라지는데(dpr=2 실측),
@@ -965,14 +965,13 @@ export function terminalFieldIsTranslucent(background: string): boolean {
   return channels.length > 3 && Number.parseFloat(channels[3] ?? "1") < 1;
 }
 
-/* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 세 게이트(@supports·
-   reduced-transparency·테마 극성)를 개별로 다시 판정하지 않고 채널 계산값 하나를 진실로 삼는다.
+/* 게이트가 열려 있을 때만 패널 안쪽 면이 transparent다 — reduced-transparency·테마 극성을
+   개별로 다시 판정하지 않고 채널 계산값 하나를 진실로 삼는다.
    특히 극성은 여기서 다시 묻지 않는다: 라이트를 닫는 일은 CSS 게이트가 하고, 이 함수는
    그 결과만 읽는다. JS에 극성 분기를 심으면 진실이 두 벌이 된다. */
 export function readLiquidGlassPaneActive(): boolean {
   if (typeof document === "undefined") return false;
-  const backdrop = getComputedStyle(document.documentElement).getPropertyValue("--glass-backdrop-strong").trim();
-  return backdrop !== "" && backdrop !== "none";
+  return getComputedStyle(document.documentElement).getPropertyValue("--glass-panel-face").trim() === "transparent";
 }
 
 function terminalThemeFor(theme: TerminalThemeId, surface: "panel" | "shell"): ITheme {

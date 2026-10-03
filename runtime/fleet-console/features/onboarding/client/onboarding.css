@@ -34,7 +34,7 @@
 
 /* 큐에 쌓인 카드 — 남은 슬라이드만큼 현재 카드 아래로 한 단씩 좁아지며 비쳐 나오는 판. 카드는 반투명 유리라 뒤판 전체를
    깔면 윤곽이 본문 너머로 비친다 — 그래서 판은 카드 바닥 아래로 드러나는 얇은 띠만 그린다. 남은 수가 줄면 한 장씩
-   앞 카드 밑으로 들어가 사라진다. 같은 유리 채널을 칠하되 backdrop-filter는 걸지 않는다(두 번 흐려진다). */
+   앞 카드 밑으로 들어가 사라진다. 같은 유리 채널을 칠한다. */
 .onboarding-welcome-queued {
   position: absolute;
   left: 0;
@@ -79,8 +79,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
 }
 
@@ -301,8 +299,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   color: var(--text-primary);
   pointer-events: auto;
@@ -421,15 +417,13 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   transform: translateY(-50%);
   text-align: left;
   animation: onboarding-hint-in var(--duration-base) var(--ease-glide) both;
 }
 
-/* 꼬리 — 본체와 같은 유리를 칠하되 backdrop-filter는 다시 걸지 않는다(두 번 흐려진다).
+/* 꼬리 — 본체와 같은 유리를 칠한다.
    말풍선이 뷰포트 끝에서 밀려나면 그만큼 거꾸로 옮겨 여전히 아이콘 가운데를 가리킨다. */
 .onboarding-hint::before {
   content: "";

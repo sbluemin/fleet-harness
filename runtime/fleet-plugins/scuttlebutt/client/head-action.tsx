@@ -12,8 +12,7 @@ export const ChatSurfaceContext = React.createContext<"floating" | "composer">("
  * 대신 선다 — 설정 화면의 도움말 말풍선(`role="tooltip"`, hover·focus로 여닫음)과 같은 계약이다.
  * 토글(`pressed`)은 aria-pressed로 상태를 말하고, 켜진 동안은 brass로 선다.
  *
- * 말풍선은 문서 끝으로 포털한다. 카드가 backdrop-filter를 지므로 카드 안의 말풍선은 제 blur로
- * 카드 본문을 흐리지 못해 글자가 비쳐 보였다(Quick Launch가 유리를 자식에게 넘긴 것과 같은 이유).
+ * 말풍선은 문서 끝으로 포털해 카드의 클리핑·스태킹과 분리한다.
  */
 export function HeadAction({
   id,

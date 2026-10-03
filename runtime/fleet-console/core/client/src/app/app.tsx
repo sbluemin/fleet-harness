@@ -89,7 +89,10 @@ const ONBOARDING_PORTS = {
 } as const;
 
 export function App() {
-  useEffect(observeStateMotion, []);
+  const settings = useGlobalSettingsStore();
+  const reduceMotion = settings.state?.reduceMotion === true;
+  const lowerUnfocusedFrameRate = settings.state?.lowerUnfocusedFrameRate !== false;
+  useEffect(() => observeStateMotion({ reduceMotion, lowerUnfocusedFrameRate }), [reduceMotion, lowerUnfocusedFrameRate]);
   const state = useConsoleState();
   // 종료 안내는 같은 문서에 남기되 활성 화면 전체를 내려 WS·플러그인·폴링과 단축키를 정리한다.
   return state.controlReclaimed === null ? <ConnectedApp /> : <ControlReclaimedNotice />;

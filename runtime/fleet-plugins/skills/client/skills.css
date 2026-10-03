@@ -552,8 +552,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-soft), var(--glass-tint-soft)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   display: flex;
@@ -677,8 +675,6 @@
       color-mix(in srgb, var(--aurora) 15%, var(--glass-tint-soft))
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   border: 1px solid color-mix(in srgb, var(--aurora) 35%, transparent);
   border-radius: var(--radius-md);
   bottom: var(--space-3);

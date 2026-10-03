@@ -1221,8 +1221,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
 }
 
@@ -1424,8 +1422,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
@@ -1556,8 +1552,6 @@
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
@@ -3283,7 +3277,7 @@
   border-top-color: var(--warn);
   border-right-color: var(--warn);
   border-radius: 50%;
-  animation: status-glyph-spin 1.2s steps(12, end) infinite; animation-name: var(--state-motion, status-glyph-spin); --state-motion-clock: aligned;
+  animation: status-glyph-spin 1.4s linear infinite; animation-name: var(--state-motion, status-glyph-spin);
 }
 
 /* 백그라운드 작업 — 턴은 끝났지만 일이 남았다. 도는 호 대신 점선 원이 "아직 진행 중"을 조용히 말한다. */
@@ -3301,7 +3295,7 @@
   border: 1.3px solid var(--aurora);
   border-radius: 50%;
   box-shadow: 0 0 0 3px var(--aurora-glow);
-  animation: status-glyph-breathe 1.8s steps(1, end) infinite; animation-name: var(--state-motion, status-glyph-breathe); --state-motion-clock: aligned;
+  animation: status-glyph-breathe 1.8s ease-in-out infinite; animation-name: var(--state-motion, status-glyph-breathe);
 }
 
 .status-glyph.is-awaiting::after,
@@ -3335,7 +3329,7 @@
 
 .status-glyph.is-unseen::after {
   background: var(--positive);
-  animation: status-glyph-blink 3.6s steps(18, end) infinite; animation-name: var(--state-motion, status-glyph-blink); --state-motion-clock: aligned;
+  animation: status-glyph-blink 3.6s ease-in-out infinite; animation-name: var(--state-motion, status-glyph-blink);
 }
 
 .status-glyph.is-ended {
@@ -4460,7 +4454,7 @@ button.status-glyph.is-actionable:focus-visible {
   inset: -3px;
   border: 1px solid var(--activity-color);
   border-radius: var(--radius-pill);
-  animation: fleet-map-awaiting-ring 2.4s steps(24, end) infinite; animation-name: var(--state-motion, fleet-map-awaiting-ring); --state-motion-clock: aligned;
+  animation: fleet-map-awaiting-ring calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite; animation-name: var(--state-motion, fleet-map-awaiting-ring);
 }
 
 /* 지도의 미확인 — 점 자체의 animation은 유영(fleet-map-drift)이 소유하므로, 느린 점등은
@@ -4476,7 +4470,7 @@ button.status-glyph.is-actionable:focus-visible {
   inset: -2px;
   border-radius: 4px;
   box-shadow: 0 0 12px 2px var(--activity-glow);
-  animation: beacon-unseen-blink 3.6s steps(18, end) infinite; animation-name: var(--state-motion, beacon-unseen-blink); --state-motion-clock: aligned;
+  animation: beacon-unseen-blink 3.6s var(--ease-glide) infinite; animation-name: var(--state-motion, beacon-unseen-blink);
 }
 
 .canvas-fleet-map-dot.is-running {
@@ -4613,8 +4607,8 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 @keyframes fleet-map-awaiting-ring {
-  0% { transform: scale(0.55); opacity: 0.9; animation-timing-function: steps(17, end); }
-  70.8333333333%, 100% { transform: scale(2.2); opacity: 0; animation-timing-function: steps(7, end); }
+  0% { transform: scale(0.55); opacity: 0.9; }
+  70%, 100% { transform: scale(2.2); opacity: 0; }
 }
 
 @keyframes fleet-map-drift {
@@ -4829,7 +4823,7 @@ button.status-glyph.is-actionable:focus-visible {
    창에 실려야 어느 창이 부르는지 읽힌다. 패널은 portal이 mount 안에 넣으므로 실제 구조는
    칸 > 마운트 > 패널이다: 그 한 겹을 건너뛴 선택자는 파일에 남은 채 아무것도 칠하지 않는다. */
 .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation {
-  animation: triage-fresh-pulse 2.2s steps(11, end) infinite; animation-name: var(--state-motion, triage-fresh-pulse); --state-motion-clock: aligned;
+  animation: triage-fresh-pulse calc(var(--duration-slow) * 6) var(--ease-glide) infinite; animation-name: var(--state-motion, triage-fresh-pulse);
 }
 
 .canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation {
@@ -5074,8 +5068,6 @@ button.status-glyph.is-actionable:focus-visible {
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   font-family: var(--font-body);
   font-size: var(--t-sm);
@@ -5848,7 +5840,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     var(--brass) 318deg,
     color-mix(in oklch, var(--brass) 22%, transparent) 326deg
   );
-  animation: canvas-decision-orbit 4s steps(20, end) infinite; animation-name: var(--state-motion, canvas-decision-orbit); --state-motion-clock: aligned;
+  animation: canvas-decision-orbit 4s linear infinite; animation-name: var(--state-motion, canvas-decision-orbit);
 }
 
 @keyframes canvas-decision-orbit {
@@ -5894,7 +5886,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background-size: 55% 100%;
   background-repeat: no-repeat;
   box-shadow: none;
-  animation: caption-rail-travel 3.8s steps(19, end) infinite; animation-name: var(--state-motion, caption-rail-travel); --state-motion-clock: aligned;
+  animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel);
 }
 /* 캡션 틴트 — 브라우저는 companion 이 열려 있으면 companion 캡션이 틴트를 지고(버튼은 aria-pressed=true), 닫혀 있으면
    Operation 캡션이 진다. 덱 카드에는 companion 이 없으므로 언제나 카드 캡션이 진다. */
@@ -6060,8 +6052,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* 부유 유리 카드 — 전면 해도 개편으로 사이드바는 그리드 열이 아니라 캔버스 위에 뜬 카드다.
    z는 레일과 같은 --z-rail을 공유해 전면 캔버스(z:0 스택 컨텍스트) 위에 선다.
-   유리는 자식 없는 ::before가 진다 — 루트 backdrop-filter는 containing block을 만들어
-   안쪽 앵커 팝업을 가둔다(.command-band::before 주석 참조). 구 "밴드 좌측 캡" 접합 규칙
+   반투명 재질은 자식 없는 ::before에서 칠한다. 구 "밴드 좌측 캡" 접합 규칙
    (border-top 제거·상단 라운드 0)은 캡 퇴역과 함께 원자적으로 걷혔다 — 카드는 네 변 모두
    자기 마감을 가진다. */
 .operations-side-bar {
@@ -6091,20 +6082,10 @@ body[data-companion-resizing="true"] .canvas-operation {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  /* 유리 게이트가 닫히면(--glass-backdrop-strong: none) 틴트가 반투명 채널 값 그대로 남아
-     전면 캔버스의 격자가 60% 비쳐 보인다 — 불투명 언더레이를 최하층에 깔아 게이트 닫힘이
-     곧 불투명 폴백이 되게 한다(레일 오버레이 슬롯과 같은 판독성 계약). */
+  /* 불투명 언더레이를 최하층에 깔아 게이트 닫힘이 곧 불투명 폴백이 되게 한다. */
   background:
     linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),
     var(--glass-underlay);
-  /* 사이드바 전용 blur 채널 — 기본 반경은 strong과 같은 24px이고 설정의 손잡이가 그 반경만
-     바꾼다. soft(12px) 근처는 캔버스 위브(48px 눈금·12px 도트)의 대비를 ~73%나 남겨 그 잔물결이
-     근흑색 틴트 위에서 8-bit 계단 모자이크(가짜 격자)로 양자화되는 최악 구간이다(2026-08-31
-     실측 + 사용자 보고). 24px는 같은 주기를 ~29%까지 누른다 — 기본값을 옮기려면 위브 위 실측을
-     다시 통과할 것. 채널을 거치므로 유리 게이트 셋(@supports·축소-투명도·라이트)은 그대로다.
-     불투명도는 chrome 틴트의 알파(「좌측 사이드바 불투명도」)가 진다. */
-  -webkit-backdrop-filter: var(--glass-backdrop-side-bar);
-  backdrop-filter: var(--glass-backdrop-side-bar);
   pointer-events: none;
 }
 
@@ -6742,7 +6723,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .status-dot--live::after,
 .side-bar-status-axis-live-tick::after {
-  animation: status-call-glow 1.8s steps(1, end) infinite; animation-name: var(--state-motion, status-call-glow); --state-motion-clock: aligned;
+  animation: status-call-glow 1.8s ease-in-out infinite; animation-name: var(--state-motion, status-call-glow);
 }
 
 .directory-browser-scan-dot::after {
@@ -7090,8 +7071,6 @@ body[data-companion-resizing="true"] .canvas-operation {
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-soft);
   pointer-events: none;
 }
@@ -7343,7 +7322,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 .cluster-strip-step.is-blocked { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
 .cluster-strip-step.is-running { background: var(--warn); }
-.cluster-strip-step.is-awaiting { background: var(--aurora); animation: cluster-strip-pulse 1.8s steps(9, end) infinite; animation-name: var(--state-motion, cluster-strip-pulse); --state-motion-clock: aligned; }
+.cluster-strip-step.is-awaiting { background: var(--aurora); animation: cluster-strip-pulse 1.8s ease-in-out infinite; animation-name: var(--state-motion, cluster-strip-pulse); }
 .cluster-strip-step.is-done { background: var(--positive); }
 @keyframes cluster-strip-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
@@ -7395,7 +7374,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--aurora);
   box-shadow: 0 0 5px var(--aurora-glow);
-  animation: caption-action-live 1.6s steps(8, end) infinite; animation-name: var(--state-motion, caption-action-live); --state-motion-clock: aligned;
+  animation: caption-action-live 1.6s ease-in-out infinite; animation-name: var(--state-motion, caption-action-live);
 }
 
 .side-bar-chip-group-mark {
@@ -8219,7 +8198,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: linear-gradient(90deg, transparent 0%, var(--warn) 30%, var(--warn) 70%, transparent 100%);
   background-size: 55% 100%;
   background-repeat: no-repeat;
-  animation: caption-rail-travel 3.8s steps(19, end) infinite; animation-name: var(--state-motion, caption-rail-travel); --state-motion-clock: aligned;
+  animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel);
 }
 
 /* background는 턴이 끝나고 작업만 남은 상태 — 사람을 부르지 않는 일이 혼자 굴러간다.
@@ -8238,7 +8217,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     color-mix(in oklab, var(--warn) 22%, transparent) 160px
   );
   background-size: 160px 100%;
-  animation: caption-rail-flow 6.5s steps(65, end) infinite; animation-name: var(--state-motion, caption-rail-flow); --state-motion-clock: aligned;
+  animation: caption-rail-flow 6.5s linear infinite; animation-name: var(--state-motion, caption-rail-flow);
 }
 
 /* awaiting은 사람을 기다리는 유일한 상태 — 호출 신호로 맥동한다. 밝기만이 아니라 글로우가
@@ -8247,7 +8226,7 @@ body[data-companion-resizing="true"] .canvas-operation {
    어두웠다(위계 역전). */
 .canvas-operation.is-running--awaiting > .canvas-operation-titlebar::after {
   box-shadow: 0 0 11px 1px var(--aurora-glow);
-  animation: caption-rail-call 2.4s steps(1, end) infinite; animation-name: var(--state-motion, caption-rail-call); --state-motion-clock: aligned;
+  animation: caption-rail-call 2.4s var(--ease-glide) infinite; animation-name: var(--state-motion, caption-rail-call);
 }
 
 /* 패널 안 허용 요청이 떠 있는 동안 — 도구 호출이 진행 중이라 활동 축은 turn 이지만, 실제로는 사람의 답을 기다린다.
@@ -8261,7 +8240,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: var(--caption-rail);
   background-size: auto;
   box-shadow: 0 0 11px 1px var(--aurora-glow);
-  animation: caption-rail-call 2.4s steps(1, end) infinite; animation-name: var(--state-motion, caption-rail-call); --state-motion-clock: aligned;
+  animation: caption-rail-call 2.4s var(--ease-glide) infinite; animation-name: var(--state-motion, caption-rail-call);
 }
 
 /* 미확인 완료는 이미 끝난 일이라 급하지 않다 — 부름(2.4s)보다 느린 잔광으로 남는다.
@@ -8269,7 +8248,7 @@ body[data-companion-resizing="true"] .canvas-operation {
    awaiting > unseen > background 순으로 어느 순간에도 뒤집히지 않는다. */
 .canvas-operation.is-unseen > .canvas-operation-titlebar::after {
   box-shadow: 0 0 9px 1px var(--positive-glow);
-  animation: caption-rail-tide 4.4s steps(1, end) infinite; animation-name: var(--state-motion, caption-rail-tide); --state-motion-clock: aligned;
+  animation: caption-rail-tide 4.4s var(--ease-glide) infinite; animation-name: var(--state-motion, caption-rail-tide);
 }
 
 /* 도착 순간의 1회 플래시는 그 위에 따로 선다 — 상시 aura(22px glow)를 순간 운동으로
@@ -8488,8 +8467,6 @@ body[data-companion-resizing="true"] .canvas-operation {
       color-mix(in oklch, var(--glass-tint-strong) 88%, var(--ink-deep))
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   /* 그림자는 깊이만 진다 — brass 링(shadow-anchor)은 위치 채널이라 중립 메뉴에 두르지 않는다. */
   box-shadow: var(--shadow-floating);
 }
@@ -8638,7 +8615,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--aurora);
   box-shadow: 0 0 6px var(--aurora-glow);
-  animation: caption-action-live 1.6s steps(8, end) infinite; animation-name: var(--state-motion, caption-action-live); --state-motion-clock: aligned;
+  animation: caption-action-live 1.6s ease-in-out infinite; animation-name: var(--state-motion, caption-action-live);
 }
 
 .group-context-menu-item__plus {
@@ -8887,7 +8864,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border: 2px solid var(--agent-control-badge);
   opacity: 0;
   pointer-events: none;
-  animation: fleet-caption-agent-halo 1.6s steps(16, end) infinite; animation-name: var(--state-motion, fleet-caption-agent-halo); --state-motion-clock: aligned;
+  animation: fleet-caption-agent-halo 1.6s ease-out infinite; animation-name: var(--state-motion, fleet-caption-agent-halo);
 }
 @keyframes fleet-caption-agent-halo {
   0% { transform: scale(0.9); opacity: 0.6; }
@@ -8906,7 +8883,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--aurora);
   box-shadow: 0 0 6px var(--aurora-glow);
-  animation: caption-action-live 1.6s steps(8, end) infinite; animation-name: var(--state-motion, caption-action-live); --state-motion-clock: aligned;
+  animation: caption-action-live 1.6s ease-in-out infinite; animation-name: var(--state-motion, caption-action-live);
 }
 
 @keyframes caption-action-live {
@@ -9144,8 +9121,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
   box-shadow: none;
 }
 
@@ -9391,9 +9366,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   pointer-events: none;
   transform: translate(-50%, -14px) scale(0.96);
   transform-origin: top center;
-  /* 유리 블러는 보이는 동안만 선다 — 숨은 바가 블러 합성층을 상주시키면 맵의 모든 프레임이 그 값을 낸다.
-     닫힐 때는 흐려지기가 끝난 뒤(150ms) 걷는다. */
-  transition: transform 220ms var(--ease-glide), opacity 150ms ease, backdrop-filter 0s linear 150ms, -webkit-backdrop-filter 0s linear 150ms;
+  transition: transform 220ms var(--ease-glide), opacity 150ms ease;
 }
 
 /* 꼭대기 핫존 — 바 전체가 하나의 칸처럼 brass로 달아오른다(고스트가 아레나를 덮는 것과 짝). */
@@ -9403,8 +9376,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .canvas-snap-bar.is-open {
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   opacity: 1;
   transform: translate(-50%, 0) scale(1);
   transition: transform 220ms var(--ease-glide), opacity 150ms ease;
@@ -9458,13 +9429,10 @@ body[data-companion-resizing="true"] .canvas-operation {
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -100%);
-  /* 바와 같다 — 블러는 보이는 동안만, 걷기는 흐려지기가 끝난 뒤. */
-  transition: transform 220ms var(--ease-glide), opacity 150ms ease, backdrop-filter 0s linear 150ms, -webkit-backdrop-filter 0s linear 150ms;
+  transition: transform 220ms var(--ease-glide), opacity 150ms ease;
 }
 
 .canvas-snap-handle.is-on {
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
   opacity: 1;
   transform: translate(-50%, 0);
   transition: transform 220ms var(--ease-glide), opacity 150ms ease;
@@ -9541,8 +9509,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   outline: 1px dashed color-mix(in oklch, var(--brass) 34%, transparent);
   outline-offset: -1px;
   background: color-mix(in oklch, var(--glass-tint-band) 70%, transparent);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
   animation: canvas-snap-assist-in 180ms var(--ease-glide);
 }
 
@@ -9646,8 +9612,6 @@ body[data-companion-resizing="true"] .canvas-operation {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   animation: canvas-snap-menu-in 190ms var(--ease-spring) both;
 }
@@ -10543,8 +10507,6 @@ body[data-companion-resizing="true"] .canvas-operation {
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 
@@ -11724,14 +11686,11 @@ body[data-companion-resizing="true"] .canvas-operation {
   padding: 0;
   /* 이 기본 규칙의 소비처는 레일 Shell 하나다(캔버스 Operation은 아래에서 transparent로 덮는다).
      슬롯 머리·테두리가 이미 Shell 크롬을 소유하므로 xterm 둘레에 두 번째 내부 여백을 만들지 않는다.
-     Shell은 패널과 달리 항상 뒤를 흐리는 단일 유리 면이다. 게이트가 열리면 terminal tint와 전용
-     blur를 함께 쓰고, 닫히면 불투명 terminal tint와 none으로 복원된다. xterm도 같은 terminal
+     Shell은 단일 반투명 terminal tint를 쓴다. xterm도 같은 terminal
      채널을 읽으므로 카드와 필드 사이에 색 계단을 만들지 않는다. */
   background: var(--glass-tint-terminal);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  -webkit-backdrop-filter: var(--glass-backdrop-terminal);
-  backdrop-filter: var(--glass-backdrop-terminal);
   box-shadow: var(--shadow-soft);
 }
 
@@ -11975,8 +11934,6 @@ body[data-companion-resizing="true"] .canvas-operation {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 60px -40px var(--brass);
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
@@ -12255,8 +12212,6 @@ body[data-companion-resizing="true"] .canvas-operation {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   pointer-events: auto;
 }
@@ -12426,8 +12381,6 @@ body[data-companion-resizing="true"] .canvas-operation {
       color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent)
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 
@@ -13033,8 +12986,6 @@ body[data-companion-resizing="true"] .canvas-operation {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
 }
 
@@ -13873,7 +13824,7 @@ body[data-codex-side="true"] .command-card {
   animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) both;
 }
 
-/* canonical 오버레이 규약: scrim은 약한 blur(4px)로 배경만 가라앉히고, 강한 glass blur는 카드가 진다. */
+/* canonical 오버레이 규약: scrim은 배경을 가라앉히고 카드가 반투명 재질을 진다. */
 .whatsnew-scrim {
   position: absolute;
   inset: 0;
@@ -13884,30 +13835,10 @@ body[data-codex-side="true"] .command-card {
   cursor: default;
 }
 
-/* 오버레이 스크림 규약: scrim은 약한 blur로 배경만 가라앉히고, 강한 유리 질감은 카드가 진다.
-   채널 기본값이 none이라 리퀴드 글래스 게이트가 닫히면 현행 무블러 스크림과 동일하다. */
-.add-host-scrim,
-.pair-scrim,
-.commissioning-scrim,
-.directory-browser-scrim,
-.whatsnew-scrim,
-.codex-reading-scrim,
-.keyboard-shortcuts-scrim,
-.control-curtain-scrim {
-  -webkit-backdrop-filter: var(--glass-backdrop-scrim);
-  backdrop-filter: var(--glass-backdrop-scrim);
-}
-
-/* canonical 팝업 판독성 계약(리퀴드 글래스 채널판): 모든 부유 모달·팝업·플로팅 메뉴는
-   틴트 층(--glass-tint-*)과 최하단 언더레이(--glass-underlay), 그리고
-   backdrop-filter(--glass-backdrop-strong)를 theme.css의 glass 채널로만 소비한다.
-   채널 기본값이 곧 구 계약이다 — 언더레이는 불투명 --ink-deep, 틴트는 기존 표면 토큰
-   별칭, 블러는 none. 그래서 게이트(@supports 미달·prefers-reduced-transparency·
-   라이트 테마) 중 하나라도 닫히면 모든 팝업이 구 불투명 계약으로 돌아간다.
-   게이트가 열리면 언더레이가 transparent로, 틴트가 테마별 α52~72% 유리 재료로,
-   블러가 20px대로 바뀌어 리퀴드 글래스가 된다. 판독은 틴트 α 하한(≈0.52)과 블러가
-   함께 보장하며, 원료 표면 토큰(--surface-*)을 팝업이 직접 칠하는 것은 회귀다.
-   비팝업 glass 표면(패널·카드)은 테마의 반투명 glass 미학을 그대로 유지한다. */
+/* canonical 팝업 판독성 계약: 부유 모달·팝업·플로팅 메뉴는 틴트(--glass-tint-*)와
+   최하단 언더레이(--glass-underlay)를 theme.css의 채널로 소비한다. 다크에서는 반투명 틴트만으로
+   뒤를 통과시키고, 투명도 축소 선호·Whites에서는 불투명 언더레이와 기존 표면 별칭으로 복원한다.
+   원료 표면 토큰을 팝업이 직접 칠하면 이 게이트를 벗어나므로 채널을 그대로 사용한다. */
 .whatsnew-card {
   position: relative;
   z-index: 1;
@@ -13922,8 +13853,6 @@ body[data-codex-side="true"] .command-card {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
@@ -14823,7 +14752,7 @@ body[data-codex-side="true"] .command-card {
   overflow: hidden;
   /* Reading 오버레이는 우현 rail 카드와 동일한 carbon glass 표면을 쓴다(별도 블루
      그라디언트는 콘솔의 carbon dark 톤과 어긋났음): surface-glass-strong + ink-deep
-     + 우상단 brass 코너 + 단일 blur 레이어.
+     + 우상단 brass 코너.
      팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
@@ -14832,8 +14761,6 @@ body[data-codex-side="true"] .command-card {
       var(--glass-tint-expanded)
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
 }
 
@@ -15632,8 +15559,6 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
       var(--glass-tint-expanded)
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
   transition: border-color var(--duration-fast);
 }
@@ -15644,16 +15569,13 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 }
 
 /* 확대 Shell도 전용 terminal 재질 한 장을 slot 루트에서 칠한다. Codex 등 다른 확대 표면은 위의
-   강한 팝업 재질을 유지하고, Shell은 terminal tint와 항상 켜지는 전용 blur를 쓴다.
-   terminal-shell을 비워 xterm까지 같은 pane을 공유하며, 게이트가 닫히면 불투명 terminal 토큰과
-   무블러로 자동 복원된다. */
+   강한 팝업 재질을 유지하고, Shell은 terminal tint를 쓴다.
+   terminal-shell을 비워 xterm까지 같은 pane을 공유하며, 게이트가 닫히면 불투명 terminal 토큰으로 복원된다. */
 .expanded-surface-pane:has(.terminal-shell) {
   background:
     linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),
     radial-gradient(150% 420px at 50% -48px, var(--glass-pane-light) 0%, transparent 62%),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-terminal);
-  backdrop-filter: var(--glass-backdrop-terminal);
 }
 
 /* 터미널은 cols×rows 격자라 첫 줄 끝만 비울 수 없다 — 부유 닫기가 우상단 글자(RPROMPT·TUI 상태)를
@@ -15662,8 +15584,6 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .expanded-surface-pane .terminal-shell {
   padding-top: var(--expanded-surface-float-block, 0px);
   background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
   box-shadow: none;
 }
 
@@ -15703,8 +15623,6 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--glass-tint-strong) 82%, var(--ink-deep));
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   color: var(--text-tertiary);
   box-shadow: 0 6px 18px -10px oklch(0% 0 0 / 70%);
   cursor: pointer;
@@ -16052,15 +15970,13 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   text-align: left;
 }
 
 /* 말풍선 꼬리. 도움말 버튼 아래를 가리켜 이 말이 어디서 나온 것인지 붙여 둔다 —
    꼬리가 없으면 화면 구석에 떠 있는 또 하나의 상자로 읽힌다.
-   본체와 같은 유리를 칠하되 backdrop-filter는 다시 걸지 않는다(두 번 흐려진다). */
+   본체와 같은 반투명 유리를 칠한다. */
 .command-band-update-bubble::before {
   content: "";
   position: absolute;
@@ -16187,8 +16103,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
 }
 
@@ -16357,7 +16271,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .keyboard-shortcuts-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: color-mix(in oklch, var(--ink-abyss) 64%, transparent); }
-.keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); max-height: min(680px, calc(100dvh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); box-shadow: var(--shadow-floating); outline: none; }
+.keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); max-height: min(680px, calc(100dvh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); box-shadow: var(--shadow-floating); outline: none; }
 .keyboard-shortcuts-dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 10px; color: var(--text-primary); }
 .keyboard-shortcuts-dialog-head button { width: 24px; height: 24px; border-radius: var(--radius-xs); color: var(--text-tertiary); }
 .keyboard-shortcuts-dialog-head button:hover { background: var(--surface-glass); color: var(--text-primary); }
@@ -16574,10 +16488,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   max-width: 100%;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  /* 유리는 루트가 아니라 자식 없는 .quick-launch-glass가 진다 — 루트 backdrop-filter는 backdrop root가
-     되어 안쪽 앵커 팝업(멘션 덱·명령 덱·theater/model 팝오버)의 blur가 카드 밖 화면을 샘플링하지
-     못하게 만든다(팝오버 뒤 코드가 선명하게 비치던 원인). ::before/::after는 ultracode 구슬·링이
-     쓰므로 전용 요소를 둔다(.operations-side-bar::before와 같은 계약). */
+  /* 반투명 재질은 자식 없는 .quick-launch-glass가 진다. ::before/::after는 ultracode 구슬·링이
+     쓰므로 전용 요소를 유지한다. */
   background: none;
   box-shadow: var(--shadow-floating);
   /* 고정 시 언포커스가 물러나는 깊이. 접힘과 한 동작으로 걸린다. */
@@ -16606,8 +16518,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
       color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent)
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   pointer-events: none;
 }
 
@@ -17237,8 +17147,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
       color-mix(in oklch, var(--glass-tint-pillar) 94%, transparent)
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   cursor: zoom-out;
 }
@@ -17808,8 +17716,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
 }
 
 /* 밴드가 선 섹션의 행은 밴드 라벨 자리(패딩 + 글리프 16px + 간격 6px)에 맞춰 들어간다.
@@ -18437,8 +18343,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   padding: clamp(var(--space-5), 5vw, var(--space-8));
   column-gap: clamp(var(--space-4), 4vw, var(--space-6));
 }
@@ -18604,8 +18508,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   text-align: center;
 }
 
@@ -19241,8 +19143,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   display: grid;
   place-items: center;
   background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
-  -webkit-backdrop-filter: var(--glass-backdrop-scrim);
-  backdrop-filter: var(--glass-backdrop-scrim);
 }
 
 .archive-sheet {
@@ -19253,8 +19153,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
   background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   outline: none;
 }
@@ -19690,13 +19588,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   .archive-sheet-scope { width: 100%; }
 }
 .operation-search-archived { color: var(--text-tertiary); font-size: var(--t-xs); }
-
-/* 위상 시계는 명시한 상태 표시만 쓴다 — 자식 장식이나 로딩 모션에는 전파하지 않는다. */
-@property --state-motion-clock {
-  syntax: "<custom-ident>";
-  inherits: false;
-  initial-value: natural;
-}
 
 /* 창이 비활성이거나 숨긴 표면이면 상태 반복을 없앤다 — paused도 style tick을 남긴다. */
 :root[data-state-motion="inactive"],
