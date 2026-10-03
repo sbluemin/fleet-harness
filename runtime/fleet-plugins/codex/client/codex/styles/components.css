@@ -8,7 +8,7 @@
 .markdown-body a[data-md-link-kind="codex-file"]:focus-visible > code { background: var(--control-hover-fill); border-color: var(--brass); }
 .codex-file-peek { min-width: 0; max-width: 100%; margin: var(--space-3) 0; padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-md); background: var(--ink-deep); color: var(--text-primary); }
 .codex-file-peek header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); }
-.codex-file-peek strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--t-xs); }
+.codex-file-peek strong { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; font-family: var(--font-mono); font-size: var(--t-xs); }
 .codex-file-peek-actions { display: flex; align-items: center; gap: var(--space-2); }
 .codex-file-peek button { min-height: 28px; padding: var(--space-1) var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font-family: var(--font-body); font-size: var(--t-xs); line-height: 1.4; cursor: pointer; }
 .codex-file-peek button:hover { background: var(--control-hover-fill); border-color: var(--brass); }

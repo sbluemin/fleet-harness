@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { open, realpath, stat } from "node:fs/promises";
+import { lstat, open, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import type http from "node:http";
 import { assertWithinRoot, NOFOLLOW_FLAG } from "@fleet-console/infra/fs-store";
@@ -36,22 +36,9 @@ export function createCodexFileRouter(deps: FileRouteDeps) {
       if (pathname.endsWith("file-refs")) {
         if (!Array.isArray(body.paths) || body.paths.length > MAX_REFS) throw new FileRequestError(400, "invalid_paths");
         const entries: FileRefResolution[] = [];
-        for (const input of body.paths) {
-          const relative = validateRefPath(root, input);
-          try {
-            const target = await resolveContained(root, relative);
-            const info = await stat(target);
-            if (info.isDirectory()) entries.push({ path: relative, status: "dir" });
-            else {
-              await readBoundedText(root, relative, target);
-              entries.push({ path: relative, status: "file" });
-            }
-          } catch (error) {
-            if (error instanceof FileRequestError && error.status === 403) throw error;
-            if (isMissing(error) || error instanceof FileRequestError) entries.push({ path: relative, status: "missing" });
-            else throw error;
-          }
-        }
+        // 형식 오류는 요청 전체를 거절하되, 개별 파일의 판정은 다른 항목을 막지 않는다.
+        for (const input of body.paths) validatePathInput(input);
+        for (const input of body.paths as string[]) entries.push(await classifyRef(root, input));
         return send(200, entries);
       }
       const relative = validateRelativePath(body.path);
@@ -72,21 +59,59 @@ export function createCodexFileRouter(deps: FileRouteDeps) {
   };
 }
 
+function validatePathInput(value: unknown): asserts value is string {
+  if (typeof value !== "string" || !value || value.length > 2048 || /[\u0000-\u001f\u007f]/u.test(value)) throw new FileRequestError(400, "invalid_path");
+}
+
 function validateRelativePath(value: unknown): string {
-  if (typeof value !== "string" || !value || value.length > 2048 || value.includes("\0")) throw new FileRequestError(400, "invalid_path");
+  validatePathInput(value);
   if (value.includes("\\") || path.posix.isAbsolute(value) || /^[A-Za-z]:/u.test(value) || value.split("/").some(part => part === ".." || part === ".")) {
     throw new FileRequestError(403, "outside_theater");
   }
   return path.posix.normalize(value);
 }
 
-function validateRefPath(root: string, value: unknown): string {
-  if (typeof value !== "string" || !value || value.length > 2048 || value.includes("\0")) throw new FileRequestError(400, "invalid_path");
-  if (!path.isAbsolute(value)) return validateRelativePath(value);
-  if (value.includes("\\") || value.split("/").some(part => part === ".." || part === ".")) throw new FileRequestError(403, "outside_theater");
-  // 절대 입력도 먼저 lexical 포함을 검증한다. 아래 resolveContained가 실제 대상의 포함을 다시 검증한다.
-  assertContained(root, value);
-  return path.relative(root, value).split(path.sep).join("/") || ".";
+async function classifyRef(root: string, input: string): Promise<FileRefResolution> {
+  let relative: string | undefined;
+  try {
+    // 절대 경로는 lexical 정규화 후 별칭을 푼다. 상대 경로는 traversal과 lexical 포함도 검증한다.
+    const absolute = path.isAbsolute(input);
+    if (input.includes("\\")) throw new FileRequestError(403, "outside_theater");
+    const candidate = absolute ? path.resolve(input) : path.join(root, validateRelativePath(input));
+    if (!absolute) assertContained(root, candidate);
+    const resolved = await resolveExistingAncestor(candidate);
+    assertContained(root, resolved.path);
+    relative = path.relative(root, resolved.path).split(path.sep).join("/") || ".";
+    if (resolved.missing) return { path: relative, status: "missing" };
+    const info = await stat(resolved.path);
+    if (info.isDirectory()) return { path: relative, status: "dir" };
+    await readBoundedText(root, relative, resolved.path);
+    return { path: relative, status: "file" };
+  } catch (error) {
+    if (relative && isMissing(error)) return { path: relative, status: "missing" };
+    // 바깥 경로의 존재/부재와 읽기 거부를 구분하지 않고 경로도 비운다.
+    return { path: "", status: "unavailable" };
+  }
+}
+
+/** 없는 잎은 가장 가까운 존재 조상까지 realpath로 풀어 별칭·심링크 경계를 판정한다. */
+async function resolveExistingAncestor(candidate: string): Promise<{ readonly path: string; readonly missing: boolean }> {
+  let ancestor = candidate;
+  const suffix: string[] = [];
+  for (;;) {
+    try {
+      return { path: path.join(await realpath(ancestor), ...suffix), missing: suffix.length > 0 };
+    } catch (error) {
+      if (!isMissing(error)) throw error;
+      // 끊어진 심링크를 단순한 없는 잎으로 취급하면 바깥 대상의 부재를 반사할 수 있다.
+      const info = await lstat(ancestor).catch(cause => { if (isMissing(cause)) return null; throw cause; });
+      if (info?.isSymbolicLink()) throw new FileRequestError(403, "outside_theater");
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) throw error;
+      suffix.unshift(path.basename(ancestor));
+      ancestor = parent;
+    }
+  }
 }
 
 async function resolveContained(root: string, relative: string): Promise<string> {

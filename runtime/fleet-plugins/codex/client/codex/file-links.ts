@@ -28,6 +28,11 @@ function refData(ref: FileRef): Record<string, string> {
   return { path: ref.path, ...(ref.line ? { line: String(ref.line) } : {}), ...(ref.column ? { column: String(ref.column) } : {}) };
 }
 
+function peekPathLabel(ref: FileRef): string {
+  const label = escapeHtml(`${ref.path}${ref.line ? `:${ref.line}` : ""}`);
+  return `<strong title="${label}"><bdi dir="ltr">${label}</bdi></strong>`;
+}
+
 interface FileLinkOptions {
   readonly container: HTMLElement;
   readonly secondaryContainer?: HTMLElement;
@@ -62,7 +67,7 @@ export function mountCodexFileLinks(options: FileLinkOptions) {
     panel.className = "codex-file-peek";
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-label", t()("codex.files.preview"));
-    panel.innerHTML = `<header><strong>${escapeHtml(ref.path)}</strong><button type="button" data-peek-close aria-label="${escapeHtml(t()("common.close"))}">×</button></header><div role="status">${escapeHtml(t()("codex.files.loading"))}</div>`;
+    panel.innerHTML = `<header>${peekPathLabel(ref)}<button type="button" data-peek-close aria-label="${escapeHtml(t()("common.close"))}">×</button></header><div role="status">${escapeHtml(t()("codex.files.loading"))}</div>`;
     peek = panel;
     if (target && options.container.contains(target)) {
       (target.closest(".cowork-block, p, li, td, blockquote") ?? target).insertAdjacentElement("afterend", panel);
@@ -72,7 +77,7 @@ export function mountCodexFileLinks(options: FileLinkOptions) {
     try {
       const result = await fetchFilePeek(theaterId, ref.path, ref.line);
       if (disposed || request !== epoch || options.getTheaterId() !== theaterId) return;
-      panel.innerHTML = `<header><strong>${escapeHtml(result.path)}${ref.line ? `:${ref.line}` : ""}</strong><div class="codex-file-peek-actions"><button type="button" data-peek-open>${escapeHtml(t()("codex.files.openInFiles"))}</button><button type="button" data-peek-close aria-label="${escapeHtml(t()("common.close"))}">×</button></div></header><pre aria-label="${escapeHtml(t()("codex.files.preview"))}">${result.lines.map((text, index) => `<span class="codex-file-peek-line${result.startLine + index === ref.line ? " is-target" : ""}"><span aria-hidden="true">${result.startLine + index}</span><code>${escapeHtml(text) || " "}</code></span>`).join("")}</pre>${result.truncated ? `<p>${escapeHtml(t()("codex.files.truncated"))}</p>` : ""}<span data-peek-error role="alert"></span>`;
+      panel.innerHTML = `<header>${peekPathLabel({ ...ref, path: result.path })}<div class="codex-file-peek-actions"><button type="button" data-peek-open>${escapeHtml(t()("codex.files.openInFiles"))}</button><button type="button" data-peek-close aria-label="${escapeHtml(t()("common.close"))}">×</button></div></header><pre aria-label="${escapeHtml(t()("codex.files.preview"))}">${result.lines.map((text, index) => `<span class="codex-file-peek-line${result.startLine + index === ref.line ? " is-target" : ""}"><span aria-hidden="true">${result.startLine + index}</span><code>${escapeHtml(text) || " "}</code></span>`).join("")}</pre>${result.truncated ? `<p>${escapeHtml(t()("codex.files.truncated"))}</p>` : ""}<span data-peek-error role="alert"></span>`;
       panel.querySelector<HTMLElement>("[data-peek-close]")?.addEventListener("click", closePeek);
       panel.querySelector<HTMLButtonElement>("[data-peek-open]")?.addEventListener("click", async (event) => {
         const button = event.currentTarget as HTMLButtonElement;
@@ -165,7 +170,7 @@ export function mountCodexFileLinks(options: FileLinkOptions) {
       for (const { code, ref } of candidates) {
         if (!code.isConnected || !body.contains(code)) continue;
         const result = resolved.get(ref.path);
-        if (!result) continue;
+        if (!result || result.status === "unavailable") continue;
         if (result.status === "missing") {
           code.classList.add("codex-file-missing");
           code.title = t()("codex.files.unavailable");
