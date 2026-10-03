@@ -77,13 +77,28 @@ export interface AccessRegistryDeps {
   /** 목록에 실리는 공개 이름. 토큰과 다른 생성기를 써서 둘을 섞을 여지를 없앤다. */
   readonly randomHandle?: () => string;
   /**
-   * prune이 실제로 세션을 걷어냈을 때 알린다. 만료는 조용히 일어나므로 알리지 않으면 화면은
-   * 이미 없는 보유자를 계속 띄운 채 남는다 — 명시적 회수와 같은 신호가 나가야 한다.
-   * 지운 세션의 공개 이름을 함께 넘겨, 호스트가 그 세션으로 열린 스트림도 끝낼 수 있게 한다.
+   * 세션이 끝났다는 유일한 신호. 회수·대체·언페어링·만료·리스너 종료 — 세션을 지우는 모든 길이
+   * 맵을 고친 뒤 이것을 한 번 부른다. 끝나는 길마다 호출자가 채널을 따로 닫게 두면 하나만 빠져도
+   * 끝난 세션이 계속 듣고 말한다. 그래서 닫는 책임은 지우는 자리 하나에 둔다.
    *
-   * prune은 다른 레지스트리 호출 안에서 돌기도 하므로 콜백은 재진입을 견뎌야 한다.
+   * 다른 레지스트리 호출 안에서 불리기도 하므로(prune) 콜백은 재진입을 견뎌야 한다. 콜백이
+   * 레지스트리를 다시 부르면, 이미 지운 세션은 다시 나오지 않는다.
    */
-  readonly onSessionsPruned?: (handles: readonly string[]) => void;
+  readonly onSessionsEnded?: (ended: readonly EndedSession[]) => void;
+  /**
+   * 만료 시계. 만료는 정확히 그 시각의 사건이어야 한다 — 다음 sweep까지 기다리면 그 사이 끝난
+   * 세션의 채널이 이벤트를 받고 명령을 보낸다. 테스트가 시계를 대신할 수 있도록 주입받는다.
+   */
+  readonly setTimer?: (callback: () => void, delayMs: number) => unknown;
+  readonly clearTimer?: (timer: unknown) => void;
+}
+
+/** 끝난 세션 하나. handle은 그 세션으로 열린 채널을 찾는 이름이다. */
+export interface EndedSession {
+  readonly handle: string;
+  readonly pairingId: string | null;
+  /** 끊긴 화면에 무엇을 말할지. null이면 조용히 닫는다 — 만료·자기 잔상·리스너 종료. */
+  readonly notice: ControlReclaimedReason | null;
 }
 
 export interface AccessRegistry {
@@ -121,7 +136,14 @@ export interface AccessRegistry {
   /** 이미 열린 세션 하나를 끊는다. 회수·대체 사유는 그 페어링의 다음 성공한 join까지 남긴다. */
   revokeSessionByHandle(handle: string, reason?: ControlReclaimedReason | null): boolean;
   /** 한 페어링으로 열린 접속을 전부 끊는다. 페어링 회수가 접속을 남겨 두지 않게 한다. */
-  revokeSessionsByPairing(pairingId: string): boolean;
+  revokeSessionsByPairing(pairingId: string, notice?: ControlReclaimedReason | null): boolean;
+  /**
+   * 그 handle의 세션이 아직 살아 있는가. 만료를 지금 시각으로 판정하되 유휴 수명을 늘리지 않는다 —
+   * 서버가 내려보내는 일(저널·이벤트)은 사람의 활동이 아니다.
+   */
+  isSessionLive(handle: string): boolean;
+  /** 사람의 명령이 그 세션으로 왔다. 살아 있으면 유휴 수명을 밀고 true, 끝났으면 false. */
+  touchSession(handle: string): boolean;
   /** 그 페어링의 끝난 사유. 없으면 null. */
   lookupSessionEnd(pairingId: string): ControlReclaimedReason | null;
   /** 그 페어링이 다시 join했거나 언페어링됐을 때 사유를 걷는다. */
@@ -152,6 +174,13 @@ const DEFAULT_GRANT_TTL_MS = 15 * 60 * 1000;
  */
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_SESSION_IDLE_TTL_MS = 60 * 60 * 1000;
+/**
+ * 만료 시계 한 번의 최대 대기. macOS의 타이머 시계는 시스템이 잠든 동안 흐르지 않으므로, 만료 시각까지
+ * 한 번에 기다리면 잠든 시간만큼 늦게 울린다. 대기를 이 상한으로 끊고 울릴 때마다 벽시계(now)로 다시
+ * 판정하면, 깨어난 뒤 늦어도 이만큼 안에 만료가 잡힌다. 그 창 동안에는 끝난 세션의 터미널 입력과
+ * 요청마다 재검사하지 않는 SSE가 살아 있으므로 짧게 둔다 — 15초마다 도는 prune은 작은 맵 순회라 비용이 없다.
+ */
+const MAX_EXPIRY_WAIT_MS = 15 * 1000;
 
 export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegistry {
   const grantTtlMs = deps.grantTtlMs ?? DEFAULT_GRANT_TTL_MS;
@@ -169,6 +198,56 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
    * join이 지운다. 상한은 페어링 수(PAIRED_DEVICE_LIMIT)로 자연히 묶인다.
    */
   const sessionEnds = new Map<string, ControlReclaimedReason>();
+  const setTimer = deps.setTimer ?? ((callback: () => void, delayMs: number) => {
+    const timer = setTimeout(callback, delayMs);
+    // 이 시계가 프로세스를 붙잡아 두지 않게 한다.
+    timer.unref();
+    return timer;
+  });
+  const clearTimer = deps.clearTimer ?? ((timer: unknown) => clearTimeout(timer as ReturnType<typeof setTimeout>));
+  let expiryTimer: unknown = null;
+  let expiryAt: number | null = null;
+
+  /**
+   * 가장 이른 만료 시각에 시계 하나만 건다. 유휴 연장으로 시각이 뒤로 밀려도 다시 걸지 않는다 —
+   * 일찍 깬 시계는 prune이 지울 것이 없음을 보고 다음 시각에 다시 건다. 세션이 없으면 시계도 없다.
+   */
+  function armExpiry(): void {
+    let next: number | null = null;
+    for (const stored of sessions.values()) {
+      const at = Math.min(stored.idleExpiresAt, stored.absoluteExpiresAt);
+      if (next === null || at < next) next = at;
+    }
+    if (next === expiryAt) return;
+    if (expiryTimer !== null) clearTimer(expiryTimer);
+    expiryTimer = null;
+    expiryAt = next;
+    if (next === null) return;
+    // 상한까지만 기다린다 — 일찍 깬 시계는 prune이 지울 것이 없음을 보고 다시 건다.
+    expiryTimer = setTimer(() => {
+      expiryTimer = null;
+      expiryAt = null;
+      prune();
+      armExpiry();
+    }, Math.min(Math.max(0, next - now()), MAX_EXPIRY_WAIT_MS));
+  }
+
+  /**
+   * 세션을 지우는 유일한 자리. 지운 뒤 한 번만 알린다 — 알리는 도중의 재진입이 지울 것을 다시
+   * 찾지 못하도록, 맵을 먼저 고치고 나서 부른다.
+   */
+  function endSessions(matches: (stored: StoredSession) => boolean, notice: (stored: StoredSession) => ControlReclaimedReason | null): EndedSession[] {
+    const ended: EndedSession[] = [];
+    for (const [id, stored] of sessions) {
+      if (!matches(stored)) continue;
+      sessions.delete(id);
+      ended.push({ handle: stored.handle, pairingId: stored.pairingId, notice: notice(stored) });
+    }
+    if (ended.length === 0) return ended;
+    armExpiry();
+    deps.onSessionsEnded?.(ended);
+    return ended;
+  }
 
   function issueGrant(audience: AccessAudience, access: AccessClass = "full"): AccessGrant {
     prune();
@@ -209,6 +288,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     // 새 세션을 연 페어링은 더 이상 "끝난" 상태가 아니다 — 회수·대체된 사유를 이 자리에서 걷는다.
     if (pairingId !== null) clearSessionEnd(pairingId);
     sessions.set(id, { handle, device, audience, access, pairingId, openedAt: current, absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs, lastSeenAt: current });
+    armExpiry();
     return { id, handle, audience, access, pairingId, expiresAt: absoluteExpiresAt };
   }
 
@@ -262,36 +342,50 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
   }
 
   function revokeSessionByHandle(handle: string, reason: ControlReclaimedReason | null = null): boolean {
-    for (const [id, stored] of sessions) {
+    for (const stored of sessions.values()) {
       if (stored.handle !== handle) continue;
+      // 사유는 알리기 전에 남긴다 — 신호를 받고 닫힌 화면의 재연결 401이 같은 사유를 읽어야 한다.
       if (reason !== null && stored.pairingId !== null) sessionEnds.set(stored.pairingId, reason);
-      return sessions.delete(id);
+      break;
     }
-    return false;
+    return endSessions((stored) => stored.handle === handle, () => reason).length > 0;
   }
 
   function revokeSession(id: string): boolean {
-    return sessions.delete(id);
+    const target = sessions.get(id);
+    return target !== undefined && endSessions((stored) => stored === target, () => null).length > 0;
   }
 
-  function revokeSessionsByPairing(pairingId: string): boolean {
-    let removed = false;
-    for (const [id, stored] of sessions) {
-      if (stored.pairingId !== pairingId) continue;
-      sessions.delete(id);
-      removed = true;
-    }
-    return removed;
+  function revokeSessionsByPairing(pairingId: string, notice: ControlReclaimedReason | null = null): boolean {
+    return endSessions((stored) => stored.pairingId === pairingId, () => notice).length > 0;
   }
 
   function revokeSessions(audience: AccessAudience): void {
-    for (const [id, stored] of sessions) {
-      if (stored.audience === audience) sessions.delete(id);
-    }
+    endSessions((stored) => stored.audience === audience, () => null);
   }
 
   function revokeAllSessions(): void {
-    sessions.clear();
+    endSessions(() => true, () => null);
+  }
+
+  function findByHandle(handle: string): StoredSession | null {
+    for (const stored of sessions.values()) if (stored.handle === handle) return stored;
+    return null;
+  }
+
+  function isSessionLive(handle: string): boolean {
+    prune();
+    return findByHandle(handle) !== null;
+  }
+
+  function touchSession(handle: string): boolean {
+    prune();
+    const stored = findByHandle(handle);
+    if (stored === null) return false;
+    const current = now();
+    stored.idleExpiresAt = Math.min(current + sessionIdleTtlMs, stored.absoluteExpiresAt);
+    stored.lastSeenAt = current;
+    return true;
   }
 
   function prune(): void {
@@ -299,14 +393,8 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     for (const [token, grant] of grants) {
       if (grant.expiresAt <= current) grants.delete(token);
     }
-    const removed: string[] = [];
-    for (const [id, stored] of sessions) {
-      if (stored.absoluteExpiresAt <= current || stored.idleExpiresAt <= current) {
-        sessions.delete(id);
-        removed.push(stored.handle);
-      }
-    }
-    if (removed.length > 0) deps.onSessionsPruned?.(removed);
+    // 만료는 조용히 끝난다 — 사유를 남기지 않아야 페어링된 기기가 다음 요청에서 말없이 다시 붙는다.
+    endSessions((stored) => stored.absoluteExpiresAt <= current || stored.idleExpiresAt <= current, () => null);
   }
 
   function lookupSessionEnd(pairingId: string): ControlReclaimedReason | null {
@@ -317,7 +405,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     sessionEnds.delete(pairingId);
   }
 
-  return { grantTtlMs, issueGrant, redeemGrant, consumeGrant, openSession, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, revokeSession, revokeSessionByHandle, revokeSessionsByPairing, revokeSessions, revokeAllSessions, lookupSessionEnd, clearSessionEnd, prune };
+  return { grantTtlMs, issueGrant, redeemGrant, consumeGrant, openSession, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, revokeSession, revokeSessionByHandle, revokeSessionsByPairing, isSessionLive, touchSession, revokeSessions, revokeAllSessions, lookupSessionEnd, clearSessionEnd, prune };
 }
 
 /**

@@ -2,7 +2,6 @@ import type * as http from "node:http";
 import { expirePairingCookie, formatPairingCookie, formatSessionCookie, readPairingCookie, type AccessSession, type ListenerIdentity, type createAccessRegistry } from "./auth.js";
 import { PAIRED_DEVICE_LIMIT, type createPairedDeviceStore } from "./paired-devices.js";
 import { normalizeRemoteJoinSource, type createRemoteJoinGuard } from "./remote-join-guard.js";
-import type { ControlReclaimedReason } from "./access-control-contract.js";
 interface PairingRouteDeps {
   readonly access: ReturnType<typeof createAccessRegistry>;
   readonly pairedDeviceStore: ReturnType<typeof createPairedDeviceStore>;
@@ -12,11 +11,9 @@ interface PairingRouteDeps {
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly withSecurityHeaders: (extra: http.OutgoingHttpHeaders) => http.OutgoingHttpHeaders;
   readonly broadcastControlChanged: () => void;
-  readonly forgetShell: (handle: string) => void;
-  readonly endSessionStreams: (handle: string, reason: ControlReclaimedReason | null) => void;
 }
 export function createPairingRoutes(deps: PairingRouteDeps) {
-  const { access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged, forgetShell, endSessionStreams } = deps;
+  const { access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged } = deps;
   async function handleAccessJoin(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
@@ -160,14 +157,15 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
   function supersedeRemoteSessions(ownPairingId: string | null): void {
     for (const session of access.listSessions("remote")) {
       const displaced = session.pairingId === null || session.pairingId !== ownPairingId;
-      if (!access.revokeSessionByHandle(session.handle, displaced ? "superseded" : null)) continue;
-      // 세션이 사라지면 그 세션이 게시한 집 주소도 가리킬 주인이 없다.
-      forgetShell(session.handle);
       /**
        * 자기 페어링이 두고 간 접속에는 안내를 보내지 않는다 — 축출이 아니라 자기 자신의
-       * 잔상이므로. 건너뛰는 것은 안내뿐이고 스트림은 그 사정과 무관하게 닫힌다.
+       * 잔상이므로. 건너뛰는 것은 안내뿐이다. 그 세션의 채널과 게시한 집 주소는 레지스트리의
+       * 종료 신호를 받은 Console이 사정과 무관하게 함께 걷는다.
+       *
+       * 지금 처리 중인 이 join 요청은 어떤 세션에도 묶여 있지 않다(원격 입장 판정이 join을 세션
+       * 해석 없이 통과시킨다). 그래서 옛 세션을 닫는 신호가 이 재합류 응답 자체를 끊지 않는다.
        */
-      endSessionStreams(session.handle, displaced ? "superseded" : null);
+      access.revokeSessionByHandle(session.handle, displaced ? "superseded" : null);
     }
   }
 

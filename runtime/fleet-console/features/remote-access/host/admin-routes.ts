@@ -7,7 +7,6 @@ import type { createPairedDeviceStore } from "./paired-devices.js";
 import type { createRemoteJoinGuard } from "./remote-join-guard.js";
 import type { createRemoteIdentityStore } from "./remote-identity.js";
 import type { createRemoteEndpointStore } from "./remote-endpoint.js";
-import type { ControlReclaimedReason } from "./access-control-contract.js";
 interface RemoteAdminDeps {
   readonly access: ReturnType<typeof createAccessRegistry>;
   readonly pairedDeviceStore: ReturnType<typeof createPairedDeviceStore>;
@@ -21,13 +20,11 @@ interface RemoteAdminDeps {
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly withSecurityHeaders: (extra: http.OutgoingHttpHeaders) => http.OutgoingHttpHeaders;
   readonly broadcastControlChanged: (resend?: boolean) => void;
-  readonly forgetShell: (handle: string) => void;
-  readonly endSessionStreams: (handle: string, reason: ControlReclaimedReason | null) => void;
   readonly reconcileRemoteIdentity: () => Promise<void>;
   readonly consoleLabel: () => string;
 }
 export function createRemoteAdminRoutes(deps: RemoteAdminDeps) {
-  const { access, pairedDeviceStore, remoteJoinGuard, remoteIdentityStore, remoteEndpointStore, consoleSettingsStore, readListenerState, isLoopbackListener, isAccessAdminAuthorized, writeJson, withSecurityHeaders, broadcastControlChanged, forgetShell, endSessionStreams, reconcileRemoteIdentity, consoleLabel } = deps;
+  const { access, pairedDeviceStore, remoteJoinGuard, remoteIdentityStore, remoteEndpointStore, consoleSettingsStore, readListenerState, isLoopbackListener, isAccessAdminAuthorized, writeJson, withSecurityHeaders, broadcastControlChanged, reconcileRemoteIdentity, consoleLabel } = deps;
   function handleRemoteAccessStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
     /**
      * 읽기는 루프백이라는 사실만 요구한다 — 형제인 remote-hosts GET과 같은 선례다. Origin까지
@@ -112,13 +109,10 @@ export function createRemoteAdminRoutes(deps: RemoteAdminDeps) {
       writeJson(res, 404, { error: "session_not_found" });
       return;
     }
-    // 세션이 사라지면 그 세션이 게시한 집 주소도 가리킬 주인이 없다. 남겨 두면 handle이
-    // 재사용되지 않는 이상 되살아나지는 않지만, 오래 뜬 서버에서 계속 쌓이기만 한다.
-    forgetShell(handle);
-    // 순서가 있다: 끊긴 쪽이 먼저 자기 안내를 받고, 그 다음 이 기계의 화면이 커튼을 걷는다.
+    // 순서가 있다: 끊긴 쪽이 먼저 자기 안내를 받고(위 회수가 내는 종료 신호 안에서 그 세션의
+    // 채널이 안내와 함께 닫히고 게시한 집 주소도 걷힌다), 그 다음 이 기계의 화면이 커튼을 걷는다.
     // 죽은 스트림에는 안내 프레임이 닿지 못하므로, 재연결 401이 같은 사유를 읽을 수 있게
-    // 페어링에 끝난 사유를 남긴다.
-    endSessionStreams(handle, "reclaimed");
+    // 레지스트리가 페어링에 끝난 사유를 남긴다.
     broadcastControlChanged();
     res.writeHead(204, withSecurityHeaders({}));
     res.end();
@@ -143,14 +137,10 @@ export function createRemoteAdminRoutes(deps: RemoteAdminDeps) {
       return;
     }
     // 자격을 거두면서 그 자격으로 열려 있던 접속을 남겨 두면, 회수는 다음 요청까지만 참이다.
-    const closed = access.listSessions("remote").filter((session) => session.pairingId === removed.id);
-    access.revokeSessionsByPairing(removed.id);
+    // 끊긴 화면에는 회수로 알린다. 채널과 집 주소는 이 회수가 내는 종료 신호가 함께 닫는다.
+    access.revokeSessionsByPairing(removed.id, "reclaimed");
     // 페어링이 사라지면 그 페어링에 남은 끝난 사유도 조회할 키가 없다 — 함께 걷는다.
     access.clearSessionEnd(removed.id);
-    for (const session of closed) {
-      forgetShell(session.handle);
-      endSessionStreams(session.handle, "reclaimed");
-    }
     broadcastControlChanged();
     res.writeHead(204, withSecurityHeaders({}));
     res.end();

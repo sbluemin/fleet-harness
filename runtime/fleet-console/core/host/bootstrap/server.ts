@@ -19,6 +19,7 @@ import { createUpdatesRoutes } from "../../../features/updates/host/routes.js";
 import { createWorkspaceRoutes } from "../../../features/workspace/host/routes.js";
 import { createMcpHttpTransport } from "../transport/mcp-http.js";
 import { createConsoleRuntimeContext } from "../transport/runtime-context.js";
+import type { RequestLifetime } from "../../../features/execution/host/context.js";
 import { CORE_AGENT_SENSITIVE_FIELDS, startConsoleExecution } from "./execution.js";
 
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
@@ -76,6 +77,7 @@ import { buildApiCatalog, type ApiCatalogEntry } from "../transport/api-catalog.
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterInfo } from "../transport/console-contract-types.js";
 import { CONSOLE_SECURITY_HEADERS, encodeSseData, isLoopbackRemoteAddress, startSseKeepaliveLifecycle, withSecurityHeaders } from "../transport/http-infra.js";
 import { RouteRegistry, UpgradeRegistry } from "../transport/route-registry/registry.js";
+import { createRemoteSessionBindings } from "../transport/remote-session-bindings.js";
 import { createStaticConsoleHandler } from "../transport/static-console.js";
 import type { DesktopShellUpdateCommandKind, DesktopShellUpdateCommandSnapshot, DesktopShellUpdateSnapshot } from "../shell/desktop-contract.js";
 import { listLocalConsoles } from "./local-consoles.js";
@@ -159,6 +161,9 @@ const DEFAULT_PORT = 0;
 const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
+/** 루프백 접속은 원격 세션 수명으로 끝나지 않는다. */
+const LOCAL_REQUEST_LIFETIME: RequestLifetime = { isLive: () => true, touch: () => true };
+const ENDED_REQUEST_LIFETIME: RequestLifetime = { isLive: () => false, touch: () => false };
 const MAX_BODY_BYTES = 1024 * 1024;
 /** 위임 요청의 시효. 수행자인 셸은 곧 이 창을 재시작하므로, 그보다 오래 걸려 있을 이유가 없다. */
 const DESKTOP_UPDATE_REQUEST_TTL_MS = 60_000;
@@ -516,27 +521,39 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const remoteJoinGuard = createRemoteJoinGuard();
   let boundPort: number | null = null;
   /**
-   * 만료도 회수와 같은 신호를 낸다. prune은 다른 레지스트리 호출 안에서 도는 일이 많아
-   * 브로드캐스트를 그 자리에서 부르면 listSessions -> prune으로 되돌아온다. 다음 틱으로
-   * 미뤄 재진입을 끊는다.
+   * 세션 종료는 보유자 변화일 수 있으므로 제어 신호를 낸다. 종료 신호는 다른 레지스트리 호출 안에서
+   * 도는 일이 많아(prune) 브로드캐스트를 그 자리에서 부르면 listSessions -> prune으로 되돌아온다.
+   * 다음 틱으로 미뤄 재진입을 끊고, 같은 틱의 여러 종료를 한 번으로 합친다.
    */
-  let controlPruneNotifyQueued = false;
+  let controlEndNotifyQueued = false;
   /** 마지막으로 알린 보유자의 공개 이름. 바뀌지 않은 사실을 신호로 내보내지 않기 위한 기준이다. */
   let lastPublishedControlHolder: string | null = null;
+  /** 원격 세션마다 그 세션으로 입장한 응답·업그레이드 소켓. 세션이 끝나면 여기서 한꺼번에 닫는다. */
+  // access는 아래에서 만든다. 묶기는 요청이 들어온 뒤에만 일어나므로 그때는 이미 있다.
+  const remoteSessionBindings = createRemoteSessionBindings({ isLive: (handle) => access.isSessionLive(handle), onFailure: recordFailure });
+  /** 원격 입장 판정이 요청마다 정한 세션. 오래 사는 채널이 그 요청이 입장한 세션을 나중에 다시 묻는 자리다. */
+  const remoteRequestSessions = new WeakMap<http.IncomingMessage, string>();
   const access = createAccessRegistry({
-    onSessionsPruned: (handles) => {
-      if (!controlPruneNotifyQueued) {
-        controlPruneNotifyQueued = true;
-        queueMicrotask(() => {
-          controlPruneNotifyQueued = false;
-          try { broadcastControlChanged(); } catch (error) { recordFailure("session_prune_notification_failed", error); }
-        });
+    /**
+     * 원격 세션이 끝나는 모든 길(회수·대체·언페어링·만료·리스너 종료)이 이 한 자리를 지난다.
+     * 순서가 있다: 회수 안내를 실을 Operation 스트림을 먼저 우아하게 닫고, 그 세션이 남긴 셸 상태를
+     * 잊고, 그 다음 그 세션으로 열린 나머지 연결(다른 SSE·채팅/터미널 WebSocket·진행 중 요청)을
+     * transport에서 파기한다. 안내를 쓰고 끝낸 응답은 파기 대상에서 빠지므로 마지막 프레임이 잘리지 않는다.
+     * 한 세션의 실패가 나머지 정리를 막지 않는다.
+     */
+    onSessionsEnded: (ended) => {
+      for (const { handle, notice } of ended) {
+        try { endSessionStreams(handle, notice); } catch (error) { recordFailure("session_stream_end_failed", error); }
+        try { forgetShellOwner(handle); } catch (error) { recordFailure("session_shell_forget_failed", error); }
+        remoteSessionBindings.closeSession(handle);
       }
-      // 만료된 구독은 즉시 닫되, 재합류를 막는 회수 사유는 남기지 않는다.
-      // reconcile은 위 제어 갱신에서 한 번만 한다. 한 연결의 실패가 나머지 정리를 막지 않는다.
-      for (const handle of handles) {
-        try { endSessionStreams(handle, null, false); } catch (error) { recordFailure("session_prune_close_failed", error); }
-      }
+      if (controlEndNotifyQueued) return;
+      controlEndNotifyQueued = true;
+      queueMicrotask(() => {
+        controlEndNotifyQueued = false;
+        // reconcile은 이 제어 갱신에서 한 번만 한다.
+        try { broadcastControlChanged(); } catch (error) { recordFailure("session_end_notification_failed", error); }
+      });
     },
   });
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
@@ -572,9 +589,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const desktopEngine = new DesktopEngine({
     publish: (snapshot, host) => {
       if (desktopBrowserSseSubscribers.size === 0) return;
+      settleRemoteExpiry();
       const full = encodeSseData(DESKTOP_BROWSER_EVENT, snapshot);
       const empty = encodeSseData(DESKTOP_BROWSER_EVENT, { generation: snapshot.generation, views: [], commands: [] });
-      for (const [res, owner] of desktopBrowserSseSubscribers) res.write(owner === host ? full : empty);
+      for (const [res, owner] of desktopBrowserSseSubscribers) if (!res.destroyed) res.write(owner === host ? full : empty);
     },
     log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
   });
@@ -1475,14 +1493,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 나머지는 모두 이 리스너에서 발급된 세션을 요구한다. 라우트마다 흩어진 게이트에 원격을
    * 맡기면 하나만 빠져도 통째로 열리므로, 판정을 라우팅 이전 한 곳에서 끝낸다.
    */
-  function remoteRequestAdmission(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): { admitted: true } | { admitted: false; reason?: ControlReclaimedReason } {
+  function remoteRequestAdmission(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): { admitted: true; sessionHandle: string | null } | { admitted: false; reason?: ControlReclaimedReason } {
     // 세션 없이 지나는 경로는 이 하나뿐이다. 페어링은 전용 앱으로만 이루어지고 브라우저는
     // 자기서명 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
-    if (pathname === "/api/v1/join") return { admitted: true };
+    //
+    // join은 어떤 세션에도 묶이지 않는다 — 들고 온 옛 세션 쿠키도 여기서 해석하지 않는다. 재합류는
+    // 자기 페어링이 두고 간 옛 세션을 걷은 뒤 새 세션을 여는데, 이 요청이 옛 세션에 묶여 있으면
+    // 그 세션을 닫는 종료 신호가 재합류 응답 자체를 파기한다. 페어링된 기기가 조용히 돌아오는 길이
+    // 이 한 줄에 걸려 있다.
+    if (pathname === "/api/v1/join") return { admitted: true, sessionHandle: null };
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
     if (session !== null) {
       // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
-      return session.access !== "monitoring" || isReadOnlyRequest(req) ? { admitted: true } : { admitted: false };
+      return session.access !== "monitoring" || isReadOnlyRequest(req) ? { admitted: true, sessionHandle: session.handle } : { admitted: false };
     }
     // 세션이 없다는 것은 회수·대체·만료·재시작 중 하나다. 그 기기가 아직 들고 있는 페어링
     // 쿠키로 끝난 사유를 찾아 — handle·기기 이름·openedAt은 들여다보지 않는다. 페어링이 없거나
@@ -1492,9 +1515,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return reason === null ? { admitted: false } : { admitted: false, reason };
   }
 
-  function isRemoteRequestAdmitted(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): boolean {
-    return remoteRequestAdmission(listener, req, pathname).admitted;
-  }
 
   /** 읽기로 볼 수 있는 것만. 터미널 업그레이드는 method가 GET이어도 쓰기다. */
   function isReadOnlyRequest(req: http.IncomingMessage): boolean {
@@ -1516,6 +1536,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (!admission.admitted) {
         writeJson(res, 401, admission.reason === undefined ? { error: "unauthorized" } : { error: "unauthorized", reason: admission.reason });
         return;
+      }
+      // 입장시킨 세션에 이 응답을 묶는다. 그 세션이 끝나면 SSE든 진행 중 요청이든 함께 닫힌다.
+      if (admission.sessionHandle !== null) {
+        remoteRequestSessions.set(req, admission.sessionHandle);
+        remoteSessionBindings.bindResponse(admission.sessionHandle, res);
+        // 묶는 순간 세션이 이미 끝나 있었다면 응답은 파기됐다 — 라우팅하지 않는다.
+        if (res.destroyed) return;
       }
     }
     // Host 게이트는 순서를 바꾸지 않는다 — Codex는 wildcard 바인드에서 더 넓은 host 집합을 쓰므로
@@ -2256,7 +2283,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * `reason`이 null이면 닫기만 하고 아무것도 말하지 않는다. 닫는 일과 알리는 일을 가르는 것이
    * 이 인자의 존재 이유다 — 둘을 하나로 두면 안내를 건너뛰는 자리가 정리까지 함께 건너뛴다.
    */
-  function endSessionStreams(handle: string, reason: ControlReclaimedReason | null, reconcile = true): void {
+  function endSessionStreams(handle: string, reason: ControlReclaimedReason | null): void {
     if (operationSseSubscribers.size === 0) return;
     const data = reason === null ? null : encodeSseData(CONTROL_RECLAIMED_EVENT, controlReclaimedSnapshot(reason));
     for (const subscriber of [...operationSseSubscribers]) {
@@ -2271,7 +2298,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         recordFailure("session_stream_close_failed", error);
       }
     }
-    if (reconcile) browserService.reconcile();
   }
 
   /**
@@ -2287,10 +2313,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {
     if (desktopThemeSseSubscribers.size === 0) return;
+    settleRemoteExpiry();
     const data = encodeSseData(DESKTOP_THEME_EVENT, desktopThemeSnapshot(theme));
     for (const res of desktopThemeSseSubscribers) {
-      res.write(data);
+      if (!res.destroyed) res.write(data);
     }
+  }
+
+  /**
+   * 원격 구독자가 섞일 수 있는 방송 앞에서 만료를 지금 시각으로 판정한다. 레지스트리의 만료 시계는
+   * 기기가 잠들었다 깨면 늦게 울린다 — 그 사이 끝난 세션에 프레임이 나가지 않게, 만료된 세션의
+   * 연결은 이 자리에서 종료 신호로 먼저 파기된다(그래서 아래 루프는 파기된 응답을 건너뛴다).
+   * prune은 유휴 수명을 늘리지 않는다. 서버가 내보내는 이벤트는 사람의 활동이 아니다.
+   */
+  function settleRemoteExpiry(): void {
+    access.prune();
   }
 
   function openDesktopSse(res: http.ServerResponse, event: string, snapshot: unknown): void {
@@ -2334,16 +2371,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const snapshot: DesktopShellUpdateCommandSnapshot = { command, commandId: `${Date.now()}-${crypto.randomUUID()}` };
     desktopShellUpdateCommandsByOwner.set(owner, { snapshot, at: Date.now() });
     if (desktopShellUpdateCommandSseSubscribers.size === 0) return;
+    settleRemoteExpiry();
     const data = encodeSseData(DESKTOP_SHELL_UPDATE_COMMAND_EVENT, snapshot);
     for (const [res, subscriber] of desktopShellUpdateCommandSseSubscribers) {
-      if (subscriber === owner) res.write(data);
+      if (subscriber === owner && !res.destroyed) res.write(data);
     }
   }
 
   function publishDesktopWindowCommand(owner: string | "local", command: DesktopWindowCommand): void {
+    if (desktopWindowCommandSseSubscribers.size === 0) return;
+    settleRemoteExpiry();
     const data = encodeSseData(DESKTOP_WINDOW_COMMAND_EVENT, { command });
     for (const [res, subscriber] of desktopWindowCommandSseSubscribers) {
-      if (subscriber === owner) res.write(data);
+      if (subscriber === owner && !res.destroyed) res.write(data);
     }
   }
 
@@ -2358,9 +2398,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     desktopUpdateRequestedAt = Date.now();
     desktopUpdateRequest = snapshot;
     if (desktopUpdateSseSubscribers.size === 0) return;
+    settleRemoteExpiry();
     const data = encodeSseData(DESKTOP_UPDATE_EVENT, snapshot);
     for (const res of desktopUpdateSseSubscribers) {
-      res.write(data);
+      if (!res.destroyed) res.write(data);
     }
   }
 
@@ -2433,9 +2474,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   const { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply } = createUpdatesRoutes({ releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime: () => ({ lockHandle, activeEndpoint, activeLockFile }), publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply });
 
-  const { handleAccessJoin } = createPairingRoutes({ access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged, forgetShell: forgetShellOwner, endSessionStreams });
+  const { handleAccessJoin } = createPairingRoutes({ access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged });
 
-  const { handleRemoteAccessStatus, handleAccessLinkRevoke, handleAccessSessionRevoke, handlePairedDeviceRevoke, handleRemoteIdentityRotation, handleAccessLinkIssue } = createRemoteAdminRoutes({ access, pairedDeviceStore, remoteJoinGuard, remoteIdentityStore, remoteEndpointStore, consoleSettingsStore, readListenerState: () => ({ listeners, remoteFingerprint, remoteLastError }), isLoopbackListener, isAccessAdminAuthorized, writeJson, withSecurityHeaders, broadcastControlChanged, forgetShell: forgetShellOwner, endSessionStreams, reconcileRemoteIdentity, consoleLabel });
+  const { handleRemoteAccessStatus, handleAccessLinkRevoke, handleAccessSessionRevoke, handlePairedDeviceRevoke, handleRemoteIdentityRotation, handleAccessLinkIssue } = createRemoteAdminRoutes({ access, pairedDeviceStore, remoteJoinGuard, remoteIdentityStore, remoteEndpointStore, consoleSettingsStore, readListenerState: () => ({ listeners, remoteFingerprint, remoteLastError }), isLoopbackListener, isAccessAdminAuthorized, writeJson, withSecurityHeaders, broadcastControlChanged, reconcileRemoteIdentity, consoleLabel });
 
   const { handleRemoteHosts, handleLocalConsoles, handleRemoteHostHandoff } = createRemoteHostsRoutes({ remoteHostStore, readListeners: () => listeners, listLocalConsoles, isLoopbackListener, isRemoteHostWriteAuthorized, readJsonBody, writeJson, writeNoContent });
 
@@ -2458,7 +2499,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             }
             return null;
           },
-          host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
+          host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, requestLifetime, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
           recordFailure,
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
@@ -2652,34 +2693,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
-  /**
-   * 만료를 알아채는 시계. prune은 누가 레지스트리를 건드릴 때만 도는데, 유휴로 만료되는
-   * 세션은 정의상 아무도 건드리지 않는다 — 쓸어 주는 쪽이 없으면 커튼이 사라진 기기를
-   * 몇 시간이고 띄운 채 남는다. 원격 리스너가 열려 있는 동안에만 돈다.
-   */
-  const CONTROL_EXPIRY_SWEEP_MS = 60_000;
-  let controlExpirySweep: ReturnType<typeof setInterval> | null = null;
-
-  function startControlExpirySweep(): void {
-    if (controlExpirySweep !== null) return;
-    controlExpirySweep = setInterval(() => access.prune(), CONTROL_EXPIRY_SWEEP_MS);
-    // 이 타이머가 프로세스를 붙잡아 두지 않게 한다.
-    controlExpirySweep.unref();
-  }
-
-  function stopControlExpirySweep(): void {
-    if (controlExpirySweep === null) return;
-    clearInterval(controlExpirySweep);
-    controlExpirySweep = null;
-  }
+  // 만료를 알아채는 시계는 레지스트리가 가장 이른 만료 시각에 맞춰 스스로 건다 — 유휴로 만료되는
+  // 세션은 정의상 아무도 건드리지 않으므로, 그 시각에 종료 신호가 나야 커튼과 채널이 함께 걷힌다.
 
   async function stopRemoteAccess(): Promise<void> {
-    stopControlExpirySweep();
     const closing = remoteServer;
     remoteServer = null;
     remoteFingerprint = null;
     listeners = listeners.filter((entry) => entry.audience !== "remote");
     // A listener stop ends live sessions, but unused grants remain valid unless public identity changes.
+    // 그 종료 신호가 세션별 채널과 셸 상태를 걷는다. 아래 루프는 세션 없이 남은 원격 셸 상태의 잔여분이다.
     access.revokeSessions("remote");
     for (const owner of desktopShellsByOwner.keys()) {
       if (owner === "local") continue;
@@ -2749,7 +2772,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     listeners = [...listeners, listener];
     remoteFingerprint = identity.fingerprint;
     remoteEndpointStore.remember({ listenPort: started.port, advertisedPort: effectiveAdvertised.port });
-    startControlExpirySweep();
   }
 
   async function startConfiguredRemoteListener(configured: ConsoleRemoteAccessSettings, identity: { readonly certificatePem: string; readonly privateKeyPem: string }, published: boolean): Promise<{ readonly server: https.Server; readonly address: string; readonly port: number }> {
@@ -2802,9 +2824,31 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return listenerOrigin(hostname, port, true);
   }
 
+  /** 업그레이드도 요청과 같은 판정을 거치고, 입장시킨 세션에 소켓을 묶는다 — 세션이 끝나면 WebSocket도 닫힌다. */
   function remoteAdmission(req: http.IncomingMessage): boolean {
     const resolved = listenerForRequest(req);
-    return resolved === null || resolved.audience === "local" || isRemoteRequestAdmitted(resolved, req, getPathname(req));
+    if (resolved === null || resolved.audience === "local") return true;
+    const admission = remoteRequestAdmission(resolved, req, getPathname(req));
+    if (!admission.admitted) return false;
+    if (admission.sessionHandle !== null) {
+      remoteRequestSessions.set(req, admission.sessionHandle);
+      remoteSessionBindings.bindSocket(admission.sessionHandle, req.socket);
+      // 묶는 순간 세션이 이미 끝나 있었다면 소켓은 파기됐다 — 업그레이드를 넘기지 않는다.
+      if (req.socket.destroyed) return false;
+    }
+    return true;
+  }
+
+  /**
+   * 요청이 입장한 접속의 수명. 루프백은 세션 수명으로 끝나지 않는다. 원격은 입장 판정이 그 요청에 정해 둔
+   * 세션을 따른다 — 판정 기록이 없는 원격 요청(세션 없이 지나는 join, 등록되지 않은 소켓)은 처음부터
+   * 끝난 것으로 본다. "모름"을 살아 있음으로 읽으면 끝난 기기의 명령이 그 틈으로 들어온다.
+   */
+  function requestLifetime(req: http.IncomingMessage): RequestLifetime {
+    // 입장 기록을 먼저 본다 — 원격 세션으로 입장한 요청은 리스너 해석이 어떻게 되든 로컬로 읽히지 않는다.
+    const handle = remoteRequestSessions.get(req);
+    if (handle !== undefined) return { isLive: () => access.isSessionLive(handle), touch: () => access.touchSession(handle) };
+    return listenerForRequest(req)?.audience === "local" ? LOCAL_REQUEST_LIFETIME : ENDED_REQUEST_LIFETIME;
   }
 
   function nextRemoteAutoPort(attempted: ReadonlySet<number>): number {

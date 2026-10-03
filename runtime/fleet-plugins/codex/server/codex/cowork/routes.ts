@@ -70,6 +70,9 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
     if (request.method === "GET" && parts[4] === "events") {
       const s = await service.get(context.workspaceId, id);
       if (!s) return json(response, 404, { error: "cowork_session_not_found" });
+      // 위 조회를 기다리는 사이 연결이 끝났을 수 있다(원격 세션 종료는 응답을 파기한다). 이미 지나간
+      // close를 기다리며 구독을 붙이면 아무도 풀지 않는다.
+      if (request.destroyed || response.destroyed) return true;
       // cache-control은 withSecurityHeaders의 no-store를 그대로 유지한다(draft가 실리는 스트림).
       response.writeHead(200, withSecurityHeaders({ "content-type": "text/event-stream", connection: "keep-alive" }));
       // 이벤트가 없어도 즉시 헤더를 내보내 EventSource가 open 상태로 전환되게 한다.
@@ -78,14 +81,15 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
       const after = Number.isFinite(lastEventId) ? lastEventId : Number(url.searchParams.get("after") ?? 0);
       // Subscribe before replay so no event falls between the two; dedupe by monotonic id.
       let sentMax = after;
-      const send = (event: CoworkStoredEvent) => { if (event.id <= sentMax) return; sentMax = event.id; response.write(`id: ${event.id}\n${encodeSseData(event.type, event)}`); };
+      const send = (event: CoworkStoredEvent) => { if (response.destroyed || event.id <= sentMax) return; sentMax = event.id; response.write(`id: ${event.id}\n${encodeSseData(event.type, event)}`); };
       const pending: CoworkStoredEvent[] = [];
       let replaying = true;
       const unsubscribe = service.subscribe(id, event => { if (replaying) pending.push(event); else send(event); });
+      // 해제는 재생을 기다리기 전에 건다 — 재생 중에 연결이 끝나도 구독이 남지 않는다.
+      request.once("close", unsubscribe);
       for (const event of await service.replay(context.workspaceId, id, after)) send(event);
       replaying = false;
       for (const event of pending) send(event);
-      request.once("close", unsubscribe);
       return true;
     }
     const b = await body(request);

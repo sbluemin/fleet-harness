@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import type { UpgradeHandler } from "@fleet-console/sdk/routing";
 
+import type { RequestLifetime } from "../context.js";
 import { resolveConsolePackageRequire } from "./console-require.js";
 import type { TerminalSessionManager, TerminalSocket, TerminalTicketContext } from "./terminal-types.js";
 
@@ -15,10 +16,15 @@ export interface TerminalUpgradeHandlerDeps {
   readonly sessions: TerminalSessionManager;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   /**
+   * 업그레이드 요청이 입장한 접속의 수명. 채팅 소켓은 명령마다 이것을 다시 묻는다.
+   * 없으면 채팅 소켓은 끝난 접속으로 열린다(명령 거절) — 수명을 모르는 채로 승인을 받아 주지 않는다.
+   */
+  readonly requestLifetime?: (req: http.IncomingMessage) => RequestLifetime;
+  /**
    * 채팅 티켓이 소켓을 연 뒤 저널을 붙인다. 없으면 채팅 티켓은 업그레이드에서 거절된다 —
    * PTY attach로 떨어뜨리면 휴면 Chat Mode가 터미널을 되살린다.
    */
-  readonly attachChat?: (socket: TerminalSocket, context: TerminalTicketContext) => void;
+  readonly attachChat?: (socket: TerminalSocket, context: TerminalTicketContext, lifetime: RequestLifetime) => void;
 }
 
 export interface TerminalUpgradeHandler {
@@ -28,6 +34,8 @@ export interface TerminalUpgradeHandler {
 
 // esbuild가 이 모듈을 node_modules 밖으로 번들해도 ws가 해석되도록, @dotobokuri/fleet-console
 // 패키지 기준의 require로 앵커링한다(자세한 배경은 console-require.ts 참고).
+const ENDED_REQUEST_LIFETIME: RequestLifetime = { isLive: () => false, touch: () => false };
+
 const require = resolveConsolePackageRequire(fileURLToPath(import.meta.url), createRequire(import.meta.url));
 
 export function createPluginTerminalUpgradeHandler(deps: TerminalUpgradeHandlerDeps): TerminalUpgradeHandler {
@@ -50,9 +58,11 @@ export function createPluginTerminalUpgradeHandler(deps: TerminalUpgradeHandlerD
         socket.destroy();
         return true;
       }
+      // 소켓을 연 요청의 수명을 지금 붙잡는다. 티켓에는 세션이 없고, 소켓이 열린 뒤에는 요청을 다시 볼 수 없다.
+      const lifetime = deps.requestLifetime?.(req) ?? ENDED_REQUEST_LIFETIME;
       const server = getWebSocketServer();
       server.handleUpgrade(req, socket, head, (ws) => {
-        attachChat(ws, context);
+        attachChat(ws, context, lifetime);
       });
       return true;
     }
