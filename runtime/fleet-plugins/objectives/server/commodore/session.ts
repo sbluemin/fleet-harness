@@ -1,7 +1,7 @@
 import type { AgentEvent, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
-import { CONSOLE_READ_TOOLS } from "@fleet-console/sdk/mcp";
+import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 
-import { commodoreSystemPrompt, replacementNote, wakeNote } from "./prompt.js";
+import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
 import { MAX_TRANSCRIPT_TEXT, type CommodoreCoordinates, type CommodoreTranscriptInput } from "./types.js";
@@ -9,8 +9,9 @@ import { MAX_TRANSCRIPT_TEXT, type CommodoreCoordinates, type CommodoreTranscrip
 /**
  * 사령관 세션 — `ctx.host.agent.createSession` 으로 연 플러그인 소유 세션 하나. Operation 이 아니다.
  *
- * 시스템 프롬프트는 베이스뿐이고(replace), 도구는 사령관 전용 `commodore` + Console Use(읽기 도구 + 기여된 `console_objectives`,
- * 호출자는 이 플러그인) + WebSearch·WebFetch 다. 턴은 깨움 이유만 싣는다. 세션의 onEvent 는 여기서 정제돼 Theater 의 기록
+ * 시스템 프롬프트는 베이스뿐이고(replace), 도구는 사령관 전용 `commodore` + 이 Theater 에 묶인 보드 도구(`console_objectives`,
+ * 행위자는 `{ kind: "commodore", theaterId }` 로 고정) + WebSearch·WebFetch 다. Console Use 연결은 쓰지 않는다 — 플러그인
+ * 호출자는 Theater 를 모르므로 다른 Theater 의 보드에 손이 닿는다. 턴은 깨움 이유만 싣는다. 세션의 onEvent 는 여기서 정제돼 Theater 의 기록
  * (`transcript.jsonl`)에 쌓이고 같은 길로 방송된다 — 도구 입력 전체·원시 오류·경로는 기록에 들어가지 않는다.
  */
 
@@ -21,17 +22,22 @@ export interface CommodoreSessionOptions {
   readonly agent: AgentHost;
   readonly store: CommodoreStore;
   readonly coordinates: CommodoreCoordinates;
-  /** 호출마다 — 자율 운영과 실험 기능이 모두 켜져 있을 때만 Console Use 가 답한다. */
-  readonly enabled: () => boolean;
+  /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 `console_objectives`. */
+  readonly boardTools: readonly PluginMcpTool[];
   readonly onNextWake: (at: number, reason: string) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
 }
 
 export interface CommodoreTurnInput {
+  /** 기록에 남는 이유 토큰(`code` 또는 `code:N`) — 화면이 로케일로 옮긴다. */
   readonly reasons: readonly string[];
+  /** 모델에게 가는 깨움 문장 — 토큰과 같은 순서의 영어 문장. 없으면 토큰 그대로. */
+  readonly sentences?: readonly string[];
   /** 교대·재시작 세션의 첫 턴 — 최근 행위 요약. 깨움 문장 앞에 선다. */
   readonly replacementSummary?: readonly string[];
+  /** 사람이 사령관에게 보낸 메시지 — 도구가 없는 유일한 입력이라 깨움 문장 뒤에 그대로 선다. */
+  readonly messages?: readonly string[];
 }
 
 export interface CommodoreTurnOutcome {
@@ -52,10 +58,10 @@ export interface CommodoreSession {
   dispose(): Promise<void>;
 }
 
-const CONSOLE_USE_SERVER_PREFIX = "mcp__fleet-console-use__";
+export const BOARD_TOOL_GROUP = "console";
 const MCP_PREFIX = /^mcp__[^_]+(?:_[^_]+)*__/;
-/** 보드 행위로 세지 않는 console_objectives 동작 — 읽기. */
-const READ_ACTIONS = new Set(["read", "view", "inbox", "fleet", "history", "list", "get", "mine", "evidence"]);
+/** console_objectives 의 쓰기 키 — 입력 최상위에 이 중 하나가 있으면 보드 행위다(동작 판별자는 따로 없다). 나머지는 읽기(view). */
+const WRITE_KEYS = ["add", "plan", "commence", "criteria", "answer", "complete", "extend", "steer", "message", "stop", "compact", "discard", "followup", "edit", "remove", "merge", "restore"] as const;
 const MAX_SUMMARY = 200;
 const MAX_ERROR = 200;
 
@@ -133,9 +139,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       settlement: "result",
       tools: {
         builtins: ["WebSearch", "WebFetch"],
-        custom: [{ name: COMMODORE_TOOL_GROUP, tools }],
-        // 읽기 도구만 요청한다 — 보드 쓰기는 기여된 console_objectives 가 맡고, 호출자는 이 플러그인으로 바인딩된다.
-        consoleUse: { tools: CONSOLE_READ_TOOLS, allowControl: true, enabled: options.enabled },
+        custom: [{ name: COMMODORE_TOOL_GROUP, tools }, ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools }] : [])],
       },
       onEvent,
     });
@@ -156,7 +160,11 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
       turnActions = 0; turnResult = null; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear();
       record({ kind: "wake", reasons: input.reasons });
-      const note = [...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []), wakeNote(new Date(now()), input.reasons)].join("\n\n");
+      const note = [
+        ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
+        wakeNote(new Date(now()), input.sentences ?? input.reasons),
+        ...(input.messages?.length ? [messageNote(input.messages)] : []),
+      ].join("\n\n");
       turnActive = true;
       try { await session.send(note); }
       catch (error) {
@@ -192,12 +200,14 @@ interface ToolDescription {
 
 /** 도구 호출을 기록 한 줄로 — 이름과 사람이 읽을 한 조각만. 입력 전체는 싣지 않는다. */
 function describeTool(rawName: string, input: unknown): ToolDescription {
-  const name = rawName.startsWith(CONSOLE_USE_SERVER_PREFIX) ? rawName.slice(CONSOLE_USE_SERVER_PREFIX.length) : rawName.replace(MCP_PREFIX, "");
+  const name = rawName.replace(MCP_PREFIX, "");
   const args = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
   const str = (key: string) => (typeof args[key] === "string" ? clip(args[key] as string, MAX_SUMMARY) : undefined);
   if (name === "console_objectives") {
-    const action = str("action");
-    return { name, action, objectiveId: str("objectiveId"), title: str("title"), ...(str("view") ? { summary: `view ${str("view")}` } : {}), counts: !!action && !READ_ACTIONS.has(action) };
+    const action = WRITE_KEYS.find((key) => args[key] !== undefined);
+    const add = args.add && typeof args.add === "object" ? args.add as Record<string, unknown> : undefined;
+    const title = typeof add?.title === "string" ? clip(add.title, MAX_SUMMARY) : str("title");
+    return { name, action, objectiveId: str("objectiveId"), title, ...(str("view") ? { summary: `view ${str("view")}` } : {}), counts: !!action };
   }
   switch (name) {
     case "intel": return { name, summary: str("since") ? `since ${str("since")}` : undefined, counts: false };

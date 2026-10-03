@@ -5,12 +5,14 @@ import path from "node:path";
 import type { AgentEvent, AgentHost, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { commodoreActive, createCommodoreRoutes } from "../server/commodore/routes.js";
 import { createCommodoreSession } from "../server/commodore/session.js";
 import { createCommodoreStore } from "../server/commodore/store.js";
+import { COALESCE_MS, createCommodoreSupervisor, PATROL_CEILING_MS, RETRY_DELAYS_MS } from "../server/commodore/supervisor.js";
 import type { CommodoreEvent } from "../server/commodore/types.js";
+import type { Objective, ObjectiveEvent } from "../server/types.js";
 
 /**
  * 사령관 Theater 상태의 필수 계약 — 보드 곁 `commodore/` 에 한 건으로 영속되고, 지시 개정은 본문이 바뀔 때만 오르며,
@@ -45,7 +47,7 @@ function harness() {
     await createCommodoreRoutes(ctx, store).find((entry) => entry.name === name)!.handler({ req: { method: "POST" } as never, res: {} as never, pathname: name });
     return routeResult as { status: number; value: Record<string, unknown> & { state?: Record<string, unknown>; error?: string } };
   };
-  return { ctx, store, events, route, objectivesDir, setExperiments: (next: Partial<typeof experiments>) => { experiments = { ...experiments, ...next }; }, setAuthorized: (next: boolean) => { authorized = next; } };
+  return { ctx, store, events, route, objectivesDir, experiments: () => experiments, setExperiments: (next: Partial<typeof experiments>) => { experiments = { ...experiments, ...next }; }, setAuthorized: (next: boolean) => { authorized = next; } };
 }
 
 describe("commodore theater state", () => {
@@ -153,7 +155,7 @@ describe("commodore session", () => {
     const commands: { file: string; args: readonly string[] }[] = [];
     const session = createCommodoreSession({
       theaterId: "t1", theaterLabel: "fleet-harness", theaterRoot, agent: stub.agent, store: h.store,
-      coordinates: { model: "opus[1m]", effort: "high" }, enabled: () => true, onNextWake: (at, reason) => wakes.push({ at, reason }), now: () => 10_000,
+      coordinates: { model: "opus[1m]", effort: "high" }, boardTools: [{ name: "console_objectives", description: "board", inputSchema: { type: "object", properties: {}, additionalProperties: true }, execute: async () => ({ content: [] }) }], onNextWake: (at, reason) => wakes.push({ at, reason }), now: () => 10_000,
       execute: async (file, args) => { commands.push({ file, args }); return file === "git" ? { stdout: "abc1234\x1f2026-10-03\x1fme\x1ffix: thing\n", stderr: "" } : { stdout: JSON.stringify([{ number: 7, title: "Pairing drops", state: "OPEN", updatedAt: "2026-10-01T00:00:00Z", labels: [{ name: "bug" }], url: "https://example.test/7" }]), stderr: "" }; },
     });
 
@@ -162,9 +164,9 @@ describe("commodore session", () => {
       stub.emit({ kind: "tool-start", id: "u1", name: "mcp__commodore__directive", input: {} });
       stub.emit({ kind: "tool-end", id: "u1", isError: false });
       stub.emit({ kind: "text", text: "Completing " }); stub.emit({ kind: "text", text: "the pairing objective." });
-      stub.emit({ kind: "tool-start", id: "u2", name: "mcp__fleet-console-use__console_objectives", input: { action: "complete", objectiveId: "o1", title: "Remote pairing", note: "secret detail that must not be logged" } });
+      stub.emit({ kind: "tool-start", id: "u2", name: "mcp__console__console_objectives", input: { complete: { note: "secret detail that must not be logged" }, objectiveId: "o1", title: "Remote pairing" } });
       stub.emit({ kind: "tool-end", id: "u2", isError: false });
-      stub.emit({ kind: "tool-start", id: "u3", name: "mcp__fleet-console-use__console_objectives", input: { action: "read", view: "inbox" } });
+      stub.emit({ kind: "tool-start", id: "u3", name: "mcp__console__console_objectives", input: { view: "inbox" } });
       stub.emit({ kind: "tool-end", id: "u3", isError: false });
       stub.emit({ kind: "result", isError: false, source: "message", usage: { inputTokens: 1200, outputTokens: 300, costUsd: 0.25 } });
     });
@@ -176,8 +178,9 @@ describe("commodore session", () => {
     expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation" });
     expect(options.systemPrompt).toContain('Commodore of the Theater "fleet-harness"');
     expect(options.systemPrompt).not.toContain("Fix remote first.");
-    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"], consoleUse: { allowControl: true, tools: ["console_context", "console_operations", "console_operation"] } });
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "read_file", "git_log", "issue_list"]]]);
+    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"] });
+    expect(options.tools!.consoleUse).toBeUndefined();
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d\] directive changed \(rev 1\); 1 new intel item\.$/);
     expect(stub.sent[0]).not.toContain("newest");
@@ -223,5 +226,129 @@ describe("commodore session", () => {
     await session.dispose();
     expect(stub.disposedCount()).toBe(1);
     await expect(session.turn({ reasons: ["patrol"] })).rejects.toThrow("session_disposed");
+  });
+});
+
+describe("commodore supervisor", () => {
+  it("restores on register, coalesces wake reasons, patrols within the ceiling, retries failures, rotates long sessions and stops with autonomy", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
+    try {
+      const h = harness();
+      h.setExperiments({ commodore: true, commodoreModel: "sonnet", commodoreEffort: "medium" });
+      h.store.setAutonomy("t1", true);
+      const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
+      fs.mkdirSync(theaterRoot, { recursive: true });
+      const sessions: { options: AgentSessionOptions; sent: string[]; disposed: boolean }[] = [];
+      let fail: string | null = null;
+      let inputTokens = 1_000;
+      const agent: AgentHost = {
+        createSession: async (options) => {
+          const entry = { options, sent: [] as string[], disposed: false };
+          sessions.push(entry);
+          return {
+            send: async (text) => {
+              entry.sent.push(text);
+              if (fail) throw new Error(fail);
+              options.onEvent?.({ kind: "text", text: "ok" });
+              options.onEvent?.({ kind: "result", isError: false, source: "message", usage: { inputTokens, outputTokens: 10, costUsd: 0.01 } });
+            },
+            cancel: () => undefined,
+            dispose: async () => { entry.disposed = true; },
+          };
+        },
+      };
+      const objectives: Objective[] = [];
+      const boardListeners: ((event: ObjectiveEvent) => void)[] = [];
+      const runs: CommodoreEvent[] = [];
+      const supervisor = createCommodoreSupervisor({
+        store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "fleet-harness", root: theaterRoot }),
+        objectives: () => objectives, subscribeObjectives: (listener) => { boardListeners.push(listener); return () => undefined; },
+        boardTools: () => [], emit: (event) => { if (event.op === "run") runs.push(event); },
+      });
+      const tokens = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "wake" ? [entry.reasons] : []);
+      const sessionEvents = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "session" ? [entry.event] : []);
+
+      // 등록 복원 — 켜진 Theater 는 「재시작」 턴으로 깨어나고, 빈 보드도 이유가 된다.
+      supervisor.sync("restart");
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]!.options).toMatchObject({ model: "sonnet", effort: "medium" });
+      expect(tokens()).toEqual([["restart", "empty"]]);
+      expect(sessionEvents()).toEqual(["restarted"]);
+      expect(sessions[0]!.sent[0]).toContain("Console restarted; the board is empty");
+      const patrolAt = supervisor.status("t1")!.nextWakeAt!;
+      expect(supervisor.status("t1")!.phase).toBe("idle");
+      expect(patrolAt).toBeGreaterThan(Date.now() + PATROL_CEILING_MS - COALESCE_MS - 100);
+      expect(patrolAt).toBeLessThanOrEqual(Date.now() + PATROL_CEILING_MS);
+      expect(h.store.read("t1")!.run).toMatchObject({ session: 1, costUsd: 0.01 });
+
+      // 지시·정보·메시지 — 몇 초 안의 이유는 한 턴으로, 정보는 누적 수로, 메시지는 본문째.
+      h.store.setDirective("t1", "Ship remote first.");
+      h.store.addIntel("t1", { text: "a" }); h.store.addIntel("t1", { text: "b" });
+      h.store.transcriptAppend("t1", { kind: "message", text: "Keep objectives small." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["directive", "intel:2", "message"]);
+      const note = sessions[0]!.sent.at(-1)!;
+      expect(note).toContain("directive changed: rev 1; 2 new intel items; the person sent you a message");
+      expect(note).toContain("> Keep objectives small.");
+      expect(note).not.toContain("Ship remote first.");
+
+      // 보드 — 대기 상태의 서명이 바뀔 때만, 지금 그 상태인 목표 수로.
+      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", done: null, removed: null, commenced: true, awaitingReview: false, awaitingHandoff: false, decisionRequest: { id: "q1" }, decisionRequestRevision: 1, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
+      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["decision:1"]);
+      expect(sessions[0]!.sent).toHaveLength(3);
+
+      // 순찰 — 사령관의 next_wake 가 없으면 60분 상한에서 깨운다.
+      await vi.advanceTimersByTimeAsync(PATROL_CEILING_MS + COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["patrol"]);
+
+      // 오류 — 1·5·15분 뒤 재시도, 자율 운영은 그대로. 사람의 「지금 다시 시도」는 곧바로 한 턴.
+      fail = "rate limit exceeded";
+      h.store.addIntel("t1", { text: "c" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      const near = (at: number | undefined, expected: number) => { expect(at).toBeGreaterThan(expected - 100); expect(at).toBeLessThanOrEqual(expected); };
+      expect(supervisor.status("t1")).toMatchObject({ phase: "retrying", reason: "rate_limited" });
+      near(supervisor.status("t1")!.nextWakeAt, Date.now() + RETRY_DELAYS_MS[0]!);
+      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "error", code: "rate_limited" });
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + 10);
+      expect(supervisor.status("t1")!.phase).toBe("retrying");
+      near(supervisor.status("t1")!.nextWakeAt, Date.now() + RETRY_DELAYS_MS[1]!);
+      fail = null;
+      await supervisor.retry("t1");
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      expect(tokens().at(-1)).toEqual(["intel:1", "retry"]);
+      await expect(supervisor.retry("t1")).rejects.toThrow("commodore_not_retrying");
+
+      // 교대 — 문맥이 길어지면 다음 깨움에서 새 세션 + 최근 행위 요약. 기록은 끊기지 않는다.
+      inputTokens = 160_000;
+      h.store.addIntel("t1", { text: "d" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(1);
+      h.store.addIntel("t1", { text: "e" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(2);
+      expect(sessions[0]!.disposed).toBe(true);
+      expect(sessionEvents()).toEqual(["restarted", "replaced"]);
+      expect(tokens().at(-1)).toEqual(["intel:1", "rotated"]);
+      expect(sessions[1]!.sent[0]).toContain("This is a replacement session. Summary of your recent actions");
+      expect(h.store.read("t1")!.run!.session).toBe(2);
+
+      // 끔 — 글리프를 끄면 세션이 닫히고 깨우기가 멈춘다; 실험 기능을 끄면 같다.
+      h.store.setAutonomy("t1", false);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(sessions[1]!.disposed).toBe(true);
+      expect(supervisor.status("t1")).toBeNull();
+      expect(sessionEvents().at(-1)).toBe("stopped");
+      expect(runs.at(-1)).toMatchObject({ op: "run", run: { phase: "off", reason: "autonomy off" } });
+      h.store.addIntel("t1", { text: "f" });
+      await vi.advanceTimersByTimeAsync(PATROL_CEILING_MS);
+      expect(sessions).toHaveLength(2);
+      await supervisor.dispose();
+    } finally { vi.useRealTimers(); }
   });
 });

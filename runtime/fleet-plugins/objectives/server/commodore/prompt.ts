@@ -80,3 +80,8 @@ export function replacementNote(summary: readonly string[]): string {
   if (!summary.length) return "This is a replacement session. Nothing from your previous session is carried over; read the tools.";
   return ["This is a replacement session. Summary of your recent actions (everything else you read again from the tools):", ...summary.map((line) => `- ${line}`)].join("\n");
 }
+
+/** 사람의 메시지 — 사령관 도구에 없는 유일한 입력이라 깨움 문장 뒤에 그대로 선다. 지시가 아니라 말이다. */
+export function messageNote(messages: readonly string[]): string {
+  return ["The person's message to you (not a directive; the directive is in the tools):", ...messages.map((message) => `> ${message.replaceAll("\n", "\n> ")}`)].join("\n");
+}

@@ -1,19 +1,24 @@
 import path from "node:path";
 
 import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
+import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 
 import { COMMODORE_ACTIVE_FLAG, commodoreActive, createCommodoreRoutes } from "./server/commodore/routes.js";
 import { createCommodoreStore } from "./server/commodore/store.js";
+import { createCommodoreSupervisor } from "./server/commodore/supervisor.js";
 import { COMMODORE_CHANNEL } from "./server/commodore/types.js";
+import * as consoleTools from "./server/console-tools.js";
 import { createObjectiveConsoleTools } from "./server/console-tools.js";
-import { createLaunchService } from "./server/launch.js";
+import { createLaunchService, type LaunchService } from "./server/launch.js";
 import { createObjectiveMcpTools } from "./server/objective-tools.js";
 import { createGhPrLookup, createPrStatusService, type PrStatusService } from "./server/pr-status.js";
 import { agentCallRedirect } from "./server/prompts.js";
 import { createObjectiveRoutes } from "./server/routes.js";
-import { createObjectiveStore } from "./server/store.js";
-import { OBJECTIVE_CHANNEL } from "./server/types.js";
+import { createObjectiveStore, type ObjectiveStore } from "./server/store.js";
+import { OBJECTIVE_CHANNEL, type ObjectiveEvent } from "./server/types.js";
 import { RESULT_LIMITS } from "./server/results.js";
 
 /**
@@ -126,9 +131,26 @@ export default definePlugin({
     // 사령관(자율 운영) — Theater 마다 하나. 상태는 보드 곁 `commodore/` 에 살고, 사건은 자기 채널로 나간다.
     ctx.host.lifecycle.registerCleanup(ctx.host.events.registerSseChannel(COMMODORE_CHANNEL));
     const commodore = createCommodoreStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event) });
-    for (const route of createCommodoreRoutes(ctx, commodore)) {
+    // 감독자 — 자율 운영이 켜진 Theater 의 사령관을 깨우고, 되살리고, 멈춘다. 보드 도구는 Theater 에 묶인 사령관 전용 사본이다
+    // (`createCommodoreBoardTools` 가 아직 없는 빌드에서는 보드 없이 선다).
+    const boardTools = (consoleTools as { createCommodoreBoardTools?: (ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, theaterId: string) => readonly PluginMcpTool[] }).createCommodoreBoardTools;
+    const supervisor = createCommodoreSupervisor({
+      store: commodore, agent: ctx.host.agent,
+      experiments: () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
+      ...(ctx.host.experiments?.subscribe ? { subscribeExperiments: (listener) => ctx.host.experiments!.subscribe!(listener) } : {}),
+      theater: (theaterId) => { const root = ctx.host.paths.resolveTheaterPath(theaterId); return root ? { label: path.basename(root) || root, root } : null; },
+      objectives: (theaterId) => store.list(theaterId),
+      subscribeObjectives: (listener) => ctx.host.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
+      boardTools: (theaterId) => boardTools?.(ctx, store, launch, theaterId) ?? [],
+      ...(ctx.host.consoleControl ? { observe: (operationId) => ctx.host.consoleControl!.observe(operationId) } : {}),
+      emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event),
+    });
+    ctx.host.lifecycle.registerCleanup(() => supervisor.dispose());
+    for (const route of createCommodoreRoutes(ctx, commodore, { run: (theaterId) => supervisor.status(theaterId), retry: (theaterId) => supervisor.retry(theaterId) })) {
       registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
     }
+    // 재시작 복원 — 실험 기능과 자율 운영이 켜진 Theater 의 사령관을 다시 열고 「Console 재시작」 턴을 보낸다.
+    try { supervisor.sync("restart"); } catch (error) { console.warn(`[objectives] commodore restore failed: ${error instanceof Error ? error.message : String(error)}`); }
     // 사이드바 Theater DTO 의 「사령관 활동 중」 — 호스트 스텁(테스트)에는 이 능력이 없을 수 있다.
     const releaseFlag = (ctx.host.theaterFlags as typeof ctx.host.theaterFlags | undefined)?.register(COMMODORE_ACTIVE_FLAG, (theaterId) => commodoreActive(ctx, commodore, theaterId));
     if (releaseFlag) ctx.host.lifecycle.registerCleanup(releaseFlag);
