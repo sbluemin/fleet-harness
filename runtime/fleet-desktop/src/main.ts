@@ -546,7 +546,10 @@ async function boot(): Promise<void> {
       quit: () => app.quit(),
     })
     : createNoopConsoleRelaunchController();
-  applyDelegatedUpdate = (version) => { void consoleRelaunch.applyRequested(version); };
+  // 종료 준비가 실패하면 앱은 그대로 남고 다음 요청을 다시 받는다. 그 실패는 진단 기록에만 남긴다.
+  applyDelegatedUpdate = (version) => {
+    void consoleRelaunch.applyRequested(version).catch((error: unknown) => logger.error(`console relaunch failed: ${describeError(error)}`));
+  };
   // 갱신기는 패키징된 앱에서만 산다. 개발 실행에서는 갱신 소스를 직접 지정했을 때만 깨어난다 —
   // 이 동선을 눈으로 확인하려면 어딘가에서 한 번은 실제로 밟아 봐야 하기 때문이다.
   const developmentConfigPath = isPackaged ? undefined : writeDevelopmentUpdateConfig(app.getPath("userData"), process.env.FLEET_DESKTOP_DEV_UPDATE_FEED, logger);

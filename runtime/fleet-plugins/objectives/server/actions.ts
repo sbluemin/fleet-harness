@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import type { LaunchOptions, LaunchService } from "./launch.js";
@@ -25,9 +27,16 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     if (launch.busy(body.objectiveId) && !allowed(body)) throw new ObjectiveStoreError("objective_busy");
     return run(body);
   };
-  const edited = async (kinds: readonly ObjectiveEditKind[], run: () => Promise<Objective> | Objective) => {
+  // 저장소의 읽기/쓰기 응답은 매번 새 투영이다. 기록 시각·결정 요청·실행 좌표가 아닌 보드 내용으로 비교한다.
+  const boardContent = (value: Objective | null) => value && ({
+    title: value.title, note: value.note, attachments: value.attachments, criteria: value.criteria,
+    members: value.members.map(({ id, role, brief, launch, subagents }) => ({ id, role, brief, launch, subagents })),
+    missions: value.missions.map(({ id, text, done, prerequisites, why, member, unplaced }) => ({ id, text, done, prerequisites, why, member, unplaced })),
+  });
+  const edited = async (objectiveId: string, kinds: readonly ObjectiveEditKind[], run: () => Promise<Objective> | Objective) => {
+    const before = boardContent(store.find(objectiveId));
     const next = await run();
-    return objective(kinds.length ? store.setEdited(next.id, kinds, actor) : next);
+    return objective(kinds.length && !isDeepStrictEqual(before, boardContent(next)) ? store.setEdited(next.id, kinds, actor) : next);
   };
   const markEdited = (id: string, kinds: readonly ObjectiveEditKind[]) => store.setEdited(id, kinds, actor);
   const notStarted = (objectiveId: string, missionId: string) => {
@@ -43,7 +52,7 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
   return {
     // 첨부 등 바이트를 받는 경계도 같은 실행 중 편집 규칙과 귀속을 쓴다.
     unlessBusy, steerable, edited, markEdited,
-    patch: steerable(({ patch }: Ref & { patch: PatchObjectiveInput }) => only(patch, ["note", "routingConfirm"]), ({ objectiveId, patch }) => edited([
+    patch: steerable(({ patch }: Ref & { patch: PatchObjectiveInput }) => only(patch, ["note", "routingConfirm"]), ({ objectiveId, patch }) => edited(objectiveId, [
       ...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : []),
     ], async () => {
       const { title, groupId, launch: preset, ...own } = patch;
@@ -79,30 +88,30 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     followupDiscard: ({ objectiveId, candidateId }: Ref & { candidateId: string }) => objective(store.followupDiscard(objectiveId, candidateId, actor)),
     followupRetry: ({ objectiveId, batchId, candidateId }: Ref & { batchId: string; candidateId: string }) => objective(launch.retryFollowup(objectiveId, batchId, candidateId)),
     followupAbandon: ({ objectiveId, batchId, candidateId }: Ref & { batchId: string; candidateId: string }) => objective(store.followupAbandon(objectiveId, batchId, candidateId)),
-    memberAdd: steerable(() => true, ({ objectiveId, member }: Ref & { member: { role: string; brief?: string; launch?: MemberLaunch; subagents?: boolean } }) => edited(["members"], () => store.memberAdd(objectiveId, member, actor))),
+    memberAdd: steerable(() => true, ({ objectiveId, member }: Ref & { member: { role: string; brief?: string; launch?: MemberLaunch; subagents?: boolean } }) => edited(objectiveId, ["members"], () => store.memberAdd(objectiveId, member, actor))),
     memberPatch: steerable(() => true, ({ objectiveId, memberId, patch }: Ref & { memberId: string; patch: MemberPatchInput }) => {
       const reservation = only(patch, ["launch"]) && !!(ctx.host.operations.describe ? ctx.host.operations.describe(memberId) : ctx.host.operations.get(memberId));
-      return edited(reservation ? [] : ["members"], () => launch.memberPatched(objectiveId, memberId, patch));
+      return edited(objectiveId, reservation ? [] : ["members"], () => launch.memberPatched(objectiveId, memberId, patch));
     }),
     memberBatchLaunch: steerable(() => true, async ({ objectiveId, mode }: Ref & { mode: "same" | "route" }) => {
       const result = await launch.memberBatchLaunch(objectiveId, mode);
-      const body = result.edits > 0 ? await edited(["members"], () => result.objective) : objective(result.objective);
+      const body = objective(result.edits > 0 ? markEdited(objectiveId, ["members"]) : result.objective);
       return { ...body, changed: result.changed, preserved: result.preserved };
     }),
     memberRemove: steerable(() => true, async ({ objectiveId, memberId }: Ref & { memberId: string }) => {
       const result = await launch.memberRemoved(objectiveId, memberId);
       return objective(markEdited(objectiveId, ["members", ...(result.missionIds.length ? ["member" as const] : [])]));
     }),
-    missionAdd: steerable(() => true, ({ objectiveId, mission }: Ref & { mission: MissionAddInput }) => edited(["missions", ...(mission.member !== undefined ? ["member" as const] : [])], () => store.missionAdd(objectiveId, mission, { unplaced: mission.prerequisites === undefined, by: actor }))),
-    missionPatch: steerable(({ objectiveId, missionId, patch }: MissionRef & { patch: MissionPatchInput }) => only(patch, ["text", "member"]) && notStarted(objectiveId, missionId), ({ objectiveId, missionId, patch }) => edited(missionKinds(patch), () => store.missionPatch(objectiveId, missionId, patch, { by: actor }))),
-    missionRemove: steerable(({ objectiveId, missionId }: MissionRef) => notStarted(objectiveId, missionId), ({ objectiveId, missionId }) => edited(["missions"], () => store.missionRemove(objectiveId, missionId))),
+    missionAdd: steerable(() => true, ({ objectiveId, mission }: Ref & { mission: MissionAddInput }) => edited(objectiveId, ["missions", ...(mission.member !== undefined ? ["member" as const] : [])], () => store.missionAdd(objectiveId, mission, { unplaced: mission.prerequisites === undefined, by: actor }))),
+    missionPatch: steerable(({ objectiveId, missionId, patch }: MissionRef & { patch: MissionPatchInput }) => only(patch, ["text", "member"]) && notStarted(objectiveId, missionId), ({ objectiveId, missionId, patch }) => edited(objectiveId, missionKinds(patch), () => store.missionPatch(objectiveId, missionId, patch, { by: actor }))),
+    missionRemove: steerable(({ objectiveId, missionId }: MissionRef) => notStarted(objectiveId, missionId), ({ objectiveId, missionId }) => edited(objectiveId, ["missions"], () => store.missionRemove(objectiveId, missionId))),
     edge: steerable(({ objectiveId, to }: Ref & { from: string; to: string; linked?: boolean }) => notStarted(objectiveId, to), ({ objectiveId, from, to, linked }) => {
       const result = store.edgeToggle(objectiveId, from, to, undefined, linked);
       return { objective: result.changed ? markEdited(objectiveId, ["lineup"]) : result.objective, linked: result.linked };
     }),
-    criterionAdd: steerable(() => true, ({ objectiveId, criterion }: Ref & { criterion: { text: string } }) => edited(["criteria"], () => store.criterionAdd(objectiveId, criterion.text, actor))),
-    criterionPatch: steerable(() => true, ({ objectiveId, criterionId, patch }: Ref & { criterionId: string; patch: { text: string } }) => edited(["criteria"], () => store.criterionPatch(objectiveId, criterionId, patch.text))),
-    criterionRemove: steerable(() => true, ({ objectiveId, criterionId }: Ref & { criterionId: string }) => edited(["criteria"], () => store.criterionRemove(objectiveId, criterionId))),
+    criterionAdd: steerable(() => true, ({ objectiveId, criterion }: Ref & { criterion: { text: string } }) => edited(objectiveId, ["criteria"], () => store.criterionAdd(objectiveId, criterion.text, actor))),
+    criterionPatch: steerable(() => true, ({ objectiveId, criterionId, patch }: Ref & { criterionId: string; patch: { text: string } }) => edited(objectiveId, ["criteria"], () => store.criterionPatch(objectiveId, criterionId, patch.text))),
+    criterionRemove: steerable(() => true, ({ objectiveId, criterionId }: Ref & { criterionId: string }) => edited(objectiveId, ["criteria"], () => store.criterionRemove(objectiveId, criterionId))),
     approve: ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalApprove(objectiveId, proposalId, actor)),
     approveAll: ({ objectiveId }: Ref) => objective(store.proposalsApproveAll(objectiveId, actor)),
     reject: ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalReject(objectiveId, proposalId, actor)),

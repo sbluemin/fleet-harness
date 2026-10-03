@@ -20,12 +20,22 @@ export interface ConsoleRelaunchController {
 }
 
 export function createConsoleRelaunchController(options: ConsoleRelaunchOptions): ConsoleRelaunchController {
+  // 재시작은 앱에 한 번이다. 요청표가 달라도(다른 탭, 다시 붙은 Console) 이미 내리는 중인 앱을
+  // 다시 내리면 종료 준비와 재시작 예약이 겹친다. 준비가 실패해 앱이 그대로 남으면 다시 받는다.
+  let relaunching = false;
   return {
     async applyRequested(version: string) {
       // 이미 그 버전이면 재시작은 아무것도 바꾸지 않는다. 설명 없는 앱 재시작만 남고,
       // 사용자는 같은 버전과 같은 표식 앞으로 돌아온다.
       if (version === options.currentVersion()) return;
-      await options.prepareToQuit();
+      if (relaunching) return;
+      relaunching = true;
+      try {
+        await options.prepareToQuit();
+      } catch (error) {
+        relaunching = false;
+        throw error;
+      }
       options.relaunch();
       options.quit();
     },

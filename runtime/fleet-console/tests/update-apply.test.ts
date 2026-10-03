@@ -6,8 +6,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHash } from "node:crypto";
 
+import type * as http from "node:http";
+
 import { createConsoleUpdateApplyService } from "../features/updates/host/update-apply.js";
-import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/protocol/desktop";
+import { createUpdatesRoutes } from "../features/updates/host/routes.js";
+import { DESKTOP_CONSOLE_SOURCE_ENV, DESKTOP_CONSOLE_SOURCE_GITHUB_RELEASE, DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/protocol/desktop";
 import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 import { downloadVerifiedConsoleTarball } from "@fleet-console/updates";
 
@@ -88,6 +91,57 @@ describe("console update apply worker", () => {
     expect(fs.readdirSync(path.join(fleetDataDir, "console-releases"))).toEqual([]);
     expect(writeFile).not.toHaveBeenCalled();
     expect(spawnWorker).not.toHaveBeenCalled();
+  });
+
+  it("hands one Desktop relaunch per update and answers a second apply as already in progress", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-update-delegated-"));
+    TEMP_DIRS.push(root);
+    const latest = path.join(root, "console", "latest");
+    fs.mkdirSync(latest, { recursive: true });
+    fs.writeFileSync(path.join(latest, DESKTOP_RESOURCE_ROOT_MARKER), formatDesktopResourceRootMarker());
+    let clock = 1_000_000;
+    let releaseRefresh: () => void = () => undefined;
+    const refreshGate = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    const published: { readonly requestedVersion: string; readonly requestId: string }[] = [];
+    const routes = createUpdatesRoutes({
+      releaseNotes: {} as never,
+      updateCheck: { refresh: async () => { await refreshGate; return { updateAvailable: true, latestVersion: "1.2.3" }; } } as never,
+      updateApply: { start: async () => { throw new Error("a managed runtime must not update in place"); } },
+      durablePaths: { dir: root },
+      release: { packageRoot: latest },
+      version: "1.2.2",
+      channel: "stable",
+      isExactConsoleOrigin: () => true,
+      isLoopbackListener: () => true,
+      readJsonBody: async <T,>() => ({}) as T,
+      writeJson: (res, status, body) => { (res as unknown as { result: unknown }).result = { status, body }; },
+      readUrl: () => new URL("http://127.0.0.1/"),
+      currentRuntime: () => ({ lockHandle: null, activeEndpoint: null, activeLockFile: null }),
+      publishDesktopUpdateRequest: (request) => { published.push(request); },
+      env: { [DESKTOP_CONSOLE_SOURCE_ENV]: DESKTOP_CONSOLE_SOURCE_GITHUB_RELEASE },
+      now: () => clock,
+      stopAfterAcceptedUpdateApply: async () => undefined,
+    });
+    const apply = async () => {
+      const res = {} as { result?: { readonly status: number; readonly body: unknown } };
+      await routes.handleUpdateApply({ method: "POST", headers: {} } as http.IncomingMessage, res as unknown as http.ServerResponse);
+      return res.result;
+    };
+
+    // 두 탭이 거의 동시에 누른다 — 첫 요청이 Release를 다시 묻는 사이 두 번째가 들어온다.
+    const first = apply();
+    const second = apply();
+    releaseRefresh();
+    expect(await first).toEqual({ status: 202, body: { status: "delegated" } });
+    expect(await second).toEqual({ status: 409, body: { error: "update_already_in_progress" } });
+    // 셸이 재시작을 시작하기 전에 다시 눌러도 새 요청표는 나가지 않는다.
+    expect(await apply()).toEqual({ status: 409, body: { error: "update_already_in_progress" } });
+    expect(published).toHaveLength(1);
+
+    // 셸이 끝내 재시작하지 않으면 이 Console이 그대로 서 있다. 화면이 포기하는 만큼 기다린 뒤에는 다시 시도할 수 있다.
+    clock += 60_001;
+    expect(await apply()).toEqual({ status: 202, body: { status: "delegated" } });
+    expect(published).toHaveLength(2);
   });
 
 });
