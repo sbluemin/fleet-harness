@@ -34,7 +34,6 @@ interface FileTreeProps {
   readonly theaterId: string | null;
   readonly selectedPath: string | null;
   readonly revealTarget?: FileRevealTarget | null;
-  readonly directoryTarget?: { readonly path: string; readonly requestId: string };
   readonly onSelect: (entry: FolderEntry) => void;
   readonly onSearchSelect?: (item: FileSearchItem) => void;
   readonly onContextMenu: (entry: FolderEntry, x: number, y: number) => void;
@@ -856,7 +855,7 @@ function isPermanentFolderError(code: string): boolean {
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, files, theaterId, selectedPath, revealTarget, directoryTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
+  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
@@ -965,14 +964,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     setWatchDegraded(false);
   }, [contextKey, theaterId]);
 
-  useEffect(() => {
-    if (!directoryTarget) return;
-    setCurrentPath(directoryTarget.path);
-    setFilterText("");
-    setExpandedDirs(new Set());
-    setScrollTop(0);
-  }, [directoryTarget?.path, directoryTarget?.requestId]);
-
   // 저장된 펼침 상태 복원 — 위 리셋 효과 다음에 선언되어 리셋 후에 실행된다.
   // 자식을 가져온 뒤에만 expanded로 올려 빈 펼침 행을 만들지 않는다.
   useEffect(() => {
@@ -1060,7 +1051,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       const nextExpanded = new Set<string>();
       const parts = revealTarget.relativePath.split("/").filter(Boolean);
       let parentPath = "";
-      for (const part of parts.slice(0, -1)) {
+      // 폴더 참조는 조상뿐 아니라 자기 내용도 펼쳐 같은 트리 좌표에서 읽게 한다.
+      for (const part of revealTarget.kind === "dir" ? parts : parts.slice(0, -1)) {
         parentPath = parentPath ? `${parentPath}/${part}` : part;
         const folderResult = await files.listFolder(parentPath);
         nextResults.set(parentPath, folderResult);

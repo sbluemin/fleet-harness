@@ -4,7 +4,7 @@ import type { PaneContext, PaneDescriptor, PaneSearchResult } from "@fleet-conso
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 import { parseFileRef } from "@fleet-console/markdown/file-ref";
 import { TheaterBadge, theaterInitials } from "@fleet-console/sdk/components/theater-badge";
-import { FileIcon } from "@fleet-console/sdk/components/file-icon";
+import { FileIcon, FolderIcon } from "@fleet-console/sdk/components/file-icon";
 
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
@@ -35,7 +35,7 @@ import {
   useFileExplorerViewState,
 } from "./view-store.js";
 import { filePaneTarget, findReferencedFile, FileNavigationError, parseFileLocation, resolveFilePath } from "./file-navigation.js";
-import { showFileNavigationError, setDocumentPaneOpen } from "./view-store.js";
+import { showFileNavigationError, setDocumentPaneOpen, setFileRevealTarget, setSelectedPath } from "./view-store.js";
 import { parentDirOf } from "./viewer/stale.js";
 import { ShellActionNotice, useShellAction } from "./shell-action.js";
 
@@ -101,14 +101,14 @@ export const fileExplorerPane: PaneDescriptor = {
     const response = await fetch("/plugins/file-explorer/files/palette-search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // 파일 열기 팔레트는 파일만 받는다 — 디렉터리를 문서로 열면 not_a_file로 끝난다.
+      // 퍼지 결과는 파일로 좁히되, 정확한 폴더 참조는 아래에서 트리 대상으로 더한다.
       body: JSON.stringify({ theaterId, query: referenced?.resolved.path ?? normalizedQuery, limit, kinds: ["file"] }),
       signal,
     });
     if (!response.ok) throw new Error("file_search_failed");
     const result = await response.json() as FileSearchResult;
-    const files = referenced?.resolved.kind === "file" ? [
-      { relativePath: referenced.resolved.path, kind: "file" as const },
+    const files = referenced ? [
+      { relativePath: referenced.resolved.path, kind: referenced.resolved.kind },
       ...result.files.filter((file) => file.relativePath !== referenced.resolved.path),
     ] : result.files;
     const items: PaneSearchResult[] = files.map((file) => {
@@ -118,9 +118,9 @@ export const fileExplorerPane: PaneDescriptor = {
         title: name,
         subtitle: file.relativePath,
         // 트리와 같은 종류 아이콘 — 팔레트 행이 폴더 레일 아이콘 대신 파일이 무엇인지 말한다.
-        icon: <FileIcon name={name} />,
+        icon: file.kind === "dir" ? <FolderIcon name={name} open={false} /> : <FileIcon name={name} />,
         exact: file.relativePath === (referenced?.resolved.path ?? normalizedQuery),
-        activate: () => filePaneTarget(theaterId, { path: file.relativePath, kind: "file" }, referenced?.ref ?? ref ?? {}),
+        activate: () => filePaneTarget(theaterId, { path: file.relativePath, kind: file.kind }, referenced?.ref ?? ref ?? {}),
       };
     });
     // 상한 표식 행 — 코어가 provider limit으로 자르기 때문에, 마커 자리를 확보하되
@@ -167,6 +167,15 @@ function FileExplorerTreePane(ctx: PaneContext) {
   const nextTransientIdRef = useRef(0);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [feedback, setFeedback] = useState<InlineFeedback | null>(null);
+  const directoryPath = ctx.params.theaterId === theaterId ? ctx.params.directory : undefined;
+
+  useEffect(() => {
+    if (!theaterId || !ctx.visible || directoryPath === undefined) return;
+    setSelectedPath(contextScope, directoryPath);
+    setFileRevealTarget(contextScope, { theaterId, relativePath: directoryPath, kind: "dir", requestId: ctx.params.requestId ?? crypto.randomUUID() });
+    // 착지 요청은 한 번만 소비한다. 이후 Theater 복귀가 새로 고른 파일을 덮지 않는다.
+    panes.replaceParams({});
+  }, [contextScope, ctx.params.requestId, ctx.visible, directoryPath, panes, theaterId]);
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
@@ -318,7 +327,6 @@ function FileExplorerTreePane(ctx: PaneContext) {
           contextKey={contextScope}
           selectedPath={selectedPath}
           revealTarget={revealTarget}
-          directoryTarget={ctx.params.theaterId === theaterId && ctx.params.directory !== undefined ? { path: ctx.params.directory, requestId: ctx.params.requestId ?? "" } : undefined}
           onSelect={handleSelect}
           onSearchSelect={handleSearchSelect}
           onContextMenu={handleOpenContextMenu}
