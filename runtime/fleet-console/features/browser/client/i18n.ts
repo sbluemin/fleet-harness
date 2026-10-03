@@ -111,7 +111,8 @@ export const browserEn = {
   "terminal.globalBrowser.emptyTitle": "Browse without losing your place",
   "terminal.globalBrowser.emptyBody": "Type an address or click a link. Closing the sheet takes you back where you were.",
   "terminal.globalBrowser.restoreClosed": "Reopen {count} closed tabs",
-  "terminal.globalBrowser.restoreClosedHelp": "Only addresses come back — typed text and sign-ins do not.",
+  "terminal.globalBrowser.restoreClosedHelpPersistent": "Only addresses reopen — typed text does not come back.",
+  "terminal.globalBrowser.restoreClosedHelpEphemeral": "Only addresses come back — typed text and sign-ins do not.",
   "terminal.globalBrowser.unseenTabs": "{count} unseen tabs",
   "terminal.globalBrowser.sharedFallback": "Opened in your browser because the Fleet browser is paused",
 };
@@ -225,7 +226,8 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.globalBrowser.emptyTitle": "보던 자리를 잃지 않고 브라우징",
   "terminal.globalBrowser.emptyBody": "주소를 입력하거나 링크를 누르세요. 시트를 닫으면 보던 자리로 돌아옵니다.",
   "terminal.globalBrowser.restoreClosed": "닫힌 탭 {count}개 다시 열기",
-  "terminal.globalBrowser.restoreClosedHelp": "주소만 돌아옵니다. 입력하던 글과 로그인은 돌아오지 않습니다.",
+  "terminal.globalBrowser.restoreClosedHelpPersistent": "주소만 다시 엽니다. 입력하던 글은 돌아오지 않습니다.",
+  "terminal.globalBrowser.restoreClosedHelpEphemeral": "주소만 돌아옵니다. 입력하던 글과 로그인은 돌아오지 않습니다.",
   "terminal.globalBrowser.unseenTabs": "보지 않은 탭 {count}개",
   "terminal.globalBrowser.sharedFallback": "Fleet 브라우저가 일시 중지되어 내 브라우저로 열었습니다",
 };

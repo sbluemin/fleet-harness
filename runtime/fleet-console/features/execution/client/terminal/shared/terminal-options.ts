@@ -45,6 +45,10 @@ export function createTerminalLinkRoute(deps: {
       if (deps.chooseTarget(href, event)) return;
     } else if (deps.openDirect?.(href, event)) {
       return;
+    } else if (deps.openDirect && deps.chooseTarget(href, event)) {
+      // 수정키인데 직접 열기가 아니면 카드로 묻는다(Shell의 Alt 등).
+      // 카드가 서지 않으면(공유·웹탭) 아래 기본 경로로 떨어진다.
+      return;
     }
     if (!deps.confirmNavigation(href)) return;
     deps.openWindow(href, "_blank", "noopener,noreferrer");

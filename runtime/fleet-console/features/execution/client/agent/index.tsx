@@ -2,7 +2,7 @@ import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
-import { gestureFromEvent } from "@fleet-console/link/core";
+import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, type SystemFontRecord } from "@fleet-console/font-picker/system-fonts";
 import {
@@ -39,6 +39,7 @@ isCompanionPanelVisible,
 } from "../../../analyst/client/analysis-visibility.js";
 import "../../../analyst/client/analysis.css";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { notifySharedFallback } from "../../../browser/client/global-browser-store.js";
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useOperationUse } from "../../../computer-use/client/computer-screen-share.js";
 import { gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
@@ -819,7 +820,16 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     { operationId: context.operationId, openCompanion: () => openBrowserCompanion(context) },
     linkAvailability,
   ), [context, linkAvailability]);
-  const onChatLinkClick = React.useMemo(() => createChatLinkInterceptor(linkOpen.choose, openChatLinkDirect), [linkOpen.choose, openChatLinkDirect]);
+  // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다(채팅·CLI 공통).
+  const chooseLinkWithSharedFallback = React.useCallback((url: string, at: { readonly x: number; readonly y: number }) => {
+    if (linkAvailability.isShared) {
+      notifySharedFallback();
+      openInDefaultOsBrowser(url);
+      return true;
+    }
+    return linkOpen.choose(url, at);
+  }, [linkAvailability, linkOpen.choose]);
+  const onChatLinkClick = React.useMemo(() => createChatLinkInterceptor(chooseLinkWithSharedFallback, openChatLinkDirect), [chooseLinkWithSharedFallback, openChatLinkDirect]);
   const fileLinks = React.useMemo(() => createChatFileLinkPorts(context.operation.theaterId, context.navigate), [context.operation.theaterId, context.navigate]);
   const terminalFileLinks = useAgentTerminalFileLinks(context.operationId, context.operation.theaterId, context.navigate);
 
@@ -870,7 +880,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
-        onOpenLink={linkOpen.choose}
+        onOpenLink={chooseLinkWithSharedFallback}
         onOpenLinkDirect={(url, event) => openOperationLink(
           url,
           gestureFromEvent(event),

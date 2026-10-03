@@ -5,8 +5,9 @@ import { createPortal } from "react-dom";
 
 import { getT } from "../../agent/i18n/index.js";
 import { openShellLink, useShellLinkChoice } from "../../agent/link-open.js";
+import { notifySharedFallback } from "../../../../browser/client/global-browser-store.js";
 import { useBrowserEngine } from "../../../../browser/client/browser-panel-store.js";
-import { gestureFromEvent } from "@fleet-console/link/core";
+import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { TerminalSurface } from "../shared/index.js";
 import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
 import { getShellSessionSnapshot, readShellSession } from "./shell-session-store.js";
@@ -219,7 +220,15 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
         ticketFields={context.theaterId ? { theaterId: context.theaterId } : undefined}
         onExit={handleExit}
         fileLinks={shellFileLinks(context)}
-        onOpenLink={shellLink.choose}
+        onOpenLink={(url, at) => {
+          // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다.
+          if (shellAvailability.isShared) {
+            notifySharedFallback();
+            openInDefaultOsBrowser(url);
+            return true;
+          }
+          return shellLink.choose(url, at);
+        }}
         onOpenLinkDirect={(url, event) => openShellLink(url, gestureFromEvent(event), shellAvailability)}
       />
       {shellLink.card}

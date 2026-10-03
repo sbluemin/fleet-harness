@@ -92,6 +92,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [geometry, setGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
+  // scrim은 아레나(캔버스)만 덮는다 — 도구모음·섬·레일·사이드바는 기하 밖이라 그대로 조작된다.
+  const [scrimGeometry, setScrimGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   const [still, setStill] = React.useState<{ tabId: string; url: string; src: string } | null>(null);
   const [profileMenu, setProfileMenu] = React.useState(false);
   const [viewportMenu, setViewportMenu] = React.useState(false);
@@ -143,15 +145,24 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const zen = document.querySelector(".console-shell.is-zen") !== null;
     const sideRight = sidebar && sidebar.offsetWidth > 0 ? sidebar.getBoundingClientRect().right : 0;
     const railRect = rail && rail.offsetWidth > 4 ? rail.getBoundingClientRect() : null;
+    const bandRect = band && band.offsetWidth > 0 ? band.getBoundingClientRect() : null;
+    const islandRect = island && island.offsetWidth > 0 ? island.getBoundingClientRect() : null;
+    const zenIsland = zen && islandRect;
+    // scrim 자리 — 24px 안쪽 여백 없이 아레나 자체. 밴드·섬·레일·사이드바는 밖에 둔다.
+    const scrim = zenIsland
+      ? { left: 0, top: 0, right: 0, bottom: Math.round(vh - islandRect.top) }
+      : { left: Math.round(sideRight), top: Math.round(bandRect ? bandRect.bottom : 0), right: Math.round(railRect ? vw - railRect.left : 0), bottom: 0 };
+    setScrimGeometry((current) => current && current.left === scrim.left && current.top === scrim.top && current.right === scrim.right && current.bottom === scrim.bottom
+      ? current
+      : scrim);
     let left = Math.round((sideRight > 0 ? sideRight : 0) + 24);
     let right = Math.round(railRect ? vw - railRect.left + 24 : 24);
     let top: number;
     let bottom: number;
-    if (zen && island && island.offsetWidth > 0) {
+    if (zenIsland) {
       top = 24;
-      bottom = Math.round(vh - island.getBoundingClientRect().top + 12);
+      bottom = Math.round(vh - islandRect.top + 12);
     } else {
-      const bandRect = band && band.offsetWidth > 0 ? band.getBoundingClientRect() : null;
       top = Math.round(bandRect ? bandRect.bottom + 12 : 24);
       bottom = 24;
     }
@@ -214,13 +225,10 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     return () => clearInterval(timer);
   }, [open, parked, place]);
   // 시트가 내려가면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다(탭은 서버에 주차된다).
+  // 마운트 직후 닫혀 있으면 한 번 내린다. reload 뒤 서버에 남은 배치를 새 세션의 키와 무관하게 지운다.
   React.useEffect(() => {
-    if (open) return;
-    if (placeKeyRef.current && placeKeyRef.current !== "0") {
-      placeKeyRef.current = "0";
-      void placeGlobal(false);
-    }
-  }, [open ]);
+    if (!open) place(false);
+  }, [open, place]);
 
   // 탭이 안정되면(로딩 끝) 백그라운드에서 한 장을 미리 찍어 둔다. 실패하면 조용히 버리고 무채색 자리를 쓴다.
   React.useEffect(() => {
@@ -300,8 +308,16 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     <>
       {open ? (
         <>
-          {/* 뒤 캔버스를 은은하게 가라앉히는 무채색 scrim. 직접 클릭만 닫는다. */}
-          <div className="fleet-browser-scrim" aria-hidden="true" onClick={() => closeGlobalBrowser()} />
+          {/* 뒤 캔버스를 은은하게 가라앉히는 무채색 scrim — 아레나만 덮고, 닫기는 이 클릭에만.
+              도구모음·섬·레일·사이드바는 scrim 밖에 있어 그대로 조작된다. */}
+          {scrimGeometry ? (
+            <div
+              className="fleet-browser-scrim"
+              aria-hidden="true"
+              onClick={() => closeGlobalBrowser()}
+              style={{ left: scrimGeometry.left, top: scrimGeometry.top, right: scrimGeometry.right, bottom: scrimGeometry.bottom }}
+            />
+          ) : null}
           <section
         ref={sheetRef}
         id="fleet-browser-sheet"
@@ -521,7 +537,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
                     disabled={busy}
                     onClick={() => runTab(() => restoreClosedGlobalTabs())}
                   >{t("terminal.globalBrowser.restoreClosed", { count: String(closedTabs.length) })}</button>
-                  <p>{t("terminal.globalBrowser.restoreClosedHelp")}</p>
+                  <p>{t(persistent ? "terminal.globalBrowser.restoreClosedHelpPersistent" : "terminal.globalBrowser.restoreClosedHelpEphemeral")}</p>
                   <button
                     type="button"
                     className="op-browser__toast-action"
