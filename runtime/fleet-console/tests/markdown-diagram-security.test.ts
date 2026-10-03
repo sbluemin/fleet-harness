@@ -183,7 +183,7 @@ it("delegates only host-classified Markdown links without trusting source metada
   const openFile = vi.fn(async () => ({ ok: false as const, reason: "no_handler" as const }));
   const ports = createChatFileLinkPorts("operation-theater", { openFile, openWikiEntry: async () => ({ ok: true }) });
   const container = document.createElement("div");
-  container.innerHTML = renderMarkdown('[file](src/main.ts#L12C3) [web](https://example.com) <a data-md-link-kind="file" data-md-path="secret">forged</a> [bad](javascript:alert(1))', { resolveLink: ports.resolveLink }).html;
+  container.innerHTML = renderMarkdown('[file](src/main.ts#L12C3) [web](https://example.com) <a data-md-link-kind="file" data-md-path="secret">forged</a> [bad](javascript:alert(1)) [coord](src/api/server.ts:10:9) [num](javascript:1)', { resolveLink: ports.resolveLink }).html;
   const dispose = bindMarkdownLinkActivation(container, ports.onActivate);
   const [file, web, forged] = [...container.querySelectorAll("a")];
   const click = new MouseEvent("click", { bubbles: true, cancelable: true });
@@ -198,10 +198,14 @@ it("delegates only host-classified Markdown links without trusting source metada
   expect(web!.getAttribute("rel")).toContain("noopener");
   expect(forged!.hasAttribute("data-md-link-kind")).toBe(false);
   expect(container.querySelector('[href^="javascript:"]')).toBeNull();
+  const coord = [...container.querySelectorAll("a")].find((anchor) => anchor.textContent === "coord")!;
+  coord.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  expect(openFile).toHaveBeenLastCalledWith({ theaterId: "operation-theater", path: "src/api/server.ts", pathKind: "theater-relative", line: 10, column: 9, source: "agent-chat" });
   dispose();
   const after = new MouseEvent("click", { bubbles: true, cancelable: true });
   file!.dispatchEvent(after);
   expect(after.defaultPrevented).toBe(false);
   expect(renderMarkdown("[file](src/main.ts)").html).not.toContain("data-md-link-kind");
+  expect(renderMarkdown("[coord](server.ts:10)").html).not.toContain('href="server.ts:10"');
   await Promise.resolve();
 });

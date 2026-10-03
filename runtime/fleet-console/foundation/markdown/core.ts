@@ -59,8 +59,12 @@ const marked = new Marked({
   gfm: true,
   breaks: false,
 });
+// `src/x.ts:10:9`처럼 콜론 좌표가 붙은 파일 참조는 URL 스킴(`x.ts:`)처럼 보여 기본 허용식에서 지워진다.
+// 경로 쪽에 `.`이나 `/`가 있고 콜론 뒤가 숫자 좌표뿐인 형태만 통과시킨다 — 실제 스킴 이름(javascript 등)은
+// 점·슬래시가 없으므로 이 갈래로 들어오지 못한다. 호스트가 분류하지 않으면 decorateLinks가 href를 거둔다.
+const FILE_COORDINATE_HREF = /^(?=[^:]*[./])[^:]+:\d+(?::\d+)?$/;
 const sanitizeConfig = {
-  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[#/]|\.{0,2}\/|[^:]+$)/i,
+  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[#/]|\.{0,2}\/|[^:]+$|(?=[^:]*[./])[^:]+:\d+(?::\d+)?$)/i,
   ADD_ATTR: ["target", "rel", "data-entry-id"],
 };
 const highlighter = configureHighlighter();
@@ -241,6 +245,11 @@ function decorateLinks(document: Document, resolveLink?: RenderMarkdownOptions["
         }
       }
       link.dataset.mdLinkData = JSON.stringify(target.data);
+      continue;
+    }
+    if (FILE_COORDINATE_HREF.test(href)) {
+      // 분류되지 않은 좌표 참조는 브라우저가 낯선 스킴으로 열려 든다 — 예전처럼 이동하지 않는 앵커로 둔다.
+      link.removeAttribute("href");
       continue;
     }
     if (isExternalLink(href)) {
