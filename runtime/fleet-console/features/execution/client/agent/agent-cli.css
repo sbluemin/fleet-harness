@@ -1993,7 +1993,7 @@
 .use-corner-ring circle { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .use-corner-ring-track {
   stroke: color-mix(in oklch, var(--aurora) 22%, transparent);
-  animation: use-corner-breathe 2.4s ease-in-out infinite;
+  animation: use-corner-breathe 2.4s ease-in-out infinite; animation-name: var(--state-motion, use-corner-breathe);
 }
 .use-corner-ring-arc {
   stroke: color-mix(in oklch, var(--aurora) 72%, transparent);

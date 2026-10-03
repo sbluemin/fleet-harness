@@ -109,6 +109,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
   };
   return (
     <section ref={sectionRef} className="objectives-decision-request" aria-label={t("objectives.decision.request")}>
+      <span className="objectives-decision-orbit" aria-hidden="true" />
       <div className="objectives-decision-head">
         <span className="objectives-decision-glyph"><RequestGlyph /></span>
         <span>{t("objectives.decision.request")}</span>

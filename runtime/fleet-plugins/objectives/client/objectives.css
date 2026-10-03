@@ -159,12 +159,12 @@
 .objectives-stop-btn { display: inline-flex; align-items: center; gap: 4px; color: var(--coral); border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
 .objectives-stop-btn:hover { border-color: var(--coral); }
 .objectives-busy-line { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px 22px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
-.objectives-busy-line i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); animation: objectives-breathe 1.6s ease-in-out infinite; }
+.objectives-busy-line i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); animation: objectives-breathe 1.6s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); }
 @keyframes objectives-breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 .objectives-detail.is-busy .objectives-detail-title, .objectives-detail.is-busy .objectives-mission-text:read-only, .objectives-detail.is-busy .objectives-note:read-only { cursor: default; color: var(--text-secondary); }
 .objectives-detail.is-busy .objectives-row-main:disabled { cursor: default; opacity: 0.6; }
 .objectives-detail.is-busy .objectives-check { opacity: 0.35; cursor: default; }
-.objectives-mission-sub.is-running i { animation: objectives-breathe 1.6s ease-in-out infinite; }
+.objectives-mission-sub.is-running i { animation: objectives-breathe 1.6s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); }
 .objectives-check {
   width: 16px;
   height: 16px;
@@ -426,7 +426,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-start.is-awaiting { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
 .objectives-start.is-awaiting:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
 .objectives-start.is-awaiting .objectives-start-word, .objectives-start.is-awaiting .objectives-start-arrow { color: var(--aurora); }
-.objectives-start-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent); animation: objectives-breathe 1.8s ease-in-out infinite; }
+.objectives-start-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent); animation: objectives-breathe 1.8s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); }
 
 /* A 분할 칸 — 띠의 틀(테두리·radius·그라디언트)이 이 래퍼로 옮고, 주행동과 이동 칸이 나란히 선다. */
 .objectives-split { display: grid; grid-template-columns: minmax(0, 1fr) 38px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 16%, transparent), color-mix(in oklch, var(--brass) 6%, transparent)); transition: border-color var(--duration-fast) var(--ease-spring); }
@@ -476,7 +476,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-comp.is-review .objectives-comp-compact.is-armed, .objectives-comp.is-review .objectives-comp-compact.is-done { color: var(--aurora); }
 .objectives-comp.is-review .objectives-comp-compact.is-armed { background: color-mix(in oklch, var(--aurora) 16%, transparent); }
 .objectives-comp-compact.is-locked:hover { background: transparent; color: inherit; }
-.is-armed > svg { transform-origin: center; animation: objectives-compact-pulse 1.1s var(--ease-spring) infinite; }
+.is-armed > svg { transform-origin: center; animation: objectives-compact-pulse 1.1s var(--ease-spring) infinite; animation-name: var(--state-motion, objectives-compact-pulse); }
 @keyframes objectives-compact-pulse { 50% { transform: scaleY(0.82); } }
 @media (prefers-reduced-motion: reduce) { .is-armed > svg { animation: none; } }
 .objectives-compact-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
@@ -802,9 +802,9 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-check.is-linked i { position: absolute; inset: 0; border-radius: 50%; }
 .objectives-check.is-linked.is-idle i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--text-tertiary); }
 .objectives-check.is-linked.is-running { border-color: color-mix(in oklch, var(--warn) 35%, transparent); }
-.objectives-check.is-linked.is-running i { border: 1.5px solid transparent; border-top-color: var(--warn); animation: objectives-spin 1.2s linear infinite; }
+.objectives-check.is-linked.is-running i { border: 1.5px solid transparent; border-top-color: var(--warn); animation: objectives-spin 1.2s linear infinite; animation-name: var(--state-motion, objectives-spin); }
 .objectives-check.is-linked.is-background { border-style: dashed; border-color: var(--warn); }
-.objectives-check.is-linked.is-awaiting { border-color: var(--aurora); animation: objectives-breathe 1.6s ease-in-out infinite; }
+.objectives-check.is-linked.is-awaiting { border-color: var(--aurora); animation: objectives-breathe 1.6s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); }
 .objectives-check.is-linked.is-awaiting i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--aurora); }
 .objectives-check.is-linked.is-ended, .objectives-check.is-linked.is-unknown, .objectives-check.is-linked.is-closed { border-color: var(--hairline); }
 .objectives-check.is-linked.is-ended i::after, .objectives-check.is-linked.is-closed i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 1px; background: var(--text-tertiary); }
@@ -886,7 +886,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-att-drop { position: absolute; inset: 4px; z-index: 2; display: grid; place-items: center; border-radius: var(--radius-md); background: color-mix(in oklch, var(--brass) 9%, color-mix(in oklch, var(--surface-panel) 90%, transparent)); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 60%, transparent); color: var(--brass-ink); font-size: var(--t-sm); pointer-events: none; }
 .objectives-att-drop span { display: inline-flex; align-items: center; gap: 8px; }
 .objectives-att-drop svg { width: 16px; height: 16px; }
-.objectives-att-spin { width: 12px; height: 12px; border: 1.5px solid var(--text-tertiary); border-top-color: transparent; border-radius: 50%; animation: objectives-att-spin 0.9s linear infinite; }
+.objectives-att-spin { width: 12px; height: 12px; border: 1.5px solid var(--text-tertiary); border-top-color: transparent; border-radius: 50%; animation: objectives-att-spin 0.9s linear infinite; animation-name: var(--state-motion, objectives-att-spin); }
 @keyframes objectives-att-spin { to { transform: rotate(360deg); } }
 .objectives-att-err { font-size: var(--t-xs); color: var(--coral); }
 /* 크게 보기 — 채팅 첨부 보기와 같은 틀(유리 틀·모서리 원형 닫기). */
@@ -1080,7 +1080,7 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 .objectives-followup-rstat.is-wait, .objectives-followup-rstat.is-gone { color: var(--text-tertiary); }
 .objectives-followup-rstat button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .objectives-followup-rstat button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.objectives-followup-spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: objectives-spin 0.9s linear infinite; }
+.objectives-followup-spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: objectives-spin 0.9s linear infinite; animation-name: var(--state-motion, objectives-spin); }
 .objectives-followup-history { margin: 0 14px; font-size: var(--t-2xs); color: var(--text-tertiary); }
 /* 출처 — 후속으로 태어난 목표의 원본 한 줄. 제목은 말줄임, 이동 글리프는 12px. */
 .objectives-origin-lab { font-size: var(--t-xs); color: var(--text-secondary); }
@@ -1220,28 +1220,39 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
    움직임이라 "사람의 결정을 기다린다"가 어느 표면에서나 한 모양으로 읽힌다(펄스는 Console Use, 맥동은 입력 대기, 흐름은 작업 중).
    무한 모션은 진행 중 신호에만 허용된다 — 요청은 답·철회로 사라지고, 그 순간 카드가 구획을 떠나거나 칸이 내려가 테도 함께 걷힌다.
    카드의 ::before 는 끌기 삽입 표시가 먼저 쓴다. */
-@property --objectives-orbit-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
-
-.objectives-decision-request::before {
-  content: "";
+.objectives-decision-orbit {
   position: absolute;
   inset: -1px;
   border-radius: inherit;
   padding: 1.5px;
   pointer-events: none;
-  background: conic-gradient(from var(--objectives-orbit-angle), transparent 0 62%, color-mix(in oklch, var(--brass) 30%, transparent) 74%, var(--brass) 86%, transparent 90%);
+  overflow: hidden;
+  container-type: size;
   -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
   mask-composite: exclude;
-  animation: objectives-orbit 3.2s linear infinite, objectives-orbit-in 420ms ease-out both;
+  animation: objectives-orbit-in 420ms ease-out both;
 }
-@keyframes objectives-orbit { to { --objectives-orbit-angle: 360deg; } }
+/* 테는 고정하고 미리 칠한 정사각형만 돌린다 — 각도 속성 변경으로 매 프레임 다시 칠하지 않는다. */
+.objectives-decision-orbit::before {
+  content: "";
+  position: absolute;
+  width: calc(max(100cqw, 100cqh) * 1.5);
+  height: calc(max(100cqw, 100cqh) * 1.5);
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  background: conic-gradient(transparent 0 62%, color-mix(in oklch, var(--brass) 30%, transparent) 74%, var(--brass) 86%, transparent 90%);
+  animation: objectives-orbit 3.2s steps(16, end) infinite; animation-name: var(--state-motion, objectives-orbit);
+}
+@keyframes objectives-orbit { to { transform: rotate(360deg); } }
 @keyframes objectives-orbit-in { from { opacity: 0; } }
 /* 감속 모션 — 호가 멈춘 자리 대신 정지한 brass 테 한 줄로 선다. 무엇이 요청인지는 남는다. */
 @media (prefers-reduced-motion: reduce) {
   
-  .objectives-decision-request::before { animation: none; background: var(--brass); }
+  .objectives-decision-orbit { animation: none; background: var(--brass); }
+  .objectives-decision-orbit::before { animation: none; content: none; }
 }
 .objectives-decision-head { display: flex; align-items: center; gap: 6px; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--brass-ink); }
 .objectives-decision-head time, .objectives-decision-n { font-family: var(--font-mono); font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
@@ -1431,7 +1442,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-routing-why { grid-area: why; justify-self: start; text-align: left; min-width: 0; font-size: var(--t-xs); line-height: 1.4; color: var(--text-tertiary); overflow-wrap: anywhere; }
 .objectives-routing-why.is-warn { color: var(--warn-ink); }
 .objectives-routing-judging { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); }
-.objectives-routing-spinner { flex: none; width: 10px; height: 10px; border: 1.5px solid var(--hairline-strong); border-top-color: var(--text-secondary); border-radius: 50%; animation: objectives-routing-spin 900ms linear infinite; }
+.objectives-routing-spinner { flex: none; width: 10px; height: 10px; border: 1.5px solid var(--hairline-strong); border-top-color: var(--text-secondary); border-radius: 50%; animation: objectives-routing-spin 900ms linear infinite; animation-name: var(--state-motion, objectives-routing-spin); }
 @keyframes objectives-routing-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .objectives-routing-spinner { animation-duration: 2400ms; } }
 .objectives-routing-foot { display: flex; align-items: flex-start; gap: 10px; padding: 4px 14px 8px; font-size: var(--t-2xs); line-height: 1.45; color: var(--text-tertiary); }

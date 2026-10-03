@@ -2166,7 +2166,7 @@
   mask-image: linear-gradient(100deg, transparent 0%, transparent 34%, #000 50%, transparent 66%, transparent 100%);
   -webkit-mask-size: 200% 100%;
   mask-size: 200% 100%;
-  animation: repository-glyph-sweep 1.3s linear infinite;
+  animation: repository-glyph-sweep 1.3s linear infinite; animation-name: var(--state-motion, repository-glyph-sweep);
 }
 @keyframes repository-glyph-sweep {
   from { -webkit-mask-position: 200% 0; mask-position: 200% 0; }
@@ -2207,7 +2207,7 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: repository-text-sweep 1.3s linear infinite;
+  animation: repository-text-sweep 1.3s linear infinite; animation-name: var(--state-motion, repository-text-sweep);
 }
 @keyframes repository-text-sweep {
   from { background-position: 200% 0; }
