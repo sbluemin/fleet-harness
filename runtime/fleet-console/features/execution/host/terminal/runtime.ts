@@ -1,5 +1,5 @@
 import type { CliMessagePolicy } from "@fleet-console/agent-runtime/fleet";
-import type { ConsoleRuntimeContext } from "../context.js";
+import type { ConsoleRuntimeContext, RequestLifetime } from "../context.js";
 import type { UpgradeHandler } from "@fleet-console/sdk/routing";
 
 import { createShellTerminalLaunchResolver, startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
@@ -49,7 +49,7 @@ export interface TerminalRuntime {
    * 채팅 티켓이 소켓을 연 뒤 저널을 붙일 자리. 플러그인 라우트가 등록한다.
    * 등록 전 채팅 업그레이드는 소켓을 거절한다.
    */
-  bindChatAttach(attach: (socket: TerminalSocket, context: TerminalTicketContext) => void): () => void;
+  bindChatAttach(attach: (socket: TerminalSocket, context: TerminalTicketContext, lifetime: RequestLifetime) => void): () => void;
   stop(): Promise<void>;
 }
 
@@ -59,7 +59,7 @@ const SHELL_OPERATION_TYPE = "shell";
 
 export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRuntime {
   const tickets = createPluginTerminalTicketRegistry();
-  let chatAttach: ((socket: TerminalSocket, context: TerminalTicketContext) => void) | null = null;
+  let chatAttach: ((socket: TerminalSocket, context: TerminalTicketContext, lifetime: RequestLifetime) => void) | null = null;
   const terminalExitListeners = new Set<(operationId: string) => void | Promise<void>>();
   const terminalTitleListeners = new Map<string, Set<TerminalTitleListener>>();
   const terminalCwdListeners = new Map<string, Set<TerminalCwdListener>>();
@@ -92,12 +92,13 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
     tickets,
     sessions,
     isAuthorized: ctx.host.security.isTerminalAuthorized,
-    attachChat: (socket, context) => {
+    ...(ctx.host.requestLifetime ? { requestLifetime: ctx.host.requestLifetime } : {}),
+    attachChat: (socket, context, lifetime) => {
       if (!chatAttach) {
         socket.close(1013, "chat_unavailable");
         return;
       }
-      chatAttach(socket, context);
+      chatAttach(socket, context, lifetime);
     },
   });
 

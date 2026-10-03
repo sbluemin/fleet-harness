@@ -164,7 +164,7 @@
   inset: 0;
   background: linear-gradient(90deg, transparent, var(--warn-ink), transparent);
   transform: translateX(-100%);
-  animation: update-curtain-sweep 1.6s ease-in-out infinite;
+  animation: update-curtain-sweep 1.6s ease-in-out infinite; animation-name: var(--state-motion, update-curtain-sweep);
 }
 
 .update-curtain-sub {

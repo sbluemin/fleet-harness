@@ -13,10 +13,11 @@ import { getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaSummary } from
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 
 /**
- * 도구모음 Bridge의 사용 한도 요약 — 가장 급한 공급자 하나의 글리프 옆에 창별 사용 %를 두 줄로 쌓는다
- * (위: 짧은 창, 아래: 그보다 긴 창 중 가장 급한 것). 숫자는 패널과 같은 「사용 %」이고 심각도는 패널과 같은
- * 판정·같은 신호 채널(warn·coral)을 탄다. 폭은 고정이라 켜고 끄거나 값이 바뀌어도 도구모음 가운데 정렬이
- * 흔들리지 않는다. 누르면 사용 한도 패널을 열고 닫는다. 꺼져 있으면 아무것도 그리지 않는다(칸째 사라진다).
+ * 도구모음 Bridge의 사용 한도 요약 — 사용자가 고른 공급자마다 한 칸씩, 글리프 옆에 창별 사용 %를 두 줄로
+ * 쌓는다(위: 짧은 창, 아래: 그보다 긴 창 중 가장 급한 것). 칸의 순서는 패널의 카드 순서다. 숫자는 패널과
+ * 같은 「사용 %」이고 심각도는 패널과 같은 판정·같은 신호 채널(warn·coral)을 탄다. 칸은 글리프에 숫자를
+ * 바짝 붙인 내용 폭이다(고정 폭이면 한 자릿수 칸이 벌어져 보인다). 누르면 사용 한도 패널을
+ * 열고 닫는다. 고른 공급자가 없으면 아무것도 그리지 않는다(칸째 사라진다).
  */
 
 const QUOTA_RAIL_ENTRY_ID = "quota";
@@ -34,29 +35,24 @@ export function connectQuotaToolbarRail(next: ClientRailCapability): () => void 
 
 export interface QuotaToolbarReading {
   readonly id: ProviderId;
+  /** 비어 있으면 아직 읽지 못했거나 읽을 수 없는 공급자다 — 칸은 남기고 숫자 자리에 「–」를 둔다. */
   readonly lines: readonly QuotaWindow[];
 }
-
-const SEVERITY_RANK = { normal: 0, warning: 1, critical: 2 } as const;
 
 function readableWindows(provider: ProviderDto | undefined): readonly QuotaWindow[] {
   if (provider === undefined || (provider.status !== "ok" && provider.status !== "stale")) return [];
   return provider.windows ?? [];
 }
 
-/** 가장 급한 공급자 하나 — 패널의 접힌 행과 같은 순위(판정 먼저, 그다음 사용 %). 같으면 패널 순서가 앞인 쪽. */
-export function toolbarReading(data: QuotaSummaryDto | null, order: readonly ProviderId[]): QuotaToolbarReading | null {
-  if (data === null) return null;
-  let best: { readonly id: ProviderId; readonly worst: QuotaWindow; readonly windows: readonly QuotaWindow[] } | null = null;
-  for (const id of order) {
-    const windows = readableWindows(data.providers[id]);
-    const worst = foldedWindow(windows);
-    if (worst === null) continue;
-    if (best === null) { best = { id, worst, windows }; continue; }
-    const rank = SEVERITY_RANK[meterSeverity(worst)] - SEVERITY_RANK[meterSeverity(best.worst)];
-    if (rank > 0 || (rank === 0 && worst.usedPercent > best.worst.usedPercent)) best = { id, worst, windows };
-  }
-  return best === null ? null : { id: best.id, lines: summaryLines(best.windows) };
+/** 고른 공급자마다 한 칸 — 패널 카드 순서를 따른다. 값이 없어도 칸은 선다(켜고 끈 것만 폭을 바꾼다). */
+export function toolbarReadings(
+  data: QuotaSummaryDto | null,
+  order: readonly ProviderId[],
+  shown: readonly ProviderId[],
+): readonly QuotaToolbarReading[] {
+  return order
+    .filter((id) => shown.includes(id))
+    .map((id) => ({ id, lines: summaryLines(readableWindows(data?.providers[id])) }));
 }
 
 /** 두 줄 — 가장 짧은 창 하나와, 남은 창 중 가장 급한 하나. 창이 하나면 한 줄. */
@@ -73,26 +69,28 @@ function currentLocale(): ConsoleLocale {
 }
 
 export function QuotaToolbarSummary() {
-  const { toolbarSummary } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
-  if (!toolbarSummary) return null;
-  return <QuotaToolbarSummaryButton />;
+  const { toolbarProviders } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+  if (toolbarProviders.length === 0) return null;
+  return <QuotaToolbarSummaryButton shown={toolbarProviders} />;
 }
 
-function QuotaToolbarSummaryButton() {
+function QuotaToolbarSummaryButton({ shown }: { readonly shown: readonly ProviderId[] }) {
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   useEffect(() => holdQuotaSummary(), []);
   const t = getT(currentLocale());
-  const reading = toolbarReading(snapshot.data, snapshot.order);
-  const label = reading === null
+  const readings = toolbarReadings(snapshot.data, snapshot.order, shown);
+  const label = snapshot.data === null
     ? t("quota.toolbar.empty")
-    : t("quota.toolbar.reading", {
+    : readings.map((reading) => t("quota.toolbar.reading", {
       provider: PROVIDER_NAME[reading.id],
-      windows: reading.lines.map((window) => `${windowLabel(window, t)} ${t("quota.meter.used", { pct: Math.round(window.usedPercent) })}`).join(" · "),
-    });
+      windows: reading.lines.length === 0
+        ? "–"
+        : reading.lines.map((window) => `${windowLabel(window, t)} ${t("quota.meter.used", { pct: Math.round(window.usedPercent) })}`).join(" · "),
+    })).join(" / ");
   return (
     <button
       type="button"
-      className={`quota-toolbar-summary${snapshot.panelOpen ? " is-active" : ""}`}
+      className="quota-toolbar-summary"
       aria-pressed={snapshot.panelOpen}
       aria-label={label}
       data-tip={label}
@@ -102,18 +100,22 @@ function QuotaToolbarSummaryButton() {
         else rail.open(QUOTA_RAIL_ENTRY_ID);
       }}
     >
-      <span className="quota-toolbar-summary__mark" aria-hidden="true">
-        {reading === null ? <QuotaBarsGlyph /> : providerGlyph(reading.id)}
-      </span>
-      <span className="quota-toolbar-summary__lines" aria-hidden="true">
-        {reading === null
-          ? <span className="quota-toolbar-summary__pct">–</span>
-          : reading.lines.map((window, index) => (
-            <span key={`${window.id}-${window.label ?? index}`} className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${meterSeverity(window)}`}>
-              {Math.round(window.usedPercent)}%
-            </span>
-          ))}
-      </span>
+      {readings.map((reading) => (
+        <span key={reading.id} className="quota-toolbar-summary__cell" aria-hidden="true">
+          <span className={snapshot.data === null ? "quota-toolbar-summary__mark" : `quota-toolbar-summary__mark quota-provider__mark quota-provider__mark--${reading.id}`}>
+            {snapshot.data === null ? <QuotaBarsGlyph /> : providerGlyph(reading.id)}
+          </span>
+          <span className="quota-toolbar-summary__lines">
+            {reading.lines.length === 0
+              ? <span className="quota-toolbar-summary__pct">–</span>
+              : reading.lines.map((window, index) => (
+                <span key={`${window.id}-${window.label ?? index}`} className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${meterSeverity(window)}`}>
+                  {Math.round(window.usedPercent)}%
+                </span>
+              ))}
+          </span>
+        </span>
+      ))}
     </button>
   );
 }

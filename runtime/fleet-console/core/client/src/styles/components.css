@@ -3242,7 +3242,7 @@
 .status-dot--live {
   background: var(--aurora);
   box-shadow: 0 0 12px var(--aurora-glow);
-  animation: aurora-pulse 1.8s ease-in-out infinite;
+  position: relative;
 }
 
 /* 상태 글리프 — 제품 전체의 상태 마크는 12px 원 하나다. 테두리가 진행을(회전 호·점선), 가운데
@@ -3283,7 +3283,7 @@
   border-top-color: var(--warn);
   border-right-color: var(--warn);
   border-radius: 50%;
-  animation: status-glyph-spin 1.4s linear infinite;
+  animation: status-glyph-spin 1.2s steps(12, end) infinite; animation-name: var(--state-motion, status-glyph-spin); --state-motion-clock: aligned;
 }
 
 /* 백그라운드 작업 — 턴은 끝났지만 일이 남았다. 도는 호 대신 점선 원이 "아직 진행 중"을 조용히 말한다. */
@@ -3294,7 +3294,14 @@
 /* 입력·허용 대기 — 사람을 부르는 유일한 맥동이다. */
 .status-glyph.is-awaiting {
   border-color: var(--aurora);
-  animation: status-glyph-breathe 1.8s ease-in-out infinite;
+}
+
+.status-glyph.is-awaiting::before {
+  inset: -1.3px;
+  border: 1.3px solid var(--aurora);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--aurora-glow);
+  animation: status-glyph-breathe 1.8s steps(1, end) infinite; animation-name: var(--state-motion, status-glyph-breathe); --state-motion-clock: aligned;
 }
 
 .status-glyph.is-awaiting::after,
@@ -3328,7 +3335,7 @@
 
 .status-glyph.is-unseen::after {
   background: var(--positive);
-  animation: status-glyph-blink 3.6s ease-in-out infinite;
+  animation: status-glyph-blink 3.6s steps(18, end) infinite; animation-name: var(--state-motion, status-glyph-blink); --state-motion-clock: aligned;
 }
 
 .status-glyph.is-ended {
@@ -3400,10 +3407,12 @@ button.status-glyph.is-actionable:focus-visible {
 @keyframes status-glyph-breathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 var(--aurora-glow);
+    opacity: 0.2;
+    transform: scale(0.9);
   }
   50% {
-    box-shadow: 0 0 0 3px var(--aurora-glow);
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -4437,7 +4446,7 @@ button.status-glyph.is-actionable:focus-visible {
     border-color var(--duration-fast) var(--ease-glide),
     box-shadow var(--duration-fast) var(--ease-glide),
     opacity var(--duration-fast) var(--ease-glide);
-  animation: fleet-map-drift calc(var(--duration-slow) * var(--fleet-drift-mult, 36)) var(--ease-glide) infinite alternate;
+  animation: fleet-map-drift calc(var(--duration-slow) * var(--fleet-drift-mult, 36)) var(--ease-glide) infinite alternate; animation-name: var(--state-motion, fleet-map-drift);
 }
 
 .canvas-fleet-map-dot.is-awaiting {
@@ -4451,7 +4460,7 @@ button.status-glyph.is-actionable:focus-visible {
   inset: -3px;
   border: 1px solid var(--activity-color);
   border-radius: var(--radius-pill);
-  animation: fleet-map-awaiting-ring calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite;
+  animation: fleet-map-awaiting-ring 2.4s steps(24, end) infinite; animation-name: var(--state-motion, fleet-map-awaiting-ring); --state-motion-clock: aligned;
 }
 
 /* 지도의 미확인 — 점 자체의 animation은 유영(fleet-map-drift)이 소유하므로, 느린 점등은
@@ -4467,7 +4476,7 @@ button.status-glyph.is-actionable:focus-visible {
   inset: -2px;
   border-radius: 4px;
   box-shadow: 0 0 12px 2px var(--activity-glow);
-  animation: beacon-unseen-blink 3.6s var(--ease-glide) infinite;
+  animation: beacon-unseen-blink 3.6s steps(18, end) infinite; animation-name: var(--state-motion, beacon-unseen-blink); --state-motion-clock: aligned;
 }
 
 .canvas-fleet-map-dot.is-running {
@@ -4604,8 +4613,8 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 @keyframes fleet-map-awaiting-ring {
-  0% { transform: scale(0.55); opacity: 0.9; }
-  70%, 100% { transform: scale(2.2); opacity: 0; }
+  0% { transform: scale(0.55); opacity: 0.9; animation-timing-function: steps(17, end); }
+  70.8333333333%, 100% { transform: scale(2.2); opacity: 0; animation-timing-function: steps(7, end); }
 }
 
 @keyframes fleet-map-drift {
@@ -4820,7 +4829,7 @@ button.status-glyph.is-actionable:focus-visible {
    창에 실려야 어느 창이 부르는지 읽힌다. 패널은 portal이 mount 안에 넣으므로 실제 구조는
    칸 > 마운트 > 패널이다: 그 한 겹을 건너뛴 선택자는 파일에 남은 채 아무것도 칠하지 않는다. */
 .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation {
-  animation: triage-fresh-pulse calc(var(--duration-slow) * 6) var(--ease-glide) infinite;
+  animation: triage-fresh-pulse 2.2s steps(11, end) infinite; animation-name: var(--state-motion, triage-fresh-pulse); --state-motion-clock: aligned;
 }
 
 .canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation {
@@ -5804,12 +5813,6 @@ body[data-companion-resizing="true"] .canvas-operation {
    겹치지 않는다. 링의 꼭대기는 포커스 도착 링과 같은 --focus-ring-top 이다(떠 있는 캡션은 루트 박스 밖 -32px).
    프레임의 ::before(Console Use)·::after(포커스 도착)는 이미 주인이 있어 요소 하나를 따로 둔다. z 는 캡션(7) 위다.
    무한 모션은 진행 중 신호에만 허용된다 — 답·철회·대체로 요청이 사라지면 요소가 내려가 궤도도 걷힌다. */
-@property --canvas-decision-orbit-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-
 .canvas-operation-decision-orbit {
   position: absolute;
   top: calc(var(--focus-ring-top, -33px) - 1px);
@@ -5820,24 +5823,36 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: calc(var(--radius-md) + 1px);
   padding: 1.5px;
   pointer-events: none;
+  overflow: hidden;
+  container-type: size;
+  /* 테두리만 남기는 mask 합성 — ultracode 무장 외곽과 같다. black 은 칠이 아니라 스텐실이다. */
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  mask-composite: exclude;
+  animation: canvas-decision-orbit-in 420ms ease-out both;
+}
+
+.canvas-operation-decision-orbit::before {
+  content: "";
+  position: absolute;
+  width: calc(max(100cqw, 100cqh) * 1.5);
+  height: calc(max(100cqw, 100cqh) * 1.5);
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
   background: conic-gradient(
-    from var(--canvas-decision-orbit-angle),
     color-mix(in oklch, var(--brass) 22%, transparent) 0deg,
     color-mix(in oklch, var(--brass) 22%, transparent) 250deg,
     color-mix(in oklch, var(--brass) 45%, transparent) 290deg,
     var(--brass) 318deg,
     color-mix(in oklch, var(--brass) 22%, transparent) 326deg
   );
-  /* 테두리만 남기는 mask 합성 — ultracode 무장 외곽과 같다. black 은 칠이 아니라 스텐실이다. */
-  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
-  mask-composite: exclude;
-  animation: canvas-decision-orbit 4s linear infinite, canvas-decision-orbit-in 420ms ease-out both;
+  animation: canvas-decision-orbit 4s steps(20, end) infinite; animation-name: var(--state-motion, canvas-decision-orbit); --state-motion-clock: aligned;
 }
 
 @keyframes canvas-decision-orbit {
-  to { --canvas-decision-orbit-angle: 360deg; }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes canvas-decision-orbit-in {
@@ -5849,6 +5864,10 @@ body[data-companion-resizing="true"] .canvas-operation {
   .canvas-operation-decision-orbit {
     animation: none;
     background: color-mix(in oklch, var(--brass) 70%, transparent);
+  }
+  .canvas-operation-decision-orbit::before {
+    animation: none;
+    content: none;
   }
 }
 
@@ -5875,7 +5894,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background-size: 55% 100%;
   background-repeat: no-repeat;
   box-shadow: none;
-  animation: caption-rail-travel 3.8s ease-in-out infinite;
+  animation: caption-rail-travel 3.8s steps(19, end) infinite; animation-name: var(--state-motion, caption-rail-travel); --state-motion-clock: aligned;
 }
 /* 캡션 틴트 — 브라우저는 companion 이 열려 있으면 companion 캡션이 틴트를 지고(버튼은 aria-pressed=true), 닫혀 있으면
    Operation 캡션이 진다. 덱 카드에는 companion 이 없으므로 언제나 카드 캡션이 진다. */
@@ -6709,7 +6728,30 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 6px;
   border-radius: var(--radius-pill);
   background: var(--aurora);
-  animation: aurora-pulse 1.8s infinite;
+}
+
+.status-dot--live::after,
+.side-bar-status-axis-live-tick::after,
+.directory-browser-scan-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 14px 2px var(--aurora-glow);
+}
+
+.status-dot--live::after,
+.side-bar-status-axis-live-tick::after {
+  animation: status-call-glow 1.8s steps(1, end) infinite; animation-name: var(--state-motion, status-call-glow); --state-motion-clock: aligned;
+}
+
+.directory-browser-scan-dot::after {
+  animation: status-call-glow 1.4s var(--ease-glide) infinite; animation-name: var(--state-motion, status-call-glow);
+}
+
+@keyframes status-call-glow {
+  0%, 100% { opacity: 0; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
 }
 
 .side-bar-theater-split-control {
@@ -7301,7 +7343,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 .cluster-strip-step.is-blocked { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
 .cluster-strip-step.is-running { background: var(--warn); }
-.cluster-strip-step.is-awaiting { background: var(--aurora); animation: cluster-strip-pulse 1.8s ease-in-out infinite; }
+.cluster-strip-step.is-awaiting { background: var(--aurora); animation: cluster-strip-pulse 1.8s steps(9, end) infinite; animation-name: var(--state-motion, cluster-strip-pulse); --state-motion-clock: aligned; }
 .cluster-strip-step.is-done { background: var(--positive); }
 @keyframes cluster-strip-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
@@ -7353,7 +7395,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--aurora);
   box-shadow: 0 0 5px var(--aurora-glow);
-  animation: caption-action-live 1.6s ease-in-out infinite;
+  animation: caption-action-live 1.6s steps(8, end) infinite; animation-name: var(--state-motion, caption-action-live); --state-motion-clock: aligned;
 }
 
 .side-bar-chip-group-mark {
@@ -8177,7 +8219,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: linear-gradient(90deg, transparent 0%, var(--warn) 30%, var(--warn) 70%, transparent 100%);
   background-size: 55% 100%;
   background-repeat: no-repeat;
-  animation: caption-rail-travel 3.8s ease-in-out infinite;
+  animation: caption-rail-travel 3.8s steps(19, end) infinite; animation-name: var(--state-motion, caption-rail-travel); --state-motion-clock: aligned;
 }
 
 /* background는 턴이 끝나고 작업만 남은 상태 — 사람을 부르지 않는 일이 혼자 굴러간다.
@@ -8196,7 +8238,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     color-mix(in oklab, var(--warn) 22%, transparent) 160px
   );
   background-size: 160px 100%;
-  animation: caption-rail-flow 6.5s linear infinite;
+  animation: caption-rail-flow 6.5s steps(65, end) infinite; animation-name: var(--state-motion, caption-rail-flow); --state-motion-clock: aligned;
 }
 
 /* awaiting은 사람을 기다리는 유일한 상태 — 호출 신호로 맥동한다. 밝기만이 아니라 글로우가
@@ -8204,7 +8246,8 @@ body[data-companion-resizing="true"] .canvas-operation {
    옛 맥동은 하한이 0.34라 주기의 절반가량 부르는 신호가 아무도 부르지 않는 신호보다
    어두웠다(위계 역전). */
 .canvas-operation.is-running--awaiting > .canvas-operation-titlebar::after {
-  animation: caption-rail-call 2.4s var(--ease-glide) infinite;
+  box-shadow: 0 0 11px 1px var(--aurora-glow);
+  animation: caption-rail-call 2.4s steps(1, end) infinite; animation-name: var(--state-motion, caption-rail-call); --state-motion-clock: aligned;
 }
 
 /* 패널 안 허용 요청이 떠 있는 동안 — 도구 호출이 진행 중이라 활동 축은 turn 이지만, 실제로는 사람의 답을 기다린다.
@@ -8217,14 +8260,16 @@ body[data-companion-resizing="true"] .canvas-operation {
   opacity: 1;
   background: var(--caption-rail);
   background-size: auto;
-  animation: caption-rail-call 2.4s var(--ease-glide) infinite;
+  box-shadow: 0 0 11px 1px var(--aurora-glow);
+  animation: caption-rail-call 2.4s steps(1, end) infinite; animation-name: var(--state-motion, caption-rail-call); --state-motion-clock: aligned;
 }
 
 /* 미확인 완료는 이미 끝난 일이라 급하지 않다 — 부름(2.4s)보다 느린 잔광으로 남는다.
    하한 0.58은 awaiting 하한(0.62) 아래, background 마루(0.55) 위다. 세 상태의 밝기 위계는
    awaiting > unseen > background 순으로 어느 순간에도 뒤집히지 않는다. */
 .canvas-operation.is-unseen > .canvas-operation-titlebar::after {
-  animation: caption-rail-tide 4.4s var(--ease-glide) infinite;
+  box-shadow: 0 0 9px 1px var(--positive-glow);
+  animation: caption-rail-tide 4.4s steps(1, end) infinite; animation-name: var(--state-motion, caption-rail-tide); --state-motion-clock: aligned;
 }
 
 /* 도착 순간의 1회 플래시는 그 위에 따로 선다 — 상시 aura(22px glow)를 순간 운동으로
@@ -8271,11 +8316,9 @@ body[data-companion-resizing="true"] .canvas-operation {
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 11px 1px var(--aurora-glow);
   }
   50% {
     opacity: 0.62;
-    box-shadow: 0 0 0 0 var(--aurora-glow);
   }
 }
 
@@ -8283,11 +8326,9 @@ body[data-companion-resizing="true"] .canvas-operation {
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 9px 1px var(--positive-glow);
   }
   50% {
     opacity: 0.58;
-    box-shadow: 0 0 0 0 var(--positive-glow);
   }
 }
 
@@ -8597,7 +8638,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--aurora);
   box-shadow: 0 0 6px var(--aurora-glow);
-  animation: caption-action-live 1.6s ease-in-out infinite;
+  animation: caption-action-live 1.6s steps(8, end) infinite; animation-name: var(--state-motion, caption-action-live); --state-motion-clock: aligned;
 }
 
 .group-context-menu-item__plus {
@@ -8846,7 +8887,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border: 2px solid var(--agent-control-badge);
   opacity: 0;
   pointer-events: none;
-  animation: fleet-caption-agent-halo 1.6s ease-out infinite;
+  animation: fleet-caption-agent-halo 1.6s steps(16, end) infinite; animation-name: var(--state-motion, fleet-caption-agent-halo); --state-motion-clock: aligned;
 }
 @keyframes fleet-caption-agent-halo {
   0% { transform: scale(0.9); opacity: 0.6; }
@@ -8865,7 +8906,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--aurora);
   box-shadow: 0 0 6px var(--aurora-glow);
-  animation: caption-action-live 1.6s ease-in-out infinite;
+  animation: caption-action-live 1.6s steps(8, end) infinite; animation-name: var(--state-motion, caption-action-live); --state-motion-clock: aligned;
 }
 
 @keyframes caption-action-live {
@@ -8875,7 +8916,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .fleet-caption-action.is-pending svg {
   transform-origin: 50% 50%;
-  animation: caption-action-pending 1.1s linear infinite;
+  animation: caption-action-pending 1.1s linear infinite; animation-name: var(--state-motion, caption-action-pending);
 }
 
 @keyframes caption-action-pending {
@@ -9190,7 +9231,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .canvas-operation-dormant-action--pending {
-  animation: dormant-resume-pulse 1.1s ease-in-out infinite;
+  animation: dormant-resume-pulse 1.1s ease-in-out infinite; animation-name: var(--state-motion, dormant-resume-pulse);
 }
 
 @keyframes dormant-resume-pulse {
@@ -10209,7 +10250,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .tool-chip--live .tool-chip-glyph {
   color: var(--aurora-ink);
-  animation: aurora-pulse 1.4s ease-in-out infinite;
+  animation: aurora-pulse 1.4s ease-in-out infinite; animation-name: var(--state-motion, aurora-pulse);
 }
 
 .tool-chip--ok {
@@ -10279,7 +10320,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: var(--aurora);
   box-shadow: 0 0 12px var(--aurora-glow);
   vertical-align: -2px;
-  animation: caret-blink 0.95s steps(1) infinite;
+  animation: caret-blink 0.95s steps(1) infinite; animation-name: var(--state-motion, caret-blink);
 }
 
 .stream-caret--dim {
@@ -11099,7 +11140,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     transparent 35%,
     color-mix(in oklch, var(--gauge-face) 26%, transparent) 50%,
     transparent 65%);
-  animation: effort-track-sweep 2.6s var(--ease-spring) infinite;
+  animation: effort-track-sweep 2.6s var(--ease-spring) infinite; animation-name: var(--state-motion, effort-track-sweep);
 }
 
 @keyframes effort-track-sweep {
@@ -11134,7 +11175,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     115deg,
     color-mix(in oklch, var(--text-on-brass) var(--gauge-texture), transparent) 0 1.5px,
     transparent 1.5px 10px);
-  animation: effort-max-molten-drift 1.15s linear infinite;
+  animation: effort-max-molten-drift 1.15s linear infinite; animation-name: var(--state-motion, effort-max-molten-drift);
   animation-play-state: var(--gauge-drift);
 }
 
@@ -11173,7 +11214,7 @@ body[data-companion-resizing="true"] .canvas-operation {
       var(--gauge-apex) 76%,
       color-mix(in oklch, var(--gauge-apex) 75%, var(--gauge-fill)) 100%);
   background-size: 100% 100%, 180% 100%;
-  animation: effort-ultra-aurora-drift 3.6s ease-in-out infinite alternate;
+  animation: effort-ultra-aurora-drift 3.6s ease-in-out infinite alternate; animation-name: var(--state-motion, effort-ultra-aurora-drift);
   animation-play-state: var(--gauge-drift);
 }
 
@@ -11196,7 +11237,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   line-height: 1;
   color: color-mix(in oklch, var(--text-primary) 70%, var(--apex));
   transform: translateY(-50%);
-  animation: effort-ultra-twinkle 2.3s ease-in-out infinite 0.4s;
+  animation: effort-ultra-twinkle 2.3s ease-in-out infinite 0.4s; animation-name: var(--state-motion, effort-ultra-twinkle);
 }
 
 .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::after {
@@ -11379,7 +11420,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     var(--crest-halo),
     var(--gauge-face-lift);
   /* 헤일로가 2.2s로 숨쉰다 — 감속 모션에서는 animation만 꺼져 위의 정적 링이 남는다. */
-  animation: effort-max-crest-breathe 2.2s ease-in-out infinite;
+  animation: effort-max-crest-breathe 2.2s ease-in-out infinite; animation-name: var(--state-motion, effort-max-crest-breathe);
 }
 
 @keyframes effort-max-crest-breathe {
@@ -11452,7 +11493,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   text-shadow: none;
   animation:
     effort-max-ember-wave 2.1s linear infinite,
-    effort-max-ember-flicker 1.7s linear infinite;
+    effort-max-ember-flicker 1.7s linear infinite; animation-name: var(--state-motion, effort-max-ember-wave, effort-max-ember-flicker);
 }
 
 @keyframes effort-max-ember-wave {
@@ -11487,7 +11528,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: effort-ultracode-wave 1.9s linear infinite;
+  animation: effort-ultracode-wave 1.9s linear infinite; animation-name: var(--state-motion, effort-ultracode-wave);
 }
 
 /* 되풀이는 이음매가 없어야 한다. 배경 위치 퍼센트는 상자 폭이 아니라 (상자 폭 - 이미지 폭)을
@@ -13440,8 +13481,8 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 8px;
   border-radius: 50%;
   background: var(--aurora);
-  box-shadow: 0 0 0 0 var(--aurora-glow);
-  animation: aurora-pulse 1.4s var(--ease-glide) infinite;
+  position: relative;
+  animation: aurora-pulse 1.4s var(--ease-glide) infinite; animation-name: var(--state-motion, aurora-pulse);
 }
 
 .directory-browser-note {
@@ -16269,7 +16310,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .command-band-system-menu .command-band-version-row-refresh:focus-visible { background: var(--surface-glass); color: var(--text-secondary); }
 .command-band-system-menu .command-band-version-row-refresh:disabled { cursor: default; }
 .command-band-system-menu .command-band-version-row-refresh svg { width: 12px; height: 12px; }
-.command-band-version-row-refresh[data-state="busy"] svg { animation: command-band-version-refresh-spin 900ms linear infinite; }
+.command-band-version-row-refresh[data-state="busy"] svg { animation: command-band-version-refresh-spin 900ms linear infinite; animation-name: var(--state-motion, command-band-version-refresh-spin); }
 @keyframes command-band-version-refresh-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .command-band-version-row-refresh[data-state="busy"] svg { animation: none; opacity: 0.6; }
@@ -16691,7 +16732,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   mask-composite: exclude;
   animation:
     quick-launch-ultracode-ignite 900ms var(--ease-glide) both,
-    quick-launch-ultracode-rim 2.8s linear 900ms infinite;
+    quick-launch-ultracode-rim 2.8s linear 900ms infinite; animation-name: quick-launch-ultracode-ignite, var(--state-motion, quick-launch-ultracode-rim);
 }
 
 @keyframes quick-launch-ultracode-ignite {
@@ -17081,7 +17122,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: effort-ultracode-wave 1.9s linear infinite;
+  animation: effort-ultracode-wave 1.9s linear infinite; animation-name: var(--state-motion, effort-ultracode-wave);
 }
 
 /* ── 이미지 첨부 트레이 ──────────────────────────────────────────────
@@ -17473,7 +17514,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border: 1px solid color-mix(in oklch, var(--brass) 70%, transparent);
   pointer-events: none;
   opacity: 0;
-  animation: quick-launch-suggest-ripple 3.2s var(--ease-glide) infinite;
+  animation: quick-launch-suggest-ripple 3.2s var(--ease-glide) infinite; animation-name: var(--state-motion, quick-launch-suggest-ripple);
 }
 
 .quick-launch-suggest-trigger::after {
@@ -17481,7 +17522,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-suggest-trigger:not(.is-busy) svg {
-  animation: quick-launch-suggest-breathe 3.2s ease-in-out infinite;
+  animation: quick-launch-suggest-breathe 3.2s ease-in-out infinite; animation-name: var(--state-motion, quick-launch-suggest-breathe);
 }
 
 .quick-launch-suggest-trigger.is-busy::before,
@@ -17495,7 +17536,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-suggest-trigger.is-busy {
   color: var(--brass-ink);
   cursor: progress;
-  animation: quick-launch-suggest-pulse 1.4s ease-in-out infinite;
+  animation: quick-launch-suggest-pulse 1.4s ease-in-out infinite; animation-name: var(--state-motion, quick-launch-suggest-pulse);
 }
 
 @keyframes quick-launch-suggest-ripple {
@@ -17553,7 +17594,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   -webkit-mask-composite: xor;
   mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
   mask-composite: exclude;
-  animation: quick-launch-ultracode-rim 2.2s linear infinite;
+  animation: quick-launch-ultracode-rim 2.2s linear infinite; animation-name: var(--state-motion, quick-launch-ultracode-rim);
 }
 
 @keyframes quick-launch-suggest-pulse {
@@ -17849,7 +17890,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   text-shadow: none;
   animation:
     effort-max-ember-wave 2.1s linear infinite,
-    effort-max-ember-flicker 1.7s linear infinite;
+    effort-max-ember-flicker 1.7s linear infinite; animation-name: var(--state-motion, effort-max-ember-wave, effort-max-ember-flicker);
 }
 
 .quick-launch-command-row[data-effort-level="ultra"]:not(.is-active) .quick-launch-mention-name {
@@ -17867,7 +17908,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: effort-ultracode-wave 1.9s linear infinite;
+  animation: effort-ultracode-wave 1.9s linear infinite; animation-name: var(--state-motion, effort-ultracode-wave);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -18794,7 +18835,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border-radius: var(--radius-pill);
   border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
   border-top-color: var(--aurora);
-  animation: fc-live-orbit 0.9s linear infinite;
+  animation: fc-live-orbit 0.9s linear infinite; animation-name: var(--state-motion, fc-live-orbit);
 }
 
 @keyframes fc-live-orbit {
@@ -18826,7 +18867,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: fc-live-sweep 2.4s linear infinite;
+  animation: fc-live-sweep 2.4s linear infinite; animation-name: var(--state-motion, fc-live-sweep);
 }
 
 @keyframes fc-live-sweep {
@@ -18847,8 +18888,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .fc-live-line__dots > span:first-child { visibility: visible; }
-.fc-live-line__dots > span:nth-child(2) { animation: fc-live-dot-mid 1.2s steps(1, end) infinite; }
-.fc-live-line__dots > span:nth-child(3) { animation: fc-live-dot-end 1.2s steps(1, end) infinite; }
+.fc-live-line__dots > span:nth-child(2) { animation: fc-live-dot-mid 1.2s steps(1, end) infinite; animation-name: var(--state-motion, fc-live-dot-mid); }
+.fc-live-line__dots > span:nth-child(3) { animation: fc-live-dot-end 1.2s steps(1, end) infinite; animation-name: var(--state-motion, fc-live-dot-end); }
 
 @keyframes fc-live-dot-mid {
   0%, 33% { visibility: hidden; }
@@ -19023,7 +19064,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 /* 행·헤더·버튼 — 요소 자신이 링을 두르고, 워시는 배경이 아니라 배경 이미지로 얹는다(hover·활성·그룹 워시를 덮어쓰지 않는다). */
 .is-console-use-wrapped:not(.canvas-operation) {
   background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 14%, transparent), color-mix(in oklch, var(--console-use-wrap) 14%, transparent));
-  animation: console-use-wrap-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-wrap-halo 1.6s ease-out 360ms infinite, console-use-wrap-breathe 1.6s ease-in-out 360ms infinite;
+  animation: console-use-wrap-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-wrap-halo 1.6s ease-out 360ms infinite, console-use-wrap-breathe 1.6s ease-in-out 360ms infinite; animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe);
 }
 @keyframes console-use-wrap-arrive {
   from { box-shadow: 0 0 0 8px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
@@ -19048,7 +19089,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border-radius: inherit;
   border: 1px solid var(--console-use-wrap);
   pointer-events: none;
-  animation: console-use-panel-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-panel-halo 1.6s ease-out 360ms infinite, console-use-panel-settle 420ms ease-out both, console-use-panel-breathe 1.6s ease-in-out 420ms infinite;
+  animation: console-use-panel-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-panel-halo 1.6s ease-out 360ms infinite, console-use-panel-settle 420ms ease-out both, console-use-panel-breathe 1.6s ease-in-out 420ms infinite; animation-name: console-use-panel-arrive, var(--state-motion, console-use-panel-halo), console-use-panel-settle, var(--state-motion, console-use-panel-breathe);
 }
 @keyframes console-use-panel-arrive {
   from { box-shadow: 0 0 0 8px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
@@ -19070,7 +19111,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .right-rail-ico.is-console-use-wrapped { border-color: color-mix(in oklch, var(--console-use-wrap) 50%, transparent); }
 /* 제스처 종류 — 색도 리듬도 하나, 움직임만 갈린다. press 는 도착 직후 요소가 한 번 눌리고,
    input 은 오른쪽 끝에 캐럿이 깜빡이고, create 는 자라나며 감싸인다. */
-.is-console-use-wrapped.is-press:not(.canvas-operation) { animation-name: console-use-wrap-arrive, console-use-wrap-halo, console-use-wrap-breathe, console-use-wrap-press; animation-duration: 360ms, 1.6s, 1.6s, 220ms; animation-delay: 0s, 360ms, 360ms, 360ms; animation-iteration-count: 1, infinite, infinite, 1; }
+.is-console-use-wrapped.is-press:not(.canvas-operation) { animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe), console-use-wrap-press; animation-duration: 360ms, 1.6s, 1.6s, 220ms; animation-delay: 0s, 360ms, 360ms, 360ms; animation-iteration-count: 1, infinite, infinite, 1; }
 @keyframes console-use-wrap-press { 50% { transform: scale(0.97); } }
 .is-console-use-wrapped.is-input:not(.canvas-operation) { position: relative; }
 .is-console-use-wrapped.is-input:not(.canvas-operation)::after {
@@ -19083,10 +19124,10 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   margin-top: -6px;
   background: var(--console-use-wrap);
   pointer-events: none;
-  animation: console-use-wrap-caret 1s steps(2, start) infinite;
+  animation: console-use-wrap-caret 1s steps(2, start) infinite; animation-name: var(--state-motion, console-use-wrap-caret);
 }
 @keyframes console-use-wrap-caret { 50% { opacity: 0; } }
-.side-bar-group-header.is-console-use-wrapped.is-create { animation-name: console-use-wrap-arrive, console-use-wrap-halo, console-use-wrap-breathe, console-use-wrap-grow; animation-duration: 360ms, 1.6s, 1.6s, 520ms; animation-delay: 0s, 360ms, 360ms, 0s; animation-iteration-count: 1, infinite, infinite, 1; }
+.side-bar-group-header.is-console-use-wrapped.is-create { animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe), console-use-wrap-grow; animation-duration: 360ms, 1.6s, 1.6s, 520ms; animation-delay: 0s, 360ms, 360ms, 0s; animation-iteration-count: 1, infinite, infinite, 1; }
 @keyframes console-use-wrap-grow { from { opacity: 0; transform: scaleY(0.6); transform-origin: top; } to { opacity: 1; transform: none; } }
 /* 떠남 — 스토어가 만료 LEAVE_MS 전에 얹는다. 링·워시가 함께 꺼진다. 패널은 의사요소만 꺼진다(프레임 배경은 손대지 않는다). */
 .is-console-use-wrapped.is-leaving:not(.canvas-operation) { animation: console-use-wrap-leave 220ms ease-in both; }
@@ -19688,4 +19729,24 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border-color: var(--warn);
   background: var(--warn-glow);
   color: var(--warn-ink);
+}
+
+/* 위상 시계는 명시한 상태 표시만 쓴다 — 자식 장식이나 로딩 모션에는 전파하지 않는다. */
+@property --state-motion-clock {
+  syntax: "<custom-ident>";
+  inherits: false;
+  initial-value: natural;
+}
+
+/* 창이 비활성이거나 숨긴 표면이면 상태 반복을 없앤다 — paused도 style tick을 남긴다. */
+:root[data-state-motion="inactive"],
+[inert],
+[hidden],
+.canvas-operation.is-minimized,
+.operations-side-bar.is-closed:not(.is-peeking) {
+  --state-motion: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --state-motion: none; }
 }

@@ -1823,7 +1823,7 @@ describe("Instrument core design contract", () => {
     // 상태 마크의 조형은 12px 원 하나다(둥근 네모 비콘은 폐지). 테두리가 진행을, 가운데 점·획이 결과를 말한다.
     expect(components).not.toContain(".tenant-beacon");
     expect(components).toMatch(/\.status-glyph \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 1\.3px solid var\(--hairline-strong\);[^}]*border-radius: 50%;/);
-    expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.4s linear infinite;/);
+    expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.2s steps\(12, end\) infinite;/);
     expect(components).toMatch(/\.status-glyph\.is-background \{\s*border: 1\.3px dashed/);
     expect(components).toMatch(/\.canvas-fleet-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
@@ -1869,7 +1869,7 @@ describe("Instrument core design contract", () => {
     // 마크 축은 진짜 대기(aurora 1.8s 호출 맥동)와 미확인 완료(positive 3.6s 느린 점등)를 갈라 그린다.
     // 두 사실이 한 색이면 화면은 "사람을 기다리는 중"과 "안 본 채 끝난 것"을 구별해 주지 못한다.
     expect(components).toMatch(/\.status-glyph\.is-unseen::after \{[^}]*background: var\(--positive\);\s*animation: status-glyph-blink 3\.6s/);
-    expect(components).toMatch(/\.status-glyph\.is-awaiting \{[^}]*animation: status-glyph-breathe 1\.8s/);
+    expect(components).toMatch(/\.status-glyph\.is-awaiting::before \{[^}]*animation: status-glyph-breathe 1\.8s/);
     expect(components).toMatch(/@keyframes status-glyph-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
     expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.status-glyph,\s*\.status-glyph::before,\s*\.status-glyph::after \{\s*animation: none !important;/);
     // 키프레임은 --activity-glow가 사는 이 파일에 있어야 하고, 0%/100%가 완전 점등이어야 한다 —
@@ -2872,8 +2872,8 @@ describe("Instrument core design contract", () => {
     expect(thinkingDotsBlock).toContain("visibility: hidden;");
     expect(thinkingDotsBlock).not.toContain("opacity");
     expect(chat).toMatch(/\.agent-chat-thinking-dots > span:first-child \{\s*visibility: visible;\s*\}/);
-    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:nth-child\(2\) \{\s*animation: agent-chat-thinking-dot-mid 1\.2s steps\(1, end\) infinite;\s*\}/);
-    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:nth-child\(3\) \{\s*animation: agent-chat-thinking-dot-end 1\.2s steps\(1, end\) infinite;\s*\}/);
+    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:nth-child\(2\) \{\s*animation: agent-chat-thinking-dot-mid 1\.2s steps\(1, end\) infinite;\s*animation-name: var\(--state-motion, agent-chat-thinking-dot-mid\);\s*\}/);
+    expect(chat).toMatch(/\.agent-chat-thinking-dots > span:nth-child\(3\) \{\s*animation: agent-chat-thinking-dot-end 1\.2s steps\(1, end\) infinite;\s*animation-name: var\(--state-motion, agent-chat-thinking-dot-end\);\s*\}/);
     expect(chat).toMatch(/@keyframes agent-chat-thinking-dot-mid \{\s*0%, 33\.332% \{ visibility: hidden; \}\s*33\.333%, 100% \{ visibility: visible; \}\s*\}/);
     expect(chat).toMatch(/@keyframes agent-chat-thinking-dot-end \{\s*0%, 66\.665% \{ visibility: hidden; \}\s*66\.666%, 100% \{ visibility: visible; \}\s*\}/);
     expect(chat).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-thinking-dots > span \{\s*animation: none;\s*visibility: visible;\s*\}/);
@@ -3637,17 +3637,17 @@ describe("Instrument core design contract", () => {
     const operationFrame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
     // 상태마다 운동의 종류가 다르다. 왕복(travel)은 turn 하나만 소유한다 — 진행 위치가 옮겨
     // 간다는 사실을 말하는 형태라, 옮겨 갈 지점이 없는 나머지 상태가 빌리면 뜻이 갈라진다.
-    expect(components).toContain("animation: caption-rail-travel 3.8s ease-in-out infinite;");
-    expect(components).toContain("animation: caption-rail-flow 6.5s linear infinite;");
-    expect(components).toContain("animation: caption-rail-call 2.4s var(--ease-glide) infinite;");
-    expect(components).toContain("animation: caption-rail-tide 4.4s var(--ease-glide) infinite;");
+    expect(components).toContain("animation: caption-rail-travel 3.8s steps(19, end) infinite;");
+    expect(components).toContain("animation: caption-rail-flow 6.5s steps(65, end) infinite;");
+    expect(components).toContain("animation: caption-rail-call 2.4s steps(1, end) infinite;");
+    expect(components).toContain("animation: caption-rail-tide 4.4s steps(1, end) infinite;");
     expect(components).toContain("@keyframes caption-rail-flow");
     expect(components).toContain("@keyframes caption-rail-call");
     expect(components).toContain("@keyframes caption-rail-tide");
     // background·unseen이 운동 없이 색만 다른 정지선으로 되돌아가지 않도록 사용처를 고정한다.
     const backgroundRail = components.match(/\.canvas-operation\.is-running--background > \.canvas-operation-titlebar::after \{[^}]*\}/)?.[0] ?? "";
     expect(backgroundRail).toContain("animation: caption-rail-flow");
-    expect(components).toMatch(/\.canvas-operation\.is-unseen > \.canvas-operation-titlebar::after \{\s*animation: caption-rail-tide/);
+    expect(components).toMatch(/\.canvas-operation\.is-unseen > \.canvas-operation-titlebar::after \{[^}]*animation: caption-rail-tide/);
     // 흐름의 이동량은 타일 한 주기와 같아야 한다 — background-position의 퍼센트는
     // (영역 폭 − 이미지 폭) 기준이라 타일 주기와 어긋나고, 한 바퀴 끝에서 그림이 튄다.
     expect(backgroundRail).toContain("background-size: 160px 100%;");

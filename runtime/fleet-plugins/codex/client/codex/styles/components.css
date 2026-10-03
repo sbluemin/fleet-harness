@@ -892,7 +892,7 @@ button.chip:focus-visible {
   height: 8px;
   border-radius: 50%;
   background: var(--brass);
-  animation: codex-glow 1.6s ease-in-out infinite;
+  animation: codex-glow 1.6s ease-in-out infinite; animation-name: var(--state-motion, codex-glow);
 }
 
 .error-box {
@@ -2261,7 +2261,7 @@ button.chip:focus-visible {
   border: 2px solid color-mix(in oklch, var(--brass) 25%, transparent);
   border-top-color: var(--brass);
   border-radius: 50%;
-  animation: queue-spin var(--duration-slow) linear infinite;
+  animation: queue-spin var(--duration-slow) linear infinite; animation-name: var(--state-motion, queue-spin);
   margin-bottom: var(--space-2);
 }
 
@@ -3125,7 +3125,7 @@ button.chip:focus-visible {
 /* tally — 도는 구간의 한 줄. orbit이 돌고 글자가 물결친다. */
 .cowork-tally { display: flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-1); font-family: var(--font-body); font-size: var(--t-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 0; }
 .cowork-tally-count { color: var(--text-tertiary); flex: none; }
-.cowork-orbit { width: 9px; height: 9px; flex: none; border-radius: var(--radius-pill); border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-top-color: var(--aurora); animation: cowork-orbit 0.9s linear infinite; }
+.cowork-orbit { width: 9px; height: 9px; flex: none; border-radius: var(--radius-pill); border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-top-color: var(--aurora); animation: cowork-orbit 0.9s linear infinite; animation-name: var(--state-motion, cowork-orbit); }
 .cowork-live-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3136,13 +3136,13 @@ button.chip:focus-visible {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: cowork-live-sweep 2.4s linear infinite;
+  animation: cowork-live-sweep 2.4s linear infinite; animation-name: var(--state-motion, cowork-live-sweep);
 }
 .cowork-thinking-dots { display: inline-flex; width: 3ch; color: var(--text-secondary); }
 .cowork-thinking-dots > span { width: 1ch; opacity: 0; }
 .cowork-thinking-dots > span:first-child { opacity: 1; }
-.cowork-thinking-dots > span:nth-child(2) { animation: cowork-dot-mid 1.2s steps(1, end) infinite; }
-.cowork-thinking-dots > span:nth-child(3) { animation: cowork-dot-end 1.2s steps(1, end) infinite; }
+.cowork-thinking-dots > span:nth-child(2) { animation: cowork-dot-mid 1.2s steps(1, end) infinite; animation-name: var(--state-motion, cowork-dot-mid); }
+.cowork-thinking-dots > span:nth-child(3) { animation: cowork-dot-end 1.2s steps(1, end) infinite; animation-name: var(--state-motion, cowork-dot-end); }
 
 /* 스텝 행 — 도는 스텝 하나만 aurora를 진다(oklab 혼합: 색상 호를 건너뛰지 않는다). */
 .cowork-steps { display: grid; gap: 4px; }
@@ -3200,7 +3200,7 @@ button.chip:focus-visible {
   vertical-align: -0.15em;
   border-radius: 1px;
   background: var(--text-secondary);
-  animation: cowork-caret 1.1s steps(2, jump-none) infinite;
+  animation: cowork-caret 1.1s steps(2, jump-none) infinite; animation-name: var(--state-motion, cowork-caret);
 }
 .cowork-turn-note { margin: 0; font-size: var(--t-sm); color: var(--text-tertiary); }
 .cowork-changes { display: flex; flex-wrap: wrap; gap: var(--space-2); }

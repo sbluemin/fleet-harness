@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { chatOriginLabel, readChatJournalEvent, type AgentChatOrigin } from "../../features/execution/client/agent/chat/chat-events.js";
 import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";
+import { attachAgentChatSocket } from "../../features/execution/host/agent/chat-ws.js";
 import { createConsoleControl } from "../../features/console-use/host/console-control.js";
 import { resolveAgentCliBinary } from "../../features/execution/host/agent/agent-cli-paths.js";
 import type { TerminalRuntime, TerminalSocket } from "../../features/execution/host/terminal/index.js";
@@ -219,6 +220,41 @@ describe("agent chat mode routes", () => {
       chatActive: true,
       turnState: "none",
     });
+  });
+
+  /**
+   * 채팅 소켓은 입장 판정을 열 때 한 번만 받는다. 그 접속(원격 세션)이 끝난 뒤의 승인은 세션을 끊는
+   * 서버 쪽 소켓 파기와 별개로 여기서도 막혀야 한다 — 끝난 기기가 도구 실행을 승인하는 길이다.
+   * stop·cancel-queued도 같은 문을 지나므로 승인 하나로 대표한다.
+   */
+  it("refuses a chat command once the connection that opened the socket has ended", async () => {
+    let live = true;
+    let onMessage: ((data: Buffer, isBinary: boolean) => void) | null = null;
+    let closedWith: number | undefined;
+    const sent: unknown[] = [];
+    const socket: TerminalSocket = {
+      readyState: 1,
+      send(data: Buffer) { sent.push(JSON.parse(data.toString("utf8"))); },
+      close(code?: number) { closedWith = code; },
+      on(_event, listener) { onMessage = listener as (data: Buffer, isBinary: boolean) => void; },
+      once() {},
+    };
+    const answer = vi.fn(() => ({ ok: true as const, outcome: "approved" as const }));
+    const ready = Promise.resolve({ subscribe: () => () => {}, stopTurn: () => true, cancelQueued: () => true, answer });
+    attachAgentChatSocket(socket, { isLive: () => live, touch: () => live }, () => ready);
+    await ready;
+    await Promise.resolve();
+    const approve = (id: string) => Buffer.from(JSON.stringify({ type: "answer", id, askId: "ask-1", approve: true }));
+
+    onMessage!(approve("c1"), false);
+    expect(answer).toHaveBeenCalledTimes(1);
+    expect(sent.at(-1)).toEqual({ type: "ok", id: "c1" });
+
+    live = false;
+    onMessage!(approve("c2"), false);
+    expect(answer).toHaveBeenCalledTimes(1);
+    expect(sent.at(-1)).toEqual({ type: "nack", id: "c2", error: "session_ended" });
+    expect(closedWith).toBe(4003);
   });
 
   it("refuses a terminal ticket for a chat mode operation", async () => {
@@ -636,7 +672,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         const parsed = JSON.parse(raw) as { seq?: number; event?: { kind: string } };
         if (typeof parsed.seq === "number" && parsed.event) frames.push({ seq: parsed.seq, event: parsed.event, raw });
       });
-      chatAttach(socket, context);
+      chatAttach(socket, context, { isLive: () => true, touch: () => true });
       await vi.waitFor(() => {
         expect(frames.some((frame) => frame.event.kind === "replay-end")).toBe(true);
       });

@@ -14,7 +14,7 @@
    한 사건으로 읽힌다. reduced-motion 은 균일 채움으로 단락한다. */
 .canvas-companion-caption:has(> .op-browser-cap.is-driving)::after { content: ""; position: absolute; left: -1px; right: -1px; bottom: 0; height: 2px; pointer-events: none;
   background: linear-gradient(90deg, transparent 0%, var(--agent-control-badge) 30%, var(--agent-control-badge) 70%, transparent 100%); background-size: 55% 100%; background-repeat: no-repeat;
-  animation: caption-rail-travel 3.8s ease-in-out infinite; }
+  animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel); }
 @media (prefers-reduced-motion: reduce) { .canvas-companion-caption:has(> .op-browser-cap.is-driving)::after { animation: none; background: var(--agent-control-badge); } }
 .op-browser__tab { display: inline-flex; align-items: center; gap: var(--space-1); max-width: 180px; min-width: 0; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-xs); line-height: 18px; }
 .op-browser__tab:hover { background: var(--ink-veil); }
@@ -23,7 +23,7 @@
 .op-browser__tab-icon.is-fallback { display: inline-flex; color: var(--text-tertiary); }
 .op-browser__tab-icon.is-fallback svg { width: 14px; height: 14px; }
 .op-browser__tab-dot { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--text-tertiary); }
-.op-browser__tab-dot.is-loading { background: var(--aurora); box-shadow: 0 0 6px var(--aurora-glow); animation: op-browser-pulse 1s ease-in-out infinite; }
+.op-browser__tab-dot.is-loading { background: var(--aurora); box-shadow: 0 0 6px var(--aurora-glow); animation: op-browser-pulse 1s ease-in-out infinite; animation-name: var(--state-motion, op-browser-pulse); }
 .op-browser__tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-browser__tab-close { flex: none; background: transparent; border: 0; color: var(--text-tertiary); font: inherit; line-height: 1; padding: 0 2px; cursor: pointer; border-radius: var(--radius-xs); }
 .op-browser__tab-close:hover, .op-browser__tab-close:focus-visible { color: var(--text-primary); background: var(--ink-rim); outline: none; }
@@ -94,7 +94,7 @@
 
 
 /* 여는 중은 새로고침 글리프가 돈다 — 진짜 브라우저와 같은 자리. 탭은 언제나 파비콘이다. */
-.op-browser__reload.is-loading svg { animation: op-browser-spin 1s linear infinite; }
+.op-browser__reload.is-loading svg { animation: op-browser-spin 1s linear infinite; animation-name: var(--state-motion, op-browser-spin); }
 @keyframes op-browser-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .op-browser__reload.is-loading svg { animation: none; opacity: 0.6; } }
 

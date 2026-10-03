@@ -64,6 +64,7 @@ import { ZenBar } from "../chrome/zen/zen-bar.js";
 import { ZenTransition } from "../chrome/zen/zen-transition.js";
 import { toggleZenSideBar } from "../integration/zen-chrome-toggles.js";
 import { ConsoleToolbar } from "../chrome/toolbar/console-toolbar.js";
+import { observeStateMotion } from "../integration/state-motion.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
@@ -88,6 +89,7 @@ const ONBOARDING_PORTS = {
 } as const;
 
 export function App() {
+  useEffect(observeStateMotion, []);
   const state = useConsoleState();
   // 종료 안내는 같은 문서에 남기되 활성 화면 전체를 내려 WS·플러그인·폴링과 단축키를 정리한다.
   return state.controlReclaimed === null ? <ConnectedApp /> : <ControlReclaimedNotice />;

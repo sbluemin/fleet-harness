@@ -218,9 +218,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const chatRegistry = new AgentChatRegistry(testChatSdkFactory, (operationId) => terminalRuntime.awaitWriterExit(operationId, PRIOR_WRITER_EXIT_WAIT_MS));
   // 줄바꿈 URL 확인은 호버마다 온다 — transcript 꼬리는 파일이 바뀔 때만 다시 읽는다.
   const transcriptLinks = createTranscriptLinkReader();
-  const unbindChatAttach = terminalRuntime.bindChatAttach((socket, context) => {
+  const unbindChatAttach = terminalRuntime.bindChatAttach((socket, context, lifetime) => {
     const sessionId = context.sessionId;
-    attachAgentChatSocket(socket, async () => {
+    attachAgentChatSocket(socket, lifetime, async () => {
       const node = ctx.host.operations.get(sessionId);
       if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) {
         return { error: "session_not_found" };

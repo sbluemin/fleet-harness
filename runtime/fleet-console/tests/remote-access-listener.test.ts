@@ -191,7 +191,8 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     let reopenedCookie = cookiesOf(reopened);
     await expect(remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie)).resolves.toMatchObject({ status: 200 });
 
-    // 유휴 만료 후 첫 전송이 sweep을 기다리지 않고 구독을 끝내야 한다.
+    // 유휴 만료는 그 세션의 모든 장수명 채널을 함께 닫는다 — Operation 스트림만이 아니라 다른 SSE도.
+    // 루프백 구독은 그대로 남고, 페어링된 기기는 말없이 다시 붙는다.
     const writeLocal = async (route: string, method: string, body: unknown) => {
       const response = await fetch(`${restarted.loopbackEndpoint}api/v1/${route}`, {
         method, headers: { Origin: restarted.loopbackEndpoint.replace(/\/$/u, ""), "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -205,7 +206,11 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const idleStream = await openRemoteEvents(restarted, reopenedCookie);
     const secondIdleStream = await openRemoteEvents(restarted, reopenedCookie);
     const localStream = await openLoopbackEvents(restarted);
+    const idleTheme = await openRemoteEvents(restarted, reopenedCookie, "/api/v1/desktop/theme/events");
+    const localTheme = await openLoopbackEvents(restarted, "/api/v1/desktop/theme/events");
     try {
+      await idleTheme.waitFor("desktop:theme", () => true);
+      await localTheme.waitFor("desktop:theme", () => true);
       clockOffset += 61 * 60_000;
       await writeLocal(`operations/${operation.id}`, "PATCH", { title: "after-idle" });
       await idleStream.waitForClose();
@@ -215,6 +220,11 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
         expect(stream.seen("control:reclaimed")).toBe(0);
       }
       await localStream.waitFor("operation:changed", (data) => data.operation.title === "after-idle");
+      // 만료는 위 전송에서 이미 판정됐다. 테마 스트림은 자기 방송을 기다리지 않고 같은 종료 신호로 닫혀 있어야 한다.
+      await idleTheme.waitForClose();
+      await writeLocal("settings/global", "PUT", { theme: "carbon" });
+      await localTheme.waitFor("desktop:theme", (data) => data.theme === "carbon");
+      expect(idleTheme.seen("desktop:theme")).toBe(1);
       const expired = await remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie);
       expect(expired.status).toBe(401);
       expect(JSON.parse(expired.body)).toEqual({ error: "unauthorized" });
@@ -231,6 +241,8 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       localStream.close();
       idleStream.close();
       secondIdleStream.close();
+      idleTheme.close();
+      localTheme.close();
     }
 
     // 언페어링은 돌아올 권한까지 걷는다. 남은 쿠키에는 사유도 재합류도 주지 않는다.
@@ -252,15 +264,21 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const cookie = await joinAs(fixture, "full", "desktop");
     const origin = `https://${BIND_HOST}:${fixture.remotePort}`;
     const home = "http://127.0.0.1:50692";
-    const attached = await openRemoteEvents(fixture, cookie);
+    const attached = await openRemoteEvents(fixture, cookie, undefined, true);
+    const localDesktop = await openLoopbackEvents(fixture, undefined, true);
+    await expect(localDesktop.waitFor("computer-capture:state", () => true)).resolves.toEqual({ target: null, unavailableOperationId: null });
+    localDesktop.close();
 
     const published = await remoteRequest(fixture, "PUT", "/api/v1/desktop/shell", JSON.stringify({ homeOrigin: home }), cookie, { origin });
     expect(published.status).toBe(204);
     await expect(attached.waitFor("desktop:shell", (data) => data.homeOrigin === home)).resolves.toEqual({ homeOrigin: home });
+    // 원격 Desktop은 자기 셸 상태만 받고 로컬 Computer Use의 대상 스냅샷은 받지 않는다.
+    expect(attached.seen("computer-capture:state")).toBe(0);
     attached.close();
 
-    const reattached = await openRemoteEvents(fixture, cookie);
+    const reattached = await openRemoteEvents(fixture, cookie, undefined, true);
     await expect(reattached.waitFor("desktop:shell", (data) => data.homeOrigin === home)).resolves.toEqual({ homeOrigin: home });
+    expect(reattached.seen("computer-capture:state")).toBe(0);
     reattached.close();
   });
 
@@ -377,25 +395,25 @@ function readEventStream(response: import("node:http").IncomingMessage): EventPr
   };
 }
 
-function openLoopbackEvents(fixture: Fixture): Promise<EventProbe> {
-  const url = new URL(`${fixture.loopbackEndpoint}api/v1/operations/events`);
+function openLoopbackEvents(fixture: Fixture, streamPath = "/api/v1/operations/events", desktop = false): Promise<EventProbe> {
+  const url = new URL(`${fixture.loopbackEndpoint}${streamPath.slice(1)}`);
   return new Promise((resolve, reject) => {
-    const request = http.request({ host: url.hostname, port: Number(url.port), path: url.pathname, method: "GET" }, (response) => resolve(readEventStream(response)));
+    const request = http.request({ host: url.hostname, port: Number(url.port), path: url.pathname, method: "GET", headers: { origin: url.origin, ...(desktop ? { "user-agent": "Electron/42" } : {}) } }, (response) => resolve(readEventStream(response)));
     request.on("error", reject);
     request.end();
   });
 }
 
-function openRemoteEvents(fixture: Fixture, cookie: string): Promise<EventProbe> {
+function openRemoteEvents(fixture: Fixture, cookie: string, streamPath = "/api/v1/operations/events", desktop = false): Promise<EventProbe> {
   return new Promise((resolve, reject) => {
     const request = https.request({
       host: BIND_HOST,
       port: fixture.remotePort,
-      path: "/api/v1/operations/events",
+      path: streamPath,
       method: "GET",
       rejectUnauthorized: false,
       checkServerIdentity: () => undefined,
-      headers: { host: `${BIND_HOST}:${fixture.remotePort}`, cookie },
+      headers: { host: `${BIND_HOST}:${fixture.remotePort}`, origin: `https://${BIND_HOST}:${fixture.remotePort}`, cookie, ...(desktop ? { "user-agent": "Electron/42" } : {}) },
     }, (response) => resolve(readEventStream(response)));
     request.on("error", reject);
     request.end();

@@ -429,7 +429,7 @@
 }
 
 .skills-dock-dot.is-live {
-  animation: skills-dock-pulse 1.6s ease-in-out infinite;
+  animation: skills-dock-pulse 1.6s ease-in-out infinite; animation-name: var(--state-motion, skills-dock-pulse);
   background: var(--aurora);
 }
 

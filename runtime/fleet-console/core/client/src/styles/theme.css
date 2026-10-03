@@ -1125,11 +1125,9 @@ html:focus-visible {
   0%,
   100% {
     opacity: 0.58;
-    box-shadow: 0 0 0 0 var(--aurora-glow);
   }
   50% {
     opacity: 1;
-    box-shadow: 0 0 14px 2px var(--aurora-glow);
   }
 }
 
