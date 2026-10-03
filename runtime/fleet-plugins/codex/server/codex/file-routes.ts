@@ -115,7 +115,17 @@ async function resolveExistingAncestor(candidate: string): Promise<{ readonly pa
 }
 
 async function resolveContained(root: string, relative: string): Promise<string> {
-  const target = await realpath(path.join(root, relative));
+  const candidate = path.join(root, relative);
+  let target: string;
+  try {
+    target = await realpath(candidate);
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+    // 없는 대상도 경계부터 판정한다 — 끊어진 탈출 심링크가 404로 바깥 대상의 부재를 알리면 안 된다.
+    const nearest = await resolveExistingAncestor(candidate);
+    assertContained(root, nearest.path);
+    throw error;
+  }
   assertContained(root, target);
   return target;
 }

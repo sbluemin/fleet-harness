@@ -92,6 +92,8 @@ describe("Codex Theater-root workspace resolution", () => {
     ]]);
     expect(JSON.stringify(refs[2])).not.toContain(canonicalRoot);
     expect(JSON.stringify(refs[2])).not.toContain(tmpDir);
+    expect((await call("file-peek", { path: "dangling.ts" }))[1]).toBe(403);
+    expect((await call("file-peek", { path: "missing.ts" }))[1]).toBe(404);
     vi.mocked(open).mockRejectedValueOnce(Object.assign(new Error("access denied"), { code: "EACCES" }));
     expect((await call("file-peek", { path: "source.ts" })).slice(1)).toEqual([403, { error: "forbidden" }]);
     expect((await call("file-peek", { path: "binary.dat" }))[1]).toBe(415);
