@@ -2,7 +2,7 @@ import type { ClientNavigateCapability, ClientShellCapability } from "../navigat
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
-import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation } from "../mcp/control.js";
+import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
@@ -1059,6 +1059,12 @@ export interface FleetPluginConsoleControlHost {
   setCoordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
   /** 떠 있는 채팅 세션의 지금 좌표와 예약. 떠 있는 채팅이 아니면 null. */
   coordinates?(operationId: string): ConsoleCoordinates | null;
+  /**
+   * Agent Operation 의 전사 한 쪽 — Console Use `console_operation` 의 transcript 읽기와 같은 줄(사람의 말·답·도구·질문·턴 결말)이고
+   * 본문은 자격증명 마스킹을 지난 신뢰할 수 없는 데이터다. 이 플러그인이 띄운 Operation(또는 그 자식)만 받는다 — 아니면 `forbidden`.
+   * 커서 없이 `tail` 이면 마지막 `limit` 줄(그 앞이 남았으면 truncated)이고, 아니면 커서부터 앞으로 읽는다.
+   */
+  transcript?(operationId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
   /**
    * 이 플러그인의 멱등 기동 키(`ConsoleActionInput.launchKey`) 상태 — absent(영속된 적 없음) · reserved(예약만) · pending(이 호스트에서
    * 기동 중) · live · deleting(삭제 유예) · purged. 다른 Theater 에 선 키는 `launch_key_conflict` 로 거절하고 그 Operation 을
