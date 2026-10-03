@@ -159,6 +159,13 @@ const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 const TEXT_BASE_BRASS = /var\(\s*--brass\s*\)/;
 const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
+  // glass-opacity-store injects each glass group's alpha on the document root only once a person
+  // touches that group. theme.css reads it without a fallback inside --glass-on-opaque-* on purpose:
+  // an untouched or reset group must invalidate that formula so the surface keeps today's literal.
+  "--glass-window-alpha",
+  "--glass-bar-alpha",
+  "--glass-side-bar-alpha",
+  "--glass-rail-alpha",
   // Canvas injects each frame's identity accent through TSX inline styles.
   "--user-accent",
   // Sidebar TSX injects its measured width for the shell layout.
@@ -930,13 +937,16 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--glass-pane-light: transparent;");
     expect(theme).toContain("--canvas-ambience: var(--canvas-sea-core);");
     // 다크 3종은 Ghostty 계열 smoked pane처럼 60% tint로 뒤의 캔버스·겹친 창 윤곽을 통과시킨다.
-    // pane-light는 22%만 얹고 terminal도 같은 반투명 tint를 쓴다.
-    expect(theme).toContain("--glass-on-tint-panel: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));");
-    expect(theme).toContain("--glass-on-tint-panel: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));");
-    expect(theme).toContain("--glass-on-tint-panel: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));");
-    expect(theme).toContain("--glass-on-tint-terminal: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));");
-    expect(theme).toContain("--glass-on-tint-terminal: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));");
-    expect(theme).toContain("--glass-on-tint-terminal: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));");
+    // pane-light는 22%만 얹고 terminal도 같은 반투명 tint(panel과 한 장)를 쓴다. 만지지 않은(초기화한) 묶음은
+    // 오늘의 리터럴 그대로이고, 사람이 알파를 올릴 때만 원색이 solid 끝점으로 옮겨 가 100%에서 불투명판이 된다.
+    // 이동식은 알파 변수를 폴백 없이 읽어야 한다 — 폴백을 달면 기본 화면도 color-mix 경로로 칠해져 픽셀이 갈린다.
+    for (const [raw, solid] of [["18.5% 0.028 245", "15.6% 0.021 245"], ["25% 0.05 248", "19.3% 0.034 248"], ["21% 0.013 252", "16.9% 0.009 252"]]) {
+      expect(theme).toContain(`--glass-on-tint-panel: var(--glass-on-opaque-panel, oklch(${raw} / var(--glass-window-alpha, 60%)));`);
+      expect(theme).toContain(`--glass-on-opaque-panel: color-mix(in oklch, color-mix(in oklch, oklch(${raw}) clamp(0%, calc((100% - var(--glass-window-alpha)) / 0.4), 100%), oklch(${solid})) var(--glass-window-alpha), transparent);`);
+    }
+    expect(theme).not.toMatch(/--glass-on-opaque-[a-z]+:[^;]*var\(--glass-[a-z-]+-alpha,/);
+    expect(theme.match(/--glass-on-tint-terminal:/g)).toHaveLength(1);
+    expect(theme).toContain("--glass-on-tint-terminal: var(--glass-on-tint-panel);");
     expect((theme.match(/--glass-on-pane-light: oklch\([^)]+\/ 22%\);/g) ?? []).length).toBe(3);
     // 유리를 받는 테마는 다크 3종뿐이고, 그 셋은 전부 필드를 루트 유리에 넘긴다.
     // 라이트는 게이트 밖이라 재료 자체가 없다(별칭 한 줄도 남기지 않는다).

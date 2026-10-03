@@ -302,25 +302,39 @@
   --glass-on-tint-expanded: var(--glass-on-tint-strong);
   /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
      섞인 결과가 슬라이더 수치와 같게 한다. 폴백 54%는 오늘 이 테마의 섞인 알파다. */
-  --glass-on-tint-rail: oklch(24% 0.02 245 / calc((var(--glass-rail-alpha, 54%) - 8%) / 0.92));
+  --glass-on-opaque-rail: color-mix(in oklch, color-mix(in oklch, oklch(24% 0.02 245) clamp(0%, calc((100% - var(--glass-rail-alpha)) / 0.46), 100%), oklch(17.9% 0.014 245)) calc((var(--glass-rail-alpha) - 8%) / 0.92), transparent);
+  --glass-on-tint-rail: var(--glass-on-opaque-rail, oklch(24% 0.02 245 / calc((var(--glass-rail-alpha, 54%) - 8%) / 0.92)));
   --glass-on-tint-soft: oklch(19% 0.018 245 / 48%);
   --glass-on-tint-pillar: oklch(23.5% 0.02 245 / 52%);
   --glass-on-tint-raised: oklch(22% 0.02 245 / 52%);
   --glass-on-tint-deep: oklch(16.5% 0.016 245 / 48%);
   --glass-on-tint-abyss: oklch(13% 0.014 245 / 50%);
-  --glass-on-tint-chrome: oklch(19% 0.018 245 / var(--glass-side-bar-alpha, 50%));
+  --glass-on-opaque-chrome: color-mix(in oklch, color-mix(in oklch, oklch(19% 0.018 245) clamp(0%, calc((100% - var(--glass-side-bar-alpha)) / 0.5), 100%), oklch(15.2% 0.013 245)) var(--glass-side-bar-alpha), transparent);
+  --glass-on-tint-chrome: var(--glass-on-opaque-chrome, oklch(19% 0.018 245 / var(--glass-side-bar-alpha, 50%)));
   /* 다크 유리의 smoked-glass 문법 — Operation·War Room 카드는 blur 없이 60% 틴트와
      22% pane-light만으로 캔버스·겹친 창 윤곽을 그대로 통과시킨다. 패널 수에 따라 재질을 바꾸지
      않아 모든 모드가 같은 투과도를 유지한다. Shell도 같은 60% terminal tint를 사용한다. 알파·명도를 다시 만지면 ANSI black과의
      부호(필드보다 어두울 것)와 dim 셀 floor를 반드시 재실측할 것. */
-  --glass-on-tint-panel: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));
+  /* 불투명도 연동 면 — 슬라이더가 기본 알파(테마 폴백, glass-opacity-store 표와 수동 동기화)일 때는
+     틴트 원색 그대로라 기본 화면의 픽셀이 같다. 기본보다 올리면 원색이 「기본 알파에서 캔버스 위에
+     합성되어 보이던 색」(solid 끝점)으로 선형 이동해, 100%에서 그 불투명판이 된다. 그대로 두면 100%에서
+     면이 기본 화면보다 밝고 푸른 판(Maritime C .050)이 되어 강조색이 스티커처럼 뜬다(목표 f90ef806 실측).
+     이동 비율은 (100% − 알파) / (100 − 기본)이고 기본 아래에서는 원색에 머문다. 알파는 바깥 color-mix가
+     transparent와 섞어 싣는다 — 상대 색 문법(oklch(from …))은 미지원 엔진에서 면이 통째로 사라진다.
+     같은 hue끼리 섞으므로 oklch 보간이 색상각을 돌지 않는다. terminal은 panel과 같은 한 장이다.
+     [픽셀 동일] color-mix 경로는 같은 값이라도 리터럴과 sRGB 1~2단 반올림이 갈린다(실측). 그래서 이동식은
+     --glass-on-opaque-*에 두고 알파 변수를 폴백 없이 읽는다 — 사람이 만지지 않았거나 초기화한 묶음은 변수가
+     없어 그 식이 무효가 되고, --glass-on-tint-*가 폴백인 오늘의 리터럴을 그대로 칠한다. */
+  --glass-on-opaque-panel: color-mix(in oklch, color-mix(in oklch, oklch(18.5% 0.028 245) clamp(0%, calc((100% - var(--glass-window-alpha)) / 0.4), 100%), oklch(15.6% 0.021 245)) var(--glass-window-alpha), transparent);
+  --glass-on-tint-panel: var(--glass-on-opaque-panel, oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%)));
   --glass-on-tint-field: transparent;
   --glass-on-pane-light: oklch(25% 0.032 245 / 22%);
   --canvas-on-ambience: oklch(16% 0.022 245);
   --glass-on-tint-caption: oklch(17% 0.018 245 / calc(var(--glass-window-alpha, 60%) + 4%));
-  --glass-on-tint-terminal: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));
+  --glass-on-tint-terminal: var(--glass-on-tint-panel);
   --glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);
-  --glass-on-tint-band: oklch(13% 0.018 245 / var(--glass-bar-alpha, 55%));
+  --glass-on-opaque-band: color-mix(in oklch, color-mix(in oklch, oklch(13% 0.018 245) clamp(0%, calc((100% - var(--glass-bar-alpha)) / 0.45), 100%), oklch(11.8% 0.016 245)) var(--glass-bar-alpha), transparent);
+  --glass-on-tint-band: var(--glass-on-opaque-band, oklch(13% 0.018 245 / var(--glass-bar-alpha, 55%)));
   --glass-on-rim: oklch(96% 0.01 90 / 16%);
   /* 유리 광택(sheen) — 대각 하이라이트 한 겹. 무채색 리터럴만 쓰는 독트린 예외 채널이며,
      평평한 배경 위에서도 유리가 재질로 읽히게 하는 최소 광학 신호다. */
@@ -597,21 +611,24 @@
   --glass-on-tint-strong: oklch(32% 0.045 248 / 46%);
   /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
      섞인 결과가 슬라이더 수치와 같게 한다. 폴백 50%는 오늘 이 테마의 섞인 알파다. */
-  --glass-on-tint-rail: oklch(32% 0.045 248 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92));
+  --glass-on-opaque-rail: color-mix(in oklch, color-mix(in oklch, oklch(32% 0.045 248) clamp(0%, calc((100% - var(--glass-rail-alpha)) / 0.5), 100%), oklch(20.8% 0.025 248)) calc((var(--glass-rail-alpha) - 8%) / 0.92), transparent);
+  --glass-on-tint-rail: var(--glass-on-opaque-rail, oklch(32% 0.045 248 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92)));
   --glass-on-tint-soft: oklch(28% 0.04 248 / 44%);
   --glass-on-tint-pillar: oklch(22% 0.05 248 / 48%);
   --glass-on-tint-raised: oklch(28% 0.04 248 / 46%);
   --glass-on-tint-deep: oklch(20% 0.045 248 / 46%);
   --glass-on-tint-abyss: oklch(15% 0.04 250 / 48%);
-  --glass-on-tint-chrome: oklch(27% 0.04 248 / var(--glass-side-bar-alpha, 45%));
-  --glass-on-tint-panel: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));
+  --glass-on-opaque-chrome: color-mix(in oklch, color-mix(in oklch, oklch(27% 0.04 248) clamp(0%, calc((100% - var(--glass-side-bar-alpha)) / 0.55), 100%), oklch(18.1% 0.022 248)) var(--glass-side-bar-alpha), transparent);
+  --glass-on-tint-chrome: var(--glass-on-opaque-chrome, oklch(27% 0.04 248 / var(--glass-side-bar-alpha, 45%)));
+  --glass-on-opaque-panel: color-mix(in oklch, color-mix(in oklch, oklch(25% 0.05 248) clamp(0%, calc((100% - var(--glass-window-alpha)) / 0.4), 100%), oklch(19.3% 0.034 248)) var(--glass-window-alpha), transparent);
+  --glass-on-tint-panel: var(--glass-on-opaque-panel, oklch(25% 0.05 248 / var(--glass-window-alpha, 60%)));
   --glass-on-tint-field: transparent;
   --glass-on-pane-light: oklch(32% 0.055 248 / 22%);
   --canvas-on-ambience: oklch(18% 0.035 235);
   --glass-on-tint-caption: oklch(21% 0.03 248 / calc(var(--glass-window-alpha, 60%) + 4%));
-  --glass-on-tint-terminal: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));
   --glass-on-tint-terminal-floor: oklch(22.3% 0.043 245);
-  --glass-on-tint-band: oklch(19% 0.045 248 / var(--glass-bar-alpha, 50%));
+  --glass-on-opaque-band: color-mix(in oklch, color-mix(in oklch, oklch(19% 0.045 248) clamp(0%, calc((100% - var(--glass-bar-alpha)) / 0.5), 100%), oklch(14.4% 0.029 248)) var(--glass-bar-alpha), transparent);
+  --glass-on-tint-band: var(--glass-on-opaque-band, oklch(19% 0.045 248 / var(--glass-bar-alpha, 50%)));
   --glass-on-rim: oklch(96% 0.012 88 / 18%);
 
   --hairline: oklch(36% 0.035 248);
@@ -717,21 +734,24 @@
   --glass-on-tint-strong: oklch(29% 0.007 252 / 46%);
   /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
      섞인 결과가 슬라이더 수치와 같게 한다. 폴백 50%는 오늘 이 테마의 섞인 알파다. */
-  --glass-on-tint-rail: oklch(29% 0.007 252 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92));
+  --glass-on-opaque-rail: color-mix(in oklch, color-mix(in oklch, oklch(29% 0.007 252) clamp(0%, calc((100% - var(--glass-rail-alpha)) / 0.5), 100%), oklch(19.4% 0.005 252)) calc((var(--glass-rail-alpha) - 8%) / 0.92), transparent);
+  --glass-on-tint-rail: var(--glass-on-opaque-rail, oklch(29% 0.007 252 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92)));
   --glass-on-tint-soft: oklch(25% 0.006 252 / 44%);
   --glass-on-tint-pillar: oklch(20% 0.008 252 / 48%);
   --glass-on-tint-raised: oklch(25% 0.007 252 / 46%);
   --glass-on-tint-deep: oklch(18% 0.007 255 / 46%);
   --glass-on-tint-abyss: oklch(14% 0.006 255 / 48%);
-  --glass-on-tint-chrome: oklch(24% 0.006 252 / var(--glass-side-bar-alpha, 45%));
-  --glass-on-tint-panel: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));
+  --glass-on-opaque-chrome: color-mix(in oklch, color-mix(in oklch, oklch(24% 0.006 252) clamp(0%, calc((100% - var(--glass-side-bar-alpha)) / 0.55), 100%), oklch(16.8% 0.004 252)) var(--glass-side-bar-alpha), transparent);
+  --glass-on-tint-chrome: var(--glass-on-opaque-chrome, oklch(24% 0.006 252 / var(--glass-side-bar-alpha, 45%)));
+  --glass-on-opaque-panel: color-mix(in oklch, color-mix(in oklch, oklch(21% 0.013 252) clamp(0%, calc((100% - var(--glass-window-alpha)) / 0.4), 100%), oklch(16.9% 0.009 252)) var(--glass-window-alpha), transparent);
+  --glass-on-tint-panel: var(--glass-on-opaque-panel, oklch(21% 0.013 252 / var(--glass-window-alpha, 60%)));
   --glass-on-tint-field: transparent;
   --glass-on-pane-light: oklch(28% 0.014 252 / 22%);
   --canvas-on-ambience: oklch(18% 0.014 250);
   --glass-on-tint-caption: oklch(19% 0.008 252 / calc(var(--glass-window-alpha, 60%) + 4%));
-  --glass-on-tint-terminal: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));
   --glass-on-tint-terminal-floor: oklch(19.8% 0.013 251);
-  --glass-on-tint-band: oklch(17% 0.007 255 / var(--glass-bar-alpha, 50%));
+  --glass-on-opaque-band: color-mix(in oklch, color-mix(in oklch, oklch(17% 0.007 255) clamp(0%, calc((100% - var(--glass-bar-alpha)) / 0.5), 100%), oklch(13.7% 0.005 255)) var(--glass-bar-alpha), transparent);
+  --glass-on-tint-band: var(--glass-on-opaque-band, oklch(17% 0.007 255 / var(--glass-bar-alpha, 50%)));
   --glass-on-rim: oklch(95% 0.003 250 / 16%);
 
   --hairline: oklch(33% 0.006 252);
