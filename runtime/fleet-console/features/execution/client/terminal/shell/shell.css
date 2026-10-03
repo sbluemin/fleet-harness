@@ -29,7 +29,7 @@
 .global-shell-badge {
   display: inline-flex;
   /* 가려진 영역에서는 긴 경로보다 띠의 안전 동작과 닫기를 먼저 보존한다. */
-  max-inline-size: min(360px, 40vw, max(60px, var(--expanded-surface-visible-width, 100vw) - 260px));
+  max-inline-size: min(360px, 40vw, max(60px, var(--expanded-surface-visible-width, 100vw) - 300px));
   min-inline-size: 0;
 }
 
@@ -51,7 +51,9 @@
   block-size: var(--expanded-surface-float-block, 38px);
   overflow: hidden;
   box-sizing: border-box;
-  padding: var(--space-1) calc(var(--space-2) + var(--expanded-surface-float-inset, 0px)) var(--space-1) var(--space-3);
+  /* 격자와 무관한 조작부 여백. 두 실측값을 더한 뒤 남은 content 폭으로 compact를 판정한다. */
+  padding: var(--space-1) calc(var(--space-2) + var(--expanded-surface-overlay-inset, 0px) + var(--expanded-surface-float-width, 0px)) var(--space-1) var(--space-3);
+  container: shell-context / inline-size;
   border-bottom: 1px solid color-mix(in oklab, var(--warn) 52%, var(--surface-rim));
   background: var(--warn-glow);
   font-size: var(--t-sm);
@@ -68,6 +70,18 @@
   color: var(--warn-ink);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.global-shell-band-compact {
+  display: none;
+}
+
+/* 한 줄의 실제 여유가 작으면 버튼도 짧게 한다. 경고는 flex 축소로 0px이 되지 않는다. */
+@container shell-context (max-width: 360px) {
+  .global-shell-band-full { display: none; }
+  .global-shell-band-compact { display: inline; }
+  .global-shell-band-text { min-inline-size: max-content; }
+  .global-shell-band-action { padding-inline: var(--space-1); }
 }
 
 /* 거절 사유가 앞에 선다 — 말줄임은 끝을 자르므로, 지금 할 일을 말하는 쪽이 잘리지 않아야 한다. */

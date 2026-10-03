@@ -70,14 +70,18 @@ export function ShellTheaterBand({ ctx }: { readonly ctx: ExpandedSurfaceContext
     ctx.shell.restartAt({ theaterId: activeTheaterId }).then(settle, () => setStatus({ kind: "refused", message: t("terminal.shell.failed") }));
   };
   const pending = status.kind === "pending";
+  const fullMessage = status.kind === "confirm-restart"
+    ? t("terminal.shell.restartConfirm", { active })
+    : status.kind === "refused" ? `${mismatchText} · ${status.message}` : mismatchText;
+  const label = (full: string, compact: string) => <><span className="global-shell-band-full">{full}</span><span className="global-shell-band-compact">{compact}</span></>;
 
   return (
-    <div className="global-shell-band" role="status">
+    <div className="global-shell-band" role="status" aria-label={fullMessage} title={fullMessage}>
       {status.kind === "confirm-restart" ? (
         <>
-          <span className="global-shell-band-text" title={t("terminal.shell.restartConfirm", { active })}>{t("terminal.shell.restartConfirm", { active })}</span>
+          <span className="global-shell-band-text" aria-hidden="true">{label(fullMessage, t("terminal.shell.compactMismatch"))}</span>
           <span className="global-shell-band-actions">
-            <button type="button" className="global-shell-band-action is-danger" onClick={restart}>{t("terminal.shell.restartConfirmAction")}</button>
+            <button type="button" className="global-shell-band-action is-danger" onClick={restart} aria-label={t("terminal.shell.restartConfirmAction")} title={t("terminal.shell.restartConfirmAction")}>{label(t("terminal.shell.restartConfirmAction"), t("terminal.shell.compactFresh"))}</button>
             <button type="button" className="global-shell-band-action" onClick={() => setStatus({ kind: "idle" })}>{t("terminal.shell.cancel")}</button>
           </span>
         </>
@@ -85,13 +89,16 @@ export function ShellTheaterBand({ ctx }: { readonly ctx: ExpandedSurfaceContext
         <>
           {/* 띠는 한 줄 고정 높이다 — 거절 문구가 줄을 늘리면 터미널 행 수가 바뀌어 PTY가 리사이즈된다.
               넘치는 문구는 말줄임으로 접고 전체 문장은 title로 준다(role=status가 읽어 준다). */}
-          <span className="global-shell-band-text" title={status.kind === "refused" ? `${mismatchText} · ${status.message}` : mismatchText}>
-            {status.kind === "refused" ? <span className="global-shell-band-refusal">{status.message}</span> : null}
-            {mismatchText}
+          <span className="global-shell-band-text" aria-hidden="true">
+            <span className="global-shell-band-full">
+              {status.kind === "refused" ? <span className="global-shell-band-refusal">{status.message}</span> : null}
+              {mismatchText}
+            </span>
+            <span className="global-shell-band-compact">{t("terminal.shell.compactMismatch")}</span>
           </span>
           <span className="global-shell-band-actions">
-            <button type="button" className="global-shell-band-action" disabled={pending} onClick={move}>{t("terminal.shell.moveTo", { active })}</button>
-            <button type="button" className="global-shell-band-action" disabled={pending} onClick={() => setStatus({ kind: "confirm-restart" })}>{t("terminal.shell.startFresh")}</button>
+            <button type="button" className="global-shell-band-action" disabled={pending} onClick={move} aria-label={t("terminal.shell.moveTo", { active })} title={t("terminal.shell.moveTo", { active })}>{label(t("terminal.shell.moveTo", { active }), t("terminal.shell.compactMove"))}</button>
+            <button type="button" className="global-shell-band-action" disabled={pending} onClick={() => setStatus({ kind: "confirm-restart" })} aria-label={t("terminal.shell.startFresh")} title={t("terminal.shell.startFresh")}>{label(t("terminal.shell.startFresh"), t("terminal.shell.compactFresh"))}</button>
           </span>
         </>
       )}

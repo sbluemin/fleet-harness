@@ -70,8 +70,12 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   const activePanelId = useRailActivePanelId();
   const requestedExtraWidth = useRailPanelExtraWidth();
   const expandedMinimum = useExpandedMinWidth();
-  const soloWidth = useRailPanelSoloWidth();
-  const soloMaxWidth = useRailPanelSoloMaxWidth();
+  const requestedSoloWidth = useRailPanelSoloWidth();
+  const requestedSoloMaxWidth = useRailPanelSoloMaxWidth();
+  // 확대 표면과 함께 쓸 때 primary 폭은 현재 dock 예산과 사용자의 카드 선호가 소유한다.
+  // 좁은 창에서 실측한 solo 요청을 재사용하면 문서 닫기·viewport 복원 때 242↔328로 뛴다.
+  const soloWidth = expandedMinimum > 0 ? null : requestedSoloWidth;
+  const soloMaxWidth = expandedMinimum > 0 ? null : requestedSoloMaxWidth;
   const soloMaxWidthRef = useRef(soloMaxWidth);
   soloMaxWidthRef.current = soloMaxWidth;
   const requestedExtra = soloWidth === null ? requestedExtraWidth : 0;
