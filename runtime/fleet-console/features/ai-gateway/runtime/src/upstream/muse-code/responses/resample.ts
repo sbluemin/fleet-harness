@@ -18,12 +18,12 @@ const LABEL = "muse-code-responses.resample";
 /** 이보다 작은 출력 상한은 짧은 판정형 부속 호출이다(보안 모니터: 64). */
 const MIN_RESAMPLE_MAX_OUTPUT_TOKENS = 1024;
 
-export type ResampleSkip = "no_tools" | "small_max" | "not_after_tool_output";
+export type ResampleSkip = "no_tools" | "small_max" | "not_after_tool_output" | "after_messaging_tool";
 
 export interface ResampleArming {
   readonly armed: boolean;
   readonly skip?: ResampleSkip;
-  /** 마지막 도구 결과에 대응하는 도구 이름. 범위 판정이 읽는다. */
+  /** 마지막 도구 결과에 대응하는 도구 이름. */
   readonly lastToolName?: string;
 }
 
@@ -36,9 +36,13 @@ interface WireRequestShape {
 /**
  * 요청을 보내기 전에 정해지는 조건. 도구가 없으면 회복할 대상이 없고(`tool_choice: none`은 이 어댑터가
  * 도구를 싣지 않는 것으로 표현한다), 작은 출력 상한은 부속 호출이며, H15는 거의 전부(99.6%) 도구 결과
- * 직후에 난다. 사용자 텍스트 직후의 빠른 단답은 정상이므로 다시 만들지 않는다.
+ * 직후에 난다. 사용자 텍스트 직후의 빠른 단답은 정상이므로 다시 만들지 않는다. 범위 밖이면 응답을
+ * 보류하지 않으므로 지연도 없다.
  */
-export function resampleArming(payload: WireRequestShape): ResampleArming {
+export function resampleArming(
+  payload: WireRequestShape,
+  messagingToolNames: ReadonlySet<string>,
+): ResampleArming {
   if (payload.tools === undefined || payload.tools.length === 0) return { armed: false, skip: "no_tools" };
   if (payload.max_output_tokens !== undefined && payload.max_output_tokens < MIN_RESAMPLE_MAX_OUTPUT_TOKENS) {
     return { armed: false, skip: "small_max" };
@@ -46,7 +50,9 @@ export function resampleArming(payload: WireRequestShape): ResampleArming {
   const last = lastNonDeveloperItem(payload.input);
   if (!isRecord(last) || last.type !== "function_call_output") return { armed: false, skip: "not_after_tool_output" };
   const lastToolName = toolNameForCall(payload.input, last.call_id);
-  return { armed: true, ...(lastToolName === undefined ? {} : { lastToolName }) };
+  const named = lastToolName === undefined ? {} : { lastToolName };
+  if (!resampleInScope(lastToolName, messagingToolNames)) return { armed: false, skip: "after_messaging_tool", ...named };
+  return { armed: true, ...named };
 }
 
 /** 끝에 붙는 developer 알림(`<total_tokens>` 등)은 건너뛰고 본다. */
@@ -70,50 +76,20 @@ function toolNameForCall(input: readonly unknown[], callId: unknown): string | u
 }
 
 /**
- * 정책 범위: 무추론 단답 하나를 다시 받을지 정한다. 다른 조건은 모두 기계 규칙이고, 정책은 여기뿐이다.
- *
- * 무추론 단답의 대부분(81%)은 보고(메시징 도구)를 보낸 뒤의 정상 마무리다. 그 자리에서 다시 받은
- * 모델은 보고를 다시 보낼 수 있고, 다른 세션으로 가는 중복 메시지는 사용자에게 보이는 부작용이다.
- * 그래서 보고 직후는 제외하되, 답이 다음 행동을 예고하는 문장이면 그것이 H15이므로 다시 받는다.
+ * 정책 범위: 직후 보고 중복 방지. 무추론 단답의 대부분(81%)은 보고(메시징 도구)를 보낸 뒤의 정상
+ * 마무리이고, 그 자리에서 다시 받은 모델은 보고를 다시 보낼 수 있다. 다른 세션으로 가는 중복 메시지는
+ * 사용자에게 보이는 부작용이므로 보고 직후는 다시 받지 않는다. 판정은 도구 이름만 보고, 응답 문구는
+ * 해석하지 않는다.
  */
 export function resampleInScope(
   lastToolName: string | undefined,
-  text: string,
   messagingToolNames: ReadonlySet<string>,
 ): boolean {
-  if (lastToolName === undefined || !messagingToolNames.has(lastToolName)) return true;
-  return announcesNextStep(text);
-}
-
-const KO_FORWARD_MARKER = /(이제|이어서|다음으로|곧바로|바로|먼저|그럼|착수)/u;
-const KO_FORWARD_ENDING = /(겠습니다|할게요|볼게요|합니다|봅니다|갑니다|돌립니다|읽습니다|엽니다)$/u;
-const KO_WAITING = /(기다리|대기|회신|답장|결정을|지시를)/u;
-const EN_FORWARD = /^(?:(?:now|next|then|okay|ok|alright)[,\s]+)?(?:let me|i'll|i will|i'm going to|now i'll|next i'll)\b/iu;
-const EN_WAITING = /\b(?:wait|let me know|hear back|your (?:reply|decision|call))\b/iu;
-
-/**
- * 마지막 문장이 곧 할 행동을 예고하는지 본다. 짧고 보수적인 규칙이다: 놓치는 예고는 지금 동작과 같고,
- * 잘못 잡은 예고는 정상 마무리를 다시 받는 비용이므로 애매하면 아니라고 답한다. 기다리겠다는 문장은
- * 행동 예고가 아니다.
- */
-export function announcesNextStep(text: string): boolean {
-  const sentence = lastSentence(text);
-  if (sentence.length === 0) return false;
-  const bare = sentence.replace(/[\s.!…:。]+$/u, "");
-  if (KO_FORWARD_MARKER.test(bare) && KO_FORWARD_ENDING.test(bare)) return !KO_WAITING.test(bare);
-  if (EN_FORWARD.test(bare)) return !EN_WAITING.test(bare);
-  return false;
-}
-
-function lastSentence(text: string): string {
-  const parts = text.trim().split(/(?<=[.!?。…])\s+|\n+/u).map((part) => part.trim()).filter((part) => part.length > 0);
-  return parts.at(-1) ?? "";
+  return lastToolName === undefined || !messagingToolNames.has(lastToolName);
 }
 
 export interface MuseCodeResampleContext {
   readonly signal?: AbortSignal;
-  readonly lastToolName?: string;
-  readonly messagingToolNames: ReadonlySet<string>;
   readonly startedAt: number;
   /** 같은 요청을 다시 보낸다. 응답을 받지 못하면 던진다. */
   readonly reopen: () => Promise<AdapterResponse>;
@@ -171,7 +147,7 @@ export async function* withMuseCodeResample(
       if (event.type === "response.completed") {
         decided = true;
         const text = deltaText.length > 0 ? deltaText : doneText;
-        const verdict = resampleVerdict(event, text, context);
+        const verdict = resampleVerdict(event, text);
         const usage = event.response.usage;
         wireLog(`${LABEL}.decision`, {
           triggered: verdict === undefined,
@@ -223,15 +199,13 @@ function showsWork(event: CanonicalResponseEvent): "reasoning_present" | "functi
 function resampleVerdict(
   event: CompletedEvent,
   text: string,
-  context: MuseCodeResampleContext,
-): "incomplete" | "reasoning_present" | "empty_text" | "phrase_not_forward" | undefined {
+): "incomplete" | "reasoning_present" | "empty_text" | undefined {
   // 업스트림이 미완료를 선언한 응답은 F10 경로(max_tokens 등)로 그대로 내보낸다.
   if (event.response.incomplete !== undefined) return "incomplete";
   // blob이 빈 reasoning 항목은 canonical로 나오지 않는다. 그래도 추론 토큰이 있으면 모델은 추론했다.
   if ((event.response.usage?.reasoning_output_tokens ?? 0) > 0) return "reasoning_present";
   // 빈 응답은 다른 결함이다. 다시 받아도 고쳐진다는 근거가 없다.
   if (text.trim().length === 0) return "empty_text";
-  if (!resampleInScope(context.lastToolName, text, context.messagingToolNames)) return "phrase_not_forward";
   return undefined;
 }
 

@@ -95,7 +95,7 @@ export interface MuseCodeResponsesAdapterOptions {
   onSubscriptionUsage?: (windows: readonly QuotaWindow[]) => void;
   /**
    * 보고를 보내는 클라이언트 도구 이름(Claude Code의 `SendMessage` 등). 도구 이름은 하네스 어휘라
-   * 하네스 프로필이 넘긴다. 그 직후의 무추론 단답은 정상 마무리가 대부분이라 재샘플 범위를 좁힌다.
+   * 하네스 프로필이 넘긴다. 직후 보고 중복 방지: 이 도구의 결과 직후 응답은 다시 받지 않는다.
    */
   messagingToolNames?: readonly string[];
 }
@@ -138,13 +138,11 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
 
     const startedAt = Date.now();
     const payload = forMuseCodeResponsesBackend(request);
-    const arming = resampleArming(payload);
-    const afterMessagingTool = arming.lastToolName !== undefined && this.messagingToolNames.has(arming.lastToolName);
+    const arming = resampleArming(payload, this.messagingToolNames);
     wireLog("muse-code-responses.resample.armed", {
       armed: arming.armed,
       ...(arming.skip === undefined ? {} : { skip: arming.skip }),
       ...(arming.lastToolName === undefined ? {} : { lastTool: arming.lastToolName }),
-      afterMessagingTool,
     });
     const first = await this.send(payload, options.apiKey, options.signal);
     if (!first.ok || !arming.armed) return first;
@@ -152,8 +150,6 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
       ...first,
       events: withMuseCodeResample(first.events, {
         ...(options.signal === undefined ? {} : { signal: options.signal }),
-        ...(arming.lastToolName === undefined ? {} : { lastToolName: arming.lastToolName }),
-        messagingToolNames: this.messagingToolNames,
         startedAt,
         // 재샘플은 같은 본문·키·헤더로, 같은 게이트를 거쳐 새 연결로 보낸다. 호출자 abort에도 묶인다.
         reopen: () => this.send(payload, options.apiKey, options.signal, true),
