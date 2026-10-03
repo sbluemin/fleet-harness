@@ -103,10 +103,20 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     let currentId: string | null = null;
     let stream: MediaStream | null = null;
     let acquiring = false;
-    let timer: ReturnType<typeof setTimeout>;
+    let desiredTarget: CaptureTarget | null = null;
+    let attemptedId: string | null = null;
+    let streamed = false;
     const controller = new AbortController();
     const stop = () => { stream?.getTracks().forEach((track) => track.stop()); stream = null; };
-    const retry = () => { if (!disposed && !acquiring) { attemptedId = null; setCapture(null); } };
+    const startCapture = () => {
+      const target = desiredTarget;
+      if (disposed || !target || stream || acquiring || attemptedId === target.id) return;
+      attemptedId = target.id;
+      void acquire(target);
+    };
+    const retry = () => {
+      if (!disposed && !acquiring) { attemptedId = null; setCapture(null); startCapture(); }
+    };
     const acquire = async (target: CaptureTarget) => {
       acquiring = true;
       try {
@@ -124,42 +134,42 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
           console.warn("Computer capture unavailable", error instanceof Error ? error.name : "unknown");
           setCapture({ target, stream: null, failed: true, retry });
         }
-      } finally { acquiring = false; }
+      } finally { acquiring = false; startCapture(); }
     };
-    const poll = async () => {
-      try {
-        const response = await fetch("/api/v1/desktop/computer-capture", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) });
-        if (!response.ok) throw new Error("capture_target_unavailable");
-        const { target, unavailableOperationId } = await response.json() as { target: CaptureTarget | null; unavailableOperationId?: string | null };
-        if (disposed) return;
-        if (!target && unavailableOperationId) {
-          stop();
-          currentId = null;
-          attemptedId = null;
-          setCapture({ target: { id: `unavailable:${unavailableOperationId}`, operationId: unavailableOperationId, title: "" }, stream: null, failed: true });
-          return;
-        }
-        if (!target) setCapture(null);
-        if ((target?.id ?? null) !== currentId) {
-          stop();
-          currentId = target?.id ?? null;
-          attemptedId = null;
-          setCapture(null);
-        }
-        if (target && !stream && !acquiring && currentId === target.id) {
-          // 같은 실패 대상을 자동으로 재시도하지 않는다. 새 관찰의 id가 재개를 결정한다.
-          if (attemptedId !== target.id) { attemptedId = target.id; void acquire(target); }
-        }
-      } catch {
+    const apply = (value: unknown) => {
+      if (disposed || !value || typeof value !== "object") return;
+      const { target, unavailableOperationId } = value as { target: CaptureTarget | null; unavailableOperationId?: string | null };
+      desiredTarget = target;
+      if (!target && unavailableOperationId) {
         stop();
         currentId = null;
         attemptedId = null;
-        if (!disposed) setCapture(null);
-      } finally { if (!disposed) timer = setTimeout(() => void poll(), 700); }
+        setCapture({ target: { id: `unavailable:${unavailableOperationId}`, operationId: unavailableOperationId, title: "" }, stream: null, failed: true });
+        return;
+      }
+      if (!target) setCapture(null);
+      if ((target?.id ?? null) !== currentId) {
+        stop();
+        currentId = target?.id ?? null;
+        attemptedId = null;
+        setCapture(null);
+      }
+      // 같은 실패 대상은 자동으로 재시도하지 않는다. 새 대상이나 명시적 재시도만 획득을 재개한다.
+      startCapture();
     };
-    let attemptedId: string | null = null;
-    void poll();
-    return () => { disposed = true; controller.abort(); clearTimeout(timer); stop(); };
+    const unsubscribe = subscribeConsoleChannel("computer-capture:state", (payload) => {
+      streamed = true;
+      apply(payload);
+    });
+    // mount가 핸드셰이크보다 늦으면 한 번만 보정한다. 재연결과 이후 변화는 SSE가 맡는다.
+    void fetch("/api/v1/desktop/computer-capture", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("capture_target_unavailable");
+        const body: unknown = await response.json();
+        if (!streamed) apply(body);
+      })
+      .catch(() => undefined);
+    return () => { disposed = true; controller.abort(); unsubscribe(); stop(); };
   }, []);
   return <OperationUseContext.Provider value={activity}><CaptureContext.Provider value={capture}>{children}</CaptureContext.Provider></OperationUseContext.Provider>;
 }
