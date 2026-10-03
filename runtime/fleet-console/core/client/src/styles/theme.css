@@ -2,9 +2,9 @@
   color-scheme: dark;
 
   /* OS 공유 표시를 본뜬 조작 허용 배지 전용 채널. 사용자 정체성이나 활동 상태 색이 아니다. */
-  --agent-control-badge: oklch(57% 0.24 285);
+  --agent-control-badge: oklch(57% 0.16 285);
   --agent-control-badge-ink: oklch(100% 0 0);
-  --console-use-badge: oklch(76% 0.15 60);
+  --console-use-badge: oklch(76% 0.11 60);
   --console-use-badge-ink: oklch(22% 0.025 60);
   /* 같은 채널을 글자로 쓸 때의 잉크 — 면 위의 배지와 달리 본문 표면 위에서 읽혀야 하므로 텍스트 티어에 선다. */
   --text-console-use: var(--console-use-badge);
@@ -49,30 +49,39 @@
   --ink-brand-dev: oklch(84% 0.045 255);
 
   --brass: oklch(80% 0.085 78);
-  --brass-bright: var(--brass);
+  /* 강조 외피(채도 봉투) — brass·신호는 sRGB 안에 서고, brass-bright는 brass와 같은 채도에서
+     명도만 3~4단 올린다. glow 알파는 세 테마가 같은 12~13% 대역이다. 100% 불투명 면에서
+     Maritime·Carbon만 채도가 1.3~1.6배로 튀던 것을 Instrument 봉투에 맞췄다(목표 f90ef806 실측). */
+  --brass-bright: oklch(83% 0.085 80);
   --brass-deep: var(--brass);
-  --brass-glow: oklch(80% 0.085 78 / 13%);
+  --brass-glow: oklch(80% 0.085 78 / 12%);
+  /* lights-out 2단 — 풀 세기 brass는 위치·포커스·호버·1차 행동만 쓴다. 값·채움·켜짐처럼 상시
+     서 있는 상태는 한 단 가라앉은 quiet가 진다(같은 hue, 채도 절반, 명도 −8). 100% 면에서도
+     글자 4.5:1·채움 대 빈 트랙 3:1을 넘는다. 라이트(Whites)는 지금 그 자리에 쓰던 값을 그대로
+     잇는다 — 채움은 계기 무게(--brass-deep), 글자는 --brass-ink. 글자는 -ink 티어로만 쓴다. */
+  --brass-quiet: oklch(72% 0.045 78);
+  --brass-quiet-ink: var(--brass-quiet);
 
   --aurora: oklch(77% 0.085 200);
   --aurora-deep: var(--aurora);
-  --aurora-glow: oklch(77% 0.085 200 / 13%);
+  --aurora-glow: oklch(77% 0.085 200 / 12%);
 
-  --coral: oklch(68% 0.13 25);
-  --coral-glow: oklch(68% 0.13 25 / 13%);
-  --warn: oklch(75% 0.08 90);
-  --warn-glow: oklch(75% 0.08 90 / 13%);
-  --positive: oklch(76% 0.11 160);
-  --positive-glow: oklch(76% 0.11 160 / 13%);
+  --coral: oklch(68% 0.12 25);
+  --coral-glow: oklch(68% 0.12 25 / 12%);
+  --warn: oklch(75% 0.08 88);
+  --warn-glow: oklch(75% 0.08 88 / 12%);
+  --positive: oklch(76% 0.095 160);
+  --positive-glow: oklch(76% 0.095 160 / 12%);
   /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이다 — 신호가 아니라 티어를 말한다.
      hue 295는 brass 78·warn 85·coral 25·positive 160·aurora 200이 점유하지 않은 유일한 공백이다. */
-  --apex: oklch(75% 0.13 295);
+  --apex: oklch(75% 0.1 295);
   --apex-ink: var(--apex);
-  --apex-glow: oklch(75% 0.13 295 / 14%);
+  --apex-glow: oklch(75% 0.1 295 / 12%);
   --apex-halo: 0 0 16px var(--apex-glow);
   /* crest 채널은 MAX 단 전용 — brass보다 뜨겁고 apex(295)와 갈린 용융 구리(hue ~48). */
-  --crest: oklch(78% 0.14 48);
+  --crest: oklch(78% 0.1 48);
   --crest-ink: var(--crest);
-  --crest-glow: oklch(78% 0.14 48 / 16%);
+  --crest-glow: oklch(78% 0.1 48 / 12%);
   --crest-halo: 0 0 16px var(--crest-glow);
 
   /* 신호 ink 티어 — 텍스트로 쓰이는 신호색 전용 채널. 다크 3종은 base 신호색을 그대로 별칭하고,
@@ -145,14 +154,15 @@
     radial-gradient(66% 52% at 50% 46%, var(--canvas-wash-mid), var(--canvas-wash-far) 74%),
     var(--canvas-abyss);
 
-  /* 캐리어 시그니처 색 — 콘솔 팔레트에서 재정의한 provider 정체성 축. */
-  --provider-claude: oklch(78% 0.15 62);
-  --provider-typesafe: oklch(74% 0.15 339);
+  /* 캐리어 시그니처 색 — 콘솔 팔레트에서 재정의한 provider 정체성 축. 정체성이라 테마의 채도
+     봉투를 따라 재조율된다(다크 C ≤ 0.10) — 한 값으로 고정하면 Carbon·Instrument 외피의 2.5배로 튄다. */
+  --provider-claude: oklch(76% 0.09 62);
+  --provider-typesafe: oklch(73% 0.09 339);
   --provider-codex: oklch(78% 0.035 248);
-  --provider-cursor: oklch(72% 0.13 238);
+  --provider-cursor: oklch(72% 0.085 238);
   --provider-opencode: oklch(72% 0.07 165);
   --provider-xai: oklch(76% 0.055 258);
-  --provider-antigravity: oklch(74% 0.115 288);
+  --provider-antigravity: oklch(73% 0.085 288);
   /* 정체성 톤(--id-*) — Operation accent·그룹색·captain 식별이 공유하는 8톤.
      각 테마의 채도 봉투를 따라 재조율된다(Instrument C≈0.06). 신호색(brass/aurora/warn/coral)과
      hue가 이웃한 crimson/amber는 채도를 낮춰 상태 신호와 혼동되지 않게 한다. */
@@ -316,12 +326,15 @@
      평평한 배경 위에서도 유리가 재질로 읽히게 하는 최소 광학 신호다. */
   --glass-on-sheen: linear-gradient(118deg, oklch(96% 0.01 90 / 10%) 0%, transparent 30%, transparent 74%, oklch(96% 0.01 90 / 5%) 100%);
 
-  --identity-file-code: var(--aurora);
-  --identity-file-markup: var(--brass-ink);
-  --identity-file-data: var(--positive);
-  --identity-file-config: var(--warn);
-  --identity-file-error: var(--coral);
-  --identity-small-tag: var(--aurora);
+  /* 파일 종류는 정체성이지 상태가 아니다 — 신호색(aurora·warn·positive·coral)을 빌리면 트리가
+     신호등처럼 읽힌다. 테마별로 재조율되는 정체성 톤(--id-*)에서 빌리고, 폴더는 무채 잉크로 물러난다.
+     라이트(Whites)는 이전 매핑을 그대로 유지한다(다크 보정 범위 밖). */
+  --identity-file-code: var(--id-cerulean);
+  --identity-file-markup: var(--id-amber);
+  --identity-file-data: var(--id-moss);
+  --identity-file-config: var(--id-teal);
+  --identity-file-error: var(--id-crimson);
+  --identity-small-tag: var(--ink-fog);
 
   --shadow-soft: 0 1px 0 0 oklch(96% 0.01 90 / 6%) inset, 0 18px 38px -22px oklch(0% 0 0 / 70%);
   --shadow-floating: 0 1px 0 0 oklch(96% 0.01 90 / 8%) inset, 0 32px 60px -28px oklch(0% 0 0 / 80%);
@@ -449,6 +462,42 @@
   --control-focus-ring: var(--brass);
   --control-disabled-opacity: 0.5;
 
+  /* ── lights-out 슬롯(--quiet-*) ─────────────────────────────────────────
+     상시 서 있던 brass 점등 자리들이다. 다크 3종은 brass를 끄고 값·켜짐·선택은 --brass-quiet로,
+     장식·요약은 중립 잉크·컨트롤 면으로 옮긴다(풀 세기 brass = 위치·포커스·호버·1차 행동).
+     라이트(Whites)는 이번 보정 범위 밖이라 같은 슬롯에 지금의 점등 값을 그대로 싣는다 — 그래서
+     슬롯은 다크와 Whites의 값이 실제로 갈리는 자리에만 있다. 같은 값이면 슬롯을 만들지 말고
+     원래 토큰을 직접 쓴다. components.css는 테마 분기를 갖지 않으므로 이 갈림은 여기서만 진다. */
+  /* 켬/끔 — 켜짐은 채운 트랙 + 어두운 손잡이. 명도와 모양(채움/빈 트랙) 둘 다로 갈려 색 없이도 3:1을 넘는다. */
+  --quiet-switch-track: var(--brass-quiet);
+  --quiet-switch-rim: var(--brass-quiet);
+  --quiet-switch-knob: var(--ink-abyss);
+  /* 배타 선택 카드(테마 선택) — 1px brass 테두리 + 얕은 brass 틴트. 워시 전체를 칠하지 않는다. brass×rim 혼합은
+     oklab이다 — oklch는 hue를 보간해 rim hue 248~252 쪽에서 분홍·보라로 샌다(Carbon 실측). */
+  --quiet-choice-rim: color-mix(in oklab, var(--brass) 70%, var(--surface-rim));
+  --quiet-choice-fill: var(--control-tint-fill);
+  /* 장식 광(헤일로·외곽 글로우)의 세기 배수 — 다크는 0(광 없음), Whites는 1(현행 혼합률 그대로). */
+  --quiet-halo-gain: 0;
+  /* 장식 기호와 휴면 상태 표기 — 위치가 아니므로 3티어 글자색. */
+  --quiet-decor-ink: var(--text-tertiary);
+  /* 미니맵 현재 뷰포트 렌즈 — 1px 테두리와 얕은 면만, 상시 글로우는 없다. */
+  --quiet-lens-border: 1px solid color-mix(in oklch, var(--brass) 70%, transparent);
+  --quiet-lens-fill: color-mix(in oklch, var(--brass) 6%, transparent);
+  /* Tactical·War Room 모서리 브래킷 — 모드 표시는 헤어라인이고, brass는 진입 연출 순간만 든다. */
+  --quiet-bracket: var(--hairline-strong);
+  /* 이니셜 배지·번호 칩 — Theater 정체성은 brass로 칠하지 않는다. 현재 위치는 1px brass 링만 말한다. */
+  --quiet-chip-fill: var(--control-rest);
+  --quiet-anchor-ink: var(--text-secondary);
+  --quiet-anchor-active-fill: var(--control-rest);
+  --quiet-anchor-active-ink: var(--text-primary);
+  --quiet-anchor-ring: var(--brass);
+  /* 휴면 재개 버튼 — 표준 컨트롤 면 + brass 글자(1차 행동). */
+  --quiet-resume-rim: var(--surface-rim-strong);
+  --quiet-resume-fill: var(--control-rest);
+  --quiet-resume-ink: var(--brass-ink);
+  /* 변경 수 칩(저장소) — 수는 값이라 중립 워시 위 2티어 글자. */
+  --quiet-count-fill: var(--control-wash);
+  --quiet-count-ink: var(--text-secondary);
 }
 
 
@@ -482,26 +531,27 @@
 
   --ink-brand-dev: oklch(86% 0.05 255);
 
-  --brass: oklch(78% 0.13 75);
-  --brass-bright: oklch(86% 0.16 78);
+  --brass: oklch(79% 0.098 76);
+  --brass-bright: oklch(83% 0.098 78);
   --brass-deep: oklch(56% 0.13 65);
-  --brass-glow: oklch(82% 0.16 75 / 28%);
+  --brass-glow: oklch(79% 0.098 76 / 13%);
+  --brass-quiet: oklch(73% 0.05 76);
 
-  --aurora: oklch(82% 0.13 195);
+  --aurora: oklch(80% 0.095 197);
   --aurora-deep: oklch(58% 0.13 200);
-  --aurora-glow: oklch(82% 0.13 195 / 22%);
+  --aurora-glow: oklch(80% 0.095 197 / 13%);
 
-  --coral: oklch(72% 0.17 25);
-  --coral-glow: oklch(72% 0.17 25 / 22%);
-  --warn: oklch(80% 0.13 85);
-  --warn-glow: oklch(80% 0.13 85 / 22%);
-  --positive: oklch(80% 0.15 152);
-  --positive-glow: oklch(80% 0.15 152 / 24%);
+  --coral: oklch(71% 0.13 25);
+  --coral-glow: oklch(71% 0.13 25 / 13%);
+  --warn: oklch(78% 0.095 85);
+  --warn-glow: oklch(78% 0.095 85 / 13%);
+  --positive: oklch(78% 0.11 155);
+  --positive-glow: oklch(78% 0.11 155 / 13%);
   /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이며, 신호가 아니라 비어 있던 hue 295의 티어를 말한다. */
-  --apex: oklch(80% 0.14 295);
-  --apex-glow: oklch(80% 0.14 295 / 22%);
-  --crest: oklch(82% 0.15 48);
-  --crest-glow: oklch(82% 0.15 48 / 24%);
+  --apex: oklch(78% 0.11 295);
+  --apex-glow: oklch(78% 0.11 295 / 13%);
+  --crest: oklch(79% 0.11 48);
+  --crest-glow: oklch(79% 0.11 48 / 13%);
 
   --canvas-abyss: oklch(7% 0.015 246);
   --canvas-sea-core: oklch(15% 0.03 235);
@@ -574,6 +624,11 @@
   --control-wash: oklch(96% 0.012 88 / 8%);
   --control-wash-hover: oklch(96% 0.012 88 / 4.5%);
 
+  --provider-claude: oklch(77% 0.1 62);
+  --provider-typesafe: oklch(74% 0.1 339);
+  --provider-cursor: oklch(73% 0.095 238);
+  --provider-antigravity: oklch(74% 0.095 288);
+
   --id-crimson: oklch(74% 0.09 25);
   --id-amber: oklch(78% 0.088 70);
   --id-moss: oklch(76% 0.085 140);
@@ -597,26 +652,27 @@
 
   --ink-brand-dev: oklch(84% 0.04 255);
 
-  --brass: oklch(76% 0.115 62);
-  --brass-bright: oklch(84% 0.14 64);
+  --brass: oklch(77% 0.085 64);
+  --brass-bright: oklch(81% 0.085 66);
   --brass-deep: oklch(54% 0.11 55);
-  --brass-glow: oklch(80% 0.14 60 / 26%);
+  --brass-glow: oklch(77% 0.085 64 / 12%);
+  --brass-quiet: oklch(71% 0.04 64);
 
-  --aurora: oklch(80% 0.105 205);
+  --aurora: oklch(79% 0.08 205);
   --aurora-deep: oklch(56% 0.11 208);
-  --aurora-glow: oklch(80% 0.11 205 / 20%);
+  --aurora-glow: oklch(79% 0.08 205 / 12%);
 
-  --coral: oklch(70% 0.16 25);
-  --coral-glow: oklch(70% 0.16 25 / 22%);
-  --warn: oklch(79% 0.12 80);
-  --warn-glow: oklch(79% 0.12 80 / 22%);
-  --positive: oklch(78% 0.13 158);
-  --positive-glow: oklch(78% 0.13 158 / 24%);
+  --coral: oklch(69% 0.12 25);
+  --coral-glow: oklch(69% 0.12 25 / 12%);
+  --warn: oklch(77% 0.085 80);
+  --warn-glow: oklch(77% 0.085 80 / 12%);
+  --positive: oklch(77% 0.095 158);
+  --positive-glow: oklch(77% 0.095 158 / 12%);
   /* apex 채널은 강도 사다리의 게이트 뒤 티어 전용이며, 신호가 아니라 비어 있던 hue 295의 티어를 말한다. */
-  --apex: oklch(76% 0.12 292);
-  --apex-glow: oklch(76% 0.12 292 / 20%);
-  --crest: oklch(78% 0.14 46);
-  --crest-glow: oklch(78% 0.14 46 / 22%);
+  --apex: oklch(75% 0.095 292);
+  --apex-glow: oklch(75% 0.095 292 / 12%);
+  --crest: oklch(77% 0.1 46);
+  --crest-glow: oklch(77% 0.1 46 / 12%);
 
   --canvas-abyss: oklch(8% 0.006 255);
   --canvas-sea-core: oklch(15% 0.012 250);
@@ -688,6 +744,13 @@
   --control-wash: oklch(95% 0.003 250 / 7%);
   --control-wash-hover: oklch(95% 0.003 250 / 4%);
 
+  --provider-claude: oklch(76% 0.085 62);
+  --provider-typesafe: oklch(73% 0.085 339);
+  --provider-cursor: oklch(72% 0.08 238);
+  --provider-antigravity: oklch(73% 0.08 288);
+
+  --quiet-choice-fill: color-mix(in oklab, var(--brass) 6%, transparent);
+
   --id-crimson: oklch(72% 0.052 25);
   --id-amber: oklch(76% 0.05 70);
   --id-moss: oklch(74% 0.048 140);
@@ -713,6 +776,9 @@
 
   /* 76% 배지 잉크는 밝은 본문 표면 위에서 글자로 읽히지 않는다 — 같은 색상각에서 명도만 내린다. */
   --text-console-use: oklch(52% 0.125 60);
+  /* 다크 3종의 채도 봉투 보정(base)은 라이트에 내려오지 않는다 — 배지 면은 지금 값을 그대로 잇는다. */
+  --agent-control-badge: oklch(57% 0.24 285);
+  --console-use-badge: oklch(76% 0.15 60);
 
   --ink-abyss: oklch(97% 0.003 100);
   --ink-deep: oklch(95.5% 0.005 100);
@@ -752,6 +818,8 @@
   --brass-bright: oklch(49% 0.14 80);
   --brass-deep: oklch(64% 0.1 82);
   --brass-glow: oklch(56% 0.125 82 / 16%);
+  --brass-quiet: var(--brass-deep);
+  --brass-quiet-ink: var(--brass-ink);
 
   --aurora: oklch(50% 0.1 210);
   --aurora-deep: oklch(43% 0.105 212);
@@ -869,6 +937,34 @@
   --shadow-soft: 0 1px 0 0 oklch(99.5% 0.004 100 / 70%) inset, 0 18px 38px -22px oklch(30% 0.015 95 / 26%);
   --shadow-floating: 0 1px 0 0 oklch(99.5% 0.004 100 / 80%) inset, 0 32px 60px -28px oklch(28% 0.015 95 / 30%);
   --shadow-anchor: 0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent), 0 12px 32px -16px color-mix(in oklch, var(--brass) 26%, transparent);
+
+  /* 다크 lights-out 보정은 라이트 범위 밖이다 — 파일 종류 매핑과 --quiet-* 슬롯은 지금의 점등 값을 그대로 잇는다. */
+  --identity-file-code: var(--aurora);
+  --identity-file-markup: var(--brass-ink);
+  --identity-file-data: var(--positive);
+  --identity-file-config: var(--warn);
+  --identity-file-error: var(--coral);
+  --identity-small-tag: var(--aurora);
+  --quiet-switch-track: var(--control-wash);
+  --quiet-switch-rim: var(--surface-rim-strong);
+  --quiet-switch-knob: var(--brass-bright);
+  --quiet-choice-rim: var(--brass);
+  --quiet-choice-fill: var(--brass-glow);
+  --quiet-halo-gain: 1;
+  --quiet-decor-ink: var(--brass-ink);
+  --quiet-lens-border: 1.5px solid color-mix(in oklch, var(--brass-bright) 80%, transparent);
+  --quiet-lens-fill: color-mix(in oklch, var(--brass) 13%, transparent);
+  --quiet-bracket: color-mix(in oklch, var(--brass) 58%, transparent);
+  --quiet-chip-fill: var(--brass-glow);
+  --quiet-anchor-ink: var(--brass-bright);
+  --quiet-anchor-active-fill: var(--brass);
+  --quiet-anchor-active-ink: var(--text-on-brass);
+  --quiet-anchor-ring: transparent;
+  --quiet-resume-rim: color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
+  --quiet-resume-fill: color-mix(in oklab, var(--brass) 12%, var(--surface-glass));
+  --quiet-resume-ink: var(--brass-bright);
+  --quiet-count-fill: color-mix(in oklch, var(--brass) 28%, transparent);
+  --quiet-count-ink: var(--brass-ink);
 
   --scrollbar-thumb: oklch(44% 0.015 95 / 35%);
   --scrollbar-thumb-hover: oklch(37% 0.018 95 / 55%);

@@ -1176,8 +1176,8 @@ describe("Instrument core design contract", () => {
     const violations: string[] = [];
     for (const file of listProductCssFiles()) {
       if (CSS_THEME_SOURCES.some((theme) => fileURLToPath(theme) === file)) continue;
-      // markdown/styles.css는 vendored highlight.js 팔레트(github-dark ↔ github) 전체가 파일 상단
-      // doctrine 주석으로 예외 선언된 표면이다. 신택스 역할색은 --syntax-* 채널이 따로 지고 있다.
+      // markdown/styles.css는 light-dark()의 라이트 쪽 vendored highlight.js 팔레트(github)가 파일 상단
+      // doctrine 주석으로 예외 선언된 표면이다. 다크 쪽은 --syntax-* 채널을 쓴다.
       if (file === fileURLToPath(new URL("foundation/markdown/styles.css", CONSOLE_ROOT))) continue;
       const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
       const masked = maskCssCommentsAndStrings(css);
@@ -1619,9 +1619,10 @@ describe("Instrument core design contract", () => {
     expect(ghostAction).toContain("color: var(--text-secondary);");
     const ghostHover = components.match(/\.canvas-operation-dormant-action--ghost:hover,[^]*?\{[^}]*\}/)?.[0] ?? "";
     expect(ghostHover).toContain("color: var(--brass-bright);");
-    // (d) pending/disabled 중에는 hover 강조가 다시 점화하지 않는다.
+    // (d) pending/disabled 중에는 hover 강조가 다시 점화하지 않는다 — 쉬는 헤일로(배수 × 10%)에 머문다.
+    // 헤일로 세기는 lights-out 배수(--quiet-halo-gain)를 따른다: 다크 0(광 없음), Whites 1.
     const disabledHover = components.match(/\.canvas-operation-dormant:disabled:hover \{[^}]*\}/)?.[0] ?? "";
-    expect(disabledHover).toContain("var(--brass) 10%");
+    expect(disabledHover).toContain("var(--brass) calc(var(--quiet-halo-gain) * 10%)");
   });
 
   it("keeps sidebar status headers in the neutral text channel", () => {
@@ -1845,10 +1846,15 @@ describe("Instrument core design contract", () => {
     expect(activeHeader).toContain("background: transparent;");
     expect(activeHeader).not.toContain("var(--ink-deep)");
 
-    // 가까이서는 배지 반전이, 멀리서는 스파인이 같은 사실을 말한다. 채움 위 글자는 라이트에서
-    // AA를 보장하는 brass 전용 텍스트 티어여야 한다.
-    expect(activeAnchor).toContain("background: var(--brass);");
-    expect(activeAnchor).toContain("color: var(--text-on-brass);");
+    // 가까이서는 배지의 1px brass 링이, 멀리서는 스파인이 같은 사실을 말한다. 배지 면은 Theater
+    // 정체성이라 다크는 brass로 칠하지 않는다(lights-out 슬롯). 라이트(Whites)는 슬롯이 지금의 brass
+    // 채움과 채움 위 AA를 보장하는 brass 전용 텍스트 티어를 그대로 잇는다.
+    expect(activeAnchor).toContain("background: var(--quiet-anchor-active-fill);");
+    expect(activeAnchor).toContain("color: var(--quiet-anchor-active-ink);");
+    expect(activeAnchor).toContain("box-shadow: inset 0 0 0 1px var(--quiet-anchor-ring);");
+    const whitesTheme = source("styles/theme.css").match(/:root\[data-theme="whites"\] \{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(whitesTheme).toContain("--quiet-anchor-active-fill: var(--brass);");
+    expect(whitesTheme).toContain("--quiet-anchor-active-ink: var(--text-on-brass);");
 
     // 이름만 최고 명도로 올린다 — 행 전체를 올리면 활성 Theater의 행 컨트롤이 다른 Theater의
     // 것보다 밝아지는 역전이 생긴다.
@@ -2403,16 +2409,16 @@ describe("Instrument core design contract", () => {
     expect(base).toContain("--brass: oklch(80% 0.085 78);");
     expect(base).toContain("--ink-muted: oklch(64% 0.012 245);");
     expect(base).toContain("--aurora: oklch(77% 0.085 200);");
-    expect(base).toContain("--coral: oklch(68% 0.13 25);");
-    expect(base).toContain("--warn: oklch(75% 0.08 90);");
-    expect(base).toContain("--positive: oklch(76% 0.11 160);");
+    expect(base).toContain("--coral: oklch(68% 0.12 25);");
+    expect(base).toContain("--warn: oklch(75% 0.08 88);");
+    expect(base).toContain("--positive: oklch(76% 0.095 160);");
     expect(base).toContain("--canvas-sea-core: oklch(13% 0.018 245);");
     expect(base).toContain("color-mix(in oklch, var(--brass) 16%, transparent)");
     expect(base).not.toMatch(/--brass(?:-[a-z-]+)?:\s*oklch\([^;]*\b0\.13\b/);
     expect(theme).toContain(':root[data-theme="maritime"]');
     expect(theme).toContain(':root[data-theme="carbon"]');
     expect(theme).toContain(':root[data-theme="whites"]');
-    expect(theme).toContain("--brass: oklch(78% 0.13 75);");
+    expect(theme).toContain("--brass: oklch(79% 0.098 76);");
     expect(theme).toContain("--ink-muted: oklch(75% 0.02 248);");
     expect(theme).toContain("--ink-muted: oklch(72% 0.005 250);");
     // 라이트 단일종(Whites)의 대기는 오트밀 웜 뉴트럴(hue 95~100)이다 — 청색(hue 250대) 대기 회귀를 차단한다.
@@ -2427,7 +2433,9 @@ describe("Instrument core design contract", () => {
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
         // control-wash는 형상이 아니라 팔레트다 — 워시의 명도·알파를 테마 잉크 위에서 재조율한다.
-        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|glass|control)[a-z-]*:$/);
+        // provider는 정체성 축이라 테마의 채도 봉투를 따라 재조율된다(고정하면 Carbon·Instrument 외피의
+        // 2.5배로 튄다). quiet는 lights-out 슬롯 — 테마가 슬롯의 틴트 세기만 재조율한다.
+        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|glass|control|provider|quiet)[a-z-]*:$/);
       }
     }
     // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/계기 무게/본문 regular 굵기 보정)을
@@ -2448,7 +2456,9 @@ describe("Instrument core design contract", () => {
       const declarations = stripComments(block).match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar|gauge|glass|live-sweep|control)[a-z-]*|--weight-regular|color-scheme):$/);
+        // [doctrine] identity-file·quiet·두 배지 면은 다크 3종 보정(채도 봉투·lights-out)이 라이트로
+        // 내려오지 않게 지금의 값을 잇는 자리다 — 사용자 범위가 다크 테마였다(목표 f90ef806).
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|quiet|agent-control-badge|console-use-badge)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.

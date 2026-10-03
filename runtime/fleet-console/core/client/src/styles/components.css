@@ -1881,7 +1881,8 @@
 
 /* 켬/끔은 콘솔 전체에서 이 한 모양이다. 그리는 컴포넌트도 하나 — SDK의 SettingsToggle이 코어의
    리퀴드 글래스·원격 리스너·실험 기능과 플러그인 카드를 모두 담당하고, 이 클래스는 그 트랙과 손잡이다.
-   켜짐은 선택이자 위치이므로 brass가 칠하고, 신호 토큰은 상태를 말하는 자리에만 남는다. */
+   켜짐은 상시 서 있는 상태라 풀 세기 brass가 아니라 lights-out 슬롯(--quiet-switch-*)이 칠하고,
+   신호 토큰은 상태를 말하는 자리에만 남는다. */
 .settings-switch {
   flex: none;
   width: 46px;
@@ -1902,7 +1903,8 @@
   transition: transform var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
 
-/* 불리언 ON = 워시 + 글리프 — 트랙이 은은한 워시로 밝아지고 켬을 말하는 accent는 brass 손잡이뿐이다.
+/* 켜짐 = 채운 트랙 + 어두운 손잡이 — 켬과 끔이 명도와 모양(채움/빈 트랙) 둘 다로 갈려 색을 못 봐도
+   손잡이 대비가 3:1을 넘는다(밝은 손잡이만 brass로 칠하던 옛 켜짐은 1.7:1이었다).
    hover·checked·disabled 상태는 SDK 토글 블록(.fc-settings-toggle*)이 입력의 상태로 그린다. */
 
 /* 한 단으로 흐른다. 옆 칸에 세우면 그리드 행 높이를 따라 늘어나, 짧은 쪽이 제 legend에서 100px 넘게 떨어진다. */
@@ -3662,7 +3664,7 @@ button.status-glyph.is-actionable:focus-visible {
   position: absolute;
   width: 26px;
   height: 26px;
-  border: 2px solid color-mix(in oklch, var(--brass) 58%, transparent);
+  border: 2px solid var(--quiet-bracket);
 }
 
 .canvas-mode-bracket--nw { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
@@ -4108,7 +4110,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 .canvas-triage-deck-caption {
   min-width: 0;
-  color: var(--brass-ink);
+  color: var(--brass-quiet-ink);
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
@@ -4599,8 +4601,8 @@ button.status-glyph.is-actionable:focus-visible {
   white-space: nowrap;
   height: 18px;
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
-  color: var(--brass-bright);
+  background: var(--quiet-chip-fill);
+  color: var(--quiet-anchor-ink);
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
@@ -4798,10 +4800,10 @@ button.status-glyph.is-actionable:focus-visible {
   50% { border-color: var(--triage-signal, var(--aurora)); box-shadow: 0 0 16px var(--triage-signal-glow, var(--aurora-glow)); }
 }
 
-@keyframes triage-bracket-nw { from { transform: translate(-18px, -18px); } to { transform: translate(0, 0); } }
-@keyframes triage-bracket-ne { from { transform: translate(18px, -18px); } to { transform: translate(0, 0); } }
-@keyframes triage-bracket-sw { from { transform: translate(-18px, 18px); } to { transform: translate(0, 0); } }
-@keyframes triage-bracket-se { from { transform: translate(18px, 18px); } to { transform: translate(0, 0); } }
+@keyframes triage-bracket-nw { from { transform: translate(-18px, -18px); border-color: color-mix(in oklch, var(--brass) 58%, transparent); } to { transform: translate(0, 0); } }
+@keyframes triage-bracket-ne { from { transform: translate(18px, -18px); border-color: color-mix(in oklch, var(--brass) 58%, transparent); } to { transform: translate(0, 0); } }
+@keyframes triage-bracket-sw { from { transform: translate(-18px, 18px); border-color: color-mix(in oklch, var(--brass) 58%, transparent); } to { transform: translate(0, 0); } }
+@keyframes triage-bracket-se { from { transform: translate(18px, 18px); border-color: color-mix(in oklch, var(--brass) 58%, transparent); } to { transform: translate(0, 0); } }
 
 @keyframes triage-stage-enter {
   from { opacity: 0; transform: scale(0.97); }
@@ -5217,17 +5219,18 @@ button.status-glyph.is-actionable:focus-visible {
   background: var(--user-accent);
 }
 
-/* 현재 뷰포트 렌즈 — '지금 보고 있는 곳' 발광 브래스 스코프. */
+/* 현재 뷰포트 렌즈 — '지금 보고 있는 곳'. 위치라 brass지만 상시 떠 있는 장식이므로 1px 테두리와
+   얕은 면만 쓰고, 글로우 세기는 lights-out 슬롯의 배수(--quiet-halo-gain)를 따른다. */
 .canvas-minimap-view {
   position: absolute;
   z-index: 2;
-  border: 1.5px solid color-mix(in oklch, var(--brass-bright) 80%, transparent);
+  border: var(--quiet-lens-border);
   border-radius: 3px;
-  background: color-mix(in oklch, var(--brass) 13%, transparent);
+  background: var(--quiet-lens-fill);
   box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent),
-    0 0 14px color-mix(in oklch, var(--brass) 32%, transparent),
-    inset 0 0 12px color-mix(in oklch, var(--brass) 18%, transparent);
+    0 0 0 1px color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 22%), transparent),
+    0 0 14px color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 32%), transparent),
+    inset 0 0 12px color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 18%), transparent);
   pointer-events: none;
 }
 
@@ -6424,8 +6427,8 @@ body[data-companion-resizing="true"] .canvas-operation {
   width: 18px;
   height: 18px;
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
-  color: var(--brass-bright);
+  background: var(--quiet-chip-fill);
+  color: var(--quiet-anchor-ink);
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
@@ -6434,14 +6437,15 @@ body[data-companion-resizing="true"] .canvas-operation {
     color var(--duration-fast) var(--ease-spring);
 }
 
-/* 활성 Theater의 이니셜 배지는 brass로 채워 반전한다. 배지는 좌측 정렬선 위에 있어 목록을
-   훑는 눈이 가장 먼저 닿는 자리이고, 스파인과 달리 헤더 행 안에서 읽히므로 둘이 같은 사실을
-   서로 다른 거리에서 말한다. 채움 위 글자는 brass 전용 텍스트 티어를 쓴다 — 라이트에서
-   자기 채움 위 AA를 보장하는 유일한 값이다. 대기 tick은 배지 바깥 모서리에 떠 있어 가려지지
-   않는다. */
+/* 활성 Theater의 이니셜 배지는 1px brass 링으로 현재 위치를 말한다. 배지는 좌측 정렬선 위에 있어
+   목록을 훑는 눈이 가장 먼저 닿는 자리이고, 스파인과 달리 헤더 행 안에서 읽히므로 둘이 같은 사실을
+   서로 다른 거리에서 말한다. 배지 면은 Theater 정체성이라 brass로 칠하지 않는다(다크 lights-out) —
+   라이트(Whites)는 슬롯이 지금의 brass 채움과 채움 위 글자 티어를 그대로 잇고 링은 비운다(같은 색 링도
+   둥근 모서리의 안티앨리어싱을 진하게 바꾼다). 대기 tick은 배지 바깥 모서리에 떠 있어 가려지지 않는다. */
 .side-bar-theater-header.is-active .side-bar-theater-anchor {
-  background: var(--brass);
-  color: var(--text-on-brass);
+  background: var(--quiet-anchor-active-fill);
+  color: var(--quiet-anchor-active-ink);
+  box-shadow: inset 0 0 0 1px var(--quiet-anchor-ring);
 }
 
 /* 시작 블록 — Theater가 없는 사이드바의 본문. 유령 행 대신 설명 한 줄·주 행동·가이드 재진입·단축키가
@@ -8988,7 +8992,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   flex: none;
   padding: 2px var(--space-1);
   border-radius: var(--radius-pill);
-  background: var(--brass-glow);
+  background: var(--quiet-chip-fill);
   color: var(--brass-ink);
   font-family: var(--font-ui);
 }
@@ -9118,20 +9122,21 @@ body[data-companion-resizing="true"] .canvas-operation {
   width: 100%;
   height: 100%;
   border: 0;
-  /* 휴면은 패널 면 위의 상태이지 다른 면이 아니다 — 톤을 낮추지 않고 brass 헤일로만 얹는다
-     (brass는 위치·포커스 채널이므로 어포던스는 헤일로와 커서가 진다). */
-  background: radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 34%);
+  /* 휴면은 패널 면 위의 상태이지 다른 면이 아니다 — 톤을 낮추지 않는다. 다크는 헤일로 없이 재개
+     버튼과 커서가 어포던스를 지고(100% 남색 면 위 brass 광륜은 탁한 얼룩이 된다), 라이트는
+     lights-out 배수(--quiet-halo-gain)가 1이라 지금의 brass 헤일로를 그대로 얹는다. */
+  background: radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 10%), transparent), transparent 34%);
   color: var(--text-primary);
   cursor: pointer;
 }
 
 .canvas-operation-dormant:hover,
 .canvas-operation-dormant:focus-visible {
-  background: radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 16%, transparent), transparent 38%);
+  background: radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 16%), transparent), transparent 38%);
 }
 
 .canvas-operation-dormant-status {
-  color: var(--brass-ink);
+  color: var(--quiet-decor-ink);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
@@ -9156,15 +9161,15 @@ body[data-companion-resizing="true"] .canvas-operation {
 .canvas-operation-dormant-action {
   min-width: 118px;
   padding: 10px var(--space-5);
-  border: 1px solid color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
+  border: 1px solid var(--quiet-resume-rim);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--brass) 12%, var(--surface-glass));
-  color: var(--brass-bright);
+  background: var(--quiet-resume-fill);
+  color: var(--quiet-resume-ink);
   font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   text-align: center;
-  box-shadow: 0 0 18px color-mix(in oklch, var(--brass) 12%, transparent);
+  box-shadow: 0 0 18px color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 12%), transparent);
 }
 
 .canvas-operation-dormant:disabled {
@@ -9173,7 +9178,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .canvas-operation-dormant:disabled:hover {
   background:
-    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 34%),
+    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 10%), transparent), transparent 34%),
     color-mix(in oklch, var(--ink-deep) 74%, transparent);
 }
 
@@ -14460,14 +14465,15 @@ body[data-codex-side="true"] .command-card {
 
 /* SDK 토글은 콘솔의 공용 스위치 모양을 그대로 입는다(.settings-switch). 예전에는 여기만
    aurora로 칠한 iOS형 스위치를 써서, 같은 켬/끔이 코어와 플러그인 사이에서 다른 색과 다른
-   크기로 갈렸다. 켜짐은 선택이므로 brass가 칠하고, aurora는 상태 채널로 돌아간다. */
+   크기로 갈렸다. 켜짐은 quiet brass 트랙이 칠하고, aurora는 상태 채널로 돌아간다. */
 .fc-settings-toggle__input:checked + .settings-switch {
-  background: var(--control-wash);
+  border-color: var(--quiet-switch-rim);
+  background: var(--quiet-switch-track);
 }
 
 .fc-settings-toggle__input:checked + .settings-switch .settings-switch-knob {
   transform: translateX(20px);
-  background: var(--brass-bright);
+  background: var(--quiet-switch-knob);
 }
 
 .fc-settings-toggle:hover:not(:has(.fc-settings-toggle__input:disabled)):not(:has(.fc-settings-toggle__input:checked)) .settings-switch {
@@ -18589,9 +18595,12 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
    시점이 같은 손잡이를 쓴다. 채움 끝 위치는 소비처가 --slider-fill로 싣고, 폭·정렬 같은 배치는 소비처가
    따로 소유한다. 두 벌로 두면 같은 조작이 표면마다 다른 물건으로 보이고, 한쪽만 고쳐지는 날이 온다.
    Doctrine: 손잡이는 추론 강도 트랙(.effort-track-knob)과 같은 계기 면이다 — --gauge-face 20px 원형에
-   --gauge-face-lift 그림자. --text-primary를 쓰면 라이트에서 손잡이가 검은 점이 된다. 채움도 같은
-   --gauge-fill이라 라이트에서 brass가 계기 무게(--brass-deep)로 내려간다. */
+   --gauge-face-lift 그림자. --text-primary를 쓰면 라이트에서 손잡이가 검은 점이 된다.
+   Doctrine: 채움은 lights-out 2단이다 — 쉬는 값은 --brass-quiet, 손이 닿거나(hover·끌기) 포커스가 서면
+   계기 채움(--gauge-fill)으로 켜진다. 값은 상시 서 있는 상태라 풀 세기 brass로 칠하면 100%에서 행 전체가
+   가장 넓은 brass 면이 된다. 라이트는 두 단 모두 계기 무게(--brass-deep)라 지금 화면 그대로다. */
 .fleet-slider {
+  --slider-fill-tone: var(--brass-quiet);
   /* 손잡이 상자는 28px이고 흰 면(20px)은 그 가운데 원이다. 남는 4px 띠가 포커스 링과 그 앞의 투명한
      간격을 싣는다 — 썸 의사요소에는 outline이 그려지지 않고, box-shadow 간격은 바탕색을 칠해야 해서
      유리 면 위에서 색 띠로 드러난다. 그림자는 상자가 아니라 면의 모양을 따르도록 drop-shadow로 진다. */
@@ -18613,9 +18622,15 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .fleet-slider::-webkit-slider-runnable-track {
   height: 4px;
   background:
-    radial-gradient(circle at 100% 50%, var(--gauge-fill) 0 1.5px, transparent 2px) left / 6px 100% no-repeat,
+    radial-gradient(circle at 100% 50%, var(--slider-fill-tone) 0 1.5px, transparent 2px) left / 6px 100% no-repeat,
     radial-gradient(circle at 0 50%, var(--surface-rim-strong) 0 1.5px, transparent 2px) right / 6px 100% no-repeat,
-    linear-gradient(to right, transparent 0 6px, var(--gauge-fill) 6px var(--slider-fill, 100%), var(--surface-rim-strong) var(--slider-fill, 100%) calc(100% - 6px), transparent calc(100% - 6px));
+    linear-gradient(to right, transparent 0 6px, var(--slider-fill-tone) 6px var(--slider-fill, 100%), var(--surface-rim-strong) var(--slider-fill, 100%) calc(100% - 6px), transparent calc(100% - 6px));
+}
+
+.fleet-slider:not(:disabled):hover,
+.fleet-slider:not(:disabled):active,
+.fleet-slider:focus-visible {
+  --slider-fill-tone: var(--gauge-fill);
 }
 
 .fleet-slider::-webkit-slider-thumb {
@@ -18643,7 +18658,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .fleet-slider::-moz-range-progress {
   height: 4px;
   border-radius: 2px;
-  background: var(--gauge-fill);
+  background: var(--slider-fill-tone);
 }
 
 .fleet-slider::-moz-range-thumb {

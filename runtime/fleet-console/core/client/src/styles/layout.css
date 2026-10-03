@@ -1078,12 +1078,12 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   color: var(--ink-brand-dev);
 }
 
-/* 개발 채널의 「Fleet·DEV」 — 황동 가운데 점과 작은 모노 대문자 DEV(BrandWordmark). 점과 DEV는 본문·모노
+/* 개발 채널의 「Fleet·DEV」 — 가운데 점(장식이라 lights-out 슬롯 잉크)과 작은 모노 대문자 DEV(BrandWordmark). 점과 DEV는 본문·모노
    서체라 디스플레이 서체의 생산자는 여전히 워드마크 하나다. 크기는 em이라 트레이·전환 장면의 워드마크를
    그대로 따라간다. DEV의 잉크는 개발 잉크를 3차 잉크 쪽으로 눌러 워드마크보다 한 단 물러선다. */
 .command-band-brand-wordmark-sep {
   margin: 0 0.34em;
-  color: var(--brass-ink);
+  color: var(--quiet-decor-ink);
   font-family: var(--font-ui);
   font-weight: var(--weight-bold);
 }

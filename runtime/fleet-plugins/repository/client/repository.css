@@ -1178,7 +1178,7 @@
 /* 매칭 글자 = 포커스 채널(brass) */
 .repository-ref-hl { color: var(--brass-ink); font-weight: var(--weight-bold); }
 .repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font-style: inherit; font-variant: inherit; font-weight: var(--weight-regular); font-stretch: inherit; font-size: inherit; line-height: inherit; font-family: inherit; text-align: left; padding: 7px 10px; }
-.repository-wip-row { color: var(--brass-ink); }
+.repository-wip-row { color: var(--brass-quiet-ink); }
 .repository-wip-row { width: 100%; border-bottom: 1px dashed var(--surface-rim); }
 .repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); }
 /* hidden 속성은 UA display:none이라 .repository-root의 display:grid에 진다 — 소스 상호 배제 가드 */
@@ -2068,7 +2068,7 @@
   font-weight: var(--weight-regular);
   font-variant-numeric: tabular-nums;
 }
-.repository-source-count.is-hot { background: color-mix(in oklch, var(--brass) 28%, transparent); color: var(--brass-ink); }
+.repository-source-count.is-hot { background: var(--quiet-count-fill); color: var(--quiet-count-ink); }
 
 /* ── 작업 줄 — 소스 세그먼트 · 기록 도구(포털) · 원격 동사 ── */
 .repository-work-area { container-type: inline-size; container-name: repository-work; }
