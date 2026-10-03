@@ -3,6 +3,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 
 import { requestBrowserOpen, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import {
   focusOrCreateGlobalTab,
   noteBackgroundTab,
@@ -50,7 +51,8 @@ export function useLinkOpenChoice(context: OperationRenderContext): LinkOpenChoi
   const canOfferRef = React.useRef(true);
   canOfferRef.current = engine === null || engine.available;
   const choose = React.useCallback((url: string, at: LinkOpenAt) => {
-    if (!canOfferRef.current) return false;
+    // 셸 문서가 아니면(웹 탭) 묻지 않는다 — 엔진 null을 가용으로 오독하지 않게 문서로 먼저 가른다.
+    if (!isDesktopShell() || !canOfferRef.current) return false;
     setPending({ url, at });
     return true;
   }, []);
@@ -68,7 +70,7 @@ export function useShellLinkChoice(language: OperationRenderContext["language"])
   const canOfferRef = React.useRef(true);
   canOfferRef.current = engine === null || engine.available;
   const choose = React.useCallback((url: string, at: LinkOpenAt) => {
-    if (!canOfferRef.current) return false;
+    if (!isDesktopShell() || !canOfferRef.current) return false;
     setPending({ url, at });
     return true;
   }, []);
@@ -97,6 +99,7 @@ export function openOperationLink(
   target: { readonly operationId: string; readonly openCompanion: () => void },
   availability: LinkAvailability,
 ): boolean {
+  if (!isDesktopShell()) return false;
   if (!availability.canOffer) {
     if (!availability.isShared) return false;
     notifySharedFallback();
@@ -105,8 +108,11 @@ export function openOperationLink(
   }
   if (gesture === "click") return false;
   if (gesture === "background") {
-    // 뒤 탭 — 시트를 띄우지 않고 탭만 열고, 칸에 수를 남긴다.
-    void focusOrCreateGlobalTab(url).then((ok) => { if (ok) noteBackgroundTab(); }).catch(() => undefined);
+    // 뒤 탭 — 시트를 띄우지 않고 탭만 열고, 칸에 수를 남긴다. 실패하면 OS로 떨어진다.
+    void focusOrCreateGlobalTab(url).then((ok) => {
+      if (ok) noteBackgroundTab();
+      else openInDefaultOsBrowser(url);
+    }).catch(() => openInDefaultOsBrowser(url));
     return true;
   }
   if (gesture === "external") {
@@ -120,6 +126,7 @@ export function openOperationLink(
 
 /** 전역 Shell의 직접 열기 — companion이 없어 Alt는 카드로 돌려보낸다. */
 export function openShellLink(url: string, gesture: OpenLinkGesture, availability: LinkAvailability): boolean {
+  if (!isDesktopShell()) return false;
   if (!availability.canOffer) {
     if (!availability.isShared) return false;
     notifySharedFallback();
@@ -128,7 +135,10 @@ export function openShellLink(url: string, gesture: OpenLinkGesture, availabilit
   }
   if (gesture === "click" || gesture === "companion") return false;
   if (gesture === "background") {
-    void focusOrCreateGlobalTab(url).then((ok) => { if (ok) noteBackgroundTab(); }).catch(() => undefined);
+    void focusOrCreateGlobalTab(url).then((ok) => {
+      if (ok) noteBackgroundTab();
+      else openInDefaultOsBrowser(url);
+    }).catch(() => openInDefaultOsBrowser(url));
     return true;
   }
   openInDefaultOsBrowser(url);
@@ -238,7 +248,11 @@ function LinkOpenCard({ context, language, kind, url, at, onClose }: {
   const openInGlobalFleet = () => {
     onClose();
     // 같은 주소의 탭이 있으면 그 탭으로 가고, 없으면 새 탭을 연 뒤 시트를 띄운다.
-    void focusOrCreateGlobalTab(url).then(() => openGlobalBrowser()).catch(() => undefined);
+    // 실패하면 OS로 떨어진다 — 누른 링크는 반드시 어딘가 열린다.
+    void focusOrCreateGlobalTab(url).then((ok) => {
+      if (ok) openGlobalBrowser();
+      else openInDefaultOsBrowser(url);
+    }).catch(() => openInDefaultOsBrowser(url));
   };
   const openInCompanionBrowser = () => {
     onClose();

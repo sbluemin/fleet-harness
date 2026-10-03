@@ -4,6 +4,7 @@ import {
   type OpenLinkGesture,
 } from "@fleet-console/link/core";
 
+import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { getBrowserEngineSnapshot } from "./browser-panel-store.js";
 import {
   focusOrCreateGlobalTab,
@@ -35,6 +36,9 @@ export function readOtherLinkAvailability(): OtherLinkAvailability {
 }
 
 export function openOtherSurfaceLink(url: string, gesture: OpenLinkGesture): boolean {
+  // 뷰를 그릴 셸이 없는 문서(웹 탭)에서는 묻지도 가로채지도 않는다 — 엔진 상태는
+  // 구독자가 있을 때만 채워지므로, null을 곧바로 앵커 기본 동작으로 떨어뜨린다.
+  if (!isDesktopShell()) return false;
   if (!isRoutableLink(url, typeof window !== "undefined" ? window.location.origin : undefined)) return false;
   const availability = readOtherLinkAvailability();
   if (!availability.canOffer) {
@@ -48,11 +52,17 @@ export function openOtherSurfaceLink(url: string, gesture: OpenLinkGesture): boo
     return true;
   }
   if (gesture === "background") {
-    // 뒤 탭 — 시트를 띄우지 않고 탭만 열고, 칸에 수를 남긴다.
-    void focusOrCreateGlobalTab(url).then((ok) => { if (ok) noteBackgroundTab(); }).catch(() => undefined);
+    // 뒤 탭 — 시트를 띄우지 않고 탭만 열고, 칸에 수를 남긴다. 실패하면 OS로 떨어진다.
+    void focusOrCreateGlobalTab(url).then((ok) => {
+      if (ok) noteBackgroundTab();
+      else openInDefaultOsBrowser(url);
+    }).catch(() => openInDefaultOsBrowser(url));
     return true;
   }
-  // click·companion — 시트를 띄우고 새 탭(같은 주소면 그 탭)으로 연다.
-  void focusOrCreateGlobalTab(url).then(() => openGlobalBrowser()).catch(() => undefined);
+  // click·companion — 시트를 띄우고 새 탭(같은 주소면 그 탭)으로 연다. 실패하면 OS로 떨어진다.
+  void focusOrCreateGlobalTab(url).then((ok) => {
+    if (ok) openGlobalBrowser();
+    else openInDefaultOsBrowser(url);
+  }).catch(() => openInDefaultOsBrowser(url));
   return true;
 }
