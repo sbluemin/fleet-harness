@@ -5,6 +5,49 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.210.0] - 2026-10-03
+
+### fleet-console
+
+#### Added
+- Choose lighter motion for Console or only while its window is unfocused, and return to smooth motion in Appearance settings.
+- Open web pages in the Fleet Browser, a Console-wide browser that floats over your current view from the toolbar, and links across Console now open there instead of leaving the app.
+- When connecting another screen closes Fleet Browser tabs, Console offers to reopen them afterwards.
+- Cmd-click (Ctrl-click elsewhere) a `path:line:col` in Shell or agent terminal output, or a file link in Markdown, to open that file in Files at the exact line; the palette and the Files filter also accept `path:line:col`, `path(line,col)` and absolute paths, and an exact file match comes first.
+- File links in the wiki reader open an inline preview of the code at the linked line, with a one-step move to Files, and wiki links in Files previews open the wiki entry.
+- Files, the wiki and the Shell show which Theater they are working in; the Shell also shows its current folder and warns when it is in a different Theater than the one you are viewing, with actions to move it there or start a new Shell.
+- Open the Shell at a folder from the Files context menu; it never types into a running program or a half-typed command line.
+- Search the terminal with Cmd-F (Ctrl-Shift-F elsewhere), keep up to 50,000 lines of scrollback (10,000 by default), and turn copy-on-select off in Settings.
+- Keep usage limits in view from the toolbar: pick the providers to show in Usage limits settings or at the bottom of the Usage limits panel, and click the summary to open the panel.
+
+#### Changed
+- Console glass stays translucent without blurring the background; the sidebar blur control is removed, while opacity remains adjustable.
+- Settings now uses compact, responsive groups and unified UI, content, and code font controls. Existing font preferences are preserved, and the terminal can use its own font.
+- Links in Operation chat and CLI let you choose the Fleet Browser, the Operation Browser, or your own browser, and the browser inside each Operation is now called the Operation Browser.
+- Ask Tori, Bori, or Dori and continue the conversation inside Quick Launch without losing your draft when switching aides. Open the last aide or cycle between them with Cmd+Shift+Space on macOS or Ctrl+Shift+Space elsewhere, which replaces Cmd/Ctrl+Shift+Q and can be reassigned in Settings.
+- The Shell keeps at least 80 columns when Files, the wiki reader or Settings open beside it; documents, readers and Settings float over it instead of squeezing it, so the running program is not resized.
+- Files reopens the document window you had in each Theater when you come back to it.
+- The toolbar now reads as plugin tools, system tools with Settings at the end, and a Bridge group for the usage summary and aides that stays visible when the toolbar is collapsed.
+- Zen mode is now turned on and off from the button beside Cruise and War Room at the top of the sidebar, instead of from the toolbar.
+
+#### Fixed
+- The usage limits panel shows your Antigravity plan, such as Pro, instead of always showing Free.
+- Console no longer keeps the GPU busy, or spins up Mac fans, while sessions run or an objective is open; status indicators now move in light steps and pause while the Console window is in the background.
+- Muse turns stop less often right after saying what they will do next, without actually doing it.
+- Gateway model answers that hit the output limit are no longer treated as finished, so Claude Code can continue them instead of keeping a cut-off reply.
+- Interrupting a session or losing the connection now also stops its gateway model request, so it no longer keeps using your subscription in the background.
+- File content search works again on Node 22.0 through 22.11, and a folder you cannot read no longer makes the whole search fail; results show how many paths were skipped.
+- Approving an outdated wiki proposal now explains which version it was written against instead of failing with a server error, and repeated attempts or failed Cowork applies no longer leave extra conflicts or stray proposals behind.
+- Markdown previews no longer cut off the right edge of the text; only wide code blocks and tables scroll sideways.
+- The Shell close button responds across its whole area, and gray terminal output in dark themes is readable.
+- Relative file links in the wiki reader and in agent chat no longer reload the whole Console.
+- The wiki's Cowork settings shortcut opens the Cowork model setting itself.
+
+### fleet-desktop
+
+#### Fixed
+- Console keyboard shortcuts keep working while a browser page has focus.
+
 ## [1.209.0] - 2026-10-02
 
 ### fleet-console
