@@ -101,7 +101,7 @@ export async function proxyAnthropicMessages(
     ? withSseKeepAlive(projectedBody)
     : projectedBody;
   for await (const chunk of responseBody) {
-    if (!res.write(chunk)) await drain(res);
+    if (!res.write(chunk)) await drain(res, options.signal);
   }
   res.end();
 }

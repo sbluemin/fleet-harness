@@ -1171,6 +1171,68 @@ describe("Muse Code routing", () => {
     }
   });
 
+  it("stops the upstream turn and frees its slot when the client hangs up mid-stream", async () => {
+    // Node emits the request's `close` once the body is read, so a disconnect after that went
+    // unheard: the provider generated to the end, the handler waited forever on a `drain` the dead
+    // socket never sends, and its upstream permit was never handed back.
+    const frame = (value: unknown) => new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`);
+    let upstreamSignal: AbortSignal | undefined;
+    let upstreamCancelled = false;
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      upstreamSignal = init?.signal ?? undefined;
+      let timer: ReturnType<typeof setInterval> | undefined;
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(frame({ type: "response.created", response: { id: "r3", model: "muse-spark-1.3-contributor", usage: null } }));
+          controller.enqueue(frame({ type: "response.output_item.added", output_index: 0, item: { type: "message", id: "msg_1", role: "assistant" } }));
+          timer = setInterval(() => controller.enqueue(frame({
+            type: "response.output_text.delta", item_id: "msg_1", output_index: 0, content_index: 0, delta: "x".repeat(256 * 1024),
+          })), 5);
+        },
+        cancel() {
+          upstreamCancelled = true;
+          clearInterval(timer);
+        },
+      }), { headers: { "content-type": "text/event-stream" } });
+    });
+    const journal: GatewayFailureRecord[] = [];
+    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn, failureJournal: (record) => journal.push(record) });
+    let serverRes: http.ServerResponse | undefined;
+    let handled: Promise<unknown> | undefined;
+    const server = http.createServer((req, res) => {
+      serverRes = res;
+      handled = Promise.resolve(router.handle({ req, res, pathname: new URL(req.url ?? "/", "http://127.0.0.1").pathname }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as net.AddressInfo).port;
+    try {
+      const payload = JSON.stringify({ model: MUSE_MODEL, messages: [{ role: "user", content: "Hello" }], max_tokens: 128, stream: true });
+      const client = net.connect({ port, host: "127.0.0.1" }, () => {
+        client.write(
+          `POST ${MESSAGES} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nauthorization: Bearer ${ANTHROPIC_CRED}\r\n` +
+          `content-type: application/json\r\ncontent-length: ${Buffer.byteLength(payload)}\r\n\r\n${payload}`,
+        );
+      });
+      // A client that stops reading parks the handler on backpressure; hanging up there is the
+      // case that used to wedge it for good.
+      client.pause();
+      await vi.waitFor(() => expect(serverRes?.writableNeedDrain).toBe(true), { timeout: 5_000 });
+      expect(router.upstreamStats().map((stats) => stats.inFlight)).toEqual([1]);
+      client.destroy();
+
+      await vi.waitFor(() => expect(handled).toBeDefined());
+      await handled;
+      expect(upstreamSignal?.aborted).toBe(true);
+      expect(upstreamCancelled).toBe(true);
+      expect(router.upstreamStats().reduce((sum, stats) => sum + stats.inFlight, 0)).toBe(0);
+      expect(journal).toEqual([expect.objectContaining({ phase: "post_commit", detail: "client disconnected", provider: "muse-code" })]);
+      expect(journal[0]!.elapsedMs).toBeGreaterThanOrEqual(0);
+    } finally {
+      server.close();
+      router.dispose();
+    }
+  });
+
   it("refuses before spending a request when the sign-in or a forced tool choice cannot be honored", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       JSON.stringify({ error: { message: `bad key ${MUSE_KEY}`, type: "invalid_api_key" } }),

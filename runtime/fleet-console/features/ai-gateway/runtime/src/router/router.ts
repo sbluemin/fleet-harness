@@ -59,6 +59,7 @@ import {
 import {
   drain,
   errorMessage,
+  onClientDisconnect,
   writeAnthropicError,
   writeSseErrorFrame,
   type GatewayProxyResponse,
@@ -373,19 +374,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       const controller = new AbortController();
-      const abort = (): void => {
-        if (!res.writableEnded) {
-          controller.abort(new Error("client disconnected"));
-        }
-      };
-      if (res.destroyed && !res.writableEnded) {
-        abort();
-      } else if (typeof res.once === "function") {
-        res.once("close", abort);
-      }
-      if (typeof req.once === "function") {
-        req.once("aborted", abort);
-      }
+      const stopWatching = onClientDisconnect(req, res, () => controller.abort(new Error("client disconnected")));
       try {
         // 원문 프롬프트가 실려 오므로 본문이 클 수 있다. 상한은 훅이 먼저 자르지만 여기서도
         // 받는 쪽의 상한을 둔다 — 보내는 쪽의 선의에 서버의 메모리를 걸지 않는다.
@@ -404,16 +393,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           writeAnthropicError(res, 500, "api_error", "Could not assign a model to the delegated run");
         }
       } finally {
-        if (typeof res.off === "function") {
-          res.off("close", abort);
-        } else if (typeof (res as any).removeListener === "function") {
-          (res as any).removeListener("close", abort);
-        }
-        if (typeof req.off === "function") {
-          req.off("aborted", abort);
-        } else if (typeof (req as any).removeListener === "function") {
-          (req as any).removeListener("aborted", abort);
-        }
+        stopWatching();
       }
       return true;
     }
@@ -590,8 +570,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     }
 
     const controller = new AbortController();
-    const abort = (): void => controller.abort(new Error("client disconnected"));
-    req.once("close", abort);
+    // A disconnect mid-turn must reach the upstream call: otherwise the provider keeps generating
+    // into a socket nobody reads, and the copy loop below waits on a `drain` that never comes.
+    const clientDisconnected = new Error("client disconnected");
+    const stopWatching = onClientDisconnect(req, res, () => controller.abort(clientDisconnected));
     const startedAt = Date.now();
 
     try {
@@ -705,10 +687,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           compactFlight = compactCodexConversation({
             adapter: codexAdapter,
             request: canonical,
+            // The flight is shared with the client's own retry of this compaction, so one
+            // request hanging up must not cancel the summary the next one is waiting on.
             call: {
               apiKey: credential,
               ...(modelContextWindow === undefined ? {} : { modelContextWindow }),
-              signal: controller.signal,
             },
             customInstructions: compactSummary.customInstructions,
             supportedEfforts: target.effort.supported ? target.effort.levels : undefined,
@@ -758,10 +741,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       upstream ??= await gateway.stream(body, callOptions);
       res.writeHead(upstream.status, headerEntries(upstream.headers));
       for await (const chunk of upstream.body) {
-        if (!res.write(chunk)) await drain(res);
+        if (!res.write(chunk)) await drain(res, controller.signal);
       }
       res.end();
     } catch (error) {
+      // Whatever surfaced first — the abort reason, an aborted read, a failed write — the cause
+      // is the client leaving, and that is what the journal has to say.
+      const disconnected = controller.signal.aborted && controller.signal.reason === clientDisconnected;
       const invalidRequest = error instanceof UnsupportedReasoningEffortError
         || error instanceof ContextWindowExceededError
         // A content block this wire cannot translate is the client's malformed body, not a
@@ -778,10 +764,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const status = error instanceof ContextWindowExceededError
         ? 413
         : invalidRequest ? 400 : harness.transientErrorStatus;
-      const message = errorMessage(error);
+      const message = disconnected ? clientDisconnected.message : errorMessage(error);
       const recordFailure = (): void => {
         if (!deps.failureJournal) return;
-        const code = findCauseCode(error);
+        const code = disconnected ? undefined : findCauseCode(error);
         const [busiest] = upstreamGate.stats()
           .slice()
           .sort((left, right) => right.inFlight - left.inFlight);
@@ -807,7 +793,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       } catch {
         // 기록 실패는 삼킨다 — 기록하지 못한 것이 응답을 바꾸는 이유가 되면 안 된다.
       }
-      if (res.headersSent) {
+      if (disconnected) {
+        // Nobody is left to read a status or an error frame; ending releases the socket.
+        res.end();
+      } else if (res.headersSent) {
         // 헤더를 보낸 뒤에는 상태 코드를 바꿀 수 없다. 그냥 끊으면 클라이언트는
         // 오류 문구 없는 잘린 스트림만 보므로, 종단 SSE error 프레임으로 사유를 남긴다.
         writeSseErrorFrame(res, type, message);
@@ -816,7 +805,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         writeAnthropicError(res, status, type, message);
       }
     } finally {
-      req.off("close", abort);
+      stopWatching();
     }
     return true;
   };
