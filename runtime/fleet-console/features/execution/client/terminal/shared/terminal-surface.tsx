@@ -304,6 +304,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // 서버가 등급을 잠갔으면 되찾기를 제안하지 않는다 — 눌러도 다시 관전으로 돌아오는 버튼은 거짓이다.
   const [controlLocked, setControlLocked] = useState(false);
   const [copiedAt, setCopiedAt] = useState(0);
+  /** 한 번이라도 연결됐는가. 그 뒤의 연결 중·실패는 "끊김"이고, 그동안 입력을 잠근다(K-10). */
+  const [hadLive, setHadLive] = useState(false);
   useEffect(() => {
     if (copiedAt === 0) return;
     const timer = window.setTimeout(() => setCopiedAt(0), 1_200);
@@ -518,11 +520,14 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         onFontScale: setTouchFontScale,
         readFontScale: () => touchFontScaleRef.current,
       });
+      // 파싱을 마친 바이트를 서버에 알린다(흐름 제어). 연결은 스케줄러 뒤에 생기므로 나중에 이어 붙인다.
+      let acknowledgeOutput: (bytes: number) => void = () => undefined;
       const outputScheduler = createTerminalOutputScheduler(
         terminal,
         activeRef.current !== false,
         inactiveFlushMsRef.current,
-        () => {
+        (parsedBytes) => {
+          acknowledgeOutput(parsedBytes);
           scrollFollow.restoreAfterOutputParsing();
           alternateScreenEdgeFill?.schedulePaint();
         },
@@ -533,6 +538,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       });
       statusDetailReporterRef.current = statusDetailReporter;
       let alternateScreenController: ReturnType<typeof createTerminalAlternateScreenController> | null = null;
+      let attachedGeneration: number | undefined;
       const connection = createTerminalConnection({
         operationId,
         ticketPath,
@@ -580,12 +586,36 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
           }
         },
         onExit: () => onExitRef.current?.(),
+        /**
+         * 다시 붙을 때마다 서버는 보유한 scrollback을 처음부터 다시 보낸다. 같은 PTY면 그 재생이 화면을
+         * 다시 그리므로 앞 화면을 지우고(지우지 않으면 같은 출력이 두 벌 쌓인다), 다른 PTY면(세대가 바뀜 —
+         * Console 재시작) 앞 화면을 흐리게 남기고 구분선을 그은 뒤 새 셸을 잇는다(K-10). 정리는 앞 연결의
+         * 출력이 모두 파싱된 뒤 in-band로 쓴다 — 새 소켓은 이 Promise가 끝난 뒤에 열린다.
+         */
+        onAttach: async ({ attempt, generation }) => {
+          const previousGeneration = attachedGeneration;
+          attachedGeneration = generation;
+          if (attempt === 0 || disposed) return;
+          await new Promise<void>((resolve) => outputScheduler.drain(resolve));
+          if (disposed) return;
+          const replaced = generation !== undefined && previousGeneration !== undefined && generation !== previousGeneration;
+          if (!replaced) {
+            terminal.write(TERMINAL_FULL_RESET);
+            return;
+          }
+          const restarted = generation - previousGeneration > CONSOLE_RESTART_GENERATION_GAP;
+          const time = new Date().toLocaleTimeString(localeRef.current ?? "en", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+          const label = getT(localeRef.current)(restarted ? "terminal.session.consoleRestarted" : "terminal.session.replaced", { time });
+          terminal.write(`${staleTranscript(terminal)}\r\n\x1b[90m── ${label} ──\x1b[0m\r\n`);
+        },
         onControlLockChange: (lock) => { setControlLocked(lock === "locked"); },
         onStatus: (nextStatus, message) => {
+          if (nextStatus === "live") setHadLive(true);
           setStatus({ kind: nextStatus, code: message });
         },
       });
       connectionRef.current = connection;
+      acknowledgeOutput = (bytes) => connection.acknowledge(bytes);
 
       // 여기에 terminal.refresh(0, rows-1)를 두지 않는다. 격자가 바뀌었으면 xterm이 resize 경로에서
       // 이미 전체 refresh를 예약했고(RenderService가 bufferService.onResize와 handleResize 양쪽에서),
@@ -702,6 +732,19 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
     if (!keyPanelOpenRef.current) terminalRef.current?.focus();
     scrollFollowRef.current?.resumeFollowing();
   }, [active, keyboardFocusRequestId, inputReadyEpoch]);
+
+  // 흐름 제어는 화면에 보이며 활성인 Shell에만 건다. 숨은·비활성 표면은 출력을 느리게 파싱하므로, 거기서
+  // PTY를 멈추면 화면이 없는 동안 빌드 같은 자식 프로세스가 느려진다. Agent 터미널은 건드리지 않는다.
+  useEffect(() => {
+    connectionRef.current?.setFlowControl(surface === "shell" && active !== false && visible);
+  }, [surface, active, visible, mountedTerminalEpoch]);
+
+  // 끊긴 동안 친 키는 갈 곳이 없다 — 조용히 버리지 않고 입력 자체를 잠근다(K-10). 관전은 따로 다룬다.
+  const inputLocked = hadLive && (status.kind === "connecting" || status.kind === "failed");
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (terminal) terminal.options.disableStdin = inputLocked;
+  }, [inputLocked, mountedTerminalEpoch]);
 
   // 갱신 주기 변경도 렌더러 전환처럼 세션을 끊지 않고 살아 있는 터미널에 바로 적용된다.
   // mountedTerminalEpoch는 비동기 마운트가 끝난 뒤 새 스케줄러에 현재 설정을 다시 흘려보내기 위한 것이다.
@@ -898,7 +941,9 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         ) : null}
         <div className="terminal-viewport">
           <div className="terminal-canvas" ref={containerRef} style={zoomStyle} />
-          {copiedAt !== 0 && !isViewing ? (
+          {inputLocked ? (
+            <div className="terminal-copy-notice" role="status">{t("terminal.connection.inputLocked")}</div>
+          ) : copiedAt !== 0 && !isViewing ? (
             <div className="terminal-copy-notice" role="status">{t("terminal.selection.copied")}</div>
           ) : linkNotice !== null ? (
             <div className="terminal-copy-notice" role="status">{linkNotice}</div>
@@ -1404,7 +1449,7 @@ export function createTerminalOutputScheduler(
   terminal: XtermTerminal,
   initiallyActive: boolean,
   initialInactiveFlushMs: number,
-  afterOutputParsing: () => void,
+  afterOutputParsing: (parsedBytes: number) => void,
 ): TerminalOutputScheduler {
   let active = initiallyActive;
   let inactiveFlushMs = initialInactiveFlushMs;
@@ -1441,10 +1486,16 @@ export function createTerminalOutputScheduler(
     pendingBytes = 0;
     writeSeq += 1;
     const seq = writeSeq;
+    const parsedBytes = output.byteLength;
     terminal.write(output, () => {
       parsedSeq = seq;
-      runPendingDrains();
-      if (!disposed) afterOutputParsing();
+      // xterm은 write 콜백을 쓰기 큐를 한 칸 넘기기 **전에** 부른다. 그 안에서 resize(fit)가 일어나면
+      // resize의 flushSync가 방금 파싱한 같은 청크를 다시 파싱해 출력이 두 번 쓰인다 — 재생 끝(drain)이
+      // 모드 복원과 fit을 부르는 새로고침·재부착 경로가 바로 그것이었다(S-05). 콜백 밖으로 미룬다.
+      queueMicrotask(() => {
+        runPendingDrains();
+        if (!disposed) afterOutputParsing(parsedBytes);
+      });
     });
   };
 
@@ -1535,4 +1586,31 @@ function describeFileLinkOutcome(outcome: TerminalFileLinkOutcome, locale?: Cons
     case "unsupported": return t("terminal.fileLink.unsupported");
     default: return t("terminal.fileLink.failed");
   }
+}
+
+/** RIS — 화면·스크롤백·모드를 모두 처음으로. 다시 붙은 재생이 같은 PTY의 화면을 처음부터 다시 그린다. */
+const TERMINAL_FULL_RESET = "\x1bc";
+/**
+ * Shell 세대는 서버 기동 시각(ms)에서 출발해 PTY마다 1씩 오른다. 같은 서버 안에서는 1씩, 재시작을 넘으면
+ * 기동 시각 차이만큼 뛴다 — 이 간격보다 크게 뛰면 Console이 다시 시작된 것으로 본다.
+ */
+const CONSOLE_RESTART_GENERATION_GAP = 1_000;
+
+/**
+ * 앞 셸의 화면을 흐린 글자로 다시 쓴다. 색은 잃지만 무엇이 지나갔는지는 남고, 새 셸의 출력과 섞여
+ * 읽히지 않는다. 줄바꿈으로 이어진(wrapped) 줄은 한 줄로 합쳐 새 폭에 다시 접히게 한다.
+ */
+function staleTranscript(terminal: XtermTerminal): string {
+  const buffer = terminal.buffer.normal;
+  const lines: string[] = [];
+  for (let y = 0; y < buffer.length; y += 1) {
+    const line = buffer.getLine(y);
+    if (!line) continue;
+    const text = line.translateToString(true);
+    if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += text;
+    else lines.push(text);
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  const body = lines.map((line) => line.replace(/[\x00-\x1f\x7f]/g, "")).join("\r\n");
+  return `${TERMINAL_FULL_RESET}\x1b[2m${body}\x1b[0m`;
 }

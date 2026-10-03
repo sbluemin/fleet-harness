@@ -210,13 +210,19 @@ export function ExpandedSurfaceLayer() {
 
   // Esc는 포커스된 페인 하나만 닫는다. 표면 내부의 보조 표면(찾기·오버레이)이 먼저
   // 먹을 기회를 갖도록 버블 단계에서 듣는다 — 페인이 stopPropagation으로 가져간다.
+  // 키가 작업면 **안에서** 눌렸을 때만 닫는다(S-07). 사이드바 메뉴·다른 입력창·빈 본문에서 누른 Esc는
+  // 그 자리의 것을 닫으려는 뜻이다 — 예전처럼 "포커스된 페인이 없으면 마지막 페인"으로 떨어지면 메뉴와
+  // Shell이 함께 닫힌다. 작업면 안이어도 메뉴·대화상자 안의 Esc는 그 메뉴의 몫이다.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if (event.key === "Escape") {
+        const origin = event.target instanceof Element ? event.target : null;
+        if (!origin?.closest(".expanded-surface")) return;
+        if (origin.closest('[role="menu"], [role="listbox"], [role="dialog"], [aria-modal="true"]')) return;
         const index = focusedExpandedSurfaceIndex();
-        const target = index === -1 ? instances[instances.length - 1] : instances[index];
+        const target = index === -1 ? undefined : instances[index];
         if (!target) return;
         event.preventDefault();
         closeExpandedSurface(target.instanceId);

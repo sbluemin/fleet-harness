@@ -4,7 +4,7 @@ import type { ShellOpenAtResult } from "@fleet-console/sdk/navigation";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { getT } from "../../agent/i18n/index.js";
-import { useShellSession, type ShellSessionState } from "./shell-session-store.js";
+import { getShellSessionSnapshot, useShellSession, type ShellSessionState } from "./shell-session-store.js";
 
 /**
  * Shell이 지금 어느 Theater에 서 있는지(K-02 B). Shell은 콘솔에 하나라 활성 Theater를 따라 움직이지
@@ -32,7 +32,15 @@ type BandStatus =
   | { readonly kind: "idle" }
   | { readonly kind: "pending" }
   | { readonly kind: "confirm-restart" }
-  | { readonly kind: "refused"; readonly message: string };
+  | {
+      readonly kind: "refused";
+      readonly message: string;
+      /** 거절을 받은 순간의 Shell 상태. 이보다 새 상태가 프롬프트를 말하면 거절은 지난 일이다. */
+      readonly session: ShellSessionState | null;
+    };
+
+/** 지난 거절 문구가 띠에 머무는 상한. 상태 push가 없는 경우(같은 상태의 중복 제거)에도 결국 걷힌다. */
+const REFUSAL_TTL_MS = 8_000;
 
 /**
  * 활성 Theater와 Shell 위치가 갈렸을 때만 서는 띠. 옮기기는 프롬프트에서만 하고(서버가 판정한다),
@@ -51,6 +59,18 @@ export function ShellTheaterBand({ ctx }: { readonly ctx: ExpandedSurfaceContext
     if (!mismatch) setStatus({ kind: "idle" });
   }, [mismatch]);
 
+  // 거절 뒤에 셸이 새 프롬프트를 그렸으면(프로그램이 끝났거나 Ctrl+C) 그 거절은 더 이상 사실이 아니다(N4-03).
+  // 새 프롬프트는 서버가 133;A 시점에 내보내는 상태로 온다. 그런 push가 없더라도 일정 시간 뒤에는 걷는다.
+  React.useEffect(() => {
+    if (status.kind !== "refused") return;
+    if (session && session !== status.session && session.atPrompt) {
+      setStatus({ kind: "idle" });
+      return;
+    }
+    const timer = setTimeout(() => setStatus({ kind: "idle" }), REFUSAL_TTL_MS);
+    return () => clearTimeout(timer);
+  }, [session, status]);
+
   if (!mismatch || !activeTheaterId) return null;
   const active = theaters.find((item) => item.id === activeTheaterId)?.label ?? activeTheaterId;
   const mismatchText = mismatch.theaterId
@@ -59,15 +79,15 @@ export function ShellTheaterBand({ ctx }: { readonly ctx: ExpandedSurfaceContext
 
   const settle = (result: ShellOpenAtResult) => {
     if (result.ok) setStatus({ kind: "idle" });
-    else setStatus({ kind: "refused", message: describeRefusal(result.reason, t) });
+    else setStatus({ kind: "refused", message: describeRefusal(result.reason, t), session: getShellSessionSnapshot() });
   };
   const move = () => {
     setStatus({ kind: "pending" });
-    ctx.shell.openAt({ theaterId: activeTheaterId }).then(settle, () => setStatus({ kind: "refused", message: t("terminal.shell.failed") }));
+    ctx.shell.openAt({ theaterId: activeTheaterId }).then(settle, () => setStatus({ kind: "refused", message: t("terminal.shell.failed"), session: getShellSessionSnapshot() }));
   };
   const restart = () => {
     setStatus({ kind: "pending" });
-    ctx.shell.restartAt({ theaterId: activeTheaterId }).then(settle, () => setStatus({ kind: "refused", message: t("terminal.shell.failed") }));
+    ctx.shell.restartAt({ theaterId: activeTheaterId }).then(settle, () => setStatus({ kind: "refused", message: t("terminal.shell.failed"), session: getShellSessionSnapshot() }));
   };
   const pending = status.kind === "pending";
   const fullMessage = status.kind === "confirm-restart"
