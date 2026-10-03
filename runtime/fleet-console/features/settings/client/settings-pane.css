@@ -30,6 +30,8 @@
 .settings-pane .global-settings-card > .global-settings-row:has(+ .global-settings-row) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .settings-pane :is(.appearance-controls, .fc-settings-card__body, .settings-group-surface) > :is(p, .global-settings-help, .global-settings-error) { padding: 10px 14px; margin: 0; }
 .settings-pane .global-settings-row.is-stack { flex-direction: column; align-items: stretch; }
+/* 가로 행의 170px는 폭 기준이다. 세로 행에서는 본문 높이를 내용에 맡긴다. */
+.settings-pane .global-settings-row.is-stack > .global-settings-row-text { flex: 0 1 auto; }
 .settings-pane .appearance-controls > .global-settings-row.is-stack > .global-settings-row-text { display: none; }
 .settings-pane .theme-grid { grid-template-columns: repeat(auto-fit, minmax(min(112px, 100%), 1fr)); gap: 10px; width: 100%; }
 .settings-pane .theme-card { min-width: 0; padding: 6px 6px 8px; border-radius: var(--radius-md); border-color: var(--hairline); background: none; box-shadow: none; }
@@ -37,13 +39,14 @@
 .settings-pane .theme-card-swatch { min-width: 0; height: 32px; }
 .settings-pane .theme-card-label { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .settings-pane .theme-card-polarity { letter-spacing: 0; text-transform: none; }
-.settings-pane :is(.segmented, .backend-api-facets) { display: flex; flex-wrap: wrap; gap: 4px 14px; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; box-shadow: none; overflow: visible; }
-.settings-pane .segmented-thumb { display: none; }
-.settings-pane :is(.segmented-option, .backend-api-facet) { min-width: 0; padding: 4px 0; border: 0; border-radius: 0; background: none; box-shadow: none; font-family: var(--font-ui); font-size: var(--t-md); letter-spacing: 0; }
-.settings-pane :is(.segmented-option, .backend-api-facet):is(.is-active, [aria-pressed="true"]) { background: none; box-shadow: none; color: var(--text-primary); font-weight: var(--weight-medium); text-decoration: underline 2px var(--brass); text-underline-offset: 6px; }
+/* 글자형 범위 선택만 평평하게 만든다. 모델·강도 결합 컨트롤의 테두리와 선택 다텀은 보존한다. */
+.settings-pane :is(.segmented:not(.fc-model-picker__effort), .backend-api-facets) { display: flex; flex-wrap: wrap; gap: 4px 14px; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; box-shadow: none; overflow: visible; }
+.settings-pane .segmented:not(.fc-model-picker__effort) > .segmented-thumb { display: none; }
+.settings-pane :is(.segmented:not(.fc-model-picker__effort) > .segmented-option, .backend-api-facet) { min-width: 0; padding: 4px 0; border: 0; border-radius: 0; background: none; box-shadow: none; font-family: var(--font-ui); font-size: var(--t-md); letter-spacing: 0; }
+.settings-pane :is(.segmented:not(.fc-model-picker__effort) > .segmented-option, .backend-api-facet):is(.is-active, [aria-pressed="true"]) { background: none; box-shadow: none; color: var(--text-primary); font-weight: var(--weight-medium); text-decoration: underline 2px var(--brass); text-underline-offset: 6px; }
 .settings-pane :is(.fc-select, .fc-model-picker) { min-width: 0; max-width: 100%; }
 .settings-pane :is(.fc-select__trigger, .fc-model-picker__trigger) { min-width: 0; max-width: 100%; }
-.settings-pane :is(.fc-select__value, .fc-model-picker__name) { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.settings-pane :is(.fc-select__value, .fc-model-picker__name) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
 .settings-pane .fc-settings-slider { flex: 1 1 160px; width: auto; max-width: 300px; flex-wrap: wrap; gap: 6px; margin-left: auto; }
 .settings-pane .fc-settings-slider__range { width: auto; min-width: 44px; flex: 1 1 56px; }
 .settings-pane .fc-settings-reset { padding: 3px 0; border: 0; background: none; color: var(--text-tertiary); box-shadow: none; font-size: var(--t-xs); letter-spacing: 0; }
@@ -56,6 +59,7 @@
 .settings-pane :is(.ai-gateway-model-name, .agent-cli-name, .ai-gateway-provider-name) { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .settings-pane .ai-gateway-roster-head { gap: 8px; }
 .settings-pane .backend-api-section-heading { letter-spacing: 0; text-transform: none; }
+.settings-pane .console-port-effective-label { font-size: var(--t-sm); font-weight: var(--weight-regular); letter-spacing: 0; text-transform: none; }
 .settings-font-controls { display: flex; align-items: center; justify-content: flex-end; gap: 4px 10px; flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
 .settings-font-trigger { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-primary); font: var(--weight-regular) var(--t-md)/1.45 var(--font-ui); cursor: pointer; }
 .settings-font-trigger > span { min-width: 0; overflow-wrap: anywhere; text-align: right; }
@@ -89,7 +93,15 @@
 .settings-font-popover .fc-font-browser__row-status { white-space: normal; }
 @container (max-width: 380px) {
   .settings-pane .settings-font-controls { flex-wrap: wrap; }
-  .settings-pane .fc-settings-row__control { flex-wrap: wrap; }
+  .settings-pane :is(.fc-settings-row__control, .experiments-row-controls) { flex-wrap: wrap; }
+}
+/* 최소 레일에서는 모델과 강도를 한 물건인 채 위아래로 잇는다. 모델 이름 폭을 0으로
+   줄여 강도 세 칸을 남기지 않고, 선택기 전체가 행 아래로 내려가도록 한다. */
+@container (max-width: 300px) {
+  .settings-pane .fc-model-picker.has-effort { flex-direction: column; }
+  .settings-pane .fc-model-picker.has-effort .fc-model-picker__select { flex: 0 1 auto; width: 100%; }
+  .settings-pane .fc-model-picker.has-effort .fc-model-picker__trigger { border-start-end-radius: var(--radius-pill); border-end-start-radius: 0; border-end-end-radius: 0; }
+  .settings-pane .fc-model-picker__effort { margin-inline-start: 0; margin-block-start: -1px; min-width: 0; justify-content: center; border-start-end-radius: 0; border-end-start-radius: var(--radius-pill); }
 }
 
 /* grid의 auto 트랙은 긴 API 그룹 이름의 min-content 폭을 부모 밖으로 밀 수 있다.
