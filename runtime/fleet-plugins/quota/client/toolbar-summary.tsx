@@ -165,7 +165,7 @@ export function placePopover(anchor: { readonly left: number; readonly width: nu
 
 /**
  * 사용 한도 팝업 — document.body로 포털한다. 도구모음은 서랍을 접고 펼 때 가로를 잘라 내므로(overflow)
- * 그 안에 두면 팝업이 잘린다. 자리는 버튼의 화면 좌표로 잡고, 창 크기나 버튼 폭이 바뀌면 다시 잡는다.
+ * 그 안에 두면 팝업이 잘린다. 자리는 버튼의 화면 좌표로 잡고, 창 크기나 버튼 상자가 바뀌면(Zen 전환으로 옮겨 가도) 다시 잡는다.
  * Console 어디든(팝업과 버튼 자신은 빼고) 누르면 닫히고, Esc로 닫으면 포커스가 버튼으로 돌아간다.
  */
 function QuotaPopover({ id, anchorRef, locale, onClose }: {
@@ -188,18 +188,22 @@ function QuotaPopover({ id, anchorRef, locale, onClose }: {
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
     if (!anchor) return;
-    const place = () => {
+    // 버튼은 크기가 그대로인 채 자리만 옮겨 갈 수 있다(Zen을 켜고 끄면 도구모음 노드가 상단 밴드와 Zen 바
+    // 사이를 통째로 옮겨 간다). 창 크기·버튼 크기 신호로는 그 이동을 듣지 못하므로, 열려 있는 동안만 프레임마다
+    // 버튼 상자와 뷰포트를 비교해 달라졌을 때만 다시 잡는다.
+    let last = "";
+    let frame = 0;
+    const track = () => {
       const rect = anchor.getBoundingClientRect();
-      setPlacement(placePopover(rect, { width: window.innerWidth, height: window.innerHeight }));
+      const key = `${rect.left},${rect.top},${rect.width},${rect.height},${window.innerWidth},${window.innerHeight}`;
+      if (key !== last) {
+        last = key;
+        setPlacement(placePopover(rect, { width: window.innerWidth, height: window.innerHeight }));
+      }
+      frame = window.requestAnimationFrame(track);
     };
-    place();
-    window.addEventListener("resize", place);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
-    observer?.observe(anchor);
-    return () => {
-      window.removeEventListener("resize", place);
-      observer?.disconnect();
-    };
+    track();
+    return () => window.cancelAnimationFrame(frame);
   }, [anchorRef]);
 
   const placed = placement !== null;
