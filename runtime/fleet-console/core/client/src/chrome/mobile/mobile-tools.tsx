@@ -83,14 +83,15 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
         else capabilities.rail.open(choice.entry.id);
       }}>
         <span aria-hidden="true">{choice ? (typeof choice.entry.icon === "function" ? choice.entry.icon() : choice.entry.icon) : null}</span>
-        <strong>{t(`mobile.tools.${key}`)}</strong><span aria-hidden="true">›</span>
+        <strong>{key === "files" && choice ? resolveLocalizedText(choice.entry.title, language) : t(`mobile.tools.${key}`)}</strong><span aria-hidden="true">›</span>
       </button>)}
     </section>;
   }
 
   const title = binding ? resolveLocalizedText(binding.entry.title, language)
     : instance?.surfaceId === "shell" ? t("mobile.tools.shell") : instance?.surfaceId === "codex" ? t("mobile.tools.wiki") : t("mobile.tools.title");
-  return <section className="mobile-tool-sheet" aria-label={title}>
+  // 플러그인 CSS에 공개하는 배치 신호 — 내부 호스트 클래스 대신 시트 문맥만 판별한다.
+  return <section className="mobile-tool-sheet" data-host-surface="mobile-sheet" aria-label={title}>
     <header className="mobile-tool-sheet-bar">
       <button type="button" ref={backRef} onClick={back} aria-label={t("mobile.tools.back")}>‹ <span>{t("mobile.tools.back")}</span></button>
       <h1>{title}</h1>
