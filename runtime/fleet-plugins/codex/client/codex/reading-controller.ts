@@ -159,7 +159,7 @@ export function mountReadingInto(
   let batchBusy = false;
   let batchReason = "";
   let batchNotice = "";
-  let batchProblems: string[] = [];
+  let batchProblems: Array<{ label: string; conflictId?: string }> = [];
   let diffMode: "changes" | "full" = "changes";
   let detailDiffBlocks: readonly DraftBlock[] | null = null;
   let detailProposedToc = "";
@@ -214,14 +214,18 @@ export function mountReadingInto(
     const deleteButton = target.closest<HTMLButtonElement>("[data-entry-stage-delete]");
     if (deleteButton && currentEntryId) {
       event.preventDefault();
+      if (staleKind === "deleted") return;
+      const entryId = currentEntryId, theaterId = liveOpts.theaterId, epoch = entryRequestEpoch;
       const errorLabel = readContainer.querySelector<HTMLElement>("[data-entry-delete-error]");
       if (errorLabel) errorLabel.textContent = "";
       deleteButton.disabled = true;
-      void stageEntryDeletion(liveOpts.theaterId, currentEntryId).then(({ patchId }) => {
-        liveOpts.onPatchOpen?.(patchId);
+      void stageEntryDeletion(theaterId, entryId).then(({ patchId }) => {
+        if (!destroyed && epoch === entryRequestEpoch && entryId === currentEntryId && theaterId === liveOpts.theaterId) liveOpts.onPatchOpen?.(patchId);
       }).catch((error: unknown) => {
-        deleteButton.disabled = false;
-        if (errorLabel) errorLabel.textContent = error instanceof Error ? error.message : String(error);
+        if (destroyed || epoch !== entryRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
+        if (error instanceof CodexRequestError && error.status === 404) showStaleNotice("deleted");
+        else deleteButton.disabled = false;
+        if (errorLabel) errorLabel.textContent = patchActionMessage(error instanceof CodexRequestError ? error.code : "", "codex.reading.deleteActionFailed");
       });
       return;
     }
@@ -300,6 +304,8 @@ export function mountReadingInto(
       return;
     }
 
+    const conflictPanelTab = target.closest<HTMLElement>("[data-conflict-panel-tab]");
+    if (conflictPanelTab) { event.preventDefault(); selectConflictPanel(conflictPanelTab.dataset.conflictPanelTab); return; }
     const conflictActionBtn = target.closest<HTMLElement>("[data-conflict-action]");
     if (conflictActionBtn) {
       event.preventDefault();
@@ -381,7 +387,7 @@ export function mountReadingInto(
       batchProblems = result.results.filter(item => item.outcome === "skipped" || item.outcome === "failed").map(item => {
         const proposal = chosen.find(candidate => candidate.id === item.id);
         const name = proposal ? `${proposal.target ?? proposal.id} · ${localizedQueueSummary(proposal, consoleT())}` : item.id;
-        return `${name}: ${consoleT()(item.error === "stale_base" ? "codex.reading.staleBadge" : item.outcome === "skipped" ? "codex.reading.batchSkipped" : "codex.reading.batchFailed")}`;
+        return { label: `${name}: ${patchActionMessage(item.error ?? "", item.outcome === "skipped" ? "codex.reading.batchSkipped" : "codex.reading.batchFailed")}`, conflictId: item.conflictId };
       });
       batchBusy = false;
       batchAction = null;
@@ -393,6 +399,27 @@ export function mountReadingInto(
       batchBusy = false;
       redrawQueueList();
     }).finally(() => { batchBusy = false; });
+  }
+
+  function selectConflictPanel(panel: string | undefined): void {
+    if (!panel || !["base", "current", "proposed"].includes(panel)) return;
+    const comparison = readContainer.querySelector<HTMLElement>(".conflict-comparison");
+    if (!comparison) return;
+    comparison.dataset.activePanel = panel;
+    readContainer.querySelectorAll<HTMLButtonElement>("[data-conflict-panel-tab]").forEach(tab => { const active = tab.dataset.conflictPanelTab === panel; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
+  }
+
+  function handleComparisonKeyDown(event: KeyboardEvent): void {
+    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey || !(event.target instanceof Element)) return;
+    const tab = event.target.closest<HTMLButtonElement>("[data-conflict-panel-tab]");
+    if (!tab) return;
+    const tabs = Array.from(readContainer.querySelectorAll<HTMLButtonElement>("[data-conflict-panel-tab]"));
+    const index = tabs.indexOf(tab);
+    const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault(); event.stopPropagation();
+    selectConflictPanel(tabs[next]!.dataset.conflictPanelTab);
+    tabs[next]!.focus({ preventScroll: true });
   }
 
   function handleBatchInput(event: Event): void {
@@ -418,7 +445,11 @@ export function mountReadingInto(
       return;
     }
     if (action !== "confirm" || !conflictAction) return;
-    if (!conflictNote.trim()) { conflictError = consoleT()("codex.reading.rejectReasonRequired"); redrawConflictControls(); return; }
+    if (!conflictNote.trim()) {
+      conflictError = consoleT()(conflictAction === "reject" ? "codex.reading.rejectReasonRequired" : conflictAction === "repropose" ? "codex.reading.reproposeReasonRequired" : "codex.reading.resolveReasonRequired");
+      redrawConflictControls();
+      return;
+    }
     const detail = currentConflict, selected = conflictAction, theaterId = liveOpts.theaterId;
     const epoch = subRequestEpoch;
     conflictBusy = true;
@@ -548,6 +579,7 @@ export function mountReadingInto(
 
   readContainer.addEventListener("click", handleClick);
   readContainer.addEventListener("input", handleBatchInput);
+  readContainer.addEventListener("keydown", handleComparisonKeyDown);
 
   function installSpy(article: HTMLElement, items: TocItem[]): void {
     cleanupSpy?.();
@@ -709,6 +741,10 @@ export function mountReadingInto(
     // 결정 사실은 단순 갱신보다 강한 소식이다 — 한 번 켜지면 갱신 문구로 내려가지 않는다.
     if ((staleKind === "decided" || staleKind === "deleted") && kind === "updated") return;
     staleKind = kind;
+    if (kind === "deleted") {
+      readContainer.querySelector<HTMLButtonElement>("[data-entry-stage-delete]")?.setAttribute("disabled", "");
+      coworkController?.setWriteBlocked(true);
+    }
     const t = consoleT();
     const label = kind === "deleted" ? t("codex.reading.staleDeleted") : kind === "decided" ? t("codex.reading.staleDecided") : t("codex.reading.staleUpdated");
     const action = kind === "deleted" ? t("common.close") : kind === "decided" ? t("codex.reading.staleSeeResult") : t("codex.reading.staleReload");
@@ -1008,6 +1044,7 @@ export function mountReadingInto(
       schemaRequestEpoch += 1;
       readContainer.removeEventListener("click", handleClick);
       readContainer.removeEventListener("input", handleBatchInput);
+      readContainer.removeEventListener("keydown", handleComparisonKeyDown);
       document.removeEventListener(CODEX_LIVE_CHANGED_EVENT, handleLiveChanged);
       linkPreview.destroy();
       fileLinks.destroy();
@@ -1066,8 +1103,21 @@ function showLoading(readContainer: HTMLElement, tocContainer: HTMLElement): voi
   tocContainer.innerHTML = "";
 }
 
+function patchActionMessage(code: string, fallback: CoreMessageKey): string {
+  const t = consoleT();
+  switch (code) {
+    case "create_target_exists": return t("codex.reading.createTargetExists");
+    case "update_target_missing": case "delete_target_missing": case "entry_not_found": case "not_found": return t("codex.reading.entryUnavailable");
+    case "invalid_patch": return t("codex.reading.invalidProposal");
+    case "patch_busy": return t("codex.reading.patchBusy");
+    case "patch_not_pending": case "patch_not_found": return t("codex.reading.patchNotPending");
+    case "stale_base": return t("codex.reading.staleBadge");
+    default: return t(fallback);
+  }
+}
+
 function showError(readContainer: HTMLElement, tocContainer: HTMLElement, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = error instanceof CodexRequestError ? patchActionMessage(error.code, "codex.reading.requestFailed") : error instanceof Error ? error.message : String(error);
   readContainer.innerHTML = `<div class="codex-reader-error" role="alert">${escapeHtml(message)}</div>`;
   tocContainer.innerHTML = "";
 }
@@ -1150,14 +1200,14 @@ interface QueueBatchState {
   busy: boolean;
   reason: string;
   notice: string;
-  problems: readonly string[];
+  problems: readonly { label: string; conflictId?: string }[];
 }
 
 function renderBatchControls(items: readonly DrydockListItem[], state: QueueBatchState): string {
   const t = consoleT();
   const selected = items.filter(item => state.selected.has(item.id));
   const stale = selected.filter(item => !!item.baseConflict).length;
-  const status = state.notice ? `<p role="status">${escapeHtml(state.notice)}</p>${state.problems.length ? `<ul>${state.problems.map(problem => `<li>${escapeHtml(problem)}</li>`).join("")}</ul>` : ""}` : "";
+  const status = state.notice ? `<p role="status">${escapeHtml(state.notice)}</p>${state.problems.length ? `<ul>${state.problems.map(problem => `<li>${escapeHtml(problem.label)}${problem.conflictId ? ` <button type="button" class="queue-action-btn" data-conflict-id="${escapeAttribute(problem.conflictId)}">${escapeHtml(t("codex.reading.reviewConflict"))}</button>` : ""}</li>`).join("")}</ul>` : ""}` : "";
   if (state.busy) return `<p role="status" aria-busy="true">${escapeHtml(t("codex.reading.processingAria"))}</p>`;
   const count = state.action === "approve" ? selected.length - stale : selected.length;
   if (state.action) return `${status}<p>${escapeHtml(t(state.action === "approve" ? "codex.reading.batchApproveConfirm" : "codex.reading.batchRejectConfirm", { count, skipped: stale }))}</p>
@@ -1495,7 +1545,7 @@ function renderConflictDetail(detail: ConflictDetailResponse): string {
   const t = consoleT();
   const status = conflictStatusLabel(detail.status ?? detail.meta?.status as string | undefined, t);
   return `
-    <article class="document">
+    <article class="document document--conflict">
       <header class="document-header">
         <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.conflicts"))}</span></li></ol>
@@ -1505,9 +1555,7 @@ function renderConflictDetail(detail: ConflictDetailResponse): string {
         <p class="eyebrow">${escapeHtml(t("codex.reading.conflictEyebrow", { status }))}</p>
       </header>
       <section data-conflict-controls></section>
-      <div class="markdown-body">
-        ${renderConflictComparison(detail, t)}
-      </div>
+      ${renderConflictComparison(detail, t)}
     </article>
   `;
 }
@@ -1525,8 +1573,10 @@ function renderConflictControls(detail: ConflictDetailResponse, action: "reject"
 
 function renderConflictComparison(detail: ConflictDetailResponse, t: T): string {
   const body = (markdown: string) => markdown.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n)?/u, "");
-  const panel = (label: string, markdown: string | null | undefined) => `<section class="conflict-compare-panel"><h2>${escapeHtml(label)}</h2>${markdown ? renderMarkdown(body(markdown), { ...markdownCopyOptions(t), resolveWikiLink: entryPath, resolveLink: resolveCodexFileLink }).html + `<details><summary>${escapeHtml(t("codex.reading.conflictSource"))}</summary><pre><code>${escapeHtml(markdown)}</code></pre></details>` : `<p>${escapeHtml(t("codex.reading.conflictSnapshotMissing"))}</p>`}</section>`;
-  const panels = `<div class="conflict-comparison">${panel(t("codex.reading.conflictBase"), detail.base)}${panel(t("codex.reading.current"), detail.current)}${panel(t("codex.reading.proposed"), detail.proposed)}</div>`;
+  const panel = (label: string, markdown: string | null | undefined, key?: string) => `<section class="conflict-compare-panel"${key ? ` id="conflict-panel-${key}" data-conflict-panel="${key}" role="tabpanel" aria-labelledby="conflict-tab-${key}"` : ""}><h2>${escapeHtml(label)}</h2><div class="markdown-body">${markdown ? renderMarkdown(body(markdown), { ...markdownCopyOptions(t), resolveWikiLink: entryPath, resolveLink: resolveCodexFileLink }).html + `<details><summary>${escapeHtml(t("codex.reading.conflictSource"))}</summary><pre><code>${escapeHtml(markdown)}</code></pre></details>` : `<p>${escapeHtml(t("codex.reading.conflictSnapshotMissing"))}</p>`}</div></section>`;
+  const labels = [["base", t("codex.reading.conflictBase")], ["current", t("codex.reading.current")], ["proposed", t("codex.reading.proposed")]] as const;
+  const tabs = `<div class="conflict-panel-tabs" role="tablist" aria-label="${escapeAttribute(t("codex.reading.conflictCompareAria"))}">${labels.map(([key, label]) => `<button id="conflict-tab-${key}" type="button" role="tab" data-conflict-panel-tab="${key}" aria-controls="conflict-panel-${key}" aria-selected="${String(key === "base")}" tabindex="${key === "base" ? "0" : "-1"}">${escapeHtml(label)}</button>`).join("")}</div>`;
+  const panels = `${tabs}<div class="conflict-comparison" data-active-panel="base">${panel(t("codex.reading.conflictBase"), detail.base, "base")}${panel(t("codex.reading.current"), detail.current, "current")}${panel(t("codex.reading.proposed"), detail.proposed, "proposed")}</div>`;
   const diff = detail.current && detail.proposed ? `<details class="conflict-diff"><summary>${escapeHtml(t("codex.cowork.viewDiff"))}</summary>${renderDiffBlocks(diffDraftBlocks(body(detail.current), body(detail.proposed)), "full")}</details>` : "";
   const historical = !detail.current && detail.currentAtConflict ? `<details><summary>${escapeHtml(t("codex.reading.conflictCaptured"))}</summary>${panel(t("codex.reading.conflictCaptured"), detail.currentAtConflict)}</details>` : "";
   return panels + diff + historical;
@@ -1551,6 +1601,13 @@ function copyCodeToClipboard(button: HTMLElement, code: string): void {
   }).catch(() => undefined);
 }
 
+function conflictCreatedLabel(item: ConflictListItem): string {
+  const time = Date.parse(item.createdAt ?? "");
+  if (!Number.isFinite(time)) return "";
+  const at = new Date(time).toLocaleString(consoleLocale(), { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 });
+  return consoleT()("codex.reading.conflictCreatedAt", { at });
+}
+
 function renderConflictList(conflicts: ConflictListItem[]): string {
   const t = consoleT();
   if (conflicts.length === 0) {
@@ -1567,10 +1624,11 @@ function renderConflictList(conflicts: ConflictListItem[]): string {
             .map(
               (item) =>
                 `<li class="queue-item">
-                  <button class="queue-row conflict-row" type="button" data-conflict-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("codex.reading.openConflict", { title: item.title || item.id }))}">
+                  <button class="queue-row conflict-row" type="button" data-conflict-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute([t("codex.reading.openConflict", { title: item.title || item.id }), conflictCreatedLabel(item)].filter(Boolean).join(" · "))}">
                     <span class="queue-row-body">
                       <strong class="queue-row-target">${escapeHtml(item.title || item.id)}</strong>
                       <span class="eyebrow">${escapeHtml(conflictStatusLabel(item.status, t))}</span>
+                      ${item.createdAt ? `<span class="queue-row-meta">${escapeHtml(conflictCreatedLabel(item))}</span>` : ""}
                     </span>
                   </button>
                 </li>`,

@@ -746,6 +746,14 @@ async function runBatchDecision(request: IncomingMessage, response: ServerRespon
   if (action === "reject" && !reason) return sendJson(response, 400, { error: "reason_required" });
   if (reason.length > MAX_REASON_LENGTH) return sendJson(response, 400, { error: "reason_too_long" });
   const results: DrydockBatchResult[] = [];
+  const conflictLink = async (id: string): Promise<{ conflictId?: string }> => {
+    try {
+      if (!await resolveSafeQueuePath(id, context.paths.queueDir)) return {};
+      const linked = (await showQueue(id, context.paths)).meta.conflictId;
+      if (typeof linked === "string" && isSafeConflictId(linked) && await resolveSafeConflictDir(linked, context.paths)) return { conflictId: linked };
+    } catch { /* 충돌 조회 실패는 원래 항목의 실패 사유를 바꾸지 않는다. */ }
+    return {};
+  };
   for (const id of new Set<string>(patchIds)) {
     const key = `${context.workspaceId}:${id}`;
     if (patchActionLocks.has(key)) { results.push({ id, outcome: "skipped", error: "patch_busy" }); continue; }
@@ -755,15 +763,15 @@ async function runBatchDecision(request: IncomingMessage, response: ServerRespon
         const { patch, meta } = await showQueue(id, context.paths);
         if (meta.status !== "pending") return { id, outcome: "skipped", error: "patch_not_pending" };
         // 낡은 제안은 승인 호출 전에 제외한다. 실패한 승인이 충돌을 새로 만들지 않는다.
-        if (action === "approve" && await readPatchBaseConflict(patch, meta, context.paths)) return { id, outcome: "skipped", error: "stale_base" };
+        if (action === "approve" && await readPatchBaseConflict(patch, meta, context.paths)) return { id, outcome: "skipped", error: "stale_base", ...await conflictLink(id) };
         if (action === "approve") await approvePatch(id, context.paths);
         else await rejectPatch(id, reason, context.paths);
         return { id, outcome: action === "approve" ? "approved" : "rejected" };
       } catch (error) {
-        if (error instanceof StalePatchBaseError) return { id, outcome: "skipped", error: "stale_base" };
+        if (error instanceof StalePatchBaseError) return { id, outcome: "skipped", error: "stale_base", ...await conflictLink(id) };
         const mapped = mapPatchError(error instanceof Error ? error.message : "");
         if (mapped?.error === "patch_not_found" || mapped?.error === "patch_not_pending") return { id, outcome: "skipped", error: "patch_not_pending" };
-        return { id, outcome: "failed", error: mapped?.error ?? "internal_error" };
+        return { id, outcome: "failed", error: mapped?.error ?? "internal_error", ...await conflictLink(id) };
       }
     })();
     patchActionLocks.set(key, operation);
@@ -1064,7 +1072,7 @@ async function listConflictSummaries(paths: MemoryPaths): Promise<ConflictListIt
           : typeof meta.target === "string"
             ? meta.target
             : id;
-      items.push({ id, title, updated, status, path: `conflicts/${id}` });
+      items.push({ id, title, updated, ...(typeof meta.createdAt === "string" ? { createdAt: meta.createdAt } : {}), status, path: `conflicts/${id}` });
     } catch {
       continue;
     }

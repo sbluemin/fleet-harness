@@ -97,7 +97,13 @@ describe("queue POST actions", () => {
     const batchRequest = (action: string, patchIds: string[], reason?: string) => fetch(`${baseUrl}/api/drydock/batch-decision`, { method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify({ action, patchIds, reason }) });
     const approved = await batchRequest("approve", [stale, fresh, failed, PENDING_PATCH_ID]);
     expect(approved.status).toBe(200);
-    expect(await approved.json()).toMatchObject({ results: [{ id: stale, outcome: "skipped", error: "stale_base" }, { id: fresh, outcome: "approved" }, { id: failed, outcome: "failed", error: "create_target_exists" }, { id: PENDING_PATCH_ID, outcome: "skipped", error: "patch_not_pending" }] });
+    const batch = await approved.json() as { results: Array<{ id: string; conflictId?: string }> };
+    expect(batch).toMatchObject({ results: [{ id: stale, outcome: "skipped", error: "stale_base" }, { id: fresh, outcome: "approved" }, { id: failed, outcome: "failed", error: "create_target_exists" }, { id: PENDING_PATCH_ID, outcome: "skipped", error: "patch_not_pending" }] });
+    const linked = batch.results.find(item => item.id === failed)?.conflictId;
+    expect(linked).toBeTruthy();
+    const conflictResponse = await fetch(`${baseUrl}/api/conflicts/${encodeURIComponent(linked!)}`);
+    expect(conflictResponse.status).toBe(200);
+    expect(await conflictResponse.json()).toMatchObject({ meta: { patchId: failed, title: "Collision" } });
     expect(await readFile(path.join(knowledge, "wiki", "batch-entry.md"), "utf8")).toContain("테스트 본문");
     expect(JSON.parse(await readFile(path.join(queue, stale, "meta.json"), "utf8"))).not.toHaveProperty("conflictId");
     expect((await batchRequest("reject", [stale, failed])).status).toBe(400);

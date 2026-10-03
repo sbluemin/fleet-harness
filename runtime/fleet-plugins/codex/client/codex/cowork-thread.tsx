@@ -58,6 +58,7 @@ export interface CoworkThreadState {
   readonly dirty: boolean;
   readonly applyBlocked?: boolean;
   readonly inputBlocked?: boolean;
+  readonly readOnly?: boolean;
   readonly changed: number;
   readonly draftVersion: number;
   readonly diffVisible: boolean;
@@ -290,14 +291,14 @@ function AnnotationPanel({ state, actions }: { readonly state: CoworkThreadState
             data-cowork-comment={card.id}
             aria-label={t("codex.cowork.commentAria")}
             placeholder={t("codex.cowork.addCommentPlaceholder")}
-            disabled={card.status === "sent"}
+            disabled={state.readOnly || card.status === "sent"}
             value={card.comment}
             onChange={(event) => actions.onCommentChange(card.id, event.target.value)}
             onBlur={actions.onCommentCommit}
           />
           <footer>
             <span className="cowork-card-status">{card.status === "sent" ? t("codex.cowork.statusSent") : card.status === "done" ? t("codex.cowork.statusDone") : t("codex.cowork.statusReady")}</span>
-            <button type="button" className="cowork-x" aria-label={t("codex.cowork.deleteAnnotation")} onClick={() => actions.onDeleteAnnotation(card.id)}>×</button>
+            <button type="button" className="cowork-x" aria-label={t("codex.cowork.deleteAnnotation")} disabled={state.readOnly} onClick={() => actions.onDeleteAnnotation(card.id)}>×</button>
           </footer>
         </article>
       ))}
@@ -418,6 +419,7 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
             value={state.promptText}
             placeholder={placeholder}
             aria-label={t("codex.cowork.instructionAria")}
+            disabled={state.readOnly}
             onChange={(event) => actions.onPromptChange(event.target.value)}
             onKeyDown={onKeyDown}
           />

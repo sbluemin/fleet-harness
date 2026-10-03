@@ -66,6 +66,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
   const switcherInputRef = useRef<HTMLInputElement>(null);
 
   const [progress, setProgress] = useState(0);
+  const [compact, setCompact] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>("none");
   const [switcherQuery, setSwitcherQuery] = useState("");
   const [switcherTag, setSwitcherTag] = useState<string | null>(null);
@@ -82,6 +83,24 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
 
   // W2: expand 전용 — reader != null && expanded의 경우에만 시트 표시
   const isOpen = reader !== null && expanded;
+
+  // 분할 표면의 실제 슬롯 폭을 기준으로 옆단과 도구 띠를 접는다. 뷰포트 폭만으로
+  // 판정하면 큰 화면의 작은 슬롯에서도 2열이 켜져 본문을 밀어낸다.
+  useEffect(() => {
+    if (!isOpen || !sheetRef.current) return;
+    const sheet = sheetRef.current;
+    const head = sheet.querySelector<HTMLElement>(".codex-reading-sheet-head");
+    const update = () => {
+      setCompact(sheet.getBoundingClientRect().width < 600);
+      if (head) sheet.style.setProperty("--codex-reader-head-height", `${head.getBoundingClientRect().height}px`);
+    };
+    update();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(sheet);
+    if (head) observer?.observe(head);
+    window.addEventListener("resize", update);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", update); };
+  }, [isOpen]);
 
   // 닫기 = 스크롤 위치 저장(언마운트 전 동기) 후 split 복귀.
   const closeReading = useCallback(() => {
@@ -376,6 +395,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
         ref={sheetRef}
         className="codex-reading-body"
         data-reading-size={size}
+        data-compact={compact}
       >
         <div className="codex-reading-sheet-head">
           <div className="codex-reader-history">
