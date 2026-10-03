@@ -45,7 +45,8 @@ export interface CommodoreRouteHooks {
 }
 
 const ids = z.string().min(1).max(128);
-const theaterRef = z.object({ theaterId: ids });
+/** 모든 요청은 사람의 언어를 실을 수 있다 — 목표 라우트와 같은 출처(브라우저 로케일)이고, Theater 의 사령관 기록 언어가 된다. */
+const theaterRef = z.object({ theaterId: ids, language: z.enum(["en", "ko"]).optional() });
 
 export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: CommodoreStore, hooks: CommodoreRouteHooks = {}): readonly CommodoreRoute[] {
   const experiments = () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
@@ -62,6 +63,8 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     const parsed = schema.safeParse(body ?? {});
     if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     try {
+      const { theaterId, language } = parsed.data as { readonly theaterId?: string; readonly language?: "en" | "ko" };
+      if (theaterId && language && store.read(theaterId)) store.setLanguage(theaterId, language);
       const value = await run(parsed.data);
       ctx.host.http.writeJson(res, 200, value ?? { ok: true });
     } catch (error) { fail(res, error); }

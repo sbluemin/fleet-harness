@@ -135,6 +135,11 @@ export default definePlugin({
       ...(ctx.host.experiments?.subscribe ? { subscribeExperiments: (listener) => ctx.host.experiments!.subscribe!(listener) } : {}),
       theater: (theaterId) => { const root = ctx.host.paths.resolveTheaterPath(theaterId); return root ? { label: path.basename(root) || root, root } : null; },
       objectives: (theaterId) => store.list(theaterId),
+      // 사령관 언어의 폴백 — 목표 라우트가 지휘관 Operation 에 남긴 언어(가장 최근 것).
+      language: (theaterId) => {
+        const latest = ctx.host.operations.list().filter((node) => node.theaterId === theaterId && (node.payload.objectiveLanguage === "ko" || node.payload.objectiveLanguage === "en")).sort((a, b) => b.ts.updatedAt - a.ts.updatedAt)[0];
+        return latest?.payload.objectiveLanguage === "ko" ? "ko" : "en";
+      },
       subscribeObjectives: (listener) => ctx.host.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
       boardTools: (theaterId) => createCommodoreBoardTools(ctx, store, launch, theaterId),
       ...(ctx.host.consoleControl ? { observe: (operationId) => ctx.host.consoleControl!.observe(operationId) } : {}),

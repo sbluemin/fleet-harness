@@ -65,6 +65,8 @@ export const commodoreStateSchema = z.object({
   /** Theater 별 모델·강도. 없으면 실험 기능 행의 기본 좌표. 다음 턴부터 적용된다. */
   model: modelId.optional(),
   effort: effort.optional(),
+  /** 사람이 이 Theater 를 보는 언어 — 서랍의 요청이 남긴다. 사령관 기록의 언어이고, 없으면 목표의 언어·영어 순이다. */
+  language: z.enum(["en", "ko"]).optional(),
   /** 누적 운영 셈 — 세션 번호(교대·재시작마다 1 씩), 누적 비용, 보드에 쓴 행위 수. 감독자가 올린다. */
   run: z.object({
     session: z.number().int().nonnegative(),
@@ -150,4 +152,4 @@ export type CommodoreEvent =
   | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
   | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus };
 
-export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "run";
+export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "language" | "run";

@@ -63,6 +63,8 @@ describe("commodore theater state", () => {
     h.setExperiments({ commodore: true, commodoreModel: "opus[1m]", commodoreEffort: "high" });
     expect((await h.route("commodore/autonomy", { theaterId: "t1", autonomy: true })).value).toMatchObject({ active: true, defaults: { model: "opus[1m]", effort: "high" }, run: { phase: "idle" } });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
+    // 서랍의 요청이 사람의 언어를 남긴다 — 사령관 기록의 언어가 된다.
+    expect((await h.route("commodore/state", { theaterId: "t1", language: "ko" })).value.state).toMatchObject({ language: "ko" });
 
     // 지시 — 본문이 바뀔 때만 개정이 오르고, 같은 본문은 사건도 내지 않는다(사령관을 헛되이 깨우지 않는다).
     expect((await h.route("commodore/directive", { theaterId: "t1", text: "Fix remote first." })).value.state).toMatchObject({ directive: { text: "Fix remote first.", rev: 1 } });
@@ -86,7 +88,7 @@ describe("commodore theater state", () => {
     expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), theaterIds: () => ["t1", "gone"], emit: () => undefined }).autonomousTheaters()).toEqual(["t1"]);
     h.setExperiments({ commodore: false });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(false);
-    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["autonomy", "directive", "intel", "intel", "coordinates"]);
+    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["autonomy", "language", "directive", "intel", "intel", "coordinates"]);
 
     // 같은 origin 의 Console 만 지난다.
     h.setAuthorized(false);
@@ -177,6 +179,7 @@ describe("commodore session", () => {
     const options = stub.created[0]!;
     expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation" });
     expect(options.systemPrompt).toContain('Commodore of the Theater "fleet-harness"');
+    expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
     expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"] });
     expect(options.tools!.consoleUse).toBeUndefined();
@@ -237,6 +240,7 @@ describe("commodore supervisor", () => {
       const h = harness();
       h.setExperiments({ commodore: true, commodoreModel: "sonnet", commodoreEffort: "medium" });
       h.store.setAutonomy("t1", true);
+      h.store.setLanguage("t1", "ko");
       const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
       fs.mkdirSync(theaterRoot, { recursive: true });
       const sessions: { options: AgentSessionOptions; sent: string[]; disposed: boolean }[] = [];
@@ -276,6 +280,7 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.options).toMatchObject({ model: "sonnet", effort: "medium" });
+      expect(sessions[0]!.options.systemPrompt).toContain("The person reads the log in Korean.");
       expect(tokens()).toEqual([["restart", "empty"]]);
       expect(sessionEvents()).toEqual(["restarted"]);
       expect(sessions[0]!.sent[0]).toContain("Console restarted; the board is empty");

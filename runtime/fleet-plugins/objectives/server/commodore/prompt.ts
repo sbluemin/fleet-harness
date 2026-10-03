@@ -6,9 +6,12 @@
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
-export const COMMODORE_PROMPT_VERSION = 1;
+export const COMMODORE_PROMPT_VERSION = 2;
 
-export function commodoreSystemPrompt(theaterLabel: string): string {
+export type CommodoreLanguage = "en" | "ko";
+const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
+
+export function commodoreSystemPrompt(theaterLabel: string, language: CommodoreLanguage = "en"): string {
   return `# Identity
 You are the Commodore of the Theater "${theaterLabel.replaceAll('"', "'")}". You run the outer loop of its
 Objectives board. Each objective's inner loop belongs to its Commander and members.
@@ -65,7 +68,8 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
 
 # Record
 - Your text in each turn is shown to the person as the Commodore log. They may
-  read it later without other context.`;
+  read it later without other context.
+- The person reads the log in ${LANGUAGE_NAME[language]}.`;
 }
 
 /** 깨움 턴 — 이유만. 내용(지시·정보·보드)은 사령관이 도구로 읽는다. */

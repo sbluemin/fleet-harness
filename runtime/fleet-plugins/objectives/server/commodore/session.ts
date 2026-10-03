@@ -1,7 +1,7 @@
 import type { AgentEvent, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 
-import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote } from "./prompt.js";
+import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
 import { MAX_TRANSCRIPT_TEXT, type CommodoreCoordinates, type CommodoreTranscriptInput } from "./types.js";
@@ -18,6 +18,8 @@ import { MAX_TRANSCRIPT_TEXT, type CommodoreCoordinates, type CommodoreTranscrip
 export interface CommodoreSessionOptions {
   readonly theaterId: string;
   readonly theaterLabel: string;
+  /** 사람이 기록을 읽는 언어 — 베이스 프롬프트의 사실 한 줄. */
+  readonly language?: CommodoreLanguage;
   readonly theaterRoot: string;
   readonly agent: AgentHost;
   readonly store: CommodoreStore;
@@ -134,7 +136,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       effort: options.coordinates.effort,
-      systemPrompt: commodoreSystemPrompt(options.theaterLabel),
+      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language),
       continuation: "conversation",
       settlement: "result",
       tools: {

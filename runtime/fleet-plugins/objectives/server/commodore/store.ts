@@ -60,6 +60,8 @@ export interface CommodoreStore {
   removeIntel(theaterId: string, intelId: string): CommodoreState;
   setSources(theaterId: string, sources: readonly Omit<CommodoreSource, "id">[]): CommodoreState;
   setCoordinates(theaterId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
+  /** 사람이 이 Theater 를 보는 언어를 남긴다 — 같으면 아무 일도 없다. */
+  setLanguage(theaterId: string, language: "en" | "ko"): CommodoreState;
   /** 누적 셈을 더한다(세션 +1, 비용 +, 행위 +). 감독자가 턴 결과마다 부른다. */
   addRunTotals(theaterId: string, delta: Partial<CommodoreRunTotals>): CommodoreState;
   transcriptAppend(theaterId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
@@ -171,6 +173,11 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const current = load(theaterId);
       const { model: _model, effort: _effort, ...rest } = current;
       return commit(theaterId, coordinates ? { ...rest, model: coordinates.model, effort: coordinates.effort } : rest, "coordinates");
+    },
+    setLanguage(theaterId, language) {
+      const current = load(theaterId);
+      if (current.language === language) return current;
+      return commit(theaterId, { ...current, language }, "language");
     },
     addRunTotals(theaterId, delta) {
       const current = load(theaterId);

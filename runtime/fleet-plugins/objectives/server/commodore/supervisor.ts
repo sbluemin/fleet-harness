@@ -40,6 +40,8 @@ export interface CommodoreSupervisorDeps {
   /** Theater 의 이름과 루트 실경로 — 모르면 null(잊힌·떨어진 Theater). */
   readonly theater: (theaterId: string) => { readonly label: string; readonly root: string } | null;
   readonly objectives: (theaterId: string) => readonly Objective[];
+  /** 사람이 이 Theater 를 보는 언어 — 저장된 사령관 언어, 없으면 목표가 남긴 언어, 그것도 없으면 영어. */
+  readonly language?: (theaterId: string) => "en" | "ko";
   readonly subscribeObjectives: (listener: (event: ObjectiveEvent) => void) => () => void;
   /** 이 Theater 에 묶인 보드 도구 — 없으면 사령관은 보드 없이 선다. */
   readonly boardTools: (theaterId: string) => readonly PluginMcpTool[];
@@ -122,6 +124,7 @@ interface Runner {
   patrolSet: boolean;
   lastInputTokens: number;
   coordinates: CommodoreCoordinates | null;
+  language: "en" | "ko";
   rotateNext: "replaced" | "restarted" | null;
   recentActions: string[];
   signature: string;
@@ -137,6 +140,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   const settings = () => { try { return deps.experiments(); } catch { return DEFAULT_EXPERIMENT_SETTINGS; } };
   const shouldRun = (theaterId: string) => settings().commodore && deps.store.read(theaterId)?.autonomy === true && deps.theater(theaterId) !== null;
+  const resolveLanguage = (theaterId: string): "en" | "ko" => deps.store.read(theaterId)?.language ?? deps.language?.(theaterId) ?? "en";
   const resolveCoordinates = (theaterId: string): CommodoreCoordinates => {
     const state = deps.store.read(theaterId);
     if (state?.model && state.effort) return { model: state.model, effort: state.effort };
@@ -204,8 +208,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const theater = deps.theater(runner.theaterId);
     if (!theater) throw new Error("theater_unavailable");
     const coordinates = resolveCoordinates(runner.theaterId);
+    const language = resolveLanguage(runner.theaterId);
     const session = createCommodoreSession({
-      theaterId: runner.theaterId, theaterLabel: theater.label, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates,
+      theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates,
       boardTools: deps.boardTools(runner.theaterId), now,
       onNextWake: (at, reason) => { runner.patrolSet = true; schedulePatrol(runner, at, reason); },
       ...(deps.execute ? { execute: deps.execute } : {}),
@@ -213,6 +218,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     await session.start();
     runner.session = session;
     runner.coordinates = coordinates;
+    runner.language = language;
     runner.lastInputTokens = 0;
     deps.store.addRunTotals(runner.theaterId, { session: 1 });
     record(runner, { kind: "session", event });
@@ -280,14 +286,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   const needsRotation = (runner: Runner) => {
     const coordinates = resolveCoordinates(runner.theaterId);
-    if (!runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort) return true;
+    if (!runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.theaterId)) return true;
     return runner.lastInputTokens >= CONTEXT_ROTATE_RATIO * contextWindow(coordinates.model);
   };
 
   const start = (theaterId: string, reason: WakeCode) => {
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, lastInputTokens: 0, coordinates: null, rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], signature: signatureOf(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, lastInputTokens: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], signature: signatureOf(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     wake(runner, reason);
