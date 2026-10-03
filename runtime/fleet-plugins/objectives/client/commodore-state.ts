@@ -36,6 +36,18 @@ const theaters = new Map<string, TheaterCommodore>();
 const loading = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let enabledSnapshot = false;
+/**
+ * 사람이 읽는 Console 언어 — 사령관 줄·서랍이 그릴 때 알려 주고, 모든 commodore/* 요청 본문에 실린다. 서버는 Theater 마다
+ * 기억해 사령관이 그 언어로 기록을 쓴다(목표 라우트가 language 를 싣는 것과 같다).
+ */
+let language: "en" | "ko" | null = null;
+
+export function noteCommodoreLanguage(next: "en" | "ko"): void {
+  language = next;
+}
+
+const withLanguage = <B extends Record<string, unknown>>(body: B): B & { language?: "en" | "ko" } => (language ? { ...body, language } : body);
+
 let drawer: { readonly theaterId: string; readonly tab: CommodoreTab; readonly openedAt: number } | null = null;
 
 let revision = 0;
@@ -156,7 +168,7 @@ export function loadCommodore(theaterId: string, force = false): Promise<void> {
   if (!force && theaters.get(theaterId)?.view) return Promise.resolve();
   const inflight = loading.get(theaterId);
   if (inflight && !force) return inflight;
-  const request = post<CommodoreStateView>(client, "/commodore/state", { theaterId })
+  const request = post<CommodoreStateView>(client, "/commodore/state", withLanguage({ theaterId }))
     .then((view) => { setTheater(theaterId, { view }); })
     .catch(() => undefined)
     .finally(() => { if (loading.get(theaterId) === request) loading.delete(theaterId); });
@@ -169,7 +181,7 @@ export async function loadTranscript(theaterId: string, options: { readonly olde
   if (!client) return;
   const current = theaters.get(theaterId) ?? EMPTY;
   const before = options.older && !options.reset ? current.entries[0]?.seq : undefined;
-  const page = await post<{ readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean }>(client, "/commodore/transcript", { theaterId, limit: TRANSCRIPT_PAGE, ...(before !== undefined ? { before } : {}) }).catch(() => null);
+  const page = await post<{ readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean }>(client, "/commodore/transcript", withLanguage({ theaterId, limit: TRANSCRIPT_PAGE, ...(before !== undefined ? { before } : {}) })).catch(() => null);
   if (!page) return;
   const latest = theaters.get(theaterId) ?? EMPTY;
   if (options.older && !options.reset) {
@@ -238,7 +250,7 @@ export function useCommodoreDrawer(): typeof drawer {
 async function write(theaterId: string, path: string, body: Record<string, unknown>): Promise<void> {
   const client = api();
   if (!client) throw new Error("not_installed");
-  const view = await post<CommodoreStateView>(client, path, { theaterId, ...body });
+  const view = await post<CommodoreStateView>(client, path, withLanguage({ theaterId, ...body }));
   if (view && typeof view === "object" && "state" in view) setTheater(theaterId, { view });
 }
 
@@ -253,7 +265,7 @@ export const retryCommodore = (theaterId: string) => write(theaterId, "/commodor
 export async function messageCommodore(theaterId: string, text: string): Promise<void> {
   const client = api();
   if (!client) throw new Error("not_installed");
-  const result = await post<{ readonly entry?: CommodoreTranscriptEntry }>(client, "/commodore/message", { theaterId, text });
+  const result = await post<{ readonly entry?: CommodoreTranscriptEntry }>(client, "/commodore/message", withLanguage({ theaterId, text }));
   const entry = result?.entry;
   const current = theaters.get(theaterId);
   if (entry && current?.transcriptLoaded && !current.entries.some((candidate) => candidate.seq === entry.seq)) {

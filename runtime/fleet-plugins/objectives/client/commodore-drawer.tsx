@@ -12,6 +12,7 @@ import {
   commodoreTheaterLabel,
   loadTranscript,
   messageCommodore,
+  noteCommodoreLanguage,
   removeCommodoreIntel,
   retryCommodore,
   saveCommodoreDirective,
@@ -68,6 +69,7 @@ function useDrawerPosition(theaterId: string): CSSProperties {
 
 function CommodoreDrawer({ theaterId, tab, openedAt, language }: { readonly theaterId: string; readonly tab: CommodoreTab; readonly openedAt: number; readonly language: "en" | "ko" }) {
   const t = getT(language);
+  noteCommodoreLanguage(language);
   const { view, entries, hasMore, transcriptLoaded } = useCommodore(theaterId);
   const position = useDrawerPosition(theaterId);
   const dialogRef = useRef<HTMLElement | null>(null);

@@ -6,6 +6,7 @@ import {
   isRunningObjective,
   isWaitingObjective,
   loadCommodore,
+  noteCommodoreLanguage,
   openCommodoreDrawer,
   setCommodoreAutonomy,
   toggleCommodoreDrawer,
@@ -34,6 +35,8 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
   const board = useObjectiveTheater(theaterId);
   const drawer = useCommodoreDrawer();
   const [busy, setBusy] = useState(false);
+  // 언어를 먼저 알린다 — 첫 읽기부터 서버가 사람의 언어를 기억한다.
+  noteCommodoreLanguage(language);
   useEffect(() => { void loadCommodore(theaterId); }, [theaterId]);
 
   const on = view?.state.autonomy === true;
