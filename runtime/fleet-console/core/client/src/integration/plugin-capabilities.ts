@@ -9,7 +9,7 @@ import { resolveOperationActivity } from "../../../../features/execution/client/
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../chrome/rail/rail-store.js";
-import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, ownOperationRuntime,
+import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
 export function createHostCapabilities(resync: () => void = () => undefined): PluginInstallContext {
@@ -99,6 +99,7 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       open: (options) => {
         const mentionOperationId = options?.mentionOperationId;
         if (mentionOperationId) openQuickLaunchForOperation(mentionOperationId, typeof options?.draft === "string" ? options.draft : null);
+        else if (options?.mentionTarget) openQuickLaunchForPluginTarget(options.mentionTarget, typeof options.draft === "string" ? options.draft : null);
         else if (typeof options?.draft === "string") openQuickLaunchWithDraft(options.draft);
         else openQuickLaunch();
       },

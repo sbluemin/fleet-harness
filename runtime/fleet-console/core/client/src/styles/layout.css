@@ -23,6 +23,8 @@
 /* 차단형 오버레이가 열린 동안에는 부유 위젯이 스스로 되살린 표면까지 입력을 놓는다 —
    모달의 입력 독점이 위젯의 상주보다 우선한다. 모달 여부는 `body:has(...)`로 묻지 않는다 — 그 앵커는
    문서의 모든 노드·글자 변경마다 body 서브트리 전체를 다시 계산하게 만든다(modal-open-marker.ts). */
+/* 모달이 캔버스의 로컬 스택 안에 있어도 부유 위젯은 스크림 아래로 물러난다. */
+:root[data-modal-open] .floating-widget-layer { z-index: 0; }
 :root[data-modal-open] .floating-widget-layer * {
   pointer-events: none;
 }

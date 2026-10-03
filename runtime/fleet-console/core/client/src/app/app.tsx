@@ -44,7 +44,7 @@ import { Operations } from "../../../../features/workspace/client/operations.js"
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
-import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
+import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
@@ -515,6 +515,15 @@ function ConnectedApp() {
       closeOperationSearch,
       getOperationSearchMode: () => getState().operationSearchMode,
       toggleQuickLaunch,
+      openPluginQuickLaunch: () => {
+        const available = registry.providers.some((plugin) => {
+          try { return !!plugin.messageMentionTarget && plugin.mentionTargets?.().some((target) => target.quickLaunch); }
+          catch { return false; }
+        });
+        if (!available) return false;
+        openQuickLaunchForPluginTarget();
+        return true;
+      },
       toggleZenMode: () => {
         if (resolvePanelShortcut() === "apply") toggleZenMode();
       },
@@ -545,7 +554,7 @@ function ConnectedApp() {
       canUndoLastClose,
       undoLastClose,
     });
-  }, [canUndoLastClose, consoleLocale, navigate, railBindings, resolvePanelShortcut, undoLastClose]);
+  }, [canUndoLastClose, consoleLocale, navigate, railBindings, registry.providers, resolvePanelShortcut, undoLastClose]);
 
   const undoAuthor = activeUndo ? undoAuthors.get(activeUndo.key) : undefined;
   const undoTitle = activeUndo === null

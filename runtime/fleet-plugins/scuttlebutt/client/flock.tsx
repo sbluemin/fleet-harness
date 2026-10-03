@@ -8,7 +8,7 @@ import { isComputerUseExperimentEnabled, isConsoleReadEnabled, readConsoleSnapsh
 import { connectDockActivate, firstDockGlyph, readDockGlyph, readDockSnapshot, subscribeDock, writeDock } from "./dock-store.js";
 import { createChatSession, type AdmiralId } from "./chat-session.js";
 import { IntroBubble } from "./intro-bubble.js";
-import { connectScuttlebuttMentions } from "./mention-bridge.js";
+import { connectScuttlebuttMentions, notifyScuttlebuttMentions, readScuttlebuttConversationVisibility, subscribeScuttlebuttConversationVisibility } from "./mention-bridge.js";
 import { NoticeBubble } from "./notice-bubble.js";
 import { getT, type ScuttlebuttMessageKey } from "./scuttlebutt-catalog.js";
 import { QuakerFigure } from "./quaker-figure.js";
@@ -60,10 +60,6 @@ const KEYBOARD_STEP_PX = 24;
 /** 이 높이 안으로 새를 끌고 오면 밴드에 내려놓는 제스처다(밴드 36px + 여유). */
 const DOCK_DROP_Y = 44;
 const KEYBOARD_STEP_FAST_PX = 96;
-
-function isAideShortcut(event: KeyboardEvent): boolean {
-  return (event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.code === "KeyQ";
-}
 
 /** 첫 rAF 전에도 제자리에 그려야 세 마리가 좌상단에 겹쳤다가 흩어지는 깜빡임이 없다. */
 function framesFromBodies(bodies: readonly BirdBody[]): readonly BirdFrame[] {
@@ -235,8 +231,6 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const [lines, setLines] = React.useState<readonly string[]>(["", "", ""]);
   const [saying, setSaying] = React.useState<readonly boolean[]>([false, false, false]);
   const [openAdmiral, setOpenAdmiral] = React.useState<AdmiralId | null>(null);
-  // 단축키가 여는 부관 — 마지막으로 말을 건 쪽. 없으면 근무 중인 첫 부관.
-  const lastSpokenRef = React.useRef<AdmiralId | null>(null);
   // 보조 기술에 읽어 줄 지저귐. 보이는 말풍선은 aria-hidden이라 여기서 한 번 알린다.
   const [announcedLine, setAnnouncedLine] = React.useState("");
   // Quick Launch에서 물은 답이 떠 있는 부관들. 카드와 달리 이 말풍선은 시간으로 사라지지 않는다.
@@ -305,7 +299,6 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     // 상단 바에 둔 부관의 답도 말풍선(읽기 표면)이다 — 닻만 새가 아니라 글리프라 늘 같은 자리에
     // 선다. 정박은 새에게만 뜻이 있으므로 세우지 않는다.
     if (readDockSnapshot().host && getScuttlebuttSettings().docked[admiral]) {
-      lastSpokenRef.current = admiral;
       setAnswering((current) => (current.includes(admiral) ? current : [...current, admiral]));
       void sessions[index]!.ask(text);
       return;
@@ -395,12 +388,12 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
 
   // 글리프 클릭은 새 클릭과 같은 뜻이다 — 그 부관의 표면을 여닫는다.
   React.useEffect(() => connectDockActivate((admiral) => {
-    lastSpokenRef.current = admiral;
     setOpenAdmiral((current) => current === admiral ? null : admiral);
   }), []);
 
   // 글리프가 그릴 상태: 열림·답하는 중·읽지 않은 답. 읽지 않음은 시트가 닫힌 채 답이 정착한
   // 부관에게만 서고, 그 시트를 여는 순간 걷힌다.
+  const visibleConversations = useStoreSnapshot(subscribeScuttlebuttConversationVisibility, readScuttlebuttConversationVisibility);
   const unreadRef = React.useRef(new Set<AdmiralId>());
   const phaseKey = phases.join("|");
   React.useEffect(() => {
@@ -413,7 +406,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       }
       const settled = phases[index] === "ready" && (previous[index] === "starting" || previous[index] === "thinking");
       // 말풍선이나 시트가 이미 답을 보이고 있으면 읽지 않은 것이 아니다.
-      const showing = openAdmiral === admiral || answering.includes(admiral);
+      const showing = openAdmiral === admiral || answering.includes(admiral) || visibleConversations.includes(admiral);
       if (settled && !showing) unreadRef.current.add(admiral);
       if (showing) unreadRef.current.delete(admiral);
     }
@@ -423,7 +416,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       unread: MORPHS.filter((admiral) => unreadRef.current.has(admiral)),
     });
     // 완료 만세 효과와 같은 순서로 이전 단계를 갱신한다 — 여기서 먼저 갱신하면 그 효과가 전이를 놓친다.
-  }, [answering, openAdmiral, phaseKey, docked]);
+  }, [answering, openAdmiral, phaseKey, docked, visibleConversations]);
 
   // 밴드 아래 말풍선은 오른쪽부터 나란히 선다 — 화면 폭을 넘기면 가장 오래된 답부터 접어 글리프의
   // 점으로 남긴다(글리프를 누르면 시트에서 읽는다). 세로로 쌓이면 둘째 답이 화면 밖으로 밀린다.
@@ -460,8 +453,19 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     onDuty: () => MORPHS.filter((morph) => settingsRef.current[morph]),
     label: (admiral) => getT(localeRef.current)(`bird.${admiral}`),
     locale: () => localeRef.current,
-    ask: (admiral, text) => askFromMentionRef.current(admiral, text),
-  }), []);
+    ask: (admiral, text, inline) => {
+      if (!inline) return askFromMentionRef.current(admiral, text);
+      const session = sessions[MORPHS.indexOf(admiral)]!;
+      const phase = session.snapshot().state.phase;
+      if (phase === "starting" || phase === "thinking") return Promise.reject(new Error("destination_busy"));
+      // 대화는 퀵런치 슬롯에서 이어진다. 카드·독과 같은 세션이며 새를 답 위치로 정박시키지 않는다.
+      void session.ask(text);
+      return Promise.resolve();
+    },
+    session: (admiral) => sessions[MORPHS.indexOf(admiral)]!,
+    handoff: (text) => context.composer.open({ draft: text }),
+  }), [context.composer, sessions]);
+  React.useEffect(() => notifyScuttlebuttMentions(), [settings, context.language]);
 
   const clearTimer = React.useCallback((timers: React.MutableRefObject<Array<number | null>>, index: number) => {
     const timer = timers.current[index];
@@ -516,24 +520,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const clickAction = React.useCallback((index: number) => {
     triggerOneShot(index, "salute", SALUTE_DURATION_MS);
     const admiral = MORPHS[index]!;
-    lastSpokenRef.current = admiral;
     setOpenAdmiral((current) => current === admiral ? null : admiral);
   }, [triggerOneShot]);
-
-  // Ctrl/⌘+Shift+Q — 마지막으로 말을 건 부관의 카드를 여닫는다. 모달이 입력을 독점 중이면 받지 않는다.
-  React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!isAideShortcut(event) || event.defaultPrevented) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
-      const onDuty = MORPHS.filter((morph) => settingsRef.current[morph]);
-      if (onDuty.length === 0) return;
-      const target = lastSpokenRef.current && onDuty.includes(lastSpokenRef.current) ? lastSpokenRef.current : onDuty[0]!;
-      event.preventDefault();
-      clickAction(MORPHS.indexOf(target));
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [clickAction]);
 
   /** 방향키로 옮기기. 정박 중이면 새 자리를 저장하고, 아니면 그 자리를 다음 목적지로 삼는다. */
   const nudge = React.useCallback((index: number, dx: number, dy: number) => {
@@ -1033,7 +1021,6 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           locale={context.language}
           positionRevision={positionRevision}
           onAsk={(text) => {
-            lastSpokenRef.current = openAdmiral;
             void sessions[MORPHS.indexOf(openAdmiral)]!.ask(text);
           }}
           onRetry={() => void sessions[MORPHS.indexOf(openAdmiral)]!.retry()}

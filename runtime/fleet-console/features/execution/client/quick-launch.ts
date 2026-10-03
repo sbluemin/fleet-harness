@@ -321,6 +321,7 @@ export interface QuickLaunchPluginMentionRow {
   readonly capabilityLabel: string | null;
   readonly description: string | null;
   readonly renderMark: (() => ReactNode) | null;
+  readonly quickLaunch?: MentionTargetDescriptor["quickLaunch"];
 }
 
 /** 덱에서 한 카테고리 밴드 아래 서는 행 묶음. */
@@ -387,6 +388,7 @@ export function buildPluginMentionCategories(
         capabilityLabel: descriptor.capabilityLabel ?? null,
         description: descriptor.description ?? null,
         renderMark: descriptor.renderMark ?? null,
+        quickLaunch: descriptor.quickLaunch,
       };
       // 카테고리는 플러그인 안에서만 묶는다 — 두 플러그인이 우연히 같은 문구를 써도 한 밴드로
       // 뭉치면 그 밴드의 주인이 사라진다.
@@ -481,6 +483,7 @@ export function quickLaunchMentionErrorMessageKey(code: string | null): string {
     case "claude_trust_required": return "chrome.quickLaunch.mentionErrorTrustRequired";
     // 비-Operation 행선지가 아직 앞 질문에 답하는 중 — 조용히 삼키면 사용자의 문장이 사라진다.
     case "destination_busy": return "chrome.quickLaunch.mentionErrorBusy";
+    case "session_capacity": return "chrome.quickLaunch.mentionErrorCapacity";
     case "session_not_found": return "chrome.quickLaunch.mentionErrorGone";
     case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
     // 첨부가 만료·소실된 전달 거절 — 칩은 남았지만 그 서버 파일은 이미 없다(런치 거절과 같은 문구).

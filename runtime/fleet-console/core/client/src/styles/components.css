@@ -16545,6 +16545,56 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   pointer-events: none;
 }
 
+/* 플러그인 레인: 정체색은 선택 밑줄만 맡고, 초점·호버는 brass 계약을 유지한다.
+   [doctrine] 플러그인 인물의 정체색 밑줄은 이 행선지 표면의 의도된 예외다. */
+.quick-launch-lanes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) 0;
+  border-bottom: 1px solid var(--surface-rim);
+  flex-wrap: wrap;
+}
+.quick-launch-lanes[hidden], .quick-launch-conversation[hidden] { display: none; }
+.quick-launch-lane {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 36px;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+.quick-launch-lane.is-selected {
+  border-bottom-color: var(--quick-launch-lane-identity, var(--brass));
+  color: var(--text-primary);
+}
+.quick-launch-lane:hover { background: var(--brass-glow); }
+.quick-launch-lane:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.quick-launch-lane-mark { display: grid; width: 20px; height: 20px; place-items: center; }
+.quick-launch-lane-mark svg { width: 100%; height: 100%; }
+.quick-launch-lane-divider { height: 16px; border-inline-start: 1px solid var(--surface-rim-strong); }
+.quick-launch-lane-hint { margin-inline-start: auto; color: var(--text-tertiary); font-size: var(--t-2xs); }
+.quick-launch-lane-hint kbd { font-family: var(--font-mono); }
+.quick-launch-feedback { margin: 0; padding: var(--space-2) var(--space-4); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.55; overflow-wrap: anywhere; flex-shrink: 0; }
+.quick-launch-capabilities { display: flex; align-items: center; min-width: 0; flex-shrink: 0; }
+:root[data-view-mode="mobile"] .quick-launch-lane-hint { display: none; }
+@media (max-width: 767px), (pointer: coarse) {
+  .quick-launch-lane-hint { display: none; }
+}
+.quick-launch-conversation { min-height: 0; border-bottom: 1px solid var(--surface-rim); }
+.quick-launch-card.has-conversation { display: flex; flex-direction: column; max-height: calc(100dvh - var(--space-5) * 2); }
+.quick-launch-card.has-conversation > .quick-launch-field,
+.quick-launch-card.has-conversation > .quick-launch-bar,
+.quick-launch-card.has-conversation > .quick-launch-lanes { flex-shrink: 0; }
+.quick-launch-clear-target { border: 0; padding: 0 var(--space-1); background: transparent; color: var(--text-tertiary); cursor: pointer; font: inherit; }
+.quick-launch-clear-target:focus-visible { outline: 2px solid var(--brass); }
+
 /* ── `ultracode` 무장 외곽 ───────────────────────────────────────────
    프롬프트 안의 단어가 인식되면 카드 테두리를 apex 호(arc)가 한 방향으로 돈다. 각도와 호의 폭을
    @property로 등록해야 커스텀 속성이 이산 점프 없이 보간된다(등록 없이는 각도가 계단으로 튄다).
@@ -17922,6 +17972,18 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: var(--space-2) var(--space-3) var(--space-3) var(--space-4);
   border-top: 1px solid var(--surface-rim);
 }
+
+/* 대화 레인의 바는 권한과 전송만 담는다. 한 줄 예산과 불투명 언더레이를 독립적으로 지켜,
+   긴 대화·안내가 있어도 배경 문구나 오류 텍스트가 컨트롤 사이로 비치지 않는다. */
+.quick-launch-bar.is-conversation {
+  flex-wrap: nowrap;
+  background: linear-gradient(var(--glass-tint-pillar), var(--glass-tint-pillar)), var(--ink-deep);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+.quick-launch-bar.is-conversation .quick-launch-spacer { display: none; }
+.quick-launch-bar.is-conversation .quick-launch-bar-toggles { margin-inline-start: auto; }
+.quick-launch-bar.is-conversation .quick-launch-submit { margin-inline-start: auto; }
+.quick-launch-bar.is-conversation .quick-launch-bar-toggles + .quick-launch-submit { margin-inline-start: 0; }
 
 .quick-launch-spacer {
   flex: 1;

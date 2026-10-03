@@ -97,6 +97,21 @@ export interface TerminalTicket {
  * 대신 `capabilityLabel`이 **고르기 전에** 무엇을 할 수 있는 대상인지 말한다 — 바로 윗줄의
  * Operation은 파일을 읽고 이 대상은 못 읽을 수 있어, 능력 차이를 선택 후에 알리면 늦다.
  */
+/** 플러그인 행선지의 불투명 좌표. 이름·대화·권한은 계속 플러그인이 소유한다. */
+export interface PluginMentionTargetAddress {
+  readonly pluginId: string;
+  readonly targetId: string;
+}
+
+/** 호스트 입력 위에 서는 대화 슬롯. 마운트 수명은 세션 수명이 아니다. */
+export interface QuickLaunchConversationDescriptor {
+  /** 기존 테마 정체색 토큰 이름(--로 시작). 호스트가 선택 밑줄에만 쓴다. */
+  readonly identityColorToken?: string;
+  readonly renderConversation: () => ReactNode;
+  /** 실행 좌표 대신 표시할 권한 표면. */
+  readonly renderCapabilities?: () => ReactNode;
+}
+
 export interface MentionTargetDescriptor {
   /** 플러그인 안에서 고유한 id. 호스트는 `${pluginId}:${id}`로 이름공간을 나눠 쓴다. */
   readonly id: string;
@@ -110,6 +125,8 @@ export interface MentionTargetDescriptor {
   readonly description?: string;
   /** 행 머리의 정체성 마크. Operation 행의 Theater 이니셜 자리와 같다. */
   readonly renderMark?: () => ReactNode;
+  /** 선언한 대상만 퀵런치 레인에 서며, 전송 뒤 컴포저를 열어 둔다. */
+  readonly quickLaunch?: QuickLaunchConversationDescriptor;
 }
 
 /**
@@ -218,13 +235,17 @@ export interface ClientExecutionProvider {
    * 이 함수와 `messageMentionTarget`을 **함께** 선언한 플러그인의 대상만 덱에 오른다.
    */
   readonly mentionTargets?: () => readonly MentionTargetDescriptor[];
+  /** 근무표·로케일·권한이 바뀌면 호스트가 목록과 선택 좌표를 다시 읽는다. */
+  readonly subscribeMentionTargets?: (listener: () => void) => () => void;
   /**
    * Host→plugin request to deliver user text to a non-Operation mention target.
    * `targetId` is the plugin-local `MentionTargetDescriptor.id`. Attachments are not
    * forwarded — the host refuses that combination before calling. Rejects with an Error
    * whose `message` is the server rejection code when one is available.
+   * `options.surface`는 선언한 대화 슬롯에서 답을 보여 주겠다는 호스트의 표시다. 세션은 계속
+   * 플러그인이 소유하며, 컴포저 마운트나 이 전달 promise의 수명에 매이지 않는다.
    */
-  readonly messageMentionTarget?: (targetId: string, text: string) => Promise<void>;
+  readonly messageMentionTarget?: (targetId: string, text: string, options?: { readonly surface: "quick-launch" }) => Promise<void>;
   /**
    * Host→plugin upload of a Quick Launch image attachment. The plugin stores the bytes
    * server-side and returns an opaque id only — absolute storage paths never enter the
@@ -386,7 +407,8 @@ export interface ClientComposerCapability {
    * `draft` seeds the prompt text instead — used to hand a plugin's text (an aide's answer, a
    * snippet) to the composer. It replaces any unsent draft; it never submits.
    */
-  open(options?: { readonly mentionOperationId?: string; readonly draft?: string }): void;
+  // 플러그인 행선지는 레인 전환이다 — draft를 명시하지 않으면 쓰던 초안을 보존한다.
+  open(options?: { readonly mentionOperationId?: string; readonly mentionTarget?: PluginMentionTargetAddress; readonly draft?: string }): void;
 }
 
 export interface ClientOperationsCapability {
