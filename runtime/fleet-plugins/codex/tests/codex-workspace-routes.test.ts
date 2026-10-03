@@ -50,7 +50,7 @@ describe("Codex Theater-root workspace resolution", () => {
     });
   }
 
-  it("previews only bounded regular Theater files and refuses traversal and symlink escapes on both file routes", async () => {
+  it("bounds Theater previews and isolates unavailable references without disclosing outside paths or existence", async () => {
     await writeFile(path.join(theaterRoot, "source.ts"), Array.from({ length: 260 }, (_, index) => `line ${index + 1}`).join("\n"));
     await writeFile(path.join(tmpDir, "outside.ts"), "outside secret");
     await symlink(path.join(tmpDir, "outside.ts"), path.join(theaterRoot, "escape.ts"));
@@ -76,25 +76,31 @@ describe("Codex Theater-root workspace resolution", () => {
     expect(preview[2].lines).toHaveLength(200);
     expect(JSON.stringify(preview[2])).not.toContain(theaterRoot);
     const canonicalRoot = await realpath(theaterRoot);
-    const absoluteRefs = await call("file-refs", { paths: [path.join(canonicalRoot, "source.ts"), canonicalRoot, "missing.ts"] });
-    expect(absoluteRefs.slice(1)).toEqual([200, [{ path: "source.ts", status: "file" }, { path: ".", status: "dir" }, { path: "missing.ts", status: "missing" }]]);
+    const alias = path.join(tmpDir, "theater-alias");
+    await symlink(canonicalRoot, alias, "dir");
+    const absoluteRefs = await call("file-refs", { paths: [path.join(alias, "source.ts"), alias, path.join(alias, "missing", "leaf.ts")] });
+    expect(absoluteRefs.slice(1)).toEqual([200, [{ path: "source.ts", status: "file" }, { path: ".", status: "dir" }, { path: "missing/leaf.ts", status: "missing" }]]);
     expect(JSON.stringify(absoluteRefs[2])).not.toContain(canonicalRoot);
-    for (const escaped of ["../outside.ts", "escape.ts"]) {
-      expect((await call("file-peek", { path: escaped }))[1]).toBe(403);
-      expect((await call("file-refs", { paths: [escaped] }))[1]).toBe(403);
-    }
-    for (const absoluteEscape of [path.join(await realpath(tmpDir), "outside.ts"), path.join(canonicalRoot, "escape.ts")]) {
-      const rejected = await call("file-refs", { paths: [absoluteEscape] });
-      expect(rejected.slice(1)).toEqual([403, { error: "outside_theater" }]);
-      expect(JSON.stringify(rejected[2])).not.toContain(absoluteEscape);
-    }
+    expect(JSON.stringify(absoluteRefs[2])).not.toContain(alias);
+    for (const escaped of ["../outside.ts", "escape.ts"]) expect((await call("file-peek", { path: escaped }))[1]).toBe(403);
+    await symlink(path.join(tmpDir, "missing-outside.ts"), path.join(theaterRoot, "dangling.ts"));
+    const refs = await call("file-refs", { paths: ["source.ts", path.join(await realpath(tmpDir), "outside.ts"), path.join(tmpDir, "missing-outside", "leaf.ts"), path.join(alias, "escape.ts"), "../outside.ts", "dangling.ts", "missing.ts"] });
+    expect(refs.slice(1)).toEqual([200, [
+      { path: "source.ts", status: "file" },
+      ...Array.from({ length: 5 }, () => ({ path: "", status: "unavailable" })),
+      { path: "missing.ts", status: "missing" },
+    ]]);
+    expect(JSON.stringify(refs[2])).not.toContain(canonicalRoot);
+    expect(JSON.stringify(refs[2])).not.toContain(tmpDir);
     vi.mocked(open).mockRejectedValueOnce(Object.assign(new Error("access denied"), { code: "EACCES" }));
     expect((await call("file-peek", { path: "source.ts" })).slice(1)).toEqual([403, { error: "forbidden" }]);
     expect((await call("file-peek", { path: "binary.dat" }))[1]).toBe(415);
     expect((await call("file-peek", { path: "large.ts" }))[1]).toBe(413);
     expect((await call("file-refs", { paths: Array(201).fill("source.ts") }))[1]).toBe(400);
+    expect((await call("file-refs", { paths: ["source.ts", 42] }))[1]).toBe(400);
     authorized = false;
     expect((await call("file-peek", { path: "source.ts" }))[1]).toBe(403);
+    expect((await call("file-refs", { paths: ["source.ts"] }))[1]).toBe(403);
   });
 
   it("registers and resolves the canonical Theater root", async () => {

@@ -31,12 +31,11 @@ export interface FilePeekResponse {
   readonly lines: readonly string[];
   readonly truncated: boolean;
 }
-export type FileRefStatus = "file" | "dir" | "missing";
-/** 요청 순서에 대응한다. 절대 경로 입력도 응답에는 Theater 상대 경로만 담는다. */
-export interface FileRefResolution {
-  readonly path: string;
-  readonly status: FileRefStatus;
-}
+export type FileRefStatus = "file" | "dir" | "missing" | "unavailable";
+/** 요청 순서에 대응한다. unavailable은 경로와 존재 여부를 반사하지 않는다. */
+export type FileRefResolution =
+  | { readonly path: ""; readonly status: "unavailable" }
+  | { readonly path: string; readonly status: Exclude<FileRefStatus, "unavailable"> };
 
 export interface SearchEntry {
   id: string;
