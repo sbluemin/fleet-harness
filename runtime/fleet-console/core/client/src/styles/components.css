@@ -19649,3 +19649,40 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   .archive-sheet-scope { width: 100%; }
 }
 .operation-search-archived { color: var(--text-tertiary); font-size: var(--t-xs); }
+
+.theater-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--ink-deep);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+.theater-badge-initials {
+  flex: none;
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+}
+
+.theater-badge-label,
+.theater-badge-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theater-badge-detail {
+  color: var(--text-tertiary);
+}
+
+.theater-badge.is-warning {
+  border-color: var(--warn);
+  background: var(--warn-glow);
+  color: var(--warn-ink);
+}

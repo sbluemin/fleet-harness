@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PaneContext } from "@fleet-console/sdk/pane";
+import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 
 import { fileExplorerDocumentPane } from "../client/rail-panel.js";
 import { getFileExplorerSnapshot } from "../client/view-store.js";
@@ -23,7 +24,9 @@ let root: Root;
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function paneCtx(theaterId: string, params: Record<string, string>): PaneContext {
+  const { navigate, shell, rail } = createClientCapabilities();
   return {
+    navigate, shell, rail,
     paneId: "file-explorer-document",
     instanceId: "pane-1",
     params,

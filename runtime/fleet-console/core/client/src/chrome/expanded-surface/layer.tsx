@@ -10,6 +10,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { useT } from "../../i18n/index.js";
+import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import { useHostSideBarVisible } from "../../integration/zen-chrome-toggles.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
@@ -64,7 +65,7 @@ export function ExpandedSurfaceLayer() {
   const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
-  const capabilities = useMemo(() => createHostCapabilities(), []);
+  const capabilities = useHostCapabilities();
 
 
   const gridRef = useRef<HTMLDivElement>(null);
@@ -320,6 +321,9 @@ function SurfacePane({
     slotWidth: paneWidth,
     focused,
     theaterId,
+    navigate: capabilities.navigate,
+    shell: capabilities.shell,
+    rail: capabilities.rail,
     api: capabilities.api,
     lifecycle: capabilities.lifecycle,
     preferences: capabilities.preferences,

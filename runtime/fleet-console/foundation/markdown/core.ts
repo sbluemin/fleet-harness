@@ -1,3 +1,4 @@
+import type { MarkdownLinkTarget } from "./link-activation.js";
 import { Marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/core";
@@ -24,6 +25,7 @@ export interface RenderedMarkdown {
 export interface RenderMarkdownOptions {
   omitDuplicateTitle?: string;
   resolveWikiLink?: (id: string) => string | null;
+  resolveLink?: (href: string) => MarkdownLinkTarget | null;
   /** 코드블록 Copy 버튼 라벨. 기본값 `"Copy"`. */
   readonly copyLabel?: string;
   /** 코드블록 Copy 버튼 aria-label. 기본값 `(language) => \`Copy ${language} code\``. */
@@ -76,7 +78,7 @@ export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}
     copyLabel: options.copyLabel ?? "Copy",
     copyAriaLabel: options.copyAriaLabel ?? ((language) => `Copy ${language} code`),
   });
-  decorateLinks(document);
+  decorateLinks(document, options.resolveLink);
   const html = DOMPurify.sanitize(document.body.innerHTML, sanitizeConfig);
   return {
     html,
@@ -220,9 +222,27 @@ function buildCodeToolbar(
   return toolbar;
 }
 
-function decorateLinks(document: Document): void {
+function decorateLinks(document: Document, resolveLink?: RenderMarkdownOptions["resolveLink"]): void {
   for (const link of document.querySelectorAll("a")) {
+    for (const attribute of [...link.attributes]) {
+      if (attribute.name.startsWith("data-md-")) link.removeAttribute(attribute.name);
+    }
     const href = link.getAttribute("href") ?? "";
+    const target = href ? resolveLink?.(href) : null;
+    if (target) {
+      link.setAttribute("href", "#");
+      link.removeAttribute("target");
+      link.setAttribute("role", "link");
+      link.setAttribute("tabindex", "0");
+      link.dataset.mdLinkKind = target.kind;
+      for (const [key, value] of Object.entries(target.data)) {
+        if (key !== "linkKind" && /^[a-z][a-zA-Z0-9]*$/.test(key)) {
+          link.dataset[`md${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value;
+        }
+      }
+      link.dataset.mdLinkData = JSON.stringify(target.data);
+      continue;
+    }
     if (isExternalLink(href)) {
       link.setAttribute("target", "_blank");
       link.setAttribute("rel", "noopener noreferrer");

@@ -2,7 +2,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { encodeMermaidSource } from "@fleet-console/markdown/core";
+import { encodeMermaidSource, renderMarkdown } from "@fleet-console/markdown/core";
+import { bindMarkdownLinkActivation } from "@fleet-console/markdown/link-activation";
+import { createChatFileLinkPorts } from "../features/execution/client/agent/chat-file-links.js";
 
 interface InstalledHydrator {
   installDiagramHydrator: (root: ParentNode) => void;
@@ -175,4 +177,31 @@ describe("diagram hydrator security", () => {
     expect(src).toMatch(/useMaxWidth:\s*false/);
     expect(src).toMatch(/themeCSS:\s*buildThemeCss\(\)/);
   });
+});
+
+it("delegates only host-classified Markdown links without trusting source metadata", async () => {
+  const openFile = vi.fn(async () => ({ ok: false as const, reason: "no_handler" as const }));
+  const ports = createChatFileLinkPorts("operation-theater", { openFile, openWikiEntry: async () => ({ ok: true }) });
+  const container = document.createElement("div");
+  container.innerHTML = renderMarkdown('[file](src/main.ts#L12C3) [web](https://example.com) <a data-md-link-kind="file" data-md-path="secret">forged</a> [bad](javascript:alert(1))', { resolveLink: ports.resolveLink }).html;
+  const dispose = bindMarkdownLinkActivation(container, ports.onActivate);
+  const [file, web, forged] = [...container.querySelectorAll("a")];
+  const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+  file!.dispatchEvent(click);
+  expect(click.defaultPrevented).toBe(true);
+  expect(openFile).toHaveBeenLastCalledWith({ theaterId: "operation-theater", path: "src/main.ts", pathKind: "theater-relative", line: 12, column: 3, source: "agent-chat" });
+  const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+  file!.dispatchEvent(enter);
+  expect(enter.defaultPrevented).toBe(true);
+  expect(openFile).toHaveBeenCalledTimes(2);
+  expect(web!.getAttribute("href")).toBe("https://example.com");
+  expect(web!.getAttribute("rel")).toContain("noopener");
+  expect(forged!.hasAttribute("data-md-link-kind")).toBe(false);
+  expect(container.querySelector('[href^="javascript:"]')).toBeNull();
+  dispose();
+  const after = new MouseEvent("click", { bubbles: true, cancelable: true });
+  file!.dispatchEvent(after);
+  expect(after.defaultPrevented).toBe(false);
+  expect(renderMarkdown("[file](src/main.ts)").html).not.toContain("data-md-link-kind");
+  await Promise.resolve();
 });

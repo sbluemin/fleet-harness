@@ -1,3 +1,4 @@
+import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -71,6 +72,7 @@ export function usePaneContext({
   legacySurfaces,
   legacyLaunchOperation,
 }: PaneContextInput): HostPaneContext {
+  const opening = useHostCapabilities();
   // 계약은 "페인이 실제로 헐릴 때 abort된다"고 말한다. cleanup이 없으면 signal은 영원히
   // 열린 채로 남아, 닫힌 페인의 요청과 watcher가 다음 페인 위에 착지한다.
   //
@@ -128,6 +130,9 @@ export function usePaneContext({
     lifecycle,
     preferences,
     panes,
+    navigate: opening.navigate,
+    shell: opening.shell,
+    rail: opening.rail,
     get signal() { return controllerRef.current!.signal; },
     ...(requestExtraWidth === undefined ? {} : { requestExtraWidth }),
     language,
@@ -135,7 +140,7 @@ export function usePaneContext({
     sideBarVisible,
     legacySurfaces,
     legacyLaunchOperation,
-  }), [api, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mount, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
+  }), [opening, api, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mount, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
 
   return ctx;
 }

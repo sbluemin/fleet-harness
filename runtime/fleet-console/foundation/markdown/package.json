@@ -21,6 +21,16 @@
     },
     "./styles.css": {
       "default": "./styles.css"
+    },
+    "./file-ref": {
+      "types": "./file-ref.ts",
+      "import": "./file-ref.ts",
+      "default": "./file-ref.ts"
+    },
+    "./link-activation": {
+      "types": "./link-activation.ts",
+      "import": "./link-activation.ts",
+      "default": "./link-activation.ts"
     }
   },
   "dependencies": {

@@ -673,7 +673,7 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain('pathContext: { kind: "root", relPath: null, label: theaterLabel }');
     expect(types).toContain("readonly theme?: ConsoleTheme;");
     expect(rightRail).toContain("theme,");
-    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, theme, onLaunchOperation]");
+    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, theme, onLaunchOperation, railCapabilities]");
     expect(rightRail).not.toContain("selectPathContext");
     expect(rightRail).not.toContain(".pathAware");
   });

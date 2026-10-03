@@ -1,3 +1,5 @@
+import type { ClientRailCapability } from "../plugin/types.js";
+import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
@@ -172,6 +174,9 @@ export type PaneMount = "rail" | "expanded";
  * 컨테이너 쿼리로 스스로 열화한다.
  */
 export interface PaneContext {
+  readonly navigate: ClientNavigateCapability;
+  readonly shell: ClientShellCapability;
+  readonly rail: ClientRailCapability;
   /** 서술자가 선언한 id 그대로. `panes.open`의 주소와 같다. */
   readonly paneId: string;
   /** 같은 페인을 두 자리에 띄웠을 때 둘을 가르는 id. */

@@ -1,3 +1,4 @@
+import { useHostCapabilities } from "../../../core/client/src/integration/use-host-capabilities.js";
 import { pluginRuntimeState } from "../../execution/client/operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -850,9 +851,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     void archiveOperationFromUi(operationId).then((outcome) => { if (outcome) onArchived(outcome); });
   }, [onArchived]);
 
-  const poolCapabilities = useMemo(() => createHostCapabilities(() => {
+  const poolCapabilities = useHostCapabilities(() => {
     void fetchOperations(null).then(hydrateOperations).catch(() => {});
-  }), []);
+  });
   const defaultBodyConfig = useCallback((operation: OperationNode): OperationBodyConfig => ({
     active: state.activeOperationId === operation.id,
     geometry: operation.geometry ?? ensurePluginGeometry(operation),

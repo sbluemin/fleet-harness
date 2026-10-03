@@ -1,3 +1,5 @@
+import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
+import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, type SystemFontRecord } from "@fleet-console/font-picker/system-fonts";
@@ -802,6 +804,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   // 주소를 누르면 어디서 열지 먼저 묻는다 — CLI(터미널이 찾아낸 링크)와 채팅(마크다운 앵커)이 같은 카드를 쓴다.
   const linkOpen = useLinkOpenChoice(context);
   const onChatLinkClick = React.useMemo(() => createChatLinkInterceptor(linkOpen.choose), [linkOpen.choose]);
+  const fileLinks = React.useMemo(() => createChatFileLinkPorts(context.operation.theaterId, context.navigate), [context.operation.theaterId, context.navigate]);
 
   if (chatMode) {
     // 채팅에도 휴면이 있다 — 자식과 원장이 거둬진 자리에는 대화 대신 재개 카드가 선다.
@@ -815,11 +818,11 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
       );
     }
     return (
-      <div className="agent-stream-host" onClick={onChatLinkClick}>
+      <MarkdownLinkBoundary className="agent-stream-host" onClick={onChatLinkClick} {...fileLinks}>
         <AgentChatView context={context} tourAnchors={chatOpenedHere} />
         <ComputerScreenShare operationId={context.operationId} />
         {linkOpen.card}
-      </div>
+      </MarkdownLinkBoundary>
     );
   }
 

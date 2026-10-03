@@ -1,3 +1,6 @@
+import type { OpenFileRequest, OpenWikiEntryRequest, OpenResult } from "../navigation/index.js";
+import type { PluginInstallContext } from "../plugin/types.js";
+import type { PaneTarget } from "../pane/types.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
@@ -97,6 +100,10 @@ export type RailPanelDescriptor = RailContributionBase & ({
  * `activate`가 직접 무언가를 연다(Shell처럼 확대 표면을 바로 여는 경우).
  */
 export interface RailEntryDescriptor {
+  readonly handles?: {
+    readonly openFile?: (request: OpenFileRequest, host: PluginInstallContext) => PaneTarget | OpenResult | Promise<PaneTarget | OpenResult>;
+    readonly openWikiEntry?: (request: OpenWikiEntryRequest, host: PluginInstallContext) => void | OpenResult | Promise<void | OpenResult>;
+  };
   readonly id: string;
   readonly title: LocalizedText;
   readonly icon: ReactNode | (() => ReactNode);

@@ -1,12 +1,12 @@
+import { landPaneTarget } from "../pane/pane-target.js";
+import { createHostPaneTargetPorts } from "../../integration/plugin-capabilities.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 import type { PaneSearchResult, PaneTarget } from "@fleet-console/sdk/pane";
 import { openExpandedSurface } from "../expanded-surface/store.js";
-import { EXPANDED_PANE_SURFACE_ID } from "../pane/expanded-pane-surface.js";
 import { useRailEntries } from "../pane/pane-registry.js";
-import { openPane } from "../pane/pane-store.js";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { OperationNameMark } from "../../../../../features/execution/client/components/operation-name-mark.js";
@@ -52,7 +52,7 @@ import { requestAlignAll } from "../../../../../features/workspace/client/canvas
 import { enterTriage, focusedTriageOperationId, isTriageActive, setTriageActive, toggleTriageMap, useTriageActive, useTriageMapOpen, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
-import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
+import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
 import {
@@ -296,32 +296,10 @@ export function OperationSearch({
     } catch {
       return;
     }
-    // 폰에는 레일이 없다 — 설정 타깃은 모바일 표현(/settings 페이지)의 같은 섹션으로 보낸다.
-    // 아래의 일반 /operations 항해보다 먼저 갈라야 한다: 순서가 뒤면 설정 목록과 상세 사이에
-    // /operations 항목이 끼어 Back 제스처가 목록 대신 캔버스로 빠진다.
-    if (target && getViewModeSnapshot().effective === "mobile" && target.paneId === SETTINGS_PANE_ID) {
-      const section = target.params?.section;
-      navigate({ pathname: "/settings", search: section === undefined ? "" : `?section=${encodeURIComponent(section)}` });
-      closeOperationSearch();
-      return;
-    }
-    // 경로만 옮기고 주소는 그대로 둔다. `navigate("/operations")`는 쿼리를 함께 버리는데,
-    // activate가 방금 기록한 것이 바로 그 쿼리다 — 주소로 문서를 여는 플러그인은 자기가
-    // 세운 주소가 이 한 줄에 지워져 아무 일도 일어나지 않는다(실측: 팔레트로 연 Codex 항목).
-    navigate({ pathname: "/operations", search: window.location.search });
-    // 계약을 따르는 공급자는 열 자리를 값으로 돌려준다. 그 경우 부작용에 기대지 않고 여기서
-    // 직접 착지시킨다 — 싱글턴을 쓰지 않는 외부 공급자는 이 경로가 없으면 결과를 열지 못한다.
     if (target) {
-      const owner = railBindings.find((binding) => binding.panes.some((pane) => pane.id === target!.paneId));
-      const descriptor = owner?.panes.find((pane) => pane.id === target!.paneId);
-      const mount = target.mount ?? descriptor?.mounts[0] ?? "rail";
-      if (mount === "expanded") {
-        openExpandedSurface({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...target.params, paneId: target.paneId } });
-      } else {
-        openRailPanel(owner?.entry.id ?? panelId);
-        openPane({ paneId: target.paneId, ...(target.params ? { params: target.params } : {}) });
-      }
+      landPaneTarget(target, createHostPaneTargetPorts(railBindings), panelId);
     } else {
+      navigate({ pathname: "/operations", search: window.location.search });
       // 페인을 세우지 않는 엔트리는 레일 패널을 열 수 없다 — 그 엔트리가 여는 것은 표면이다.
       // 여기서 갈라 주지 않으면 팔레트로 고른 결과가 아무 데도 착지하지 않는다.
       const surfaceId = railPanels.find((panel) => panel.id === panelId)?.surfaceId;

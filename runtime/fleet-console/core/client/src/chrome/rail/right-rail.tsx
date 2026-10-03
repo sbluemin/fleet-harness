@@ -1,3 +1,4 @@
+import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { consoleUseWrapClassName, consoleUseWrapLabel, getPanelWrap, subscribeConsoleUseGestures } from "../../../../../features/console-use/client/gestures.js";
 
@@ -8,7 +9,6 @@ import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/rail";
 
 import { useExpandedSurfaces } from "../expanded-surface/store.js";
-import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import "../../styles/rail.css";
 import { CORE_SHORTCUT_COMMANDS, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
@@ -39,7 +39,6 @@ interface RightRailProps {
 }
 
 /** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */
-const RAIL_CAPABILITIES = createHostCapabilities();
 /** 카드 양쪽 테두리 — 열 실측과 카드 폭 사이의 차이. */
 const RAIL_CARD_BORDER_WIDTH = 2;
 /** 엔트리의 대표 페인 — 폭 기본값 등 표면 차원의 힌트를 primary가 말한다(pane 계약). */
@@ -295,6 +294,7 @@ export function useRailPanelContext(
   api: ClientApiCapability,
   onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void,
 ): RailToolContext {
+  const railCapabilities = useHostCapabilities();
   const t = useT();
   const theaterFallback = t("rail.theater.fallback");
   const theaterLabel = useSyncExternalStore(
@@ -311,10 +311,10 @@ export function useRailPanelContext(
     api,
     language,
     theme,
-    surfaces: RAIL_CAPABILITIES.surfaces,
-    rail: RAIL_CAPABILITIES.rail,
+    surfaces: railCapabilities.surfaces,
+    rail: railCapabilities.rail,
     launchOperation: onLaunchOperation,
-  }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation]);
+  }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation, railCapabilities]);
 }
 
 /**

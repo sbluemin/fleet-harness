@@ -1,3 +1,5 @@
+import type { ClientRailCapability } from "../plugin/types.js";
+import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
@@ -73,6 +75,9 @@ export interface ExpandedSurfaceDescriptor {
 }
 
 export interface ExpandedSurfaceContext {
+  readonly navigate: ClientNavigateCapability;
+  readonly shell: ClientShellCapability;
+  readonly rail: ClientRailCapability;
   /** 서술자가 선언한 id 그대로. */
   readonly surfaceId: string;
   /** 같은 표면을 두 페인에 띄웠을 때 둘을 가르는 id. */
