@@ -283,6 +283,8 @@ export interface PaneSearchResult {
   readonly activate: () => PaneTarget | void | Promise<PaneTarget | void>;
   /** "info"는 선택 불가 메타데이터 행 — 키보드 이동과 활성화에서 빠진다. */
   readonly kind?: "info";
+  /** 질의가 이 결과의 대상을 정확히 가리킨다(예: Theater 상대 경로 일치). 팔레트는 그룹과 무관하게 맨 위에 둔다. */
+  readonly exact?: boolean;
 }
 
 export type PaneSearchProvider = (request: PaneSearchRequest) => Promise<readonly PaneSearchResult[]>;
