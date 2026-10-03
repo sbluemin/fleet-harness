@@ -204,7 +204,7 @@
 .objectives-op i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; }
 .objectives-op.is-awaiting i { background: var(--aurora); }
 .objectives-op.is-idle i, .objectives-op.is-ended i, .objectives-op.is-closed i, .objectives-op.is-unknown i { background: var(--text-tertiary); }
-.objectives-op.is-background i { background: color-mix(in oklch, var(--warn) 70%, var(--text-tertiary)); }
+.objectives-op.is-background i { background: color-mix(in oklab, var(--warn) 70%, var(--text-tertiary)); }
 
 /* 한 열에서 추가한 뒤 — 상세를 덮어 열지 않고 「추가됨 · 열기」가 입력줄에 선다. */
 
@@ -346,8 +346,8 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-mission-sub i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; font-style: normal; }
 .objectives-mission-sub.is-awaiting i { background: var(--aurora); }
 .objectives-mission-sub.is-idle i, .objectives-mission-sub.is-ended i, .objectives-mission-sub.is-closed i, .objectives-mission-sub.is-unknown i { background: var(--text-tertiary); }
-.objectives-mission-sub.is-background i { background: color-mix(in oklch, var(--warn) 70%, var(--text-tertiary)); }
-.objectives-mission-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklch, var(--brass-ink) 80%, var(--text-secondary)); }
+.objectives-mission-sub.is-background i { background: color-mix(in oklab, var(--warn) 70%, var(--text-tertiary)); }
+.objectives-mission-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklab, var(--brass-ink) 80%, var(--text-secondary)); }
 /* 임무 기록 — 상자·배경 없이 임무 글자 선(22 + 확인 16 + 간격 12 = 50px)에서 펼쳐진다. */
 .objectives-records-count { flex: none; margin-top: 6px; min-height: 18px; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
 .objectives-records-count svg { width: 12px; height: 12px; }
@@ -624,8 +624,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-batch-menu-title { display: block; font-weight: var(--weight-medium); }
 .objectives-batch-menu-hint { display: block; font-size: var(--t-2xs); color: var(--text-tertiary); white-space: normal; line-height: 1.35; }
 /* 일괄 설정 결과 말풍선 — 글리프에 은은하게 붙어 잠시 나타났다 사라진다. */
-.objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 0; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
-.objectives-batch-balloon::before { content: ""; position: absolute; top: -4px; right: 8px; width: 6px; height: 6px; background: var(--surface-panel-raised); border-left: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); border-top: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); transform: rotate(45deg); }
+.objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 0; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
+.objectives-batch-balloon::before { content: ""; position: absolute; top: -4px; right: 8px; width: 6px; height: 6px; background: var(--surface-panel-raised); border-left: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); border-top: 1px solid color-mix(in oklab, var(--brass) 32%, var(--surface-rim-strong)); transform: rotate(45deg); }
 @keyframes objectives-balloon-in { from { opacity: 0; transform: translateY(-3px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .objectives-batch-balloon-dot { width: 5px; height: 5px; border-radius: 50%; flex: none; }
 .objectives-batch-balloon-dot.is-same { background: var(--brass); }
@@ -674,7 +674,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-note.is-error { border-color: color-mix(in oklch, var(--coral) 35%, transparent); background: color-mix(in oklch, var(--coral) 8%, transparent); }
 .objectives-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .objectives-member-status.is-running { color: var(--warn-ink); }
-.objectives-member-status.is-background { color: color-mix(in oklch, var(--warn-ink) 70%, var(--text-tertiary)); }
+.objectives-member-status.is-background { color: color-mix(in oklab, var(--warn-ink) 70%, var(--text-tertiary)); }
 .objectives-member-status.is-idle { color: var(--positive); }
 .objectives-member-status.is-awaiting { color: var(--aurora); }
 .objectives-assign-new input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-ui); }
@@ -1259,7 +1259,7 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-decision-glyph svg { width: 14px; height: 14px; }
 .objectives-decision-body { display: flex; flex-direction: column; gap: 10px; max-height: min(52vh, 460px); overflow: auto; }
 .objectives-decision-q { display: flex; flex-direction: column; gap: 6px; }
-.objectives-decision-q + .objectives-decision-q { padding-top: 10px; border-top: 1px solid color-mix(in oklch, var(--brass) 18%, var(--surface-rim)); }
+.objectives-decision-q + .objectives-decision-q { padding-top: 10px; border-top: 1px solid color-mix(in oklab, var(--brass) 18%, var(--surface-rim)); }
 .objectives-decision-q-top { display: flex; gap: 6px; align-items: baseline; }
 .objectives-decision-q-n { flex: none; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-q-text { margin: 0; font-size: var(--t-sm); line-height: 1.45; color: var(--text-primary); overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -1380,7 +1380,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-member:has(> .objectives-member-bubble) { grid-template-areas: "mark name meta" ". brief bubble"; }
 .objectives-member:has(> .objectives-member-remove):has(> .objectives-member-bubble) { grid-template-areas: "mark name meta remove" ". brief bubble bubble"; }
 .objectives-member > .objectives-member-bubble { grid-area: bubble; justify-self: end; align-self: start; max-width: 100%; }
-.objectives-member-bubble { position: relative; display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 16px; padding: 0 1px 0 7px; border: 1px solid color-mix(in oklch, var(--brass) 40%, var(--surface-rim-strong)); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); font: var(--weight-regular) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
+.objectives-member-bubble { position: relative; display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 16px; padding: 0 1px 0 7px; border: 1px solid color-mix(in oklab, var(--brass) 40%, var(--surface-rim-strong)); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); font: var(--weight-regular) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
 /* 꼬리 — 위의 칩을 가리킨다. 바탕이 불투명이라 꼬리가 테두리를 비치지 않는다. */
 .objectives-member-bubble::before { content: ""; position: absolute; top: -4px; right: 18px; width: 6px; height: 6px; background: inherit; border-left: 1px solid; border-top: 1px solid; border-color: inherit; transform: rotate(45deg); }
 /* 좁으면 머리말도 말줄임으로 물러난다 — 닫기(✕)는 언제나 보여야 한다. */
@@ -1388,9 +1388,9 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-member-bubble-arrow { flex: none; color: var(--text-tertiary); }
 .objectives-member-bubble-to { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
 .objectives-member-bubble-x { flex: none; width: 14px; height: 14px; }
-.objectives-member-bubble.is-applied { padding-right: 7px; border-color: color-mix(in oklch, var(--positive) 50%, var(--surface-rim-strong)); background: color-mix(in oklch, var(--positive) 10%, var(--surface-panel-raised)); }
+.objectives-member-bubble.is-applied { padding-right: 7px; border-color: light-dark(color-mix(in oklch, var(--positive) 50%, var(--surface-rim-strong)), color-mix(in oklab, var(--positive) 50%, var(--surface-rim-strong))); background: color-mix(in oklch, var(--positive) 10%, var(--surface-panel-raised)); }
 .objectives-member-bubble.is-applied .objectives-member-bubble-when { color: var(--positive); }
-.objectives-member-bubble.is-failed { border-color: color-mix(in oklch, var(--coral) 45%, var(--surface-rim-strong)); background: color-mix(in oklch, var(--coral) 8%, var(--surface-panel-raised)); cursor: help; }
+.objectives-member-bubble.is-failed { border-color: color-mix(in oklab, var(--coral) 45%, var(--surface-rim-strong)); background: color-mix(in oklch, var(--coral) 8%, var(--surface-panel-raised)); cursor: help; }
 .objectives-member-bubble.is-failed .objectives-member-bubble-when { color: var(--coral-ink, var(--coral)); }
 /* 아주 좁은 상세 — 말풍선은 모델·상태 줄의 오른쪽 끝, 칩과 같은 줄이다(꼬리는 왼쪽 칩을 가리킨다). 대기 말풍선은 바뀔 모델 이름만 남기고
    「턴 뒤 →」와 강도는 읽기 도구·title 로만 남긴다. 위의 좁은 배치보다 뒤에 두어 말풍선 배치가 이긴다. */

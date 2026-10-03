@@ -1494,7 +1494,7 @@
 .compact-timing-note {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--warn) 48%, var(--surface-rim));
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--warn) 10%, transparent);
   color: var(--warn-ink);
@@ -1680,7 +1680,7 @@
   cursor: pointer;
   animation: fleet-pop var(--duration-fast) var(--ease-spring) both;
 }
-.use-request-strip:hover { border-color: color-mix(in oklch, var(--brass) 55%, var(--hairline)); }
+.use-request-strip:hover { border-color: color-mix(in oklab, var(--brass) 55%, var(--hairline)); }
 .use-request-strip:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 .use-request-strip .use-request-glyph svg { width: 14px; height: 14px; }
 .use-request-strip-title { flex: none; color: var(--text-primary); font-weight: var(--weight-medium); }
@@ -1936,7 +1936,7 @@
 .use-corner-button.is-plain { margin-left: -6px; padding: 0 8px; color: var(--text-tertiary); }
 .use-corner-button.is-plain:hover:not(:disabled) { color: var(--text-primary); background: var(--control-hover-fill); }
 .use-corner-button.is-quiet { border-color: var(--hairline-strong); color: var(--text-secondary); }
-.use-corner-button.is-quiet:hover:not(:disabled) { border-color: color-mix(in oklch, var(--brass) 55%, var(--hairline-strong)); color: var(--brass-ink); }
+.use-corner-button.is-quiet:hover:not(:disabled) { border-color: color-mix(in oklab, var(--brass) 55%, var(--hairline-strong)); color: var(--brass-ink); }
 .use-corner-button.is-primary {
   border-color: color-mix(in oklch, var(--brass) 48%, transparent);
   background: color-mix(in oklch, var(--brass) 18%, transparent);
@@ -1974,7 +1974,7 @@
   cursor: pointer;
   transition: border-color var(--duration-fast) var(--ease-spring);
 }
-.use-corner-chip:hover { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim)); }
+.use-corner-chip:hover { border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim)); }
 .use-corner-chip.is-late { border-color: color-mix(in oklch, var(--aurora) 52%, var(--surface-rim)); }
 
 /* 도착 — 판은 아래에서 떠오르며 aurora 고리가 한 번 퍼지고, 접힌 표시는 고리만 한 번 퍼진다(저절로 펴지지 않는다). */

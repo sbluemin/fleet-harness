@@ -830,7 +830,7 @@
 
 .fexp-tree-ghost .fexp-tree-name {
   flex: 0 1 auto;
-  color: color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary));
+  color: light-dark(color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary)), color-mix(in oklab, var(--coral-ink) 72%, var(--text-tertiary)));
   text-decoration: line-through;
 }
 
@@ -1147,7 +1147,7 @@
 
 /* 잉크 틴트 — 상태는 글자 배지가 아니라 이름의 색조로 읽는다. */
 .fexp-tree-row.is-modified .fexp-tree-name {
-  color: color-mix(in oklch, var(--warn-ink) 78%, var(--text-secondary));
+  color: color-mix(in oklab, var(--warn-ink) 78%, var(--text-secondary));
 }
 
 .fexp-tree-row.is-untracked .fexp-tree-name {
@@ -1155,7 +1155,7 @@
 }
 
 .fexp-tree-row.is-deleted .fexp-tree-name {
-  color: color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary));
+  color: light-dark(color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary)), color-mix(in oklab, var(--coral-ink) 72%, var(--text-tertiary)));
   text-decoration: line-through;
 }
 
@@ -2100,7 +2100,7 @@
 .fexp-disk-banner button:hover,
 .fexp-read-window button:hover,
 .fexp-long-line-notice button:hover {
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim));
 }
 
 .fexp-read-window button:disabled { opacity: 0.45; cursor: default; }

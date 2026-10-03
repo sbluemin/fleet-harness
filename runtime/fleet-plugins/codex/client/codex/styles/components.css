@@ -3540,7 +3540,7 @@ button.chip:focus-visible {
 
 /* 결정 사실은 더 강한 소식이다 — 아직 자기가 승인할 수 있다고 믿는 사람을 멈춰 세운다. */
 .codex-reader-stale[data-tone="decided"] {
-  border-color: color-mix(in oklch, var(--warn) 50%, var(--surface-rim));
+  border-color: color-mix(in oklab, var(--warn) 50%, var(--surface-rim));
   background: color-mix(in oklch, var(--warn) 12%, var(--surface-panel));
 }
 

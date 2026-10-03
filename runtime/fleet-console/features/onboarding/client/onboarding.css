@@ -176,7 +176,7 @@
 }
 
 .onboarding-welcome-dots span.is-done {
-  background: color-mix(in oklch, var(--brass) 45%, var(--hairline-strong));
+  background: color-mix(in oklab, var(--brass) 45%, var(--hairline-strong));
 }
 
 .onboarding-welcome-dots span.is-current {
