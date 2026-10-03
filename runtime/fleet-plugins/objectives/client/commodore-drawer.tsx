@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
-import { EXPERIMENT_EFFORTS } from "@fleet-console/sdk/settings/browser";
 
 import type { CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { clockTime } from "./commodore-row.js";
@@ -156,7 +155,6 @@ function CommodoreDrawer({ theaterId, tab, openedAt, language }: { readonly thea
             model={model}
             effort={effort}
             locked={false}
-            efforts={EXPERIMENT_EFFORTS}
             commitOnClose
             startAtList
             triggerLabel={t("objectives.commodore.drawer.modelAria")}
@@ -164,8 +162,8 @@ function CommodoreDrawer({ theaterId, tab, openedAt, language }: { readonly thea
             extras={[{ id: "defaults", label: t("objectives.commodore.drawer.useDefaults"), active: !overridden, onPick: () => { void setCommodoreCoordinates(theaterId, null).catch(fail); } }]}
             onChange={(next) => {
               const nextModel = next.model ?? model;
-              // 트랙의 「자동」은 사령관에게 실험 기능 행의 강도다 — 저장소는 정해진 사다리만 받는다.
-              const nextEffort = next.effort && (EXPERIMENT_EFFORTS as readonly string[]).includes(next.effort) ? next.effort : view.defaults.effort;
+              // 트랙의 「자동」은 사령관에게 실험 기능 행의 강도다 — 좌표는 모델과 강도를 함께 저장한다.
+              const nextEffort = next.effort ?? view.defaults.effort;
               setFailure(null);
               void setCommodoreCoordinates(theaterId, { model: nextModel, effort: nextEffort }).catch(fail);
             }}

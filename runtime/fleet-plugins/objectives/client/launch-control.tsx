@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
 import { EffortTrack, resolveRowEffort } from "@fleet-console/sdk/composer";
@@ -181,34 +181,14 @@ interface LaunchControlProps {
    * 된다 — 변경이 곧 세션 재기동·모델 전환인 곳(띄운 구성원)에서 쓴다. 고르는 동안은 메뉴의 표시만 바뀐다. 선택 방식(extras)은 따로 곧바로다.
    */
   readonly commitOnClose?: boolean;
-  /**
-   * 고를 수 있는 강도만 — 받는 쪽이 정해진 사다리만 받을 때(사령관은 실험 기능의 low·medium·high). 없으면 모델이 내놓는 전부.
-   */
-  readonly efforts?: readonly string[];
-}
-
-/** 강도 칩을 받는 쪽의 사다리로 좁힌다 — 모델 행은 그대로 두고, 칩만 거른다. */
-function restrictEfforts(groups: readonly LaunchGroup[], efforts: readonly string[]): readonly LaunchGroup[] {
-  const keep = (effort: string | undefined) => effort === undefined || efforts.includes(effort);
-  return groups.map((group) => ({
-    ...group,
-    rows: group.rows.map((row) => ({
-      ...row,
-      ...(row.chips ? { chips: row.chips.filter((chip) => keep(chip.launch.effort)) } : {}),
-      ...(row.effortAxis ? { effortAxis: row.effortAxis.filter((effort) => efforts.includes(effort)) } : {}),
-      ...(row.gatedEfforts ? { gatedEfforts: row.gatedEfforts.filter((effort) => efforts.includes(effort)) } : {}),
-    })),
-  }));
 }
 
 const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
 const menuItems = (root: HTMLElement): HTMLButtonElement[] => [...root.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled),[role="menuitemradio"]:not(:disabled),[role="menuitemcheckbox"]:not(:disabled)')];
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption, commitOnClose = false, efforts }: LaunchControlProps) {
-  const catalog = useLaunchGroups();
-  const effortKey = efforts?.join(",") ?? "";
-  const groups = useMemo(() => (efforts ? restrictEfforts(catalog, efforts) : catalog), [catalog, effortKey]); // eslint-disable-line react-hooks/exhaustive-deps -- 사다리는 값으로 비교한다.
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption, commitOnClose = false }: LaunchControlProps) {
+  const groups = useLaunchGroups();
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
   // 메뉴에서 방금 고른 값 — 저장이 방송으로 돌아오기 전에도 2단계(모델 한 줄 + 강도 트랙)가 그 모델로 선다. 값이 돌아오거나 메뉴가 닫히면 거둔다.
