@@ -25,6 +25,7 @@ export interface FileRevealTarget {
   readonly theaterId: string;
   readonly relativePath: string;
   readonly requestId: string;
+  readonly kind?: "file" | "dir";
   readonly lineNumber?: number;
   readonly column?: number;
   readonly anchor?: string;
