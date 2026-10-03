@@ -121,7 +121,7 @@ export interface ObjectiveInit {
   /** Console Use 가 함께 받은 달성 기준 문장 — 저장될 때 기본 요구사항으로 by "human" 이 된다. */
   readonly criteria?: readonly string[];
   readonly by?: ObjectiveActor;
-  readonly addedBy?: string;
+  readonly addedBy?: StoredObjective["addedBy"];
   /** 후속으로 태어난 목표 — 원본 목표·후보·배치와 근거. */
   readonly origin?: StoredOrigin;
 }
@@ -380,6 +380,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
       if (parsed.boardUpdatedAt !== undefined && (!Number.isFinite(parsed.boardUpdatedAt) || parsed.boardUpdatedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
+      if (parsed.addedBy !== undefined && typeof parsed.addedBy !== "string" && (parsed.addedBy?.kind !== "commodore" || !objectiveActorSchema.safeParse(parsed.addedBy).success)) throw new ObjectiveStoreError("invalid_stored_actor");
       const intent = parsed.operationIntent;
       if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_operation_intent");
       if (intent?.extensionContext !== undefined && (intent.action !== "ensure-active" || typeof intent.extensionContext !== "string" || !intent.extensionContext.trim() || intent.extensionContext.length > MAX_CONTEXT)) throw new ObjectiveStoreError("invalid_operation_intent");
@@ -600,7 +601,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const pending = stored.pending;
     if (!node && !pending) throw new ObjectiveStoreError("unknown_objective");
     const launch = node ? readOperationLaunch(node.payload) : { sessionName: pending!.sessionName, model: pending!.model, effort: pending!.effort, viewMode: pending!.viewMode, started: false };
-    const addedBy = stored.addedBy ? { operationId: stored.addedBy, title: operationNode(stored.addedBy)?.title ?? null } : null;
+    const addedBy = typeof stored.addedBy === "string" ? { operationId: stored.addedBy, title: operationNode(stored.addedBy)?.title ?? null } : stored.addedBy ?? null;
     const members = (stored.members ?? []).map((member) => {
       const memberNode = node?.childSessions?.find((child) => child.id === member.id);
       const preset = memberNode ? readOperationLaunch(memberNode.payload) : null;

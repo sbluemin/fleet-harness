@@ -1671,7 +1671,7 @@ describe("Objectives contract", () => {
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    const { ctx, store, launch, call, consoleTool, workspace, launches, activity } = harness();
+    const { ctx, store, launch, call, consoleTool, workspace, launches, activity, operationsHost, objectivesDir } = harness();
     const commodore = createCommodoreBoardTools(ctx, store, launch, "t1")[0]!;
     const schema = z.fromJSONSchema(commodore.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
     const board = async (args: Record<string, unknown>) => {
@@ -1690,6 +1690,10 @@ describe("Objectives contract", () => {
     const actor = { kind: "commodore", theaterId: "t1" };
     const created = await board({ add: { title: "Sealed loop", note: "Verify and hand off", criteria: ["Output preserved"] } });
     const id = created.objectiveId as string;
+    expect((await board({ objectiveId: id })).objective).toMatchObject({ addedBy: actor });
+    expect((await board({ view: "objectives", filter: "agent" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor }));
+    const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
+    expect(reloaded.find(id)?.addedBy).toEqual(actor);
     expect(launches).toHaveLength(0);
     expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["pending"] }));
     await board({ objectiveId: id, plan: true });

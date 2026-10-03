@@ -139,7 +139,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
   const rowView = (objective: Objective) => ({
     id: objective.id, groupId: objective.groupId, title: objective.title,
     operation: !store.pending(objective.id),
-    done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null,
+    done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy && "operationId" in objective.addedBy ? objective.addedBy.operationId : objective.addedBy,
     ...withoutEmpty({
       commenced: objective.commenced,
       // 에이전트가 지웠거나 합친 목표 — 목록에는 filter all 에서만 선다.

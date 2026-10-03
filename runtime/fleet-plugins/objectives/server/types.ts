@@ -477,8 +477,8 @@ export interface StoredObjective {
   readonly evidence?: readonly StoredEvidence[];
   readonly dueDate?: string;
   readonly today?: true;
-  /** 에이전트가 도구로 더한 목표 — 더한 Operation. 사람이 만든 목표에는 없다. */
-  readonly addedBy?: string;
+  /** 에이전트가 도구로 더한 목표 — 기존 Operation ID 또는 Theater의 사령관. 사람이 만든 목표에는 없다. */
+  readonly addedBy?: string | Extract<ObjectiveActor, { kind: "commodore" }>;
   /**
    * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것 — 「시작」·「스티어링」이 지휘관에게 한 줄로 알리고 다시 읽게 한다.
    * 지휘관이 이 항목을 읽거나 알림이 나가면 지워진다.
@@ -631,7 +631,7 @@ export interface Objective {
   readonly boardUpdatedAt?: number;
   readonly dueDate: string | null;
   readonly today: boolean;
-  readonly addedBy: { readonly operationId: string; readonly title: string | null } | null;
+  readonly addedBy: { readonly operationId: string; readonly title: string | null } | Extract<ObjectiveActor, { kind: "commodore" }> | null;
   readonly done: ObjectiveCompletion | null;
   /** 인계 대기 — 끝나지 않은 목표의 모든 임무와 모든 달성 기준이 끝났고 인계 기록이 없다. 계산한 값이다. */
   readonly awaitingHandoff: boolean;
