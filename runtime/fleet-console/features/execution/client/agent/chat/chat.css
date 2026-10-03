@@ -373,7 +373,7 @@
   padding: var(--space-2);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay);
+  background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--float-underlay);
   box-shadow: var(--shadow-floating);
 }
 
@@ -2070,7 +2070,7 @@
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
 }
 
@@ -2844,7 +2844,7 @@
   border-radius: var(--radius-md);
   background:
     linear-gradient(color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)), color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
   font-variant-numeric: tabular-nums;
 }

@@ -1948,7 +1948,8 @@
   padding: 10px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  /* --surface-glass는 테마마다 반투명이라 같은 색을 팝업 바탕층(불투명) 위에 얹는다. */
+  background: linear-gradient(var(--surface-glass), var(--surface-glass)), var(--float-underlay);
   box-shadow: var(--shadow-floating);
 }
 .repository-stash-popover-label {

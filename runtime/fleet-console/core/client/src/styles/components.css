@@ -708,7 +708,7 @@
   padding: var(--space-3) 14px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 94%, transparent);
+  background: var(--float-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -1168,7 +1168,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
 }
 
@@ -1369,7 +1369,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
@@ -1499,7 +1499,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
@@ -4535,7 +4535,8 @@ button.status-glyph.is-actionable:focus-visible {
   z-index: 25;
   border: 1px solid var(--surface-rim);
   border-radius: calc(var(--radius-md) + 4px);
-  background: var(--glass-tint-panel);
+  /* 패널 틴트를 쓰되 호버로 뜨는 미리보기라 바탕층은 팝업 채널(불투명)이다. */
+  background: linear-gradient(var(--glass-tint-panel), var(--glass-tint-panel)), var(--float-underlay);
   box-shadow: var(--shadow-floating);
 }
 
@@ -5015,7 +5016,7 @@ button.status-glyph.is-actionable:focus-visible {
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
   font-family: var(--font-ui);
   font-size: var(--t-sm);
@@ -7024,7 +7025,7 @@ body[data-companion-resizing="true"] .canvas-operation {
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-soft);
   pointer-events: none;
 }
@@ -8437,7 +8438,7 @@ body[data-companion-resizing="true"] .canvas-operation {
       color-mix(in oklch, var(--glass-tint-strong) 88%, var(--ink-deep)),
       color-mix(in oklch, var(--glass-tint-strong) 88%, var(--ink-deep))
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   /* 그림자는 깊이만 진다 — brass 링(shadow-anchor)은 위치 채널이라 중립 메뉴에 두르지 않는다. */
   box-shadow: var(--shadow-floating);
 }
@@ -9331,7 +9332,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   opacity: 0;
   pointer-events: none;
@@ -9394,8 +9395,9 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-top: 0;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   /* 밴드의 유리(--glass-tint-band·soft backdrop)를 그대로 잇는다 — 띠에서 뽑혀 나온 서랍이니 띠와
-     같은 색이어야지, 캡슐·바의 진한 유리를 쓰면 라이트 테마에서 흰 판으로 떠 보인다. */
-  background: var(--glass-tint-band);
+     같은 색이어야지, 캡슐·바의 진한 유리를 쓰면 라이트 테마에서 흰 판으로 떠 보인다. 바탕층만
+     팝업 채널(불투명)이라 다크에서 뒤가 비치지 않는다 — 라이트의 band는 이미 불투명이라 그대로다. */
+  background: linear-gradient(var(--glass-tint-band), var(--glass-tint-band)), var(--float-underlay);
   box-shadow: 0 8px 20px -14px oklch(0 0 0 / 0.45);
   opacity: 0;
   pointer-events: none;
@@ -9479,7 +9481,11 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-md);
   outline: 1px dashed color-mix(in oklch, var(--brass) 34%, transparent);
   outline-offset: -1px;
-  background: color-mix(in oklch, var(--glass-tint-band) 70%, transparent);
+  /* 다크에서는 band 70%를 불투명 바탕층 위에 얹어 후보 썸네일 뒤로 겹친 창 글자가 비치지 않게 한다.
+     라이트는 바탕층이 비어(--float-underlay-dark) 캔버스 위 band 70% 외형을 그대로 둔다. */
+  background:
+    linear-gradient(color-mix(in oklch, var(--glass-tint-band) 70%, transparent), color-mix(in oklch, var(--glass-tint-band) 70%, transparent)),
+    var(--float-underlay-dark);
   animation: canvas-snap-assist-in 180ms var(--ease-glide);
 }
 
@@ -9582,7 +9588,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   animation: canvas-snap-menu-in 190ms var(--ease-spring) both;
 }
@@ -10477,7 +10483,7 @@ body[data-companion-resizing="true"] .canvas-operation {
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
 }
 
@@ -11904,7 +11910,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 60px -40px var(--brass);
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
@@ -12182,7 +12188,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   pointer-events: auto;
 }
@@ -12351,7 +12357,7 @@ body[data-companion-resizing="true"] .canvas-operation {
       color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent),
       color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent)
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
 }
 
@@ -12956,7 +12962,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 60%),
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
 }
 
@@ -13823,7 +13829,7 @@ body[data-codex-side="true"] .command-card {
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
@@ -14697,7 +14703,7 @@ body[data-codex-side="true"] .command-card {
       var(--glass-tint-expanded),
       var(--glass-tint-expanded)
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
 }
 
@@ -15497,7 +15503,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
       var(--glass-tint-expanded),
       var(--glass-tint-expanded)
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
   transition: border-color var(--duration-fast);
 }
@@ -15514,7 +15520,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   background:
     linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),
     radial-gradient(150% 420px at 50% -48px, var(--glass-pane-light) 0%, transparent 62%),
-    var(--glass-underlay);
+    var(--float-underlay);
 }
 
 /* 터미널은 cols×rows 격자라 첫 줄 끝만 비울 수 없다 — 부유 닫기가 우상단 글자(RPROMPT·TUI 상태)를
@@ -15909,7 +15915,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   text-align: left;
 }
@@ -15929,7 +15935,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border-right: 1px solid var(--surface-rim-strong);
   background:
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   transform: rotate(-45deg);
 }
 
@@ -16042,7 +16048,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
 }
 
@@ -16211,7 +16217,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .keyboard-shortcuts-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: color-mix(in oklch, var(--ink-abyss) 64%, transparent); }
-.keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); max-height: min(680px, calc(100dvh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); box-shadow: var(--shadow-floating); outline: none; }
+.keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); max-height: min(680px, calc(100dvh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--float-underlay); box-shadow: var(--shadow-floating); outline: none; }
 .keyboard-shortcuts-dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 10px; color: var(--text-primary); }
 .keyboard-shortcuts-dialog-head button { width: 24px; height: 24px; border-radius: var(--radius-xs); color: var(--text-tertiary); }
 .keyboard-shortcuts-dialog-head button:hover { background: var(--surface-glass); color: var(--text-primary); }
@@ -16267,7 +16273,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .fc-select__popup {
   position: absolute; z-index: var(--z-select-popover); inset-inline: 0; top: calc(100% + 6px);
   margin: 0; padding: var(--space-1); list-style: none;
-  background: color-mix(in oklch, var(--ink-deep) 94%, transparent);
+  background: var(--float-underlay);
   border: 1px solid var(--hairline); border-radius: var(--radius-md);
   box-shadow: var(--shadow-floating);
   max-height: 232px; overflow-y: auto;
@@ -16457,7 +16463,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
       color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent),
       color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent)
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   pointer-events: none;
 }
 
@@ -17086,7 +17092,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
       color-mix(in oklch, var(--glass-tint-pillar) 94%, transparent),
       color-mix(in oklch, var(--glass-tint-pillar) 94%, transparent)
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
   cursor: zoom-out;
 }
@@ -17655,7 +17661,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
       color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
 }
 
 /* 밴드가 선 섹션의 행은 밴드 라벨 자리(패딩 + 글리프 16px + 간격 6px)에 맞춰 들어간다.
@@ -18282,7 +18288,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
     radial-gradient(100% 90% at 0 0, color-mix(in oklch, var(--warn) 12%, transparent), transparent 62%),
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   padding: clamp(var(--space-5), 5vw, var(--space-8));
   column-gap: clamp(var(--space-4), 4vw, var(--space-6));
 }
@@ -18447,7 +18453,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
     radial-gradient(100% 90% at 50% 0, color-mix(in oklch, var(--warn) 12%, transparent), transparent 62%),
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   text-align: center;
 }
 
@@ -19141,7 +19147,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   max-height: min(84vh, calc(100dvh - 64px));
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay);
+  background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--float-underlay);
   box-shadow: var(--shadow-floating);
   outline: none;
 }

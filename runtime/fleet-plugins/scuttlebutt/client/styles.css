@@ -75,7 +75,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   color: var(--text-secondary);
@@ -103,7 +103,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -431,7 +431,7 @@
   /* 팝업 판독성 계약: 신호 wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
   background:
     linear-gradient(var(--scuttlebutt-notice-wash, var(--glass-tint-strong)), var(--scuttlebutt-notice-wash, var(--glass-tint-strong))),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-sm);
@@ -598,7 +598,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-md);
@@ -748,7 +748,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
   animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
 }
@@ -870,7 +870,7 @@
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -1678,7 +1678,7 @@
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
 }
 
