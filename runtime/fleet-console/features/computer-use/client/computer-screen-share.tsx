@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../../../core/client/src/i18n/index.js";
-import { setOperationUseRequestIds } from "../../../core/client/src/integration/store.js";
+import { getState, setOperationUseRequestIds, subscribe as subscribeStore } from "../../../core/client/src/integration/store.js";
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/operations-sse.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import "../../execution/client/agent/computer-screen-share.css";
@@ -106,6 +106,7 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     let desiredTarget: CaptureTarget | null = null;
     let attemptedId: string | null = null;
     let streamed = false;
+    let captureGeneration = 0;
     const controller = new AbortController();
     const stop = () => { stream?.getTracks().forEach((track) => track.stop()); stream = null; };
     const startCapture = () => {
@@ -118,10 +119,11 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       if (!disposed && !acquiring) { attemptedId = null; setCapture(null); startCapture(); }
     };
     const acquire = async (target: CaptureTarget) => {
+      const generation = captureGeneration;
       acquiring = true;
       try {
         const next = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 } }, audio: false });
-        if (disposed || currentId !== target.id) { next.getTracks().forEach((track) => track.stop()); return; }
+        if (disposed || generation !== captureGeneration || currentId !== target.id) { next.getTracks().forEach((track) => track.stop()); return; }
         stream = next;
         next.getVideoTracks()[0]?.addEventListener("ended", () => {
           if (stream !== next) return;
@@ -130,7 +132,7 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
         }, { once: true });
         setCapture({ target, stream: next, failed: false });
       } catch (error) {
-        if (!disposed && currentId === target.id) {
+        if (!disposed && generation === captureGeneration && currentId === target.id) {
           console.warn("Computer capture unavailable", error instanceof Error ? error.name : "unknown");
           setCapture({ target, stream: null, failed: true, retry });
         }
@@ -161,6 +163,19 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       streamed = true;
       apply(payload);
     });
+    const releaseOfflineCapture = () => {
+      if (getState().connection !== "offline") return;
+      // 마지막 해제 프레임 없이 끊겨도 로컬 캡처는 멈춘다. 늦은 GET·획득 결과도 되살리지 못한다.
+      streamed = true;
+      captureGeneration++;
+      stop();
+      currentId = null;
+      attemptedId = null;
+      desiredTarget = null;
+      setCapture(null);
+    };
+    const unsubscribeConnection = subscribeStore(releaseOfflineCapture);
+    releaseOfflineCapture();
     // mount가 핸드셰이크보다 늦으면 한 번만 보정한다. 재연결과 이후 변화는 SSE가 맡는다.
     void fetch("/api/v1/desktop/computer-capture", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) })
       .then(async (response) => {
@@ -169,7 +184,7 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
         if (!streamed) apply(body);
       })
       .catch(() => undefined);
-    return () => { disposed = true; controller.abort(); unsubscribe(); stop(); };
+    return () => { disposed = true; controller.abort(); unsubscribe(); unsubscribeConnection(); stop(); };
   }, []);
   return <OperationUseContext.Provider value={activity}><CaptureContext.Provider value={capture}>{children}</CaptureContext.Provider></OperationUseContext.Provider>;
 }
