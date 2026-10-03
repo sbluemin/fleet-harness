@@ -579,7 +579,9 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   const t = useT();
   const handleClick = useCallback(() => {
     if (entry.activate) {
-      if (context.theaterId === null) return;
+      // fleet 범위는 Console 전역이라 Theater 없이도 선다. Theater를 다루는 entry는
+      // Theater 없이 열 수 없어 조용히 둔다(전역 Shell의 안내 문구와 같은 계약).
+      if (context.theaterId === null && entry.scope !== "fleet") return;
       entry.activate(context);
       return;
     }
@@ -615,7 +617,7 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
       aria-pressed={pressed}
       aria-label={named}
-      disabled={entry.activate !== undefined && context.theaterId === null}
+      disabled={entry.activate !== undefined && context.theaterId === null && entry.scope !== "fleet"}
       // 이름은 도구모음 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
       data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
       // 선언한 도구만 활성 해제 가드를 넘는다(active-operation-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.

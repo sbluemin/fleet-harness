@@ -1,7 +1,16 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
+import type { CompanionPanelDescriptor } from "@fleet-console/sdk/plugin";
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
-import { CORE_SHORTCUT_COMMANDS, resolveShortcutChords, useShortcutOverrides } from "../../../core/client/src/integration/shortcut-bindings.js";
+import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import {
+  companionDefaultChord,
+  companionShortcutCommandId,
+  CORE_SHORTCUT_COMMANDS,
+  resolveShortcutChords,
+  useShortcutOverrides,
+} from "../../../core/client/src/integration/shortcut-bindings.js";
+import { usableCompanionShortcuts } from "../../../core/client/src/integration/shortcuts.js";
 
 /**
  * Desktop 단축키 중계 동기화(리뷰 B).
@@ -12,8 +21,10 @@ import { CORE_SHORTCUT_COMMANDS, resolveShortcutChords, useShortcutOverrides } f
  * `shortcuts`로 셸에 싣는다. 옛 셸은 모르는 필드를 무시하고, 옛 Console은
  * 필드를 싣지 않아 새 셸이 중계하지 않는다.
  *
- * companion 토글(Alt+B)은 CORE 목록 밖에 있어 기본값을 함께 싣는다.
- * 사용자 재배정 companion 코드는 별도 후속(명령 열거)으로 둔다.
+ * companion 토글도 선언된 전부를 푼다(설정 화면의 행과 같은 열거 — 코어 +
+ * 플러그인 operation kind). Operation 브라우저를 재배정해도 뷰 포커스 중
+ * 중계가 따라간다.
+ *
  * 서버 경로가 아직 없으면(호스트 구현 중) 조용히 실패하고, 다음 포그라운드에서 다시 시도한다.
  */
 
@@ -35,18 +46,25 @@ async function sendShortcuts(shortcuts: readonly string[]): Promise<boolean> {
 
 export function useGlobalBrowserShortcutsSync(active: boolean): void {
   const overrides = useShortcutOverrides();
+  const registry = usePluginRegistry();
   React.useEffect(() => {
     if (!active || !isDesktopShell()) return;
     const chords = new Set<string>();
     for (const command of CORE_SHORTCUT_COMMANDS) {
       for (const chord of resolveShortcutChords(command.id)) chords.add(chord);
     }
-    chords.add("Alt+KeyB");
+    for (const kind of registry.operationKinds) {
+      for (const companion of usableCompanionShortcuts(kind.companions ?? []) as readonly CompanionPanelDescriptor[]) {
+        if (!companion.shortcut) continue;
+        const commandId = companionShortcutCommandId(kind.pluginId, companion.id);
+        for (const chord of resolveShortcutChords(commandId, [companionDefaultChord(companion.shortcut.code)])) chords.add(chord);
+      }
+    }
     const body = JSON.stringify([...chords]);
     if (body === lastSent && lastOk) return;
     lastSent = body;
     void sendShortcuts([...chords]).then((ok) => { lastOk = ok; });
-  }, [active, overrides]);
+  }, [active, overrides, registry.operationKinds]);
   // 실패했으면 다음 포그라운드에서 다시 — 서버가 늦게 열려도 따라간다.
   React.useEffect(() => {
     if (!active) return;
