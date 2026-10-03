@@ -78,6 +78,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   let textBuffer = "";
   let thinkingBuffer = "";
   const pendingTools = new Map<string, { readonly name: string; readonly input: unknown }>();
+  // 거절 코드 — 세션 이벤트(tool-end)는 결과를 싣지 않으므로, 도구를 감싸 결과의 `error` 한 낱말만 호출 id·이름으로 기억한다.
+  const toolErrors = new Map<string, string>();
   let turnActions = 0;
   let turnResult: CommodoreTurnOutcome | null = null;
 
@@ -91,11 +93,24 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     if (thinkingBuffer.trim()) record({ kind: "thinking", text: clip(thinkingBuffer, MAX_TRANSCRIPT_TEXT) });
     thinkingBuffer = "";
   };
-  const recordTool = (name: string, input: unknown, ok: boolean | undefined) => {
+  const recordTool = (name: string, input: unknown, ok: boolean | undefined, id?: string) => {
     const described = describeTool(name, input);
     if (described.counts && ok !== false) turnActions += 1;
-    record({ kind: "tool", name: described.name, ...(described.summary ? { summary: described.summary } : {}), ...(ok === undefined ? {} : { ok }), ...(described.action ? { action: described.action } : {}), ...(described.objectiveId ? { objectiveId: described.objectiveId } : {}), ...(described.title ? { title: described.title } : {}) });
+    const error = ok === false ? (id && toolErrors.get(id)) || toolErrors.get(`name:${described.name}`) : undefined;
+    if (id) toolErrors.delete(id);
+    toolErrors.delete(`name:${described.name}`);
+    record({ kind: "tool", name: described.name, ...(described.summary ? { summary: described.summary } : {}), ...(ok === undefined ? {} : { ok }), ...(described.action ? { action: described.action } : {}), ...(described.objectiveId ? { objectiveId: described.objectiveId } : {}), ...(described.title ? { title: described.title } : {}), ...(error ? { error } : {}) });
   };
+  /** 결과의 `error` 코드만 기억하는 감싸기 — 결과 자체는 그대로 돌려준다. */
+  const observed = (tool: PluginMcpTool): PluginMcpTool => ({
+    ...tool,
+    execute: async (args, context) => {
+      const result = await tool.execute(args, context);
+      const code = errorCodeOf(result);
+      if (code) { if (context.toolCallId) toolErrors.set(context.toolCallId, code); toolErrors.set(`name:${tool.name}`, code); }
+      return result;
+    },
+  });
   const flushTools = () => {
     for (const [, pending] of pendingTools) recordTool(pending.name, pending.input, undefined);
     pendingTools.clear();
@@ -113,7 +128,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         flushText();
         const pending = event.id ? pendingTools.get(event.id) : undefined;
         if (event.id) pendingTools.delete(event.id);
-        recordTool(pending?.name ?? event.name ?? "tool", pending?.input, !event.isError);
+        recordTool(pending?.name ?? event.name ?? "tool", pending?.input, !event.isError, event.id);
         return;
       }
       case "result": {
@@ -141,7 +156,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       settlement: "result",
       tools: {
         builtins: ["WebSearch", "WebFetch"],
-        custom: [{ name: COMMODORE_TOOL_GROUP, tools }, ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools }] : [])],
+        custom: [{ name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) }, ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools.map(observed) }] : [])],
       },
       onEvent,
     });
@@ -160,7 +175,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       await this.start();
       if (!session) throw new Error("session_disposed");
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
-      turnActions = 0; turnResult = null; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear();
+      turnActions = 0; turnResult = null; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear();
       record({ kind: "wake", reasons: input.reasons });
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
@@ -220,6 +235,18 @@ function describeTool(rawName: string, input: unknown): ToolDescription {
     case "WebFetch": return { name, summary: str("url"), counts: false };
     default: return { name, counts: false };
   }
+}
+
+/** 도구 결과의 거절 코드 — structuredContent.error 또는 JSON 텍스트의 error. snake_case 한 낱말만 받는다. */
+function errorCodeOf(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const structured = (result as { structuredContent?: { error?: unknown } }).structuredContent;
+  let code = typeof structured?.error === "string" ? structured.error : undefined;
+  if (!code) {
+    const first = (result as { content?: readonly { type?: string; text?: string }[] }).content?.find((item) => item.type === "text" && typeof item.text === "string");
+    try { const parsed = first ? JSON.parse(first.text!) as { error?: unknown } : null; if (typeof parsed?.error === "string") code = parsed.error; } catch { /* 코드 없음 */ }
+  }
+  return code && /^[a-z0-9_]{1,64}$/.test(code) ? code : undefined;
 }
 
 function clip(value: string, max: number): string {

@@ -157,11 +157,15 @@ describe("commodore session", () => {
     const commands: { file: string; args: readonly string[] }[] = [];
     const session = createCommodoreSession({
       theaterId: "t1", theaterLabel: "fleet-harness", theaterRoot, agent: stub.agent, store: h.store,
-      coordinates: { model: "opus[1m]", effort: "high" }, boardTools: [{ name: "console_objectives", description: "board", inputSchema: { type: "object", properties: {}, additionalProperties: true }, execute: async () => ({ content: [] }) }], onNextWake: (at, reason) => wakes.push({ at, reason }), now: () => 10_000,
+      coordinates: { model: "opus[1m]", effort: "high" }, boardTools: [{ name: "console_objectives", description: "board", inputSchema: { type: "object", properties: {}, additionalProperties: true }, execute: async (args) => (args as { complete?: unknown }).complete ? { content: [{ type: "text", text: JSON.stringify({ error: "not_awaiting_review", hint: "secret hint" }) }], isError: true } : { content: [] } }], onNextWake: (at, reason) => wakes.push({ at, reason }), now: () => 10_000,
       execute: async (file, args) => { commands.push({ file, args }); return file === "git" ? { stdout: "abc1234\x1f2026-10-03\x1fme\x1ffix: thing\n", stderr: "" } : { stdout: JSON.stringify([{ number: 7, title: "Pairing drops", state: "OPEN", updatedAt: "2026-10-01T00:00:00Z", labels: [{ name: "bug" }], url: "https://example.test/7" }]), stderr: "" }; },
     });
 
     stub.setScript(async () => {
+      // 호스트처럼 도구를 먼저 실행하고(결과는 세션 이벤트에 실리지 않는다) tool-end 로 끝만 알린다.
+      await stub.created[0]!.tools!.custom![1]!.tools[0]!.execute({ complete: true, objectiveId: "o2" }, { cwd: theaterRoot, toolCallId: "u0" });
+      stub.emit({ kind: "tool-start", id: "u0", name: "mcp__console__console_objectives", input: { complete: true, objectiveId: "o2" } });
+      stub.emit({ kind: "tool-end", id: "u0", isError: true });
       stub.emit({ kind: "thinking", text: "The directive " }); stub.emit({ kind: "thinking", text: "changed." });
       stub.emit({ kind: "tool-start", id: "u1", name: "mcp__commodore__directive", input: {} });
       stub.emit({ kind: "tool-end", id: "u1", isError: false });
@@ -190,12 +194,14 @@ describe("commodore session", () => {
 
     // 기록 — 사고·텍스트는 블록으로, 보드 행위는 action·objectiveId·title 만, 도구 입력의 나머지는 없다.
     const log = h.store.transcriptRead("t1").entries;
-    expect(log.map((entry) => entry.kind)).toEqual(["wake", "thinking", "tool", "text", "tool", "tool", "result"]);
-    expect(log[1]).toMatchObject({ kind: "thinking", text: "The directive changed." });
-    expect(log[2]).toMatchObject({ kind: "tool", name: "directive", ok: true });
-    expect(log[4]).toMatchObject({ kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o1", title: "Remote pairing", ok: true });
-    expect(JSON.stringify(log)).not.toContain("secret detail");
-    expect(log[6]).toMatchObject({ kind: "result", outcome: "ok", costUsd: 0.25, inputTokens: 1200 });
+    expect(log.map((entry) => entry.kind)).toEqual(["wake", "tool", "thinking", "tool", "text", "tool", "tool", "result"]);
+    // 거절된 보드 행위는 코드 한 낱말로 남고 행위로 세지 않는다 — 결과의 힌트는 싣지 않는다.
+    expect(log[1]).toMatchObject({ kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o2", ok: false, error: "not_awaiting_review" });
+    expect(log[2]).toMatchObject({ kind: "thinking", text: "The directive changed." });
+    expect(log[3]).toMatchObject({ kind: "tool", name: "directive", ok: true });
+    expect(log[5]).toMatchObject({ kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o1", title: "Remote pairing", ok: true });
+    expect(JSON.stringify(log)).not.toContain("secret");
+    expect(log[7]).toMatchObject({ kind: "result", outcome: "ok", costUsd: 0.25, inputTokens: 1200 });
     expect(h.store.read("t1")!.run).toEqual({ session: 0, costUsd: 0.25, actions: 1 });
 
     // 사령관 전용 도구 — 지시·정보는 저장소에서, 읽기 도구는 Theater 안에서만.

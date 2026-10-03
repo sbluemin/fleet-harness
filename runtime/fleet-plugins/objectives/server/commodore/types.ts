@@ -118,7 +118,7 @@ export type CommodoreTranscriptEntry =
   | CommodoreTranscriptBase & { readonly kind: "wake"; readonly reasons: readonly string[] }
   | CommodoreTranscriptBase & { readonly kind: "text"; readonly text: string }
   | CommodoreTranscriptBase & { readonly kind: "thinking"; readonly text: string }
-  | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string }
+  | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string; readonly error?: string }
   | CommodoreTranscriptBase & { readonly kind: "result"; readonly outcome: "ok" | "error" | "cancelled"; readonly costUsd?: number; readonly inputTokens?: number; readonly outputTokens?: number; readonly error?: string }
   | CommodoreTranscriptBase & { readonly kind: "session"; readonly event: "opened" | "replaced" | "restarted" | "stopped"; readonly reason?: string }
   | CommodoreTranscriptBase & { readonly kind: "message"; readonly text: string }
@@ -139,7 +139,8 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   z.object({ ...transcriptBase, kind: z.literal("text"), text }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("thinking"), text }).strict(),
   // 보드 행위는 action·objectiveId·title 로 서랍이 「목표 X 를 완료」 한 줄로 그린다 — 도구 인자 전체는 싣지 않는다.
-  z.object({ ...transcriptBase, kind: z.literal("tool"), name: z.string().max(128), summary: z.string().max(1_000).optional(), ok: z.boolean().optional(), action: z.string().max(64).optional(), objectiveId: z.string().max(128).optional(), title: z.string().max(200).optional() }).strict(),
+  // 거절은 코드 한 낱말만(`error`) — 도구 결과의 나머지(입력·힌트)는 싣지 않는다.
+  z.object({ ...transcriptBase, kind: z.literal("tool"), name: z.string().max(128), summary: z.string().max(1_000).optional(), ok: z.boolean().optional(), action: z.string().max(64).optional(), objectiveId: z.string().max(128).optional(), title: z.string().max(200).optional(), error: z.string().max(64).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("result"), outcome: z.enum(["ok", "error", "cancelled"]), costUsd: z.number().nonnegative().optional(), inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional(), error: z.string().max(200).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("message"), text }).strict(),
