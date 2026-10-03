@@ -97,15 +97,6 @@ export function compactTrackFillPercent(windowPercent: number): number {
     * 100;
 }
 
-export function compactPercentFromTrackRatio(ratio: number): number {
-  const next = COMPACT_CEILING_CUSTOM_MIN
-    + ratio * (COMPACT_CEILING_CUSTOM_MAX - COMPACT_CEILING_CUSTOM_MIN);
-  return Math.min(
-    COMPACT_CEILING_CUSTOM_MAX,
-    Math.max(COMPACT_CEILING_CUSTOM_MIN, Math.round(next)),
-  );
-}
-
 function formatCompactTokens(n: number): string {
   if (n >= 1_000_000) {
     const m = n / 1_000_000;
@@ -114,15 +105,20 @@ function formatCompactTokens(n: number): string {
   return `${Math.round(n / 1000)}K`;
 }
 
+const COMPACT_VALUE_KEYS = new Set([
+  "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp",
+  "End", "Home", "PageDown", "PageUp",
+]);
+
 function AiGatewayCompactTimingCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields.has("compactCeiling");
   const [previewId, setPreviewId] = React.useState<string>("");
+  // 끌리는 동안의 값은 화면에만 싣고, 손을 뗄 때(pointerup·값을 움직인 keyup·blur) 한 번 저장한다 —
+  // SettingsSlider와 같은 계약. 키 한 번마다 저장하면 방향키를 누르고 있는 동안 설정 문서가 연달아 다시 쓰인다.
   const [dragPercent, setDragPercent] = React.useState<number | null>(null);
-  const trackRef = React.useRef<HTMLDivElement | null>(null);
-  const draggingRef = React.useRef(false);
   const dragPercentRef = React.useRef<number | null>(null);
 
   if (!state) {
@@ -175,12 +171,17 @@ function AiGatewayCompactTimingCard() {
     void setSystemPromptSettingsField("compactCeiling", clamped);
   };
 
-  const setCustomFromClientX = (clientX: number): void => {
-    const bar = trackRef.current?.getBoundingClientRect();
-    if (!bar || bar.width <= 0) return;
-    const next = compactPercentFromTrackRatio((clientX - bar.left) / bar.width);
-    dragPercentRef.current = next;
-    setDragPercent(next);
+  const previewCustom = (percent: number): void => {
+    dragPercentRef.current = percent;
+    setDragPercent(percent);
+  };
+
+  const commitCustom = (): void => {
+    const next = dragPercentRef.current;
+    if (next === null) return;
+    dragPercentRef.current = null;
+    setDragPercent(null);
+    if (next !== ceiling) saveCustom(next);
   };
 
   return (
@@ -229,47 +230,31 @@ function AiGatewayCompactTimingCard() {
         </div>
       ) : null}
       <div className="compact-timing-track-wrap">
-        <div
-          ref={trackRef}
-          className={`compact-timing-track${policy === "custom" && !saving ? " is-live" : ""}${crowded ? " is-warn" : ""}`}
-          onPointerDown={(event) => {
-            if (policy !== "custom" || saving) return;
-            draggingRef.current = true;
-            (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
-            setCustomFromClientX(event.clientX);
-          }}
-          onPointerMove={(event) => {
-            if (!draggingRef.current) return;
-            setCustomFromClientX(event.clientX);
-          }}
-          onPointerUp={() => {
-            if (!draggingRef.current) return;
-            draggingRef.current = false;
-            const next = dragPercentRef.current;
-            dragPercentRef.current = null;
-            setDragPercent(null);
-            if (next !== null) saveCustom(next);
-          }}
-          onPointerCancel={() => {
-            draggingRef.current = false;
-            dragPercentRef.current = null;
-            setDragPercent(null);
-          }}
-        >
+        {/* 보이는 range 하나가 트랙이다 — 숨긴 range와 따로 그린 손잡이를 겹치면 포커스 링이 트랙 래퍼
+            전체에 서서 카드 가장자리에서 잘린다. 손잡이와 포커스 링은 공유 `.fleet-slider`가 그리고, 막대와
+            채움은 이 카드가 그린다: 채움이 경고(is-warn)를 싣는 계기라 brass 채움을 쓰지 않는다. */}
+        <div className={`compact-timing-track${policy === "custom" ? " is-live" : ""}${crowded ? " is-warn" : ""}`}>
           <div className="compact-timing-bar">
-            <div className="compact-timing-fill" style={{ width: `${trackFill}%` }} />
+            {/* 채움 끝은 손잡이 중심을 따른다 — 막대가 양끝 4px 안쪽에 서므로 손잡이 중심은 막대 양끝에서
+                흰 면의 반지름(10px)만큼 안쪽을 오간다. */}
+            <div className="compact-timing-fill" style={{ width: `calc(10px + (100% - 20px) * ${trackFill / 100})` }} />
           </div>
-          <div className="compact-timing-thumb" style={{ left: `${trackFill}%` }} />
           <input
-            className="compact-timing-sr"
+            className="fleet-slider compact-timing-range"
             type="range"
             min={COMPACT_CEILING_CUSTOM_MIN}
             max={COMPACT_CEILING_CUSTOM_MAX}
             step={1}
             value={typeof liveCeiling === "number" ? liveCeiling : shownPercent}
-            disabled={policy !== "custom" || saving}
+            disabled={policy !== "custom"}
             aria-label={t("terminal.settings.compactTimingCustomAria")}
-            onChange={(event) => saveCustom(Number(event.target.value))}
+            aria-valuetext={`${shownPercent}%`}
+            onChange={(event) => previewCustom(Number(event.currentTarget.value))}
+            onPointerUp={commitCustom}
+            onKeyUp={(event) => {
+              if (COMPACT_VALUE_KEYS.has(event.key)) commitCustom();
+            }}
+            onBlur={commitCustom}
           />
         </div>
         <div className="compact-timing-ticks">

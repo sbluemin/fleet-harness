@@ -1384,28 +1384,19 @@
 .compact-timing-track {
   position: relative;
   height: 28px;
-  touch-action: none;
 }
 
-.compact-timing-track.is-live {
-  cursor: ew-resize;
-}
-
-.compact-timing-track:has(.compact-timing-sr:focus-visible) {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
-  border-radius: var(--radius-xs);
-}
-
+/* 막대는 양끝 4px 안쪽에 선다 — 공유 손잡이의 흰 면이 끝값에서 막대 끝에 닿는 자리다. */
 .compact-timing-bar {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 4px;
+  right: 4px;
   top: 11px;
   height: 6px;
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--ink-rim) 55%, transparent);
+  pointer-events: none;
 }
 
 .compact-timing-fill {
@@ -1418,34 +1409,35 @@
   background: color-mix(in oklch, var(--warn) 42%, var(--ink-mid));
 }
 
-.compact-timing-thumb {
-  position: absolute;
-  top: 4px;
-  width: 20px;
-  height: 20px;
-  margin-left: -10px;
-  border: 2px solid var(--brass);
-  border-radius: var(--radius-pill);
-  background: var(--ink-deep);
-  box-shadow: 0 0 0 4px var(--brass-glow);
-  pointer-events: none;
+/* 손잡이·포커스 링은 공유 `.fleet-slider`의 것이고, 이 카드는 그 트랙을 비워 아래 막대를 드러낸다.
+   Doctrine: 압축 시점의 채움은 중립 잉크와 경고(is-warn)를 싣는 계기라 공유 슬라이더의 brass 채움을
+   덮어쓴다 — 여기서 brass는 위치(손잡이 포커스 링)만 말한다. */
+.compact-timing-range {
+  position: relative;
+  display: block;
+  width: 100%;
 }
 
-.compact-timing-track:not(.is-live) .compact-timing-thumb {
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
-  box-shadow: none;
+.compact-timing-track .compact-timing-range::-webkit-slider-runnable-track {
+  background: transparent;
 }
 
-.compact-timing-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.compact-timing-track .compact-timing-range::-moz-range-track {
+  background: transparent;
+}
+
+.compact-timing-track .compact-timing-range::-moz-range-progress {
+  background: transparent;
+}
+
+.compact-timing-track.is-live .compact-timing-range {
+  cursor: ew-resize;
+}
+
+/* Custom이 아닐 때 손잡이는 지금 정책이 압축하는 자리를 보여 줄 뿐 쥘 수 없다 — 흐리게 남긴다. */
+.compact-timing-track .compact-timing-range:disabled {
+  cursor: default;
+  opacity: var(--control-disabled-opacity);
 }
 
 .compact-timing-ticks {

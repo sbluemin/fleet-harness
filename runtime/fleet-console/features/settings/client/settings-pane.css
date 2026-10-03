@@ -51,6 +51,9 @@
 .settings-pane .fc-settings-slider__range { width: auto; min-width: 44px; flex: 1 1 56px; }
 .settings-pane .fc-settings-reset { padding: 3px 0; border: 0; background: none; color: var(--text-tertiary); box-shadow: none; font-size: var(--t-xs); letter-spacing: 0; }
 .settings-pane .fc-settings-reset:disabled { display: none; }
+/* Doctrine: 슬라이더 행의 「기본값」은 쉴 때도 자리를 지킨다 — 사라졌다 나타나면 그 행의 트랙만
+   176px에서 141px로 줄어 같은 카드 안에서 트랙 길이가 행마다 달라진다. 다른 행의 꺼진 버튼은 위 규칙대로 빠진다. */
+.settings-pane .fc-settings-slider .fc-settings-reset:disabled { display: inline-block; visibility: hidden; }
 .settings-pane :is(input, textarea, select) { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .settings-pane :is(.ai-gateway-model-controls, .ai-gateway-roster-head, .ai-gateway-endpoint, .agent-cli-path-actions) { flex-wrap: wrap; min-width: 0; max-width: 100%; }
 .settings-pane :is(.ai-gateway-model-row, .ai-gateway-model-text, .agent-cli-row, .agent-cli-path-form) { min-width: 0; max-width: 100%; }
