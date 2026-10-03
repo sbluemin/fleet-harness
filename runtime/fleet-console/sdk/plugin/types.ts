@@ -182,6 +182,14 @@ export interface ClientExecutionProvider {
    */
   readonly operationCaptionContributions?: readonly OperationCaptionContribution[];
   /**
+   * Theater 하나에 딸린 플러그인의 자리 — 사이드바 Theater 머리 바로 아래 줄과 Theater 「…」 동작 메뉴의 항목.
+   *
+   * Theater 머리와 메뉴는 코어가 소유하지만, Theater 단위로 도는 플러그인의 상태(예: 그 Theater 를 운영하는 세션)는
+   * 플러그인이 안다. 호스트는 자리·순서·접힘·메뉴의 키보드 이동만 소유하고 본문은 플러그인이 그린다. Operation 단위의
+   * `operationMenu`·`operationMarks` 와 같은 모양이다.
+   */
+  readonly theaterContributions?: readonly TheaterContribution[];
+  /**
    * 한 실행 구조에 묶인 Operation 들 — 뿌리(조율자) 하나와 선후 관계를 가진 구성원(단계)들.
    *
    * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아 뿌리의
@@ -539,6 +547,35 @@ export interface OperationCaptionContributionContext {
 export interface OperationCaptionContribution {
   readonly id: string;
   readonly render: (context: OperationCaptionContributionContext) => ReactNode;
+}
+
+/** What a Theater contribution knows: the Theater as the sidebar shows it, whether it is the mounted one, and the UI language. */
+export interface TheaterContributionContext {
+  readonly theater: ConsoleTheaterSummary;
+  /** The Theater whose canvas is mounted. Inactive Theaters still show their rows in the sidebar. */
+  readonly active: boolean;
+  readonly language: "en" | "ko";
+}
+
+/** A Theater menu section also knows how to close the menu; close it before opening another surface. */
+export interface TheaterMenuContext extends TheaterContributionContext {
+  readonly onClose: () => void;
+}
+
+export interface TheaterContribution {
+  readonly id: string;
+  /**
+   * A row the host shows directly under this Theater's sidebar header, above its Operation list, while the
+   * section is expanded. It is a standing fact about the Theater, laid out on the sidebar row grammar; return
+   * nothing to take no space. The host wraps each contribution in its own error boundary.
+   */
+  readonly row?: (context: TheaterContributionContext) => ReactNode;
+  /**
+   * Items in this Theater's 「…」 actions menu, after the host's system-prompt item and before the host's own
+   * divider. Rows are `button.theater-menu-item` with a `menuitem*` role so the host's arrow-key travel and
+   * Escape reach them; call `onClose` before opening another surface.
+   */
+  readonly menu?: (context: TheaterMenuContext) => ReactNode;
 }
 
 /** 구성원(단계)의 진행 — 세션 활동이 아니라 구조 안의 자리다. 막힘은 선행이 안 끝난 것, 열림은 시작을 기다리는 것. */

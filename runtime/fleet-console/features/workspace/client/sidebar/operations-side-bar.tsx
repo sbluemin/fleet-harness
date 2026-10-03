@@ -26,6 +26,7 @@ import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation
 import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { TheaterContributionMenuItems, TheaterContributionRows } from "../theater-contributions.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
@@ -215,6 +216,7 @@ interface TheaterInactiveSectionProps {
 
 interface TheaterActionsMenuProps {
   readonly theater: TheaterInfo;
+  readonly active: boolean;
   readonly groupCount: number;
   readonly anchor: DOMRect;
   readonly onCreateGroup: (name: string) => void;
@@ -1172,6 +1174,7 @@ export function OperationsSideBar({
                 }}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
+              {!theaterCollapsed ? <TheaterContributionRows theater={theater} active /> : null}
               {!theaterCollapsed ? (
               <ol className="side-bar-theater-groups" aria-label={t("sidebar.theater.operationsAria", { theater: theater.label })}>
                 {statusAxis ? statusSections.filter((section) => section.entries.length > 0).map((section) => (
@@ -1398,6 +1401,7 @@ export function OperationsSideBar({
       ) : activeContextMenu?.kind === "theater" && contextMenuTheater ? (
         <TheaterActionsMenu
           theater={contextMenuTheater}
+          active={contextMenuTheater.id === activeTheaterId}
           groupCount={groups.filter((group) => group.theaterId === contextMenuTheater.id).length}
           anchor={activeContextMenu.anchor}
           onCreateGroup={(name) => {
@@ -1839,6 +1843,7 @@ function TheaterInactiveSection({
         onContextMenu={onContextMenu}
         onPointerDragStart={onPointerDragStart}
       />
+      {!collapsed ? <TheaterContributionRows theater={theater} active={false} /> : null}
       {!collapsed && (statusAxis ? statusSections.length : sections.length) > 0 ? (
         <ol className="side-bar-theater-groups" aria-label={t("sidebar.theater.operationsAria", { theater: theater.label })}>
           {statusAxis ? statusSections.filter((section) => section.entries.length > 0).map((section) => (
@@ -1940,7 +1945,7 @@ function TheaterInactiveSection({
   );
 }
 
-function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onClose }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onClose }: TheaterActionsMenuProps) {
   const t = useT();
   const [showNewInput, setShowNewInput] = useState(false);
   const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
@@ -2022,6 +2027,7 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
           <span className="theater-menu-label">{t("sidebar.theater.prompt.menu")}</span>
           <span className="theater-prompt-menu-state">{promptLoaded ? (prompt ? t(`sidebar.theater.prompt.mode${prompt.mode === "on" ? "On" : prompt.mode === "append" ? "Append" : "Off"}`) : t("sidebar.theater.prompt.unset")) : null}</span>
         </button>
+        <TheaterContributionMenuItems theater={theater} active={active} onClose={onClose} />
         <div className="theater-menu-divider" aria-hidden="true" />
         {showNewInput ? (
           <input

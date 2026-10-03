@@ -5,7 +5,7 @@ import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surf
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
 import type {
-  ArchiveSectionDescriptor, OperationCaptionContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
+  ArchiveSectionDescriptor, OperationCaptionContribution, TheaterContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
@@ -35,6 +35,8 @@ export interface PluginRegistry {
   readonly commandBandEntries: readonly CommandBandEntryDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
   readonly operationCaptionContributions: readonly OperationCaptionContribution[];
+  /** Theater 머리 아래 줄·「…」 메뉴 항목 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
+  readonly theaterContributions: readonly TheaterContribution[];
   /** 모든 플러그인의 묶음을 한 원천으로 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
   readonly operationClusters: OperationClusterSource;
   /** 보관함 시트의 플러그인 칸 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
@@ -210,6 +212,10 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
     })))),
     expandedSurfaces,
     operationCaptionContributions: providers.flatMap((plugin) => (plugin.operationCaptionContributions ?? []).map((descriptor) => ({
+      ...descriptor,
+      id: `${plugin.id}:${descriptor.id}`,
+    }))),
+    theaterContributions: providers.flatMap((plugin) => (plugin.theaterContributions ?? []).map((descriptor) => ({
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),
