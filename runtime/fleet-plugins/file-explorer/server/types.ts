@@ -60,9 +60,9 @@ export interface FileSearchItem {
 
 export interface FileSearchResult {
   readonly files: readonly FileSearchItem[];
-  /** complete=true일 때만 limit로 자르기 전의 정확한 전체 매치 수다. */
+  /** complete=true일 때 검색 범위 안에서 limit로 자르기 전의 정확한 매치 수다. */
   readonly totalMatches: number;
-  /** false면 top-K를 먼저 반환했으며 totalMatches는 현재까지 확인한 수다. */
+  /** 상한이나 접근 오류로 검색 범위를 끝까지 확인하지 못하면 false다. ignore 제외는 별도 안내한다. */
   readonly complete?: boolean;
   readonly elapsedMs?: number;
   readonly engine?: "ripgrep" | "walker";

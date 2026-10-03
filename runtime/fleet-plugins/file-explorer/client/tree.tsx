@@ -1836,7 +1836,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.degraded === "walker") {
     statusLines.push({ key: "fallback", text: t("fileExplorer.filter.degraded"), tone: "warn", role: "status" });
   }
-  if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.complete === false) {
+  if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.complete === false && !filterOutcome.skippedPaths && !filterOutcome.walkCapped) {
     statusLines.push({ key: "partial", text: t("fileExplorer.filter.partial"), tone: "quiet", role: "status" });
   }
   if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.skippedPaths) {

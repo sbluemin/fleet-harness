@@ -188,7 +188,8 @@ function decodeTextBuffer(buffer: Buffer, truncated: boolean): string {
     const code = character.charCodeAt(0);
     if (code === 0) throw new FileReadError("binary_file");
     if (character === "�") replacements++;
-    if (code < 32 && code !== 9 && code !== 10 && code !== 12 && code !== 13) controls++;
+    // 터미널 로그의 BEL·BS·ESC와 일반 공백 제어 문자는 텍스트로 본다.
+    if (code < 32 && code !== 7 && code !== 8 && code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 27) controls++;
   }
   if (sample.length > 0 && (controls / sample.length > BINARY_SUSPICIOUS_THRESHOLD || replacements / sample.length > 0.3)) {
     throw new FileReadError("binary_file");

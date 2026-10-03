@@ -139,7 +139,7 @@ export async function searchFilesWithRipgrep(
   return {
     files: outcome.items,
     totalMatches: outcome.totalMatches ?? outcome.items.length,
-    complete: outcome.complete && !ignoredSkipped,
+    complete: outcome.complete,
     ignoredSkipped,
     ...(outcome.skippedPaths > 0 ? { skippedPaths: outcome.skippedPaths } : {}),
     elapsedMs: Math.round((performance.now() - startedAt) * 10) / 10,
