@@ -418,58 +418,6 @@
   min-width: 0;
 }
 
-/* 페인 폭 대응 — 옛 페이지의 뷰포트 미디어(767/720/640px)는 데스크톱 뷰포트의 좁은
-   페인에서 발화하지 않는다. 같은 스택 규칙을 컨테이너 기준으로 겹쳐 쓴다. */
-@container (max-width: 640px) {
-  .settings-pane .global-settings-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-2);
-  }
-
-  .settings-pane .global-settings-row-text {
-    max-width: none;
-  }
-
-  .settings-pane .fc-settings-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-2);
-  }
-
-  .settings-pane .fc-settings-row__copy {
-    max-width: none;
-  }
-
-  /* 접힌 행에서 컨트롤 묶음은 행 폭을 다 쓴다 — ModelPicker가 남은 폭을 채우고 옆 스위치는 제 폭을 지킨다. */
-  .settings-pane .fc-settings-row__control,
-  .settings-pane .experiments-row-controls {
-    width: 100%;
-  }
-
-  /* 접힌 행에서 연속값 컨트롤은 행 폭을 다 쓴다 — 트랙이 늘어나고 스테퍼·값·기본값은 제자리. */
-  .settings-pane .fc-settings-slider {
-    width: 100%;
-  }
-
-  .settings-pane .fc-settings-slider__range {
-    width: 100%;
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
-  /* FontPicker의 minmax(16rem, 1fr) 격자는 페인 폭 아래에서 가로 스크롤을 만든다. */
-  .settings-pane .fc-font-browser__panes {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@container (max-width: 420px) {
-  .settings-pane .theme-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .global-settings-nav-item {
   display: flex;
   width: 100%;
@@ -19608,7 +19556,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .theater-badge-initials {
   flex: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-weight: var(--weight-medium);
 }
 

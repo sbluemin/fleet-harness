@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "@fleet-console/sdk/pane";
@@ -40,8 +40,8 @@ import {
  * 모형까지 지어야 했다. 이 표면은 레일 페인으로 서서 뒤의 콘솔을 살려 둔다 — 콘솔 자체가
  * 미리보기다.
  *
- * 형태는 단일 primary 페인 + 칩 행이다(재가된 변형 B). 칩은 접히는 대신 줄바꿈으로 전부
- * 선다 — 숨은 +N 뒤에 섹션을 감추면 "모든 설정이 이 문 뒤에 있다"는 약속이 깨진다.
+ * 형태는 단일 primary 페인과 한 줄 글자형 목차다. 목차는 넘치면 가로로 흐르고,
+ * 본문은 한 단계 그룹 제목과 행으로 선다.
  * 원격 접속 장치·링크 관리도 같은 페인에서 제공한다.
  */
 
@@ -171,6 +171,9 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
   const state = settings.state;
   const saving = settings.savingFields;
   const [query, setQuery] = useState("");
+  const tabs = useRef<HTMLDivElement>(null);
+  const tabId = useId();
+  const [fades, setFades] = useState({ start: false, end: false });
 
   useEffect(() => {
     void loadGlobalSettings(ctx.signal);
@@ -206,6 +209,26 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
   };
   const matches = trimmed === "" ? null : chips.filter((chip) => chip.haystack.includes(trimmed));
 
+  useEffect(() => {
+    const element = tabs.current;
+    if (!element) return;
+    const read = () => setFades({ start: element.scrollLeft > 1, end: element.scrollLeft + element.clientWidth < element.scrollWidth - 1 });
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    for (const button of element.children) observer.observe(button);
+    element.addEventListener("scroll", read, { passive: true });
+    read();
+    return () => { observer.disconnect(); element.removeEventListener("scroll", read); };
+  }, [chips.map((chip) => `${chip.id}:${chip.label}`).join("|")]);
+  useEffect(() => {
+    const element = tabs.current;
+    const active = element?.querySelector<HTMLElement>("[aria-selected=true]");
+    if (!element || !active) return;
+    const rect = active.getBoundingClientRect(), parent = element.getBoundingClientRect();
+    if (rect.left < parent.left) element.scrollLeft -= parent.left - rect.left + 12;
+    if (rect.right > parent.right) element.scrollLeft += rect.right - parent.right + 12;
+  }, [activeId]);
+
   return (
     <div className="settings-pane" onKeyDown={handleKeyDown}>
       <div className="settings-pane-toolbar">
@@ -221,18 +244,18 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
           />
         </div>
       </div>
-      {/* 칩은 전부 선다 — 줄바꿈이 접힘(+N)을 대신한다. 그룹 어휘를 잃는 것은 변형 B의
-          재가된 트레이드오프이고, 그룹 순서(환경→작업→기계)만 배열로 남긴다. */}
-      <div className="settings-pane-chips" role="group" aria-label={t("settings.pane.chipsAria")}>
-        {chips.map((chip) => (
-          <SettingsChip
-            key={chip.id}
-            label={chip.label}
-            help={chip.help}
-            active={chip.id === activeId}
-            onSelect={() => selectSection(chip.id)}
-          />
-        ))}
+      <div className="settings-index" data-fade-start={fades.start || undefined} data-fade-end={fades.end || undefined}>
+        <div ref={tabs} className="settings-index-tabs" role="tablist" aria-label={t("settings.pane.chipsAria")} onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const buttons = [...(tabs.current?.querySelectorAll<HTMLButtonElement>("[role=tab]") ?? [])];
+          const index = buttons.indexOf(event.target as HTMLButtonElement);
+          const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+          buttons[next]?.focus();
+          buttons[next]?.click();
+        }}>
+          {chips.map((chip, index) => <button key={chip.id} id={`${tabId}-${index}`} type="button" className="settings-index-tab" role="tab" aria-selected={chip.id === activeId} aria-description={chip.help} title={chip.help} tabIndex={chip.id === activeId ? 0 : -1} aria-controls={matches === null ? `${tabId}-panel` : undefined} onClick={() => selectSection(chip.id)}>{chip.label}</button>)}
+        </div>
       </div>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {matches !== null ? (
@@ -247,7 +270,7 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
       ) : (
         /* 섹션 전환은 재마운트다 — 키가 없으면 한 플러그인 섹션의 렌더 실패(hasError)가
            경계 인스턴스 재사용을 타고 다음 섹션까지 전염된다(옛 페이지의 key 계약 계승). */
-        <div key={activeId} className="settings-pane-sections">
+        <div key={activeId} id={`${tabId}-panel`} role="tabpanel" aria-labelledby={`${tabId}-${chips.findIndex((chip) => chip.id === activeId)}`} className="settings-pane-sections">
           {/* 레일 없는 모바일과 공유하는 본문에는 데스크톱 재질 설정만 추가한다. */}
           {renderSettingsSection(activeId, state, saving, pluginSections, t, {
             themeCardExtras: <ChromeMaterialRows />,
@@ -259,44 +282,7 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
 }
 
 /**
- * 그룹 칩. 도움말이 있는 칩은 별도 '?' 없이 칩 자체가 hover 말풍선을 연다 — 칩은 이미
- * 버튼이라 옆에 버튼을 하나 더 세우면 한 줄에 누를 것이 둘이 된다. 말풍선은 hover·포커스
- * 동안만 서고 클릭은 그대로 섹션 선택이다. aria-describedby로 보조기기에도 같은 글이 읽힌다.
- */
-function SettingsChip({ label, help, active, onSelect }: {
-  readonly label: string;
-  readonly help?: string | undefined;
-  readonly active: boolean;
-  readonly onSelect: () => void;
-}) {
-  const bubbleId = useId();
-  const [open, setOpen] = useState(false);
-  const button = (
-    <button
-      type="button"
-      className={`settings-chip${active ? " is-active" : ""}`}
-      aria-pressed={active}
-      aria-describedby={help ? bubbleId : undefined}
-      onClick={onSelect}
-      onFocus={help ? () => setOpen(true) : undefined}
-      onBlur={help ? () => setOpen(false) : undefined}
-    >
-      {label}
-    </button>
-  );
-  if (!help) return button;
-  return (
-    <span className="settings-chip-slot" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      {button}
-      <div className="settings-help-tip__bubble" role="tooltip" id={bubbleId} hidden={!open}>
-        {help}
-      </div>
-    </span>
-  );
-}
-
-/**
- * 유리 효과 손잡이 묶음 — 네 묶음의 틴트 불투명도와 좌측 사이드바 흐림. 전부 서버 설정이 아니라
+ * 유리 효과 손잡이 묶음 — 네 묶음의 틴트 불투명도. 전부 서버 설정이 아니라
  * 브라우저-로컬 store지만, 터미널 렌더러가 그렇듯 브라우저-로컬도 설정 화면에 선다: 사람이 찾는
  * 기준은 저장 위치가 아니라 하는 일이다.
  *
@@ -308,13 +294,12 @@ function SettingsChip({ label, help, active, onSelect }: {
 function ChromeMaterialRows() {
   const t = useT();
   return (
-    <>
-      <h4 className="global-settings-subsection-title">{t("settings.theme.glassTitle")}</h4>
+    <section className="global-settings-card" aria-label={t("settings.theme.glassTitle")}><h3 className="global-settings-card-title">{t("settings.theme.glassTitle")}</h3><div className="settings-group-surface">
       <GlassOpacityRow group="window" titleKey="settings.theme.windowOpacity" helpKey="settings.theme.windowOpacityHelp" />
       <GlassOpacityRow group="bar" titleKey="settings.theme.barOpacity" helpKey="settings.theme.barOpacityHelp" />
       <GlassOpacityRow group="side-bar" titleKey="settings.theme.sideBarOpacity" helpKey="settings.theme.sideBarOpacityHelp" />
       <GlassOpacityRow group="rail" titleKey="settings.theme.railOpacity" helpKey="settings.theme.railOpacityHelp" />
-    </>
+    </div></section>
   );
 }
 

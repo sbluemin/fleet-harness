@@ -74,6 +74,8 @@ const DEFAULT_LABELS: ResolvedFontPickerLabels = {
 };
 
 export interface FontPickerProps {
+  /** 선택 목록만 필요한 팝오버도 같은 검색·선택 동작을 쓴다. */
+  readonly presentation?: "full" | "choices";
   readonly builtIns: readonly FontPickerBuiltIn[];
   readonly installedFonts: readonly FontPickerInstalledFont[];
   readonly selected: FontPickerSelection;
@@ -127,6 +129,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   const [draftSize, setDraftSize] = React.useState(props.size ?? 0);
   const commitQueue = React.useRef(Promise.resolve());
   const listboxId = React.useId();
+  const listbox = React.useRef<HTMLDivElement>(null);
   const rows = React.useMemo(() => createRows(props, labels), [props, labels]);
   const filteredRows = React.useMemo(() => filterRows(rows, query), [rows, query]);
   const indexedRows = React.useMemo(() => filteredRows.map((row, index) => ({ row, index })), [filteredRows]);
@@ -166,6 +169,12 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
     props.onSelectionChange(selection);
   }, [props]);
 
+  React.useEffect(() => {
+    if (props.presentation !== "choices") return;
+    const row = document.getElementById(optionId(listboxId, activeIndex));
+    if (row && listbox.current?.contains(row)) row.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [props.presentation, listboxId, activeIndex, query]);
+
   const onListboxKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -194,6 +203,14 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
           id={`${listboxId}-search`}
           className="fc-font-browser__search"
           type="search"
+          role={props.presentation === "choices" ? "combobox" : undefined}
+          aria-autocomplete={props.presentation === "choices" ? "list" : undefined}
+          aria-expanded={props.presentation === "choices" ? true : undefined}
+          aria-controls={props.presentation === "choices" ? listboxId : undefined}
+          aria-activedescendant={props.presentation === "choices" && activeRow ? optionId(listboxId, activeIndex) : undefined}
+          onKeyDown={props.presentation === "choices" ? (event) => {
+            if (["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) onListboxKeyDown(event as unknown as React.KeyboardEvent<HTMLDivElement>);
+          } : undefined}
           value={query}
           disabled={props.disabled}
           placeholder={labels.searchPlaceholder}
@@ -203,6 +220,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
         {props.error ? <p className="fc-font-browser__state fc-font-browser__state--error" role="alert">{props.error}</p> : null}
         <div
           id={listboxId}
+          ref={listbox}
           className="fc-font-browser__listbox"
           role="listbox"
           tabIndex={props.disabled ? -1 : 0}
@@ -217,7 +235,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
           {!props.loading && !indexedRows.length ? <p className="fc-font-browser__state">{labels.noMatch}</p> : null}
         </div>
       </div>
-      <aside className="fc-font-browser__preview" aria-live="polite">
+      {props.presentation !== "choices" ? <aside className="fc-font-browser__preview" aria-live="polite">
         <div className="fc-font-browser__preview-head">
           <span className="fc-font-browser__preview-label">{labels.preview}</span>
           <span className={`fc-font-browser__availability${selectedRow?.unavailable ? " fc-font-browser__availability--unavailable" : ""}`}>
@@ -249,7 +267,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
             />
           </>
         ) : null}
-      </aside>
+      </aside> : null}
       </div>
     </section>
   );

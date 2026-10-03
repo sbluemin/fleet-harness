@@ -37,7 +37,7 @@
   flex: none;
   min-inline-size: 4ch;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   white-space: nowrap;
 }

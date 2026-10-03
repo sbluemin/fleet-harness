@@ -10,12 +10,18 @@ export interface FontAxisSettings {
   /** 빈 값은 축에 번들된 한글 서체를 따른다. */
   readonly cjk: string;
 }
+export interface TerminalFontOverride {
+  readonly font: FontSelection;
+  readonly size: number;
+  /** 미출시 첫 모델의 복사 값만 보존한다. 터미널 한글은 항상 code.cjk를 읽는다. 새 쓰기는 이 필드를 만들지 않는다. */
+  readonly cjk?: string;
+}
 export interface ConsoleFontSettings {
   readonly ui: FontAxisSettings;
   readonly content: FontAxisSettings;
   readonly code: FontAxisSettings;
   /** null이면 터미널도 코드 축을 그대로 따른다. */
-  readonly terminal: FontAxisSettings | null;
+  readonly terminal: TerminalFontOverride | null;
 }
 
 export const FONT_SIZE_RANGES = {
@@ -67,7 +73,11 @@ export function readFontSettings(value: unknown): ConsoleFontSettings | null {
   const ui = readAxis(value.ui, "ui");
   const content = readAxis(value.content, "content");
   const code = readAxis(value.code, "code");
-  const terminal = value.terminal === null ? null : readAxis(value.terminal, "code");
+  let terminal: TerminalFontOverride | null = null;
+  if (record(value.terminal)) {
+    const axis = readAxis({ ...value.terminal, cjk: value.terminal.cjk ?? "" }, "code");
+    if (axis) terminal = { font: axis.font, size: axis.size, ...(typeof value.terminal.cjk === "string" ? { cjk: axis.cjk } : {}) };
+  }
   return ui && content && code && (value.terminal === null || terminal) ? { ui, content, code, terminal } : null;
 }
 
@@ -105,7 +115,7 @@ export function fontFamilyForAxis(fonts: ConsoleFontSettings, axis: FontAxis, te
   const selection = settings.font.source === "inherit" ? fonts.ui.font : settings.font;
   const primary = selection.source === "builtin" ? FONT_BUILT_INS[selection.id].family
     : selection.source === "system" ? `${quotedFontName(selection.familyName)}, ${axis === "code" ? FONT_BUILT_INS["jetbrains-mono"].family : FONT_BUILT_INS.manrope.family}` : FONT_BUILT_INS.manrope.family;
-  const cjk = settings.cjk || (axis === "content" && settings.font.source === "inherit" ? fonts.ui.cjk : "");
+  const cjk = (terminal ? fonts.code.cjk : settings.cjk) || (axis === "content" && settings.font.source === "inherit" ? fonts.ui.cjk : "");
   const chosen = cjk ? `${quotedFontName(cjk)}, ` : "";
   // Nerd는 코드 축의 마지막 글리프 폴백이다. 선택한 주 서체가 해당 글리프를 갖고 있으면 먼저 그린다.
   return `${primary}, ${chosen}${axis === "code" ? '"Nanum Gothic Coding", "Symbols Nerd Font Mono", ui-monospace, "SF Mono", Menlo, monospace' : '"Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif'}`;

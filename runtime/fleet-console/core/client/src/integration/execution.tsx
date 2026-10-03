@@ -1,5 +1,5 @@
 import { DEFAULT_FONTS } from "@fleet-console/sdk/settings/fonts";
-import { getGlobalSettingsStoreState, subscribe, setGlobalSettingsField } from "../../../../features/settings/client/global-settings-store.js";
+import { getGlobalSettingsStoreState, subscribe } from "../../../../features/settings/client/global-settings-store.js";
 import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection, harnessSettingsSection } from "../../../../features/execution/client/agent/index.js";
@@ -39,7 +39,6 @@ export const consoleExecution: ClientExecutionProvider = {
     connectTerminalFontSettings({
       read: () => getGlobalSettingsStoreState().state?.fonts ?? DEFAULT_FONTS,
       subscribe,
-      update: (fonts) => setGlobalSettingsField("fonts", fonts),
     });
     // 문서 수준 링크 라우터 — Console 수명 동안 한 번 선다.
     installGlobalLinkRouter();

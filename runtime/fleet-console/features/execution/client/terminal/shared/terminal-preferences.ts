@@ -286,22 +286,20 @@ let terminalSettingsWriteFlight: Promise<void> | null = null;
 interface TerminalFontSettingsPort {
   readonly read: () => ConsoleFontSettings;
   readonly subscribe: (listener: () => void) => () => void;
-  readonly update: (fonts: ConsoleFontSettings) => Promise<boolean>;
 }
-let fontSettingsPort: TerminalFontSettingsPort | null = null;
 let disconnectFontSettings: (() => void) | null = null;
 
 export function connectTerminalFontSettings(port: TerminalFontSettingsPort): void {
   disconnectFontSettings?.();
-  fontSettingsPort = port;
   const sync = () => {
     const fonts = port.read();
     const value = fonts.terminal ?? fonts.code;
     const selection = value.font;
+    const cjk = fonts.code.cjk;
     const font = selection.source === "system"
-      ? createCustomTerminalFontSettings(selection.familyName, value.size, value.cjk)
+      ? createCustomTerminalFontSettings(selection.familyName, value.size, cjk)
       : createCuratedTerminalFontSettings(selection.source === "builtin" && selection.id === "jetbrains-mono" ? "jetbrains"
-        : selection.source === "builtin" && isTerminalFontId(selection.id) ? selection.id : "jetbrains", value.size, value.cjk);
+        : selection.source === "builtin" && isTerminalFontId(selection.id) ? selection.id : "jetbrains", value.size, cjk);
     const next = { ...font, family: fontFamilyForAxis(fonts, "code", true) };
     if ((Object.keys(next) as (keyof TerminalFontSettings)[]).some((key) => next[key] !== state.font[key])) patchState({ font: next });
   };
@@ -338,30 +336,6 @@ export function setTerminalRenderer(renderer: TerminalRenderer): void {
 export function setTerminalInactiveFlush(inactiveFlush: TerminalInactiveFlush): void {
   writeStoredInactiveFlush(inactiveFlush);
   patchState({ inactiveFlush });
-}
-
-export function setTerminalFont(fontId: TerminalFontId): void {
-  const font = createCuratedTerminalFontSettings(fontId, state.font.size, state.font.cjkFallbackName);
-  void pushFontToServer(font);
-}
-
-export function setInstalledTerminalFont(familyName: string): void {
-  // 설치 폰트도 legacy custom wire shape로 직렬화해 저장 포맷 호환성을 유지한다.
-  const font = createCustomTerminalFontSettings(familyName, state.font.size, state.font.cjkFallbackName);
-  void pushFontToServer(font);
-}
-
-// 빈 이름은 "번들 서체만"을 뜻한다 — 폴백 해제가 아니라 사용자 지정 항목만 체인에서 빠진다.
-export function setTerminalCjkFallbackFont(familyName: string): void {
-  const font = createTerminalFontSettings(state.font, familyName);
-  void pushFontToServer(font);
-}
-
-export function setTerminalFontSize(size: number): void {
-  const font = state.font.source === "custom"
-    ? createCustomTerminalFontSettings(state.font.customName, size, state.font.cjkFallbackName)
-    : createCuratedTerminalFontSettings(state.font.id, size, state.font.cjkFallbackName);
-  void pushFontToServer(font);
 }
 
 export function setTerminalScrollback(scrollback: TerminalScrollback): void {
@@ -418,20 +392,6 @@ async function hydrateTerminalSettingsFromServer(): Promise<void> {
   } catch {
     // best-effort — read 실패 시 조용히 현 상태 유지.
   }
-}
-
-async function pushFontToServer(font: TerminalFontSettings): Promise<void> {
-  const port = fontSettingsPort;
-  if (!port) return;
-  const current = port.read();
-  const axis = current.terminal ? "terminal" : "code";
-  const value = {
-    font: font.source === "custom" ? { source: "system" as const, familyName: font.customName }
-      : { source: "builtin" as const, id: font.id === "jetbrains" ? "jetbrains-mono" as const : font.id ?? "jetbrains-mono" as const },
-    size: font.size, cjk: font.cjkFallbackName,
-  };
-  await port.update({ ...current, [axis]: value });
-
 }
 
 async function pushChatReadingWidthToServer(width: ChatReadingWidth): Promise<void> {

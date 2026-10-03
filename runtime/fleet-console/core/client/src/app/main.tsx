@@ -13,8 +13,8 @@ import * as sdkComponentsShellGlyph from "@fleet-console/sdk/components/shell-gl
 import "@fontsource-variable/manrope";
 // Pretendard dynamic subset: 한글 폴백 서체 — 브라우저가 unicode-range로 필요한 subset woff2만 내려받는다.
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
-// Nanum Gothic Coding: --font-mono의 한글 폴백. JetBrains Mono·ui-monospace·SF Mono·Menlo 어느 것도 한글
-// 글리프가 없어 이 서체가 없으면 mono 표면(캡션·칩·펄스)의 한글만 OS 비례폭 고딕으로 새어 나간다.
+// Nanum Gothic Coding: --font-code의 한글 폴백. JetBrains Mono·ui-monospace·SF Mono·Menlo 어느 것도 한글
+// 글리프가 없어 이 서체가 없으면 코드 표면의 한글만 OS 비례폭 고딕으로 새어 나간다.
 // 터미널 플러그인이 같은 서체를 xterm용으로 싣지만, 토큰의 폴백은 토큰을 정의하는 코어가 소유한다.
 import "@fontsource/nanum-gothic-coding/korean-400.css";
 import "@fontsource/nanum-gothic-coding/korean-700.css";
@@ -29,6 +29,7 @@ import { BrowserRouter } from "react-router-dom";
 import "../styles/theme.css";
 import "../styles/layout.css";
 import "../styles/components.css";
+import "../../../../features/settings/client/settings-pane.css";
 import { App } from "./app.js";
 import { readHostPickerSurface } from "../chrome/components/command-band-system-cluster.js";
 import { HostPickerScreen } from "../../../../features/remote-access/client/host-picker-surface.js";
