@@ -23,6 +23,8 @@ const BASE: GlobalSettingsState = {
   theme: "instrument",
   unfocusedPanelFade: 50,
   sideBarDoubleClickOpen: false,
+  reduceMotion: false,
+  lowerUnfocusedFrameRate: true,
   shortcuts: {},
   uiFont: { source: "builtin", id: "manrope", size: 14 },
   language: "auto",

@@ -3283,7 +3283,7 @@
   border-top-color: var(--warn);
   border-right-color: var(--warn);
   border-radius: 50%;
-  animation: status-glyph-spin 1.2s steps(12, end) infinite; animation-name: var(--state-motion, status-glyph-spin); --state-motion-clock: aligned;
+  animation: status-glyph-spin 1.4s linear infinite; animation-name: var(--state-motion, status-glyph-spin);
 }
 
 /* 백그라운드 작업 — 턴은 끝났지만 일이 남았다. 도는 호 대신 점선 원이 "아직 진행 중"을 조용히 말한다. */
@@ -3301,7 +3301,7 @@
   border: 1.3px solid var(--aurora);
   border-radius: 50%;
   box-shadow: 0 0 0 3px var(--aurora-glow);
-  animation: status-glyph-breathe 1.8s steps(1, end) infinite; animation-name: var(--state-motion, status-glyph-breathe); --state-motion-clock: aligned;
+  animation: status-glyph-breathe 1.8s ease-in-out infinite; animation-name: var(--state-motion, status-glyph-breathe);
 }
 
 .status-glyph.is-awaiting::after,
@@ -3335,7 +3335,7 @@
 
 .status-glyph.is-unseen::after {
   background: var(--positive);
-  animation: status-glyph-blink 3.6s steps(18, end) infinite; animation-name: var(--state-motion, status-glyph-blink); --state-motion-clock: aligned;
+  animation: status-glyph-blink 3.6s ease-in-out infinite; animation-name: var(--state-motion, status-glyph-blink);
 }
 
 .status-glyph.is-ended {
@@ -4460,7 +4460,7 @@ button.status-glyph.is-actionable:focus-visible {
   inset: -3px;
   border: 1px solid var(--activity-color);
   border-radius: var(--radius-pill);
-  animation: fleet-map-awaiting-ring 2.4s steps(24, end) infinite; animation-name: var(--state-motion, fleet-map-awaiting-ring); --state-motion-clock: aligned;
+  animation: fleet-map-awaiting-ring calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite; animation-name: var(--state-motion, fleet-map-awaiting-ring);
 }
 
 /* 지도의 미확인 — 점 자체의 animation은 유영(fleet-map-drift)이 소유하므로, 느린 점등은
@@ -4476,7 +4476,7 @@ button.status-glyph.is-actionable:focus-visible {
   inset: -2px;
   border-radius: 4px;
   box-shadow: 0 0 12px 2px var(--activity-glow);
-  animation: beacon-unseen-blink 3.6s steps(18, end) infinite; animation-name: var(--state-motion, beacon-unseen-blink); --state-motion-clock: aligned;
+  animation: beacon-unseen-blink 3.6s var(--ease-glide) infinite; animation-name: var(--state-motion, beacon-unseen-blink);
 }
 
 .canvas-fleet-map-dot.is-running {
@@ -4613,8 +4613,8 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 @keyframes fleet-map-awaiting-ring {
-  0% { transform: scale(0.55); opacity: 0.9; animation-timing-function: steps(17, end); }
-  70.8333333333%, 100% { transform: scale(2.2); opacity: 0; animation-timing-function: steps(7, end); }
+  0% { transform: scale(0.55); opacity: 0.9; }
+  70%, 100% { transform: scale(2.2); opacity: 0; }
 }
 
 @keyframes fleet-map-drift {
@@ -4829,7 +4829,7 @@ button.status-glyph.is-actionable:focus-visible {
    창에 실려야 어느 창이 부르는지 읽힌다. 패널은 portal이 mount 안에 넣으므로 실제 구조는
    칸 > 마운트 > 패널이다: 그 한 겹을 건너뛴 선택자는 파일에 남은 채 아무것도 칠하지 않는다. */
 .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation {
-  animation: triage-fresh-pulse 2.2s steps(11, end) infinite; animation-name: var(--state-motion, triage-fresh-pulse); --state-motion-clock: aligned;
+  animation: triage-fresh-pulse calc(var(--duration-slow) * 6) var(--ease-glide) infinite; animation-name: var(--state-motion, triage-fresh-pulse);
 }
 
 .canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation {
@@ -5848,7 +5848,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     var(--brass) 318deg,
     color-mix(in oklch, var(--brass) 22%, transparent) 326deg
   );
-  animation: canvas-decision-orbit 4s steps(20, end) infinite; animation-name: var(--state-motion, canvas-decision-orbit); --state-motion-clock: aligned;
+  animation: canvas-decision-orbit 4s linear infinite; animation-name: var(--state-motion, canvas-decision-orbit);
 }
 
 @keyframes canvas-decision-orbit {
@@ -5894,7 +5894,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background-size: 55% 100%;
   background-repeat: no-repeat;
   box-shadow: none;
-  animation: caption-rail-travel 3.8s steps(19, end) infinite; animation-name: var(--state-motion, caption-rail-travel); --state-motion-clock: aligned;
+  animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel);
 }
 /* 캡션 틴트 — 브라우저는 companion 이 열려 있으면 companion 캡션이 틴트를 지고(버튼은 aria-pressed=true), 닫혀 있으면
    Operation 캡션이 진다. 덱 카드에는 companion 이 없으므로 언제나 카드 캡션이 진다. */
@@ -6742,7 +6742,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .status-dot--live::after,
 .side-bar-status-axis-live-tick::after {
-  animation: status-call-glow 1.8s steps(1, end) infinite; animation-name: var(--state-motion, status-call-glow); --state-motion-clock: aligned;
+  animation: status-call-glow 1.8s ease-in-out infinite; animation-name: var(--state-motion, status-call-glow);
 }
 
 .directory-browser-scan-dot::after {
@@ -7343,7 +7343,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 .cluster-strip-step.is-blocked { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
 .cluster-strip-step.is-running { background: var(--warn); }
-.cluster-strip-step.is-awaiting { background: var(--aurora); animation: cluster-strip-pulse 1.8s steps(9, end) infinite; animation-name: var(--state-motion, cluster-strip-pulse); --state-motion-clock: aligned; }
+.cluster-strip-step.is-awaiting { background: var(--aurora); animation: cluster-strip-pulse 1.8s ease-in-out infinite; animation-name: var(--state-motion, cluster-strip-pulse); }
 .cluster-strip-step.is-done { background: var(--positive); }
 @keyframes cluster-strip-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
@@ -7395,7 +7395,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--aurora);
   box-shadow: 0 0 5px var(--aurora-glow);
-  animation: caption-action-live 1.6s steps(8, end) infinite; animation-name: var(--state-motion, caption-action-live); --state-motion-clock: aligned;
+  animation: caption-action-live 1.6s ease-in-out infinite; animation-name: var(--state-motion, caption-action-live);
 }
 
 .side-bar-chip-group-mark {
@@ -8219,7 +8219,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: linear-gradient(90deg, transparent 0%, var(--warn) 30%, var(--warn) 70%, transparent 100%);
   background-size: 55% 100%;
   background-repeat: no-repeat;
-  animation: caption-rail-travel 3.8s steps(19, end) infinite; animation-name: var(--state-motion, caption-rail-travel); --state-motion-clock: aligned;
+  animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel);
 }
 
 /* background는 턴이 끝나고 작업만 남은 상태 — 사람을 부르지 않는 일이 혼자 굴러간다.
@@ -8238,7 +8238,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     color-mix(in oklab, var(--warn) 22%, transparent) 160px
   );
   background-size: 160px 100%;
-  animation: caption-rail-flow 6.5s steps(65, end) infinite; animation-name: var(--state-motion, caption-rail-flow); --state-motion-clock: aligned;
+  animation: caption-rail-flow 6.5s linear infinite; animation-name: var(--state-motion, caption-rail-flow);
 }
 
 /* awaiting은 사람을 기다리는 유일한 상태 — 호출 신호로 맥동한다. 밝기만이 아니라 글로우가
@@ -8247,7 +8247,7 @@ body[data-companion-resizing="true"] .canvas-operation {
    어두웠다(위계 역전). */
 .canvas-operation.is-running--awaiting > .canvas-operation-titlebar::after {
   box-shadow: 0 0 11px 1px var(--aurora-glow);
-  animation: caption-rail-call 2.4s steps(1, end) infinite; animation-name: var(--state-motion, caption-rail-call); --state-motion-clock: aligned;
+  animation: caption-rail-call 2.4s var(--ease-glide) infinite; animation-name: var(--state-motion, caption-rail-call);
 }
 
 /* 패널 안 허용 요청이 떠 있는 동안 — 도구 호출이 진행 중이라 활동 축은 turn 이지만, 실제로는 사람의 답을 기다린다.
@@ -8261,7 +8261,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: var(--caption-rail);
   background-size: auto;
   box-shadow: 0 0 11px 1px var(--aurora-glow);
-  animation: caption-rail-call 2.4s steps(1, end) infinite; animation-name: var(--state-motion, caption-rail-call); --state-motion-clock: aligned;
+  animation: caption-rail-call 2.4s var(--ease-glide) infinite; animation-name: var(--state-motion, caption-rail-call);
 }
 
 /* 미확인 완료는 이미 끝난 일이라 급하지 않다 — 부름(2.4s)보다 느린 잔광으로 남는다.
@@ -8269,7 +8269,7 @@ body[data-companion-resizing="true"] .canvas-operation {
    awaiting > unseen > background 순으로 어느 순간에도 뒤집히지 않는다. */
 .canvas-operation.is-unseen > .canvas-operation-titlebar::after {
   box-shadow: 0 0 9px 1px var(--positive-glow);
-  animation: caption-rail-tide 4.4s steps(1, end) infinite; animation-name: var(--state-motion, caption-rail-tide); --state-motion-clock: aligned;
+  animation: caption-rail-tide 4.4s var(--ease-glide) infinite; animation-name: var(--state-motion, caption-rail-tide);
 }
 
 /* 도착 순간의 1회 플래시는 그 위에 따로 선다 — 상시 aura(22px glow)를 순간 운동으로
@@ -8638,7 +8638,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--aurora);
   box-shadow: 0 0 6px var(--aurora-glow);
-  animation: caption-action-live 1.6s steps(8, end) infinite; animation-name: var(--state-motion, caption-action-live); --state-motion-clock: aligned;
+  animation: caption-action-live 1.6s ease-in-out infinite; animation-name: var(--state-motion, caption-action-live);
 }
 
 .group-context-menu-item__plus {
@@ -8887,7 +8887,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border: 2px solid var(--agent-control-badge);
   opacity: 0;
   pointer-events: none;
-  animation: fleet-caption-agent-halo 1.6s steps(16, end) infinite; animation-name: var(--state-motion, fleet-caption-agent-halo); --state-motion-clock: aligned;
+  animation: fleet-caption-agent-halo 1.6s ease-out infinite; animation-name: var(--state-motion, fleet-caption-agent-halo);
 }
 @keyframes fleet-caption-agent-halo {
   0% { transform: scale(0.9); opacity: 0.6; }
@@ -8906,7 +8906,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--aurora);
   box-shadow: 0 0 6px var(--aurora-glow);
-  animation: caption-action-live 1.6s steps(8, end) infinite; animation-name: var(--state-motion, caption-action-live); --state-motion-clock: aligned;
+  animation: caption-action-live 1.6s ease-in-out infinite; animation-name: var(--state-motion, caption-action-live);
 }
 
 @keyframes caption-action-live {
@@ -19690,13 +19690,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   .archive-sheet-scope { width: 100%; }
 }
 .operation-search-archived { color: var(--text-tertiary); font-size: var(--t-xs); }
-
-/* 위상 시계는 명시한 상태 표시만 쓴다 — 자식 장식이나 로딩 모션에는 전파하지 않는다. */
-@property --state-motion-clock {
-  syntax: "<custom-ident>";
-  inherits: false;
-  initial-value: natural;
-}
 
 /* 창이 비활성이거나 숨긴 표면이면 상태 반복을 없앤다 — paused도 style tick을 남긴다. */
 :root[data-state-motion="inactive"],

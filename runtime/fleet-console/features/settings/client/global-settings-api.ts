@@ -165,6 +165,8 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     unfocusedPanelFade: isUnfocusedPanelFade(payload.unfocusedPanelFade) ? payload.unfocusedPanelFade : 50,
     // 구서버 응답에는 없다 — 기본은 꺼짐(한 번 클릭으로 열기)이다.
     sideBarDoubleClickOpen: payload.sideBarDoubleClickOpen === true,
+    reduceMotion: payload.reduceMotion === true,
+    lowerUnfocusedFrameRate: payload.lowerUnfocusedFrameRate !== false,
     uiFont: normalizeUiFont(payload.uiFont),
     language: payload.language,
     // 구서버 응답에는 없다 — 옵트인의 기본은 꺼짐이므로 부재를 기본값으로 정규화한다.

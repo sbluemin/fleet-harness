@@ -1823,7 +1823,7 @@ describe("Instrument core design contract", () => {
     // 상태 마크의 조형은 12px 원 하나다(둥근 네모 비콘은 폐지). 테두리가 진행을, 가운데 점·획이 결과를 말한다.
     expect(components).not.toContain(".tenant-beacon");
     expect(components).toMatch(/\.status-glyph \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 1\.3px solid var\(--hairline-strong\);[^}]*border-radius: 50%;/);
-    expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.2s steps\(12, end\) infinite;/);
+    expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.4s linear infinite;/);
     expect(components).toMatch(/\.status-glyph\.is-background \{\s*border: 1\.3px dashed/);
     expect(components).toMatch(/\.canvas-fleet-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
@@ -3640,10 +3640,10 @@ describe("Instrument core design contract", () => {
     const operationFrame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
     // 상태마다 운동의 종류가 다르다. 왕복(travel)은 turn 하나만 소유한다 — 진행 위치가 옮겨
     // 간다는 사실을 말하는 형태라, 옮겨 갈 지점이 없는 나머지 상태가 빌리면 뜻이 갈라진다.
-    expect(components).toContain("animation: caption-rail-travel 3.8s steps(19, end) infinite;");
-    expect(components).toContain("animation: caption-rail-flow 6.5s steps(65, end) infinite;");
-    expect(components).toContain("animation: caption-rail-call 2.4s steps(1, end) infinite;");
-    expect(components).toContain("animation: caption-rail-tide 4.4s steps(1, end) infinite;");
+    expect(components).toContain("animation: caption-rail-travel 3.8s ease-in-out infinite;");
+    expect(components).toContain("animation: caption-rail-flow 6.5s linear infinite;");
+    expect(components).toContain("animation: caption-rail-call 2.4s var(--ease-glide) infinite;");
+    expect(components).toContain("animation: caption-rail-tide 4.4s var(--ease-glide) infinite;");
     expect(components).toContain("@keyframes caption-rail-flow");
     expect(components).toContain("@keyframes caption-rail-call");
     expect(components).toContain("@keyframes caption-rail-tide");

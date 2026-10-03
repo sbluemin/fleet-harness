@@ -5,7 +5,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
-import { SettingsSlider } from "@fleet-console/sdk/settings/browser";
+import { SettingsSlider, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import { useEffect, useState, type ReactNode } from "react";
 import { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 export { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
@@ -146,7 +146,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       label: t("settings.core.appearance.label"),
       // 도구 패널 불투명도는 데스크톱 페인이 테마 카드에 덧세우는 행이다 — 검색은 그
       // 행 이름으로도 닿아야 한다. 모바일은 이 entries를 읽지 않으므로 여기 실어도 무해하다.
-      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.panelFade"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.theme.glassTitle"), t("settings.theme.windowOpacity"), t("settings.theme.barOpacity"), t("settings.theme.sideBarOpacity"), t("settings.theme.railOpacity"), t("settings.theme.sideBarBlur"), t("settings.core.appearance.keywords")],
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.panelFade"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.theme.glassTitle"), t("settings.theme.windowOpacity"), t("settings.theme.barOpacity"), t("settings.theme.sideBarOpacity"), t("settings.theme.railOpacity"), t("settings.theme.sideBarBlur"), t("settings.motion.reduce"), t("settings.motion.unfocused"), t("settings.core.appearance.keywords")],
     },
     {
       id: "language",
@@ -421,6 +421,25 @@ export function ThemeCard({
               사이드바 손잡이 둘이 그 아래에 붙는다. 행 자체는 데스크톱 페인이 주입한다 — 사이드바도
               레일도 없는 모바일에 죽은 슬라이더를 세우지 않기 위해. */}
           {extras}
+
+          <div className="global-settings-row">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title">
+                {t("settings.motion.reduce")}
+                <SettingsHelp title={t("settings.motion.reduce")}>{t("settings.motion.reduceHelp")}</SettingsHelp>
+              </p>
+            </div>
+            <SettingsToggle checked={state?.reduceMotion === true} disabled={state === null || saving.has("reduceMotion")} ariaLabel={t("settings.motion.reduce")} onChange={(value) => { void setGlobalSettingsField("reduceMotion", value); }} />
+          </div>
+          <div className="global-settings-row">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title">
+                {t("settings.motion.unfocused")}
+                <SettingsHelp title={t("settings.motion.unfocused")}>{t("settings.motion.unfocusedHelp")}</SettingsHelp>
+              </p>
+            </div>
+            <SettingsToggle checked={state?.lowerUnfocusedFrameRate !== false} disabled={state === null || saving.has("lowerUnfocusedFrameRate")} ariaLabel={t("settings.motion.unfocused")} onChange={(value) => { void setGlobalSettingsField("lowerUnfocusedFrameRate", value); }} />
+          </div>
       </div>
     </section>
   );

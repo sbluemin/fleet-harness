@@ -80,6 +80,10 @@ export interface ConsoleGeneralSettings {
    * 부재는 꺼짐(한 번 클릭으로 열기)이다 — 손에 익은 동작을 바꾸는 선호라 켜는 쪽이 사람의 선택이어야 한다.
    */
   readonly sideBarDoubleClickOpen?: boolean;
+  /** 무한 모션을 100ms 단계로 낮춘다. 기본은 꺼짐이며 OS 감속 모션의 정지와는 별개다. */
+  readonly reduceMotion?: boolean;
+  /** 창이 비포커스일 때만 같은 저프레임 모드를 쓴다. 부재는 기본 켜짐이다. */
+  readonly lowerUnfocusedFrameRate?: boolean;
   readonly uiFont?: UiFontSettings;
   /**
    * 실험 기능과 모델 좌석. 부재는 전부 꺼짐이다 — 켜는 행위가 곧 동의이므로 기본값이 켜짐일 수 없다.
@@ -322,6 +326,8 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const liquidGlass = typeof value.liquidGlass === "boolean" ? value.liquidGlass : undefined;
   const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
   const sideBarDoubleClickOpen = typeof value.sideBarDoubleClickOpen === "boolean" ? value.sideBarDoubleClickOpen : undefined;
+  const reduceMotion = typeof value.reduceMotion === "boolean" ? value.reduceMotion : undefined;
+  const lowerUnfocusedFrameRate = typeof value.lowerUnfocusedFrameRate === "boolean" ? value.lowerUnfocusedFrameRate : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   const shortcuts = sanitizeShortcutBindings(value.shortcuts);
   return {
@@ -334,6 +340,8 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(liquidGlass !== undefined ? { liquidGlass } : {}),
     ...(unfocusedPanelFade !== undefined ? { unfocusedPanelFade } : {}),
     ...(sideBarDoubleClickOpen !== undefined ? { sideBarDoubleClickOpen } : {}),
+    ...(reduceMotion !== undefined ? { reduceMotion } : {}),
+    ...(lowerUnfocusedFrameRate !== undefined ? { lowerUnfocusedFrameRate } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
     ...(experiments !== undefined ? { experiments } : {}),
     ...(shortcuts !== undefined ? { shortcuts } : {}),
@@ -476,6 +484,8 @@ interface GlobalSettingsBody {
   readonly theme?: unknown;
   readonly unfocusedPanelFade?: unknown;
   readonly sideBarDoubleClickOpen?: unknown;
+  readonly reduceMotion?: unknown;
+  readonly lowerUnfocusedFrameRate?: unknown;
   readonly uiFont?: unknown;
   readonly experiments?: unknown;
   readonly shortcuts?: unknown;
@@ -585,6 +595,14 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_side_bar_double_click_open" });
     return;
   }
+  if (body.reduceMotion !== undefined && typeof body.reduceMotion !== "boolean") {
+    deps.writeJson(res, 400, { error: "invalid_reduce_motion" });
+    return;
+  }
+  if (body.lowerUnfocusedFrameRate !== undefined && typeof body.lowerUnfocusedFrameRate !== "boolean") {
+    deps.writeJson(res, 400, { error: "invalid_lower_unfocused_frame_rate" });
+    return;
+  }
   if (!isUiFontSettingsOrUndefined(body.uiFont)) {
     deps.writeJson(res, 400, { error: "invalid_ui_font" });
     return;
@@ -632,6 +650,8 @@ async function mutateGlobalSettings(
       ...(theme !== undefined ? { theme } : {}),
       ...(isUnfocusedPanelFade(body.unfocusedPanelFade) ? { unfocusedPanelFade: body.unfocusedPanelFade } : {}),
       ...(typeof body.sideBarDoubleClickOpen === "boolean" ? { sideBarDoubleClickOpen: body.sideBarDoubleClickOpen } : {}),
+      ...(typeof body.reduceMotion === "boolean" ? { reduceMotion: body.reduceMotion } : {}),
+      ...(typeof body.lowerUnfocusedFrameRate === "boolean" ? { lowerUnfocusedFrameRate: body.lowerUnfocusedFrameRate } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
       ...(body.experiments !== undefined ? { experiments: resolveExperimentSettings(body.experiments) } : {}),
       ...(isShortcutBindingsInput(body.shortcuts) ? { shortcuts: body.shortcuts } : {}),
@@ -702,6 +722,8 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     theme: general.theme ?? "instrument",
     unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
     sideBarDoubleClickOpen: general.sideBarDoubleClickOpen ?? false,
+    reduceMotion: general.reduceMotion ?? false,
+    lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     experiments: general.experiments ?? DEFAULT_EXPERIMENT_SETTINGS,
     shortcuts: general.shortcuts ?? {},

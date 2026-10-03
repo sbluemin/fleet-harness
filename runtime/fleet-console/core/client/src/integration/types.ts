@@ -190,6 +190,8 @@ export interface GlobalSettingsState {
   readonly unfocusedPanelFade: number;
   /** 사이드바에서 Operation 을 더블클릭해야 여는지 — 켜면 한 번 클릭은 선택만 한다. 기본은 꺼짐. */
   readonly sideBarDoubleClickOpen: boolean;
+  readonly reduceMotion: boolean;
+  readonly lowerUnfocusedFrameRate: boolean;
   readonly uiFont: UiFontSettings;
   readonly language: ConsoleLanguagePreference;
   /** 실험 기능과 모델 좌석 — 구서버 응답에는 없을 수 있고, 그때는 전부 꺼짐으로 정규화한다. */
