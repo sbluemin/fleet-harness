@@ -3,16 +3,26 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 
 import { requestBrowserOpen, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import {
+  focusOrCreateGlobalTab,
+  noteBackgroundTab,
+  notifySharedFallback,
+  openGlobalBrowser,
+} from "../../../browser/client/global-browser-store.js";
 import { httpLinkHref } from "../terminal/shared/terminal-options.js";
 import { openBrowserCompanion } from "./browser-companion.js";
 import { getT } from "./i18n/index.js";
+import { gestureFromEvent, openInDefaultOsBrowser, type OpenLinkGesture } from "@fleet-console/link/core";
 
 /**
- * 링크 하나, 두 브라우저 — CLI·채팅에서 주소를 누르면 어디서 열지 먼저 묻는다.
+ * 링크 하나, 세 브라우저 — CLI·채팅에서 주소를 누르면 어디서 열지 먼저 묻는다.
  *
- * Operation 브라우저는 이 Operation의 companion 패널이다(에이전트와 같은 탭을 본다). 내 브라우저는
- * 이 컴퓨터의 기본 브라우저다. 묻는 카드가 곧 확인이기도 하다 — 터미널이 띄우던 native confirm이
- * 하던 일을, 갈 곳을 고르는 한 카드가 대신 진다.
+ * - Operation 표면: 3행 카드(Fleet 브라우저 / Operation 브라우저 / 내 브라우저).
+ * - 전역 Shell: 2행 카드(Fleet 브라우저 / 내 브라우저) — Operation 행이 없다.
+ * - 수정키는 카드를 건너뛴다(⌘·가운데=Fleet 뒤 탭, Shift=내 브라우저,
+ *   Alt=그 Operation 브라우저, Shell의 Alt는 카드).
+ * 묻는 카드가 곧 확인이기도 하다 — 터미널이 띄우던 native confirm이 하던 일을,
+ * 갈 곳을 고르는 한 카드가 대신 진다.
  */
 
 /** 누른 자리. 카드는 그 점에서 펼쳐진다 — 커서 앵커 메뉴와 같은 문법이다. */
@@ -46,47 +56,130 @@ export function useLinkOpenChoice(context: OperationRenderContext): LinkOpenChoi
   }, []);
   const close = React.useCallback(() => setPending(null), []);
   const card = pending === null ? null : (
-    <LinkOpenCard context={context} url={pending.url} at={pending.at} onClose={close} />
+    <LinkOpenCard context={context} kind="operation" url={pending.url} at={pending.at} onClose={close} />
   );
   return { choose, card };
 }
 
+/** 전역 Shell의 2행 카드(Fleet / 내 브라우저) — Operation 행이 없다. */
+export function useShellLinkChoice(language: OperationRenderContext["language"]): LinkOpenChoice {
+  const [pending, setPending] = React.useState<{ readonly url: string; readonly at: LinkOpenAt } | null>(null);
+  const engine = useBrowserEngine();
+  const canOfferRef = React.useRef(true);
+  canOfferRef.current = engine === null || engine.available;
+  const choose = React.useCallback((url: string, at: LinkOpenAt) => {
+    if (!canOfferRef.current) return false;
+    setPending({ url, at });
+    return true;
+  }, []);
+  const close = React.useCallback(() => setPending(null), []);
+  const card = pending === null ? null : (
+    <LinkOpenCard language={language} kind="shell" url={pending.url} at={pending.at} onClose={close} />
+  );
+  return { choose, card };
+}
+
+/** 브라우저 가용성 스냅샷 — 카드를 건너뛰는 손짓이 직접 열 수 있는지, shared 폴백인지를 가른다. */
+export interface LinkAvailability {
+  /** Fleet 브라우저를 열 수 있는가(카드·뒤 탭·시트). */
+  readonly canOffer: boolean;
+  /** Desktop shared인가 — 이때는 내 브라우저로 열고 처음 한 번 안내한다. */
+  readonly isShared: boolean;
+}
+
 /**
- * 채팅 본문의 링크 클릭을 가로채는 손잡이 — 마크다운이 심은 앵커가 여기서 카드로 바뀐다.
- *
- * 수식 키를 누른 클릭과 가운데 클릭은 그대로 둔다: 그 제스처는 이미 「새 탭에서」라는 뜻이고,
- * 앵커의 기본 동작이 그 뜻을 지킨다.
+ * 수정키 손짓의 직접 열기. 카드를 세우지 않고 true를 돌리면 부른 쪽은 맡긴 것으로 보고
+ * confirm·앵커 기본 동작으로 떨어지지 않는다. click 손짓과 쓸 수 없을 때는 false다.
  */
-export function createChatLinkInterceptor(choose: LinkOpenChoice["choose"]) {
+export function openOperationLink(
+  url: string,
+  gesture: OpenLinkGesture,
+  target: { readonly operationId: string; readonly openCompanion: () => void },
+  availability: LinkAvailability,
+): boolean {
+  if (!availability.canOffer) {
+    if (!availability.isShared) return false;
+    notifySharedFallback();
+    openInDefaultOsBrowser(url);
+    return true;
+  }
+  if (gesture === "click") return false;
+  if (gesture === "background") {
+    // 뒤 탭 — 시트를 띄우지 않고 탭만 열고, 칸에 수를 남긴다.
+    void focusOrCreateGlobalTab(url).then((ok) => { if (ok) noteBackgroundTab(); }).catch(() => undefined);
+    return true;
+  }
+  if (gesture === "external") {
+    openInDefaultOsBrowser(url);
+    return true;
+  }
+  requestBrowserOpen(target.operationId, url);
+  target.openCompanion();
+  return true;
+}
+
+/** 전역 Shell의 직접 열기 — companion이 없어 Alt는 카드로 돌려보낸다. */
+export function openShellLink(url: string, gesture: OpenLinkGesture, availability: LinkAvailability): boolean {
+  if (!availability.canOffer) {
+    if (!availability.isShared) return false;
+    notifySharedFallback();
+    openInDefaultOsBrowser(url);
+    return true;
+  }
+  if (gesture === "click" || gesture === "companion") return false;
+  if (gesture === "background") {
+    void focusOrCreateGlobalTab(url).then((ok) => { if (ok) noteBackgroundTab(); }).catch(() => undefined);
+    return true;
+  }
+  openInDefaultOsBrowser(url);
+  return true;
+}
+
+/**
+ * 채팅 본문의 링크 클릭을 가로채는 손잡이 — 마크다운이 심은 앵커가 여기서 카드·직접 열기로 바뀐다.
+ *
+ * 수식 없는 왼클릭은 카드로 묻고, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다.
+ * 직접 열기에 실패하면(false) 앵커의 기본 동작을 그대로 둔다.
+ */
+export function createChatLinkInterceptor(
+  choose: LinkOpenChoice["choose"],
+  openDirect: (url: string, event: { readonly button: number; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean; readonly altKey: boolean }) => boolean,
+) {
   return (event: React.MouseEvent<HTMLElement>): void => {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (event.defaultPrevented) return;
     const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>("a[href]") ?? null;
     if (!anchor) return;
     const href = httpLinkHref(anchor.href);
     if (href === null) return;
+    const gesture = gestureFromEvent(event);
     // 카드가 서지 않으면 앵커의 기본 동작을 그대로 둔다 — 브라우저로 연 Console에서는 여느 링크와 같다.
-    if (!choose(href, { x: event.clientX, y: event.clientY })) return;
+    if (gesture === "click") {
+      if (event.button !== 0) return;
+      if (!choose(href, { x: event.clientX, y: event.clientY })) return;
+      event.preventDefault();
+      return;
+    }
+    if (!openDirect(href, event)) return;
     event.preventDefault();
   };
 }
 
-/** 이 컴퓨터의 기본 브라우저로 — Desktop 셸에서는 창 정책이 이 요청을 OS 브라우저로 넘긴다. */
-export function openLinkInWebBrowser(url: string): void {
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
-function LinkOpenCard({ context, url, at, onClose }: {
-  readonly context: OperationRenderContext;
+function LinkOpenCard({ context, language, kind, url, at, onClose }: {
+  readonly context?: OperationRenderContext;
+  readonly language?: OperationRenderContext["language"];
+  readonly kind: "operation" | "shell";
   readonly url: string;
   readonly at: LinkOpenAt;
   readonly onClose: () => void;
 }) {
-  const t = getT(context.language ?? "en");
+  const t = getT(context?.language ?? language ?? "en");
   const engine = useBrowserEngine();
   // 아직 물어보지 못한 동안(null)은 문을 닫지 않는다 — 캡션의 지구본과 같은 판정이다.
   const engineMissing = engine !== null && !engine.available;
   const cardRef = React.useRef<HTMLDivElement | null>(null);
-  const fleetRef = React.useRef<HTMLButtonElement | null>(null);
+  // 첫 행(Fleet 브라우저)이 기본 포커스다. 문이 닫혀 있으면 내 브라우저가 첫 손잡이가 된다.
+  const globalRef = React.useRef<HTMLButtonElement | null>(null);
+  const companionRef = React.useRef<HTMLButtonElement | null>(null);
   const webRef = React.useRef<HTMLButtonElement | null>(null);
   // 카드는 포커스를 쥐고 서지만(Enter 한 번이면 열린다) 그 사실을 링으로 말하지는 않는다 — 마우스로 연
   // 사람에게는 고르지 않은 것이 이미 골라진 것처럼 보인다. 키를 한 번 쓰는 순간부터 링이 선다.
@@ -112,9 +205,8 @@ function LinkOpenCard({ context, url, at, onClose }: {
     card.style.left = `${Math.round(left)}px`;
     card.style.top = `${Math.round(top)}px`;
     card.style.visibility = "visible";
-    // 기본값은 Fleet 브라우저다 — 그 문이 닫혀 있으면 내 브라우저가 첫 손잡이가 된다.
     // 누르던 링크가 포커스를 쥐고 있으므로, 카드가 서는 그 자리에서 가져온다.
-    (engineMissing ? webRef : fleetRef).current?.focus();
+    (engineMissing ? webRef : globalRef).current?.focus();
   }, [at.x, at.y, engineMissing]);
 
   React.useEffect(() => {
@@ -136,22 +228,28 @@ function LinkOpenCard({ context, url, at, onClose }: {
     setKeyboard(true);
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
-    const items = [fleetRef.current, webRef.current].filter((item): item is HTMLButtonElement => item !== null && !item.disabled);
+    const items = [globalRef.current, ...(kind === "operation" ? [companionRef.current] : []), webRef.current].filter((item): item is HTMLButtonElement => item !== null && !item.disabled);
     if (items.length === 0) return;
     const index = items.indexOf(document.activeElement as HTMLButtonElement);
     const next = event.key === "ArrowDown" ? index + 1 : index - 1;
     items[(next + items.length) % items.length]!.focus();
   };
 
-  const openInFleetBrowser = () => {
+  const openInGlobalFleet = () => {
     onClose();
+    // 같은 주소의 탭이 있으면 그 탭으로 가고, 없으면 새 탭을 연 뒤 시트를 띄운다.
+    void focusOrCreateGlobalTab(url).then(() => openGlobalBrowser()).catch(() => undefined);
+  };
+  const openInCompanionBrowser = () => {
+    onClose();
+    if (!context) return;
     // 주소를 먼저 놓고 문을 연다 — 패널은 마운트하는 순간 그 요청을 집어 든다.
     requestBrowserOpen(context.operationId, url);
     openBrowserCompanion(context);
   };
   const openInWebBrowser = () => {
     onClose();
-    openLinkInWebBrowser(url);
+    openInDefaultOsBrowser(url);
   };
 
   const unavailableHelp = engine !== null && !engine.available
@@ -174,13 +272,22 @@ function LinkOpenCard({ context, url, at, onClose }: {
         onKeyDown={onMenuKeyDown}
       >
         <p className="link-open-url" title={url}><LinkParts url={url} /></p>
-        <button type="button" role="menuitem" className="link-open-choice" ref={fleetRef} disabled={engineMissing} onClick={openInFleetBrowser}>
+        <button type="button" role="menuitem" className="link-open-choice" ref={globalRef} disabled={engineMissing} onClick={openInGlobalFleet}>
           <GlobeGlyph />
           <span className="link-open-choice-text">
-            <strong>{t("terminal.link.operationBrowser")}</strong>
-            <span>{unavailableHelp ?? t("terminal.link.operationBrowserHelp")}</span>
+            <strong>{t("terminal.link.fleetBrowser")}</strong>
+            <span>{unavailableHelp ?? t("terminal.link.fleetBrowserHelp")}</span>
           </span>
         </button>
+        {kind === "operation" ? (
+          <button type="button" role="menuitem" className="link-open-choice" ref={companionRef} disabled={engineMissing} onClick={openInCompanionBrowser}>
+            <GlobeGlyph />
+            <span className="link-open-choice-text">
+              <strong>{t("terminal.link.operationBrowser")}</strong>
+              <span>{unavailableHelp ?? t("terminal.link.operationBrowserHelp")}</span>
+            </span>
+          </button>
+        ) : null}
         <button type="button" role="menuitem" className="link-open-choice" ref={webRef} onClick={openInWebBrowser}>
           <ExternalGlyph />
           <span className="link-open-choice-text">

@@ -2,6 +2,7 @@ import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
+import { gestureFromEvent } from "@fleet-console/link/core";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, type SystemFontRecord } from "@fleet-console/font-picker/system-fonts";
 import {
@@ -46,8 +47,8 @@ import { TerminalSurface } from "../terminal/shared/index.js";
 import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, getTerminalPrefsSnapshot, setChatReadingWidth, setInstalledTerminalFont, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, setTerminalCopyOnSelect, setTerminalInactiveFlush, setTerminalRenderer, setTerminalScrollback, TERMINAL_SCROLLBACK_CHOICES, terminalFontFallbackStack, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
-import { BROWSER_COMPANION_ID } from "./browser-companion.js";
-import { createChatLinkInterceptor, useLinkOpenChoice } from "./link-open.js";
+import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
+import { createChatLinkInterceptor, openOperationLink, useLinkOpenChoice } from "./link-open.js";
 import { UseRequestCards, setUseRequestApi } from "./use-request-card.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OPERATION_REVEAL_EVENT_CHANNEL, SESSION_WATCH_EVENT_CHANNEL, getOperationReveal, getSessionWatchReview, isOperationRevealEvent, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, readWatchEnabled, readWatchLast, recordOperationReveal, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeOperationReveals, subscribeSessionWatchReviews, type OperationReveal, type SessionWatchReview } from "./experiments-api.js";
@@ -805,8 +806,20 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const wasChatModeAtMountRef = React.useRef(chatMode);
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
   // 주소를 누르면 어디서 열지 먼저 묻는다 — CLI(터미널이 찾아낸 링크)와 채팅(마크다운 앵커)이 같은 카드를 쓴다.
+  // 수식 없는 왼클릭은 3행 카드, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다.
   const linkOpen = useLinkOpenChoice(context);
-  const onChatLinkClick = React.useMemo(() => createChatLinkInterceptor(linkOpen.choose), [linkOpen.choose]);
+  const linkEngine = useBrowserEngine();
+  const linkAvailability = React.useMemo(() => ({
+    canOffer: linkEngine === null || linkEngine.available,
+    isShared: linkEngine !== null && !linkEngine.available && linkEngine.reason === "shared",
+  }), [linkEngine]);
+  const openChatLinkDirect = React.useCallback((url: string, event: { readonly button: number; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean; readonly altKey: boolean }) => openOperationLink(
+    url,
+    gestureFromEvent(event),
+    { operationId: context.operationId, openCompanion: () => openBrowserCompanion(context) },
+    linkAvailability,
+  ), [context, linkAvailability]);
+  const onChatLinkClick = React.useMemo(() => createChatLinkInterceptor(linkOpen.choose, openChatLinkDirect), [linkOpen.choose, openChatLinkDirect]);
   const fileLinks = React.useMemo(() => createChatFileLinkPorts(context.operation.theaterId, context.navigate), [context.operation.theaterId, context.navigate]);
   const terminalFileLinks = useAgentTerminalFileLinks(context.operationId, context.operation.theaterId, context.navigate);
 
@@ -822,7 +835,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
       );
     }
     return (
-      <MarkdownLinkBoundary className="agent-stream-host" onClick={onChatLinkClick} {...fileLinks}>
+      <MarkdownLinkBoundary className="agent-stream-host" onClick={onChatLinkClick} onAuxClick={onChatLinkClick} fleetLink="self" {...fileLinks}>
         <AgentChatView context={context} tourAnchors={chatOpenedHere} />
         <ComputerScreenShare operationId={context.operationId} />
         {linkOpen.card}
@@ -858,6 +871,12 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onOpenLink={linkOpen.choose}
+        onOpenLinkDirect={(url, event) => openOperationLink(
+          url,
+          gestureFromEvent(event),
+          { operationId: context.operationId, openCompanion: () => openBrowserCompanion(context) },
+          linkAvailability,
+        )}
         knownLinks={(text) => confirmAgentSessionLinks(session.sessionId, text)}
         fileLinks={terminalFileLinks}
         onExit={() => removeExitedSession(session.sessionId, session.generation)}

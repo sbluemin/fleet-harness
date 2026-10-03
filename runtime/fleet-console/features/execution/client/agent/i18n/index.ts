@@ -220,7 +220,7 @@ export const terminalEn = {
   // 링크를 누르면 어디서 열지 묻는 카드 — 같은 낱말이 CLI와 채팅 양쪽에 선다.
   "terminal.link.cardAria": "Choose where to open this link",
   "terminal.link.fleetBrowser": "Fleet Browser",
-  "terminal.link.fleetBrowserHelp": "Opens in this Operation's browser panel",
+  "terminal.link.fleetBrowserHelp": "Opens above your current view",
   "terminal.link.operationBrowser": "Operation Browser",
   "terminal.link.operationBrowserHelp": "See the same tab as this Operation's agent",
   "terminal.link.webBrowser": "My browser",
@@ -1018,7 +1018,7 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.markdown.copy": "복사",
   "terminal.link.cardAria": "이 링크를 어디서 열지 고르기",
   "terminal.link.fleetBrowser": "Fleet 브라우저",
-  "terminal.link.fleetBrowserHelp": "이 Operation의 브라우저 패널에서 엽니다",
+  "terminal.link.fleetBrowserHelp": "지금 보던 화면 위에서 엽니다",
   "terminal.link.operationBrowser": "Operation 브라우저",
   "terminal.link.operationBrowserHelp": "이 Operation의 에이전트와 같은 탭을 봅니다",
   "terminal.link.webBrowser": "내 브라우저",

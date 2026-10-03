@@ -68,6 +68,11 @@ export interface TerminalSurfaceProps {
    */
   readonly onOpenLink?: (url: string, at: { readonly x: number; readonly y: number }) => boolean;
   /**
+   * 수정키·중간 클릭 손짓의 직접 열기 — 카드를 세우지 않는다. 열었으면 true,
+   * 못 열면(false) 확인 뒤 새 창으로 여는 기본 경로로 떨어진다.
+   */
+  readonly onOpenLinkDirect?: (url: string, event: MouseEvent) => boolean;
+  /**
    * 앱이 스스로 줄을 바꿔 그린 긴 URL을 이을 때의 원문 확인 — 화면에서 이어 붙인 글을 받아 그 안에
    * 들어 있는 원문 주소(예: 그 세션 transcript에 적힌 것)를 돌려준다. 넘기면 원문과 정확히 같은
    * 조각만 전체 주소 한 링크로 세운다. 넘기지 않은 표면은 맨 URL 탐지만 쓴다.
@@ -218,7 +223,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -281,6 +286,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   onOpenLinkRef.current = onOpenLink;
   const onCellWidthRef = useRef(onCellWidth);
   onCellWidthRef.current = onCellWidth;
+  const onOpenLinkDirectRef = useRef(onOpenLinkDirect);
+  onOpenLinkDirectRef.current = onOpenLinkDirect;
   const knownLinksRef = useRef(knownLinks);
   knownLinksRef.current = knownLinks;
   const localeRef = useRef(locale);
@@ -381,6 +388,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       // 같은 경로를 지난다. 그 경로가 이 표면에 고르는 문이 있는지 매번 다시 본다(ref).
       const linkRoute = createTerminalLinkRoute({
         chooseTarget: (url, event) => onOpenLinkRef.current?.(url, { x: event.clientX, y: event.clientY }) === true,
+        openDirect: (url, event) => onOpenLinkDirectRef.current?.(url, event) === true,
         openWindow: (url, target, features) => window.open(url, target, features),
         confirmNavigation: (url) => window.confirm(`Do you want to navigate to ${url}?\n\nWARNING: This link could potentially be dangerous`),
       });

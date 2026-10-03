@@ -1,9 +1,11 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
+import { createPortal } from "react-dom";
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { themePolarity } from "../../../core/client/src/integration/store.js";
 import { useConsoleOverlayActive } from "../../../core/client/src/overlay/overlay-registry.js";
+import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { getT } from "./i18n.js";
 import {
   chooseGlobalProfile,
@@ -12,6 +14,7 @@ import {
   closeGlobalTab,
   createGlobalTab,
   dismissClosedGlobalTabs,
+  dismissSharedFallback,
   navigateGlobal,
   placeGlobal,
   restoreClosedGlobalTabs,
@@ -21,6 +24,7 @@ import {
   useGlobalBrowserBackgroundSeen,
   useGlobalBrowserOpen,
   useGlobalBrowserState,
+  useSharedFallbackNotice,
   type GlobalBrowserState,
   type GlobalBrowserUnavailableReason,
 } from "./global-browser-store.js";
@@ -69,6 +73,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const { state } = useGlobalBrowserState(enabled);
   const overlayActive = useConsoleOverlayActive();
   useGlobalBrowserBackgroundSeen(open);
+  // shared 폴백 안내는 시트가 닫혀 있어도 보여야 한다 — 일찍 구독한다.
+  const fallbackNotice = useSharedFallbackNotice();
   // 서버 라우트가 아직 없어도(호스트 구현 중) 깨지지 않게 실패를 삼킨다.
   useGlobalBrowserShortcutsSync(enabled && desktop);
 
@@ -235,7 +241,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     void setGlobalColorScheme(polarity);
   }, [available, state?.viewport.colorScheme, state?.viewport.setBy, polarity]);
 
-  if (!enabled || !open) return null;
+  if (!enabled) return null;
+  const toastHost = typeof document === "undefined" ? null : document.querySelector(".app-toast-host");
 
   const fail = (ok: boolean) => { if (!ok) setNotice(t("terminal.browser.requestFailed")); };
   const runTab = (task: () => Promise<boolean>) => {
@@ -272,9 +279,11 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
 
   return (
     <>
-      {/* 뒤 캔버스를 은은하게 가라앉히는 무채색 scrim. 직접 클릭만 닫는다. */}
-      <div className="fleet-browser-scrim" aria-hidden="true" onClick={() => closeGlobalBrowser()} />
-      <section
+      {open ? (
+        <>
+          {/* 뒤 캔버스를 은은하게 가라앉히는 무채색 scrim. 직접 클릭만 닫는다. */}
+          <div className="fleet-browser-scrim" aria-hidden="true" onClick={() => closeGlobalBrowser()} />
+          <section
         ref={sheetRef}
         id="fleet-browser-sheet"
         className="fleet-browser-sheet"
@@ -509,7 +518,14 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
           ) : null}
           {parked && activeTab && !shownStill && !closedDoor && !empty ? <div className="fleet-browser-sheet__placeholder" aria-hidden="true" /> : null}
         </div>
-      </section>
+          </section>
+        </>
+      ) : null}
+      {/* shared 폴백 안내 — 시트가 닫혀 있어도 기존 토스트 스택에 얹는다. */}
+      {fallbackNotice && toastHost ? createPortal(
+        <Toast open tone="info" title={t("terminal.globalBrowser.sharedFallback")} onDismiss={() => dismissSharedFallback()} />,
+        toastHost,
+      ) : null}
     </>
   );
 }

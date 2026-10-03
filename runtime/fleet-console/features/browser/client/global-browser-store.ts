@@ -245,6 +245,57 @@ export async function dismissClosedGlobalTabs(): Promise<boolean> {
   return response !== null && response.ok;
 }
 
+/**
+ * 같은 주소의 탭이 이미 있으면 그 탭으로 가고, 없으면 새 탭을 연다.
+ * 링크 클릭이 탭을 중복으로 불리지 않게 한다.
+ */
+export async function focusOrCreateGlobalTab(url: string): Promise<boolean> {
+  try {
+    const current = await getGlobalState();
+    const existing = current?.tabs.find((tab) => tab.url === url);
+    if (existing) {
+      const moved = await selectGlobalTab(existing.id);
+      if (moved) return true;
+    }
+  } catch {
+    // 출발점 읽기에 실패하면 만들기로 떨어진다.
+  }
+  return createGlobalTab(url);
+}
+
+// ---------- shared 폴백 안내(세션당 한 번) ----------
+
+let sharedFallbackShown = false;
+let sharedFallbackVisible = false;
+const sharedFallbackListeners = new Set<() => void>();
+
+function emitSharedFallback(): void {
+  for (const listener of sharedFallbackListeners) listener();
+}
+
+function subscribeSharedFallback(listener: () => void): () => void {
+  sharedFallbackListeners.add(listener);
+  return () => { sharedFallbackListeners.delete(listener); };
+}
+
+/** Desktop shared 중 링크를 내 브라우저로 열 때 처음 한 번 안내를 세운다. */
+export function notifySharedFallback(): void {
+  if (sharedFallbackShown) return;
+  sharedFallbackShown = true;
+  sharedFallbackVisible = true;
+  emitSharedFallback();
+}
+
+export function dismissSharedFallback(): void {
+  if (!sharedFallbackVisible) return;
+  sharedFallbackVisible = false;
+  emitSharedFallback();
+}
+
+export function useSharedFallbackNotice(): boolean {
+  return React.useSyncExternalStore(subscribeSharedFallback, () => sharedFallbackVisible, () => false);
+}
+
 export async function setGlobalViewport(preset: "responsive" | "mobile" | "tablet"): Promise<boolean> {
   const response = await postGlobal("viewport", { preset });
   return response !== null && response.ok;
