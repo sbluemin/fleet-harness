@@ -9,6 +9,8 @@
  * 어디에 서 있느냐, 열릴 때 보고 있는 패널을 행선지로 삼느냐는 배치·습관 상태다.
  */
 
+import type { PluginMentionTargetAddress } from "@fleet-console/sdk/plugin";
+
 const STORAGE_KEY = "fleet-console.quickLaunch.selection";
 
 export interface QuickLaunchSelection {
@@ -23,6 +25,7 @@ export interface QuickLaunchSelection {
    * 카드 외곽선으로 **상시** 보인다는 것이다. 덱을 열어야만 보이는 값이었다면 기억해선 안 된다.
    */
   readonly view: QuickLaunchStartView;
+  readonly recentPluginTarget?: PluginMentionTargetAddress | null;
 }
 
 export type QuickLaunchStartView = "terminal" | "chat";
@@ -42,6 +45,7 @@ export function readQuickLaunchSelection(): QuickLaunchSelection {
     if (!raw) return EMPTY_QUICK_LAUNCH_SELECTION;
     const parsed = JSON.parse(raw) as Partial<Record<keyof QuickLaunchSelection, unknown>>;
     const selection = {
+      recentPluginTarget: readPluginTarget(parsed.recentPluginTarget),
       theaterId: readNonEmptyString(parsed.theaterId),
       model: migrateRememberedModel(readNonEmptyString(parsed.model)),
       effort: readNonEmptyString(parsed.effort),
@@ -105,6 +109,17 @@ export function writeQuickLaunchMentionFocused(mentionFocused: boolean): void {
 export function writeQuickLaunchTheater(theaterId: string | null): void {
   const remembered = readQuickLaunchSelection();
   writeQuickLaunchSelection({ ...remembered, theaterId });
+}
+
+export function writeQuickLaunchRecentPluginTarget(recentPluginTarget: PluginMentionTargetAddress): void {
+  writeQuickLaunchSelection({ ...readQuickLaunchSelection(), recentPluginTarget });
+}
+
+function readPluginTarget(value: unknown): PluginMentionTargetAddress | null {
+  if (!value || typeof value !== "object") return null;
+  const address = value as Partial<PluginMentionTargetAddress>;
+  return readNonEmptyString(address.pluginId) && readNonEmptyString(address.targetId)
+    ? { pluginId: address.pluginId!, targetId: address.targetId! } : null;
 }
 
 function readNonEmptyString(value: unknown): string | null {

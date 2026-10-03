@@ -4,6 +4,7 @@ import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "@fleet-console/
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
+import { ChatSurfaceContext } from "./head-action.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import type { AideGrants } from "./settings-store.js";
 
@@ -15,7 +16,9 @@ import type { AideGrants } from "./settings-store.js";
  * 실제 동사와 조건이 한 줄 말풍선으로 선다(헤더 아이콘의 도움말과 같은 계약·같은 포털).
  * 글리프는 Operation 메뉴·사이드바 칩의 ~Use 글리프 그대로다.
  */
-export function GrantLine({ grants, locale, compact = false }: {
+export function GrantLine({ grants, locale, compact = false, responsive = false }: {
+  /** 호스트 컴포저의 한 줄 권한 표면. 좁은 화면에서는 글리프와 접근 이름으로 접는다. */
+  readonly responsive?: boolean;
   readonly grants: AideGrants;
   readonly locale: ConsoleLocale | undefined;
   /** 말풍선 머리처럼 좁은 자리 — 「권한」 라벨과 「파일·셸 없음」을 접고 허용된 것만 세운다. */
@@ -23,22 +26,24 @@ export function GrantLine({ grants, locale, compact = false }: {
 }) {
   const t = getT(locale);
   return (
-    <span className={`scuttlebutt-grants${compact ? " is-compact" : ""}`} role="group" aria-label={t("grant.label")}>
+    <span className={`scuttlebutt-grants${compact ? " is-compact" : ""}${responsive ? " is-responsive" : ""}`} role="group" aria-label={t("grant.label")}>
       {!compact ? <span className="scuttlebutt-grants-label">{t("grant.label")}</span> : null}
       <GrantChip label={t("grant.web")} tip={t("grant.web.tip")} icon={<WebGlyph />} />
-      {grants.consoleUse ? <GrantChip granted label={t("grant.console")} tip={t("grant.console.tip")} icon={<CaptionConsoleUseGlyph />} /> : null}
+      {grants.consoleUse ? <GrantChip granted consoleUse label={t("grant.console")} tip={t("grant.console.tip")} icon={<CaptionConsoleUseGlyph />} /> : null}
       {grants.computerUse ? <GrantChip granted label={t("grant.computer")} tip={t("grant.computer.tip")} icon={<CaptionComputerUseGlyph />} /> : null}
       {!compact ? <GrantChip label={t("grant.noFs")} tip={t("grant.noFs.tip")} icon={<NoFsGlyph />} /> : null}
     </span>
   );
 }
 
-function GrantChip({ label, tip, icon, granted = false }: {
+function GrantChip({ label, tip, icon, granted = false, consoleUse = false }: {
+  readonly consoleUse?: boolean;
   readonly label: string;
   readonly tip: string;
   readonly icon: React.ReactNode;
   readonly granted?: boolean;
 }) {
+  const surface = React.useContext(ChatSurfaceContext);
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLSpanElement>(null);
   const [anchor, setAnchor] = React.useState<{ readonly top: number; readonly left: number } | null>(null);
@@ -51,7 +56,7 @@ function GrantChip({ label, tip, icon, granted = false }: {
   return (
     <span
       ref={ref}
-      className={`scuttlebutt-grant${granted ? " is-granted" : ""}`}
+      className={`scuttlebutt-grant${granted ? " is-granted" : ""}${consoleUse ? " is-console-use" : ""}`}
       tabIndex={0}
       role="img"
       aria-label={`${label} — ${tip}`}
@@ -62,10 +67,11 @@ function GrantChip({ label, tip, icon, granted = false }: {
       onBlur={() => setOpen(false)}
     >
       <span className="scuttlebutt-grant-glyph" aria-hidden="true">{icon}</span>
-      {label}
+      <span className="scuttlebutt-grant-text">{label}</span>
       {createPortal(
         <span
           className="scuttlebutt-head-tip"
+          data-scuttlebutt-surface={surface}
           role="tooltip"
           id={id}
           hidden={!open || anchor === null}

@@ -2,6 +2,9 @@ import { createPortal } from "react-dom";
 
 import { React } from "@fleet-console/sdk/plugin/browser";
 
+/** 포털로 나간 메뉴·설명도 자기 입력 표면의 모달 경계를 따른다. */
+export const ChatSurfaceContext = React.createContext<"floating" | "composer">("floating");
+
 /**
  * 카드·시트 헤더의 글자 없는 아이콘 조작.
  *
@@ -33,6 +36,7 @@ export function HeadAction({
   readonly quiet?: boolean;
   readonly onClick: () => void;
 }) {
+  const surface = React.useContext(ChatSurfaceContext);
   const [open, setOpen] = React.useState(false);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
   const [anchor, setAnchor] = React.useState<{ readonly top: number; readonly right: number } | null>(null);
@@ -66,6 +70,7 @@ export function HeadAction({
       {tipped ? createPortal(
         <span
           className="scuttlebutt-head-tip"
+          data-scuttlebutt-surface={surface}
           role="tooltip"
           id={bubbleId}
           hidden={!open || anchor === null}

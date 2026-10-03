@@ -11,7 +11,8 @@ import type { AdmiralId } from "./chat-session.js";
 import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
 import { placeCard, placeDockedCard, type CardPlacement } from "./geometry.js";
 import { GrantLine, GrantMarks, grantSummary } from "./grant-chips.js";
-import { ClearIcon, CloseIcon, DockIcon, HeadAction, MoreIcon, MoorIcon, UndockIcon } from "./head-action.js";
+import { ChatSurfaceContext, ClearIcon, CloseIcon, DockIcon, HeadAction, MoreIcon, MoorIcon, UndockIcon } from "./head-action.js";
+import { QUAKER_HEAD_VIEW_BOX, QuakerFigure } from "./quaker-figure.js";
 import { foldStatus, isBusy, liveStatus } from "./live-status.js";
 import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
 import type { AideGrants } from "./settings-store.js";
@@ -49,7 +50,10 @@ export function ChatCard({
   onTuck,
   locale,
   positionRevision,
+  embedded = false,
 }: {
+  /** 호스트 컴포저 안에서는 대화·권한 조작만 렌더하며 입력과 배치는 호스트가 소유한다. */
+  readonly embedded?: boolean;
   readonly state: ChatState;
   readonly draft: string;
   readonly admiral: AdmiralId;
@@ -97,6 +101,15 @@ export function ChatCard({
   const moreRef = React.useRef<HTMLSpanElement>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const [menuAnchor, setMenuAnchor] = React.useState<{ readonly top: number; readonly right: number } | null>(null);
+  React.useEffect(() => {
+    if (embedded || !menuOpen) return;
+    const root = document.documentElement;
+    const dismissForModal = () => { if (root.hasAttribute("data-modal-open")) setMenuOpen(false); };
+    const observer = new MutationObserver(dismissForModal);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-modal-open"] });
+    dismissForModal();
+    return () => observer.disconnect();
+  }, [embedded, menuOpen]);
   React.useLayoutEffect(() => {
     if (!menuOpen) return;
     const rect = moreRef.current?.getBoundingClientRect();
@@ -104,6 +117,7 @@ export function ChatCard({
   }, [menuOpen, positionRevision]);
 
   const position = React.useCallback(() => {
+    if (embedded) return;
     const mascotElement = mascot.current;
     const card = cardRef.current;
     if (!mascotElement || !card) return;
@@ -117,14 +131,14 @@ export function ChatCard({
     const next = docked ? placeDockedCard(viewport, anchor, size) : placeCard(viewport, anchor, size);
     // 같은 자리면 상태를 바꾸지 않는다 — 시트의 추적 루프가 프레임마다 리렌더를 몰고 오지 않게.
     setPlacement((current) => (current && samePlacement(current, next) ? current : next));
-  }, [docked, mascot]);
+  }, [docked, embedded, mascot]);
 
   // 포커스는 카드가 열릴 때(그리고 다른 부관으로 바뀔 때, 자리를 옮길 때) 준다. 재배치 신호에
   // 묶어 두면 부관 크기 조절처럼 카드 밖에서 일어난 사건이 사용자가 잡고 있던 포커스를 빼앗는다.
   // 자리를 옮기면 눌렀던 헤더 아이콘이 사라져 포커스가 문서로 떨어진다 — 그러면 Escape가 닿지 않는다.
   React.useLayoutEffect(() => {
-    inputRef.current?.focus();
-  }, [admiral, docked]);
+    if (!embedded) inputRef.current?.focus();
+  }, [admiral, docked, embedded]);
 
   React.useLayoutEffect(() => {
     position();
@@ -219,6 +233,7 @@ export function ChatCard({
   // 카드 바깥을 누르면 닫는다. 캡처 단계나 preventDefault를 쓰지 않으므로 그 클릭은
   // 아래 콘솔에 그대로 도달한다 — 마스코트 위 누름은 드래그 시작이라 닫힘에서 제외한다.
   React.useEffect(() => {
+    if (embedded) return;
     const dismiss = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
@@ -229,7 +244,7 @@ export function ChatCard({
     };
     document.addEventListener("pointerdown", dismiss);
     return () => document.removeEventListener("pointerdown", dismiss);
-  }, [mascot, onClose]);
+  }, [embedded, mascot, onClose]);
 
   const style = placementStyle(placement);
   const busy = isBusy(state);
@@ -245,14 +260,16 @@ export function ChatCard({
     extensions.computerUse ? { id: "computer" as const, key: "computerUse" as const, glyph: <CaptionComputerUseGlyph />, name: t("menu.computerUse"), hint: t(grants.computerUse ? "menu.computerUseOn" : "menu.computerUseOff") } : null,
   ].filter((row) => row !== null);
   return (
+    <ChatSurfaceContext.Provider value={embedded ? "composer" : "floating"}>
     <div
       ref={cardRef}
-      className={`scuttlebutt-chat-card${docked ? " is-docked" : ""}`}
-      style={style}
-      role="dialog"
+      className={`scuttlebutt-chat-card${docked ? " is-docked" : ""}${embedded ? " is-embedded" : ""}`}
+      style={embedded ? undefined : style}
+      role={embedded ? "region" : "dialog"}
       aria-label={t(`chat.label.${admiral}`)}
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
+        if (embedded && !menuOpen) return;
         event.stopPropagation();
         if (menuOpen) {
           setMenuOpen(false);
@@ -262,14 +279,16 @@ export function ChatCard({
       }}
     >
       <div className="scuttlebutt-chat-head">
-        <span className="scuttlebutt-chat-sigil" aria-hidden="true">⚓</span>
-        <span className="scuttlebutt-chat-who">
-          {t(`chat.label.${admiral}`)}
-          <GrantMarks grants={grants} locale={locale} />
+        <span className={`scuttlebutt-chat-sigil${embedded ? " is-persona" : ""}`} aria-hidden="true">
+          {embedded ? <QuakerFigure morph={admiral} viewBox={QUAKER_HEAD_VIEW_BOX} /> : "⚓"}
+        </span>
+        <span className={`scuttlebutt-chat-who${embedded ? " is-quiet" : ""}`}>
+          {t(embedded ? `bird.${admiral}` : `chat.label.${admiral}`)}
+          {embedded ? null : <GrantMarks grants={grants} locale={locale} />}
         </span>
         {/* 자리 조작은 그 부관에게만 걸린다 — 전역 설정으로 빼지 않고 헤더에 아이콘으로만 둔다.
             시트(상단 바)에서는 정박이 의미가 없으므로 떼어내기 하나만 선다. */}
-        {docked ? (
+        {embedded ? null : docked ? (
           <HeadAction
             id={`scuttlebutt-undock-${admiral}`}
             label={t("chat.undock")}
@@ -326,9 +345,10 @@ export function ChatCard({
           <div
             ref={menuRef}
             className="scuttlebutt-menu"
+            data-scuttlebutt-surface={embedded ? "composer" : "floating"}
             role="menu"
             aria-label={t("menu.aiExtensions")}
-            style={{ top: menuAnchor.top, right: menuAnchor.right }}
+            style={embedded ? { top: (moreRef.current?.offsetTop ?? 0) + (moreRef.current?.offsetHeight ?? 24) + 4, right: 8 } : { top: menuAnchor.top, right: menuAnchor.right }}
             onKeyDown={(event) => {
               if (event.key !== "Escape") return;
               event.stopPropagation();
@@ -351,21 +371,21 @@ export function ChatCard({
               />
             ))}
           </div>,
-          document.body,
+          embedded ? cardRef.current! : document.body,
         ) : null}
         {/* 닫기는 아이콘이 스스로 말한다 — 말풍선 없이 aria-label만. */}
-        <HeadAction
+        {embedded ? null : <HeadAction
           id={`scuttlebutt-tuck-${admiral}`}
           label={t("chat.tuck")}
           icon={<CloseIcon />}
           onClick={onTuck}
-        />
+        />}
       </div>
       <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite" onScroll={onLogScroll} onClick={(event) => copyCodeBlock(event, t("action.copied"))}>
         {state.entries.length === 0 ? (
           <div className="scuttlebutt-greeting">
             <div className="scuttlebutt-message-sam">{greeting}</div>
-            <GrantLine grants={grants} locale={locale} />
+            {embedded ? null : <GrantLine grants={grants} locale={locale} />}
           </div>
         ) : null}
         <HistoryBand
@@ -395,7 +415,7 @@ export function ChatCard({
                 {copied ? t("action.copied") : t("action.copy")}
               </button>
               <button type="button" className="scuttlebutt-answer-action" onClick={() => onHandoff(answer.text)}>
-                {t("action.handoff")}
+                {t(embedded ? "action.startOperation" : "action.handoff")}
               </button>
               {answer.usage ? <span className="scuttlebutt-usage">{usageLine(answer.usage, t)}</span> : null}
             </div>
@@ -408,7 +428,7 @@ export function ChatCard({
         ) : null}
       </div>
       {/* 한 줄 컴포저 — 입력과 동작(보내기/중지)이 한 면 안에 앉는다. 도는 동안은 같은 자리가 중지가 된다. */}
-      <form className={`scuttlebutt-composer${busy ? " is-working" : ""}`} onSubmit={(event) => {
+      {embedded ? null : <form className={`scuttlebutt-composer${busy ? " is-working" : ""}`} onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}>
@@ -437,8 +457,9 @@ export function ChatCard({
             <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M6 10 V2 M2.5 5.5 L6 2 l3.5 3.5" /></svg>
           </button>
         )}
-      </form>
+      </form>}
     </div>
+    </ChatSurfaceContext.Provider>
   );
 }
 
@@ -455,6 +476,7 @@ function MenuRow({ id, item, name, hint, glyph, checked, onToggle }: {
   readonly checked: boolean;
   readonly onToggle: () => void;
 }) {
+  const surface = React.useContext(ChatSurfaceContext);
   const [open, setOpen] = React.useState(false);
   const rowRef = React.useRef<HTMLButtonElement>(null);
   const [anchor, setAnchor] = React.useState<{ readonly top: number; readonly left: number } | null>(null);
@@ -490,6 +512,7 @@ function MenuRow({ id, item, name, hint, glyph, checked, onToggle }: {
       {createPortal(
         <span
           className="scuttlebutt-head-tip"
+          data-scuttlebutt-surface={surface}
           role="tooltip"
           id={tipId}
           hidden={!open || anchor === null}

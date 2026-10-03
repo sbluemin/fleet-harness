@@ -6,9 +6,10 @@ import { grantCapabilityLabel, grantDescription } from "./grant-chips.js";
 import { getScuttlebuttSettings } from "./settings-store.js";
 
 import type { AdmiralId } from "./chat-session.js";
+import { QuickLaunchConversation, QuickLaunchGrants } from "./quick-launch-conversation.js";
 import { DockGlyphs } from "./dock-glyphs.js";
 import { ScuttlebuttFlock } from "./flock.js";
-import { readScuttlebuttMentionBridge } from "./mention-bridge.js";
+import { readScuttlebuttMentionBridge, subscribeScuttlebuttMentions } from "./mention-bridge.js";
 import { QUAKER_HEAD_VIEW_BOX, QuakerFigure } from "./quaker-figure.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import { scuttlebuttSettingsSection } from "./settings-section.js";
@@ -38,17 +39,22 @@ function mentionTargets(): readonly MentionTargetDescriptor[] {
       capabilityLabel: grantCapabilityLabel(grants, locale),
       description: grantDescription(bridge.label(admiral), grants, locale),
       renderMark: () => <QuakerFigure morph={admiral} viewBox={QUAKER_HEAD_VIEW_BOX} />,
+      quickLaunch: {
+        identityColorToken: `--scuttlebutt-qk-id-${{ tori: "moss", bori: "crimson", dori: "cerulean" }[admiral]}`,
+        renderConversation: () => <QuickLaunchConversation admiral={admiral} />,
+        renderCapabilities: () => <QuickLaunchGrants admiral={admiral} />,
+      },
     };
   });
 }
 
-async function messageMentionTarget(targetId: string, text: string): Promise<void> {
+async function messageMentionTarget(targetId: string, text: string, options?: { readonly surface: "quick-launch" }): Promise<void> {
   const bridge = readScuttlebuttMentionBridge();
   // 덱을 연 뒤 부관이 퇴근했을 수 있다 — 없는 대상에 보내는 것은 조용히 삼키지 않고 거절한다.
   if (!bridge || !bridge.onDuty().includes(targetId as AdmiralId)) {
     throw new Error("mention_target_gone");
   }
-  await bridge.ask(targetId as AdmiralId, text);
+  await bridge.ask(targetId as AdmiralId, text, options?.surface === "quick-launch");
 }
 
 const scuttlebuttPlugin = definePlugin({
@@ -58,6 +64,7 @@ const scuttlebuttPlugin = definePlugin({
   commandBandEntries: [{ id: "dock", render: () => <DockGlyphs /> }],
   settingsSections: [scuttlebuttSettingsSection],
   mentionTargets,
+  subscribeMentionTargets: subscribeScuttlebuttMentions,
   messageMentionTarget,
   install: (context) => {
     connectConsoleRead(context);

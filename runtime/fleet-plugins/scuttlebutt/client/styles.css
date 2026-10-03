@@ -763,6 +763,23 @@
   animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
 }
 
+/* 퀵런치가 유리 봉투·배치·입력을 소유한다. 기존 카드의 로그·출처·Live line만 같은 면에서 이어진다. */
+.scuttlebutt-chat-card.is-embedded {
+  position: relative;
+  width: 100%;
+  max-height: min(42dvh, 380px);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  animation: none;
+  overflow: visible;
+}
+.scuttlebutt-chat-card.is-embedded .scuttlebutt-chat-log { overflow-wrap: anywhere; }
+.scuttlebutt-chat-card.is-embedded .scuttlebutt-menu { position: absolute; }
+
 .scuttlebutt-chat-head {
   display: flex;
   flex-shrink: 0;
@@ -783,6 +800,10 @@
   color: var(--text-primary);
   font-size: var(--t-sm);
 }
+
+.scuttlebutt-chat-sigil.is-persona { border: 0; background: none; }
+.scuttlebutt-chat-sigil.is-persona svg { width: 100%; height: 100%; }
+.scuttlebutt-chat-who.is-quiet { color: var(--text-tertiary); font-size: var(--t-sm); font-weight: var(--weight-regular); }
 
 .scuttlebutt-chat-who {
   flex: 1;
@@ -876,6 +897,9 @@
 }
 
 .scuttlebutt-head-tip[hidden] { display: none; }
+/* 포털은 부유 레이어 바깥이다. 떠 있는 카드의 메뉴·설명만 숨기고, 모달 안 권한 조작은 그대로 둔다. */
+:root[data-modal-open] .scuttlebutt-head-tip[data-scuttlebutt-surface="floating"],
+:root[data-modal-open] .scuttlebutt-menu[data-scuttlebutt-surface="floating"] { visibility: hidden; pointer-events: none; }
 
 .scuttlebutt-head-tip b {
   color: var(--text-primary);
@@ -1564,6 +1588,16 @@
   min-width: 0;
 }
 
+/* 컴포저에는 권한을 한 번만 둔다. 좁은 폭·터치에서는 이름 대신 같은 글리프·툴팁·접근 이름을 쓴다. */
+.scuttlebutt-grants.is-responsive { flex-wrap: nowrap; }
+.scuttlebutt-grants.is-responsive .scuttlebutt-grants-label { display: none; }
+:root[data-view-mode="mobile"] .scuttlebutt-grants.is-responsive .scuttlebutt-grant-text { display: none; }
+:root[data-view-mode="mobile"] .scuttlebutt-grants.is-responsive .scuttlebutt-grant { justify-content: center; width: 28px; height: 28px; padding: 0; }
+@media (max-width: 767px), (pointer: coarse) {
+  .scuttlebutt-grants.is-responsive .scuttlebutt-grant-text { display: none; }
+  .scuttlebutt-grants.is-responsive .scuttlebutt-grant { justify-content: center; width: 28px; height: 28px; padding: 0; }
+}
+
 .scuttlebutt-grants.is-compact {
   flex-wrap: nowrap;
   justify-content: flex-end;
@@ -1598,6 +1632,11 @@
 .scuttlebutt-grant.is-granted {
   border-color: color-mix(in oklch, var(--brass) 45%, transparent);
   color: var(--text-primary);
+}
+
+.scuttlebutt-grant.is-console-use {
+  color: var(--console-use-badge);
+  border-color: color-mix(in oklch, var(--console-use-badge) 35%, transparent);
 }
 
 .scuttlebutt-grant:focus-visible {

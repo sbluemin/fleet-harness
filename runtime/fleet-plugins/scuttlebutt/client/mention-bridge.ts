@@ -1,7 +1,7 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 
-import type { AdmiralId } from "./chat-session.js";
+import type { AdmiralId, ChatSession } from "./chat-session.js";
 
 /**
  * 플러그인 객체(모듈 스코프)와 마운트된 무리를 잇는 다리.
@@ -23,15 +23,48 @@ export interface ScuttlebuttMentionBridge {
    */
   readonly label: (admiral: AdmiralId) => string;
   readonly locale: () => ConsoleLocale | undefined;
-  readonly ask: (admiral: AdmiralId, text: string) => Promise<void>;
+  readonly ask: (admiral: AdmiralId, text: string, inline?: boolean) => Promise<void>;
+  readonly session: (admiral: AdmiralId) => ChatSession;
+  readonly handoff: (text: string) => void;
+}
+
+// 표시 여부는 전송 약속이나 세션 단계와 별개다. 닫힘·레인 전환·도킹 접힘에서 즉시 해제된다.
+const visibleCounts = new Map<AdmiralId, number>();
+const visibilityListeners = new Set<() => void>();
+let visibleConversations: readonly AdmiralId[] = [];
+export function readScuttlebuttConversationVisibility(): readonly AdmiralId[] { return visibleConversations; }
+export function subscribeScuttlebuttConversationVisibility(listener: () => void): () => void {
+  visibilityListeners.add(listener);
+  return () => { visibilityListeners.delete(listener); };
+}
+export function showScuttlebuttConversation(admiral: AdmiralId): () => void {
+  const update = (delta: number) => {
+    const count = (visibleCounts.get(admiral) ?? 0) + delta;
+    if (count > 0) visibleCounts.set(admiral, count); else visibleCounts.delete(admiral);
+    const next = [...visibleCounts.keys()];
+    if (next.length === visibleConversations.length && next.every((id, i) => visibleConversations[i] === id)) return;
+    visibleConversations = next;
+    for (const listener of [...visibilityListeners]) listener();
+  };
+  update(1);
+  return () => update(-1);
 }
 
 let bridge: ScuttlebuttMentionBridge | null = null;
+const listeners = new Set<() => void>();
+export function notifyScuttlebuttMentions(): void {
+  for (const listener of [...listeners]) listener();
+}
+export function subscribeScuttlebuttMentions(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
 
 export function connectScuttlebuttMentions(next: ScuttlebuttMentionBridge): () => void {
   bridge = next;
+  notifyScuttlebuttMentions();
   return () => {
-    if (bridge === next) bridge = null;
+    if (bridge === next) { bridge = null; notifyScuttlebuttMentions(); }
   };
 }
 

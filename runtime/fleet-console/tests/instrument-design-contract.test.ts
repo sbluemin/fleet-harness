@@ -4047,7 +4047,7 @@ describe("Effort track interaction grammar", () => {
     // 바 첫 줄의 여유가 0이라 이 상태는 **칩을 두지 않는다** — 칩 하나가 서면 바가 두 줄로 접힌다.
     // 무장은 카드 외곽선과 입력 위 안내줄이 함께 진다.
     expect(composer).not.toMatch(/quick-launch-start-view-chip/);
-    expect(composer).toContain('${chatStart ? " is-chat-start" : ""}');
+    expect(composer).toContain('${chatStart && mentionTarget === null ? " is-chat-start" : ""}');
     expect(composer).toContain('<p className="quick-launch-start-view-notice" role="status">');
 
     // 채널은 ultracode와 같은 apex다 — 둘 다 신호(상태)도 위치(brass)도 아닌 "기본 밖의 선택"이다.
