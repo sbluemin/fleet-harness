@@ -10,7 +10,7 @@ import { getT } from "./i18n/index.js";
 /**
  * 링크 하나, 두 브라우저 — CLI·채팅에서 주소를 누르면 어디서 열지 먼저 묻는다.
  *
- * Fleet 브라우저는 이 Operation의 companion 패널이다(에이전트와 같은 탭을 본다). 내 브라우저는
+ * Operation 브라우저는 이 Operation의 companion 패널이다(에이전트와 같은 탭을 본다). 내 브라우저는
  * 이 컴퓨터의 기본 브라우저다. 묻는 카드가 곧 확인이기도 하다 — 터미널이 띄우던 native confirm이
  * 하던 일을, 갈 곳을 고르는 한 카드가 대신 진다.
  */
@@ -177,8 +177,8 @@ function LinkOpenCard({ context, url, at, onClose }: {
         <button type="button" role="menuitem" className="link-open-choice" ref={fleetRef} disabled={engineMissing} onClick={openInFleetBrowser}>
           <GlobeGlyph />
           <span className="link-open-choice-text">
-            <strong>{t("terminal.link.fleetBrowser")}</strong>
-            <span>{unavailableHelp ?? t("terminal.link.fleetBrowserHelp")}</span>
+            <strong>{t("terminal.link.operationBrowser")}</strong>
+            <span>{unavailableHelp ?? t("terminal.link.operationBrowserHelp")}</span>
           </span>
         </button>
         <button type="button" role="menuitem" className="link-open-choice" ref={webRef} onClick={openInWebBrowser}>
