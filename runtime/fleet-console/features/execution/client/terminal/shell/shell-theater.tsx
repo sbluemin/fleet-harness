@@ -53,9 +53,9 @@ export function ShellTheaterBand({ ctx }: { readonly ctx: ExpandedSurfaceContext
 
   if (!mismatch || !activeTheaterId) return null;
   const active = theaters.find((item) => item.id === activeTheaterId)?.label ?? activeTheaterId;
-  const shellLabel = mismatch.theaterId
-    ? theaters.find((item) => item.id === mismatch.theaterId)?.label ?? mismatch.theaterId
-    : t("terminal.shell.outsideTheaters");
+  const mismatchText = mismatch.theaterId
+    ? t("terminal.shell.mismatch", { shell: theaters.find((item) => item.id === mismatch.theaterId)?.label ?? mismatch.theaterId, active })
+    : t("terminal.shell.mismatchOutside", { active });
 
   const settle = (result: ShellOpenAtResult) => {
     if (result.ok) setStatus({ kind: "idle" });
@@ -75,7 +75,7 @@ export function ShellTheaterBand({ ctx }: { readonly ctx: ExpandedSurfaceContext
     <div className="global-shell-band" role="status">
       {status.kind === "confirm-restart" ? (
         <>
-          <span className="global-shell-band-text">{t("terminal.shell.restartConfirm", { active })}</span>
+          <span className="global-shell-band-text" title={t("terminal.shell.restartConfirm", { active })}>{t("terminal.shell.restartConfirm", { active })}</span>
           <span className="global-shell-band-actions">
             <button type="button" className="global-shell-band-action is-danger" onClick={restart}>{t("terminal.shell.restartConfirmAction")}</button>
             <button type="button" className="global-shell-band-action" onClick={() => setStatus({ kind: "idle" })}>{t("terminal.shell.cancel")}</button>
@@ -83,9 +83,11 @@ export function ShellTheaterBand({ ctx }: { readonly ctx: ExpandedSurfaceContext
         </>
       ) : (
         <>
-          <span className="global-shell-band-text">
-            {t("terminal.shell.mismatch", { shell: shellLabel, active })}
+          {/* 띠는 한 줄 고정 높이다 — 거절 문구가 줄을 늘리면 터미널 행 수가 바뀌어 PTY가 리사이즈된다.
+              넘치는 문구는 말줄임으로 접고 전체 문장은 title로 준다(role=status가 읽어 준다). */}
+          <span className="global-shell-band-text" title={status.kind === "refused" ? `${mismatchText} · ${status.message}` : mismatchText}>
             {status.kind === "refused" ? <span className="global-shell-band-refusal">{status.message}</span> : null}
+            {mismatchText}
           </span>
           <span className="global-shell-band-actions">
             <button type="button" className="global-shell-band-action" disabled={pending} onClick={move}>{t("terminal.shell.moveTo", { active })}</button>
