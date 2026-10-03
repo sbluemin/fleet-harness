@@ -551,9 +551,12 @@ function ConnectedApp() {
         const entry = railBindings.find((binding) => binding.entry.id === entryId)?.entry;
         if (outcome === "suppress" || entry === undefined) return false;
         if (getState().activeTheaterId === null) {
-          if (entryId !== "global-shell") return false;
-          setShellTheaterNotice(true);
-          return true;
+          if (entryId === "global-shell") {
+            setShellTheaterNotice(true);
+            return true;
+          }
+          // fleet 범위는 Theater 없이도 선다 — 아래 공통 activate 경로로 떨어진다.
+          if (entry.scope !== "fleet" || entry.activate === undefined) return false;
         }
         if (outcome === "reveal") navigate("/operations");
         if (entry.activate) {

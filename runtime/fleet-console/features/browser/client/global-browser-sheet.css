@@ -1,0 +1,190 @@
+/**
+ * 전역 Fleet 브라우저 시트(시안 C) — 맵 아레나 위에 뜨는 면.
+ *
+ * 기하: 아레나(사이드바·레일 제외) 안쪽 사방 24px, radius 10, shadow-floating.
+ * 뒤 scrim은 무채색이라 다크에서도 지각된다. 캡션·nav는 Operation 브라우저와
+ * 같은 부품(op-browser-* 클래스 재사용)이라 같은 손맛이다.
+ *
+ * z: scrim 5(캔버스 위·크롬 아래 — 레일·사이드바 클릭을 막지 않는다),
+ * 시트 30(토스트 40·메뉴 45+·오버레이 100 아래 — Console 층은 시트 위에 보인다).
+ * 토스트는 시트가 열린 동안 시트 밖(상단)으로 비킨다.
+ */
+
+.fleet-browser-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  background: oklch(0% 0 0 / 45%);
+  border: none;
+  padding: 0;
+  cursor: default;
+}
+
+:root[data-theme="whites"] .fleet-browser-scrim,
+:root[data-theme="light"] .fleet-browser-scrim {
+  background: oklch(22% 0.012 95 / 28%);
+}
+
+.fleet-browser-sheet {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-panel);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
+}
+
+html[data-view-mode="mobile"] .fleet-browser-sheet,
+html[data-view-mode="mobile"] .fleet-browser-scrim {
+  display: none;
+}
+
+.fleet-browser-sheet__cap {
+  flex: none;
+}
+
+/* companion 캡션 규칙(.op-browser-cap: flex 1, height 100%)은 호스트 32px 밴드를
+   채우는 몸이다. 시트에서는 그 몸이 시트 전체를 삼키므로 32px로 고정한다(브리프).
+   탭 스트립 패딩·간격은 Operation 캡션과 같은 값이다. */
+.fleet-browser-sheet__cap.op-browser-cap {
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  gap: 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.fleet-browser-sheet__cap .op-browser__profile {
+  /* 메뉴(.op-browser__menu, absolute)가 버튼 아래에 달리게 — companion은 호스트
+     밴드를 기준점으로 쓰지만 시트에는 밴드가 없으므로 버튼 자리를 기준점으로 준다. */
+  position: relative;
+  align-self: center;
+}
+
+/* 시트 안 data-tip 말풍선 — companion 선택자(.op-browser [data-tip])가 시트 본문에는
+   닿지 않으므로 같은 한 줄을 시트 범위로 둔다. */
+.fleet-browser-sheet [data-tip] {
+  position: relative;
+}
+
+.fleet-browser-sheet [data-tip]:hover::after,
+.fleet-browser-sheet [data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  padding: 3px var(--space-2);
+  background: var(--ink-mid);
+  color: var(--text-primary);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 8px 20px oklch(0% 0 0 / 35%);
+}
+
+.fleet-browser-sheet .op-browser__viewport-menu [data-tip]:hover::after,
+.fleet-browser-sheet .fleet-browser-sheet__close[data-tip]:hover::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.fleet-browser-sheet [data-tip][aria-expanded="true"]::after {
+  display: none;
+}
+
+.fleet-browser-sheet__close {
+  margin-left: auto;
+}
+
+.fleet-browser-sheet__viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--ink-deep);
+}
+
+/* 정지 화면 — 겹침이 떴을 때 뷰가 물러선 자리에 까는 마지막 화면. */
+.fleet-browser-sheet__still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.82);
+  pointer-events: none;
+}
+
+/* 정지 화면이 없을 때의 무채색 자리. */
+.fleet-browser-sheet__placeholder {
+  position: absolute;
+  inset: 0;
+  background: var(--ink-mid);
+  pointer-events: none;
+}
+
+/* 빈 상태 — 지구본과 두 줄, 닫힌 탭 제안이 있으면 그 아래에. */
+.fleet-browser-sheet__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--ink-deep);
+}
+
+.fleet-browser-sheet__empty p {
+  margin: 0;
+  max-width: 44ch;
+  font-size: var(--t-sm);
+  line-height: 1.6;
+}
+
+.fleet-browser-sheet__empty strong {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.fleet-browser-sheet__restore {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--hairline);
+}
+
+.fleet-browser-sheet__restore p {
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+/* 시트가 열려 있는 동안 토스트 스택은 시트 밖(상단)으로 비킨다. */
+html[data-fleet-browser-sheet="open"] .app-toast-host {
+  top: 48px;
+  bottom: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fleet-browser-sheet,
+  .fleet-browser-scrim {
+    animation: none;
+    transition: none;
+  }
+}

@@ -2,6 +2,11 @@ type OpenWindow = (url: string, target: string, features: string) => unknown;
 type ConfirmNavigation = (url: string) => boolean;
 /** 「어디서 열까」를 묻는 문. 문이 그 링크를 맡았으면 true — 맡지 않은 표면은 아래 기본 경로로 떨어진다. */
 type ChooseTarget = (url: string, event: MouseEvent) => boolean;
+/**
+ * 수정키 손짓의 직접 열기. 카드 없이 열었으면 true — 그때는 확인도 새 창도 뒤따르지 않는다.
+ * 열지 않았으면(false) 아래 기본 경로(확인 뒤 새 창)로 떨어진다.
+ */
+type OpenDirect = (url: string, event: MouseEvent) => boolean;
 
 /**
  * 열어도 되는 주소인가. http(s)만 통과하며, 통과한 값은 정규화된 href다.
@@ -22,18 +27,30 @@ export function httpLinkHref(text: string): string | null {
 /**
  * 터미널에서 주소를 여는 한 경로 — OSC 8 하이퍼링크와 본문에서 찾아낸 맨 URL이 같은 문을 지난다.
  *
- * Operation의 CLI에는 「어디서 열까」를 묻는 문이 있고, 그 물음 자체가 확인이다. 그 문이 없는
- * 표면(Operation이 아닌 전역 Shell)은 옛 계약 그대로 확인을 받고 새 창으로 연다.
+ * 수식 없는 왼클릭은 「어디서 열까」를 묻는 문(Operation CLI·전역 Shell의 카드 — 그 물음 자체가
+ * 확인이다)으로 가고, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다. 문도 직접 열기도 맡지
+ * 않으면 옛 계약 그대로 확인을 받고 새 창으로 연다.
  */
 export function createTerminalLinkRoute(deps: {
   readonly chooseTarget: ChooseTarget;
+  readonly openDirect?: OpenDirect;
   readonly openWindow: OpenWindow;
   readonly confirmNavigation: ConfirmNavigation;
 }): (event: MouseEvent, text: string) => void {
   return (event, text) => {
     const href = httpLinkHref(text);
     if (href === null) return;
-    if (deps.chooseTarget(href, event)) return;
+    // 버튼 정보가 없는 활성화(키보드·일부 xterm 경로)는 왼클릭으로 본다 — 기존 계약.
+    const plain = (event.button ?? 0) === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+    if (plain) {
+      if (deps.chooseTarget(href, event)) return;
+    } else if (deps.openDirect?.(href, event)) {
+      return;
+    } else if (deps.openDirect && deps.chooseTarget(href, event)) {
+      // 수정키인데 직접 열기가 아니면 카드로 묻는다(Shell의 Alt 등).
+      // 카드가 서지 않으면(공유·웹탭) 아래 기본 경로로 떨어진다.
+      return;
+    }
     if (!deps.confirmNavigation(href)) return;
     deps.openWindow(href, "_blank", "noopener,noreferrer");
   };

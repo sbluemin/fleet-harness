@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -6,6 +6,7 @@ import type { OnboardingTour, OnboardingTourStep } from "@fleet-console/sdk/onbo
 import { ONBOARDING_BOUNDARY_ATTRIBUTE, ONBOARDING_BOUNDARY_SELECTOR, ONBOARDING_TOUR_LAYER_ATTRIBUTE, ONBOARDING_WORK_SURFACE_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
+import { isGlobalBrowserOpen, subscribeGlobalBrowserOpen } from "../../browser/client/global-browser-store.js";
 import { onboardingT } from "./i18n.js";
 import { appendSeen, persistSeen, tourSeenKey, type TourPhase } from "./seen-store.js";
 import { resolveTourCardPosition, type TourCardPosition } from "./tour-placement.js";
@@ -92,6 +93,10 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
     if (!isCompletedTourScreenVisible(completedTourRef.current, tours, document)) completedTourRef.current = null;
   }, [domRevision, tours]);
 
+  // 전역 Fleet 브라우저 시트가 열려 있으면 Operation 브라우저 투어는 미룬다 —
+  // 짚는 캡션 지구본이 시트 아래에 가려져 보인다 해도 누를 수 없다. 닫히면 다음 판정에서 다시 선다.
+  const globalSheetOpen = useSyncExternalStore(subscribeGlobalBrowserOpen, () => isGlobalBrowserOpen(), () => false);
+
   const resolved = useMemo(() => {
     if (suspended || domRevision === 0 || !settings.state) return null;
     const nextTour = () => blocked()
@@ -120,10 +125,13 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
       const anchor = resolveAnchor(steps[0]!, document);
       if (isBlockedByModal(document, anchor)) return null;
       if (lockedTour.phase === "spotlight" && anchor && isBlockedByWorkSurface(document, anchor)) return null;
+      if (tour.id === "operation-browser" && globalSheetOpen) return null;
       return { tour, phase: lockedTour.phase, steps } satisfies TourPresentation;
     }
-    return nextTour();
-  }, [blocked, domRevision, lockedTour, seen, settings.state, tours, suspended]);
+    const next = nextTour();
+    if (next && next.tour.id === "operation-browser" && globalSheetOpen) return null;
+    return next;
+  }, [blocked, domRevision, globalSheetOpen, lockedTour, seen, settings.state, tours, suspended]);
 
   // 작업 표면에 물러난 스포트라이트는 잠금을 놓는다. 쥐고 있으면 사용자가 연 그 표면 안의 워크스루가 시작하지 못한다.
   // 시청 기록은 그대로라 표면이 닫히면 다음 판정에서 다시 선다.

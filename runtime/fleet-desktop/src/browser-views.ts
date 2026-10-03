@@ -206,6 +206,79 @@ async function captureWithoutEmulation(entry: LiveView, capture: ViewportCapture
   return { data: compose(png, plan) };
 }
 
+function formatBeforeInputChord(input: {
+  readonly meta: boolean;
+  readonly control: boolean;
+  readonly alt: boolean;
+  readonly shift: boolean;
+  readonly code: string;
+}): string | null {
+  // AltGr 는 Windows·Linux 에서만 Alt+Ctrl 동시 활성으로 나타난다. macOS 의 Ctrl+Alt 는 정상 단축키다.
+  if (process.platform !== "darwin" && input.alt && input.control) return null;
+  if (!input.code) return null;
+
+  const isMac = process.platform === "darwin";
+  const parts: string[] = [];
+  if (isMac) {
+    if (input.meta) parts.push("Mod");
+    if (input.control) parts.push("Ctrl");
+  } else {
+    if (input.control) parts.push("Mod");
+  }
+  if (input.alt) parts.push("Alt");
+  if (input.shift) parts.push("Shift");
+  parts.push(input.code);
+  return parts.join("+");
+}
+
+/** 물리 코드(event.code)를 Electron sendInputEvent 가 인식하는 keyCode 로 변환한다. */
+function codeToKeyCode(code: string): string {
+  if (code.startsWith("Key") && code.length === 4) return code.slice(3).toUpperCase();
+  if (code.startsWith("Digit") && code.length === 6) return code.slice(5);
+  if (code === "Space") return "Space";
+  if (code === "Backquote") return "`";
+  if (code === "Slash") return "/";
+  if (code === "ArrowLeft") return "ArrowLeft";
+  if (code === "ArrowRight") return "ArrowRight";
+  if (code === "ArrowUp") return "ArrowUp";
+  if (code === "ArrowDown") return "ArrowDown";
+  return code;
+}
+
+function matchesRegisteredShortcut(input: {
+  readonly meta: boolean;
+  readonly control: boolean;
+  readonly alt: boolean;
+  readonly shift: boolean;
+  readonly code: string;
+}, registered: ReadonlySet<string>): boolean {
+  if (registered.size === 0) return false;
+  const chord = formatBeforeInputChord(input);
+  if (chord && registered.has(chord)) return true;
+  // Non-mac 환경에서 "Ctrl+..." 명시적 등록 호환 (예: Ctrl+Space, Ctrl+Backquote)
+  if (process.platform !== "darwin" && input.control && !input.alt) {
+    const fallbackParts: string[] = ["Ctrl"];
+    if (input.shift) fallbackParts.push("Shift");
+    fallbackParts.push(input.code);
+    if (registered.has(fallbackParts.join("+"))) return true;
+  }
+  return false;
+}
+
+function beforeInputModifiers(input: {
+  readonly meta: boolean;
+  readonly control: boolean;
+  readonly alt: boolean;
+  readonly shift: boolean;
+}): ("alt" | "control" | "meta" | "shift")[] {
+  const mods: ("alt" | "control" | "meta" | "shift")[] = [];
+  if (input.alt) mods.push("alt");
+  if (input.control) mods.push("control");
+  if (input.meta) mods.push("meta");
+  if (input.shift) mods.push("shift");
+  return mods;
+}
+
 export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): DesktopBrowserViews {
   const fetchFor = deps.fetch ?? globalThis.fetch;
   const log = deps.log ?? (() => {});
@@ -216,6 +289,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   /** start 마다 오른다 — 재시도 중인 배치가 옛 연결의 것인지 가리는 표. 같은 origin 으로 다시 붙어도 옛 배치는 버린다. */
   let session = 0;
   let generation = -1;
+  let registeredShortcuts = new Set<string>();
   let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[] } = emptyOutbox();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let flushing: Promise<void> = Promise.resolve();
@@ -371,6 +445,29 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     shell.stack.parkBrowser(view);
     // 페이지가 새 창을 열려 하면 같은 뷰에서 연다 — 이 뷰 밖으로 나가는 창은 없다.
     contents.setWindowOpenHandler(({ url }) => { void contents.loadURL(url).catch(() => undefined); return { action: "deny" }; });
+    contents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown" || input.isAutoRepeat) return;
+      if (!matchesRegisteredShortcut(input, registeredShortcuts)) return;
+      event.preventDefault();
+      const shellWindow = deps.shell();
+      const consoleContents = shellWindow?.consoleView.webContents;
+      if (consoleContents && !consoleContents.isDestroyed()) {
+        const keyCode = codeToKeyCode(input.code);
+        const modifiers = beforeInputModifiers(input);
+        consoleContents.focus();
+        // 눌림 상태 고착 방지를 위해 keyDown 직후 keyUp 도 함께 전송한다.
+        consoleContents.sendInputEvent({
+          type: "keyDown",
+          keyCode,
+          modifiers,
+        });
+        consoleContents.sendInputEvent({
+          type: "keyUp",
+          keyCode,
+          modifiers,
+        });
+      }
+    });
     contents.on("render-process-gone", () => drop(spec.id, true));
     contents.on("destroyed", () => drop(spec.id, true));
     try {
@@ -473,6 +570,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const apply = (snapshot: DesktopBrowserSnapshot): void => {
     if (snapshot.generation < generation) return;
     generation = snapshot.generation;
+    if (snapshot.shortcuts !== undefined) {
+      registeredShortcuts = new Set(snapshot.shortcuts);
+    }
     const wanted = new Set(snapshot.views.map((view) => view.id));
     for (const id of [...live.keys()]) if (!wanted.has(id)) drop(id, false);
     for (const spec of snapshot.views) {
@@ -516,6 +616,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     for (const browserSession of markedSessions) browserSession.webRequest.onBeforeSendHeaders(null);
     markedSessions.clear();
     executed.clear();
+    registeredShortcuts.clear();
     generation = -1;
     outbox = emptyOutbox();
     if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null; }

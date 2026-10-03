@@ -196,6 +196,12 @@ export interface DesktopBrowserSnapshot {
   readonly views: readonly DesktopBrowserView[];
   /** 아직 결과를 받지 못한 명령 전부. 셸은 이미 실행한 id 를 건너뛴다. */
   readonly commands: readonly DesktopBrowserCommand[];
+  /**
+   * Console 이 현재 사용하는 유효 단축키 조합 목록(shortcut-bindings 문법, 예: "Mod+Shift+KeyB").
+   * 네이티브 뷰에 포커스가 있을 때 일치하는 단축키를 Console 창으로 중계하기 위해 셸에 전달한다.
+   * 선택 필드이므로 옛 Console 은 싣지 않고, 옛 셸은 이를 무시한다.
+   */
+  readonly shortcuts?: readonly string[];
 }
 
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
@@ -233,7 +239,8 @@ export function isDesktopBrowserCommand(value: unknown): value is DesktopBrowser
 
 export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowserSnapshot {
   return isRecord(value) && isFiniteNumber(value.generation) && Array.isArray(value.views) && value.views.every(isDesktopBrowserView)
-    && Array.isArray(value.commands) && value.commands.every(isDesktopBrowserCommand);
+    && Array.isArray(value.commands) && value.commands.every(isDesktopBrowserCommand)
+    && (value.shortcuts === undefined || (Array.isArray(value.shortcuts) && value.shortcuts.every((item) => typeof item === "string")));
 }
 
 export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRelay {

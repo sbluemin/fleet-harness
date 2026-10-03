@@ -10,6 +10,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
+import { openOtherSurfaceLink } from "../../../../../features/browser/client/global-link.js";
 import { useT } from "../../i18n/index.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
@@ -372,6 +373,8 @@ function SurfacePane({
     language,
     theme,
     sideBarVisible,
+    // 확대 표면의 http(s) 링크를 여는 길 — bubble 라우터가 닿지 않는 자리에서 명시 호출한다.
+    openLink: (url, options) => openOtherSurfaceLink(url, options?.gesture ?? "click"),
     close: () => closeExpandedSurface(instance.instanceId),
     focus: () => focusExpandedSurface(instance.instanceId),
     replaceParams: (next) => replaceExpandedSurfaceParams(instance.instanceId, next),

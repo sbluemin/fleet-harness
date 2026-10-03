@@ -4,6 +4,10 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 
 import { getT } from "../../agent/i18n/index.js";
+import { openShellLink, useShellLinkChoice } from "../../agent/link-open.js";
+import { notifySharedFallback } from "../../../../browser/client/global-browser-store.js";
+import { useBrowserEngine } from "../../../../browser/client/browser-panel-store.js";
+import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { TerminalSurface } from "../shared/index.js";
 import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
 import { getShellSessionSnapshot, readShellSession } from "./shell-session-store.js";
@@ -137,6 +141,8 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
   const [host] = React.useState(() => {
     const node = document.createElement("div");
     node.className = "global-shell-persistent-host";
+    // 셸 링크는 자체 2행 카드로 처리한다 — 문서 수준 라우터가 가로채지 않는다.
+    node.setAttribute("data-fleet-link", "self");
     return node;
   });
   const [parking] = React.useState(() => {
@@ -168,6 +174,15 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
 
   // 재시작(restart-at)으로 끝난 PTY 뒤에는 같은 자리에 새 표면을 붙인다 — 새 티켓이 새 PTY를 띄운다.
   const [surfaceKey, setSurfaceKey] = React.useState(0);
+  // 전역 Shell 링크는 2행 카드(Fleet / 내 브라우저)가 window.confirm을 대신한다.
+  // 조기 반환보다 앞에서 건다 — 마운트 전에도 훅 순서는 같아야 한다.
+  const shellLink = useShellLinkChoice(language ?? mount.context?.language ?? "en");
+  const shellEngine = useBrowserEngine();
+  const shellAvailability = React.useMemo(() => ({
+    canOffer: shellEngine === null || shellEngine.available,
+    isShared: shellEngine !== null && !shellEngine.available && shellEngine.reason === "shared",
+  }), [shellEngine]);
+
   if (!mount.activated || !mount.context) return null;
   const context = mount.context;
   const handleExit = () => {
@@ -187,24 +202,37 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
   };
 
   return createPortal(
-    <TerminalSurface
-      key={surfaceKey}
-      operationId={SHELL_SURFACE_ID}
-      ticketPath={SHELL_TICKET_PATH}
-      wsPath={SHELL_WS_PATH}
-      surface="shell"
-      onCellWidth={(width) => context.reportMinPaneWidth?.(Math.ceil(width * 80 + 20))}
-      theme={theme ?? context.theme ?? "instrument"}
-      active={mount.target !== null && context.focused}
-      visible={mount.target !== null}
-      zoom={1}
-      locale={language ?? context.language ?? "en"}
-      // 첫 기동에서만 서버가 읽는다 — 이후 cwd는 서버가 못 박아 두므로 Theater를
-      // 옮겨 다녀도 셸의 발밑은 움직이지 않는다.
-      ticketFields={context.theaterId ? { theaterId: context.theaterId } : undefined}
-      onExit={handleExit}
-      fileLinks={shellFileLinks(context)}
-    />,
+    <>
+      <TerminalSurface
+        key={surfaceKey}
+        operationId={SHELL_SURFACE_ID}
+        ticketPath={SHELL_TICKET_PATH}
+        wsPath={SHELL_WS_PATH}
+        surface="shell"
+        onCellWidth={(width) => context.reportMinPaneWidth?.(Math.ceil(width * 80 + 20))}
+        theme={theme ?? context.theme ?? "instrument"}
+        active={mount.target !== null && context.focused}
+        visible={mount.target !== null}
+        zoom={1}
+        locale={language ?? context.language ?? "en"}
+        // 첫 기동에서만 서버가 읽는다 — 이후 cwd는 서버가 못 박아 두므로 Theater를
+        // 옮겨 다녀도 셸의 발밑은 움직이지 않는다.
+        ticketFields={context.theaterId ? { theaterId: context.theaterId } : undefined}
+        onExit={handleExit}
+        fileLinks={shellFileLinks(context)}
+        onOpenLink={(url, at) => {
+          // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다.
+          if (shellAvailability.isShared) {
+            notifySharedFallback();
+            openInDefaultOsBrowser(url);
+            return true;
+          }
+          return shellLink.choose(url, at);
+        }}
+        onOpenLinkDirect={(url, event) => openShellLink(url, gestureFromEvent(event), shellAvailability)}
+      />
+      {shellLink.card}
+    </>,
     host,
   );
 }

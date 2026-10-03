@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
+import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 
 import { commanderMode, extensionOf, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
@@ -34,6 +35,7 @@ import {
 } from "./followups.js";
 import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace, FollowupForkGlyph } from "./followups-view.js";
 import { criterionSources, MergedTrail, TidiedDetail } from "./tidied.js";
+import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
 export interface ObjectiveContext {
@@ -41,6 +43,8 @@ export interface ObjectiveContext {
   readonly api: ClientApiCapability;
   readonly language?: ConsoleLocale;
   readonly place: "rail" | "expanded";
+  /** 호스트가 채워 준 링크 열기 길 — 없으면 앵커 기본 동작으로 떨어진다. */
+  readonly openLink?: OpenLinkHandler | null;
   /** 호스트 사이드바가 펼쳐져 보이는가 — 아니면(접힘·모바일) 제목 ⌄ 전환 목록이 트리를 대신한다. */
   readonly sideBarVisible?: boolean;
 }
@@ -418,6 +422,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   return (
     // 온보딩 경계(SDK 계약) — 투어 카드가 패널을 가리지 않고 패널 옆, 짚는 구획 높이에 선다(레일이든 넓은 화면이든
     // 자리가 없으면 앵커 기준 배치로 돌아간다).
+    <ObjectiveLinkOpenProvider value={ctx.openLink ?? null}>
     <div className="objectives-container" {...onboardingBoundary("anchor")} onPointerDownCapture={(event) => {
       if (highlightMission && !(event.target as Element).closest(`[data-mission-id="${CSS.escape(highlightMission)}"]`)) {
         if (highlightTimer.current) clearTimeout(highlightTimer.current);
@@ -427,6 +432,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     }}><div ref={rootRef} className={`objectives-root${two ? " is-two" : ""}`} style={rootStyle}>
       {body}
     </div></div>
+    </ObjectiveLinkOpenProvider>
   );
 }
 

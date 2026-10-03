@@ -178,6 +178,11 @@ function subscribeEngine(listener: () => void): () => void {
   return () => { engineListeners.delete(listener); document.removeEventListener("visibilitychange", onVisible); clearInterval(timer); };
 }
 
+/** 문서 수준 라우터가 쓰는 가용성 스냅샷 — 아직 묻지 못했으면 null(모르는 것을 못 쓰는 것으로 보지 않는다). */
+export function getBrowserEngineSnapshot(): BrowserEngineState {
+  return engineState;
+}
+
 /** 이 Console 에서 브라우저를 열 수 있는지. 캡션의 지구본 문은 이것으로 닫히고 열린다. */
 export function useBrowserEngine(): BrowserEngineState {
   return React.useSyncExternalStore(subscribeEngine, () => engineState, () => null);

@@ -42,6 +42,7 @@ export class DesktopEngine implements CdpClient {
   private readonly listeners = new Set<CdpListener>();
   private readonly subscribers = new Map<string, number>();
   private readonly identities = new Map<string, { product: string; userAgent: string }>();
+  private shortcuts: readonly string[] | null = null;
   private nextCommandId = 1;
   private generation = 0;
   private host: string | null = null;
@@ -103,7 +104,18 @@ export class DesktopEngine implements CdpClient {
       const visible = view.active && placement !== null && placement.visible;
       return { id: view.id, operationId: view.operationId, partition: view.partition, profile: view.profile, visible, bounds: placement?.bounds ?? null, url: view.url };
     });
-    return { generation: this.generation, views, commands: [...this.pending.values()].map((entry) => entry.command) };
+    return {
+      generation: this.generation,
+      views,
+      commands: [...this.pending.values()].map((entry) => entry.command),
+      ...(this.shortcuts !== null ? { shortcuts: this.shortcuts } : {}),
+    };
+  }
+
+  /** Console 이 등록한 단축키 목록을 스냅샷에 싣는다. */
+  setShortcuts(shortcuts: readonly string[]): void {
+    this.shortcuts = [...shortcuts];
+    this.publish();
   }
 
   /** 호스트가 아닌 셸이 받는 스냅샷 — 그 창에는 아무 뷰도 없다. */
@@ -128,7 +140,8 @@ export class DesktopEngine implements CdpClient {
 
   /** 셸이 알려 준 **그 뷰**의 실제 크기 — 다른 탭 pane 과 섞지 않는다. */
   viewSize(viewId: string): { width: number; height: number; scale: number } | null { return this.views.get(viewId)?.size ?? null; }
-  viewOperation(viewId: string): string | null { return this.views.get(viewId)?.operationId ?? null; }
+  viewOwner(viewId: string): string | null { return this.views.get(viewId)?.operationId ?? null; }
+  viewOperation(viewId: string): string | null { return this.viewOwner(viewId); }
 
   /** 셸이 되돌려 보낸 것들. 호스트가 아닌 셸의 것은 자기소개만 받고 나머지는 무시한다 — 그 창에는 뷰가 없다. */
   relay(owner: string, body: DesktopBrowserRelay): void {

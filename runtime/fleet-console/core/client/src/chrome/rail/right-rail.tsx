@@ -31,6 +31,7 @@ import {
 } from "./pane-width.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
+import { openOtherSurfaceLink } from "../../../../../features/browser/client/global-link.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
 
@@ -366,6 +367,8 @@ export function useRailPanelContext(
     surfaces: railCapabilities.surfaces,
     rail: railCapabilities.rail,
     launchOperation: onLaunchOperation,
+    // 레일 패널의 http(s) 링크를 여는 길 — bubble 라우터가 닿지 않는 자리에서 명시 호출한다.
+    openLink: (url, options) => openOtherSurfaceLink(url, options?.gesture ?? "click"),
   }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation, railCapabilities]);
 }
 
@@ -378,7 +381,13 @@ export function RailToolIcons({ context }: { readonly context: RailToolContext }
   const language = context.language;
   const activePanelId = useRailActivePanelId();
   const bindings = useRailEntries();
-  const paneEntries = bindings.filter((binding) => binding.panes.length > 0);
+  // 문서 단위 숨김(entry.visible) — 선언하지 않은 entry는 그대로 둔다.
+  // 레일 패널·확대 표면이 아닌 표면(activate 전용)의 켜짐은 각 entry의 RailIcon이 읽는다.
+  const listedBindings = useMemo(
+    () => bindings.filter((binding) => binding.entry.visible?.() !== false),
+    [bindings],
+  );
+  const paneEntries = listedBindings.filter((binding) => binding.panes.length > 0);
   // 합성 순서가 곧 레일 순서다(virtual:fleet-plugins). 동작 엔트리를 종류별로 앞세우면 등록
   // 순서가 렌더에서 뒤집히므로(Shell이 Codex 앞에 섰다), 순서는 바인딩 그대로 두고 연속한
   // 페인 토글 구간만 role=group으로 묶는다 — 동작은 패널 그룹의 구성원이 아니다.
@@ -386,7 +395,7 @@ export function RailToolIcons({ context }: { readonly context: RailToolContext }
   // 구분선 아래 — 각 범위 안에서는 합성 순서 그대로다.
   type PluginRun = { readonly kind: "panes" | "action"; readonly key: string; readonly bindings: RailEntryBinding[] };
   const runsByScope: Record<"theater" | "fleet", PluginRun[]> = { theater: [], fleet: [] };
-  for (const binding of bindings) {
+  for (const binding of listedBindings) {
     if (binding.core) continue;
     const runs = runsByScope[binding.entry.scope ?? "theater"];
     const kind = binding.panes.length > 0 ? "panes" : "action";
@@ -546,6 +555,7 @@ const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, co
           surfaces={ctx.surfaces}
           onRequestExtraWidth={handleRequestExtraWidth}
           onLaunchOperation={ctx.launchOperation}
+          openLink={ctx.openLink}
         />
       </div>
       {/* 덮개도 배너와 같은 축으로 건다 — 재연결 시도 중에도 패널 값은 여전히 멈춰 있다. */}
@@ -573,7 +583,9 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   const t = useT();
   const handleClick = useCallback(() => {
     if (entry.activate) {
-      if (context.theaterId === null) return;
+      // fleet 범위는 Console 전역이라 Theater 없이도 선다. Theater를 다루는 entry는
+      // Theater 없이 열 수 없어 조용히 둔다(전역 Shell의 안내 문구와 같은 계약).
+      if (context.theaterId === null && entry.scope !== "fleet") return;
       entry.activate(context);
       return;
     }
@@ -592,6 +604,11 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   const attentionTheaterId = entry.scope === "fleet" ? null : context.theaterId;
   const readAttention = () => (attention ? Math.max(0, Math.floor(attention.count(attentionTheaterId))) : 0);
   const attentionCount = useSyncExternalStore(attention?.subscribe ?? subscribeNothing, readAttention, readAttention);
+  // activate 전용 entry의 켜짐 — 레일 패널·확대 표면이 아닌 표면이 서 있음을 entry가 직접 말한다.
+  // 선언하지 않은 entry는 기존 판정 그대로다.
+  const entryActive = entry.active;
+  const customActive = useSyncExternalStore(entryActive?.subscribe ?? subscribeNothing, () => entryActive?.isActive() ?? false, () => false);
+  const pressed = isActive || customActive;
   const named = entry.id === "global-shell" && context.theaterId === null
     ? `${title} — ${t("chrome.toast.shellNeedsTheater")}`
     : attention && attentionCount > 0 ? `${title} · ${attention.label(attentionCount, language)}` : title;
@@ -599,12 +616,12 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   return (
     <button
       id={`rail-tab-${entry.id}`}
-      className={`right-rail-ico${isActive ? " is-active" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
+      className={`right-rail-ico${pressed ? " is-active" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
       type="button"
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
-      aria-pressed={isActive}
+      aria-pressed={pressed}
       aria-label={named}
-      disabled={entry.activate !== undefined && context.theaterId === null}
+      disabled={entry.activate !== undefined && context.theaterId === null && entry.scope !== "fleet"}
       // 이름은 도구모음 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
       data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
       // 선언한 도구만 활성 해제 가드를 넘는다(active-operation-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.

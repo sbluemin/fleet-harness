@@ -46,6 +46,9 @@ importers:
       '@fleet-console/infra':
         specifier: workspace:*
         version: link:foundation/infra
+      '@fleet-console/link':
+        specifier: workspace:*
+        version: link:foundation/link
       '@fleet-console/markdown':
         specifier: workspace:*
         version: link:foundation/markdown
@@ -339,6 +342,15 @@ importers:
         specifier: ^4.0.13
         version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
 
+  runtime/fleet-console/foundation/link:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+
   runtime/fleet-console/foundation/markdown:
     dependencies:
       dompurify:
@@ -387,6 +399,9 @@ importers:
 
   runtime/fleet-console/sdk:
     dependencies:
+      '@fleet-console/link':
+        specifier: workspace:*
+        version: link:../foundation/link
       react:
         specifier: ^19.0.0
         version: 19.2.7

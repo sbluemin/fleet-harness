@@ -2,6 +2,7 @@ import { useHostCapabilities } from "../../integration/use-host-capabilities.js"
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { PaneDescriptor, PaneMount, PaneOpenRequest, PanesCapability } from "@fleet-console/sdk/pane";
 import type {
@@ -47,6 +48,7 @@ export interface PaneContextInput {
   readonly requestExtraWidth?: (px: number | null) => void;
   readonly legacySurfaces?: ClientExpandedSurfacesCapability;
   readonly legacyLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  readonly openLink?: OpenLinkHandler;
 }
 
 export function usePaneContext({
@@ -71,6 +73,7 @@ export function usePaneContext({
   requestExtraWidth,
   legacySurfaces,
   legacyLaunchOperation,
+  openLink,
 }: PaneContextInput): HostPaneContext {
   const opening = useHostCapabilities();
   // 계약은 "페인이 실제로 헐릴 때 abort된다"고 말한다. cleanup이 없으면 signal은 영원히
@@ -142,7 +145,8 @@ export function usePaneContext({
     sideBarVisible,
     legacySurfaces,
     legacyLaunchOperation,
-  }), [opening, api, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mount, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
+    ...(openLink === undefined ? {} : { openLink }),
+  }), [opening, api, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mount, openLink, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
 
   return ctx;
 }
