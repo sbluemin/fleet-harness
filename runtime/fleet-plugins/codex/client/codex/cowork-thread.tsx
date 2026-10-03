@@ -57,6 +57,7 @@ export interface CoworkThreadState {
   readonly promptText: string;
   readonly dirty: boolean;
   readonly applyBlocked?: boolean;
+  readonly inputBlocked?: boolean;
   readonly changed: number;
   readonly draftVersion: number;
   readonly diffVisible: boolean;
@@ -313,7 +314,7 @@ function ReviewDock({ state, actions }: { readonly state: CoworkThreadState; rea
     return (
       <div className="cowork-review is-confirm">
         <span className="cowork-review-text">{apply ? t("codex.cowork.applyConfirm") : t("codex.cowork.discardConfirm")}</span>
-        <button type="button" className={`cowork-solid${apply ? "" : " cowork-solid--danger"}`} onClick={apply ? actions.onApplyConfirm : actions.onDiscardConfirm} disabled={apply && state.applyBlocked}>
+        <button type="button" className={`cowork-solid${apply ? "" : " cowork-solid--danger"}`} onClick={apply ? actions.onApplyConfirm : actions.onDiscardConfirm} disabled={state.inputBlocked || apply && state.applyBlocked}>
           {apply ? t("codex.cowork.apply") : t("codex.cowork.discard")}
         </button>
         <button type="button" className="cowork-ghost" onClick={actions.onConfirmBack}>{t("codex.cowork.back")}</button>
@@ -335,7 +336,7 @@ function ReviewDock({ state, actions }: { readonly state: CoworkThreadState; rea
         <button type="button" aria-pressed={!state.diffVisible} onClick={() => actions.onDiffMode("full")}>{t("codex.cowork.viewDraft")}</button>
       </span>
       <button type="button" className="cowork-solid" onClick={actions.onApplyArm} disabled={state.applyBlocked}>{t("codex.cowork.apply")}</button>
-      <button type="button" className="cowork-ghost" onClick={actions.onDiscardArm}>{t("codex.cowork.discard")}</button>
+      <button type="button" className="cowork-ghost" onClick={actions.onDiscardArm} disabled={state.inputBlocked}>{t("codex.cowork.discard")}</button>
     </div>
   );
 }
@@ -353,7 +354,7 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
     : pendingComments > 0
       ? t("codex.cowork.instructionOptional", { count: pendingComments })
       : state.dirty ? t("codex.cowork.continueDraft") : t("codex.cowork.askAi");
-  const canSend = !state.running && (state.promptText.trim().length > 0 || pendingComments > 0);
+  const canSend = !state.running && !state.inputBlocked && (state.promptText.trim().length > 0 || pendingComments > 0);
   const onKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
     if (event.key === "Enter" && !event.shiftKey) {
@@ -421,7 +422,7 @@ function Composer({ state, actions }: { readonly state: CoworkThreadState; reado
             onKeyDown={onKeyDown}
           />
           {state.running ? (
-            <button type="button" className="cowork-send cowork-stop" aria-label={t("codex.cowork.stopAria")} title={hint} onClick={actions.onStop}>
+            <button type="button" className="cowork-send cowork-stop" aria-label={t("codex.cowork.stopAria")} title={hint} disabled={state.inputBlocked} onClick={actions.onStop}>
               <span aria-hidden="true" />
             </button>
           ) : (

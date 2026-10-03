@@ -10,6 +10,7 @@ import type {
   ConflictDetailResponse,
   ConflictListItem,
   DrydockBaseConflict,
+  DrydockBatchResponse,
   DrydockDetailResponse,
   DrydockDiffStat,
   DrydockListItem,
@@ -36,6 +37,7 @@ export type {
   ConflictDetailResponse,
   ConflictListItem,
   DrydockBaseConflict,
+  DrydockBatchResponse,
   DrydockDetailResponse,
   DrydockDiffStat,
   DrydockListItem,
@@ -140,6 +142,10 @@ export async function decideDrydock(
   );
 }
 
+export async function decideDrydockBatch(theaterId: string | null, patchIds: readonly string[], action: "approve" | "reject", reason?: string): Promise<DrydockBatchResponse> {
+  return postJson(apiPath(theaterId, "/drydock/batch-decision"), { patchIds, action, reason });
+}
+
 export async function fetchConflicts(theaterId: string | null): Promise<ConflictListItem[]> {
   return fetchJson<ConflictListItem[]>(apiPath(theaterId, "/conflicts"));
 }
@@ -206,7 +212,7 @@ export async function closeCowork(theaterId: string | null, id: string): Promise
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/close`), {});
 }
 
-export function subscribeCoworkEvents(theaterId: string | null, id: string, after: number, onEvent: (event: CoworkEventDto, eventId: number) => void): () => void {
+export function subscribeCoworkEvents(theaterId: string | null, id: string, after: number, onEvent: (event: CoworkEventDto, eventId: number) => void, onConnectionChange?: (connected: boolean) => void): () => void {
   const source = new EventSource(`${apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/events`)}?after=${encodeURIComponent(String(after))}`);
   const receive = (event: MessageEvent<string>) => {
     try {
@@ -216,6 +222,8 @@ export function subscribeCoworkEvents(theaterId: string | null, id: string, afte
     } catch { /* malformed server event is ignored */ }
   };
   for (const type of ["session", "transcript", "tool", "done", "error"] as const) source.addEventListener(type, receive);
+  source.addEventListener("open", () => onConnectionChange?.(true));
+  source.addEventListener("error", event => { if (!(event instanceof MessageEvent)) onConnectionChange?.(false); });
   return () => source.close();
 }
 

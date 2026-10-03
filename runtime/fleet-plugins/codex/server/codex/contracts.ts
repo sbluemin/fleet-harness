@@ -147,6 +147,14 @@ export interface DrydockListItem {
   baseConflict?: DrydockBaseConflict;
 }
 
+export interface DrydockBatchResult {
+  id: string;
+  outcome: "approved" | "rejected" | "skipped" | "failed";
+  error?: string;
+}
+
+export interface DrydockBatchResponse { ok: true; results: DrydockBatchResult[]; }
+
 export interface DrydockListResponse {
   items: DrydockListItem[];
   pendingCount: number;

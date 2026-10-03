@@ -40,7 +40,7 @@ function startPolling(): void {
   if (pollTimer !== null) return;
   pollTimer = setInterval(() => {
     if (document.visibilityState === "hidden") return;
-    void revalidateAll().catch(() => {});
+    void revalidateAll().then(() => notifyReader(["wiki", "index", "queue", "conflicts", "schema"])).catch(() => {});
   }, DEGRADED_POLL_MS);
 }
 
@@ -66,7 +66,7 @@ export function applyCodexWatchState(workspaceId: string, state: CodexWatchState
     setLiveState("polling");
     startPolling();
     // 강등된 순간 이미 놓친 변화가 있을 수 있다.
-    void revalidateAll().catch(() => {});
+    void revalidateAll().then(() => notifyReader(["wiki", "index", "queue", "conflicts", "schema"])).catch(() => {});
     return;
   }
   // 스트림이 끊겼다 붙는 사이의 변화는 이벤트로 오지 않는다 — 이 워크스페이스를 이미 보고
@@ -75,7 +75,7 @@ export function applyCodexWatchState(workspaceId: string, state: CodexWatchState
   watchedSince.add(workspaceId);
   setLiveState("live");
   stopPolling();
-  if (reconnected) void revalidateAll().catch(() => {});
+  if (reconnected) void revalidateAll().then(() => notifyReader(["wiki", "index", "queue", "conflicts", "schema"])).catch(() => {});
 }
 
 /**
@@ -109,7 +109,7 @@ export function installCodexLiveRevalidation(): () => void {
   const onVisible = () => {
     if (document.visibilityState !== "visible") return;
     if (getState().currentWorkspaceId === null) return;
-    void revalidateAll().catch(() => {});
+    void revalidateAll().then(() => notifyReader(["wiki", "index", "queue", "conflicts", "schema"])).catch(() => {});
   };
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener("focus", onVisible);
@@ -138,7 +138,7 @@ export function installCodexLiveRevalidation(): () => void {
 /** 레일 탭 복귀처럼 "다시 보게 된" 순간의 재검증. */
 export function revalidateCodexNow(): void {
   if (getState().currentWorkspaceId === null) return;
-  void revalidateAll().catch(() => {});
+  void revalidateAll().then(() => notifyReader(["wiki", "index", "queue", "conflicts", "schema"])).catch(() => {});
 }
 
 /** 테스트 전용 — 모듈 스코프 감시 상태를 비운다. */

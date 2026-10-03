@@ -39,6 +39,8 @@ import type {
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
+  DrydockBatchResponse,
+  DrydockBatchResult,
   DrydockDiffStat,
   DrydockListItem,
   DrydockListResponse,
@@ -237,14 +239,15 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
   const stageMatch = url.pathname.match(/^\/api\/entry\/([^/]+)\/stage-delete$/);
   const decisionMatch = url.pathname.match(/^\/api\/drydock\/([^/]+)\/decision$/);
   const conflictMatch = url.pathname.match(/^\/api\/conflicts\/([^/]+)\/decision$/);
-  if (!decisionMatch && !stageMatch && !conflictMatch) {
+  const batch = url.pathname === "/api/drydock/batch-decision";
+  if (!decisionMatch && !stageMatch && !conflictMatch && !batch) {
     response.writeHead(405, withSecurityHeaders({ ...JSON_HEADERS, allow: "GET, HEAD" }));
     response.end(JSON.stringify({ error: "method_not_allowed" }));
     return;
   }
 
-  const id = decodePathSegment((decisionMatch ?? stageMatch ?? conflictMatch)![1] ?? "");
-  if (!(stageMatch ? isSafeEntryId(id) : conflictMatch ? isSafeConflictId(id) : SAFE_PATCH_ID.test(id))) {
+  const id = batch ? "" : decodePathSegment((decisionMatch ?? stageMatch ?? conflictMatch)![1] ?? "");
+  if (!batch && !(stageMatch ? isSafeEntryId(id) : conflictMatch ? isSafeConflictId(id) : SAFE_PATCH_ID.test(id))) {
     sendJson(response, 400, { error: stageMatch ? "invalid_entry_id" : conflictMatch ? "invalid_conflict_id" : "invalid_patch_id" });
     return;
   }
@@ -266,6 +269,7 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     return;
   }
 
+  if (batch) return runBatchDecision(request, response, context);
   if (conflictMatch) return runConflictDecision(id, request, response, context);
 
   if (stageMatch) {
@@ -727,6 +731,48 @@ async function runDecisionAction(
   }
 }
 
+async function runBatchDecision(request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
+  const raw = await readRequestBody(request, 8192);
+  if (raw === BODY_TOO_LARGE) return sendJson(response, 413, { error: "payload_too_large" });
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(raw ?? "");
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid_body");
+  } catch { return sendJson(response, 400, { error: "invalid_body" }); }
+  const { action, patchIds } = body;
+  if (action !== "approve" && action !== "reject") return sendJson(response, 400, { error: "invalid_action" });
+  if (!Array.isArray(patchIds) || patchIds.length < 1 || patchIds.length > 100 || patchIds.some(id => typeof id !== "string" || !SAFE_PATCH_ID.test(id))) return sendJson(response, 400, { error: "invalid_patch_ids" });
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (action === "reject" && !reason) return sendJson(response, 400, { error: "reason_required" });
+  if (reason.length > MAX_REASON_LENGTH) return sendJson(response, 400, { error: "reason_too_long" });
+  const results: DrydockBatchResult[] = [];
+  for (const id of new Set<string>(patchIds)) {
+    const key = `${context.workspaceId}:${id}`;
+    if (patchActionLocks.has(key)) { results.push({ id, outcome: "skipped", error: "patch_busy" }); continue; }
+    const operation = (async (): Promise<DrydockBatchResult> => {
+      try {
+        if (!await resolveSafeQueuePath(id, context.paths.queueDir)) return { id, outcome: "skipped", error: "patch_not_pending" };
+        const { patch, meta } = await showQueue(id, context.paths);
+        if (meta.status !== "pending") return { id, outcome: "skipped", error: "patch_not_pending" };
+        // 낡은 제안은 승인 호출 전에 제외한다. 실패한 승인이 충돌을 새로 만들지 않는다.
+        if (action === "approve" && await readPatchBaseConflict(patch, meta, context.paths)) return { id, outcome: "skipped", error: "stale_base" };
+        if (action === "approve") await approvePatch(id, context.paths);
+        else await rejectPatch(id, reason, context.paths);
+        return { id, outcome: action === "approve" ? "approved" : "rejected" };
+      } catch (error) {
+        if (error instanceof StalePatchBaseError) return { id, outcome: "skipped", error: "stale_base" };
+        const mapped = mapPatchError(error instanceof Error ? error.message : "");
+        if (mapped?.error === "patch_not_found" || mapped?.error === "patch_not_pending") return { id, outcome: "skipped", error: "patch_not_pending" };
+        return { id, outcome: "failed", error: mapped?.error ?? "internal_error" };
+      }
+    })();
+    patchActionLocks.set(key, operation);
+    try { results.push(await operation); } finally { patchActionLocks.delete(key); }
+  }
+  // 일괄 결정은 비트랜잭션이다. 항목별 결과를 숨기거나 모두 성공이라고 단정하지 않는다.
+  sendJson(response, 200, { ok: true, results } satisfies DrydockBatchResponse);
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function buildSearchExcerpt(hit: BriefingHit, query: string): string {
@@ -778,14 +824,14 @@ function trimExcerptWindow(value: string, start: number, maxLength: number): { t
   return { text: text.replace(/\s+/g, " ").trim(), leadingEllipsis };
 }
 
-async function readRequestBody(request: IncomingMessage): Promise<string | null | typeof BODY_TOO_LARGE> {
+async function readRequestBody(request: IncomingMessage, maxBytes = MAX_POST_BODY_BYTES): Promise<string | null | typeof BODY_TOO_LARGE> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
     let exceeded = false;
     request.on("data", (chunk: Buffer) => {
       totalBytes += chunk.byteLength;
-      if (totalBytes > MAX_POST_BODY_BYTES) {
+      if (totalBytes > maxBytes) {
         exceeded = true;
         return;
       }

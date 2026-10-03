@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { createMemoryPaths } from "./paths.js";
+import { markLegacyWikiCopy } from "./migration-label.js";
 import type { MemoryPaths } from "./types.js";
 
 export interface WikiWorkspace { readonly cwd: string; readonly path: string; }
@@ -51,7 +52,11 @@ function resolveLocked(workspace: WikiWorkspace, hooks?: WikiWorkspaceResolverTe
   const markerPath = path.join(workspace.path, MARKER_NAME);
   const destinationState = inspectTree(destination, true);
   // Destination content wins before source or control state is inspected.
-  if (destinationState === "content") return createMemoryPaths(destination);
+  if (destinationState === "content") {
+    // 기존 destination 우선 정책은 그대로다. 완료 기록이 있는 이주만 표식을 보충한다.
+    try { if (readMarker(markerPath)) markLegacyWikiCopy(workspace.cwd, destination); } catch { /* 부가 표식 실패는 열기를 막지 않는다. */ }
+    return createMemoryPaths(destination);
+  }
   if (destinationState === "unsafe") throw new Error("Unsafe Fleet Wiki destination state");
 
   const marker = readMarker(markerPath);
@@ -63,6 +68,7 @@ function resolveLocked(workspace: WikiWorkspace, hooks?: WikiWorkspaceResolverTe
       removeEmptyDirectories(destination);
       fs.renameSync(staging, destination);
       syncDirectory(workspace.path);
+      markLegacyWikiCopy(workspace.cwd, destination);
     } else if (stagingState !== "missing") throw new Error("Unsafe Fleet Wiki migration staging state");
     return createMemoryPaths(destination);
   }
@@ -86,6 +92,7 @@ function resolveLocked(workspace: WikiWorkspace, hooks?: WikiWorkspaceResolverTe
   removeEmptyDirectories(destination);
   fs.renameSync(staging, destination);
   syncDirectory(workspace.path);
+  markLegacyWikiCopy(workspace.cwd, destination);
   return createMemoryPaths(destination);
 }
 
