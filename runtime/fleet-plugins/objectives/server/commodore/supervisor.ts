@@ -26,7 +26,7 @@ export const RETRY_STEADY_MS = 60 * 60_000;
 export const COALESCE_MS = 3_000;
 /** 지휘관이 이 시간 동안 쉬면(임무가 남았는데 세션이 유휴·휴면) 정체로 본다. */
 export const STALL_MS = 30 * 60_000;
-const STALL_CHECK_MS = 5 * 60_000;
+export const STALL_CHECK_MS = 5 * 60_000;
 /** 마지막 턴의 입력 토큰이 모델 문맥의 이 비율을 넘으면 다음 깨움에서 교대한다. */
 const CONTEXT_ROTATE_RATIO = 0.75;
 const RECENT_ACTIONS = 12;
@@ -143,9 +143,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return experimentAideSelection(settings(), "commodore");
   };
 
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.theaterId)?.run ?? EMPTY_RUN_TOTALS;
-    deps.emit({ op: "run", theaterId: runner.theaterId, run: { phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), totals } });
+    deps.emit({ op: "run", theaterId: runner.theaterId, run: { ...statusOf(runner), totals } });
   };
   const setPhase = (runner: Runner, phase: Phase, reason?: string) => {
     runner.phase = phase;
@@ -359,11 +360,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const resting = objective.commenced && !objective.done && !objective.removed && !objective.awaitingReview && !objective.awaitingHandoff && !objective.decisionRequest && objective.missions.some((mission) => !mission.done);
         const observation = resting ? deps.observe(objective.id) : null;
         const idle = !!observation && (observation.lifecycle === "dormant" || observation.activity === "idle");
-        if (!idle) { runner.stalledSince.delete(objective.id); runner.stalledReported.delete(objective.id); continue; }
+        if (!idle) { runner.stalledSince.delete(objective.id); if (runner.stalledReported.delete(objective.id)) publish(runner); continue; }
         const since = runner.stalledSince.get(objective.id) ?? now();
         runner.stalledSince.set(objective.id, since);
-        if (now() - since >= STALL_MS && !runner.stalledReported.has(objective.id)) { runner.stalledReported.add(objective.id); wake(runner, "stalled", { bump: true, detail: objective.title }); }
+        if (now() - since >= STALL_MS && !runner.stalledReported.has(objective.id)) { runner.stalledReported.add(objective.id); publish(runner); wake(runner, "stalled", { bump: true, detail: objective.title }); }
       }
+      // 보드에서 사라진(완료·삭제) 목표의 정체 표시는 거둔다.
+      const live = new Set(deps.objectives(runner.theaterId).map((objective) => objective.id));
+      for (const id of [...runner.stalledReported]) if (!live.has(id)) { runner.stalledReported.delete(id); runner.stalledSince.delete(id); publish(runner); }
     }
   }, STALL_CHECK_MS);
   stallTimer.unref?.();
@@ -372,8 +376,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   return {
     status(theaterId) {
       const runner = runners.get(theaterId);
-      if (!runner) return null;
-      return { phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}) };
+      return runner ? statusOf(runner) : null;
     },
     async retry(theaterId) {
       const runner = runners.get(theaterId);

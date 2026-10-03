@@ -90,6 +90,8 @@ export interface CommodoreRunStatus {
   readonly reason?: string;
   /** 다음 깨움(순찰 또는 재시도)의 예정 시각(ms). */
   readonly nextWakeAt?: number;
+  /** 감독자가 지금 정체로 보는 목표 id — 지휘관이 임무를 남긴 채 오래 쉰다. 목표가 다시 움직이면 빠진다. */
+  readonly stalled?: readonly string[];
   readonly totals: CommodoreRunTotals;
 }
 

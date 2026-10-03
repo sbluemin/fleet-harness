@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { commodoreActive, createCommodoreRoutes } from "../server/commodore/routes.js";
 import { createCommodoreSession } from "../server/commodore/session.js";
 import { createCommodoreStore } from "../server/commodore/store.js";
-import { COALESCE_MS, createCommodoreSupervisor, PATROL_CEILING_MS, RETRY_DELAYS_MS } from "../server/commodore/supervisor.js";
+import { COALESCE_MS, createCommodoreSupervisor, PATROL_CEILING_MS, RETRY_DELAYS_MS, STALL_CHECK_MS, STALL_MS } from "../server/commodore/supervisor.js";
 import type { CommodoreEvent } from "../server/commodore/types.js";
 import type { Objective, ObjectiveEvent } from "../server/types.js";
 
@@ -264,7 +264,8 @@ describe("commodore supervisor", () => {
       const supervisor = createCommodoreSupervisor({
         store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "fleet-harness", root: theaterRoot }),
         objectives: () => objectives, subscribeObjectives: (listener) => { boardListeners.push(listener); return () => undefined; },
-        boardTools: () => [], emit: (event) => { if (event.op === "run") runs.push(event); },
+        boardTools: () => [], observe: () => ({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: [], attention: { kind: "none" }, output: { revision: 0, outcome: "none" } } as never),
+        emit: (event) => { if (event.op === "run") runs.push(event); },
       });
       const tokens = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "wake" ? [entry.reasons] : []);
       const sessionEvents = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "session" ? [entry.event] : []);
@@ -302,6 +303,13 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["decision:1"]);
       expect(sessions[0]!.sent).toHaveLength(3);
+
+      // 정체 — 임무가 남았는데 지휘관이 30분 넘게 쉬면 한 번 깨우고, 상태에 그 목표 id 가 선다.
+      (objectives[0] as { decisionRequest: unknown }).decisionRequest = null;
+      await vi.advanceTimersByTimeAsync(STALL_MS + STALL_CHECK_MS + COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["stalled:1"]);
+      expect(sessions[0]!.sent.at(-1)).toContain("1 stalled objective: Remote pairing");
+      expect(supervisor.status("t1")).toMatchObject({ stalled: ["o1"] });
 
       // 순찰 — 사령관의 next_wake 가 없으면 60분 상한에서 깨운다.
       await vi.advanceTimersByTimeAsync(PATROL_CEILING_MS + COALESCE_MS + 10);
