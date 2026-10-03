@@ -217,6 +217,8 @@ describe("antigravity adapter", () => {
     expect((await streamCompleted("FINISH_REASON_UNSPECIFIED")).incomplete).toBeUndefined();
     // 대응하는 Anthropic stop reason이 없는 종료는 원래 값을 그대로 넘겨 하류가 오류로 낸다.
     expect((await streamCompleted("MALFORMED_FUNCTION_CALL")).incomplete).toEqual({ reason: "MALFORMED_FUNCTION_CALL" });
+    // 종료 사유 없이 끊긴 스트림은 완료가 아니라 사유 없는 미완료로 끝난다.
+    expect((await streamCompleted()).incomplete).toEqual({});
     // 프롬프트 자체가 차단되면 candidates 없이 promptFeedback.blockReason만 온다.
     expect((await streamCompleted(undefined, {
       candidates: [],
