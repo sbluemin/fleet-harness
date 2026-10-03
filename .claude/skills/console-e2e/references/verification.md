@@ -82,6 +82,16 @@ Before measuring an activation flow, including non-modal surfaces, list its star
 - Programmatic `focus()` followed by a key is supporting activation-handler evidence only, not proof of normal keyboard reachability or visible focus. Do not remove `inert`, disabled state, focus traps, or pointer blocking to make the scenario pass.
 - Report what each route proves, what remains unverified, and what is not applicable. Keyboard activation can establish the resulting reveal or surface reuse, but not the covered control's pointer handler or hit testing. Mark pointer access not applicable only when intentional blocking is supported by design or implementation evidence; separate that intent judgment from observed behavior and record any untested handler separately. Report observed failures, such as focus hidden behind a covering surface, with their evidence rather than as unverified; judge separately whether they are product defects.
 
+## Lifecycle, network, and storage changes
+
+Use this only when the change touches state lifetime, a connection or retry path, or durable storage. Choose the representative inputs that exercise the changed mechanism, not a matrix of every state:
+
+- **State lifetime:** trace one instance through creation, change, restore after reload or restart, and teardown (close, delete, archive, process exit). For each step, name the event the code actually waits on; a delay or `await` may also be covering a process exit or a late callback, so find what it resolves on before removing or relying on it.
+- **Connections:** inject the failure the path claims to handle — a silent hang (no bytes, no close), an early close, and two failures at once — and note that independent timers or backoffs run out of phase. CDP offline emulation does not drop an already-open EventSource or WebSocket; fail the stream at its source or through the page hook and confirm in the instrumentation that it actually closed.
+- **Durable state:** build fixtures through the current reader and writer, or from a fresh owned runtime, so files that must agree (for example state and its archive or revision) are written together. A guard that refuses an inconsistent pair is product behavior to report, not something to bypass with a fresh directory, a deleted archive, or a relaxed check. When restart or restore is the claim, a new slot is not an equivalent verification.
+
+Report which of these inputs ran and which remain unverified. Promote one into the permanent suite only through the root test admission policy.
+
 ## High-risk browser boundaries
 
 - For every modal, drawer, drop-up, or shared-state deck, verify initial focus, Tab wrap, Escape close, shortcut suppression behind the modal, [activation paths by starting state](#plan-activation-paths-by-starting-state), mutual exclusion, and focus return.
@@ -120,7 +130,7 @@ node <worktree>/.claude/skills/console-e2e/scripts/close-owned-session.mjs fleet
 FLEET_CONSOLE_DATA_DIR='<owned-e2e-dir>' node <worktree>/runtime/fleet-console/dist/cli.mjs stop
 ```
 
-For Desktop CDP, use its recorded session and [Desktop cleanup](desktop.md) instead of `close-owned-session.mjs` or the standalone Console stop.
+For Desktop CDP, close the recorded session with the same `close-owned-session.mjs`, then stop the app through [Desktop cleanup](desktop.md) instead of the standalone Console `stop`.
 
 ### Fleet Browser fallback
 

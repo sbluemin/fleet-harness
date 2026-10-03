@@ -42,9 +42,11 @@ Register errors, rejections, and WebSocket lifecycle before the first page load 
 INIT="<scratchpad>/fleet-console-e2e-init-<unique-id>.js"
 cat > "$INIT" <<'EOF'
 (() => {
-  const state = window.__fleetE2E = { errors: [], rejections: [], sockets: [] };
-  addEventListener('error', e => state.errors.push({ message: e.message, stack: e.error?.stack || '' }));
+  const state = window.__fleetE2E = { errors: [], rejections: [], consoleErrors: [], sockets: [] };
+  addEventListener('error', e => state.errors.push({ message: e.message, stack: e.error?.stack || '' }), true);
   addEventListener('unhandledrejection', e => state.rejections.push(String(e.reason?.stack || e.reason)));
+  const nativeConsoleError = console.error.bind(console);
+  console.error = (...args) => { state.consoleErrors.push(args.map(String).join(' ')); nativeConsoleError(...args); };
   const Native = window.WebSocket;
   function Tracked(...args) {
     const socket = new Native(...args);
@@ -103,6 +105,21 @@ Require a matching hit **and** the expected UI state before claiming interceptio
 
 Keep unmatched requests unchanged and scope mocks to the owned origin, exact endpoint, method, and any scenario-specific query/body discriminator. For a POST read endpoint, inspect a cloned `Request` rather than consuming the body that a passthrough request still needs. Never broadly mock writes, authentication, permission denials, or provider launches to make a check pass. This wrapper covers page `fetch`, not worker fetches, XHR, WebSockets, or server-side calls; live events may overwrite a mocked snapshot. Report the mocked lane as UI-only evidence, not proof of backend behavior or agent activity. For durable objective/member identity, use the [child-session fixture](setup.md#objective-member-child-session-fixture) rather than inventing session names in a response.
 
+## Driver pitfalls
+
+These CLI behaviors have produced false results in Console runs. Recheck them against the installed agent-browser version before relying on a workaround, and verify every action with an `eval` of the expected DOM or state change; an exit code of 0 is not evidence that input landed.
+
+- **Installation:** when `agent-browser` is not on `PATH`, back-to-back `npx` calls can fail with `ENOTEMPTY` while npm renames its cache and then do nothing. After the first `npx` run, call the cached `node_modules/.bin/agent-browser` directly. An empty result or `MODULE_NOT_FOUND` from a cache being reinstalled by another session is a tooling failure, not product evidence.
+- **Init script:** `--init-script` registers only on the command that launches the browser. Make the instrumented `open` the session's first command; if a launch leaves `about:blank` or any earlier command already started the browser, clean up and reopen. The script runs before `document.documentElement` exists, so observe `document`. Confirm a global it sets before trusting measurements.
+- **Eval scope:** every `eval` runs in the same page scope until reload, so a repeated top-level `const` throws on the second call and returns nothing. Wrap multi-statement scripts in an IIFE.
+- **Double click:** `dblclick` sends one click with `detail=2`. A double-submit or double-delete race needs two real presses (CDP `Input.dispatchMouseEvent` with a real gap).
+- **Wheel:** `mouse wheel` dispatches at `(0, 0)` even after `mouse move`. Scroll an inner pane with `scroll <direction> <px> --selector <pane>` and read `scrollTop`; canvas zoom or any claim about wheel hit testing needs CDP `mouseWheel` at the checked point.
+- **Off-screen targets:** `click` on an element below the fold can report success without firing. Run `scrollintoview` and the [pointer target preflight](verification.md#pointer-target-preflight) first.
+- **Key floods:** a single `press Escape`, an Alt shortcut, or `keyboard type` with focus on `body` has flooded thousands of repeated keydowns. Prefer the visible UI control; when a key itself is under test, count keydowns in the init script and treat a flood as [stuck input](#bound-commands-and-recover-stuck-input). A synthetic `KeyboardEvent` is handler evidence only.
+- **Active target:** in Desktop, opening a native view or popup makes it the active CDP page, so later commands run inside the page under test. Select the Console target before every SPA command.
+- **Shell quoting:** when the shell is zsh (the macOS default), an unquoted `$p` is not word-split; split coordinates explicitly (`read -r x y <<< "$p"`).
+- **Evidence before cleanup:** closing the session destroys `window.__fleetE2E`. Print the full error, rejection, and `console.error` records before cleanup and after risky actions such as reload or resize; a count without messages is lost evidence.
+
 ## Cleanup
 
 After the first `open` attempt, run on every success and failure path:
@@ -111,4 +128,4 @@ After the first `open` attempt, run on every success and failure path:
 node <worktree>/.claude/skills/console-e2e/scripts/close-owned-session.mjs fleet-console-e2e-20260725-a7c3
 ```
 
-Cleanup succeeds only when the helper reports that both the session and its recorded PID disappeared, not from a raw `close` exit code. The helper is for standalone agent-browser sessions only, not Fleet Browser tabs or a Desktop CDP session.
+Cleanup succeeds only when the helper reports that both the session and its recorded PID disappeared, not from a raw `close` exit code. The helper closes agent-browser sessions, including a Desktop CDP session named by the same rule; it does not stop the Electron app (use the Desktop stop helper) and does not apply to Fleet Browser tabs.

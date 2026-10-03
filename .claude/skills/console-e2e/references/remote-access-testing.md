@@ -9,31 +9,35 @@ Read the base workflow first. This file covers only what it does not describe.
 One isolated Console plays the host. A short Node script plays every remote device. The browser watches the host's screen.
 
 ```
-node script  --https-->  remote listener (LAN addr : same port)   <- the "other device"
-browser      --http-->   loopback listener (127.0.0.1 : port)     <- the owner's screen
+node script  --https-->  remote listener (LAN addr : remote port)  <- the "other device"
+browser      --http-->   loopback listener (127.0.0.1 : port)      <- the owner's screen
 ```
 
-Both listeners are the **same port on different interfaces**, and both come from the one isolated server the base workflow already starts. Nothing extra is launched.
+Both listeners come from the one isolated server the base workflow already starts; nothing extra is launched. The remote listener has its own port (`remoteAccess.listenPort`), separate from the loopback Console port. Take the remote origin from `/api/v1/access-links`, never from the loopback port.
 
 ## Turn the listener on
 
-The listener binds a real address of this machine; loopback names are rejected on purpose, because the remote listener would fight the loopback one for the port.
+The listener binds a real address of this machine (`remoteAccess.listenAddress`); loopback names are rejected on purpose.
 
 ```bash
 BIND=$(ipconfig getifaddr en0)   # macOS; on Linux read the LAN address of the active interface
 ```
 
-Enable it through the settings API with an `Origin` header, then read `/api/v1/access-links` back. That route reports the **live** listener, not the setting, so it is the only honest answer to "is remote access actually on":
+Enable it through the settings API with an `Origin` header, then read `/api/v1/access-links` back. That route reports the **live** listener, not the setting, so it is the only honest answer to "is remote access actually on". The write takes the whole `remoteAccess` object, so start from the current value: the server rejects the retired `bindHost` field, and a public endpoint (`publicEndpointEnabled: true`) also needs a matching `acknowledgment`, which this LAN-only run leaves off.
 
 ```js
+const current = (await (await fetch(`${origin}/api/v1/settings/global`)).json()).remoteAccess;
 await fetch(`${origin}/api/v1/settings/global`, {
   method: "PUT",
   headers: { "Content-Type": "application/json", Origin: origin },
-  body: JSON.stringify({ remoteAccess: { enabled: true, bindHost: BIND } }),
+  body: JSON.stringify({ remoteAccess: { ...current, enabled: true, publicEndpointEnabled: false, listenAddress: BIND, acknowledgment: null } }),
 });
 const status = await (await fetch(`${origin}/api/v1/access-links`)).json();
-// status.listening === true, status.origin === `https://${BIND}:${port}`
+// status.listening === true; status.origin === `https://${BIND}:<remote port>`
+const remotePort = Number(new URL(status.origin).port || 443); // URL drops the default HTTPS port
 ```
+
+Recheck the input contract in `runtime/fleet-console/features/settings/host/settings-domain.ts` (`isValidRemoteAccessInput`) when the request is refused; a `400 invalid_remote_access` is a fixture error, not a product result.
 
 `listening: false` with a `lastError` means the bind failed; the console stays up and the UI must say so. Never read the setting and call it proof.
 
@@ -58,9 +62,9 @@ Use `access=monitoring` for a read-only guest. Never print the lock token or the
 
 ```js
 https.request({
-  host: BIND, port, path: "/api/v1/join", method: "POST",
+  host: BIND, port: remotePort, path: "/api/v1/join", method: "POST",
   rejectUnauthorized: false, checkServerIdentity: () => undefined,
-  headers: { host: `${BIND}:${port}`, "content-type": "application/json", cookie },
+  headers: { host: `${BIND}:${remotePort}`, "content-type": "application/json", cookie },
 });
 ```
 
@@ -118,7 +122,7 @@ Dismiss the curtain with "Keep watching" to reach the standing bar; dismiss agai
 ## Restarting and rotating
 
 - Toggling remote access off and on **keeps** pairings. Sessions and unused links die with the listener; the devices come back with the same cookie.
-- `POST /api/v1/remote-identity/rotations` unpairs everyone by design — the fingerprint those devices trusted is gone, so a pairing that could never connect again would be a lie in the list. Expect `devices: []` afterwards and a new fingerprint on the wire. It also releases the published port, so the origin moves to the console's current port.
+- `POST /api/v1/remote-identity/rotations` unpairs everyone by design — the fingerprint those devices trusted is gone, so a pairing that could never connect again would be a lie in the list. Expect `devices: []` afterwards and a new fingerprint on the wire. Read `/api/v1/access-links` again afterwards instead of assuming the remote origin or port survived.
 
 **A toggle is not a restart, and the difference is the whole bug class.** The console port is dynamic by default, so a real process restart hands the loopback listener a new port while a toggle freezes it. Anything keyed to the port — the origin a peer console saved, the `fleet_console_pairing_<port>` cookie name — passes a toggle and fails a restart. Stop the process and start it again on the same `FLEET_CONSOLE_DATA_DIR`:
 
@@ -129,7 +133,7 @@ const before = (await status()).origin;   // https://<bind>:<published>
 const after = (await status()).origin;    // must still be `before`
 ```
 
-The remote listener keeps the port it first opened on (`remote/listener.json`) rather than following the console port, so `origin` survives while the loopback port moves. A resume against the **old saved origin** with the pairing cookie alone must answer `204`; `ECONNREFUSED` means the listener followed the console port again, and `401` means the cookie name did.
+The remote listener keeps its own remembered port (`remoteAccess.listenPort`, persisted in `remote/listener.json`) rather than following the console port, so `origin` survives while the loopback port moves. A resume against the **old saved origin** with the pairing cookie alone must answer `204`; `ECONNREFUSED` means the listener followed the console port again, and `401` means the cookie name did.
 
 Confirm the wire, not the state: read the certificate the listener actually presents and compare it to the reported fingerprint. A rotation that changes state while the listener keeps the old key breaks every pin.
 

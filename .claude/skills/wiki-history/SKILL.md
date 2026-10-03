@@ -14,13 +14,13 @@ Resolve `<feature-or-decision-topic>` and raw decision evidence from the request
 ## Procedure
 
 1. Call `wiki_orient` for current PRD structure, tags, and naming. Find same-area records: update a duplicate; retain adjacent entries as `related` candidates.
-2. Before writing, read [Format and exclusions](references/format.md). The host authors the eight sections directly: Overview, Problem, Goals, Non-Goals, User Stories, Functional Requirements, Acceptance Criteria, Related. Include only WHY and user-facing contracts.
+2. Before writing, read [Format and exclusions](references/format.md), then read the workspace's PRD template (`wiki_schema_read` or `wiki_orient`). The template's level-2 headings are the required sections, in its order; staging refuses an entry that misses one, and `wiki_drydock` reports it. The host authors them directly and includes only WHY and user-facing contracts.
 3. Check current Wiki tool schemas, then stage create/update through `wiki_ingest`. Use `prd-<area>-<topic>` and put raw decision evidence in `source`. Read the actual preview through `wiki_patch_queue(action:"show")` and present it to the user.
 4. Verify every statement below is true. Correct violations through `wiki_patch_edit` or re-staging, then inspect the new preview.
    - The body has no source paths, symbols, line numbers, code, build commands, or dependency graphs.
    - It has no future plans, TODOs, roadmaps, or implementation-action sentences.
    - It does not duplicate patch-envelope metadata in body YAML.
-   - It uses exactly the required sections, with a structural cause in Problem.
+   - It uses exactly the template's required sections, with a structural cause in Problem.
    - User Stories and Acceptance Criteria describe actual user experience and directly verifiable conditions.
    - Related links are evidence-backed, and the decision rationale is understandable in isolation.
 5. Register with `wiki_patch_queue(action:"approve")` **only after explicit user approval of that preview**. Do not reuse approval if revisions change its meaning.

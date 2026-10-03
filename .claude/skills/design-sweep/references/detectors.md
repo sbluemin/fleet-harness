@@ -12,7 +12,7 @@ Living sources — read these for the target scope. The figures below are detect
 
 1. **Signal = state only** — `aurora` (awaiting), `warn` (turn/progress), `coral` (danger), `positive` (complete). Never used for identity, branding, or decoration (e.g. a LOCAL/NEW badge is not a state).
 2. **Location/Focus = brass only** — current location, keyboard focus, hover affordance. Brass never idles at full strength ("lights-out" rule: no permanently lit brass ornaments).
-3. **Identity = `--id-*` only** — the 8-tone theme-tuned palette (crimson/amber/moss/teal/cerulean/indigo/plum/rose), painted exclusively through the **spine+mark grammar**: left 3px spine + small nameplate mark + ~10% titlebar wash. Borders stay state-owned — `border-color: var(--user-accent)` is a hard violation. Identity tones map 1:1 onto `--id-*`; raw hex identity colors are defects.
+3. **Identity = `--id-*` only** — the theme-tuned identity palette, painted only where the current Console design invariants allow it (at the time of writing: caption and rail-chip title ink plus the minimap dot; never the caption fill, a chip spine, or a border). Read those placements from `runtime/fleet-console/CLAUDE.md` and the identity case in the contract test rather than from this summary. Borders stay state-owned — `border-color: var(--user-accent)` is a hard violation. Identity tones map onto `--id-*`; raw hex identity colors are defects.
 
 **Control grammar.** The dominant control pattern is mono 10px 700 uppercase · min-height 34px · `--radius-xs` · brass-mix hover. Heights snap to {24, 28, 34, 44}; radius vocabulary is {`--radius-xs`, `--radius-md`, `--radius-pill` for dots/pills only}. Raw px radii and off-snap heights are drift.
 
@@ -32,7 +32,7 @@ Run the detectors over `<scope>` — for `full` depth, sweep each surface family
 - **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console CLAUDE.md Design invariants) — classify them out instead of reporting them. Always include plugins (`runtime/fleet-plugins/*`); most raw literals live there.
 - **Signal misuse**: `warn|aurora|positive|coral` tokens on non-state surfaces (badges, chips, avatars, identity marks, version labels).
 - **Brass misuse**: brass on permanently-lit ornaments or identity roles (its only roles: location, focus, hover).
-- **Identity leaks**: `--user-accent` placements — count them and compare against the contract test's pinned count; any `border-color`/glow usage is a violation.
+- **Identity leaks**: `--user-accent` placements outside the ones the contract test allows; any `border-color`, glow, caption fill, or spine usage is a violation.
 - **Grammar drift**: `border-radius: [0-9]` raw px values; `999px` outside `--radius-pill`; control heights off the snap; non-mono/non-uppercase text on control-class elements.
 
 Use exact-match patterns; substring greps produce false positives that poison the report.

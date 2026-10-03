@@ -55,7 +55,8 @@ for (const entry of await fs.readdir(root, { withFileTypes: true })) {
     const referenceDir = path.join(skillRoot, 'references');
     let referenceFiles = [];
     try {
-      referenceFiles = await fs.readdir(referenceDir);
+      // 하위 폴더(예: references/desktop/)의 reference도 진입점에서 닿아야 한다.
+      referenceFiles = await fs.readdir(referenceDir, { recursive: true });
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }

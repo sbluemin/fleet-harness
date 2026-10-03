@@ -14,7 +14,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-export const LOCALIZED_ATTRIBUTE_ROOTS = ["runtime/fleet-console/core/client", "runtime/fleet-plugins"];
+export const LOCALIZED_ATTRIBUTE_ROOTS = ["runtime/fleet-console/core/client", "runtime/fleet-console/features", "runtime/fleet-console/sdk", "runtime/fleet-plugins"];
 
 const SKIP_DIRECTORIES = new Set(["node_modules", "dist", "build", "tests", "__tests__"]);
 const LOCALIZED_ATTRIBUTES = ["aria-label", "title", "placeholder"];
