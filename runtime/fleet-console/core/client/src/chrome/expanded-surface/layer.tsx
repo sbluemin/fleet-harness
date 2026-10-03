@@ -46,6 +46,8 @@ const DEFAULT_MIN_PANE_WIDTH = 280;
 const KEYBOARD_STEP_PX = 24;
 /** 부유 조작 무리의 오른쪽 정박 여백(--space-2)과 본문 도구 사이의 숨. inset 변수에 더한다. */
 const FLOAT_INSET_GUTTER_PX = 16;
+/** 부유 조작 무리의 아래 끝과 그 밑에서 시작하는 본문 사이의 숨. block 변수에 더한다. */
+const FLOAT_BLOCK_GUTTER_PX = 4;
 
 /**
  * 확대 표면 레이어 — 캔버스 좌표 상자 안에 정박하는 비모달 작업면.
@@ -285,6 +287,7 @@ function SurfacePane({
   // 부유 조작이 본문 위에 떠 있으므로, 본문 첫 줄의 오른쪽 끝 도구가 그 밑에 깔릴 수 있다.
   // 조작 무리의 실제 폭(tools 유무에 따라 다르다)을 CSS 변수로 페인에 싣고, 첫 줄을 갖는
   // 표면은 그 변수만큼 오른쪽 여백을 둔다 — 레일 마운트에는 변수가 없어 fallback 0이 된다.
+  // 첫 줄만 비울 수 없는 격자 본문(터미널)은 대신 조작 무리의 아래 끝(block 변수) 밑에서 시작한다.
   const paneRef = useRef<HTMLElement>(null);
   const floatRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -292,8 +295,9 @@ function SurfacePane({
     const float = floatRef.current;
     if (!pane || !float || typeof ResizeObserver === "undefined") return;
     const publish = () => {
-      const width = Math.ceil(float.getBoundingClientRect().width);
-      pane.style.setProperty("--expanded-surface-float-inset", `${width + FLOAT_INSET_GUTTER_PX}px`);
+      const rect = float.getBoundingClientRect();
+      pane.style.setProperty("--expanded-surface-float-inset", `${Math.ceil(rect.width) + FLOAT_INSET_GUTTER_PX}px`);
+      pane.style.setProperty("--expanded-surface-float-block", `${Math.ceil(float.offsetTop + rect.height) + FLOAT_BLOCK_GUTTER_PX}px`);
     };
     publish();
     const observer = new ResizeObserver(publish);

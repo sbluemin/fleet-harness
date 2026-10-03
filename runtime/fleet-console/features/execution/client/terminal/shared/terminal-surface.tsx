@@ -89,13 +89,17 @@ const MAX_BUFFERED_OUTPUT_BYTES = 1024 * 1024;
 // 맡겨 글자가 부드럽게 확대/축소되고, atlas 재생성을 제스처당 1회로 묶어 WebGL 비용을 억제한다.
 const ZOOM_SETTLE_MS = 120;
 
+// 다크 테마의 brightBlack(SGR 90 — tsc 오류 코드, zsh 자동 제안, git 해시·날짜)은 대비 보정(mCR=1)을
+// 받지 않으므로 팔레트 자체가 배경 대비 4.5:1 안팎을 보장한다(실측 배경 기준 Instrument 4.7~4.9,
+// Maritime 4.6, Carbon 4.7). 명도는 전경색보다 충분히 낮게 둬 일반 출력과의 위계(회색)를 유지한다.
+// 이 값을 UI 헤어라인 토큰(--ink-rim)에 다시 묶으면 1.3:1로 퇴행한다.
 const INSTRUMENT_TERMINAL_THEME: ITheme = {
   background: "oklch(16.5% 0.016 245)",
   foreground: "oklch(94% 0.008 90)",
   cursor: "oklch(77% 0.085 200)",
   selectionBackground: "oklch(80% 0.085 78 / 13%)",
   black: "oklch(13% 0.014 245)",
-  brightBlack: "oklch(29% 0.018 245)",
+  brightBlack: "oklch(60% 0.018 245)",
   red: "oklch(68% 0.13 25)",
   green: "oklch(76% 0.11 160)",
   yellow: "oklch(75% 0.08 90)",
@@ -118,7 +122,7 @@ const MARITIME_TERMINAL_THEME: ITheme = {
   cursor: "oklch(82% 0.13 195)",
   selectionBackground: "oklch(78% 0.13 75 / 28%)",
   black: "oklch(18% 0.045 248)",
-  brightBlack: "oklch(48% 0.03 248)",
+  brightBlack: "oklch(62% 0.03 248)",
   red: "oklch(72% 0.17 25)",
   green: "oklch(82% 0.13 195)",
   yellow: "oklch(86% 0.16 78)",
@@ -141,7 +145,7 @@ const CARBON_TERMINAL_THEME: ITheme = {
   cursor: "oklch(80% 0.105 205)",
   selectionBackground: "oklch(76% 0.115 62 / 28%)",
   black: "oklch(16% 0.008 252)",
-  brightBlack: "oklch(46% 0.006 250)",
+  brightBlack: "oklch(60% 0.006 250)",
   red: "oklch(72% 0.17 25)",
   green: "oklch(80% 0.11 205)",
   yellow: "oklch(84% 0.14 64)",
