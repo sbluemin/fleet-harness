@@ -21,13 +21,16 @@ export interface BrowserMcpDeps extends BrowserToolDeps {
 type BrowserRefusal = "caller_unresolved" | "desktop_required" | "shared";
 
 const REFUSAL_INSTRUCTION: Record<BrowserRefusal, string> = {
-  caller_unresolved: "This session is not bound to a Console Operation, so the Browser can never answer it. Do not retry and do not ask the user to change a setting. Continue without the browser.",
+  caller_unresolved: "This session is not bound to a Console Operation, so the Operation Browser can never answer it. (Note: Fleet Browser is the user's Console-wide browser and is separate from this Operation-scoped browser). Do not retry and do not ask the user to change a setting. Continue without the browser.",
   desktop_required: "The Operation Browser runs only inside the Fleet Desktop app, and no Desktop window is showing this Console right now. Do not retry until the user says they opened this Console in Fleet Desktop.",
   shared: "The Operation Browser is paused because this Console is also open in a regular browser tab or on a phone. Do not retry until the user says only Fleet Desktop windows remain.",
 };
 
 const REFUSAL_MESSAGE: Record<BrowserRefusal, Record<"en" | "ko", string>> = {
-  caller_unresolved: { en: "This session is not bound to a Console Operation, so the Browser is unavailable to it.", ko: "이 세션은 Console Operation에 묶여 있지 않아 브라우저를 쓸 수 없습니다." },
+  caller_unresolved: {
+    en: "This session is not bound to a Console Operation, so the Operation Browser is unavailable to it. (Fleet Browser is the user's Console-wide browser and is separate from this Operation-scoped browser).",
+    ko: "이 세션은 Console Operation에 묶여 있지 않아 Operation 브라우저를 쓸 수 없습니다. (전역 Fleet 브라우저는 사람 전용 브라우저이며 이 Operation 브라우저와 분리되어 있습니다.)",
+  },
   desktop_required: { en: "The Operation Browser needs a Fleet Desktop window showing this Console.", ko: "Operation 브라우저는 Fleet Desktop 창에서만 열립니다. 지금 이 Console 을 보는 Desktop 창이 없습니다." },
   shared: { en: "The Operation Browser is paused while this Console is also open in a browser or on a phone.", ko: "이 Console 이 브라우저·모바일에서도 열려 있어 Operation 브라우저가 멈춰 있습니다." },
 };
