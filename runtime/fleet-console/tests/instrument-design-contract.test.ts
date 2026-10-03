@@ -177,7 +177,7 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--whatsnew-delay",
   // Right Rail TSX injects the current panel width.
   "--right-rail-panel-width",
-  // Right Rail TSX injects the continuous opacity slider's filled-track percentage.
+  // SDK SettingsSlider injects the filled-track stop, aligned to the knob center.
   "--slider-fill",
   // Repository Rail TSX injects the user-resized workspace tree width.
   "--ws-tree-width",
@@ -1934,14 +1934,15 @@ describe("Instrument core design contract", () => {
     // gate open the same channel turns transparent under backdrop blur.
     expect(rail).toMatch(/\.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
     // Doctrine: keep both WebKit and Firefox track styling so the continuous
-    // opacity control communicates its filled range in either engine. The recipe is shared -
-    // the rail's opacity and the Settings fade strength are one control grammar. The control
-    // itself lives in the settings pane (Appearance > Rail panels) — the old gear menu is
-    // dismantled and the rail keeps only its own layout.
+    // control communicates its filled range in either engine. The recipe is shared - the glass
+    // opacities, the Settings fade strength, and plugin sliders are one control grammar living in
+    // the settings pane; the rail keeps only its own layout.
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
     // 연속값은 SDK 슬라이더 한 문법이다 — 코어 전용 슬라이더 클래스가 되살아나면 두 모양이 된다.
+    // 그 문법은 트랙·값·기본값이다: −/+ 스테퍼가 되살아나면 행마다 Tab 정지점이 서너 개로 는다.
     expect(settingsPane).toContain("<SettingsSlider");
     expect(source("styles/components.css")).not.toContain(".settings-slider-field");
+    expect(source("styles/components.css")).not.toContain(".fc-settings-slider__stepper");
     expect(settingsPane).toContain("setGlassOpacity");
     // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드라
     // 남는 취향은 카드 불투명도 하나다.
@@ -3785,6 +3786,12 @@ describe("Effort track interaction grammar", () => {
     const knob = components.match(/^\.effort-track-knob \{[^}]*\}/m)?.[0] ?? "";
     expect(knob).toContain("background: var(--gauge-face);");
     expect(knob).not.toContain("var(--text-primary)");
+    // 설정 슬라이더 손잡이도 같은 계기 면이다 — 면은 --gauge-face로 칠하고, 두 엔진의 손잡이가 모두 그 면을 쓴다.
+    const slider = components.match(/^\.fleet-slider \{[^}]*\}/m)?.[0] ?? "";
+    expect(slider).toContain("--slider-face: radial-gradient(circle, var(--gauge-face)");
+    expect(slider).not.toContain("var(--text-primary)");
+    expect(components).toMatch(/^\.fleet-slider::-webkit-slider-thumb \{[^}]*background: var\(--slider-face\);/m);
+    expect(components).toMatch(/^\.fleet-slider::-moz-range-thumb \{[^}]*background: var\(--slider-face\);/m);
     expect(base).toContain("--gauge-face: var(--text-primary);");
 
     // 합성 그림자 목록 안의 halo는 절대 `none`이 될 수 없다 — 목록 가운데의 none은 선언 전체를

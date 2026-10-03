@@ -400,7 +400,7 @@ export function ThemeCard({
             </div>
             {/* 값은 끌리는 동안 화면에 즉시 적용된다 — 세기는 숫자가 아니라 화면으로 고르는
                 것이라, 손을 뗀 뒤에야 보이면 고를 수가 없다. 저장은 손을 뗄 때 한 번만 나간다.
-                연속값은 SDK 슬라이더 한 문법이다(−/+·값·기본값 버튼) — 백분율 표기는 두 로케일에서
+                연속값은 SDK 슬라이더 한 문법이다(트랙·값·기본값 버튼) — 백분율 표기는 두 로케일에서
                 같은 문자열이라 메시지 키 없이 여기서 조립한다. */}
             <SettingsSlider
               value={panelFade}
@@ -410,8 +410,6 @@ export function ThemeCard({
               disabled={saving.has("unfocusedPanelFade") || state === null}
               label={t("settings.theme.panelFade")}
               formatValue={(value) => `${value}%`}
-              decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.panelFade") })}
-              increaseLabel={t("settings.slider.increase", { title: t("settings.theme.panelFade") })}
               onPreview={previewPanelFade}
               onCommit={commitPanelFade}
               defaultValue={UNFOCUSED_PANEL_FADE_DEFAULT}
