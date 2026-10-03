@@ -93,6 +93,9 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const [sourceModePaths, setSourceModePaths] = useState<ReadonlySet<string>>(new Set());
   const [crumbPop, setCrumbPop] = useState<CrumbPopState | null>(null);
   const [copied, setCopied] = useState(false);
+  const [externalFailed, setExternalFailed] = useState(false);
+  const [externalOpening, setExternalOpening] = useState(false);
+  const externalRequestRef = useRef(0);
   const revealTarget = useFileRevealTarget();
 
   useEffect(() => {
@@ -149,6 +152,9 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   useEffect(() => {
     setTabsMenuOpen(false);
     setCrumbPop(null);
+    setExternalFailed(false);
+    setExternalOpening(false);
+    externalRequestRef.current += 1;
   }, [activePath, contextScope]);
 
   useEffect(() => {
@@ -195,6 +201,20 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         // 복사 실패는 조용히 지나간다 — 알림 토스트는 트리 페인이 소유한다.
       });
   }, [activePath, contextScope]);
+
+  const handleOpenExternal = useCallback(() => {
+    if (!activePath || !theaterId) return;
+    const requestId = ++externalRequestRef.current;
+    setExternalOpening(true);
+    setExternalFailed(false);
+    void performFileContextAction("openExternal", theaterId, activePath)
+      .catch(() => {
+        if (externalRequestRef.current === requestId) setExternalFailed(true);
+      })
+      .finally(() => {
+        if (externalRequestRef.current === requestId) setExternalOpening(false);
+      });
+  }, [activePath, theaterId]);
 
   const openCrumbPop = useCallback((segment: BreadcrumbSegment, trigger: HTMLElement) => {
     const head = headRef.current;
@@ -468,6 +488,15 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
           />
         )}
       </div>
+      <div className="fexp-viewer-access">
+        <span>{t("fileExplorer.viewer.readOnly")}</span>
+        {activePath && (
+          <button type="button" disabled={externalOpening} onClick={handleOpenExternal}>
+            {t("fileExplorer.menu.openExternal")}
+          </button>
+        )}
+      </div>
+      {externalFailed && <div className="fexp-viewer-action-error" role="alert">{t("fileExplorer.menu.actionUnavailable")}</div>}
       <div className="fexp-viewer-body">
         {viewState.kind === "loading" && <div className="fexp-viewer-loading">{t("fileExplorer.status.loading")}</div>}
         {viewState.kind === "error" && <div className="fexp-viewer-error">{viewState.message}</div>}

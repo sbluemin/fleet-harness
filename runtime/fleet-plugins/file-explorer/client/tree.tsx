@@ -849,6 +849,10 @@ export function resolveTreeNavigation(
   return { kind: "none" };
 }
 
+function isPermanentFolderError(code: string): boolean {
+  return code === "forbidden" || code === "unauthorized" || code === "not_found" || code === "invalid_path" || code === "theater_not_found";
+}
+
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
   { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
   ref,
@@ -872,9 +876,9 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [cursorPath, setCursorPath] = useState<string | null>(null);
   const [gitStatusResult, setGitStatusResult] = useState<GitStatusResult | null>(null);
   const [filterSearching, setFilterSearching] = useState(false);
-  const [filterFailed, setFilterFailed] = useState(false);
+  const [filterFailed, setFilterFailed] = useState<string | null>(null);
   const [filterOutcome, setFilterOutcome] = useState<FileSearchResult | null>(null);
-  const [expandFailedDirs, setExpandFailedDirs] = useState<Set<string>>(new Set());
+  const [expandFailedDirs, setExpandFailedDirs] = useState<Map<string, string>>(new Map());
   const [watchDegraded, setWatchDegraded] = useState(false);
   const [optionsMenuOpen, setOptionsMenuOpen] = useState(false);
   /** 훑어보기 중인 파일 — 트리 안의 카드 하나. 세션·스토어에는 닿지 않는다. */
@@ -953,9 +957,9 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     setCursorPath(null);
     setGitStatusResult(null);
     setFilterSearching(false);
-    setFilterFailed(false);
+    setFilterFailed(null);
     setFilterOutcome(null);
-    setExpandFailedDirs(new Set());
+    setExpandFailedDirs(new Map());
     setWatchDegraded(false);
   }, [contextKey, theaterId]);
 
@@ -1032,7 +1036,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     }).catch((e: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       const raw = e instanceof Error ? e.message : "Unable to load folder";
-      setError(translateServerError(raw, t));
+      setError(raw);
     });
   }, [contextKey, theaterId, currentPath, files, t]);
 
@@ -1081,7 +1085,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const query = filterText.trim();
     if (!theaterId || !query) {
       setFilterSearching(false);
-      setFilterFailed(false);
+      setFilterFailed(null);
       setFilterOutcome(null);
       return;
     }
@@ -1089,7 +1093,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const requestContextKey = contextKey;
     const controller = new AbortController();
     setFilterSearching(true);
-    setFilterFailed(false);
+    setFilterFailed(null);
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
@@ -1099,7 +1103,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             body: JSON.stringify(paletteSearchRequestBody(theaterId, query, showHiddenRef.current, searchScope)),
             signal: controller.signal,
           });
-          if (!response.ok) throw new Error("search_failed");
+          if (!response.ok) {
+            const payload = await response.json() as { readonly error?: string };
+            throw new Error(payload.error ?? "search_failed");
+          }
           const outcome = await response.json() as FileSearchResult;
           if (
             requestId !== filterRequestRef.current
@@ -1107,14 +1114,14 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           ) return;
           setFilterOutcome(outcome);
           setFilterSearching(false);
-          setFilterFailed(false);
-        } catch {
+          setFilterFailed(null);
+        } catch (error) {
           if (controller.signal.aborted) return;
           if (
             requestId !== filterRequestRef.current
             || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)
           ) return;
-          setFilterFailed(true);
+          setFilterFailed(error instanceof Error ? error.message : "search_failed");
           setFilterSearching(false);
           setFilterOutcome(null);
         }
@@ -1250,7 +1257,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     if (!plan.nextExpanded) {
       setExpandFailedDirs((prev) => {
         if (!prev.has(relPath)) return prev;
-        const next = new Set(prev);
+        const next = new Map(prev);
         next.delete(relPath);
         return next;
       });
@@ -1261,7 +1268,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     if (showSpinner) setLoadingDirs((prev) => new Set(prev).add(relPath));
     setExpandFailedDirs((prev) => {
       if (!prev.has(relPath)) return prev;
-      const next = new Set(prev);
+      const next = new Map(prev);
       next.delete(relPath);
       return next;
     });
@@ -1271,15 +1278,15 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       emitEntriesRefreshed(r);
       setExpandFailedDirs((prev) => {
         if (!prev.has(relPath)) return prev;
-        const next = new Set(prev);
+        const next = new Map(prev);
         next.delete(relPath);
         return next;
       });
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       // 캐시가 없는 첫 펼침 실패는 접지 않고 인라인 재시도 행을 붙인다.
       if (childResultsRef.current.has(relPath)) return;
-      setExpandFailedDirs((prev) => new Set(prev).add(relPath));
+      setExpandFailedDirs((prev) => new Map(prev).set(relPath, error instanceof Error ? error.message : "list_failed"));
     }).finally(() => {
       inFlightFoldersRef.current.delete(relPath);
       if (!showSpinner) return;
@@ -1329,7 +1336,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     }).catch((e: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       const raw = e instanceof Error ? e.message : "Unable to load folder";
-      setError(translateServerError(raw, t));
+      setError(raw);
     });
     // 펼쳐진 모든 폴더 재조회 — 상한 있는 팬아웃으로
     void runWithConcurrency([...expandedDirs], FOLDER_FETCH_CONCURRENCY, async (relPath) => {
@@ -1390,7 +1397,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       filterCollapsedDirs,
       { truncatedCap: result.truncated ? result.entries.length : undefined, hiddenVcs: result.hiddenVcsInternals },
       "",
-      { sortMode, deletedByDir, autoExpandAll: false, failedDirs: expandFailedDirs },
+      { sortMode, deletedByDir, autoExpandAll: false, failedDirs: new Set(expandFailedDirs.keys()) },
     );
   }, [childResults, deletedByDir, expandFailedDirs, expandedDirs, filterCollapsedDirs, isFiltering, loadingDirs, low, result, selectedPath, showHidden, sortMode]);
 
@@ -1432,18 +1439,23 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     if (!revealTarget || revealTarget.requestId <= revealedRequestRef.current) return;
     const rowIndex = flatRows.findIndex((row) => isEntryRow(row) && row.entry.relativePath === revealTarget.relativePath);
     if (rowIndex < 0) return;
+    const node = treeRef.current;
+    if (!node) return;
     setCursorPath(revealTarget.relativePath);
-    if (shouldVirtualize && (rowIndex < startIdx || rowIndex >= endIdx)) {
-      const nextScrollTop = Math.max(0, rowIndex * ROW_HEIGHT);
-      if (treeRef.current) treeRef.current.scrollTop = nextScrollTop;
-      setScrollTop(nextScrollTop);
-      return;
+    const rowTop = TREE_PADDING_Y + rowIndex * ROW_HEIGHT;
+    const rowBottom = rowTop + ROW_HEIGHT;
+    const stack = stickyAncestorStack(flatRows, node.scrollTop);
+    let nextScrollTop = node.scrollTop;
+    if (rowBottom > nextScrollTop + node.clientHeight) nextScrollTop = rowBottom - node.clientHeight;
+    const nextStack = stickyAncestorStack(flatRows, nextScrollTop);
+    if (rowTop < nextScrollTop + Math.max(stack.rows.length, nextStack.rows.length) * ROW_HEIGHT) {
+      const headerHeight = Math.min(ancestorChain(flatRows, rowIndex).length, STICKY_ANCESTOR_MAX) * ROW_HEIGHT;
+      nextScrollTop = Math.max(0, rowTop - headerHeight);
     }
-    const row = rowRefs.current.get(revealTarget.relativePath);
-    if (!row) return;
-    row.scrollIntoView({ block: "nearest" });
+    node.scrollTop = nextScrollTop;
+    setScrollTop(node.scrollTop);
     revealedRequestRef.current = revealTarget.requestId;
-  }, [endIdx, flatRows, revealTarget, shouldVirtualize, startIdx, visibleRows]);
+  }, [flatRows, revealTarget]);
 
   useImperativeHandle(ref, () => ({
     restoreContextMenuFocus: (relativePath) => restoreContextMenuFocus(
@@ -1484,7 +1496,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const requestContextKey = contextKey;
     setExpandFailedDirs((prev) => {
       if (!prev.has(relPath)) return prev;
-      const next = new Set(prev);
+      const next = new Map(prev);
       next.delete(relPath);
       return next;
     });
@@ -1493,9 +1505,9 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setChildResults((prev) => new Map(prev).set(relPath, r));
       emitEntriesRefreshed(r);
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
-      setExpandFailedDirs((prev) => new Set(prev).add(relPath));
+      setExpandFailedDirs((prev) => new Map(prev).set(relPath, error instanceof Error ? error.message : "list_failed"));
     }).finally(() => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setLoadingDirs((prev) => { const next = new Set(prev); next.delete(relPath); return next; });
@@ -1698,10 +1710,12 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     return (
       <div className="fexp-state-card is-error" role="alert">
         <span className="fexp-state-title">{t("fileExplorer.status.loadFailedTitle")}</span>
-        <span className="fexp-state-text">{error}</span>
-        <button type="button" className="fexp-state-action" onClick={handleRefresh}>
-          {t("fileExplorer.status.loadFailedRetry")}
-        </button>
+        <span className="fexp-state-text">{translateServerError(error, t)}</span>
+        {!isPermanentFolderError(error) && (
+          <button type="button" className="fexp-state-action" onClick={handleRefresh}>
+            {t("fileExplorer.status.loadFailedRetry")}
+          </button>
+        )}
       </div>
     );
   }
@@ -1764,6 +1778,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       );
     }
     if (row.type === "error") {
+      const code = expandFailedDirs.get(row.relativePath) ?? "list_failed";
       return (
         <div
           key={row.key}
@@ -1771,14 +1786,16 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
           role="alert"
         >
-          <span>{t("fileExplorer.tree.expandFailed")}</span>
-          <button
-            type="button"
-            className="fexp-tree-error-retry"
-            onClick={() => retryExpand(row.relativePath)}
-          >
-            {t("fileExplorer.tree.expandRetry")}
-          </button>
+          <span>{isPermanentFolderError(code) ? translateServerError(code, t) : t("fileExplorer.tree.expandFailed")}</span>
+          {!isPermanentFolderError(code) && (
+            <button
+              type="button"
+              className="fexp-tree-error-retry"
+              onClick={() => retryExpand(row.relativePath)}
+            >
+              {t("fileExplorer.tree.expandRetry")}
+            </button>
+          )}
         </div>
       );
     }
@@ -1822,8 +1839,11 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.complete === false) {
     statusLines.push({ key: "partial", text: t("fileExplorer.filter.partial"), tone: "quiet", role: "status" });
   }
+  if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.skippedPaths) {
+    statusLines.push({ key: "skipped", text: t("fileExplorer.filter.skippedPaths", { count: filterOutcome.skippedPaths }), tone: "warn", role: "status" });
+  }
   if (isFiltering && filterFailed) {
-    statusLines.push({ key: "failed", text: t("fileExplorer.filter.searchFailed"), tone: "warn", role: "alert" });
+    statusLines.push({ key: "failed", text: filterFailed === "content_search_unavailable" ? t("fileExplorer.filter.contentUnavailable") : t("fileExplorer.filter.searchFailed"), tone: "warn", role: "alert" });
   }
   if (watchDegraded) {
     statusLines.push({ key: "degraded", text: t("fileExplorer.tree.watchDegraded"), tone: "quiet", role: "status" });
@@ -1965,6 +1985,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         <SearchResultList
           outcome={filterOutcome}
           searching={filterSearching}
+          failed={filterFailed !== null}
           selectedPath={selectedPath}
           onSelect={(item) => onSearchSelect?.(item)}
           t={t}
@@ -2042,14 +2063,15 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 interface SearchResultListProps {
   readonly outcome: FileSearchResult | null;
   readonly searching: boolean;
+  readonly failed: boolean;
   readonly selectedPath: string | null;
   readonly onSelect: (item: FileSearchItem) => void;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
-function SearchResultList({ outcome, searching, selectedPath, onSelect, t }: SearchResultListProps) {
+function SearchResultList({ outcome, searching, failed, selectedPath, onSelect, t }: SearchResultListProps) {
   const results = outcome?.files ?? [];
-  if (results.length === 0 && !searching) {
+  if (results.length === 0 && !searching && !failed) {
     return (
       <div className="fexp-search-results">
         <div className="fexp-empty is-plain"><span className="fexp-empty-title">{t("fileExplorer.status.noMatchingItems")}</span></div>

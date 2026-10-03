@@ -69,7 +69,7 @@ export function sliceLeadingLines(
 
 const FILE_SIZE_CAP = 1024 * 1024;
 const BINARY_CHECK_BYTES = 8192;
-const BINARY_NUL_THRESHOLD = 0.05;
+const BINARY_SUSPICIOUS_THRESHOLD = 0.1;
 
 const EXT_LANG_MAP: Readonly<Record<string, string>> = {
   ".ts": "typescript", ".tsx": "typescript",
@@ -138,30 +138,33 @@ async function readWholeFileForTheater(theaterPath: string, relativePath: string
 
   if (!stat.isFile()) throw new FileReadError("not_a_file");
 
-  if (stat.size > FILE_SIZE_CAP) {
-    const fd = await fs.promises.open(realResolved, "r");
-    const buffer = Buffer.alloc(FILE_SIZE_CAP);
-    const { bytesRead } = await fd.read(buffer, 0, FILE_SIZE_CAP, 0);
-    await fd.close();
-    const chunk = buffer.subarray(0, bytesRead);
-    if (isBinaryBuffer(chunk)) throw new FileReadError("binary_file");
-    return {
-      relativePath: path.relative(realRoot, realResolved),
-      content: chunk.toString("utf8"),
-      lang: detectLang(realResolved),
-      truncated: true,
-      sizeBytes: stat.size,
-      mtimeMs: stat.mtimeMs,
-    };
+  const truncated = stat.size > FILE_SIZE_CAP;
+  let buffer: Buffer;
+  try {
+    if (truncated) {
+      const fd = await fs.promises.open(realResolved, "r");
+      try {
+        const chunk = Buffer.alloc(FILE_SIZE_CAP);
+        const { bytesRead } = await fd.read(chunk, 0, FILE_SIZE_CAP, 0);
+        buffer = chunk.subarray(0, bytesRead);
+      } finally {
+        await fd.close();
+      }
+    } else {
+      buffer = await fs.promises.readFile(realResolved);
+    }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EACCES" || code === "EPERM") throw new FileReadError("forbidden");
+    if (code === "ENOENT" || code === "ENOTDIR") throw new FileReadError("not_found");
+    throw error;
   }
-
-  const buffer = await fs.promises.readFile(realResolved);
-  if (isBinaryBuffer(buffer)) throw new FileReadError("binary_file");
 
   return {
     relativePath: path.relative(realRoot, realResolved),
-    content: buffer.toString("utf8"),
+    content: decodeTextBuffer(buffer, truncated),
     lang: detectLang(realResolved),
+    ...(truncated ? { truncated: true } : {}),
     sizeBytes: stat.size,
     mtimeMs: stat.mtimeMs,
   };
@@ -172,14 +175,25 @@ function isWithinRoot(resolved: string, root: string): boolean {
   return resolved === root || resolved.startsWith(normalizedRoot);
 }
 
-function isBinaryBuffer(buffer: Buffer): boolean {
-  const checkLen = Math.min(buffer.length, BINARY_CHECK_BYTES);
-  if (checkLen === 0) return false;
-  let nulCount = 0;
-  for (let i = 0; i < checkLen; i++) {
-    if (buffer[i] === 0) nulCount++;
+function decodeTextBuffer(buffer: Buffer, truncated: boolean): string {
+  const encoding = buffer[0] === 0xff && buffer[1] === 0xfe ? "utf-16le"
+    : buffer[0] === 0xfe && buffer[1] === 0xff ? "utf-16be"
+      : "utf-8";
+  const sample = new TextDecoder(encoding).decode(buffer.subarray(0, BINARY_CHECK_BYTES), {
+    stream: truncated || buffer.length > BINARY_CHECK_BYTES,
+  });
+  let controls = 0;
+  let replacements = 0;
+  for (const character of sample) {
+    const code = character.charCodeAt(0);
+    if (code === 0) throw new FileReadError("binary_file");
+    if (character === "�") replacements++;
+    if (code < 32 && code !== 9 && code !== 10 && code !== 12 && code !== 13) controls++;
   }
-  return nulCount / checkLen > BINARY_NUL_THRESHOLD;
+  if (sample.length > 0 && (controls / sample.length > BINARY_SUSPICIOUS_THRESHOLD || replacements / sample.length > 0.3)) {
+    throw new FileReadError("binary_file");
+  }
+  return new TextDecoder(encoding).decode(buffer, { stream: truncated });
 }
 
 function detectLang(filePath: string): string {
