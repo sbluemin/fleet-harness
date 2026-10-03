@@ -2,8 +2,9 @@
  * 전역 Fleet 브라우저 시트(시안 C) — 맵 아레나 위에 뜨는 면.
  *
  * 기하: 아레나(사이드바·레일 제외) 안쪽 사방 24px, radius 10, shadow-floating.
- * 뒤 scrim은 무채색이라 다크에서도 지각된다. 캡션·nav는 Operation 브라우저와
- * 같은 부품(op-browser-* 클래스 재사용)이라 같은 손맛이다.
+ * 뒤는 투명한 닫기 영역이라 뒤 화면이 원래 밝기 그대로 보인다. 시트는
+ * 테두리(--surface-rim)·radius·--shadow-floating으로만 구분된다. 캡션·nav는
+ * Operation 브라우저와 같은 부품(op-browser-* 클래스 재사용)이라 같은 손맛이다.
  *
  * z: scrim 5(캔버스 위·크롬 아래 — 레일·사이드바 클릭을 막지 않는다),
  * 시트 30(토스트 40·메뉴 45+·오버레이 100 아래 — Console 층은 시트 위에 보인다).
@@ -14,15 +15,10 @@
   position: fixed;
   inset: 0;
   z-index: 5;
-  background: oklch(0% 0 0 / 45%);
+  background: transparent;
   border: none;
   padding: 0;
   cursor: default;
-}
-
-:root[data-theme="whites"] .fleet-browser-scrim,
-:root[data-theme="light"] .fleet-browser-scrim {
-  background: oklch(22% 0.012 95 / 28%);
 }
 
 .fleet-browser-sheet {
@@ -182,8 +178,7 @@ html[data-fleet-browser-sheet="open"] .app-toast-host {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fleet-browser-sheet,
-  .fleet-browser-scrim {
+  .fleet-browser-sheet {
     animation: none;
     transition: none;
   }

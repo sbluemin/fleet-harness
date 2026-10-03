@@ -328,8 +328,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     <>
       {open ? (
         <>
-          {/* 뒤 캔버스를 은은하게 가라앉히는 무채색 scrim — 아레나만 덮고, 닫기는 이 클릭에만.
-              도구모음·섬·레일·사이드바는 scrim 밖에 있어 그대로 조작된다. */}
+          {/* 뒤 화면을 가리지 않는 투명한 닫기 영역 — 아레나만 덮고, 닫기는 이 클릭에만.
+              도구모음·섬·레일·사이드바는 이 영역 밖에 있어 그대로 조작된다. */}
           {scrimGeometry ? (
             <div
               className="fleet-browser-scrim"
