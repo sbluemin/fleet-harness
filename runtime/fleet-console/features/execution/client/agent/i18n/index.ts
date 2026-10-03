@@ -223,7 +223,7 @@ export const terminalEn = {
   "terminal.link.fleetBrowserHelp": "Opens above your current view",
   "terminal.link.operationBrowser": "Operation Browser",
   "terminal.link.operationBrowserHelp": "See the same tab as this Operation's agent",
-  "terminal.link.webBrowser": "My browser",
+  "terminal.link.webBrowser": "My Browser",
   "terminal.link.webBrowserHelp": "Opens in this computer's default browser",
   "terminal.markdown.copyCodeAria": "Copy {language} code",
   "terminal.markdown.diagram.renderFailed": "Diagram render failed: {message}",

@@ -51,9 +51,9 @@ function hasPublished(): boolean {
  * - `[data-feature-tour-id]`, `.onboarding-welcome-overlay`: 기능 소개 투어·온보딩
  *   웰컴. 투어 카드(z 120)는 뷰보다 위에 서므로 뜨면 뷰를 물린다.
  *
- * 토스트는 예외다. 시트가 열리면 스택이 시트 밖으로 비켜 실제로 겹치지 않는데도
- * 존재만으로 물리면 정지 화면만 계속 보인다. 토스트는 뷰 사각형과 겹칠 때만
- * 물린다(`useToastOverlapActive` + `publishBrowserViewRect`).
+ * 토스트와 도구모음 말풍선은 예외다. 시트 밖으로 비켜 실제로 겹치지 않는데도
+ * 존재만으로 물리면 멈춰 보인다는 오해가 생긴다. 둘은 뷰 사각형과 겹칠 때만
+ * 물린다(`useFloatingOverlapActive` + `publishBrowserViewRect`).
  */
 const OVERLAY_SELECTOR = [
   '[aria-modal="true"]',
@@ -61,7 +61,6 @@ const OVERLAY_SELECTOR = [
   ".command-band-system-menu",
   ".operation-search-overlay",
   ".quick-launch-overlay",
-  ".console-toolbar-tip.is-visible",
   "[data-feature-tour-id]",
   ".onboarding-welcome-overlay",
 ].join(",");
@@ -127,16 +126,18 @@ export function publishBrowserViewRect(rect: OverlayViewRect | null): void {
   notify();
 }
 
-function toastOverlapsView(): boolean {
+/** 뷰와 겹칠 때만 물리는 작은 층 — 토스트 스택과 도구모음 말풍선. */
+const FLOATING_SELECTOR = ".app-toast-host > *, .console-toolbar-tip.is-visible";
+
+function floatingOverlapsView(): boolean {
   if (typeof document === "undefined") return false;
-  const host = document.querySelector(".app-toast-host");
-  if (!host || host.childElementCount === 0) return false;
   // 자리를 모르면 겹침 아님으로 본다 — park 때 자리를 지우면 null→겹침→park 교착에 빠진다.
   // 판정 대상은 「서 있는 뷰」가 아니라 「시트가 놓으려는 뷰 자리」라서, 물러나 있어도 잰다.
   if (!lastViewRect || lastViewRect.width < 1 || lastViewRect.height < 1) return false;
   const view = lastViewRect;
-  for (const child of host.children) {
-    const rect = child.getBoundingClientRect();
+  const layers = document.querySelectorAll(FLOATING_SELECTOR);
+  for (const layer of layers) {
+    const rect = (layer as Element).getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) continue;
     const overlaps = rect.left < view.x + view.width
       && view.x < rect.left + rect.width
@@ -147,12 +148,12 @@ function toastOverlapsView(): boolean {
   return false;
 }
 
-function snapshotToastOverlap(): boolean {
+function snapshotFloatingOverlap(): boolean {
   if (typeof document !== "undefined") ensureObserving();
-  return toastOverlapsView();
+  return floatingOverlapsView();
 }
 
-/** 토스트가 지금 뷰 사각형과 겹치는가 — 겹칠 때만 뷰를 물린다. */
-export function useToastOverlapActive(): boolean {
-  return useSyncExternalStore(subscribe, snapshotToastOverlap, () => false);
+/** 작은 층(토스트·도구모음 말풍선)이 지금 뷰 사각형과 겹치는가 — 겹칠 때만 뷰를 물린다. */
+export function useFloatingOverlapActive(): boolean {
+  return useSyncExternalStore(subscribe, snapshotFloatingOverlap, () => false);
 }

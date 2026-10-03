@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { themePolarity } from "../../../core/client/src/integration/store.js";
-import { useConsoleOverlayActive, publishBrowserViewRect, useToastOverlapActive } from "../../../core/client/src/overlay/overlay-registry.js";
+import { useConsoleOverlayActive, publishBrowserViewRect, useFloatingOverlapActive } from "../../../core/client/src/overlay/overlay-registry.js";
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { getT } from "./i18n.js";
 import {
@@ -75,7 +75,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const enabled = !mobile;
   const { state } = useGlobalBrowserState(enabled);
   const overlayActive = useConsoleOverlayActive();
-  const toastOverlap = useToastOverlapActive();
+  const floatingOverlap = useFloatingOverlapActive();
   useGlobalBrowserBackgroundSeen(open);
   // shared 폴백 안내는 시트가 닫혀 있어도 보여야 한다 — 일찍 구독한다.
   const fallbackNotice = useSharedFallbackNotice();
@@ -198,8 +198,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
 
   // ---- 네이티브 뷰 배치: 겹침이 뜨면 즉시 물리고, 캐시된 정지 화면이 있으면 깐다. ----
   // 동기 캡처 대기는 절대 하지 않는다(H2). 정지 화면은 탭이 안정된 뒤 백그라운드에서 미리 찍어 둔다.
-  // 토스트는 뷰와 실제로 겹칠 때만 물린다 — 시트 밖으로 비킨 스택에 가려 정지만 보지 않게.
-  const parked = !available || activeTab === null || overlayActive || toastOverlap;
+  // 토스트·말풍선은 뷰와 실제로 겹칠 때만 물린다 — 시트 밖으로 비킨 스택에 가려 정지만 보지 않게.
+  const parked = !available || activeTab === null || overlayActive || floatingOverlap;
   React.useEffect(() => {
     if (!open) return;
     const element = viewportRef.current;

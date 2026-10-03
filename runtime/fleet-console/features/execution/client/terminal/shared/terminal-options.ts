@@ -40,7 +40,8 @@ export function createTerminalLinkRoute(deps: {
   return (event, text) => {
     const href = httpLinkHref(text);
     if (href === null) return;
-    const plain = event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+    // 버튼 정보가 없는 활성화(키보드·일부 xterm 경로)는 왼클릭으로 본다 — 기존 계약.
+    const plain = (event.button ?? 0) === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
     if (plain) {
       if (deps.chooseTarget(href, event)) return;
     } else if (deps.openDirect?.(href, event)) {

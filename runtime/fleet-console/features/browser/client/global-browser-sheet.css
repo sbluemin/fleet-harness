@@ -157,7 +157,7 @@ html[data-view-mode="mobile"] .fleet-browser-scrim {
 
 .fleet-browser-sheet__empty strong {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: var(--weight-medium);
 }
 
 .fleet-browser-sheet__restore {
