@@ -105,7 +105,7 @@ describe("Files palette search", () => {
     expect(writes[0]?.body).toMatchObject({
       totalMatches: 2,
       ignoredSkipped: true,
-      complete: false,
+      complete: true,
       files: [
         { relativePath: "src/needle.ts", kind: "file" },
         { relativePath: "src/nested/needle.test.ts", kind: "file" },

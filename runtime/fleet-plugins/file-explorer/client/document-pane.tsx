@@ -488,15 +488,17 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
           />
         )}
       </div>
-      <div className="fexp-viewer-access">
-        <span>{t("fileExplorer.viewer.readOnly")}</span>
-        {activePath && (
-          <button type="button" disabled={externalOpening} onClick={handleOpenExternal}>
-            {t("fileExplorer.menu.openExternal")}
-          </button>
-        )}
+      <div className="fexp-viewer-notices">
+        <div className="fexp-viewer-access">
+          <span>{t("fileExplorer.viewer.readOnly")}</span>
+          {activePath && (
+            <button type="button" disabled={externalOpening} onClick={handleOpenExternal}>
+              {t("fileExplorer.menu.openExternal")}
+            </button>
+          )}
+        </div>
+        {externalFailed && <div className="fexp-viewer-action-error" role="alert">{t("fileExplorer.menu.actionUnavailable")}</div>}
       </div>
-      {externalFailed && <div className="fexp-viewer-action-error" role="alert">{t("fileExplorer.menu.actionUnavailable")}</div>}
       <div className="fexp-viewer-body">
         {viewState.kind === "loading" && <div className="fexp-viewer-loading">{t("fileExplorer.status.loading")}</div>}
         {viewState.kind === "error" && <div className="fexp-viewer-error">{viewState.message}</div>}

@@ -118,10 +118,9 @@
 
 .fexp-viewer-pane {
   display: grid;
-  /* 탭 띠(auto) · 경로 줄(32px) · 본문(1fr) · 메타 바(auto)
-     이력·낡음·줄바꿈은 호스트 캡션으로 올라갔고, 여기 남은 머리는 경로와 보기 모드뿐이라
-     46px이던 자리가 32px로 줄었다 — 캡션이 새로 먹는 세로를 그만큼 되돌린다. */
-  grid-template-rows: auto 32px minmax(0, 1fr) auto;
+  /* 탭 띠 · 경로 줄 · 읽기 전용/동작 안내 · 본문 · 메타 바.
+     선택적 오류도 안내 행 안에 두어 본문이 항상 남은 높이를 차지한다. */
+  grid-template-rows: auto 32px auto minmax(0, 1fr) auto;
   /* .fexp-tree-pane과 동일한 암시적 auto 열 클램프 */
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
