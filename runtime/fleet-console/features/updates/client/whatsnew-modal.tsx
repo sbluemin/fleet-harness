@@ -11,6 +11,7 @@ import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 interface WhatsNewModalProps {
   readonly state: ConsoleState;
+  readonly automaticSuspended?: boolean;
 }
 
 type WhatsNewSectionStyle = CSSProperties & {
@@ -28,7 +29,7 @@ const FOCUSABLE_SELECTOR = [
 
 const RELEASE_NOTE_PAGE_SIZE = 10;
 
-export function WhatsNewModal({ state }: WhatsNewModalProps) {
+export function WhatsNewModal({ state, automaticSuspended = false }: WhatsNewModalProps) {
   const t = useT();
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const outsideFocusHistoryRef = useRef<HTMLElement[]>([]);
@@ -73,6 +74,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   // /health가 /theaters보다 먼저 도착하면 onboardingOpen만으로는 게이트가 새므로 bootstrapped도 함께 본다.
   // 억제가 풀리면 whatsNewOpen이 유지된 채 아래 효과/렌더가 다시 살아나 그때 표시된다.
   const whatsNewSuppressed =
+    (automaticSuspended && state.automaticWhatsNewVersion !== null) ||
     !state.bootstrapped ||
     state.onboardingOpen ||
     state.operationSearchOpen ||

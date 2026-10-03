@@ -152,7 +152,9 @@ code.hljs {
 }
 
 .markdown-body {
+  inline-size: 100%;
   min-width: 0;
+  overflow-wrap: anywhere;
   max-inline-size: clamp(60ch, 78ch, 78ch);
   margin-inline: auto;
   color: var(--text-secondary);
@@ -337,12 +339,20 @@ code.hljs {
   overflow-wrap: anywhere;
 }
 
+.markdown-body pre {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+
 .markdown-body table {
+  display: block;
   width: 100%;
   border-collapse: collapse;
   font-size: var(--font-size-lg);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-wrap: normal;
   border: 1px solid var(--surface-rim);
 }
 

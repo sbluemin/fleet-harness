@@ -85,17 +85,29 @@ function renderStatusBadge(frontmatter: EntryFrontmatter | SearchEntry): string 
   return `<span class="chip ${badge.tone === "deprecated" ? "chip-coral" : badge.tone === "stale" ? "chip-stale" : ""}" title="${escapeAttribute(badge.title)}">${escapeHtml(badge.label)}</span>`;
 }
 
+export function entryStatusLabel(status: string): string {
+  const t = getT(resolveActiveLocale());
+  switch (status) {
+    case "current": return t("codex.meta.status.current");
+    case "draft": return t("codex.meta.status.draft");
+    case "deprecated": return t("codex.meta.status.deprecated");
+    case "superseded": return t("codex.meta.status.superseded");
+    default: return status;
+  }
+}
+
 export function getEntryStatusBadge(frontmatter: EntryFrontmatter | SearchEntry, now: Date = new Date()): EntryStatusBadge | null {
   const t = getT(resolveActiveLocale());
   const status = frontmatter.status;
+  const label = entryStatusLabel(status ?? "current");
   const stale = typeof frontmatter.revalidateAfter === "string"
     && !Number.isNaN(Date.parse(frontmatter.revalidateAfter))
     && Date.parse(frontmatter.revalidateAfter) < now.getTime();
   if (status === "deprecated" || status === "superseded") {
     return {
-      label: status,
+      label,
       tone: "deprecated",
-      title: stale ? t("codex.meta.statusStaleTitle", { status }) : status,
+      title: stale ? t("codex.meta.statusStaleTitle", { status: label }) : label,
     };
   }
   if (stale) {
@@ -107,7 +119,7 @@ export function getEntryStatusBadge(frontmatter: EntryFrontmatter | SearchEntry,
   }
   // current는 기본 상태다 — 배지는 예외(초안·폐기·낡음)에만 말을 얹는다.
   if (status === "draft") {
-    return { label: status, tone: "neutral", title: status };
+    return { label, tone: "neutral", title: label };
   }
   return null;
 }
