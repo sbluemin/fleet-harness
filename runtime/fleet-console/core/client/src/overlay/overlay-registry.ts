@@ -50,6 +50,10 @@ function hasPublished(): boolean {
  * - `.console-toolbar-tip.is-visible`: 도구모음 말풍선.
  * - `[data-feature-tour-id]`, `.onboarding-welcome-overlay`: 기능 소개 투어·온보딩
  *   웰컴. 투어 카드(z 120)는 뷰보다 위에 서므로 뜨면 뷰를 물린다.
+ *
+ * 토스트는 예외다. 시트가 열리면 스택이 시트 밖으로 비켜 실제로 겹치지 않는데도
+ * 존재만으로 물리면 정지 화면만 계속 보인다. 토스트는 뷰 사각형과 겹칠 때만
+ * 물린다(`useToastOverlapActive` + `publishBrowserViewRect`).
  */
 const OVERLAY_SELECTOR = [
   '[aria-modal="true"]',
@@ -64,9 +68,7 @@ const OVERLAY_SELECTOR = [
 
 function readMarkers(): boolean {
   if (typeof document === "undefined") return false;
-  if (document.querySelector(OVERLAY_SELECTOR) !== null) return true;
-  const host = document.querySelector(".app-toast-host");
-  return host !== null && host.childElementCount > 0;
+  return document.querySelector(OVERLAY_SELECTOR) !== null;
 }
 
 function recompute(): void {
@@ -105,4 +107,47 @@ function snapshot(): boolean {
 /** 지금 Console 층이 떠 있는가 — 떠 있으면 네이티브 뷰를 즉시 물린다. */
 export function useConsoleOverlayActive(): boolean {
   return useSyncExternalStore(subscribe, snapshot, () => false);
+}
+
+export interface OverlayViewRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** 마지막으로 알려진 네이티브 뷰 자리. 뷰를 놓는 쪽이 바뀔 때마다 알린다. */
+let lastViewRect: OverlayViewRect | null = null;
+
+export function publishBrowserViewRect(rect: OverlayViewRect | null): void {
+  lastViewRect = rect;
+}
+
+function toastOverlapsView(): boolean {
+  if (typeof document === "undefined") return false;
+  // 자리를 모르면 겹친 것으로 본다 — 뷰가 서기 전 첫 프레임의 안전 쪽이다.
+  if (!lastViewRect || lastViewRect.width < 1 || lastViewRect.height < 1) return true;
+  const host = document.querySelector(".app-toast-host");
+  if (!host || host.childElementCount === 0) return false;
+  const view = lastViewRect;
+  for (const child of host.children) {
+    const rect = child.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) continue;
+    const overlaps = rect.left < view.x + view.width
+      && view.x < rect.left + rect.width
+      && rect.top < view.y + view.height
+      && view.y < rect.top + rect.height;
+    if (overlaps) return true;
+  }
+  return false;
+}
+
+function snapshotToastOverlap(): boolean {
+  if (typeof document !== "undefined") ensureObserving();
+  return toastOverlapsView();
+}
+
+/** 토스트가 지금 뷰 사각형과 겹치는가 — 겹칠 때만 뷰를 물린다. */
+export function useToastOverlapActive(): boolean {
+  return useSyncExternalStore(subscribe, snapshotToastOverlap, () => false);
 }

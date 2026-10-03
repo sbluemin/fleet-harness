@@ -3,6 +3,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 
 import { requestBrowserOpen, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { FleetBrowserGlyph } from "../../../browser/client/global-browser-entry.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import {
   focusOrCreateGlobalTab,
@@ -194,6 +195,22 @@ function LinkOpenCard({ context, language, kind, url, at, onClose }: {
   // 카드는 포커스를 쥐고 서지만(Enter 한 번이면 열린다) 그 사실을 링으로 말하지는 않는다 — 마우스로 연
   // 사람에게는 고르지 않은 것이 이미 골라진 것처럼 보인다. 키를 한 번 쓰는 순간부터 링이 선다.
   const [keyboard, setKeyboard] = React.useState(false);
+  // 카드를 연 출발점(누른 링크) — 행을 고르거나 Esc로 닫으면 여기로 돌려준다.
+  // 위치를 재는 뒤 layout effect가 포커스를 행으로 가져가기 전에, 선언 순서대로 먼저 기억한다.
+  const triggerRef = React.useRef<HTMLElement | null>(null);
+  React.useLayoutEffect(() => {
+    triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => {
+      const trigger = triggerRef.current;
+      triggerRef.current = null;
+      if (!trigger || !trigger.isConnected) return;
+      const active = document.activeElement;
+      // 카드 안에서 닫혔을 때만 돌려준다 — 그사이 다른 곳을 누른 사람의 손을 빼앗지 않는다.
+      if (active === document.body || (active instanceof HTMLElement && cardRef.current?.contains(active))) {
+        trigger.focus({ preventScroll: true });
+      }
+    };
+  }, []);
 
   // 자리는 실측으로 정한다 — 추정 높이로 뒤집기를 판정하면 화면 아래에서 조용히 잘린다. 잰 값은 상태가
   // 아니라 노드에 바로 쓴다: 상태로 돌리면 자리를 잡는 렌더가 한 번 더 돌고, 그동안 카드는 숨어 있어
@@ -287,7 +304,7 @@ function LinkOpenCard({ context, language, kind, url, at, onClose }: {
       >
         <p className="link-open-url" title={url}><LinkParts url={url} /></p>
         <button type="button" role="menuitem" className="link-open-choice" ref={globalRef} disabled={engineMissing} onClick={openInGlobalFleet}>
-          <GlobeGlyph />
+          <FleetBrowserGlyph />
           <span className="link-open-choice-text">
             <strong>{t("terminal.link.fleetBrowser")}</strong>
             <span>{unavailableHelp ?? t("terminal.link.fleetBrowserHelp")}</span>

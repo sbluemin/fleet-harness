@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { themePolarity } from "../../../core/client/src/integration/store.js";
-import { useConsoleOverlayActive } from "../../../core/client/src/overlay/overlay-registry.js";
+import { useConsoleOverlayActive, publishBrowserViewRect, useToastOverlapActive } from "../../../core/client/src/overlay/overlay-registry.js";
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { getT } from "./i18n.js";
 import {
@@ -75,6 +75,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const enabled = !mobile;
   const { state } = useGlobalBrowserState(enabled);
   const overlayActive = useConsoleOverlayActive();
+  const toastOverlap = useToastOverlapActive();
   useGlobalBrowserBackgroundSeen(open);
   // shared 폴백 안내는 시트가 닫혀 있어도 보여야 한다 — 일찍 구독한다.
   const fallbackNotice = useSharedFallbackNotice();
@@ -197,19 +198,22 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
 
   // ---- 네이티브 뷰 배치: 겹침이 뜨면 즉시 물리고, 캐시된 정지 화면이 있으면 깐다. ----
   // 동기 캡처 대기는 절대 하지 않는다(H2). 정지 화면은 탭이 안정된 뒤 백그라운드에서 미리 찍어 둔다.
-  const parked = !available || activeTab === null || overlayActive;
+  // 토스트는 뷰와 실제로 겹칠 때만 물린다 — 시트 밖으로 비킨 스택에 가려 정지만 보지 않게.
+  const parked = !available || activeTab === null || overlayActive || toastOverlap;
   React.useEffect(() => {
     if (!open) return;
     const element = viewportRef.current;
     if (!element) return;
     if (parked) {
+      publishBrowserViewRect(null);
       const rect = element.getBoundingClientRect();
       if (rect.width >= 1 && rect.height >= 1) place(false);
       return;
     }
     const rect = element.getBoundingClientRect();
-    if (rect.width < 1 || rect.height < 1) { place(false); return; }
-    if (document.visibilityState !== "visible") { place(false); return; }
+    if (rect.width < 1 || rect.height < 1) { publishBrowserViewRect(null); place(false); return; }
+    if (document.visibilityState !== "visible") { publishBrowserViewRect(null); place(false); return; }
+    publishBrowserViewRect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
     place(true, { x: rect.left, y: rect.top, width: rect.width, height: rect.height });
   }, [open, parked, activeTab?.id, geometry]);
   React.useEffect(() => {
@@ -217,9 +221,10 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const timer = setInterval(() => {
       const element = viewportRef.current;
       if (!element) return;
-      if (parked) { place(false); return; }
+      if (parked) { publishBrowserViewRect(null); place(false); return; }
       const rect = element.getBoundingClientRect();
-      if (rect.width < 1 || rect.height < 1 || document.visibilityState !== "visible") { place(false); return; }
+      if (rect.width < 1 || rect.height < 1 || document.visibilityState !== "visible") { publishBrowserViewRect(null); place(false); return; }
+      publishBrowserViewRect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
       place(true, { x: rect.left, y: rect.top, width: rect.width, height: rect.height });
     }, PLACE_POLL_MS);
     return () => clearInterval(timer);
@@ -227,7 +232,10 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   // 시트가 내려가면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다(탭은 서버에 주차된다).
   // 마운트 직후 닫혀 있으면 한 번 내린다. reload 뒤 서버에 남은 배치를 새 세션의 키와 무관하게 지운다.
   React.useEffect(() => {
-    if (!open) place(false);
+    if (!open) {
+      publishBrowserViewRect(null);
+      place(false);
+    }
   }, [open, place]);
 
   // 탭이 안정되면(로딩 끝) 백그라운드에서 한 장을 미리 찍어 둔다. 실패하면 조용히 버리고 무채색 자리를 쓴다.
