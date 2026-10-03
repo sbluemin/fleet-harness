@@ -109,6 +109,13 @@ const ANTIGRAVITY_CONTENT_FILTER_REASONS: ReadonlySet<string> = new Set([
  * `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL`, a value newer than this list — keeps the
  * provider's own value, so the downstream wire turns it into an error that names it instead of
  * ending the turn as if the answer were complete.
+ *
+ * A stream that ends with neither a `finishReason` nor a `blockReason` was cut off without
+ * saying so, and becomes the same reasonless error. Every live answer measured 2026-10-04 —
+ * text, tool calls, parallel calls and the turn after a tool result, on Gemini 3.8 Flash and
+ * 3.1 Pro — ended with `STOP`, so this never fires on a normal answer. gemini-cli
+ * (`NO_FINISH_REASON`) exempts a stream that carried a tool call, but every tool-call answer
+ * measured here carried `STOP` as well.
  */
 function antigravityIncomplete(
   finishReason: string | undefined,
@@ -124,7 +131,7 @@ function antigravityIncomplete(
     if (ANTIGRAVITY_CONTENT_FILTER_REASONS.has(promptBlockReason)) return { reason: "content_filter" };
     return { reason: `prompt blocked: ${promptBlockReason}` };
   }
-  return undefined;
+  return {};
 }
 
 export interface AntigravityFrame {
