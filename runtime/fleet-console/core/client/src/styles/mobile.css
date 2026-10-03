@@ -431,7 +431,7 @@
 
 .mobile-tab-bar {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   padding: var(--space-1) max(var(--space-2), env(safe-area-inset-right)) max(var(--space-1), env(safe-area-inset-bottom)) max(var(--space-2), env(safe-area-inset-left));
   border-top: 1px solid var(--hairline);
   background: var(--ink-deep);
@@ -477,6 +477,57 @@
   overflow: hidden;
   background: var(--canvas-sea-core);
 }
+
+/* 도구 시트는 한 장씩 전환한다. 플러그인 본문과 단일 Shell의 수명은 그대로 재사용한다. */
+.mobile-tools-menu {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.mobile-tools-menu h1 { margin: 0; font-size: var(--t-lg); }
+.mobile-tools-menu p { color: var(--text-secondary); }
+.mobile-tool-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: var(--ink-deep);
+  color: var(--text-primary);
+  text-align: start;
+}
+.mobile-tool-choice > span:last-child { margin-inline-start: auto; }
+.mobile-tool-choice svg { width: 22px; height: 22px; }
+.mobile-tool-choice:disabled { opacity: .5; }
+.mobile-tool-sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ink-deep);
+}
+.mobile-tool-sheet-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  min-height: 48px;
+  padding-inline: var(--space-2);
+  border-bottom: 1px solid var(--surface-rim);
+}
+.mobile-tool-sheet-bar h1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-md); }
+.mobile-tool-sheet-bar button { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--text-primary); }
+.mobile-tool-sheet-body { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.mobile-tool-sheet-body > .rail-surface,
+.mobile-tool-sheet-body > .expanded-surface-pane { flex: 1; min-height: 0; width: 100%; border: 0; border-radius: 0; }
+/* 시트 머리의 44px 닫기가 유일한 닫기 조작이다. 표면 tools(위치 배지)는 그대로 남긴다. */
+.mobile-tool-sheet .expanded-surface-pane-close { display: none; }
+.mobile-tool-sheet .pane-caption-control { min-width: 44px; min-height: 44px; }
+.mobile-tool-sheet .rail-pane[hidden] { display: none; }
 
 .mobile-simple-panel {
   display: grid;

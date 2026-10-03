@@ -12,6 +12,7 @@ import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
 
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import { isPaneExpanded, openExpandedPane } from "./expanded-pane-surface.js";
+import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-id.js";
 import { PaneBody, usePaneContext } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
 import { PaneDivider } from "./pane-divider.js";
@@ -42,6 +43,8 @@ const EMPTY_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 export interface RailSurfaceProps {
   readonly binding: RailEntryBinding;
   readonly overlayDetails?: boolean;
+  /** 모바일 시트는 같은 페인을 한 번에 한 장씩 보여 준다. */
+  readonly singlePane?: boolean;
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
   readonly language: ConsoleLocale;
@@ -55,6 +58,7 @@ export interface RailSurfaceProps {
 export const RailSurface = memo(function RailSurface({
   binding,
   overlayDetails = false,
+  singlePane = false,
   theaterId,
   api,
   language,
@@ -156,7 +160,8 @@ export const RailSurface = memo(function RailSurface({
   );
   // 주차된 페인은 `display: none`이라 자리를 차지하지 않는다 — 기하 계산에서도 빠져야 한다.
   const visibleExtras = useMemo(() => extras.filter(({ instance }) => instance.visible), [extras]);
-  const standing = useMemo(() => overlayDetails ? [] : visibleExtras, [overlayDetails, visibleExtras]);
+  const selectedExtra = singlePane ? (visibleExtras.find(({ instance }) => instance.paneId === focusedPaneId) ?? visibleExtras.at(-1)) : undefined;
+  const standing = useMemo(() => overlayDetails || singlePane ? [] : visibleExtras, [overlayDetails, singlePane, visibleExtras]);
 
   // 표면 폭 실측. 이 숫자는 **호스트 안에서만** 산다 — ctx로 흘리면 렌더마다 컨텍스트가
   // 새로 만들어져 본문이 다시 그려진다(계약이 `ctx.width`를 힌트로만 두는 이유).
@@ -214,8 +219,8 @@ export const RailSurface = memo(function RailSurface({
     : null;
   const soloMaxWidth = soloWidth === null ? null : splitMaxWidthRef.current;
   useLayoutEffect(() => {
-    requestRailPanelSoloWidth(entryId, soloWidth, soloMaxWidth);
-  }, [entryId, soloWidth, soloMaxWidth]);
+    if (!singlePane) requestRailPanelSoloWidth(entryId, soloWidth, soloMaxWidth);
+  }, [entryId, singlePane, soloWidth, soloMaxWidth]);
 
   // detail이 서면 표면 전체가 그만큼 넓어져야 한다 — 그러지 않으면 새 열은 primary를 잘라
   // 먹는다. 예전에 플러그인이 `requestExtraWidth`로 하던 일이며, 이제 표면이 자기가 세운
@@ -255,7 +260,8 @@ export const RailSurface = memo(function RailSurface({
       descriptor={primary}
       instanceId={primaryInstance?.instanceId ?? `pane-primary-${primary.id}`}
       params={primaryInstance?.params ?? EMPTY_PARAMS}
-      visible
+      visible={!singlePane || !selectedExtra}
+      singlePane={singlePane}
       focused={focusedPaneId === primary.id}
       theaterId={theaterId}
       api={api}
@@ -286,7 +292,8 @@ export const RailSurface = memo(function RailSurface({
           descriptor={descriptor}
           instanceId={instance.instanceId}
           params={instance.params}
-          visible={instance.visible}
+          visible={instance.visible && (!singlePane || instance.instanceId === selectedExtra?.instance.instanceId)}
+          singlePane={singlePane}
           overlay={overlayDetails && instance.visible}
           returnFocus={returnFocus}
           focused={focusedPaneId === descriptor.id}
@@ -332,6 +339,7 @@ interface PaneHostProps {
   /** 표면이 정한 이 열의 폭(px). 생략하면 남는 자리를 채운다. */
   readonly width?: number;
   readonly overlay?: boolean;
+  readonly singlePane?: boolean;
   readonly returnFocus?: () => HTMLElement | null;
 }
 
@@ -361,6 +369,7 @@ function PaneHost({
   openLink,
   width,
   overlay = false,
+  singlePane = false,
   returnFocus,
 }: PaneHostProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -382,15 +391,16 @@ function PaneHost({
   const handleOpen = useCallback((request: PaneOpenRequest) => {
     const target = paneIndex.get(request.paneId);
     const standing = isPaneExpanded(request.paneId) ? "expanded" : undefined;
-    const mount = request.mount ?? standing ?? target?.mounts[0] ?? "rail";
+    const mount = singlePane && target?.mounts.includes("rail") ? "rail" : request.mount ?? standing ?? target?.mounts[0] ?? "rail";
     if (mount === "expanded") {
       // 확대 표면은 호스트 내장 기여다 — 능력 객체를 거치면 그것이 없는 조립에서 요청이
       // 조용히 사라진다. 여기서는 호스트가 자기 스토어를 직접 부른다.
-      openExpandedPane(request.paneId, request.params);
+      if (singlePane && surfaces) surfaces.open({ surfaceId: EXPANDED_PANE_SURFACE_ID, params: { ...request.params, paneId: request.paneId } });
+      else openExpandedPane(request.paneId, request.params);
       return;
     }
-    openPane(request);
-  }, [paneIndex]);
+    openPane(singlePane ? { ...request, mount: "rail" } : request);
+  }, [paneIndex, singlePane, surfaces]);
 
   // 남의 페인을 닫을 때도 그 페인의 keepAlive를 따른다. 자기를 닫을 때만 지켜 주면
   // 형제가 닫는 순간 터미널과 초안이 사라진다.
@@ -419,7 +429,7 @@ function PaneHost({
   // 확대는 페인마다 만드는 기능이 아니라 표면 계약의 공통 동작이다 — 호스트 내장 표면이
   // paneId를 받아 같은 본문을 캔버스 위에 세운다. 그래서 이 버튼은 어떤 detail 페인에도
   // 같은 방식으로 선다.
-  const canExpand = descriptor.mounts.includes("expanded");
+  const canExpand = !singlePane && descriptor.mounts.includes("expanded");
   // 확대는 닫힘이 아니다 — 같은 본문이 자리를 옮기는 것이므로 닫힘 통보를 보내지 않는다.
   // 보내면 무엇을 읽고 있다는 사실을 플러그인이 스스로 지워, 옮겨 간 자리가 곧 비어 버린다.
   const handleExpand = useCallback(() => {
