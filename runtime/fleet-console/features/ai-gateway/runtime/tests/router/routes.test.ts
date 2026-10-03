@@ -1142,8 +1142,9 @@ describe("Muse Code routing", () => {
       { type: "response.incomplete", response: incompleteResponse },
       { type: "response.completed", response: incompleteResponse },
     ];
+    let served = 0;
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
-      capped(terminals[fetchMock.mock.calls.length - 1]!).map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
+      capped(terminals[served++]!).map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
       { headers: { "content-type": "text/event-stream" } },
     ));
     const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
