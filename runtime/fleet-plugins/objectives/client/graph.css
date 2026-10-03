@@ -30,7 +30,7 @@
 .objectives-graph-shape.is-done .objectives-graph-number { color: var(--text-on-brass); }
 .objectives-graph-shape.is-ready { border: 2.5px solid var(--aurora); }
 .objectives-graph-shape.is-running { border-color: var(--positive); }
-.objectives-graph-shape.is-running::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1.5px solid transparent; border-top-color: var(--positive); border-right-color: var(--positive); animation: objectives-graph-spin 1.2s steps(12, end) infinite; animation-name: var(--state-motion, objectives-graph-spin); }
+.objectives-graph-shape.is-running::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1.5px solid transparent; border-top-color: var(--positive); border-right-color: var(--positive); animation: objectives-graph-spin 1.2s steps(12, end) infinite; animation-name: var(--state-motion, objectives-graph-spin); --state-motion-clock: aligned; }
 /* 결정 대기는 호스트 활동축의 awaiting과 같은 aurora다 — 완료(brass)와 색으로도 갈리고, 준비됨(빈 aurora 링)과는 채움·모양으로 갈린다. */
 .objectives-graph-shape.is-awaiting { border-radius: 4px; transform: rotate(45deg) scale(.72); background: var(--aurora); border-color: var(--aurora); }
 .objectives-graph-shape.is-awaiting .objectives-graph-number { transform: rotate(-45deg) scale(1.39); color: var(--text-on-brass); }

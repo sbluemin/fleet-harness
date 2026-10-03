@@ -4,21 +4,10 @@ export function observeStateMotion(): () => void {
   const aligned = new WeakSet<Animation>();
   const align = (element: Element) => {
     for (const animation of element.getAnimations({ subtree: true })) {
-      const timing = animation.effect?.getTiming();
-      if (!(animation instanceof CSSAnimation) || timing?.iterations !== Infinity || aligned.has(animation)) continue;
-      if (typeof timing.duration === "number" && timing.duration > 0) {
-        const ticks = Math.max(1, Math.round(timing.duration / 100));
-        const duration = ticks * 100;
-        const delay = Math.round((timing.delay ?? 0) / 100) * 100;
-        const stepped = animation.effect instanceof KeyframeEffect && animation.effect.getKeyframes().some((frame) => frame.easing.startsWith("steps("));
-        if (!stepped || timing.duration !== duration || timing.delay !== delay) {
-          animation.effect?.updateTiming({
-            ...(timing.duration === duration ? {} : { duration }),
-            ...(timing.delay === delay ? {} : { delay }),
-            ...(stepped ? {} : { easing: `steps(${ticks}, end)` }),
-          });
-        }
-      }
+      const effect = animation.effect;
+      if (!(animation instanceof CSSAnimation) || !(effect instanceof KeyframeEffect) || effect.getTiming().iterations !== Infinity || aligned.has(animation)) continue;
+      if (!effect.target || getComputedStyle(effect.target, effect.pseudoElement).getPropertyValue("--state-motion-clock").trim() !== "aligned") continue;
+      if (!effect.getKeyframes().some((frame) => frame.easing.startsWith("steps("))) continue;
       animation.startTime = 0;
       aligned.add(animation);
     }

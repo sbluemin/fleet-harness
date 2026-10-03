@@ -159,12 +159,12 @@
 .objectives-stop-btn { display: inline-flex; align-items: center; gap: 4px; color: var(--coral); border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
 .objectives-stop-btn:hover { border-color: var(--coral); }
 .objectives-busy-line { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px 22px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
-.objectives-busy-line i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); animation: objectives-breathe 1.6s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); }
+.objectives-busy-line i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); animation: objectives-breathe 1.6s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); --state-motion-clock: aligned; }
 @keyframes objectives-breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 .objectives-detail.is-busy .objectives-detail-title, .objectives-detail.is-busy .objectives-mission-text:read-only, .objectives-detail.is-busy .objectives-note:read-only { cursor: default; color: var(--text-secondary); }
 .objectives-detail.is-busy .objectives-row-main:disabled { cursor: default; opacity: 0.6; }
 .objectives-detail.is-busy .objectives-check { opacity: 0.35; cursor: default; }
-.objectives-mission-sub.is-running i { animation: objectives-breathe 1.6s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); }
+.objectives-mission-sub.is-running i { animation: objectives-breathe 1.6s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); --state-motion-clock: aligned; }
 .objectives-check {
   width: 16px;
   height: 16px;
@@ -426,7 +426,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-start.is-awaiting { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
 .objectives-start.is-awaiting:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
 .objectives-start.is-awaiting .objectives-start-word, .objectives-start.is-awaiting .objectives-start-arrow { color: var(--aurora); }
-.objectives-start-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent); animation: objectives-breathe 1.8s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); }
+.objectives-start-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent); animation: objectives-breathe 1.8s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); --state-motion-clock: aligned; }
 
 /* A 분할 칸 — 띠의 틀(테두리·radius·그라디언트)이 이 래퍼로 옮고, 주행동과 이동 칸이 나란히 선다. */
 .objectives-split { display: grid; grid-template-columns: minmax(0, 1fr) 38px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 16%, transparent), color-mix(in oklch, var(--brass) 6%, transparent)); transition: border-color var(--duration-fast) var(--ease-spring); }
@@ -802,9 +802,9 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-check.is-linked i { position: absolute; inset: 0; border-radius: 50%; }
 .objectives-check.is-linked.is-idle i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--text-tertiary); }
 .objectives-check.is-linked.is-running { border-color: color-mix(in oklch, var(--warn) 35%, transparent); }
-.objectives-check.is-linked.is-running i { border: 1.5px solid transparent; border-top-color: var(--warn); animation: objectives-spin 1.2s linear infinite; animation-name: var(--state-motion, objectives-spin); }
+.objectives-check.is-linked.is-running i { border: 1.5px solid transparent; border-top-color: var(--warn); animation: objectives-spin 1.2s steps(12, end) infinite; animation-name: var(--state-motion, objectives-spin); --state-motion-clock: aligned; }
 .objectives-check.is-linked.is-background { border-style: dashed; border-color: var(--warn); }
-.objectives-check.is-linked.is-awaiting { border-color: var(--aurora); animation: objectives-breathe 1.6s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); }
+.objectives-check.is-linked.is-awaiting { border-color: var(--aurora); animation: objectives-breathe 1.6s steps(1, end) infinite; animation-name: var(--state-motion, objectives-breathe); --state-motion-clock: aligned; }
 .objectives-check.is-linked.is-awaiting i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--aurora); }
 .objectives-check.is-linked.is-ended, .objectives-check.is-linked.is-unknown, .objectives-check.is-linked.is-closed { border-color: var(--hairline); }
 .objectives-check.is-linked.is-ended i::after, .objectives-check.is-linked.is-closed i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 1px; background: var(--text-tertiary); }
@@ -1244,7 +1244,7 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
   top: 50%;
   translate: -50% -50%;
   background: conic-gradient(transparent 0 62%, color-mix(in oklch, var(--brass) 30%, transparent) 74%, var(--brass) 86%, transparent 90%);
-  animation: objectives-orbit 3.2s steps(16, end) infinite; animation-name: var(--state-motion, objectives-orbit);
+  animation: objectives-orbit 3.2s steps(16, end) infinite; animation-name: var(--state-motion, objectives-orbit); --state-motion-clock: aligned;
 }
 @keyframes objectives-orbit { to { transform: rotate(360deg); } }
 @keyframes objectives-orbit-in { from { opacity: 0; } }

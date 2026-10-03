@@ -3640,8 +3640,8 @@ describe("Instrument core design contract", () => {
     const operationFrame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
     // 상태마다 운동의 종류가 다르다. 왕복(travel)은 turn 하나만 소유한다 — 진행 위치가 옮겨
     // 간다는 사실을 말하는 형태라, 옮겨 갈 지점이 없는 나머지 상태가 빌리면 뜻이 갈라진다.
-    expect(components).toContain("animation: caption-rail-travel 3.8s ease-in-out infinite;");
-    expect(components).toContain("animation: caption-rail-flow 6.5s linear infinite;");
+    expect(components).toContain("animation: caption-rail-travel 3.8s steps(19, end) infinite;");
+    expect(components).toContain("animation: caption-rail-flow 6.5s steps(65, end) infinite;");
     expect(components).toContain("animation: caption-rail-call 2.4s steps(1, end) infinite;");
     expect(components).toContain("animation: caption-rail-tide 4.4s steps(1, end) infinite;");
     expect(components).toContain("@keyframes caption-rail-flow");
