@@ -441,7 +441,9 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
         if (isAllowedLocalMainFrame(request.url, staged.gateway)) return false
         if (sameRemoteOrigin(request.url, staged.target)) {
           view?.loadUrl(toLocalUrl(request.url, staged.gateway))
-        } else if (request.hasGesture() && isForeignHttps(request.url, staged.target)) {
+        } else if (request.hasGesture() && isForeignWeb(request.url, staged)) {
+          // Multiple windows are off, so a target=_blank link arrives here as a main-frame
+          // navigation: the Console's new-window http(s) links take this same route out.
           delegateExternally(request.url)
         }
         return true
@@ -636,8 +638,12 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     uri.encodedFragment?.let { append('#').append(it) }
   }
 
-  private fun isForeignHttps(uri: Uri, target: PersistedTarget): Boolean =
-    uri.scheme == "https" && !sameRemoteOrigin(uri, target) && uri.encodedUserInfo == null
+  /** Addresses the OS browser may open: http(s) outside both the remote Console and the local gateway. */
+  private fun isForeignWeb(uri: Uri, staged: StagedLoad): Boolean {
+    val scheme = uri.scheme?.lowercase()
+    return (scheme == "https" || scheme == "http") && !uri.host.isNullOrEmpty() && uri.encodedUserInfo == null &&
+      !sameRemoteOrigin(uri, staged.target) && !isLocalOrigin(uri, staged.gateway)
+  }
 
   private fun delegateExternally(uri: Uri) {
     val intent = Intent(Intent.ACTION_VIEW, uri).apply { addCategory(Intent.CATEGORY_BROWSABLE) }

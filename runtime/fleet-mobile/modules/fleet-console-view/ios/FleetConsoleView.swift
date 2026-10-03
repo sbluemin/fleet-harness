@@ -404,6 +404,13 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     guard let staged = contextFor(webView), let url = navigationAction.request.url else {
       decisionHandler(.cancel); return
     }
+    if navigationAction.targetFrame == nil {
+      // 새 창(target=_blank) 요청. 콘솔은 외부 링크를 모두 새 창으로 그리므로, 사용자가 누른
+      // 다른 오리진 http(s)만 OS 브라우저로 넘긴다. 새 WKWebView는 만들지 않는다.
+      decisionHandler(.cancel)
+      if navigationAction.navigationType == .linkActivated, isForeignWeb(url, staged) { delegateExternally(url) }
+      return
+    }
     let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? false
     if !isMainFrame {
       // 서브리소스: 로컬 오리진만 허용(그 외는 CSP/게이트웨이가 이미 막지만 방어적으로 취소).
@@ -415,7 +422,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       webView.load(URLRequest(url: URL(string: toLocalUrl(url, staged.gateway)) ?? url))
       return
     }
-    if navigationAction.navigationType == .linkActivated, isForeignHttps(url, staged.target) {
+    if navigationAction.navigationType == .linkActivated, isForeignWeb(url, staged) {
       decisionHandler(.cancel)
       delegateExternally(url)
       return
@@ -497,6 +504,12 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // MARK: - WKUIDelegate (deny windows/media/file)
 
   public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+    // 앵커의 새 창 요청은 decidePolicyFor에서 이미 취소되므로, 여기 닿는 것은 window.open이다.
+    // javaScriptCanOpenWindowsAutomatically가 꺼져 있어 사용자 제스처 없는 팝업은 오지 못한다.
+    // 다른 오리진 http(s)만 OS 브라우저로 넘기고, 새 WKWebView는 만들지 않는다.
+    if let staged = contextFor(webView), let url = navigationAction.request.url, isForeignWeb(url, staged) {
+      delegateExternally(url)
+    }
     return nil
   }
 
@@ -615,8 +628,10 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     return (url.port ?? 443) == target.port && url.user == nil
   }
 
-  private func isForeignHttps(_ url: URL, _ target: PersistedTarget) -> Bool {
-    url.scheme == "https" && !sameRemoteOrigin(url, target) && url.user == nil
+  /// OS 브라우저로 넘길 수 있는 주소: 원격 콘솔과 로컬 게이트웨이 오리진이 아닌 http(s).
+  private func isForeignWeb(_ url: URL, _ staged: StagedLoad) -> Bool {
+    guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http", url.host?.isEmpty == false else { return false }
+    return url.user == nil && !sameRemoteOrigin(url, staged.target) && !isLocalOrigin(url, staged.gateway)
   }
 
   private func toLocalUrl(_ url: URL, _ gateway: LoopbackGateway) -> String {
