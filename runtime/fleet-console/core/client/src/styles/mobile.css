@@ -529,6 +529,19 @@
 .mobile-tool-sheet .pane-caption-control { min-width: 44px; min-height: 44px; }
 .mobile-tool-sheet .rail-pane[hidden] { display: none; }
 
+/* 작은 시트에서는 컴포저를 본문 위에 띄우지 않는다. 모델 줄까지 별도 행으로 예약해
+   읽는 글과 겹치지 않게 하고, 입력 높이가 바뀌어도 본문 자체가 끝까지 스크롤되게 한다. */
+[data-host-surface="mobile-sheet"] .codex-reader-composer {
+  position: static;
+  flex: none;
+  background: var(--ink-deep);
+}
+[data-host-surface="mobile-sheet"] .codex-doc-scroll,
+[data-host-surface="mobile-sheet"] .codex-reading-sheet-read {
+  padding-bottom: var(--space-6);
+  scroll-padding-bottom: var(--space-4);
+}
+
 .mobile-simple-panel {
   display: grid;
   align-content: start;

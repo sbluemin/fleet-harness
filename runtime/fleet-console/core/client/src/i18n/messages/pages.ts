@@ -1032,7 +1032,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "mobile.tabs.settings": "설정",
   "mobile.tabs.tools": "도구",
   "mobile.tools.title": "도구",
-  "mobile.tools.files": "Files",
+  "mobile.tools.files": "파일",
   "mobile.tools.wiki": "위키",
   "mobile.tools.shell": "Shell",
   "mobile.tools.chooseTheater": "Theater를 고르면 도구를 열 수 있습니다.",

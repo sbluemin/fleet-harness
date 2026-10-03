@@ -497,7 +497,7 @@ function PaneHost({
           focused={focused}
           actions={descriptor.captionActions?.(ctx) as ReactNode}
           {...(canExpand ? { onExpand: handleExpand } : {})}
-          onClose={handleClose}
+          {...(!singlePane ? { onClose: handleClose } : {})}
         />
       ) : null}
       <div className="rail-pane-body" ref={bodyRef} aria-labelledby={hasCaption ? `pane-caption-${descriptor.id}` : undefined}>

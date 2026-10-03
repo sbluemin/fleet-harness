@@ -418,6 +418,14 @@
   background: var(--surface-panel);
 }
 
+/* 터치 동작이 44px로 커져도 본문 위로 넘치지 않도록 호스트 머리 행도 함께 확보한다. */
+@media (pointer: coarse) {
+  .pane-caption {
+    height: auto;
+    min-height: 44px;
+  }
+}
+
 .pane-caption-title {
   flex: 1 1 auto;
   min-width: 0;

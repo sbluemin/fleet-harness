@@ -277,7 +277,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // 실제 보정에 반영된 줌(=settle된 zoom). zoom prop은 보간 중 매 프레임 바뀌므로 디바운스로 이 값에 수렴시킨다.
   // 초기값을 zoom으로 두어 이미 확대된 패널이 마운트될 때 첫 렌더부터 올바른 스타일을 갖게 한다.
   const [appliedZoom, setAppliedZoom] = useState(zoom);
-  // 터치도 사용자가 정한 글꼴 크기(기본 14px)에서 시작한다. 핀치 배율은 이 표면에만 적용하며
+  // 터치도 사용자가 설정한 글꼴 크기에서 시작한다. 핀치 배율은 이 표면에만 적용하며
   // 서버 설정을 덮어쓰거나 다른 터미널의 크기를 바꾸지 않는다.
   const [touchFontScale, setTouchFontScale] = useState(1);
   const touchFontScaleRef = useRef(touchFontScale);
