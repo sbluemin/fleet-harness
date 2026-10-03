@@ -2,7 +2,7 @@ import type { AgentHost } from "@fleet-console/sdk/agent";
 import type { ConsoleOperationObservation, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
-import { inboxReasons, STALL_MS, stalledObjectives, type InboxReason } from "../board-state.js";
+import { inboxReasons, STALL_MS, stalledObjectives } from "../board-state.js";
 import type { Objective, ObjectiveEvent } from "../types.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
@@ -67,7 +67,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 만 누적이다.
  */
-export type WakeCode = "patrol" | "directive" | "intel" | "message" | "board" | "decision" | "review" | "criteria" | "pending" | "followup" | "followup-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated";
+export type WakeCode = "patrol" | "directive" | "intel" | "message" | "board" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated";
 
 interface PendingReason {
   count?: number;
@@ -92,6 +92,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "review": return `inbox: ${n} awaiting review`;
     case "criteria": return `inbox: ${plural("criteria proposal")}`;
     case "pending": return `inbox: ${plural("objective")} not commenced`;
+    case "planned": return `inbox: ${plural("objective")} ${n === 1 ? "has" : "have"} a lineup ready to commence`;
     case "followup": return `inbox: ${plural("open follow-up candidate")}`;
     case "followup-failed": return `inbox: ${plural("failed or unconfirmed follow-up creation")}`;
     case "stalled": return `${plural("stalled objective")}${tail}`;
@@ -411,9 +412,10 @@ function signatureOf(objectives: readonly Objective[]): string {
 
 /** 사람 전용으로 남은 대기 상태의 수 — 지금 그 이유를 가진 목표 수(절대값). 없으면 빈 목록이다. */
 function inboxDigest(objectives: readonly Objective[]): readonly [WakeCode, number][] {
-  const counts = new Map<InboxReason, number>();
-  for (const objective of objectives) for (const reason of inboxReasons(objective)) counts.set(reason, (counts.get(reason) ?? 0) + 1);
-  return (["decision", "criteria", "review", "followup", "followup-failed", "pending"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
+  // 보드가 아는 이유 코드는 깨움 코드와 이름이 같다 — 보드가 새 이유를 더하면 여기 순서에 넣는다.
+  const counts = new Map<string, number>();
+  for (const objective of objectives) for (const reason of inboxReasons(objective) as readonly string[]) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  return (["decision", "criteria", "review", "followup", "followup-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
 }
 
 /** 모델 문맥 — `[1m]` 별칭은 1M, 그 밖은 200k 로 본다(교대 판단에만 쓴다). */
