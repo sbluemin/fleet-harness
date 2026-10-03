@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from "react";
+import type { FileReadWindow } from "../server/types.js";
 
 export type ViewState =
   | { kind: "none" }
   | { kind: "loading" }
-  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number; mtimeMs?: number; stale?: boolean }
-  | { kind: "image"; relativePath: string; name: string; src: string; mtimeMs?: number; sizeBytes?: number; stale?: boolean }
+  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number; mtimeMs?: number; stale?: boolean; diskStatus?: "changed" | "deleted"; window?: FileReadWindow; migratedWikiEntryId?: string }
+  | { kind: "image"; relativePath: string; name: string; src: string; mtimeMs?: number; sizeBytes?: number; stale?: boolean; diskStatus?: "changed" | "deleted" }
   | { kind: "binary"; name: string }
   | { kind: "error"; message: string };
 
@@ -12,6 +13,8 @@ export type ViewState =
 export interface OpenDocument {
   readonly relativePath: string;
   readonly name: string;
+  /** 단일 클릭 탐색용 슬롯 — 다음 미리보기가 대체하며, 고정된 문서는 여기에 들지 않는다. */
+  readonly preview?: boolean;
 }
 
 export interface DocSession {
@@ -26,6 +29,7 @@ export interface FileRevealTarget {
   readonly relativePath: string;
   readonly requestId: string;
   readonly kind?: "file" | "dir";
+  readonly keepFilter?: boolean;
   readonly lineNumber?: number;
   readonly column?: number;
   readonly anchor?: string;
@@ -36,6 +40,7 @@ interface TheaterViewState extends DocSession {
   readonly selectedPath: string | null;
   readonly revealTarget: FileRevealTarget | null;
   readonly documentPaneOpen: boolean;
+  readonly discardedTabs: { readonly id: string; readonly count: number } | null;
   /** 경로별 뷰 내용 캐시 — 칩 전환을 즉시 그리기 위한 메모리 전용 상태. */
   readonly docStates: ReadonlyMap<string, ViewState>;
 }
@@ -63,6 +68,7 @@ const DEFAULT_THEATER_STATE: TheaterViewState = {
   selectedPath: null,
   revealTarget: null,
   documentPaneOpen: false,
+  discardedTabs: null,
   docStates: new Map(),
 };
 
@@ -75,6 +81,21 @@ const DEFAULT_SERVER_SNAPSHOT: FileExplorerViewState = {
 const theaterStateMap = new Map<string, TheaterViewState>();
 const snapshotMap = new Map<string, FileExplorerViewState>();
 const listeners = new Set<Listener>();
+/** 문서 범위 읽기의 늦은 응답이 더 최근 범위를 덮지 않게 하는 메모리 전용 세대. */
+const documentLoads = new Map<string, Map<string, symbol>>();
+
+export function beginDocumentLoad(theaterId: string, path: string): symbol {
+  const request = Symbol();
+  const loads = documentLoads.get(theaterId) ?? new Map<string, symbol>();
+  for (const key of loads.keys()) if (!getOrDefault(theaterId).openDocs.some((doc) => doc.relativePath === key)) loads.delete(key);
+  loads.set(path, request);
+  documentLoads.set(theaterId, loads);
+  return request;
+}
+
+export function isCurrentDocumentLoad(theaterId: string, path: string, request: symbol): boolean {
+  return documentLoads.get(theaterId)?.get(path) === request && getOrDefault(theaterId).openDocs.some((doc) => doc.relativePath === path);
+}
 let wrapLines = false;
 let navigationError: FileExplorerViewState["navigationError"] = null;
 
@@ -115,14 +136,25 @@ export function setSelectedPath(theaterId: string | null, selectedPath: string |
 // ═══ 다중 열림 문서 세션 ═══════════════════════════════════════════════════════
 
 /** 순수 전이: 문서 활성화 — 칩이 없으면 만들고, 이력의 앞쪽 가지를 잘라 끝에 쌓는다. */
-export function activateDocument(session: DocSession, doc: OpenDocument): DocSession {
-  const openDocs = session.openDocs.some((d) => d.relativePath === doc.relativePath)
-    ? session.openDocs
-    : [...session.openDocs, doc].slice(-SESSION_OPEN_DOC_CAP);
-  if (session.activePath === doc.relativePath) return { ...session, openDocs };
-  const kept = session.history.slice(0, session.historyIndex + 1);
+function planDocumentActivation(session: DocSession, doc: OpenDocument): { readonly session: DocSession; readonly discarded: readonly OpenDocument[] } {
+  const existing = session.openDocs.find((item) => item.relativePath === doc.relativePath);
+  let candidates: readonly OpenDocument[];
+  if (existing) {
+    candidates = session.openDocs.map((item) => item.relativePath === doc.relativePath && !doc.preview ? { ...item, preview: false } : item);
+  } else {
+    // 고정 탭을 고른 것은 미리보기 슬롯을 지우지 않는다. 새 미리보기만 이전 미리보기를 대체한다.
+    candidates = [...session.openDocs.filter((item) => !doc.preview || !item.preview), doc];
+  }
+  const discarded = candidates.slice(0, Math.max(0, candidates.length - SESSION_OPEN_DOC_CAP));
+  const openDocs = candidates.slice(-SESSION_OPEN_DOC_CAP);
+  const openPaths = new Set(openDocs.map((item) => item.relativePath));
+  const kept = session.history.slice(0, session.historyIndex + 1).filter((path) => openPaths.has(path));
   const history = kept.at(-1) === doc.relativePath ? kept : [...kept, doc.relativePath];
-  return { openDocs, activePath: doc.relativePath, history, historyIndex: history.length - 1 };
+  return { session: { openDocs, activePath: doc.relativePath, history, historyIndex: history.length - 1 }, discarded };
+}
+
+export function activateDocument(session: DocSession, doc: OpenDocument): DocSession {
+  return planDocumentActivation(session, doc).session;
 }
 
 /** 순수 전이: 이력 이동 — 닫힌 문서는 건너뛴다. */
@@ -159,13 +191,31 @@ export function closeDocument(session: DocSession, relativePath: string): DocSes
   return { openDocs, activePath, history: collapsed, historyIndex };
 }
 
-export function activateStoredDocument(theaterId: string | null, doc: OpenDocument, location: Partial<Pick<FileRevealTarget, "requestId" | "lineNumber" | "column" | "anchor" | "ranges">> = {}): void {
+export function activateStoredDocument(theaterId: string | null, doc: OpenDocument, location: Partial<Pick<FileRevealTarget, "requestId" | "lineNumber" | "column" | "anchor" | "ranges" | "keepFilter">> = {}): void {
   if (!theaterId) return;
   const current = getOrDefault(theaterId);
-  const next = activateDocument(current, doc);
+  const { session: next, discarded } = planDocumentActivation(current, doc);
+  const keptPaths = new Set(next.openDocs.map((item) => item.relativePath));
+  const docStates = new Map([...current.docStates].filter(([path]) => keptPaths.has(path)));
+  const loads = documentLoads.get(theaterId);
+  for (const path of loads?.keys() ?? []) if (!keptPaths.has(path)) loads?.delete(path);
+  const discardedTabs = discarded.length > 0 ? { id: crypto.randomUUID(), count: discarded.length + (current.discardedTabs?.count ?? 0) } : current.discardedTabs;
   const revealTarget: FileRevealTarget = { theaterId, relativePath: doc.relativePath, ...location, requestId: location.requestId ?? crypto.randomUUID() };
-  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, revealTarget, documentPaneOpen: true });
+  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, revealTarget, documentPaneOpen: true, docStates, discardedTabs });
   persistDocSession(theaterId, next);
+}
+
+export function pinStoredDocument(theaterId: string | null, path: string): void {
+  if (!theaterId) return;
+  const current = getOrDefault(theaterId);
+  if (!current.openDocs.some((doc) => doc.relativePath === path && doc.preview)) return;
+  const next = { ...current, openDocs: current.openDocs.map((doc) => doc.relativePath === path ? { ...doc, preview: false } : doc) };
+  patchTheaterState(theaterId, { openDocs: next.openDocs });
+  persistDocSession(theaterId, next);
+}
+
+export function dismissDiscardedTabs(theaterId: string, id: string): void {
+  if (getOrDefault(theaterId).discardedTabs?.id === id) patchTheaterState(theaterId, { discardedTabs: null });
 }
 
 export function navigateStoredHistory(theaterId: string | null, delta: -1 | 1): void {
@@ -183,6 +233,7 @@ export function closeStoredDocument(theaterId: string | null, relativePath: stri
   const next = closeDocument(current, relativePath);
   const docStates = new Map(current.docStates);
   docStates.delete(relativePath);
+  documentLoads.get(theaterId)?.delete(relativePath);
   patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, docStates, ...(next.openDocs.length === 0 ? { documentPaneOpen: false, revealTarget: null } : {}) });
   persistDocSession(theaterId, next);
 }
@@ -197,14 +248,15 @@ export function setDocViewState(theaterId: string | null, relativePath: string, 
   patchTheaterState(theaterId, { docStates });
 }
 
-export function markDocStale(theaterId: string | null, relativePath: string, stale: boolean): void {
+export function markDocStale(theaterId: string | null, relativePath: string, stale: boolean, diskStatus: "changed" | "deleted" = "changed"): void {
   if (!theaterId) return;
   const current = getOrDefault(theaterId);
   const viewState = current.docStates.get(relativePath);
   if (!viewState || (viewState.kind !== "code" && viewState.kind !== "image")) return;
-  if (Boolean(viewState.stale) === stale) return;
+  const status = stale ? diskStatus : undefined;
+  if (Boolean(viewState.stale) === stale && viewState.diskStatus === status) return;
   const docStates = new Map(current.docStates);
-  docStates.set(relativePath, { ...viewState, stale });
+  docStates.set(relativePath, { ...viewState, stale, diskStatus: status });
   patchTheaterState(theaterId, { docStates });
 }
 
@@ -273,6 +325,7 @@ function getSnapshot(theaterId: string | null): FileExplorerViewState {
     && prev.wrapLines === wrapLines
     && prev.revealTarget === base.revealTarget
     && prev.documentPaneOpen === base.documentPaneOpen
+    && prev.discardedTabs === base.discardedTabs
     && prev.navigationError === navigationError
   ) {
     return prev;
@@ -328,7 +381,12 @@ function readDocSession(theaterId: string): (DocSession & { readonly documentPan
         typeof d === "object" && d !== null
         && typeof (d as OpenDocument).relativePath === "string"
         && typeof (d as OpenDocument).name === "string")
-      .slice(0, SESSION_OPEN_DOC_CAP);
+      .slice(0, SESSION_OPEN_DOC_CAP)
+      .map((doc) => ({ relativePath: doc.relativePath, name: doc.name, preview: doc.preview === true }));
+    const previewIndex = openDocs.findIndex((doc) => doc.preview);
+    for (let index = previewIndex + 1; index < openDocs.length; index++) {
+      if (index >= 0 && openDocs[index]?.preview) openDocs[index] = { ...openDocs[index]!, preview: false };
+    }
     if (openDocs.length === 0) return null;
     const activePath = typeof parsed.activePath === "string"
       && openDocs.some((d) => d.relativePath === parsed.activePath)
