@@ -25,7 +25,8 @@ describe("Cowork MCP runtime", () => {
   });
 
   it("preserves draft and session when the Wiki base has gone stale", async () => {
-    const { service, store, paths } = await fixture();
+    const connector = new FakeConnector();
+    const { service, store, paths } = await fixture(connector);
     await writeWikiEntry({ ...entry(), body: "Original\nStable" }, paths);
     const session = await service.create("workspace", "entry");
     const changedDraft = draft({ body: "Cowork draft\nStable", version: 1 });
@@ -39,6 +40,15 @@ describe("Cowork MCP runtime", () => {
     await expect(service.rebase("workspace", session.id, 1)).rejects.toThrow("cowork_reapply_conflict");
     expect(await store.draftPort("workspace", session.id).read()).toEqual({ body: changedDraft, revision: 1 });
     expect((await service.get("workspace", session.id))?.state).toBe("idle");
+
+    // 바깥에서 메타데이터가 깨져도 실행 잠금과 코멘트 손실 없이 낡음으로 알린다.
+    const annotations = [{ id: "a1", quote: "Stable", comment: "코멘트 보존" }];
+    await service.annotations("workspace", session.id, annotations);
+    await writeFile(join(paths.root, "wiki/entry.md"), "---\nid: entry\ntitle: Broken\n---\nExternal", "utf8");
+    await expect(service.prompt("workspace", session.id, "Review")).rejects.toThrow("cowork_entry_unavailable");
+    expect(await service.describe((await service.get("workspace", session.id))!)).toMatchObject({ state: "idle", draft: changedDraft, revision: 1, annotations, freshness: { stale: true, currentVersion: null } });
+    expect(connector.connected).toHaveLength(0);
+    expect(await store.transcript("workspace", session.id)).toEqual([]);
 
     await writeWikiEntry({ ...entry(), body: "Original\nServer", version: 2 }, paths);
     const rebased = await service.rebase("workspace", session.id, 1);
