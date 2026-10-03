@@ -9,7 +9,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
 import { SettingsSlider, SettingsToggle } from "@fleet-console/sdk/settings/browser";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 export { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 
@@ -20,7 +20,7 @@ import { renderMessage, useT, type CoreMessageKey } from "../../../core/client/s
 import { setActiveTheme, setUnfocusedPanelFade } from "../../../core/client/src/integration/store.js";
 import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
 import { ExperimentsSection } from "./experiments-section.js";
-import { isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
+import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
 
 interface LanguageOption {
@@ -338,15 +338,33 @@ export function ThemeCard({
     setDraftPanelFade(next);
     setUnfocusedPanelFade(next);
   };
-  const commitPanelFade = (next: number) => {
-    if (next === savedPanelFade) {
-      setDraftPanelFade(null);
+  // 슬라이더는 저장 중에도 켜 둔다 — 끄면 키보드 포커스가 빠져 방향키 한 번마다 Tab으로 다시 들어가야
+  // 한다. 전역 설정 스토어는 같은 필드의 겹친 저장을 거절(false)하므로, 도는 저장이 있으면 마지막 값만
+  // 맡겨 두었다가 그 저장이 끝나는 대로 이어 보낸다. 마지막 값이 이긴다.
+  const pendingPanelFadeRef = useRef<number | null>(null);
+  const savePanelFade = (next: number) => {
+    if (isSavingGlobalSettingsField("unfocusedPanelFade")) {
+      pendingPanelFadeRef.current = next;
       return;
     }
     void setGlobalSettingsField("unfocusedPanelFade", next).then((saved) => {
+      const pending = pendingPanelFadeRef.current;
+      pendingPanelFadeRef.current = null;
+      if (pending !== null && pending !== next) {
+        savePanelFade(pending);
+        return;
+      }
       setDraftPanelFade(null);
-      if (!saved) setUnfocusedPanelFade(savedPanelFade);
+      // 실패하면 스토어가 이 필드를 직전 값으로 되감는다 — 화면도 그 값으로 맞춘다.
+      if (!saved) setUnfocusedPanelFade(getGlobalSettingsStoreState().state?.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT);
     });
+  };
+  const commitPanelFade = (next: number) => {
+    if (next === savedPanelFade && !isSavingGlobalSettingsField("unfocusedPanelFade")) {
+      setDraftPanelFade(null);
+      return;
+    }
+    savePanelFade(next);
   };
   return (
     <section className="global-settings-card appearance-card" aria-label={t("settings.theme.aria")}>
@@ -407,7 +425,7 @@ export function ThemeCard({
               min={UNFOCUSED_PANEL_FADE_MIN}
               max={UNFOCUSED_PANEL_FADE_MAX}
               step={5}
-              disabled={saving.has("unfocusedPanelFade") || state === null}
+              disabled={state === null}
               label={t("settings.theme.panelFade")}
               formatValue={(value) => `${value}%`}
               onPreview={previewPanelFade}
