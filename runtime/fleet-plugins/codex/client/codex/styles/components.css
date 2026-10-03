@@ -9,6 +9,7 @@
 .queue-row-top { flex-wrap: wrap; }
 .queue-row.conflict-row { grid-template-columns: minmax(0, 1fr); }
 .conflict-row .queue-row-target { white-space: normal; overflow-wrap: anywhere; word-break: keep-all; }
+.conflict-comparison-region { container-type: inline-size; container-name: codex-conflict-comparison; }
 .conflict-comparison { display: grid; gap: var(--space-3); }
 .conflict-panel-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
 .conflict-panel-tabs button { flex: 1; padding: var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
@@ -18,17 +19,18 @@
 .conflict-compare-panel > h2 { margin: 0 0 var(--space-2); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium); letter-spacing: 0.08em; color: var(--text-secondary); }
 .conflict-comparison .conflict-compare-panel { display: none; }
 .conflict-comparison[data-active-panel="base"] [data-conflict-panel="base"], .conflict-comparison[data-active-panel="current"] [data-conflict-panel="current"], .conflict-comparison[data-active-panel="proposed"] [data-conflict-panel="proposed"] { display: block; }
+/* 충돌 비교는 정독 목차와 읽기 measure가 아닌 시트의 가용 폭을 쓴다. */
+.codex-reading-body[data-conflict-comparison="true"] .codex-reading-sheet-body { grid-template-columns: minmax(0, 1fr); }
+.codex-reading-body[data-conflict-comparison="true"] .codex-reading-sheet-toc { display: none; }
+.codex-reading-body[data-conflict-comparison="true"] .codex-reading-sheet-read { --codex-reader-gutter-x: var(--space-4); padding-inline: var(--codex-reader-gutter-x); }
 .codex-reading-body .codex-reading-sheet-read > .codex-reader-host > .document--conflict > :not(.queue-decision-dock) { max-inline-size: none; }
-@container codex-reader (min-width: 900px) {
-  .document--conflict .conflict-panel-tabs { display: none; }
-  .document--conflict .conflict-comparison { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .document--conflict .conflict-comparison .conflict-compare-panel { display: block; }
+/* 판 테두리 기준 240px × 3와 두 간격(12px)이 실제 비교 영역에 들어갈 때만 나란히 놓는다. */
+@container codex-conflict-comparison (min-width: 744px) {
+  .conflict-panel-tabs { display: none; }
+  .conflict-comparison { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .conflict-comparison .conflict-compare-panel { display: block; }
 }
-@container codex-reading-slot (min-width: 600px) {
-  .codex-reading-body .conflict-panel-tabs { display: none; }
-  .codex-reading-body .conflict-comparison { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .codex-reading-body .conflict-comparison .conflict-compare-panel { display: block; }
-}
+.document--conflict .conflict-compare-panel .markdown-body :is(h1, h2, h3, h4, h5, h6) { font-size: var(--t-sm); line-height: 1.4; margin-block: var(--space-3) var(--space-2); }
 .conflict-compare-panel pre { max-height: 320px; overflow: auto; }
 .conflict-base-warning { color: var(--warn-ink); font-size: var(--t-sm); }
 .conflict-resolved { color: var(--positive-ink); font-size: var(--t-sm); }

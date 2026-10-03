@@ -1579,7 +1579,7 @@ function renderConflictComparison(detail: ConflictDetailResponse, t: T): string 
   const panels = `${tabs}<div class="conflict-comparison" data-active-panel="base">${panel(t("codex.reading.conflictBase"), detail.base, "base")}${panel(t("codex.reading.current"), detail.current, "current")}${panel(t("codex.reading.proposed"), detail.proposed, "proposed")}</div>`;
   const diff = detail.current && detail.proposed ? `<details class="conflict-diff"><summary>${escapeHtml(t("codex.cowork.viewDiff"))}</summary>${renderDiffBlocks(diffDraftBlocks(body(detail.current), body(detail.proposed)), "full")}</details>` : "";
   const historical = !detail.current && detail.currentAtConflict ? `<details><summary>${escapeHtml(t("codex.reading.conflictCaptured"))}</summary>${panel(t("codex.reading.conflictCaptured"), detail.currentAtConflict)}</details>` : "";
-  return panels + diff + historical;
+  return `<div class="conflict-comparison-region">${panels}</div>` + diff + historical;
 }
 
 function copyCodeToClipboard(button: HTMLElement, code: string): void {
