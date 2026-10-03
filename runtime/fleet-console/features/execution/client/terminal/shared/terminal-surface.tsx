@@ -272,6 +272,12 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   const [status, setStatus] = useState<{ readonly kind: TerminalConnectionStatus; readonly code?: string }>({ kind: "connecting" });
   // 서버가 등급을 잠갔으면 되찾기를 제안하지 않는다 — 눌러도 다시 관전으로 돌아오는 버튼은 거짓이다.
   const [controlLocked, setControlLocked] = useState(false);
+  const [copiedAt, setCopiedAt] = useState(0);
+  useEffect(() => {
+    if (copiedAt === 0) return;
+    const timer = window.setTimeout(() => setCopiedAt(0), 1_200);
+    return () => window.clearTimeout(timer);
+  }, [copiedAt]);
   // 마운트 effect는 심볼 폰트 선대기 등 await 뒤에 ticket 연결을 만들고 테마 변경에 재실행되지 않으므로,
   // 최신 극성은 ref로 읽는다(activeRef와 같은 이유) — 대기 중 테마가 바뀌어도 첫 ticket이 현재 극성을 싣는다.
   const colorSchemeRef = useRef(terminalPolarityFor(activeTheme));
@@ -395,6 +401,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         selectionTarget: container,
         windowTarget: window,
         clipboard: navigator.clipboard,
+        onCopied: () => setCopiedAt(Date.now()),
       });
       // 전체 화면 TUI(agent CLI 등)가 마우스 트래킹을 켜면 xterm은 드래그를 애플리케이션에 넘기고 자체
       // 선택을 끈다. 그때부터 선택 하이라이트도 복사도 애플리케이션이 수행하며, 복사 결과는 OSC 52로만
@@ -817,6 +824,11 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
                 {t("terminal.viewer.takeBack")}
               </button>
             )}
+          </div>
+        ) : null}
+        {copiedAt !== 0 && !isViewing ? (
+          <div className="terminal-viewer-badge" role="status">
+            <span className="terminal-viewer-badge-text">{t("terminal.selection.copied")}</span>
           </div>
         ) : null}
         <div className="terminal-viewport">

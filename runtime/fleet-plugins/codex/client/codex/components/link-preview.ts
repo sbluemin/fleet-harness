@@ -1,3 +1,4 @@
+import { entryStatusLabel } from "./meta-chips.js";
 import { getT } from "../../i18n/index.js";
 import { fetchEntry } from "../api.js";
 import { escapeHtml } from "../utils.js";
@@ -88,7 +89,7 @@ export function installEntryLinkPreview(
     try {
       const entry = await fetchEntry(getTheaterId(), id);
       const metaParts = [
-        entry.frontmatter.status ?? "current",
+        entryStatusLabel(entry.frontmatter.status ?? "current"),
         `v${entry.frontmatter.version}`,
         entry.frontmatter.tags.slice(0, 3).join(" · "),
       ].filter(Boolean);

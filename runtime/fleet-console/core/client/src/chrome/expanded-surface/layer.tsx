@@ -352,8 +352,8 @@ function SurfacePane({
           {descriptor?.ownsClose ? null : <button
             className="expanded-surface-pane-close"
             type="button"
-            aria-label={t("chrome.expandedSurface.closeAria")}
-            title={t("chrome.expandedSurface.closeAria")}
+            aria-label={t("chrome.expandedSurface.closeAria", { title })}
+            title={t("chrome.expandedSurface.closeAria", { title })}
             onClick={() => closeExpandedSurface(instance.instanceId)}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">

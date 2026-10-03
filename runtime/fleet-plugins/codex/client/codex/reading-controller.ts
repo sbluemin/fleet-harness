@@ -1214,9 +1214,16 @@ function renderDecidedState(meta: DrydockMeta): string {
   return `<p class="queue-decision-decided ${cls}">${escapeHtml(label)}${reason}</p>`;
 }
 
+function conflictStatusLabel(status: string | undefined, t: T): string {
+  if (status === "resolved") return t("codex.reading.conflictResolved");
+  if (status === "unresolved") return t("codex.reading.conflictUnresolved");
+  if (!status || status === "open") return t("codex.reading.conflictOpen");
+  return status;
+}
+
 function renderConflictDetail(detail: ConflictDetailResponse): string {
   const t = consoleT();
-  const status = (detail.meta?.status as string | undefined) ?? t("codex.reading.conflictOpen");
+  const status = conflictStatusLabel(detail.meta?.status as string | undefined, t);
   return `
     <article class="document">
       <header class="document-header">
@@ -1290,7 +1297,7 @@ function renderConflictList(conflicts: ConflictListItem[]): string {
                   <button class="queue-row conflict-row" type="button" data-conflict-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("codex.reading.openConflict", { title: item.title || item.id }))}">
                     <span class="queue-row-body">
                       <strong class="queue-row-target">${escapeHtml(item.title || item.id)}</strong>
-                      <span class="eyebrow">${escapeHtml(item.status)}</span>
+                      <span class="eyebrow">${escapeHtml(conflictStatusLabel(item.status, t))}</span>
                     </span>
                   </button>
                 </li>`,
