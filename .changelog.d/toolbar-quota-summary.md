@@ -4,8 +4,8 @@ branch: toolbar-quota-summary
 
 ### fleet-console
 #### Added
-- Keep your most urgent usage limit in view from the toolbar: turn on the summary in Usage limits settings or at the bottom of the Usage limits panel, and click it to open the panel.
-  ko: 가장 급한 사용 한도를 도구모음에서 늘 볼 수 있습니다. 사용 한도 설정이나 사용 한도 패널 아래쪽에서 요약을 켜고, 누르면 패널이 열립니다.
+- Keep usage limits in view from the toolbar: pick the providers to show in Usage limits settings or at the bottom of the Usage limits panel, and click the summary to open the panel.
+  ko: 사용 한도를 도구모음에서 늘 볼 수 있습니다. 사용 한도 설정이나 사용 한도 패널 아래쪽에서 표시할 공급자를 고르고, 요약을 누르면 패널이 열립니다.
 
 #### Changed
 - The toolbar now reads as plugin tools, system tools with Settings at the end, and a Bridge group for the usage summary and aides that stays visible when the toolbar is collapsed.

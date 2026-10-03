@@ -19,7 +19,7 @@ export interface QuotaSummarySnapshot {
   readonly order: readonly ProviderId[];
   /** 마지막으로 읽은 시각(ms). 0이면 아직 읽지 않았다. */
   readonly checkedAt: number;
-  /** 레일 패널이 지금 서 있는가 — 서 있으면 폴링은 패널 몫이고, 요약은 켜짐 표식을 단다. */
+  /** 레일 패널이 지금 서 있는가 — 서 있으면 폴링은 패널 몫이고, 요약은 aria-pressed로 열림을 알린다. */
   readonly panelOpen: boolean;
 }
 
