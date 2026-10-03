@@ -76,11 +76,11 @@ describe("commodore theater state", () => {
     expect(added.value.state!.intel).toMatchObject([{ source: "person", text: "Pairing fails after sleep." }, { source: "person", text: "Users report dropped remote sessions." }]);
     expect((await h.route("commodore/intel/remove", { theaterId: "t1", intelId: "nope" })).status).toBe(404);
     expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "sonnet", effort: null })).status).toBe(400);
-    expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "sonnet", effort: "low" })).value.state).toMatchObject({ model: "sonnet", effort: "low" });
+    expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet", effort: "xhigh" });
 
     // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽고, 실험 기능이 꺼지면 플래그만 꺼진다(저장값은 남는다).
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, unknown>;
-    expect(saved).toMatchObject({ autonomy: true, directive: { rev: 1 }, model: "sonnet" });
+    expect(saved).toMatchObject({ autonomy: true, directive: { rev: 1 }, model: "sonnet", effort: "xhigh" });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")).toEqual(h.store.read("t1"));
     // 재시작 복원은 등록된 Theater 를 훑는다 — 읽을 수 없는 Theater 는 빠지고 던지지 않는다.
     expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), theaterIds: () => ["t1", "gone"], emit: () => undefined }).autonomousTheaters()).toEqual(["t1"]);

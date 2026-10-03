@@ -2,12 +2,12 @@ import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
-import { DEFAULT_EXPERIMENT_SETTINGS, EXPERIMENT_EFFORTS, experimentAideSelection, isExperimentModelId, type ExperimentAideSelection } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, isExperimentModelId, type ExperimentAideSelection } from "@fleet-console/sdk/settings";
 import { z } from "zod";
 
 import { ObjectiveStoreError } from "../store.js";
 import type { CommodoreStore } from "./store.js";
-import { commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
+import { COMMODORE_EFFORTS, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
 
 /**
  * 「사령관 기록」 서랍이 부르는 라우트 — 전부 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
@@ -93,7 +93,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     { name: "commodore/intel/add", method: "POST", summary: "Add an intel item from the person to a Theater's Commodore.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_INTEL_TEXT) }).strict(), ({ theaterId, text }) => { read(theaterId); const { state, item } = store.addIntel(theaterId, { text, source: "person" }); return { ...view(theaterId, state), item }; }) },
     { name: "commodore/intel/remove", method: "POST", summary: "Remove an intel item from a Theater's Commodore.", handler: json(theaterRef.extend({ intelId: ids }).strict(), ({ theaterId, intelId }) => { read(theaterId); return view(theaterId, store.removeIntel(theaterId, intelId)); }) },
     { name: "commodore/sources", method: "POST", summary: "Replace the list of intel sources the Commodore reads on patrol.", handler: json(theaterRef.extend({ sources: z.array(commodoreSourceSchema.omit({ id: true })).max(MAX_SOURCES) }).strict(), ({ theaterId, sources }) => { read(theaterId); return view(theaterId, store.setSources(theaterId, sources)); }) },
-    { name: "commodore/coordinates", method: "POST", summary: "Set or clear a Theater's Commodore model and effort; cleared falls back to the experiment defaults. Applies from the next turn.", handler: json(theaterRef.extend({ model: z.string().refine(isExperimentModelId).nullable(), effort: z.enum(EXPERIMENT_EFFORTS).nullable() }).strict(), ({ theaterId, model, effort }) => {
+    { name: "commodore/coordinates", method: "POST", summary: "Set or clear a Theater's Commodore model and effort; cleared falls back to the experiment defaults. Applies from the next turn.", handler: json(theaterRef.extend({ model: z.string().refine(isExperimentModelId).nullable(), effort: z.enum(COMMODORE_EFFORTS).nullable() }).strict(), ({ theaterId, model, effort }) => {
       read(theaterId);
       if ((model === null) !== (effort === null)) throw new ObjectiveStoreError("invalid_request");
       return view(theaterId, store.setCoordinates(theaterId, model !== null && effort !== null ? { model, effort } : null));

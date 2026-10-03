@@ -1,4 +1,5 @@
-import { EXPERIMENT_EFFORTS, isExperimentModelId, type ExperimentEffort } from "@fleet-console/sdk/settings";
+import type { AgentEffort } from "@fleet-console/sdk/agent";
+import { isExperimentModelId } from "@fleet-console/sdk/settings";
 import { z } from "zod";
 
 /**
@@ -26,7 +27,9 @@ export const MAX_TRANSCRIPT_PAGE = 500;
 export const MAX_TRANSCRIPT_TEXT = 16_000;
 
 const ids = z.string().min(1).max(128);
-const effort = z.enum(EXPERIMENT_EFFORTS);
+/** Theater 별 강도는 세션이 받는 사다리 전체다 — 지휘관 LaunchControl 의 강도 트랙과 같다. 실험 기능 행의 기본값은 3단으로 남는다. */
+export const COMMODORE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const satisfies readonly AgentEffort[];
+const effort = z.enum(COMMODORE_EFFORTS);
 const modelId = z.string().refine(isExperimentModelId, "invalid_model");
 
 export const commodoreSourceSchema = z.object({
@@ -100,7 +103,7 @@ export const EMPTY_COMMODORE_STATE: CommodoreState = Object.freeze({
 /** Theater 별 좌표 — null 은 실험 기능 기본값으로 되돌린다는 뜻이다. */
 export interface CommodoreCoordinates {
   readonly model: string;
-  readonly effort: ExperimentEffort;
+  readonly effort: AgentEffort;
 }
 
 /**
