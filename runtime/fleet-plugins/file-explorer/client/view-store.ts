@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from "react";
+import type { FileReadWindow } from "../server/types.js";
 
 export type ViewState =
   | { kind: "none" }
   | { kind: "loading" }
-  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number; mtimeMs?: number; stale?: boolean }
-  | { kind: "image"; relativePath: string; name: string; src: string; mtimeMs?: number; sizeBytes?: number; stale?: boolean }
+  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number; mtimeMs?: number; stale?: boolean; diskStatus?: "changed" | "deleted"; window?: FileReadWindow }
+  | { kind: "image"; relativePath: string; name: string; src: string; mtimeMs?: number; sizeBytes?: number; stale?: boolean; diskStatus?: "changed" | "deleted" }
   | { kind: "binary"; name: string }
   | { kind: "error"; message: string };
 
@@ -75,6 +76,21 @@ const DEFAULT_SERVER_SNAPSHOT: FileExplorerViewState = {
 const theaterStateMap = new Map<string, TheaterViewState>();
 const snapshotMap = new Map<string, FileExplorerViewState>();
 const listeners = new Set<Listener>();
+/** 문서 범위 읽기의 늦은 응답이 더 최근 범위를 덮지 않게 하는 메모리 전용 세대. */
+const documentLoads = new Map<string, Map<string, symbol>>();
+
+export function beginDocumentLoad(theaterId: string, path: string): symbol {
+  const request = Symbol();
+  const loads = documentLoads.get(theaterId) ?? new Map<string, symbol>();
+  for (const key of loads.keys()) if (!getOrDefault(theaterId).openDocs.some((doc) => doc.relativePath === key)) loads.delete(key);
+  loads.set(path, request);
+  documentLoads.set(theaterId, loads);
+  return request;
+}
+
+export function isCurrentDocumentLoad(theaterId: string, path: string, request: symbol): boolean {
+  return documentLoads.get(theaterId)?.get(path) === request && getOrDefault(theaterId).openDocs.some((doc) => doc.relativePath === path);
+}
 let wrapLines = false;
 let navigationError: FileExplorerViewState["navigationError"] = null;
 
@@ -183,6 +199,7 @@ export function closeStoredDocument(theaterId: string | null, relativePath: stri
   const next = closeDocument(current, relativePath);
   const docStates = new Map(current.docStates);
   docStates.delete(relativePath);
+  documentLoads.get(theaterId)?.delete(relativePath);
   patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, docStates, ...(next.openDocs.length === 0 ? { documentPaneOpen: false, revealTarget: null } : {}) });
   persistDocSession(theaterId, next);
 }
@@ -197,14 +214,15 @@ export function setDocViewState(theaterId: string | null, relativePath: string, 
   patchTheaterState(theaterId, { docStates });
 }
 
-export function markDocStale(theaterId: string | null, relativePath: string, stale: boolean): void {
+export function markDocStale(theaterId: string | null, relativePath: string, stale: boolean, diskStatus: "changed" | "deleted" = "changed"): void {
   if (!theaterId) return;
   const current = getOrDefault(theaterId);
   const viewState = current.docStates.get(relativePath);
   if (!viewState || (viewState.kind !== "code" && viewState.kind !== "image")) return;
-  if (Boolean(viewState.stale) === stale) return;
+  const status = stale ? diskStatus : undefined;
+  if (Boolean(viewState.stale) === stale && viewState.diskStatus === status) return;
   const docStates = new Map(current.docStates);
-  docStates.set(relativePath, { ...viewState, stale });
+  docStates.set(relativePath, { ...viewState, stale, diskStatus: status });
   patchTheaterState(theaterId, { docStates });
 }
 

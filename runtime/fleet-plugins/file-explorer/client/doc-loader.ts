@@ -1,10 +1,10 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
-import type { FileReadResult } from "../server/types.js";
+import type { FileDiskStatus, FileReadRequest, FileReadResult } from "../server/types.js";
 import { knownMtime, knownSize, noteEntryMtime, noteEntryStats } from "./entry-stats.js";
 import { getT, translateServerError } from "./i18n/index.js";
 import { makeFilesClient } from "./files-client.js";
-import { setDocViewState } from "./view-store.js";
+import { beginDocumentLoad, getFileExplorerSnapshot, isCurrentDocumentLoad, markDocStale, setDocViewState } from "./view-store.js";
 import { cacheBustedImageSrc } from "./viewer/image.js";
 import { parentDirOf } from "./viewer/stale.js";
 
@@ -22,22 +22,47 @@ export function nameOfPath(relativePath: string): string {
   return relativePath.split("/").filter(Boolean).at(-1) ?? relativePath;
 }
 
+export async function refreshDocumentDiskStatus(theaterId: string, paths: readonly string[], signal?: AbortSignal): Promise<void> {
+  if (paths.length === 0) return;
+  const before = getFileExplorerSnapshot(theaterId).docStates;
+  const response = await fetch("/plugins/file-explorer/files/disk-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, paths }), ...(signal ? { signal } : {}) });
+  if (!response.ok || signal?.aborted) return;
+  const result = await response.json() as { statuses: FileDiskStatus[] };
+  if (signal?.aborted) return;
+  for (const status of result.statuses) {
+    const previous = before.get(status.relativePath);
+    const current = getFileExplorerSnapshot(theaterId).docStates.get(status.relativePath);
+    if ((previous?.kind !== "code" && previous?.kind !== "image") || (current?.kind !== "code" && current?.kind !== "image") || previous.mtimeMs !== current.mtimeMs) continue;
+    if (status.state === "deleted") markDocStale(theaterId, status.relativePath, true, "deleted");
+    else if (status.state === "present" && current.mtimeMs !== undefined) markDocStale(theaterId, status.relativePath, current.mtimeMs !== status.mtimeMs);
+  }
+}
+
 export interface LoadDocumentOptions {
   /** 캐시가 이미 그려져 있어 로딩 화면 없이 배경에서 재검증하는가. */
   readonly silent: boolean;
   readonly language?: ConsoleLocale;
   readonly signal?: AbortSignal;
+  readonly window?: FileReadRequest;
 }
 
 export async function loadDocument(
   theaterId: string | null,
   relativePath: string,
-  { silent, language, signal }: LoadDocumentOptions,
+  { silent, language, signal, window: requestedWindow }: LoadDocumentOptions,
 ): Promise<void> {
   if (!theaterId) return;
   const t = getT(language);
   const name = nameOfPath(relativePath);
   const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
+  const request = beginDocumentLoad(theaterId, relativePath);
+  const current = () => !signal?.aborted && isCurrentDocumentLoad(theaterId, relativePath, request);
+  const snapshot = getFileExplorerSnapshot(theaterId);
+  const cached = snapshot.docStates.get(relativePath);
+  const hasLineTarget = snapshot.revealTarget?.relativePath === relativePath && snapshot.revealTarget.lineNumber !== undefined;
+  const readWindow: FileReadRequest = requestedWindow ?? (hasLineTarget ? { mode: "head" } : cached?.kind === "code" && cached.window
+    ? { mode: cached.window.mode, ...(cached.window.mode === "range" ? { offset: cached.window.startByte } : {}) }
+    : { mode: !hasLineTarget && [".log", ".out", ".err"].includes(ext) ? "tail" : "head" });
 
   if (IMAGE_EXTS.has(ext)) {
     // 부모 폴더를 한 번도 나열한 적이 없으면(검색·세션 복원으로 연 경우) 기준 mtime이 없다.
@@ -47,7 +72,7 @@ export async function loadDocument(
         const listing = await makeFilesClient(theaterId).listFolder(parentDirOf(relativePath));
         noteEntryStats(theaterId, listing.entries);
       } catch { /* 목록 실패는 표식 없이 여는 것으로 감수한다 — 다음 목록에서 회복된다 */ }
-      if (signal?.aborted) return;
+      if (!current()) return;
     }
     const mtimeMs = knownMtime(theaterId, relativePath);
     const sizeBytes = knownSize(theaterId, relativePath);
@@ -65,7 +90,7 @@ export async function loadDocument(
     const res = await fetch("/plugins/file-explorer/files/read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, relativePath }),
+      body: JSON.stringify({ theaterId, relativePath, window: readWindow }),
       ...(signal ? { signal } : {}),
     });
     if (!res.ok) {
@@ -73,6 +98,7 @@ export async function loadDocument(
       throw new Error(payload.error ?? "read_failed");
     }
     const result = await res.json() as FileReadResult;
+    if (!current()) return;
     if (result.binary) {
       setDocViewState(theaterId, relativePath, { kind: "binary", name });
       return;
@@ -84,6 +110,7 @@ export async function loadDocument(
       content: result.content,
       lang: result.lang,
       truncated: result.truncated,
+      window: result.window,
       sizeBytes: result.sizeBytes,
       mtimeMs: result.mtimeMs,
       stale: false,
@@ -91,7 +118,7 @@ export async function loadDocument(
   } catch (e: unknown) {
     // 페인이 헐리거나 Theater가 바뀌어 중단된 요청은 실패가 아니다 — 화면에 에러를 남기면
     // 다음에 열 때까지 그 자리가 고장난 것으로 보인다.
-    if (signal?.aborted) return;
+    if (!current()) return;
     const raw = e instanceof Error ? e.message : "Unable to load file";
     if (raw === "binary_file") {
       setDocViewState(theaterId, relativePath, { kind: "binary", name });

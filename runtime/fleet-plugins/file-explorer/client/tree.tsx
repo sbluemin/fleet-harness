@@ -68,6 +68,7 @@ export interface CapRow {
   readonly type: "cap";
   readonly depth: number;
   readonly cap: number;
+  readonly total?: number;
   readonly key: string;
 }
 
@@ -645,6 +646,7 @@ function pagedEntryIndex(
 interface LevelMeta {
   /** 이 수준의 목록이 상한에서 잘린 경우의 상한 값 */
   readonly truncatedCap?: number;
+  readonly totalEntries?: number;
   /** 이 수준에서 숨겨진 VCS 날것 이름 (.git 등) */
   readonly hiddenVcs?: readonly string[];
 }
@@ -776,6 +778,7 @@ export function buildFlatRows(
             // 안내문이 말하는 수는 "상한 상수"가 아니라 실제로 보여준 항목 수여야 한다 —
             // 분류에서 버려진 항목(끊긴 심링크·소켓)이 있으면 둘이 어긋난다.
             truncatedCap: childResult?.truncated ? childResult.entries.length : undefined,
+            totalEntries: childResult?.totalEntries,
             hiddenVcs: childResult?.hiddenVcsInternals,
           },
           folderIdentity,
@@ -794,7 +797,7 @@ export function buildFlatRows(
   flushVcs();
   flushGhosts();
   if (levelMeta.truncatedCap !== undefined) {
-    rows.push({ type: "cap", depth, cap: levelMeta.truncatedCap, key: `cap:${levelKey}` });
+    rows.push({ type: "cap", depth, cap: levelMeta.truncatedCap, total: levelMeta.totalEntries, key: `cap:${levelKey}` });
   }
   return rows;
 }
@@ -1407,7 +1410,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       showHidden,
       new Set(),
       filterCollapsedDirs,
-      { truncatedCap: result.truncated ? result.entries.length : undefined, hiddenVcs: result.hiddenVcsInternals },
+      { truncatedCap: result.truncated ? result.entries.length : undefined, totalEntries: result.totalEntries, hiddenVcs: result.hiddenVcsInternals },
       "",
       { sortMode, deletedByDir, autoExpandAll: false, failedDirs: new Set(expandFailedDirs.keys()) },
     );
@@ -1435,6 +1438,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     : firstEntryPath(visibleRows);
 
   const filterMatchCount = filterOutcome?.totalMatches ?? 0;
+  const filterMatchLabel = `${filterMatchCount.toLocaleString()}${filterOutcome?.complete === false || filterOutcome?.walkCapped ? "+" : ""}`;
 
   useEffect(() => {
     if (renderedCursorPath !== cursorPath) setCursorPath(renderedCursorPath);
@@ -1742,7 +1746,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
           role="note"
         >
-          {t("fileExplorer.tree.listingCapped", { cap: row.cap })}
+          {t("fileExplorer.tree.listingCapped", { cap: row.cap.toLocaleString(), total: row.total?.toLocaleString() ?? `${row.cap}+` })}
         </div>
       );
     }
@@ -1838,11 +1842,11 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   }
   if (isFiltering && !filterSearching && !filterFailed) {
     if (filterOutcome?.walkCapped) {
-      statusLines.push({ key: "capped", text: t("fileExplorer.filter.capped", { matches: filterMatchCount, cap: PALETTE_SEARCH_WALK_CAP }), tone: "warn", role: "status" });
+      statusLines.push({ key: "capped", text: t("fileExplorer.filter.capped", { matches: filterMatchLabel, cap: PALETTE_SEARCH_WALK_CAP }), tone: "warn", role: "status" });
     } else if (filterOutcome?.ignoredSkipped) {
-      statusLines.push({ key: "count", text: t("fileExplorer.filter.scanSkipped", { count: filterMatchCount }), tone: "quiet", role: "status" });
+      statusLines.push({ key: "count", text: t("fileExplorer.filter.scanSkipped", { count: filterMatchLabel }), tone: "quiet", role: "status" });
     } else {
-      statusLines.push({ key: "count", text: t("fileExplorer.filter.resultCount", { count: filterMatchCount }), tone: "quiet", role: "status" });
+      statusLines.push({ key: "count", text: t("fileExplorer.filter.resultCount", { count: filterMatchLabel }), tone: "quiet", role: "status" });
     }
   }
   if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.degraded === "walker") {

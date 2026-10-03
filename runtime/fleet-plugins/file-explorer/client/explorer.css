@@ -1975,6 +1975,78 @@
   opacity: 1;
 }
 
+.fexp-disk-banner,
+.fexp-read-window,
+.fexp-long-line-notice {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--surface-rim);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.fexp-disk-banner,
+.fexp-long-line-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  color: var(--warn-ink);
+  background: color-mix(in oklch, var(--warn) 8%, transparent);
+}
+
+.fexp-read-window {
+  color: var(--text-secondary);
+  background: var(--glass-tint-panel);
+}
+
+.fexp-read-window-actions,
+.fexp-read-window-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.fexp-read-window-range label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fexp-read-window-range input {
+  width: 110px;
+  min-width: 0;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--glass-tint-field);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.fexp-disk-banner button,
+.fexp-read-window button,
+.fexp-long-line-notice button {
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  padding: 2px 7px;
+  background: var(--glass-tint-field);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.fexp-disk-banner button:hover,
+.fexp-read-window button:hover,
+.fexp-long-line-notice button:hover {
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+}
+
+.fexp-read-window button:disabled { opacity: 0.45; cursor: default; }
+.fexp-read-window-line-note { display: block; margin-top: 5px; color: var(--text-tertiary); }
+
 /* ── 코드 뷰어 위·아래 페이드 ── */
 .fexp-code-wrap {
   position: relative;

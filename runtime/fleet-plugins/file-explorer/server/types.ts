@@ -15,8 +15,30 @@ export interface FolderListResult {
   /** 목록이 DIRECTORY_ENTRY_CAP에서 잘린 경우에만 존재 — cap에는 상한 값이 들어 있다. */
   readonly truncated?: true;
   readonly cap?: number;
+  /** VCS 날것을 뺀 디렉터리 엔트리 수(상한으로 생략된 항목 포함). */
+  readonly totalEntries?: number;
   /** 이 수준에서 목록에서 제외된 VCS 날것 이름(.git 등) — 클라이언트가 명명된 muted 행으로 표시한다. */
   readonly hiddenVcsInternals?: readonly string[];
+}
+
+export const FILE_READ_BYTE_CAP = 1024 * 1024;
+
+export interface FileReadWindow {
+  readonly mode: "head" | "tail" | "range";
+  readonly startByte: number;
+  /** 읽은 바이트 구간의 끝(미포함). */
+  readonly endByte: number;
+}
+
+export interface FileReadRequest {
+  readonly mode: "head" | "tail" | "range";
+  readonly offset?: number;
+}
+
+export interface FileDiskStatus {
+  readonly relativePath: string;
+  readonly state: "present" | "deleted" | "unavailable";
+  readonly mtimeMs?: number;
 }
 
 export interface FileReadResult {
@@ -31,6 +53,7 @@ export interface FileReadResult {
   readonly mtimeMs: number;
   /** maxLines로 잘라 읽은 경우, 잘라내기 전 불러온 본문의 줄 수. */
   readonly lineCount?: number;
+  readonly window?: FileReadWindow;
 }
 
 export interface Utf16Span {

@@ -12,9 +12,10 @@ import {
 import { CaptionActionButton } from "@fleet-console/sdk/components/caption-actions";
 import type { PaneContext } from "@fleet-console/sdk/pane";
 
-import type { FolderEntry, FolderListResult } from "../server/types.js";
+import type { FileReadRequest, FolderEntry, FolderListResult } from "../server/types.js";
+import { ReadWindowControls } from "./read-window.js";
 import { performFileContextAction, type FileContextAction } from "./context-menu.js";
-import { loadDocument, nameOfPath } from "./doc-loader.js";
+import { loadDocument, nameOfPath, refreshDocumentDiskStatus } from "./doc-loader.js";
 import { breadcrumbSegments, buildViewerMetaParts, type BreadcrumbSegment } from "./format.js";
 import { FileIcon } from "@fleet-console/sdk/components/file-icon";
 import { makeFilesClient } from "./files-client.js";
@@ -100,6 +101,8 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const [externalFailed, setExternalFailed] = useState(false);
   const [externalOpening, setExternalOpening] = useState(false);
   const externalRequestRef = useRef(0);
+  const windowRequestRef = useRef(0);
+  const [readingWindow, setReadingWindow] = useState(false);
 
   useLayoutEffect(() => {
     if (!revealTarget || revealTarget.relativePath !== activePath || (!revealTarget.lineNumber && !revealTarget.anchor)) return;
@@ -164,6 +167,22 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     });
   }, [activePath, ctx.visible, language, signal, theaterId]);
 
+  // 확대 문서는 Files 레일이 닫혀도 남는다. 디스크 신호를 트리 마운트에만 맡기지 않는다.
+  useEffect(() => {
+    if (!theaterId || !activePath || !ctx.visible) return;
+    const controller = new AbortController();
+    const refresh = () => { void refreshDocumentDiskStatus(theaterId, [activePath], controller.signal).catch(() => undefined); };
+    const source = new EventSource(`/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}&directory=${encodeURIComponent(parentDirOf(activePath))}`);
+    source.addEventListener("change", (event) => {
+      try {
+        const directory: unknown = JSON.parse((event as MessageEvent).data as string);
+        if (directory === parentDirOf(activePath)) refresh();
+      } catch { /* 잘못된 신호는 버리고 다음 정상 디스크 이벤트를 기다린다. */ }
+    });
+    source.addEventListener("open", refresh);
+    return () => { controller.abort(); source.close(); };
+  }, [activePath, ctx.visible, theaterId]);
+
   // 주소는 지금 읽는 문서를 말해야 한다 — 캡션 이름과 확대 표면이 같은 값을 읽는다.
   // 이미 같으면 쓰지 않는다: `replaceParams`가 스토어를 건드리므로 무조건 부르면 순환한다.
   useEffect(() => {
@@ -191,6 +210,8 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     setExternalFailed(false);
     setExternalOpening(false);
     externalRequestRef.current += 1;
+    windowRequestRef.current += 1;
+    setReadingWindow(false);
   }, [activePath, contextScope]);
 
   useEffect(() => {
@@ -211,6 +232,17 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const reloadDoc = useCallback((relativePath: string) => {
     void loadDocument(theaterId, relativePath, { silent: true, language, signal });
   }, [language, signal, theaterId]);
+
+  const readWindow = useCallback((request: FileReadRequest) => {
+    if (!theaterId || !activePath) return;
+    const id = ++windowRequestRef.current;
+    setReadingWindow(true);
+    setFileRevealTarget(theaterId, { theaterId, relativePath: activePath, requestId: crypto.randomUUID() });
+    panes.replaceParams({ path: activePath, theaterId, pathKind: "theater-relative" });
+    void loadDocument(theaterId, activePath, { silent: true, language, signal, window: request }).finally(() => {
+      if (id === windowRequestRef.current) setReadingWindow(false);
+    });
+  }, [activePath, language, panes, signal, theaterId]);
 
   // 보이는 탭과 넘침 목록이 같은 전이를 쓴다. stale 활성 탭은 명시적으로 다시 읽고,
   // stale 비활성 탭은 activePath effect가 한 번만 읽게 둔다.
@@ -539,6 +571,15 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
             </span>
           )}
         </div>
+        {(viewState.kind === "code" || viewState.kind === "image") && viewState.stale && (
+          <div className="fexp-disk-banner" role="status">
+            <span>{t(viewState.diskStatus === "deleted" ? "fileExplorer.viewer.diskDeleted" : "fileExplorer.viewer.diskChanged")}</span>
+            {viewState.diskStatus !== "deleted" && activePath && <button type="button" onClick={() => reloadDoc(activePath)}>{t("fileExplorer.viewer.reload")}</button>}
+          </div>
+        )}
+        {viewState.kind === "code" && viewState.truncated && viewState.window && viewState.sizeBytes !== undefined && (
+          <ReadWindowControls window={viewState.window} sizeBytes={viewState.sizeBytes} pending={readingWindow} onRead={readWindow} t={t} />
+        )}
         {externalFailed && <div className="fexp-viewer-action-error" role="alert">{t("fileExplorer.menu.actionUnavailable")}</div>}
         <ShellActionNotice action={shellAction} t={t} />
         {navigationError && <div className="fexp-navigation-error">{t(`fileExplorer.navigation.${navigationError.reason}`)}</div>}
@@ -562,7 +603,8 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
           <CodeViewer
             content={viewState.content}
             lang={viewState.lang}
-            truncated={viewState.truncated}
+            truncated={viewState.truncated && !viewState.window}
+            readWindow={viewState.window}
             wrap={wrapLines}
             target={revealTarget?.relativePath === activePath && revealTarget.lineNumber ? {
               lineNumber: revealTarget.lineNumber,

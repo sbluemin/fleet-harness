@@ -19,7 +19,7 @@ import {
   FileExplorerDocumentCaptionActions,
   FileExplorerDocumentPane,
 } from "./document-pane.js";
-import { nameOfPath } from "./doc-loader.js";
+import { nameOfPath, refreshDocumentDiskStatus } from "./doc-loader.js";
 import { knownMtime, noteEntryStats } from "./entry-stats.js";
 import { getT } from "./i18n/index.js";
 import { MIN_TREE_PX, MIN_VIEWER_PX } from "./layout.js";
@@ -130,7 +130,9 @@ export const fileExplorerPane: PaneDescriptor = {
       ? { id: "file-explorer.search-capped", title: t("fileExplorer.search.capped"), activate: () => undefined, kind: "info" }
       : result.totalMatches > result.files.length
         ? { id: "file-explorer.search-more", title: t("fileExplorer.search.moreMatches", { count: result.totalMatches - keep }), activate: () => undefined, kind: "info" }
-        : null;
+        : result.truncated
+          ? { id: "file-explorer.search-limit", title: t("fileExplorer.search.resultLimit", { count: result.totalMatches.toLocaleString() }), activate: () => undefined, kind: "info" }
+          : null;
     if (!marker) return items;
     return [...items.slice(0, keep), marker];
   },
@@ -239,8 +241,12 @@ function FileExplorerTreePane(ctx: PaneContext) {
       truncated: result.truncated === true,
     });
     for (const path of stale) {
-      markDocStale(contextScope, path, true);
+      const deleted = result.truncated !== true && !entries.some((entry) => entry.relativePath === path);
+      markDocStale(contextScope, path, true, deleted ? "deleted" : "changed");
     }
+    // 500개 밖의 열린 문서는 목록 부재로 삭제를 단정하지 않는다. 내용 없이 stat만 확인한다.
+    const unlisted = result.truncated ? openDocsRef.current.filter((doc) => parentDirOf(doc.relativePath) === result.relativePath && !entries.some((entry) => entry.relativePath === doc.relativePath)).map((doc) => doc.relativePath) : [];
+    if (unlisted.length > 0) void refreshDocumentDiskStatus(contextScope, unlisted).catch(() => undefined);
   }, [contextScope]);
 
   const showFeedback = useCallback((message: string) => {

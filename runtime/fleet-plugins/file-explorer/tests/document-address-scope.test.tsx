@@ -47,6 +47,7 @@ function paneCtx(theaterId: string, params: Record<string, string>): PaneContext
 
 beforeEach(() => {
   window.localStorage.clear();
+  vi.stubGlobal("EventSource", class extends EventTarget { close() {} });
   // 문서를 세우면 본문이 곧바로 읽기를 건다 — 빈 응답을 주면 뷰어가 내용 없는 코드 문서를
   // 그리다 터진다. 이 테스트의 관심은 주소의 범위이므로 읽기는 최소한으로 성립시킨다.
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({

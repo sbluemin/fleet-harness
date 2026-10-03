@@ -8,11 +8,11 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { ClipboardUnavailableError, copyPathToClipboard, isPathContained, PathActionError } from "./path-actions.js";
 import { FileActionUnavailableError, revealPath, type FileRevealMode } from "./path-actions.js";
-import { FileReadError, READ_MAX_LINES_CAP, readFileForTheater } from "./file-reader.js";
+import { FileReadError, READ_MAX_LINES_CAP, readFileForTheater, statFileForTheater } from "./file-reader.js";
 import { FileResolveError, resolveFileForTheater } from "./file-resolver.js";
 import { ImageServeError, readImageForTheater, writeImageResponse } from "./image-server.js";
 import { invalidateSearchCatalog, searchFilesWithRipgrep } from "./search-engine.js";
-import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "./types.js";
+import type { FileDiskStatus, FileReadRequest, FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "./types.js";
 import { watcherRegistry } from "./watcher.js";
 
 // ═══ folder-browser ══════════════════════════════════════════════════════════
@@ -72,7 +72,8 @@ export async function listTheaterContents(
 
   const entries: FolderEntry[] = [];
   const hiddenVcs: string[] = [];
-  const truncated = await collectContentsEntries(realTargetAbs, realRoot, opendir, stat, entries, hiddenVcs);
+  const totalEntries = await collectContentsEntries(realTargetAbs, realRoot, opendir, stat, entries, hiddenVcs);
+  const truncated = totalEntries > DIRECTORY_ENTRY_CAP;
   await attachEntryStats(entries, realTargetAbs, stat);
   entries.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
@@ -84,6 +85,7 @@ export async function listTheaterContents(
     relativePath: rel,
     parentRelativePath: parentRel === "" ? null : (parentRel ?? null),
     entries,
+    totalEntries,
     ...(truncated ? { truncated: true as const, cap: DIRECTORY_ENTRY_CAP } : {}),
     ...(hiddenVcs.length > 0 ? { hiddenVcsInternals: [...new Set(hiddenVcs)].sort() } : {}),
   };
@@ -104,7 +106,7 @@ async function collectContentsEntries(
   stat: typeof fs.promises.stat,
   entries: FolderEntry[],
   hiddenVcs: string[],
-): Promise<boolean> {
+): Promise<number> {
   const directory = await openDirectory(targetPath, opendir);
   try {
     // 이름+dirent 종류만 전량 수집한다. realpath/stat는 이름순 cap 뒤에만 돌린다.
@@ -131,7 +133,7 @@ async function collectContentsEntries(
         entries.push(entry);
       }
     }
-    return truncated;
+    return cheap.length;
   } catch (error) {
     throw mapFolderBrowserFsError(error);
   } finally {
@@ -841,6 +843,37 @@ export async function handleFilesResolve(
   }
 }
 
+function resolveReadWindow(raw: unknown): FileReadRequest | undefined | null {
+  if (raw === undefined) return undefined;
+  if (!isPlainObject(raw) || (raw.mode !== "head" && raw.mode !== "tail" && raw.mode !== "range")) return null;
+  if (raw.mode === "range") {
+    if (typeof raw.offset !== "number" || !Number.isSafeInteger(raw.offset) || raw.offset < 0) return null;
+    return { mode: "range", offset: raw.offset };
+  }
+  if (raw.offset !== undefined) return null;
+  return { mode: raw.mode };
+}
+
+export async function handleFilesDiskStatus(req: http.IncomingMessage, res: http.ServerResponse, ctx: FleetPluginServerContext): Promise<void> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly paths?: unknown }>(req);
+  if (!isPlainObject(body) || typeof body.theaterId !== "string" || !Array.isArray(body.paths) || body.paths.length > 20 || body.paths.some((p) => typeof p !== "string" || path.isAbsolute(p) || /^[a-z]:/i.test(p) || p.includes("\0"))) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return;
+  }
+  const root = ctx.host.paths.resolveTheaterPath(body.theaterId);
+  if (!root) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const statuses: FileDiskStatus[] = await Promise.all((body.paths as string[]).map(async (relativePath): Promise<FileDiskStatus> => {
+    try {
+      const metadata = await statFileForTheater(root, relativePath);
+      return { relativePath, state: "present", mtimeMs: metadata.mtimeMs };
+    } catch (error) {
+      return { relativePath, state: error instanceof FileReadError && error.code === "not_found" ? "deleted" : "unavailable" };
+    }
+  }));
+  ctx.host.http.writeJson(res, 200, { statuses });
+}
+
 export async function handleFilesRead(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -849,19 +882,20 @@ export async function handleFilesRead(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
-  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly relativePath?: unknown; readonly maxLines?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly relativePath?: unknown; readonly maxLines?: unknown; readonly window?: unknown }>(req);
   if (!isPlainObject(body) || typeof body.relativePath !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_path" }); return; }
 
   const theaterId = body.theaterId;
   if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   const maxLines = resolveReadMaxLines(body.maxLines);
-  if (maxLines === null) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  const readWindow = resolveReadWindow(body.window);
+  if (maxLines === null || readWindow === null || (maxLines !== undefined && readWindow !== undefined)) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
   const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
 
   try {
-    const result = await readFileForTheater(theaterPath, body.relativePath, maxLines === undefined ? {} : { maxLines });
+    const result = await readFileForTheater(theaterPath, body.relativePath, { maxLines, window: readWindow });
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {
     if (error instanceof FileReadError) {
@@ -1025,6 +1059,9 @@ export function handleFilesWatch(
     },
     (state) => sendEvent("state", state),
   );
+
+  const directory = url.searchParams.get("directory");
+  if (directory !== null) void watcherRegistry.trackDirectory(theaterId, theaterPath, directory);
 
   req.on("close", () => {
     unsubscribe();
