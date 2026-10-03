@@ -768,6 +768,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const agentCallRedirects = new Map<string, (operationId: string) => string | null>();
   const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), launchKeys, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), resolveOperation: operations.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
+  const COMPUTER_CAPTURE_STATE_EVENT = "computer-capture:state";
+  let computerCaptureWatch: ReturnType<typeof setTimeout> | null = null;
+  let lastComputerCaptureSnapshot: string | null = null;
   const computerUseDirectory = path.join(fleetDataDir, "computer-use");
   const computerUseInstaller = new CuaDriverInstaller(computerUseDirectory);
   const computerUseRuntime = {
@@ -781,13 +784,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const computerUse = new ComputerUseService({
     onCaptureTarget: (target) => {
       const operationId = target ? computerUseMcp.operationIdForOwner(target.owner) : null;
-      if (!target || !operationId || !operations.get(operationId)) { computerCaptureTarget = null; return; }
-      if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
+      if (!target || !operationId || !operations.get(operationId)) computerCaptureTarget = null;
+      else if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
         && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.operationId === operationId) {
         computerCaptureTarget = { ...computerCaptureTarget, title: target.title };
-        return;
+      } else {
+        computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, operationId, id: crypto.randomUUID() };
       }
-      computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, operationId, id: crypto.randomUUID() };
+      broadcastComputerCapture();
+      watchComputerCapture();
     },
     platform: computerUsePlatforms[readExperimentSettings(consoleSettingsStore).computerUseBackend],
     directory: computerUseDirectory,
@@ -1422,6 +1427,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       browserService.reconcile();
       // 붙기 전에 일어난 브라우저 변화는 이벤트로 다시 오지 않는다. 스트림이 끊겼다 다시 붙는 길도 이 자리를 지나므로,
       // 그 사이 에이전트가 연 탭이나 바뀐 주소가 화면에 영영 낡은 채로 남지 않는다.
+      if (subscriber.client === "desktop" && subscriber.audience === "local") {
+        writeOperationSse(subscriber, encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, computerCaptureSnapshot()));
+      }
       if (subscriber.client === "desktop") {
         for (const browsing of browserService.status().operations) writeOperationSse(subscriber, encodeSseData(BROWSER_STATE_EVENT, browserService.state(browsing)));
       }
@@ -1445,11 +1453,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   routeRegistry.register("/api/v1/desktop/computer-capture", async ({ req, res, pathname }) => {
     if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/desktop/computer-capture") {
-      const candidate = computerCaptureTarget;
-      if (candidate && !await computerUse.verifyCaptureTarget(candidate) && computerCaptureTarget?.id === candidate.id) computerCaptureTarget = null;
-      const unavailableOwner = computerUse.captureUnavailableOwner();
-      const unavailableOperationId = unavailableOwner ? computerUseMcp.operationIdForOwner(unavailableOwner) : null;
-      writeJson(res, 200, { target: computerUse.status().enabled ? computerCaptureTarget : null, unavailableOperationId });
+      await verifyComputerCapture();
+      // Desktop main도 getDisplayMedia의 창 선택 때 읽는다 — 네이티브 식별자는 이 루프백 응답에만 둔다.
+      writeJson(res, 200, { ...computerCaptureSnapshot(), target: computerUse.status().enabled ? computerCaptureTarget : null });
       return true;
     }
     writeJson(res, 405, { error: "method_not_allowed" });
@@ -2198,6 +2204,71 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  function computerCaptureSnapshot() {
+    const target = computerUse.status().enabled ? computerCaptureTarget : null;
+    const unavailableOwner = computerUse.captureUnavailableOwner();
+    return {
+      target: target ? { id: target.id, operationId: target.operationId, title: target.title } : null,
+      unavailableOperationId: unavailableOwner ? computerUseMcp.operationIdForOwner(unavailableOwner) : null,
+    };
+  }
+
+  function broadcastComputerCapture(): void {
+    const snapshot = computerCaptureSnapshot();
+    const encoded = JSON.stringify(snapshot);
+    if (encoded === lastComputerCaptureSnapshot) return;
+    lastComputerCaptureSnapshot = encoded;
+    const data = encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, snapshot);
+    // Computer Use는 로컬 기계만 조작한다. 원격 Desktop의 셸 소유자에게 로컬 창을 넘기지 않는다.
+    for (const subscriber of operationSseSubscribers) {
+      if (subscriber.client === "desktop" && subscriber.audience === "local") writeOperationSse(subscriber, data);
+    }
+  }
+
+  let computerCaptureVerification: Promise<void> | null = null;
+
+  async function verifyComputerCapture(): Promise<void> {
+    const candidate = computerCaptureTarget;
+    if (!candidate) return;
+    // 감시와 GET은 진행 중인 검증을 공유한다. 늦은 결과도 같은 대상의 명시적 false일 때만 해제한다.
+    const verification = computerCaptureVerification ??= computerUse.verifyCaptureTarget(candidate)
+      .then((valid) => {
+        if (valid === false && computerCaptureTarget?.id === candidate.id) {
+          computerCaptureTarget = null;
+          broadcastComputerCapture();
+          watchComputerCapture();
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => { computerCaptureVerification = null; });
+    // 3초는 응답 대기 한도일 뿐 창 소멸의 증거가 아니다. 시간 초과에는 대상과 감시를 유지한다.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      verification,
+      new Promise<void>((resolve) => { timeout = setTimeout(resolve, 3000); timeout.unref(); }),
+    ]).finally(() => { if (timeout) clearTimeout(timeout); });
+  }
+
+  /** 네이티브 창 소멸은 도구 호출 없이도 일어난다. 기존 700ms 검증은 활성 대상에만 남기고 유휴에는 멈춘다. */
+  function watchComputerCapture(): void {
+    if (!computerCaptureTarget) {
+      if (computerCaptureWatch) clearTimeout(computerCaptureWatch);
+      computerCaptureWatch = null;
+      return;
+    }
+    // 같은 창의 연속 관찰이 소멸 확인 시점을 계속 뒤로 미루지 않게 한다.
+    if (computerCaptureWatch) return;
+    const timer = setTimeout(() => {
+      void verifyComputerCapture().finally(() => {
+        if (computerCaptureWatch !== timer) return;
+        computerCaptureWatch = null;
+        watchComputerCapture();
+      });
+    }, 700);
+    computerCaptureWatch = timer;
+    timer.unref();
+  }
+
   /** 집 주소는 게시한 창에만 돌아간다 — 다른 사람의 화면에서는 그 사람의 기계를 가리키기 때문이다. */
   function broadcastDesktopShellChanged(owner: string | "local", snapshot: DesktopShellSnapshot): void {
     if (operationSseSubscribers.size === 0) return;
@@ -2455,6 +2526,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     activeEndpoint = null;
     operationArchive.dispose();
     deletionCoordinator.dispose();
+    computerCaptureTarget = null;
+    watchComputerCapture();
     // 입력 제어는 HTTP·플러그인 정리에 막히기 전에 회수하고 신규 호출도 닫는다.
     const stoppingComputerUse = computerUseMcp.dispose();
     const stoppingBrowser = browserMcp.dispose();

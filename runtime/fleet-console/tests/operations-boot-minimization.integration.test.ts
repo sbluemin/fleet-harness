@@ -113,7 +113,7 @@ vi.mock("../features/settings/client/global-settings-store.js", () => ({
   getGlobalSettingsStoreState: () => ({ state: null }),
   useGlobalSettingsStore: () => ({ state: null }),
 }));
-vi.mock("../core/client/src/integration/operations-sse.js", () => ({ refreshObserverStatus: vi.fn() }));
+vi.mock("../core/client/src/integration/operations-sse.js", () => ({ refreshObserverStatus: vi.fn(), subscribeConsoleChannel: vi.fn(() => () => undefined) }));
 // 데스크톱 /settings는 이제 레일 표면으로 번역하는 어댑터다 — 이 테스트의 관심은 "비-operations
 // 라우트에 다녀오기"이므로 어댑터를 옛 페이지 모양의 대역으로 세워 라우트 왕복만 남긴다.
 vi.mock("../features/settings/client/settings-route-adapter.js", () => ({ SettingsRouteAdapter: () => createElement("div", { "data-route": "settings" }) }));
