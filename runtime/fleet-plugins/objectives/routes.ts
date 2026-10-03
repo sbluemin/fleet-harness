@@ -3,6 +3,9 @@ import path from "node:path";
 import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
+import { COMMODORE_ACTIVE_FLAG, commodoreActive, createCommodoreRoutes } from "./server/commodore/routes.js";
+import { createCommodoreStore } from "./server/commodore/store.js";
+import { COMMODORE_CHANNEL } from "./server/commodore/types.js";
 import { createObjectiveConsoleTools } from "./server/console-tools.js";
 import { createLaunchService } from "./server/launch.js";
 import { createObjectiveMcpTools } from "./server/objective-tools.js";
@@ -119,6 +122,16 @@ export default definePlugin({
     for (const route of routes) {
       registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
     }
+
+    // 사령관(자율 운영) — Theater 마다 하나. 상태는 보드 곁 `commodore/` 에 살고, 사건은 자기 채널로 나간다.
+    ctx.host.lifecycle.registerCleanup(ctx.host.events.registerSseChannel(COMMODORE_CHANNEL));
+    const commodore = createCommodoreStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event) });
+    for (const route of createCommodoreRoutes(ctx, commodore)) {
+      registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
+    }
+    // 사이드바 Theater DTO 의 「사령관 활동 중」 — 호스트 스텁(테스트)에는 이 능력이 없을 수 있다.
+    const releaseFlag = (ctx.host.theaterFlags as typeof ctx.host.theaterFlags | undefined)?.register(COMMODORE_ACTIVE_FLAG, (theaterId) => commodoreActive(ctx, commodore, theaterId));
+    if (releaseFlag) ctx.host.lifecycle.registerCleanup(releaseFlag);
 
     // Console 세션의 서브에이전트 호출 — 띄우지 않고, 그 자리를 이 목표의 구성원이 맡는다는 사실로 답한다.
     const releaseAgentCalls = ctx.host.consoleControl?.redirectAgentCalls?.((operationId) => agentCallRedirect(store.find(operationId), store.findMember(operationId) !== null));
