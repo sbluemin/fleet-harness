@@ -292,11 +292,12 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const submitUrl = () => {
     const raw = urlDraft.trim();
     if (!raw) return;
-    const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
     setEditingUrl(false);
     urlRef.current?.blur();
-    if (activeTab === null || activeTab.url === "about:blank") runTab(() => navigateGlobal(url, activeTab?.id));
-    else runTab(() => createGlobalTab(url));
+    // 주소창 글은 그대로 보낸다 — 검색어·localhost·host:port 구분은 서버의 주소 해석이 맡는다(Operation 브라우저와 같다).
+    // 주소창은 보던 탭을 옮긴다. 탭이 없을 때만 새로 연다.
+    if (activeTab === null) runTab(() => createGlobalTab(raw));
+    else runTab(() => navigateGlobal(raw, activeTab.id));
   };
 
   const closedTabs = state?.closedTabs ?? [];

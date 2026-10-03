@@ -41,7 +41,7 @@ import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js"
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
 import { createBrowserRouter } from "../../../features/browser/host/routes.js";
 import { createBrowserScreenshotStore } from "../../../features/browser/host/screenshot-store.js";
-import { BrowserService, type BrowserAvailability } from "../../../features/browser/host/service.js";
+import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } from "../../../features/browser/host/service.js";
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
 import { createUseRequestBroker } from "../../../features/console-use/host/use-requests.js";
@@ -479,7 +479,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const operations = createOperationStore({
     onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event),
     onGroupRemoved: (event) => publishPluginEvent(OPERATION_GROUP_REMOVED_EVENT_CHANNEL, event),
-    isReserved: (id) => archiveStorage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingOperation(id),
+    // 전역 Fleet 브라우저의 소유자 id는 Operation이 가질 수 없다 — 그 이름의 Operation이 생기면 그 에이전트가 사람의 탭에 닿는다.
+    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || archiveStorage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingOperation(id),
     assertRelationMutable: (id) => operationArchive.assertMutable(id),
   });
   const folderGrants = createFolderGrantStore();

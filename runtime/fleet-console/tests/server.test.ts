@@ -530,6 +530,19 @@ describe("console static and terminal ticket boundary", () => {
     } finally { vi.unstubAllEnvs(); }
   });
 
+  it("never lets an Operation take the Fleet Browser owner id", async () => {
+    // 전역 Fleet 브라우저는 Operation 밖의 사람 전용 소유자다. 같은 id의 Operation이 생기면 그 에이전트가 사람의 탭에 닿는다.
+    const fixture = await startFixture();
+    const origin = new URL(fixture.endpoint).origin;
+    const response = await fetch(`${origin}/api/v1/operations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin },
+      body: JSON.stringify({ id: "global", theaterId: "theater", type: "terminal", pluginId: null, title: "spoof" }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "operation_exists" });
+  });
+
   it("rejects Theater registration without a valid folder grant", async () => {
     const failed = await startFixture();
 

@@ -7,6 +7,7 @@ import {
   companionDefaultChord,
   companionShortcutCommandId,
   CORE_SHORTCUT_COMMANDS,
+  parseChord,
   resolveShortcutChords,
   useShortcutOverrides,
 } from "../../../core/client/src/integration/shortcut-bindings.js";
@@ -27,6 +28,13 @@ import { usableCompanionShortcuts } from "../../../core/client/src/integration/s
  *
  * 서버 경로가 아직 없으면(호스트 구현 중) 조용히 실패하고, 다음 포그라운드에서 다시 시도한다.
  */
+
+/** 페이지 입력을 빼앗지 않는 조합만 넘긴다 — Mod·Ctrl·Alt 중 하나를 쥐어야 한다(Shift만이면 글자 입력이다). */
+function forwardableChord(chord: string): boolean {
+  const parsed = parseChord(chord);
+  if (!parsed) return false;
+  return parsed.modifiers.has("Mod") || parsed.modifiers.has("Ctrl") || parsed.modifiers.has("Alt");
+}
 
 let lastSent = "";
 let lastOk = false;
@@ -50,14 +58,18 @@ export function useGlobalBrowserShortcutsSync(active: boolean): void {
   React.useEffect(() => {
     if (!active || !isDesktopShell()) return;
     const chords = new Set<string>();
+    // 뷰에서 가로챈 키는 페이지가 받지 못한다. 그래서 어디서 눌러도 Console이 맡는 전역 명령만 넘긴다:
+    // 지도 맥락 명령(operations 묶음 — Shift+1은 「!」 입력이다)과 닫기 되돌리기(⌘Z — 페이지의 실행 취소)는 빼고,
+    // 수식키(Mod·Ctrl·Alt) 없이 글자를 내는 조합도 뺀다.
     for (const command of CORE_SHORTCUT_COMMANDS) {
-      for (const chord of resolveShortcutChords(command.id)) chords.add(chord);
+      if (command.group !== "console" || command.id === "console.undo-close") continue;
+      for (const chord of resolveShortcutChords(command.id)) if (forwardableChord(chord)) chords.add(chord);
     }
     for (const kind of registry.operationKinds) {
       for (const companion of usableCompanionShortcuts(kind.companions ?? []) as readonly CompanionPanelDescriptor[]) {
         if (!companion.shortcut) continue;
         const commandId = companionShortcutCommandId(kind.pluginId, companion.id);
-        for (const chord of resolveShortcutChords(commandId, [companionDefaultChord(companion.shortcut.code)])) chords.add(chord);
+        for (const chord of resolveShortcutChords(commandId, [companionDefaultChord(companion.shortcut.code)])) if (forwardableChord(chord)) chords.add(chord);
       }
     }
     const body = JSON.stringify([...chords]);
