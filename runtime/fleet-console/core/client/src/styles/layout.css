@@ -51,7 +51,7 @@
   flex: none;
   min-height: 34px;
   padding: var(--space-1) var(--space-4);
-  border-bottom: 1px solid color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
+  border-bottom: 1px solid color-mix(in oklab, var(--coral) 55%, var(--surface-rim));
   background: var(--coral-glow);
   color: var(--coral-ink);
   font-size: var(--t-sm);
@@ -155,7 +155,7 @@
 
 .update-curtain-track > i.is-done { background: var(--warn-ink); }
 /* 흐름이 칸 끝에 닿아 있는 순간에도 지금 칸이 남은 칸과 구별되도록 옅게 칠해 둔다. */
-.update-curtain-track > i.is-now { background: color-mix(in oklch, var(--warn-ink) 35%, var(--surface-rim)); }
+.update-curtain-track > i.is-now { background: color-mix(in oklab, var(--warn-ink) 35%, var(--surface-rim)); }
 
 /* 지금 칸만 흐른다. 서버가 닿지 않는 동안에도 화면이 멈춘 것이 아니라는 유일한 증거다. */
 .update-curtain-track > i.is-now::after {
@@ -1568,7 +1568,7 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .command-band.is-
   transform: translateX(-50%);
   z-index: 30;
   max-width: min(560px, calc(100% - 24px));
-  border: 1px solid color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--coral) 48%, var(--surface-rim));
   border-radius: var(--radius-xs);
   /* 부유 오버레이의 판독성 계약 — 구 그리드 행 시절의 10% coral 틴트는 전면 캔버스 위에서
      터미널 글자와 겹쳐 읽을 수 없다(적대 리뷰 확정). 불투명 언더레이 위에 coral 워시를 얹는다. */

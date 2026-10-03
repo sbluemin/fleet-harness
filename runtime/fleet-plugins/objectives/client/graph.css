@@ -51,7 +51,7 @@
 .objectives-graph-node:hover .objectives-graph-shape, .objectives-graph-node.is-hov .objectives-graph-shape { box-shadow: 0 0 0 3px var(--control-rest-hover); }
 .objectives-graph-node:focus-visible { outline: none; }
 .objectives-graph-node:focus-visible .objectives-graph-shape, .objectives-graph-node.is-pin .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 3.5px var(--brass); }
-.objectives-graph-node.is-pre .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 3.5px color-mix(in oklch, var(--brass) 70%, var(--surface-panel)); }
+.objectives-graph-node.is-pre .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 3.5px color-mix(in oklab, var(--brass) 70%, var(--surface-panel)); }
 .objectives-graph-node.is-post .objectives-graph-shape { outline: 1.5px dashed var(--brass); outline-offset: 2px; }
 .objectives-graph-node.drop-ok .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 4px var(--brass); }
 .objectives-graph-node.drop-no .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 4px var(--coral); }
@@ -66,10 +66,10 @@
 .objectives-graph-drop-tip { position: absolute; z-index: 40; width: max-content; max-width: min(220px, 100%); padding: 5px 8px; border-radius: var(--radius-xs); background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); box-shadow: var(--shadow-soft); font-size: var(--t-2xs); line-height: 1.45; color: var(--text-secondary); pointer-events: none; }
 .objectives-graph-drop-tip b, .objectives-graph-drop-tip span { display: block; }
 .objectives-graph-drop-tip b { color: var(--brass-ink); font-weight: var(--weight-medium); }
-.objectives-graph-drop-tip.is-no { border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim)); }
+.objectives-graph-drop-tip.is-no { border-color: color-mix(in oklab, var(--coral) 55%, var(--surface-rim)); }
 .objectives-graph-drop-tip.is-no b { color: var(--coral-ink); }
 .objectives-graph-popup { position: fixed; z-index: 65; box-sizing: border-box; background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-md); box-shadow: var(--shadow-soft), 0 6px 18px -8px oklch(0% 0 0 / 35%); font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-secondary); padding: 9px 12px 11px; overflow: visible; overscroll-behavior: contain; animation: objectives-popup-in 180ms cubic-bezier(.2,.7,.2,1); }
-.objectives-graph-popup.is-pinned { border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim)); }
+.objectives-graph-popup.is-pinned { border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim)); }
 .objectives-graph-popup.is-closing { opacity: 0; pointer-events: none; animation: objectives-popup-out 120ms ease; }
 @keyframes objectives-popup-in { from { opacity: 0; transform: translateY(3px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes objectives-popup-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(2px) scale(.99); } }

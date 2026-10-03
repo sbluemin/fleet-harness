@@ -844,14 +844,14 @@
   gap: var(--space-3);
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
+  border-bottom: 1px solid color-mix(in oklab, var(--coral) 48%, var(--surface-rim));
   background: color-mix(in oklch, var(--coral) 10%, transparent);
   color: var(--coral-ink);
   font-size: var(--t-sm);
 }
 
 .operations-mutation-retry {
-  border: 1px solid color-mix(in oklch, var(--coral) 40%, var(--surface-rim));
+  border: 1px solid light-dark(color-mix(in oklch, var(--coral) 40%, var(--surface-rim)), color-mix(in oklab, var(--coral) 40%, var(--surface-rim)));
   background: transparent;
   color: var(--coral-ink);
   border-radius: var(--radius-xs);
@@ -861,7 +861,7 @@
 .global-settings-error {
   margin: 0;
   padding: var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--coral) 48%, var(--surface-rim));
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--coral) 10%, transparent);
   color: var(--coral-ink);
@@ -1939,7 +1939,7 @@
 }
 .remote-field input:focus-visible, .remote-port-control input[type="number"]:focus-visible, .remote-link-field input:focus-visible { border-color: var(--control-hover-rim); }
 .remote-field input:disabled, .remote-port-control input[type="number"]:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
-.remote-field input[aria-invalid="true"], .remote-port-control input[aria-invalid="true"] { border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim-strong)); }
+.remote-field input[aria-invalid="true"], .remote-port-control input[aria-invalid="true"] { border-color: color-mix(in oklab, var(--coral) 55%, var(--surface-rim-strong)); }
 
 /* 내용 높이만 차지한다 — 이웃 칸을 따라 늘어나지 않으므로 legend와 컨트롤이 붙어 있다. */
 .remote-port-control { display: flex; flex-direction: column; gap: var(--space-2); align-self: start; margin: 0; padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); }
@@ -3274,7 +3274,7 @@
 /* 안 본 완료 — 색은 유휴와 같은 초록이고, 느린 점등(대기 맥동의 두 배 주기)만이 미확인을 말한다.
    키프레임의 0%/100%는 완전 점등이라 reduced-motion이 모션을 끊어도 켜진 채 남는다. */
 .status-glyph.is-unseen {
-  border-color: color-mix(in oklch, var(--positive) 45%, var(--hairline-strong));
+  border-color: light-dark(color-mix(in oklch, var(--positive) 45%, var(--hairline-strong)), color-mix(in oklab, var(--positive) 45%, var(--hairline-strong)));
 }
 
 .status-glyph.is-unseen::after {
@@ -3711,7 +3711,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 /* Doctrine exception: the mode title kicker is literal instrument chrome and intentionally blends brass-ink with fog. */
 .canvas-mode-title-kicker {
-  color: color-mix(in oklch, var(--brass-ink) 72%, var(--ink-fog));
+  color: color-mix(in oklab, var(--brass-ink) 72%, var(--ink-fog));
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
@@ -4343,7 +4343,7 @@ button.status-glyph.is-actionable:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
-  color: color-mix(in oklch, var(--zone-tint, var(--brass-ink)) 72%, var(--text-primary));
+  color: color-mix(in oklab, var(--zone-tint, var(--brass-ink)) 72%, var(--text-primary));
   font-size: var(--t-sm);
   letter-spacing: 0.14em;
 }
@@ -5845,10 +5845,10 @@ body[data-companion-resizing="true"] .canvas-operation {
 .canvas-operation:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent:not([aria-pressed="true"])) > .canvas-operation-titlebar,
 .canvas-operation.is-deck-tile:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent) > .canvas-operation-titlebar,
 .canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge:not(.is-leaving)) > .canvas-operation-titlebar {
-  /* Doctrine: 유채 배지색을 청색 면에 섞는 워시는 oklab이다 — oklch는 짧은 색상각 경로로 보간해 주황 배지(h60)
-     옆 제목줄이 보라(h287~294)로 칠해졌다(목표 f90ef806 실측). 라이트(Whites)는 다크 보정 범위 밖이라
-     light-dark()의 라이트 쪽이 지금의 oklch 워시를 그대로 잇는다. */
-  background: linear-gradient(90deg, light-dark(color-mix(in oklch, var(--agent-use-color) 26%, var(--glass-tint-caption)), color-mix(in oklab, var(--agent-use-color) 26%, var(--glass-tint-caption))), var(--glass-tint-caption) 70%);
+  /* Doctrine: 유채 배지색을 면에 섞는 워시는 oklab이다 — oklch는 짧은 색상각 경로로 보간해 주황 배지(h60)
+     옆 청색 제목줄이 보라(h287~294)로, 보라 배지(h285) 옆 Whites 종이 제목줄이 복숭아(h55)로 칠해졌다
+     (목표 f90ef806·3d42d037 실측). */
+  background: linear-gradient(90deg, color-mix(in oklab, var(--agent-use-color) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%);
 }
 /* 덱 카드의 캡션 액션은 표식만 남긴다 — 에이전트 사용 배지와 「사용 중」인 브라우저 버튼. 나머지(열기·전환·관찰 말풍선)는
    카드에서 누를 수 없으므로 그리지 않고, 남은 버튼도 포인터를 받지 않는다. */
@@ -7533,7 +7533,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   flex: none;
   min-width: 14px;
   margin-left: auto;
-  color: color-mix(in oklch, var(--status-color) 65%, var(--text-primary));
+  color: light-dark(color-mix(in oklch, var(--status-color) 65%, var(--text-primary)), color-mix(in oklab, var(--status-color) 65%, var(--text-primary)));
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -7577,7 +7577,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   right: var(--space-1);
   height: 2px;
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--brass) 78%, var(--ink-spectral));
+  background: color-mix(in oklab, var(--brass) 78%, var(--ink-spectral));
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent);
   pointer-events: none;
   z-index: 12;
@@ -7715,7 +7715,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .side-bar-group-header[style*="--grp-color"] .side-bar-group-header__count {
-  color: color-mix(in oklch, var(--grp-color) 65%, var(--text-primary));
+  color: light-dark(color-mix(in oklch, var(--grp-color) 65%, var(--text-primary)), color-mix(in oklab, var(--grp-color) 65%, var(--text-primary)));
 }
 
 /* 그룹 「+」 — 이 그룹에 서는 새 목표·Operation. 카운트 뒤에 조용히 서고 hover에서만 또렷해진다. */
@@ -9873,7 +9873,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 2px;
   margin-bottom: 2px;
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--brass) 30%, var(--surface-rim));
+  background: color-mix(in oklab, var(--brass) 30%, var(--surface-rim));
 }
 
 .operations-canvas-blueprint-title {
@@ -10212,7 +10212,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .tool-chip--bad {
-  border-color: color-mix(in oklch, var(--coral) 40%, var(--surface-rim));
+  border-color: light-dark(color-mix(in oklch, var(--coral) 40%, var(--surface-rim)), color-mix(in oklab, var(--coral) 40%, var(--surface-rim)));
   color: var(--coral-ink);
 }
 
@@ -10700,7 +10700,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   gap: 6px;
   margin: 0;
   padding: var(--space-1) var(--space-2);
-  color: color-mix(in oklch, var(--brass-ink) 72%, var(--text-tertiary));
+  color: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary));
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
@@ -10730,7 +10730,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* Etc는 공급자가 아니므로 캐리어 색을 빌리지 않고 머리글 잉크를 그대로 쓴다. */
 .operation-launch-provider-glyph--etc {
-  --launch-provider-tone: color-mix(in oklch, var(--brass-ink) 72%, var(--text-tertiary));
+  --launch-provider-tone: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary));
 }
 
 .operation-launch-provider-glyph {
@@ -11182,7 +11182,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: none;
   font-size: 7px;
   line-height: 1;
-  color: color-mix(in oklch, var(--text-primary) 70%, var(--apex));
+  color: color-mix(in oklab, var(--text-primary) 70%, var(--apex));
   transform: translateY(-50%);
   animation: effort-ultra-twinkle 2.3s ease-in-out infinite 0.4s; animation-name: var(--state-motion, effort-ultra-twinkle);
 }
@@ -11716,7 +11716,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  border-bottom: 1px solid color-mix(in oklch, var(--warn) 52%, var(--surface-rim));
+  border-bottom: 1px solid color-mix(in oklab, var(--warn) 52%, var(--surface-rim));
   background: var(--warn-glow);
   font-size: var(--t-sm);
 }
@@ -12202,11 +12202,11 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .app-toast--error {
-  border-color: color-mix(in oklch, var(--coral) 44%, var(--surface-rim));
+  border-color: color-mix(in oklab, var(--coral) 44%, var(--surface-rim));
 }
 
 .app-toast--warn {
-  border-color: color-mix(in oklch, var(--warn) 44%, var(--surface-rim));
+  border-color: color-mix(in oklab, var(--warn) 44%, var(--surface-rim));
 }
 
 /* 정보 토스트는 상태가 아니다 — 중립 림으로 둔다(신호 보더는 error/warn만). */
@@ -12893,7 +12893,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .operation-search-action.is-danger.is-active {
-  border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
+  border-color: color-mix(in oklab, var(--coral) 55%, var(--surface-rim));
   background: color-mix(in oklch, var(--coral) 10%, transparent);
 }
 
@@ -14543,7 +14543,7 @@ body[data-codex-side="true"] .command-card {
   border-color: color-mix(in oklch, var(--coral) 46%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--coral) 12%, var(--surface-glass));
-  color: color-mix(in oklch, var(--coral) 72%, var(--text-primary));
+  color: light-dark(color-mix(in oklch, var(--coral) 72%, var(--text-primary)), color-mix(in oklab, var(--coral) 72%, var(--text-primary)));
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -16566,7 +16566,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border-radius: 50%;
   pointer-events: none;
   z-index: 2;
-  background: radial-gradient(circle, color-mix(in oklch, var(--apex) 70%, var(--ink-pearl)) 0 28%, transparent 70%);
+  background: radial-gradient(circle, color-mix(in oklab, var(--apex) 70%, var(--ink-pearl)) 0 28%, transparent 70%);
   filter: drop-shadow(0 0 6px var(--apex-glow));
   offset-path: inset(-1px round calc(var(--radius-md) + 1px));
   offset-anchor: center;
@@ -16665,7 +16665,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   margin: 0;
   padding: var(--space-2) var(--space-4) 0;
   font-size: var(--t-md);
-  color: color-mix(in oklch, var(--apex) 72%, var(--text-secondary));
+  color: color-mix(in oklab, var(--apex) 72%, var(--text-secondary));
 }
 
 .quick-launch-ultracode-notice-hint {
@@ -16686,7 +16686,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
    선택"이라 같은 채널이 맞다. 구별은 색이 아니라 모션이 진다: ultracode는 도는 conic 링,
    여기는 정지한 테두리. 동시 무장이면 도는 링이 바깥을 잇고 이 줄이 자기 몫을 계속 말한다. */
 .quick-launch-card.is-chat-start {
-  border-color: color-mix(in oklch, var(--apex) 52%, var(--hairline-strong));
+  border-color: color-mix(in oklab, var(--apex) 52%, var(--hairline-strong));
 }
 
 .quick-launch-start-view-notice {
@@ -16696,7 +16696,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   margin: 0;
   padding: var(--space-2) var(--space-4) 0;
   font-size: var(--t-md);
-  color: color-mix(in oklch, var(--apex) 72%, var(--text-secondary));
+  color: color-mix(in oklab, var(--apex) 72%, var(--text-secondary));
 }
 
 .quick-launch-start-view-glyph {
@@ -18054,8 +18054,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-submit:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 82%, var(--text-on-brass));
-  border-color: color-mix(in oklch, var(--brass) 82%, var(--text-on-brass));
+  background: color-mix(in oklab, var(--brass) 82%, var(--text-on-brass));
+  border-color: color-mix(in oklab, var(--brass) 82%, var(--text-on-brass));
 }
 
 /* 팝오버는 .theater-menu의 팝업 스킨(테두리·언더레이·그림자)을 상속하고 위치·폭만 덮는다.
@@ -18287,7 +18287,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   display: grid;
   width: min(620px, 100%);
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--warn) 48%, var(--surface-rim));
   border-radius: var(--radius-md);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -24px var(--warn-glow);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
@@ -18418,7 +18418,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   flex: none;
   min-height: 40px;
   padding: var(--space-1) var(--space-4);
-  border-bottom: 1px solid color-mix(in oklch, var(--warn) 52%, var(--surface-rim));
+  border-bottom: 1px solid color-mix(in oklab, var(--warn) 52%, var(--surface-rim));
   background: var(--warn-glow);
   color: var(--text-secondary);
 }
@@ -18560,8 +18560,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   background: color-mix(in oklch, var(--ink-mid) 48%, transparent);
   text-align: left;
 }
-.fc-failure--warn { border-color: color-mix(in oklch, var(--warn) 34%, var(--hairline)); }
-.fc-failure--coral { border-color: color-mix(in oklch, var(--coral) 34%, var(--hairline)); }
+.fc-failure--warn { border-color: color-mix(in oklab, var(--warn) 34%, var(--hairline)); }
+.fc-failure--coral { border-color: light-dark(color-mix(in oklch, var(--coral) 34%, var(--hairline)), color-mix(in oklab, var(--coral) 34%, var(--hairline))); }
 .fc-failure__title {
   margin: 0;
   color: var(--text-primary);
@@ -18874,7 +18874,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   outline-offset: 1px;
 }
 
-.fc-live-fold.is-error .fc-live-fold__summary { color: color-mix(in oklch, var(--coral) 72%, var(--text-secondary)); }
+.fc-live-fold.is-error .fc-live-fold__summary { color: light-dark(color-mix(in oklch, var(--coral) 72%, var(--text-secondary)), color-mix(in oklab, var(--coral) 72%, var(--text-secondary))); }
 
 .fc-live-fold__chev {
   transition: transform var(--duration-fast) var(--ease-glide);

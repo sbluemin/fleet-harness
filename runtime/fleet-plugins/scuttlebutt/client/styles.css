@@ -444,7 +444,7 @@
 .scuttlebutt-notice-bubble.is-arrival {
   --scuttlebutt-notice-wash: color-mix(in oklch, var(--positive) 12%, var(--glass-tint-strong));
   --scuttlebutt-notice-ink: var(--positive);
-  border-color: color-mix(in oklch, var(--positive) 50%, var(--hairline));
+  border-color: light-dark(color-mix(in oklch, var(--positive) 50%, var(--hairline)), color-mix(in oklab, var(--positive) 50%, var(--hairline)));
 }
 
 /* hairline과 50% 믹스하면 oklch hue 보간이 그린(hue≈160)에 착륙해 positive 채널과 충돌한다 —
@@ -938,7 +938,7 @@
   border: 1px solid color-mix(in oklch, var(--coral) 30%, transparent);
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--coral) 8%, transparent);
-  color: color-mix(in oklch, var(--coral) 72%, var(--text-secondary));
+  color: light-dark(color-mix(in oklch, var(--coral) 72%, var(--text-secondary)), color-mix(in oklab, var(--coral) 72%, var(--text-secondary)));
 }
 
 /* 한 줄 컴포저 — 카드 아래 한 면 안에 입력과 동작(보내기/중지)이 앉는다. 테두리는 textarea가 아니라

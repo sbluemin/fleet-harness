@@ -313,7 +313,7 @@
   gap: var(--space-2);
   margin: var(--space-2) 0 0;
   padding: var(--space-2);
-  border: 1px solid color-mix(in oklch, var(--warn) 26%, var(--hairline));
+  border: 1px solid color-mix(in oklab, var(--warn) 26%, var(--hairline));
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
   font-size: var(--t-2xs);

@@ -3969,7 +3969,7 @@ describe("Effort track interaction grammar", () => {
     // 구별은 색이 아니라 모션이 진다: ultracode는 도는 conic 링, 여기는 정지한 테두리.
     const armed = components.slice(components.indexOf(".quick-launch-card.is-chat-start {"));
     const armedBlock = armed.slice(0, armed.indexOf("}"));
-    expect(armedBlock).toMatch(/border-color: color-mix\(in oklch, var\(--apex\)/);
+    expect(armedBlock).toMatch(/border-color: color-mix\(in oklab, var\(--apex\)/);
     for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass"]) {
       expect(armedBlock, signal).not.toContain(signal);
     }

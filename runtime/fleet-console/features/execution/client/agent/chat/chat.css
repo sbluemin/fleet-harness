@@ -490,7 +490,7 @@
 /* 채도를 한 단 낮춘다 — 이 수는 결말이 아니라 좌표라, 본문보다 앞에 설 이유가 없다.
    상태 채널의 색은 그대로 두고 밝기만 3차 잉크 쪽으로 당긴다. */
 .agent-chat-change-add { grid-column: 2; color: color-mix(in oklch, var(--positive) 72%, var(--text-tertiary)); }
-.agent-chat-change-del { grid-column: 3; color: color-mix(in oklch, var(--coral) 72%, var(--text-tertiary)); }
+.agent-chat-change-del { grid-column: 3; color: light-dark(color-mix(in oklch, var(--coral) 72%, var(--text-tertiary)), color-mix(in oklab, var(--coral) 72%, var(--text-tertiary))); }
 .agent-chat-change-written { grid-column: 4; justify-self: end; color: var(--text-secondary); white-space: nowrap; }
 .agent-chat-fold-changes .agent-chat-change-add,
 .agent-chat-fold-changes .agent-chat-change-del,
@@ -2435,7 +2435,7 @@
   margin: 0;
   padding: var(--space-2) var(--space-4) 0;
   font-size: var(--t-sm);
-  color: color-mix(in oklch, var(--apex) 72%, var(--text-secondary));
+  color: color-mix(in oklab, var(--apex) 72%, var(--text-secondary));
 }
 
 .agent-chat-composer-ultracode-glyph {
@@ -2588,7 +2588,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-xs);
   background: var(--surface-panel-raised);
-  border: 1px solid color-mix(in oklch, var(--warn) 45%, var(--hairline-strong));
+  border: 1px solid color-mix(in oklab, var(--warn) 45%, var(--hairline-strong));
   box-shadow: var(--shadow-soft);
   font-family: var(--font-ui);
   text-align: center;
@@ -3277,8 +3277,8 @@
 }
 
 .agent-chat-job-anchor.is-open { border-bottom-color: color-mix(in oklch, var(--aurora) 40%, var(--hairline-strong)); }
-.agent-chat-job-anchor.is-fail { border-bottom-color: color-mix(in oklch, var(--coral) 40%, var(--hairline-strong)); }
-.agent-chat-job-anchor.is-stopped { border-bottom-color: color-mix(in oklch, var(--warn) 38%, var(--hairline-strong)); }
+.agent-chat-job-anchor.is-fail { border-bottom-color: light-dark(color-mix(in oklch, var(--coral) 40%, var(--hairline-strong)), color-mix(in oklab, var(--coral) 40%, var(--hairline-strong))); }
+.agent-chat-job-anchor.is-stopped { border-bottom-color: color-mix(in oklab, var(--warn) 38%, var(--hairline-strong)); }
 
 .agent-chat-job-anchor.is-done .agent-chat-job-mark { color: var(--positive); }
 .agent-chat-job-anchor.is-fail .agent-chat-job-mark { color: var(--coral); }
@@ -3820,7 +3820,7 @@
 
 .agent-chat-detail-stop:hover:not(:disabled) {
   color: var(--warn);
-  border-color: color-mix(in oklch, var(--warn) 40%, var(--hairline));
+  border-color: color-mix(in oklab, var(--warn) 40%, var(--hairline));
 }
 
 .agent-chat-detail-stop:focus-visible {

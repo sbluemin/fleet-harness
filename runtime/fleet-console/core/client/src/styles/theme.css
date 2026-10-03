@@ -123,7 +123,7 @@
   --gauge-fill-neutral: color-mix(in oklch, var(--ink-pearl) 18%, var(--ink-mid));
   /* 경고 채움 — 같은 트랙이 경고 단에 오를 때의 불투명 채움. 다크는 warn을 mid에 42%만 섞어 평상 위로
      한 단 무겁게 선다. */
-  --gauge-fill-warn: color-mix(in oklch, var(--warn) 42%, var(--ink-mid));
+  --gauge-fill-warn: color-mix(in oklab, var(--warn) 42%, var(--ink-mid));
 
   /* Operations 캔버스(Map)는 bg0 근방의 저채도 심층 계조만 사용한다. */
   --canvas-abyss: oklch(11% 0.014 245);

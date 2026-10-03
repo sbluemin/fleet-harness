@@ -68,7 +68,7 @@
 }
 
 .terminal-key:active {
-  background: color-mix(in oklch, var(--brass) 20%, var(--surface-glass-strong));
+  background: color-mix(in oklab, var(--brass) 20%, var(--surface-glass-strong));
   border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
   color: var(--brass-ink);
 }
