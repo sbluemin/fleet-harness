@@ -1,4 +1,13 @@
 export const chromeEn = {
+  "chrome.operationSearch.openShell": "Open Shell",
+  "chrome.operationSearch.openShellHere": "Open Shell in active Theater",
+  "chrome.operationSearch.shell.busy": "A program is running in Shell. Finish it before changing folders.",
+  "chrome.operationSearch.shell.input_pending": "Shell has unfinished input. Submit or clear it first.",
+  "chrome.operationSearch.shell.read_only": "Shell is read-only. Take control before changing folders.",
+  "chrome.operationSearch.shell.not_found": "The Theater or folder could not be found.",
+  "chrome.operationSearch.shell.outside_theater": "This folder is outside the Theater.",
+  "chrome.operationSearch.shell.failed": "Shell could not be opened. Try again.",
+
   // command-band
   "chrome.commandBand.local": "Local",
   "chrome.commandBand.localDesktop": "Local · Desktop",
@@ -486,6 +495,15 @@ export const chromeEn = {
 } as const;
 
 export const chromeKo: Record<keyof typeof chromeEn, string> = {
+  "chrome.operationSearch.openShell": "Shell 열기",
+  "chrome.operationSearch.openShellHere": "활성 Theater에서 Shell",
+  "chrome.operationSearch.shell.busy": "Shell에서 프로그램이 실행 중입니다. 종료한 뒤 위치를 바꾸세요.",
+  "chrome.operationSearch.shell.input_pending": "Shell에 입력 중인 명령이 있습니다. 먼저 실행하거나 지우세요.",
+  "chrome.operationSearch.shell.read_only": "Shell이 읽기 전용입니다. 제어권을 가져온 뒤 위치를 바꾸세요.",
+  "chrome.operationSearch.shell.not_found": "Theater 또는 폴더를 찾을 수 없습니다.",
+  "chrome.operationSearch.shell.outside_theater": "이 폴더는 Theater 밖에 있습니다.",
+  "chrome.operationSearch.shell.failed": "Shell을 열지 못했습니다. 다시 시도하세요.",
+
   "chrome.commandBand.local": "로컬",
   "chrome.commandBand.localDesktop": "로컬 · Desktop",
   "chrome.commandBand.searchSessions": "세션 검색",

@@ -1,3 +1,4 @@
+import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
 import { createHostPaneTargetPorts } from "../../integration/plugin-capabilities.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
@@ -113,7 +114,30 @@ export function OperationSearch({
   const [mode, setMode] = useState<PaletteMode>("operations");
   const [text, setText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [railSearchGroups, setRailSearchGroups] = useState<readonly RailSearchGroup[]>([]);
+  const [providerSearchGroups, setRailSearchGroups] = useState<readonly RailSearchGroup[]>([]);
+  const capabilities = useHostCapabilities();
+  const [shellNotice, setShellNotice] = useState<string | null>(null);
+  useEffect(() => setShellNotice(null), [text, mode, state.operationSearchOpen]);
+  const railSearchGroups = useMemo<readonly RailSearchGroup[]>(() => {
+    if (mode !== "operations") return [];
+    const query = text.trim().toLowerCase();
+    const matchesShell = query !== "" && ["shell", "셸", "쉘", "터미널", "terminal", "console"].some((alias) => alias.includes(query));
+    if (!matchesShell || !state.activeTheaterId || !warRoomAvailable) return providerSearchGroups;
+    const theaterId = state.activeTheaterId;
+    return [...providerSearchGroups, {
+      panelId: "global-shell",
+      panelTitle: "Shell",
+      results: [
+        { id: "open-shell", title: t("chrome.operationSearch.openShell"), activate: () => undefined },
+        { id: "open-shell-here", title: t("chrome.operationSearch.openShellHere"), activate: async () => {
+          const result = await capabilities.shell.openAt({ theaterId }).catch(() => null);
+          if (result?.ok) return;
+          setShellNotice(t(result ? `chrome.operationSearch.shell.${result.reason}` : "chrome.operationSearch.shell.failed"));
+          throw new Error("shell_open_refused");
+        } },
+      ],
+    }];
+  }, [providerSearchGroups, mode, text, state.activeTheaterId, warRoomAvailable, capabilities, t]);
   // 동작 띠가 펼쳐진 Operation 행과 그 안의 선택. 띠는 한 번에 하나만 선다.
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [actionIndex, setActionIndex] = useState(0);
@@ -173,22 +197,25 @@ export function OperationSearch({
   const tokens = useMemo(() => searchTokens(text), [text]);
   const railSearchEntries = useMemo(
     // info 행(상한 표식 등)은 표시만 하고 키보드 이동·활성화 대상에서는 뺀다.
-    () => railSearchGroups.flatMap((group) => group.results.filter((result) => result.kind !== "info").map((result) => ({ group, result }))),
+    () => railSearchGroups.flatMap((group) => group.results.filter((result) => result.kind !== "info").map((result) => ({ group, result }))).sort((a, b) => Number(b.result.exact === true) - Number(a.result.exact === true)),
     [railSearchGroups],
   );
+  const exactCount = railSearchEntries.filter((entry) => entry.result.exact === true).length;
   const primaryCount = mode === "operations" ? filteredEntries.length : matchedCommands.length;
   const resultCount = primaryCount + railSearchEntries.length;
   const clampedSelectedIndex = clampIndex(selectedIndex, resultCount);
+  const primaryIndex = clampedSelectedIndex - exactCount;
+  const selectedRailIndex = clampedSelectedIndex < exactCount ? clampedSelectedIndex : clampedSelectedIndex - primaryCount;
   const selectedResultKey = (() => {
-    if (clampedSelectedIndex < primaryCount) {
-      if (mode === "operations") return operationResultKey(filteredEntries[clampedSelectedIndex]!.operationId);
-      return commandRows[clampedSelectedIndex]!.key;
+    if (primaryIndex >= 0 && primaryIndex < primaryCount) {
+      if (mode === "operations") return operationResultKey(filteredEntries[primaryIndex]!.operationId);
+      return commandRows[primaryIndex]!.key;
     }
-    const rail = railSearchEntries[clampedSelectedIndex - primaryCount];
+    const rail = railSearchEntries[selectedRailIndex];
     return rail ? railResultKey(rail.group.panelId, rail.result.id) : undefined;
   })();
   const activeOptionId = selectedResultKey === undefined ? undefined : resultOptionId(selectedResultKey);
-  const selectedOperation = mode === "operations" ? filteredEntries[clampedSelectedIndex] ?? null : null;
+  const selectedOperation = mode === "operations" && primaryIndex >= 0 ? filteredEntries[primaryIndex] ?? null : null;
   // 탭·범례·힌트의 조합 표기는 등록부의 현재 값이다 — 재배정이 바뀌면 함께 바뀐다.
   useShortcutOverrides();
   const searchShortcut = shortcutCommandLabel("console.search-operations");
@@ -289,13 +316,13 @@ export function OperationSearch({
 
   const selectRailResult = async (panelId: string, result: PaneSearchResult) => {
     // activate가 plugin-local 논리 타깃을 먼저 기록한 뒤에만 host route/rail을 연다.
-    previousFocusRef.current = null;
     let target: PaneTarget | void;
     try {
       target = await result.activate();
     } catch {
       return;
     }
+    previousFocusRef.current = null;
     if (target) {
       landPaneTarget(target, createHostPaneTargetPorts(railBindings), panelId);
     } else {
@@ -307,6 +334,9 @@ export function OperationSearch({
       else openRailPanel(panelId);
     }
     closeOperationSearch();
+    if (panelId === "global-shell") {
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(".global-shell-mount .xterm-helper-textarea")?.focus({ preventScroll: true }));
+    }
   };
 
   const runAction = (action: PaletteCommandAction, current: boolean) => {
@@ -576,19 +606,19 @@ export function OperationSearch({
   };
 
   const activateSelected = () => {
-    if (clampedSelectedIndex < primaryCount) {
+    if (primaryIndex >= 0 && primaryIndex < primaryCount) {
       if (mode === "operations") {
-        const selected = filteredEntries[clampedSelectedIndex];
+        const selected = filteredEntries[primaryIndex];
         if (!selected) return;
         if (actionsFor === selected.operationId) rowActions(selected)[actionIndex]?.run();
         else selectEntry(selected.operationId);
         return;
       }
-      const selected = matchedCommands[clampedSelectedIndex];
+      const selected = matchedCommands[primaryIndex];
       if (selected) runCommand(selected.command);
       return;
     }
-    const panelEntry = railSearchEntries[clampedSelectedIndex - primaryCount];
+    const panelEntry = railSearchEntries[selectedRailIndex];
     if (panelEntry) void selectRailResult(panelEntry.group.panelId, panelEntry.result);
   };
 
@@ -672,14 +702,17 @@ export function OperationSearch({
     }
   };
 
-  const renderRailGroups = (offset: number) => railSearchGroups.map((group) => {
-    const headingId = railGroupHeadingId(group.panelId);
+  const renderRailGroups = (exact: boolean) => railSearchGroups.map((group) => {
+    const results = group.results.filter((result) => (result.exact === true) === exact);
+    if (results.length === 0) return null;
+    const headingId = railGroupHeadingId(group.panelId) + (exact ? "-exact" : "");
     const panelIcon = railPanels.find((panel) => panel.id === group.panelId)?.icon;
     return (
-      <section className="operation-search-section operation-search-panel-section" key={group.panelId} role="group" aria-labelledby={headingId}>
+      <section className="operation-search-section operation-search-panel-section" key={headingId} role="group" aria-labelledby={headingId}>
         <h2 id={headingId} className="operation-search-section-heading">{group.panelTitle}</h2>
-        {group.results.map((result) => {
-          const index = offset + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
+        {results.map((result) => {
+          const railIndex = railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
+          const index = railIndex < exactCount ? railIndex : primaryCount + railIndex;
           const active = index === clampedSelectedIndex;
           const resultKey = railResultKey(group.panelId, result.id);
           if (result.kind === "info") {
@@ -825,10 +858,11 @@ export function OperationSearch({
                   </section>
                 );
               })}
-              {renderRailGroups(matchedCommands.length)}
+              {renderRailGroups(false)}
             </>
           ) : (
             <>
+              {renderRailGroups(true)}
               {groups.map((group) => {
                 const headingId = operationGroupHeadingId(group.theaterId) + (group.archived ? "-archived" : "");
                 const activeGroup = !group.archived && group.theaterId === state.activeTheaterId;
@@ -839,7 +873,7 @@ export function OperationSearch({
                       {activeGroup ? <span className="operation-search-section-note">{t("chrome.operationSearch.current")}</span> : null}
                     </h2>
                     {group.entries.map((entry) => {
-                      const index = filteredEntries.indexOf(entry);
+                      const index = exactCount + filteredEntries.indexOf(entry);
                       const active = index === clampedSelectedIndex;
                       const resultKey = operationResultKey(entry.operationId);
                       const stripOpen = actionsFor === entry.operationId;
@@ -903,10 +937,11 @@ export function OperationSearch({
                   </section>
                 );
               })}
-              {renderRailGroups(filteredEntries.length)}
+              {renderRailGroups(false)}
             </>
           )}
         </div>
+        {shellNotice ? <p className="archive-sheet-notice" role="alert">{shellNotice}</p> : null}
         {archiveNotice ? <p className="archive-sheet-notice" role="status">{t("archive.notice.restoreFailed")}</p> : null}
         <div className="operation-search-legend">
           <span><kbd>↑</kbd><kbd>↓</kbd>{t("chrome.operationSearch.legendMove")}</span>

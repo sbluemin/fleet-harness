@@ -472,3 +472,35 @@
   outline: 1px solid var(--brass);
   outline-offset: -1px;
 }
+
+.right-rail.has-detail-overlay,
+.right-rail.has-detail-overlay .right-rail-panel-slot,
+.right-rail.has-detail-overlay .right-rail-section,
+.right-rail.has-detail-overlay .right-rail-panel-body {
+  overflow: visible;
+}
+
+.rail-surface {
+  position: relative;
+}
+
+.rail-pane.is-overlay {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: calc(100% + var(--space-2));
+  width: min(var(--pane-overlay-width, 420px), calc(100vw - 280px));
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: var(--ink-deep);
+  box-shadow: var(--shadow-soft);
+}
+
+.right-rail.is-overlay {
+  z-index: calc(var(--z-rail) + 1);
+}
+
+[data-rail-overlay="true"]:focus {
+  outline: none;
+}

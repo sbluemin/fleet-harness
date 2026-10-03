@@ -107,6 +107,7 @@ function projectPanel(panel: RailPanelDescriptor, core = false): RailEntryBindin
             ...(result.subtitle === undefined ? {} : { subtitle: result.subtitle }),
             ...(result.icon === undefined ? {} : { icon: result.icon }),
             ...(result.kind === undefined ? {} : { kind: result.kind }),
+            ...(result.exact === undefined ? {} : { exact: result.exact }),
             activate: async () => {
               await result.activate();
               return { paneId: panel.id };

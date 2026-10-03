@@ -1,3 +1,4 @@
+import { usePaneOverlay } from "./use-pane-overlay.js";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { ClientApiCapability, ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
@@ -39,6 +40,7 @@ const EMPTY_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 
 export interface RailSurfaceProps {
   readonly binding: RailEntryBinding;
+  readonly overlayDetails?: boolean;
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
   readonly language: ConsoleLocale;
@@ -50,6 +52,7 @@ export interface RailSurfaceProps {
 
 export const RailSurface = memo(function RailSurface({
   binding,
+  overlayDetails = false,
   theaterId,
   api,
   language,
@@ -64,6 +67,23 @@ export const RailSurface = memo(function RailSurface({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [surfaceWidth, setSurfaceWidth] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const focusOriginRef = useRef<{ node: HTMLElement; paneId?: string; tag: string; label: string | null; title: string | null; text: string } | null>(null);
+  const rememberFocusOrigin = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement) || target.closest(".rail-pane.is-overlay")) return;
+    const node = target.closest<HTMLElement>('button, a, input, textarea, select, [tabindex]');
+    if (!node) return;
+    focusOriginRef.current = { node, paneId: node.closest<HTMLElement>("[data-pane]")?.dataset.pane, tag: node.tagName.toLowerCase(), label: node.getAttribute("aria-label"), title: node.getAttribute("title"), text: node.textContent?.trim() ?? "" };
+  };
+  const returnFocus = useCallback(() => {
+    const origin = focusOriginRef.current;
+    if (!origin) return null;
+    if (origin.node.isConnected) return origin.node;
+    const scope = [...(surfaceRef.current?.querySelectorAll<HTMLElement>("[data-pane]") ?? [])].find((node) => node.dataset.pane === origin.paneId) ?? surfaceRef.current;
+    return [...(scope?.querySelectorAll<HTMLElement>(origin.tag) ?? [])].find((node) => origin.label !== null
+      ? node.getAttribute("aria-label") === origin.label
+      : origin.title !== null ? node.getAttribute("title") === origin.title : node.textContent?.trim() === origin.text) ?? null;
+  }, []);
+
 
   // 엔트리를 갈아타면 이전 표면의 열은 사라져야 한다. 비우지 않으면 돌아왔을 때 옛 detail이
   // 옛 params 그대로 되살아나고, keepAlive를 선언하지 않은 페인까지 스토어에 남는다.
@@ -132,7 +152,8 @@ export const RailSurface = memo(function RailSurface({
     [openInstances, owned, primary?.id],
   );
   // 주차된 페인은 `display: none`이라 자리를 차지하지 않는다 — 기하 계산에서도 빠져야 한다.
-  const standing = useMemo(() => extras.filter(({ instance }) => instance.visible), [extras]);
+  const visibleExtras = useMemo(() => extras.filter(({ instance }) => instance.visible), [extras]);
+  const standing = useMemo(() => overlayDetails ? [] : visibleExtras, [overlayDetails, visibleExtras]);
 
   // 표면 폭 실측. 이 숫자는 **호스트 안에서만** 산다 — ctx로 흘리면 렌더마다 컨텍스트가
   // 새로 만들어져 본문이 다시 그려진다(계약이 `ctx.width`를 힌트로만 두는 이유).
@@ -169,6 +190,7 @@ export const RailSurface = memo(function RailSurface({
   // 잘린 실측이 아니라 원하는 폭을 남겨, 좁은 창을 거쳐 돌아와도 원래 분할로 복원한다.
   const splitWidthRef = useRef<number | undefined>(undefined);
   const splitMaxWidthRef = useRef<number | null>(null);
+  if (overlayDetails) splitMaxWidthRef.current = null;
   const widthReset = useRailPanelWidthReset();
   const previousWidthResetRef = useRef(widthReset);
   if (previousWidthResetRef.current !== widthReset) {
@@ -198,12 +220,12 @@ export const RailSurface = memo(function RailSurface({
   //
   // **서 있는 detail이 없을 때는 값을 건드리지 않는다.** 아직 한 본문 안에서 두 열을 그리는
   // 플러그인이 같은 창구로 폭을 요구하고 있어서, 0을 써 버리면 그 요구를 덮는다.
-  const desiredExtra = standing.reduce(
+  const desiredExtra = visibleExtras.reduce(
     (sum, { descriptor }) => sum + (paneWidths[descriptor.id] ?? resolvePaneDefaultWidth(descriptor)),
     0,
   );
   useEffect(() => {
-    if (standing.length > 0) {
+    if (visibleExtras.length > 0) {
       ownsExtraRef.current = true;
       onRequestExtraWidth?.(desiredExtra);
       return;
@@ -211,7 +233,7 @@ export const RailSurface = memo(function RailSurface({
     if (!ownsExtraRef.current) return;
     ownsExtraRef.current = false;
     onRequestExtraWidth?.(null);
-  }, [desiredExtra, onRequestExtraWidth, standing.length]);
+  }, [desiredExtra, onRequestExtraWidth, visibleExtras.length]);
 
   const handlePrimaryWidthChange = useCallback((width: number) => {
     if (!primary) return;
@@ -251,6 +273,8 @@ export const RailSurface = memo(function RailSurface({
       ref={surfaceRef}
       className={`rail-surface${split ? " is-split" : ""}${isDragging ? " is-dragging" : ""}`}
       data-pane-count={standing.length + 1}
+      onPointerDownCapture={(event) => rememberFocusOrigin(event.target)}
+      onFocusCapture={(event) => rememberFocusOrigin(event.target)}
     >
       {extras.map(({ instance, descriptor }) => (
         <PaneHost
@@ -259,6 +283,8 @@ export const RailSurface = memo(function RailSurface({
           instanceId={instance.instanceId}
           params={instance.params}
           visible={instance.visible}
+          overlay={overlayDetails && instance.visible}
+          returnFocus={returnFocus}
           focused={focusedPaneId === descriptor.id}
           theaterId={theaterId}
           api={api}
@@ -299,6 +325,8 @@ interface PaneHostProps {
   readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
   /** 표면이 정한 이 열의 폭(px). 생략하면 남는 자리를 채운다. */
   readonly width?: number;
+  readonly overlay?: boolean;
+  readonly returnFocus?: () => HTMLElement | null;
 }
 
 /**
@@ -325,8 +353,11 @@ function PaneHost({
   onRequestExtraWidth,
   onLaunchOperation,
   width,
+  overlay = false,
+  returnFocus,
 }: PaneHostProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
   // ctx.panes는 params가 바뀌어도 안정적이라 비동기 작업이 오래 쥘 수 있다. 호스트가 헐린 뒤
   // 도착한 콜백까지 받으면 닫힌 primary의 주소가 다음 열림에 되살아나므로 수명을 함께 확인한다.
   const mountedRef = useRef(true);
@@ -370,6 +401,8 @@ function PaneHost({
       ...(descriptor.onClose ? { onClose: descriptor.onClose } : {}),
     });
   }, [descriptor]);
+
+  usePaneOverlay(overlay, paneRef, handleClose, returnFocus);
 
   const handleReplaceParams = useCallback((next: Readonly<Record<string, string>>) => {
     if (!mountedRef.current) return;
@@ -428,14 +461,15 @@ function PaneHost({
 
   return (
     <div
+      ref={paneRef}
       id={`rail-pane-${descriptor.id}`}
-      className={`rail-pane role-${descriptor.role}${focused ? " is-focused" : ""}${visible ? "" : " is-parked"}${width === undefined ? "" : " is-sized"}`}
+      className={`rail-pane role-${descriptor.role}${focused ? " is-focused" : ""}${visible ? "" : " is-parked"}${width === undefined ? "" : " is-sized"}${overlay ? " is-overlay" : ""}`}
       data-pane={descriptor.id}
       {...onboardingWorkSurface()}
       hidden={!visible}
       aria-hidden={visible ? undefined : true}
       inert={visible ? undefined : true}
-      style={width === undefined ? undefined : { ["--pane-width" as string]: `${width}px` }}
+      style={{ ...(width === undefined ? {} : { ["--pane-width" as string]: `${width}px` }), ...(overlay ? { ["--pane-overlay-width" as string]: `${resolvePaneDefaultWidth(descriptor)}px` } : {}) }}
       onFocusCapture={() => { if (visible) focusPane(descriptor.id); }}
     >
       {hasCaption ? (
