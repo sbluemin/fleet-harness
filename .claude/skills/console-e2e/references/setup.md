@@ -41,8 +41,8 @@ pnpm --dir <worktree>/runtime/fleet-console exec tsx \
 ```
 
 - It derives every key from the current source (core and built-in plugin onboarding contributions, the seen-store key rules, the commissioning key), merges them into `seenFeatureTours` through the origin-gated `PUT /api/v1/settings/global`, reads them back, and fails when one is missing. `--dry-run` only lists the keys. Commissioning also opens only while no Theater is registered.
-- What's New is a per-origin `localStorage` watermark, so the script writes it as a page script for `--init-script` of the session that opens the page. Every isolated-server restart picks a new port, which is a new origin: rerun the script and reopen the session.
-- When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: pass `--keep <key>` (or a prefix ending in `.`, such as `objectives.`) for it, omit `--init-script` when What's New is under test, and install diagnostics before the first navigation so its appearance and race stay observable.
+- What's New is a per-origin `localStorage` watermark, so the script writes it as a page script for `--init-script` of the session that opens the page. Every isolated-server restart picks a new port, which is a new origin: rerun the script and reopen the session. The [Fleet Browser fallback](fleet-browser.md) has no init script; there, dismiss What's New through its real control and record that the watermark could not be preset.
+- When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: pass `--keep <key>` (or a prefix ending in `.`, such as `objectives.`) for it, which also clears that key on a reused slot, omit `--init-script` when What's New is under test, and install diagnostics before the first navigation so its appearance and race stay observable.
 - Confirm the first screenshot shows no unseeded onboarding layer before acting.
 
 ### No-cost fake Claude

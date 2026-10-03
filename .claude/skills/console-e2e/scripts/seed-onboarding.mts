@@ -8,7 +8,7 @@
 //     <worktree>/.claude/skills/console-e2e/scripts/seed-onboarding.mts \
 //     --console-dir "$E2E_DIR/console" [--keep <key> ...] [--init-script <file>] [--dry-run]
 //
-// --keep leaves a key (or every key with that prefix, e.g. `objectives.`) unseeded when that layer is under test.
+// --keep leaves a key (or every key with that prefix, e.g. `objectives.`) unseeded, removing it if already stored, when that layer is under test.
 // --init-script writes a page script setting the per-origin What's New watermark; pass it to the browser session.
 // Only loopback writes go to the owned Console named by its lock; no token is read or printed.
 import { readdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -69,12 +69,16 @@ const headers = { Origin: origin, "Content-Type": "application/json" };
 
 const status = await fetch(`${origin}/api/v1/status`, { headers }).then((response) => response.json()) as { version?: string };
 const current = await fetch(`${origin}/api/v1/settings/global`, { headers }).then((response) => response.json()) as { seenFeatureTours?: string[] };
-const seen = [...new Set([...(current.seenFeatureTours ?? []), ...keys])];
+// A kept key comes off the stored list too, so a reused slot still shows the layer under test.
+const seen = [...new Set([...(current.seenFeatureTours ?? []).filter((key) => !kept(key)), ...keys])];
 const put = await fetch(`${origin}/api/v1/settings/global`, { method: "PUT", headers, body: JSON.stringify({ seenFeatureTours: seen }) });
 if (!put.ok) throw new Error(`PUT /api/v1/settings/global failed: ${put.status} ${await put.text()}`);
 const after = await fetch(`${origin}/api/v1/settings/global`, { headers }).then((response) => response.json()) as { seenFeatureTours?: string[] };
-const missing = keys.filter((key) => !(after.seenFeatureTours ?? []).includes(key));
+const stored = after.seenFeatureTours ?? [];
+const missing = keys.filter((key) => !stored.includes(key));
 if (missing.length > 0) throw new Error(`Settings did not keep: ${missing.join(", ")} (the field is bounded; check its limit).`);
+const lingering = stored.filter(kept);
+if (lingering.length > 0) throw new Error(`Settings still mark kept keys as seen: ${lingering.join(", ")}.`);
 
 if (initScript) {
   if (!status.version) throw new Error("/api/v1/status returned no version for the What's New watermark.");
