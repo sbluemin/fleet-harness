@@ -1,5 +1,5 @@
 import type { ConsoleState } from "../../../core/client/src/integration/types.js";
-const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
+export const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
 let whatsNewSeenVersionMemo: string | null = null;
 
 export function evaluateAutomaticWhatsNew(current: ConsoleState): Pick<ConsoleState, "whatsNewOpen" | "automaticWhatsNewVersion" | "selectedReleaseNoteKey"> {

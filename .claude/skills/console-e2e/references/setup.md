@@ -32,11 +32,18 @@ Before reproducing a user-reported defect, record the user's installed Fleet ver
 
 ### First-load onboarding state
 
-A fresh slot and a new origin show commissioning, What's New, entry hints, and feature tours, and they can race the scenario's first input. Unless onboarding itself is under test, prepare that state **before the first navigation** instead of dismissing layers mid-scenario:
+A fresh slot and a new origin show commissioning, What's New, welcome slides, entry hints, and feature tours, and they can race the scenario's first input. Prepare that state **before the first navigation** instead of dismissing layers mid-scenario. Once the lock exists, run [`scripts/seed-onboarding.mts`](../scripts/seed-onboarding.mts) with the Console package's `tsx`:
 
-- Commissioning, entry hints, and feature tours are server-owned: their keys go in `seenFeatureTours` through `PUT /api/v1/settings/global` (origin-write gate, so send it from the owned page origin or with the matching `Origin`). Derive the keys from the current code — the commissioning key in `core/client/src/integration/store.ts`, the rest from the onboarding contributions and `features/onboarding/client/seen-store.ts` — rather than copying an old list; the field holds a bounded number of keys. Commissioning also opens only while no Theater is registered.
-- What's New is a per-origin `localStorage` watermark read by the client (an older commissioning flag there is only a migration fallback). Set it in the `--init-script` that opens the session. Every isolated-server restart picks a new port, which is a new origin, so it must be set again.
-- Read the settings back and confirm the first screenshot shows no onboarding layer before acting. When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: seed only the unrelated layers and install diagnostics before the first navigation so its appearance and race stay observable.
+```bash
+pnpm --dir <worktree>/runtime/fleet-console exec tsx \
+  <worktree>/.claude/skills/console-e2e/scripts/seed-onboarding.mts \
+  --console-dir "$E2E_DIR/console" --init-script "$E2E_DIR/whats-new.js"
+```
+
+- It derives every key from the current source (core and built-in plugin onboarding contributions, the seen-store key rules, the commissioning key), merges them into `seenFeatureTours` through the origin-gated `PUT /api/v1/settings/global`, reads them back, and fails when one is missing. `--dry-run` only lists the keys. Commissioning also opens only while no Theater is registered.
+- What's New is a per-origin `localStorage` watermark, so the script writes it as a page script for `--init-script` of the session that opens the page. Every isolated-server restart picks a new port, which is a new origin: rerun the script and reopen the session.
+- When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: pass `--keep <key>` (or a prefix ending in `.`, such as `objectives.`) for it, omit `--init-script` when What's New is under test, and install diagnostics before the first navigation so its appearance and race stay observable.
+- Confirm the first screenshot shows no unseeded onboarding layer before acting.
 
 ### No-cost fake Claude
 

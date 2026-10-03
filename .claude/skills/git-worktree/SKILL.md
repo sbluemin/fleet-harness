@@ -9,14 +9,14 @@ Interpret the request as `create` or `remove`. Creation defaults to a branch for
 
 ## Inputs
 
-- `<worktree-name>`: create directory and default branch name. Infer a task-specific name when absent.
-- `<new-branch>`: branch creation only; defaults to `<worktree-name>`.
+- `<worktree-name>`: the directory under `.fleet/worktrees/`. Infer a task-specific name when absent; when only a branch is given, use it with `/` replaced by `-`.
+- `<new-branch>`: branch creation only; defaults to `<worktree-name>`. May carry one Conventional Commits type prefix (`fix/<name>`, `feat/<name>`), as on the remote; a flat name is equally valid.
 - `<base-branch>`: branch creation only; defaults to `canary`. Reject `main`/`master`; ask before using any other base.
 - `<revision>`: baseline creation only; the task's specific commit or ref, resolved once to a full commit SHA. No implicit `canary` fallback and no new branch.
 - `<delete-remote>`: branch removal only; defaults to `no`. Set `yes` only for explicit remote-cleanup requests.
 - `<force>`: branch removal defaults to `yes`. With explicit `no`, do not force-remove the worktree or force-delete its branch; report the blocked state. Baseline removal never uses force.
 
-Trim names and replace internal spaces with `-`, preserving deliberate capitalization. Reject characters outside `[A-Za-z0-9._-]+`, `/`, `..`, leading `.`, path separators, and shell metacharacters. Neither a new nor deleted branch may be `main`/`master`/`canary`.
+Trim names and replace internal spaces with `-`, preserving deliberate capitalization. A segment matches `[A-Za-z0-9._-]+` without `..`, a leading `.`, or a trailing `.lock`; reject everything else, including backslashes and shell metacharacters. The directory name is exactly one segment. A branch name is one segment or `<type>/<segment>` with `<type>` a lowercase Conventional Commits type (`fix`, `feat`, …); reject any other `/`. Neither a new nor deleted branch may be `main`/`master`/`canary`.
 
 ## Safety boundaries
 
