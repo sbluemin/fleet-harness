@@ -27,3 +27,6 @@ jobs:
       # Node 22 run locally, where --test rejects a directory. A suite added later is picked up on its own.
       - name: Run repository script tests
         run: node --test scripts/*.test.mjs
+
+      - name: Validate repository skills
+        run: node .claude/skills/validate-skills.mjs

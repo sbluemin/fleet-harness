@@ -26,6 +26,28 @@ Run the server as a background/managed process and wait for `$E2E_DIR/console/co
 
 Client changes require build plus reload. Host changes require build plus isolated server restart. Compare the asset name in `dist/client/index.html` with the served `/console/` HTML before blaming stale behavior.
 
+### Record what is being reproduced
+
+Before reproducing a user-reported defect, record the user's installed Fleet version or reported surface, the target SHA, and the served asset name. A local `canary` can lag or lead the user's build with a different UI; when they differ, reproduce on a detached [baseline](../../git-worktree/references/baseline.md) at the user's revision rather than assuming the newest checkout shows the same behavior. While measuring, do not let another build write the same `dist/` the owned server serves: use a separate checkout or output, and report a rebuild that landed mid-measurement as a contaminated run.
+
+### First-load onboarding state
+
+A fresh slot and a new origin show commissioning, What's New, entry hints, and feature tours, and they can race the scenario's first input. Unless onboarding itself is under test, prepare that state **before the first navigation** instead of dismissing layers mid-scenario:
+
+- Commissioning, entry hints, and feature tours are server-owned: their keys go in `seenFeatureTours` through `PUT /api/v1/settings/global` (origin-write gate, so send it from the owned page origin or with the matching `Origin`). Derive the keys from the current code — the commissioning key in `core/client/src/integration/store.ts`, the rest from the onboarding contributions and `features/onboarding/client/seen-store.ts` — rather than copying an old list; the field holds a bounded number of keys. Commissioning also opens only while no Theater is registered.
+- What's New is a per-origin `localStorage` watermark read by the client (an older commissioning flag there is only a migration fallback). Set it in the `--init-script` that opens the session. Every isolated-server restart picks a new port, which is a new origin, so it must be set again.
+- Read the settings back and confirm the first screenshot shows no onboarding layer before acting. When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: seed only the unrelated layers and install diagnostics before the first navigation so its appearance and race stay observable.
+
+### No-cost fake Claude
+
+When the claim needs a live agent process, MCP tools, or chat protocol traffic but not model output, point `CLAUDE_BIN` at [`scripts/fake-claude.mjs`](../scripts/fake-claude.mjs) instead of the real CLI. It answers `--version`, speaks the SDK stream-json control protocol in chat (`initialize`, `set_model`, `get_context_usage`, one canned turn per user message), and otherwise stays alive as an interactive terminal that echoes input. Nothing reaches a provider, so no quota is spent and no credential is needed.
+
+- Boot through the [Claude state preflight](claude-state.md) environment anyway: add `CLAUDE_BIN=<worktree>/.claude/skills/console-e2e/scripts/fake-claude.mjs` and `FAKE_CLAUDE_DIR=<owned-run>/fake-claude`, and keep `node` on the explicit `PATH`. On Windows, point `CLAUDE_BIN` at the sibling `fake-claude.cmd` instead: Console launches only `.cmd`/`.bat` shims through `cmd.exe`, so a `.mjs` path does not start. A fake binary does not make the rest of the agent route inert.
+- `FAKE_CLAUDE_DIR/log.jsonl` records each launch (mode, cwd, `--session-id`/`--resume`, MCP server names), control request, turn and exit without secrets. Use it to prove which Operation launched, resumed or exited. The script header lists the control files for context size, a failing `set_model`, and a held-open turn.
+- To act as that launch on Console MCP (an Objectives Commander or member, `fleet-console-use`, and so on), run [`scripts/fake-claude-mcp.mjs`](../scripts/fake-claude-mcp.mjs) `--dir <FAKE_CLAUDE_DIR> --server <name> --tool <tool> --args '<json>'`; `--list` shows the saved launches. The Console-issued bearer tokens stay in owner-only files under `FAKE_CLAUDE_DIR/mcp/`; never print or copy them.
+- The fake fires no Claude hooks. Console pins a `--session-id` at launch, which keeps the Operation's identity, but a coordinate whose source is still `launch` resumes as a fresh session. To exercise a real `--resume`, post the capture hook a real CLI would send: `POST /api/v1/agent/sessions/<operation>/capture` with the lock token as Bearer and `{"provider":"claude","input":"{\"session_id\":\"<pinned id>\",\"source\":\"startup\"}"}`. Turn, attention, and background states have their own lock-token hook routes. Recheck the resume and capture contracts in `features/execution/host/agent/routes.ts` when they change.
+- Label results as fixture evidence. A fake proves launch, lifecycle, MCP and protocol paths, not real CLI behavior, authentication, trust prompts, or model quality.
+
 ### UI-only Operation fixtures
 
 For proposal/audit screens that need Operations but no model turn, prefer a dormant fixture in the **owned, stopped runtime's** `state.json`, using the current durable schema and restore tests as the source of truth. Never copy user state or overwrite a running server's state. Inspect `features/workspace/host/durable-state.ts` and the terminal restore contract for the current `payload.session` shape before authoring a fixture. Resume affordances require supported session identity; a fabricated identity is not proof that resume works. Verify the restored Operations through the API and UI without launching a provider.

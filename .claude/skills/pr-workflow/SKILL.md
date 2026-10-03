@@ -11,7 +11,7 @@ Deliver an authorized change as a PR on `sbluemin/fleet-harness`. Start new chan
 
 Run when the user requests this PR lifecycle or explicitly authorizes publication/merge. Automatic skill loading does not authorize commit, push, PR creation, or merge. Do not ask again between ordinary steps within an authorized full lifecycle.
 
-Defaults: base `canary`, merge `squash`, `auto_merge=true`. A `main`/`master` base requires explicit override; reject head=base. With `auto_merge=false`, stop at review completion and preserve branch/worktree. Read [Inputs](references/inputs.md) when options need resolving.
+Defaults: base `canary`, merge `squash`, `auto_merge=true`. The base is always `canary`: the PR Target Guard workflow closes every pull request aimed elsewhere, and a request to target `main`/`master` belongs to `release-version-update`, not a PR. Reject head=base. With `auto_merge=false`, stop at review completion and preserve branch/worktree. Read [Inputs](references/inputs.md) when options need resolving.
 
 ## Phase-specific loading
 
@@ -34,7 +34,7 @@ Defaults: base `canary`, merge `squash`, `auto_merge=true`. A `main`/`master` ba
 
 For initial Codex silence, explicitly request activation and check for a default 60 seconds. Continued silence becomes `codex_activation_timeout` and may proceed through normal merge gates, but is not approval and never bypasses required checks.
 
-Use signal-driven background waiting. Do not treat stale `+1`, `eyes`, or re-anchored inline comments as fresh approval/feedback. End the review loop on a pass with no FIX findings, with a default maximum of 3 passes. Continuing requires a named reproduced defect. Disclose timeouts, omissions, and failures.
+Use signal-driven background waiting. Do not treat stale `+1`, `eyes`, or re-anchored inline comments as fresh approval/feedback. A usage-limit notice means that request is not shown to have produced a review; it does not mean no review ever ran, and it does not approve the head; classify it as [Review wait](references/review-wait.md) describes and record `codex_usage_limit`. End the review loop on a pass with no FIX findings, with a default maximum of 3 passes. Continuing requires a named reproduced defect. Disclose timeouts, omissions, and failures.
 
 ## Merge and delivery
 

@@ -19,7 +19,7 @@ node .claude/skills/validate-skills.mjs
 pnpm --filter @fleet-plugins/skills test
 ```
 
-The validator checks the real Console description parser, names, file links, and reference reachability. Relative Markdown links must target real files within the skill tree. It does not enforce arbitrary body lengths or section wording. It is not evidence of LLM routing accuracy or successful lifecycle execution.
+The validator checks the real Console description parser, names, file links, and reachability of every `references/` file, including nested folders. The Scripts Tests workflow runs it on every pull request. Relative Markdown links must target real files within the skill tree. It does not enforce arbitrary body lengths or section wording. It is not evidence of LLM routing accuracy or successful lifecycle execution.
 
 Review semantic changes by assembling an entrypoint with **only references selected by the case** below. For comparisons with an earlier revision, hold prompt, model/effort, tools, and retrieval conditions constant; record initial route, loaded references, stopping point, and authority violations. Label a document dry-run as such rather than claiming live execution.
 
@@ -43,7 +43,7 @@ Review semantic changes by assembling an entrypoint with **only references selec
 | Rebase a topic with sync_local_base=no | rebase-on-canary; preview/rebase/verification all use origin/canary, no push |
 | Resume Codex review on an open PR | pr-workflow; recover pushed head/frozen context, ignore stale +1, bounded passes and final audit |
 | Synchronize only / range is docs-only | release-version-update; no main deployment push, no fake product change to trigger CI |
-| Record why an approved decision was made | wiki-history; eight sections and evidence-backed preview, no permanent registration before approval |
+| Record why an approved decision was made | wiki-history; the workspace PRD template's sections and an evidence-backed preview, no permanent registration before approval |
 | Capture recurring learning from this task | learning-harvest; recurrence/cost/generality, no encoding before candidate approval |
 | Implement an approved single CSS fix or edit docs only | Do not expand into unrelated proposal/sweep/PR/release workflows |
 

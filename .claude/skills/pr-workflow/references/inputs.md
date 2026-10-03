@@ -8,7 +8,7 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 - `<commit_body>` — Optional commit body. If omitted, summarize the change as bullets.
 - `<title>` — Conventional Commits PR title (≤ 70 chars). Optional. If omitted, derive from `git log <base>..HEAD`.
 - `<body>` — Markdown PR body. Optional. If omitted, auto-build a Summary + Test Plan from the diff, following `.github/PULL_REQUEST_TEMPLATE.md` style (Korean prose is fine; the PR title stays English Conventional Commits).
-- `<base>` — Base branch. Optional. Default `canary`. `main` / `master` are rejected unless explicitly overridden.
+- `<base>` — Base branch. Always `canary`; `.github/workflows/pr-target-guard.yml` closes a PR aimed at any other branch, so a user override cannot change it. Stop and report when another base is requested.
 - `<head>` — Head branch. Optional. Default = current branch. Must not equal `<base>`.
 - `<draft>` — `true` | `false`. Optional. Default `false`.
 - `<scope_hint>` — Optional. Free-form note restricting review-fix scope (e.g., "only Codex P1/P2"). If omitted, default to "every actionable, unresolved review comment on the PR".

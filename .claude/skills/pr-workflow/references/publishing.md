@@ -27,7 +27,7 @@ When the change is not a feature-level product delta — refactors, boundary gat
 
 ### Phase 2 — Open the PR
 
-1. Resolve `<head>` (default current branch) and `<base>` (default `canary`; reject `main`/`master` unless overridden). If `<head>` equals `<base>`, stop and ask.
+1. Resolve `<head>` (default current branch) and `<base>` (always `canary`; stop on any other requested base). If `<head>` equals `<base>`, stop and ask.
 2. `git push -u origin <head>` and verify `git status --short --branch` reports up-to-date with the remote.
 3. Build PR metadata: derive `<title>` (≤ 70 chars, Conventional Commits) and `<body>` (`## Summary` 1–3 bullets + `## Test Plan` checklist) if not provided. Do not add a Changelog checklist to the PR body.
    - When a new release note was committed, the fragment itself is the record; no PR-body ceremony is required.

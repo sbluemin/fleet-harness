@@ -2,25 +2,13 @@
 
 This document is the operational doctrine for agents working inside this repository.
 
-## 1. Architecture State
+## 1. Ownership
 
-- `runtime/fleet-console/cli` owns the thin `fleet` launcher Composition Root inside `@dotobokuri/fleet-console`: argv/process lifecycle, an in-process AI Gateway MCP, an ephemeral loopback AI Gateway, and a Claude Code child with inherited stdio; it consumes single-fleet Admiral policy from `@fleet-console/agent-runtime/fleet`.
-- `runtime/fleet-console/foundation/agent-runtime` owns the host-agnostic one-shot executor/session/model runtime engine (`executeOneShot`, which builds a fresh provider client per call and resumes only via a caller-supplied session id), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
-- `runtime/fleet-console/foundation/infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
-- `runtime/fleet-console` owns the standalone loopback Console Service: CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI.
-- `runtime/fleet-desktop` is an optional Electron main-process shell that procures a managed Node runtime and the Console Service into its replaceable runtime directory, supervises that Console as a sidecar, and loads `/console/`; it never owns duplicate UI, server, PTY, plugin, provider, or state code.
+Package ownership and dependency boundaries live in the root `CLAUDE.md` and in the child `CLAUDE.md` along each path (`runtime/fleet-console/`, its `foundation/` packages, `runtime/fleet-plugins/`, `runtime/fleet-desktop/`). This reference does not restate them; read the owner file for the path you change.
 
-## 2. Ownership Model
+One launcher boundary is easy to miss: the `fleet` launcher under `runtime/fleet-console/cli` keeps argv dispatch, process lifecycle, and host adapters, and must not own PTY, TUI, terminal I/O interception, host-agnostic infrastructure internals, or generic MCP transport internals.
 
-The `fleet` launcher (under `runtime/fleet-console/cli`) owns:
-- Thin argv dispatch and process lifecycle for Claude Code passthrough, `fleet auth`, `fleet update`, and `fleet console`.
-- An in-process AI Gateway MCP and an ephemeral loopback AI Gateway for the Claude child.
-- Host adapters that consume Admiral prompt/protocol/tool policy from `@fleet-console/agent-runtime/fleet`.
-- Concrete runtime assembly in `cli/runtime/runtime.ts`.
-
-It must not own PTY, TUI, terminal I/O interception, host-agnostic infrastructure internals, or generic MCP transport internals.
-
-## 3. Allowed Dependency Direction
+## 2. Allowed Dependency Direction
 
 ```text
 @dotobokuri/fleet-console
@@ -46,7 +34,7 @@ Forbidden patterns:
 - Recreating deleted compatibility packages or namespace facades.
 - Deep-importing package `src/**` or `internal/**` across package boundaries.
 
-## 4. Operational Guidance For Agents
+## 3. Operational Guidance For Agents
 
 1. Ask whether the behavior belongs to host assembly, generic infrastructure, or generic MCP transport.
 2. Keep shared Fleet execution policy under `runtime/fleet-console/foundation/agent-runtime/src/fleet/`, and Gateway model exposure and the routing decision under `runtime/fleet-console/features/ai-gateway/runtime/src/fleet/`. `assets/hooks/` is an authoring source only: its hooks and the routing mod ship inside the launched plugin.
@@ -56,7 +44,7 @@ Forbidden patterns:
 6. Keep implementation on the host by default; delegate only fully specified, mechanical, disjoint, independently checkable batches in isolated worktrees.
 7. For mutating runs, inspect actual diffs and changed files against the settled host decisions before acceptance.
 
-## 5. Compatibility Invariants
+## 4. Compatibility Invariants
 
 Preserve:
 - Slash command names.
@@ -64,7 +52,7 @@ Preserve:
 - MCP/provider FIFO and archive behavior.
 - Multi-instance state integrity for shared durable state.
 
-## 6. Console Self-Update Operations
+## 5. Console Self-Update Operations
 
 Fleet Console UI and `fleet update` update only the sole published package `@dotobokuri/fleet-console`. Operators and contributors should keep the following behavioral facts in mind:
 
@@ -77,4 +65,4 @@ Fleet Console UI and `fleet update` update only the sole published package `@dot
 
 ### Desktop supervision
 
-Desktop ownership metadata is provenance, not a Console channel. `POST /api/v1/updates/apply` retains the global-package worker; managed `console/latest` updates stay in Desktop's hardened relaunch installer until a recoverable same-window handoff exists. Electron exposes pairing through the macOS app menu or Windows/Linux tray, while Desktop owns the local no-JavaScript input modal. Pairing identity is discovery rather than authentication; the user's exact loopback address remains the trust decision. Release automation keeps the GitHub Release draft until supported assets and required verification/signing gates pass. macOS requires the configured Developer ID/notarization path, Windows requires the configured Authenticode path, and Linux AppImage integrity is checksum/GPG material when release credentials provide it; do not claim an unavailable local signing identity as a signed release.
+Desktop ownership metadata is provenance, not a Console channel. `POST /api/v1/updates/apply` retains the global-package worker; managed `console/latest` updates stay in Desktop's hardened relaunch installer until a recoverable same-window handoff exists. Remote access and pairing are owned by the Console; Desktop keeps only the headless plumbing described in `runtime/fleet-desktop/CLAUDE.md`. Release automation keeps the GitHub Release draft until supported assets and required verification/signing gates pass. macOS requires the configured Developer ID/notarization path, Windows requires the configured Authenticode path, and Linux AppImage integrity is checksum/GPG material when release credentials provide it; do not claim an unavailable local signing identity as a signed release.

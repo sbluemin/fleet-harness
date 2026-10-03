@@ -20,14 +20,14 @@
 ## Scope
 
 <!-- Which areas does this touch? -->
-- [ ] `extensions/core`
-- [ ] `extensions/fleet` (Admiral / Bridge / Carriers)
-- [ ] `extensions/boot`
-- [ ] `extensions/diagnostics`
-- [ ] `extensions/metaphor`
-- [ ] `packages/unified-agent`
-- [ ] `bin/` or root tooling
-- [ ] Documentation (README / SETUP / CLAUDE.md)
+- [ ] `runtime/fleet-console/foundation/`
+- [ ] `runtime/fleet-console/features/`
+- [ ] `runtime/fleet-console/` host (launcher, server, web product)
+- [ ] `runtime/fleet-plugins/`
+- [ ] `runtime/fleet-desktop/`
+- [ ] `runtime/fleet-mobile/`
+- [ ] `scripts/` or root tooling
+- [ ] `.claude/skills/`, `docs/`, or `CLAUDE.md`
 
 ## Test Plan
 

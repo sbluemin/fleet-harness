@@ -19,11 +19,11 @@
 - "Here is how to implement it" style implementation guidance
 - Build/test commands, directory trees, package dependency graphs
 - Duplicated frontmatter inside the body (e.g., `id:`, `title:`, `tags:`, `created:`, `updated:`, `version:`, `feature_area:`, `lifecycle:` YAML blocks that repeat metadata already carried in the patch envelope)
-- Sections not listed in the Output Format below (e.g., "Open Questions", "Future Considerations")
+- Sections the workspace PRD template does not define (e.g., "Future Considerations")
 
 ## Output Format
 
-Follow the same section structure used by existing Fleet Wiki PRD entries (`prd-*`):
+The workspace PRD template owns the section list and order; read it before writing and keep every level-2 heading it defines. The default template's sections are below. A workspace can customize its template, so follow what it actually defines rather than this list.
 
 1. **Overview** — 1–2 paragraphs stating what was decided. No source locations.
 2. **Problem** — Cognitive debt / friction / risk in the previous state. Include the structural cause, not just the symptom.
@@ -32,6 +32,7 @@ Follow the same section structure used by existing Fleet Wiki PRD entries (`prd-
 5. **User Stories** — "As a … when … then …" form, describing felt experience.
 6. **Functional Requirements** — Only the **call surface / UX / contract** the user actually faces. Internal implementation changes are forbidden here.
 7. **Acceptance Criteria** — A checklist verifiable by the user directly. UX checks, not unit-test assertions.
-8. **Related** — Links to adjacent entries in the same/neighboring feature area.
+8. **Open Questions** — A history entry records a settled decision, so state that none remain open. Do not move future work, TODOs, or undecided options here; an undecided question means the decision is not ready for this skill.
+9. **Related** — Links to adjacent entries in the same/neighboring feature area.
 
 Every section must be written from "**why**" and "**what the user feels at the surface**". If a single line slips into "how it was implemented", rewrite it.
