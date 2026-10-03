@@ -4,7 +4,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { QuotaService } from "@fleet-console/ai-gateway";
 import { describe, expect, it, vi } from "vitest";
 
-import { handleConnect, handleFold, handleOrder, handleSummary } from "../server/handlers.js";
+import { handleConnect, handleSummary } from "../server/handlers.js";
 import type { SettingsSerializer } from "../server/handlers.js";
 
 function createSerializer(): SettingsSerializer {
@@ -76,18 +76,19 @@ describe("quota route handlers", () => {
     expect(test.writeJson).not.toHaveBeenCalled();
   });
 
-  it("guards the fold route with the same method, auth, and media-type gates as the others", async () => {
-    const wrongMethod = harness("GET", "/plugins/quota/fold", { folded: [] });
-    await handleFold(wrongMethod.req, wrongMethod.res, wrongMethod.ctx, wrongMethod.serializeSettings);
+  it("guards the settings-writing connect route with method, auth, and media-type gates", async () => {
+    const request = { provider: "claude", connected: true };
+    const wrongMethod = harness("GET", "/plugins/quota/connect", request);
+    await handleConnect(wrongMethod.req, wrongMethod.res, wrongMethod.ctx, wrongMethod.service, wrongMethod.serializeSettings);
     expect(wrongMethod.writes).toEqual([{ status: 405, payload: { error: "method_not_allowed" } }]);
 
-    const wrongType = harness("POST", "/plugins/quota/fold", { folded: [] }, "text/plain");
-    await handleFold(wrongType.req, wrongType.res, wrongType.ctx, wrongType.serializeSettings);
+    const wrongType = harness("POST", "/plugins/quota/connect", request, "text/plain");
+    await handleConnect(wrongType.req, wrongType.res, wrongType.ctx, wrongType.service, wrongType.serializeSettings);
     expect(wrongType.writes).toEqual([{ status: 415, payload: { error: "unsupported_media_type" } }]);
 
-    const unauthorized = harness("POST", "/plugins/quota/fold", { folded: [] });
+    const unauthorized = harness("POST", "/plugins/quota/connect", request);
     (unauthorized.ctx.host.security as unknown as { isTerminalAuthorized: () => boolean }).isTerminalAuthorized = () => false;
-    await handleFold(unauthorized.req, unauthorized.res, unauthorized.ctx, unauthorized.serializeSettings);
+    await handleConnect(unauthorized.req, unauthorized.res, unauthorized.ctx, unauthorized.service, unauthorized.serializeSettings);
     expect(unauthorized.writes).toEqual([{ status: 401, payload: { error: "unauthorized" } }]);
     expect(unauthorized.writeJson).not.toHaveBeenCalled();
   });
