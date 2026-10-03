@@ -128,6 +128,14 @@ describe("OSC title session wiring", () => {
     socket.type("\r");
     prompt();
     expect(manager.hasInputSinceCwdReport("console-shell")).toBe(false);
+
+    // 대체 화면을 쥔 전체 화면 프로그램(less)이 읽은 키는 셸 줄에 남지 않는다.
+    socket.type("less notes.txt\r");
+    pty!.emitData("\x1b[?1049h");
+    socket.type("q");
+    pty!.emitData("\x1b[?1049l");
+    prompt();
+    expect(manager.hasInputSinceCwdReport("console-shell")).toBe(false);
     await manager.stop();
   });
 });

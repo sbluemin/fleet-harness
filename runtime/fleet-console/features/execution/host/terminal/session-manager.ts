@@ -446,6 +446,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   function trackLineInput(session: TerminalSession, input: Buffer): void {
+    // 전체 화면 프로그램(less·top·vim)이 대체 화면을 쥔 동안의 키는 그 프로그램이 읽는다 — 셸의 줄
+    // 버퍼에 남지 않는다. `q`로 끝낸 less가 다음 프롬프트를 "입력 중"으로 묶지 않게 여기서 뺀다.
+    // 일반 화면에서 도는 자식(sleep 등) 중의 typeahead는 그대로 남는다 — 셸이 다음 줄에 다시 올린다.
+    if (session.modeTracker.snapshot().alternateScreenActive) return;
     let lastTerminator = -1;
     for (let index = 0; index < input.length; index += 1) {
       const byte = input[index];
