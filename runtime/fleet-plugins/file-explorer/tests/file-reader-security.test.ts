@@ -91,12 +91,13 @@ describe("Files bounded reads", () => {
     const range = await read({ mode: "range", offset: head.payload.window!.endByte });
     expect(range.status).toBe(200);
     expect(range.payload.window!.startByte).toBe(head.payload.window!.endByte);
-    expect(Buffer.from(head.payload.content + range.payload.content)).toEqual(Buffer.from(content));
+    // 1MiB Buffer의 깊은 toEqual은 CI에서 timeout을 넘기므로 바이트 비교는 Buffer.equals로 한다.
+    expect(Buffer.from(head.payload.content + range.payload.content).equals(Buffer.from(content))).toBe(true);
     const tail = await read({ mode: "tail" });
     expect(tail.status).toBe(200);
     expect(tail.payload.content.endsWith("TAIL")).toBe(true);
     expect(tail.payload.window!.endByte).toBe(Buffer.byteLength(content));
-    expect(Buffer.from(tail.payload.content)).toEqual(Buffer.from(content).subarray(tail.payload.window!.startByte, tail.payload.window!.endByte));
+    expect(Buffer.from(tail.payload.content).equals(Buffer.from(content).subarray(tail.payload.window!.startByte, tail.payload.window!.endByte))).toBe(true);
     const insideCharacter = await read({ mode: "range", offset: cap });
     expect(insideCharacter.payload.window!.startByte).toBe(head.payload.window!.endByte + Buffer.byteLength("한"));
     expect(insideCharacter.payload.content).toBe("\nTAIL");
