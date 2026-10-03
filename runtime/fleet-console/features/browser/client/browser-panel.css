@@ -1,11 +1,11 @@
 /* Operation Browser companion — 캡션 밴드는 호스트가 그리고, 여기서는 탭·탐색·화면·상태줄만 채운다.
    색은 채널 규약대로: 에이전트 조작은 --agent-control-badge(배지 채널), 오류는 coral, 라이브는 aurora,
    위치·포커스는 brass. */
-.op-browser { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--ink-deep); color: var(--text-primary); font-family: var(--font-body); font-size: var(--t-sm); }
+.op-browser { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--ink-deep); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); }
 @keyframes op-browser-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* ---- companion 캡션 = 탭 스트립 (호스트의 .canvas-companion-caption 안에 산다) ---- */
-.op-browser-cap { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); height: 100%; font-family: var(--font-body); font-size: var(--t-sm); color: var(--text-primary); }
+.op-browser-cap { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); height: 100%; font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-primary); }
 .op-browser-cap__tabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
 /* 호스트 캡션 밴드의 틴트 — 크로스 번들 클래스 계약(.canvas-companion-caption). 세션 중에만. */
 .canvas-companion-caption:has(> .op-browser-cap.is-driving) { background: linear-gradient(90deg, color-mix(in oklch, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
@@ -28,7 +28,7 @@
 .op-browser__tab-close { flex: none; background: transparent; border: 0; color: var(--text-tertiary); font: inherit; line-height: 1; padding: 0 2px; cursor: pointer; border-radius: var(--radius-xs); }
 .op-browser__tab-close:hover, .op-browser__tab-close:focus-visible { color: var(--text-primary); background: var(--ink-rim); outline: none; }
 .op-browser__viewport-menu { position: relative; align-self: center; }
-.op-browser__chip { background: transparent; border: 1px solid var(--hairline); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); padding: 2px var(--space-2); border-radius: var(--radius-xs); cursor: pointer; }
+.op-browser__chip { background: transparent; border: 1px solid var(--hairline); color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); padding: 2px var(--space-2); border-radius: var(--radius-xs); cursor: pointer; }
 .op-browser__chip.is-set { color: var(--brass-ink); border-color: var(--brass); }
 .op-browser__chip:hover, .op-browser__chip:focus-visible { color: var(--text-primary); border-color: var(--brass); outline: none; }
 .op-browser__menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 3; min-width: 120px; display: flex; flex-direction: column; background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); padding: var(--space-1); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); }
@@ -36,7 +36,7 @@
 .op-browser__icon.is-set { color: var(--brass-ink); }
 /* 툴팁 — data-tip 을 단 컨트롤 아래에 짧은 한 줄. 포인터를 받지 않고 지연 없이 뜬다. */
 .op-browser [data-tip], .op-browser-cap [data-tip] { position: relative; }
-.op-browser [data-tip]:hover::after, .op-browser [data-tip]:focus-visible::after, .op-browser-cap [data-tip]:hover::after, .op-browser-cap [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 7; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: var(--t-2xs); white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); }
+.op-browser [data-tip]:hover::after, .op-browser [data-tip]:focus-visible::after, .op-browser-cap [data-tip]:hover::after, .op-browser-cap [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 7; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); }
 .op-browser-cap .op-browser__viewport-menu [data-tip]:hover::after, .op-browser-cap > .op-browser__icon[data-tip]:hover::after { left: auto; right: 0; transform: none; }
 .op-browser [data-tip][aria-expanded="true"]::after, .op-browser-cap [data-tip][aria-expanded="true"]::after { display: none; }
 .op-browser__menu-item { text-align: start; background: transparent; border: 0; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); padding: var(--space-1) var(--space-2); border-radius: var(--radius-xs); cursor: pointer; }
@@ -52,7 +52,7 @@
 .op-browser__url { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center; height: 28px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background 0.12s, border-color 0.12s, box-shadow 0.12s; }
 .op-browser__url:hover { background: var(--ink-rim); }
 .op-browser__url:focus-within { background: var(--ink-mid); border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass-glow); }
-.op-browser__url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-body); font-size: var(--t-sm); }
+.op-browser__url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-code); font-size: var(--font-code-size); }
 .op-browser__url.is-display .op-browser__url-input { color: transparent; caret-color: transparent; }
 .op-browser__url-input:focus { outline: none; }
 .op-browser__url-input::placeholder { color: var(--text-tertiary); }
@@ -135,7 +135,7 @@
 .op-browser__dialog-glyph { flex: none; display: inline-flex; color: var(--text-secondary); }
 .op-browser__dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 /* 짧은 알림은 상태줄 대신 화면 아래에 떠 있다가 사라진다. */
-.op-browser__toast { position: absolute; left: 50%; bottom: var(--space-3); transform: translateX(-50%); z-index: 6; width: max-content; max-width: calc(100% - 24px); padding: var(--space-1) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--aurora-ink); text-align: center; line-height: 1.5; pointer-events: none; }
+.op-browser__toast { position: absolute; left: 50%; bottom: var(--space-3); transform: translateX(-50%); z-index: 6; width: max-content; max-width: calc(100% - 24px); padding: var(--space-1) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--aurora-ink); text-align: center; line-height: 1.5; pointer-events: none; }
 /* 가운데 놓인 absolute 상자는 left:50% 만큼의 폭밖에 못 받아 좁게 접힌다 — 내용 폭으로 펴고 패널 폭에서만 접는다. */
 .op-browser__toast.is-error { color: var(--coral-ink); }
 /* 손잡이가 붙은 안내 — 누를 수 있어야 하므로 포인터를 받고, 동사는 위치 채널(brass)로 선다. */
@@ -149,20 +149,20 @@
 /* 댓글 도구의 커서는 말풍선 글리프 — 페이지를 조작하는 게 아니라 주석을 다는 중임이 보이게. 흑백이라 테마와 무관하다. */
 .op-browser__sketch.is-comment { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4a2 2 0 0 1-1-1.7z' fill='white' stroke='black' stroke-width='1.6' stroke-linejoin='round'/><path d='M8 7.5h8M8 11h5' stroke='black' stroke-width='1.6' stroke-linecap='round'/></svg>") 5 20, pointer; }
 /* 요소 정보 카드 — 하이라이트 위에 떠서 태그·크기·색·글꼴을 읽어 준다. 포인터를 받지 않는다. */
-.op-browser__hovercard { position: absolute; z-index: 5; display: grid; grid-template-columns: auto auto; gap: 2px var(--space-4); max-width: min(360px, calc(100% - 8px)); padding: var(--space-2) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-secondary); pointer-events: none; white-space: nowrap; }
+.op-browser__hovercard { position: absolute; z-index: 5; display: grid; grid-template-columns: auto auto; gap: 2px var(--space-4); max-width: min(360px, calc(100% - 8px)); padding: var(--space-2) var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-secondary); pointer-events: none; white-space: nowrap; }
 .op-browser__hovercard-name { color: var(--text-primary); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; }
 .op-browser__hovercard-key { color: var(--text-tertiary); }
 .op-browser__hovercard-value { display: inline-flex; align-items: center; gap: var(--space-1); justify-self: end; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
 .op-browser__hovercard-swatch { flex: none; width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--hairline-strong); }
 .op-browser__pinwrap { position: absolute; z-index: 5; transform: translate(-50%, -50%); display: inline-flex; align-items: center; }
 /* 핀에 올리면 어떤 주석인지 라벨이 오른쪽으로 부드럽게 펼쳐진다. */
-.op-browser__pin-label { position: absolute; left: calc(100% + 6px); top: 50%; transform: translate(-6px, -50%) scale(0.96); transform-origin: left center; opacity: 0; max-width: 260px; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-body); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); transition: opacity 0.16s ease, transform 0.16s ease; }
+.op-browser__pin-label { position: absolute; left: calc(100% + 6px); top: 50%; transform: translate(-6px, -50%) scale(0.96); transform-origin: left center; opacity: 0; max-width: 260px; padding: 3px var(--space-2); background: var(--ink-mid); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-ui); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; box-shadow: 0 8px 20px oklch(0% 0 0 / 35%); transition: opacity 0.16s ease, transform 0.16s ease; }
 .op-browser__pinwrap:hover .op-browser__pin-label, .op-browser__pin:focus-visible + .op-browser__pin-label { opacity: 1; transform: translate(0, -50%) scale(1); }
-.op-browser__pin { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border-radius: var(--radius-pill); border: 2px solid var(--agent-control-badge-ink); background: var(--id-cerulean); color: var(--agent-control-badge-ink); font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 1; box-shadow: 0 2px 8px oklch(0% 0 0 / 35%); cursor: pointer; }
+.op-browser__pin { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border-radius: var(--radius-pill); border: 2px solid var(--agent-control-badge-ink); background: var(--id-cerulean); color: var(--agent-control-badge-ink); font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 1; box-shadow: 0 2px 8px oklch(0% 0 0 / 35%); cursor: pointer; }
 .op-browser__pin:hover, .op-browser__pin:focus-visible { background: var(--coral); outline: none; }
 .op-browser__pin.is-anchor { position: absolute; z-index: 5; transform: translate(-50%, -50%); cursor: default; pointer-events: none; }
 .op-browser__comment { position: absolute; z-index: 6; display: flex; align-items: center; gap: var(--space-2); width: min(320px, calc(100% - 16px)); padding: 3px 3px 3px var(--space-3); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); }
-.op-browser__comment-input { flex: 1; min-width: 0; height: 26px; background: transparent; border: 0; color: var(--text-primary); font-family: var(--font-body); font-size: var(--t-sm); }
+.op-browser__comment-input { flex: 1; min-width: 0; height: 26px; background: transparent; border: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); }
 .op-browser__comment-input:focus { outline: none; }
 .op-browser__comment-input::placeholder { color: var(--text-tertiary); }
 .op-browser__comment-ok { flex: none; width: 26px; height: 26px; border: 0; border-radius: var(--radius-pill); background: var(--brass); color: var(--text-on-brass); font: inherit; cursor: pointer; }
@@ -191,7 +191,7 @@
 .op-browser__menu-sep { height: 1px; margin: var(--space-1) 0; background: var(--hairline); }
 /* 행 끝 — 기본인 행은 「기본」 한 낱말이 늘 서고, 다른 행은 올렸을 때만 핀이 떠오른다. 폭을 미리 잡아 행이 흔들리지 않게. */
 .op-browser__menu-tail { flex: none; display: inline-flex; align-items: center; justify-content: flex-end; align-self: center; min-width: 34px; margin-left: auto; }
-.op-browser__menu-default { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0.02em; }
+.op-browser__menu-default { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0.02em; }
 .op-browser__menu-item[aria-checked="true"] .op-browser__menu-default { color: inherit; opacity: 0.8; }
 .op-browser__menu-pin { appearance: none; border: 0; background: transparent; color: var(--text-tertiary); width: 20px; height: 20px; border-radius: var(--radius-xs); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.12s ease; }
 .op-browser__menu-pin svg { width: 12px; height: 12px; }

@@ -13,7 +13,6 @@ import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../../../..
 import { acknowledgeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
 import { noteOperationFocused } from "./palette-recent.js";
 import { closeAllExpandedSurfaces, closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
-import { uiFontFamily } from "../../../../features/settings/client/ui-font.js";
 import { observeConsoleVersion } from "./console-version.js";
 import type {
   CodexReaderRequest,
@@ -33,7 +32,6 @@ import type {
   ThemeId,
   TheaterBootstrap,
   TheaterInfo,
-  UiFontSettings,
 } from "./types.js";
 
 type Listener = () => void;
@@ -309,9 +307,6 @@ export function setUnfocusedPanelFade(fadePercent: number): void {
   document.documentElement.style.setProperty("--unfocused-panel-opacity", String((100 - clamped) / 100));
 }
 
-export function setActiveUiFont(uiFont: UiFontSettings): void {
-  applyUiFontToDocument(uiFont);
-}
 
 export function applyObserverStatus(status: ObserverStatus): void {
   // 서버가 이 문서와 다른 버전이 됐다면 화면은 옛 번들이다 — 상태를 옛 화면에 그리는 대신 새로 받는다.
@@ -478,12 +473,6 @@ function trackDesktopZoomFactor(): void {
   watch();
 }
 
-export function applyUiFontToDocument(uiFont: UiFontSettings): void {
-  if (typeof document === "undefined") return;
-  document.documentElement.setAttribute("data-ui-font", uiFont.source);
-  document.documentElement.style.setProperty("--font-body", uiFontFamily(uiFont));
-  document.documentElement.style.setProperty("--font-body-size", `${uiFont.size}px`);
-}
 
 export function hydrateTheaters(theaters: readonly TheaterInfo[]): void {
   const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId);

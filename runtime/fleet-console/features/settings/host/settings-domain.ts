@@ -1,3 +1,4 @@
+import { readFontSettings, migrateFontSettings, migrateTerminalFont, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
@@ -85,6 +86,7 @@ export interface ConsoleGeneralSettings {
   /** 창이 비포커스일 때만 같은 저프레임 모드를 쓴다. 부재는 기본 켜짐이다. */
   readonly lowerUnfocusedFrameRate?: boolean;
   readonly uiFont?: UiFontSettings;
+  readonly fonts?: ConsoleFontSettings;
   /**
    * 실험 기능과 모델 좌석. 부재는 전부 꺼짐이다 — 켜는 행위가 곧 동의이므로 기본값이 켜짐일 수 없다.
    * 형태와 정제기는 SDK가 소유한다(플러그인 서버·브라우저가 같은 규칙으로 읽는다).
@@ -323,6 +325,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
       ? "whites"
       : undefined;
   const uiFont = sanitizeUiFontSettings(value.uiFont);
+  const fonts = readFontSettings(value.fonts);
   const liquidGlass = typeof value.liquidGlass === "boolean" ? value.liquidGlass : undefined;
   const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
   const sideBarDoubleClickOpen = typeof value.sideBarDoubleClickOpen === "boolean" ? value.sideBarDoubleClickOpen : undefined;
@@ -343,6 +346,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(reduceMotion !== undefined ? { reduceMotion } : {}),
     ...(lowerUnfocusedFrameRate !== undefined ? { lowerUnfocusedFrameRate } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
+    ...(fonts ? { fonts } : {}),
     ...(experiments !== undefined ? { experiments } : {}),
     ...(shortcuts !== undefined ? { shortcuts } : {}),
   };
@@ -487,6 +491,7 @@ interface GlobalSettingsBody {
   readonly reduceMotion?: unknown;
   readonly lowerUnfocusedFrameRate?: unknown;
   readonly uiFont?: unknown;
+  readonly fonts?: unknown;
   readonly experiments?: unknown;
   readonly shortcuts?: unknown;
 }
@@ -495,6 +500,10 @@ const GLOBAL_SETTINGS_MIN_STATIC_PORT = 1024;
 const GLOBAL_SETTINGS_MAX_STATIC_PORT = 65535;
 
 export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "POST", path: "/api/v1/settings/fonts/migration", summary: "Migrate legacy Console fonts once, preserving stored selections.",
+    category: "Settings", gate: "origin-write", transport: "http",
+  },
   {
     method: "GET",
     path: "/api/v1/settings/global",
@@ -516,6 +525,24 @@ export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
 export function createGlobalSettingsRouter(deps: GlobalSettingsRouteDeps): (context: GlobalSettingsRouteContext) => Promise<boolean> {
   return async function handleGlobalSettingsRoute(context: GlobalSettingsRouteContext): Promise<boolean> {
     const { req, res, pathname } = context;
+    if (pathname === "/api/v1/settings/fonts/migration" && req.method === "POST") {
+      if (!deps.isAuthorized(req)) { deps.writeJson(res, 401, { error: "unauthorized" }); return true; }
+      if (!isGlobalSettingsJsonRequest(req)) { deps.writeJson(res, 415, { error: "unsupported_media_type" }); return true; }
+      const body = await deps.readJsonBody<{ terminal?: unknown }>(req);
+      if (!isRecord(body) || (body.terminal !== null && body.terminal !== undefined && !migrateTerminalFont(body.terminal))) {
+        deps.writeJson(res, 400, { error: "invalid_font_migration" }); return true;
+      }
+      deps.consoleSettingsStore.update((current) => {
+        if (current.general?.fonts) return undefined;
+        // 서버가 항상 먼저다. 브라우저 옛 값은 서버에 터미널 선택이 없을 때만 초기값이 된다.
+        const serverFont = current.execution?.font;
+        const fonts = migrateFontSettings(current.general?.uiFont, migrateTerminalFont(serverFont) ? serverFont : body.terminal);
+        return { ...current, general: { ...current.general, fonts } };
+      });
+      deps.onThemeChanged?.(deps.consoleSettingsStore.load().general?.theme ?? "instrument");
+      deps.writeJson(res, 200, { migrated: true });
+      return true;
+    }
     if (pathname === "/api/v1/settings/global") {
       if (req.method === "GET") {
         deps.writeJson(res, 200, withRemoteAccessVisibility(buildGlobalSettingsState(deps.consoleSettingsStore), req, deps));
@@ -603,6 +630,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_lower_unfocused_frame_rate" });
     return;
   }
+  if (body.fonts !== undefined && !readFontSettings(body.fonts)) {
+    deps.writeJson(res, 400, { error: "invalid_fonts" });
+    return;
+  }
   if (!isUiFontSettingsOrUndefined(body.uiFont)) {
     deps.writeJson(res, 400, { error: "invalid_ui_font" });
     return;
@@ -652,13 +683,14 @@ async function mutateGlobalSettings(
       ...(typeof body.sideBarDoubleClickOpen === "boolean" ? { sideBarDoubleClickOpen: body.sideBarDoubleClickOpen } : {}),
       ...(typeof body.reduceMotion === "boolean" ? { reduceMotion: body.reduceMotion } : {}),
       ...(typeof body.lowerUnfocusedFrameRate === "boolean" ? { lowerUnfocusedFrameRate: body.lowerUnfocusedFrameRate } : {}),
-      ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
+      // uiFont는 한 릴리스 읽기 전용으로 남긴다. 새 쓰기는 세 축만 바꾼다.
+      ...(body.fonts !== undefined ? { fonts: readFontSettings(body.fonts)! } : {}),
       ...(body.experiments !== undefined ? { experiments: resolveExperimentSettings(body.experiments) } : {}),
       ...(isShortcutBindingsInput(body.shortcuts) ? { shortcuts: body.shortcuts } : {}),
     },
     plugins: current.plugins,
   }));
-  if (theme !== undefined) deps.onThemeChanged?.(theme);
+  if (theme !== undefined || body.fonts !== undefined) deps.onThemeChanged?.(updated.general?.theme ?? "instrument");
   if (body.experiments !== undefined) await deps.onExperimentsChanged?.(updated.general?.experiments ?? DEFAULT_EXPERIMENT_SETTINGS);
   if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.({ previous: previousRemoteAccess, next: nextRemoteAccess });
   /**
@@ -725,6 +757,8 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     reduceMotion: general.reduceMotion ?? false,
     lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
+    fonts: resolveConsoleFonts(data),
+    fontsMigrationPending: !general.fonts,
     experiments: general.experiments ?? DEFAULT_EXPERIMENT_SETTINGS,
     shortcuts: general.shortcuts ?? {},
   };
@@ -854,7 +888,7 @@ export function createPluginSettingsRouter(deps: PluginSettingsRouteDeps): (cont
       const updated = deps.consoleSettingsStore.update((current) => ({
         ...current,
         version: 1,
-        ...(execution ? { execution: body as Record<string, unknown> } : { plugins: { ...current.plugins, [pluginId]: body as Record<string, unknown> } }),
+        ...(execution ? { execution: preserveLegacyTerminalFont(current, body) } : { plugins: { ...current.plugins, [pluginId]: body as Record<string, unknown> } }),
       }));
       deps.writeJson(res, 200, { value: (execution ? updated.execution : updated.plugins?.[pluginId]) ?? null });
       return true;
@@ -868,4 +902,14 @@ export function createPluginSettingsRouter(deps: PluginSettingsRouteDeps): (cont
 function isPluginSettingsJsonRequest(req: http.IncomingMessage): boolean {
   const contentType = req.headers["content-type"];
   return typeof contentType === "string" && contentType.toLowerCase().split(";")[0]?.trim() === "application/json";
+}
+
+/** Console만 영속 값을 읽는다. Desktop에는 공개 프로토콜의 해석된 스택만 전달한다. */
+export function resolveConsoleFonts(data: ConsoleSettingsData): ConsoleFontSettings {
+  return data.general?.fonts ?? migrateFontSettings(data.general?.uiFont, data.execution?.font);
+}
+
+function preserveLegacyTerminalFont(current: ConsoleSettingsData, body: Record<string, unknown>): Record<string, unknown> {
+  const { font: _retired, ...preferences } = body;
+  return { ...preferences, ...(current.execution?.font !== undefined ? { font: current.execution.font } : {}) };
 }

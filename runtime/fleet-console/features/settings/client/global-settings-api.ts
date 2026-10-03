@@ -1,3 +1,4 @@
+import { DEFAULT_FONTS, readFontSettings, migrateTerminalFont } from "@fleet-console/sdk/settings/fonts";
 import { resolveExperimentSettings, sanitizeShortcutBindings } from "@fleet-console/sdk/settings/browser";
 import { ApiError } from "../../../core/client/src/integration/api.js";
 import { normalizeUiFont } from "./ui-font.js";
@@ -7,7 +8,25 @@ import { REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, REMOTE_PORT_MAX, REMOTE_POR
 export async function fetchGlobalSettingsState(signal?: AbortSignal): Promise<GlobalSettingsState> {
   const response = await fetch("/api/v1/settings/global", { signal });
   await assertOk(response);
-  return assertGlobalSettingsState(await response.json(), response.status);
+  const payload = await response.json() as Partial<GlobalSettingsState>;
+  const initial = assertGlobalSettingsState(payload, response.status);
+  if (payload.fontsMigrationPending !== true) return initial;
+  // 옛 브라우저 키는 이관 입력으로만 읽고 남겨 둔다. 서버가 서버 값 우선/한 번만을 결정한다.
+  let terminal: unknown = null;
+  try {
+    const raw = window.localStorage.getItem("fleet-plugin.terminal.font") ?? window.localStorage.getItem("fleet-console.terminalFont");
+    if (raw) terminal = JSON.parse(raw);
+  } catch { /* 접근 불가·손상 값은 서버 값과 기본값으로 이관한다. */ }
+  if (!migrateTerminalFont(terminal)) terminal = null;
+  const migrated = await fetch("/api/v1/settings/fonts/migration", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ terminal }), signal,
+  });
+  // 모니터링 클라이언트는 읽을 수 있지만 쓸 수 없다. 이관이 권한 없는 읽기까지 가로막으면 안 된다.
+  if (migrated.status === 401 || migrated.status === 403) return initial;
+  await assertOk(migrated);
+  const confirmed = await fetch("/api/v1/settings/global", { signal });
+  await assertOk(confirmed);
+  return assertGlobalSettingsState(await confirmed.json(), confirmed.status);
 }
 
 export async function updateGlobalSettings(patch: Partial<GlobalSettingsState>, signal?: AbortSignal): Promise<GlobalSettingsMutationResult> {
@@ -168,6 +187,8 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     reduceMotion: payload.reduceMotion === true,
     lowerUnfocusedFrameRate: payload.lowerUnfocusedFrameRate !== false,
     uiFont: normalizeUiFont(payload.uiFont),
+    fonts: readFontSettings(payload.fonts) ?? DEFAULT_FONTS,
+    fontsMigrationPending: payload.fontsMigrationPending === true,
     language: payload.language,
     // 구서버 응답에는 없다 — 옵트인의 기본은 꺼짐이므로 부재를 기본값으로 정규화한다.
     experiments: resolveExperimentSettings(payload.experiments),

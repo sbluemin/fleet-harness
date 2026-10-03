@@ -103,7 +103,7 @@
   border-radius: var(--radius-xs);
   background: var(--surface-panel-raised);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -147,7 +147,7 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   padding: 3px 8px;
   outline: none;
@@ -173,7 +173,7 @@
    2026-09-01 소프트 그래파이트 재가. 데이터(sha·시각·경로)만 mono로 남는다. */
 .repository-toolbar-label {
   flex: 1;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
@@ -250,14 +250,14 @@
   padding: 16px 12px;
   font-size: var(--t-sm);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .repository-sections-error {
   padding: 16px 12px;
   font-size: var(--t-sm);
   color: var(--coral-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -266,7 +266,7 @@
 .repository-sections-notice {
   padding: 16px 12px;
   font-size: var(--t-sm);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -323,7 +323,7 @@
 
 .repository-section-name {
   flex: 1;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
@@ -331,7 +331,7 @@
 }
 
 .repository-count-badge {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   color: var(--text-tertiary);
@@ -349,7 +349,7 @@
 /* ── 빈 상태 ── */
 .repository-empty-row {
   padding: 8px 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -391,7 +391,7 @@
   height: 17px;
   border-radius: calc(var(--radius-xs) - 2px);
   background: color-mix(in oklab, currentColor 14%, transparent);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   text-align: center;
@@ -420,8 +420,8 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-body);
-  font-size: var(--t-md);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   line-height: 1.3;
 }
 /* 안쪽 한 덩어리만 LTR로 격리한다 — 디렉터리·파일명을 따로 격리하면 RTL 문맥에서 두 런의 순서가 뒤집힌다. */
@@ -442,7 +442,7 @@
 .repository-nums {
   display: inline-flex;
   gap: 6px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -497,8 +497,8 @@
 }
 
 .repository-folder-name {
-  font-family: var(--font-body);
-  font-size: var(--t-md);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   color: var(--text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -506,7 +506,7 @@
 }
 
 .repository-folder-count {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   color: var(--text-tertiary);
   padding-left: 8px;
@@ -524,7 +524,7 @@
   color: var(--warn-ink);
   background: color-mix(in oklch, var(--warn) 12%, transparent);
   border-bottom: 1px solid var(--surface-rim);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 /* ── Hunk 뷰어 헤더 (sticky) ── */
@@ -544,8 +544,8 @@
 
 .repository-hunk-filename {
   flex: 1;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -582,7 +582,7 @@
 .repository-hunk-loading,
 .repository-hunk-error {
   padding: 16px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
 }
@@ -607,8 +607,8 @@
 .repository-hunk-table {
   border-collapse: collapse;
   width: 100%;
-  font-family: var(--font-mono);
-  font-size: var(--t-md);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   line-height: 1.6;
 }
 
@@ -626,8 +626,8 @@
 
 .repository-line-meta {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
 }
 
 .repository-line-meta td {
@@ -674,8 +674,8 @@
 
 /* ── 라인번호 거터 ── */
 .repository-gutter {
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   color: var(--text-tertiary);
   text-align: right;
   padding: 0 6px 0 4px;
@@ -686,8 +686,8 @@
 }
 
 .repository-marker {
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   text-align: center;
   padding: 0 3px;
   user-select: none;
@@ -706,7 +706,7 @@
 
 .repository-line-label {
   padding: 2px 10px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -720,8 +720,8 @@
 
 .repository-line-file-label .repository-line-code,
 .repository-line-file-label td {
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   color: var(--text-secondary);
   padding: 3px 10px;
 }
@@ -861,7 +861,7 @@
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--badge-tone) 14%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
@@ -910,8 +910,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-secondary);
-  font-family: var(--font-body);
-  font-size: var(--t-md);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.928571);
 }
 
 /* Fork 문법 — Conventional Commit 접두만 한 티어 올려, 스캔할 때 커밋 종류가 먼저 읽힌다. */
@@ -942,7 +942,7 @@
   border-radius: 50%;
   background: color-mix(in oklch, var(--ink-fog) 24%, var(--ink-veil));
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 8px;
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -956,8 +956,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
 }
 
 .history-commit-sha,
@@ -970,7 +970,7 @@
 .history-pagination {
   padding: 14px 12px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -983,7 +983,7 @@
 
 .history-truncated {
   padding: 14px 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--warn-ink);
   border-top: 1px solid var(--surface-rim);
@@ -996,7 +996,7 @@
   color: var(--warn-ink);
   background: color-mix(in oklch, var(--warn) 12%, transparent);
   border-top: 1px solid var(--surface-rim);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -1007,7 +1007,7 @@
   border-radius: var(--radius-xs);
   color: var(--warn-ink);
   background: color-mix(in oklch, var(--warn) 12%, transparent);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   white-space: nowrap;
 }
@@ -1093,7 +1093,7 @@
 .history-inspector { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
 .history-segmented { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--surface-rim); }
 /* 인스펙터 세그먼트도 rest부터 몸을 갖는다 — 동사·토글과 같은 rest 채널 소비(#979 문법의 잔여 스윕). */
-.history-segmented button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); cursor: pointer; font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .01em; padding: 6px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
+.history-segmented button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); cursor: pointer; font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: .01em; padding: 6px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
 .history-segmented button:hover:not([aria-pressed="true"]) { background: var(--control-rest-hover); color: var(--text-primary); }
 .history-segmented button[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: color-mix(in oklch, var(--brass) 12%, transparent); color: var(--text-primary); }
 .history-segmented span { color: var(--text-tertiary); font-size: var(--t-2xs); }
@@ -1103,27 +1103,27 @@
 .history-details-tab { display: grid; grid-template-rows: fit-content(60%) minmax(0, 1fr); min-height: 0; overflow: hidden; }
 .history-inspector-head { min-height: 0; overflow: auto; padding: 12px 16px; border-bottom: 1px solid var(--surface-rim); }
 .history-inspector-message.is-clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; }
-.history-inspector-more { margin-top: 4px; padding: 0; border: 0; background: none; color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-xs); cursor: pointer; }
+.history-inspector-more { margin-top: 4px; padding: 0; border: 0; background: none; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); cursor: pointer; }
 .history-inspector-more:hover { color: var(--text-primary); }
 .history-inspector-subject { color: var(--text-secondary); font-size: var(--t-base); font-weight: var(--weight-medium); line-height: 1.35; }
-.history-inspector-message { margin: 6px 0 0; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-sm); line-height: 1.5; white-space: pre-wrap; }
+.history-inspector-message { margin: 6px 0 0; color: var(--text-tertiary); font-family: var(--font-content); font-size: calc(var(--font-content-size) * 0.857143); line-height: 1.5; white-space: pre-wrap; }
 .history-author { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--text-secondary); font-size: var(--t-sm); }
 .history-author > span:nth-child(2) { display: grid; gap: 1px; }
-.history-author b { font-weight: var(--weight-medium); }.history-author small, .history-author time { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
+.history-author b { font-weight: var(--weight-medium); }.history-author small, .history-author time { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }
 .history-author time { margin-left: auto; }
-.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--ink-fog) 24%, var(--ink-veil)); color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
+.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--ink-fog) 24%, var(--ink-veil)); color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
 .history-inspector-ids, .history-ref-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
-.history-sha-copy, .history-parent { border-radius: var(--radius-xs); background: var(--control-rest); cursor: pointer; font-family: var(--font-mono); font-size: var(--t-xs); padding: 3px 8px; }
+.history-sha-copy, .history-parent { border-radius: var(--radius-xs); background: var(--control-rest); cursor: pointer; font-family: var(--font-code); font-size: var(--font-code-size); padding: 3px 8px; }
 .history-sha-copy { border: 1px solid var(--surface-rim); color: var(--text-secondary); }.history-sha-copy span { color: var(--text-tertiary); margin-left: 7px; }.history-sha-copy.is-copied { border-color: var(--positive); color: var(--positive-ink); }
 .history-parent { border: 1px solid var(--surface-rim); color: var(--text-secondary); }
 /* min-width/열 minmax가 없으면 섹션의 자동 최소 크기가 min-content(가장 긴 경로)로 굳어
    grid 트랙을 무시하고 옆 diff 열 위로 넘친다 — 폭 조절이 화면에 반영되지 않는 원인. */
 .history-commit-files { display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
-.history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-xs); font-weight: var(--weight-medium); letter-spacing: .02em; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive-ink); font-style: normal; }.history-files-title em { color: var(--coral-ink); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
+.history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium); letter-spacing: .02em; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive-ink); font-style: normal; }.history-files-title em { color: var(--coral-ink); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
 .history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .repository-file-row { padding-left: 14px; }
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 0; }
-.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; align-items: center; gap: 2px; margin-left: auto; }.history-file-counter { margin-right: 6px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
-.history-inspector-empty { padding: 16px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-sm); }.history-inspector-error { color: var(--coral-ink); }
+.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; align-items: center; gap: 2px; margin-left: auto; }.history-file-counter { margin-right: 6px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
+.history-inspector-empty { padding: 16px; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-sm); }.history-inspector-error { color: var(--coral-ink); }
 /* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 작성자 → 시간 → sha → 뱃지 순으로 양보한다.
    숨긴 셀은 grid item에서 빠지므로 그 자리의 트랙까지 함께 걷어내야 한다(7ch 같은 고정 트랙은 비어도 폭을 잡는다).
    제목은 어느 폭에서도 한 줄을 유지한다(기본 규칙의 nowrap+ellipsis): 행 높이는 그래프 gutter의
@@ -1180,7 +1180,7 @@
 .repository-wip-row, .repository-ref-chip { border: 0; background: transparent; color: var(--text-secondary); font-style: inherit; font-variant: inherit; font-weight: var(--weight-regular); font-stretch: inherit; font-size: inherit; line-height: inherit; font-family: inherit; text-align: left; padding: 7px 10px; }
 .repository-wip-row { color: var(--brass-ink); }
 .repository-wip-row { width: 100%; border-bottom: 1px dashed var(--surface-rim); }
-.repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); }
+.repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); }
 /* hidden 속성은 UA display:none이라 .repository-root의 display:grid에 진다 — 소스 상호 배제 가드 */
 .repository-unified [hidden] { display: none !important; }
 /* 보기 왕복에서는 검사기를 마운트한 채 화면 밖으로 치워 파일 선택·diff 스크롤을 지킨다. */
@@ -1204,10 +1204,10 @@
 .repository-ws-layout > .repository-work-area { grid-column: 3; grid-row: 2; }
 .repository-workbar > .repository-context-picker { flex: 0 1 auto; min-width: 90px; max-width: min(300px, 28%); }
 .repository-workbar .repository-context-trigger { height: 32px; padding: 0 8px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); }
-.repository-workbar .repository-context-trigger strong { font-family: var(--font-display); }
+.repository-workbar .repository-context-trigger strong { font-family: var(--font-content); }
 .repository-workbar .repository-context-branch { display: none; }
 .repository-workbar .repository-context-popover { left: 0; width: min(360px, calc(100vw - 48px)); }
-.repository-workbar-branch { display: inline-flex; align-items: center; gap: 5px; flex: none; min-width: 0; max-width: 17%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--brass-ink); font-family: var(--font-mono); font-size: var(--t-xs); }
+.repository-workbar-branch { display: inline-flex; align-items: center; gap: 5px; flex: none; min-width: 0; max-width: 17%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--brass-ink); font-family: var(--font-code); font-size: var(--font-code-size); }
 @container (max-width: 730px) { .repository-workbar > .repository-context-picker { max-width: 26%; } .repository-workbar-branch { display: none; } }
 
 .repository-ws-tree {
@@ -1261,7 +1261,7 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   text-align: left;
   white-space: nowrap;
@@ -1290,7 +1290,7 @@
   gap: 6px;
   padding: 5px 10px 5px 18px;
   color: var(--coral-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -1412,7 +1412,7 @@
 /* ── Compare 뷰 ── */
 .repository-compare-swap { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; flex: none; font-size: var(--t-sm); }
 .repository-compare-swap:hover:not(:disabled) { background: var(--control-rest-hover); color: var(--text-secondary); }
-.repository-compare-meta { flex: none; padding: 5px 10px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); }
+.repository-compare-meta { flex: none; padding: 5px 10px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); }
 .repository-compare-meta span { color: var(--text-secondary); }
 
 /* ═══ in-history compare (anchor grammar) — history-panel 소유 구역 ═══ */
@@ -1431,7 +1431,7 @@
   background: var(--ink-mid);
   color: var(--aurora);
   cursor: pointer;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1;
   transform: translateY(-50%);
@@ -1456,7 +1456,7 @@
 .history-compare-result-head { min-height: 34px; padding: 7px 10px; }
 .history-compare-result-head .history-files-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; }
 .history-compare-meta { display: flex; align-items: center; min-height: 38px; padding: 6px 45px 6px 12px; }
-.history-compare-pair { min-width: 0; overflow: hidden; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.history-compare-pair { min-width: 0; overflow: hidden; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .history-compare-meta .repository-compare-swap { margin-left: 8px; }
 /* 좁은 독(파일 열 250px가 컨테이너를 초과)에서 main 열이 0으로 붕괴하던 선존 결함 —
    detail pane을 컨테이너로 삼아 세로 스택으로 전환한다(커밋 검사기·비교 드로어 공용).
@@ -1576,7 +1576,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
@@ -1625,7 +1625,7 @@
 .repository-staging-row:hover .repository-stage-actions,
 .repository-staging-row:focus-within .repository-stage-actions { opacity: 1; }
 .repository-stage-action {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-ui, ui-monospace, monospace);
   font-size: var(--t-xs);
   line-height: 1;
   color: var(--text-secondary);
@@ -1698,8 +1698,8 @@
   .repository-commit-amend input[type="checkbox"] { appearance: auto; }
 }
 .repository-commit-target {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: var(--t-xs);
+  font-family: var(--font-code, ui-monospace, monospace);
+  font-size: var(--font-code-size);
   color: var(--text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1725,7 +1725,7 @@
 
 /* 충돌 표식 — untracked와 U를 공유하는 행을 warn 신호로 가른다(discard 동사는 숨겨진다). */
 .repository-conflict-chip {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-ui, ui-monospace, monospace);
   font-size: var(--t-2xs);
   padding: 0 6px;
   border-radius: var(--radius-pill);
@@ -1775,7 +1775,7 @@
 .repository-ws-peek-main:hover > .repository-seam-pill { background: var(--brass); }
 .repository-ws-peek-kind {
   flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-ui, ui-monospace, monospace);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -1792,7 +1792,7 @@
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
-.repository-ws-peek-return b { font-family: var(--font-mono, ui-monospace, monospace); font-weight: var(--weight-medium); color: var(--text-secondary); }
+.repository-ws-peek-return b { font-family: var(--font-ui, ui-monospace, monospace); font-weight: var(--weight-medium); color: var(--text-secondary); }
 .repository-ws-peek-main:hover .repository-ws-peek-return b { color: var(--text-primary); }
 .repository-ws-peek-close {
   flex: none;
@@ -1837,11 +1837,11 @@
   color: var(--text-secondary);
   font-size: var(--t-sm);
 }
-.repository-dock-sha { flex: none; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
+.repository-dock-sha { flex: none; font-family: var(--font-code); font-size: var(--font-code-size); color: var(--text-tertiary); }
 .repository-dock-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .repository-dock-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .repository-dock-sep { width: 1px; height: 16px; margin: 0 4px; background: var(--surface-rim); }
-.repository-dock-btn kbd { font-family: var(--font-mono); font-size: var(--t-2xs); padding: 0 4px; border: 1px solid var(--hairline-strong); border-radius: 4px; color: var(--text-tertiary); }
+.repository-dock-btn kbd { font-family: var(--font-ui); font-size: var(--t-2xs); padding: 0 4px; border: 1px solid var(--hairline-strong); border-radius: 4px; color: var(--text-tertiary); }
 /* 접힌 독 — 정체성 + 펼치기. 손잡이는 이음매가 없어도 같은 자리에 산다. */
 .repository-dock-strip {
   flex: 1;
@@ -1877,7 +1877,7 @@
   color: var(--text-primary);
   font-size: var(--t-sm);
 }
-.repository-dock-arm-base { flex: none; padding: 2px 7px; border: 1px solid color-mix(in oklch, var(--aurora) 45%, transparent); border-radius: var(--radius-xs); color: var(--aurora); font-family: var(--font-mono); font-size: var(--t-xs); }
+.repository-dock-arm-base { flex: none; padding: 2px 7px; border: 1px solid color-mix(in oklch, var(--aurora) 45%, transparent); border-radius: var(--radius-xs); color: var(--aurora); font-family: var(--font-ui); font-size: var(--t-xs); }
 .repository-dock-arm-hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .repository-dock-arm > .repository-dock-btn { margin-left: auto; }
 /* 무장 중 행 호버 — 클릭 한 번이 비교를 완성함을 ⇆ 단서로 미리 말한다. */
@@ -1903,7 +1903,7 @@
   color: var(--text-primary);
 }
 .repository-stash-inspector-name {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-ui, ui-monospace, monospace);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
   border: 1px solid var(--hairline);
@@ -1952,7 +1952,7 @@
   box-shadow: var(--shadow-floating);
 }
 .repository-stash-popover-label {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-ui, ui-monospace, monospace);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -2062,7 +2062,7 @@
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--ink-fog) 22%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-regular);
   font-variant-numeric: tabular-nums;
@@ -2096,7 +2096,7 @@
   min-width: 0;
 }
 .history-filter { position: relative; flex: 0 1 240px; min-width: 120px; }
-.history-filter-input { height: 28px; padding-left: 28px; font-family: var(--font-body); }
+.history-filter-input { height: 28px; padding-left: 28px; font-family: var(--font-ui); }
 .repository-discovery-glyph { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); pointer-events: none; }
 .history-filter-clear { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; }
 .history-order-toggle { width: auto; padding: 0 8px 0 6px; }
@@ -2124,7 +2124,7 @@
   cursor: pointer;
   flex: none;
   font: inherit;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-regular);
   line-height: 1;
@@ -2243,7 +2243,7 @@
 .repository-hunk-wrap, .history-files-scroll { transition: opacity var(--duration-fast) var(--ease-glide); }
 .history-inspector-body.is-stale, .repository-hunk-wrap.is-stale, .history-files-scroll.is-stale { opacity: .45; pointer-events: none; transition-delay: 160ms; }
 .repository-verb-count {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-style: normal;
   font-size: var(--t-xs);
   color: var(--brass-ink);
@@ -2271,7 +2271,7 @@
   border-radius: var(--radius-xs);
   background: var(--ink-veil);
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-regular);
   line-height: 1.4;
@@ -2420,8 +2420,8 @@
   border-radius: 4px;
   background: color-mix(in oklch, var(--brass) 14%, transparent);
   color: var(--brass-ink);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2444,7 +2444,7 @@
   overflow: hidden;
 }
 .repository-context-search { position: relative; display: flex; align-items: center; flex: none; height: 36px; border-bottom: 1px solid var(--surface-rim); }
-.repository-context-search .repository-filter-input { height: 100%; padding: 0 30px 0 30px; border: 0; border-radius: 0; background: transparent; font-family: var(--font-body); font-size: var(--t-md); color: var(--text-primary); }
+.repository-context-search .repository-filter-input { height: 100%; padding: 0 30px 0 30px; border: 0; border-radius: 0; background: transparent; font-family: var(--font-ui); font-size: var(--t-md); color: var(--text-primary); }
 .repository-context-search .repository-discovery-glyph { left: 11px; }
 .repository-context-search .repository-filter-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; }
 .repository-context-options { min-height: 0; overflow-y: auto; padding: 4px 6px; }
@@ -2471,7 +2471,7 @@
 .repository-ref-row > .repository-icon { color: var(--text-tertiary); }
 .repository-ref-name { min-width: 0; overflow: hidden; color: var(--text-primary); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
 .repository-ref-row.is-current .repository-ref-name { font-weight: var(--weight-bold); }
-.repository-ref-sub { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; min-width: 0; overflow: hidden; color: var(--text-tertiary); flex: 0 1 auto; font-family: var(--font-mono); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.repository-ref-sub { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; min-width: 0; overflow: hidden; color: var(--text-tertiary); flex: 0 1 auto; font-family: var(--font-ui); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .repository-ref-row.is-current .repository-ref-sub { color: var(--brass-ink); }
 .repository-ref-mark { color: var(--brass-ink); }
 .repository-ref-row.is-current .repository-ref-mark { margin-left: auto; }
@@ -2490,14 +2490,14 @@
   color: var(--text-tertiary);
   font-size: var(--t-xs);
 }
-.repository-scan-count { min-width: 0; overflow: hidden; font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.repository-scan-count { min-width: 0; overflow: hidden; font-family: var(--font-ui); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .repository-discovery-depth { display: inline-flex; align-items: center; gap: 1px; margin-left: auto; }
 .repository-depth-step { width: 20px; height: 20px; }
-.repository-depth-value { min-width: 16px; text-align: center; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.repository-depth-value { min-width: 16px; text-align: center; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 
 /* ── 트리 · 검색 줄 ── */
 .repository-discovery { position: relative; display: flex; align-items: center; gap: 4px; flex: none; height: 36px; padding: 0 6px; border-bottom: 1px solid var(--surface-rim); }
-.repository-discovery .repository-filter-input { height: 26px; padding-left: 26px; font-family: var(--font-body); }
+.repository-discovery .repository-filter-input { height: 26px; padding-left: 26px; font-family: var(--font-ui); }
 .repository-discovery .repository-discovery-glyph { left: 15px; }
 .repository-filter-clear { width: 22px; height: 22px; }
 
@@ -2525,7 +2525,7 @@
 .repository-ws-section-head:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 .repository-ws-section-head .repository-folder-chevron { color: var(--text-tertiary); transition: transform var(--duration-fast) var(--ease-glide); }
 .repository-ws-section.is-collapsed .repository-folder-chevron { transform: rotate(-90deg); }
-.repository-ws-section-head i { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); font-style: normal; font-weight: var(--weight-regular); font-variant-numeric: tabular-nums; }
+.repository-ws-section-head i { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-style: normal; font-weight: var(--weight-regular); font-variant-numeric: tabular-nums; }
 .repository-ws-tree-row {
   position: relative;
   display: flex;
@@ -2590,14 +2590,14 @@
   overflow: hidden;
   color: var(--text-tertiary);
   flex: 0 1 auto;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .repository-ws-remote-host { height: 15px; padding: 0 4px; border: 1px solid var(--surface-rim); border-radius: 4px; line-height: 13px; }
-.repository-ws-tree-gauge { display: inline-flex; gap: 6px; margin-left: auto; flex: none; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.repository-ws-tree-gauge { display: inline-flex; gap: 6px; margin-left: auto; flex: none; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .repository-ws-tree-gauge .is-ahead { color: var(--positive-ink); }
 .repository-ws-tree-gauge .is-behind { color: var(--warn-ink); }
 .repository-ws-tree-gauge.is-gone { color: var(--coral-ink); }
@@ -2677,13 +2677,13 @@
 .repository-ftree-row[aria-expanded="true"] .repository-ftree-chevron .repository-icon { transform: rotate(90deg); }
 .repository-ftree-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; color: var(--text-tertiary); }
 .repository-ftree-icon .file-icon-svg { display: block; }
-.repository-ftree-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-body); }
+.repository-ftree-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: var(--font-code-size); }
 .repository-ftree-row.is-dir.has-changes .repository-ftree-name { color: var(--text-primary); }
 .repository-ftree-row.is-modified .repository-ftree-name { color: color-mix(in oklch, var(--warn-ink) 78%, var(--text-secondary)); }
 .repository-ftree-row.is-added .repository-ftree-name { color: color-mix(in oklch, var(--positive-ink) 78%, var(--text-secondary)); }
 .repository-ftree-row.is-deleted .repository-ftree-name { color: color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary)); text-decoration: line-through; }
 .repository-ftree-row .repository-status-glyph { flex: none; width: 15px; height: 15px; font-size: var(--t-2xs); }
-.repository-ftree-count { flex: none; min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink-fog) 22%, transparent); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); display: inline-flex; align-items: center; justify-content: center; }
+.repository-ftree-count { flex: none; min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink-fog) 22%, transparent); color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); display: inline-flex; align-items: center; justify-content: center; }
 .repository-ftree-note { height: 28px; display: flex; align-items: center; color: var(--text-tertiary); font-size: var(--t-sm); }
 .repository-ftree-note.is-error { color: var(--coral-ink); }
 /* 커밋 시점 파일 내용 — diff 표와 같은 기하에 줄 번호 한 열만 둔다. */
@@ -2770,7 +2770,7 @@
 .repository-unified .history-inspector-subject { font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .repository-unified .history-author { font-size: var(--t-xs); }
 .repository-unified .repository-commit-box { padding: 10px 12px; gap: 5px; background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised)); }
-.repository-unified .repository-commit-subject, .repository-unified .repository-commit-body { border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); font-family: var(--font-body); }
+.repository-unified .repository-commit-subject, .repository-unified .repository-commit-body { border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); font-family: var(--font-content); }
 .repository-unified .repository-commit-button { border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-primary); }
 .repository-unified .repository-commit-button:not(:disabled):hover { background: var(--control-rest-hover); border-color: transparent; }
 .repository-unified .repository-staging-guard.is-locked { color: var(--text-secondary); background: var(--surface-panel); border-bottom-color: var(--surface-rim); }
@@ -2798,3 +2798,6 @@
   .repository-staging-bulk,
   .repository-unified .repository-commit-button { border-color: ButtonBorder; }
 }
+
+.history-commit-author-name, .history-commit-time { font-family: var(--font-ui); font-size: var(--t-xs); }
+.history-commit-sha, .history-detail-sha { font-family: var(--font-code); font-size: var(--font-code-size); }

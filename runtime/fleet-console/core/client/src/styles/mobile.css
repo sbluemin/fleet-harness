@@ -162,7 +162,7 @@
   flex: none;
   padding: 1px 4px;
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
   background: var(--brass-glow);
@@ -388,7 +388,7 @@
   display: flex;
   gap: var(--space-3);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -399,7 +399,7 @@
 
 .mobile-theater-here {
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
 }
@@ -569,7 +569,7 @@
 .mobile-settings-saving {
   flex: none;
   color: var(--aurora-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -592,7 +592,7 @@
   margin: 0;
   padding: 0 var(--space-1);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
@@ -662,7 +662,7 @@
 
 .mobile-settings-row-copy span {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 

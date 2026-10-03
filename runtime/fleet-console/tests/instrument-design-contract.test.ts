@@ -1130,7 +1130,7 @@ describe("Instrument core design contract", () => {
       // 관여하지 않고, 계산 함수는 그 안의 px만 본다.
       const offLadder = (value: string): boolean => {
         if (/var\(\s*--t-(?:2xs|xs|sm|md|base|lg|xl)\s*\)/.test(value)) return false;
-        if (/var\(\s*--font-body-size\s*\)/.test(value)) return false;
+        if (/var\(\s*--font-(?:body|ui|content|code)-size\s*\)/.test(value)) return false;
         // Codex 서브앱이 자기 --font-size-* 스케일을 갖고 있고, 공유 마크다운과 코어 일부가
         // 그 토큰을 함께 소비한다(총 113곳). 두 어휘를 합칠지는 이 사다리와 별개의 결정이라
         // 아직 내려지지 않았으므로 여기 이름으로 적어 둔다 — 조용한 통과가 아니라 선언된
@@ -3142,7 +3142,7 @@ describe("Instrument core design contract", () => {
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     // 디스플레이 서체 생산자는 커맨드 밴드의 브랜드 워드마크 하나뿐이다 — layout.css 단독 소유.
     expect(components).not.toMatch(/font-family:\s*var\(--font-display\)/);
-    expect(layout.match(/font-family:\s*var\(--font-display\)/g)).toHaveLength(1);
+    expect(layout.match(/font-family:\s*var\(--font-content\)/g)).toHaveLength(1);
     expect(commandBand).toContain('className="command-band-brand-wordmark"');
     expect(components).not.toMatch(/data-sidebar-state="(?:rail|list|detail)"/);
     expect(components).not.toContain("global-navigation");
@@ -3256,7 +3256,7 @@ describe("Instrument core design contract", () => {
     expect(reasonCell).toContain("grid-row: 2;");
     expect(reasonCell).toContain("grid-column: 2 / -1;");
     expect(descriptionBlock).toContain("color: var(--text-tertiary);");
-    expect(descriptionBlock).toContain("font-family: var(--font-body);");
+    expect(descriptionBlock).toContain("font-family: var(--font-ui);");
     expect(descriptionBlock).not.toMatch(/font-weight:\s*\d/);
 
     // 실행 메뉴에는 별도 표식 배지를 두지 않는다 — 종류 구분은 라벨 괄호 안과 무배경 한 단어
@@ -3272,7 +3272,7 @@ describe("Instrument core design contract", () => {
     expect(quietBlock).toContain("clip-path: inset(50%);");
     const briefBlock = components.match(/^\.operation-launch-menu-brief \{[^}]*\}/m)?.[0] ?? "";
     expect(briefBlock).toContain("grid-row: 1;");
-    expect(briefBlock).toContain("font-family: var(--font-body);");
+    expect(briefBlock).toContain("font-family: var(--font-ui);");
     expect(briefBlock).not.toMatch(/background|border-radius/);
     expect(contextMenu).toContain('className="operation-launch-menu-brief"');
     expect(contextMenu).toContain("operation-launch-menu-description operation-launch-menu-description--quiet");
@@ -3415,7 +3415,7 @@ describe("Instrument core design contract", () => {
     expect(source("../../../features/workspace/client/canvas/canvas.tsx")).toContain("onRename: (operationId: string, title: string) => void;");
     expect(source("../../../features/workspace/client/operations.tsx")).toContain("onRename={handleRename}");
     expect(components).toContain(".canvas-operation-identity-name,");
-    expect(components).toContain("font-family: var(--font-body);");
+    expect(components).toContain("font-family: var(--font-ui);");
     expect(components).toContain("font-size: calc(var(--font-body-size) * 0.92);");
     const identityInputBlock = components.match(/^\.canvas-operation-identity-input \{\n  flex: 1 1 auto;[^}]*\}/m)?.[0] ?? "";
     expect(identityInputBlock).toContain("width: min(28ch, 34vw);");
@@ -3661,7 +3661,7 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain("border: 1px solid var(--surface-rim);");
     expect(selectBlock).toContain("background: color-mix(in oklch, var(--ink-mid) 48%, transparent);");
     expect(selectBlock).toContain("color: var(--text-primary);");
-    expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-body);");
+    expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-ui);");
     expect(selectBlock).toContain("padding: 0 13px;");
     expect(selectBlock).toContain("box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);");
     expect(selectBlock).toContain("background: var(--control-wash);");
@@ -3670,7 +3670,7 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
     // compact 트리거는 칩 문법의 모노 티어(11px)를 쓴다 — 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
     expect(selectBlock).toContain(
-      "font-weight: var(--weight-regular);\n  font-size: var(--t-xs);\n  line-height: 1;\n  font-family: var(--font-mono);",
+      "font-weight: var(--weight-regular);\n  font-size: var(--t-xs);\n  line-height: 1;\n  font-family: var(--font-ui);",
     );
     // 호출부가 트리거 글자색을 자기 채널로 넘겨받는 유일한 통로 — 미설정이면 기본 티어를 그대로 쓴다.
     expect(selectBlock).toContain("color: var(--fc-select-compact-tone, var(--text-secondary));");

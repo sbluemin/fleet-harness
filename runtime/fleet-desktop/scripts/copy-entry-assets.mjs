@@ -19,11 +19,18 @@ await cp(join(desktopDirectory, "assets", "entry"), entryDestination, { recursiv
 const requireFromDesktop = createRequire(join(desktopDirectory, "package.json"));
 const fontDestination = join(entryDestination, "fonts");
 await mkdir(fontDestination, { recursive: true });
-for (const [packageName, fileName] of [["@fontsource-variable/fraunces", "fraunces-latin-wght-normal.woff2"], ["@fontsource-variable/manrope", "manrope-latin-wght-normal.woff2"], ["@fontsource-variable/jetbrains-mono", "jetbrains-mono-latin-wght-normal.woff2"]]) {
+for (const [packageName, fileName] of [["@fontsource-variable/source-code-pro", "source-code-pro-latin-wght-normal.woff2"], ["@fontsource-variable/fira-code", "fira-code-latin-wght-normal.woff2"], ["@fontsource-variable/cascadia-code", "cascadia-code-latin-wght-normal.woff2"], ["@fontsource-variable/manrope", "manrope-latin-wght-normal.woff2"], ["@fontsource-variable/jetbrains-mono", "jetbrains-mono-latin-wght-normal.woff2"]]) {
   const packageRoot = dirname(requireFromDesktop.resolve(`${packageName}/package.json`));
   await cp(join(packageRoot, "files", fileName), join(fontDestination, fileName));
   await cp(join(packageRoot, "LICENSE"), join(fontDestination, fileName.replace("-latin-wght-normal.woff2", "-LICENSE.txt")));
 }
+// 한글도 축 스택의 일부다. Pretendard 청크와 코딩용 통짜 한글 서체를 같은 파일 origin에 둔다.
+const pretendardRoot = dirname(requireFromDesktop.resolve("pretendard/package.json"));
+await cp(join(pretendardRoot, "dist", "web", "variable"), join(fontDestination, "pretendard"), { recursive: true });
+await cp(join(pretendardRoot, "dist", "LICENSE.txt"), join(fontDestination, "pretendard-LICENSE.txt"));
+const codingRoot = dirname(requireFromDesktop.resolve("@fontsource/nanum-gothic-coding/package.json"));
+for (const weight of [400, 700]) await cp(join(codingRoot, "files", `nanum-gothic-coding-korean-${weight}-normal.woff2`), join(fontDestination, `nanum-gothic-coding-korean-${weight}-normal.woff2`));
+await cp(join(codingRoot, "LICENSE"), join(fontDestination, "nanum-gothic-coding-LICENSE.txt"));
 await cp(join(desktopDirectory, "build", "node-runtime.json"), nodeManifestDestination);
 // 창/트레이 아이콘도 dist 앵커로 동반한다 — packaged에서 resources/ 밖 경로는 존재하지 않는다.
 await cp(join(desktopDirectory, "build", "icon.png"), iconDestination);

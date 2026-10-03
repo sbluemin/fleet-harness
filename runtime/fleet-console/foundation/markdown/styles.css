@@ -152,13 +152,19 @@ code.hljs {
 }
 
 .markdown-body {
+  font-family: var(--font-content);
+  --font-size-body: var(--font-content-size);
+  --font-size-title-md: calc(var(--font-content-size) * 22 / 14);
+  --font-size-display-md: calc(var(--font-content-size) * 30 / 14);
+  --font-size-display-lg: calc(var(--font-content-size) * 36 / 14);
+  --font-size-code: var(--font-code-size);
   inline-size: 100%;
   min-width: 0;
   overflow-wrap: anywhere;
   max-inline-size: clamp(60ch, 78ch, 78ch);
   margin-inline: auto;
   color: var(--text-secondary);
-  font-size: var(--font-size-body);
+  font-size: var(--font-content-size);
   line-height: 1.78;
   letter-spacing: -0.003em;
 }
@@ -181,11 +187,11 @@ code.hljs {
 .markdown-body h1 {
   scroll-margin-top: var(--space-6);
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-content);
   font-weight: var(--weight-medium);
   letter-spacing: -0.024em;
   font-variation-settings: "opsz" 72;
-  font-size: var(--font-size-display-lg);
+  font-size: calc(var(--font-content-size) * 2.571429);
   line-height: 1.14;
 }
 
@@ -194,7 +200,7 @@ code.hljs {
 .markdown-body h4 {
   scroll-margin-top: var(--space-6);
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-content);
   font-weight: var(--weight-medium);
   letter-spacing: -0.022em;
   font-variation-settings: "opsz" 60;
@@ -222,17 +228,17 @@ code.hljs {
 
 .markdown-body h3 {
   margin-top: var(--space-8);
-  font-size: var(--font-size-title-md);
+  font-size: calc(var(--font-content-size) * 1.571429);
   line-height: 1.3;
-  font-family: var(--font-body);
+  font-family: var(--font-content);
   font-weight: var(--weight-medium);
   letter-spacing: -0.012em;
 }
 
 .markdown-body h4 {
   margin-top: var(--space-6);
-  font-family: var(--font-body);
-  font-size: var(--font-size-body);
+  font-family: var(--font-content);
+  font-size: var(--font-content-size);
   font-weight: var(--weight-medium);
   color: var(--brass-bright);
 }
@@ -279,8 +285,8 @@ code.hljs {
 
 .markdown-body ol li::marker {
   color: var(--aurora-ink);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-lg);
+  font-family: var(--font-content);
+  font-size: var(--font-content-size);
 }
 
 .markdown-body img {
@@ -323,8 +329,8 @@ code.hljs {
 .markdown-body .frontmatter dt {
   margin: 0;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.785714);
   font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -366,9 +372,9 @@ code.hljs {
 .markdown-body table th {
   background: color-mix(in oklch, var(--ink-mid) 70%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-body);
+  font-family: var(--font-content);
   font-weight: var(--weight-medium);
-  font-size: var(--font-size-sm);
+  font-size: calc(var(--font-content-size) * 0.857143);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -385,8 +391,8 @@ code.hljs {
   background: var(--ink-deep);
   border: 1px solid var(--surface-rim);
   border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.88em;
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   padding: 1px var(--space-tight);
   color: var(--brass-bright);
 }
@@ -454,8 +460,8 @@ code.hljs {
   flex: 1;
   text-align: center;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -469,8 +475,8 @@ code.hljs {
   border: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent);
   background: color-mix(in oklch, var(--ink-mid) 42%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
   cursor: pointer;
@@ -494,8 +500,8 @@ code.hljs {
   border: none;
   border-radius: 0;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-code);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   line-height: 1.7;
 }
 
@@ -542,7 +548,7 @@ code.hljs {
   left: clamp(20px, 3vw, 32px);
   z-index: 2;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.22em;
@@ -611,7 +617,7 @@ code.hljs {
 :is(.diagram-block, .diagram-lightbox__viewport) svg .pieTitleText,
 :is(.diagram-block, .diagram-lightbox__viewport) svg .slice,
 :is(.diagram-block, .diagram-lightbox__viewport) svg .legend text {
-  font-family: var(--font-body);
+  font-family: var(--font-content);
   text-rendering: geometricPrecision;
 }
 
@@ -661,7 +667,7 @@ code.hljs {
 .diagram-block[data-diagram-state="error"] {
   border-color: color-mix(in oklch, var(--coral) 36%, var(--surface-rim));
   color: var(--coral-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-sm);
   line-height: 1.6;
   letter-spacing: 0.02em;
@@ -723,7 +729,7 @@ code.hljs {
 .diagram-lightbox__header h2 {
   margin: 0;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.2em;
@@ -748,8 +754,8 @@ code.hljs {
   min-height: 36px;
   border-radius: var(--radius-xs);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   font-weight: var(--weight-bold);
   letter-spacing: 0.06em;
 }
@@ -789,7 +795,7 @@ code.hljs {
   border: 1px solid color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.01em;

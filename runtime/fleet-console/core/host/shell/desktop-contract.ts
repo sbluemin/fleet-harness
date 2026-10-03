@@ -1,3 +1,5 @@
+import { DEFAULT_FONTS, fontFamilyForAxis, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
+import type { DesktopEntryFonts } from "@fleet-console/protocol/desktop";
 import type http from "node:http";
 
 import { DESKTOP_WINDOW_COMMAND_EVENTS_PATH, DESKTOP_WINDOW_COMMAND_PATH, isDesktopWindowCommandSnapshot, type DesktopWindowCommand, type DesktopWindowCommandSnapshot } from "@fleet-console/protocol/desktop";
@@ -250,6 +252,7 @@ export interface DesktopEntryPalette {
   readonly scheme: "dark" | "light";
   readonly canvas: string;
   readonly tokens: Readonly<Record<DesktopEntryToken, string>>;
+  readonly fonts?: DesktopEntryFonts;
 }
 
 export type DesktopEntryToken =
@@ -321,13 +324,14 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
   },
 };
 
-export function desktopThemeSnapshot(theme: ConsoleThemeId): DesktopThemeSnapshot {
+export function desktopThemeSnapshot(theme: ConsoleThemeId, fonts: ConsoleFontSettings = DEFAULT_FONTS): DesktopThemeSnapshot {
   const entry = DESKTOP_ENTRY_PALETTES[theme];
-  return { theme, titleBarOverlay: { ...DESKTOP_TITLE_BAR_OVERLAYS[theme] }, entry: { ...entry, tokens: { ...entry.tokens } } };
+  return { theme, titleBarOverlay: { ...DESKTOP_TITLE_BAR_OVERLAYS[theme] }, entry: { ...entry, tokens: { ...entry.tokens }, fonts: { ui: { family: fontFamilyForAxis(fonts, "ui"), size: fonts.ui.size }, content: { family: fontFamilyForAxis(fonts, "content"), size: fonts.content.size }, code: { family: fontFamilyForAxis(fonts, "code"), size: fonts.code.size } } } };
 }
 
 interface DesktopThemeRouteDeps {
   readonly getTheme: () => ConsoleThemeId;
+  readonly getFonts?: () => ConsoleFontSettings;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly subscribe: (res: http.ServerResponse, snapshot: DesktopThemeSnapshot) => void;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
@@ -369,7 +373,7 @@ export function createDesktopThemeRouter(deps: DesktopThemeRouteDeps): (context:
       deps.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    const snapshot = desktopThemeSnapshot(deps.getTheme());
+    const snapshot = desktopThemeSnapshot(deps.getTheme(), deps.getFonts?.());
     if (pathname === DESKTOP_THEME_PATH) {
       deps.writeJson(res, 200, snapshot);
       return true;

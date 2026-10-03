@@ -305,12 +305,16 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
   const warn = safeArtifactColor(query.get("warn"), foreground);
   const critical = safeArtifactColor(query.get("critical"), foreground);
   const focus = safeArtifactColor(query.get("focus"), accent);
+  const sansFamily = safeArtifactFontFamily(query.get("sansFamily"));
+  const monoFamily = safeArtifactFontFamily(query.get("monoFamily"));
+  const sansSize = safeArtifactFontSize(query.get("sansSize"), 12, 20, 14);
+  const monoSize = safeArtifactFontSize(query.get("monoSize"), 10, 22, 13);
   const sansFont = safeArtifactFontPath(query.get("sansFont"));
   const monoFont = safeArtifactFontPath(query.get("monoFont"));
   const sansCjkSheets = safeArtifactSheetPaths(query.getAll("sansCjkSheet"));
   const monoCjkSheets = safeArtifactSheetPaths(query.getAll("monoCjkSheet"));
   const canvasStyle = `background-color:${ground}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${ANALYSIS_ARTIFACT_LIGHT_THEMES.has(theme) ? "light" : "dark"}!important;`;
-  const baseHead = `${ANALYSIS_ARTIFACT_META_CSP}${artifactBaseStylesheet({ ground, card, inset, foreground, muted, faint, hairline, hairlineStrong, accent, positive, warn, critical, focus, sansFont, monoFont, sansCjkSheets, monoCjkSheets })}`;
+  const baseHead = `${ANALYSIS_ARTIFACT_META_CSP}${artifactBaseStylesheet({ ground, card, inset, foreground, muted, faint, hairline, hairlineStrong, accent, positive, warn, critical, focus, sansFont, monoFont, sansFamily, monoFamily, sansSize, monoSize, sansCjkSheets, monoCjkSheets })}`;
   const documentTags = findArtifactDocumentTags(html);
   if (documentTags) {
     const htmlTag = withArtifactAttribute(withArtifactAttribute(documentTags.htmlTag.source, "data-theme", theme), "style", canvasStyle, ARTIFACT_CANVAS_STYLE_PROPERTIES);
@@ -331,12 +335,12 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
  * 쓴다 — 카드(fleet-card 계열)는 ground보다 한 단 들리고, 코드·웰은 한 단 가라앉는다. */
 const ARTIFACT_BASE_RULES = [
   `*,*::before,*::after{box-sizing:border-box}`,
-  `body{font-family:var(--fleet-sans);font-size:14px;line-height:1.65;letter-spacing:-.004em;-webkit-font-smoothing:antialiased;padding:30px clamp(20px,4.5vw,48px) 46px}`,
+  `body{font-family:var(--fleet-sans);font-size:var(--font-content-size);line-height:1.65;letter-spacing:-.004em;-webkit-font-smoothing:antialiased;padding:30px clamp(20px,4.5vw,48px) 46px}`,
   `body>*{max-width:880px;margin-inline:auto}`,
   `h1,h3,h4,h5,h6{margin:1.6em 0 .5em;line-height:1.25;text-wrap:balance;letter-spacing:-.014em;font-weight:700;color:var(--fleet-ink)}`,
   `h1{font-size:1.42rem;margin-top:.2em}`,
   // 섹션 머리 = 키커: 모노 소형 대문자 + 오른쪽으로 사라지는 헤어라인. 색은 쓰지 않는다.
-  `h2{display:flex;align-items:center;gap:10px;margin:2.1em 0 .75em;font-family:var(--fleet-mono);font-size:.74rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--fleet-muted)}`,
+  `h2{display:flex;align-items:center;gap:10px;margin:2.1em 0 .75em;font-family:var(--fleet-sans);font-size:.74rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--fleet-muted)}`,
   `h2::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--fleet-hairline),transparent)}`,
   `h3{font-size:.98rem}`,
   `h4,h5,h6{font-size:.9rem}`,
@@ -356,8 +360,8 @@ const ARTIFACT_BASE_RULES = [
   `td{padding:8px 12px;border-bottom:1px solid color-mix(in oklch,var(--fleet-hairline) 55%,transparent);vertical-align:top}`,
   `tr:last-child td{border-bottom:0}`,
   `td:first-child{color:var(--fleet-ink);font-weight:600}`,
-  `code{font-family:var(--fleet-mono);font-size:.88em;background:var(--fleet-inset);border:1px solid var(--fleet-hairline);border-radius:4px;padding:.03em .32em}`,
-  `pre{font-family:var(--fleet-mono);font-size:.86em;line-height:1.55;background:var(--fleet-inset);border:1px solid var(--fleet-hairline);border-radius:10px;padding:13px 15px;overflow-x:auto}`,
+  `code{font-family:var(--fleet-mono);font-size:var(--font-code-size);background:var(--fleet-inset);border:1px solid var(--fleet-hairline);border-radius:4px;padding:.03em .32em}`,
+  `pre{font-family:var(--fleet-mono);font-size:var(--font-code-size);line-height:1.55;background:var(--fleet-inset);border:1px solid var(--fleet-hairline);border-radius:10px;padding:13px 15px;overflow-x:auto}`,
   `pre code{background:none;border:none;padding:0;font-size:1em}`,
   `blockquote{border-left:3px solid var(--fleet-hairline);color:var(--fleet-muted);margin-left:0;padding-left:1em}`,
   `hr{border:none;height:1px;background:linear-gradient(90deg,var(--fleet-hairline),transparent);margin:1.6em 0}`,
@@ -438,6 +442,10 @@ function artifactBaseStylesheet(tokens: {
   readonly critical: string;
   readonly focus: string;
   readonly sansFont?: string;
+  readonly sansFamily?: string;
+  readonly monoFamily?: string;
+  readonly sansSize: string;
+  readonly monoSize: string;
   readonly monoFont?: string;
   readonly sansCjkSheets?: readonly string[];
   readonly monoCjkSheets?: readonly string[];
@@ -452,9 +460,9 @@ function artifactBaseStylesheet(tokens: {
   // 실리므로 경로만 받고 이름은 여기서 잠근다. 시트가 없으면 시스템 CJK 폴백이 그대로 선다.
   const cjkSheets = [...(tokens.sansCjkSheets ?? []), ...(tokens.monoCjkSheets ?? [])];
   const cjkLinks = cjkSheets.map((href) => `<link rel="stylesheet" href="${href}">`).join("");
-  const sansStack = `${tokens.sansFont ? `"Fleet Console Sans",` : ""}${tokens.sansCjkSheets?.length ? `"Pretendard Variable",` : ""}ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",Roboto,sans-serif`;
-  const monoStack = `${tokens.monoFont ? `"Fleet Console Mono",` : ""}${tokens.monoCjkSheets?.length ? `"Nanum Gothic Coding",` : ""}ui-monospace,"SF Mono",Menlo,Consolas,"D2Coding",monospace`;
-  const root = `:root{--fleet-canvas:${tokens.ground};--fleet-surface:${tokens.card};--fleet-card:${tokens.card};--fleet-inset:${tokens.inset};--fleet-ink:${tokens.foreground};--fleet-muted:${tokens.muted};--fleet-faint:${tokens.faint};--fleet-hairline:${tokens.hairline};--fleet-hairline-strong:${tokens.hairlineStrong};--fleet-accent:${tokens.accent};--fleet-positive:${tokens.positive};--fleet-warn:${tokens.warn};--fleet-critical:${tokens.critical};--fleet-focus:${tokens.focus};--fleet-sans:${sansStack};--fleet-mono:${monoStack}}`;
+  const sansStack = `${tokens.sansFont ? `"Fleet Console Sans",` : ""}${!tokens.sansFamily && tokens.sansCjkSheets?.length ? `"Pretendard Variable",` : ""}${tokens.sansFamily ?? 'ui-sans-serif,system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",Roboto,sans-serif'}`;
+  const monoStack = `${tokens.monoFont ? `"Fleet Console Mono",` : ""}${!tokens.monoFamily && tokens.monoCjkSheets?.length ? `"Nanum Gothic Coding",` : ""}${tokens.monoFamily ?? 'ui-monospace,"SF Mono",Menlo,Consolas,"D2Coding",monospace'}`;
+  const root = `:root{--fleet-canvas:${tokens.ground};--fleet-surface:${tokens.card};--fleet-card:${tokens.card};--fleet-inset:${tokens.inset};--fleet-ink:${tokens.foreground};--fleet-muted:${tokens.muted};--fleet-faint:${tokens.faint};--fleet-hairline:${tokens.hairline};--fleet-hairline-strong:${tokens.hairlineStrong};--fleet-accent:${tokens.accent};--fleet-positive:${tokens.positive};--fleet-warn:${tokens.warn};--fleet-critical:${tokens.critical};--fleet-focus:${tokens.focus};--fleet-sans:${sansStack};--fleet-mono:${monoStack};--font-content:${sansStack};--font-code:${monoStack};--font-content-size:${tokens.sansSize};--font-code-size:${tokens.monoSize};font-size:${tokens.sansSize}}`;
   return `${cjkLinks}<style>${sansFace}${monoFace}${root}${ARTIFACT_BASE_RULES}</style>`;
 }
 
@@ -463,6 +471,13 @@ function artifactBaseStylesheet(tokens: {
  * 경로만 통과시킨다. 스킴·호스트가 실리면 버린다(오프라인 계약: 아티팩트 문서는 자기 origin
  * 밖을 부르지 않는다).
  */
+function safeArtifactFontFamily(value: string | null): string | undefined {
+  return value && value.length <= 1024 && /^(?:"(?:[^"\\<>\u0000-\u001f\u007f]|\\(?:["\\]|3[ce] ))+"|-?[A-Za-z][A-Za-z-]*)(?:,\s*(?:"(?:[^"\\<>\u0000-\u001f\u007f]|\\(?:["\\]|3[ce] ))+"|-?[A-Za-z][A-Za-z-]*))*$/u.test(value) ? value : undefined;
+}
+function safeArtifactFontSize(value: string | null, min: number, max: number, fallback: number): string {
+  const size = value && /^(\d+)px$/.test(value) ? Number.parseInt(value, 10) : fallback;
+  return `${size >= min && size <= max ? size : fallback}px`;
+}
 const SAFE_ARTIFACT_FONT_PATH = /^\/[A-Za-z0-9_\-./]{1,200}\.woff2$/;
 
 function safeArtifactFontPath(value: string | null): string | undefined {

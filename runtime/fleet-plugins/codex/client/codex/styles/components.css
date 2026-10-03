@@ -31,7 +31,7 @@
 .eyebrow {
   margin: 0;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.18em;
@@ -92,7 +92,7 @@ kbd {
   background: var(--ink-abyss);
   border: 1px solid var(--surface-rim);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
@@ -108,7 +108,7 @@ kbd {
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
@@ -182,7 +182,7 @@ button.chip:focus-visible {
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-size-sm);
   font-weight: var(--weight-medium);
   letter-spacing: 0.06em;
@@ -223,7 +223,7 @@ button.chip:focus-visible {
   margin: var(--space-5) 0 var(--space-2);
   padding: 0 var(--space-2);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.16em;
@@ -274,7 +274,7 @@ button.chip:focus-visible {
 }
 
 .tag-group-button .count {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.06em;
@@ -380,7 +380,7 @@ button.chip:focus-visible {
   align-items: center;
   min-width: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
@@ -418,9 +418,9 @@ button.chip:focus-visible {
 
 .document h1 {
   margin: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-content);
   font-weight: var(--weight-regular);
-  font-size: var(--font-size-display-2xl);
+  font-size: calc(var(--font-content-size) * 2.571429);
   letter-spacing: -0.025em;
   line-height: 1.02;
   color: var(--text-primary);
@@ -496,8 +496,8 @@ button.chip:focus-visible {
   border: 1px solid var(--surface-rim);
   background: color-mix(in oklch, var(--ink-deep) 60%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   letter-spacing: 0;
   overflow-wrap: anywhere;
 }
@@ -514,7 +514,7 @@ button.chip:focus-visible {
     linear-gradient(180deg, color-mix(in oklch, var(--brass) 18%, transparent), color-mix(in oklch, var(--brass) 8%, transparent)),
     var(--surface-glass);
   color: var(--brass-bright);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-size-lg);
   font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
@@ -557,7 +557,7 @@ button.chip:focus-visible {
 .toc-panel h2 {
   margin: 0 0 var(--space-3);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.22em;
@@ -616,7 +616,7 @@ button.chip:focus-visible {
 .related-list h2 {
   margin: 0 0 var(--space-4);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.22em;
@@ -654,7 +654,7 @@ button.chip:focus-visible {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-size-body);
   font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
@@ -806,7 +806,7 @@ button.chip:focus-visible {
 .manifest-card h2 {
   margin: 0;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.22em;
@@ -816,8 +816,8 @@ button.chip:focus-visible {
 .manifest-subtitle {
   margin: 0;
   color: var(--text-secondary);
-  font-family: var(--font-body);
-  font-size: var(--font-size-body);
+  font-family: var(--font-content);
+  font-size: var(--font-content-size);
   font-weight: var(--weight-regular);
   letter-spacing: -0.01em;
   font-variation-settings: "opsz" 16;
@@ -833,7 +833,7 @@ button.chip:focus-visible {
   background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
   border: 1px solid var(--surface-rim);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-compact);
   letter-spacing: 0;
   min-width: 0;
@@ -950,7 +950,7 @@ button.chip:focus-visible {
   border: 0;
   background: transparent;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-size-body);
   letter-spacing: -0.01em;
   outline: none;
@@ -1046,7 +1046,7 @@ button.chip:focus-visible {
 
 .command-result strong {
   display: block;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-size-base);
   font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
@@ -1068,7 +1068,7 @@ button.chip:focus-visible {
 .command-result small {
   display: block;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -1091,7 +1091,7 @@ button.chip:focus-visible {
   min-width: 0;
   padding: var(--space-3) var(--space-4) var(--space-2);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   letter-spacing: 0.12em;
   line-height: 1;
@@ -1137,7 +1137,7 @@ button.chip:focus-visible {
   border: 1px solid var(--surface-rim);
   background: var(--surface-glass);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
@@ -1184,7 +1184,7 @@ button.chip:focus-visible {
 
 .raw-title {
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-title-xl);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
@@ -1353,7 +1353,7 @@ button.chip:focus-visible {
   background: color-mix(in oklch, var(--brass) 18%, transparent);
   border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
@@ -1371,7 +1371,7 @@ button.chip:focus-visible {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   border: 1px solid color-mix(in oklch, var(--brass) 35%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
@@ -1392,7 +1392,7 @@ button.chip:focus-visible {
 }
 
 /* 제안자 각인 — 도구 표식 + 이름. 읽기 전용이라 hover·포커스 스타일이 없다. */
-.queue-proposer { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; }
+.queue-proposer { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; }
 .queue-proposer-mark { color: var(--text-tertiary); font-size: var(--t-2xs); line-height: 1; }
 .meta-chip--proposer .queue-proposer { font-size: inherit; letter-spacing: inherit; color: inherit; }
 
@@ -1412,7 +1412,7 @@ button.chip:focus-visible {
 .drydock-eyebrow {
   margin: 0;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.22em;
@@ -1421,7 +1421,7 @@ button.chip:focus-visible {
 
 .queue-title {
   margin: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-size-display-xl);
   font-weight: var(--weight-medium);
   letter-spacing: -0.02em;
@@ -1447,7 +1447,7 @@ button.chip:focus-visible {
   border-radius: var(--radius-xs);
   padding: 7px 14px;
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-size-sm);
   font-weight: var(--weight-medium);
   letter-spacing: 0.06em;
@@ -1479,7 +1479,7 @@ button.chip:focus-visible {
   background: color-mix(in oklch, var(--brass) 18%, transparent);
   border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
@@ -1514,7 +1514,7 @@ button.chip:focus-visible {
   padding: var(--space-1) var(--space-3);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   cursor: pointer;
 }
@@ -1540,7 +1540,7 @@ button.chip:focus-visible {
   flex: none;
   display: inline-flex;
   gap: var(--space-1);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -1556,7 +1556,7 @@ button.chip:focus-visible {
 
 .queue-row-decision {
   flex: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   padding: 1px var(--space-2);
   border-radius: var(--radius-pill);
@@ -1607,7 +1607,7 @@ button.chip:focus-visible {
 
 .queue-decision-dock-meta {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1640,7 +1640,7 @@ button.chip:focus-visible {
   padding: var(--space-1) var(--space-3);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   cursor: pointer;
 }
@@ -1660,7 +1660,7 @@ button.chip:focus-visible {
   border: 1px dashed var(--surface-rim);
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   text-align: center;
 }
@@ -1672,7 +1672,7 @@ button.chip:focus-visible {
 }
 
 .queue-diff-legend-item {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   color: var(--text-tertiary);
   padding: 1px var(--space-2);
@@ -1734,8 +1734,8 @@ button.chip:focus-visible {
 }
 
 .queue-row-target {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   font-weight: var(--weight-medium);
   color: var(--text-primary);
   letter-spacing: 0;
@@ -1745,8 +1745,8 @@ button.chip:focus-visible {
 }
 
 .queue-row-summary {
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.857143);
   color: var(--text-secondary);
   line-height: 1.4;
   display: -webkit-box;
@@ -1756,7 +1756,7 @@ button.chip:focus-visible {
 }
 
 .queue-row-meta {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   color: var(--text-tertiary);
   letter-spacing: 0.04em;
@@ -1768,7 +1768,7 @@ button.chip:focus-visible {
   padding: var(--space-5) 0;
   color: var(--text-tertiary);
   font-size: var(--font-size-lg);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   letter-spacing: -0.005em;
 }
 
@@ -1802,8 +1802,8 @@ button.chip:focus-visible {
 }
 
 .queue-card-id {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   color: var(--text-tertiary);
   letter-spacing: 0.04em;
   overflow: hidden;
@@ -1820,7 +1820,7 @@ button.chip:focus-visible {
 }
 
 .queue-card-time {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
   letter-spacing: 0.04em;
@@ -1829,8 +1829,8 @@ button.chip:focus-visible {
 
 .queue-card-summary {
   margin: 0;
-  font-family: var(--font-body);
-  font-size: var(--font-size-lg);
+  font-family: var(--font-content);
+  font-size: var(--font-content-size);
   font-weight: var(--weight-medium);
   color: var(--text-primary);
   letter-spacing: -0.01em;
@@ -1842,8 +1842,8 @@ button.chip:focus-visible {
 }
 
 .queue-card-target {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   color: var(--text-tertiary);
   letter-spacing: 0.04em;
   overflow: hidden;
@@ -1911,16 +1911,16 @@ button.chip:focus-visible {
 
 .queue-patch-id {
   margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   color: var(--text-tertiary);
   letter-spacing: 0.08em;
 }
 
 .queue-summary {
   margin: 0;
-  font-family: var(--font-body);
-  font-size: var(--font-size-display-lg);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 1.571429);
   font-weight: var(--weight-medium);
   letter-spacing: -0.02em;
   line-height: 1.15;
@@ -1956,7 +1956,7 @@ button.chip:focus-visible {
 .queue-rail-subtitle {
   margin: 0;
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-size-body);
   font-weight: var(--weight-regular);
   letter-spacing: -0.01em;
@@ -1980,7 +1980,7 @@ button.chip:focus-visible {
 }
 
 .queue-dl-key {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.12em;
@@ -1999,8 +1999,8 @@ button.chip:focus-visible {
 }
 
 .queue-dl-mono {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
 }
 
 .queue-dl-muted {
@@ -2016,7 +2016,7 @@ button.chip:focus-visible {
 .queue-dl-relative {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   letter-spacing: 0.04em;
 }
 
@@ -2036,7 +2036,7 @@ button.chip:focus-visible {
   background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
   border: 1px solid var(--surface-rim);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-sm);
   letter-spacing: 0;
   min-width: 0;
@@ -2080,7 +2080,7 @@ button.chip:focus-visible {
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -2108,12 +2108,12 @@ button.chip:focus-visible {
   margin: 0 0 var(--space-3) 0;
   font-size: var(--font-size-md);
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
 }
 
 .queue-decision-decided {
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-sm);
   font-weight: var(--weight-medium);
   letter-spacing: 0.04em;
@@ -2149,7 +2149,7 @@ button.chip:focus-visible {
   gap: var(--space-2);
   padding: 8px 14px;
   border-radius: var(--radius-xs);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-sm);
   font-weight: var(--weight-medium);
   letter-spacing: 0.04em;
@@ -2224,8 +2224,8 @@ button.chip:focus-visible {
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: var(--font-size-md);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.928571);
   line-height: 1.5;
   resize: vertical;
   box-sizing: border-box;
@@ -2251,7 +2251,7 @@ button.chip:focus-visible {
   border: 1px solid color-mix(in oklch, var(--coral) 25%, transparent);
   color: var(--coral-ink);
   font-size: var(--font-size-sm);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .queue-action-spinner {
@@ -2427,7 +2427,7 @@ button.chip:focus-visible {
 .conflict-list-copy small,
 .patch-set-item-copy small {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
 }
 
@@ -2435,7 +2435,7 @@ button.chip:focus-visible {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: var(--font-mono);
+  font-family: var(--font-code); font-size: var(--font-code-size);
   color: var(--text-secondary);
 }
 
@@ -2467,7 +2467,7 @@ button.chip:focus-visible {
   border: none;
   outline: none;
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   padding: 0;
 }
@@ -2493,7 +2493,7 @@ button.chip:focus-visible {
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   cursor: pointer;
   transition: background var(--duration-base) var(--ease-spring);
@@ -2562,7 +2562,7 @@ button.chip:focus-visible {
   border-radius: var(--radius-xs);
   background: var(--surface-glass);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   line-height: 1.35;
   white-space: nowrap;
@@ -2672,7 +2672,7 @@ button.chip:focus-visible {
 }
 
 .codex-nav-list-eyebrow {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
@@ -2698,7 +2698,7 @@ button.chip:focus-visible {
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   cursor: pointer;
 }
@@ -2760,8 +2760,8 @@ button.chip:focus-visible {
   border: 0;
   background: transparent;
   color: var(--text-secondary);
-  font-family: var(--font-body);
-  font-size: var(--t-sm);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.857143);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2779,15 +2779,15 @@ button.chip:focus-visible {
 
 /* 우측 한 칸 — current 행은 시간, 예외 상태 행은 그 배지가 대신 선다. */
 .codex-nav-entry .when {
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.714286);
   font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
   white-space: nowrap;
 }
 
 .codex-nav-status {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -2810,7 +2810,7 @@ button.chip:focus-visible {
 
 .codex-nav-more {
   flex: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   color: var(--text-tertiary);
   padding: 1px var(--space-1);
@@ -2821,8 +2821,8 @@ button.chip:focus-visible {
   display: -webkit-box;
   overflow: hidden;
   color: var(--text-tertiary);
-  font-family: var(--font-body);
-  font-size: var(--t-2xs);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.714286);
   line-height: 1.4;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2830,8 +2830,8 @@ button.chip:focus-visible {
 }
 
 .codex-nav-entry .meta {
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.714286);
   color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
@@ -2859,7 +2859,7 @@ button.chip:focus-visible {
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -2885,7 +2885,7 @@ button.chip:focus-visible {
 .codex-nav-error,
 .codex-nav-empty {
   padding: var(--space-4) var(--space-3);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   text-align: center;
@@ -2919,8 +2919,8 @@ button.chip:focus-visible {
   border: 0;
   border-radius: var(--radius-pill);
   cursor: pointer;
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.785714);
   font-weight: var(--weight-medium);
   padding: var(--space-1) var(--space-3);
   transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
@@ -2955,7 +2955,7 @@ button.chip:focus-visible {
   background: color-mix(in oklch, var(--ink-veil) 96%, var(--brass));
   color: var(--text-primary);
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   padding: var(--space-1) var(--space-3);
@@ -2999,8 +2999,8 @@ button.chip:focus-visible {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: var(--t-md);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.928571);
   line-height: 1.5;
   padding: var(--space-2);
 }
@@ -3031,7 +3031,7 @@ button.chip:focus-visible {
 .cowork-block { border-left: 2px solid transparent; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; padding: 2px var(--space-2); margin: 2px 0; }
 .cowork-block--added { border-left-color: var(--positive); background: color-mix(in oklch, var(--positive) 10%, transparent); }
 .cowork-block--removed { border-left-color: var(--coral); background: color-mix(in oklch, var(--coral) 8%, transparent); color: var(--text-secondary); text-decoration: line-through; }
-.queue-diff-block-label { display: inline-block; font-family: var(--font-mono); font-size: var(--t-xs); font-weight: var(--weight-medium); text-decoration: none; color: var(--text-primary); }
+.queue-diff-block-label { display: inline-block; font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium); text-decoration: none; color: var(--text-primary); }
 
 /* ── 도크 존 — 프레임 아래 고정 행. 스레드는 자기 안에서 스크롤한다. ── */
 .cowork-dock-zone { display: none; }
@@ -3121,7 +3121,7 @@ button.chip:focus-visible {
 .cowork-dispatch-quote { display: block; quotes: none; border-left: 2px solid var(--brass); padding-left: var(--space-2); color: var(--text-tertiary); font-size: var(--t-sm); }
 
 /* tally — 도는 구간의 한 줄. orbit이 돌고 글자가 물결친다. */
-.cowork-tally { display: flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-1); font-family: var(--font-body); font-size: var(--t-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 0; }
+.cowork-tally { display: flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-1); font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 0; }
 .cowork-tally-count { color: var(--text-tertiary); flex: none; }
 .cowork-orbit { width: 9px; height: 9px; flex: none; border-radius: var(--radius-pill); border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-top-color: var(--aurora); animation: cowork-orbit 0.9s linear infinite; animation-name: var(--state-motion, cowork-orbit); }
 .cowork-live-text {
@@ -3149,7 +3149,7 @@ button.chip:focus-visible {
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   padding: 5px var(--space-3);
@@ -3162,11 +3162,11 @@ button.chip:focus-visible {
 .cowork-step-mark { flex: none; display: inline-flex; justify-content: center; width: 9px; color: var(--positive); }
 .cowork-step.is-error .cowork-step-mark { color: var(--coral); }
 /* 도구 이름은 토큰이라 등폭, 행의 라벨은 인터페이스 서체를 따른다. */
-.cowork-step-object { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-family: var(--font-mono); }
+.cowork-step-object { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-family: var(--font-code); font-size: var(--font-code-size); }
 
 /* 접힘 — "N초 동안 작업함 · N 스텝". */
 .cowork-fold { display: grid; gap: var(--space-2); }
-.cowork-fold-summary { display: flex; align-items: center; gap: var(--space-2); list-style: none; cursor: pointer; margin: 0; font-family: var(--font-body); font-size: var(--t-sm); color: var(--text-tertiary); user-select: none; }
+.cowork-fold-summary { display: flex; align-items: center; gap: var(--space-2); list-style: none; cursor: pointer; margin: 0; font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-tertiary); user-select: none; }
 .cowork-fold-summary::-webkit-details-marker { display: none; }
 .cowork-fold-summary--static { cursor: default; }
 .cowork-fold-sep { color: var(--hairline-strong); }
@@ -3176,7 +3176,7 @@ button.chip:focus-visible {
 
 /* 답 — kicker(가는 선) + 마크다운. 스트리밍 캐럿은 secondary 잉크(채널 없음). */
 .cowork-answer { display: grid; gap: var(--space-2); min-width: 0; }
-.cowork-answer-kicker { display: flex; align-items: center; gap: var(--space-2); font-family: var(--font-body); font-size: var(--t-2xs); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); }
+.cowork-answer-kicker { display: flex; align-items: center; gap: var(--space-2); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); }
 .cowork-answer-kicker::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
 .cowork-turn.is-applied .cowork-answer-kicker { color: var(--positive); }
 /* 리딩 시트의 measure 캡(.markdown-body에 max-width + margin auto)이 답 본문까지 잡아 가운데로
@@ -3202,7 +3202,7 @@ button.chip:focus-visible {
 }
 .cowork-turn-note { margin: 0; font-size: var(--t-sm); color: var(--text-tertiary); }
 .cowork-changes { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.cowork-change { display: inline-flex; align-items: baseline; gap: 6px; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); padding: 3px 8px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); }
+.cowork-change { display: inline-flex; align-items: baseline; gap: 6px; font-family: var(--font-code); font-size: var(--font-code-size); color: var(--text-secondary); padding: 3px 8px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); }
 
 /* 알림 카드 — coral은 실패, warn은 환경, applied는 완료. */
 .cowork-sys {
@@ -3219,19 +3219,19 @@ button.chip:focus-visible {
 .cowork-sys.is-warn { border-color: color-mix(in oklab, var(--warn) 35%, var(--hairline)); background: color-mix(in oklab, var(--warn) 8%, var(--surface-panel-raised)); color: var(--warn-ink); }
 .cowork-sys.is-applied { border-color: color-mix(in oklab, var(--positive) 35%, var(--hairline)); background: color-mix(in oklab, var(--positive) 8%, var(--surface-panel-raised)); color: var(--text-primary); }
 .cowork-sys-text { flex: 1; min-width: 0; }
-.cowork-sys-action { border: 0; background: transparent; color: var(--brass-ink); cursor: pointer; font-family: var(--font-body); font-size: var(--t-sm); font-weight: var(--weight-medium); padding: 0 var(--space-1); }
+.cowork-sys-action { border: 0; background: transparent; color: var(--brass-ink); cursor: pointer; font-family: var(--font-ui); font-size: var(--t-sm); font-weight: var(--weight-medium); padding: 0 var(--space-1); }
 .cowork-sys-action:hover { text-decoration: underline; }
 .cowork-sys-dismiss { border: 0; background: transparent; color: inherit; opacity: 0.7; cursor: pointer; font-size: var(--t-base); line-height: 1; padding: 0 var(--space-1); }
 .cowork-sys-dismiss:hover { opacity: 1; }
 
 /* 댓글 패널 */
 .cowork-panel { display: grid; gap: var(--space-2); max-height: 280px; overflow-y: auto; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); background: var(--surface-panel-raised); padding: var(--space-2); }
-.cowork-empty { margin: 0; padding: var(--space-2); color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-xs); letter-spacing: 0.04em; }
+.cowork-empty { margin: 0; padding: var(--space-2); color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; }
 .cowork-card { display: grid; gap: var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel); padding: var(--space-2); transition: border-color var(--duration-fast) var(--ease-spring); }
 .cowork-card.is-sent { border-color: color-mix(in oklab, var(--aurora) 30%, var(--hairline)); }
 .cowork-card.is-done { border-color: color-mix(in oklab, var(--positive) 30%, var(--hairline)); }
 .cowork-card footer { display: flex; align-items: center; justify-content: space-between; }
-.cowork-card-status { font-family: var(--font-body); font-size: var(--t-2xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.cowork-card-status { font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
 .cowork-card.is-sent .cowork-card-status { color: var(--aurora-ink); }
 .cowork-card.is-done .cowork-card-status { color: var(--positive-ink); }
 
@@ -3246,12 +3246,12 @@ button.chip:focus-visible {
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--brass) 6%, var(--surface-panel));
 }
-.cowork-review-text { flex: 1; min-width: 0; font-family: var(--font-body); font-size: var(--t-xs); letter-spacing: 0.06em; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.cowork-review-text { flex: 1; min-width: 0; font-family: var(--font-content); font-size: calc(var(--font-content-size) * 0.785714); letter-spacing: 0.06em; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .cowork-review-text b { color: var(--text-primary); font-weight: var(--weight-medium); }
 .cowork-review-sep { color: var(--hairline-strong); margin: 0 6px; }
 .cowork-review.is-confirm { border-color: var(--brass); }
 .cowork-segments { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-glass); }
-.cowork-segments button { border: 0; border-radius: var(--radius-xs); padding: 3px var(--space-2); background: transparent; color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-xs); cursor: pointer; }
+.cowork-segments button { border: 0; border-radius: var(--radius-xs); padding: 3px var(--space-2); background: transparent; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); cursor: pointer; }
 .cowork-segments button:hover { color: var(--text-secondary); }
 .cowork-segments button[aria-pressed="true"] { background: var(--surface-pillar); color: var(--text-primary); }
 
@@ -3281,8 +3281,8 @@ button.chip:focus-visible {
   background: transparent;
   resize: none;
   color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: var(--t-md);
+  font-family: var(--font-content);
+  font-size: var(--font-content-size);
   line-height: 1.5;
   padding: 5px 0;
   overflow-y: auto;
@@ -3298,7 +3298,7 @@ button.chip:focus-visible {
 .cowork-composer-input:focus { outline: none; }
 .cowork-composer-input:disabled { color: var(--text-secondary); }
 /* 모델 표시줄 — 상자 밖 한 줄. 좌표는 Settings의 것이라 여기서는 보여 주고, 바꾸는 길만 잇는다. */
-.cowork-composer-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; padding: 0 2px 6px; font-family: var(--font-body); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
+.cowork-composer-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; padding: 0 2px 6px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
 .cowork-composer-model { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .cowork-composer-model-mark { display: grid; place-items: center; flex: none; width: 14px; height: 14px; }
 .cowork-composer-model-mark svg { width: 10px; height: 10px; }
@@ -3320,7 +3320,7 @@ button.chip:focus-visible {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   padding: 4px 10px;
@@ -3383,7 +3383,7 @@ button.chip:focus-visible {
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-1);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -3440,7 +3440,7 @@ button.chip:focus-visible {
 .codex-link-preview-meta,
 .codex-link-preview-empty {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -3448,7 +3448,7 @@ button.chip:focus-visible {
 
 .codex-backlink-meta {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -3487,7 +3487,7 @@ button.chip:focus-visible {
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   white-space: nowrap;
   cursor: pointer;
@@ -3505,3 +3505,5 @@ button.chip:focus-visible {
 
 /* 이전 대화 밴드 — 스크롤포트의 첫 자식. 접힌 역사는 표시만 거둔다. */
 .cowork-history:not([hidden]) { display: contents; }
+
+.document { font-family: var(--font-content); --font-size-body: var(--font-content-size); --font-size-code: var(--font-code-size); }

@@ -1,4 +1,4 @@
-.objectives-branch-graph { --graph-r: 11px; --graph-label-line: 14px; position: relative; min-width: 0; padding: 6px 0; font-family: var(--font-body); }
+.objectives-branch-graph { --graph-r: 11px; --graph-label-line: 14px; position: relative; min-width: 0; padding: 6px 0; font-family: var(--font-ui); }
 .objectives-graph-scroll { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
 .objectives-graph-scroll::-webkit-scrollbar { display: none; }
 /* 넘치면 빈 곳을 끌어 옮긴다 — 스크롤바 대신 이어지는 쪽 가장자리가 흐려진다. */
@@ -25,7 +25,7 @@
 .objectives-graph-label.is-awaiting, .objectives-graph-label.is-running, .objectives-graph-label.is-ready, .objectives-graph-label.is-lit { color: var(--text-primary); }
 .objectives-graph-node { position: absolute; z-index: 3; width: 30px; height: 30px; margin: -15px; padding: 0; border: 0; background: none; display: grid; place-items: center; cursor: pointer; touch-action: none; }
 .objectives-graph-shape { position: relative; display: grid; place-items: center; width: calc(var(--graph-r) * 2); height: calc(var(--graph-r) * 2); border-radius: 50%; border: 1.5px solid var(--text-tertiary); background: var(--surface-panel); }
-.objectives-graph-number { font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-primary); font-variant-numeric: tabular-nums; line-height: 1; }
+.objectives-graph-number { font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-primary); font-variant-numeric: tabular-nums; line-height: 1; }
 .objectives-graph-shape.is-done { background: var(--brass); border-color: var(--brass); }
 .objectives-graph-shape.is-done .objectives-graph-number { color: var(--text-on-brass); }
 .objectives-graph-shape.is-ready { border: 2.5px solid var(--aurora); }
@@ -38,7 +38,7 @@
 @keyframes objectives-graph-spin { to { transform: rotate(360deg); } }
 /* 승인 v3의 작은 담당 표식만 기존 명단의 identity 윤곽/채움을 재사용한다. 상태 노드 면에는 번지지 않는 국소 예외다.
    글자와 모양도 담당을 식별하며, 라이트 테마의 작은 글자는 primary ink를 섞어 대비를 보강한다. */
-.objectives-graph-node .objectives-graph-mark { position: absolute; left: calc(50% + 1px); top: calc(50% + var(--graph-r) - 3px); display: inline-grid; place-items: center; width: 12px; height: 12px; border: 1px solid color-mix(in oklch, var(--member-tone) 85%, var(--text-secondary)); border-radius: 3px; font: var(--weight-bold) calc(var(--t-2xs) * .9)/1 var(--font-body); background: color-mix(in oklch, var(--member-tone) 12%, var(--surface-panel)); color: color-mix(in oklch, var(--member-tone) 70%, var(--text-primary)); box-shadow: 0 0 0 1.5px var(--surface-panel); }
+.objectives-graph-node .objectives-graph-mark { position: absolute; left: calc(50% + 1px); top: calc(50% + var(--graph-r) - 3px); display: inline-grid; place-items: center; width: 12px; height: 12px; border: 1px solid color-mix(in oklch, var(--member-tone) 85%, var(--text-secondary)); border-radius: 3px; font: var(--weight-bold) calc(var(--t-2xs) * .9)/1 var(--font-ui); background: color-mix(in oklch, var(--member-tone) 12%, var(--surface-panel)); color: color-mix(in oklch, var(--member-tone) 70%, var(--text-primary)); box-shadow: 0 0 0 1.5px var(--surface-panel); }
 .objectives-graph-node .objectives-graph-mark.is-commander { --member-tone: var(--text-secondary); border-radius: 50%; background: var(--surface-panel); }
 .objectives-graph-record { position: absolute; left: calc(50% + 2px); top: calc(50% - var(--graph-r) - 6px); width: 7px; height: 9px; border: 1.25px solid var(--text-secondary); border-radius: 1.5px; background: var(--surface-panel); box-shadow: 0 0 0 1.5px var(--surface-panel); }
 .objectives-graph-record.is-new { background: var(--text-primary); border-color: var(--text-primary); }
@@ -68,7 +68,7 @@
 .objectives-graph-drop-tip b { color: var(--brass-ink); font-weight: var(--weight-medium); }
 .objectives-graph-drop-tip.is-no { border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim)); }
 .objectives-graph-drop-tip.is-no b { color: var(--coral-ink); }
-.objectives-graph-popup { position: fixed; z-index: 65; box-sizing: border-box; background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-md); box-shadow: var(--shadow-soft), 0 6px 18px -8px oklch(0% 0 0 / 35%); font-family: var(--font-body); font-size: var(--t-xs); color: var(--text-secondary); padding: 9px 12px 11px; overflow: visible; overscroll-behavior: contain; animation: objectives-popup-in 180ms cubic-bezier(.2,.7,.2,1); }
+.objectives-graph-popup { position: fixed; z-index: 65; box-sizing: border-box; background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-md); box-shadow: var(--shadow-soft), 0 6px 18px -8px oklch(0% 0 0 / 35%); font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-secondary); padding: 9px 12px 11px; overflow: visible; overscroll-behavior: contain; animation: objectives-popup-in 180ms cubic-bezier(.2,.7,.2,1); }
 .objectives-graph-popup.is-pinned { border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim)); }
 .objectives-graph-popup.is-closing { opacity: 0; pointer-events: none; animation: objectives-popup-out 120ms ease; }
 @keyframes objectives-popup-in { from { opacity: 0; transform: translateY(3px) scale(.985); } to { opacity: 1; transform: none; } }
@@ -78,9 +78,9 @@
 .objectives-popup-tail.is-above { bottom: -5px; border-left: 0; border-top: 0; }
 .objectives-popup-tail.is-right { left: -5px; border-right: 0; border-top: 0; }
 .objectives-popup-tail.is-left { right: -5px; border-left: 0; border-bottom: 0; }
-.objectives-popup-head { display: flex; align-items: center; gap: 6px; min-height: 20px; margin-bottom: 3px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-popup-head { display: flex; align-items: center; gap: 6px; min-height: 20px; margin-bottom: 3px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-popup-head .objectives-glyph { margin-left: auto; }
-.objectives-popup-state { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-body); }
+.objectives-popup-state { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-ui); }
 .objectives-popup-state i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--text-tertiary); }
 .objectives-popup-state.is-done { color: var(--brass-ink); }
 .objectives-popup-state.is-done i { background: var(--brass); border-color: var(--brass); }
@@ -134,11 +134,11 @@
 .objectives-branch-graph.is-wide .objectives-graph-label { font-size: var(--t-sm); }
 
 /* 시안의 상태 셈과 권한 대기 줄은 그래프 밖 머리에만 둔다. */
-.objectives-graph-counts { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--text-primary); font: var(--t-2xs)/1 var(--font-mono); }
+.objectives-graph-counts { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--text-primary); font: var(--t-2xs)/1 var(--font-ui); }
 .objectives-graph-counts > .objectives-popup-state { gap: 4px; }
-.objectives-graph-counts b { font: var(--weight-medium) var(--t-2xs)/1 var(--font-mono); color: var(--text-primary); }
+.objectives-graph-counts b { font: var(--weight-medium) var(--t-2xs)/1 var(--font-ui); color: var(--text-primary); }
 .objectives-graph-count-label { display: none; }
-.objectives-graph-counts.is-wide { gap: 12px; font-family: var(--font-body); font-size: var(--t-xs); }
+.objectives-graph-counts.is-wide { gap: 12px; font-family: var(--font-ui); font-size: var(--t-xs); }
 .objectives-graph-counts.is-wide .objectives-graph-count-label { display: inline; }
 .objectives-graph-attention { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 28px; margin: 2px 10px 3px; padding: 2px 10px; border: 1px solid color-mix(in oklch, var(--aurora) 55%, transparent); background: color-mix(in oklch, var(--aurora) 9%, transparent); border-radius: var(--radius-xs); font-size: var(--t-xs); color: var(--text-secondary); }
 .objectives-graph-attention-owner { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-weight: var(--weight-medium); }

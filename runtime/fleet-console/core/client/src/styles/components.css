@@ -68,12 +68,12 @@
 .timeline-time,
 .timeline-type,
 .timeline-payload {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 /* Shared button variants — controls use compact radii; brass marks hover/focus location and coral remains danger-only. */
 .fc-btn {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-medium);
   border: 1px solid transparent;
@@ -163,7 +163,7 @@
 .global-settings-hero h2 {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xl);
   font-weight: var(--weight-bold);
   letter-spacing: -0.02em;
@@ -174,7 +174,7 @@
   flex: none;
   min-height: 16px;
   color: var(--aurora-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -239,7 +239,7 @@
   border: 0;
   background: none;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
 }
 
@@ -274,7 +274,7 @@
   margin: var(--space-2) 0 2px;
   padding: 0 var(--space-2);
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
@@ -398,7 +398,7 @@
 
 .settings-pane-result-group {
   flex: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -507,7 +507,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-regular);
   text-overflow: ellipsis;
@@ -526,7 +526,7 @@
   margin-left: auto;
   overflow: hidden;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
   text-overflow: ellipsis;
@@ -565,7 +565,7 @@
   gap: var(--space-2);
   margin: 0;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
@@ -602,7 +602,7 @@
 .global-settings-subsection-title {
   margin: 0;
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.14em;
@@ -656,7 +656,7 @@
   border: 0;
   background: none;
   color: inherit;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -684,7 +684,7 @@
 }
 
 .global-settings-shortcut-prompt {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -725,7 +725,7 @@
   border-radius: var(--radius-pill);
   background: var(--control-rest);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   line-height: 1;
@@ -763,7 +763,7 @@
   background: color-mix(in oklch, var(--ink-deep) 94%, transparent);
   box-shadow: var(--shadow-floating);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-regular);
   letter-spacing: normal;
@@ -848,7 +848,7 @@
   flex-wrap: wrap;
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-lg);
   font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
@@ -857,7 +857,7 @@
 .global-settings-help {
   margin: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.6;
 }
@@ -917,7 +917,7 @@
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--coral) 10%, transparent);
   color: var(--coral-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.5;
 }
@@ -963,7 +963,7 @@
 
 .console-port-input-label {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.14em;
@@ -978,8 +978,8 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 86%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--t-base);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   letter-spacing: 0.04em;
   transition:
     border-color var(--duration-fast) var(--ease-spring),
@@ -1008,7 +1008,7 @@
 
 .console-port-hint {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.03em;
 }
@@ -1044,7 +1044,7 @@
 .console-port-effective-label {
   margin: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
@@ -1054,8 +1054,8 @@
 .console-port-effective-value {
   margin: 0;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-md);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   letter-spacing: 0.04em;
 }
 
@@ -1073,7 +1073,7 @@
   border-radius: var(--radius-md);
   background: var(--warn-glow);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.6;
 }
@@ -1100,7 +1100,7 @@
 
 .remote-access-fingerprint-label {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.14em;
@@ -1110,8 +1110,8 @@
 .remote-access-fingerprint code {
   overflow-wrap: anywhere;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   letter-spacing: 0.06em;
 }
 
@@ -1129,7 +1129,7 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   letter-spacing: 0.04em;
 }
@@ -1164,7 +1164,7 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1284,7 +1284,7 @@
 .host-switcher-detail {
   grid-area: detail;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
   line-height: 1.35;
@@ -1298,7 +1298,7 @@
   justify-self: end;
   gap: 6px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   white-space: nowrap;
 }
@@ -1318,7 +1318,7 @@
   background: color-mix(in oklch, var(--warn) 14%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warn) 34%, transparent);
   color: var(--warn-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -1338,8 +1338,8 @@
   border-radius: var(--radius-xs);
   background: none;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   font-weight: var(--weight-bold);
   text-align: left;
 }
@@ -1431,7 +1431,7 @@
 .add-host-title {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xl);
   font-weight: var(--weight-medium);
   line-height: 1.2;
@@ -1469,8 +1469,8 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-abyss) 70%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   transition:
     border-color var(--duration-fast) var(--ease-spring),
     box-shadow var(--duration-fast) var(--ease-spring);
@@ -1493,7 +1493,7 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
 }
 
@@ -1561,7 +1561,7 @@
 .pair-title {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xl);
   font-weight: var(--weight-medium);
   line-height: 1.2;
@@ -1594,7 +1594,7 @@
 .pair-symbol-void {
   margin: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   letter-spacing: 0.06em;
 }
@@ -1625,14 +1625,14 @@
   line-height: 1.55;
 }
 
-.pair-step-index { color: var(--brass-ink); font-family: var(--font-mono); font-size: var(--t-xs); }
+.pair-step-index { color: var(--brass-ink); font-family: var(--font-ui); font-size: var(--t-xs); }
 
 .pair-expiry { display: flex; flex-direction: column; gap: var(--space-2); }
 .pair-expiry-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 
 .pair-expiry-label {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1640,7 +1640,7 @@
 
 .pair-expiry-time {
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-variant-numeric: tabular-nums;
 }
@@ -1688,7 +1688,7 @@
   border-radius: var(--radius-xs);
   background: none;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
 }
@@ -1705,8 +1705,8 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-abyss) 70%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
 }
 
 .pair-link-field button {
@@ -1716,8 +1716,8 @@
   border-radius: var(--radius-xs);
   background: none;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
 }
 
@@ -1803,7 +1803,7 @@
 /* 제목이 '?' 팁을 품으므로 인라인 플렉스로 정렬한다 — 글자만 있는 제목의 흐름은 그대로다. */
 .remote-card-title { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--text-primary); font-size: var(--t-lg); font-weight: var(--weight-bold); }
 .remote-card-help { margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.55; }
-.remote-card-alert { margin: 0; color: var(--warn-ink); font-family: var(--font-mono); font-size: var(--t-sm); }
+.remote-card-alert { margin: 0; color: var(--warn-ink); font-family: var(--font-ui); font-size: var(--t-sm); }
 
 /* 폼 선택 컨트롤은 브라우저 기본 외형을 빌리지 않는다 — 같은 Console 안에서 OS마다
    checkbox/radio의 크기·stroke·focus가 갈리면 나머지 instrument 문법과 한 제품으로 읽히지 않는다.
@@ -1920,13 +1920,13 @@
 }
 
 .fc-settings-check__label.is-mono {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
 }
 
 .fc-settings-check__desc {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.6;
 }
@@ -1967,7 +1967,7 @@
 /* 트랙 폭이 같아야 인터페이스 이름 길이에 따라 줄이 들쭉날쭉해지지 않는다. */
 .remote-interface-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); gap: var(--space-2); }
 .remote-interface-preset { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 32%, transparent); color: var(--text-secondary); text-align: left; }
-.remote-interface-preset code { color: var(--text-primary); font-family: var(--font-mono); font-size: var(--t-sm); overflow-wrap: anywhere; }
+.remote-interface-preset code { color: var(--text-primary); font-family: var(--font-code); font-size: var(--font-code-size); overflow-wrap: anywhere; }
 .remote-interface-preset:hover:not(:disabled):not(.is-selected) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
 .remote-interface-preset.is-selected { border-color: transparent; background: var(--control-wash); box-shadow: inset 2px 0 0 var(--brass); }
 .remote-interface-preset:active:not(:disabled) { transform: translateY(1px); }
@@ -1980,7 +1980,7 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-abyss) 48%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-code); font-size: var(--font-code-size);
 }
 .remote-field input:hover:not(:disabled):not([aria-invalid="true"]),
 .remote-port-control input[type="number"]:hover:not(:disabled):not([aria-invalid="true"]),
@@ -1998,16 +1998,16 @@
 .remote-port-control input[type="number"] { width: 110px; }
 .remote-port-modes { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .remote-port-value { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.remote-port-auto { color: var(--text-primary); font-family: var(--font-mono); font-size: var(--t-md); }
+.remote-port-auto { color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-md); }
 .remote-port-error { margin: 0; color: var(--coral-ink); font-size: var(--t-sm); }
 
 /* 경로는 이 카드에서 한 번만 그린다. 두 곳에서 그리면 같은 값이 두 서식으로 어긋난다. */
 .remote-route-preview { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 30%, transparent); color: var(--text-secondary); font-size: var(--t-sm); }
 .remote-route-caption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin: 0 0 var(--space-1); color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-bold); }
-.remote-route-caption span { color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); font-weight: var(--weight-regular); letter-spacing: 0.12em; text-transform: uppercase; }
+.remote-route-caption span { color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-regular); letter-spacing: 0.12em; text-transform: uppercase; }
 .remote-route-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin: 0; }
 .remote-route-row span { flex: none; font-size: var(--t-sm); }
-.remote-route-preview code { color: var(--aurora-ink); font-family: var(--font-mono); font-size: var(--t-md); overflow-wrap: anywhere; }
+.remote-route-preview code { color: var(--aurora-ink); font-family: var(--font-code); font-size: var(--font-code-size); overflow-wrap: anywhere; }
 
 /* 라우터 설정 화면의 칸 이름과 값을 1:1로 세운다 — 산문으로 풀면 외부·내부 포트를 같은 값으로 넣게 된다. */
 .remote-forward-rule { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 30%, transparent); }
@@ -2016,7 +2016,7 @@
 .remote-forward-rule dl > div { display: contents; }
 .remote-forward-rule dt { color: var(--text-secondary); font-size: var(--t-sm); }
 .remote-forward-rule dd { margin: 0; min-width: 0; }
-.remote-forward-rule dd code { color: var(--aurora-ink); font-family: var(--font-mono); font-size: var(--t-md); overflow-wrap: anywhere; }
+.remote-forward-rule dd code { color: var(--aurora-ink); font-family: var(--font-code); font-size: var(--font-code-size); overflow-wrap: anywhere; }
 .remote-forward-rule-note { margin: 0; color: var(--warn-ink); font-size: var(--t-sm); }
 
 .remote-acknowledgment { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid color-mix(in oklch, var(--coral) 35%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--coral) 8%, transparent); color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
@@ -2024,7 +2024,7 @@
 .remote-status-note strong { color: var(--text-primary); }
 
 /* 설정이 갖춰졌는지와 리스너가 살아 있는지는 다른 사실이라 색이 아니라 상태로 갈린다. */
-.remote-lozenge { flex: none; padding: 3px var(--space-3); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+.remote-lozenge { flex: none; padding: 3px var(--space-3); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
 .remote-lozenge[data-remote-state="listening"] { border-color: color-mix(in oklch, var(--positive) 55%, transparent); background: color-mix(in oklch, var(--positive) 10%, transparent); color: var(--positive-ink); }
 .remote-lozenge[data-remote-state="failed"] { border-color: color-mix(in oklch, var(--coral) 55%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
 
@@ -2049,8 +2049,8 @@
 .remote-fingerprint {
   overflow-wrap: anywhere;
   color: var(--aurora-ink);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   line-height: 1.7;
   letter-spacing: 0.06em;
 }
@@ -2063,7 +2063,7 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
 }
 
@@ -2084,8 +2084,8 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-abyss) 70%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
 }
 
 .remote-link-field button {
@@ -2095,8 +2095,8 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
 }
 
 .remote-link-field button:hover:not(:disabled) {
@@ -2140,7 +2140,7 @@
 .remote-host-name:hover:not(:disabled) { background: var(--control-hover-fill); }
 .remote-host-name:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 3px; }
 .remote-host-name:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
-.remote-host-text small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
+.remote-host-text small { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }
 
 .remote-host-open {
   padding: 4px var(--space-3);
@@ -2148,7 +2148,7 @@
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 14%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -2163,7 +2163,7 @@
   padding: 0 0 var(--space-2);
   border-bottom: 1px solid var(--surface-rim);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.14em;
@@ -2172,7 +2172,7 @@
 }
 
 .remote-table td { padding: var(--space-3) 0; border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent); color: var(--text-primary); }
-.remote-table td:nth-child(3) { color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-sm); }
+.remote-table td:nth-child(3) { color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-sm); }
 .remote-table td:last-child { text-align: right; }
 .remote-table-empty { color: var(--text-tertiary); }
 
@@ -2182,7 +2182,7 @@
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-pill);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.06em;
 }
@@ -2245,7 +2245,7 @@
     content: attr(data-label);
     flex-basis: 100%;
     color: var(--text-tertiary);
-    font-family: var(--font-mono);
+    font-family: var(--font-ui);
     font-size: var(--t-2xs);
   }
 }
@@ -2366,7 +2366,7 @@
 
 .theme-card-polarity {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2409,7 +2409,7 @@
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.14em;
@@ -2438,7 +2438,7 @@
 
 .current-readout .cr-label {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2446,7 +2446,7 @@
 
 .current-readout .cr-value {
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-medium);
 }
@@ -2535,20 +2535,20 @@
 
 .font-card .fc-sample.is-custom {
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-style: italic;
 }
 
 .font-card .fc-meta {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.05em;
 }
 
 .font-card .fc-bundled {
   color: var(--positive-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -2601,7 +2601,7 @@
   outline: none;
   background: transparent;
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
 }
 
@@ -2611,7 +2611,7 @@
 
 .font-field .field-icon {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
 }
 
@@ -2622,7 +2622,7 @@
   width: fit-content;
   padding: 6px 11px;
   border-radius: var(--radius-pill);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.02em;
   transition:
@@ -2731,7 +2731,7 @@
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   white-space: nowrap;
@@ -2833,7 +2833,7 @@
 }
 
 .backend-api-facet {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2849,7 +2849,7 @@
 .backend-api-result-label {
   margin: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
@@ -2877,7 +2877,7 @@
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   text-align: left;
   cursor: pointer;
@@ -2908,15 +2908,15 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .backend-api-group-count {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-variant-numeric: tabular-nums;
 }
@@ -2946,7 +2946,7 @@
 
 .backend-api-method {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -2962,8 +2962,8 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   letter-spacing: 0.02em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2980,7 +2980,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2998,7 +2998,7 @@
   border: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent);
   border-radius: var(--radius-pill);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
   white-space: nowrap;
@@ -3016,7 +3016,7 @@
   border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   cursor: pointer;
   opacity: 0;
@@ -3050,7 +3050,7 @@
   padding-top: var(--space-2);
   border-top: 1px solid color-mix(in oklch, var(--surface-rim) 45%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -3136,7 +3136,7 @@
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   white-space: nowrap;
@@ -3762,7 +3762,7 @@ button.status-glyph.is-actionable:focus-visible {
 /* Doctrine exception: the mode title kicker is literal instrument chrome and intentionally blends brass-ink with fog. */
 .canvas-mode-title-kicker {
   color: color-mix(in oklch, var(--brass-ink) 72%, var(--ink-fog));
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.18em;
@@ -3778,7 +3778,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 .canvas-mode-title-heading {
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xl);
   font-weight: var(--weight-bold);
   letter-spacing: -0.01em;
@@ -3876,7 +3876,7 @@ button.status-glyph.is-actionable:focus-visible {
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   line-height: 1;
@@ -3935,7 +3935,7 @@ button.status-glyph.is-actionable:focus-visible {
   background: var(--surface-panel-raised);
   color: var(--text-primary);
   box-shadow: 0 3px 10px rgb(0 0 0 / 12%);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -3976,7 +3976,7 @@ button.status-glyph.is-actionable:focus-visible {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--member-tone) 14%, transparent);
   color: var(--member-tone);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   line-height: 1;
@@ -4113,7 +4113,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 .canvas-triage-clear > span {
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
@@ -4122,7 +4122,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 .canvas-triage-clear strong {
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 24px;
   font-weight: var(--weight-bold);
 }
@@ -4161,7 +4161,7 @@ button.status-glyph.is-actionable:focus-visible {
 .canvas-triage-deck-caption {
   min-width: 0;
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.12em;
@@ -4248,7 +4248,7 @@ button.status-glyph.is-actionable:focus-visible {
 .canvas-fleet-map-title {
   flex: none;
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.12em;
@@ -4276,7 +4276,7 @@ button.status-glyph.is-actionable:focus-visible {
   border-radius: var(--radius-xs);
   background: var(--control-rest);
   color: var(--text-primary);
-  font: var(--weight-medium) var(--t-xs) var(--font-body);
+  font: var(--weight-medium) var(--t-xs) var(--font-ui);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -4302,7 +4302,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 .canvas-fleet-map-action kbd {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -4372,7 +4372,7 @@ button.status-glyph.is-actionable:focus-visible {
   padding: 6px 12px;
   white-space: nowrap;
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.12em;
@@ -4529,7 +4529,7 @@ button.status-glyph.is-actionable:focus-visible {
   max-width: 180px;
   overflow: hidden;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4632,7 +4632,7 @@ button.status-glyph.is-actionable:focus-visible {
   gap: 8px;
   min-width: 0;
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.12em;
@@ -4652,7 +4652,7 @@ button.status-glyph.is-actionable:focus-visible {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 16%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
 }
@@ -4790,7 +4790,7 @@ button.status-glyph.is-actionable:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: calc(var(--font-body-size) * 0.92);
   font-weight: var(--weight-medium);
 }
@@ -5069,7 +5069,7 @@ button.status-glyph.is-actionable:focus-visible {
     ),
     var(--glass-underlay);
   box-shadow: var(--shadow-floating);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   line-height: 1.4;
   color: var(--text-secondary);
@@ -5105,7 +5105,7 @@ button.status-glyph.is-actionable:focus-visible {
   margin: var(--space-1) 0 0;
   padding-left: var(--space-2);
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.14em;
@@ -5142,7 +5142,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 .canvas-shortcuts-or {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -5161,7 +5161,7 @@ button.status-glyph.is-actionable:focus-visible {
   background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
   color: var(--text-secondary);
   box-shadow: 0 1px 0 color-mix(in oklch, var(--ink-abyss) 70%, transparent);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   line-height: 1.25;
@@ -5215,7 +5215,7 @@ button.status-glyph.is-actionable:focus-visible {
   top: 7px;
   left: 12px;
   z-index: 3;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.18em;
@@ -5515,7 +5515,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--brass) 8%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -5632,7 +5632,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .canvas-companion-caption-title {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -5985,7 +5985,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   padding: 2px 7px;
   border: 1px solid color-mix(in oklch, var(--group-mark) 24%, transparent);
   border-radius: var(--radius-pill);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.04em;
@@ -6014,7 +6014,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.06em;
@@ -6155,7 +6155,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .side-bar-theater-error {
   margin: var(--space-2);
   color: var(--coral-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   line-height: 1.45;
 }
@@ -6211,7 +6211,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   padding-left: var(--space-2);
   overflow: hidden;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
@@ -6420,7 +6420,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: transparent;
   color: var(--text-tertiary);
   cursor: grab;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   letter-spacing: normal;
@@ -6477,7 +6477,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 16%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   transition:
@@ -6514,7 +6514,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .side-bar-starter-title {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-lg);
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -6543,7 +6543,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: color-mix(in oklab, var(--brass) 10%, var(--surface-glass));
   color: var(--brass-ink);
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   line-height: 1.2;
@@ -6607,7 +6607,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
   color: var(--text-secondary);
-  font: var(--weight-bold) var(--t-2xs)/1.2 var(--font-mono);
+  font: var(--weight-bold) var(--t-2xs)/1.2 var(--font-ui);
 }
 
 .side-bar-ghost-theater-row {
@@ -6623,7 +6623,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: none;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   text-align: left;
@@ -6958,7 +6958,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .side-bar-cluster-row-title {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   color: var(--text-secondary);
@@ -7005,7 +7005,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   align-items: center;
   gap: 5px;
   min-width: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   line-height: 1.3;
@@ -7083,15 +7083,15 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .operation-detail-key {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   color: var(--ink-muted);
   white-space: nowrap;
 }
 
 .operation-detail-value {
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
@@ -7105,7 +7105,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
   color: var(--text-primary);
-  font: var(--weight-medium) var(--t-sm) / 1.4 var(--font-body);
+  font: var(--weight-medium) var(--t-sm) / 1.4 var(--font-ui);
   overflow-wrap: anywhere;
 }
 
@@ -7157,8 +7157,8 @@ body[data-companion-resizing="true"] .canvas-operation {
   display: -webkit-box;
   overflow: hidden;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -7178,7 +7178,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   align-items: center;
   gap: 5px;
   min-width: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   line-height: 1.3;
@@ -7232,7 +7232,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 84%, var(--surface-glass));
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   outline: none;
@@ -7286,7 +7286,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: 1px;
 }
 .cluster-strip-count {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   font-variant-numeric: tabular-nums;
@@ -7392,7 +7392,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.04em;
@@ -7513,7 +7513,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   padding: 7px 12px 7px 8px;
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
@@ -7577,7 +7577,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .side-bar-status-empty-hint {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-style: italic;
   color: var(--ink-muted);
@@ -7734,7 +7734,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -7744,7 +7744,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .side-bar-group-header__count {
   flex: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   color: var(--text-tertiary);
@@ -7837,7 +7837,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 1px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   color: var(--text-tertiary);
 }
@@ -7903,7 +7903,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .side-bar-fresh-fold-count {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -7953,7 +7953,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .side-bar-row-zone-count {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -7967,7 +7967,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 /* Ungrouped label */
 .side-bar-ungrouped-label {
   padding: 2px var(--space-1) 2px var(--space-2);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -8329,7 +8329,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .canvas-operation-identity-name,
 .canvas-operation-identity-input {
   min-width: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: calc(var(--font-body-size) * 0.92);
   font-weight: var(--weight-medium);
   line-height: 1;
@@ -8362,7 +8362,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   overflow: hidden;
   padding: 4px 0;
   color: color-mix(in oklab, var(--subject-ink, var(--text-secondary)) 70%, var(--text-tertiary));
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: calc(var(--font-body-size) * 0.92);
   font-weight: var(--weight-medium);
   line-height: 1;
@@ -8479,7 +8479,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   justify-content: space-between;
   gap: var(--space-2);
   padding: 8px 10px 4px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
@@ -8506,7 +8506,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: transparent;
   cursor: pointer;
   text-align: left;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-regular);
   color: var(--text-secondary);
@@ -8603,7 +8603,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .group-context-menu-item__key {
   flex: none;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -8637,7 +8637,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: var(--ink-deep);
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   outline: none;
 }
@@ -8715,7 +8715,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border: 1px solid color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
   border-radius: var(--radius-xs);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   line-height: 1;
@@ -8915,7 +8915,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: var(--surface-panel-raised);
   color: var(--text-secondary);
   box-shadow: var(--shadow-soft);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.04em;
   line-height: 1.35;
@@ -9004,7 +9004,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   max-width: 100%;
   overflow: hidden;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: calc(var(--font-body-size) * 0.97);
   font-weight: var(--weight-bold);
   line-height: 1;
@@ -9018,7 +9018,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: var(--brass-glow);
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .canvas-operation-glance-hud-name > span:last-child {
@@ -9031,7 +9031,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   display: flex;
   gap: var(--space-3);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: calc(var(--font-body-size) * 0.78);
   white-space: nowrap;
 }
@@ -9058,7 +9058,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--coral) 20%, transparent);
   color: var(--coral-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: calc(var(--font-body-size) * 0.78);
   font-weight: var(--weight-bold);
   white-space: nowrap;
@@ -9160,7 +9160,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .canvas-operation-dormant-status {
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.14em;
@@ -9173,7 +9173,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .canvas-operation-dormant-body {
   max-width: 34ch;
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   text-align: center;
   text-wrap: balance;
@@ -9188,7 +9188,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--brass) 12%, var(--surface-glass));
   color: var(--brass-bright);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   text-align: center;
@@ -9570,7 +9570,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: calc(var(--font-body-size) * 0.92);
   font-weight: var(--weight-medium);
 }
@@ -9669,7 +9669,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .operations-canvas-empty-ghost {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -9733,14 +9733,14 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .operations-canvas-empty-standby-time {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.02em;
 }
 
 .operations-canvas-empty-standby-open {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -9760,7 +9760,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--brass) 10%, var(--surface-glass));
   color: var(--brass-bright);
-  font: var(--weight-bold) var(--t-xs)/1.2 var(--font-mono);
+  font: var(--weight-bold) var(--t-xs)/1.2 var(--font-ui);
 }
 
 .operations-canvas-empty-open-all {
@@ -9769,7 +9769,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
-  font: var(--weight-bold) var(--t-xs)/1.2 var(--font-mono);
+  font: var(--weight-bold) var(--t-xs)/1.2 var(--font-ui);
 }
 
 /* 일괄 열기의 확인(arm)은 파괴가 아니라 비용 경고라 coral이 아니라 warn 채널을 쓴다(remote-rotate.is-armed와 같은 문법). */
@@ -9818,7 +9818,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
   color: var(--text-secondary);
-  font: var(--weight-bold) var(--t-2xs)/1.2 var(--font-mono);
+  font: var(--weight-bold) var(--t-2xs)/1.2 var(--font-ui);
 }
 
 .operations-canvas-empty-guide {
@@ -9853,7 +9853,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .operations-canvas-blueprint-caption {
   position: absolute;
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
 }
@@ -9893,7 +9893,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .operations-canvas-blueprint-title {
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   opacity: 0.85;
 }
@@ -9907,7 +9907,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .operations-canvas-error {
   color: var(--coral-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -9958,7 +9958,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   overflow: hidden;
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xl);
   font-variation-settings: "opsz" 30;
   font-weight: var(--weight-medium);
@@ -10028,7 +10028,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .stage-idle h2 {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 30px;
   font-variation-settings: "opsz" 44;
   font-weight: var(--weight-medium);
@@ -10050,7 +10050,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .stage-idle-mark {
   margin: 0 0 var(--space-1);
   color: var(--brass-bright);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 36px;
   text-shadow: var(--brass-halo);
 }
@@ -10124,7 +10124,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.6;
 }
@@ -10411,7 +10411,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 /* Theater 필드 캡션 — sidebar-eyebrow와 같은 모노 대문자 트래킹 라벨 언어를 그대로 빌려, 박스가 무엇인지 조용히 표기하며 시스템에 묶는다. */
 .theater-eyebrow {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
@@ -10436,7 +10436,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   transition:
@@ -10526,7 +10526,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   padding: var(--space-2);
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.04em;
   text-align: left;
@@ -10587,7 +10587,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   margin: 0;
   padding: var(--space-2);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.04em;
 }
@@ -10645,7 +10645,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0;
   color: color-mix(in oklch, var(--text-tertiary) 82%, transparent);
@@ -10674,7 +10674,7 @@ body[data-companion-resizing="true"] .canvas-operation {
    설명이 한 덩어리로 뭉쳐 어디까지가 종류 이름인지 읽히지 않는다. */
 .operation-launch-menu-description {
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0;
   line-height: 1.35;
@@ -10716,7 +10716,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   margin: 0;
   padding: var(--space-1) var(--space-2);
   color: color-mix(in oklch, var(--brass-ink) 72%, var(--text-tertiary));
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.1em;
@@ -10798,7 +10798,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   text-align: left;
   transition:
@@ -10891,7 +10891,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .operation-launch-variant-star,
 .quick-launch-variant-star {
   color: var(--brass-ink);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   line-height: 1;
 }
@@ -10986,7 +10986,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 8%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.35;
   text-wrap: pretty;
@@ -11230,7 +11230,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1;
   cursor: pointer;
@@ -11421,7 +11421,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   flex: 0 0 auto;
   min-width: 9.5ch;
   color: var(--effort-tone, var(--text-secondary));
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.06em;
   text-align: center;
@@ -11516,7 +11516,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 /* 트랙이 닫힌 뒤에도 이 행이 무엇으로 실행되는지 남기는 표식. */
 .operation-launch-variant-effort {
   color: var(--effort-tone, var(--brass-ink));
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -11535,7 +11535,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 /* QL 카드 안의 강도 값은 채팅 좌표와 같은 본문 문법으로 읽힌다 — 등폭·자간·대문자 격식을 걷는다.
    영문 단계 이름(LOW·MED…)은 그대로 두므로 uppercase는 유지한다. */
 .quick-launch-card .effort-track-value {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   letter-spacing: 0;
 }
@@ -11624,7 +11624,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   margin: var(--space-1) 0 0;
   padding: var(--space-1) var(--space-2);
   color: var(--coral-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   line-height: 1.45;
   word-break: break-word;
@@ -11644,7 +11644,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   max-width: 720px;
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 44px;
   font-weight: var(--weight-medium);
   line-height: 1;
@@ -11657,7 +11657,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .codex-empty-eyebrow {
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.14em;
@@ -11700,7 +11700,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -11879,8 +11879,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 .terminal-job-line-stream {
   flex: 1 1 auto;
   color: color-mix(in oklch, var(--aurora) 72%, var(--text-tertiary));
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   letter-spacing: 0.01em;
 }
 
@@ -11975,7 +11975,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .commissioning-header h2 {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xl);
   font-weight: var(--weight-bold);
   letter-spacing: -0.01em;
@@ -12053,7 +12053,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .commissioning-step-body h3 {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   line-height: 1.4;
@@ -12087,7 +12087,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 16%, transparent);
   color: var(--brass-ink);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   text-decoration: none;
@@ -12279,7 +12279,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .app-toast-message {
   margin: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.5;
   word-break: break-word;
@@ -12413,7 +12413,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   outline: 0;
   background: transparent;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-lg);
   letter-spacing: 0;
 }
@@ -12452,7 +12452,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   margin: 0;
   padding: var(--space-2) var(--space-4) var(--space-1);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.12em;
@@ -12574,7 +12574,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-base);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
@@ -12588,7 +12588,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   min-width: 0;
   overflow: hidden;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.04em;
   text-overflow: ellipsis;
@@ -12599,7 +12599,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   max-width: 34%;
   overflow: hidden;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.08em;
   text-overflow: ellipsis;
@@ -12619,7 +12619,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .operation-search-command-glyph {
   flex: none;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-base);
   line-height: 1;
 }
@@ -12642,7 +12642,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .operation-search-panel-open {
   flex: none;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.1em;
@@ -12670,7 +12670,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 8%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.12em;
@@ -12681,7 +12681,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   margin: 0;
   padding: var(--space-5) var(--space-4);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   letter-spacing: 0.04em;
 }
@@ -12713,7 +12713,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
@@ -12738,7 +12738,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border: 0;
   background: transparent;
   color: inherit;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.04em;
   opacity: 0.7;
@@ -12792,7 +12792,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 18px;
   border: 1px solid color-mix(in oklch, var(--text-tertiary) 55%, transparent);
   border-radius: var(--radius-xs);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.02em;
@@ -12832,7 +12832,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .operation-search-undoable {
   flex: none;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
 }
@@ -12850,7 +12850,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--surface-glass) 72%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.04em;
   line-height: 1.3;
@@ -12864,7 +12864,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .operation-search-row-arrow {
   flex: none;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-spring);
@@ -12892,7 +12892,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: color-mix(in oklch, var(--ink-veil) 45%, transparent);
   color: var(--text-secondary);
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
 }
@@ -12934,7 +12934,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   padding: var(--space-2) var(--space-3) 0;
   border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
 }
@@ -13020,7 +13020,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .directory-browser-kicker {
   display: block;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.2em;
@@ -13030,7 +13030,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .directory-browser-header h2 {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xl);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
@@ -13084,8 +13084,8 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-mid) 42%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
   transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
@@ -13128,7 +13128,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .directory-browser-course-sep {
   margin: 0 1px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
 }
 
@@ -13140,8 +13140,8 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
@@ -13201,7 +13201,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border: 0;
   background: transparent;
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
 }
 
@@ -13222,7 +13222,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-mid) 46%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
@@ -13259,8 +13259,8 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-deep) 46%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   transition: border-color var(--duration-fast) var(--ease-glide), box-shadow var(--duration-fast) var(--ease-glide);
 }
 
@@ -13281,7 +13281,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-mid) 46%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
@@ -13355,7 +13355,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .directory-browser-sector-advance {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 15px;
   opacity: 0;
   transform: translateX(-3px);
@@ -13401,7 +13401,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   align-items: center;
   gap: 4px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -13419,7 +13419,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   margin: 0;
   padding: var(--space-4) var(--space-3);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
 }
 
@@ -13440,7 +13440,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   flex: none;
   margin: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -13464,7 +13464,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .directory-browser-target-label {
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.18em;
@@ -13474,8 +13474,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 .directory-browser-target-path {
   overflow: hidden;
   color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -13493,7 +13493,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-mid) 46%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
@@ -13579,7 +13579,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .codex-surface-eyebrow {
   display: block;
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.2em;
@@ -13590,7 +13590,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   margin: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xl);
   font-weight: var(--weight-medium);
   line-height: 1.15;
@@ -13748,7 +13748,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .codex-edge-handle-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   writing-mode: vertical-rl;
   text-orientation: mixed;
@@ -13872,7 +13872,7 @@ body[data-codex-side="true"] .command-card {
 .whatsnew-header h2 {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: clamp(32px, 4vw, 48px);
   font-weight: var(--weight-bold);
   line-height: 1;
@@ -13888,7 +13888,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 10%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -13897,7 +13897,7 @@ body[data-codex-side="true"] .command-card {
 .whatsnew-date {
   display: block;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
@@ -13914,7 +13914,7 @@ body[data-codex-side="true"] .command-card {
 .whatsnew-stale,
 .whatsnew-error {
   color: var(--warn-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -13932,7 +13932,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 15px;
   font-weight: var(--weight-bold);
   transition:
@@ -13975,7 +13975,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -13997,7 +13997,7 @@ body[data-codex-side="true"] .command-card {
   padding: 5px 7px;
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   cursor: pointer;
 }
@@ -14017,7 +14017,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-pill);
   padding: 2px 7px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -14058,7 +14058,7 @@ body[data-codex-side="true"] .command-card {
   padding: 0 10px;
   background: color-mix(in oklch, var(--ink-mid) 62%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   white-space: nowrap;
@@ -14101,7 +14101,7 @@ body[data-codex-side="true"] .command-card {
 
 .whatsnew-overview-label,
 .whatsnew-overview-count {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
 }
@@ -14132,7 +14132,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   line-height: 1;
@@ -14152,7 +14152,7 @@ body[data-codex-side="true"] .command-card {
 .whatsnew-page-status {
   min-width: 44px;
   text-align: center;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   color: var(--text-tertiary);
@@ -14180,7 +14180,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: var(--whatsnew-section-bg);
   color: var(--whatsnew-section-color);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
@@ -14197,7 +14197,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -14264,7 +14264,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 14%, transparent);
   color: var(--brass-bright);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
 }
@@ -14298,7 +14298,7 @@ body[data-codex-side="true"] .command-card {
   gap: var(--space-2);
   margin: 0;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
@@ -14348,7 +14348,7 @@ body[data-codex-side="true"] .command-card {
   flex-wrap: wrap;
   gap: var(--space-2);
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-lg);
   font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
@@ -14366,7 +14366,7 @@ body[data-codex-side="true"] .command-card {
 .fc-settings-row__hint {
   margin: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.6;
 }
@@ -14420,7 +14420,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: var(--control-rest);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   line-height: 1;
   cursor: pointer;
@@ -14451,7 +14451,7 @@ body[data-codex-side="true"] .command-card {
   flex: none;
   min-width: 46px;
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -14467,7 +14467,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: var(--control-rest);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.04em;
@@ -14816,7 +14816,7 @@ body[data-codex-side="true"] .command-card {
 
 .codex-reader-headline-hint {
   flex: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   color: var(--text-tertiary);
 }
@@ -14844,7 +14844,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .codex-reader-progress-value {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -14923,7 +14923,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .codex-reader-find-count {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -14999,14 +14999,14 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-pill);
   background: var(--control-tint-fill);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   cursor: pointer;
 }
 
 .codex-reader-switcher-count {
   flex: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -15062,7 +15062,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .codex-reader-switcher-chip {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-2xs);
   color: var(--text-tertiary);
   border: 1px solid var(--surface-rim);
@@ -15106,8 +15106,8 @@ body[data-codex-side="true"] .command-card {
   overflow: auto;
   margin: 0;
   padding: var(--space-4);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-code);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   line-height: 1.7;
   color: var(--text-secondary);
   white-space: pre-wrap;
@@ -15130,7 +15130,7 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   cursor: pointer;
   transition:
     color var(--duration-fast),
@@ -15152,7 +15152,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .codex-reading-sheet-eyebrow {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -15309,7 +15309,7 @@ body[data-codex-side="true"] .command-card {
 .codex-reading-sheet-toc .ti {
   display: block;
   padding: var(--space-1) 0 var(--space-1) var(--space-3);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
   text-decoration: none;
@@ -15331,7 +15331,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .codex-reading-sheet-toc .toc-empty {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
   padding: var(--space-2);
@@ -15341,7 +15341,7 @@ body[data-codex-side="true"] .command-card {
 .codex-reader-loading,
 .codex-reader-empty {
   padding: var(--space-6) var(--space-4);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   text-align: center;
@@ -15349,7 +15349,7 @@ body[data-codex-side="true"] .command-card {
 
 .codex-reader-error {
   padding: var(--space-4) var(--space-4);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--coral-ink);
 }
@@ -15846,7 +15846,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border: 0;
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -15871,7 +15871,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-size-xs);
   letter-spacing: 0;
   text-transform: none;
@@ -15913,7 +15913,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: var(--space-1) 0 var(--space-1) var(--space-3);
   border-left: 2px solid transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   text-decoration: none;
   transition: color var(--duration-fast);
@@ -16005,7 +16005,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .command-band-update-bubble-title {
   flex: 1;
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
 }
@@ -16028,7 +16028,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .command-band-update-bubble-lead,
 .command-band-update-bubble-detail {
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.55;
   /* 한글 낱말 가운데가 갈라지면 한 번 더 읽게 된다. */
@@ -16062,7 +16062,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border: 0;
   background: transparent;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -16079,7 +16079,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border-radius: var(--radius-xs);
   background: color-mix(in oklab, var(--text-primary) 7%, transparent);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   text-align: center;
@@ -16117,7 +16117,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: 7px 10px;
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   text-align: left;
@@ -16143,7 +16143,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: 7px 10px;
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   text-align: left;
@@ -16179,7 +16179,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .command-band-system-menu .command-band-version-row-chip--action:hover:not(:disabled),
@@ -16259,7 +16259,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: 0 6px;
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -16282,12 +16282,12 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .keyboard-shortcuts-dialog-foot button { padding: 0; border: 0; background: none; color: var(--brass-ink); font-size: var(--t-sm); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .keyboard-shortcuts-dialog-foot button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 .keyboard-shortcuts-group { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--surface-rim); }
-.keyboard-shortcuts-group h3 { margin: 0 0 5px; color: var(--brass-ink); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.1em; }
+.keyboard-shortcuts-group h3 { margin: 0 0 5px; color: var(--brass-ink); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.1em; }
 .keyboard-shortcuts-group dl { margin: 0; }
 .keyboard-shortcuts-group dl > div { display: grid; grid-template-columns: minmax(130px, auto) 1fr; gap: 12px; padding: 4px; color: var(--text-secondary); font-size: var(--t-sm); }
 .keyboard-shortcuts-group dt { color: var(--text-tertiary); }
 .keyboard-shortcuts-group dd { margin: 0; }
-.keyboard-shortcuts-group kbd { margin-right: 3px; padding: 1px 4px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--t-2xs); }
+.keyboard-shortcuts-group kbd { margin-right: 3px; padding: 1px 4px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-2xs); }
 
 /* v5: 비-Operations 라우트의 복귀 링크 — GNB 부재 보완 */
 .page-back-link {
@@ -16316,7 +16316,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
   border: 1px solid var(--surface-rim); border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-mid) 48%, transparent);
-  color: var(--text-primary); font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-body); padding: 0 13px; cursor: pointer;
+  color: var(--text-primary); font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-ui); padding: 0 13px; cursor: pointer;
   box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);
   transition: border-color var(--duration-fast) var(--ease-glide);
 }
@@ -16342,7 +16342,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .fc-select__option {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
   padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius-xs);
-  color: var(--text-secondary); font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.3; font-family: var(--font-body); cursor: pointer;
+  color: var(--text-secondary); font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.3; font-family: var(--font-ui); cursor: pointer;
   transition: background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
 .fc-select__option[data-active="true"]:not([aria-disabled="true"]):not([aria-selected="true"]) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); color: var(--text-primary); }
@@ -16360,7 +16360,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   font-weight: var(--weight-regular);
   font-size: var(--t-xs);
   line-height: 1;
-  font-family: var(--font-mono); color: var(--fc-select-compact-tone, var(--text-secondary)); padding: 7px 16px 7px 10px;
+  font-family: var(--font-ui); color: var(--fc-select-compact-tone, var(--text-secondary)); padding: 7px 16px 7px 10px;
 }
 .fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }
 
@@ -16405,11 +16405,11 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   white-space: nowrap;
   text-align: start;
 }
-.fc-model-picker__name.is-unknown { font-family: var(--font-mono); font-size: var(--t-sm); color: var(--text-tertiary); }
+.fc-model-picker__name.is-unknown { font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-tertiary); }
 .fc-model-picker__meta {
   flex: none;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-regular);
   letter-spacing: 0.04em;
@@ -16421,7 +16421,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   gap: 6px;
   padding: var(--space-2) var(--space-2) 6px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -16559,7 +16559,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-lane-mark svg { width: 100%; height: 100%; }
 .quick-launch-lane-divider { height: 16px; border-inline-start: 1px solid var(--surface-rim-strong); }
 .quick-launch-lane-hint { margin-inline-start: auto; color: var(--text-tertiary); font-size: var(--t-2xs); }
-.quick-launch-lane-hint kbd { font-family: var(--font-mono); }
+.quick-launch-lane-hint kbd { font-family: var(--font-ui); }
 .quick-launch-feedback { margin: 0; padding: var(--space-2) var(--space-4); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.55; overflow-wrap: anywhere; flex-shrink: 0; }
 .quick-launch-capabilities { display: flex; align-items: center; min-width: 0; flex-shrink: 0; }
 :root[data-view-mode="mobile"] .quick-launch-lane-hint { display: none; }
@@ -16868,7 +16868,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   flex: none;
   gap: var(--space-1);
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   white-space: nowrap;
@@ -17264,7 +17264,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   margin: 0;
   padding: var(--space-2) var(--space-2) 4px;
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -17360,7 +17360,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-target-capability {
   flex: none;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
   white-space: nowrap;
@@ -17539,7 +17539,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-suggest-lead {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.12em;
@@ -17639,7 +17639,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   align-items: baseline;
   gap: var(--space-2);
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.12em;
@@ -17696,7 +17696,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-command-token {
   flex: none;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -17731,7 +17731,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
    달리 apex 채널로 말하고 고딕이 아닌 계기 글꼴을 쓴다 — 값이 아니라는 표시. */
 .quick-launch-command-row.is-gate .quick-launch-mention-name {
   color: var(--apex-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.08em;
 }
@@ -17893,7 +17893,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
      말줄임되어야 한다. 그렇지 않으면 태그가 카드 밖으로 넘친다(96자 폴더명으로 실측). */
   min-width: 0;
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -18057,7 +18057,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--surface-pillar) 70%, transparent);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 8px;
   font-weight: var(--weight-bold);
 }
@@ -18167,7 +18167,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   margin: 0;
   padding: var(--space-2) var(--space-2) 6px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -18374,7 +18374,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .control-curtain-eyebrow,
 .control-reclaimed-eyebrow {
   color: var(--warn-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
@@ -18385,7 +18385,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .control-reclaimed-card h2 {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: clamp(30px, 6vw, 48px);
   font-weight: var(--weight-bold);
   line-height: 1.05;
@@ -18412,7 +18412,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: 0 var(--space-4);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   transition:
@@ -18566,7 +18566,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--warn);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.04em;
 }
@@ -18623,7 +18623,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-primary);
-  font-family: var(--font-body); font-size: var(--t-sm); line-height: 1.2;
+  font-family: var(--font-ui); font-size: var(--t-sm); line-height: 1.2;
   padding: 6px 12px; cursor: pointer;
   transition: border-color var(--duration-fast) var(--ease-glide);
 }
@@ -18638,7 +18638,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .fc-failure__diagnostic {
   margin: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono); font-size: var(--t-xs); line-height: 1.5;
+  font-family: var(--font-code); font-size: var(--font-code-size); line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
@@ -18723,8 +18723,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   min-width: 0;
   min-height: 22px;
   padding: 2px var(--space-1);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
@@ -18835,7 +18835,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 /* 끝난 턴의 접힘 한 줄 — 면도 테두리도 없다. 이 줄은 카드가 아니라 문장이다. */
 .fc-live-fold {
   min-width: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -18912,7 +18912,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: var(--space-1) 0;
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -19038,7 +19038,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .canvas-operation.is-console-use-wrapped.is-leaving::before { animation: console-use-panel-leave 220ms ease-in both; }
 @keyframes console-use-panel-leave { to { box-shadow: 0 0 0 0 transparent; border-color: transparent; } }
 /* 저자 잉크 — 사람이 아닌 발화자·답변자·닫은 이. */
-.chat-by-agent { color: var(--console-use-badge); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; }
+.chat-by-agent { color: var(--console-use-badge); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; }
 /* reduced-motion — 정지한 1px 링 + 12% 워시. 무엇이 감싸였는지는 남고 움직임만 없다. */
 @media (prefers-reduced-motion: reduce) {
   .is-console-use-wrapped, .is-console-use-wrapped::after, .canvas-operation.is-console-use-wrapped::before { animation: none; }
@@ -19134,7 +19134,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .side-bar-archive-count,
 .archive-sheet-count {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
 }
@@ -19241,7 +19241,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .archive-sheet-day-sub {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-variant-numeric: tabular-nums;
 }
@@ -19296,7 +19296,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .archive-sheet-section-count {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-variant-numeric: tabular-nums;
 }
@@ -19641,3 +19641,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 @media (prefers-reduced-motion: reduce) {
   :root { --state-motion: none; }
 }
+
+/* 복합 데이터 행의 이름·시간·배지는 UI, 좌표 부분만 코드 축으로 남긴다. */
+.job-meta, .track-tag, .track-status, .stage-waiting, .track-waiting, .thought-toggle, .tool-chip, .track-text, .track-notice, .track-error, .timeline-toggle, .timeline-empty, .timeline-time, .timeline-type { font-family: var(--font-ui); }
+.job-id, .timeline-payload { font-family: var(--font-code); font-size: var(--font-code-size); }
+kbd { font-variant-numeric: tabular-nums; }

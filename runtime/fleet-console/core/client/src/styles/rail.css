@@ -198,7 +198,7 @@
   border-radius: var(--radius-pill);
   background: var(--ink-abyss);
   color: var(--brass-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-variant-numeric: tabular-nums;
   line-height: 13px;

@@ -6,28 +6,42 @@
    brass=progress), identity/environment badges stay on neutral ink. Korean glyphs fall back to
    Pretendard when installed, then to the system face — the bundled faces are Latin subsets. */
 @font-face {
-  font-family: "Fraunces Variable";
-  src: url("fonts/fraunces-latin-wght-normal.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: block;
-}
-@font-face {
   font-family: "Manrope Variable";
   src: url("fonts/manrope-latin-wght-normal.woff2") format("woff2");
-  font-weight: 200 800;
   font-style: normal;
+  font-weight: 100 900;
   font-display: swap;
 }
-/* 개발 빌드 워드마크의 DEV 태그 — Console과 같은 서체라야 넘겨주기·종료 인사의 착지 폭이 맞는다.
-   워드마크의 일부이므로 Fraunces처럼 폴백으로 먼저 그리지 않는다. */
 @font-face {
   font-family: "JetBrains Mono Variable";
   src: url("fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
-  font-weight: 100 800;
   font-style: normal;
-  font-display: block;
+  font-weight: 100 900;
+  font-display: swap;
 }
+@font-face {
+  font-family: "Source Code Pro Variable";
+  src: url("fonts/source-code-pro-latin-wght-normal.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fira Code Variable";
+  src: url("fonts/fira-code-latin-wght-normal.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cascadia Code Variable";
+  src: url("fonts/cascadia-code-latin-wght-normal.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face { font-family: "Nanum Gothic Coding"; src: url("fonts/nanum-gothic-coding-korean-400-normal.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Nanum Gothic Coding"; src: url("fonts/nanum-gothic-coding-korean-700-normal.woff2") format("woff2"); font-weight: 700; font-display: swap; }
 
 :root {
   color-scheme: dark;
@@ -53,9 +67,12 @@
   --hairline-strong: oklch(37% 0.02 245);
   --radius-xs: 6px;
   --chrome-band-height: 36px;
-  --font-display: "Fraunces Variable", "Fraunces", "Pretendard Variable", ui-serif, Georgia, serif;
-  --font-body: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-ui: "Manrope Variable", "Manrope", "Pretendard Variable", system-ui, sans-serif;
+  --font-content: var(--font-ui);
+  --font-code: "JetBrains Mono Variable", "JetBrains Mono", monospace;
+  --font-ui-size: 14px;
+  --font-content-size: 14px;
+  --font-code-size: 13px;
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fade: 200ms;
   /* launch-controller.ts HANDOFF_SETTLE_MS와 짝 — 이 전환이 끝난 뒤에 Console 문서로 바뀐다. */
@@ -74,7 +91,7 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
+body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; }
 
 /* 창을 끌 수 있는 자리. Console의 command band와 같은 높이라, 넘겨줄 때 밑줄만 켜지면 그대로 이어진다. */
 .drag-strip { position: fixed; inset: 0 0 auto; height: var(--chrome-band-height); border-bottom: 1px solid transparent; -webkit-app-region: drag; transition: border-color var(--handoff-duration) var(--ease-spring); }
@@ -107,8 +124,8 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
   margin: 0;
   transform: translateX(-50%);
   color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-size: 40px;
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 2.857143);
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.005em;
@@ -120,12 +137,12 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
    함께 줄어든다. 워드마크는 개발 잉크, 점은 황동, DEV는 개발 잉크를 3차 잉크 쪽으로 누른다. */
 .wordmark-sep, .wordmark-tag { display: none; }
 .is-dev .wordmark { color: var(--ink-brand-dev); }
-.is-dev .wordmark-sep { display: inline; margin: 0 0.34em; color: var(--brass); font-family: var(--font-body); font-weight: 700; }
-.is-dev .wordmark-tag { display: inline-block; margin-inline-end: -0.16em; color: color-mix(in oklab, var(--ink-brand-dev) 72%, var(--text-tertiary)); font: 700 0.62em/1 var(--font-mono); letter-spacing: 0.16em; transform: translateY(-0.08em); }
+.is-dev .wordmark-sep { display: inline; margin: 0 0.34em; color: var(--brass); font-family: var(--font-ui); font-weight: 700; }
+.is-dev .wordmark-tag { display: inline-block; margin-inline-end: -0.16em; color: color-mix(in oklab, var(--ink-brand-dev) 72%, var(--text-tertiary)); font: 700 0.62em/1 var(--font-ui); letter-spacing: 0.16em; transform: translateY(-0.08em); }
 
 .entry-stage { position: fixed; top: calc(50% + 30px); left: 24px; right: 24px; display: grid; justify-items: center; gap: 10px; text-align: center; transition: opacity var(--duration-fade) ease; }
-.tagline { margin: 0 0 14px; color: var(--ink-spectral); font-size: 14px; }
-.status { display: inline-flex; align-items: center; gap: 9px; color: var(--ink-pearl); font-size: 13.5px; font-weight: 500; }
+.tagline { margin: 0 0 14px; color: var(--ink-spectral); font-size: var(--font-ui-size); }
+.status { display: inline-flex; align-items: center; gap: 9px; color: var(--ink-pearl); font-size: calc(var(--font-ui-size) * 13.5 / 14); font-weight: 500; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 3px var(--brass-glow); }
 :root[data-tone="busy"] .status-dot { animation: pulse 1.6s ease-in-out infinite; }
 :root[data-tone="done"] .status-dot { background: var(--positive); box-shadow: 0 0 0 3px var(--positive-glow); }
@@ -134,18 +151,18 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
 .bar.is-visible { display: block; }
 .bar-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--brass); transition: width 240ms linear; }
 .bar.is-indeterminate .bar-fill { width: 34%; animation: sweep 1.3s var(--ease-spring) infinite; }
-.detail { margin: 0; min-height: 1.4em; color: var(--ink-muted); font-size: 12px; }
+.detail { margin: 0; min-height: 1.4em; color: var(--ink-muted); font-size: calc(var(--font-ui-size) * 12 / 14); }
 
-.versions { position: fixed; left: 0; right: 0; bottom: 22px; color: var(--ink-fog); font-family: var(--font-mono); font-size: 11px; text-align: center; letter-spacing: 0.02em; transition: opacity var(--duration-fade) ease; }
+.versions { position: fixed; left: 0; right: 0; bottom: 22px; color: var(--ink-fog); font-family: var(--font-ui); font-size: calc(var(--font-ui-size) * 11 / 14); text-align: center; letter-spacing: 0.02em; transition: opacity var(--duration-fade) ease; }
 /* 개발 빌드 배지 — 정체성이지 상태가 아니므로 신호색 없이 중립 잉크 칩. Windows 캡션 버튼과
    겹치지 않도록 위가 아니라 오른쪽 아래에 둔다. */
-.dev-tag { display: none; position: fixed; right: 16px; bottom: 18px; padding: 2px 9px; border: 1px solid var(--ink-rim); border-radius: var(--radius-xs); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; }
+.dev-tag { display: none; position: fixed; right: 16px; bottom: 18px; padding: 2px 9px; border: 1px solid var(--ink-rim); border-radius: var(--radius-xs); color: var(--ink-spectral); font-family: var(--font-ui); font-size: calc(var(--font-ui-size) * 10 / 14); letter-spacing: 0.1em; }
 .dev-tag.is-visible { display: inline-block; }
 
 /* 넘겨주기: 마크와 워드마크가 Console 상단 브랜드 자리로 줄어들고, 나머지는 먼저 사라진다. */
 .is-handoff .drag-strip { border-bottom-color: var(--hairline); }
 .is-handoff .brand-mark { top: 9.5px; left: var(--brand-glyph-left); width: 16px; height: 16px; }
-.is-handoff .wordmark { top: 11px; left: calc(var(--brand-glyph-left) + 23px); transform: translateX(0); font-size: 13px; letter-spacing: 0.01em; }
+.is-handoff .wordmark { top: 11px; left: calc(var(--brand-glyph-left) + 23px); transform: translateX(0); font-size: calc(var(--font-content-size) * 13 / 14); letter-spacing: 0.01em; }
 .is-handoff .entry-stage, .is-handoff .versions, .is-handoff .dev-tag { opacity: 0; }
 .is-handoff .brand-mark-beacon { animation: none; }
 

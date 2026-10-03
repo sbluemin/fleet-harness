@@ -1,4 +1,5 @@
-import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
+import { DEFAULT_FONTS, FONT_BUILT_INS, FONT_SIZE_RANGES, fontFamilyForAxis, sanitizeFontName, type FontAxis, type FontAxisSettings, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
+import { FontPicker, type FontPickerInstalledFont } from "@fleet-console/font-picker/browser";
 import "@fleet-console/font-picker/styles.css";
 import { SystemFontsFetchError, fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
@@ -14,12 +15,11 @@ import { BackendApiSection } from "../../../core/client/src/chrome/components/ba
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { renderMessage, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
-import { setActiveTheme, setActiveUiFont, setUnfocusedPanelFade } from "../../../core/client/src/integration/store.js";
-import { type GlobalSettingsState, type ThemeId, type UiFontId, type UiFontSettings } from "../../../core/client/src/integration/types.js";
+import { setActiveTheme, setUnfocusedPanelFade } from "../../../core/client/src/integration/store.js";
+import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
 import { ExperimentsSection } from "./experiments-section.js";
 import { isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
-import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "./ui-font.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -234,7 +234,7 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
         <>
           {state === null ? null : <LanguageCard state={state} saving={saving.has("language")} />}
           <ThemeCard state={state} saving={saving} extras={options?.themeCardExtras} />
-          <TypographyCard state={state} saving={saving.has("uiFont")} />
+          <TypographyCard state={state} saving={saving.has("fonts")} />
         </>
       );
     // 언어는 겉모습에 품겨 있다 — 주소로 직접 들어온 옛 링크만 이 가지를 탄다.
@@ -446,91 +446,43 @@ export function ThemeCard({
 }
 
 
-export function TypographyCard({
-  state,
-  saving,
-}: {
-  readonly state: GlobalSettingsState | null;
-  readonly saving: boolean;
-}) {
+export function TypographyCard({ state, saving }: { readonly state: GlobalSettingsState | null; readonly saving: boolean }) {
   const t = useT();
-  const activeUiFont = state?.uiFont ?? DEFAULT_UI_FONT;
-  const [installedFonts, setInstalledFonts] = useState<readonly FontPickerInstalledFont[]>([]);
+  const fonts = state?.fonts ?? DEFAULT_FONTS;
+  const [installedFonts, setInstalledFonts] = useState<readonly (FontPickerInstalledFont & { readonly uiSuitable: boolean })[]>([]);
   const [fontsLoading, setFontsLoading] = useState(true);
   const [fontsError, setFontsError] = useState<string | null>(null);
-
   useEffect(() => {
     const controller = new AbortController();
     void fetchSystemFonts({ signal: controller.signal }).then((response) => {
-      setInstalledFonts(response.fonts.filter((font) => font.uiSuitable).map(({ family, monospace }) => ({ family, monospace })));
+      setInstalledFonts(response.fonts);
       setFontsError(null);
     }).catch((error: unknown) => {
-      if (!controller.signal.aborted) {
-        setInstalledFonts([]);
-        // SystemFontsFetchError는 고정 영문 메시지를 담고 오므로 그대로 노출하면 로케일을 벗어난다.
-        // 예상된 탐색 실패는 카탈로그 문구로 바꾸고, 예상 밖 오류만 원문을 남긴다.
-        const expected = error instanceof SystemFontsFetchError;
-        setFontsError(!expected && error instanceof Error ? error.message : t("settings.typography.fontsLoadError"));
-      }
-    }).finally(() => {
-      if (!controller.signal.aborted) setFontsLoading(false);
-    });
+      if (!controller.signal.aborted) setFontsError(error instanceof SystemFontsFetchError ? t("settings.typography.fontsLoadError") : String(error));
+    }).finally(() => { if (!controller.signal.aborted) setFontsLoading(false); });
     return () => controller.abort();
   }, [t]);
-
-  const saveUiFont = (uiFont: UiFontSettings) => {
-    if (isSavingGlobalSettingsField("uiFont")) return;
-    const previousUiFont = activeUiFont;
-    setActiveUiFont(uiFont);
-    void setGlobalSettingsField("uiFont", uiFont).then((saved) => {
-      if (!saved) setActiveUiFont(previousUiFont);
-    });
-  };
-
-  const selectUiFont = (selection: FontPickerSelection) => {
-    const uiFont: UiFontSettings = selection.source === "builtin"
-      ? { source: "builtin", id: selection.id as UiFontId, size: activeUiFont.size }
-      : { source: "system", familyName: selection.familyName, size: activeUiFont.size };
-    saveUiFont(uiFont);
-  };
-
-  return (
-    <section className="global-settings-card" aria-label={t("settings.typography.aria")}>
-      <h3 className="global-settings-card-title">{t("settings.typography.title")}</h3>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("settings.typography.label")}
-            <SettingsHelp title={t("settings.typography.label")}>{t("settings.typography.help")}</SettingsHelp>
-          </p>
+  const save = (next: ConsoleFontSettings) => { void setGlobalSettingsField("fonts", next); };
+  const axes: readonly (FontAxis | "terminal")[] = fonts.terminal ? ["ui", "content", "code", "terminal"] : ["ui", "content", "code"];
+  return <section className="global-settings-card" aria-label={t("settings.fonts.title")}>
+    <h3 className="global-settings-card-title">{t("settings.fonts.title")}</h3>
+    {axes.map((axis) => {
+      const value = fonts[axis]!;
+      const role = axis === "terminal" ? "code" : axis;
+      const range = FONT_SIZE_RANGES[role];
+      const setAxis = (next: FontAxisSettings) => save({ ...fonts, [axis]: next });
+      const selected = value.font.source === "inherit" ? { source: "builtin" as const, id: "inherit" } : value.font;
+      const choices: { id: string; label: string; family: string }[] = Object.entries(FONT_BUILT_INS).filter(([id]) => role === "code" ? id !== "manrope" : id !== "cascadia" && id !== "fira-code").map(([id, font]) => ({ id, label: font.label, family: font.family }));
+      if (role === "content") choices.unshift({ id: "inherit", label: t("settings.fonts.inherit"), family: fontFamilyForAxis(fonts, "ui") });
+      return <div key={axis} className="settings-font-axis" data-font-axis={axis}>
+        <div className="global-settings-row">
+          <p className="global-settings-resp-title">{t(`settings.fonts.${axis}`)}</p>
+          <button type="button" className="fc-settings-reset" disabled={!state || saving} onClick={() => setAxis(axis === "terminal" ? fonts.code : DEFAULT_FONTS[axis])}>{t("settings.typography.reset")}</button>
         </div>
-        <button
-          type="button"
-          className="fc-settings-reset"
-          disabled={!state || saving || activeUiFont.source === "builtin" && activeUiFont.id === "manrope" && activeUiFont.size === UI_FONT_SIZE_RANGE.defaultValue}
-          onClick={() => saveUiFont(DEFAULT_UI_FONT)}
-        >
-          {t("settings.typography.reset")}
-        </button>
-      </div>
-      <FontPicker
-        builtIns={UI_FONT_BUILT_INS.map(({ id, label, family, aliases }) => ({
-          id,
-          label,
-          family,
-          aliases,
-          description: t(UI_FONT_DESCRIPTION_KEYS[id]),
-        }))}
-        installedFonts={installedFonts}
-        selected={activeUiFont.source === "builtin" ? { source: "builtin", id: activeUiFont.id } : { source: "system", familyName: activeUiFont.familyName }}
-        selectedSystemFont={activeUiFont.source === "system" ? activeUiFont.familyName : null}
-        fallbackStack={uiFontFamily(DEFAULT_UI_FONT)}
-        previewText={t("settings.typography.preview")}
-        size={activeUiFont.size}
-        sizeRange={UI_FONT_SIZE_RANGE}
-        loading={fontsLoading}
-        error={fontsError}
-        disabled={!state || saving}
+        <FontPicker builtIns={choices} installedFonts={installedFonts.filter((font) => role === "code" ? font.monospace : font.uiSuitable)} selected={selected}
+          selectedSystemFont={value.font.source === "system" ? value.font.familyName : null}
+          fallbackStack={fontFamilyForAxis(fonts, role)} previewText={t("settings.typography.preview")}
+          size={value.size} sizeRange={{ ...range, step: 1 }} loading={fontsLoading} error={fontsError} disabled={!state || saving}
         labels={{
           browserAria: t("settings.typography.picker.browserAria"),
           searchLabel: t("settings.typography.picker.searchLabel"),
@@ -552,11 +504,23 @@ export function TypographyCard({
           systemFont: t("settings.typography.picker.systemFont"),
           savedSystemFont: t("settings.typography.picker.savedSystemFont"),
         }}
-        onSelectionChange={selectUiFont}
-        onSizeCommit={(size) => saveUiFont({ ...activeUiFont, size })}
-      />
-    </section>
-  );
+          onSelectionChange={(selection) => setAxis({ ...value, font: selection.source === "builtin" && selection.id === "inherit" ? { source: "inherit" } : selection as FontAxisSettings["font"] })}
+          onSizeCommit={(size) => setAxis({ ...value, size })}
+        />
+      </div>;
+    })}
+    <details className="settings-disclosure">
+      <summary>{t("settings.fonts.advanced")}</summary>
+      {(["ui", "content", "code"] as const).map((axis) => <label className="global-settings-row" key={axis}>
+        <span>{t(`settings.fonts.${axis}`)} · {t("settings.fonts.cjk")}</span>
+        <input key={fonts[axis].cjk} className="global-settings-input" defaultValue={fonts[axis].cjk} placeholder={t("settings.fonts.automatic")} disabled={!state || saving}
+          onBlur={(event) => { const cjk = sanitizeFontName(event.currentTarget.value); if (cjk !== fonts[axis].cjk) save({ ...fonts, [axis]: { ...fonts[axis], cjk } }); }} />
+      </label>)}
+      <label className="global-settings-row"><span>{t("settings.fonts.separateTerminal")}</span>
+        <input type="checkbox" checked={!!fonts.terminal} disabled={!state || saving} onChange={(event) => save({ ...fonts, terminal: event.currentTarget.checked ? { ...fonts.code } : null })} />
+      </label>
+    </details>
+  </section>;
 }
 
 /**

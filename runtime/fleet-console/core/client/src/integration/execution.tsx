@@ -1,3 +1,5 @@
+import { DEFAULT_FONTS } from "@fleet-console/sdk/settings/fonts";
+import { getGlobalSettingsStoreState, subscribe, setGlobalSettingsField } from "../../../../features/settings/client/global-settings-store.js";
 import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection, harnessSettingsSection } from "../../../../features/execution/client/agent/index.js";
@@ -8,7 +10,7 @@ import { GlobalBrowserSheet } from "../../../../features/browser/client/global-b
 import { PersistentShellHost, shellSurface } from "../../../../features/execution/client/terminal/shell/index.js";
 import { connectShellSession } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { preloadTerminalFallbackFonts } from "../../../../features/execution/client/terminal/shared/terminal-fallback-fonts.js";
-import { connectTerminalSettings } from "../../../../features/execution/client/terminal/shared/terminal-preferences.js";
+import { connectTerminalFontSettings, connectTerminalSettings } from "../../../../features/execution/client/terminal/shared/terminal-preferences.js";
 import "../../../../features/execution/client/terminal/assets/fonts/symbols-nerd-font-mono.css";
 /* 한글 등폭 폴백의 실체. unicode-range로 쪼갠 청크판(400.css/700.css)이 아니라 한글 서브셋
    통짜판을 쓴다 — WebGL glyph atlas는 글리프를 처음 그릴 때 래스터화해 캐시하는데, 그 atlas는
@@ -34,6 +36,11 @@ export const consoleExecution: ClientExecutionProvider = {
   install: (ctx) => {
     void preloadTerminalFallbackFonts();
     connectTerminalSettings(ctx.settings);
+    connectTerminalFontSettings({
+      read: () => getGlobalSettingsStoreState().state?.fonts ?? DEFAULT_FONTS,
+      subscribe,
+      update: (fonts) => setGlobalSettingsField("fonts", fonts),
+    });
     // 문서 수준 링크 라우터 — Console 수명 동안 한 번 선다.
     installGlobalLinkRouter();
     const disconnectShellSession = connectShellSession(ctx.consoleEvents);

@@ -41,7 +41,7 @@
   color: var(--text-tertiary);
   background: transparent;
   font: inherit;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   line-height: 1;
   cursor: pointer;
@@ -308,7 +308,7 @@
 
 .quota-fold-spine__percent {
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
 }
@@ -362,14 +362,14 @@
 
 .quota-fold-spine__reset {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   white-space: nowrap;
 }
 
 .quota-fold-spine--quiet {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -492,7 +492,7 @@
   border-radius: var(--radius-pill);
   padding: 2px 9px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.08em;
 }
@@ -540,7 +540,7 @@
 .quota-meter__window {
   margin-left: 5px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -548,7 +548,7 @@
 .quota-meter__forecast,
 .quota-meter__reset {
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
 }
 
@@ -668,7 +668,7 @@
   border-radius: var(--radius-pill);
   padding: 2px 9px 2px 7px;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -676,7 +676,7 @@
 
 .quota-credits small {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   white-space: nowrap;
 }
@@ -697,7 +697,7 @@
 
 .quota-connect-card .quota-connect-card__hint {
   margin-top: -5px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -772,7 +772,7 @@
   align-items: center;
   gap: 10px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
 }
 
@@ -783,7 +783,7 @@
   color: var(--text-secondary);
   background: transparent;
   font: inherit;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   cursor: pointer;
 }
@@ -791,7 +791,7 @@
 /* 「도구모음에 표시」 — 갱신 줄 아래 한 줄. 공급자마다 글리프 하나가 켬/끔을 진다. 설정 섹션과 같은 값을 바꾼다. */
 .quota-footer__toolbar {
   margin-top: 6px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
 }
 
 .quota-footer__toolbar-label {
@@ -914,7 +914,7 @@
   justify-items: end;
   min-width: 0;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-variant-numeric: tabular-nums;
   line-height: 11px;

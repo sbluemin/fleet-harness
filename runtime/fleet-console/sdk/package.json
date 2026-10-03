@@ -67,6 +67,11 @@
       "import": "./settings/types.ts",
       "default": "./settings/types.ts"
     },
+    "./settings/fonts": {
+      "types": "./settings/fonts.ts",
+      "import": "./settings/fonts.ts",
+      "default": "./settings/fonts.ts"
+    },
     "./settings/browser": {
       "types": "./settings/browser.tsx",
       "browser": "./settings/browser.tsx",

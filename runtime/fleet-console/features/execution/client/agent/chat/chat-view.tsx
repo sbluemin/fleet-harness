@@ -5,7 +5,7 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
 
 import { getT } from "../i18n/index.js";
-import { useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth, useTerminalFontFamily } from "../../terminal/shared/terminal-preferences.js";
+import { useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
 import { agentChatAttachmentPreviewUrl, messageAgentSession, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
@@ -143,7 +143,6 @@ export function AgentChatView({
   // 채팅 폭 선호 — 콘솔 단위 사용자 선호(플러그인 설정 서버 영속)라 모든 채팅 패널이 함께 따른다.
   // 대화 컬럼과 입력창이 이 값 하나를 함께 따른다.
   const readingWidth = useChatReadingWidth();
-  const terminalFontFamily = useTerminalFontFamily();
   // 구성원 모드 — 채팅으로 열린 Objectives 구성원(parentOperationId)뿐이다. 이 뷰 자체가
   // chatMode 분기에서만 마운트되므로 터미널(CLI) 구성원은 여기에 오지 않는다.
   const isMemberChat = typeof context.operation.parentOperationId === "string" && context.operation.parentOperationId.length > 0;
@@ -656,12 +655,11 @@ export function AgentChatView({
       ref={panelRef}
       className="agent-chat"
       data-reading-width={readingWidth}
-      /* 터미널 글꼴을 Chat 로컬 토큰으로만 흘린다 — 전역 --font-mono를 덮으면 Codex·파일 탐색기·
-         마크다운 코드까지 따라 바뀐다. 이 토큰의 소비처는 chat.css 하나다. */
+      /* CLI 행은 코드 축이다. 터미널을 따로 고른 경우에도 채팅은 코드 축을 유지한다. */
       /* 구성원 모드에서만 초점을 받을 수 있다 — tabIndex=-1이라 패널 안을 누르면 브라우저가
          초점을 준다. Tab 순서에는 들지 않는다. 일반 모드에는 속성을 두지 않는다. */
       {...(isMemberChat ? { tabIndex: -1 } : {})}
-      style={{ "--agent-chat-font": terminalFontFamily } as React.CSSProperties}
+      style={{ "--agent-chat-font": "var(--font-code)" } as React.CSSProperties}
       aria-label={t("terminal.chat.aria")}
       onKeyDown={onPanelKeyDown}
     >

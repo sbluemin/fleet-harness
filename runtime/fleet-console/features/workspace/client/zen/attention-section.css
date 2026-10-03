@@ -17,11 +17,11 @@
   min-height: 22px;
   padding: 0 8px;
   color: var(--aurora);
-  font: var(--weight-bold) var(--t-2xs) var(--font-mono);
+  font: var(--weight-bold) var(--t-2xs) var(--font-ui);
   white-space: nowrap;
 }
 .side-bar-attention.is-war-room .side-bar-attention-head { color: var(--brass-ink); }
-.side-bar-attention-summary { margin-left: auto; color: var(--text-tertiary); font: var(--weight-regular) calc(var(--t-2xs) * .9) var(--font-body); }
+.side-bar-attention-summary { margin-left: auto; color: var(--text-tertiary); font: var(--weight-regular) calc(var(--t-2xs) * .9) var(--font-ui); }
 .side-bar-attention-row {
   display: flex;
   align-items: center;

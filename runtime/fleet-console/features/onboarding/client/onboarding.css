@@ -97,7 +97,7 @@
 
 .onboarding-welcome-count {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
 }
@@ -314,7 +314,7 @@
 .feature-tour-card h2 {
   margin: 0;
   color: var(--brass-ink);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-lg);
   font-weight: var(--weight-bold);
   line-height: 1.2;
@@ -348,7 +348,7 @@
   display: block;
   margin-bottom: var(--space-2);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
 }
@@ -486,7 +486,7 @@
 
 .onboarding-hint-kbd {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 

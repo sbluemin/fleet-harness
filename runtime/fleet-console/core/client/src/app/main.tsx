@@ -10,8 +10,6 @@ import * as sdkComponentsFailureNotice from "@fleet-console/sdk/components/failu
 import * as sdkComponentsEffortTrack from "@fleet-console/sdk/components/effort-track";
 import * as sdkComponentsLaunchProviderGlyphs from "@fleet-console/sdk/components/launch-provider-glyphs";
 import * as sdkComponentsShellGlyph from "@fleet-console/sdk/components/shell-glyph";
-import "@fontsource-variable/fraunces";
-import "@fontsource-variable/fraunces/standard-italic.css";
 import "@fontsource-variable/manrope";
 // Pretendard dynamic subset: 한글 폴백 서체 — 브라우저가 unicode-range로 필요한 subset woff2만 내려받는다.
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
@@ -41,7 +39,7 @@ import { installOperationArchive } from "../integration/operation-archive.js";
 import { installModalOpenMarker } from "../integration/modal-open-marker.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
-import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setUnfocusedPanelFade } from "../integration/store.js";
+import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredGlassOpacity } from "../integration/glass-opacity-store.js";
 import { consumeInitialZenModeParam } from "../integration/zen-mode.js";
 
@@ -92,7 +90,7 @@ try {
   const settings = await fetchGlobalSettingsState();
   setActiveTheme(settings.theme);
   setUnfocusedPanelFade(settings.unfocusedPanelFade);
-  setActiveUiFont(settings.uiFont);
+
   hydrateGlobalSettings(settings);
   await migrateStoredCommissioningSeen();
 } catch (error) {
