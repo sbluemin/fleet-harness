@@ -7804,6 +7804,15 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--coral);
 }
 
+/* 플러그인이 낸 줄 메모 — 맡은 이(accent)는 사령관 줄의 켬과 같은 brass 잉크, 주의(warn)는 신호 토큰. */
+.side-bar-cluster-row-meta .is-accent {
+  color: var(--brass-ink);
+}
+
+.side-bar-cluster-row-meta .is-warn {
+  color: var(--warn-ink);
+}
+
 /* 후속 줄의 원래 목표 — 긴 제목은 한 줄로 말줄인다. */
 .side-bar-cluster-row-meta .is-from {
   min-width: 0;
@@ -7909,6 +7918,14 @@ body[data-companion-resizing="true"] .canvas-operation {
 .side-bar-row-zone-count {
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
+}
+
+/* 줄이 낸 구역 머리 말(「사령관 처리 중」) — 개수 뒤, 같은 크기의 brass 잉크. */
+.side-bar-row-zone-note {
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  letter-spacing: 0;
+  color: var(--brass-ink);
 }
 
 .side-bar-row-zone-rim {

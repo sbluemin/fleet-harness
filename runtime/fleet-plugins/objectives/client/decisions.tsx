@@ -3,6 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { ownAnswer, type Decision, type DecisionQuestion, type Objective } from "../server/types.js";
+import { actorDid } from "./actors.js";
+import { useCommodoreBoard } from "./commodore-state.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
@@ -107,6 +109,8 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
       setFault(code === "decision_request_changed" ? t("objectives.decision.changed") : code === "decision_delivering" ? t("objectives.decision.delivering") : t("objectives.decision.failed"));
     } finally { setSending(false); }
   };
+  // 자율 운영 중이면 사령관이 이 요청을 맡는다 — 사람도 그대로 답할 수 있고, 먼저 보낸 답이 이긴다.
+  const commodore = useCommodoreBoard(objective.theaterId);
   return (
     <section ref={sectionRef} className="objectives-decision-request" aria-label={t("objectives.decision.request")}>
       <span className="objectives-decision-orbit" aria-hidden="true" />
@@ -115,6 +119,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
         <span>{t("objectives.decision.request")}</span>
         <time dateTime={new Date(request.createdAt).toISOString()}>{clock(request.createdAt, language)}</time>
         {many ? <span className="objectives-decision-n">{t("objectives.decision.questions", { count: total })}</span> : null}
+        {commodore.active ? <span className="objectives-decision-handler" title={t("objectives.commodore.decisionHint")}>{t("objectives.commodore.note.answering")}</span> : null}
       </div>
       <div className="objectives-decision-body">
         {request.questions.map((question, index) => {
@@ -241,6 +246,7 @@ export function DecisionList({ objective, t, language, flash, memberMark }: {
               <span>{stamp(decision.at, language)}</span>
               {missionN > 0 ? <span>{t("objectives.decisions.mission", { n: missionN })}</span> : null}
               {member ? <span>{member.mark}{member.role}</span> : null}
+              {((did) => (did ? <span className="objectives-decision-by">{did}</span> : null))(actorDid(t, decision.by, "answered"))}
             </p>
           </div>
         );

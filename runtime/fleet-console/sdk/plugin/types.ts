@@ -666,6 +666,16 @@ export interface OperationClusterRow {
   /** 다른 목표의 후속으로 태어난 줄. `originTitle` 이 null 이면 원래 목표를 더는 찾을 수 없다. */
   readonly followup?: { readonly originTitle: string | null };
   /**
+   * 둘째 줄 끝에 붙는 짧은 사실 — 지금 누가 이 줄을 맡고 있는지, 멈췄는지처럼 진행 셈으로는 말할 수 없는 것. 호스트가
+   * 다른 메타 뒤에 같은 크기로 적고 `tone` 으로만 칠한다(`accent` 는 맡은 이, `warn` 은 주의).
+   */
+  readonly notes?: readonly OperationClusterRowNote[];
+  /**
+   * 이 줄이 「결정 요청」·「오늘」 구역에 올라갔을 때 그 구역 머리의 개수 옆에 서는 짧은 말. 같은 구역의 줄들이 같은 말을
+   * 내면 한 번만 선다.
+   */
+  readonly zoneNote?: LocalizedText;
+  /**
    * 플러그인 표면이 지금 이 줄을 보고 있다. 호스트는 Operation 이 없는 줄만 이 값으로 하이라이트한다 — 뿌리가 선 줄은 칩처럼
    * 그 Operation 이 캔버스에서 활성일 때 하이라이트한다.
    */
@@ -674,6 +684,11 @@ export interface OperationClusterRow {
   readonly review?: (language: "en" | "ko") => void;
   /** 뿌리가 없는 줄을 다른 그룹으로 끌어 놓았을 때. 뿌리가 있으면 호스트가 뿌리 Operation 의 그룹을 바꾼다. */
   readonly moveToGroup?: (groupId: string | null) => void;
+}
+
+export interface OperationClusterRowNote {
+  readonly text: LocalizedText;
+  readonly tone?: "accent" | "warn";
 }
 
 export interface ArchiveSectionContext {

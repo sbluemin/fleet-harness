@@ -1677,3 +1677,6 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-commodore-foot { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--surface-rim); }
 .objectives-commodore-foot .objectives-commodore-input { flex: 1; }
 .objectives-commodore-foot-note { color: var(--text-tertiary); font-size: var(--t-xs); }
+
+/* 자율 운영 중 결정 요청 머리의 「사령관이 답하는 중」 — 사이드바 줄 메모와 같은 brass 잉크. */
+.objectives-decision-handler { margin-left: auto; color: var(--brass-ink); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; }

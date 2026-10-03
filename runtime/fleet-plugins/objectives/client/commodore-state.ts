@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
@@ -38,8 +38,45 @@ const listeners = new Set<() => void>();
 let enabledSnapshot = false;
 let drawer: { readonly theaterId: string; readonly tab: CommodoreTab; readonly openedAt: number } | null = null;
 
+let revision = 0;
+
 function notify(): void {
+  revision += 1;
   for (const listener of [...listeners]) listener();
+}
+
+/** 바뀔 때마다 오르는 수 — 사이드바 줄 계산이 입력 비교에 쓴다. */
+export function commodoreRevision(): number {
+  return revision;
+}
+
+/**
+ * 사이드바 줄이 읽는 사령관의 지금 — 자율 운영이 실제로 돌고 있는가(실험 기능 + 글리프), 그리고 감독자가 정체로 본 목표.
+ * 읽지 않은 Theater 는 돌지 않는 것으로 다룬다.
+ */
+export function commodoreBoardOf(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[] } {
+  const view = enabledSnapshot ? theaters.get(theaterId)?.view : undefined;
+  if (!view?.active) return INACTIVE_BOARD;
+  return { active: true, stalled: view.run.stalled ?? [] };
+}
+const INACTIVE_BOARD = { active: false, stalled: [] as readonly string[] };
+
+/** 보드 화면용 — 줄 계산과 같은 값을 React 로. 읽지 않은 Theater 면 읽기를 건다. */
+export function useCommodoreBoard(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[] } {
+  const enabled = useCommodoreEnabled();
+  const board = useSyncExternalStore(subscribeCommodore, () => boardSnapshot(theaterId), () => boardSnapshot(theaterId));
+  useEffect(() => { if (enabled) void loadCommodore(theaterId); }, [enabled, theaterId]);
+  return board;
+}
+
+const boardSnapshots = new Map<string, { readonly key: string; readonly value: ReturnType<typeof commodoreBoardOf> }>();
+function boardSnapshot(theaterId: string): ReturnType<typeof commodoreBoardOf> {
+  const value = commodoreBoardOf(theaterId);
+  const key = `${value.active}:${value.stalled.join(",")}`;
+  const cached = boardSnapshots.get(theaterId);
+  if (cached?.key === key) return cached.value;
+  boardSnapshots.set(theaterId, { key, value });
+  return value;
 }
 
 function setTheater(theaterId: string, patch: Partial<TheaterCommodore>): void {

@@ -16,6 +16,7 @@ import { ObjectiveResults, ResultsGlyph, ResultsHeadTools, resultGroupKey } from
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
+import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, LaunchedText, launchedWords, routingReason, useLaunchRows } from "./launch-control.js";
@@ -1696,7 +1697,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
                     onCommit={(value) => { if (!value) return false; if (value !== criterion.text) void call("/criterion/patch", { objectiveId: objective.id, criterionId: criterion.id, patch: { text: value } }); return true; }} />
                   <ExtensionChip n={round} t={t} />
                   {evidence ? <span className="objectives-criterion-sub is-evidence">{t("objectives.criteria.evidence", { evidence })}</span>
-                    : criterion.by === "commander" ? <span className="objectives-criterion-sub">{t("objectives.criteria.proposed")}</span>
+                    : criterion.by === "commander" ? <span className="objectives-criterion-sub">{((did) => (did ? t("objectives.criteria.proposedBy", { did }) : t("objectives.criteria.proposed")))(actorDid(t, criterionApproval(objective, criterion), "approved"))}</span>
                     : mergedFrom.get(criterion.id) ? <span className="objectives-criterion-sub">{t("objectives.tidied.fromCriterion", { title: mergedFrom.get(criterion.id)! })}</span> : null}
                 </div>
                 <span className={`objectives-criterion-state${evidence ? " is-met" : ""}`}>{t(evidence ? "objectives.criteria.met" : "objectives.criteria.unchecked")}</span>

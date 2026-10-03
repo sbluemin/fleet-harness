@@ -38,7 +38,7 @@ import {
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
-import { planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, type SideBarRowItem } from "./side-bar-cluster-row.js";
+import { planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, zoneNoteOf, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu, SideBarZenToggle } from "./side-bar-collapse-control.js";
@@ -1195,12 +1195,12 @@ export function OperationsSideBar({
                   />,
                 ]) : [
                   ...(rowPlan.decisions.length > 0 ? [
-                    <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length}>
+                    <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length} note={zoneNoteOf(rowPlan.decisions)}>
                       {rowPlan.decisions.map((item) => renderRow(item, true))}
                     </SideBarRowZone>,
                   ] : []),
                   ...(rowPlan.today.length > 0 ? [
-                    <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length}>
+                    <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length} note={zoneNoteOf(rowPlan.today)}>
                       {rowPlan.today.map((item) => renderRow(item, true))}
                     </SideBarRowZone>,
                   ] : []),
@@ -1864,12 +1864,12 @@ function TheaterInactiveSection({
             />,
           ]) : [
             ...(rowPlan.decisions.length > 0 ? [
-              <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length}>
+              <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length} note={zoneNoteOf(rowPlan.decisions)}>
                 {rowPlan.decisions.map((item) => renderRow(item, true))}
               </SideBarRowZone>,
             ] : []),
             ...(rowPlan.today.length > 0 ? [
-              <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length}>
+              <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length} note={zoneNoteOf(rowPlan.today)}>
                 {rowPlan.today.map((item) => renderRow(item, true))}
               </SideBarRowZone>,
             ] : []),
