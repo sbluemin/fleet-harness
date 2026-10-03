@@ -936,6 +936,35 @@ export function useSnapFullOperationId(): string | null {
   return useSyncExternalStore(subscribe, getSnapFullOperationId, getSnapFullOperationId);
 }
 
+const SNAP_ZONE_BOTTOM_EPSILON = 0.001;
+
+/**
+ * 스냅 유지 패널 중 최소화되지 않고 칸 아래변이 아레나 아래변에 닿아 있는 패널이 있는지 판정한다.
+ * 칸은 [fx, fy, fw, fh] 아레나 분수 좌표이므로 아래변은 fy + fh, 아레나 아래변은 1.0이다.
+ */
+export function hasBottomSnappedOperation(hold: SnapHold | null, minimized: readonly string[] = []): boolean {
+  if (!hold) return false;
+  const minimizedSet = new Set(minimized);
+  for (const [sessionId, zoneIndex] of Object.entries(hold.assignments)) {
+    if (minimizedSet.has(sessionId)) continue;
+    const zone = hold.zones[zoneIndex];
+    if (!zone) continue;
+    const [, fy, , fh] = zone;
+    if (fy + fh >= 1 - SNAP_ZONE_BOTTOM_EPSILON) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function getHasBottomSnappedOperation(): boolean {
+  return hasBottomSnappedOperation(state.snapHold, state.minimized);
+}
+
+export function useHasBottomSnappedOperation(): boolean {
+  return useSyncExternalStore(subscribe, getHasBottomSnappedOperation, getHasBottomSnappedOperation);
+}
+
 /**
  * 전체 칸을 떠난다 — 그 패널만 직전 기하·카메라로 되돌리고 메모를 버린다. 다른 패널이 앞서 쥐고 있던
  * 묶음은 되살리지 않는다(스냅은 마지막 상태가 곧 현재 상태다). 메모가 없으면 유지만 풀린다.
