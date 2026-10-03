@@ -5,6 +5,7 @@ import { getViewModeSnapshot } from "./view-mode-store.js";
 import { SETTINGS_PANE_ID } from "../../../../features/settings/client/settings-entry.js";
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ShellOpenAtResult } from "@fleet-console/sdk/navigation";
 
 import { collectExperimentModelOptions } from "./experiment-model-options.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, subscribe as subscribeGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
@@ -43,6 +44,15 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
       return false;
     },
   };
+}
+
+// Shell 배치 요청이 성공했을 때만 작업 화면으로 돌아가 Shell 표면을 연다.
+function revealShellOnSuccess(result: ShellOpenAtResult): ShellOpenAtResult {
+  if (result.ok) {
+    navigateConsoleRoute("/operations");
+    openExpandedSurface({ surfaceId: "shell" });
+  }
+  return result;
 }
 
 export function createHostCapabilities(
@@ -144,14 +154,8 @@ export function createHostCapabilities(
       },
     },
     shell: {
-      openAt: async (request) => {
-        const result = await base.shell.openAt(request);
-        if (result.ok) {
-          navigateConsoleRoute("/operations");
-          openExpandedSurface({ surfaceId: "shell" });
-        }
-        return result;
-      },
+      openAt: async (request) => revealShellOnSuccess(await base.shell.openAt(request)),
+      restartAt: async (request) => revealShellOnSuccess(await base.shell.restartAt(request)),
     },
     navigation: {
       getSearchParam: (key) => new URLSearchParams(window.location.search).get(key),

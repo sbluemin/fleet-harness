@@ -1,8 +1,16 @@
 import type { ShellOpenAtRequest, ShellOpenAtResult } from "./index.js";
 import { ApiError } from "../operations/browser.js";
 
-export async function requestShellOpenAt(request: ShellOpenAtRequest): Promise<ShellOpenAtResult> {
-  const response = await fetch("/api/v1/shell/open-at", {
+export function requestShellOpenAt(request: ShellOpenAtRequest): Promise<ShellOpenAtResult> {
+  return postShellPlacement("/api/v1/shell/open-at", request);
+}
+
+export function requestShellRestartAt(request: ShellOpenAtRequest): Promise<ShellOpenAtResult> {
+  return postShellPlacement("/api/v1/shell/restart-at", request);
+}
+
+async function postShellPlacement(url: string, request: ShellOpenAtRequest): Promise<ShellOpenAtResult> {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
