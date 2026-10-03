@@ -31,6 +31,7 @@ import {
 } from "./pane-width.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
+import { openOtherSurfaceLink } from "../../../../../features/browser/client/global-link.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
 
@@ -366,6 +367,8 @@ export function useRailPanelContext(
     surfaces: railCapabilities.surfaces,
     rail: railCapabilities.rail,
     launchOperation: onLaunchOperation,
+    // 레일 패널의 http(s) 링크를 여는 길 — bubble 라우터가 닿지 않는 자리에서 명시 호출한다.
+    openLink: (url, options) => openOtherSurfaceLink(url, options?.gesture ?? "click"),
   }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation, railCapabilities]);
 }
 
@@ -552,6 +555,7 @@ const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, co
           surfaces={ctx.surfaces}
           onRequestExtraWidth={handleRequestExtraWidth}
           onLaunchOperation={ctx.launchOperation}
+          openLink={ctx.openLink}
         />
       </div>
       {/* 덮개도 배너와 같은 축으로 건다 — 재연결 시도 중에도 패널 값은 여전히 멈춰 있다. */}

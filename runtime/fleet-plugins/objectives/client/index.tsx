@@ -26,7 +26,7 @@ export const objectivesPane: PaneDescriptor = {
   mounts: ["rail"],
   title: (ctx) => getT(ctx.language)("objectives.panel.title"),
   widthClass: "standard",
-  render: (ctx) => <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "rail", ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
+  render: (ctx) => <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "rail", openLink: ctx.openLink, ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
 };
 
 export const objectivesSurface: ExpandedSurfaceDescriptor = {
@@ -36,7 +36,7 @@ export const objectivesSurface: ExpandedSurfaceDescriptor = {
   // 레일 아이콘이 여닫으므로 호스트의 부유 닫기는 중복이다.
   ownsClose: true,
   onClose: onObjectiveSurfaceClose,
-  render: (ctx: ExpandedSurfaceContext) => <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "expanded", ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
+  render: (ctx: ExpandedSurfaceContext) => <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "expanded", openLink: ctx.openLink, ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
 };
 
 export const objectivesEntry: RailEntryDescriptor = {

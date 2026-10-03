@@ -84,6 +84,17 @@
       "import": "./notifications/browser.ts",
       "default": "./notifications/browser.ts"
     },
+    "./link": {
+      "types": "./link/types.ts",
+      "import": "./link/types.ts",
+      "default": "./link/types.ts"
+    },
+    "./link/browser": {
+      "types": "./link/browser.ts",
+      "browser": "./link/browser.ts",
+      "import": "./link/browser.ts",
+      "default": "./link/browser.ts"
+    },
     "./routing": {
       "types": "./routing/types.ts",
       "import": "./routing/types.ts",

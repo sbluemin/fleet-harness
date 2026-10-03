@@ -3,6 +3,7 @@ import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection, harnessSettingsSection } from "../../../../features/execution/client/agent/index.js";
 import { globalShellEntry } from "../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { globalBrowserEntry } from "../../../../features/browser/client/global-browser-entry.js";
+import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";
 import { GlobalBrowserSheet } from "../../../../features/browser/client/global-browser-sheet.js";
 import { PersistentShellHost, shellSurface } from "../../../../features/execution/client/terminal/shell/index.js";
 import { connectShellSession } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
@@ -33,6 +34,8 @@ export const consoleExecution: ClientExecutionProvider = {
   install: (ctx) => {
     void preloadTerminalFallbackFonts();
     connectTerminalSettings(ctx.settings);
+    // 문서 수준 링크 라우터 — Console 수명 동안 한 번 선다.
+    installGlobalLinkRouter();
     const disconnectShellSession = connectShellSession(ctx.consoleEvents);
     const disposeAgent = agentExecution.install?.(ctx);
     return () => {

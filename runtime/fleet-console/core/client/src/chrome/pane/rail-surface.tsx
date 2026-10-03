@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 
 import type { ClientApiCapability, ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { onboardingWorkSurface } from "@fleet-console/sdk/onboarding/anchors";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -48,6 +49,7 @@ export interface RailSurfaceProps {
   readonly surfaces?: ClientExpandedSurfacesCapability;
   readonly onRequestExtraWidth?: (px: number | null) => void;
   readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  readonly openLink?: OpenLinkHandler;
 }
 
 export const RailSurface = memo(function RailSurface({
@@ -60,6 +62,7 @@ export const RailSurface = memo(function RailSurface({
   surfaces,
   onRequestExtraWidth,
   onLaunchOperation,
+  openLink,
 }: RailSurfaceProps) {
   const openInstances = useRailPanes();
   const focusedPaneId = useFocusedPaneId();
@@ -261,6 +264,7 @@ export const RailSurface = memo(function RailSurface({
       surfaces={surfaces}
       onRequestExtraWidth={onRequestExtraWidth}
       onLaunchOperation={onLaunchOperation}
+      openLink={openLink}
       {...(split ? { width: primaryWidth } : {})}
     />
   );
@@ -293,6 +297,7 @@ export const RailSurface = memo(function RailSurface({
           surfaces={surfaces}
           onRequestExtraWidth={onRequestExtraWidth}
           onLaunchOperation={onLaunchOperation}
+          openLink={openLink}
         />
       ))}
       {split ? (
@@ -323,6 +328,7 @@ interface PaneHostProps {
   readonly surfaces?: ClientExpandedSurfacesCapability;
   readonly onRequestExtraWidth?: (px: number | null) => void;
   readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  readonly openLink?: OpenLinkHandler;
   /** 표면이 정한 이 열의 폭(px). 생략하면 남는 자리를 채운다. */
   readonly width?: number;
   readonly overlay?: boolean;
@@ -352,6 +358,7 @@ function PaneHost({
   surfaces,
   onRequestExtraWidth,
   onLaunchOperation,
+  openLink,
   width,
   overlay = false,
   returnFocus,
@@ -454,6 +461,7 @@ function PaneHost({
     ...(onRequestExtraWidth === undefined ? {} : { requestExtraWidth: onRequestExtraWidth }),
     legacySurfaces: surfaces,
     legacyLaunchOperation: onLaunchOperation,
+    ...(openLink === undefined ? {} : { openLink }),
   });
 
   const hasCaption = descriptor.role === "detail" && descriptor.hideCaption !== true;

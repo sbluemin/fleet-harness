@@ -4,6 +4,7 @@ import type { PaneTarget } from "../pane/types.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
+import type { OpenLinkHandler } from "../link/types.js";
 import type { ClientApiCapability, ClientExpandedSurfacesCapability, ClientRailCapability, ConsoleTheme } from "../plugin/types.js";
 import type { OperationLaunchKind } from "../operations/types.js";
 import type { PaneSearchProvider } from "../pane/types.js";
@@ -30,6 +31,12 @@ export interface RailPanelContext {
   readonly rail?: ClientRailCapability;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
+  /**
+   * 이 패널의 http(s) 링크를 여는 길. document bubble 라우터가 닿지 않는 자리
+   * (stopPropagation을 쓰는 렌더 등)에서 명시 호출한다. 모르는 호스트는 싣지
+   * 않으며, 없으면 앵커 기본 동작(외부 브라우저·새 탭)으로 떨어진다.
+   */
+  readonly openLink?: OpenLinkHandler;
 }
 
 export interface RailSearchRequest {
