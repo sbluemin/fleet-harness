@@ -32,6 +32,11 @@ export interface FilePeekResponse {
   readonly truncated: boolean;
 }
 export type FileRefStatus = "file" | "dir" | "missing";
+/** 요청 순서에 대응한다. 절대 경로 입력도 응답에는 Theater 상대 경로만 담는다. */
+export interface FileRefResolution {
+  readonly path: string;
+  readonly status: FileRefStatus;
+}
 
 export interface SearchEntry {
   id: string;

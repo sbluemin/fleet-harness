@@ -3,7 +3,7 @@ import { open, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import type http from "node:http";
 import { assertWithinRoot, NOFOLLOW_FLAG } from "@fleet-console/infra/fs-store";
-import type { FilePeekResponse, FileRefStatus } from "./contracts.js";
+import type { FilePeekResponse, FileRefResolution } from "./contracts.js";
 
 const MAX_FILE_BYTES = 256 * 1024;
 const MAX_PEEK_LINES = 200;
@@ -35,24 +35,24 @@ export function createCodexFileRouter(deps: FileRouteDeps) {
       const root = await realpath(theater.realpath);
       if (pathname.endsWith("file-refs")) {
         if (!Array.isArray(body.paths) || body.paths.length > MAX_REFS) throw new FileRequestError(400, "invalid_paths");
-        const entries: Array<[string, FileRefStatus]> = [];
+        const entries: FileRefResolution[] = [];
         for (const input of body.paths) {
-          const relative = validateRelativePath(input);
+          const relative = validateRefPath(root, input);
           try {
             const target = await resolveContained(root, relative);
             const info = await stat(target);
-            if (info.isDirectory()) entries.push([relative, "dir"]);
+            if (info.isDirectory()) entries.push({ path: relative, status: "dir" });
             else {
               await readBoundedText(root, relative, target);
-              entries.push([relative, "file"]);
+              entries.push({ path: relative, status: "file" });
             }
           } catch (error) {
             if (error instanceof FileRequestError && error.status === 403) throw error;
-            if (isMissing(error) || error instanceof FileRequestError) entries.push([relative, "missing"]);
+            if (isMissing(error) || error instanceof FileRequestError) entries.push({ path: relative, status: "missing" });
             else throw error;
           }
         }
-        return send(200, Object.fromEntries(entries));
+        return send(200, entries);
       }
       const relative = validateRelativePath(body.path);
       const line = body.line ?? 1;
@@ -66,6 +66,7 @@ export function createCodexFileRouter(deps: FileRouteDeps) {
     } catch (error) {
       if (error instanceof FileRequestError) return send(error.status, { error: error.code });
       if (isMissing(error)) return send(404, { error: "not_found" });
+      if (isDenied(error)) return send(403, { error: "forbidden" });
       return send(500, { error: "file_read_failed" });
     }
   };
@@ -77,6 +78,15 @@ function validateRelativePath(value: unknown): string {
     throw new FileRequestError(403, "outside_theater");
   }
   return path.posix.normalize(value);
+}
+
+function validateRefPath(root: string, value: unknown): string {
+  if (typeof value !== "string" || !value || value.length > 2048 || value.includes("\0")) throw new FileRequestError(400, "invalid_path");
+  if (!path.isAbsolute(value)) return validateRelativePath(value);
+  if (value.includes("\\") || value.split("/").some(part => part === ".." || part === ".")) throw new FileRequestError(403, "outside_theater");
+  // 절대 입력도 먼저 lexical 포함을 검증한다. 아래 resolveContained가 실제 대상의 포함을 다시 검증한다.
+  assertContained(root, value);
+  return path.relative(root, value).split(path.sep).join("/") || ".";
 }
 
 async function resolveContained(root: string, relative: string): Promise<string> {
@@ -117,6 +127,10 @@ async function readBoundedText(root: string, relative: string, target: string): 
 
 function isMissing(error: unknown): boolean {
   return !!error && typeof error === "object" && "code" in error && ["ENOENT", "ENOTDIR"].includes(String(error.code));
+}
+
+function isDenied(error: unknown): boolean {
+  return !!error && typeof error === "object" && "code" in error && ["EACCES", "EPERM"].includes(String(error.code));
 }
 
 function languageFor(file: string): string {
