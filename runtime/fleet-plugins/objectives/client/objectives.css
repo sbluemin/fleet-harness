@@ -1451,3 +1451,229 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   .objectives-routing-row { grid-template-columns: 20px minmax(0, 1fr); grid-template-areas: "mark who" ". pick" ". why"; }
   .objectives-routing-pick { justify-content: flex-start; }
 }
+
+/* ─── 사령관(자율 운영) ──────────────────────────────────────────────────────
+   Theater 머리 아래의 사령관 줄과 「사령관 기록」 서랍. 줄은 사이드바 목표 줄과 같은 격자(24px 글리프 칸 · 6/8 안쪽 여백 ·
+   7px 모서리)를 쓴다 — 섞여 선 목록에서 한 문법으로 읽힌다. 글리프가 자율 운영 스위치이고, 켬은 채운 brass 사각(선택),
+   끔은 빈 사각이다. 왼쪽 띠·상자형 필터 단추는 두지 않는다. */
+.objectives-commodore-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 6px 8px;
+  margin: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
+}
+.objectives-commodore-row:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); }
+.objectives-commodore-row:has(.objectives-commodore-row-main:focus-visible) {
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
+}
+/* 서랍이 열린 줄 — 사이드바의 열린 목표 줄과 같은 위치 채널. */
+.objectives-commodore-row.is-open {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
+}
+.objectives-commodore-row.is-open .objectives-commodore-row-title { color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary)); }
+
+/* 글리프 스위치 — 누르는 자리는 24px, 보이는 사각은 12px. 제목 줄(13px × 1.3)의 세로 가운데에 선다. */
+.objectives-commodore-switch {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: calc((var(--t-md) * 1.3 - 24px) / 2);
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.objectives-commodore-switch i {
+  display: block;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--brass);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--brass) 16%, transparent);
+  transition: background var(--duration-fast) var(--ease-spring), box-shadow var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
+}
+.objectives-commodore-switch[aria-checked="false"] i { background: transparent; border: 1.5px solid var(--text-tertiary); box-shadow: none; }
+.objectives-commodore-switch:hover:not(:disabled) { background: color-mix(in oklch, var(--ink-spectral) 10%, transparent); }
+.objectives-commodore-switch:hover:not(:disabled)[aria-checked="false"] i { border-color: var(--text-secondary); }
+.objectives-commodore-switch:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-switch:disabled { cursor: default; opacity: 0.6; }
+.objectives-commodore-switch[aria-busy="true"] i { opacity: 0.6; }
+.objectives-commodore-switch.is-large { width: 28px; height: 28px; margin-top: 0; flex: none; }
+.objectives-commodore-switch.is-large i { width: 20px; height: 20px; border-radius: 5px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--brass) 14%, transparent); }
+.objectives-commodore-switch.is-large[aria-checked="false"] i { box-shadow: none; }
+@media (prefers-reduced-motion: reduce) {
+  .objectives-commodore-row, .objectives-commodore-switch i { transition: none; }
+}
+
+.objectives-commodore-row-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.objectives-commodore-row-main:focus-visible { outline: none; }
+.objectives-commodore-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+.objectives-commodore-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 4px;
+  margin-top: 1px;
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
+.objectives-commodore-row-meta .is-on { color: var(--brass-ink); }
+.objectives-commodore-row-meta .is-warn { color: var(--warn-ink); }
+
+/* 「…」 메뉴의 「사령관 지시…」 — 머리 글리프는 줄의 켬 사각을 작게. */
+.objectives-commodore-menu-glyph i { display: block; width: 9px; height: 9px; border-radius: 2px; background: var(--brass); }
+
+/* 「사령관 기록」 서랍 — 사이드바 바로 옆, 목록과 같은 높이의 비모달 면. 보드와 함께 본다. */
+.objectives-commodore-drawer {
+  position: fixed;
+  z-index: 55;
+  width: 440px;
+  max-width: calc(100vw - 16px);
+  /* 머리·탭·발은 제 높이, 본문이 나머지를 채운다 — 재시도 줄·실패 줄은 있을 때만 선다. */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 16px);
+  overflow: hidden;
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
+  font-size: var(--t-md);
+}
+.objectives-commodore-drawer-head { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 14px 14px 10px 16px; }
+.objectives-commodore-drawer-id { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.objectives-commodore-drawer-name { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-ui); font-size: var(--t-lg); font-weight: var(--weight-bold); line-height: 1.2; }
+.objectives-commodore-drawer-sub { margin: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 1.4; font-variant-numeric: tabular-nums; }
+.objectives-commodore-drawer-head .objectives-launch { flex: none; }
+.objectives-commodore-model-head { color: var(--text-tertiary); font-size: var(--t-2xs); }
+.objectives-commodore-close {
+  display: grid; place-items: center; flex: none;
+  width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: 6px; background: transparent;
+  color: var(--text-tertiary); cursor: pointer;
+}
+.objectives-commodore-close svg { width: 14px; height: 14px; }
+.objectives-commodore-close:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-primary); }
+.objectives-commodore-close:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+.objectives-commodore-retry { display: flex; align-items: center; gap: 10px; margin: 0 16px 8px; color: var(--warn-ink); font-size: var(--t-xs); }
+
+.objectives-commodore-tabs { flex: none; display: flex; gap: 18px; padding: 0 16px; border-bottom: 1px solid var(--surface-rim); }
+.objectives-commodore-tab {
+  margin-bottom: -1px; padding: 6px 0 9px;
+  border: 0; border-bottom: 2px solid transparent; background: transparent;
+  color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-sm); font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+.objectives-commodore-tab:hover { color: var(--text-secondary); }
+.objectives-commodore-tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--brass); }
+.objectives-commodore-tab:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 2px; }
+
+.objectives-commodore-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 16px; display: grid; gap: 14px; align-content: start; scrollbar-width: thin; }
+.objectives-commodore-empty { margin: 0; padding: 24px 4px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.6; text-align: center; }
+
+.objectives-commodore-log { display: grid; gap: 16px; align-content: start; }
+.objectives-commodore-wake { display: grid; gap: 7px; }
+.objectives-commodore-wake-head { display: flex; gap: 8px; align-items: baseline; margin: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-wake-head b { color: var(--aurora); font-weight: var(--weight-medium); }
+.objectives-commodore-wake.is-message .objectives-commodore-wake-head b { color: var(--text-secondary); }
+.objectives-commodore-wake-text { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-commodore-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.objectives-commodore-act {
+  display: inline-flex; gap: 6px; max-width: 100%; min-width: 0;
+  padding: 4px 9px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-pill);
+  color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 1.3;
+}
+.objectives-commodore-act b { flex: none; color: var(--brass-ink); font-weight: var(--weight-bold); }
+.objectives-commodore-act span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-commodore-note { margin: 0; font-size: var(--t-xs); }
+.objectives-commodore-note.is-warn { color: var(--warn-ink); }
+.objectives-commodore-note.is-dim { color: var(--text-tertiary); }
+.objectives-commodore-tools { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 1.5; }
+.objectives-commodore-tools summary { cursor: pointer; list-style: none; width: max-content; max-width: 100%; }
+.objectives-commodore-tools summary::-webkit-details-marker { display: none; }
+.objectives-commodore-tools summary::after { content: " ›"; }
+.objectives-commodore-tools[open] summary::after { content: " ⌄"; }
+.objectives-commodore-tools summary:hover { color: var(--text-secondary); }
+.objectives-commodore-tools summary:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
+.objectives-commodore-tools ul { margin: 6px 0 0; padding: 0 0 0 10px; list-style: none; display: grid; gap: 3px; }
+.objectives-commodore-tools li { display: flex; gap: 8px; min-width: 0; }
+.objectives-commodore-tools li.is-failed { color: var(--warn-ink); }
+.objectives-commodore-tool-name { flex: none; font-family: var(--font-code); color: var(--text-secondary); }
+.objectives-commodore-marker { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-marker::after { content: ""; flex: 1; height: 1px; background: var(--surface-rim); }
+.objectives-commodore-older { justify-self: center; }
+
+.objectives-commodore-section { display: grid; gap: 8px; }
+.objectives-commodore-section + .objectives-commodore-section { border-top: 1px solid var(--surface-rim); padding-top: 14px; }
+.objectives-commodore-section-title { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.objectives-commodore-later { color: var(--text-tertiary); font-weight: var(--weight-regular); }
+.objectives-commodore-section-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.objectives-commodore-hint { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
+.objectives-commodore-hint.is-done { color: var(--positive); }
+
+.objectives-commodore-input {
+  box-sizing: border-box; width: 100%; min-height: 38px; max-height: 120px; resize: vertical;
+  padding: 8px 10px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs);
+  background: var(--control-field); color: var(--text-primary);
+  font: inherit; font-size: var(--t-sm); line-height: 1.5;
+}
+.objectives-commodore-input.is-tall { min-height: 140px; max-height: none; }
+.objectives-commodore-input.is-medium { min-height: 64px; }
+.objectives-commodore-input::placeholder { color: var(--text-tertiary); }
+.objectives-commodore-input:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+.objectives-commodore-intel-list, .objectives-commodore-sources { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.objectives-commodore-intel-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
+.objectives-commodore-intel-when { color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-intel-text { overflow-wrap: anywhere; white-space: pre-wrap; }
+.objectives-commodore-intel-source { margin-left: 8px; color: var(--text-tertiary); font-size: var(--t-2xs); }
+.objectives-commodore-sources li { display: flex; gap: 8px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); }
+.objectives-commodore-source-locator { color: var(--text-tertiary); font-size: var(--t-2xs); overflow-wrap: anywhere; }
+
+.objectives-commodore-text-button {
+  padding: 2px 4px; border: 0; border-radius: var(--radius-xs); background: transparent;
+  color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; white-space: nowrap;
+}
+.objectives-commodore-text-button:hover:not(:disabled) { color: var(--brass-ink); }
+.objectives-commodore-text-button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-text-button:disabled { opacity: 0.45; cursor: default; }
+.objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 2px; }
+
+.objectives-commodore-failure { margin: 0 16px 8px; color: var(--coral); font-size: var(--t-xs); }
+.objectives-commodore-foot { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--surface-rim); }
+.objectives-commodore-foot .objectives-commodore-input { flex: 1; }
+.objectives-commodore-foot-note { color: var(--text-tertiary); font-size: var(--t-xs); }

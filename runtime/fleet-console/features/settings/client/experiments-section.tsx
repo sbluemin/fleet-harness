@@ -108,6 +108,37 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
           </div>
         );
       })}
+      {/* 자율 운영 — 켬/끔과 사령관 세션의 기본 모델·강도. 보조 AI 행과 같은 선택기에 스위치가 붙는다. */}
+      <div className="global-settings-row experiments-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            {t("settings.experiments.commodore.title")}
+            <SettingsHelp title={t("settings.experiments.commodore.title")}>{t("settings.experiments.commodore.help")}</SettingsHelp>
+          </p>
+        </div>
+        <div className="experiments-row-controls">
+          <ModelPicker
+            value={experiments.commodoreModel}
+            options={options}
+            disabled={saving}
+            label={t("settings.experiments.modelAria", { feature: t("settings.experiments.commodore.title") })}
+            onChange={(value) => save({ ...experiments, commodoreModel: value })}
+            effort={{
+              value: experiments.commodoreEffort,
+              levels: EXPERIMENT_EFFORTS,
+              ariaLabel: t("settings.experiments.effortAria", { feature: t("settings.experiments.commodore.title") }),
+              labelOf: (level) => t(`settings.experiments.effort.${level as ExperimentEffort}`),
+              onChange: (next) => save({ ...experiments, commodoreEffort: next as ExperimentEffort }),
+            }}
+          />
+          <SettingsToggle
+            checked={experiments.commodore}
+            disabled={saving}
+            ariaLabel={t("settings.experiments.commodore.title")}
+            onChange={(next) => save({ ...experiments, commodore: next })}
+          />
+        </div>
+      </div>
       <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
     </section>
   );
