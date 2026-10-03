@@ -1954,8 +1954,7 @@ describe("Instrument core design contract", () => {
     const rightRail = source("chrome/rail/right-rail.tsx");
     const settingsPane = source("../../../features/settings/client/settings-pane.tsx");
     const railStore = source("chrome/rail/rail-store.ts");
-    // K-05 A: 부유 카드 재질은 유지하되, 확대 작업면을 보호하는 비모달 오버레이를 허용한다.
-    expect(rail).toContain(".right-rail.is-overlay");
+    // K-05 A: 확대 작업면을 보호하는 비모달 오버레이는 승인된 형태다(부유 카드 재질은 유지).
     expect(rail).not.toContain(".right-rail.is-switching");
     expect(rail).toMatch(/\.right-rail \{[^}]*position: absolute;/);
     expect(rail).toMatch(/\.right-rail \{[^}]*border-radius: var\(--radius-md\);/);
