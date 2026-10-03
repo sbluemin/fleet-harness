@@ -187,6 +187,8 @@ function harness(routingOrigin: () => string | null = () => null) {
           if (input.launchKey && hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
           return { operationId: id };
         },
+        // 전사 — 호스트가 소유를 따진 뒤 돌려주는 한 쪽. 어느 세션을 읽었는지만 남긴다.
+        transcript: async (operationId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${operationId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
         observe: (id: string) => {
           const state = activity.get(id);
           return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"), supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
@@ -1717,6 +1719,11 @@ describe("Objectives contract", () => {
       const result = await consoleTool.execute({ objectiveId: id, complete: true }, { cwd: workspace, caller: { kind: "operation", operationId } }) as { structuredContent: Record<string, unknown> };
       expect(result.structuredContent.error).toBe("own_objective");
     }
+    // 세션 전사 — 사령관은 지휘관·구성원 세션을 마지막 줄부터 읽는다. Operation 호출자는 console_operation 의 읽기 허가를 지나야 하므로 보드로는 읽지 못한다.
+    expect(await board({ view: "transcript", objectiveId: id })).toMatchObject({ session: { kind: "commander" }, latest: true, entries: [{ text: `from ${id}` }] });
+    expect(await board({ view: "transcript", objectiveId: id, memberId, cursor: "0" })).toMatchObject({ session: { kind: "member", memberId }, latest: false, nextCursor: "7", entries: [{ text: `from ${memberId}` }] });
+    const outsider = await consoleTool.execute({ view: "transcript", objectiveId: id }, { cwd: workspace, caller: { kind: "operation", operationId: "outsider" } }) as { structuredContent: Record<string, unknown> };
+    expect(outsider.structuredContent.error).toBe("commodore_only");
     const mine = await command("read", {}, id);
     const revision = (mine.objective as { decisionRequestRevision: number }).decisionRequestRevision;
     await command("request_decision", { expectedRevision: revision, questions: [{ text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }] }, id);
