@@ -74,6 +74,9 @@ interface PendingReason {
   readonly details: string[];
 }
 
+/** 보드 대기 상태의 코드 — 수는 턴 직전의 보드에서 다시 센다. */
+const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "pending", "planned"]);
+
 export function wakeToken(code: WakeCode, count?: number): string {
   return count === undefined ? code : `${code}:${count}`;
 }
@@ -248,9 +251,16 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         scheduleRetry(runner, failureCode(error, "session_failed"));
         return;
       }
-      // 이유는 세션이 열린 뒤에 거둔다 — 열지 못하면 그대로 남아 재시도 턴에 실린다.
-      const pending = [...runner.pending.entries()];
+      // 이유는 세션이 열린 뒤에 거둔다 — 열지 못하면 그대로 남아 재시도 턴에 실린다. 보드 대기 상태의 수는 지금 보드에서 다시 센다
+      // (모인 동안 사령관 자신이 완료한 목표는 빠진다); 그새 사라진 대기 상태는 이유에서 내린다.
+      const digest = new Map(inboxDigest(deps.objectives(runner.theaterId)));
+      const pending = [...runner.pending.entries()].flatMap(([code, reason]): [WakeCode, PendingReason][] => {
+        if (!BOARD_CODES.has(code)) return [[code, reason]];
+        const count = digest.get(code) ?? 0;
+        return count ? [[code, { ...reason, count }]] : [];
+      });
       runner.pending.clear();
+      if (!pending.length) { setPhase(runner, "idle"); return; }
       const messages = runner.messages.splice(0);
       const reasons = pending.map(([code, reason]) => wakeToken(code, reason.count));
       const sentences = pending.map(([code, reason]) => wakeSentence(code, reason));

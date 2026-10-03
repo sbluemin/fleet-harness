@@ -320,12 +320,27 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["planned:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain("1 objective has a lineup ready to commence");
+      // 수는 턴 직전의 보드로 센다 — 모이는 동안 사령관이 끝낸 검토 대기는 빠지고, 다 사라지면 턴도 없다.
+      (objectives[0] as { awaitingReview: boolean }).awaitingReview = true;
+      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
+      (objectives[1] as { awaitingReview: boolean }).awaitingReview = true;
+      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o2" });
+      (objectives[0] as { awaitingReview: boolean }).awaitingReview = false;
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["review:1"]);
+      (objectives[1] as { awaitingReview: boolean }).awaitingReview = false;
+      (objectives[0] as { awaitingReview: boolean }).awaitingReview = true;
+      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
+      (objectives[0] as { awaitingReview: boolean }).awaitingReview = false;
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["review:1"]);
+      expect(sessions[0]!.sent).toHaveLength(5);
       // 대기 상태가 줄기만 하면(사령관 자신의 개시·완료) 깨우지 않는다 — 빈 inbox 를 읽으러 깨어나지 않게.
-      (objectives[1] as { commenced: boolean; missions: { done: boolean }[] }).commenced = true;
-      (objectives[1] as { missions: { done: boolean }[] }).missions[0]!.done = true;
+      (objectives[1] as unknown as { commenced: boolean; missions: { done: boolean }[] }).commenced = true;
+      (objectives[1] as unknown as { missions: { done: boolean }[] }).missions[0]!.done = true;
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o2" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(4);
+      expect(sessions[0]!.sent).toHaveLength(5);
 
       // 정체 — 임무가 남았는데 지휘관이 30분 넘게 쉬면 한 번 깨우고, 상태에 그 목표 id 가 선다.
       (objectives[0] as { decisionRequest: unknown }).decisionRequest = null;
