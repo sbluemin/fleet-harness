@@ -1,4 +1,4 @@
-import type { ClientRailCapability } from "../plugin/types.js";
+import type { ClientConsoleStateCapability, ClientNotificationsCapability, ClientRailCapability } from "../plugin/types.js";
 import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { ReactNode } from "react";
 
@@ -78,6 +78,10 @@ export interface ExpandedSurfaceContext {
   readonly navigate: ClientNavigateCapability;
   readonly shell: ClientShellCapability;
   readonly rail: ClientRailCapability;
+  /** Theater 이름·활성 Theater 등 콘솔 상태 읽기 창구 — install ctx와 같다. */
+  readonly consoleState: ClientConsoleStateCapability;
+  /** 호스트 토스트·알림 — install ctx와 같다. */
+  readonly notifications: ClientNotificationsCapability;
   /** 서술자가 선언한 id 그대로. */
   readonly surfaceId: string;
   /** 같은 표면을 두 페인에 띄웠을 때 둘을 가르는 id. */

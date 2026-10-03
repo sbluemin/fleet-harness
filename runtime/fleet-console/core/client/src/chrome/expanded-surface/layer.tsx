@@ -324,6 +324,8 @@ function SurfacePane({
     navigate: capabilities.navigate,
     shell: capabilities.shell,
     rail: capabilities.rail,
+    consoleState: capabilities.consoleState,
+    notifications: capabilities.notifications,
     api: capabilities.api,
     lifecycle: capabilities.lifecycle,
     preferences: capabilities.preferences,

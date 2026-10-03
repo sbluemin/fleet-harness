@@ -133,6 +133,8 @@ export function usePaneContext({
     navigate: opening.navigate,
     shell: opening.shell,
     rail: opening.rail,
+    consoleState: opening.consoleState,
+    notifications: opening.notifications,
     get signal() { return controllerRef.current!.signal; },
     ...(requestExtraWidth === undefined ? {} : { requestExtraWidth }),
     language,

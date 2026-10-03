@@ -78,6 +78,8 @@ function toPaneContext(ctx: ExpandedSurfaceContext, role: import("@fleet-console
     navigate: ctx.navigate,
     shell: ctx.shell,
     rail: ctx.rail,
+    consoleState: ctx.consoleState,
+    notifications: ctx.notifications,
     api: ctx.api,
     lifecycle: ctx.lifecycle,
     preferences: ctx.preferences,

@@ -24,9 +24,9 @@ let root: Root;
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function paneCtx(theaterId: string, params: Record<string, string>): PaneContext {
-  const { navigate, shell, rail } = createClientCapabilities();
+  const { navigate, shell, rail, consoleState, notifications } = createClientCapabilities();
   return {
-    navigate, shell, rail,
+    navigate, shell, rail, consoleState, notifications,
     paneId: "file-explorer-document",
     instanceId: "pane-1",
     params,

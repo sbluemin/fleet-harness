@@ -1,4 +1,4 @@
-import type { ClientRailCapability } from "../plugin/types.js";
+import type { ClientConsoleStateCapability, ClientNotificationsCapability, ClientRailCapability } from "../plugin/types.js";
 import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { ReactNode } from "react";
 
@@ -177,6 +177,10 @@ export interface PaneContext {
   readonly navigate: ClientNavigateCapability;
   readonly shell: ClientShellCapability;
   readonly rail: ClientRailCapability;
+  /** Theater 이름·활성 Theater처럼 페인 머리에 필요한 콘솔 상태 — install ctx와 같은 읽기 창구다. */
+  readonly consoleState: ClientConsoleStateCapability;
+  /** 호스트 토스트·알림 — install ctx와 같은 창구다. */
+  readonly notifications: ClientNotificationsCapability;
   /** 서술자가 선언한 id 그대로. `panes.open`의 주소와 같다. */
   readonly paneId: string;
   /** 같은 페인을 두 자리에 띄웠을 때 둘을 가르는 id. */
