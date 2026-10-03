@@ -26,10 +26,11 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
          -q "[.[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and .content==\"+1\" and (.created_at > \"$HEAD_TS\"))]|length")
        RC=$(gh pr view $PR --repo $REPO --json reviews \
          -q "[.reviews[]|select(.author.login==\"chatgpt-codex-connector\")]|length")
-       TOP=$(gh api repos/$REPO/issues/$PR/comments \
-         -q "[.[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.created_at > \"$HEAD_TS\"))]|length")
-       SUMMARY_TS=$(gh api repos/$REPO/issues/$PR/comments \
-         -q "[.[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.body|contains(\"codex-pull-request-review-summary\")))][0].updated_at // \"\"")
+       # --paginate runs the filter per page, so emit one line per match and count or pick across pages.
+       TOP=$(gh api --paginate repos/$REPO/issues/$PR/comments \
+         -q ".[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.created_at > \"$HEAD_TS\"))|.id" | wc -l | tr -d ' ')
+       SUMMARY_TS=$(gh api --paginate repos/$REPO/issues/$PR/comments \
+         -q ".[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.body|contains(\"codex-pull-request-review-summary\")))|.updated_at" | head -n 1)
        [ "${PLUS:-0}" -gt 0 ] && { echo "SIGNAL=APPROVED"; exit 0; }
        [ "${RC:-$BASE}" -gt "$BASE" ] && { echo "SIGNAL=NEW_REVIEW"; exit 0; }
        [ "${TOP:-$BASE_TOP}" -gt "$BASE_TOP" ] && { echo "SIGNAL=NEW_TOPLEVEL"; exit 0; }
@@ -39,7 +40,7 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
      echo "SIGNAL=TIMEOUT"; exit 0
      ```
      Do **not** wrap the loop in `nohup … &` — that detaches it from the harness, so its exit never re-invokes you. The `run_in_background` call itself is the only backgrounding needed.
-4. **On wake, read the full state and route.** When the poll exits, read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api repos/<repo>/issues/<pr_number>/comments`; PR-body reactions `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`. Then:
+4. **On wake, read the full state and route.** When the poll exits, read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api --paginate repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api --paginate repos/<repo>/issues/<pr_number>/comments`; PR-body reactions `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`. Then:
    - **Approval = final-audit trigger.** A fresh `chatgpt-codex-connector[bot]` `+1` on the PR body (`created_at` newer than both the latest pushed head commit and the most recent `@codex` re-review comment) **and** no new actionable comments → go to Phase 6. Treat the signal as code-review completion, not product-correctness proof, and record head coverage from the summary's reviewed SHA as the [classification](#classify-what-codex-actually-reviewed) requires; report it as unconfirmed when that SHA differs from the head. A `+1` predating the latest push is stale (GitHub keeps the old reaction) — ignore it. A bare `eyes` reaction means the review is still in progress (pending), not approval.
    - **New actionable feedback** → Phase 4.
    - **Usage-limit notice** → classify with the table below before routing; it is neither feedback nor approval.

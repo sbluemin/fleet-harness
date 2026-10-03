@@ -64,7 +64,8 @@ log({
   resume: argAfter("--resume") ?? null,
   mcpServers,
   // Flag names only: values and positional arguments (the launch prompt, inline settings) can hold sensitive input.
-  flags: args.filter((value) => value.startsWith("--")).map((value) => value.split("=")[0]).slice(0, 80),
+  // A prompt can itself start with "--", so keep only tokens shaped like a bare option name.
+  flags: args.map((value) => value.split("=")[0]).filter((name) => /^--[a-z][a-z0-9-]*$/.test(name)).slice(0, 80),
 });
 const exit = (reason) => {
   log({ event: "exit", reason });
