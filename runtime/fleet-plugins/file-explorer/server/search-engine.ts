@@ -5,7 +5,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import fsp from "node:fs/promises";
 import type { Readable } from "node:stream";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { FileSearchItem, FileSearchResult, Utf16Span } from "./types.js";
 
@@ -24,6 +24,12 @@ interface PathCatalog {
   readonly includeHidden: boolean;
   readonly createdAt: number;
   readonly paths: readonly string[];
+  readonly skippedPaths: number;
+}
+
+interface RipgrepOutput {
+  readonly stdout: string;
+  readonly skippedPaths: number;
 }
 
 const pathCatalogs = new Map<string, Promise<PathCatalog>>();
@@ -135,6 +141,7 @@ export async function searchFilesWithRipgrep(
     totalMatches: outcome.totalMatches ?? outcome.items.length,
     complete: outcome.complete && !ignoredSkipped,
     ignoredSkipped,
+    ...(outcome.skippedPaths > 0 ? { skippedPaths: outcome.skippedPaths } : {}),
     elapsedMs: Math.round((performance.now() - startedAt) * 10) / 10,
     engine: "ripgrep",
   };
@@ -145,16 +152,17 @@ async function searchPaths(
   query: string,
   limit: number,
   options: SearchFilesWithRipgrepOptions,
-): Promise<{ readonly items: FileSearchItem[]; readonly totalMatches: number; readonly complete: true }> {
+): Promise<{ readonly items: FileSearchItem[]; readonly totalMatches: number; readonly complete: boolean; readonly skippedPaths: number }> {
   const catalog = await getPathCatalog(root, options);
-  if (options.signal?.aborted) return { items: [], totalMatches: 0, complete: true };
+  if (options.signal?.aborted) return { items: [], totalMatches: 0, complete: true, skippedPaths: 0 };
   const ranked = catalog.paths
     .map((relativePath) => rankPath(relativePath, query))
     .filter((item): item is RankedPath => item !== null)
     .sort(compareRankedPaths);
   return {
     totalMatches: ranked.length,
-    complete: true,
+    complete: catalog.skippedPaths === 0,
+    skippedPaths: catalog.skippedPaths,
     items: ranked.slice(0, limit).map(({ relativePath, score, pathRanges }) => ({
       relativePath,
       kind: "file",
@@ -179,7 +187,7 @@ async function getPathCatalog(root: string, options: SearchFilesWithRipgrepOptio
   // catalog 수집은 공유 작업이다. 한 입력 세대의 abort로 process를 죽이면 빈 catalog가 다른
   // 질의에 재사용된다. 호출자는 아래 wait만 취소하고 수집은 완성해 다음 질의가 이어 쓴다.
   const pending = collectPaths(root, includeHidden, includeIgnored)
-    .then((paths): PathCatalog => ({ root, includeHidden, createdAt: performance.now(), paths }))
+    .then((catalog): PathCatalog => ({ root, includeHidden, createdAt: performance.now(), ...catalog }))
     .catch((error) => {
       pathCatalogs.delete(key);
       catalogRoots.delete(key);
@@ -189,17 +197,20 @@ async function getPathCatalog(root: string, options: SearchFilesWithRipgrepOptio
   return pending;
 }
 
-async function collectPaths(root: string, includeHidden: boolean, includeIgnored: boolean, signal?: AbortSignal): Promise<string[]> {
+async function collectPaths(root: string, includeHidden: boolean, includeIgnored: boolean, signal?: AbortSignal): Promise<Pick<PathCatalog, "paths" | "skippedPaths">> {
   const args = ["--files", "--null", "--no-config", "--no-require-git"];
   if (includeHidden) args.push("--hidden");
   if (includeIgnored) args.push("--no-ignore");
   for (const glob of VCS_GLOBS) args.push("-g", glob);
   const output = await runRipgrep(root, args, signal);
-  return output
-    .split("\0")
-    .filter(Boolean)
-    .map(normalizeRelativePath)
-    .filter((relativePath) => includeHidden || !relativePath.split("/").some((segment) => segment.startsWith(".")));
+  return {
+    skippedPaths: output.skippedPaths,
+    paths: output.stdout
+      .split("\0")
+      .filter(Boolean)
+      .map(normalizeRelativePath)
+      .filter((relativePath) => includeHidden || !relativePath.split("/").some((segment) => segment.startsWith("."))),
+  };
 }
 
 async function searchContents(
@@ -207,7 +218,7 @@ async function searchContents(
   query: string,
   limit: number,
   options: SearchFilesWithRipgrepOptions,
-): Promise<{ readonly items: FileSearchItem[]; readonly totalMatches?: number; readonly complete: boolean }> {
+): Promise<{ readonly items: FileSearchItem[]; readonly totalMatches?: number; readonly complete: boolean; readonly skippedPaths: number }> {
   const args = [
     "--json",
     "--no-config",
@@ -226,11 +237,13 @@ async function searchContents(
   for (const glob of VCS_GLOBS) args.push("-g", glob);
   args.push("--", query, ".");
 
-  const child = spawnRipgrep(root, args);
+  const child = await spawnRipgrep(root, args);
   const detach = bindAbort(child, options.signal);
   const candidates: FileSearchItem[] = [];
   let pending = "";
   let stderr = "";
+  let receivedOutput = false;
+  let skippedPaths = 0;
   let settled = false;
 
   try {
@@ -239,6 +252,7 @@ async function searchContents(
       child.stderr.setEncoding("utf8");
       child.stdout.on("data", (chunk: string) => {
         if (settled) return;
+        receivedOutput = true;
         pending += chunk;
         const lines = pending.split("\n");
         pending = lines.pop() ?? "";
@@ -262,8 +276,8 @@ async function searchContents(
           const item = parseContentMatch(pending, query);
           if (item) candidates.push(item);
         }
-        // rg는 일치 없음에 1을 쓴다.
-        if (code === 0 || code === 1) resolve();
+        skippedPaths = countSkippedPaths(stderr);
+        if (code === 0 || code === 1 || (code === 2 && receivedOutput && skippedPaths > 0)) resolve();
         else reject(new Error(stderr.trim() || `ripgrep exited ${code}`));
       });
     });
@@ -271,10 +285,12 @@ async function searchContents(
     detach();
   }
 
+  skippedPaths = countSkippedPaths(stderr);
   return {
     items: candidates.slice(0, limit),
     totalMatches: settled ? undefined : candidates.length,
-    complete: !settled,
+    complete: !settled && skippedPaths === 0,
+    skippedPaths,
   };
 }
 
@@ -428,8 +444,12 @@ function normalizeRelativePath(relativePath: string): string {
   return relativePath.replaceAll("\\", "/").replace(/^\.\//, "");
 }
 
-async function runRipgrep(root: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
-  const child = spawnRipgrep(root, args);
+function countSkippedPaths(stderr: string): number {
+  return new Set(stderr.split("\n").filter((line) => /\(os error \d+\)\s*$/.test(line))).size;
+}
+
+async function runRipgrep(root: string, args: readonly string[], signal?: AbortSignal): Promise<RipgrepOutput> {
+  const child = await spawnRipgrep(root, args);
   const detach = bindAbort(child, signal);
   let stdout = "";
   let stderr = "";
@@ -448,11 +468,11 @@ async function runRipgrep(root: string, args: readonly string[], signal?: AbortS
       child.once("error", reject);
       child.once("close", (code, killedSignal) => {
         if (signal?.aborted || killedSignal) { resolve(); return; }
-        if (code === 0) resolve();
+        if (code === 0 || code === 1 || (code === 2 && stdout.length > 0 && countSkippedPaths(stderr) > 0)) resolve();
         else reject(new Error(stderr.trim() || `ripgrep exited ${code}`));
       });
     });
-    return signal?.aborted ? "" : stdout;
+    return { stdout: signal?.aborted ? "" : stdout, skippedPaths: countSkippedPaths(stderr) };
   } finally {
     detach();
   }
@@ -460,8 +480,9 @@ async function runRipgrep(root: string, args: readonly string[], signal?: AbortS
 
 type RipgrepProcess = ChildProcessByStdio<null, Readable, Readable>;
 
-function spawnRipgrep(root: string, args: readonly string[]): RipgrepProcess {
-  const { rgPath } = requireFromConsole("@vscode/ripgrep") as { readonly rgPath: string };
+async function spawnRipgrep(root: string, args: readonly string[]): Promise<RipgrepProcess> {
+  const entryUrl = pathToFileURL(requireFromConsole.resolve("@vscode/ripgrep")).href;
+  const { rgPath } = await import(entryUrl) as { readonly rgPath: string };
   return spawn(rgPath, args, {
     cwd: root,
     env: { ...process.env, RG_CONFIG_PATH: "" },

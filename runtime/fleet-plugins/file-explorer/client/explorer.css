@@ -218,6 +218,43 @@
 }
 .fexp-view-mode button:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
+.fexp-viewer-access {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 4px 12px;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.fexp-viewer-access button {
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.fexp-viewer-access button:hover,
+.fexp-viewer-access button:focus-visible {
+  color: var(--brass-ink);
+}
+
+.fexp-viewer-access button:disabled {
+  color: var(--text-tertiary);
+  cursor: wait;
+}
+
+.fexp-viewer-action-error {
+  padding: 4px 12px;
+  font-size: var(--t-xs);
+  color: var(--warn-ink);
+}
+
 .fexp-viewer-meta {
   display: flex;
   align-items: center;
@@ -944,6 +981,8 @@
 
 .fexp-status.is-warn {
   color: var(--warn-ink);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .fexp-status.is-inline {
@@ -1012,11 +1051,11 @@
 
 .fexp-tree-row.is-sticky {
   position: relative;
-  background: var(--glass-tint-panel);
+  background: var(--surface-panel);
 }
 
 .fexp-tree-row.is-sticky:hover {
-  background: var(--surface-glass-strong);
+  background: var(--surface-panel-raised);
 }
 
 /* ── 행 ── */

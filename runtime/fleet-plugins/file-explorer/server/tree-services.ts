@@ -659,8 +659,9 @@ export async function handleFilesSearch(
         scope,
         literal: body.literal !== false,
       });
-    } catch {
+    } catch (error) {
       if (abort.signal.aborted) return;
+      console.warn("[file-explorer] ripgrep search failed", error);
       // 실행 파일이 없는 플랫폼도 파일명 검색은 유지한다. 내용 검색은 거짓 결과 대신 실패한다.
       if (scope === "contents") throw new Error("content_search_unavailable");
       let walker = await searchTheaterFiles(theaterPath, body.query, body.limit as number, {

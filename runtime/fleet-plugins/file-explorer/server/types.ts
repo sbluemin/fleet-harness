@@ -67,6 +67,8 @@ export interface FileSearchResult {
   readonly elapsedMs?: number;
   readonly engine?: "ripgrep" | "walker";
   readonly degraded?: "walker";
+  /** 파일시스템 오류로 건너뛴 경로 수 — 호스트 경로는 노출하지 않는다. */
+  readonly skippedPaths?: number;
   /** 탐색 상한(디렉터리/엔트리 캡)에 걸려 전체를 탐색하지 못한 경우에만 존재 */
   readonly walkCapped?: true;
   /** ignore 규칙 때문에 검색하지 않은 경로가 있을 수 있으면 true. */
