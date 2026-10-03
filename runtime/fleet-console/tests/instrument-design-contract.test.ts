@@ -877,28 +877,13 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).not.toContain("onTogglePerimeter");
   });
 
-  it("keeps backdrop blur on the liquid glass channels without deprecated accent variables", () => {
+  it("keeps glass fallbacks and focus grammar without deprecated accent variables", () => {
     const css = OWNED_SOURCES.filter((path) => path.endsWith(".css")).map(source).join("\n");
     expect(css).not.toMatch(/--op-accent|--chip-accent/);
-    // 리퀴드 글래스 계약: backdrop-filter는 theme.css의 glass 채널(var(--glass-backdrop-*))만
-    // 소비한다. raw blur를 표면에 직접 들면 세 게이트(@supports 미달·prefers-reduced-transparency·
-    // 라이트 테마)가 그 표면을 놓쳐 불투명 폴백 계약이 깨진다. 중첩 Shell·Operation
-    // 자식의 명시적 none은 조상 blur가 이중 적용되지 않게 닫는 유일한 예외다.
-    const backdropDeclarations = css.match(/(?:-webkit-)?backdrop-filter:[^;\n]*;/g) ?? [];
-    expect(backdropDeclarations.length).toBeGreaterThan(0);
-    for (const declaration of backdropDeclarations) {
-      expect(declaration).toMatch(/^(?:-webkit-)?backdrop-filter: (?:var\(--glass-backdrop-(?:strong|soft|side-bar|panel|terminal|scrim)\)|none);$/);
-    }
     // 게이트와 폴백 기본값은 theme.css에 존재해야 한다 — 채널 기본값이 곧 구 불투명 계약이다.
     const theme = source("styles/theme.css");
     expect(theme).toContain("--glass-underlay: var(--ink-deep);");
-    // 좌측 사이드바 blur 손잡이는 반경만 사용자 값으로 갈아 끼우고 게이트는 채널이 그대로 진다 —
-    // 재료에 var()가 빠지면 손잡이가 죽고, base/되돌림의 none이 빠지면 게이트 닫힘이 새 채널을 놓친다.
-    expect(theme).toContain("--glass-on-backdrop-side-bar: blur(var(--side-bar-glass-blur, 24px)) saturate(1.7);");
-    expect((theme.match(/--glass-backdrop-side-bar: none;/g) ?? []).length).toBe(2);
-    expect(theme).toContain("--glass-backdrop-side-bar: var(--glass-on-backdrop-side-bar);");
     expect(theme).toContain("@media (prefers-reduced-transparency: reduce)");
-    expect(theme).toMatch(/@supports \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\)/);
     expect(css).toContain("background: var(--surface-glass)");
     expect(css).toContain(":focus-visible");
     // brass 채움 버튼은 전용 on-brass 텍스트 티어를 소비한다 — abyss 재결합은 라이트 AA 회귀다.
@@ -916,8 +901,6 @@ describe("Instrument core design contract", () => {
     expect(whites).not.toBe("");
     const whitesDeclarations = whites.replace(/\/\*[\s\S]*?\*\//g, "");
     expect(whitesDeclarations).not.toMatch(/--(?:glass|canvas)-on-/);
-    // 반대 방향도 못박는다 — 다크 3종은 계속 재료를 가져야 게이트가 실을 것이 있다.
-    expect(theme).toMatch(/--glass-on-backdrop-strong: blur\(/);
   });
 
   /* 겉모습 축소판은 페인 이전과 함께 은퇴했다 — 설정이 콘솔 옆에 서므로 콘솔 자체가
@@ -957,8 +940,7 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--glass-pane-light: transparent;");
     expect(theme).toContain("--canvas-ambience: var(--canvas-sea-core);");
     // 다크 3종은 Ghostty 계열 smoked pane처럼 60% tint로 뒤의 캔버스·겹친 창 윤곽을 통과시킨다.
-    // pane-light는 22%만 얹고 Operation·War Room 카드는 blur하지 않는다. Shell은 같은 60%
-    // terminal tint 위에 20px blur만 더해 글자 밀도가 높은 작업면의 판독성을 보존한다.
+    // pane-light는 22%만 얹고 terminal도 같은 반투명 tint를 쓴다.
     expect(theme).toContain("--glass-on-tint-panel: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));");
     expect(theme).toContain("--glass-on-tint-panel: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));");
     expect(theme).toContain("--glass-on-tint-panel: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));");
@@ -966,8 +948,6 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--glass-on-tint-terminal: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));");
     expect(theme).toContain("--glass-on-tint-terminal: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));");
     expect((theme.match(/--glass-on-pane-light: oklch\([^)]+\/ 22%\);/g) ?? []).length).toBe(3);
-    expect(theme).toContain("--glass-on-backdrop-panel: none;");
-    expect(theme).toContain("--glass-on-backdrop-terminal: blur(20px) saturate(1.45);");
     // 유리를 받는 테마는 다크 3종뿐이고, 그 셋은 전부 필드를 루트 유리에 넘긴다.
     // 라이트는 게이트 밖이라 재료 자체가 없다(별칭 한 줄도 남기지 않는다).
     expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(3);
@@ -1823,7 +1803,7 @@ describe("Instrument core design contract", () => {
     // 상태 마크의 조형은 12px 원 하나다(둥근 네모 비콘은 폐지). 테두리가 진행을, 가운데 점·획이 결과를 말한다.
     expect(components).not.toContain(".tenant-beacon");
     expect(components).toMatch(/\.status-glyph \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 1\.3px solid var\(--hairline-strong\);[^}]*border-radius: 50%;/);
-    expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.2s steps\(12, end\) infinite;/);
+    expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.4s linear infinite;/);
     expect(components).toMatch(/\.status-glyph\.is-background \{\s*border: 1\.3px dashed/);
     expect(components).toMatch(/\.canvas-fleet-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
@@ -2038,14 +2018,7 @@ describe("Instrument core design contract", () => {
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const scuttlebuttCss = externalSource(SCUTTLEBUTT_CSS_PATH);
-    // Doctrine: scrim-backed popup cards, floating menus, and anchored guidance cards
-    // composite their tint layers over the --glass-underlay channel and carry
-    // backdrop-filter via the --glass-backdrop-* channels (canonical doctrine comment:
-    // .whatsnew-card in components.css). The channel defaults reproduce the old opaque
-    // contract exactly — underlay = var(--ink-deep), tint = the old surface tokens,
-    // blur = none — so any closed gate (@supports, prefers-reduced-transparency,
-    // light theme) restores full opacity. Painting raw --surface-* or var(--ink-deep)
-    // directly on a popup is a regression: that surface would escape the gates.
+    // 팝업은 틴트와 언더레이 채널을 함께 소비해 투명도 축소·라이트의 불투명 폴백을 공유한다.
     const componentsPopupSelectors = [
       ".whatsnew-card",
       ".commissioning-card",
@@ -2059,9 +2032,7 @@ describe("Instrument core design contract", () => {
       ".group-context-menu-card",
       ".theater-menu",
       ".operation-search-card",
-      // Quick Launch는 유리를 루트가 아니라 자식 없는 .quick-launch-glass가 진다 — 루트
-      // backdrop-filter가 backdrop root가 되면 안쪽 앵커 팝업의 blur가 카드 밖을 샘플링하지
-      // 못한다. 채널 계약은 그 전용 요소에서 그대로 지켜져야 한다.
+      // Quick Launch의 재질은 전용 요소가 진다.
       ".quick-launch-glass",
     ];
     // Quick Launch 오버레이도 fleet-pop을 타므로 억제 절을 함께 못 박는다 — 규칙 옆에 붙은
@@ -2070,14 +2041,12 @@ describe("Instrument core design contract", () => {
     for (const selector of componentsPopupSelectors) {
       const scoped = selector.replace(/\./g, "\\.");
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--glass-underlay\\);`));
-      expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*backdrop-filter: var\\(--glass-backdrop-strong\\);`));
     }
     // 온보딩 엔진의 세 표면(웰컴 카드·엔트리 힌트·투어 카드)은 엔진 시트가 소유하고 같은 채널 계약을 진다.
     const onboardingCss = externalSource(ONBOARDING_CSS_PATH);
     for (const selector of [".onboarding-welcome-card", ".onboarding-hint", ".feature-tour-card"]) {
       const scoped = selector.replace(/\./g, "\\.");
       expect(onboardingCss).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--glass-underlay\\);`));
-      expect(onboardingCss).toMatch(new RegExp(`${scoped} \\{[^}]*backdrop-filter: var\\(--glass-backdrop-strong\\);`));
     }
     // 브레드크럼 스위처 메뉴는 브레드크럼과 함께 퇴역했다 — 밴드 앵커 메뉴는 시스템 메뉴와
     // 환경 팝오버만 남는다.
@@ -2087,7 +2056,6 @@ describe("Instrument core design contract", () => {
     // 밴드에 앵커된 두 메뉴는 같은 재질이어야 한다 — 환경 팝오버만 --surface-band 불투명으로
     // 남아 있던 유리 전환 누락(Move E)의 재발 방지.
     expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*\),\s*var\(--glass-underlay\);/);
-    expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*backdrop-filter: var\(--glass-backdrop-strong\);/);
     expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--glass-underlay\);/);
     expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--glass-underlay\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--glass-underlay\);/);
@@ -2312,17 +2280,11 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain(".command-band-left.is-collapsed");
     // 부유 사이드바 카드는 크롬 틴트를 불투명 언더레이 위에 합성한다 — 유리 게이트가 닫히면
     // 반투명 채널 값이 그대로 남아 전면 캔버스 격자가 카드를 관통하는 결함을 막는다.
-    // blur는 사이드바 전용 채널이 진다(기본 반경 24px = 구 strong): 설정의 손잡이가 반경만
-    // 갈아 끼우되 게이트 셋은 채널이 그대로 지고, soft(12px) 근처는 뒤에 깔리는 캔버스
-    // 위브(48px 주기)의 대비를 ~73%나 남겨 근흑색 틴트 위에서 8-bit 계단 모자이크(가짜 격자)로
-    // 양자화되는 최악 구간이다(2026-08-31 실측 + 사용자 보고). 24px는 같은 주기를 ~29%까지 누른다.
     // 불투명도는 chrome 틴트의 알파가 진다 — 카드 루트를 내리면 목록 글자까지 사라진다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
     const sideBarBeforeBlock = components.match(/\.operations-side-bar::before \{[^}]*\}/)?.[0] ?? "";
     expect(sideBarBeforeBlock).toContain("linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),");
     expect(sideBarBeforeBlock).toContain("var(--glass-underlay);");
-    expect(sideBarBeforeBlock).toContain("backdrop-filter: var(--glass-backdrop-side-bar);");
-    expect(sideBarBeforeBlock).not.toContain("var(--glass-backdrop-soft)");
     expect(sideBarBlock).not.toContain("opacity:");
     // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
@@ -2334,7 +2296,6 @@ describe("Instrument core design contract", () => {
     // 말한다. 기하는 절대 좌표라 떠 있는 캡션을 가진 패널은 원점을 캡션 높이만큼 위로 밀어
     // 창 전체가 한 줄기 빛을 나눠 받는다.
     expect(operationBlock).toContain("radial-gradient(150% 420px at 50% var(--pane-light-origin), var(--glass-pane-light) 0%, transparent 62%),");
-    expect(operationBlock).not.toContain("backdrop-filter:");
     expect(operationBlock).not.toContain("--surface-window");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(titlebarBlock).toContain("background: var(--glass-tint-caption);");
@@ -2350,26 +2311,20 @@ describe("Instrument core design contract", () => {
     // 터미널 필드·거터는 field 채널 하나로 만난다 — 다크+열림에서는 비어(transparent) 루트 유리
     // 한 장이 둘 다 칠하고, 라이트·닫힘에서는 xterm이 받는 불투명 실색을 그대로 칠한다.
     expect(panelBodyBlock).toContain("background: var(--glass-tint-field);");
-    // 레일 Shell 카드는 xterm과 같은 terminal tint를 칠하고 전용 blur를 항상 소비한다. Operation
-    // 안의 terminal-shell은 더 구체적인 규칙이 transparent/none으로 덮어 패널에 blur가 새지 않는다.
+    // 레일 Shell은 terminal tint를 칠하고, Operation 안에서는 투명 면으로 패널을 공유한다.
     const terminalShellBlock = components.match(/^\.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
     expect(terminalShellBlock).toContain("padding: 0;");
     expect(terminalShellBlock).toContain("background: var(--glass-tint-terminal);");
-    expect(terminalShellBlock).toContain("backdrop-filter: var(--glass-backdrop-terminal);");
     const operationTerminalShellBlocks = components.match(/^\.canvas-operation-terminal \.terminal-shell \{[^}]*\}/gm) ?? [];
     expect(operationTerminalShellBlocks.some((block) => block.includes("padding: 0;"))).toBe(true);
     const operationTerminalShellBlock = operationTerminalShellBlocks.find((block) => block.includes("background:")) ?? "";
     expect(operationTerminalShellBlock).toContain("background: transparent;");
-    expect(operationTerminalShellBlock).toContain("backdrop-filter: none;");
-    // 확대 Shell도 slot 루트에서 terminal tint와 전용 blur를 한 번만 합성한다. Codex 등
-    // 다른 확대 표면은 공통 팝업 재질을 유지하고, 안쪽 terminal-shell은 투명·무블러다.
+    // 확대 Shell도 slot 루트에서 terminal tint를 한 번만 합성한다.
     const expandedShellPaneBlock = components.match(/^\.expanded-surface-pane:has\(\.terminal-shell\) \{[^}]*\}/m)?.[0] ?? "";
     expect(expandedShellPaneBlock).toContain("linear-gradient(var(--glass-tint-terminal), var(--glass-tint-terminal)),");
     expect(expandedShellPaneBlock).toContain("var(--glass-underlay);");
-    expect(expandedShellPaneBlock).toContain("backdrop-filter: var(--glass-backdrop-terminal);");
     const expandedTerminalBlock = components.match(/^\.expanded-surface-pane \.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
     expect(expandedTerminalBlock).toContain("background: transparent;");
-    expect(expandedTerminalBlock).toContain("backdrop-filter: none;");
     expect(expandedTerminalBlock).toContain("box-shadow: none;");
     // 휴면은 패널 면 위의 상태다 — 톤을 낮추는 베이스 레이어가 돌아오면 창 안에 다른 면이 생긴다.
     const dormantBlock = components.match(/^\.canvas-operation-dormant \{[^}]*\}/m)?.[0] ?? "";
@@ -2741,7 +2696,6 @@ describe("Instrument core design contract", () => {
     // 계약은 선언에만 건다 — 도트린 주석은 폐기된 토큰 이름을 적어 이유를 남겨야 한다.
     const sheetDeclarations = sheetBlock.replace(/\/\*[\s\S]*?\*\//g, "");
     expect(sheetDeclarations).not.toContain("--glass-");
-    expect(sheetDeclarations).not.toContain("backdrop-filter");
     expect(sheetBlock).toContain("border-top: 1px solid var(--hairline-strong);");
     expect(sheetBlock).toContain("box-shadow: var(--shadow-soft);");
     // 접는 문은 시트 안에 있고 버튼이다 — 눌리지 않는 힌트 글자는 닫기 자리에 서지 않는다.
@@ -3637,10 +3591,10 @@ describe("Instrument core design contract", () => {
     const operationFrame = source("../../../features/workspace/client/canvas/operation-frame.tsx");
     // 상태마다 운동의 종류가 다르다. 왕복(travel)은 turn 하나만 소유한다 — 진행 위치가 옮겨
     // 간다는 사실을 말하는 형태라, 옮겨 갈 지점이 없는 나머지 상태가 빌리면 뜻이 갈라진다.
-    expect(components).toContain("animation: caption-rail-travel 3.8s steps(19, end) infinite;");
-    expect(components).toContain("animation: caption-rail-flow 6.5s steps(65, end) infinite;");
-    expect(components).toContain("animation: caption-rail-call 2.4s steps(1, end) infinite;");
-    expect(components).toContain("animation: caption-rail-tide 4.4s steps(1, end) infinite;");
+    expect(components).toContain("animation: caption-rail-travel 3.8s ease-in-out infinite;");
+    expect(components).toContain("animation: caption-rail-flow 6.5s linear infinite;");
+    expect(components).toContain("animation: caption-rail-call 2.4s var(--ease-glide) infinite;");
+    expect(components).toContain("animation: caption-rail-tide 4.4s var(--ease-glide) infinite;");
     expect(components).toContain("@keyframes caption-rail-flow");
     expect(components).toContain("@keyframes caption-rail-call");
     expect(components).toContain("@keyframes caption-rail-tide");

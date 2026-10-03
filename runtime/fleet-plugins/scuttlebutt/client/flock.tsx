@@ -694,6 +694,8 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     }
     let animationFrame = 0;
     let last = performance.now();
+    let lastMotionTick = -1;
+    let renderedFrames = motionFramesRef.current;
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
@@ -723,6 +725,12 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
         Math.random,
         keepOut,
       );
+      // CSS와 같은 문서 시계의 100ms 칸에서만 그린다. 물리 시간은 계속 흘려 복귀 때 뛰지 않는다.
+      const timelineTime = document.timeline.currentTime;
+      const motionTick = Math.floor((typeof timelineTime === "number" ? timelineTime : now) / 100);
+      const motionMode = document.documentElement.dataset.stateMotion;
+      const draw = motionMode !== "inactive" && (motionMode !== "stepped" || motionTick !== lastMotionTick);
+      lastMotionTick = motionTick;
       const frames = [...motionFramesRef.current];
       let motionChanged = false;
       for (let activeIndex = 0; activeIndex < activeFrames.length; activeIndex += 1) {
@@ -730,13 +738,14 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
         const frame = activeFrames[activeIndex]!;
         frames[index] = frame;
         const element = birdRefs.current[index];
-        if (element) {
+        if (element && draw) {
           element.style.transform = `translate(${frame.left}px, ${frame.top}px) rotate(${frame.tilt}deg)`;
         }
-        if (!sameMotion(motionFramesRef.current[index]!, frame)) motionChanged = true;
+        if (draw && !sameMotion(renderedFrames[index]!, frame)) motionChanged = true;
       }
       // 좌표는 매 프레임 최신으로 둔다 — 리렌더가 끼어들 때 style prop이 옛 좌표를 되돌리면 새가 튄다.
       motionFramesRef.current = frames;
+      if (draw) renderedFrames = frames;
       if (motionChanged) setMotionFrames(frames);
       animationFrame = window.requestAnimationFrame(loop);
     };

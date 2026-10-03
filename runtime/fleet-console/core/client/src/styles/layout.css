@@ -278,43 +278,22 @@
   background: none;
 }
 
-/* 밴드 유리는 자식 없는 ::before가 진다 — 루트에 backdrop-filter를 직접 걸면 스태킹
-   컨텍스트+containing block이 생겨, 밴드 안에 앵커된 드롭다운(호스트·도움말 메뉴 등)이
-   캔버스 뒤로 갇힌다(실측 리그레션). 사이드바·밴드 캡도 같은 이유로 같은 형태다. */
+/* 밴드의 반투명 재질은 자식 없는 ::before가 진다 — 본문·앵커 메뉴와 별도 면으로 둔다. */
 .command-band::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   background: var(--glass-tint-band);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
   pointer-events: none;
 }
 
-/* ── 본문이 밴드 유리 뒤로 지나가게 한다 ─────────────────────────────────────
-   유리는 뒤에 있는 것을 흐릴 뿐이라, 뒤가 비어 있으면 blur는 항등함수다. 실측에서 모든
-   스크롤 컨테이너의 상단이 밴드의 하단과 같은 좌표(top: 44)에 있어, 밴드의 blur(16px)가
-   평평한 면을 흐려 평평한 면을 만들고 있었다. 본문 잉크(L*23)가 밴드 유리(L*93) 뒤로
-   들어가면 블러는 70포인트의 대비를 얻는다.
-
-   음수 마진은 페이지가 아니라 라우트 컨테이너에 준다 — .console-route-content가
-   overflow:hidden이라, 페이지만 끌어올리면 밴드 뒤로 들어간 부분이 그대로 잘린다.
-
-   밴드의 z-index/isolation이 함께 필요한 이유: 밴드 유리는 자식 없는 ::before(z-index:-1)라
-   밴드가 스태킹 컨텍스트를 갖지 않으면 그 유리가 끌어올린 본문보다 아래로 내려간다.
-   isolation은 스태킹 컨텍스트만 만들고 containing block은 만들지 않으므로, 밴드에 앵커된
-   드롭다운의 위치 계산은 그대로다(루트 backdrop-filter의 함정과 다른 지점).
-
-   게이트 뒤에 둔다 — 게이트가 닫히면 공간 예약 레이아웃이 정확히 돌아온다.
-   현재 문서 스크롤을 갖는 데스크톱 라우트는 설정 하나뿐이다. Operations 캔버스는 스크롤이
-   아니라 고정 프레임이라 이 규칙의 대상이 아니다.
-
-   제외 목록은 theme.css의 채널 게이트와 **글자까지 같아야 한다**. 이 규칙은 채널이 아니라
-   루트 속성을 직접 읽으므로, 라이트(Whites)를 theme.css에서만 빼면 여기는 계속 열려
-   있다 — 불투명해진 밴드 뒤로 본문이 흘러 굴절 대신 가려지기만 한다(축소-투명도에서 이미
-   같은 이유로 되돌리는 실패 양식이다). :not(A, B) 목록 형태를 지키는 이유도 같다. */
-@supports (selector(:has(*)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))) {
+/* ── 본문이 반투명 밴드 뒤로 지나가게 한다 ──────────────────────────────
+   라우트 컨테이너에 음수 마진을 주어 overflow:hidden 밖에서 밴드 뒤로 본문을 올린다.
+   isolation은 ::before 재질을 본문 위에 두면서 앵커 메뉴의 containing block은 바꾸지 않는다.
+   투명도 축소·Whites에서는 공간 예약 레이아웃으로 돌아간다. 제외 목록은 theme.css와 같아야 한다.
+   고정 프레임인 Operations 캔버스에는 적용하지 않는다. */
+@supports selector(:has(*)) {
   /* 셸은 밴드와 라우트 사이에 흐름 바(연결·저하 배너, 업데이트 결과 바, 제어 반납 바)를
      조건부로 끼운다. 그 바가 하나라도 서면 음수 마진은 밴드가 아니라 그 바를 라우트로 덮어
      Reconnect·Dismiss·제어 되찾기의 히트 테스트를 가로챈다. 본문이 유리 뒤로 가는 일은
@@ -456,8 +435,6 @@
   z-index: -1;
   border-radius: inherit;
   background: linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)), var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   pointer-events: none;
 }
 .zen-bar.is-war-room { border-top-color: color-mix(in oklch, var(--brass) 70%, transparent); }
@@ -950,8 +927,6 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   color: var(--text-primary);
   font-size: var(--t-xs);
@@ -1170,8 +1145,6 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   opacity: 0;
   pointer-events: none;
@@ -1238,7 +1211,6 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   .command-band-mode-tray {
     border-color: CanvasText;
     background: Canvas;
-    backdrop-filter: none;
     box-shadow: none;
   }
 }
@@ -1390,8 +1362,6 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .command-band.is-
       color-mix(in oklch, var(--coral) 12%, var(--glass-tint-pillar))
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 

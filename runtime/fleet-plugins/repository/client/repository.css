@@ -540,8 +540,6 @@
   min-height: 46px;
   /* 스티키 헤더는 스크롤 내용을 가려야 한다 — 스테이징 헤더와 같은 패널 채널을 소비한다(밴드 정합). */
   background: var(--glass-tint-panel);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
 }
 
 .repository-hunk-filename {
@@ -1587,8 +1585,6 @@
   position: sticky;
   top: 0;
   background: var(--glass-tint-panel);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
   z-index: 1;
 }
 .repository-staging-head i { font-style: normal; color: var(--text-tertiary); }
@@ -2765,7 +2761,7 @@
 .repository-unified .repository-filter-input, .repository-unified .history-filter-input { border-radius: 3px; font-size: var(--t-xs); }
 .repository-unified .repository-staging-row.is-cur, .repository-unified .repository-file-row.is-cur { background: var(--repository-selection); box-shadow: inset 0 0 0 1px var(--surface-rim-strong); border-radius: var(--radius-xs); }
 .repository-unified .repository-stage-action { border-radius: var(--radius-xs); padding: 4px 6px; }
-.repository-unified .repository-staging-head { color: var(--text-secondary); font-weight: var(--weight-medium); background: var(--surface-panel); backdrop-filter: none; }
+.repository-unified .repository-staging-head { color: var(--text-secondary); font-weight: var(--weight-medium); background: var(--surface-panel); }
 .repository-unified .repository-staging-section { flex: 1 0 auto; min-height: 120px; }
 .repository-unified .repository-staging-viewbar { flex: none; }
 .repository-unified .repository-dock-head { background: transparent; }

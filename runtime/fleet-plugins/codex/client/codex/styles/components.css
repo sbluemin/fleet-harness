@@ -2632,8 +2632,6 @@ button.chip:focus-visible {
       var(--glass-tint-expanded)
     ),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-soft);
   color: var(--text-secondary);
 }
