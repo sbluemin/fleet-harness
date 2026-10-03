@@ -23,7 +23,7 @@ Read references only when starting the corresponding activity.
 
 | Situation | Read and use |
 |---|---|
-| Any run that may start Claude CLI or an SDK child, including chat | [Claude state and trust preflight](references/claude-state.md), before booting the host or launching an Operation |
+| Any run that may start Claude CLI or an SDK child, including chat and fake Claude | [Claude state and trust preflight](references/claude-state.md), before booting the host or launching an Operation; its Theater-trust step for objective Commence and terminal prompts runs after boot, before the first prompt |
 | Browser build and boot | [Isolated Console setup](references/setup.md), including its onboarding seed before the first navigation |
 | Browser connection, interaction, diagnostics, session cleanup | [agent-browser](references/agent-browser.md) — default driver |
 | UI-only page API responses or Objectives member sessions | [Pre-navigation fetch mock](references/agent-browser.md#mock-page-api-responses-before-navigation) / [child-session fixture](references/setup.md#objective-member-child-session-fixture), as needed |

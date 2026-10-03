@@ -1,6 +1,6 @@
 # Isolated Console setup
 
-Build and boot the owned Console before connecting with the selected browser driver. Consult **Isolated Development Data** in `docs/fleet-development-reference.md`. If the run may start Claude (terminal or SDK/chat), complete [Claude state and trust preflight](claude-state.md) first; Fleet slot isolation alone does not isolate agent state.
+Build and boot the owned Console before connecting with the selected browser driver. Consult **Isolated Development Data** in `docs/fleet-development-reference.md`. If the run may start Claude (terminal or SDK/chat), complete [Claude state and trust preflight](claude-state.md) first, leaving only its folder-dialog Theater trust step for after boot; Fleet slot isolation alone does not isolate agent state.
 
 ## Isolate the Console
 
@@ -15,14 +15,15 @@ env -u INIT_CWD \
   FLEET_DATA_DIR="$E2E_DIR/root" \
   FLEET_CONSOLE_DATA_DIR="$E2E_DIR/console" \
   FLEET_DESKTOP_DATA_DIR="$E2E_DIR/desktop" \
+  CLAUDE_CONFIG_DIR="$E2E_DIR/claude" \
   node <worktree>/runtime/fleet-console/dist/cli.mjs serve
 ```
 
-`FLEET_CONSOLE_DATA_DIR` isolates the Console slot, including credentials, durable state, lock, and gateway selection. `FLEET_DATA_DIR` also isolates host-shared data and legacy migration sources; setting only the Console slot is not a no-user-data-write guarantee. Override all three inherited Fleet paths explicitly. These variables do not isolate Claude: for an agent run, use the additional environment and launch checks in the preflight rather than this UI-only example. (`FLEET_CONSOLE_DIR` is the former name of `FLEET_CONSOLE_DATA_DIR` and still works.)
+Keep `CLAUDE_CONFIG_DIR` even in a UI-only run: adding a Theater through the folder dialog records Claude trust in the host's selected Claude config, which is the user's `~/.claude.json` without it. `FLEET_CONSOLE_DATA_DIR` isolates the Console slot, including credentials, durable state, lock, and gateway selection. `FLEET_DATA_DIR` also isolates host-shared data and legacy migration sources; setting only the Console slot is not a no-user-data-write guarantee. Override all three inherited Fleet paths explicitly. These variables do not isolate Claude: for an agent run, use the additional environment and launch checks in the preflight rather than this UI-only example. (`FLEET_CONSOLE_DIR` is the former name of `FLEET_CONSOLE_DATA_DIR` and still works.)
 
 A fresh slot has no provider credentials. Do not copy real credentials, trigger login/token refresh, or silently reuse a user's root to make a test pass. Prefer a no-provider fixture when it proves the claim. A real-provider scenario needs an explicitly authorized credential path and quota use, with any non-isolated stores disclosed before launch.
 
-Run the server as a background/managed process and wait for `$E2E_DIR/console/console.lock`. Read `port` and `token` locally, but never print the token. Confirm the route returns `200`. Seed a real Theater through the Console folder UI or authorized API only when the scenario needs it; do not copy the user's durable state.
+Run the server as a background/managed process and wait for `$E2E_DIR/console/console.lock`. Read `port` and `token` locally, but never print the token. Confirm the route returns `200`. Seed a real Theater through the Console folder UI or authorized API only when the scenario needs it; do not copy the user's durable state. An API-registered Theater stays untrusted for Claude, so a terminal Operation that must receive a Console prompt needs the folder-UI route in [the trust preflight](claude-state.md#prepare-folder-trust-through-the-normal-gate).
 
 Client changes require build plus reload. Host changes require build plus isolated server restart. Compare the asset name in `dist/client/index.html` with the served `/console/` HTML before blaming stale behavior.
 
@@ -53,6 +54,7 @@ When the claim needs a live agent process, MCP tools, or chat protocol traffic b
 - `FAKE_CLAUDE_DIR/log.jsonl` records each launch (mode, cwd, `--session-id`/`--resume`, MCP server names), control request, turn and exit without secrets. Use it to prove which Operation launched, resumed or exited. The script header lists the control files for context size, a failing `set_model`, and a held-open turn.
 - To act as that launch on Console MCP (an Objectives Commander or member, `fleet-console-use`, and so on), run [`scripts/fake-claude-mcp.mjs`](../scripts/fake-claude-mcp.mjs) `--dir <FAKE_CLAUDE_DIR> --server <name> --tool <tool> --args '<json>'`; `--list` shows the saved launches. The Console-issued bearer tokens stay in owner-only files under `FAKE_CLAUDE_DIR/mcp/`; never print or copy them.
 - The fake fires no Claude hooks. Console pins a `--session-id` at launch, which keeps the Operation's identity, but a coordinate whose source is still `launch` resumes as a fresh session. To exercise a real `--resume`, post the capture hook a real CLI would send: `POST /api/v1/agent/sessions/<operation>/capture` with the lock token as Bearer and `{"provider":"claude","input":"{\"session_id\":\"<pinned id>\",\"source\":\"startup\"}"}`. Turn, attention, and background states have their own lock-token hook routes. Recheck the resume and capture contracts in `features/execution/host/agent/routes.ts` when they change.
+- Objective Commence and other Console prompts into a fake terminal pass only after the Theater was added through the folder dialog ([trust preflight](claude-state.md#prepare-folder-trust-through-the-normal-gate), step 4); otherwise they return 409 `claude_trust_required` before the fake sees input.
 - Label results as fixture evidence. A fake proves launch, lifecycle, MCP and protocol paths, not real CLI behavior, authentication, trust prompts, or model quality.
 
 ### UI-only Operation fixtures
