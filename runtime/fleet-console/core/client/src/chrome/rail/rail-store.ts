@@ -18,6 +18,8 @@ interface RailStore {
   /** 끌기가 끝나 확정된 점유 폭(px). 끄는 동안에는 끌기 직전 값에 머문다. */
   readonly railSettledPx: number;
   readonly expandedMinWidthPx: number;
+  /** 문서 오버레이의 화면상 왼쪽 경계. 격자는 유지하고 확대 페인의 조작부만 피한다. */
+  readonly detailOverlayLeft: number | null;
 }
 
 type Listener = () => void;
@@ -36,12 +38,22 @@ let store: RailStore = {
   railOccupiedPx: 0,
   railSettledPx: 0,
   expandedMinWidthPx: 0,
+  detailOverlayLeft: null,
 };
 try { localStorage.removeItem(LEGACY_PREFS_CHROME_EXPANDED); } catch { /* ignore */ }
 
 export function subscribeRailStore(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
+}
+
+export function reportDetailOverlayLeft(left: number | null): void {
+  const next = left !== null && Number.isFinite(left) ? Math.floor(left) : null;
+  if (store.detailOverlayLeft !== next) setStore({ ...store, detailOverlayLeft: next });
+}
+
+export function useDetailOverlayLeft(): number | null {
+  return useRailStoreField("detailOverlayLeft");
 }
 
 export function getRailStoreSnapshot(): RailStore {

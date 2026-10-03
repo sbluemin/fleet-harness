@@ -19,9 +19,10 @@ import { getState, subscribe } from "../../integration/store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
-import { closeRailPanel, openRailPanel, getRailStoreSnapshot, useExpandedMinWidth, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
+import { closeRailPanel, openRailPanel, getRailStoreSnapshot, useExpandedMinWidth, reportDetailOverlayLeft, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
+  PANE_WIDTH_CLASS_PX,
   clearStoredPanelWidth,
   readStoredPanelWidths,
   resolvePaneDefaultWidth,
@@ -161,6 +162,25 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   const slotWidth = hasPanel
     ? Math.max(MIN_PANEL_WIDTH, Math.min(cardWidth + extraWidth, Math.max(MIN_PANEL_WIDTH, widthBudget)))
     : 0;
+  // 호스트의 기본 목록 등급(narrow)조차 확보하지 못할 때만 문서를 카드 오른쪽에 겹친다.
+  // 더 작은 폭을 선언한 페인은 그 선언을 따른다. 328px이 확보되는 1440 배치는 보존한다.
+  const overlayAtRailEnd = overlayDetails && dockBudget < Math.min(PANE_WIDTH_CLASS_PX.narrow, declaredWidthOf(activeBinding));
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const overlays = overlayDetails && root ? [...root.querySelectorAll<HTMLElement>(".rail-pane.is-overlay")] : [];
+    const publish = () => {
+      reportDetailOverlayLeft(overlays.length ? Math.min(...overlays.map((pane) => pane.getBoundingClientRect().left)) : null);
+    };
+    publish();
+    if (!root || overlays.length === 0) return;
+    const observer = new ResizeObserver(publish);
+    observer.observe(root);
+    for (const pane of overlays) observer.observe(pane);
+    window.addEventListener("resize", publish);
+    return () => { observer.disconnect(); window.removeEventListener("resize", publish); };
+  }, [activePanelId, overlayDetails, overlayAtRailEnd, requestedExtraWidth, slotWidth]);
+  useLayoutEffect(() => () => reportDetailOverlayLeft(null), []);
+
   const lastPanelRef = useRef<string | null>(null);
   const overlayReturnRef = useRef<{ id: string; previous: string | null; occupied: number } | null>(null);
   if (wholeOverlay && activePanelId !== overlayReturnRef.current?.id) {
@@ -267,7 +287,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   return (
     <div
       ref={rootRef}
-      className={`right-rail${hasPanel ? " is-open" : ""}${isDragging ? " is-dragging" : ""}${overlayDetails ? " has-detail-overlay" : ""}${wholeOverlay ? " is-overlay" : ""}`}
+      className={`right-rail${hasPanel ? " is-open" : ""}${isDragging ? " is-dragging" : ""}${overlayDetails ? " has-detail-overlay" : ""}${overlayAtRailEnd ? " has-inset-detail-overlay" : ""}${wholeOverlay ? " is-overlay" : ""}`}
       role="complementary"
       aria-label={t("rail.chrome.aria")}
       inert={!hasPanel}
