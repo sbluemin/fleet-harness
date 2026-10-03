@@ -448,7 +448,7 @@ export function ThemeCard({
                 <SettingsHelp title={t("settings.motion.reduce")}>{t("settings.motion.reduceHelp")}</SettingsHelp>
               </p>
             </div>
-            <SettingsToggle checked={state?.reduceMotion === true} disabled={state === null || saving.has("reduceMotion")} ariaLabel={t("settings.motion.reduce")} onChange={(value) => { void setGlobalSettingsField("reduceMotion", value); }} />
+            <SettingsToggle checked={state?.reduceMotion === true} disabled={state === null} busy={saving.has("reduceMotion")} ariaLabel={t("settings.motion.reduce")} onChange={(value) => { void setGlobalSettingsField("reduceMotion", value); }} />
           </div>
           <div className="global-settings-row">
             <div className="global-settings-row-text">
@@ -457,7 +457,7 @@ export function ThemeCard({
                 <SettingsHelp title={t("settings.motion.unfocused")}>{t("settings.motion.unfocusedHelp")}</SettingsHelp>
               </p>
             </div>
-            <SettingsToggle checked={state?.lowerUnfocusedFrameRate !== false} disabled={state === null || saving.has("lowerUnfocusedFrameRate")} ariaLabel={t("settings.motion.unfocused")} onChange={(value) => { void setGlobalSettingsField("lowerUnfocusedFrameRate", value); }} />
+            <SettingsToggle checked={state?.lowerUnfocusedFrameRate !== false} disabled={state === null} busy={saving.has("lowerUnfocusedFrameRate")} ariaLabel={t("settings.motion.unfocused")} onChange={(value) => { void setGlobalSettingsField("lowerUnfocusedFrameRate", value); }} />
           </div>
       </div>
     </section>
@@ -573,7 +573,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
           </div>
         </div>)}
         <div className="global-settings-row"><div className="global-settings-row-text"><p className="global-settings-resp-title">{t("settings.fonts.separateTerminal")}</p></div>
-          <SettingsToggle checked={!!fonts.terminal} ariaLabel={t("settings.fonts.separateTerminal")} disabled={disabled} onChange={(enabled) => save({ ...fonts, terminal: enabled ? { font: fonts.code.font, size: fonts.code.size } : null })} />
+          <SettingsToggle checked={!!fonts.terminal} ariaLabel={t("settings.fonts.separateTerminal")} disabled={!state} busy={saving} onChange={(enabled) => save({ ...fonts, terminal: enabled ? { font: fonts.code.font, size: fonts.code.size } : null })} />
         </div>
         {fonts.terminal ? axisRow("terminal") : null}
       </details>

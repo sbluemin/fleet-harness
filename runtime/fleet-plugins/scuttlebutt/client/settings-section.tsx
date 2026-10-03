@@ -175,7 +175,7 @@ function ScuttlebuttSettingsSection() {
         <SettingsToggle
           ariaLabel={t("settings.section.departureToggle")}
           checked={settings.departureBell}
-          disabled={saving}
+          busy={saving}
           onChange={(enabled) => void save({ departureBell: enabled })}
         />
       </SettingsRow>
