@@ -81,6 +81,8 @@
   .global-shell-band-full { display: none; }
   .global-shell-band-compact { display: inline; }
   .global-shell-band-text { min-inline-size: max-content; }
+  /* 확인 단계는 버튼 두 개가 반드시 보여야 한다 — 문구가 양보하고 말줄임된다(Theater 이름이 앞에 선다). */
+  .global-shell-band-text.is-confirm { min-inline-size: 0; }
   .global-shell-band-action { padding-inline: var(--space-1); }
 }
 

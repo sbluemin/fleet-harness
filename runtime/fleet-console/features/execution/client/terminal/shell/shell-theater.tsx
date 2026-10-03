@@ -79,7 +79,7 @@ export function ShellTheaterBand({ ctx }: { readonly ctx: ExpandedSurfaceContext
     <div className="global-shell-band" role="status" aria-label={fullMessage} title={fullMessage}>
       {status.kind === "confirm-restart" ? (
         <>
-          <span className="global-shell-band-text" aria-hidden="true">{label(fullMessage, t("terminal.shell.compactRestartConfirm", { active }))}</span>
+          <span className="global-shell-band-text is-confirm" aria-hidden="true">{label(fullMessage, t("terminal.shell.compactRestartConfirm", { active }))}</span>
           <span className="global-shell-band-actions">
             <button type="button" className="global-shell-band-action is-danger" onClick={restart} aria-label={t("terminal.shell.restartConfirmAction")} title={t("terminal.shell.restartConfirmAction")}>{t("terminal.shell.restartConfirmAction")}</button>
             <button type="button" className="global-shell-band-action" onClick={() => setStatus({ kind: "idle" })}>{t("terminal.shell.cancel")}</button>
