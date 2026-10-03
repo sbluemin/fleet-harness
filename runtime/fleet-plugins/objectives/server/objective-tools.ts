@@ -180,7 +180,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
         // 완료·미분류·기록이 있는 임무를 같은 문구로 다시 만들면 보드에 두 벌이 선다.
         const same = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
-        const repeated = objective.missions.filter((mission) => (mission.done || mission.unplaced || mission.by === "human" || mission.records.length > 0 || mission.memberBy === "human") && args.missions.some((planned) => same(planned.text) === same(mission.text)));
+        const repeated = objective.missions.filter((mission) => (mission.done || mission.unplaced || (mission.by !== undefined && mission.by !== "commander") || mission.records.length > 0 || (mission.memberBy !== undefined && mission.memberBy !== "commander")) && args.missions.some((planned) => same(planned.text) === same(mission.text)));
         if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((mission) => ({ missionId: mission.id, text: mission.text, ...(mission.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board and are referenced by missionId." });
         const planned = launch.planApplied(objective.id, { missions: args.missions, ...(args.members ? { members: args.members } : {}), ...(args.criteria !== undefined ? { criteria: args.criteria } : {}) });
         renumber(planned);
@@ -204,7 +204,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const target = missionOf(objective, args);
         if (target.done) return refuse("mission_done");
         const prerequisites = prerequisitesOf(objective, args.prerequisites);
-        const assignment = args.member !== undefined && target.memberBy !== "human" ? { member: args.member === null ? null : resolveMember(objective, args.member) } : {};
+        const assignment = args.member !== undefined && (target.memberBy === undefined || target.memberBy === "commander") ? { member: args.member === null ? null : resolveMember(objective, args.member) } : {};
         launch.missionPatched(objective.id, target.id, { prerequisites: prerequisites.ids.filter((id) => id !== target.id), ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...assignment });
         return text({ ok: true, missionId: target.id });
       }),
@@ -219,10 +219,12 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (outcome === null) return text({ ...head, decisionRequestRevision: revision, answered: false });
         if (outcome === "cleared") return text({ ...head, decisionRequestRevision: revision, answered: false, cleared: true });
         // 사람이 보드에서 고른 것 — 질문 문장과 고른 선택지 이름, 직접 쓴 말. 선택지를 모두 버린 답은 own 으로 가른다.
+        const decisions = store.find(objective.id)?.decisions ?? [];
         const answers = outcome.map((answer) => {
+          const by = decisions.find((decision) => decision.requestId === placed.request.id && decision.questionId === answer.questionId)?.by ?? "human";
           const question = placed.request.questions.find((candidate) => candidate.id === answer.questionId);
           const selected = answer.selectedOptionIds.flatMap((id) => question?.options.filter((option) => option.id === id).map((option) => option.label) ?? []);
-          return { question: question?.text ?? "", ...(selected.length ? { selected } : {}), ...(answer.text ? { text: answer.text } : {}), ...(question && ownAnswer(question, answer) ? { own: true } : {}) };
+          return { question: question?.text ?? "", by, ...(selected.length ? { selected } : {}), ...(answer.text ? { text: answer.text } : {}), ...(question && ownAnswer(question, answer) ? { own: true } : {}) };
         });
         return text({ ...head, decisionRequestRevision: revision, answered: true, answers });
       }),

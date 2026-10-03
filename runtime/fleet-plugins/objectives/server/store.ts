@@ -9,6 +9,8 @@ import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarg
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import {
   MAX_CRITERIA,
+  MAX_OBJECTIVE_ACTIONS, objectiveActorSchema, objectiveActionSchema,
+  type ObjectiveActor, type ObjectiveReviewer, type ObjectiveAction,
   MAX_CRITERION_TEXT,
   MAX_FOLLOWUPS,
   MAX_FOLLOWUP_BATCHES,
@@ -117,6 +119,7 @@ export interface ObjectiveInit {
   readonly missions?: readonly { readonly text: string; readonly prerequisites?: readonly number[] }[];
   /** Console Use 가 함께 받은 달성 기준 문장 — 저장될 때 기본 요구사항으로 by "human" 이 된다. */
   readonly criteria?: readonly string[];
+  readonly by?: ObjectiveActor;
   readonly addedBy?: string;
   /** 후속으로 태어난 목표 — 원본 목표·후보·배치와 근거. */
   readonly origin?: StoredOrigin;
@@ -150,6 +153,7 @@ export interface TidyActor {
 export interface ObjectivePatch {
   readonly note?: string;
   readonly planRequest?: string;
+  readonly planRequestBy?: ObjectiveActor;
   readonly dueDate?: string | null;
   readonly today?: boolean;
   readonly routingConfirm?: boolean;
@@ -193,23 +197,23 @@ export interface ObjectiveStore {
   forget(operationId: string): void;
   /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. */
   move(objectiveId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): Objective;
-  complete(objectiveId: string, operationIntent?: StoredObjective["operationIntent"]): Objective;
-  reopen(objectiveId: string, operationIntent?: StoredObjective["operationIntent"]): Objective;
+  complete(objectiveId: string, operationIntent?: StoredObjective["operationIntent"], by?: ObjectiveActor): Objective;
+  reopen(objectiveId: string, operationIntent?: StoredObjective["operationIntent"], by?: ObjectiveActor): Objective;
   /** 완료 복원은 의도만 먼저 쓰고, 호스트가 복원한 뒤 회차를 시작한다. */
-  extend(objectiveId: string, context: string, operationIntent?: StoredObjective["operationIntent"]): Objective;
+  extend(objectiveId: string, context: string, operationIntent?: StoredObjective["operationIntent"], by?: ObjectiveActor): Objective;
   operationIntent(objectiveId: string): StoredObjective["operationIntent"];
   acknowledgeOperationIntent(objectiveId: string, requestId: string): void;
   /** 인계 대기의 목표를 검토 대기로 넘긴다 — 인계 기록을 남긴다. 지휘관은 회고와 함께, 사람은 회고 없이. */
-  handOff(objectiveId: string, input: { readonly by: "commander"; readonly retrospective: Retrospective } | { readonly by: "human" }): Objective;
+  handOff(objectiveId: string, input: { readonly by: "commander"; readonly retrospective: Retrospective } | { readonly by: ObjectiveReviewer }): Objective;
   /** `unplaced` — 사람이 선행 없이 더한 임무는 미분류로 들어간다(지휘관이 자리를 잡는다). */
-  missionAdd(objectiveId: string, input: MissionAddInput, options?: { readonly unplaced?: boolean; readonly by?: "human" }): Objective;
-  missionPatch(objectiveId: string, missionId: string, input: MissionPatchInput, options?: { readonly by?: "human" }): Objective;
+  missionAdd(objectiveId: string, input: MissionAddInput, options?: { readonly unplaced?: boolean; readonly by?: ObjectiveActor }): Objective;
+  missionPatch(objectiveId: string, missionId: string, input: MissionPatchInput, options?: { readonly by?: ObjectiveActor }): Objective;
   /** 지휘관의 완료 — 기록·완료·선택 결과물을 한 번에 저장한다. 결과물은 임무의 현재 연결로 남는다. */
   missionDone(objectiveId: string, missionId: string, lines: readonly string[], results?: readonly CompletionResultInput[]): Objective;
   /** 사람이 이 임무의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
   missionSeen(objectiveId: string, missionId: string): Objective;
   missionRemove(objectiveId: string, missionId: string): Objective;
-  memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: "human" | "commander"): Objective;
+  memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: ObjectiveActor): Objective;
   memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): Objective;
   /**
    * 띄운 구성원의 기동 기록 — 기동 근거(routed)·이번 턴 뒤 예약(next)·예약을 취소할 때 돌아갈 선택(launch). 사람의 편집이 아니라
@@ -229,18 +233,18 @@ export interface ObjectiveStore {
   recordStage(objectiveId: string, stage: "planned" | "commenced"): Objective;
   setCriteriaOpen(objectiveId: string, open: boolean): Objective;
   /** 새 작업(스티어링)이 생겼다 — 앞선 충족 판단을 모두 거둔다. */
-  clearMet(objectiveId: string): Objective;
-  criterionAdd(objectiveId: string, text: string, by: "human" | "commander"): Objective;
+  clearMet(objectiveId: string, by?: ObjectiveActor): Objective;
+  criterionAdd(objectiveId: string, text: string, by: ObjectiveActor): Objective;
   criterionPatch(objectiveId: string, criterionId: string, text: string): Objective;
   criterionRemove(objectiveId: string, criterionId: string): Objective;
   /** 지휘관이 기준 하나를 충족(근거와 함께) 또는 미충족으로 표시한다. */
   criterionMet(objectiveId: string, criterionId: string, evidence: string | null): Objective;
-  proposalApprove(objectiveId: string, proposalId: string): Objective;
-  proposalsApproveAll(objectiveId: string): Objective;
-  proposalReject(objectiveId: string, proposalId: string): Objective;
-  proposalAnnotate(objectiveId: string, proposalId: string, annotation: string): Objective;
+  proposalApprove(objectiveId: string, proposalId: string, by?: ObjectiveActor): Objective;
+  proposalsApproveAll(objectiveId: string, by?: ObjectiveActor): Objective;
+  proposalReject(objectiveId: string, proposalId: string, by?: ObjectiveActor): Objective;
+  proposalAnnotate(objectiveId: string, proposalId: string, annotation: string, by?: ObjectiveActor): Objective;
   /** 사람의 편집을 쌓는다 · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
-  setEdited(objectiveId: string, kinds: readonly ObjectiveEditKind[] | null): Objective;
+  setEdited(objectiveId: string, kinds: readonly ObjectiveEditKind[] | null, by?: ObjectiveActor): Objective;
   resultUpdate(objectiveId: string, resultId: string, patch: ResultPatch): Objective;
   resultRemove(objectiveId: string, resultId: string): Objective;
   /** 조회를 시작한 대상이 그대로 있을 때만 사실을 갱신한다. 지휘관 편집 시각·충족 판단은 바꾸지 않는다. */
@@ -259,9 +263,9 @@ export interface ObjectiveStore {
   /** 지휘관이 자기 open 후보를 거둔다 — 흔적 없이 빠진다. */
   followupWithdraw(objectiveId: string, candidateId: string): Objective;
   /** 사람이 open 후보를 버린다 — 제목·요약과 시각만 흔적으로 남는다(멱등). */
-  followupDiscard(objectiveId: string, candidateId: string): Objective;
+  followupDiscard(objectiveId: string, candidateId: string, by?: ObjectiveActor): Objective;
   /** 고른 후보의 rev 를 검증하고 완료·배치·후보 잠금을 한 번에 쓴다. 같은 배치는 그대로 돌려준다. */
-  completeWithFollowups(objectiveId: string, selection: FollowupSelection, operationIntent?: StoredObjective["operationIntent"]): { readonly objective: Objective; readonly fresh: boolean };
+  completeWithFollowups(objectiveId: string, selection: FollowupSelection, operationIntent?: StoredObjective["operationIntent"], by?: ObjectiveActor): { readonly objective: Objective; readonly fresh: boolean };
   /** 배치 항목의 생성 결과를 기록한다. 끝난 항목(created·deleted)은 후보 목록에서 빠지고 배치에만 남는다. */
   followupSettle(objectiveId: string, batchId: string, candidateId: string, next: { readonly state: FollowupItemState; readonly operationId?: string; readonly error?: string; readonly attempted?: boolean }): Objective;
   /** failed·confirming 항목을 다시 creating 으로 — 같은 스냅샷·같은 키로 다시 확인하거나 만든다. */
@@ -284,7 +288,7 @@ export interface ObjectiveStore {
   /**
    * 사람의 답을 검증해 전달 중으로 둔다. 그 요청의 답이 이미 결정으로 남았으면 같은 답은 recorded, 다른 답은 거절한다.
    */
-  decisionAccept(objectiveId: string, input: DecisionAnswersInput): { readonly recorded: true; readonly objective: Objective } | { readonly recorded: false; readonly objective: Objective; readonly request: DecisionRequest; readonly answers: readonly DecisionAnswer[] };
+  decisionAccept(objectiveId: string, input: DecisionAnswersInput, by?: ObjectiveActor): { readonly recorded: true; readonly objective: Objective } | { readonly recorded: false; readonly objective: Objective; readonly request: DecisionRequest; readonly answers: readonly DecisionAnswer[] };
   /** 전달 결과 — 닿았으면 질문마다 결정을 쌓고 요청을 정리한다. 못 닿았으면 전달 중 표시만 거두고 요청은 남는다. */
   decisionSettle(objectiveId: string, requestId: string, delivered: boolean): Objective;
 }
@@ -377,6 +381,14 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
       const intent = parsed.operationIntent;
       if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_operation_intent");
       if (intent?.extensionContext !== undefined && (intent.action !== "ensure-active" || typeof intent.extensionContext !== "string" || !intent.extensionContext.trim() || intent.extensionContext.length > MAX_CONTEXT)) throw new ObjectiveStoreError("invalid_operation_intent");
+      const actors = [parsed.done?.by, parsed.handoff?.by, parsed.planRequestBy, intent?.by,
+        ...(parsed.edited?.actors ?? []), ...(parsed.members ?? []).map((row) => row.by),
+        ...(parsed.criteria ?? []).map((row) => row.by), ...(parsed.criteriaProposals ?? []).map((row) => row.annotationBy),
+        ...(parsed.missions ?? []).flatMap((row) => [row.by, row.memberBy]),
+        ...(parsed.followups ?? []).map((row) => row.discardedBy), ...(parsed.followupBatches ?? []).map((row) => row.by)];
+      if (actors.some((actor) => actor !== undefined && !objectiveActorSchema.safeParse(actor).success)) throw new ObjectiveStoreError("invalid_stored_actor");
+      if (parsed.actions !== undefined && (!Array.isArray(parsed.actions) || parsed.actions.some((action) => !objectiveActionSchema.safeParse(action).success))) throw new ObjectiveStoreError("invalid_stored_actions");
+      if (parsed.actionCounts !== undefined && (!parsed.actionCounts || typeof parsed.actionCounts !== "object" || Object.entries(parsed.actionCounts).some(([kind, count]) => !objectiveActionSchema.shape.kind.safeParse(kind).success || !Number.isSafeInteger(count) || count! < 0))) throw new ObjectiveStoreError("invalid_stored_actions");
       const extensions = storedExtensionsSchema.safeParse(parsed.extensions ?? []);
       if (!extensions.success || (parsed.extensionActive !== undefined && (parsed.extensionActive !== true || !extensions.data.length || parsed.done || parsed.handoff))) throw new ObjectiveStoreError("invalid_stored_extensions");
       const results = storedResultsSchema.safeParse(parsed.results === undefined ? [] : parsed.results);
@@ -438,6 +450,8 @@ function compact(objective: StoredObjective): StoredObjective {
   const out: Record<string, unknown> = { ...objective };
   for (const key of ["note", "planRequest", "dueDate", "addedBy", "followupHistory", "origin", "removed"] as const) if (!out[key]) delete out[key];
   if (!objective.merged?.length) delete out.merged;
+  if (!objective.actions?.length) delete out.actions;
+  else out.actions = objective.actions.slice(-MAX_OBJECTIVE_ACTIONS);
   if (!objective.followups?.length) delete out.followups;
   if (!objective.followupBatches?.length) delete out.followupBatches;
   for (const key of ["planning", "criteriaOpen", "today", "commenced"] as const) if (out[key] !== true) delete out[key];
@@ -618,18 +632,20 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       note: stored.note,
       attachments: stored.attachments ?? [],
       results: stored.results ?? [],
-      ...(stored.planRequest ? { planRequest: stored.planRequest } : {}),
+      ...(stored.planRequest ? { planRequest: stored.planRequest, planRequestBy: stored.planRequestBy ?? "human" } : {}),
       planning: stored.planning === true,
       criteriaOpen: stored.criteriaOpen === true,
       ...(stored.edited ? { edited: stored.edited } : {}),
       dueDate: stored.dueDate ?? null,
       today: stored.today === true,
       addedBy,
-      done: stored.done ?? null,
+      done: stored.done ? { ...stored.done, by: stored.done.by ?? "human" } : null,
+      actions: stored.actions ?? [],
+      actionCounts: stored.actionCounts ?? {},
       awaitingHandoff: awaitingHandoff(stored),
       awaitingReview: awaitingReview(stored),
       handoff: stored.handoff ? { by: stored.handoff.by, at: stored.handoff.at, retrospective: stored.handoff.by === "commander" ? stored.handoff.retrospective : null } : null,
-      extensions: stored.extensions ?? [],
+      extensions: (stored.extensions ?? []).map((round) => ({ ...round, by: round.by ?? "human" })),
       extensionActive: stored.extensionActive === true,
       criteria: (stored.criteria ?? []).map((criterion) => ({ ...criterion })),
       criteriaProposals: (stored.criteriaProposals ?? []).map((proposal) => ({ ...proposal })),
@@ -638,10 +654,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission,
         brief: candidate.brief, criteria: [...candidate.criteria], evidence: candidate.evidence.map(evidenceView),
         at: candidate.at, updatedAt: candidate.updatedAt, batchId: candidate.batchId ?? null,
-        discarded: candidate.state === "discarded" ? { at: candidate.discardedAt ?? candidate.updatedAt, by: "human" as const } : null,
+        discarded: candidate.state === "discarded" ? { at: candidate.discardedAt ?? candidate.updatedAt, by: candidate.discardedBy ?? "human" } : null,
       })),
       followupBatches: (stored.followupBatches ?? []).map((batch) => ({
-        id: batch.id, at: batch.at,
+        id: batch.id, at: batch.at, by: batch.by ?? "human",
         items: batch.items.map((entry) => ({
           candidateId: entry.candidateId, rev: entry.rev,
           snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, userImpact: entry.snapshot.userImpact, fromMission: entry.snapshot.fromMission, brief: entry.snapshot.brief, criteria: [...entry.snapshot.criteria], evidence: entry.snapshot.evidence.map(evidenceView) },
@@ -653,8 +669,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       origin: stored.origin ? { objectiveId: stored.origin.objectiveId, title: operationNode(stored.origin.objectiveId)?.title ?? load(node?.theaterId ?? pending!.theaterId).get(stored.origin.objectiveId)?.pending?.title ?? null, candidateId: stored.origin.candidateId, userImpact: stored.origin.userImpact, evidence: stored.origin.evidence.map(evidenceView) } : null,
       decisionRequest: stored.decisionRequest ?? null,
       decisionRequestRevision: stored.decisionRequestRevision ?? 0,
-      decisionDelivery: stored.decisionDelivery ? { requestId: stored.decisionDelivery.requestId, at: stored.decisionDelivery.at } : null,
-      decisions: stored.decisions ?? [],
+      decisionDelivery: stored.decisionDelivery ? { requestId: stored.decisionDelivery.requestId, at: stored.decisionDelivery.at, by: stored.decisionDelivery.by ?? "human" } : null,
+      decisions: (stored.decisions ?? []).map((decision) => ({ ...decision, by: decision.by ?? "human" })),
       recorded,
       removed: stored.removed ? { at: stored.removed.at, expiresAt: stored.removed.at + REMOVED_RETENTION_MS,
         by: stored.removed.by ? { operationId: stored.removed.by, title: operationNode(stored.removed.by)?.title ?? stored.removed.byTitle ?? null } : null,
@@ -764,6 +780,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     return objective;
   };
 
+  const action = (stored: StoredObjective, by: ObjectiveActor, kind: ObjectiveAction["kind"], details: Pick<ObjectiveAction, "targetId" | "proposal" | "kinds"> = {}): StoredObjective => ({
+    ...stored,
+    actions: [...(stored.actions ?? []), { id: randomUUID(), at: now(), by, kind, ...details }].slice(-MAX_OBJECTIVE_ACTIONS),
+    actionCounts: { ...stored.actionCounts, [kind]: (stored.actionCounts?.[kind] ?? 0) + 1 },
+  });
+
   const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective): Objective => {
     const { theaterId, recorded, stored, node } = locate(objectiveId);
     // 인계 기록은 할 일이 끝난 동안에만 산다 — 기준 표시를 거두는 변경이 곧 인계를 거두고 목표를 진행 중으로 돌린다.
@@ -871,7 +893,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     return { ...stored, missions };
   };
   /** 자리가 정해졌다 — 미분류 표시를 뗀다. */
-  const placed = (mission: StoredMission): StoredMission => (mission.unplaced ? (({ unplaced: _unplaced, ...rest }) => ({ ...rest, by: "human" as const }))(mission) : mission);
+  const placed = (mission: StoredMission): StoredMission => (mission.unplaced ? (({ unplaced: _unplaced, ...rest }) => ({ ...rest, by: mission.by ?? "human" }))(mission) : mission);
   const withoutEdge = (mission: StoredMission, id: string): StoredMission => ({ ...mission, prerequisites: mission.prerequisites.filter((edge) => edge.id !== id) });
   const proposalsOf = (stored: StoredObjective, input: readonly CriterionProposalInput[]): readonly ObjectiveCriterionProposal[] => {
     const criteria = stored.criteria ?? [];
@@ -905,15 +927,15 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       : criteria.map((criterion) => criterion.id === proposal.target ? (({ met: _met, ...rest }) => ({ ...rest, ...(proposal.kind === "revise" ? { text: proposal.text! } : {}) }))(criterion) : criterion) };
   };
 
-  const extended = (stored: StoredObjective, context: string): StoredObjective => {
+  const extended = (stored: StoredObjective, context: string, by: ObjectiveActor = "human"): StoredObjective => {
     if (stored.removed) throw new ObjectiveStoreError("objective_removed");
     if (!stored.done && !awaitingReview(stored)) throw new ObjectiveStoreError("not_in_review");
     const request = context.trim();
     if (!request || request.length > MAX_CONTEXT) throw new ObjectiveStoreError("invalid_request");
     const extensions = stored.extensions ?? [];
-    return { ...withoutDecisionRequest(stored), done: undefined, handoff: undefined, operationIntent: undefined,
-      planning: true, criteriaOpen: true, planRequest: request, extensionActive: true,
-      extensions: [...extensions, { n: extensions.length + 1, at: now(), context: request,
+    return { ...action(withoutDecisionRequest(stored), by, "extend"), done: undefined, handoff: undefined, operationIntent: undefined,
+      planning: true, criteriaOpen: true, planRequest: request, planRequestBy: by, extensionActive: true,
+      extensions: [...extensions, { n: extensions.length + 1, at: now(), by, context: request,
         missionIds: stored.missions.map((mission) => mission.id), criterionIds: (stored.criteria ?? []).map((criterion) => criterion.id), previousHandoff: stored.handoff ?? null }],
     };
   };
@@ -964,7 +986,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(init.today ? { today: true as const } : {}),
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
         ...(init.origin ? { origin: init.origin } : {}),
-        ...(criteriaTexts.length ? { criteria: criteriaTexts.map((text) => ({ id: randomUUID(), text, by: "human" as const })) } : {}),
+        ...(criteriaTexts.length ? { criteria: criteriaTexts.map((text) => ({ id: randomUUID(), text, by: init.by ?? "human" })) } : {}),
         enlisted: true,
         missions: [...lineupOrder(missions)],
       };
@@ -1108,7 +1130,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     patch: (objectiveId, input) => update(objectiveId, (stored) => ({
       ...stored,
       ...(input.note !== undefined ? { note: input.note } : {}),
-      ...(input.planRequest !== undefined ? { planRequest: input.planRequest } : {}),
+      ...(input.planRequest !== undefined ? { planRequest: input.planRequest, planRequestBy: input.planRequestBy ?? "human" } : {}),
       ...(input.dueDate !== undefined ? { dueDate: input.dueDate ?? undefined } : {}),
       ...(input.today !== undefined ? { today: input.today ? true as const : undefined } : {}),
       ...(input.routingConfirm !== undefined ? { routingConfirm: input.routingConfirm ? undefined : false as const } : {}),
@@ -1181,29 +1203,29 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     // 완료는 상태이지 연결 해제가 아니다 — 담당 연결은 그대로 남아 묶음·이동이 살아 있다.
-    complete: (objectiveId, operationIntent) => update(objectiveId, (stored) => {
+    complete: (objectiveId, operationIntent, by = "human") => update(objectiveId, (stored) => {
       if (stored.done) return stored;
       // 인계 대기는 넘기기를 거쳐야 완료된다. 남은 후보가 있으면 고르지 않은 완료도 후보 검토의 경계를 지난다 —
       // 그 밖의(진행 중이며 후보가 없는) 목표의 완료는 지금 그대로다.
       if (awaitingHandoff(stored) || (stored.followups ?? []).some((candidate) => candidate.state === "open")) assertReviewable(stored);
-      return { ...withoutDecisionRequest(stored), done: { at: now() }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent };
+      return { ...action(withoutDecisionRequest(stored), by, "complete"), done: { at: now(), by }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent };
     }),
-    reopen: (objectiveId, operationIntent) => update(objectiveId, (stored) => (stored.done ? { ...stored, done: undefined, operationIntent } : stored)),
-    extend: (objectiveId, context, operationIntent) => update(objectiveId, (stored) => {
-      const next = extended(stored, context);
+    reopen: (objectiveId, operationIntent, by = "human") => update(objectiveId, (stored) => (stored.done ? { ...action(stored, by, "reopen"), done: undefined, operationIntent } : stored)),
+    extend: (objectiveId, context, operationIntent, by = "human") => update(objectiveId, (stored) => {
+      const next = extended(stored, context, by);
       // 완료 표시는 복원이 성공하기 전까지 남긴다. 재시작도 같은 의도를 적용한다.
-      return operationIntent ? { ...stored, operationIntent: { ...operationIntent, extensionContext: context.trim() } } : next;
+      return operationIntent ? { ...stored, operationIntent: { ...operationIntent, extensionContext: context.trim(), by } } : next;
     }),
     operationIntent: (objectiveId) => { try { return locate(objectiveId).stored.operationIntent; } catch (error) { if (error instanceof ObjectiveStoreError && error.code === "unknown_objective") return undefined; throw error; } },
     acknowledgeOperationIntent(objectiveId, requestId) {
       update(objectiveId, (stored) => stored.operationIntent?.requestId === requestId
-        ? stored.operationIntent.extensionContext !== undefined ? extended(stored, stored.operationIntent.extensionContext) : { ...stored, operationIntent: undefined }
+        ? stored.operationIntent.extensionContext !== undefined ? extended(stored, stored.operationIntent.extensionContext, stored.operationIntent.by) : { ...stored, operationIntent: undefined }
         : stored);
     },
     handOff: (objectiveId, input) => update(objectiveId, (stored) => {
       if (!awaitingHandoff(stored)) throw new ObjectiveStoreError("not_awaiting_handoff");
       const at = now();
-      return { ...stored, extensionActive: undefined, handoff: input.by === "commander" ? { by: "commander", at, retrospective: input.retrospective } : { by: "human", at } };
+      return { ...action(stored, input.by, "hand-off"), extensionActive: undefined, handoff: input.by === "commander" ? { by: "commander", at, retrospective: input.retrospective } : { by: input.by, at } };
     }),
 
     missionAdd: (objectiveId, input, addOptions) => update(objectiveId, (stored) => {
@@ -1212,7 +1234,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 임무뿐이다.
       const unplaced = addOptions?.unplaced === true && input.prerequisites === undefined;
       if (input.member && !(stored.members ?? []).some((member) => member.id === input.member)) throw new ObjectiveStoreError("unknown_member");
-      const mission: StoredMission = { id: randomUUID(), text: input.text, prerequisites, ...(input.member ? { member: input.member } : {}), ...(addOptions?.by === "human" && input.member !== undefined ? { memberBy: "human" as const } : {}), ...(unplaced ? { unplaced: true as const } : {}), ...(addOptions?.by === "human" ? { by: "human" as const } : {}) };
+      const mission: StoredMission = { id: randomUUID(), text: input.text, prerequisites, ...(input.member ? { member: input.member } : {}), ...(addOptions?.by && input.member !== undefined ? { memberBy: addOptions.by } : {}), ...(unplaced ? { unplaced: true as const } : {}), ...(addOptions?.by ? { by: addOptions.by } : {}) };
       // 새 일이 생겼다 — 앞선 충족 판단은 옛 보드에 대한 것이다.
       return withoutMet({ ...stored, missions: [...stored.missions, mission] });
     }),
@@ -1232,7 +1254,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         prerequisites,
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.done !== undefined ? { done: input.done ? true as const : undefined } : {}),
-        ...(input.member !== undefined ? { member: input.member ?? undefined, memberBy: patchOptions?.by === "human" ? "human" as const : undefined } : {}),
+        ...(input.member !== undefined ? { member: input.member ?? undefined, memberBy: patchOptions?.by } : {}),
       };
       const replaced = replaceMission(stored, at, next);
       // 끝난 임무를 되돌리면 새 일이다 — 충족 판단을 거둔다.
@@ -1365,7 +1387,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         return byRole[0].id;
       };
       // 사람의 임무는 배치 뒤에도 보존한다. 옛 미분류 레코드도 이번 쓰기부터 출처를 굳힌다.
-      const kept = stored.missions.filter((mission) => mission.done || mission.unplaced || mission.by === "human" || !!mission.records?.length || mission.memberBy === "human")
+      const kept = stored.missions.filter((mission) => mission.done || mission.unplaced || (mission.by !== undefined && mission.by !== "commander") || !!mission.records?.length || (mission.memberBy !== undefined && mission.memberBy !== "commander"))
         .map((mission) => mission.unplaced && !mission.by ? { ...mission, by: "human" as const } : mission);
       const same = (text: string) => text.trim().toLowerCase();
       if (kept.some((mission) => input.missions.some((planned) => same(planned.text) === same(mission.text)))) throw new ObjectiveStoreError("mission_kept");
@@ -1392,17 +1414,18 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return stored.enlisted === true && commenced === (stored.commenced === true) ? stored : { ...stored, enlisted: true, ...(commenced ? { commenced: true as const } : {}) };
     }),
     setCriteriaOpen: (objectiveId, open) => update(objectiveId, (stored) => (!!stored.criteriaOpen === open ? stored : { ...stored, criteriaOpen: open ? true as const : undefined })),
-    clearMet: (objectiveId) => update(objectiveId, (stored) => withoutMet(stored)),
+    clearMet: (objectiveId, by) => update(objectiveId, (stored) => withoutMet(by ? action(stored, by, "steer") : stored)),
 
-    setEdited(objectiveId, kinds) {
+    setEdited(objectiveId, kinds, by = "human") {
       return update(objectiveId, (stored) => {
         if (kinds === null) return stored.edited ? { ...stored, edited: undefined } : stored;
         if (kinds.length === 0) return stored;
         // 사람이 보드 내용을 고쳤다 — 앞선 결정 요청은 옛 보드를 전제로 한 질문이다.
         const next = withoutDecisionRequest(stored);
         const merged = [...new Set([...(stored.edited?.kinds ?? []), ...kinds])];
-        if (stored.edited && merged.length === stored.edited.kinds.length) return next;
-        return { ...next, edited: { at: now(), kinds: merged } };
+        const actors = stored.edited ? stored.edited.actors ?? ["human" as const] : [];
+        const sameActor = actors.some((actor) => JSON.stringify(actor) === JSON.stringify(by));
+        return { ...action(next, by, "edit", { kinds }), edited: { at: now(), kinds: merged, actors: sameActor ? actors : [...actors, by] } };
       });
     },
 
@@ -1435,25 +1458,26 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (target.met === met) return stored;
       return { ...stored, criteria: criteria.map((entry) => (entry.id === criterionId ? { id: entry.id, text: entry.text, by: entry.by, ...(met ? { met } : {}) } : entry)) };
     }),
-    proposalApprove: (objectiveId, proposalId) => update(objectiveId, (stored) => {
+    proposalApprove: (objectiveId, proposalId, by = "human") => update(objectiveId, (stored) => {
       const proposal = stored.criteriaProposals?.find((entry) => entry.id === proposalId);
       if (!proposal) throw new ObjectiveStoreError("unknown_proposal");
-      const next = withoutDecisionRequest(approve(stored, proposal));
+      const next = action(withoutDecisionRequest(approve(stored, proposal)), by, "criteria-approved", { targetId: proposal.id, proposal });
       return { ...next, criteriaProposals: stored.criteriaProposals?.filter((entry) => entry.id !== proposalId) };
     }),
-    proposalsApproveAll: (objectiveId) => update(objectiveId, (stored) => {
+    proposalsApproveAll: (objectiveId, by = "human") => update(objectiveId, (stored) => {
       if (!stored.criteriaProposals?.length) return stored;
-      const next = withoutDecisionRequest(stored.criteriaProposals.reduce(approve, stored));
+      const next = withoutDecisionRequest(stored.criteriaProposals.reduce((current, proposal) => action(approve(current, proposal), by, "criteria-approved", { targetId: proposal.id, proposal }), stored));
       return { ...next, criteriaProposals: undefined };
     }),
-    proposalReject: (objectiveId, proposalId) => update(objectiveId, (stored) => {
-      if (!stored.criteriaProposals?.some((entry) => entry.id === proposalId)) throw new ObjectiveStoreError("unknown_proposal");
-      return { ...stored, criteriaProposals: stored.criteriaProposals.filter((entry) => entry.id !== proposalId) };
+    proposalReject: (objectiveId, proposalId, by = "human") => update(objectiveId, (stored) => {
+      const proposal = stored.criteriaProposals?.find((entry) => entry.id === proposalId);
+      if (!proposal) throw new ObjectiveStoreError("unknown_proposal");
+      return { ...action(stored, by, "criteria-rejected", { targetId: proposalId, proposal }), criteriaProposals: stored.criteriaProposals!.filter((entry) => entry.id !== proposalId) };
     }),
-    proposalAnnotate: (objectiveId, proposalId, annotation) => update(objectiveId, (stored) => {
+    proposalAnnotate: (objectiveId, proposalId, annotation, by = "human") => update(objectiveId, (stored) => {
       if (!stored.criteriaProposals?.some((entry) => entry.id === proposalId)) throw new ObjectiveStoreError("unknown_proposal");
       if (annotation.length > 300) throw new ObjectiveStoreError("annotation_too_long");
-      return { ...stored, criteriaProposals: stored.criteriaProposals.map((entry) => entry.id === proposalId ? { ...entry, annotation: annotation.trim() || undefined } : entry) };
+      return { ...stored, criteriaProposals: stored.criteriaProposals.map((entry) => entry.id === proposalId ? { ...entry, annotation: annotation.trim() || undefined, annotationBy: annotation.trim() ? by : undefined } : entry) };
     }),
 
     resultUpdate(objectiveId, resultId, patch) {
@@ -1601,24 +1625,24 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       openFollowup(stored, candidateId);
       return { ...stored, followups: (stored.followups ?? []).filter((candidate) => candidate.id !== candidateId) };
     }),
-    followupDiscard: (objectiveId, candidateId) => update(objectiveId, (stored) => {
+    followupDiscard: (objectiveId, candidateId, by = "human") => update(objectiveId, (stored) => {
       const target = (stored.followups ?? []).find((candidate) => candidate.id === candidateId);
       if (!target) throw new ObjectiveStoreError("unknown_followup");
       if (target.state === "discarded") return stored;
       if (target.state !== "open") throw new ObjectiveStoreError("followup_locked");
       const at = now();
       // 흔적은 제목·요약·시각만 — 브리핑·기준·근거는 남기지 않는다. 넘치면 오래된 흔적부터 정리한다.
-      const trace: StoredFollowup = { id: target.id, rev: target.rev, state: "discarded", title: target.title, summary: target.summary, userImpact: "", fromMission: target.fromMission, brief: "", criteria: [], evidence: [], at: target.at, updatedAt: at, discardedAt: at };
+      const trace: StoredFollowup = { id: target.id, rev: target.rev, state: "discarded", title: target.title, summary: target.summary, userImpact: "", fromMission: target.fromMission, brief: "", criteria: [], evidence: [], at: target.at, updatedAt: at, discardedAt: at, discardedBy: by };
       let followups = (stored.followups ?? []).map((candidate) => (candidate.id === candidateId ? trace : candidate));
       const traces = followups.filter((candidate) => candidate.state === "discarded");
       if (traces.length > MAX_FOLLOWUP_DISCARDED) {
         const drop = new Set(traces.sort((a, b) => (a.discardedAt ?? 0) - (b.discardedAt ?? 0)).slice(0, traces.length - MAX_FOLLOWUP_DISCARDED).map((candidate) => candidate.id));
         followups = followups.filter((candidate) => !drop.has(candidate.id));
       }
-      return { ...stored, followups };
+      return { ...action(stored, by, "followup-discarded", { targetId: candidateId }), followups };
     }),
 
-    completeWithFollowups(objectiveId, selection, operationIntent) {
+    completeWithFollowups(objectiveId, selection, operationIntent, by = "human") {
       let fresh = false;
       const objective = update(objectiveId, (stored) => {
         const batches = stored.followupBatches ?? [];
@@ -1644,10 +1668,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const chosenIds = new Set(ids);
         fresh = true;
         return foldBatches({
-          ...stored,
-          done: { at: now() }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent,
+          ...action(action(withoutDecisionRequest(stored), by, "complete"), by, "followup-selected", { targetId: selection.batchId }),
+          done: { at: now(), by }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent,
           followups: (stored.followups ?? []).map((candidate) => (chosenIds.has(candidate.id) ? { ...candidate, state: "selected" as const, batchId: selection.batchId } : candidate)),
-          followupBatches: [...batches, { id: selection.batchId, at: now(), launch: selection.launch, items }],
+          followupBatches: [...batches, { id: selection.batchId, at: now(), by, launch: selection.launch, items }],
         });
       });
       return { objective, fresh };
@@ -1738,7 +1762,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { objective, withdrawn };
     },
 
-    decisionAccept(objectiveId, input) {
+    decisionAccept(objectiveId, input, by = "human") {
       const { stored, node } = locate(objectiveId);
       // 이미 결정으로 남은 요청 — 같은 답의 재전송은 그 결과를, 다른 답은 덮지 않고 거절한다.
       const recorded = (stored.decisions ?? []).filter((decision) => decision.requestId === input.requestId);
@@ -1765,7 +1789,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         return { questionId: question.id, selectedOptionIds: question.options.filter((option) => picked.has(option.id)).map((option) => option.id), text: answer.text };
       });
       if (delivering.has(request.id)) throw new ObjectiveStoreError("decision_delivering");
-      const objective = update(objectiveId, (current) => ({ ...current, decisionDelivery: { requestId: request.id, answers, at: now() } }));
+      const objective = update(objectiveId, (current) => ({ ...current, decisionDelivery: { requestId: request.id, answers, at: now(), by } }));
       delivering.add(request.id);
       return { recorded: false, objective, request, answers };
     },
@@ -1785,7 +1809,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           id: randomUUID(), requestId, questionId: question.id,
           question: { text: question.text, options: question.options.map((option) => ({ ...option })), multiSelect: question.multiSelect },
           answer: { selectedOptionIds: [...answer.selectedOptionIds], text: answer.text },
-          at: delivery.at,
+          at: delivery.at, by: delivery.by ?? "human",
           ...(question.missionId ? { missionId: question.missionId } : {}),
           ...(question.memberId ? { memberId: question.memberId } : {}),
         };

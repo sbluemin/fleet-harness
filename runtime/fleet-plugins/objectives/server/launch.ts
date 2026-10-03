@@ -7,7 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { decisionTurn, humanWords, memberMessageTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import { COMMANDER_PRESET, COORDINATES_NOT_APPLIED, heldNextOutcome, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type Objective, type ObjectiveMember, type PlanInput, type RoutingDecision, type RoutingPreview, type SlotBy, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
+import { COMMANDER_PRESET, COORDINATES_NOT_APPLIED, heldNextOutcome, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
 
 /**
  * 목표는 레코드로 태어난다. 첫 「개시」·「구상」에서만 같은 id 의 dormant 지휘관 Operation 을 세우고 깨운다.
@@ -46,8 +46,8 @@ export interface LaunchService {
   /** 목표를 지운다 — 지휘관 Operation 을 닫는다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다). */
   remove(objectiveId: string): Objective;
   /** 완료 기록과 Core 요청 의도를 저장한 뒤 지휘관 ID 하나로 보관을 요청한다. */
-  complete(objectiveId: string): Promise<Objective>;
-  reopen(objectiveId: string): Promise<Objective>;
+  complete(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
+  reopen(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   extend(objectiveId: string, context: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly operationId: string }>;
   /** 재시작 때 미완료 Core 요청만 재접수한다. 완료 상태만 보고 다시 보관하지 않는다. */
   resumeOperationIntents(): Promise<void>;
@@ -76,7 +76,7 @@ export interface LaunchService {
   requestPlan(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly operationId: string }>;
   missionPatched(objectiveId: string, missionId: string, patch: MissionPatchInput): Objective;
   /** 사람이 더한 임무(`by: "human"`)는 선행을 함께 주지 않았다면 미분류로 들어간다 — 지휘관의 추가는 지휘관이 이미 자리를 안다. */
-  missionAdded(objectiveId: string, input: MissionAddInput, options?: { readonly by?: SlotBy }): Objective;
+  missionAdded(objectiveId: string, input: MissionAddInput, options?: { readonly by?: ObjectiveActor }): Objective;
   planApplied(objectiveId: string, plan: PlanInput): Objective;
   /**
    * 구성원 명단을 대기 기동하거나 휴면 세션째 재개한다. 호스트가 한 구성원의 기동·재개를 거절하면 그 구성원만 failed(코드와 함께)로
@@ -140,6 +140,7 @@ export interface MusterMember {
 }
 
 export interface LaunchOptions {
+  readonly actor?: ObjectiveActor;
   readonly language?: PromptLanguage;
   /** 사람이 개시·스티어링에 덧붙인 말 — 그 알림 아래 인용으로 한 번 간다(저장하지 않는다). 구상의 말은 목표의 `planRequest` 에 산다. */
   readonly context?: string;
@@ -804,7 +805,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
           theaterId: source.theaterId, title: entry.snapshot.title, groupId: batch.launch.groupId, viewMode: batch.launch.viewMode,
           note: entry.snapshot.brief, criteria: entry.snapshot.criteria, addedBy: objectiveId,
           origin: { objectiveId, candidateId, batchId, userImpact: entry.snapshot.userImpact, evidence: entry.snapshot.evidence }, objectiveId: id,
-        }, { language: batch.launch.language });
+        }, { language: batch.launch.language, actor: batch.by });
         if (!store.find(objectiveId)) {
           if (!existing && store.pending(created.id)) store.removePending(created.id);
           return;
@@ -830,7 +831,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     current = store.setCriteriaOpen(objectiveId, true);
     const firstWake = neverStarted(objectiveId);
     if (firstWake) current = store.setEdited(objectiveId, null);
-    if (!(await send(objectiveId, planTurn(current, language), humanWords(current.planRequest), true))) throw new ObjectiveStoreError("launch_failed");
+    if (!(await send(objectiveId, planTurn(current, language, options?.actor), humanWords(current.planRequest), true))) throw new ObjectiveStoreError("launch_failed");
     if (firstWake) announceStarted(objectiveId);
     return { objective: current, operationId: objectiveId };
   };
@@ -838,13 +839,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const service: LaunchService = {
     describe: () => ({ available: !!ctx.host.consoleControl }),
 
-    async create(input, _options) {
+    async create(input, options) {
       const { objectiveId, ...init } = input;
       checkedCriteria(init);
       const id = objectiveId ?? randomUUID();
       if (store.recorded(id)) return objective(id);
       if (referenceNode(id)) throw new ObjectiveStoreError("operation_id_taken");
-      return store.adopt(id, init, {
+      return store.adopt(id, { ...init, by: options?.actor ?? init.by }, {
         theaterId: input.theaterId, title: input.title, groupId: input.groupId, createdAt: Date.now(),
         sessionName: commanderSession(), ...COMMANDER_PRESET, viewMode: input.viewMode ?? "terminal",
       });
@@ -855,7 +856,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       store.completeWithFollowups(objectiveId, {
         ...selection,
         launch: { groupId: current.groupId, viewMode: commanderView(objectiveId), language: languageOf(options) },
-      }, current.done ? undefined : operationIntent(objectiveId, "archive"));
+      }, current.done ? undefined : operationIntent(objectiveId, "archive"), options?.actor);
       await applyOperationIntent(objectiveId);
       service.resumeFollowups(objectiveId);
       return objective(objectiveId);
@@ -892,16 +893,16 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return current;
     },
 
-    complete: (objectiveId) => orderedOperationRequest(objectiveId, async () => {
+    complete: (objectiveId, options) => orderedOperationRequest(objectiveId, async () => {
       const current = objective(objectiveId);
-      store.complete(objectiveId, current.done ? undefined : operationIntent(objectiveId, "archive"));
+      store.complete(objectiveId, current.done ? undefined : operationIntent(objectiveId, "archive"), options?.actor);
       await applyOperationIntent(objectiveId);
       return objective(objectiveId);
     }),
 
-    reopen: (objectiveId) => orderedOperationRequest(objectiveId, async () => {
+    reopen: (objectiveId, options) => orderedOperationRequest(objectiveId, async () => {
       const current = objective(objectiveId);
-      store.reopen(objectiveId, current.done ? operationIntent(objectiveId, "ensure-active") : undefined);
+      store.reopen(objectiveId, current.done ? operationIntent(objectiveId, "ensure-active") : undefined, options?.actor);
       await applyOperationIntent(objectiveId);
       return objective(objectiveId);
     }),
@@ -911,7 +912,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
       const intent = current.done ? operationIntent(objectiveId, "ensure-active") : undefined;
       return claim(objectiveId, async () => {
-        store.extend(objectiveId, context, intent);
+        store.extend(objectiveId, context, intent, options?.actor);
         await applyOperationIntent(objectiveId);
         return requestPlan(objectiveId, options);
       }, "plan");
@@ -923,7 +924,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         if (!intent) continue;
         try { await orderedOperationRequest(current.id, async () => {
           await applyOperationIntent(current.id);
-          if (intent.extensionContext !== undefined) await service.requestPlan(current.id);
+          if (intent.extensionContext !== undefined) await service.requestPlan(current.id, { actor: intent.by });
         }); }
         catch (error) { console.warn(`[objectives] Operation request remains pending: ${error instanceof Error ? error.message : "unexpected_failure"}`); }
       }
@@ -988,7 +989,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
       const firstWake = neverStarted(objectiveId);
       if (firstWake) current = store.setEdited(objectiveId, null);
-      const delivered = await send(objectiveId, startTurn(current, language, options?.context), humanWords(options?.context), true);
+      const delivered = await send(objectiveId, startTurn(current, language, options?.context, options?.actor), humanWords(options?.context), true);
       if (!delivered) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
       // 개시가 닿은 목표는 「진행 중」에 선다.
@@ -1058,7 +1059,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     requestPlan: (objectiveId, options) => claim(objectiveId, () => requestPlan(objectiveId, options), "plan"),
 
     missionPatched: (objectiveId, missionId, patch) => store.missionPatch(objectiveId, missionId, patch),
-    missionAdded: (objectiveId, input, options) => store.missionAdd(objectiveId, input, { unplaced: options?.by === "human", ...(options?.by === "human" ? { by: "human" as const } : {}) }),
+    missionAdded: (objectiveId, input, options) => store.missionAdd(objectiveId, input, { unplaced: options?.by !== undefined && options.by !== "commander", ...(options?.by ? { by: options.by } : {}) }),
     planApplied: (objectiveId, plan) => store.plan(objectiveId, plan),
 
     muster,
@@ -1128,7 +1129,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (pending.has(key)) throw new ObjectiveStoreError("decision_delivering");
       pending.add(key);
       try {
-        const accepted = store.decisionAccept(objectiveId, input);
+        const accepted = store.decisionAccept(objectiveId, input, options?.actor);
         if (accepted.recorded) return accepted.objective;
         // 지휘관이 이 요청의 답을 기다리는 중이다 — 도구 응답으로 건네고 결정으로 남긴다. 프롬프트는 보내지 않는다.
         const waiter = decisionWaiters.get(`${objectiveId}:${accepted.request.id}`);
@@ -1140,7 +1141,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         }
         try {
           await accessOperation(objectiveId);
-          await control().request({ kind: "send", operationId: objectiveId, text: decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options)), display: "", displayFormat: "markdown" });
+          await control().request({ kind: "send", operationId: objectiveId, text: decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options), options?.actor), display: "", displayFormat: "markdown" });
         } catch (error) {
           // 닿지 않았다 — 요청과 답은 화면에 그대로 남고 결정은 쌓이지 않는다. 호스트의 거절 사유는 함께 돌려준다.
           store.decisionSettle(objectiveId, accepted.request.id, false);
@@ -1185,10 +1186,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 스티어링 턴에서 기준 제안은 불가하다. 전송 전에 닫아 턴 전환 중 계획 쓰기와 경합하지 않는다.
       if (current.criteriaOpen) store.setCriteriaOpen(objectiveId, false);
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
-      await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context), display: humanWords(options?.context), displayFormat: "markdown" }).catch(asStoreError);
+      await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context, options?.actor), display: humanWords(options?.context), displayFormat: "markdown" }).catch(asStoreError);
       // 지휘관에게 닿았다 — 쌓인 편집을 지우고, 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다.
       store.setEdited(objectiveId, null);
-      return store.clearMet(objectiveId);
+      return store.clearMet(objectiveId, options?.actor ?? "human");
     },
 
     message: (objectiveId, memberId, text, options) => orderedOperationRequest(objectiveId, async () => {
@@ -1204,7 +1205,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
       await control().request({ kind: "send", operationId: target, text, display: text.trim(), displayFormat: "markdown" }).catch(asStoreError);
       if (!member) return { objective: objective(objectiveId), notified: null };
-      const notified = await accessOperation(current.id).then(() => send(current.id, memberMessageTurn(current, member.role, text, languageOf(options)), humanWords(text)), () => false);
+      const notified = await accessOperation(current.id).then(() => send(current.id, memberMessageTurn(current, member.role, text, languageOf(options), options?.actor), humanWords(text)), () => false);
       return { objective: objective(objectiveId), notified };
     }),
 

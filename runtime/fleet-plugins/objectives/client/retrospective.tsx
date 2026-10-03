@@ -5,6 +5,7 @@
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
+import type { ObjectiveActor } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 
@@ -19,7 +20,7 @@ export interface RetroPair {
 export interface RetrospectiveProps {
   readonly t: T;
   /** 누가 넘겼나 — 사람이면 회고가 없다. */
-  readonly by: "commander" | "human";
+  readonly by: ObjectiveActor;
   readonly good: readonly RetroPair[];
   readonly regret: readonly RetroPair[];
 }
