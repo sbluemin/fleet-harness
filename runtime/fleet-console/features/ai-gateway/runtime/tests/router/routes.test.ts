@@ -1121,6 +1121,55 @@ describe("Muse Code routing", () => {
     }
   });
 
+  it("ends an answer the output cap cut short as max_tokens, never as a finished turn", async () => {
+    // Responses ends a capped answer either as `response.incomplete` or as `response.completed`
+    // carrying `status: incomplete`. Both once reached Claude Code as end_turn (or, streamed, as a
+    // mid-response error), so its output-cap recovery never ran and the cut text read as final.
+    const capped = (terminal: Record<string, unknown>) => [
+      { type: "response.created", response: { id: "r2", model: "muse-spark-1.3-contributor", usage: null } },
+      { type: "response.output_item.added", output_index: 0, item: { type: "message", id: "msg_1", role: "assistant" } },
+      { type: "response.output_text.delta", item_id: "msg_1", output_index: 0, content_index: 0, delta: "The verdict is" },
+      terminal,
+    ];
+    const incompleteResponse = {
+      id: "r2",
+      model: "muse-spark-1.3-contributor",
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      usage: { input_tokens: 10, output_tokens: 128 },
+    };
+    const terminals = [
+      { type: "response.incomplete", response: incompleteResponse },
+      { type: "response.completed", response: incompleteResponse },
+    ];
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      capped(terminals[fetchMock.mock.calls.length - 1]!).map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
+      { headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
+    try {
+      const streamed = response();
+      await router.handle(ctx({ res: streamed, token: ANTHROPIC_CRED, model: MUSE_MODEL }));
+      expect(streamed.status).toBe(200);
+      expect(streamed.body).toContain('"stop_reason":"max_tokens"');
+      expect(streamed.body).toContain("event: message_stop");
+      expect(streamed.body).not.toContain("event: error");
+
+      const collected = response();
+      await router.handle(ctx({
+        res: collected,
+        token: ANTHROPIC_CRED,
+        rawBody: { model: MUSE_MODEL, messages: [{ role: "user", content: "Hello" }], max_tokens: 128, stream: false },
+      }));
+      expect(collected.status).toBe(200);
+      const message = JSON.parse(collected.body) as { stop_reason: string; content: unknown[] };
+      expect(message.stop_reason).toBe("max_tokens");
+      expect(message.content).toEqual([{ type: "text", text: "The verdict is" }]);
+    } finally {
+      router.dispose();
+    }
+  });
+
   it("refuses before spending a request when the sign-in or a forced tool choice cannot be honored", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       JSON.stringify({ error: { message: `bad key ${MUSE_KEY}`, type: "invalid_api_key" } }),

@@ -255,6 +255,15 @@ export interface CanonicalResponseSnapshot {
   id: string;
   model: string;
   usage: CanonicalUsage | null;
+  /**
+   * Present only on a terminal snapshot the provider itself declared unfinished — the Responses
+   * wire's `status: "incomplete"`, whether it arrived as `response.incomplete` or as
+   * `response.completed` carrying that status. Adapters fold both into `response.completed` so a
+   * consumer has one terminal event to wait for; this field is what keeps a cut-off answer from
+   * reading as a finished one. `reason` is the provider's `incomplete_details.reason` verbatim
+   * (`max_output_tokens`, `content_filter`, ...), absent when the provider gave none.
+   */
+  incomplete?: { reason?: string };
 }
 
 export interface CanonicalMessageOutputItem {

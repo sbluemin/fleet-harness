@@ -441,8 +441,11 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
         output_index: number(value.output_index, "output_index"),
         arguments: string(value.arguments, "arguments"),
       };
+    // `response.incomplete` is the same terminal as a completed response whose status is
+    // `incomplete`; both become one `response.completed` that carries the reason.
     case "response.completed":
-      return { type: value.type, response: responseSnapshot(value.response) };
+    case "response.incomplete":
+      return { type: "response.completed", response: terminalSnapshot(value.response, value.type) };
     case "response.failed": {
       const response = record(value.response, "response.failed.response");
       return {
@@ -455,6 +458,19 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
     default:
       return undefined;
   }
+}
+
+/**
+ * A terminal snapshot keeps the upstream's own verdict that the answer was cut short. Without it a
+ * response stopped by the output cap or a content filter reads downstream as a finished turn.
+ */
+function terminalSnapshot(value: unknown, eventType: string): CanonicalResponseSnapshot {
+  const snapshot = responseSnapshot(value);
+  const response = record(value, "response");
+  if (eventType !== "response.incomplete" && response.status !== "incomplete") return snapshot;
+  const details = isRecord(response.incomplete_details) ? response.incomplete_details : undefined;
+  const reason = typeof details?.reason === "string" ? details.reason : undefined;
+  return { ...snapshot, incomplete: reason === undefined ? {} : { reason } };
 }
 
 function responseSnapshot(value: unknown): CanonicalResponseSnapshot {
