@@ -73,7 +73,8 @@ export function createTerminalAlternateScreenController(options: TerminalAlterna
     }
     terminal.write(sequence, () => {
       alternateScreenActive = state.alternateScreenActive;
-      callback?.();
+      // 콜백 안에서 fit(resize)하면 xterm이 같은 청크를 다시 파싱한다 — 쓰기 큐가 넘어간 뒤로 미룬다.
+      if (callback) queueMicrotask(callback);
     });
   };
 

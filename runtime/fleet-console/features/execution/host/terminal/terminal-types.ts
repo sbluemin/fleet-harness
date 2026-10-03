@@ -101,6 +101,9 @@ export interface TerminalPtyHandle {
   onExit(callback: () => void): TerminalPtyDataDisposable;
   write(data: string | Buffer): void;
   resize(cols: number, rows: number): void;
+  /** PTY 읽기를 멈추고 다시 연다(node-pty). 멈춘 동안 자식의 쓰기는 커널 버퍼가 차면 막힌다. */
+  pause?(): void;
+  resume?(): void;
   kill(): void;
   destroy?(): void;
 }

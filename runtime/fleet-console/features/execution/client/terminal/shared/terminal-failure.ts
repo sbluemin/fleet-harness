@@ -54,6 +54,13 @@ export function describeTerminalFailure(code: string | undefined, t: Translate<T
         diagnostic,
         tone: "coral",
       };
+    case "console_unreachable":
+      return {
+        title: t("terminal.failure.unreachable.title"),
+        cause: t("terminal.failure.unreachable.cause"),
+        diagnostic,
+        tone: "warn",
+      };
     case "Unauthorized":
     case "unauthorized":
       return {
