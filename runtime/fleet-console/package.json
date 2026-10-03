@@ -66,6 +66,7 @@
     "@fleet-console/analyst": "workspace:*",
     "@fleet-console/font-picker": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
+    "@fleet-console/link": "workspace:*",
     "@fleet-console/computer-use": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
     "@fleet-plugins/codex": "workspace:*",

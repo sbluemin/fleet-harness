@@ -225,6 +225,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
+  "dependencies": {
+    "@fleet-console/link": "workspace:*"
+  },
   "peerDependencies": {
     "react": "^19.0.0"
   },

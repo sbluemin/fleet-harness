@@ -1,0 +1,20 @@
+{
+  "name": "@fleet-console/link",
+  "version": "1.209.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./core": {
+      "types": "./index.ts",
+      "import": "./index.ts",
+      "default": "./index.ts"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^6.0.2"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

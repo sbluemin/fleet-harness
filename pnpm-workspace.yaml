@@ -11,6 +11,7 @@ packages:
   - "runtime/fleet-console/protocol"
   - "runtime/fleet-console/sdk"
   - "runtime/fleet-console/foundation/markdown"
+  - "runtime/fleet-console/foundation/link"
   - "runtime/fleet-console/features/computer-use/runtime"
   - "runtime/fleet-console/foundation/font-picker"
   - "runtime/fleet-plugins/codex"
