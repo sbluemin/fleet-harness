@@ -470,6 +470,14 @@ export interface ClientConsoleStateCapability {
   getSelectedOperationId?(): string | null;
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
+  /**
+   * 지도(캔버스) 영역의 가로 인셋(px) — 왼쪽은 사이드바가, 오른쪽은 레일이 덮는 폭(띄움 간격 포함). 레일을 끄는 동안에도
+   * 실시간으로 바뀐다. 화면 위에 따로 뜨는 플러그인 면(서랍 등)이 지도를 넘지 않게 제 폭을 정할 때 쓴다.
+   * 구버전 호스트에는 없을 수 있다 — 없으면 창 전체를 지도로 다룬다.
+   */
+  getMapInsets?(): { readonly left: number; readonly right: number };
+  /** `getMapInsets` 가 바뀔 때마다 — 사이드바 여닫기·폭 조절, 레일 열기·닫기·끌기. */
+  subscribeMapInsets?(listener: () => void): () => void;
 }
 
 export type ConsoleConnectionState = "connecting" | "live" | "offline";
