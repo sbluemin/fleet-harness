@@ -1,5 +1,5 @@
 import type { AgentToolGroup } from "@fleet-console/sdk/agent";
-import { approvePatch, enqueuePatch } from "../../wiki/index.js";
+import { enqueueAndApprovePatch } from "../../wiki/index.js";
 import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "../../wiki/index.js";
 import { createWikiDraftToolSpecs } from "./draft-tools.js";
 import { getWikiToolSpecs, modelFacingWikiToolDescription } from "../../wiki-mcp.js";
@@ -143,8 +143,7 @@ export class CoworkService {
     entry = { ...entry, version: s.baseVersion + 1, updated: new Date().toISOString() };
     const patch: Patch = { frontmatter: { op: "update_wiki", target: s.targetPath ?? `wiki/${s.entryId}.md`, summary: `Cowork update ${s.entryId}`, proposer: "codex-cowork", created: new Date().toISOString() }, body: JSON.stringify(entry) };
     try {
-      const patchId = await enqueuePatch(patch, this.paths, { baseVersion: s.baseVersion, baseHash: s.baseHash });
-      await approvePatch(patchId, this.paths);
+      await enqueueAndApprovePatch(patch, this.paths, { baseVersion: s.baseVersion, baseHash: s.baseHash });
       const applied = await this.store.update(workspaceId, id, x => ({ ...x, state: "applied" }));
       this.store.release(applied);
       return this.changed(applied);

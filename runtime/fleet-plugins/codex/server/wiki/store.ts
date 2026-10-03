@@ -348,7 +348,7 @@ function assertWithinRawDir(absolutePath: string, paths: MemoryPaths): void {
   }
 }
 
-function serializeWikiEntry(entry: WikiEntry): string {
+export function serializeWikiEntry(entry: WikiEntry): string {
   const frontmatter: FrontmatterShape = {
     id: entry.id,
     title: entry.title,

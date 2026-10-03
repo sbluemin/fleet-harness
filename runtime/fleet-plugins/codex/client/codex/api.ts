@@ -9,6 +9,7 @@ import type {
   CodexHealthResponse,
   ConflictDetailResponse,
   ConflictListItem,
+  DrydockBaseConflict,
   DrydockDetailResponse,
   DrydockDiffStat,
   DrydockListItem,
@@ -34,6 +35,7 @@ export type {
   CodexHealthResponse,
   ConflictDetailResponse,
   ConflictListItem,
+  DrydockBaseConflict,
   DrydockDetailResponse,
   DrydockDiffStat,
   DrydockListItem,
@@ -59,6 +61,13 @@ export interface SearchOptions {
 
 export interface EntryOptions {
   includeRaw?: boolean;
+}
+
+export class CodexRequestError extends Error {
+  constructor(readonly status: number, readonly code: string, readonly baseConflict?: DrydockBaseConflict) {
+    super(code);
+    this.name = "CodexRequestError";
+  }
 }
 
 export class CoworkRequestError extends Error {
@@ -209,7 +218,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     signal,
   });
   if (!response.ok) {
-    throw new Error(await buildRequestError(url, response));
+    throw await buildRequestError(url, response);
   }
   return response.json() as Promise<T>;
 }
@@ -221,7 +230,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(await buildRequestError(url, response));
+    throw await buildRequestError(url, response);
   }
   return response.json() as Promise<T>;
 }
@@ -250,7 +259,7 @@ function isCoworkEvent(value: unknown): value is CoworkEventDto {
     && (event.session === undefined || (event.session !== null && typeof event.session === "object"));
 }
 
-async function buildRequestError(url: string, response: Response): Promise<string> {
-  const json = await response.json().catch(() => null) as { error?: string } | null;
-  return json?.error ?? `${url} request failed: ${response.status}`;
+async function buildRequestError(url: string, response: Response): Promise<CodexRequestError> {
+  const json = await response.json().catch(() => null) as { error?: string; baseConflict?: DrydockBaseConflict } | null;
+  return new CodexRequestError(response.status, json?.error ?? `${url} request failed: ${response.status}`, json?.baseConflict);
 }
