@@ -10,6 +10,7 @@ import { z } from "zod";
 import objectivesPlugin from "../routes.js";
 import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../server/attachments.js";
+import { inboxReasons } from "../server/board-state.js";
 import { createCommodoreBoardTools, createObjectiveConsoleTools } from "../server/console-tools.js";
 import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
@@ -1670,7 +1671,7 @@ describe("Objectives contract", () => {
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    const { ctx, store, launch, call, consoleTool, workspace, launches } = harness();
+    const { ctx, store, launch, call, consoleTool, workspace, launches, activity } = harness();
     const commodore = createCommodoreBoardTools(ctx, store, launch, "t1")[0]!;
     const schema = z.fromJSONSchema(commodore.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
     const board = async (args: Record<string, unknown>) => {
@@ -1694,7 +1695,14 @@ describe("Objectives contract", () => {
     await board({ objectiveId: id, plan: true });
     await command("plan", { missions: [{ text: "verify", member: "worker" }], members: [{ role: "worker" }], criteria: [{ text: "Decision applied" }] }, id);
     const beforeStart = (await board({ objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
+    expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
     await board({ objectiveId: id, criteria: { approve: beforeStart.criteriaProposals[0]!.id } });
+    // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 순찰까지 멈추지 않는다.
+    expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);
+    activity.set(id, "running");
+    expect((await board({ view: "inbox" })).objectives).not.toContainEqual(expect.objectContaining({ id, reasons: expect.arrayContaining(["planned"]) }));
+    activity.set(id, "idle");
+    expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
     expect(await board({ objectiveId: id, commence: true })).toMatchObject({ objectiveId: id, failed: [] });
     expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.objectContaining({ state: "idle" })] }) }));
     const executing = (await board({ objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };

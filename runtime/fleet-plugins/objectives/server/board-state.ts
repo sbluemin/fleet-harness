@@ -4,7 +4,7 @@ import type { Objective } from "./types.js";
 export const STALL_MS = 30 * 60_000;
 export type BoardObservation = Pick<ConsoleOperationObservation, "activity" | "lifecycle">;
 export type BoardObserver = (operationId: string) => BoardObservation | null | undefined;
-export type InboxReason = "decision" | "criteria" | "review" | "followup" | "followup-failed" | "pending" | "stalled";
+export type InboxReason = "decision" | "criteria" | "review" | "followup" | "followup-failed" | "pending" | "planned" | "stalled";
 
 /** 임무가 남고 보드가 오래 그대로인 목표. 관측할 수 없는 세션을 유휴라고 추측하지 않는다. */
 export function stalledObjectives(objectives: readonly Objective[], observe: BoardObserver, now = Date.now()): readonly string[] {
@@ -24,7 +24,14 @@ export function inboxReasons(objective: Objective, options: { readonly observe?:
   if (objective.removed) return [];
   const reasons: InboxReason[] = [];
   if (!objective.done) {
-    if (!objective.commenced) reasons.push("pending");
+    if (!objective.commenced) {
+      if (!objective.missions.length) reasons.push("pending");
+      else if (!objective.criteriaProposals.length) {
+        const commander = options.observe?.(objective.id);
+        // 관측 없는 보드 서명도 구상 전과 개시 대기를 구별한다. 관측이 있으면 진행 중인 구상을 개시 대기로 부르지 않는다.
+        if (!options.observe || commander?.lifecycle === "dormant" || commander?.activity === "idle" || commander?.activity === "ended") reasons.push("planned");
+      }
+    }
     if (objective.criteriaProposals.length) reasons.push("criteria");
     if (objective.decisionRequest) reasons.push("decision");
     if (objective.awaitingReview) reasons.push("review");
