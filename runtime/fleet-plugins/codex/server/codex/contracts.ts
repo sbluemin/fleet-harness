@@ -151,6 +151,7 @@ export interface DrydockBatchResult {
   id: string;
   outcome: "approved" | "rejected" | "skipped" | "failed";
   error?: string;
+  conflictId?: string;
 }
 
 export interface DrydockBatchResponse { ok: true; results: DrydockBatchResult[]; }
@@ -225,6 +226,7 @@ export interface SchemaDocumentResponse {
 export interface ConflictListItem {
   id: string;
   title: string;
+  createdAt?: string;
   updated: string;
   status: "open" | "resolved" | "unknown";
   path: string;

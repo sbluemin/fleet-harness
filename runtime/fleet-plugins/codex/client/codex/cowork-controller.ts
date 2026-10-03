@@ -23,7 +23,7 @@ function consoleT() {
   return getT(resolveActiveLocale());
 }
 
-export interface CoworkController { destroy(): void; refresh(): Promise<void>; engaged(): boolean; }
+export interface CoworkController { destroy(): void; refresh(): Promise<void>; engaged(): boolean; setWriteBlocked(blocked: boolean): void; }
 
 export interface MountCoworkInlineOptions {
   theaterId: string | null;
@@ -90,6 +90,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   let rebasePending = false;
   let staleDiscardArmed = false;
   let sessionLost = false;
+  let entryUnavailable = false;
   let connectionPending = false;
   let restartArmed = false;
   const hintKey = `fleet.codex.cowork.active:${options.theaterId ?? "default"}:${options.entryId}`;
@@ -240,8 +241,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       panelOpen,
       promptText,
       dirty,
-      applyBlocked: session?.freshness?.stale === true || rebasePending || sessionLost || connectionPending,
-      inputBlocked: sessionLost || connectionPending,
+      applyBlocked: session?.freshness?.stale === true || rebasePending || sessionLost || connectionPending || entryUnavailable,
+      inputBlocked: sessionLost || connectionPending || entryUnavailable,
+      readOnly: entryUnavailable,
       changed,
       draftVersion: session ? session.baseVersion + 1 : 0,
       diffVisible,
@@ -291,7 +293,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     freshnessBanner.hidden = !stale;
     if (!stale || !session) { freshnessBanner.innerHTML = ""; return; }
     const label = session.freshness!.currentVersion === null ? t("codex.cowork.baseMissing") : t("codex.cowork.baseStale", { base: session.baseVersion, current: session.freshness!.currentVersion });
-    const disabled = rebasePending || session.state === "running" ? " disabled" : "";
+    const disabled = entryUnavailable || rebasePending || session.state === "running" ? " disabled" : "";
     freshnessBanner.innerHTML = `<span>${escapeHtml(label)}</span><div><button type="button" class="cowork-ghost" data-cowork-action="rebase"${disabled}>${escapeHtml(t("codex.cowork.rebase"))}</button><button type="button" class="cowork-ghost" data-cowork-action="stale-discard"${disabled}>${escapeHtml(t(staleDiscardArmed ? "codex.cowork.discardConfirm" : "codex.cowork.discard"))}</button>${staleDiscardArmed ? `<button type="button" class="cowork-ghost" data-cowork-action="stale-back">${escapeHtml(t("common.cancel"))}</button>` : ""}</div>`;
   };
 
@@ -653,12 +655,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   }
 
   async function persistAnnotations(): Promise<void> {
-    if (!session) return;
+    if (!session || entryUnavailable) return;
     await mutate(() => updateCoworkAnnotations(options.theaterId, session!.id, annotations.map(annotationToDto)));
   }
 
   async function send(): Promise<void> {
-    if (promptPending || sessionLost || connectionPending || session?.state === "running") return;
+    if (promptPending || entryUnavailable || sessionLost || connectionPending || session?.state === "running") return;
     // 이미 반영된(done) 카드는 재전송 대상에서 제외한다.
     const outgoing = annotations.filter(card => card.status !== "done");
     const localInstruction = promptText.trim();
@@ -746,7 +748,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   }
 
   async function rebase(): Promise<void> {
-    if (!session || sessionLost || connectionPending || rebasePending || session.state !== "idle") return;
+    if (!session || entryUnavailable || sessionLost || connectionPending || rebasePending || session.state !== "idle") return;
     rebasePending = true;
     staleDiscardArmed = false;
     renderDock();
@@ -774,7 +776,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   }
 
   async function apply(): Promise<void> {
-    if (!session || sessionLost || connectionPending || session.freshness?.stale || rebasePending) return;
+    if (!session || entryUnavailable || sessionLost || connectionPending || session.freshness?.stale || rebasePending) return;
     confirmAction = null;
     const from = session.baseVersion;
     const lastTurn = turns[turns.length - 1] ?? null;
@@ -857,7 +859,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   // ── 이벤트 ──────────────────────────────────────────────────────────────────
 
   const onMouseUp = (event: MouseEvent) => {
-    if (composerOpen || sessionLost || connectionPending || isRunning()) return;
+    if (composerOpen || entryUnavailable || sessionLost || connectionPending || isRunning()) return;
     // 필/컴포저 위에서의 mouseup은 앵커를 재구축하면 안 된다 — click 이벤트가
     // 도달하기 전에 대상 요소가 교체되어 버튼이 무반응이 된다.
     if (event.target instanceof Node && anchor.contains(event.target)) return;
@@ -889,7 +891,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       return;
     }
     const target = event.target;
-    if (event.key === "Enter" && !event.shiftKey && !event.isComposing && target instanceof HTMLTextAreaElement && target.classList.contains("cowork-composer-input") && anchor.contains(target)) {
+    if (!entryUnavailable && event.key === "Enter" && !event.shiftKey && !event.isComposing && target instanceof HTMLTextAreaElement && target.classList.contains("cowork-composer-input") && anchor.contains(target)) {
       event.preventDefault();
       submitComposer();
     }
@@ -922,7 +924,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (action === "rebase") { void rebase(); return; }
     if (action === "stale-back") { staleDiscardArmed = false; renderDock(); return; }
     if (action === "stale-discard") {
-      if (rebasePending || session?.state === "running") return;
+      if (entryUnavailable || rebasePending || session?.state === "running") return;
       if (!staleDiscardArmed) { staleDiscardArmed = true; renderDock(); }
       else { staleDiscardArmed = false; void discard().then(success => { if (success && !disposed) options.onApplied(); }); }
       return;
@@ -956,6 +958,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   return {
     refresh,
     engaged: () => !!session && session.state !== "closed" && session.state !== "applied",
+    setWriteBlocked(blocked) {
+      entryUnavailable = blocked;
+      if (blocked && promptPending && promptAttempt && !promptAttempt.submitted) stop();
+      anchor.querySelectorAll<HTMLButtonElement | HTMLTextAreaElement>("button, textarea").forEach(control => { control.disabled = blocked; });
+      renderDock();
+    },
     destroy() {
       disposed = true;
       freshnessEpoch++;
