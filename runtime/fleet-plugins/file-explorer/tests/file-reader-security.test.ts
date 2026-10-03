@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { FileReadError, readFileForTheater } from "../server/file-reader.js";
 import { ImageServeError, readImageForTheater } from "../server/image-server.js";
-import { handleFilesImage } from "../server/tree-services.js";
+import { handleFilesResolve } from "../server/tree-services.js";
 
 let tmpDir: string;
 let theaterPath: string;
@@ -62,6 +62,26 @@ describe("readFileForTheater — symlink containment", () => {
     ).rejects.toSatisfy(
       (e: unknown) => e instanceof FileReadError && e.code === "path_outside_theater",
     );
+  });
+});
+
+describe("Files reference resolution", () => {
+  it("returns only Theater-relative paths and rejects lexical and realpath escapes at the public endpoint", async () => {
+    const resolve = async (requestedPath: string, pathKind: "absolute" | "theater-relative") => {
+      let response: { status: number; body: unknown } | undefined;
+      const ctx = { host: {
+        security: { isTerminalAuthorized: () => true },
+        paths: { resolveTheaterPath: () => theaterPath },
+        http: { readJsonBody: async () => ({ theaterId: "fixture", path: requestedPath, pathKind }), writeJson: (_res: unknown, status: number, body: unknown) => { response = { status, body }; } },
+      } } as unknown as FleetPluginServerContext;
+      await handleFilesResolve({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+      expect(JSON.stringify(response)).not.toContain(tmpDir);
+      return response;
+    };
+    expect(await resolve(path.join(theaterPath, "normal.txt"), "absolute")).toEqual({ status: 200, body: { path: "normal.txt", kind: "file" } });
+    expect(await resolve("../outside.txt", "theater-relative")).toEqual({ status: 403, body: { error: "outside_theater" } });
+    expect(await resolve("link-outside.txt", "theater-relative")).toEqual({ status: 403, body: { error: "outside_theater" } });
+    expect(await resolve("missing.txt", "theater-relative")).toEqual({ status: 404, body: { error: "not_found" } });
   });
 });
 

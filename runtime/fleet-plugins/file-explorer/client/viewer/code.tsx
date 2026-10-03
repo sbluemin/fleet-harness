@@ -26,6 +26,9 @@ interface CodeViewerProps {
   readonly wrap?: boolean;
   readonly target?: {
     readonly lineNumber: number;
+    readonly column?: number;
+    readonly relativePath: string;
+    readonly requestId: string;
     readonly ranges: readonly { readonly start: number; readonly end: number }[];
   };
   readonly t: Translate<FileExplorerMessageKey>;
@@ -75,17 +78,23 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
   useLayoutEffect(() => {
     const node = scrollRef.current;
     if (!node || !target) return;
-    if (wrapping) {
-      // wrap 행은 가변 높이라 수식으로 좌표를 만들 수 없다. 전체 렌더 뒤 실제 target 행을 맞춘다.
-      const frame = window.requestAnimationFrame(() => {
-        windowRef.current?.querySelector<HTMLElement>(".is-search-target")?.scrollIntoView({ block: "center" });
-      });
-      return () => window.cancelAnimationFrame(frame);
+    const lineNumber = Math.min(lines.length, target.lineNumber);
+    if (!wrapping) {
+      const targetTop = Math.max(0, (lineNumber - 1) * CODE_LINE_HEIGHT_PX - node.clientHeight * 0.35);
+      node.scrollTop = targetTop;
+      setScrollTop(targetTop);
     }
-    const targetTop = Math.max(0, (target.lineNumber - 1) * CODE_LINE_HEIGHT_PX - node.clientHeight * 0.35);
-    node.scrollTop = targetTop;
-    setScrollTop(targetTop);
-  }, [target?.lineNumber, wrapping]);
+    const frame = window.requestAnimationFrame(() => {
+      const row = windowRef.current?.querySelector<HTMLElement>(".is-search-target");
+      if (wrapping) row?.scrollIntoView({ block: "center" });
+      const mark = row?.querySelector<HTMLElement>(".fexp-code-search-mark");
+      if (mark && !wrapping) {
+        const left = mark.getBoundingClientRect().left - node.getBoundingClientRect().left + node.scrollLeft;
+        node.scrollLeft = Math.max(0, left - node.clientWidth * 0.35);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [content, lines.length, target?.lineNumber, target?.column, target?.relativePath, target?.requestId, wrapping]);
 
   const windowed = visibleLineWindow(scrollTop, viewportHeight, lines.length);
   // 줄바꿈 모드는 창을 나누지 않는다 — 가변 높이를 고정 높이 격자에 얹으면 뒷줄이 도달 불가가 된다.
@@ -102,7 +111,12 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
         key={start + index}
         lineNumber={lineNumber}
         html={html}
-        target={lineNumber === target?.lineNumber ? target : undefined}
+        target={target && lineNumber === Math.min(lines.length, target.lineNumber) ? {
+          ranges: target.ranges.length > 0 ? target.ranges : target.column && (lines[start + index]?.length ?? 0) > 0 ? [{
+            start: Math.min(target.column - 1, (lines[start + index]?.length ?? 1) - 1),
+            end: Math.min(target.column, lines[start + index]?.length ?? 0),
+          }] : [],
+        } : undefined}
         rawLine={lines[start + index] ?? ""}
         lang={lang}
       />

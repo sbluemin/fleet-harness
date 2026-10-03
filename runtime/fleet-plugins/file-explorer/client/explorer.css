@@ -16,12 +16,69 @@
 
 .fexp-tree-pane {
   display: grid;
-  grid-template-rows: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   /* 암시적 auto 열이 내용 min-content로 pane보다 넓어지지 않게 클램프 */
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.fexp-theater-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.fexp-viewer-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.fexp-shell-notice,
+.fexp-navigation-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 6px 12px;
+  font-size: var(--t-xs);
+  color: var(--warn-ink);
+}
+
+.fexp-theater-head .fexp-shell-notice,
+.fexp-theater-head .fexp-navigation-error { padding: 0; }
+
+.fexp-shell-notice button {
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.fexp-shell-notice button:hover,
+.fexp-shell-notice button:focus-visible { color: var(--brass-ink); }
+
+.fexp-navigation-toast {
+  position: fixed;
+  z-index: 1000;
+  right: 16px;
+  bottom: 16px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  color: var(--warn-ink);
+  box-shadow: var(--shadow-anchor);
+  font-size: var(--t-sm);
+  pointer-events: none;
 }
 
 /* ── 파일 행 컨텍스트 메뉴 ── */
