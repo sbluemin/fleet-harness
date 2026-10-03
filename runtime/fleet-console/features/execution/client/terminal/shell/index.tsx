@@ -176,6 +176,12 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
   const [surfaceKey, setSurfaceKey] = React.useState(0);
   // 재시작으로 갈아 끼운 셸 위에 앞 셸의 흐린 화면과 구분선을 잇는다(K-10). 새 표면이 마운트 때 한 번 쓴다.
   const [carryOver, setCarryOver] = React.useState<TerminalCarryOver | undefined>(undefined);
+  // 새 표면은 첫 렌더에서 carryOver를 붙잡는다(마운트 때 한 번만 쓴다). 그 커밋이 끝나면 곧바로 비운다 —
+  // 이 호스트는 Shell이 끝난 뒤에도 콘솔 수명 동안 살아 있으므로, 남겨 두면 다음에 새로 여는 Shell이
+  // 이미 끝난 세션의 화면과 "교체" 구분선을 다시 그린다.
+  React.useEffect(() => {
+    if (carryOver) setCarryOver(undefined);
+  }, [carryOver]);
   // 전역 Shell 링크는 2행 카드(Fleet / 내 브라우저)가 window.confirm을 대신한다.
   // 조기 반환보다 앞에서 건다 — 마운트 전에도 훅 순서는 같아야 한다.
   const shellLink = useShellLinkChoice(language ?? mount.context?.language ?? "en");
@@ -199,6 +205,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
         setSurfaceKey((key) => key + 1);
         return;
       }
+      setCarryOver(undefined);
       publishShellMount(EMPTY_SHELL_MOUNT);
       close?.();
     });
