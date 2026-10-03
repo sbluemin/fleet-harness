@@ -67,7 +67,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 만 누적이다.
  */
-export type WakeCode = "patrol" | "directive" | "intel" | "message" | "board" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated";
+export type WakeCode = "patrol" | "directive" | "intel" | "message" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated";
 
 interface PendingReason {
   count?: number;
@@ -87,7 +87,6 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "directive": return `directive changed${tail}`;
     case "intel": return `${plural("new intel item")}`;
     case "message": return "the person sent you a message (quoted below)";
-    case "board": return "the board changed";
     case "decision": return `inbox: ${plural("decision request")}`;
     case "review": return `inbox: ${n} awaiting review`;
     case "criteria": return `inbox: ${plural("criteria proposal")}`;
@@ -128,7 +127,8 @@ interface Runner {
   language: "en" | "ko";
   rotateNext: "replaced" | "restarted" | null;
   recentActions: string[];
-  signature: string;
+  /** 사령관이 이미 들은 대기 상태 — `code:objectiveId[:rev]`. 새 항목이 생길 때만 깨우고, 줄어드는 것은 조용히 잊는다. */
+  seen: Set<string>;
   stalledReported: Set<string>;
   emptyReported: boolean;
 }
@@ -294,7 +294,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const start = (theaterId: string, reason: WakeCode) => {
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, lastInputTokens: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], signature: signatureOf(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, lastInputTokens: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     wake(runner, reason);
@@ -341,17 +341,19 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (event.op === "transcript" && event.entry.kind === "message" && runner) { runner.messages.push(event.entry.text); wake(runner, "message"); }
   }));
 
-  // 보드 사건 — 대기 상태의 서명이 바뀔 때만, 무엇이 바뀌었는지 한 줄로.
+  // 보드 사건 — 사령관이 아직 듣지 못한 대기 상태가 생길 때만 깨운다. 사령관 자신의 개시·완료로 대기가 줄어드는 것은 깨울 일이
+  // 아니다(빈 inbox 를 읽으러 깨어나는 비용). 줄어든 항목은 조용히 잊어 같은 상태가 돌아오면 다시 깨운다.
   cleanups.push(deps.subscribeObjectives((event) => {
     const runner = runners.get(event.theaterId);
     if (!runner) return;
     const objectives = deps.objectives(event.theaterId);
-    const signature = signatureOf(objectives);
-    if (signature === runner.signature) return;
-    runner.signature = signature;
-    const digest = inboxDigest(objectives);
-    if (digest.length) for (const [code, count] of digest) wake(runner, code, { count });
-    else wake(runner, "board");
+    const current = waitingKeys(objectives);
+    const fresh = [...current].filter((key) => !runner.seen.has(key));
+    runner.seen = current;
+    if (fresh.length) {
+      const digest = new Map(inboxDigest(objectives));
+      for (const code of new Set(fresh.map((key) => key.split(":")[0] as WakeCode))) wake(runner, code, { count: digest.get(code) ?? 1 });
+    }
     const empty = !objectives.some((objective) => !objective.done && !objective.removed);
     if (empty && !runner.emptyReported) wake(runner, "empty");
     runner.emptyReported = empty;
@@ -403,11 +405,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
 }
 
-/** 보드의 대기 상태 서명 — 바뀔 때만 깨운다. 이유는 inbox 보기와 같은 `inboxReasons` 다(정체는 따로 관측한다). */
-function signatureOf(objectives: readonly Objective[]): string {
-  return objectives.filter((objective) => !objective.removed).map((objective) => [
-    objective.id, objective.done ? "d" : objective.commenced ? "c" : "p", objective.awaitingHandoff ? "h" : "", objective.decisionRequest ? `q${objective.decisionRequestRevision}` : "", inboxReasons(objective).join(","),
-  ].join(":")).sort().join("|");
+/** 보드의 대기 상태 항목 — `code:objectiveId`, 결정 요청은 개정까지(같은 목표의 새 요청도 새 항목). 이유는 inbox 보기와 같다. */
+function waitingKeys(objectives: readonly Objective[]): Set<string> {
+  const keys = new Set<string>();
+  for (const objective of objectives) for (const reason of inboxReasons(objective)) keys.add(reason === "decision" ? `${reason}:${objective.id}:${objective.decisionRequestRevision}` : `${reason}:${objective.id}`);
+  return keys;
 }
 
 /** 사람 전용으로 남은 대기 상태의 수 — 지금 그 이유를 가진 목표 수(절대값). 없으면 빈 목록이다. */

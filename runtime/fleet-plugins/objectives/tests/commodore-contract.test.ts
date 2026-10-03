@@ -314,6 +314,18 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["decision:1"]);
       expect(sessions[0]!.sent).toHaveLength(3);
+      // 구상이 내려앉으면(미션이 생긴 시작 전 목표) pending 은 그대로여도 planned 로 깨운다.
+      objectives.push({ id: "o2", theaterId: "t1", title: "Lineup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o2" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["planned:1"]);
+      expect(sessions[0]!.sent.at(-1)).toContain("1 objective has a lineup ready to commence");
+      // 대기 상태가 줄기만 하면(사령관 자신의 개시·완료) 깨우지 않는다 — 빈 inbox 를 읽으러 깨어나지 않게.
+      (objectives[1] as { commenced: boolean; missions: { done: boolean }[] }).commenced = true;
+      (objectives[1] as { missions: { done: boolean }[] }).missions[0]!.done = true;
+      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o2" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(4);
 
       // 정체 — 임무가 남았는데 지휘관이 30분 넘게 쉬면 한 번 깨우고, 상태에 그 목표 id 가 선다.
       (objectives[0] as { decisionRequest: unknown }).decisionRequest = null;
