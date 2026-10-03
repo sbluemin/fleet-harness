@@ -120,15 +120,20 @@ export interface OverlayViewRect {
 let lastViewRect: OverlayViewRect | null = null;
 
 export function publishBrowserViewRect(rect: OverlayViewRect | null): void {
+  const current = lastViewRect;
+  if (current === rect) return;
+  if (current && rect && current.x === rect.x && current.y === rect.y && current.width === rect.width && current.height === rect.height) return;
   lastViewRect = rect;
+  notify();
 }
 
 function toastOverlapsView(): boolean {
   if (typeof document === "undefined") return false;
-  // 자리를 모르면 겹친 것으로 본다 — 뷰가 서기 전 첫 프레임의 안전 쪽이다.
-  if (!lastViewRect || lastViewRect.width < 1 || lastViewRect.height < 1) return true;
   const host = document.querySelector(".app-toast-host");
   if (!host || host.childElementCount === 0) return false;
+  // 자리를 모르면 겹침 아님으로 본다 — park 때 자리를 지우면 null→겹침→park 교착에 빠진다.
+  // 판정 대상은 「서 있는 뷰」가 아니라 「시트가 놓으려는 뷰 자리」라서, 물러나 있어도 잰다.
+  if (!lastViewRect || lastViewRect.width < 1 || lastViewRect.height < 1) return false;
   const view = lastViewRect;
   for (const child of host.children) {
     const rect = child.getBoundingClientRect();

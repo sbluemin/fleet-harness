@@ -204,16 +204,18 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     if (!open) return;
     const element = viewportRef.current;
     if (!element) return;
+    // 판정용 자리는 「놓으려는 자리」다 — 물러나 있을 때도 유지해야 토스트 교차가 풀린다.
+    // 닫을 때만 null로 거둔다.
+    const rect = element.getBoundingClientRect();
+    if (rect.width >= 1 && rect.height >= 1) {
+      publishBrowserViewRect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+    }
     if (parked) {
-      publishBrowserViewRect(null);
-      const rect = element.getBoundingClientRect();
       if (rect.width >= 1 && rect.height >= 1) place(false);
       return;
     }
-    const rect = element.getBoundingClientRect();
-    if (rect.width < 1 || rect.height < 1) { publishBrowserViewRect(null); place(false); return; }
-    if (document.visibilityState !== "visible") { publishBrowserViewRect(null); place(false); return; }
-    publishBrowserViewRect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+    if (rect.width < 1 || rect.height < 1) { place(false); return; }
+    if (document.visibilityState !== "visible") { place(false); return; }
     place(true, { x: rect.left, y: rect.top, width: rect.width, height: rect.height });
   }, [open, parked, activeTab?.id, geometry]);
   React.useEffect(() => {
@@ -221,10 +223,12 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const timer = setInterval(() => {
       const element = viewportRef.current;
       if (!element) return;
-      if (parked) { publishBrowserViewRect(null); place(false); return; }
       const rect = element.getBoundingClientRect();
-      if (rect.width < 1 || rect.height < 1 || document.visibilityState !== "visible") { publishBrowserViewRect(null); place(false); return; }
-      publishBrowserViewRect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+      if (rect.width >= 1 && rect.height >= 1) {
+        publishBrowserViewRect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+      }
+      if (parked) { place(false); return; }
+      if (rect.width < 1 || rect.height < 1 || document.visibilityState !== "visible") { place(false); return; }
       place(true, { x: rect.left, y: rect.top, width: rect.width, height: rect.height });
     }, PLACE_POLL_MS);
     return () => clearInterval(timer);
