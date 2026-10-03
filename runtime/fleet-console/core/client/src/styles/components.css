@@ -5845,7 +5845,10 @@ body[data-companion-resizing="true"] .canvas-operation {
 .canvas-operation:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent:not([aria-pressed="true"])) > .canvas-operation-titlebar,
 .canvas-operation.is-deck-tile:has(> .canvas-operation-titlebar .fleet-caption-action.is-agent) > .canvas-operation-titlebar,
 .canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge:not(.is-leaving)) > .canvas-operation-titlebar {
-  background: linear-gradient(90deg, color-mix(in oklch, var(--agent-use-color) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%);
+  /* Doctrine: 유채 배지색을 청색 면에 섞는 워시는 oklab이다 — oklch는 짧은 색상각 경로로 보간해 주황 배지(h60)
+     옆 제목줄이 보라(h287~294)로 칠해졌다(목표 f90ef806 실측). 라이트(Whites)는 다크 보정 범위 밖이라
+     light-dark()의 라이트 쪽이 지금의 oklch 워시를 그대로 잇는다. */
+  background: linear-gradient(90deg, light-dark(color-mix(in oklch, var(--agent-use-color) 26%, var(--glass-tint-caption)), color-mix(in oklab, var(--agent-use-color) 26%, var(--glass-tint-caption))), var(--glass-tint-caption) 70%);
 }
 /* 덱 카드의 캡션 액션은 표식만 남긴다 — 에이전트 사용 배지와 「사용 중」인 브라우저 버튼. 나머지(열기·전환·관찰 말풍선)는
    카드에서 누를 수 없으므로 그리지 않고, 남은 버튼도 포인터를 받지 않는다. */

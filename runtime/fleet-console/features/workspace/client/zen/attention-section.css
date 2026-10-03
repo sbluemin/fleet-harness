@@ -7,8 +7,8 @@
   list-style: none;
 }
 .side-bar-attention.is-war-room {
-  border-color: color-mix(in oklch, var(--brass) 22%, transparent);
-  background: color-mix(in oklch, var(--brass) 4%, transparent);
+  border-color: var(--quiet-attention-rim);
+  background: var(--quiet-attention-fill);
 }
 .side-bar-attention-head {
   display: flex;

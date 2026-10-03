@@ -512,6 +512,9 @@
   /* 변경 수 칩(저장소) — 수는 값이라 중립 워시 위 2티어 글자. */
   --quiet-count-fill: var(--control-wash);
   --quiet-count-ink: var(--text-secondary);
+  /* War Room 「확인 필요」 상자 — 요약 상자는 상시 서 있으므로 quiet 테두리·면. */
+  --quiet-attention-rim: color-mix(in oklch, var(--brass-quiet) 30%, transparent);
+  --quiet-attention-fill: color-mix(in oklch, var(--brass-quiet) 4%, transparent);
 }
 
 
@@ -641,6 +644,7 @@
   --control-wash: oklch(96% 0.012 88 / 8%);
   --control-wash-hover: oklch(96% 0.012 88 / 4.5%);
 
+  --console-use-badge: oklch(77% 0.12 60);
   --provider-claude: oklch(77% 0.1 62);
   --provider-typesafe: oklch(74% 0.1 339);
   --provider-cursor: oklch(73% 0.095 238);
@@ -764,6 +768,7 @@
   --control-wash: oklch(95% 0.003 250 / 7%);
   --control-wash-hover: oklch(95% 0.003 250 / 4%);
 
+  --console-use-badge: oklch(76% 0.1 60);
   --provider-claude: oklch(76% 0.085 62);
   --provider-typesafe: oklch(73% 0.085 339);
   --provider-cursor: oklch(72% 0.08 238);
@@ -985,6 +990,8 @@
   --quiet-resume-ink: var(--brass-bright);
   --quiet-count-fill: color-mix(in oklch, var(--brass) 28%, transparent);
   --quiet-count-ink: var(--brass-ink);
+  --quiet-attention-rim: color-mix(in oklch, var(--brass) 22%, transparent);
+  --quiet-attention-fill: color-mix(in oklch, var(--brass) 4%, transparent);
 
   --scrollbar-thumb: oklch(44% 0.015 95 / 35%);
   --scrollbar-thumb-hover: oklch(37% 0.018 95 / 55%);

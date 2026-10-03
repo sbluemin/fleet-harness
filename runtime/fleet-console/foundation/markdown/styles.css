@@ -302,9 +302,11 @@ code.hljs {
 .markdown-body blockquote {
   margin: var(--space-6) 0;
   padding: var(--space-4) var(--space-5);
-  border-left: 3px solid var(--brass);
+  /* 인용의 띠는 표준 문법이라 남기되, 상시 서 있는 장식이므로 다크는 quiet brass로 가라앉힌다.
+     라이트(Whites)는 light-dark()의 라이트 쪽이 지금의 brass 띠·틴트를 그대로 잇는다. */
+  border-left: 3px solid light-dark(var(--brass), var(--brass-quiet));
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  background: light-dark(color-mix(in oklch, var(--brass) 8%, transparent), color-mix(in oklch, var(--brass-quiet) 6%, transparent));
   color: var(--text-primary);
   font-style: italic;
 }

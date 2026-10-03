@@ -2444,8 +2444,9 @@ describe("Instrument core design contract", () => {
       for (const declaration of declarations) {
         // control-wash는 형상이 아니라 팔레트다 — 워시의 명도·알파를 테마 잉크 위에서 재조율한다.
         // provider는 정체성 축이라 테마의 채도 봉투를 따라 재조율된다(고정하면 Carbon·Instrument 외피의
-        // 2.5배로 튄다). quiet는 lights-out 슬롯 — 테마가 슬롯의 틴트 세기만 재조율한다.
-        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|glass|control|provider|quiet)[a-z-]*:$/);
+        // 2.5배로 튄다). quiet는 lights-out 슬롯 — 테마가 슬롯의 틴트 세기만 재조율한다. Console Use 배지 면도
+        // 같은 이유로 테마 채도 봉투를 따른다.
+        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|glass|control|provider|quiet|console-use-badge)[a-z-]*:$/);
       }
     }
     // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/계기 무게/본문 regular 굵기 보정)을
