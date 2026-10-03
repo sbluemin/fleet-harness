@@ -644,6 +644,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
                 ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
                   fetch: fetchImpl,
                   ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: deps.observeMuseCodeUsage } : {}),
+                  ...(harness.messagingToolNames ? { messagingToolNames: harness.messagingToolNames } : {}),
                 }))
                 : new AnthropicMessagesGateway(codexAdapter!));
       const modelContextWindow = typeof target.contextWindow === "number"

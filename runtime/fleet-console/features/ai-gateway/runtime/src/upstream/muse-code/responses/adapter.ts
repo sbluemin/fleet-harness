@@ -23,6 +23,7 @@ import {
 import { logRawWireEvent, wireLog } from "../../../transport/wire-log.js";
 import type { QuotaWindow } from "../../../quota/types.js";
 import { parseMuseCodeSubscriptionUsage } from "../quota.js";
+import { resampleArming, withMuseCodeResample } from "./resample.js";
 
 /**
  * Muse Code 구독 키가 쓰는 Meta Model API Responses 엔드포인트.
@@ -92,6 +93,11 @@ export interface MuseCodeResponsesAdapterOptions {
    * 오므로 소비자가 스트림을 끝까지 읽을 때만 불린다. 관측의 실패는 응답에 영향을 주지 않는다.
    */
   onSubscriptionUsage?: (windows: readonly QuotaWindow[]) => void;
+  /**
+   * 보고를 보내는 클라이언트 도구 이름(Claude Code의 `SendMessage` 등). 도구 이름은 하네스 어휘라
+   * 하네스 프로필이 넘긴다. 그 직후의 무추론 단답은 정상 마무리가 대부분이라 재샘플 범위를 좁힌다.
+   */
+  messagingToolNames?: readonly string[];
 }
 
 export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
@@ -100,10 +106,12 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
   private readonly onSubscriptionUsage: ((windows: readonly QuotaWindow[]) => void) | undefined;
+  private readonly messagingToolNames: ReadonlySet<string>;
 
   constructor(options: MuseCodeResponsesAdapterOptions = {}) {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.onSubscriptionUsage = options.onSubscriptionUsage;
+    this.messagingToolNames = new Set(options.messagingToolNames ?? []);
     this.maxBodyBytes = positiveInteger(
       options.maxBodyBytes ?? DEFAULT_MUSE_CODE_MAX_UPSTREAM_BODY_BYTES,
       "maxBodyBytes",
@@ -128,18 +136,53 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
     const refusal = unsupportedToolChoice(request);
     if (refusal !== undefined) return refusal;
 
-    const controller = new AbortController();
-    const unlinkAbort = linkAbortSignal(options.signal, controller);
+    const startedAt = Date.now();
     const payload = forMuseCodeResponsesBackend(request);
+    const arming = resampleArming(payload);
+    const afterMessagingTool = arming.lastToolName !== undefined && this.messagingToolNames.has(arming.lastToolName);
+    wireLog("muse-code-responses.resample.armed", {
+      armed: arming.armed,
+      ...(arming.skip === undefined ? {} : { skip: arming.skip }),
+      ...(arming.lastToolName === undefined ? {} : { lastTool: arming.lastToolName }),
+      afterMessagingTool,
+    });
+    const first = await this.send(payload, options.apiKey, options.signal);
+    if (!first.ok || !arming.armed) return first;
+    return {
+      ...first,
+      events: withMuseCodeResample(first.events, {
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        ...(arming.lastToolName === undefined ? {} : { lastToolName: arming.lastToolName }),
+        messagingToolNames: this.messagingToolNames,
+        startedAt,
+        // 재샘플은 같은 본문·키·헤더로, 같은 게이트를 거쳐 새 연결로 보낸다. 호출자 abort에도 묶인다.
+        reopen: () => this.send(payload, options.apiKey, options.signal, true),
+      }),
+    };
+  }
+
+  /** 한 번의 업스트림 호출. 응답마다 자기 컨트롤러를 갖고 호출자 abort에 연결된다. */
+  private async send(
+    payload: MuseCodeResponsesWireRequest,
+    apiKey: string,
+    signal: AbortSignal | undefined,
+    resample = false,
+  ): Promise<AdapterResponse> {
+    const controller = new AbortController();
+    const unlinkAbort = linkAbortSignal(signal, controller);
     // 업스트림에 보내는 본문 그대로. 키는 헤더에만 있고 본문에는 없다.
-    wireLog("muse-code-responses.wire.request", { url: MUSE_CODE_RESPONSES_URL, payload });
+    wireLog("muse-code-responses.wire.request", {
+      url: MUSE_CODE_RESPONSES_URL,
+      ...(resample ? { resample: true } : {}),
+      payload,
+    });
     let response: Response;
     try {
       response = await this.fetchImpl(MUSE_CODE_RESPONSES_URL, {
         method: "POST",
         headers: {
           accept: "text/event-stream",
-          authorization: `Bearer ${options.apiKey}`,
+          authorization: `Bearer ${apiKey}`,
           "content-type": "application/json",
           "x-api-version": MUSE_CODE_API_VERSION,
         },

@@ -1171,6 +1171,71 @@ describe("Muse Code routing", () => {
     }
   });
 
+  it("draws a tool-result turn again when Muse skipped reasoning and only announced its next step", async () => {
+    // Muse sometimes skips reasoning and ends a tool loop on "Now I'll run the tests." with no
+    // call; the same request drawn again reasons and calls the tool. The client must see one
+    // message — the second draw — and the gateway must draw at most once more.
+    const created = { type: "response.created", response: { id: "r4", model: "muse-spark-1.3-contributor", usage: null } };
+    const completed = (outputTokens: number, reasoningTokens: number) => ({
+      type: "response.completed",
+      response: {
+        id: "r4",
+        model: "muse-spark-1.3-contributor",
+        status: "completed",
+        usage: { input_tokens: 10, output_tokens: outputTokens, output_tokens_details: { reasoning_tokens: reasoningTokens } },
+      },
+    });
+    const announced = [
+      created,
+      { type: "response.output_item.added", output_index: 0, item: { type: "message", id: "msg_a", role: "assistant" } },
+      { type: "response.output_text.delta", item_id: "msg_a", output_index: 0, content_index: 0, delta: "Now I'll run the tests." },
+      completed(8, 0),
+    ];
+    const recovered = [
+      created,
+      { type: "response.reasoning_text.delta", item_id: REASONING_ID, output_index: 0, delta: "run them" },
+      { type: "response.output_item.done", output_index: 0, item: { type: "reasoning", id: REASONING_ID, encrypted_content: "muse-blob-2", summary: [] } },
+      { type: "response.output_item.added", output_index: 1, item: { type: "function_call", id: "fc_2", call_id: "call_2", name: "Bash", arguments: "" } },
+      { type: "response.function_call_arguments.done", item_id: "fc_2", output_index: 1, arguments: '{"command":"pnpm test"}' },
+      { type: "response.output_item.done", output_index: 1, item: { type: "function_call", id: "fc_2", call_id: "call_2", name: "Bash", arguments: '{"command":"pnpm test"}' } },
+      completed(30, 12),
+    ];
+    const scripts = [announced, recovered, announced, announced, recovered];
+    let served = 0;
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      scripts[served++]!.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
+      { headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
+    const afterToolResult = [
+      { role: "user", content: "fix the build" },
+      { role: "assistant", content: [{ type: "tool_use", id: "call_1", name: "Edit", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "ok" }] },
+    ];
+    const tools = [{ name: "Bash", input_schema: { type: "object", properties: {} } }, { name: "Edit", input_schema: { type: "object", properties: {} } }];
+    // A main turn's output budget; small budgets are side calls the gateway never redraws.
+    const mainTurn = { model: MUSE_MODEL, messages: afterToolResult, tools, max_tokens: 32_000, stream: true };
+    try {
+      const recoveredRes = response();
+      await router.handle(ctx({ res: recoveredRes, token: ANTHROPIC_CRED, rawBody: mainTurn }));
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(recoveredRes.body.match(/event: message_start/g)).toHaveLength(1);
+      expect(recoveredRes.body).not.toContain("Now I'll run the tests.");
+      expect(recoveredRes.body).toContain('"name":"Bash"');
+      expect(recoveredRes.body).toContain('"stop_reason":"tool_use"');
+
+      // A second draw that announces again is what the client gets; there is no third draw.
+      const againRes = response();
+      await router.handle(ctx({ res: againRes, token: ANTHROPIC_CRED, rawBody: mainTurn }));
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(againRes.body.match(/event: message_start/g)).toHaveLength(1);
+      expect(againRes.body.match(/Now I'll run the tests\./g)).toHaveLength(1);
+      expect(againRes.body).toContain('"stop_reason":"end_turn"');
+    } finally {
+      router.dispose();
+    }
+  });
+
   it("stops the upstream turn and frees its slot when the client hangs up mid-stream", async () => {
     // Node emits the request's `close` once the body is read, so a disconnect after that went
     // unheard: the provider generated to the end, the handler waited forever on a `drain` the dead

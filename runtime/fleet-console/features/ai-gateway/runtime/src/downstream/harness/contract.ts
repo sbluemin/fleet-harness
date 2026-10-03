@@ -82,6 +82,12 @@ export interface GatewayHarnessProfile {
   /** 완성된 스트리밍 호출부터 실행할 수 있는 읽기 전용 도구. 부재는 async 실행 미지원이다. */
   readonly asyncToolNames?: readonly string[];
   /**
+   * 이 클라이언트가 다른 세션·사람에게 보고를 보내는 도구 이름. 도구 이름은 클라이언트 어휘라 여기서
+   * 선언한다. 그 직후의 응답은 정상 마무리인 경우가 많아, 응답을 다시 받는 공급자 정책이 범위를 좁힐 때
+   * 읽는다. 부재는 그런 도구가 없다는 뜻이다.
+   */
+  readonly messagingToolNames?: readonly string[];
+  /**
    * 이 클라이언트가 한 대화를 식별하는 값을, 그 클라이언트의 요청 헤더에서 읽는다.
    *
    * Codex는 캐논 요청의 `metadata.user_id`에서 sticky routing용 `session_id`
