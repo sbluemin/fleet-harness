@@ -9,6 +9,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { ClipboardUnavailableError, copyPathToClipboard, isPathContained, PathActionError } from "./path-actions.js";
 import { FileActionUnavailableError, revealPath, type FileRevealMode } from "./path-actions.js";
 import { FileReadError, READ_MAX_LINES_CAP, readFileForTheater } from "./file-reader.js";
+import { FileResolveError, resolveFileForTheater } from "./file-resolver.js";
 import { ImageServeError, readImageForTheater, writeImageResponse } from "./image-server.js";
 import { invalidateSearchCatalog, searchFilesWithRipgrep } from "./search-engine.js";
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "./types.js";
@@ -817,6 +818,27 @@ export function resolveReadMaxLines(raw: unknown): number | undefined | null {
   if (raw === undefined) return undefined;
   if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) return null;
   return Math.min(raw, READ_MAX_LINES_CAP);
+}
+
+export async function handleFilesResolve(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+): Promise<void> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly path?: unknown; readonly pathKind?: unknown }>(req);
+  if (!isPlainObject(body) || typeof body.theaterId !== "string" || typeof body.path !== "string" || !body.path.trim() || (body.pathKind !== "theater-relative" && body.pathKind !== "absolute")) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return;
+  }
+  const root = ctx.host.paths.resolveTheaterPath(body.theaterId);
+  if (!root) { ctx.host.http.writeJson(res, 404, { error: "not_found" }); return; }
+  try {
+    ctx.host.http.writeJson(res, 200, await resolveFileForTheater(root, body.path, body.pathKind));
+  } catch (error) {
+    if (!(error instanceof FileResolveError)) throw error;
+    ctx.host.http.writeJson(res, error.code === "outside_theater" ? 403 : 404, { error: error.code });
+  }
 }
 
 export async function handleFilesRead(

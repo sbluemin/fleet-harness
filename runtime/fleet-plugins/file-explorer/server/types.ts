@@ -56,6 +56,8 @@ export interface FileSearchItem {
   /** relativePath 기준 UTF-16 half-open 범위. */
   readonly pathRanges?: readonly Utf16Span[];
   readonly preview?: FileSearchPreview;
+  readonly exact?: boolean;
+  readonly location?: { readonly line?: number; readonly column?: number; readonly anchor?: string };
 }
 
 export interface FileSearchResult {

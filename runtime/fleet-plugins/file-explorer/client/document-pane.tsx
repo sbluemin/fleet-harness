@@ -21,7 +21,9 @@ import { makeFilesClient } from "./files-client.js";
 import { getT } from "./i18n/index.js";
 import { CHIP_STRIP_GAP_PX, chipDirHints, overflowingChipIndices, tabLineGeometry } from "./layout.js";
 import { QuietMenu } from "./quiet-menu.js";
-import { mintRevealRequestId, setFileRevealTarget, useFileRevealTarget } from "./search-navigation.js";
+import { DOCUMENT_PANE_ID, positiveCoordinate, resolveFilePath, FileNavigationError } from "./file-navigation.js";
+import { getFileExplorerSnapshot, setFileRevealTarget, showFileNavigationError } from "./view-store.js";
+import { ShellActionNotice, useShellAction } from "./shell-action.js";
 import {
   activateStoredDocument,
   canNavigateDocumentHistory,
@@ -35,7 +37,7 @@ import {
 import { BinaryViewer } from "./viewer/binary.js";
 import { canWrapLines, CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
-import { MarkdownViewer } from "./viewer/markdown.js";
+import { MarkdownViewer, resolveFileExplorerWikiLink } from "./viewer/markdown.js";
 import { parentDirOf } from "./viewer/stale.js";
 
 /**
@@ -47,11 +49,11 @@ import { parentDirOf } from "./viewer/stale.js";
  * 문서 세션(열린 칩·활성 경로·이력)은 `view-store`가 Theater 단위로 들고 있다. 두 페인이 같은
  * 세션을 보므로 어느 쪽도 그것을 소유하지 않는다 — 트리는 열고, 이 페인은 읽는다.
  *
- * 주소(`params.path`)와 활성 경로의 방향은 하나다: **스토어가 진실이고 주소가 따라간다.** 반대
- * 방향은 페인이 처음 설 때 한 번만 열린다(공유 링크·확대 표면에서 곧장 들어오는 경우).
+ * 평상시에는 스토어의 활성 경로를 주소가 따라간다. 자기 Theater의 새 requestId가 있는
+ * 외부 요청은 활성 문서를 바꾸며, nonce 없는 기존 주소는 빈 세션의 최초 진입에만 쓰인다.
  */
 
-export const DOCUMENT_PANE_ID = "file-explorer-document";
+export { DOCUMENT_PANE_ID };
 
 /** 복사 확인("복사됨")이 제자리에 서 있는 시간. */
 const COPY_NOTE_MS = 1200;
@@ -82,7 +84,9 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const { theaterId, params, panes, signal, language } = ctx;
   const t = getT(language);
   const contextScope = theaterId ?? "";
-  const { openDocs, activePath, docStates, wrapLines } = useFileExplorerViewState(contextScope);
+  const { openDocs, activePath, docStates, wrapLines, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
+  const shellAction = useShellAction(ctx.shell, theaterId, activePath);
+  const consumedRequestRef = useRef<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const tabsMoreRef = useRef<HTMLButtonElement>(null);
   const headRef = useRef<HTMLDivElement>(null);
@@ -96,28 +100,54 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const [externalFailed, setExternalFailed] = useState(false);
   const [externalOpening, setExternalOpening] = useState(false);
   const externalRequestRef = useRef(0);
-  const revealTarget = useFileRevealTarget();
 
-  useEffect(() => {
-    setSourceModePaths(new Set());
-  }, [contextScope]);
+  useLayoutEffect(() => {
+    if (!revealTarget || revealTarget.relativePath !== activePath || (!revealTarget.lineNumber && !revealTarget.anchor)) return;
+    const key = `${contextScope}:${activePath}`;
+    setSourceModePaths((current) => {
+      const next = new Set(current);
+      if (revealTarget.lineNumber) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, [activePath, contextScope, revealTarget?.requestId]);
 
-  // 주소가 지목한 문서를 세션에 **세우기만** 한다 — 공유 링크나 확대 표면에서 곧장 들어와
-  // 아직 아무것도 열려 있지 않을 때가 그 자리다.
-  //
-  // 활성 문서가 이미 있으면 손대지 않는다. 주소와 활성이 어긋날 때마다 주소 쪽으로 되돌리면,
-  // 같은 페인이 두 자리에 서 있는 순간(확대 + 레일 주차) 두 사본이 서로 다른 주소로 스토어를
-  // 번갈아 되돌려 갱신이 멈추지 않는다. 방향은 하나여야 한다 — 스토어가 진실, 주소가 사본.
-  //
-  // 주소는 **자기 Theater 안에서만** 뜻이 있다. 이 열은 `keepAlive`라 Theater를 갈아타도
-  // 인스턴스가 살아남고, 그 인스턴스가 든 경로는 떠나온 Theater의 것이다. 그것을 새 Theater에
-  // 세우면 있지도 않은 문서를 열고 그 Theater의 저장된 세션까지 덮어쓴다 — 그래서 주소가
-  // 어느 Theater의 것인지 함께 싣고, 다르면 세우지 않는다.
+  // 주소는 자기 Theater에서만 소비한다. 새 nonce가 있는 외부 요청만 활성 문서를 바꾼다.
   const addressed = params.theaterId === contextScope ? params.path : undefined;
-  useEffect(() => {
-    if (!addressed || activePath !== null) return;
-    activateStoredDocument(contextScope, { relativePath: addressed, name: nameOfPath(addressed) });
-  }, [activePath, addressed, contextScope]);
+  useLayoutEffect(() => {
+    if (!addressed || !ctx.visible) return;
+    const request = params.requestId ? `${contextScope}:${params.requestId}` : null;
+    if (request ? consumedRequestRef.current === request : activePath !== null) return;
+    consumedRequestRef.current = request;
+    let active = true;
+    const apply = (path: string) => {
+      if (!active || signal.aborted) return;
+      let ranges: readonly { readonly start: number; readonly end: number }[] | undefined;
+      try {
+        const parsed: unknown = params.ranges ? JSON.parse(params.ranges) : null;
+        if (Array.isArray(parsed)) ranges = parsed.filter((range) => range && Number.isSafeInteger(range.start) && Number.isSafeInteger(range.end) && range.start >= 0 && range.end > range.start);
+      } catch { /* 별도 강조 범위가 잘못되어도 줄 이동은 유지한다. */ }
+      activateStoredDocument(contextScope, { relativePath: path, name: nameOfPath(path) }, {
+        requestId: params.requestId, lineNumber: positiveCoordinate(params.line), column: positiveCoordinate(params.column), anchor: params.anchor, ranges,
+      });
+    };
+    if (params.pathKind === "absolute") {
+      void resolveFilePath(contextScope, addressed, "absolute", signal).then((resolved) => {
+        if (resolved.kind === "file" && active && !signal.aborted) {
+          apply(resolved.path);
+          panes.replaceParams({ ...params, path: resolved.path, pathKind: "theater-relative" });
+        }
+      }).catch((error) => {
+        if (!active || signal.aborted) return;
+        showFileNavigationError(error instanceof FileNavigationError ? error.reason : "not_found");
+        const fallback = getFileExplorerSnapshot(contextScope).activePath;
+        if (fallback) panes.replaceParams({ path: fallback, theaterId: contextScope, pathKind: "theater-relative" });
+      });
+    } else {
+      apply(addressed);
+    }
+    return () => { active = false; };
+  }, [activePath, addressed, contextScope, ctx.visible, params.requestId, params.pathKind, params.line, params.column, params.anchor, params.ranges, signal]);
 
   // 활성 문서가 바뀔 때 내용을 불러온다 — 캐시가 있으면 즉시 그리고 배경에서 재검증한다.
   // 주차된 사본(확대 중의 레일 인스턴스)은 읽지 않는다 — 같은 문서를 두 번 가져올 뿐이다.
@@ -137,16 +167,22 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   // 주소는 지금 읽는 문서를 말해야 한다 — 캡션 이름과 확대 표면이 같은 값을 읽는다.
   // 이미 같으면 쓰지 않는다: `replaceParams`가 스토어를 건드리므로 무조건 부르면 순환한다.
   useEffect(() => {
-    if (!activePath) return;
+    if (!activePath || (addressed && params.pathKind === "absolute") || getFileExplorerSnapshot(contextScope).activePath !== activePath) return;
     if (params.path === activePath && params.theaterId === contextScope) return;
-    panes.replaceParams({ path: activePath, theaterId: contextScope });
-  }, [activePath, contextScope, panes, params.path, params.theaterId]);
+    const location = revealTarget?.relativePath === activePath ? revealTarget : null;
+    panes.replaceParams({ path: activePath, theaterId: contextScope, pathKind: "theater-relative",
+      ...(location ? { requestId: location.requestId } : {}),
+      ...(location?.lineNumber ? { line: String(location.lineNumber) } : {}),
+      ...(location?.column ? { column: String(location.column) } : {}),
+      ...(location?.anchor ? { anchor: location.anchor } : {}),
+    });
+  }, [activePath, contextScope, panes, params.path, params.theaterId, revealTarget]);
 
   // 마지막 문서가 닫히면 열도 함께 사라진다. 빈 창을 남겨 두면 사용자는 닫을 것이 하나
   // 더 생긴 것으로 읽는다. 주차된 사본은 이미 닫혀 있으므로 자기를 또 닫지 않는다.
   useEffect(() => {
-    if (openDocs.length === 0 && ctx.visible) panes.close();
-  }, [ctx.visible, openDocs.length, panes]);
+    if (getFileExplorerSnapshot(contextScope).openDocs.length === 0 && ctx.visible && params.theaterId === contextScope) panes.close();
+  }, [contextScope, ctx.visible, openDocs.length, panes, params.theaterId]);
 
   // 팝오버들은 문서가 바뀌면 함께 닫힌다 — 다른 문서의 목록이 남아 있으면 거짓말이 된다.
   useEffect(() => {
@@ -187,7 +223,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
 
   const handleCrumbReveal = useCallback((path: string) => {
     if (!theaterId) return;
-    setFileRevealTarget({ theaterId, relativePath: path, requestId: mintRevealRequestId() });
+    setFileRevealTarget(theaterId, { theaterId, relativePath: path, requestId: crypto.randomUUID() });
   }, [theaterId]);
 
   // 복사는 헤더 오른쪽의 아이콘 하나가 맡는다 — 클릭은 상대 경로, Alt+클릭은 절대 경로.
@@ -233,21 +269,22 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
 
   const handleToggleSourceMode = useCallback((source: boolean) => {
     if (!activePath) return;
+    const key = `${contextScope}:${activePath}`;
     setSourceModePaths((current) => {
-      if (current.has(activePath) === source) return current;
+      if (current.has(key) === source) return current;
       const next = new Set(current);
-      if (source) next.add(activePath);
-      else next.delete(activePath);
+      if (source) next.add(key);
+      else next.delete(key);
       return next;
     });
-  }, [activePath]);
+  }, [activePath, contextScope]);
 
   const activeDoc = activePath ? openDocs.find((doc) => doc.relativePath === activePath) ?? null : null;
   const viewState: ViewState = activePath
     ? docStates.get(activePath) ?? { kind: "loading" }
     : { kind: "none" };
   const isMarkdownDoc = viewState.kind === "code" && viewState.lang === "markdown";
-  const showSource = activePath !== null && sourceModePaths.has(activePath);
+  const showSource = activePath !== null && sourceModePaths.has(`${contextScope}:${activePath}`);
   const showCodePane = viewState.kind === "code" && (!isMarkdownDoc || showSource);
   const viewerMeta = viewState.kind === "code" ? buildViewerMetaParts(viewState, t) : [];
   const chipHints = useMemo(() => chipDirHints(openDocs), [openDocs]);
@@ -492,12 +529,19 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         <div className="fexp-viewer-access">
           <span>{t("fileExplorer.viewer.readOnly")}</span>
           {activePath && (
-            <button type="button" disabled={externalOpening} onClick={handleOpenExternal}>
-              {t("fileExplorer.menu.openExternal")}
-            </button>
+            <span className="fexp-viewer-access-actions">
+              <button type="button" disabled={shellAction.pending} onClick={() => shellAction.open(parentDirOf(activePath))}>
+                {t("fileExplorer.shell.open")}
+              </button>
+              <button type="button" disabled={externalOpening} onClick={handleOpenExternal}>
+                {t("fileExplorer.menu.openExternal")}
+              </button>
+            </span>
           )}
         </div>
         {externalFailed && <div className="fexp-viewer-action-error" role="alert">{t("fileExplorer.menu.actionUnavailable")}</div>}
+        <ShellActionNotice action={shellAction} t={t} />
+        {navigationError && <div className="fexp-navigation-error">{t(`fileExplorer.navigation.${navigationError.reason}`)}</div>}
       </div>
       <div className="fexp-viewer-body">
         {viewState.kind === "loading" && <div className="fexp-viewer-loading">{t("fileExplorer.status.loading")}</div>}
@@ -505,7 +549,9 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         {viewState.kind === "code" && isMarkdownDoc && !showSource && (
           <MarkdownViewer
             content={viewState.content}
-            onOpenPath={openFilePath}
+            navigate={ctx.navigate}
+            resolveWikiLink={resolveFileExplorerWikiLink}
+            target={revealTarget?.relativePath === activePath ? revealTarget : undefined}
             relativePath={viewState.relativePath}
             theaterId={theaterId}
             truncated={viewState.truncated}
@@ -520,6 +566,9 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
             wrap={wrapLines}
             target={revealTarget?.relativePath === activePath && revealTarget.lineNumber ? {
               lineNumber: revealTarget.lineNumber,
+              column: revealTarget.column,
+              requestId: revealTarget.requestId,
+              relativePath: revealTarget.relativePath,
               ranges: revealTarget.ranges ?? [],
             } : undefined}
             t={t}

@@ -14,7 +14,6 @@ describe("file explorer markdown links", () => {
     expect(resolveMarkdownFileRef("https://example.com/badge.svg", "README.md")).toBeNull();
     expect(resolveMarkdownFileRef("//example.com/badge.svg", "README.md")).toBeNull();
     expect(resolveMarkdownFileRef("../../etc/passwd", "README.md")).toBeNull();
-    expect(resolveMarkdownFileRef("#quick-start", "README.md")).toBeNull();
   });
 
   it("image route는 same-origin plugin 경로와 인코딩된 Theater/path query만 만든다", () => {

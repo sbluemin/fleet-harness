@@ -13,7 +13,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 
-export type FileContextAction = "copyPath" | "copyRelativePath" | "reveal" | "openExternal";
+export type FileContextAction = "copyPath" | "copyRelativePath" | "reveal" | "openExternal" | "openShell";
 
 export const FILE_CONTEXT_MENU_ENTRIES = [
   { kind: "action", action: "copyPath", label: "fileExplorer.menu.copyPath" },
@@ -21,6 +21,7 @@ export const FILE_CONTEXT_MENU_ENTRIES = [
   { kind: "separator" },
   { kind: "action", action: "reveal", label: "fileExplorer.menu.reveal" },
   { kind: "action", action: "openExternal", label: "fileExplorer.menu.openExternal" },
+  { kind: "action", action: "openShell", label: "fileExplorer.menu.openShell" },
 ] as const satisfies readonly (
   | { readonly kind: "action"; readonly action: FileContextAction; readonly label: FileExplorerMessageKey }
   | { readonly kind: "separator" }
@@ -151,6 +152,7 @@ export async function performFileContextAction(
     return "fileExplorer.menu.relativePathCopied";
   }
 
+  if (action === "openShell") throw new Error("shell_capability_required");
   const fetchImpl = dependencies.fetch ?? globalThis.fetch;
   const endpoint = action === "copyPath"
     ? "/plugins/file-explorer/files/clipboard"

@@ -1,31 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { renderMarkdown } from "@fleet-console/markdown/core";
+import { renderMarkdown, type RenderMarkdownOptions } from "@fleet-console/markdown/core";
+import { bindMarkdownLinkActivation, type MarkdownLinkTarget } from "@fleet-console/markdown/link-activation";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
+import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import "@fleet-console/markdown/styles.css";
 
-import {
-  diagramHydratorLabels,
-  getT,
-  markdownCopyOptions,
-  type FileExplorerMessageKey,
-} from "../i18n/index.js";
-import {
-  buildFileExplorerImageSrc,
-  isAllowedExternalMarkdownImageSrc,
-  isSupportedMarkdownImagePath,
-  resolveMarkdownFileRef,
-} from "./markdown-links.js";
+import { diagramHydratorLabels, getT, markdownCopyOptions, type FileExplorerMessageKey } from "../i18n/index.js";
+import { positiveCoordinate } from "../file-navigation.js";
+import { showFileNavigationError } from "../view-store.js";
+import { buildFileExplorerImageSrc, isAllowedExternalMarkdownImageSrc, isSupportedMarkdownImagePath, resolveMarkdownFileRef } from "./markdown-links.js";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+const WIKI_LINK_PREFIX = "#file-explorer-wiki:";
+export const resolveFileExplorerWikiLink = (id: string): string => WIKI_LINK_PREFIX + encodeURIComponent(id);
 
 interface MarkdownViewerProps {
   readonly content: string;
-  readonly onOpenPath: (relativePath: string) => void;
+  readonly navigate: ClientNavigateCapability;
+  readonly resolveWikiLink: RenderMarkdownOptions["resolveWikiLink"];
   readonly relativePath: string;
   readonly theaterId: string | null;
   readonly truncated?: boolean;
   readonly language: ConsoleLocale | undefined;
+  readonly target?: { readonly anchor?: string; readonly requestId: string; readonly relativePath: string };
 }
 
 interface NeutralizeOptions {
@@ -35,142 +32,99 @@ interface NeutralizeOptions {
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export function MarkdownViewer({
-  content,
-  onOpenPath,
-  relativePath,
-  theaterId,
-  truncated,
-  language,
-}: MarkdownViewerProps) {
+export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePath, theaterId, truncated, language, target }: MarkdownViewerProps) {
   const t = getT(language);
-  // file-explorer는 신뢰할 수 없는 임의 .md를 미리보기하므로, 렌더 HTML을 DOM에 mount하기 전에
-  // 위험 요소를 무력화한다. 로컬 이미지/링크는 안전한 console 내부 경로로만 되살리고, 외부
-  // 이미지는 mount 전에 제거해야 추적(tracking pixel)·IP 노출을 막을 수 있다.
   const html = useMemo(() => {
-    const rendered = renderMarkdown(content, markdownCopyOptions(t)).html;
+    const rendered = renderMarkdown(content, {
+      ...markdownCopyOptions(t),
+      resolveWikiLink,
+      resolveLink: (href): MarkdownLinkTarget | null => {
+        if (href.startsWith(WIKI_LINK_PREFIX)) {
+          try { return { kind: "wiki", data: { entryId: decodeURIComponent(href.slice(WIKI_LINK_PREFIX.length)) } }; }
+          catch { return null; }
+        }
+        const ref = resolveMarkdownFileRef(href, relativePath);
+        return ref ? { kind: "file", data: {
+          path: ref.path,
+          ...(ref.line ? { line: String(ref.line) } : {}),
+          ...(ref.column ? { column: String(ref.column) } : {}),
+          ...(ref.anchor ? { anchor: ref.anchor } : {}),
+        } } : null;
+      },
+    }).html;
     const doc = new DOMParser().parseFromString(rendered, "text/html");
-    neutralizeUntrustedDom(doc.body, {
-      allowLocalImageMarkers: false,
-      currentRelativePath: relativePath,
-      theaterId,
-      t,
-    });
+    neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId, t });
     return doc.body.innerHTML;
-  }, [content, relativePath, theaterId, t]);
+  }, [content, relativePath, resolveWikiLink, theaterId, t]);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    // 로케일 변경 시에도 라벨이 갱신되도록 매번 호출한다(hydrator는 root 재설치 시 라벨만 반영).
     installDiagramHydrator(root, diagramHydratorLabels(t));
-    // Mermaid 하이드레이터가 비동기로 삽입하는 노드/속성(SPA href 등)도 즉시 무력화한다
-    // (mount 전 사전 처리만으로는 비동기 삽입분이 누락되기 때문).
-    neutralizeUntrustedDom(root, {
-      allowLocalImageMarkers: true,
-      currentRelativePath: relativePath,
-      theaterId,
-      t,
-    });
-    const observer = new MutationObserver(() => neutralizeUntrustedDom(root, {
-      allowLocalImageMarkers: true,
-      currentRelativePath: relativePath,
-      theaterId,
-      t,
-    }));
+    const neutralize = () => neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId, t });
+    neutralize();
+    const observer = new MutationObserver(neutralize);
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
     return () => observer.disconnect();
   }, [html, relativePath, theaterId, t]);
 
-  // 공유 렌더러가 코드 블록에 주입하는 Copy 버튼(data-action="copy-code")을 처리한다.
-  // codex는 자체 위임 핸들러를 두지만 file-explorer엔 없어 버튼이 무동작이었다 —
-  // pre[data-code]의 원본 코드를 클립보드에 복사하고 잠시 복사됨 피드백을 표시한다.
-  const handleCopyClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const button = (e.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || !theaterId) return;
+    return bindMarkdownLinkActivation(root, (kind, data) => {
+      const request = kind === "wiki"
+        ? navigate.openWikiEntry({ theaterId, entryId: data.entryId ?? "" })
+        : kind === "file" && data.path
+          ? navigate.openFile({
+            theaterId, path: data.path + (data.anchor ? `#${encodeURIComponent(data.anchor)}` : ""),
+            pathKind: "theater-relative", line: positiveCoordinate(data.line), column: positiveCoordinate(data.column), source: "files",
+          }) : null;
+      void request?.then((result) => { if (!result.ok) showFileNavigationError(result.reason); })
+        .catch(() => showFileNavigationError("not_found"));
+    });
+  }, [navigate, theaterId, html]);
+
+  useEffect(() => {
+    if (!target?.anchor || target.relativePath !== relativePath) return;
+    rootRef.current?.querySelector<HTMLElement>(`#${CSS.escape(target.anchor)}`)?.scrollIntoView({ block: "start" });
+  }, [html, relativePath, target?.anchor, target?.relativePath, target?.requestId]);
+
+  const handleCopyClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
     if (!button) return;
     const code = button.closest("pre")?.getAttribute("data-code");
     if (!code) return;
     void navigator.clipboard?.writeText(code);
     const original = button.textContent;
     button.textContent = t("fileExplorer.markdown.copied");
-    window.setTimeout(() => {
-      button.textContent = original;
-    }, 1200);
+    window.setTimeout(() => { button.textContent = original; }, 1200);
   }, [t]);
-  const handleLinkClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    const localLink = target.closest<HTMLElement>("[data-fexp-open-path]");
-    if (!localLink) return;
-    const nextPath = localLink.dataset.fexpOpenPath;
-    if (!nextPath) return;
-    e.preventDefault();
-    onOpenPath(nextPath);
-  }, [onOpenPath]);
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Enter" && e.key !== " ") return;
-    const target = e.target as HTMLElement;
-    const localLink = target.closest<HTMLElement>("[data-fexp-open-path]");
-    if (!localLink) return;
-    const nextPath = localLink.dataset.fexpOpenPath;
-    if (!nextPath) return;
-    e.preventDefault();
-    onOpenPath(nextPath);
-  }, [onOpenPath]);
-  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    handleCopyClick(e);
-    handleLinkClick(e);
-  }, [handleCopyClick, handleLinkClick]);
 
   return (
     <div className="fexp-md-wrap">
       {truncated && <div className="fexp-truncated-badge">{t("fileExplorer.viewer.truncated")}</div>}
-      <div
-        ref={rootRef}
-        className="markdown-body"
-        onClick={handleClick}
-        onKeyDown={handleKeyDown}
+      <div ref={rootRef} className="markdown-body" onClick={handleCopyClick}
         // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+        dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-// 신뢰 불가 미리보기에서 위험 요소를 무력화한다(구 정규식 렌더러의 안전 수준 보존):
-// - 로컬 상대 링크는 href 대신 data-fexp-open-path로 바꿔 SPA URL hijack을 차단한다.
-// - 로컬 이미지는 same-origin 이미지 라우트로 되살리고, allowlist 밖 외부 이미지는 auto-fetch를 차단한다.
 function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): void {
   for (const anchor of root.querySelectorAll("a[href]")) {
+    if (anchor.hasAttribute("data-md-link-kind")) continue;
     const href = anchor.getAttribute("href") ?? "";
-    const localPath = resolveMarkdownFileRef(href, options.currentRelativePath);
-    if (localPath) {
-      anchor.removeAttribute("href");
-      anchor.setAttribute("role", "link");
-      anchor.setAttribute("tabindex", "0");
-      anchor.setAttribute("data-fexp-open-path", localPath);
-      anchor.removeAttribute("aria-disabled");
-    } else if (href && !/^(https?:|mailto:|#)/i.test(href)) {
+    if (href && !/^(https?:|mailto:|#)/i.test(href)) {
       anchor.removeAttribute("href");
       anchor.setAttribute("role", "link");
       anchor.setAttribute("aria-disabled", "true");
     }
   }
-
   for (const element of root.querySelectorAll("img[src], img[srcset], source[src], source[srcset]")) {
     const src = element.getAttribute("src") ?? "";
     const localImagePath = element.getAttribute("data-fexp-local-image-path");
-    if (
-      element.tagName === "IMG"
-      && options.allowLocalImageMarkers
-      && options.theaterId
-      && localImagePath
-      && src === buildFileExplorerImageSrc(options.theaterId, localImagePath)
-    ) {
+    if (element.tagName === "IMG" && options.allowLocalImageMarkers && options.theaterId && localImagePath && src === buildFileExplorerImageSrc(options.theaterId, localImagePath)) {
       element.removeAttribute("srcset");
       continue;
     }
@@ -180,11 +134,11 @@ function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): v
       element.removeAttribute("aria-hidden");
       continue;
     }
-    const localPath = resolveMarkdownFileRef(src, options.currentRelativePath);
+    const local = resolveMarkdownFileRef(src, options.currentRelativePath);
     element.removeAttribute("srcset");
-    if (element.tagName === "IMG" && options.theaterId && localPath && isSupportedMarkdownImagePath(localPath)) {
-      element.setAttribute("src", buildFileExplorerImageSrc(options.theaterId, localPath));
-      element.setAttribute("data-fexp-local-image-path", localPath);
+    if (element.tagName === "IMG" && options.theaterId && local && isSupportedMarkdownImagePath(local.path)) {
+      element.setAttribute("src", buildFileExplorerImageSrc(options.theaterId, local.path));
+      element.setAttribute("data-fexp-local-image-path", local.path);
       element.removeAttribute("aria-hidden");
       continue;
     }
@@ -197,8 +151,6 @@ function replaceBlockedImage(element: Element, t: Translate<FileExplorerMessageK
   const alt = element.getAttribute("alt")?.trim();
   const placeholder = element.ownerDocument.createElement("span");
   placeholder.className = "fexp-md-blocked-image";
-  placeholder.textContent = alt
-    ? t("fileExplorer.viewer.imageBlockedNamed", { alt })
-    : t("fileExplorer.viewer.imageBlocked");
+  placeholder.textContent = alt ? t("fileExplorer.viewer.imageBlockedNamed", { alt }) : t("fileExplorer.viewer.imageBlocked");
   element.replaceWith(placeholder);
 }
