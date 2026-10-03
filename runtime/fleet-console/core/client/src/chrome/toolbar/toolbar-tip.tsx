@@ -34,6 +34,23 @@ interface TipState {
   readonly placement: Placement;
 }
 
+/**
+ * 프로그램이 포커스를 되돌려 놓는 칸. 단축키로 크롬을 숨기며 포커스를 옮긴 것은 사람이 그 칸을 겨눈 것이 아니다 —
+ * 직전 입력이 키보드라 `:focus-visible`이 서도 말풍선은 띄우지 않는다. 띄우면 포커스가 머무는 내내 남아
+ * 네이티브 뷰와 겹치고, 뷰가 물러선 채 멈춘 화면처럼 보인다.
+ */
+let quietFocusTarget: HTMLElement | null = null;
+
+/** 말풍선 없이 도구모음 칸에 포커스를 놓는다. focusin은 focus() 안에서 동기로 오므로 그동안만 표식을 든다. */
+export function focusToolbarItemQuietly(item: HTMLElement): void {
+  quietFocusTarget = item;
+  try {
+    item.focus({ preventScroll: true });
+  } finally {
+    quietFocusTarget = null;
+  }
+}
+
 function toolbarItemOf(node: EventTarget | null, root: HTMLElement): HTMLElement | null {
   if (!(node instanceof Element)) return null;
   const item = node.closest<HTMLElement>(ITEM_SELECTOR);
@@ -170,7 +187,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
     };
     const onFocusIn = (event: FocusEvent) => {
       const item = toolbarItemOf(event.target, root);
-      if (item === null || !item.matches(":focus-visible")) return;
+      if (item === null || item === quietFocusTarget || !item.matches(":focus-visible")) return;
       request(item);
     };
     const onFocusOut = (event: FocusEvent) => {

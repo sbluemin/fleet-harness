@@ -15,6 +15,7 @@ import { OperationSearch } from "../chrome/components/operation-search.js";
 import { QuickLaunch } from "../../../../features/execution/client/components/quick-launch.js";
 import { ReconnectButton } from "../chrome/components/reconnect-button.js";
 import { Toast, ToastHost } from "../chrome/components/toast.js";
+import { focusToolbarItemQuietly } from "../chrome/toolbar/toolbar-tip.js";
 import { UpdateCurtain } from "../../../../features/updates/client/update-curtain.js";
 import { claimTheaterBootMinimization } from "../integration/boot-minimization-session.js";
 import { appendPendingUndo, archiveUndo, deletionUndo, latestPendingUndo, undoCountdownSeconds, type PendingUndo } from "../integration/deletion-undo.js";
@@ -227,7 +228,8 @@ function ConnectedApp() {
       const now = document.activeElement;
       if (now instanceof HTMLElement && now !== document.body && !now.closest("[inert], [hidden]")) return;
       const opposite = oppositeSelector ? document.querySelector<HTMLElement>(oppositeSelector) : null;
-      if (opposite && !opposite.closest("[inert], [hidden]")) { opposite.focus({ preventScroll: true }); return; }
+      // 반대쪽 컨트롤은 섬의 도구모음 칸이다 — 되돌려 놓은 포커스로 말풍선을 띄우지 않는다.
+      if (opposite && !opposite.closest("[inert], [hidden]")) { focusToolbarItemQuietly(opposite); return; }
       const target = workFocusRef.current;
       if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
       else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
