@@ -82,8 +82,13 @@ __fleet_report_cwd() {
 __fleet_mark_prompt() {
   printf '\\e]133;A\\a'
 }
-# 사용자의 PROMPT_COMMAND는 그대로 두고 앞뒤에만 잇는다. 줄바꿈으로 이어 ';'로 끝나는 값과도 섞이지 않게 한다.
-PROMPT_COMMAND="__fleet_report_cwd"$'\\n'"\${PROMPT_COMMAND:-}"$'\\n'"__fleet_mark_prompt"
+# 사용자의 PROMPT_COMMAND는 그대로 두고 앞뒤에만 잇는다. 배열(bash 5.1+)이면 배열 그대로 맨 뒤에 표식을 붙여
+# 모든 사용자 훅이 끝난 뒤에만 프롬프트가 열린다. 문자열이면 줄바꿈으로 이어 ';'로 끝나는 값과도 섞이지 않게 한다.
+if [[ "\$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+  PROMPT_COMMAND=("__fleet_report_cwd" "\${PROMPT_COMMAND[@]}" "__fleet_mark_prompt")
+else
+  PROMPT_COMMAND="__fleet_report_cwd"$'\\n'"\${PROMPT_COMMAND:-}"$'\\n'"__fleet_mark_prompt"
+fi
 `;
 
 export function applyShellCwdIntegration(launch: TerminalLaunchSpec, integrationDir: string | null): ShellCwdIntegration {

@@ -116,7 +116,8 @@ export function findFileRefs(cells: LineCells): FileRefCandidate[] {
     if (token.includes("://")) continue;
     const ref = parseFileRef(token);
     if (!ref || !looksLikeFilePath(ref)) continue;
-    const pathAt = token.indexOf(ref.path);
+    // parseFileRef는 구분자를 '/'로 정규화한다 — Windows 출력(`src\\a.ts:10`)도 같은 길이로 맞춰 위치를 찾는다.
+    const pathAt = token.replace(/\\/g, "/").indexOf(ref.path);
     if (pathAt < 0) continue;
     const suffix = COORDINATE_SUFFIX.exec(token.slice(pathAt + ref.path.length))?.[0] ?? "";
     const start = (match.index ?? 0) + pathAt;
