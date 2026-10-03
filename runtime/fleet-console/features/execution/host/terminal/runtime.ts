@@ -7,7 +7,7 @@ import { createTerminalSessionManager } from "./session-manager.js";
 import os from "node:os";
 
 import { createPluginTerminalTicketRegistry } from "./tickets.js";
-import type { TerminalCwdListener, TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec, TerminalSocket, TerminalTitleListener } from "./terminal-types.js";
+import type { TerminalCwdListener, TerminalSessionManager, TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec, TerminalSocket, TerminalTitleListener } from "./terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "./ws.js";
 
 export interface TerminalRuntime {
@@ -34,8 +34,8 @@ export interface TerminalRuntime {
   isLive(sessionId: string): boolean;
   /** PTY 전경 프로세스 이름. 모르면 null. */
   getForegroundProcess(sessionId: string): string | null;
-  /** 마지막 cwd 보고(프롬프트) 뒤로 사용자 입력이 들어왔는가 — 프롬프트 줄에 친 글자가 남아 있을 수 있다. */
-  hasInputSincePrompt(sessionId: string): boolean;
+  /** 프롬프트 표식으로 본 셸 줄 상태(세션 매니저 `getShellLineState`). 표식을 읽지 않는 세션이면 null. */
+  getShellLineState(sessionId: string): ReturnType<TerminalSessionManager["getShellLineState"]>;
   /**
    * 이 세션의 OSC 7(cwd 보고)을 받는다. 등록은 세션이 생기기 전에 해 둔다 — 파서는 PTY를 만들 때
    * 받을 곳이 있는 세션에만 붙는다. 받는 경로는 서버 안의 절대 경로다.
@@ -120,7 +120,7 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
     getSessionLastActivityAt: (operationId) => sessions.getSessionLastActivityAt(operationId),
     isLive: (sessionId) => sessions.hasSession(sessionId),
     getForegroundProcess: (sessionId) => sessions.getForegroundProcess(sessionId),
-    hasInputSincePrompt: (sessionId) => sessions.hasInputSinceCwdReport(sessionId),
+    getShellLineState: (sessionId) => sessions.getShellLineState(sessionId),
     onCwd: (sessionId, callback) => {
       const listeners = terminalCwdListeners.get(sessionId) ?? new Set<TerminalCwdListener>();
       listeners.add(callback);

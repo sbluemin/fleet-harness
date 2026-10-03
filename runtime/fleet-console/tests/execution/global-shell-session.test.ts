@@ -85,7 +85,7 @@ describe("console-global Shell session", () => {
     // 프롬프트를 보고하는(cwd 추적) 셸이어야 줄이 비었는지 판정할 수 있다.
     process.env.SHELL = "/bin/zsh";
     try {
-      const shell = { live: true, foreground: "vim" as string | null, inputPending: false };
+      const shell = { live: true, foreground: "vim" as string | null, line: { promptSeen: false, promptOpen: false, inputPending: false } };
       const { openAt, restartAt, call, issued, exit, terminated, responses, writes, launch } = mount({ resolveTheaterPath: () => fixture.root, shell, consoleDataDir: fixture.dataDir });
       const spawned = await launch(fixture.root);
 
@@ -93,14 +93,24 @@ describe("console-global Shell session", () => {
       expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_busy" } });
       expect(writes).toHaveLength(0);
 
-      // 프롬프트에 사용자가 치다 만 글자가 있으면 그 뒤에 `cd …`가 붙어 실행된다.
+      // 셸이 전경이어도 첫 프롬프트 전(rc 실행 중)이면 그 스크립트가 `cd …`를 입력으로 받는다.
       shell.foreground = path.basename(spawned.bin);
-      shell.inputPending = true;
+      await openAt({ theaterId: "theater-a", path: "src" });
+      expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_busy" } });
+      // 프롬프트 뒤에 줄이 실행돼 아직 다음 프롬프트가 없으면(`cd /tmp; read x`의 read) 마찬가지다 —
+      // 그 사이의 cwd 보고(chpwd)는 프롬프트를 다시 열지 않는다.
+      shell.line = { promptSeen: true, promptOpen: false, inputPending: false };
+      await openAt({ theaterId: "theater-a", path: "src" });
+      expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_busy" } });
+      expect(writes).toHaveLength(0);
+
+      // 프롬프트에 사용자가 치다 만 글자가 있으면 그 뒤에 `cd …`가 붙어 실행된다.
+      shell.line = { promptSeen: true, promptOpen: true, inputPending: true };
       await openAt({ theaterId: "theater-a", path: "src" });
       expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_input_pending" } });
       expect(writes).toHaveLength(0);
 
-      shell.inputPending = false;
+      shell.line = { promptSeen: true, promptOpen: true, inputPending: false };
       await openAt({ theaterId: "theater-a", path: "src" });
       expect(responses.at(-1)).toMatchObject({ status: 200, body: { ok: true, action: "cd" } });
       expect(writes).toEqual([`cd -- '${path.join(fixture.root, "src")}'\r`]);
@@ -135,7 +145,7 @@ function makeTheaterFixture() {
   return { root, dataDir: path.join(base, "console"), dispose: () => rmSync(base, { recursive: true, force: true }) };
 }
 
-function mount(options: { resolveTheaterPath?: (id: string) => string | null; shell?: { live: boolean; foreground: string | null; inputPending?: boolean }; consoleDataDir?: string } = {}) {
+function mount(options: { resolveTheaterPath?: (id: string) => string | null; shell?: { live: boolean; foreground: string | null; line?: { promptSeen: boolean; promptOpen: boolean; inputPending: boolean } }; consoleDataDir?: string } = {}) {
   const issued: TerminalTicketContext[] = [];
   const responses: Array<{ status: number; body: unknown }> = [];
   const terminated: string[] = [];
@@ -167,7 +177,7 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
     onCwd: () => () => undefined,
     isLive: () => shell.live,
     getForegroundProcess: () => shell.foreground,
-    hasInputSincePrompt: () => shell.inputPending ?? false,
+    getShellLineState: () => shell.line ?? null,
     write: (_sessionId: string, data: string) => { writes.push(data); return true; },
   } as unknown as TerminalRuntime;
 

@@ -140,8 +140,13 @@ export interface TerminalSessionManager {
   getSessionLastActivityAt(sessionId: string): number | null;
   /** 이 id의 PTY가 지금 살아 있는가. */
   hasSession(sessionId: string): boolean;
-  /** 마지막 OSC 7 보고 뒤로 소켓에서 입력 바이트가 들어왔는가. 보고하지 않는 세션에서는 의미가 없다. */
-  hasInputSinceCwdReport(sessionId: string): boolean;
+  /**
+   * 프롬프트 표식(OSC 133;A)으로 본 셸 줄 상태. 표식을 읽지 않는 세션이면 null.
+   * - promptSeen: 첫 프롬프트를 그렸다(rc 실행이 끝났다).
+   * - promptOpen: 마지막 프롬프트 뒤로 줄이 실행되지 않았다.
+   * - inputPending: 그 줄에 아직 실행되지 않은 입력이 남아 있을 수 있다.
+   */
+  getShellLineState(sessionId: string): { readonly promptSeen: boolean; readonly promptOpen: boolean; readonly inputPending: boolean } | null;
   getForegroundProcess(sessionId: string): string | null;
   resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null>;
   terminate(sessionId: string): boolean;

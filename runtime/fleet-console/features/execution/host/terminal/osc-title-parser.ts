@@ -44,6 +44,24 @@ export function createOscCwdParser(localHostnames: readonly string[], residualLi
   };
 }
 
+/**
+ * OSC 133;A(프롬프트 시작) — 셸이 새 프롬프트를 그리기 직전에만 낸다. 돌려주는 것은 표식 하나당
+ * 빈 문자열 하나다. `133;B`·`133;C`·`133;D`(입력 시작·실행·종료)는 받지 않는다. iTerm2·VS Code 셸
+ * 통합처럼 사용자 rc가 같은 표식을 또 내도 같은 뜻이라 겹쳐도 해가 없다.
+ */
+export function createOscPromptParser(residualLimit = DEFAULT_OSC_RESIDUAL_LIMIT): OscTitleParser {
+  const payloads = createOscPayloadParser(["133"], residualLimit);
+  return {
+    push: (chunk) => {
+      const reported = payloads.push(chunk);
+      if (reported.length === 0) return EMPTY_PAYLOADS;
+      const marks = reported.filter((payload) => payload === "A" || payload.startsWith("A;"));
+      return marks.length > 0 ? marks : EMPTY_PAYLOADS;
+    },
+    reset: payloads.reset,
+  };
+}
+
 function readFileUrlPath(payload: string, localHosts: ReadonlySet<string>): string | null {
   let url: URL;
   try {

@@ -140,7 +140,8 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       pinnedTheaterId,
       cwd: open && currentCwd ? locateInTheaters(ctx, currentCwd) : null,
       cwdTracked: open && cwdTracked,
-      atPrompt: open && shellName !== null && foreground !== null && isShellProcess(foreground, shellName),
+      atPrompt: open && shellName !== null && foreground !== null && isShellProcess(foreground, shellName)
+        && (!cwdTracked || isPromptOpen(runtime.getShellLineState(GLOBAL_SHELL_SESSION_ID))),
       generation,
     };
   }
@@ -276,12 +277,15 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ctx.host.http.writeJson(res, 200, { ok: true, action: "pinned", state: readState() });
       return true;
     }
+    // 주입 조건: 셸이 전경이고, 프롬프트를 보고하는 셸이며, 첫 프롬프트를 이미 그렸고(rc 실행 중이 아님),
+    // 마지막 프롬프트 뒤로 줄이 실행되지 않았고(명령 안의 `read` 등이 아님), 그 줄이 비어 있다.
     const state = readState();
-    if (!state.atPrompt || !state.cwdTracked) {
+    const line = runtime.getShellLineState(GLOBAL_SHELL_SESSION_ID);
+    if (!state.atPrompt || !state.cwdTracked || !isPromptOpen(line)) {
       ctx.host.http.writeJson(res, 409, { error: "shell_busy" });
       return true;
     }
-    if (runtime.hasInputSincePrompt(GLOBAL_SHELL_SESSION_ID)) {
+    if (line?.inputPending !== false) {
       ctx.host.http.writeJson(res, 409, { error: "shell_input_pending" });
       return true;
     }
@@ -433,6 +437,10 @@ function locateInTheaters(ctx: ConsoleRuntimeContext, cwd: string): { theaterId:
 function isInside(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
   return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+function isPromptOpen(line: ReturnType<TerminalRuntime["getShellLineState"]>): boolean {
+  return line !== null && line.promptSeen && line.promptOpen;
 }
 
 function isShellProcess(foreground: string, shellName: string): boolean {

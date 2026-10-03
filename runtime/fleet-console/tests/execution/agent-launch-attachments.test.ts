@@ -158,7 +158,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
     isLive: () => false,
     getForegroundProcess: () => null,
-    hasInputSincePrompt: () => false,
+    getShellLineState: () => null,
     onCwd: () => () => undefined,
     resolveSessionIdentity: async () => null,
     onExit: () => () => {},

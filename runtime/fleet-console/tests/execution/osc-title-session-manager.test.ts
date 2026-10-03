@@ -117,17 +117,30 @@ describe("OSC title session wiring", () => {
     });
     const socket = createMockSocket();
     await manager.attach(socket, { sessionId: "console-shell", cwd: "/work", operationType: "shell" });
-    const prompt = () => pty!.emitData("\x1b]7;file:///work\x07% ");
+    const cwd = (dir: string) => pty!.emitData(`\x1b]7;file://${dir}\x07`);
+    const prompt = () => pty!.emitData("\x1b]7;file:///work\x07\x1b]133;A\x07% ");
+    const line = () => manager.getShellLineState("console-shell");
+
+    // rc가 도는 동안 나온 cwd 보고는 프롬프트가 아니다.
+    cwd("/work");
+    expect(line()).toMatchObject({ promptSeen: false, promptOpen: false });
 
     prompt();
     socket.type("sleep 3\r");
     socket.type("abc");
     prompt();
-    expect(manager.hasInputSinceCwdReport("console-shell")).toBe(true);
+    expect(line()).toMatchObject({ promptOpen: true, inputPending: true });
 
     socket.type("\r");
     prompt();
-    expect(manager.hasInputSinceCwdReport("console-shell")).toBe(false);
+    expect(line()).toMatchObject({ promptOpen: true, inputPending: false });
+
+    // 명령 안에서 디렉터리를 옮기면 zsh `chpwd`가 cwd를 보고하지만, 그 뒤의 `read`는 프롬프트가 아니다.
+    socket.type("cd /tmp; read answer\r");
+    cwd("/tmp");
+    expect(line()).toMatchObject({ promptOpen: false });
+    socket.type("yes\r");
+    prompt();
 
     // 대체 화면을 쥔 전체 화면 프로그램(less)이 읽은 키는 셸 줄에 남지 않는다.
     socket.type("less notes.txt\r");
@@ -135,7 +148,7 @@ describe("OSC title session wiring", () => {
     socket.type("q");
     pty!.emitData("\x1b[?1049l");
     prompt();
-    expect(manager.hasInputSinceCwdReport("console-shell")).toBe(false);
+    expect(line()).toMatchObject({ promptOpen: true, inputPending: false });
     await manager.stop();
   });
 });

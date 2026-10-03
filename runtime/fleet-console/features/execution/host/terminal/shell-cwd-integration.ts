@@ -7,8 +7,11 @@ import type { TerminalLaunchSpec } from "./terminal-types.js";
  * 전역 Shell이 자기 cwd를 OSC 7로 보고하게 만드는 rc 주입.
  *
  * 사용자 홈에는 아무것도 쓰지 않는다. 래퍼 파일은 Console 데이터 디렉터리 아래에 두고, 셸이 그것을
- * 먼저 읽게 한 뒤 사용자의 원래 rc로 넘긴다. 주입하는 것은 프롬프트마다(그리고 디렉터리를 옮길
- * 때마다) `ESC ] 7 ; file://<경로> BEL` 한 줄뿐이다. 호스트 부분을 비워 두는 이유는 같은 기계의
+ * 먼저 읽게 한 뒤 사용자의 원래 rc로 넘긴다. 주입하는 것은 두 가지다.
+ * - cwd 보고 `ESC ] 7 ; file://<경로> BEL` — 프롬프트마다, 그리고 zsh는 디렉터리를 옮길 때마다(chpwd).
+ * - 프롬프트 표식 `ESC ] 133 ; A BEL` — 프롬프트를 그리기 직전에만(zsh precmd, bash PROMPT_COMMAND).
+ *   cwd 보고는 명령 도중에도 나오므로(`cd /tmp; read x`) 서버는 이 표식만 "프롬프트에 돌아왔다"로 읽는다.
+ *   rc 실행이 끝나기 전에는 나오지 않으므로, 첫 표식 전의 셸에는 아무것도 주입하지 않는다. 호스트 부분을 비워 두는 이유는 같은 기계의
  * 이름이 `HOST`·`hostname`·`.local` 접미 사이에서 흔들리기 때문이다 — 비어 있으면 이 기계다.
  *
  * zsh와 bash만 다룬다. 그 밖의 셸은 그대로 띄우고 cwd는 spawn 위치로만 안다(`tracked: false`).
@@ -50,8 +53,12 @@ if [[ -o interactive ]]; then
     done
     builtin printf '\\e]7;file://%s\\a' "\$e"
   }
+  __fleet_mark_prompt() {
+    builtin printf '\\e]133;A\\a'
+  }
   autoload -Uz add-zsh-hook
   add-zsh-hook precmd __fleet_report_cwd
+  add-zsh-hook precmd __fleet_mark_prompt
   add-zsh-hook chpwd __fleet_report_cwd
 fi
 `;
@@ -72,7 +79,11 @@ __fleet_report_cwd() {
   done
   printf '\\e]7;file://%s\\a' "\$e"
 }
-PROMPT_COMMAND="__fleet_report_cwd\${PROMPT_COMMAND:+;\$PROMPT_COMMAND}"
+__fleet_mark_prompt() {
+  printf '\\e]133;A\\a'
+}
+# 사용자의 PROMPT_COMMAND는 그대로 두고 앞뒤에만 잇는다. 줄바꿈으로 이어 ';'로 끝나는 값과도 섞이지 않게 한다.
+PROMPT_COMMAND="__fleet_report_cwd"$'\\n'"\${PROMPT_COMMAND:-}"$'\\n'"__fleet_mark_prompt"
 `;
 
 export function applyShellCwdIntegration(launch: TerminalLaunchSpec, integrationDir: string | null): ShellCwdIntegration {

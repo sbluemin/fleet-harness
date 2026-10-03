@@ -77,7 +77,7 @@ async function mount(options: MountOptions): Promise<{
     onCwd: () => () => {},
     isLive: () => false,
     getForegroundProcess: () => null,
-    hasInputSincePrompt: () => false,
+    getShellLineState: () => null,
     stop: async () => {},
     writeToSession: () => false,
   } as unknown as TerminalRuntime;

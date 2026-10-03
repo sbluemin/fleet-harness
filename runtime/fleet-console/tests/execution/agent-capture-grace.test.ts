@@ -102,7 +102,7 @@ async function createHarness(body: Record<string, unknown>) {
     getSessionLastActivityAt: () => null,
     isLive: () => false,
     getForegroundProcess: () => null,
-    hasInputSincePrompt: () => false,
+    getShellLineState: () => null,
     onCwd: () => () => undefined,
     resolveSessionIdentity: async () => null,
     onExit: (callback) => {

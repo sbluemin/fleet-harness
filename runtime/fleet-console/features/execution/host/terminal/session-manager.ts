@@ -3,7 +3,7 @@ import { closeSync, fstatSync, readdirSync } from "node:fs";
 import type { CliMessagePolicy } from "@fleet-console/agent-runtime/fleet";
 import type { SessionIdentityResolver } from "../agent/session-identity.js";
 
-import { createOscCwdParser, createOscTitleParser, type OscTitleParser } from "./osc-title-parser.js";
+import { createOscCwdParser, createOscPromptParser, createOscTitleParser, type OscTitleParser } from "./osc-title-parser.js";
 import { startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
 import { createTerminalModeTracker, type TerminalModeTracker } from "./terminal-mode-tracker.js";
 import type { TerminalCwdListener, TerminalPtyHandle, TerminalSessionManager, TerminalSocket, TerminalSocketData, TerminalTicketContext, TerminalTitleListener } from "./terminal-types.js";
@@ -48,11 +48,21 @@ interface TerminalSession {
    */
   lineDirty: boolean;
   /**
-   * 남은 입력 뒤에 줄을 끝내는 키(CR·LF·^C)가 들어왔는가. 이것이 참일 때만 다음 cwd 보고(새 프롬프트)가
+   * 남은 입력 뒤에 줄을 끝내는 키(CR·LF·^C)가 들어왔는가. 이것이 참일 때만 다음 프롬프트 표식이
    * lineDirty를 지운다. 명령이 도는 동안 미리 친 글자(typeahead)는 줄 끝 없이 다음 프롬프트로
    * 넘어가 그 줄에 다시 올라오므로, 그 프롬프트는 "입력 중"으로 시작한다.
    */
   lineClosed: boolean;
+  /**
+   * 프롬프트 표식(OSC 133;A)을 처리하는 파서. cwd 보고(OSC 7)와 따로 둔다 — zsh `chpwd`처럼 명령
+   * 도중에도 cwd는 보고되므로, cwd 보고를 "프롬프트에 돌아왔다"로 읽으면 `cd /tmp; read x`의
+   * `read`가 기다리는 줄을 프롬프트로 착각한다.
+   */
+  readonly promptParser?: OscTitleParser;
+  /** 첫 프롬프트 표식을 받았는가. 그 전(rc 실행 중)의 셸은 프롬프트가 아니다. */
+  promptSeen: boolean;
+  /** 마지막 프롬프트 표식 뒤로 줄이 실행(Enter)되지 않았는가 — 셸이 지금 그 프롬프트에서 입력을 기다린다. */
+  promptOpen: boolean;
   activeSocket: TerminalSocket | null;
   /**
    * 출력만 받는 소켓들. 제어를 원격에 넘긴 로컬 사용자가 여기 들어와 같은 화면을 계속 본다.
@@ -267,6 +277,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       // 각 write가 다음 write(250ms)까지 유후 타이머를 밀어내 세션이 살아있는다.
       touchActivity(session);
       session.pty.write(data);
+      // 서버가 대신 실행한 줄(Shell의 `cd`)도 프롬프트를 닫는다 — 다음 표식 전에 또 쓰지 않게 한다.
+      if (session.promptParser && /[\r\n]/.test(data)) session.promptOpen = false;
       return true;
     } catch {
       return false;
@@ -360,6 +372,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(cwdListener ? { cwdListener, cwdParser: createOscCwdParser(deps.localHostnames ?? []) } : {}),
       lineDirty: false,
       lineClosed: false,
+      ...(cwdListener ? { promptParser: createOscPromptParser() } : {}),
+      promptSeen: false,
+      promptOpen: false,
       activeSocket: null,
       viewers: new Set<TerminalSocket>(),
       cols: DEFAULT_COLS,
@@ -400,6 +415,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       for (const response of queryResponses) writeTerminalQueryResponse(session, response);
     }
     observeOscTitles(session, buffer);
+    // 프롬프트 표식을 cwd 보고보다 먼저 읽는다 — cwd 보고가 상태를 내보낼 때 그 프롬프트가 이미 반영돼 있어야 한다.
+    observeOscPrompt(session, buffer);
     observeOscCwd(session, buffer);
     session.modeTracker.push(buffer);
     session.scrollback.push(buffer);
@@ -434,7 +451,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       const reported = session.cwdParser.push(buffer);
       const latest = reported.at(-1);
       if (latest === undefined) return;
-      if (session.lineClosed) session.lineDirty = false;
       try {
         session.cwdListener(session.id, latest);
       } catch {
@@ -442,6 +458,18 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       }
     } catch {
       session.cwdParser.reset();
+    }
+  }
+
+  function observeOscPrompt(session: TerminalSession, buffer: Buffer): void {
+    if (!session.promptParser) return;
+    try {
+      if (session.promptParser.push(buffer).length === 0) return;
+      session.promptSeen = true;
+      session.promptOpen = true;
+      if (session.lineClosed) session.lineDirty = false;
+    } catch {
+      session.promptParser.reset();
     }
   }
 
@@ -458,10 +486,14 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.lineDirty = true;
     // 줄 끝 뒤에 바이트가 더 있으면 그것은 새로 열린, 아직 끝나지 않은 줄이다.
     session.lineClosed = lastTerminator === input.length - 1;
+    // 줄이 실행됐다 — 다음 프롬프트 표식까지 셸은 그 명령(또는 그 안의 `read`)에 있다.
+    if (lastTerminator >= 0) session.promptOpen = false;
   }
 
-  function hasInputSinceCwdReport(sessionId: string): boolean {
-    return sessions.get(sessionId)?.lineDirty ?? false;
+  function getShellLineState(sessionId: string): { readonly promptSeen: boolean; readonly promptOpen: boolean; readonly inputPending: boolean } | null {
+    const session = sessions.get(sessionId);
+    if (!session?.promptParser) return null;
+    return { promptSeen: session.promptSeen, promptOpen: session.promptOpen, inputPending: session.lineDirty };
   }
 
   function hasSession(sessionId: string): boolean {
@@ -608,7 +640,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, hasSession, hasInputSinceCwdReport, getForegroundProcess, resolveSessionIdentity, terminate, terminateAndWait, awaitWriterExit, stop, writeToSession };
+  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, hasSession, getShellLineState, getForegroundProcess, resolveSessionIdentity, terminate, terminateAndWait, awaitWriterExit, stop, writeToSession };
 }
 
 function isProcessAlive(pid: number): boolean {
