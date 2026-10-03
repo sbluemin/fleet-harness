@@ -1836,7 +1836,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.degraded === "walker") {
     statusLines.push({ key: "fallback", text: t("fileExplorer.filter.degraded"), tone: "warn", role: "status" });
   }
-  if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.complete === false && !filterOutcome.skippedPaths && !filterOutcome.walkCapped) {
+  // 접근 오류만으로 complete=false가 된 경우는 아래 skipped 줄이 말한다. limit 잘림은 건너뜀과 함께여도 알린다.
+  if (isFiltering && !filterSearching && !filterFailed && !filterOutcome?.walkCapped && (filterOutcome?.truncated || (filterOutcome?.complete === false && !filterOutcome.skippedPaths))) {
     statusLines.push({ key: "partial", text: t("fileExplorer.filter.partial"), tone: "quiet", role: "status" });
   }
   if (isFiltering && !filterSearching && !filterFailed && filterOutcome?.skippedPaths) {

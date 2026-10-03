@@ -142,6 +142,7 @@ export async function searchFilesWithRipgrep(
     complete: outcome.complete,
     ignoredSkipped,
     ...(outcome.skippedPaths > 0 ? { skippedPaths: outcome.skippedPaths } : {}),
+    ...(outcome.truncated ? { truncated: true as const } : {}),
     elapsedMs: Math.round((performance.now() - startedAt) * 10) / 10,
     engine: "ripgrep",
   };
@@ -152,9 +153,9 @@ async function searchPaths(
   query: string,
   limit: number,
   options: SearchFilesWithRipgrepOptions,
-): Promise<{ readonly items: FileSearchItem[]; readonly totalMatches: number; readonly complete: boolean; readonly skippedPaths: number }> {
+): Promise<{ readonly items: FileSearchItem[]; readonly totalMatches: number; readonly complete: boolean; readonly skippedPaths: number; readonly truncated: boolean }> {
   const catalog = await getPathCatalog(root, options);
-  if (options.signal?.aborted) return { items: [], totalMatches: 0, complete: true, skippedPaths: 0 };
+  if (options.signal?.aborted) return { items: [], totalMatches: 0, complete: true, skippedPaths: 0, truncated: false };
   const ranked = catalog.paths
     .map((relativePath) => rankPath(relativePath, query))
     .filter((item): item is RankedPath => item !== null)
@@ -163,6 +164,7 @@ async function searchPaths(
     totalMatches: ranked.length,
     complete: catalog.skippedPaths === 0,
     skippedPaths: catalog.skippedPaths,
+    truncated: ranked.length > limit,
     items: ranked.slice(0, limit).map(({ relativePath, score, pathRanges }) => ({
       relativePath,
       kind: "file",
@@ -218,7 +220,7 @@ async function searchContents(
   query: string,
   limit: number,
   options: SearchFilesWithRipgrepOptions,
-): Promise<{ readonly items: FileSearchItem[]; readonly totalMatches?: number; readonly complete: boolean; readonly skippedPaths: number }> {
+): Promise<{ readonly items: FileSearchItem[]; readonly totalMatches?: number; readonly complete: boolean; readonly skippedPaths: number; readonly truncated: boolean }> {
   const args = [
     "--json",
     "--no-config",
@@ -291,6 +293,7 @@ async function searchContents(
     totalMatches: settled ? undefined : candidates.length,
     complete: !settled && skippedPaths === 0,
     skippedPaths,
+    truncated: settled || candidates.length > limit,
   };
 }
 
