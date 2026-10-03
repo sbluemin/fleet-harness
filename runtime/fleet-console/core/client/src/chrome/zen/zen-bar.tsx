@@ -17,17 +17,22 @@ const EDGE = 12;
 const CHROME_GUTTER = 24;
 const OPEN_SURFACE = '[aria-expanded="true"]:not(.console-toolbar-fold), [role="menu"], [role="dialog"], .command-band-update-bubble, .is-feature-tour-anchor';
 
+/**
+ * 펼친 섬의 자연 폭. 접힌 동안에는 도구 줄이 0fr 칸 안에서 눌려 scrollWidth가 실제 폭을 말하지 않으므로,
+ * 화면 밖에 펼친 상태의 복제본을 잠깐 세워 잰다(전이·감상 폭 제한 없이).
+ */
 function measureIntrinsicWidth(root: HTMLElement): number {
-  const content = root.querySelector<HTMLElement>(".zen-bar-content");
-  const brand = root.querySelector<HTMLElement>(".zen-bar-brand");
-  if (!content || !brand) return root.offsetWidth;
-  const contentWidth = content.scrollWidth;
-  const wordmark = brand.querySelector<HTMLElement>(".zen-bar-brand-wordmark");
-  const wmWidth = wordmark ? wordmark.scrollWidth : 0;
-  const glyph = brand.querySelector<HTMLElement>(".zen-bar-brand-glyph");
-  const glyphWidth = glyph ? glyph.offsetWidth : 18;
-  const brandWidth = Math.max(38, glyphWidth + wmWidth + 19);
-  return contentWidth + brandWidth + 16;
+  const probe = root.cloneNode(true) as HTMLElement;
+  probe.classList.remove("is-receded", "is-receding", "is-watching");
+  probe.removeAttribute("hidden");
+  probe.setAttribute("aria-hidden", "true");
+  probe.setAttribute("inert", "");
+  probe.style.cssText = "left:-10000px;bottom:0;visibility:hidden;pointer-events:none;transition:none;";
+  for (const node of probe.querySelectorAll<HTMLElement>("*")) node.style.transition = "none";
+  document.body.appendChild(probe);
+  const width = probe.offsetWidth;
+  probe.remove();
+  return width;
 }
 
 export function ZenBar({ active, local = false }: { readonly active: boolean; readonly local?: boolean }) {
@@ -97,6 +102,18 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
     observer.observe(root);
     return () => observer.disconnect();
   }, [active, receded, receding]);
+
+  // 물러나 있던 동안 내용(대기 수, War Room 도구 등)이 바뀌었을 수 있다. 펼치기 시작하는 프레임에서
+  // 전이 중인 바깥 폭이 아니라 내재 폭으로 다시 재어, 귀환의 첫 목표 자리부터 맞춘다.
+  useLayoutEffect(() => {
+    if (!active || receded) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const w = measureIntrinsicWidth(root);
+    if (w > 100) {
+      setNaturalWidth((current) => (Math.abs(current - w) > 1 ? w : current));
+    }
+  }, [active, receded]);
 
   // 초기 마운트 시 내재 폭(콘텐츠 scrollWidth 등)으로 자연 폭 초기화
   useLayoutEffect(() => {

@@ -501,8 +501,9 @@
 /* 도구 트랙: grid 1fr ↔ 0fr로 max-content 폭을 측정 없이 자연스럽게 보간 */
 .zen-bar-track {
   display: grid;
-  grid-template-columns: 1fr;
-  flex: none;
+  grid-template-columns: minmax(0, 1fr);
+  /* 감상 중 max-width보다 넓으면 트랙이 줄어 손잡이가 화면 안에 남는다(canary의 수축 동작 보존). */
+  flex: 0 1 auto;
   min-width: 0;
   transition: grid-template-columns var(--width-dur) var(--width-ease) var(--width-delay);
 }
@@ -544,7 +545,7 @@
   gap: 0;
 }
 .zen-bar.is-receded .zen-bar-track {
-  grid-template-columns: 0fr;
+  grid-template-columns: minmax(0, 0fr);
 }
 .zen-bar.is-receded .zen-bar-content {
   opacity: 0;
