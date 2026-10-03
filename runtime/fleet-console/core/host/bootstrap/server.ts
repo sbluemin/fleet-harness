@@ -430,6 +430,19 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/browser/operations/:operationId/import", summary: "Import cookies from a Google Chrome profile on the attached Desktop into an Operation's browser session.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/profile", summary: "Choose whether an Operation's browser uses a temporary session or the persistent profile; open tabs close.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/clear-profile", summary: "Erase the persistent browser profile's cookies and site storage on the attached Desktop.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/global/state", summary: "Read the Console-wide Fleet Browser tab state; later changes arrive on the Operation event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/global/screenshot", summary: "Capture the active tab of the Console-wide Fleet Browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/global/favicon", summary: "Serve a Fleet Browser tab's favicon through the Console.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/global/tabs", summary: "Create, close or select a tab in the Console-wide Fleet Browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/global/navigate", summary: "Navigate a Fleet Browser tab as the user.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/global/viewport", summary: "Set the viewport preset or size of the Fleet Browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/global/place", summary: "Tell the Desktop shell where the Fleet Browser floating sheet sits in the window.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/global/inspect", summary: "Describe the page element under a Fleet Browser viewport coordinate.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/global/profile", summary: "Choose whether the Fleet Browser uses a temporary session or the persistent profile.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/global/clear-profile", summary: "Erase the persistent browser profile's cookies and site storage on the attached Desktop.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/global/restore-closed-tabs", summary: "Restore previously closed tabs after reconnection in the Fleet Browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/global/dismiss-closed-tabs", summary: "Dismiss the suggestion to restore closed tabs in the Fleet Browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/shortcuts", summary: "Update active Console shortcut bindings for Desktop native view forwarding.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
     path: "/api/v1/health",
@@ -1395,7 +1408,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 그 페이지가 자기 엔진을 shared로 닫지 않게 한다. 표식만 있거나 다른 호스트의 요청이면 인정하지 않는다.
       const viewId = req.headers[DESKTOP_BROWSER_VIEW_HEADER];
       const operationView = typeof viewId === "string" && shellOwner !== null
-        && desktopEngine.currentHost === shellOwner && Boolean(desktopEngine.viewOperation(viewId));
+        && desktopEngine.currentHost === shellOwner && Boolean(desktopEngine.viewOwner(viewId));
       const subscriber: OperationSseSubscriber = { res, audience, sessionHandle, client: operationView ? "operation-browser" : clientKindOf(req) };
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",

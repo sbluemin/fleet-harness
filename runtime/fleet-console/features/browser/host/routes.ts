@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
-import { BrowserPolicyError, type BrowserService } from "./service.js";
+import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
 import { writeImageToClipboard } from "./clipboard.js";
 
 export interface BrowserGlobalTabsInput {
@@ -69,6 +69,115 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         if (error instanceof BrowserPolicyError) writeJson(res, 400, { error: error.code, message: error.message });
         else writeJson(res, 500, { error: "browser_request_failed" });
       }
+      return true;
+    }
+    if (pathname === "/api/v1/browser/shortcuts") {
+      if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      const body = await readJsonBody<Record<string, unknown>>(req);
+      if (!body || !Array.isArray(body.shortcuts) || !body.shortcuts.every((item) => typeof item === "string")) {
+        writeJson(res, 400, { error: "invalid_request" }); return true;
+      }
+      browserService.setShortcuts(body.shortcuts);
+      writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
+      return true;
+    }
+    const globalMatch = /^\/api\/v1\/browser\/global\/(state|screenshot|tabs|navigate|viewport|inspect|favicon|place|profile|clear-profile|restore-closed-tabs|dismiss-closed-tabs)$/u.exec(pathname);
+    if (globalMatch) {
+      const action = globalMatch[1] ?? "";
+      if (action !== "state" && !browserService.available()) {
+        writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() });
+        return true;
+      }
+      const fail = (error: unknown) => {
+        if (error instanceof BrowserPolicyError) { writeJson(res, 400, { error: error.code, message: error.message, ...error.detail }); return; }
+        const message = error instanceof Error ? error.message : "browser_request_failed";
+        writeJson(res, 500, { error: message.startsWith("browser_") ? message : "browser_request_failed" });
+      };
+      if (req.method === "GET" && action === "state") {
+        writeJson(res, 200, browserService.globalState());
+        return true;
+      }
+      if (req.method === "GET" && action === "favicon") {
+        const tabId = readUrl(req).searchParams.get("tabId") ?? "";
+        const icon = await browserService.favicon(GLOBAL_BROWSER_OWNER_ID, tabId).catch(() => null);
+        if (!icon) { writeJson(res, 404, { error: "not_found" }); return true; }
+        res.writeHead(200, withSecurityHeaders({ "Content-Type": icon.type, "Cache-Control": "private, max-age=3600", "Content-Length": String(icon.body.byteLength) }));
+        res.end(icon.body);
+        return true;
+      }
+      if (req.method === "GET" && action === "screenshot") {
+        const controller = new AbortController();
+        const onClose = () => { if (!res.writableEnded) controller.abort(); };
+        res.on("close", onClose);
+        try {
+          writeJson(res, 200, await browserService.screenshot(GLOBAL_BROWSER_OWNER_ID, { format: "png", signal: controller.signal }));
+        } catch (error) {
+          if (!res.writableEnded && !res.destroyed) fail(error);
+        } finally {
+          res.off("close", onClose);
+        }
+        return true;
+      }
+      if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      const body = await readJsonBody<Record<string, unknown>>(req);
+      if (!body && action !== "restore-closed-tabs" && action !== "dismiss-closed-tabs") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+      try {
+        if (action === "restore-closed-tabs") {
+          const restored = await browserService.restoreClosedTabs();
+          writeJson(res, 200, { ok: true, restored });
+          return true;
+        }
+        if (action === "dismiss-closed-tabs") {
+          browserService.dismissClosedTabs();
+          writeJson(res, 200, { ok: true });
+          return true;
+        }
+        if (action === "profile") {
+          if (body && body.profile !== null && typeof body.profile !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          writeJson(res, 200, await browserService.setProfile(GLOBAL_BROWSER_OWNER_ID, (body?.profile as string | null) ?? null));
+          return true;
+        }
+        if (action === "clear-profile") {
+          if (!body || typeof body.profile !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          await browserService.clearProfile(body.profile);
+          writeJson(res, 200, { cleared: body.profile });
+          return true;
+        }
+        if (action === "tabs") {
+          const tabId = typeof body?.tabId === "string" ? body.tabId : null;
+          if (body?.action === "create") { const tab = await browserService.createTab(GLOBAL_BROWSER_OWNER_ID, typeof body.url === "string" ? body.url : null, "user"); writeJson(res, 200, { tab }); return true; }
+          if (body?.action === "close" && tabId) { await browserService.closeTab(GLOBAL_BROWSER_OWNER_ID, tabId); writeJson(res, 200, { closed: tabId }); return true; }
+          if (body?.action === "select" && tabId) { await browserService.selectTab(GLOBAL_BROWSER_OWNER_ID, tabId); writeJson(res, 200, { selected: tabId }); return true; }
+          writeJson(res, 400, { error: "invalid_request" }); return true;
+        }
+        if (action === "navigate") {
+          if (!body || typeof body.url !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          writeJson(res, 200, await browserService.navigate(GLOBAL_BROWSER_OWNER_ID, body.url, "user", typeof body.tabId === "string" ? body.tabId : null));
+          return true;
+        }
+        if (action === "viewport") {
+          const preset = body?.preset === "responsive" || body?.preset === "mobile" || body?.preset === "tablet" ? body.preset : undefined;
+          const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : body?.colorScheme === null ? null : undefined;
+          writeJson(res, 200, { viewport: await browserService.setViewport(GLOBAL_BROWSER_OWNER_ID, { preset, width: typeof body?.width === "number" ? body.width : undefined, height: typeof body?.height === "number" ? body.height : undefined, colorScheme }, "user") });
+          return true;
+        }
+        if (action === "place") {
+          const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
+          const x = num(body?.x), y = num(body?.y), width = num(body?.width), height = num(body?.height);
+          if (body?.visible === false && x === null) { browserService.place(GLOBAL_BROWSER_OWNER_ID, null); writeJson(res, 200, { ok: true }); return true; }
+          if (x === null || y === null || width === null || height === null || width < 0 || height < 0) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          browserService.place(GLOBAL_BROWSER_OWNER_ID, { bounds: { x, y, width, height }, visible: body?.visible !== false });
+          writeJson(res, 200, { ok: true }); return true;
+        }
+        if (action === "inspect") {
+          if (!body || typeof body.x !== "number" || typeof body.y !== "number") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          writeJson(res, 200, { element: await browserService.inspectAt(GLOBAL_BROWSER_OWNER_ID, body.x, body.y, typeof body.tabId === "string" ? body.tabId : null) });
+          return true;
+        }
+        writeJson(res, 404, { error: "not_found" });
+      } catch (error) { fail(error); }
       return true;
     }
     const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place|import|profile|clear-profile)$/u.exec(pathname);
