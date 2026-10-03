@@ -54,6 +54,7 @@ let dockHostNode: HTMLDivElement | null = null;
 let readerController: ReadingController | null = null;
 let activeReaderKind: "entry" | "drydock" | "conflicts" | "schema" | null = null;
 let activeReaderEntryId: string | null = null;
+let activeReaderWorkspaceId: string | null = null;
 let activeReaderSubId: string | undefined = undefined;
 let activeReaderSessionTheaterId: string | null = null;
 let activeEntryRequest: ((entryId: string) => void) | null = null;
@@ -107,6 +108,7 @@ export function setNavigatorTheater(theaterId: string | null): void {
   if (theaterId === activeNavigatorWorkspaceId) return;
   activeNavigatorWorkspaceId = theaterId;
   navigatorController?.setTheater(theaterId);
+  if (activeReaderWorkspaceId === theaterId) navigatorController?.setCurrentEntry(activeReaderEntryId);
 }
 
 /** 리더 문서의 태그 칩 클릭을 카탈로그 태그 필터로 잇는다. */
@@ -312,6 +314,7 @@ export function mountReaderInto(
     activeReaderSubId = opts.subId;
     void readerController.navigateSub(opts.subId);
   }
+  activeReaderWorkspaceId = opts.theaterId;
   activeReaderEntryId = opts.kind === "entry" ? (opts.initialEntryId ?? null) : null;
   navigatorController?.setCurrentEntry(activeReaderEntryId);
   activeEntryRequest = opts.onRelatedClick;
@@ -367,6 +370,7 @@ export function teardownReaderNodes(): void {
   readerController = null;
   activeReaderKind = null;
   activeReaderEntryId = null;
+  activeReaderWorkspaceId = null;
   activeReaderSubId = undefined;
   activeEntryRequest = null;
   if (readerHostNode?.parentElement) readerHostNode.parentElement.removeChild(readerHostNode);
@@ -448,6 +452,7 @@ export function getCodexReaderMarkdown(): string | null {
 }
 
 function handleEntryRendered(entryId: string): void {
+  if (activeReaderWorkspaceId === activeNavigatorWorkspaceId) navigatorController?.setCurrentEntry(entryId);
   emitDocumentState();
   const completedSessionRestore = pendingSessionRestore?.entryId === entryId;
   pendingSessionRestore = null;

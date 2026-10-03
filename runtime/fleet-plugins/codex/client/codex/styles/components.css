@@ -1707,6 +1707,14 @@ button.chip:focus-visible {
   text-decoration: line-through;
 }
 
+.queue-batch-controls { padding: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-md); margin-bottom: var(--space-3); font-size: var(--t-sm); }
+.queue-batch-controls p { margin: 0 0 var(--space-2); }
+.queue-batch-controls .queue-action-buttons { flex-wrap: wrap; }
+.queue-batch-controls textarea { box-sizing: border-box; width: 100%; resize: vertical; background: var(--surface-panel); color: var(--text-primary); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); padding: var(--space-2); font: inherit; margin-bottom: var(--space-2); }
+.queue-selection-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: start; gap: var(--space-1); }
+.queue-selection-row > input { margin: var(--space-4) 0 0; accent-color: var(--brass); }
+.queue-selection-row .queue-row { width: 100%; min-width: 0; }
+
 .queue-row-list {
   display: flex;
   flex-direction: column;
@@ -2746,6 +2754,13 @@ button.chip:focus-visible {
 .codex-nav-active-filter:hover {
   background: color-mix(in oklch, var(--brass) 16%, transparent);
 }
+
+.codex-nav-list:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.codex-nav-list:focus [data-active="true"] { background: color-mix(in oklch, var(--brass) 12%, transparent); outline: 2px solid var(--brass); outline-offset: -2px; }
+.codex-nav-tag-filters { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-top: 1px solid var(--hairline); }
+.codex-nav-tag-filters[hidden] { display: none; }
+.codex-nav-tag.codex-nav-tag-info { cursor: default; }
+.codex-nav-tag.codex-nav-tag-info:hover { background: transparent; border-color: var(--surface-rim); color: var(--text-tertiary); }
 
 .codex-nav-entry {
   display: grid;

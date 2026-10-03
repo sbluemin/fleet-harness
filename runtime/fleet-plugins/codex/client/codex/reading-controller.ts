@@ -12,6 +12,7 @@ import { resolveActiveLocale } from "../i18n/index.js";
 import {
   CodexRequestError,
   decideDrydock,
+  decideDrydockBatch,
   decideConflict,
   fetchConflictDetail,
   fetchConflicts,
@@ -30,6 +31,7 @@ import type {
   DrydockListResponse,
   DrydockMeta,
   EntryBacklink,
+  EntryResponse,
 } from "./api.js";
 import { installEntryLinkPreview } from "./components/link-preview.js";
 import type { EntryLinkPreview } from "./components/link-preview.js";
@@ -151,12 +153,19 @@ export function mountReadingInto(
   // 대기열 세그먼트·diff 표시 상태 — 목록은 pending/결정됨을 오가고,
   // update 패치 상세는 "변경만"이 기본이다(전문은 토글).
   let queueSegment: "pending" | "decided" = "pending";
+  let queueList: DrydockListResponse | null = null;
+  const queueSelected = new Set<string>();
+  let batchAction: "approve" | "reject" | null = null;
+  let batchBusy = false;
+  let batchReason = "";
+  let batchNotice = "";
+  let batchProblems: string[] = [];
   let diffMode: "changes" | "full" = "changes";
   let detailDiffBlocks: readonly DraftBlock[] | null = null;
   let detailProposedToc = "";
   let detailProposedTocItems: readonly TocItem[] = [];
   // 읽는 중인 문서가 서버에서 바뀌었다는 사실. 본문은 그대로 두고 이 표식만 띄운다.
-  let staleKind: "updated" | "decided" | null = null;
+  let staleKind: "updated" | "decided" | "deleted" | null = null;
   // 지금 화면에 그려진 문서의 갱신 시각. 카탈로그의 같은 값과 어긋나면 이 문서가 바뀐 것이다.
   let renderedEntryStamp: string | null = null;
   // 지금 화면에 그려진 패치의 판본. 대기열에서 *다른* 패치가 움직인 것으로는 이 값이 변하지 않는다.
@@ -179,6 +188,7 @@ export function mountReadingInto(
     const target = event.target;
     if (!(target instanceof Element)) return;
 
+    if (target.closest("[data-reader-dismiss]")) { event.preventDefault(); liveOpts.onClose(); return; }
     const readerRefresh = target.closest<HTMLElement>("[data-reader-refresh]");
     if (readerRefresh) {
       event.preventDefault();
@@ -243,12 +253,26 @@ export function mountReadingInto(
       return;
     }
 
+    const select = target.closest<HTMLInputElement>("input[data-queue-select]");
+    if (select) {
+      if (select.checked && queueSelected.size >= 100) { select.checked = false; batchNotice = consoleT()("codex.reading.batchLimit"); }
+      else if (select.checked) queueSelected.add(select.dataset.queueSelect!);
+      else queueSelected.delete(select.dataset.queueSelect!);
+      redrawBatchControls();
+      return;
+    }
+    const batch = target.closest<HTMLElement>("[data-batch-action]");
+    if (batch) { event.preventDefault(); handleBatchAction(batch.dataset.batchAction); return; }
+
     // 대기열 세그먼트 전환 (대기 ↔ 결정됨)
     const segmentBtn = target.closest<HTMLElement>("[data-queue-segment]");
     if (segmentBtn) {
       event.preventDefault();
       const next = segmentBtn.dataset.queueSegment === "decided" ? "decided" : "pending";
+      if (batchBusy) return;
       if (next !== queueSegment) {
+        batchAction = null;
+        queueSelected.clear();
         queueSegment = next;
         void renderDrydockView(undefined);
       }
@@ -307,6 +331,73 @@ export function mountReadingInto(
       return;
     }
 
+  }
+
+  function batchState(): QueueBatchState {
+    return { selected: queueSelected, action: batchAction, busy: batchBusy, reason: batchReason, notice: batchNotice, problems: batchProblems };
+  }
+
+  function redrawBatchControls(): void {
+    const slot = readContainer.querySelector<HTMLElement>("[data-batch-controls]");
+    if (slot && queueList) slot.innerHTML = renderBatchControls(queueList.items, batchState());
+  }
+
+  function redrawQueueList(): void {
+    if (!queueList) return;
+    readContainer.innerHTML = renderDrydockList(queueList, queueSegment, batchState());
+  }
+
+  function handleBatchAction(action: string | undefined): void {
+    if (!queueList || currentSubId || queueSegment !== "pending" || batchBusy) return;
+    if (action === "select" || action === "clear") {
+      queueSelected.clear();
+      if (action === "select") for (const item of queueList.items.filter(item => item.meta.status === "pending").slice(0, 100)) queueSelected.add(item.id);
+      batchAction = null;
+      redrawQueueList();
+      readContainer.querySelector<HTMLButtonElement>(`[data-batch-action=${action}]`)?.focus({ preventScroll: true });
+      return;
+    }
+    if (action === "cancel") { batchAction = null; redrawQueueList(); return; }
+    const chosen = queueList.items.filter(item => queueSelected.has(item.id) && item.meta.status === "pending");
+    if (action === "approve" || action === "reject") {
+      if (!chosen.length || action === "approve" && !chosen.some(item => !item.baseConflict)) return;
+      batchAction = action;
+      batchNotice = "";
+      batchProblems = [];
+      redrawQueueList();
+      readContainer.querySelector<HTMLElement>(action === "reject" ? "[data-batch-reason]" : "[data-batch-action=confirm]")?.focus({ preventScroll: true });
+      return;
+    }
+    if (action !== "confirm" || !batchAction) return;
+    if (batchAction === "reject" && !batchReason.trim()) { batchNotice = consoleT()("codex.reading.rejectReasonRequired"); redrawBatchControls(); return; }
+    const selectedAction = batchAction, ids = chosen.map(item => item.id), theaterId = liveOpts.theaterId, epoch = subRequestEpoch;
+    batchBusy = true;
+    redrawQueueList();
+    void decideDrydockBatch(theaterId, ids, selectedAction, batchReason.trim()).then(async result => {
+      if (!isCurrentSubRequest("drydock", undefined, epoch) || theaterId !== liveOpts.theaterId) return;
+      const decided = result.results.filter(item => item.outcome === "approved" || item.outcome === "rejected");
+      for (const item of decided) queueSelected.delete(item.id);
+      batchNotice = consoleT()("codex.reading.batchResult", { decided: decided.length, skipped: result.results.filter(item => item.outcome === "skipped").length, failed: result.results.filter(item => item.outcome === "failed").length });
+      batchProblems = result.results.filter(item => item.outcome === "skipped" || item.outcome === "failed").map(item => {
+        const proposal = chosen.find(candidate => candidate.id === item.id);
+        const name = proposal ? `${proposal.target ?? proposal.id} · ${localizedQueueSummary(proposal, consoleT())}` : item.id;
+        return `${name}: ${consoleT()(item.error === "stale_base" ? "codex.reading.staleBadge" : item.outcome === "skipped" ? "codex.reading.batchSkipped" : "codex.reading.batchFailed")}`;
+      });
+      batchBusy = false;
+      batchAction = null;
+      // 목록 소유자는 유지한다. 단건용 onDecided는 navigation까지 수행하므로 여기서 호출하지 않는다.
+      await renderDrydockView(undefined);
+    }).catch(() => {
+      if (!isCurrentSubRequest("drydock", undefined, epoch)) return;
+      batchNotice = consoleT()("codex.reading.batchFailed");
+      batchBusy = false;
+      redrawQueueList();
+    }).finally(() => { batchBusy = false; });
+  }
+
+  function handleBatchInput(event: Event): void {
+    const target = event.target;
+    if (target instanceof HTMLTextAreaElement && target.hasAttribute("data-batch-reason")) batchReason = target.value;
   }
 
   function redrawConflictControls(): void {
@@ -456,6 +547,7 @@ export function mountReadingInto(
   }
 
   readContainer.addEventListener("click", handleClick);
+  readContainer.addEventListener("input", handleBatchInput);
 
   function installSpy(article: HTMLElement, items: TocItem[]): void {
     cleanupSpy?.();
@@ -493,24 +585,14 @@ export function mountReadingInto(
       if (scopes.has("queue")) void refreshPendingCount(currentEntryId);
       if (!scopes.has("wiki") && !scopes.has("index")) return;
       void coworkController?.refresh();
-      if (coworkController?.engaged()) return;
-      // 위키에서 *무언가* 바뀌었다고 이 문서가 바뀐 것은 아니다 — 옆 문서가 등재됐을 뿐인데
-      // "이 문서가 갱신됐다"고 말하면 그 표식은 곧 아무 뜻도 없는 소음이 된다.
-      const stamp = catalogStampFor(currentEntryId);
-      if (stamp === null) return;
-      if (renderedEntryStamp === null) {
-        // 문서를 그릴 때 카탈로그가 아직 비어 있었다 — 지금 값을 기준선으로 삼고,
-        // 다음 변화부터 비교한다. 근거 없는 알림보다 한 번 늦는 편이 정직하다.
-        renderedEntryStamp = stamp;
-        return;
-      }
-      if (stamp === renderedEntryStamp) return;
-      showStaleNotice("updated");
+      // updated 필드가 그대로인 외부 편집과 카탈로그에서 빠진 삭제도 실제 API로 확인한다.
+      void noticeForOpenEntry(currentEntryId);
       return;
     }
     if (opts.kind === "drydock") {
       if (!scopes.has("queue")) return;
       if (!currentSubId) {
+        if (batchBusy) return;
         void renderDrydockView(undefined);
         return;
       }
@@ -610,21 +692,30 @@ export function mountReadingInto(
     return `${detail.meta.status}:${detail.meta.decidedAt ?? ""}:${detail.patch.body.length}:${detail.patch.body}`;
   }
 
-  function catalogStampFor(entryId: string): string | null {
-    return getState().index.find((entry) => entry.id === entryId)?.updated ?? null;
+  function entryStampOf(entry: EntryResponse): string { return JSON.stringify([entry.frontmatter, entry.body]); }
+
+  async function noticeForOpenEntry(entryId: string): Promise<void> {
+    const epoch = entryRequestEpoch, theaterId = liveOpts.theaterId;
+    try {
+      const entry = await fetchEntry(theaterId, entryId);
+      if (destroyed || epoch !== entryRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
+      if (!coworkController?.engaged() && renderedEntryStamp !== null && entryStampOf(entry) !== renderedEntryStamp) showStaleNotice("updated");
+    } catch (error) {
+      if (!destroyed && epoch === entryRequestEpoch && entryId === currentEntryId && theaterId === liveOpts.theaterId && error instanceof CodexRequestError && error.status === 404) showStaleNotice("deleted");
+    }
   }
 
-  function showStaleNotice(kind: "updated" | "decided"): void {
+  function showStaleNotice(kind: "updated" | "decided" | "deleted"): void {
     // 결정 사실은 단순 갱신보다 강한 소식이다 — 한 번 켜지면 갱신 문구로 내려가지 않는다.
-    if (staleKind === "decided" && kind === "updated") return;
+    if ((staleKind === "decided" || staleKind === "deleted") && kind === "updated") return;
     staleKind = kind;
     const t = consoleT();
-    const label = kind === "decided" ? t("codex.reading.staleDecided") : t("codex.reading.staleUpdated");
-    const action = kind === "decided" ? t("codex.reading.staleSeeResult") : t("codex.reading.staleReload");
+    const label = kind === "deleted" ? t("codex.reading.staleDeleted") : kind === "decided" ? t("codex.reading.staleDecided") : t("codex.reading.staleUpdated");
+    const action = kind === "deleted" ? t("common.close") : kind === "decided" ? t("codex.reading.staleSeeResult") : t("codex.reading.staleReload");
     const existing = readContainer.querySelector<HTMLElement>(".codex-reader-stale");
     const markup = `
       <span class="codex-reader-stale-text">${escapeHtml(label)}</span>
-      <button class="codex-reader-stale-action" type="button" data-reader-refresh>${escapeHtml(action)}</button>
+      <button class="codex-reader-stale-action" type="button" ${kind === "deleted" ? "data-reader-dismiss" : "data-reader-refresh"}>${escapeHtml(action)}</button>
     `;
     if (existing) {
       existing.dataset.tone = kind;
@@ -723,7 +814,7 @@ export function mountReadingInto(
       }
       // 지금 그린 본문이 어느 판본인지 적어 둔다 — 이후 카탈로그의 같은 값과 비교해
       // "이 문서가" 바뀌었는지 판정한다.
-      renderedEntryStamp = catalogStampFor(entryId);
+      renderedEntryStamp = entryStampOf(entry);
       opts.onEntryRendered?.(entryId);
     } catch (error) {
       if (!destroyed && requestEpoch === entryRequestEpoch && entryId === currentEntryId) {
@@ -823,7 +914,9 @@ export function mountReadingInto(
         if (!isCurrentSubRequest("drydock", patchId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
-        readContainer.innerHTML = renderDrydockList(list, queueSegment);
+        queueList = list;
+        for (const id of queueSelected) if (!list.items.some(item => item.id === id && item.meta.status === "pending")) queueSelected.delete(id);
+        readContainer.innerHTML = renderDrydockList(list, queueSegment, batchState());
       }
     } catch (error) {
       if (isCurrentSubRequest("drydock", patchId, requestEpoch)) {
@@ -914,6 +1007,7 @@ export function mountReadingInto(
       subRequestEpoch += 1;
       schemaRequestEpoch += 1;
       readContainer.removeEventListener("click", handleClick);
+      readContainer.removeEventListener("input", handleBatchInput);
       document.removeEventListener(CODEX_LIVE_CHANGED_EVENT, handleLiveChanged);
       linkPreview.destroy();
       fileLinks.destroy();
@@ -1050,13 +1144,37 @@ function formatRelativeUpdatedIso(iso: string): string {
   return Number.isNaN(ms) ? iso : formatRelativeTime(ms, consoleLocale());
 }
 
-function renderDrydockList(list: DrydockListResponse, segment: "pending" | "decided"): string {
+interface QueueBatchState {
+  selected: ReadonlySet<string>;
+  action: "approve" | "reject" | null;
+  busy: boolean;
+  reason: string;
+  notice: string;
+  problems: readonly string[];
+}
+
+function renderBatchControls(items: readonly DrydockListItem[], state: QueueBatchState): string {
+  const t = consoleT();
+  const selected = items.filter(item => state.selected.has(item.id));
+  const stale = selected.filter(item => !!item.baseConflict).length;
+  const status = state.notice ? `<p role="status">${escapeHtml(state.notice)}</p>${state.problems.length ? `<ul>${state.problems.map(problem => `<li>${escapeHtml(problem)}</li>`).join("")}</ul>` : ""}` : "";
+  if (state.busy) return `<p role="status" aria-busy="true">${escapeHtml(t("codex.reading.processingAria"))}</p>`;
+  const count = state.action === "approve" ? selected.length - stale : selected.length;
+  if (state.action) return `${status}<p>${escapeHtml(t(state.action === "approve" ? "codex.reading.batchApproveConfirm" : "codex.reading.batchRejectConfirm", { count, skipped: stale }))}</p>
+    ${state.action === "reject" ? `<textarea data-batch-reason maxlength="256" rows="3" aria-label="${escapeAttribute(t("codex.reading.rejectPlaceholder"))}" placeholder="${escapeAttribute(t("codex.reading.rejectPlaceholder"))}">${escapeHtml(state.reason)}</textarea>` : ""}
+    <div class="queue-action-buttons"><button type="button" data-batch-action="confirm" class="queue-action-btn"${count === 0 ? " disabled" : ""}>${escapeHtml(t("codex.reading.batchConfirm"))}</button><button type="button" data-batch-action="cancel" class="queue-action-btn">${escapeHtml(t("common.cancel"))}</button></div>`;
+  return `${status}<p>${escapeHtml(t("codex.reading.batchSelection", { count: selected.length, skipped: stale }))}</p>
+    <div class="queue-action-buttons"><button type="button" data-batch-action="select" class="queue-action-btn">${escapeHtml(t("codex.reading.batchSelect"))}</button><button type="button" data-batch-action="clear" class="queue-action-btn"${!selected.length ? " disabled" : ""}>${escapeHtml(t("codex.reading.batchClear"))}</button>
+    <button type="button" data-batch-action="approve" class="queue-action-btn"${selected.length === stale ? " disabled" : ""}>${escapeHtml(t("codex.reading.batchApprove"))}</button><button type="button" data-batch-action="reject" class="queue-action-btn"${!selected.length ? " disabled" : ""}>${escapeHtml(t("codex.reading.batchReject"))}</button></div>`;
+}
+
+function renderDrydockList(list: DrydockListResponse, segment: "pending" | "decided", batch: QueueBatchState): string {
   const t = consoleT();
   const items = list.items;
   const emptyLabel = segment === "pending" ? t("codex.reading.noPendingPatches") : t("codex.reading.noDecidedPatches");
   const rows = items.length === 0
     ? `<div class="codex-reader-empty"><p class="queue-empty">${escapeHtml(emptyLabel)}</p></div>`
-    : `<div class="queue-row-list">${items.map(renderQueueRow).join("")}</div>`;
+    : `<div class="queue-row-list">${items.map(item => segment === "pending" ? `<div class="queue-selection-row"><input type="checkbox" data-queue-select="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("codex.reading.batchSelectItem", { name: item.target ?? item.summary ?? item.id }))}"${batch.selected.has(item.id) ? " checked" : ""}${batch.busy || batch.action ? " disabled" : ""}>${renderQueueRow(item)}</div>` : renderQueueRow(item)).join("")}</div>`;
   // 유틸 화면 — 디스플레이 타이포 대신 title 스케일(.document--utility)로 강등한다.
   return `
     <article class="document document--utility">
@@ -1073,6 +1191,7 @@ function renderDrydockList(list: DrydockListResponse, segment: "pending" | "deci
           <button type="button" data-queue-segment="decided" aria-pressed="${String(segment === "decided")}">${escapeHtml(t("codex.reading.segmentDecided", { count: list.archivedCount }))}</button>
         </div>
       </header>
+      ${segment === "pending" ? `<section class="queue-batch-controls" data-batch-controls aria-label="${escapeAttribute(t("codex.reading.batchReview"))}">${renderBatchControls(items, batch)}</section>` : ""}
       ${rows}
     </article>
   `;

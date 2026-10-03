@@ -37,6 +37,13 @@ Wiki entry writes normally use the patch queue; the Cowork exception moves the a
 - `prompts.ts` — Tool prompt snippets, guidelines, and TypeBox schemas. References `schema/wiki-schema.md` for workspace conventions.
 - `paths.ts` — Memory path resolution, `ensureMemoryRoot()` bootstraps schema files via `ensureWorkspaceSchema()`.
 
+## 이주 사본 표식
+
+- canonical Wiki 이주는 기존 private `knowledge.migrated.json`의 copied commit과 staging 복구·rename 완료를 기준으로 한다. 완료된 Theater의 옛 `.fleet/knowledge/`에는 `.codex-migration.json`만 원자적으로 추가하며 옛 파일 자체는 삭제·수정하지 않는다.
+- 공개 파일 계약은 UTF-8 최대 1MiB의 `{ "schemaVersion": 1, "entries": { "wiki/<상대 파일>.md": "entryId" } }`이다. 키는 옛 knowledge 루트 기준 POSIX 상대 경로, 값은 `/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/`이며 카탈로그 index는 제외한다. 절대경로·private 저장 위치·본문은 저장하지 않는다.
+- 처음 매핑할 때는 옛 파일의 유효한 ID가 현재 canonical Wiki에도 있는 경우만 포함한다. 이미 이주된 Theater는 다음 Codex resolve에서 표식을 보충한다. 기존 표식은 덮지 않으며, 제목·위치 변경 후에도 ID 링크를 유지하고 삭제·ID 변경 뒤에는 역사 표식으로 남긴다. 현재 대상의 존재는 보장하지 않는다.
+- Files는 자신의 containment·bounded JSON 검사 후 해당 파일 키를 exact match해 `{ entryId }`만 반환하고 `openWikiEntry`로 연결한다. 읽기 전용 소스·잘못된 표식·쓰기 실패는 canonical Wiki 열기를 막지 않는다. 표식은 사용자 Theater 안의 새 파일이므로 그 Theater의 `.gitignore`에 따라 git status에 나타날 수 있다. 자동으로 `.gitignore`를 고치지 않는다.
+
 ## Schema & Documentation
 
 - Workspace conventions live in `.fleet/knowledge/schema/wiki-schema.md` (auto-generated with `ensureWorkspaceSchema()`).
