@@ -687,7 +687,7 @@ describe("Objectives contract", () => {
     // 저장 — 목표마다 자기 디렉터리의 objective.json 하나, Operation 이 가진 값은 싣지 않는다.
     expect(savedIds()).toEqual([objective.id]);
     const saved = savedObjective(objective.id);
-    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "commenced", "enlisted", "members", "missions", "note", "operationId", "rank"]);
+    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "boardUpdatedAt", "commenced", "enlisted", "members", "missions", "note", "operationId", "rank"]);
     expect(saved.operationId).toBe(objective.id);
     for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.

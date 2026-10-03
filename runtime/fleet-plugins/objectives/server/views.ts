@@ -155,5 +155,25 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     if (caller?.kind !== "operation") return "en";
     return ctx.host.operations.get(caller.operationId)?.payload?.objectiveLanguage === "ko" ? "ko" : "en";
   };
-  return { objectiveView, rowView, languageOf };
+  const sessions = (objective: Objective) => {
+    const commander = observe(objective.id);
+    return {
+      commander: { ...commander, state: store.pending(objective.id) ? "not_started" : commander.state, session: objective.commander.sessionName, model: objective.commander.model, effort: objective.commander.effort },
+      members: objective.members.map((member) => ({ ...observe(member.id), role: member.role, session: member.sessionName, model: member.model, effort: member.effort, next: member.next })),
+    };
+  };
+  const historyView = (objective: Objective) => {
+    const handoffs = [...objective.extensions.flatMap((round) => round.previousHandoff ? [round.previousHandoff] : []),
+      ...(objective.actions ?? []).flatMap((action) => action.handoff ? [action.handoff] : []), ...(objective.handoff ? [objective.handoff] : [])];
+    const unique = [...new Map(handoffs.map((handoff) => [`${handoff.at}:${JSON.stringify(handoff.by)}`, handoff])).values()];
+    return {
+      ...rowView(objective), completed: objective.done, boardUpdatedAt: objective.boardUpdatedAt,
+      handoffs: unique.map((handoff) => ({ ...handoff, at: new Date(handoff.at).toISOString() })),
+      decisions: objective.decisions, extensions: objective.extensions,
+      reopenCount: objective.actionCounts?.reopen ?? 0,
+      rework: { steeringTurns: objective.actionCounts?.steer ?? 0, reopenedMissions: objective.actionCounts?.["mission-reopened"] ?? 0, extensionRounds: objective.extensions.length },
+      actions: objective.actions ?? [], actionCounts: objective.actionCounts ?? {},
+    };
+  };
+  return { objectiveView, rowView, languageOf, sessions, historyView };
 }

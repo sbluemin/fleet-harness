@@ -63,7 +63,7 @@ export type ObjectiveActor = "human" | "commander"
   | { readonly kind: "operation"; readonly operationId: string; readonly title: string | null };
 export type ObjectiveReviewer = Exclude<ObjectiveActor, "commander">;
 export const MAX_OBJECTIVE_ACTIONS = 200;
-export type ObjectiveActionKind = "edit" | "criteria-approved" | "criteria-rejected" | "hand-off" | "complete" | "reopen" | "followup-selected" | "followup-discarded" | "extend" | "steer";
+export type ObjectiveActionKind = "edit" | "criteria-approved" | "criteria-rejected" | "hand-off" | "complete" | "reopen" | "followup-selected" | "followup-discarded" | "extend" | "steer" | "mission-reopened";
 /** 사라지는 제안·완료 표시도 행위 기록에는 남는다. 오래된 본문은 접고 누계는 보존한다. */
 export interface ObjectiveAction {
   readonly id: string;
@@ -73,6 +73,7 @@ export interface ObjectiveAction {
   readonly kinds?: readonly ObjectiveEditKind[];
   readonly targetId?: string;
   readonly proposal?: ObjectiveCriterionProposal;
+  readonly handoff?: StoredHandoff;
 }
 export interface ObjectiveEdits {
   readonly at: number;
@@ -485,6 +486,8 @@ export interface StoredObjective {
   readonly edited?: ObjectiveEdits;
   readonly actions?: readonly ObjectiveAction[];
   readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
+  /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
+  readonly boardUpdatedAt?: number;
   /** 목표 완료 — 옛 레코드에서 by 생략은 사람의 완료다. */
   readonly done?: ObjectiveCompletion;
   /** Core 요청 접수 전 중단을 복구하는 내부 의도. UI 상태나 구성원별 세대가 아니다. */
@@ -624,6 +627,8 @@ export interface Objective {
   readonly edited?: ObjectiveEdits;
   readonly actions?: readonly ObjectiveAction[];
   readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
+  /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
+  readonly boardUpdatedAt?: number;
   readonly dueDate: string | null;
   readonly today: boolean;
   readonly addedBy: { readonly operationId: string; readonly title: string | null } | null;
@@ -884,9 +889,10 @@ export const objectiveReviewerSchema = z.union([
 export const objectiveActorSchema = z.union([objectiveReviewerSchema, z.literal("commander")]);
 export const objectiveActionSchema = z.object({
   id: ids, at: z.number().finite(), by: objectiveActorSchema,
-  kind: z.enum(["edit", "criteria-approved", "criteria-rejected", "hand-off", "complete", "reopen", "followup-selected", "followup-discarded", "extend", "steer"]),
+  kind: z.enum(["edit", "criteria-approved", "criteria-rejected", "hand-off", "complete", "reopen", "followup-selected", "followup-discarded", "extend", "steer", "mission-reopened"]),
   kinds: z.array(z.enum(["title", "note", "missions", "lineup", "members", "member", "criteria"])).optional(),
   targetId: ids.optional(),
+  handoff: z.lazy(() => storedHandoffSchema).optional(),
   proposal: z.object({ id: ids, kind: z.enum(["add", "revise", "retire", "recheck"]), target: ids.optional(), text: z.string().optional(), reason: z.string().optional(), annotation: z.string().optional(), annotationBy: objectiveActorSchema.optional() }).strict().optional(),
 }).strict();
 const title = z.string().trim().min(1).max(MAX_TITLE);
@@ -974,15 +980,16 @@ export const retrospectiveSchema = z.object({
   wentWell: z.array(z.object({ point: retroText, because: retroText }).strict()).min(1).max(MAX_RETRO_PAIRS),
   fellShort: z.array(z.object({ point: retroText, ifOnly: retroText }).strict()).min(1).max(MAX_RETRO_PAIRS),
 }).strict();
+const storedHandoffSchema = z.union([
+  z.object({ by: objectiveReviewerSchema, at: z.number().finite() }).strict(),
+  z.object({ by: z.literal("commander"), at: z.number().finite(), retrospective: retrospectiveSchema }).strict(),
+]);
 /** 회차는 개수로 자르지 않는다 — 반복 확장의 번호와 이전 회고를 끝까지 보존한다. */
 export const storedExtensionsSchema = z.array(z.object({
   by: objectiveActorSchema.optional(),
   n: z.number().int().positive(), at: z.number().finite(), context: z.string().trim().min(1).max(MAX_CONTEXT),
   missionIds: z.array(ids).max(MAX_MISSIONS), criterionIds: z.array(ids).max(MAX_CRITERIA),
-  previousHandoff: z.union([
-    z.object({ by: objectiveReviewerSchema, at: z.number().finite() }).strict(),
-    z.object({ by: z.literal("commander"), at: z.number().finite(), retrospective: retrospectiveSchema }).strict(),
-  ]).nullable(),
+  previousHandoff: storedHandoffSchema.nullable(),
 }).strict()).refine((rounds) => rounds.every((round, index) => round.n === index + 1), { message: "extension_sequence" });
 
 export const followupEvidenceSchema = z.discriminatedUnion("kind", [

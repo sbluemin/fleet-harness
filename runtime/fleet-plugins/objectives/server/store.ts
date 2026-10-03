@@ -44,6 +44,7 @@ import {
   type HostCoordinates,
   type MemberRouted,
   type StoredMember,
+  type StoredHandoff,
   type StoredMerge,
   type StoredRemoval,
   type PlanInput,
@@ -378,6 +379,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     const parsed = JSON.parse(raw) as Partial<StoredObjective>;
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
+      if (parsed.boardUpdatedAt !== undefined && (!Number.isFinite(parsed.boardUpdatedAt) || parsed.boardUpdatedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
       const intent = parsed.operationIntent;
       if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_operation_intent");
       if (intent?.extensionContext !== undefined && (intent.action !== "ensure-active" || typeof intent.extensionContext !== "string" || !intent.extensionContext.trim() || intent.extensionContext.length > MAX_CONTEXT)) throw new ObjectiveStoreError("invalid_operation_intent");
@@ -642,6 +644,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       done: stored.done ? { ...stored.done, by: stored.done.by ?? "human" } : null,
       actions: stored.actions ?? [],
       actionCounts: stored.actionCounts ?? {},
+      boardUpdatedAt: stored.boardUpdatedAt ?? node?.ts.createdAt ?? pending!.createdAt,
       awaitingHandoff: awaitingHandoff(stored),
       awaitingReview: awaitingReview(stored),
       handoff: stored.handoff ? { by: stored.handoff.by, at: stored.handoff.at, retrospective: stored.handoff.by === "commander" ? stored.handoff.retrospective : null } : null,
@@ -771,7 +774,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   };
 
   /** 쓰기 한 곳 — 그 목표의 파일 한 건이 성공한 뒤에 캐시를 갈고, 마지막에 방송한다. */
-  const commit = (theaterId: string, changed: StoredObjective, reordered = false): Objective | null => {
+  const commit = (theaterId: string, changed: StoredObjective, reordered = false, touch = true): Objective | null => {
+    if (touch) changed = { ...changed, boardUpdatedAt: now() };
     writeObjectiveAtomic(objectiveDir(theaterId, changed.operationId), changed);
     load(theaterId).set(changed.operationId, changed);
     if (reordered) return announce(theaterId, changed);
@@ -780,13 +784,13 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     return objective;
   };
 
-  const action = (stored: StoredObjective, by: ObjectiveActor, kind: ObjectiveAction["kind"], details: Pick<ObjectiveAction, "targetId" | "proposal" | "kinds"> = {}): StoredObjective => ({
+  const action = (stored: StoredObjective, by: ObjectiveActor, kind: ObjectiveAction["kind"], details: Pick<ObjectiveAction, "targetId" | "proposal" | "kinds" | "handoff"> = {}): StoredObjective => ({
     ...stored,
     actions: [...(stored.actions ?? []), { id: randomUUID(), at: now(), by, kind, ...details }].slice(-MAX_OBJECTIVE_ACTIONS),
     actionCounts: { ...stored.actionCounts, [kind]: (stored.actionCounts?.[kind] ?? 0) + 1 },
   });
 
-  const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective): Objective => {
+  const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective, touch = true): Objective => {
     const { theaterId, recorded, stored, node } = locate(objectiveId);
     // 인계 기록은 할 일이 끝난 동안에만 산다 — 기준 표시를 거두는 변경이 곧 인계를 거두고 목표를 진행 중으로 돌린다.
     const mutated = withLiveDecisionReferences(withValidHandoff(mutate(stored)));
@@ -804,7 +808,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     // 따로 만든 Operation 의 첫 편집 — 여기서 레코드가 된다. 지금 서 있는 가상 자리를 그대로 굳혀 자리가 흔들리지 않게
     // 하고, 그래도 화면이 서버와 어긋나지 않도록 보드 줄을 함께 방송한다.
     const next = recorded ? ordered : { ...ordered, rank: virtualRank(node!), enlisted: true };
-    return commit(theaterId, next, !recorded) ?? project(next, node);
+    return commit(theaterId, next, !recorded, touch) ?? project(next, node);
   };
 
   const resultChecked = <T>(run: () => T): T => {
@@ -866,7 +870,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const linked = new Set((stored.results ?? []).flatMap((entry) => entry.kind === "evidence" ? [entry.evidenceId] : []));
     const retained = (stored.evidence ?? []).filter((entry) => linked.has(entry.evidenceId) || now() - entry.capturedAt <= RESULT_LIMITS.pendingEvidenceTtlMs);
     if (retained.length !== (stored.evidence ?? []).length) {
-      update(objectiveId, (current) => ({ ...current, evidence: retained }));
+      update(objectiveId, (current) => ({ ...current, evidence: retained }), false);
       stored = locate(objectiveId).stored;
     }
     const dir = evidenceDir(theaterId, objectiveId);
@@ -1225,7 +1229,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     handOff: (objectiveId, input) => update(objectiveId, (stored) => {
       if (!awaitingHandoff(stored)) throw new ObjectiveStoreError("not_awaiting_handoff");
       const at = now();
-      return { ...action(stored, input.by, "hand-off"), extensionActive: undefined, handoff: input.by === "commander" ? { by: "commander", at, retrospective: input.retrospective } : { by: input.by, at } };
+      const handoff: StoredHandoff = input.by === "commander" ? { by: "commander", at, retrospective: input.retrospective } : { by: input.by, at };
+      return { ...action(stored, input.by, "hand-off", { handoff }), extensionActive: undefined, handoff };
     }),
 
     missionAdd: (objectiveId, input, addOptions) => update(objectiveId, (stored) => {
@@ -1258,7 +1263,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       };
       const replaced = replaceMission(stored, at, next);
       // 끝난 임무를 되돌리면 새 일이다 — 충족 판단을 거둔다.
-      return input.done === false && mission.done ? withoutMet(replaced) : replaced;
+      return input.done === false && mission.done ? withoutMet(action(replaced, patchOptions?.by ?? "commander", "mission-reopened", { targetId: missionId })) : replaced;
     }),
 
     missionDone: (objectiveId, missionId, lines, rawResults = []) => update(objectiveId, (stored) => {
@@ -1288,7 +1293,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const { at, mission } = missionOf(stored, missionId);
       const count = mission.records?.length ?? 0;
       return (mission.seen ?? 0) === count ? stored : replaceMission(stored, at, { ...mission, seen: count });
-    }),
+    }, false),
 
     missionRemove: (objectiveId, missionId) => update(objectiveId, (stored) => {
       missionOf(stored, missionId);
@@ -1426,7 +1431,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const actors = stored.edited ? stored.edited.actors ?? ["human" as const] : [];
         const sameActor = actors.some((actor) => JSON.stringify(actor) === JSON.stringify(by));
         return { ...action(next, by, "edit", { kinds }), edited: { at: now(), kinds: merged, actors: sameActor ? actors : [...actors, by] } };
-      });
+      }, kinds !== null);
     },
 
     criterionAdd: (objectiveId, text, by) => update(objectiveId, (stored) => {
@@ -1513,7 +1518,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           const previous = stored.results?.find((entry) => entry.id === resultId);
           if (previous?.kind !== "pr" || previous.url !== url || JSON.stringify(previous.observation) === JSON.stringify(parsed.data)) return stored;
           return { ...stored, results: stored.results!.map((entry) => entry.id === resultId ? { ...previous, observation: parsed.data } : entry) };
-        });
+        }, false);
       } catch (error) {
         // 조회 중 사라진 목표를 되살리거나 그 레코드를 새로 만들지 않는다.
         if (!(error instanceof ObjectiveStoreError && error.code === "unknown_objective")) throw error;

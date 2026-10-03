@@ -2,6 +2,7 @@ import type { ConsoleCaller, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
 
+import { inboxReasons } from "./board-state.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
@@ -16,7 +17,7 @@ const MAX_ADD_PER_TURN = 10;
  * add 와 함께 오면 조용히 버려지는 읽기 전용 키 — 생성 전에 이유 있게 거절한다.
  * 읽기로 쓸 때(view·objective·groups + groupId·objectiveId·filter)는 그대로 두므로 읽기 계약은 바뀌지 않는다.
  */
-const ADD_READ_KEYS = ["groupId", "objectiveId", "view", "filter"] as const;
+const ADD_READ_KEYS = ["groupId", "objectiveId", "view", "filter", "resultId", "offset", "limit"] as const;
 /** 정리(지우기·합치기·되돌리기) 한 번에 받는 목표 수, 그리고 호출자마다 10분에 받는 정리 호출 수. */
 const MAX_TIDY_IDS = 20;
 const MAX_TIDY_PER_TURN = 20;
@@ -43,9 +44,12 @@ const editSchema = z.union([
 const followupTarget = z.object({ batchId: ids, candidateId: ids }).strict();
 const argsSchema = z.object({
   theaterId: ids.optional(),
-  view: z.enum(["groups", "objectives", "objective"]).optional(),
+  view: z.enum(["groups", "objectives", "objective", "inbox", "fleet", "history", "evidence"]).optional(),
   groupId: ids.optional(),
   objectiveId: ids.optional(),
+  resultId: ids.optional(),
+  offset: z.number().int().min(0).optional().describe("Row offset for inbox, fleet and history; character offset for evidence text."),
+  limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for inbox, fleet and history; default 50."),
   filter: z.enum(["today", "due", "all", "agent"]).optional(),
   add: addSchema.optional(),
   remove: z.object({ objectiveIds: z.array(ids).min(1).max(MAX_TIDY_IDS), reason: reason.optional() }).strict().optional(),
@@ -78,7 +82,7 @@ export function createCommodoreBoardTools(ctx: FleetPluginServerContext, store: 
 type CommodoreCaller = { readonly kind: "commodore"; readonly theaterId: string };
 type BoardCaller = ConsoleCaller | CommodoreCaller;
 function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller): readonly PluginMcpTool[] {
-  const { objectiveView, rowView, languageOf } = createBoardViews(ctx, store);
+  const { objectiveView, rowView, languageOf, sessions, historyView } = createBoardViews(ctx, store);
   const addBudget = new Map<string, { at: number; count: number }>();
   const tidyBudget = new Map<string, { at: number; count: number }>();
   /** 호출자마다 10분 창의 호출 수 — 넘치면 false. */
@@ -102,7 +106,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
 
   const tool: PluginMcpTool = {
     name: "console_objectives",
-    description: "A Theater's Objectives board and its outer-loop actions. Reads: groups, objectives, objective; filters today, due, agent, all. One write per call. add carries title, brief (note) and criteria only; it creates no session and inherits the calling Operation's group. plan requests a lineup; commence launches or resumes it. criteria approves one proposal (or all with approve: all) or rejects one. answer submits all questions in one decision request. complete may select follow-ups; reopen, extend, steer, message, stop and compact use the board's session lifecycle. edit changes a brief, mission or criterion with the same running-session rules as the screen. followup retries, abandons or discards a candidate. Actions are attributed to their caller. An Operation cannot perform outer-loop writes on an objective it commands or belongs to (own_objective); mission execution remains with fleet-objectives. A Commodore connection is confined to its Theater. remove, merge and restore require an Operation caller; removal and merge accept only unlaunched, incomplete board objectives and retain a reversible trace for 14 days. Operation callers have 10 adds and 20 tidy calls per 10 minutes.",
+    description: "A Theater's Objectives board and its outer-loop actions. Reads: groups, objectives, objective, inbox (pending, proposals, decisions, review, follow-ups, stalls), fleet (in-progress objectives and sessions), history (hand-offs, retrospectives, decisions, reopening and rework counts), evidence (preserved content by objectiveId and resultId). Inbox, fleet and history are paged by offset/limit. Evidence text is paged in 16000-character slices; nextOffset continues it. Images return image content. Stalled means unfinished work with all existing sessions idle or dormant and no board change for 30 minutes. Filters today, due, agent, all apply to the objectives list. One write per call. add carries title, brief (note) and criteria only; it creates no session and inherits the calling Operation's group. plan requests a lineup; commence launches or resumes it. criteria approves one proposal (or all with approve: all) or rejects one. answer submits all questions in one decision request. complete may select follow-ups; reopen, extend, steer, message, stop and compact use the board's session lifecycle. edit changes a brief, mission or criterion with the same running-session rules as the screen. followup retries, abandons or discards a candidate. Actions are attributed to their caller. An Operation cannot perform outer-loop writes on an objective it commands or belongs to (own_objective); mission execution remains with fleet-objectives. A Commodore connection is confined to its Theater. remove, merge and restore require an Operation caller; removal and merge accept only unlaunched, incomplete board objectives and retain a reversible trace for 14 days. Operation callers have 10 adds and 20 tidy calls per 10 minutes.",
     // 모르는 키는 호스트 선검사에서 그대로 막는다 — 실행할 수 없는 호출에 사람의 권한 요청을 띄우지 않는다.
     inputSchema: z.toJSONSchema(argsSchema),
     surface: {
@@ -122,7 +126,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         if (args.restore) return { theaterId: theaterOf(args.restore[0]), summary: args.restore.length === 1 ? `목표 되돌림 「${titleOf(args.restore[0]!)}」` : `목표 ${args.restore.length}개 되돌림`, view: "objectives", gesture: "press" };
         const write = TARGET_WRITES.find((key) => args[key] !== undefined);
         if (write) return { theaterId, summary: `목표 ${write} 「${short(found?.title ?? "")}」`, view: "objective", ...(found ? { path: found.id } : {}), gesture: "press" };
-        return { theaterId, summary: args.view === "objective" || (args.objectiveId && !args.view) ? `목표 봄 「${short(found?.title ?? "")}」` : args.view === "groups" ? "그룹 봄" : "목표 목록 봄", view: args.view ?? (args.objectiveId ? "objective" : "objectives"), ...(found ? { path: found.id } : {}) };
+        return { theaterId, summary: args.view === "objective" || (args.objectiveId && !args.view) ? `목표 봄 「${short(found?.title ?? "")}」` : args.view === "groups" ? "그룹 봄" : "목표 목록 봄", view: args.view === "evidence" ? "objective" : args.view && ["inbox", "fleet", "history"].includes(args.view) ? "objectives" : args.view ?? (args.objectiveId ? "objective" : "objectives"), ...(found ? { path: found.id } : {}) };
       },
     },
     execute: async (raw, context) => {
@@ -208,7 +212,23 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           touched(restored);
           return text({ ok: true, restored });
         }
-        if (!args.add) return text(read(args, caller));
+        if (!args.add) {
+          if (args.view === "evidence") {
+            if (!args.objectiveId || !args.resultId) return refuse("evidence_target_required");
+            scoped(args.objectiveId);
+            const { data, metadata } = await store.evidenceRead(args.objectiveId, args.resultId);
+            // 비동기 파일 읽기 뒤에도 같은 Theater에 속한 결과인지 확인한다.
+            scoped(args.objectiveId);
+            const details = { objectiveId: args.objectiveId, resultId: args.resultId, name: metadata.name, mediaType: metadata.mediaType, bytes: metadata.bytes, sha256: metadata.sha256 };
+            if (metadata.mediaType === "text/plain") {
+              const content = data.toString("utf8"), offset = args.offset ?? 0;
+              const slice = content.slice(offset, offset + 16_000);
+              return text({ ...details, text: slice, offset, totalCharacters: content.length, nextOffset: offset + slice.length < content.length ? offset + slice.length : null });
+            }
+            return { ...text(details), content: [...text(details).content, { type: "image", data: data.toString("base64"), mimeType: metadata.mediaType }] };
+          }
+          return text(read(args, caller));
+        }
         const add = args.add;
         const theaterId = args.theaterId ?? theaterOfCaller(caller);
         if (!theaterId) return refuse("theater_required");
@@ -239,6 +259,29 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     const theaterId = args.theaterId ?? theaterOfCaller(caller);
     if (!theaterId) throw new ObjectiveStoreError("theater_required");
     if (args.view === "groups") { const objectives = store.list(theaterId); return { theaterId, groups: (ctx.host.operations.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
+    const page = <T,>(rows: readonly T[]) => {
+      const offset = args.offset ?? 0, limit = args.limit ?? 50;
+      return { theaterId, total: rows.length, offset, nextOffset: offset + limit < rows.length ? offset + limit : null, objectives: rows.slice(offset, offset + limit) };
+    };
+    const board = store.list(theaterId).filter((objective) => !objective.removed && (!args.groupId || objective.groupId === args.groupId));
+    if (args.view === "inbox") {
+      const now = Date.now();
+      return page(board.flatMap((objective) => {
+        const reasons = inboxReasons(objective, { now, observe: (id) => ctx.host.consoleControl?.observe(id) });
+        return reasons.length ? [{ ...rowView(objective), reasons, boardUpdatedAt: objective.boardUpdatedAt, sessions: sessions(objective),
+          criteriaProposals: objective.criteriaProposals, decisionRequest: objective.decisionRequest, decisionDelivery: objective.decisionDelivery,
+          handoff: objective.handoff, followups: objective.followups.filter((candidate) => candidate.state === "open"),
+          followupBatches: objective.followupBatches.filter((batch) => batch.items.some((item) => item.state === "failed" || item.state === "confirming")),
+        }] : [];
+      }));
+    }
+    if (args.view === "fleet") return page(board.filter((objective) => !objective.done).flatMap((objective) => {
+      const state = sessions(objective);
+      const active = [state.commander, ...state.members].some((session) => ["running", "background", "awaiting"].includes(session.state));
+      return objective.commenced || active ? [{ ...rowView(objective), planning: objective.planning, boardUpdatedAt: objective.boardUpdatedAt, sessions: state }] : [];
+    }));
+    if (args.view === "history") return page(board.filter((objective) => objective.done || objective.handoff || objective.extensions.length || (objective.actionCounts?.["hand-off"] ?? 0) > 0)
+      .sort((a, b) => (b.boardUpdatedAt ?? b.createdAt) - (a.boardUpdatedAt ?? a.createdAt)).map(historyView));
     const today = new Date().toISOString().slice(0, 10);
     const objectives = store.list(theaterId).filter((objective) => {
       if (args.groupId && objective.groupId !== args.groupId) return false;
