@@ -108,6 +108,8 @@ describe("global fleet browser host contract", () => {
 
   it("preserves global tabs on operation closure and manages closed-tab suggestions (condition A & Q4)", async () => {
     const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    engine.subscriberOpened("local");
+    engine.setHost("local");
     const service = new BrowserService({
       enabled: () => true,
       availability: () => ({ available: true, reason: null, host: "local" }),
@@ -123,6 +125,12 @@ describe("global fleet browser host contract", () => {
     // 닫힌 탭 제안 정리 (dismiss)
     service.dismissClosedTabs();
     expect(service.globalState().closedTabs).toHaveLength(0);
+
+    // shared 해제 등 가용성 회복 시 전역 상태 이벤트가 발행된다 (QA-11)
+    const emitted: unknown[] = [];
+    service.onState((s) => emitted.push(s));
+    service.reconcile();
+    expect(emitted.some((s) => (s as { operationId?: string; available?: boolean }).operationId === "global" && (s as { available?: boolean }).available === true)).toBe(true);
   });
 
   it("masks closedTabs and tabs for non-desktop web clients to protect privacy (QA-7)", async () => {

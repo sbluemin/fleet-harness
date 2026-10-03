@@ -384,6 +384,7 @@ export class BrowserService {
       void this.stopEngine();
       return;
     }
+    this.emitGlobalState();
     for (const op of this.operations.values()) this.emitState(op);
   }
 
