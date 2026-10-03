@@ -9,6 +9,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExter
 import { consoleUseWrapClassName, gestureCallerLabel, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
 import { useZenMode } from "../../../../core/client/src/integration/zen-mode.js";
+import { publishConsoleOverlay } from "../../../../core/client/src/overlay/overlay-registry.js";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -406,6 +407,39 @@ export function OperationsSideBar({
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
   const zenMode = useZenMode();
+  const peekOverlayOpenRef = useRef(false);
+  useLayoutEffect(() => {
+    if (collapsed && sideBar.peeking && !zenMode) {
+      peekOverlayOpenRef.current = true;
+      publishConsoleOverlay("sidebar-peek", true);
+      return;
+    }
+    if (!peekOverlayOpenRef.current) return;
+    const release = () => {
+      peekOverlayOpenRef.current = false;
+      publishConsoleOverlay("sidebar-peek", false);
+    };
+    const element = rootRef.current;
+    // 고정·Zen 전환은 픽 카드의 닫힘이 아니다. 이탈·언마운트도 등록을 남기지 않는다.
+    if (!collapsed || zenMode || !element) { release(); return; }
+    // 실제 CSS 닫힘 전이의 완료를 기다린다. visibility의 지연도 포함하므로
+    // 열리던 도중 떠난 역전 전이와 reduced-motion도 별도 하드코딩 없이 따른다.
+    const transitions = (element.getAnimations?.() ?? []).filter((animation) => {
+      const property = (animation as CSSTransition).transitionProperty;
+      return property === "width" || property === "visibility";
+    });
+    if (transitions.length === 0) { release(); return; }
+    let cancelled = false;
+    void Promise.allSettled(transitions.map((animation) => animation.finished)).then(() => {
+      if (!cancelled) release();
+    });
+    // 닫히는 중 다시 픽하면 이전 완료 콜백이 뷰를 되살리지 못하게 취소한다.
+    return () => { cancelled = true; };
+  }, [collapsed, sideBar.peeking, zenMode, width]);
+  useLayoutEffect(() => () => {
+    peekOverlayOpenRef.current = false;
+    publishConsoleOverlay("sidebar-peek", false);
+  }, []);
   // body 포털은 숨긴 사이드바의 inert 밖에 있다. 진입 때만 걷어 이후 명시적 메뉴 요청은 보존한다.
   useLayoutEffect(() => {
     if (!zenMode) return;

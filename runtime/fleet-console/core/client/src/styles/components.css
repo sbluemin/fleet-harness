@@ -15342,10 +15342,22 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
    원폭으로 떠오른다. 테두리의 brass 믹스는 상태가 아니라 "호버가 소환한 표면"의 위치/호버
    채널이다(전체화면 밴드 엣지 리빌과 같은 문법). */
 .operations-side-bar.is-closed.is-peeking {
+  /* 픽 카드와 그 문은 Fleet 브라우저 시트(30) 위, 시트 메뉴·대화상자(32) 아래다. */
+  z-index: 31;
   width: var(--side-bar-width, 280px);
   border-color: color-mix(in oklab, var(--brass) 38%, var(--surface-rim));
   visibility: visible;
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+}
+
+/* 픽만 불투명 면이다. 고정된 카드의 유리 표현과 정지 화면 밝기는 바꾸지 않는다. */
+.operations-side-bar.is-closed.is-peeking::before {
+  background: var(--surface-panel);
+}
+
+.panel-edge-dock.is-left.is-peeking {
+  /* 카드와 같은 층에서 뒤 형제인 독이 클릭 고정 입구를 계속 받는다. */
+  z-index: 31;
 }
 
 /* ── 엣지 독 — 접힌 패널이 남기는 유일한 문 ──────────────────────────────────────
