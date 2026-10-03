@@ -1485,10 +1485,9 @@
    measure는 자체 상한 대신 턴 컬럼 전폭을 따른다. */
 .agent-chat .markdown-body {
   --font-size-body: var(--font-content-size);
-  /* .markdown-body 루트는 스스로 font-family를 걸지 않고 상속한다(헤딩·코드만 자기 서체를
-     못박는다). 루트 .agent-chat도 이제 인터페이스 서체라 상속만으로 같지만, 본문이 크롬의
-     서체 결정에 끌려가지 않도록 여기서 명시한다. 코드·인라인 코드는 마크다운 문법이 계속 등폭으로 진다. */
-  font-family: var(--font-ui);
+  /* 산문은 공유 마크다운과 같은 콘텐츠 축을 따른다. 작성자·시간·도구 행은 UI 축에 남고,
+     코드·인라인 코드는 아래 규칙과 공유 마크다운의 코드 축을 유지한다. */
+  font-family: var(--font-content);
   max-inline-size: 100%;
   margin-inline: 0;
   line-height: 1.7;

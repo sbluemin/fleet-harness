@@ -737,6 +737,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-note-more:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-detail textarea.objectives-note::placeholder { color: var(--text-tertiary); }
 .objectives-detail .objectives-note.is-read { display: block; width: 100%; box-sizing: border-box; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; padding: 2px 20px 8px 22px; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; cursor: text; }
+/* 브리프 본문은 크롬의 UI 상속에서 분리한다. 읽기와 편집이 같은 콘텐츠 축을 따른다. */
+.objectives-detail :is(textarea.objectives-note, .objectives-note.is-read:not(.is-placeholder)) { font-family: var(--font-content); font-size: calc(var(--font-content-size) * 12 / 14); }
 .objectives-detail button.objectives-note.is-read { cursor: text; }
 .objectives-detail .objectives-note.is-read.is-placeholder { color: var(--text-tertiary); }
 .objectives-detail .objectives-note.is-read.is-clamped { overflow: hidden; padding-bottom: 0; margin-bottom: 8px; }
@@ -1032,7 +1034,7 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 .objectives-followup-detail { padding: 2px 10px 10px 33px; display: flex; flex-direction: column; gap: 9px; }
 .objectives-followup-row.is-readonly + .objectives-followup-detail { padding-left: 10px; }
 .objectives-followup-lab { font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 3px; }
-.objectives-followup-brief { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.objectives-followup-brief { margin: 0; color: var(--text-secondary); font-family: var(--font-content); font-size: calc(var(--font-content-size) * 12 / 14); line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .objectives-followup-brief.is-all { display: block; }
 .objectives-followup-more { align-self: flex-start; border: 0; background: transparent; color: var(--brass-ink); padding: 0; cursor: pointer; font: inherit; font-size: var(--t-xs); }
 .objectives-followup-more:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
@@ -1342,7 +1344,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-tidied-notice strong { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-tidied-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 6px; }
 .objectives-tidied-label { font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-tertiary); }
-.objectives-tidied-brief { margin: 6px 0 0; font-size: var(--t-md); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-tidied-brief { margin: 6px 0 0; font-family: var(--font-content); font-size: calc(var(--font-content-size) * 13 / 14); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .objectives-tidied-criteria { margin: 6px 0 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 4px; font-size: var(--t-sm); color: var(--text-secondary); }
 .objectives-merged-trail { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .objectives-merged-entry { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-top: 6px; border-top: 1px dashed var(--hairline-strong); font-size: var(--t-xs); color: var(--text-tertiary); }

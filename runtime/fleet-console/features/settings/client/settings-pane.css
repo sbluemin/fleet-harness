@@ -33,11 +33,11 @@
 /* 가로 행의 170px는 폭 기준이다. 세로 행에서는 본문 높이를 내용에 맡긴다. */
 .settings-pane .global-settings-row.is-stack > .global-settings-row-text { flex: 0 1 auto; }
 .settings-pane .appearance-controls > .global-settings-row.is-stack > .global-settings-row-text { display: none; }
-.settings-pane .theme-grid { grid-template-columns: repeat(auto-fit, minmax(min(112px, 100%), 1fr)); gap: 10px; width: 100%; }
+.settings-pane .theme-grid { grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr)); gap: 10px; width: 100%; }
 .settings-pane .theme-card { min-width: 0; padding: 6px 6px 8px; border-radius: var(--radius-md); border-color: var(--hairline); background: none; box-shadow: none; }
 .settings-pane .theme-card.is-active { border-color: var(--brass); background: var(--brass-glow); }
 .settings-pane .theme-card-swatch { min-width: 0; height: 32px; }
-.settings-pane .theme-card-label { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.settings-pane .theme-card-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 .settings-pane .theme-card-polarity { letter-spacing: 0; text-transform: none; }
 /* 글자형 범위 선택만 평평하게 만든다. 모델·강도 결합 컨트롤의 테두리와 선택 다텀은 보존한다. */
 .settings-pane :is(.segmented:not(.fc-model-picker__effort), .backend-api-facets) { display: flex; flex-wrap: wrap; gap: 4px 14px; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; box-shadow: none; overflow: visible; }
@@ -56,13 +56,13 @@
 .settings-pane :is(.ai-gateway-model-row, .ai-gateway-model-text, .agent-cli-row, .agent-cli-path-form) { min-width: 0; max-width: 100%; }
 .settings-pane .ai-gateway-model-row { grid-template-columns: minmax(0, 1fr); }
 .settings-pane .ai-gateway-model-row .ai-gateway-model-controls { margin-left: 0; justify-content: flex-start; }
-.settings-pane :is(.ai-gateway-model-name, .agent-cli-name, .ai-gateway-provider-name) { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.settings-pane :is(.ai-gateway-model-name, .agent-cli-name, .ai-gateway-provider-name) { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 .settings-pane .ai-gateway-roster-head { gap: 8px; }
 .settings-pane .backend-api-section-heading { letter-spacing: 0; text-transform: none; }
 .settings-pane .console-port-effective-label { font-size: var(--t-sm); font-weight: var(--weight-regular); letter-spacing: 0; text-transform: none; }
 .settings-font-controls { display: flex; align-items: center; justify-content: flex-end; gap: 4px 10px; flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
 .settings-font-trigger { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-primary); font: var(--weight-regular) var(--t-md)/1.45 var(--font-ui); cursor: pointer; }
-.settings-font-trigger > span { min-width: 0; overflow-wrap: anywhere; text-align: right; }
+.settings-font-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
 .settings-font-trigger > svg { flex: none; color: var(--text-tertiary); }
 .settings-font-trigger:is(:hover, [aria-expanded="true"]) { background: var(--control-wash); }
 .settings-font-trigger:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
@@ -86,7 +86,7 @@
 .settings-font-popover .fc-font-browser__search-label { font: var(--t-xs)/1.45 var(--font-ui); letter-spacing: 0; text-transform: none; }
 .settings-font-popover .fc-font-browser__listbox { max-height: 260px; min-height: 0; }
 .settings-font-popover .fc-font-browser__row { align-items: start; flex-wrap: wrap; gap: 3px 8px; padding: 7px 10px; }
-.settings-font-popover .fc-font-browser__row-name { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.settings-font-popover .fc-font-browser__row-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-font-popover .fc-font-browser__group-label { letter-spacing: 0; text-transform: none; }
 .settings-font-popover .fc-font-browser__row-meta { white-space: normal; }
 .settings-font-popover .fc-font-browser__search { width: 100%; min-width: 0; box-sizing: border-box; }
