@@ -227,9 +227,14 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     if (vh - top - bottom < MIN_SHEET_HEIGHT) {
       top = Math.max(8, vh - bottom - MIN_SHEET_HEIGHT);
     }
+    const measured = { left, top, right, bottom };
     setGeometry((current) => current && current.left === left && current.top === top && current.right === right && current.bottom === bottom
       ? current
-      : { left, top, right, bottom });
+      : measured);
+    // 복귀 중 크롬의 기하 전이가 남았다면 다음 배치 때 최종 자리를 다시 잰다.
+    const settling = [sidebar, rail, island, band].some((element) => (element?.getAnimations?.() ?? []).some((animation) =>
+      ["width", "height", "transform", "left", "right", "top", "bottom"].includes((animation as CSSTransition).transitionProperty)));
+    return { ...measured, settling };
   }, []);
 
   React.useEffect(() => {
@@ -244,39 +249,39 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   // 동기 캡처 대기는 절대 하지 않는다(H2). 정지 화면은 탭이 안정된 뒤 백그라운드에서 미리 찍어 둔다.
   // 토스트·말풍선은 뷰와 실제로 겹칠 때만 물린다 — 시트 밖으로 비킨 스택에 가려 정지만 보지 않게.
   const parked = !available || activeTab === null || overlayActive || floatingOverlap;
-  React.useEffect(() => {
+  const syncPlacement = React.useCallback(() => {
     if (!open) return;
     const element = viewportRef.current;
     if (!element) return;
+    if (!parked && !placeKeyRef.current.startsWith("1:")) {
+      // 어느 오버레이에서 복귀하든, 물러난 동안 바뀐 크롬 기하를 먼저 잰다.
+      // 새 기하가 DOM에 반영되기 전에는 낡은 bounds로 뷰를 되살리지 않는다.
+      const measured = measureGeometry();
+      if (!measured || measured.settling || !geometry || geometry.left !== measured.left || geometry.top !== measured.top
+        || geometry.right !== measured.right || geometry.bottom !== measured.bottom) {
+        place(false);
+        return;
+      }
+    }
     // 판정용 자리는 「놓으려는 자리」다 — 물러나 있을 때도 유지해야 토스트 교차가 풀린다.
     // 닫을 때만 null로 거둔다.
     const rect = element.getBoundingClientRect();
     if (rect.width >= 1 && rect.height >= 1) {
       publishBrowserViewRect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
     }
-    if (parked) {
-      if (rect.width >= 1 && rect.height >= 1) place(false);
+    if (parked || rect.width < 1 || rect.height < 1 || document.visibilityState !== "visible") {
+      place(false);
       return;
     }
-    if (rect.width < 1 || rect.height < 1) { place(false); return; }
-    if (document.visibilityState !== "visible") { place(false); return; }
     place(true, { x: rect.left, y: rect.top, width: rect.width, height: rect.height });
-  }, [open, parked, activeTab?.id, geometry]);
+  }, [open, parked, geometry, measureGeometry, place]);
+  // 복귀용 기하 반영은 페인트 전에 끝낸다. 폴링도 같은 가드를 써 우회하지 못한다.
+  React.useLayoutEffect(syncPlacement, [syncPlacement, activeTab?.id]);
   React.useEffect(() => {
     if (!open) return;
-    const timer = setInterval(() => {
-      const element = viewportRef.current;
-      if (!element) return;
-      const rect = element.getBoundingClientRect();
-      if (rect.width >= 1 && rect.height >= 1) {
-        publishBrowserViewRect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
-      }
-      if (parked) { place(false); return; }
-      if (rect.width < 1 || rect.height < 1 || document.visibilityState !== "visible") { place(false); return; }
-      place(true, { x: rect.left, y: rect.top, width: rect.width, height: rect.height });
-    }, PLACE_POLL_MS);
+    const timer = setInterval(syncPlacement, PLACE_POLL_MS);
     return () => clearInterval(timer);
-  }, [open, parked, place]);
+  }, [open, syncPlacement]);
   // 시트가 내려가면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다(탭은 서버에 주차된다).
   // 마운트 직후 닫혀 있으면 한 번 내린다. reload 뒤 서버에 남은 배치를 새 세션의 키와 무관하게 지운다.
   React.useEffect(() => {
