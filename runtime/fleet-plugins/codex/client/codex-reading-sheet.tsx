@@ -396,6 +396,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
         className="codex-reading-body"
         data-reading-size={size}
         data-compact={compact}
+        data-conflict-comparison={reader?.kind === "conflicts" && Boolean(reader.id)}
       >
         <div className="codex-reading-sheet-head">
           <div className="codex-reader-history">
