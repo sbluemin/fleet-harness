@@ -18,7 +18,7 @@ import { resolvePaneDefaultWidth } from "../rail/pane-width.js";
 import { requestRailPanelSoloWidth, useRailPanelWidthReset } from "../rail/rail-store.js";
 import { setPaneWidth, usePaneWidths } from "./pane-width-store.js";
 import { usePaneIndex, type HostPaneContext, type RailEntryBinding } from "./pane-registry.js";
-import { closePane, focusPane, openPane, replacePaneParams, resetSurfacePanes, useFocusedPaneId, useRailPanes } from "./pane-store.js";
+import { closePane, focusPane, getPaneStoreSnapshot, openPane, replacePaneParams, resetSurfacePanes, useFocusedPaneId, useRailPanes } from "./pane-store.js";
 
 /**
  * 레일 표면 — 활성 엔트리가 세우는 페인들을 담는 그릇.
@@ -387,9 +387,20 @@ function PaneHost({
     closePane(descriptor.id, { keepAlive: descriptor.keepAlive === true });
   }, [descriptor.id, descriptor.keepAlive, params]);
 
+  // 레일 페인이 "옆 detail이 지금 열려 있는가"를 물을 수 있어야 한다 — 자기 자신만 아는 폴백은
+  // primary가 띄운 문서 창을 늘 닫힌 것으로 읽게 만든다. 스토어 스냅샷을 호출 시점에 읽어 창구가
+  // 렌더마다 새로 태어나지 않게 한다. 확대로 자리를 옮긴 페인도 열린 것으로 본다.
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const isPaneOpen = useCallback((paneId: string) => {
+    if (paneId === descriptor.id) return visibleRef.current;
+    return getPaneStoreSnapshot().rail.some((pane) => pane.paneId === paneId && pane.visible) || isPaneExpanded(paneId);
+  }, [descriptor.id]);
+
   const ctx = usePaneContext({
     descriptor,
     mount: "rail",
+    isOpen: isPaneOpen,
     instanceId,
     params,
     visible,
