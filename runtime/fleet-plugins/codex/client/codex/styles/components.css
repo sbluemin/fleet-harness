@@ -1232,7 +1232,8 @@ button.chip:focus-visible {
   opacity: 0;
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
-  background: var(--surface-pillar);
+  /* --surface-pillar는 반투명 리터럴이라 같은 색을 팝업 바탕층(불투명) 위에 얹는다. */
+  background: linear-gradient(var(--surface-pillar), var(--surface-pillar)), var(--float-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   padding: 11px 16px;

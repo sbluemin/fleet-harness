@@ -46,7 +46,7 @@
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   background:
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--glass-lift);
   opacity: 0;
   transform: translateY(0) scaleX(1);
@@ -78,7 +78,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
 }
 
@@ -298,7 +298,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   color: var(--text-primary);
   pointer-events: auto;
@@ -416,7 +416,7 @@
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   transform: translateY(-50%);
   text-align: left;
@@ -436,7 +436,7 @@
   border-right: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
   background:
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   transform: rotate(45deg);
 }
 

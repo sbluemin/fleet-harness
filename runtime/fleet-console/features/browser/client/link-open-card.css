@@ -17,7 +17,7 @@
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: raised 틴트 + glass 언더레이 채널(canonical 주석: whatsnew-card) */
-  background: linear-gradient(var(--glass-tint-raised), var(--glass-tint-raised)), var(--glass-underlay);
+  background: linear-gradient(var(--glass-tint-raised), var(--glass-tint-raised)), var(--float-underlay);
   box-shadow: var(--shadow-floating);
   animation: fleet-pop var(--duration-fast) var(--ease-spring) both;
 }

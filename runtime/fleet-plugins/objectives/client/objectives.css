@@ -563,7 +563,7 @@ span.objectives-row-main { cursor: default; }
   border-radius: var(--radius-md);
   background:
     linear-gradient(color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)), color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent));
   display: flex; flex-direction: column;
   max-height: min(520px, calc(100vh - 24px)); overflow-y: auto; scrollbar-width: none;
@@ -869,7 +869,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)), var(--glass-underlay);
+  background: linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)), var(--float-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -888,7 +888,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 @keyframes objectives-att-spin { to { transform: rotate(360deg); } }
 .objectives-att-err { font-size: var(--t-xs); color: var(--coral); }
 /* 크게 보기 — 채팅 첨부 보기와 같은 틀(유리 틀·모서리 원형 닫기). */
-.objectives-att-view { position: relative; display: grid; gap: var(--space-2); justify-items: center; margin: 0; max-width: min(960px, 100%); padding: var(--space-2); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); box-shadow: var(--shadow-floating); }
+.objectives-att-view { position: relative; display: grid; gap: var(--space-2); justify-items: center; margin: 0; max-width: min(960px, 100%); padding: var(--space-2); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--float-underlay); box-shadow: var(--shadow-floating); }
 .objectives-att-view-stage { position: relative; display: grid; place-items: center; max-width: 100%; }
 /* 이미지는 캡션이 실제로 차지한 높이만큼 덜어 낸다(--objectives-att-caption 은 보기가 잰다). 캡션은 화면의 1/3 을 넘으면 안에서 스크롤한다. */
 .objectives-att-view img { display: block; max-width: 100%; max-height: calc(100dvh - 100px - var(--objectives-att-caption, 20px)); object-fit: contain; border-radius: var(--radius-xs); }

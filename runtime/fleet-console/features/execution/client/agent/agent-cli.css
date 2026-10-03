@@ -1717,7 +1717,8 @@
   flex-direction: column;
   border: 1px solid color-mix(in oklch, var(--aurora) 26%, var(--surface-rim));
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
+  /* 같은 색을 팝업 바탕층(불투명) 위에 얹는다 — --surface-glass가 테마마다 반투명이라 그대로는 뒤가 비친다. */
+  background: linear-gradient(color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent)), color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent))), var(--float-underlay);
   box-shadow: var(--shadow-floating);
 }
 .use-corner-panel.is-late { border-color: color-mix(in oklch, var(--aurora) 48%, var(--surface-rim)); }
@@ -1964,7 +1965,8 @@
   padding: 0 12px 0 6px;
   border: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--surface-rim));
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
+  /* 같은 색을 팝업 바탕층(불투명) 위에 얹는다 — --surface-glass가 테마마다 반투명이라 그대로는 뒤가 비친다. */
+  background: linear-gradient(color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent)), color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent))), var(--float-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font: var(--weight-medium) var(--t-sm) var(--font-ui);

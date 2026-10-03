@@ -610,7 +610,7 @@
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)), var(--glass-underlay);
+  background: linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)), var(--float-underlay);
   pointer-events: none;
 }
 .zen-bar.is-war-room { border-top-color: color-mix(in oklch, var(--brass) 70%, transparent); }
@@ -1142,7 +1142,7 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   color: var(--text-primary);
   font-size: var(--t-xs);
@@ -1360,7 +1360,7 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   background:
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   opacity: 0;
   pointer-events: none;
@@ -1577,7 +1577,7 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .command-band.is-
       color-mix(in oklch, var(--coral) 12%, var(--glass-tint-pillar)),
       color-mix(in oklch, var(--coral) 12%, var(--glass-tint-pillar))
     ),
-    var(--glass-underlay);
+    var(--float-underlay);
   box-shadow: var(--shadow-floating);
 }
 
