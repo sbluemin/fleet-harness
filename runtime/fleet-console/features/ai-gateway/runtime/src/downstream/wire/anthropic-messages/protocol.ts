@@ -7,6 +7,7 @@ import type {
   CanonicalReasoning,
   CanonicalResponseEvent,
   CanonicalResponseRequest,
+  CanonicalResponseSnapshot,
   CanonicalToolChoice,
   CanonicalUsage,
   CanonicalWebSearchAction,
@@ -856,6 +857,35 @@ function anthropicUsageFromCanonical(
   );
 }
 
+/**
+ * How an upstream-declared unfinished response ends on the Anthropic wire. Anthropic has a stop
+ * reason for each documented Responses `incomplete_details.reason`, so the partial answer stays
+ * and the client's own recovery runs:
+ *
+ * - `max_output_tokens` → `max_tokens`: the client's output-cap handling (continuation, raising
+ *   the cap) only starts from this stop reason, and a cut-off tool call is still `max_tokens`, as
+ *   on the native API.
+ * - `content_filter` → `refusal`: Anthropic's stop reason for output a safety classifier stopped.
+ *
+ * Any other reason, or none, has no Anthropic counterpart. It becomes an error rather than a
+ * guessed stop reason, because every stop reason the client knows claims more than the upstream
+ * said, and `end_turn` would pass the cut-off text off as a finished answer.
+ */
+function incompleteOutcome(
+  response: CanonicalResponseSnapshot,
+): { readonly stopReason: "max_tokens" | "refusal" } | { readonly error: { type: string; message: string } } | undefined {
+  if (response.incomplete === undefined) return undefined;
+  const reason = response.incomplete.reason;
+  if (reason === "max_output_tokens") return { stopReason: "max_tokens" };
+  if (reason === "content_filter") return { stopReason: "refusal" };
+  return {
+    error: {
+      type: "api_error",
+      message: `Upstream response ended incomplete (${reason ?? "no reason given"}).`,
+    },
+  };
+}
+
 /** 비스트리밍 요청에 돌려줄 Anthropic Messages 응답 본문을 이벤트에서 조립한다. */
 export async function collectAnthropicMessage(
   events: AsyncIterable<CanonicalResponseEvent>,
@@ -870,6 +900,7 @@ export async function collectAnthropicMessage(
   const thinking = new Map<string, string>();
   const reasoningBlobs = new Map<string, string>();
   let stopReason = "end_turn";
+  let terminated = false;
   let outputTokens = 0;
   let inputTokens = 0;
   let cachedInputTokens: number | undefined;
@@ -959,13 +990,18 @@ export async function collectAnthropicMessage(
           });
         }
         break;
-      case "response.completed":
+      case "response.completed": {
+        terminated = true;
+        const incomplete = incompleteOutcome(event.response);
+        if (incomplete !== undefined && "error" in incomplete) throw new Error(incomplete.error.message);
+        if (incomplete !== undefined) stopReason = incomplete.stopReason;
         inputTokens = event.response.usage?.input_tokens ?? inputTokens;
         outputTokens = event.response.usage?.output_tokens ?? 0;
         cachedInputTokens = event.response.usage?.cached_input_tokens ?? cachedInputTokens;
         cacheWriteInputTokens = event.response.usage?.cache_write_input_tokens ?? cacheWriteInputTokens;
         upstreamContextWindow = event.response.usage?.context_window ?? upstreamContextWindow;
         break;
+      }
       case "response.failed":
         throw new Error(event.response.error.message);
       case "error":
@@ -974,6 +1010,10 @@ export async function collectAnthropicMessage(
         break;
     }
   }
+
+  // The streaming encoder refuses the same shape. Without a terminal event nothing says the answer
+  // finished, so returning it would hand a cut-off body back as a complete `end_turn` message.
+  if (!terminated) throw new Error("OpenAI response stream ended before response.completed");
 
   for (const entry of toolArgs.values()) {
     const block = content[entry.index];
@@ -1274,14 +1314,21 @@ export async function* encodeAnthropicSse(
           yield encode("content_block_stop", { type: "content_block_stop", index: resultIndex });
         }
         break;
-      case "response.completed":
+      case "response.completed": {
+        const incomplete = incompleteOutcome(event.response);
+        if (incomplete !== undefined && "error" in incomplete) {
+          yield* closeActiveContent();
+          yield encode("error", { type: "error", error: incomplete.error });
+          messageStopped = true;
+          break;
+        }
         for (const [key] of blocks) {
           yield* closeBlock(key);
         }
         yield encode("message_delta", {
           type: "message_delta",
           delta: {
-            stop_reason: sawToolUse ? "tool_use" : "end_turn",
+            stop_reason: incomplete?.stopReason ?? (sawToolUse ? "tool_use" : "end_turn"),
             stop_sequence: null
           },
           // Claude Code updates context occupancy from the terminal cumulative
@@ -1295,6 +1342,7 @@ export async function* encodeAnthropicSse(
         yield encode("message_stop", { type: "message_stop" });
         messageStopped = true;
         break;
+      }
       case "response.failed":
         yield* closeActiveContent();
         yield encode("error", { type: "error", error: event.response.error });

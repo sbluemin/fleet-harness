@@ -86,6 +86,7 @@ async function requestNativeCompaction(options: {
     if (event.type === "response.output_item.done" && event.item.type === "compaction") {
       compacted.push(event.item);
     } else if (event.type === "response.completed") {
+      if (event.response.incomplete !== undefined) throw incompleteCompaction(event.response.incomplete);
       completed = true;
     } else if (event.type === "response.failed") {
       throw new Error(event.response.error.message);
@@ -185,12 +186,20 @@ async function collectSummary(
   for await (const event of response.events) {
     if (event.type === "response.output_text.delta") summary += event.delta;
     else if (event.type === "response.output_text.done" && summary.length === 0) summary = event.text;
-    else if (event.type === "response.completed") completed = event.response;
+    else if (event.type === "response.completed") {
+      if (event.response.incomplete !== undefined) throw incompleteCompaction(event.response.incomplete);
+      completed = event.response;
+    }
     else if (event.type === "response.failed") throw new Error(event.response.error.message);
     else if (event.type === "error") throw new Error(event.error.message);
   }
   if (!completed || summary.trim().length === 0) throw new Error("Codex summary returned no text");
   return { summary, response: completed };
+}
+
+/** A checkpoint the upstream itself cut short would silently drop the context it was meant to keep. */
+function incompleteCompaction(incomplete: { readonly reason?: string }): Error {
+  return new Error(`Codex compaction ended incomplete (${incomplete.reason ?? "no reason given"})`);
 }
 
 function joinInstructions(base: string | undefined, custom: string | undefined): string | undefined {

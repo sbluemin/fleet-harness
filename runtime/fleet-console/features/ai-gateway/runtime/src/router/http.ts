@@ -11,11 +11,74 @@ export interface GatewayProxyResponse {
   write(chunk: Uint8Array): boolean;
   end(body?: string): unknown;
   once(event: "drain", listener: () => void): unknown;
+  off?(event: "drain", listener: () => void): unknown;
   readonly headersSent: boolean;
 }
 
-export async function drain(res: { once(event: "drain", listener: () => void): unknown }): Promise<void> {
-  await new Promise<void>((resolve) => res.once("drain", resolve));
+/**
+ * Wait for the client socket to take more bytes, or for the call to be abandoned.
+ *
+ * A socket the client closed never emits `drain`, so waiting on it alone parks the handler for the
+ * life of the process: the upstream body stops being read, its permit is never handed back, and
+ * the failure is never recorded. The call's abort signal is the way out — it rejects with the
+ * abort reason, which unwinds the copy loop through the caller's ordinary failure path.
+ */
+export async function drain(
+  res: {
+    once(event: "drain", listener: () => void): unknown;
+    off?(event: "drain", listener: () => void): unknown;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal?.aborted) throw signal.reason;
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = (): void => {
+      res.off?.("drain", onDrain);
+      reject(signal?.reason);
+    };
+    const onDrain = (): void => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    res.once("drain", onDrain);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Call `onDisconnect` once if the client goes away before the response has ended.
+ *
+ * The response's `close` is the signal that holds at every stage. The request's own `close` is
+ * not: Node emits it as soon as the body has been read, so a listener added after reading the body
+ * never hears a later disconnect. `aborted` covers a client that leaves while the body is still
+ * arriving. A response that already ended has nothing left to abandon, so its `close` is ignored.
+ * Returns the function that removes the listeners.
+ */
+export function onClientDisconnect(
+  req: DisconnectSource<"aborted">,
+  res: DisconnectSource<"close"> & { readonly destroyed?: boolean; readonly writableEnded?: boolean },
+  onDisconnect: () => void,
+): () => void {
+  let fired = false;
+  const fire = (): void => {
+    if (fired || res.writableEnded === true) return;
+    fired = true;
+    onDisconnect();
+  };
+  if (res.destroyed === true) fire();
+  // In-process callers (tests, embedders) may hand over a partial emitter; only a real socket can
+  // disconnect, so a missing method simply means there is nothing to watch.
+  if (typeof res.once === "function") res.once("close", fire);
+  if (typeof req.once === "function") req.once("aborted", fire);
+  return () => {
+    if (typeof res.off === "function") res.off("close", fire);
+    if (typeof req.off === "function") req.off("aborted", fire);
+  };
+}
+
+interface DisconnectSource<Event extends string> {
+  once?(event: Event, listener: () => void): unknown;
+  off?(event: Event, listener: () => void): unknown;
 }
 
 export function writeAnthropicError(

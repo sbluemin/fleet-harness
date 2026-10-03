@@ -23,6 +23,7 @@ import {
 import { logRawWireEvent, wireLog } from "../../../transport/wire-log.js";
 import type { QuotaWindow } from "../../../quota/types.js";
 import { parseMuseCodeSubscriptionUsage } from "../quota.js";
+import { resampleArming, withMuseCodeResample } from "./resample.js";
 
 /**
  * Muse Code 구독 키가 쓰는 Meta Model API Responses 엔드포인트.
@@ -92,6 +93,11 @@ export interface MuseCodeResponsesAdapterOptions {
    * 오므로 소비자가 스트림을 끝까지 읽을 때만 불린다. 관측의 실패는 응답에 영향을 주지 않는다.
    */
   onSubscriptionUsage?: (windows: readonly QuotaWindow[]) => void;
+  /**
+   * 보고를 보내는 클라이언트 도구 이름(Claude Code의 `SendMessage` 등). 도구 이름은 하네스 어휘라
+   * 하네스 프로필이 넘긴다. 직후 보고 중복 방지: 이 도구의 결과 직후 응답은 다시 받지 않는다.
+   */
+  messagingToolNames?: readonly string[];
 }
 
 export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
@@ -100,10 +106,12 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
   private readonly onSubscriptionUsage: ((windows: readonly QuotaWindow[]) => void) | undefined;
+  private readonly messagingToolNames: ReadonlySet<string>;
 
   constructor(options: MuseCodeResponsesAdapterOptions = {}) {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.onSubscriptionUsage = options.onSubscriptionUsage;
+    this.messagingToolNames = new Set(options.messagingToolNames ?? []);
     this.maxBodyBytes = positiveInteger(
       options.maxBodyBytes ?? DEFAULT_MUSE_CODE_MAX_UPSTREAM_BODY_BYTES,
       "maxBodyBytes",
@@ -128,18 +136,49 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
     const refusal = unsupportedToolChoice(request);
     if (refusal !== undefined) return refusal;
 
-    const controller = new AbortController();
-    const unlinkAbort = linkAbortSignal(options.signal, controller);
+    const startedAt = Date.now();
     const payload = forMuseCodeResponsesBackend(request);
+    const arming = resampleArming(payload, this.messagingToolNames);
+    wireLog("muse-code-responses.resample.armed", {
+      armed: arming.armed,
+      ...(arming.skip === undefined ? {} : { skip: arming.skip }),
+      ...(arming.lastToolName === undefined ? {} : { lastTool: arming.lastToolName }),
+    });
+    const first = await this.send(payload, options.apiKey, options.signal);
+    if (!first.ok || !arming.armed) return first;
+    return {
+      ...first,
+      events: withMuseCodeResample(first.events, {
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        startedAt,
+        // 재샘플은 같은 본문·키·헤더로, 같은 게이트를 거쳐 새 연결로 보낸다. 호출자 abort에도 묶인다.
+        reopen: () => this.send(payload, options.apiKey, options.signal, true),
+      }),
+    };
+  }
+
+  /** 한 번의 업스트림 호출. 응답마다 자기 컨트롤러를 갖고 호출자 abort에 연결된다. */
+  private async send(
+    payload: MuseCodeResponsesWireRequest,
+    apiKey: string,
+    signal: AbortSignal | undefined,
+    resample = false,
+  ): Promise<AdapterResponse> {
+    const controller = new AbortController();
+    const unlinkAbort = linkAbortSignal(signal, controller);
     // 업스트림에 보내는 본문 그대로. 키는 헤더에만 있고 본문에는 없다.
-    wireLog("muse-code-responses.wire.request", { url: MUSE_CODE_RESPONSES_URL, payload });
+    wireLog("muse-code-responses.wire.request", {
+      url: MUSE_CODE_RESPONSES_URL,
+      ...(resample ? { resample: true } : {}),
+      payload,
+    });
     let response: Response;
     try {
       response = await this.fetchImpl(MUSE_CODE_RESPONSES_URL, {
         method: "POST",
         headers: {
           accept: "text/event-stream",
-          authorization: `Bearer ${options.apiKey}`,
+          authorization: `Bearer ${apiKey}`,
           "content-type": "application/json",
           "x-api-version": MUSE_CODE_API_VERSION,
         },
@@ -441,8 +480,11 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
         output_index: number(value.output_index, "output_index"),
         arguments: string(value.arguments, "arguments"),
       };
+    // `response.incomplete` is the same terminal as a completed response whose status is
+    // `incomplete`; both become one `response.completed` that carries the reason.
     case "response.completed":
-      return { type: value.type, response: responseSnapshot(value.response) };
+    case "response.incomplete":
+      return { type: "response.completed", response: terminalSnapshot(value.response, value.type) };
     case "response.failed": {
       const response = record(value.response, "response.failed.response");
       return {
@@ -455,6 +497,19 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
     default:
       return undefined;
   }
+}
+
+/**
+ * A terminal snapshot keeps the upstream's own verdict that the answer was cut short. Without it a
+ * response stopped by the output cap or a content filter reads downstream as a finished turn.
+ */
+function terminalSnapshot(value: unknown, eventType: string): CanonicalResponseSnapshot {
+  const snapshot = responseSnapshot(value);
+  const response = record(value, "response");
+  if (eventType !== "response.incomplete" && response.status !== "incomplete") return snapshot;
+  const details = isRecord(response.incomplete_details) ? response.incomplete_details : undefined;
+  const reason = typeof details?.reason === "string" ? details.reason : undefined;
+  return { ...snapshot, incomplete: reason === undefined ? {} : { reason } };
 }
 
 function responseSnapshot(value: unknown): CanonicalResponseSnapshot {

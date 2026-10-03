@@ -1121,6 +1121,183 @@ describe("Muse Code routing", () => {
     }
   });
 
+  it("ends an answer the output cap cut short as max_tokens, never as a finished turn", async () => {
+    // Responses ends a capped answer either as `response.incomplete` or as `response.completed`
+    // carrying `status: incomplete`. Both once reached Claude Code as end_turn (or, streamed, as a
+    // mid-response error), so its output-cap recovery never ran and the cut text read as final.
+    const capped = (terminal: Record<string, unknown>) => [
+      { type: "response.created", response: { id: "r2", model: "muse-spark-1.3-contributor", usage: null } },
+      { type: "response.output_item.added", output_index: 0, item: { type: "message", id: "msg_1", role: "assistant" } },
+      { type: "response.output_text.delta", item_id: "msg_1", output_index: 0, content_index: 0, delta: "The verdict is" },
+      terminal,
+    ];
+    const incompleteResponse = {
+      id: "r2",
+      model: "muse-spark-1.3-contributor",
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      usage: { input_tokens: 10, output_tokens: 128 },
+    };
+    const terminals = [
+      { type: "response.incomplete", response: incompleteResponse },
+      { type: "response.completed", response: incompleteResponse },
+    ];
+    let served = 0;
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      capped(terminals[served++]!).map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
+      { headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
+    try {
+      const streamed = response();
+      await router.handle(ctx({ res: streamed, token: ANTHROPIC_CRED, model: MUSE_MODEL }));
+      expect(streamed.status).toBe(200);
+      expect(streamed.body).toContain('"stop_reason":"max_tokens"');
+      expect(streamed.body).toContain("event: message_stop");
+      expect(streamed.body).not.toContain("event: error");
+
+      const collected = response();
+      await router.handle(ctx({
+        res: collected,
+        token: ANTHROPIC_CRED,
+        rawBody: { model: MUSE_MODEL, messages: [{ role: "user", content: "Hello" }], max_tokens: 128, stream: false },
+      }));
+      expect(collected.status).toBe(200);
+      const message = JSON.parse(collected.body) as { stop_reason: string; content: unknown[] };
+      expect(message.stop_reason).toBe("max_tokens");
+      expect(message.content).toEqual([{ type: "text", text: "The verdict is" }]);
+    } finally {
+      router.dispose();
+    }
+  });
+
+  it("draws a tool-result turn again when Muse skipped reasoning and only announced its next step", async () => {
+    // Muse sometimes skips reasoning and ends a tool loop on "Now I'll run the tests." with no
+    // call; the same request drawn again reasons and calls the tool. The client must see one
+    // message — the second draw — and the gateway must draw at most once more.
+    const created = { type: "response.created", response: { id: "r4", model: "muse-spark-1.3-contributor", usage: null } };
+    const completed = (outputTokens: number, reasoningTokens: number) => ({
+      type: "response.completed",
+      response: {
+        id: "r4",
+        model: "muse-spark-1.3-contributor",
+        status: "completed",
+        usage: { input_tokens: 10, output_tokens: outputTokens, output_tokens_details: { reasoning_tokens: reasoningTokens } },
+      },
+    });
+    const announced = [
+      created,
+      { type: "response.output_item.added", output_index: 0, item: { type: "message", id: "msg_a", role: "assistant" } },
+      { type: "response.output_text.delta", item_id: "msg_a", output_index: 0, content_index: 0, delta: "Now I'll run the tests." },
+      completed(8, 0),
+    ];
+    const recovered = [
+      created,
+      { type: "response.reasoning_text.delta", item_id: REASONING_ID, output_index: 0, delta: "run them" },
+      { type: "response.output_item.done", output_index: 0, item: { type: "reasoning", id: REASONING_ID, encrypted_content: "muse-blob-2", summary: [] } },
+      { type: "response.output_item.added", output_index: 1, item: { type: "function_call", id: "fc_2", call_id: "call_2", name: "Bash", arguments: "" } },
+      { type: "response.function_call_arguments.done", item_id: "fc_2", output_index: 1, arguments: '{"command":"pnpm test"}' },
+      { type: "response.output_item.done", output_index: 1, item: { type: "function_call", id: "fc_2", call_id: "call_2", name: "Bash", arguments: '{"command":"pnpm test"}' } },
+      completed(30, 12),
+    ];
+    const scripts = [announced, recovered, announced, announced, recovered];
+    let served = 0;
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      scripts[served++]!.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
+      { headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
+    const afterToolResult = [
+      { role: "user", content: "fix the build" },
+      { role: "assistant", content: [{ type: "tool_use", id: "call_1", name: "Edit", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "ok" }] },
+    ];
+    const tools = [{ name: "Bash", input_schema: { type: "object", properties: {} } }, { name: "Edit", input_schema: { type: "object", properties: {} } }];
+    // A main turn's output budget; small budgets are side calls the gateway never redraws.
+    const mainTurn = { model: MUSE_MODEL, messages: afterToolResult, tools, max_tokens: 32_000, stream: true };
+    try {
+      const recoveredRes = response();
+      await router.handle(ctx({ res: recoveredRes, token: ANTHROPIC_CRED, rawBody: mainTurn }));
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(recoveredRes.body.match(/event: message_start/g)).toHaveLength(1);
+      expect(recoveredRes.body).not.toContain("Now I'll run the tests.");
+      expect(recoveredRes.body).toContain('"name":"Bash"');
+      expect(recoveredRes.body).toContain('"stop_reason":"tool_use"');
+
+      // A second draw that announces again is what the client gets; there is no third draw.
+      const againRes = response();
+      await router.handle(ctx({ res: againRes, token: ANTHROPIC_CRED, rawBody: mainTurn }));
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(againRes.body.match(/event: message_start/g)).toHaveLength(1);
+      expect(againRes.body.match(/Now I'll run the tests\./g)).toHaveLength(1);
+      expect(againRes.body).toContain('"stop_reason":"end_turn"');
+    } finally {
+      router.dispose();
+    }
+  });
+
+  it("stops the upstream turn and frees its slot when the client hangs up mid-stream", async () => {
+    // Node emits the request's `close` once the body is read, so a disconnect after that went
+    // unheard: the provider generated to the end, the handler waited forever on a `drain` the dead
+    // socket never sends, and its upstream permit was never handed back.
+    const frame = (value: unknown) => new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`);
+    let upstreamSignal: AbortSignal | undefined;
+    let upstreamCancelled = false;
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      upstreamSignal = init?.signal ?? undefined;
+      let timer: ReturnType<typeof setInterval> | undefined;
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(frame({ type: "response.created", response: { id: "r3", model: "muse-spark-1.3-contributor", usage: null } }));
+          controller.enqueue(frame({ type: "response.output_item.added", output_index: 0, item: { type: "message", id: "msg_1", role: "assistant" } }));
+          timer = setInterval(() => controller.enqueue(frame({
+            type: "response.output_text.delta", item_id: "msg_1", output_index: 0, content_index: 0, delta: "x".repeat(256 * 1024),
+          })), 5);
+        },
+        cancel() {
+          upstreamCancelled = true;
+          clearInterval(timer);
+        },
+      }), { headers: { "content-type": "text/event-stream" } });
+    });
+    const journal: GatewayFailureRecord[] = [];
+    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn, failureJournal: (record) => journal.push(record) });
+    let serverRes: http.ServerResponse | undefined;
+    let handled: Promise<unknown> | undefined;
+    const server = http.createServer((req, res) => {
+      serverRes = res;
+      handled = Promise.resolve(router.handle({ req, res, pathname: new URL(req.url ?? "/", "http://127.0.0.1").pathname }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as net.AddressInfo).port;
+    try {
+      const payload = JSON.stringify({ model: MUSE_MODEL, messages: [{ role: "user", content: "Hello" }], max_tokens: 128, stream: true });
+      const client = net.connect({ port, host: "127.0.0.1" }, () => {
+        client.write(
+          `POST ${MESSAGES} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nauthorization: Bearer ${ANTHROPIC_CRED}\r\n` +
+          `content-type: application/json\r\ncontent-length: ${Buffer.byteLength(payload)}\r\n\r\n${payload}`,
+        );
+      });
+      // A client that stops reading parks the handler on backpressure; hanging up there is the
+      // case that used to wedge it for good.
+      client.pause();
+      await vi.waitFor(() => expect(serverRes?.writableNeedDrain).toBe(true), { timeout: 5_000 });
+      expect(router.upstreamStats().map((stats) => stats.inFlight)).toEqual([1]);
+      client.destroy();
+
+      await vi.waitFor(() => expect(handled).toBeDefined());
+      await handled;
+      expect(upstreamSignal?.aborted).toBe(true);
+      expect(upstreamCancelled).toBe(true);
+      expect(router.upstreamStats().reduce((sum, stats) => sum + stats.inFlight, 0)).toBe(0);
+      expect(journal).toEqual([expect.objectContaining({ phase: "post_commit", detail: "client disconnected", provider: "muse-code" })]);
+      expect(journal[0]!.elapsedMs).toBeGreaterThanOrEqual(0);
+    } finally {
+      server.close();
+      router.dispose();
+    }
+  });
+
   it("refuses before spending a request when the sign-in or a forced tool choice cannot be honored", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       JSON.stringify({ error: { message: `bad key ${MUSE_KEY}`, type: "invalid_api_key" } }),
