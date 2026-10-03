@@ -74,6 +74,12 @@ export const commodoreStateSchema = z.object({
   /** Theater 별 모델·강도. 없으면 실험 기능 행의 기본 좌표. 다음 턴부터 적용된다. */
   model: modelId.optional(),
   effort: effort.optional(),
+  /**
+   * 사령관이 만드는 목표(직접 추가·후속 선택)의 지휘관 모델·강도. 없으면 보드의 지휘관 기본값이다. 강도는 모델 행의 사다리에서
+   * 고르므로 낱말만 검사한다(보드의 지휘관 프리셋과 같은 경계).
+   */
+  commanderModel: z.string().trim().min(1).max(128).optional(),
+  commanderEffort: z.string().trim().min(1).max(32).optional(),
   /** 순찰 간격(분). 없으면 기본 60분이다. */
   patrolMinutes: commodorePatrolSchema.optional(),
   /** 사람이 이 Theater 를 보는 언어 — 서랍의 요청이 남긴다. 사령관 기록의 언어이고, 없으면 목표의 언어·영어 순이다. */
@@ -164,7 +170,7 @@ export type CommodoreEvent =
   | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
   | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus };
 
-export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "patrol" | "language" | "run";
+export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "commander" | "patrol" | "language" | "run";
 
 /** Theater 의 순찰 간격(ms) — 저장값, 없으면 기본. */
 export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number {

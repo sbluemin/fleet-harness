@@ -61,6 +61,8 @@ export interface CommodoreStore {
   removeIntel(theaterId: string, intelId: string): CommodoreState;
   setSources(theaterId: string, sources: readonly Omit<CommodoreSource, "id">[]): CommodoreState;
   setCoordinates(theaterId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
+  /** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
+  setCommander(theaterId: string, commander: { readonly model: string; readonly effort?: string } | null): CommodoreState;
   /** 순찰 간격 — null 은 기본(60분)으로 되돌린다. 같으면 아무 일도 없다. */
   setPatrol(theaterId: string, minutes: CommodorePatrolMinutes | null): CommodoreState;
   /** 사람이 이 Theater 를 보는 언어를 남긴다 — 같으면 아무 일도 없다. */
@@ -176,6 +178,11 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const current = load(theaterId);
       const { model: _model, effort: _effort, ...rest } = current;
       return commit(theaterId, coordinates ? { ...rest, model: coordinates.model, effort: coordinates.effort } : rest, "coordinates");
+    },
+    setCommander(theaterId, commander) {
+      const current = load(theaterId);
+      const { commanderModel: _model, commanderEffort: _effort, ...rest } = current;
+      return commit(theaterId, commander ? { ...rest, commanderModel: commander.model, ...(commander.effort ? { commanderEffort: commander.effort } : {}) } : rest, "commander");
     },
     setPatrol(theaterId, minutes) {
       const current = load(theaterId);

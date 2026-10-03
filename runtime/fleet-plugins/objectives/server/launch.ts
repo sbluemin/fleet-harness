@@ -172,7 +172,12 @@ const commanderSession = () => `objective-${randomUUID().slice(0, 6)}-cmdr`;
 /** 지휘관 이름이 없으면(따로 만든 Operation 이 지휘관) 목표 id 로 머리를 고정한다 — 한 목표의 구성원이 같은 머리를 잇는다. */
 const memberSession = (objectiveId: string, commander: string | null, index: number) => `${commander ? commander.replace(/-cmdr$/, "") : `objective-${objectiveId.slice(0, 6)}`}-member-${index}`;
 
-export function createLaunchService(ctx: FleetPluginServerContext, store: ObjectiveStore): LaunchService {
+export interface LaunchServiceOptions {
+  /** 사령관이 만드는 목표의 지휘관 모델·강도 — Theater 의 사령관 설정. 없으면 보드 기본값(COMMANDER_PRESET)이다. */
+  readonly commodoreCommander?: (theaterId: string) => { readonly model: string; readonly effort?: string } | null;
+}
+
+export function createLaunchService(ctx: FleetPluginServerContext, store: ObjectiveStore, serviceOptions: LaunchServiceOptions = {}): LaunchService {
   const control = () => {
     const capability = ctx.host.consoleControl;
     if (!capability) throw new ObjectiveStoreError("launch_unavailable");
@@ -845,9 +850,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const id = objectiveId ?? randomUUID();
       if (store.recorded(id)) return objective(id);
       if (referenceNode(id)) throw new ObjectiveStoreError("operation_id_taken");
-      return store.adopt(id, { ...init, by: options?.actor ?? init.by }, {
+      // 사령관이 만든 목표(직접 추가·사령관이 고른 후속)는 사령관 설정의 지휘관으로 시작한다 — 사람이 만든 목표는 보드 기본값 그대로다.
+      const actor = options?.actor ?? init.by;
+      const commander = actor && typeof actor === "object" && actor.kind === "commodore" ? serviceOptions.commodoreCommander?.(input.theaterId) ?? null : null;
+      return store.adopt(id, { ...init, by: actor }, {
         theaterId: input.theaterId, title: input.title, groupId: input.groupId, createdAt: Date.now(),
-        sessionName: commanderSession(), ...COMMANDER_PRESET, viewMode: input.viewMode ?? "terminal",
+        sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: input.viewMode ?? "terminal",
       });
     },
 

@@ -101,6 +101,11 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       if ((model === null) !== (effort === null)) throw new ObjectiveStoreError("invalid_request");
       return view(theaterId, store.setCoordinates(theaterId, model !== null && effort !== null ? { model, effort } : null));
     }) },
+    { name: "commodore/commander", method: "POST", summary: "Set or clear the Commander model and effort for objectives the Commodore creates; cleared falls back to the board's Commander default.", handler: json(theaterRef.extend({ model: z.string().trim().min(1).max(128).nullable(), effort: z.string().trim().min(1).max(32).nullable().optional() }).strict(), ({ theaterId, model, effort }) => {
+      read(theaterId);
+      if (model === null && effort) throw new ObjectiveStoreError("invalid_request");
+      return view(theaterId, store.setCommander(theaterId, model === null ? null : { model, ...(effort ? { effort } : {}) }));
+    }) },
     { name: "commodore/patrol", method: "POST", summary: "Set or clear a Theater's Commodore patrol interval in minutes; cleared falls back to 60. The Commodore can patrol sooner but not later; board events, the directive, intel and messages still wake it at once.", handler: json(theaterRef.extend({ minutes: commodorePatrolSchema.nullable() }).strict(), ({ theaterId, minutes }) => { read(theaterId); return view(theaterId, store.setPatrol(theaterId, minutes)); }) },
     { name: "commodore/message", method: "POST", summary: "Send the person's message to a Theater's Commodore; it is kept in the log and wakes the next turn.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT) }).strict(), ({ theaterId, text }) => { read(theaterId); return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text }) }; }) },
     { name: "commodore/retry", method: "POST", summary: "Retry now instead of waiting for the next scheduled retry after a failed Commodore turn.", handler: json(theaterRef, async ({ theaterId }) => {

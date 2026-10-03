@@ -16,7 +16,7 @@ import { post } from "./objectives-state.js";
 
 export const COMMODORE_CHANNEL = "objectives:commodore";
 
-export type CommodoreTab = "log" | "directive" | "intel";
+export type CommodoreTab = "log" | "directive" | "intel" | "settings";
 
 interface TheaterCommodore {
   readonly view: CommodoreStateView | null;
@@ -269,6 +269,9 @@ export const addCommodoreIntel = (theaterId: string, text: string) => write(thea
 export const removeCommodoreIntel = (theaterId: string, intelId: string) => write(theaterId, "/commodore/intel/remove", { intelId });
 export const setCommodoreCoordinates = (theaterId: string, coordinates: { readonly model: string; readonly effort: string } | null) =>
   write(theaterId, "/commodore/coordinates", coordinates ? { model: coordinates.model, effort: coordinates.effort } : { model: null, effort: null });
+/** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
+export const setCommodoreCommander = (theaterId: string, commander: { readonly model: string; readonly effort?: string } | null) =>
+  write(theaterId, "/commodore/commander", commander ? { model: commander.model, effort: commander.effort ?? null } : { model: null });
 /** 순찰 간격(분) — null 은 기본으로 되돌린다. */
 export const setCommodorePatrol = (theaterId: string, minutes: number | null) => write(theaterId, "/commodore/patrol", { minutes });
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});

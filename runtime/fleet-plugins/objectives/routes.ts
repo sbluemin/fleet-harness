@@ -68,7 +68,11 @@ export default definePlugin({
     collectEvidence();
 
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
-    const launch = createLaunchService(ctx, store);
+    // 사령관 저장소는 보드보다 먼저 선다 — 사령관이 만드는 목표의 지휘관 설정을 기동 서비스가 읽는다.
+    const commodore = createCommodoreStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event) });
+    const launch = createLaunchService(ctx, store, {
+      commodoreCommander: (theaterId) => { const state = commodore.read(theaterId); return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : null; },
+    });
     ctx.host.lifecycle.registerCleanup(() => launch.dispose());
     // 보관 기간이 지난 지운 목표 — 증거 정리와 같은 주기로 영구 삭제하고, 후속 원본의 배치 표시도 다시 방송한다.
     const purgeRemoved = () => { try { for (const id of store.purgeRemoved()) launch.followupTargetChanged(id); } catch { console.warn("[objectives] removed_purge_failed"); } };
@@ -127,7 +131,6 @@ export default definePlugin({
 
     // 사령관(자율 운영) — Theater 마다 하나. 상태는 보드 곁 `commodore/` 에 살고, 사건은 자기 채널로 나간다.
     ctx.host.lifecycle.registerCleanup(ctx.host.events.registerSseChannel(COMMODORE_CHANNEL));
-    const commodore = createCommodoreStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event) });
     // 감독자 — 자율 운영이 켜진 Theater 의 사령관을 깨우고, 되살리고, 멈춘다. 보드 도구는 Theater 에 묶인 사령관 전용 사본이다.
     const supervisor = createCommodoreSupervisor({
       store: commodore, agent: ctx.host.agent,
