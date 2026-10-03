@@ -20,6 +20,18 @@ export function isTerminalInactiveFlush(value: unknown): value is TerminalInacti
   return value === "saving" || value === "balanced" || value === "instant";
 }
 
+// 스크롤백 줄 수. xterm 기본값(1000)은 빌드·테스트 로그 한 번이면 앞이 잘린다. 서버 영속이라
+// 콘솔을 따라다니고, 바꾸면 열린 터미널에도 곧바로 적용된다(줄이면 그만큼 앞 줄이 버려진다).
+export const TERMINAL_SCROLLBACK_CHOICES = [1_000, 10_000, 50_000] as const;
+
+export type TerminalScrollback = (typeof TERMINAL_SCROLLBACK_CHOICES)[number];
+
+export const DEFAULT_TERMINAL_SCROLLBACK: TerminalScrollback = 10_000;
+
+export function isTerminalScrollback(value: unknown): value is TerminalScrollback {
+  return TERMINAL_SCROLLBACK_CHOICES.some((choice) => choice === value);
+}
+
 // 채팅 폭 프리셋. 대화 컬럼과 입력창이 함께 따르는 하나의 값이고, chat.css의 data-reading-width
 // 오버라이드와 한 벌이다 — reading이 UI 글자 크기에 자릿수를 곱한 중앙 컬럼이다. 폰트처럼 서버 영속(플러그인
 // 설정)이라 콘솔을 따라다닌다.
@@ -251,6 +263,9 @@ interface TerminalPrefsState {
   readonly inactiveFlush: TerminalInactiveFlush;
   readonly font: TerminalFontSettings;
   readonly chatReadingWidth: ChatReadingWidth;
+  readonly scrollback: TerminalScrollback;
+  /** 드래그로 고른 글을 곧바로 클립보드에 넣는가. 끄면 선택만 하고, 복사는 ⌘C/Ctrl+Shift+C로 한다. */
+  readonly copyOnSelect: boolean;
 }
 
 type Listener = () => void;
@@ -267,6 +282,7 @@ let state: TerminalPrefsState = initState();
 let settingsCapability: ClientSettingsCapability | null = null;
 let fontWriteEpoch = 0;
 let chatReadingWidthWriteEpoch = 0;
+let behaviorWriteEpoch = 0;
 let terminalSettingsWriteFlight: Promise<void> | null = null;
 
 export function migrateLegacyTerminalPrefs(): void {
@@ -292,6 +308,7 @@ export function connectTerminalSettings(settings: ClientSettingsCapability): voi
   // 재연결 시 진행 중인 이전 하이드레이션이 낡은 결과를 채택하지 못하도록 epoch를 올려 폐기한다.
   fontWriteEpoch += 1;
   chatReadingWidthWriteEpoch += 1;
+  behaviorWriteEpoch += 1;
   settingsCapability = settings;
   void hydrateTerminalSettingsFromServer();
 }
@@ -359,6 +376,28 @@ export function setTerminalFontSize(size: number): void {
   void pushFontToServer(font);
 }
 
+export function setTerminalScrollback(scrollback: TerminalScrollback): void {
+  behaviorWriteEpoch += 1;
+  patchState({ scrollback });
+  void pushBehaviorToServer({ scrollback });
+}
+
+export function setTerminalCopyOnSelect(copyOnSelect: boolean): void {
+  behaviorWriteEpoch += 1;
+  patchState({ copyOnSelect });
+  void pushBehaviorToServer({ copyOnSelect });
+}
+
+async function pushBehaviorToServer(patch: Record<string, unknown>): Promise<void> {
+  const settings = settingsCapability;
+  if (!settings) return;
+  try {
+    await mergeTerminalSettingsRecord(settings, patch);
+  } catch {
+    // best-effort — write 실패 시 조용히 무시한다.
+  }
+}
+
 export function setChatReadingWidth(width: ChatReadingWidth): void {
   chatReadingWidthWriteEpoch += 1;
   patchState({ chatReadingWidth: width });
@@ -369,8 +408,17 @@ async function hydrateTerminalSettingsFromServer(): Promise<void> {
   if (!settingsCapability) return;
   const epoch = fontWriteEpoch;
   const widthEpoch = chatReadingWidthWriteEpoch;
+  const behaviorEpoch = behaviorWriteEpoch;
   try {
     const value = await settingsCapability.read(null);
+    if (value !== null && behaviorEpoch === behaviorWriteEpoch) {
+      const storedScrollback = value["scrollback"];
+      const storedCopyOnSelect = value["copyOnSelect"];
+      patchState({
+        ...(isTerminalScrollback(storedScrollback) ? { scrollback: storedScrollback } : {}),
+        ...(typeof storedCopyOnSelect === "boolean" ? { copyOnSelect: storedCopyOnSelect } : {}),
+      });
+    }
     if (value !== null) {
       // 채팅 폭은 서버 값이 전부다 — 새 선호라 폰트 같은 localStorage 시드 마이그레이션이 없다.
       // 퇴역한 chatComposerWidth 가 남아 있어도 읽지 않는다: 입력창은 이제 이 값을 그대로 따른다.
@@ -508,8 +556,8 @@ function getSnapshot(): TerminalPrefsState {
 
 function initState(): TerminalPrefsState {
   if (typeof window === "undefined") {
-    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH };
+    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
   }
   migrateLegacyTerminalPrefs();
-  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: readStoredFont(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH };
+  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: readStoredFont(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
 }

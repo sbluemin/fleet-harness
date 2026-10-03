@@ -100,6 +100,10 @@ async function createHarness(body: Record<string, unknown>) {
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     getSessionLastActivityAt: () => null,
+    isLive: () => false,
+    getForegroundProcess: () => null,
+    hasInputSincePrompt: () => false,
+    onCwd: () => () => undefined,
     resolveSessionIdentity: async () => null,
     onExit: (callback) => {
       exitCallback = callback;

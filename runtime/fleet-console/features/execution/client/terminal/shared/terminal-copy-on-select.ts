@@ -22,6 +22,8 @@ export interface TerminalCopyOnSelectOptions {
   readonly windowTarget: EventTargetLike;
   readonly clipboard?: ClipboardWriter;
   readonly onCopied?: () => void;
+  /** 사용자가 자동 복사를 켜 두었는가. 매 제스처마다 읽으므로 설정을 바꾸면 열린 터미널에도 곧바로 듣는다. */
+  readonly isEnabled?: () => boolean;
 }
 
 export interface TerminalCopyOnSelectController {
@@ -41,6 +43,7 @@ export function createTerminalCopyOnSelect({
   windowTarget,
   clipboard,
   onCopied,
+  isEnabled = () => true,
 }: TerminalCopyOnSelectOptions): TerminalCopyOnSelectController {
   let disposed = false;
   let primaryGestureActive = false;
@@ -61,7 +64,7 @@ export function createTerminalCopyOnSelect({
   const onMouseUp = (event: Event) => {
     const shouldCopy = primaryGestureActive && selectionDirty && isPrimaryMouseButton(event);
     cancelGesture();
-    if (!shouldCopy) return;
+    if (!shouldCopy || !isEnabled()) return;
 
     const selection = terminal.getSelection();
     if (!selection || !clipboard) return;

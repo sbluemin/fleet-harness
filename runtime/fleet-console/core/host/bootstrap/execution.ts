@@ -13,6 +13,7 @@ import { registerAgentRoutes } from "../../../features/execution/host/agent/rout
 import { createAgentCliPathStore, resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import { createTerminalRuntime } from "../../../features/execution/host/terminal/index.js";
 import { registerShellRoutes } from "../../../features/execution/host/terminal/shell.js";
+import { registerTerminalCwdRoute } from "../../../features/execution/host/terminal/terminal-cwd.js";
 import { isClaudePathTrusted } from "../../../features/workspace/host/theaters/claude-trust.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
 import type { TheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
@@ -62,6 +63,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   const unsubscribeControl = ctx.host.events.subscribe(CONTROL_HOLDER_EVENT_CHANNEL, () => { runtime.renegotiateSockets(); });
   ctx.host.lifecycle.registerCleanup(unsubscribeControl);
   registerShellRoutes(ctx, runtime);
+  registerTerminalCwdRoute(ctx);
   const analysis = registerAnalysisRoutes(ctx, {
     // 분석가는 이제 게이트웨이 위에서 돈다. 고를 수 있는 모델은 사용자가 켠 선별이다.
     readAiGatewaySettings: aiGatewayStore.read,

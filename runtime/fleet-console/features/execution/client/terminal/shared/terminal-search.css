@@ -1,0 +1,73 @@
+/* 터미널 안 찾기. 출력 위 오른쪽 위에 떠 있는 한 줄이고, 색은 전부 테마 토큰이다. */
+.terminal-search-bar {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-3);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-inline-size: calc(100% - 2 * var(--space-3));
+  padding: var(--space-1);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--ink-deep);
+  box-shadow: var(--shadow-soft);
+}
+
+.terminal-search-input {
+  inline-size: 200px;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+
+.terminal-search-input:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: -1px;
+}
+
+.terminal-search-status {
+  flex: none;
+  min-inline-size: 4ch;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.terminal-search-button {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 24px;
+  block-size: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.terminal-search-button:hover,
+.terminal-search-button:focus-visible {
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.terminal-search-button:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: -1px;
+}
+
+.terminal-search-button svg {
+  inline-size: 14px;
+  block-size: 14px;
+}
