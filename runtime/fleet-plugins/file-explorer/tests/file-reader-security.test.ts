@@ -17,6 +17,7 @@ beforeAll(async () => {
   tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "fexp-sec-"));
   theaterPath = path.join(tmpDir, "theater");
   await fs.promises.mkdir(theaterPath);
+  await fs.promises.symlink(theaterPath, path.join(tmpDir, "theater-alias"), "dir");
 
   // Theater 밖 파일
   await fs.promises.writeFile(path.join(tmpDir, "outside.txt"), "secret");
@@ -79,6 +80,7 @@ describe("Files reference resolution", () => {
       return response;
     };
     expect(await resolve(path.join(theaterPath, "normal.txt"), "absolute")).toEqual({ status: 200, body: { path: "normal.txt", kind: "file" } });
+    expect(await resolve(path.join(tmpDir, "theater-alias", "normal.txt"), "absolute")).toEqual({ status: 200, body: { path: "normal.txt", kind: "file" } });
     expect(await resolve("../outside.txt", "theater-relative")).toEqual({ status: 403, body: { error: "outside_theater" } });
     expect(await resolve("link-outside.txt", "theater-relative")).toEqual({ status: 403, body: { error: "outside_theater" } });
     expect(await resolve("missing.txt", "theater-relative")).toEqual({ status: 404, body: { error: "not_found" } });
