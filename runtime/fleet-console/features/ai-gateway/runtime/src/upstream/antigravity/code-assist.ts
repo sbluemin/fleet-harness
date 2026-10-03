@@ -35,13 +35,7 @@ const TIER_LABELS: Readonly<Record<string, string>> = Object.freeze({
 /**
  * Turn a tier id into a plan label.
  *
- * **`paidTier` is not the active plan.** Measured 2026-08-22 on a free account,
- * `loadCodeAssist` returned `currentTier.id = "free-tier"` alongside
- * `paidTier.id = "g1-pro-tier"` whose own `upgradeSubscriptionText` reads "You can
- * upgrade to a Google AI Ultra plan" — `paidTier` is the upgrade Google is
- * offering, not one the user holds. Reading it as the plan (as OpenUsage does)
- * labels a free account "Google AI Pro". `currentTier` is the only field that
- * states what is being spent, so it is the only one read here.
+ * Which id to pass is {@link antigravityPlanTierId}'s decision; this only names it.
  */
 export function antigravityPlanLabel(tierId: unknown): string | undefined {
   const id = optionalTrimmedString(tierId)?.toLowerCase();
@@ -53,6 +47,24 @@ export function antigravityPlanLabel(tierId: unknown): string | undefined {
   const bare = id.replace(/-tier$/, "").replace(/[-_]+/g, " ").trim();
   if (bare.length === 0 || bare.length > 24 || !/^[a-z0-9][a-z0-9 .+-]*$/.test(bare)) return undefined;
   return bare.replace(/(^|\s)([a-z0-9])/g, (_, lead: string, char: string) => `${lead}${char.toUpperCase()}`);
+}
+
+/**
+ * Pick the tier id that names the plan the account holds.
+ *
+ * **`paidTier` is the subscription; `currentTier` is only onboarding.** Measured
+ * 2026-10-03 on a Google AI Pro account, `loadCodeAssist` returned
+ * `currentTier.id = "free-tier"` alongside `paidTier = {id: "g1-pro-tier", name:
+ * "Google AI Pro"}`: a personal account onboards Code Assist on the free tier
+ * whatever it pays for, so reading `currentTier` labels every subscriber "Free".
+ * `paidTier`'s own upgrade text offering Ultra is the next step up from Pro, not
+ * evidence the user lacks Pro. Gemini CLI resolves the tier the same way
+ * (`paidTier?.id ?? currentTier.id`), and `currentTier` still answers for an
+ * account Google reports no paid tier for.
+ */
+function antigravityPlanTierId(payload: Record<string, unknown>): string | undefined {
+  return optionalTrimmedString(credentialRecord(payload.paidTier)?.id)
+    ?? optionalTrimmedString(credentialRecord(payload.currentTier)?.id);
 }
 
 function projectId(value: unknown): string | undefined {
@@ -95,7 +107,7 @@ export async function loadAntigravityCodeAssist(
     const payload = credentialRecord(await response.json());
     if (!payload) return {};
     const project = projectId(payload.cloudaicompanionProject);
-    const plan = antigravityPlanLabel(credentialRecord(payload.currentTier)?.id);
+    const plan = antigravityPlanLabel(antigravityPlanTierId(payload));
     return {
       ...(project === undefined ? {} : { projectId: project }),
       ...(plan === undefined ? {} : { plan }),
