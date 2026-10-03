@@ -51,6 +51,14 @@ const BROWSER_PROFILE = "default";
 const MIN_SHEET_WIDTH = 280;
 const MIN_SHEET_HEIGHT = 200;
 
+/** 카드 세로 여백 — .operations-side-bar·.right-rail의 top·bottom 인셋과 같은 토큰
+    (theme.css --space-3). 토큰을 못 읽는 환경이면 같은 값을 쓴다. */
+function readCardInset(): number {
+  if (typeof window === "undefined" || typeof document === "undefined") return 12;
+  const parsed = Number.parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue("--space-3"));
+  return Number.isFinite(parsed) ? parsed : 12;
+}
+
 type Services = { readonly language: PersistentComponentContext["language"]; readonly theme: PersistentComponentContext["theme"] };
 
 function unavailableText(t: ReturnType<typeof getT>, reason: GlobalBrowserUnavailableReason | null, desktop: boolean): { title: string; body: string | null } {
@@ -132,7 +140,9 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     void placeGlobal(visible, bounds);
   }, []);
 
-  // ---- 자리: 아레나(사이드바·레일 제외) 안쪽 24px. Zen에서는 부유 섬 위 12px. ----
+  // ---- 자리: 좌우는 아레나(사이드바·레일 제외) 안쪽 24px, 위·아래는 카드 선. ----
+  // 위·아래는 보이는 카드(사이드바 우선, 없으면 레일)의 실제 테두리에 맞춘다 —
+  // 밴드+12 하드코딩은 카드 선과 어긋난다. Zen 아래는 부유 섬 위 12px 규칙 유지.
   // 아레나가 최소 숨구멍보다 좁으면 사이드바·레일을 무시하고 밴드 아래 창 전체를 쓰고,
   // 그것도 모자라면 여백을 줄여서라도 보이게 한다 — 「열림」인데 안 보이는 상태는 두지 않는다.
   const measureGeometry = React.useCallback(() => {
@@ -158,14 +168,29 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       : scrim);
     let left = Math.round((sideRight > 0 ? sideRight : 0) + 24);
     let right = Math.round(railRect ? vw - railRect.left + 24 : 24);
+    // 위·아래 선 — .operations-side-bar·.right-rail은 컨테이너 자체가 부유 유리 카드다
+    // (안쪽 카드 요소 없음. components.css .operations-side-bar / rail.css .right-rail,
+    // 둘 다 top·bottom: var(--space-3)). 보이는 카드가 있으면 그 테두리선 그대로,
+    // 둘 다 닫혔으면 카드가 쓰던 같은 여백 토큰으로. War Room 접힘은 서랍만 걷고
+    // 밴드 줄이 남으니 같은 규칙이 그대로 성립한다.
+    const sidebarCardRect = sidebar !== null && sidebar.offsetWidth > 4
+      && window.getComputedStyle(sidebar).visibility !== "hidden"
+      ? sidebar.getBoundingClientRect()
+      : null;
+    const railCardRect = railRect !== null && rail !== null
+      && window.getComputedStyle(rail).visibility !== "hidden"
+      ? railRect
+      : null;
+    const cardRect = sidebarCardRect ?? railCardRect;
+    const cardInset = readCardInset();
     let top: number;
     let bottom: number;
     if (zenIsland) {
-      top = 24;
+      top = Math.round(cardRect ? cardRect.top : 24);
       bottom = Math.round(vh - islandRect.top + 12);
     } else {
-      top = Math.round(bandRect ? bandRect.bottom + 12 : 24);
-      bottom = 24;
+      top = Math.round(cardRect ? cardRect.top : (bandRect ? bandRect.bottom : 0) + cardInset);
+      bottom = Math.round(cardRect ? vh - cardRect.bottom : cardInset);
     }
     if (vw - left - right < MIN_SHEET_WIDTH) {
       // 좁은 아레나 — 크롬을 무시하고 창 너비를 쓴다. 시트가 레일·사이드바 위에 겹쳐 선다.
