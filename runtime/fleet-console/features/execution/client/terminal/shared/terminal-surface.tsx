@@ -235,11 +235,15 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
 export interface TerminalExitInfo {
   /** 끝난 셸의 화면을 흐린 글자로 다시 쓰는 바이트열(화면 초기화 없음). */
   readonly transcript: string;
+  /** 그 화면의 열 수. 전사본의 어느 행도 이보다 길지 않다. */
+  readonly cols: number;
 }
 
 export interface TerminalCarryOver {
   readonly transcript: string;
   readonly reason: "replaced" | "consoleRestarted";
+  /** 전사본이 쓰였던 폭. 새 표면이 이 폭에 닿기 전에 쓰면 긴 행이 잘린다. */
+  readonly cols?: number;
 }
 
 export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
@@ -605,7 +609,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
             });
           }
         },
-        onExit: () => onExitRef.current?.({ transcript: staleTranscript(terminal) }),
+        onExit: () => onExitRef.current?.({ transcript: staleTranscript(terminal), cols: terminal.cols }),
         /**
          * 다시 붙을 때마다 서버는 보유한 scrollback을 처음부터 다시 보낸다. 같은 PTY면 그 재생이 화면을
          * 다시 그리므로 앞 화면을 지우고(지우지 않으면 같은 출력이 두 벌 쌓인다), 다른 PTY면(세대가 바뀜 —
@@ -675,9 +679,24 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         // fit/start를 호출하지 않는다 — 그렇지 않으면 빈 화면이나 잘못된 크기로 이어진다.
         if (disposed) return;
         fitAndResize();
-        // 앞 셸의 흔적은 맞춘 폭으로, 새 셸의 재생보다 먼저 쓴다 — 연결은 이 뒤에 열린다.
+        // 앞 셸의 흔적은 새 셸의 재생보다 먼저, 그리고 **최종 폭**으로 쓴다. 갈아 끼운 직후의 페인은 띠·배지가
+        // 다시 서며 몇 번 더 크기를 바꾸는데(94→107→105열 실측), 자동 줄바꿈을 끈 채 중간 폭에 쓰면 긴 행의
+        // 꼬리가 잘리고 마지막 칸이 덮어써진다(N6-01). 배치가 조용해질 때까지 짧게 기다린 뒤 다시 맞추고
+        // 쓴다. 연결은 그 뒤에 연다 — 그사이 PTY 출력은 서버 scrollback에 쌓였다가 재생으로 이어진다.
+        // 조용해진 폭이 앞 화면보다 좁으면 한 번 자리를 잡았다가 다시 넓어지는 중일 수 있다(실측 94→107→105) —
+        // 앞 화면 폭에 닿거나 짧은 상한이 지날 때까지 더 맞춰 본다. 끝내 좁으면 그 폭이 최종이고, 거기서 자른다.
         const carried = carryOverRef.current;
-        if (carried) terminal.write(`${carried.transcript}${sessionDivider(carried.reason, localeRef.current)}`);
+        if (carried) {
+          await waitForQuietLayout(container);
+          const deadline = performance.now() + CARRY_WIDTH_WAIT_MS;
+          while (!disposed) {
+            fitAndResize();
+            if (carried.cols === undefined || terminal.cols >= carried.cols || performance.now() >= deadline) break;
+            await new Promise((resolve) => setTimeout(resolve, CARRY_WIDTH_POLL_MS));
+          }
+          if (disposed) return;
+          terminal.write(`${carried.transcript}${sessionDivider(carried.reason, localeRef.current)}`);
+        }
         connection.start();
         setInputReadyEpoch((epoch) => epoch + 1);
         // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
@@ -1640,4 +1659,36 @@ function sessionDivider(reason: TerminalCarryOver["reason"], locale: ConsoleLoca
   const time = new Date().toLocaleTimeString(locale ?? "en", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const label = getT(locale)(reason === "consoleRestarted" ? "terminal.session.consoleRestarted" : "terminal.session.replaced", { time });
   return `\x1b[1;36m── ${label} ──\x1b[0m\r\n`;
+}
+
+/** 갈아 끼운 표면이 앞 화면 폭까지 넓어지기를 더 기다리는 상한과 그동안 다시 맞추는 간격. */
+const CARRY_WIDTH_WAIT_MS = 600;
+const CARRY_WIDTH_POLL_MS = 50;
+/** 배치가 이만큼 바뀌지 않으면 자리를 잡은 것으로 본다. */
+const LAYOUT_QUIET_MS = 150;
+/** 계속 흔들려도 이 이상은 기다리지 않는다 — 셸 연결이 눈에 띄게 늦어지면 안 된다. */
+const LAYOUT_QUIET_CAP_MS = 800;
+
+/** 컨테이너 크기가 `LAYOUT_QUIET_MS` 동안 바뀌지 않을 때까지(최대 `LAYOUT_QUIET_CAP_MS`) 기다린다. */
+function waitForQuietLayout(element: HTMLElement): Promise<void> {
+  return new Promise((resolve) => {
+    let quietTimer: ReturnType<typeof setTimeout> | null = null;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (quietTimer) clearTimeout(quietTimer);
+      clearTimeout(capTimer);
+      observer.disconnect();
+      resolve();
+    };
+    const arm = () => {
+      if (quietTimer) clearTimeout(quietTimer);
+      quietTimer = setTimeout(finish, LAYOUT_QUIET_MS);
+    };
+    const capTimer = setTimeout(finish, LAYOUT_QUIET_CAP_MS);
+    const observer = new ResizeObserver(arm);
+    observer.observe(element);
+    arm();
+  });
 }

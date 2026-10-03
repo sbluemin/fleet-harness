@@ -195,7 +195,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
     // 옛 종료가 페인을 닫는 경합도 없다.
     void readShellSession().then((state) => {
       if (state && !state.open && state.pinnedTheaterId !== null) {
-        setCarryOver(exit.transcript ? { transcript: exit.transcript, reason: "replaced" } : undefined);
+        setCarryOver(exit.transcript ? { transcript: exit.transcript, reason: "replaced", cols: exit.cols } : undefined);
         setSurfaceKey((key) => key + 1);
         return;
       }
