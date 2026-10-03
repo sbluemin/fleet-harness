@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -68,6 +69,7 @@ export interface FlatRow {
 export interface CapRow {
   readonly type: "cap";
   readonly depth: number;
+  readonly folderPath: string;
   readonly cap: number;
   readonly total?: number;
   readonly key: string;
@@ -341,15 +343,16 @@ export function virtualRowWindow(
   scrollTop: number,
   containerHeight: number,
   rowCount: number,
+  rowHeight: number = ROW_HEIGHT,
 ): VirtualRowWindow {
   const contentScroll = scrollTop - TREE_PADDING_Y;
-  const startIdx = Math.max(0, Math.floor(contentScroll / ROW_HEIGHT) - OVERSCAN);
-  const endIdx = Math.min(rowCount, Math.ceil((contentScroll + containerHeight) / ROW_HEIGHT) + OVERSCAN);
+  const startIdx = Math.max(0, Math.floor(contentScroll / rowHeight) - OVERSCAN);
+  const endIdx = Math.min(rowCount, Math.ceil((contentScroll + containerHeight) / rowHeight) + OVERSCAN);
   return {
     startIdx,
     endIdx,
-    offsetY: startIdx * ROW_HEIGHT,
-    totalHeight: rowCount * ROW_HEIGHT,
+    offsetY: startIdx * rowHeight,
+    totalHeight: rowCount * rowHeight,
   };
 }
 
@@ -798,7 +801,7 @@ export function buildFlatRows(
   flushVcs();
   flushGhosts();
   if (levelMeta.truncatedCap !== undefined) {
-    rows.push({ type: "cap", depth, cap: levelMeta.truncatedCap, total: levelMeta.totalEntries, key: `cap:${levelKey}` });
+    rows.push({ type: "cap", depth, folderPath: levelKey, cap: levelMeta.truncatedCap, total: levelMeta.totalEntries, key: `cap:${levelKey}` });
   }
   return rows;
 }
@@ -875,6 +878,15 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [filterCollapsedDirs, setFilterCollapsedDirs] = useState<Set<string>>(new Set());
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
+  const [rowHeight, setRowHeight] = useState(() => window.matchMedia?.("(pointer: coarse)").matches ? 40 : ROW_HEIGHT);
+  useEffect(() => {
+    const pointer = window.matchMedia?.("(pointer: coarse)");
+    if (!pointer) return;
+    const update = () => setRowHeight(pointer.matches ? 40 : ROW_HEIGHT);
+    update();
+    pointer.addEventListener("change", update);
+    return () => pointer.removeEventListener("change", update);
+  }, []);
   const [showHidden, setShowHidden] = useState<boolean>(() => readShowHidden());
   // 검색 요청은 최신 토글 값을 실어야 하고, 값이 바뀌면 질의를 다시 던져야 한다.
   const showHiddenRef = useRef(showHidden);
@@ -1428,8 +1440,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   const shouldVirtualize = flatRows.length > VIRTUALIZE_THRESHOLD;
   const windowed = shouldVirtualize
-    ? virtualRowWindow(scrollTop, containerHeight, flatRows.length)
-    : { startIdx: 0, endIdx: flatRows.length, offsetY: 0, totalHeight: flatRows.length * ROW_HEIGHT };
+    ? virtualRowWindow(scrollTop, containerHeight, flatRows.length, rowHeight)
+    : { startIdx: 0, endIdx: flatRows.length, offsetY: 0, totalHeight: flatRows.length * rowHeight };
   const startIdx = windowed.startIdx;
   const endIdx = windowed.endIdx;
   const visibleRows = flatRows.slice(startIdx, endIdx);
@@ -1466,20 +1478,20 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const node = treeRef.current;
     if (!node) return;
     setCursorPath(revealTarget.relativePath);
-    const rowTop = TREE_PADDING_Y + rowIndex * ROW_HEIGHT;
-    const rowBottom = rowTop + ROW_HEIGHT;
-    const stack = stickyAncestorStack(flatRows, node.scrollTop);
+    const rowTop = TREE_PADDING_Y + rowIndex * rowHeight;
+    const rowBottom = rowTop + rowHeight;
+    const stack = stickyAncestorStack(flatRows, node.scrollTop, rowHeight);
     let nextScrollTop = node.scrollTop;
     if (rowBottom > nextScrollTop + node.clientHeight) nextScrollTop = rowBottom - node.clientHeight;
-    const nextStack = stickyAncestorStack(flatRows, nextScrollTop);
-    if (rowTop < nextScrollTop + Math.max(stack.rows.length, nextStack.rows.length) * ROW_HEIGHT) {
-      const headerHeight = Math.min(ancestorChain(flatRows, rowIndex).length, STICKY_ANCESTOR_MAX) * ROW_HEIGHT;
+    const nextStack = stickyAncestorStack(flatRows, nextScrollTop, rowHeight);
+    if (rowTop < nextScrollTop + Math.max(stack.rows.length, nextStack.rows.length) * rowHeight) {
+      const headerHeight = Math.min(ancestorChain(flatRows, rowIndex).length, STICKY_ANCESTOR_MAX) * rowHeight;
       nextScrollTop = Math.max(0, rowTop - headerHeight);
     }
     node.scrollTop = nextScrollTop;
     setScrollTop(node.scrollTop);
     revealedRequestRef.current = revealTarget.requestId;
-  }, [flatRows, revealTarget]);
+  }, [flatRows, revealTarget, rowHeight]);
 
   useImperativeHandle(ref, () => ({
     restoreContextMenuFocus: (relativePath) => restoreContextMenuFocus(
@@ -1505,7 +1517,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     pendingFocusPathRef.current = path;
     setCursorPath(path);
     if (shouldVirtualize && (rowIndex < startIdx || rowIndex >= endIdx)) {
-      const nextScrollTop = Math.max(0, rowIndex * ROW_HEIGHT);
+      const nextScrollTop = Math.max(0, rowIndex * rowHeight);
       if (treeRef.current) treeRef.current.scrollTop = nextScrollTop;
       setScrollTop(nextScrollTop);
     }
@@ -1540,8 +1552,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   // ── 조상 고정 ──
   const sticky = useMemo(
-    () => (isFiltering ? EMPTY_STICKY : stickyAncestorStack(flatRows, scrollTop)),
-    [flatRows, isFiltering, scrollTop],
+    () => (isFiltering ? EMPTY_STICKY : stickyAncestorStack(flatRows, scrollTop, rowHeight)),
+    [flatRows, isFiltering, rowHeight, scrollTop],
   );
 
   useLayoutEffect(() => {
@@ -1554,7 +1566,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const jumpToStickyRow = (rowIndex: number, slot: number) => {
     const row = flatRows[rowIndex];
     if (!row || row.type !== "entry") return;
-    const nextScrollTop = Math.max(0, TREE_PADDING_Y + rowIndex * ROW_HEIGHT - slot * ROW_HEIGHT);
+    const nextScrollTop = Math.max(0, TREE_PADDING_Y + rowIndex * rowHeight - slot * rowHeight);
     if (treeRef.current) treeRef.current.scrollTop = nextScrollTop;
     setScrollTop(nextScrollTop);
     pendingFocusPathRef.current = row.entry.relativePath;
@@ -1632,7 +1644,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     }
     const index = flatRows.findIndex((candidate) => isEntryRow(candidate) && candidate.entry.relativePath === row.entry.relativePath);
     if (index < 0) return;
-    const pageSize = Math.max(1, Math.floor(containerHeight / ROW_HEIGHT));
+    const pageSize = Math.max(1, Math.floor(containerHeight / rowHeight));
     const action = resolveTreeNavigation(flatRows, index, event.key, { pageSize, shiftKey: event.shiftKey });
     if (action.kind === "none") {
       if (event.key === "ArrowRight" || event.key === "ArrowLeft") event.preventDefault();
@@ -1759,6 +1771,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
           role="note"
         >
+          {row.folderPath && `${row.folderPath}: `}
           {t("fileExplorer.tree.listingCapped", { cap: row.cap.toLocaleString(), total: row.total?.toLocaleString() ?? `${row.cap}+` })}
         </div>
       );
@@ -2047,6 +2060,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       ) : (
         <div
           ref={viewportRef}
+          style={{ "--fexp-row-height": `${rowHeight}px` } as CSSProperties}
           className={`fexp-tree-viewport${scrollTop > TREE_PADDING_Y ? " is-scrolled" : ""}${canScrollDown ? " can-scroll-down" : ""}${sticky.rows.length > 0 ? " has-sticky" : ""}`}
         >
           <div
@@ -2097,8 +2111,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
               theaterId={theaterId}
               relativePath={peekRow.row.entry.relativePath}
               name={peekRow.row.entry.name}
-              anchorTop={TREE_PADDING_Y + peekRow.index * ROW_HEIGHT - scrollTop}
-              anchorBottom={TREE_PADDING_Y + (peekRow.index + 1) * ROW_HEIGHT - scrollTop}
+              anchorTop={TREE_PADDING_Y + peekRow.index * rowHeight - scrollTop}
+              anchorBottom={TREE_PADDING_Y + (peekRow.index + 1) * rowHeight - scrollTop}
               boundaryRef={viewportRef}
               language={language}
               t={t}

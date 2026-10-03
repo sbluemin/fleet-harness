@@ -90,6 +90,37 @@ describe("미리보기 문서 세션", () => {
   });
 });
 
+describe("보관한 문서의 다시 읽기", () => {
+  it("비활성 문서를 선택해도 이전 본문을 유지하고 명시적 다시 읽기로만 바꾼다", async () => {
+    let version = 1;
+    const reads: string[] = [];
+    vi.stubGlobal("EventSource", class extends EventTarget {
+      constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      close() {}
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      const request = JSON.parse(init.body as string);
+      const payload = url.endsWith("/disk-status")
+        ? { statuses: request.paths.map((relativePath: string) => ({ relativePath, state: "present", mtimeMs: version })) }
+        : { relativePath: request.relativePath, content: version === 1 ? "original-one" : "changed-one", lang: "text", binary: false, truncated: false, sizeBytes: 12, mtimeMs: version };
+      if (url.endsWith("/read")) reads.push(request.relativePath);
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    const theater = "preserved-document-theater";
+    const render = (path: string, requestId: string) => fileExplorerDocumentPane.render(paneCtx(theater, { theaterId: theater, path, requestId }));
+    await act(async () => { root.render(render("one.txt", "first")); });
+    await act(async () => { root.render(render("two.txt", "second")); });
+    version = 2;
+    await act(async () => { container.querySelector<HTMLButtonElement>('.fexp-tab-open[title="one.txt"]')!.click(); });
+    expect(container.querySelector(".fexp-viewer-body")?.textContent).toContain("original-one");
+    expect(getFileExplorerSnapshot(theater).docStates.get("one.txt")).toMatchObject({ kind: "code", stale: true });
+    expect(reads.filter((path) => path === "one.txt")).toHaveLength(1);
+    await act(async () => { container.querySelector<HTMLButtonElement>(".fexp-disk-banner button")!.click(); });
+    expect(container.querySelector(".fexp-viewer-body")?.textContent).toContain("changed-one");
+    expect(getFileExplorerSnapshot(theater).docStates.get("one.txt")).toMatchObject({ kind: "code", stale: false });
+  });
+});
+
 describe("문서 주소의 Theater 범위", () => {
   it("떠나온 Theater의 경로를 새 Theater에 세우지 않는다", () => {
     // 이전 Theater에서 읽던 문서를 들고 살아남은 인스턴스가 새 Theater에 마운트된다.

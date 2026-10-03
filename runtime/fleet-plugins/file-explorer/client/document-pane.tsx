@@ -71,18 +71,6 @@ export function documentPaneTitle(ctx: PaneContext): string {
   return path ? nameOfPath(path) : t("fileExplorer.panel.title");
 }
 
-/**
- * stale 탭 선택의 명시적 재읽기 판정 — 이미 활성인 탭만 여기서 읽는다.
- * 비활성 탭은 activePath 전이가 문서 effect를 일으키므로 명시적으로 읽으면 요청이 둘이 된다.
- */
-export function shouldReloadSelectedTab(input: {
-  readonly selectedPath: string;
-  readonly activePath: string | null;
-  readonly stale: boolean;
-}): boolean {
-  return input.stale && input.selectedPath === input.activePath;
-}
-
 export function FileExplorerDocumentPane(ctx: PaneContext) {
   const { theaterId, params, panes, signal, language } = ctx;
   const t = getT(language);
@@ -154,7 +142,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     return () => { active = false; };
   }, [activePath, addressed, contextScope, ctx.visible, params.requestId, params.pathKind, params.line, params.column, params.anchor, params.ranges, params.preview, params.keepFilter, signal]);
 
-  // 활성 문서가 바뀔 때 내용을 불러온다 — 캐시가 있으면 즉시 그리고 배경에서 재검증한다.
+  // 처음 여는 문서만 읽는다. 캐시 본문은 디스크 상태만 확인하고 명시적 다시 읽기까지 보존한다.
   // 주차된 사본(확대 중의 레일 인스턴스)은 읽지 않는다 — 같은 문서를 두 번 가져올 뿐이다.
   // 계약이 "보이지 않는 동안에도 렌더는 계속되므로 값비싼 작업은 스스로 멈춰야 한다"고
   // 말하는 자리가 여기다.
@@ -162,8 +150,10 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   docStatesRef.current = docStates;
   useEffect(() => {
     if (!activePath || !ctx.visible) return;
+    const cached = docStatesRef.current.get(activePath);
+    if (cached?.kind === "code" || cached?.kind === "image") return;
     void loadDocument(theaterId, activePath, {
-      silent: docStatesRef.current.has(activePath),
+      silent: false,
       language,
       signal,
     });
@@ -252,14 +242,10 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     });
   }, [activePath, language, panes, signal, theaterId]);
 
-  // 보이는 탭과 넘침 목록이 같은 전이를 쓴다. stale 활성 탭은 명시적으로 다시 읽고,
-  // stale 비활성 탭은 activePath effect가 한 번만 읽게 둔다.
+  // 탭 선택은 탐색일 뿐이다. 낡은 본문은 배너의 다시 읽기를 눌렀을 때만 바뀐다.
   const selectDocumentTab = useCallback((doc: OpenDocument) => {
-    const stale = isStaleViewState(docStatesRef.current.get(doc.relativePath));
-    const reload = shouldReloadSelectedTab({ selectedPath: doc.relativePath, activePath, stale });
     openFilePath(doc.relativePath, doc.name);
-    if (reload) reloadDoc(doc.relativePath);
-  }, [activePath, openFilePath, reloadDoc]);
+  }, [openFilePath]);
 
   const handleCrumbReveal = useCallback((path: string) => {
     if (!theaterId) return;
@@ -406,18 +392,20 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         >
           {openDocs.map((doc) => {
             const active = doc.relativePath === activePath;
-            const stale = isStaleViewState(docStates.get(doc.relativePath));
+            const state = docStates.get(doc.relativePath);
+            const stale = isStaleViewState(state);
+            const deleted = (state?.kind === "code" || state?.kind === "image") && state.diskStatus === "deleted";
             return (
               <div
                 key={doc.relativePath}
                 role="listitem"
-                className={`fexp-tab${active ? " is-active" : ""}${stale ? " is-stale" : ""}${doc.preview ? " is-preview" : ""}`}
+                className={`fexp-tab${active ? " is-active" : ""}${stale ? " is-stale" : ""}${deleted ? " is-deleted" : ""}${doc.preview ? " is-preview" : ""}`}
               >
                 <button
                   type="button"
                   className="fexp-tab-open"
                   aria-current={active ? "true" : undefined}
-                  title={stale ? t("fileExplorer.tabs.staleTitle") : doc.preview ? t("fileExplorer.tabs.previewTitle", { name: doc.name }) : doc.relativePath}
+                  title={deleted ? t("fileExplorer.viewer.diskDeleted") : stale ? t("fileExplorer.tabs.staleTitle") : doc.preview ? t("fileExplorer.tabs.previewTitle", { name: doc.name }) : doc.relativePath}
                   onClick={() => selectDocumentTab(doc)}
                   onDoubleClick={() => pinStoredDocument(theaterId, doc.relativePath)}
                   onAuxClick={(event) => {
