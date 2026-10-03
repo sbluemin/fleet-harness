@@ -1456,11 +1456,12 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
    Theater 머리 아래의 사령관 줄과 「사령관 기록」 서랍. 줄은 사이드바 목표 줄과 같은 격자(24px 글리프 칸 · 6/8 안쪽 여백 ·
    7px 모서리)를 쓴다 — 섞여 선 목록에서 한 문법으로 읽힌다. 글리프가 자율 운영 스위치이고, 켬은 채운 brass 사각(선택),
    끔은 빈 사각이다. 왼쪽 띠·상자형 필터 단추는 두지 않는다. */
+/* 한 줄 — 제목 오른쪽에 메타가 선다(Operation 한 줄과 같은 38px). 줄이 모자라면 메타만 말줄임한다. */
 .objectives-commodore-row {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   gap: 8px;
-  align-items: start;
+  align-items: center;
   padding: 6px 8px;
   margin: 0 var(--space-1);
   border: 1px solid transparent;
@@ -1485,7 +1486,6 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   place-items: center;
   width: 24px;
   height: 24px;
-  margin-top: calc((var(--t-md) * 1.3 - 24px) / 2);
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -1515,13 +1515,15 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   .objectives-commodore-row, .objectives-commodore-switch i { transition: none; }
 }
 
+/* 제목과 메타는 기준선을 맞추고, 그 한 줄(13px × 1.3)을 24px 칸의 세로 가운데에 둔다 — 글리프 사각과 같은 중심선. */
 .objectives-commodore-row-main {
+  box-sizing: border-box;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
-  min-height: 24px;
-  padding: 0;
+  height: 24px;
+  padding: calc((24px - var(--t-md) * 1.3) / 2) 0;
   border: 0;
   background: transparent;
   color: var(--text-primary);
@@ -1531,8 +1533,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 }
 .objectives-commodore-row-main:focus-visible { outline: none; }
 .objectives-commodore-row-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: none;
   white-space: nowrap;
   font-family: var(--font-ui);
   font-size: var(--t-md);
@@ -1541,10 +1542,11 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   color: var(--text-primary);
 }
 .objectives-commodore-row-meta {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 4px;
-  margin-top: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
   color: var(--text-tertiary);
@@ -1559,8 +1561,9 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-commodore-drawer {
   position: fixed;
   z-index: 55;
-  width: 440px;
-  max-width: calc(100vw - 16px);
+  /* 폭은 내용을 따른다 — 최대는 지도(사이드바와 오른쪽 레일 사이)로 묶여 인라인 max-width 로 온다. */
+  width: max-content;
+  min-width: min(360px, calc(100vw - 16px));
   /* 머리·탭·발은 제 높이, 본문이 나머지를 채운다 — 재시도 줄·실패 줄은 있을 때만 선다. */
   display: flex;
   flex-direction: column;
@@ -1602,7 +1605,8 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-commodore-tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--brass); }
 .objectives-commodore-tab:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 2px; }
 
-.objectives-commodore-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 16px; display: grid; gap: 14px; align-content: start; scrollbar-width: thin; }
+/* 스크롤바는 Operation 패널과 같은 전역 문법을 그대로 입는다(자체 규칙 없음). 가로로는 흐르지 않는다 — 내용이 줄을 바꾼다. */
+.objectives-commodore-body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 12px 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; overflow-wrap: anywhere; }
 .objectives-commodore-empty { margin: 0; padding: 24px 4px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.6; text-align: center; }
 
 .objectives-commodore-log { display: grid; gap: 16px; align-content: start; }
@@ -1610,7 +1614,13 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-commodore-wake-head { display: flex; gap: 8px; align-items: baseline; margin: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .objectives-commodore-wake-head b { color: var(--aurora); font-weight: var(--weight-medium); }
 .objectives-commodore-wake.is-message .objectives-commodore-wake-head b { color: var(--text-secondary); }
-.objectives-commodore-wake-text { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-commodore-wake-text { margin: 0; min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.6; overflow-wrap: anywhere; }
+.objectives-commodore-wake.is-message .objectives-commodore-wake-text { white-space: pre-wrap; }
+/* 사령관의 Markdown — 공용 렌더러의 코드·표는 가로로 흐르는 상자다. 서랍 안에서는 줄을 바꾼다. */
+.objectives-commodore-drawer .markdown-body pre,
+.objectives-commodore-drawer .markdown-body pre code,
+.objectives-commodore-drawer .markdown-body .code-block code { white-space: pre-wrap; overflow-x: hidden; overflow-wrap: anywhere; }
+.objectives-commodore-drawer .markdown-body table { overflow-x: hidden; overflow-wrap: anywhere; table-layout: fixed; }
 .objectives-commodore-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .objectives-commodore-act {
   display: inline-flex; gap: 6px; max-width: 100%; min-width: 0;
@@ -1618,21 +1628,21 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 1.3;
 }
 .objectives-commodore-act b { flex: none; color: var(--brass-ink); font-weight: var(--weight-bold); }
-.objectives-commodore-act span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-commodore-act span { min-width: 0; overflow-wrap: anywhere; }
 .objectives-commodore-note { margin: 0; font-size: var(--t-xs); }
 .objectives-commodore-note.is-warn { color: var(--warn-ink); }
 .objectives-commodore-note.is-dim { color: var(--text-tertiary); }
 .objectives-commodore-tools { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 1.5; }
-.objectives-commodore-tools summary { cursor: pointer; list-style: none; width: max-content; max-width: 100%; }
+.objectives-commodore-tools summary { cursor: pointer; list-style: none; max-width: 100%; overflow-wrap: anywhere; }
 .objectives-commodore-tools summary::-webkit-details-marker { display: none; }
 .objectives-commodore-tools summary::after { content: " ›"; }
 .objectives-commodore-tools[open] summary::after { content: " ⌄"; }
 .objectives-commodore-tools summary:hover { color: var(--text-secondary); }
 .objectives-commodore-tools summary:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 .objectives-commodore-tools ul { margin: 6px 0 0; padding: 0 0 0 10px; list-style: none; display: grid; gap: 3px; }
-.objectives-commodore-tools li { display: flex; gap: 8px; min-width: 0; }
+.objectives-commodore-tools li { display: flex; flex-wrap: wrap; column-gap: 8px; min-width: 0; overflow-wrap: anywhere; }
 .objectives-commodore-tools li.is-failed { color: var(--warn-ink); }
-.objectives-commodore-tool-name { flex: none; font-family: var(--font-code); color: var(--text-secondary); }
+.objectives-commodore-tool-name { min-width: 0; font-family: var(--font-code); color: var(--text-secondary); overflow-wrap: anywhere; }
 .objectives-commodore-marker { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .objectives-commodore-marker::after { content: ""; flex: 1; height: 1px; background: var(--surface-rim); }
 .objectives-commodore-older { justify-self: center; }

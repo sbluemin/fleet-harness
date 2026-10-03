@@ -1,5 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
+
+import { renderMarkdown } from "@fleet-console/markdown/core";
+import "@fleet-console/markdown/styles.css";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
@@ -9,6 +12,7 @@ import { clockTime } from "./commodore-row.js";
 import {
   addCommodoreIntel,
   closeCommodoreDrawer,
+  commodoreMapInsets,
   commodoreTheaterLabel,
   loadTranscript,
   messageCommodore,
@@ -19,6 +23,7 @@ import {
   setCommodoreAutonomy,
   setCommodoreCoordinates,
   setCommodoreTab,
+  subscribeCommodoreMapInsets,
   useCommodore,
   useCommodoreDrawer,
   useCommodoreEnabled,
@@ -29,7 +34,8 @@ import { LaunchControl } from "./launch-control.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
-const DRAWER_WIDTH = 440;
+/** 서랍 폭은 내용을 따르되 지도(사이드바와 오른쪽 레일 사이)를 넘지 않는다 — 이 아래로는 줄이지 않는다. */
+const DRAWER_MIN_WIDTH = 360;
 const DRAWER_GAP = 8;
 const DRAWER_MARGIN = 8;
 /** 보드 읽기는 행위가 아니다 — 기록의 행위 칩에는 보드를 바꾼 호출만 선다. */
@@ -49,20 +55,23 @@ function rowElement(theaterId: string): HTMLElement | null {
 
 /** 사이드바 바로 옆 — 사령관 줄이 선 목록의 오른쪽 가장자리에 붙고, 높이는 목록과 같다. */
 function useDrawerPosition(theaterId: string): CSSProperties {
-  const [position, setPosition] = useState<CSSProperties>({ left: 300, top: 48, height: "calc(100vh - 96px)" });
+  const [position, setPosition] = useState<CSSProperties>({ left: 300, top: 48, height: "calc(100vh - 96px)", maxWidth: DRAWER_MIN_WIDTH });
   useLayoutEffect(() => {
     const place = () => {
       const row = rowElement(theaterId);
       const list = row?.closest("aside")?.getBoundingClientRect() ?? row?.getBoundingClientRect() ?? null;
-      const left = Math.max(DRAWER_MARGIN, Math.min(window.innerWidth - DRAWER_WIDTH - DRAWER_MARGIN, (list?.right ?? 292) + DRAWER_GAP));
+      // 오른쪽 끝은 지도의 오른쪽 끝 — 레일이 넓어지면 서랍이 줄고, 레일을 끄는 동안에도 따라간다.
+      const mapRight = window.innerWidth - Math.max(DRAWER_MARGIN, commodoreMapInsets().right);
+      const left = Math.max(DRAWER_MARGIN, Math.min(mapRight - DRAWER_MIN_WIDTH, (list?.right ?? 292) + DRAWER_GAP));
       const top = Math.max(DRAWER_MARGIN, list?.top ?? 48);
       const bottom = Math.min(window.innerHeight - DRAWER_MARGIN, list && list.bottom > top + 200 ? list.bottom : window.innerHeight - DRAWER_MARGIN);
       // 높이는 목록과 같게 고정한다 — 탭을 바꿀 때마다 서랍이 늘고 줄지 않게.
-      setPosition({ left, top, height: Math.max(240, bottom - top) });
+      setPosition({ left, top, height: Math.max(240, bottom - top), maxWidth: Math.max(DRAWER_MIN_WIDTH, mapRight - left) });
     };
     place();
     window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
+    const offMap = subscribeCommodoreMapInsets(place);
+    return () => { window.removeEventListener("resize", place); offMap(); };
   }, [theaterId]);
   return position;
 }
@@ -307,6 +316,25 @@ export function groupTranscript(t: T, entries: readonly CommodoreTranscriptEntry
   return items;
 }
 
+/**
+ * 사령관이 쓴 글 — Markdown 이다. Console 이 에이전트 글에 쓰는 같은 렌더러(정제된 HTML, 원시 HTML 없음)로 그리고,
+ * 코드 블록의 복사 단추는 결과물 보기와 같은 위임으로 받는다.
+ */
+function CommodoreMarkdown({ t, text }: { readonly t: T; readonly text: string }) {
+  const html = useMemo(() => renderMarkdown(text, { copyLabel: t("objectives.results.copy"), copyAriaLabel: (language) => t("objectives.results.copyCode", { language }) }).html, [t, text]);
+  const onCopy = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
+    const code = button?.closest("pre")?.getAttribute("data-code");
+    if (!button || !code) return;
+    void navigator.clipboard?.writeText(code).then(() => {
+      const original = button.textContent;
+      button.textContent = t("objectives.results.copied");
+      window.setTimeout(() => { button.textContent = original; }, 1200);
+    }, () => undefined);
+  }, [t]);
+  return <div className="markdown-body objectives-commodore-wake-text" onClick={onCopy} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 function toolSummary(tools: readonly ToolEntry[]): string {
   const counts = new Map<string, number>();
   for (const tool of tools) counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
@@ -335,7 +363,7 @@ function CommodoreLog({ t, theaterId, entries, hasMore, loaded }: { readonly t: 
         return (
           <div key={item.key} className="objectives-commodore-wake">
             <p className="objectives-commodore-wake-head"><span>{clockTime(item.at)}</span><b>{item.reasons.length > 0 ? item.reasons.map((reason) => reasonWord(t, reason)).join(" · ") : t("objectives.commodore.log.woke")}</b></p>
-            {item.texts.map((text, index) => <p key={index} className="objectives-commodore-wake-text">{text}</p>)}
+            {item.texts.map((text, index) => <CommodoreMarkdown key={index} t={t} text={text} />)}
             {item.actions.length > 0 ? (
               <div className="objectives-commodore-acts">
                 {item.actions.map((act) => <span key={act.key} className="objectives-commodore-act"><b>{actionWord(t, act.action)}</b>{act.title ? <span>{act.title}</span> : null}</span>)}

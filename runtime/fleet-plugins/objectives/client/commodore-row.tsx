@@ -88,14 +88,14 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
         className="objectives-commodore-row-main"
         aria-expanded={open}
         aria-label={[t("objectives.commodore.rowAria", { theater: theaterLabel }), ...meta.map((part) => part.text), patrol ?? ""].filter(Boolean).join(", ")}
-        title={patrol ?? errorReason ?? undefined}
+        title={[meta.map((part) => part.text).join(" · "), patrol, errorReason].filter(Boolean).join("\n")}
         onClick={() => toggleCommodoreDrawer(theaterId)}
         onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => { if (event.key === "Escape" && open) { event.preventDefault(); toggleCommodoreDrawer(theaterId); } }}
       >
         <span className="objectives-commodore-row-title">{t("objectives.commodore.name")}</span>
         <span className="objectives-commodore-row-meta" aria-hidden="true">
           {meta.map((part, index) => (
-            <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{index > 0 ? "· " : ""}{part.text}</span>
+            <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{index > 0 ? " · " : ""}{part.text}</span>
           ))}
         </span>
       </button>

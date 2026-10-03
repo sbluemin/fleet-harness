@@ -209,6 +209,15 @@ export function useCommodoreEnabled(): boolean {
   return useSyncExternalStore(subscribeCommodore, () => enabledSnapshot, () => enabledSnapshot);
 }
 
+/** 지도(캔버스) 영역의 가로 인셋 — 서랍이 지도를 넘지 않게 폭을 정한다. 모르는 호스트면 창 전체가 지도다. */
+export function commodoreMapInsets(): { readonly left: number; readonly right: number } {
+  return installed?.consoleState.getMapInsets?.() ?? { left: 0, right: 0 };
+}
+
+export function subscribeCommodoreMapInsets(listener: () => void): () => void {
+  return installed?.consoleState.subscribeMapInsets?.(listener) ?? (() => undefined);
+}
+
 /** Theater 의 표시 이름 — 코어가 사이드바에 보이는 그대로. */
 export function commodoreTheaterLabel(theaterId: string): string {
   return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.label ?? "";
