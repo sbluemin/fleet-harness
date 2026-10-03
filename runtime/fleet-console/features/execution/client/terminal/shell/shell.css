@@ -43,10 +43,12 @@
 .global-shell-band {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--space-1) var(--space-2);
-  min-block-size: var(--expanded-surface-float-block, 38px);
+  gap: var(--space-2);
+  /* 고정 높이 — 안의 문구가 바뀌어도 터미널 격자의 행 수가 흔들리지 않는다. */
+  block-size: var(--expanded-surface-float-block, 38px);
+  overflow: hidden;
   box-sizing: border-box;
   padding: var(--space-1) calc(var(--space-2) + var(--expanded-surface-float-inset, 0px)) var(--space-1) var(--space-3);
   border-bottom: 1px solid color-mix(in oklch, var(--warn) 52%, var(--surface-rim));
@@ -59,24 +61,35 @@
 }
 
 .global-shell-band-text {
-  flex: 1 1 240px;
+  flex: 1 1 auto;
   min-inline-size: 0;
+  overflow: hidden;
   color: var(--warn-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* 거절 사유가 앞에 선다 — 말줄임은 끝을 자르므로, 지금 할 일을 말하는 쪽이 잘리지 않아야 한다. */
 .global-shell-band-refusal {
-  display: block;
   color: var(--text-primary);
 }
 
+.global-shell-band-refusal::after {
+  content: " · ";
+  color: var(--warn-ink);
+}
+
 .global-shell-band-actions {
+  flex: none;
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-1);
 }
 
 .global-shell-band-action {
+  flex: none;
   min-block-size: 24px;
+  white-space: nowrap;
   padding: 0 var(--space-2);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
