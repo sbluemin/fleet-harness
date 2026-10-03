@@ -3,14 +3,6 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { QuotaService, QuotaSummaryDto } from "@fleet-console/ai-gateway";
 
-import {
-  isProviderId,
-  PROVIDER_ORDER_DEFAULT,
-  sanitizeFoldedProviders,
-  sanitizeProviderOrder,
-  type ProviderId,
-} from "../provider-order.js";
-
 export type SettingsSerializer = <T>(operation: () => Promise<T>) => Promise<T>;
 
 /**
@@ -26,8 +18,6 @@ export type GatewayQuotaSummary = QuotaSummaryDto & { readonly revalidating?: bo
 
 interface StoredSettings {
   readonly claudeConnected?: unknown;
-  readonly providerOrder?: unknown;
-  readonly foldedProviders?: unknown;
 }
 
 async function readStoredSettings(ctx: FleetPluginServerContext): Promise<StoredSettings> {
@@ -37,26 +27,10 @@ async function readStoredSettings(ctx: FleetPluginServerContext): Promise<Stored
     : {};
 }
 
-// 이 화이트리스트는 저장 경로가 늘 때마다 함께 늘어야 한다. 한 키라도 빠지면 다른
-// 경로의 저장이 그 설정을 조용히 지운다 — 카드를 한 번 끌어다 놓는 순간 접힘이 사라진다.
+// 저장 문서에 남길 키의 화이트리스트. 카드 순서·접힘이 없어진 뒤 남은 옛 키(providerOrder·foldedProviders)는
+// 다음 쓰기에서 함께 걷힌다. claudeConnected는 Gateway(ai-gateway host start.ts)도 직접 읽는다.
 function retainedSettings(settings: StoredSettings): Record<string, unknown> {
-  return {
-    ...(typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {}),
-    ...(Array.isArray(settings.providerOrder) ? { providerOrder: sanitizeProviderOrder(settings.providerOrder) } : {}),
-    ...(Array.isArray(settings.foldedProviders) ? { foldedProviders: sanitizeFoldedProviders(settings.foldedProviders) } : {}),
-  };
-}
-
-/** summary 계열 응답이 코어 DTO에 얹어 보내는 플러그인 소유 설정. */
-async function panelSettings(ctx: FleetPluginServerContext): Promise<{
-  readonly providerOrder: ProviderId[];
-  readonly foldedProviders: ProviderId[];
-}> {
-  const stored = await readStoredSettings(ctx);
-  return {
-    providerOrder: sanitizeProviderOrder(stored.providerOrder),
-    foldedProviders: sanitizeFoldedProviders(stored.foldedProviders),
-  };
+  return typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {};
 }
 
 function rejectUnlessJsonPost(
@@ -101,7 +75,7 @@ export async function handleSummary(
   const force = url.searchParams.get("force") === "1";
   const stale = !force && url.searchParams.get("stale") === "1";
   const summary = await service.getSummary({ force, ...(stale ? { stale } : {}) });
-  ctx.host.http.writeJson(res, 200, { ...summary, ...(await panelSettings(ctx)) });
+  ctx.host.http.writeJson(res, 200, summary);
 }
 
 export async function handleConnect(
@@ -135,81 +109,5 @@ export async function handleConnect(
     await ctx.host.storage.writeJson("quota", "settings", next);
   });
   const summary = await service.getSummary({ forceProvider: body.provider });
-  ctx.host.http.writeJson(res, 200, { ...summary, ...(await panelSettings(ctx)) });
-}
-
-export async function handleOrder(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  ctx: FleetPluginServerContext,
-  serializeSettings: SettingsSerializer,
-): Promise<void> {
-  if (rejectUnlessJsonPost(req, res, ctx)) return;
-  let body: { readonly order?: unknown } | null;
-  try {
-    body = await ctx.host.http.readJsonBody(req);
-  } catch {
-    body = null;
-  }
-  // 클라이언트는 항상 현재 공급자 id의 완전한 순열을 보낸다. 그보다 느슨한 입력은
-  // 버그의 증거이므로 관용하지 않는다 — 미래 호환의 관용은 읽기 쪽 sanitize가 담당한다.
-  const order = body?.order;
-  if (
-    !body
-    || Object.keys(body).length !== 1
-    || !Array.isArray(order)
-    || order.length !== PROVIDER_ORDER_DEFAULT.length
-    || !order.every(isProviderId)
-    || new Set(order).size !== order.length
-  ) {
-    ctx.host.http.writeJson(res, 400, { error: "invalid_order_request" });
-    return;
-  }
-  const providerOrder = order as ProviderId[];
-  await serializeSettings(async () => {
-    const next = {
-      ...retainedSettings(await readStoredSettings(ctx)),
-      providerOrder,
-    };
-    await ctx.host.storage.writeJson("quota", "settings", next);
-  });
-  ctx.host.http.writeJson(res, 200, { providerOrder });
-}
-
-export async function handleFold(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  ctx: FleetPluginServerContext,
-  serializeSettings: SettingsSerializer,
-): Promise<void> {
-  if (rejectUnlessJsonPost(req, res, ctx)) return;
-  let body: { readonly folded?: unknown } | null;
-  try {
-    body = await ctx.host.http.readJsonBody(req);
-  } catch {
-    body = null;
-  }
-  // 순서와 달리 접힘은 부분집합이다 — 완전한 순열을 요구하면 "아무것도 접지 않음"을
-  // 보낼 길이 없다. 대신 알려진 id만, 중복 없이, 전체 수를 넘지 않게 받는다.
-  const folded = body?.folded;
-  if (
-    !body
-    || Object.keys(body).length !== 1
-    || !Array.isArray(folded)
-    || folded.length > PROVIDER_ORDER_DEFAULT.length
-    || !folded.every(isProviderId)
-    || new Set(folded).size !== folded.length
-  ) {
-    ctx.host.http.writeJson(res, 400, { error: "invalid_fold_request" });
-    return;
-  }
-  const foldedProviders = sanitizeFoldedProviders(folded);
-  await serializeSettings(async () => {
-    const next = {
-      ...retainedSettings(await readStoredSettings(ctx)),
-      foldedProviders,
-    };
-    await ctx.host.storage.writeJson("quota", "settings", next);
-  });
-  ctx.host.http.writeJson(res, 200, { foldedProviders });
+  ctx.host.http.writeJson(res, 200, summary);
 }

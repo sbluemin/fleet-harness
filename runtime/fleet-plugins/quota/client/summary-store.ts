@@ -1,13 +1,12 @@
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
 import type { QuotaSummaryDto } from "@fleet-console/ai-gateway";
-import { PROVIDER_ORDER_DEFAULT, sanitizeProviderOrder, type ProviderId } from "../provider-order.js";
 
 /**
- * 사용 한도 요약의 공유 원천 — 레일 패널과 도구모음 요약이 같은 한 장을 읽는다.
+ * 사용 한도 요약의 공유 원천 — 팝업 패널과 도구모음 요약이 같은 한 장을 읽는다.
  *
- * 폴링의 주인은 하나다. 패널이 열려 있으면 패널이 자기 주기(60초, 화면이 보일 때)로 읽고 그 결과를 여기에
- * 싣는다. 패널이 닫혀 있고 요약이 서 있을 때만 요약이 같은 주기로 읽는다 — 둘이 동시에 폴링하지 않는다.
+ * 폴링의 주인은 하나다. 팝업이 열려 있으면 팝업 패널이 자기 주기(60초, 화면이 보일 때)로 읽고 그 결과를
+ * 여기에 싣는다. 팝업이 닫혀 있고 요약이 서 있을 때만 요약이 같은 주기로 읽는다 — 둘이 동시에 폴링하지 않는다.
  * 요청은 Gateway가 single-flight로 묶고 5분 캐시로 답하므로, 겹친 한 번도 upstream을 두 번 부르지 않는다.
  */
 
@@ -15,17 +14,13 @@ const POLL_MS = 60_000;
 
 export interface QuotaSummarySnapshot {
   readonly data: QuotaSummaryDto | null;
-  /** 사용자가 패널에서 정한 카드 순서 — 요약이 같은 급의 공급자 중 무엇을 앞세울지 정한다. */
-  readonly order: readonly ProviderId[];
   /** 마지막으로 읽은 시각(ms). 0이면 아직 읽지 않았다. */
   readonly checkedAt: number;
-  /** 레일 패널이 지금 서 있는가 — 서 있으면 폴링은 패널 몫이고, 요약은 aria-pressed로 열림을 알린다. */
-  readonly panelOpen: boolean;
 }
 
-type SummaryResponse = QuotaSummaryDto & { readonly providerOrder?: unknown; readonly revalidating?: boolean };
+type SummaryResponse = QuotaSummaryDto & { readonly revalidating?: boolean };
 
-let snapshot: QuotaSummarySnapshot = { data: null, order: PROVIDER_ORDER_DEFAULT, checkedAt: 0, panelOpen: false };
+let snapshot: QuotaSummarySnapshot = { data: null, checkedAt: 0 };
 const listeners = new Set<() => void>();
 let api: ClientApiCapability | null = null;
 let panelHolds = 0;
@@ -50,28 +45,45 @@ export function subscribeQuotaSummary(listener: () => void): () => void {
 /** 플러그인 설치가 API 능력을 건넨다. 도구모음 항목의 render()는 문맥을 받지 않기 때문이다. */
 export function connectQuotaSummaryApi(next: ClientApiCapability): () => void {
   api = next;
+  emitApi();
   return () => {
-    if (api === next) api = null;
+    if (api !== next) return;
+    api = null;
+    emitApi();
   };
 }
 
-/** 패널이 화면에 선 그대로를 싣는다(응답 채택·순서 이동 모두). */
-export function publishQuotaSummary(data: QuotaSummaryDto, order: readonly ProviderId[], checkedAt: number): void {
-  if (snapshot.data === data && snapshot.order === order && snapshot.checkedAt === checkedAt) return;
-  emit({ ...snapshot, data, order, checkedAt });
+const apiListeners = new Set<() => void>();
+
+function emitApi(): void {
+  for (const listener of apiListeners) listener();
 }
 
-/** 패널이 서 있는 동안 쥔다. 놓으면 요약이 폴링을 이어받는다. */
+/** 팝업 패널이 쓸 API 능력 — 설치 전이나 해제 뒤에는 null이다. */
+export function getQuotaApi(): ClientApiCapability | null {
+  return api;
+}
+
+export function subscribeQuotaApi(listener: () => void): () => void {
+  apiListeners.add(listener);
+  return () => { apiListeners.delete(listener); };
+}
+
+/** 팝업 패널이 화면에 선 그대로를 싣는다. */
+export function publishQuotaSummary(data: QuotaSummaryDto, checkedAt: number): void {
+  if (snapshot.data === data && snapshot.checkedAt === checkedAt) return;
+  emit({ ...snapshot, data, checkedAt });
+}
+
+/** 팝업 패널이 서 있는 동안 쥔다. 놓으면 요약이 폴링을 이어받는다. */
 export function holdQuotaPanel(): () => void {
   panelHolds += 1;
-  if (!snapshot.panelOpen) emit({ ...snapshot, panelOpen: true });
   syncPolling();
   let released = false;
   return () => {
     if (released) return;
     released = true;
     panelHolds -= 1;
-    if (panelHolds === 0) emit({ ...snapshot, panelOpen: false });
     syncPolling();
   };
 }
@@ -115,7 +127,7 @@ async function readSummary(): Promise<void> {
     // 그사이 패널이 열렸으면 패널의 답이 이긴다 — 늦게 온 이 답이 패널이 실은 값을 덮지 않게.
     if (panelHolds > 0) return;
     revalidating = result.revalidating === true;
-    emit({ ...snapshot, data: result, order: sanitizeProviderOrder(result.providerOrder), checkedAt: revalidating ? snapshot.checkedAt : Date.now() });
+    emit({ ...snapshot, data: result, checkedAt: revalidating ? snapshot.checkedAt : Date.now() });
   } catch {
     // 요약은 곁눈의 신호다 — 실패는 다음 주기가 다시 묻는다. 오류 안내는 패널의 몫이다.
   } finally {
