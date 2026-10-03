@@ -5,7 +5,6 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
-import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@fleet-console/ai-gateway";
 import {
@@ -19,7 +18,7 @@ import {
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import { getQuotaSummarySnapshot, holdQuotaPanel, publishQuotaSummary } from "./summary-store.js";
-import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting, writeQuotaToolbarSummary } from "./toolbar-setting.js";
+import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting, toggleQuotaToolbarProvider } from "./toolbar-setting.js";
 import "./quota.css";
 
 type T = Translate<QuotaMessageKey>;
@@ -1134,22 +1133,40 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
           <BarLegend t={t} />
           <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
         </div>
-        <ToolbarSummaryToggle t={t} />
+        <ToolbarProviderPicker order={order} t={t} />
       </footer>
     </div>
   );
 }
 
-/** 패널 바닥의 「도구모음에 요약 표시」 — 설정 화면의 사용 한도 섹션과 같은 한 값을 바꾼다. */
-function ToolbarSummaryToggle({ t }: { readonly t: T }) {
-  const { toolbarSummary } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+/**
+ * 패널 바닥의 「도구모음에 표시」 줄 — 공급자마다 글리프 하나로 도구모음 요약에 세울지를 고른다. 순서는 카드 순서다.
+ * 설정 화면의 사용 한도 섹션과 같은 한 값을 바꾼다.
+ */
+function ToolbarProviderPicker({ order, t }: { readonly order: readonly ProviderId[]; readonly t: T }) {
+  const { toolbarProviders } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   return (
-    <div className="quota-footer__row quota-footer__toolbar">
-      <SettingsToggle
-        checked={toolbarSummary}
-        label={t("quota.toolbar.toggle")}
-        onChange={(next) => { writeQuotaToolbarSummary(next).catch(() => undefined); }}
-      />
+    <div className="quota-footer__row quota-footer__toolbar" role="group" aria-label={t("quota.toolbar.toggle")}>
+      <span className="quota-footer__toolbar-label" aria-hidden="true">{t("quota.toolbar.toggle")}</span>
+      <span className="quota-toolbar-picks">
+        {order.map((id) => {
+          const shown = toolbarProviders.includes(id);
+          const label = t("quota.toolbar.switch", { provider: PROVIDER_NAME[id] });
+          return (
+            <button
+              key={id}
+              type="button"
+              className="quota-toolbar-pick"
+              aria-pressed={shown}
+              aria-label={label}
+              title={label}
+              onClick={() => { toggleQuotaToolbarProvider(id, !shown).catch(() => undefined); }}
+            >
+              <span className={`quota-provider__mark quota-provider__mark--${id}`} aria-hidden="true">{providerGlyph(id)}</span>
+            </button>
+          );
+        })}
+      </span>
     </div>
   );
 }

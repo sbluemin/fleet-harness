@@ -1,15 +1,19 @@
 import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
+import { sanitizeFoldedProviders, toggledFoldedProviders, type ProviderId } from "../provider-order.js";
+
 /**
- * 「도구모음에 요약 표시」 — 기본은 꺼짐(옵트인). 값은 Console 설정의 플러그인 문서(plugins.quota)에 산다.
- * 카드 순서·접힘은 패널 상태라 플러그인 저장소(quota/settings)에 따로 두고, 이 값은 사용자가 고르는 설정이라
- * 설정 화면의 섹션과 패널 바닥 토글이 같은 이 한 값을 읽고 쓴다.
+ * 「도구모음 요약」에 세울 공급자 — 기본은 비어 있다(옵트인). 비어 있으면 요약은 칸째 사라진다.
+ * 값은 Console 설정의 플러그인 문서(plugins.quota)에 산다. 카드 순서·접힘은 패널 상태라 플러그인
+ * 저장소(quota/settings)에 따로 두고, 이 값은 사용자가 고르는 설정이라 설정 화면의 섹션과 패널 바닥의
+ * 글리프 토글이 같은 이 한 값을 읽고 쓴다.
  */
 export interface QuotaToolbarSetting {
-  readonly toolbarSummary: boolean;
+  /** 기본 순서로 정렬된 집합 — 표시 순서는 패널의 카드 순서를 따른다. */
+  readonly toolbarProviders: readonly ProviderId[];
 }
 
-const DEFAULT_SETTING: QuotaToolbarSetting = { toolbarSummary: false };
+const DEFAULT_SETTING: QuotaToolbarSetting = { toolbarProviders: [] };
 
 let setting: QuotaToolbarSetting = DEFAULT_SETTING;
 let persisted: QuotaToolbarSetting = DEFAULT_SETTING;
@@ -31,7 +35,7 @@ export function connectQuotaToolbarSetting(next: ClientSettingsCapability): () =
   writeChain = next.read("quota").then((value) => {
     if (capability !== next) return;
     document_ = value ?? {};
-    persisted = { toolbarSummary: value?.toolbarSummary === true };
+    persisted = { toolbarProviders: sanitizeFoldedProviders(value?.toolbarProviders) };
     if (pendingWrites > 0) return;
     setting = persisted;
     emit();
@@ -50,17 +54,25 @@ export function subscribeQuotaToolbarSetting(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
+/** 한 공급자를 넣거나 뺀다 — 직전 쓰기가 끝나기 전에 연달아 눌러도 낙관 반영된 집합 위에 얹힌다. */
+export function toggleQuotaToolbarProvider(id: ProviderId, shown: boolean): Promise<void> {
+  const current = setting.toolbarProviders;
+  if (current.includes(id) === shown) return Promise.resolve();
+  return writeQuotaToolbarProviders(toggledFoldedProviders(current, id));
+}
+
 /** 낙관 반영 후 저장한다. 실패하면 마지막으로 저장된 값으로 되돌린다. 쓰기는 한 줄로 세운다. */
-export function writeQuotaToolbarSummary(enabled: boolean): Promise<void> {
+function writeQuotaToolbarProviders(providers: readonly ProviderId[]): Promise<void> {
   pendingWrites += 1;
-  setting = { toolbarSummary: enabled };
+  const next: QuotaToolbarSetting = { toolbarProviders: providers };
+  setting = next;
   emit();
   const run = writeChain.then(async () => {
-    const nextDocument = { ...document_, toolbarSummary: enabled };
+    const nextDocument = { ...document_, toolbarProviders: providers };
     try {
       await capability?.write("quota", nextDocument);
       document_ = nextDocument;
-      persisted = { toolbarSummary: enabled };
+      persisted = next;
     } catch (error) {
       setting = persisted;
       emit();

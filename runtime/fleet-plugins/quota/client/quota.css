@@ -788,23 +788,86 @@
   cursor: pointer;
 }
 
-/* 「도구모음에 요약 표시」 — 갱신 줄 아래 한 줄. 설정 섹션과 같은 값을 바꾼다. */
+/* 「도구모음에 표시」 — 갱신 줄 아래 한 줄. 공급자마다 글리프 하나가 켬/끔을 진다. 설정 섹션과 같은 값을 바꾼다. */
 .quota-footer__toolbar {
   margin-top: 6px;
   font-family: var(--font-body);
 }
 
+.quota-footer__toolbar-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quota-toolbar-picks {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-left: auto;
+}
+
+/* 꺼진 글리프는 무채색으로 물러나고, 켜진 글리프는 제 색과 어두운 면·rim을 얻는다. */
+.quota-toolbar-pick {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide);
+}
+
+.quota-toolbar-pick svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.4;
+  filter: grayscale(1);
+  transition: opacity var(--duration-fast) var(--ease-glide), filter var(--duration-fast) var(--ease-glide);
+}
+
+.quota-toolbar-pick:hover,
+.quota-toolbar-pick:focus-visible {
+  background: var(--surface-glass);
+  outline: none;
+}
+
+.quota-toolbar-pick:hover svg,
+.quota-toolbar-pick:focus-visible svg {
+  opacity: 0.75;
+}
+
+.quota-toolbar-pick:focus-visible {
+  border-color: var(--brass);
+}
+
+.quota-toolbar-pick[aria-pressed="true"] {
+  border-color: var(--surface-rim-strong);
+  background: var(--ink-deep);
+}
+
+.quota-toolbar-pick[aria-pressed="true"] svg {
+  opacity: 1;
+  filter: none;
+}
+
 /* ── 도구모음 요약(Bridge) ─────────────────────────────────────────
-   도구 아이콘(.right-rail-ico)과 같은 26px 칸 문법 — 겨눔은 유리 면, 켜짐(패널 열림)은 어두운 면 · rim-strong
-   테두리 · 아래 brass 선. 폭은 고정이다: 값이 바뀌거나 공급자가 바뀌어도 도구모음의 자연 폭이 흔들리지 않아야
-   상단 바의 가운데 정렬 판정이 그대로 선다. 숫자의 색은 패널 미터와 같은 판정의 신호 채널(warn·coral)만 탄다. */
+   도구 아이콘(.right-rail-ico)과 같은 26px 높이 — 겨눔만 유리 면을 입는다. 패널이 열려 있음은 레일의 사용 한도
+   아이콘이 이미 말하므로 요약은 도구모음 바탕 위에 그대로 선다. 공급자 칸은
+   글리프에 숫자를 바짝 붙인 내용 폭이라, 자릿수가 바뀔 때만 몇 px 움직인다. 숫자는 고정폭 숫자라 같은 자릿수
+   안에서는 흔들리지 않는다. 숫자의 색은 패널 미터와 같은 판정의 신호 채널(warn·coral)만 탄다. */
 .quota-toolbar-summary {
   position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 4px;
-  width: 54px;
+  gap: 8px;
   height: 26px;
   padding: 0 5px;
   border: 1px solid transparent;
@@ -825,21 +888,11 @@
   outline: none;
 }
 
-.quota-toolbar-summary.is-active {
-  color: var(--brass-ink);
-  border-color: var(--surface-rim-strong);
-  background: var(--ink-deep);
-}
-
-.quota-toolbar-summary.is-active::before {
-  position: absolute;
-  right: 10px;
-  bottom: -1px;
-  left: 10px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--brass);
-  content: "";
+.quota-toolbar-summary__cell {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
 }
 
 .quota-toolbar-summary__mark {
@@ -857,7 +910,7 @@
 
 .quota-toolbar-summary__lines {
   display: grid;
-  flex: 1;
+  flex: none;
   justify-items: end;
   min-width: 0;
   color: var(--text-secondary);
@@ -893,7 +946,9 @@
   .quota-card__collapse,
   .quota-card__rest,
   .quota-fold,
-  .quota-toolbar-summary {
+  .quota-toolbar-summary,
+  .quota-toolbar-pick,
+  .quota-toolbar-pick svg {
     transition: none;
   }
 }
