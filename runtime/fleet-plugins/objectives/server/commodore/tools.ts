@@ -8,7 +8,7 @@ import { z } from "zod";
 
 import { refuse, text } from "../views.js";
 import type { CommodoreStore } from "./store.js";
-import type { CommodoreSource } from "./types.js";
+import { COMMODORE_PATROL_MINUTES, patrolIntervalMs, type CommodoreSource } from "./types.js";
 
 /**
  * 사령관 전용 도구 `commodore` — createSession 의 tools.custom 으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.
@@ -18,8 +18,8 @@ import type { CommodoreSource } from "./types.js";
  */
 
 export const COMMODORE_TOOL_GROUP = "commodore";
-/** 순찰 예약 상한 — 감독자가 보장하는 값과 같다. 사령관에게는 "예약이 없으면 60분 안에 깨운다" 는 사실만 알린다. */
-export const MAX_WAKE_MINUTES = 60;
+/** 순찰 예약이 받는 가장 먼 값 — 순찰 간격 사다리의 끝. 실제 상한은 사람이 고른 간격이고, 넘는 값은 그 간격으로 줄인다. */
+export const MAX_WAKE_MINUTES: number = Math.max(...COMMODORE_PATROL_MINUTES);
 const MAX_FILE_BYTES = 64 * 1024;
 const MAX_LOG = 100;
 const MAX_ISSUES = 100;
@@ -80,10 +80,12 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly P
       const items = scoped.slice(0, limit ?? 50).map((item) => ({ id: item.id, at: stamp(item.at), source: item.source, text: item.text }));
       return { items, truncated: items.length < scoped.length, ...(since && end < 0 ? { sinceUnknown: true } : {}), sources: sources.map(sourceView) };
     }),
-    tool("next_wake", `Schedule your next patrol: when (minutes from now, at most ${MAX_WAKE_MINUTES}) and a one-line reason. Without a schedule you are woken within ${MAX_WAKE_MINUTES} minutes anyway. Board events, the directive, intel and the person's message wake you earlier regardless.`, z.object({ inMinutes: z.number().min(1).max(MAX_WAKE_MINUTES), reason: z.string().trim().min(1).max(200) }).strict(), ({ inMinutes, reason }) => {
-      const at = now() + Math.round(inMinutes * 60_000);
+    tool("next_wake", "Schedule your next patrol: when (minutes from now) and a one-line reason. The person sets the patrol interval: you can patrol sooner but not later, and a later time is shortened to the interval (the result gives the time actually set and the interval). Without a schedule you are woken one interval after your turn ends. Board events, the directive, intel and the person's message wake you earlier regardless.", z.object({ inMinutes: z.number().min(1).max(MAX_WAKE_MINUTES), reason: z.string().trim().min(1).max(200) }).strict(), ({ inMinutes, reason }) => {
+      const intervalMinutes = patrolIntervalMs(state()) / 60_000;
+      const minutes = Math.min(inMinutes, intervalMinutes);
+      const at = now() + Math.round(minutes * 60_000);
       options.onNextWake(at, reason);
-      return { at: stamp(at), reason };
+      return { at: stamp(at), reason, patrolIntervalMinutes: intervalMinutes, ...(minutes < inMinutes ? { shortened: true } : {}) };
     }),
     tool("read_file", "Read a UTF-8 text file of the Theater (repository) by path relative to its root, read-only. Large files are cut at 64 KiB with truncated: true. Symbolic links that leave the Theater are refused.", z.object({ path: z.string().min(1).max(1_024), offset: z.number().int().nonnegative().optional() }).strict(), async ({ path: requested, offset }) => {
       const file = containedPath(options.theaterRoot, requested);

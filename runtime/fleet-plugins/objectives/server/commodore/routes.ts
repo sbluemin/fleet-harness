@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { ObjectiveStoreError } from "../store.js";
 import type { CommodoreStore } from "./store.js";
-import { COMMODORE_EFFORTS, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
+import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
 
 /**
  * 「사령관 기록」 서랍이 부르는 라우트 — 전부 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
@@ -101,6 +101,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       if ((model === null) !== (effort === null)) throw new ObjectiveStoreError("invalid_request");
       return view(theaterId, store.setCoordinates(theaterId, model !== null && effort !== null ? { model, effort } : null));
     }) },
+    { name: "commodore/patrol", method: "POST", summary: "Set or clear a Theater's Commodore patrol interval in minutes; cleared falls back to 60. The Commodore can patrol sooner but not later; board events, the directive, intel and messages still wake it at once.", handler: json(theaterRef.extend({ minutes: commodorePatrolSchema.nullable() }).strict(), ({ theaterId, minutes }) => { read(theaterId); return view(theaterId, store.setPatrol(theaterId, minutes)); }) },
     { name: "commodore/message", method: "POST", summary: "Send the person's message to a Theater's Commodore; it is kept in the log and wakes the next turn.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT) }).strict(), ({ theaterId, text }) => { read(theaterId); return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text }) }; }) },
     { name: "commodore/retry", method: "POST", summary: "Retry now instead of waiting for the next scheduled retry after a failed Commodore turn.", handler: json(theaterRef, async ({ theaterId }) => {
       read(theaterId);

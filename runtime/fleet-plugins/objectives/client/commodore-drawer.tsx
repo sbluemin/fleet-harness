@@ -7,7 +7,7 @@ import "@fleet-console/markdown/styles.css";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 
-import type { CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { clockTime } from "./commodore-row.js";
 import {
   addCommodoreIntel,
@@ -22,6 +22,7 @@ import {
   saveCommodoreDirective,
   setCommodoreAutonomy,
   setCommodoreCoordinates,
+  setCommodorePatrol,
   setCommodoreTab,
   subscribeCommodoreMapInsets,
   useCommodore,
@@ -40,6 +41,11 @@ const DRAWER_GAP = 8;
 const DRAWER_MARGIN = 8;
 /** 보드 읽기는 행위가 아니다 — 기록의 행위 칩에는 보드를 바꾼 호출만 선다. */
 const READ_ACTIONS = new Set(["view", "read", "list", "get", "inbox", "fleet", "history", "evidence"]);
+/** 순찰 간격 사다리 — 서버 `COMMODORE_PATROL_MINUTES` 와 같다(서버 모듈은 브라우저 번들에 싣지 않는다). */
+const PATROL_STEPS: readonly CommodorePatrolMinutes[] = [15, 30, 60, 120, 240, 480];
+const DEFAULT_PATROL: CommodorePatrolMinutes = 60;
+const PATROL_MENU_WIDTH = 248;
+const PATROL_MENU_MARGIN = 12;
 
 /** 상주 기여 — 서랍은 사령관 줄이 접혀 사라져도 열린 채로 남는다. */
 export function CommodoreDrawerHost({ language }: PersistentComponentContext) {
@@ -160,6 +166,14 @@ function CommodoreDrawer({ theaterId, tab, openedAt, language }: { readonly thea
           <p className="objectives-commodore-drawer-name">{label ? t("objectives.commodore.drawer.title", { theater: label }) : t("objectives.commodore.name")}</p>
           <p className="objectives-commodore-drawer-sub">{status}</p>
         </div>
+        {view ? (
+          <PatrolControl
+            t={t}
+            minutes={view.state.patrolMinutes ?? DEFAULT_PATROL}
+            nextPatrolAt={on && run?.phase === "idle" ? run.nextWakeAt : undefined}
+            onPick={(minutes) => { setFailure(null); void setCommodorePatrol(theaterId, minutes === DEFAULT_PATROL ? null : minutes).catch(fail); }}
+          />
+        ) : null}
         {view && model ? (
           <LaunchControl
             t={t}
@@ -220,6 +234,111 @@ function CommodoreDrawer({ theaterId, tab, openedAt, language }: { readonly thea
       </footer>
     </section>,
     document.body,
+  );
+}
+
+/* ── 순찰 간격 ───────────────────────────────────────────────────────── */
+
+function patrolWord(t: T, minutes: number): string {
+  if (minutes < 60) return t("objectives.commodore.patrol.minutes", { n: minutes });
+  return minutes === 60 ? t("objectives.commodore.patrol.hour") : t("objectives.commodore.patrol.hours", { n: minutes / 60 });
+}
+
+const PatrolGlyph = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="8" cy="8.5" r="5.25" />
+    <path d="M8 5.75V8.5l1.9 1.2M6.5 1.75h3" />
+  </svg>
+);
+
+const CheckGlyph = () => <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.75 6.25 5 8.5l4.25-5" /></svg>;
+
+/**
+ * 순찰 간격 — 모델 칩 옆의 같은 문법(글리프 + 낱말)이고, 누르면 같은 유리 메뉴에 사다리가 선다. 고르면 곧바로 저장하고 닫힌다.
+ * 메뉴는 body 포털이라 서랍의 Esc(서랍 닫기)에 닿지 않게 키 입력을 메뉴 안에서 끝낸다.
+ */
+function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; readonly minutes: number; readonly nextPatrolAt: number | undefined; readonly onPick: (minutes: CommodorePatrolMinutes) => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<CSSProperties>({});
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const focusOnOpen = useRef(false);
+  const word = patrolWord(t, minutes);
+  const title = [t("objectives.commodore.patrol.title", { interval: word }), nextPatrolAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(nextPatrolAt) }) : null].filter(Boolean).join(" · ");
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const left = Math.max(PATROL_MENU_MARGIN, Math.min(rect.right - PATROL_MENU_WIDTH, window.innerWidth - PATROL_MENU_WIDTH - PATROL_MENU_MARGIN));
+    const height = menuRef.current?.offsetHeight ?? 300;
+    const below = rect.bottom + 6;
+    const top = below + height > window.innerHeight - PATROL_MENU_MARGIN ? Math.max(PATROL_MENU_MARGIN, rect.top - height - 6) : below;
+    setPos({ left, top, width: PATROL_MENU_WIDTH });
+    if (focusOnOpen.current) {
+      focusOnOpen.current = false;
+      menuRef.current?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')?.focus();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [open]);
+
+  const close = (refocus: boolean) => { setOpen(false); if (refocus) triggerRef.current?.focus({ preventScroll: true }); };
+  const onMenuKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? [])];
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    const move = (next: number) => { event.preventDefault(); items[(next + items.length) % items.length]?.focus(); };
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); }
+    else if (event.key === "ArrowDown") move(index + 1);
+    else if (event.key === "ArrowUp") move(index < 0 ? items.length - 1 : index - 1);
+    else if (event.key === "Home") move(0);
+    else if (event.key === "End") move(items.length - 1);
+    else if (event.key === "Tab") close(true);
+  };
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="objectives-launch objectives-commodore-patrol"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${t("objectives.commodore.patrol.aria")} · ${word}`}
+        title={title}
+        onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); focusOnOpen.current = true; setOpen(true); } }}
+        onClick={(event) => { focusOnOpen.current = event.detail === 0; setOpen((value) => !value); }}
+      >
+        <span className="objectives-commodore-patrol-glyph"><PatrolGlyph /></span>
+        <span className="objectives-launch-model">{word}</span>
+      </button>
+      {open ? createPortal(
+        <div ref={menuRef} className="objectives-menu objectives-commodore-patrol-menu" role="menu" aria-label={t("objectives.commodore.patrol.aria")} style={pos} onKeyDown={onMenuKey}>
+          <div className="objectives-menu-head">
+            <b>{t("objectives.commodore.patrol.head")}</b>
+            <span>{t("objectives.commodore.patrol.hint")}</span>
+          </div>
+          {PATROL_STEPS.map((step) => {
+            const active = step === minutes;
+            return (
+              <button key={step} type="button" role="menuitemradio" aria-checked={active} className={`objectives-menu-item${active ? " is-active" : ""}`} onClick={() => { if (!active) onPick(step); close(true); }}>
+                <span className="objectives-menu-label">{patrolWord(t, step)}</span>
+                {step === DEFAULT_PATROL ? <span className="objectives-menu-hint">{t("objectives.commodore.patrol.default")}</span> : null}
+                <span className="objectives-menu-chev objectives-commodore-patrol-check" aria-hidden="true">{active ? <CheckGlyph /> : null}</span>
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      ) : null}
+    </>
   );
 }
 

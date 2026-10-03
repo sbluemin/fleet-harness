@@ -7,20 +7,21 @@ import type { Objective, ObjectiveEvent } from "../types.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
-import { EMPTY_RUN_TOTALS, type CommodoreCoordinates, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
+import { DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, patrolIntervalMs, type CommodoreCoordinates, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
 
 /**
  * 감독자 — Theater 마다 하나. 사령관 세션은 턴이 끝나면 쉬고, 끝없이 도는 것은 이 감독자가 보장한다.
  *
  * 깨울 이유(보드 사건·지시·정보·사람의 메시지·정체·순찰·빈 보드·재시작)를 모아 몇 초 뒤 한 턴으로 보내고, 턴 중에 온 이유는
- * 다음 턴 하나로 합친다. 순찰은 사령관이 `next_wake` 로 예약하되 60분 상한을 지키고, 턴 오류는 1·5·15분 뒤 재시도한 뒤 60분
+ * 다음 턴 하나로 합친다. 순찰은 사령관이 `next_wake` 로 예약하되 사람이 고른 순찰 간격(기본 60분)을 넘지 않고, 턴 오류는 1·5·15분 뒤 재시도한 뒤 60분
  * 간격으로 계속한다(자율 운영은 꺼지지 않는다). 문맥이 길어지면 다음 깨움에서 세션을 교대하고(새 세션 + 최근 행위 요약),
  * 플러그인 등록 때 켜진 Theater 를 복원한다. 멈추는 것은 둘뿐 — 글리프(자율 운영) 끔, 실험 기능 끔.
  *
- * 상한·간격·교대 비율은 감독자 내부 값이다. 사용자 설정 노브로 두지 않는다.
+ * 순찰 간격만 사람의 노브다(서랍). 재시도 간격·모으는 시간·교대 비율은 감독자 내부 값이다.
  */
 
-export const PATROL_CEILING_MS = 60 * 60_000;
+/** 저장값이 없을 때의 순찰 간격. */
+export const DEFAULT_PATROL_MS = DEFAULT_PATROL_MINUTES * 60_000;
 export const RETRY_DELAYS_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_000];
 export const RETRY_STEADY_MS = 60 * 60_000;
 /** 깨움 이유를 모으는 시간. */
@@ -125,6 +126,10 @@ interface Runner {
   stopping: boolean;
   /** 턴 중에 사령관이 순찰을 예약했다. */
   patrolSet: boolean;
+  /** 사령관이 `next_wake` 로 고른 시각과 이유 — 순찰 간격이 바뀌면 이 시각을 새 간격에 다시 맞춘다. 기본 순찰이면 null. */
+  patrolRequest: { readonly at: number; readonly reason: string } | null;
+  /** 마지막 턴이 끝난 시각 — 기본 순찰은 여기서 한 간격 뒤다. */
+  lastTurnAt: number;
   lastInputTokens: number;
   coordinates: CommodoreCoordinates | null;
   language: "en" | "ko";
@@ -191,10 +196,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));
   };
 
+  const patrolInterval = (theaterId: string) => patrolIntervalMs(deps.store.read(theaterId));
   const schedulePatrol = (runner: Runner, at: number, reason: string) => {
-    const bounded = Math.min(at, now() + PATROL_CEILING_MS);
+    const bounded = Math.max(now(), Math.min(at, now() + patrolInterval(runner.theaterId)));
     runner.nextWakeAt = bounded;
-    schedule(runner, "patrol", bounded - now(), () => { runner.nextWakeAt = undefined; wake(runner, "patrol", reason ? { detail: reason } : {}); });
+    schedule(runner, "patrol", bounded - now(), () => { runner.nextWakeAt = undefined; runner.patrolRequest = null; wake(runner, "patrol", reason ? { detail: reason } : {}); });
     publish(runner);
   };
 
@@ -216,7 +222,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const session = createCommodoreSession({
       theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates,
       boardTools: deps.boardTools(runner.theaterId), now,
-      onNextWake: (at, reason) => { runner.patrolSet = true; schedulePatrol(runner, at, reason); },
+      onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       ...(deps.execute ? { execute: deps.execute } : {}),
     });
     await session.start();
@@ -277,8 +283,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         return;
       }
       runner.retryAttempt = 0;
+      runner.lastTurnAt = now();
       setPhase(runner, "idle");
-      if (!runner.patrolSet && !runner.patrol) schedulePatrol(runner, now() + PATROL_CEILING_MS, "");
+      if (!runner.patrolSet && !runner.patrol) { runner.patrolRequest = null; schedulePatrol(runner, now() + patrolInterval(runner.theaterId), ""); }
     })().finally(() => {
       runner.inflight = null;
       // 턴 중에 온 이유는 다음 턴 하나로.
@@ -304,7 +311,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const start = (theaterId: string, reason: WakeCode) => {
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, lastInputTokens: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     wake(runner, reason);
@@ -346,6 +353,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (event.change === "directive") wake(runner, "directive", { detail: `rev ${event.state.directive.rev}` });
       else if (event.change === "intel") wake(runner, "intel", { bump: true });
       else if (event.change === "coordinates") { runner.rotateNext ??= "replaced"; }
+      else if (event.change === "patrol" && runner.patrol) {
+        // 잡혀 있는 순찰을 새 간격에 다시 맞춘다 — 사령관이 고른 시각은 그대로 두되 새 간격을 넘지 않게, 기본 순찰은 마지막 턴에서 한 간격 뒤로.
+        const request = runner.patrolRequest;
+        schedulePatrol(runner, request ? request.at : runner.lastTurnAt + patrolInterval(runner.theaterId), request?.reason ?? "");
+      }
       return;
     }
     if (event.op === "transcript" && event.entry.kind === "message" && runner) { runner.messages.push(event.entry.text); wake(runner, "message"); }

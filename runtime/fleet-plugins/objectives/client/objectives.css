@@ -1582,6 +1582,15 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-commodore-drawer-sub { margin: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 1.4; font-variant-numeric: tabular-nums; }
 .objectives-commodore-drawer-head .objectives-launch { flex: none; }
 .objectives-commodore-model-head { color: var(--text-tertiary); font-size: var(--t-2xs); }
+/* 순찰 간격 — 모델 칩과 같은 트리거 문법. 글리프는 공급자 글리프 자리와 같은 크기·잉크이고, 메뉴는 같은 유리 메뉴다. */
+.objectives-commodore-patrol { gap: 5px; font-variant-numeric: tabular-nums; }
+.objectives-commodore-patrol-glyph { display: inline-grid; place-items: center; width: 14px; height: 14px; color: var(--text-tertiary); transition: color var(--duration-fast); }
+.objectives-commodore-patrol-glyph svg { width: 14px; height: 14px; }
+.objectives-commodore-patrol:hover .objectives-commodore-patrol-glyph, .objectives-commodore-patrol[aria-expanded="true"] .objectives-commodore-patrol-glyph { color: var(--brass-ink); }
+.objectives-commodore-patrol-menu .objectives-menu-head span { font-size: var(--t-2xs); }
+.objectives-commodore-patrol-menu .objectives-menu-item { font-variant-numeric: tabular-nums; }
+.objectives-commodore-patrol-menu .objectives-menu-hint { flex: none; }
+.objectives-commodore-patrol-check { color: var(--brass-ink); }
 .objectives-commodore-close {
   display: grid; place-items: center; flex: none;
   width: 26px; height: 26px; padding: 0;

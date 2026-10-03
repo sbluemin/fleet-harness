@@ -269,6 +269,8 @@ export const addCommodoreIntel = (theaterId: string, text: string) => write(thea
 export const removeCommodoreIntel = (theaterId: string, intelId: string) => write(theaterId, "/commodore/intel/remove", { intelId });
 export const setCommodoreCoordinates = (theaterId: string, coordinates: { readonly model: string; readonly effort: string } | null) =>
   write(theaterId, "/commodore/coordinates", coordinates ? { model: coordinates.model, effort: coordinates.effort } : { model: null, effort: null });
+/** 순찰 간격(분) — null 은 기본으로 되돌린다. */
+export const setCommodorePatrol = (theaterId: string, minutes: number | null) => write(theaterId, "/commodore/patrol", { minutes });
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
 
 export async function messageCommodore(theaterId: string, text: string): Promise<void> {

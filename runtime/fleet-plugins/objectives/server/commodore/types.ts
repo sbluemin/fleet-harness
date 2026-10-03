@@ -26,6 +26,15 @@ export const MAX_TRANSCRIPT_PAGE = 500;
 /** 기록 본문 조각 상한 — 한 항목의 text 는 이 길이로 잘린다. */
 export const MAX_TRANSCRIPT_TEXT = 16_000;
 
+/**
+ * 순찰 간격(분) — 사람이 서랍에서 고르는 사다리. 사령관은 `next_wake` 로 이보다 일찍 깨어날 수 있지만 넘기지 못하고,
+ * 예약 없이 턴을 마치면 이 간격 뒤에 깨어난다. 보드 사건·지시·정보·메시지는 간격과 무관하게 바로 깨운다.
+ */
+export const COMMODORE_PATROL_MINUTES = [15, 30, 60, 120, 240, 480] as const;
+export const DEFAULT_PATROL_MINUTES = 60;
+export type CommodorePatrolMinutes = (typeof COMMODORE_PATROL_MINUTES)[number];
+export const commodorePatrolSchema = z.literal(COMMODORE_PATROL_MINUTES);
+
 const ids = z.string().min(1).max(128);
 /** Theater 별 강도는 세션이 받는 사다리 전체다 — 지휘관 LaunchControl 의 강도 트랙과 같다. 실험 기능 행의 기본값은 3단으로 남는다. */
 export const COMMODORE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const satisfies readonly AgentEffort[];
@@ -65,6 +74,8 @@ export const commodoreStateSchema = z.object({
   /** Theater 별 모델·강도. 없으면 실험 기능 행의 기본 좌표. 다음 턴부터 적용된다. */
   model: modelId.optional(),
   effort: effort.optional(),
+  /** 순찰 간격(분). 없으면 기본 60분이다. */
+  patrolMinutes: commodorePatrolSchema.optional(),
   /** 사람이 이 Theater 를 보는 언어 — 서랍의 요청이 남긴다. 사령관 기록의 언어이고, 없으면 목표의 언어·영어 순이다. */
   language: z.enum(["en", "ko"]).optional(),
   /** 누적 운영 셈 — 세션 번호(교대·재시작마다 1 씩), 누적 비용, 보드에 쓴 행위 수. 감독자가 올린다. */
@@ -153,4 +164,9 @@ export type CommodoreEvent =
   | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
   | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus };
 
-export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "language" | "run";
+export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "patrol" | "language" | "run";
+
+/** Theater 의 순찰 간격(ms) — 저장값, 없으면 기본. */
+export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number {
+  return (state?.patrolMinutes ?? DEFAULT_PATROL_MINUTES) * 60_000;
+}

@@ -15,6 +15,7 @@ import {
   MAX_TRANSCRIPT_PAGE,
   type CommodoreCoordinates,
   type CommodoreEvent,
+  type CommodorePatrolMinutes,
   type CommodoreIntel,
   type CommodoreRunTotals,
   type CommodoreSource,
@@ -60,6 +61,8 @@ export interface CommodoreStore {
   removeIntel(theaterId: string, intelId: string): CommodoreState;
   setSources(theaterId: string, sources: readonly Omit<CommodoreSource, "id">[]): CommodoreState;
   setCoordinates(theaterId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
+  /** 순찰 간격 — null 은 기본(60분)으로 되돌린다. 같으면 아무 일도 없다. */
+  setPatrol(theaterId: string, minutes: CommodorePatrolMinutes | null): CommodoreState;
   /** 사람이 이 Theater 를 보는 언어를 남긴다 — 같으면 아무 일도 없다. */
   setLanguage(theaterId: string, language: "en" | "ko"): CommodoreState;
   /** 누적 셈을 더한다(세션 +1, 비용 +, 행위 +). 감독자가 턴 결과마다 부른다. */
@@ -173,6 +176,12 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const current = load(theaterId);
       const { model: _model, effort: _effort, ...rest } = current;
       return commit(theaterId, coordinates ? { ...rest, model: coordinates.model, effort: coordinates.effort } : rest, "coordinates");
+    },
+    setPatrol(theaterId, minutes) {
+      const current = load(theaterId);
+      if ((current.patrolMinutes ?? null) === minutes) return current;
+      const { patrolMinutes: _patrol, ...rest } = current;
+      return commit(theaterId, minutes === null ? rest : { ...rest, patrolMinutes: minutes }, "patrol");
     },
     setLanguage(theaterId, language) {
       const current = load(theaterId);

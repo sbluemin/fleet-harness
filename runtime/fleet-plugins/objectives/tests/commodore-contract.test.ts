@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { commodoreActive, createCommodoreRoutes } from "../server/commodore/routes.js";
 import { createCommodoreSession } from "../server/commodore/session.js";
 import { createCommodoreStore } from "../server/commodore/store.js";
-import { COALESCE_MS, createCommodoreSupervisor, PATROL_CEILING_MS, RETRY_DELAYS_MS, STALL_CHECK_MS, STALL_MS } from "../server/commodore/supervisor.js";
+import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, RETRY_DELAYS_MS, STALL_CHECK_MS, STALL_MS } from "../server/commodore/supervisor.js";
 import type { CommodoreEvent } from "../server/commodore/types.js";
 import type { Objective, ObjectiveEvent } from "../server/types.js";
 
@@ -214,7 +214,9 @@ describe("commodore session", () => {
     expect(((await call("intel", { since: newest.id })).structuredContent as { items: unknown[] }).items).toEqual([]);
     expect((await call("next_wake", { inMinutes: 30, reason: "patrol after the merge" })).isError).toBe(false);
     expect(wakes).toEqual([{ at: 10_000 + 30 * 60_000, reason: "patrol after the merge" }]);
-    expect((await call("next_wake", { inMinutes: 90, reason: "too far" })).isError).toBe(true);
+    // 사람이 고른 순찰 간격(기본 60분)을 넘는 예약은 거절하지 않고 간격으로 줄인다.
+    expect((await call("next_wake", { inMinutes: 90, reason: "too far" })).structuredContent).toMatchObject({ patrolIntervalMinutes: 60, shortened: true });
+    expect(wakes.at(-1)).toEqual({ at: 10_000 + 60 * 60_000, reason: "too far" });
     expect((await call("read_file", { path: "src/a.ts" })).structuredContent).toMatchObject({ text: "export const a = 1;\n", truncated: false });
     expect((await call("read_file", { path: "link.txt" })).structuredContent).toMatchObject({ error: "unsafe_path" });
     expect((await call("read_file", { path: "../outside.txt" })).structuredContent).toMatchObject({ error: "unsafe_path" });
@@ -292,8 +294,13 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent[0]).toContain("Console restarted; the board is empty");
       const patrolAt = supervisor.status("t1")!.nextWakeAt!;
       expect(supervisor.status("t1")!.phase).toBe("idle");
-      expect(patrolAt).toBeGreaterThan(Date.now() + PATROL_CEILING_MS - COALESCE_MS - 100);
-      expect(patrolAt).toBeLessThanOrEqual(Date.now() + PATROL_CEILING_MS);
+      expect(patrolAt).toBeGreaterThan(Date.now() + DEFAULT_PATROL_MS - COALESCE_MS - 100);
+      expect(patrolAt).toBeLessThanOrEqual(Date.now() + DEFAULT_PATROL_MS);
+      // 사람이 순찰 간격을 고치면 잡혀 있던 순찰이 마지막 턴에서 새 간격 뒤로 옮겨지고, 기본으로 되돌리면 원래 시각이다.
+      h.store.setPatrol("t1", 15);
+      expect(supervisor.status("t1")!.nextWakeAt).toBeLessThanOrEqual(Date.now() + 15 * 60_000);
+      h.store.setPatrol("t1", null);
+      expect(supervisor.status("t1")!.nextWakeAt).toBe(patrolAt);
       expect(h.store.read("t1")!.run).toMatchObject({ session: 1, costUsd: 0.01 });
 
       // 지시·정보·메시지 — 몇 초 안의 이유는 한 턴으로, 정보는 누적 수로, 메시지는 본문째.
@@ -350,7 +357,7 @@ describe("commodore supervisor", () => {
       expect(supervisor.status("t1")).toMatchObject({ stalled: ["o1"] });
 
       // 순찰 — 사령관의 next_wake 가 없으면 60분 상한에서 깨운다.
-      await vi.advanceTimersByTimeAsync(PATROL_CEILING_MS + COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(DEFAULT_PATROL_MS + COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["patrol"]);
 
       // 오류 — 1·5·15분 뒤 재시도, 자율 운영은 그대로. 사람의 「지금 다시 시도」는 곧바로 한 턴.
@@ -392,7 +399,7 @@ describe("commodore supervisor", () => {
       expect(sessionEvents().at(-1)).toBe("stopped");
       expect(runs.at(-1)).toMatchObject({ op: "run", run: { phase: "off", reason: "autonomy off" } });
       h.store.addIntel("t1", { text: "f" });
-      await vi.advanceTimersByTimeAsync(PATROL_CEILING_MS);
+      await vi.advanceTimersByTimeAsync(DEFAULT_PATROL_MS);
       expect(sessions).toHaveLength(2);
       await supervisor.dispose();
     } finally { vi.useRealTimers(); }
