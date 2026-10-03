@@ -1,19 +1,27 @@
 import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
-import { sanitizeFoldedProviders, toggledFoldedProviders, type ProviderId } from "../provider-order.js";
+import { PROVIDER_ORDER_DEFAULT, sanitizeProviderSet, toggledProviderSet, type ProviderId } from "../provider-order.js";
 
 /**
- * 「도구모음 요약」에 세울 공급자 — 기본은 비어 있다(옵트인). 비어 있으면 요약은 칸째 사라진다.
- * 값은 Console 설정의 플러그인 문서(plugins.quota)에 산다. 카드 순서·접힘은 패널 상태라 플러그인
- * 저장소(quota/settings)에 따로 두고, 이 값은 사용자가 고르는 설정이라 설정 화면의 섹션과 패널 바닥의
- * 글리프 토글이 같은 이 한 값을 읽고 쓴다.
+ * 「도구모음 요약」에 세울 공급자. 값은 Console 설정의 플러그인 문서(plugins.quota)에 살고, 팝업 바닥의
+ * 글리프 줄이 읽고 쓴다.
+ *
+ * 저장값이 없거나(키 없음·배열 아님) 아직 읽지 못했으면 지원하는 공급자 전부다 — 첫 사용자도 요약을
+ * 본다. 저장된 배열은 그대로 따르고, 빈 배열은 "직접 모두 껐다"는 뜻이라 요약 대신 막대 글리프 하나만 선다.
  */
 export interface QuotaToolbarSetting {
-  /** 기본 순서로 정렬된 집합 — 표시 순서는 패널의 카드 순서를 따른다. */
+  /** 기본 순서로 정렬된 집합 — 표시 순서도 기본 순서다. */
   readonly toolbarProviders: readonly ProviderId[];
+  /** 플러그인 문서를 한 번이라도 읽었는가(실패도 읽은 것으로 친다) — 읽기 전에는 요약을 그리지 않는다. */
+  readonly loaded: boolean;
 }
 
-const DEFAULT_SETTING: QuotaToolbarSetting = { toolbarProviders: [] };
+const DEFAULT_SETTING: QuotaToolbarSetting = { toolbarProviders: PROVIDER_ORDER_DEFAULT, loaded: false };
+
+/** 저장된 값을 집합으로 읽는다. 키가 없거나 배열이 아니면 "고른 적 없음"이라 전부를 뜻한다. */
+export function storedToolbarProviders(value: unknown): readonly ProviderId[] {
+  return Array.isArray(value) ? sanitizeProviderSet(value) : PROVIDER_ORDER_DEFAULT;
+}
 
 let setting: QuotaToolbarSetting = DEFAULT_SETTING;
 let persisted: QuotaToolbarSetting = DEFAULT_SETTING;
@@ -35,11 +43,18 @@ export function connectQuotaToolbarSetting(next: ClientSettingsCapability): () =
   writeChain = next.read("quota").then((value) => {
     if (capability !== next) return;
     document_ = value ?? {};
-    persisted = { toolbarProviders: sanitizeFoldedProviders(value?.toolbarProviders) };
+    persisted = { toolbarProviders: storedToolbarProviders(value?.toolbarProviders), loaded: true };
     if (pendingWrites > 0) return;
     setting = persisted;
     emit();
-  }).catch(() => undefined);
+  }).catch(() => {
+    // 읽지 못해도 요약은 선다 — 기본(전부)으로 그리고, 다음 쓰기가 문서를 만든다.
+    if (capability !== next || setting.loaded) return;
+    persisted = { ...persisted, loaded: true };
+    if (pendingWrites > 0) return;
+    setting = persisted;
+    emit();
+  });
   return () => {
     if (capability === next) capability = null;
   };
@@ -58,13 +73,13 @@ export function subscribeQuotaToolbarSetting(listener: () => void): () => void {
 export function toggleQuotaToolbarProvider(id: ProviderId, shown: boolean): Promise<void> {
   const current = setting.toolbarProviders;
   if (current.includes(id) === shown) return Promise.resolve();
-  return writeQuotaToolbarProviders(toggledFoldedProviders(current, id));
+  return writeQuotaToolbarProviders(toggledProviderSet(current, id));
 }
 
 /** 낙관 반영 후 저장한다. 실패하면 마지막으로 저장된 값으로 되돌린다. 쓰기는 한 줄로 세운다. */
 function writeQuotaToolbarProviders(providers: readonly ProviderId[]): Promise<void> {
   pendingWrites += 1;
-  const next: QuotaToolbarSetting = { toolbarProviders: providers };
+  const next: QuotaToolbarSetting = { toolbarProviders: providers, loaded: true };
   setting = next;
   emit();
   const run = writeChain.then(async () => {

@@ -2,9 +2,9 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { FLEET_LINK_NATIVE } from "@fleet-console/link/core";
 import { CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
-import { Select } from "@fleet-console/sdk/react/browser";
 
 import { getT } from "./i18n.js";
+import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import { dropBrowserOpenRequest, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import "./browser-panel.css";
 
@@ -47,7 +47,6 @@ interface BrowserState {
   /** 새 Operation 의 브라우저가 시작하는 세션 — Console 전체의 설정. */
   readonly defaultProfile: string | null;
 }
-interface ImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | null; readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[] }
 interface Frame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number }
 interface ElementInfo { readonly ref?: string; readonly selector: string; readonly tag: string; readonly id: string | null; readonly classes: readonly string[]; readonly text: string; readonly role: string | null; readonly box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }; readonly component: string | null; readonly source: string | null; readonly styles: Record<string, string> }
 
@@ -222,24 +221,9 @@ const MonitorGlyph = () => glyph('<rect x="1.5" y="2.5" width="13" height="8.5" 
 const PhoneGlyph = () => glyph('<rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/><path d="M7 12.2h2"/>');
 const TabletGlyph = () => glyph('<rect x="2.5" y="1.5" width="11" height="13" rx="1.5"/><path d="M7 12.4h2"/>');
 const ReloadGlyph = () => glyph('<path d="M13 8A5 5 0 1 1 8 3"/><path d="M8 1v3M6.5 2.5 8 4l1.5-1.5"/>');
-const ImportGlyph = () => glyph('<path d="M8 2v8M4.8 6.8 8 10l3.2-3.2"/><path d="M2.5 10.5V12A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5v-1.5"/>');
-/* 세션의 정체 — 남는 것은 방패, 사라지는 것은 가림. 두 글리프의 대비가 표식 한 칸에서 읽혀야 한다. */
-const ProfileGlyph = () => glyph('<path d="M8 1.8 13 3.6v4.1c0 3-2 5.2-5 6.5-3-1.3-5-3.5-5-6.5V3.6z"/>');
-const EphemeralGlyph = () => glyph('<path d="M3 7.4 4.4 3.4h7.2L13 7.4"/><path d="M1.8 7.4h12.4"/><circle cx="5" cy="10.4" r="2"/><circle cx="11" cy="10.4" r="2"/><path d="M7 10.4h2"/>');
 /** 「새 Operation의 기본으로」 — 행 끝에 올렸을 때만 서는 핀. */
 const PinGlyph = () => glyph('<path d="M6.2 2.5h3.6l-.5 3.3 2 2v1.1H4.7V7.8l2-2z"/><path d="M8 8.9v4.5"/>');
 const EraseGlyph = () => glyph('<path d="M2.6 4.4h10.8"/><path d="M6.4 4.4V2.9h3.2v1.5"/><path d="M4 4.4l.6 8a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8"/>');
-/** Google Chrome 로고 — 브랜드 색은 브랜드의 것이라 토큰이 아닌 고정값이다. */
-const ChromeGlyph = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-    <circle cx="12" cy="12" r="11" fill="#ffffff" />
-    <path d="M12 1a11 11 0 0 1 9.53 5.5H12a5.5 5.5 0 0 0-4.76 2.75L3.47 4.7A11 11 0 0 1 12 1Z" fill="#db4437" />
-    <path d="M3.47 4.7 7.24 9.25a5.5 5.5 0 0 0 .96 6.3L4.1 20.1A11 11 0 0 1 3.47 4.7Z" fill="#0f9d58" />
-    <path d="M21.94 6.5a11 11 0 0 1-9.98 16.47 11 11 0 0 1-7.86-2.87l4.1-4.55a5.5 5.5 0 0 0 9.3-3.05h4.44Z" fill="#f4b400" />
-    <circle cx="12" cy="12" r="4.2" fill="#4285f4" stroke="#ffffff" strokeWidth="1.3" />
-  </svg>
-);
-const GlobeGlyph = () => glyph('<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>');
 
 /** 탭 아이콘 — 파비콘은 서버 프록시로 받고, 없거나 깨지면 지구본. */
 function TabIcon({ operationId, tab }: { readonly operationId: string; readonly tab: { readonly id: string; readonly favicon: string | null; readonly loading: boolean } }) {
@@ -312,7 +296,7 @@ function unavailableText(t: ReturnType<typeof getT>, reason: UnavailableReason |
 export function BrowserCaption({ context, services }: BrowserProps) {
   const t = getT(context.language ?? "en");
   const panel = useBrowserPanel(context.operationId);
-  const importUnavailable = document.documentElement.dataset.desktopPlatform === "win32";
+  const importUnavailable = chromeImportUnavailable();
   const [viewportMenu, setViewportMenu] = React.useState(false);
   const [profileMenu, setProfileMenu] = React.useState(false);
   // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
@@ -451,9 +435,7 @@ export function BrowserPanel({ context, services }: BrowserProps) {
   const [profileSwitch, setProfileSwitch] = React.useState<string | null | undefined>(undefined);
   const [clearingProfile, setClearingProfile] = React.useState(false);
   const [profileBusy, setProfileBusy] = React.useState(false);
-  const [importSources, setImportSources] = React.useState<ImportSources | null>(null);
-  const [importProfile, setImportProfile] = React.useState("");
-  const [importing, setImporting] = React.useState(false);
+  const [importSources, setImportSources] = React.useState<ChromeImportSources | null>(null);
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const nativeRef = React.useRef<HTMLDivElement | null>(null);
   const imageRef = React.useRef<HTMLImageElement | null>(null);
@@ -886,23 +868,17 @@ export function BrowserPanel({ context, services }: BrowserProps) {
   const setViewport = (preset: Viewport["preset"]) => { void run("viewport", { preset }); };
   // ---- Chrome 에서 가져오기 — 창을 든 기계의 Chrome 프로필을 셸이 세고, 고른 프로필의 쿠키를 이 Operation 의 세션에 넣는다 ----
   const openImport = async () => {
-    if (document.documentElement.dataset.desktopPlatform === "win32") return;
-    try {
-      const response = await fetch("/api/v1/browser/import-sources");
-      if (!response.ok) { setNotice(t("terminal.browser.requestFailed")); return; }
-      const sources = await response.json() as ImportSources;
-      if (!sources.available) { setNotice(sources.reason === "no_profiles" ? t("terminal.browser.import.noProfiles") : t("terminal.browser.import.chromeRequired")); return; }
-      setImportProfile(sources.profiles[0]?.id ?? "");
-      setImportSources(sources);
-    } catch { setNotice(t("terminal.browser.requestFailed")); }
+    if (chromeImportUnavailable()) return;
+    const loaded = await loadChromeImportSources(t);
+    if ("error" in loaded) { setNotice(loaded.error); return; }
+    setImportSources(loaded.sources);
   };
-  const runImport = async () => {
-    if (!importProfile) return;
-    setImporting(true);
-    try {
-      const result = await run<{ cookies: number }>("import", { profileId: importProfile });
-      if (result) { setImportSources(null); setInfo(t("terminal.browser.import.done", { count: String(result.cookies) })); }
-    } finally { setImporting(false); }
+  const runImport = async (profileId: string) => {
+    const result = await run<{ cookies: number }>("import", { profileId });
+    if (!result) return false;
+    setImportSources(null);
+    setInfo(t("terminal.browser.import.done", { count: String(result.cookies) }));
+    return true;
   };
   // ---- 세션 고르기 — 임시(null)이거나 내 프로필이거나. 세션은 살아 있는 뷰에 바꿔 끼울 수 없어 탭을 닫고 다시 연다 ----
   const applyProfile = async (next: string | null) => {
@@ -1020,37 +996,7 @@ export function BrowserPanel({ context, services }: BrowserProps) {
             {info.action ? <button type="button" className="op-browser__toast-action" onClick={() => { const action = info.action; if (!action) return; setInfo(null); action.run(); }}>{info.action.label}</button> : null}
           </div>
         ) : null}
-        {importSources ? (
-          <div className="op-browser__scrim" onClick={() => { if (!importing) setImportSources(null); }}>
-            <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t("terminal.browser.import.title")} onClick={(event) => event.stopPropagation()}>
-              <div className="op-browser__dialog-head">
-                <div><h3>{t("terminal.browser.import.title")}</h3><p>{t("terminal.browser.import.body")}</p></div>
-                <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.close")} disabled={importing} onClick={() => setImportSources(null)}>×</button>
-              </div>
-              <label className="op-browser__dialog-row">
-                <span className="op-browser__dialog-key">{t("terminal.browser.import.source")}</span>
-                <span className="op-browser__dialog-brand" aria-hidden="true"><ChromeGlyph /></span>
-                <span className="op-browser__select"><Select label="Google Chrome" value={importProfile} disabled={importing} onChange={(value) => setImportProfile(value)} options={importSources.profiles.map((profile) => ({ value: profile.id, label: `${profile.name}${profile.account ? ` · ${profile.account}` : ""}` }))} /></span>
-              </label>
-              <div className="op-browser__dialog-item">
-                <span className="op-browser__dialog-glyph" aria-hidden="true"><GlobeGlyph /></span>
-                <span><strong>{t("terminal.browser.import.cookies")}</strong><span className="op-browser__help">{t("terminal.browser.import.cookiesHelp")}</span></span>
-              </div>
-              {/* 쿠키가 어디로 들어가는지 — 영속 프로필이면 남고 임시 세션이면 탭과 함께 사라진다. */}
-              <div className="op-browser__dialog-item is-target">
-                <span className="op-browser__dialog-glyph" aria-hidden="true">{state?.profile ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
-                <span>
-                  <strong>{t(state?.profile ? "terminal.browser.import.intoProfile" : "terminal.browser.import.intoEphemeral")}</strong>
-                  <span className="op-browser__help">{t(state?.profile ? "terminal.browser.import.intoProfileHelp" : "terminal.browser.import.intoEphemeralHelp")}</span>
-                </span>
-              </div>
-              <div className="op-browser__dialog-actions">
-                <button type="button" className="op-browser__button" disabled={importing} onClick={() => setImportSources(null)}>{t("terminal.browser.import.cancel")}</button>
-                <button type="button" className="op-browser__button op-browser__button--primary" disabled={importing || !importProfile} onClick={() => void runImport()}>{importing ? t("terminal.browser.import.busy") : t("terminal.browser.import.run")}</button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        {importSources ? <ChromeImportDialog t={t} sources={importSources} persistent={Boolean(state?.profile)} onClose={() => setImportSources(null)} onImport={runImport} /> : null}
         {/* 세션 전환 — 전환은 열린 탭을 닫는 일이므로 무엇이 사라지는지 먼저 말한다. */}
         {profileSwitch !== undefined ? (
           <div className="op-browser__scrim" onClick={() => { if (!profileBusy) setProfileSwitch(undefined); }}>

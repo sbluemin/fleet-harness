@@ -14336,9 +14336,8 @@ body[data-codex-side="true"] .command-card {
   max-width: 100%;
 }
 
-/* SDK 연속값 행 — 트랙과 손잡이는 공유 `.fleet-slider`가 그리고, 여기서는 배치와 스테퍼만
-   소유한다. 스테퍼는 컨트롤 상태 어휘(--control-*)를 그대로 쓴다: 켜짐이나 상태가 아니라
-   조작 가능한 자리이므로 신호 토큰(aurora/warn/coral)은 쓰지 않는다. */
+/* SDK 연속값 행 — 트랙과 손잡이는 공유 `.fleet-slider`가 그리고, 여기서는 트랙·값·기본값의
+   배치만 소유한다. −/+ 스테퍼는 퇴역했다: 한 단계는 방향키, 큰 단계는 Shift+방향키가 맡는다. */
 .fc-settings-slider {
   display: flex;
   align-items: center;
@@ -14358,55 +14357,22 @@ body[data-codex-side="true"] .command-card {
   cursor: not-allowed;
 }
 
-.fc-settings-slider__stepper {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: var(--control-rest);
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  line-height: 1;
-  cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide),
-    color var(--duration-fast) var(--ease-glide);
-}
-
-.fc-settings-slider__stepper:hover:not(:disabled) {
-  border-color: transparent;
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-}
-
-.fc-settings-slider__stepper:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
-}
-
-.fc-settings-slider__stepper:disabled {
-  opacity: var(--control-disabled-opacity);
-  cursor: not-allowed;
-}
-
 /* 값은 tabular-nums라 끌 때 자리가 흔들리지 않고, 폭은 세 자리+단위를 담는 최소치로 고정한다.
-   색은 코어 슬라이더 값과 같은 brass-ink — 이 숫자는 "지금 실린 값"이라 위치 채널이다. */
+   Doctrine: 색은 본문색이다 — 위치는 이미 brass 채움과 손잡이가 말하고, 숫자까지 brass면 한 행에
+   brass가 두 번 서서 포커스 링과 구별되지 않는다. 숫자는 값을 읽는 글이다. */
 .fc-settings-slider__value {
   flex: none;
-  min-width: 46px;
-  color: var(--brass-ink);
+  min-width: 44px;
+  color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 /* 기본값으로 돌아가는 버튼 — Settings 전체의 한 모양. 예전에는 타이포그래피 카드가 34px, 부관 크기가
-   24px 버튼을 따로 가졌고, 겉모습 슬라이더는 더블클릭이라는 숨은 제스처였다. 스테퍼와 같은 28px 높이. */
+   24px 버튼을 따로 가졌고, 겉모습 슬라이더는 더블클릭이라는 숨은 제스처였다. 슬라이더 입력과 같은 28px 높이. */
 .fc-settings-reset {
   flex: none;
   height: 28px;
@@ -18590,68 +18556,118 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   overflow-wrap: anywhere;
 }
 
-/* 연속값을 고르는 하나의 문법 — Activity Rail의 불투명도와 설정의 후퇴 세기가 같은 트랙·손잡이를
-   쓴다. 채움 비율은 소비처가 --slider-fill로 싣고, 폭·정렬 같은 배치는 소비처가 따로 소유한다.
-   두 벌로 두면 같은 조작이 표면마다 다른 물건으로 보이고, 한쪽만 고쳐지는 날이 온다. */
+/* 연속값을 고르는 하나의 문법 — 설정의 연속값 행(흐리기·유리 효과·부관 크기)과 AI Gateway 압축
+   시점이 같은 손잡이를 쓴다. 채움 끝 위치는 소비처가 --slider-fill로 싣고, 폭·정렬 같은 배치는 소비처가
+   따로 소유한다. 두 벌로 두면 같은 조작이 표면마다 다른 물건으로 보이고, 한쪽만 고쳐지는 날이 온다.
+   Doctrine: 손잡이는 추론 강도 트랙(.effort-track-knob)과 같은 계기 면이다 — --gauge-face 20px 원형에
+   --gauge-face-lift 그림자. --text-primary를 쓰면 라이트에서 손잡이가 검은 점이 된다. 채움도 같은
+   --gauge-fill이라 라이트에서 brass가 계기 무게(--brass-deep)로 내려간다. */
 .fleet-slider {
+  /* 손잡이 상자는 28px이고 흰 면(20px)은 그 가운데 원이다. 남는 4px 띠가 포커스 링과 그 앞의 투명한
+     간격을 싣는다 — 썸 의사요소에는 outline이 그려지지 않고, box-shadow 간격은 바탕색을 칠해야 해서
+     유리 면 위에서 색 띠로 드러난다. 그림자는 상자가 아니라 면의 모양을 따르도록 drop-shadow로 진다. */
+  --slider-face: radial-gradient(circle, var(--gauge-face) 0 9.5px, transparent 10px);
+  --slider-face-focus: radial-gradient(circle, var(--gauge-face) 0 9.5px, transparent 10px 11.5px, var(--control-focus-ring) 12px 13.5px, transparent 14px);
   -webkit-appearance: none;
   appearance: none;
-  height: 16px;
+  height: 28px;
+  margin: 0;
   background: transparent;
   cursor: pointer;
 }
 
+/* 손잡이 상자의 중심은 트랙 양끝에서 14px 안쪽을 오가고 흰 면은 10px이라, 트랙을 끝까지 칠하면 끝값에서
+   막대가 면 밖으로 4px 비어져 나온다. 그래서 막대는 양끝 4px을 비워 칠하고, 둥근 끝은 원 두 개로 얹는다 —
+   트랙 상자 자체를 줄이면 손잡이가 오가는 폭도 같이 줄어 같은 자리가 남는다. 반원은 막대와 겹치지 않게
+   바깥 반쪽만 그린다(반투명 테두리색이 겹치면 진해진다). 왼쪽 끝은 언제나 채움 안이고 오른쪽 끝은 끝값에서
+   흰 면 아래로 들어가므로 두 반원의 색은 고정이다. */
 .fleet-slider::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 2px;
-  background: linear-gradient(to right, var(--brass) 0%, var(--brass) var(--slider-fill, 100%), var(--surface-rim-strong) var(--slider-fill, 100%), var(--surface-rim-strong) 100%);
+  height: 4px;
+  background:
+    radial-gradient(circle at 100% 50%, var(--gauge-fill) 0 1.5px, transparent 2px) left / 6px 100% no-repeat,
+    radial-gradient(circle at 0 50%, var(--surface-rim-strong) 0 1.5px, transparent 2px) right / 6px 100% no-repeat,
+    linear-gradient(to right, transparent 0 6px, var(--gauge-fill) 6px var(--slider-fill, 100%), var(--surface-rim-strong) var(--slider-fill, 100%) calc(100% - 6px), transparent calc(100% - 6px));
 }
 
 .fleet-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 12px;
-  height: 12px;
-  margin-top: -4.5px;
+  width: 28px;
+  height: 28px;
+  margin-top: -12px;
+  border: 0;
   border-radius: 50%;
-  background: var(--text-primary);
-  border: 1px solid var(--surface-rim-strong);
+  background: var(--slider-face);
+  filter: drop-shadow(var(--gauge-face-lift));
+  transition:
+    transform var(--duration-fast) var(--ease-spring),
+    filter var(--duration-fast) var(--ease-spring);
 }
 
 /* Firefox는 runnable-track 채움 그라데이션을 지원하지 않으므로 progress 의사요소로 병기한다. */
 .fleet-slider::-moz-range-track {
-  height: 3px;
+  height: 4px;
   border-radius: 2px;
   background: var(--surface-rim-strong);
 }
 
 .fleet-slider::-moz-range-progress {
-  height: 3px;
+  height: 4px;
   border-radius: 2px;
-  background: var(--brass);
+  background: var(--gauge-fill);
 }
 
 .fleet-slider::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  width: 28px;
+  height: 28px;
+  border: 0;
   border-radius: 50%;
-  background: var(--text-primary);
-  border: 1px solid var(--surface-rim-strong);
+  background: var(--slider-face);
+  filter: drop-shadow(var(--gauge-face-lift));
+  transition:
+    transform var(--duration-fast) var(--ease-spring),
+    filter var(--duration-fast) var(--ease-spring);
+}
+
+/* 쥘 수 있는 손잡이는 손이 닿으면 살짝 커진다 — 추론 강도 손잡이와 같은 1.1배. */
+.fleet-slider:not(:disabled):hover::-webkit-slider-thumb,
+.fleet-slider:not(:disabled):active::-webkit-slider-thumb {
+  transform: scale(1.1);
+  filter: drop-shadow(var(--gauge-face-lift-strong));
+}
+
+.fleet-slider:not(:disabled):hover::-moz-range-thumb,
+.fleet-slider:not(:disabled):active::-moz-range-thumb {
+  transform: scale(1.1);
+  filter: drop-shadow(var(--gauge-face-lift-strong));
 }
 
 .fleet-slider:focus-visible {
   outline: none;
 }
 
+/* Doctrine: 포커스 링은 트랙이 아니라 흰 손잡이 둘레에 2px 간격을 두고 선다 — 붙은 링은 흰 면과
+   brass가 맞닿아 손잡이가 커진 것처럼 읽히고, 트랙 전체 링은 카드 가장자리에서 잘린다. */
 .fleet-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 2px var(--brass);
+  background: var(--slider-face-focus);
 }
 
 .fleet-slider:focus-visible::-moz-range-thumb {
-  box-shadow: 0 0 0 2px var(--brass);
+  background: var(--slider-face-focus);
 }
 
-/* forced-colors 모드는 box-shadow 포커스 링을 제거하므로 outline으로 병기한다. */
+/* 엔진 전용 의사요소는 선택자 목록에 섞으면 모르는 엔진이 규칙 전체를 버리므로 따로 쓴다. */
+@media (prefers-reduced-motion: reduce) {
+  .fleet-slider::-webkit-slider-thumb {
+    transition: none;
+  }
+
+  .fleet-slider::-moz-range-thumb {
+    transition: none;
+  }
+}
+
+/* forced-colors 모드는 손잡이의 링과 그림자를 지우므로 입력 전체 outline으로 병기한다. */
 @media (forced-colors: active) {
   .fleet-slider:focus-visible {
     outline: 2px solid CanvasText;
@@ -19002,7 +19018,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 @media (forced-colors: active) {
   .global-settings-shortcut-chord,
   .settings-help-tip__glyph,
-  .fc-settings-slider__stepper,
   .fc-settings-reset,
   .codex-reader-tool,
   .expanded-surface-pane-close,

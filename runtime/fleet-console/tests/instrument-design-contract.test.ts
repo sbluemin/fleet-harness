@@ -58,7 +58,7 @@ const TERMINAL_CHAT_COMPOSER_PATH = new URL("../features/execution/client/agent/
 const TERMINAL_CHAT_COORDINATE_MENU_PATH = new URL("../features/execution/client/agent/chat/coordinate-menu.tsx", import.meta.url);
 const TERMINAL_CHAT_CSS_PATH = new URL("../features/execution/client/agent/chat/chat.css", import.meta.url);
 const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
-const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
+const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/quota-panel.tsx", import.meta.url);
 const FILE_EXPLORER_CSS_PATH = new URL("../../fleet-plugins/file-explorer/client/explorer.css", import.meta.url);
 const REPOSITORY_CSS_PATH = new URL("../../fleet-plugins/repository/client/repository.css", import.meta.url);
 const FONT_PICKER_CSS_PATH = new URL("../foundation/font-picker/styles.css", import.meta.url);
@@ -177,7 +177,7 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--whatsnew-delay",
   // Right Rail TSX injects the current panel width.
   "--right-rail-panel-width",
-  // Right Rail TSX injects the continuous opacity slider's filled-track percentage.
+  // SDK SettingsSlider injects the filled-track stop, aligned to the knob center.
   "--slider-fill",
   // Repository Rail TSX injects the user-resized workspace tree width.
   "--ws-tree-width",
@@ -1415,12 +1415,12 @@ describe("Instrument core design contract", () => {
       );
     }
     // 톤은 --provider-* 말고 다른 축에서 빌려오지 않는다 — --id-*를 빌리면 같은 공급자가
-    // Quota 레일과 다른 색으로 불린다.
+    // Quota 팝업과 다른 색으로 불린다.
     for (const [, body] of gatewayCss.matchAll(/\.ai-gateway-provider\.is-[a-z]+ \{([^}]*)\}/g)) {
       expect(body).toMatch(/var\(--provider-[a-z]+\)/);
     }
 
-    // Quota 레일은 Claude Code까지 세므로 한 공급자가 더 많다.
+    // Quota 팝업은 Claude Code까지 세므로 한 공급자가 더 많다.
     const quotaCss = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
     for (const provider of [...providers, "claude"]) {
       expect(quotaCss).toContain(`.quota-provider__mark--${provider} {\n  color: var(--provider-${provider});\n}`);
@@ -1518,19 +1518,19 @@ describe("Instrument core design contract", () => {
     expect(bar).toContain("overflow: hidden;");
   });
 
-  it("pins the quota legend as a footer-bounded disclosure that focus cannot hold open", () => {
+  it("pins the quota legend as a header-bounded disclosure that focus cannot hold open", () => {
     const css = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
     const panel = externalSource(QUOTA_PANEL_PATH).replace(/\r\n/g, "\n");
 
-    // 말풍선의 기준 상자는 버튼이 아니라 푸터다 — 레일은 240px까지 좁아지고 패널 슬롯은
-    // overflow:hidden이라, 버튼에 걸린 고정 폭은 좁은 레일에서 왼쪽이 잘려 읽히지 않는다.
-    const footer = css.match(/\.quota-footer \{[^}]*\}/)?.[0] ?? "";
-    expect(footer).toContain("position: relative;");
+    // 말풍선의 기준 상자는 버튼이 아니라 팝업 머리다 — 팝업은 좁은 창에서 뷰포트 폭까지
+    // 줄어들므로, 버튼에 걸린 고정 폭은 좁은 팝업에서 왼쪽이 잘려 읽히지 않는다.
+    const head = css.match(/^\.quota-head \{[^}]*\}/m)?.[0] ?? "";
+    expect(head).toContain("position: relative;");
     const legend = css.match(/^\.quota-legend \{[^}]*\}/m)?.[0] ?? "";
     expect(legend).not.toContain("position: relative;");
     const bubble = css.match(/\.quota-legend__bubble \{[^}]*\}/)?.[0] ?? "";
-    expect(bubble).toContain("left: 16px;");
-    expect(bubble).toContain("right: 16px;");
+    expect(bubble).toContain("left: 12px;");
+    expect(bubble).toContain("right: 12px;");
     expect(bubble).toContain("width: auto;");
     expect(bubble).toContain("max-width: 268px;");
 
@@ -1539,68 +1539,8 @@ describe("Instrument core design contract", () => {
     // 눈에 보이는 것과 접근성 트리가 서로를 부정한다.
     expect(css).not.toMatch(/\.quota-legend[^{}]*:focus-within/);
     expect(panel).toContain("aria-expanded={pinned}");
-    expect(panel).toContain('if (event.key === "Escape") setPinned(false);');
-  });
-
-  it("pins the quota card fold — one severity channel, an honest hide, a sibling control", () => {
-    // 접기는 "치워두기"가 아니라 "밀도 바꾸기"다. 쿼터는 이 패널 밖에 신호가 하나도 없어
-    // 접힌 행이 그 공급자의 유일한 통로이기 때문에, 접힘이 신호를 삼키는 순간 사용자는
-    // 자기가 접어둔 공급자가 말라가는 것을 어디서도 듣지 못한다.
-    const css = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
-    const panel = externalSource(QUOTA_PANEL_PATH).replace(/\r\n/g, "\n");
-
-    // (a) 접힌 행의 요약 막대는 창마다 한 줄이고, 각 막대가 자기 창의 판정으로 미터와 같은
-    // 채널을 탄다 — 심각도가 두 문법으로 갈리면 한 공급자가 접힘과 펼침에서 서로 다른 판정을
-    // 말하고, 행의 대표 판정을 물려받으면 한가한 창까지 위험색으로 칠해진다.
-    const spineBar = css.match(/^\.quota-fold-spine__bar \{[^}]*\}/m)?.[0] ?? "";
-    expect(spineBar).toContain("--meter-accent: var(--ink-fog);");
-    expect(spineBar).toContain("--meter-weight: var(--gauge-weight-quiet);");
-    expect(css).toMatch(/\.quota-fold-spine__bar--warning \{[^}]*--meter-accent: var\(--warn\);/);
-    expect(css).toMatch(/\.quota-fold-spine__bar--warning \{[^}]*--meter-weight: var\(--gauge-weight-warn\);/);
-    expect(css).toMatch(/\.quota-fold-spine__bar--critical \{[^}]*--meter-accent: var\(--coral\);/);
-    expect(css).toMatch(/\.quota-fold-spine__bar--critical \{[^}]*--meter-weight: var\(--gauge-weight-critical\);/);
-    expect(panel).toContain("className={`quota-fold-spine__bar quota-fold-spine__bar--${meterSeverity(bar)}`}");
-    // 묶음 컨테이너는 채널을 열지 않는다 — 열면 막대가 행의 판정을 물려받는 통로가 다시 생긴다.
-    const spine = css.match(/^\.quota-fold-spine \{[^}]*\}/m)?.[0] ?? "";
-    expect(spine).not.toContain("--meter-accent");
-    const spineFill = css.match(/\.quota-fold-spine__fill \{[^}]*\}/)?.[0] ?? "";
-    expect(spineFill).toContain("background: color-mix(in oklab, var(--meter-accent) var(--meter-weight), transparent);");
-    // 접힌 위험 카드의 테두리는 oklab에서 섞는다 — oklch는 coral(25°)과 hairline(245°)
-    // 사이의 짧은 호가 자주색을 지나, 실측에서 hue 309의 보라 테두리가 나왔다.
-    const alarm = css.match(/\.quota-card--alarm \{[^}]*\}/)?.[0];
-    expect(alarm).toBeDefined();
-    expect(alarm).toContain("color-mix(in oklab, var(--coral)");
-
-    // (b) 0fr은 상자를 없애지 않는다 — 높이 0의 내용은 접근성 트리에 그대로 남아
-    // 스크린리더에는 접은 적 없는 카드로 읽힌다. visibility가 눈과 트리를 맞춘다.
-    const rest = css.match(/\.quota-body--compact \.quota-card__rest,\n\.quota-card--folded \.quota-card__rest \{[^}]*\}/)?.[0] ?? "";
-    expect(rest).toContain("visibility: hidden;");
-    expect(css).toMatch(/\.quota-body--compact \.quota-card__collapse,\n\.quota-card--folded \.quota-card__collapse \{\n  grid-template-rows: 0fr;/);
-    // 접힌 밀도는 두 카드형을 이름으로 다 집어야 한다 — 한 클래스짜리 선택자는 파일 뒤쪽의
-    // `.quota-connect-card` 패딩과 특정성이 같아 연결 카드만 두꺼운 채로 접힌다.
-    expect(css).toMatch(/\.quota-provider\.quota-card--folded,\n\.quota-connect-card\.quota-card--folded \{\n  padding: 8px 12px;/);
-
-    // (c) 접기 컨트롤은 헤더의 형제다. 헤더 전체를 disclosure 버튼으로 만들면 이미 그
-    // 안에 사는 그립과 연결 해제 버튼이 접근성 트리에서 사라진다 — 버튼은 버튼을 품지 못한다.
-    expect(panel).toContain('className="quota-fold"');
-    expect(panel).toContain("aria-expanded={!folded}");
-    expect(panel).toContain("aria-controls={regionId}");
-    expect(panel).not.toMatch(/<button[^>]*className="quota-provider__header"/);
-
-    // (d) 헤더 우측 컨트롤은 여백을 다투지 않는다 — 각자 margin-left:auto를 집으면
-    // 접힘에서 display:none이 된 조각의 형제 선택자가 여전히 맞아 남은 컨트롤이 제목에 붙는다.
-    expect(css).toMatch(/\.quota-provider__header h3,\n\.quota-connect-card h3 \{\n  margin: 0 auto 0 0;/);
-    for (const selector of [".quota-plan", ".quota-disconnect"]) {
-      const block = css.match(new RegExp(`^\\${selector} \\{[^}]*\\}`, "m"))?.[0];
-      expect(block, selector).toBeDefined();
-      expect(block, selector).not.toContain("margin-left: auto;");
-    }
-
-    // (e) 좁은 레일은 패널의 폭이지 창의 폭이 아니다 — 미디어 쿼리로 물으면 240px 레일에서
-    // 넓은 화면의 답이 돌아와 헤더가 자기 컨트롤을 밀어낸다.
-    expect(css).toContain("container: quota-panel / inline-size;");
-    expect(css).toMatch(/@container quota-panel \(width < \d+px\) \{/);
-    expect(css).not.toMatch(/@media[^{]*\)\s*\{[^}]*\.quota-fold-spine/);
+    expect(panel).toContain('if (event.key !== "Escape") return;');
+    expect(panel).toContain("setPinned(false);");
   });
 
   it("pins the shared panel motion layer and existence choreography grammar", () => {
@@ -1934,14 +1874,15 @@ describe("Instrument core design contract", () => {
     // gate open the same channel turns transparent under backdrop blur.
     expect(rail).toMatch(/\.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
     // Doctrine: keep both WebKit and Firefox track styling so the continuous
-    // opacity control communicates its filled range in either engine. The recipe is shared -
-    // the rail's opacity and the Settings fade strength are one control grammar. The control
-    // itself lives in the settings pane (Appearance > Rail panels) — the old gear menu is
-    // dismantled and the rail keeps only its own layout.
+    // control communicates its filled range in either engine. The recipe is shared - the glass
+    // opacities, the Settings fade strength, and plugin sliders are one control grammar living in
+    // the settings pane; the rail keeps only its own layout.
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
     // 연속값은 SDK 슬라이더 한 문법이다 — 코어 전용 슬라이더 클래스가 되살아나면 두 모양이 된다.
+    // 그 문법은 트랙·값·기본값이다: −/+ 스테퍼가 되살아나면 행마다 Tab 정지점이 서너 개로 는다.
     expect(settingsPane).toContain("<SettingsSlider");
     expect(source("styles/components.css")).not.toContain(".settings-slider-field");
+    expect(source("styles/components.css")).not.toContain(".fc-settings-slider__stepper");
     expect(settingsPane).toContain("setGlassOpacity");
     // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드라
     // 남는 취향은 카드 불투명도 하나다.
@@ -3785,6 +3726,12 @@ describe("Effort track interaction grammar", () => {
     const knob = components.match(/^\.effort-track-knob \{[^}]*\}/m)?.[0] ?? "";
     expect(knob).toContain("background: var(--gauge-face);");
     expect(knob).not.toContain("var(--text-primary)");
+    // 설정 슬라이더 손잡이도 같은 계기 면이다 — 면은 --gauge-face로 칠하고, 두 엔진의 손잡이가 모두 그 면을 쓴다.
+    const slider = components.match(/^\.fleet-slider \{[^}]*\}/m)?.[0] ?? "";
+    expect(slider).toContain("--slider-face: radial-gradient(circle, var(--gauge-face)");
+    expect(slider).not.toContain("var(--text-primary)");
+    expect(components).toMatch(/^\.fleet-slider::-webkit-slider-thumb \{[^}]*background: var\(--slider-face\);/m);
+    expect(components).toMatch(/^\.fleet-slider::-moz-range-thumb \{[^}]*background: var\(--slider-face\);/m);
     expect(base).toContain("--gauge-face: var(--text-primary);");
 
     // 합성 그림자 목록 안의 halo는 절대 `none`이 될 수 없다 — 목록 가운데의 none은 선언 전체를

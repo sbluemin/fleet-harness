@@ -334,8 +334,6 @@ function GlassOpacityRow({ group, titleKey, helpKey }: {
         disabled={glassOff}
         label={title}
         formatValue={(next) => `${next}%`}
-        decreaseLabel={t("settings.slider.decrease", { title })}
-        increaseLabel={t("settings.slider.increase", { title })}
         onPreview={onChange}
         onCommit={onChange}
         defaultValue={defaultValue}

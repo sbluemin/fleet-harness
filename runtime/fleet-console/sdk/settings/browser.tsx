@@ -94,8 +94,13 @@ export interface SettingsSliderProps {
   readonly onCommit: (next: number) => void;
   readonly label: string;
   readonly formatValue: (value: number) => string;
-  readonly decreaseLabel: string;
-  readonly increaseLabel: string;
+  /**
+   * @deprecated −/+ 스테퍼는 퇴역했다 — 한 단계는 방향키, 큰 단계는 Shift+방향키·PageUp/Down이
+   * 맡는다. 이미 배포된 플러그인이 넘기는 값을 깨뜨리지 않으려고 받기만 하고 쓰지 않는다.
+   */
+  readonly decreaseLabel?: string;
+  /** @deprecated `decreaseLabel`과 같다 — 받기만 하고 쓰지 않는다. */
+  readonly increaseLabel?: string;
   readonly disabled?: boolean;
   /**
    * 기본값. 주면 값 뒤에 "기본값" 버튼이 서고, 값이 기본값과 같을 때 비활성이다. 되돌리는 길은
@@ -547,9 +552,12 @@ function ModelPickerEffortSegments({ effort, levels, disabled }: {
 }
 
 /**
- * 연속값을 고르는 하나의 문법. 코어의 터미널·UI 글꼴 크기가 쓰는 −/슬라이더/+ 조합을 그대로
- * 플러그인에 연다 — 같은 조작이 표면마다 다른 물건으로 보이면 한쪽만 고쳐지는 날이 온다.
- * 트랙과 손잡이는 코어의 공유 `.fleet-slider`가 그리고, 채움 비율만 `--slider-fill`로 싣는다.
+ * 연속값을 고르는 하나의 문법 — 트랙, 오른쪽 값, 기본값 버튼. 코어와 플러그인이 같은 행을 쓴다:
+ * 같은 조작이 표면마다 다른 물건으로 보이면 한쪽만 고쳐지는 날이 온다. 트랙과 손잡이는 코어의
+ * 공유 `.fleet-slider`가 그리고, 채움 끝 위치만 `--slider-fill`로 싣는다.
+ *
+ * −/+ 스테퍼는 두지 않는다. 행 하나에 Tab 정지점이 서너 개로 늘고 스크린리더가 같은 값을 세 번
+ * 읽었다. 한 단계는 방향키, 큰 단계(범위의 약 10%)는 Shift+방향키·PageUp/Down이 맡는다.
  *
  * 저장 시점이 이 컴포넌트의 계약이다. 끌리는 동안에는 onPreview만 부르고 손을 뗄 때(pointerup·
  * keyup·blur) onCommit을 한 번 부른다. 매 틱 저장하면 플러그인 설정 문서가 통째로 초당 수십 번
@@ -564,8 +572,6 @@ export function SettingsSlider({
   onCommit,
   label,
   formatValue,
-  decreaseLabel,
-  increaseLabel,
   disabled = false,
   defaultValue,
   resetLabel,
@@ -575,7 +581,11 @@ export function SettingsSlider({
   const clamp = (next: number): number => Math.max(min, Math.min(max, next));
   const read = (event: React.SyntheticEvent<HTMLInputElement>): number =>
     clamp(Number(event.currentTarget.value));
-  const fill = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  const ratio = max > min ? (value - min) / (max - min) : 0;
+  // 큰 단계는 범위의 약 10%를 step 격자로 올림한 값이다 — 내림하면 좁은 범위에서 한 단계와 같아지고, 격자를 벗어난 값은 range가 다시 반올림해
+  // 손잡이가 누른 것과 다른 자리로 튄다.
+  const bigStep = Math.max(step, Math.ceil((max - min) / 10 / step) * step);
+  const snap = (next: number): number => clamp(min + Math.round((next - min) / step) * step);
 
   // 한 번의 조작이 pointerup·keyup·blur를 잇달아 낸다. 소비처마다 중복을 걸러 내게 두면
   // 저마다 다르게 걸러 내므로, 같은 값을 두 번 저장하지 않는 책임은 이 컨트롤이 진다.
@@ -595,15 +605,6 @@ export function SettingsSlider({
 
   return (
     <div className="fc-settings-slider">
-      <button
-        type="button"
-        className="fc-settings-slider__stepper"
-        disabled={disabled || value <= min}
-        aria-label={decreaseLabel}
-        onClick={() => commit(clamp(value - step), true)}
-      >
-        −
-      </button>
       <input
         className="fleet-slider fc-settings-slider__range"
         type="range"
@@ -614,10 +615,25 @@ export function SettingsSlider({
         disabled={disabled}
         aria-label={label}
         aria-valuetext={formatValue(value)}
-        style={{ "--slider-fill": `${fill}%` } as React.CSSProperties}
+        // 채움 끝은 손잡이 중심을 따른다 — 공유 손잡이 상자(28px)의 중심은 양끝에서 14px 안쪽을 오가므로
+        // 0–100% 그대로 실으면 끝값에서 채움이 손잡이 밖으로 비어져 나온다.
+        style={{ "--slider-fill": `calc(14px + (100% - 28px) * ${ratio})` } as React.CSSProperties}
         onChange={(event) => {
           dirtyRef.current = true;
           onPreview(read(event));
+        }}
+        onKeyDown={(event) => {
+          const direction = event.key === "PageUp" || (event.shiftKey && (event.key === "ArrowRight" || event.key === "ArrowUp"))
+            ? 1
+            : event.key === "PageDown" || (event.shiftKey && (event.key === "ArrowLeft" || event.key === "ArrowDown"))
+              ? -1
+              : 0;
+          if (direction === 0) return;
+          event.preventDefault();
+          const next = snap(value + direction * bigStep);
+          if (next === value) return;
+          dirtyRef.current = true;
+          onPreview(next);
         }}
         onPointerUp={(event) => commit(read(event))}
         // 값을 움직이는 키에서만 저장한다 — Tab·Shift·Escape의 keyup까지 받으면 값이 그대로인
@@ -627,15 +643,6 @@ export function SettingsSlider({
         }}
         onBlur={(event) => commit(read(event))}
       />
-      <button
-        type="button"
-        className="fc-settings-slider__stepper"
-        disabled={disabled || value >= max}
-        aria-label={increaseLabel}
-        onClick={() => commit(clamp(value + step), true)}
-      >
-        +
-      </button>
       {/* 값은 range 가 aria-valuetext 로 이미 읽어 준다. output 은 role=status(라이브 영역)라
           그대로 두면 한 번 움직일 때마다 같은 값을 두 번 말한다 — 눈으로만 읽는 표시로 남긴다. */}
       <output className="fc-settings-slider__value" aria-hidden="true">{formatValue(value)}</output>

@@ -1384,28 +1384,19 @@
 .compact-timing-track {
   position: relative;
   height: 28px;
-  touch-action: none;
 }
 
-.compact-timing-track.is-live {
-  cursor: ew-resize;
-}
-
-.compact-timing-track:has(.compact-timing-sr:focus-visible) {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
-  border-radius: var(--radius-xs);
-}
-
+/* 막대는 양끝 4px 안쪽에 선다 — 공유 손잡이의 흰 면이 끝값에서 막대 끝에 닿는 자리다. */
 .compact-timing-bar {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 4px;
+  right: 4px;
   top: 11px;
   height: 6px;
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--ink-rim) 55%, transparent);
+  pointer-events: none;
 }
 
 .compact-timing-fill {
@@ -1418,34 +1409,35 @@
   background: color-mix(in oklch, var(--warn) 42%, var(--ink-mid));
 }
 
-.compact-timing-thumb {
-  position: absolute;
-  top: 4px;
-  width: 20px;
-  height: 20px;
-  margin-left: -10px;
-  border: 2px solid var(--brass);
-  border-radius: var(--radius-pill);
-  background: var(--ink-deep);
-  box-shadow: 0 0 0 4px var(--brass-glow);
-  pointer-events: none;
+/* 손잡이·포커스 링은 공유 `.fleet-slider`의 것이고, 이 카드는 그 트랙을 비워 아래 막대를 드러낸다.
+   Doctrine: 압축 시점의 채움은 중립 잉크와 경고(is-warn)를 싣는 계기라 공유 슬라이더의 brass 채움을
+   덮어쓴다 — 여기서 brass는 위치(손잡이 포커스 링)만 말한다. */
+.compact-timing-range {
+  position: relative;
+  display: block;
+  width: 100%;
 }
 
-.compact-timing-track:not(.is-live) .compact-timing-thumb {
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
-  box-shadow: none;
+.compact-timing-track .compact-timing-range::-webkit-slider-runnable-track {
+  background: transparent;
 }
 
-.compact-timing-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.compact-timing-track .compact-timing-range::-moz-range-track {
+  background: transparent;
+}
+
+.compact-timing-track .compact-timing-range::-moz-range-progress {
+  background: transparent;
+}
+
+.compact-timing-track.is-live .compact-timing-range {
+  cursor: ew-resize;
+}
+
+/* Custom이 아닐 때 손잡이는 지금 정책이 압축하는 자리를 보여 줄 뿐 쥘 수 없다 — 흐리게 남긴다. */
+.compact-timing-track .compact-timing-range:disabled {
+  cursor: default;
+  opacity: var(--control-disabled-opacity);
 }
 
 .compact-timing-ticks {
@@ -1523,135 +1515,6 @@
   /* 고대비 — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다(Quiet Controls C′). */
   .agent-cli-path-button,
   .ai-gateway-host-only { border-color: ButtonBorder; }
-}
-
-/* 링크를 누르면 서는 카드 — 「어디서 열까」 한 물음. CLI와 채팅이 같은 카드를 쓴다.
-   포털이라 본문 밖에 그려지므로 자기 층을 갖는다: 패널 안 국소 스태킹 위, 전면 오버레이 사다리 아래. */
-.link-open-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-}
-
-.link-open-card {
-  position: fixed;
-  z-index: 1;
-  display: grid;
-  gap: 2px;
-  min-width: 248px;
-  max-width: min(360px, calc(100vw - 32px));
-  padding: 6px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: raised 틴트 + glass 언더레이 채널(canonical 주석: whatsnew-card) */
-  background: linear-gradient(var(--glass-tint-raised), var(--glass-tint-raised)), var(--glass-underlay);
-  box-shadow: var(--shadow-floating);
-  animation: fleet-pop var(--duration-fast) var(--ease-spring) both;
-}
-
-/* 주소는 데이터다 — 글자는 mono, 호스트가 먼저 읽히고 경로는 한 티어 물러난다. */
-.link-open-url {
-  display: flex;
-  gap: var(--space-1);
-  min-width: 0;
-  margin: 0;
-  padding: var(--space-1) 9px 5px;
-  color: var(--text-tertiary);
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
-  line-height: 1.35;
-}
-
-.link-open-url strong {
-  flex: 0 0 auto;
-  max-width: 60%;
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-weight: var(--weight-medium);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.link-open-url span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.link-open-choice {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 9px;
-  align-items: center;
-  width: 100%;
-  padding: 8px 9px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-secondary);
-  text-align: left;
-  cursor: pointer;
-}
-
-.link-open-choice:hover:not(:disabled) {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-}
-
-.link-open-choice:focus-visible {
-  border-color: var(--control-hover-rim);
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 1px;
-}
-
-/* 카드는 열리는 순간 기본 손잡이에 포커스를 둔다 — Enter 한 번이면 열리도록. 그 포커스를 처음부터
-   그리면 마우스로 연 사람에게는 고르지 않은 것이 이미 골라진 것으로 읽히므로, 키를 한 번 쓰기 전까지
-   위치 채널은 조용히 있는다. 가리키는 손은 그와 무관하다: 조용한 포커스를 쥔 행도 hover는 옆 행과
-   똑같이 받는다(그래서 테두리는 포인터가 없을 때만 걷는다). */
-.link-open-card[data-quiet-focus] .link-open-choice:focus-visible {
-  outline: none;
-}
-
-.link-open-card[data-quiet-focus] .link-open-choice:focus-visible:not(:hover) {
-  border-color: transparent;
-}
-
-.link-open-choice:disabled {
-  cursor: not-allowed;
-  opacity: var(--control-disabled-opacity);
-}
-
-.link-open-choice svg {
-  display: block;
-}
-
-.link-open-choice-text {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-}
-
-.link-open-choice-text strong {
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
-  line-height: 1.3;
-}
-
-.link-open-choice-text span {
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  line-height: 1.35;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .link-open-card {
-    animation: none;
-  }
 }
 
 .ai-gateway-routing-test {
