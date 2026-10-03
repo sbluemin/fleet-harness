@@ -37,11 +37,17 @@ import { DEFAULT_LAUNCH, LaunchControl } from "./launch-control.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
-/** 시트 기하 — Fleet 브라우저 시트와 같다: 지도(사이드바·레일 사이) 안쪽 좌우 24px, 위·아래는 사이드바 카드 선. */
+/**
+ * 시트 기하 — 바깥 틀은 Fleet 브라우저 시트와 같다(지도 안쪽 좌우 24px, 위·아래 사이드바 카드 선). 그 틀보다 크게 펴지지 않고,
+ * 내용에 맞는 크기(최대 폭·높이)로 틀 가운데에 선다 — 넓은 화면에서 글이 한쪽에 몰린 빈 면이 되지 않게.
+ */
 const SHEET_INSET = 24;
 const SHEET_MARGIN = 12;
 /** 지도가 이보다 좁으면 사이드바·레일을 무시하고 창 전체를 쓴다 — 「열림」인데 안 보이는 상태는 두지 않는다. */
 const SHEET_MIN_WIDTH = 560;
+/** 맞춤 크기 — 구역 목록(220) + 읽는 폭(880) 언저리, 높이는 설정 줄과 기록 몇 묶음이 한눈에 드는 만큼. */
+const SHEET_MAX_WIDTH = 1080;
+const SHEET_MAX_HEIGHT = 780;
 /** 시트가 이보다 좁으면 구역 목록을 글리프만 남긴다. */
 const SHEET_COMPACT_WIDTH = 720;
 /** 보드 읽기는 행위가 아니다 — 기록의 행위 칩에는 보드를 바꾼 호출만 선다. */
@@ -92,12 +98,17 @@ function useSheetGeometry(theaterId: string): SheetGeometry {
       let left = Math.round(mapLeft + SHEET_INSET);
       let right = Math.round(mapRight > 0 ? mapRight + SHEET_INSET - SHEET_MARGIN : SHEET_INSET);
       if (vw - left - right < SHEET_MIN_WIDTH) { left = SHEET_MARGIN; right = SHEET_MARGIN; }
-      const top = Math.round(known ? known.top : 48 + SHEET_MARGIN);
-      const bottom = Math.round(known ? Math.max(SHEET_MARGIN, vh - known.bottom) : SHEET_MARGIN);
+      const frameTop = Math.round(known ? known.top : 48 + SHEET_MARGIN);
+      const frameBottom = Math.round(known ? Math.max(SHEET_MARGIN, vh - known.bottom) : SHEET_MARGIN);
+      const top = frameTop;
+      const bottom = frameBottom;
+      // 틀 안에서 맞춤 크기로 줄이고 남는 만큼을 양쪽에 나눠 가운데에 둔다.
+      const spareX = Math.max(0, vw - left - right - SHEET_MAX_WIDTH);
+      const spareY = Math.max(0, vh - frameTop - frameBottom - SHEET_MAX_HEIGHT);
       setGeometry({
-        sheet: { left, right, top, bottom },
+        sheet: { left: left + Math.floor(spareX / 2), right: right + Math.ceil(spareX / 2), top: frameTop + Math.floor(spareY / 2), bottom: frameBottom + Math.ceil(spareY / 2) },
         scrim: { left: Math.round(mapLeft), right: Math.round(mapRight), top, bottom },
-        compact: vw - left - right < SHEET_COMPACT_WIDTH,
+        compact: Math.min(vw - left - right, SHEET_MAX_WIDTH) < SHEET_COMPACT_WIDTH,
       });
     };
     place();
