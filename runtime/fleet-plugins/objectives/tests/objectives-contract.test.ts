@@ -1031,10 +1031,10 @@ describe("Objectives contract", () => {
     const id = created.structuredContent.objectiveId as string;
     // 브리핑·기준은 기본 요구사항으로, 임무·구성원 없이, 호출 Operation 의 그룹과 만든 표시를 들고 태어난다.
     expect(store.find(id)).toMatchObject({ note: "brief", groupId: "g-console", missions: [], members: [], addedBy: { operationId: caller.id } });
-    expect(store.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
+    expect(store.find(id)!.criteria).toMatchObject([{ text: "ships", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }, { text: "tested", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }]);
     // 저장 무결성 — 파일에서 다시 읽어도 기준이 기본 요구사항으로 남는다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
-    expect(reloaded.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
+    expect(reloaded.find(id)!.criteria).toMatchObject([{ text: "ships", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }, { text: "tested", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }]);
     // 편성 키도 오타도 add 에 없다 — 선검사에서 막혀 사람의 권한 요청까지 가지 않는다.
     for (const args of [{ add: { title: "Typo", criterai: ["x"] } }, { add: { title: "Missions inline", missions: ["x"] } }, { add: { title: "Top-level missions" }, missions: ["x"] }]) {
       expect(gate.safeParse(args).success).toBe(false);
