@@ -775,7 +775,8 @@ export function FileExplorerDocumentCaptionActions(ctx: PaneContext) {
     [openDocs, activePath, history, historyIndex],
   );
   const viewState: ViewState = activePath ? docStates.get(activePath) ?? { kind: "loading" } : { kind: "none" };
-  const isStale = (viewState.kind === "code" || viewState.kind === "image") && Boolean(viewState.stale);
+  // 삭제된 문서는 다시 읽을 대상이 없다 — 변경 버튼 대신 본문 배너가 삭제를 알린다.
+  const isStale = (viewState.kind === "code" || viewState.kind === "image") && Boolean(viewState.stale) && viewState.diskStatus !== "deleted";
   // 줄바꿈은 창을 나누지 않고 전부 그리므로, 감당 가능한 줄 수까지만 연다.
   const wrapAvailable = viewState.kind === "code" && canWrapLines(viewState.content.split("\n").length);
   const canGoBack = canNavigateDocumentHistory(docSession, -1);
