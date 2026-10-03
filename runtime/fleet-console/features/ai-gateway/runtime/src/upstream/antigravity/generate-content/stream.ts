@@ -82,6 +82,25 @@ function canonicalErrorType(status: string | undefined, code: number | undefined
   return "api_error";
 }
 
+const ANTIGRAVITY_CONTENT_FILTER_REASONS: ReadonlySet<string> = new Set([
+  "SAFETY",
+  "RECITATION",
+  "BLOCKLIST",
+  "PROHIBITED_CONTENT",
+  "SPII",
+  "IMAGE_SAFETY",
+]);
+
+function antigravityIncomplete(finishReason: string | undefined): { reason?: string } | undefined {
+  if (finishReason === "MAX_TOKENS") {
+    return { reason: "max_output_tokens" };
+  }
+  if (finishReason !== undefined && ANTIGRAVITY_CONTENT_FILTER_REASONS.has(finishReason)) {
+    return { reason: "content_filter" };
+  }
+  return undefined;
+}
+
 export interface AntigravityFrame {
   readonly response?: Record<string, unknown>;
   readonly error?: unknown;
@@ -177,6 +196,8 @@ export async function* translateAntigravityStream(
 
   let textItemId: string | undefined;
   let reasoningItemId: string | undefined;
+  let finishReason: string | undefined;
+  let promptBlockReason: string | undefined;
   let failed: CanonicalError | undefined;
 
   const snapshot = () => ({ id: responseId, model, usage });
@@ -228,6 +249,14 @@ export async function* translateAntigravityStream(
 
     const candidates = Array.isArray(response.candidates) ? response.candidates : [];
     const candidate = isRecord(candidates[0]) ? candidates[0] : undefined;
+    if (typeof candidate?.finishReason === "string") {
+      finishReason = candidate.finishReason;
+    }
+    // 프롬프트 자체가 차단되면 candidates 없이 promptFeedback.blockReason만 온다.
+    const promptFeedback = isRecord(response.promptFeedback) ? response.promptFeedback : undefined;
+    if (typeof promptFeedback?.blockReason === "string") {
+      promptBlockReason = promptFeedback.blockReason;
+    }
     const content = isRecord(candidate?.content) ? candidate.content : undefined;
     const parts: GeminiResponsePart[] = Array.isArray(content?.parts)
       ? content.parts.filter(isRecord)
@@ -319,5 +348,12 @@ export async function* translateAntigravityStream(
   if (!started) {
     throw new UpstreamProtocolError("Antigravity stream produced no response frames");
   }
-  yield { type: "response.completed", response: snapshot() };
+  const incomplete = antigravityIncomplete(finishReason ?? promptBlockReason);
+  yield {
+    type: "response.completed",
+    response: {
+      ...snapshot(),
+      ...(incomplete === undefined ? {} : { incomplete }),
+    },
+  };
 }
