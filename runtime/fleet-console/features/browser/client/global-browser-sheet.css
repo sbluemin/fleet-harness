@@ -43,6 +43,12 @@
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
 }
 
+/* 시트의 메뉴·가져오기 대화상자는 국소 자식이라 시트의 스택 문맥에 갇힌다.
+   자체 상자가 열린 동안만 픽 카드(31)보다 위로 올린다. 전역 메뉴(45+)·모달(100)은 그대로다. */
+.fleet-browser-sheet:has([role="menu"], [role="dialog"]) {
+  z-index: 32;
+}
+
 html[data-view-mode="mobile"] .fleet-browser-sheet,
 html[data-view-mode="mobile"] .fleet-browser-scrim {
   display: none;

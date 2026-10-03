@@ -170,7 +170,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     // 좌우·scrim도 같은 판정에서 나온다 — 닫힌 사이드바의 2px 테두리 자투리가
     // 왼쪽 간격을 38로 벌리지 않게(QA-16). War Room 접힘은 서랍만 걷고 밴드 줄이 남으니
     // 같은 규칙이 그대로 성립한다.
-    const sidebarCardRect = sidebar !== null && sidebar.offsetWidth > 4
+    // 접힘은 픽 중에도 아레나 기하를 유지한다. 닫힘 전이의 잔폭 역시 카드가 아니다.
+    const sidebarCardRect = sidebar !== null && !sidebar.classList.contains("is-closed") && sidebar.offsetWidth > 4
       && window.getComputedStyle(sidebar).visibility !== "hidden"
       ? sidebar.getBoundingClientRect()
       : null;
