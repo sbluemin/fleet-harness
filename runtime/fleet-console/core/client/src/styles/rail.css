@@ -497,6 +497,10 @@
   box-shadow: var(--shadow-soft);
 }
 
+.right-rail.has-inset-detail-overlay .rail-pane.is-overlay {
+  inset-inline-end: 0;
+}
+
 .right-rail.is-overlay {
   z-index: calc(var(--z-rail) + 1);
 }

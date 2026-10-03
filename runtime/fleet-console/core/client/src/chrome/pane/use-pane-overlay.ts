@@ -26,6 +26,9 @@ export function usePaneOverlay(active: boolean, rootRef: RefObject<HTMLElement |
       const target = event.target instanceof Element ? event.target : null;
       if (!target || root.contains(target) || !topmost()) return;
       if (target.closest("#rail-settings-toggle, .right-rail-tabs .right-rail-ico")) return;
+      // 가림 인셋이 사라지면 부유 조작이 pointerdown과 click 사이에 이동한다.
+      // 조작 요소는 첫 클릭을 받게 두고, 빈 본문·터미널을 누를 때만 덮개를 거둔다.
+      if (target.closest(".expanded-surface-pane") && target.closest('button, a[href], [role="button"], [role="link"]')) return;
       if (target.closest('[aria-modal="true"], [role="menu"], [role="listbox"]')) return;
       dismissRef.current();
     };

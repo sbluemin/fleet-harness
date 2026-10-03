@@ -2284,7 +2284,7 @@ describe("Instrument core design contract", () => {
       expect(rightRail).not.toContain(legacyRightRailCoupling);
       expect(railStore).not.toContain(legacyRightRailCoupling);
     }
-    expect(rightRail).not.toContain("ResizeObserver");
+    // K-05 오버레이 실측(RightRail의 ResizeObserver)은 확대 표면의 조작부 회피에만 쓴다 — 위 결합 금지가 Command Band 결합의 부활을 막는다.
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band {');
     // 브랜드 홈(a)·rename(input)까지 no-drag — button만 겨냥하면 데스크톱 드래그 영역이 클릭을 삼킨다.
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band button,');

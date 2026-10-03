@@ -28,7 +28,8 @@
    말줄임으로 접는다. */
 .global-shell-badge {
   display: inline-flex;
-  max-inline-size: min(360px, 40vw);
+  /* 가려진 영역에서는 긴 경로보다 띠의 안전 동작과 닫기를 먼저 보존한다. */
+  max-inline-size: min(360px, 40vw, max(60px, var(--expanded-surface-visible-width, 100vw) - 260px));
   min-inline-size: 0;
 }
 
@@ -51,7 +52,7 @@
   overflow: hidden;
   box-sizing: border-box;
   padding: var(--space-1) calc(var(--space-2) + var(--expanded-surface-float-inset, 0px)) var(--space-1) var(--space-3);
-  border-bottom: 1px solid color-mix(in oklch, var(--warn) 52%, var(--surface-rim));
+  border-bottom: 1px solid color-mix(in oklab, var(--warn) 52%, var(--surface-rim));
   background: var(--warn-glow);
   font-size: var(--t-sm);
 }
@@ -114,7 +115,8 @@
   opacity: 0.6;
 }
 
-.global-shell-band-action.is-danger {
+.global-shell-band-action.is-danger,
+.global-shell-band-action.is-danger:hover:not(:disabled) {
   border-color: var(--coral);
   color: var(--coral-ink);
 }

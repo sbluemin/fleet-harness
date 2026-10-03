@@ -1,4 +1,4 @@
-import { reportExpandedMinWidth } from "../rail/rail-store.js";
+import { reportExpandedMinWidth, useDetailOverlayLeft } from "../rail/rail-store.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -314,13 +314,28 @@ function SurfacePane({
   // 첫 줄만 비울 수 없는 격자 본문(터미널)은 대신 조작 무리의 아래 끝(block 변수) 밑에서 시작한다.
   const paneRef = useRef<HTMLElement>(null);
   const floatRef = useRef<HTMLDivElement>(null);
+  const overlayLeft = useDetailOverlayLeft();
+  useLayoutEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const publish = () => {
+      const rect = pane.getBoundingClientRect();
+      const covered = overlayLeft === null ? 0 : Math.max(0, Math.min(rect.width, rect.right - overlayLeft));
+      pane.style.setProperty("--expanded-surface-overlay-inset", `${Math.ceil(covered)}px`);
+      pane.style.setProperty("--expanded-surface-visible-width", `${Math.max(0, Math.floor(rect.width - covered))}px`);
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [overlayLeft, paneWidth]);
   useEffect(() => {
     const pane = paneRef.current;
     const float = floatRef.current;
     if (!pane || !float || typeof ResizeObserver === "undefined") return;
     const publish = () => {
       const rect = float.getBoundingClientRect();
-      pane.style.setProperty("--expanded-surface-float-inset", `${Math.ceil(rect.width) + FLOAT_INSET_GUTTER_PX}px`);
+      pane.style.setProperty("--expanded-surface-float-width", `${Math.ceil(rect.width) + FLOAT_INSET_GUTTER_PX}px`);
       pane.style.setProperty("--expanded-surface-float-block", `${Math.ceil(float.offsetTop + rect.height) + FLOAT_BLOCK_GUTTER_PX}px`);
     };
     publish();
