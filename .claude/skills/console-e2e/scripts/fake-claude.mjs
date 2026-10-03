@@ -3,7 +3,7 @@
 // No model, no network. See ../references/setup.md#no-cost-fake-claude.
 //
 // FAKE_CLAUDE_DIR (required): owned control directory for this run.
-//   log.jsonl        one line per launch, control request, turn and exit (no secrets)
+//   log.jsonl        one line per launch, control request, turn and exit (flag names and selected values only)
 //   mcp/<pid>.json   the --mcp-config this launch received (local bearer tokens; mode 0600, never print)
 //   ctx              optional context-token count reported to chat (default 1000)
 //   fail_set_model   if present, set_model answers with an error
@@ -55,7 +55,6 @@ if (mcpArg !== undefined) {
 const sdk = argAfter("--input-format") === "stream-json";
 let model = argAfter("--model") ?? "default";
 const sessionId = argAfter("--session-id") ?? argAfter("--resume") ?? randomUUID();
-const redactedFlags = new Set(["--mcp-config", "--settings", "--system-prompt", "--append-system-prompt"]);
 log({
   event: "launch",
   mode: sdk ? "sdk" : "terminal",
@@ -64,7 +63,8 @@ log({
   sessionIdArg: argAfter("--session-id") ?? null,
   resume: argAfter("--resume") ?? null,
   mcpServers,
-  flags: args.map((value, i) => (i > 0 && redactedFlags.has(args[i - 1])) || [...redactedFlags].some((flag) => value.startsWith(`${flag}=`)) ? "<redacted>" : value).slice(0, 80),
+  // Flag names only: values and positional arguments (the launch prompt, inline settings) can hold sensitive input.
+  flags: args.filter((value) => value.startsWith("--")).map((value) => value.split("=")[0]).slice(0, 80),
 });
 const exit = (reason) => {
   log({ event: "exit", reason });
