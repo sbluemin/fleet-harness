@@ -165,6 +165,12 @@ export interface DrydockWikiEntry {
   body: string;
 }
 
+export interface DrydockBaseConflict {
+  reason: "base_version" | "base_hash";
+  baseVersion?: number;
+  currentVersion: number | null;
+}
+
 export interface DrydockDetailResponse {
   source: "queue" | "archive";
   patch: DrydockPatch;
@@ -172,6 +178,7 @@ export interface DrydockDetailResponse {
   wikiEntry: DrydockWikiEntry;
   targetExists: boolean;
   patchSet: DrydockPatchSetResponse | null;
+  baseConflict?: DrydockBaseConflict;
   deletion?: {
     snapshot: string;
     claims?: string;

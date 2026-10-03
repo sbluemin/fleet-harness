@@ -1591,9 +1591,12 @@ button.chip:focus-visible {
 }
 
 .queue-decision-dock-actions {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-2);
 }
 
@@ -2213,6 +2216,11 @@ button.chip:focus-visible {
 }
 
 .queue-action-error {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-xs);
@@ -2566,6 +2574,11 @@ button.chip:focus-visible {
 .codex-nav-health-dot.is-coral {
   background: var(--coral);
   box-shadow: 0 0 8px color-mix(in oklch, var(--coral) 45%, transparent);
+}
+
+.codex-nav-health-dot.is-unknown {
+  background: var(--text-tertiary);
+  box-shadow: none;
 }
 
 .codex-nav-health-dot.is-ok {
@@ -2994,9 +3007,10 @@ button.chip:focus-visible {
 }
 
 /* 렌더드 diff 블록 — 상태 채널(positive/coral)만 진다. */
-.cowork-rendered-diff .cowork-block { border-left: 2px solid transparent; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; padding: 2px var(--space-2); margin: 2px 0; }
-.cowork-rendered-diff .cowork-block--added { border-left-color: var(--positive); background: color-mix(in oklch, var(--positive) 10%, transparent); }
-.cowork-rendered-diff .cowork-block--removed { border-left-color: var(--coral); background: color-mix(in oklch, var(--coral) 8%, transparent); color: var(--text-tertiary); text-decoration: line-through; }
+.cowork-block { border-left: 2px solid transparent; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; padding: 2px var(--space-2); margin: 2px 0; }
+.cowork-block--added { border-left-color: var(--positive); background: color-mix(in oklch, var(--positive) 10%, transparent); }
+.cowork-block--removed { border-left-color: var(--coral); background: color-mix(in oklch, var(--coral) 8%, transparent); color: var(--text-secondary); text-decoration: line-through; }
+.queue-diff-block-label { display: block; font-family: var(--font-mono); font-size: var(--t-xs); font-weight: var(--weight-medium); text-decoration: none; color: var(--text-primary); }
 
 /* ── 도크 존 — 프레임 아래 고정 행. 스레드는 자기 안에서 스크롤한다. ── */
 .cowork-dock-zone { display: none; }

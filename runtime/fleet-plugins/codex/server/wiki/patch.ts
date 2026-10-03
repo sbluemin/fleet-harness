@@ -21,6 +21,7 @@ import {
   readPatchFile,
   readWikiEntry,
   parseWikiEntry,
+  serializeWikiEntry,
   rebuildIndex,
   removePath,
   writeJsonFile,
@@ -106,7 +107,7 @@ export async function validatePatch(patch: Patch, paths: MemoryPaths): Promise<v
   }
 }
 
-async function applyPatch(patch: Patch, paths: MemoryPaths): Promise<string> {
+async function applyPatch(patch: Patch, paths: MemoryPaths, onEntryWritten?: (hash: string) => void): Promise<string> {
   await validatePatch(patch, paths);
   if (patch.frontmatter.op !== "delete_wiki") await validatePatchBase(patch, undefined, paths);
   await ensureWorkspaceSchema(paths);
@@ -128,6 +129,7 @@ async function applyPatch(patch: Patch, paths: MemoryPaths): Promise<string> {
   }
   const entry = await normalizeWikiEntryPatch(JSON.parse(patch.body) as WikiEntry, patch.frontmatter.target, paths);
   const relativePath = await writeWikiEntryAtTarget(entry, patch.frontmatter.target, paths);
+  onEntryWritten?.(computeContentHash(serializeWikiEntry(entry)));
   await rebuildIndex(paths);
   return relativePath;
 }
@@ -287,25 +289,30 @@ export async function enqueuePatch(patch: Patch, paths: MemoryPaths, metaOverrid
   if (await pathExists(queueDir)) {
     throw new Error(`[fleet-wiki] patch id collision: ${patchId} - this should never happen with target+body hashing`);
   }
-  await mkdir(queueDir, { recursive: true });
-  await writePatchFile(path.join(queueDir, PATCH_FILENAME), serializePatch(patch), paths);
-  const meta: PatchMeta = {
-    id: patchId,
-    status: "pending",
-    createdAt: patch.frontmatter.created,
-    ...metaOverrides,
-  };
-  await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), meta satisfies PatchMeta, paths);
-  await appendLog(paths, "patch enqueued", {
-    patch_id: patchId,
-    patch_set_id: meta.patch_set_id ?? null,
-    op: patch.frontmatter.op,
-    proposer: patch.frontmatter.proposer,
-    raw_source_ref: meta.rawSourceRef ?? null,
-    target: patch.frontmatter.target,
-    warning_count: meta.warnings?.length ?? 0,
-  });
-  return patchId;
+  await mkdir(queueDir);
+  try {
+    await writePatchFile(path.join(queueDir, PATCH_FILENAME), serializePatch(patch), paths);
+    const meta: PatchMeta = {
+      id: patchId,
+      status: "pending",
+      createdAt: patch.frontmatter.created,
+      ...metaOverrides,
+    };
+    await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), meta satisfies PatchMeta, paths);
+    await appendLog(paths, "patch enqueued", {
+      patch_id: patchId,
+      patch_set_id: meta.patch_set_id ?? null,
+      op: patch.frontmatter.op,
+      proposer: patch.frontmatter.proposer,
+      raw_source_ref: meta.rawSourceRef ?? null,
+      target: patch.frontmatter.target,
+      warning_count: meta.warnings?.length ?? 0,
+    });
+    return patchId;
+  } catch (error) {
+    await removePath(queueDir);
+    throw error;
+  }
 }
 
 export async function listQueue(paths: MemoryPaths): Promise<Array<{ id: string; meta: PatchMeta }>> {
@@ -378,51 +385,116 @@ export async function rewriteQueuedPatch(
   });
 }
 
+export interface PatchBaseConflict {
+  reason: "base_version" | "base_hash";
+  baseVersion?: number;
+  currentVersion: number | null;
+}
+
+export class StalePatchBaseError extends Error {
+  constructor(message: string, readonly conflict: PatchBaseConflict) {
+    super(message);
+    this.name = "StalePatchBaseError";
+  }
+}
+
+export async function readPatchBaseConflict(patch: Patch, meta: PatchMeta, paths: MemoryPaths): Promise<PatchBaseConflict | null> {
+  try {
+    await validatePatchBase(patch, meta, paths);
+    return null;
+  } catch (error) {
+    if (error instanceof StalePatchBaseError) return error.conflict;
+    throw error;
+  }
+}
+
 export async function approvePatch(id: string, paths: MemoryPaths): Promise<PatchMeta> {
   assertSafeQueueId(id);
-  return withPatchEditLock(paths, id, async () => {
-    const { patch, meta } = await showQueue(id, paths);
-    if (meta.status !== "pending") throw new Error("patch is not pending");
-    try {
-      await withApprovalLock(paths, patch, async () => {
-        await validatePatchBase(patch, meta, paths);
-        await applyPatch(patch, paths);
-      });
-    } catch (error) {
-      const reason = classifyPatchConflict(error);
-      if (reason) {
-        const conflictId = await recordPatchConflict(patch, paths, reason, {
-          baseHash: meta.baseHash,
-          baseVersion: meta.baseVersion,
-          patchId: id,
-          rawSourceRef: meta.rawSourceRef,
-          warnings: meta.warnings,
-        });
-        const queueDir = path.join(paths.queueDir, id);
-        await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), {
-          ...meta,
-          conflictId,
-        } satisfies PatchMeta, paths);
+  return withPatchEditLock(paths, id, () => approveQueuedPatch(id, paths, (patch, meta) =>
+    withApprovalLock(paths, patch, async () => {
+      await validatePatchBase(patch, meta, paths);
+      await applyPatch(patch, paths);
+    }), false));
+}
+
+// 최종 Apply의 임시 패치는 동일한 승인·편집 잠금 안에서 등록한다.
+// 오래된 초안은 등록 전에 막고, 적용 실패 시 이번 등록만 회수한다.
+export async function enqueueAndApprovePatch(patch: Patch, paths: MemoryPaths, metaOverrides?: Partial<PatchMeta>): Promise<PatchMeta> {
+  if (patch.frontmatter.op !== "update_wiki") throw new Error("immediate approval requires update_wiki");
+  await ensureMemoryRoot(paths);
+  const id = buildPatchId(patch.frontmatter.created, patch.frontmatter.summary, patch.frontmatter.target, patch.body);
+  return withPatchEditLock(paths, id, () => withApprovalLock(paths, patch, async () => {
+    await validatePatchBase(patch, metaOverrides, paths);
+    await validatePatch(patch, paths);
+    const targetPath = path.join(paths.root, patch.frontmatter.target);
+    const snapshot = await readPatchFile(targetPath);
+    await enqueuePatch(patch, paths, metaOverrides);
+    return approveQueuedPatch(id, paths, async (queued, meta) => {
+      let writtenHash: string | undefined;
+      try {
+        await validatePatchBase(queued, meta, paths);
+        await applyPatch(queued, paths, hash => { writtenHash = hash; });
+      } catch (error) {
+        // 이번 Apply가 쓴 본문만 복구한다 — 외부의 최신 변경을 되돌리면 안 된다.
+        if (writtenHash !== undefined && computeContentHash(await readPatchFile(targetPath)) === writtenHash) {
+          await writePatchFile(targetPath, snapshot, paths);
+          await rebuildIndex(paths);
+        }
+        throw error;
       }
+    }, true);
+  }));
+}
+
+async function approveQueuedPatch(
+  id: string,
+  paths: MemoryPaths,
+  apply: (patch: Patch, meta: PatchMeta) => Promise<void>,
+  rollbackOnFailure: boolean,
+): Promise<PatchMeta> {
+  const { patch, meta } = await showQueue(id, paths);
+  if (meta.status !== "pending") throw new Error("patch is not pending");
+  try {
+    await apply(patch, meta);
+  } catch (error) {
+    if (rollbackOnFailure) {
+      await removePath(path.join(paths.queueDir, id));
+      await appendLog(paths, "patch apply rolled back", { patch_id: id, target: patch.frontmatter.target });
       throw error;
     }
-    const nextMeta: PatchMeta = {
-      ...meta,
-      status: "accepted",
-      decidedAt: new Date().toISOString(),
-    };
-    await archiveQueueEntry(id, paths, nextMeta);
-    await appendLog(paths, "patch approved", {
-      op: patch.frontmatter.op,
-      patch_id: id,
-      patch_set_id: nextMeta.patch_set_id ?? null,
-      proposer: patch.frontmatter.proposer,
-      raw_source_ref: nextMeta.rawSourceRef ?? null,
-      result: "accepted",
-      target: patch.frontmatter.target,
-    });
-    return nextMeta;
+    const reason = classifyPatchConflict(error);
+    if (reason && !meta.conflictId) {
+      const conflictId = await recordPatchConflict(patch, paths, reason, {
+        baseHash: meta.baseHash,
+        baseVersion: meta.baseVersion,
+        patchId: id,
+        rawSourceRef: meta.rawSourceRef,
+        warnings: meta.warnings,
+      });
+      const queueDir = path.join(paths.queueDir, id);
+      await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), {
+        ...meta,
+        conflictId,
+      } satisfies PatchMeta, paths);
+    }
+    throw error;
+  }
+  const nextMeta: PatchMeta = {
+    ...meta,
+    status: "accepted",
+    decidedAt: new Date().toISOString(),
+  };
+  await archiveQueueEntry(id, paths, nextMeta);
+  await appendLog(paths, "patch approved", {
+    op: patch.frontmatter.op,
+    patch_id: id,
+    patch_set_id: nextMeta.patch_set_id ?? null,
+    proposer: patch.frontmatter.proposer,
+    raw_source_ref: nextMeta.rawSourceRef ?? null,
+    result: "accepted",
+    target: patch.frontmatter.target,
   });
+  return nextMeta;
 }
 
 // queue ID 형식 검증의 SSoT — 경로 주입 방어를 위해 patch-edit 도구 경로도 이 함수를 공유한다.
@@ -556,7 +628,7 @@ function buildPatchId(createdAt: string, summary: string, target: string, body: 
   return `${compact}-${hash}`;
 }
 
-async function validatePatchBase(patch: Patch, meta: PatchMeta | undefined, paths: MemoryPaths): Promise<void> {
+async function validatePatchBase(patch: Patch, meta: Pick<PatchMeta, "baseVersion" | "baseHash"> | undefined, paths: MemoryPaths): Promise<void> {
   if (patch.frontmatter.op !== "update_wiki" && patch.frontmatter.op !== "delete_wiki") return;
   if (patch.frontmatter.op === "delete_wiki" && !meta?.baseHash) throw new Error("delete_wiki requires base_hash");
   if (!meta?.baseVersion && !meta?.baseHash) return;
@@ -566,20 +638,23 @@ async function validatePatchBase(patch: Patch, meta: PatchMeta | undefined, path
   const currentPath = path.join(paths.root, patch.frontmatter.target);
   const currentMarkdown = await pathExists(currentPath) ? await readPatchFile(currentPath) : undefined;
   if (meta.baseVersion !== undefined && currentEntry?.version !== meta.baseVersion) {
-    throw new Error(
+    throw new StalePatchBaseError(
       `[fleet-wiki] approve stale base_version for ${wikiId}: expected ${meta.baseVersion}, got ${currentEntry?.version ?? "missing"}`,
+      { reason: "base_version", baseVersion: meta.baseVersion, currentVersion: currentEntry?.version ?? null },
     );
   }
   if (meta.baseHash !== undefined && computeContentHash(currentMarkdown ?? "") !== meta.baseHash) {
-    throw new Error(
+    throw new StalePatchBaseError(
       `[fleet-wiki] approve stale base_hash for ${wikiId}: expected ${meta.baseHash}, got ${currentMarkdown ? computeContentHash(currentMarkdown) : "missing"}`,
+      { reason: "base_hash", baseVersion: meta.baseVersion, currentVersion: currentEntry?.version ?? null },
     );
   }
   if (patch.frontmatter.op === "delete_wiki") {
     const claimsFile = getClaimsFile(paths, wikiId);
     const currentClaims = await pathExists(claimsFile) ? await readPatchFile(claimsFile) : undefined;
     if (currentClaims !== parseDeletionSnapshot(patch.body).claims) {
-      throw new Error(`[fleet-wiki] approve stale base_hash for ${wikiId}: claims sidecar changed`);
+      throw new StalePatchBaseError(`[fleet-wiki] approve stale base_hash for ${wikiId}: claims sidecar changed`,
+        { reason: "base_hash", baseVersion: meta.baseVersion, currentVersion: currentEntry?.version ?? null });
     }
   }
 }
