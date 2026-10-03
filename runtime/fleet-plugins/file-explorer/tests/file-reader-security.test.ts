@@ -97,6 +97,33 @@ describe("Files bounded reads", () => {
   });
 });
 
+describe("Files migrated wiki metadata", () => {
+  it("public reads identify only exact legacy copies with a contained regular migration marker", async () => {
+    const legacy = path.join(theaterPath, ".fleet", "knowledge");
+    await fs.promises.mkdir(path.join(legacy, "wiki"), { recursive: true });
+    await fs.promises.writeFile(path.join(legacy, "wiki", "old.md"), "# Old fixture copy\n");
+    const marker = path.join(legacy, ".codex-migration.json");
+    const mapping = JSON.stringify({ schemaVersion: 1, entries: { "wiki/old.md": "fixture-entry" } });
+    await fs.promises.writeFile(marker, mapping);
+    const read = async () => {
+      let payload: unknown;
+      const ctx = { host: {
+        security: { isTerminalAuthorized: () => true }, paths: { resolveTheaterPath: () => theaterPath },
+        http: { readJsonBody: async () => ({ theaterId: "fixture", relativePath: ".fleet/knowledge/wiki/old.md" }), writeJson: (_res: unknown, _status: number, body: unknown) => { payload = body; } },
+      } } as unknown as FleetPluginServerContext;
+      await handleFilesRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+      expect(JSON.stringify(payload)).not.toContain(tmpDir);
+      return payload;
+    };
+    expect(await read()).toMatchObject({ migratedWikiEntryId: "fixture-entry" });
+    await fs.promises.unlink(marker);
+    const outsideMarker = path.join(tmpDir, "outside-marker.json");
+    await fs.promises.writeFile(outsideMarker, mapping);
+    await fs.promises.symlink(outsideMarker, marker);
+    expect(await read()).not.toHaveProperty("migratedWikiEntryId");
+  });
+});
+
 describe("Files reference resolution", () => {
   it("returns only Theater-relative paths and rejects lexical and realpath escapes at the public endpoint", async () => {
     const resolve = async (requestedPath: string, pathKind: "absolute" | "theater-relative") => {

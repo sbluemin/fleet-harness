@@ -15,7 +15,7 @@ import type { PaneContext } from "@fleet-console/sdk/pane";
 import type { FileReadRequest, FolderEntry, FolderListResult } from "../server/types.js";
 import { ReadWindowControls } from "./read-window.js";
 import { performFileContextAction, type FileContextAction } from "./context-menu.js";
-import { loadDocument, nameOfPath, refreshDocumentDiskStatus } from "./doc-loader.js";
+import { loadDocument, nameOfPath, refreshDocumentDiskStatus, refreshLegacyWikiMetadata } from "./doc-loader.js";
 import { breadcrumbSegments, buildViewerMetaParts, type BreadcrumbSegment } from "./format.js";
 import { FileIcon } from "@fleet-console/sdk/components/file-icon";
 import { makeFilesClient } from "./files-client.js";
@@ -30,6 +30,8 @@ import {
   canNavigateDocumentHistory,
   closeStoredDocument,
   navigateStoredHistory,
+  pinStoredDocument,
+  dismissDiscardedTabs,
   setWrapLines,
   useFileExplorerViewState,
   type OpenDocument,
@@ -85,7 +87,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const { theaterId, params, panes, signal, language } = ctx;
   const t = getT(language);
   const contextScope = theaterId ?? "";
-  const { openDocs, activePath, docStates, wrapLines, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
+  const { openDocs, activePath, docStates, wrapLines, revealTarget, navigationError, discardedTabs } = useFileExplorerViewState(contextScope);
   const shellAction = useShellAction(ctx.shell, theaterId, activePath);
   const consumedRequestRef = useRef<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -130,8 +132,8 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         const parsed: unknown = params.ranges ? JSON.parse(params.ranges) : null;
         if (Array.isArray(parsed)) ranges = parsed.filter((range) => range && Number.isSafeInteger(range.start) && Number.isSafeInteger(range.end) && range.start >= 0 && range.end > range.start);
       } catch { /* 별도 강조 범위가 잘못되어도 줄 이동은 유지한다. */ }
-      activateStoredDocument(contextScope, { relativePath: path, name: nameOfPath(path) }, {
-        requestId: params.requestId, lineNumber: positiveCoordinate(params.line), column: positiveCoordinate(params.column), anchor: params.anchor, ranges,
+      activateStoredDocument(contextScope, { relativePath: path, name: nameOfPath(path), preview: params.preview === "true" }, {
+        requestId: params.requestId, lineNumber: positiveCoordinate(params.line), column: positiveCoordinate(params.column), anchor: params.anchor, ranges, keepFilter: params.keepFilter === "true",
       });
     };
     if (params.pathKind === "absolute") {
@@ -150,7 +152,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
       apply(addressed);
     }
     return () => { active = false; };
-  }, [activePath, addressed, contextScope, ctx.visible, params.requestId, params.pathKind, params.line, params.column, params.anchor, params.ranges, signal]);
+  }, [activePath, addressed, contextScope, ctx.visible, params.requestId, params.pathKind, params.line, params.column, params.anchor, params.ranges, params.preview, params.keepFilter, signal]);
 
   // 활성 문서가 바뀔 때 내용을 불러온다 — 캐시가 있으면 즉시 그리고 배경에서 재검증한다.
   // 주차된 사본(확대 중의 레일 인스턴스)은 읽지 않는다 — 같은 문서를 두 번 가져올 뿐이다.
@@ -172,14 +174,19 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     if (!theaterId || !activePath || !ctx.visible) return;
     const controller = new AbortController();
     const refresh = () => { void refreshDocumentDiskStatus(theaterId, [activePath], controller.signal).catch(() => undefined); };
-    const source = new EventSource(`/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}&directory=${encodeURIComponent(parentDirOf(activePath))}`);
+    const legacyWiki = activePath.startsWith(".fleet/knowledge/wiki/");
+    const source = new EventSource(`/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}&directory=${encodeURIComponent(parentDirOf(activePath))}${legacyWiki ? "&metadataDirectory=.fleet%2Fknowledge" : ""}`);
     source.addEventListener("change", (event) => {
       try {
         const directory: unknown = JSON.parse((event as MessageEvent).data as string);
         if (directory === parentDirOf(activePath)) refresh();
+        if (legacyWiki && directory === ".fleet/knowledge") void refreshLegacyWikiMetadata(theaterId, activePath, controller.signal).catch(() => undefined);
       } catch { /* 잘못된 신호는 버리고 다음 정상 디스크 이벤트를 기다린다. */ }
     });
-    source.addEventListener("open", refresh);
+    source.addEventListener("open", () => {
+      refresh();
+      if (legacyWiki) void refreshLegacyWikiMetadata(theaterId, activePath, controller.signal).catch(() => undefined);
+    });
     return () => { controller.abort(); source.close(); };
   }, [activePath, ctx.visible, theaterId]);
 
@@ -189,13 +196,14 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     if (!activePath || (addressed && params.pathKind === "absolute") || getFileExplorerSnapshot(contextScope).activePath !== activePath) return;
     if (params.path === activePath && params.theaterId === contextScope) return;
     const location = revealTarget?.relativePath === activePath ? revealTarget : null;
-    panes.replaceParams({ path: activePath, theaterId: contextScope, pathKind: "theater-relative",
+    panes.replaceParams({ path: activePath, theaterId: contextScope, pathKind: "theater-relative", preview: String(openDocs.find((doc) => doc.relativePath === activePath)?.preview === true),
+      ...(location?.keepFilter ? { keepFilter: "true" } : {}),
       ...(location ? { requestId: location.requestId } : {}),
       ...(location?.lineNumber ? { line: String(location.lineNumber) } : {}),
       ...(location?.column ? { column: String(location.column) } : {}),
       ...(location?.anchor ? { anchor: location.anchor } : {}),
     });
-  }, [activePath, contextScope, panes, params.path, params.theaterId, revealTarget]);
+  }, [activePath, contextScope, openDocs, panes, params.path, params.theaterId, revealTarget]);
 
   // 마지막 문서가 닫히면 열도 함께 사라진다. 빈 창을 남겨 두면 사용자는 닫을 것이 하나
   // 더 생긴 것으로 읽는다. 주차된 사본은 이미 닫혀 있으므로 자기를 또 닫지 않는다.
@@ -222,7 +230,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
 
   const openFilePath = useCallback((relativePath: string, displayName?: string) => {
     if (!theaterId) return;
-    activateStoredDocument(contextScope, { relativePath, name: displayName ?? nameOfPath(relativePath) });
+    activateStoredDocument(contextScope, { relativePath, name: displayName ?? nameOfPath(relativePath), preview: true });
   }, [contextScope, theaterId]);
 
   const handleCloseDoc = useCallback((relativePath: string) => {
@@ -272,6 +280,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
 
   const handleOpenExternal = useCallback(() => {
     if (!activePath || !theaterId) return;
+    pinStoredDocument(theaterId, activePath);
     const requestId = ++externalRequestRef.current;
     setExternalOpening(true);
     setExternalFailed(false);
@@ -402,14 +411,15 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
               <div
                 key={doc.relativePath}
                 role="listitem"
-                className={`fexp-tab${active ? " is-active" : ""}${stale ? " is-stale" : ""}`}
+                className={`fexp-tab${active ? " is-active" : ""}${stale ? " is-stale" : ""}${doc.preview ? " is-preview" : ""}`}
               >
                 <button
                   type="button"
                   className="fexp-tab-open"
                   aria-current={active ? "true" : undefined}
-                  title={stale ? t("fileExplorer.tabs.staleTitle") : doc.relativePath}
+                  title={stale ? t("fileExplorer.tabs.staleTitle") : doc.preview ? t("fileExplorer.tabs.previewTitle", { name: doc.name }) : doc.relativePath}
                   onClick={() => selectDocumentTab(doc)}
+                  onDoubleClick={() => pinStoredDocument(theaterId, doc.relativePath)}
                   onAuxClick={(event) => {
                     if (event.button !== 1) return;
                     event.preventDefault();
@@ -558,11 +568,29 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         )}
       </div>
       <div className="fexp-viewer-notices">
+        {viewState.kind === "code" && viewState.migratedWikiEntryId && theaterId && (
+          <div className="fexp-migrated-wiki" role="status">
+            <span>{t("fileExplorer.viewer.migratedWiki")}</span>
+            <button type="button" onClick={() => {
+              pinStoredDocument(theaterId, activePath ?? "");
+              void ctx.navigate.openWikiEntry({ theaterId, entryId: viewState.migratedWikiEntryId! })
+                .then((result) => { if (!result.ok) showFileNavigationError(result.reason); })
+                .catch(() => showFileNavigationError("not_found"));
+            }}>{t("fileExplorer.viewer.openCodex")}</button>
+          </div>
+        )}
+        {discardedTabs && (
+          <div className="fexp-tab-notice" role="status">
+            <span>{t("fileExplorer.tabs.discarded", { count: discardedTabs.count })}</span>
+            <button type="button" aria-label={t("fileExplorer.tabs.dismissNotice")} onClick={() => dismissDiscardedTabs(contextScope, discardedTabs.id)}>✕</button>
+          </div>
+        )}
         <div className="fexp-viewer-access">
           <span>{t("fileExplorer.viewer.readOnly")}</span>
           {activePath && (
             <span className="fexp-viewer-access-actions">
-              <button type="button" disabled={shellAction.pending} onClick={() => shellAction.open(parentDirOf(activePath))}>
+              {activeDoc?.preview && <button type="button" onClick={() => pinStoredDocument(theaterId, activePath)}>{t("fileExplorer.tabs.keepOpen")}</button>}
+              <button type="button" disabled={shellAction.pending} onClick={() => { pinStoredDocument(theaterId, activePath); shellAction.open(parentDirOf(activePath)); }}>
                 {t("fileExplorer.shell.open")}
               </button>
               <button type="button" disabled={externalOpening} onClick={handleOpenExternal}>

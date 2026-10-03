@@ -8,7 +8,7 @@ import type { PaneContext } from "@fleet-console/sdk/pane";
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 
 import { fileExplorerDocumentPane } from "../client/rail-panel.js";
-import { activateStoredDocument, getFileExplorerSnapshot } from "../client/view-store.js";
+import { activateStoredDocument, getFileExplorerSnapshot, pinStoredDocument } from "../client/view-store.js";
 
 /**
  * 주소는 자기 Theater 안에서만 뜻이 있다.
@@ -68,6 +68,26 @@ afterEach(() => {
   act(() => root.unmount());
   document.body.replaceChildren();
   vi.unstubAllGlobals();
+});
+
+describe("미리보기 문서 세션", () => {
+  it("미리보기는 대체하되 고정한 문서는 지키고 상한으로 닫힌 탭을 알린다", () => {
+    const theater = "preview-theater";
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx(theater, { theaterId: theater, path: "one.ts", requestId: "preview-1", preview: "true" }))); });
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx(theater, { theaterId: theater, path: "two.ts", requestId: "preview-2", preview: "true" }))); });
+    expect(getFileExplorerSnapshot(theater).openDocs.map((doc) => doc.relativePath)).toEqual(["two.ts"]);
+    act(() => { pinStoredDocument(theater, "two.ts"); });
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx(theater, { theaterId: theater, path: "three.ts", requestId: "preview-3", preview: "true" }))); });
+    expect(getFileExplorerSnapshot(theater).openDocs).toMatchObject([{ relativePath: "two.ts", preview: false }, { relativePath: "three.ts", preview: true }]);
+    act(() => {
+      for (let index = 0; index < 21; index++) activateStoredDocument(theater, { relativePath: `kept-${index}.ts`, name: `kept-${index}.ts` });
+    });
+    const snapshot = getFileExplorerSnapshot(theater);
+    expect(snapshot.openDocs).toHaveLength(20);
+    expect(snapshot.discardedTabs?.count).toBeGreaterThan(0);
+    const saved = JSON.parse(window.localStorage.getItem(`fleet-console.fileExplorer.session.${theater}`)!);
+    expect(saved.openDocs).toEqual(snapshot.openDocs);
+  });
 });
 
 describe("문서 주소의 Theater 범위", () => {

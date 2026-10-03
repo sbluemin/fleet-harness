@@ -54,6 +54,8 @@ export interface FileReadResult {
   /** maxLines로 잘라 읽은 경우, 잘라내기 전 불러온 본문의 줄 수. */
   readonly lineCount?: number;
   readonly window?: FileReadWindow;
+  /** 현재 존재를 보장하지 않는, Codex로 이주한 옛 사본의 역사 좌표. */
+  readonly migratedWikiEntryId?: string;
 }
 
 export interface Utf16Span {

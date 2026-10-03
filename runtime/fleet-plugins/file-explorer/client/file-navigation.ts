@@ -36,7 +36,7 @@ export function filePaneTarget(theaterId: string, resolved: FileResolveResult, l
     paneId: resolved.kind === "dir" ? "file-explorer" : DOCUMENT_PANE_ID,
     theaterId,
     params: {
-      theaterId, path: resolved.path, pathKind: "theater-relative", requestId: crypto.randomUUID(),
+      theaterId, path: resolved.path, pathKind: "theater-relative", requestId: crypto.randomUUID(), preview: "true",
       ...(resolved.kind === "dir" ? { directory: resolved.path } : {}),
       ...(location.line ? { line: String(location.line) } : {}),
       ...(location.column ? { column: String(location.column) } : {}),

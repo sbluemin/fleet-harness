@@ -38,6 +38,18 @@ export async function refreshDocumentDiskStatus(theaterId: string, paths: readon
   }
 }
 
+export async function refreshLegacyWikiMetadata(theaterId: string, relativePath: string, signal?: AbortSignal): Promise<void> {
+  const before = getFileExplorerSnapshot(theaterId).docStates.get(relativePath);
+  if (before?.kind !== "code" || !relativePath.startsWith(".fleet/knowledge/wiki/")) return;
+  const response = await fetch("/plugins/file-explorer/files/read", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, relativePath, maxLines: 1 }), ...(signal ? { signal } : {}) });
+  if (!response.ok || signal?.aborted) return;
+  const result = await response.json() as FileReadResult;
+  const current = getFileExplorerSnapshot(theaterId).docStates.get(relativePath);
+  if (signal?.aborted || current !== before) return;
+  // 본문을 덮지 않고 이주 표식만 갱신한다. 동시에 바뀐 본문은 디스크 배너가 따로 알린다.
+  setDocViewState(theaterId, relativePath, { ...current, migratedWikiEntryId: result.migratedWikiEntryId });
+}
+
 export interface LoadDocumentOptions {
   /** 캐시가 이미 그려져 있어 로딩 화면 없이 배경에서 재검증하는가. */
   readonly silent: boolean;
@@ -111,6 +123,7 @@ export async function loadDocument(
       lang: result.lang,
       truncated: result.truncated,
       window: result.window,
+      migratedWikiEntryId: result.migratedWikiEntryId,
       sizeBytes: result.sizeBytes,
       mtimeMs: result.mtimeMs,
       stale: false,

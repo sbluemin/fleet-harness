@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -34,8 +35,8 @@ interface FileTreeProps {
   readonly theaterId: string | null;
   readonly selectedPath: string | null;
   readonly revealTarget?: FileRevealTarget | null;
-  readonly onSelect: (entry: FolderEntry) => void;
-  readonly onSearchSelect?: (item: FileSearchItem) => void;
+  readonly onSelect: (entry: FolderEntry, mode: "preview" | "pinned") => void;
+  readonly onSearchSelect?: (item: FileSearchItem, mode: "preview" | "pinned") => void;
   readonly onContextMenu: (entry: FolderEntry, x: number, y: number) => void;
   readonly onEntriesRefreshed?: (result: FolderListResult) => void;
   /** 뷰어가 열어 둔 문서들의 부모 폴더 — 펼침 여부와 무관하게 변경을 지켜본다. */
@@ -868,6 +869,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
   const [childResults, setChildResults] = useState<Map<string, FolderListResult>>(new Map());
   const [filterText, setFilterText] = useState<string>("");
+  const searchResultsId = useId();
+  const [activeResultIndex, setActiveResultIndex] = useState(-1);
   const [searchScope, setSearchScope] = useState<FileSearchScope>("files");
   const [filterCollapsedDirs, setFilterCollapsedDirs] = useState<Set<string>>(new Set());
   const [scrollTop, setScrollTop] = useState(0);
@@ -920,6 +923,11 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const inFlightFoldersRef = useRef(new Map<string, Promise<void>>());
   const filterRequestRef = useRef(0);
   const isFiltering = filterText.trim().length > 0;
+  useEffect(() => { setActiveResultIndex(-1); }, [filterText, searchScope, filterOutcome]);
+  useLayoutEffect(() => {
+    if (activeResultIndex < 0) return;
+    document.getElementById(`${searchResultsId}-${activeResultIndex}`)?.scrollIntoView({ block: "nearest" });
+  }, [activeResultIndex, searchResultsId]);
   const emitEntriesRefreshed = (result: FolderListResult) => {
     // 목록 결과를 통째로 넘긴다 — 뷰어는 truncated까지 봐야 "행이 없다"를 "파일이 없다"로 오독하지 않는다.
     onEntriesRefreshedRef.current?.(result);
@@ -1062,7 +1070,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         nextExpanded.add(parentPath);
       }
       if (!active || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
-      setFilterText("");
+      if (!revealTarget.keepFilter) setFilterText("");
       setFilterCollapsedDirs(new Set());
       if (parts.some((part) => part.startsWith("."))) {
         setShowHidden(true);
@@ -1681,14 +1689,15 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       }
       return;
     }
-    activateRow(row);
+    if (event.shiftKey && row.entry.kind === "file") onSelect(row.entry, "pinned");
+    else activateRow(row);
   };
 
   const activateRow = (row: EntryRow) => {
     // 진짜로 열면 훑어보기는 끝난다.
     setPeekPath(null);
     if (row.entry.kind !== "dir") {
-      onSelect(row.entry);
+      onSelect(row.entry, "preview");
       return;
     }
     if (!isFiltering) {
@@ -1706,6 +1715,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const handleRowClick = (row: EntryRow) => {
     setCursorPath(row.entry.relativePath);
     activateRow(row);
+  };
+
+  const handleRowDoubleClick = (row: EntryRow) => {
+    if (row.entry.kind === "file") onSelect(row.entry, "pinned");
   };
 
   const handleRowContextMenu = (row: EntryRow, event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -1826,6 +1839,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         rollup={row.entry.kind === "dir" ? gitRollups.get(row.entry.relativePath) : undefined}
         note={rowNote?.path === row.entry.relativePath ? rowNote.text : null}
         onEntryClick={handleRowClick}
+        onEntryDoubleClick={handleRowDoubleClick}
         onContextMenu={handleRowContextMenu}
         onKeyDown={handleTreeItemKeyDown}
         onRowAction={handleRowAction}
@@ -1888,13 +1902,33 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
               setFilterCollapsedDirs(new Set());
             }}
             onKeyDown={(event) => {
-              if (event.key !== "Escape") return;
-              if (!shouldClearFilterOnEscape(filterText)) return;
+              if (event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+              const matches = filterOutcome?.files ?? [];
+              if (isFiltering && matches.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                event.preventDefault();
+                event.stopPropagation();
+                setActiveResultIndex((current) => event.key === "ArrowDown" ? Math.min(matches.length - 1, current + 1) : current < 0 ? matches.length - 1 : Math.max(0, current - 1));
+                return;
+              }
+              if (isFiltering && matches.length > 0 && event.key === "Enter") {
+                event.preventDefault();
+                event.stopPropagation();
+                const item = matches[Math.max(0, activeResultIndex)];
+                if (item) onSearchSelect?.(item, event.shiftKey ? "pinned" : "preview");
+                return;
+              }
+              if (event.key !== "Escape" || !shouldClearFilterOnEscape(filterText)) return;
               event.preventDefault();
               event.stopPropagation();
               setFilterText("");
+              setActiveResultIndex(-1);
               setFilterCollapsedDirs(new Set());
             }}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={isFiltering}
+            aria-controls={isFiltering ? searchResultsId : undefined}
+            aria-activedescendant={isFiltering && activeResultIndex >= 0 ? `${searchResultsId}-${activeResultIndex}` : undefined}
             aria-label={t("fileExplorer.filter.aria")}
           />
           {isFiltering && (
@@ -2004,7 +2038,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           searching={filterSearching}
           failed={filterFailed !== null}
           selectedPath={selectedPath}
-          onSelect={(item) => onSearchSelect?.(item)}
+          onSelect={(item, mode) => onSearchSelect?.(item, mode)}
+          listId={searchResultsId}
+          activeIndex={activeResultIndex}
+          onActiveIndex={setActiveResultIndex}
           t={t}
         />
       ) : (
@@ -2020,15 +2057,11 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             aria-label={t("fileExplorer.tree.aria")}
             onScroll={handleScroll}
           >
-            {shouldVirtualize ? (
-              <div style={{ height: totalHeight, position: "relative" }}>
-                <div style={{ transform: `translateY(${offsetY}px)` }}>
-                  {visibleRows.map(renderTreeRow)}
-                </div>
+            <div style={{ ...(shouldVirtualize ? { height: totalHeight } : {}), position: "relative" }}>
+              <div style={shouldVirtualize ? { transform: `translateY(${offsetY}px)` } : undefined}>
+                {visibleRows.map(renderTreeRow)}
               </div>
-            ) : (
-              visibleRows.map(renderTreeRow)
-            )}
+            </div>
             {flatRows.length === 0 && result.entries.length === 0 && (
               <div className="fexp-empty">
                 <span className="fexp-empty-glyph" aria-hidden="true" />
@@ -2082,32 +2115,52 @@ interface SearchResultListProps {
   readonly searching: boolean;
   readonly failed: boolean;
   readonly selectedPath: string | null;
-  readonly onSelect: (item: FileSearchItem) => void;
+  readonly onSelect: (item: FileSearchItem, mode: "preview" | "pinned") => void;
+  readonly listId: string;
+  readonly activeIndex: number;
+  readonly onActiveIndex: (index: number) => void;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
-function SearchResultList({ outcome, searching, failed, selectedPath, onSelect, t }: SearchResultListProps) {
+function SearchResultList({ outcome, searching, failed, selectedPath, onSelect, listId, activeIndex, onActiveIndex, t }: SearchResultListProps) {
   const results = outcome?.files ?? [];
   if (results.length === 0 && !searching && !failed) {
     return (
-      <div className="fexp-search-results">
-        <div className="fexp-empty is-plain"><span className="fexp-empty-title">{t("fileExplorer.status.noMatchingItems")}</span></div>
+      <div className="fexp-search-results" id={listId} role="listbox" aria-label={t("fileExplorer.filter.resultsAria")}>
+        <div className="fexp-empty is-plain" role="status"><span className="fexp-empty-title">{t("fileExplorer.status.noMatchingItems")}</span></div>
       </div>
     );
   }
   return (
-    <div className="fexp-search-results" role="listbox" aria-label={t("fileExplorer.filter.resultsAria")}>
-      {results.map((item) => {
+    <div className="fexp-search-results" id={listId} role="listbox" aria-label={t("fileExplorer.filter.resultsAria")}>
+      {results.map((item, index) => {
         const name = nameOfRelativePath(item.relativePath);
         const parent = parentRelativePath(item.relativePath);
         return (
           <button
             type="button"
             role="option"
-            aria-selected={selectedPath === item.relativePath}
+            id={`${listId}-${index}`}
+            tabIndex={index === Math.max(0, activeIndex) ? 0 : -1}
+            aria-selected={activeIndex === index}
             key={`${item.relativePath}:${item.preview?.lineNumber ?? "path"}`}
-            className={`fexp-search-result${selectedPath === item.relativePath ? " is-cur" : ""}`}
-            onClick={() => onSelect(item)}
+            className={`fexp-search-result${selectedPath === item.relativePath ? " is-cur" : ""}${activeIndex === index ? " is-active" : ""}`}
+            onFocus={() => onActiveIndex(index)}
+            onClick={() => onSelect(item, "preview")}
+            onDoubleClick={() => onSelect(item, "pinned")}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                event.stopPropagation();
+                const next = Math.max(0, Math.min(results.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)));
+                onActiveIndex(next);
+                document.getElementById(`${listId}-${next}`)?.focus();
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                event.stopPropagation();
+                onSelect(item, event.shiftKey ? "pinned" : "preview");
+              }
+            }}
           >
             <span className="fexp-tree-icon" aria-hidden="true"><FileIcon name={name} /></span>
             <span className="fexp-search-result-main">
@@ -2190,6 +2243,7 @@ interface FlatTreeRowProps {
   /** 이 행의 동작 자리에 잠깐 서는 제자리 확인("복사됨") — 없으면 동작 버튼이 선다. */
   readonly note: string | null;
   readonly onEntryClick: (row: EntryRow) => void;
+  readonly onEntryDoubleClick: (row: EntryRow) => void;
   readonly onContextMenu: (row: EntryRow, event: ReactMouseEvent<HTMLButtonElement>) => void;
   readonly onKeyDown: (row: EntryRow, event: ReactKeyboardEvent<HTMLButtonElement>) => void;
   readonly onRowAction: (row: EntryRow, action: TreeRowAction) => void;
@@ -2206,7 +2260,7 @@ const ACTION_STROKE = { fill: "none", stroke: "currentColor", strokeWidth: 1.4, 
  * 동작들은 행 오른쪽 끝에 떠 있다가 hover·focus-within에만 나타난다. 로빙 탭 정지는 행 하나뿐이므로
  * 동작 버튼은 tabIndex -1이다(키보드는 우클릭 메뉴와 Space가 같은 일을 한다).
  */
-function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, note, onEntryClick, onContextMenu, onKeyDown, onRowAction, onPeek, t }: FlatTreeRowProps) {
+function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, note, onEntryClick, onEntryDoubleClick, onContextMenu, onKeyDown, onRowAction, onPeek, t }: FlatTreeRowProps) {
   const { entry, depth, isSelected, isExpanded, isLoading } = row;
   const isDir = entry.kind === "dir";
   // 디렉터리형 행이라도 정확 경로에 상태가 있으면 점을 단다 —
@@ -2234,6 +2288,7 @@ function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, no
         aria-selected={isSelected}
         aria-expanded={isDir ? isExpanded : undefined}
         onClick={handleClick}
+        onDoubleClick={() => onEntryDoubleClick(row)}
         onContextMenu={(event) => onContextMenu(row, event)}
         onKeyDown={(event) => onKeyDown(row, event)}
       >

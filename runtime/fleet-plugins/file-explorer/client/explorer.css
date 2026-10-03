@@ -424,7 +424,8 @@
 }
 
 .fexp-search-result:hover,
-.fexp-search-result.is-cur {
+.fexp-search-result.is-cur,
+.fexp-search-result.is-active {
   background: color-mix(in oklch, var(--brass) 7%, transparent);
   box-shadow: inset 2px 0 var(--brass);
 }
@@ -1117,6 +1118,8 @@
 /* ── 행 ── */
 .fexp-tree-rowwrap {
   position: relative;
+  container-type: inline-size;
+  container-name: fexp-row;
 }
 
 .fexp-tree-row {
@@ -1222,6 +1225,10 @@
 .fexp-tree-rowwrap:focus-within .fexp-row-actions,
 .fexp-row-actions:has(.fexp-row-note) {
   opacity: 1;
+}
+
+.fexp-tree-rowwrap:hover .fexp-row-actions button,
+.fexp-tree-rowwrap:focus-within .fexp-row-actions button {
   pointer-events: auto;
 }
 
@@ -1232,6 +1239,7 @@
 }
 
 .fexp-row-action {
+  pointer-events: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1262,6 +1270,13 @@
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   white-space: nowrap;
+}
+
+/* 좁은 행에서는 본문 클릭을 우선한다. 보조 동작은 우클릭 메뉴/Space로 그대로 닿는다. */
+@container fexp-row (max-width: 220px) {
+  .fexp-row-actions { display: none; }
+  .fexp-tree-rowwrap:hover .fexp-tree-dot,
+  .fexp-tree-rowwrap:focus-within .fexp-tree-dot { opacity: 1; }
 }
 
 /* 표식 행들은 행과 같은 28px을 지켜 가상화 높이 계산을 보존한다. */
@@ -1716,6 +1731,8 @@
 }
 
 /* ✕는 손이 닿을 때만. 16px 자리는 늘 확보해 레이아웃이 튀지 않는다. */
+.fexp-tab.is-preview .fexp-chip-name { font-style: italic; }
+
 .fexp-tab-close {
   display: inline-flex;
   align-items: center;
@@ -1973,6 +1990,35 @@
 
 .fexp-crumb-ok.is-shown {
   opacity: 1;
+}
+
+.fexp-tab-notice,
+.fexp-migrated-wiki {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--surface-rim);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+}
+
+.fexp-tab-notice {
+  color: var(--warn-ink);
+  background: color-mix(in oklch, var(--warn) 8%, transparent);
+}
+
+.fexp-tab-notice button,
+.fexp-migrated-wiki button {
+  padding: 2px 7px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--glass-tint-field);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
 }
 
 .fexp-disk-banner,

@@ -31,6 +31,7 @@ import {
   getFileExplorerSnapshot,
   hydrateStoredSession,
   markDocStale,
+  pinStoredDocument,
   seedDocMtime,
   useFileExplorerViewState,
 } from "./view-store.js";
@@ -193,23 +194,23 @@ function FileExplorerTreePane(ctx: PaneContext) {
     }
   }, [contextScope, panes]);
 
-  const openFilePath = useCallback((relativePath: string, displayName?: string) => {
+  const openFilePath = useCallback((relativePath: string, displayName?: string, mode: "preview" | "pinned" = "preview") => {
     if (!theaterId) return;
-    activateStoredDocument(contextScope, { relativePath, name: displayName ?? nameOfPath(relativePath) });
+    activateStoredDocument(contextScope, { relativePath, name: displayName ?? nameOfPath(relativePath), preview: mode === "preview" });
     panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: relativePath, theaterId: contextScope } });
   }, [contextScope, panes, theaterId]);
 
-  const handleSearchSelect = useCallback((item: FileSearchItem) => {
+  const handleSearchSelect = useCallback((item: FileSearchItem, mode: "preview" | "pinned") => {
     if (!theaterId) return;
     const target = filePaneTarget(theaterId, { path: item.relativePath, kind: item.kind }, item.location);
-    const params = { ...target.params, ...(item.preview ? { line: String(item.preview.lineNumber), ranges: JSON.stringify(item.preview.ranges) } : {}) };
+    const params = { ...target.params, preview: String(mode === "preview"), keepFilter: String(item.kind === "file"), ...(item.preview ? { line: String(item.preview.lineNumber), ranges: JSON.stringify(item.preview.ranges) } : {}) };
     panes.open({ paneId: target.paneId, params });
   }, [panes, theaterId]);
 
-  const handleSelect = useCallback((entry: FolderEntry) => {
+  const handleSelect = useCallback((entry: FolderEntry, mode: "preview" | "pinned") => {
     if (entry.kind !== "file") return;
     noteEntryStats(contextScope, [entry]);
-    openFilePath(entry.relativePath, entry.name);
+    openFilePath(entry.relativePath, entry.name, mode);
   }, [contextScope, openFilePath]);
 
   const docStatesRef = useRef(docStates);
@@ -286,6 +287,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
       showFeedback(t("fileExplorer.menu.actionUnavailable"));
       return;
     }
+    if (action === "openShell" || action === "openExternal") pinStoredDocument(theaterId, entry.relativePath);
     if (action === "openShell") {
       shellAction.open(entry.kind === "file" ? parentDirOf(entry.relativePath) : entry.relativePath);
       return;

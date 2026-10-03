@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { migratedWikiEntryId } from "./migrated-wiki.js";
 
 import { FILE_READ_BYTE_CAP, type FileReadRequest, type FileReadResult } from "./types.js";
 export type { FileReadResult } from "./types.js";
@@ -120,8 +121,11 @@ export async function readFileForTheater(theaterPath: string, relativePath: stri
         while (skip < Math.min(3, buffer.length) && (buffer[skip]! & 0xc0) === 0x80) skip++;
         buffer = buffer.subarray(skip);
       }
+      const canonicalRelativePath = path.relative(root, resolved).split(path.sep).join("/");
+      const movedEntryId = await migratedWikiEntryId(root, canonicalRelativePath);
       const result: FileReadResult = {
-        relativePath: path.relative(root, resolved).split(path.sep).join("/"),
+        relativePath: canonicalRelativePath,
+        ...(movedEntryId ? { migratedWikiEntryId: movedEntryId } : {}),
         content: decodeTextBuffer(buffer, endByte < stat.size, encoding),
         lang: detectLang(resolved),
         ...(startByte > 0 || endByte < stat.size ? { truncated: true } : {}),
