@@ -432,7 +432,7 @@ function TheaterSubagentsSection({ theaterId }: { readonly theaterId: string }) 
       {state === "loading" ? <p role="status">{t("sidebar.theater.prompt.loading")}</p>
         : state === "loadFailed" ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.loadFailed")}</p>
           : <>
-            <SettingsToggle checked={replaced === true} disabled={state === "saving"} label={t("sidebar.theater.subagents.toggle")} onChange={change} />
+            <SettingsToggle checked={replaced === true} busy={state === "saving"} label={t("sidebar.theater.subagents.toggle")} onChange={change} />
             <p className="theater-prompt-caption">{t(replaced ? "sidebar.theater.subagents.on" : "sidebar.theater.subagents.off")}</p>
             {state === "saveFailed" ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.saveFailed")}</p> : null}
           </>}

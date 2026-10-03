@@ -329,7 +329,7 @@ function AiGatewayRoutingCard() {
         title={t("terminal.settings.aiGatewayRouting")}
         help={t("terminal.settings.aiGatewayRoutingHelp")}
         value={state.delegationRoutingEnabled}
-        disabled={routingSaving}
+        busy={routingSaving}
         onToggle={() => void setSystemPromptSettingsField("delegationRoutingEnabled", !state.delegationRoutingEnabled)}
       />
       {state.delegationRoutingEnabled ? (
@@ -474,7 +474,7 @@ function AiGatewayDiagnosticsCard() {
         title={t("terminal.settings.aiGatewayWireLog")}
         help={t("terminal.settings.aiGatewayWireLogHelp")}
         value={state.wireLogEnabled}
-        disabled={saving.has("wireLogEnabled")}
+        busy={saving.has("wireLogEnabled")}
         onToggle={() => void setSystemPromptSettingsField("wireLogEnabled", !state.wireLogEnabled)}
       />
     </section>
@@ -1803,7 +1803,7 @@ function useLoadSystemPromptSettings() {
     return () => controller.abort();
   }, []);
 }
-function SettingToggleRow({ title, help, value, disabled, onToggle }: SettingToggleRowProps) {
+function SettingToggleRow({ title, help, value, busy, onToggle }: SettingToggleRowProps) {
   return (
     <div className="global-settings-row">
       <div className="global-settings-row-text">
@@ -1817,7 +1817,7 @@ function SettingToggleRow({ title, help, value, disabled, onToggle }: SettingTog
       {/* 켬/끔은 콘솔 전체에서 SDK 스위치 한 모양이다 — 예전의 "Off" 글자 버튼은 스타일 없는 세 번째 문법이었다. */}
       <SettingsToggle
         checked={value}
-        disabled={disabled}
+        busy={busy}
         ariaLabel={title}
         onChange={onToggle}
       />
@@ -1825,4 +1825,4 @@ function SettingToggleRow({ title, help, value, disabled, onToggle }: SettingTog
   );
 }
 
-interface SettingToggleRowProps { readonly title: string; readonly help: string; readonly value: boolean; readonly disabled: boolean; readonly onToggle: () => void }
+interface SettingToggleRowProps { readonly title: string; readonly help: string; readonly value: boolean; readonly busy: boolean; readonly onToggle: () => void }

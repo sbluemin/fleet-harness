@@ -62,7 +62,13 @@ export interface SettingsToggleProps {
   readonly label?: string;
   /** 보이지 않는 접근성 이름 — 행 라벨을 되풀이하는 눈에 띄는 글 없이 스위치를 이름 짓는다. */
   readonly ariaLabel?: string;
+  /** 지금 쓸 수 없는 영구 상태(로딩 전·미지원). 포커스 순서에서도 빠진다. `busy`보다 우선한다. */
   readonly disabled?: boolean;
+  /**
+   * 저장·작업이 끝나기를 기다리는 일시 상태. 입력은 막되 native `disabled`는 걸지 않는다 —
+   * 걸면 키보드로 막 누른 스위치에서 포커스가 문서로 빠져, 다음 Space가 허공에 떨어진다.
+   */
+  readonly busy?: boolean;
 }
 
 export interface SettingsCheckboxProps {
@@ -291,8 +297,9 @@ export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps
  * 같은 뜻이 한 화면에서 세 모양으로 갈렸다. 켜짐은 선택이자 위치이므로 brass가 칠하고,
  * 신호 토큰(aurora/warn/coral)은 상태를 말하는 자리에만 남는다.
  */
-export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled = false }: SettingsToggleProps): React.ReactElement {
+export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled = false, busy = false }: SettingsToggleProps): React.ReactElement {
   const id = React.useId();
+  const blocked = busy && !disabled;
   return (
     <label className="fc-settings-toggle" htmlFor={id}>
       <input
@@ -301,8 +308,11 @@ export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled =
         type="checkbox"
         checked={checked}
         disabled={disabled}
+        aria-disabled={blocked || undefined}
         aria-label={ariaLabel ?? (label ? undefined : "Toggle setting")}
-        onChange={(event) => onChange(event.currentTarget.checked)}
+        // 라벨 클릭·Space도 입력의 click으로 들어온다. 여기서 막으면 체크가 바뀌지 않고 change도 서지 않는다.
+        onClick={blocked ? (event) => event.preventDefault() : undefined}
+        onChange={(event) => { if (!blocked) onChange(event.currentTarget.checked); }}
       />
       <span className="settings-switch fc-settings-toggle__control" aria-hidden="true">
         <span className="settings-switch-knob" />

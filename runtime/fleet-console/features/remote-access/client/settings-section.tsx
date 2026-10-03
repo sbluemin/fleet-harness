@@ -447,7 +447,7 @@ function RemoteListenerCard({
         </p>
         <SettingsToggle
           checked={draft.publicEndpointEnabled}
-          disabled={saving}
+          busy={saving}
           ariaLabel={t("settings.remote.publicEndpoint.title")}
           onChange={(next) => edit({ publicEndpointEnabled: next })}
         />

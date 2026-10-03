@@ -70,7 +70,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
               />
               <SettingsToggle
                 checked={enabled}
-                disabled={saving}
+                busy={saving}
                 ariaLabel={t(row.titleKey)}
                 onChange={(next) => save({ ...experiments, [row.id]: next })}
               />
@@ -133,7 +133,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
           />
           <SettingsToggle
             checked={experiments.commodore}
-            disabled={saving}
+            busy={saving}
             ariaLabel={t("settings.experiments.commodore.title")}
             onChange={(next) => save({ ...experiments, commodore: next })}
           />

@@ -14479,17 +14479,19 @@ body[data-codex-side="true"] .command-card {
   background: var(--quiet-switch-knob);
 }
 
-.fc-settings-toggle:hover:not(:has(.fc-settings-toggle__input:disabled)):not(:has(.fc-settings-toggle__input:checked)) .settings-switch {
+.fc-settings-toggle:hover:not(:has(.fc-settings-toggle__input:is(:disabled, [aria-disabled="true"]))):not(:has(.fc-settings-toggle__input:checked)) .settings-switch {
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
 }
 
-.fc-settings-toggle:has(.fc-settings-toggle__input:disabled) {
+/* 저장 중(busy)은 aria-disabled로 막는다 — 포커스를 지키려고 native disabled를 걸지 않을 뿐, 모양은 같다. */
+.fc-settings-toggle:has(.fc-settings-toggle__input:disabled),
+.fc-settings-toggle:has(.fc-settings-toggle__input[aria-disabled="true"]) {
   cursor: not-allowed;
   opacity: var(--control-disabled-opacity);
 }
 
-.fc-settings-toggle:active:not(:has(.fc-settings-toggle__input:disabled)) .settings-switch {
+.fc-settings-toggle:active:not(:has(.fc-settings-toggle__input:is(:disabled, [aria-disabled="true"]))) .settings-switch {
   transform: translateY(1px);
 }
 
@@ -14593,7 +14595,8 @@ body[data-codex-side="true"] .command-card {
 
   .fc-select__trigger:disabled,
   .fc-select__option[aria-disabled="true"],
-  .fc-settings-toggle:has(.fc-settings-toggle__input:disabled) { opacity: 1; }
+  .fc-settings-toggle:has(.fc-settings-toggle__input:disabled),
+  .fc-settings-toggle:has(.fc-settings-toggle__input[aria-disabled="true"]) { opacity: 1; }
 }
 
 @media (max-width: 720px) {

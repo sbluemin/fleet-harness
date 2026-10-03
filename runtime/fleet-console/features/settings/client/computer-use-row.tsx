@@ -125,7 +125,7 @@ export function ComputerUseRow({ enabled, backend, saving, onChange, onBackendCh
         {backend === "cua-driver" && status?.installation === "missing" && status.installer?.supported && <button type="button" className="fc-settings-reset" disabled={installing || saving} onClick={() => void install()}>{t(installing ? "settings.computerUse.installing" : "settings.computerUse.install")}</button>}
         {unavailable && <button type="button" className="fc-settings-reset" onClick={() => setRefreshKey((key) => key + 1)}>{t("settings.computerUse.retry")}</button>}
         {active && <button type="button" className="fc-settings-reset" disabled={working || status.state === "stopping"} onClick={() => void stop()}>{t("settings.computerUse.stop")}</button>}
-        <SettingsToggle checked={enabled} disabled={saving || working || (!enabled && (status?.backend !== backend || !status?.supported || unavailable || status.installation !== "available"))} ariaLabel={t("settings.computerUse.title")} onChange={onChange} />
+        <SettingsToggle checked={enabled} busy={saving || working} disabled={!enabled && (status?.backend !== backend || !status?.supported || unavailable || status.installation !== "available")} ariaLabel={t("settings.computerUse.title")} onChange={onChange} />
       </div>
     </div>
     {code && <p role="alert" className="global-settings-help">

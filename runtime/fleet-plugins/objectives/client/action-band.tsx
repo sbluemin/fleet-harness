@@ -846,7 +846,7 @@ export function ActionBand(props: ActionBandProps) {
         {reviewable(intent) ? (
           // 켬/끔은 콘솔 공용 스위치 한 모양 — 목표에 저장되고 다음 개시에도 남는다.
           <div className="objectives-routing-switch">
-            <SettingsToggle checked={confirmOn} disabled={sending} ariaLabel={t("objectives.routing.confirm")}
+            <SettingsToggle checked={confirmOn} busy={sending} ariaLabel={t("objectives.routing.confirm")}
               onChange={(next) => void request("/objective/patch", { objectiveId, patch: { routingConfirm: next } }).catch((failure: unknown) => setError(t("objectives.band.failedAction", { reason: t("objectives.band.reason.other", { code: failure instanceof Error ? failure.message : "unknown" }) })))} />
             <span className="objectives-routing-switch-copy"><b>{t("objectives.routing.confirm")}</b><span>{t("objectives.routing.confirmHint", { count: routeCount })}</span></span>
           </div>
