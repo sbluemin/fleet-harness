@@ -197,6 +197,7 @@ export async function* translateAntigravityStream(
   let textItemId: string | undefined;
   let reasoningItemId: string | undefined;
   let finishReason: string | undefined;
+  let promptBlockReason: string | undefined;
   let failed: CanonicalError | undefined;
 
   const snapshot = () => ({ id: responseId, model, usage });
@@ -250,6 +251,11 @@ export async function* translateAntigravityStream(
     const candidate = isRecord(candidates[0]) ? candidates[0] : undefined;
     if (typeof candidate?.finishReason === "string") {
       finishReason = candidate.finishReason;
+    }
+    // 프롬프트 자체가 차단되면 candidates 없이 promptFeedback.blockReason만 온다.
+    const promptFeedback = isRecord(response.promptFeedback) ? response.promptFeedback : undefined;
+    if (typeof promptFeedback?.blockReason === "string") {
+      promptBlockReason = promptFeedback.blockReason;
     }
     const content = isRecord(candidate?.content) ? candidate.content : undefined;
     const parts: GeminiResponsePart[] = Array.isArray(content?.parts)
@@ -342,7 +348,7 @@ export async function* translateAntigravityStream(
   if (!started) {
     throw new UpstreamProtocolError("Antigravity stream produced no response frames");
   }
-  const incomplete = antigravityIncomplete(finishReason);
+  const incomplete = antigravityIncomplete(finishReason ?? promptBlockReason);
   yield {
     type: "response.completed",
     response: {

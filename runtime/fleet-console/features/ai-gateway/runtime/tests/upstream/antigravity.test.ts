@@ -193,11 +193,11 @@ describe("antigravity adapter", () => {
   });
 
   it("translates MAX_TOKENS to max_output_tokens, safety filters to content_filter, and leaves STOP complete", async () => {
-    async function streamCompleted(finishReason?: string) {
+    async function streamCompleted(finishReason?: string, extra: Record<string, unknown> = {
+      candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason }],
+    }) {
       const stream = translateAntigravityStream(
-        frames(responseFrame([], {
-          candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason }],
-        })),
+        frames(responseFrame([], extra)),
         {
           codec: createToolNameCodec(),
           ledger: createAntigravitySignatureLedger(),
@@ -216,5 +216,10 @@ describe("antigravity adapter", () => {
     expect((await streamCompleted("RECITATION")).incomplete).toEqual({ reason: "content_filter" });
     expect((await streamCompleted("STOP")).incomplete).toBeUndefined();
     expect((await streamCompleted("FINISH_REASON_UNSPECIFIED")).incomplete).toBeUndefined();
+    // 프롬프트 자체가 차단되면 candidates 없이 promptFeedback.blockReason만 온다.
+    expect((await streamCompleted(undefined, {
+      candidates: [],
+      promptFeedback: { blockReason: "PROHIBITED_CONTENT" },
+    })).incomplete).toEqual({ reason: "content_filter" });
   });
 });
