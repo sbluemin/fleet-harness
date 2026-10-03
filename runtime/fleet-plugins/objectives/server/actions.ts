@@ -31,7 +31,8 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
   const boardContent = (value: Objective | null) => value && ({
     title: value.title, note: value.note, attachments: value.attachments, criteria: value.criteria,
     members: value.members.map(({ id, role, brief, launch, subagents }) => ({ id, role, brief, launch, subagents })),
-    missions: value.missions.map(({ id, text, done, prerequisites, why, member, unplaced }) => ({ id, text, done, prerequisites, why, member, unplaced })),
+    // memberBy 는 누가 정한 배정인지다 — 다시 계획할 때 남길 임무를 가르므로 같은 담당의 재지정도 보드 변경이다.
+    missions: value.missions.map(({ id, text, done, prerequisites, why, member, memberBy, unplaced }) => ({ id, text, done, prerequisites, why, member, memberBy, unplaced })),
   });
   const edited = async (objectiveId: string, kinds: readonly ObjectiveEditKind[], run: () => Promise<Objective> | Objective) => {
     const before = boardContent(store.find(objectiveId));
