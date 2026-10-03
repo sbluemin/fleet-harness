@@ -472,6 +472,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
   const [fontsLoading, setFontsLoading] = useState(true);
   const [fontsError, setFontsError] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(false);
+  const card = useRef<HTMLElement>(null);
   const [cjkFonts, setCjkFonts] = useState<readonly FontPickerInstalledFont[]>([]);
   const [scanning, setScanning] = useState(false);
   useEffect(() => {
@@ -552,8 +553,14 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
       </div>
     </div>;
   };
-  return <section className="global-settings-card settings-font-group" aria-label={t("settings.fonts.title")}>
-    <h3 className="global-settings-card-title">{t("settings.fonts.title")}{JSON.stringify(fonts) !== JSON.stringify(DEFAULT_FONTS) ? <button type="button" className="settings-group-reset" disabled={unavailable || saving} onClick={() => save(DEFAULT_FONTS)}>{t("settings.fonts.reset")}</button> : null}</h3>
+  // 초기화 버튼은 값이 기본값이 되는 즉시 사라진다. 포커스가 문서로 빠지지 않게 먼저 바로 다음 컨트롤인
+  // UI 글꼴 선택기로 옮긴다 — 저장 중에도 포커스를 받고, 실패로 되돌려져도 그대로 남아 있다.
+  const resetFonts = () => {
+    card.current?.querySelector<HTMLElement>('[data-font-axis="ui"] .settings-font-trigger')?.focus();
+    save(DEFAULT_FONTS);
+  };
+  return <section ref={card} className="global-settings-card settings-font-group" aria-label={t("settings.fonts.title")}>
+    <h3 className="global-settings-card-title">{t("settings.fonts.title")}{JSON.stringify(fonts) !== JSON.stringify(DEFAULT_FONTS) ? <button type="button" className="settings-group-reset" disabled={unavailable || saving} onClick={resetFonts}>{t("settings.fonts.reset")}</button> : null}</h3>
     <div className="settings-group-surface">
       {(["ui", "content", "code"] as const).map(axisRow)}
       <div className="settings-font-preview" aria-label={t("settings.typography.picker.preview")}>
