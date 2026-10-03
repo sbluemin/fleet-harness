@@ -153,6 +153,28 @@ export interface RailEntryDescriptor {
    * 무엇을 세는지는 플러그인이 정하되, 사람이 답해야 할 것(결정 요청처럼)만 센다. 진행 중이거나 읽지 않은 것은 배지가 아니다.
    */
   readonly attention?: RailEntryAttention;
+  /**
+   * 이 entry가 여는 표면이 레일 패널·확대 표면이 아닐 때(activate 전용) 켜짐을 말하는 법.
+   * 선언하면 그 표면이 서 있는 동안 아이콘이 펼친 패널과 같은 문법(아래 brass 선 +
+   * aria-pressed)으로 켜진다. 선언하지 않은 entry의 동작은 바뀌지 않는다.
+   */
+  readonly active?: RailEntryActive;
+  /**
+   * 이 entry를 목록에 둘지 정하는 문서 단위 판정. 생략하면 둔다.
+   * 문서당 정적인 사실(Desktop 셸 여부 등)만 가린다 — Theater·Operation 상태로
+   * 가리면 도구모음 칸이 나타났다 사라져 근육 기억을 깨므로 쓰지 않는다.
+   */
+  readonly visible?: () => boolean;
+}
+
+/**
+ * 레일 아이콘 켜짐의 공급원. 호스트는 `useSyncExternalStore`로 읽으므로 `isActive`는
+ * 부작용 없이 같은 상태에 같은 값을 돌려준다.
+ */
+export interface RailEntryActive {
+  readonly subscribe: (listener: () => void) => () => void;
+  /** 지금 이 entry의 표면이 서 있는가. */
+  readonly isActive: () => boolean;
 }
 
 /**

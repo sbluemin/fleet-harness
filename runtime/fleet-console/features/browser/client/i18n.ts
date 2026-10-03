@@ -2,8 +2,8 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 
 export const browserEn = {
-  "terminal.browser.open": "Open Browser (Alt+B)",
-  "terminal.browser.exit": "Close Browser (Alt+B)",
+  "terminal.browser.open": "Open Operation Browser (Alt+B)",
+  "terminal.browser.exit": "Close Operation Browser (Alt+B)",
   "terminal.browser.agentUsing": "The agent is using the browser — click to open it",
   "terminal.browser.desktopOnly": "The Operation Browser opens only in the Fleet Desktop app.",
   "terminal.browser.desktopOnlyBody": "Open this Console in Fleet Desktop to browse with the agent. Browser tabs and phones can't show the browser.",
@@ -80,7 +80,7 @@ export const browserEn = {
   "terminal.browser.profile.clearItem": "Clear my profile…",
   "terminal.browser.profile.clearTitle": "Clear my profile",
   "terminal.browser.profile.clearBody": "This erases the cookies and site storage saved on this computer. It cannot be undone.",
-  "terminal.browser.profile.clearScope": "Signs out every Operation",
+  "terminal.browser.profile.clearScope": "Signs out the Fleet browser and every Operation",
   "terminal.browser.profile.clearRun": "Clear",
   "terminal.browser.profile.cleared": "Cleared my profile.",
   "terminal.browser.import.title": "Import from browser",
@@ -104,11 +104,19 @@ export const browserEn = {
   "terminal.browser.onboarding.welcome.next": "Open an Operation and the globe in its caption shows how to ask for it.",
   "terminal.browser.onboarding.tour.step1Title": "The globe opens this Operation's browser",
   "terminal.browser.onboarding.tour.step1Body": "Open it here or with Alt+B. The agent drives the same tabs you see, so you can watch it work, take over, annotate a page and paste the screenshot into this Operation.",
-  "terminal.browser.onboarding.tour.step1Example": "Open Hacker News in the Fleet browser and tell me the top three stories.",
+  "terminal.browser.onboarding.tour.step1Example": "Open Hacker News in the Operation browser and tell me the top three stories.",
+  "terminal.globalBrowser.title": "Fleet Browser",
+  "terminal.globalBrowser.sheetAria": "Fleet Browser",
+  "terminal.globalBrowser.close": "Close",
+  "terminal.globalBrowser.emptyTitle": "Browse without losing your place",
+  "terminal.globalBrowser.emptyBody": "Type an address or click a link. Closing the sheet takes you back where you were.",
+  "terminal.globalBrowser.restoreClosed": "Reopen {count} closed tabs",
+  "terminal.globalBrowser.restoreClosedHelp": "Only addresses come back — typed text and sign-ins do not.",
+  "terminal.globalBrowser.unseenTabs": "{count} unseen tabs",
 };
 export const browserKo: Record<keyof typeof browserEn, string> = {
-  "terminal.browser.open": "브라우저 열기 (Alt+B)",
-  "terminal.browser.exit": "브라우저 닫기 (Alt+B)",
+  "terminal.browser.open": "Operation 브라우저 열기 (Alt+B)",
+  "terminal.browser.exit": "Operation 브라우저 닫기 (Alt+B)",
   "terminal.browser.agentUsing": "에이전트가 브라우저를 쓰는 중 — 누르면 엽니다",
   "terminal.browser.desktopOnly": "Operation 브라우저는 Fleet Desktop 앱에서만 열립니다.",
   "terminal.browser.desktopOnlyBody": "에이전트와 함께 브라우징하려면 이 Console을 Fleet Desktop에서 여세요. 브라우저 탭과 휴대폰에서는 보이지 않습니다.",
@@ -185,7 +193,7 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.profile.clearItem": "내 프로필 비우기…",
   "terminal.browser.profile.clearTitle": "내 프로필 비우기",
   "terminal.browser.profile.clearBody": "이 기계에 저장된 쿠키와 사이트 저장소를 지웁니다. 되돌릴 수 없습니다.",
-  "terminal.browser.profile.clearScope": "모든 Operation이 로그아웃됩니다",
+  "terminal.browser.profile.clearScope": "Fleet 브라우저와 모든 Operation이 로그아웃됩니다",
   "terminal.browser.profile.clearRun": "비우기",
   "terminal.browser.profile.cleared": "내 프로필을 비웠습니다.",
   "terminal.browser.import.title": "브라우저에서 가져오기",
@@ -209,7 +217,15 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.onboarding.welcome.next": "Operation을 열면 캡션의 지구본이 요청 방법을 이어서 안내합니다.",
   "terminal.browser.onboarding.tour.step1Title": "이 지구본이 브라우저 문입니다",
   "terminal.browser.onboarding.tour.step1Body": "여기서 또는 Alt+B로 엽니다. 에이전트가 사용자와 같은 탭을 조작하므로 작업을 지켜보고, 직접 이어받고, 페이지에 주석을 달아 스크린샷을 이 Operation에 붙여넣을 수 있습니다.",
-  "terminal.browser.onboarding.tour.step1Example": "Fleet 브라우저로 Hacker News를 열고 상위 글 3개만 알려줘",
+  "terminal.browser.onboarding.tour.step1Example": "Operation 브라우저로 Hacker News를 열고 상위 글 3개만 알려줘",
+  "terminal.globalBrowser.title": "Fleet 브라우저",
+  "terminal.globalBrowser.sheetAria": "Fleet 브라우저",
+  "terminal.globalBrowser.close": "닫기",
+  "terminal.globalBrowser.emptyTitle": "보던 자리를 잃지 않고 브라우징",
+  "terminal.globalBrowser.emptyBody": "주소를 입력하거나 링크를 누르세요. 시트를 닫으면 보던 자리로 돌아옵니다.",
+  "terminal.globalBrowser.restoreClosed": "닫힌 탭 {count}개 다시 열기",
+  "terminal.globalBrowser.restoreClosedHelp": "주소만 돌아옵니다. 입력하던 글과 로그인은 돌아오지 않습니다.",
+  "terminal.globalBrowser.unseenTabs": "보지 않은 탭 {count}개",
 };
 const messages = { en: browserEn, ko: browserKo };
 const translators = { en: createTranslator(messages, "en"), ko: createTranslator(messages, "ko") };
