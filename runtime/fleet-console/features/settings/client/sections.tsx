@@ -503,7 +503,8 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
     return () => { cancelled = true; };
   }, [advanced, installedFonts]);
   const save = (next: ConsoleFontSettings) => { void setGlobalSettingsField("fonts", next); };
-  const disabled = !state || saving;
+  // 로딩 전(!state)만 native disabled다. 저장 중은 aria-disabled로 막는다 — 키보드로 막 누른 컨트롤에서 포커스가 문서로 빠지지 않게.
+  const unavailable = !state;
   const labelFor = (selection: FontAxisSettings["font"]) => selection.source === "inherit" ? t("settings.fonts.inherit") : selection.source === "system" ? selection.familyName : FONT_BUILT_INS[selection.id].label;
   const axisRow = (axis: FontAxis | "terminal") => {
     const value = fonts[axis]!;
@@ -519,7 +520,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
       <div className="settings-font-controls">
         <FontMenu label={label} selectedLabel={labelFor(value.font)} builtIns={choices} installedFonts={installedFonts.filter((font) => role === "code" ? font.monospace : font.uiSuitable)} selected={selected}
           selectedSystemFont={value.font.source === "system" ? value.font.familyName : null}
-          fallbackStack={fontFamilyForAxis(fonts, role)} previewText={t("settings.typography.preview")} loading={fontsLoading} error={fontsError} disabled={disabled}
+          fallbackStack={fontFamilyForAxis(fonts, role)} previewText={t("settings.typography.preview")} loading={fontsLoading} error={fontsError} disabled={unavailable} busy={saving}
         labels={{
           browserAria: t("settings.typography.picker.browserAria"),
           searchLabel: t("settings.typography.picker.searchLabel"),
@@ -544,15 +545,15 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
           onSelectionChange={(selection) => setAxis({ ...value, font: selection.source === "builtin" && selection.id === "inherit" ? { source: "inherit" } : selection as FontAxisSettings["font"] })}
         />
         <div className="settings-font-size" role="group" aria-label={t("settings.fonts.sizeAria", { axis: label })}>
-          <button type="button" disabled={disabled || value.size <= range.min} aria-label={t("settings.slider.decrease", { title: label })} onClick={() => setAxis({ ...value, size: value.size - 1 })}>−</button>
+          <button type="button" disabled={unavailable || value.size <= range.min} aria-disabled={saving || undefined} aria-label={t("settings.slider.decrease", { title: label })} onClick={() => { if (!saving) setAxis({ ...value, size: value.size - 1 }); }}>−</button>
           <output>{value.size}px</output>
-          <button type="button" disabled={disabled || value.size >= range.max} aria-label={t("settings.slider.increase", { title: label })} onClick={() => setAxis({ ...value, size: value.size + 1 })}>+</button>
+          <button type="button" disabled={unavailable || value.size >= range.max} aria-disabled={saving || undefined} aria-label={t("settings.slider.increase", { title: label })} onClick={() => { if (!saving) setAxis({ ...value, size: value.size + 1 }); }}>+</button>
         </div>
       </div>
     </div>;
   };
   return <section className="global-settings-card settings-font-group" aria-label={t("settings.fonts.title")}>
-    <h3 className="global-settings-card-title">{t("settings.fonts.title")}{JSON.stringify(fonts) !== JSON.stringify(DEFAULT_FONTS) ? <button type="button" className="settings-group-reset" disabled={disabled} onClick={() => save(DEFAULT_FONTS)}>{t("settings.fonts.reset")}</button> : null}</h3>
+    <h3 className="global-settings-card-title">{t("settings.fonts.title")}{JSON.stringify(fonts) !== JSON.stringify(DEFAULT_FONTS) ? <button type="button" className="settings-group-reset" disabled={unavailable || saving} onClick={() => save(DEFAULT_FONTS)}>{t("settings.fonts.reset")}</button> : null}</h3>
     <div className="settings-group-surface">
       {(["ui", "content", "code"] as const).map(axisRow)}
       <div className="settings-font-preview" aria-label={t("settings.typography.picker.preview")}>
@@ -567,13 +568,13 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
           <div className="settings-font-controls">
             <FontMenu label={t("settings.fonts.cjkAxis", { axis: t(`settings.fonts.${axis}`) })} selectedLabel={fonts[axis].cjk || t("settings.fonts.automatic")} selected={fonts[axis].cjk ? { source: "system", familyName: fonts[axis].cjk } : { source: "builtin", id: "auto" }}
               builtIns={[{ id: "auto", label: t("settings.fonts.automatic"), family: fontFamilyForAxis({ ...fonts, [axis]: { ...fonts[axis], cjk: "" } }, axis) }]}
-              installedFonts={cjkFonts} fallbackStack={fontFamilyForAxis(fonts, axis)} previewText={t("settings.typography.preview")} loading={fontsLoading || scanning} error={fontsError} disabled={disabled}
+              installedFonts={cjkFonts} fallbackStack={fontFamilyForAxis(fonts, axis)} previewText={t("settings.typography.preview")} loading={fontsLoading || scanning} error={fontsError} disabled={unavailable} busy={saving}
               labels={{ searchLabel: t("settings.typography.picker.searchLabel"), searchPlaceholder: t("settings.typography.picker.searchPlaceholder"), builtInGroup: t("settings.typography.picker.builtInGroup"), installedGroup: t("settings.typography.picker.installedGroup"), browserAria: t("settings.typography.picker.browserAria"), choicesAria: t("settings.typography.picker.choicesAria"), loading: t("settings.typography.picker.loading"), noMatch: t("settings.typography.picker.noMatch"), unavailable: t("settings.typography.picker.unavailable"), savedSystemFont: t("settings.typography.picker.savedSystemFont"), monospace: t("settings.typography.picker.monospace"), systemFont: t("settings.typography.picker.systemFont") }}
               onSelectionChange={(selection) => save({ ...fonts, [axis]: { ...fonts[axis], cjk: selection.source === "system" ? selection.familyName : "" } })} />
           </div>
         </div>)}
         <div className="global-settings-row"><div className="global-settings-row-text"><p className="global-settings-resp-title">{t("settings.fonts.separateTerminal")}</p></div>
-          <SettingsToggle checked={!!fonts.terminal} ariaLabel={t("settings.fonts.separateTerminal")} disabled={!state} busy={saving} onChange={(enabled) => save({ ...fonts, terminal: enabled ? { font: fonts.code.font, size: fonts.code.size } : null })} />
+          <SettingsToggle checked={!!fonts.terminal} ariaLabel={t("settings.fonts.separateTerminal")} disabled={unavailable} busy={saving} onChange={(enabled) => save({ ...fonts, terminal: enabled ? { font: fonts.code.font, size: fonts.code.size } : null })} />
         </div>
         {fonts.terminal ? axisRow("terminal") : null}
       </details>

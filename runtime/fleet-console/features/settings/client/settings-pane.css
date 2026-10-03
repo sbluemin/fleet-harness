@@ -67,13 +67,14 @@
 .settings-font-trigger { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-primary); font: var(--weight-regular) var(--t-md)/1.45 var(--font-ui); cursor: pointer; }
 .settings-font-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
 .settings-font-trigger > svg { flex: none; color: var(--text-tertiary); }
-.settings-font-trigger:is(:hover, [aria-expanded="true"]) { background: var(--control-wash); }
-.settings-font-trigger:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+.settings-font-trigger:is(:hover, [aria-expanded="true"]):not([aria-disabled="true"]) { background: var(--control-wash); }
+/* 저장 중(busy)은 aria-disabled로 막는다 — 포커스를 지키려고 native disabled를 걸지 않을 뿐, 모양은 같다. */
+.settings-font-trigger:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .settings-font-size { display: inline-flex; align-items: center; font-variant-numeric: tabular-nums; flex: none; }
 .settings-font-size > button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-tertiary); font: inherit; cursor: pointer; }
-.settings-font-size > button:hover:not(:disabled) { background: var(--control-wash); color: var(--text-primary); }
+.settings-font-size > button:hover:not(:disabled, [aria-disabled="true"]) { background: var(--control-wash); color: var(--text-primary); }
 .settings-font-size > output { min-width: 42px; text-align: center; font: var(--t-md)/1.45 var(--font-ui); }
-.settings-font-size > button:disabled { opacity: var(--control-disabled-opacity); cursor: not-allowed; }
+.settings-font-size > button:is(:disabled, [aria-disabled="true"]) { opacity: var(--control-disabled-opacity); cursor: not-allowed; }
 .settings-group-reset { margin-left: auto; padding: 0; border: 0; background: none; color: var(--text-tertiary); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
 .settings-font-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(176px, 100%), 1fr)); min-width: 0; border-top: 1px solid var(--hairline); }
 .settings-font-preview > div { padding: 12px 14px; min-width: 0; }

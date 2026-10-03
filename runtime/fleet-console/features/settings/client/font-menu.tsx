@@ -5,28 +5,25 @@ import { createPortal } from "react-dom";
 interface FontMenuProps extends FontPickerProps {
   readonly label: string;
   readonly selectedLabel: string;
+  /**
+   * 저장이 끝나기를 기다리는 일시 상태. 여닫기는 막되 native `disabled`는 걸지 않는다 — 걸면 고른 뒤 돌아온
+   * 포커스가 문서로 빠진다. 영구 사용 불가는 `disabled`가 맡는다.
+   */
+  readonly busy?: boolean;
 }
 
 /** 설정 행의 선택기는 작은 글자 버튼이고, 검색·목록은 열었을 때만 생긴다. */
-export function FontMenu({ label, selectedLabel, ...picker }: FontMenuProps) {
+export function FontMenu({ label, selectedLabel, busy = false, ...picker }: FontMenuProps) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const popup = useRef<HTMLDivElement>(null);
-  const returnFocus = useRef(false);
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0, width: 260, maxHeight: 360 });
   const close = (restoreFocus: boolean) => {
-    returnFocus.current = restoreFocus;
     setOpen(false);
-    if (restoreFocus && !picker.disabled) trigger.current?.focus();
+    // 저장 중(busy)에도 버튼은 포커스를 받는다 — 고른 직후 그대로 돌아온다.
+    if (restoreFocus) trigger.current?.focus();
   };
-  useEffect(() => {
-    // 선택 저장은 버튼을 잠시 비활성화한다. 응답·되돌림이 끝나기 전에 focus()하면 body로 새므로
-    // 버튼이 다시 살아난 뒤에도 같은 복귀 요청을 지킨다.
-    if (open || picker.disabled || !returnFocus.current) return;
-    returnFocus.current = false;
-    trigger.current?.focus();
-  }, [open, picker.disabled]);
   useLayoutEffect(() => {
     if (!open || !trigger.current || !popup.current) return;
     const rect = trigger.current.getBoundingClientRect();
@@ -70,7 +67,7 @@ export function FontMenu({ label, selectedLabel, ...picker }: FontMenuProps) {
     };
   }, [open]);
   return <>
-    <button ref={trigger} type="button" className="settings-font-trigger" aria-label={`${label}: ${selectedLabel}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} disabled={picker.disabled} onClick={() => setOpen(!open)}>
+    <button ref={trigger} type="button" className="settings-font-trigger" aria-label={`${label}: ${selectedLabel}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} disabled={picker.disabled} aria-disabled={(busy && !picker.disabled) || undefined} onClick={() => { if (!busy) setOpen(!open); }}>
       <span>{selectedLabel}</span><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m3 4.5 3 3 3-3" /></svg>
     </button>
     {open ? createPortal(<div ref={popup} id={id} role="dialog" aria-label={label} className="settings-font-popover" style={position} onKeyDown={(event) => {
