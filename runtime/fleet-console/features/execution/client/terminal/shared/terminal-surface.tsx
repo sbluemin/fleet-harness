@@ -830,13 +830,11 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
             )}
           </div>
         ) : null}
-        {copiedAt !== 0 && !isViewing ? (
-          <div className="terminal-viewer-badge" role="status">
-            <span className="terminal-viewer-badge-text">{t("terminal.selection.copied")}</span>
-          </div>
-        ) : null}
         <div className="terminal-viewport">
           <div className="terminal-canvas" ref={containerRef} style={zoomStyle} />
+          {copiedAt !== 0 && !isViewing ? (
+            <div className="terminal-copy-notice" role="status">{t("terminal.selection.copied")}</div>
+          ) : null}
         </div>
         {/* A read-only session takes no input, so the bar stays away rather than offering keys that
             would go nowhere. */}

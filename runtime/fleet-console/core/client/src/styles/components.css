@@ -11736,6 +11736,21 @@ body[data-companion-resizing="true"] .canvas-operation {
   font-size: var(--t-sm);
 }
 
+.terminal-copy-notice {
+  position: absolute;
+  inset-inline-end: var(--space-3);
+  inset-block-end: var(--space-3);
+  z-index: 1;
+  pointer-events: none;
+  max-inline-size: calc(100% - 2 * var(--space-3));
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--ink-deep);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+}
+
 .terminal-viewer-badge-dot {
   width: 8px;
   height: 8px;
