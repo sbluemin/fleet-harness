@@ -283,6 +283,8 @@ export type CreateChatSdk = (options: ClaudeGatewaySdkOptions) => Promise<Claude
 const USER_QUESTIONS_OFF = "Asking the person is turned off for this session. Send what needs deciding to the session that assigned this work.";
 
 const JOURNAL_CAP = 2_000;
+/** 전사 쪽에 싣는 저널 줄 — 표시용(델타·큐·맥박)은 뺀다. */
+const JOURNAL_PAGE_KINDS: ReadonlySet<string> = new Set(["dispatch", "text", "tool", "ask", "ask-settled", "turn-end", "command", "command-end", "job", "job-end", "error"]);
 /**
  * 세션 간 메시지를 보내는 도구. 이 이름의 **top-level** 호출만 관측한다 — 서브에이전트가 부른
  * 것은 `parent_tool_use_id`를 달고 오며, 그것을 부모 세션의 발신으로 세우면 사람이 보내지 않은
@@ -992,11 +994,16 @@ class AgentChatSession {
    * 사람이 읽는 것과 같은 줄(지시·답·도구·질문·턴 결말·잡 결말)만 싣는다. 본문 정화는 호출자가 한다.
    */
   readJournalPage(afterSeq: number, limit: number): { readonly entries: readonly AgentChatJournalEvent[]; readonly nextSeq: number | null; readonly headCut: boolean } {
-    const kept = new Set(["dispatch", "text", "tool", "ask", "ask-settled", "turn-end", "command", "command-end", "job", "job-end", "error"]);
-    const rows = this.journal.filter((entry) => entry.seq > afterSeq && kept.has(entry.event.kind));
+    const rows = this.journal.filter((entry) => entry.seq > afterSeq && JOURNAL_PAGE_KINDS.has(entry.event.kind));
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     return { entries: page, nextSeq: rows.length > page.length && last ? last.seq : null, headCut: afterSeq < (this.journal[0]?.seq ?? 1) - 1 && this.journal.length >= JOURNAL_CAP };
+  }
+
+  /** 전사의 마지막 `limit` 줄 — 같은 줄 거름. `earlier` 는 그 앞에 줄이 더 있다(저널 상한에 잘린 머리 포함)는 뜻이다. */
+  readJournalTail(limit: number): { readonly entries: readonly AgentChatJournalEvent[]; readonly earlier: boolean } {
+    const rows = this.journal.filter((entry) => JOURNAL_PAGE_KINDS.has(entry.event.kind));
+    return { entries: rows.slice(-limit), earlier: rows.length > limit || this.journal.length >= JOURNAL_CAP };
   }
 
   /** 지금 열려 있는 질문 카드 — Console Use 가 답할 수 있는 좌표와 형식. 답 본문(원본 질문 키)은 싣지 않는다. */

@@ -57,7 +57,31 @@ export const MAX_DECISION_LABEL = 120;
 export const MAX_DECISION_DESCRIPTION = 300;
 export const MAX_DECISION_ANSWER = 2000;
 
-export type SlotBy = "human" | { readonly operationId: string };
+/** 행위 귀속 — 권한은 이 값이 아니라 호스트 호출자와 도메인 경계가 정한다. */
+export type ObjectiveActor = "human" | "commander"
+  | { readonly kind: "commodore"; readonly theaterId: string }
+  | { readonly kind: "operation"; readonly operationId: string; readonly title: string | null };
+export type ObjectiveReviewer = Exclude<ObjectiveActor, "commander">;
+export const MAX_OBJECTIVE_ACTIONS = 200;
+export type ObjectiveActionKind = "edit" | "criteria-approved" | "criteria-rejected" | "hand-off" | "complete" | "reopen" | "followup-selected" | "followup-discarded" | "extend" | "steer" | "mission-reopened";
+/** 사라지는 제안·완료 표시도 행위 기록에는 남는다. 오래된 본문은 접고 누계는 보존한다. */
+export interface ObjectiveAction {
+  readonly id: string;
+  readonly at: number;
+  readonly by: ObjectiveActor;
+  readonly kind: ObjectiveActionKind;
+  readonly kinds?: readonly ObjectiveEditKind[];
+  readonly targetId?: string;
+  readonly proposal?: ObjectiveCriterionProposal;
+  readonly handoff?: StoredHandoff;
+}
+export interface ObjectiveEdits {
+  readonly at: number;
+  readonly kinds: readonly ObjectiveEditKind[];
+  /** 옛 기록의 생략은 human이다. 여러 주체의 편집을 하나의 주체로 덮지 않는다. */
+  readonly actors?: readonly ObjectiveActor[];
+}
+export interface ObjectiveCompletion { readonly at: number; readonly by?: ObjectiveActor }
 
 export type MemberLaunch = { readonly mode: "same" } | { readonly mode: "model"; readonly model: string; readonly effort?: string };
 export type MemberSelection = MemberLaunch | { readonly mode: "route" };
@@ -130,7 +154,7 @@ export interface StoredMember {
   readonly launch?: MemberLaunch;
   /** 서브에이전트 허용. 없거나 false면 강제 차단이다. true만 저장한다. */
   readonly subagents?: true;
-  readonly by: "human" | "commander";
+  readonly by: ObjectiveActor;
   readonly routed?: MemberRouted;
   readonly next?: MemberNext;
 }
@@ -210,14 +234,14 @@ export interface StoredMission {
   /** 담당 구성원 id — 없으면 지휘관 직접. */
   readonly member?: string;
   /** 사람이 담당을 직접 정했다(지휘관 직접 지정도 포함) — 도구가 덮지 않는다. */
-  readonly memberBy?: "human";
+  readonly memberBy?: ObjectiveActor;
   /**
    * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 임무. 준비되지 않으며, 지휘관이 선행을 정하거나
    * 사람이 편성에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다.
    */
   readonly unplaced?: true;
   /** 사람이 더한 임무 — 배치 뒤에도 구상이 교체하지 않는다. */
-  readonly by?: "human";
+  readonly by?: ObjectiveActor;
   readonly records?: readonly StoredRecord[];
   /** 사람이 읽은 기록 수 — 이보다 많으면 안 읽은 기록이 있다. */
   readonly seen?: number;
@@ -227,7 +251,7 @@ export interface StoredMission {
 export interface StoredCriterion {
   readonly id: string;
   readonly text: string;
-  readonly by: "human" | "commander";
+  readonly by: ObjectiveActor;
   readonly met?: string;
 }
 
@@ -238,6 +262,7 @@ export interface ObjectiveCriterionProposal {
   readonly text?: string;
   readonly reason?: string;
   readonly annotation?: string;
+  readonly annotationBy?: ObjectiveActor;
 }
 
 /**
@@ -276,6 +301,7 @@ export interface StoredFollowup extends FollowupBody {
   readonly batchId?: string;
   /** 사람이 버린 시각 — 버리는 것은 늘 사람이다. */
   readonly discardedAt?: number;
+  readonly discardedBy?: ObjectiveActor;
 }
 
 /**
@@ -298,6 +324,7 @@ export interface StoredFollowupItem {
 
 /** 완료 한 번에 고른 후보 묶음 — 원본 목표에 남는 영속 생성 기록. id 는 화면이 만든 멱등 키다. */
 export interface StoredFollowupBatch {
+  readonly by?: ObjectiveActor;
   readonly id: string;
   readonly at: number;
   /** 고른 순간 동결한 기동 조건 — 원본의 그룹·지휘관 뷰와 알림 언어. 재시도도 이 값을 쓴다. */
@@ -337,10 +364,11 @@ export interface Retrospective {
  */
 export type StoredHandoff =
   | { readonly by: "commander"; readonly at: number; readonly retrospective: Retrospective }
-  | { readonly by: "human"; readonly at: number };
+  | { readonly by: ObjectiveReviewer; readonly at: number };
 
 /** 확장 회차 — 시작 때의 보드 가리킴과 직전 회차의 인계·회고는 이후 편집으로 지우지 않는다. */
 export interface ObjectiveExtension {
+  readonly by?: ObjectiveActor;
   readonly n: number;
   readonly at: number;
   readonly context: string;
@@ -387,6 +415,7 @@ export interface DecisionAnswer {
  * 사람의 제출만 만들고, 지우거나 고치는 길은 없다.
  */
 export interface Decision {
+  readonly by?: ObjectiveActor;
   readonly id: string;
   readonly requestId: string;
   readonly questionId: string;
@@ -406,6 +435,7 @@ export const ownAnswer = (question: { readonly options: readonly unknown[] }, an
 
 /** 지휘관에게 보내는 중인 답 — 전달이 끝나야 결정이 된다. 기동이 끊겨 남으면 전달 결과를 모르는 상태다. */
 export interface DecisionDelivery {
+  readonly by?: ObjectiveActor;
   readonly requestId: string;
   readonly answers: readonly DecisionAnswer[];
   readonly at: number;
@@ -435,6 +465,7 @@ export interface StoredObjective {
   readonly note: string;
   /** 구상에 함께 주는 맥락 — 지휘관이 임무를 짤 때 읽는 사람의 프롬프트. */
   readonly planRequest?: string;
+  readonly planRequestBy?: ObjectiveActor;
   /** 구상 중 — 지휘관이 임무·메모만 짜는 국면. 시작·중지·완료가 끝낸다. */
   readonly planning?: true;
   /** 사람의 명시적인 구상 요청에서만 켜고, 스티어링·개시·중지·완료에서 끈다. */
@@ -446,17 +477,21 @@ export interface StoredObjective {
   readonly evidence?: readonly StoredEvidence[];
   readonly dueDate?: string;
   readonly today?: true;
-  /** 에이전트가 도구로 더한 목표 — 더한 Operation. 사람이 만든 목표에는 없다. */
-  readonly addedBy?: string;
+  /** 에이전트가 도구로 더한 목표 — 기존 Operation ID 또는 Theater의 사령관. 사람이 만든 목표에는 없다. */
+  readonly addedBy?: string | Extract<ObjectiveActor, { kind: "commodore" }>;
   /**
    * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것 — 「시작」·「스티어링」이 지휘관에게 한 줄로 알리고 다시 읽게 한다.
    * 지휘관이 이 항목을 읽거나 알림이 나가면 지워진다.
    */
-  readonly edited?: { readonly at: number; readonly kinds: readonly ObjectiveEditKind[] };
-  /** 목표 완료 — 완료는 늘 사람이 누른다. */
-  readonly done?: { readonly at: number };
+  readonly edited?: ObjectiveEdits;
+  readonly actions?: readonly ObjectiveAction[];
+  readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
+  /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
+  readonly boardUpdatedAt?: number;
+  /** 목표 완료 — 옛 레코드에서 by 생략은 사람의 완료다. */
+  readonly done?: ObjectiveCompletion;
   /** Core 요청 접수 전 중단을 복구하는 내부 의도. UI 상태나 구성원별 세대가 아니다. */
-  readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active"; readonly extensionContext?: string };
+  readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active"; readonly extensionContext?: string; readonly by?: ObjectiveActor };
   readonly extensions?: readonly ObjectiveExtension[];
   /** 확장 회차의 옛 기준 보존 정책 — 인계·완료로 끝나며, 일반 재구상은 다시 켜지 않는다. */
   readonly extensionActive?: true;
@@ -552,9 +587,9 @@ export interface ObjectiveMission {
   /** 선행마다 붙는 이유 한 줄(선행 id → why). */
   readonly why: Readonly<Record<string, string>>;
   readonly member: string | null;
-  readonly memberBy?: "human";
+  readonly memberBy?: ObjectiveActor;
   readonly unplaced?: true;
-  readonly by?: "human";
+  readonly by?: ObjectiveActor;
   /** 담당 Operation — 위임했을 때만. */
   readonly operationId: string | null;
   /** 담당 세션 이름·모델·강도 — 담당 Operation 에서 읽는다. */
@@ -568,7 +603,7 @@ export interface ObjectiveMission {
 export interface ObjectiveCriterion {
   readonly id: string;
   readonly text: string;
-  readonly by: "human" | "commander";
+  readonly by: ObjectiveActor;
   /** 충족 근거 — 지휘관이 충족으로 표시했을 때만. */
   readonly met?: string;
 }
@@ -586,13 +621,18 @@ export interface Objective {
   readonly attachments: readonly ObjectiveAttachment[];
   readonly results: readonly ObjectiveResult[];
   readonly planRequest?: string;
+  readonly planRequestBy?: ObjectiveActor;
   readonly planning: boolean;
   readonly criteriaOpen: boolean;
-  readonly edited?: { readonly at: number; readonly kinds: readonly ObjectiveEditKind[] };
+  readonly edited?: ObjectiveEdits;
+  readonly actions?: readonly ObjectiveAction[];
+  readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
+  /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
+  readonly boardUpdatedAt?: number;
   readonly dueDate: string | null;
   readonly today: boolean;
-  readonly addedBy: { readonly operationId: string; readonly title: string | null } | null;
-  readonly done: { readonly at: number } | null;
+  readonly addedBy: { readonly operationId: string; readonly title: string | null } | Extract<ObjectiveActor, { kind: "commodore" }> | null;
+  readonly done: ObjectiveCompletion | null;
   /** 인계 대기 — 끝나지 않은 목표의 모든 임무와 모든 달성 기준이 끝났고 인계 기록이 없다. 계산한 값이다. */
   readonly awaitingHandoff: boolean;
   /** 검토 대기 — 같은 조건에 인계 기록이 있다. 계산한 값이며 인계 대기와 동시에 참이 되지 않는다. 완료는 사람이 누른다. */
@@ -615,7 +655,7 @@ export interface Objective {
   readonly decisionRequest: DecisionRequest | null;
   readonly decisionRequestRevision: number;
   /** 답을 보내는 중이거나, 보낸 결과를 확인하지 못한 채 남은 시각. */
-  readonly decisionDelivery: { readonly requestId: string; readonly at: number } | null;
+  readonly decisionDelivery: { readonly requestId: string; readonly at: number; readonly by?: ObjectiveActor } | null;
   readonly decisions: readonly Decision[];
   readonly recorded?: boolean;
   /** 개시했다 — 목록의 「진행 중」 구역. 구상만 했거나 보드에서 막 만든 목표는 「시작 전」이다. */
@@ -668,10 +708,11 @@ export interface ObjectiveFollowup {
   readonly at: number;
   readonly updatedAt: number;
   readonly batchId: string | null;
-  readonly discarded: { readonly at: number; readonly by: "human" } | null;
+  readonly discarded: { readonly at: number; readonly by: ObjectiveActor } | null;
 }
 
 export interface ObjectiveFollowupBatch {
+  readonly by?: ObjectiveActor;
   readonly id: string;
   readonly at: number;
   readonly items: readonly {
@@ -840,6 +881,20 @@ export function hasCycle(missions: readonly GraphMission[]): boolean {
 // ═══ wire schemas ═════════════════════════════════════════════════════════════
 
 const ids = z.string().min(1).max(128);
+export const objectiveReviewerSchema = z.union([
+  z.literal("human"),
+  z.object({ kind: z.literal("commodore"), theaterId: ids }).strict(),
+  z.object({ kind: z.literal("operation"), operationId: ids, title: z.string().nullable() }).strict(),
+]);
+export const objectiveActorSchema = z.union([objectiveReviewerSchema, z.literal("commander")]);
+export const objectiveActionSchema = z.object({
+  id: ids, at: z.number().finite(), by: objectiveActorSchema,
+  kind: z.enum(["edit", "criteria-approved", "criteria-rejected", "hand-off", "complete", "reopen", "followup-selected", "followup-discarded", "extend", "steer", "mission-reopened"]),
+  kinds: z.array(z.enum(["title", "note", "missions", "lineup", "members", "member", "criteria"])).optional(),
+  targetId: ids.optional(),
+  handoff: z.lazy(() => storedHandoffSchema).optional(),
+  proposal: z.object({ id: ids, kind: z.enum(["add", "revise", "retire", "recheck"]), target: ids.optional(), text: z.string().optional(), reason: z.string().optional(), annotation: z.string().optional(), annotationBy: objectiveActorSchema.optional() }).strict().optional(),
+}).strict();
 const title = z.string().trim().min(1).max(MAX_TITLE);
 const note = z.string().max(MAX_NOTE);
 const missionText = z.string().trim().min(1).max(MAX_MISSION_TEXT);
@@ -925,14 +980,16 @@ export const retrospectiveSchema = z.object({
   wentWell: z.array(z.object({ point: retroText, because: retroText }).strict()).min(1).max(MAX_RETRO_PAIRS),
   fellShort: z.array(z.object({ point: retroText, ifOnly: retroText }).strict()).min(1).max(MAX_RETRO_PAIRS),
 }).strict();
+const storedHandoffSchema = z.union([
+  z.object({ by: objectiveReviewerSchema, at: z.number().finite() }).strict(),
+  z.object({ by: z.literal("commander"), at: z.number().finite(), retrospective: retrospectiveSchema }).strict(),
+]);
 /** 회차는 개수로 자르지 않는다 — 반복 확장의 번호와 이전 회고를 끝까지 보존한다. */
 export const storedExtensionsSchema = z.array(z.object({
+  by: objectiveActorSchema.optional(),
   n: z.number().int().positive(), at: z.number().finite(), context: z.string().trim().min(1).max(MAX_CONTEXT),
   missionIds: z.array(ids).max(MAX_MISSIONS), criterionIds: z.array(ids).max(MAX_CRITERIA),
-  previousHandoff: z.discriminatedUnion("by", [
-    z.object({ by: z.literal("human"), at: z.number().finite() }).strict(),
-    z.object({ by: z.literal("commander"), at: z.number().finite(), retrospective: retrospectiveSchema }).strict(),
-  ]).nullable(),
+  previousHandoff: storedHandoffSchema.nullable(),
 }).strict()).refine((rounds) => rounds.every((round, index) => round.n === index + 1), { message: "extension_sequence" });
 
 export const followupEvidenceSchema = z.discriminatedUnion("kind", [
@@ -982,8 +1039,8 @@ const storedDecisionAnswer = z.object({ questionId: ids, selectedOptionIds: z.ar
 export const storedDecisionFieldsSchema = z.object({
   decisionRequest: z.object({ id: ids, createdAt: z.number(), questions: z.array(z.object({ id: ids, text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean(), missionId: ids.optional(), memberId: ids.optional() }).strict()).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
   decisionRequestRevision: z.number().int().min(0).optional(),
-  decisionDelivery: z.object({ requestId: ids, at: z.number(), answers: z.array(storedDecisionAnswer).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
-  decisions: z.array(z.object({ id: ids, requestId: ids, questionId: ids, at: z.number(), missionId: ids.optional(), memberId: ids.optional(),
+  decisionDelivery: z.object({ by: objectiveActorSchema.optional(), requestId: ids, at: z.number(), answers: z.array(storedDecisionAnswer).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
+  decisions: z.array(z.object({ by: objectiveActorSchema.optional(), id: ids, requestId: ids, questionId: ids, at: z.number(), missionId: ids.optional(), memberId: ids.optional(),
     question: z.object({ text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict(),
     answer: storedDecisionAnswer.omit({ questionId: true }) }).strict()).optional(),
 });

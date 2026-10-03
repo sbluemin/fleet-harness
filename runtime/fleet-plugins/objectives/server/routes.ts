@@ -5,11 +5,12 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { z } from "zod";
 
+import { createObjectiveActions } from "./actions.js";
 import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type MissionPatchInput, type ObjectiveEditKind, type Objective } from "./types.js";
+import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type Objective } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -32,6 +33,8 @@ const context = z.string().max(MAX_CONTEXT).optional();
 /** 그룹 — 사이드바 그룹 그 자체. 색은 정체성 톤 키여야 영속 상태에 남는다(목록 밖 색의 그룹은 불러올 때 버려진다). */
 
 export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store), prStatus?: PrStatusService): readonly ObjectiveRoute[] {
+  const actions = createObjectiveActions(ctx, store, launch, "human");
+  const { unlessBusy, steerable, edited } = actions;
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>, req: http.IncomingMessage) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -75,7 +78,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       // 첨부는 메모의 일부다 — 지휘관이 일하는 동안에도 받고, 지휘관이 있으면 「메모」 편집으로 쌓인다.
       const add = steerable(() => true, ({ objectiveId: target }: { objectiveId: string }) => store.attachmentAdd(target, { name: attachmentName(params.get("name"), info.type), type: info.type, data, ...(info.width ? { width: info.width } : {}), ...(info.height ? { height: info.height } : {}) }));
       const result = await add({ objectiveId });
-      ctx.host.http.writeJson(res, 200, { objective: store.setEdited(objectiveId, ["note"]), attachmentId: result.attachment.id });
+      ctx.host.http.writeJson(res, 200, { objective: actions.markEdited(objectiveId, ["note"]), attachmentId: result.attachment.id });
     } catch (error) { fail(res, error); }
     return true;
   };
@@ -137,30 +140,6 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       current.splice(at, 0, id);
     }
   };
-  // 지휘관이 일하는 동안에도 계속 잠기는 것 — 구상·시작·제목과 일정·완료·삭제·일괄 재배선. 먼저 중단해야 한다.
-  // 지휘관 자신의 도구 경로(console-tools)는 이 문을 지나지 않는다.
-  const unlessBusy = <A extends { objectiveId: string }, R>(run: (body: A) => R) => (body: A): R => { if (launch.busy(body.objectiveId)) throw new ObjectiveStoreError("objective_busy"); return run(body); };
-  // 이 라우트들은 사람의 화면이다 — 지휘관이 알아야 할 편집이면 항목에 쌓아 두고, 「시작」이 지휘관에게 다시 읽으라고 알린다.
-  const edited = async (kinds: readonly ObjectiveEditKind[], run: () => Promise<Objective> | Objective) => {
-    const next = await run();
-    return objective(kinds.length > 0 ? store.setEdited(next.id, kinds) : next);
-  };
-  const missionKinds = (patch: MissionPatchInput): ObjectiveEditKind[] => [
-    ...(patch.text !== undefined || patch.done !== undefined ? ["missions" as const] : []),
-    ...(patch.prerequisites !== undefined || patch.why !== undefined ? ["lineup" as const] : []),
-    ...(patch.member !== undefined ? ["member" as const] : []),
-  ];
-  // 지휘관이 일하는 동안에도 받는 사람의 편집 — 허용 조건을 지나야 한다. 기록은 위 edited 가 맡고(지휘관이 있으면 쌓임), 쌓인 편집은 「스티어링」이 알린다.
-  // 허용: 임무 추가 · 끝나지 않은 임무의 문구·삭제·선행·구성원 · 명단 · 메모.
-  const steerable = <A extends { objectiveId: string }, R>(allowed: (body: A) => boolean, run: (body: A) => R) => (body: A): R => {
-    if (launch.busy(body.objectiveId) && !allowed(body)) throw new ObjectiveStoreError("objective_busy");
-    return run(body);
-  };
-  const notStarted = (objectiveId: string, missionId: string): boolean => {
-    const target = store.find(objectiveId)?.missions.find((candidate) => candidate.id === missionId);
-    return !!target && !target.done;
-  };
-  const only = (patch: Record<string, unknown>, keys: readonly string[]): boolean => Object.keys(patch).every((key) => keys.includes(key));
 
   return [
     { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => { prStatus?.refresh(); return { objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() }; }) },
@@ -169,16 +148,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     // 목표를 만들면 지휘관 Operation 이 dormant 로 함께 태어난다 — 깨우는 것은 「구상」·「시작」이다.
     { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander Operation.", handler: json(createObjectiveSchema, async ({ language, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ theaterId, title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
     // 라우팅 확인 스위치는 사람의 개시 방식이라 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 편집도 아니다.
-    { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Operation's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), steerable(({ patch }) => only(patch, ["note", "routingConfirm"]), ({ objectiveId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], async () => {
-      const { title, groupId, launch: preset, ...own } = patch;
-      if (title !== undefined) await launch.rename(objectiveId, title);
-      if (groupId !== undefined) await launch.regroup(objectiveId, groupId);
-      if (preset) await launch.setPreset(objectiveId, preset);
-      if (Object.keys(own).length > 0) return store.patch(objectiveId, own);
-      const current = store.find(objectiveId);
-      if (!current) throw new ObjectiveStoreError("unknown_objective");
-      return current;
-    }))) },
+    { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Operation's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), actions.patch) },
     // 순서는 내용이 아니다 — 지휘관이 일하는 동안에도 사람이 목록을 정리할 수 있게 busy 잠금을 지나지 않는다.
     { name: "objective/move", method: "POST", summary: "Reorder an objective before or after another objective of the same Theater.", handler: json(objectiveRef.extend({ beforeId: ids.optional(), afterId: ids.optional() }).refine((body) => (body.beforeId === undefined) !== (body.afterId === undefined)), async ({ objectiveId, beforeId, afterId }) => {
       const moved = store.move(objectiveId, beforeId !== undefined ? { beforeId } : { afterId: afterId! });
@@ -190,71 +160,50 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "objective/restore", method: "POST", summary: "Restore an objective an agent removed or merged through Console Use; a merged one also leaves the objective it joined.", handler: json(objectiveRef, ({ objectiveId }) => { const restored = store.tidyRestore(objectiveId); launch.followupTargetChanged(objectiveId); return objective(restored); }) },
     { name: "objective/remove", method: "POST", summary: "Delete an objective by closing its Commander Operation (restorable during the undo window).", handler: json(objectiveRef, unlessBusy(({ objectiveId }) => objective(launch.remove(objectiveId)))) },
     // 후속 후보를 고른 완료는 새 경계다 — 검토 대기·스티어링 우선·제안 대기를 서버가 원자적으로 다시 따진다. 고른 것이 없으면 지금 완료 그대로.
-    { name: "objective/complete", method: "POST", summary: "Complete an objective using the Core Operation lifecycle, or reopen it with undone. With followups (and a batchId), the chosen follow-up candidates become dormant objectives.", handler: json(objectiveRef.extend({ undone: z.boolean().optional(), batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }), unlessBusy(async ({ objectiveId, undone, batchId, followups, language }) => {
-      if (undone) return objective(await launch.reopen(objectiveId));
-      if (!followups?.length) return objective(await launch.complete(objectiveId));
-      if (!batchId) throw new ObjectiveStoreError("invalid_request");
-      return objective(await launch.completeWithFollowups(objectiveId, { batchId, followups }, { language }));
-    })) },
-    { name: "objective/extend", method: "POST", summary: "Extend a completed or review-ready objective in place: restore its Commander when archived, preserve the previous hand-off, and open a new planning round with criterion proposals.", handler: json(objectiveRef.extend({ context: z.string().trim().min(1).max(MAX_CONTEXT) }).strict(), unlessBusy(({ objectiveId, context, language }) => launch.extend(objectiveId, context, { language }))) },
+    { name: "objective/complete", method: "POST", summary: "Complete an objective using the Core Operation lifecycle, or reopen it with undone. With followups (and a batchId), the chosen follow-up candidates become dormant objectives.", handler: json(objectiveRef.extend({ undone: z.boolean().optional(), batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }), actions.complete) },
+    { name: "objective/extend", method: "POST", summary: "Extend a completed or review-ready objective in place: restore its Commander when archived, preserve the previous hand-off, and open a new planning round with criterion proposals.", handler: json(objectiveRef.extend({ context: z.string().trim().min(1).max(MAX_CONTEXT) }).strict(), actions.extend) },
     // 사람의 넘기기 — 지휘관이 넘기지 않은 인계 대기를 회고 없이 검토 대기로. 사람이 넘겼다는 사실이 인계 기록에 남는다.
-    { name: "objective/hand-off", method: "POST", summary: "Hand an objective awaiting hand-off to review without a retrospective; the record says the person handed it off.", handler: json(objectiveRef, unlessBusy(({ objectiveId }) => objective(store.handOff(objectiveId, { by: "human" })))) },
+    { name: "objective/hand-off", method: "POST", summary: "Hand an objective awaiting hand-off to review without a retrospective; the record says the person handed it off.", handler: json(objectiveRef, actions.handOff) },
     // 후속 후보에 대한 사람의 판단 — 지휘관이 알아야 할 보드 편집이 아니므로 edited 를 쌓지 않는다(기준 제안의 거절과 같다).
-    { name: "followup/discard", method: "POST", summary: "Discard an open follow-up candidate; its title and summary stay as a trace.", handler: json(objectiveRef.extend({ candidateId: ids }), ({ objectiveId, candidateId }) => objective(store.followupDiscard(objectiveId, candidateId))) },
-    { name: "followup/retry", method: "POST", summary: "Re-check or re-create a failed or unconfirmed follow-up with the same snapshot and key.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), ({ objectiveId, batchId, candidateId }) => objective(launch.retryFollowup(objectiveId, batchId, candidateId))) },
-    { name: "followup/abandon", method: "POST", summary: "Give up a failed follow-up; the candidate returns to open.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), ({ objectiveId, batchId, candidateId }) => objective(store.followupAbandon(objectiveId, batchId, candidateId))) },
-    { name: "member/add", method: "POST", summary: "Add a member to the roster.", handler: json(objectiveRef.extend({ member: memberAddSchema }), steerable(() => true, ({ objectiveId, member }) => edited(["members"], () => store.memberAdd(objectiveId, member, "human")))) },
+    { name: "followup/discard", method: "POST", summary: "Discard an open follow-up candidate; its title and summary stay as a trace.", handler: json(objectiveRef.extend({ candidateId: ids }), actions.followupDiscard) },
+    { name: "followup/retry", method: "POST", summary: "Re-check or re-create a failed or unconfirmed follow-up with the same snapshot and key.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), actions.followupRetry) },
+    { name: "followup/abandon", method: "POST", summary: "Give up a failed follow-up; the candidate returns to open.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), actions.followupAbandon) },
+    { name: "member/add", method: "POST", summary: "Add a member to the roster.", handler: json(objectiveRef.extend({ member: memberAddSchema }), actions.memberAdd) },
     // 띄운 구성원의 모델만 바꾸면 그 세션의 좌표 변경이다(곧바로 또는 이번 턴 뒤) — 지휘관의 일과 무관한 값이라 편집으로 쌓지 않는다.
-    { name: "member/patch", method: "POST", summary: "Edit a member's role, brief, launch selection, or subagent opt-in. For a member whose session exists, a launch selection switches that session's model now (dormant or idle) or after its current turn (working).", handler: json(objectiveRef.extend({ memberId: ids, patch: memberPatchSchema }), steerable(() => true, ({ objectiveId, memberId, patch }) => {
-      const reservation = only(patch, ["launch"]) && !!(ctx.host.operations.describe ? ctx.host.operations.describe(memberId) : ctx.host.operations.get(memberId));
-      return edited(reservation ? [] : ["members"], () => launch.memberPatched(objectiveId, memberId, patch));
-    })) },
+    { name: "member/patch", method: "POST", summary: "Edit a member's role, brief, launch selection, or subagent opt-in. For a member whose session exists, a launch selection switches that session's model now (dormant or idle) or after its current turn (working).", handler: json(objectiveRef.extend({ memberId: ids, patch: memberPatchSchema }), actions.memberPatch) },
     { name: "member/next-cancel", method: "POST", summary: "Cancel a member's after-turn model reservation (or dismiss its failure): the session keeps its running model and the earlier selection returns.", handler: json(objectiveRef.extend({ memberId: ids }), steerable(() => true, async ({ objectiveId, memberId }) => objective(await launch.memberNextCancel(objectiveId, memberId)))) },
     // 판단 한 번의 비용이 든다 — 같은 설명·같은 대상이면 10분 동안 다시 판단하지 않고, 개시가 그 결과를 그대로 쓴다.
     { name: "routing/preview", method: "POST", summary: "Judge (or reuse, within 10 minutes and unchanged roles) the AI Gateway model for each member Commence would newly launch by routing; rejudge forces one new judgment.", handler: json(objectiveRef.extend({ rejudge: z.boolean().optional() }), unlessBusy(async ({ objectiveId, rejudge }) => ({ preview: await launch.routingPreview(objectiveId, { rejudge }) }))) },
-    { name: "member/batch-launch", method: "POST", summary: "Set all eligible members' launch selection to same or route, preserving custom models.", handler: json(objectiveRef.merge(memberBatchLaunchSchema), steerable(() => true, async ({ objectiveId, mode }) => {
-      const result = await launch.memberBatchLaunch(objectiveId, mode);
-      // 아무도 바뀌지 않은 선택은 보드 편집이 아니다 — 편집으로 적으면 지휘관의 결정 요청까지 거둔다. 띄운 구성원의 예약도 편집이 아니다.
-      const body = result.edits > 0 ? await edited(["members"], () => result.objective) : objective(result.objective);
-      return { ...body, changed: result.changed, preserved: result.preserved };
-    })) },
-    { name: "member/remove", method: "POST", summary: "Remove a member and return its mission ids for undo.", handler: json(objectiveRef.extend({ memberId: ids }), steerable(() => true, async ({ objectiveId, memberId }) => {
-      const result = await launch.memberRemoved(objectiveId, memberId);
-      // 맡던 임무는 지휘관 직접으로 돌아간다 — 되돌리기는 없다(다시 더하고 배정한다).
-      return objective(store.setEdited(objectiveId, ["members", ...(result.missionIds.length ? ["member" as const] : [])]));
-    })) },
-    { name: "mission/add", method: "POST", summary: "Add a mission.", handler: json(objectiveRef.extend({ mission: missionAddSchema }), steerable(() => true, ({ objectiveId, mission }) => edited(["missions", ...(mission.member !== undefined ? ["member" as const] : [])], () => store.missionAdd(objectiveId, mission, { unplaced: mission.prerequisites === undefined, by: "human" })))) },
-    { name: "mission/patch", method: "POST", summary: "Edit a mission (text, done, dependencies, member).", handler: json(missionRef.extend({ patch: missionPatchSchema }), steerable(({ objectiveId, missionId, patch }) => only(patch, ["text", "member"]) && notStarted(objectiveId, missionId), ({ objectiveId, missionId, patch }) => edited(missionKinds(patch), () => store.missionPatch(objectiveId, missionId, patch, { by: "human" })))) },
+    { name: "member/batch-launch", method: "POST", summary: "Set all eligible members' launch selection to same or route, preserving custom models.", handler: json(objectiveRef.merge(memberBatchLaunchSchema), actions.memberBatchLaunch) },
+    { name: "member/remove", method: "POST", summary: "Remove a member and return its mission ids for undo.", handler: json(objectiveRef.extend({ memberId: ids }), actions.memberRemove) },
+    { name: "mission/add", method: "POST", summary: "Add a mission.", handler: json(objectiveRef.extend({ mission: missionAddSchema }), actions.missionAdd) },
+    { name: "mission/patch", method: "POST", summary: "Edit a mission (text, done, dependencies, member).", handler: json(missionRef.extend({ patch: missionPatchSchema }), actions.missionPatch) },
     // 읽음은 편집이 아니다 — 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 것도 없다.
     { name: "mission/seen", method: "POST", summary: "Mark every record of a mission as read by the person.", handler: json(missionRef, ({ objectiveId, missionId }) => objective(store.missionSeen(objectiveId, missionId))) },
-    { name: "mission/remove", method: "POST", summary: "Remove a mission.", handler: json(missionRef, steerable(({ objectiveId, missionId }) => notStarted(objectiveId, missionId), ({ objectiveId, missionId }) => edited(["missions"], () => store.missionRemove(objectiveId, missionId)))) },
-    { name: "edge/toggle", method: "POST", summary: "Link or unlink two missions in the lineup.", handler: json(objectiveRef.extend({ from: ids, to: ids, linked: z.boolean().optional() }), steerable(({ objectiveId, to }) => notStarted(objectiveId, to), ({ objectiveId, from, to, linked }) => { const result = store.edgeToggle(objectiveId, from, to, undefined, linked); return { objective: result.changed ? store.setEdited(objectiveId, ["lineup"]) : result.objective, linked: result.linked }; })) },
-    { name: "plan/request", method: "POST", summary: "Ask the Commander to plan the objective (starts one when missing): it lays out missions, prerequisites and delegation; nothing runs until Commence. Optional context travels with the request and is kept on the objective.", handler: json(objectiveRef.extend({ context }), unlessBusy(({ objectiveId, language, context }) => { if (context !== undefined) store.patch(objectiveId, { planRequest: context }); return launch.requestPlan(objectiveId, { language }); })) },
-    { name: "commander/compact", method: "POST", summary: "Send /compact to the Commander and every member Operation of an objective through the normal delivery path; returns per-target outcomes.", handler: json(objectiveRef, ({ objectiveId }) => launch.compact(objectiveId)) },
-    { name: "commander/stop", method: "POST", summary: "Interrupt the Commander and every member Operation of an objective (roster stays).", handler: json(objectiveRef, ({ objectiveId }) => launch.stop(objectiveId)) },
-    { name: "commander/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once. routing \"preview\" launches routed members with the judgment the person just reviewed. Members the host refused are listed in failed.", handler: json(objectiveRef.extend({ context, routing: z.literal("preview").optional() }), (body) => {
-      if (store.find(body.objectiveId)?.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
-      if (launch.busy(body.objectiveId)) throw new ObjectiveStoreError("objective_busy");
-      return launch.startCommander(body.objectiveId, { language: body.language, context: body.context, ...(body.routing ? { routing: body.routing } : {}) });
-    }) },
+    { name: "mission/remove", method: "POST", summary: "Remove a mission.", handler: json(missionRef, actions.missionRemove) },
+    { name: "edge/toggle", method: "POST", summary: "Link or unlink two missions in the lineup.", handler: json(objectiveRef.extend({ from: ids, to: ids, linked: z.boolean().optional() }), actions.edge) },
+    { name: "plan/request", method: "POST", summary: "Ask the Commander to plan the objective (starts one when missing): it lays out missions, prerequisites and delegation; nothing runs until Commence. Optional context travels with the request and is kept on the objective.", handler: json(objectiveRef.extend({ context }), actions.plan) },
+    { name: "commander/compact", method: "POST", summary: "Send /compact to the Commander and every member Operation of an objective through the normal delivery path; returns per-target outcomes.", handler: json(objectiveRef, actions.compact) },
+    { name: "commander/stop", method: "POST", summary: "Interrupt the Commander and every member Operation of an objective (roster stays).", handler: json(objectiveRef, actions.stop) },
+    { name: "commander/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once. routing \"preview\" launches routed members with the judgment the person just reviewed. Members the host refused are listed in failed.", handler: json(objectiveRef.extend({ context, routing: z.literal("preview").optional() }), actions.commence) },
     // 결정 요청에 대한 사람의 답 — 보드 편집이 아니다(edited 를 쌓지 않는다). 지휘관이 일하는 중에도 받고, 기준 제안이 남아도 보낸다.
-    { name: "decision/answer", method: "POST", summary: "Answer the Commander's current decision request: every question at once. The answers reach the Commander (waking it when idle or dormant); once delivered they stay as decisions and the request clears.", handler: json(decisionAnswersSchema.extend({ objectiveId: ids, language }), ({ objectiveId, language, requestId, answers }) => launch.answerDecision(objectiveId, { requestId, answers }, { language }).then(objective)) },
-    { name: "commander/message", method: "POST", summary: "Send the person's words verbatim to the Commander or one member session; a member message is also quoted to the Commander in one line.", handler: json(objectiveRef.extend({ memberId: ids.nullable().optional(), text: z.string().trim().min(1).max(MAX_CONTEXT) }), ({ objectiveId, language, memberId, text }) => launch.message(objectiveId, memberId ?? null, text, { language })) },
-    { name: "commander/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(objectiveRef.extend({ context }), ({ objectiveId, language, context: note }) => launch.steer(objectiveId, { language, context: note }).then(objective)) },
+    { name: "decision/answer", method: "POST", summary: "Answer the Commander's current decision request: every question at once. The answers reach the Commander (waking it when idle or dormant); once delivered they stay as decisions and the request clears.", handler: json(decisionAnswersSchema.extend({ objectiveId: ids, language }), actions.answer) },
+    { name: "commander/message", method: "POST", summary: "Send the person's words verbatim to the Commander or one member session; a member message is also quoted to the Commander in one line.", handler: json(objectiveRef.extend({ memberId: ids.nullable().optional(), text: z.string().trim().min(1).max(MAX_CONTEXT) }), actions.message) },
+    { name: "commander/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(objectiveRef.extend({ context }), actions.steer) },
     { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();
       const hits = store.list(theaterId).filter((candidate) => !candidate.done && !candidate.removed && candidate.title.toLowerCase().includes(needle)).slice(0, limit ?? 20);
       return { objectives: hits.map((candidate) => ({ id: candidate.id, title: candidate.title, groupId: candidate.groupId })) };
     }) },
     // 달성 기준 — 브리핑처럼 지휘관이 일하는 동안에도 받고, 지휘관이 있으면 「달성 기준」 편집으로 쌓여 스티어링이 알린다.
-    { name: "criterion/add", method: "POST", summary: "Add a success criterion below the missions.", handler: json(objectiveRef.extend({ criterion: criterionAddSchema }), steerable(() => true, ({ objectiveId, criterion }) => edited(["criteria"], () => store.criterionAdd(objectiveId, criterion.text, "human")))) },
-    { name: "criterion/patch", method: "POST", summary: "Edit a success criterion.", handler: json(objectiveRef.extend({ criterionId: ids, patch: criterionPatchSchema }), steerable(() => true, ({ objectiveId, criterionId, patch }) => edited(["criteria"], () => store.criterionPatch(objectiveId, criterionId, patch.text)))) },
-    { name: "criterion/remove", method: "POST", summary: "Remove a success criterion.", handler: json(objectiveRef.extend({ criterionId: ids }), steerable(() => true, ({ objectiveId, criterionId }) => edited(["criteria"], () => store.criterionRemove(objectiveId, criterionId)))) },
+    { name: "criterion/add", method: "POST", summary: "Add a success criterion below the missions.", handler: json(objectiveRef.extend({ criterion: criterionAddSchema }), actions.criterionAdd) },
+    { name: "criterion/patch", method: "POST", summary: "Edit a success criterion.", handler: json(objectiveRef.extend({ criterionId: ids, patch: criterionPatchSchema }), actions.criterionPatch) },
+    { name: "criterion/remove", method: "POST", summary: "Remove a success criterion.", handler: json(objectiveRef.extend({ criterionId: ids }), actions.criterionRemove) },
     // 제안에 대한 사람의 판단·어노테이션은 지휘관 자신의 제안에 대한 답이라 edited 종류를 쌓지 않는다.
-    { name: "criterion/approve", method: "POST", summary: "Approve one proposed success criterion change.", handler: json(objectiveRef.extend({ proposalId: ids }), ({ objectiveId, proposalId }) => objective(store.proposalApprove(objectiveId, proposalId))) },
-    { name: "criterion/approve-all", method: "POST", summary: "Approve all proposed success criterion changes.", handler: json(objectiveRef, ({ objectiveId }) => objective(store.proposalsApproveAll(objectiveId))) },
-    { name: "criterion/reject", method: "POST", summary: "Reject one proposed success criterion change.", handler: json(objectiveRef.extend({ proposalId: ids }), ({ objectiveId, proposalId }) => objective(store.proposalReject(objectiveId, proposalId))) },
-    { name: "criterion/annotate", method: "POST", summary: "Annotate a proposed success criterion change (empty text removes the annotation).", handler: json(objectiveRef.extend({ proposalId: ids, annotation: z.string().max(300) }), ({ objectiveId, proposalId, annotation }) => objective(store.proposalAnnotate(objectiveId, proposalId, annotation))) },
+    { name: "criterion/approve", method: "POST", summary: "Approve one proposed success criterion change.", handler: json(objectiveRef.extend({ proposalId: ids }), actions.approve) },
+    { name: "criterion/approve-all", method: "POST", summary: "Approve all proposed success criterion changes.", handler: json(objectiveRef, actions.approveAll) },
+    { name: "criterion/reject", method: "POST", summary: "Reject one proposed success criterion change.", handler: json(objectiveRef.extend({ proposalId: ids }), actions.reject) },
+    { name: "criterion/annotate", method: "POST", summary: "Annotate a proposed success criterion change (empty text removes the annotation).", handler: json(objectiveRef.extend({ proposalId: ids, annotation: z.string().max(300) }), actions.annotate) },
     { name: "result/file", method: "GET", summary: "Read preserved evidence by objectiveId and resultId; images are inline and documents are plain UTF-8 text.", handler: resultFile },
     { name: "attachment/add", method: "POST", summary: "Attach an image to an objective's brief (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per objective).", handler: attachmentAdd },
     { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },

@@ -2,6 +2,7 @@ import type { ArchiveSectionContext, ArchiveSectionDescriptor } from "@fleet-con
 import { StatusGlyph } from "@fleet-console/sdk/components/status-glyph";
 
 import type { Objective } from "../server/types.js";
+import { actorDid } from "./actors.js";
 import { getT } from "./i18n/index.js";
 import { activeTheaterId, objectivesApi, openObjectiveFromCluster, post, readTheater, revealObjective, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
 import { TidiedList } from "./tidied.js";
@@ -34,7 +35,7 @@ function CompletedSection({ language, theaterId, close, query }: ArchiveSectionC
           <button type="button" className="objectives-archive-row" onClick={() => openObjective(objective.id, close)}>
             <StatusGlyph state="done" label={t("objectives.archive.doneGlyph")} decorative />
             <span className="objectives-archive-title">{objective.title}</span>
-            {objective.done ? <span className="objectives-archive-meta">{day.format(new Date(objective.done.at))}</span> : null}
+            {objective.done ? <span className="objectives-archive-meta">{[day.format(new Date(objective.done.at)), actorDid(t, objective.done.by, "completed")].filter(Boolean).join(" · ")}</span> : null}
           </button>
         </li>
       ))}

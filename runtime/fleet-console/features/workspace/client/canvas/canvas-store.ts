@@ -379,9 +379,18 @@ export function setCanvasViewportSize(viewportSize: CanvasViewportSize): void {
 // 아레나 인셋은 Operations 페이지(크롬 구성의 소유자)가 사이드바/레일 상태에서 계산해 심는다.
 // 스토어는 fit-all의 분모·중심 계산에서만 소비한다 — 알림 없는 모듈 값(뷰포트 크기와 동일 계약).
 let canvasArenaInsets: CanvasArenaInsets = { left: 0, top: 0, right: 0, bottom: 0 };
+const arenaInsetListeners = new Set<() => void>();
 
 export function setCanvasArenaInsets(insets: CanvasArenaInsets): void {
+  const changed = insets.left !== canvasArenaInsets.left || insets.right !== canvasArenaInsets.right || insets.top !== canvasArenaInsets.top || insets.bottom !== canvasArenaInsets.bottom;
   canvasArenaInsets = insets;
+  if (changed) for (const listener of [...arenaInsetListeners]) listener();
+}
+
+/** 확정 인셋이 바뀔 때 — 플러그인 면이 지도 폭을 따라가는 창구(consoleState.subscribeMapInsets)가 쓴다. */
+export function subscribeCanvasArenaInsets(listener: () => void): () => void {
+  arenaInsetListeners.add(listener);
+  return () => { arenaInsetListeners.delete(listener); };
 }
 
 export function getCanvasArenaInsets(): CanvasArenaInsets {

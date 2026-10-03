@@ -69,7 +69,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
         const latest = latestRecord(mission);
         return {
           n: index + 1, missionId: mission.id, text: mission.text, done: mission.done,
-          ...withoutEmpty({ by: mission.by, extension: extensionOf(objective.extensions, mission.id, "mission") }),
+          ...withoutEmpty({ by: mission.by, memberBy: mission.memberBy, extension: extensionOf(objective.extensions, mission.id, "mission") }),
           prerequisites: mission.prerequisites.map(nOf).filter((value) => value >= 1),
           ...(Object.keys(why).length ? { why } : {}),
           member: mission.member ? ((member) => member ? { id: member.id, role: member.role } : null)(objective.members.find((candidate) => candidate.id === mission.member)) : null,
@@ -96,24 +96,25 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       criteriaOpen: objective.criteriaOpen,
       extensionActive: objective.extensionActive,
       criteriaProposals: objective.criteriaProposals.map((proposal, index) => ({ n: index + 1, id: proposal.id, kind: proposal.kind,
-        ...withoutEmpty({ target: proposal.target, targetN: proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null, text: proposal.text, reason: proposal.reason, annotation: proposal.annotation }) })),
+        ...withoutEmpty({ target: proposal.target, targetN: proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null, text: proposal.text, reason: proposal.reason, annotation: proposal.annotation, annotationBy: proposal.annotationBy }) })),
       // 구성원 id 가 곧 그 세션의 Operation id 다.
       members: objective.members.map((member) => ({ id: member.id, role: member.role, ...withoutEmpty({ brief: member.brief, model: member.model, effort: member.effort }), by: member.by, subagents: member.subagents, session: member.sessionName,
         state: ctx.host.operations.get(member.id) ? observe(member.id).state : "missing" as const })),
-      done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
+      done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
       handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
       extensions: objective.extensions.map((round) => ({ ...round, at: new Date(round.at).toISOString(),
         previousHandoff: round.previousHandoff ? { ...round.previousHandoff, at: new Date(round.previousHandoff.at).toISOString() } : null })),
       addedBy: objective.addedBy,
+      edited: objective.edited, actions: objective.actions, actionCounts: objective.actionCounts,
       removed: objective.removed, merged: objective.merged,
     }),
     graph: graph(objective),
     ...withoutEmpty({
       // 후속 후보 — 지휘관이 고치거나 거둘 수 있는 것은 open 뿐이다. 폐기 흔적은 제목·요약만.
       followups: objective.followups.map((candidate) => (candidate.state === "discarded"
-        ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary }
+        ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary, discarded: candidate.discarded }
         : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence.map((entry) => withoutEmpty({ ...entry })) })),
-      followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, ...withoutEmpty({ operationId: entry.operationId, error: entry.error }) })) })),
+      followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, by: batch.by ?? "human", at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, ...withoutEmpty({ operationId: entry.operationId, error: entry.error }) })) })),
       // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
       origin: objective.origin,
       // 지금의 결정 요청 — 철회에 쓰는 id 와 지휘관이 낸 질문. 선택지 id 는 사람의 화면이 쓰는 값이다.
@@ -123,7 +124,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     decisionRequestRevision: objective.decisionRequestRevision,
     ...(objective.decisionDelivery ? { decisionDelivering: true } : {}),
     // 결정 — 사람이 보낸 답. 질문과 고른 선택지의 이름, 직접 쓴 말, 선택지를 모두 버린 내 의견 표시만 싣는다.
-    ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ question: decision.question.text,
+    ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ question: decision.question.text, by: decision.by ?? "human",
       ...withoutEmpty({
         selected: decision.answer.selectedOptionIds.flatMap((id) => decision.question.options.filter((option) => option.id === id).map((option) => option.label)),
         text: decision.answer.text, own: ownAnswer(decision.question, decision.answer), missionId: decision.missionId, memberId: decision.memberId,
@@ -138,7 +139,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
   const rowView = (objective: Objective) => ({
     id: objective.id, groupId: objective.groupId, title: objective.title,
     operation: !store.pending(objective.id),
-    done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null,
+    done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy && "operationId" in objective.addedBy ? objective.addedBy.operationId : objective.addedBy,
     ...withoutEmpty({
       commenced: objective.commenced,
       // 에이전트가 지웠거나 합친 목표 — 목록에는 filter all 에서만 선다.
@@ -154,5 +155,25 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     if (caller?.kind !== "operation") return "en";
     return ctx.host.operations.get(caller.operationId)?.payload?.objectiveLanguage === "ko" ? "ko" : "en";
   };
-  return { objectiveView, rowView, languageOf };
+  const sessions = (objective: Objective) => {
+    const commander = observe(objective.id);
+    return {
+      commander: { ...commander, state: store.pending(objective.id) ? "not_started" : commander.state, session: objective.commander.sessionName, model: objective.commander.model, effort: objective.commander.effort },
+      members: objective.members.map((member) => ({ ...observe(member.id), role: member.role, session: member.sessionName, model: member.model, effort: member.effort, next: member.next })),
+    };
+  };
+  const historyView = (objective: Objective) => {
+    const handoffs = [...objective.extensions.flatMap((round) => round.previousHandoff ? [round.previousHandoff] : []),
+      ...(objective.actions ?? []).flatMap((action) => action.handoff ? [action.handoff] : []), ...(objective.handoff ? [objective.handoff] : [])];
+    const unique = [...new Map(handoffs.map((handoff) => [`${handoff.at}:${JSON.stringify(handoff.by)}`, handoff])).values()];
+    return {
+      ...rowView(objective), completed: objective.done, boardUpdatedAt: objective.boardUpdatedAt,
+      handoffs: unique.map((handoff) => ({ ...handoff, at: new Date(handoff.at).toISOString() })),
+      decisions: objective.decisions, extensions: objective.extensions,
+      reopenCount: objective.actionCounts?.reopen ?? 0,
+      rework: { steeringTurns: objective.actionCounts?.steer ?? 0, reopenedMissions: objective.actionCounts?.["mission-reopened"] ?? 0, extensionRounds: objective.extensions.length },
+      actions: objective.actions ?? [], actionCounts: objective.actionCounts ?? {},
+    };
+  };
+  return { objectiveView, rowView, languageOf, sessions, historyView };
 }

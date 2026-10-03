@@ -6749,6 +6749,12 @@ body[data-companion-resizing="true"] .canvas-operation {
   gap: 2px;
 }
 
+/* 플러그인이 Theater 머리 아래에 세우는 줄. 상자는 없다 — 줄이 구역의 2px 간격을 그대로 따르고,
+   아무도 그리지 않으면 간격 한 칸도 남기지 않는다. */
+.side-bar-theater-contributions {
+  display: contents;
+}
+
 /* 베이스 .theater-menu의 left/right:0(구 GNB 240px 컨테이너 전제)을 해제 —
    fixed 포털에서 right:0을 상속하면 뷰포트 우측 끝까지 늘어난다(Codex P2).
    .theater-menu가 파일 후반에 선언되므로 복합 셀렉터로 특이도를 올려 이긴다. */
@@ -7798,6 +7804,15 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--coral);
 }
 
+/* 플러그인이 낸 줄 메모 — 맡은 이(accent)는 사령관 줄의 켬과 같은 brass 잉크, 주의(warn)는 신호 토큰. */
+.side-bar-cluster-row-meta .is-accent {
+  color: var(--brass-ink);
+}
+
+.side-bar-cluster-row-meta .is-warn {
+  color: var(--warn-ink);
+}
+
 /* 후속 줄의 원래 목표 — 긴 제목은 한 줄로 말줄인다. */
 .side-bar-cluster-row-meta .is-from {
   min-width: 0;
@@ -7903,6 +7918,14 @@ body[data-companion-resizing="true"] .canvas-operation {
 .side-bar-row-zone-count {
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
+}
+
+/* 줄이 낸 구역 머리 말(「사령관 처리 중」) — 개수 뒤, 같은 크기의 brass 잉크. */
+.side-bar-row-zone-note {
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  letter-spacing: 0;
+  color: var(--brass-ink);
 }
 
 .side-bar-row-zone-rim {

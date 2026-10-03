@@ -5,6 +5,9 @@ import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import { objectivesArchiveSections } from "./archive.js";
 import { objectivesClusterSource } from "./clusters.js";
+import { CommodoreDrawerHost } from "./commodore-drawer.js";
+import { CommodoreMenuItem, CommodoreRow } from "./commodore-row.js";
+import { installCommodoreState } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
@@ -71,9 +74,10 @@ const objectivesPlugin = definePlugin({
   id: "objectives",
   install: (ctx) => {
     const dispose = installObjectiveState(ctx);
+    const disposeCommodore = installCommodoreState(ctx);
     const theaterId = activeTheaterId();
     if (theaterId) void loadTheater(ctx.api, theaterId);
-    return dispose;
+    return () => { disposeCommodore(); dispose(); };
   },
   onMapOperationSelected: handleMapOperationSelected,
   railEntries: [objectivesEntry],
@@ -84,6 +88,10 @@ const objectivesPlugin = definePlugin({
   operationClusters: objectivesClusterSource,
   // 끝난 목표와 정리된 목표는 사이드바 트리가 아니라 보관함에 선다.
   archiveSections: objectivesArchiveSections,
+  // 사령관(자율 운영) — Theater 머리 아래 줄과 「…」 메뉴의 「사령관 지시…」. 실험 기능이 꺼져 있으면 둘 다 그리지 않는다.
+  theaterContributions: [{ id: "commodore", row: (context) => <CommodoreRow {...context} />, menu: (context) => <CommodoreMenuItem {...context} /> }],
+  // 「사령관 기록」 서랍은 줄이 접혀 사라져도 열린 채로 남는다.
+  persistentComponents: [{ id: "commodore-drawer", render: (context) => <CommodoreDrawerHost {...context} /> }],
 });
 
 export const plugins = [objectivesPlugin] as const;

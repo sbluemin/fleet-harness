@@ -41,7 +41,8 @@ export interface ConsoleUseActions {
   accent?(operationId: string, accent: string | null): boolean;
   /** 사용자 화면에서 그 Operation을 앞에 세운다. 사유는 캡션 말풍선에 한 줄로 보인다. */
   reveal?(operationId: string, reason: string, caller: ConsoleCaller): void;
-  transcript?(operationId: string, cursor: string | undefined, limit: number, signal?: AbortSignal): Promise<{ readonly source: "chat" | "terminal"; readonly entries: readonly Record<string, unknown>[]; readonly nextCursor: string | null; readonly truncated: boolean } | { readonly error: string }>;
+  /** 전사 한 쪽 — 커서부터 앞으로. `tail` 은 커서 없이 마지막 `limit` 줄을 읽고(그 앞이 남았으면 truncated), 다음 커서는 없다. */
+  transcript?(operationId: string, cursor: string | undefined, limit: number, signal?: AbortSignal, options?: { readonly tail?: boolean }): Promise<{ readonly source: "chat" | "terminal"; readonly entries: readonly Record<string, unknown>[]; readonly nextCursor: string | null; readonly truncated: boolean } | { readonly error: string }>;
   jobs?(operationId: string): Promise<{ readonly jobs: readonly Record<string, unknown>[] } | { readonly error: string }>;
   catalog?(operationId: string): Promise<{ readonly commands: readonly unknown[]; readonly skills: readonly unknown[]; readonly agents: readonly unknown[] } | { readonly error: string }>;
   pendingAsks?(operationId: string): readonly { readonly id: string; readonly form: "question" | "plan"; readonly questions: readonly unknown[] }[];
