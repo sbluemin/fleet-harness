@@ -1,3 +1,4 @@
+import type { RequestLifetime } from "../context.js";
 import type { TerminalSocket, TerminalSocketData } from "../terminal/terminal-types.js";
 
 import type { AgentChatAnswerInput, AgentChatAnswerResult } from "./chat-session.js";
@@ -5,6 +6,8 @@ import type { AgentChatJournalEvent } from "./chat-events.js";
 
 const MAX_CHAT_ANSWER_MESSAGE_CHARS = 2_000;
 const CHAT_UNAVAILABLE_CLOSE_CODE = 1013;
+/** 이 소켓을 연 접속(원격 세션)이 끝났다. 터미널 소켓의 4000번대 닫힘 코드와 같은 계열이다. */
+const CHAT_SESSION_ENDED_CLOSE_CODE = 4003;
 
 export interface AgentChatSocketSession {
   subscribe(listener: (entry: AgentChatJournalEvent) => void): () => void;
@@ -16,9 +19,14 @@ export interface AgentChatSocketSession {
 /**
  * 채팅 티켓이 연 소켓 하나. 저널은 내려가고, 뷰의 중지·답만 올라온다.
  * 새 턴을 넣는 message는 이 소켓에 없다 — Quick Launch HTTP가 그 자리다.
+ *
+ * 입장 판정은 소켓을 열 때 한 번뿐이다. 그 접속이 회수·대체·언페어링·만료로 끝난 뒤에도 소켓이
+ * 남아 있으면 끝난 기기가 승인·중지·대기 취소를 보낼 수 있으므로, 명령과 저널마다 `lifetime`을
+ * 다시 묻고 끝났으면 거절하고 닫는다. 서버가 세션 종료 때 소켓을 직접 파기하는 것과는 별개의 방어다.
  */
 export function attachAgentChatSocket(
   socket: TerminalSocket,
+  lifetime: RequestLifetime,
   start: () => Promise<AgentChatSocketSession | { readonly error: string }>,
 ): void {
   let closed = false;
@@ -30,9 +38,24 @@ export function attachAgentChatSocket(
     unsubscribe = null;
     session = null;
   });
+  const endForSession = (): void => {
+    unsubscribe?.();
+    unsubscribe = null;
+    session = null;
+    socket.close(CHAT_SESSION_ENDED_CLOSE_CODE, "session_ended");
+  };
   socket.on("message", (data, isBinary) => {
-    if (closed || isBinary || !session) return;
+    if (closed || isBinary) return;
     const command = readChatSocketCommand(decodeSocketText(data));
+    // 명령은 사람의 활동이라 유휴 수명을 민다(터미널 입력은 밀지 않는다 — 채팅은 HTTP 없이 승인만 이어 가는 화면이다).
+    const live = command ? lifetime.touch() : lifetime.isLive();
+    if (!live) {
+      const id = command?.id ?? commandId(data);
+      sendJson(socket, { type: "nack", error: "session_ended", ...(id ? { id } : {}) });
+      endForSession();
+      return;
+    }
+    if (!session) return;
     if (!command) {
       sendJson(socket, { type: "nack", error: "invalid_command", ...(commandId(data) ? { id: commandId(data) } : {}) });
       return;
@@ -68,6 +91,7 @@ export function attachAgentChatSocket(
   });
   void start().then((ready) => {
     if (closed) return;
+    if (!lifetime.isLive()) { endForSession(); return; }
     if ("error" in ready) {
       sendJson(socket, { seq: 0, event: { kind: "error", code: ready.error } });
       socket.close(CHAT_UNAVAILABLE_CLOSE_CODE, ready.error);
@@ -75,7 +99,10 @@ export function attachAgentChatSocket(
     }
     session = ready;
     unsubscribe = ready.subscribe((entry) => {
-      if (!closed) sendJson(socket, entry);
+      if (closed) return;
+      // 끝난 접속에는 저널도 내려보내지 않는다. 이 판정은 유휴 수명을 늘리지 않는다.
+      if (!lifetime.isLive()) { endForSession(); return; }
+      sendJson(socket, entry);
     });
   }).catch(() => {
     if (closed) return;

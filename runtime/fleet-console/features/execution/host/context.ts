@@ -11,7 +11,24 @@ export type ConsoleRuntimeHost = Pick<FleetPluginHostCapabilities, "consoleUse" 
   readonly useRequests?: Pick<import("../../console-use/host/use-requests.js").UseRequestBroker, "answer" | "settle" | "revoke" | "list">;
   readonly operations: Pick<FleetPluginHostCapabilities["operations"], "list" | "get" | "create" | "createChild" | "patch" | "delete" | "deleteChild" | "isTransitioning">;
   readonly paths: Omit<FleetPluginHostCapabilities["paths"], "pluginDataDir">;
+  /**
+   * 이 요청이 입장한 접속의 수명. 원격 리스너에서는 그 원격 세션이고, 루프백에서는 끝나지 않는다.
+   * 판정은 리스너와 세션을 아는 Console이 하고, 실행 기능은 묻기만 한다. 이 능력이 없는 호스트에서는
+   * 모든 접속을 끝난 것으로 본다 — 수명을 모르는 채널이 명령을 받아 주지 않게 하기 위해서다.
+   */
+  readonly requestLifetime?: (req: import("node:http").IncomingMessage) => RequestLifetime;
 };
+
+/**
+ * 한 요청(업그레이드 포함)이 입장한 접속의 수명. 오래 사는 채널이 메시지마다 "그 접속이 아직
+ * 살아 있는가"를 다시 묻는 자리다 — 입장 판정은 소켓을 열 때 한 번뿐이기 때문이다.
+ */
+export interface RequestLifetime {
+  /** 아직 살아 있는가. 유휴 수명을 늘리지 않는다 — 서버가 내려보내는 일은 사람의 활동이 아니다. */
+  isLive(): boolean;
+  /** 사람의 명령이 왔다. 살아 있으면 유휴 수명을 밀고 true, 끝났으면 false. */
+  touch(): boolean;
+}
 
 /** Console이 직접 구성하는 실행 기능의 의존성. 플러그인 신원·manifest·로더를 갖지 않는다. */
 export interface ConsoleRuntimeContext {
