@@ -45,8 +45,8 @@
 .agent-control-badge.is-leaving { animation: agent-use-leave 180ms ease-in both; }
 /* 실제 사용 중인 동안 글리프가 숨쉬고 링이 바깥으로 퍼진다 — 브라우저 캡션 버튼과 같은 리듬(1.6s). overflow 가 hidden 이라 링은 box-shadow 로 그린다. */
 .agent-control-badge:not(.is-leaving) svg { animation: agent-use-glyph 1.4s ease-in-out infinite; animation-name: var(--state-motion, agent-use-glyph); }
-.agent-control-badge:not(.is-leaving) { animation: agent-use-enter 180ms ease-out both, agent-use-halo 1.6s ease-out infinite; animation-name: var(--state-motion, agent-use-enter, agent-use-halo); }
-.agent-control-badge.is-console:not(.is-leaving) { animation: agent-use-enter 180ms ease-out both, agent-use-halo-console 1.6s ease-out infinite; animation-name: var(--state-motion, agent-use-enter, agent-use-halo-console); }
+.agent-control-badge:not(.is-leaving) { animation: agent-use-enter 180ms ease-out both, agent-use-halo 1.6s ease-out infinite; animation-name: agent-use-enter, var(--state-motion, agent-use-halo); }
+.agent-control-badge.is-console:not(.is-leaving) { animation: agent-use-enter 180ms ease-out both, agent-use-halo-console 1.6s ease-out infinite; animation-name: agent-use-enter, var(--state-motion, agent-use-halo-console); }
 @keyframes agent-use-glyph { 50% { transform: scale(0.86); opacity: 0.75; } }
 @keyframes agent-use-halo { 0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--agent-control-badge) 70%, transparent); } 100% { box-shadow: 0 0 0 7px color-mix(in oklch, var(--agent-control-badge) 0%, transparent); } }
 @keyframes agent-use-halo-console { 0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--console-use-badge) 70%, transparent); } 100% { box-shadow: 0 0 0 7px color-mix(in oklch, var(--console-use-badge) 0%, transparent); } }

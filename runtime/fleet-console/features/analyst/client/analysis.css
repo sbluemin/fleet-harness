@@ -112,7 +112,7 @@
 .session-analyst__pulse-copy strong.session-analyst__live-text {
   animation:
     analyst-stage-enter var(--duration-base) var(--ease-glide) both,
-    analyst-live-sweep 2.4s linear infinite; animation-name: var(--state-motion, analyst-stage-enter, analyst-live-sweep);
+    analyst-live-sweep 2.4s linear infinite; animation-name: analyst-stage-enter, var(--state-motion, analyst-live-sweep);
 }
 .session-analyst__pulse-copy small { font-family: var(--font-body); font-size: var(--t-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-analyst__pulse time { margin-left: auto; color: var(--aurora-ink); font-size: var(--t-2xs); }

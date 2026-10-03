@@ -16729,7 +16729,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   mask-composite: exclude;
   animation:
     quick-launch-ultracode-ignite 900ms var(--ease-glide) both,
-    quick-launch-ultracode-rim 2.8s linear 900ms infinite; animation-name: var(--state-motion, quick-launch-ultracode-ignite, quick-launch-ultracode-rim);
+    quick-launch-ultracode-rim 2.8s linear 900ms infinite; animation-name: quick-launch-ultracode-ignite, var(--state-motion, quick-launch-ultracode-rim);
 }
 
 @keyframes quick-launch-ultracode-ignite {
@@ -19061,7 +19061,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 /* 행·헤더·버튼 — 요소 자신이 링을 두르고, 워시는 배경이 아니라 배경 이미지로 얹는다(hover·활성·그룹 워시를 덮어쓰지 않는다). */
 .is-console-use-wrapped:not(.canvas-operation) {
   background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 14%, transparent), color-mix(in oklch, var(--console-use-wrap) 14%, transparent));
-  animation: console-use-wrap-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-wrap-halo 1.6s ease-out 360ms infinite, console-use-wrap-breathe 1.6s ease-in-out 360ms infinite; animation-name: var(--state-motion, console-use-wrap-arrive, console-use-wrap-halo, console-use-wrap-breathe);
+  animation: console-use-wrap-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-wrap-halo 1.6s ease-out 360ms infinite, console-use-wrap-breathe 1.6s ease-in-out 360ms infinite; animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe);
 }
 @keyframes console-use-wrap-arrive {
   from { box-shadow: 0 0 0 8px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
@@ -19086,7 +19086,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   border-radius: inherit;
   border: 1px solid var(--console-use-wrap);
   pointer-events: none;
-  animation: console-use-panel-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-panel-halo 1.6s ease-out 360ms infinite, console-use-panel-settle 420ms ease-out both, console-use-panel-breathe 1.6s ease-in-out 420ms infinite; animation-name: var(--state-motion, console-use-panel-arrive, console-use-panel-halo, console-use-panel-settle, console-use-panel-breathe);
+  animation: console-use-panel-arrive 360ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both, console-use-panel-halo 1.6s ease-out 360ms infinite, console-use-panel-settle 420ms ease-out both, console-use-panel-breathe 1.6s ease-in-out 420ms infinite; animation-name: console-use-panel-arrive, var(--state-motion, console-use-panel-halo), console-use-panel-settle, var(--state-motion, console-use-panel-breathe);
 }
 @keyframes console-use-panel-arrive {
   from { box-shadow: 0 0 0 8px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
@@ -19108,7 +19108,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .right-rail-ico.is-console-use-wrapped { border-color: color-mix(in oklch, var(--console-use-wrap) 50%, transparent); }
 /* 제스처 종류 — 색도 리듬도 하나, 움직임만 갈린다. press 는 도착 직후 요소가 한 번 눌리고,
    input 은 오른쪽 끝에 캐럿이 깜빡이고, create 는 자라나며 감싸인다. */
-.is-console-use-wrapped.is-press:not(.canvas-operation) { animation-name: var(--state-motion, console-use-wrap-arrive, console-use-wrap-halo, console-use-wrap-breathe, console-use-wrap-press); animation-duration: 360ms, 1.6s, 1.6s, 220ms; animation-delay: 0s, 360ms, 360ms, 360ms; animation-iteration-count: 1, infinite, infinite, 1; }
+.is-console-use-wrapped.is-press:not(.canvas-operation) { animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe), console-use-wrap-press; animation-duration: 360ms, 1.6s, 1.6s, 220ms; animation-delay: 0s, 360ms, 360ms, 360ms; animation-iteration-count: 1, infinite, infinite, 1; }
 @keyframes console-use-wrap-press { 50% { transform: scale(0.97); } }
 .is-console-use-wrapped.is-input:not(.canvas-operation) { position: relative; }
 .is-console-use-wrapped.is-input:not(.canvas-operation)::after {
@@ -19124,7 +19124,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   animation: console-use-wrap-caret 1s steps(2, start) infinite; animation-name: var(--state-motion, console-use-wrap-caret);
 }
 @keyframes console-use-wrap-caret { 50% { opacity: 0; } }
-.side-bar-group-header.is-console-use-wrapped.is-create { animation-name: var(--state-motion, console-use-wrap-arrive, console-use-wrap-halo, console-use-wrap-breathe, console-use-wrap-grow); animation-duration: 360ms, 1.6s, 1.6s, 520ms; animation-delay: 0s, 360ms, 360ms, 0s; animation-iteration-count: 1, infinite, infinite, 1; }
+.side-bar-group-header.is-console-use-wrapped.is-create { animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe), console-use-wrap-grow; animation-duration: 360ms, 1.6s, 1.6s, 520ms; animation-delay: 0s, 360ms, 360ms, 0s; animation-iteration-count: 1, infinite, infinite, 1; }
 @keyframes console-use-wrap-grow { from { opacity: 0; transform: scaleY(0.6); transform-origin: top; } to { opacity: 1; transform: none; } }
 /* 떠남 — 스토어가 만료 LEAVE_MS 전에 얹는다. 링·워시가 함께 꺼진다. 패널은 의사요소만 꺼진다(프레임 배경은 손대지 않는다). */
 .is-console-use-wrapped.is-leaving:not(.canvas-operation) { animation: console-use-wrap-leave 220ms ease-in both; }
