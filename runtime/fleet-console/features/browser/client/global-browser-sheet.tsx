@@ -47,6 +47,9 @@ import "./global-browser-sheet.css";
 
 const PLACE_POLL_MS = 200;
 const BROWSER_PROFILE = "default";
+/** 시트가 알아볼 수 있는 최소 숨구멍 — 모자라면 크롬을 무시하고 여백을 줄인다. */
+const MIN_SHEET_WIDTH = 280;
+const MIN_SHEET_HEIGHT = 200;
 
 type Services = { readonly language: PersistentComponentContext["language"]; readonly theme: PersistentComponentContext["theme"] };
 
@@ -127,6 +130,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   }, []);
 
   // ---- 자리: 아레나(사이드바·레일 제외) 안쪽 24px. Zen에서는 부유 섬 위 12px. ----
+  // 아레나가 최소 숨구멍보다 좁으면 사이드바·레일을 무시하고 밴드 아래 창 전체를 쓰고,
+  // 그것도 모자라면 여백을 줄여서라도 보이게 한다 — 「열림」인데 안 보이는 상태는 두지 않는다.
   const measureGeometry = React.useCallback(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
     const vw = window.innerWidth;
@@ -138,8 +143,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const zen = document.querySelector(".console-shell.is-zen") !== null;
     const sideRight = sidebar && sidebar.offsetWidth > 0 ? sidebar.getBoundingClientRect().right : 0;
     const railRect = rail && rail.offsetWidth > 4 ? rail.getBoundingClientRect() : null;
-    const left = Math.round((sideRight > 0 ? sideRight : 0) + 24);
-    const right = Math.round(railRect ? vw - railRect.left + 24 : 24);
+    let left = Math.round((sideRight > 0 ? sideRight : 0) + 24);
+    let right = Math.round(railRect ? vw - railRect.left + 24 : 24);
     let top: number;
     let bottom: number;
     if (zen && island && island.offsetWidth > 0) {
@@ -150,8 +155,22 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       top = Math.round(bandRect ? bandRect.bottom + 12 : 24);
       bottom = 24;
     }
-    // 최소 숨구멍 — 겹치면 시트를 접는다(그리지는 않는다).
-    if (vw - left - right < 280 || vh - top - bottom < 200) { setGeometry(null); return; }
+    if (vw - left - right < MIN_SHEET_WIDTH) {
+      // 좁은 아레나 — 크롬을 무시하고 창 너비를 쓴다. 시트가 레일·사이드바 위에 겹쳐 선다.
+      left = 24;
+      right = 24;
+    }
+    if (vw - left - right < MIN_SHEET_WIDTH) {
+      const margin = Math.max(8, Math.floor((vw - MIN_SHEET_WIDTH) / 2));
+      left = margin;
+      right = margin;
+    }
+    if (vh - top - bottom < MIN_SHEET_HEIGHT) {
+      bottom = 12;
+    }
+    if (vh - top - bottom < MIN_SHEET_HEIGHT) {
+      top = Math.max(8, vh - bottom - MIN_SHEET_HEIGHT);
+    }
     setGeometry((current) => current && current.left === left && current.top === top && current.right === right && current.bottom === bottom
       ? current
       : { left, top, right, bottom });

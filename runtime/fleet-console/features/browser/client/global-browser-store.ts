@@ -248,14 +248,26 @@ export async function dismissClosedGlobalTabs(): Promise<boolean> {
 /**
  * 같은 주소의 탭이 이미 있으면 그 탭으로 가고, 없으면 새 탭을 연다.
  * 링크 클릭이 탭을 중복으로 불리지 않게 한다.
+ *
+ * 뒤 탭(`activate: false`)은 활성 탭을 바꾸지 않는다(브라우저 관례). 탭이 하나도
+ * 없을 때의 첫 뒤 탭은 활성이 된다. 같은 주소 탭이 이미 있으면 그대로 둔다.
  */
-export async function focusOrCreateGlobalTab(url: string): Promise<boolean> {
+export async function focusOrCreateGlobalTab(url: string, options?: { readonly activate?: boolean }): Promise<boolean> {
+  const foreground = options?.activate !== false;
   try {
     const current = await getGlobalState();
     const existing = current?.tabs.find((tab) => tab.url === url);
     if (existing) {
+      if (!foreground) return true;
       const moved = await selectGlobalTab(existing.id);
       if (moved) return true;
+    } else if (!foreground && current && current.tabs.length > 0) {
+      const previous = current.activeTabId;
+      const created = await createGlobalTab(url);
+      if (!created) return false;
+      // 새로 난 탭이 앞선 순서로 활성이 되므로, 보던 탭을 앞자리로 되돌린다.
+      if (previous) await selectGlobalTab(previous).catch(() => false);
+      return true;
     }
   } catch {
     // 출발점 읽기에 실패하면 만들기로 떨어진다.

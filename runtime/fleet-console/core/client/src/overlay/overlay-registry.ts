@@ -48,6 +48,8 @@ function hasPublished(): boolean {
  * - `.operation-search-overlay`(⌘K·⌘P), `.quick-launch-overlay`(Quick Launch).
  * - `.app-toast-host`의 자식: 떠 있는 토스트. 시트 바깥으로 비켜도 뜨는 동안은 겹친 것으로 본다.
  * - `.console-toolbar-tip.is-visible`: 도구모음 말풍선.
+ * - `[data-feature-tour-id]`, `.onboarding-welcome-overlay`: 기능 소개 투어·온보딩
+ *   웰컴. 투어 카드(z 120)는 뷰보다 위에 서므로 뜨면 뷰를 물린다.
  */
 const OVERLAY_SELECTOR = [
   '[aria-modal="true"]',
@@ -56,6 +58,8 @@ const OVERLAY_SELECTOR = [
   ".operation-search-overlay",
   ".quick-launch-overlay",
   ".console-toolbar-tip.is-visible",
+  "[data-feature-tour-id]",
+  ".onboarding-welcome-overlay",
 ].join(",");
 
 function readMarkers(): boolean {

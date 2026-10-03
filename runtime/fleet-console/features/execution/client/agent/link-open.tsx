@@ -109,7 +109,7 @@ export function openOperationLink(
   if (gesture === "click") return false;
   if (gesture === "background") {
     // 뒤 탭 — 시트를 띄우지 않고 탭만 열고, 칸에 수를 남긴다. 실패하면 OS로 떨어진다.
-    void focusOrCreateGlobalTab(url).then((ok) => {
+    void focusOrCreateGlobalTab(url, { activate: false }).then((ok) => {
       if (ok) noteBackgroundTab();
       else openInDefaultOsBrowser(url);
     }).catch(() => openInDefaultOsBrowser(url));
@@ -135,7 +135,7 @@ export function openShellLink(url: string, gesture: OpenLinkGesture, availabilit
   }
   if (gesture === "click" || gesture === "companion") return false;
   if (gesture === "background") {
-    void focusOrCreateGlobalTab(url).then((ok) => {
+    void focusOrCreateGlobalTab(url, { activate: false }).then((ok) => {
       if (ok) noteBackgroundTab();
       else openInDefaultOsBrowser(url);
     }).catch(() => openInDefaultOsBrowser(url));
