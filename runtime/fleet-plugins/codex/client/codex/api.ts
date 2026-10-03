@@ -81,7 +81,7 @@ export async function fetchFilePeek(theaterId: string, path: string, line?: numb
   return postJson("/api/v1/plugins/codex/file-peek", { theaterId, path, line });
 }
 
-export async function fetchFileRefs(theaterId: string, paths: readonly string[]): Promise<Record<string, import("../../server/codex/contracts.js").FileRefStatus>> {
+export async function fetchFileRefs(theaterId: string, paths: readonly string[]): Promise<readonly import("../../server/codex/contracts.js").FileRefResolution[]> {
   return postJson("/api/v1/plugins/codex/file-refs", { theaterId, paths });
 }
 

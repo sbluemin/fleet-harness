@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, open, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCodexGateway } from "../server/codex/gateway.js";
 import { createCodexWorkspaceRouter } from "../server/codex/workspace-routes.js";
 import { createCodexFileRouter } from "../server/codex/file-routes.js";
+
+// 실행 계정/플랫폼과 무관하게 OS의 권한 거부를 대표 라우트 경계에 주입한다.
+vi.mock("node:fs/promises", { spy: true });
 
 const WORKSPACE_ID = "0123456789ab";
 
@@ -72,11 +75,21 @@ describe("Codex Theater-root workspace resolution", () => {
     expect(preview[2]).toMatchObject({ path: "source.ts", startLine: 30, truncated: true });
     expect(preview[2].lines).toHaveLength(200);
     expect(JSON.stringify(preview[2])).not.toContain(theaterRoot);
-    expect((await call("file-refs", { paths: ["source.ts", "missing.ts"] })).slice(1)).toEqual([200, { "source.ts": "file", "missing.ts": "missing" }]);
+    const canonicalRoot = await realpath(theaterRoot);
+    const absoluteRefs = await call("file-refs", { paths: [path.join(canonicalRoot, "source.ts"), canonicalRoot, "missing.ts"] });
+    expect(absoluteRefs.slice(1)).toEqual([200, [{ path: "source.ts", status: "file" }, { path: ".", status: "dir" }, { path: "missing.ts", status: "missing" }]]);
+    expect(JSON.stringify(absoluteRefs[2])).not.toContain(canonicalRoot);
     for (const escaped of ["../outside.ts", "escape.ts"]) {
       expect((await call("file-peek", { path: escaped }))[1]).toBe(403);
       expect((await call("file-refs", { paths: [escaped] }))[1]).toBe(403);
     }
+    for (const absoluteEscape of [path.join(await realpath(tmpDir), "outside.ts"), path.join(canonicalRoot, "escape.ts")]) {
+      const rejected = await call("file-refs", { paths: [absoluteEscape] });
+      expect(rejected.slice(1)).toEqual([403, { error: "outside_theater" }]);
+      expect(JSON.stringify(rejected[2])).not.toContain(absoluteEscape);
+    }
+    vi.mocked(open).mockRejectedValueOnce(Object.assign(new Error("access denied"), { code: "EACCES" }));
+    expect((await call("file-peek", { path: "source.ts" })).slice(1)).toEqual([403, { error: "forbidden" }]);
     expect((await call("file-peek", { path: "binary.dat" }))[1]).toBe(415);
     expect((await call("file-peek", { path: "large.ts" }))[1]).toBe(413);
     expect((await call("file-refs", { paths: Array(201).fill("source.ts") }))[1]).toBe(400);
