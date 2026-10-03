@@ -1,4 +1,5 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import { resolveCodexFileLink } from "./file-links.js";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -39,6 +40,7 @@ export interface MountCoworkInlineOptions {
    */
   dockHost?: HTMLElement;
   onApplied(): void;
+  onBodyRendered?(): void;
 }
 
 interface Settings { model: string; effort: string; }
@@ -159,10 +161,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const key = !engaged ? "published" : diffVisible ? `diff:${session!.draft}` : `draft:${session!.draft}`;
     if (key === lastBodyKey) return;
     lastBodyKey = key;
-    if (!engaged) { options.body.innerHTML = publishedHtml; return; }
+    if (!engaged) { options.body.innerHTML = publishedHtml; options.onBodyRendered?.(); return; }
     options.body.innerHTML = diffVisible
       ? `<div class="cowork-rendered-diff" aria-label="${escapeAttribute(t("codex.cowork.draftChangesAria"))}">${renderRenderedDiff(stripFrontmatter(session!.baseDraft), stripFrontmatter(session!.draft))}</div>`
-      : renderMarkdown(stripFrontmatter(session!.draft), { omitDuplicateTitle: options.title, resolveWikiLink: (id) => entryPath(id), ...markdownCopyOptions(t) }).html;
+      : renderMarkdown(stripFrontmatter(session!.draft), { omitDuplicateTitle: options.title, resolveWikiLink: (id) => entryPath(id), resolveLink: resolveCodexFileLink, ...markdownCopyOptions(t) }).html;
+    options.onBodyRendered?.();
   };
 
   // 선택 댓글은 읽기 스크롤포트와 부유 도크 사이의 보이는 영역 안에 둔다.
@@ -236,7 +239,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     onPromptChange: (value) => { promptText = value; renderDock(); },
     onSend: () => { void send(); },
     onStop: () => stop(),
-    onOpenSettings: () => hostCapabilities.bound()?.rail.open("settings"),
+    onOpenSettings: () => hostCapabilities.bound()?.rail.open("settings", { section: "experiments" }),
     onTogglePanel: () => { panelOpen = !panelOpen; renderDock(); },
     onDeleteAnnotation: (id) => { void deleteAnnotation(id); },
     onCommentChange: (id, comment) => {
@@ -288,7 +291,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   const renderReplyMarkdown = () => {
     if (renderedReplyText === reply) return;
     renderedReplyText = reply;
-    renderedReplyHtml = reply ? renderMarkdown(reply, markdownCopyOptions(consoleT())).html : "";
+    renderedReplyHtml = reply ? renderMarkdown(reply, { ...markdownCopyOptions(consoleT()), resolveLink: resolveCodexFileLink }).html : "";
     const turn = currentTurn();
     if (turn) patchTurn(turn.id, { replyHtml: renderedReplyHtml, hasReply: reply.length > 0 });
   };
@@ -915,7 +918,7 @@ function copyCodeToClipboard(button: HTMLElement, code: string): void {
 // 흐림+취소선으로 문서 흐름 안에 표시된다.
 function renderRenderedDiff(base: string, draft: string): string {
   return diffDraftBlocks(base, draft).map(block => {
-    const html = renderMarkdown(block.markdown, { resolveWikiLink: (id) => entryPath(id), ...markdownCopyOptions(consoleT()) }).html;
+    const html = renderMarkdown(block.markdown, { resolveWikiLink: (id) => entryPath(id), resolveLink: resolveCodexFileLink, ...markdownCopyOptions(consoleT()) }).html;
     return block.kind === "same" ? html : `<div class="cowork-block cowork-block--${block.kind}">${html}</div>`;
   }).join("");
 }

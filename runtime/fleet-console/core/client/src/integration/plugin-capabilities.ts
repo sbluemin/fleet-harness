@@ -1,9 +1,15 @@
+import type { PaneTarget } from "@fleet-console/sdk/pane";
+import { landPaneTarget, type PaneTargetBinding, type PaneTargetPorts } from "../chrome/pane/pane-target.js";
+import { openPane } from "../chrome/pane/pane-store.js";
+import { getViewModeSnapshot } from "./view-mode-store.js";
+import { SETTINGS_PANE_ID } from "../../../../features/settings/client/settings-entry.js";
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ShellOpenAtResult } from "@fleet-console/sdk/navigation";
 
 import { collectExperimentModelOptions } from "./experiment-model-options.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, subscribe as subscribeGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
-import { applySearchParams, subscribeConsoleLocation } from "./console-location.js";
+import { applySearchParams, navigateConsoleRoute, subscribeConsoleLocation } from "./console-location.js";
 import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
@@ -12,9 +18,51 @@ import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../chrome/r
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
-export function createHostCapabilities(resync: () => void = () => undefined): PluginInstallContext {
-  const base = createClientCapabilities(resync);
+export interface HostCapabilityDependencies {
+  readonly railBindings: readonly PaneTargetBinding[];
+}
+
+export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]): PaneTargetPorts {
   return {
+    bindings,
+    activateTheater: (theaterId) => {
+      if (!getState().theaters.some((theater) => theater.id === theaterId)) return false;
+      setActiveTheater(theaterId);
+      return true;
+    },
+    openRail: openRailPanel,
+    openPane,
+    openExpanded: openExpandedSurface,
+    requestId: () => crypto.randomUUID(),
+    showTarget: (target) => {
+      if (getViewModeSnapshot().effective === "mobile" && target.paneId === SETTINGS_PANE_ID) {
+        const section = target.params?.section;
+        navigateConsoleRoute("/settings", section === undefined ? "" : `?section=${encodeURIComponent(section)}`);
+        return true;
+      }
+      navigateConsoleRoute("/operations");
+      return false;
+    },
+  };
+}
+
+// Shell 배치 요청이 성공했을 때만 작업 화면으로 돌아가 Shell 표면을 연다.
+function revealShellOnSuccess(result: ShellOpenAtResult): ShellOpenAtResult {
+  if (result.ok) {
+    navigateConsoleRoute("/operations");
+    openExpandedSurface({ surfaceId: "shell" });
+  }
+  return result;
+}
+
+export function createHostCapabilities(
+  resync: () => void = () => undefined,
+  dependencies: HostCapabilityDependencies = { railBindings: [] },
+): PluginInstallContext {
+  const base = createClientCapabilities(resync);
+  const bindings = dependencies.railBindings;
+  const land = (target: PaneTarget) => landPaneTarget(target, createHostPaneTargetPorts(bindings));
+  const capabilities: PluginInstallContext = {
     ...base,
     operations: {
       ...base.operations,
@@ -74,6 +122,41 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       setActiveTheater: (theaterId) => setActiveTheater(theaterId),
       subscribe: (listener) => subscribe(listener),
     },
+    navigate: {
+      openFile: async (request) => {
+        const binding = bindings.find((item) => item.entry.handles?.openFile);
+        const handler = binding?.entry.handles?.openFile;
+        if (!handler) return { ok: false, reason: "no_handler" };
+        if (!getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
+        const target = await handler(request, capabilities);
+        if ("ok" in target) {
+          if (target.ok) capabilities.rail.open(binding!.entry.id);
+          return target;
+        }
+        return land({ ...target, theaterId: request.theaterId, params: {
+          theaterId: request.theaterId, path: request.path, pathKind: request.pathKind,
+          ...(request.line === undefined ? {} : { line: String(request.line) }),
+          ...(request.column === undefined ? {} : { column: String(request.column) }),
+          ...target.params,
+        } });
+      },
+      openWikiEntry: async (request) => {
+        const binding = bindings.find((item) => item.entry.handles?.openWikiEntry);
+        const handler = binding?.entry.handles?.openWikiEntry;
+        if (!handler) return { ok: false, reason: "no_handler" };
+        if (!getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
+        const result = await handler(request, capabilities);
+        if (result && !result.ok) return result;
+        setActiveTheater(request.theaterId);
+        capabilities.rail.open(binding!.entry.id);
+        navigateConsoleRoute("/operations");
+        return { ok: true };
+      },
+    },
+    shell: {
+      openAt: async (request) => revealShellOnSuccess(await base.shell.openAt(request)),
+      restartAt: async (request) => revealShellOnSuccess(await base.shell.restartAt(request)),
+    },
     navigation: {
       getSearchParam: (key) => new URLSearchParams(window.location.search).get(key),
       setSearchParams: (next, options) => applySearchParams(next, options?.replace === true),
@@ -87,7 +170,11 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       isOpen: (surfaceId) => getExpandedSurfaceState().instances.some((i) => i.surfaceId === surfaceId),
     },
     rail: {
-      open: (panelId) => openRailPanel(panelId),
+      open: (panelId, params) => {
+        const primary = bindings.find((binding) => binding.entry.id === panelId)?.panes.find((pane) => pane.role === "primary");
+        if (params && primary) land({ paneId: primary.id, params });
+        else openRailPanel(panelId);
+      },
       close: (panelId) => closeRailPanel(panelId),
       isOpen: (panelId) => getRailStoreSnapshot().activePanelId === panelId,
     },
@@ -105,4 +192,5 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       },
     },
   };
+  return capabilities;
 }

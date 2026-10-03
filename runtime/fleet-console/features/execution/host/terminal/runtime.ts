@@ -4,8 +4,10 @@ import type { UpgradeHandler } from "@fleet-console/sdk/routing";
 
 import { createShellTerminalLaunchResolver, startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
 import { createTerminalSessionManager } from "./session-manager.js";
+import os from "node:os";
+
 import { createPluginTerminalTicketRegistry } from "./tickets.js";
-import type { TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec, TerminalSocket, TerminalTitleListener } from "./terminal-types.js";
+import type { TerminalCwdListener, TerminalSessionManager, TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec, TerminalSocket, TerminalTitleListener } from "./terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "./ws.js";
 
 export interface TerminalRuntime {
@@ -28,6 +30,17 @@ export interface TerminalRuntime {
   getMessagePolicy(operationId: string): CliMessagePolicy | undefined;
   getRenameCommand(operationId: string): string | undefined;
   getSessionLastActivityAt(operationId: string): number | null;
+  /** 이 세션의 PTY가 지금 살아 있는가. */
+  isLive(sessionId: string): boolean;
+  /** PTY 전경 프로세스 이름. 모르면 null. */
+  getForegroundProcess(sessionId: string): string | null;
+  /** 프롬프트 표식으로 본 셸 줄 상태(세션 매니저 `getShellLineState`). 표식을 읽지 않는 세션이면 null. */
+  getShellLineState(sessionId: string): ReturnType<TerminalSessionManager["getShellLineState"]>;
+  /**
+   * 이 세션의 OSC 7(cwd 보고)을 받는다. 등록은 세션이 생기기 전에 해 둔다 — 파서는 PTY를 만들 때
+   * 받을 곳이 있는 세션에만 붙는다. 받는 경로는 서버 안의 절대 경로다.
+   */
+  onCwd(sessionId: string, callback: TerminalCwdListener): () => void;
   resolveSessionIdentity(operationId: string, providerSessionId: string): Promise<string | null>;
   onExit(callback: (operationId: string) => void | Promise<void>): () => void;
   onTitle(operationType: string, callback: TerminalTitleListener): () => void;
@@ -49,6 +62,7 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
   let chatAttach: ((socket: TerminalSocket, context: TerminalTicketContext, lifetime: RequestLifetime) => void) | null = null;
   const terminalExitListeners = new Set<(operationId: string) => void | Promise<void>>();
   const terminalTitleListeners = new Map<string, Set<TerminalTitleListener>>();
+  const terminalCwdListeners = new Map<string, Set<TerminalCwdListener>>();
   const terminalLaunchResolvers = new Map<string, TerminalLaunchResolver>();
   const defaultTerminalLaunch = createShellTerminalLaunchResolver();
   terminalLaunchResolvers.set(SHELL_OPERATION_TYPE, (cwd, context) => defaultTerminalLaunch(cwd, { ...context, kind: "shell" }));
@@ -62,6 +76,13 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
         for (const listener of terminalTitleListeners.get(operationType) ?? []) listener(sessionId, title);
       };
     },
+    resolveCwdListener: (context) => {
+      if (!terminalCwdListeners.has(context.sessionId)) return undefined;
+      return (sessionId, cwd) => {
+        for (const listener of terminalCwdListeners.get(sessionId) ?? []) listener(sessionId, cwd);
+      };
+    },
+    localHostnames: readLocalHostnames(),
     onFailure: ctx.recordFailure,
     onSessionExit: async (sessionId) => {
       await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
@@ -97,6 +118,18 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
     getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
     getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
     getSessionLastActivityAt: (operationId) => sessions.getSessionLastActivityAt(operationId),
+    isLive: (sessionId) => sessions.hasSession(sessionId),
+    getForegroundProcess: (sessionId) => sessions.getForegroundProcess(sessionId),
+    getShellLineState: (sessionId) => sessions.getShellLineState(sessionId),
+    onCwd: (sessionId, callback) => {
+      const listeners = terminalCwdListeners.get(sessionId) ?? new Set<TerminalCwdListener>();
+      listeners.add(callback);
+      terminalCwdListeners.set(sessionId, listeners);
+      return () => {
+        listeners.delete(callback);
+        if (listeners.size === 0) terminalCwdListeners.delete(sessionId);
+      };
+    },
     resolveSessionIdentity: (operationId, providerSessionId) => sessions.resolveSessionIdentity(operationId, providerSessionId),
     onExit: (callback) => {
       terminalExitListeners.add(callback);
@@ -129,6 +162,7 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
       await sessions.stop();
       terminalExitListeners.clear();
       terminalTitleListeners.clear();
+      terminalCwdListeners.clear();
       terminalLaunchResolvers.clear();
     },
   };
@@ -143,4 +177,15 @@ function createRegistryAwareTerminalLaunchResolver(defaultResolver: TerminalLaun
     if (operationType === "agent") return defaultResolver(cwd, context);
     throw new Error(`terminal_launch_resolver_missing:${operationType}`);
   };
+}
+
+/** OSC 7의 호스트 부분이 이 기계를 가리킬 수 있는 이름들 — 전체 이름과 첫 마디(`.local` 등을 뗀 것). */
+function readLocalHostnames(): readonly string[] {
+  try {
+    const full = os.hostname();
+    const short = full.split(".")[0] ?? full;
+    return full === short ? [full] : [full, short];
+  } catch {
+    return [];
+  }
 }

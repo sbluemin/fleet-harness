@@ -7,7 +7,7 @@
  * `history.pushState`를 직접 부르지 않는 이유는 popstate가 발화하지 않아 라우터가
  * 이동을 놓치기 때문이다 — 주소는 바뀌었는데 화면은 그대로인 상태가 된다.
  */
-type Navigate = (to: { readonly search: string }, options?: { readonly replace?: boolean }) => void;
+type Navigate = (to: { readonly search: string; readonly pathname?: string }, options?: { readonly replace?: boolean }) => void;
 type Listener = () => void;
 
 let navigate: Navigate | null = null;
@@ -70,4 +70,12 @@ export function applySearchParams(
   if (navigate) navigate({ search }, { replace });
   else window.history.replaceState(null, "", `${window.location.pathname}${search}`);
   notifyConsoleLocationChanged();
+}
+
+export function navigateConsoleRoute(pathname: string, search = window.location.search): void {
+  if (navigate) navigate({ pathname, search });
+  else {
+    window.history.pushState(null, "", `/console${pathname}${search}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
 }

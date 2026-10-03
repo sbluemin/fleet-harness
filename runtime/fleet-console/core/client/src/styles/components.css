@@ -15540,7 +15540,9 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .expanded-surface-pane {
   /* 부유 조작(닫기·tools)이 차지하는 오른쪽 폭. 레이어가 실측으로 덮어쓴다 — 여기 값은 첫 그림용.
      본문 첫 줄에 도구를 두는 표면은 이 변수만큼 오른쪽 여백을 갖는다(레일 마운트에서는 0). */
-  --expanded-surface-float-inset: 42px;
+  --expanded-surface-float-width: 42px;
+  --expanded-surface-overlay-inset: 0px;
+  --expanded-surface-float-inset: calc(var(--expanded-surface-float-width) + var(--expanded-surface-overlay-inset));
   /* 같은 무리의 아래 끝(+숨). 첫 줄만 비울 수 없는 격자 본문(터미널)이 이 아래에서 시작한다. */
   --expanded-surface-float-block: 38px;
   position: relative;
@@ -15594,7 +15596,8 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .expanded-surface-pane-float {
   position: absolute;
   top: var(--space-2);
-  right: var(--space-2);
+  /* 가림 인셋은 조작부만 이동한다. 본문·터미널 격자의 폭은 그대로 둔다. */
+  right: calc(var(--space-2) + var(--expanded-surface-overlay-inset));
   z-index: 2;
   display: inline-flex;
   align-items: center;
@@ -19588,6 +19591,43 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   .archive-sheet-scope { width: 100%; }
 }
 .operation-search-archived { color: var(--text-tertiary); font-size: var(--t-xs); }
+
+.theater-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--ink-deep);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+.theater-badge-initials {
+  flex: none;
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+}
+
+.theater-badge-label,
+.theater-badge-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theater-badge-detail {
+  color: var(--text-tertiary);
+}
+
+.theater-badge.is-warning {
+  border-color: var(--warn);
+  background: var(--warn-glow);
+  color: var(--warn-ink);
+}
 
 /* 창이 비활성이거나 숨긴 표면이면 상태 반복을 없앤다 — paused도 style tick을 남긴다. */
 :root[data-state-motion="inactive"],

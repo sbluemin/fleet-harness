@@ -73,6 +73,11 @@ async function mount(options: MountOptions): Promise<{
     resolveSessionIdentity: async () => null,
     terminate: () => true,
     onExit: () => () => {},
+    registerLaunchResolver: () => () => {},
+    onCwd: () => () => {},
+    isLive: () => false,
+    getForegroundProcess: () => null,
+    getShellLineState: () => null,
     stop: async () => {},
     writeToSession: () => false,
   } as unknown as TerminalRuntime;
@@ -96,7 +101,7 @@ async function mount(options: MountOptions): Promise<{
         withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
       },
       storage: { readJson: async () => null, writeJson: async () => {} },
-      events: { subscribe: () => () => {}, publish: () => {} },
+      events: { subscribe: () => () => {}, publish: () => {}, registerSseChannel: () => () => {} },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, body: unknown) => { responses.push({ status, body }); },
         readJsonBody: async <T,>() => requestBody as T,

@@ -186,6 +186,10 @@ async function createHarness(options: {
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     getSessionLastActivityAt: () => null,
+    isLive: () => false,
+    getForegroundProcess: () => null,
+    getShellLineState: () => null,
+    onCwd: () => () => undefined,
     resolveSessionIdentity: async () => null,
     onExit: (callback) => {
       exitCallback = callback;

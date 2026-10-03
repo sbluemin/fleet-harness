@@ -1,3 +1,4 @@
+import { useMarkdownLinkResolver } from "./markdown-link-boundary.js";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
@@ -29,13 +30,14 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
      memo 이득이 유지된다. */
   readonly transformHtml?: (html: string) => string;
 }) {
+  const resolveLink = useMarkdownLinkResolver();
   const latestText = React.useRef(text);
   const renderedText = React.useRef(streaming ? text : "");
   const renderTimer = React.useRef<number | null>(null);
   const transform = React.useRef(transformHtml);
   transform.current = transformHtml;
   const render = (value: string) => {
-    const html = renderMarkdown(value, markdownCopyOptions(language)).html;
+    const html = renderMarkdown(value, { ...markdownCopyOptions(language), resolveLink }).html;
     return transform.current ? transform.current(html) : html;
   };
   const [streamedHtml, setStreamedHtml] = React.useState(() => streaming ? render(text) : "");
@@ -44,11 +46,15 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   const completedHtml = React.useMemo(
     () => {
       if (streaming) return null;
-      const html = renderMarkdown(text, markdownCopyOptions(language)).html;
+      const html = renderMarkdown(text, { ...markdownCopyOptions(language), resolveLink }).html;
       return transformHtml ? transformHtml(html) : html;
     },
-    [streaming, text, language, transformHtml],
+    [streaming, text, language, transformHtml, resolveLink],
   );
+
+  React.useEffect(() => {
+    if (streaming) setStreamedHtml(render(latestText.current));
+  }, [streaming, language, resolveLink]);
 
   React.useEffect(() => {
     if (!streaming) {

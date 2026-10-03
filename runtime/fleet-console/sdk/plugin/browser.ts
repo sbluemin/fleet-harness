@@ -1,3 +1,4 @@
+import { requestShellOpenAt, requestShellRestartAt } from "../navigation/browser.js";
 import * as React from "react";
 
 import { assertOperationNode, ApiError } from "../operations/browser.js";
@@ -105,6 +106,11 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       setActiveTheater: () => undefined,
       subscribe: () => () => undefined,
     },
+    navigate: {
+      openFile: async () => ({ ok: false, reason: "no_handler" }),
+      openWikiEntry: async () => ({ ok: false, reason: "no_handler" }),
+    },
+    shell: { openAt: requestShellOpenAt, restartAt: requestShellRestartAt },
     navigation: {
       getSearchParam: () => null,
       setSearchParams: () => undefined,

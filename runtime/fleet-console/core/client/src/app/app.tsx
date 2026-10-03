@@ -268,6 +268,7 @@ function ConnectedApp() {
         ];
         return {
           id: binding.entry.id,
+          fileReferences: binding.entry.handles?.openFile !== undefined || binding.entry.id === "file-explorer",
           icon: binding.entry.icon,
           title: binding.entry.title,
           ...(binding.entry.surfaceId === undefined ? {} : { surfaceId: binding.entry.surfaceId }),
@@ -326,12 +327,12 @@ function ConnectedApp() {
   useEffect(() => {
     const capabilities = createHostCapabilities(() => {
       void fetchOperations().then(hydrateOperations).catch(() => {});
-    });
+    }, { railBindings });
     const cleanups = registry.providers.map((plugin) => plugin.install?.(capabilities)).filter((cleanup): cleanup is () => void => typeof cleanup === "function");
     return () => {
       for (const cleanup of cleanups) cleanup();
     };
-  }, [registry.providers]);
+  }, [registry.providers, railBindings]);
 
   useEffect(() => {
     setOperationsViewActive(operationsViewVisible);
@@ -556,7 +557,7 @@ function ConnectedApp() {
         }
         if (outcome === "reveal") navigate("/operations");
         if (entry.activate) {
-          const capabilities = createHostCapabilities();
+          const capabilities = createHostCapabilities(undefined, { railBindings });
           entry.activate({
             theaterId: getState().activeTheaterId,
             pathContext: { kind: "root", relPath: null, label: getState().theaters.find((theater) => theater.id === getState().activeTheaterId)?.label ?? "" },

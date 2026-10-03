@@ -464,6 +464,10 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
+    isLive: () => false,
+    getForegroundProcess: () => null,
+    getShellLineState: () => null,
+    onCwd: () => () => undefined,
     resolveSessionIdentity: async () => null,
     onExit: () => () => {},
     onTitle: (_type, listener) => {

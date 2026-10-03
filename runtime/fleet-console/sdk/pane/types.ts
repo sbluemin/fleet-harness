@@ -1,3 +1,5 @@
+import type { ClientConsoleStateCapability, ClientNotificationsCapability, ClientRailCapability } from "../plugin/types.js";
+import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
@@ -172,6 +174,13 @@ export type PaneMount = "rail" | "expanded";
  * 컨테이너 쿼리로 스스로 열화한다.
  */
 export interface PaneContext {
+  readonly navigate: ClientNavigateCapability;
+  readonly shell: ClientShellCapability;
+  readonly rail: ClientRailCapability;
+  /** Theater 이름·활성 Theater처럼 페인 머리에 필요한 콘솔 상태 — install ctx와 같은 읽기 창구다. */
+  readonly consoleState: ClientConsoleStateCapability;
+  /** 호스트 토스트·알림 — install ctx와 같은 창구다. */
+  readonly notifications: ClientNotificationsCapability;
   /** 서술자가 선언한 id 그대로. `panes.open`의 주소와 같다. */
   readonly paneId: string;
   /** 같은 페인을 두 자리에 띄웠을 때 둘을 가르는 id. */
@@ -274,6 +283,8 @@ export interface PaneSearchResult {
   readonly activate: () => PaneTarget | void | Promise<PaneTarget | void>;
   /** "info"는 선택 불가 메타데이터 행 — 키보드 이동과 활성화에서 빠진다. */
   readonly kind?: "info";
+  /** 질의가 이 결과의 대상을 정확히 가리킨다(예: Theater 상대 경로 일치). 팔레트는 그룹과 무관하게 맨 위에 둔다. */
+  readonly exact?: boolean;
 }
 
 export type PaneSearchProvider = (request: PaneSearchRequest) => Promise<readonly PaneSearchResult[]>;

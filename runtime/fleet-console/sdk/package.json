@@ -205,6 +205,21 @@
       "types": "./agent/types.ts",
       "import": "./agent/types.ts",
       "default": "./agent/types.ts"
+    },
+    "./navigation": {
+      "types": "./navigation/index.ts",
+      "import": "./navigation/index.ts",
+      "default": "./navigation/index.ts"
+    },
+    "./components/theater-badge": {
+      "types": "./components/theater-badge.tsx",
+      "import": "./components/theater-badge.tsx",
+      "default": "./components/theater-badge.tsx"
+    },
+    "./navigation/browser": {
+      "types": "./navigation/browser.ts",
+      "import": "./navigation/browser.ts",
+      "default": "./navigation/browser.ts"
     }
   },
   "scripts": {

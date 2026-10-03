@@ -18,6 +18,7 @@ import { getT } from "./i18n/index.js";
 import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./workspace-store.js";
 import { closeCodexReader, expandCodexReader, getReaderState, openCodexReader, useConsoleLocale, useReaderState } from "./reader-store.js";
 import { loadInitialData } from "./codex/state.js";
+import { CodexTheaterBadge } from "./codex-theater-badge.js";
 
 /**
  * 문서 창 — 표면의 detail 열.
@@ -124,6 +125,8 @@ function CodexReaderPane(ctx: PaneContext) {
       subId,
       theaterId: workspaceId,
       sessionTheaterId: theaterId,
+      fileTheaterId: theaterId,
+      navigate: ctx.navigate,
       onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
       onClose: () => closeCodexReader(),
       onPatchOpen: (pid) => openCodexReader({ kind: "drydock", patchId: pid }),
@@ -172,6 +175,7 @@ function CodexReaderPane(ctx: PaneContext) {
 
   return (
     <div className="codex-doc-pane">
+      <div className="codex-theater-context"><CodexTheaterBadge theaterId={theaterId} consoleState={ctx.consoleState} /></div>
       <section
         ref={outlineRef}
         className="codex-doc-outline"

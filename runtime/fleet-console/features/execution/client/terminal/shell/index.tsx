@@ -5,6 +5,9 @@ import { createPortal } from "react-dom";
 
 import { getT } from "../../agent/i18n/index.js";
 import { TerminalSurface } from "../shared/index.js";
+import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
+import { getShellSessionSnapshot, readShellSession } from "./shell-session-store.js";
+import { ShellTheaterBadge, ShellTheaterBand } from "./shell-theater.js";
 import "./shell.css";
 
 /**
@@ -17,8 +20,8 @@ import "./shell.css";
 const SHELL_SURFACE_ID = "shell";
 const SHELL_TICKET_PATH = "/api/v1/shell/ticket";
 const SHELL_WS_PATH = "/api/v1/terminal/ws";
-/** 80열이 서지 않는 폭에서는 셸이 셸 노릇을 못 한다. */
-const SHELL_MIN_PANE_WIDTH = 360;
+/** 셀 실측 전의 80열 예산. 마운트 뒤에는 TerminalSurface의 실제 셀 폭으로 갱신한다. */
+const SHELL_MIN_PANE_WIDTH = 660;
 
 interface ShellMountState {
   readonly activated: boolean;
@@ -93,6 +96,7 @@ export const shellSurface: ExpandedSurfaceDescriptor = {
   title: (ctx) => getT(ctx.language ?? "en")("terminal.kind.shell"),
   minPaneWidth: SHELL_MIN_PANE_WIDTH,
   render: (ctx) => React.createElement(ShellSurfaceBody, { ctx }),
+  tools: (ctx) => React.createElement(ShellTheaterBadge, { ctx }),
 };
 
 /**
@@ -116,7 +120,12 @@ function ShellSurfaceBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
     if (target) updateShellMount(target, ctx);
   }, [ctx]);
 
-  return <div ref={targetRef} className="global-shell-mount" />;
+  return (
+    <>
+      <ShellTheaterBand ctx={ctx} />
+      <div ref={targetRef} className="global-shell-mount" />
+    </>
+  );
 }
 
 /**
@@ -157,22 +166,34 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
     mount.target.append(host);
   }, [host, mount]);
 
+  // 재시작(restart-at)으로 끝난 PTY 뒤에는 같은 자리에 새 표면을 붙인다 — 새 티켓이 새 PTY를 띄운다.
+  const [surfaceKey, setSurfaceKey] = React.useState(0);
   if (!mount.activated || !mount.context) return null;
   const context = mount.context;
   const handleExit = () => {
     const close = shellMountState.context?.close;
-    // PTY가 실제로 끝난 경우에는 보존할 세션이 없다. portal을 내려 다음 열기가 새
-    // TerminalSurface와 새 PTY를 만들게 하고, 아직 보이는 페인도 함께 거둔다.
-    publishShellMount(EMPTY_SHELL_MOUNT);
-    close?.();
+    // PTY가 끝났다. 사용자가 `exit`로 끝냈으면 서버가 고정을 풀었고(pinnedTheaterId null), 그때는
+    // 보존할 세션이 없으니 portal을 내리고 페인도 거둔다. 재시작이 끝낸 것이면 서버가 이미 새 위치를
+    // 못 박아 두었으니 페인은 그대로 두고 표면만 새로 붙인다 — 닫았다가 여는 깜빡임도, 열리자마자
+    // 옛 종료가 페인을 닫는 경합도 없다.
+    void readShellSession().then((state) => {
+      if (state && !state.open && state.pinnedTheaterId !== null) {
+        setSurfaceKey((key) => key + 1);
+        return;
+      }
+      publishShellMount(EMPTY_SHELL_MOUNT);
+      close?.();
+    });
   };
 
   return createPortal(
     <TerminalSurface
+      key={surfaceKey}
       operationId={SHELL_SURFACE_ID}
       ticketPath={SHELL_TICKET_PATH}
       wsPath={SHELL_WS_PATH}
       surface="shell"
+      onCellWidth={(width) => context.reportMinPaneWidth?.(Math.ceil(width * 80 + 20))}
       theme={theme ?? context.theme ?? "instrument"}
       active={mount.target !== null && context.focused}
       visible={mount.target !== null}
@@ -182,9 +203,28 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
       // 옮겨 다녀도 셸의 발밑은 움직이지 않는다.
       ticketFields={context.theaterId ? { theaterId: context.theaterId } : undefined}
       onExit={handleExit}
+      fileLinks={shellFileLinks(context)}
     />,
     host,
   );
 }
 
 export const expandedSurfaces = [shellSurface] as const;
+
+/**
+ * Shell 출력의 파일 경로 링크. 상대 경로의 기준은 셸이 보고한 cwd(Theater 상대)다. cwd를 보고하지
+ * 않는 셸은 spawn 위치에서 이미 떠났을 수 있으므로 상대 경로 링크를 세우지 않고 절대 경로만 남긴다.
+ */
+function shellFileLinks(context: ExpandedSurfaceContext): TerminalFileLinks {
+  return {
+    context: () => {
+      const session = getShellSessionSnapshot();
+      const cwdTheaterId = session?.open && session.cwd?.theaterId ? session.cwd.theaterId : null;
+      const theaterId = cwdTheaterId ?? context.theaterId;
+      if (!theaterId) return null;
+      const cwdRelative = cwdTheaterId && session?.cwdTracked ? session.cwd?.relative ?? null : null;
+      return { theaterId, cwdRelative };
+    },
+    open: (target) => context.navigate.openFile({ ...target, source: "shell" }),
+  };
+}

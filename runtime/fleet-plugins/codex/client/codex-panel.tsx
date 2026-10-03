@@ -30,6 +30,7 @@ import { fetchSearch } from "./codex/api.js";
 import { openCodexRailPanel, openCodexReaderByAddress } from "./host.js";
 import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
 import { loadInitialData } from "./codex/state.js";
+import { CodexTheaterBadge } from "./codex-theater-badge.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,13 @@ export const codexEntry: RailEntryDescriptor = {
   title: (locale) => getT(locale)("rail.codex.title"),
   icon: () => <CodexIcon />,
   panes: ["codex", CODEX_READER_PANE_ID],
+  handles: {
+    openWikiEntry: (request, host) => {
+      if (!host.consoleState.getTheaters().some(theater => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
+      host.navigation.setSearchParams({ codex: request.entryId, codexTheater: request.theaterId, codexView: null }, { replace: false });
+      return { ok: true };
+    },
+  },
 };
 
 /** 카탈로그 — 표면이 열리면 이 열이 선다. 문서는 옆에 서는 별개의 열이다. */
@@ -205,10 +213,10 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   }, [hasReader]);
 
   if (!shouldMountCodex) {
-    return <CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} />;
+    return <div className="codex-panel-body"><div className="codex-theater-context"><CodexTheaterBadge theaterId={theaterId} consoleState={ctx.consoleState} /></div><CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} /></div>;
   }
 
-  return <div ref={navRef} className="codex-rail-host" />;
+  return <div className="codex-panel-body"><div className="codex-theater-context"><CodexTheaterBadge theaterId={theaterId} consoleState={ctx.consoleState} /></div><div ref={navRef} className="codex-rail-host" /></div>;
 }
 
 function CodexEmpty({

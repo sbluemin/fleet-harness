@@ -673,7 +673,7 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain('pathContext: { kind: "root", relPath: null, label: theaterLabel }');
     expect(types).toContain("readonly theme?: ConsoleTheme;");
     expect(rightRail).toContain("theme,");
-    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, theme, onLaunchOperation]");
+    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, theme, onLaunchOperation, railCapabilities]");
     expect(rightRail).not.toContain("selectPathContext");
     expect(rightRail).not.toContain(".pathAware");
   });
@@ -1934,10 +1934,7 @@ describe("Instrument core design contract", () => {
     const rightRail = source("chrome/rail/right-rail.tsx");
     const settingsPane = source("../../../features/settings/client/settings-pane.tsx");
     const railStore = source("chrome/rail/rail-store.ts");
-    // 전면 해도 개편: push/overlay 이원은 퇴역했다 — 부유 카드가 유일한 형태이고, "가리지
-    // 않는다"는 구 push 기대는 아레나 인셋이 승계한다. 이원의 잔재가 되살아나면 레일이
-    // 두 재질·두 기하로 갈라진다.
-    expect(rail).not.toContain(".right-rail.is-overlay");
+    // K-05 A: 확대 작업면을 보호하는 비모달 오버레이는 승인된 형태다(부유 카드 재질은 유지).
     expect(rail).not.toContain(".right-rail.is-switching");
     expect(rail).toMatch(/\.right-rail \{[^}]*position: absolute;/);
     expect(rail).toMatch(/\.right-rail \{[^}]*border-radius: var\(--radius-md\);/);
@@ -2255,7 +2252,7 @@ describe("Instrument core design contract", () => {
       expect(rightRail).not.toContain(legacyRightRailCoupling);
       expect(railStore).not.toContain(legacyRightRailCoupling);
     }
-    expect(rightRail).not.toContain("ResizeObserver");
+    // K-05 오버레이 실측(RightRail의 ResizeObserver)은 확대 표면의 조작부 회피에만 쓴다 — 위 결합 금지가 Command Band 결합의 부활을 막는다.
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band {');
     // 브랜드 홈(a)·rename(input)까지 no-drag — button만 겨냥하면 데스크톱 드래그 영역이 클릭을 삼킨다.
     expect(layout).toContain('html[data-desktop-shell="true"] .command-band button,');

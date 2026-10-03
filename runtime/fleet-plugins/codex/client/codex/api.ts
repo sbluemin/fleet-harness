@@ -77,6 +77,14 @@ export class CoworkRequestError extends Error {
   }
 }
 
+export async function fetchFilePeek(theaterId: string, path: string, line?: number): Promise<import("../../server/codex/contracts.js").FilePeekResponse> {
+  return postJson("/api/v1/plugins/codex/file-peek", { theaterId, path, line });
+}
+
+export async function fetchFileRefs(theaterId: string, paths: readonly string[]): Promise<readonly import("../../server/codex/contracts.js").FileRefResolution[]> {
+  return postJson("/api/v1/plugins/codex/file-refs", { theaterId, paths });
+}
+
 // ─── Fetchers ─────────────────────────────────────────────────────────────────
 
 export async function fetchSearch(theaterId: string | null, opts?: SearchOptions): Promise<SearchResponse> {

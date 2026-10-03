@@ -19,7 +19,8 @@ import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } 
 import { contextMenuAnchorFromRowRect, isTreeContextMenuKey, performFileContextAction, resolveContextMenuKeyboardAction, restoreContextMenuFocus } from "./context-menu.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
-import type { FileSearchTarget } from "./search-navigation.js";
+import type { FileRevealTarget } from "./view-store.js";
+import { findReferencedFile, FileNavigationError } from "./file-navigation.js";
 
 import { FileIcon, FolderIcon } from "@fleet-console/sdk/components/file-icon";
 import { FilePeek } from "./peek.js";
@@ -32,7 +33,7 @@ interface FileTreeProps {
   readonly files: PluginFilesClient;
   readonly theaterId: string | null;
   readonly selectedPath: string | null;
-  readonly revealTarget?: FileSearchTarget | null;
+  readonly revealTarget?: FileRevealTarget | null;
   readonly onSelect: (entry: FolderEntry) => void;
   readonly onSearchSelect?: (item: FileSearchItem) => void;
   readonly onContextMenu: (entry: FolderEntry, x: number, y: number) => void;
@@ -894,7 +895,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const rowNoteIdRef = useRef(0);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusPathRef = useRef<string | null>(null);
-  const revealedRequestRef = useRef(0);
+  const revealedRequestRef = useRef<string | null>(null);
   const gitStatusRequestRef = useRef(0);
   const typeaheadRef = useRef({ buffer: "", at: 0 });
 
@@ -1041,7 +1042,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   }, [contextKey, theaterId, currentPath, files, t]);
 
   useEffect(() => {
-    if (!revealTarget || revealTarget.theaterId !== theaterId || revealTarget.requestId <= revealedRequestRef.current) return;
+    if (!revealTarget || revealTarget.theaterId !== theaterId || revealTarget.requestId === revealedRequestRef.current) return;
     let active = true;
     const requestContextKey = contextKey;
     const loadRevealPath = async () => {
@@ -1050,7 +1051,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       const nextExpanded = new Set<string>();
       const parts = revealTarget.relativePath.split("/").filter(Boolean);
       let parentPath = "";
-      for (const part of parts.slice(0, -1)) {
+      // 폴더 참조는 조상뿐 아니라 자기 내용도 펼쳐 같은 트리 좌표에서 읽게 한다.
+      for (const part of revealTarget.kind === "dir" ? parts : parts.slice(0, -1)) {
         parentPath = parentPath ? `${parentPath}/${part}` : part;
         const folderResult = await files.listFolder(parentPath);
         nextResults.set(parentPath, folderResult);
@@ -1097,6 +1099,16 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
+          if (searchScope === "files") {
+            const referenced = await findReferencedFile(theaterId, query, controller.signal);
+            if (referenced) {
+              if (requestId !== filterRequestRef.current || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+              setFilterOutcome({ files: [{ relativePath: referenced.resolved.path, kind: referenced.resolved.kind, source: "path", exact: true, location: { line: referenced.ref.line, column: referenced.ref.column, anchor: referenced.ref.anchor } }], totalMatches: 1, complete: true, ignoredSkipped: false });
+              setFilterSearching(false);
+              setFilterFailed(null);
+              return;
+            }
+          }
           const response = await fetch("/plugins/file-explorer/files/palette-search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1121,7 +1133,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             requestId !== filterRequestRef.current
             || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)
           ) return;
-          setFilterFailed(error instanceof Error ? error.message : "search_failed");
+          setFilterFailed(error instanceof FileNavigationError ? error.reason : error instanceof Error ? error.message : "search_failed");
           setFilterSearching(false);
           setFilterOutcome(null);
         }
@@ -1436,7 +1448,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   }, [renderedCursorPath, visibleRows]);
 
   useLayoutEffect(() => {
-    if (!revealTarget || revealTarget.requestId <= revealedRequestRef.current) return;
+    if (!revealTarget || revealTarget.requestId === revealedRequestRef.current) return;
     const rowIndex = flatRows.findIndex((row) => isEntryRow(row) && row.entry.relativePath === revealTarget.relativePath);
     if (rowIndex < 0) return;
     const node = treeRef.current;
@@ -1844,7 +1856,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     statusLines.push({ key: "skipped", text: t("fileExplorer.filter.skippedPaths", { count: filterOutcome.skippedPaths }), tone: "warn", role: "status" });
   }
   if (isFiltering && filterFailed) {
-    statusLines.push({ key: "failed", text: filterFailed === "content_search_unavailable" ? t("fileExplorer.filter.contentUnavailable") : t("fileExplorer.filter.searchFailed"), tone: "warn", role: "alert" });
+    statusLines.push({ key: "failed", text: filterFailed === "not_found" || filterFailed === "outside_theater" ? t(`fileExplorer.navigation.${filterFailed}`) : filterFailed === "content_search_unavailable" ? t("fileExplorer.filter.contentUnavailable") : t("fileExplorer.filter.searchFailed"), tone: "warn", role: "alert" });
   }
   if (watchDegraded) {
     statusLines.push({ key: "degraded", text: t("fileExplorer.tree.watchDegraded"), tone: "quiet", role: "status" });

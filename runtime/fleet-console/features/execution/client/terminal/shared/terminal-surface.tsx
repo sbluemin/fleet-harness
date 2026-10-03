@@ -1,6 +1,7 @@
 import "@xterm/xterm/css/xterm.css";
 
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -17,6 +18,8 @@ import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { createTerminalLinkHandler, createTerminalLinkRoute, TERMINAL_OPTIONS } from "./terminal-options.js";
 import { createWrappedLinkProvider } from "./terminal-wrapped-links.js";
+import { createFileLinkProvider, type TerminalFileLinkOutcome, type TerminalFileLinks } from "./terminal-file-links.js";
+import { isTerminalSearchShortcut, TerminalSearchBar } from "./terminal-search-bar.js";
 import { dispatchSyntheticTerminalWheel } from "./terminal-synthetic-wheel.js";
 import { createTerminalTouchGestures, MIN_FONT_SCALE } from "./terminal-touch-gestures.js";
 import { createXtermGestureOriginGuard } from "./terminal-xterm-gesture-origin.js";
@@ -57,6 +60,7 @@ export interface TerminalSurfaceProps {
   // 터미널 마운트 단의 역스케일(scale(1/zoom)) + fontSize×zoom으로 net scale=1을 만들어 좌표를 정정한다.
   readonly zoom?: number;
   readonly onStatusDetail?: (detail: string) => void;
+  readonly onCellWidth?: (width: number) => void;
   /**
    * 본문의 http(s) 링크를 눌렀을 때 — OSC 8 하이퍼링크든 출력에서 찾아낸 맨 URL이든 — 이 표면 대신
    * 열 곳을 정하는 쪽. 그 링크를 맡았으면 true를 돌려준다. 넘기지 않은 표면(전역 Shell)과 맡지 않은
@@ -71,6 +75,11 @@ export interface TerminalSurfaceProps {
   readonly knownLinks?: (text: string) => Promise<readonly string[]>;
   /** 관전 배지 문구용. 넘기지 않으면 영어로 떨어진다 — 배지 외의 동작에는 영향이 없다. */
   readonly locale?: ConsoleLocale;
+  /**
+   * 출력의 파일 경로(`src/a.ts:10:9` 등)를 ⌘/Ctrl+클릭으로 여는 곳. 넘기지 않으면 경로 링크를 세우지
+   * 않는다. 맨 URL 링크보다 먼저 등록된다.
+   */
+  readonly fileLinks?: TerminalFileLinks;
 }
 
 interface TerminalOutputScheduler {
@@ -209,13 +218,20 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, knownLinks, locale }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
   ticketFieldsRef.current = ticketFields;
   const activeTheme = theme;
-  const { renderer: terminalRenderer, inactiveFlush: terminalInactiveFlush, font: terminalFontSettings } = useTerminalPrefs();
+  const { renderer: terminalRenderer, inactiveFlush: terminalInactiveFlush, font: terminalFontSettings, scrollback: terminalScrollback, copyOnSelect: terminalCopyOnSelect } = useTerminalPrefs();
+  const copyOnSelectRef = useRef(terminalCopyOnSelect);
+  copyOnSelectRef.current = terminalCopyOnSelect;
+  const fileLinksRef = useRef(fileLinks);
+  fileLinksRef.current = fileLinks;
+  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [linkNotice, setLinkNotice] = useState<string | null>(null);
   const inactiveFlushMs = terminalInactiveFlushMs(terminalInactiveFlush);
   const t = getT(locale);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -263,8 +279,12 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // 링크를 여는 문은 렌더마다 새 함수일 수 있고, 마운트 effect는 다시 돌지 않는다(세션이 끊긴다).
   const onOpenLinkRef = useRef(onOpenLink);
   onOpenLinkRef.current = onOpenLink;
+  const onCellWidthRef = useRef(onCellWidth);
+  onCellWidthRef.current = onCellWidth;
   const knownLinksRef = useRef(knownLinks);
   knownLinksRef.current = knownLinks;
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
   // 비활성 Map 패널의 마운트 자동 포커스를 억제하기 위해 최신 active를 ref로 들고 있는다(마운트 effect는 재실행하지 않음).
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -372,11 +392,28 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         theme: terminalTheme,
         allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? ""),
         minimumContrastRatio: terminalContrastFloorFor(activeTheme),
+        scrollback: terminalScrollback,
       });
       terminalRef.current = terminal;
       const fitAddon = new FitAddon();
       fitAddonRef.current = fitAddon;
       terminal.loadAddon(fitAddon);
+      const isMac = isMacPlatform();
+      // 파일 경로 링크는 맨 URL 탐지보다 먼저 선다 — xterm은 먼저 등록한 공급자의 링크를 고른다.
+      // 공급자는 매번 ref를 다시 읽으므로 표면이 링크를 끄거나 기준(cwd)을 바꾸면 곧바로 따른다.
+      const fileLinkHint = getT(localeRef.current)(isMac ? "terminal.fileLink.hintMac" : "terminal.fileLink.hint");
+      terminal.registerLinkProvider(createFileLinkProvider(terminal, {
+        source: () => fileLinksRef.current,
+        isMac,
+        onHover: (hovering) => {
+          if (hovering) container.title = fileLinkHint;
+          else container.removeAttribute("title");
+        },
+        onOutcome: (outcome) => setLinkNotice(describeFileLinkOutcome(outcome, localeRef.current)),
+      }));
+      const searchAddon = new SearchAddon();
+      terminal.loadAddon(searchAddon);
+      searchAddonRef.current = searchAddon;
       // 원문과 맞춰 이은 긴 주소가 맨 URL 탐지의 첫 줄 조각보다 앞선다 — xterm은 먼저 등록한 공급자의
       // 링크를 고른다. 원문과 맞지 않으면 이 공급자는 아무것도 내지 않아 아래 addon이 그대로 맡는다.
       if (knownLinksRef.current) {
@@ -406,6 +443,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         windowTarget: window,
         clipboard: navigator.clipboard,
         onCopied: () => setCopiedAt(Date.now()),
+        isEnabled: () => copyOnSelectRef.current,
       });
       // 전체 화면 TUI(agent CLI 등)가 마우스 트래킹을 켜면 xterm은 드래그를 애플리케이션에 넘기고 자체
       // 선택을 끈다. 그때부터 선택 하이라이트도 복사도 애플리케이션이 수행하며, 복사 결과는 OSC 52로만
@@ -436,9 +474,15 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         getSelection: () => terminal.getSelection(),
         writeText: (text) => navigator.clipboard.writeText(text),
       });
-      terminal.attachCustomKeyEventHandler((event) => (
-        windowsSelectionCopyHandler.handleKeyEvent(event) && imeHandler.handleKeyEvent(event)
-      ));
+      terminal.attachCustomKeyEventHandler((event) => {
+        if (isTerminalSearchShortcut(event, isMac)) {
+          // 브라우저 찾기는 캔버스 글자를 못 찾는다 — 터미널 안 찾기를 연다.
+          event.preventDefault();
+          setSearchOpen(true);
+          return false;
+        }
+        return windowsSelectionCopyHandler.handleKeyEvent(event) && imeHandler.handleKeyEvent(event);
+      });
 
       const scrollFollow = createTerminalScrollFollow({
         getViewport: () => terminal.buffer.active,
@@ -542,6 +586,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       const fitAndResize = (refresh = false) => {
         scrollFollow.preserveAfterGeometryChange(() => {
           fitAddon.fit();
+          const screenWidth = container.querySelector<HTMLElement>(".xterm-screen")?.clientWidth ?? 0;
+          if (screenWidth > 0 && terminal.cols > 0) onCellWidthRef.current?.(screenWidth / terminal.cols);
           connection.resize(terminal.cols, terminal.rows);
           if (refresh) terminal.refresh(0, terminal.rows - 1);
           alternateScreenEdgeFill?.schedulePaint();
@@ -597,6 +643,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         connection.dispose();
         alternateScreenController?.dispose();
         copyOnSelect.dispose();
+        searchAddonRef.current = null;
         osc52Clipboard.dispose();
         scrollGesture.dispose();
         touchGestures.dispose();
@@ -753,6 +800,17 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
     scheduleFitAndResizeRef.current?.(true);
   }, [terminalFontSettings.family, mountedTerminalEpoch]);
 
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (terminal && terminal.options.scrollback !== terminalScrollback) terminal.options.scrollback = terminalScrollback;
+  }, [terminalScrollback, mountedTerminalEpoch]);
+
+  useEffect(() => {
+    if (linkNotice === null) return;
+    const timer = window.setTimeout(() => setLinkNotice(null), 2_400);
+    return () => window.clearTimeout(timer);
+  }, [linkNotice]);
+
   // 줌 settle 감지: zoom prop은 rAF 보간 중 매 프레임 바뀌므로, 마지막 변경 후 ZOOM_SETTLE_MS가 지나야
   // appliedZoom에 반영한다(타이머가 매 변경마다 리셋됨). 보간 중에는 부모 transform에 맡겨 글자가 부드럽게
   // 확대/축소되고, 보정(아래 effect)은 제스처당 1회만 발생한다.
@@ -834,6 +892,18 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
           <div className="terminal-canvas" ref={containerRef} style={zoomStyle} />
           {copiedAt !== 0 && !isViewing ? (
             <div className="terminal-copy-notice" role="status">{t("terminal.selection.copied")}</div>
+          ) : linkNotice !== null ? (
+            <div className="terminal-copy-notice" role="status">{linkNotice}</div>
+          ) : null}
+          {searchOpen && searchAddonRef.current ? (
+            <TerminalSearchBar
+              search={searchAddonRef.current}
+              locale={locale}
+              onClose={() => {
+                setSearchOpen(false);
+                terminalRef.current?.focus();
+              }}
+            />
           ) : null}
         </div>
         {/* A read-only session takes no input, so the bar stays away rather than offering keys that
@@ -1441,4 +1511,20 @@ function prefersTouchTerminal(): boolean {
   return typeof window !== "undefined"
     && typeof window.matchMedia === "function"
     && window.matchMedia("(pointer: coarse)").matches;
+}
+
+function isMacPlatform(): boolean {
+  return typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent);
+}
+
+function describeFileLinkOutcome(outcome: TerminalFileLinkOutcome, locale?: ConsoleLocale): string | null {
+  if (outcome.ok) return null;
+  const t = getT(locale);
+  switch (outcome.reason) {
+    case "not_found": return t("terminal.fileLink.notFound");
+    case "outside_theater": return t("terminal.fileLink.outsideTheater");
+    case "no_handler":
+    case "unsupported": return t("terminal.fileLink.unsupported");
+    default: return t("terminal.fileLink.failed");
+  }
 }

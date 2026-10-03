@@ -1,3 +1,4 @@
+import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
@@ -281,6 +282,8 @@ export interface FleetClientPlugin extends ClientExecutionProvider {
 }
 
 export interface PluginInstallContext {
+  readonly navigate: ClientNavigateCapability;
+  readonly shell: ClientShellCapability;
   readonly api: ClientApiCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly terminal: ClientTerminalCapability;
@@ -353,7 +356,7 @@ export interface ClientConsoleEventsCapability {
 
 export interface ClientRailCapability {
   /** rail 패널을 펼친다. 공유 링크로 들어온 플러그인이 자기 패널을 세울 때 쓴다. */
-  open(panelId: string): void;
+  open(panelId: string, params?: Readonly<Record<string, string>>): void;
   /** 지정한 패널이 현재 활성 상태일 때만 닫는다. */
   close(panelId: string): void;
   /** 지정한 패널이 현재 레일 슬롯에 서 있는가. */
@@ -751,6 +754,9 @@ export interface OperationMenuContext {
 }
 
 export interface OperationRenderContext extends OperationContext {
+  readonly navigate: ClientNavigateCapability;
+  readonly shell: ClientShellCapability;
+  readonly rail: ClientRailCapability;
   readonly active: boolean;
   /**
    * Requests DOM keyboard focus for the current Operation's primary body.

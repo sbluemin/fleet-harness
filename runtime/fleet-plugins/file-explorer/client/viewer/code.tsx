@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -26,6 +26,9 @@ interface CodeViewerProps {
   readonly wrap?: boolean;
   readonly target?: {
     readonly lineNumber: number;
+    readonly column?: number;
+    readonly relativePath: string;
+    readonly requestId: string;
     readonly ranges: readonly { readonly start: number; readonly end: number }[];
   };
   readonly t: Translate<FileExplorerMessageKey>;
@@ -40,10 +43,13 @@ export function visibleLineWindow(
 ): { readonly start: number; readonly end: number; readonly offsetY: number; readonly totalHeight: number } {
   const totalHeight = Math.max(0, lineCount * lineHeight);
   if (lineCount === 0) return { start: 0, end: 0, offsetY: 0, totalHeight: 0 };
-  const start = Math.max(0, Math.floor(Math.max(0, scrollTop) / lineHeight) - overscan);
+  // 브라우저가 짧아진 내용이나 커진 뷰포트에 맞춰 스크롤을 줄인 상태도 창에 반영한다.
+  const height = Math.max(0, viewportHeight);
+  const actualTop = Math.min(Math.max(0, scrollTop), Math.max(0, totalHeight - height));
+  const start = Math.max(0, Math.floor(actualTop / lineHeight) - overscan);
   const end = Math.min(
     lineCount,
-    Math.ceil((Math.max(0, scrollTop) + Math.max(0, viewportHeight)) / lineHeight) + overscan,
+    Math.ceil((actualTop + height) / lineHeight) + overscan,
   );
   return { start, end, offsetY: start * lineHeight, totalHeight };
 }
@@ -58,34 +64,46 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
   const [canScrollDown, setCanScrollDown] = useState(false);
   const wrapping = wrap && canWrapLines(lines.length);
 
-  useLayoutEffect(() => {
+  const syncViewport = useCallback(() => {
     const node = scrollRef.current;
     if (!node) return;
-    const measure = () => {
-      setViewportHeight(node.clientHeight);
-      setCanScrollDown(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
+    setViewportHeight(node.clientHeight);
+    // 요청한 위치가 아니라 브라우저가 실제로 허용한 위치가 가상 창의 기준이다.
+    setScrollTop(node.scrollTop);
+    setCanScrollDown(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
   }, []);
 
   useLayoutEffect(() => {
     const node = scrollRef.current;
+    if (!node) return;
+    syncViewport();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(syncViewport);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [lines.length, syncViewport, wrapping]);
+
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
     if (!node || !target) return;
-    if (wrapping) {
-      // wrap 행은 가변 높이라 수식으로 좌표를 만들 수 없다. 전체 렌더 뒤 실제 target 행을 맞춘다.
-      const frame = window.requestAnimationFrame(() => {
-        windowRef.current?.querySelector<HTMLElement>(".is-search-target")?.scrollIntoView({ block: "center" });
-      });
-      return () => window.cancelAnimationFrame(frame);
+    const lineNumber = Math.min(lines.length, target.lineNumber);
+    if (!wrapping) {
+      const targetTop = Math.max(0, (lineNumber - 1) * CODE_LINE_HEIGHT_PX - node.clientHeight * 0.35);
+      node.scrollTop = targetTop;
+      syncViewport();
     }
-    const targetTop = Math.max(0, (target.lineNumber - 1) * CODE_LINE_HEIGHT_PX - node.clientHeight * 0.35);
-    node.scrollTop = targetTop;
-    setScrollTop(targetTop);
-  }, [target?.lineNumber, wrapping]);
+    const frame = window.requestAnimationFrame(() => {
+      const row = windowRef.current?.querySelector<HTMLElement>(".is-search-target");
+      if (wrapping) row?.scrollIntoView({ block: "center" });
+      const mark = row?.querySelector<HTMLElement>(".fexp-code-search-mark");
+      if (mark && !wrapping) {
+        const left = mark.getBoundingClientRect().left - node.getBoundingClientRect().left + node.scrollLeft;
+        node.scrollLeft = Math.max(0, left - node.clientWidth * 0.35);
+      }
+      syncViewport();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [content, lines.length, syncViewport, target?.lineNumber, target?.column, target?.relativePath, target?.requestId, wrapping]);
 
   const windowed = visibleLineWindow(scrollTop, viewportHeight, lines.length);
   // 줄바꿈 모드는 창을 나누지 않는다 — 가변 높이를 고정 높이 격자에 얹으면 뒷줄이 도달 불가가 된다.
@@ -102,7 +120,12 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
         key={start + index}
         lineNumber={lineNumber}
         html={html}
-        target={lineNumber === target?.lineNumber ? target : undefined}
+        target={target && lineNumber === Math.min(lines.length, target.lineNumber) ? {
+          ranges: target.ranges.length > 0 ? target.ranges : target.column && (lines[start + index]?.length ?? 0) > 0 ? [{
+            start: Math.min(target.column - 1, (lines[start + index]?.length ?? 1) - 1),
+            end: Math.min(target.column, lines[start + index]?.length ?? 0),
+          }] : [],
+        } : undefined}
         rawLine={lines[start + index] ?? ""}
         lang={lang}
       />
@@ -117,11 +140,7 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
         className="fexp-code-scroll"
         role="region"
         aria-label={t("fileExplorer.viewer.fileContentsAria")}
-        onScroll={(event) => {
-          const node = event.currentTarget;
-          setScrollTop(node.scrollTop);
-          setCanScrollDown(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
-        }}
+        onScroll={syncViewport}
       >
         {wrapping ? (
           <div className="fexp-code-sizer">

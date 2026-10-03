@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { reportExpandedMinWidth, useDetailOverlayLeft } from "../rail/rail-store.js";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type {
   ExpandedSurfaceContext,
@@ -10,6 +11,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { useT } from "../../i18n/index.js";
+import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import { useHostSideBarVisible } from "../../integration/zen-chrome-toggles.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
@@ -64,11 +66,26 @@ export function ExpandedSurfaceLayer() {
   const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
-  const capabilities = useMemo(() => createHostCapabilities(), []);
+  const capabilities = useHostCapabilities();
 
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [paneWidths, setPaneWidths] = useState<readonly number[]>([]);
+  const [measuredMinimums, setMeasuredMinimums] = useState<Readonly<Record<string, number>>>({});
+  const reportMinimum = useCallback((id: string, px: number | null) => {
+    const value = px !== null && Number.isFinite(px) && px > 0 ? Math.ceil(px) : undefined;
+    setMeasuredMinimums((current) => {
+      if (current[id] === value) return current;
+      const next = { ...current };
+      if (value === undefined) delete next[id]; else next[id] = value;
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    const ids = new Set(instances.map((instance) => instance.instanceId));
+    setMeasuredMinimums((current) => Object.keys(current).some((id) => !ids.has(id))
+      ? Object.fromEntries(Object.entries(current).filter(([id]) => ids.has(id))) : current);
+  }, [instances]);
 
   const open = instances.length > 0;
 
@@ -108,13 +125,17 @@ export function ExpandedSurfaceLayer() {
     (instance: ExpandedSurfaceInstance): number => {
       const descriptor = descriptors.get(instance.surfaceId);
       // 이름이 바뀐 뒤에도 옛 이름으로 등록된 기여가 자기 하한을 잃지 않아야 한다.
-      const declared = descriptor?.minPaneWidth ?? descriptor?.minSlotWidth;
+      const declared = measuredMinimums[instance.instanceId] ?? descriptor?.minPaneWidth ?? descriptor?.minSlotWidth;
       return typeof declared === "number" && Number.isFinite(declared) && declared > 0
         ? declared
         : DEFAULT_MIN_PANE_WIDTH;
     },
-    [descriptors],
+    [descriptors, measuredMinimums],
   );
+
+  const reservedWidth = instances.reduce((sum, instance) => sum + minWidthFor(instance), 0) + Math.max(0, instances.length - 1) * 8;
+  useLayoutEffect(() => { reportExpandedMinWidth(reservedWidth); }, [reservedWidth]);
+  useLayoutEffect(() => () => reportExpandedMinWidth(0), []);
 
   /**
    * 분할선 드래그. 인접한 두 페인 사이에서만 폭을 주고받는다 — 하나를 넓히면 그
@@ -243,6 +264,7 @@ export function ExpandedSurfaceLayer() {
             language={language}
             capabilities={capabilities}
             isLast={index === instances.length - 1}
+            onReportMinimum={reportMinimum}
             onDividerPointerDown={beginDivergeDrag}
             onDividerNudge={nudgeDivider}
           />
@@ -265,12 +287,14 @@ function SurfacePane({
   language,
   capabilities,
   isLast,
+  onReportMinimum,
   onDividerPointerDown,
   onDividerNudge,
 }: {
   readonly instance: ExpandedSurfaceInstance;
   readonly descriptor: ExpandedSurfaceDescriptor | undefined;
   readonly index: number;
+  readonly onReportMinimum: (id: string, px: number | null) => void;
   readonly paneCount: number;
   readonly paneWidth: number;
   readonly focused: boolean;
@@ -290,13 +314,28 @@ function SurfacePane({
   // 첫 줄만 비울 수 없는 격자 본문(터미널)은 대신 조작 무리의 아래 끝(block 변수) 밑에서 시작한다.
   const paneRef = useRef<HTMLElement>(null);
   const floatRef = useRef<HTMLDivElement>(null);
+  const overlayLeft = useDetailOverlayLeft();
+  useLayoutEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const publish = () => {
+      const rect = pane.getBoundingClientRect();
+      const covered = overlayLeft === null ? 0 : Math.max(0, Math.min(rect.width, rect.right - overlayLeft));
+      pane.style.setProperty("--expanded-surface-overlay-inset", `${Math.ceil(covered)}px`);
+      pane.style.setProperty("--expanded-surface-visible-width", `${Math.max(0, Math.floor(rect.width - covered))}px`);
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [overlayLeft, paneWidth]);
   useEffect(() => {
     const pane = paneRef.current;
     const float = floatRef.current;
     if (!pane || !float || typeof ResizeObserver === "undefined") return;
     const publish = () => {
       const rect = float.getBoundingClientRect();
-      pane.style.setProperty("--expanded-surface-float-inset", `${Math.ceil(rect.width) + FLOAT_INSET_GUTTER_PX}px`);
+      pane.style.setProperty("--expanded-surface-float-width", `${Math.ceil(rect.width) + FLOAT_INSET_GUTTER_PX}px`);
       pane.style.setProperty("--expanded-surface-float-block", `${Math.ceil(float.offsetTop + rect.height) + FLOAT_BLOCK_GUTTER_PX}px`);
     };
     publish();
@@ -306,6 +345,7 @@ function SurfacePane({
   }, []);
 
   const sideBarVisible = useHostSideBarVisible();
+  const reportMinPaneWidth = useCallback((px: number | null) => onReportMinimum(instance.instanceId, px), [instance.instanceId, onReportMinimum]);
   const context = useMemo<ExpandedSurfaceContext>(() => ({
     surfaceId: instance.surfaceId,
     instanceId: instance.instanceId,
@@ -313,6 +353,7 @@ function SurfacePane({
     paneIndex: index,
     paneCount,
     paneWidth,
+    reportMinPaneWidth,
     // 옛 이름도 같은 값으로 함께 싣는다 — 이름이 바뀌었다고 이미 배포된 본문이 폭을
     // 잃으면 개명이 곧 고장이 된다.
     slotIndex: index,
@@ -320,6 +361,11 @@ function SurfacePane({
     slotWidth: paneWidth,
     focused,
     theaterId,
+    navigate: capabilities.navigate,
+    shell: capabilities.shell,
+    rail: capabilities.rail,
+    consoleState: capabilities.consoleState,
+    notifications: capabilities.notifications,
     api: capabilities.api,
     lifecycle: capabilities.lifecycle,
     preferences: capabilities.preferences,
@@ -329,7 +375,7 @@ function SurfacePane({
     close: () => closeExpandedSurface(instance.instanceId),
     focus: () => focusExpandedSurface(instance.instanceId),
     replaceParams: (next) => replaceExpandedSurfaceParams(instance.instanceId, next),
-  }), [capabilities, focused, index, instance, language, paneCount, paneWidth, sideBarVisible, theaterId, theme]);
+  }), [reportMinPaneWidth, capabilities, focused, index, instance, language, paneCount, paneWidth, sideBarVisible, theaterId, theme]);
 
   // 제목은 aria-label이라 문자열이어야 하고, 그래서 자식 컴포넌트로 미룰 수 없다 —
   // 경계가 잡아 줄 수 없는 유일한 콜백이므로 여기서 직접 막는다.

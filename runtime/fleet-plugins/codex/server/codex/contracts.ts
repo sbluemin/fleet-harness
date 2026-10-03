@@ -24,6 +24,19 @@ export interface WorkspaceMetadata {
   urlPath: string;
 }
 
+export interface FilePeekResponse {
+  readonly path: string;
+  readonly language: string;
+  readonly startLine: number;
+  readonly lines: readonly string[];
+  readonly truncated: boolean;
+}
+export type FileRefStatus = "file" | "dir" | "missing" | "unavailable";
+/** 요청 순서에 대응한다. unavailable은 경로와 존재 여부를 반사하지 않는다. */
+export type FileRefResolution =
+  | { readonly path: ""; readonly status: "unavailable" }
+  | { readonly path: string; readonly status: Exclude<FileRefStatus, "unavailable"> };
+
 export interface SearchEntry {
   id: string;
   title: string;

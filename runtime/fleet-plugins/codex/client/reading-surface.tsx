@@ -6,6 +6,7 @@ import { readExpandedCodexRequest, releaseCodexExpansion, restoreExpandedCodexRe
 import { lastResolvedCodexWorkspace, publishResolvedWorkspace, rememberCodexScope, resolveCodexWorkspace } from "./workspace-store.js";
 import { getT } from "./i18n/index.js";
 import { getCodexReaderDocumentState } from "./codex-host.js";
+import { CodexTheaterBadge } from "./codex-theater-badge.js";
 
 /**
  * Codex의 확대 표면. 다른 플러그인 기여와 똑같이 레지스트리를 거쳐 선다.
@@ -23,6 +24,7 @@ export const codexReadingSurface: ExpandedSurfaceDescriptor = {
   // 칼럼이 되므로, 분할선이 여기서 멈춘다.
   minPaneWidth: 520,
   render: (ctx) => <RestoredCodexReadingSheet ctx={ctx} />,
+  tools: (ctx) => <CodexTheaterBadge theaterId={ctx.theaterId} consoleState={ctx.consoleState} />,
   // 호스트가 페인을 닫으면(닫기 버튼·Esc) 확대를 내려놓아 축소 리더로 돌아간다.
   // 읽던 문서는 그대로 두므로, 돌아간 자리에 같은 문서가 서 있다.
   onClose: () => releaseCodexExpansion(),
@@ -71,6 +73,6 @@ function RestoredCodexReadingSheet({ ctx }: { readonly ctx: ExpandedSurfaceConte
     return () => { stopped = true; };
   }, [ctx.theaterId]);
 
-  return <CodexReadingSheet />;
+  return <CodexReadingSheet navigate={ctx.navigate} />;
 }
 

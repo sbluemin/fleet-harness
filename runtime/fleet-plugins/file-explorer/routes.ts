@@ -6,6 +6,7 @@ import {
   handleFilesImage,
   handleFilesList,
   handleFilesRead,
+  handleFilesResolve,
   handleFilesReveal,
   handleFilesWatch,
 } from "./server/tree-services.js";
@@ -26,6 +27,10 @@ export default definePlugin({
       await handleFilesGitStatus(req, res, ctx);
       return true;
     }, { method: "POST", path: "", summary: "Read Git status for a Theater.", category: "File Explorer Plugin", gate: "origin-write", transport: "http" });
+    registerRouter(ctx, "files/resolve", async ({ req, res }) => {
+      await handleFilesResolve(req, res, ctx);
+      return true;
+    }, { method: "POST", path: "", summary: "Resolve a file reference within a Theater.", category: "File Explorer Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "files/read", async ({ req, res }) => {
       await handleFilesRead(req, res, ctx);
       return true;

@@ -1,3 +1,5 @@
+import type { ClientConsoleStateCapability, ClientNotificationsCapability, ClientRailCapability } from "../plugin/types.js";
+import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
@@ -73,6 +75,13 @@ export interface ExpandedSurfaceDescriptor {
 }
 
 export interface ExpandedSurfaceContext {
+  readonly navigate: ClientNavigateCapability;
+  readonly shell: ClientShellCapability;
+  readonly rail: ClientRailCapability;
+  /** Theater 이름·활성 Theater 등 콘솔 상태 읽기 창구 — install ctx와 같다. */
+  readonly consoleState: ClientConsoleStateCapability;
+  /** 호스트 토스트·알림 — install ctx와 같다. */
+  readonly notifications: ClientNotificationsCapability;
   /** 서술자가 선언한 id 그대로. */
   readonly surfaceId: string;
   /** 같은 표면을 두 페인에 띄웠을 때 둘을 가르는 id. */
@@ -83,6 +92,8 @@ export interface ExpandedSurfaceContext {
   readonly paneCount: number;
   /** 실제로 놓인 페인 폭(px). 분할선 드래그·창 리사이즈에 따라 갱신된다. */
   readonly paneWidth: number;
+  /** 본문이 측정한 최소 폭. null이면 서술자의 기본값으로 돌아간다. */
+  readonly reportMinPaneWidth?: (px: number | null) => void;
   /** @deprecated `paneIndex`로 이름이 바뀌었다. 호스트가 같은 값을 함께 싣는다. */
   readonly slotIndex: number;
   /** @deprecated `paneCount`로 이름이 바뀌었다. 호스트가 같은 값을 함께 싣는다. */

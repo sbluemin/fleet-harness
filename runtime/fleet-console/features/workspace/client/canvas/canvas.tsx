@@ -1,3 +1,4 @@
+import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 import { getRailStoreSnapshot, subscribeRailStore, useRailDragDeltaPx } from "../../../../core/client/src/chrome/rail/rail-store.js";
@@ -140,9 +141,9 @@ export function OperationsCanvas({
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   // 캡션·companion의 API 의존 effect가 메뉴·기하 변경마다 재시작되지 않게 수명을 Canvas에 묶는다.
-  const capabilities = useMemo(() => createHostCapabilities(() => {
+  const capabilities = useHostCapabilities(() => {
     void fetchOperations(null).then(hydrateOperations).catch(() => {});
-  }), []);
+  });
   const t = useT();
   const canvas = useCanvasState();
   // ── Cruise 스냅 상태 ─────────────────────────────────────────────────────
@@ -2555,6 +2556,9 @@ function PluginOperationRenderer({
     ...(bodyLive === undefined ? {} : { bodyLive }),
     statusDetail: capabilities.statusDetail,
     composer: capabilities.composer,
+    navigate: capabilities.navigate,
+    shell: capabilities.shell,
+    rail: capabilities.rail,
     onActivate,
     onClose,
     onGeometryChange,

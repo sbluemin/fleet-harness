@@ -1,19 +1,22 @@
+import { parseFileLocation, type FileLocation } from "../file-navigation.js";
+
 const MARKDOWN_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 
 const ALLOWED_EXTERNAL_IMAGE_HOSTS = new Set(["img.shields.io"]);
-const EXTERNAL_REF_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
-export function resolveMarkdownFileRef(rawRef: string, currentRelativePath: string): string | null {
+export function resolveMarkdownFileRef(rawRef: string, currentRelativePath: string): FileLocation | null {
   const trimmed = rawRef.trim();
-  if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//") || EXTERNAL_REF_PATTERN.test(trimmed)) return null;
-
-  const pathOnly = stripQueryAndHash(trimmed);
-  if (!pathOnly) return null;
-
-  const decoded = decodeMarkdownPath(pathOnly);
+  if (!trimmed || trimmed.startsWith("//")) return null;
+  const hash = trimmed.indexOf("#");
+  const beforeHash = hash < 0 ? trimmed : trimmed.slice(0, hash);
+  const query = beforeHash.indexOf("?");
+  const withoutQuery = (query < 0 ? beforeHash : beforeHash.slice(0, query)) + (hash < 0 ? "" : trimmed.slice(hash));
+  const decoded = decodeMarkdownPath(withoutQuery);
   if (decoded === null) return null;
-
-  return normalizeRelativePath(decoded, currentRelativePath);
+  const ref = parseFileLocation(decoded.startsWith("#") ? currentRelativePath + decoded : decoded);
+  if (!ref) return null;
+  const resolved = decoded.startsWith("#") ? currentRelativePath : normalizeRelativePath(ref.path, currentRelativePath);
+  return resolved ? { ...ref, path: resolved } : null;
 }
 
 export function isSupportedMarkdownImagePath(relativePath: string): boolean {

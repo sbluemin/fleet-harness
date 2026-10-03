@@ -33,7 +33,7 @@ type Overlay = "none" | "switcher" | "source";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CodexReadingSheet() {
+export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@fleet-console/sdk/navigation").ClientNavigateCapability }) {
   const t = useT();
   const history = useSyncExternalStore(
     subscribeCodexReaderHistory,
@@ -144,6 +144,8 @@ export function CodexReadingSheet() {
       subId,
       theaterId: workspaceId,
       sessionTheaterId: theaterId,
+      fileTheaterId: theaterId,
+      navigate,
       // 오버레이(크게 보기) 안에서 related 링크 클릭은 오버레이를 유지한 채 문서만 교체한다
       // (split의 onRelatedClick은 split에 머문다 — codex-panel.tsx). expandCodexReader가
       // openCodexReader의 expanded:false를 즉시 true로 되돌려 같은 read 모드를 유지.

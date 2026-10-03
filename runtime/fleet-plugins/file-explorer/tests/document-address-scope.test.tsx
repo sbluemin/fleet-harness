@@ -5,9 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PaneContext } from "@fleet-console/sdk/pane";
+import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 
 import { fileExplorerDocumentPane } from "../client/rail-panel.js";
-import { getFileExplorerSnapshot } from "../client/view-store.js";
+import { activateStoredDocument, getFileExplorerSnapshot } from "../client/view-store.js";
 
 /**
  * 주소는 자기 Theater 안에서만 뜻이 있다.
@@ -23,7 +24,9 @@ let root: Root;
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function paneCtx(theaterId: string, params: Record<string, string>): PaneContext {
+  const { navigate, shell, rail, consoleState, notifications } = createClientCapabilities();
   return {
+    navigate, shell, rail, consoleState, notifications,
     paneId: "file-explorer-document",
     instanceId: "pane-1",
     params,
@@ -84,6 +87,13 @@ describe("문서 주소의 Theater 범위", () => {
       root.render(fileExplorerDocumentPane.render(paneCtx("theater-a", { path: "src/index.ts", theaterId: "theater-a" })));
     });
 
+    expect(getFileExplorerSnapshot("theater-a").activePath).toBe("src/index.ts");
+    // 활성 문서가 있어도 새 외부 요청만 한 번 소비한다. 이후 수동 선택은 옛 주소가 덮지 않는다.
+    const requested = { path: "src/other.ts", theaterId: "theater-a", requestId: "external-1", line: "10", column: "9" };
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx("theater-a", requested))); });
+    expect(getFileExplorerSnapshot("theater-a")).toMatchObject({ activePath: "src/other.ts", revealTarget: { requestId: "external-1", lineNumber: 10, column: 9 } });
+    act(() => { activateStoredDocument("theater-a", { relativePath: "src/index.ts", name: "index.ts" }); });
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx("theater-a", requested))); });
     expect(getFileExplorerSnapshot("theater-a").activePath).toBe("src/index.ts");
   });
 });

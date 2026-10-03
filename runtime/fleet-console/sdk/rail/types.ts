@@ -1,3 +1,6 @@
+import type { OpenFileRequest, OpenWikiEntryRequest, OpenResult } from "../navigation/index.js";
+import type { PluginInstallContext } from "../plugin/types.js";
+import type { PaneTarget } from "../pane/types.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
@@ -47,6 +50,8 @@ export interface RailSearchResult {
   readonly activate: () => void | Promise<void>;
   /** "info"는 선택 불가 메타데이터 행 — 키보드 이동과 활성화에서 빠지고 읽기 전용으로 렌더된다. */
   readonly kind?: "info";
+  /** 질의가 이 결과의 대상을 정확히 가리킨다(예: Theater 상대 경로 일치). 팔레트는 그룹과 무관하게 맨 위에 둔다. */
+  readonly exact?: boolean;
 }
 
 export type RailSearchProvider = (request: RailSearchRequest) => Promise<readonly RailSearchResult[]>;
@@ -97,6 +102,10 @@ export type RailPanelDescriptor = RailContributionBase & ({
  * `activate`가 직접 무언가를 연다(Shell처럼 확대 표면을 바로 여는 경우).
  */
 export interface RailEntryDescriptor {
+  readonly handles?: {
+    readonly openFile?: (request: OpenFileRequest, host: PluginInstallContext) => PaneTarget | OpenResult | Promise<PaneTarget | OpenResult>;
+    readonly openWikiEntry?: (request: OpenWikiEntryRequest, host: PluginInstallContext) => void | OpenResult | Promise<void | OpenResult>;
+  };
   readonly id: string;
   readonly title: LocalizedText;
   readonly icon: ReactNode | (() => ReactNode);

@@ -1,5 +1,14 @@
 /** Codex 문구. 플러그인이 자기 카탈로그를 갖는다 — 코어가 남의 화면 문구를 싣지 않는다. */
 export const en = {
+  "codex.files.preview": "File preview",
+  "codex.files.loading": "Reading file…",
+  "codex.files.truncated": "Showing up to 200 lines around this location.",
+  "codex.files.openInFiles": "Open in Files",
+  "codex.files.noHandler": "Files is not available in this Console. The preview remains here.",
+  "codex.files.openFailed": "Could not open this file in Files.",
+  "codex.files.forbidden": "Access is denied.",
+  "codex.files.outside": "This path is outside the Theater and cannot be previewed.",
+  "codex.files.unavailable": "File preview unavailable: missing, unreadable, binary, or larger than 256 KB.",
   "palette.codexEntries": "Codex entries",
   "shortcuts.group.codex": "Codex",
   "shortcuts.codex.togglePalette": "Toggle the Operations and Codex palette",
@@ -272,6 +281,15 @@ export const en = {
 } as const;
 
 export const ko: Record<keyof typeof en, string> = {
+  "codex.files.preview": "파일 미리보기",
+  "codex.files.loading": "파일 읽는 중…",
+  "codex.files.truncated": "이 위치 주변 최대 200줄을 표시합니다.",
+  "codex.files.openInFiles": "Files에서 열기",
+  "codex.files.noHandler": "이 Console에는 Files 처리기가 없습니다. 미리보기는 여기서 계속 볼 수 있습니다.",
+  "codex.files.openFailed": "Files에서 파일을 열지 못했습니다.",
+  "codex.files.forbidden": "접근이 거부되었습니다.",
+  "codex.files.outside": "Theater 밖의 경로는 미리 볼 수 없습니다.",
+  "codex.files.unavailable": "파일을 미리 볼 수 없습니다. 없거나 읽을 수 없는 파일, 바이너리 또는 256KB 초과 파일입니다.",
   "palette.codexEntries": "Codex 항목",
   "shortcuts.group.codex": "Codex",
   "shortcuts.codex.togglePalette": "Operation 및 Codex 팔레트 전환",

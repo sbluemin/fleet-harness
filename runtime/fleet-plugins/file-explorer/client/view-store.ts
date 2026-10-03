@@ -21,8 +21,21 @@ export interface DocSession {
   readonly historyIndex: number;
 }
 
+export interface FileRevealTarget {
+  readonly theaterId: string;
+  readonly relativePath: string;
+  readonly requestId: string;
+  readonly kind?: "file" | "dir";
+  readonly lineNumber?: number;
+  readonly column?: number;
+  readonly anchor?: string;
+  readonly ranges?: readonly { readonly start: number; readonly end: number }[];
+}
+
 interface TheaterViewState extends DocSession {
   readonly selectedPath: string | null;
+  readonly revealTarget: FileRevealTarget | null;
+  readonly documentPaneOpen: boolean;
   /** 경로별 뷰 내용 캐시 — 칩 전환을 즉시 그리기 위한 메모리 전용 상태. */
   readonly docStates: ReadonlyMap<string, ViewState>;
 }
@@ -30,6 +43,7 @@ interface TheaterViewState extends DocSession {
 interface FileExplorerViewState extends TheaterViewState {
   /** Wrap long lines in the code viewer — remembered for this Console session. */
   readonly wrapLines: boolean;
+  readonly navigationError: { readonly id: string; readonly reason: "outside_theater" | "not_found" | "unsupported" | "no_handler" } | null;
 }
 
 type Listener = () => void;
@@ -47,18 +61,43 @@ export const EMPTY_DOC_SESSION: DocSession = {
 const DEFAULT_THEATER_STATE: TheaterViewState = {
   ...EMPTY_DOC_SESSION,
   selectedPath: null,
+  revealTarget: null,
+  documentPaneOpen: false,
   docStates: new Map(),
 };
 
 const DEFAULT_SERVER_SNAPSHOT: FileExplorerViewState = {
   ...DEFAULT_THEATER_STATE,
   wrapLines: false,
+  navigationError: null,
 };
 
 const theaterStateMap = new Map<string, TheaterViewState>();
 const snapshotMap = new Map<string, FileExplorerViewState>();
 const listeners = new Set<Listener>();
 let wrapLines = false;
+let navigationError: FileExplorerViewState["navigationError"] = null;
+
+export function showFileNavigationError(reason: NonNullable<FileExplorerViewState["navigationError"]>["reason"]): void {
+  navigationError = { id: crypto.randomUUID(), reason };
+  emit();
+}
+
+export function dismissFileNavigationError(id: string): void {
+  if (navigationError?.id !== id) return;
+  navigationError = null;
+  emit();
+}
+
+export function setFileRevealTarget(theaterId: string, target: FileRevealTarget): void {
+  patchTheaterState(theaterId, { revealTarget: target });
+}
+
+export function setDocumentPaneOpen(theaterId: string, open: boolean): void {
+  if (!theaterId) return;
+  patchTheaterState(theaterId, { documentPaneOpen: open });
+  persistDocSession(theaterId, getOrDefault(theaterId));
+}
 
 export function useFileExplorerViewState(theaterId: string | null): FileExplorerViewState {
   return useSyncExternalStore(
@@ -120,11 +159,12 @@ export function closeDocument(session: DocSession, relativePath: string): DocSes
   return { openDocs, activePath, history: collapsed, historyIndex };
 }
 
-export function activateStoredDocument(theaterId: string | null, doc: OpenDocument): void {
+export function activateStoredDocument(theaterId: string | null, doc: OpenDocument, location: Partial<Pick<FileRevealTarget, "requestId" | "lineNumber" | "column" | "anchor" | "ranges">> = {}): void {
   if (!theaterId) return;
   const current = getOrDefault(theaterId);
   const next = activateDocument(current, doc);
-  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath });
+  const revealTarget: FileRevealTarget = { theaterId, relativePath: doc.relativePath, ...location, requestId: location.requestId ?? crypto.randomUUID() };
+  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, revealTarget, documentPaneOpen: true });
   persistDocSession(theaterId, next);
 }
 
@@ -143,7 +183,7 @@ export function closeStoredDocument(theaterId: string | null, relativePath: stri
   const next = closeDocument(current, relativePath);
   const docStates = new Map(current.docStates);
   docStates.delete(relativePath);
-  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, docStates });
+  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, docStates, ...(next.openDocs.length === 0 ? { documentPaneOpen: false, revealTarget: null } : {}) });
   persistDocSession(theaterId, next);
 }
 
@@ -231,10 +271,13 @@ function getSnapshot(theaterId: string | null): FileExplorerViewState {
     && prev.historyIndex === base.historyIndex
     && prev.docStates === base.docStates
     && prev.wrapLines === wrapLines
+    && prev.revealTarget === base.revealTarget
+    && prev.documentPaneOpen === base.documentPaneOpen
+    && prev.navigationError === navigationError
   ) {
     return prev;
   }
-  const next = { ...base, wrapLines };
+  const next = { ...base, wrapLines, navigationError };
   snapshotMap.set(key, next);
   return next;
 }
@@ -254,6 +297,7 @@ function subscribe(listener: Listener): () => void {
 interface PersistedDocSession {
   readonly openDocs: readonly OpenDocument[];
   readonly activePath: string | null;
+  readonly documentPaneOpen: boolean;
 }
 
 function persistDocSession(theaterId: string, session: DocSession): void {
@@ -261,6 +305,7 @@ function persistDocSession(theaterId: string, session: DocSession): void {
     const payload: PersistedDocSession = {
       openDocs: session.openDocs,
       activePath: session.activePath,
+      documentPaneOpen: getOrDefault(theaterId).documentPaneOpen,
     };
     if (payload.openDocs.length === 0) {
       localStorage.removeItem(SESSION_KEY_PREFIX + theaterId);
@@ -272,7 +317,7 @@ function persistDocSession(theaterId: string, session: DocSession): void {
   }
 }
 
-function readDocSession(theaterId: string): DocSession | null {
+function readDocSession(theaterId: string): (DocSession & { readonly documentPaneOpen: boolean }) | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY_PREFIX + theaterId);
     if (!raw) return null;
@@ -295,6 +340,7 @@ function readDocSession(theaterId: string): DocSession | null {
       activePath,
       history: activePath ? [activePath] : [],
       historyIndex: activePath ? 0 : -1,
+      documentPaneOpen: parsed.documentPaneOpen !== false,
     };
   } catch {
     return null;
