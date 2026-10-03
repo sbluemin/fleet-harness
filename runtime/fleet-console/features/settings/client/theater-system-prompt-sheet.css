@@ -46,7 +46,9 @@
 .theater-prompt-forgotten p { margin: 0; line-height: 1.55; }
 .theater-prompt-forgotten strong { font-weight: var(--weight-medium); }
 .theater-prompt-forgotten textarea { width: 100%; min-height: 96px; padding: 9px 11px; resize: vertical; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font: var(--t-md) var(--font-ui); line-height: 1.6; }
-.theater-prompt-forgotten-actions { display: flex; gap: 10px; align-items: center; }
+.theater-prompt-draft { display: grid; gap: 8px; }
+.theater-prompt-draft p { margin: 0; color: var(--text-secondary); font: var(--t-xs) var(--font-ui); line-height: 1.55; }
+.theater-prompt-forgotten-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .theater-prompt-forgotten-actions button { padding: 5px 10px; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font-size: var(--t-sm); }
 .theater-prompt-forgotten-actions span { color: var(--text-secondary); font: var(--t-xs) var(--font-ui); }
 .theater-prompt-forgotten small { color: var(--text-secondary); font-size: var(--t-sm); }

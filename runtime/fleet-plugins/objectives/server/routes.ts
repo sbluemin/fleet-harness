@@ -207,7 +207,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "result/file", method: "GET", summary: "Read preserved evidence by objectiveId and resultId; images are inline and documents are plain UTF-8 text.", handler: resultFile },
     { name: "attachment/add", method: "POST", summary: "Attach an image to an objective's brief (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per objective).", handler: attachmentAdd },
     { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },
-    { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(objectiveRef.extend({ attachmentId: ids }), steerable(() => true, ({ objectiveId, attachmentId }) => edited(["note"], () => store.attachmentRemove(objectiveId, attachmentId)))) },
+    { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(objectiveRef.extend({ attachmentId: ids }), steerable(() => true, ({ objectiveId, attachmentId }) => edited(objectiveId, ["note"], () => store.attachmentRemove(objectiveId, attachmentId)))) },
     { name: "plan/apply", method: "POST", summary: "Replace the unassigned missions with a plan (Commander tool path; also used by tests).", handler: json(objectiveRef.extend({ plan: planSchema.omit({ criteria: true }) }), ({ objectiveId, plan }) => objective(launch.planApplied(objectiveId, plan))) },
   ];
 }

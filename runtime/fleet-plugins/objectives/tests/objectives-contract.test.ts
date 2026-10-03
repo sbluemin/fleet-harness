@@ -1379,18 +1379,27 @@ describe("Objectives contract", () => {
     const commander = objective.id;
     await call("plan", { objectiveId: commander, missions: [{ text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
     store.setPlanning(commander, false);
-    const member = ((await call("muster", { objectiveId: commander }, commander)).structuredContent.members as { id: string }[])[0]!.id;
+    const member = store.find(commander)!.members[0]!.id;
     const missionId = store.find(commander)!.missions[0]!.id;
     const questions = [
       { text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }], missionId, memberId: member },
       { text: "Anything else?", options: [] },
     ];
     // 요청은 지휘관만 올린다. 늦은 revision 은 새 보드를 덮지 못한다.
-    expect((await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, member)).structuredContent.error).toBe("not_commander");
     const first = await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, commander);
     expect(first.isError).toBe(false);
     expect((await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, commander)).structuredContent.error).toBe("decision_request_changed");
-    // 사람의 보드 편집은 옛 보드에 대한 요청을 정리하고, 결정은 남기지 않는다. 지휘관은 다시 읽기 전까지 새 요청을 올리지 못한다.
+    // 활성 라우팅을 다시 고르는 것은 보드 편집이 아니다 — 요청과 편집 기록을 그대로 둔다.
+    const beforeReselect = store.find(commander)!;
+    expect((await route("member/patch", { objectiveId: commander, memberId: member, patch: { launch: null } })).status).toBe(200);
+    expect(store.find(commander)!.decisionRequest).toEqual(beforeReselect.decisionRequest);
+    expect(store.find(commander)!.actionCounts?.edit).toBe(beforeReselect.actionCounts?.edit);
+    // 실제 역할 설명 변경은 옛 보드에 대한 요청을 정리하고, 결정은 남기지 않는다.
+    expect((await route("member/patch", { objectiveId: commander, memberId: member, patch: { brief: "build and document" } })).status).toBe(200);
+    expect(store.find(commander)).toMatchObject({ decisionRequest: null, decisions: [] });
+    await call("muster", { objectiveId: commander }, commander);
+    expect((await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, member)).structuredContent.error).toBe("not_commander");
+    // 지휘관은 다시 읽기 전까지 새 요청을 올리지 못한다.
     await route("mission/add", { objectiveId: commander, mission: { text: "docs" } });
     expect(store.find(commander)).toMatchObject({ decisionRequest: null, decisions: [] });
     const docsId = store.find(commander)!.missions.find(mission => mission.text === "docs")!.id;

@@ -17,6 +17,8 @@ interface OpenRequest { readonly theater: TheaterInfo; readonly anchor: DOMRect 
 const OPEN_EVENT = "fleet:theater-system-prompt-open";
 const CHANGED_EVENT = "fleet:theater-system-prompt-changed";
 const FORGOTTEN_EVENT = "fleet:theater-system-prompt-forgotten";
+// 서버에 저장할 수 없는 초안만 Theater별로 이 탭에 남긴다. 시트 닫기·다른 Theater 열기는 초안을 버리지 않는다.
+const overLimitDrafts = new Map<string, TheaterSystemPrompt>();
 
 export function subscribeTheaterSystemPromptForgotten(listener: (theater: string) => void): () => void {
   const handler = (event: Event) => listener((event as CustomEvent<string>).detail);
@@ -71,6 +73,7 @@ export function TheaterSystemPromptSheet() {
   const closeRef = useRef<HTMLButtonElement>(null);
   const copyRef = useRef<HTMLButtonElement>(null);
   const forgottenTextRef = useRef<HTMLTextAreaElement>(null);
+  const draftTextRef = useRef<HTMLTextAreaElement>(null);
   const forgottenRef = useRef(false);
   const loadedRef = useRef(false);
   const focusAfterResetRef = useRef<"undo" | "select" | null>(null);
@@ -104,9 +107,14 @@ export function TheaterSystemPromptSheet() {
     setForgotten(true);
   }, [clearTimer]);
 
-  const persist = useCallback((theaterId: string, next: TheaterSystemPrompt) => {
+  const persist = useCallback((theaterId: string, next: TheaterSystemPrompt, keepDraft = false) => {
+    if (next.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS) {
+      overLimitDrafts.set(theaterId, next);
+      setStatus("over");
+      return;
+    }
     if (forgottenRef.current) return;
-    if (next.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS) { setStatus("over"); return; }
+    const keptDraft = overLimitDrafts.get(theaterId);
     const value = next.mode === "on" && !next.body.trim() ? null : next;
     dirtyRef.current = false;
     setStatus("saving");
@@ -115,10 +123,12 @@ export function TheaterSystemPromptSheet() {
       try {
         const saved = (await saveTheaterSystemPrompt(theaterId, value)).prompt;
         announce(theaterId, saved);
+        // 앞선 정상 저장이 끝나는 사이 새 긴 초안이 생겼다면 그것까지 지우지 않는다.
+        if (!keepDraft && overLimitDrafts.get(theaterId) === keptDraft) overLimitDrafts.delete(theaterId);
         if (requestRef.current?.theater.id === theaterId && revision === revisionRef.current) {
           storedRef.current = saved;
           setStored(saved);
-          setStatus("saved");
+          setStatus(draftRef.current.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? "over" : "saved");
         }
       } catch (error) {
         if (requestRef.current?.theater.id === theaterId && revision === revisionRef.current) {
@@ -187,9 +197,13 @@ export function TheaterSystemPromptSheet() {
         const { prompt } = result;
         loadedRef.current = true;
         storedRef.current = prompt;
-        draftRef.current = prompt ?? { mode: "on", body: "" };
+        // 대기 저장이 끝난 뒤의 초안을 읽는다. 느린 GET과 앞선 저장값은 탭에 남긴 글을 덮지 않는다.
+        const keptDraft = overLimitDrafts.get(next.theater.id);
+        draftRef.current = keptDraft ?? prompt ?? { mode: "on", body: "" };
+        dirtyRef.current = !!keptDraft;
         setStored(prompt);
         setDraft(draftRef.current);
+        if (keptDraft) setStatus("over");
         setLoading(false);
       }).catch((error) => {
         if (openIdRef.current !== openId) return;
@@ -301,7 +315,12 @@ export function TheaterSystemPromptSheet() {
     draftRef.current = next;
     setDraft(next);
     setUndo(null);
-    persist(theater.id, next);
+    setCopied(false);
+    if (next.mode === "on" && next.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS) {
+      // 기본 모드로 돌아가도 긴 글은 버리지 않는다. 서버에는 마지막 정상 본문과 모드만 저장한다.
+      overLimitDrafts.set(theater.id, next);
+      persist(theater.id, { mode: "on", body: storedRef.current?.body ?? "" }, true);
+    } else persist(theater.id, next);
   };
   const changeBody = (body: string) => {
     const next = { ...draftRef.current, body };
@@ -309,13 +328,19 @@ export function TheaterSystemPromptSheet() {
     dirtyRef.current = true;
     setDraft(next);
     setUndo(null);
+    setCopied(false);
     clearTimer();
-    if (body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS) { setStatus("over"); return; }
+    if (body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS) {
+      overLimitDrafts.set(theater.id, next);
+      setStatus("over");
+      return;
+    }
     setStatus("idle");
     timerRef.current = setTimeout(() => persist(theater.id, draftRef.current), 1000);
   };
   const reset = () => {
     clearTimer();
+    overLimitDrafts.delete(theater.id);
     setUndo(storedRef.current);
     const empty = { mode: "on" as const, body: "" };
     draftRef.current = empty;
@@ -335,10 +360,23 @@ export function TheaterSystemPromptSheet() {
   const unsaved = forgotten && (draft.mode !== saved.mode || draft.body !== saved.body);
   const copyDraft = () => {
     const text = draftRef.current.body;
-    void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => {
+    const selectText = () => {
       // 클립보드 권한이 없으면 글을 선택해 두어 직접 복사할 수 있게 한다.
-      forgottenTextRef.current?.select();
-    });
+      const field = forgottenTextRef.current ?? draftTextRef.current;
+      if (field) { field.focus(); field.select(); return; }
+      const kept = dialogRef.current?.querySelector(".theater-prompt-kept pre");
+      if (kept) { const range = document.createRange(); range.selectNodeContents(kept); window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(range); }
+    };
+    if (!navigator.clipboard?.writeText) { selectText(); return; }
+    void navigator.clipboard.writeText(text).then(() => setCopied(true), selectText);
+  };
+  const discardDraft = () => {
+    overLimitDrafts.delete(theater.id);
+    clearTimer();
+    dirtyRef.current = false;
+    draftRef.current = storedRef.current ?? { mode: "on", body: "" };
+    setDraft(draftRef.current);
+    close();
   };
   const trapTab = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Tab") return;
@@ -377,14 +415,22 @@ export function TheaterSystemPromptSheet() {
         <div className="theater-prompt-field" ref={selectRef}><span id="theater-prompt-mode-label">{t("sidebar.theater.prompt.modeLabel")}</span>
           <Select className="theater-prompt-select" aria-labelledby="theater-prompt-mode-label" value={draft.mode} options={(Object.keys(modeNames) as ClaudeCodeSystemPromptMode[]).map((mode) => ({ value: mode, label: modeNames[mode] }))} onChange={(mode) => changeMode(mode as ClaudeCodeSystemPromptMode)} />
         </div>
-        {draft.mode === "on" && draft.body ? <div className="theater-prompt-kept"><details><summary>{t("sidebar.theater.prompt.kept", { count: draft.body.length })}</summary><pre>{draft.body}</pre></details><p>{t("sidebar.theater.prompt.keptHelp")}</p></div> : null}
+        {draft.mode === "on" && draft.body ? <div className="theater-prompt-kept"><details><summary>{t("sidebar.theater.prompt.kept", { count: draft.body.length })}</summary><pre>{draft.body}</pre></details><p>{t(draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? "sidebar.theater.prompt.draftNotApplied" : "sidebar.theater.prompt.keptHelp")}</p></div> : null}
         {draft.mode !== "on" ? <label className="theater-prompt-field">{t("sidebar.theater.prompt.bodyLabel")}
-          <SyncedTextarea value={draft.body} onChange={(event) => changeBody(event.target.value)} onBlur={flush} rows={5} aria-invalid={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS} aria-describedby={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? "theater-prompt-length-error" : undefined} />
+          <SyncedTextarea ref={draftTextRef} value={draft.body} onChange={(event) => changeBody(event.target.value)} onBlur={flush} rows={5} aria-invalid={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS} aria-describedby={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? "theater-prompt-length-error" : undefined} />
           <small className={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? "is-over" : ""}>{draft.body.length.toLocaleString()} / 16,000</small>
         </label> : null}
         <p className={draft.mode === "off" ? "theater-prompt-warning" : "theater-prompt-caption"}>{caption}</p>
         {status !== "untouched" ? <p id={status === "over" ? "theater-prompt-length-error" : undefined} className={`theater-prompt-save is-${status}`} role={status === "over" ? "alert" : "status"} aria-live="polite"><i />{t(`sidebar.theater.prompt.save.${status}`)}</p> : null}
       </>}
+      {!forgotten && !loading && !loadFailed && draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? <div className="theater-prompt-draft">
+        <p>{t("sidebar.theater.prompt.draftHelp")}</p>
+        <div className="theater-prompt-forgotten-actions">
+          <button ref={copyRef} type="button" onClick={copyDraft}>{t("sidebar.theater.prompt.copy")}</button>
+          <button type="button" onClick={discardDraft}>{t("sidebar.theater.prompt.discardDraft")}</button>
+          {copied ? <span role="status">{t("sidebar.theater.prompt.copied")}</span> : null}
+        </div>
+      </div> : null}
       {forgotten ? null : <TheaterSubagentsSection key={theater.id} theaterId={theater.id} />}
     </section>
     <span ref={tooltipRef} id="theater-prompt-tip-description" role="tooltip" className="theater-prompt-tooltip" hidden={!tipVisible} style={tipPosition}>{t("sidebar.theater.prompt.tip")}</span>
