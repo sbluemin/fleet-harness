@@ -70,10 +70,15 @@ function readMarkers(): boolean {
   return document.querySelector(OVERLAY_SELECTOR) !== null;
 }
 
+let floatingActive = false;
+
 function recompute(): void {
   const next = readMarkers();
-  if (next === markerActive) return;
+  // 토스트·말풍선은 표식 판정과 따로 바뀐다 — 둘 중 하나라도 바뀌면 알려야 겹친 작은 층이 뷰 밑에 깔리지 않는다.
+  const nextFloating = floatingOverlapsView();
+  if (next === markerActive && nextFloating === floatingActive) return;
   markerActive = next;
+  floatingActive = nextFloating;
   notify();
 }
 
@@ -123,6 +128,8 @@ export function publishBrowserViewRect(rect: OverlayViewRect | null): void {
   if (current === rect) return;
   if (current && rect && current.x === rect.x && current.y === rect.y && current.width === rect.width && current.height === rect.height) return;
   lastViewRect = rect;
+  // 자리가 바뀌면 겹침도 다시 잰다 — 기억한 값이 낡으면 다음 변화 때 알림을 건너뛴다.
+  floatingActive = floatingOverlapsView();
   notify();
 }
 

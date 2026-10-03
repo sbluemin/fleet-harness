@@ -324,6 +324,7 @@ export async function chooseGlobalProfile(profile: string | null): Promise<boole
 }
 
 export async function clearGlobalProfile(): Promise<boolean> {
-  const response = await postGlobal("clear-profile", {});
+  // 비울 영속 프로필을 이름으로 보낸다 — 라우트가 profile 문자열을 요구한다(Operation 패널과 같은 id).
+  const response = await postGlobal("clear-profile", { profile: "default" });
   return response !== null && response.ok;
 }

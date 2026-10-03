@@ -948,6 +948,8 @@ export class BrowserService {
 
   private findTab(sessionId: string | undefined): { op: OperationBrowser; tab: Tab } | null {
     if (!sessionId) return null;
+    // 전역 브라우저는 Operation Map 밖에 산다 — 그 탭의 항해·제목·크기 이벤트도 여기서 찾아야 주소창이 따라간다.
+    for (const tab of this.globalBrowser.tabs.values()) if (tab.sessionId === sessionId) return { op: this.globalBrowser, tab };
     for (const op of this.operations.values()) for (const tab of op.tabs.values()) if (tab.sessionId === sessionId) return { op, tab };
     return null;
   }
