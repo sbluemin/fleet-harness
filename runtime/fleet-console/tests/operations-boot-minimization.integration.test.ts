@@ -158,6 +158,8 @@ let container: HTMLDivElement | null = null;
 
 beforeEach(() => {
   document.body.replaceChildren();
+  // jsdom에는 Web Animations API가 없어, App이 마운트하는 상태 모션 관찰자가 볼 애니메이션이 없도록 한다.
+  if (typeof document.getAnimations !== "function") document.getAnimations = () => [];
   window.localStorage.clear();
   // 부팅 최소화의 "한 번"과 캔버스 모드는 이제 탭 세션 단위라, 케이스마다 새 탭에서 시작한 것으로 되돌린다.
   window.sessionStorage.clear();
