@@ -862,7 +862,9 @@ export function ActionBand(props: ActionBandProps) {
                 rows={2}
                 maxLength={MAX_CONTEXT}
                 value={draft}
-                disabled={sending}
+                // 보내는 중에는 고칠 수만 없게 한다 — disabled면 Enter로 막 보낸 칸에서 포커스가 문서로 빠진다.
+                readOnly={sending}
+                aria-busy={sending || undefined}
                 required={intent === "extend"}
                 placeholder={current.placeholder}
                 aria-label={intent === "message" ? current.placeholder : t("objectives.band.fieldAria", { word: current.word })}
@@ -877,7 +879,10 @@ export function ActionBand(props: ActionBandProps) {
         <button
           type="button"
           className={`objectives-start objectives-comp-send${current.tone ? ` is-${current.tone === "aurora" ? "review" : "stop"}` : ""}`}
-          disabled={sending || unavailable(intent) || (intent === "extend" && !draft.trim()) || (intent === "message" && recipientBlocked)}
+          // 보내는 중은 aria-disabled로만 막는다(run이 sending을 다시 거른다) — native disabled는 막 누른 버튼의 포커스를 문서로 떨군다.
+          disabled={unavailable(intent) || (intent === "extend" && !draft.trim()) || (intent === "message" && recipientBlocked)}
+          aria-disabled={sending || undefined}
+          aria-busy={sending || undefined}
           title={unavailable(intent) ? t("objectives.commander.unavailable") : undefined}
           onClick={() => void run(intent)}
         >
