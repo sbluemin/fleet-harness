@@ -148,6 +148,10 @@ export async function fetchConflictDetail(theaterId: string | null, id: string):
   return fetchJson<ConflictDetailResponse>(apiPath(theaterId, `/conflicts/${encodeURIComponent(id)}`));
 }
 
+export async function decideConflict(theaterId: string | null, id: string, action: "reject" | "repropose" | "resolve", note: string, expectedCurrentHash?: string): Promise<{ ok: true; patchId?: string }> {
+  return postJson(apiPath(theaterId, `/conflicts/${encodeURIComponent(id)}/decision`), { action, note, expectedCurrentHash });
+}
+
 export async function fetchCoworkOptions(theaterId: string | null, model?: string): Promise<CoworkOptionsResponse> {
   // 모델이 없으면 빈 `?`를 남기지 않는다 — 같은 자원에 두 개의 URL이 생긴다.
   const query = model ? `?${new URLSearchParams({ model })}` : "";
@@ -192,6 +196,10 @@ export async function cancelCowork(theaterId: string | null, id: string): Promis
 
 export async function applyCowork(theaterId: string | null, id: string, expectedRevision?: number): Promise<CoworkSessionDto> {
   return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/apply`), expectedRevision === undefined ? {} : { expectedRevision });
+}
+
+export async function rebaseCowork(theaterId: string | null, id: string, expectedRevision: number): Promise<CoworkSessionDto> {
+  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/rebase`), { expectedRevision });
 }
 
 export async function closeCowork(theaterId: string | null, id: string): Promise<CoworkSessionDto> {

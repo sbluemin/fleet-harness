@@ -132,6 +132,8 @@ export interface PatchMeta {
   baseVersion?: number;
   baseHash?: string;
   baseCheckedAt?: string;
+  /** queue/<id>/base.md와 보관 이동 수명을 공유하는 실제 기준본의 해시. */
+  baseSnapshotHash?: string;
   editedAt?: string;
   editCount?: number;
   lastEditedBy?: string;
@@ -233,6 +235,7 @@ export type WikiLogEvent =
   | "patch set approved"
   | "patch set partially approved"
   | "conflict detected"
+  | "conflict resolved"
   | "drydock run"
   | "index rebuilt";
 

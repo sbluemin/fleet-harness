@@ -12,6 +12,7 @@ import { resolveActiveLocale } from "../i18n/index.js";
 import {
   CodexRequestError,
   decideDrydock,
+  decideConflict,
   fetchConflictDetail,
   fetchConflicts,
   fetchDrydock,
@@ -93,7 +94,7 @@ export interface MountReadingOptions {
   readonly onPatchOpen?: (patchId: string | undefined) => void;
   readonly onConflictOpen?: (conflictId: string | undefined) => void;
   /** 승인/반려 결정 완료 후 목록 갱신을 트리거하는 콜백 */
-  readonly onDecided?: () => void;
+  readonly onDecided?: (kind?: "drydock" | "conflicts") => void;
   /** 문서 헤더 태그 칩 클릭 — 카탈로그 태그 필터로 라우팅된다. */
   readonly onTagClick?: (tag: string) => void;
   readonly onEntryRendered?: (entryId: string) => void;
@@ -163,6 +164,12 @@ export function mountReadingInto(
   // 같은 이유로 충돌·스키마 문서도 자기 판본을 들고 있어야 한다 — 범위 이벤트는 어느 문서가
   // 바뀌었는지 말해 주지 않으므로, 비교 없이 알리면 옆 문서의 변화가 이 문서의 표식이 된다.
   let renderedConflictStamp: string | null = null;
+  let currentConflict: ConflictDetailResponse | null = null;
+  let conflictAction: "reject" | "repropose" | "resolve" | null = null;
+  let conflictBusy = false;
+  let conflictError: string | null = null;
+  let conflictNote = "";
+  let pendingRequestEpoch = 0;
   let renderedSchemaStamp: string | null = null;
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
@@ -270,9 +277,10 @@ export function mountReadingInto(
     }
 
     const conflictActionBtn = target.closest<HTMLElement>("[data-conflict-action]");
-    if (conflictActionBtn?.dataset.conflictAction === "back") {
+    if (conflictActionBtn) {
       event.preventDefault();
-      liveOpts.onConflictOpen?.(undefined);
+      if (conflictActionBtn.dataset.conflictAction === "back") liveOpts.onConflictOpen?.(undefined);
+      else handleConflictAction(conflictActionBtn.dataset.conflictAction);
       return;
     }
 
@@ -299,6 +307,40 @@ export function mountReadingInto(
       return;
     }
 
+  }
+
+  function redrawConflictControls(): void {
+    const area = readContainer.querySelector<HTMLElement>("[data-conflict-controls]");
+    if (area && currentConflict) area.innerHTML = renderConflictControls(currentConflict, conflictAction, conflictBusy, conflictError, conflictNote);
+  }
+
+  function handleConflictAction(action: string | undefined): void {
+    if (!currentConflict || conflictBusy) return;
+    conflictNote = readContainer.querySelector<HTMLTextAreaElement>("[data-conflict-note]")?.value ?? conflictNote;
+    conflictError = null;
+    if (action === "cancel") { conflictAction = null; redrawConflictControls(); return; }
+    if (action === "reject" || action === "repropose" || action === "resolve") {
+      if (action === "repropose" && !currentConflict.canRepropose) return;
+      conflictAction = action;
+      redrawConflictControls();
+      readContainer.querySelector<HTMLTextAreaElement>("[data-conflict-note]")?.focus({ preventScroll: true });
+      return;
+    }
+    if (action !== "confirm" || !conflictAction) return;
+    if (!conflictNote.trim()) { conflictError = consoleT()("codex.reading.rejectReasonRequired"); redrawConflictControls(); return; }
+    const detail = currentConflict, selected = conflictAction, theaterId = liveOpts.theaterId;
+    const epoch = subRequestEpoch;
+    conflictBusy = true;
+    redrawConflictControls();
+    void decideConflict(theaterId, detail.id, selected, conflictNote.trim(), detail.currentHash).then(async result => {
+      if (!isCurrentSubRequest("conflicts", detail.id, epoch) || theaterId !== liveOpts.theaterId) return;
+      liveOpts.onDecided?.("conflicts");
+      if (result.patchId) liveOpts.onPatchOpen?.(result.patchId);
+      else await renderConflictsView(detail.id);
+    }).catch(() => {
+      if (!isCurrentSubRequest("conflicts", detail.id, epoch)) return;
+      conflictError = consoleT()("codex.reading.conflictFailed");
+    }).finally(() => { if (isCurrentSubRequest("conflicts", detail.id, epoch)) { conflictBusy = false; redrawConflictControls(); } });
   }
 
   function handleDrydockAction(action: string | undefined): void {
@@ -447,8 +489,11 @@ export function mountReadingInto(
     const detail = (event as CustomEvent<CodexLiveChangedDetail>).detail;
     const scopes = new Set(detail?.scopes ?? []);
     if (opts.kind === "entry") {
-      if (!scopes.has("wiki") && !scopes.has("index")) return;
       if (!currentEntryId) return;
+      if (scopes.has("queue")) void refreshPendingCount(currentEntryId);
+      if (!scopes.has("wiki") && !scopes.has("index")) return;
+      void coworkController?.refresh();
+      if (coworkController?.engaged()) return;
       // 위키에서 *무언가* 바뀌었다고 이 문서가 바뀐 것은 아니다 — 옆 문서가 등재됐을 뿐인데
       // "이 문서가 갱신됐다"고 말하면 그 표식은 곧 아무 뜻도 없는 소음이 된다.
       const stamp = catalogStampFor(currentEntryId);
@@ -493,6 +538,18 @@ export function mountReadingInto(
    * 읽던 제안이 밖에서 승인·반려됐다면 그렇게 말해야 한다 — "갱신됐다"로 뭉뚱그리면
    * 사용자는 아직 자기가 결정할 수 있다고 믿은 채 승인 버튼을 누르러 간다.
    */
+  async function refreshPendingCount(entryId: string): Promise<void> {
+    const epoch = ++pendingRequestEpoch;
+    const entryEpoch = entryRequestEpoch;
+    const theaterId = liveOpts.theaterId;
+    try {
+      const entry = await fetchEntry(theaterId, entryId);
+      if (destroyed || entryEpoch !== entryRequestEpoch || epoch !== pendingRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
+      const slot = readContainer.querySelector<HTMLElement>("[data-entry-pending]");
+      if (slot) slot.innerHTML = pendingPatchLabel(entry.pendingPatchCount ?? 0);
+    } catch { /* 조회 실패는 0건이라는 사실이 아니다. 기존 표식을 유지한다. */ }
+  }
+
   async function noticeForOpenPatch(patchId: string): Promise<void> {
     const wasPending = currentDetailMeta?.status === "pending";
     try {
@@ -630,6 +687,7 @@ export function mountReadingInto(
             ${renderSheetBreadcrumb(entry.frontmatter.title)}
             <h1>${escapeHtml(entry.frontmatter.title)}</h1>
             ${renderMetaChips(entry.frontmatter, { interactiveTags: true })}
+            <div data-entry-pending role="status">${pendingPatchLabel(entry.pendingPatchCount ?? 0)}</div>
             <button type="button" class="queue-back-btn" data-entry-stage-delete>${escapeHtml(t("codex.reading.proposeDelete"))}</button>
             <span data-entry-delete-error role="alert"></span>
           </header>
@@ -778,6 +836,11 @@ export function mountReadingInto(
     if (destroyed) return;
     const requestEpoch = ++subRequestEpoch;
     currentSubId = conflictId;
+    currentConflict = null;
+    conflictAction = null;
+    conflictBusy = false;
+    conflictError = null;
+    conflictNote = "";
     staleKind = null;
     renderedConflictStamp = null;
     showLoading(readContainer, opts.tocContainer);
@@ -790,7 +853,9 @@ export function mountReadingInto(
         if (!isCurrentSubRequest("conflicts", conflictId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
+        currentConflict = detail;
         readContainer.innerHTML = renderConflictDetail(detail);
+        redrawConflictControls();
         renderedConflictStamp = JSON.stringify(detail);
       } else {
         const conflicts = await fetchConflicts(liveOpts.theaterId);
@@ -1061,6 +1126,7 @@ function renderQueueRow(item: DrydockListItem): string {
           <span class="queue-row-target">${escapeHtml(target)}</span>
           ${diffstat}
           ${decided}
+          ${item.baseConflict ? `<span class="queue-row-stale" title="${escapeAttribute(patchBaseConflictMessage(item.baseConflict))}">${escapeHtml(t("codex.reading.staleBadge"))}</span>` : ""}
         </span>
         ${summary ? `<span class="queue-row-summary">${escapeHtml(summary)}</span>` : ""}
         ${metaParts.length > 0 ? `<span class="queue-row-meta">${metaParts.join(" \u00b7 ")}</span>` : ""}
@@ -1295,16 +1361,20 @@ function renderDecidedState(meta: DrydockMeta): string {
   return `<p class="queue-decision-decided ${cls}">${escapeHtml(label)}${reason}</p>`;
 }
 
+function pendingPatchLabel(count: number): string {
+  return count > 0 ? `<span class="entry-pending-patches">${escapeHtml(consoleT()("codex.reading.pendingPatches", { count }))}</span>` : "";
+}
+
 function conflictStatusLabel(status: string | undefined, t: T): string {
   if (status === "resolved") return t("codex.reading.conflictResolved");
-  if (status === "unresolved") return t("codex.reading.conflictUnresolved");
+  if (status === "unresolved") return t("codex.reading.conflictOpen");
   if (!status || status === "open") return t("codex.reading.conflictOpen");
-  return status;
+  return t("codex.reading.conflictUnknown");
 }
 
 function renderConflictDetail(detail: ConflictDetailResponse): string {
   const t = consoleT();
-  const status = conflictStatusLabel(detail.meta?.status as string | undefined, t);
+  const status = conflictStatusLabel(detail.status ?? detail.meta?.status as string | undefined, t);
   return `
     <article class="document">
       <header class="document-header">
@@ -1312,9 +1382,10 @@ function renderConflictDetail(detail: ConflictDetailResponse): string {
           <ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.conflicts"))}</span></li></ol>
         </nav>
         <button type="button" class="queue-back-btn" data-conflict-action="back" aria-label="${escapeAttribute(t("codex.reading.backConflicts"))}">${escapeHtml(t("codex.reading.backConflicts"))}</button>
-        <h1>${escapeHtml(detail.id)}</h1>
+        <h1>${escapeHtml(detail.title ?? t("codex.reading.conflicts"))}</h1>
         <p class="eyebrow">${escapeHtml(t("codex.reading.conflictEyebrow", { status }))}</p>
       </header>
+      <section data-conflict-controls></section>
       <div class="markdown-body">
         ${renderConflictComparison(detail, t)}
       </div>
@@ -1322,22 +1393,24 @@ function renderConflictDetail(detail: ConflictDetailResponse): string {
   `;
 }
 
-// current·proposed가 모두 있으면 블록 diff로 "어디가 갈라졌는가"를 직접 보여준다.
-// 한쪽만 있으면 기존 전문 나열로 강등한다.
+function renderConflictControls(detail: ConflictDetailResponse, action: "reject" | "repropose" | "resolve" | null, busy: boolean, error: string | null, note: string): string {
+  const t = consoleT();
+  if (detail.status === "resolved" || detail.meta.status === "resolved") return `<p class="conflict-resolved">${escapeHtml(t("codex.reading.conflictResolved"))}${typeof detail.meta.note === "string" ? ` · ${escapeHtml(detail.meta.note)}` : ""}</p>`;
+  if (detail.status === "unknown") return `<p>${escapeHtml(t("codex.reading.conflictUnknown"))}</p>`;
+  const warning = !detail.base ? `<p class="conflict-base-warning">${escapeHtml(t("codex.reading.conflictBaseMissing"))}</p>` : "";
+  const errorHtml = error ? `<p class="queue-action-error" role="alert">${escapeHtml(error)}</p>` : "";
+  if (!action) return `${warning}<div class="queue-action-buttons"><button type="button" class="queue-action-btn queue-action-btn--reject" data-conflict-action="reject">${escapeHtml(t("codex.reading.conflictReject"))}</button><button type="button" class="queue-action-btn queue-action-btn--approve" data-conflict-action="repropose"${detail.canRepropose ? "" : " disabled"}>${escapeHtml(t("codex.reading.conflictRepropose"))}</button><button type="button" class="queue-action-btn" data-conflict-action="resolve">${escapeHtml(t("codex.reading.conflictResolve"))}</button></div>${errorHtml}`;
+  const impact = action === "repropose" ? t("codex.reading.conflictReproposalImpact") : detail.pendingPatch ? t("codex.reading.conflictResolutionImpact") : t("codex.reading.conflictNoWrite");
+  return `${warning}<p class="queue-decision-confirm">${escapeHtml(impact)}</p><textarea data-conflict-note maxlength="256" rows="3" aria-label="${escapeAttribute(t("codex.reading.conflictNote"))}" placeholder="${escapeAttribute(t("codex.reading.conflictNote"))}">${escapeHtml(note)}</textarea><div class="queue-action-buttons"><button type="button" class="queue-action-btn${action === "reject" ? " queue-action-btn--reject" : ""}" data-conflict-action="confirm"${busy ? " disabled" : ""}>${escapeHtml(t("codex.reading.conflictConfirm"))}</button><button type="button" class="queue-action-btn" data-conflict-action="cancel"${busy ? " disabled" : ""}>${escapeHtml(t("common.cancel"))}</button></div>${errorHtml}`;
+}
+
 function renderConflictComparison(detail: ConflictDetailResponse, t: T): string {
-  if (detail.current && detail.proposed) {
-    const legend = `
-      <div class="queue-diff-legend" aria-hidden="true">
-        <span class="queue-diff-legend-item queue-diff-legend-item--added">${escapeHtml(t("codex.reading.proposed"))}</span>
-        <span class="queue-diff-legend-item queue-diff-legend-item--removed">${escapeHtml(t("codex.reading.current"))}</span>
-      </div>`;
-    const blocks = diffDraftBlocks(detail.current, detail.proposed);
-    return legend + renderDiffBlocks(blocks, "full");
-  }
-  const sections: string[] = [];
-  if (detail.current) sections.push(`<h2>${escapeHtml(t("codex.reading.current"))}</h2><pre><code>${escapeHtml(detail.current)}</code></pre>`);
-  if (detail.proposed) sections.push(`<h2>${escapeHtml(t("codex.reading.proposed"))}</h2><pre><code>${escapeHtml(detail.proposed)}</code></pre>`);
-  return sections.join("");
+  const body = (markdown: string) => markdown.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n)?/u, "");
+  const panel = (label: string, markdown: string | null | undefined) => `<section class="conflict-compare-panel"><h2>${escapeHtml(label)}</h2>${markdown ? renderMarkdown(body(markdown), { ...markdownCopyOptions(t), resolveWikiLink: entryPath, resolveLink: resolveCodexFileLink }).html + `<details><summary>${escapeHtml(t("codex.reading.conflictSource"))}</summary><pre><code>${escapeHtml(markdown)}</code></pre></details>` : `<p>${escapeHtml(t("codex.reading.conflictSnapshotMissing"))}</p>`}</section>`;
+  const panels = `<div class="conflict-comparison">${panel(t("codex.reading.conflictBase"), detail.base)}${panel(t("codex.reading.current"), detail.current)}${panel(t("codex.reading.proposed"), detail.proposed)}</div>`;
+  const diff = detail.current && detail.proposed ? `<details class="conflict-diff"><summary>${escapeHtml(t("codex.cowork.viewDiff"))}</summary>${renderDiffBlocks(diffDraftBlocks(body(detail.current), body(detail.proposed)), "full")}</details>` : "";
+  const historical = !detail.current && detail.currentAtConflict ? `<details><summary>${escapeHtml(t("codex.reading.conflictCaptured"))}</summary>${panel(t("codex.reading.conflictCaptured"), detail.currentAtConflict)}</details>` : "";
+  return panels + diff + historical;
 }
 
 function copyCodeToClipboard(button: HTMLElement, code: string): void {

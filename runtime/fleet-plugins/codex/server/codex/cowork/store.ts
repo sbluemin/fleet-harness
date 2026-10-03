@@ -9,9 +9,13 @@ export interface CoworkSessionDto {
   entryId: string;
   state: "idle" | "running" | "applied" | "closed";
   revision: number;
+  /** 초안 revision과 별개로 모든 상태 갱신의 순서를 보존한다. */
+  stateSequence: number;
   draft: string;
   baseHash: string;
   baseVersion: number;
+  /** 서버가 실제 파일의 버전·해시로 판정한 최신성이다. */
+  freshness?: { stale: boolean; currentVersion: number | null };
   selection: string | null;
   annotations: readonly CoworkAnnotationDto[];
   /** Original entry markdown captured at session start — the diff baseline for the client. */
@@ -54,7 +58,7 @@ export class CoworkStore {
     const existing = this.writers.get(`${workspaceId}:${entryId}`);
     if (existing) { const found = await this.get(workspaceId, existing); if (found && found.state !== "closed" && found.state !== "applied") return found; }
     const now = new Date().toISOString(); const id = crypto.randomUUID();
-    const record: CoworkSessionRecord = { id, workspaceId, entryId, state: "idle", revision: 0, draft: body, baseDraft: body, baseHash, baseVersion, selection: null, annotations: [], ...identity, targetPath, createdAt: now, updatedAt: now };
+    const record: CoworkSessionRecord = { id, workspaceId, entryId, state: "idle", revision: 0, stateSequence: 0, draft: body, baseDraft: body, baseHash, baseVersion, selection: null, annotations: [], ...identity, targetPath, createdAt: now, updatedAt: now };
     this.sessions.set(this.key(workspaceId, id), record);
     this.writers.set(`${workspaceId}:${entryId}`, id);
     return record;
@@ -65,7 +69,7 @@ export class CoworkStore {
   async update(workspaceId: string, sessionId: string, fn: (value: CoworkSessionRecord) => CoworkSessionRecord): Promise<CoworkSessionRecord> {
     const old = this.sessions.get(this.key(workspaceId, sessionId));
     if (!old) throw new Error("cowork_session_not_found");
-    const next = { ...fn(old), updatedAt: new Date().toISOString() };
+    const next = { ...fn(old), stateSequence: old.stateSequence + 1, updatedAt: new Date().toISOString() };
     this.sessions.set(this.key(workspaceId, sessionId), next);
     return next;
   }
