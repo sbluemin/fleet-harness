@@ -297,7 +297,7 @@ describe("commodore supervisor", () => {
       expect(note).not.toContain("Ship remote first.");
 
       // 보드 — 대기 상태의 서명이 바뀔 때만, 지금 그 상태인 목표 수로.
-      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", done: null, removed: null, commenced: true, awaitingReview: false, awaitingHandoff: false, decisionRequest: { id: "q1" }, decisionRequestRevision: 1, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", createdAt: Date.now(), done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: { id: "q1" }, decisionRequestRevision: 1, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);

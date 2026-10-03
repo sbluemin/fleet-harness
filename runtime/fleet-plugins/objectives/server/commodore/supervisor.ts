@@ -2,6 +2,7 @@ import type { AgentHost } from "@fleet-console/sdk/agent";
 import type { ConsoleOperationObservation, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
+import { inboxReasons, STALL_MS, stalledObjectives, type InboxReason } from "../board-state.js";
 import type { Objective, ObjectiveEvent } from "../types.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
@@ -24,8 +25,8 @@ export const RETRY_DELAYS_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_0
 export const RETRY_STEADY_MS = 60 * 60_000;
 /** 깨움 이유를 모으는 시간. */
 export const COALESCE_MS = 3_000;
-/** 지휘관이 이 시간 동안 쉬면(임무가 남았는데 세션이 유휴·휴면) 정체로 본다. */
-export const STALL_MS = 30 * 60_000;
+/** 정체 기준은 보드와 같다(`board-state.ts`) — inbox 보기와 감독자가 같은 목표를 정체라 부른다. */
+export { STALL_MS };
 export const STALL_CHECK_MS = 5 * 60_000;
 /** 마지막 턴의 입력 토큰이 모델 문맥의 이 비율을 넘으면 다음 깨움에서 교대한다. */
 const CONTEXT_ROTATE_RATIO = 0.75;
@@ -90,7 +91,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "criteria": return `inbox: ${plural("criteria proposal")}`;
     case "pending": return `inbox: ${plural("objective")} not commenced`;
     case "followup": return `inbox: ${plural("open follow-up candidate")}`;
-    case "followup-failed": return `inbox: ${plural("failed follow-up creation")}`;
+    case "followup-failed": return `inbox: ${plural("failed or unconfirmed follow-up creation")}`;
     case "stalled": return `${plural("stalled objective")}${tail}`;
     case "empty": return "the board is empty";
     case "restart": return "Console restarted";
@@ -124,7 +125,6 @@ interface Runner {
   rotateNext: "replaced" | "restarted" | null;
   recentActions: string[];
   signature: string;
-  stalledSince: Map<string, number>;
   stalledReported: Set<string>;
   emptyReported: boolean;
 }
@@ -287,7 +287,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const start = (theaterId: string, reason: WakeCode) => {
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, lastInputTokens: 0, coordinates: null, rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], signature: signatureOf(deps.objectives(theaterId)), stalledSince: new Map(), stalledReported: new Set(), emptyReported: false };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, lastInputTokens: 0, coordinates: null, rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], signature: signatureOf(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     wake(runner, reason);
@@ -352,22 +352,21 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   if (deps.subscribeExperiments) cleanups.push(deps.subscribeExperiments(() => sync("autonomy")));
 
-  // 정체 — 임무가 남았는데 지휘관 세션이 오래 쉰다.
+  // 정체 — 보드와 같은 판정(`stalledObjectives`): 임무가 남고 보드가 오래 그대로인데 지휘관·구성원이 모두 쉰다. 새로 정체된
+  // 목표만 한 번 깨우고, 움직이거나 보드에서 사라지면 표시를 거둔다.
   const stallTimer = setInterval(() => {
     if (disposed || !deps.observe) return;
     for (const runner of runners.values()) {
-      for (const objective of deps.objectives(runner.theaterId)) {
-        const resting = objective.commenced && !objective.done && !objective.removed && !objective.awaitingReview && !objective.awaitingHandoff && !objective.decisionRequest && objective.missions.some((mission) => !mission.done);
-        const observation = resting ? deps.observe(objective.id) : null;
-        const idle = !!observation && (observation.lifecycle === "dormant" || observation.activity === "idle");
-        if (!idle) { runner.stalledSince.delete(objective.id); if (runner.stalledReported.delete(objective.id)) publish(runner); continue; }
-        const since = runner.stalledSince.get(objective.id) ?? now();
-        runner.stalledSince.set(objective.id, since);
-        if (now() - since >= STALL_MS && !runner.stalledReported.has(objective.id)) { runner.stalledReported.add(objective.id); publish(runner); wake(runner, "stalled", { bump: true, detail: objective.title }); }
+      const objectives = deps.objectives(runner.theaterId);
+      const stalled = new Set(stalledObjectives(objectives, deps.observe, now()));
+      let changed = false;
+      for (const id of [...runner.stalledReported]) if (!stalled.has(id)) { runner.stalledReported.delete(id); changed = true; }
+      for (const id of stalled) {
+        if (runner.stalledReported.has(id)) continue;
+        runner.stalledReported.add(id); changed = true;
+        wake(runner, "stalled", { bump: true, detail: objectives.find((objective) => objective.id === id)?.title ?? id });
       }
-      // 보드에서 사라진(완료·삭제) 목표의 정체 표시는 거둔다.
-      const live = new Set(deps.objectives(runner.theaterId).map((objective) => objective.id));
-      for (const id of [...runner.stalledReported]) if (!live.has(id)) { runner.stalledReported.delete(id); runner.stalledSince.delete(id); publish(runner); }
+      if (changed) publish(runner);
     }
   }, STALL_CHECK_MS);
   stallTimer.unref?.();
@@ -397,26 +396,18 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
 }
 
-/** 보드의 대기 상태 서명 — 바뀔 때만 깨운다. 진행 중 세부(임무 완료 표시 등)는 포함하지 않는다. */
+/** 보드의 대기 상태 서명 — 바뀔 때만 깨운다. 이유는 inbox 보기와 같은 `inboxReasons` 다(정체는 따로 관측한다). */
 function signatureOf(objectives: readonly Objective[]): string {
   return objectives.filter((objective) => !objective.removed).map((objective) => [
-    objective.id, objective.done ? "d" : objective.commenced ? "c" : "p", objective.awaitingReview ? "r" : "", objective.awaitingHandoff ? "h" : "", objective.decisionRequest ? `q${objective.decisionRequestRevision}` : "",
-    objective.criteriaProposals.length, objective.followups.filter((followup) => followup.state === "open").length, objective.followupBatches.flatMap((batch) => batch.items).filter((item) => item.state === "failed").length,
+    objective.id, objective.done ? "d" : objective.commenced ? "c" : "p", objective.awaitingHandoff ? "h" : "", objective.decisionRequest ? `q${objective.decisionRequestRevision}` : "", inboxReasons(objective).join(","),
   ].join(":")).sort().join("|");
 }
 
-/** 사람 전용으로 남은 대기 상태의 수 — 지금 그 상태인 목표 수(절대값). 없으면 빈 목록이다. */
+/** 사람 전용으로 남은 대기 상태의 수 — 지금 그 이유를 가진 목표 수(절대값). 없으면 빈 목록이다. */
 function inboxDigest(objectives: readonly Objective[]): readonly [WakeCode, number][] {
-  const live = objectives.filter((objective) => !objective.removed && !objective.done);
-  const counts: [WakeCode, number][] = [
-    ["decision", live.filter((objective) => objective.decisionRequest).length],
-    ["criteria", live.filter((objective) => objective.criteriaProposals.length).length],
-    ["review", live.filter((objective) => objective.awaitingReview).length],
-    ["followup", live.filter((objective) => objective.followups.some((followup) => followup.state === "open")).length],
-    ["followup-failed", live.filter((objective) => objective.followupBatches.some((batch) => batch.items.some((item) => item.state === "failed"))).length],
-    ["pending", live.filter((objective) => !objective.commenced).length],
-  ];
-  return counts.filter(([, count]) => count > 0);
+  const counts = new Map<InboxReason, number>();
+  for (const objective of objectives) for (const reason of inboxReasons(objective)) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  return (["decision", "criteria", "review", "followup", "followup-failed", "pending"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
 }
 
 /** 모델 문맥 — `[1m]` 별칭은 1M, 그 밖은 200k 로 본다(교대 판단에만 쓴다). */
