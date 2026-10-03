@@ -903,23 +903,13 @@ describe("Instrument core design contract", () => {
     expect(whitesDeclarations).not.toMatch(/--(?:glass|canvas)-on-/);
   });
 
-  /* 겉모습 축소판은 페인 이전과 함께 은퇴했다 — 설정이 콘솔 옆에 서므로 콘솔 자체가
-     미리보기다. 남는 계약은 둘이다: 모형의 잔재가 어디에도 없어야 하고, 페인의 폭 대응은
-     뷰포트 미디어가 아니라 컨테이너 쿼리가 져야 한다(데스크톱 뷰포트의 좁은 페인에서
-     뷰포트 미디어는 침묵한다). */
-  it("retires the appearance preview and stacks the settings pane by container, not viewport", () => {
+  /* 페인 이전과 함께 퇴역한 축소판의 기존 금지만 남긴다. 폭·줄바꿈은 실앱 증거로 검증한다. */
+  it("retires the appearance preview when settings moves into the rail", () => {
     const components = source("styles/components.css");
     const settings = source("../../../features/settings/client/sections.tsx");
-
     expect(components).not.toContain("appearance-preview");
     expect(settings).not.toContain("AppearancePreview");
     expect(source("i18n/messages/pages.ts")).not.toContain("settings.preview.");
-
-    // 페인 폭 대응은 컨테이너 쿼리 절 하나가 소유한다 — .rail-pane-body가 컨테이너다.
-    expect(components).toMatch(/@container \(max-width: 640px\) \{[\s\S]{0,400}\.settings-pane \.global-settings-row \{/);
-    // 플러그인 행도 같은 절 안에서 같은 스택 규칙을 받는다 — 코어 행과 한 문법이라 접히는 법도 하나다.
-    expect(components).toMatch(/\.settings-pane \.fc-settings-row \{\s*flex-direction: column;/);
-    expect(source("styles/rail.css")).toContain("container-type: inline-size");
   });
 
   // 다크 유리의 판독 계약 — 유리 뒤가 앱에서 가장 어두운 캔버스라 투과는 명도를 빼기만 한다.
@@ -1130,7 +1120,7 @@ describe("Instrument core design contract", () => {
       // 관여하지 않고, 계산 함수는 그 안의 px만 본다.
       const offLadder = (value: string): boolean => {
         if (/var\(\s*--t-(?:2xs|xs|sm|md|base|lg|xl)\s*\)/.test(value)) return false;
-        if (/var\(\s*--font-body-size\s*\)/.test(value)) return false;
+        if (/var\(\s*--font-(?:body|ui|content|code)-size\s*\)/.test(value)) return false;
         // Codex 서브앱이 자기 --font-size-* 스케일을 갖고 있고, 공유 마크다운과 코어 일부가
         // 그 토큰을 함께 소비한다(총 113곳). 두 어휘를 합칠지는 이 사다리와 별개의 결정이라
         // 아직 내려지지 않았으므로 여기 이름으로 적어 둔다 — 조용한 통과가 아니라 선언된
@@ -3142,7 +3132,7 @@ describe("Instrument core design contract", () => {
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     // 디스플레이 서체 생산자는 커맨드 밴드의 브랜드 워드마크 하나뿐이다 — layout.css 단독 소유.
     expect(components).not.toMatch(/font-family:\s*var\(--font-display\)/);
-    expect(layout.match(/font-family:\s*var\(--font-display\)/g)).toHaveLength(1);
+    expect(layout.match(/font-family:\s*var\(--font-content\)/g)).toHaveLength(1);
     expect(commandBand).toContain('className="command-band-brand-wordmark"');
     expect(components).not.toMatch(/data-sidebar-state="(?:rail|list|detail)"/);
     expect(components).not.toContain("global-navigation");
@@ -3256,7 +3246,7 @@ describe("Instrument core design contract", () => {
     expect(reasonCell).toContain("grid-row: 2;");
     expect(reasonCell).toContain("grid-column: 2 / -1;");
     expect(descriptionBlock).toContain("color: var(--text-tertiary);");
-    expect(descriptionBlock).toContain("font-family: var(--font-body);");
+    expect(descriptionBlock).toContain("font-family: var(--font-ui);");
     expect(descriptionBlock).not.toMatch(/font-weight:\s*\d/);
 
     // 실행 메뉴에는 별도 표식 배지를 두지 않는다 — 종류 구분은 라벨 괄호 안과 무배경 한 단어
@@ -3272,7 +3262,7 @@ describe("Instrument core design contract", () => {
     expect(quietBlock).toContain("clip-path: inset(50%);");
     const briefBlock = components.match(/^\.operation-launch-menu-brief \{[^}]*\}/m)?.[0] ?? "";
     expect(briefBlock).toContain("grid-row: 1;");
-    expect(briefBlock).toContain("font-family: var(--font-body);");
+    expect(briefBlock).toContain("font-family: var(--font-ui);");
     expect(briefBlock).not.toMatch(/background|border-radius/);
     expect(contextMenu).toContain('className="operation-launch-menu-brief"');
     expect(contextMenu).toContain("operation-launch-menu-description operation-launch-menu-description--quiet");
@@ -3415,7 +3405,7 @@ describe("Instrument core design contract", () => {
     expect(source("../../../features/workspace/client/canvas/canvas.tsx")).toContain("onRename: (operationId: string, title: string) => void;");
     expect(source("../../../features/workspace/client/operations.tsx")).toContain("onRename={handleRename}");
     expect(components).toContain(".canvas-operation-identity-name,");
-    expect(components).toContain("font-family: var(--font-body);");
+    expect(components).toContain("font-family: var(--font-ui);");
     expect(components).toContain("font-size: calc(var(--font-body-size) * 0.92);");
     const identityInputBlock = components.match(/^\.canvas-operation-identity-input \{\n  flex: 1 1 auto;[^}]*\}/m)?.[0] ?? "";
     expect(identityInputBlock).toContain("width: min(28ch, 34vw);");
@@ -3661,7 +3651,7 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain("border: 1px solid var(--surface-rim);");
     expect(selectBlock).toContain("background: color-mix(in oklch, var(--ink-mid) 48%, transparent);");
     expect(selectBlock).toContain("color: var(--text-primary);");
-    expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-body);");
+    expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-ui);");
     expect(selectBlock).toContain("padding: 0 13px;");
     expect(selectBlock).toContain("box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);");
     expect(selectBlock).toContain("background: var(--control-wash);");
@@ -3670,7 +3660,7 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
     // compact 트리거는 칩 문법의 모노 티어(11px)를 쓴다 — 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
     expect(selectBlock).toContain(
-      "font-weight: var(--weight-regular);\n  font-size: var(--t-xs);\n  line-height: 1;\n  font-family: var(--font-mono);",
+      "font-weight: var(--weight-regular);\n  font-size: var(--t-xs);\n  line-height: 1;\n  font-family: var(--font-ui);",
     );
     // 호출부가 트리거 글자색을 자기 채널로 넘겨받는 유일한 통로 — 미설정이면 기본 티어를 그대로 쓴다.
     expect(selectBlock).toContain("color: var(--fc-select-compact-tone, var(--text-secondary));");
@@ -4529,70 +4519,16 @@ describe("War Room deck panel grammar", () => {
   });
 });
 
-/* 폭 등급은 픽셀 발명을 막으려고 도입됐다 — 그 약속을 지키는 자리가 여기다.
-   설정 페인이 `defaultWidth: 360`을 선언하던 시절, 자기 테마 격자가 2열이 되는 문턱은 420이라
-   기본 상태에서 그 격자가 한 번도 2열로 서지 못했다. 등급표와 브레이크포인트가 서로를 모르면
-   그 어긋남은 또 난다. 아래 계약이 둘을 한 자리에서 맞춰 본다. */
+/* 기본 폭은 여전히 호스트 등급표가 소유한다. 행과 테마 격자는 내용 폭으로 접히므로
+   퇴역한 420/640px 스택 문턱을 고정하는 계약은 제거한다. */
 describe("Pane width class contract", () => {
-  const components = source("styles/components.css");
   const settingsPane = source("../../../features/settings/client/settings-pane.tsx");
-
-  /**
-   * 설정 페인의 **테마 격자**를 1열로 접는 컨테이너 문턱들.
-   *
-   * 페인 안의 모든 문턱을 재지 않는 이유는, 그중 일부는 레일 폭에서 접히는 것이 정상이기
-   * 때문이다(폰트 브라우저의 2단은 640px 문턱이라 레일 카드가 어떤 등급으로도 못 넘는다).
-   * 기본 폭이 반드시 넘어야 하는 것은 그 페인이 **처음 보여 주는 것**의 문턱이고, 설정에서는
-   * 테마 격자가 그것이다 — 실제로 어긋났던 자리도 여기다.
-   */
-  function themeGridCollapseBreakpoints(): number[] {
-    return containerBreakpointsTargeting(".settings-pane .theme-grid");
-  }
-
-  /** `@container (max-width: N)` 절 가운데 주어진 셀렉터를 겨냥하는 것들의 문턱. */
-  function containerBreakpointsTargeting(selector: string): number[] {
-    const found: number[] = [];
-    const pattern = /@container\s*\(max-width:\s*(\d+)px\)\s*\{/g;
-    for (let match = pattern.exec(components); match !== null; match = pattern.exec(components)) {
-      // 블록 끝까지 훑어 이 절이 테마 격자를 겨냥하는지 본다(중첩 규칙 포함).
-      let depth = 1;
-      let index = match.index + match[0].length;
-      while (index < components.length && depth > 0) {
-        const ch = components[index];
-        if (ch === "{") depth += 1;
-        else if (ch === "}") depth -= 1;
-        index += 1;
-      }
-      const block = components.slice(match.index, index);
-      if (block.includes(selector)) found.push(Number(match[1]));
-    }
-    return found;
-  }
 
   it("keeps the settings pane on the width class instead of an invented pixel", () => {
     // 픽셀을 되살리면 브레이크포인트와 다시 어긋날 수 있다 — 이 페인은 등급으로만 말한다.
     // 등급은 broad — 설정은 열자마자 행이 접히지 않은 한 줄 꼴이어야 한다.
     expect(settingsPane).toContain('widthClass: "broad",');
     expect(settingsPane).not.toMatch(/defaultWidth:\s*\d+/);
-  });
-
-  it("clears the settings theme-grid collapse breakpoint with the wide class", () => {
-    const breakpoints = themeGridCollapseBreakpoints();
-    // 문턱이 사라지면 이 계약은 아무것도 지키지 않는다 — 존재부터 확인한다.
-    expect(breakpoints.length).toBeGreaterThan(0);
-    for (const breakpoint of breakpoints) {
-      // 카드 폭에서 페인 컨테이너 폭까지의 인셋만큼 여유를 얹고 비교한다.
-      expect(PANE_WIDTH_CLASS_PX.wide).toBeGreaterThan(breakpoint + PANE_CONTAINER_INSET_ALLOWANCE);
-    }
-  });
-
-  it("clears the settings row-stack breakpoint with the broad class", () => {
-    // 설정 행을 세로로 접는 컨테이너 절 — 기본 폭이 이 문턱 아래면 설정이 늘 접힌 채로 열린다.
-    const breakpoints = containerBreakpointsTargeting(".settings-pane .global-settings-row");
-    expect(breakpoints.length).toBeGreaterThan(0);
-    for (const breakpoint of breakpoints) {
-      expect(PANE_WIDTH_CLASS_PX.broad).toBeGreaterThan(breakpoint + PANE_CONTAINER_INSET_ALLOWANCE);
-    }
   });
 
   it("keeps the class ladder ordered and above the card floor", () => {

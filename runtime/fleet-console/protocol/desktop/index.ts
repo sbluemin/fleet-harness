@@ -273,3 +273,5 @@ export function isDesktopWindowCommand(value: unknown): value is DesktopWindowCo
 export function isDesktopWindowCommandSnapshot(value: unknown): value is DesktopWindowCommandSnapshot {
   return isRecord(value) && Object.keys(value).length === 1 && (value.command === null || isDesktopWindowCommand(value.command));
 }
+
+export { readDesktopEntryFonts, type DesktopEntryFonts, type DesktopFontAxis } from "./fonts.js";

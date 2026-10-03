@@ -44,7 +44,7 @@
   padding: 0 2px;
   overflow: hidden;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   white-space: nowrap;

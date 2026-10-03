@@ -1,3 +1,4 @@
+import { fontFamilyForAxis, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
 export type TerminalRenderer = "webgl" | "dom";
 
 export type TerminalInactiveFlush = "saving" | "balanced" | "instant";
@@ -131,7 +132,7 @@ export function defaultTerminalFontFamily(cjkFallbackName: string): string {
   return curatedTerminalFontFamily(DEFAULT_TERMINAL_FONT_ID, cjkFallbackName);
 }
 
-const DEFAULT_TERMINAL_FONT_SIZE = 14;
+const DEFAULT_TERMINAL_FONT_SIZE = 13;
 const MIN_TERMINAL_FONT_SIZE = 10;
 const MAX_TERMINAL_FONT_SIZE = 22;
 
@@ -140,7 +141,7 @@ export const TERMINAL_FONT_SIZE_RANGE = {
   max: MAX_TERMINAL_FONT_SIZE,
 };
 
-export const DEFAULT_TERMINAL_FONT_ID: TerminalFontId = "cascadia";
+export const DEFAULT_TERMINAL_FONT_ID: TerminalFontId = "jetbrains";
 
 export const CURATED_TERMINAL_FONTS: readonly CuratedTerminalFont[] = [
   { id: "cascadia", name: "Cascadia Code", familyName: "Cascadia Code Variable", meta: "Variable · terminal tuned" },
@@ -149,7 +150,7 @@ export const CURATED_TERMINAL_FONTS: readonly CuratedTerminalFont[] = [
   { id: "source-code-pro", name: "Source Code Pro", familyName: "Source Code Pro Variable", meta: "Variable · Adobe mono" },
 ];
 
-export const DEFAULT_TERMINAL_FONT = CURATED_TERMINAL_FONTS[0] as CuratedTerminalFont;
+export const DEFAULT_TERMINAL_FONT = CURATED_TERMINAL_FONTS[1] as CuratedTerminalFont;
 
 export function curatedTerminalFontById(id: TerminalFontId | null): CuratedTerminalFont {
   return CURATED_TERMINAL_FONTS.find((font) => font.id === id) ?? DEFAULT_TERMINAL_FONT;
@@ -212,7 +213,7 @@ export function parseStoredTerminalFontSettings(raw: string | null): TerminalFon
     const parsed = parseTerminalFontSettingsValue(JSON.parse(raw) as unknown);
     if (parsed !== null) return parsed;
   } catch {
-    // 손상된 localStorage 값은 기본 Cascadia self-hosted 설정으로 복구한다.
+    // 손상된 localStorage 값은 기본 JetBrains Mono self-hosted 설정으로 복구한다.
   }
   return createDefaultTerminalFontSettings();
 }
@@ -272,41 +273,42 @@ type Listener = () => void;
 
 const RENDERER_KEY = "fleet-plugin.terminal.renderer";
 const INACTIVE_FLUSH_KEY = "fleet-plugin.terminal.inactiveFlush";
-const FONT_KEY = "fleet-plugin.terminal.font";
-const LEGACY_RENDERER_KEY = "fleet-console.terminalRenderer";
-const LEGACY_FONT_KEY = "fleet-console.terminalFont";
 
 const listeners = new Set<Listener>();
 
 let state: TerminalPrefsState = initState();
 let settingsCapability: ClientSettingsCapability | null = null;
-let fontWriteEpoch = 0;
 let chatReadingWidthWriteEpoch = 0;
 let behaviorWriteEpoch = 0;
 let terminalSettingsWriteFlight: Promise<void> | null = null;
 
-export function migrateLegacyTerminalPrefs(): void {
-  if (typeof window === "undefined") return;
-  try {
-    // 두 신규 키는 항상 함께 기록되므로(아래 setItem 2회) 둘 중 하나라도 있으면 이미 마이그레이션된 것으로 보고 no-op(idempotent).
-    // OR 가드는 의도적이다 — AND로 바꾸면 부분쓰기 후 legacy 삭제된 상태에서 재진입 시 default로 덮어쓸 위험이 있다.
-    if (window.localStorage.getItem(RENDERER_KEY) !== null || window.localStorage.getItem(FONT_KEY) !== null) return;
-    const legacyRenderer = window.localStorage.getItem(LEGACY_RENDERER_KEY);
-    const legacyFont = window.localStorage.getItem(LEGACY_FONT_KEY);
-    const renderer: TerminalRenderer = legacyRenderer === "webgl" || legacyRenderer === "dom" ? legacyRenderer : "webgl";
-    const font = parseStoredTerminalFontSettings(legacyFont);
-    window.localStorage.setItem(RENDERER_KEY, renderer);
-    window.localStorage.setItem(FONT_KEY, serializeTerminalFontSettings(font));
-    window.localStorage.removeItem(LEGACY_RENDERER_KEY);
-    window.localStorage.removeItem(LEGACY_FONT_KEY);
-  } catch {
-    // localStorage 접근 실패 시 in-memory 기본값 유지.
-  }
+
+interface TerminalFontSettingsPort {
+  readonly read: () => ConsoleFontSettings;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+let disconnectFontSettings: (() => void) | null = null;
+
+export function connectTerminalFontSettings(port: TerminalFontSettingsPort): void {
+  disconnectFontSettings?.();
+  const sync = () => {
+    const fonts = port.read();
+    const value = fonts.terminal ?? fonts.code;
+    const selection = value.font;
+    const cjk = fonts.code.cjk;
+    const font = selection.source === "system"
+      ? createCustomTerminalFontSettings(selection.familyName, value.size, cjk)
+      : createCuratedTerminalFontSettings(selection.source === "builtin" && selection.id === "jetbrains-mono" ? "jetbrains"
+        : selection.source === "builtin" && isTerminalFontId(selection.id) ? selection.id : "jetbrains", value.size, cjk);
+    const next = { ...font, family: fontFamilyForAxis(fonts, "code", true) };
+    if ((Object.keys(next) as (keyof TerminalFontSettings)[]).some((key) => next[key] !== state.font[key])) patchState({ font: next });
+  };
+  disconnectFontSettings = port.subscribe(sync);
+  sync();
 }
 
 export function connectTerminalSettings(settings: ClientSettingsCapability): void {
-  // 재연결 시 진행 중인 이전 하이드레이션이 낡은 결과를 채택하지 못하도록 epoch를 올려 폐기한다.
-  fontWriteEpoch += 1;
+  // 재연결 시 진행 중인 채팅 폭 하이드레이션을 폐기한다.
   chatReadingWidthWriteEpoch += 1;
   behaviorWriteEpoch += 1;
   settingsCapability = settings;
@@ -325,14 +327,6 @@ export function useChatReadingWidth(): ChatReadingWidth {
   return useSyncExternalStore(subscribe, () => state.chatReadingWidth, () => state.chatReadingWidth);
 }
 
-/* Chat은 터미널 뷰와 같은 Operation의 다른 얼굴이다 — 같은 세션을 CLI로 보다 Chat으로 넘어왔을 때
-   서체가 갈리면 두 화면이 다른 앱으로 읽힌다. 그래서 Chat도 이 글꼴을 권위로 삼는다. family만
-   구독하는 이유는 크기는 Chat이 자기 타입 스케일을 따로 지기 때문이다(터미널 셀 크기와 읽기
-   본문 크기는 같은 축이 아니다). 문자열이라 스냅샷이 안정적이고, 하이드레이션으로 서버 값이
-   늦게 도착해도 그 시점에 한 번만 다시 그린다. */
-export function useTerminalFontFamily(): string {
-  return useSyncExternalStore(subscribe, () => state.font.family, () => state.font.family);
-}
 
 export function setTerminalRenderer(renderer: TerminalRenderer): void {
   writeStoredRenderer(renderer);
@@ -342,38 +336,6 @@ export function setTerminalRenderer(renderer: TerminalRenderer): void {
 export function setTerminalInactiveFlush(inactiveFlush: TerminalInactiveFlush): void {
   writeStoredInactiveFlush(inactiveFlush);
   patchState({ inactiveFlush });
-}
-
-export function setTerminalFont(fontId: TerminalFontId): void {
-  const font = createCuratedTerminalFontSettings(fontId, state.font.size, state.font.cjkFallbackName);
-  fontWriteEpoch += 1;
-  patchState({ font });
-  void pushFontToServer(font);
-}
-
-export function setInstalledTerminalFont(familyName: string): void {
-  // 설치 폰트도 legacy custom wire shape로 직렬화해 저장 포맷 호환성을 유지한다.
-  const font = createCustomTerminalFontSettings(familyName, state.font.size, state.font.cjkFallbackName);
-  fontWriteEpoch += 1;
-  patchState({ font });
-  void pushFontToServer(font);
-}
-
-// 빈 이름은 "번들 서체만"을 뜻한다 — 폴백 해제가 아니라 사용자 지정 항목만 체인에서 빠진다.
-export function setTerminalCjkFallbackFont(familyName: string): void {
-  const font = createTerminalFontSettings(state.font, familyName);
-  fontWriteEpoch += 1;
-  patchState({ font });
-  void pushFontToServer(font);
-}
-
-export function setTerminalFontSize(size: number): void {
-  const font = state.font.source === "custom"
-    ? createCustomTerminalFontSettings(state.font.customName, size, state.font.cjkFallbackName)
-    : createCuratedTerminalFontSettings(state.font.id, size, state.font.cjkFallbackName);
-  fontWriteEpoch += 1;
-  patchState({ font });
-  void pushFontToServer(font);
 }
 
 export function setTerminalScrollback(scrollback: TerminalScrollback): void {
@@ -406,7 +368,6 @@ export function setChatReadingWidth(width: ChatReadingWidth): void {
 
 async function hydrateTerminalSettingsFromServer(): Promise<void> {
   if (!settingsCapability) return;
-  const epoch = fontWriteEpoch;
   const widthEpoch = chatReadingWidthWriteEpoch;
   const behaviorEpoch = behaviorWriteEpoch;
   try {
@@ -427,41 +388,9 @@ async function hydrateTerminalSettingsFromServer(): Promise<void> {
         patchState({ chatReadingWidth: storedWidth });
       }
     }
-    if (value !== null) {
-      const parsed = parseTerminalFontSettingsValue(value["font"]);
-      if (parsed !== null) {
-        if (epoch !== fontWriteEpoch) return;
-        patchState({ font: parsed });
-        try { window.localStorage.removeItem(FONT_KEY); } catch { /* best-effort */ }
-        return;
-      }
-    }
-    // 서버 값 부재 — 1회 시드 마이그레이션
-    if (typeof window !== "undefined") {
-      let stored: string | null = null;
-      try { stored = window.localStorage.getItem(FONT_KEY); } catch { /* best-effort */ }
-      if (stored !== null) {
-        const parsed = parseStoredTerminalFontSettings(stored);
-        if (epoch !== fontWriteEpoch) return;
-        patchState({ font: parsed });
-        void pushFontToServer(parsed);
-        try { window.localStorage.removeItem(FONT_KEY); } catch { /* best-effort */ }
-      }
-    }
+
   } catch {
     // best-effort — read 실패 시 조용히 현 상태 유지.
-  }
-}
-
-async function pushFontToServer(font: TerminalFontSettings): Promise<void> {
-  const settings = settingsCapability;
-  if (!settings) return;
-  try {
-    await mergeTerminalSettingsRecord(settings, {
-      font: { source: font.source, id: font.id, customName: font.customName, cjkFallbackName: font.cjkFallbackName, size: font.size },
-    });
-  } catch {
-    // best-effort — write 실패 시 조용히 무시한다.
   }
 }
 
@@ -518,14 +447,6 @@ function writeStoredInactiveFlush(inactiveFlush: TerminalInactiveFlush): void {
   }
 }
 
-function readStoredFont(): TerminalFontSettings {
-  if (typeof window === "undefined") return createDefaultTerminalFontSettings();
-  try {
-    return parseStoredTerminalFontSettings(window.localStorage.getItem(FONT_KEY));
-  } catch {
-    return createDefaultTerminalFontSettings();
-  }
-}
 
 function writeStoredRenderer(renderer: TerminalRenderer): void {
   if (typeof window === "undefined") return;
@@ -558,6 +479,5 @@ function initState(): TerminalPrefsState {
   if (typeof window === "undefined") {
     return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
   }
-  migrateLegacyTerminalPrefs();
-  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: readStoredFont(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
+  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
 }

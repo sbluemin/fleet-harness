@@ -345,14 +345,17 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  /* Pretendard Variable은 CJK(한글) 폴백 — 라틴은 앞의 Fraunces/Manrope가 소화하고, 한글이
-     OS 폴백의 얇은 스템 대신 번들 서체로 렌더되어 라틴과 굵기·폭이 정합된다. */
-  --font-display: "Fraunces Variable", "Fraunces", "Pretendard Variable", ui-serif, Georgia, "Times New Roman", serif;
-  --font-body: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  /* mono의 한글 폴백은 Nanum Gothic Coding — 터미널·채팅 로그와 같은 서체라 캡션·칩·펄스의 한글이
-     본문 로그와 한 몸으로 읽힌다. Pretendard가 아닌 이유: 비례폭이라 mono 라틴과 폭 리듬이 갈린다. */
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, "SF Mono", Menlo, monospace;
-  --font-body-size: 14px;
+  /* 역할마다 하나의 서체·크기. 옛 토큰은 한 릴리스 동안 읽는 별칭만 남긴다. */
+  --font-ui: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-content: var(--font-ui);
+  --font-code: "JetBrains Mono Variable", "JetBrains Mono", "Nanum Gothic Coding", "Symbols Nerd Font Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-ui-size: 14px;
+  --font-content-size: 14px;
+  --font-code-size: 13px;
+  --font-ui-scale: 1;
+  --font-body: var(--font-ui);
+  --font-display: var(--font-content);
+  --font-body-size: var(--font-ui-size);
 
   /* 크기도 굵기와 같은 이유로 사다리 하나만 쓴다 — 굵기를 3티어로 묶어 놓고 크기를 raw px로
      열어 두면, 표면마다 자기 스케일을 발명해 같은 역할(칩·버튼·라벨)이 화면마다 다른 크기로
@@ -360,13 +363,13 @@
      본문이 10.5~13px로 갈려 패널을 바꾸는 일이 "다른 앱으로 건너가는" 것처럼 읽혔다.
      단은 실측 주력값에서 유도했다 — 새 단을 늘리기 전에 기존 단으로 표현되는지 먼저 볼 것.
      사다리 밖(24px 이상 디스플레이)과 도형 크기 지정은 계약 테스트의 명시적 예외 목록이 진다. */
-  --t-2xs: 10px;
-  --t-xs: 11px;
-  --t-sm: 12px;
-  --t-md: 13px;
-  --t-base: 14px;
-  --t-lg: 17px;
-  --t-xl: 22px;
+  --t-2xs: calc(10px * var(--font-ui-scale));
+  --t-xs: calc(11px * var(--font-ui-scale));
+  --t-sm: calc(12px * var(--font-ui-scale));
+  --t-md: calc(13px * var(--font-ui-scale));
+  --t-base: calc(14px * var(--font-ui-scale));
+  --t-lg: calc(17px * var(--font-ui-scale));
+  --t-xl: calc(22px * var(--font-ui-scale));
 
   /* 신택스 역할색은 상태도 위치도 아니다 — 문자열은 "완료"가 아니고 숫자는 "진행 중"이
      아니므로 신호 채널(positive/warn/coral/aurora)을 빌리면 채널 침범이다. 그렇다고 자기
@@ -959,7 +962,7 @@ body {
 html {
   background: var(--ink-abyss);
   color: var(--text-primary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -969,7 +972,7 @@ body {
   overflow: hidden;
   background: var(--ink-abyss);
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--font-body-size);
   font-weight: var(--weight-regular);
   line-height: 1.55;
@@ -984,7 +987,8 @@ body {
 
 code,
 pre {
-  font-family: var(--font-mono);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
 }
 
 button,

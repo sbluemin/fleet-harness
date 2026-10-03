@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createGlobalSettingsRouter } from "../features/settings/host/settings-domain.js";
+import { createGlobalSettingsRouter, createPluginSettingsRouter } from "../features/settings/host/settings-domain.js";
 import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../features/settings/host/settings-domain.js";
 
 const DEFAULT_REMOTE_ACCESS = {
@@ -28,11 +28,54 @@ interface RouterHarnessOptions {
   readonly bodyNull?: boolean;
   readonly general?: ConsoleGeneralSettings;
   readonly plugins?: ConsoleSettingsData["plugins"];
+  readonly execution?: ConsoleSettingsData["execution"];
   readonly onThemeChanged?: (theme: "instrument" | "maritime" | "carbon" | "whites") => void;
   readonly onRemoteAccessChanged?: (change: { readonly previous: ConsoleGeneralSettings["remoteAccess"] & {}; readonly next: ConsoleGeneralSettings["remoteAccess"] & {} }) => void;
 }
 
 describe("global settings routes", () => {
+  it("migrates fonts once with server priority, local fallback, and read-only legacy values", async () => {
+    // 기존 시험은 옛 저장소와 새 모델 사이 무손실 이관을 거치지 않는다. 저장 무결성을 공개 라우트에서 검증한다.
+    const uiFont = { source: "system", familyName: "A Font's Name", size: 15 } as const;
+    const localFont = { source: "custom", customName: "Local Code", cjkFallbackName: "Local CJK", size: 16 };
+    const serverFont = { source: "curated", id: "fira-code", customName: "", cjkFallbackName: "Apple SD Gothic Neo", size: 13 };
+    const options: RouterHarnessOptions = { general: { uiFont }, execution: { font: serverFont }, body: { terminal: localFont } };
+    const harness = createRouterHarness(options);
+    await harness.router({ req: jsonReq("POST"), res: res(), pathname: "/api/v1/settings/fonts/migration" });
+    const migrated = harness.currentGeneral()?.fonts;
+    expect(migrated).toEqual({
+      ui: { font: { source: "system", familyName: uiFont.familyName }, size: 15, cjk: "" },
+      content: { font: { source: "inherit" }, size: 15, cjk: "" },
+      code: { font: { source: "builtin", id: "fira-code" }, size: 13, cjk: serverFont.cjkFallbackName }, terminal: null,
+    });
+    const readonlyClient = createRouterHarness({ authorized: false, general: { uiFont }, execution: { font: serverFont } });
+    await readonlyClient.router({ req: jsonReq("GET"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(readonlyClient.writes[0]?.body).toMatchObject({ fonts: migrated, fontsMigrationPending: true });
+    await readonlyClient.router({ req: jsonReq("POST"), res: res(), pathname: "/api/v1/settings/fonts/migration" });
+    expect(readonlyClient.writes[1]?.status).toBe(401);
+    expect(readonlyClient.updateCalls).toBe(0);
+    expect(harness.currentGeneral()?.uiFont).toEqual(uiFont);
+    expect(harness.currentData().execution?.font).toEqual(serverFont);
+    const changed = { ...migrated!, code: { ...migrated!.code, size: 18 } };
+    harness.setBody({ fonts: changed });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    harness.setBody({ terminal: localFont });
+    await harness.router({ req: jsonReq("POST"), res: res(), pathname: "/api/v1/settings/fonts/migration" });
+    expect(harness.currentGeneral()?.fonts).toEqual(changed);
+    expect(harness.currentData().execution?.font).toEqual(serverFont);
+    expect(harness.currentGeneral()?.uiFont).toEqual(uiFont);
+    const executionRouter = createPluginSettingsRouter({
+      consoleSettingsStore: harness.store, isAuthorized: () => true,
+      readJsonBody: async () => ({ font: localFont, chatReadingWidth: "wide" }) as never,
+      writeJson: () => {},
+    });
+    await executionRouter({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/execution" });
+    expect(harness.currentData().execution).toEqual({ font: serverFont, chatReadingWidth: "wide" });
+    const local = createRouterHarness({ general: { uiFont }, body: { terminal: localFont } });
+    await local.router({ req: jsonReq("POST"), res: res(), pathname: "/api/v1/settings/fonts/migration" });
+    expect(local.currentGeneral()?.fonts?.code).toEqual({ font: { source: "system", familyName: localFont.customName }, size: 16, cjk: localFont.cjkFallbackName });
+  });
+
 
   it("round-trips the disabled Auto remote-access default without exposing bindHost", async () => {
     const remoteAccess = {
@@ -137,24 +180,26 @@ describe("global settings routes", () => {
 
 function createRouterHarness(options: RouterHarnessOptions = {}) {
   const writes: WriteJsonCall[] = [];
-  let data: ConsoleSettingsData = { version: 1, general: { remoteAccess: DEFAULT_REMOTE_ACCESS, ...options.general }, plugins: options.plugins ?? {} };
+  let body = options.body;
+  let data: ConsoleSettingsData = { version: 1, general: { remoteAccess: DEFAULT_REMOTE_ACCESS, ...options.general }, plugins: options.plugins ?? {}, execution: options.execution };
   let updateCalls = 0;
-  const router = createGlobalSettingsRouter({
-    consoleSettingsStore: {
+  const store: Parameters<typeof createGlobalSettingsRouter>[0]["consoleSettingsStore"] = {
       path: "/fake/settings.json",
       load: () => data,
       save: (next) => { data = next; },
       update: (mutate) => { updateCalls += 1; data = mutate(data) ?? data; return data; },
-    },
+    };
+  const router = createGlobalSettingsRouter({
+    consoleSettingsStore: store,
     isAuthorized: () => options.authorized ?? true,
     isRemoteAccessOwner: () => options.local ?? true,
     computerUseAvailability: async () => options.installation ?? "available",
     onThemeChanged: options.onThemeChanged,
     onRemoteAccessChanged: options.onRemoteAccessChanged,
-    readJsonBody: async () => (options.bodyNull ? null : (options.body ?? {})) as never,
+    readJsonBody: async () => (options.bodyNull ? null : (body ?? {})) as never,
     writeJson: (_res, status, body) => { writes.push({ status, body }); },
   });
-  return { router, writes, currentData: () => data, currentGeneral: () => data.general, get updateCalls() { return updateCalls; } };
+  return { router, writes, store, setBody: (next: unknown) => { body = next; }, currentData: () => data, currentGeneral: () => data.general, get updateCalls() { return updateCalls; } };
 }
 
 function req(method: string, contentType?: string): http.IncomingMessage {

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { applyFontSettingsToDocument } from "./font-settings.js";
 
 import { fetchGlobalSettingsState, updateGlobalSettings } from "./global-settings-api.js";
 import { getShortcutOverrides, setShortcutOverrides } from "../../../core/client/src/integration/shortcut-bindings.js";
@@ -137,6 +138,7 @@ function setSnapshot(patch: Partial<GlobalSettingsStoreState>): void {
   // 낙관 반영, 저장 실패의 되돌림까지. 여기서 맞추지 않으면 부팅 때 읽기가 실패한 세션은 나중에
   // 설정을 열어 서버 값을 받아도 기본 조합으로 발화한다.
   if (patch.state && patch.state.shortcuts !== getShortcutOverrides()) setShortcutOverrides(patch.state.shortcuts);
+  if (patch.state?.fonts) applyFontSettingsToDocument(patch.state.fonts);
   for (const listener of listeners) listener();
 }
 

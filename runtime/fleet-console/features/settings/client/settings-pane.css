@@ -1,0 +1,117 @@
+/* 승인 A: 한 줄 글자 목차와 한 단계 그룹. 색·서체는 Console의 네 테마와 역할 축을 그대로 쓴다. */
+.settings-pane { gap: 20px; padding: 12px 16px 28px; }
+.settings-pane .settings-search { min-height: 32px; border: 0; border-radius: var(--radius-xs); background: color-mix(in oklab, var(--text-primary) 6%, transparent); }
+.settings-index { position: relative; min-width: 0; border-bottom: 1px solid var(--hairline); }
+.settings-index-tabs { display: flex; gap: 18px; overflow-x: auto; scrollbar-width: none; min-width: 0; padding: 0 2px; }
+.settings-index-tabs::-webkit-scrollbar { display: none; }
+.settings-index[data-fade-end] { mask-image: linear-gradient(90deg, black 0, black calc(100% - 24px), transparent); }
+.settings-index[data-fade-start] { mask-image: linear-gradient(90deg, transparent, black 24px, black); }
+.settings-index[data-fade-start][data-fade-end] { mask-image: linear-gradient(90deg, transparent, black 24px, black calc(100% - 24px), transparent); }
+.settings-index-tab { flex: none; position: relative; border: 0; background: none; color: var(--text-secondary); font: var(--weight-regular) var(--t-md)/1.45 var(--font-ui); padding: 8px 0 10px; white-space: nowrap; cursor: pointer; }
+.settings-index-tab:hover { color: var(--text-primary); }
+.settings-index-tab[aria-selected="true"] { color: var(--text-primary); font-weight: var(--weight-medium); }
+.settings-index-tab[aria-selected="true"]::after { content: ""; position: absolute; inset: auto 0 0; height: 2px; border-radius: 2px; background: var(--brass); }
+.settings-index-tab:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; border-radius: 2px; }
+.settings-pane .settings-pane-sections { gap: 22px; }
+.settings-pane :is(.global-settings-card, .fc-settings-card) { min-width: 0; padding: 0; gap: 8px; border: 0; background: none; box-shadow: none; }
+.settings-pane :is(.global-settings-card-title, .fc-settings-card__title) { padding: 0 4px; font-size: var(--t-md); font-weight: var(--weight-medium); letter-spacing: 0; text-transform: none; color: var(--text-secondary); flex-wrap: wrap; }
+.settings-pane :is(.global-settings-subsection-title, .global-settings-shortcut-group-title) { color: var(--text-secondary); letter-spacing: 0; text-transform: none; font-size: var(--t-sm); }
+.settings-pane :is(.appearance-controls, .settings-group-surface, .fc-settings-card__body, .global-settings-shortcut-groups) { min-width: 0; display: grid; gap: 0; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel); }
+.settings-pane .global-settings-shortcut-groups { padding: 12px 14px; gap: 18px; }
+.settings-pane :is(.global-settings-row, .fc-settings-row) { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; max-width: 100%; min-height: 50px; padding: 11px 14px; }
+.settings-pane :is(.global-settings-row, .fc-settings-row) + :is(.global-settings-row, .fc-settings-row) { padding-top: 11px; border-top: 1px solid var(--hairline); }
+.settings-pane :is(.global-settings-row-text, .fc-settings-row__copy) { flex: 1 1 170px; min-width: 0; max-width: none; gap: 2px; }
+.settings-pane :is(.global-settings-resp-title, .fc-settings-row__label) { font-size: var(--t-base); font-weight: var(--weight-regular); letter-spacing: 0; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
+.settings-pane :is(.global-settings-help, .fc-settings-row__hint) { font-size: var(--t-sm); line-height: 1.45; min-width: 0; overflow-wrap: anywhere; }
+.settings-pane :is(.fc-settings-row__control, .experiments-row-controls) { flex: 0 1 auto; min-width: 0; max-width: 100%; width: auto; margin-left: auto; justify-content: flex-end; gap: 8px; }
+/* 코어의 한 행짜리 카드도 같은 그룹 면으로 선다. 제목이 있는 카드는 제목 아래부터 면을 잇는다. */
+.settings-pane .global-settings-card > .global-settings-row { background: var(--surface-panel); border: 1px solid var(--hairline); border-radius: var(--radius-md); }
+.settings-pane .global-settings-card > .global-settings-row + .global-settings-row { margin-top: -8px; border-top: 1px solid var(--hairline); border-top-left-radius: 0; border-top-right-radius: 0; }
+.settings-pane .global-settings-card > .global-settings-row:has(+ .global-settings-row) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.settings-pane :is(.appearance-controls, .fc-settings-card__body, .settings-group-surface) > :is(p, .global-settings-help, .global-settings-error) { padding: 10px 14px; margin: 0; }
+.settings-pane .global-settings-row.is-stack { flex-direction: column; align-items: stretch; }
+/* 가로 행의 170px는 폭 기준이다. 세로 행에서는 본문 높이를 내용에 맡긴다. */
+.settings-pane .global-settings-row.is-stack > .global-settings-row-text { flex: 0 1 auto; }
+.settings-pane .appearance-controls > .global-settings-row.is-stack > .global-settings-row-text { display: none; }
+.settings-pane .theme-grid { grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr)); gap: 10px; width: 100%; }
+.settings-pane .theme-card { min-width: 0; padding: 6px 6px 8px; border-radius: var(--radius-md); border-color: var(--hairline); background: none; box-shadow: none; }
+.settings-pane .theme-card.is-active { border-color: var(--brass); background: var(--brass-glow); }
+.settings-pane .theme-card-swatch { min-width: 0; height: 32px; }
+.settings-pane .theme-card-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.settings-pane .theme-card-polarity { letter-spacing: 0; text-transform: none; }
+/* 글자형 범위 선택만 평평하게 만든다. 모델·강도 결합 컨트롤의 테두리와 선택 다텀은 보존한다. */
+.settings-pane :is(.segmented:not(.fc-model-picker__effort), .backend-api-facets) { display: flex; flex-wrap: wrap; gap: 4px 14px; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; box-shadow: none; overflow: visible; }
+.settings-pane .segmented:not(.fc-model-picker__effort) > .segmented-thumb { display: none; }
+.settings-pane :is(.segmented:not(.fc-model-picker__effort) > .segmented-option, .backend-api-facet) { min-width: 0; padding: 4px 0; border: 0; border-radius: 0; background: none; box-shadow: none; font-family: var(--font-ui); font-size: var(--t-md); letter-spacing: 0; }
+.settings-pane :is(.segmented:not(.fc-model-picker__effort) > .segmented-option, .backend-api-facet):is(.is-active, [aria-pressed="true"]) { background: none; box-shadow: none; color: var(--text-primary); font-weight: var(--weight-medium); text-decoration: underline 2px var(--brass); text-underline-offset: 6px; }
+.settings-pane :is(.fc-select, .fc-model-picker) { min-width: 0; max-width: 100%; }
+.settings-pane :is(.fc-select__trigger, .fc-model-picker__trigger) { min-width: 0; max-width: 100%; }
+.settings-pane :is(.fc-select__value, .fc-model-picker__name) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.settings-pane .fc-settings-slider { flex: 1 1 160px; width: auto; max-width: 300px; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.settings-pane .fc-settings-slider__range { width: auto; min-width: 44px; flex: 1 1 56px; }
+.settings-pane .fc-settings-reset { padding: 3px 0; border: 0; background: none; color: var(--text-tertiary); box-shadow: none; font-size: var(--t-xs); letter-spacing: 0; }
+.settings-pane .fc-settings-reset:disabled { display: none; }
+.settings-pane :is(input, textarea, select) { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.settings-pane :is(.ai-gateway-model-controls, .ai-gateway-roster-head, .ai-gateway-endpoint, .agent-cli-path-actions) { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.settings-pane :is(.ai-gateway-model-row, .ai-gateway-model-text, .agent-cli-row, .agent-cli-path-form) { min-width: 0; max-width: 100%; }
+.settings-pane .ai-gateway-model-row { grid-template-columns: minmax(0, 1fr); }
+.settings-pane .ai-gateway-model-row .ai-gateway-model-controls { margin-left: 0; justify-content: flex-start; }
+.settings-pane :is(.ai-gateway-model-name, .agent-cli-name, .ai-gateway-provider-name) { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.settings-pane .ai-gateway-roster-head { gap: 8px; }
+.settings-pane .backend-api-section-heading { letter-spacing: 0; text-transform: none; }
+.settings-pane .console-port-effective-label { font-size: var(--t-sm); font-weight: var(--weight-regular); letter-spacing: 0; text-transform: none; }
+.settings-font-controls { display: flex; align-items: center; justify-content: flex-end; gap: 4px 10px; flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
+.settings-font-trigger { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex: 0 1 auto; min-width: 0; max-width: 100%; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-primary); font: var(--weight-regular) var(--t-md)/1.45 var(--font-ui); cursor: pointer; }
+.settings-font-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.settings-font-trigger > svg { flex: none; color: var(--text-tertiary); }
+.settings-font-trigger:is(:hover, [aria-expanded="true"]) { background: var(--control-wash); }
+.settings-font-trigger:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+.settings-font-size { display: inline-flex; align-items: center; font-variant-numeric: tabular-nums; flex: none; }
+.settings-font-size > button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-tertiary); font: inherit; cursor: pointer; }
+.settings-font-size > button:hover:not(:disabled) { background: var(--control-wash); color: var(--text-primary); }
+.settings-font-size > output { min-width: 42px; text-align: center; font: var(--t-md)/1.45 var(--font-ui); }
+.settings-font-size > button:disabled { opacity: var(--control-disabled-opacity); cursor: not-allowed; }
+.settings-group-reset { margin-left: auto; padding: 0; border: 0; background: none; color: var(--text-tertiary); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-font-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(176px, 100%), 1fr)); min-width: 0; border-top: 1px solid var(--hairline); }
+.settings-font-preview > div { padding: 12px 14px; min-width: 0; }
+.settings-font-preview > div + div { border-left: 1px solid var(--hairline); }
+.settings-font-preview span { color: var(--text-tertiary); font: var(--t-xs)/1.45 var(--font-ui); }
+.settings-font-preview p { margin: 6px 0 0; line-height: 1.6; overflow-wrap: anywhere; }
+.settings-font-advanced { border-top: 1px solid var(--hairline); }
+.settings-font-advanced > summary { padding: 10px 14px; color: var(--text-tertiary); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-font-popover { position: fixed; z-index: var(--z-overlay); padding: 6px; overflow: auto; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel); color: var(--text-primary); box-shadow: var(--shadow-soft); }
+.settings-font-popover .fc-font-browser { min-width: 0; }
+.settings-font-popover .fc-font-browser__panes { display: block; }
+.settings-font-popover .fc-font-browser__chooser { padding: 0; border: 0; min-width: 0; }
+.settings-font-popover .fc-font-browser__search-label { font: var(--t-xs)/1.45 var(--font-ui); letter-spacing: 0; text-transform: none; }
+.settings-font-popover .fc-font-browser__listbox { max-height: 260px; min-height: 0; }
+.settings-font-popover .fc-font-browser__row { align-items: start; flex-wrap: wrap; gap: 3px 8px; padding: 7px 10px; }
+.settings-font-popover .fc-font-browser__row-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-font-popover .fc-font-browser__group-label { letter-spacing: 0; text-transform: none; }
+.settings-font-popover .fc-font-browser__row-meta { white-space: normal; }
+.settings-font-popover .fc-font-browser__search { width: 100%; min-width: 0; box-sizing: border-box; }
+.settings-font-popover .fc-font-browser__row-status { white-space: normal; }
+@container (max-width: 380px) {
+  .settings-pane .settings-font-controls { flex-wrap: wrap; }
+  .settings-pane :is(.fc-settings-row__control, .experiments-row-controls) { flex-wrap: wrap; }
+}
+/* 최소 레일에서는 모델과 강도를 한 물건인 채 위아래로 잇는다. 모델 이름 폭을 0으로
+   줄여 강도 세 칸을 남기지 않고, 선택기 전체가 행 아래로 내려가도록 한다. */
+@container (max-width: 300px) {
+  .settings-pane .fc-model-picker.has-effort { flex-direction: column; }
+  .settings-pane .fc-model-picker.has-effort .fc-model-picker__select { flex: 0 1 auto; width: 100%; }
+  .settings-pane .fc-model-picker.has-effort .fc-model-picker__trigger { border-start-end-radius: var(--radius-pill); border-end-start-radius: 0; border-end-end-radius: 0; }
+  .settings-pane .fc-model-picker__effort { margin-inline-start: 0; margin-block-start: -1px; min-width: 0; justify-content: center; border-start-end-radius: 0; border-end-start-radius: var(--radius-pill); }
+}
+
+/* grid의 auto 트랙은 긴 API 그룹 이름의 min-content 폭을 부모 밖으로 밀 수 있다.
+   면의 트랙은 항상 줄어들 수 있고, 좁은 카탈로그는 이름·개수 아래에 경로를 잇는다. */
+.settings-pane :is(.global-settings-card, .fc-settings-card) { grid-template-columns: minmax(0, 1fr); }
+.settings-pane :is(.backend-api-head, .backend-api-search, .backend-api-hierarchy-section, .backend-api-results, .backend-api-index, .backend-api-group) { min-width: 0; max-width: 100%; }
+.settings-pane :is(.backend-api-group-label, .backend-api-group-prefix, .backend-api-path, .backend-api-summary) { min-width: 0; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
+@container (max-width: 380px) {
+  .settings-pane .backend-api-group-toggle { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
+  .settings-pane .backend-api-group-label { grid-column: 1; grid-row: 1; }
+  .settings-pane .backend-api-group-count { grid-column: 2; grid-row: 1; }
+  .settings-pane .backend-api-group-prefix { grid-column: 1 / -1; grid-row: 2; }
+}

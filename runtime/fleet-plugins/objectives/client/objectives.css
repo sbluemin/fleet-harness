@@ -8,7 +8,7 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-md);
   color: var(--text-primary);
   /* 도구 패널·확장 표면의 유리를 그대로 비춘다(게이트가 닫히면 불투명 패널). 상세 열은 그 위에
@@ -34,9 +34,9 @@
 /* 빈 상태 · 목표 아닌 세션 — 머리 한 줄(라벨 · 전환 ⌄ · 자리 버튼) 아래 가운데 안내. 상자·채움 없이 글자로만 말한다. */
 .objectives-pick-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--objectives-detail-face); }
 .objectives-pick-head { position: relative; display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 12px 20px 8px 22px; }
-.objectives-pick-label { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-tertiary); }
+.objectives-pick-label { flex: 1; min-width: 0; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-tertiary); }
 .objectives-pick { flex: 1; display: grid; align-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
-.objectives-pick h5 { margin: 0; font-family: var(--font-display); font-size: var(--t-lg); font-weight: var(--weight-medium); color: var(--text-secondary); }
+.objectives-pick h5 { margin: 0; font-family: var(--font-content); font-size: calc(var(--font-content-size) * 1.214286); font-weight: var(--weight-medium); color: var(--text-secondary); }
 .objectives-pick p { margin: 0; max-width: 48ch; font-size: var(--t-md); line-height: 1.5; color: var(--text-tertiary); text-wrap: balance; word-break: keep-all; }
 .objectives-pick-shortcuts { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .objectives-pick-shortcuts button { max-width: 100%; padding: 2px 0; border: 0; background: transparent; font: inherit; font-size: var(--t-sm); color: var(--brass-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
@@ -63,7 +63,7 @@
 .objectives-pop-zone-hd::after { content: ""; flex: 1; height: 1px; margin-left: 6px; background: var(--hairline); }
 .objectives-pop-zone.is-decisions .objectives-pop-zone-hd { color: var(--aurora); }
 .objectives-pop-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-.objectives-pop-count { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-pop-count { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 /* 줄은 사이드바 목표 줄·칩과 같은 이름 문법과 격자다 — 제목 700/13, 글리프 칸은 칩 비콘과 같은 24px이고 한 줄이면 가운데로,
    메타가 붙은 두 줄이면 글리프와 점이 제목 줄의 세로 가운데에 선다. */
 .objectives-pop-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) 6px; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
@@ -76,9 +76,9 @@
 /* 선택은 사이드바 줄과 같은 문법 — 테두리 전체와 brass 워시(왼쪽 띠 없음). */
 .objectives-pop-row[aria-current="true"] { background: var(--brass-glow); border-color: color-mix(in oklch, var(--brass) 45%, transparent); }
 .objectives-pop-body { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 24px; }
-.objectives-pop-title { font-family: var(--font-body); font-size: var(--t-md); font-weight: var(--weight-bold); line-height: 1.3; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-pop-title { font-family: var(--font-ui); font-size: var(--t-md); font-weight: var(--weight-bold); line-height: 1.3; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-pop-row[aria-current="true"] .objectives-pop-title { color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary)); }
-.objectives-pop-meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-pop-meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-pop-meta .is-req { color: var(--aurora); }
 .objectives-pop-meta .is-late { color: var(--coral); }
 .objectives-pop-meta .is-from { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -158,7 +158,7 @@
 .objectives-stop:hover, .objectives-stop:focus-visible { color: var(--coral); border-color: color-mix(in oklch, var(--coral) 45%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); outline: none; }
 .objectives-stop-btn { display: inline-flex; align-items: center; gap: 4px; color: var(--coral); border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
 .objectives-stop-btn:hover { border-color: var(--coral); }
-.objectives-busy-line { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px 22px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
+.objectives-busy-line { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px 22px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
 .objectives-busy-line i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); animation: objectives-breathe 1.6s ease-in-out infinite; animation-name: var(--state-motion, objectives-breathe); }
 @keyframes objectives-breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 .objectives-detail.is-busy .objectives-detail-title, .objectives-detail.is-busy .objectives-mission-text:read-only, .objectives-detail.is-busy .objectives-note:read-only { cursor: default; color: var(--text-secondary); }
@@ -193,7 +193,7 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-pill);
   padding: 0 7px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   color: var(--text-secondary);
   max-width: 100%;
@@ -270,7 +270,7 @@
 .objectives-detail-head { position: relative; display: flex; gap: 8px; align-items: flex-start; padding: 8px 20px 10px 22px; }
 .objectives-detail-head .objectives-check { margin-top: 3px; width: 18px; height: 18px; }
 /* 「다른 요청 N」 — 모든 폭에서 제목 뒤에 선다. 상자 없이 aurora 글자로 「사람 차례」를 말하고, 누르면 다음 요청 목표로 간다. */
-.objectives-detail-requests { flex: none; align-self: center; padding: 2px 0; border: 0; background: transparent; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--aurora); white-space: nowrap; cursor: pointer; }
+.objectives-detail-requests { flex: none; align-self: center; padding: 2px 0; border: 0; background: transparent; font-family: var(--font-ui); font-size: var(--t-xs); color: var(--aurora); white-space: nowrap; cursor: pointer; }
 .objectives-detail-requests:hover { text-decoration: underline; text-underline-offset: 3px; }
 .objectives-detail-requests:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-detail-head .objectives-check svg { width: 11px; height: 11px; }
@@ -312,7 +312,7 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row-ic svg { width: 17px; height: 17px; }
 .objectives-row-ic.objectives-plus { color: var(--brass-ink); font-size: var(--t-xl); line-height: 1; }
 .objectives-row-lab { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
-.objectives-row-sub { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-row-sub { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 
 .objectives-row-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
 /* 접히는 섹션 머리(달성 기준·임무) — 행 전체가 버튼. 셰브런은 목록 구획 머리와 같은 뜻: 접힘 0°, 펼침 90°. 높이 모션은 없다. */
@@ -342,14 +342,14 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-mission-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 6px 0; }
 .objectives-mission-body .objectives-mission-text { flex: none; width: 100%; }
 /* 임무 아래 dim 한 줄 — 담당·예약의 모델 풀네임과 강도 */
-.objectives-mission-sub { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-mission-sub { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .objectives-mission-sub i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; font-style: normal; }
 .objectives-mission-sub.is-awaiting i { background: var(--aurora); }
 .objectives-mission-sub.is-idle i, .objectives-mission-sub.is-ended i, .objectives-mission-sub.is-closed i, .objectives-mission-sub.is-unknown i { background: var(--text-tertiary); }
 .objectives-mission-sub.is-background i { background: color-mix(in oklch, var(--warn) 70%, var(--text-tertiary)); }
 .objectives-mission-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklch, var(--brass-ink) 80%, var(--text-secondary)); }
 /* 임무 기록 — 상자·배경 없이 임무 글자 선(22 + 확인 16 + 간격 12 = 50px)에서 펼쳐진다. */
-.objectives-records-count { flex: none; margin-top: 6px; min-height: 18px; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
+.objectives-records-count { flex: none; margin-top: 6px; min-height: 18px; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
 .objectives-records-count svg { width: 12px; height: 12px; }
 .objectives-records-count i { width: 5px; height: 5px; border-radius: 50%; background: var(--brass); }
 .objectives-records-count:hover { background: var(--control-rest); color: var(--text-secondary); }
@@ -361,18 +361,18 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-records.is-open .objectives-records-inner { animation: objectives-records-in 220ms var(--ease-spring); }
 @keyframes objectives-records-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 .objectives-record { font-size: var(--t-sm); line-height: 1.5; overflow-wrap: anywhere; }
-.objectives-record-meta { display: flex; gap: 6px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.objectives-record-meta { display: flex; gap: 6px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
 .objectives-record-meta .is-redone { color: var(--aurora); }
 .objectives-record-meta .is-new { color: var(--brass-ink); }
 .objectives-record-head { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-record-line { color: var(--text-secondary); }
 .objectives-mission-sub b::before { content: "·"; margin-right: 6px; color: var(--text-tertiary); font-weight: normal; }
 /* 편성 번호 — 체크 곁에 붙어 그래프 노드와 같은 번호를 말한다. */
-.objectives-mission-num { flex: none; min-width: 14px; margin: 6px -6px 0 -4px; line-height: 18px; text-align: right; font-family: var(--font-mono); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.objectives-mission-num { flex: none; min-width: 14px; margin: 6px -6px 0 -4px; line-height: 18px; text-align: right; font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
 .objectives-mission.is-ready .objectives-mission-num { color: var(--aurora); }
 .objectives-mission.is-done .objectives-mission-num { opacity: 0.7; }
 /* 선행 대기는 「2·3 뒤」, 시작할 수 있으면 「준비됨」 */
-.objectives-mission .objectives-wait { flex: none; margin-top: 6px; line-height: 18px; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.objectives-mission .objectives-wait { flex: none; margin-top: 6px; line-height: 18px; white-space: nowrap; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
 .objectives-mission .objectives-wait.is-ready { color: var(--aurora); }
 /* 짚은 임무와 그 선행 — 편성 노드와 함께 켜진다 */
 .objectives-mission.is-focus { background: var(--control-rest); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 55%, transparent); }
@@ -533,7 +533,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-comp-field textarea { flex: 1; min-width: 0; min-height: 40px; max-height: 132px; resize: none; overflow: auto; padding: 2px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; }
 .objectives-comp-field textarea::placeholder { color: var(--text-tertiary); }
 .objectives-comp-field textarea:focus-visible { outline: none; }
-.objectives-comp-count { align-self: flex-end; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-comp-count { align-self: flex-end; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-comp .objectives-band-error { padding: 0 14px 8px; }
 .objectives-comp .objectives-start { border: 0; border-top: 1px solid color-mix(in oklch, var(--brass) 22%, transparent); border-radius: 0; }
 .objectives-comp.is-stop .objectives-start { border-top-color: color-mix(in oklch, var(--coral) 22%, transparent); }
@@ -543,7 +543,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-graph-tools { position: absolute; top: 4px; right: 5px; z-index: 1; display: inline-flex; align-items: center; gap: 4px; }
 .objectives-graph-frame .objectives-dag-box { padding-top: 30px; }
 /* 지휘관 모델·강도·표면 — 한 줄의 글. 누르면 캔버스 우클릭 메뉴와 같은 문법의 메뉴가 뜬다(글래스 언더레이·모노 xs·브라스 활성). */
-.objectives-launch { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
+.objectives-launch { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
 .objectives-launch:hover, .objectives-launch[aria-expanded="true"] { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 10%, transparent); }
 .objectives-launch:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-launch.is-locked { cursor: default; opacity: 0.75; }
@@ -570,8 +570,8 @@ span.objectives-row-main { cursor: default; }
 }
 .objectives-menu::-webkit-scrollbar { display: none; }
 .objectives-menu-group { display: flex; flex-direction: column; }
-.objectives-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
-.objectives-menu-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 7px var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.04em; text-align: left; cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
+.objectives-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
+.objectives-menu-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 7px var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; text-align: left; cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
 .objectives-menu-item:hover, .objectives-menu-item:focus-visible { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 12%, transparent); outline: none; }
 .objectives-menu-item.is-active { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 8%, transparent); }
 .objectives-menu-surface { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--text-tertiary); border-radius: var(--radius-xs); }
@@ -581,7 +581,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-menu-gauge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 3px 2px 5px; border: 1px solid transparent; border-radius: var(--radius-pill); color: var(--text-tertiary); }
 .objectives-menu-item.is-active .objectives-menu-gauge { border-color: color-mix(in oklch, var(--brass) 30%, transparent); }
 .objectives-menu-gauge svg { width: 14px; height: 10px; }
-.objectives-menu-effort { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
+.objectives-menu-effort { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
 .objectives-menu-item.is-active .objectives-menu-effort, .objectives-menu-back .objectives-menu-effort { color: var(--brass-ink); }
 .objectives-menu-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); }
 .objectives-menu-chev svg { width: 10px; height: 10px; }
@@ -600,9 +600,9 @@ span.objectives-row-main { cursor: default; }
 .objectives-menu-provider.is-antigravity, .objectives-launch-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .objectives-menu-track { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px var(--space-2) 10px; }
 .objectives-menu-track .effort-track-value { display: none; }
-.objectives-menu-effort-word { font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass-ink); }
+.objectives-menu-effort-word { font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass-ink); }
 .objectives-menu-divider { height: 1px; margin: var(--space-1) var(--space-1); background: var(--surface-rim); }
-.objectives-menu-empty { padding: 6px var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-menu-empty { padding: 6px var(--space-2); font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-tertiary); }
 
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
 .objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
@@ -624,7 +624,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-batch-menu-title { display: block; font-weight: var(--weight-medium); }
 .objectives-batch-menu-hint { display: block; font-size: var(--t-2xs); color: var(--text-tertiary); white-space: normal; line-height: 1.35; }
 /* 일괄 설정 결과 말풍선 — 글리프에 은은하게 붙어 잠시 나타났다 사라진다. */
-.objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 0; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-mono); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
+.objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 0; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
 .objectives-batch-balloon::before { content: ""; position: absolute; top: -4px; right: 8px; width: 6px; height: 6px; background: var(--surface-panel-raised); border-left: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); border-top: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); transform: rotate(45deg); }
 @keyframes objectives-balloon-in { from { opacity: 0; transform: translateY(-3px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .objectives-batch-balloon-dot { width: 5px; height: 5px; border-radius: 50%; flex: none; }
@@ -660,14 +660,14 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-brief::placeholder { color: var(--text-tertiary); opacity: 0.7; }
 .objectives-member-remove { flex: none; opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
 .objectives-member:hover .objectives-member-remove, .objectives-member:focus-within .objectives-member-remove { opacity: 1; }
-.objectives-member-by { flex: none; padding: 2px 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora); font: var(--weight-bold) var(--t-2xs)/1 var(--font-mono); }
+.objectives-member-by { flex: none; padding: 2px 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora); font: var(--weight-bold) var(--t-2xs)/1 var(--font-ui); }
 /* 긴 실행 모델명(게이트웨이 모델 등)은 이름만 줄임표로 접는다 — 글리프·강도·상태·삭제 버튼은 자리를 지킨다. 풀네임은 title. */
 .objectives-member-meta { grid-area: meta; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .objectives-member-meta > * { min-width: 0; max-width: 100%; }
 .objectives-member-meta .objectives-launch { margin: 0; }
 .objectives-member-meta .objectives-launch > * { flex: none; }
 .objectives-member-meta .objectives-launch > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-member-status { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); color: var(--text-tertiary); }
+.objectives-member-status { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-ui); color: var(--text-tertiary); }
 .objectives-member-subagents { color: var(--text-secondary); }
 .objectives-member-slot { display: contents; }
 .objectives-member-note { margin: 0 14px 6px 52px; padding: 6px 10px; border: 1px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--aurora) 8%, transparent); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; }
@@ -677,10 +677,10 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-status.is-background { color: color-mix(in oklch, var(--warn-ink) 70%, var(--text-tertiary)); }
 .objectives-member-status.is-idle { color: var(--positive); }
 .objectives-member-status.is-awaiting { color: var(--aurora); }
-.objectives-assign-new input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-body); }
+.objectives-assign-new input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-ui); }
 .objectives-assign-new input:focus { outline: none; border-color: var(--brass); }
 .objectives-mission-sub .objectives-member-mark, .objectives-assign-menu .objectives-member-mark { width: 16px; height: 16px; font-size: var(--t-2xs); }
-.objectives-mission-member-name { color: var(--text-secondary); font-family: var(--font-body); font-weight: var(--weight-medium); }
+.objectives-mission-member-name { color: var(--text-secondary); font-family: var(--font-ui); font-weight: var(--weight-medium); }
 /* 지휘관 표식 — 구성원이 쓰지 않는 brass 는 지휘관 행 아이콘·그래프 뿌리 노드와 같은 지휘관의 색이다. 둥근 원이 각진 구성원 칸과 모양으로도 가른다. */
 .objectives-member-mark.is-commander { --member-tone: var(--brass); border-radius: 50%; color: var(--brass-ink); }
 .objectives-member-mark.is-commander svg { width: 10px; height: 10px; }
@@ -689,7 +689,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-assign-model { flex: none; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-assign-create { color: var(--brass-ink); }
 .objectives-assign-new { display: grid; gap: 5px; padding: 5px; }
-.objectives-assign-new span { color: var(--text-tertiary); font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); }
+.objectives-assign-new span { color: var(--text-tertiary); font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-ui); }
 
 .objectives-objective { user-select: none; }
 
@@ -737,6 +737,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-note-more:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-detail textarea.objectives-note::placeholder { color: var(--text-tertiary); }
 .objectives-detail .objectives-note.is-read { display: block; width: 100%; box-sizing: border-box; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; padding: 2px 20px 8px 22px; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; cursor: text; }
+/* 브리프 본문은 크롬의 UI 상속에서 분리한다. 읽기와 편집이 같은 콘텐츠 축을 따른다. */
+.objectives-detail :is(textarea.objectives-note, .objectives-note.is-read:not(.is-placeholder)) { font-family: var(--font-content); font-size: calc(var(--font-content-size) * 12 / 14); }
 .objectives-detail button.objectives-note.is-read { cursor: text; }
 .objectives-detail .objectives-note.is-read.is-placeholder { color: var(--text-tertiary); }
 .objectives-detail .objectives-note.is-read.is-clamped { overflow: hidden; padding-bottom: 0; margin-bottom: 8px; }
@@ -784,8 +786,8 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-cal-head .objectives-glyph { width: 24px; height: 24px; border-color: transparent; color: var(--text-tertiary); font-size: var(--t-base); }
 .objectives-cal-month { text-align: center; font-size: var(--t-sm); color: var(--text-primary); }
 .objectives-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.objectives-cal-wd { text-align: center; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); padding: 2px 0 4px; }
-.objectives-cal-day { position: relative; height: 30px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--t-xs); cursor: pointer; }
+.objectives-cal-wd { text-align: center; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); padding: 2px 0 4px; }
+.objectives-cal-day { position: relative; height: 30px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-xs); cursor: pointer; }
 .objectives-cal-day:hover { background: color-mix(in oklch, var(--ink-spectral) 9%, transparent); }
 .objectives-cal-day.is-outside, .objectives-cal-day.is-past { color: var(--text-tertiary); }
 .objectives-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--brass); }
@@ -817,8 +819,8 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-launch.is-glyph:hover, .objectives-launch.is-glyph[aria-expanded="true"] { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .objectives-mission-add .objectives-launch.is-glyph { margin-left: auto; }
 /* 선택 방식(라우팅·지휘관과 같게·라우팅 결과 쓰기)과 그 설명은 사람의 말이다 — 모노 글꼴과 자간에서는 한글 낱말 사이가 한 칸 더 벌어지므로 본문 글꼴로 쓴다. */
-.objectives-menu-extra .objectives-menu-label { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; font-family: var(--font-body); letter-spacing: 0; }
-.objectives-menu-hint { font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0; text-transform: none; font-family: var(--font-body); }
+.objectives-menu-extra .objectives-menu-label { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; font-family: var(--font-ui); letter-spacing: 0; }
+.objectives-menu-hint { font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0; text-transform: none; font-family: var(--font-ui); }
 /* 서브에이전트 허용 — 라디오가 아닌 체크. 보조 글은 두 줄까지 감싸고 자르지 않는다. 목록·강도 단계가 같은 푸터를 쓴다. */
 .objectives-menu-check { align-items: flex-start; }
 .objectives-menu-check-copy { display: grid; gap: 2px; flex: 1; min-width: 0; }
@@ -843,7 +845,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-att-open:hover, .objectives-att-open:focus-visible { border-color: var(--brass); outline: none; }
 .objectives-att-thumb.is-sending .objectives-att-open { cursor: progress; }
 .objectives-att-open img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.objectives-att-n { position: absolute; left: 4px; bottom: 4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; background: color-mix(in oklch, var(--ink-abyss) 72%, transparent); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; pointer-events: none; }
+.objectives-att-n { position: absolute; left: 4px; bottom: 4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; background: color-mix(in oklch, var(--ink-abyss) 72%, transparent); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; pointer-events: none; }
 .objectives-att-x { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--surface-rim-strong); border-radius: 50%; background: var(--surface-panel); color: var(--text-secondary); cursor: pointer; opacity: 0; transition: opacity var(--duration-fast); }
 .objectives-att-x svg { width: 10px; height: 10px; }
 .objectives-att-thumb:hover .objectives-att-x, .objectives-att-x:focus-visible { opacity: 1; }
@@ -870,7 +872,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
   background: linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)), var(--glass-underlay);
   box-shadow: var(--shadow-floating);
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-regular);
   line-height: 1.6;
@@ -893,7 +895,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-att-view figcaption { display: grid; gap: 2px; justify-items: center; max-width: min(72ch, 100%); max-height: 33dvh; overflow-y: auto; padding-bottom: 2px; text-align: center; overflow-wrap: anywhere; }
 .objectives-att-view-title { font-size: var(--t-sm); font-weight: var(--weight-bold); color: var(--text-primary); }
 .objectives-att-view-note { font-size: var(--t-sm); line-height: 1.5; color: var(--text-secondary); }
-.objectives-att-view-meta { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-att-view-meta { font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-att-view-meta b { font-weight: var(--weight-regular); color: var(--text-secondary); }
 /* 넘김 글리프 — 이미지 양옆 가운데에 겹친다. 끝에 닿으면 꺼지고 흐려진다(돌지 않는다). */
 .objectives-att-view-step { position: absolute; top: 50%; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--surface-rim-strong); border-radius: 50%; background: var(--glass-tint-panel); color: var(--text-secondary); cursor: pointer; transform: translateY(-50%); }
@@ -910,19 +912,19 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 /* 짚은 임무(목록 행과 함께) — 그 노드는 brass, 선행은 aurora, 들어오는 선도 aurora */
 
 /* 달성 기준 — 임무 아래 섹션. 줄은 임무 줄과 같은 들여쓰기·높이, 표식은 미확인(점선 고리)과 충족(positive 점) 둘뿐이다. */
-.objectives-criteria-count { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-criteria-count { font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-criterion { display: flex; gap: 12px; align-items: flex-start; min-height: 36px; padding: 0 14px 0 22px; font-size: var(--t-sm); }
 .objectives-criterion:hover { background: var(--control-rest); }
 .objectives-criterion-mark { flex: none; width: 12px; height: 12px; margin-top: 9px; border-radius: 50%; border: 1.5px dashed var(--text-tertiary); }
 .objectives-criterion.is-met .objectives-criterion-mark { border: 0; background: var(--positive); }
-.objectives-criterion-number { flex: none; width: 2ch; padding-top: 6px; text-align: right; font: var(--t-sm)/1.5 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.objectives-criterion-number { flex: none; width: 2ch; padding-top: 6px; text-align: right; font: var(--t-sm)/1.5 var(--font-ui); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 .objectives-criterion-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 6px 0; }
 .objectives-criterion-text { display: block; width: 100%; min-width: 0; resize: none; overflow: hidden; field-sizing: content; overflow-wrap: anywhere; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; padding: 0; }
 .objectives-criterion-text:focus { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
 /* 근거는 내용이다 — 잘리지 않고 줄바꿈한다. 제안 표시는 dim 한 줄. */
 .objectives-criterion-sub { font-size: var(--t-2xs); color: var(--text-tertiary); overflow-wrap: anywhere; }
 .objectives-criterion-sub.is-evidence { color: var(--text-secondary); }
-.objectives-criterion-state { flex: none; margin-top: 6px; line-height: 18px; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.objectives-criterion-state { flex: none; margin-top: 6px; line-height: 18px; white-space: nowrap; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
 .objectives-criterion-state.is-met { color: var(--positive); }
 .objectives-criterion-remove { margin-top: 4px; opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
 .objectives-criterion:hover .objectives-criterion-remove, .objectives-criterion:focus-within .objectives-criterion-remove { opacity: 1; }
@@ -963,7 +965,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-proposal .objectives-criterion { padding: 0; }
 .objectives-proposal .objectives-criterion:hover { background: transparent; }
 .objectives-proposal .objectives-criterion-mark { border-color: var(--brass); }
-.objectives-proposal-kind { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--brass-ink); }
+.objectives-proposal-kind { font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--brass-ink); }
 .objectives-proposal-text { display: block; color: var(--text-primary); font-size: var(--t-sm); line-height: 1.5; overflow-wrap: anywhere; text-decoration: none; }
 del.objectives-proposal-text { text-decoration: line-through; color: var(--text-secondary); }
 del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
@@ -976,7 +978,7 @@ del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
 .objectives-proposal-note textarea:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-proposal-hint { font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-proposal-chip { margin: 4px 0 0 24px; display: flex; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); overflow-wrap: anywhere; }
-.objectives-proposal-chip b { flex: none; margin-top: 1px; font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--brass-ink); }
+.objectives-proposal-chip b { flex: none; margin-top: 1px; font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--brass-ink); }
 
 /* 제안이 남아 잠긴 개시·스티어링 — 누를 수 없는 점선 한 줄. 그 아래 「다시 구상」이 한 단 낮은 띠로 열려 있다. */
 .objectives-start-group.is-gated { gap: 6px; }
@@ -1025,24 +1027,24 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 .objectives-followup-impact { color: var(--text-primary); font-size: var(--t-xs); line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .objectives-followup-impact b, .objectives-origin-impact b { font-weight: var(--weight-medium); color: var(--text-tertiary); }
 .objectives-followup-item.is-open .objectives-followup-impact { white-space: normal; overflow-wrap: anywhere; }
-.objectives-followup-meta { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); padding-top: 3px; white-space: nowrap; }
+.objectives-followup-meta { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); padding-top: 3px; white-space: nowrap; }
 .objectives-followup-meta svg { transition: transform var(--duration-fast); }
 .objectives-followup-item.is-open .objectives-followup-meta svg { transform: rotate(90deg); }
 /* 상세 = 브리핑(4줄 뒤 「더 보기」) → 달성 기준 초안(점선 번호 원) → 근거(종류 라벨+안전한 설명). */
 .objectives-followup-detail { padding: 2px 10px 10px 33px; display: flex; flex-direction: column; gap: 9px; }
 .objectives-followup-row.is-readonly + .objectives-followup-detail { padding-left: 10px; }
-.objectives-followup-lab { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 3px; }
-.objectives-followup-brief { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.objectives-followup-lab { font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 3px; }
+.objectives-followup-brief { margin: 0; color: var(--text-secondary); font-family: var(--font-content); font-size: calc(var(--font-content-size) * 12 / 14); line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .objectives-followup-brief.is-all { display: block; }
 .objectives-followup-more { align-self: flex-start; border: 0; background: transparent; color: var(--brass-ink); padding: 0; cursor: pointer; font: inherit; font-size: var(--t-xs); }
 .objectives-followup-more:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-followup-crit { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; counter-reset: objectives-followup-crit; }
 .objectives-followup-crit li { display: flex; gap: 8px; font-size: var(--t-sm); color: var(--text-primary); line-height: 1.45; overflow-wrap: anywhere; }
-.objectives-followup-crit li::before { counter-increment: objectives-followup-crit; content: counter(objectives-followup-crit); flex: none; width: 16px; height: 16px; border: 1.5px dashed var(--brass); border-radius: 50%; font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 13px; text-align: center; color: var(--brass-ink); margin-top: 1px; }
+.objectives-followup-crit li::before { counter-increment: objectives-followup-crit; content: counter(objectives-followup-crit); flex: none; width: 16px; height: 16px; border: 1.5px dashed var(--brass); border-radius: 50%; font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 13px; text-align: center; color: var(--brass-ink); margin-top: 1px; }
 .objectives-followup-ev { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
 .objectives-followup-ev li { display: flex; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); overflow-wrap: anywhere; }
-.objectives-followup-ev li b { flex: none; font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 1.8; color: var(--brass-ink); }
-.objectives-followup-ev code { font-family: var(--font-mono); font-size: var(--t-xs); }
+.objectives-followup-ev li b { flex: none; font-family: var(--font-code); font-size: var(--font-code-size); font-weight: var(--weight-medium); line-height: 1.8; color: var(--brass-ink); }
+.objectives-followup-ev code { font-family: var(--font-code); font-size: var(--font-code-size); }
 .objectives-followup-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .objectives-followup-hint { font-size: var(--t-2xs); color: var(--text-tertiary); flex: 1; min-width: 140px; }
 .objectives-followup-discard.is-armed { border-color: var(--coral); color: var(--coral); background: transparent; }
@@ -1064,7 +1066,7 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 /* 완료 뒤 결과 — 머리 아래에 영속한다. */
 .objectives-followup-results { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 6px; }
 .objectives-followup-batch + .objectives-followup-batch { margin-top: 8px; }
-.objectives-followup-batchat { margin: 0 14px 2px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-followup-batchat { margin: 0 14px 2px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-followup-sum { margin: 0 14px 2px; font-size: var(--t-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .objectives-followup-res { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
 .objectives-followup-rrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: var(--radius-xs); }
@@ -1093,17 +1095,17 @@ button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass-in
 .objectives-check.is-linked.is-handoff:not(.is-awaiting) i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: color-mix(in oklch, var(--aurora) 60%, transparent); }
 
 /* 확장 회차는 상태 색을 쓰지 않는다 — 숫자 칩과 구분선, 이전 회고의 접힘으로 범위를 나눈다. */
-.objectives-extension-chip { display: inline-flex; align-items: center; align-self: flex-start; box-sizing: border-box; min-width: 0; width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); font: var(--t-2xs)/1.5 var(--font-mono); white-space: normal; overflow-wrap: anywhere; }
-.objectives-extension-divider { display: flex; align-items: center; gap: 8px; margin: 8px 14px 3px; font: var(--t-2xs)/1.5 var(--font-mono); color: var(--text-tertiary); }
+.objectives-extension-chip { display: inline-flex; align-items: center; align-self: flex-start; box-sizing: border-box; min-width: 0; width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); font: var(--t-2xs)/1.5 var(--font-ui); white-space: normal; overflow-wrap: anywhere; }
+.objectives-extension-divider { display: flex; align-items: center; gap: 8px; margin: 8px 14px 3px; font: var(--t-2xs)/1.5 var(--font-ui); color: var(--text-tertiary); }
 .objectives-extension-divider::after { content: ""; height: 1px; flex: 1; background: var(--hairline); }
 .objectives-extension-current { margin: 0 14px 8px; }
 .objectives-extension-current > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.objectives-extension-current time, .objectives-extension-time { font: var(--t-2xs)/1.5 var(--font-mono); color: var(--text-tertiary); }
+.objectives-extension-current time, .objectives-extension-time { font: var(--t-2xs)/1.5 var(--font-ui); color: var(--text-tertiary); }
 .objectives-extension-time { display: block; margin: 4px 14px; }
 .objectives-extension-request { display: flex; flex-direction: column; gap: 3px; margin: 6px 0 0; font-size: var(--t-xs); line-height: 1.5; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .objectives-extension-request b { font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
 .objectives-extension-past { border-top: 1px solid var(--hairline); }
-.objectives-extension-past > summary { padding: 8px 14px; font: var(--t-xs)/1.5 var(--font-body); color: var(--text-secondary); cursor: pointer; overflow-wrap: anywhere; }
+.objectives-extension-past > summary { padding: 8px 14px; font: var(--t-xs)/1.5 var(--font-ui); color: var(--text-secondary); cursor: pointer; overflow-wrap: anywhere; }
 .objectives-extension-past > summary:hover { background: var(--control-rest-hover); }
 .objectives-extension-past > summary:focus-visible { outline: 1px solid var(--brass); outline-offset: -2px; }
 .objectives-extension-past > .objectives-extension-request { margin: 2px 14px 8px; }
@@ -1131,9 +1133,9 @@ button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass-in
 button.objectives-result-group-head { cursor: pointer; }
 button.objectives-result-group-head:hover { background: var(--control-rest); }
 button.objectives-result-group-head:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
-.objectives-result-mission-n { flex: none; min-width: 14px; text-align: right; font-family: var(--font-mono); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.objectives-result-mission-n { flex: none; min-width: 14px; text-align: right; font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
 .objectives-result-mission-title { flex: 1; min-width: 0; font-size: var(--t-xs); font-weight: var(--weight-medium); line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.objectives-result-group-count { flex: none; font-family: var(--font-mono); font-size: var(--t-2xs); white-space: nowrap; color: var(--text-tertiary); }
+.objectives-result-group-count { flex: none; font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; color: var(--text-tertiary); }
 button.objectives-result-group-head:hover .objectives-result-group-count { color: var(--brass-ink); }
 .objectives-result-record { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 0 20px 5px 54px; font-size: var(--t-2xs); line-height: 1.5; color: var(--text-secondary); }
 .objectives-result-record > span { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1148,24 +1150,24 @@ button.objectives-result-group-head:hover .objectives-result-group-count { color
 .objectives-result-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .objectives-result-thumb:hover .objectives-result-img, .objectives-result-thumb-hit:focus-visible .objectives-result-img { border-color: var(--brass); }
 .objectives-result-thumb-hit:focus-visible { outline: none; }
-.objectives-result-name { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-result-name { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .objectives-result-row { display: flex; gap: 14px; align-items: flex-start; width: 100%; padding: 7px 20px 7px 22px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; }
 .objectives-result-row:hover { background: var(--control-rest); }
 .objectives-result-row.is-button { cursor: pointer; }
 .objectives-result-row > .objectives-row-ic { margin-top: 1px; }
 .objectives-result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .objectives-result-title { color: var(--text-primary); line-height: 1.45; text-decoration: none; overflow-wrap: anywhere; }
-.objectives-result-title.is-mono { font-family: var(--font-mono); font-size: var(--t-xs); }
+.objectives-result-title.is-mono { font-family: var(--font-ui); font-size: var(--t-xs); }
 a.objectives-result-title:hover, a.objectives-result-title:focus-visible { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
-.objectives-result-num { margin-right: 6px; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); }
+.objectives-result-num { margin-right: 6px; font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-secondary); }
 .objectives-result-sub { font-size: var(--t-2xs); line-height: 1.5; color: var(--text-tertiary); word-break: keep-all; overflow-wrap: anywhere; }
-.objectives-result-sub .is-mono { font-family: var(--font-mono); }
+.objectives-result-sub .is-mono { font-family: var(--font-ui); }
 .objectives-result-sub.is-error { color: var(--coral); }
-.objectives-result-open { flex: none; margin-top: 2px; padding: 0; border: 0; background: none; font: inherit; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); cursor: pointer; }
+.objectives-result-open { flex: none; margin-top: 2px; padding: 0; border: 0; background: none; font: inherit; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); cursor: pointer; }
 .objectives-result-row.is-artifact .objectives-result-open { display: inline-flex; align-items: center; gap: 3px; }
 button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; color: var(--brass-ink); }
 .objectives-result-row.is-button:hover .objectives-result-open { color: var(--brass-ink); }
-.objectives-result-state { flex: none; display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; white-space: nowrap; color: var(--text-tertiary); }
+.objectives-result-state { flex: none; display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.03em; white-space: nowrap; color: var(--text-tertiary); }
 .objectives-result-state i { flex: none; width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box; }
 .objectives-result-state.is-merged { color: var(--positive); }
 .objectives-result-state.is-merged i { background: var(--positive); }
@@ -1188,7 +1190,7 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 /* markdown-body 의 가운데 정렬(margin auto)은 그리드 칸에서 늘어나지 못하게 한다 — 보기 틀 폭을 그대로 쓴다. */
 .objectives-result-markdown.markdown-body { box-sizing: border-box; width: 100%; max-inline-size: none; margin-inline: 0; max-height: calc(100dvh - 140px); overflow: auto; padding: 12px 16px; border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font-size: var(--t-sm); outline: none; }
 .objectives-result-markdown:focus-visible { box-shadow: inset 0 0 0 1px var(--brass); }
-.objectives-result-plain { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--t-xs); line-height: 1.6; color: var(--text-primary); }
+.objectives-result-plain { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-code); font-size: var(--font-code-size); line-height: 1.6; color: var(--text-primary); }
 .objectives-result-textstate { padding: 24px 16px; font-size: var(--t-sm); color: var(--text-secondary); text-align: center; }
 .objectives-result-textstate.is-error { color: var(--coral); }
 /* 아주 좁은 상세 — 곁 값을 줄이고 글 읽을 폭을 남긴다. */
@@ -1251,7 +1253,7 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
   .objectives-decision-orbit::before { animation: none; content: none; }
 }
 .objectives-decision-head { display: flex; align-items: center; gap: 6px; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--brass-ink); }
-.objectives-decision-head time, .objectives-decision-n { font-family: var(--font-mono); font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-head time, .objectives-decision-n { font-family: var(--font-ui); font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-n { margin-left: auto; }
 .objectives-decision-glyph { display: inline-grid; place-items: center; width: 14px; height: 14px; flex: none; }
 .objectives-decision-glyph svg { width: 14px; height: 14px; }
@@ -1259,7 +1261,7 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-decision-q { display: flex; flex-direction: column; gap: 6px; }
 .objectives-decision-q + .objectives-decision-q { padding-top: 10px; border-top: 1px solid color-mix(in oklch, var(--brass) 18%, var(--surface-rim)); }
 .objectives-decision-q-top { display: flex; gap: 6px; align-items: baseline; }
-.objectives-decision-q-n { flex: none; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-q-n { flex: none; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-q-text { margin: 0; font-size: var(--t-sm); line-height: 1.45; color: var(--text-primary); overflow-wrap: anywhere; white-space: pre-wrap; }
 .objectives-decision-refs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding-left: 16px; font-size: var(--t-xs); }
 .objectives-decision-ref { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); text-align: left; }
@@ -1267,7 +1269,7 @@ button.objectives-decision-ref { cursor: pointer; }
 button.objectives-decision-ref:hover { color: var(--text-primary); }
 button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-decision-ref .objectives-member-mark { width: 16px; height: 16px; }
-.objectives-decision-ref-n { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-ref-n { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-ref.is-go { color: var(--text-primary); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--brass) 60%, transparent); text-underline-offset: 3px; }
 .objectives-decision-ref.is-go svg { width: 11px; height: 11px; }
 /* 선택지 — 고르는 줄과 설명의 링크를 겹치지 않는다. 고른 줄은 표시기와 글자 무게·옅은 면으로만 말한다. */
@@ -1288,12 +1290,12 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-opt.is-own { color: var(--text-tertiary); }
 .objectives-decision-opt.is-own .objectives-decision-ind { border-style: dashed; }
 .objectives-decision-opt.is-own .objectives-decision-opt-pick[aria-checked="true"] .objectives-decision-ind { border-style: solid; }
-.objectives-decision-own-label { margin-left: 12px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--brass-ink); }
-.objectives-decision-hint { padding: 2px 0 0 26px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-own-label { margin-left: 12px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--brass-ink); }
+.objectives-decision-hint { padding: 2px 0 0 26px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-free { margin-left: 12px; width: calc(100% - 12px); min-height: 32px; max-height: 160px; padding: 6px 9px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.4; resize: vertical; box-sizing: border-box; }
 .objectives-decision-free:focus { outline: none; border-color: color-mix(in oklch, var(--brass) 60%, transparent); }
 .objectives-decision-submit { display: flex; align-items: center; gap: 10px; }
-.objectives-decision-progress { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-progress { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-send { margin-left: auto; height: 30px; padding: 0 14px; border: 1px solid color-mix(in oklch, var(--brass) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-ink); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-bold); cursor: pointer; }
 .objectives-decision-send:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 24%, transparent); }
 .objectives-decision-send:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
@@ -1306,9 +1308,9 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision + .objectives-decision { border-top: 1px solid var(--surface-rim); }
 .objectives-decision.is-flash { background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .objectives-decision-q-copy { margin: 0; font-size: var(--t-xs); color: var(--text-tertiary); white-space: pre-wrap; overflow-wrap: anywhere; }
-.objectives-decision-chip { display: inline-block; margin-right: 6px; padding: 0 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 16px; color: var(--text-secondary); vertical-align: 1px; }
+.objectives-decision-chip { display: inline-block; margin-right: 6px; padding: 0 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 16px; color: var(--text-secondary); vertical-align: 1px; }
 .objectives-decision-a { margin: 0; font-size: var(--t-sm); color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
-.objectives-decision-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-meta span { display: inline-flex; align-items: center; gap: 4px; }
 .objectives-decision-meta .objectives-member-mark { width: 14px; height: 14px; font-size: var(--t-2xs); }
 .objectives-decisions-fold { align-self: flex-start; padding: 4px 0 0; border: 0; background: none; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
@@ -1341,8 +1343,8 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-tidied-notice { gap: 4px; font-size: var(--t-sm); color: var(--text-secondary); }
 .objectives-tidied-notice strong { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-tidied-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 6px; }
-.objectives-tidied-label { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-tertiary); }
-.objectives-tidied-brief { margin: 6px 0 0; font-size: var(--t-md); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-tidied-label { font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-tertiary); }
+.objectives-tidied-brief { margin: 6px 0 0; font-family: var(--font-content); font-size: calc(var(--font-content-size) * 13 / 14); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .objectives-tidied-criteria { margin: 6px 0 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 4px; font-size: var(--t-sm); color: var(--text-secondary); }
 .objectives-merged-trail { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .objectives-merged-entry { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-top: 6px; border-top: 1px dashed var(--hairline-strong); font-size: var(--t-xs); color: var(--text-tertiary); }
@@ -1360,7 +1362,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-archive-row:hover { border-color: var(--hairline-strong); }
 .objectives-archive-row:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-archive-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
-.objectives-archive-meta { flex: none; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-archive-meta { flex: none; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-archive-tidied { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: var(--t-md); color: var(--text-primary); }
 
 /* ── 구성원 모델 변경 · 개시 전 라우팅 확인 ─────────────────────────────────────────
@@ -1371,14 +1373,14 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-menu-caption.objectives-menu-note { padding: 2px var(--space-2) 4px 14px; font-family: inherit; letter-spacing: 0; text-transform: none; color: var(--text-tertiary); }
 .objectives-menu-item:disabled { cursor: default; opacity: var(--control-disabled-opacity, 0.45); }
 .objectives-menu-item:disabled:hover { background: transparent; color: var(--text-secondary); }
-.objectives-member-via { flex: none; padding: 1px 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font: var(--weight-medium) var(--t-2xs)/1.3 var(--font-mono); }
+.objectives-member-via { flex: none; padding: 1px 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font: var(--weight-medium) var(--t-2xs)/1.3 var(--font-ui); }
 .objectives-member-via.is-fallback { border-color: color-mix(in oklch, var(--warn) 45%, transparent); color: var(--warn-ink); }
 /* 띄운 구성원의 모델 변경 경과 — 칩 아래, 설명 줄의 오른쪽 칸에 서서 칩을 가리키는 한 줄 말풍선. 행의 칸이라 다른 행이나 조작을 덮지 않고
    레일 밖으로 넘치지 않는다. 서 있는 동안 설명은 이름 칸 폭으로 접힌다. */
 .objectives-member:has(> .objectives-member-bubble) { grid-template-areas: "mark name meta" ". brief bubble"; }
 .objectives-member:has(> .objectives-member-remove):has(> .objectives-member-bubble) { grid-template-areas: "mark name meta remove" ". brief bubble bubble"; }
 .objectives-member > .objectives-member-bubble { grid-area: bubble; justify-self: end; align-self: start; max-width: 100%; }
-.objectives-member-bubble { position: relative; display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 16px; padding: 0 1px 0 7px; border: 1px solid color-mix(in oklch, var(--brass) 40%, var(--surface-rim-strong)); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); font: var(--weight-regular) var(--t-2xs)/1 var(--font-mono); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
+.objectives-member-bubble { position: relative; display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 16px; padding: 0 1px 0 7px; border: 1px solid color-mix(in oklch, var(--brass) 40%, var(--surface-rim-strong)); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); font: var(--weight-regular) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
 /* 꼬리 — 위의 칩을 가리킨다. 바탕이 불투명이라 꼬리가 테두리를 비치지 않는다. */
 .objectives-member-bubble::before { content: ""; position: absolute; top: -4px; right: 18px; width: 6px; height: 6px; background: inherit; border-left: 1px solid; border-top: 1px solid; border-color: inherit; transform: rotate(45deg); }
 /* 좁으면 머리말도 말줄임으로 물러난다 — 닫기(✕)는 언제나 보여야 한다. */
@@ -1427,14 +1429,14 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-routing-who { grid-area: who; display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
 .objectives-routing-role { flex: 0 1 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-medium); color: var(--text-primary); }
 /* 방식 낱말은 역할 이름보다 먼저 줄어든다(말줄임). 사람의 말이라 본문 글꼴이다. */
-.objectives-routing-who small { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.3 var(--font-body); color: var(--text-tertiary); }
+.objectives-routing-who small { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.3 var(--font-ui); color: var(--text-tertiary); }
 /* 모델 낱말은 한 줄이다 — 넘치면 모델 이름만 말줄임하고 풀네임은 title 이 말한다. 글리프·강도는 자리를 지킨다. */
 .objectives-routing-pick { grid-area: pick; display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 100%; }
 .objectives-routing-pick .objectives-launch { margin: 0; min-width: 0; max-width: 100%; white-space: nowrap; }
 .objectives-routing-pick .objectives-launch > *, .objectives-routing-words > * { flex: none; }
 .objectives-routing-pick .objectives-launch > .objectives-routing-words, .objectives-routing-pick > .objectives-routing-words { flex: 0 1 auto; max-width: 100%; }
 .objectives-routing-pick .objectives-launch > .objectives-launch-model, .objectives-routing-words > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-routing-words { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 0; font: var(--weight-regular) var(--t-xs)/1.4 var(--font-mono); letter-spacing: 0.04em; color: var(--text-secondary); white-space: nowrap; }
+.objectives-routing-words { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 0; font: var(--weight-regular) var(--t-xs)/1.4 var(--font-ui); letter-spacing: 0.04em; color: var(--text-secondary); white-space: nowrap; }
 .objectives-routing-why { grid-area: why; justify-self: start; text-align: left; min-width: 0; font-size: var(--t-xs); line-height: 1.4; color: var(--text-tertiary); overflow-wrap: anywhere; }
 .objectives-routing-why.is-warn { color: var(--warn-ink); }
 .objectives-routing-judging { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); }

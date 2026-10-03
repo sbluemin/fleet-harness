@@ -24,7 +24,7 @@
   border-bottom: 2px solid transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   letter-spacing: 0.01em;
@@ -84,7 +84,7 @@
   color: var(--text-tertiary);
   cursor: pointer;
   flex: 1;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   letter-spacing: 0.01em;
@@ -178,8 +178,8 @@
 
 .skills-card-name {
   color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--t-md);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   font-weight: var(--weight-medium);
   overflow-wrap: anywhere;
   min-width: 0;
@@ -222,8 +222,8 @@
 /* 출처는 제 줄을 갖는다 — 에이전트 줄과 한 줄을 나누던 때는 「v…」「Leon…」으로 잘려 식별이 안 됐다. */
 .skills-card-source {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   overflow-wrap: anywhere;
 }
 
@@ -291,7 +291,7 @@
 .skills-scope-shelf-label {
   color: var(--text-tertiary);
   flex: 1;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   min-width: 0;
   overflow: hidden;
@@ -305,7 +305,7 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   cursor: pointer;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   letter-spacing: 0.01em;
@@ -371,8 +371,8 @@
 }
 
 .skills-dock-log {
-  font-family: "JetBrains Mono Variable", monospace;
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   line-height: 1.5;
   max-height: 150px;
   overflow-y: auto;
@@ -465,8 +465,8 @@
 
 .skills-dock-count {
   color: var(--text-tertiary);
-  font-family: "JetBrains Mono Variable", monospace;
-  font-size: var(--t-xs);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
 }
 
 .skills-dock-dismiss {
@@ -576,7 +576,7 @@
 
 .skills-overlay-title {
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-lg);
   font-weight: var(--weight-medium);
   overflow-wrap: anywhere;

@@ -113,7 +113,7 @@ function WarRoomEntryIllustration() {
       <path d="M8 138h344v20a10 10 0 0 1-10 10H18a10 10 0 0 1-10-10z" fill="var(--surface-band)" />
       <path d="M8 138h344" stroke="var(--brass)" strokeOpacity="0.75" />
       {/* 왼쪽부터 킥커 · 모드 스위치(War Room 선택) · 덱 밀도와 자동 무대 도구 */}
-      <text x="17" y="155.5" fill="var(--brass-ink)" fontFamily="var(--font-mono)" fontSize="7" fontWeight="700" letterSpacing="0.9">WAR ROOM</text>
+      <text x="17" y="155.5" fill="var(--brass-ink)" fontFamily="var(--font-ui)" fontSize="7" fontWeight="700" letterSpacing="0.9">WAR ROOM</text>
       <rect x="66" y="147" width="30" height="12" rx="4" fill="none" stroke="var(--surface-rim-strong)" />
       <rect x="81" y="147" width="15" height="12" rx="4" fill="var(--brass)" fillOpacity="0.28" />
       <rect x="70" y="152" width="7" height="2" rx="1" fill="var(--text-tertiary)" opacity="0.7" />

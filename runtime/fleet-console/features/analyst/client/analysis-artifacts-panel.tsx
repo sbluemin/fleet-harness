@@ -299,6 +299,20 @@ export function ArtifactExportGlyph({ context, active }: { readonly context: Ope
 }
 
 function ActiveArtifact({ artifact, theme, language }: { readonly artifact: AnalysisArtifact; readonly theme: ConsoleTheme; readonly language: ConsoleLocale }) {
+  const [, setFontRevision] = React.useState(0);
+  React.useEffect(() => {
+    const signature = () => {
+      const style = getComputedStyle(document.documentElement);
+      return ["content", "code"].map((axis) => style.getPropertyValue(`--font-${axis}`) + style.getPropertyValue(`--font-${axis}-size`)).join(";");
+    };
+    let previous = signature();
+    const observer = new MutationObserver(() => {
+      const next = signature();
+      if (next !== previous) { previous = next; setFontRevision((revision) => revision + 1); }
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+    return () => observer.disconnect();
+  }, []);
   if (!artifact.id) return null;
   const t = getT(language);
   const frame = <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, getArtifactColors())} sandbox="allow-scripts" />;
@@ -332,6 +346,10 @@ function getArtifactColors(): ArtifactThemeColors {
     critical: token("--coral-ink"),
     // 포커스/위치 채널은 brass다 — signal 토큰을 포커스 링에 쓰면 채널이 섞인다.
     focus: token("--brass"),
+    sansFamily: token("--font-content"),
+    monoFamily: token("--font-code"),
+    sansSize: token("--font-content-size"),
+    monoSize: token("--font-code-size"),
     ...consoleFontSources(),
   };
 }
@@ -349,6 +367,10 @@ function getArtifactColors(): ArtifactThemeColors {
  */
 function consoleFontSources(): Pick<ArtifactThemeColors, "sansFont" | "monoFont" | "sansCjkSheets" | "monoCjkSheets"> {
   try {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const firstFamily = (axis: string) => rootStyle.getPropertyValue(`--font-${axis}`).split(",")[0]?.trim().replace(/^"|"$/g, "").toLowerCase();
+    const contentFamily = firstFamily("content");
+    const codeFamily = firstFamily("code");
     let sans: string | undefined;
     let mono: string | undefined;
     const pick = (rule: CSSFontFaceRule): string | undefined => {
@@ -372,8 +394,8 @@ function consoleFontSources(): Pick<ArtifactThemeColors, "sansFont" | "monoFont"
         // 브라우저는 범위 표기의 선행 0을 접는다 — "U+0000-00FF"가 "U+0-FF"로 읽힌다.
         const unicodeRange = rule.style.getPropertyValue("unicode-range");
         if (unicodeRange && !/u\+0{1,4}(-|\b)/i.test(unicodeRange)) continue;
-        if (!sans && /manrope/i.test(family)) sans = pick(rule);
-        if (!mono && /jetbrains/i.test(family)) mono = pick(rule);
+        if (!sans && family.replace(/^"|"$/g, "").toLowerCase() === contentFamily) sans = pick(rule);
+        if (!mono && family.replace(/^"|"$/g, "").toLowerCase() === codeFamily) mono = pick(rule);
         if (sans && mono) break;
       }
       if (sans && mono) break;

@@ -45,6 +45,10 @@ export type ArtifactThemeColors = {
   readonly focus?: string;
   /** 콘솔 번들 @font-face에서 읽은 same-origin 서체 경로 — 문서가 콘솔 서체를 잇는다. */
   readonly sansFont?: string;
+  readonly sansFamily?: string;
+  readonly monoFamily?: string;
+  readonly sansSize?: string;
+  readonly monoSize?: string;
   readonly monoFont?: string;
   /** 한글 폴백 서체의 same-origin @font-face 시트 경로. 서브셋 92장짜리 변수 폰트(Pretendard)는
       파일 하나로 못 잇고, 코딩 서체(Nanum Gothic Coding)는 굵기별 파일이 갈리므로 시트 단위로
@@ -53,7 +57,7 @@ export type ArtifactThemeColors = {
   readonly monoCjkSheets?: readonly string[];
 };
 
-const ARTIFACT_OPTIONAL_PARAMS = ["card", "inset", "hairline", "hairlineStrong", "accent", "muted", "faint", "positive", "warn", "critical", "focus", "sansFont", "monoFont"] as const;
+const ARTIFACT_OPTIONAL_PARAMS = ["card", "inset", "hairline", "hairlineStrong", "accent", "muted", "faint", "positive", "warn", "critical", "focus", "sansFont", "monoFont", "sansFamily", "monoFamily", "sansSize", "monoSize"] as const;
 
 export function analysisArtifactUrl(artifactId: string, theme: ConsoleTheme, colors: ArtifactThemeColors): string {
   const query = new URLSearchParams({ theme, ground: colors.ground, foreground: colors.foreground });

@@ -1,3 +1,4 @@
+import type { ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
 import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ApiCatalogEntry as SdkApiCatalogEntry, ConsoleTheme, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
@@ -193,6 +194,8 @@ export interface GlobalSettingsState {
   readonly reduceMotion: boolean;
   readonly lowerUnfocusedFrameRate: boolean;
   readonly uiFont: UiFontSettings;
+  readonly fonts: ConsoleFontSettings;
+  readonly fontsMigrationPending?: boolean;
   readonly language: ConsoleLanguagePreference;
   /** 실험 기능과 모델 좌석 — 구서버 응답에는 없을 수 있고, 그때는 전부 꺼짐으로 정규화한다. */
   readonly experiments: ConsoleExperimentSettings;

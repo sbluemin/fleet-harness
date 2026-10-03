@@ -89,7 +89,7 @@ html[data-view-mode="mobile"] .fleet-browser-scrim {
   color: var(--text-primary);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xs);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   white-space: nowrap;
   pointer-events: none;

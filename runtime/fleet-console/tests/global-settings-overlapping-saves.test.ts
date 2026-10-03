@@ -1,3 +1,4 @@
+import { DEFAULT_FONTS } from "@fleet-console/sdk/settings/fonts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
@@ -26,6 +27,7 @@ const BASE: GlobalSettingsState = {
   reduceMotion: false,
   lowerUnfocusedFrameRate: true,
   shortcuts: {},
+  fonts: DEFAULT_FONTS,
   uiFont: { source: "builtin", id: "manrope", size: 14 },
   language: "auto",
   experiments: DEFAULT_EXPERIMENT_SETTINGS,

@@ -127,6 +127,7 @@ const PIE_THEME_SLOT_NAMES = [
 ] as const;
 
 let mermaidLoader: Promise<MermaidApi> | null = null;
+let fontsObserverInstalled = false;
 // root별로 hydrator를 1회만 설치한다. navigator 컨테이너와 reader 컨테이너는 rail 재개편으로
 // 분리된 별도 DOM 트리이므로, 단일 전역 플래그로는 먼저 마운트된 navigator root가 플래그를
 // 소진해 정작 diagram을 가진 reader root에 MutationObserver가 붙지 못한다(=mermaid가 pending에 정지).
@@ -145,6 +146,26 @@ export function cssColorToHex(value: string): string {
 
 export function installDiagramHydrator(root: ParentNode, labels?: DiagramHydratorLabels): void {
   // 로케일 전환 시 동일 root 재설치에도 라벨만 갱신할 수 있게, WeakSet 가드보다 먼저 반영한다.
+  if (!fontsObserverInstalled) {
+    fontsObserverInstalled = true;
+    const signature = () => {
+      const style = getComputedStyle(document.documentElement);
+      return style.getPropertyValue("--font-content") + style.getPropertyValue("--font-content-size");
+    };
+    let previous = signature();
+    new MutationObserver(() => {
+      const next = signature();
+      if (next === previous) return;
+      previous = next;
+      mermaidLoader = null;
+      closeActiveLightbox(false);
+      for (const block of document.querySelectorAll<HTMLElement>(".diagram-block[data-mermaid-source][data-diagram-state='rendered']")) {
+        delete block.dataset.diagramState;
+        delete block.dataset.diagramHydrating;
+      }
+      void document.fonts.ready.then(() => scan(document));
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+  }
   if (labels) diagramLabels = { ...DEFAULT_DIAGRAM_LABELS, ...labels };
   if (hydratedRoots.has(root)) return;
   hydratedRoots.add(root);
@@ -292,7 +313,8 @@ function extractThemeVariables(): Record<string, string> {
     lineColor: auroraDeep,
     edgeLabelBackground: "transparent",
     titleColor: brassBright,
-    fontFamily: "JetBrains Mono Variable, ui-monospace, monospace",
+    fontFamily: readToken("--font-content", "system-ui, sans-serif"),
+    fontSize: readToken("--font-content-size", "14px"),
     mainBkg: "transparent",
     nodeBorder: brass,
     clusterBkg: "transparent",
@@ -335,7 +357,8 @@ function buildThemeCss(): string {
     }
     .nodeLabel, .edgeLabel, .actor text, .messageText {
       fill: ${inkPearl};
-      font-family: "Manrope Variable", "Manrope", ui-sans-serif, sans-serif;
+      font-family: var(--font-content);
+      font-size: var(--font-content-size);
     }
     .pieCircle {
       stroke: ${brassDeep};
@@ -353,7 +376,8 @@ function buildThemeCss(): string {
       stroke: ${inkAbyss};
       stroke-width: 3px;
       stroke-linejoin: round;
-      font-family: "Manrope Variable", "Manrope", ui-sans-serif, sans-serif;
+      font-family: var(--font-content);
+      font-size: var(--font-content-size);
     }
     .slice {
       font-weight: 600;

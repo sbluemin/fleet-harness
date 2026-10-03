@@ -7,7 +7,7 @@
 .browser-engine-settings__form .global-settings-input {
   flex: 1 1 260px; min-width: 0; width: 100%; min-height: 36px;
   padding: 7px var(--space-3); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent); color: var(--text-primary); font-family: var(--font-mono);
+  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent); color: var(--text-primary); font-family: var(--font-code); font-size: var(--font-code-size);
 }
 .browser-engine-settings__form input:hover:not(:disabled), .browser-engine-settings__form input:focus-visible { border-color: var(--control-hover-rim); }
 .browser-engine-settings__form input:disabled { opacity: var(--control-disabled-opacity); }

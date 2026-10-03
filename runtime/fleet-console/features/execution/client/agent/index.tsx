@@ -1,10 +1,8 @@
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
-import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import "@fleet-console/font-picker/styles.css";
-import { fetchSystemFonts, type SystemFontRecord } from "@fleet-console/font-picker/system-fonts";
 import {
 CaptionActionButton,
 CaptionAnalystGlyph,
@@ -43,10 +41,9 @@ import { notifySharedFallback } from "../../../browser/client/global-browser-sto
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useOperationUse } from "../../../computer-use/client/computer-screen-share.js";
 import { gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
-import { fontCjkScripts, type CjkScript } from "../terminal/shared/cjk-coverage.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
-import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
-import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontFamily, defaultTerminalFontFamily, getTerminalPrefsSnapshot, setChatReadingWidth, setInstalledTerminalFont, setTerminalCjkFallbackFont, setTerminalFont, setTerminalFontSize, setTerminalCopyOnSelect, setTerminalInactiveFlush, setTerminalRenderer, setTerminalScrollback, TERMINAL_SCROLLBACK_CHOICES, terminalFontFallbackStack, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
+import type { ChatReadingWidth, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
+import { getTerminalPrefsSnapshot, setChatReadingWidth, setTerminalInactiveFlush, setTerminalRenderer, setTerminalCopyOnSelect, setTerminalScrollback, TERMINAL_SCROLLBACK_CHOICES, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
 import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
 import { createChatLinkInterceptor, openOperationLink, useLinkOpenChoice } from "./link-open.js";
@@ -89,13 +86,6 @@ const INACTIVE_FLUSH_IDS = ["saving", "balanced", "instant"] as const satisfies 
 const AGENT_TICKET_PATH = "/api/v1/agent/ticket";
 const TERMINAL_WS_PATH = "/api/v1/terminal/ws";
 const PIN_SLACK_PX = 56;
-const TERMINAL_FONT_PICKER_SIZE_RANGE = { ...TERMINAL_FONT_SIZE_RANGE, step: 1, defaultValue: 14 };
-const FONT_META_KEYS = {
-  cascadia: "terminal.settings.fontMetaCascadia",
-  jetbrains: "terminal.settings.fontMetaJetbrains",
-  "fira-code": "terminal.settings.fontMetaFiraCode",
-  "source-code-pro": "terminal.settings.fontMetaSourceCodePro",
-} as const satisfies Record<TerminalFontId, TerminalMessageKey>;
 const ANALYSIS_READY_POLL_MS = 5_000;
 type AnalysisReadiness = "unknown" | "ready" | "not-ready";
 
@@ -1084,13 +1074,12 @@ function DormantChatEntry({ context }: { readonly context: OperationRenderContex
 }
 
 function GeneralSection() {
-  const { renderer: terminalRenderer, inactiveFlush: terminalInactiveFlush, font: terminalFont } = useTerminalPrefs();
+  const { renderer: terminalRenderer, inactiveFlush: terminalInactiveFlush } = useTerminalPrefs();
 
   // 카드를 Fragment로 직접 반환한다. 카드 간 간격은 호스트의 .global-settings-detail(그리드 gap)이
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
   return (
     <>
-      <TerminalFontSettingsCard terminalFont={terminalFont} />
       <ChatReadingWidthSettingsCard />
       <TerminalDrawingCard terminalRenderer={terminalRenderer} terminalInactiveFlush={terminalInactiveFlush} />
       <TerminalBehaviorCard />
@@ -1170,6 +1159,7 @@ function ChatReadingWidthSettingsCard() {
   const width = useChatReadingWidth();
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.chatReadingWidthAria")}>
+      <h3 className="global-settings-card-title">{t("terminal.settings.chatGroup")}</h3>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
@@ -1617,222 +1607,6 @@ function readPayloadNumber(payload: Record<string, unknown>, key: string): numbe
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: TerminalFontSettings }) {
-  const t = getT(useTerminalLocale());
-  const [systemFonts, setSystemFonts] = React.useState<readonly SystemFontRecord[]>([]);
-  const [isLoadingFonts, setIsLoadingFonts] = React.useState(true);
-  const [fontLoadFailed, setFontLoadFailed] = React.useState(false);
-  const [cjkCandidates, setCjkCandidates] = React.useState<readonly FontPickerInstalledFont[]>([]);
-  const [isScanningCjk, setIsScanningCjk] = React.useState(true);
-  const [primaryCjkScripts, setPrimaryCjkScripts] = React.useState<readonly CjkScript[] | null>(null);
-  const installedFonts = React.useMemo(
-    () => systemFonts.filter((font) => font.monospace).map((font) => ({ family: font.family, monospace: font.monospace })),
-    [systemFonts],
-  );
-  const selected = terminalFont.source === "curated" || !terminalFont.customName
-    ? { source: "builtin" as const, id: terminalFont.source === "curated" ? terminalFont.id ?? DEFAULT_TERMINAL_FONT.id : DEFAULT_TERMINAL_FONT.id }
-    : { source: "system" as const, familyName: terminalFont.customName };
-  const cjkSelected = terminalFont.cjkFallbackName
-    ? { source: "system" as const, familyName: terminalFont.cjkFallbackName }
-    : { source: "builtin" as const, id: CJK_FALLBACK_BUILT_IN_ID };
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    setIsLoadingFonts(true);
-    setFontLoadFailed(false);
-    void fetchSystemFonts({ signal: controller.signal })
-      .then((response) => {
-        if (controller.signal.aborted) return;
-        setSystemFonts(response.fonts);
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted || isAbortError(error)) return;
-        setSystemFonts([]);
-        setFontLoadFailed(true);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoadingFonts(false);
-      });
-    return () => controller.abort();
-  }, []);
-
-  /* 설치 서체 전량을 훑어 CJK를 그릴 수 있는 것만 남긴다. 등폭 필터를 걸지 않는 이유는 폴백이 라틴을
-     그리지 않기 때문이다 — 격자를 정하는 것은 앞선 주 서체이고, CJK 글리프는 어차피 두 칸을 쓴다.
-     조각내어 양보하는 것은 서체가 수백 종인 기기에서 이 루프가 한 프레임을 통째로 잡아먹기 때문이다. */
-  React.useEffect(() => {
-    let cancelled = false;
-    setIsScanningCjk(true);
-    setCjkCandidates([]);
-    if (!systemFonts.length) {
-      setIsScanningCjk(false);
-      return () => { cancelled = true; };
-    }
-    void (async () => {
-      const found: FontPickerInstalledFont[] = [];
-      for (let index = 0; index < systemFonts.length; index += CJK_SCAN_CHUNK_SIZE) {
-        if (cancelled) return;
-        for (const font of systemFonts.slice(index, index + CJK_SCAN_CHUNK_SIZE)) {
-          const scripts = await fontCjkScripts(font.family);
-          if (!scripts.length) continue;
-          found.push({
-            family: font.family,
-            monospace: font.monospace,
-            available: true,
-            description: scripts.map((script) => t(CJK_SCRIPT_LABEL_KEYS[script])).join(" · "),
-          });
-        }
-        await yieldToPaint();
-      }
-      if (cancelled) return;
-      setCjkCandidates(found);
-      setIsScanningCjk(false);
-    })();
-    return () => { cancelled = true; };
-  }, [systemFonts, t]);
-
-  /* 큐레이트 4종은 측정하지 않는다 — 넷 다 라틴 전용 등폭이라 CJK 글리프가 없는 것이 서체의 사실이다. */
-  React.useEffect(() => {
-    let cancelled = false;
-    setPrimaryCjkScripts(null);
-    const familyName = terminalFont.source === "custom" ? terminalFont.customName : "";
-    if (!familyName) {
-      setPrimaryCjkScripts([]);
-      return () => { cancelled = true; };
-    }
-    void fontCjkScripts(familyName).then((scripts) => {
-      if (!cancelled) setPrimaryCjkScripts(scripts);
-    });
-    return () => { cancelled = true; };
-  }, [terminalFont.source, terminalFont.customName]);
-
-  const handleSelectionChange = (next: FontPickerSelection) => {
-    if (next.source === "system") {
-      setInstalledTerminalFont(next.familyName);
-      return;
-    }
-    const font = CURATED_TERMINAL_FONTS.find((candidate) => candidate.id === next.id);
-    if (font) setTerminalFont(font.id);
-  };
-
-  const handleCjkSelectionChange = (next: FontPickerSelection) => {
-    setTerminalCjkFallbackFont(next.source === "system" ? next.familyName : "");
-  };
-
-  const cjkPickerLabels = {
-    browserAria: t("terminal.settings.cjkFallbackBrowserAria"),
-    searchLabel: t("terminal.settings.cjkFallbackSearchLabel"),
-    searchPlaceholder: t("terminal.settings.cjkFallbackSearchPlaceholder"),
-    loading: t("terminal.settings.cjkFallbackScanning"),
-    choicesAria: t("terminal.settings.cjkFallbackChoicesAria"),
-    builtInGroup: t("terminal.settings.fontPicker.builtInGroup"),
-    installedGroup: t("terminal.settings.cjkFallbackInstalledGroup"),
-    noMatch: t("terminal.settings.cjkFallbackNoMatch"),
-    preview: t("terminal.settings.fontPicker.preview"),
-    available: t("terminal.settings.fontPicker.available"),
-    unavailable: t("terminal.settings.fontPicker.unavailable"),
-    monospace: t("terminal.settings.fontPicker.monospace"),
-    systemFont: t("terminal.settings.fontPicker.systemFont"),
-    savedSystemFont: t("terminal.settings.fontPicker.savedSystemFont"),
-  };
-
-  return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.terminalFont")}>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("terminal.settings.terminalFont")}
-            {/* 닫힌 팁도 DOM에 남으므로 아래 피커의 aria-describedby가 이 id를 계속 가리킨다. */}
-            <SettingsHelp title={t("terminal.settings.terminalFont")} id="terminal-font-help">
-              {t("terminal.settings.terminalFontHelp")}
-            </SettingsHelp>
-          </p>
-        </div>
-      </div>
-      <div aria-describedby="terminal-font-help">
-          <FontPicker
-            builtIns={CURATED_TERMINAL_FONTS.map((font) => ({ id: font.id, label: font.name, family: curatedTerminalFontFamily(font.id, terminalFont.cjkFallbackName), aliases: [font.familyName], description: t(FONT_META_KEYS[font.id]) }))}
-            installedFonts={installedFonts}
-            selected={selected}
-            selectedSystemFont={terminalFont.source === "custom" ? terminalFont.customName : null}
-            fallbackStack={defaultTerminalFontFamily(terminalFont.cjkFallbackName)}
-            previewText={t("terminal.settings.terminalFontPreview")}
-            size={terminalFont.size}
-            sizeRange={TERMINAL_FONT_PICKER_SIZE_RANGE}
-            loading={isLoadingFonts}
-            error={fontLoadFailed ? t("terminal.settings.fontLoadError") : null}
-            labels={{
-              browserAria: t("terminal.settings.fontPicker.browserAria"),
-              searchLabel: t("terminal.settings.fontPicker.searchLabel"),
-              searchPlaceholder: t("terminal.settings.fontPicker.searchPlaceholder"),
-              loading: t("terminal.settings.fontPicker.loading"),
-              choicesAria: t("terminal.settings.fontPicker.choicesAria"),
-              builtInGroup: t("terminal.settings.fontPicker.builtInGroup"),
-              installedGroup: t("terminal.settings.fontPicker.installedGroup"),
-              noMatch: t("terminal.settings.fontPicker.noMatch"),
-              preview: t("terminal.settings.fontPicker.preview"),
-              available: t("terminal.settings.fontPicker.available"),
-              unavailable: t("terminal.settings.fontPicker.unavailable"),
-              fontSizeAria: t("terminal.settings.fontPicker.fontSizeAria"),
-              decreaseSizeAria: t("terminal.settings.fontPicker.decreaseSizeAria"),
-              sizeValueAria: t("terminal.settings.fontPicker.sizeValueAria"),
-              increaseSizeAria: t("terminal.settings.fontPicker.increaseSizeAria"),
-              sizeSliderAria: t("terminal.settings.fontPicker.sizeSliderAria"),
-              monospace: t("terminal.settings.fontPicker.monospace"),
-              systemFont: t("terminal.settings.fontPicker.systemFont"),
-              savedSystemFont: t("terminal.settings.fontPicker.savedSystemFont"),
-            }}
-            onSelectionChange={handleSelectionChange}
-            onSizeCommit={setTerminalFontSize}
-          />
-      </div>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("terminal.settings.cjkFallback")}
-            <SettingsHelp title={t("terminal.settings.cjkFallback")} id="terminal-cjk-fallback-help">
-              {t("terminal.settings.cjkFallbackHelp")}
-            </SettingsHelp>
-          </p>
-          {/* 조건부로 나타나는 컨트롤 대신, 조건부인 것은 이 한 줄이다 — 선택지가 사라지면 정작
-              필요할 때 찾을 수 없고, 판정이 틀리면 설정이 통째로 증발한다. 커버리지 판독은
-              상태이므로 팁이 아니라 인라인에 남는다. */}
-          {primaryCjkScripts === null ? null : (
-            <p className="global-settings-help" role="status">
-              {primaryCjkScripts.length ? t("terminal.settings.cjkPrimaryCovered") : t("terminal.settings.cjkPrimaryUncovered")}
-            </p>
-          )}
-        </div>
-      </div>
-      <div aria-describedby="terminal-cjk-fallback-help">
-          <FontPicker
-            builtIns={[{ id: CJK_FALLBACK_BUILT_IN_ID, label: t("terminal.settings.cjkFallbackAuto"), family: terminalFontFallbackStack(""), description: t("terminal.settings.cjkFallbackAutoMeta") }]}
-            installedFonts={cjkCandidates}
-            selected={cjkSelected}
-            selectedSystemFont={terminalFont.cjkFallbackName || null}
-            fallbackStack={terminalFontFallbackStack(terminalFont.cjkFallbackName)}
-            previewText={t("terminal.settings.cjkFallbackPreview")}
-            loading={isLoadingFonts || isScanningCjk}
-            error={fontLoadFailed ? t("terminal.settings.fontLoadError") : null}
-            labels={cjkPickerLabels}
-            onSelectionChange={handleCjkSelectionChange}
-          />
-      </div>
-    </section>
-  );
-}
-
-const CJK_FALLBACK_BUILT_IN_ID = "bundled";
-const CJK_SCAN_CHUNK_SIZE = 24;
-const CJK_SCRIPT_LABEL_KEYS: Readonly<Record<CjkScript, "terminal.settings.cjkScriptHangul" | "terminal.settings.cjkScriptKana" | "terminal.settings.cjkScriptHan">> = {
-  hangul: "terminal.settings.cjkScriptHangul",
-  kana: "terminal.settings.cjkScriptKana",
-  han: "terminal.settings.cjkScriptHan",
-};
-
-function yieldToPaint(): Promise<void> {
-  return new Promise((resolve) => { setTimeout(resolve, 0); });
-}
-
 // 렌더러와 갱신 주기는 같은 축이다 — 둘 다 이 브라우저가 터미널을 그리는 방식이고, 둘 다 브라우저
 // 로컬에 남는다. 그래서 한 카드의 두 행으로 둔다(카드의 접근성 이름은 두 행을 아우른다).
 function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
@@ -1848,6 +1622,7 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
   } as const;
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.terminalDrawingAria")}>
+      <h3 className="global-settings-card-title">{t("terminal.settings.terminalGroup")}</h3>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
@@ -1973,9 +1748,6 @@ function TerminalBehaviorCard() {
   );
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
 
 function AgentGlyph() {
   // Agent CLI — 에이전트 플러그인이 자기 드롭다운 아이콘을 소유한다(호스트는 모른다).

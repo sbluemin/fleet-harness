@@ -1,3 +1,4 @@
+import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
 import { createOperationArchiveStorage, archiveEvent, archiveSessionNodes, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
@@ -1251,6 +1252,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const desktopThemeRouter = createDesktopThemeRouter({
     getTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
+    getFonts: () => resolveConsoleFonts(consoleSettingsStore.load()),
     isAuthorized: isExactConsoleOrigin,
     writeJson,
     subscribe: (res, snapshot) => {
@@ -2413,7 +2415,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {
     if (desktopThemeSseSubscribers.size === 0) return;
     settleRemoteExpiry();
-    const data = encodeSseData(DESKTOP_THEME_EVENT, desktopThemeSnapshot(theme));
+    const data = encodeSseData(DESKTOP_THEME_EVENT, desktopThemeSnapshot(theme, resolveConsoleFonts(consoleSettingsStore.load())));
     for (const res of desktopThemeSseSubscribers) {
       if (!res.destroyed) res.write(data);
     }

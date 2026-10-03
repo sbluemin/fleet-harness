@@ -40,8 +40,8 @@
      프로퍼티로 얹고, 아래 선언은 그 값이 아직 없을 때(테스트·초기 프레임)의 기본값이다.
      크롬(동사·집계 문장·머리줄·힌트·버튼)과 마크다운 본문은 인터페이스 서체를 따른다: 등폭
      체인의 한글 폴백은 코딩체라 한글 UI 라벨이 본문과 다른 물건으로 읽혔다. */
-  --agent-chat-font: var(--font-mono);
-  font-family: var(--font-body);
+  --agent-chat-font: var(--font-code);
+  font-family: var(--font-ui);
 }
 
 /* 채팅 폭 프리셋 — 사용자 선호가 measure 변수 하나만 갈아끼운다. 로그 컬럼·컴포저·하단 스트립·
@@ -121,7 +121,7 @@
   align-items: center;
   gap: var(--space-3);
   font-family: var(--agent-chat-font);
-  font-size: var(--t-xs);
+  font-size: var(--font-code-size);
   color: var(--text-tertiary);
 }
 
@@ -150,7 +150,7 @@
   margin: 0 auto;
   padding: 2px 0;
   font-family: var(--agent-chat-font);
-  font-size: var(--t-xs);
+  font-size: var(--font-code-size);
   color: var(--text-tertiary);
 }
 
@@ -239,7 +239,7 @@
 .agent-chat-dispatch-meta {
   display: flex;
   gap: var(--space-2);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   letter-spacing: 0;
   color: var(--text-tertiary);
@@ -279,8 +279,8 @@
 .agent-chat-dispatch-md li { margin: 0; }
 .agent-chat-dispatch-md h1, .agent-chat-dispatch-md h2, .agent-chat-dispatch-md h3, .agent-chat-dispatch-md h4 {
   margin: 0 0 var(--space-1);
-  font-family: var(--font-body);
-  font-size: var(--t-md);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.928571);
   font-weight: var(--weight-medium);
   line-height: 1.35;
   color: var(--text-primary);
@@ -294,7 +294,7 @@
   white-space: pre-wrap;
 }
 .agent-chat-dispatch-md blockquote p { margin: 0; }
-.agent-chat-dispatch-md code { font-family: var(--font-mono); font-size: var(--t-sm); }
+.agent-chat-dispatch-md code { font-family: var(--font-code); font-size: var(--font-code-size); }
 .agent-chat-dispatch-md hr { border: 0; border-top: 1px solid color-mix(in oklch, var(--id-cerulean) 22%, var(--hairline)); margin: var(--space-2) 0; }
 .agent-chat-dispatch-md table { border-collapse: collapse; font-size: var(--t-sm); margin: 0 0 var(--space-2); }
 .agent-chat-dispatch-md td, .agent-chat-dispatch-md th { padding: 1px var(--space-2) 1px 0; text-align: left; vertical-align: top; }
@@ -342,7 +342,7 @@
   padding: 6px 8px;
   border: 1px dashed var(--hairline-strong);
   border-radius: var(--radius-xs);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -423,7 +423,7 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--space-2);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   letter-spacing: 0;
   color: var(--text-tertiary);
@@ -458,7 +458,7 @@
   column-gap: var(--space-3);
   padding: 2px 0;
   font-family: var(--agent-chat-font);
-  font-size: var(--t-xs);
+  font-size: var(--font-code-size);
   line-height: 1.5;
   color: var(--text-secondary);
   /* 줄과 줄 사이에만 선이 서고 목록의 위아래는 열려 있다 — 상자가 아니라 나열이다. */
@@ -506,7 +506,7 @@
   border: 0;
   background: none;
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
   transition: color var(--duration-fast);
@@ -583,7 +583,7 @@
   align-items: baseline;
   gap: var(--space-2);
   padding: 2px var(--space-1);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -769,7 +769,7 @@
 }
 
 /* 도구 이름·인자는 토큰이라 터미널 글꼴로 남는다. 나머지 크롬(동사·집계 문장·힌트·머리줄)은
-   UI 라벨이므로 인터페이스 서체(--font-body)를 따른다 — 등폭 체인의 한글 폴백(Nanum Gothic
+   UI 라벨이므로 UI 서체(--font-ui)를 따른다 — 등폭 체인의 한글 폴백(Nanum Gothic
    Coding)이 한글 라벨까지 코딩체로 그리던 것을 여기서 끊는다. 시스템 줄·셸 명령·경로·출력은
    여전히 --agent-chat-font다. */
 .agent-chat-tally-name,
@@ -886,7 +886,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   padding: 5px var(--space-3);
@@ -1043,7 +1043,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1068,7 +1068,7 @@
 
 .agent-chat-ask-counter {
   margin-left: auto;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
@@ -1201,7 +1201,7 @@
 }
 
 .agent-chat-ask-mini {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.05em;
   padding: 5px var(--space-3);
@@ -1222,7 +1222,7 @@
 
 .agent-chat-ask-hint {
   margin-left: auto;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -1253,7 +1253,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--text-tertiary);
   padding: 5px var(--space-3);
@@ -1325,8 +1325,8 @@
 
 .agent-chat-completion-answer {
   flex: none;
-  font-family: var(--font-body);
-  font-size: var(--t-sm);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.857143);
   letter-spacing: 0;
   text-transform: none;
   color: var(--text-tertiary);
@@ -1356,7 +1356,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
@@ -1431,7 +1431,7 @@
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1484,11 +1484,10 @@
    마크다운 문법(brass 인라인 코드·리스트 마커·코드 블록 툴바)은 그대로 상속한다.
    measure는 자체 상한 대신 턴 컬럼 전폭을 따른다. */
 .agent-chat .markdown-body {
-  --font-size-body: var(--font-body-size);
-  /* .markdown-body 루트는 스스로 font-family를 걸지 않고 상속한다(헤딩·코드만 자기 서체를
-     못박는다). 루트 .agent-chat도 이제 인터페이스 서체라 상속만으로 같지만, 본문이 크롬의
-     서체 결정에 끌려가지 않도록 여기서 명시한다. 코드·인라인 코드는 마크다운 문법이 계속 등폭으로 진다. */
-  font-family: var(--font-body);
+  --font-size-body: var(--font-content-size);
+  /* 산문은 공유 마크다운과 같은 콘텐츠 축을 따른다. 작성자·시간·도구 행은 UI 축에 남고,
+     코드·인라인 코드는 아래 규칙과 공유 마크다운의 코드 축을 유지한다. */
+  font-family: var(--font-content);
   max-inline-size: 100%;
   margin-inline: 0;
   line-height: 1.7;
@@ -1508,7 +1507,7 @@
 .agent-chat .markdown-body code,
 .agent-chat .code-block code {
   font-family: var(--agent-chat-font);
-  font-size: var(--t-md);
+  font-size: var(--font-code-size);
   font-variant-ligatures: none;
 }
 
@@ -1542,8 +1541,8 @@
 
 .agent-chat .code-block-language {
   text-align: left;
-  font-family: var(--font-body);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -1551,8 +1550,8 @@
 .agent-chat .copy-code {
   border-color: transparent;
   background: transparent;
-  font-family: var(--font-body);
-  font-size: var(--t-sm);
+  font-family: var(--font-code);
+  font-size: var(--font-code-size);
   font-weight: var(--weight-regular);
   letter-spacing: 0;
 }
@@ -1562,7 +1561,7 @@
 /* 이전 대화 띠 — 공용 .fc-history-band(등폭·자간·대문자)를 채팅의 보조 문법으로 덮는다.
    공용 기본 블록은 건드리지 않는다. */
 .agent-chat .fc-history-band {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   letter-spacing: 0;
   text-transform: none;
@@ -1764,7 +1763,7 @@
 
 .agent-chat-composer-queue-title {
   margin: 0 0 var(--space-2);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1795,7 +1794,7 @@
   flex: none;
   width: 14px;
   text-align: center;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
@@ -1835,7 +1834,7 @@
   padding: 3px var(--space-2);
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   cursor: pointer;
   transition: color var(--duration-fast), background var(--duration-fast);
@@ -2223,7 +2222,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -2496,7 +2495,7 @@
 }
 
 .agent-chat-hero-title {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-weight: var(--weight-medium);
   font-size: var(--t-xl);
   line-height: 1.25;
@@ -2591,7 +2590,7 @@
   background: var(--surface-panel-raised);
   border: 1px solid color-mix(in oklch, var(--warn) 45%, var(--hairline-strong));
   box-shadow: var(--shadow-soft);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   text-align: center;
 }
 
@@ -2614,7 +2613,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.06em;
   padding: 5px var(--space-3);
@@ -2673,7 +2672,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   letter-spacing: 0;
   color: var(--text-tertiary);
@@ -2809,7 +2808,7 @@
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   color: var(--brass-ink);
   white-space: nowrap;
@@ -2860,7 +2859,7 @@
   gap: var(--space-2);
   margin: 0;
   padding: 6px var(--space-2) 4px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -2876,7 +2875,7 @@
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.04em;
   text-align: left;
@@ -2949,7 +2948,7 @@
 
 .agent-chat-coord-pop-effort-word {
   flex: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2975,7 +2974,7 @@
 .agent-chat-coord-pop-empty {
   margin: 0;
   padding: 6px var(--space-2);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -2988,7 +2987,7 @@
 
 .agent-chat-coord-pop-why {
   margin: 0 var(--space-2) var(--space-1) calc(var(--space-2) + 4px);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   color: var(--warn-ink);
 }
@@ -3008,8 +3007,8 @@
   margin: var(--space-1) var(--space-2) 2px;
   padding-top: var(--space-2);
   border-top: 1px solid var(--surface-rim);
-  font-family: var(--font-body);
-  font-size: var(--t-2xs);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.714286);
   color: var(--text-secondary);
 }
 
@@ -3118,7 +3117,7 @@
   transform: translateX(-50%);
   bottom: var(--space-6);
   z-index: 2;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   letter-spacing: 0.06em;
   padding: 5px var(--space-3);
@@ -3262,7 +3261,7 @@
   /* 눌린다는 사실은 파선 밑줄 하나가 진다 — 집계 줄의 꺾쇠와 같은 급의 조용한 어포던스다. */
   border-bottom: 1px dashed var(--hairline-strong);
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   transition: border-color var(--duration-fast), color var(--duration-fast);
 }
@@ -3316,7 +3315,7 @@
   border: 0;
   border-bottom: 1px solid var(--hairline);
   color: var(--text-tertiary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   transition: background var(--duration-fast);
 }
 
@@ -3409,7 +3408,7 @@
   border: 0;
   border-bottom: 1px solid var(--hairline);
   color: var(--text-secondary);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-sm);
   transition: color var(--duration-fast);
 }
@@ -3483,7 +3482,7 @@
   background: var(--surface-panel-raised);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
 }
 
@@ -3569,7 +3568,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   color: var(--text-secondary);
 }
 
@@ -3675,7 +3674,7 @@
   gap: var(--space-2);
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--hairline);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3692,7 +3691,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   padding: 1px 7px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   text-transform: none;
@@ -3747,7 +3746,7 @@
 }
 
 .agent-chat-work-sec {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3758,7 +3757,7 @@
 .agent-chat-work-sec:first-child { margin-top: 0; }
 
 .agent-chat-work-empty {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   line-height: 1.6;
   color: var(--text-tertiary);
@@ -3772,7 +3771,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
 }
 
 .agent-chat-detail-gap { flex: 1 1 auto; min-width: 0; }
@@ -3784,7 +3783,7 @@
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   padding: 2px 9px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
@@ -3812,7 +3811,7 @@
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   padding: 2px 9px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
@@ -3835,8 +3834,8 @@
 }
 
 .agent-chat-detail-stop-error {
-  font-family: var(--font-body);
-  font-size: var(--t-2xs);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.714286);
   color: var(--coral);
 }
 
@@ -3851,7 +3850,7 @@
 }
 
 .agent-chat-detail-meta {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.04em;
   color: var(--text-tertiary);
@@ -3875,8 +3874,8 @@
 
 .agent-chat-detail-note {
   margin: 0;
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.785714);
   color: var(--text-tertiary);
 }
 
@@ -3885,7 +3884,7 @@
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-2);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -3905,7 +3904,7 @@
 
 .agent-chat-detail-loading,
 .agent-chat-detail-cut {
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
@@ -3926,8 +3925,8 @@
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
   background: var(--glass-tint-panel);
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.785714);
   line-height: 1.55;
   color: var(--text-secondary);
   white-space: pre;
@@ -3948,7 +3947,7 @@
   gap: var(--space-2);
   padding: 5px var(--space-3);
   background: var(--surface-panel-raised);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
   color: var(--text-primary);
 }
@@ -3966,7 +3965,7 @@
    192px에서 scrollWidth 224px). 행 폭은 모두 같으므로 스크롤이 서도 열은 어긋나지 않는다. */
 .agent-chat-stage-rows {
   overflow-x: auto;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
@@ -4119,7 +4118,7 @@
   border-radius: var(--radius-md);
   background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
 }
 
@@ -4413,7 +4412,7 @@
 .agent-chat-turn-inject-caption {
   display: block;
   margin-bottom: 2px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -4446,9 +4445,9 @@
 .agent-chat-tool-fold[open] .agent-chat-tool-chevron { transform: rotate(180deg); }
 .agent-chat-change.is-link { appearance: none; width: 100%; text-align: left; background: transparent; border-right: 0; border-bottom: 0; border-left: 0; cursor: pointer; }
 .agent-chat-change.is-link:hover { background: var(--control-rest); }
-.agent-chat-change-count { font-family: var(--font-body); color: var(--text-tertiary); font-size: var(--t-2xs); }
+.agent-chat-change-count { font-family: var(--font-ui); color: var(--text-tertiary); font-size: var(--t-2xs); }
 
-.agent-chat-tool-detail { margin: var(--space-1) 0 var(--space-2) var(--space-3); min-width: 0; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); font-family: var(--font-body); font-size: var(--t-xs); }
+.agent-chat-tool-detail { margin: var(--space-1) 0 var(--space-2) var(--space-3); min-width: 0; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); font-family: var(--font-ui); font-size: var(--t-xs); }
 .agent-chat-tool-section + .agent-chat-tool-section { border-top: 1px solid var(--hairline); }
 .agent-chat-tool-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; padding: 5px var(--space-3); color: var(--text-tertiary); }
 .agent-chat-tool-heading strong { min-width: 0; overflow-wrap: anywhere; color: var(--text-secondary); font-weight: var(--weight-medium); }
@@ -4458,7 +4457,7 @@
 .agent-chat-tool-copy { flex: none; font: inherit; color: var(--text-tertiary); border: 0; border-radius: var(--radius-xs); background: transparent; cursor: pointer; }
 .agent-chat-tool-copy:hover { color: var(--text-secondary); background: var(--control-rest-hover); }
 .agent-chat-tool-code { min-width: 0; max-width: 100%; max-height: 260px; overflow: auto; background: var(--surface-panel); color: var(--text-primary); }
-.agent-chat-tool-code table { width: 100%; border-collapse: collapse; font-family: var(--agent-chat-font); font-size: var(--t-xs); line-height: 1.6; }
+.agent-chat-tool-code table { width: 100%; border-collapse: collapse; font-family: var(--agent-chat-font); font-size: var(--font-code-size); line-height: 1.6; }
 .agent-chat-tool-code td { padding: 0; vertical-align: top; }
 .agent-chat-tool-number { width: 1%; padding: 0 var(--space-2) !important; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-tertiary); user-select: none; }
 .agent-chat-tool-sign { width: 1%; padding: 0 var(--space-1) !important; color: var(--text-tertiary); text-align: center; user-select: none; }
@@ -4487,3 +4486,9 @@
 .agent-chat-tool-agents td:first-child { font-family: var(--agent-chat-font); color: var(--text-primary); }
 .agent-chat-tool-raw > summary { padding: 5px var(--space-3); color: var(--text-tertiary); cursor: pointer; }
 .agent-chat-tool-raw > summary:focus-visible { outline: 2px solid var(--aurora); outline-offset: -2px; }
+
+/* 산문·입력은 콘텐츠, CLI 행은 코드다. UI 크기와 독립적으로 조절한다. */
+.agent-chat-dispatch-md, .agent-chat-composer-input, .agent-chat-composer-highlight {
+  font-family: var(--font-content);
+  font-size: var(--font-content-size);
+}

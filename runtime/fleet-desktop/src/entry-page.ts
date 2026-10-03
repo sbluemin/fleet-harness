@@ -1,3 +1,4 @@
+import { readDesktopEntryFonts, type DesktopEntryFonts } from "@fleet-console/protocol/desktop";
 import type { WebContents } from "electron";
 
 /**
@@ -22,6 +23,7 @@ export interface EntryPalette {
   /** 창과 Console 뷰의 네이티브 바탕. Electron이 읽을 수 있는 #rrggbb. */
   readonly canvas: string;
   readonly tokens: Readonly<Record<EntryPaletteToken, string>>;
+  readonly fonts?: DesktopEntryFonts;
 }
 
 export const ENTRY_PALETTE_TOKENS = [
@@ -48,7 +50,8 @@ export function readEntryPalette(value: unknown): EntryPalette | null {
     if (typeof color !== "string" || !PALETTE_COLOR.test(color)) return null;
     tokens[token] = color;
   }
-  return { scheme: value.scheme, canvas: value.canvas, tokens: tokens as Record<EntryPaletteToken, string> };
+  const fonts = readDesktopEntryFonts(value.fonts);
+  return { scheme: value.scheme, canvas: value.canvas, tokens: tokens as Record<EntryPaletteToken, string>, ...(fonts ? { fonts } : {}) };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -103,6 +106,10 @@ const ENTRY_RENDERER = String.raw`(() => {
     // CSP가 style 속성은 막아도 CSSOM은 허용한다. 키와 값은 main이 readEntryPalette로 거른 것뿐이다.
     root.setAttribute("data-scheme", snapshot.palette.scheme);
     for (const [token, color] of Object.entries(snapshot.palette.tokens)) root.style.setProperty("--" + token, color);
+    if (snapshot.palette.fonts) for (const [axis, font] of Object.entries(snapshot.palette.fonts)) {
+      root.style.setProperty("--font-" + axis, font.family);
+      root.style.setProperty("--font-" + axis + "-size", font.size + "px");
+    }
   }
   tagline.textContent = snapshot.tagline;
   title.textContent = snapshot.title;
