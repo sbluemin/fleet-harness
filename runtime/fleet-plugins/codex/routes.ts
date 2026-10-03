@@ -13,6 +13,7 @@ import { CODEX_CHANGED_EVENT, CODEX_WATCH_EVENT } from "./server/codex/contracts
 import { createCodexGateway } from "./server/codex/gateway.js";
 import { createCodexKnowledgeWatcher } from "./server/codex/knowledge-watcher.js";
 import { createCodexWorkspaceRouter } from "./server/codex/workspace-routes.js";
+import { createCodexFileRouter } from "./server/codex/file-routes.js";
 
 const CODEX_PLUGIN_ID = "codex";
 const MIGRATION_LOCK = "knowledge.migration.lock";
@@ -129,6 +130,24 @@ export default definePlugin({
       gate: "origin-write",
       transport: "http",
     });
+
+    const fileRouter = createCodexFileRouter({
+      getTheater: (id) => {
+        const realpath = ctx.host.paths.resolveTheaterPath(id);
+        return realpath ? { realpath } : null;
+      },
+      // 읽기 전용 POST도 파일 내용을 싣는다 — Host와 정확한 리스너 Origin을 요구한다.
+      isAuthorized: (req) => ctx.host.security.validateHost(req)
+        && typeof req.headers.origin === "string" && req.headers.origin === ctx.host.security.expectedOrigin(req),
+      readJsonBody: (req) => ctx.host.http.readJsonBody(req),
+      writeJson: (res, status, body) => ctx.host.http.writeJson(res, status, body),
+    });
+    for (const endpoint of ["file-peek", "file-refs"] as const) {
+      registerRouter(ctx, `/api/v1/plugins/codex/${endpoint}`, fileRouter, {
+        method: "POST", path: "", summary: "Read contained Theater file references.",
+        category: "Codex Plugin", gate: "origin-strict", transport: "http",
+      });
+    }
 
     // 매니페스트가 선언한 콘솔 경로 한 칸. 사용자가 주고받는 링크가 이 주소를 쓴다.
     registerRouter(ctx, "/console/codex", async ({ req, res }) => gateway.handle(req, res));

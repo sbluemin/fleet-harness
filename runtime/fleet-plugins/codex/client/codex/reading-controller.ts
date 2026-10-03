@@ -4,6 +4,8 @@ import type { TocItem } from "@fleet-console/markdown/core";
 import { diffDraftBlocks } from "@fleet-console/markdown/diff";
 import type { DraftBlock } from "@fleet-console/markdown/diff";
 import type { Translate } from "@fleet-console/sdk/i18n";
+import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
+import { mountCodexFileLinks, resolveCodexFileLink } from "./file-links.js";
 
 import { diagramHydratorLabels, formatRelativeTime, getT, markdownCopyOptions, type CoreMessageKey } from "../i18n/index.js";
 import { resolveActiveLocale } from "../i18n/index.js";
@@ -65,7 +67,7 @@ export interface ReadingController {
   refreshScrollSpy(): void;
   /** 헤드바·링크 복사·원문 보기가 쓰는 현재 문서 사실. */
   getDocument(): ReaderDocument | null;
-  refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onConflictOpen" | "onDecided" | "onRelatedClick" | "onClose" | "onTagClick" | "theaterId">>): void;
+  refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onConflictOpen" | "onDecided" | "onRelatedClick" | "onClose" | "onTagClick" | "theaterId" | "fileTheaterId" | "navigate">>): void;
   /** 로케일 변경 시 현재 문서·스크롤을 유지한 채 문구만 다시 그린다. */
   refreshLocale(): Promise<void>;
 }
@@ -83,6 +85,8 @@ export interface MountReadingOptions {
   readonly kind: "entry" | "drydock" | "conflicts" | "schema";
   readonly subId?: string;
   readonly theaterId: string | null;
+  readonly fileTheaterId?: string | null;
+  readonly navigate?: ClientNavigateCapability;
   readonly onRelatedClick: (id: string) => void;
   readonly onClose: () => void;
   /** 패치 행 클릭(상세 진입) 또는 뒤로가기(undefined) 콜백 */
@@ -127,6 +131,12 @@ export function mountReadingInto(
   let coworkController: CoworkController | null = null;
   // relocate(split↔overlay) 시 현재 마운트 소유자의 콜백이 반영되도록 가변 참조로 유지
   let liveOpts = opts;
+  const fileLinks = mountCodexFileLinks({
+    container: readContainer,
+    secondaryContainer: opts.dockContainer,
+    getTheaterId: () => liveOpts.fileTheaterId ?? liveOpts.theaterId,
+    getNavigate: () => liveOpts.navigate,
+  });
   let currentEntryId = opts.kind === "entry" ? opts.initialEntryId : "";
   let currentSubId = opts.subId;
 
@@ -412,6 +422,7 @@ export function mountReadingInto(
   }
 
   function cleanupReader(): void {
+    fileLinks.close();
     coworkController?.destroy();
     coworkController = null;
     cleanupSpy?.();
@@ -605,6 +616,7 @@ export function mountReadingInto(
       const { html: markdownHtml, toc } = renderMarkdown(entry.body, {
         omitDuplicateTitle: entry.frontmatter.title,
         resolveWikiLink: (id) => entryPath(id),
+        resolveLink: resolveCodexFileLink,
         ...markdownCopyOptions(t),
       });
 
@@ -638,6 +650,7 @@ export function mountReadingInto(
       }
       // 별도 화면 전환 없이 리딩 뷰 자체를 Cowork로 증강한다(드래그 → Comment → 도크).
       const body = readContainer.querySelector<HTMLElement>("#codex-reader-body");
+      if (body) void fileLinks.enhanceInlinePaths(body);
       if (article && body) {
         coworkController = mountCoworkInline({
           theaterId: liveOpts.theaterId,
@@ -647,6 +660,7 @@ export function mountReadingInto(
           body,
           dockHost: opts.dockContainer,
           onApplied: () => { void renderEntryView(entryId); },
+          onBodyRendered: () => { void fileLinks.enhanceInlinePaths(body); },
         });
       }
       // 지금 그린 본문이 어느 판본인지 적어 둔다 — 이후 카탈로그의 같은 값과 비교해
@@ -718,6 +732,7 @@ export function mountReadingInto(
         const { html: markdownHtml, toc } = renderMarkdown(detail.wikiEntry.body, {
           omitDuplicateTitle: detail.wikiEntry.title,
           resolveWikiLink: (id) => entryPath(id),
+          resolveLink: resolveCodexFileLink,
           ...markdownCopyOptions(t),
         });
         detailProposedToc = renderTocSheet(toc);
@@ -836,6 +851,7 @@ export function mountReadingInto(
       readContainer.removeEventListener("click", handleClick);
       document.removeEventListener(CODEX_LIVE_CHANGED_EVENT, handleLiveChanged);
       linkPreview.destroy();
+      fileLinks.destroy();
       cleanupReader();
       coworkController?.destroy();
     },
@@ -1148,6 +1164,7 @@ function renderDiffBlocks(blocks: readonly DraftBlock[], mode: "changes" | "full
   const renderBlock = (block: DraftBlock): string => {
     const html = renderMarkdown(block.markdown, {
       resolveWikiLink: (id) => entryPath(id),
+      resolveLink: resolveCodexFileLink,
       ...markdownCopyOptions(t),
     }).html;
     if (block.kind === "same") return html;

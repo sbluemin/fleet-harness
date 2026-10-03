@@ -24,6 +24,15 @@ export interface WorkspaceMetadata {
   urlPath: string;
 }
 
+export interface FilePeekResponse {
+  readonly path: string;
+  readonly language: string;
+  readonly startLine: number;
+  readonly lines: readonly string[];
+  readonly truncated: boolean;
+}
+export type FileRefStatus = "file" | "dir" | "missing";
+
 export interface SearchEntry {
   id: string;
   title: string;

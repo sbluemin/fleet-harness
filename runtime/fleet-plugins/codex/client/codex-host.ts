@@ -326,6 +326,8 @@ export function mountReaderInto(
     onClose: opts.onClose,
     onTagClick: opts.onTagClick,
     theaterId: opts.theaterId,
+    fileTheaterId: opts.fileTheaterId,
+    navigate: opts.navigate,
   });
   syncInlineOutline(tNode);
   attachSessionScrollSaver(readSlot);
