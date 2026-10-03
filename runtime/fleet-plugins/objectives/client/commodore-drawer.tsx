@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import "@fleet-console/markdown/styles.css";
 
+import { ComposerInput, ComposerSubmitButton } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
@@ -622,20 +623,24 @@ function CommodoreLog({ t, theaterId, entries, hasMore, loaded }: { readonly t: 
   );
 }
 
+/** 사령관에게 말하기 — 채팅 화면의 입력과 같은 문법: 한 상자 안에 자라는 입력과 원형 전송, 초점이면 상자가 brass 로 선다. */
 function CommodoreComposer({ t, theaterId, onFail }: { readonly t: T; readonly theaterId: string; readonly onFail: (error: unknown) => void }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const composing = useRef(false);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const armed = !!text.trim() && !sending;
   const send = () => {
     const value = text.trim();
     if (!value || sending) return;
     setSending(true);
-    void messageCommodore(theaterId, value).then(() => setText("")).catch(onFail).finally(() => setSending(false));
+    void messageCommodore(theaterId, value).then(() => setText("")).catch(onFail).finally(() => { setSending(false); inputRef.current?.focus({ preventScroll: true }); });
   };
   return (
-    <>
-      <textarea
-        className="objectives-commodore-input"
+    <div className="objectives-commodore-composer" onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+      <ComposerInput
+        ref={inputRef}
+        className="objectives-commodore-composer-input"
         value={text}
         rows={1}
         placeholder={t("objectives.commodore.composer.placeholder")}
@@ -645,8 +650,14 @@ function CommodoreComposer({ t, theaterId, onFail }: { readonly t: T; readonly t
         onCompositionEnd={() => { composing.current = false; }}
         onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }}
       />
-      <button type="button" className="objectives-btn" disabled={sending || !text.trim()} onClick={send}>{t("objectives.commodore.composer.send")}</button>
-    </>
+      <ComposerSubmitButton
+        className={`objectives-commodore-composer-send${armed ? " is-armed" : ""}`}
+        aria-label={t("objectives.commodore.composer.send")}
+        title={t("objectives.commodore.composer.send")}
+        disabled={!armed}
+        onClick={send}
+      />
+    </div>
   );
 }
 

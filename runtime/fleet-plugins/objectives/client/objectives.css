@@ -1747,8 +1747,37 @@ html[data-view-mode="mobile"] .objectives-commodore-scrim { display: none; }
 .objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 2px; }
 
 .objectives-commodore-failure { margin: 0 28px 8px; color: var(--coral); font-size: var(--t-xs); }
-.objectives-commodore-foot { display: flex; align-items: flex-end; gap: 8px; max-width: calc(880px + 56px); padding: 12px 28px 16px; border-top: 1px solid var(--surface-rim); }
-.objectives-commodore-foot .objectives-commodore-input { flex: 1; }
+/* 입력 — 채팅 화면의 컴포저와 같은 상자(헤어라인·필드 면·md 모서리, 초점이면 brass)와 30px 원형 전송. 폭은 기록 칸과 같은 선. */
+.objectives-commodore-foot { flex: none; padding: 8px 28px 16px; }
+.objectives-commodore-sheet.is-compact .objectives-commodore-foot { padding-inline: 20px; }
+.objectives-commodore-composer {
+  display: flex; align-items: flex-end; gap: 6px; max-width: 880px;
+  padding: 6px 6px 6px var(--space-3);
+  border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--control-field);
+  cursor: text;
+  transition: border-color var(--duration-base) var(--ease-spring), box-shadow var(--duration-base) var(--ease-spring);
+}
+.objectives-commodore-composer:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); }
+.objectives-commodore-composer-input {
+  display: block; flex: 1 1 100%; width: 100%; min-width: 0;
+  min-height: 30px; max-height: calc(1.5em * 6 + 10px); padding: 5px 0;
+  border: 0; background: transparent; resize: none;
+  color: var(--text-primary); font-family: inherit; font-size: var(--font-body-size); line-height: 1.5;
+  scrollbar-width: none;
+}
+.objectives-commodore-composer-input::-webkit-scrollbar { display: none; }
+.objectives-commodore-composer-input:placeholder-shown { overflow-y: hidden; }
+.objectives-commodore-composer-input::placeholder { color: var(--text-tertiary); }
+.objectives-commodore-composer-input:focus { outline: none; }
+.objectives-commodore-composer-send {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--surface-panel-raised); color: var(--text-tertiary); cursor: pointer;
+}
+.objectives-commodore-composer-send svg { width: 16px; height: 16px; }
+.objectives-commodore-composer-send.is-armed { background: var(--brass); color: var(--text-on-brass); }
+.objectives-commodore-composer-send:disabled { cursor: default; }
+.objectives-commodore-composer-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
 /* 자율 운영 중 결정 요청 머리의 「사령관이 답하는 중」 — 사이드바 줄 메모와 같은 brass 잉크. */
 .objectives-decision-handler { margin-left: auto; color: var(--brass-ink); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; }
