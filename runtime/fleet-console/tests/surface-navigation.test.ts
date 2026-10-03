@@ -8,6 +8,7 @@ import { getPaneStoreSnapshot, __resetPaneStoreForTests } from "../core/client/s
 import { getRailStoreSnapshot } from "../core/client/src/chrome/rail/rail-store.js";
 import { getState, setState } from "../core/client/src/integration/store.js";
 import { bindConsoleNavigate } from "../core/client/src/integration/console-location.js";
+import { searchRailPanels } from "../core/client/src/integration/operation-search.js";
 
 // 기존 팔레트·컴포저 검사는 외부 처리기의 Theater 착지와 재요청을 실행하지 않는다.
 // 이 대표 경로는 SDK 요청과 팔레트가 같은 저장소 경계에서 주소를 보존하는지 확인한다.
@@ -31,6 +32,20 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     expect(landPaneTarget({ paneId: pane.id, theaterId: "a", params: { path: "README.md" } }, createHostPaneTargetPorts(bindings), "files")).toEqual({ ok: true });
     expect(getState().activeTheaterId).toBe("a");
     expect(getPaneStoreSnapshot().rail[0]!.params).toMatchObject({ theaterId: "a", path: "README.md" });
+    const queries: string[] = [];
+    const results = await searchRailPanels([{ id: "files", title: "Files", fileReferences: true, search: async ({ query }) => {
+      queries.push(query);
+      return [
+        { id: "fuzzy", title: "Other", activate: () => ({ paneId: pane.id }) },
+        { id: "exact", title: "main.ts", exact: true, activate: () => ({ paneId: pane.id, theaterId: "b", params: { path: query } }) },
+      ];
+    } }], "src/main.ts:12:3", "b", new AbortController().signal);
+    expect(queries).toEqual(["src/main.ts"]);
+    expect(results[0]!.results[0]!.exact).toBe(true);
+    const target = await results[0]!.results[0]!.activate();
+    expect(target).toBeTruthy();
+    landPaneTarget(target!, createHostPaneTargetPorts(bindings), "files");
+    expect(getPaneStoreSnapshot().rail[0]!.params).toMatchObject({ theaterId: "b", path: "src/main.ts", line: "12", column: "3" });
 
     const settings = { ...pane, id: "settings", role: "primary" as const };
     const settingsHost = createHostCapabilities(undefined, { railBindings: [{ entry: { id: "settings", title: "Settings", icon: null, panes: ["settings"] }, panes: [settings] }] });

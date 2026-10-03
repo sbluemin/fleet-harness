@@ -1,3 +1,4 @@
+import { parseFileRef } from "@fleet-console/markdown/file-ref";
 import type { ReactNode } from "react";
 import type { OperationActivityVisual } from "../../../../features/execution/client/operation-activity.js";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -85,6 +86,7 @@ const UNASSIGNED_GROUP_KEY = "__unassigned__";
  * 이 최소 형태를 받는다 — 그래야 두 계약이 같은 목록에 함께 설 수 있다.
  */
 export interface PaletteSearchPanel {
+  readonly fileReferences?: boolean;
   readonly id: string;
   readonly title: LocalizedText;
   /** 레일 엔트리가 등록한 아이콘. 이 패널의 검색 결과 행은 새 글리프를 그리지 않고 이것을 앞세운다. */
@@ -103,12 +105,25 @@ export async function searchRailPanels(
   const language = resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto");
   const groups = await Promise.all(panels.map(async (panel): Promise<RailSearchGroup | null> => {
     if (!panel.search) return null;
-    const results = await searchRailPanel(panel, query, theaterId, signal, language);
+    const reference = panel.fileReferences ? parseFileRef(query) : null;
+    const found = await searchRailPanel(panel, reference?.path ?? query, theaterId, signal, language);
+    const results = found?.map((result): PaneSearchResult => !reference?.line ? result : {
+      ...result,
+      activate: async () => {
+        const target = await result.activate();
+        if (!target) return;
+        return { ...target, params: {
+          ...target.params,
+          line: String(reference.line),
+          ...(reference.column === undefined ? {} : { column: String(reference.column) }),
+        } };
+      },
+    });
     if (!results || results.length === 0) return null;
     return {
       panelId: panel.id,
       panelTitle: resolveLocalizedText(panel.title, language),
-      results: results.slice(0, RAIL_SEARCH_PROVIDER_LIMIT),
+      results: [...results].sort((a, b) => Number(b.exact === true) - Number(a.exact === true)).slice(0, RAIL_SEARCH_PROVIDER_LIMIT),
     };
   }));
   return groups.filter((group): group is RailSearchGroup => group !== null);

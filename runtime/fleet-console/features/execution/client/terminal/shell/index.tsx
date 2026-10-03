@@ -17,8 +17,8 @@ import "./shell.css";
 const SHELL_SURFACE_ID = "shell";
 const SHELL_TICKET_PATH = "/api/v1/shell/ticket";
 const SHELL_WS_PATH = "/api/v1/terminal/ws";
-/** 80열이 서지 않는 폭에서는 셸이 셸 노릇을 못 한다. */
-const SHELL_MIN_PANE_WIDTH = 360;
+/** 셀 실측 전의 80열 예산. 마운트 뒤에는 TerminalSurface의 실제 셀 폭으로 갱신한다. */
+const SHELL_MIN_PANE_WIDTH = 660;
 
 interface ShellMountState {
   readonly activated: boolean;
@@ -173,6 +173,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
       ticketPath={SHELL_TICKET_PATH}
       wsPath={SHELL_WS_PATH}
       surface="shell"
+      onCellWidth={(width) => context.reportMinPaneWidth?.(Math.ceil(width * 80 + 20))}
       theme={theme ?? context.theme ?? "instrument"}
       active={mount.target !== null && context.focused}
       visible={mount.target !== null}

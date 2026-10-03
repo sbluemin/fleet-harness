@@ -263,6 +263,7 @@ function ConnectedApp() {
         ];
         return {
           id: binding.entry.id,
+          fileReferences: binding.entry.handles?.openFile !== undefined || binding.entry.id === "file-explorer",
           icon: binding.entry.icon,
           title: binding.entry.title,
           ...(binding.entry.surfaceId === undefined ? {} : { surfaceId: binding.entry.surfaceId }),

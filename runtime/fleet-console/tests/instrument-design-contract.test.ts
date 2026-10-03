@@ -1954,10 +1954,8 @@ describe("Instrument core design contract", () => {
     const rightRail = source("chrome/rail/right-rail.tsx");
     const settingsPane = source("../../../features/settings/client/settings-pane.tsx");
     const railStore = source("chrome/rail/rail-store.ts");
-    // 전면 해도 개편: push/overlay 이원은 퇴역했다 — 부유 카드가 유일한 형태이고, "가리지
-    // 않는다"는 구 push 기대는 아레나 인셋이 승계한다. 이원의 잔재가 되살아나면 레일이
-    // 두 재질·두 기하로 갈라진다.
-    expect(rail).not.toContain(".right-rail.is-overlay");
+    // K-05 A: 부유 카드 재질은 유지하되, 확대 작업면을 보호하는 비모달 오버레이를 허용한다.
+    expect(rail).toContain(".right-rail.is-overlay");
     expect(rail).not.toContain(".right-rail.is-switching");
     expect(rail).toMatch(/\.right-rail \{[^}]*position: absolute;/);
     expect(rail).toMatch(/\.right-rail \{[^}]*border-radius: var\(--radius-md\);/);

@@ -17,6 +17,7 @@ interface RailStore {
   readonly railOccupiedPx: number;
   /** 끌기가 끝나 확정된 점유 폭(px). 끄는 동안에는 끌기 직전 값에 머문다. */
   readonly railSettledPx: number;
+  readonly expandedMinWidthPx: number;
 }
 
 type Listener = () => void;
@@ -34,6 +35,7 @@ let store: RailStore = {
   panelWidthReset: 0,
   railOccupiedPx: 0,
   railSettledPx: 0,
+  expandedMinWidthPx: 0,
 };
 try { localStorage.removeItem(LEGACY_PREFS_CHROME_EXPANDED); } catch { /* ignore */ }
 
@@ -202,4 +204,13 @@ function saveStoredActivePanelId(id: string | null): void {
 function setStore(next: RailStore): void {
   store = next;
   for (const listener of listeners) listener();
+}
+
+export function reportExpandedMinWidth(px: number): void {
+  const width = Number.isFinite(px) ? Math.max(0, Math.ceil(px)) : 0;
+  if (store.expandedMinWidthPx !== width) setStore({ ...store, expandedMinWidthPx: width });
+}
+
+export function useExpandedMinWidth(): number {
+  return useRailStoreField("expandedMinWidthPx");
 }

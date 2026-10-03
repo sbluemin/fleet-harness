@@ -57,6 +57,7 @@ export interface TerminalSurfaceProps {
   // 터미널 마운트 단의 역스케일(scale(1/zoom)) + fontSize×zoom으로 net scale=1을 만들어 좌표를 정정한다.
   readonly zoom?: number;
   readonly onStatusDetail?: (detail: string) => void;
+  readonly onCellWidth?: (width: number) => void;
   /**
    * 본문의 http(s) 링크를 눌렀을 때 — OSC 8 하이퍼링크든 출력에서 찾아낸 맨 URL이든 — 이 표면 대신
    * 열 곳을 정하는 쪽. 그 링크를 맡았으면 true를 돌려준다. 넘기지 않은 표면(전역 Shell)과 맡지 않은
@@ -209,7 +210,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, knownLinks, locale }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, knownLinks, locale, onCellWidth }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -263,6 +264,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // 링크를 여는 문은 렌더마다 새 함수일 수 있고, 마운트 effect는 다시 돌지 않는다(세션이 끊긴다).
   const onOpenLinkRef = useRef(onOpenLink);
   onOpenLinkRef.current = onOpenLink;
+  const onCellWidthRef = useRef(onCellWidth);
+  onCellWidthRef.current = onCellWidth;
   const knownLinksRef = useRef(knownLinks);
   knownLinksRef.current = knownLinks;
   // 비활성 Map 패널의 마운트 자동 포커스를 억제하기 위해 최신 active를 ref로 들고 있는다(마운트 effect는 재실행하지 않음).
@@ -542,6 +545,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       const fitAndResize = (refresh = false) => {
         scrollFollow.preserveAfterGeometryChange(() => {
           fitAddon.fit();
+          const screenWidth = container.querySelector<HTMLElement>(".xterm-screen")?.clientWidth ?? 0;
+          if (screenWidth > 0 && terminal.cols > 0) onCellWidthRef.current?.(screenWidth / terminal.cols);
           connection.resize(terminal.cols, terminal.rows);
           if (refresh) terminal.refresh(0, terminal.rows - 1);
           alternateScreenEdgeFill?.schedulePaint();

@@ -92,6 +92,8 @@ export interface ExpandedSurfaceContext {
   readonly paneCount: number;
   /** 실제로 놓인 페인 폭(px). 분할선 드래그·창 리사이즈에 따라 갱신된다. */
   readonly paneWidth: number;
+  /** 본문이 측정한 최소 폭. null이면 서술자의 기본값으로 돌아간다. */
+  readonly reportMinPaneWidth?: (px: number | null) => void;
   /** @deprecated `paneIndex`로 이름이 바뀌었다. 호스트가 같은 값을 함께 싣는다. */
   readonly slotIndex: number;
   /** @deprecated `paneCount`로 이름이 바뀌었다. 호스트가 같은 값을 함께 싣는다. */

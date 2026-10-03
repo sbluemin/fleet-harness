@@ -1,3 +1,4 @@
+import { usePaneOverlay } from "../pane/use-pane-overlay.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { consoleUseWrapClassName, consoleUseWrapLabel, getPanelWrap, subscribeConsoleUseGestures } from "../../../../../features/console-use/client/gestures.js";
@@ -18,7 +19,7 @@ import { getState, subscribe } from "../../integration/store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
-import { reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
+import { closeRailPanel, openRailPanel, getRailStoreSnapshot, useExpandedMinWidth, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   clearStoredPanelWidth,
@@ -67,11 +68,12 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   const rootRef = useRef<HTMLDivElement>(null);
   const activePanelId = useRailActivePanelId();
   const requestedExtraWidth = useRailPanelExtraWidth();
+  const expandedMinimum = useExpandedMinWidth();
   const soloWidth = useRailPanelSoloWidth();
   const soloMaxWidth = useRailPanelSoloMaxWidth();
   const soloMaxWidthRef = useRef(soloMaxWidth);
   soloMaxWidthRef.current = soloMaxWidth;
-  const extraWidth = soloWidth === null ? requestedExtraWidth : 0;
+  const requestedExtra = soloWidth === null ? requestedExtraWidth : 0;
   const bindings = useRailEntries();
   // 페인을 세우는 엔트리와 그냥 실행하는 엔트리의 구분은 "이 엔트리가 세우는 페인이 있는가"라는
   // 사실 하나가 진다(pane 계약, #957). 활성 패널·폭 계산은 페인 엔트리만 본다.
@@ -90,7 +92,13 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   const sideBarOccupiedPx = sideBarOccupiedWidth(sideBar) > 0 ? sideBarOccupiedWidth(sideBar) + 24 : 0;
   // 카드+extra가 함께 쓰는 가용 예산. 카드 상한은 예산에서 extra를 뺀 값이되, 예산이
   // 바닥나면 MIN 바닥이 이긴다 — 그때 넘치는 쪽은 아래 슬롯 총폭 캡이 extra를 깎아 회수한다.
-  const widthBudget = Math.floor(viewportWidth - 148 - sideBarOccupiedPx);
+  const fullBudget = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - sideBarOccupiedPx));
+  const dockBudget = Math.max(MIN_PANEL_WIDTH, fullBudget - expandedMinimum);
+  const wholeOverlay = expandedMinimum > 0 && primaryPaneOf(activeBinding)?.widthClass === "broad";
+  const overlayDetails = !wholeOverlay && expandedMinimum > 0 && requestedExtraWidth > 0
+    && declaredWidthOf(activeBinding) + requestedExtraWidth > dockBudget;
+  const extraWidth = overlayDetails ? 0 : requestedExtra;
+  const widthBudget = wholeOverlay ? fullBudget : dockBudget;
   const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, widthBudget - extraWidth);
   const maxResizeWidth = soloMaxWidth === null ? maxPanelWidth : Math.min(maxPanelWidth, soloMaxWidth + RAIL_CARD_BORDER_WIDTH);
 
@@ -105,7 +113,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   // 않는다(Codex 리뷰 확정 — 구 폭 기억 effect의 restore-on-expansion 계약 승계).
   // 분할 카드 폭에는 문서에 준 여유도 포함된다. 문서가 떠나면 목록 폭만 세우고,
   // 분할 카드의 기억은 그대로 두어 돌아올 때 문서가 같은 자리를 되찾게 한다.
-  const desiredWidth = soloWidth !== null
+  const desiredWidth = soloWidth !== null && !overlayDetails
     ? soloWidth + RAIL_CARD_BORDER_WIDTH
     : activeBinding === null
       ? declaredWidthOf(null)
@@ -115,6 +123,8 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   const [isDragging, setIsDragging] = useState(false);
   const extraWidthRef = useRef(extraWidth);
   extraWidthRef.current = extraWidth;
+  const resizeBudgetRef = useRef(widthBudget);
+  resizeBudgetRef.current = widthBudget;
   const sideBarOccupiedRef = useRef(sideBarOccupiedPx);
   sideBarOccupiedRef.current = sideBarOccupiedPx;
   // 조절은 언제나 **화면에 선 도구**의 몫이다 — 핸들러는 안정 참조로 두고 대상만 ref로 읽는다.
@@ -151,9 +161,26 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   const slotWidth = hasPanel
     ? Math.max(MIN_PANEL_WIDTH, Math.min(cardWidth + extraWidth, Math.max(MIN_PANEL_WIDTH, widthBudget)))
     : 0;
+  const lastPanelRef = useRef<string | null>(null);
+  const overlayReturnRef = useRef<{ id: string; previous: string | null; occupied: number } | null>(null);
+  if (wholeOverlay && activePanelId !== overlayReturnRef.current?.id) {
+    overlayReturnRef.current = { id: activePanelId!, previous: lastPanelRef.current, occupied: getRailStoreSnapshot().railOccupiedPx };
+  }
+  const restoringOverlay = activePanelId === null && overlayReturnRef.current !== null;
+  const occupiedWidth = wholeOverlay || restoringOverlay ? overlayReturnRef.current?.occupied ?? 0 : slotWidth;
   useLayoutEffect(() => {
-    reportRailOccupiedPx(slotWidth, !isDragging);
-  }, [slotWidth, isDragging]);
+    const previous = overlayReturnRef.current;
+    if (activePanelId === null && previous) {
+      overlayReturnRef.current = null;
+      if (previous.previous) openRailPanel(previous.previous);
+    } else if (!wholeOverlay) {
+      overlayReturnRef.current = null;
+    }
+    lastPanelRef.current = activePanelId;
+    reportRailOccupiedPx(occupiedWidth, !isDragging);
+  }, [activePanelId, wholeOverlay, occupiedWidth, isDragging]);
+  usePaneOverlay(wholeOverlay, rootRef, () => { if (activePanelId) closeRailPanel(activePanelId); });
+
 
   const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -169,7 +196,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
     const onMove = (ev: PointerEvent) => {
       const dx = startX - ev.clientX;
       const maxWidth = Math.max(MIN_PANEL_WIDTH, Math.min(
-        Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current),
+        resizeBudgetRef.current - extraWidthRef.current,
         soloMaxWidthRef.current === null ? Infinity : soloMaxWidthRef.current + RAIL_CARD_BORDER_WIDTH,
       ));
       const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, Math.round(startWidth + dx)));
@@ -193,7 +220,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
     let next: number;
     const step = event.shiftKey ? 64 : 16;
     const currentMaxWidth = Math.max(MIN_PANEL_WIDTH, Math.min(
-      Math.floor(window.innerWidth - 148 - extraWidthRef.current - sideBarOccupiedRef.current),
+      resizeBudgetRef.current - extraWidthRef.current,
       soloMaxWidthRef.current === null ? Infinity : soloMaxWidthRef.current + RAIL_CARD_BORDER_WIDTH,
     ));
 
@@ -240,7 +267,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   return (
     <div
       ref={rootRef}
-      className={`right-rail${hasPanel ? " is-open" : ""}${isDragging ? " is-dragging" : ""}`}
+      className={`right-rail${hasPanel ? " is-open" : ""}${isDragging ? " is-dragging" : ""}${overlayDetails ? " has-detail-overlay" : ""}${wholeOverlay ? " is-overlay" : ""}`}
       role="complementary"
       aria-label={t("rail.chrome.aria")}
       inert={!hasPanel}
@@ -279,6 +306,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
             connection={connection}
             connectionLostAt={connectionLostAt}
             language={language}
+            overlayDetails={overlayDetails}
           />
         )}
       </div>
@@ -396,6 +424,7 @@ export function RailToolIcons({ context }: { readonly context: RailToolContext }
 interface RailSectionProps {
   readonly binding: RailEntryBinding;
   readonly baseCtx: RailPanelContext;
+  readonly overlayDetails?: boolean;
   readonly connection: ConnectionState;
   readonly connectionLostAt: number | null;
   readonly language: ConsoleLocale;
@@ -405,11 +434,11 @@ interface RailSectionProps {
  *  아이콘(토글)과 접기 버튼이 갖고 있으므로 제목·닫기 줄을 따로 세우지 않는다. 그 30px은 플러그인
  *  본문이 카드 위 가장자리까지 채운다. 패널은 하나만 상주하므로 접기도 없다: 안 볼 패널은 접는
  *  게 아니라 닫거나 다른 패널로 교체한다. */
-function RailSection({ binding, baseCtx, connection, connectionLostAt, language }: RailSectionProps) {
+function RailSection({ binding, baseCtx, connection, connectionLostAt, language, overlayDetails }: RailSectionProps) {
   const title = resolveLocalizedText(binding.entry.title, language);
   return (
     <section className="right-rail-section" aria-label={title}>
-      <RailPanelBody binding={binding} ctx={baseCtx} connection={connection} connectionLostAt={connectionLostAt} language={language} />
+      <RailPanelBody binding={binding} ctx={baseCtx} overlayDetails={overlayDetails} connection={connection} connectionLostAt={connectionLostAt} language={language} />
     </section>
   );
 }
@@ -417,6 +446,7 @@ function RailSection({ binding, baseCtx, connection, connectionLostAt, language 
 interface RailPanelBodyProps {
   readonly binding: RailEntryBinding;
   readonly ctx: RailPanelContext;
+  readonly overlayDetails?: boolean;
   readonly connection: ConnectionState;
   readonly connectionLostAt: number | null;
   readonly language: ConsoleLocale;
@@ -425,7 +455,7 @@ interface RailPanelBodyProps {
 // 패널 본문은 무거운 플러그인 콘텐츠(파일 트리·diff·Codex)를 렌더한다. 폭·알파와 무관한
 // props만 받는 memo 경계로 리사이즈/알파 드래그 중 본문 재렌더를 건너뛴다. 본문 렌더는
 // pane 계약의 RailSurface가 소유한다(#957) — 이 껍데기는 stale 덮개와 포커스 복원만 진다.
-const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, connectionLostAt, language }: RailPanelBodyProps) {
+const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, connectionLostAt, language, overlayDetails }: RailPanelBodyProps) {
   const t = useT();
   const connectionLostTime = connectionLostAt === null ? "" : new Date(connectionLostAt).toLocaleTimeString(language);
   const staleVisible = connection !== "live" && connectionLostAt !== null;
@@ -484,6 +514,7 @@ const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, co
       <div ref={panelContentRef} className="right-rail-panel-content" inert={staleVisible || undefined}>
         <RailSurface
           binding={binding}
+          overlayDetails={overlayDetails}
           theaterId={ctx.theaterId}
           api={ctx.api}
           language={language}
