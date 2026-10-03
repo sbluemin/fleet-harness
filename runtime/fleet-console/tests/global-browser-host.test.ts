@@ -124,4 +124,73 @@ describe("global fleet browser host contract", () => {
     service.dismissClosedTabs();
     expect(service.globalState().closedTabs).toHaveLength(0);
   });
+
+  it("masks closedTabs and tabs for non-desktop web clients to protect privacy (QA-7)", async () => {
+    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    const service = new BrowserService({
+      enabled: () => true,
+      availability: () => ({ available: true, reason: null, host: "local" }),
+      desktop: engine,
+      log: () => {},
+      defaultProfile: { read: () => "default", write: () => {} },
+    });
+
+    // 닫힌 탭 목록이 인메모리에 존재하는 상태 시뮬레이션
+    (service as unknown as { closedTabsMemory: { url: string; title: string }[] }).closedTabsMemory = [
+      { url: "https://github.com/private/repo", title: "Private Project" },
+    ];
+    expect(service.globalState().closedTabs).toHaveLength(1);
+
+    let isDesktopClient = false;
+    const router = createBrowserRouter({
+      browserService: service,
+      browserMcp: { interruptOperation: () => 0, pasteIntoTerminal: () => false },
+      operations: { get: () => null },
+      isWriteAdmitted: () => true,
+      isExactConsoleOrigin: () => true,
+      isDesktopHostClient: () => isDesktopClient,
+      writeJson: (res: ServerResponse, status: number, body: unknown) => {
+        (res as unknown as { status: number; body: unknown }).status = status;
+        (res as unknown as { status: number; body: unknown }).body = body;
+      },
+      readJsonBody: async () => null,
+      readUrl: () => new URL("http://localhost:50212"),
+      withSecurityHeaders: (h) => h,
+    });
+
+    // 1. 비-Desktop 웹 클라이언트(isDesktopClient=false)의 GET state: closedTabs 와 tabs 가 빈 목록으로 마스킹됨
+    const webRes = {} as ServerResponse;
+    await router({
+      req: { method: "GET" } as IncomingMessage,
+      res: webRes,
+      pathname: "/api/v1/browser/global/state",
+    });
+    expect((webRes as unknown as { status: number }).status).toBe(200);
+    const webBody = (webRes as unknown as { body: { closedTabs: unknown[]; tabs: unknown[]; available: boolean } }).body;
+    expect(webBody.closedTabs).toEqual([]);
+    expect(webBody.tabs).toEqual([]);
+    expect(webBody.available).toBe(false);
+
+    // 2. 비-Desktop 웹 클라이언트의 restore-closed-tabs: 403 거부
+    const restoreRes = {} as ServerResponse;
+    await router({
+      req: { method: "POST" } as IncomingMessage,
+      res: restoreRes,
+      pathname: "/api/v1/browser/global/restore-closed-tabs",
+    });
+    expect((restoreRes as unknown as { status: number }).status).toBe(403);
+
+    // 3. Desktop 클라이언트(isDesktopClient=true)는 원본 closedTabs 정상 수신
+    isDesktopClient = true;
+    const desktopRes = {} as ServerResponse;
+    await router({
+      req: { method: "GET" } as IncomingMessage,
+      res: desktopRes,
+      pathname: "/api/v1/browser/global/state",
+    });
+    expect((desktopRes as unknown as { status: number }).status).toBe(200);
+    const desktopBody = (desktopRes as unknown as { body: { closedTabs: { url: string }[] } }).body;
+    expect(desktopBody.closedTabs).toHaveLength(1);
+    expect(desktopBody.closedTabs[0]?.url).toBe("https://github.com/private/repo");
+  });
 });

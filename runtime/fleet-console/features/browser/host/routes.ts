@@ -39,6 +39,7 @@ interface BrowserRouteDeps {
   readonly operations: { get(id: string): { id: string; payload: Record<string, unknown> } | null };
   readonly isWriteAdmitted: (req: IncomingMessage) => boolean;
   readonly isExactConsoleOrigin: (req: IncomingMessage) => boolean;
+  readonly isDesktopHostClient?: (req: IncomingMessage) => boolean;
   readonly writeJson: (res: ServerResponse, status: number, body: unknown) => void;
   readonly readJsonBody: <T>(req: IncomingMessage, maxBytes?: number) => Promise<T | null>;
   readonly readUrl: (req: IncomingMessage) => URL;
@@ -48,7 +49,7 @@ interface BrowserRouteDeps {
 const BROWSER_PASTE_MAX_BYTES = 48 * 1024 * 1024;
 
 export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
-  const { browserService, browserMcp, operations, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders } = deps;
+  const { browserService, browserMcp, operations, isWriteAdmitted, isExactConsoleOrigin, isDesktopHostClient, writeJson, readJsonBody, readUrl, withSecurityHeaders } = deps;
   return async ({ req, res, pathname }) => {
     if (!isWriteAdmitted(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, browserService.status()); return true; }
@@ -85,6 +86,11 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     const globalMatch = /^\/api\/v1\/browser\/global\/(state|screenshot|tabs|navigate|viewport|inspect|favicon|place|profile|clear-profile|restore-closed-tabs|dismiss-closed-tabs)$/u.exec(pathname);
     if (globalMatch) {
       const action = globalMatch[1] ?? "";
+      const isDesktop = isDesktopHostClient ? isDesktopHostClient(req) : true;
+      if (!isDesktop && (action === "restore-closed-tabs" || action === "dismiss-closed-tabs" || action === "screenshot" || action === "favicon")) {
+        writeJson(res, 403, { error: "desktop_required" });
+        return true;
+      }
       if (action !== "state" && !browserService.available()) {
         writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() });
         return true;
@@ -95,10 +101,24 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         writeJson(res, 500, { error: message.startsWith("browser_") ? message : "browser_request_failed" });
       };
       if (req.method === "GET" && action === "state") {
-        writeJson(res, 200, browserService.globalState());
+        const rawState = browserService.globalState();
+        if (!isDesktop) {
+          // 비-Desktop(웹 탭·휴대폰) 클라이언트에는 사람의 탭 목록과 닫힌 탭 복구 URL 을 비워서 돌려준다.
+          writeJson(res, 200, {
+            ...rawState,
+            tabs: [],
+            closedTabs: [],
+            activeTabId: null,
+            available: false,
+            reason: rawState.reason ?? "desktop_required",
+          });
+          return true;
+        }
+        writeJson(res, 200, rawState);
         return true;
       }
       if (req.method === "GET" && action === "favicon") {
+        if (!isDesktop) { writeJson(res, 403, { error: "desktop_required" }); return true; }
         const tabId = readUrl(req).searchParams.get("tabId") ?? "";
         const icon = await browserService.favicon(GLOBAL_BROWSER_OWNER_ID, tabId).catch(() => null);
         if (!icon) { writeJson(res, 404, { error: "not_found" }); return true; }
@@ -107,6 +127,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         return true;
       }
       if (req.method === "GET" && action === "screenshot") {
+        if (!isDesktop) { writeJson(res, 403, { error: "desktop_required" }); return true; }
         const controller = new AbortController();
         const onClose = () => { if (!res.writableEnded) controller.abort(); };
         res.on("close", onClose);
@@ -121,6 +142,10 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       }
       if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
       if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      if (!isDesktop && (action === "restore-closed-tabs" || action === "dismiss-closed-tabs")) {
+        writeJson(res, 403, { error: "desktop_required" });
+        return true;
+      }
       const body = await readJsonBody<Record<string, unknown>>(req);
       if (!body && action !== "restore-closed-tabs" && action !== "dismiss-closed-tabs") { writeJson(res, 400, { error: "invalid_request" }); return true; }
       try {

@@ -1479,11 +1479,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, operationUseSnapshot());
     return true;
   });
+  /** 요청한 클라이언트가 현재 제어 호스트의 Desktop 셸인지 판정한다. */
+  function isDesktopHostClient(req: http.IncomingMessage): boolean {
+    if (clientKindOf(req) !== "desktop") return false;
+    const currentHost = desktopEngine.currentHost;
+    if (!currentHost) return false;
+    const listener = listenerForRequest(req);
+    const audience: AccessAudience = listener?.audience ?? "local";
+    const sessionHandle = listener === null || listener.audience === "local"
+      ? null
+      : access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience)?.handle ?? null;
+    if (audience === "remote" && sessionHandle === null) return false;
+    const shellOwner = audience === "local" ? "local" : sessionHandle;
+    return shellOwner === currentHost;
+  }
   /**
    * Operation 브라우저 API. 루프백과 원격 리스너 모두에서 열린다 — 원격 요청은 라우팅 전에 세션을 통과했고, 창을 든
    * Desktop 이 원격에서 건너와 이 콘솔의 탭을 자기 창에 그리는 길이 바로 이 경로다. 쓰기는 Origin 을 요구한다.
    */
-  routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, operations, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
+  routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, operations, isWriteAdmitted, isExactConsoleOrigin, isDesktopHostClient, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
   routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasSession("remote", "full") || access.hasSession("remote", "monitoring"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopBrowserRouter(context)) return true;
