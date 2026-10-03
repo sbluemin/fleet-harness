@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
-import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
@@ -9,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createCodexGateway } from "../server/codex/gateway.js";
 import { createCodexWorkspaceRouter } from "../server/codex/workspace-routes.js";
+import { createCodexFileRouter } from "../server/codex/file-routes.js";
 
 const WORKSPACE_ID = "0123456789ab";
 
@@ -44,6 +46,43 @@ describe("Codex Theater-root workspace resolution", () => {
       security: { validateHost: () => true, isWriteAdmitted: () => true },
     });
   }
+
+  it("previews only bounded regular Theater files and refuses traversal and symlink escapes on both file routes", async () => {
+    await writeFile(path.join(theaterRoot, "source.ts"), Array.from({ length: 260 }, (_, index) => `line ${index + 1}`).join("\n"));
+    await writeFile(path.join(tmpDir, "outside.ts"), "outside secret");
+    await symlink(path.join(tmpDir, "outside.ts"), path.join(theaterRoot, "escape.ts"));
+    await writeFile(path.join(theaterRoot, "binary.dat"), Buffer.from([0, 1, 2]));
+    await writeFile(path.join(theaterRoot, "large.ts"), "x".repeat(256 * 1024 + 1));
+    let body: unknown;
+    let authorized = true;
+    const writeJson = vi.fn();
+    const router = createCodexFileRouter({
+      getTheater: id => id === "theater" ? { realpath: theaterRoot } : null,
+      isAuthorized: () => authorized,
+      readJsonBody: async <T>() => body as T,
+      writeJson,
+    });
+    const call = async (endpoint: string, fields: Record<string, unknown>) => {
+      body = { theaterId: "theater", ...fields };
+      await router({ req: { method: "POST" } as IncomingMessage, res: {} as ServerResponse, pathname: `/api/v1/plugins/codex/${endpoint}` });
+      return writeJson.mock.lastCall!;
+    };
+    const preview = await call("file-peek", { path: "source.ts", line: 130 });
+    expect(preview[1]).toBe(200);
+    expect(preview[2]).toMatchObject({ path: "source.ts", startLine: 30, truncated: true });
+    expect(preview[2].lines).toHaveLength(200);
+    expect(JSON.stringify(preview[2])).not.toContain(theaterRoot);
+    expect((await call("file-refs", { paths: ["source.ts", "missing.ts"] })).slice(1)).toEqual([200, { "source.ts": "file", "missing.ts": "missing" }]);
+    for (const escaped of ["../outside.ts", "escape.ts"]) {
+      expect((await call("file-peek", { path: escaped }))[1]).toBe(403);
+      expect((await call("file-refs", { paths: [escaped] }))[1]).toBe(403);
+    }
+    expect((await call("file-peek", { path: "binary.dat" }))[1]).toBe(415);
+    expect((await call("file-peek", { path: "large.ts" }))[1]).toBe(413);
+    expect((await call("file-refs", { paths: Array(201).fill("source.ts") }))[1]).toBe(400);
+    authorized = false;
+    expect((await call("file-peek", { path: "source.ts" }))[1]).toBe(403);
+  });
 
   it("registers and resolves the canonical Theater root", async () => {
     const gateway = createGateway();
