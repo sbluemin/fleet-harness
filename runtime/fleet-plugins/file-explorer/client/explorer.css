@@ -2174,6 +2174,22 @@
   .fexp-tab-close { width: 44px; height: 44px; margin-right: 0; opacity: 1; }
   .fexp-tabs-more { min-width: 44px; height: 44px; justify-content: center; }
   .fexp-search-result { min-height: 44px; }
+  .fexp-filter { height: 44px; }
+  .fexp-more-btn,
+  .fexp-refresh-btn { min-width: 44px; min-height: 44px; }
+  .fexp-options-menu .fexp-context-menu-item { min-height: 44px; }
+  /* 40px 행 밖으로 히트 영역을 부풀리지 않는다. 세로는 행 높이, 가로는 44px로 확보한다. */
+  .fexp-row-actions { gap: 4px; opacity: 1; }
+  .fexp-row-action { width: 44px; height: 40px; flex: 0 0 auto; pointer-events: auto; }
+  /* 터치에는 hover가 없으므로 동작을 보인다. 커진 선반이 본문을 가리는 폭에서는 메뉴로 넘긴다. */
+  @container fexp-row (min-width: 301px) {
+    .fexp-tree-row { padding-right: 164px; }
+  }
+  @container fexp-row (max-width: 300px) {
+    .fexp-row-actions { display: none; }
+    .fexp-tree-rowwrap:hover .fexp-tree-dot,
+    .fexp-tree-rowwrap:focus-within .fexp-tree-dot { opacity: 1; }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
