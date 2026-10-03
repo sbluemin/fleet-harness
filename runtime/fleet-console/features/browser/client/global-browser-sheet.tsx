@@ -141,8 +141,10 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   }, []);
 
   // ---- 자리: 좌우는 아레나(사이드바·레일 제외) 안쪽 24px, 위·아래는 카드 선. ----
-  // 위·아래는 보이는 카드(사이드바 우선, 없으면 레일)의 실제 테두리에 맞춘다 —
-  // 밴드+12 하드코딩은 카드 선과 어긋난다. Zen 아래는 부유 섬 위 12px 규칙 유지.
+  // 위·아래는 보이는 카드(사이드바 우선, 없으면 레일)의 실제 테두리에 맞춘다.
+  // 카드가 하나도 없으면 카드가 서는 자리(offsetParent = .console-body) + 카드 여백 토큰 —
+  // 밴드+12는 알약 bottom 기준이라 카드선(본문 top + --space-3)보다 위에 선다(QA-16).
+  // Zen 아래는 부유 섬 위 12px 규칙 유지.
   // 아레나가 최소 숨구멍보다 좁으면 사이드바·레일을 무시하고 밴드 아래 창 전체를 쓰고,
   // 그것도 모자라면 여백을 줄여서라도 보이게 한다 — 「열림」인데 안 보이는 상태는 두지 않는다.
   const measureGeometry = React.useCallback(() => {
@@ -154,8 +156,23 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const island = document.querySelector(".zen-bar") as HTMLElement | null;
     const band = document.querySelector(".console-toolbar") as HTMLElement | null;
     const zen = document.querySelector(".console-shell.is-zen") !== null;
-    const sideRight = sidebar && sidebar.offsetWidth > 0 ? sidebar.getBoundingClientRect().right : 0;
-    const railRect = rail && rail.offsetWidth > 4 ? rail.getBoundingClientRect() : null;
+    // 보이는 카드(사이드바 우선, 없으면 레일) — 닫힘(폭 0·숨김)·Zen 밀어내기는 카드가 아니다.
+    // .operations-side-bar·.right-rail은 컨테이너 자체가 부유 유리 카드다(안쪽 카드 요소 없음.
+    // components.css .operations-side-bar / rail.css .right-rail, 둘 다 top·bottom: var(--space-3)).
+    // 좌우·scrim도 같은 판정에서 나온다 — 닫힌 사이드바의 2px 테두리 자투리가
+    // 왼쪽 간격을 38로 벌리지 않게(QA-16). War Room 접힘은 서랍만 걷고 밴드 줄이 남으니
+    // 같은 규칙이 그대로 성립한다.
+    const sidebarCardRect = sidebar !== null && sidebar.offsetWidth > 4
+      && window.getComputedStyle(sidebar).visibility !== "hidden"
+      ? sidebar.getBoundingClientRect()
+      : null;
+    const railCardRect = rail !== null && rail.offsetWidth > 4
+      && window.getComputedStyle(rail).visibility !== "hidden"
+      ? rail.getBoundingClientRect()
+      : null;
+    const cardRect = sidebarCardRect ?? railCardRect;
+    const sideRight = sidebarCardRect !== null ? sidebarCardRect.right : 0;
+    const railRect = railCardRect;
     const bandRect = band && band.offsetWidth > 0 ? band.getBoundingClientRect() : null;
     const islandRect = island && island.offsetWidth > 0 ? island.getBoundingClientRect() : null;
     const zenIsland = zen && islandRect;
@@ -168,29 +185,22 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       : scrim);
     let left = Math.round((sideRight > 0 ? sideRight : 0) + 24);
     let right = Math.round(railRect ? vw - railRect.left + 24 : 24);
-    // 위·아래 선 — .operations-side-bar·.right-rail은 컨테이너 자체가 부유 유리 카드다
-    // (안쪽 카드 요소 없음. components.css .operations-side-bar / rail.css .right-rail,
-    // 둘 다 top·bottom: var(--space-3)). 보이는 카드가 있으면 그 테두리선 그대로,
-    // 둘 다 닫혔으면 카드가 쓰던 같은 여백 토큰으로. War Room 접힘은 서랍만 걷고
-    // 밴드 줄이 남으니 같은 규칙이 그대로 성립한다.
-    const sidebarCardRect = sidebar !== null && sidebar.offsetWidth > 4
-      && window.getComputedStyle(sidebar).visibility !== "hidden"
-      ? sidebar.getBoundingClientRect()
-      : null;
-    const railCardRect = railRect !== null && rail !== null
-      && window.getComputedStyle(rail).visibility !== "hidden"
-      ? railRect
-      : null;
-    const cardRect = sidebarCardRect ?? railCardRect;
+    // 위·아래 선 — 보이는 카드가 있으면 그 테두리선 그대로. 카드가 하나도 없으면
+    // 카드가 서는 자리(사이드바·레일의 offsetParent = .console-body) + 카드 여백 토큰으로 —
+    // 위·아래 모두 같은 원칙이다. 맨 마지막 수단(본문 요소도 없음)에만 밴드 기준·토큰 단독.
     const cardInset = readCardInset();
+    const cardHost = sidebar?.offsetParent ?? rail?.offsetParent ?? null;
+    const cardHostRect = cardHost ? cardHost.getBoundingClientRect() : null;
+    const fallbackTop = cardHostRect ? cardHostRect.top + cardInset : (bandRect ? bandRect.bottom : 0) + cardInset;
+    const fallbackBottom = cardHostRect ? vh - cardHostRect.bottom + cardInset : cardInset;
     let top: number;
     let bottom: number;
     if (zenIsland) {
-      top = Math.round(cardRect ? cardRect.top : 24);
+      top = Math.round(cardRect ? cardRect.top : fallbackTop);
       bottom = Math.round(vh - islandRect.top + 12);
     } else {
-      top = Math.round(cardRect ? cardRect.top : (bandRect ? bandRect.bottom : 0) + cardInset);
-      bottom = Math.round(cardRect ? vh - cardRect.bottom : cardInset);
+      top = Math.round(cardRect ? cardRect.top : fallbackTop);
+      bottom = Math.round(cardRect ? vh - cardRect.bottom : fallbackBottom);
     }
     if (vw - left - right < MIN_SHEET_WIDTH) {
       // 좁은 아레나 — 크롬을 무시하고 창 너비를 쓴다. 시트가 레일·사이드바 위에 겹쳐 선다.
