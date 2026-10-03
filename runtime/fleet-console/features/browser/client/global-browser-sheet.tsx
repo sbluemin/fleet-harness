@@ -7,6 +7,7 @@ import { themePolarity } from "../../../core/client/src/integration/store.js";
 import { useConsoleOverlayActive, publishBrowserViewRect, useFloatingOverlapActive } from "../../../core/client/src/overlay/overlay-registry.js";
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { getT } from "./i18n.js";
+import { ChromeImportDialog, chromeImportUnavailable, ImportGlyph, loadChromeImportSources, type ChromeImportSources } from "./chrome-import.js";
 import {
   chooseGlobalProfile,
   clearGlobalProfile,
@@ -15,6 +16,7 @@ import {
   createGlobalTab,
   dismissClosedGlobalTabs,
   dismissSharedFallback,
+  importGlobalFromChrome,
   navigateGlobal,
   placeGlobal,
   restoreClosedGlobalTabs,
@@ -100,6 +102,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const [editingUrl, setEditingUrl] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [info, setInfo] = React.useState<string | null>(null);
+  const [importSources, setImportSources] = React.useState<ChromeImportSources | null>(null);
   const [geometry, setGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   // scrim은 아레나(캔버스)만 덮는다 — 도구모음·섬·레일·사이드바는 기하 밖이라 그대로 조작된다.
   const [scrimGeometry, setScrimGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
@@ -121,6 +125,10 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     else delete document.documentElement.dataset.fleetBrowserSheet;
     return () => { delete document.documentElement.dataset.fleetBrowserSheet; };
   }, [open ]);
+
+  React.useEffect(() => { if (!info) return; const timer = setTimeout(() => setInfo(null), 4000); return () => clearTimeout(timer); }, [info]);
+  // 시트가 내려가면 열려 있던 가져오기 대화상자도 거둔다 — 다시 열었을 때 낡은 원본 목록이 남지 않게.
+  React.useEffect(() => { if (!open) setImportSources(null); }, [open]);
 
   React.useEffect(() => {
     if (!editingUrl) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? "");
@@ -331,6 +339,25 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     if ((state?.tabs.length ?? 0) > 0) { setPendingProfile(value); setConfirming("profile"); setProfileMenu(true); return; }
     runTab(() => chooseGlobalProfile(value));
   };
+  // ---- 브라우저에서 가져오기 — Operation 브라우저와 같은 대화상자. 쿠키는 전역 탭이 쓰는 세션으로 간다 ----
+  const openImport = async () => {
+    setProfileMenu(false);
+    setConfirming(null);
+    if (chromeImportUnavailable()) return;
+    setNotice(null);
+    const loaded = await loadChromeImportSources(t);
+    if ("error" in loaded) { setNotice(loaded.error); return; }
+    setImportSources(loaded.sources);
+  };
+  const runImport = async (profileId: string) => {
+    setNotice(null);
+    const result = await importGlobalFromChrome(profileId);
+    if ("error" in result) { setNotice(result.error ?? t("terminal.browser.requestFailed")); return false; }
+    setImportSources(null);
+    setInfo(t("terminal.browser.import.done", { count: String(result.cookies) }));
+    return true;
+  };
+  const importUnavailable = chromeImportUnavailable();
   const submitUrl = () => {
     const raw = urlDraft.trim();
     if (!raw) return;
@@ -459,6 +486,17 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
                   type="button"
                   role="menuitem"
                   className="op-browser__menu-item"
+                  disabled={importUnavailable}
+                  title={importUnavailable ? t("terminal.browser.import.windowsPending") : undefined}
+                  onClick={() => { void openImport(); }}
+                >
+                  <span className="op-browser__menu-glyph" aria-hidden="true"><ImportGlyph /></span>
+                  <span className="op-browser__menu-body"><strong>{t("terminal.browser.import.title")}</strong></span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="op-browser__menu-item"
                   onClick={() => {
                     if (confirming === "clear") {
                       setProfileMenu(false);
@@ -556,7 +594,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
           </form>
         </div>
         <div className="fleet-browser-sheet__viewport" ref={viewportRef}>
-          {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : null}
+          {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? <div className="op-browser__toast" role="status">{info}</div> : null}
+          {importSources ? <ChromeImportDialog t={t} sources={importSources} persistent={persistent} owner="global" onClose={() => setImportSources(null)} onImport={runImport} /> : null}
           {confirming === "profile" ? (
             <div className="op-browser__toast has-action" role="status">
               {t("terminal.browser.profile.switchBody", { count: String(state?.tabs.length ?? 0) })}

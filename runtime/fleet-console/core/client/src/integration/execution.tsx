@@ -7,6 +7,7 @@ import { globalShellEntry } from "../../../../features/execution/client/terminal
 import { globalBrowserEntry } from "../../../../features/browser/client/global-browser-entry.js";
 import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";
 import { GlobalBrowserSheet } from "../../../../features/browser/client/global-browser-sheet.js";
+import { GlobalLinkCardHost } from "../../../../features/browser/client/global-link-card.js";
 import { PersistentShellHost, shellSurface } from "../../../../features/execution/client/terminal/shell/index.js";
 import { connectShellSession } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { preloadTerminalFallbackFonts } from "../../../../features/execution/client/terminal/shared/terminal-fallback-fonts.js";
@@ -32,6 +33,8 @@ export const consoleExecution: ClientExecutionProvider = {
   persistentComponents: [
     { id: "terminal-shell-host", render: (ctx) => <PersistentShellHost language={ctx.language} theme={ctx.theme} /> },
     { id: "global-browser-sheet", render: (ctx) => <GlobalBrowserSheet language={ctx.language} theme={ctx.theme} /> },
+    // Operation 밖 링크의 「어디서 열까」 카드 — 전역 Shell과 같은 2행이다.
+    { id: "global-link-card", render: (ctx) => <GlobalLinkCardHost language={ctx.language} /> },
   ],
   install: (ctx) => {
     void preloadTerminalFallbackFonts();

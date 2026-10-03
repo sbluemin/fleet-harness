@@ -83,11 +83,12 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const globalMatch = /^\/api\/v1\/browser\/global\/(state|screenshot|tabs|navigate|viewport|inspect|favicon|place|profile|clear-profile|restore-closed-tabs|dismiss-closed-tabs)$/u.exec(pathname);
+    const globalMatch = /^\/api\/v1\/browser\/global\/(state|screenshot|tabs|navigate|viewport|inspect|favicon|place|profile|clear-profile|import|restore-closed-tabs|dismiss-closed-tabs)$/u.exec(pathname);
     if (globalMatch) {
       const action = globalMatch[1] ?? "";
       const isDesktop = isDesktopHostClient ? isDesktopHostClient(req) : true;
-      if (!isDesktop && (action === "restore-closed-tabs" || action === "dismiss-closed-tabs" || action === "screenshot" || action === "favicon")) {
+      // 가져오기는 사람의 Chrome 쿠키를 전역 탭 세션에 넣는 일이다 — 그 탭을 보는 Desktop 창에서만 연다.
+      if (!isDesktop && (action === "restore-closed-tabs" || action === "dismiss-closed-tabs" || action === "screenshot" || action === "favicon" || action === "import")) {
         writeJson(res, 403, { error: "desktop_required" });
         return true;
       }
@@ -162,6 +163,13 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         if (action === "profile") {
           if (body && body.profile !== null && typeof body.profile !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
           writeJson(res, 200, await browserService.setProfile(GLOBAL_BROWSER_OWNER_ID, (body?.profile as string | null) ?? null));
+          return true;
+        }
+        if (action === "import") {
+          // 쿠키는 전역 소유자가 지금 쓰는 세션(임시 파티션 또는 영속 프로필)으로 간다. 탭이 없으면 그 세션을 먼저 만들고,
+          // 다음에 여는 탭이 같은 세션을 쓴다 — Operation 경로와 같은 서비스 계약이다.
+          if (!body || typeof body.profileId !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          writeJson(res, 200, await browserService.importFromChrome(GLOBAL_BROWSER_OWNER_ID, body.profileId));
           return true;
         }
         if (action === "clear-profile") {
