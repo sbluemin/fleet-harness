@@ -567,6 +567,12 @@ async function startNewDaemon() {
  */
 async function recoverConsoleBestEffort() {
   try {
+    // A live pid that still holds the old lock (same pid and token) makes serve refuse it, so a spawn here could only
+    // wait out the timeout. Read the lock only: the user has to stop that process before a Console can start.
+    if (isLockStillHeldByOldConsole() && isProcessAlive(config.currentPid)) {
+      log("recovery skipped: pid " + config.currentPid + " is alive and still holds the lock, so no Console can start until it is stopped");
+      return;
+    }
     const child = spawn(process.execPath, [config.serverModulePath, "serve"], {
       detached: true,
       env: daemonEnv(),

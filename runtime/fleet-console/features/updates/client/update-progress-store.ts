@@ -50,6 +50,11 @@ const POLL_INTERVAL_MS = 1_500;
 /** 종착 없이 이만큼 지나면 지켜보기를 멈춘다 — 커튼이 영원히 남는 것이 가장 나쁘다. */
 const WATCH_TIMEOUT_MS = 10 * 60 * 1000;
 /**
+ * 한 번의 진행 조회가 기다리는 한도. 멈춘(SIGSTOP 등) 서버는 연결을 받고도 답하지 않아 요청이 끝나지 않는다 —
+ * 그러면 다음 폴링도, 위의 지켜보기 한도도 영영 오지 않는다. 답 없는 조회는 닿지 않은 것으로 다룬다.
+ */
+const POLL_REQUEST_TIMEOUT_MS = 5_000;
+/**
  * 위임에는 진행 기록이 없다 — 워커가 없고, 수행자인 셸은 곧 이 창을 통째로 재시작한다.
  * 폴링은 서버가 아직 닿는지만 확인한다. 그런데 듣는 셸이 없으면 아무 일도 일어나지 않으므로,
  * 그때 커튼이 영원히 남지 않도록 이만큼만 기다린다.
@@ -62,6 +67,8 @@ let store: UpdateProgressSnapshot = IDLE_SNAPSHOT;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let delegatedTimer: ReturnType<typeof setTimeout> | null = null;
 let watchStartedAt: number | null = null;
+/** 지켜보기가 끝날 때마다 바뀐다. 끝난 지켜보기의 조회가 늦게 돌아와도 폴링을 되살리지 않는다. */
+let watchGeneration = 0;
 /**
  * 이 문서는 끊김을 겪은 뒤 다시 받은 문서다. 여기서 보이는 버전 차이는 낡은 번들이 아니라
  * 서버가 이 실행의 목표와 다른 버전을 말한다는 뜻이므로, 다시 불러와도 해결되지 않는다.
@@ -118,6 +125,7 @@ export function acknowledgeUpdateOutcome(): void {
 }
 
 function stopWatching(): void {
+  watchGeneration += 1;
   watchStartedAt = null;
   // 재접속 뒤 드리프트 reload를 막는 표시는 이 실행에만 속한다. 같은 탭의 다음 업데이트는
   // 다시 옛 번들로 시작하므로 reload가 필요하다.
@@ -157,15 +165,18 @@ async function pollOnce(): Promise<void> {
     setStore({ ...store, watching: false, delegated: false });
     return;
   }
+  const generation = watchGeneration;
   let progress: ConsoleUpdateProgress | null = null;
   try {
-    progress = await fetchUpdateProgress();
+    progress = await fetchUpdateProgress(AbortSignal.timeout(POLL_REQUEST_TIMEOUT_MS));
   } catch {
+    if (generation !== watchGeneration) return;
     // 닿지 않는 것 자체가 진행 중이라는 신호다 — 커튼을 유지한 채 계속 두드린다.
     reachStage("installing");
     schedulePoll(POLL_INTERVAL_MS);
     return;
   }
+  if (generation !== watchGeneration) return;
   if (store.stage === "installing") reachStage("reconnecting");
   // 위임의 폴링은 닿는지만 본다. 결과를 말할 워커 기록이 없고, 이 창은 셸이 재시작한다.
   if (store.delegated) {
