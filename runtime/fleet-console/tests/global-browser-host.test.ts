@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
+import type { DesktopBrowserRelay, DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 
 import { DesktopEngine } from "../features/browser/host/desktop-engine.js";
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID } from "../features/browser/host/service.js";
@@ -114,7 +114,33 @@ describe("global fleet browser host contract", () => {
   });
 
   it("preserves global tabs on operation closure and manages closed-tab suggestions (condition A & Q4)", async () => {
-    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    const attached = new Set<string>();
+    const answered = new Set<number>();
+    const urls = new Map<string, string>();
+    // 실제 서비스·DesktopEngine 경로를 통과시키고, 셸의 부착·CDP 응답만 대신한다.
+    const engine = new DesktopEngine({
+      publish: (snapshot) => queueMicrotask(() => {
+        const attaching = snapshot.views.filter((view) => !attached.has(view.id));
+        for (const view of attaching) { attached.add(view.id); urls.set(view.id, view.url); }
+        const commands = snapshot.commands.filter((command) => !answered.has(command.id));
+        const events: NonNullable<DesktopBrowserRelay["events"]>[number][] = [];
+        const results = commands.map((command) => {
+          answered.add(command.id);
+          let result: Record<string, unknown> = {};
+          if (command.method === "Page.navigate") {
+            urls.set(command.viewId, String(command.params.url));
+            events.push({ viewId: command.viewId, method: "Page.loadEventFired", params: {} });
+          } else if (command.method === "Page.getNavigationHistory") {
+            result = { currentIndex: 0, entries: [{ url: urls.get(command.viewId) ?? "about:blank", title: "" }] };
+          } else if (command.method === "Runtime.evaluate") {
+            result = { result: { type: "undefined" } };
+          }
+          return { id: command.id, result };
+        });
+        if (attaching.length || results.length) engine.relay("local", { attached: attaching.map((view) => view.id), results, events });
+      }),
+      log: () => {},
+    });
     engine.subscriberOpened("local");
     engine.setHost("local");
     const service = new BrowserService({
@@ -125,19 +151,41 @@ describe("global fleet browser host contract", () => {
       defaultProfile: { read: () => "default", write: () => {} },
     });
 
-    // Operation 종료가 전역 브라우저 상태에 영향을 주지 않음
-    await service.closeOperation("op-target");
-    expect(service.globalState().operationId).toBe("global");
+    try {
+      const existingUrl = "https://example.com/existing";
+      const firstUrl = "https://example.com/first";
+      const secondUrl = "https://example.com/second";
+      const remainingUrl = "https://example.com/remaining";
+      const existing = await service.createTab(GLOBAL_BROWSER_OWNER_ID, existingUrl, "user");
+      for (let index = 0; index < 5; index += 1) await service.createTab(GLOBAL_BROWSER_OWNER_ID, null, "user");
+      (service as unknown as { closedTabsMemory: { url: string; title: string }[] }).closedTabsMemory =
+        [existingUrl, firstUrl, firstUrl, secondUrl, remainingUrl].map((url) => ({ url, title: url }));
 
-    // 닫힌 탭 제안 정리 (dismiss)
-    service.dismissClosedTabs();
-    expect(service.globalState().closedTabs).toHaveLength(0);
+      // 열린 주소와 목록 안 중복이 빈자리를 먹지 않으며, 상한 밖 주소는 다음 복원에 남는다.
+      const restored = await service.restoreClosedTabs();
+      const state = service.globalState();
+      expect(restored).toHaveLength(2);
+      expect(state.tabs.filter((tab) => restored.includes(tab.id)).map((tab) => tab.url)).toEqual([firstUrl, secondUrl]);
+      expect(state.tabs.filter((tab) => tab.url === existingUrl).map((tab) => tab.id)).toEqual([existing.id]);
+      expect(state.tabs.filter((tab) => tab.url === firstUrl)).toHaveLength(1);
+      expect(state.tabs).toHaveLength(8);
+      expect(state.closedTabs.map((tab) => tab.url)).toEqual([remainingUrl]);
 
-    // shared 해제 등 가용성 회복 시 전역 상태 이벤트가 발행된다 (QA-11)
-    const emitted: unknown[] = [];
-    service.onState((s) => emitted.push(s));
-    service.reconcile();
-    expect(emitted.some((s) => (s as { operationId?: string; available?: boolean }).operationId === "global" && (s as { available?: boolean }).available === true)).toBe(true);
+      // Operation 종료가 실제 열린 전역 탭에 영향을 주지 않음
+      await service.closeOperation("op-target");
+      expect(service.globalState().tabs).toEqual(state.tabs);
+
+      service.dismissClosedTabs();
+      expect(service.globalState().closedTabs).toHaveLength(0);
+
+      // shared 해제 등 가용성 회복 시 전역 상태 이벤트가 발행된다 (QA-11)
+      const emitted: unknown[] = [];
+      service.onState((s) => emitted.push(s));
+      service.reconcile();
+      expect(emitted.some((s) => (s as { operationId?: string; available?: boolean }).operationId === "global" && (s as { available?: boolean }).available === true)).toBe(true);
+    } finally {
+      await service.dispose();
+    }
   });
 
   it("masks closedTabs and tabs for non-desktop web clients to protect privacy (QA-7)", async () => {
