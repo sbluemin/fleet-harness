@@ -6,6 +6,8 @@
  *   3) 홈이 아닌 목적지 루트면 홈으로, 4) 홈이면 드로어를 연다.
  * 겹침·상세는 열린 동안 자기 닫기를 이 레지스트리에 올려 둔다 — 같은 일을 history 항목도 하므로(브라우저 뒤로) 두 길이 한 닫기 함수를 쓴다.
  */
+import { markOpenedWithoutKeyboard } from "./mobile-input-modality.js";
+
 interface BackLayer { readonly id: number; readonly close: () => void; readonly kind?: "drawer" }
 
 const layers: BackLayer[] = [];
@@ -36,6 +38,8 @@ declare global {
 /** 모바일 배치가 서 있는 동안만 정의한다. `fallback`은 3·4순위(목적지 루트 → 홈 / 홈 → 드로어)다. */
 export function installMobileBackBridge(fallback: () => void, atHome: () => boolean): () => void {
   const handler = (): boolean => {
+    // 앱의 뒤로는 키 이벤트가 아니라 JS 호출이다 — 이 호출이 여는 드로어는 키보드로 연 것이 아니다(PR-0c).
+    markOpenedWithoutKeyboard();
     // 홈 위의 드로어 한 겹(그 위에 시트·메뉴가 없을 때)은 사실상 최상위 화면이다 — 앱에 넘겨 앱 기본(Console 목록)으로 가게 한다(false).
     // 홈이 아닌 화면 위의 드로어는 다른 겹침처럼 닫고 true.
     if (layers.at(-1)?.kind === "drawer" && atHome()) return false;

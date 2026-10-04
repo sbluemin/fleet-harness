@@ -6,7 +6,10 @@
 let keyboard = false;
 
 if (typeof window !== "undefined") {
-  window.addEventListener("keydown", () => { keyboard = true; }, true);
+  // 화면 키보드(IME)의 keydown은 하드웨어 키가 아니다 — 글을 쓴 뒤 뒤로 가기로 드로어가 열릴 때 키보드로 오인하지 않게 거른다.
+  window.addEventListener("keydown", (event) => { if (event.key !== "Unidentified" && event.keyCode !== 229 && !event.isComposing) keyboard = true; }, true);
+  // 브라우저·제스처 뒤로(history)도 키 입력이 아니다.
+  window.addEventListener("popstate", () => { keyboard = false; }, true);
   window.addEventListener("pointerdown", () => { keyboard = false; }, true);
   window.addEventListener("touchstart", () => { keyboard = false; }, { capture: true, passive: true });
 }
@@ -14,4 +17,9 @@ if (typeof window !== "undefined") {
 /** 지금 열리는 표면을 키보드가 연 것인가. 열리는 순간(효과 시작)에 읽는다. */
 export function openedByKeyboard(): boolean {
   return keyboard;
+}
+
+/** 키 이벤트 없이 JS가 표면을 여는 경로(앱의 하드웨어 뒤로 `__fleetMobileBack` 등) — 마지막 입력이 키보드였더라도 키보드로 열지 않은 것으로 다룬다. */
+export function markOpenedWithoutKeyboard(): void {
+  keyboard = false;
 }
