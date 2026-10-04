@@ -119,6 +119,11 @@ const STOP_SIGKILL_EXIT_ATTEMPTS = 20;
 // `ps -o lstart`는 초 단위로 내림한 값이다. Linux는 boot time 반올림으로 1초 더 어긋날 수 있다. 시작 시각이 정체 증명
 // 시점보다 이 값 이상 앞서야 그 시각을 정체 표지로 쓴다.
 const PROCESS_START_MARGIN_MS = 2_000;
+// Console은 listen 뒤에 lock을 쓰므로 lock 작성자의 시작 시각은 항상 lock.startedAt보다 앞선다. lock pid의 시작 시각이
+// startedAt보다 이 값 이상 늦으면 그 pid는 작성자가 죽은 뒤 재할당된 것이다. 1초는 lstart 내림과 Linux boot time 반올림을
+// 덮는다. 나머지는 Linux에서 Console 시작 뒤 벽시계가 앞으로 step하면 그만큼 같은 Console의 lstart도 밀리는 경우를 덮는다.
+// 크래시 뒤 재부팅이나 수 초 이상 지난 재할당은 이 한도를 넉넉히 넘는다.
+const LOCK_AUTHOR_REPLACED_MARGIN_MS = 10_000;
 
 type ConsoleDaemonChildFailure =
   | { readonly kind: "error"; readonly detail: string }
@@ -347,10 +352,18 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     if (typeof payload.token !== "string" || payload.token.length === 0) return "absent";
     const result = await health.probe(payload, { timeoutMs: STOP_IDENTITY_TIMEOUT_MS });
     const evidence: ConsoleLockHealthEvidence = result.healthy ? { kind: "answered", pid: result.health?.pid } : result.refused ? { kind: "refused" } : { kind: "unanswered" };
-    // 거절된 lock 주소는 stale lock일 수도, listener를 닫고 정리 중이거나 그 도중 멈춘 Console일 수도 있다. pid가 끝나거나
-    // lock이 풀릴 때만 stale로 본다. 한도 안에 둘 다 일어나지 않으면 정체를 증명하지 못한 것으로 다룬다.
-    if (evidence.kind === "refused" && !await waitForRefusedOwnerToSettle(payload)) return "unverified";
+    // 거절된 lock 주소는 stale lock일 수도, listener를 닫고 정리 중이거나 그 도중 멈춘 Console일 수도 있다. pid가 lock을 쓴 뒤에
+    // 시작한 프로세스면(크래시 뒤 pid 재할당) 작성자는 이미 끝났다. 그렇지 않으면 pid가 끝나거나 lock이 풀릴 때만 stale로 본다.
+    // 한도 안에 둘 다 일어나지 않으면 정체를 증명하지 못한 것으로 다룬다.
+    if (evidence.kind === "refused" && !await isLockAuthorReplaced(payload) && !await waitForRefusedOwnerToSettle(payload)) return "unverified";
     return identifyConsoleLockOwner({ lockPid: payload.pid, pidAlive: true, health: evidence });
+  }
+
+  /** lock pid의 현재 프로세스가 lock 작성 뒤에 시작했는가. 작성자가 끝났다는 사실은 되돌아가지 않으므로 이 증거는 낡지 않는다. */
+  async function isLockAuthorReplaced(payload: ConsoleLockPayload): Promise<boolean> {
+    if (!Number.isFinite(payload.startedAt)) return false;
+    const startedAt = await readProcessStartTime(payload.pid, env);
+    return startedAt !== null && startedAt > payload.startedAt + LOCK_AUTHOR_REPLACED_MARGIN_MS;
   }
 
   async function waitForRefusedOwnerToSettle(payload: ConsoleLockPayload): Promise<boolean> {
@@ -725,6 +738,8 @@ function readProcessStartTime(pid: number, env: NodeJS.ProcessEnv = process.env)
   if (process.platform === "win32" || !Number.isSafeInteger(pid) || pid <= 0) return Promise.resolve(null);
   return new Promise((resolve) => {
     execFile("ps", ["-o", "lstart=", "-p", String(pid)], {
+      // 증명의 전제다. LC_ALL=C는 파싱할 영문 날짜 형식을, TZ=UTC는 Date.UTC 해석을 보장한다. TZ가 빠지면 지역 시간대
+      // 오프셋만큼 시작 시각이 어긋나 PROCESS_START_MARGIN_MS·LOCK_AUTHOR_REPLACED_MARGIN_MS가 무력화된다.
       env: { PATH: env.PATH ?? "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC" },
       timeout: 2_000,
       windowsHide: true,

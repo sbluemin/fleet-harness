@@ -94,27 +94,36 @@ describe("Console daemon lifecycle integration", () => {
     const impostor = http.createServer((_request, response) => response.writeHead(401).end());
     await new Promise<void>((resolve) => impostor.listen(0, "127.0.0.1", resolve));
     const port = (impostor.address() as AddressInfo).port;
+    const lockInput = { dir: fixture.dir, lockFile: fixture.lockFile, pid: bystanderPid, port, endpoint: `http://127.0.0.1:${port}/`, version: "crashed" };
     const consoleLock = createConsoleLock();
-    consoleLock.writeLock({ dir: fixture.dir, lockFile: fixture.lockFile, pid: bystanderPid, port, endpoint: `http://127.0.0.1:${port}/`, version: "crashed" });
-    const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH });
+    consoleLock.writeLock(lockInput);
+    const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH, pollIntervalMs: 20 });
 
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
     expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
 
-    // 아무도 lock 주소를 듣지 않아도 pid가 살아 있으면 listener를 닫고 정리 중이거나 멈춘 Console과 구별되지 않는다.
-    // 신호도 lock 삭제도 하지 않는다 — 이 lock을 지우면 다음 start가 살아 있는 Console 옆에 두 번째 Console을 띄운다.
+    // 아무도 lock 주소를 듣지 않는데 lock을 쓰기 전에 시작한 pid가 살아 있으면, listener를 닫고 정리 중이거나 멈춘 Console과
+    // 구별되지 않는다. 신호도 lock 삭제도 하지 않는다 — 지우면 다음 start가 살아 있는 Console 옆에 두 번째 Console을 띄운다.
     await new Promise<void>((resolve) => impostor.close(() => resolve()));
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
     expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+
+    // lock을 쓴 뒤에 시작한 pid는 lock 작성자일 수 없다 — 작성자는 끝났고 pid가 재할당됐다. 신호 없이 lock만 치우고 start가 이어진다.
+    fs.rmSync(fixture.lockFile);
+    createConsoleLock({ now: () => Date.now() - 60_000 }).writeLock(lockInput);
+    fs.writeFileSync(fixture.releaseFile, "ready\n", "utf8");
+    const ensure = lifecycle.ensureDaemon();
+    void ensure.catch(() => {});
+    const consolePid = await readPidWhenReady(fixture.pidFile);
+    CHILD_PIDS.add(consolePid);
+    await expect(ensure).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(consolePid);
     expect(bystanderSignal).toBeNull();
     expect(() => process.kill(bystanderPid, 0)).not.toThrow();
 
-    // lock pid가 끝난 stale lock은 신호 없이 파일만 치운다(크래시 복구).
-    bystander.kill("SIGKILL");
-    await expectProcessGone(bystanderPid);
-    CHILD_PIDS.delete(bystanderPid);
     await lifecycle.stop();
-    expect(consoleLock.readLock(fixture.lockFile)).toBeNull();
+    await expectProcessGone(consolePid);
+    CHILD_PIDS.delete(consolePid);
   });
 });
 
