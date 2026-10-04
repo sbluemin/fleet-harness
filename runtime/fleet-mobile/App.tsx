@@ -106,12 +106,12 @@ export default function App(): React.JSX.Element {
         setRetryLeft(null);
         return;
       case "connecting":
-        // 살아 있는 Console을 후보 연결의 진행 오버레이로 가리지 않는다.
-        setState(nativeEvent.active ? "connected" : "connecting");
+        if (nativeEvent.active) return;
+        setState("connecting");
         setDetail(null);
         setRetryLeft(null);
         // A fresh attempt with no console on screen (an intent-delivered link included) shows its progress.
-        if (!nativeEvent.active) setScreen("console");
+        setScreen("console");
         return;
       case "waiting":
         setState("waiting");
