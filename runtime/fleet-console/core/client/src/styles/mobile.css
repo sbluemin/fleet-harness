@@ -1270,3 +1270,4 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-folder-pick { display: flex; flex: 1; align-items: center; gap: 14px; min-width: 0; min-height: 64px; padding: 10px 0 10px 16px; color: inherit; font: inherit; text-align: left; background: transparent; border: 0; }
 .mobile-folder-enter { display: grid; place-items: center; flex: none; width: 56px; align-self: stretch; color: var(--m-text-muted); background: transparent; border: 0; }
 .mobile-sheet-row-copy strong { font-weight: var(--weight-regular); }
+.mobile-connection-band { gap: 8px; }

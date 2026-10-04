@@ -54,6 +54,7 @@ import { observeSideBarCollapseMotion } from "../../../../features/workspace/cli
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
 import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
 import { MobileActionToast, recallArchivedTitle } from "../chrome/mobile/mobile-toast.js";
+import { MobileConnectionBand } from "../chrome/mobile/mobile-connection-band.js";
 import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { MobileTheaterPage } from "../chrome/mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
@@ -637,7 +638,9 @@ function ConnectedApp() {
           배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
       {/* 업데이트 중에는 링크 상실이 고장이 아니라 진행이다. 같은 순간에 두 가지 이야기를
           내보내면 사용자는 더 무서운 쪽을 믿는다 — 커튼이 떠 있는 동안 배너는 침묵한다. */}
-      {state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching ? (
+      {state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching && mobileLayout ? (
+        <MobileConnectionBand failed={state.connection === "offline"}><ReconnectButton /></MobileConnectionBand>
+      ) : state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching ? (
         <div className="console-link-banner" role="status" aria-live="polite">
           <span>{t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}. {t("chrome.link.bannerDetail", { time: connectionLostTime })}</span>
           <ReconnectButton />
