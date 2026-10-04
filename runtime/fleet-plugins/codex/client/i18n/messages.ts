@@ -339,6 +339,9 @@ export const en = {
   "mobile.wiki.empty": "No wiki entries yet.",
   "mobile.wiki.loading": "Loading…",
   "mobile.wiki.failed": "Couldn't load the wiki · Tap to retry",
+  "mobile.wiki.search": "Search the wiki",
+  "mobile.wiki.searchPlaceholder": "Find by entry name",
+  "mobile.wiki.noResults": "No matching entries.",
 } as const;
 
 export const ko: Record<keyof typeof en, string> = {
@@ -680,6 +683,9 @@ export const ko: Record<keyof typeof en, string> = {
   "mobile.wiki.empty": "아직 위키 항목이 없습니다.",
   "mobile.wiki.loading": "불러오는 중…",
   "mobile.wiki.failed": "위키를 불러오지 못했습니다 · 눌러서 다시 시도",
+  "mobile.wiki.search": "위키 검색",
+  "mobile.wiki.searchPlaceholder": "항목 이름으로 찾기",
+  "mobile.wiki.noResults": "찾는 항목이 없습니다.",
 };
 
 export type CodexMessageKey = keyof typeof en;

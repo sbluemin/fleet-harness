@@ -18,6 +18,13 @@
 .codex-m-icon { display: grid; place-items: center; flex: none; }
 .codex-m-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .codex-m-tx small { display: block; margin-top: 1px; font-size: 15px; color: var(--m-awaiting); }
+/* 검색 — 막대 아래 입력칸(S-02 .field 한 줄), 좌우 16 · 아래 8. */
+.codex-m-search { padding: 0 16px 8px; }
+.codex-m-field { display: block; width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1px solid var(--m-hairline-strong); border-radius: 14px; background: var(--m-bg); color: var(--m-text); font: inherit; font-size: 16px; }
+html[data-mobile-scheme="light"] .codex-m-field { background: var(--m-surface); }
+.codex-m-field::placeholder { color: var(--m-text-muted); }
+.codex-m-field:focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; }
+
 /* 검토 대기 글리프 — 상태 글리프 문법의 review(청록 테두리·옅은 면·체크). */
 .codex-m-sg { position: relative; display: inline-block; flex: none; box-sizing: border-box; width: 12px; height: 12px; border: 1.5px solid var(--m-awaiting); border-radius: 50%; background: var(--m-awaiting-glow); }
 .codex-m-sg::after { content: ""; position: absolute; left: 3.2px; top: 1.4px; width: 2.6px; height: 4.8px; border: solid var(--m-awaiting); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
