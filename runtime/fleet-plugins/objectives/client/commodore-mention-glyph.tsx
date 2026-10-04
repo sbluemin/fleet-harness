@@ -2,11 +2,12 @@
  * Quick Launch '@' 덱에서 사령관 행의 정체성 마크 — 덱 행·선택 칩이 같은 이 하나를 그린다.
  *
  * 둥근 판에서 별을 뚫어 낸 모양(evenodd)이고, 색은 currentColor 로 받아 CSS 가 brass-ink 를 준다. 호스트가 17×17 칸에
- * svg 를 채워 넣으므로 viewBox 는 정사각으로 둔다.
+ * svg 를 채워 넣으므로 viewBox 는 정사각으로 둔다. 사이드바 사령관 줄의 자율 운영 스위치도 같은 마크를 그리며, 그때는
+ * className 으로 스위치 전용 색·크기 규칙을 받는다.
  */
-export function CommodoreMentionGlyph() {
+export function CommodoreMentionGlyph({ className = "objectives-commodore-mention-glyph" }: { readonly className?: string } = {}) {
   return (
-    <svg className="objectives-commodore-mention-glyph" viewBox="0 0 16 16" aria-hidden="true">
+    <svg className={className} viewBox="0 0 16 16" aria-hidden="true">
       <path
         fill="currentColor"
         fillRule="evenodd"

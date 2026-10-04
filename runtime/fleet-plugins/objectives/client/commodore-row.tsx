@@ -15,13 +15,14 @@ import {
   useCommodoreDrawer,
   useCommodoreEnabled,
 } from "./commodore-state.js";
+import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { getT } from "./i18n/index.js";
 import { useObjectiveTheater } from "./objectives-state.js";
 
 export const clockTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 
 /**
- * 사이드바 Theater 머리 아래의 사령관 줄. 왼쪽 글리프가 자율 운영 스위치(채운 brass 사각 = 켬, 빈 사각 = 끔)이고,
+ * 사이드바 Theater 머리 아래의 사령관 줄. 왼쪽 글리프가 자율 운영 스위치(Quick Launch 사령관 멘션과 같은 마크 — brass = 켬, 흐린 회색 = 끔)이고,
  * 줄을 누르면 「사령관 기록」 서랍이 열린다. 실험 기능 「자율 운영」이 꺼져 있으면 줄이 없다.
  */
 export function CommodoreRow({ theater, language }: TheaterContributionContext) {
@@ -86,7 +87,7 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
         title={switchTitle}
         onClick={toggle}
       >
-        <i aria-hidden="true" />
+        <CommodoreMentionGlyph className="objectives-commodore-switch-glyph" />
       </button>
       <button
         type="button"
