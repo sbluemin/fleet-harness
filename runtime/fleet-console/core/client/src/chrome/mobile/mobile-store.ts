@@ -43,6 +43,8 @@ function readDestinationFromUrl(): MobileDestination {
   return { kind: "home" };
 }
 
+export function syncMobileDestinationUrl(): void { writeDestinationToUrl(destination); }
+
 function writeDestinationToUrl(next: MobileDestination): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
