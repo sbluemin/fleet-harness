@@ -824,7 +824,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     } finally { followupWorkers.delete(workerKey); }
   };
 
-  const requestPlan = async (objectiveId: string, options?: LaunchOptions) => {
+  /** `recordAs` 가 false 면 구상 요청 행위를 따로 남기지 않는다 — 확장이 같은 손의 `extend` 로 이미 남겼다. */
+  const requestPlan = async (objectiveId: string, options?: LaunchOptions, recordAs = true) => {
     const language = languageOf(options);
     let current = objective(objectiveId);
     if (current.done) throw new ObjectiveStoreError("objective_done");
@@ -838,6 +839,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (firstWake) current = store.setEdited(objectiveId, null);
     if (!(await send(objectiveId, planTurn(current, language, options?.actor), humanWords(current.planRequest), true))) throw new ObjectiveStoreError("launch_failed");
     if (firstWake) announceStarted(objectiveId);
+    // 요청이 지휘관에게 닿은 뒤에만 누가 구상을 청했는지 남긴다. 행위자를 받지 않은 호출은 사람의 것이다(옛 관례와 같다).
+    if (recordAs) current = store.recordStage(objectiveId, "planned", options?.actor ?? "human");
     return { objective: current, operationId: objectiveId };
   };
 
@@ -922,7 +925,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return claim(objectiveId, async () => {
         store.extend(objectiveId, context, intent, options?.actor);
         await applyOperationIntent(objectiveId);
-        return requestPlan(objectiveId, options);
+        return requestPlan(objectiveId, options, false);
       }, "plan");
     }),
 
@@ -932,7 +935,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         if (!intent) continue;
         try { await orderedOperationRequest(current.id, async () => {
           await applyOperationIntent(current.id);
-          if (intent.extensionContext !== undefined) await service.requestPlan(current.id, { actor: intent.by });
+          if (intent.extensionContext !== undefined) await claim(current.id, () => requestPlan(current.id, { actor: intent.by }, false), "plan");
         }); }
         catch (error) { console.warn(`[objectives] Operation request remains pending: ${error instanceof Error ? error.message : "unexpected_failure"}`); }
       }
@@ -1000,8 +1003,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const delivered = await send(objectiveId, startTurn(current, language, options?.context, options?.actor), humanWords(options?.context), true);
       if (!delivered) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
-      // 개시가 닿은 목표는 「진행 중」에 선다.
-      store.recordStage(objectiveId, "commenced");
+      // 개시가 닿은 목표는 「진행 중」에 서고, 누가 개시했는지 남는다. 행위자를 받지 않은 호출은 사람의 것이다.
+      store.recordStage(objectiveId, "commenced", options?.actor ?? "human");
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
       return { objective: store.setEdited(objectiveId, null), operationId: objectiveId, failed };
     }, "start"),

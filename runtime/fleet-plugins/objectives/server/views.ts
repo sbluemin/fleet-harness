@@ -105,6 +105,8 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       extensions: objective.extensions.map((round) => ({ ...round, at: new Date(round.at).toISOString(),
         previousHandoff: round.previousHandoff ? { ...round.previousHandoff, at: new Date(round.previousHandoff.at).toISOString() } : null })),
       addedBy: objective.addedBy,
+      // 구상을 청한 손(구상 문구가 있을 때)과 마지막으로 개시한 손 — 개시 출처 기록 전에 개시한 목표에는 없다.
+      planRequestBy: objective.planRequest ? objective.planRequestBy : null, commencedBy: objective.commencedBy,
       edited: objective.edited, actions: objective.actions, actionCounts: objective.actionCounts,
       removed: objective.removed, merged: objective.merged,
     }),
@@ -141,7 +143,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     operation: !store.pending(objective.id),
     done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy && "operationId" in objective.addedBy ? objective.addedBy.operationId : objective.addedBy,
     ...withoutEmpty({
-      commenced: objective.commenced,
+      commenced: objective.commenced, commencedBy: objective.commencedBy,
       // 에이전트가 지웠거나 합친 목표 — 목록에는 filter all 에서만 선다.
       removed: !!objective.removed,
       mergedInto: objective.removed?.mergedInto?.id ?? null,
