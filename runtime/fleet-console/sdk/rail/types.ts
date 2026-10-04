@@ -197,21 +197,41 @@ export interface RailEntryMobile {
    */
   readonly available?: boolean;
   /**
+   * `false`면 이 엔트리는 모바일 배치에서만 선다 — 데스크톱 우측 레일·팔레트의 패널 목록에는 오르지 않는다.
+   * 데스크톱에 이미 다른 표면(사이드바 줄 등)으로 서 있는 기능을 폰의 목적지 화면으로만 더 올릴 때 쓴다.
+   * 페인 등록과 `panes.open`은 그대로 동작한다. 생략하면 데스크톱 레일에도 선다.
+   */
+  readonly desktop?: false;
+  /**
    * 드로어의 고정 목적지로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
    * 그 화면의 본문은 이 엔트리의 primary 페인이다 — 모바일 호스트가 페인 컨텍스트에 `mobileBar`를 싣는다.
    * 이름과 아이콘은 엔트리의 `title`·`icon`을 쓴다.
    *
-   * `order`는 정렬 값이다 — 작은 쪽이 위. 호스트의 Theater 목적지가 항상 맨 위, 「플러그인」 줄이 항상 맨 아래이고
-   * 이 값은 그 사이에서만 순서를 정한다. 같으면 등록 순서.
+   * `order`는 정렬 값이다 — 작은 쪽이 위. 「보관함」·「플러그인」·「설정」 줄은 항상 이 목적지들 아래에 서고
+   * 이 값은 플러그인 목적지끼리의 순서만 정한다. 같으면 등록 순서.
    */
   readonly destination?: {
     readonly order: number;
+    /**
+     * 이 목적지 행을 지금 둘지. 상태(실험 기능 켜짐·활성 Theater)에 따라 줄이 서고 사라져야 할 때 쓴다 — 문서 단위의
+     * `visible`은 정적이라 맞지 않다. 생략하면 늘 둔다. `get`이 false면 드로어 행이 없고, 그 목적지를 보고 있던 중에
+     * false가 되면 호스트가 홈으로 돌려보낸다. 호스트는 `useSyncExternalStore`로 읽으므로 `get`은 부작용 없이
+     * 같은 상태에 같은 값을 돌려준다. 코어 호스트는 `theaterId`로 활성 Theater(없으면 null)를 건넨다.
+     */
+    readonly shown?: RailEntryDestinationShown;
     /**
      * 드로어 행과 화면 제목에 쓸 짧은 이름(`title`과 같은 현지화 문자열 — 로케일 함수도 된다). 생략하면 엔트리의 `title`을 쓴다.
      * 데스크톱 레일 제목이 「Codex — 프로젝트 위키」처럼 길어도 모바일 드로어에는 「위키」가 서게 한다.
      */
     readonly label?: LocalizedText;
   };
+}
+
+/** 모바일 드로어 목적지 행의 보임 공급원 — `RailEntryMobile.destination.shown`. */
+export interface RailEntryDestinationShown {
+  readonly subscribe: (listener: () => void) => () => void;
+  /** 지금 이 목적지 행을 둘지. */
+  readonly get: (theaterId: string | null) => boolean;
 }
 
 /**
