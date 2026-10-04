@@ -21,7 +21,7 @@ export {
 } from "./experiments.js";
 // 모바일 셸이 설정 화면에 주입하는 능력(선택 팝업) — 특수한 섹션이 직접 열 때 쓴다.
 export { MobileSettingsHostContext, useMobileSettingsHost } from "../react/browser.js";
-export type { MobileChoiceOption, MobileChoiceSpec, MobileInputSpec, MobileModelChoiceProps, MobileModelGroup, MobileSettingsHost } from "../react/browser.js";
+export type { MobileChoiceOption, MobileChoiceSpec, MobileInputSpec, MobileModelChoiceProps, MobileModelGroup, MobileSettingsHost, MobileSubScreenSpec } from "../react/browser.js";
 export type { ShortcutBindings } from "./shortcuts.js";
 export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";
 
@@ -140,6 +140,34 @@ export function ExperimentalBadge({ children }: { readonly children: React.React
 }
 
 /**
+ * 모바일 설명 줄 — 5줄까지는 그대로 다 보이고, 넘으면 4줄에서 말줄임하고 「더 보기」 글자 버튼이 그 자리에서 펼친다(P-2).
+ * 호스트가 `moreLabel`을 주지 않으면 접지 않는다.
+ */
+function MobileClamp({ className, id, children }: { readonly className: string; readonly id?: string; readonly children: React.ReactNode }): React.ReactElement {
+  const host = useMobileSettingsHost();
+  const bodyRef = React.useRef<HTMLSpanElement | null>(null);
+  const [overflow, setOverflow] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+  React.useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body || !host?.moreLabel) return;
+    const measure = () => {
+      const lineHeight = Number.parseFloat(getComputedStyle(body).lineHeight) || 21;
+      setOverflow(body.scrollHeight > lineHeight * 5 + 2);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [host?.moreLabel, children]);
+  return (
+    <span className={className} id={id}>
+      <span ref={bodyRef} className={`fc-clamp-body${overflow && !open ? " is-clamped" : ""}`}>{children}</span>
+      {overflow && !open && host?.moreLabel ? <button type="button" className="fc-settings-more" onClick={() => setOpen(true)}>{host.moreLabel}</button> : null}
+    </span>
+  );
+}
+
+/**
  * 행·카드 제목 옆의 '?' — 설정 설명의 단일 공개 문법.
  *
  * 설명은 매 방문마다 화면을 차지하는 대신 요구가 있는 순간에만 선다: hover(또는 키보드
@@ -218,7 +246,7 @@ export function SettingsHelpTip({ ariaLabel, id, children }: SettingsHelpTipProp
   React.useEffect(() => clearCloseTimer, []);
 
   // 모바일에서는 「?」 칩이 없다 — 설명이 행 아래 한 줄로 서고, 언제나 보인다.
-  if (mobileHost) return <span className="settings-help-line" id={bubbleId}>{children}</span>;
+  if (mobileHost) return <MobileClamp className="settings-help-line" id={bubbleId}>{children}</MobileClamp>;
 
   return (
     <span
@@ -304,7 +332,7 @@ export function SettingsRow({ label, hint, helpTip, icon, badge, disabled = fals
         {icon ? <span className="fc-settings-row__icon" aria-hidden="true">{icon}</span> : null}
         <span className="fc-settings-row__copy">
           <span className="fc-settings-row__label"><span id={labelId}>{label}</span>{badge}</span>
-          {hint ? <span className="fc-settings-row__hint" id={hintId}>{hint}</span> : null}
+          {hint ? <MobileClamp className="fc-settings-row__hint" id={hintId}>{hint}</MobileClamp> : null}
           {helpTip}
         </span>
         <MobileSettingsRowLabelContext.Provider value={label}><span className="fc-settings-row__control">{children}</span></MobileSettingsRowLabelContext.Provider>
@@ -365,6 +393,31 @@ export function SettingsItem({ label, labelId, helpTip, hint, icon, badge, disab
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * 하위 화면으로 가는 행(모바일 전용) — `[아이콘] [제목 / 요약]`을 누르면 `render()`가 하위 화면에 선다.
+ * 모바일 호스트가 없으면 `null`이라, 호출부가 `useMobileSettingsHost()`로 갈라 데스크톱은 본문을 그대로 그린다.
+ */
+export interface SettingsSubScreenRowProps {
+  readonly label: string;
+  /** 지금 상태를 한 줄로 — 열지 않고도 알 수 있게. */
+  readonly summary: string;
+  readonly icon?: React.ReactNode;
+  readonly render: () => React.ReactNode;
+}
+
+export function SettingsSubScreenRow({ label, summary, icon, render }: SettingsSubScreenRowProps): React.ReactElement | null {
+  const mobileHost = useMobileSettingsHost();
+  if (!mobileHost?.openSubScreen) return null;
+  const openSubScreen = mobileHost.openSubScreen;
+  return (
+    <SettingsRow label={label} icon={icon}>
+      <button type="button" className="fc-select__trigger fc-select--mobile" aria-haspopup="dialog" onClick={() => openSubScreen({ title: label, render })}>
+        <span className="fc-select__value">{summary}</span>
+      </button>
+    </SettingsRow>
   );
 }
 

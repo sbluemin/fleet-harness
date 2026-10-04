@@ -100,7 +100,17 @@ export interface MobileInputSpec {
   readonly onClear?: () => void | Promise<void>;
 }
 
+/** 설정 하위 화면(섹션 안의 한 단 더) — 길어서 팝업에 맞지 않는 목록·관리 화면용. `render`는 열려 있는 동안 호스트가 다시 부르므로 안에서 스토어 훅을 써도 값이 살아 있다. */
+export interface MobileSubScreenSpec {
+  readonly title: string;
+  readonly render: () => React.ReactNode;
+}
+
 export interface MobileSettingsHost {
+  /** 5줄을 넘는 설명을 접을 때 글자 버튼에 쓰는 현지화한 문구(「더 보기」). 없으면 접지 않는다. */
+  readonly moreLabel?: string;
+  /** 하위 화면을 연다. 위쪽 막대의 ‹·뒤로가 닫는다. 없는 호스트에서는 호출부가 같은 자리에 그대로 그린다. */
+  readonly openSubScreen?: (spec: MobileSubScreenSpec) => void;
   /** 한 칸 입력 시트를 연다. 저장이 끝나면 시트가 닫힌다. */
   readonly openInput?: (spec: MobileInputSpec) => void;
   /** 선택 팝업을 연다. 고르면 팝업이 닫히고 `onSelect`가 불린다. */
