@@ -187,7 +187,7 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
         {running.length > 0 ? <><h2 className="objectives-m-glab">{t("objectives.mobile.zone.running")}</h2><div className="objectives-m-grp">{running.map(row)}</div></> : null}
         {shown.length > 0 ? (
           <>
-            <button type="button" className="objectives-m-glab is-fold" aria-expanded={doneOpen} onClick={() => setDoneOpen((value) => !value)}>
+            <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={doneOpen} onClick={() => setDoneOpen((value) => !value)}>
               {t("objectives.mobile.zone.done", { count: done.length })}<Chevron open={doneOpen} size={16} />
             </button>
             {doneOpen && done.length > 0 ? <div className="objectives-m-grp">{done.map(row)}</div> : null}

@@ -14,6 +14,8 @@
 .objectives-m-glab { margin: 0; padding: 6px 4px 0; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.4; color: var(--m-text-muted); }
 .objectives-m .objectives-m-glab.is-fold { display: flex; align-items: center; gap: 6px; padding: 6px 4px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
 .objectives-m-glab.is-fold svg { width: 16px; height: 16px; flex: none; }
+/* 접는 머리는 바탕 없는 단추라 R1(S-52), 반경 12. 머리 상자는 위 6·왼쪽 4·아래 0 여백이라 글자가 면 가장자리에 붙는다 — 배치를 바꾸지 않고 면만 좌우 8·아래 6 바깥으로 넓힌다. */
+.objectives-m .objectives-m-glab.is-fold { --pr-inset: 0 -8px -6px; --pr-r: 12px; }
 .objectives-m-note { margin: 0; padding: 24px 4px; font-size: var(--m-fs-meta); color: var(--m-text-muted); }
 
 /* 묶음 카드 — 행 사이 2 틈, 바깥 모서리 22 / 안쪽 4. */
