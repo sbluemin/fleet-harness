@@ -157,18 +157,27 @@ export interface DesktopShellSnapshot {
   readonly homeOrigin: string | null;
   /** 창을 든 Desktop 앱의 버전. 도움말 메뉴가 "어느 Desktop이 이 창을 들고 있는가"를 적는 데 쓴다. 옛 Desktop은 보내지 않는다. */
   readonly version?: string;
+  /**
+   * 이 셸이 해석하는 Console 신호. 화면은 버전 번호를 짐작하지 않고 이 목록으로 셸의 능력을 안다 — 예:
+   * "local-fonts"는 원격 화면의 서체 목록 요청 항해를 가로채 확인창으로 묻는다는 뜻이다. 옛 Desktop은 보내지 않는다.
+   */
+  readonly capabilities?: readonly string[];
 }
 
 export const emptyDesktopShell = (): DesktopShellSnapshot => ({ homeOrigin: null });
 
 const DESKTOP_VERSION_SHAPE = /^[0-9A-Za-z.+-]{1,64}$/u;
+const DESKTOP_CAPABILITY_SHAPE = /^[a-z][a-z0-9-]{0,31}$/u;
+const MAX_DESKTOP_CAPABILITIES = 16;
 
 function isDesktopShellSnapshot(value: unknown): value is DesktopShellSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
   const keys = Object.keys(entry);
-  if (!keys.includes("homeOrigin") || keys.some((key) => key !== "homeOrigin" && key !== "version")) return false;
+  if (!keys.includes("homeOrigin") || keys.some((key) => key !== "homeOrigin" && key !== "version" && key !== "capabilities")) return false;
   if ("version" in entry && (typeof entry.version !== "string" || !DESKTOP_VERSION_SHAPE.test(entry.version))) return false;
+  if ("capabilities" in entry && (!Array.isArray(entry.capabilities) || entry.capabilities.length > MAX_DESKTOP_CAPABILITIES
+    || entry.capabilities.some((capability) => typeof capability !== "string" || !DESKTOP_CAPABILITY_SHAPE.test(capability)))) return false;
   return entry.homeOrigin === null || (typeof entry.homeOrigin === "string" && isConsoleOriginShape(entry.homeOrigin));
 }
 

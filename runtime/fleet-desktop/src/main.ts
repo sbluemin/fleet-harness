@@ -53,6 +53,8 @@ type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: nu
 const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
+/** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
+const DESKTOP_SHELL_CAPABILITIES = ["local-fonts"];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -372,8 +374,10 @@ async function boot(): Promise<void> {
         logger.error(`shell home publish rejected status=${response.status}`);
         return "rejected";
       }
-      // 버전은 그 위에 덧쓴다. 이 키를 모르는 옛 Console은 400으로 거절하고, 그때는 이미 게시된 집이 그대로 선다.
-      const versioned = await put({ homeOrigin: home, version: app.getVersion() });
+      // 버전과 능력은 그 위에 덧쓴다. 이 키를 모르는 옛 Console은 400으로 거절한다 — 능력을 빼고 버전만 다시
+      // 보내고, 그것도 거절되면 이미 게시된 집이 그대로 선다.
+      const capable = await put({ homeOrigin: home, version: app.getVersion(), capabilities: DESKTOP_SHELL_CAPABILITIES });
+      const versioned = capable.status === 400 ? await put({ homeOrigin: home, version: app.getVersion() }) : capable;
       if (!versioned.ok && versioned.status !== 400) logger.error(`shell version publish rejected status=${versioned.status}`);
       return "accepted";
     } catch (error) {

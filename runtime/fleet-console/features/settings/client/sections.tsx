@@ -2,6 +2,7 @@ import { FontMenu } from "./font-menu.js";
 import { fontCjkScripts } from "../../execution/client/terminal/shared/cjk-coverage.js";
 import { DEFAULT_FONTS, FONT_BUILT_INS, FONT_SIZE_RANGES, fontFamilyForAxis, type FontAxis, type FontAxisSettings, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
 import { type FontPickerInstalledFont, type FontPickerLabels } from "@fleet-console/font-picker/browser";
+import { correctHostMonospace } from "@fleet-console/font-picker/local-fonts";
 import { fontResolves } from "@fleet-console/font-picker/resolve";
 import "@fleet-console/font-picker/styles.css";
 import { SystemFontsFetchError, fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
@@ -491,15 +492,23 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
   const devicePermission = useDeviceFontsPermission();
   const shellHome = useDesktopShellHome();
   const deviceLoaded = deviceFonts.status === "loaded";
+  // 이미 허용된 기기라면 묻지 않고 불러온다 — 허용된 상태의 열거에는 사용자 제스처가 필요 없다. Desktop이 이 기기의
+  // Console에 미리 허용한 경우, 원격 Console을 이 실행에서 허용한 경우, 브라우저 사이트가 허용된 경우가 여기에 든다.
+  // 'prompt'에서는 버튼을 기다린다. 목록은 여전히 이 화면의 메모리에만 머문다.
+  useEffect(() => {
+    if (devicePermission === "granted" && (deviceFonts.status === "idle" || deviceFonts.status === "denied")) void loadDeviceFonts();
+  }, [devicePermission, deviceFonts.status]);
   // 이 기기의 목록을 받았으면 그것이 진실이다. 호스트에만 있는 family는 "이 기기에 없음"으로 내린다.
+  // Windows 호스트 목록은 등폭 여부가 비어 온다 — 이 화면이 그릴 수 있는 것은 여기서 재서 고친다.
+  const hostFonts = useMemo(() => correctHostMonospace(installedFonts, (family) => fontResolves(family)), [installedFonts]);
   const pickerFonts = useMemo(() => {
-    if (deviceFonts.status !== "loaded") return installedFonts;
+    if (deviceFonts.status !== "loaded") return hostFonts;
     const deviceKeys = new Set(deviceFonts.fonts.map((font) => font.family.toLocaleLowerCase()));
     return [
       ...deviceFonts.fonts.map((font) => ({ ...font, available: true })),
-      ...installedFonts.filter((font) => !deviceKeys.has(font.family.toLocaleLowerCase())).map((font) => ({ ...font, available: false })),
+      ...hostFonts.filter((font) => !deviceKeys.has(font.family.toLocaleLowerCase())).map((font) => ({ ...font, available: false })),
     ];
-  }, [deviceFonts, installedFonts]);
+  }, [deviceFonts, hostFonts]);
   useEffect(() => {
     if (!advanced) return;
     let cancelled = false;
@@ -529,7 +538,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
   // 허용하고, 원격 Console에는 거부한 채로 둔다가 이 버튼을 누르면 확인창으로 묻는다. 그 신호를 모르는 옛
   // 셸이거나 이 실행에서 이미 거부한 origin이면 버튼을 세우지 않는다.
   const desktopShell = isDesktopShell();
-  const askDesktop = desktopShell && devicePermission === "denied" && desktopAsksForLocalFonts(shellHome.desktopVersion);
+  const askDesktop = desktopShell && devicePermission === "denied" && desktopAsksForLocalFonts(shellHome.capabilities);
   const desktopDenied = askDesktop && deviceFonts.status === "desktopDenied";
   const canLoadDeviceFonts = devicePermission !== null && !deviceLoaded && (devicePermission !== "denied" || (askDesktop && !desktopDenied));
   const deviceDenied = !desktopShell && devicePermission === "denied" && !deviceLoaded;
@@ -564,6 +573,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
     installedGroup: t(deviceLoaded ? "settings.typography.picker.deviceGroup" : "settings.typography.picker.installedGroup"),
     missingGroup: t("settings.typography.picker.missingGroup"),
     missingGroupNote: t(deviceLoaded ? "settings.typography.picker.hostOnlyNote" : "settings.typography.picker.missingGroupNote"),
+    missingSummary: t(deviceLoaded ? "settings.typography.picker.hostOnlySummary" : "settings.typography.picker.missingSummary", { count: "{count}" }),
     noMatch: t("settings.typography.picker.noMatch"),
     preview: t("settings.typography.picker.preview"),
     available: t("settings.typography.picker.available"),

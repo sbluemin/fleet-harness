@@ -35,6 +35,8 @@ export interface FontPickerLabels {
   readonly installedGroup?: string;
   readonly missingGroup?: string;
   readonly missingGroupNote?: string;
+  /** 접힌 "그릴 수 없는 서체" 묶음의 요약. `{count}`가 개수로 바뀐다. */
+  readonly missingSummary?: string;
   readonly noMatch?: string;
   readonly preview?: string;
   readonly available?: string;
@@ -63,6 +65,7 @@ const DEFAULT_LABELS: ResolvedFontPickerLabels = {
   installedGroup: "Installed on the Console host",
   missingGroup: "Not on this device",
   missingGroupNote: "Installed where the Console runs, but this screen could not draw them.",
+  missingSummary: "{count} fonts this screen can't draw",
   noMatch: "No fonts match this search.",
   preview: "Preview",
   available: "Available",
@@ -120,6 +123,8 @@ interface FontPickerRow {
   readonly selection: FontPickerSelection;
   readonly description?: string;
   readonly unavailable: boolean;
+  /* 그릴 수 없는 행 가운데 접히는 것. 저장된 선택은 그릴 수 없어도 사용자가 알아볼 수 있게 접지 않는다. */
+  readonly collapsible: boolean;
 }
 
 interface IndexedFontPickerRow {
@@ -144,8 +149,13 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
     forgetUnresolvedFonts();
     return true;
   });
+  // 그릴 수 없는 서체는 기본으로 접는다 — 고를 수 없는 행이 고를 수 있는 행을 밀어내지 않게. 접힌 행은
+  // 렌더하지 않으므로 키보드 순서에서도 빠진다.
+  const [missingExpanded, setMissingExpanded] = React.useState(false);
   const rows = React.useMemo(() => createRows(props, labels), [props, labels]);
-  const filteredRows = React.useMemo(() => filterRows(rows, query), [rows, query]);
+  const matchedRows = React.useMemo(() => filterRows(rows, query), [rows, query]);
+  const collapsedCount = matchedRows.filter((row) => row.collapsible).length;
+  const filteredRows = React.useMemo(() => missingExpanded ? matchedRows : matchedRows.filter((row) => !row.collapsible), [matchedRows, missingExpanded]);
   const indexedRows = React.useMemo(() => filteredRows.map((row, index) => ({ row, index })), [filteredRows]);
   const [activeIndex, setActiveIndex] = React.useState(() => selectedRowIndex(rows, props.selected));
   const selectedRow = rows.find((row) => isSelected(row.selection, props.selected)) ?? null;
@@ -153,8 +163,8 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   const builtInsGroupId = `${listboxId}-built-ins`;
   const installedGroupId = `${listboxId}-installed`;
   const missingGroupId = `${listboxId}-missing`;
-  const installedRows = indexedRows.filter(({ row }) => row.source === "system" && !row.unavailable);
-  const missingRows = indexedRows.filter(({ row }) => row.source === "system" && row.unavailable);
+  const installedRows = indexedRows.filter(({ row }) => row.source === "system" && !row.collapsible);
+  const missingRows = indexedRows.filter(({ row }) => row.collapsible);
 
   React.useEffect(() => {
     if (props.size !== undefined) setDraftSize(props.size);
@@ -256,8 +266,21 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
             <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
             <FontGroup groupId={missingGroupId} label={labels.missingGroup} note={labels.missingGroupNote} unavailableLabel={labels.unavailable} rows={missingRows} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
           </> : null}
-          {!props.loading && !indexedRows.length ? <p className="fc-font-browser__state">{labels.noMatch}</p> : null}
+          {!props.loading && !indexedRows.length && !collapsedCount ? <p className="fc-font-browser__state">{labels.noMatch}</p> : null}
         </div>
+        {collapsedCount ? (
+          <button
+            type="button"
+            className="fc-font-browser__missing-toggle"
+            aria-expanded={missingExpanded}
+            aria-controls={missingExpanded ? missingGroupId : undefined}
+            disabled={props.disabled}
+            onClick={() => setMissingExpanded((expanded) => !expanded)}
+          >
+            <span>{labels.missingSummary.replace("{count}", String(collapsedCount))}</span>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={missingExpanded ? "m2 3.5 3 3 3-3" : "m3.5 2 3 3-3 3"} /></svg>
+          </button>
+        ) : null}
         {props.footer ? <div className="fc-font-browser__footer">{props.footer}</div> : null}
       </div>
       {props.presentation !== "choices" ? <aside className="fc-font-browser__preview" aria-live="polite">
@@ -330,15 +353,18 @@ function createRows(props: FontPickerProps, labels: ResolvedFontPickerLabels): r
     const keys = [font.id, font.label, ...(font.aliases ?? [])].map(normalizeFontKey);
     if (keys.some((key) => builtInAliases.has(key))) return [];
     keys.forEach((key) => builtInAliases.add(key));
-    return [{ id: `builtin-${font.id}`, label: font.label, family: font.family, previewFamily: font.family, source: "builtin" as const, selection: { source: "builtin" as const, id: font.id }, description: font.description, unavailable: false }];
+    return [{ id: `builtin-${font.id}`, label: font.label, family: font.family, previewFamily: font.family, source: "builtin" as const, selection: { source: "builtin" as const, id: font.id }, description: font.description, unavailable: false, collapsible: false }];
   });
-  const installed = props.installedFonts.map((font) => ({ id: `system-${normalizeFontKey(font.family)}`, label: font.family, family: font.family, previewFamily: withFontFallback(font.family, props.fallbackStack), source: "system" as const, selection: { source: "system" as const, familyName: font.family }, description: font.description ?? (font.monospace ? labels.monospace : labels.systemFont), unavailable: !(font.available ?? fontResolves(font.family)) }));
+  // 내장 항목과 같은 이름의 설치 서체는 두 번 보이지 않게 뺀다. 그 이름을 시스템 서체로 저장해 둔 선택은 아래
+  // 저장 행으로 남는다.
+  const installed: FontPickerRow[] = props.installedFonts.filter((font) => !builtInAliases.has(normalizeFontKey(font.family))).map((font) => ({ id: `system-${normalizeFontKey(font.family)}`, label: font.family, family: font.family, previewFamily: withFontFallback(font.family, props.fallbackStack), source: "system" as const, selection: { source: "system" as const, familyName: font.family }, description: font.description ?? (font.monospace ? labels.monospace : labels.systemFont), unavailable: !(font.available ?? fontResolves(font.family)), collapsible: false }));
   const persistedSystemName = props.selected.source === "system" ? props.selected.familyName : null;
   if (persistedSystemName !== null && !installed.some((font) => font.family === persistedSystemName)) {
-    installed.unshift({ id: `system-${normalizeFontKey(persistedSystemName)}`, label: props.selectedSystemFont ?? persistedSystemName, family: persistedSystemName, previewFamily: withFontFallback(persistedSystemName, props.fallbackStack), source: "system", selection: { source: "system", familyName: persistedSystemName }, description: labels.savedSystemFont, unavailable: !(props.selectedSystemFontAvailable ?? fontResolves(persistedSystemName)) });
+    installed.unshift({ id: `system-${normalizeFontKey(persistedSystemName)}`, label: props.selectedSystemFont ?? persistedSystemName, family: persistedSystemName, previewFamily: withFontFallback(persistedSystemName, props.fallbackStack), source: "system", selection: { source: "system", familyName: persistedSystemName }, description: labels.savedSystemFont, unavailable: !(props.selectedSystemFontAvailable ?? fontResolves(persistedSystemName)), collapsible: false });
   }
-  // 행 순서가 곧 키보드 순서다 — 그릴 수 없는 행은 맨 아래 "이 기기에 없음" 묶음과 같은 자리로 내린다.
-  return [...builtIns, ...installed.filter((font) => !font.unavailable), ...installed.filter((font) => font.unavailable)];
+  const marked = installed.map((font) => ({ ...font, collapsible: font.unavailable && !isSelected(font.selection, props.selected) }));
+  // 행 순서가 곧 키보드 순서다 — 그릴 수 없는 저장 선택은 맨 위에, 나머지 그릴 수 없는 행은 맨 아래 접히는 묶음에 둔다.
+  return [...builtIns, ...marked.filter((font) => font.unavailable && !font.collapsible), ...marked.filter((font) => !font.unavailable), ...marked.filter((font) => font.collapsible)];
 }
 
 function filterRows(rows: readonly FontPickerRow[], query: string): readonly FontPickerRow[] {

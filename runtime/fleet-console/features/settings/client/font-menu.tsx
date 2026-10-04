@@ -72,7 +72,12 @@ export function FontMenu({ label, selectedLabel, busy = false, ...picker }: Font
     </button>
     {open ? createPortal(<div ref={popup} id={id} role="dialog" aria-label={label} className="settings-font-popover" style={position} onKeyDown={(event) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); }
-      if (event.key === "Tab") close(true);
+      // 팝오버 안의 컨트롤(검색, 목록, 접힌 묶음, 하단 동작) 사이는 Tab으로 오간다. 끝을 넘어설 때만 닫는다.
+      if (event.key === "Tab") {
+        const stops = [...(popup.current?.querySelectorAll<HTMLElement>("input, button, [tabindex]") ?? [])].filter((element) => element.tabIndex >= 0 && !(element as HTMLButtonElement).disabled);
+        const edge = event.shiftKey ? stops[0] : stops[stops.length - 1];
+        if (!edge || document.activeElement === edge) close(true);
+      }
     }}>
       <FontPicker {...picker} presentation="choices" onSelectionChange={(next) => { picker.onSelectionChange(next); close(true); }} />
     </div>, document.body) : null}

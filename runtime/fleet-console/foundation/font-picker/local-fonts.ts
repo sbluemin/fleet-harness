@@ -1,4 +1,4 @@
-import { normalizeSystemFonts, type SystemFontFace } from "./classify.js";
+import { isDeniedFontFamily, normalizeSystemFonts, type SystemFontFace } from "./classify.js";
 import { quoteFontFamily } from "./resolve.js";
 import type { SystemFontRecord } from "./system-fonts.js";
 
@@ -84,6 +84,20 @@ export async function queryLocalFontFamilies(options: LocalFontsOptions = {}): P
   if (fonts.length === 0) return await afterRefusal(options);
   const records = normalizeSystemFonts(toFaces(fonts, target.document), { uniformStyleIsNormal: true });
   return records.length ? { status: "loaded", fonts: records } : { status: "failed" };
+}
+
+/**
+ * 이 화면이 그릴 수 있는 호스트 서체 가운데 등폭인 것을 등폭으로 고친다. font-list는 Windows에서 등폭 여부를
+ * 주지 않아(늘 false) Consolas조차 코드 축에 오르지 못한다. 그리는 쪽이 이 화면이므로 이 화면에서 잰 폭이
+ * 실제로 쓰일 서체의 폭이다. 호스트가 이미 등폭이라 한 것은 그대로 두고, 기호 서체는 올리지 않는다.
+ */
+export function correctHostMonospace<T extends SystemFontRecord>(fonts: readonly T[], resolves: (family: string) => boolean, options: LocalFontsOptions = {}): readonly T[] {
+  const documentRef = localFontsWindow(options)?.document;
+  const context = documentRef?.createElement("canvas").getContext("2d");
+  if (!context) return fonts;
+  return fonts.map((font) => !font.monospace && !isDeniedFontFamily(font.family) && resolves(font.family) && measuresMonospace(context, font.family)
+    ? { ...font, monospace: true, uiSuitable: false }
+    : font);
 }
 
 async function afterRefusal(options: LocalFontsOptions): Promise<LocalFontsResult> {

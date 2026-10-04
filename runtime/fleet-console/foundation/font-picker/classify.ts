@@ -48,6 +48,12 @@ export function normalizeSystemFonts(fonts: readonly SystemFontFace[], options: 
     .sort((left, right) => left.family.localeCompare(right.family, undefined, { sensitivity: "base" }) || left.family.localeCompare(right.family));
 }
 
+/** family 이름만으로 기호·장식 서체인지. face 없이 분류를 고칠 때(렌더러의 등폭 보정) 같은 기준을 쓴다. */
+export function isDeniedFontFamily(family: string): boolean {
+  const normalizedFamily = family.toLocaleLowerCase();
+  return DENY_FAMILY_MARKERS.some((marker) => normalizedFamily.includes(marker));
+}
+
 function isSystemFontFace(value: unknown): value is SystemFontFace {
   return typeof value === "object" && value !== null && typeof (value as SystemFontFace).familyName === "string" && typeof (value as SystemFontFace).monospace === "boolean" && typeof (value as SystemFontFace).style === "string";
 }
@@ -58,7 +64,7 @@ function sanitizeFamilyName(value: string): string {
 
 function toSystemFontRecord(group: FontFamilyGroup, options: NormalizeSystemFontsOptions): SystemFontRecord {
   const normalizedFamily = group.family.toLocaleLowerCase();
-  const denied = DENY_FAMILY_MARKERS.some((marker) => normalizedFamily.includes(marker));
+  const denied = isDeniedFontFamily(group.family);
   // 기호 서체는 라틴 자리에 같은 폭의 그림을 두어 등폭으로 읽힌다. monospace는 곧 코드 축 후보라 함께 거른다.
   const monospace = !denied && group.faces.length > 0 && group.faces.every((face) => face.monospace);
   const proportionalFaces = group.faces.filter((face) => !face.monospace);

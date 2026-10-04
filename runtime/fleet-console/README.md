@@ -184,9 +184,9 @@ Updates apply in-session only to ordinary global packages through the npm-global
 
 ## Fonts on WSL
 
-Settings lists the fonts installed where the Console runs. Inside WSL that is the Linux distribution, which usually has only a handful of fonts and none for Korean, Japanese, or Chinese, while the screen showing the Console may be a Windows browser or Desktop with fonts of its own. A font the viewing device cannot draw appears under **Not on this device**.
+Settings lists the fonts installed where the Console runs. Inside WSL that is the Linux distribution, which usually has only a handful of fonts and none for Korean, Japanese, or Chinese, while the screen showing the Console may be a Windows browser or Desktop with fonts of its own. Fonts the viewing screen cannot draw are folded into one summary line at the bottom of the font menu; expand it to see them.
 
-In Chrome, Edge, and Fleet Desktop, the font menu offers **Load this device's fonts**, which lists the fonts of the device you are looking at instead. The browser asks for permission first. Fleet Desktop allows it without asking for a Console on the same computer; for a Console on another computer it shows a dialog naming that console, and remembers your answer until Fleet Desktop quits. The list stays on that screen and is never sent to the Console or saved.
+In Chrome, Edge, and Fleet Desktop, the font menu can list the fonts of the device you are looking at instead. A browser asks for permission once through **Load this device's fonts**; after that, and in Fleet Desktop for a Console on the same computer, the list loads by itself. For a Console on another computer, Fleet Desktop shows a dialog naming that console and remembers your answer until it quits. The list stays on that screen and is never sent to the Console or saved. It needs a Chromium-based browser at a secure address (the Console's own `127.0.0.1` address, or Fleet Desktop); other browsers and the mobile apps keep the Console host's list.
 
 To let the WSL Console list Windows fonts, and to let a browser running inside WSL draw them, register the Windows font folders with fontconfig for your Linux user. Create `~/.config/fontconfig/fonts.conf`:
 
