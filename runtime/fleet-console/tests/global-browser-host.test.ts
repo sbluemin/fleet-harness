@@ -184,6 +184,19 @@ describe("global fleet browser host contract", () => {
       await service.closeOperation("op-target");
       expect(service.globalState().tabs).toEqual(state.tabs);
 
+      // 허용 회수가 첫 탭 생성과 겹쳐도 제거된 Operation에 옛 탭·네이티브 타깃이 되살아나지 않는다.
+      const viewsBeforeReset = engine.snapshot().views.map((view) => view.id);
+      const interrupted = service.createTab("op-reset", null, "agent");
+      const interruptedResult = interrupted.catch((error: unknown) => error);
+      const resettingOp = (service as unknown as { operations: Map<string, { contextId: string; pendingTabs: number; tabs: Map<string, unknown> }> }).operations.get("op-reset")!;
+      await service.closeOperation("op-reset");
+      expect(await interruptedResult).toMatchObject({ code: "browser_call_interrupted" });
+      expect(resettingOp.tabs.size).toBe(0);
+      expect(resettingOp.contextId).toBe("");
+      expect(resettingOp.pendingTabs).toBe(0);
+      expect(engine.snapshot().views.map((view) => view.id)).toEqual(viewsBeforeReset);
+      expect(service.globalState().tabs).toEqual(state.tabs);
+
       service.dismissClosedTabs();
       expect(service.globalState().closedTabs).toHaveLength(0);
 
