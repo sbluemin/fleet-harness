@@ -85,7 +85,7 @@ import type { DesktopShellUpdateCommandKind, DesktopShellUpdateCommandSnapshot, 
 import { listLocalConsoles } from "./local-consoles.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createConsoleDataPaths } from "./paths.js";
-import { createConsoleFailureLog } from "./failure-log.js";
+import { CONSOLE_FAILURE_LOG_FILE, createConsoleFailureLog } from "./failure-log.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
 
 export interface ConsoleServerDeps {
@@ -506,7 +506,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     ?? (process.env.FLEET_DATA_DIR === undefined ? consoleSlotOverride : undefined)
     ?? getFleetDataDir();
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
-  const updateApply = deps.updateApply ?? createConsoleUpdateApplyService({ fleetDataDir });
+  const updateApply = deps.updateApply ?? createConsoleUpdateApplyService({ fleetDataDir, failureLogName: CONSOLE_FAILURE_LOG_FILE });
   const recordFailure = createConsoleFailureLog(durablePaths.dir);
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService({
     readRelease: () => release,

@@ -37,6 +37,11 @@ export interface ConsoleUpdateApplyStartResult {
 
 export interface CreateConsoleUpdateApplyServiceDeps {
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * Name of the Console failure log in the data directory. A serve that does not take the lock records why there, and a
+   * failed update points to it. Composition supplies it; without it the update only names the lock refusal.
+   */
+  readonly failureLogName?: string;
   /** Fleet data root; verified release tarballs are kept beneath it for as long as they stay installed. */
   readonly fleetDataDir?: string;
   readonly downloadTarball?: (release: ConsoleReleaseManifest, releasesDir: string) => Promise<ConsoleTarballDownload>;
@@ -66,6 +71,8 @@ export interface ConsoleUpdateWorkerScriptConfig {
   readonly currentPid: number;
   readonly lockFile: string;
   readonly logFile: string;
+  /** Where a serve that did not take the lock recorded why, or null when composition did not say. */
+  readonly failureLogFile: string | null;
   readonly packageManager: ConsoleUpdatePackageManagerSpec;
   readonly packageNames: readonly [string, ...string[]];
   /** Already downloaded and sha256-verified before this Console was asked to stop. */
@@ -167,6 +174,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       fromVersion: request.fromVersion,
       lockFile: request.lockFile,
       logFile,
+      failureLogFile: deps.failureLogName ? path.join(request.dataDir, deps.failureLogName) : null,
       packageManager,
       packageNames: PACKAGE_NAMES,
       progressFile,
@@ -546,31 +554,18 @@ function daemonEnv() {
 }
 
 /**
- * Starts a detached Console serve. Its stderr goes to this run's log, so a serve that does not take the lock leaves its
- * reason (who holds it, or how to recover by hand) where the update is diagnosed. The returned record shows the serve's
- * exit while this worker still waits on it.
+ * Starts a detached Console serve with no stdio, like every detached Console: it outlives this worker, so nothing here
+ * could keep reading its output or bound it. The returned record shows the serve's exit while this worker still waits
+ * on it; a serve that does not take the lock records why in the Console failure log (config.failureLogFile).
  */
 function spawnServe() {
-  let stderr = "ignore";
-  try {
-    stderr = fs.openSync(config.logFile, "a", 0o600);
-  } catch {
-    // 로그를 열지 못해도 Console은 띄운다.
-  }
   const serve = { exited: false, code: null, signal: null };
-  let child;
-  try {
-    child = spawn(process.execPath, [config.serverModulePath, "serve"], {
-      detached: true,
-      env: daemonEnv(),
-      stdio: ["ignore", "ignore", stderr],
-      windowsHide: true,
-    });
-  } finally {
-    if (typeof stderr === "number") {
-      try { fs.closeSync(stderr); } catch { /* 자식이 이미 받은 fd다. */ }
-    }
-  }
+  const child = spawn(process.execPath, [config.serverModulePath, "serve"], {
+    detached: true,
+    env: daemonEnv(),
+    stdio: "ignore",
+    windowsHide: true,
+  });
   child.once("error", () => {});
   child.once("exit", (code, signal) => {
     serve.exited = true;
@@ -581,8 +576,12 @@ function spawnServe() {
   return serve;
 }
 
+/** The failure text stays free of paths: it reaches the browser through the progress record. The run log names the file. */
 function describeServeExit(serve) {
-  if (serve.code === lockHeldExitCode) return "the new console did not take the Console lock; its reason is in the update log";
+  if (serve.code === lockHeldExitCode) {
+    log("the new console did not take the Console lock; the old console's lock is " + describeOldConsoleLock() + (config.failureLogFile ? "; the reason is recorded in " + config.failureLogFile : ""));
+    return "the new console did not take the Console lock" + (config.failureLogFile ? "; the reason is recorded in " + path.basename(config.failureLogFile) + " in the Console data folder" : "");
+  }
   return "the new console exited before it became healthy (code=" + serve.code + " signal=" + serve.signal + ")";
 }
 

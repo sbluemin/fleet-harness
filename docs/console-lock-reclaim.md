@@ -19,7 +19,7 @@ Desktop cannot import `lock.ts` (Console internals), so it does not take part in
    - an owner whose fields cannot be trusted → if its pid is alive, unverified (conflict dialog); if ESRCH, may start;
    - a trusted owner → the existing adopt / conflict / identity flow. A refused endpoint with a live pid is waited on (`SHUTDOWN_SETTLE_MS`), because a Console that is shutting down closes its listener first and releases the lock last.
 2. **Resolve the runtime** (procurement can take long), then **judge the slot again**. It starts only if that second judgement also finds the slot absent or the owner pid ESRCH.
-3. **Start `serve`.** `serve`'s `acquireLock` reclaims an exited Console's lock. If it does not take the lock, it exits with `CONSOLE_SERVE_EXIT_LOCK_HELD` (73) after writing the lock text to stderr. Desktop reports that as `console_lock_held`, with the stderr tail in the dialog.
+3. **Start `serve`.** `serve`'s `acquireLock` reclaims an exited Console's lock. If it does not take the lock, it exits with `CONSOLE_SERVE_EXIT_LOCK_HELD` (73). Before exiting it writes the lock text once to stderr and records it in the Console failure log (`errors.jsonl` in the data directory, size-capped). Desktop reports that as `console_lock_held`, with the stderr tail in the dialog.
 4. **Quit** never removes a lock. An exited Console's lock is left for the next start.
 
 Desktop decides whether to start, and does not leave that to `serve`'s refusal, because `serve` restores durable state, boots plugins, and binds its port **before** `acquireLock`. A `serve` that loses the lock has already touched shared data next to the owner.
@@ -61,11 +61,15 @@ Console releases up to and including **1.212.0** publish the lock with `O_EXCL` 
 
 The worker that applies a Console update stops the old Console, installs the target, and starts the new Console. It runs as a standalone script and cannot use `lock.ts`, so, like Desktop, it no longer removes a lock: after the old Console is proven gone it logs the lock state (`held`, `missing`, `replaced`, or `unreadable`) and leaves the lock for the new `serve` to reclaim.
 
-- **Its daemons' stderr goes to the run's update log.** A `serve` that does not take the lock writes why (the holder, or the manual-recovery steps) to stderr before it exits. The worker opens the run's log file and hands it to the detached `serve` as its stderr. The same file then also collects that Console's later stderr, for as long as it runs. Before, that stderr was discarded.
-- **An early exit ends the wait.** The new daemon and the failure recovery both watch their `serve`'s exit. Exit status 73 (`CONSOLE_SERVE_EXIT_LOCK_HELD`) fails the step at once with "did not take the Console lock", and any other exit before health fails it with the exit code. Neither waits out the 60 s start timeout.
+- **Its daemons run without stdio, like every detached Console.** The `serve` outlives the worker, so nothing could keep reading or bounding its output. A `serve` that does not take the lock records why (the holder, or the manual-recovery steps) in the Console failure log, `errors.jsonl` in the data directory. That log is size-capped and rotated once. The worker's run log records the lock state the worker last saw and names that file. The failure text in the progress record names the file without its path, because that record reaches the browser.
+- **An early exit ends the wait.** The new daemon and the failure recovery both watch their `serve`'s exit. Each poll looks for a healthy Console first and checks the exit only after that. If no healthy Console answers, exit status 73 (`CONSOLE_SERVE_EXIT_LOCK_HELD`) fails the step at once with "did not take the Console lock", and any other exit before health fails it with the exit code. Neither waits out the 60 s start timeout.
 - **#1557's recovery check stays first.** If the old lock is still held by its pid and token, and that pid is alive, recovery does not start a `serve` at all. The early-exit check covers the refusals that check cannot foresee: an ownerless lock, a third party's live lock, or a reclaim marker that another participant holds.
 
 Remaining limits of the worker:
 
-- **Another starter can take the slot between the old Console's exit and the new `serve`'s `acquireLock`.** Examples are a Desktop launch or a CLI `start`. The new `serve` then exits 73 and the update fails with its reason, even though the target is already installed. The race with `serve`'s pre-lock work (see Desktop) applies here too.
+- **Another starter can take the slot between the old Console's exit and the new `serve`'s `acquireLock`.** Examples are a Desktop launch or a CLI `start`. Its lock is kept in every case, and the outcome depends on what it serves:
+  - If it is healthy and reports the target version, the new daemon step accepts it and the update completes.
+  - Otherwise, the new `serve` exits 73 and the update fails quickly with that reason, even though the target is already installed.
+  - Recovery after a failed step treats any healthy Console on the lock as recovered.
+  The race with `serve`'s pre-lock work (see Desktop) applies here too.
 - **The worker's verdict that the old Console is gone can rest on the parent link alone.** On POSIX, a worker reparented away from the old Console counts it as exited. Only the new `serve`'s ESRCH check decides whether its lock is reclaimed, so a reused pid ends in R6 rather than in a wrong removal.

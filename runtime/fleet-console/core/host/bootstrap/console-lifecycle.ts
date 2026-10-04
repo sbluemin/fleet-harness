@@ -908,7 +908,14 @@ export async function main(): Promise<void> {
     } catch (error) {
       if (!isConsoleLockHeldError(error)) throw error;
       // The lock's own text (who holds it, or how to recover by hand) is the whole diagnosis; the status tells a
-      // supervising host (Fleet Desktop) that this start lost the lock rather than failed some other way.
+      // supervisor that this start lost the lock rather than failed some other way. A detached serve has no stderr, so
+      // the text also goes to the bounded failure log, where an update reads it. Only the file gets the JSON record:
+      // stderr keeps the one human-readable message a supervising Desktop shows.
+      try {
+        createConsoleFailureLog(createConsoleDataPaths({ env: process.env }).dir, { echo: false })("lock_held", error);
+      } catch {
+        // A missing record must not hide the failure itself.
+      }
       process.stderr.write(`${(error as Error).message}\n`);
       process.exitCode = CONSOLE_SERVE_EXIT_LOCK_HELD;
     }

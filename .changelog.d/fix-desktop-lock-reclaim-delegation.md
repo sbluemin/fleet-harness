@@ -11,5 +11,5 @@ branch: fix/desktop-lock-reclaim-delegation
 
 ### fleet-console
 #### Fixed
-- When an update cannot start the new Console because its lock is held, the update now fails within seconds and its log records what holds the lock, instead of waiting a minute without a reason.
-  ko: 업데이트 후 새 Console이 lock을 얻지 못해 시작하지 못하면, 이제 1분을 기다리지 않고 몇 초 안에 실패하며 무엇이 lock을 쥐고 있는지가 업데이트 로그에 남습니다.
+- When an update cannot start the new Console because its lock is held and no up-to-date Console answers, the update now fails within seconds and Console's error log records what holds the lock, instead of waiting a minute without a reason.
+  ko: 업데이트 후 새 Console이 lock을 얻지 못해 시작하지 못하고 응답하는 최신 Console도 없으면, 이제 1분을 기다리지 않고 몇 초 안에 실패하며 무엇이 lock을 쥐고 있는지가 Console 오류 로그에 남습니다.
