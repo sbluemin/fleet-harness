@@ -69,6 +69,10 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private var activeView: WebView? = null
   private var activeGateway: LoopbackGateway? = null
   private var staging: StagedLoad? = null
+  // True from the moment an attempt starts until it commits or fails. resume() must not look past it:
+  // a foreground return would otherwise overwrite an in-flight cold-start link attempt with the
+  // stored target. Volatile because beginAttempt can start from the JS thread.
+  @Volatile private var attemptInFlight = false
   private var detached = false
   private var chromeInsets: Insets = Insets.NONE
   private var imeInsets: Insets = Insets.NONE
@@ -76,7 +80,8 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   init {
     WebView.setWebContentsDebuggingEnabled(false)
     CookieManager.getInstance().setAcceptCookie(true)
-    FleetLinkInbox.attach(linkReceiver)
+    // A cold-start link outranks the persisted reconnect: it starts the only attempt.
+    val linkDelivered = FleetLinkInbox.attach(linkReceiver)
     // Android 15+ forces edge-to-edge for this targetSdk, so this view owns its own insets: the
     // WebView shrinks under status bar, cutout, and keyboard, and JS gets the chrome insets in dp.
     ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
@@ -86,10 +91,12 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       )
       insets
     }
-    activeTarget?.let {
-      emit("connecting", label = it.label, origin = it.origin)
-      beginAttempt(it, null)
-    } ?: emit("waiting")
+    if (!linkDelivered) {
+      activeTarget?.let {
+        emit("connecting", label = it.label, origin = it.origin)
+        beginAttempt(it, null)
+      } ?: emit("waiting")
+    }
   }
 
   override fun onAttachedToWindow() {
@@ -143,6 +150,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   }
 
   fun resume() {
+    if (attemptInFlight) return
     if (activeView == null && activeTarget != null) retry()
   }
 
@@ -170,6 +178,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       targetStore.remove(origin)
       if (wasActive || wasStaging) {
         attempt.incrementAndGet()
+        attemptInFlight = false
         destroyStaging()
         if (wasActive) {
           activeView?.let {
@@ -287,6 +296,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
 
   private fun beginAttempt(candidate: PersistedTarget, token: String?) {
     val id = attempt.incrementAndGet()
+    attemptInFlight = true
     main.post {
       if (!isCurrent(id)) return@post
       val launch = {
@@ -538,6 +548,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
 
   private fun commitStaged(staged: StagedLoad) {
     if (staging !== staged || !isCurrent(staged.attemptId)) return
+    attemptInFlight = false
     if (!targetStore.upsert(staged.target)) {
       failStaged(staged, "remote_target_persist_failed")
       return
@@ -562,6 +573,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
 
   private fun failStaged(staged: StagedLoad, code: String) {
     if (staging !== staged || !isCurrent(staged.attemptId)) return
+    attemptInFlight = false
     staging = null
     removeView(staged.view)
     staged.view.destroySafely()
@@ -576,6 +588,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     if (!isCurrent(id)) return
     main.post {
       if (!isCurrent(id)) return@post
+      attemptInFlight = false
       destroyStaging {
         emit("error", code, activeTarget?.label ?: candidateLabel, candidateOrigin, retryAfterSeconds)
       }
@@ -586,6 +599,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     val id = attempt.incrementAndGet()
     main.post {
       if (!isCurrent(id)) return@post
+      attemptInFlight = false
       destroyStaging {
         emit("error", code, activeTarget?.label ?: candidateLabel)
       }
