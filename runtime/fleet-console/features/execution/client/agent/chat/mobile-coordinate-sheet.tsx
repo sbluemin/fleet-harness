@@ -4,9 +4,8 @@ import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
 import { MobileSheet } from "../../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../../core/client/src/chrome/mobile/mobile-back.js";
-import { getMobileDrawerOpen, getMobileSheetStack } from "../../../../../core/client/src/chrome/mobile/mobile-store.js";
+import { reportSheetChrome, reportShellChrome } from "../../../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
-import { reportMobileChrome } from "../../../../../core/client/src/integration/mobile-appearance-store.js";
 import { resolveRowEffort } from "../../components/effort-track.js";
 import { MobileEffortGateRow, MobileEffortTabs, useMobileEffortGate } from "../../components/mobile-quick-launch.js";
 import { getT } from "../i18n/index.js";
@@ -60,12 +59,11 @@ export function MobileCoordinateSheet({
   React.useEffect(() => {
     let id: number | null = pushOverlayHistory(() => { id = null; closeRef.current(); });
     const releaseLayer = pushBackLayer(() => closeRef.current());
-    reportMobileChrome("bg", "surface");
+    reportSheetChrome();
     return () => {
       releaseLayer();
       if (id !== null) releaseOverlayHistory(id);
-      const drawer = getMobileDrawerOpen();
-      reportMobileChrome(drawer ? "bg-deep" : "bg", getMobileSheetStack().length > 0 ? "surface" : drawer ? "bg-deep" : "bg");
+      reportShellChrome();
     };
   }, []);
 

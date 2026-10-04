@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 
 import { useConsoleState } from "../../hooks/use-store.js";
-import { forgetReportedMobileChrome, reportMobileChrome } from "../../integration/mobile-appearance-store.js";
+import { forgetReportedMobileChrome } from "../../integration/mobile-appearance-store.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { focusOperation } from "../../integration/store.js";
 import type { ConsoleState } from "../../integration/types.js";
@@ -16,7 +16,8 @@ import { MobileRequestBanner } from "./mobile-request-banner.js";
 import { MobileToastHost } from "./mobile-toast.js";
 import { MobileSheetHost } from "./mobile-sheet-host.js";
 import { MobileChoicePopup, MobileModelChoice } from "./mobile-choice-popup.js";
-import { openMobileChoice } from "./mobile-choice-store.js";
+import { reportShellChrome } from "./mobile-chrome.js";
+import { openMobileChoice, useMobileChoice } from "./mobile-choice-store.js";
 import { openMobileInput } from "./mobile-input-sheet.js";
 import { openMobileSubScreen } from "./mobile-subscreen-store.js";
 import { MobileSettingsHostContext } from "@fleet-console/sdk/settings/browser";
@@ -79,10 +80,11 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   const t = useT();
   const settingsHost = useMemo(() => ({ moreLabel: t("mobile.settings.more"), openChoice: openMobileChoice, openInput: openMobileInput, openSubScreen: openMobileSubScreen, ModelChoice: MobileModelChoice }), [t]);
   const connection = useConsoleState().connection;
-  const reportChrome = () => reportMobileChrome(drawerOpen ? "bg-deep" : "bg", sheetOpen ? "surface" : drawerOpen ? "bg-deep" : "bg");
+  const choiceOpen = useMobileChoice() !== null;
+  const reportChrome = reportShellChrome;
   const reportChromeRef = useRef(reportChrome);
   reportChromeRef.current = reportChrome;
-  useEffect(() => { reportChrome(); }, [drawerOpen, sheetOpen]);
+  useEffect(() => { reportChrome(); }, [drawerOpen, sheetOpen, choiceOpen]);
   // 재연결·페이지 복귀 뒤에는 지금 겹침 상태를 앱에 다시 알린다(NV-7) — 앱이 상태 바를 되돌려 놓았을 수 있다.
   useEffect(() => {
     if (connection !== "live") return;

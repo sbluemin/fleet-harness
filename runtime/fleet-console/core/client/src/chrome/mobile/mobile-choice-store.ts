@@ -33,6 +33,8 @@ function subscribe(listener: Listener): () => void {
   return () => { listeners.delete(listener); };
 }
 
+export function isMobileChoiceOpen(): boolean { return current !== null; }
+
 export function useMobileChoice(): MobileChoiceState | null {
   return useSyncExternalStore(subscribe, () => current);
 }
