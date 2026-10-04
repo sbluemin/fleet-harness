@@ -202,7 +202,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
         <span className="mobile-wordmark">Fleet</span>
         <button type="button" className="mobile-bar-button" onClick={() => go(() => { setMobileDestination({ kind: "search" }); toOperations(); })} aria-label={t("mobile.drawer.search")}><MobileIcon name="search" /></button>
       </div>
-      <button type="button" className="mobile-theater-switch" onClick={() => pushMobileSheet({ kind: "theater" })} disabled={state.theaters.length === 0}>
+      <button type="button" className="mobile-theater-switch" onClick={() => { setMobileDrawerOpen(false); pushMobileSheet({ kind: "theater", fromDrawer: true }); }} disabled={state.theaters.length === 0}>
         {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}
         <span className="mobile-theater-switch-copy">
           <strong>{theater?.label ?? t("mobile.drawer.noTheater")}</strong>

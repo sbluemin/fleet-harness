@@ -123,7 +123,7 @@ export function setMobileDrawerOpen(next: boolean): void {
 
 /** 시트 종류. 시트에서 시트를 열면 쌓이고, 닫기·스크림은 앞 시트로 돌아간다. */
 export type MobileSheetKind =
-  | { readonly kind: "theater" }
+  | { readonly kind: "theater"; readonly fromDrawer?: boolean }
   | { readonly kind: "folder" }
   | { readonly kind: "console" }
   /** 호스트 밖 기능(설정 섹션 등)이 자기 시트를 호스트의 쌓기·뒤로·스크림에 태운다. `render`는 `MobileSheet`를 그리고 닫기 함수를 받는다. */

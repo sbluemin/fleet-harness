@@ -6,7 +6,7 @@ import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import { useT } from "../../i18n/index.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
-import { setActiveTheater } from "../../integration/store.js";
+import { getState, setActiveTheater } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { pushBackLayer } from "./mobile-back.js";
@@ -16,13 +16,14 @@ import { showMobileToast } from "./mobile-toast.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { closeMobileSheets, popMobileSheet, pushMobileSheet, useMobileSheetStack } from "./mobile-store.js";
+import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDrawerOpen, useMobileSheetStack } from "./mobile-store.js";
 
 /**
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
  * 쌓인 시트 전체가 history 항목 하나를 든다.
  */
 export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state: ConsoleState; readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void }) {
+  const t = useT();
   const stack = useMobileSheetStack();
   const depth = stack.length;
   const historyIdRef = useRef<number | null>(null);
@@ -47,9 +48,18 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
   if (top.kind === "console") return <ConsoleSheet />;
   if (top.kind === "custom") return <>{top.render(popMobileSheet)}</>;
   if (top.kind === "confirm") return <ConfirmSheet spec={top.spec} resolve={top.resolve} />;
-  if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void registerTheaterFromPath(path); }} />;
+  if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void addTheaterWithToast(path, t); }} />;
   if (top.kind === "forget") return <ForgetSheet key={top.theaterId} state={state} theaterId={top.theaterId} onDeferredDeletion={onDeferredDeletion} />;
-  return <TheaterSheet state={state} />;
+  return <TheaterSheet state={state} fromDrawer={top.kind === "theater" && top.fromDrawer === true} />;
+}
+
+/** 폴더를 Theater로 등록하고, 성공하면 「{이름}을(를) Theater로 추가했습니다」 토스트를 띄운다. 실패는 스토어의 theaterError가 화면에 말한다. */
+async function addTheaterWithToast(path: string, t: ReturnType<typeof useT>): Promise<void> {
+  await registerTheaterFromPath(path);
+  const current = getState();
+  if (current.theaterError !== null) return;
+  const label = current.theaters.find((theater) => theater.id === current.activeTheaterId)?.label;
+  if (label) showMobileToast(t("mobile.toast.theaterAdded", { name: label }));
 }
 
 /** S-13 — 입력칸 하나. 저장하면 닫히고 토스트가 알린다. 빈 문자열은 저장하지 않는다. */
@@ -87,11 +97,14 @@ function RenameSheet({ state, operationId }: { readonly state: ConsoleState; rea
 }
 
 /** S-07 — 지금 Theater를 바꾼다. 고르면 시트만 닫고 드로어는 그대로 둔다(새 Theater의 최근 목록이 거기 있다). */
-function TheaterSheet({ state }: { readonly state: ConsoleState }) {
+function TheaterSheet({ state, fromDrawer }: { readonly state: ConsoleState; readonly fromDrawer: boolean }) {
   const t = useT();
+  // 드로어에서 연 시트는 드로어를 닫고 서며, 고르거나 닫으면 드로어로 돌아간다(S-07).
+  const leave = () => { if (fromDrawer) setMobileDrawerOpen(true); };
+  const cancel = () => { popMobileSheet(); leave(); };
   return (
     <>
-      <MobileSheet title={t("mobile.sheet.theater.title")} onClose={popMobileSheet}>
+      <MobileSheet title={t("mobile.sheet.theater.title")} onClose={cancel}>
         {state.theaters.map((theater) => {
           const operations = state.operations.filter((operation) => operation.theaterId === theater.id);
           const awaiting = operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
@@ -102,7 +115,7 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
               className="mobile-sheet-row"
               key={theater.id}
               aria-current={here ? "true" : undefined}
-              onClick={() => { setActiveTheater(theater.id); closeMobileSheets(); }}
+              onClick={() => { setActiveTheater(theater.id); closeMobileSheets(); leave(); }}
             >
               <MobileMonogram label={theater.label} toneKey={theater.id} />
               <span className="mobile-sheet-row-copy">

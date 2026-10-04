@@ -23,7 +23,7 @@ export function MobileMonogram({ label, toneKey, tone, letters, round = false, s
   return (
     <span
       className={`mobile-monogram${round ? " is-round" : ""}`}
-      style={{ width: size, height: size, background: `var(--id-${tone ?? identityToneOf(toneKey)})`, fontSize: size >= 36 ? 14 : size >= 28 ? 11 : 9 }}
+      style={{ width: size, height: size, background: `var(--id-${tone ?? identityToneOf(toneKey)})`, fontSize: size >= 56 ? 18 : size >= 36 ? 14 : size >= 28 ? 11 : 9, fontWeight: size >= 56 ? 700 : undefined }}
       aria-hidden="true"
     >
       {letters ?? theaterInitials(label)}

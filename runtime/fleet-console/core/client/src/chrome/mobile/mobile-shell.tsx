@@ -144,7 +144,7 @@ function MobileEmptyHome({ theaterLabel, hasOperations }: { readonly theaterLabe
     return (
       <section className="mobile-first-run">
         <span className="mobile-wordmark">Fleet</span>
-        <p className="mobile-first-run-lead">{t("mobile.firstRun.lead")}</p>
+        <p className="mobile-first-run-lead">{t("mobile.firstRun.lead1")}<br />{t("mobile.firstRun.lead2")}</p>
         <div className="mobile-group is-flush">
           {([["folder", "mobile.firstRun.step1", "mobile.firstRun.step1Sub"], ["newop", "mobile.firstRun.step2", "mobile.firstRun.step2Sub"], ["menu", "mobile.firstRun.step3", "mobile.firstRun.step3Sub"]] as const).map(([icon, title, sub]) => (
             <div className="mobile-group-row is-two" key={title}>

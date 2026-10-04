@@ -950,7 +950,7 @@
   animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1);
   will-change: transform;
 }
-.mobile-sheet.is-full { top: 36px; max-height: none; }
+.mobile-sheet.is-full { top: 8px; max-height: none; }
 .mobile-sheet.is-leaving { animation: mobile-sheet-out 220ms cubic-bezier(0.3, 0, 0.8, 0.15) forwards; }
 .mobile-sheet.is-dragging { animation: none; }
 
@@ -993,6 +993,7 @@
 .mobile-sheet-row:active { background: var(--m-selected); }
 .mobile-sheet-row:disabled { opacity: 0.5; }
 .mobile-sheet-row-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.mobile-sheet-row-copy strong { font-weight: var(--weight-regular); }
 .mobile-sheet-row-copy small { color: var(--m-text-muted); font-size: var(--t-sm); }
 .mobile-sheet-row-copy small.is-awaiting { color: var(--m-awaiting); }
 .mobile-sheet-row-glyph { display: grid; place-items: center; flex: none; width: 28px; height: 28px; color: var(--m-text); }
@@ -1260,3 +1261,9 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-surface-screen-body { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .mobile-surface-screen-body > .expanded-surface-pane { flex: 1; min-height: 0; width: 100%; }
 .mobile-surface-screen .expanded-surface-pane-close { display: none; }
+
+/* 폴더 시트 행: 고르기(라디오 · 폴더 · 이름)와 들어가기(›)를 한 행에 나란히 둔다. */
+.mobile-group-row.mobile-folder-row, .mobile-folder-row { padding: 0; }
+.mobile-folder-pick { display: flex; flex: 1; align-items: center; gap: 14px; min-width: 0; min-height: 64px; padding: 10px 0 10px 16px; color: inherit; font: inherit; text-align: left; background: transparent; border: 0; }
+.mobile-folder-enter { display: grid; place-items: center; flex: none; width: 56px; align-self: stretch; color: var(--m-text-muted); background: transparent; border: 0; }
+.mobile-sheet-row-copy strong { font-weight: var(--weight-regular); }

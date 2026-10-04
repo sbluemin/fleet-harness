@@ -18,7 +18,7 @@ export function MobileSearchScreen({ state, onBack }: { readonly state: ConsoleS
   const idleArrivals = getIdleArrivalIds();
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (needle === "") return [];
+    if (needle === "") return state.operations;
     return state.operations.filter((operation) => operation.title.toLowerCase().includes(needle));
   }, [query, state.operations]);
   return (
@@ -26,7 +26,7 @@ export function MobileSearchScreen({ state, onBack }: { readonly state: ConsoleS
       <div className="mobile-search-field">
         <input className="mobile-field" autoFocus value={query} placeholder={t("mobile.search.placeholder")} aria-label={t("mobile.search.aria")} spellCheck={false} autoComplete="off" onChange={(event) => setQuery(event.target.value)} />
       </div>
-      {query.trim() !== "" && results.length === 0 ? <p className="mobile-attention-empty">{t("mobile.search.empty")}</p> : null}
+      {results.length === 0 ? <p className="mobile-attention-empty">{t("mobile.search.empty")}</p> : null}
       {results.map((operation) => {
         const mark = resolveOperationMarkVisual({ activity: resolveOperationActivity(operation, state.operationRuntime), operationId: operation.id, idleArrivalIds: idleArrivals });
         const theater = state.theaters.find((item) => item.id === operation.theaterId);

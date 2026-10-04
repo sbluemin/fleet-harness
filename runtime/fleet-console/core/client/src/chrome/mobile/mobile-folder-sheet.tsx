@@ -19,11 +19,14 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
   const [failureCode, setFailureCode] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [jump, setJump] = useState("");
+  // 고른 폴더(라디오) — 「Theater 추가」는 고를 때까지 비활성이고 고른 폴더를 등록한다(FD-14).
+  const [picked, setPicked] = useState<string | null>(null);
 
   const load = async (path: string | null, signal?: AbortSignal) => {
     setLoading(true);
     setFailureCode(null);
     setQuery("");
+    setPicked(null);
     try { setListing(await listTheaterFolders(path, signal)); }
     catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -44,6 +47,7 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
   const crumbs = useMemo(() => (listing ? breadcrumbs(listing) : []), [listing]);
   const roots = listing?.roots ?? [];
   const path = listing?.path ?? null;
+  const windowsPaths = path !== null ? /^[A-Za-z]:\\/.test(path) : roots.some((root) => /^[A-Za-z]:\\$/.test(root));
 
   return (
     <MobileSheet
@@ -52,7 +56,7 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
       onClose={onClose}
       footer={<>
         <button type="button" className="mobile-pill-secondary" onClick={onClose}>{t("common.cancel")}</button>
-        <button type="button" className="mobile-pill-secondary is-inverse" disabled={path === null || loading} onClick={() => path && onConfirm(path)}>{t("chrome.directoryBrowser.addTheater")}</button>
+        <button type="button" className="mobile-pill-secondary is-inverse" disabled={picked === null || loading} onClick={() => picked !== null && onConfirm(picked)}>{t("chrome.directoryBrowser.addTheater")}</button>
       </>}
     >
       <p className="mobile-folder-path">{path ?? t("common.loading")}</p>
@@ -71,7 +75,7 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
         <button type="button" className="mobile-pill-secondary" disabled={listing?.parentPath == null || loading} onClick={() => listing?.parentPath != null && void load(listing.parentPath)}>{t("chrome.directoryBrowser.up")}</button>
       </div>
       <div className="mobile-folder-tools">
-        <input className="mobile-field" value={jump} placeholder={t("chrome.directoryBrowser.jumpPlaceholder")} aria-label={t("chrome.directoryBrowser.jumpAria")} spellCheck={false} autoComplete="off" onChange={(event) => setJump(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && jump.trim() !== "") void load(jump.trim()); }} />
+        <input className="mobile-field" value={jump} placeholder={t("mobile.sheet.folder.jumpPlaceholder", { example: windowsPaths ? "D:\\projects" : "~/workspace" })} aria-label={t("chrome.directoryBrowser.jumpAria")} spellCheck={false} autoComplete="off" onChange={(event) => setJump(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && jump.trim() !== "") void load(jump.trim()); }} />
         <button type="button" className="mobile-pill-secondary" disabled={jump.trim() === "" || loading} onClick={() => void load(jump.trim())}>{t("chrome.directoryBrowser.go")}</button>
       </div>
       {failureCode !== null ? <FailureNotice {...describeTheaterFolderFailure(failureCode, t)} /> : null}
@@ -79,11 +83,17 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
         {loading ? <p className="mobile-folder-state">{t("chrome.directoryBrowser.loadingFolders")}</p> : entries.length === 0 ? (
           <p className="mobile-folder-state">{query !== "" ? t("chrome.directoryBrowser.noMatch") : t("chrome.directoryBrowser.noFolders")}</p>
         ) : entries.map((entry) => (
-          <button type="button" className="mobile-group-row" key={entry.path} disabled={!entry.accessible || loading} onClick={() => void load(entry.path)}>
-            <span className="mobile-group-row-icon"><MobileIcon name="folder" /></span>
-            <span className="mobile-group-row-copy">{entry.name}</span>
-            {entry.accessible ? <MobileIcon name="right" size={18} className="mobile-group-row-caret" /> : <span className="mobile-folder-locked">{t("chrome.directoryBrowser.locked")}</span>}
-          </button>
+          <div className="mobile-group-row mobile-folder-row" key={entry.path}>
+            {/* 고르기(라디오)와 들어가기(›)를 나눈다 — 왼쪽 행은 고르고, 오른쪽 ›는 그 폴더 안으로 간다. */}
+            <button type="button" role="radio" aria-checked={picked === entry.path} className="mobile-folder-pick" disabled={!entry.accessible || loading} onClick={() => setPicked(entry.path)}>
+              <span className={`mobile-radio${picked === entry.path ? " is-on" : ""}`} aria-hidden="true" />
+              <span className="mobile-group-row-icon"><MobileIcon name="folder" /></span>
+              <span className="mobile-group-row-copy">{entry.name}</span>
+            </button>
+            {entry.accessible ? (
+              <button type="button" className="mobile-folder-enter" aria-label={t("mobile.sheet.folder.enter", { name: entry.name })} disabled={loading} onClick={() => void load(entry.path)}><MobileIcon name="right" size={18} /></button>
+            ) : <span className="mobile-folder-locked">{t("chrome.directoryBrowser.locked")}</span>}
+          </div>
         ))}
       </div>
       {listing?.truncated ? <p className="mobile-secnote">{t("chrome.directoryBrowser.truncated")}</p> : null}

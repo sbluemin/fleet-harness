@@ -6,6 +6,8 @@ import { useOperationUseRequests, type OperationUseRequest } from "../../../comp
 import { answerUseRequest } from "./experiments-api.js";
 import { getT } from "./i18n/index.js";
 import { MobileGlyph, useMobileSurface } from "./mobile-surface.js";
+import { showMobileToast } from "../../../../core/client/src/chrome/mobile/mobile-toast.js";
+import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
 
 /**
  * 허용 요청 — 이 Operation 의 AI 가 허용받지 않은 콘솔 사용·컴퓨터 사용 도구를 부르면 서버가 그 호출을
@@ -25,6 +27,13 @@ export function setUseRequestApi(api: PluginInstallContext["api"] | null): void 
 
 export type UseRequestDecision = "deny" | "turn" | "always";
 
+/** 모바일에서는 답한 뒤 토스트로 알린다(S-33: 거절 · 계속 허용 · 이번 작업만 허용). */
+function announceMobileAnswer(decision: UseRequestDecision, capability: "console" | "computer"): void {
+  if (getViewModeSnapshot().effective !== "mobile") return;
+  const t = getT(document.documentElement.lang === "ko" ? "ko" : "en");
+  showMobileToast(t(decision === "deny" ? "terminal.mobile.toastDeny" : decision === "turn" ? "terminal.mobile.toastTurn" : capability === "console" ? "terminal.mobile.toastAlwaysConsole" : "terminal.mobile.toastAlwaysComputer"));
+}
+
 /** 한 요청의 답 보내기 — 보내는 동안의 두 번째 누름과 누르고 있는 Enter·Space 의 반복을 버린다. 패널·우하단이 같은 계약을 쓴다. */
 export function useUseRequestAnswer(request: OperationUseRequest, language: ConsoleLocale | undefined) {
   const [pending, setPending] = React.useState(false);
@@ -34,6 +43,7 @@ export function useUseRequestAnswer(request: OperationUseRequest, language: Cons
     setPending(true);
     setFailed(false);
     void answerUseRequest(cardApi, { operationId: request.operationId, requestId: request.id, capability: request.capability, decision, language: language === "ko" ? "ko" : "en" })
+      .then(() => { announceMobileAnswer(decision, request.capability); })
       .catch(() => setFailed(true))
       .finally(() => setPending(false));
   };

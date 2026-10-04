@@ -86,7 +86,9 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
   const session = operation.payload.session && typeof operation.payload.session === "object" && !Array.isArray(operation.payload.session)
     ? operation.payload.session as Record<string, unknown>
     : null;
-  const harnessLabel = session?.harness === "claude-code" ? "Claude Code" : undefined;
+  const harnessName = session?.harness === "claude-code" ? "Claude Code" : undefined;
+  // 「{하네스} · 채팅|터미널」 — 에이전트 Operation은 보는 방식까지 말한다(S-26·S-30).
+  const harnessLabel = harnessName ? `${harnessName} · ${t(operation.payload.chatMode === true ? "mobile.bar.viewChat" : "mobile.bar.viewTerminal")}` : undefined;
   const mark = resolveOperationMarkVisual({
     activity: resolveOperationActivity(operation, operationRuntime),
     operationId: operation.id,
