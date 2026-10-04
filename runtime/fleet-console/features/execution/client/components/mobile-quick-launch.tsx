@@ -8,6 +8,7 @@ import type { OperationSearchEntry } from "../../../../core/client/src/integrati
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
 import { MobileMonogram } from "../../../../core/client/src/chrome/mobile/mobile-monogram.js";
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
+import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { buildQuickLaunchEffortDeck, isMentionSelectable, mentionTargetName, type QuickLaunchMentionTarget, type QuickLaunchPluginMentionRow } from "../quick-launch.js";
 import type { QuickLaunchStartView } from "../quick-launch-preferences.js";
@@ -82,18 +83,26 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
   const inApp = isFleetMobileShell();
 
   // 하드웨어·브라우저 뒤로는 화면을 떠나지 않고 시트를 닫는다 — 시트 한 겹마다 history 항목 하나(셸 시트와 같은 계약).
+  // 앱의 하드웨어 뒤로(`window.__fleetMobileBack`)는 history가 아니라 셸의 겹침 레지스트리를 맨 위부터 닫는다 — 같은 닫기를
+  // 두 길에 올려 두고, 닫히면(어느 길이든) 둘 다 걷는다.
   const sheetHistoryRef = useRef<number | null>(null);
   useEffect(() => {
     const id = pushOverlayHistory(() => { sheetHistoryRef.current = null; onClose(); });
     sheetHistoryRef.current = id;
-    return () => { if (sheetHistoryRef.current !== null) releaseOverlayHistory(sheetHistoryRef.current); sheetHistoryRef.current = null; };
+    const releaseLayer = pushBackLayer(() => onClose());
+    return () => {
+      releaseLayer();
+      if (sheetHistoryRef.current !== null) releaseOverlayHistory(sheetHistoryRef.current);
+      sheetHistoryRef.current = null;
+    };
     // 열려 있는 동안 한 번 — 닫기 콜백은 store 동작이라 바뀌지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (sub === null) return;
     let id: number | null = pushOverlayHistory(() => { id = null; setSub(null); });
-    return () => { if (id !== null) releaseOverlayHistory(id); };
+    const releaseLayer = pushBackLayer(() => setSub(null));
+    return () => { releaseLayer(); if (id !== null) releaseOverlayHistory(id); };
   }, [sub]);
 
   // 실행은 Operations 화면으로 옮겨 간다 — 시트의 history 항목을 먼저 걷은 뒤에 보내야 이동한 화면이 걷히는 쪽에 끼지 않는다.
