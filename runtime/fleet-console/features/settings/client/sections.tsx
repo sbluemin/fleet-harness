@@ -15,13 +15,13 @@ import { RemoteAccessSection } from "../../remote-access/client/settings-section
 export { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 
 import { BackendApiSection } from "../../../core/client/src/chrome/components/backend-api-section.js";
-import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
+import { desktopAsksForLocalFonts, isDesktopShell, useDesktopShellHome } from "../../../core/client/src/integration/desktop-shell.js";
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { renderMessage, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 import { setActiveTheme, setUnfocusedPanelFade } from "../../../core/client/src/integration/store.js";
 import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
-import { loadDeviceFonts, useDeviceFonts, useDeviceFontsPermission } from "./device-fonts.js";
+import { loadDeviceFonts, requestDesktopDeviceFonts, useDeviceFonts, useDeviceFontsPermission } from "./device-fonts.js";
 import { ExperimentsSection } from "./experiments-section.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
@@ -489,6 +489,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
   }, [t]);
   const deviceFonts = useDeviceFonts();
   const devicePermission = useDeviceFontsPermission();
+  const shellHome = useDesktopShellHome();
   const deviceLoaded = deviceFonts.status === "loaded";
   // 이 기기의 목록을 받았으면 그것이 진실이다. 호스트에만 있는 family는 "이 기기에 없음"으로 내린다.
   const pickerFonts = useMemo(() => {
@@ -523,11 +524,14 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
   const hostMismatch = (axisFonts: readonly FontPickerInstalledFont[]): boolean => axisFonts.length > 0 && axisFonts.filter((font) => !fontResolves(font.family)).length * 2 >= axisFonts.length;
   // 저장된 서체가 축 목록에서 빠져도(예: 등폭 서체를 UI 축에 저장) 이 기기의 목록이 있으면 그것으로 답한다.
   const deviceFontAvailable = (family: string): boolean | undefined => deviceFonts.status === "loaded" ? deviceFonts.fonts.some((font) => font.family.toLocaleLowerCase() === family.toLocaleLowerCase()) : undefined;
-  // 거부된 동안에는 누를 수 없는 버튼을 세우지 않는다. Desktop의 거부는 원격 Console에 대한 정책이라
-  // 사용자가 풀 수 없고, 브라우저의 거부는 사이트 설정에서 풀 수 있으므로 그 방법만 알린다 — 풀면 권한
-  // 변경을 듣고 있다가 버튼을 다시 세운다.
+  // 거부된 동안에는 누를 수 없는 버튼을 세우지 않는다. 브라우저의 거부는 사이트 설정에서 풀 수 있으므로 그
+  // 방법만 알린다 — 풀면 권한 변경을 듣고 있다가 버튼을 다시 세운다. Desktop은 이 기기의 Console에는 미리
+  // 허용하고, 원격 Console에는 거부한 채로 둔다가 이 버튼을 누르면 확인창으로 묻는다. 그 신호를 모르는 옛
+  // 셸이거나 이 실행에서 이미 거부한 origin이면 버튼을 세우지 않는다.
   const desktopShell = isDesktopShell();
-  const canLoadDeviceFonts = devicePermission !== null && devicePermission !== "denied" && !deviceLoaded;
+  const askDesktop = desktopShell && devicePermission === "denied" && desktopAsksForLocalFonts(shellHome.desktopVersion);
+  const desktopDenied = askDesktop && deviceFonts.status === "desktopDenied";
+  const canLoadDeviceFonts = devicePermission !== null && !deviceLoaded && (devicePermission !== "denied" || (askDesktop && !desktopDenied));
   const deviceDenied = !desktopShell && devicePermission === "denied" && !deviceLoaded;
   const pickerFooter = (axisFonts: readonly FontPickerInstalledFont[]): ReactNode => {
     const mismatch = !deviceLoaded && hostMismatch(axisFonts);
@@ -535,6 +539,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
       mismatch ? <p key="mismatch" className="settings-font-note">{t("settings.typography.picker.hostMismatch")}{canLoadDeviceFonts ? ` ${t("settings.typography.picker.hostMismatchLoad")}` : ""}</p> : null,
       canLoadDeviceFonts ? deviceFontsAction : null,
       deviceDenied ? <p key="denied" className="settings-font-note" role="status">{t("settings.typography.picker.deviceFontsDenied")}</p> : null,
+      desktopDenied ? <p key="desktop-denied" className="settings-font-note" role="status">{t("settings.typography.picker.deviceFontsDesktopDenied")}</p> : null,
       canLoadDeviceFonts && deviceFonts.status === "failed" ? <p key="failed" className="settings-font-note" role="status">{t("settings.typography.picker.deviceFontsFailed")}</p> : null,
       mismatch ? <p key="wsl" className="settings-font-note">{t("settings.typography.picker.wslFontsHint")}</p> : null,
     ].filter(Boolean);
@@ -545,7 +550,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
         if (deviceFonts.status === "loading") return;
         // 목록이 바뀌면 이 버튼은 사라진다. 포커스가 문서로 빠지지 않게 검색 칸으로 돌려놓는다.
         const search = event.currentTarget.closest(".fc-font-browser")?.querySelector<HTMLInputElement>("input[type=search]");
-        void loadDeviceFonts().then(() => search?.focus());
+        void (askDesktop ? requestDesktopDeviceFonts() : loadDeviceFonts()).then(() => search?.focus());
       }}>{t(deviceFonts.status === "loading" ? "settings.typography.picker.deviceFontsLoading" : "settings.typography.picker.loadDeviceFonts")}</button>
       <p className="settings-font-note">{t("settings.typography.picker.deviceFontsPrivacy")}</p>
     </div>;

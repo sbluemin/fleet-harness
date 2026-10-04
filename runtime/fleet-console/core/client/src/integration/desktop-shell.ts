@@ -8,6 +8,29 @@ export const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
 export const PICKER_AT_PARAM = "at";
 export const PICKER_ANCHOR_PARAM = "anchor";
 
+/**
+ * 원격 Console 화면이 이 기기의 서체 목록을 셸에게 청하는 신호. 셸이 같은 리터럴로 가로채 항해를 막고
+ * 확인창을 띄운다 — Electron의 권한 check에는 "묻기" 상태가 없어 브라우저처럼 프롬프트로 넘어갈 수 없다.
+ */
+export const LOCAL_FONTS_SURFACE = "local-fonts";
+/** 이 신호를 아는 첫 Desktop. 그보다 옛 셸은 이 항해를 막지 않고 화면을 다시 읽으므로 묻지 않는다. */
+const LOCAL_FONTS_SURFACE_DESKTOP_VERSION = [0, 17, 2] as const;
+
+export function desktopLocalFontsUrl(origin: string): string {
+  const url = new URL("/console/", `${origin}/`);
+  url.searchParams.set(PICKER_SURFACE_PARAM, LOCAL_FONTS_SURFACE);
+  return url.toString();
+}
+
+export function desktopAsksForLocalFonts(desktopVersion: string | null): boolean {
+  const parts = desktopVersion?.match(/^(\d+)\.(\d+)\.(\d+)/)?.slice(1).map(Number);
+  if (!parts) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (parts[index]! !== LOCAL_FONTS_SURFACE_DESKTOP_VERSION[index]) return parts[index]! > LOCAL_FONTS_SURFACE_DESKTOP_VERSION[index]!;
+  }
+  return true;
+}
+
 export function desktopPickerUrl(homeOrigin: string, surface: string = PICKER_SURFACE_OPEN, at?: string, anchor?: string): string {
   const url = new URL("/console/", `${homeOrigin}/`);
   url.searchParams.set(PICKER_SURFACE_PARAM, surface);

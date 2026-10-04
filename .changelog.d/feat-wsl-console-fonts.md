@@ -15,5 +15,5 @@ branch: feat/wsl-console-fonts
 
 ### fleet-desktop
 #### Added
-- Load this device's fonts now works in Fleet Desktop for a Console running on the same computer, including one in WSL, without a permission prompt. Earlier Desktop versions do not show the option, and it stays hidden for Consoles on other computers.
-  ko: Fleet Desktop에서 같은 컴퓨터(WSL 포함)에서 실행 중인 Console이라면 권한 확인 없이 "이 기기의 글꼴 불러오기"를 쓸 수 있습니다. 이전 버전의 Desktop에서는 이 항목이 보이지 않으며, 다른 컴퓨터의 Console에서는 계속 숨겨집니다.
+- Load this device's fonts works in Fleet Desktop: right away for a Console on the same computer, including one in WSL, and after you allow it in a dialog for a Console on another computer. Your answer lasts until Fleet Desktop quits, and earlier Desktop versions do not show the option.
+  ko: Fleet Desktop에서도 "이 기기의 글꼴 불러오기"를 쓸 수 있습니다. 같은 컴퓨터(WSL 포함)의 Console에서는 바로, 다른 컴퓨터의 Console에서는 확인창에서 허용한 뒤에 쓸 수 있습니다. 답은 Fleet Desktop을 종료할 때까지 유지되며, 이전 버전의 Desktop에서는 이 항목이 보이지 않습니다.

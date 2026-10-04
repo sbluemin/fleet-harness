@@ -44,7 +44,7 @@ import { installComputerCapture } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import { desktopFullscreenHost, type DesktopShellWindow } from "./shell-window.js";
-import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
+import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
 import { createThemeMemory } from "./theme-memory.js";
 import { createZoomState } from "./zoom-state.js";
 
@@ -480,6 +480,8 @@ async function boot(): Promise<void> {
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external), {
           onPermissionDenied: (permission, phase) => logger.info(`window permission ${phase} denied permission=${permission}`),
+          confirmRemoteLocalFonts: async (origin) => !createdWindow.isDestroyed()
+            && (await dialog.showMessageBox(createdWindow.base, localFontsConsentDialog(origin))).response === 1,
         });
         installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
         bridge.attach(createdWindow.consoleContents);
