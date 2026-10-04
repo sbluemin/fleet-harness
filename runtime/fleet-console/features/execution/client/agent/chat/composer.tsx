@@ -886,8 +886,10 @@ export function AgentChatComposer({
               {!turnRunning || canSend ? (
                 <ComposerSubmitButton
                   className={`agent-chat-composer-send${turnRunning ? " is-queue" : ""}${canSend ? " is-armed" : ""}`}
-                  disabled={!canSend}
-                  onClick={() => { void send(); }}
+                  // 보내기 원은 늘 반전 활성 모양이다(FD-19). 보낼 것이 없을 때 누르면 보내지 않고 입력칸으로
+                  // 초점을 옮긴다 — 손가락이 닿은 자리에서 바로 쓰기 시작하게.
+                  aria-disabled={!canSend || undefined}
+                  onClick={() => { if (canSend) void send(); else inputRef.current?.focus(); }}
                   aria-label={t(turnRunning ? "terminal.chat.composerQueue" : "terminal.chat.composerSend")}
                 >
                   <MobileGlyph name="send" strokeWidth={2.2} />

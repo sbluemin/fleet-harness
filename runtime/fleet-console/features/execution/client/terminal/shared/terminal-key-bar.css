@@ -173,7 +173,8 @@
 }
 
 /* CLI 확인 줄 — 13 대기 신호색, 간격 6, 좌우 4. 키는 키 줄과 같은 문법. */
-/* 폭이 모자라면 키 묶음이 다음 줄 오른쪽으로 넘어간다 — 라벨(무엇을 기다리는지)은 잘리지 않는다. */
+/* 시안 askbar 줄바꿈 규칙(FD-28) — 빠른 키는 문구 바로 뒤에 같은 줄로 흐르고, 폭이 모자라면 남은 키만
+   다음 줄 왼쪽으로 넘어간다. 라벨(무엇을 기다리는지)은 잘리지 않는다. */
 .terminal-confirm-row {
   display: flex;
   flex-wrap: wrap;
@@ -187,11 +188,7 @@
 
 .terminal-confirm-label { white-space: nowrap; }
 
-.terminal-confirm-keys {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
-}
+.terminal-confirm-keys { display: contents; }
 
 /* 연결이 끊긴 동안(D27) — 입력창과 같은 비활성. */
 .terminal-key-bar.is-mobile.is-disabled,

@@ -2060,8 +2060,11 @@
   gap: 8px;
 }
 
-/* 터미널 보기에서는 키 줄 독(높이 56 + 아래 12 + 위 8) 위에 선다 — 키 줄을 가리면 거절할 손가락도 갈 곳을 잃는다. */
-[data-mobile-surface] .use-request-stack.is-terminal { bottom: 84px; }
+/* 터미널 보기에서는 독 안 맨 위에 흐름대로 선다(FD-07) — 떠 있으면 CLI 확인 줄과 키 줄을 덮는다. */
+[data-mobile-surface] .terminal-mobile-dock .use-request-stack {
+  position: static;
+  pointer-events: auto;
+}
 
 .use-request-card.is-mobile {
   display: flex;

@@ -900,6 +900,7 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         mobile={mobileSurface}
         awaitingConfirm={mobileSurface && awaitingInput}
+        {...(mobileSurface ? { mobileDockTop: <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={context.language} placement="terminal" /> } : {})}
         locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onOpenLink={chooseLinkWithSharedFallback}
@@ -914,7 +915,8 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
         onExit={() => removeExitedSession(session.sessionId, session.generation)}
       />
       <ComputerScreenShare operationId={context.operationId} />
-      <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={context.language} placement="terminal" />
+      {/* 모바일은 같은 카드를 터미널 독 맨 위(mobileDockTop)에 쌓는다 — 여기 떠 있으면 확인 줄을 덮는다. */}
+      {mobileSurface ? null : <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={context.language} placement="terminal" />}
       {linkOpen.card}
     </div>
   );

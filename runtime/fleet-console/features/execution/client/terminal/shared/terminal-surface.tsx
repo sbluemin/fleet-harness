@@ -6,7 +6,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { MobileTerminalKeyBar, NO_LATCHED_MODIFIERS, TerminalConfirmRow, TerminalKeyBar, type TerminalKeyBarModifiers } from "./terminal-key-bar.js";
 import { applyTerminalModifiers, terminalKeySequence, type TerminalKeyId } from "./terminal-key-sequences.js";
@@ -57,6 +57,11 @@ export interface TerminalSurfaceProps {
   readonly mobile?: boolean;
   /** 터미널 프롬프트가 사람의 답을 기다리는 중 — 모바일 키 줄 위에 CLI 확인 줄을 세운다(D26). */
   readonly awaitingConfirm?: boolean;
+  /**
+   * 모바일 독 맨 위에 흐름대로 쌓을 것(허용 요청 카드 등). 독 밖에 떠 있으면 확인 줄·키 줄을 덮는다 —
+   * 독 안에서 [이것] → [CLI 확인 줄] → [키 줄] 순서로 세로로 쌓는다(FD-07).
+   */
+  readonly mobileDockTop?: ReactNode;
   /**
    * PTY가 끝났다. 그 순간의 화면을 흐린 글자로 옮긴 전사본을 함께 준다 — 같은 자리에 새 셸을 다시 붙이는
    * 표면(Shell 재시작)이 앞 화면을 이어 보여 줄 수 있게 한다. 쓰지 않는 표면은 무시하면 된다.
@@ -314,7 +319,7 @@ export interface TerminalCarryOver {
   readonly cols?: number;
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", mobile = false, awaitingConfirm = false, onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", mobile = false, awaitingConfirm = false, mobileDockTop, onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -1105,6 +1110,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
             would go nowhere. */}
         {mobile && !isViewing ? (
           <div className="terminal-mobile-dock">
+            {mobileDockTop}
             {awaitingConfirm ? <TerminalConfirmRow locale={locale} disabled={inputLocked} onKey={sendBarKey} onText={sendBarText} /> : null}
             <MobileTerminalKeyBar
               locale={locale}

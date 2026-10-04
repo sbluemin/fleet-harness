@@ -2354,6 +2354,8 @@ function AskQuestion({
           </span>
           {total > 1 ? <span className="agent-chat-ask-counter">{t("terminal.chat.ask.counter", { index: index + 1, total })}</span> : null}
         </div>
+        {/* 질문 머리글(header)은 질문 위 캡션으로 선다(FD-20, S-39b′). */}
+        {question.header ? <p className="agent-chat-ask-caption">{question.header}</p> : null}
         <p className="agent-chat-ask-text">{question.question}</p>
         {question.multiSelect ? <p className="agent-chat-ask-multi">{t("terminal.mobile.multiHint")}</p> : null}
         <div className="agent-chat-ask-options">

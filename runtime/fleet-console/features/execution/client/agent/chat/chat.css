@@ -4777,6 +4777,7 @@
   color: var(--m-on-inverse);
 }
 
+/* FD-19 — 빈 입력에서도 반전 활성 모양 그대로(누르면 입력칸 초점). 보내는 중(disabled)만 물러난다. */
 [data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-send:disabled { opacity: 0.45; }
 
 [data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-stop:disabled { opacity: 0.55; }
@@ -4894,6 +4895,13 @@
   color: var(--m-text-muted);
   font-size: var(--m-fs-caption);
   text-align: left;
+}
+
+[data-mobile-surface] .agent-chat-ask-caption {
+  margin: 0;
+  color: var(--m-text-muted);
+  font-size: var(--m-fs-caption);
+  font-weight: var(--weight-bold);
 }
 
 [data-mobile-surface] .agent-chat-ask-multi {
