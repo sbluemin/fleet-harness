@@ -15,6 +15,7 @@ import {
   subscribeCodexReaderHistory,
 } from "./codex-host.js";
 import { getT } from "./i18n/index.js";
+import { wikiReaderDepth } from "./mobile-stack.js";
 import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./workspace-store.js";
 import { closeCodexReader, expandCodexReader, getReaderState, openCodexReader, useConsoleLocale, useReaderState } from "./reader-store.js";
 import { loadInitialData } from "./codex/state.js";
@@ -178,7 +179,7 @@ function CodexReaderPane(ctx: PaneContext) {
   const barTitle = documentState.title || addressTitle || t("mobile.wiki.title");
   useEffect(() => {
     if (!visible || !mobileBar) return;
-    mobileBar.set({ title: barTitle, depth: 1, onBack: () => { closeCodexReader(); panes.close(); } });
+    mobileBar.set({ title: barTitle, depth: wikiReaderDepth(), onBack: () => { closeCodexReader(); panes.close(); } });
   }, [mobileBar, visible, barTitle, panes]);
 
   return (

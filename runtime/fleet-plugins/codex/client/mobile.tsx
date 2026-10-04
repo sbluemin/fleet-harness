@@ -6,6 +6,7 @@ import type { SearchEntry } from "../server/codex/contracts.js";
 import { fetchDrydock, fetchSearch } from "./codex/api.js";
 import { CODEX_READER_PANE_ID } from "./codex-reader-pane.js";
 import { getT } from "./i18n/index.js";
+import { setWikiSearchOpen } from "./mobile-stack.js";
 import { openCodexReader } from "./reader-store.js";
 import { publishResolvedWorkspace, resolveCodexWorkspace } from "./workspace-store.js";
 import "./mobile.css";
@@ -43,6 +44,8 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   const [results, setResults] = useState<readonly SearchEntry[] | null>(null);
   const workspaceRef = useRef<string | null>(null);
   const searchLabel = t("mobile.wiki.search");
+  useEffect(() => { setWikiSearchOpen(searching); }, [searching]);
+  useEffect(() => () => setWikiSearchOpen(false), []);
   useEffect(() => {
     if (!visible || !mobileBar) return;
     if (searching) { mobileBar.set({ title: "", depth: 1, onBack: () => { setSearching(false); setQuery(""); setResults(null); } }); return; }
