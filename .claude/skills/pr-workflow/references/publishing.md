@@ -15,6 +15,7 @@ When the change is not a feature-level product delta — refactors, boundary gat
 1. Confirm the absolute worktree path/current branch, acting account through `gh auth status`, and `sbluemin/fleet-harness` through `gh repo view --json nameWithOwner`. Query OS/shell only when needed for command selection.
 2. Read applicable root/child `CLAUDE.md` instructions not already loaded. Do not preload unrelated documents.
 3. Choose the changelog path above — none, new note, or amendment — and record which runtimes a user notices it in.
+4. List open PRs that touch the same files, since one merging mid-review forces a late rebase: `gh pr list --state open --limit 200 --json number,files --jq '.[] | "#\(.number) \(.files[].path)"' | grep -Ff <(git diff --name-only "$(git merge-base origin/canary HEAD)")`. For each hit, settle the merge order or plan `rebase-on-canary` before review; no hit needs no action.
 
 ### Phase 1 — Commit
 
