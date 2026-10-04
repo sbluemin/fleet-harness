@@ -6,7 +6,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
-import { identifyConsoleLockOwner, type ConsoleLockHealthEvidence, type ConsoleLockOwnerIdentity } from "@fleet-console/protocol/desktop";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD, identifyConsoleLockOwner, type ConsoleLockHealthEvidence, type ConsoleLockOwnerIdentity } from "@fleet-console/protocol/desktop";
 
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import { describeDaemonStartFailure } from "../transport/failure-notice.js";
@@ -23,7 +23,7 @@ import {
   stripAnsi,
 } from "../../../cli/styles/tokens.js";
 import { readFleetCliRelease } from "../../../cli/release.js";
-import { createConsoleLock, describeOwnerlessLock, describeReclaimResult, describeRefusedLock, describeSlotQuiescenceCheck, type ConsoleLockReclaimResult } from "./lock.js";
+import { createConsoleLock, describeOwnerlessLock, isConsoleLockHeldError, describeReclaimResult, describeRefusedLock, describeSlotQuiescenceCheck, type ConsoleLockReclaimResult } from "./lock.js";
 import { createConsoleDataPaths, createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
 
@@ -903,7 +903,22 @@ export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<
 
 export async function main(): Promise<void> {
   if (process.argv[2] === "serve") {
-    await createConsoleDaemonLifecycle().runServer();
+    try {
+      await createConsoleDaemonLifecycle().runServer();
+    } catch (error) {
+      if (!isConsoleLockHeldError(error)) throw error;
+      // The lock's own text (who holds it, or how to recover by hand) is the whole diagnosis; the status tells a
+      // supervisor that this start lost the lock rather than failed some other way. A detached serve has no stderr, so
+      // the text also goes to the bounded failure log, where an update reads it. Only the file gets the JSON record:
+      // stderr keeps the one human-readable message a supervising Desktop shows.
+      try {
+        createConsoleFailureLog(createConsoleDataPaths({ env: process.env }).dir, { echo: false })("lock_held", error);
+      } catch {
+        // A missing record must not hide the failure itself.
+      }
+      process.stderr.write(`${(error as Error).message}\n`);
+      process.exitCode = CONSOLE_SERVE_EXIT_LOCK_HELD;
+    }
     return;
   }
   if (process.argv[2] === "hook") {

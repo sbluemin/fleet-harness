@@ -9,7 +9,7 @@ import { consoleReleaseTarballDir, createGlobalPackageUpdater, downloadVerifiedC
 import type { ConsoleTarballDownload, GlobalPackageManagerCommand } from "@fleet-console/updates";
 import { getFleetDataDir } from "@fleet-console/infra/data-dir";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
-import { DESKTOP_RESOURCE_ROOT_MARKER, identifyConsoleLockOwner, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD, DESKTOP_RESOURCE_ROOT_MARKER, identifyConsoleLockOwner, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
 import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
 import { CONSOLE_UPDATE_PROGRESS_FILE, writeConsoleUpdateProgress } from "./update-progress.js";
@@ -37,6 +37,11 @@ export interface ConsoleUpdateApplyStartResult {
 
 export interface CreateConsoleUpdateApplyServiceDeps {
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * Name of the Console failure log in the data directory. A serve that does not take the lock records why there, and a
+   * failed update points to it. Composition supplies it; without it the update only names the lock refusal.
+   */
+  readonly failureLogName?: string;
   /** Fleet data root; verified release tarballs are kept beneath it for as long as they stay installed. */
   readonly fleetDataDir?: string;
   readonly downloadTarball?: (release: ConsoleReleaseManifest, releasesDir: string) => Promise<ConsoleTarballDownload>;
@@ -66,6 +71,8 @@ export interface ConsoleUpdateWorkerScriptConfig {
   readonly currentPid: number;
   readonly lockFile: string;
   readonly logFile: string;
+  /** Where a serve that did not take the lock recorded why, or null when composition did not say. */
+  readonly failureLogFile: string | null;
   readonly packageManager: ConsoleUpdatePackageManagerSpec;
   readonly packageNames: readonly [string, ...string[]];
   /** Already downloaded and sha256-verified before this Console was asked to stop. */
@@ -167,6 +174,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       fromVersion: request.fromVersion,
       lockFile: request.lockFile,
       logFile,
+      failureLogFile: deps.failureLogName ? path.join(request.dataDir, deps.failureLogName) : null,
       packageManager,
       packageNames: PACKAGE_NAMES,
       progressFile,
@@ -208,6 +216,7 @@ const config = ${JSON.stringify(config)};
 const stalePrefix = ${JSON.stringify(WORKER_FILE_PREFIX)};
 const workerSuffix = ${JSON.stringify(WORKER_FILE_SUFFIX)};
 const unverifiedError = ${JSON.stringify(CONSOLE_UPDATE_OLD_CONSOLE_UNVERIFIED)};
+const lockHeldExitCode = ${JSON.stringify(CONSOLE_SERVE_EXIT_LOCK_HELD)};
 const stopTimeoutMs = 60000;
 const startTimeoutMs = 60000;
 const healthTimeoutMs = 1000;
@@ -379,8 +388,9 @@ async function waitForOldConsoleExit() {
     await sleep(sleepMs);
     verdict = await identifyOldConsole();
   }
-  // 이전 Console이 끝났다. 그것이 남긴 lock은 정의상 stale이다 — 같은 pid·token일 때만 우리가 치운다.
-  removeStaleLock();
+  // 이전 Console이 끝났다. 남긴 lock이 있으면 지우지 않는다 — 새 Console의 serve가 그 pid의 ESRCH를 확인하고
+  // 회수 프로토콜로 치운다. worker가 지우면 그 회수 사슬 밖의 삭제가 되어, 그 사이 다른 시작이 쓴 lock을 지울 수 있다.
+  log("old console exited; its lock is " + describeOldConsoleLock() + " and is left for the new console to reclaim");
 }
 
 /** 신호 직전에 정체를 다시 판정하고, verified일 때만 보낸다. 판정 근거는 그때마다 기록한다. */
@@ -543,7 +553,13 @@ function daemonEnv() {
   return { ...process.env, FLEET_CONSOLE_RESUME_PORT: String(config.resumePort) };
 }
 
-async function startNewDaemon() {
+/**
+ * Starts a detached Console serve with no stdio, like every detached Console: it outlives this worker, so nothing here
+ * could keep reading its output or bound it. The returned record shows the serve's exit while this worker still waits
+ * on it; a serve that does not take the lock records why in the Console failure log (config.failureLogFile).
+ */
+function spawnServe() {
+  const serve = { exited: false, code: null, signal: null };
   const child = spawn(process.execPath, [config.serverModulePath, "serve"], {
     detached: true,
     env: daemonEnv(),
@@ -551,11 +567,31 @@ async function startNewDaemon() {
     windowsHide: true,
   });
   child.once("error", () => {});
+  child.once("exit", (code, signal) => {
+    serve.exited = true;
+    serve.code = code;
+    serve.signal = signal;
+  });
   child.unref();
+  return serve;
+}
+
+/** The failure text stays free of paths: it reaches the browser through the progress record. The run log names the file. */
+function describeServeExit(serve) {
+  if (serve.code === lockHeldExitCode) {
+    log("the new console did not take the Console lock; the old console's lock is " + describeOldConsoleLock() + (config.failureLogFile ? "; the reason is recorded in " + config.failureLogFile : ""));
+    return "the new console did not take the Console lock" + (config.failureLogFile ? "; the reason is recorded in " + path.basename(config.failureLogFile) + " in the Console data folder" : "");
+  }
+  return "the new console exited before it became healthy (code=" + serve.code + " signal=" + serve.signal + ")";
+}
+
+async function startNewDaemon() {
+  const serve = spawnServe();
   const deadline = Date.now() + startTimeoutMs;
   while (Date.now() < deadline) {
     const lock = readLock();
     if (lock && lock.pid !== config.currentPid && await isNewHealthOk(lock)) return lock;
+    if (serve.exited) throw new Error(describeServeExit(serve));
     await sleep(sleepMs);
   }
   throw new Error("new console daemon did not become healthy");
@@ -573,19 +609,17 @@ async function recoverConsoleBestEffort() {
       log("recovery skipped: pid " + config.currentPid + " is alive and still holds the lock, so no Console can start until it is stopped");
       return;
     }
-    const child = spawn(process.execPath, [config.serverModulePath, "serve"], {
-      detached: true,
-      env: daemonEnv(),
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    child.once("error", () => {});
-    child.unref();
+    const serve = spawnServe();
     const deadline = Date.now() + startTimeoutMs;
     while (Date.now() < deadline) {
       const lock = readLock();
       if (lock && isProcessAlive(lock.pid) && await isAnyHealthOk(lock)) {
         log("recovered console after failure");
+        return;
+      }
+      // The serve refused the lock or failed on its own; waiting out the timeout would only hide that.
+      if (serve.exited) {
+        log("recovery failed: " + describeServeExit(serve));
         return;
       }
       await sleep(sleepMs);
@@ -612,24 +646,10 @@ function spawnExit(command, args, env = process.env) {
   });
 }
 
-/** 끝난 이전 Console의 락만 지운다 — 같은 pid·token이 아니면(그 사이 올라온 새 콘솔의 락) 건드리지 않는다. */
-function removeStaleLock() {
-  const lock = describeOldConsoleLock();
-  // 읽지 못한 lock은 누구의 것인지 모르므로 지우지 않는다.
-  if (lock === "unreadable") log("left the lock in place: it could not be read");
-  if (lock !== "held") return;
-  try {
-    fs.rmSync(config.lockFile, { force: true });
-    log("removed the stale lock of the console that exited");
-  } catch {
-    // 지우지 못해도 새 데몬이 stale lock을 스스로 정리한다.
-  }
-}
-
 /**
  * 파일이 없을 때(ENOENT)만 missing이다. 읽기·해석 실패와, pid·token이 lock 형식에 맞지 않는 내용은
- * unreadable로 따로 돌려준다 — Desktop이 그런 lock을 malformed로 거부하듯, 형식이 깨진 lock은 다른
- * 주인이 잡았다는 증거가 아니다.
+ * unreadable로 따로 돌려준다 — Console과 Desktop이 그런 lock을 소유자 없는 lock으로 보존하듯, 형식이 깨진 lock은
+ * 다른 주인이 잡았다는 증거가 아니다.
  */
 function readLockState() {
   let raw;
