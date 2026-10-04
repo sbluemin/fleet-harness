@@ -1417,6 +1417,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-routing-switch-copy b { color: var(--text-primary); font-weight: var(--weight-medium); }
 
 /* 확인 시트 — 펼친 띠와 같은 한 장. 구성원 전원이 한 목록으로 모여 순서대로 읽힌다. */
+.objectives-routing:focus { outline: none; }
 .objectives-routing-head { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .objectives-routing-head b { flex: none; color: var(--text-primary); font-weight: var(--weight-bold); white-space: nowrap; }
 .objectives-routing-head > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
