@@ -278,26 +278,42 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     } catch (error) { recordFailure("handler_install_failed", error); }
     try {
       const server = createConsoleServer();
-      await server.start(paths);
-      // 정리는 첫 SIGTERM·SIGINT에서 한 번만 시작한다. 정리 중 다시 온 신호도 이 리스너가 받아 무시한다 — 리스너를 떼면 그 신호는
-      // 기본 동작(즉시 종료)이 되어 plugin·execution·MCP 정리와 lock 해제를 끊고, Console이 직접 끝내야 할 자식을 고아로 남긴다.
-      // 멈춘 정리를 끝내는 수단은 SIGKILL이다(CLI stop과 Desktop의 정체 증명 뒤 승격). 리스너는 정리가 끝난 뒤에야 뗀다.
+      let startupSettled = false;
+      let settleStartup!: () => void;
+      const startup = new Promise<void>((resolve) => { settleStartup = resolve; });
+      let startupShutdownTimeout: ReturnType<typeof setTimeout> | undefined;
+      // lock 공개 전부터 신호를 받되, 시작 작업과 정리를 겹치지 않는다 — 아직 쓰는 중인 writer의 lock을 먼저 풀면 안 된다.
+      // 정리는 첫 SIGTERM·SIGINT에서 한 번만 시작하고, 정리가 끝날 때까지 뒤따르는 신호도 받는다.
       let stopping = false;
       let stopped!: () => void;
       const done = new Promise<void>((resolve) => { stopped = resolve; });
       const shutdown = () => {
         if (stopping) return;
         stopping = true;
-        void Promise.resolve().then(() => server.stop()).catch((error) => {
+        if (!startupSettled) {
+          // 시작 자체가 멈춰도 SIGTERM을 무한히 붙잡지 않는다. 상한 뒤 남은 lock은 다음 Console의 ESRCH 회수에 맡긴다.
+          startupShutdownTimeout = setTimeout(() => {
+            recordFailure("startup_shutdown_timeout", new Error(`Console startup shutdown did not finish within ${shutdownTimeoutMs}ms`));
+            process.exit(1);
+          }, shutdownTimeoutMs);
+        }
+        void startup.then(() => server.stop()).catch((error) => {
           recordFailure("shutdown_failed", error);
           process.exitCode = 1;
         }).finally(stopped);
       };
       process.on("SIGTERM", shutdown);
       process.on("SIGINT", shutdown);
-      await done;
-      process.removeListener("SIGTERM", shutdown);
-      process.removeListener("SIGINT", shutdown);
+      try {
+        try { await server.start(paths); }
+        finally { startupSettled = true; settleStartup(); }
+        await done;
+      } finally {
+        if (stopping) await done;
+        if (startupShutdownTimeout !== undefined) clearTimeout(startupShutdownTimeout);
+        process.removeListener("SIGTERM", shutdown);
+        process.removeListener("SIGINT", shutdown);
+      }
     } finally {
       process.removeListener("unhandledRejection", onRejection);
       process.removeListener("uncaughtException", onException);
