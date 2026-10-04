@@ -262,12 +262,25 @@ export interface MobileBarSpec {
   readonly depth: number;
   /** 깊이를 하나 거두는 동작. `depth`가 1 이상이면 반드시 싣는다 — 상세 상태를 닫는 일은 플러그인이 안다. */
   readonly onBack?: () => void;
+  /**
+   * ⋮ 왼쪽에 서는 문맥 동작 아이콘 버튼(예: 검색). 호스트가 막대 문법(44dp 원형 눌림 면)으로 그리고,
+   * 아이콘은 필수이며 `label`은 접근성 이름이다. 순서는 선언 순서다.
+   */
+  readonly actions?: readonly MobileBarAction[];
   /** ⋮ 메뉴. 항목이 없으면 ⋮ 자체를 그리지 않는다. 메뉴의 모양은 호스트 소유다. */
   readonly menu?: {
     /** 메뉴 머리의 대상 이름. */
     readonly caption?: string;
     readonly items: readonly MobileBarMenuItem[];
   };
+}
+
+export interface MobileBarAction {
+  readonly id: string;
+  /** 접근성 이름(이미 현지화된 문자열) — 막대에는 아이콘만 선다. */
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly run: () => void;
 }
 
 export interface MobileBarMenuItem {
