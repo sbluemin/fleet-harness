@@ -73,6 +73,8 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   // a foreground return would otherwise overwrite an in-flight cold-start link attempt with the
   // stored target. Volatile because beginAttempt can start from the JS thread.
   @Volatile private var attemptInFlight = false
+  // 잘못된 링크 오류는 사용자가 다음 행동을 고를 때까지 포그라운드 복귀로 덮지 않는다.
+  @Volatile private var invalidLinkPending = false
   private var detached = false
   private var chromeInsets: Insets = Insets.NONE
   private var imeInsets: Insets = Insets.NONE
@@ -135,13 +137,14 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     val parsed = try {
       AccessLink.parse(rawLink)
     } catch (_: IllegalArgumentException) {
-      failCurrent("pairing_target_invalid", null)
+      failInvalidLink()
       return
     }
     beginAttempt(parsed.withoutCredential(targetStore.identityFor(parsed, activeTarget, activeGateway != null)), parsed.token)
   }
 
   fun retry() {
+    dismissLinkError()
     val current = activeTarget ?: run {
       emit("error", "pairing_target_invalid")
       return
@@ -150,8 +153,17 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   }
 
   fun resume() {
+    if (invalidLinkPending) {
+      // JS 마운트 전 init 이벤트를 놓쳤더라도 오류를 다시 받는다. 재연결은 하지 않는다.
+      emit("error", "pairing_target_invalid")
+      return
+    }
     if (attemptInFlight) return
     if (activeView == null && activeTarget != null) retry()
+  }
+
+  fun dismissLinkError() {
+    invalidLinkPending = false
   }
 
   /** JS entry for pasted or scanned links; the intent inbox and this path converge on receiveLink. */
@@ -160,6 +172,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   }
 
   fun connectTo(origin: String) {
+    dismissLinkError()
     main.post {
       val stored = targetStore.find(origin) ?: run {
         emit("error", "target_missing")
@@ -171,6 +184,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   }
 
   fun removeTarget(origin: String) {
+    dismissLinkError()
     main.post {
       val removed = targetStore.find(origin) ?: return@post
       val wasActive = activeTarget?.origin == origin
@@ -297,11 +311,14 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private fun beginAttempt(candidate: PersistedTarget, token: String?) {
     val id = attempt.incrementAndGet()
     attemptInFlight = true
+    dismissLinkError()
     main.post {
       if (!isCurrent(id)) return@post
       val launch = {
-        emit("connecting", label = candidate.label, origin = candidate.origin)
-        worker.execute { runCandidate(id, candidate, token) }
+        if (isCurrent(id)) {
+          emit("connecting", label = candidate.label, origin = candidate.origin)
+          worker.execute { runCandidate(id, candidate, token) }
+        }
       }
       if (staging == null) launch() else destroyStaging(launch)
     }
@@ -590,18 +607,19 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       if (!isCurrent(id)) return@post
       attemptInFlight = false
       destroyStaging {
-        emit("error", code, activeTarget?.label ?: candidateLabel, candidateOrigin, retryAfterSeconds)
+        if (isCurrent(id)) emit("error", code, activeTarget?.label ?: candidateLabel, candidateOrigin, retryAfterSeconds)
       }
     }
   }
 
-  private fun failCurrent(code: String, candidateLabel: String?) {
+  private fun failInvalidLink() {
     val id = attempt.incrementAndGet()
+    invalidLinkPending = true
     main.post {
       if (!isCurrent(id)) return@post
       attemptInFlight = false
       destroyStaging {
-        emit("error", code, activeTarget?.label ?: candidateLabel)
+        if (isCurrent(id)) emit("error", "pairing_target_invalid")
       }
     }
   }

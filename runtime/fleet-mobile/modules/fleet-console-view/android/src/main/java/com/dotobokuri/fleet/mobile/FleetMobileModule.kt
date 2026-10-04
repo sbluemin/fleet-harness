@@ -18,6 +18,10 @@ class FleetMobileModule : Module() {
         view.resume()
       }
 
+      AsyncFunction("dismissLinkError") { view: FleetConsoleView ->
+        view.dismissLinkError()
+      }
+
       AsyncFunction("submitAccessLink") { view: FleetConsoleView, link: String ->
         view.submitAccessLink(link)
       }

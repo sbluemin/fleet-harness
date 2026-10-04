@@ -54,6 +54,8 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // 복귀가 인플라이트 시도를 저장된 타깃으로 덮어쓴다 — 콜드 스타트 링크는 attempt 카운터를
   // 뺏기고 조용히 사라진다(실기기에서 재현). 메인 스레드에서만 읽고 쓴다.
   private var attemptInFlight = false
+  // 잘못된 링크 오류는 사용자가 다음 행동을 고를 때까지 포그라운드 복귀로 덮지 않는다.
+  private var invalidLinkPending = false
   private var detached = false
 
   public required init(appContext: AppContext? = nil) {
@@ -147,12 +149,13 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   private func receiveLink(_ rawLink: String) {
     let parsed: AccessTarget
     do { parsed = try AccessLink.parse(rawLink) }
-    catch { failCurrent("pairing_target_invalid", nil); return }
+    catch { failInvalidLink(); return }
     let identity = targetStore.identityFor(parsed, live: activeTarget, hasLiveGateway: activeGateway != nil) { LoopbackIdentity.reserve() }
     beginAttempt(parsed.withoutCredential(identity), token: parsed.token)
   }
 
   public func retry() {
+    dismissLinkError()
     guard let current = activeTarget else { emit("error", code: "pairing_target_invalid"); return }
     beginAttempt(current, token: nil)
   }
@@ -161,14 +164,24 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     // 포그라운드 복귀는 아무것도 붙어 있지 않을 때의 복구 수단이다. 시도가 진행 중이면
     // 그 시도가 결론을 내게 두어야 한다 — 여기서 재연결하면 저장된 타깃이 방금 들어온
     // 콜드 스타트 링크를 이긴다.
+    if invalidLinkPending {
+      // JS 마운트 전 init 이벤트를 놓쳤더라도 오류를 다시 받는다. 재연결은 하지 않는다.
+      emit("error", code: "pairing_target_invalid")
+      return
+    }
     if attemptInFlight { return }
     if activeView == nil && activeTarget != nil { retry() }
+  }
+
+  public func dismissLinkError() {
+    main { self.invalidLinkPending = false }
   }
 
   public func submitAccessLink(_ link: String) { receiveLink(link) }
 
   public func connectTo(_ origin: String) {
     main {
+      self.invalidLinkPending = false
       guard let stored = self.targetStore.find(origin) else { self.emit("error", code: "target_missing"); return }
       let identity = self.targetStore.resumeIdentity(stored, live: self.activeTarget, hasLiveGateway: self.activeGateway != nil) { LoopbackIdentity.reserve() }
       let candidate = PersistedTarget(origin: stored.origin, hostname: stored.hostname, port: stored.port, label: stored.label, fingerprint: stored.fingerprint, loopback: identity)
@@ -178,6 +191,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   public func removeTarget(_ origin: String) {
     main {
+      self.invalidLinkPending = false
       guard let removed = self.targetStore.find(origin) else { return }
       let wasActive = self.activeTarget?.origin == origin
       let wasStaging = self.staging?.target.origin == origin
@@ -270,8 +284,10 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     let id = attempt.increment()
     main {
       guard self.isCurrent(id) else { return }
+      self.attemptInFlight = true
+      self.invalidLinkPending = false
       let launch = {
-        self.attemptInFlight = true
+        guard self.isCurrent(id) else { return }
         self.emit("connecting", label: candidate.label, origin: candidate.origin)
         self.worker.async { self.runCandidate(id, candidate, token) }
       }
@@ -569,18 +585,21 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       guard self.isCurrent(id) else { return }
       self.attemptInFlight = false
       self.destroyStaging {
-        self.emit("error", code: code, label: self.activeTarget?.label ?? candidateLabel, origin: candidateOrigin, retryAfterSeconds: retryAfter)
+        if self.isCurrent(id) {
+          self.emit("error", code: code, label: self.activeTarget?.label ?? candidateLabel, origin: candidateOrigin, retryAfterSeconds: retryAfter)
+        }
       }
     }
   }
 
-  private func failCurrent(_ code: String, _ candidateLabel: String?) {
+  private func failInvalidLink() {
     let id = attempt.increment()
     main {
       guard self.isCurrent(id) else { return }
+      self.invalidLinkPending = true
       self.attemptInFlight = false
       self.destroyStaging {
-        self.emit("error", code: code, label: self.activeTarget?.label ?? candidateLabel)
+        if self.isCurrent(id) { self.emit("error", code: "pairing_target_invalid") }
       }
     }
   }
