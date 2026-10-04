@@ -1126,6 +1126,11 @@ describe("Instrument core design contract", () => {
   // 사다리 최대가 22px이므로 24px 이상은 디스플레이 영역으로 사다리 밖에 둔다.
   it("keeps product font size on the type-scale token ladder", () => {
     const violations: string[] = [];
+    // 모바일 사다리의 단 이름은 theme.css 모바일 구역의 정의에서 읽는다 — 단을 하나 더해도 이 목록을 따로
+    // 고칠 일이 없고, 정의되지 않은 이름은 여전히 거부된다.
+    const mobileSteps = [...source("styles/theme.css").matchAll(/^\s*--m-fs-([a-z]+)\s*:/gm)].map((match) => match[1]!);
+    expect(mobileSteps.length).toBeGreaterThan(0);
+    const MOBILE_TYPE_STEP = new RegExp(`var\\(\\s*--m-fs-(?:${[...new Set(mobileSteps)].join("|")})\\s*\\)`);
     for (const file of listProductCssFiles()) {
       const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
       const masked = maskFontFaceBlocks(css);
@@ -1142,7 +1147,7 @@ describe("Instrument core design contract", () => {
         if (/var\(\s*--t-(?:2xs|xs|sm|md|base|lg|xl)\s*\)/.test(value)) return false;
         // 모바일 배치는 Console과 다른 자기 사다리를 갖는다(시안 크기 이름, theme.css 모바일 팔레트
         // 구역에서만 정의). 데스크톱에서는 정의되지 않으므로 모바일 전용 선택자 아래에서만 의미가 있다.
-        if (/var\(\s*--m-fs-(?:micro|small|caption|mono|secondary|list|body|title|heading)\s*\)/.test(value)) return false;
+        if (MOBILE_TYPE_STEP.test(value)) return false;
         if (/var\(\s*--font-(?:body|ui|content|code)-size\s*\)/.test(value)) return false;
         // Codex 서브앱이 자기 --font-size-* 스케일을 갖고 있고, 공유 마크다운과 코어 일부가
         // 그 토큰을 함께 소비한다(총 113곳). 두 어휘를 합칠지는 이 사다리와 별개의 결정이라

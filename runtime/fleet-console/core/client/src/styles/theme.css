@@ -1072,6 +1072,33 @@
   }
 }
 
+/* 모바일 읽기 세리프의 라틴 전용 가족 — 기기에 이미 있는 세리프를 이름으로 부르고(번들하지 않음),
+   라틴 범위만 맡아 한글·한자·가나는 --m-reading의 다음 가족(고딕)으로 넘긴다. Android는 시스템
+   Noto Serif를, Apple은 Georgia를 잡는다. 둘 다 없으면 이 가족이 비어 고딕으로 떨어진다. */
+@font-face {
+  font-family: "Fleet Reading Latin";
+  font-style: normal;
+  font-weight: 400;
+  src: local("Noto Serif"), local("NotoSerif-Regular"), local("NotoSerif"), local("Georgia");
+  unicode-range: U+0000-024F, U+0259, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-036F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF;
+}
+
+@font-face {
+  font-family: "Fleet Reading Latin";
+  font-style: normal;
+  font-weight: 600 700;
+  src: local("Noto Serif Bold"), local("NotoSerif-Bold"), local("Georgia Bold"), local("Georgia-Bold");
+  unicode-range: U+0000-024F, U+0259, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-036F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF;
+}
+
+@font-face {
+  font-family: "Fleet Reading Latin";
+  font-style: italic;
+  font-weight: 400;
+  src: local("Noto Serif Italic"), local("NotoSerif-Italic"), local("Georgia Italic"), local("Georgia-Italic");
+  unicode-range: U+0000-024F, U+0259, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-036F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF;
+}
+
 /* ── 모바일 팔레트 (data-view-mode="mobile" × data-mobile-scheme) ─────────────────
    모바일 배치는 Console 테마(general.theme)를 따르지 않고 자기 다크/라이트를 쓴다. 루트에 얹는
    이유는 포털 시트·메뉴와 루트 계산값을 읽는 JS 소비자(터미널 배경·Mermaid·Analyst)가 모두 같은
@@ -1092,10 +1119,11 @@
      Noto Serif는 번들하지 않는다 — 네이티브처럼 보이는 것이 목표라 기기 시스템 서체(iOS SF·Apple SD
      Gothic Neo, Android Roboto·Noto CJK)로 떨어지는 편이 맞다. 대조는 크기·굵기·줄높이·세리프/고딕으로. */
   --m-sans: "Noto Sans KR", system-ui, -apple-system, "Roboto", "Apple SD Gothic Neo", sans-serif;
-  /* 한글 글리프가 없는 라틴 세리프를 앞에 둬 한글은 고딕으로 떨어진다(레퍼런스와 같은 섞임).
-     ui-serif는 iOS의 New York을 이름 대신 부르는 길이다. 일반명 serif는 Android에서 이름으로
-     찾을 수 없는 시스템 Noto Serif로 가는 길이고, 라틴만 가진 서체라 한글은 뒤의 고딕으로 넘어간다. */
-  --m-reading: "Noto Serif", "New York", ui-serif, Georgia, serif, "Noto Sans KR", system-ui, sans-serif;
+  /* 라틴은 세리프, 한글은 고딕(레퍼런스와 같은 섞임). 세리프는 아래 @font-face "Fleet Reading
+     Latin"이 라틴 범위(unicode-range)로만 실어 한글은 그 가족을 건너뛰고 고딕으로 떨어진다.
+     [왜 일반명 serif·ui-serif를 쓰지 않나] 브라우저는 일반명을 스크립트마다 따로 푼다 — 한글에는
+     그 스크립트의 기본 명조(macOS AppleMyungjo, Android Noto Serif CJK)를 잡아 한글이 명조가 된다(실측). */
+  --m-reading: "Fleet Reading Latin", "Noto Sans KR", "Apple SD Gothic Neo", system-ui, -apple-system, "Roboto", sans-serif;
   --m-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "Roboto Mono", "Nanum Gothic Coding", monospace;
 
   /* 모바일 글자 배율 — 기기 단위 모바일 선호(data-mobile-font-scale)다. 데스크톱 서체 설정의 UI
