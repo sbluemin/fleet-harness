@@ -27,7 +27,7 @@ const Icon = ({ children, size = 22 }: { readonly children: ReactNode; readonly 
 );
 const SearchIcon = () => <Icon><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></Icon>;
 const SEARCH_DEBOUNCE_MS = 180;
-const WikiIcon = () => <Icon><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z" /></Icon>;
+const WikiIcon = () => <Icon><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" /><path d="M5 17a3 3 0 0 1 3-3h9" /></Icon>;
 
 export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   const t = getT(ctx.language);

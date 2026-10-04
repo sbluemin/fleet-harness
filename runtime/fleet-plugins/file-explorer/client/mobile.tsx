@@ -28,11 +28,11 @@ const TOAST_MS = 6_000;
 const Icon = ({ children, size = 20 }: { readonly children: ReactNode; readonly size?: number }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 );
-const FolderGlyph = () => <Icon size={18}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></Icon>;
-const FileGlyph = () => <Icon size={18}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></Icon>;
+const FolderGlyph = () => <Icon size={18}><path d="M3 6h6l2 2h10v11H3z" /></Icon>;
+const FileGlyph = () => <Icon size={18}><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></Icon>;
 const Chevron = ({ open }: { readonly open: boolean }) => <Icon size={16}><path d={open ? "M6 9l6 6 6-6" : "M9 6l6 6-6 6"} /></Icon>;
-const TermIcon = () => <Icon><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9l3 3-3 3M12.5 15H17" /></Icon>;
-const CopyIcon = () => <Icon><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></Icon>;
+const TermIcon = () => <Icon><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 10l3 2-3 2M13 15h4" /></Icon>;
+const CopyIcon = () => <Icon><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M5 16V6a2 2 0 0 1 2-2h9" /></Icon>;
 
 function useTheaterLabel(ctx: PaneContext): string {
   const { consoleState, theaterId } = ctx;
