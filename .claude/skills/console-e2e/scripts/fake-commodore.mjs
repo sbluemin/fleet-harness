@@ -18,6 +18,7 @@ if (fs.realpathSync(dir) !== dir) throw new Error("fake_commodore_symlink_refuse
 const log = (event, data = {}) => fs.appendFileSync(path.join(dir, "log.jsonl"), `${JSON.stringify({ at: Date.now(), event, ...data })}\n`, { mode: 0o600 });
 const marker = (name) => fs.existsSync(path.join(dir, name));
 const originalQuery = "?fake-commodore-original";
+const DRAIN_TIMEOUT_MS = 2_000;
 let installed = false;
 
 registerHooks({
@@ -40,6 +41,8 @@ export function wrapPlugin(plugin) {
     register(ctx) {
       let serial = 0;
       const timers = new Set();
+      const calls = path.join(dir, "calls");
+      const claimed = new Set();
       const agent = {
         async createSession(options) {
           const id = ++serial;
@@ -53,6 +56,51 @@ export function wrapPlugin(plugin) {
             resolve();
           };
           log("created", { id });
+          // calls/<name>.json {"tool","args"} runs that tools.custom entry in an owned cwd; the result goes to <name>.json.out.
+          const tools = (options.tools?.custom ?? []).flatMap((group) => group.tools ?? []);
+          let cwd;
+          // 진행 중인 polling 한 번 — dispose가 이것을 기다려야 정리 뒤에 도구 효과가 남지 않는다.
+          let running = null;
+          // 실제 host처럼 dispose가 진행 중 도구를 끊는다. signal을 무시하는 도구는 상한 뒤 버리고, 그 결과는 쓰지 않는다.
+          const abort = new AbortController();
+          let abandoned = false;
+          const drain = async () => {
+            let tool = null;
+            try {
+              if (!fs.existsSync(calls) || fs.realpathSync(calls) !== calls) return;
+              for (const name of fs.readdirSync(calls)) {
+                const file = path.join(calls, name);
+                if (!name.endsWith(".json") || claimed.has(name) || fs.existsSync(`${file}.out`) || !fs.lstatSync(file).isFile()) continue;
+                if (closed) break;
+                claimed.add(name);
+                tool = null;
+                let ok = false;
+                let out;
+                try {
+                  const request = JSON.parse(fs.readFileSync(file, "utf8"));
+                  tool = typeof request.tool === "string" ? request.tool : null;
+                  const entry = tools.find((candidate) => candidate.name === tool);
+                  if (entry) {
+                    cwd ??= fs.mkdtempSync(path.join(dir, "cwd-"));
+                    out = await entry.execute(request.args ?? {}, { cwd, signal: abort.signal });
+                    ok = true;
+                  } else {
+                    out = { error: "no_such_tool", have: tools.map((candidate) => candidate.name) };
+                  }
+                } catch (error) {
+                  out = { thrown: String(error?.message ?? error) };
+                }
+                if (abandoned) return;
+                fs.writeFileSync(`${file}.out`, JSON.stringify(out), { flag: "wx", mode: 0o600 });
+                log("call", { id, tool, ok });
+              }
+            } catch {
+              log("call", { id, tool, ok: false });
+            }
+          };
+          const poll = setInterval(() => { running ??= drain().finally(() => { running = null; }); }, 100);
+          poll.unref();
+          timers.add(poll);
           return {
             async send(text) {
               if (closed) throw new Error("session_disposed");
@@ -65,7 +113,21 @@ export function wrapPlugin(plugin) {
               }
             },
             cancel() { log("cancel", { id }); settle(marker("complete-on-cancel")); },
-            async dispose() { closed = true; settle(false); log("dispose", { id }); },
+            async dispose() {
+              closed = true;
+              clearInterval(poll);
+              timers.delete(poll);
+              abort.abort();
+              settle(false);
+              let timer;
+              const drainTimeout = await Promise.race([
+                (running ?? Promise.resolve()).then(() => false, () => false),
+                new Promise((resolve) => { timer = setTimeout(() => resolve(true), DRAIN_TIMEOUT_MS); }),
+              ]);
+              clearTimeout(timer);
+              if (drainTimeout) abandoned = true;
+              log("dispose", { id, ...(drainTimeout ? { drainTimeout: true } : {}) });
+            },
           };
         },
       };

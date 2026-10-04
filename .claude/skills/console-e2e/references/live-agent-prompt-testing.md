@@ -139,7 +139,7 @@ something else; use the sidebar expand control (⌘B on macOS) before hunting fo
 
 Verify the launch actually attached to the gateway rather than trusting the banner — the
 header still reads the Claude model name even when every request is being rerouted. Confirm
-the owned PID with `ps -p <claude-pid> -o command=` and prove routing from the first
+the owned PID with `ps -p <claude-pid> -o comm=` (its full command line carries MCP bearer tokens) and prove routing from the first
 `anthropic.request` plus provider-wire event in the owned capture; the former records the
 resolved model and the latter exists only after gateway dispatch.
 
