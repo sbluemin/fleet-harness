@@ -72,11 +72,64 @@ function Radio({ on }: { readonly on: boolean }) {
   return <span className={`mql-radio${on ? " is-on" : ""}`} aria-hidden="true" />;
 }
 
+type EffortDeck = ReturnType<typeof buildQuickLaunchEffortDeck>;
+
+/**
+ * 모델 시트의 강도 게이트(S-11e ①) — 새 작업 시트와 Operation 입력창 모델 시트가 같은 규칙을 쓴다.
+ * 기본은 일상 단계만 보이고, 「{tiers} 펼치기」를 켜면 게이트 뒤 단계가 탭 끝에 선다. 지금 값이 이미 게이트 단계면
+ * 펼친 채로 시작한다(deck이 값으로 문을 붙든다). 펼치기를 끄면 게이트 단은 숨고, 그 단을 고른 상태였으면 바로 아래 일상 단으로 되돌린다.
+ */
+export function useMobileEffortGate(
+  row: OperationLaunchVariantRow | null,
+  effort: string | null,
+  autoLabel: string,
+  onEffort: (effort: string | null) => void,
+): { readonly deck: EffortDeck; readonly toggleGate: () => void } {
+  const [opened, setOpened] = useState(false);
+  const deck = buildQuickLaunchEffortDeck(row, effort, autoLabel, "", opened);
+  const toggleGate = () => {
+    if (!deck.gateOpen) { setOpened(true); return; }
+    if (deck.gateHeldByValue && row) {
+      const gated = new Set(row.gatedEfforts ?? []);
+      const everyday = (row.chips ?? []).filter((chip) => !gated.has(chip.id));
+      onEffort(everyday.at(-1)?.id ?? null);
+    }
+    setOpened(false);
+  };
+  return { deck, toggleGate };
+}
+
+/** 「추론 강도」 글자 탭 한 줄 — 고른 칸은 text 600 + 아래 2(S-11b). */
+export function MobileEffortTabs({ deck, label, onPick }: {
+  readonly deck: EffortDeck;
+  readonly label: string;
+  readonly onPick: (effort: string | null) => void;
+}) {
+  return (
+    <div className="mql-efft" role="radiogroup" aria-label={label}>
+      {deck.options.map((option) => (
+        <button key={option.id ?? "auto"} type="button" role="radio" aria-checked={option.checked} className={option.checked ? "is-on" : ""} onClick={() => onPick(option.id)}>{option.label}</button>
+      ))}
+    </div>
+  );
+}
+
+/** 「{tiers} 펼치기」 토글 행 — 고른 모델에 게이트 뒤 단계가 있을 때만 선다. */
+export function MobileEffortGateRow({ deck, onToggle }: { readonly deck: EffortDeck; readonly onToggle: () => void }) {
+  const t = useT();
+  if (!deck.hasGate) return null;
+  return (
+    <button type="button" role="switch" aria-checked={deck.gateOpen} className="mql-gr" onClick={onToggle}>
+      <span className="mql-gr-tx">{t("launchVariants.effort.apexToggle", { tiers: deck.gatedNames })}</span>
+      <Toggle on={deck.gateOpen} />
+    </button>
+  );
+}
+
 export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
   const t = useT();
   const { inputRef, prompt, theaters, theaterId, groups, selectedRow, effort, onSubmit, onClose } = props;
   const [sub, setSub] = useState<Sub | null>(null);
-  const [gateOpen, setGateOpen] = useState(false);
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
   const inApp = isFleetMobileShell();
@@ -136,24 +189,13 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
   const grouped = groups.length > 1;
   const modelGroups = grouped ? groups : groups.slice(0, 1);
   const autoLabel = t("launchVariants.effort.auto");
-  const deck = buildQuickLaunchEffortDeck(selectedRow, effort, autoLabel, "", gateOpen);
+  const { deck, toggleGate } = useMobileEffortGate(selectedRow, effort, autoLabel, props.onEffort);
   const effortLabel = deck.options.find((option) => option.checked)?.label ?? autoLabel;
   const onPickFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
     setSub(null);
     if (files.length > 0) props.onAddFiles(files);
-  };
-
-  // 게이트 펼치기를 끄면 게이트 단은 숨는다 — 그 단을 고른 상태였으면 바로 아래 일상 단으로 되돌린다(S-11e ①).
-  const toggleGate = () => {
-    if (!deck.gateOpen) { setGateOpen(true); return; }
-    if (deck.gateHeldByValue && selectedRow) {
-      const gated = new Set(selectedRow.gatedEfforts ?? []);
-      const everyday = (selectedRow.chips ?? []).filter((chip) => !gated.has(chip.id));
-      props.onEffort(everyday.at(-1)?.id ?? null);
-    }
-    setGateOpen(false);
   };
 
   if (sub === "theater") {
@@ -188,21 +230,12 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
         {selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? (
           <>
             <h3 className="mql-glab">{t("chrome.quickLaunch.mobile.effort")}</h3>
-            <div className="mql-efft" role="radiogroup" aria-label={t("chrome.quickLaunch.mobile.effort")}>
-              {deck.options.map((option) => (
-                <button key={option.id ?? "auto"} type="button" role="radio" aria-checked={option.checked} className={option.checked ? "is-on" : ""} onClick={() => props.onEffort(option.id)}>{option.label}</button>
-              ))}
-            </div>
+            <MobileEffortTabs deck={deck} label={t("chrome.quickLaunch.mobile.effort")} onPick={props.onEffort} />
           </>
         ) : null}
         <h3 className="mql-glab is-options">{t("chrome.quickLaunch.mobile.options")}</h3>
         <div className="mql-grp">
-          {deck.hasGate ? (
-            <button type="button" role="switch" aria-checked={deck.gateOpen} className="mql-gr" onClick={toggleGate}>
-              <span className="mql-gr-tx">{t("launchVariants.effort.apexToggle", { tiers: deck.gatedNames })}</span>
-              <Toggle on={deck.gateOpen} />
-            </button>
-          ) : null}
+          <MobileEffortGateRow deck={deck} onToggle={toggleGate} />
           <button type="button" role="switch" aria-checked={props.ultracodeArmed} className="mql-gr is-two" onClick={() => props.onUltracode(!props.ultracodeArmed)}>
             <span className="mql-gr-tx">
               {t("chrome.quickLaunch.mobile.dynamic")}

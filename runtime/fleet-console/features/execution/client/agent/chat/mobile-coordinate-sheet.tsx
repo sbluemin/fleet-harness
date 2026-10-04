@@ -8,6 +8,7 @@ import { getMobileDrawerOpen, getMobileSheetStack } from "../../../../../core/cl
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { reportMobileChrome } from "../../../../../core/client/src/integration/mobile-appearance-store.js";
 import { resolveRowEffort } from "../../components/effort-track.js";
+import { MobileEffortGateRow, MobileEffortTabs, useMobileEffortGate } from "../../components/mobile-quick-launch.js";
 import { getT } from "../i18n/index.js";
 import type { AgentChatCoordinatePair } from "./chat-events.js";
 import "../../components/mobile-quick-launch.css";
@@ -72,6 +73,12 @@ export function MobileCoordinateSheet({
   const targetRow = target ? rows.find((row) => row.launch.model === target.model) ?? null : null;
   const chips = targetRow?.chips ?? [];
   const targetEffort = targetRow ? resolveRowEffort(targetRow, target?.effort ?? null) : null;
+  // 강도 탭은 새 작업 모델 시트와 같은 게이트 규칙이다(S-11e ①) — 기본은 일상 단계만, 지금 좌표가 게이트 단계면 펼친 채로 연다.
+  const pickEffort = (effort: string | null) => {
+    const model = targetRow?.launch.model;
+    if (model && effort !== targetEffort) onApply({ model, effort });
+  };
+  const { deck, toggleGate } = useMobileEffortGate(targetRow, targetEffort, t("terminal.chat.coordAutoEffort"), pickEffort);
   const tooLarge = (row: OperationLaunchVariantRow) => occupied !== null && row.contextWindow !== undefined
     && occupied > row.contextWindow && row.launch.model !== current?.model;
   const anyBlocked = rows.some(tooLarge);
@@ -116,27 +123,15 @@ export function MobileCoordinateSheet({
       ))}
       {targetRow && chips.length > 0 ? (
         <>
-          <h3 className="mql-glab is-options">{t("terminal.chat.coordMenuEffortTrack")}</h3>
-          <div className="mql-efft" role="radiogroup" aria-label={t("terminal.chat.coordMenuEffortTrack")}>
-            {[{ effort: null as string | null, label: t("terminal.chat.coordAutoEffort") }, ...chips.map((chip) => ({ effort: chip.launch.effort ?? null, label: chip.label }))].map((option) => {
-              const on = option.effort === targetEffort;
-              return (
-                <button
-                  key={option.effort ?? "auto"}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  className={on ? "is-on" : ""}
-                  onClick={() => {
-                    const model = targetRow.launch.model;
-                    if (!on && model) onApply({ model, effort: option.effort });
-                  }}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
+          <h3 className="mql-glab">{t("terminal.chat.coordMenuEffortTrack")}</h3>
+          <MobileEffortTabs deck={deck} label={t("terminal.chat.coordMenuEffortTrack")} onPick={pickEffort} />
+          {/* 옵션은 펼치기 한 행뿐이다 — 다이나믹 워크플로우는 새 작업 전용이라 Operation 시트에 두지 않는다(S-56 NT-1d). */}
+          {deck.hasGate ? <h3 className="mql-glab is-options">{t("terminal.chat.coordSheetOptions")}</h3> : null}
+          {deck.hasGate ? (
+            <div className="mql-grp">
+              <MobileEffortGateRow deck={deck} onToggle={toggleGate} />
+            </div>
+          ) : null}
         </>
       ) : null}
       {anyBlocked ? (
