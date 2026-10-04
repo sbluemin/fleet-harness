@@ -2,7 +2,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 
 import { groupModelsByLaunchProvider, isLaunchProviderGlyphId, launchProviderCaption, launchProviderGlyph, type LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
-import { SegmentedThumb, useSelect } from "../react/browser.js";
+import { SegmentedThumb, useMobileSettingsHost, useSelect } from "../react/browser.js";
 import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, type ExperimentModelOption } from "./experiments.js";
 import type { SettingsSectionDescriptor } from "./types.js";
 
@@ -19,6 +19,9 @@ export {
   isExperimentModelId,
   resolveExperimentSettings,
 } from "./experiments.js";
+// 모바일 셸이 설정 화면에 주입하는 능력(선택 팝업) — 특수한 섹션이 직접 열 때 쓴다.
+export { MobileSettingsHostContext, useMobileSettingsHost } from "../react/browser.js";
+export type { MobileChoiceOption, MobileChoiceSpec, MobileSettingsHost } from "../react/browser.js";
 export type { ShortcutBindings } from "./shortcuts.js";
 export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";
 
@@ -34,6 +37,8 @@ export interface SettingsRowProps {
   readonly hint?: React.ReactNode;
   /** 라벨 오른쪽에 서는 도움말 팁 — `<SettingsHelpTip>` 노드를 그대로 받는다. */
   readonly helpTip?: React.ReactNode;
+  /** 모바일 설정 행의 앞 아이콘. 데스크톱은 그리지 않는다. */
+  readonly icon?: React.ReactNode;
   readonly children: React.ReactNode;
 }
 
@@ -150,6 +155,7 @@ export function ExperimentalBadge({ children }: { readonly children: React.React
 export function SettingsHelpTip({ ariaLabel, id, children }: SettingsHelpTipProps): React.ReactElement {
   const autoId = React.useId();
   const bubbleId = id ?? autoId;
+  const mobileHost = useMobileSettingsHost();
   const wrapRef = React.useRef<HTMLSpanElement | null>(null);
   const bubbleRef = React.useRef<HTMLDivElement | null>(null);
   const closeTimer = React.useRef<number | null>(null);
@@ -206,6 +212,9 @@ export function SettingsHelpTip({ ariaLabel, id, children }: SettingsHelpTipProp
   }, [open, close]);
 
   React.useEffect(() => clearCloseTimer, []);
+
+  // 모바일에서는 「?」 칩이 없다 — 설명이 행 아래 한 줄로 서고, 언제나 보인다.
+  if (mobileHost) return <span className="settings-help-line" id={bubbleId}>{children}</span>;
 
   return (
     <span
@@ -268,9 +277,24 @@ export function SettingsCard({ title, description, children }: SettingsCardProps
   );
 }
 
-export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps): React.ReactElement {
+export function SettingsRow({ label, hint, helpTip, icon, children }: SettingsRowProps): React.ReactElement {
   const labelId = React.useId();
   const hintId = React.useId();
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    // 폰: 아이콘 + 제목 + 설명 여러 줄(힌트 → 도움말) + 오른쪽 컨트롤(토글 등).
+    return (
+      <div className="fc-settings-row is-mobile" role="group" aria-labelledby={labelId} aria-describedby={hint ? hintId : undefined}>
+        {icon ? <span className="fc-settings-row__icon" aria-hidden="true">{icon}</span> : null}
+        <div className="fc-settings-row__copy">
+          <div className="fc-settings-row__label"><span id={labelId}>{label}</span></div>
+          {hint ? <div className="fc-settings-row__hint" id={hintId}>{hint}</div> : null}
+          {helpTip}
+        </div>
+        <div className="fc-settings-row__control">{children}</div>
+      </div>
+    );
+  }
   return (
     <div className="fc-settings-row" role="group" aria-labelledby={labelId} aria-describedby={hint ? hintId : undefined}>
       <div className="fc-settings-row__copy">

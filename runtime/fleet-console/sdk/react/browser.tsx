@@ -33,6 +33,42 @@ export class PluginErrorBoundary extends React.Component<PluginErrorBoundaryProp
   }
 }
 
+/**
+ * 모바일 셸이 설정 화면에 주입하는 능력. 호스트가 provider를 세운 안에서만 값이 있고(데스크톱·구버전 호스트는 `null`),
+ * 이 안의 SDK 설정 컴포넌트는 스스로 모바일 문법으로 그린다 — 선택지는 현재값 줄이 있는 행 → 목록 위 팝업.
+ * 뒤로 레지스트리·시스템 바 신호는 팝업을 여는 호스트가 소유한다. 특수한 섹션만 `useMobileSettingsHost()`로 직접 연다.
+ */
+export interface MobileChoiceOption {
+  readonly value: string;
+  readonly label: string;
+  /** 이름 아래 한 줄. */
+  readonly description?: string;
+  readonly icon?: React.ReactNode;
+  readonly disabled?: boolean;
+}
+
+export interface MobileChoiceSpec {
+  /** 팝업 접근성 이름. */
+  readonly title: string;
+  readonly options: readonly MobileChoiceOption[];
+  readonly value: string;
+  readonly onSelect: (value: string) => void;
+  /** 연 컨트롤의 세로 범위(뷰포트 좌표). 주면 팝업이 그 근처에 서고, 없으면 호스트가 정한다. */
+  readonly anchor?: { readonly top: number; readonly bottom: number };
+}
+
+export interface MobileSettingsHost {
+  /** 선택 팝업을 연다. 고르면 팝업이 닫히고 `onSelect`가 불린다. */
+  readonly openChoice: (spec: MobileChoiceSpec) => void;
+}
+
+export const MobileSettingsHostContext = React.createContext<MobileSettingsHost | null>(null);
+
+/** 호스트가 모바일 설정 능력을 세웠으면 그 값, 아니면 `null`(데스크톱 그대로 그린다). */
+export function useMobileSettingsHost(): MobileSettingsHost | null {
+  return React.useContext(MobileSettingsHostContext);
+}
+
 export interface SelectOption {
   readonly value: string;
   readonly label: string;
@@ -407,6 +443,30 @@ export function Select({
 }: SelectProps): React.ReactElement {
   const select = useSelect({ value, options, onChange, disabled, id, compact });
   const selected = options.find((option) => option.value === value);
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    const sharedMobileLabel = ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : label ? { "aria-label": label } : {};
+    return (
+      <button
+        type="button"
+        id={id}
+        className={["fc-select__trigger", "fc-select--mobile", className ?? ""].filter(Boolean).join(" ")}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        {...sharedMobileLabel}
+        onClick={(event) => mobileHost.openChoice({
+          anchor: event.currentTarget.getBoundingClientRect(),
+          title: label ?? selected?.label ?? "",
+          options: options.map((option) => ({ value: option.value, label: option.label, ...(option.disabled ? { disabled: true } : {}) })),
+          value,
+          onSelect: onChange,
+        })}
+      >
+        <span className="fc-select__value">{selected?.label ?? ""}</span>
+        <span className="fc-select__caret" aria-hidden="true">›</span>
+      </button>
+    );
+  }
   const rootClassName = [
     select.rootProps.className,
     compact ? "fc-select--compact" : "",
