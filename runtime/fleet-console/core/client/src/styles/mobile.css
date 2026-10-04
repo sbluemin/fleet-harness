@@ -653,9 +653,6 @@
 .mobile-top-bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-top-bar-copy .mobile-top-bar-name { display: block; }
 .mobile-bar-spacer { flex: none; width: 44px; }
-.mobile-bar-extra { display: flex; align-items: center; flex: none; }
-.mobile-bar-extra .fleet-caption-action { width: 44px; height: 44px; border-radius: 22px; }
-.mobile-bar-extra .fleet-caption-tip { display: none; }
 
 .mobile-attention-dot {
   position: absolute;
@@ -713,7 +710,7 @@
   border: 0;
 }
 
-.mobile-menu button svg { width: 20px; height: 20px; color: var(--m-text-muted); }
+.mobile-menu button svg { flex: none; width: 20px; height: 20px; color: var(--m-text-muted); }
 .mobile-menu button:active { background: var(--m-selected); }
 .mobile-menu button:disabled { opacity: 0.5; }
 .mobile-menu .is-destructive,

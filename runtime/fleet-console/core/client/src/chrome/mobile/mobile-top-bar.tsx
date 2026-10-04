@@ -6,7 +6,7 @@ import { useT } from "../../i18n/index.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMenu } from "./mobile-menu.js";
-import { getLiveMobileBar, setMobileBarExtraSlot, setMobileDrawerOpen, useMobileBar, type MobileBarState } from "./mobile-store.js";
+import { getLiveMobileBar, setMobileDrawerOpen, useMobileBar, type MobileBarState } from "./mobile-store.js";
 
 const DEFAULT_BAR: MobileBarState = { variant: "centered", title: "", leading: "menu" };
 
@@ -52,7 +52,6 @@ export function MobileTopBar({ attentionDot }: { readonly attentionDot: boolean 
         {bar.leading === "menu" && attentionDot ? <span className="mobile-attention-dot" aria-label={t("mobile.bar.attentionDot")} /> : null}
       </button>
       {title}
-      {bar.variant === "operation" ? <span className="mobile-bar-extra" ref={setMobileBarExtraSlot} /> : null}
       {bar.variant === "centered" && actionsCount === 0 ? <span className="mobile-bar-spacer" aria-hidden="true" /> : null}
       {bar.actions?.map((action) => (
         <button type="button" key={action.id} className="mobile-bar-button" aria-label={action.label} onClick={() => getLiveMobileBar()?.actions?.find((item) => item.id === action.id)?.run()}>

@@ -201,18 +201,6 @@ export function releaseMobileBar(owner: symbol): void {
   emit();
 }
 
-// 막대가 비워 두는 자리 — 화면이 자기 노드를 포털로 끼운다(Operation 캡션 동작: 채팅↔터미널 전환).
-// 노드를 상태에 담지 않는 이유는 플러그인이 다시 그릴 때마다 막대가 따라 깨어나야 하기 때문이다.
-let extraSlot: HTMLElement | null = null;
-export function useMobileBarExtraSlot(): HTMLElement | null {
-  return useSyncExternalStore(subscribe, () => extraSlot);
-}
-export function setMobileBarExtraSlot(element: HTMLElement | null): void {
-  if (extraSlot === element) return;
-  extraSlot = element;
-  emit();
-}
-
 // 플러그인 목적지 화면이 쌓아 둔 상세 깊이 — 루트 이동 전에 걷어야 하는 history 항목 수(S-51).
 let pluginDepth = 0;
 export function getMobilePluginDepth(): number { return pluginDepth; }

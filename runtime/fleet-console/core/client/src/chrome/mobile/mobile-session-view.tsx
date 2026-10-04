@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ClientMobileOperationCapability, ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getIdleArrivalIds } from "../../../../../features/execution/client/operation-marks.js";
@@ -12,13 +10,13 @@ import type { OperationGeometry, OperationNode } from "../../integration/types.j
 import { openQuickLaunch } from "../../integration/store.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
-import { pushMobileSheet, setMobileOperationMenu, useMobileBarExtraSlot, useMobileOperationMenu } from "./mobile-store.js";
+import { pushMobileSheet, setMobileOperationMenu, useMobileOperationMenu } from "./mobile-store.js";
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
 
 /**
  * An open operation is its body under the top bar the shell draws: the status glyph, the title, a new-Operation
- * button and a ⋮ menu (rename, archive). The plugin's caption actions — the chat/terminal switch — ride in the
- * slot the bar leaves open, so a chat session keeps its door back to the terminal.
+ * button and a ⋮ menu: rename, whatever the body adds through `mobileOperation.setMenuItems` (the chat/terminal switch,
+ * keep-allowing computer use), then archive.
  */
 export function MobileSessionView({ operation, theme, language, active, runtimeState, operationRuntime, operationKinds, capabilities, onActivate, onClose }: {
   readonly operation: OperationNode;
@@ -83,42 +81,6 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
 
   const title = operation.title;
 
-  // 캔버스 프레임의 캡션 동작 선반과 같은 것 — 이 레이아웃의 제목 줄이 그 밴드다. 여기서 빠지면
-  // 채팅 뷰로 들어간 세션이 터미널로 돌아갈 문을 잃는다(본문에는 더 이상 그 칩이 없다).
-  const descriptor = operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
-  const captionActions = descriptor?.captionActions?.({
-    mobileOperation,
-    operationId: operation.id,
-    theaterId: operation.theaterId,
-    pluginId: operation.pluginId,
-    type: operation.type,
-    operation,
-    geometry,
-    active,
-    zoom: 1,
-    theme,
-    language,
-    api: capabilities.api,
-    lifecycle: capabilities.lifecycle,
-    terminal: capabilities.terminal,
-    notifications: capabilities.notifications,
-    operations: capabilities.operations,
-    preferences: capabilities.preferences,
-    settings: capabilities.settings,
-    runtime: capabilities.runtime,
-    runtimeState,
-    bodyLive: true,
-    statusDetail: capabilities.statusDetail,
-    composer: capabilities.composer,
-    navigate: capabilities.navigate,
-    shell: capabilities.shell,
-    rail: capabilities.rail,
-    onActivate,
-    onClose,
-    onGeometryChange: setGeometry,
-    // 본문과 같은 이유로 companion 콜백은 싣지 않는다 — 그 부재가 "여기엔 드로어가 없다"는 말이다.
-  } satisfies OperationRenderContext);
-
   const session = operation.payload.session && typeof operation.payload.session === "object" && !Array.isArray(operation.payload.session)
     ? operation.payload.session as Record<string, unknown>
     : null;
@@ -147,12 +109,9 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
       ],
     },
   });
-  const extraSlot = useMobileBarExtraSlot();
 
   return (
     <section className="mobile-session-view">
-      {/* 캡션 동작(채팅↔터미널 전환)은 플러그인 소유라 막대가 비워 둔 자리에 포털로 끼운다. */}
-      {captionActions && extraSlot ? createPortal(<PluginErrorBoundary fallback={<></>}>{captionActions}</PluginErrorBoundary>, extraSlot) : null}
       <div className="mobile-session-body" ref={setMeasureTarget}>
         <OperationBodySlot operationId={operation.id} config={config} className="mobile-operation-body-slot" />
       </div>
