@@ -44,6 +44,8 @@ export function usePressFace(): {
   readonly face: Animated.Value;
   readonly onPressIn: () => void;
   readonly onPressOut: () => void;
+  /** Clears the face at once — for a press whose action swaps the control out (a menu replacing it), where onPressOut may never arrive. */
+  readonly clear: () => void;
 } {
   const face = useRef(new Animated.Value(0)).current;
   const reduced = useReducedMotion();
@@ -58,7 +60,13 @@ export function usePressFace(): {
         face.setValue(0);
         return;
       }
-      Animated.timing(face, { toValue: 0, duration: 150, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
+      // JS-driven on purpose: a natively driven fade stalls at 1 when the pressed control unmounts mid-fade
+      // (its native node is gone), and the face then reappears gray when the control comes back.
+      Animated.timing(face, { toValue: 0, duration: 150, easing: Easing.out(Easing.ease), useNativeDriver: false }).start();
+    },
+    clear: () => {
+      face.stopAnimation();
+      face.setValue(0);
     },
   }), [face, reduced]);
 }
@@ -70,6 +78,12 @@ export function PressLayer({ face, color, peak, shape }: {
   readonly peak: number;
   readonly shape: StyleProp<ViewStyle>;
 }): React.JSX.Element {
+  // A face that has just mounted cannot be under a finger yet — start it clear, whatever a previous
+  // instance of the same control left in the shared value.
+  useEffect(() => {
+    face.stopAnimation();
+    face.setValue(0);
+  }, [face]);
   return (
     <Animated.View
       pointerEvents="none"
@@ -241,7 +255,7 @@ export function BottomSheet({ open, onClose, title, closeLabel, palette, insetBo
             </View>
             <View style={controls.head}>
               <Text accessibilityRole="header" style={[controls.title, { color: palette.text }]}>{title}</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose} onPressIn={closePress.onPressIn} onPressOut={closePress.onPressOut} style={controls.close}>
+              <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={() => { closePress.clear(); onClose(); }} onPressIn={closePress.onPressIn} onPressOut={closePress.onPressOut} style={controls.close}>
                 <PressLayer face={closePress.face} color={palette.selected} peak={1} shape={controls.closeShape} />
                 <CloseMark color={palette.textMuted} />
               </Pressable>

@@ -685,6 +685,32 @@ function ScanButton({ label, onPress, inverse, styles }: {
   );
 }
 
+/**
+ * The card's ⋮ (R1 circle 36). It owns its press face, so the face starts clear every time the button
+ * comes back after the inline remove/keep row closes; the face is also cleared the moment it opens that row.
+ */
+function KebabButton({ label, palette, styles, onPress }: {
+  readonly label: string;
+  readonly palette: Palette;
+  readonly styles: ReturnType<typeof paint>;
+  readonly onPress: () => void;
+}): React.JSX.Element {
+  const press = usePressFace();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={() => { press.clear(); onPress(); }}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={styles.kebab}
+    >
+      <PressLayer face={press.face} color={palette.selected} peak={1} shape={styles.kebabShape} />
+      <KebabMark color={palette.text} />
+    </Pressable>
+  );
+}
+
 function ConsoleRow({ target, first, last, connectedNow, pairingLost, armed, palette, strings, styles, onOpen, onArm, onRemove }: {
   readonly target: FleetConsoleTarget;
   readonly first: boolean;
@@ -701,7 +727,6 @@ function ConsoleRow({ target, first, last, connectedNow, pairingLost, armed, pal
 }): React.JSX.Element {
   // The whole row takes the pressed face (R2), as the web group row does, not just the tappable part.
   const press = usePressFace();
-  const kebabPress = usePressFace();
   return (
     <View style={[styles.row, first && styles.rowFirst, last && styles.rowLast]}>
       <PressLayer face={press.face} color={palette.selected} peak={1} shape={[styles.rowShape, first && styles.rowFirst, last && styles.rowLast]} />
@@ -740,17 +765,7 @@ function ConsoleRow({ target, first, last, connectedNow, pairingLost, armed, pal
               {connectedNow ? strings.chipConnected : pairingLost ? strings.chipLost : strings.chipPaired}
             </Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={strings.menuFor(target.label)}
-            onPress={() => onArm(target.origin)}
-            onPressIn={kebabPress.onPressIn}
-            onPressOut={kebabPress.onPressOut}
-            style={styles.kebab}
-          >
-            <PressLayer face={kebabPress.face} color={palette.selected} peak={1} shape={styles.kebabShape} />
-            <KebabMark color={palette.text} />
-          </Pressable>
+          <KebabButton label={strings.menuFor(target.label)} palette={palette} styles={styles} onPress={() => onArm(target.origin)} />
         </View>
       )}
     </View>
