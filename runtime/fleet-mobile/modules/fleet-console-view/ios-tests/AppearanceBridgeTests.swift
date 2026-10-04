@@ -39,7 +39,7 @@ final class AppearanceBridgeTests: XCTestCase {
 
   func testQuotesTheConsoleLabelInsteadOfSplicingItIntoCode() throws {
     let label = "\"); alert(1); (\"</script>"
-    let script = AppearanceBridge.script(.standard, systemDark: true, console: ConsolePresentation.of(label: label, origin: "https://fleet.example:7443"))
+    let script = AppearanceBridge.script(.standard, systemDark: true, console: ConsolePresentation.of(label: label, origin: "https://fleet.example:7443", hostname: "fleet.example", port: 7443))
     XCTAssertFalse(script.contains(label))
     let start = try XCTUnwrap(script.range(of: "JSON.parse("))
     let end = try XCTUnwrap(script.range(of: "); if (v.console)"))
@@ -47,6 +47,7 @@ final class AppearanceBridgeTests: XCTestCase {
     let json = try JSONDecoder().decode(String.self, from: Data(literal.utf8))
     let value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
     XCTAssertEqual((value["console"] as? [String: Any])?["label"] as? String, label)
+    XCTAssertEqual((value["console"] as? [String: Any])?["address"] as? String, "fleet.example:7443")
     XCTAssertEqual(value["systemScheme"] as? String, "dark")
   }
 }

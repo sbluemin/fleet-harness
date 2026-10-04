@@ -54,6 +54,7 @@ class AppearanceBridgeTest {
     val literal = script.substring(script.indexOf(prefix) + prefix.length, script.indexOf("); if (v.console)"))
     val value = JSONObject(JSONArray("[$literal]").getString(0))
     assertEquals(label, value.getJSONObject("console").getString("label"))
+    assertEquals("fleet.example:7443", value.getJSONObject("console").getString("address"))
     assertEquals("dark", value.getString("systemScheme"))
   }
 }

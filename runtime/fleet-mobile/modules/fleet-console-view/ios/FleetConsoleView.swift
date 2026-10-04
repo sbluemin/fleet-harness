@@ -566,7 +566,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   private func appearanceScript(for target: PersistedTarget) -> String {
-    AppearanceBridge.script(appearance, systemDark: systemDark, console: ConsolePresentation.of(label: target.label, origin: target.origin))
+    AppearanceBridge.script(appearance, systemDark: systemDark, console: ConsolePresentation.of(label: target.label, origin: target.origin, hostname: target.hostname, port: target.port))
   }
 
   private func appearanceUserScript(for target: PersistedTarget) -> WKUserScript {

@@ -27,10 +27,11 @@ public struct ConsolePresentation: Equatable {
   public let label: String
   public let monogram: String
   public let tone: String
+  public let address: String
   private static let tones = ["crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose"]
 
   /// 셸의 toneFor/monogramFor(shell/palette.ts)와 같은 선택 — 두 곳이 같은 정체성을 그린다.
-  public static func of(label rawLabel: String, origin: String) -> ConsolePresentation? {
+  public static func of(label rawLabel: String, origin: String, hostname: String, port: Int) -> ConsolePresentation? {
     let scalars = Array(rawLabel.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.prefix(64))
     guard let first = scalars.first else { return nil }
     var label = String.UnicodeScalarView()
@@ -40,10 +41,13 @@ public struct ConsolePresentation: Equatable {
       hash ^= UInt32(unit)
       hash = hash &* 0x01000193
     }
+    // 지금 Console 자신의 주소(목록이 보여 주는 그대로)만 — 다른 Console의 것은 넣지 않는다.
+    let host = hostname.contains(":") ? "[\(hostname)]" : hostname
     return ConsolePresentation(
       label: String(label),
       monogram: String(Character(first)).uppercased(),
-      tone: tones[Int(hash % UInt32(tones.count))])
+      tone: tones[Int(hash % UInt32(tones.count))],
+      address: String("\(host):\(port)".prefix(128)))
   }
 }
 
@@ -96,7 +100,7 @@ public enum AppearanceBridge {
       "fontScale": appearance.fontScale.rawValue,
     ]
     if let console {
-      value["console"] = ["label": console.label, "monogram": console.monogram, "tone": console.tone]
+      value["console"] = ["label": console.label, "monogram": console.monogram, "tone": console.tone, "address": console.address]
     }
     let json = (try? JSONSerialization.data(withJSONObject: value)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
     let literal = (try? JSONEncoder().encode(json)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"{}\""

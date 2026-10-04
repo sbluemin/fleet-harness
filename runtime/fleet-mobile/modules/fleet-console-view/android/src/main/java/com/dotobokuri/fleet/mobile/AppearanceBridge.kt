@@ -41,7 +41,7 @@ internal data class Appearance(val colorMode: ColorMode, val fontScale: FontScal
 }
 
 /** What the page may show about the console it is running in — that console only. */
-internal data class ConsolePresentation(val label: String, val monogram: String, val tone: String) {
+internal data class ConsolePresentation(val label: String, val monogram: String, val tone: String, val address: String) {
   companion object {
     private val TONES = listOf("crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose")
 
@@ -56,7 +56,10 @@ internal data class ConsolePresentation(val label: String, val monogram: String,
         hash *= 0x01000193
       }
       val tone = TONES[(hash.toLong() and 0xffffffffL).rem(TONES.size).toInt()]
-      return ConsolePresentation(label, monogram, tone)
+      // The console's own address as the list shows it; never another console's.
+      val host = if (target.hostname.contains(':')) "[${target.hostname}]" else target.hostname
+      val address = "$host:${target.port}".let { if (it.length > 128) it.substring(0, 128) else it }
+      return ConsolePresentation(label, monogram, tone, address)
     }
   }
 }
@@ -111,7 +114,10 @@ internal object AppearanceBridge {
       .put("systemScheme", if (systemDark) "dark" else "light")
       .put("fontScale", appearance.fontScale.wire)
     if (console != null) {
-      value.put("console", JSONObject().put("label", console.label).put("monogram", console.monogram).put("tone", console.tone))
+      value.put(
+        "console",
+        JSONObject().put("label", console.label).put("monogram", console.monogram).put("tone", console.tone).put("address", console.address),
+      )
     }
     val literal = JSONObject.quote(value.toString())
     return "(() => { const v = JSON.parse($literal); if (v.console) Object.freeze(v.console); Object.freeze(v); " +
