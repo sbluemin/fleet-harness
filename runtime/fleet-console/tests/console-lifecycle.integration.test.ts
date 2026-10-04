@@ -29,7 +29,7 @@ afterEach(async () => {
 });
 
 describe("Console daemon lifecycle integration", () => {
-  it("keeps a real child through delayed readiness and later stops it", async () => {
+  it("keeps a real child through delayed readiness and later stops it, killing a stalled shutdown", async () => {
     const fixture = createFixturePaths("ready");
     const lifecycle = createConsoleDaemonLifecycle({
       env: fixture.env,
@@ -52,6 +52,8 @@ describe("Console daemon lifecycle integration", () => {
     expect(endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
     expect(createConsoleLock().readLock(fixture.lockFile)?.pid).toBe(pid);
 
+    // SIGTERM을 받은 Console이 listener만 닫고 lock을 쥔 채 멈춘다. SIGTERM 전에 증명한 그 프로세스이므로 강제 종료한다.
+    fs.writeFileSync(fixture.stallFile, "stall\n", "utf8");
     await lifecycle.stop();
     await expectProcessGone(pid);
     CHILD_PIDS.delete(pid);
@@ -92,20 +94,36 @@ describe("Console daemon lifecycle integration", () => {
     const impostor = http.createServer((_request, response) => response.writeHead(401).end());
     await new Promise<void>((resolve) => impostor.listen(0, "127.0.0.1", resolve));
     const port = (impostor.address() as AddressInfo).port;
+    const lockInput = { dir: fixture.dir, lockFile: fixture.lockFile, pid: bystanderPid, port, endpoint: `http://127.0.0.1:${port}/`, version: "crashed" };
     const consoleLock = createConsoleLock();
-    consoleLock.writeLock({ dir: fixture.dir, lockFile: fixture.lockFile, pid: bystanderPid, port, endpoint: `http://127.0.0.1:${port}/`, version: "crashed" });
-    const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH });
+    consoleLock.writeLock(lockInput);
+    const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH, pollIntervalMs: 20 });
 
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
     expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
 
-    // 아무도 lock 주소를 듣지 않으면 lock은 stale이다 — 시그널 없이 파일만 치운다.
+    // 아무도 lock 주소를 듣지 않는데 lock을 쓰기 전에 시작한 pid가 살아 있으면, listener를 닫고 정리 중이거나 멈춘 Console과
+    // 구별되지 않는다. 신호도 lock 삭제도 하지 않는다 — 지우면 다음 start가 살아 있는 Console 옆에 두 번째 Console을 띄운다.
     await new Promise<void>((resolve) => impostor.close(() => resolve()));
-    await lifecycle.stop();
-    expect(consoleLock.readLock(fixture.lockFile)).toBeNull();
-    await delay(300);
+    await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
+    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+
+    // lock을 쓴 뒤에 시작한 pid는 lock 작성자일 수 없다 — 작성자는 끝났고 pid가 재할당됐다. 신호 없이 lock만 치우고 start가 이어진다.
+    fs.rmSync(fixture.lockFile);
+    createConsoleLock({ now: () => Date.now() - 60_000 }).writeLock(lockInput);
+    fs.writeFileSync(fixture.releaseFile, "ready\n", "utf8");
+    const ensure = lifecycle.ensureDaemon();
+    void ensure.catch(() => {});
+    const consolePid = await readPidWhenReady(fixture.pidFile);
+    CHILD_PIDS.add(consolePid);
+    await expect(ensure).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(consolePid);
     expect(bystanderSignal).toBeNull();
     expect(() => process.kill(bystanderPid, 0)).not.toThrow();
+
+    await lifecycle.stop();
+    await expectProcessGone(consolePid);
+    CHILD_PIDS.delete(consolePid);
   });
 });
 
@@ -114,14 +132,16 @@ function createFixturePaths(name: string) {
   TEMP_DIRS.push(dir);
   const pidFile = path.join(dir, "child.pid");
   const releaseFile = path.join(dir, "release");
+  const stallFile = path.join(dir, "stall");
   const env = {
     ...process.env,
     FLEET_CONSOLE_DATA_DIR: dir,
     FLEET_TEST_CONSOLE_PID_FILE: pidFile,
     FLEET_TEST_CONSOLE_RELEASE_FILE: releaseFile,
+    FLEET_TEST_CONSOLE_STALL_FILE: stallFile,
   };
   const lockFile = createConsolePaths({ env }).lockFile;
-  return { dir, env, pidFile, releaseFile, lockFile };
+  return { dir, env, pidFile, releaseFile, stallFile, lockFile };
 }
 
 function delay(ms: number): Promise<void> {
