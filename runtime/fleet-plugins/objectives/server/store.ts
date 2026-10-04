@@ -230,8 +230,11 @@ export interface ObjectiveStore {
   edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean; readonly changed: boolean };
   plan(objectiveId: string, input: PlanInput): Objective;
   setPlanning(objectiveId: string, planning: boolean): Objective;
-  /** 구상·개시 단계를 기록한다 — 개시는 「진행 중」으로 올리고 되돌리지 않는다. */
-  recordStage(objectiveId: string, stage: "planned" | "commenced"): Objective;
+  /**
+   * 구상·개시 단계를 기록한다 — 개시는 「진행 중」으로 올리고 되돌리지 않는다. `by` 를 주면 그 손을 행위 기록(plan·commence)에
+   * 남기고, 개시면 `commencedBy` 로도 남긴다 — 요청이 지휘관에게 닿은 뒤에만 준다.
+   */
+  recordStage(objectiveId: string, stage: "planned" | "commenced", by?: ObjectiveActor): Objective;
   setCriteriaOpen(objectiveId: string, open: boolean): Objective;
   /** 새 작업(스티어링)이 생겼다 — 앞선 충족 판단을 모두 거둔다. */
   clearMet(objectiveId: string, by?: ObjectiveActor): Objective;
@@ -384,7 +387,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
       const intent = parsed.operationIntent;
       if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_operation_intent");
       if (intent?.extensionContext !== undefined && (intent.action !== "ensure-active" || typeof intent.extensionContext !== "string" || !intent.extensionContext.trim() || intent.extensionContext.length > MAX_CONTEXT)) throw new ObjectiveStoreError("invalid_operation_intent");
-      const actors = [parsed.done?.by, parsed.handoff?.by, parsed.planRequestBy, intent?.by,
+      const actors = [parsed.done?.by, parsed.handoff?.by, parsed.planRequestBy, parsed.commencedBy, intent?.by,
         ...(parsed.edited?.actors ?? []), ...(parsed.members ?? []).map((row) => row.by),
         ...(parsed.criteria ?? []).map((row) => row.by), ...(parsed.criteriaProposals ?? []).map((row) => row.annotationBy),
         ...(parsed.missions ?? []).flatMap((row) => [row.by, row.memberBy]),
@@ -683,6 +686,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       merged: (stored.merged ?? []).map((entry) => ({ sourceId: entry.sourceId, title: entry.title, at: entry.at, by: { operationId: entry.by, title: operationNode(entry.by)?.title ?? entry.byTitle ?? null }, criteriaIds: [...entry.criteriaIds],
         restorable: load(node?.theaterId ?? pending!.theaterId).get(entry.sourceId)?.removed?.mergedInto === stored.operationId })),
       commenced: stored.commenced === true || (legacy && launch.started && stored.planning !== true),
+      ...(stored.commencedBy ? { commencedBy: stored.commencedBy } : {}),
       routingConfirm: stored.routingConfirm !== false,
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
@@ -1415,9 +1419,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     }),
 
     setPlanning: (objectiveId, planning) => update(objectiveId, (stored) => (!!stored.planning === planning ? stored : { ...stored, planning: planning ? true as const : undefined })),
-    recordStage: (objectiveId, stage) => update(objectiveId, (stored) => {
+    recordStage: (objectiveId, stage, by) => update(objectiveId, (stored) => {
       const commenced = stage === "commenced" || stored.commenced === true;
-      return stored.enlisted === true && commenced === (stored.commenced === true) ? stored : { ...stored, enlisted: true, ...(commenced ? { commenced: true as const } : {}) };
+      const staged = stored.enlisted === true && commenced === (stored.commenced === true) ? stored : { ...stored, enlisted: true, ...(commenced ? { commenced: true as const } : {}) };
+      if (!by) return staged;
+      return stage === "commenced" ? { ...action(staged, by, "commence"), commencedBy: by } : action(staged, by, "plan");
     }),
     setCriteriaOpen: (objectiveId, open) => update(objectiveId, (stored) => (!!stored.criteriaOpen === open ? stored : { ...stored, criteriaOpen: open ? true as const : undefined })),
     clearMet: (objectiveId, by) => update(objectiveId, (stored) => withoutMet(by ? action(stored, by, "steer") : stored)),

@@ -680,6 +680,16 @@ export interface OperationClusterRow {
   /** 다른 목표의 후속으로 태어난 줄. `originTitle` 이 null 이면 원래 목표를 더는 찾을 수 없다. */
   readonly followup?: { readonly originTitle: string | null };
   /**
+   * 둘째 줄의 출처 — 누가 이 줄을 더했고 누가 마지막으로 손댔는지, 한 토막씩. 호스트가 `followup` 뒤·`notes` 앞에 같은 크기로
+   * 적는다. 사람(기본 주인)의 손은 플러그인이 넣을 때만 선다.
+   */
+  readonly provenance?: readonly OperationClusterRowProvenance[];
+  /**
+   * 줄 오른쪽 끝의 사각 표식 — 플러그인이 정한 맡은 이(예: Theater 의 자율 운영자)가 다루는 줄. 맡은 이의 스위치와 같은 문법이라
+   * 줄이 자리를 옮기지 않고 사각의 채움만 바뀐다. 구역으로 올라간 줄의 그룹 점보다 앞에 선다.
+   */
+  readonly mark?: OperationClusterRowMark;
+  /**
    * 둘째 줄 끝에 붙는 짧은 사실 — 지금 누가 이 줄을 맡고 있는지, 멈췄는지처럼 진행 셈으로는 말할 수 없는 것. 호스트가
    * 다른 메타 뒤에 같은 크기로 적고 `tone` 으로만 칠한다(`accent` 는 맡은 이, `warn` 은 주의).
    */
@@ -703,6 +713,25 @@ export interface OperationClusterRow {
 export interface OperationClusterRowNote {
   readonly text: LocalizedText;
   readonly tone?: "accent" | "warn";
+}
+
+/** `filled` 는 맡은 이가 지금 돈다(스위치 켬), `hollow` 는 멈췄다(끔). */
+export type OperationClusterRowSquare = "filled" | "hollow";
+
+export interface OperationClusterRowProvenance {
+  readonly text: LocalizedText;
+  /** 글 앞의 작은 사각 — `mark` 와 같은 맡은 이의 손일 때. */
+  readonly square?: OperationClusterRowSquare;
+  /** `accent` 는 맡은 이의 brass 잉크(줄 메모의 `accent` 와 같다). */
+  readonly tone?: "accent";
+}
+
+export interface OperationClusterRowMark {
+  readonly square: OperationClusterRowSquare;
+  /** 맡은 이의 줄에 머무는 동안 — 같은 표식들이 함께 밝아져 어느 줄을 다루는지 한눈에 보인다. */
+  readonly emphasized?: boolean;
+  /** 사각만으로는 뜻이 전해지지 않는다 — 줄의 접근 이름과 사각의 제목에 들어간다. */
+  readonly label: LocalizedText;
 }
 
 export interface ArchiveSectionContext {

@@ -63,7 +63,7 @@ export type ObjectiveActor = "human" | "commander"
   | { readonly kind: "operation"; readonly operationId: string; readonly title: string | null };
 export type ObjectiveReviewer = Exclude<ObjectiveActor, "commander">;
 export const MAX_OBJECTIVE_ACTIONS = 200;
-export type ObjectiveActionKind = "edit" | "criteria-approved" | "criteria-rejected" | "hand-off" | "complete" | "reopen" | "followup-selected" | "followup-discarded" | "extend" | "steer" | "mission-reopened";
+export type ObjectiveActionKind = "edit" | "criteria-approved" | "criteria-rejected" | "hand-off" | "complete" | "reopen" | "followup-selected" | "followup-discarded" | "extend" | "steer" | "mission-reopened" | "plan" | "commence";
 /** 사라지는 제안·완료 표시도 행위 기록에는 남는다. 오래된 본문은 접고 누계는 보존한다. */
 export interface ObjectiveAction {
   readonly id: string;
@@ -479,6 +479,8 @@ export interface StoredObjective {
   readonly today?: true;
   /** 에이전트가 도구로 더한 목표 — 기존 Operation ID 또는 Theater의 사령관. 사람이 만든 목표에는 없다. */
   readonly addedBy?: string | Extract<ObjectiveActor, { kind: "commodore" }>;
+  /** 마지막으로 개시한 손 — 행위 기록이 접혀도 남는다. 개시 출처를 기록하기 전의 옛 레코드에는 없다(누가 개시했는지 모른다). */
+  readonly commencedBy?: ObjectiveActor;
   /**
    * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것 — 「시작」·「스티어링」이 지휘관에게 한 줄로 알리고 다시 읽게 한다.
    * 지휘관이 이 항목을 읽거나 알림이 나가면 지워진다.
@@ -660,6 +662,8 @@ export interface Objective {
   readonly recorded?: boolean;
   /** 개시했다 — 목록의 「진행 중」 구역. 구상만 했거나 보드에서 막 만든 목표는 「시작 전」이다. */
   readonly commenced: boolean;
+  /** 마지막으로 개시한 손. 개시 출처를 기록하기 전에 개시한 목표에는 없다 — 「모름」이지 사람이 아니다. */
+  readonly commencedBy?: ObjectiveActor;
   /** 사람의 개시가 라우팅으로 새로 띄울 구성원의 판단 결과를 먼저 보여 준다. 지휘관 도구·후속 목표의 기동은 묻지 않는다. */
   readonly routingConfirm: boolean;
   /** 에이전트가 지웠거나 다른 목표로 합쳤다 — 보드의 보통 구역에서 빠지고, 사람이 되돌릴 수 있다. */
@@ -889,7 +893,7 @@ export const objectiveReviewerSchema = z.union([
 export const objectiveActorSchema = z.union([objectiveReviewerSchema, z.literal("commander")]);
 export const objectiveActionSchema = z.object({
   id: ids, at: z.number().finite(), by: objectiveActorSchema,
-  kind: z.enum(["edit", "criteria-approved", "criteria-rejected", "hand-off", "complete", "reopen", "followup-selected", "followup-discarded", "extend", "steer", "mission-reopened"]),
+  kind: z.enum(["edit", "criteria-approved", "criteria-rejected", "hand-off", "complete", "reopen", "followup-selected", "followup-discarded", "extend", "steer", "mission-reopened", "plan", "commence"]),
   kinds: z.array(z.enum(["title", "note", "missions", "lineup", "members", "member", "criteria"])).optional(),
   targetId: ids.optional(),
   handoff: z.lazy(() => storedHandoffSchema).optional(),

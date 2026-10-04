@@ -707,12 +707,13 @@ describe("Objectives contract", () => {
     // 저장 — 목표마다 자기 디렉터리의 objective.json 하나, Operation 이 가진 값은 싣지 않는다.
     expect(savedIds()).toEqual([objective.id]);
     const saved = savedObjective(objective.id);
-    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "boardUpdatedAt", "commenced", "enlisted", "members", "missions", "note", "operationId", "rank"]);
+    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "boardUpdatedAt", "commenced", "commencedBy", "enlisted", "members", "missions", "note", "operationId", "rank"]);
     expect(saved.operationId).toBe(objective.id);
     for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
-    expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [], actionCounts: { complete: 3, reopen: 3 } });
+    // 행위자를 받지 않은 개시(사람의 화면)는 사람의 개시로 남고, 다시 읽어도 그대로다.
+    expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [], commencedBy: "human", actionCounts: { complete: 3, reopen: 3, commence: 1 } });
     expect(reloaded.find(objective.id)!.actions).toContainEqual(expect.objectContaining({ kind: "complete", by: commodore }));
     expect(reloaded.find(objective.id)!.actions).toContainEqual(expect.objectContaining({ kind: "reopen", by: "human" }));
     expect(reloaded.find(objective.id)!.missions[0]!.records.map((record) => [record.kind, record.lines])).toEqual([["done", ["a done"]], ["redone", ["a redone", "fixed the gap"]]]);
@@ -1752,6 +1753,12 @@ describe("Objectives contract", () => {
     activity.set(id, "idle");
     expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
     expect(await board({ objectiveId: id, commence: true })).toMatchObject({ objectiveId: id, failed: [] });
+    // 구상 요청과 개시도 부른 손으로 남는다. 개시한 손은 행위 기록이 접혀도 commencedBy 로 남아 사이드바가 읽는다.
+    expect((await board({ objectiveId: id })).objective).toMatchObject({ commencedBy: actor, actions: expect.arrayContaining([expect.objectContaining({ kind: "plan", by: actor }), expect.objectContaining({ kind: "commence", by: actor })]) });
+    // 사이드바 줄 — 사령관이 개시한 목표는 제자리에서 사령관 사각을 단다(자율 운영 글리프를 따라 채움). 실험 기능이 꺼지면 사각이 없다.
+    const commodoreRow = (board: { enabled: boolean; autonomy: boolean }) => clustersOf([store.find(id)!], new Map(), () => false, () => ({ active: board.enabled && board.autonomy, stalled: [], ...board }))[0]!.row!;
+    expect(commodoreRow({ enabled: true, autonomy: false }).mark?.square).toBe("hollow");
+    expect(commodoreRow({ enabled: false, autonomy: false }).mark).toBeUndefined();
     expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.objectContaining({ state: "idle" })] }) }));
     expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
     // 일하는 구성원은 이번 턴 뒤로 예약된다 — 세션 좌표는 그대로다. 라우팅으로 되돌리면 예약을 거두고 실행값은 남는다.
