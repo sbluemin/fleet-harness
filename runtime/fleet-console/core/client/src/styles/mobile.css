@@ -1119,6 +1119,9 @@
 .mobile-group-row.is-two { min-height: 72px; }
 .mobile-group > .mobile-group-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
 .mobile-group > .mobile-group-row:last-child { border-bottom-right-radius: 22px; border-bottom-left-radius: 22px; }
+/* 토글 행(SettingsRow)도 묶음의 첫·끝 행이면 같은 바깥 반경을 받는다 */
+:root .mobile-group > .fc-settings-row.is-mobile:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+:root .mobile-group > .fc-settings-row.is-mobile:last-child { border-bottom-right-radius: 22px; border-bottom-left-radius: 22px; }
 .mobile-group-row:active { background: var(--m-selected); }
 .mobile-group-row:disabled { opacity: 0.5; }
 .mobile-group-row-icon { display: grid; place-items: center; flex: none; width: 22px; height: 22px; }
