@@ -159,6 +159,17 @@ function iosChecks() {
     return `${developerDir.out.trim()} -> ${version.out.trim().split("\n").join(", ")}`;
   }, "Install Xcode, then sudo xcode-select -s /Applications/Xcode.app/Contents/Developer");
 
+  check("ios", "xcode-license", () => {
+    const result = probe("xcodebuild", ["-license", "check"]);
+    if (result.status !== 0) throw new Error(`Xcode license check exited with status ${result.status}: ${result.out.trim()}`);
+    return "Xcode license accepted";
+  }, "A person runs `sudo xcodebuild -license accept`; agents do not accept");
+  check("ios", "xcode-first-launch", () => {
+    const result = probe("xcodebuild", ["-checkFirstLaunchStatus"]);
+    if (result.status !== 0) throw new Error(`Xcode first-launch check exited with status ${result.status}: ${result.out.trim()}`);
+    return "Xcode first-launch components installed";
+  }, "A person runs `sudo xcodebuild -runFirstLaunch`; agents do not run sudo");
+
   const json = (args) => JSON.parse(probe("xcrun", ["simctl", "list", ...args, "--json"], 30_000).out);
   check("ios", "simctl-runtimes", () => {
     const runtimes = json(["runtimes", "available"]).runtimes.filter((r) => r.isAvailable && /iOS/.test(r.name));

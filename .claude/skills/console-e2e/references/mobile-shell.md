@@ -26,6 +26,8 @@ node <worktree>/runtime/fleet-mobile/scripts/mobile-preflight.mjs [--platform an
 
 Record the preflight's `adb server` state (running or not running) in the report; cleanup depends on it. The preflight is read-only and starts nothing. Exit `0` means every required check passed; `20` means a `FAIL` line names what is missing and prints its fix. Its verdicts come from the build scripts' own functions (`scripts/lib/android-tools.mjs`, `ios-tools.mjs`), so a pass means `android:build:debug` will accept the toolchain. JDK: the build scripts use Android Studio's bundled JDK on macOS and ignore `JAVA_HOME` outside CI (override with `FLEET_ANDROID_JAVA_HOME`); `avdmanager` and `sdkmanager` do the opposite and need `JAVA_HOME`, which the `jdk-cmdline-tools` note spells out. The `NOTE … in-use` lines list adb devices, running emulators, and booted simulators: they belong to someone else. Do not use, restart, or kill them.
 
+If `ios/xcode-license` or `ios/xcode-first-launch` is `FAIL`, stop before starting work and send a decision request to the commander or person for host setup. Agents do not accept the Xcode license or run `sudo` to install first-launch components; an unaccepted license can also block `xcodebuild`, `simctl`, and `/usr/bin/git` with exit `69`.
+
 ## 1. Start your own Consoles
 
 Per Console, follow [Isolated Console setup](setup.md#isolate-the-console) with its own `E2E_DIR` (all four of `FLEET_DATA_DIR`, `FLEET_CONSOLE_DATA_DIR`, `FLEET_DESKTOP_DATA_DIR`, `CLAUDE_CONFIG_DIR` under it), started as a background process whose PID you record: `CONSOLE_PID=$!`, appended to the env file with `EMU_PID` and `UDID`. A Console handed on to later missions must be detached (`nohup … & disown`); a tool-managed background job is stopped at its time limit. For two Consoles, use two `E2E_DIR`s; nothing is shared. Read each port with the [fixed lock read](setup.md#read-the-lock-without-the-token) of that Console's `$E2E_DIR/console/console.lock` and check it answers `200`; `issue-access-link.mjs` reads the token itself. Do not touch `127.0.0.1:50000` or any Console whose lock is not under your `E2E_DIR`.
@@ -83,23 +85,38 @@ adb -s "$SERIAL" shell "am start -W -a android.intent.action.VIEW -d '$(cat "$E2
 
 ## 4. iOS simulator
 
-Same Console and link as above; the simulator needs no address change. There is no promoted debug-build script for iOS (`ios:build:release` needs signing material), so install a simulator build. Use `--configuration Release` so the JS bundle is embedded; a Debug build without a running Metro shows the React Native red error screen. `pod install` inside `expo run:ios` fails unless `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` are set:
+Same Console and link as above; the simulator needs no address change. There is no promoted debug-build script for iOS (`ios:build:release` needs signing material), so build an unsigned simulator app using the path in `.github/workflows/mobile-ios-verify.yml`, then install it separately. Use `-configuration Release` so the JS bundle is embedded; a Debug build without a running Metro shows the React Native red error screen. Generate `ios/` in your worktree and set `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` for `pod install`. Do not use `expo run:ios`: its host GUI side effects can open Simulator.app; the build/install path below starts neither Metro nor Simulator.app:
 
 ```bash
 xcrun simctl list runtimes available; xcrun simctl list devicetypes iPhone   # pick an installed iOS runtime id and iPhone device type id
 xcrun simctl create "$SIM_NAME" "<device type id>" "<runtime id>"   # prints your UDID
 xcrun simctl boot "$UDID"
-LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pnpm --dir <worktree>/runtime/fleet-mobile exec expo run:ios --configuration Release --device "$UDID"   # builds and installs com.dotobokuri.fleet.mobile
+pnpm --dir <worktree>/runtime/fleet-mobile exec expo prebuild --platform ios --clean --no-install --non-interactive
+(
+  set -e
+  cd <worktree>/runtime/fleet-mobile/ios
+  LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
+  workspace=$(ls -d *.xcworkspace | head -n 1)
+  [ -n "$workspace" ] || { echo 'Expo prebuild produced no .xcworkspace' >&2; exit 1; }
+  scheme="${workspace%.xcworkspace}"
+  xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release \
+    -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+    -derivedDataPath "$E2E_DIR/ios-build" CODE_SIGNING_ALLOWED=NO build
+  app=$(ls -d "$E2E_DIR"/ios-build/Build/Products/Release-iphonesimulator/*.app 2>/dev/null | head -n 1)
+  [ -n "$app" ] && [ -f "$app/main.jsbundle" ] || { echo 'Simulator app or embedded main.jsbundle missing' >&2; exit 1; }
+  xcrun simctl install "$UDID" "$app"   # installs com.dotobokuri.fleet.mobile only
+)
 xcrun simctl terminate "$UDID" com.dotobokuri.fleet.mobile
 xcrun simctl openurl "$UDID" "$(cat "$E2E_DIR/link.txt")"
 ```
 
-The scheme is `fleet`, registered by `plugins/withFleetIos.ts`. On a cold start the link reaches the app through `willFinishLaunching` (`FleetLinkAppDelegateSubscriber`). The system shows an "Open in Fleet?" confirmation on every `openurl`, and it must be accepted. `simctl` has no tap or input command: drive the app headlessly with a scratch UI-test bundle that launches the installed app by bundle id (`XCUIApplication(bundleIdentifier:)`) and runs through `xcodebuild test -destination "id=$UDID"`; the Console WebView exposes its controls by their accessible labels. Keep that project outside the repository, and do not take over the user's foreground with desktop clicks or keystrokes. Screenshots: `xcrun simctl io "$UDID" screenshot <evidence>/shot.png`. The `expo run:ios` install route is unverified in this repository's docs; record the actual command used.
+The Xcode workspace and build scheme come from `ios/*.xcworkspace`, as in CI and `scripts/lib/ios-promote.mjs`; the URL scheme is `fleet`, registered by `plugins/withFleetIos.ts`. On a cold start the link reaches the app through `willFinishLaunching` (`FleetLinkAppDelegateSubscriber`). The system shows an "Open in Fleet?" confirmation on every `openurl`, and it must be accepted. `simctl` has no tap or input command: drive the app headlessly with a scratch UI-test bundle that launches the installed app by bundle id (`XCUIApplication(bundleIdentifier:)`) and runs through `xcodebuild test -destination "id=$UDID"`; the Console WebView exposes its controls by their accessible labels. Keep that project outside the repository, and do not take over the user's foreground with desktop clicks or keystrokes. Screenshots: `xcrun simctl io "$UDID" screenshot <evidence>/shot.png`. CI exercises the Release simulator build and embedded-bundle check; only the local `simctl install` step remains unverified in this repository's docs. Record the actual install command used and its result.
 
 ## 5. Stay apart from other sessions
 
 - Only your `AVD` name, `PORT`, `SERIAL`, `UDID`, `E2E_DIR`, and `CONSOLE_PID` are yours. Never run `pkill`, `killall`, `adb emu kill` without `-s`, `simctl shutdown all`, `simctl erase all`, or `xcrun simctl delete unavailable`, or `adb kill-server` outside the rule in step 6.
 - Do not reuse a data root, an emulator, or a Console that was running before you started. Recheck the preflight's `in-use` line before booting and before cleanup.
+- Check the shared adb server's state only with `lsof -nP -iTCP:5037 -sTCP:LISTEN`. Do not call bare adb commands such as `adb devices` just to check state: they start a stopped server. The preflight likewise checks the listener before querying attached devices; query your own serial with `adb -s "$SERIAL"` only while a server already listens, unless this run is intentionally starting it.
 - Do not print process command lines or tokens; identify processes by the PIDs and ports you recorded, within the [process-listing scope](setup.md#keep-the-real-home-out).
 
 ## 6. Clean up (success or failure)
@@ -112,6 +129,6 @@ xcrun simctl shutdown "$UDID"; xcrun simctl delete "$UDID"   # only your simulat
 rm -rf "$E2E_DIR"                                  # only after the Consoles stopped; this removes link.txt too
 ```
 
-The adb server that your first `adb -s` call started may outlive the run. Run `adb kill-server` only if the step-0 preflight said `adb server not running` **and** `adb devices` is now empty; otherwise leave it, since someone else's device depends on it.
+The adb server that your first `adb -s` call started may outlive the run. Run `adb kill-server` only if the step-0 preflight said `adb server not running`, `lsof -nP -iTCP:5037 -sTCP:LISTEN` still shows a listener, **and** a fresh Android preflight's `in-use` line says `adb devices: none` (it queries devices only after detecting a listener). Otherwise leave it, since someone else's device may depend on it. If there is no listener, do not run any adb command for cleanup or confirmation; if listener state or device ownership is unknown, leave the server alone.
 
-Confirm: `lsof -nP -iTCP:<console port> -sTCP:LISTEN` is empty for every Console you started, `adb devices` no longer lists your serial, `emulator -list-avds` and `xcrun simctl list devices` no longer list yours, and the preflight's `in-use` line shows only what was there before. Keep the AVD and `E2E_DIR` only when the run is being handed on, and say so in the report. Leave `runtime/fleet-mobile/android/` and `dist/` (build output) in the worktree unless the user asked for the checkout to be clean.
+Confirm: `lsof -nP -iTCP:<console port> -sTCP:LISTEN` is empty for every Console you started; check port `5037` with the same listener-only command, and only if it listens use `adb -s "$SERIAL" get-state` to confirm your serial is no longer connected. `emulator -list-avds` and `xcrun simctl list devices` no longer list yours, and the preflight's `in-use` line shows only what was there before. Keep the AVD and `E2E_DIR` only when the run is being handed on, and say so in the report. Leave `runtime/fleet-mobile/android/` and `dist/` (build output) in the worktree unless the user asked for the checkout to be clean.
