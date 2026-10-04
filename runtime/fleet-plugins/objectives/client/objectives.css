@@ -439,9 +439,9 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 /* 분할 안 주행동의 초점 링은 overflow:hidden에 잘리므로 래퍼가 대신 그린다 — 기존 규칙과 같은 brass 1px. */
 .objectives-split .objectives-start:focus-visible { outline: none; }
 .objectives-split:has(> .objectives-start:focus-visible) { outline: 1px solid var(--brass); outline-offset: 2px; }
-.objectives-split .objectives-start:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 8%, transparent); }
-.objectives-split.is-stop .objectives-start:hover:not(:disabled) { background: color-mix(in oklch, var(--coral) 8%, transparent); }
-.objectives-split.is-review .objectives-start:hover:not(:disabled) { background: color-mix(in oklch, var(--aurora) 8%, transparent); }
+.objectives-split .objectives-start:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklch, var(--brass) 8%, transparent); }
+.objectives-split.is-stop .objectives-start:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklch, var(--coral) 8%, transparent); }
+.objectives-split.is-review .objectives-start:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklch, var(--aurora) 8%, transparent); }
 .objectives-split-goto { display: grid; place-items: center; border: 0; border-left: 1px solid color-mix(in oklch, var(--brass) 26%, transparent); background: transparent; color: var(--text-tertiary); cursor: pointer; padding: 0; }
 .objectives-split-goto svg { width: 14px; height: 14px; }
 .objectives-split-goto:hover { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }

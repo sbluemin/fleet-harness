@@ -485,6 +485,8 @@ export function ActionBand(props: ActionBandProps) {
     }
   };
   const press = () => {
+    // 보내는 중에는 버튼이 aria-disabled로 포커스만 지킨다 — 클릭·Enter·Space가 여기로 오므로 입구에서 거른다.
+    if (sending) return;
     disarm();
     if (!primary) return;
     // 후보가 있으면 완료하지 않고 펼친다 — 한 번 누름으로 후보 검토를 건너뛰는 길을 없앤다.
@@ -646,7 +648,9 @@ export function ActionBand(props: ActionBandProps) {
           <button
             type="button"
             className="objectives-start objectives-comp-send is-review"
-            disabled={sending}
+            // 보내는 중은 aria-disabled로만 막는다(runFollowups가 sending을 다시 거른다) — native disabled는 막 누른 버튼의 포커스를 문서로 떨군다.
+            aria-disabled={sending || undefined}
+            aria-busy={sending || undefined}
             onClick={() => void runFollowups()}
           >
             {word(complete)}
@@ -723,7 +727,9 @@ export function ActionBand(props: ActionBandProps) {
             <span>{routeCount ? t("objectives.routing.foot", { count: routeCount, minutes: ttlMinutes }) : t("objectives.routing.footNone")}</span>
             <button type="button" className="objectives-btn is-small" disabled={settling || sending || routeCount === 0} onClick={() => loadPreview(true)}>{t("objectives.routing.rejudge")}</button>
           </div>
-          <button type="button" className="objectives-start objectives-comp-send" disabled={settling || sending} aria-busy={sending || undefined} onClick={() => void goSheet()}>
+          {/* 판단 대기(settling)·보내는 중은 모두 저절로 끝나는 일시 상태라 aria-disabled로만 막는다(goSheet가 둘 다 거른다).
+              결과가 낡아 거절되면 goSheet가 곧바로 다시 읽어(refreshing) — native disabled면 막 누른 이 버튼의 포커스가 실패 직후 문서로 빠진다. */}
+          <button type="button" className="objectives-start objectives-comp-send" aria-disabled={settling || sending || undefined} aria-busy={sending || undefined} onClick={() => void goSheet()}>
             <span className="objectives-start-word">{t("objectives.routing.go")}</span>
             <span className="objectives-start-sub">{pending ? pendingText(pending) : <>{sheetContext.current ? <b className="objectives-band-draft">{t("objectives.band.draft")}</b> : null}{intents[intent ?? "start"].desc}</>}</span>
             <span className="objectives-start-arrow" aria-hidden="true">→</span>
@@ -752,7 +758,9 @@ export function ActionBand(props: ActionBandProps) {
         ref={bandRef}
         type="button"
         className={`objectives-start${gated ? " is-secondary" : ""}${toneCls}${shown === "steer" || shown === "steerIdle" ? " is-steer" : ""}`}
-        disabled={sending || unavailable(shown)}
+        // 영구 사용 불가만 native disabled다. 보내는 중은 aria-disabled로 막는다(press·run이 sending을 거른다) — 키보드로 막 누른 「중단」의 포커스를 지킨다.
+        disabled={unavailable(shown)}
+        aria-disabled={sending || undefined}
         aria-busy={sending || undefined}
         title={unavailable(shown) ? t("objectives.commander.unavailable") : opens ? t("objectives.band.opens") : undefined}
         aria-expanded={opens ? false : undefined}
