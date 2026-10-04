@@ -7,6 +7,7 @@
 .fexp-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; text-align: left; cursor: pointer; }
 .fexp-m :focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
 
+/* 빈·로딩·오류 줄은 드로어 빈 상태 문법(14 muted, 패딩 4/28/8)이다. 들여쓰기는 행과 같다. */
 /* 트리 — 행 44, 좌우 12 들여, 모서리 12, 왼쪽 = 16 + 깊이×18. */
 .fexp-m-tree { padding-top: 4px; padding-bottom: 24px; }
 .fexp-m .fexp-m-row { display: flex; align-items: center; gap: 16px; width: calc(100% - 24px); min-height: 44px; margin: 0 12px; padding: 0 16px 0 16px; border-radius: 12px; font-size: 16px; }
@@ -14,7 +15,7 @@
 .fexp-m-row-icon { display: grid; place-items: center; flex: none; color: var(--m-text-muted); }
 .fexp-m-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fexp-m-row-chev { display: grid; place-items: center; flex: none; color: var(--m-text-faint); }
-.fexp-m-note { display: block; width: calc(100% - 24px); margin: 0 12px; padding: 12px 16px; font-size: 14px; color: var(--m-text-muted); }
+.fexp-m-note { display: block; width: calc(100% - 24px); margin: 0 12px; padding: 4px 16px 8px; font-size: 14px; color: var(--m-text-muted); }
 .fexp-m-note.is-error { color: var(--m-danger); }
 .fexp-m .fexp-m-note.is-retry { color: var(--m-text-muted); }
 
