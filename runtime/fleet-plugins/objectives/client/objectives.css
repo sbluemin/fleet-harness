@@ -16,6 +16,16 @@
   --objectives-detail-face: color-mix(in oklch, var(--glass-panel-face) 88%, var(--surface-panel-raised));
   background: var(--glass-panel-face);
 }
+/* 레일 자리는 목표 상세를 읽는 시트다 — 「도구 패널 불투명도」 슬롯 유리만 깔리면 다크에서 뒤 캔버스 글자가
+   상세 글자와 겹쳐 읽히지 않는다. 설정·분할 detail 창과 같은 재질을 불투명 --float-underlay 위에 깔고,
+   기존 면(--glass-panel-face)은 맨 위에 둔다 — 게이트가 닫힌 Whites·투명도 축소에서는 그 면이 불투명이라 그대로다.
+   스크롤러(.objectives-detail-scroll)의 조상에 까므로 세로 스크롤바 거터도 함께 덮는다. 확장 표면은 그대로 둔다. */
+.objectives-root.is-rail {
+  background:
+    linear-gradient(var(--glass-panel-face), var(--glass-panel-face)),
+    linear-gradient(var(--glass-tint-expanded), var(--glass-tint-expanded)),
+    var(--float-underlay);
+}
 
 /* 2-Pane — 표면이 800 이상이고 레일이 아니면 상세 | 운영·판단. 1-Pane 과 같은 DOM(상세 aside > 스크롤 > 두 칸 + 하단)을 쓰고
    배치만 바꾼다: aside·스크롤을 걷어(display: contents) 두 칸과 하단이 표면 grid 에 선다. 각 칸은 상세와 같은 면·여백에

@@ -430,7 +430,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         highlightTimer.current = null;
         setHighlightMission(null);
       }
-    }}><div ref={rootRef} className={`objectives-root${two ? " is-two" : ""}`} style={rootStyle}>
+    }}><div ref={rootRef} className={`objectives-root${ctx.place === "rail" ? " is-rail" : ""}${two ? " is-two" : ""}`} style={rootStyle}>
       {body}
     </div></div>
     </ObjectiveLinkOpenProvider>
