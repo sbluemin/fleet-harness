@@ -40,6 +40,7 @@ import { companionDefaultChord, companionShortcutCommandId, isShortcutRecording,
 import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, flattenGroupedOrder, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, revealOperationStage, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
+import { setMobileDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../../../core/client/src/chrome/mobile/operation-body-pool.js";
 import { TriageEntryDialog } from "./canvas/triage-entry-dialog.js";
 import { AlignFitDialog } from "./canvas/align-fit-dialog.js";
@@ -518,6 +519,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (viewMode.effective === "mobile") {
       const operation = state.operations.find((candidate) => candidate.id === operationId && candidate.theaterId === state.activeTheaterId);
       if (operation) {
+        // 플러그인 화면(목표 상세 등)에서 세션 행을 눌러 온 요청이면 그 화면 대신 Operation이 서야 한다.
+        setMobileDestination({ kind: "home" });
         const url = new URL(window.location.href);
         url.searchParams.set("op", operationId);
         if (new URL(window.location.href).searchParams.get("op") !== operationId) {
