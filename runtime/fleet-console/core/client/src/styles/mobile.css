@@ -1080,7 +1080,7 @@
   border: 0;
 }
 
-.mobile-frame-head .console-link-banner > span { flex: 1; min-width: 0; }
+.mobile-frame-head .console-link-banner > span:not(.status-glyph) { flex: 1; min-width: 0; }
 .mobile-frame-head .console-link-banner button,
 .mobile-frame-head .control-bar button {
   margin-left: auto;
