@@ -108,6 +108,12 @@ export class SidecarSupervisor {
       return;
     }
     if (identity === "absent") {
+      // listener만 닫고 정리 중인 Console일 수 있다. Quit은 기다리지 않되 살아 있는 pid의 lock은 보존한다.
+      // 크래시 뒤 pid가 재할당된 경우도 lock을 남기는 대가를 감수한다. 다음 start의 기존 정착 대기가 판정을 맡는다.
+      if (this.isProcessAlive(current.stored.lock.pid)) {
+        this.options.log.error(`console_lock_process_unverified: pid ${current.stored.lock.pid} holds ${this.options.lockFile} but did not prove it is the Console; left running`);
+        return;
+      }
       try {
         this.removeStaleLock(current.stored);
       } catch (error) {
