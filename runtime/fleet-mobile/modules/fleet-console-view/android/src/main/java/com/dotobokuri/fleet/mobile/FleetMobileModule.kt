@@ -41,6 +41,14 @@ class FleetMobileModule : Module() {
       AsyncFunction("navigateBack") { view: FleetConsoleView ->
         view.navigateBack()
       }
+
+      AsyncFunction("getAppearance") { view: FleetConsoleView ->
+        view.getAppearance()
+      }
+
+      AsyncFunction("setNavigationBarStyle") { view: FleetConsoleView, dark: Boolean ->
+        view.setNavigationBarStyle(dark)
+      }
     }
   }
 }

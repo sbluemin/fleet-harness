@@ -18,6 +18,8 @@ public final class FleetMobileModule: Module {
       AsyncFunction("removeTarget") { (view: FleetConsoleView, origin: String) in view.removeTarget(origin) }
       AsyncFunction("listTargets") { (view: FleetConsoleView) -> [[String: Any]] in view.listTargets() }
       AsyncFunction("navigateBack") { (view: FleetConsoleView) -> Bool in view.navigateBack() }
+      AsyncFunction("getAppearance") { (view: FleetConsoleView) -> [String: Any] in view.getAppearance() }
+      AsyncFunction("setNavigationBarStyle") { (view: FleetConsoleView, dark: Bool) in view.setNavigationBarStyle(dark) }
     }
   }
 }

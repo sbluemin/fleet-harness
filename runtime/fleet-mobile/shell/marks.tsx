@@ -88,6 +88,54 @@ export function QrMark({ color, size = 22, stroke = 1.7 }: MarkProps): React.JSX
   );
 }
 
+export function GridMark({ color, size = 22, stroke = 1.7 }: MarkProps): React.JSX.Element {
+  const unit = size / 24;
+  const line = stroke * unit;
+  const cell = (left: number, top: number): React.JSX.Element => (
+    <View
+      style={{
+        position: "absolute",
+        left: left * unit - line / 2,
+        top: top * unit - line / 2,
+        width: 7 * unit + line,
+        height: 7 * unit + line,
+        borderWidth: line,
+        borderColor: color,
+        borderRadius: 1.5 * unit + line / 2,
+      }}
+    />
+  );
+  return (
+    <View style={{ width: size, height: size }}>
+      {cell(4, 4)}
+      {cell(13, 4)}
+      {cell(4, 13)}
+      {cell(13, 13)}
+    </View>
+  );
+}
+
+/** The check of a chosen row: the short and long strokes of an L turned 45°. */
+export function CheckMark({ color, size = 22, stroke = 1.7 }: MarkProps): React.JSX.Element {
+  const unit = size / 24;
+  const line = stroke * unit;
+  return (
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <View
+        style={{
+          width: 7.5 * unit,
+          height: 13.5 * unit,
+          marginTop: -2 * unit,
+          borderRightWidth: line,
+          borderBottomWidth: line,
+          borderColor: color,
+          transform: [{ rotate: "45deg" }],
+        }}
+      />
+    </View>
+  );
+}
+
 /** The two status glyphs the native screens show (impl-spec S-01): running and idle. */
 export function StatusGlyph({ kind, palette, still }: { readonly kind: "running" | "idle"; readonly palette: Palette; readonly still: boolean }): React.JSX.Element {
   const turn = useRef(new Animated.Value(0)).current;

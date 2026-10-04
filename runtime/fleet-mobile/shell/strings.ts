@@ -15,6 +15,10 @@ export interface ShellStrings {
   readonly keep: string;
   readonly menuFor: (name: string) => string;
   readonly addConsole: string;
+  readonly consoleSheet: string;
+  readonly nowConnected: string;
+  readonly seeAllConsoles: string;
+  readonly seeAllConsolesSub: string;
   readonly waiting: string;
   readonly connecting: string;
   readonly failed: string;
@@ -50,6 +54,10 @@ const KO: ShellStrings = {
   keep: "유지",
   menuFor: (name) => `${name} 메뉴`,
   addConsole: "Console 추가",
+  consoleSheet: "Console",
+  nowConnected: "지금 연결됨",
+  seeAllConsoles: "모든 Console 보기",
+  seeAllConsolesSub: "앱의 Console 목록 화면으로 갑니다",
   waiting: "이 기기에서 Fleet 접속 링크를 열면 연결됩니다.",
   connecting: "Console을 확인하고 연결하는 중…",
   failed: "이 Console을 열지 못했습니다.",
@@ -107,6 +115,10 @@ const EN: ShellStrings = {
   keep: "Keep",
   menuFor: (name) => `${name} menu`,
   addConsole: "Add console",
+  consoleSheet: "Console",
+  nowConnected: "Connected now",
+  seeAllConsoles: "See all consoles",
+  seeAllConsolesSub: "Opens the app's console list",
   waiting: "Open a Fleet access link on this device to connect.",
   connecting: "Checking the Console identity and opening a private session…",
   failed: "Fleet could not open that Console.",

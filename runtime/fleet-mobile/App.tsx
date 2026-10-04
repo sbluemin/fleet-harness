@@ -17,9 +17,9 @@ import type { AppStateStatus } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { FleetConsoleView } from "./modules/fleet-console-view/src";
-import type { FleetConsoleEvent, FleetConsoleTarget, FleetConsoleViewHandle } from "./modules/fleet-console-view/src";
+import type { FleetAppearance, FleetConsoleEvent, FleetConsoleTarget, FleetConsoleViewHandle } from "./modules/fleet-console-view/src";
 import { BottomSheet, Pill, Pill2 } from "./shell/controls";
-import { KebabMark, Monogram, PlusMark, QrMark, StatusGlyph } from "./shell/marks";
+import { CheckMark, GridMark, KebabMark, Monogram, PlusMark, QrMark, StatusGlyph } from "./shell/marks";
 import { PALETTE, SCANNER, monogramFor, toneFor } from "./shell/palette";
 import type { Palette } from "./shell/palette";
 import { shellStrings } from "./shell/strings";
@@ -30,6 +30,12 @@ type Screen = "landing" | "console" | "scanner";
 type WindowInsets = { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number };
 
 const NO_INSETS: WindowInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/** The surfaces the page reports behind the status bar and the gesture bar (impl-spec S-03). */
+type Chrome = { readonly top: "bg" | "bg-deep"; readonly bottom: "bg" | "bg-deep" | "surface" };
+
+const PLAIN_CHROME: Chrome = { top: "bg", bottom: "bg" };
+const CHROME_FILL = { "bg": "bg", "bg-deep": "bgDeep", "surface": "surface" } as const;
 
 const WORDMARK_FONT = Platform.select({ ios: "ui-serif", android: "serif", default: "serif" });
 
@@ -61,8 +67,15 @@ export default function App(): React.JSX.Element {
   const [insets, setInsets] = useState<WindowInsets>(NO_INSETS);
   const [scanError, setScanError] = useState<string | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
-  // Until the stored colour mode arrives (mission bb8e491a), the shell follows the system.
-  const palette = PALETTE[useColorScheme() === "light" ? "light" : "dark"];
+  const [appearance, setAppearance] = useState<FleetAppearance>({ colorMode: "system", fontScale: "default" });
+  const [chrome, setChrome] = useState<Chrome>(PLAIN_CHROME);
+  const [consolesOpen, setConsolesOpen] = useState(false);
+  // An add sheet opened from the console sheet goes back to it when dismissed (impl-spec S-12).
+  const [addFromConsoles, setAddFromConsoles] = useState(false);
+  const systemScheme = useColorScheme();
+  // The device owns the mode: "system" follows the OS, a chosen mode holds whatever the OS says.
+  const dark = appearance.colorMode === "system" ? systemScheme !== "light" : appearance.colorMode === "dark";
+  const palette = PALETTE[dark ? "dark" : "light"];
   const strings = useMemo(() => shellStrings(), []);
   const still = useReducedMotion();
   const styles = useMemo(() => paint(palette), [palette]);
@@ -79,6 +92,10 @@ export default function App(): React.JSX.Element {
     return AppState.addEventListener("change", (next: AppStateStatus) => {
       if (next === "active") consoleRef.current?.resume();
     }).remove;
+  }, []);
+
+  useEffect(() => {
+    consoleRef.current?.getAppearance().then(setAppearance, () => {});
   }, []);
 
   useEffect(() => {
@@ -116,7 +133,23 @@ export default function App(): React.JSX.Element {
       });
       return;
     }
+    if (nativeEvent.type === "appearance") {
+      const { colorMode, fontScale } = nativeEvent;
+      if (colorMode && fontScale) setAppearance({ colorMode, fontScale });
+      return;
+    }
+    if (nativeEvent.type === "chrome") {
+      setChrome({ top: nativeEvent.top ?? "bg", bottom: nativeEvent.bottom ?? "bg" });
+      return;
+    }
+    if (nativeEvent.type === "consoles") {
+      consoleRef.current?.listTargets().then(setTargets, () => {});
+      setConsolesOpen(true);
+      return;
+    }
     stateEventSeenRef.current = true;
+    // A new page state starts from the plain surfaces; the page reports again if a drawer stays open.
+    setChrome(PLAIN_CHROME);
     const invalidLink = nativeEvent.type === "error" && nativeEvent.code === "pairing_target_invalid";
     setInvalidLinkError(invalidLink);
     setCanReturnToConsole(invalidLink && nativeEvent.active === true);
@@ -229,6 +262,7 @@ export default function App(): React.JSX.Element {
   const acceptLink = useCallback((link: string): void => {
     if (!link.toLowerCase().startsWith("fleet://")) return;
     setAddOpen(false);
+    setAddFromConsoles(false);
     setLinkDraft("");
     setScreen("console");
     setTargetLabel(null);
@@ -277,10 +311,26 @@ export default function App(): React.JSX.Element {
     if (screen !== "scanner") scannedRef.current = false;
   }, [screen]);
 
+  const closeAdd = useCallback((): void => {
+    setAddOpen(false);
+    if (addFromConsoles) setConsolesOpen(true);
+    setAddFromConsoles(false);
+  }, [addFromConsoles]);
+
+  const switchConsole = useCallback((target: FleetConsoleTarget): void => {
+    setConsolesOpen(false);
+    if (target.active && state === "connected") return;
+    openConsole(target.origin);
+  }, [state, openConsole]);
+
   useEffect(() => {
     const onBack = (): boolean => {
       if (addOpen) {
-        setAddOpen(false);
+        closeAdd();
+        return true;
+      }
+      if (consolesOpen) {
+        setConsolesOpen(false);
         return true;
       }
       if (armRemove) {
@@ -312,7 +362,7 @@ export default function App(): React.JSX.Element {
     };
     const subscription = BackHandler.addEventListener("hardwareBackPress", onBack);
     return () => subscription.remove();
-  }, [addOpen, armRemove, screen, state, showAllConsoles]);
+  }, [addOpen, closeAdd, consolesOpen, armRemove, screen, state, showAllConsoles]);
 
   const connectionOverlayVisible = screen === "console" && state !== "connected";
   // 랜딩·스캐너처럼 Console을 덮는 전체 화면이 떠 있으면 뒤 WebView를 스크린 리더에서 숨긴다.
@@ -328,6 +378,12 @@ export default function App(): React.JSX.Element {
   const scanning = screen === "scanner";
   const surfaceColor = scanning ? SCANNER.bg : palette.bg;
   const overlayName = targetLabel?.trim() || null;
+  const pageShown = screen === "console" && state === "connected";
+
+  // Android draws the gesture-bar icons itself; they follow whatever face the shell shows.
+  useEffect(() => {
+    consoleRef.current?.setNavigationBarStyle(scanning || dark);
+  }, [scanning, dark]);
 
   return (
     <View style={[styles.root, { backgroundColor: surfaceColor }]}>
@@ -343,6 +399,12 @@ export default function App(): React.JSX.Element {
       >
         <FleetConsoleView ref={consoleRef} style={styles.console} onFleetEvent={onFleetEvent} />
       </View>
+      {pageShown ? (
+        <>
+          <View pointerEvents="none" style={[styles.band, { top: 0, height: insets.top, backgroundColor: palette[CHROME_FILL[chrome.top]] }]} />
+          <View pointerEvents="none" style={[styles.band, { bottom: 0, height: insets.bottom, backgroundColor: palette[CHROME_FILL[chrome.bottom]] }]} />
+        </>
+      ) : null}
       {connectionOverlayVisible ? (
         <View style={[styles.cover, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           <View style={styles.center} accessible={state !== "error"} accessibilityRole="summary">
@@ -468,8 +530,58 @@ export default function App(): React.JSX.Element {
         </View>
       ) : null}
       <BottomSheet
+        open={consolesOpen}
+        onClose={() => setConsolesOpen(false)}
+        title={strings.consoleSheet}
+        closeLabel={strings.close}
+        palette={palette}
+        insetBottom={insets.bottom}
+        still={still}
+      >
+        {targets.map((target) => {
+          const current = target.active && state === "connected";
+          const lost = lastError[target.origin] === "remote_host_not_paired";
+          return (
+            <SheetRow
+              key={target.origin}
+              palette={palette}
+              styles={styles}
+              lead={(
+                <Monogram
+                  text={monogramFor(target.label)}
+                  color={palette.id[toneFor(target.origin)]}
+                  ink={palette.bg}
+                  size={36}
+                  radius={18}
+                  fontSize={11}
+                />
+              )}
+              label={target.label}
+              detail={current ? strings.nowConnected : lost ? strings.chipLost : `${target.host}:${target.port}`}
+              trail={current ? <CheckMark color={palette.text} /> : undefined}
+              onPress={() => switchConsole(target)}
+            />
+          );
+        })}
+        <SheetRow
+          palette={palette}
+          styles={styles}
+          lead={<PlusMark color={palette.text} />}
+          label={strings.addConsole}
+          onPress={() => { setConsolesOpen(false); setAddFromConsoles(true); setAddOpen(true); }}
+        />
+        <SheetRow
+          palette={palette}
+          styles={styles}
+          lead={<GridMark color={palette.text} />}
+          label={strings.seeAllConsoles}
+          detail={strings.seeAllConsolesSub}
+          onPress={() => { setConsolesOpen(false); showAllConsoles(); }}
+        />
+      </BottomSheet>
+      <BottomSheet
         open={addOpen}
-        onClose={() => setAddOpen(false)}
+        onClose={closeAdd}
         title={strings.addConsole}
         closeLabel={strings.close}
         palette={palette}
@@ -477,7 +589,7 @@ export default function App(): React.JSX.Element {
         still={still}
         footer={(
           <>
-            <Pill2 palette={palette} label={strings.cancel} onPress={() => setAddOpen(false)} />
+            <Pill2 palette={palette} label={strings.cancel} onPress={closeAdd} />
             <Pill2 palette={palette} label={strings.add} variant="inverse" disabled={!linkReady} onPress={submitLink} />
           </>
         )}
@@ -505,6 +617,31 @@ export default function App(): React.JSX.Element {
         />
       </BottomSheet>
     </View>
+  );
+}
+
+function SheetRow({ palette, styles, lead, label, detail, trail, onPress }: {
+  readonly palette: Palette;
+  readonly styles: ReturnType<typeof paint>;
+  readonly lead: React.ReactNode;
+  readonly label: string;
+  readonly detail?: string;
+  readonly trail?: React.ReactNode;
+  readonly onPress: () => void;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.sheetRow, pressed && { backgroundColor: palette.selected }]}
+    >
+      {lead}
+      <View style={styles.rowText}>
+        <Text style={styles.sheetRowLabel} numberOfLines={1}>{label}</Text>
+        {detail ? <Text style={styles.sheetRowDetail} numberOfLines={1}>{detail}</Text> : null}
+      </View>
+      {trail}
+    </Pressable>
   );
 }
 
@@ -560,11 +697,8 @@ function ConsoleRow({ target, first, last, connectedNow, pairingLost, armed, pal
         />
         <View style={styles.rowText}>
           <Text style={styles.rowName} numberOfLines={1}>{target.label}</Text>
-          <Text style={styles.rowAddress} numberOfLines={1}>
-            {`${target.host}:${target.port}`}
-            {/* The pin prefix stays visible: it is how the owner tells two consoles at one address apart. */}
-            <Text style={styles.rowPin}>{` · pin ${target.fingerprint}…`}</Text>
-          </Text>
+          {/* The pin prefix stays visible: it is how the owner tells two consoles at one address apart. */}
+          <Text style={styles.rowAddress} numberOfLines={1}>{`${target.host}:${target.port} · pin ${target.fingerprint}…`}</Text>
           {pairingLost ? <Text style={styles.rowHint}>{strings.lostHint}</Text> : null}
         </View>
       </Pressable>
@@ -638,13 +772,16 @@ function paint(p: Palette) {
     rowText: { flex: 1, minWidth: 0 },
     rowName: { color: p.text, fontSize: 17, lineHeight: 24 },
     rowAddress: { color: p.textMuted, fontSize: 15, lineHeight: 21, marginTop: 1, fontVariant: ["tabular-nums"] },
-    rowPin: { fontSize: 13 },
     rowHint: { color: p.danger, fontSize: 13, lineHeight: 18, marginTop: 1 },
     rowActions: { flexDirection: "row", alignItems: "center", gap: 12 },
     chip: { height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: p.chip, flexDirection: "row", alignItems: "center", gap: 6 },
     chipLabel: { color: p.text, fontSize: 13, lineHeight: 18 },
     kebab: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
     fab: { position: "absolute", right: 16 },
+    band: { position: "absolute", left: 0, right: 0 },
+    sheetRow: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 60, padding: 8, borderRadius: 12 },
+    sheetRowLabel: { color: p.text, fontSize: 16, lineHeight: 22 },
+    sheetRowDetail: { color: p.textMuted, fontSize: 13, lineHeight: 18 },
     sheetLead: { color: p.textMuted, fontSize: 15, lineHeight: 21, paddingHorizontal: 4, marginBottom: 6 },
     field: {
       backgroundColor: p.field,

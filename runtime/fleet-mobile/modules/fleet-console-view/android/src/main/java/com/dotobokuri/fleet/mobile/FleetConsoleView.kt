@@ -3,6 +3,7 @@ package com.dotobokuri.fleet.mobile
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
@@ -25,10 +26,13 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.JavaScriptReplyProxy
+import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
@@ -36,6 +40,7 @@ import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.util.UUID
+import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -69,6 +74,13 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private var activeView: WebView? = null
   private var activeGateway: LoopbackGateway? = null
   private var staging: StagedLoad? = null
+  private val appearanceStore = AppearanceStore(context)
+  // Read by JS on the module thread, written on main.
+  @Volatile private var appearance = appearanceStore.load()
+  private var systemDark = isSystemDark(resources.configuration)
+  // The document-start script of each view, replaced whenever the value changes so the next load starts right.
+  private val startScripts = WeakHashMap<WebView, ScriptHandler>()
+  private var documentStartSupported = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
   // True from the moment an attempt starts until it commits or fails. resume() must not look past it:
   // a foreground return would otherwise overwrite an in-flight cold-start link attempt with the
   // stored target. Volatile because beginAttempt can start from the JS thread.
@@ -452,6 +464,36 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       failStaged(staged, "remote_host_readiness_unsupported")
       return
     }
+    webView.setBackgroundColor(AppearanceBridge.backgroundColor(appearance.dark(systemDark)))
+    installAppearanceScript(webView, staged.gateway, staged.target)
+    try {
+      WebViewCompat.addWebMessageListener(
+        webView,
+        AppearanceBridge.MESSAGE_OBJECT,
+        setOf(staged.gateway.origin),
+        object : WebViewCompat.WebMessageListener {
+          override fun onPostMessage(
+            view: WebView,
+            message: WebMessageCompat,
+            sourceOrigin: Uri,
+            isMainFrame: Boolean,
+            replyProxy: JavaScriptReplyProxy,
+          ) {
+            // A staging view is not committed yet, so its page cannot speak for the shell.
+            val gateway = activeGateway
+            val accepted = AppearanceBridge.accept(
+              fromCommittedView = gateway != null && view === activeView,
+              isMainFrame = isMainFrame,
+              fromGatewayOrigin = gateway != null && isLocalOrigin(sourceOrigin, gateway),
+              body = message.data,
+            ) ?: return
+            onAppearanceMessage(accepted)
+          }
+        },
+      )
+    } catch (_: Exception) {
+      // Readiness already proved the listener API; losing this channel only freezes the preference.
+    }
     webView.setDownloadListener { _, _, _, _, _ -> failStaged(staged, "navigation_denied") }
     webView.webChromeClient = object : WebChromeClient() {
       override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?): Boolean = false
@@ -494,6 +536,14 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
           return
         }
         super.onPageStarted(view, url, favicon)
+      }
+
+      override fun onPageCommitVisible(view: WebView?, url: String?) {
+        super.onPageCommitVisible(view, url)
+        // Without document-start scripts the page learns its appearance at first commit instead.
+        if (!documentStartSupported && view != null && url != null && isAllowedLocalMainFrame(Uri.parse(url), staged.gateway)) {
+          view.evaluateJavascript(appearanceScriptFor(staged.target), null)
+        }
       }
 
       override fun onPageFinished(view: WebView?, url: String?) {
@@ -543,6 +593,79 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
         failStaged(staged, "navigation_denied")
       }
     }
+  }
+
+  fun getAppearance(): Map<String, Any> = appearance.let {
+    mapOf("colorMode" to it.colorMode.wire, "fontScale" to it.fontScale.wire)
+  }
+
+  /** The shell paints its own screens; only it knows when a dark camera covers a light mode. */
+  fun setNavigationBarStyle(dark: Boolean) {
+    main.post {
+      val window = appContext.currentActivity?.window ?: return@post
+      WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = !dark
+    }
+  }
+
+  override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+    val dark = isSystemDark(newConfig)
+    if (dark == systemDark) return
+    systemDark = dark
+    refreshAppearance()
+  }
+
+  private fun isSystemDark(configuration: Configuration): Boolean =
+    (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
+  private fun appearanceScriptFor(target: PersistedTarget): String =
+    AppearanceBridge.script(appearance, systemDark, ConsolePresentation.of(target))
+
+  private fun installAppearanceScript(webView: WebView, gateway: LoopbackGateway, target: PersistedTarget) {
+    if (!documentStartSupported) return
+    startScripts.remove(webView)?.remove()
+    try {
+      startScripts[webView] = WebViewCompat.addDocumentStartJavaScript(webView, appearanceScriptFor(target), setOf(gateway.origin))
+    } catch (_: Exception) {
+      documentStartSupported = false
+    }
+  }
+
+  /** Tell every live page again: the next load through its document-start script, the open page right now. */
+  private fun refreshAppearance() {
+    val background = AppearanceBridge.backgroundColor(appearance.dark(systemDark))
+    staging?.let { staged ->
+      staged.view.setBackgroundColor(background)
+      installAppearanceScript(staged.view, staged.gateway, staged.target)
+    }
+    val view = activeView
+    val gateway = activeGateway
+    val target = activeTarget
+    if (view != null && gateway != null && target != null) {
+      view.setBackgroundColor(background)
+      installAppearanceScript(view, gateway, target)
+      view.evaluateJavascript(appearanceScriptFor(target), null)
+    }
+    emitPayload(mapOf("type" to "appearance", "colorMode" to appearance.colorMode.wire, "fontScale" to appearance.fontScale.wire))
+  }
+
+  private fun onAppearanceMessage(message: AppearanceMessage) {
+    when (message) {
+      is AppearanceMessage.Set -> {
+        if (message.appearance != appearance) {
+          appearance = message.appearance
+          appearanceStore.save(message.appearance)
+        }
+        // Confirm even an unchanged value: the page painted optimistically and waits for the answer.
+        refreshAppearance()
+      }
+      is AppearanceMessage.Chrome -> emitPayload(mapOf("type" to "chrome", "top" to message.top, "bottom" to message.bottom))
+      AppearanceMessage.Consoles -> emitPayload(mapOf("type" to "consoles"))
+    }
+  }
+
+  private fun emitPayload(payload: Map<String, Any>) {
+    main.post { onFleetEvent(payload) }
   }
 
   private fun readinessScript(staged: StagedLoad): String {
