@@ -152,12 +152,12 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, rese
           <div role="radiogroup" aria-labelledby={titleId}>
             {groups.map((group) => (
               <div key={group.key} role="presentation">
-                <div className="mobile-choice-band">{group.icon ? <span className="mobile-choice-band-icon" aria-hidden="true">{group.icon}</span> : null}{group.label}</div>
+                <div className="mobile-choice-band">{group.label}</div>
                 {group.options.map((option) => {
                   const selected = option.value === value;
                   return (
                     <button type="button" role="radio" key={option.value} aria-checked={selected} className={`mobile-choice-row${selected ? " is-selected" : ""}`} onClick={() => onSelect(option.value)}>
-                      <span className="mobile-choice-copy"><span className="mobile-choice-label">{option.label}</span></span>
+                      <span className="mobile-choice-copy"><span className="mobile-choice-label">{withoutGroupPrefix(option.label, group.label)}</span></span>
                       {option.meta ? <span className="mobile-choice-meta">{option.meta}</span> : null}
                       {selected ? <MobileIcon name="check" size={22} className="mobile-choice-check" /> : <span className="mobile-choice-check-slot" aria-hidden="true" />}
                     </button>
@@ -201,4 +201,10 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, rese
       )}
     />
   );
+}
+
+/** 그룹 머리가 이미 공급자를 말하므로 모델 이름의 「Codex-」 같은 공급자 접두어는 뗀다(남는 것이 없으면 그대로 둔다). */
+function withoutGroupPrefix(label: string, group: string): string {
+  const prefix = `${group}-`;
+  return label.length > prefix.length && label.toLowerCase().startsWith(prefix.toLowerCase()) ? label.slice(prefix.length) : label;
 }

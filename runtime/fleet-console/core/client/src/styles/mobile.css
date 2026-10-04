@@ -722,7 +722,8 @@
 :root[data-mobile-scheme="light"] .mobile-choice { border: 1px solid var(--m-hairline); }
 .mobile-choice-scrim.is-leaving .mobile-choice { transform: scale(0.97); transition: transform 150ms cubic-bezier(0.3, 0, 0.8, 0.15); }
 .mobile-choice-title { margin: 0; padding: 20px 22px 8px; font-size: var(--m-fs-title); font-weight: var(--weight-bold); line-height: 24px; text-align: left; }
-.mobile-choice-list { min-height: 0; overflow-y: auto; }
+.mobile-choice-list { min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.mobile-choice-list::-webkit-scrollbar { display: none; }
 .mobile-choice-row {
   display: flex;
   align-items: center;
@@ -798,10 +799,8 @@
 
 /* 모델 팝업 변형 — 제공자 묶음 머리, 구분선, 「추론 강도」 글자 탭 줄(S-11b와 같은 문법). */
 .mobile-choice-band { display: flex; align-items: center; gap: 8px; padding: 12px 22px 4px; color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-bold); line-height: 18px; }
-.mobile-choice-band-icon { display: inline-flex; width: 16px; height: 16px; }
-.mobile-choice-band-icon svg { width: 16px; height: 16px; }
 .mobile-choice-meta { flex: none; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
-.mobile-choice-rule { height: 1px; margin: 8px 22px; background: var(--m-hairline); }
+.mobile-choice-rule { height: 1px; margin: 8px 22px 0; background: var(--m-hairline); }
 .mobile-choice-tabs { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 22px 4px; }
 .mobile-choice-tab { min-height: 36px; padding: 0 0 4px; color: var(--m-text-nav); font-size: var(--m-fs-secondary); background: transparent; border: 0; border-bottom: 2px solid transparent; }
 .mobile-choice-tab.is-on { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-text); }
