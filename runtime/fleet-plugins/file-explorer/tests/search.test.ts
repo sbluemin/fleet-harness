@@ -134,6 +134,11 @@ describe("Files palette search", () => {
       });
       expect(JSON.stringify(writes[0]?.body)).not.toContain(temporaryDirectory);
       expect(JSON.stringify(writes[0]?.body)).not.toContain("secret");
+
+      // 잘려서 rg를 조기 종료해도 건너뛴 경로 안내는 빠지지 않는다.
+      const truncatedSearch = searchContext({ theaterId: "theater-a", query: "t", limit: 1, scope: "contents" });
+      await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, truncatedSearch.ctx);
+      expect(truncatedSearch.writes[0]?.body).toMatchObject({ complete: false, truncated: true, skippedPaths: 1 });
     } finally {
       await fs.chmod(lockedPath, 0o700);
     }

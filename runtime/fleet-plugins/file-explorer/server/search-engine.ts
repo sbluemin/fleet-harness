@@ -290,6 +290,15 @@ async function searchContents(
   }
 
   skippedPaths = countSkippedPaths(stderr);
+  if (settled && !options.signal?.aborted) {
+    // 잘리면 rg를 조기 종료하므로 읽지 못한 경로에 아직 닿지 않았을 수 있다. 같은 hidden/ignore
+    // 범위의 경로 catalog가 세는 건너뜀 수로 보완해 잘림 안내와 건너뜀 안내를 독립적으로 유지한다.
+    try {
+      skippedPaths = Math.max(skippedPaths, (await getPathCatalog(root, options)).skippedPaths);
+    } catch {
+      // catalog 실패는 내용 검색 결과를 막지 않는다. stderr에서 센 값을 유지한다.
+    }
+  }
   return {
     items: candidates.slice(0, limit),
     totalMatches: settled ? undefined : candidates.length,
