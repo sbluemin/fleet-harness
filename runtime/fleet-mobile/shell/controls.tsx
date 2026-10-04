@@ -9,6 +9,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -260,7 +261,16 @@ export function BottomSheet({ open, onClose, title, closeLabel, palette, insetBo
                 <CloseMark color={palette.textMuted} />
               </Pressable>
             </View>
-            <View style={controls.body}>{children}</View>
+            {/* The body scrolls once the content outgrows the panel's cap (a long console list); short content
+                keeps its own height. Taps go through while the keyboard is up, so the sheet's buttons take one tap. */}
+            <ScrollView
+              style={controls.bodyScroll}
+              contentContainerStyle={controls.body}
+              keyboardShouldPersistTaps="handled"
+              alwaysBounceVertical={false}
+            >
+              {children}
+            </ScrollView>
             {footer ? <View style={controls.footer}>{footer}</View> : null}
             <View style={{ height: 18 + insetBottom }} />
         </Animated.View>
@@ -297,6 +307,7 @@ const controls = StyleSheet.create({
   head: { paddingTop: 2, paddingHorizontal: 56, paddingBottom: 10 },
   title: { fontSize: 18, lineHeight: 24, fontWeight: "600", textAlign: "center" },
   close: { position: "absolute", right: 12, top: -8, width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  bodyScroll: { flexGrow: 0, flexShrink: 1 },
   body: { paddingHorizontal: 16, gap: 10 },
   footer: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 8, paddingTop: 10, paddingHorizontal: 16 },
 });
