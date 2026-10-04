@@ -55,6 +55,15 @@ node -e 'try { const l = JSON.parse(require("fs").readFileSync(process.argv[1], 
 
 Never `cat`, `jq`, or `grep` the lock, and never put the token in a shell variable, a URL, or a command line. A step that needs the token reads it inside the one Node process that sends the request and passes it only as a header, as [`issue-access-link.mjs`](../scripts/issue-access-link.mjs) does.
 
+#### Restart after a forced kill
+
+A Console that exits without its shutdown handler (`SIGKILL`, a capped kill, a crash) leaves `$E2E_DIR/console/console.lock` holding its dead PID. The next `serve` on that run directory then exits 1 within a second with `EEXIST: file already exists, open '<run-dir>/console/console.lock'`. Handle only the lock of this run's own `$E2E_DIR`, and never delete it by hand:
+
+1. Take `pid` from the [fixed read](#read-the-lock-without-the-token).
+2. Probe it with `node -e 'try { process.kill(Number(process.argv[1]), 0); console.log("alive"); } catch (e) { console.log(e.code); }' <pid>`, and continue only on `ESRCH`. For any other result, do not run `stop`: it signals whatever process now holds that PID, so a reused PID would receive `SIGTERM` and then `SIGKILL`. Prove the PID is this run's `cli.mjs serve` from the recorded worktree by comparing its command line without printing it, for example `ps -p <pid> -o command= | grep -cF '<worktree>/runtime/fleet-console/dist/cli.mjs serve'`, since a reused PID is not owned and the [process-listing bounds](#keep-the-real-home-out) allow printing only an owned PID's command line. If it is, a live owned Console holds the lock, so stop and restart it normally. If it is not, stop and report it.
+3. Run `cli.mjs stop` through the [wrapper](#keep-the-real-home-out) with the same `--run-dir`. With a dead PID, `stop` only removes the lock.
+4. Start `serve` again as in [Isolate the Console](#isolate-the-console), with the same wrapper flags as the first boot (such as `--set CLAUDE_BIN=…`), then take the new port with the fixed read.
+
 ### Record what is being reproduced
 
 Before reproducing a user-reported defect, record the user's installed Fleet version or reported surface, the target SHA, and the served asset name. A local `canary` can lag or lead the user's build with a different UI; when they differ, reproduce on a detached [baseline](../../git-worktree/references/baseline.md) at the user's revision rather than assuming the newest checkout shows the same behavior. While measuring, do not let another build write the same `dist/` the owned server serves: use a separate checkout or output, and report a rebuild that landed mid-measurement as a contaminated run.
