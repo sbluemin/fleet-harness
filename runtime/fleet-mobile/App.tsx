@@ -1,43 +1,54 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   AppState,
   BackHandler,
-  Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useColorScheme,
 } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { FleetConsoleView } from "./modules/fleet-console-view/src";
 import type { FleetConsoleEvent, FleetConsoleTarget, FleetConsoleViewHandle } from "./modules/fleet-console-view/src";
+import { BottomSheet, Pill, Pill2 } from "./shell/controls";
+import { KebabMark, Monogram, PlusMark, QrMark, StatusGlyph } from "./shell/marks";
+import { PALETTE, SCANNER, monogramFor, toneFor } from "./shell/palette";
+import type { Palette } from "./shell/palette";
+import { shellStrings } from "./shell/strings";
 
 type ShellState = "waiting" | "connecting" | "connected" | "error";
 type Screen = "landing" | "console" | "scanner";
-
-const MESSAGES: Record<ShellState, string> = {
-  waiting: "Open a Fleet access link on this device to connect.",
-  connecting: "Checking the Console identity and opening a private session…",
-  connected: "Connected",
-  error: "Fleet could not open that Console.",
-};
 
 type WindowInsets = { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number };
 
 const NO_INSETS: WindowInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 
+const WORDMARK_FONT = Platform.select({ ios: "ui-serif", android: "serif", default: "serif" });
+
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduced, () => {});
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduced);
+    return () => subscription.remove();
+  }, []);
+  return reduced;
+}
+
 export default function App(): React.JSX.Element {
   const consoleRef = useRef<FleetConsoleViewHandle>(null);
   const [state, setState] = useState<ShellState>("waiting");
-  const [detail, setDetail] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [targetLabel, setTargetLabel] = useState<string | null>(null);
+  const [targetOrigin, setTargetOrigin] = useState<string | null>(null);
   const [invalidLinkError, setInvalidLinkError] = useState(false);
   const [canReturnToConsole, setCanReturnToConsole] = useState(false);
   const [screen, setScreen] = useState<Screen>("console");
@@ -50,8 +61,14 @@ export default function App(): React.JSX.Element {
   const [insets, setInsets] = useState<WindowInsets>(NO_INSETS);
   const [scanError, setScanError] = useState<string | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
+  // Until the stored colour mode arrives (mission bb8e491a), the shell follows the system.
+  const palette = PALETTE[useColorScheme() === "light" ? "light" : "dark"];
+  const strings = useMemo(() => shellStrings(), []);
+  const still = useReducedMotion();
+  const styles = useMemo(() => paint(palette), [palette]);
   // A latch rather than state: the camera callback fires faster than a re-render would settle.
   const scannedRef = useRef(false);
+  const stateEventSeenRef = useRef(false);
   const refreshTargets = useCallback((): void => {
     consoleRef.current?.listTargets().then(setTargets, () => {});
   }, []);
@@ -64,7 +81,24 @@ export default function App(): React.JSX.Element {
     }).remove;
   }, []);
 
-  useEffect(refreshTargets, [refreshTargets]);
+  useEffect(() => {
+    // iOS reports its opening state from the view's init, before this component subscribes, so
+    // that first event can be lost. Rebuild it from the saved targets unless an event already came:
+    // a saved active console is being reconnected, and no console means the list is the first screen.
+    consoleRef.current?.listTargets().then((list) => {
+      setTargets(list);
+      if (stateEventSeenRef.current) return;
+      const active = list.find((target) => target.active);
+      if (active) {
+        setTargetLabel(active.label);
+        setTargetOrigin(active.origin);
+        setState("connecting");
+      } else {
+        setScreen("landing");
+      }
+    }, () => {});
+  }, []);
+
 
   useEffect(() => {
     if (retryLeft === null || retryLeft <= 0) return;
@@ -82,10 +116,12 @@ export default function App(): React.JSX.Element {
       });
       return;
     }
+    stateEventSeenRef.current = true;
     const invalidLink = nativeEvent.type === "error" && nativeEvent.code === "pairing_target_invalid";
     setInvalidLinkError(invalidLink);
     setCanReturnToConsole(invalidLink && nativeEvent.active === true);
     setTargetLabel(nativeEvent.label ?? null);
+    setTargetOrigin(nativeEvent.origin ?? null);
     refreshTargets();
     if (nativeEvent.type === "error" && nativeEvent.origin) {
       const origin = nativeEvent.origin;
@@ -102,20 +138,20 @@ export default function App(): React.JSX.Element {
     switch (nativeEvent.type) {
       case "connected":
         setState("connected");
-        setDetail(null);
+        setErrorCode(null);
         setRetryLeft(null);
         return;
       case "connecting":
         if (nativeEvent.active) return;
         setState("connecting");
-        setDetail(null);
+        setErrorCode(null);
         setRetryLeft(null);
         // A fresh attempt with no console on screen (an intent-delivered link included) shows its progress.
         setScreen("console");
         return;
       case "waiting":
         setState("waiting");
-        setDetail(null);
+        setErrorCode(null);
         setRetryLeft(null);
         setScreen("landing");
         return;
@@ -123,12 +159,12 @@ export default function App(): React.JSX.Element {
         if (nativeEvent.active && !invalidLink) {
           // 살아 있는 Console은 유지하되 붙여넣기가 올린 Checking 오버레이는 정리한다.
           setState("connected");
-          setDetail(null);
+          setErrorCode(null);
           setRetryLeft(null);
           return;
         }
         setState("error");
-        setDetail(describe(nativeEvent.code));
+        setErrorCode(nativeEvent.code ?? "unknown");
         setRetryLeft(nativeEvent.retryAfterSeconds ?? null);
         if (invalidLink) setScreen("console");
         return;
@@ -138,7 +174,7 @@ export default function App(): React.JSX.Element {
   const retry = useCallback((): void => {
     setInvalidLinkError(false);
     setCanReturnToConsole(false);
-    setDetail(null);
+    setErrorCode(null);
     setRetryLeft(null);
     if (canReturnToConsole) {
       // 오류 확인만 끝낸다. 이미 연결된 WebView·gateway·쿠키는 그대로 둔다.
@@ -164,11 +200,14 @@ export default function App(): React.JSX.Element {
       setInvalidLinkError(false);
       setCanReturnToConsole(false);
       setState("connected");
-      setDetail(null);
+      setErrorCode(null);
       return;
     }
+    // The connecting screen names the console the moment it is chosen, before native answers.
+    setTargetLabel(current?.label ?? null);
+    setTargetOrigin(origin);
     setState("connecting");
-    setDetail(null);
+    setErrorCode(null);
     setRetryLeft(null);
     consoleRef.current?.connectTo(origin);
   }, [targets, state, canReturnToConsole]);
@@ -192,8 +231,10 @@ export default function App(): React.JSX.Element {
     setAddOpen(false);
     setLinkDraft("");
     setScreen("console");
+    setTargetLabel(null);
+    setTargetOrigin(null);
     setState("connecting");
-    setDetail(null);
+    setErrorCode(null);
     setRetryLeft(null);
     consoleRef.current?.submitAccessLink(link);
   }, []);
@@ -201,6 +242,11 @@ export default function App(): React.JSX.Element {
   const submitLink = useCallback((): void => {
     acceptLink(linkDraft.trim());
   }, [acceptLink, linkDraft]);
+
+  const pasteInstead = useCallback((): void => {
+    setScreen("landing");
+    setAddOpen(true);
+  }, []);
 
   const openScanner = useCallback((): void => {
     setAddOpen(false);
@@ -218,13 +264,13 @@ export default function App(): React.JSX.Element {
     if (scannedRef.current) return;
     const link = data.trim();
     if (!link.toLowerCase().startsWith("fleet://")) {
-      setScanError("That code is not a Fleet access link.");
+      setScanError(strings.notFleetCode);
       return;
     }
     scannedRef.current = true;
     setScanError(null);
     acceptLink(link);
-  }, [acceptLink]);
+  }, [acceptLink, strings]);
 
   // Leaving the scanner re-arms it, so a second visit can scan again.
   useEffect(() => {
@@ -235,6 +281,10 @@ export default function App(): React.JSX.Element {
     const onBack = (): boolean => {
       if (addOpen) {
         setAddOpen(false);
+        return true;
+      }
+      if (armRemove) {
+        setArmRemove(null);
         return true;
       }
       if (screen === "scanner") {
@@ -262,20 +312,29 @@ export default function App(): React.JSX.Element {
     };
     const subscription = BackHandler.addEventListener("hardwareBackPress", onBack);
     return () => subscription.remove();
-  }, [addOpen, screen, state, showAllConsoles]);
+  }, [addOpen, armRemove, screen, state, showAllConsoles]);
 
   const connectionOverlayVisible = screen === "console" && state !== "connected";
   // 랜딩·스캐너처럼 Console을 덮는 전체 화면이 떠 있으면 뒤 WebView를 스크린 리더에서 숨긴다.
   const consoleAccessibilityHidden = connectionOverlayVisible || screen !== "console";
   const retryBlocked = retryLeft !== null && retryLeft > 0;
   const retryTargetLabel = targets.find((target) => target.active)?.label.trim();
-  const retryLabel = invalidLinkError && retryTargetLabel
-    ? canReturnToConsole ? `Back to ${retryTargetLabel}` : `Try again · ${retryTargetLabel}`
-    : "Try again";
+  const retryLabel = retryBlocked
+    ? strings.retryIn(retryLeft)
+    : invalidLinkError && retryTargetLabel
+      ? canReturnToConsole ? strings.backTo(retryTargetLabel) : strings.retryWith(retryTargetLabel)
+      : strings.retry;
+  const linkReady = linkDraft.trim().toLowerCase().startsWith("fleet://");
+  const scanning = screen === "scanner";
+  const surfaceColor = scanning ? SCANNER.bg : palette.bg;
+  const overlayName = targetLabel?.trim() || null;
 
   return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#111318" />
+    <View style={[styles.root, { backgroundColor: surfaceColor }]}>
+      <StatusBar
+        barStyle={scanning || palette.scheme === "dark" ? "light-content" : "dark-content"}
+        backgroundColor={surfaceColor}
+      />
       <View
         style={styles.console}
         collapsable={false}
@@ -285,348 +344,332 @@ export default function App(): React.JSX.Element {
         <FleetConsoleView ref={consoleRef} style={styles.console} onFleetEvent={onFleetEvent} />
       </View>
       {connectionOverlayVisible ? (
-        <View style={[styles.overlay, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-          <View style={styles.overlayStatus} accessible accessibilityRole="summary">
-            <Text style={styles.eyebrow}>FLEET CONSOLE</Text>
-            <Text style={styles.title}>{targetLabel ?? "Mobile access"}</Text>
-            <Text style={styles.message}>{MESSAGES[state]}</Text>
-            {detail ? <Text style={styles.detail}>{detail}</Text> : null}
-            {state === "error" && retryLeft !== null ? (
-              <Text style={styles.countdown}>
-                {retryLeft > 0 ? `You can try again in ${retryLeft}s.` : "You can try again now."}
-              </Text>
+        <View style={[styles.cover, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+          <View style={styles.center} accessible={state !== "error"} accessibilityRole="summary">
+            {overlayName ? (
+              <Monogram
+                text={monogramFor(overlayName)}
+                color={palette.id[toneFor(targetOrigin ?? overlayName)]}
+                ink={palette.bg}
+                size={56}
+                radius={16}
+                fontSize={18}
+              />
             ) : null}
+            <Text style={styles.centerTitle} numberOfLines={2}>{overlayName ?? strings.wordmark}</Text>
+            {state === "connecting" ? (
+              <View style={styles.progressRow}>
+                <StatusGlyph kind="running" palette={palette} still={still} />
+                <Text style={styles.centerText}>{strings.connecting}</Text>
+              </View>
+            ) : null}
+            {state === "waiting" ? <Text style={styles.centerText}>{strings.waiting}</Text> : null}
+            {state === "error" ? (
+              <>
+                <Text style={[styles.centerText, { color: palette.danger }]}>{strings.failed}</Text>
+                <Text style={styles.centerText}>{strings.describe(errorCode ?? undefined)}</Text>
+                <Pill palette={palette} label={retryLabel} disabled={retryBlocked} onPress={retry} />
+                <Pill2 palette={palette} label={strings.allConsoles} onPress={showAllConsoles} />
+              </>
+            ) : (
+              <Pressable accessibilityRole="button" onPress={showAllConsoles} style={styles.textButton}>
+                <Text style={styles.textButtonLabel}>{strings.allConsoles}</Text>
+              </Pressable>
+            )}
           </View>
-          {state === "error" ? (
-            <Pressable
-              accessibilityRole="button"
-              disabled={retryBlocked}
-              onPress={retry}
-              style={({ pressed }) => [styles.button, retryBlocked && styles.buttonDisabled, pressed && !retryBlocked && styles.buttonPressed]}
-            >
-              <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.buttonLabel, retryBlocked && styles.buttonLabelDisabled]}>{retryLabel}</Text>
-            </Pressable>
-          ) : null}
-          <Pressable accessibilityRole="button" onPress={showAllConsoles} style={styles.overlayLanding}>
-            <Text style={styles.overlayLandingLabel}>All consoles</Text>
-          </Pressable>
         </View>
       ) : null}
       {screen === "landing" ? (
-        <View style={styles.landing}>
-          <View style={[styles.landingHead, { paddingTop: 24 + insets.top }]}>
-            <Text style={styles.eyebrow}>FLEET</Text>
-            <Text style={styles.landingTitle}>Consoles</Text>
-            <Text style={styles.landingSub}>Paired consoles stay here. Links open once; pairing survives.</Text>
+        <View style={[styles.cover, { paddingTop: insets.top }]}>
+          <View style={styles.landingHead}>
+            <Text accessibilityRole="header" style={styles.wordmark}>{strings.wordmark}</Text>
+            <Text style={styles.landingSub}>{strings.landingSub}</Text>
           </View>
-          <ScrollView style={styles.deck} contentContainerStyle={[styles.deckContent, { paddingBottom: 120 + insets.bottom }]}>
-            {targets.length === 0 ? (
-              <View style={styles.empty}>
-                <Text style={styles.emptyTitle}>No consoles yet</Text>
-                <Text style={styles.emptyBody}>
-                  Open a Fleet access link on this device, or paste one with Add console.
-                </Text>
-              </View>
-            ) : null}
-            {targets.map((target) => {
-              const failure = lastError[target.origin];
-              const connectedNow = target.active && state === "connected";
-              const pairingLost = failure === "remote_host_not_paired";
-              return (
-                <Pressable
-                  key={target.origin}
-                  accessibilityRole="button"
-                  onPress={() => openConsole(target.origin)}
-                  onLongPress={() => setArmRemove(armRemove === target.origin ? null : target.origin)}
-                  style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-                >
-                  <View style={styles.cardHead}>
-                    <Text style={styles.cardName} numberOfLines={1}>{target.label}</Text>
-                    {connectedNow ? <Text style={[styles.chip, styles.chipConnected]}>Connected</Text> : null}
-                    {!connectedNow && pairingLost ? <Text style={[styles.chip, styles.chipLost]}>Pairing lost</Text> : null}
-                    {!connectedNow && !pairingLost ? <Text style={[styles.chip, styles.chipPaired]}>Paired</Text> : null}
-                  </View>
-                  <Text style={styles.cardAddr} numberOfLines={1}>
-                    {`${target.host}:${target.port} · pin ${target.fingerprint}…`}
-                  </Text>
-                  {pairingLost ? (
-                    <Text style={styles.cardHint}>Open a new access link from this console to pair again.</Text>
-                  ) : null}
-                  {armRemove === target.origin ? (
-                    <View style={styles.removeRow}>
-                      <Pressable accessibilityRole="button" onPress={() => removeConsole(target.origin)} style={styles.removeButton}>
-                        <Text style={styles.removeLabel}>Remove</Text>
-                      </Pressable>
-                      <Pressable accessibilityRole="button" onPress={() => setArmRemove(null)} style={styles.keepButton}>
-                        <Text style={styles.keepLabel}>Keep</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setAddOpen(true)}
-            style={({ pressed }) => [styles.addButton, { bottom: 24 + insets.bottom }, pressed && styles.buttonPressed]}
+          <ScrollView
+            style={styles.deck}
+            contentContainerStyle={[styles.deckContent, { paddingBottom: 100 + insets.bottom }]}
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.addButtonLabel}>+ Add console</Text>
-          </Pressable>
+            {targets.length === 0 ? <Text style={styles.empty}>{strings.empty}</Text> : (
+              <View style={styles.group}>
+                {targets.map((target, index) => (
+                  <ConsoleRow
+                    key={target.origin}
+                    target={target}
+                    first={index === 0}
+                    last={index === targets.length - 1}
+                    connectedNow={target.active && state === "connected"}
+                    pairingLost={lastError[target.origin] === "remote_host_not_paired"}
+                    armed={armRemove === target.origin}
+                    palette={palette}
+                    strings={strings}
+                    styles={styles}
+                    onOpen={openConsole}
+                    onArm={setArmRemove}
+                    onRemove={removeConsole}
+                  />
+                ))}
+              </View>
+            )}
+          </ScrollView>
+          <Pill
+            palette={palette}
+            label={strings.addConsole}
+            icon={<PlusMark color={palette.onInverse} size={18} stroke={2.2} />}
+            onPress={() => { setArmRemove(null); setAddOpen(true); }}
+            style={[styles.fab, { bottom: 18 + insets.bottom }]}
+          />
         </View>
       ) : null}
-      {screen === "scanner" ? (
-        <View style={styles.scanner}>
+      {scanning ? (
+        <View style={[styles.scanner, { paddingTop: insets.top }]}>
           {permission?.granted === true ? (
             <CameraView
-              style={styles.scannerCamera}
+              style={StyleSheet.absoluteFill}
               facing="back"
               barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
               onBarcodeScanned={onBarcodeScanned}
             />
           ) : null}
-          <View style={[styles.scannerChrome, { paddingTop: 24 + insets.top, paddingBottom: 24 + insets.bottom }]}>
-            <Text style={styles.eyebrow}>FLEET</Text>
-            <Text style={styles.scannerTitle}>Scan the console's code</Text>
+          {/* Without camera access the viewfinder keeps its place but draws nothing (impl-spec S-24). */}
+          <View style={styles.viewfinder}>
             {permission?.granted === true ? (
               <>
-                <View style={styles.reticle} />
-                <Text style={styles.scannerHint}>
-                  Point the camera at the QR code in Remote access settings.
-                </Text>
+                <View style={[styles.corner, styles.cornerTopLeft]} />
+                <View style={[styles.corner, styles.cornerTopRight]} />
+                <View style={[styles.corner, styles.cornerBottomLeft]} />
+                <View style={[styles.corner, styles.cornerBottomRight]} />
+              </>
+            ) : null}
+          </View>
+          <Text style={styles.scanCaption}>
+            {permission?.granted === true
+              ? strings.scanCaption
+              : permission?.canAskAgain === false ? strings.cameraOff(Platform.OS === "ios") : strings.cameraAsk}
+          </Text>
+          {scanError ? <Text style={styles.scanError}>{scanError}</Text> : null}
+          <View style={[styles.scanBar, { bottom: 28 + insets.bottom }]}>
+            {permission?.granted === true ? (
+              <>
+                <ScanButton label={strings.cancel} onPress={showAllConsoles} styles={styles} />
+                <ScanButton label={strings.pasteLink} onPress={pasteInstead} styles={styles} />
               </>
             ) : (
-              <Text style={styles.scannerHint}>
-                {permission?.canAskAgain === false
-                  ? `Camera access is turned off for Fleet. Turn it on in ${Platform.OS === "ios" ? "Settings" : "Android settings"}, or paste the link instead.`
-                  : "Fleet needs the camera to read the code. Nothing is recorded or sent anywhere."}
-              </Text>
+              <>
+                {permission?.canAskAgain === false ? null : (
+                  <ScanButton label={strings.allowCamera} inverse onPress={() => { void requestPermission(); }} styles={styles} />
+                )}
+                {/* The paste path never goes away — a denied camera, or a code that will not read, still needs a way in. */}
+                <ScanButton label={strings.pasteLink} onPress={pasteInstead} styles={styles} />
+                <ScanButton label={strings.cancel} onPress={showAllConsoles} styles={styles} />
+              </>
             )}
-            {scanError ? <Text style={styles.detail}>{scanError}</Text> : null}
-            <View style={styles.scannerActions}>
-              {permission?.granted === true || permission?.canAskAgain === false ? null : (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => { void requestPermission(); }}
-                  style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-                >
-                  <Text style={styles.buttonLabel}>Allow camera</Text>
-                </Pressable>
-              )}
-              {/* The paste path never goes away — a denied camera, or a code that will not read, still needs a way in. */}
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => { setScreen("landing"); setAddOpen(true); }}
-                style={styles.keepButton}
-              >
-                <Text style={styles.keepLabel}>Paste a link instead</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={showAllConsoles} style={styles.overlayLanding}>
-                <Text style={styles.overlayLandingLabel}>Cancel</Text>
-              </Pressable>
-            </View>
           </View>
         </View>
       ) : null}
-      <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
-        <View style={styles.sheetScrim}>
-          <Pressable style={styles.sheetScrimTouch} onPress={() => setAddOpen(false)} />
-          <View style={[styles.sheet, { paddingBottom: 24 + insets.bottom }]}>
-            <Text style={styles.sheetTitle}>Add console</Text>
-            <Text style={styles.sheetBody}>
-              Scan the QR code shown in the console's Remote access settings, or paste the link. Links expire in 15 minutes and work once.
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={openScanner}
-              style={({ pressed }) => [styles.scanCta, pressed && styles.buttonPressed]}
-            >
-              <Text style={styles.scanCtaLabel}>Scan QR code</Text>
-            </Pressable>
-            <TextInput
-              accessibilityLabel="Access link"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-              onChangeText={setLinkDraft}
-              onSubmitEditing={submitLink}
-              placeholder="fleet://join?code=…"
-              placeholderTextColor="#6f6c66"
-              style={styles.sheetInput}
-              value={linkDraft}
-            />
-            <View style={styles.sheetRow}>
-              <Pressable accessibilityRole="button" onPress={() => setAddOpen(false)} style={styles.keepButton}>
-                <Text style={styles.keepLabel}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={!linkDraft.trim().toLowerCase().startsWith("fleet://")}
-                onPress={submitLink}
-                style={({ pressed }) => [
-                  styles.button,
-                  styles.sheetAdd,
-                  !linkDraft.trim().toLowerCase().startsWith("fleet://") && styles.buttonDisabled,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Text style={styles.buttonLabel}>Add</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+      <BottomSheet
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title={strings.addConsole}
+        closeLabel={strings.close}
+        palette={palette}
+        insetBottom={insets.bottom}
+        still={still}
+        footer={(
+          <>
+            <Pill2 palette={palette} label={strings.cancel} onPress={() => setAddOpen(false)} />
+            <Pill2 palette={palette} label={strings.add} variant="inverse" disabled={!linkReady} onPress={submitLink} />
+          </>
+        )}
+      >
+        <Text style={styles.sheetLead}>{strings.addLead}</Text>
+        <Pill
+          palette={palette}
+          wide
+          label={strings.scanQr}
+          icon={<QrMark color={palette.onInverse} size={18} stroke={2.2} />}
+          onPress={openScanner}
+        />
+        <TextInput
+          accessibilityLabel={strings.linkLabel}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardAppearance={palette.scheme}
+          onChangeText={setLinkDraft}
+          onSubmitEditing={submitLink}
+          placeholder="fleet://join?…"
+          placeholderTextColor={palette.textMuted}
+          selectionColor={palette.text}
+          style={styles.field}
+          value={linkDraft}
+        />
+      </BottomSheet>
+    </View>
   );
 }
 
-function describe(code: string | undefined): string {
-  switch (code) {
-    case "pairing_target_invalid": return "That access link is not valid.";
-    case "target_missing": return "That console is no longer saved.";
-    case "remote_link_fingerprint_mismatch": return "The Console identity no longer matches this link.";
-    case "remote_link_rejected": return "That access link was already used or was revoked.";
-    case "remote_host_not_paired": return "This device is no longer paired. Open a new access link.";
-    case "remote_link_control_held": return "Another device currently controls this Console.";
-    case "remote_link_device_limit": return "That Console has reached its paired-device limit.";
-    case "remote_link_host_mismatch": return "The Console rejected this address.";
-    case "remote_host_session_expired": return "The session ended. Try again to reconnect.";
-    case "remote_link_throttled": return "Too many attempts reached this Console. It asked to wait before trying again.";
-    case "remote_host_busy": return "The Console is busy pairing other devices. Try again shortly.";
-    case "remote_link_pin_not_observed": return "Fleet could not prove the Console certificate pin for this page.";
-    case "remote_link_unverified": return "The Console certificate did not meet the pinned identity policy.";
-    case "remote_link_redirect_refused": return "The Console tried to redirect the secure connection.";
-    case "remote_link_transport_proof_unavailable": return "Fleet could not prove certificate pins for every page transport, so it refused to connect.";
-    case "remote_host_readiness_unsupported": return "This device's web view cannot provide the authenticated readiness channel Fleet requires.";
-    default: return "Check that the Console is reachable, then try again.";
-  }
+function ScanButton({ label, onPress, inverse, styles }: {
+  readonly label: string;
+  readonly onPress: () => void;
+  readonly inverse?: boolean;
+  readonly styles: ReturnType<typeof paint>;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.scanButton, inverse && styles.scanButtonInverse, pressed && styles.scanButtonPressed]}
+    >
+      <Text style={[styles.scanButtonLabel, inverse && styles.scanButtonInverseLabel]}>{label}</Text>
+    </Pressable>
+  );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#111318" },
-  console: { flex: 1, backgroundColor: "#111318" },
-  overlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 36,
-    backgroundColor: "#111318",
-  },
-  overlayStatus: { alignItems: "center", maxWidth: "100%" },
-  eyebrow: { color: "#a89572", fontSize: 11, fontWeight: "700", letterSpacing: 2.2, marginBottom: 14 },
-  title: { color: "#f1eee8", fontSize: 29, fontWeight: "600", letterSpacing: -0.5, textAlign: "center" },
-  message: { color: "#b9b5ae", fontSize: 16, lineHeight: 24, marginTop: 16, maxWidth: 360, textAlign: "center" },
-  detail: { color: "#e6aa87", fontSize: 14, lineHeight: 21, marginTop: 10, maxWidth: 360, textAlign: "center" },
-  countdown: { color: "#b9b5ae", fontSize: 13, lineHeight: 20, marginTop: 8, textAlign: "center" },
-  button: { backgroundColor: "#d3b578", borderRadius: 8, marginTop: 24, paddingHorizontal: 22, paddingVertical: 12, maxWidth: "100%" },
-  buttonPressed: { opacity: 0.75 },
-  buttonDisabled: { backgroundColor: "#3a3d45" },
-  buttonLabel: { color: "#17140e", fontSize: 15, fontWeight: "700" },
-  buttonLabelDisabled: { color: "#8b8880" },
-  overlayLanding: { marginTop: 28, paddingHorizontal: 14, paddingVertical: 8 },
-  overlayLandingLabel: { color: "#a89572", fontSize: 13, fontWeight: "600", letterSpacing: 0.4 },
-  landing: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "#111318",
-  },
-  landingHead: { paddingHorizontal: 24, paddingBottom: 8 },
-  landingTitle: { color: "#f1eee8", fontSize: 30, fontWeight: "600", letterSpacing: -0.5 },
-  landingSub: { color: "#8b8880", fontSize: 13, lineHeight: 19, marginTop: 4 },
-  deck: { flex: 1 },
-  deckContent: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 120, gap: 10 },
-  empty: { alignItems: "center", paddingTop: 80, paddingHorizontal: 24 },
-  emptyTitle: { color: "#d9d5cd", fontSize: 17, fontWeight: "600" },
-  emptyBody: { color: "#8b8880", fontSize: 14, lineHeight: 21, marginTop: 8, textAlign: "center" },
-  card: {
-    backgroundColor: "#1c1f26",
-    borderColor: "#2b2e36",
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-  },
-  cardPressed: { borderColor: "#d3b578" },
-  cardHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  cardName: { color: "#f1eee8", fontSize: 15, fontWeight: "600", flexShrink: 1 },
-  cardAddr: { color: "#8b8880", fontSize: 12, marginTop: 4, fontVariant: ["tabular-nums"] },
-  cardHint: { color: "#e6aa87", fontSize: 12, lineHeight: 18, marginTop: 8 },
-  chip: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, overflow: "hidden" },
-  chipConnected: { color: "#8fd8d2", backgroundColor: "#8fd8d226" },
-  chipPaired: { color: "#b9b5ae", backgroundColor: "#2b2e36" },
-  chipLost: { color: "#e6aa87", backgroundColor: "#e6aa8726" },
-  removeRow: { flexDirection: "row", gap: 10, marginTop: 12 },
-  removeButton: { backgroundColor: "#e6aa8726", borderRadius: 8, paddingHorizontal: 16, paddingVertical: 9 },
-  removeLabel: { color: "#e6aa87", fontSize: 13, fontWeight: "700" },
-  keepButton: { borderColor: "#3a3d45", borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 9 },
-  keepLabel: { color: "#b9b5ae", fontSize: 13, fontWeight: "600" },
-  addButton: {
-    position: "absolute",
-    bottom: 28,
-    alignSelf: "center",
-    backgroundColor: "#d3b578",
-    borderRadius: 999,
-    paddingHorizontal: 24,
-    paddingVertical: 13,
-  },
-  addButtonLabel: { color: "#17140e", fontSize: 14, fontWeight: "700" },
-  sheetScrim: { flex: 1, justifyContent: "flex-end", backgroundColor: "#0009" },
-  sheetScrimTouch: { flex: 1 },
-  sheet: {
-    backgroundColor: "#1c1f26",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 20,
-    paddingBottom: 28,
-  },
-  sheetTitle: { color: "#f1eee8", fontSize: 17, fontWeight: "600" },
-  sheetBody: { color: "#8b8880", fontSize: 13, lineHeight: 19, marginTop: 6 },
-  sheetInput: {
-    backgroundColor: "#111318",
-    borderColor: "#3a3d45",
-    borderWidth: 1,
-    borderRadius: 10,
-    color: "#f1eee8",
-    fontSize: 13,
-    marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  sheetRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 16 },
-  sheetAdd: { marginTop: 0 },
-  scanCta: {
-    alignItems: "center",
-    backgroundColor: "#d3b578",
-    borderRadius: 10,
-    marginTop: 14,
-    paddingVertical: 12,
-  },
-  scanCtaLabel: { color: "#17140e", fontSize: 15, fontWeight: "700" },
-  scanner: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "#111318" },
-  scannerCamera: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
-  scannerChrome: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-    // The camera keeps showing through; the scrim only makes the copy legible over it.
-    backgroundColor: "#111318b8",
-  },
-  scannerTitle: { color: "#f1eee8", fontSize: 22, fontWeight: "600", letterSpacing: -0.3, textAlign: "center" },
-  scannerHint: { color: "#b9b5ae", fontSize: 14, lineHeight: 21, marginTop: 14, maxWidth: 340, textAlign: "center" },
-  reticle: {
-    borderColor: "#d3b578",
-    borderRadius: 16,
-    borderWidth: 2,
-    height: 220,
-    marginTop: 24,
-    width: 220,
-  },
-  scannerActions: { alignItems: "center", marginTop: 26 },
-});
+function ConsoleRow({ target, first, last, connectedNow, pairingLost, armed, palette, strings, styles, onOpen, onArm, onRemove }: {
+  readonly target: FleetConsoleTarget;
+  readonly first: boolean;
+  readonly last: boolean;
+  readonly connectedNow: boolean;
+  readonly pairingLost: boolean;
+  readonly armed: boolean;
+  readonly palette: Palette;
+  readonly strings: ReturnType<typeof shellStrings>;
+  readonly styles: ReturnType<typeof paint>;
+  readonly onOpen: (origin: string) => void;
+  readonly onArm: (origin: string | null) => void;
+  readonly onRemove: (origin: string) => void;
+}): React.JSX.Element {
+  // The whole row takes the pressed face, as the web group row does, not just the tappable part.
+  const [pressed, setPressed] = useState(false);
+  return (
+    <View style={[styles.row, first && styles.rowFirst, last && styles.rowLast, pressed && styles.rowPressed]}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => onOpen(target.origin)}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        style={styles.rowMain}
+      >
+        <Monogram
+          text={monogramFor(target.label)}
+          color={palette.id[toneFor(target.origin)]}
+          ink={palette.bg}
+          size={36}
+          radius={18}
+          fontSize={11}
+        />
+        <View style={styles.rowText}>
+          <Text style={styles.rowName} numberOfLines={1}>{target.label}</Text>
+          <Text style={styles.rowAddress} numberOfLines={1}>
+            {`${target.host}:${target.port}`}
+            {/* The pin prefix stays visible: it is how the owner tells two consoles at one address apart. */}
+            <Text style={styles.rowPin}>{` · pin ${target.fingerprint}…`}</Text>
+          </Text>
+          {pairingLost ? <Text style={styles.rowHint}>{strings.lostHint}</Text> : null}
+        </View>
+      </Pressable>
+      {armed ? (
+        <View style={styles.rowActions}>
+          <Pill2 palette={palette} label={strings.remove} variant="danger" onPress={() => onRemove(target.origin)} />
+          <Pill2 palette={palette} label={strings.keep} onPress={() => onArm(null)} />
+        </View>
+      ) : (
+        <View style={styles.rowActions}>
+          <View style={styles.chip}>
+            {connectedNow ? <StatusGlyph kind="idle" palette={palette} still /> : null}
+            <Text style={[styles.chipLabel, pairingLost && !connectedNow && { color: palette.danger }]}>
+              {connectedNow ? strings.chipConnected : pairingLost ? strings.chipLost : strings.chipPaired}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={strings.menuFor(target.label)}
+            onPress={() => onArm(target.origin)}
+            style={({ pressed }) => [styles.kebab, pressed && styles.rowPressed]}
+          >
+            <KebabMark color={palette.text} />
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function paint(p: Palette) {
+  return StyleSheet.create({
+    root: { flex: 1 },
+    console: { flex: 1, backgroundColor: p.bg },
+    cover: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: p.bg },
+    center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 36 },
+    centerTitle: { color: p.text, fontSize: 18, lineHeight: 24, fontWeight: "600", textAlign: "center" },
+    centerText: { color: p.textMuted, fontSize: 15, lineHeight: 22, textAlign: "center", flexShrink: 1 },
+    progressRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    textButton: { paddingHorizontal: 14, paddingVertical: 8 },
+    textButtonLabel: { color: p.textMuted, fontSize: 15, fontWeight: "500" },
+    landingHead: { paddingTop: 28, paddingHorizontal: 28, paddingBottom: 10 },
+    wordmark: { color: p.text, fontFamily: WORDMARK_FONT, fontSize: 30, lineHeight: 36, fontWeight: "500", letterSpacing: -0.3 },
+    landingSub: { color: p.textMuted, fontSize: 15, lineHeight: 21, marginTop: 4 },
+    deck: { flex: 1 },
+    deckContent: { paddingTop: 8, paddingHorizontal: 14, gap: 10 },
+    empty: { color: p.textMuted, fontSize: 14, lineHeight: 20, paddingTop: 4, paddingHorizontal: 28, paddingBottom: 8 },
+    group: { gap: 2 },
+    row: {
+      backgroundColor: p.surface,
+      minHeight: 72,
+      borderRadius: 4,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingRight: 16,
+    },
+    rowFirst: { borderTopLeftRadius: 22, borderTopRightRadius: 22 },
+    rowLast: { borderBottomLeftRadius: 22, borderBottomRightRadius: 22 },
+    rowMain: {
+      flex: 1,
+      minWidth: 0,
+      alignSelf: "stretch",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 10,
+      paddingLeft: 16,
+    },
+    rowPressed: { backgroundColor: p.selected },
+    rowText: { flex: 1, minWidth: 0 },
+    rowName: { color: p.text, fontSize: 17, lineHeight: 24 },
+    rowAddress: { color: p.textMuted, fontSize: 15, lineHeight: 21, marginTop: 1, fontVariant: ["tabular-nums"] },
+    rowPin: { fontSize: 13 },
+    rowHint: { color: p.danger, fontSize: 13, lineHeight: 18, marginTop: 1 },
+    rowActions: { flexDirection: "row", alignItems: "center", gap: 12 },
+    chip: { height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: p.chip, flexDirection: "row", alignItems: "center", gap: 6 },
+    chipLabel: { color: p.text, fontSize: 13, lineHeight: 18 },
+    kebab: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+    fab: { position: "absolute", right: 16 },
+    sheetLead: { color: p.textMuted, fontSize: 15, lineHeight: 21, paddingHorizontal: 4, marginBottom: 6 },
+    field: {
+      backgroundColor: p.field,
+      borderColor: p.hairlineStrong,
+      borderWidth: 1,
+      borderRadius: 14,
+      color: p.text,
+      fontSize: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    scanner: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: SCANNER.bg, alignItems: "center" },
+    viewfinder: { width: 240, height: 240, marginTop: 190 },
+    corner: { position: "absolute", width: 36, height: 36, borderColor: SCANNER.ink },
+    cornerTopLeft: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 24 },
+    cornerTopRight: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 24 },
+    cornerBottomLeft: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 24 },
+    cornerBottomRight: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 24 },
+    scanCaption: { color: SCANNER.caption, fontSize: 15, lineHeight: 21, marginTop: 28, paddingHorizontal: 32, textAlign: "center" },
+    scanError: { color: SCANNER.danger, fontSize: 14, lineHeight: 20, marginTop: 8, paddingHorizontal: 32, textAlign: "center" },
+    scanBar: { position: "absolute", left: 16, right: 16, flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 10 },
+    scanButton: { height: 44, paddingHorizontal: 18, borderRadius: 22, backgroundColor: SCANNER.button, alignItems: "center", justifyContent: "center" },
+    scanButtonPressed: { opacity: 0.75 },
+    scanButtonLabel: { color: SCANNER.ink, fontSize: 15 },
+    scanButtonInverse: { backgroundColor: SCANNER.ink },
+    scanButtonInverseLabel: { color: SCANNER.inverseInk, fontWeight: "600" },
+  });
+}

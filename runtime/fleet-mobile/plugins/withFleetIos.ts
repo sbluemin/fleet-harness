@@ -169,6 +169,10 @@ export const withFleetIos: ConfigPlugin = (config) => {
     plist.NSLocalNetworkUsageDescription =
       "Fleet connects to the Console running on your local network.";
 
+    // The shell's own screens ship a Korean edition. iOS gives an app the device language only
+    // when the bundle declares it; without this a Korean device still resolves to English.
+    plist.CFBundleLocalizations = ["en", "ko"];
+
     // 수출 규정 준수 선언. Fleet의 암호화는 전부 OS가 제공하는 표준 TLS다 — 원격은
     // Network.framework, 로컬 게이트웨이는 Security.framework의 P-256 키와 자체서명 인증서,
     // WebView는 WKWebView. 독자 암호화 알고리즘은 없으므로 5D992 면제에 해당한다.

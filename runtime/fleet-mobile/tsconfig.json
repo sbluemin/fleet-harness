@@ -4,5 +4,5 @@
     "strict": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["App.tsx", "index.ts", "modules/**/*.ts", "modules/**/*.tsx"]
+  "include": ["App.tsx", "index.ts", "shell/**/*.ts", "shell/**/*.tsx", "modules/**/*.ts", "modules/**/*.tsx"]
 }
