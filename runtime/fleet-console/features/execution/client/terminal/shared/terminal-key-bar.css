@@ -138,9 +138,10 @@
   font-weight: var(--weight-bold);
 }
 
+/* 누름은 S-52 R3(mobile-press.css의 글자색 12% 겹침) — 데스크톱 brass 누름 면이 넘어오지 않게 제 면을 지킨다. */
 .terminal-key-bar.is-mobile .terminal-key:active,
 .terminal-confirm-row .terminal-key:active {
-  background: var(--m-selected);
+  background: var(--m-chip);
   color: var(--m-text);
 }
 

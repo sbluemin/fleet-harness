@@ -27,6 +27,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import "../styles/theme.css";
+import "../styles/mobile-press.css";
 import "../styles/layout.css";
 import "../styles/components.css";
 import "../../../../features/settings/client/settings-pane.css";

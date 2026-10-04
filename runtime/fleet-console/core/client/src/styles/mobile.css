@@ -596,18 +596,7 @@
   border-radius: 22px;
 }
 
-.mobile-bar-button:active { background: var(--m-selected); }
-.mobile-bar-button:focus-visible,
-.mobile-drawer-dest:focus-visible,
-.mobile-drawer-row:focus-visible,
-.mobile-theater-switch:focus-visible,
-.mobile-sheet-row:focus-visible,
-.mobile-group-row:focus-visible,
-.mobile-menu button:focus-visible {
-  outline: 2px solid var(--m-text);
-  outline-offset: -2px;
-  border-radius: 8px;
-}
+/* 누름·키보드 포커스는 S-52 누름 문법(mobile-press.css)이 모양별로 맡는다. */
 
 .mobile-top-bar-title {
   flex: 1;
@@ -701,7 +690,6 @@
 }
 
 .mobile-menu button svg { flex: none; width: 20px; height: 20px; color: var(--m-text-muted); }
-.mobile-menu button:active { background: var(--m-selected); }
 .mobile-menu button:disabled { opacity: 0.5; }
 .mobile-menu .is-destructive,
 .mobile-menu .is-destructive svg { color: var(--m-danger); }
@@ -749,9 +737,7 @@
   transition: background 150ms ease-out;
 }
 .mobile-choice-row.has-description { min-height: 64px; }
-.mobile-choice-row:active { background: var(--m-selected); transition: none; }
 .mobile-choice-row:disabled { opacity: 0.45; }
-.mobile-choice-row:focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; }
 .mobile-choice-icon { display: inline-flex; flex: none; width: 22px; height: 22px; color: var(--m-text-muted); }
 .mobile-choice-icon svg { width: 22px; height: 22px; }
 .mobile-choice-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
@@ -883,7 +869,6 @@
   border: 0;
   border-radius: 12px;
 }
-.mobile-theater-switch:active { background: var(--m-selected); }
 .mobile-theater-switch:disabled { opacity: 0.6; }
 .mobile-theater-switch-copy { display: flex; flex-direction: column; min-width: 0; }
 .mobile-theater-switch-copy strong { overflow: hidden; font-size: var(--t-base); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
@@ -927,7 +912,6 @@
   background: transparent;
   border: 0;
 }
-.mobile-drawer-dest:active,
 .mobile-drawer-dest.is-current { background: var(--m-selected); border-radius: 12px; }
 .mobile-drawer-dest.is-current { width: calc(100% - 24px); margin: 0 12px; padding-left: 16px; }
 .mobile-drawer-dest-icon { display: grid; place-items: center; flex: none; width: 22px; height: 22px; }
@@ -971,7 +955,6 @@
   border-radius: 12px;
 }
 .mobile-drawer-row.is-tall { min-height: 60px; }
-.mobile-drawer-row:active,
 .mobile-drawer-row.is-current { background: var(--m-selected); }
 .mobile-drawer-row-glyph { display: grid; place-items: center; flex: none; width: 24px; }
 .mobile-drawer-row-copy { flex: 1; min-width: 0; }
@@ -1105,7 +1088,6 @@
   border: 0;
   border-radius: 12px;
 }
-.mobile-sheet-row:active { background: var(--m-selected); }
 .mobile-sheet-row:disabled { opacity: 0.5; }
 .mobile-sheet-row-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .mobile-sheet-row-copy strong { font-weight: var(--weight-regular); }

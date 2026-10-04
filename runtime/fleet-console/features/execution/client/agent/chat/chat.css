@@ -4662,13 +4662,6 @@
   color: inherit;
 }
 
-.agent-chat-answer-action:active { background: var(--m-selected); }
-
-.agent-chat-answer-action:focus-visible {
-  outline: 2px solid var(--m-text);
-  outline-offset: -2px;
-}
-
 /* 끝 안내(D22) — 대화 맨 아래 한 줄, 13 faint. */
 .agent-chat-end-note {
   margin: 0;
@@ -4889,8 +4882,6 @@
   font-size: var(--m-fs-secondary);
   text-align: left;
 }
-
-[data-mobile-surface] .agent-chat-ask-option:active { background: var(--m-selected); }
 
 [data-mobile-surface] .agent-chat-ask-option[aria-pressed="true"] {
   background: none;

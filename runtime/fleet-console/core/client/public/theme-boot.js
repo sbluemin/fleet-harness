@@ -4,6 +4,10 @@
 (() => {
   migrateLegacyGlassOff();
   stampMobileAppearance();
+  // iOS Safari·WKWebView는 문서에 touchstart 리스너가 없으면 :active를 걸지 않는다 — 모바일 누름 문법
+  // (S-52 PR-0d, mobile-press.css)이 손가락이 닿는 순간 회색 면을 보이게 하는 빈 passive 리스너다.
+  // 마우스·데스크톱 Electron에는 터치가 없어 아무 일도 하지 않는다.
+  document.addEventListener("touchstart", () => {}, { passive: true });
   // 서버 주입이 권위값 — 힌트는 미주입 서빙 경로 폴백 전용이다.
   if (document.documentElement.getAttribute("data-theme-source") === "server") return;
   try {
