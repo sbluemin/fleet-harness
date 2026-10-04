@@ -5,7 +5,7 @@ import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
-import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
+import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -212,7 +212,7 @@ const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clus
 
 /**
  * 보드 줄의 관측 — 호스트 런타임 맵에서 온 요약 활동. 휴면(ended)은 수명주기 dormant 로 넘기고, 목록에 없는 Operation 은
- * 관측 없음(null)이라 정체로 세지 않는다. 지휘관은 구성원을 끌어올리기 전 자기 활동으로 본다(서버 관측과 같은 축).
+ * 보관 describe 요약이 있어도 관측 없음(null)이라 정체로 세지 않는다. 지휘관은 구성원을 끌어올리기 전 자기 활동으로 본다(서버 관측과 같은 축).
  */
 const observationOf = (summary: ConsoleOperationSummary): BoardObservation => {
   const activity = summary.ownActivity ?? summary.activity;
@@ -250,7 +250,8 @@ export const objectivesClusterSource: OperationClusterSource = {
     const inputs = [summaries, surfaceOpen, theaterId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), ...theaterStates];
     if (inputs.length === cachedInputs.length && inputs.every((input, index) => input === cachedInputs[index])) return cached;
     const activity = new Map(summaries.map((summary) => [summary.id, summary.activity]));
-    const observations = new Map(summaries.map((summary) => [summary.id, observationOf(summary)]));
+    // 보관(describe) 요약은 화면에선 휴면으로 서지만 관측이 아니다 — 서버처럼 관측 없음(null)으로 두어 정체로 세지 않는다.
+    const observations = new Map(listedOperationSummaries().map((summary) => [summary.id, observationOf(summary)]));
     const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (operationId) => observations.get(operationId) ?? null : () => null, now);
     const nextSignature = signature(next);
     cachedInputs = inputs;
