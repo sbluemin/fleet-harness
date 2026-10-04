@@ -82,7 +82,8 @@
 .objectives-cm-comp-input::placeholder { color: var(--m-text-muted); }
 .objectives-cm-comp-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .objectives-cm .objectives-cm-circ { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--m-inverse); color: var(--m-on-inverse); }
-.objectives-cm .objectives-cm-circ:disabled { opacity: .45; }
+/* 보내는 중에만 원이 물러난다(FD-19). 자율 운영이 꺼져 입력창 전체가 .55로 흐릴 때는 한 번만 흐린다 — 겹쳐 곱하지 않는다. */
+.objectives-cm .objectives-cm-comp:not(.is-off) .objectives-cm-circ:disabled { opacity: .45; }
 .objectives-cm-circ svg { width: 20px; height: 20px; }
 
 /* 상태 화면 — 불러오는 중 · 빈 기록 · 실험 기능 꺼짐. */
