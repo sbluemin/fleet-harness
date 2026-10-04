@@ -193,6 +193,9 @@ function useTheaterSheetPluginRows(theaterId: string | null): readonly TheaterSh
 function ForgetSheet({ state, theaterId, onDeferredDeletion }: { readonly state: ConsoleState; readonly theaterId: string; readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void }) {
   const t = useT();
   const theater = state.theaters.find((item) => item.id === theaterId);
+  // 빼는 동안 Theater는 목록에서 먼저 사라진다 — 시트가 닫히기 전에 본문 이름이 비지 않게 마지막으로 본 이름을 붙든다.
+  const labelRef = useRef(theater?.label ?? "");
+  if (theater) labelRef.current = theater.label;
   const [busy, setBusy] = useState(false);
   const confirm = () => {
     if (busy) return;
@@ -208,7 +211,7 @@ function ForgetSheet({ state, theaterId, onDeferredDeletion }: { readonly state:
         <button type="button" className="mobile-pill-secondary is-danger" disabled={busy} onClick={confirm}>{t("mobile.sheet.forget.confirm")}</button>
       </>}
     >
-      <p className="mobile-sheet-lead">{t("mobile.sheet.forget.body", { name: theater?.label ?? "" })}</p>
+      <p className="mobile-sheet-lead">{t("mobile.sheet.forget.body", { name: labelRef.current })}</p>
     </MobileSheet>
   );
 }
