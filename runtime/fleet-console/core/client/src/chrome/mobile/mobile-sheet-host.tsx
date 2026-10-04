@@ -4,6 +4,7 @@ import { resolveOperationActivity } from "../../../../../features/execution/clie
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import { useT } from "../../i18n/index.js";
+import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { setActiveTheater } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import type { ConsoleState } from "../../integration/types.js";
@@ -38,6 +39,7 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
   const top = stack.at(-1);
   if (!top) return null;
   if (top.kind === "rename") return <RenameSheet key={top.operationId} state={state} operationId={top.operationId} />;
+  if (top.kind === "console") return <ConsoleSheet />;
   if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void registerTheaterFromPath(path); }} />;
   if (top.kind === "forget") return <ForgetSheet key={top.theaterId} state={state} theaterId={top.theaterId} onDeferredDeletion={onDeferredDeletion} />;
   return <TheaterSheet state={state} />;
@@ -136,6 +138,22 @@ function ForgetSheet({ state, theaterId, onDeferredDeletion }: { readonly state:
       </>}
     >
       <p className="mobile-sheet-lead">{t("mobile.sheet.forget.body", { name: theater?.label ?? "" })}</p>
+    </MobileSheet>
+  );
+}
+
+/** S-18 (브라우저, D12) — 이 Console 한 줄만. 다른 Console의 이름·주소·상태는 이 페이지에 오지 않는다. 앱에서는 네이티브가 같은 모양의 시트를 직접 띄운다. */
+function ConsoleSheet() {
+  const t = useT();
+  const appearance = useMobileAppearance();
+  const name = appearance.console?.label ?? "Fleet";
+  return (
+    <MobileSheet title={t("mobile.sheet.console.title")} onClose={popMobileSheet}>
+      <div className="mobile-sheet-row" aria-current="true">
+        <MobileMonogram label={name} toneKey={name} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? null} round size={36} />
+        <span className="mobile-sheet-row-copy"><strong>{name}</strong><small>{t("mobile.sheet.console.connected")}</small></span>
+        <MobileIcon name="check" className="mobile-sheet-check" />
+      </div>
     </MobileSheet>
   );
 }

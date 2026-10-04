@@ -92,6 +92,7 @@ export function setMobileDrawerOpen(next: boolean): void {
 export type MobileSheetKind =
   | { readonly kind: "theater" }
   | { readonly kind: "folder" }
+  | { readonly kind: "console" }
   | { readonly kind: "forget"; readonly theaterId: string }
   | { readonly kind: "rename"; readonly operationId: string };
 

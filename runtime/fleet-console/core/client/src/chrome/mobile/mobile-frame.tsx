@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 
+import { reportMobileChrome } from "../../integration/mobile-appearance-store.js";
 import { useConsoleLocale } from "../../i18n/index.js";
 import { focusOperation } from "../../integration/store.js";
 import type { ConsoleState } from "../../integration/types.js";
@@ -15,7 +16,7 @@ import { MobileToastHost } from "./mobile-toast.js";
 import { MobileSheetHost } from "./mobile-sheet-host.js";
 import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileHistory } from "./mobile-history.js";
-import { getMobileDrawerOpen, getMobileDestination, useMobileDestination, registerMobileDestinationEntries, setMobileDestination, setMobileDrawerOpen } from "./mobile-store.js";
+import { getMobileDrawerOpen, getMobileDestination, useMobileDestination, useMobileDrawerOpen, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, setMobileDrawerOpen } from "./mobile-store.js";
 import "../../styles/mobile.css";
 
 /**
@@ -50,6 +51,13 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
     setMobileDrawerOpen(true);
   };
   useEffect(() => installMobileHistory(() => homeRef.current()), []);
+
+  // 시스템 바 색(S-03): 드로어가 열리면 위·아래가 드로어 면, 시트가 열리면 아래가 시트 면. 앱이면 네이티브가 칠하고 브라우저는 무시한다.
+  const drawerOpen = useMobileDrawerOpen();
+  const sheetOpen = useMobileSheetStack().length > 0;
+  useEffect(() => {
+    reportMobileChrome(drawerOpen ? "bg-deep" : "bg", sheetOpen ? "surface" : drawerOpen ? "bg-deep" : "bg");
+  }, [drawerOpen, sheetOpen]);
 
   const openOperation = (operationId: string) => {
     setMobileDestination({ kind: "home" });

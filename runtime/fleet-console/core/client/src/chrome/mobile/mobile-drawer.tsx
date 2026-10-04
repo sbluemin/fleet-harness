@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { resolveOperationActivity, resolveOperationMarkVisual, type OperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
+import { openConsoleSwitcher, useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { openArchiveSheet } from "../../integration/operation-archive.js";
 import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -153,6 +154,8 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
   const bindings = useRailEntries();
   const destination = useMobileDestination();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
+  const appearance = useMobileAppearance();
+  const consoleName = appearance.console?.label ?? "Fleet";
   const theater = state.theaters.find((item) => item.id === state.activeTheaterId) ?? null;
   const path = location.pathname.replace(/\/+$/, "");
 
@@ -242,7 +245,10 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
         ))}
       </div>
       <div className="mobile-drawer-foot">
-        <span className="mobile-avatar" aria-label={t("mobile.drawer.console")}><MobileMonogram label="Fleet" toneKey="fleet-console" round size={44} /></span>
+        <button type="button" className="mobile-avatar" aria-label={t("mobile.drawer.consoleSwitch", { name: consoleName })} onClick={() => { if (!openConsoleSwitcher()) pushMobileSheet({ kind: "console" }); }}>
+          <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? null} round size={44} />
+          {state.connection !== "live" ? <span className="mobile-avatar-dot" data-state={state.connection === "offline" ? "failed" : "reconnecting"} aria-hidden="true" /> : null}
+        </button>
         <button type="button" className="mobile-pill" onClick={() => go(openQuickLaunch)}><MobileIcon name="plus" size={18} />{t("mobile.drawer.newOperation")}</button>
       </div>
     </>

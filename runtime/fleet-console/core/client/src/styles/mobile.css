@@ -1192,3 +1192,9 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-toast-host .app-toast-body { flex: 1; }
 .mobile-toast-host .app-toast-title { margin: 0; font-size: var(--t-md); font-weight: var(--weight-regular); }
 .mobile-toast-host .app-toast-action { padding: 8px; color: var(--m-text); font-size: var(--t-md); font-weight: var(--weight-bold); background: transparent; border: 0; }
+
+.mobile-avatar { padding: 0; background: transparent; border: 0; border-radius: 50%; }
+.mobile-avatar:focus-visible { outline: 2px solid var(--m-text); outline-offset: 2px; }
+.mobile-avatar { position: relative; }
+.mobile-avatar-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; background: var(--m-running); border: 2px solid var(--m-bg-deep); border-radius: 50%; }
+.mobile-avatar-dot[data-state="failed"] { background: var(--m-danger); }
