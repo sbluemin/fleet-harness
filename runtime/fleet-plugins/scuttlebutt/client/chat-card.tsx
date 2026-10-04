@@ -136,9 +136,11 @@ export function ChatCard({
   // 포커스는 카드가 열릴 때(그리고 다른 부관으로 바뀔 때, 자리를 옮길 때) 준다. 재배치 신호에
   // 묶어 두면 부관 크기 조절처럼 카드 밖에서 일어난 사건이 사용자가 잡고 있던 포커스를 빼앗는다.
   // 자리를 옮기면 눌렀던 헤더 아이콘이 사라져 포커스가 문서로 떨어진다 — 그러면 Escape가 닿지 않는다.
+  // 첫 배치 전의 카드는 visibility: hidden이라 focus()가 조용히 실패한다 — 자리가 처음 정해질 때 다시 준다.
+  const placed = placement !== null;
   React.useLayoutEffect(() => {
-    if (!embedded) inputRef.current?.focus();
-  }, [admiral, docked, embedded]);
+    if (!embedded && placed) inputRef.current?.focus();
+  }, [admiral, docked, embedded, placed]);
 
   React.useLayoutEffect(() => {
     position();
@@ -267,6 +269,9 @@ export function ChatCard({
       style={embedded ? undefined : style}
       role={embedded ? "region" : "dialog"}
       aria-label={t(`chat.label.${admiral}`)}
+      // 레인 안의 카드에는 자기 입력이 없다(입력은 호스트 컴포저) — 지우기처럼 누른 조작이 사라질 때
+      // 포커스를 받아 둘 자리다. 여기 남은 포커스는 Escape를 호스트 카드의 처리기까지 올려 보낸다.
+      tabIndex={embedded ? -1 : undefined}
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         if (embedded && !menuOpen) return;
@@ -324,7 +329,12 @@ export function ChatCard({
             hint={t("action.clear.hint")}
             icon={<ClearIcon />}
             disabled={busy}
-            onClick={onClear}
+            onClick={() => {
+              // 지우면 이 버튼 자신이 사라져 포커스가 문서로 떨어진다 — 그러면 Escape가 카드(레인이면
+              // 퀵런치)에 닿지 않는다. 떠 있는 카드는 입력으로, 입력이 없는 레인은 카드 자신으로 되돌린다.
+              onClear();
+              (embedded ? cardRef.current : inputRef.current)?.focus();
+            }}
           />
         ) : null}
         {/* AI 확장은 이 부관 자신의 ··· 메뉴에서 켠다 — Operation 메뉴의 「AI 확장」 섹션과 같은 행,
