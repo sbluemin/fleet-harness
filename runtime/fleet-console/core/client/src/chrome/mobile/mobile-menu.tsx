@@ -41,14 +41,17 @@ export function MobileMenu({ caption, items, label, onClose }: {
         {ordered.map((item) => (
           <button
             type="button"
-            role="menuitem"
+            role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+            aria-checked={item.checked}
             key={item.id}
             className={item.destructive ? "is-destructive" : undefined}
             disabled={item.disabled}
-            onClick={() => close(item.run)}
+            // 스위치 행은 메뉴를 닫지 않고 토글만 한다 — 바뀐 상태는 항목이 다시 올라오며 그려진다.
+            onClick={() => (item.checked === undefined ? close(item.run) : item.run())}
           >
             {item.icon ?? null}
             <span>{item.label}</span>
+            {item.checked === undefined ? null : <span className={`mobile-switch${item.checked ? " is-on" : ""}`} aria-hidden="true" />}
           </button>
         ))}
       </div>

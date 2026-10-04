@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { ClientMobileOperationCapability, ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getIdleArrivalIds } from "../../../../../features/execution/client/operation-marks.js";
 import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
@@ -12,7 +12,7 @@ import type { OperationGeometry, OperationNode } from "../../integration/types.j
 import { openQuickLaunch } from "../../integration/store.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
-import { pushMobileSheet, useMobileBarExtraSlot } from "./mobile-store.js";
+import { pushMobileSheet, setMobileOperationMenu, useMobileBarExtraSlot, useMobileOperationMenu } from "./mobile-store.js";
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
 
 /**
@@ -56,8 +56,16 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
     onClose();
   };
 
+  // 본문이 ⋮에 끼운 항목(보기 전환·계속 허용 …)과 호스트 시트 문법의 확인 — 이 Operation 한 개 몫으로 정체를 고정한다.
+  const bodyItems = useMobileOperationMenu(operation.id);
+  const mobileOperation = useMemo<ClientMobileOperationCapability>(() => ({
+    setMenuItems: (items) => setMobileOperationMenu(operation.id, items),
+    confirm: (spec) => new Promise<boolean>((resolve) => pushMobileSheet({ kind: "confirm", spec, resolve })),
+  }), [operation.id]);
+
   const config: OperationBodyConfig = {
     active,
+    mobileOperation,
     geometry,
     operation,
     runtimeState,
@@ -79,6 +87,7 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
   // 채팅 뷰로 들어간 세션이 터미널로 돌아갈 문을 잃는다(본문에는 더 이상 그 칩이 없다).
   const descriptor = operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
   const captionActions = descriptor?.captionActions?.({
+    mobileOperation,
     operationId: operation.id,
     theaterId: operation.theaterId,
     pluginId: operation.pluginId,
@@ -130,8 +139,10 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
     menu: {
       label: t("mobile.bar.operationMenu"),
       caption: title,
+      // 순서: 이름 변경, 본문이 끼운 항목들, 보관.
       items: [
         { id: "rename", icon: <MobileIcon name="pencil" size={20} />, label: t("mobile.menu.rename"), run: () => pushMobileSheet({ kind: "rename", operationId: operation.id }) },
+        ...bodyItems,
         { id: "archive", icon: <MobileIcon name="archive" size={20} />, label: t("mobile.menu.archive"), run: archive },
       ],
     },

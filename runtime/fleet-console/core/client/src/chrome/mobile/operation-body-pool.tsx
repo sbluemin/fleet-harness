@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRe
 import { createPortal } from "react-dom";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { ClientMobileOperationCapability, ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import { useT } from "../../i18n/index.js";
@@ -27,6 +27,8 @@ export interface OperationBodyConfig {
   readonly companionsOpen?: boolean;
   readonly hiddenCompanionPanelIds?: readonly string[];
   readonly onSetCompanionPanelVisible?: (companionPanelId: string, visible: boolean) => void;
+  /** 모바일 Operation 화면이 실어 주는 ⋮ 창구. 없으면 본문은 모바일 ⋮이 없는 호스트로 읽는다. */
+  readonly mobileOperation?: ClientMobileOperationCapability;
 }
 
 interface PoolRegistry {
@@ -178,6 +180,7 @@ function sameBodyConfig(previous: OperationBodyConfig | undefined, next: Operati
     && previous.companionsOpen === next.companionsOpen
     && previous.hiddenCompanionPanelIds === next.hiddenCompanionPanelIds
     && previous.onSetCompanionPanelVisible === next.onSetCompanionPanelVisible
+    && previous.mobileOperation === next.mobileOperation
     && previous.bodyLive === next.bodyLive;
 }
 
@@ -256,6 +259,7 @@ function PooledOperationBody({ operation, descriptor, config, capabilities, slot
     onRequestCompanions: current.onRequestCompanions === undefined
       ? undefined
       : (open: boolean) => configRef.current?.onRequestCompanions?.(open),
+    ...(current.mobileOperation === undefined ? {} : { mobileOperation: current.mobileOperation }),
     companionsOpen: current.companionsOpen,
     hiddenCompanionPanelIds: current.hiddenCompanionPanelIds,
     onSetCompanionPanelVisible: current.onSetCompanionPanelVisible === undefined

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
+import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
 import type { MobileBarAction, MobileBarMenuItem } from "@fleet-console/sdk/pane";
 
 /**
@@ -95,6 +96,7 @@ export type MobileSheetKind =
   | { readonly kind: "theater" }
   | { readonly kind: "folder" }
   | { readonly kind: "console" }
+  | { readonly kind: "confirm"; readonly spec: MobileConfirmSpec; readonly resolve: (confirmed: boolean) => void }
   | { readonly kind: "forget"; readonly theaterId: string }
   | { readonly kind: "rename"; readonly operationId: string };
 
@@ -191,3 +193,15 @@ export function setMobileBarExtraSlot(element: HTMLElement | null): void {
 let pluginDepth = 0;
 export function getMobilePluginDepth(): number { return pluginDepth; }
 export function setMobilePluginDepth(next: number): void { pluginDepth = next; }
+
+// Operation 본문이 ⋮에 끼운 항목 — 세션 화면이 다시 마운트돼도 본문은 살아 있으므로 Operation별로 스토어에 둔다.
+const operationMenus = new Map<string, readonly MobileBarMenuItem[]>();
+const EMPTY_ITEMS: readonly MobileBarMenuItem[] = [];
+export function useMobileOperationMenu(operationId: string): readonly MobileBarMenuItem[] {
+  return useSyncExternalStore(subscribe, () => operationMenus.get(operationId) ?? EMPTY_ITEMS);
+}
+export function setMobileOperationMenu(operationId: string, items: readonly MobileBarMenuItem[]): void {
+  if (items.length === 0) operationMenus.delete(operationId);
+  else operationMenus.set(operationId, items);
+  emit();
+}

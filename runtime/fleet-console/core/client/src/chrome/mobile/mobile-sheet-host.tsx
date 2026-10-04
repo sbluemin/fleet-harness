@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
+import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import { useT } from "../../i18n/index.js";
@@ -40,6 +41,7 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
   if (!top) return null;
   if (top.kind === "rename") return <RenameSheet key={top.operationId} state={state} operationId={top.operationId} />;
   if (top.kind === "console") return <ConsoleSheet />;
+  if (top.kind === "confirm") return <ConfirmSheet spec={top.spec} resolve={top.resolve} />;
   if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void registerTheaterFromPath(path); }} />;
   if (top.kind === "forget") return <ForgetSheet key={top.theaterId} state={state} theaterId={top.theaterId} onDeferredDeletion={onDeferredDeletion} />;
   return <TheaterSheet state={state} />;
@@ -154,6 +156,26 @@ function ConsoleSheet() {
         <span className="mobile-sheet-row-copy"><strong>{name}</strong><small>{t("mobile.sheet.console.connected")}</small></span>
         <MobileIcon name="check" className="mobile-sheet-check" />
       </div>
+    </MobileSheet>
+  );
+}
+
+/** 플러그인이 `confirm`으로 띄운 확인 시트(예: S-14 채팅으로 보기). 확정이면 true, 취소·닫기·뒤로면 false로 한 번만 답한다. */
+function ConfirmSheet({ spec, resolve }: { readonly spec: MobileConfirmSpec; readonly resolve: (confirmed: boolean) => void }) {
+  const answered = useRef(false);
+  const answer = (confirmed: boolean) => { if (answered.current) return; answered.current = true; resolve(confirmed); };
+  // 어떤 경로로 내려가든(뒤로·스크림·끌어내리기) 답이 빠지지 않게 한다.
+  useEffect(() => () => answer(false), []);
+  return (
+    <MobileSheet
+      title={spec.title}
+      onClose={popMobileSheet}
+      footer={<>
+        <button type="button" className="mobile-pill-secondary" onClick={() => { answer(false); popMobileSheet(); }}>{spec.cancelLabel}</button>
+        <button type="button" className="mobile-pill-secondary is-inverse" onClick={() => { answer(true); popMobileSheet(); }}>{spec.confirmLabel}</button>
+      </>}
+    >
+      <p className="mobile-sheet-lead">{spec.body}</p>
     </MobileSheet>
   );
 }
