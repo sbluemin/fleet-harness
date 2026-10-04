@@ -362,6 +362,7 @@ export const chromeEn = {
   "chrome.update.outcomeFailed": "The update failed: {reason}",
   "chrome.update.addressMoved": "The console could not reclaim its old address; this new one is where it lives now.",
   "chrome.update.failureWorkerLost": "the updater stopped reporting",
+  "chrome.update.failureOldConsoleUnverified": "the previous Fleet Console did not shut down and could not be confirmed, so it was not force-quit. Quit any remaining Fleet Console process, then try the update again",
   "chrome.update.failureUnknown": "reason unknown",
 
   // toast
@@ -840,6 +841,7 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.update.outcomeFailed": "업데이트에 실패했습니다: {reason}",
   "chrome.update.addressMoved": "옛 주소를 되찾지 못해 이 새 주소로 옮겨졌습니다.",
   "chrome.update.failureWorkerLost": "업데이트 작업이 보고를 멈췄습니다",
+  "chrome.update.failureOldConsoleUnverified": "이전 Fleet Console이 종료되지 않았고 같은 프로세스인지 확인하지 못해 강제 종료하지 않았습니다. 남은 Fleet Console 프로세스를 종료한 뒤 다시 업데이트하세요",
   "chrome.update.failureUnknown": "원인을 알 수 없습니다",
 
   "chrome.toast.dismissNotification": "알림 닫기",

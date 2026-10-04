@@ -64,5 +64,6 @@ export function UpdateCurtain() {
 
 function describeFailure(error: string | null, t: ReturnType<typeof useT>): string {
   if (error === "update_worker_lost") return t("chrome.update.failureWorkerLost");
+  if (error === "old_console_unverified") return t("chrome.update.failureOldConsoleUnverified");
   return error ?? t("chrome.update.failureUnknown");
 }

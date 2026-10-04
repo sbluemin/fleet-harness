@@ -1,4 +1,6 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -36,6 +38,7 @@ describe("console update apply worker", () => {
 
     await expect(service.start({
       currentEndpoint: "http://127.0.0.1:4000/",
+      currentLockToken: "token",
       currentPackageRoot: "/not-a-global-install",
       currentPid: 111,
       dataDir: "/data/console",
@@ -57,7 +60,7 @@ describe("console update apply worker", () => {
     const writeFile = vi.fn();
     const service = createConsoleUpdateApplyService({ preflightInstall, writeFile, spawnWorker: () => { throw new Error("must not spawn"); } });
 
-    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentPackageRoot: latest, currentPid: 111, dataDir: root, fromVersion: "1.2.2", lockFile: path.join(root, "console.lock"), release: createRelease("1.2.3", Buffer.from("tarball")) })).rejects.toThrow("managed_runtime_update_requires_relaunch");
+    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentLockToken: "token", currentPackageRoot: latest, currentPid: 111, dataDir: root, fromVersion: "1.2.2", lockFile: path.join(root, "console.lock"), release: createRelease("1.2.3", Buffer.from("tarball")) })).rejects.toThrow("managed_runtime_update_requires_relaunch");
     expect(preflightInstall).not.toHaveBeenCalled();
     expect(writeFile).not.toHaveBeenCalled();
   });
@@ -84,7 +87,7 @@ describe("console update apply worker", () => {
       spawnWorker,
     });
 
-    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentPackageRoot: "/global/root/@dotobokuri/fleet-console", currentPid: 111, dataDir: fleetDataDir, fromVersion: "1.2.2", lockFile: path.join(fleetDataDir, "console.lock"), release })).rejects.toThrow("checksum_mismatch");
+    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentLockToken: "token", currentPackageRoot: "/global/root/@dotobokuri/fleet-console", currentPid: 111, dataDir: fleetDataDir, fromVersion: "1.2.2", lockFile: path.join(fleetDataDir, "console.lock"), release })).rejects.toThrow("checksum_mismatch");
 
     expect(requested).toEqual(["https://github.com/sbluemin/fleet-harness/releases/download/v1.2.3/fleet-console-1.2.3.tgz"]);
     // 검증에 실패한 바이트는 설치 후보로 남지 않고, Console을 멈출 worker도 만들어지지 않는다.
@@ -92,6 +95,63 @@ describe("console update apply worker", () => {
     expect(writeFile).not.toHaveBeenCalled();
     expect(spawnWorker).not.toHaveBeenCalled();
   });
+
+  it("never signals a live pid that did not prove it is the Console being updated", async () => {
+    // The Console exited and the OS handed its pid to an unrelated program. That program is alive, the Console
+    // endpoint refuses, the lock is gone, and the worker is not that pid's child: nothing proves identity.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-update-containment-"));
+    TEMP_DIRS.push(root);
+    const signalLog = path.join(root, "unrelated-signals.log");
+    const unrelated = spawn(process.execPath, ["-e", `process.on("SIGTERM", () => require("fs").appendFileSync(${JSON.stringify(signalLog)}, "SIGTERM\\n")); setInterval(() => {}, 1 << 30);`], { stdio: "ignore" });
+    const daemonPidFile = path.join(root, "new-console.pid");
+    try {
+      const globalRoot = path.join(root, "global");
+      const packageRoot = path.join(globalRoot, "@dotobokuri", "fleet-console");
+      fs.mkdirSync(packageRoot, { recursive: true });
+      const packageManager = path.join(root, "package-manager.mjs");
+      fs.writeFileSync(packageManager, `if (process.argv[2] === "root") console.log(${JSON.stringify(globalRoot)});`);
+      const dataDir = path.join(root, "console");
+      const lockFile = path.join(dataDir, "console.lock");
+      // The next Console: takes the lock and answers health with the target version, like `serve` does.
+      const nextConsole = path.join(root, "next-console.mjs");
+      fs.writeFileSync(nextConsole, [
+        `import fs from "node:fs"; import http from "node:http";`,
+        `fs.writeFileSync(${JSON.stringify(daemonPidFile)}, String(process.pid));`,
+        `const server = http.createServer((req, res) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ pid: process.pid, version: "1.2.3" })); });`,
+        `server.listen(0, "127.0.0.1", () => fs.writeFileSync(${JSON.stringify(lockFile)}, JSON.stringify({ pid: process.pid, endpoint: \`http://127.0.0.1:\${server.address().port}/\`, token: "next" })));`,
+      ].join("\n"));
+      const service = createConsoleUpdateApplyService({
+        env: { PATH: process.env.PATH, TMPDIR: root, FLEET_CONSOLE_NO_SYSTEM_CA: "1" },
+        fleetDataDir: root,
+        tmpDir: root,
+        preflightInstall: () => ({ bin: process.execPath, command: "npm", globalRoot, prefixArgs: [packageManager] }),
+        downloadTarball: async () => ({ ok: true, tarballPath: path.join(root, "fleet-console-1.2.3.tgz") }),
+        serverModulePath: nextConsole,
+      });
+
+      await service.start({
+        currentEndpoint: `http://127.0.0.1:${await closedLoopbackPort()}/`,
+        currentLockToken: "the-exited-console",
+        currentPackageRoot: packageRoot,
+        currentPid: unrelated.pid!,
+        dataDir,
+        fromVersion: "1.2.2",
+        lockFile,
+        release: createRelease("1.2.3", Buffer.from("tarball")),
+      });
+
+      const progressFile = path.join(dataDir, "update-progress.json");
+      await vi.waitFor(() => {
+        expect(JSON.parse(fs.readFileSync(progressFile, "utf8")).phase).toBe("completed");
+      }, { timeout: 20_000, interval: 100 });
+      expect(unrelated.exitCode).toBeNull();
+      expect(unrelated.signalCode).toBeNull();
+      expect(fs.existsSync(signalLog)).toBe(false);
+    } finally {
+      unrelated.kill("SIGKILL");
+      try { process.kill(Number(fs.readFileSync(daemonPidFile, "utf8")), "SIGKILL"); } catch { /* never started */ }
+    }
+  }, 30_000);
 
   it("hands one Desktop relaunch per update and answers a second apply as already in progress", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-update-delegated-"));
@@ -154,6 +214,14 @@ function createRelease(version: string, bytes: Buffer): ConsoleReleaseManifest {
     tag: `v${version}`,
     tarball: { name: `fleet-console-${version}.tgz`, size: bytes.byteLength, sha256: createHash("sha256").update(bytes).digest("hex") },
   };
+}
+
+async function closedLoopbackPort(): Promise<number> {
+  const server = net.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as net.AddressInfo;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
 }
 
 function createPackageManagerSpec() {
