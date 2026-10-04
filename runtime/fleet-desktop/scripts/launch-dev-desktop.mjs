@@ -125,7 +125,9 @@ function escapeXml(value) {
 }
 
 function run(command, args) {
-  const child = spawn(command, args, { cwd: desktopDirectory, env: process.env, stdio: "inherit", windowsHide: true });
+  // windowsHide를 걸지 않는다. 여기서 띄우는 것은 GUI 프로세스(electron.exe)라 숨길 콘솔 창이 없고, Windows에서는
+  // STARTUPINFO가 SW_HIDE가 되어 주 창이 숨은 채로 떠서 그 창을 부모로 한 모달까지 보이지 않는다.
+  const child = spawn(command, args, { cwd: desktopDirectory, env: process.env, stdio: "inherit" });
   return new Promise((resolve) => {
     child.on("error", () => resolve(1));
     child.on("exit", (code, signal) => resolve(typeof code === "number" ? code : signal ? 1 : 0));
