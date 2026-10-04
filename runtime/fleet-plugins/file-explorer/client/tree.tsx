@@ -21,13 +21,21 @@ import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } 
 import { contextMenuAnchorFromRowRect, isTreeContextMenuKey, performFileContextAction, resolveContextMenuKeyboardAction, restoreContextMenuFocus } from "./context-menu.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
+import { LIST_TIMEOUT_MS } from "./files-client.js";
 import type { FileRevealTarget } from "./view-store.js";
 import { findReferencedFile, FileNavigationError } from "./file-navigation.js";
 
 import { FileIcon, FolderIcon } from "@fleet-console/sdk/components/file-icon";
 import { FilePeek } from "./peek.js";
+export interface ListFolderOptions {
+  /** 취소 — 효과 정리에서 낡은 요청을 걷는다. */
+  readonly signal?: AbortSignal;
+  /** 이 시간 안에 응답이 없으면 `list_timeout` 으로 실패한다. */
+  readonly timeoutMs?: number;
+}
+
 export interface PluginFilesClient {
-  readonly listFolder: (relativePath?: string) => Promise<FolderListResult>;
+  readonly listFolder: (relativePath?: string, options?: ListFolderOptions) => Promise<FolderListResult>;
 }
 
 interface FileTreeProps {
@@ -1049,19 +1057,22 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     };
   }, [refreshGitStatus, theaterId]);
 
+  // 첫 목록 — 제한 시간이 있다. 연결 대기열에 묶이면(F3) 끝없는 스켈레톤 대신 다시 시도할 수 있는 오류 카드로 간다.
   useEffect(() => {
     if (!theaterId) return;
     const requestContextKey = contextKey;
-    files.listFolder(currentPath || undefined).then((r) => {
+    const controller = new AbortController();
+    files.listFolder(currentPath || undefined, { signal: controller.signal, timeoutMs: LIST_TIMEOUT_MS }).then((r) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setResult(r);
       setError(null);
       emitEntriesRefreshed(r);
     }).catch((e: unknown) => {
-      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+      if (controller.signal.aborted || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       const raw = e instanceof Error ? e.message : "Unable to load folder";
       setError(raw);
     });
+    return () => controller.abort();
   }, [contextKey, theaterId, currentPath, files, t]);
 
   useEffect(() => {
@@ -1184,9 +1195,11 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   useEffect(() => () => treeResizeObserverRef.current?.disconnect(), []);
 
-  // SSE 자동 새로고침 — theaterId/files 변경 시 재구독, 언마운트 시 close
+  // SSE 자동 새로고침 — theaterId/files 변경 시 재구독, 언마운트 시 close.
+  // 첫 목록이 도착한 뒤에 연다 — 장기 연결이 첫 요청과 브라우저의 출처당 연결 자리를 다투지 않게 한다(F3).
+  const rootListed = result !== null;
   useEffect(() => {
-    if (!theaterId) return;
+    if (!theaterId || !rootListed) return;
 
     let isFirstOpen = true;
     let gitStatusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1273,7 +1286,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       if (gitStatusTimer !== null) clearTimeout(gitStatusTimer);
       es.close();
     };
-  }, [contextKey, theaterId, files, refreshGitStatus]);
+  }, [contextKey, theaterId, files, refreshGitStatus, rootListed]);
 
   const handleDirClick = useCallback((entry: FolderEntry) => {
     const relPath = entry.relativePath;
@@ -1362,8 +1375,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const refreshTree = useCallback(() => {
     if (!theaterId) return;
     const requestContextKey = contextKey;
-    // 루트 재조회 — 성공 시 stale error를 걷어 에러 화면에서도 복구 가능하게 한다
-    files.listFolder(currentPath || undefined).then((r) => {
+    // 루트 재조회 — 성공 시 stale error를 걷어 에러 화면에서도 복구 가능하게 한다. 다시 시도도 묶이지 않게 제한 시간을 둔다.
+    files.listFolder(currentPath || undefined, { timeoutMs: LIST_TIMEOUT_MS }).then((r) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setResult(r);
       setError(null);

@@ -6,7 +6,7 @@ import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";
 import { DOCUMENT_PANE_ID } from "./file-navigation.js";
-import { makeFilesClient } from "./files-client.js";
+import { LIST_TIMEOUT_MS, makeFilesClient } from "./files-client.js";
 import { getT } from "./i18n/index.js";
 import { readShowHidden, sortEntries } from "./tree.js";
 import { activateStoredDocument, getFileExplorerSnapshot, setDocumentPaneOpen, useFileExplorerViewState } from "./view-store.js";
@@ -61,7 +61,7 @@ export function MobileFileTree(ctx: PaneContext) {
     setFolders((current) => new Map(current).set(relativePath, { kind: "loading" }));
     // 늦게 온 앞 Theater 의 응답은 버린다 — 응답이 자기 클라이언트가 아직 현재일 때만 지도에 오른다.
     const settle = (folder: Folder) => { if (clientRef.current === files) setFolders((current) => new Map(current).set(relativePath, folder)); };
-    files.listFolder(relativePath || undefined)
+    files.listFolder(relativePath || undefined, { timeoutMs: LIST_TIMEOUT_MS })
       .then((result) => settle({ kind: "loaded", result }))
       .catch(() => settle({ kind: "failed" }));
   }, [files]);
