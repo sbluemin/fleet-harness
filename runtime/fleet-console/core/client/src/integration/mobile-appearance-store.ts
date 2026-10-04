@@ -18,8 +18,9 @@ import type { MobileScheme } from "@fleet-console/sdk/settings/mobile-scheme";
 
 export type MobileColorMode = "system" | "dark" | "light";
 export type MobileFontScale = "small" | "default" | "large";
-export type MobileChromeTop = "bg" | "bg-deep";
-export type MobileChromeBottom = "bg" | "bg-deep" | "surface";
+/** `scrim`은 브리지 v1.5 — 지금 모드의 bg 위에 스크림을 합성한 면. 앱이 `chrome.scrim`으로 알린 때만 보낸다. */
+export type MobileChromeTop = "bg" | "bg-deep" | "scrim";
+export type MobileChromeBottom = "bg" | "bg-deep" | "surface" | "scrim";
 
 export type MobileIdentityTone = "crimson" | "amber" | "moss" | "teal" | "cerulean" | "indigo" | "plum" | "rose";
 
@@ -43,6 +44,8 @@ export type MobileAppearanceSnapshot = {
   readonly console: MobileConsoleIdentity | null;
   /** v1.4 — 앱(Fleet 앱)의 버전 문자열. 브라우저·구버전 셸이면 null. */
   readonly appVersion: string | null;
+  /** v1.5 — 앱이 chrome 신호의 `scrim` 토큰을 아는가. 아니면(구버전 셸·브라우저) 웹은 `bg-deep`으로 대신한다. */
+  readonly chromeScrim: boolean;
 };
 
 const COLOR_MODE_KEY = "fleet-console.mobile-color-mode";
@@ -57,6 +60,7 @@ type NativeAppearance = {
   readonly fontScale: MobileFontScale;
   readonly console: MobileConsoleIdentity | null;
   readonly appVersion: string | null;
+  readonly chromeScrim: boolean;
 };
 
 const IDENTITY_TONES: ReadonlySet<string> = new Set(["crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose"]);
@@ -89,7 +93,12 @@ function parseNativeAppearance(value: unknown): NativeAppearance | null {
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
   if (record.v !== 1 || !isColorMode(record.colorMode) || !isScheme(record.systemScheme) || !isFontScale(record.fontScale)) return null;
-  return { colorMode: record.colorMode, systemScheme: record.systemScheme, fontScale: record.fontScale, console: parseConsoleIdentity(record.console), appVersion: parseAppVersion(record.app) };
+  return { colorMode: record.colorMode, systemScheme: record.systemScheme, fontScale: record.fontScale, console: parseConsoleIdentity(record.console), appVersion: parseAppVersion(record.app), chromeScrim: parseChromeScrim(record.chrome) };
+}
+
+/** v1.5 선택 필드 — `chrome: { scrim: true }`일 때만 참. 그 밖의 모양은 모르는 앱으로 본다. */
+function parseChromeScrim(value: unknown): boolean {
+  return typeof value === "object" && value !== null && (value as Record<string, unknown>).scrim === true;
 }
 
 /** v1.4 선택 필드 — 앱 버전 문자열(최대 64자). 없거나 틀리면 줄을 그리지 않는다. */
@@ -143,14 +152,14 @@ function resolveScheme(colorMode: MobileColorMode, system: MobileScheme): Mobile
 }
 
 function fromNative(native: NativeAppearance): MobileAppearanceSnapshot {
-  return { colorMode: native.colorMode, fontScale: native.fontScale, scheme: resolveScheme(native.colorMode, native.systemScheme), nativeOwned: true, console: native.console, appVersion: native.appVersion };
+  return { colorMode: native.colorMode, fontScale: native.fontScale, scheme: resolveScheme(native.colorMode, native.systemScheme), nativeOwned: true, console: native.console, appVersion: native.appVersion, chromeScrim: native.chromeScrim };
 }
 
 function initialSnapshot(): MobileAppearanceSnapshot {
   const native = readNativeAppearance();
   if (native) return fromNative(native);
   const colorMode = readStored(COLOR_MODE_KEY, isColorMode, "system");
-  return { colorMode, fontScale: readStored(FONT_SCALE_KEY, isFontScale, "default"), scheme: resolveScheme(colorMode, systemScheme()), nativeOwned: false, console: null, appVersion: null };
+  return { colorMode, fontScale: readStored(FONT_SCALE_KEY, isFontScale, "default"), scheme: resolveScheme(colorMode, systemScheme()), nativeOwned: false, console: null, appVersion: null, chromeScrim: false };
 }
 
 function applyToDocument(next: MobileAppearanceSnapshot): void {
@@ -164,7 +173,7 @@ function setSnapshot(next: MobileAppearanceSnapshot): void {
   const same = next.colorMode === snapshot.colorMode && next.fontScale === snapshot.fontScale
     && next.scheme === snapshot.scheme && next.nativeOwned === snapshot.nativeOwned
     && next.console?.label === snapshot.console?.label && next.console?.monogram === snapshot.console?.monogram
-    && next.console?.tone === snapshot.console?.tone && next.console?.address === snapshot.console?.address && next.appVersion === snapshot.appVersion;
+    && next.console?.tone === snapshot.console?.tone && next.console?.address === snapshot.console?.address && next.appVersion === snapshot.appVersion && next.chromeScrim === snapshot.chromeScrim;
   applyToDocument(next);
   if (same) return;
   snapshot = next;
@@ -267,9 +276,12 @@ export function setMobileFontScale(fontScale: MobileFontScale): void {
  * 지금 화면의 위·아래 면을 앱에 알린다(드로어·하단 시트 열림/닫힘, impl-spec S-03). 색이 아니라 토큰
  * 이름이며 네이티브가 같은 값으로 상태 바·내비게이션 바를 칠한다. 브라우저에서는 아무것도 하지 않는다.
  */
-export function reportMobileChrome(top: MobileChromeTop, bottom: MobileChromeBottom): void {
+export function reportMobileChrome(requestedTop: MobileChromeTop, requestedBottom: MobileChromeBottom): void {
   if (!snapshot.nativeOwned) return;
-  if ((top !== "bg" && top !== "bg-deep") || (bottom !== "bg" && bottom !== "bg-deep" && bottom !== "surface")) return;
+  // 옛 앱은 모르는 토큰이 든 메시지를 통째로 버린다(§3-4) — scrim은 앱이 안다고 알린 때만 보내고, 아니면 가장 가까운 bg-deep으로 대신한다.
+  const top = requestedTop === "scrim" && !snapshot.chromeScrim ? "bg-deep" : requestedTop;
+  const bottom = requestedBottom === "scrim" && !snapshot.chromeScrim ? "bg-deep" : requestedBottom;
+  if ((top !== "bg" && top !== "bg-deep" && top !== "scrim") || (bottom !== "bg" && bottom !== "bg-deep" && bottom !== "surface" && bottom !== "scrim")) return;
   const key = `${top}|${bottom}`;
   if (key === lastChrome) return;
   lastChrome = key;
