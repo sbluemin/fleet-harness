@@ -104,7 +104,7 @@ export function createMacOSComputerUsePlatform(runtime: ComputerUseRuntimeDepend
     supported: () => process.platform === "darwin",
     endHint: "The Fleet broker has stopped. The next use reconnects; use computer_status to check without reconnecting. Native cleanup notification is best-effort; this does not prove the macOS sharing indicator is off. Other ChatGPT sessions may still capture. If it remains, use the macOS sharing control; do not terminate shared services.",
     unavailableError: "computer_use_macos_only",
-    appTargetSchema: { type: "string", minLength: 1, maxLength: 4096, description: "Unambiguous bundle ID, exact app name, or absolute .app bundle path. For duplicate bundle IDs use the exact observed .app path; never guess a different installation." },
+    appTargetSchema: { type: "string", minLength: 1, maxLength: 4096, description: "Unambiguous bundle ID, exact app name, or absolute .app path. For duplicate bundle IDs use the observed .app path; never guess another installation." },
     inspectInstallation: async () => Boolean(await findComputerUseInstallation(runtime)),
     createBroker: async (options) => {
       const installation = await findComputerUseInstallation(runtime);

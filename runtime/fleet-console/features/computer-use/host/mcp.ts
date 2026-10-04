@@ -30,7 +30,7 @@ export interface ComputerUseMcpDeps {
 }
 
 /** Operation 호출자에게만 붙는 설명 — 플러그인 호출자는 카드를 띄우지 않는다. */
-const OPERATION_REQUEST_NOTE = "Operation permission: allowed when this Operation's own Computer Use toggle is on, or when the person allowed it for this turn from the request card in the Operation panel. Without either, the call waits up to four minutes for the person's answer on that card; a permission granted for this turn ends with your turn. If they decline or do not answer, do not request Computer Use again in this turn.";
+const OPERATION_REQUEST_NOTE = "Permission: needs this Operation's Computer Use toggle or a per-turn allowance from the request card in the Operation panel. Otherwise the call waits up to four minutes for the person's answer; a per-turn allowance ends with your turn. If declined or unanswered, do not request Computer Use again this turn.";
 
 /** 요청 브로커 중 컴퓨터 사용이 쓰는 몫. */
 export interface ComputerUseRequestPort {
