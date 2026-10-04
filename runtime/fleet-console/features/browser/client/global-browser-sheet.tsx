@@ -476,11 +476,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     setStill(null);
     captureStill();
   }, [capturable, activeTab?.id, activeTab?.url, cancelCapture, captureStill]);
-  // 물러난 채 자리 크기가 바뀌면 같은 회차에서 다시 찍는다. 크롬이 움직이는 동안은 정착 뒤 복귀하니 찍지 않는다.
-  React.useEffect(() => {
-    if (!parkedRef.current || !wasParkedRef.current || chromeMovingRef.current) return;
-    captureStill();
-  }, [viewportBox?.width, viewportBox?.height, captureStill]);
+  // 물러난 채 자리 크기가 바뀌어도 다시 찍지 않는다 — 셸은 물러난 뷰를 마지막으로 놓였던 크기로 두므로
+  // 새 장도 옛 크기라 맞지 않는다. 그 동안은 stillFits가 장을 거두고 무채색 자리가 선다.
   React.useEffect(() => cancelCapture, [cancelCapture]);
 
   // 페이지의 prefers-color-scheme은 Console 테마 극성을 따른다(Operation과 같은 계약).
