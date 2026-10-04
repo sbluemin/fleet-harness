@@ -158,10 +158,12 @@ function occlusionProbe(targetPid) {
           const layer = Number(item.kCGWindowLayer);
           const bounds = item.kCGWindowBounds;
           const onScreen = Boolean(item.kCGWindowIsOnscreen);
-          if (layer === 0 && bounds.Width > 50 && bounds.Height > 50) {
-            const entry = { index: i, wid: Number(item.kCGWindowNumber), pid, name: item.kCGWindowOwnerName ? String(item.kCGWindowOwnerName) : 'unknown', bounds, onScreen };
-            if (pid === ${targetPid}) owned.push(entry);
-            else if (onScreen) preceding.push(entry);
+          const entry = { index: i, wid: Number(item.kCGWindowNumber), pid, layer, name: item.kCGWindowOwnerName ? String(item.kCGWindowOwnerName) : 'unknown', bounds, onScreen };
+          if (pid === ${targetPid}) {
+            if (layer === 0 && bounds.Width > 50 && bounds.Height > 50) owned.push(entry);
+          } else if (onScreen && layer >= 0 && Number(item.kCGWindowAlpha ?? 1) > 0) {
+            // 항상 위·부동 창(layer > 0)도 앞에 있으면 픽셀을 가린다. 음수 layer는 바탕화면 계층이다.
+            preceding.push(entry);
           }
         }
 
@@ -181,7 +183,7 @@ function occlusionProbe(targetPid) {
           const w = Math.max(0, Math.min(t.X + t.Width, b.X + b.Width) - Math.max(t.X, b.X));
           const h = Math.max(0, Math.min(t.Y + t.Height, b.Y + b.Height) - Math.max(t.Y, b.Y));
           const area = w * h;
-          return area > 0 ? [{ pid: pw.pid, name: pw.name, overlapRatio: Number((area / targetArea).toFixed(4)) }] : [];
+          return area > 0 ? [{ pid: pw.pid, name: pw.name, layer: pw.layer, overlapRatio: Number((area / targetArea).toFixed(4)) }] : [];
         });
 
         // Target-intersecting display indexes in CG coordinates
@@ -250,8 +252,12 @@ function main() {
   if (opts.occlusion) {
     const blockers = [];
     if (process.platform !== 'darwin') blockers.push('occlusion check is macOS-only');
-    if (found.mains.length === 0) blockers.push('no owned Desktop main process running for this worktree');
-    else if (found.mains.length > 1) blockers.push(`multiple owned Desktop mains (${found.mains.map((p) => p.pid).join(', ')}) running for this worktree; stop extras first`);
+    // `open` 경유 main은 init으로 재부모화되지만, Electron 직접 실행 main은 셸의 자식으로 남는다.
+    // 그때는 소유 프로세스 트리의 뿌리(부모가 소유 프로세스가 아닌 것)를 main으로 본다.
+    const ownedPids = new Set(found.all.map((row) => row.pid));
+    const mains = found.mains.length ? found.mains : found.all.filter((row) => !ownedPids.has(row.ppid));
+    if (mains.length === 0) blockers.push('no owned Desktop main process running for this worktree');
+    else if (mains.length > 1) blockers.push(`multiple owned Desktop mains (${mains.map((p) => p.pid).join(', ')}) running for this worktree; stop extras first`);
 
     if (blockers.length) {
       const report = { worktree: opts.worktree, mode: 'occlusion', lane: 'blocked', exitCode: 20, blockers };
@@ -260,7 +266,7 @@ function main() {
       return 20;
     }
 
-    const targetPid = found.mains[0].pid;
+    const targetPid = mains[0].pid;
     const screen = screenProbe();
     const occlusion = occlusionProbe(targetPid);
     if (!occlusion.target) blockers.push(occlusion.error || 'owned window not found');
