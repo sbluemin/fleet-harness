@@ -63,6 +63,8 @@ const PATROL_MENU_MARGIN = 12;
 export function CommodoreDrawerHost({ language }: PersistentComponentContext) {
   const enabled = useCommodoreEnabled();
   const drawer = useCommodoreDrawer();
+  // 상주 기여라 서랍이 닫혀 있어도 언어를 알린다 — 리액트 밖의 Quick Launch '@' 행이 이 값으로 문구를 고른다.
+  if (language) noteCommodoreLanguage(language);
   if (!enabled || !drawer) return null;
   return <CommodoreSheet key={drawer.theaterId} theaterId={drawer.theaterId} tab={drawer.tab} openedAt={drawer.openedAt} language={language ?? "en"} />;
 }
