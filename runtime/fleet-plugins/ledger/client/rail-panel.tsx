@@ -634,6 +634,8 @@ function LedgerIcon() {
 // to every caller. The check against the contract is identical; the concrete shape survives it.
 export const ledgerEntry: RailEntryDescriptor = {
   id: "ledger",
+  // 폰에서는 쓸 수 없다 — 모바일 「플러그인」 화면에 「데스크톱에서만」 흐린 행으로 선다(S-46).
+  mobile: { available: false },
   title: (locale) => getT(locale)("ledger.panel.title"),
   icon: LedgerIcon,
   panes: ["ledger"],

@@ -250,6 +250,8 @@ function SkillsIcon() {
 
 export const skillsEntry: RailEntryDescriptor = {
   id: "skills",
+  // 폰에서는 쓸 수 없다 — 모바일 「플러그인」 화면에 「데스크톱에서만」 흐린 행으로 선다(S-46).
+  mobile: { available: false },
   title: (locale) => getT(locale)("skills.panel.title"),
   icon: SkillsIcon,
   panes: ["skills"],
