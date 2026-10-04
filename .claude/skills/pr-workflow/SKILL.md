@@ -24,7 +24,7 @@ Defaults: base `canary`, merge `squash`, `auto_merge=true`. The base is always `
 
 ## Core contracts
 
-- Confirm head worktree/branch/PR identity and stage only relevant files. Use English Conventional Commits without amend or hook bypass. Run checks for affected workspaces and disclose unavailable/unrun scripts.
+- Confirm head worktree/branch/PR identity, check overlapping files against open PRs, and stage only relevant files. Use English Conventional Commits without amend or hook bypass. Run checks for affected workspaces and disclose unavailable/unrun scripts.
 - Write changelogs only for feature-level product changes. `.changelog.d/CLAUDE.md` owns the authoring contract. A new branch fragment and amendment of an existing unreleased fragment are mutually exclusive. Do not add unnecessary fragments or no-changelog declarations for docs/prompts.
 - Before the first review fix, freeze the **Product Context Record** and pushed `REVIEW_BASE_HEAD`: request, acceptance criteria, exclusions, trade-offs, supported behavior, decision evidence. If these cannot be reconstructed on resume, stop edits/merge.
 - Review is a hypothesis, not authority. **FIX** requires a reproduced supported path, original scope alignment, preserved supported functionality, and proportional value. Do not make unreproduced defensive fixes. Post evidence-backed **DECLINE / DEFER** dispositions too; ask only when product intent is genuinely unresolved.

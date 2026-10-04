@@ -15,6 +15,7 @@ When the change is not a feature-level product delta — refactors, boundary gat
 1. Confirm the absolute worktree path/current branch, acting account through `gh auth status`, and `sbluemin/fleet-harness` through `gh repo view --json nameWithOwner`. Query OS/shell only when needed for command selection.
 2. Read applicable root/child `CLAUDE.md` instructions not already loaded. Do not preload unrelated documents.
 3. Choose the changelog path above — none, new note, or amendment — and record which runtimes a user notices it in.
+4. Check open PR file overlap before publishing: inspect `gh pr list --state open --json number,files` against the pending changed files (`git diff --name-only origin/canary...HEAD` or staged files). When an open PR touches the same files, coordinate merge order or rebase early to prevent late integration conflicts.
 
 ### Phase 1 — Commit
 
