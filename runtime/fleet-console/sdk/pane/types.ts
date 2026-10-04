@@ -233,6 +233,52 @@ export interface PaneContext {
    * 모르는 호스트는 싣지 않는다(생략 = 알 수 없음).
    */
   readonly sideBarVisible?: boolean;
+  /**
+   * 모바일 목적지 화면에서만 실리는 상단 막대 창구. 이 필드가 없다는 것이 「호스트가 막대를 그려 주지 않는다」는 말이다
+   * (데스크톱 레일·확대 표면·모바일 도구 시트). 페인은 존재 여부로만 분기한다 — DOM의 모드 속성을 읽지 않는다.
+   * 막대는 호스트가 그리고 페인은 무엇을 쓸지만 선언한다.
+   */
+  readonly mobileBar?: ClientMobileBarCapability;
+}
+
+/** 모바일 상단 막대에 내용을 선언하는 창구. 모듈 전역이 아니라 컨텍스트로 건네는 이유는 번들 사본 사이를 가로질러 조율하지 않기 위해서다. */
+export interface ClientMobileBarCapability {
+  /**
+   * 지금 이 페인이 막대에 쓸 내용을 선언한다. 마지막 호출이 이긴다. 페인이 내려가면 호스트가 스스로 거둔다.
+   * 내용이 바뀔 때마다 다시 부르면 된다(보통 effect 안에서).
+   */
+  set(bar: MobileBarSpec): void;
+}
+
+export interface MobileBarSpec {
+  /** 이미 현지화된 문자열. */
+  readonly title: string;
+  /** 제목 아래 한 줄. 생략하면 제목만 선다. */
+  readonly subtitle?: string;
+  /**
+   * 스택 깊이. 0이면 이 화면의 뿌리(목록) — 막대 왼쪽에 드로어를 여는 ≡가 서고, 1 이상이면 ‹(뒤로)가 선다.
+   * 깊이가 오를 때 호스트가 history 항목을 쌓으므로 ‹·Esc·시스템 뒤로가 모두 `onBack` 한 곳으로 모인다.
+   */
+  readonly depth: number;
+  /** 깊이를 하나 거두는 동작. `depth`가 1 이상이면 반드시 싣는다 — 상세 상태를 닫는 일은 플러그인이 안다. */
+  readonly onBack?: () => void;
+  /** ⋮ 메뉴. 항목이 없으면 ⋮ 자체를 그리지 않는다. 메뉴의 모양은 호스트 소유다. */
+  readonly menu?: {
+    /** 메뉴 머리의 대상 이름. */
+    readonly caption?: string;
+    readonly items: readonly MobileBarMenuItem[];
+  };
+}
+
+export interface MobileBarMenuItem {
+  readonly id: string;
+  /** 이미 현지화된 문자열. */
+  readonly label: string;
+  readonly icon?: ReactNode;
+  /** 파괴 항목 — 호스트가 맨 아래로 내리고 위험 색을 입힌다. */
+  readonly destructive?: boolean;
+  readonly disabled?: boolean;
+  readonly run: () => void;
 }
 
 /**

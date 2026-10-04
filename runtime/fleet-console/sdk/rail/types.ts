@@ -161,6 +161,11 @@ export interface RailEntryDescriptor {
    */
   readonly attention?: RailEntryAttention;
   /**
+   * 모바일 배치에서 이 도구가 서는 자리. 생략하면 드로어의 「플러그인」 줄에 한 행으로 서고, 현행 도구 시트로 열린다.
+   * 데스크톱 레일은 이 값을 읽지 않는다.
+   */
+  readonly mobile?: RailEntryMobile;
+  /**
    * 이 entry가 여는 표면이 레일 패널·확대 표면이 아닐 때(activate 전용) 켜짐을 말하는 법.
    * 선언하면 그 표면이 서 있는 동안 아이콘이 펼친 패널과 같은 문법(아래 brass 선 +
    * aria-pressed)으로 켜진다. 선언하지 않은 entry의 동작은 바뀌지 않는다.
@@ -172,6 +177,19 @@ export interface RailEntryDescriptor {
    * 가리면 도구모음 칸이 나타났다 사라져 근육 기억을 깨므로 쓰지 않는다.
    */
   readonly visible?: () => boolean;
+}
+
+/** 모바일 배치에서 레일 엔트리가 서는 자리. */
+export interface RailEntryMobile {
+  /**
+   * 드로어의 고정 목적지로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
+   * 그 화면의 본문은 이 엔트리의 primary 페인이다 — 모바일 호스트가 페인 컨텍스트에 `mobileBar`를 싣는다.
+   * 이름과 아이콘은 엔트리의 `title`·`icon`을 쓴다.
+   *
+   * `order`는 정렬 값이다 — 작은 쪽이 위. 호스트의 Theater 목적지가 항상 맨 위, 「플러그인」 줄이 항상 맨 아래이고
+   * 이 값은 그 사이에서만 순서를 정한다. 같으면 등록 순서.
+   */
+  readonly destination?: { readonly order: number };
 }
 
 /**
@@ -194,4 +212,23 @@ export interface RailEntryAttention {
   readonly count: (theaterId: string | null) => number;
   /** 배지의 이름 — 아이콘 이름 뒤에 붙어 말풍선과 스크린 리더가 읽는다(예: "결정 요청 2"). */
   readonly label: (count: number, locale: ConsoleLocale) => string;
+  /**
+   * 기다리는 일 하나하나. 모바일 드로어의 「확인 필요」 구역이 대기 Operation과 함께 행으로 세운다.
+   * `count`는 배지, 이 목록은 행이다 — 같은 일을 가리키는 것이 정상이다. 생략하면 배지만 서고 행은 오르지 않는다.
+   * 갱신은 위 `subscribe`로 한다. `count`처럼 부작용 없이 같은 상태에 같은 값을 돌려주고,
+   * 상태가 바뀌지 않았으면 **같은 배열 참조**를 돌려준다(`useSyncExternalStore` 스냅샷이다).
+   */
+  readonly items?: (theaterId: string | null, locale: ConsoleLocale) => readonly RailEntryAttentionItem[];
+}
+
+/** 사람의 손을 기다리는 일 하나. 문자열은 모두 이미 현지화되어 있다. */
+export interface RailEntryAttentionItem {
+  /** 같은 엔트리 안에서 안정적인 키 — 목록이 갱신돼도 행의 정체성이 된다. */
+  readonly id: string;
+  /** 행의 제목(예: 목표 이름). */
+  readonly title: string;
+  /** 행의 보조 줄(예: 「결정 요청 1건」). */
+  readonly reason: string;
+  /** 행을 눌렀을 때. 호스트는 이 엔트리의 자리로 먼저 이동한 **뒤에** 부른다. */
+  readonly open: () => void;
 }
