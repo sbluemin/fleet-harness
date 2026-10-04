@@ -44,21 +44,30 @@ in-process there (`runtime/fleet-console/features/ai-gateway/host/start.ts`), no
 sidecar. Setting them on the spawned agent CLI is too late.
 
 ```bash
-env -i HOME="<owned-run>/home" PATH="<explicit-runtime-path>" LANG="<locale>" \
-  FLEET_DATA_DIR=<owned-run>/root \
-  FLEET_CONSOLE_DATA_DIR=<owned-run>/console \
-  FLEET_DESKTOP_DATA_DIR=<owned-run>/desktop \
-  CLAUDE_CONFIG_DIR=<owned-run>/claude \
-  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-  FLEET_GATEWAY_WIRE_LOG=<scratch>/wire.jsonl \
-  FLEET_AI_GATEWAY_MODEL='claude-gateway--opencode--deepseek-v4-flash[1m]' \
-  node /abs/path/to/worktree/runtime/fleet-console/dist/cli.mjs serve
+node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir <owned-run> \
+  --set CLAUDE_BIN=<claude-abs-path> \
+  --set FLEET_GATEWAY_WIRE_LOG=<scratch>/wire.jsonl \
+  --set 'FLEET_AI_GATEWAY_MODEL=claude-gateway--opencode--deepseek-v4-flash[1m]' \
+  -- node <worktree>/runtime/fleet-console/dist/cli.mjs serve
 ```
 
-Use the preflight's prepared directories, explicit runtime path, and authorized
-credential route; add only the platform or credential variables that route needs.
-Do not inherit the outer agent's session markers or credentials. Unsetting just
-`CLAUDE_CODE_CHILD_SESSION` does not establish that boundary.
+Boot through the [isolated-environment wrapper](setup.md#keep-the-real-home-out) with
+the preflight's owned run directory. It supplies the owned Fleet and Claude paths and an
+explicit `PATH`, and it drops the outer agent's session markers and credentials. Unsetting
+just `CLAUDE_CODE_CHILD_SESSION` does not establish that boundary. Add only the variables
+this route needs with `--set` or `--bin`. A credential route other than the wrapper's
+listed exceptions follows that section's authorization rule.
+
+The wrapper's `PATH` holds no agent CLI, and Console and the launcher resolve Claude from
+`CLAUDE_BIN` or `PATH` only, so pass the CLI explicitly. Resolve `<claude-abs-path>` with
+`command -v claude` outside the wrapper, and record its `--version` as the preflight's
+launch record requires. The owned `CLAUDE_CONFIG_DIR` starts with no credential file; check
+it with `ls -A <owned-run>/claude`, which should show no `.credentials.json`. Neither Console's
+sign-in display nor `claude auth status` is evidence here: the former is not read from the CLI,
+and the latter can query the macOS Keychain, so do not run it for this check. A
+turn that needs the user's own Claude login, home, or keychain uses a real store: get the
+user's authorization for that store under the wrapper's exceptions and the preflight's
+credential rules. Never copy a login into the owned directory.
 - `FLEET_GATEWAY_WIRE_LOG` — the request body and the argument JSON a model actually
   produced. **It is a fallback, not an override.** The Settings wire-log toggle wins
   whenever the Console has a stored value: on writes to
@@ -211,17 +220,16 @@ slot variables and pnpm's `INIT_CWD` (see **Isolated Development Data** in
 `~/.claude` (`cache/gateway-models.json`, `projects/`):
 
 ```bash
-cd <owned-theater> && env -i HOME="<owned-run>/home" PATH="<explicit-runtime-path>" LANG="<locale>" \
-  FLEET_DATA_DIR=<owned-run>/root FLEET_CONSOLE_DATA_DIR=<owned-run>/console \
-  FLEET_DESKTOP_DATA_DIR=<owned-run>/desktop \
-  CLAUDE_CONFIG_DIR=<owned-run>/claude ANTHROPIC_API_KEY=sk-ant-fleet-local \
-  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-  node <worktree>/runtime/fleet-console/dist/fleet.mjs -p '<prompt>' \
+cd <owned-theater> && node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs \
+  --run-dir <owned-run> --set CLAUDE_BIN=<claude-abs-path> --set ANTHROPIC_API_KEY=sk-ant-fleet-local \
+  -- node <worktree>/runtime/fleet-console/dist/fleet.mjs -p '<prompt>' \
   --model 'claude-gateway--<provider>--<model>' --effort <level> --output-format stream-json --verbose
 ```
 
 - Complete the same folder-trust review first: `-p` does not show the interactive trust
-  dialog. Reuse the preflight's owned paths and add required platform variables explicitly.
+  dialog. Reuse the preflight's owned run directory and the `<claude-abs-path>` recorded for
+  the serve route above, and add required platform variables through the
+  [wrapper](setup.md#keep-the-real-home-out), which runs the launcher in the current directory.
 - The placeholder key only has to carry the `sk-ant-` prefix for this headless launcher
   path: the gateway uses its own authorized provider credentials for gateway models.
   It is not a real provider credential and does not make a fresh slot authenticated.

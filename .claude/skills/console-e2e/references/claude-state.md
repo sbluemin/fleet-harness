@@ -31,20 +31,15 @@ On macOS, supported Claude config relocation also changes the Keychain service i
 
 Use a clean allowlisted environment rather than forwarding an agent session's credentials, Console identity, or session-access tokens. Merely removing `CLAUDE_CODE_CHILD_SESSION` is insufficient. In particular, do not inherit `CLAUDE_CODE_SESSION_ACCESS_TOKEN`, OAuth/API credentials, proxy/remote-session authentication, or `CLAUDE_SECURESTORAGE_CONFIG_DIR` accidentally. Do not dump those values to check them.
 
-For a credential-free run, the shape is:
+For a credential-free run, boot through the [isolated-environment wrapper](setup.md#keep-the-real-home-out). It creates the owned directories and builds this allowlisted environment (owned `HOME`, `TMPDIR`, the three Fleet paths, `CLAUDE_CONFIG_DIR`, an explicit `PATH`, and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`), and it refuses credential-like variables:
 
 ```bash
 cd <worktree>
-env -i HOME="<owned-run>/home" PATH="<explicit-runtime-path>" LANG="<locale>" \
-  FLEET_DATA_DIR="<owned-run>/root" \
-  FLEET_CONSOLE_DATA_DIR="<owned-run>/console" \
-  FLEET_DESKTOP_DATA_DIR="<owned-run>/desktop" \
-  CLAUDE_CONFIG_DIR="<owned-run>/claude" \
-  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-  node <worktree>/runtime/fleet-console/dist/cli.mjs serve
+node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "<owned-run>" \
+  -- node <worktree>/runtime/fleet-console/dist/cli.mjs serve
 ```
 
-Create the empty owned directories first. Add only required platform/runtime variables (for example, a managed Node path for Desktop); do not copy the whole parent environment. A temporary `HOME` keeps shell startup files and fallback file writes out of the real home, but is **not** an OS sandbox or Keychain isolation. Verify executable discovery rather than borrowing a user's configuration. `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` does not block required provider requests. Launching real turns still requires the credential and quota authority in the base skill.
+Add only required platform/runtime variables with its `--set` or `--bin`; do not copy the whole parent environment. A temporary `HOME` keeps shell startup files and fallback file writes out of the real home, but is **not** an OS sandbox or Keychain isolation. Verify executable discovery rather than borrowing a user's configuration. `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` does not block required provider requests. Launching real turns still requires the credential and quota authority in the base skill.
 
 If a scenario needs the real home, identify the files/helpers it may read or write and resolve that boundary first. Do not silently fall back because authentication or a binary cannot be found. A local protocol fixture can validate launch and storage paths without external credentials; label it as a fixture, not evidence of real provider authentication or model quality. Any fixture credentials must be newly generated for that local endpoint, never copied user tokens.
 
