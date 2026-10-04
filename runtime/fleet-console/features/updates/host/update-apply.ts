@@ -586,16 +586,19 @@ function describeServeExit(serve) {
 }
 
 async function startNewDaemon() {
-  // 설치하는 동안 다른 호스트가 목표 버전의 Console을 이미 세웠다면 중복 serve를 띄우지 않는다.
-  const existing = readLock();
-  if (existing && existing.pid !== config.currentPid && await isNewHealthOk(existing)) return existing;
-  const serve = spawnServe();
+  // 다른 호스트가 lock을 얻고 초기화 중이면 ready까지 기다린다. 503을 보고 경쟁자를 더 띄우지 않는다.
   const deadline = Date.now() + startTimeoutMs;
+  const existing = await waitForExistingConsole(true, deadline);
+  if (existing) return existing;
+  if (Date.now() >= deadline) throw new Error("new console daemon did not become healthy");
+  const serve = spawnServe();
   while (Date.now() < deadline) {
     const lock = readLock();
-    if (lock && lock.pid !== config.currentPid && await isNewHealthOk(lock)) return lock;
-    if (serve.exited) throw new Error(describeServeExit(serve));
-    await sleep(sleepMs);
+    const health = await probeConsoleHealth(lock, true, deadline);
+    if (health === "healthy") return lock;
+    // 선판정 뒤 경쟁에서 졌어도 새 소유자가 초기화 중이면 같은 deadline 안에서 계속 기다린다.
+    if (serve.exited && (serve.code !== lockHeldExitCode || health !== "starting")) throw new Error(describeServeExit(serve));
+    await sleep(Math.min(sleepMs, Math.max(0, deadline - Date.now())));
   }
   throw new Error("new console daemon did not become healthy");
 }
@@ -607,9 +610,14 @@ async function startNewDaemon() {
 async function recoverConsoleBestEffort() {
   try {
     // 복구할 화면이 이미 살아 있으면 버전과 무관하게 그 Console을 남긴다.
-    const existing = readLock();
-    if (existing && isProcessAlive(existing.pid) && await isAnyHealthOk(existing)) {
+    const deadline = Date.now() + startTimeoutMs;
+    const existing = await waitForExistingConsole(false, deadline);
+    if (existing) {
       log("recovery skipped: a healthy console is already running");
+      return;
+    }
+    if (Date.now() >= deadline) {
+      log("recovery did not become healthy before timeout");
       return;
     }
     // A live pid that still holds the old lock (same pid and token) makes serve refuse it, so a spawn here could only
@@ -619,19 +627,19 @@ async function recoverConsoleBestEffort() {
       return;
     }
     const serve = spawnServe();
-    const deadline = Date.now() + startTimeoutMs;
     while (Date.now() < deadline) {
       const lock = readLock();
-      if (lock && isProcessAlive(lock.pid) && await isAnyHealthOk(lock)) {
+      const health = await probeConsoleHealth(lock, false, deadline);
+      if (health === "healthy") {
         log("recovered console after failure");
         return;
       }
-      // The serve refused the lock or failed on its own; waiting out the timeout would only hide that.
-      if (serve.exited) {
+      // lock을 얻은 다른 Console의 초기화만 기다린다. 그 외 child 실패는 숨기지 않는다.
+      if (serve.exited && (serve.code !== lockHeldExitCode || health !== "starting")) {
         log("recovery failed: " + describeServeExit(serve));
         return;
       }
-      await sleep(sleepMs);
+      await sleep(Math.min(sleepMs, Math.max(0, deadline - Date.now())));
     }
     log("recovery did not become healthy before timeout");
   } catch (error) {
@@ -684,35 +692,41 @@ function readLock() {
   return state.kind === "present" ? state.lock : null;
 }
 
-async function isNewHealthOk(lock) {
-  if (!lock || typeof lock.endpoint !== "string" || typeof lock.token !== "string") return false;
+async function waitForExistingConsole(requireTargetVersion, deadline) {
+  while (Date.now() < deadline) {
+    const lock = readLock();
+    const health = await probeConsoleHealth(lock, requireTargetVersion, deadline);
+    if (health === "healthy") return lock;
+    if (health !== "starting") return null;
+    await sleep(Math.min(sleepMs, Math.max(0, deadline - Date.now())));
+  }
+  return null;
+}
+
+/** starting은 대기 힌트일 뿐이다. 기존 healthy 채택 조건이나 프로세스 제어 권한을 넓히지 않는다. */
+async function probeConsoleHealth(lock, requireTargetVersion, deadline) {
+  if (!lock || typeof lock.endpoint !== "string" || typeof lock.token !== "string") return "unhealthy";
+  if (!requireTargetVersion && !isProcessAlive(lock.pid)) return "unhealthy";
   try {
     const response = await fetch(new URL("api/v1/health", lock.endpoint), {
       headers: { authorization: "Bearer " + lock.token },
-      signal: AbortSignal.timeout(healthTimeoutMs),
+      signal: AbortSignal.timeout(Math.min(healthTimeoutMs, Math.max(1, deadline - Date.now()))),
     });
-    if (!response.ok) return false;
+    if (response.status === 503) {
+      const body = await response.json().catch(() => null);
+      if (body && body.error === "console_starting" && body.pid === lock.pid && isProcessAlive(lock.pid)) return "starting";
+    }
+    if (!response.ok) return "unhealthy";
+    if (!requireTargetVersion) return "healthy";
+    if (lock.pid === config.currentPid) return "unhealthy";
     const version = await readHealthVersion(response);
     if (version === null) {
       log("new health response did not expose a version; waiting for verified target");
-      return false;
+      return "unhealthy";
     }
-    return version === config.targetVersion;
+    return version === config.targetVersion ? "healthy" : "unhealthy";
   } catch {
-    return false;
-  }
-}
-
-async function isAnyHealthOk(lock) {
-  if (!lock || typeof lock.endpoint !== "string" || typeof lock.token !== "string") return false;
-  try {
-    const response = await fetch(new URL("api/v1/health", lock.endpoint), {
-      headers: { authorization: "Bearer " + lock.token },
-      signal: AbortSignal.timeout(healthTimeoutMs),
-    });
-    return response.ok;
-  } catch {
-    return false;
+    return "unhealthy";
   }
 }
 
