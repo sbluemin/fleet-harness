@@ -332,8 +332,10 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (survivor === "absent") return;
     }
     signalLockProcess(payload.pid, "SIGKILL");
-    for (let attempt = 0; attempt < STOP_SIGKILL_EXIT_ATTEMPTS; attempt += 1) {
+    // 마지막 대기 뒤에도 한 번 더 확인한다. 그 사이 끝난 pid를 살아 있다고 보고 lock을 남기지 않는다.
+    for (let attempt = 0; ; attempt += 1) {
       if (!isLockProcessAlive(payload.pid)) return;
+      if (attempt >= STOP_SIGKILL_EXIT_ATTEMPTS) break;
       await sleep(STOP_SETTLE_POLL_MS);
     }
     throw new Error(`Fleet Console pid ${payload.pid} did not exit after SIGKILL; ${paths.lockFile} was left in place.`);
