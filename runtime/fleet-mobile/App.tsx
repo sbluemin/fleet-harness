@@ -38,6 +38,8 @@ export default function App(): React.JSX.Element {
   const [state, setState] = useState<ShellState>("waiting");
   const [detail, setDetail] = useState<string | null>(null);
   const [targetLabel, setTargetLabel] = useState<string | null>(null);
+  const [invalidLinkError, setInvalidLinkError] = useState(false);
+  const [canReturnToConsole, setCanReturnToConsole] = useState(false);
   const [screen, setScreen] = useState<Screen>("console");
   const [targets, setTargets] = useState<FleetConsoleTarget[]>([]);
   const [lastError, setLastError] = useState<Record<string, string>>({});
@@ -54,9 +56,13 @@ export default function App(): React.JSX.Element {
     consoleRef.current?.listTargets().then(setTargets, () => {});
   }, []);
 
-  useEffect(() => AppState.addEventListener("change", (next: AppStateStatus) => {
-    if (next === "active") consoleRef.current?.resume();
-  }).remove, []);
+  useEffect(() => {
+    // 네이티브 init은 구독보다 앞설 수 있다. 마운트 후 resume으로 보관된 링크 오류를 받는다.
+    consoleRef.current?.resume();
+    return AppState.addEventListener("change", (next: AppStateStatus) => {
+      if (next === "active") consoleRef.current?.resume();
+    }).remove;
+  }, []);
 
   useEffect(refreshTargets, [refreshTargets]);
 
@@ -76,6 +82,9 @@ export default function App(): React.JSX.Element {
       });
       return;
     }
+    const invalidLink = nativeEvent.type === "error" && nativeEvent.code === "pairing_target_invalid";
+    setInvalidLinkError(invalidLink);
+    setCanReturnToConsole(invalidLink && nativeEvent.active === true);
     setTargetLabel(nativeEvent.label ?? null);
     refreshTargets();
     if (nativeEvent.type === "error" && nativeEvent.origin) {
@@ -111,31 +120,58 @@ export default function App(): React.JSX.Element {
         setScreen("landing");
         return;
       case "error":
-        if (nativeEvent.active) return;
+        if (nativeEvent.active && !invalidLink) {
+          // 살아 있는 Console은 유지하되 붙여넣기가 올린 Checking 오버레이는 정리한다.
+          setState("connected");
+          setDetail(null);
+          setRetryLeft(null);
+          return;
+        }
         setState("error");
         setDetail(describe(nativeEvent.code));
         setRetryLeft(nativeEvent.retryAfterSeconds ?? null);
+        if (invalidLink) setScreen("console");
         return;
     }
   }, [refreshTargets]);
 
   const retry = useCallback((): void => {
-    setState("connecting");
+    setInvalidLinkError(false);
+    setCanReturnToConsole(false);
     setDetail(null);
     setRetryLeft(null);
+    if (canReturnToConsole) {
+      // 오류 확인만 끝낸다. 이미 연결된 WebView·gateway·쿠키는 그대로 둔다.
+      consoleRef.current?.dismissLinkError();
+      setState("connected");
+      return;
+    }
+    setState("connecting");
     consoleRef.current?.retry();
+  }, [canReturnToConsole]);
+
+  const showAllConsoles = useCallback((): void => {
+    consoleRef.current?.dismissLinkError();
+    setScreen("landing");
   }, []);
 
   const openConsole = useCallback((origin: string): void => {
     setArmRemove(null);
     setScreen("console");
     const current = targets.find((target) => target.origin === origin);
-    if (current?.active && state === "connected") return;
+    if (current?.active && (state === "connected" || canReturnToConsole)) {
+      consoleRef.current?.dismissLinkError();
+      setInvalidLinkError(false);
+      setCanReturnToConsole(false);
+      setState("connected");
+      setDetail(null);
+      return;
+    }
     setState("connecting");
     setDetail(null);
     setRetryLeft(null);
     consoleRef.current?.connectTo(origin);
-  }, [targets, state]);
+  }, [targets, state, canReturnToConsole]);
 
   const removeConsole = useCallback((origin: string): void => {
     setArmRemove(null);
@@ -206,14 +242,19 @@ export default function App(): React.JSX.Element {
         return true;
       }
       if (screen === "console") {
+        if (state === "error") {
+          showAllConsoles();
+          return true;
+        }
         const view = consoleRef.current;
         if (!view) {
           setScreen("landing");
           return true;
         }
+        view.dismissLinkError();
         view.navigateBack().then((consumed) => {
-          if (!consumed) setScreen("landing");
-        }, () => setScreen("landing"));
+          if (!consumed) showAllConsoles();
+        }, showAllConsoles);
         return true;
       }
       // The console list is where the app starts, so back stops here rather than walking on.
@@ -221,9 +262,13 @@ export default function App(): React.JSX.Element {
     };
     const subscription = BackHandler.addEventListener("hardwareBackPress", onBack);
     return () => subscription.remove();
-  }, [addOpen, screen, state]);
+  }, [addOpen, screen, state, showAllConsoles]);
 
   const retryBlocked = retryLeft !== null && retryLeft > 0;
+  const retryTargetLabel = targets.find((target) => target.active)?.label.trim();
+  const retryLabel = invalidLinkError && retryTargetLabel
+    ? canReturnToConsole ? `Back to ${retryTargetLabel}` : `Try again · ${retryTargetLabel}`
+    : "Try again";
 
   return (
     <SafeAreaView style={styles.root}>
@@ -247,10 +292,10 @@ export default function App(): React.JSX.Element {
               onPress={retry}
               style={({ pressed }) => [styles.button, retryBlocked && styles.buttonDisabled, pressed && !retryBlocked && styles.buttonPressed]}
             >
-              <Text style={[styles.buttonLabel, retryBlocked && styles.buttonLabelDisabled]}>Try again</Text>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.buttonLabel, retryBlocked && styles.buttonLabelDisabled]}>{retryLabel}</Text>
             </Pressable>
           ) : null}
-          <Pressable accessibilityRole="button" onPress={() => setScreen("landing")} style={styles.overlayLanding}>
+          <Pressable accessibilityRole="button" onPress={showAllConsoles} style={styles.overlayLanding}>
             <Text style={styles.overlayLandingLabel}>All consoles</Text>
           </Pressable>
         </View>
@@ -364,7 +409,7 @@ export default function App(): React.JSX.Element {
               >
                 <Text style={styles.keepLabel}>Paste a link instead</Text>
               </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => setScreen("landing")} style={styles.overlayLanding}>
+              <Pressable accessibilityRole="button" onPress={showAllConsoles} style={styles.overlayLanding}>
                 <Text style={styles.overlayLandingLabel}>Cancel</Text>
               </Pressable>
             </View>
@@ -464,7 +509,7 @@ const styles = StyleSheet.create({
   message: { color: "#b9b5ae", fontSize: 16, lineHeight: 24, marginTop: 16, maxWidth: 360, textAlign: "center" },
   detail: { color: "#e6aa87", fontSize: 14, lineHeight: 21, marginTop: 10, maxWidth: 360, textAlign: "center" },
   countdown: { color: "#b9b5ae", fontSize: 13, lineHeight: 20, marginTop: 8, textAlign: "center" },
-  button: { backgroundColor: "#d3b578", borderRadius: 8, marginTop: 24, paddingHorizontal: 22, paddingVertical: 12 },
+  button: { backgroundColor: "#d3b578", borderRadius: 8, marginTop: 24, paddingHorizontal: 22, paddingVertical: 12, maxWidth: "100%" },
   buttonPressed: { opacity: 0.75 },
   buttonDisabled: { backgroundColor: "#3a3d45" },
   buttonLabel: { color: "#17140e", fontSize: 15, fontWeight: "700" },

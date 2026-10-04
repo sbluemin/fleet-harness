@@ -6,7 +6,7 @@ import type { NativeSyntheticEvent, ViewProps } from "react-native";
 export interface FleetConsoleEvent {
   readonly type: "waiting" | "connecting" | "connected" | "error" | "insets";
   readonly code?: string;
-  /** Label to show for the visible console; on an error this stays the active console's label when one survives. */
+  /** 표시할 Console 이름. 링크 파싱 오류에는 대상이 없으므로 생략한다. */
   readonly label?: string;
   /** Origin of the target the event is about; on an error this is the target that failed. */
   readonly origin?: string;
@@ -32,6 +32,7 @@ export interface FleetConsoleTarget {
 export interface FleetConsoleViewHandle {
   retry(): void;
   resume(): void;
+  dismissLinkError(): void;
   submitAccessLink(link: string): void;
   connectTo(origin: string): void;
   removeTarget(origin: string): void;
@@ -42,6 +43,7 @@ export interface FleetConsoleViewHandle {
 interface NativeFleetConsoleViewHandle {
   retry(): void;
   resume(): void;
+  dismissLinkError(): void;
   submitAccessLink(link: string): void;
   connectTo(origin: string): void;
   removeTarget(origin: string): void;
@@ -62,6 +64,7 @@ export const FleetConsoleView = forwardRef<FleetConsoleViewHandle, FleetConsoleV
   useImperativeHandle(ref, () => ({
     retry(): void { nativeRef.current?.retry(); },
     resume(): void { nativeRef.current?.resume(); },
+    dismissLinkError(): void { nativeRef.current?.dismissLinkError(); },
     submitAccessLink(link: string): void { nativeRef.current?.submitAccessLink(link); },
     connectTo(origin: string): void { nativeRef.current?.connectTo(origin); },
     removeTarget(origin: string): void { nativeRef.current?.removeTarget(origin); },
