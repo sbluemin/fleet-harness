@@ -28,7 +28,7 @@ export type MobileDestination =
   | { readonly kind: "home" }
   | { readonly kind: "attention" }
   | { readonly kind: "archive" }
-  | { readonly kind: "search" }
+  | { readonly kind: "search"; readonly scope?: "archive" }
   | { readonly kind: "plugins" }
   | { readonly kind: "plugin"; readonly entryId: string };
 
@@ -38,6 +38,7 @@ const DEST_PARAM = "dest";
 function readDestinationFromUrl(): MobileDestination {
   if (typeof window === "undefined") return { kind: "home" };
   const raw = new URLSearchParams(window.location.search).get(DEST_PARAM);
+  if (raw === "search:archive") return { kind: "search", scope: "archive" };
   if (raw === "attention" || raw === "archive" || raw === "search" || raw === "plugins") return { kind: raw };
   if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) return { kind: "plugin", entryId: raw.slice(7) };
   return { kind: "home" };
@@ -48,7 +49,7 @@ export function syncMobileDestinationUrl(): void { writeDestinationToUrl(destina
 function writeDestinationToUrl(next: MobileDestination): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}` : next.kind;
+  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}` : next.kind === "search" && next.scope === "archive" ? "search:archive" : next.kind;
   if ((url.searchParams.get(DEST_PARAM)) === value) return;
   if (value === null) url.searchParams.delete(DEST_PARAM);
   else url.searchParams.set(DEST_PARAM, value);
@@ -64,7 +65,7 @@ export function useMobileDestination(): MobileDestination {
 export function getMobileDestination(): MobileDestination { return destination; }
 
 export function setMobileDestination(next: MobileDestination): void {
-  if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId) return;
+  if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope) return;
   destination = next;
   writeDestinationToUrl(next);
   emit();

@@ -153,7 +153,7 @@ export function WhatsNewModal({ state, automaticSuspended = false }: WhatsNewMod
     const overview = deriveWhatsNewOverview(selected);
     return (
       <MobileSheet
-        title={t("chrome.whatsnew.title")}
+        title={t("mobile.whatsnew.title")}
         onClose={closeWhatsNew}
         footer={<button type="button" className="mobile-pill-secondary is-inverse" onClick={closeWhatsNew}>{t("mobile.sheet.confirm")}</button>}
       >

@@ -271,7 +271,9 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: none;
 }
+.mobile-settings-scroll::-webkit-scrollbar { display: none; }
 
 /* 헤더는 뒤로가기·제목·저장 표시 세 자리다. 제목이 가운데 자리를 다 쓰도록 남은 둘은 늘어나지 않는다. */
 .mobile-settings-page .mobile-list-header {
@@ -397,7 +399,8 @@
   display: grid;
   align-content: start;
   gap: var(--space-6);
-  padding: var(--space-4) var(--space-4) var(--space-8);
+  /* 카드형 화면 본문(S-02): 위 4 · 좌우 14 · 아래 24. 안의 묶음은 다시 여백을 두지 않는다(이중 여백 방지). */
+  padding: 4px 14px 24px;
 }
 
 .mobile-settings-detail .global-settings-card {
@@ -1233,7 +1236,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-console-card-copy strong { overflow: hidden; font-size: var(--t-lg); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-console-card-copy small { color: var(--m-text-muted); font-size: var(--t-sm); }
 .mobile-state-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: var(--t-sm); white-space: nowrap; background: var(--m-chip); border-radius: 14px; }
-.mobile-settings-detail .mobile-group.is-flush { padding: 4px 14px 0; }
+.mobile-settings-detail .mobile-group.is-flush { padding: 0; }
 .mobile-radio { position: relative; flex: none; width: 20px; height: 20px; border: 2px solid var(--m-text-muted); border-radius: 50%; }
 .mobile-radio.is-on { border-color: var(--m-text); }
 .mobile-radio.is-on::after { content: ""; position: absolute; inset: 3px; background: var(--m-text); border-radius: 50%; }

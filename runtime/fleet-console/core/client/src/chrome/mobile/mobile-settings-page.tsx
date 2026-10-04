@@ -97,7 +97,7 @@ export function MobileSettingsPage() {
     const entry: MobileSettingsLocationState = { mobileSettingsEntry: true };
     navigate({ pathname: "/settings", search: `?section=${encodeURIComponent(id)}` }, { state: entry });
   };
-  const groups = buildMobileSettingsGroups({ state, appearance, viewMode: viewMode.preference, version: consoleState.version, pluginSections, t, locale });
+  const groups = buildMobileSettingsGroups({ state, appearance, viewMode: viewMode.preference, version: consoleState.version, consoleLatest: !consoleState.updateAvailable, pluginSections, t, locale });
   const rows = groups.flatMap((group) => group.rows);
   const requested = new URLSearchParams(location.search).get("section");
   // 폰 전용 상세는 그대로, 그 밖의 옛 id와 상대 레이아웃이 만든 id는 데스크톱과 같은 판정으로 옮긴다.
@@ -140,7 +140,7 @@ export function MobileSettingsPage() {
           <div className="mobile-settings-detail">
             {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
             {LOCAL_IDS.has(active.id)
-              ? <LocalDetail id={active.id as LocalSectionId} appearance={appearance} viewMode={viewMode.preference} version={consoleState.version} openSection={open} />
+              ? <LocalDetail id={active.id as LocalSectionId} appearance={appearance} viewMode={viewMode.preference} version={consoleState.version} consoleLatest={!consoleState.updateAvailable} openSection={open} />
               : renderSettingsSection(active.id as SettingsSectionId, state, settings.savingFields, pluginSections, t)}
           </div>
         </div>
@@ -189,11 +189,12 @@ const NO_SUBSCRIBE = () => () => undefined;
 const LANGUAGE_ROW = (t: (key: CoreMessageKey) => string): MobileSettingsRow => ({ id: "language", title: t("settings.core.language.label" as CoreMessageKey), value: null, icon: null });
 
 /** 폰 전용 상세 — 라디오 행과 한 줄 설명으로만 이루어진다. */
-function LocalDetail({ id, appearance, viewMode, version, openSection }: {
+function LocalDetail({ id, appearance, viewMode, version, consoleLatest, openSection }: {
   readonly id: LocalSectionId;
   readonly appearance: MobileAppearanceSnapshot;
   readonly viewMode: ViewModePreference;
   readonly version: string;
+  readonly consoleLatest: boolean;
   readonly openSection: (id: MobileSectionId) => void;
 }) {
   const t = useT();
@@ -246,8 +247,8 @@ function LocalDetail({ id, appearance, viewMode, version, openSection }: {
   }
   return (
     <div className="mobile-group is-flush">
-      <div className="mobile-group-row is-two"><span className="mobile-group-row-copy">Console<small>{version}</small></span></div>
-      <button type="button" className="mobile-group-row" onClick={() => openWhatsNew()}><span className="mobile-group-row-copy">{t("mobile.settings.whatsNew")}</span></button>
+      <div className="mobile-group-row is-two"><span className="mobile-group-row-copy">Console<small>{version}{consoleLatest ? ` · ${t("mobile.settings.latest")}` : ""}</small></span></div>
+      <button type="button" className="mobile-group-row" onClick={() => openWhatsNew()}><span className="mobile-group-row-copy">{t("mobile.settings.whatsNewView")}</span></button>
       <button type="button" className="mobile-group-row" onClick={() => openSection("help")}><span className="mobile-group-row-copy">{t("mobile.settings.helpRow")}</span></button>
     </div>
   );
@@ -267,11 +268,12 @@ function RadioRow({ checked, label, sub, disabled, onSelect }: { readonly checke
  * 두 레이아웃이 같은 주소를 공유하므로 한쪽만 아는 섹션이 생기면 그 링크가 다른 쪽에서 끊긴다.
  * 각 행은 열지 않고도 지금 무엇이 들어 있는지 말한다. 행의 대응은 spec-decisions D37.
  */
-function buildMobileSettingsGroups({ state, appearance, viewMode, version, pluginSections, t, locale }: {
+function buildMobileSettingsGroups({ state, appearance, viewMode, version, consoleLatest, pluginSections, t, locale }: {
   readonly state: GlobalSettingsState | null;
   readonly appearance: MobileAppearanceSnapshot;
   readonly viewMode: ViewModePreference;
   readonly version: string;
+  readonly consoleLatest: boolean;
   readonly pluginSections: readonly PluginSettingsNavItem[];
   readonly t: (key: CoreMessageKey) => string;
   readonly locale: ConsoleLocale;
@@ -297,7 +299,9 @@ function buildMobileSettingsGroups({ state, appearance, viewMode, version, plugi
     const lower = title.toLowerCase();
     return lower.includes("gateway") ? "gate" : lower.includes("terminal") || lower.includes("터미널") ? "term" : lower.includes("usage") || lower.includes("한도") || lower.includes("사용량") ? "chart" : "harness";
   };
-  for (const section of [...pluginSections].sort(byOrder)) {
+  const AGENT_RANK = ["harness", "general", "agent-cli"];
+  const rank = (section: PluginSettingsNavItem) => { const index = AGENT_RANK.findIndex((suffix) => section.id.endsWith(`:${suffix}`)); return index < 0 ? AGENT_RANK.length : index; };
+  for (const section of [...pluginSections].sort((a, b) => byOrder(a, b) || rank(a) - rank(b))) {
     const where = placed(section);
     if (where === "display") display.push(sectionRow(section, iconFor(section.sectionTitle)));
     else if (where === "agent") agent.push(sectionRow(section, iconFor(section.sectionTitle)));
@@ -310,7 +314,7 @@ function buildMobileSettingsGroups({ state, appearance, viewMode, version, plugi
   const about: MobileSettingsRow[] = [
     { id: "about", title: t("mobile.settings.whatsNew"), value: version, icon: <MobileIcon name="spark" />, act: () => openWhatsNew() },
     { id: "help", title: t("mobile.settings.helpRow"), value: null, icon: <MobileIcon name="help" /> },
-    { id: "about", title: t("mobile.settings.version"), value: `Console ${version}`, icon: <MobileIcon name="info" /> },
+    { id: "about", title: t("mobile.settings.version"), value: `Console ${version}${consoleLatest ? ` · ${t("mobile.settings.latest")}` : ""}`, icon: <MobileIcon name="info" /> },
   ];
   return [{ key: "display", rows: display }, { key: "agent", rows: agent }, { key: "use", rows: use }, { key: "about", rows: about }];
 }

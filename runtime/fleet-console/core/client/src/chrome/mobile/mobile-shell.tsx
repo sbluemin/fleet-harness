@@ -96,7 +96,7 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   } else if (destination.kind === "archive") {
     content = <MobileArchiveScreen state={consoleState} />;
   } else if (destination.kind === "search") {
-    content = <MobileSearchScreen state={consoleState} onBack={() => setMobileDestination({ kind: "home" })} />;
+    content = <MobileSearchScreen state={consoleState} scope={destination.scope} onBack={() => setMobileDestination(destination.scope === "archive" ? { kind: "archive" } : { kind: "home" })} />;
   } else if (destination.kind === "plugins") {
     content = <MobileTools theme={theme} language={language} />;
   } else if (destination.kind === "plugin") {
