@@ -1093,23 +1093,53 @@
      Gothic Neo, Android Roboto·Noto CJK)로 떨어지는 편이 맞다. 대조는 크기·굵기·줄높이·세리프/고딕으로. */
   --m-sans: "Noto Sans KR", system-ui, -apple-system, "Roboto", "Apple SD Gothic Neo", sans-serif;
   /* 한글 글리프가 없는 라틴 세리프를 앞에 둬 한글은 고딕으로 떨어진다(레퍼런스와 같은 섞임).
-     ui-serif는 iOS의 New York을 이름 대신 부르는 길이다. */
-  --m-reading: "Noto Serif", "New York", ui-serif, Georgia, "Noto Sans KR", system-ui, sans-serif;
+     ui-serif는 iOS의 New York을 이름 대신 부르는 길이다. 일반명 serif는 Android에서 이름으로
+     찾을 수 없는 시스템 Noto Serif로 가는 길이고, 라틴만 가진 서체라 한글은 뒤의 고딕으로 넘어간다. */
+  --m-reading: "Noto Serif", "New York", ui-serif, Georgia, serif, "Noto Sans KR", system-ui, sans-serif;
   --m-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "Roboto Mono", "Nanum Gothic Coding", monospace;
 
-  /* 모바일 글자 사다리 — 데스크톱 12–14 기반을 손가락 거리의 13–17로 올린다. 사람이 고른 UI
-     배율(--font-ui-scale)은 그대로 곱한다. */
-  --t-2xs: calc(11px * var(--font-ui-scale));
-  --t-xs: calc(12px * var(--font-ui-scale));
-  --t-sm: calc(13px * var(--font-ui-scale));
-  --t-md: calc(15px * var(--font-ui-scale));
-  --t-base: calc(16px * var(--font-ui-scale));
-  --t-lg: calc(17px * var(--font-ui-scale));
-  --t-xl: calc(22px * var(--font-ui-scale));
+  /* 모바일 글자 배율 — 기기 단위 모바일 선호(data-mobile-font-scale)다. 데스크톱 서체 설정의 UI
+     배율(--font-ui-scale, 서버 general.fonts)은 Console 전체가 공유하므로 모바일은 곱하지 않는다
+     — 폰에서 키운 글자가 데스크톱을 키우지 않고, 데스크톱 설정이 폰을 흔들지 않는다. */
+  --m-font-scale: 1;
+  /* 모바일 글자 사다리(시안 impl-spec §1·§6의 크기 이름). 모바일 셸·모바일 전용 플러그인 CSS는
+     이 이름을 쓴다. 데스크톱 CSS가 모바일에서 함께 그려지는 자리를 위해 --t-* 일곱 단도 같은
+     값으로 다시 잡는다(18은 --t-* 사이에 자리가 없어 --m-fs-title만 가진다). */
+  --m-fs-micro: calc(11px * var(--m-font-scale));
+  --m-fs-small: calc(12px * var(--m-font-scale));
+  --m-fs-caption: calc(13px * var(--m-font-scale));
+  --m-fs-mono: calc(13px * var(--m-font-scale));
+  --m-fs-meta: calc(14px * var(--m-font-scale));
+  --m-fs-secondary: calc(15px * var(--m-font-scale));
+  --m-fs-list: calc(16px * var(--m-font-scale));
+  --m-fs-body: calc(17px * var(--m-font-scale));
+  --m-fs-title: calc(18px * var(--m-font-scale));
+  --m-fs-heading: calc(22px * var(--m-font-scale));
+  --t-2xs: var(--m-fs-micro);
+  --t-xs: var(--m-fs-small);
+  --t-sm: var(--m-fs-caption);
+  --t-md: var(--m-fs-secondary);
+  --t-base: var(--m-fs-list);
+  --t-lg: var(--m-fs-body);
+  --t-xl: var(--m-fs-heading);
   --radius-xs: 8px;
   --radius-md: 14px;
-  /* 라이트의 450 광학 보정은 데스크톱 Whites의 것이다 — 모바일은 두 테마 모두 400. */
+  /* 사람이 고른 서체·크기(Settings 서체, 서버 general.fonts)는 루트 인라인으로 주입된다 — 데스크톱의
+     뜻이라 모바일에서는 시안 서체로 덮는다. 인라인을 이기는 길은 !important 하나뿐이다.
+     [doctrine] 모바일 배치 안에서만 매치되는 아래 일곱 줄이 사람 설정을 덮는 유일한 자리다. 채팅·
+     마크다운·위키 본문(--font-content)은 읽기 세리프, 조작부(--font-ui)는 고딕, 코드·터미널 대응
+     줄(--font-code)은 모노가 된다. 배율도 데스크톱 UI 배율 대신 모바일 배율을 따른다. */
+  --font-ui: var(--m-sans) !important;
+  --font-content: var(--m-reading) !important;
+  --font-code: var(--m-mono) !important;
+  --font-ui-size: var(--m-fs-list) !important;
+  --font-content-size: var(--m-fs-body) !important;
+  --font-code-size: var(--m-fs-mono) !important;
+  --font-ui-scale: var(--m-font-scale) !important;
+  /* 굵기 3단은 시안의 400·500·600이다. 라이트의 450 광학 보정은 데스크톱 Whites의 것이다. */
   --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 600;
 
   /* 모바일에는 캔버스 장식·계기 결·표류가 없다. */
   --canvas-weave-opacity: 0;
@@ -1421,6 +1451,15 @@
   --provider-opencode: oklch(48% 0.08 165);
   --provider-xai: oklch(46% 0.06 258);
   --provider-antigravity: oklch(51% 0.1 288);
+}
+
+/* 글자 배율 세 단(브리지 계약 fontScale) — 기본은 위 블록의 1. */
+:root[data-view-mode="mobile"][data-mobile-scheme][data-mobile-font-scale="small"] {
+  --m-font-scale: 0.9;
+}
+
+:root[data-view-mode="mobile"][data-mobile-scheme][data-mobile-font-scale="large"] {
+  --m-font-scale: 1.15;
 }
 
 /* 문서 바탕도 모바일 화면 면을 따른다 — 오버스크롤·셸 바깥 틈에 데스크톱 abyss가 비치지 않게. */

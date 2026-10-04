@@ -21,32 +21,47 @@
 })();
 
 // 모바일 팔레트(theme.css의 :root[data-view-mode="mobile"][data-mobile-scheme] 블록)가 첫 페인트부터
-// 서도록 두 속성을 미리 붙인다. data-view-mode는 원래 React effect가 첫 렌더 뒤에 붙여서, 그 사이
+// 서도록 루트 속성을 미리 붙인다. data-view-mode는 원래 React effect가 첫 렌더 뒤에 붙여서, 그 사이
 // 한 프레임은 데스크톱 팔레트로 그려졌다. 판정 규칙은 view-mode-store.ts의 createSnapshot과 수동
 // 동기화한다(플레인 JS라 import 불가): Electron은 언제나 desktop, 명시 선호가 이기고, auto면
 // FleetMobile UA 또는 폭 767px 이하. 같은 규칙이라 뒤이은 effect가 값을 뒤집지 않는다.
-// data-mobile-scheme은 데스크톱에서도 붙여 둔다 — 블록이 view-mode와 함께만 매치되므로 무해하고,
-// 데스크톱 창을 좁혀 모바일 배치로 넘어가는 순간 바로 팔레트가 선다.
+// 색상 모드·글자 배율은 mobile-appearance-store.ts와 같은 규칙이다(키·전역 이름·화이트리스트 수동
+// 동기화): Fleet Mobile 앱이 문서 시작에 심은 window.__fleetMobileAppearance가 있으면 그것이 정본,
+// 없으면 브라우저 저장값, "시스템"은 prefers-color-scheme. 데스크톱에서도 붙여 둔다 — 블록이
+// view-mode와 함께만 매치되므로 무해하고, 창을 좁혀 모바일 배치로 넘어가는 순간 바로 팔레트가 선다.
 function stampMobileAppearance() {
   const root = document.documentElement;
   const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent || "";
+  const isMode = (value) => value === "system" || value === "dark" || value === "light";
+  const isScale = (value) => value === "small" || value === "default" || value === "large";
   let preference = "auto";
   let colorMode = "system";
+  let fontScale = "default";
   try {
     const storedView = localStorage.getItem("fleet-console.view-mode.preference");
     if (storedView === "mobile" || storedView === "desktop") preference = storedView;
     const storedMode = localStorage.getItem("fleet-console.mobile-color-mode");
-    if (storedMode === "dark" || storedMode === "light") colorMode = storedMode;
+    if (isMode(storedMode)) colorMode = storedMode;
+    const storedScale = localStorage.getItem("fleet-console.mobile-font-scale");
+    if (isScale(storedScale)) fontScale = storedScale;
   } catch {
-    // 저장소가 막힌 환경에서는 auto·system으로 판정한다.
+    // 저장소가 막힌 환경에서는 auto·system·default로 판정한다.
   }
-  const narrow = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches;
+  const matches = (query) => typeof window.matchMedia === "function" && window.matchMedia(query).matches;
   const mobile = userAgent.includes("Electron")
     ? false
-    : preference === "auto" ? /(?:^|\s)FleetMobile\/\d/.test(userAgent) || narrow : preference === "mobile";
+    : preference === "auto" ? /(?:^|\s)FleetMobile\/\d/.test(userAgent) || matches("(max-width: 767px)") : preference === "mobile";
   root.setAttribute("data-view-mode", mobile ? "mobile" : "desktop");
-  const systemLight = typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: light)").matches;
-  root.setAttribute("data-mobile-scheme", colorMode === "system" ? (systemLight ? "light" : "dark") : colorMode);
+  let systemScheme = matches("(prefers-color-scheme: light)") ? "light" : "dark";
+  const native = window.__fleetMobileAppearance;
+  if (native && native.v === 1 && isMode(native.colorMode) && isScale(native.fontScale)
+    && (native.systemScheme === "dark" || native.systemScheme === "light")) {
+    colorMode = native.colorMode;
+    fontScale = native.fontScale;
+    systemScheme = native.systemScheme;
+  }
+  root.setAttribute("data-mobile-scheme", colorMode === "system" ? systemScheme : colorMode);
+  root.setAttribute("data-mobile-font-scale", fontScale);
 }
 
 // 퇴역한 리퀴드 글래스 스위치를 꺼 두었던 사람은 이 기기에서 처음 뜰 때 네 유리 불투명도를
