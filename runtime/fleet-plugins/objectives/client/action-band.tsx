@@ -354,7 +354,7 @@ export function ActionBand(props: ActionBandProps) {
   }, [draft, open, intent]);
 
   // 라우팅 확인 시트 포커스 — 키보드로 시트를 연 첫 ready 때 첫 대상(이대로 개시 우선)으로 옮긴다.
-  // judging 중에는 BODY로 떨어지지 않게 시트 컨테이너에 머물게 하고, 이미 시트 안 다른 곳으로 옮겼거나 재판단 시에는 빼앗지 않는다.
+  // judging 중에는 BODY로 떨어지지 않게 시트 컨테이너에 머물게 하고, 이미 다른 곳으로 옮겼거나 재판단 시에는 빼앗지 않는다.
   useEffect(() => {
     if (!sheet) return;
     const container = compRef.current;
@@ -369,7 +369,8 @@ export function ActionBand(props: ActionBandProps) {
     if (sheet.phase === "ready" && sheetFocusPending.current) {
       sheetFocusPending.current = false;
       const active = document.activeElement;
-      if (active && active !== container && container.contains(active)) return;
+      // 판단 중에 사용자가 시트 안이든 밖이든 다른 곳으로 옮겼으면 그 선택을 지킨다 — BODY나 시트 컨테이너에 있을 때만 옮긴다.
+      if (active && active !== document.body && active !== container) return;
       const goBtn = container.querySelector<HTMLButtonElement>("button.objectives-comp-send");
       if (goBtn && !goBtn.disabled && goBtn.getAttribute("aria-disabled") !== "true") {
         goBtn.focus();
