@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { OPERATION_PURGED_EVENT, accessOperation, describeOperation, readOperationLaunch } from "@fleet-console/sdk/operations/browser";
-import type { ClientApiCapability, ConsoleOperationSummary, PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability, ConsoleOperationSummary, OperationRuntimeHydration, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
 import type { Objective, ObjectiveEvent } from "../server/types.js";
 
@@ -585,6 +585,11 @@ export function activeTheaterId(): string | null {
 
 export function activeOperationId(): string | null {
   return installed?.consoleState.getActiveOperationId() ?? null;
+}
+
+/** 런타임 축의 신뢰도 — `ready` 가 아니면 요약 활동은 관측이 아니라 폴백이다. 구버전 호스트는 `ready` 로 읽는다. */
+export function runtimeHydration(): OperationRuntimeHydration {
+  return installed?.consoleState.getOperationRuntimeHydration?.() ?? "ready";
 }
 
 /** 목표가 따라가는 Operation — 사이드바에서 열지 않고 고른 것이 있으면 그것, 없으면 캔버스의 활성 Operation. */

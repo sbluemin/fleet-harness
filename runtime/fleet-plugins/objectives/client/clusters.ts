@@ -5,7 +5,7 @@ import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
-import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
+import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -220,13 +220,6 @@ const observationOf = (summary: ConsoleOperationSummary): BoardObservation => {
 };
 /** 정체의 30분 경계는 보드 사건 없이 지나가므로 시계로 다시 센다 — 감독자의 정체 점검과 같은 5분 간격. */
 const STALL_TICK_MS = 5 * 60_000;
-/**
- * 첫 런타임 스냅샷 전의 요약 활동은 복원 기본값(ended·idle)이라 「모름」을 휴면·유휴로 접는다. 플러그인은 호스트의 수화
- * 상태를 읽을 수 없으므로, 첫 구독 뒤 이 유예가 지나야 보드가 직접 센 정체를 세운다 — 30분 단위 신호라 몇 초 늦어도 잃는 것이 없다.
- */
-const STALL_SETTLE_MS = 10_000;
-let stallSettleAt: number | null = null;
-let stallSettled = false;
 
 let cached: readonly OperationCluster[] = [];
 let cachedSignature = "";
@@ -239,9 +232,7 @@ export const objectivesClusterSource: OperationClusterSource = {
     const offView = subscribeObjectiveView(listener);
     const offCommodore = subscribeCommodore(listener);
     const stallTick = setInterval(listener, STALL_TICK_MS);
-    stallSettleAt ??= Date.now() + STALL_SETTLE_MS;
-    const stallSettle = stallSettled ? undefined : setTimeout(() => { stallSettled = true; listener(); }, Math.max(0, stallSettleAt - Date.now()));
-    return () => { offObjective(); offView(); offCommodore(); clearInterval(stallTick); clearTimeout(stallSettle); };
+    return () => { offObjective(); offView(); offCommodore(); clearInterval(stallTick); };
   },
   get: () => {
     const summaries = operationSummaries();
@@ -253,11 +244,14 @@ export const objectivesClusterSource: OperationClusterSource = {
     const selected = surfaceOpen ? readObjectiveView(theaterId).selected : null;
     // 기한 지남은 날짜로, 정체는 시간으로 판정하므로 날·정체 점검 간격이 바뀌면 다시 셈한다.
     const now = Date.now();
-    const inputs = [summaries, surfaceOpen, theaterId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), stallSettled, commodoreRevision(), ...theaterStates];
+    // 런타임 축이 수화되기 전(pending)과 끊긴 동안(degraded)의 요약 활동은 관측이 아니라 폴백(ended·idle)이다 — 「모름」을
+    // 휴면·유휴로 접어 정체를 세우지 않도록, 축을 신뢰할 수 있을 때만 보드가 직접 센다. 전이는 호스트 상태 통지로 깨어난다.
+    const runtimeReady = runtimeHydration() === "ready";
+    const inputs = [summaries, surfaceOpen, theaterId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), ...theaterStates];
     if (inputs.length === cachedInputs.length && inputs.every((input, index) => input === cachedInputs[index])) return cached;
     const activity = new Map(summaries.map((summary) => [summary.id, summary.activity]));
     const observations = new Map(summaries.map((summary) => [summary.id, observationOf(summary)]));
-    const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, stallSettled ? (operationId) => observations.get(operationId) ?? null : () => null, now);
+    const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (operationId) => observations.get(operationId) ?? null : () => null, now);
     const nextSignature = signature(next);
     cachedInputs = inputs;
     if (nextSignature === cachedSignature) return cached;
