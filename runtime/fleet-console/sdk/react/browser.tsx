@@ -84,7 +84,25 @@ export interface MobileModelChoiceProps {
   readonly onClose: () => void;
 }
 
+/**
+ * 한 칸 입력 시트(P-4). 제목 → 설명 → 입력칸 → 오류 줄, 발에 「취소」·「저장」(그리고 `onClear`가 있으면 왼쪽 「지우기」).
+ * `onSave`가 거절(reject)되면 그 `Error.message`가 오류 줄에 서고 시트는 열린 채다 — 호출부가 현지화한 문장을 던진다.
+ */
+export interface MobileInputSpec {
+  readonly title: string;
+  readonly description?: string;
+  readonly value: string;
+  readonly placeholder?: string;
+  /** 비밀값(API 키) — `type=password`이고 입력칸 안에 「보기」 글자 버튼이 선다. */
+  readonly secret?: boolean;
+  readonly inputMode?: "text" | "numeric" | "url";
+  readonly onSave: (value: string) => void | Promise<void>;
+  readonly onClear?: () => void | Promise<void>;
+}
+
 export interface MobileSettingsHost {
+  /** 한 칸 입력 시트를 연다. 저장이 끝나면 시트가 닫힌다. */
+  readonly openInput?: (spec: MobileInputSpec) => void;
   /** 선택 팝업을 연다. 고르면 팝업이 닫히고 `onSelect`가 불린다. */
   readonly openChoice: (spec: MobileChoiceSpec) => void;
   /** 모델 팝업을 그리는 컴포넌트. `ModelPicker`가 열려 있는 동안 이것을 세운다. 없으면 `ModelPicker`는 데스크톱 모양 그대로다. */

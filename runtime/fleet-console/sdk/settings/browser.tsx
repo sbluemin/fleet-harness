@@ -2,7 +2,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 
 import { groupModelsByLaunchProvider, isLaunchProviderGlyphId, launchProviderCaption, launchProviderGlyph, type LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
-import { MobileSettingsRowLabelContext, SegmentedThumb, useMobileSettingsHost, useSelect } from "../react/browser.js";
+import { MobileSettingsRowLabelContext, SegmentedThumb, Select, useMobileSettingsHost, useSelect } from "../react/browser.js";
 import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, type ExperimentModelOption } from "./experiments.js";
 import type { SettingsSectionDescriptor } from "./types.js";
 
@@ -21,7 +21,7 @@ export {
 } from "./experiments.js";
 // 모바일 셸이 설정 화면에 주입하는 능력(선택 팝업) — 특수한 섹션이 직접 열 때 쓴다.
 export { MobileSettingsHostContext, useMobileSettingsHost } from "../react/browser.js";
-export type { MobileChoiceOption, MobileChoiceSpec, MobileModelChoiceProps, MobileModelGroup, MobileSettingsHost } from "../react/browser.js";
+export type { MobileChoiceOption, MobileChoiceSpec, MobileInputSpec, MobileModelChoiceProps, MobileModelGroup, MobileSettingsHost } from "../react/browser.js";
 export type { ShortcutBindings } from "./shortcuts.js";
 export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";
 
@@ -324,6 +324,178 @@ export function SettingsRow({ label, hint, helpTip, icon, badge, disabled = fals
         {hint ? <div className="fc-settings-row__hint" id={hintId}>{hint}</div> : null}
       </div>
       <div className="fc-settings-row__control">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * 코어 설정 카드의 한 줄 — 데스크톱에서는 `global-settings-row` 문법 그대로(제목 + 도움말 팁 + 오른쪽 컨트롤)이고,
+ * 모바일 호스트 안에서는 `SettingsRow`(아이콘 + 제목 + 설명 줄 + 컨트롤, 행 전체가 누름 영역)가 된다.
+ * 기존 마크업을 손으로 쓰던 자리가 데스크톱 모양을 바꾸지 않고 모바일 문법으로 따라오게 하는 얇은 껍데기다.
+ */
+export interface SettingsItemProps {
+  readonly label: string;
+  /** 제목 글자를 가리키는 id — `aria-labelledby`가 이 행을 참조하는 자리용. */
+  readonly labelId?: string;
+  /** 제목 옆의 도움말 — `<SettingsHelpTip>` 노드. 모바일에서는 설명 줄이 된다. */
+  readonly helpTip?: React.ReactNode;
+  /** 제목 아래 설명 한 줄. */
+  readonly hint?: React.ReactNode;
+  readonly icon?: React.ReactNode;
+  readonly badge?: React.ReactNode;
+  /** 모바일에서 행 전체를 흐리게 하고 누름을 막는다. 컨트롤의 `disabled`는 따로 준다. */
+  readonly disabled?: boolean;
+  readonly children: React.ReactNode;
+}
+
+export function SettingsItem({ label, labelId, helpTip, hint, icon, badge, disabled, children }: SettingsItemProps): React.ReactElement {
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    return <SettingsRow label={label} hint={hint} helpTip={helpTip} icon={icon} badge={badge} disabled={disabled}>{children}</SettingsRow>;
+  }
+  return (
+    <div className="global-settings-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">
+          {labelId ? <span id={labelId}>{label}</span> : label}
+          {badge}
+          {helpTip}
+        </p>
+        {hint ? <p className="global-settings-help">{hint}</p> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * 한 칸 입력 행(모바일 전용) — `[아이콘] [제목 / 지금 값]` 행을 누르면 입력 시트(P-4)가 열린다. 모바일 호스트가 없으면 `null`이라,
+ * 데스크톱 입력칸을 쓰던 자리는 호출부가 `useMobileSettingsHost()`로 갈라 이 행을 대신 세운다.
+ */
+export interface SettingsInputRowProps {
+  readonly label: string;
+  /** 행의 보조 줄 — 지금 값(비밀은 「설정됨」/「없음」). */
+  readonly valueText: string;
+  readonly helpTip?: React.ReactNode;
+  readonly hint?: React.ReactNode;
+  readonly icon?: React.ReactNode;
+  readonly disabled?: boolean;
+  /** 눌러도 시트가 열리지 않는 읽기 전용 값(정보 행). */
+  readonly readOnly?: boolean;
+  readonly input: Omit<import("../react/browser.js").MobileInputSpec, "title">;
+}
+
+export function SettingsInputRow({ label, valueText, helpTip, hint, icon, disabled = false, readOnly = false, input }: SettingsInputRowProps): React.ReactElement | null {
+  const mobileHost = useMobileSettingsHost();
+  if (!mobileHost?.openInput) return null;
+  const openInput = mobileHost.openInput;
+  return (
+    <SettingsRow label={label} hint={hint} helpTip={helpTip} icon={icon} disabled={disabled}>
+      <button
+        type="button"
+        className="fc-select__trigger fc-select--mobile"
+        disabled={disabled || readOnly}
+        aria-haspopup={readOnly ? undefined : "dialog"}
+        onClick={() => openInput({ title: label, ...input })}
+      >
+        <span className="fc-select__value">{valueText}</span>
+      </button>
+    </SettingsRow>
+  );
+}
+
+/**
+ * 코어 설정 카드(제목 + 행들) — 데스크톱은 `global-settings-card` 그대로, 모바일은 `SettingsCard`(묶음 머리 · 묶음 카드 · 아래 안내).
+ * 제목 옆의 도움말(`titleHelp`)은 모바일에서 카드 아래 안내 글이 된다(P-3).
+ */
+export interface SettingsGroupProps {
+  readonly ariaLabel: string;
+  readonly title?: React.ReactNode;
+  readonly titleHelp?: React.ReactNode;
+  readonly note?: string;
+  readonly children: React.ReactNode;
+}
+
+export function SettingsGroup({ ariaLabel, title, titleHelp, note, children }: SettingsGroupProps): React.ReactElement {
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    return (
+      <section className="fc-settings-card is-mobile" aria-label={ariaLabel}>
+        {title ? <h3 className="fc-settings-card__title">{title}</h3> : null}
+        <div className="fc-settings-card__body">{children}</div>
+        {titleHelp || note ? <div className="fc-settings-card__desc">{titleHelp}{note}</div> : null}
+      </section>
+    );
+  }
+  return (
+    <section className="global-settings-card" aria-label={ariaLabel}>
+      {title ? <h3 className="global-settings-card-title">{title}{titleHelp}</h3> : null}
+      {children}
+    </section>
+  );
+}
+
+export interface SettingsSegmentOption<T extends string | number | boolean> {
+  readonly value: T;
+  readonly label: string;
+  /** 이 옵션만 고를 수 없다(예: 로그인이 필요한 옵션). 모바일 팝업에서는 흐린 행이 된다. */
+  readonly disabled?: boolean;
+}
+
+export interface SettingsSegmentsProps<T extends string | number | boolean> {
+  readonly value: T;
+  readonly options: readonly SettingsSegmentOption<T>[];
+  readonly onChange: (next: T) => void;
+  readonly ariaLabel?: string;
+  readonly ariaLabelledBy?: string;
+  readonly title?: string;
+  readonly disabled?: boolean;
+  /** 옵션이 켬/끔 둘뿐일 때 — 모바일에서 팝업 대신 토글 행이 된다(P-2). `value`는 boolean이어야 한다. */
+  readonly toggle?: boolean;
+}
+
+/**
+ * 배타 선택(세그먼트). 데스크톱은 세그먼트 그대로, 모바일 호스트 안에서는 현재값 줄이 있는 팝업 행(뜻이 켬/끔이면 토글)이 된다.
+ * `SettingsItem` 안에 둔다 — 행 제목이 팝업 제목이 된다.
+ */
+export function SettingsSegments<T extends string | number | boolean>({ value, options, onChange, ariaLabel, ariaLabelledBy, title, disabled = false, toggle = false }: SettingsSegmentsProps<T>): React.ReactElement {
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    if (toggle && typeof value === "boolean") {
+      return <SettingsToggle checked={value} onChange={(next) => onChange(next as T)} ariaLabel={ariaLabel} disabled={disabled} />;
+    }
+    return (
+      <Select
+        value={String(value)}
+        options={options.map((option) => ({ value: String(option.value), label: option.label, ...(option.disabled ? { disabled: true } : {}) }))}
+        disabled={disabled}
+        {...(ariaLabel ? { label: ariaLabel } : {})}
+        {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})}
+        onChange={(raw) => {
+          const found = options.find((option) => String(option.value) === raw);
+          if (found) onChange(found.value);
+        }}
+      />
+    );
+  }
+  return (
+    <div className="segmented" role="group" {...(ariaLabel ? { "aria-label": ariaLabel } : {})} {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})} {...(title ? { title } : {})}>
+      <SegmentedThumb />
+      {options.map((option) => {
+        const isActive = option.value === value;
+        return (
+          <button
+            key={String(option.value)}
+            type="button"
+            aria-pressed={isActive}
+            className={`segmented-option ${isActive ? "is-active" : ""}`}
+            disabled={disabled || option.disabled}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
