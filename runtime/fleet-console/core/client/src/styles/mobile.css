@@ -1408,7 +1408,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .fc-settings-row.is-mobile .fc-select--mobile .fc-select__caret { display: none; }
 .fc-settings-row.is-mobile .fc-select--mobile:focus-visible { outline: 2px solid var(--m-text); outline-offset: 2px; }
 
-.mobile-settings-group .mobile-secnote { padding: 8px 18px 0; }
+.mobile-settings-group .mobile-secnote { padding: 8px 4px 0; }
 .mobile-group-row.is-info { cursor: default; }
 .mobile-group-row.is-info:active { background: var(--m-surface); }
 
