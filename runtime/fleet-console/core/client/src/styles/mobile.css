@@ -1198,3 +1198,10 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-avatar { position: relative; }
 .mobile-avatar-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; background: var(--m-running); border: 2px solid var(--m-bg-deep); border-radius: 50%; }
 .mobile-avatar-dot[data-state="failed"] { background: var(--m-danger); }
+
+/* 보관함 · 검색 */
+.mobile-archive-screen, .mobile-search-screen { height: 100%; overflow-y: auto; background: var(--m-bg); }
+.mobile-archive-screen .mobile-group-row .mobile-pill-secondary { flex: none; }
+.mobile-search-field { padding: 0 16px 8px; }
+.mobile-search-row { width: calc(100% - 24px); }
+.mobile-drawer-row-copy small.is-plain { color: var(--m-text-muted); }

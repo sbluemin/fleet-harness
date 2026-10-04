@@ -14,8 +14,10 @@ import { MobileMonogram } from "./mobile-monogram.js";
 import { MobilePluginScreen } from "./mobile-plugin-screen.js";
 import { MobileSessionView } from "./mobile-session-view.js";
 import { MobileTools } from "./mobile-tools.js";
-import { pushMobileSheet, useMobileDestination } from "./mobile-store.js";
+import { pushMobileSheet, setMobileDestination, useMobileDestination } from "./mobile-store.js";
 import { useConsoleState } from "../../hooks/use-store.js";
+import { MobileArchiveScreen } from "./mobile-archive-screen.js";
+import { MobileSearchScreen } from "./mobile-search-screen.js";
 import { MobileAttentionScreen } from "./mobile-attention-screen.js";
 import "../../styles/mobile.css";
 
@@ -40,6 +42,7 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   readonly onCloseOperation: (operationId: string) => void;
 }) {
   const destination = useMobileDestination();
+  const consoleState = useConsoleState();
   const [selectedOperationId, setSelectedOperationId] = useState(() => readOperationId());
   const selectedOperation = operations.find((operation) => operation.id === selectedOperationId) ?? null;
   const restoredRef = useRef(false);
@@ -90,6 +93,10 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   let content;
   if (destination.kind === "attention") {
     content = <MobileAttentionScreen />;
+  } else if (destination.kind === "archive") {
+    content = <MobileArchiveScreen state={consoleState} />;
+  } else if (destination.kind === "search") {
+    content = <MobileSearchScreen state={consoleState} onBack={() => setMobileDestination({ kind: "home" })} />;
   } else if (destination.kind === "plugins") {
     content = <MobileTools theme={theme} language={language} />;
   } else if (destination.kind === "plugin") {

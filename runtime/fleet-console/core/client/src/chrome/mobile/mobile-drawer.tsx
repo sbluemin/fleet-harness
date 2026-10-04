@@ -4,12 +4,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { resolveOperationActivity, resolveOperationMarkVisual, type OperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
 import { openConsoleSwitcher, useMobileAppearance } from "../../integration/mobile-appearance-store.js";
-import { openArchiveSheet } from "../../integration/operation-archive.js";
 import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { useConsoleLocale, useT } from "../../i18n/index.js";
-import { openOperationSearch, openQuickLaunch } from "../../integration/store.js";
+import { openQuickLaunch } from "../../integration/store.js";
 import type { ConsoleState, OperationNode } from "../../integration/types.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -187,7 +186,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
       },
     });
   }
-  destinations.push({ key: "archive", icon: { name: "archive" }, label: t("mobile.drawer.archive"), count: 0, current: false, run: () => openArchiveSheet() });
+  destinations.push({ key: "archive", icon: { name: "archive" }, label: t("mobile.drawer.archive"), count: 0, current: path === "/operations" && destination.kind === "archive", run: () => { setMobileDestination({ kind: "archive" }); toOperations(); } });
   if (mobilePluginRows(bindings).length > 0) {
     destinations.push({ key: "plugins", icon: { name: "grid" }, label: t("mobile.drawer.plugins"), count: 0, current: path === "/operations" && destination.kind === "plugins", run: () => { setMobileDestination({ kind: "plugins" }); toOperations(); } });
   }
@@ -197,7 +196,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
     <>
       <div className="mobile-drawer-head">
         <span className="mobile-wordmark">Fleet</span>
-        <button type="button" className="mobile-bar-button" onClick={() => go(() => openOperationSearch())} aria-label={t("mobile.drawer.search")}><MobileIcon name="search" /></button>
+        <button type="button" className="mobile-bar-button" onClick={() => go(() => { setMobileDestination({ kind: "search" }); toOperations(); })} aria-label={t("mobile.drawer.search")}><MobileIcon name="search" /></button>
       </div>
       <button type="button" className="mobile-theater-switch" onClick={() => pushMobileSheet({ kind: "theater" })} disabled={state.theaters.length === 0}>
         {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}

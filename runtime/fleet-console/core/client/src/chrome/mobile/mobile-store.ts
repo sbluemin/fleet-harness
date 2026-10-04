@@ -26,6 +26,8 @@ function subscribe(listener: Listener): () => void {
 export type MobileDestination =
   | { readonly kind: "home" }
   | { readonly kind: "attention" }
+  | { readonly kind: "archive" }
+  | { readonly kind: "search" }
   | { readonly kind: "plugins" }
   | { readonly kind: "plugin"; readonly entryId: string };
 
