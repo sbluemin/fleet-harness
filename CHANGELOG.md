@@ -5,6 +5,49 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.212.0] - 2026-10-04
+
+### fleet-cli
+
+#### Fixed
+- `fleet console`, `fleet console stop`, and `fleet console restart` no longer risk terminating an unrelated program after a Console crash; when a Console stops responding, they now tell you which process to stop instead of force-killing it.
+
+### fleet-console
+
+#### Added
+- The Commodore can review how an objective's members will be routed before starting it and change a member's model and effort, before launch or while it runs; a working member switches after its current turn.
+- The sidebar now shows who is behind each objective: a Commodore square marks objectives the Commodore commenced (filled while autonomous operation is on), and each row names who added it and who last acted on it and when, for example that the Commodore commenced it 20 minutes ago. Objectives commenced before this release carry no Commodore mark.
+- While autonomous operation is on for the Theater you are viewing, type `@` in Quick Launch to message its Commodore; the message lands in the Commodore log and wakes its next turn.
+
+#### Fixed
+- When the Fleet browser closed its tabs because the connection dropped, you can now reopen or dismiss them from the tab strip even after opening a new tab, instead of the offer appearing only on an empty sheet.
+- A message to the Commodore no longer disappears silently while autonomous operation is off: the Commodore sheet's message box waits until it is on and keeps your draft, a message sent just as it was turned off comes back as an error, and one the Commodore never got to read is marked "Not delivered" in its log.
+- In the mobile app, opening an Analyst artifact from its export menu now shows it full screen inside the app instead of doing nothing.
+- Show stalled objectives in the sidebar even when autonomy is off, so an objective with missions left whose sessions have all gone quiet no longer waits unnoticed.
+- A Theater system prompt longer than 16,000 characters is no longer lost when you close its sheet; the draft stays in the tab until you shorten, copy or discard it.
+- Picking a member setting that is already active in Objectives no longer clears the Commander's pending decision request.
+- The update screen no longer says it is installing while it is stopping the Console or reconnecting.
+- OpenCode Go and Antigravity model answers that hit the output limit now end as cut off, so Claude Code can continue them, and answers stopped by a safety filter no longer look finished. Antigravity answers that stop for any other reason, such as a malformed tool call, or that break off without saying why, now end with an error instead of looking finished.
+- Escape closes Quick Launch or an aide card again right after you clear the aide's conversation, and an aide card opened by clicking its bird is ready for typing and closes with Escape.
+- Aides placed in the toolbar are easy to make out in the light theme.
+- In dark themes, Settings, the Objectives panel, and a document or wiki page opened beside a tool panel's list no longer let the map behind them show through.
+
+### fleet-desktop
+
+#### Fixed
+- Opening or quitting Fleet Console Desktop after a Console crash no longer risks terminating an unrelated program. If a Console left over from an earlier session stops responding, Desktop now reports that Fleet Console is already running instead of force-quitting it.
+- Applying a Console update from several tabs at once restarts the app only once; the other tabs are told an update is already in progress.
+
+### fleet-mobile
+
+#### Fixed
+- On Android, opening a Console access link while the app is closed now connects to that Console instead of retrying the Console you used last.
+- Removed the non-working Download HTML option from the Analyst artifact export menu in the mobile app; Copy source and View full screen remain available.
+- Tapping an external web link in the mobile app, such as a link in a Markdown preview, now opens it in your phone's browser instead of doing nothing.
+- Invalid access links show an error instead of reopening the last Console or leaving the app stuck checking a connection, with a way back to the Console already open.
+- VoiceOver can now reach and activate Try again, Back to, and All consoles separately on the connection and error screens, while the status message is still read as one item.
+- Screen readers no longer reach the hidden Console behind the connection screens, the Consoles list, or the QR scanner.
+
 ## [1.211.0] - 2026-10-03
 
 ### fleet-console
