@@ -1,4 +1,6 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
 import { isFleetMobileShell } from "@fleet-console/link/core";
@@ -20,7 +22,7 @@ import { setMobileColorMode, setMobileFontScale, useMobileAppearance, type Mobil
 import { openWhatsNew } from "../../integration/store.js";
 import type { GlobalSettingsState } from "../../integration/types.js";
 import { setViewModePreference, useViewMode, type ViewModePreference } from "../../integration/view-mode-store.js";
-import { MobileIcon } from "./mobile-icons.js";
+import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushMobileSheet } from "./mobile-store.js";
 import "../../styles/mobile.css";
@@ -54,7 +56,11 @@ interface MobileSettingsRow {
   readonly icon: ReactNode;
   /** 상세 대신 시트·동작으로 가는 행(새 기능). */
   readonly act?: () => void;
+  /** 값이 플러그인 섹션에서 오는 행 — 그 섹션의 `mobile.summary`가 보조 줄을 그리고 `subscribe`로 갱신한다. */
+  readonly summarySection?: PluginSettingsNavItem;
 }
+
+type MobileSettingsGroupId = "display" | "agent" | "use" | "about";
 
 interface MobileSettingsGroup {
   readonly key: string;
@@ -85,12 +91,12 @@ export function MobileSettingsPage() {
     return () => controller.abort();
   }, []);
 
-  const pluginSections = collectPluginSettingsSections(registry.providers, locale, t);
+  const pluginSections = collectPluginSettingsSections(registry.providers, locale, t, "mobile");
   const open = (id: MobileSectionId) => {
     const entry: MobileSettingsLocationState = { mobileSettingsEntry: true };
     navigate({ pathname: "/settings", search: `?section=${encodeURIComponent(id)}` }, { state: entry });
   };
-  const groups = buildMobileSettingsGroups({ state, appearance, viewMode: viewMode.preference, version: consoleState.version, pluginSections, t });
+  const groups = buildMobileSettingsGroups({ state, appearance, viewMode: viewMode.preference, version: consoleState.version, pluginSections, t, locale });
   const rows = groups.flatMap((group) => group.rows);
   const requested = new URLSearchParams(location.search).get("section");
   // 폰 전용 상세는 그대로, 그 밖의 옛 id와 상대 레이아웃이 만든 id는 데스크톱과 같은 판정으로 옮긴다.
@@ -152,9 +158,9 @@ export function MobileSettingsPage() {
           {groups.map((group) => (
             <div className="mobile-group is-flush" key={group.key}>
               {group.rows.map((row) => (
-                <button type="button" className={`mobile-group-row${row.value === null ? "" : " is-two"}`} key={row.id} onClick={() => (row.act ? row.act() : open(row.id))}>
+                <button type="button" className={`mobile-group-row${row.value === null && !row.summarySection ? "" : " is-two"}`} key={row.id} onClick={() => (row.act ? row.act() : open(row.id))}>
                   <span className="mobile-group-row-icon" aria-hidden="true">{row.icon}</span>
-                  <span className="mobile-group-row-copy">{row.title}{row.value === null ? null : <small>{row.value}</small>}</span>
+                  <span className="mobile-group-row-copy">{row.title}{row.summarySection ? <SectionSummary section={row.summarySection} locale={locale} /> : row.value === null ? null : <small>{row.value}</small>}</span>
                 </button>
               ))}
             </div>
@@ -164,6 +170,14 @@ export function MobileSettingsPage() {
     </section>
   );
 }
+
+/** 플러그인 섹션이 올린 요약 한 줄 — 구독 신호가 오면 다시 읽는다. 값이 없으면 줄 자체를 그리지 않는다. */
+function SectionSummary({ section, locale }: { readonly section: PluginSettingsNavItem; readonly locale: ConsoleLocale }) {
+  const mobile = section.mobile;
+  const text = useSyncExternalStore(mobile?.subscribe ?? NO_SUBSCRIBE, () => mobile?.summary?.(locale) ?? null, () => null);
+  return text === null ? null : <small>{text}</small>;
+}
+const NO_SUBSCRIBE = () => () => undefined;
 
 const LANGUAGE_ROW = (t: (key: CoreMessageKey) => string): MobileSettingsRow => ({ id: "language", title: t("settings.core.language.label" as CoreMessageKey), value: null, icon: null });
 
@@ -246,32 +260,46 @@ function RadioRow({ checked, label, sub, disabled, onSelect }: { readonly checke
  * 두 레이아웃이 같은 주소를 공유하므로 한쪽만 아는 섹션이 생기면 그 링크가 다른 쪽에서 끊긴다.
  * 각 행은 열지 않고도 지금 무엇이 들어 있는지 말한다. 행의 대응은 spec-decisions D37.
  */
-function buildMobileSettingsGroups({ state, appearance, viewMode, version, pluginSections, t }: {
+function buildMobileSettingsGroups({ state, appearance, viewMode, version, pluginSections, t, locale }: {
   readonly state: GlobalSettingsState | null;
   readonly appearance: MobileAppearanceSnapshot;
   readonly viewMode: ViewModePreference;
   readonly version: string;
   readonly pluginSections: readonly PluginSettingsNavItem[];
   readonly t: (key: CoreMessageKey) => string;
+  readonly locale: ConsoleLocale;
 }): readonly MobileSettingsGroup[] {
+  const byOrder = (a: PluginSettingsNavItem, b: PluginSettingsNavItem) => (a.mobile?.order ?? 0) - (b.mobile?.order ?? 0);
+  const sectionRow = (section: PluginSettingsNavItem, icon: MobileIconName): MobileSettingsRow => ({
+    id: section.id, title: section.sectionTitle, value: null, icon: <MobileIcon name={icon} />,
+    ...(section.mobile?.summary ? { summarySection: section } : {}),
+  });
+  // 섹션이 자리를 말하지 않으면 데스크톱 묶음에서 파생한다: setup → 화면, work·machine → 에이전트, experiments는 실험 페이지 안의 카드.
+  const placed = (section: PluginSettingsNavItem): MobileSettingsGroupId | null =>
+    section.mobile?.group ?? (section.group === "setup" ? "display" : section.group === "experiments" ? null : "agent");
   const display: MobileSettingsRow[] = [
     { id: "color-mode", title: t("mobile.settings.colorMode"), value: t(`mobile.settings.color.${appearance.colorMode}`), icon: <MobileIcon name="moon" /> },
     { id: "font-scale", title: t("mobile.settings.fontScale"), value: t(`mobile.settings.font.${appearance.fontScale}`), icon: <MobileIcon name="text" /> },
-    { id: "language", title: t("mobile.settings.language"), value: state === null ? null : languageLabel(state, t), icon: <MobileIcon name="globe" /> },
+    { id: "language", title: t("mobile.settings.language"), value: state === null ? null : languageLabel(state, t, locale), icon: <MobileIcon name="globe" /> },
     { id: "layout", title: t("mobile.settings.layout"), value: t(`mobile.settings.layout.${viewMode}`), icon: <MobileIcon name="layout" /> },
   ];
   // 플러그인이 선언한 group은 두 레이아웃에서 같은 뜻이어야 한다 — 하네스·터미널·AI Gateway 같은 작업 섹션이 「에이전트」, 고급이 그 끝이다.
   const agent: MobileSettingsRow[] = [];
-  for (const section of pluginSections) {
-    if (section.group === "setup" || section.group === "experiments") continue;
-    if (section.group === "machine") continue;
-    // 보조 값은 플러그인 이름(「Terminal」)이 아니라 그 섹션의 지금 값이어야 읽힌다 — 값을 알 수 없는 행은 이름만 둔다.
-    agent.push({ id: section.id, title: section.sectionTitle, value: null, icon: <MobileIcon name={section.sectionTitle.toLowerCase().includes("gateway") ? "gate" : section.sectionTitle.toLowerCase().includes("터미널") || section.sectionTitle.toLowerCase().includes("terminal") ? "term" : "harness"} /> });
+  const use: MobileSettingsRow[] = [];
+  const iconFor = (title: string): MobileIconName => {
+    const lower = title.toLowerCase();
+    return lower.includes("gateway") ? "gate" : lower.includes("terminal") || lower.includes("터미널") ? "term" : lower.includes("usage") || lower.includes("한도") || lower.includes("사용량") ? "chart" : "harness";
+  };
+  for (const section of [...pluginSections].sort(byOrder)) {
+    const where = placed(section);
+    if (where === "display") display.push(sectionRow(section, iconFor(section.sectionTitle)));
+    else if (where === "agent") agent.push(sectionRow(section, iconFor(section.sectionTitle)));
+    else if (where === "use") use.push(sectionRow(section, iconFor(section.sectionTitle)));
   }
   agent.push({ id: "advanced", title: t("settings.core.advanced.label"), value: null, icon: <MobileIcon name="gate" /> });
-  const use: MobileSettingsRow[] = [
+  use.push(
     { id: "experiments", title: t("settings.core.experiments.label"), value: describeConnectivity(state, t), icon: <MobileIcon name="flask" /> },
-  ];
+  );
   const about: MobileSettingsRow[] = [
     { id: "about", title: t("mobile.settings.whatsNew"), value: version, icon: <MobileIcon name="spark" />, act: () => openWhatsNew() },
     { id: "help", title: t("mobile.settings.helpRow"), value: null, icon: <MobileIcon name="help" /> },
@@ -280,8 +308,10 @@ function buildMobileSettingsGroups({ state, appearance, viewMode, version, plugi
   return [{ key: "display", rows: display }, { key: "agent", rows: agent }, { key: "use", rows: use }, { key: "about", rows: about }];
 }
 
-function languageLabel(state: GlobalSettingsState, t: (key: CoreMessageKey) => string): string {
-  return state.language === "auto" ? t("settings.language.auto") : state.language === "ko" ? t("settings.language.ko") : t("settings.language.en");
+function languageLabel(state: GlobalSettingsState, t: (key: CoreMessageKey) => string, locale: ConsoleLocale): string {
+  // 자동이면 지금 풀린 언어를 괄호로 덧붙인다 — 「자동(한국어)」.
+  if (state.language === "auto") return `${locale === "ko" ? "자동" : "Auto"}(${locale === "ko" ? t("settings.language.ko") : t("settings.language.en")})`;
+  return state.language === "ko" ? t("settings.language.ko") : t("settings.language.en");
 }
 
 /**

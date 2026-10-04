@@ -9,7 +9,7 @@ import { SystemFontsFetchError, fetchSystemFonts } from "@fleet-console/font-pic
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
-import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
+import type { SettingsSectionDescriptor, SettingsSectionGroup, SettingsSectionMobile } from "@fleet-console/sdk/settings";
 import { SettingsSlider, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
@@ -98,6 +98,7 @@ export interface PluginSettingsNavItem {
   readonly sectionTitle: string;
   readonly entries: readonly string[];
   readonly render?: () => ReactNode;
+  readonly mobile?: SettingsSectionMobile;
 }
 
 export const SETTINGS_GROUP_ORDER: readonly SettingsSectionGroup[] = ["setup", "work", "machine", "experiments"];
@@ -290,9 +291,11 @@ export function collectPluginSettingsSections(
   plugins: readonly { readonly id: string | null; readonly settingsSections?: readonly SettingsSectionDescriptor[] }[],
   locale: ConsoleLocale,
   t: T,
+  layout: "desktop" | "mobile" = "desktop",
 ): readonly PluginSettingsNavItem[] {
   return plugins.flatMap((plugin) =>
-    (plugin.settingsSections ?? []).map((section) => ({
+    // 폰에서만 서는 섹션(`mobile.only`)은 데스크톱 목록·검색에 올리지 않는다.
+    (plugin.settingsSections ?? []).filter((section) => layout === "mobile" || section.mobile?.only !== true).map((section) => ({
       id: `${plugin.id ?? "terminal"}:${section.id}` as const,
       // 플러그인 설정은 대부분 작업 도구의 동작이다. 다른 자리가 필요하면 섹션이 직접 말한다.
       group: section.group ?? "work" as const,
@@ -301,6 +304,7 @@ export function collectPluginSettingsSections(
       sectionTitle: resolveLocalizedText(section.title, locale),
       entries: (section.keywords ?? []).map((keyword) => resolveLocalizedText(keyword, locale)),
       render: section.render,
+      ...(section.mobile === undefined ? {} : { mobile: section.mobile }),
     })),
   );
 }
