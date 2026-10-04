@@ -60,7 +60,9 @@ export function AttentionSection({ onFocus, onOpenOperationMenu }: {
           const visual = resolveOperationMarkVisual({ activity: entry?.activity ?? "idle", operationId: operation.id, idleArrivalIds: arrivals });
           const theater = state.theaters.find((theater) => theater.id === operation.theaterId)?.label ?? operation.theaterId;
           const decision = hasDecisionRequest(clusters, operation.id);
-          const mark = clusters.rootOf.get(operation.id)?.cluster.row?.mark;
+          // 줄만 선 묶음(구성원·결정 요청 없는 목표)은 rootOf 에 없으므로 줄 색인에서 읽되, 그 줄의 뿌리일 때만 표식을 단다.
+          const rowLayout = clusters.rowOf.get(operation.id);
+          const mark = rowLayout?.cluster.root === operation.id ? rowLayout.cluster.row?.mark : undefined;
           const active = warRoom ? operation.id === stagedId : operation.id === state.activeOperationId;
           return <button key={operation.id} type="button" className={`side-bar-attention-row${active ? " is-active" : ""}${minimizedIds.has(operation.id) ? " is-minimized" : ""}`} data-attention-operation={operation.id}
             data-keep-operation-active="" aria-current={active ? "true" : undefined} title={`${operation.title} · ${theater}`}
