@@ -73,6 +73,22 @@ function hostOf(url: string): string {
   try { const parsed = new URL(url); return parsed.host || url; } catch { return url; }
 }
 
+type Box = { readonly width: number; readonly height: number };
+/** 한 park 회차에 물러난 뷰를 찍은 장. width·height는 디코드된 원본 크기다. */
+type StillFrame = Box & { readonly tabId: string; readonly url: string; readonly src: string };
+
+/**
+ * 찍힌 장이 지금 자리와 맞는가. 물러난 뷰는 마지막으로 놓였던 크기를 지키므로, 그 뒤 자리가 바뀌었으면 맞지 않는다.
+ * 캡처는 DIP, 자리는 CSS px라 Console 배율(⌘+)만큼 고르게 다를 수 있다 — 배율 하나로 맞춰 본 뒤
+ * 남는 어긋남이 자리 기준 2px 안이어야 한다. 늘이거나 잘라 끼우는 장은 보이지 않는다.
+ */
+function stillFits(still: Box, box: Box): boolean {
+  if (still.width < 1 || still.height < 1 || box.width < 1 || box.height < 1) return false;
+  const scale = still.width / box.width;
+  if (scale < 0.25 || scale > 5) return false;
+  return Math.abs(still.height / scale - box.height) <= 2;
+}
+
 export function GlobalBrowserSheet({ language, theme }: Services) {
   return <GlobalBrowserSheetBody language={language} theme={theme} />;
 }
@@ -107,14 +123,14 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const [geometry, setGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   // scrim은 아레나(캔버스)만 덮는다 — 도구모음·섬·레일·사이드바는 기하 밖이라 그대로 조작된다.
   const [scrimGeometry, setScrimGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
-  const [still, setStill] = React.useState<{ tabId: string; url: string; src: string } | null>(null);
+  const [still, setStill] = React.useState<StillFrame | null>(null);
+  const [viewportBox, setViewportBox] = React.useState<Box | null>(null);
   const [profileMenu, setProfileMenu] = React.useState(false);
   const [viewportMenu, setViewportMenu] = React.useState(false);
   const [confirming, setConfirming] = React.useState<"profile" | "clear" | null>(null);
   const [pendingProfile, setPendingProfile] = React.useState<string | null>(null);
 
   const placeKeyRef = React.useRef("");
-  const captureInflightRef = React.useRef(false);
   const activeTabRef = React.useRef(activeTab);
   activeTabRef.current = activeTab;
 
@@ -134,10 +150,20 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     if (!editingUrl) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? "");
   }, [activeTab?.url, editingUrl]);
 
-  // 정지 화면 캐시는 provenance(탭·URL)가 바뀌면 버린다.
+  // 정지 화면이 맞춰 볼 자리 — 뷰포트 상자의 CSS 크기.
   React.useEffect(() => {
-    setStill((current) => current && activeTab && current.tabId === activeTab.id && current.url === activeTab.url ? current : null);
-  }, [activeTab?.id, activeTab?.url]);
+    const element = viewportRef.current;
+    if (!open || !element) { setViewportBox(null); return; }
+    const read = () => {
+      const rect = element.getBoundingClientRect();
+      setViewportBox((current) => current && current.width === rect.width && current.height === rect.height ? current : { width: rect.width, height: rect.height });
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [open]);
 
   const place = React.useCallback((visible: boolean, bounds?: { x: number; y: number; width: number; height: number }) => {
     const key = visible && bounds
@@ -343,8 +369,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     };
   }, [open, measureGeometry]);
 
-  // ---- 네이티브 뷰 배치: 겹침이 뜨면 즉시 물리고, 캐시된 정지 화면이 있으면 깐다. ----
-  // 동기 캡처 대기는 절대 하지 않는다(H2). 정지 화면은 탭이 안정된 뒤 백그라운드에서 미리 찍어 둔다.
+  // ---- 네이티브 뷰 배치: 겹침이 뜨면 즉시 물리고, 물러난 뒤 찍은 정지 화면을 깐다. ----
+  // 캡처를 기다렸다 물리지 않는다(H2) — 정지 화면은 물러난 뒤에 찍어 도착하면 깐다(아래 park 회차).
   // 토스트·말풍선은 뷰와 실제로 겹칠 때만 물린다 — 시트 밖으로 비킨 스택에 가려 정지만 보지 않게.
   const parked = !available || activeTab === null || overlayActive || floatingOverlap || chromeParked;
   const syncPlacement = React.useCallback(() => {
@@ -389,35 +415,73 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     }
   }, [open, place]);
 
-  // 탭이 안정되면(로딩 끝) 백그라운드에서 한 장을 미리 찍어 둔다. 실패하면 조용히 버리고 무채색 자리를 쓴다.
-  React.useEffect(() => {
-    if (!open || !available || !activeTab || activeTab.loading) return;
-    if (still && still.tabId === activeTab.id && still.url === activeTab.url) return;
-    if (captureInflightRef.current) return;
-    captureInflightRef.current = true;
-    const tabId = activeTab.id;
-    const url = activeTab.url;
+  // ---- park 회차: 물러날 때마다 Console 뒤에 선 뷰를 한 장 찍는다 ----
+  // 물러난 뷰도 계속 그려지므로 그 한 장이 물러난 순간의 화면이다. 도착 전(대략 150–330ms)과
+  // 회차·탭·크기가 어긋난 장은 쓰지 않고 무채색 자리를 둔다 — 낡거나 늘어난 화면을 보이지 않는다.
+  // 정지 화면은 품질 요소다. 캡처가 실패해도 무채색 자리로 남을 뿐 주 흐름은 막지 않는다.
+  const parkEpochRef = React.useRef(0);
+  const wasParkedRef = React.useRef(false);
+  const parkedRef = React.useRef(parked);
+  parkedRef.current = parked;
+  const captureRef = React.useRef<{ readonly controller: AbortController; again: boolean } | null>(null);
+  const cancelCapture = React.useCallback(() => {
+    captureRef.current?.controller.abort();
+    captureRef.current = null;
+  }, []);
+  const captureStill = React.useCallback(function capture() {
+    // 진행 중이면 끝난 뒤 한 번 더 찍는다 — 겹친 요청은 하나로 합친다.
+    if (captureRef.current) { captureRef.current.again = true; return; }
+    const tab = activeTabRef.current;
+    if (!parkedRef.current || !tab) return;
+    const epoch = parkEpochRef.current;
+    const { id: tabId, url } = tab;
+    const task = { controller: new AbortController(), again: false };
+    captureRef.current = task;
+    const current = () => !task.controller.signal.aborted && parkedRef.current && parkEpochRef.current === epoch
+      && activeTabRef.current?.id === tabId && activeTabRef.current?.url === url;
     void (async () => {
       try {
-        const response = await fetch("/api/v1/browser/global/screenshot");
+        const response = await fetch("/api/v1/browser/global/screenshot", { signal: task.controller.signal });
         if (!response.ok) return;
         const shot = await response.json() as { data?: string; mimeType?: string; mime?: string };
-        if (!shot || typeof shot.data !== "string") return;
-        if (activeTabRef.current?.id !== tabId || activeTabRef.current?.url !== url) return;
-        const mime = shot.mimeType ?? shot.mime ?? "image/png";
-        const src = `data:${mime};base64,${shot.data}`;
+        if (!shot || typeof shot.data !== "string" || !current()) return;
+        const src = `data:${shot.mimeType ?? shot.mime ?? "image/png"};base64,${shot.data}`;
         const img = new Image();
         img.src = src;
         await img.decode();
-        if (activeTabRef.current?.id !== tabId || activeTabRef.current?.url !== url) return;
-        setStill({ tabId, url, src });
+        if (!current()) return;
+        setStill({ tabId, url, src, width: img.naturalWidth, height: img.naturalHeight });
       } catch {
-        // 정지 화면은 품질 요소다. 없으면 무채색 자리로 — 주 흐름은 막지 않는다.
+        // 거둔 요청·실패한 캡처는 버린다.
       } finally {
-        captureInflightRef.current = false;
+        if (captureRef.current === task) {
+          captureRef.current = null;
+          if (task.again && parkedRef.current && parkEpochRef.current === epoch) capture();
+        }
       }
     })();
-  }, [open, available, activeTab?.id, activeTab?.url, activeTab?.loading, still]);
+  }, []);
+  // park 진입마다 회차를 올리고 한 장. 풀리거나 닫히면 진행 중 캡처를 거두고 지난 장을 버린다 —
+  // 다음 회차는 빈(무채색) 자리에서 시작한다. 물러난 채 탭이 바뀌면 같은 회차에서 새 탭을 찍는다.
+  const capturable = open && available && activeTab !== null && parked;
+  React.useEffect(() => {
+    if (!capturable) {
+      wasParkedRef.current = false;
+      cancelCapture();
+      setStill(null);
+      return;
+    }
+    if (!wasParkedRef.current) { wasParkedRef.current = true; parkEpochRef.current += 1; }
+    cancelCapture();
+    setStill(null);
+    captureStill();
+  }, [capturable, activeTab?.id, activeTab?.url, cancelCapture, captureStill]);
+  // 물러난 채 자리 크기가 바뀌면 같은 회차에서 다시 찍는다. 크롬이 움직이는 동안은 정착 뒤 복귀하니 찍지 않는다.
+  React.useEffect(() => {
+    if (!parkedRef.current || !wasParkedRef.current || chromeMovingRef.current) return;
+    captureStill();
+  }, [viewportBox?.width, viewportBox?.height, captureStill]);
+  React.useEffect(() => cancelCapture, [cancelCapture]);
 
   // 페이지의 prefers-color-scheme은 Console 테마 극성을 따른다(Operation과 같은 계약).
   const polarity = themePolarity(theme ?? "instrument");
@@ -474,7 +538,9 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   };
 
   const closedTabs = state?.closedTabs ?? [];
-  const shownStill = parked && still && activeTab && still.tabId === activeTab.id && still.url === activeTab.url ? still : null;
+  // 이번 회차에 찍혔고(풀릴 때 비운다) 지금 자리와 크기가 맞는 장만 보인다. 그 밖은 무채색 자리다.
+  const shownStill = parked && still && activeTab && viewportBox && still.tabId === activeTab.id && still.url === activeTab.url
+    && stillFits(still, viewportBox) ? still : null;
   const profile = available ? state?.profile ?? null : null;
   const defaultProfile = state?.defaultProfile ?? null;
   const persistent = profile !== null;
