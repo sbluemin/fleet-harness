@@ -17,7 +17,7 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
    - **usage limit** — a Codex top-level comment with `created_at > REQ_TS` that carries the usage-limit text. It ignores the baseline counts, so it fires even if the notice slipped into `BASE_TOP`;
    - **new top-level** — the count of Codex top-level comments with `created_at > HEAD_TS` exceeds `BASE_TOP`;
    - **summary edited** — the summary comment's `updated_at` differs from `BASE_SUMMARY_TS`.
-   On timeout it prints `TIMEOUT`; relaunch it, unless the usage-limit deadline in step 4 has passed. Report the background task id. Do not run model turns between signals.
+   On timeout it prints `TIMEOUT`; relaunch it, unless the usage-limit deadline in step 4 has passed. Report the background task id. Do not run model turns between signals. A hand-written loop keeps the step 2 baseline too: counting from the loop's own start misses a review or limit notice posted between the request and the launch.
    - **Re-anchor caveat — do not detect feedback by `commit_id`.** After each push GitHub re-anchors still-open review comments onto the newest commit, so an already-addressed comment reappears with `commit_id == <new head>` and would trip a false "new inline" signal. Detect new feedback by the **review count** and by **comment/reaction `created_at` vs `HEAD_TS`** only — never by matching `commit_id` to the head.
    - Reference loop (run it as the loop itself with `run_in_background: true`; its completion notification re-invokes you):
      ```bash
