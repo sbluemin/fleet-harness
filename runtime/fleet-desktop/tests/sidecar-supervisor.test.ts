@@ -105,7 +105,7 @@ describe("sidecar supervisor", () => {
     const lockContents = JSON.stringify({ pid: bystander.pid, endpoint: `http://127.0.0.1:${port}/`, token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
     fs.writeFileSync(reusedLock, lockContents);
     const resolveRuntime = vi.fn(async (): Promise<SidecarRuntime> => { throw new Error("reached_spawn"); });
-    const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: {}, lockFile: reusedLock, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
+    const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: {}, lockFile: reusedLock, ownerId: "owner-1", shutdownSettleMs: 200, log: { info: vi.fn(), error: vi.fn() } });
     try {
       // Quit은 막히지 않지만 증명하지 못한 pid에는 신호도, lock 삭제도 하지 않는다.
       await expect(instance.stop()).resolves.toBeUndefined();
@@ -175,16 +175,18 @@ describe("sidecar supervisor", () => {
     }
   }, 15_000);
 
-  it("stops its own stuck sidecar on quit even when health no longer answers", async () => {
+  it.each(["held", "released"] as const)("escalates a stuck sidecar only while its lock remains held (%s)", async (lockState) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-stuck-sidecar-"));
     const ownLock = path.join(dir, "console.lock");
     const cliPath = path.join(dir, "console", "dist", "cli.mjs");
     fs.mkdirSync(path.dirname(cliPath), { recursive: true });
-    // 첫 health에만 답하고 그 뒤로는 응답 없이 붙잡고, SIGTERM도 처리하지 못하는 멈춘 sidecar.
+    // 기존 정지 계약에 lock 해제 뒤 SDK 자식 수거로 잔존하는 경계를 더한다. pid 생존만으로 승격하면 후자가 죽는다.
     fs.writeFileSync(cliPath, `
       import fs from "node:fs"; import http from "node:http";
       let answered = false;
-      process.on("SIGTERM", () => {});
+      process.on("SIGTERM", () => {
+        if (process.env.LOCK_STATE === "released") fs.unlinkSync(process.env.LOCK_FILE);
+      });
       const server = http.createServer((request, response) => {
         if (answered) return;
         answered = true;
@@ -193,13 +195,26 @@ describe("sidecar supervisor", () => {
       server.listen(0, "127.0.0.1", () => fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, endpoint: "http://127.0.0.1:" + server.address().port + "/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } })));
     `);
     const runtime: SidecarRuntime = { nodePath: process.execPath, cliPath, serviceRoot: path.dirname(path.dirname(cliPath)), serviceVersion: "1.23.0" };
-    const instance = new SidecarSupervisor({ resolveRuntime: async () => runtime, serviceVersion: "1.23.0", env: { LOCK_FILE: ownLock }, lockFile: ownLock, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
+    const instance = new SidecarSupervisor({ resolveRuntime: async () => runtime, serviceVersion: "1.23.0", env: { LOCK_FILE: ownLock, LOCK_STATE: lockState }, lockFile: ownLock, ownerId: "owner-1", shutdownSettleMs: 200, log: { info: vi.fn(), error: vi.fn() } });
     let sidecarPid: number | undefined;
     try {
       await expect(instance.startOrAdopt()).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/console\/$/);
       sidecarPid = (JSON.parse(fs.readFileSync(ownLock, "utf8")) as { pid: number }).pid;
-      await instance.stop();
-      expect(() => process.kill(sidecarPid!, 0)).toThrow();
+      const kill = vi.spyOn(process, "kill");
+      await expect(instance.stop()).resolves.toBeUndefined();
+      expect(kill.mock.calls.filter(([, signal]) => signal === "SIGTERM")).toEqual([[sidecarPid, "SIGTERM"]]);
+      if (lockState === "held") {
+        expect(kill).toHaveBeenCalledWith(sidecarPid, "SIGKILL");
+        expect(() => process.kill(sidecarPid!, 0)).toThrow();
+        expect(fs.existsSync(ownLock)).toBe(true);
+      } else {
+        // 정리 예산을 넘겨 살아도 lock을 놓았으면 신호 없이 반환하며, 재차 Quit해도 SIGTERM을 보내지 않는다.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await instance.stop();
+        expect(() => process.kill(sidecarPid!, 0)).not.toThrow();
+        expect(fs.existsSync(ownLock)).toBe(false);
+        expect(kill.mock.calls.filter(([, signal]) => signal !== 0)).toEqual([[sidecarPid, "SIGTERM"]]);
+      }
     } finally {
       if (sidecarPid) try { process.kill(sidecarPid, "SIGKILL"); } catch { /* 이미 종료됨 */ }
       fs.rmSync(dir, { recursive: true, force: true });
