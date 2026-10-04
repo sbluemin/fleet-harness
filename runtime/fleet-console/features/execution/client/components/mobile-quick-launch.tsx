@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type MutableRefObject, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ChangeEvent, type MutableRefObject, type ReactNode } from "react";
 
 import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { isFleetMobileShell } from "@fleet-console/link/core";
@@ -131,7 +131,10 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
   };
 
   const theater = theaters.find((candidate) => candidate.id === theaterId) ?? null;
-  const group = selectedRow ? groups.find((candidate) => candidate.rows.some((row) => row.id === selectedRow.id)) ?? null : null;
+  // 하네스 선택이 없으므로 그룹(Claude · Gateway 공급자)이 둘 이상이면 모델 시트가 모든 그룹을 소제목으로 나눠 나열한다 —
+  // 그래야 어느 그룹에 서 있든 다른 그룹 모델로 옮겨 갈 수 있다. 하나뿐이면 소제목 없이 그 그룹만 그린다.
+  const grouped = groups.length > 1;
+  const modelGroups = grouped ? groups : groups.slice(0, 1);
   const autoLabel = t("launchVariants.effort.auto");
   const deck = buildQuickLaunchEffortDeck(selectedRow, effort, autoLabel, "", gateOpen);
   const effortLabel = deck.options.find((option) => option.checked)?.label ?? autoLabel;
@@ -170,13 +173,18 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
   if (sub === "model") {
     return (
       <MobileSheet key="model" title={t("chrome.quickLaunch.mobile.model")} onClose={() => setSub(null)} className="mql-sheet">
-        <div className="mql-grp">
-          {(group?.rows ?? []).map((row) => (
-            <button key={row.id} type="button" role="radio" aria-checked={row.id === selectedRow?.id} className="mql-gr" onClick={() => props.onModelRow(row)}>
-              <Radio on={row.id === selectedRow?.id} /><span className="mql-gr-tx">{row.label}</span>
-            </button>
-          ))}
-        </div>
+        {modelGroups.map((candidate, index) => (
+          <Fragment key={candidate.id}>
+            {grouped ? <h3 className={`mql-glab${index > 0 ? " is-next" : ""}`}>{candidate.label}</h3> : null}
+            <div className="mql-grp" role="radiogroup" aria-label={grouped ? candidate.label : t("chrome.quickLaunch.mobile.model")}>
+              {candidate.rows.map((row) => (
+                <button key={row.id} type="button" role="radio" aria-checked={row.id === selectedRow?.id} className="mql-gr" onClick={() => props.onModelRow(row)}>
+                  <Radio on={row.id === selectedRow?.id} /><span className="mql-gr-tx">{row.label}</span>
+                </button>
+              ))}
+            </div>
+          </Fragment>
+        ))}
         {selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? (
           <>
             <h3 className="mql-glab">{t("chrome.quickLaunch.mobile.effort")}</h3>

@@ -30,6 +30,7 @@ html[data-mobile-scheme="light"] .mql-input { background: var(--m-surface); }
 .mql-gr-tx small { display: block; margin-top: 1px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); }
 .mql-glab { margin: 0; padding: 6px 4px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
 .mql-glab.is-options { margin-top: 10px; }
+.mql-glab.is-next { margin-top: 10px; }
 
 /* 라디오 20 · 토글 44×26. */
 .mql-radio { position: relative; flex: none; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--m-text-muted); border-radius: 50%; }
