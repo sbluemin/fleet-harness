@@ -23,34 +23,18 @@ interface Status {
   readonly installer?: { phase: string; error: string | null; supported: boolean; version: string };
 }
 
-const BACKENDS = [{ value: "sky-computer-use", label: "SkyComputerUse" }, { value: "cua-driver", label: "Cua Driver" }];
+export const BACKENDS = [{ value: "sky-computer-use", label: "SkyComputerUse" }, { value: "cua-driver", label: "Cua Driver" }];
 
-export function ComputerUseRow({ enabled, backend, saving, onChange, onBackendChange }: { readonly enabled: boolean; readonly backend: ComputerUseBackendId; readonly saving: boolean; readonly onChange: (enabled: boolean) => void; readonly onBackendChange: (backend: ComputerUseBackendId) => void }) {
-  const t = useT();
+/**
+ * Computer Use status for one backend: polls the runtime, and owns install, stop and retry. The
+ * desktop row and the mobile row read the same state through this, so neither drifts.
+ */
+export function useComputerUseStatus(enabled: boolean, backend: ComputerUseBackendId) {
   const [status, setStatus] = useState<Status | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [popupWidth, setPopupWidth] = useState(190);
-  const select = useSelect({ value: backend, options: BACKENDS, disabled: saving || working, onChange: value => { if (isComputerUseBackendId(value) && value !== backend) { onBackendChange(value); } } });
-  useLayoutEffect(() => {
-    const trigger = select.triggerRef.current;
-    if (!trigger) return;
-    const measure = () => {
-      const style = getComputedStyle(trigger);
-      const context = document.createElement("canvas").getContext("2d");
-      if (!context) return;
-      context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-      const labelWidth = Math.max(...BACKENDS.map(option => context.measureText(option.label).width));
-      // 팝업 패딩·글리프·체크·간격을 포함하되 모델 메뉴의 메타데이터 여백은 빌리지 않는다.
-      setPopupWidth(Math.ceil(labelWidth + 76));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(trigger);
-    return () => observer.disconnect();
-  }, [select.triggerRef]);
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -90,12 +74,38 @@ export function ComputerUseRow({ enabled, backend, saving, onChange, onBackendCh
     finally { setWorking(false); }
   };
   const code = error ?? (backend === "cua-driver" ? status?.installer?.error : null) ?? (enabled ? status?.error : null);
-  const errorKey = code === "computer_use_automation_permission_denied" ? "permission"
+  const errorKey: "permission" | "incompatible" | "noActionWindow" | "timeout" | "target" | "failed" = code === "computer_use_automation_permission_denied" ? "permission"
     : code === "computer_use_runtime_incompatible" ? "incompatible"
       : code === "computer_use_no_action_window" ? "noActionWindow"
       : code?.includes("timeout") ? "timeout"
         : code && /app_not_found|ambiguous_app|element_not_found|secondary_action_unavailable|coordinate_target_unavailable/.test(code) ? "target" : "failed";
-  const active = enabled && status && status.state !== "idle" && status.state !== "off";
+  const active = Boolean(enabled && status && status.state !== "idle" && status.state !== "off");
+  const retry = () => setRefreshKey((key) => key + 1);
+  return { status, unavailable, working, installing, active, code, errorKey, stop, install, retry };
+}
+
+export function ComputerUseRow({ enabled, backend, saving, onChange, onBackendChange }: { readonly enabled: boolean; readonly backend: ComputerUseBackendId; readonly saving: boolean; readonly onChange: (enabled: boolean) => void; readonly onBackendChange: (backend: ComputerUseBackendId) => void }) {
+  const t = useT();
+  const { status, unavailable, working, installing, active, code, errorKey, stop, install, retry } = useComputerUseStatus(enabled, backend);
+  const [popupWidth, setPopupWidth] = useState(190);
+  const select = useSelect({ value: backend, options: BACKENDS, disabled: saving || working, onChange: value => { if (isComputerUseBackendId(value) && value !== backend) { onBackendChange(value); } } });
+  useLayoutEffect(() => {
+    const trigger = select.triggerRef.current;
+    if (!trigger) return;
+    const measure = () => {
+      const style = getComputedStyle(trigger);
+      const context = document.createElement("canvas").getContext("2d");
+      if (!context) return;
+      context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const labelWidth = Math.max(...BACKENDS.map(option => context.measureText(option.label).width));
+      // 팝업 패딩·글리프·체크·간격을 포함하되 모델 메뉴의 메타데이터 여백은 빌리지 않는다.
+      setPopupWidth(Math.ceil(labelWidth + 76));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(trigger);
+    return () => observer.disconnect();
+  }, [select.triggerRef]);
   return <>
     <div className="global-settings-row experiments-row">
       <div className="global-settings-row-text">
@@ -123,8 +133,8 @@ export function ComputerUseRow({ enabled, backend, saving, onChange, onBackendCh
         </div>
         </div>
         {backend === "cua-driver" && status?.installation === "missing" && status.installer?.supported && <button type="button" className="fc-settings-reset" disabled={installing || saving} onClick={() => void install()}>{t(installing ? "settings.computerUse.installing" : "settings.computerUse.install")}</button>}
-        {unavailable && <button type="button" className="fc-settings-reset" onClick={() => setRefreshKey((key) => key + 1)}>{t("settings.computerUse.retry")}</button>}
-        {active && <button type="button" className="fc-settings-reset" disabled={working || status.state === "stopping"} onClick={() => void stop()}>{t("settings.computerUse.stop")}</button>}
+        {unavailable && <button type="button" className="fc-settings-reset" onClick={retry}>{t("settings.computerUse.retry")}</button>}
+        {active && <button type="button" className="fc-settings-reset" disabled={working || status?.state === "stopping"} onClick={() => void stop()}>{t("settings.computerUse.stop")}</button>}
         <SettingsToggle checked={enabled} busy={saving || working} disabled={!enabled && (status?.backend !== backend || !status?.supported || unavailable || status.installation !== "available")} ariaLabel={t("settings.computerUse.title")} onChange={onChange} />
       </div>
     </div>
