@@ -3,7 +3,7 @@
  * 값은 시안 mobile-redesign.html 의 카드형 화면 문법(.card-pad·.grp·.gr·.glab·.ccard·.ucard·.opt·.radio·.meter·.sg) 그대로다.
  * 색은 모바일 토큰(--m-*)만 쓴다 — 이 화면은 모바일 루트 블록이 있을 때만 그려진다.
  */
-.objectives-m { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; background: var(--m-bg); color: var(--m-text); font-family: var(--font-ui); font-size: 16px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
+.objectives-m { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: 16px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
 .objectives-m::-webkit-scrollbar { display: none; }
 .objectives-m-pad { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
 .objectives-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: left; cursor: pointer; }
@@ -98,7 +98,7 @@
 .objectives-m-secnote { margin: 0; padding: 0 4px; font-size: 13px; color: var(--m-text-faint); }
 
 /* 하단 시트 — 스크림 + 위 모서리 28 판. 손잡이에서 끌어내려 닫는다. */
-.objectives-m-sheet-layer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; justify-content: flex-end; color: var(--m-text); font-family: var(--font-ui); font-size: 16px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
+.objectives-m-sheet-layer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; justify-content: flex-end; color: var(--m-text); font-family: var(--m-sans); font-size: 16px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
 .objectives-m-scrim { position: absolute; inset: 0; background: var(--m-scrim); animation: objectives-m-fade .2s ease-out; }
 .objectives-m-sheet { position: relative; display: flex; flex-direction: column; max-height: calc(100% - 56px); padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); border-radius: 28px 28px 0 0; background: var(--m-surface); animation: objectives-m-sheet-in .3s cubic-bezier(.05,.7,.1,1); transition: transform .2s cubic-bezier(.05,.7,.1,1); }
 .objectives-m-sheet.is-dragging { transition: none; }
@@ -117,7 +117,7 @@
 .objectives-m-sheet-layer :focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
 
 /* 토스트 — 화면 아래 150, 6초 뒤 사라진다. 라이트에서만 테두리. */
-.objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--font-ui); font-size: 15px; animation: objectives-m-fade .2s ease-out; }
+.objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: 15px; animation: objectives-m-fade .2s ease-out; }
 html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m-hairline); }
 
 @keyframes objectives-m-fade { from { opacity: 0; } }
