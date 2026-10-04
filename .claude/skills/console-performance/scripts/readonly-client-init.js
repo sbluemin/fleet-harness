@@ -27,12 +27,12 @@
       } catch {}
     }
     if (method === 'POST' && READ_RPC.test(url)) return nativeFetch(input, init);
-    state.blockedFetch.push(`${method} ${url}`);
+    state.blockedFetch.push(`${method} ${String(url).split('?')[0]}`);
     return Promise.resolve(new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } }));
   };
   const nativeOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-    if (String(method).toUpperCase() !== 'GET') { state.blockedFetch.push(`XHR ${method} ${url}`); url = 'about:blank'; }
+    if (String(method).toUpperCase() !== 'GET') { state.blockedFetch.push(`XHR ${method} ${String(url).split('?')[0]}`); url = 'about:blank'; }
     return nativeOpen.call(this, method, url, ...rest);
   };
   if (navigator.sendBeacon) navigator.sendBeacon = () => { state.blockedFetch.push('beacon'); return true; };
@@ -47,7 +47,8 @@
   };
   function Tracked(...args) {
     const socket = new Native(...args);
-    const record = { url: String(args[0]).replace(/(ticket|token)=[^&]+/, '$1=<redacted>'), closed: false };
+    const target = new URL(String(args[0]), location.href);
+    const record = { url: target.origin + target.pathname, closed: false }; // query can carry a WS ticket; never record it
     state.sockets.push(record);
     socket.addEventListener('close', () => { record.closed = true; });
     return socket;

@@ -48,7 +48,7 @@ env -i HOME="<owned-run>/home" USER="<user>" LANG="<locale>" \
 
 Starting the Electron binary yourself bypasses that data root and reads the user's real one. It also drops the managed Node path, which a development build takes from `FLEET_CONSOLE_NODE_PATH` or from the `npm_node_execpath` that pnpm/npm sets, and without it the main process aborts before opening a window. Keep a direct invocation for a claim that genuinely needs one, and give it the same allowlist. Such a main stays your shell's child, so the helper below, which selects init-parented mains, does not stop it; stop it by its recorded PID. Use an absolute Node path and absolute E2E main path; package-filter commands change cwd.
 
-Store temporary logs, screenshots, and artifacts in the session scratchpad; for runs that must survive session restarts (such as objective work), keep `<owned-run>` under `<worktree>/.fleet/` per [Setup](../setup.md). Set the absolute target worktree path for every command. `ab()`, `SESSION`, and `CDP_PORT` do not survive independent shell calls; redeclare them or substitute the same recorded literals.
+Store temporary logs, screenshots, and artifacts in the session scratchpad, and place `<owned-run>` per [Setup](../setup.md#isolate-the-console). Set the absolute target worktree path for every command. `ab()`, `SESSION`, and `CDP_PORT` do not survive independent shell calls; redeclare them or substitute the same recorded literals.
 
 ## Read-only preflight
 

@@ -50,7 +50,8 @@ cat > "$INIT" <<'EOF'
   const Native = window.WebSocket;
   function Tracked(...args) {
     const socket = new Native(...args);
-    const record = { url: String(args[0]), closed: false };
+    const target = new URL(String(args[0]), location.href);
+    const record = { url: target.origin + target.pathname, closed: false }; // query can carry a WS ticket; never record it
     state.sockets.push(record);
     socket.addEventListener('close', () => { record.closed = true; });
     return socket;
