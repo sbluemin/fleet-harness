@@ -1,6 +1,6 @@
 import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 import { readMobileScheme, subscribeMobileScheme } from "@fleet-console/sdk/settings/mobile-scheme";
-import { useModelPickerOptions } from "@fleet-console/sdk/settings/browser";
+import { useMobileSettingsHost, useModelPickerOptions, type MobileChoiceSpec } from "@fleet-console/sdk/settings/browser";
 
 import { readModelOptions } from "./console-read.js";
 import { BIRD_WIDTH_STEP, DEFAULT_BIRD_WIDTH, MAX_BIRD_WIDTH, MIN_BIRD_WIDTH } from "./roaming.js";
@@ -13,7 +13,8 @@ import "./settings-mobile.css";
  * 44×26 토글 행, 라디오 묶음. 박스형 선택기·「?」 칩·데스크톱 토글·슬라이더는 쓰지 않는다. 상태와 저장 경로는
  * 데스크톱 카드와 같다(같은 스토어·같은 쓰기 함수).
  *
- * 플러그인은 코어의 모바일 시트를 쓸 수 없어(경계) 모델·강도는 시트 대신 같은 카드 안의 라디오 묶음으로 선다.
+ * 모델·강도는 현재값 줄이 있는 행이고, 누르면 호스트의 선택 팝업(SDK `useMobileSettingsHost().openChoice`)이 그 행 근처에
+ * 뜬다. 팝업 능력을 세우지 않은 호스트에서는 같은 카드 안의 라디오 묶음으로 물러선다.
  */
 
 type T = ReturnType<typeof getT>;
@@ -47,6 +48,16 @@ function ToggleRow({ title, sub, checked, busy, onChange }: { readonly title: st
   );
 }
 
+/** 현재값을 둘째 줄로 읽는 행 — 누르면 선택 팝업이 연다(S-48′). */
+function ChoiceRow({ title, current, busy, onOpen }: { readonly title: string; readonly current: string; readonly busy: boolean; readonly onOpen: (anchor: { top: number; bottom: number }) => void }) {
+  return (
+    <button type="button" className="scuttlebutt-m-row is-two" aria-haspopup="listbox" disabled={busy} onClick={(event) => onOpen(event.currentTarget.getBoundingClientRect())}>
+      <span className="scuttlebutt-m-copy">{title}<small>{current}</small></span>
+      <span className="scuttlebutt-m-caret" aria-hidden="true">›</span>
+    </button>
+  );
+}
+
 function RadioRow({ checked, label, busy, onSelect }: { readonly checked: boolean; readonly label: string; readonly busy: boolean; readonly onSelect: () => void }) {
   return (
     <button type="button" role="radio" aria-checked={checked} disabled={busy} className="scuttlebutt-m-row" onClick={onSelect}>
@@ -57,6 +68,7 @@ function RadioRow({ checked, label, busy, onSelect }: { readonly checked: boolea
 }
 
 export function MobileScuttlebuttSettings({ t, settings, saving, save }: { readonly t: T; readonly settings: ScuttlebuttSettings; readonly saving: boolean; readonly save: Save }) {
+  const host = useMobileSettingsHost();
   const options = useModelPickerOptions(readModelOptions);
   const listed = options.some((option) => option.id === settings.model) || settings.model === ""
     ? options
@@ -103,16 +115,35 @@ export function MobileScuttlebuttSettings({ t, settings, saving, save }: { reado
       ) : null}
 
       <p className="scuttlebutt-m-glab">{t("settings.section.model")}</p>
-      <div className="scuttlebutt-m-grp" role="radiogroup" aria-label={t("settings.section.modelAria")}>
-        {listed.map((option) => (
-          <RadioRow key={option.id} checked={option.id === settings.model} label={option.label} busy={saving} onSelect={() => void save({ model: option.id })} />
-        ))}
-      </div>
-      <div className="scuttlebutt-m-grp" role="radiogroup" aria-label={t("settings.section.effortAria")}>
-        {AIDE_EFFORTS.map((level) => (
-          <RadioRow key={level} checked={settings.effort === level} label={t(`effort.${level as AideEffort}`)} busy={saving} onSelect={() => void save({ effort: level })} />
-        ))}
-      </div>
+      {host ? (
+        <div className="scuttlebutt-m-grp">
+          <ChoiceRow
+            title={t("settings.section.modelAria")}
+            current={listed.find((option) => option.id === settings.model)?.label ?? settings.model}
+            busy={saving}
+            onOpen={(anchor) => host.openChoice(choice(t("settings.section.modelAria"), listed.map((option) => ({ value: option.id, label: option.label })), settings.model, (model) => void save({ model }), anchor))}
+          />
+          <ChoiceRow
+            title={t("settings.section.effortAria")}
+            current={t(`effort.${settings.effort}`)}
+            busy={saving}
+            onOpen={(anchor) => host.openChoice(choice(t("settings.section.effortAria"), AIDE_EFFORTS.map((level) => ({ value: level, label: t(`effort.${level as AideEffort}`) })), settings.effort, (effort) => void save({ effort: effort as AideEffort }), anchor))}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="scuttlebutt-m-grp" role="radiogroup" aria-label={t("settings.section.modelAria")}>
+            {listed.map((option) => (
+              <RadioRow key={option.id} checked={option.id === settings.model} label={option.label} busy={saving} onSelect={() => void save({ model: option.id })} />
+            ))}
+          </div>
+          <div className="scuttlebutt-m-grp" role="radiogroup" aria-label={t("settings.section.effortAria")}>
+            {AIDE_EFFORTS.map((level) => (
+              <RadioRow key={level} checked={settings.effort === level} label={t(`effort.${level as AideEffort}`)} busy={saving} onSelect={() => void save({ effort: level })} />
+            ))}
+          </div>
+        </>
+      )}
       <p className="scuttlebutt-m-note">{t("settings.section.modelHint")}</p>
 
       <div className="scuttlebutt-m-grp">
@@ -122,3 +153,6 @@ export function MobileScuttlebuttSettings({ t, settings, saving, save }: { reado
   );
 }
 
+function choice(title: string, options: MobileChoiceSpec["options"], value: string, onSelect: (value: string) => void, anchor: { top: number; bottom: number }): MobileChoiceSpec {
+  return { title, options, value, onSelect, anchor: { top: anchor.top, bottom: anchor.bottom } };
+}

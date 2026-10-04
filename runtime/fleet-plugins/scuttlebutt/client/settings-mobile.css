@@ -37,3 +37,5 @@
 .scuttlebutt-m-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; height: 40px; padding: 0 12px; color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-medium); background: var(--m-chip); border: 0; border-radius: 20px; cursor: pointer; }
 .scuttlebutt-m-pill:disabled { cursor: default; opacity: .4; }
 @media (prefers-reduced-motion: reduce) { .scuttlebutt-m-switch i { transition: none; } }
+/* 값 행의 › — 누르면 선택 팝업이 연다. */
+.scuttlebutt-m-caret { flex: none; color: var(--m-text-muted); font-size: var(--m-fs-title); }

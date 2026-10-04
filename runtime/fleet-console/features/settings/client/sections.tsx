@@ -24,7 +24,9 @@ import { setActiveTheme, setUnfocusedPanelFade } from "../../../core/client/src/
 import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
 import { loadDeviceFonts, requestDesktopDeviceFonts, useDeviceFonts, useDeviceFontsPermission, usePageVisible } from "./device-fonts.js";
 import { ExperimentsSection } from "./experiments-section.js";
-import { MobileGroupLabel, MobileRadioRow } from "./settings-mobile.js";
+import { MobileGroupLabel } from "./settings-mobile.js";
+import { MobileIcon } from "../../../core/client/src/chrome/mobile/mobile-icons.js";
+import { openMobileChoice } from "../../../core/client/src/chrome/mobile/mobile-choice-store.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
@@ -762,14 +764,31 @@ function MobileConsolePort({ state, saving, consoleState }: {
   const { draftPort, draftIsInvalid, editDraft } = useConsolePortDraft(state);
   const effectivePort = consoleState.effectivePort;
   const fallbackActive = consoleState.portMode === "static" && !consoleState.portHonored;
+  const modes = buildPortModes(t);
+  const current = modes.find((mode) => mode.id === state.consolePortMode)?.label ?? state.consolePortMode;
   return (
     <>
       <MobileGroupLabel>{t("settings.port.title")}</MobileGroupLabel>
-      <div className="mobile-group settings-mobile-card" role="radiogroup" aria-label={t("settings.port.modeAria")}>
-        {buildPortModes(t).map((mode) => (
-          <MobileRadioRow key={mode.id} checked={state.consolePortMode === mode.id} label={mode.label} disabled={saving} onSelect={() => void setGlobalSettingsField("consolePortMode", mode.id)} />
-        ))}
+      {/* 모드는 현재값 행 → 목록 위 선택 팝업(S-48′). 「?」 도움말은 아래 설명 줄로 선다. */}
+      <div className="mobile-group settings-mobile-card">
+        <button
+          type="button"
+          className="mobile-group-row is-two"
+          aria-haspopup="listbox"
+          disabled={saving}
+          onClick={(event) => openMobileChoice({
+            title: t("settings.port.modeAria"),
+            options: modes.map((mode) => ({ value: mode.id, label: mode.label })),
+            value: state.consolePortMode,
+            onSelect: (next) => void setGlobalSettingsField("consolePortMode", next as PortModeOption["id"]),
+            anchor: event.currentTarget.getBoundingClientRect(),
+          })}
+        >
+          <span className="mobile-group-row-copy">{t("settings.port.modeAria")}<small>{current}</small></span>
+          <MobileIcon name="right" size={18} className="settings-mobile-caret" />
+        </button>
       </div>
+      <p className="settings-mobile-note">{t("settings.port.help")}</p>
       {state.consolePortMode === "static" ? (
         <div className="settings-mobile-body">
           <input
