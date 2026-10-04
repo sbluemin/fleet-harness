@@ -68,7 +68,7 @@ describe("fleet console CLI", () => {
     const answering = (body: unknown, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as typeof fetch;
     // 잠금이 없으면(Console이 떠 있지 않으면) 묻지도 못한 채 막는다.
     expect(await decideAgentCall("op-1", input, env, answering({ reason: null }))).toMatch(/could not be reached/);
-    createConsoleLock().writeLock({ dir, lockFile: paths.lockFile, pid: process.pid, port: 40125, endpoint: "http://127.0.0.1:40125/", version: "test" });
+    await createConsoleLock().acquireLock({ dir, lockFile: paths.lockFile, pid: process.pid, port: 40125, endpoint: "http://127.0.0.1:40125/", version: "test" });
     expect(await decideAgentCall("op-1", input, env, answering({ reason: "Use members." }))).toBe("Use members.");
     expect(await decideAgentCall("op-1", input, env, answering({ reason: null }))).toBeNull();
     expect(await decideAgentCall("op-1", input, env, answering({ error: "agent_call_undecided" }, 500))).toMatch(/could not be reached/);
@@ -138,14 +138,14 @@ describe("fleet console CLI", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-concurrent-winner-"));
       TEMP_DIRS.push(dir);
       const paths = createConsolePaths({ env: { FLEET_CONSOLE_DATA_DIR: dir } });
-      const replacement = createConsoleLock().writeLock({
+      const replacement = (await createConsoleLock().acquireLock({
         dir,
         lockFile: paths.lockFile,
         pid: 9877,
         port: 40124,
         endpoint: "http://127.0.0.1:40124/",
         version: "replacement",
-      }).payload;
+      })).payload;
       fs.rmSync(paths.lockFile);
       const fake = createFakeDaemonProcess(4315, (_signal, child) => child.emit("exit", 0, null));
       let clock = 0;

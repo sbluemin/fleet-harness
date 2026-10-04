@@ -23,7 +23,7 @@ import {
   stripAnsi,
 } from "../../../cli/styles/tokens.js";
 import { readFleetCliRelease } from "../../../cli/release.js";
-import { createConsoleLock } from "./lock.js";
+import { createConsoleLock, describeOwnerlessLock, describeReclaimResult, describeRefusedLock, describeSlotQuiescenceCheck, type ConsoleLockReclaimResult } from "./lock.js";
 import { createConsoleDataPaths, createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
 
@@ -256,7 +256,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const shutdownTimeoutMs = Math.max(0, deps.shutdownTimeoutMs ?? STOP_SHUTDOWN_TIMEOUT_MS);
   const report = deps.report ?? reportToStderr;
   const paths = createConsolePaths({ env });
-  const lock = createConsoleLock();
+  const lock = createConsoleLock({ report });
   const health = deps.health ?? createConsoleHealthClient();
   const stale = createConsoleStalePolicy();
 
@@ -333,13 +333,13 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       // 한도를 넘겨 lock이 남아 있으면 정리가 멈춘 것일 수도, Console이 lock을 남긴 채 죽고 pid가 재할당된 것일 수도 있다.
       // lock 파일이 그대로라는 사실은 증명이 아니므로 SIGKILL 직전에 정체를 다시 증명한다.
       if (!await waitForShutdown(payload) && await escalateStalledShutdown(payload, provenStart)) {
-        removeLockHeldBy(payload);
+        await removeLockHeldBy(payload);
         return { forced: true, shutdownTimeoutMs };
       }
     }
     // 여기까지 온 lock은 pid가 끝났거나(ESRCH) 주인이 lock을 이미 놓은 것이다. 신호 없이
     // 같은 pid·token의 lock일 때만 지운다.
-    removeLockHeldBy(payload);
+    await removeLockHeldBy(payload);
     return { forced: false };
   }
 
@@ -348,7 +348,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     const attempts = Math.ceil(shutdownTimeoutMs / STOP_SETTLE_POLL_MS);
     const noticeAttempt = Math.ceil(STOP_SHUTDOWN_NOTICE_MS / STOP_SETTLE_POLL_MS);
     for (let attempt = 0; ; attempt += 1) {
-      if (!isLockProcessAlive(payload.pid) || !isLockStillHeldBy(payload)) return true;
+      // A lock that cannot be read is still held: only an exited pid or a lock that is gone or replaced ends the wait.
+      if (!isLockProcessAlive(payload.pid) || isLockReleasedBy(payload)) return true;
       if (attempt >= attempts) return false;
       if (attempt === noticeAttempt) report("Waiting for Fleet Console to finish shutting down...");
       await sleep(STOP_SETTLE_POLL_MS);
@@ -394,8 +395,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   /** stop이 lock pid에 시그널을 보내도 되는지 판별한다. lock token을 인증한 health 응답만 정체 증명이다. */
   async function identifyLockOwner(payload: ConsoleLockPayload): Promise<ConsoleLockOwnerIdentity> {
     if (!isLockProcessAlive(payload.pid)) return "absent";
-    // token 없는 lock은 어떤 Fleet Console도 쓰지 않는다 — 신뢰할 수 없는 lock처럼 파일만 폐기한다.
-    if (typeof payload.token !== "string" || payload.token.length === 0) return "absent";
+    // No Fleet Console writes a tokenless lock, and a live pid behind one cannot prove anything: never signal it or clear its lock.
+    if (typeof payload.token !== "string" || payload.token.length === 0) return "unverified";
     const result = await health.probe(payload, { timeoutMs: STOP_IDENTITY_TIMEOUT_MS });
     const evidence: ConsoleLockHealthEvidence = result.healthy ? { kind: "answered", pid: result.health?.pid } : result.refused ? { kind: "refused" } : { kind: "unanswered" };
     // 거절된 lock 주소는 stale lock일 수도, listener를 닫고 정리 중이거나 그 도중 멈춘 Console일 수도 있다. pid가 lock을 쓴 뒤에
@@ -421,7 +422,10 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   }
 
   function lockOwnerUnverifiedError(payload: ConsoleLockPayload): Error {
-    return new Error(`Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}. If that process is a stuck Fleet Console, stop it; if it is not a Fleet Console, delete ${paths.lockFile}.`);
+    return new Error([
+      `Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}. If that process is a stuck Fleet Console, stop it; if it is not a Fleet Console, delete ${paths.lockFile}.`,
+      describeSlotQuiescenceCheck(paths.lockFile),
+    ].join("\n"));
   }
 
   /** lock이 없어졌거나 다른 주인의 것으로 바뀌었다. 읽지 못하면 풀렸다고 보지 않는다. */
@@ -434,10 +438,21 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     }
   }
 
-  function removeLockHeldBy(payload: ConsoleLockPayload): void {
-    const current = lock.readLock(paths.lockFile);
-    if (current?.pid !== payload.pid || current.token !== payload.token) return;
-    lock.removeLock(paths.lockFile, payload.pid);
+  /**
+   * Clears the lock stop already judged, only while it is still that instance (same pid and token). The earlier checks
+   * decide signalling and waiting; the deletion itself goes through the reclaim protocol, which requires ESRCH now.
+   */
+  async function removeLockHeldBy(payload: ConsoleLockPayload): Promise<void> {
+    const observed = lock.observeLock(paths.lockFile);
+    if (observed.kind === "absent") return;
+    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    const held = observed.instance.payload;
+    if (held.pid !== payload.pid || held.token !== payload.token) return;
+    const result = await lock.reclaimLock(paths.lockFile, observed.instance);
+    if (result.kind === "removed" || result.kind === "gone") return;
+    if (result.kind === "alive") throw lockOwnerUnverifiedError(payload);
+    throw new Error(describeReclaimResult(paths.lockFile, result));
   }
 
   function isLockStillHeldBy(payload: ConsoleLockPayload): boolean {
@@ -457,8 +472,33 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     }
   }
 
+  /**
+   * Decides from the lock whether start may proceed; it never deletes. A trusted lock with a token keeps the probe → stop
+   * flow. An untrusted or tokenless lock is refused while its pid lives, and left for the new Console to reclaim once its
+   * pid is ESRCH. A lock without a readable owner, a symlink, or another user's lock is refused.
+   */
+  async function readLockForStart(): Promise<ConsoleLockPayload | null> {
+    const observed = await lock.observeLockWithin(paths.lockFile);
+    if (observed.kind === "absent") return null;
+    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    if (observed.untrusted === null) return observed.instance.payload;
+    if (observed.alive) throw new Error(describeUntrustedLiveLock(observed.instance.pid, observed.untrusted));
+    report(`Fleet Console lock ${paths.lockFile} belongs to pid ${observed.instance.pid}, which is no longer running; the new Console will reclaim it.`);
+    return null;
+  }
+
+  function describeUntrustedLiveLock(pid: number, issue: string): string {
+    return [
+      `Fleet Console lock pid ${pid} is alive but its lock ${paths.lockFile} cannot be trusted (${issue}), so no second Console was started.`,
+      `If that process is a Fleet Console, stop it (kill -TERM ${pid}; Windows: Stop-Process -Id ${pid}; or quit the Fleet desktop app that owns it), then start again — the lock of an exited Console is reclaimed automatically.`,
+      `If it is not a Fleet Console, follow the check below and then delete ${paths.lockFile}.`,
+      describeSlotQuiescenceCheck(paths.lockFile),
+    ].join("\n");
+  }
+
   async function ensureDaemon(): Promise<string> {
-    const current = readTrustedLock({ cleanUntrusted: true });
+    const current = await readLockForStart();
     const probeResult = await health.probe(current);
     const isBuildStale = current ? stale.isBuildStale(current, serverModulePath) : false;
     if (probeResult.healthy && current) {
@@ -520,9 +560,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         try {
           next = await probe(remaining, readinessController.signal);
         } catch (error) {
-          // writeLock은 O_EXCL로 파일을 만든 뒤 JSON을 쓰므로 poll이 잠깐 빈/부분 lock을 볼 수 있다.
-          // 시작 전 stale lock은 위의 cleanUntrusted probe가 이미 정리했다. 시작 중 read 오류는
-          // 쓰고 있는 lock을 지우거나 child를 죽이지 말고 deadline 안에서 다시 확인한다.
+          // A read error while the child starts (a lock published in place on a volume without hard links can be briefly
+          // empty, or a lock another start left for the child to reclaim is untrusted) must not remove that lock or kill
+          // the child. Check again within the deadline.
           lastProbeError = describeUnknownError(error);
           continue;
         }
@@ -676,7 +716,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     }
     if (child.pid !== undefined && observation.exited) {
       try {
-        lock.removeLock(paths.lockFile, child.pid);
+        const leftover = await reclaimExitedChildLock(child.pid);
+        if (leftover) errors.push(leftover);
       } catch (error) {
         errors.push(`owned lock cleanup failed: ${describeUnknownError(error)}`);
       }
@@ -684,6 +725,21 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       errors.push("the spawned process did not exit after SIGKILL");
     }
     return errors.length > 0 ? errors.join("; ") : null;
+  }
+
+  /**
+   * The child's exit only lets this cleanup start: by now its pid may name another live process that wrote a new lock.
+   * The lock is removed only through the reclaim protocol (exact bytes, ESRCH now); otherwise it stays and is reported.
+   */
+  async function reclaimExitedChildLock(childPid: number): Promise<string | null> {
+    const observed = lock.observeLock(paths.lockFile);
+    if (observed.kind === "absent") return null;
+    if (observed.kind !== "owner") return `the lock ${paths.lockFile} could not be judged (${observed.reason}); it was left in place`;
+    if (observed.instance.pid !== childPid) return null;
+    const result: ConsoleLockReclaimResult = await lock.reclaimLock(paths.lockFile, observed.instance);
+    if (result.kind === "removed" || result.kind === "gone") return null;
+    if (result.kind === "alive") return `the lock ${paths.lockFile} now names a running pid ${result.pid}; it was left in place`;
+    return describeReclaimResult(paths.lockFile, result);
   }
 
   async function waitForChildExit(observation: ConsoleDaemonChildObservation): Promise<void> {
@@ -704,23 +760,16 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     ]);
   }
 
-  function readTrustedLock(options: { readonly cleanUntrusted?: boolean } = {}): ConsoleLockPayload | null {
-    try {
-      const payload = lock.readLock(paths.lockFile);
-      if (!payload) return null;
-      lock.assertTrustedLock({
-        dir: paths.dir,
-        lockFile: paths.lockFile,
-        payload,
-        host: FIXED_HOST,
-      });
-      return payload;
-    } catch (err) {
-      if (!options.cleanUntrusted) throw err;
-      // 신뢰할 수 없는 잠금은 프로세스를 종료하지 않고 파일만 폐기한다.
-      lock.removeLock(paths.lockFile);
-      return null;
-    }
+  function readTrustedLock(): ConsoleLockPayload | null {
+    const payload = lock.readLock(paths.lockFile);
+    if (!payload) return null;
+    lock.assertTrustedLock({
+      dir: paths.dir,
+      lockFile: paths.lockFile,
+      payload,
+      host: FIXED_HOST,
+    });
+    return payload;
   }
 }
 

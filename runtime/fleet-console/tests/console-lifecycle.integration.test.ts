@@ -1,18 +1,23 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import type { Readable } from "node:stream";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createConsoleDaemonLifecycle } from "../core/host/bootstrap/console-lifecycle.js";
+import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 
 const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/controlled-console-child.mjs", import.meta.url));
+const CLAIMANT_FIXTURE_PATH = fileURLToPath(new URL("./fixtures/lock-reclaim-claimant.ts", import.meta.url));
+const TSX_LOADER_URL = pathToFileURL(path.join(path.dirname(createRequire(import.meta.url).resolve("tsx/package.json")), "dist/loader.mjs")).href;
 const TEMP_DIRS: string[] = [];
 const CHILD_PIDS = new Set<number>();
 
@@ -100,7 +105,7 @@ describe("Console daemon lifecycle integration", () => {
     const port = (impostor.address() as AddressInfo).port;
     const lockInput = { dir: fixture.dir, lockFile: fixture.lockFile, pid: bystanderPid, port, endpoint: `http://127.0.0.1:${port}/`, version: "crashed" };
     const consoleLock = createConsoleLock();
-    consoleLock.writeLock(lockInput);
+    await consoleLock.acquireLock(lockInput);
     const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH, pollIntervalMs: 20 });
 
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
@@ -112,22 +117,90 @@ describe("Console daemon lifecycle integration", () => {
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
     expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
 
-    // lock을 쓴 뒤에 시작한 pid는 lock 작성자일 수 없다 — 작성자는 끝났고 pid가 재할당됐다. 신호 없이 lock만 치우고 start가 이어진다.
+    // A pid that started after the lock was written cannot be its author, but while that pid lives the lock stays: only
+    // ESRCH right before the unlink grants deletion. start refuses instead of booting a Console beside it.
     fs.rmSync(fixture.lockFile);
-    createConsoleLock({ now: () => Date.now() - 60_000 }).writeLock(lockInput);
+    await createConsoleLock({ now: () => Date.now() - 60_000 }).acquireLock(lockInput);
     fs.writeFileSync(fixture.releaseFile, "ready\n", "utf8");
+    await expect(lifecycle.ensureDaemon()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
+    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+    expect(fs.existsSync(fixture.pidFile)).toBe(false);
+    expect(bystanderSignal).toBeNull();
+    expect(() => process.kill(bystanderPid, 0)).not.toThrow();
+  });
+
+  it("lets one live reclaimer at a time act on a dead lock and hands over only after it exits", async () => {
+    const fixture = createFixturePaths("reclaim-chain");
+    const bystanderPid = spawnIdleProcess();
+    const lockInput = { dir: fixture.dir, lockFile: fixture.lockFile, pid: bystanderPid, port: await closedPort(), version: "crashed" };
+    const consoleLock = createConsoleLock();
+    await consoleLock.acquireLock({ ...lockInput, endpoint: `http://127.0.0.1:${lockInput.port}/` });
+
+    // A separate reclaimer reaches its final check while the lock's pid still runs: it removes nothing, and its reclaim
+    // marker stays complete for as long as that reclaimer lives.
+    const claimant = spawn(process.execPath, ["--import", TSX_LOADER_URL, CLAIMANT_FIXTURE_PATH, fixture.lockFile], { stdio: ["ignore", "pipe", "inherit"] });
+    const claimantPid = claimant.pid!;
+    CHILD_PIDS.add(claimantPid);
+    expect(await readFirstLine(claimant)).toBe("alive");
+    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+
+    // The lock is dead now, yet no other reclaimer may take over while that claimant is alive: start fails and keeps it.
+    process.kill(bystanderPid, "SIGKILL");
+    await expectProcessGone(bystanderPid);
+    CHILD_PIDS.delete(bystanderPid);
+    fs.writeFileSync(fixture.releaseFile, "ready\n", "utf8");
+    const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH, startupTimeoutMs: 8_000, pollIntervalMs: 20, report: () => {} });
+    await expect(lifecycle.ensureDaemon()).rejects.toThrow();
+    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+    expect(fs.existsSync(fixture.pidFile)).toBe(false);
+
+    // Once the claimant has exited, the next reclaimer takes over, removes the dead lock, and the new Console owns the slot.
+    claimant.kill("SIGKILL");
+    await expectProcessGone(claimantPid);
+    CHILD_PIDS.delete(claimantPid);
     const ensure = lifecycle.ensureDaemon();
     void ensure.catch(() => {});
     const consolePid = await readPidWhenReady(fixture.pidFile);
     CHILD_PIDS.add(consolePid);
     await expect(ensure).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
     expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(consolePid);
-    expect(bystanderSignal).toBeNull();
-    expect(() => process.kill(bystanderPid, 0)).not.toThrow();
 
     await lifecycle.stop();
     await expectProcessGone(consolePid);
     CHILD_PIDS.delete(consolePid);
+  });
+
+  it("keeps the lock a reused pid published when cleaning up an exited child", async () => {
+    // The spawned Console exits and its pid now names another live process that published a lock of its own. The exit
+    // event is no evidence about that lock, so cleanup keeps it and reports why.
+    const fixture = createFixturePaths("child-pid-reused");
+    const bystanderPid = spawnIdleProcess();
+    const port = await closedPort();
+    const reusedLock = { pid: bystanderPid, host: "127.0.0.1", port, endpoint: `http://127.0.0.1:${port}/`, startedAt: Date.now(), token: "reused-pid-token", version: "other" };
+    const signals: Array<NodeJS.Signals | number | undefined> = [];
+    const lifecycle = createConsoleDaemonLifecycle({
+      env: fixture.env,
+      serverModulePath: FIXTURE_PATH,
+      startupTimeoutMs: 8_000,
+      pollIntervalMs: 20,
+      report: () => {},
+      spawnDaemon: () => {
+        const child = Object.assign(new EventEmitter(), {
+          pid: bystanderPid,
+          kill: (signal?: NodeJS.Signals | number) => { signals.push(signal); return true; },
+          unref: () => {},
+        }) as EventEmitter & ConsoleDaemonProcess;
+        fs.mkdirSync(fixture.dir, { recursive: true, mode: 0o700 });
+        fs.writeFileSync(fixture.lockFile, `${JSON.stringify(reusedLock, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+        setImmediate(() => child.emit("exit", 1, null));
+        return child;
+      },
+    });
+
+    await expect(lifecycle.ensureDaemon()).rejects.toThrow();
+    expect(createConsoleLock().readLock(fixture.lockFile)).toEqual(reusedLock);
+    expect(signals).toEqual([]);
+    expect(() => process.kill(bystanderPid, 0)).not.toThrow();
   });
 });
 
@@ -146,6 +219,39 @@ function createFixturePaths(name: string) {
   };
   const lockFile = createConsolePaths({ env }).lockFile;
   return { dir, env, pidFile, releaseFile, stallFile, lockFile };
+}
+
+function spawnIdleProcess(): number {
+  const idle = spawn(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], { stdio: "ignore" });
+  CHILD_PIDS.add(idle.pid!);
+  return idle.pid!;
+}
+
+/** A loopback port nothing listens on, so the lock's endpoint refuses connections. */
+async function closedPort(): Promise<number> {
+  const server = http.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
+async function readFirstLine(child: ChildProcessByStdio<null, Readable, null>): Promise<string> {
+  let output = "";
+  return await new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`reclaimer printed no outcome: ${output}`)), 15_000);
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf8");
+      const newline = output.indexOf("\n");
+      if (newline < 0) return;
+      clearTimeout(timer);
+      resolve(output.slice(0, newline));
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      reject(new Error(`reclaimer exited with ${code}: ${output}`));
+    });
+  });
 }
 
 function delay(ms: number): Promise<void> {

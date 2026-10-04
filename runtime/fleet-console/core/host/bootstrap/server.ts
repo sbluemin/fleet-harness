@@ -2635,7 +2635,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         server = result.srv;
         loopbackServer = result.localLoopbackServer;
         portState = result.portState;
-        lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
+        // A lock left by an exited Console is reclaimed inside the acquisition. Losing throws before lockHandle is assigned,
+        // so a loser never reaches the leftover reclaim below.
+        const acquired = await lock.acquireLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
+        lockHandle = acquired;
         activeLockFile = lockPaths.lockFile;
         activeEndpoint = result.endpoint;
         // 지난 프로세스의 잔재 회수는 lock 소유자만 한다 — lock을 쓰기 전에 지우면 lock에서 질 프로세스가
