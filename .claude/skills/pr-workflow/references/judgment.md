@@ -48,7 +48,7 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
 2. External checks: `git status --short` + `git diff --stat` (only intended files); run available checks for touched workspaces — `pnpm --filter <pkg> typecheck`, `build` (tsc — vitest alone does NOT typecheck), `test`. State explicitly if a script is absent.
 3. Commit the fixes (Conventional Commits, HEREDOC, no amend/bypass) staging only the fix files.
 4. Confirm the current branch is `<headRefName>` (the recorded PR head); if it is not, stop and ask — do not push fixes from a non-head branch. Push the current commit explicitly with an `HEAD:<headRefName>` refspec so the actual fix commit lands on the PR branch (a bare `git push origin <headRefName>` pushes the like-named local ref, not necessarily current HEAD): `git push origin HEAD:<headRefName>`; then verify the local branch is up-to-date with the remote.
-5. Post the `@codex` re-review comment via HEREDOC only after the push is visible on the remote:
+5. Once the push is visible on the remote, freeze the [Phase 3 wait baseline](review-wait.md), then post the `@codex` re-review comment via HEREDOC:
    ```bash
    gh pr comment <pr_number> --repo <repo> --body "$(cat <<'EOF'
    @codex The review feedback has been addressed. Please re-review.
