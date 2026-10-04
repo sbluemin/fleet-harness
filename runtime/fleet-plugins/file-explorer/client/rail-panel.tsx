@@ -63,6 +63,8 @@ export const fileExplorerEntry: RailEntryDescriptor = {
   title: (locale) => getT(locale)("fileExplorer.panel.title"),
   icon: FileExplorerIcon,
   panes: ["file-explorer", DOCUMENT_PANE_ID],
+  // 모바일 드로어의 고정 목적지 — 목표 다음 파일.
+  mobile: { destination: { order: 20 } },
   handles: {
     openFile: async (request) => {
       const ref = parseFileLocation(request.path);
