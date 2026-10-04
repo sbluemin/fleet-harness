@@ -1,8 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
 import { useT } from "../../i18n/index.js";
+import { navigateConsoleRoute } from "../../integration/console-location.js";
+import { usePluginRegistry } from "../../integration/plugin-registry.js";
+import { collectPluginSettingsSections } from "../../../../../features/settings/client/sections.js";
 import { getState, subscribe } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
@@ -18,6 +21,16 @@ import { MobileIcon } from "./mobile-icons.js";
 import { setMobileTool, useMobileTool } from "./mobile-store.js";
 import "../../styles/rail.css";
 
+interface PluginListRow {
+  readonly key: string;
+  readonly icon: ReactNode;
+  readonly title: string;
+  readonly sub: string | null;
+  readonly desktopOnly: boolean;
+  readonly disabled: boolean;
+  readonly run: () => void;
+}
+
 const ignoreMinimum = () => undefined;
 const ignoreDivider = () => undefined;
 
@@ -31,6 +44,8 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
   const capabilities = useHostCapabilities();
   const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId);
   const tool = useMobileTool();
+  const registry = usePluginRegistry();
+  const settingsRows = collectPluginSettingsSections(registry.providers, language, t, "mobile").filter((section) => section.mobile?.pluginRow !== undefined);
   const bindings = useRailEntries();
   const activeRail = useRailActivePanelId();
   const panes = useRailPanes();
@@ -78,31 +93,55 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
   };
 
   if (tool === null) {
-    const rows = mobilePluginRows(bindings);
+    // 행: 설정 섹션이 올린 행(사용량 등 — 누르면 설정 상세) + 레일 엔트리 행. 쓸 수 있는 것이 먼저, 데스크톱 전용(흐림)이 뒤다.
+    const rows: PluginListRow[] = [
+      ...settingsRows.map((section): PluginListRow => ({
+        key: section.id,
+        icon: section.mobile?.pluginRow?.icon ?? null,
+        title: section.sectionTitle,
+        sub: section.mobile?.pluginRow?.subtitle ? resolveLocalizedText(section.mobile.pluginRow.subtitle, language) : null,
+        desktopOnly: false,
+        disabled: false,
+        run: () => navigateConsoleRoute("/settings", `?section=${encodeURIComponent(section.id)}`),
+      })),
+      ...mobilePluginRows(bindings).map((row): PluginListRow => {
+        const icon = row.entry.mobile?.icon ?? row.entry.icon;
+        const desktopOnly = row.entry.mobile?.available === false;
+        return {
+          key: row.entry.id,
+          icon: typeof icon === "function" ? icon() : icon,
+          title: resolveLocalizedText(row.entry.title, language),
+          sub: null,
+          desktopOnly,
+          disabled: desktopOnly || (theaterId === null && row.entry.scope !== "fleet"),
+          run: () => {
+            if (row.entry.surfaceId) capabilities.surfaces.open({ surfaceId: row.entry.surfaceId });
+            else capabilities.rail.open(row.entry.id);
+          },
+        };
+      }),
+    ].sort((a, b) => Number(a.desktopOnly) - Number(b.desktopOnly));
     return (
       <section className="mobile-plugin-list">
         {rows.length === 0 ? <p className="mobile-plugin-list-empty">{t("mobile.plugins.empty")}</p> : (
           <div className="mobile-group">
-            {rows.map((row) => {
-              const desktopOnly = row.entry.mobile?.available === false;
-              return (
-                <button
-                  type="button"
-                  className={`mobile-group-row${desktopOnly ? " is-dim" : ""}`}
-                  key={row.entry.id}
-                  aria-disabled={desktopOnly || undefined}
-                  disabled={desktopOnly || (theaterId === null && row.entry.scope !== "fleet")}
-                  onClick={() => {
-                    if (row.entry.surfaceId) capabilities.surfaces.open({ surfaceId: row.entry.surfaceId });
-                    else capabilities.rail.open(row.entry.id);
-                  }}
-                >
-                  <span className="mobile-group-row-icon" aria-hidden="true">{(() => { const icon = row.entry.mobile?.icon ?? row.entry.icon; return typeof icon === "function" ? icon() : icon; })()}</span>
-                  <span className="mobile-group-row-copy">{resolveLocalizedText(row.entry.title, language)}{desktopOnly ? <small>{t("mobile.plugins.desktopOnly")}</small> : null}</span>
-                  {desktopOnly ? null : <MobileIcon name="right" size={18} className="mobile-group-row-caret" />}
-                </button>
-              );
-            })}
+            {rows.map((row) => (
+              <button
+                type="button"
+                className={`mobile-group-row${row.desktopOnly ? " is-dim" : ""}${row.sub || row.desktopOnly ? " is-two" : ""}`}
+                key={row.key}
+                aria-disabled={row.desktopOnly || undefined}
+                disabled={row.disabled}
+                onClick={row.run}
+              >
+                <span className="mobile-group-row-icon" aria-hidden="true">{row.icon}</span>
+                <span className="mobile-group-row-copy">
+                  {row.title}
+                  {row.sub || row.desktopOnly ? <small>{[row.sub, row.desktopOnly ? t("mobile.plugins.desktopOnly") : null].filter(Boolean).join(" — ")}</small> : null}
+                </span>
+                {row.desktopOnly ? null : <MobileIcon name="right" size={18} className="mobile-group-row-caret" />}
+              </button>
+            ))}
           </div>
         )}
       </section>
