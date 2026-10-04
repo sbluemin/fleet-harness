@@ -1699,7 +1699,13 @@ describe("Objectives contract", () => {
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    const { ctx, store, launch, call, consoleTool, workspace, launches, activity, operationsHost, objectivesDir } = harness();
+    const { ctx, store, launch, call, consoleTool, workspace, launches, activity, operations, operationsHost, objectivesDir } = harness(() => "http://console.invalid");
+    // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
+    const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
+      { id: "sonnet", label: "Sonnet", launch: { model: "sonnet" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
+      { id: "opus", label: "Opus", launch: { model: "opus[1m]" }, chips: [{ id: "high", label: "HIGH", launch: { effort: "high" } }] },
+    ] }] }] }] };
+    vi.stubGlobal("fetch", async (url: string) => (url.endsWith("/api/v1/operations/catalog") ? Response.json(catalog) : new Response(null, { status: 409 })));
     const commodore = createCommodoreBoardTools(ctx, store, launch, "t1")[0]!;
     const schema = z.fromJSONSchema(commodore.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
     const board = async (args: Record<string, unknown>) => {
@@ -1729,6 +1735,15 @@ describe("Objectives contract", () => {
     const beforeStart = (await board({ objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
     expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
     await board({ objectiveId: id, criteria: { approve: beforeStart.criteriaProposals[0]!.id } });
+    // 구성원 모델 — 사령관만, 자기 Theater 목표만, 카탈로그 안의 모델과 그 모델의 강도만 고른다. 띄우기 전의 선택은 개시가 그 값으로 띄운다.
+    const workerId = (beforeStart as unknown as { members: readonly { id: string }[] }).members[0]!.id;
+    const pick = (launch: unknown) => ({ objectiveId: id, member: { memberId: workerId, launch } });
+    const refusal = async (tool: typeof commodore, args: Record<string, unknown>, operationId?: string) => ((await tool.execute(args, { cwd: workspace, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) })) as { structuredContent: Record<string, unknown> }).structuredContent.error;
+    expect(await refusal(consoleTool, pick({ mode: "model", model: "sonnet" }), "outsider")).toBe("commodore_only");
+    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[0]!, pick({ mode: "model", model: "sonnet" }))).toBe("other_theater");
+    expect(await refusal(commodore, pick({ mode: "model", model: "unlisted" }))).toBe("model_not_in_catalog");
+    expect(await refusal(commodore, pick({ mode: "model", model: "sonnet", effort: "high" }))).toBe("invalid_effort");
+    expect(await board(pick({ mode: "model", model: "sonnet", effort: "low" }))).toMatchObject({ outcome: "set", launch: { mode: "model", model: "sonnet", effort: "low" } });
     // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 순찰까지 멈추지 않는다.
     expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);
     activity.set(id, "running");
@@ -1737,6 +1752,13 @@ describe("Objectives contract", () => {
     expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
     expect(await board({ objectiveId: id, commence: true })).toMatchObject({ objectiveId: id, failed: [] });
     expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.objectContaining({ state: "idle" })] }) }));
+    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
+    // 일하는 구성원은 이번 턴 뒤로 예약된다 — 세션 좌표는 그대로다. 라우팅으로 되돌리면 예약을 거두고 실행값은 남는다.
+    activity.set(workerId, "running");
+    expect(await board(pick({ mode: "model", model: "opus[1m]", effort: "high" }))).toMatchObject({ outcome: "pending", model: "sonnet", next: { model: "opus[1m]", effort: "high", failed: null } });
+    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(await board(pick(null))).toMatchObject({ outcome: "applied", launch: { mode: "route" }, model: "sonnet", next: null });
+    activity.set(workerId, "idle");
     const executing = (await board({ objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;
