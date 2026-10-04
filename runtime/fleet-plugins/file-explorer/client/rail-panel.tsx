@@ -39,6 +39,7 @@ import { filePaneTarget, findReferencedFile, FileNavigationError, parseFileLocat
 import { showFileNavigationError, setDocumentPaneOpen, setFileRevealTarget, setSelectedPath } from "./view-store.js";
 import { parentDirOf } from "./viewer/stale.js";
 import { ShellActionNotice, useShellAction } from "./shell-action.js";
+import { MobileFileDocument, MobileFileTree } from "./mobile.js";
 
 const FEEDBACK_DURATION_MS = 2_500;
 /** 트리 열이 처음 설 때의 폭 — 문서 창이 열리기 전에는 표면 전체가 이 폭이다. */
@@ -87,7 +88,8 @@ export const fileExplorerPane: PaneDescriptor = {
   role: "primary",
   mounts: ["rail"],
   title: (ctx) => getT(ctx.language ?? "en")("fileExplorer.panel.title"),
-  render: (ctx) => <FileExplorerTreePane {...ctx} />,
+  // 모바일 목적지 화면에서는 호스트가 막대 창구(mobileBar)를 싣는다 — 그때만 모바일 트리가 선다.
+  render: (ctx) => (ctx.mobileBar ? <MobileFileTree {...ctx} /> : <FileExplorerTreePane {...ctx} />),
   defaultWidth: TREE_PANE_DEFAULT_WIDTH,
   minWidth: MIN_TREE_PX,
   search: async ({ query, theaterId, limit, signal, language }) => {
@@ -152,7 +154,7 @@ export const fileExplorerDocumentPane: PaneDescriptor = {
   role: "detail",
   mounts: ["rail", "expanded"],
   title: (ctx) => documentPaneTitle(ctx),
-  render: (ctx) => <FileExplorerDocumentPane {...ctx} />,
+  render: (ctx) => (ctx.mobileBar ? <MobileFileDocument {...ctx} /> : <FileExplorerDocumentPane {...ctx} />),
   captionActions: (ctx) => <FileExplorerDocumentCaptionActions {...ctx} />,
   defaultWidth: DOCUMENT_PANE_DEFAULT_WIDTH,
   minWidth: MIN_VIEWER_PX,

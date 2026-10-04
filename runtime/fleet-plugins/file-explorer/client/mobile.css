@@ -1,0 +1,42 @@
+/*
+ * 모바일 목적지 「파일」 — 호스트 모바일 화면 안에서만 선다. 값은 시안 mobile-redesign.html 의 .row(드로어 행)·.ttabs·.pad·.codeb 그대로다.
+ * 색은 모바일 토큰(--m-*)만 쓴다.
+ */
+.fexp-m { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; background: var(--m-bg); color: var(--m-text); font-family: var(--font-ui); font-size: 16px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
+.fexp-m::-webkit-scrollbar { display: none; }
+.fexp-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; text-align: left; cursor: pointer; }
+.fexp-m :focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+
+/* 트리 — 행 44, 좌우 12 들여, 모서리 12, 왼쪽 = 16 + 깊이×18. */
+.fexp-m-tree { padding-top: 4px; padding-bottom: 24px; }
+.fexp-m .fexp-m-row { display: flex; align-items: center; gap: 16px; width: calc(100% - 24px); min-height: 44px; margin: 0 12px; padding: 0 16px 0 16px; border-radius: 12px; font-size: 16px; }
+.fexp-m .fexp-m-row:active { background: var(--m-selected); }
+.fexp-m-row-icon { display: grid; place-items: center; flex: none; color: var(--m-text-muted); }
+.fexp-m-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fexp-m-row-chev { display: grid; place-items: center; flex: none; color: var(--m-text-faint); }
+.fexp-m-note { display: block; width: calc(100% - 24px); margin: 0 12px; padding: 12px 16px; font-size: 14px; color: var(--m-text-muted); }
+.fexp-m-note.is-error { color: var(--m-danger); }
+.fexp-m .fexp-m-note.is-retry { color: var(--m-text-muted); }
+
+/* 파일 상세 — 글자 탭(미리보기 · 소스) + 본문 패딩 위 16 · 좌우 24. */
+.fexp-m-doc { display: flex; flex-direction: column; overflow: hidden; }
+.fexp-m-tabs { display: flex; flex: none; gap: 20px; padding: 0 24px; border-bottom: 1px solid var(--m-hairline); }
+.fexp-m .fexp-m-tabs button { padding: 10px 0; border-bottom: 2px solid transparent; font-size: 15px; color: var(--m-text-muted); }
+.fexp-m .fexp-m-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: 600; }
+.fexp-m-doc-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 16px 24px 24px; scrollbar-width: none; }
+.fexp-m-doc-body::-webkit-scrollbar { display: none; }
+.fexp-m-doc-body .fexp-m-note { width: auto; margin: 0; padding: 0; }
+
+/* 마크다운 미리보기 — 읽기 서체 17/26. 데스크톱 뷰어의 바깥 여백·폭 제한은 걷는다. */
+.fexp-m-reading { font-family: var(--font-body); font-size: 17px; line-height: 26px; }
+.fexp-m-reading .fexp-md-wrap { max-width: none; margin: 0; padding: 0; font-size: inherit; line-height: inherit; }
+
+/* 코드 블록 — 면 surface, 테두리 hairline-strong, 모서리 12, mono 13/20. */
+.fexp-m-code { overflow: hidden; border: 1px solid var(--m-hairline-strong); border-radius: 12px; background: var(--m-surface); font-family: var(--font-code); font-size: 13px; line-height: 20px; }
+.fexp-m-code .fexp-code-scroll { max-height: none; }
+
+/* 토스트 — 화면 아래 150, 6초 뒤 사라진다. 라이트에서만 테두리. */
+.fexp-m-toast { position: fixed; left: 16px; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--font-ui); font-size: 15px; animation: fexp-m-fade .2s ease-out; }
+html[data-mobile-scheme="light"] .fexp-m-toast { border: 1px solid var(--m-hairline); }
+@keyframes fexp-m-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fexp-m-toast { animation: none; } }

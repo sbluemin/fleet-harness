@@ -200,6 +200,7 @@ export const fileExplorerEn = {
   "fileExplorer.status.loadFailedTitle": "Couldn't load this folder",
   "fileExplorer.status.loadFailedRetry": "Try again",
   "fileExplorer.status.expanding": "Opening folder…",
+  "fileExplorer.mobile.copyPath": "Copy path",
 } as const;
 
 export const fileExplorerKo: Record<keyof typeof fileExplorerEn, string> = {
@@ -397,6 +398,7 @@ export const fileExplorerKo: Record<keyof typeof fileExplorerEn, string> = {
   "fileExplorer.status.loadFailedTitle": "이 폴더를 불러올 수 없습니다",
   "fileExplorer.status.loadFailedRetry": "다시 시도",
   "fileExplorer.status.expanding": "폴더 여는 중…",
+  "fileExplorer.mobile.copyPath": "경로 복사",
 };
 
 const FILE_EXPLORER_MESSAGES = { en: fileExplorerEn, ko: fileExplorerKo } as const;

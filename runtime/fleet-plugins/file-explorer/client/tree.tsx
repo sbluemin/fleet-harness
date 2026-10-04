@@ -2603,7 +2603,7 @@ export function saveExpandedDirs(contextKey: string, expandedDirs: ReadonlySet<s
   }
 }
 
-function readShowHidden(): boolean {
+export function readShowHidden(): boolean {
   try {
     return localStorage.getItem(PREFS_SHOW_HIDDEN) === "1";
   } catch {
