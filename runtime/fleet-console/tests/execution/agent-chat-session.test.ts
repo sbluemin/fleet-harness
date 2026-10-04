@@ -350,7 +350,8 @@ describe("AgentChatRegistry — chat-born sessions", () => {
 describe("AgentChatRegistry", () => {
 
   // 자식이 죽으면 그 세션도 죽는다. 다음 메시지는 새 자식을 세우고 마지막 좌표로 이어붙인다 —
-  // 죽은 세션을 붙들고 있으면 사용자는 다시 말할 수 없다.
+  // 죽은 세션을 붙들고 있으면 사용자는 다시 말할 수 없다. 새 자식은 Fleet MCP를 그때의 허용으로 다시
+  // 받는다 — 첫 자식이 받은 목록을 물려 쓰면 그사이 켜거나 끈 실험 도구(Computer Use)가 따라오지 않는다.
   it("opens a fresh session after the child dies and keeps accepting sends", async () => {
     const transcriptPath = writeTranscript("sid-4", [
       { type: "user", message: { role: "user", content: "first order" } },
@@ -359,8 +360,12 @@ describe("AgentChatRegistry", () => {
       { messages: [{ type: "assistant", message: { content: [{ type: "text", text: "partial" }] } }], failAfter: 1 },
       { messages: [{ type: "result", subtype: "success", is_error: false }] },
     ]);
+    const served = (name: string) => ({ name, url: `http://127.0.0.1:9/${name}`, headers: [] });
+    const launches = [[served("fleet-console-use")], [served("fleet-console-use"), served("fleet-computer-use")]];
+    const resolveFleetMcpServers = vi.fn(async () => launches.shift()!);
+    const releaseFleetMcpServers = vi.fn();
     const registry = new AgentChatRegistry(factory);
-    const session = await registry.ensure("op-1", () => seedFor(transcriptPath));
+    const session = await registry.ensure("op-1", () => ({ ...seedFor(transcriptPath), resolveFleetMcpServers, releaseFleetMcpServers }));
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
 
@@ -372,6 +377,11 @@ describe("AgentChatRegistry", () => {
     session.send("second");
     await drainTurn(registry, "op-1");
     expect(openSession).toHaveBeenCalledTimes(2);
+    expect(releaseFleetMcpServers).toHaveBeenCalledTimes(1);
+    expect(resolveFleetMcpServers).toHaveBeenCalledTimes(2);
+    const servedNames = (call: number) => ((openSession.mock.calls[call]![0] as { servedMcpServers?: { name: string }[] }).servedMcpServers ?? []).map((server) => server.name);
+    expect(servedNames(0)).toEqual(["fleet-console-use"]);
+    expect(servedNames(1)).toEqual(["fleet-console-use", "fleet-computer-use"]);
     await registry.disposeAll();
   });
 

@@ -2999,6 +2999,10 @@ class AgentChatSession {
       const sdk = this.sdk;
       this.sdk = null;
       if (sdk) void sdk.dispose().catch(() => undefined);
+      // 다음 자식은 그때의 허용으로 Fleet MCP를 다시 받는다 — 실험 스위치(Computer Use 등)는 자식 런치마다
+      // 다시 읽힌다. 죽은 자식의 토큰은 여기서 반납해야 같은 라벨로 다시 발급할 수 있다.
+      this.fleetMcpServers = null;
+      if (!this.fleetMcpFlight) this.seed.releaseFleetMcpServers?.();
     }
     this.readerDone = null;
     // 스트림이 끝났다고 슬롯이 돌아오지는 않는다 — SDK 인스턴스는 `close()`를 받아야 자리를
