@@ -150,7 +150,8 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
               effort={{
                 value: experiments[effortField],
                 levels: EXPERIMENT_EFFORTS,
-                ariaLabel: t("settings.experiments.effortAria", { feature: t(row.titleKey) }),
+                // On a phone this names the effort tabs inside the model popup, under the aide's own title.
+                ariaLabel: t("chrome.quickLaunch.mobile.effort"),
                 labelOf: (level) => t(`settings.experiments.effort.${level as ExperimentEffort}`),
                 onChange: (next) => saveExperiments({ ...experiments, [effortField]: next as ExperimentEffort }),
               }}
