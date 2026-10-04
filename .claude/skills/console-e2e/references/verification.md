@@ -71,7 +71,7 @@ document.addEventListener("lostpointercapture", rec("doc-lost"), false);
 
 For example, Chromium fires `lostpointercapture` at the **document**, not at the element that held capture, and defers it to the next pointer event; it also ends the first touch pointer the instant a second finger lands, so a terminal event that looks like another pointer's carries the drag's own id.
 
-Drive input the interaction actually uses. When the browser driver cannot produce it — multiple simultaneous pointers, for example — send it over the page's CDP session (`Input.dispatchTouchEvent`, `Input.dispatchMouseEvent`) rather than dispatching synthetic DOM events, which reproduce neither pointer capture nor gesture arbitration.
+Drive input the interaction actually uses. When the browser driver cannot produce it — multiple simultaneous pointers, for example — send it over the page's CDP session (`Input.dispatchTouchEvent`, `Input.dispatchMouseEvent`) rather than dispatching synthetic DOM events, which reproduce neither pointer capture nor gesture arbitration. A touch-device claim (`pointer: coarse`, `hover: none`, touch detection) also needs that emulation held for the whole scenario and confirmed after every reload and resize: use the [coarse pointer and touch holder](cdp-input.md#coarse-pointer-and-touch-holder). A key-specific claim uses the [single-key helper](cdp-input.md#one-key-press).
 
 ## Plan activation paths by starting state
 
@@ -119,7 +119,7 @@ Repeat the exact scenario and its inverse after the required build/reload or own
 
 ### agent-browser
 
-Clear diagnostics, reload, repeat, then clean up. Before running, substitute recorded absolute paths and redeclare `ab()`. Confirm the owned directory's lock PID matches the process launched for this run; never run `stop` with an empty or guessed directory.
+Clear diagnostics, reload, repeat, then clean up. Before running, substitute recorded absolute paths and redeclare `ab()`. Confirm the owned directory's lock PID matches the process launched for this run; never run `stop` with an empty or guessed directory, and pass the same `--run-dir` that started the server.
 
 ```bash
 ab --session fleet-console-e2e-20260725-a7c3 errors --clear
@@ -128,7 +128,7 @@ ab --session fleet-console-e2e-20260725-a7c3 reload
 ab --session fleet-console-e2e-20260725-a7c3 wait --load domcontentloaded
 ab --session fleet-console-e2e-20260725-a7c3 screenshot <scratchpad>/fleet-console-e2e.png
 node <worktree>/.claude/skills/console-e2e/scripts/close-owned-session.mjs fleet-console-e2e-20260725-a7c3
-FLEET_CONSOLE_DATA_DIR='<owned-e2e-dir>' node <worktree>/runtime/fleet-console/dist/cli.mjs stop
+node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir '<owned-run>' -- node <worktree>/runtime/fleet-console/dist/cli.mjs stop
 ```
 
 For Desktop CDP, close the recorded session with the same `close-owned-session.mjs`, then stop the app through [Desktop cleanup](desktop.md) instead of the standalone Console `stop`.

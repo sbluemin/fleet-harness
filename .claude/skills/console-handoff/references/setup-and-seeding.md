@@ -10,22 +10,17 @@ Rebuild any workspace package the change touched first (`pnpm --filter @fleet-co
 
 ### 2. Boot it isolated, with the levers already set
 
-Isolate the handoff exactly as an E2E run does: follow [Claude state and trust preflight](../../console-e2e/references/claude-state.md) for the environment, owned directories, and trust preparation whenever the scenario may start Claude (terminal or chat). The shape, with every inherited Fleet and Claude path replaced:
+Isolate the handoff exactly as an E2E run does: boot through the console-e2e [isolated-environment wrapper](../../console-e2e/references/setup.md#keep-the-real-home-out), which replaces `HOME` and every inherited Fleet and Claude path with owned directories under `<handoff-dir>`, and follow [Claude state and trust preflight](../../console-e2e/references/claude-state.md) for trust preparation whenever the scenario may start Claude (terminal or chat). The user will open the Shell surface in this instance too, so its history stays under `<handoff-dir>/home`:
 
 ```bash
-mkdir -p <handoff-dir>/{home,root,console,desktop,claude}
-nohup env -i HOME=<handoff-dir>/home PATH="<explicit-runtime-path>" LANG="<locale>" \
-  FLEET_DATA_DIR=<handoff-dir>/root \
-  FLEET_CONSOLE_DATA_DIR=<handoff-dir>/console \
-  FLEET_DESKTOP_DATA_DIR=<handoff-dir>/desktop \
-  CLAUDE_CONFIG_DIR=<handoff-dir>/claude \
-  FLEET_AI_GATEWAY_MODEL='<model>' \
-  node <worktree>/runtime/fleet-console/dist/cli.mjs serve > <handoff-dir>.log 2>&1 &
+nohup node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir <handoff-dir> \
+  --set FLEET_AI_GATEWAY_MODEL='<model>' \
+  -- node <worktree>/runtime/fleet-console/dist/cli.mjs serve > <handoff-dir>.log 2>&1 &
 ```
 
 - `<handoff-dir>` is a fresh directory under the session scratchpad outside the repo. Setting only `FLEET_CONSOLE_DATA_DIR` is not enough: an inherited `FLEET_DATA_DIR` still points at the user's real Fleet root, whose legacy values are carried into the new slot once and removed from their old location.
 - The Console slot owns provider credentials, so a fresh handoff starts signed out. Prefer a scenario that needs no provider, or the [no-cost fake Claude](../../console-e2e/references/setup.md#no-cost-fake-claude) (`CLAUDE_BIN`, `FAKE_CLAUDE_DIR`) when the user only needs live Operations. A live turn needs the user's explicit choice of credential path and quota; the user can sign in inside the handed-over Console. Never copy real credential files, reuse the real Fleet root, or reuse the real Claude home without that authorization, and disclose any non-isolated store before launch.
-- `nohup … &` so the instance outlives the tool call. The user is going to be using it for a while.
+- `nohup … &` so the instance outlives the tool call. The user is going to be using it for a while. Node does not keep nohup's SIGHUP ignore, so a direct SIGHUP still stops it.
 - `FLEET_AI_GATEWAY_MODEL` pins every request whatever the picker says — cheaper than walking the user through the AI Gateway settings before they can test. Omit it when no provider is used.
 
 **Then prove which binary booted.** `Bash` tool calls reset cwd between invocations, so a relative `node runtime/…/cli.mjs` silently starts the *main checkout's* Console and the log line looks identical:
