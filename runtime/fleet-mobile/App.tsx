@@ -82,6 +82,9 @@ export default function App(): React.JSX.Element {
   // A latch rather than state: the camera callback fires faster than a re-render would settle.
   const scannedRef = useRef(false);
   const stateEventSeenRef = useRef(false);
+  // Set when the opening state was rebuilt as "no console" before native spoke. A cold-start link
+  // can still be in flight then, and its first surviving event must win the screen back.
+  const recoveredLandingRef = useRef(false);
   const refreshTargets = useCallback((): void => {
     consoleRef.current?.listTargets().then(setTargets, () => {});
   }, []);
@@ -111,6 +114,7 @@ export default function App(): React.JSX.Element {
         setTargetOrigin(active.origin);
         setState("connecting");
       } else {
+        recoveredLandingRef.current = true;
         setScreen("landing");
       }
     }, () => {});
@@ -148,6 +152,10 @@ export default function App(): React.JSX.Element {
       return;
     }
     stateEventSeenRef.current = true;
+    if (recoveredLandingRef.current) {
+      recoveredLandingRef.current = false;
+      if (nativeEvent.type !== "waiting") setScreen("console");
+    }
     // A new page state starts from the plain surfaces; the page reports again if a drawer stays open.
     setChrome(PLAIN_CHROME);
     const invalidLink = nativeEvent.type === "error" && nativeEvent.code === "pairing_target_invalid";
