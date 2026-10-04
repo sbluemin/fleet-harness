@@ -285,6 +285,9 @@ export default function App(): React.JSX.Element {
 
   const openScanner = useCallback((): void => {
     setAddOpen(false);
+    // Every way out of the scanner lands on the console list (cancel, back, paste a link), so an add
+    // started from the console switcher no longer has that sheet to return to.
+    setAddFromConsoles(false);
     setScanError(null);
     setScreen("scanner");
     if (permission?.granted !== true) void requestPermission();
