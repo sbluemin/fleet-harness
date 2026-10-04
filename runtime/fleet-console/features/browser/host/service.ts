@@ -565,6 +565,8 @@ export class BrowserService {
   }
 
   private restoringClosedTabs: Promise<readonly string[]> | null = null;
+  /** 전역 링크·복원만 주소별 생성에 합류한다. 일반 새 탭과 에이전트 탭은 별개다. */
+  private readonly globalUrlCreations = new Map<string, Promise<BrowserTabState>>();
 
   restoreClosedTabs(): Promise<readonly string[]> {
     if (this.restoringClosedTabs) return this.restoringClosedTabs;
@@ -573,6 +575,7 @@ export class BrowserService {
       const restoredIds: string[] = [];
       while (this.closedTabsMemory.length > 0) {
         const openUrls = new Set([...this.globalBrowser.tabs.values()].map((tab) => tab.url));
+        for (const url of this.globalUrlCreations.keys()) openUrls.add(url);
         // 아직 Map에 들어오지 않은 생성도 자리를 차지한다. 시도하지 못한 주소는 제안에 남기되,
         // 이미 열린 주소는 자리가 필요 없으니 상한에 막혀도 제안에서 걷어 낸다.
         if (this.globalBrowser.tabs.size + this.globalBrowser.pendingTabs >= MAX_TABS) {
@@ -592,7 +595,7 @@ export class BrowserService {
         if (this.closedTabsMemory !== remaining) break;
         if (existing) continue;
         try {
-          const tab = await this.createTab(GLOBAL_BROWSER_OWNER_ID, item.url, "user");
+          const tab = await this.openGlobalUrl(item.url);
           restoredIds.push(tab.id);
         } catch {
           // 개별 탭 복구 실패 시 해당 주소는 소비한 채 계속 진행한다.
@@ -723,11 +726,39 @@ export class BrowserService {
     return { id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1 };
   }
 
+  /** 전역 링크는 생성 중인 같은 주소에도 합류한다. 판정과 예약 사이에는 await가 없다. */
+  async openGlobalUrl(url: string, options?: { readonly activate?: boolean }): Promise<BrowserTabState> {
+    const activate = options?.activate !== false;
+    const href = this.admit(this.globalBrowser, url, "user").href;
+    const pending = this.globalUrlCreations.get(href);
+    if (pending) {
+      const tab = await pending;
+      if (activate) await this.selectTab(GLOBAL_BROWSER_OWNER_ID, tab.id);
+      return this.tabState(this.tab(this.globalBrowser, tab.id));
+    }
+    const existing = [...this.globalBrowser.tabs.values()].find((tab) => tab.url === href);
+    if (existing) {
+      if (activate) await this.selectTab(GLOBAL_BROWSER_OWNER_ID, existing.id);
+      return this.tabState(existing);
+    }
+    const previous = this.globalBrowser.activeTabId;
+    // 생성이 상태를 알리기 전 예약을 등록해 재진입도 같은 Promise에 합류시킨다.
+    const creating = Promise.resolve().then(async () => {
+      const tab = await this.createTab(GLOBAL_BROWSER_OWNER_ID, href, "user");
+      // 배경 열기는 보던 탭을 유지한다. 탭이 없었던 첫 배경 열기는 새 탭이 활성이다.
+      if (!activate && previous && this.globalBrowser.tabs.has(previous)) await this.selectTab(GLOBAL_BROWSER_OWNER_ID, previous);
+      return tab;
+    }).finally(() => { this.globalUrlCreations.delete(href); });
+    this.globalUrlCreations.set(href, creating);
+    return creating;
+  }
+
   async createTab(operationId: string, url: string | null, actor: "user" | "agent"): Promise<BrowserTabState> {
     const op = this.operation(operationId);
-    if (op.tabs.size >= MAX_TABS) throw new BrowserPolicyError("browser_tab_limit", `Tab cap reached (${MAX_TABS}). Close a tab before opening another.`);
+    if (op.tabs.size + op.pendingTabs >= MAX_TABS) throw new BrowserPolicyError("browser_tab_limit", `Tab cap reached (${MAX_TABS}). Close a tab before opening another.`);
     const target = url ? this.admit(op, url, actor) : null;
-    // 뷰가 붙는 동안은 탭이 아직 `tabs` 에 없다 — 그 사이 마지막 탭이 닫혀도 컨텍스트가 거둬지지 않게 세어 둔다.
+    // 상한 검사·동기 주소 검증·예약을 첫 await 전에 마친다. 부착 중 생성도 한 자리를 차지하고,
+    // 마지막 완성 탭이 닫혀도 진행 중 생성의 컨텍스트는 거두지 않는다.
     op.pendingTabs += 1;
     let client: CdpClient;
     let tab: Tab;

@@ -171,11 +171,46 @@ describe("global fleet browser host contract", () => {
       expect(state.tabs).toHaveLength(8);
       expect(state.closedTabs.map((tab) => tab.url)).toEqual([remainingUrl]);
 
+      // 에이전트의 동시 생성도 완성 탭과 생성 예약을 합쳐 Operation별 8개까지만 받는다.
+      for (let index = 0; index < 7; index += 1) await service.createTab("op-target", null, "agent");
+      const concurrent = await Promise.allSettled(Array.from({ length: 4 }, () => service.createTab("op-target", null, "agent")));
+      expect(concurrent.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(concurrent.filter((result) => result.status === "rejected").map((result) => result.reason.code)).toEqual([
+        "browser_tab_limit", "browser_tab_limit", "browser_tab_limit",
+      ]);
+      expect(service.state("op-target").tabs).toHaveLength(8);
+
       // Operation 종료가 실제 열린 전역 탭에 영향을 주지 않음
       await service.closeOperation("op-target");
       expect(service.globalState().tabs).toEqual(state.tabs);
 
       service.dismissClosedTabs();
+      expect(service.globalState().closedTabs).toHaveLength(0);
+
+      // 링크 열기와 복원이 겹쳐도 URL 예약을 공유한다. HTTP 링크 동작과 복원 서비스의 공통 경계다.
+      for (const tabId of restored) await service.closeTab(GLOBAL_BROWSER_OWNER_ID, tabId);
+      const concurrentUrl = "https://example.com/concurrent";
+      (service as unknown as { closedTabsMemory: { url: string; title: string }[] }).closedTabsMemory = [{ url: concurrentUrl, title: concurrentUrl }];
+      const router = createBrowserRouter({
+        browserService: service,
+        browserMcp: { interruptOperation: () => 0, pasteIntoTerminal: () => false },
+        operations: { get: () => null },
+        isWriteAdmitted: () => true,
+        isExactConsoleOrigin: () => true,
+        isDesktopHostClient: () => true,
+        writeJson: (res, status, body) => { Object.assign(res, { status, body }); },
+        readJsonBody: async <T>() => ({ action: "open", url: concurrentUrl, activate: false }) as T,
+        readUrl: () => new URL("http://localhost:50212"),
+        withSecurityHeaders: (headers) => headers,
+      });
+      const opened = {} as ServerResponse & { status: number; body: { tab: { id: string } } };
+      await Promise.all([
+        router({ req: { method: "POST" } as IncomingMessage, res: opened, pathname: "/api/v1/browser/global/tabs" }),
+        service.restoreClosedTabs(),
+      ]);
+      expect(opened.status).toBe(200);
+      const sameUrlTabs = service.globalState().tabs.filter((tab) => tab.url === concurrentUrl);
+      expect(sameUrlTabs.map((tab) => tab.id)).toEqual([opened.body.tab.id]);
       expect(service.globalState().closedTabs).toHaveLength(0);
 
       // shared 해제 등 가용성 회복 시 전역 상태 이벤트가 발행된다 (QA-11)
