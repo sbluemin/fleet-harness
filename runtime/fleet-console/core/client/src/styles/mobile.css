@@ -776,8 +776,10 @@
 .mobile-choice-row.is-selected .mobile-choice-label { font-weight: var(--weight-bold); }
 .mobile-choice-row.is-selected .mobile-choice-icon { color: var(--m-text); }
 /* 설명 접기(P-2) — 5줄을 넘으면 4줄에서 말줄임, 「더 보기」가 그 자리에서 펼친다. */
+/* 인라인이면 scrollHeight가 0이라 5줄 판정이 서지 않는다 — 늘 블록이다. */
+.fc-settings-row.is-mobile .fc-clamp-body { display: block; }
 .fc-settings-row.is-mobile .fc-clamp-body.is-clamped { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
-.fc-settings-row.is-mobile .fc-settings-more { display: block; min-height: 0; padding: 4px 0 0; color: var(--m-text-nav); font: inherit; font-size: var(--m-fs-caption); background: transparent; border: 0; }
+:root .fc-settings-row.is-mobile .fc-settings-more { display: block; text-decoration: none; min-height: 0; padding: 4px 0 0; color: var(--m-text-nav); font: inherit; font-size: var(--m-fs-caption); background: transparent; border: 0; }
 
 /* 슬라이더 행(P-5) — 위 줄 [제목 … 값 · 기본값], 아래 줄 전체 폭 트랙(높이 4, 면 chip, 채움 text-nav, 손잡이 22 원). */
 :root .fc-settings-row.is-mobile:has(.fc-settings-slider) { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 12px; row-gap: 2px; align-items: center; }
