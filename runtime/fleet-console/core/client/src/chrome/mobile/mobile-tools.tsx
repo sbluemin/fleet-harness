@@ -111,7 +111,7 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
           key: row.entry.id,
           icon: typeof icon === "function" ? icon() : icon,
           title: resolveLocalizedText(row.entry.title, language),
-          sub: null,
+          sub: row.entry.mobile?.description ? resolveLocalizedText(row.entry.mobile.description, language) : null,
           desktopOnly,
           disabled: desktopOnly || (theaterId === null && row.entry.scope !== "fleet"),
           run: () => {
@@ -139,7 +139,6 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
                   {row.title}
                   {row.sub || row.desktopOnly ? <small>{[row.sub, row.desktopOnly ? t("mobile.plugins.desktopOnly") : null].filter(Boolean).join(" — ")}</small> : null}
                 </span>
-                {row.desktopOnly ? null : <MobileIcon name="right" size={18} className="mobile-group-row-caret" />}
               </button>
             ))}
           </div>
