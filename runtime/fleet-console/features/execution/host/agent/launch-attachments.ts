@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +16,8 @@ import path from "node:path";
 /**
  * 인스턴스 네임스페이스 루트의 접두. dev/published 채널처럼 여러 Console이 한 OS temp를 공유하므로,
  * 데이터 루트 해시로 디렉터리를 갈라 기동 청소가 남의 인스턴스 파일을 절대 밟지 않게 한다.
- * 같은 데이터 루트의 동시 실행은 Console runtime lock이 배제한다.
+ * 같은 데이터 루트의 두 프로세스는 이 자리를 함께 본다 — runtime lock은 기동 끝에야 쓰이므로, 그 전의
+ * 프로세스(lock 경쟁에서 질 수도 있다)는 이 자리를 지우지 않는다. 지우는 쪽은 lock 소유자뿐이다.
  */
 const LAUNCH_ATTACHMENT_NAMESPACE_PREFIX = "fleet-attachments-";
 const LAUNCH_ATTACHMENT_FILE_MODE = 0o600;
@@ -186,7 +187,16 @@ export interface LaunchAttachmentStore {
    * 경로는 이 스토어가 모르므로 null이고, 그 자리는 바이트 없는 첨부로 그려진다.
    */
   idForPath(filePath: string): string | null;
-  /** 플러그인 종료 — 남은 파일 전부 회수. */
+  /**
+   * 지난 프로세스(크래시·kill -9)가 남긴 항목을 거둔다. 게으른 TTL은 그것을 영영 보지 못한다. 부트스트랩이
+   * runtime lock을 쓴 **직후에만** 한 번 부른다 — lock 전에 지우면 lock 경쟁에서 질 프로세스가 서비스 중인
+   * Console의 첨부를 지운다. 이 store가 이미 만든 항목은 남긴다. 두 번째 호출부터는 아무것도 하지 않는다.
+   */
+  reclaimLeftovers(): number;
+  /**
+   * 종료 — 이 store가 만든 파일을 회수한다. 네임스페이스 루트는 reclaimLeftovers를 거친(lock을 쥔) store만
+   * 거둔다. lock 경쟁에서 진 프로세스의 실패 정리도 이 길을 지나는데, 그때의 루트는 서비스 중인 Console의 것이다.
+   */
   cleanup(): void;
 }
 
@@ -194,26 +204,9 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
   const now = options.now ?? Date.now;
   const namespaceRoot = resolveLaunchAttachmentNamespaceRoot(options.dataDir);
   const entries = new Map<string, LaunchAttachmentEntry>();
-  // 지난 프로세스(크래시·kill -9)가 남긴 파일은 게으른 TTL이 영영 보지 못한다 — 기동 시 자기
-  // 네임스페이스를 통째로 비운다. 같은 데이터 루트는 runtime lock이 동시 실행을 배제하므로
-  // 여기 있는 것은 전부 죽은 프로세스의 잔재이고, 다른 인스턴스의 네임스페이스는 밟지 않는다.
-  try {
-    // 존재 판정은 lstat으로 한다 — existsSync는 깨진 심볼릭 링크에 false를 돌려주고, 그 링크를
-    // 남기면 save()의 mkdirSync가 영구히 ENOENT로 죽는다(rm은 판정과 무관하게 무조건 수행).
-    let hadLeftovers = true;
-    try {
-      lstatSync(namespaceRoot);
-    } catch {
-      hadLeftovers = false;
-    }
-    rmSync(namespaceRoot, { force: true, recursive: true });
-    // TTL 회수와 같은 이유의 흔적 — 지난 프로세스의 잔재가 있었음을 기동 로그가 말한다.
-    if (hadLeftovers) {
-      process.stderr.write("[fleet-console] quick-launch attachments: cleared leftover attachment namespace from a previous run\n");
-    }
-  } catch {
-    // 청소는 best-effort다 — 잔재가 남아도 기동을 막지 않는다.
-  }
+  // 생성 시점에는 아무것도 지우지 않는다. 이 store는 runtime lock보다 먼저 만들어지므로, 여기서 지우면
+  // 같은 데이터 루트로 뜨다 lock에서 질 프로세스가 서비스 중인 Console의 첨부를 지운다.
+  let reclaimed = false;
 
   function sweepExpired(): void {
     const cutoff = now() - UNBOUND_LAUNCH_ATTACHMENT_TTL_MS;
@@ -356,9 +349,49 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
       }
       return null;
     },
+    reclaimLeftovers() {
+      if (reclaimed) return 0;
+      reclaimed = true;
+      // lock 전에 들어온 저장이 있다면 그것은 이 store의 것이다 — 잔재로 보지 않는다.
+      const own = new Set([...entries.values()].map((entry) => path.basename(entry.dir)));
+      let removed = 0;
+      try {
+        // 존재 판정은 lstat으로 한다 — existsSync는 깨진 심볼릭 링크에 false를 돌려주고, 그 링크를
+        // 남기면 save()의 mkdirSync가 영구히 ENOENT로 죽는다. 디렉터리가 아닌 것이 루트 자리를 차지하면 통째로 걷는다.
+        let rootIsDirectory: boolean;
+        try {
+          rootIsDirectory = lstatSync(namespaceRoot).isDirectory();
+        } catch {
+          return 0;
+        }
+        if (!rootIsDirectory) {
+          rmSync(namespaceRoot, { force: true, recursive: true });
+          removed = 1;
+        } else {
+          for (const name of readdirSync(namespaceRoot)) {
+            if (own.has(name)) continue;
+            try {
+              rmSync(path.join(namespaceRoot, name), { force: true, recursive: true });
+              removed += 1;
+            } catch {
+              // 못 지운 것은 다음 기동이 다시 본다.
+            }
+          }
+        }
+      } catch {
+        // 회수는 best-effort다 — 잔재가 남아도 기동을 막지 않는다.
+      }
+      // TTL 회수와 같은 이유의 흔적 — 지난 프로세스의 잔재가 있었음을 기동 로그가 말한다.
+      if (removed > 0) {
+        process.stderr.write(`[fleet-console] quick-launch attachments: cleared ${removed} leftover attachment(s) from a previous run\n`);
+      }
+      return removed;
+    },
     cleanup() {
       for (const entry of [...entries.values()]) removeEntry(entry);
-      // 네임스페이스 루트도 함께 거둔다 — 항목만 지우면 빈 루트가 종료마다 하나씩 쌓인다.
+      // 루트는 lock 소유자만 거둔다 — 빈 루트를 남기지 않되, lock에서 진 프로세스의 실패 정리가
+      // 서비스 중인 Console의 루트를 지우지 않게 한다.
+      if (!reclaimed) return;
       try {
         rmSync(namespaceRoot, { force: true, recursive: true });
       } catch {

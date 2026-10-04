@@ -33,10 +33,14 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-// 스토어마다 고유 데이터 루트를 주어 네임스페이스가 테스트 간에 겹치지 않게 한다.
+// 스토어마다 고유 데이터 루트를 주어 네임스페이스가 테스트 간에 겹치지 않게 한다. lock을 쥐지 않은 store는
+// 네임스페이스 루트를 남기므로 테스트가 직접 거둔다.
 function makeStoreDataDir(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "fleet-attachment-store-"));
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  cleanups.push(() => {
+    rmSync(resolveLaunchAttachmentNamespaceRoot(dir), { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
+  });
   return dir;
 }
 
@@ -79,6 +83,34 @@ describe("launch attachment store", () => {
     // 세션이 거둬 가면 그 좌표도 함께 닫힌다.
     store.releaseSession("session-1");
     expect(store.readPreview(id)).toBeNull();
+  });
+
+  it("lets only the runtime lock owner reclaim the namespace, never a Console that lost the lock", () => {
+    const dataDir = makeStoreDataDir();
+    // 서비스 중인 Console A — lock을 쥔 뒤 회수를 마쳤고, 세션에 묶인 첨부를 갖고 있다.
+    const live = createLaunchAttachmentStore({ dataDir });
+    live.reclaimLeftovers();
+    const { id: liveId } = live.save(PNG_BYTES);
+    const [liveFile] = live.resolve([liveId]);
+    live.bind("session-a", [liveId]);
+
+    // 같은 데이터 루트로 뜬 B가 lock에서 지고 실패 정리까지 마쳐도 A의 첨부는 그대로다.
+    const loser = createLaunchAttachmentStore({ dataDir });
+    loser.cleanup();
+    expect(existsSync(liveFile as string)).toBe(true);
+    expect(live.readPreview(liveId)).toEqual({ filePath: liveFile, mime: "image/png" });
+
+    // A가 정리 없이 죽은 뒤 lock을 쥔 다음 Console은 A의 잔재를 거두되, lock 전에 받은 자기 저장은 남긴다.
+    const next = createLaunchAttachmentStore({ dataDir });
+    const { id: nextId } = next.save(PNG_BYTES);
+    expect(next.reclaimLeftovers()).toBe(1);
+    expect(existsSync(liveFile as string)).toBe(false);
+    const [nextFile] = next.resolve([nextId]);
+    expect(existsSync(nextFile as string)).toBe(true);
+
+    // lock 소유자의 종료는 빈 루트까지 거둔다.
+    next.cleanup();
+    expect(existsSync(resolveLaunchAttachmentNamespaceRoot(dataDir))).toBe(false);
   });
 });
 
@@ -168,7 +200,10 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     stop: async () => {},
   };
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-attachments-"));
-  cleanups.push(() => rmSync(fleetDataDir, { recursive: true, force: true }));
+  cleanups.push(() => {
+    rmSync(resolveLaunchAttachmentNamespaceRoot(fleetDataDir), { recursive: true, force: true });
+    rmSync(fleetDataDir, { recursive: true, force: true });
+  });
   const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null }), update: (mutate) => mutate({}) };
   const ctx = {
     dataDir: fleetDataDir,

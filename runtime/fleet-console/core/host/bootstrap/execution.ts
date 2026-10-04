@@ -88,6 +88,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   });
   return {
     launchKinds: agent.launchKinds,
+    /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */
+    reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
     actions: { ...agent.actions, analystAsk: analysis.ask, analystArtifacts: analysis.artifacts, analystState: analysis.state },
     stopForArchive: async (operation: import("@fleet-console/sdk/operations").OperationNode) => {
       runtime.invalidateTicketsForSession(operation.id);

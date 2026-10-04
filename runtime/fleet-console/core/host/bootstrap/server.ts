@@ -2638,7 +2638,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
         activeLockFile = lockPaths.lockFile;
         activeEndpoint = result.endpoint;
+        // 지난 프로세스의 잔재 회수는 lock 소유자만 한다 — lock을 쓰기 전에 지우면 lock에서 질 프로세스가
+        // 서비스 중인 Console의 파일을 지운다.
         launchPromptDirectories.reclaimLeftovers();
+        execution.reclaimAttachmentLeftovers();
       } catch (error) {
         await cleanupAfterFailedStart();
         throw error;
