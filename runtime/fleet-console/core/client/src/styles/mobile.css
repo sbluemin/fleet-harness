@@ -1059,3 +1059,98 @@
   .mobile-drawer,
   .mobile-drawer-scrim { animation: none !important; transition: none !important; }
 }
+
+/* 상단 막대와 연결·상태 띠가 한 덩어리로 위에 선다. */
+.mobile-frame-head { position: relative; z-index: 2; display: flex; flex-direction: column; min-width: 0; }
+.mobile-frame-head .console-shell-bars { display: flex; flex-direction: column; }
+
+/* 연결·상태 띠(S-34) — 전체 폭, 최소 높이 32, 면 bg-deep, 글자 muted 13, 동작은 오른쪽 끝 글자 버튼. */
+.mobile-frame-head .console-link-banner,
+.mobile-frame-head .control-bar {
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 16px;
+  color: var(--m-text-muted);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-regular);
+  background: var(--m-bg-deep);
+  border: 0;
+}
+
+.mobile-frame-head .console-link-banner > span { flex: 1; min-width: 0; }
+.mobile-frame-head .console-link-banner button,
+.mobile-frame-head .control-bar button {
+  margin-left: auto;
+  padding: 6px 0;
+  color: var(--m-text);
+  font: inherit;
+  font-weight: var(--weight-bold);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+}
+.mobile-frame-head .control-bar button { color: var(--m-text-nav); }
+.mobile-frame-head .control-bar-copy { display: flex; flex: 1; flex-wrap: wrap; gap: 0 8px; min-width: 0; }
+.mobile-frame-head .control-bar-copy strong { font-weight: var(--weight-regular); }
+
+/* 위에서 내려오는 알림(S-32) */
+.mobile-request-banner {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  left: 12px;
+  z-index: 48;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 8px 8px 16px;
+  color: var(--m-text);
+  font-size: var(--t-md);
+  background: var(--m-surface);
+  border-radius: 16px;
+  box-shadow: var(--m-shadow);
+  animation: mobile-banner-in 250ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+.mobile-request-banner.is-leaving { animation: mobile-fade-out 200ms forwards; }
+.mobile-request-banner-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 19px; }
+.mobile-request-banner-copy small { color: var(--m-text-muted); font-size: var(--t-sm); }
+.mobile-request-banner button {
+  height: 36px;
+  padding: 0 14px;
+  color: var(--m-on-inverse);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  background: var(--m-inverse);
+  border: 0;
+  border-radius: 18px;
+}
+@keyframes mobile-banner-in { from { transform: translateY(-140%); } }
+
+/* 토스트(S-33) — 앱 루트의 토스트 호스트를 모바일 문법으로: 입력창 위 150, 면 surface, 모서리 14. */
+html[data-view-mode="mobile"] .app-toast-host { right: 16px; bottom: 150px; left: 16px; align-items: stretch; }
+html[data-view-mode="mobile"] .app-toast {
+  min-height: 52px;
+  padding: 0 8px 0 16px;
+  color: var(--m-text);
+  font-size: var(--t-md);
+  background: var(--m-surface);
+  border: 0;
+  border-radius: 14px;
+  box-shadow: var(--m-shadow);
+}
+html[data-view-mode="mobile"] .app-toast-dot,
+html[data-view-mode="mobile"] .app-toast-progress { display: none; }
+html[data-view-mode="mobile"] .app-toast-title { font-size: var(--t-md); font-weight: var(--weight-regular); }
+html[data-view-mode="mobile"] .app-toast-message { font-size: 0; }
+html[data-view-mode="mobile"] .app-toast-message .app-toast-link,
+html[data-view-mode="mobile"] .app-toast-action {
+  padding: 8px;
+  color: var(--m-text);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  background: transparent;
+  border: 0;
+}
