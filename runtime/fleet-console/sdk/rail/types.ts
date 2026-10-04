@@ -182,6 +182,11 @@ export interface RailEntryDescriptor {
 /** 모바일 배치에서 레일 엔트리가 서는 자리. */
 export interface RailEntryMobile {
   /**
+   * 폰에서 쓸 수 있는가. `false`면 모바일 드로어의 「플러그인」 화면에 흐린 행(「데스크톱에서만」)으로 남고 눌러도 열리지 않는다 —
+   * 쓸 수 없는 도구도 어디서 쓰는지 알 수 있게 목록에는 둔다. 생략하면 쓸 수 있다.
+   */
+  readonly available?: boolean;
+  /**
    * 드로어의 고정 목적지로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
    * 그 화면의 본문은 이 엔트리의 primary 페인이다 — 모바일 호스트가 페인 컨텍스트에 `mobileBar`를 싣는다.
    * 이름과 아이콘은 엔트리의 `title`·`icon`을 쓴다.
