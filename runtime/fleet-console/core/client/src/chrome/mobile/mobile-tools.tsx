@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useNavigate } from "react-router-dom";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
@@ -13,19 +12,24 @@ import { useRailEntries } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { closePane, useFocusedPaneId, useRailPanes } from "../pane/pane-store.js";
 import { closeRailPanel, useRailActivePanelId } from "../rail/rail-store.js";
+import { mobilePluginRows } from "./mobile-destinations.js";
+import { useClaimMobileBar } from "./mobile-bar-context.js";
+import { MobileIcon } from "./mobile-icons.js";
 import { setMobileTool, useMobileTool } from "./mobile-store.js";
 import "../../styles/rail.css";
 
 const ignoreMinimum = () => undefined;
 const ignoreDivider = () => undefined;
 
-/** 본문은 플러그인의 SDK 계약 그대로, 모바일 호스트는 진입·한 장씩 보기·뒤로만 소유한다. */
+/**
+ * 「플러그인」 화면 — 드로어의 고정 목적지가 되지 못한 도구(저장소·스킬·원장 …)가 한 줄씩 선다.
+ * 행을 누르면 도구 시트(레일 페인 한 장씩 / 확대 표면)로 열린다. 본문은 플러그인의 SDK 계약 그대로,
+ * 모바일 호스트는 진입·한 장씩 보기·뒤로만 소유한다.
+ */
 export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme; readonly language: "ko" | "en" }) {
   const t = useT();
-  const navigate = useNavigate();
   const capabilities = useHostCapabilities();
   const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId);
-  const theaterLabel = useSyncExternalStore(subscribe, () => getState().theaters.find((item) => item.id === getState().activeTheaterId)?.label ?? "");
   const tool = useMobileTool();
   const bindings = useRailEntries();
   const activeRail = useRailActivePanelId();
@@ -41,6 +45,11 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
   const backRef = useRef<HTMLButtonElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+
+  // 시트가 서 있는 동안 상단 막대는 시트 자신의 머리가 대신한다. 목록일 때는 「플러그인」 제목이 선다.
+  useClaimMobileBar(tool === null
+    ? { variant: "centered", title: t("mobile.drawer.plugins"), leading: "menu" }
+    : { variant: "centered", title: "", leading: "menu", hidden: true });
 
   useLayoutEffect(() => {
     const node = surfaceRef.current;
@@ -69,27 +78,35 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
   };
 
   if (tool === null) {
-    const choices = [
-      { key: "files" as const, binding: bindings.find((item) => item.entry.handles?.openFile) },
-      { key: "wiki" as const, binding: bindings.find((item) => item.entry.handles?.openWikiEntry) },
-      { key: "shell" as const, binding: bindings.find((item) => item.entry.surfaceId === "shell") },
-    ];
-    return <section className="mobile-tools-menu">
-      <header><h1>{t("mobile.tools.title")}</h1><p>{theaterLabel || t("mobile.tools.chooseTheater")}</p></header>
-      {theaterId === null ? <button type="button" onClick={() => navigate("/theaters")}>{t("mobile.tabs.theaters")}</button> : null}
-      {choices.map(({ key, binding: choice }) => <button type="button" className="mobile-tool-choice" key={key} disabled={theaterId === null || !choice} onClick={() => {
-        if (!choice || !theaterId) return;
-        if (choice.entry.surfaceId) capabilities.surfaces.open({ surfaceId: choice.entry.surfaceId });
-        else capabilities.rail.open(choice.entry.id);
-      }}>
-        <span aria-hidden="true">{choice ? (typeof choice.entry.icon === "function" ? choice.entry.icon() : choice.entry.icon) : null}</span>
-        <strong>{key === "files" && choice ? resolveLocalizedText(choice.entry.title, language) : t(`mobile.tools.${key}`)}</strong><span aria-hidden="true">›</span>
-      </button>)}
-    </section>;
+    const rows = mobilePluginRows(bindings);
+    return (
+      <section className="mobile-plugin-list">
+        {rows.length === 0 ? <p className="mobile-plugin-list-empty">{t("mobile.plugins.empty")}</p> : (
+          <div className="mobile-group">
+            {rows.map((row) => (
+              <button
+                type="button"
+                className="mobile-group-row"
+                key={row.entry.id}
+                disabled={theaterId === null && row.entry.scope !== "fleet"}
+                onClick={() => {
+                  if (row.entry.surfaceId) capabilities.surfaces.open({ surfaceId: row.entry.surfaceId });
+                  else capabilities.rail.open(row.entry.id);
+                }}
+              >
+                <span className="mobile-group-row-icon" aria-hidden="true">{typeof row.entry.icon === "function" ? row.entry.icon() : row.entry.icon}</span>
+                <span className="mobile-group-row-copy">{resolveLocalizedText(row.entry.title, language)}</span>
+                <MobileIcon name="right" size={18} className="mobile-group-row-caret" />
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    );
   }
 
   const title = binding ? resolveLocalizedText(binding.entry.title, language)
-    : instance?.surfaceId === "shell" ? t("mobile.tools.shell") : instance?.surfaceId === "codex" ? t("mobile.tools.wiki") : t("mobile.tools.title");
+    : instance?.surfaceId === "shell" ? t("mobile.tools.shell") : instance?.surfaceId === "codex" ? t("mobile.tools.wiki") : t("mobile.drawer.plugins");
   // 플러그인 CSS에 공개하는 배치 신호 — 내부 호스트 클래스 대신 시트 문맥만 판별한다.
   return <section className="mobile-tool-sheet" data-host-surface="mobile-sheet" aria-label={title}>
     <header className="mobile-tool-sheet-bar">

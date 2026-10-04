@@ -3709,17 +3709,6 @@ describe("Instrument core design contract", () => {
     expect(Number("--z-rail: 10;".match(/\d+/)?.[0])).toBeLessThan(40);
     expect(40).toBeLessThan(60);
   });
-
-  // 모바일 세션 Close는 coral 무장·brass 포커스·44px 바닥을 데스크톱 프레임과 공유한다.
-  // mobile.css는 OWNED_SOURCES에 올리지 않는다 — 탭 레일도 같은 파일에 있고, 이 문법은 이 핀이 담당한다.
-  it("pins the mobile session archive button grammar — brass focus, 44px floor", () => {
-    const css = source("styles/mobile.css");
-    const close = css.match(/^\.mobile-session-close \{[^}]*\}/m)?.[0] ?? "";
-    expect(close).toContain("min-width: 44px;");
-    expect(close).toContain("min-height: 44px;");
-    const focus = css.match(/^\.mobile-session-close:focus-visible \{[^}]*\}/m)?.[0] ?? "";
-    expect(focus).toContain("outline: 2px solid color-mix(in srgb, var(--brass) 55%, transparent);");
-  });
 });
 
 describe("Effort track interaction grammar", () => {

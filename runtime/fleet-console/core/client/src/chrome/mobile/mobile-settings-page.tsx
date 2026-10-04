@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { loadGlobalSettings, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../../i18n/index.js";
+import { useClaimMobileBar } from "./mobile-bar-context.js";
 import {
   collectPluginSettingsSections,
   renderSettingsSection,
@@ -83,6 +84,11 @@ export function MobileSettingsPage() {
     navigate({ pathname: "/settings", search: "" }, { replace: true });
   };
 
+  // 막대는 호스트가 그린다 — 목록은 ≡, 섹션 상세는 ‹(목록에서 왔으면 history 되돌리기).
+  useClaimMobileBar(active !== null
+    ? { variant: "centered", title: active.title, leading: "back", onBack: close }
+    : { variant: "centered", title: t("mobile.drawer.settings"), leading: "menu" });
+
   // An unknown section — a stale link, or one whose plugin is gone — resolves to the list rather
   // than to an empty screen, and the address is corrected so a reload does not repeat the miss.
   useEffect(() => {
@@ -95,13 +101,8 @@ export function MobileSettingsPage() {
   if (active !== null) {
     return (
       <section className="mobile-settings-page" aria-labelledby="mobile-settings-detail-title">
-        <header className="mobile-list-header">
-          <button type="button" className="mobile-settings-back" onClick={close} aria-label={t("mobile.settings.back")}>
-            <BackIcon />
-          </button>
-          <h1 id="mobile-settings-detail-title">{active.title}</h1>
-          <span className="mobile-settings-saving" role="status" aria-live="polite">{saving ? t("settings.saving") : ""}</span>
-        </header>
+        <h1 id="mobile-settings-detail-title" className="mobile-visually-hidden">{active.title}</h1>
+        <span className="mobile-settings-saving" role="status" aria-live="polite">{saving ? t("settings.saving") : ""}</span>
         <div className="mobile-settings-scroll">
           <div className="mobile-settings-detail">
             {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
@@ -114,9 +115,7 @@ export function MobileSettingsPage() {
 
   return (
     <section className="mobile-settings-page" aria-labelledby="mobile-settings-title">
-      <header className="mobile-list-header">
-        <h1 id="mobile-settings-title">{t("mobile.tabs.settings")}</h1>
-      </header>
+      <h1 id="mobile-settings-title" className="mobile-visually-hidden">{t("mobile.drawer.settings")}</h1>
       <div className="mobile-settings-scroll">
         <div className="mobile-settings-groups">
           {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
@@ -221,14 +220,6 @@ function fontLabel(state: GlobalSettingsState): string {
   const uiFont = state.uiFont ?? DEFAULT_UI_FONT;
   if (uiFont.source === "system") return uiFont.familyName;
   return UI_FONT_BUILT_INS.find((font) => font.id === uiFont.id)?.label ?? uiFont.id;
-}
-
-function BackIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 4.5 6.5 10l5.5 5.5" />
-    </svg>
-  );
 }
 
 function AppearanceIcon() {

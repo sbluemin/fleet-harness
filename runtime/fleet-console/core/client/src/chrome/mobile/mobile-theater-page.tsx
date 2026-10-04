@@ -11,7 +11,8 @@ import { TheaterMonogram } from "../../../../../features/workspace/client/sideba
 import { setActiveTheater } from "../../integration/store.js";
 import { registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import type { ConsoleState } from "../../integration/types.js";
-import { setMobileTab } from "./mobile-store.js";
+import { useClaimMobileBar } from "./mobile-bar-context.js";
+import { setMobileDestination } from "./mobile-store.js";
 import "../../styles/mobile.css";
 
 /**
@@ -55,19 +56,16 @@ export function MobileTheaterPage({ state }: { readonly state: ConsoleState }) {
 
   const enter = (theaterId: string) => {
     setActiveTheater(theaterId);
-    // Arriving at a Theater means its Operations, not the alerts tab a previous visit left behind.
-    setMobileTab("operations");
+    // Arriving at a Theater means its Operations (the last one opened), not whichever destination a previous visit left behind.
+    setMobileDestination({ kind: "home" });
     navigate("/operations");
   };
 
+  useClaimMobileBar({ variant: "centered", title: t("mobile.theaters.title"), leading: "menu" });
+
   return (
     <section className="mobile-theater-page" aria-labelledby="mobile-theater-page-title">
-      <header className="mobile-list-header">
-        <h1 id="mobile-theater-page-title">{t("mobile.theaters.title")}</h1>
-        <div className="mobile-list-actions">
-          <span className="mobile-total-count">{state.theaters.length}</span>
-        </div>
-      </header>
+      <h1 id="mobile-theater-page-title" className="mobile-visually-hidden">{t("mobile.theaters.title")}</h1>
       <div className="mobile-theater-rows">
         {state.theaters.length === 0 ? (
           <p className="mobile-operation-empty">{t("mobile.theaters.empty")}</p>

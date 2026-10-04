@@ -51,8 +51,7 @@ import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTrackin
 import { useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { subscribeDormantAutoMinimize } from "../../../../features/workspace/client/canvas/dormant-auto-minimize.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
-import { useMobileSessionOpen } from "../chrome/mobile/mobile-store.js";
-import { MobileTabBar } from "../chrome/mobile/mobile-tab-bar.js";
+import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
 import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { MobileTheaterPage } from "../chrome/mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
@@ -181,7 +180,6 @@ function ConnectedApp() {
   const operationsViewVisible = pathname.startsWith("/operations");
   const isTransitionalRoute = pathname === "/";
   const mobileLayout = useViewMode().effective === "mobile";
-  const mobileSessionOpen = useMobileSessionOpen();
   const zenState = useZenModeState();
   const zenTransitionActive = useZenTransitionActive();
   const zenMode = zenState.active;
@@ -678,11 +676,9 @@ function ConnectedApp() {
               </Routes>
             </main>
           );
-          // The tab bar sits outside the routes because its destinations are routes: settings is a
-          // tab, and a bar that unmounted with the operations route would strand the way back.
-          return mobileLayout
-            ? <div className="mobile-frame">{routeContent}{mobileSessionOpen ? null : <MobileTabBar />}</div>
-            : routeContent;
+          // The mobile frame sits outside the routes: the top bar and the drawer reach every destination,
+          // so a frame that unmounted with the operations route would strand the way back.
+          return mobileLayout ? <MobileFrame state={state}>{routeContent}</MobileFrame> : routeContent;
         })()}
         <OperationSearch
           state={state}

@@ -1,33 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
-import { ArchiveGlyph } from "../components/archive-glyph.js";
+import { getIdleArrivalIds } from "../../../../../features/execution/client/operation-marks.js";
+import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { useT } from "../../i18n/index.js";
 import type { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import type { OperationGeometry, OperationNode } from "../../integration/types.js";
+import { openQuickLaunch } from "../../integration/store.js";
+import { useClaimMobileBar } from "./mobile-bar-context.js";
+import { MobileIcon } from "./mobile-icons.js";
+import { pushMobileSheet, useMobileBarExtraSlot } from "./mobile-store.js";
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
 
-// Same two-tap arm as OperationFrame — a single tap names the intent, a second tap disposes.
-
 /**
- * An open operation is the terminal plus a named title. Leave remains the platform back
- * gesture, which this shell already answers. Close is a separate two-tap control on that
- * title row so the phone can dispose the Operation the same way the desktop frame does.
+ * An open operation is its body under the top bar the shell draws: the status glyph, the title, a new-Operation
+ * button and a ⋮ menu (rename, archive). The plugin's caption actions — the chat/terminal switch — ride in the
+ * slot the bar leaves open, so a chat session keeps its door back to the terminal.
  */
-export function MobileSessionView({ operation, theme, language, active, runtimeState, operationKinds, capabilities, onActivate, onClose }: {
+export function MobileSessionView({ operation, theme, language, active, runtimeState, operationRuntime, operationKinds, capabilities, onActivate, onClose }: {
   readonly operation: OperationNode;
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly active: boolean;
   readonly runtimeState: OperationRuntimeState | null;
+  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly operationKinds: readonly OperationKindDescriptor[];
   readonly capabilities: ReturnType<typeof createHostCapabilities>;
   readonly onActivate: () => void;
   readonly onClose: () => void;
 }) {
   const t = useT();
+  const idleArrivalIds = getIdleArrivalIds();
   const [geometry, setGeometry] = useState<OperationGeometry>({ x: 0, y: 0, width: 390, height: 640, zIndex: 0 });
   const measure = useCallback((element: HTMLDivElement | null) => {
     if (!element) return;
@@ -104,25 +110,38 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
     // 본문과 같은 이유로 companion 콜백은 싣지 않는다 — 그 부재가 "여기엔 드로어가 없다"는 말이다.
   } satisfies OperationRenderContext);
 
+  const session = operation.payload.session && typeof operation.payload.session === "object" && !Array.isArray(operation.payload.session)
+    ? operation.payload.session as Record<string, unknown>
+    : null;
+  const harnessLabel = session?.harness === "claude-code" ? "Claude Code" : undefined;
+  const mark = resolveOperationMarkVisual({
+    activity: resolveOperationActivity(operation, operationRuntime),
+    operationId: operation.id,
+    idleArrivalIds,
+  });
+  // 막대의 ⋮ — 이름 변경은 시트로, 보관은 일반 색(되돌리기는 토스트가 맡는다).
+  useClaimMobileBar({
+    variant: "operation",
+    title,
+    ...(harnessLabel ? { subtitle: harnessLabel } : {}),
+    glyph: mark,
+    leading: "menu",
+    actions: [{ id: "new", icon: <MobileIcon name="newop" />, label: t("mobile.operations.new"), run: openQuickLaunch }],
+    menu: {
+      label: t("mobile.bar.operationMenu"),
+      caption: title,
+      items: [
+        { id: "rename", icon: <MobileIcon name="pencil" size={20} />, label: t("mobile.menu.rename"), run: () => pushMobileSheet({ kind: "rename", operationId: operation.id }) },
+        { id: "archive", icon: <MobileIcon name="archive" size={20} />, label: t("mobile.menu.archive"), run: archive },
+      ],
+    },
+  });
+  const extraSlot = useMobileBarExtraSlot();
+
   return (
     <section className="mobile-session-view">
-      <div className="mobile-session-bar">
-        <h1 className="mobile-session-title">{title}</h1>
-        {captionActions ? (
-          <span className="mobile-session-caption-actions">
-            <PluginErrorBoundary fallback={<></>}>{captionActions}</PluginErrorBoundary>
-          </span>
-        ) : null}
-        <button
-          type="button"
-          className="mobile-session-close"
-          onClick={archive}
-          aria-label={t("canvas.frame.archiveAria", { title })}
-          title={t("canvas.frame.archiveTitle")}
-        >
-          <ArchiveGlyph />
-        </button>
-      </div>
+      {/* 캡션 동작(채팅↔터미널 전환)은 플러그인 소유라 막대가 비워 둔 자리에 포털로 끼운다. */}
+      {captionActions && extraSlot ? createPortal(<PluginErrorBoundary fallback={<></>}>{captionActions}</PluginErrorBoundary>, extraSlot) : null}
       <div className="mobile-session-body" ref={setMeasureTarget}>
         <OperationBodySlot operationId={operation.id} config={config} className="mobile-operation-body-slot" />
       </div>
