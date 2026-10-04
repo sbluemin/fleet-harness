@@ -1730,8 +1730,12 @@ describe("Objectives contract", () => {
     const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
     expect(reloaded.find(id)?.addedBy).toEqual(actor);
     expect(launches).toHaveLength(0);
+    // 사령관이 만든 목표의 지휘관은 채팅 뷰로 준비된다. 개시 전 사람이 터미널로 바꾸는 것은 막지 않는다.
+    expect(store.find(id)!.commander.viewMode).toBe("chat");
+    expect((await launch.setPreset(id, { viewMode: "terminal" })).commander.viewMode).toBe("terminal");
     expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["pending"] }));
     await board({ objectiveId: id, plan: true });
+    expect(launches[0]).toMatchObject({ viewMode: "terminal" });
     await command("plan", { missions: [{ text: "verify", member: "worker" }], members: [{ role: "worker" }], criteria: [{ text: "Decision applied" }] }, id);
     const beforeStart = (await board({ objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
     expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
@@ -1810,6 +1814,8 @@ describe("Objectives contract", () => {
     });
     expect((await board({ view: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ retrospective })] }));
     expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"] }));
+    // 사령관이 고른 후속은 터미널 원본의 뷰를 이어받지 않고 채팅 뷰 지휘관으로 시작한다.
+    expect(store.find(nextId)!.commander.viewMode).toBe("chat");
     await board({ objectiveId: nextId, commence: true });
     expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, commenced: true }));
     expect(store.find(id)!.done?.by).toEqual(actor);
