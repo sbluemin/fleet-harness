@@ -1342,7 +1342,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 :root .fc-settings-card.is-mobile { gap: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 :root .fc-settings-card.is-mobile .fc-settings-card__title { gap: 8px; padding: 6px 4px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); letter-spacing: 0; text-transform: none; }
 :root .fc-settings-card.is-mobile .fc-settings-card__body { gap: 2px; }
-:root .fc-settings-card.is-mobile .fc-settings-card__desc { margin: 0; padding: 8px 18px 0; color: var(--m-text-faint); font-size: var(--m-fs-caption); line-height: 18px; }
+:root .fc-settings-card.is-mobile .fc-settings-card__desc { margin: 0; padding: 8px 4px 0; color: var(--m-text-faint); font-size: var(--m-fs-caption); line-height: 18px; }
 :root .fc-settings-card.is-mobile .fc-settings-card__body > :not(.fc-settings-row) { margin: 0; padding: 14px 16px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); line-height: 21px; background: var(--m-surface); border-radius: 4px; }
 :root .fc-settings-card.is-mobile .fc-settings-card__body > .global-settings-error { color: var(--m-danger); }
 :root .fc-settings-card.is-mobile .fc-settings-card__body > :first-child:not(.fc-settings-row) { border-top-left-radius: 22px; border-top-right-radius: 22px; }
