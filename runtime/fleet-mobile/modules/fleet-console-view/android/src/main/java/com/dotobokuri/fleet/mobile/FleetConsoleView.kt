@@ -75,6 +75,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private var activeGateway: LoopbackGateway? = null
   private var staging: StagedLoad? = null
   private val appearanceStore = AppearanceStore(context)
+  private val appVersion: String? = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (_: Exception) { null }
   // Read by JS on the module thread, written on main.
   @Volatile private var appearance = appearanceStore.load()
   private var systemDark = isSystemDark(resources.configuration)
@@ -629,7 +630,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
   private fun appearanceScriptFor(target: PersistedTarget): String =
-    AppearanceBridge.script(appearance, systemDark, ConsolePresentation.of(target))
+    AppearanceBridge.script(appearance, systemDark, ConsolePresentation.of(target), appVersion)
 
   private fun installAppearanceScript(webView: WebView, gateway: LoopbackGateway, target: PersistedTarget) {
     if (!documentStartSupported) return

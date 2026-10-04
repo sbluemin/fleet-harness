@@ -92,7 +92,7 @@ public enum AppearanceBridge {
 
   /// 문서 시작과 실시간 갱신이 같은 스크립트를 쓴다. 값은 JSON 인코더를 거친 뒤 한 번 더
   /// JavaScript 문자열로 인용된다 — 코드에 이어 붙이는 값은 없다.
-  public static func script(_ appearance: Appearance, systemDark: Bool, console: ConsolePresentation?) -> String {
+  public static func script(_ appearance: Appearance, systemDark: Bool, console: ConsolePresentation?, appVersion: String? = nil) -> String {
     var value: [String: Any] = [
       "v": 1,
       "colorMode": appearance.colorMode.rawValue,
@@ -102,6 +102,8 @@ public enum AppearanceBridge {
     if let console {
       value["console"] = ["label": console.label, "monogram": console.monogram, "tone": console.tone, "address": console.address]
     }
+    // 셸 자신의 버전(v1.4) — 페이지의 버전 행이 쓴다. 번들에서 읽은 값이지만 그래도 인용한다.
+    if let appVersion, !appVersion.isEmpty { value["app"] = ["version": String(appVersion.prefix(64))] }
     let json = (try? JSONSerialization.data(withJSONObject: value)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
     let literal = (try? JSONEncoder().encode(json)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"{}\""
     return "(() => { const v = JSON.parse(\(literal)); if (v.console) Object.freeze(v.console); Object.freeze(v); "

@@ -107,7 +107,7 @@ internal object AppearanceBridge {
    * the value it was told about. Every value passes through the JSON encoder and is quoted once
    * more as a JavaScript string; nothing is concatenated into code.
    */
-  fun script(appearance: Appearance, systemDark: Boolean, console: ConsolePresentation?): String {
+  fun script(appearance: Appearance, systemDark: Boolean, console: ConsolePresentation?, appVersion: String? = null): String {
     val value = JSONObject()
       .put("v", 1)
       .put("colorMode", appearance.colorMode.wire)
@@ -119,6 +119,8 @@ internal object AppearanceBridge {
         JSONObject().put("label", console.label).put("monogram", console.monogram).put("tone", console.tone).put("address", console.address),
       )
     }
+    // The shell's own version, for the page's version row (v1.4). Read from the package, still quoted.
+    appVersion?.takeIf { it.isNotBlank() }?.let { value.put("app", JSONObject().put("version", it.take(64))) }
     val literal = JSONObject.quote(value.toString())
     return "(() => { const v = JSON.parse($literal); if (v.console) Object.freeze(v.console); Object.freeze(v); " +
       "Object.defineProperty(window, \"__fleetMobileAppearance\", { value: v, configurable: true, enumerable: false, writable: false }); " +

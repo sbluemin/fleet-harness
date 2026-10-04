@@ -48,7 +48,7 @@ class AppearanceBridgeTest {
   fun quotesTheConsoleLabelInsteadOfSplicingItIntoCode() {
     val label = "\"); alert(1); (\"</script>"
     val target = PersistedTarget("https://fleet.example:7443", "fleet.example", 7443, label, "A".repeat(64), LoopbackIdentity("127.44.1.9", 40001))
-    val script = AppearanceBridge.script(Appearance.DEFAULT, systemDark = true, console = ConsolePresentation.of(target))
+    val script = AppearanceBridge.script(Appearance.DEFAULT, systemDark = true, console = ConsolePresentation.of(target), appVersion = "0.3.3")
     assertFalse(script.contains(label))
     val prefix = "JSON.parse("
     val literal = script.substring(script.indexOf(prefix) + prefix.length, script.indexOf("); if (v.console)"))
@@ -56,5 +56,6 @@ class AppearanceBridgeTest {
     assertEquals(label, value.getJSONObject("console").getString("label"))
     assertEquals("fleet.example:7443", value.getJSONObject("console").getString("address"))
     assertEquals("dark", value.getString("systemScheme"))
+    assertEquals("0.3.3", value.getJSONObject("app").getString("version"))
   }
 }
