@@ -5,7 +5,6 @@ import { useAllOperationUseRequests, type OperationUseRequest } from "../../../c
 import { getT } from "./i18n/index.js";
 import {
   formatUseRequestTime,
-  openUseRequestSettings,
   setUseRequestCornerState,
   useRequestSecondsLeft,
   UseRequestGlyph,
@@ -217,7 +216,6 @@ function UseRequestCornerCard({ request, source, now, language, cardRef }: {
   const { pending, failed, answer, onKeyDown } = useUseRequestAnswer(request, language);
   const left = useRequestSecondsLeft(request, now);
   const isConsole = request.capability === "console";
-  const blocked = request.blocked === "experiment_disabled";
   const titleId = `use-corner-${request.id}`;
   const sourceName = source?.memberName ?? source?.operationTitle ?? "";
   return (
@@ -248,29 +246,18 @@ function UseRequestCornerCard({ request, source, now, language, cardRef }: {
         </span>
         <span className="use-corner-time" aria-label={t("terminal.useRequest.corner.left", { time: formatUseRequestTime(left) })}>{formatUseRequestTime(left)}</span>
       </div>
-      {blocked ? <p className="use-corner-lead">{t("terminal.useRequest.blocked")}</p> : null}
-      {!blocked && request.tools.length > 0 ? (
+      {request.tools.length > 0 ? (
         <ul className="use-corner-tools" aria-label={t("terminal.useRequest.corner.tools")}>
           {request.tools.map((tool) => <li key={tool}>{tool}</li>)}
         </ul>
       ) : null}
-      {blocked ? (
-        <div className="use-corner-actions">
-          <button type="button" className="use-corner-button is-plain" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
-          <span className="use-request-gap" />
-          <button type="button" className="use-corner-button is-primary" onClick={openUseRequestSettings}>{t("terminal.useRequest.openSettings")}</button>
-        </div>
-      ) : (
-        <>
-          <div className="use-corner-actions">
-            <button type="button" className="use-corner-button is-plain" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
-            <span className="use-request-gap" />
-            <button type="button" className="use-corner-button is-quiet" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
-            <button type="button" className="use-corner-button is-primary" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
-          </div>
-          <p className="use-corner-fine">{t("terminal.useRequest.corner.fine")}</p>
-        </>
-      )}
+      <div className="use-corner-actions">
+        <button type="button" className="use-corner-button is-plain" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
+        <span className="use-request-gap" />
+        <button type="button" className="use-corner-button is-quiet" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
+        <button type="button" className="use-corner-button is-primary" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
+      </div>
+      <p className="use-corner-fine">{t("terminal.useRequest.corner.fine")}</p>
       {failed ? <p className="use-request-error" role="alert">{t("terminal.useRequest.failed")}</p> : null}
     </div>
   );

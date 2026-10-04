@@ -281,10 +281,12 @@ function buildAgentCliMcpServerConfigs(
   endpoints: readonly ExecutorServerEndpoint[],
   tokens: readonly ExecutorServerToken[],
 ): AgentCliMcpServerArg[] {
-  return endpoints.map((endpoint) => {
-    const token = tokens.find((entry) => entry.name === endpoint.name)?.token;
-    if (!token) {
-      throw new Error(`Dedicated MCP token missing for ${endpoint.name}`);
+  // 토큰을 기준으로 싣는다. 호스트가 이번 세션에 토큰을 내지 않은 서버(예: 꺼진 실험 기능)는 빠지고,
+  // 토큰은 있는데 주소가 없으면 조립 오류다.
+  return tokens.map(({ name, token }) => {
+    const endpoint = endpoints.find((entry) => entry.name === name);
+    if (!endpoint) {
+      throw new Error(`Dedicated MCP endpoint missing for ${name}`);
     }
     return {
       name: endpoint.name,

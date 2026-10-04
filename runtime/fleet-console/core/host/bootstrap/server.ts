@@ -1249,7 +1249,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await computerUse.setPlatform(computerUsePlatforms[next.computerUseBackend]);
       if (!next.computerUse) await computerUse.stop();
       for (const listener of experimentListeners) listener(next);
-      // computerUse 실험 토글·백엔드는 listOperationUse 의 computer 배열과 요청 blocked 를 바꾼다.
+      // computerUse 실험 토글·백엔드는 listOperationUse 의 computer 배열을 바꾼다. 끄면 기다리던 허용 요청은
+      // 브로커 순찰이 거둔다. 런치 주입은 다음 자식 런치부터 이 값을 따른다(computer-use/host/mcp.ts).
       scheduleOperationUseBroadcast();
     },
     onRemoteAccessChanged: (change) => reconcileRemoteAccess(change),

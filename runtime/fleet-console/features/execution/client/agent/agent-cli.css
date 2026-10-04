@@ -1640,13 +1640,6 @@
 
 .use-request-gap { flex: 1; }
 
-.use-request-blocked {
-  flex: 1;
-  min-width: 12ch;
-  color: var(--text-secondary);
-  font-size: var(--t-xs);
-}
-
 .use-request-fine {
   margin: 0;
   color: var(--text-tertiary);
@@ -1907,7 +1900,6 @@
 .use-corner-source:focus-visible .use-corner-source-go { opacity: 1; }
 .use-corner-card-head > .use-corner-time { align-self: flex-start; padding-top: 3px; font-size: var(--t-xs); }
 
-.use-corner-lead { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
 .use-corner-tools { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .use-corner-tools li {
   padding: 2px 6px;
