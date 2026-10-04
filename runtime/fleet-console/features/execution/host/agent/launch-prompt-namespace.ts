@@ -14,10 +14,13 @@ import type { LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtim
  * 1. 이 Console이 runtime lock을 쥐었다 — 회수는 호출자가 lock을 쓴 **뒤에만** 부른다. lock 전에 지우면
  *    lock 경쟁에서 질 프로세스가 이미 서비스 중인 Console의 파일을 지운다(첨부 namespace가 그렇다).
  * 2. 이 프로세스가 만들지 않았다 — lock은 기동 끝에 쓰이므로 그 전의 launch가 이미 여기 파일을 둘 수 있다.
+ *    모든 할당은 mkdtemp와 같은 동기 구간에서 소유 집합에 오르므로, 집합 밖이면 이 프로세스의 것이 아니다.
  * 3. 그 항목을 만든 프로세스가 죽었다 — 이름에 생성자 pid가 들어 있다. lock 독점은 회수의 충분조건이
  *    아니다: 신뢰 검증에 실패한 lock은 생존 확인 없이 지워질 수 있고, 그러면 살아 있는 Console 옆에서
  *    다른 Console이 같은 lock을 쓴다. Quick Launch 지시 파일은 모델이 나중에 읽으므로 "CLI가 기동 때
- *    이미 읽었다"는 이유로 지울 수도 없다. pid가 재사용되면 남기는 쪽으로만 틀린다(다음 기동이 다시 본다).
+ *    이미 읽었다"는 이유로 지울 수도 없다. 다른 pid가 살아 있으면 재사용일 수 있어도 남긴다(다음 기동이
+ *    다시 본다). 생성자 pid가 이 프로세스의 pid인데 집합 밖이면, 같은 pid를 썼던 이전 프로세스의 잔재다 —
+ *    pid가 고정된 컨테이너 재시작에서 이것을 남기면 영영 회수되지 않는다.
  *
  * 자리는 lock 도메인마다 하나다(`fleet-launch-<lock 경로 해시>`). 다른 채널·checkout·override의 Console,
  * 그리고 lock을 쥐지 않는 독립 `fleet` launcher(이 포트를 받지 않는다)의 파일은 이 자리에 오지 않는다.
@@ -90,7 +93,9 @@ export function createLaunchPromptNamespace(options: {
           if (owned.has(name)) continue;
           const match = ENTRY_OWNER_PATTERN.exec(name);
           const creator = match ? Number(match[1]) : NaN;
-          if (!Number.isSafeInteger(creator) || creator <= 0 || isProcessAlive(creator)) continue;
+          if (!Number.isSafeInteger(creator) || creator <= 0) continue;
+          // 이 pid의 항목은 전부 집합에 있다 — 집합 밖이면 같은 pid를 썼던 죽은 프로세스의 것이다.
+          if (creator !== process.pid && isProcessAlive(creator)) continue;
           try {
             rmSync(path.join(root, name), { force: true, recursive: true });
             removed += 1;

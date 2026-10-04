@@ -163,10 +163,13 @@ describe("launch prompt namespace reclaim", () => {
     const lockFile = path.join(tmpDir, "console", "console.lock");
     const log = () => {};
 
-    // 이전 Console(같은 lock 도메인)이 만든 항목. 이 테스트 프로세스가 생성자라 아직 살아 있다.
+    // 같은 pid를 썼던 이전 프로세스(pid가 고정된 컨테이너 재시작)가 남긴 항목 — 지금 pid와 같아도 잔재다.
     const previous = createLaunchPromptNamespace({ lockFile, tmpDir, log });
-    const liveEntry = previous.allocateDir("fleet-quick-launch-");
-    const root = path.dirname(liveEntry);
+    const samePidLeftover = previous.allocateDir("fleet-quick-launch-");
+    const root = path.dirname(samePidLeftover);
+    // 아직 살아 있는 다른 프로세스가 만든 항목(lock 독점이 깨진 동시 Console 등).
+    const liveEntry = path.join(root, `fleet-quick-launch-${process.ppid}-LiVe01`);
+    mkdirSync(liveEntry, { mode: 0o700 });
     // 정리 없이 죽은 프로세스가 남긴 항목.
     const deadPid = spawnSync(process.execPath, ["-e", ""]).pid;
     const deadEntry = path.join(root, `fleet-system-prompt-${deadPid}-AbC123`);
@@ -177,8 +180,9 @@ describe("launch prompt namespace reclaim", () => {
     const next = createLaunchPromptNamespace({ lockFile, tmpDir, log });
     const ownEntry = next.allocateDir("fleet-system-prompt-");
     expect(path.dirname(ownEntry)).toBe(root);
-    expect(next.reclaimLeftovers()).toBe(1);
+    expect(next.reclaimLeftovers()).toBe(2);
     expect(existsSync(deadEntry)).toBe(false);
+    expect(existsSync(samePidLeftover)).toBe(false);
     expect(existsSync(liveEntry)).toBe(true);
     expect(existsSync(ownEntry)).toBe(true);
 
