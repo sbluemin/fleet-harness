@@ -18,31 +18,6 @@ import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { ConsoleExperimentSettings, ExperimentModelOption, SettingsSectionDescriptor } from "../settings/types.js";
 
-export const PROMPT_REFINE_MAX_CHARS = 8_000;
-export type PromptRefinePurpose = "launch" | "follow-up";
-
-/**
- * 실험 기능 "프롬프트 다듬기"의 입력. 본문과 Theater 이름, 편집 의도만 넘긴다 — Operation id,
- * transcript나 경로는 이 계약에 없다. 런치 또는 멘션 대상의 소유 플러그인이 답한다.
- */
-export interface PromptRefineInput {
-  /** 생략한 기존 호출은 새 작업 지시문으로 다룬다. */
-  readonly purpose?: PromptRefinePurpose;
-  readonly prompt: string;
-  readonly theaterLabel: string | null;
-  readonly language: ConsoleLocale;
-  readonly signal?: AbortSignal;
-}
-
-/**
- * 고쳐 쓴 초안. 코어는 사용자가 적용하기 전까지 입력창을 바꾸지 않는다. `notes`는 초안이 무엇을
- * 보탰거나 확인이 필요한지 짧게 적은 줄들이다.
- */
-export interface PromptRefinement {
-  readonly prompt: string;
-  readonly notes: readonly string[];
-}
-
 export interface LaunchContext {
   readonly theaterId: string;
   readonly kind: OperationLaunchKind;
@@ -266,13 +241,6 @@ export interface ClientExecutionProvider {
   /** Best-effort discard of an uploaded-but-unsent attachment (composer chip removal). */
   readonly discardLaunchAttachment?: (id: string) => Promise<void>;
   readonly renderLaunchIcon?: (kind: OperationLaunchKind) => ReactNode;
-  /**
-   * 실험 기능 "프롬프트 다듬기". 코어가 켜져 있을 때만 부르고, 답이 늦거나 없으면 조용히 수동
-   * 흐름으로 남는다. 런치 또는 멘션 대상의 소유자가 선언한다.
-   */
-  readonly refinePrompt?: (input: PromptRefineInput) => Promise<PromptRefinement | null>;
-  /** 후속 메시지 편집을 명시적으로 지원하는 Operation 타입. 생략하면 런치만 지원한다. */
-  readonly promptRefineOperationTypes?: readonly string[];
   /**
    * 모델 좌석 선택지에 보태는 모델들. 코어는 Claude 별칭만 알고, Gateway에서 켠 모델은 그것을
    * 아는 플러그인이 내놓는다.

@@ -5,12 +5,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
-import type { PromptRefinement } from "@fleet-console/sdk/plugin";
-import { PROMPT_REFINE_MAX_CHARS } from "@fleet-console/sdk/plugin/browser";
-
-import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
+import { useT } from "../../../../core/client/src/i18n/index.js";
 import { resolveOperationMarkVisual } from "../operation-activity.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchRecentPluginTarget, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
@@ -91,15 +87,6 @@ interface ComposerAttachment {
   readonly uploading: boolean;
 }
 
-/** 다듬기 버튼의 마크 — 네 갈래 반짝임. 위치·호버 채널(brass)만 쓰고 상태색은 쓰지 않는다. */
-function RefineSparkIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
-      <path d="M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6Z" fill="currentColor" />
-    </svg>
-  );
-}
-
 function PluginSlot({ render }: { readonly render: () => ReactNode }) {
   return <>{render()}</>;
 }
@@ -149,14 +136,6 @@ export function QuickLaunch() {
   // 시작 표면. 모델·강도와 같은 "고르면 기억" 계층에서 초기값을 읽는다 — 무장이 안내줄과
   // 카드 외곽선으로 상시 보이므로 기억이 숨은 모드를 만들지 않는다.
   const [startView, setStartView] = useState<QuickLaunchStartView>(() => readQuickLaunchSelection().view);
-  // 프롬프트 다듬기는 설정에서 켠 경우에만 초안을 만든다.
-  const experiments = useGlobalSettingsStore().state?.experiments ?? null;
-  const locale = useConsoleLocale();
-  const [refinement, setRefinement] = useState<PromptRefinement | null>(null);
-  const [refining, setRefining] = useState(false);
-  /** 적용한 초안의 원문 — 문면이 바뀌기 전까지 "원래대로"가 이 값을 되살린다. */
-  const [refinedFrom, setRefinedFrom] = useState<string | null>(null);
-  const refineEpochRef = useRef(0);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   const [mentionErrorKey, setMentionErrorKey] = useState<string | null>(null);
   const [pluginAddressUnavailable, setPluginAddressUnavailable] = useState(false);
@@ -213,16 +192,6 @@ export function QuickLaunch() {
   // 성립하지 않고 발사는 터미널로 정규화된다(카탈로그가 늦게 오는 첫 프레임도 같은 계약).
   const chatStartAvailable = target?.kind.launchViews?.includes("chat") === true;
   const chatStart = chatStartAvailable && startView === "chat";
-  const targetPlugin = target ? registry.providers.find((plugin) => plugin.id === target.pluginId) ?? null : null;
-  const refinePlugin = mentionTarget === null ? targetPlugin
-    : mentionTarget.kind === "operation"
-      ? registry.providers.find((plugin) => plugin.id === mentionTarget.entry.pluginId
-        && plugin.promptRefineOperationTypes?.includes(mentionTarget.entry.type)) ?? null
-      : null;
-  const refinePurpose = mentionTarget?.kind === "operation" ? "follow-up" : "launch";
-  const refineTheaterId = mentionTarget?.kind === "operation" ? mentionTarget.entry.theaterId : theaterId;
-  const refineTheaterLabel = theaters.find((theater) => theater.id === refineTheaterId)?.label ?? null;
-  const refineEnabled = experiments?.promptRefine === true && typeof refinePlugin?.refinePrompt === "function";
 
   const activeTheater = theaters.find((candidate) => candidate.id === theaterId) ?? null;
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
@@ -754,76 +723,6 @@ export function QuickLaunch() {
     inputRef.current?.focus();
   }, []);
 
-  // ── 실험: 프롬프트 다듬기 ───────────────────────────────────────────────────
-  // 사용자가 버튼을 눌렀을 때만 묻는다. 초안은 카드에 서고 입력창은 "적용"을 눌러야 바뀐다. 문면이
-  // 바뀌면 지난 초안은 낡은 것이므로 에포크로 버린다.
-  const refineAbortRef = useRef<AbortController | null>(null);
-  const canRefine = open && refineEnabled && !submitting
-    && prompt.trim().length > 0 && prompt.trim().length <= PROMPT_REFINE_MAX_CHARS;
-  useEffect(() => {
-    refineEpochRef.current += 1;
-    refineAbortRef.current?.abort();
-    refineAbortRef.current = null;
-    setRefinement(null);
-    setRefining(false);
-    // 적용된 초안을 사용자가 고치기 시작하면 "원래대로"는 더 이상 그 문면을 가리키지 않는다.
-    setRefinedFrom((current) => (current !== null && prompt === lastAppliedRef.current ? current : null));
-    // 편집 의도·대상·설정이 달라진 뒤 도착한 초안은 적용하지 않는다.
-  }, [prompt, open, mentionTarget, refineTheaterId, refineTheaterLabel, refinePurpose, refinePlugin, refineEnabled, locale, submitting]);
-  useEffect(() => () => {
-    refineEpochRef.current += 1;
-    refineAbortRef.current?.abort();
-  }, []);
-  const lastAppliedRef = useRef<string | null>(null);
-  const requestRefinement = useCallback(() => {
-    if (!canRefine || !refinePlugin?.refinePrompt || refining) return;
-    const epoch = ++refineEpochRef.current;
-    const abort = new AbortController();
-    refineAbortRef.current = abort;
-    setRefining(true);
-    setRefinement(null);
-    setMentionErrorKey(null);
-    void refinePlugin.refinePrompt({ prompt: prompt.trim(), theaterLabel: refineTheaterLabel, purpose: refinePurpose, language: locale, signal: abort.signal })
-      .then((next) => {
-        if (epoch !== refineEpochRef.current) return;
-        const valid = next && next.prompt.trim().length > 0 && next.prompt.trim().length <= PROMPT_REFINE_MAX_CHARS;
-        setRefinement(valid ? next : null);
-        if (!valid) setMentionErrorKey("chrome.quickLaunch.refineFailed");
-      })
-      .catch(() => {
-        if (epoch !== refineEpochRef.current) return;
-        setRefinement(null);
-        setMentionErrorKey("chrome.quickLaunch.refineFailed");
-      })
-      .finally(() => { if (epoch === refineEpochRef.current) { setRefining(false); refineAbortRef.current = null; } });
-  }, [canRefine, refinePlugin, refineTheaterLabel, refinePurpose, refining, prompt, locale]);
-
-  const applyRefinement = useCallback(() => {
-    if (!refinement) return;
-    const original = prompt;
-    const next = refinement.prompt.trim();
-    lastAppliedRef.current = next;
-    applyCommandPrompt(next);
-    // prompt 효과가 refinement를 비우고 refinedFrom을 검사한다 — 적용 직후의 문면은 lastApplied와 같으므로 살아남는다.
-    setRefinedFrom(original);
-    inputRef.current?.focus();
-  }, [refinement, prompt]);
-
-  const revertRefinement = useCallback(() => {
-    if (refinedFrom === null) return;
-    const original = refinedFrom;
-    lastAppliedRef.current = null;
-    setRefinedFrom(null);
-    applyCommandPrompt(original);
-    inputRef.current?.focus();
-  }, [refinedFrom]);
-
-  const dismissRefinement = useCallback(() => {
-    refineEpochRef.current += 1;
-    setRefinement(null);
-    inputRef.current?.focus();
-  }, []);
-
   // 커맨드 확정("/model ")과 값 적용(비움) 모두 프로그램 쓰기라 textarea input 이벤트가 없다 —
   // 파싱 상태를 문면과 같은 자리에서 함께 갱신해야 덱이 입력과 어긋나지 않는다.
   const applyCommandPrompt = useCallback((next: string) => {
@@ -1207,10 +1106,6 @@ export function QuickLaunch() {
     // 멘션 전달은 전달된 칩을 스스로 정확히 걷어냈다 — 남은 칩(전달 중 새로 붙은 것)은 산 초안이다.
     if (!options.keepAttachments) setAttachments([]);
     setAttachmentErrorKey(null);
-    refineEpochRef.current += 1;
-    setRefinement(null);
-    setRefinedFrom(null);
-    lastAppliedRef.current = null;
     if (!isQuickLaunchDocked()) {
       // 제출로 닫히는 초안은 소비된 것이다 — 닫힘 전이의 보존이 이 문장을 초안으로 되살리면
       // 다음 열림이 이미 발사된 지시를 미발사처럼 싣는다.
@@ -1690,7 +1585,7 @@ export function QuickLaunch() {
           읽지 않고, 뒤 화면의 단축키가 살아 있는 채로 공존한다(그것이 고정의 목적이다). */}
       <section
         ref={cardRef}
-        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${refining ? " is-suggesting" : ""}${chatStart && mentionTarget === null ? " is-chat-start" : ""}${conversationRow ? " has-conversation" : ""}`}
+        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${chatStart && mentionTarget === null ? " is-chat-start" : ""}${conversationRow ? " has-conversation" : ""}`}
         role={pinned ? "region" : "dialog"}
         aria-modal={pinned ? undefined : true}
         aria-label={t(pinned ? "chrome.quickLaunch.dockedRegion" : "chrome.quickLaunch.dialog")}
@@ -1995,18 +1890,6 @@ export function QuickLaunch() {
             aria-activedescendant={activeMentionOptionId ?? activeCommandOptionId}
             spellCheck={false}
           />
-          {canRefine || refining ? (
-            <button
-              type="button"
-              className={`quick-launch-suggest-trigger${refining ? " is-busy" : ""}`}
-              aria-label={t(refining ? "chrome.quickLaunch.refinePending" : "chrome.quickLaunch.refineTrigger")}
-              title={t(refining ? "chrome.quickLaunch.refinePending" : "chrome.quickLaunch.refineTrigger")}
-              disabled={refining}
-              onClick={requestRefinement}
-            >
-              <RefineSparkIcon />
-            </button>
-          ) : null}
           {/* 파일 픽커 — 붙여넣기·드롭과 같은 입구의 명시적 형태. 능력 있는 대상에서만 선다.
               입력 행에 사는 이유: 첨부는 초안에 붙는 내용이라 발사 좌표(하단 행)가 아니라 글이 있는 자리의
               도구다. 하단 행은 전송이 한 줄을 지켜야 하는 고정 예산이기도 하다(components.css의
@@ -2063,29 +1946,6 @@ export function QuickLaunch() {
             </div>
           ) : null}
         </ComposerField>
-        {refinement ? (
-          <div className="quick-launch-refine" role="group" aria-label={t("chrome.quickLaunch.refineAria")}>
-            <p className="quick-launch-refine-title">{t("chrome.quickLaunch.refineTitle")}</p>
-            <pre className="quick-launch-refine-draft">{refinement.prompt}</pre>
-            {refinement.notes.length > 0 ? (
-              <ul className="quick-launch-refine-notes">
-                {refinement.notes.map((note, index) => <li key={index}>{note}</li>)}
-              </ul>
-            ) : null}
-            <p className="quick-launch-refine-actions">
-              <button type="button" className="quick-launch-refine-confirm" onClick={applyRefinement}>{t("chrome.quickLaunch.refineApply")}</button>
-              <button type="button" className="quick-launch-refine-skip" onClick={dismissRefinement}>{t("chrome.quickLaunch.refineDiscard")}</button>
-              <span className="quick-launch-refine-hint">{t("chrome.quickLaunch.refineHint")}</span>
-            </p>
-          </div>
-        ) : refinedFrom !== null ? (
-          <div className="quick-launch-suggest" role="status">
-            <span className="quick-launch-suggest-lead">{t("chrome.quickLaunch.refineApplied")}</span>
-            <span className="quick-launch-suggest-actions">
-              <button type="button" className="quick-launch-suggest-dismiss" onClick={revertRefinement}>{t("chrome.quickLaunch.refineRevert")}</button>
-            </span>
-          </div>
-        ) : null}
 
         {mentionErrorKey === "chrome.quickLaunch.mentionErrorTrustRequired" && !showStrip ? (
           <p className="quick-launch-trust-guidance" role="alert">{t("chrome.quickLaunch.mentionErrorTrustRequired")}</p>

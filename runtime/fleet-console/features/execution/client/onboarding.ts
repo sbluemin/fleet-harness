@@ -8,8 +8,6 @@ const messagesEn = {
   "quickLaunchPin.step1Body": "Pin the composer and it docks to the bottom edge, so you can write while the work stays in view. It recedes into a single line when you look away, and the Quick Launch shortcut brings it back.",
   "quickLaunchFocusedMention.step1Title": "Address the panel in view",
   "quickLaunchFocusedMention.step1Body": "Turn this on and opening Quick Launch mentions the focused Operation. Type and send without picking. Backspace on an empty prompt clears it.",
-  "quickLaunchSuggest.step1Title": "Refine the prompt before launch",
-  "quickLaunchSuggest.step1Body": "Press this and your request is rewritten into a clear task brief: goal, scope, constraints, and open questions. It is a draft; the prompt changes only when you apply it. Experimental, from Settings.",
   "claudeOperations.step3Title": "Claude, one Gateway",
   "claudeOperations.step3Body": "Runs Claude Code with its built-in Claude models and the gateway models you enabled in Settings. You can switch models later with /model.",
   "chatMode.step2Title": "Write right here",
@@ -23,8 +21,6 @@ const messagesKo: Record<keyof typeof messagesEn, string> = {
   "quickLaunchPin.step1Body": "고정하면 컴포저가 화면 아래에 도킹돼, 작업 화면을 보면서 지시를 쓸 수 있습니다. 시선을 떼면 한 줄로 물러나고, Quick Launch 단축키로 다시 부릅니다.",
   "quickLaunchFocusedMention.step1Title": "보고 있는 패널에 보내기",
   "quickLaunchFocusedMention.step1Body": "켜 두면 Quick Launch를 열 때 포커스된 Operation이 멘션됩니다. 고르지 않고 바로 쓰고 보내면 됩니다. 빈 입력에서 Backspace로 지웁니다.",
-  "quickLaunchSuggest.step1Title": "시작 전에 프롬프트 다듬기",
-  "quickLaunchSuggest.step1Body": "누르면 요청을 목표·범위·제약·확인할 질문이 있는 작업 지시문으로 고쳐 씁니다. 초안일 뿐이라 적용해야 프롬프트가 바뀝니다. 설정의 실험 기능입니다.",
   "claudeOperations.step3Title": "하나의 Gateway로 실행하는 Claude입니다",
   "claudeOperations.step3Body": "Claude Code 내장 Claude 모델과 설정에서 켠 게이트웨이 모델을 함께 사용합니다. 실행 후 /model로 모델을 바꿀 수 있습니다.",
   "chatMode.step2Title": "바로 여기에서 씁니다",
@@ -56,15 +52,6 @@ export const executionOnboarding: OnboardingContribution = {
       deferAfterAnotherTour: true,
       walkthrough: [
         { anchor: ".quick-launch-mention-focus", title: T("quickLaunchFocusedMention.step1Title"), body: T("quickLaunchFocusedMention.step1Body") },
-      ],
-    },
-    {
-      id: "quick-launch-suggest",
-      // 실험 "런치 제안"의 버튼은 설정에서 켜고 프롬프트를 쓴 뒤에만 서므로 존재가 곧 판정이다.
-      spotlight: null,
-      deferAfterAnotherTour: true,
-      walkthrough: [
-        { anchor: ".quick-launch-suggest-trigger", title: T("quickLaunchSuggest.step1Title"), body: T("quickLaunchSuggest.step1Body") },
       ],
     },
     {

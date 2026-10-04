@@ -68,7 +68,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     // 분석가는 이제 게이트웨이 위에서 돈다. 고를 수 있는 모델은 사용자가 켠 선별이다.
     readAiGatewaySettings: aiGatewayStore.read,
   });
-  const sessionWatch = registerExperimentRoutes(ctx, {});
+  registerExperimentRoutes(ctx);
   const agent = await registerAgentRoutes(ctx, runtime, {
     organize,
     agentOptionsService: ctx.agentOptions,
@@ -81,8 +81,6 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
       compactHookToken: aiGatewayRuntime.compactHookToken,
       modHookToken: aiGatewayRuntime.modHookToken,
     },
-    // 턴의 끝은 브라우저의 에이전트 사용 세션도 닫는다 — 호출 단위가 아니라 턴 단위로 「사용 중」이 켜져 있게.
-    onTurnEnded: (operationId) => sessionWatch.onTurnEnded(operationId),
     // 턴이 멈추면(정상·중단 모두) 에이전트 사용 표식을 내린다. Computer Use 는 기기 소유도 함께 놓는다 — 표식만
     // 내리고 잡고 있으면 공유 화면이 조용히 살아 있는 셈이다. 세 호출 모두 멱등이라 겹쳐 불려도 된다.
     // 「이번 작업만」 허가도 턴과 함께 풀린다.

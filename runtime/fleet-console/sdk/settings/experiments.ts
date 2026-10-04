@@ -1,9 +1,8 @@
 /**
  * 실험 기능 설정 — 코어 설정의 한 항목이지만 형태는 SDK가 소유한다.
  *
- * 기능(Quick Launch·Terminal·Scuttlebutt)은 코어와 플러그인에 흩어져 있는데 저장은 코어 general
- * 설정 한 곳이다. 같은 정제기를 서버·브라우저·플러그인이 나눠 쓰지 않으면 세 곳이 각자 다른
- * 기본값을 갖게 되고, 그중 하나만 "꺼짐"을 "켜짐"으로 읽어도 옵트인 약속이 깨진다.
+ * 기능은 코어와 플러그인에 흩어져 있는데 저장은 코어 general 설정 한 곳이다. 같은 정제기를
+ * 서버·브라우저·플러그인이 나눠 쓰지 않으면 세 곳이 각자 다른 기본값을 갖게 되고, 그중 하나만 "꺼짐"을 "켜짐"으로 읽어도 옵트인 약속이 깨진다.
  *
  * 모델은 기능마다 고른다. 이미 자기 모델이 있는 표면 위의 기능(부관의 Console 읽기 —
  * 부관단 카드가 모델을 갖는다)은 별도 모델 필드가 없다.
@@ -16,15 +15,6 @@ export type ComputerUseBackendId = "sky-computer-use" | "cua-driver";
 export function isComputerUseBackendId(value: unknown): value is ComputerUseBackendId {
   return value === "sky-computer-use" || value === "cua-driver";
 }
-
-export type ExperimentFeatureId = "promptRefine" | "sessionWatch" | "computerUse";
-
-export const EXPERIMENT_FEATURES: readonly ExperimentFeatureId[] = ["promptRefine", "sessionWatch", "computerUse"];
-
-/** AI를 쓰는 기능 — 설정 화면이 이 행에만 모델 선택기를 세운다. */
-export type ExperimentModelFeatureId = "promptRefine" | "sessionWatch";
-
-export const EXPERIMENT_MODEL_FEATURES: readonly ExperimentModelFeatureId[] = ["promptRefine", "sessionWatch"];
 
 /**
  * 모델·강도 좌표를 가진 보조 AI 표면. cowork·analyst 는 항상 켜져 있어 스위치가 없고, commodore(Objectives
@@ -44,12 +34,6 @@ export interface ExperimentAideSelection {
 }
 
 export interface ConsoleExperimentSettings {
-  /** Quick Launch가 사용자의 요청을 명확한 작업 지시문으로 고쳐 쓴 초안을 내놓는다(메타 프롬프팅). */
-  readonly promptRefine: boolean;
-  readonly promptRefineModel: string;
-  /** Operation마다 켜는 세션 분석가 관찰. */
-  readonly sessionWatch: boolean;
-  readonly sessionWatchModel: string;
   /** 로컬 Computer Use. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
   readonly computerUseBackend: ComputerUseBackendId;
@@ -69,22 +53,12 @@ export interface ConsoleExperimentSettings {
 }
 
 /**
- * 기본 모델은 Claude 네이티브 별칭이다. 별칭은 CLI가 스스로 풀므로 세대를 고정하지 않는다.
- * 고쳐 쓰기는 판단이 드는 일이라 sonnet을 기본으로 둔다.
+ * 보조 AI의 기본 좌표 — 판단이 드는 일이라 sonnet, 강도는 일상 단인 medium. 모델은 Claude 네이티브
+ * 별칭이다. 별칭은 CLI가 스스로 풀므로 세대를 고정하지 않는다.
  */
-export const DEFAULT_EXPERIMENT_MODELS: Readonly<Record<ExperimentModelFeatureId, string>> = {
-  promptRefine: "sonnet",
-  sessionWatch: "sonnet",
-};
-
-/** 보조 AI의 기본 좌표 — 판단이 드는 일이라 sonnet, 강도는 일상 단인 medium. */
 export const DEFAULT_EXPERIMENT_AIDE_SELECTION: ExperimentAideSelection = { model: "sonnet", effort: "medium" };
 
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
-  promptRefine: false,
-  promptRefineModel: DEFAULT_EXPERIMENT_MODELS.promptRefine,
-  sessionWatch: false,
-  sessionWatchModel: DEFAULT_EXPERIMENT_MODELS.sessionWatch,
   computerUse: false,
   computerUseBackend: "sky-computer-use",
   coworkModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
@@ -133,15 +107,12 @@ export function isExperimentEffort(value: unknown): value is ExperimentEffort {
 
 /**
  * 저장값·요청 본문·응답을 같은 규칙으로 정제한다. 알 수 없는 값은 기본값으로 떨어진다 —
- * 모델 필드가 비거나 깨져 있어도 기능이 모델 없이 도는 상태는 존재하지 않는다.
+ * 모델 필드가 비거나 깨져 있어도 기능이 모델 없이 도는 상태는 존재하지 않는다. 모르는 키는
+ * 투영에서 빠지므로, 제거된 기능의 옛 키는 다음 저장 때 디스크에서도 사라진다.
  */
 export function resolveExperimentSettings(value: unknown): ConsoleExperimentSettings {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return DEFAULT_EXPERIMENT_SETTINGS;
   const record = value as Record<string, unknown>;
-  const model = (feature: ExperimentModelFeatureId): string => {
-    const raw = record[`${feature}Model`];
-    return isExperimentModelId(raw) ? raw : DEFAULT_EXPERIMENT_MODELS[feature];
-  };
   const aideModel = (aide: ExperimentAideId): string => {
     const raw = record[`${aide}Model`];
     return isExperimentModelId(raw) ? raw : DEFAULT_EXPERIMENT_AIDE_SELECTION.model;
@@ -151,10 +122,6 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     return isExperimentEffort(raw) ? raw : DEFAULT_EXPERIMENT_AIDE_SELECTION.effort;
   };
   return {
-    promptRefine: record.promptRefine === true,
-    promptRefineModel: model("promptRefine"),
-    sessionWatch: record.sessionWatch === true,
-    sessionWatchModel: model("sessionWatch"),
     computerUse: record.computerUse === true,
     computerUseBackend: isComputerUseBackendId(record.computerUseBackend) ? record.computerUseBackend : "sky-computer-use",
     coworkModel: aideModel("cowork"),
@@ -170,9 +137,4 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
 /** 한 보조 AI에 배정된 모델·강도. */
 export function experimentAideSelection(settings: ConsoleExperimentSettings, aide: ExperimentAideId): ExperimentAideSelection {
   return { model: settings[`${aide}Model`], effort: settings[`${aide}Effort`] };
-}
-
-/** 한 기능에 배정된 모델 id. */
-export function experimentFeatureModel(settings: ConsoleExperimentSettings, feature: ExperimentModelFeatureId): string {
-  return settings[`${feature}Model`];
 }

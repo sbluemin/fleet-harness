@@ -11,7 +11,6 @@ CaptionChatGlyph,
 CaptionComputerUseGlyph,
 CaptionConsoleUseGlyph,
 CaptionTerminalGlyph,
-CaptionWatchGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
 import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -49,7 +48,7 @@ import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.
 import { createChatLinkInterceptor, openOperationLink, useLinkOpenChoice } from "./link-open.js";
 import { UseRequestCards, setUseRequestApi } from "./use-request-card.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
-import { OPERATION_REVEAL_EVENT_CHANNEL, SESSION_WATCH_EVENT_CHANNEL, getOperationReveal, getSessionWatchReview, isOperationRevealEvent, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, readWatchEnabled, readWatchLast, recordOperationReveal, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeOperationReveals, subscribeSessionWatchReviews, type OperationReveal, type SessionWatchReview } from "./experiments-api.js";
+import { OPERATION_REVEAL_EVENT_CHANNEL, getOperationReveal, isOperationRevealEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, recordOperationReveal, setComputerUse, setConsoleUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeOperationReveals, type OperationReveal } from "./experiments-api.js";
 import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
 import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitchState } from "./view-switch-store.js";
 
@@ -187,12 +186,6 @@ const agentEndedNotification = defineNotificationKind({
   title: (locale) => getT(locale)("terminal.notifications.agentTurnEnded"),
 });
 
-// 세션 관찰(실험) 알림 — 개입하지 않는 조언이다. id에 end/done을 넣지 않아 입력 대기 층으로 분류된다.
-const agentWatchNotification = defineNotificationKind({
-  id: "agent.watch",
-  title: (locale) => getT(locale)("terminal.experiments.watchNotification"),
-});
-
 // resume 실패는 사용자의 다음 행동(Try again / Start fresh)이 필요한 이벤트다.
 // ".end"/"done"을 id에 넣지 않아 core mapNotificationKind가 input-waiting으로 분류하게 둔다.
 const agentResumeFailedNotification = defineNotificationKind({
@@ -215,11 +208,8 @@ export const agentExecution: ClientExecutionProvider = {
   id: null,
   operationKinds: [agentOperationKind],
   settingsSections: [generalSettingsSection, harnessSettingsSection, agentSettingsSection],
-  notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification, agentWatchNotification],
+  notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
   install: (ctx) => installAgentExecution(ctx),
-  // 실험: 프롬프트 다듬기 — 코어가 켜져 있을 때만 부른다. 서버가 꺼져 있다고 답하면 null로 조용히 물러난다.
-  refinePrompt: (input) => refineLaunchPrompt(installedApi, input),
-  promptRefineOperationTypes: ["agent"],
   // 실험: 모델 좌석 선택지 — 분석가 카탈로그가 곧 "이 호스트가 실행할 수 있는 모델"이다.
   experimentModelOptions: async () => {
     if (!installedApi) return [];
@@ -294,18 +284,6 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
   installedApi = ctx.api;
   setUseRequestApi(ctx.api);
   setInstalledExperiments(ctx.experiments);
-  // 세션 관찰 알림 — 서버가 코어 SSE에 실어 보낸 조언을 알림 층에 올린다. 관찰이 꺼진 Operation은
-  // 서버가 애초에 검토하지 않으므로 여기서 거를 것이 없다.
-  const disposeWatch = ctx.consoleEvents.subscribe(SESSION_WATCH_EVENT_CHANNEL, (payload) => {
-    if (!isSessionWatchEvent(payload)) return;
-    recordSessionWatchEvent(payload);
-    if (!isSessionWatchAlert(payload)) return;
-    ctx.notifications.emit({
-      kind: agentWatchNotification.id,
-      operationId: payload.operationId,
-      message: payload.body ? `${payload.title} — ${payload.body}` : payload.title,
-    });
-  });
   // Console Use 의 console_reveal — 에이전트가 "여기를 봐 달라"고 한 Operation 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
   // 사용자가 입력 중이면(활성 요소가 편집 가능) 포커스를 빼앗지 않고 말풍선만 띄운다.
   const disposeReveal = ctx.consoleEvents.subscribe(OPERATION_REVEAL_EVENT_CHANNEL, (payload) => {
@@ -340,7 +318,6 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
     installedNotifications = null;
     installedApi = null;
     setInstalledExperiments(null);
-    disposeWatch();
     disposeReveal();
     disposeConnection();
     disposeArchive();
@@ -610,17 +587,13 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     </CaptionActionButton>
   );
 
-  // 세션 관찰의 결과 말풍선 — 스위치는 ··· 메뉴로 갔지만 결과는 여전히 여기서 알린다. 선반 끝에
-  // 폭 없는 앵커를 두어 ··· 버튼 왼쪽 아래에 선다. 산 이벤트에만 뜬다(지난 결과는 다시 튀어나오지 않는다).
-  const experiments = useExperimentsSnapshot();
-  const watchEnabled = readWatchEnabled(context.operation.payload);
-  const liveReview = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operationId), () => null);
+  // console_reveal·Console Use 시선의 말풍선 — 선반 끝에 폭 없는 앵커를 두어 ··· 버튼 왼쪽 아래에 선다.
+  // 산 이벤트에만 뜬다(지난 사건은 다시 튀어나오지 않는다).
   const liveReveal = React.useSyncExternalStore(subscribeOperationReveals, () => getOperationReveal(context.operationId), () => null);
   // Console Use 시선 — 에이전트가 이 Operation 을 읽거나 만지면 같은 말풍선 자리에 "○○: 전사 읽음" 이 잠깐 선다.
   const liveGaze = React.useSyncExternalStore(subscribeConsoleUseGestures, () => getOperationWrap(context.operationId)?.gesture ?? null, () => null);
-  const watchBubble = (experiments?.sessionWatch === true && watchEnabled) || liveReveal || liveGaze
-    ? <span className="session-watch-host" aria-hidden={liveReview === null && liveReveal === null && liveGaze === null ? true : undefined}>
-        {experiments?.sessionWatch === true && watchEnabled ? <SessionWatchBubble context={context} review={liveReview} /> : null}
+  const bubble = liveReveal || liveGaze
+    ? <span className="session-watch-host">
         <RevealBubble context={context} reveal={liveReveal} />
         {liveGaze && !liveReveal ? <div className="session-watch-bubble is-gaze" role="status" aria-live="polite"><span className="session-watch-bubble__text"><span className="chat-by-agent">{gestureCallerLabel(liveGaze.caller)}</span> {liveGaze.summary}</span></div> : null}
       </span>
@@ -635,16 +608,11 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
       {analyst}
       {browser}
       {viewSwitch}
-      {watchBubble}
+      {bubble}
     </>
   );
 }
 
-/**
- * 세션 관찰(실험)의 결과 말풍선 — 캡션 동작 선반 끝(··· 버튼 왼쪽) 아래에 선다. 검토가 시작되거나 끝날 때 뜨고,
- * 사용자가 무엇이든 누르거나 입력하면 사라진다: 결과는 알려야 하지만 화면을 차지해서는 안 된다.
- * 새 결과가 오면 다시 뜬다. 마지막 결과 자체는 ··· 메뉴의 관찰 행 툴팁과 칩 마크가 계속 갖고 있다.
- */
 function OperationUseBadge({ active, kind, label }: { active: boolean; kind: "console" | "computer" | "browser"; label: string }) {
   const [present, setPresent] = React.useState(active);
   React.useEffect(() => {
@@ -658,66 +626,9 @@ function OperationUseBadge({ active, kind, label }: { active: boolean; kind: "co
   </span>;
 }
 
-function SessionWatchBubble({ context, review }: { readonly context: OperationRenderContext; readonly review: SessionWatchReview | null }) {
-  const t = getT(context.language ?? "en");
-  const [visibleFor, setVisibleFor] = React.useState<number | null>(null);
-  const [expanded, setExpanded] = React.useState(false);
-  const key = review ? `${review.phase}:${review.at}` : null;
-  const keyRef = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    if (key === null || key === keyRef.current) return;
-    keyRef.current = key;
-    setVisibleFor(review?.at ?? null);
-    setExpanded(false);
-  }, [key, review]);
-  React.useEffect(() => {
-    if (visibleFor === null) return;
-    // 이 말풍선 안의 클릭(자세히)은 닫지 않는다 — 그 밖의 어떤 누름·입력이든 닫는다.
-    const dismiss = (event: Event) => {
-      if (event.target instanceof Node && bubbleRef.current?.contains(event.target)) return;
-      setVisibleFor(null);
-    };
-    // 뜬 직후의 같은 프레임에 들어온 이벤트(검토를 시작시킨 Enter 등)가 곧바로 닫지 않게 한 박자 뒤에 듣는다.
-    const timer = window.setTimeout(() => {
-      document.addEventListener("pointerdown", dismiss, true);
-      document.addEventListener("keydown", dismiss, true);
-    }, 150);
-    return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener("pointerdown", dismiss, true);
-      document.removeEventListener("keydown", dismiss, true);
-    };
-  }, [visibleFor]);
-  const bubbleRef = React.useRef<HTMLDivElement | null>(null);
-  if (visibleFor === null || !review) return null;
-  const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const tone = review.phase === "alert" ? "is-alert" : review.phase === "failed" ? "is-failed" : review.phase === "started" ? "is-reviewing" : "";
-  const summary = review.phase === "started"
-    ? t("terminal.experiments.barReviewing")
-    : review.phase === "alert"
-      ? t("terminal.experiments.barAlert", { time: time(review.at), title: review.title ?? "" })
-      : review.phase === "failed"
-        ? t(review.reason === "transcript_missing" ? "terminal.experiments.barNoTranscript" : "terminal.experiments.barFailed", { time: time(review.at) })
-        : t("terminal.experiments.barClear", { time: time(review.at) });
-  return (
-    <div ref={bubbleRef} className={`session-watch-bubble ${tone}`} role="status" aria-live="polite">
-      <span className="session-watch-bubble__text">{summary}</span>
-      {review.phase === "alert" && review.body ? (
-        <>
-          <button type="button" className="session-watch-bubble__toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
-            {t(expanded ? "terminal.experiments.barLess" : "terminal.experiments.barMore")}
-          </button>
-          {expanded ? <p className="session-watch-bubble__body">{review.body}</p> : null}
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-
-
 /**
- * console_reveal 의 말풍선 — 세션 관찰 말풍선과 같은 앵커·같은 닫힘 규칙(어떤 누름·입력이든 닫는다). 산 사건에만 뜬다.
+ * console_reveal 의 말풍선 — 캡션 동작 선반 끝(··· 버튼 왼쪽) 아래에 선다. 어떤 누름·입력이든 닫는다: 사유는
+ * 알려야 하지만 화면을 차지해서는 안 된다. 산 사건에만 뜬다.
  */
 function RevealBubble({ context, reveal }: { readonly context: OperationRenderContext; readonly reveal: OperationReveal | null }) {
   const t = getT(context.language ?? "en");
@@ -889,49 +800,30 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 }
 
 /**
- * Operation 메뉴의 실험 섹션 — 이 세션에 대한 스위치 세 개. 설정에서 켠 실험만 행으로 서고, 켜져
- * 있는지는 Operation payload가 말한다(서버가 쓴다). 행은 한 줄이다 — 지금 상태(관찰의 마지막 검토
- * 결과, 사용 계열이 무엇을 허용하는지)는 툴팁과 접근성 라벨이 진다. 켜고 끄는 것은 재연결 없이
- * 다음 도구 호출부터 듣는다.
+ * Operation 메뉴의 실험 섹션 — 이 세션에 대한 사용 스위치. 설정에서 켠 실험만 행으로 서고, 켜져
+ * 있는지는 Operation payload가 말한다(서버가 쓴다). 행은 한 줄이다 — 무엇을 허용하는지는 툴팁과
+ * 접근성 라벨이 진다. 켜고 끄는 것은 재연결 없이 다음 도구 호출부터 듣는다.
  */
 function AgentOperationMenu({ context }: { readonly context: OperationMenuContext }) {
   const t = getT(context.language);
   const experiments = useExperimentsSnapshot();
   const payload = context.operation.payload;
-  const [pending, setPending] = React.useState<"watch" | "console" | "computer" | null>(null);
-  const liveReview = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operation.id), () => null);
-  const review = liveReview ?? readWatchLast(payload);
+  const [pending, setPending] = React.useState<"console" | "computer" | null>(null);
   if (!experiments || !installedApi) return null;
   const api = installedApi;
   const language = context.language;
-  const toggle = (kind: "watch" | "console" | "computer", next: boolean) => {
+  const toggle = (kind: "console" | "computer", next: boolean) => {
     setPending(kind);
-    const request = kind === "watch"
-      ? setSessionWatch(api, context.operation.id, next, language)
-      : kind === "console"
-        ? setConsoleUse(api, context.operation.id, next, language)
-        : setComputerUse(api, context.operation.id, next, language);
+    const request = kind === "console"
+      ? setConsoleUse(api, context.operation.id, next, language)
+      : setComputerUse(api, context.operation.id, next, language);
     void request.then(() => api.resync()).catch(() => undefined).finally(() => setPending(null));
   };
-  const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const watchEnabled = readWatchEnabled(payload);
-  const watchHint = !watchEnabled
-    ? t("terminal.experiments.menuWatchOff")
-    : review === null
-      ? t("terminal.experiments.barIdle")
-      : review.phase === "started"
-        ? t("terminal.experiments.barReviewing")
-        : review.phase === "clear"
-          ? t("terminal.experiments.barClear", { time: time(review.at) })
-          : review.phase === "failed"
-            ? t(review.reason === "transcript_missing" ? "terminal.experiments.barNoTranscript" : "terminal.experiments.barFailed", { time: time(review.at) })
-            : t("terminal.experiments.barAlert", { time: time(review.at), title: review.title ?? "" });
   const consoleUseEnabled = readConsoleUseEnabled(payload);
   const computerUseEnabled = readComputerUseEnabled(payload);
   const rows = [
-    experiments.sessionWatch === true ? { id: "session-watch" as const, kind: "watch" as const, checked: watchEnabled, glyph: <CaptionWatchGlyph />, name: t("terminal.experiments.menuWatch"), hint: watchHint, busy: watchEnabled && review?.phase === "started" } : null,
-    { id: "console-use" as const, kind: "console" as const, checked: consoleUseEnabled, glyph: <CaptionConsoleUseGlyph />, name: t("terminal.experiments.menuConsoleUse"), hint: t(consoleUseEnabled ? "terminal.experiments.menuConsoleUseOn" : "terminal.experiments.menuConsoleUseOff"), busy: false },
-    experiments.computerUse === true ? { id: "computer-use" as const, kind: "computer" as const, checked: computerUseEnabled, glyph: <CaptionComputerUseGlyph />, name: t("terminal.experiments.menuComputerUse"), hint: t(computerUseEnabled ? "terminal.experiments.menuComputerUseOn" : "terminal.experiments.menuComputerUseOff"), busy: false } : null,
+    { id: "console-use" as const, kind: "console" as const, checked: consoleUseEnabled, glyph: <CaptionConsoleUseGlyph />, name: t("terminal.experiments.menuConsoleUse"), hint: t(consoleUseEnabled ? "terminal.experiments.menuConsoleUseOn" : "terminal.experiments.menuConsoleUseOff") },
+    experiments.computerUse === true ? { id: "computer-use" as const, kind: "computer" as const, checked: computerUseEnabled, glyph: <CaptionComputerUseGlyph />, name: t("terminal.experiments.menuComputerUse"), hint: t(computerUseEnabled ? "terminal.experiments.menuComputerUseOn" : "terminal.experiments.menuComputerUseOff") } : null,
   ].filter((row) => row !== null);
   if (rows.length === 0) return null;
   return (
@@ -944,7 +836,7 @@ function AgentOperationMenu({ context }: { readonly context: OperationMenuContex
           className={`group-context-menu-item group-context-menu-item--switch${row.checked ? " is-selected" : ""}`}
           role="menuitemcheckbox"
           aria-checked={row.checked}
-          aria-busy={row.busy || pending === row.kind}
+          aria-busy={pending === row.kind}
           aria-label={`${row.name} · ${row.hint}`}
           title={row.hint}
           disabled={pending !== null}
@@ -953,7 +845,6 @@ function AgentOperationMenu({ context }: { readonly context: OperationMenuContex
         >
           <span className="group-context-menu-item__glyph" aria-hidden="true">{row.glyph}</span>
           <span className="group-context-menu-item__name">{row.name}</span>
-          {row.busy ? <span className="group-context-menu-item__live" aria-hidden="true" /> : null}
           <SwitchCheckMark />
         </button>
       ))}
@@ -961,18 +852,12 @@ function AgentOperationMenu({ context }: { readonly context: OperationMenuContex
   );
 }
 
-/** 사용 배지는 캡션과 같은 수명을 공유하고, 세션 관찰 마크는 기존 정책을 유지한다. */
+/** 사용 배지는 캡션과 같은 수명을 공유한다. */
 function AgentOperationMarks({ context }: { readonly context: OperationMenuContext }) {
   const t = getT(context.language);
-  const experiments = useExperimentsSnapshot();
-  const payload = context.operation.payload;
-  const liveReview = React.useSyncExternalStore(subscribeSessionWatchReviews, () => getSessionWatchReview(context.operation.id), () => null);
-  const review = liveReview ?? readWatchLast(payload);
   const using = useOperationUse(context.operation.id);
-  const watch = experiments?.sessionWatch === true && readWatchEnabled(payload);
   return (
     <span className="agent-operation-marks">
-      {watch ? <span className="side-bar-chip-marks"><span className={`side-bar-chip-mark${review?.phase === "started" ? " is-busy" : ""}`} role="img" aria-label={t("terminal.experiments.menuWatch")} title={t("terminal.experiments.menuWatch")} data-operation-mark="session-watch"><CaptionWatchGlyph /></span></span> : null}
       <OperationUseBadge active={using.console} kind="console" label={t("terminal.experiments.menuConsoleUse")} />
       <OperationUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
       <OperationUseBadge active={using.browser} kind="browser" label={t("terminal.browser.agentUsing")} />

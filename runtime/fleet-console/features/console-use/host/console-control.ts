@@ -54,8 +54,8 @@ export class ConsoleControlError extends Error {
 }
 
 /**
- * Operation 단위 콘솔 사용 허용 표식 — 서버가 쓰고 게이트가 읽는다. `payload.watch`와 같은
- * 자리·같은 모양이다. 전역 Console Use는 항상 열려 있고, 이 Operation 토글이 실제 권한이다.
+ * Operation 단위 콘솔 사용 허용 표식 — 서버가 쓰고 게이트가 읽는다. 전역 Console Use는 항상
+ * 열려 있고, 이 Operation 토글이 실제 권한이다.
  */
 export function readConsoleUseFlag(payload: Record<string, unknown> | undefined): { readonly enabled: true; readonly language: "en" | "ko" } | null {
   const value = payload?.consoleUse;
