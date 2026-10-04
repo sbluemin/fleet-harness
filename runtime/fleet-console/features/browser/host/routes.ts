@@ -133,7 +133,9 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         const onClose = () => { if (!res.writableEnded) controller.abort(); };
         res.on("close", onClose);
         try {
-          writeJson(res, 200, await browserService.screenshot(GLOBAL_BROWSER_OWNER_ID, { format: "png", signal: controller.signal }));
+          // 시트 정지 화면만 `?resolution=device` 로 화면 배율 원본을 받는다 — 매개변수가 없으면 CSS px 크기 그대로다.
+          const resolution = readUrl(req).searchParams.get("resolution") === "device" ? "device" : "css";
+          writeJson(res, 200, await browserService.screenshot(GLOBAL_BROWSER_OWNER_ID, { format: "png", resolution, signal: controller.signal }));
         } catch (error) {
           if (!res.writableEnded && !res.destroyed) fail(error);
         } finally {

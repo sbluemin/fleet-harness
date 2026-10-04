@@ -203,6 +203,12 @@ async function captureWithoutEmulation(entry: LiveView, capture: ViewportCapture
   if (!safeSize(dimensions.width, dimensions.height, CAPTURE_MAX_SURFACE_PIXELS)) throw new Error("browser_capture_surface_too_large");
   const plan = capturePlan(capture, scales, dimensions);
   if (!alive()) throw new Error("browser_capture_expired");
+  // 표면 그대로가 답이면(자르지도 늘이지도 않는 PNG — 화면 배율 그대로 찍은 시트 정지 화면) 디코드·재인코딩 없이 돌려준다.
+  const { crop, place, size } = plan;
+  if (plan.format === "png" && crop.x === 0 && crop.y === 0 && crop.width === dimensions.width && crop.height === dimensions.height
+    && place.x === 0 && place.y === 0 && place.width === crop.width && place.height === crop.height && size.width === crop.width && size.height === crop.height) {
+    return { data: surface.data };
+  }
   return { data: compose(png, plan) };
 }
 

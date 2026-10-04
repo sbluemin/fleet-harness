@@ -128,7 +128,9 @@ function createStubDesktop(options: StubOptions = {}) {
   let seq = 0;
   let lastViewId = "view-stub";
   const defaultLayout = options.layout ?? { width: 1386, height: 1163 };
+  const captureClips: Array<{ scale?: number }> = [];
   const desktop = {
+    captureClips,
     currentHost: "local" as string | null,
     get connected() { return true; },
     closed: new Promise<void>(() => undefined),
@@ -191,6 +193,7 @@ function createStubDesktop(options: StubOptions = {}) {
           return { cssLayoutViewport: { clientWidth: box.width, clientHeight: box.height } } as T;
         }
         case "Page.captureScreenshot":
+          captureClips.push((_params.clip ?? {}) as { scale?: number });
           return { data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=" } as T;
         case "DOM.resolveNode":
           if (options.resolveNode === "detached") throw new CdpError(method, -32000, "Node with given id does not belong to the document (detached)");
@@ -377,6 +380,13 @@ describe("operation browser service contracts", () => {
       expect(overflow.layout).toEqual({ width: 625, height: 800 });
       expect(overflow.width).toBe(625);
       expect(overflow.height).toBe(800);
+
+      // 고DPI: 에이전트 캡처는 출력 1px = CSS 1px 계약을 지키고, 시트의 device 요청만 화면 배율로 찍는다 — 보고 크기는 둘 다 CSS px.
+      desktop.setPaneSize({ width: 625, height: 800, scale: 2 }, firstTarget);
+      const agent = await service.screenshot(OPERATION, { tabId: first.id, format: "jpeg" });
+      const device = await service.screenshot(OPERATION, { tabId: first.id, format: "png", resolution: "device" });
+      expect(desktop.captureClips.slice(-2).map((clip) => clip.scale)).toEqual([0.5, 1]);
+      expect([agent.width, agent.height, device.width, device.height]).toEqual([625, 800, 625, 800]);
     } finally {
       await service.dispose();
     }
