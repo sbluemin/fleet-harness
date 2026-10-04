@@ -182,17 +182,10 @@ function buildMobileSettingsGroups(
   groups.push({ key: "machine", label: t("settings.group.machine"), rows: machineRows });
   // 연결과 실험 그룹 플러그인 섹션은 실험 페이지 안의 카드다 — 폰도 행을 따로 세우지 않는다.
   const experimentRows: MobileSettingsRow[] = [
-    { id: "experiments", title: t("settings.core.experiments.label"), value: [describeExperiments(state, t), describeConnectivity(state, t)].filter(Boolean).join(" · ") || null, icon: <RemoteIcon /> },
+    { id: "experiments", title: t("settings.core.experiments.label"), value: describeConnectivity(state, t), icon: <RemoteIcon /> },
   ];
   groups.push({ key: "experiments", label: t("settings.group.experiments"), rows: experimentRows });
   return groups;
-}
-
-function describeExperiments(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
-  if (state === null) return null;
-  const { experiments } = state;
-  const on = [experiments.promptRefine, experiments.sessionWatch].filter(Boolean).length;
-  return on === 0 ? null : `${on} ${t("mobile.settings.on")}`;
 }
 
 function describeAppearance(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {

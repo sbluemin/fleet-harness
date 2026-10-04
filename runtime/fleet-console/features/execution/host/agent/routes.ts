@@ -67,8 +67,6 @@ interface AgentRouteDeps {
   readonly isClaudePathTrusted?: (cwd: string) => Promise<boolean>;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
-  /** 턴 종료 hook의 관찰자 — 실험 "세션 관찰"이 여기서 검토를 예약한다. */
-  readonly onTurnEnded?: (operationId: string) => void;
   /**
    * 턴이 어떤 결말로든 멈췄다 — 정상 종료·중단·PTY 의 작업 신호 소실 모두. 여러 경로에서 겹쳐 불릴 수 있으므로
    * 받는 쪽은 멱등이어야 한다. 에이전트 사용 표식을 내리는 자리다.
@@ -2288,8 +2286,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           observability.updateTerminalSessionProviderSession(node.id, updated);
         },
         canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
-        // 채팅 턴의 끝은 Stop hook 대신 세션이 직접 알린다 — 세션 관찰이 두 얼굴 모두에서 돈다.
-        onTurnEnded: () => deps.onTurnEnded?.(node.id),
         onTurnSettled: () => deps.onTurnSettled?.(node.id),
         // 채팅 자식의 cwd도 같은 이유로 세션이 직접 알린다 — "지금 어디" 축이 두 얼굴에서 같이 따라간다.
         onCwdChanged: (nextCwd) => workspaceContext.observe(node.id, node.theaterId, nextCwd),
@@ -2368,7 +2364,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     ctx.host.http.writeJson(res, 200, { ok: true });
     if (turnState === "ended") {
       scheduleIdentityRefresh(sessionId);
-      deps.onTurnEnded?.(sessionId);
       deps.onTurnSettled?.(sessionId);
     }
     return true;

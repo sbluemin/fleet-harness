@@ -7,7 +7,11 @@ import { CONSOLE_CONTROL_TOOLS } from "@fleet-console/sdk/mcp";
 
 import { createConsoleUseMcpHost } from "../../features/console-use/host/console-use.js";
 import { createUseRequestBroker } from "../../features/console-use/host/use-requests.js";
+import { registerExperimentRoutes } from "../../features/execution/host/agent/experiments-routes.js";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { ConsoleUseMcpConnection } from "@fleet-console/sdk/mcp";
+import type { RouteHandler } from "@fleet-console/sdk/routing";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 
 let lifecycle: ConsoleUseMcpConnection | undefined;
 
@@ -121,7 +125,32 @@ describe("fleet-console-use host", () => {
       const held = call();
       const first = await pendingRequest();
       expect(first).toMatchObject({ operationId: "op-a", capability: "console", tools: ["console_context"], blocked: null });
-      expect(requests.answer("op-a", first.id, "turn")).toEqual({ ok: true, capability: "console" });
+      // 패널의 답은 experiments 라우터로 들어온다. Host·Origin 게이트를 넘지 못한 요청은 403이고 붙잡힌 호출을 풀지 못한다.
+      let route: RouteHandler | undefined;
+      let replied: { status: number; body: unknown } | undefined;
+      let authorized = false;
+      registerExperimentRoutes({
+        basePath: "/api/v1",
+        registerRouter: (_path: string, handler: RouteHandler) => { route = handler; },
+        host: {
+          experiments: { read: () => DEFAULT_EXPERIMENT_SETTINGS },
+          useRequests: requests,
+          security: { validateHost: () => authorized, isTerminalAuthorized: () => authorized },
+          operations: { get: (id: string) => operations.find((operation) => operation.id === id), patch: () => undefined },
+          http: {
+            readJsonBody: async () => ({ decision: "turn", capability: "console", language: "en" }),
+            writeJson: (_res: unknown, status: number, body: unknown) => { replied = { status, body }; },
+          },
+        },
+      } as unknown as ConsoleRuntimeContext);
+      const answerFromPanel = async () => {
+        await route!({ req: { method: "POST" }, res: {}, pathname: `/api/v1/experiments/sessions/op-a/use-requests/${first.id}` } as unknown as Parameters<RouteHandler>[0]);
+        return replied!;
+      };
+      expect((await answerFromPanel()).status).toBe(403);
+      expect(requests.list().requests).toHaveLength(1);
+      authorized = true;
+      expect(await answerFromPanel()).toEqual({ status: 200, body: { decision: "turn", capability: "console" } });
       expect((await held).caller.operationId).toBe("op-a");
       // 같은 턴 안의 다음 호출은 묻지 않는다.
       expect((await call()).caller.operationId).toBe("op-a");

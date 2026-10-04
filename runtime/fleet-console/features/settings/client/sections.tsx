@@ -191,8 +191,6 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       help: t("settings.experiments.intro"),
       entries: [
         t("settings.experiments.aiCard"),
-        t("settings.experiments.promptRefine.title"),
-        t("settings.experiments.sessionWatch.title"),
         t("settings.computerUse.title"),
         "Computer Use",
         t("settings.core.experiments.keywords"),

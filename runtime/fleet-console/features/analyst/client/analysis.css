@@ -373,34 +373,16 @@
   .session-analyst__chip-dot, .session-analyst__chip-count, .session-analyst__pulse-orbit { animation: none !important; }
 }
 
-/* ── 세션 관찰(실험) 결과 말풍선 — 캡션 눈 버튼 아래 ────────────────────────
+/* ── 캡션 말풍선 — console_reveal 사유와 Console Use 시선 ─────────────────────
    캡션 이름표(.fleet-caption-tip)와 같은 문법의 부유면이되, 겨눔이 아니라 도착으로 뜨고 누름·입력으로
-   진다. 이상 없음은 조용히, 경고는 warn, 실패는 coral. 검토 중에는 글리프가 숨 쉰다. */
-/* 콘솔 사용 토글의 안내 말풍선도 같은 부유면 문법을 쓴다 — 캡션에서 도착으로 뜨고 누름·입력으로
-   지는 같은 물건이므로, 같은 값을 두 벌 적는 대신 선택자를 나눠 쓴다. */
-/* 관찰 말풍선은 시각·상태를 세는 한 줄이라 계기 서체가 맞지만, 이쪽은 무엇을 허용했는지 말하는
-   문장이다 — 읽는 글은 읽는 서체로 싣는다. */
+   진다. 클래스 이름의 `session-watch`는 예전 이름이 그대로 남은 것이다. */
 
-/* 세션 관찰 결과 말풍선 — 캡션 선반 끝의 폭 없는 앵커에 걸되, 오른쪽 변과 꼬리는 그 옆 ··· 버튼(6px 간격 + 24px)에 맞춘다: 스위치가 있는 곳을 가리켜야 한다. */
+/* 캡션 선반 끝의 폭 없는 앵커에 걸되, 오른쪽 변과 꼬리는 그 옆 ··· 버튼(6px 간격 + 24px)에 맞춘다: 스위치가 있는 곳을 가리켜야 한다. */
 .session-watch-host { position: relative; display: inline-flex; }
 .session-watch-bubble { position: absolute; top: calc(100% + 6px); right: -30px; z-index: 13; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 220px; max-width: min(420px, 70vw); padding: 6px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); box-shadow: var(--shadow-soft); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; line-height: 1.4; }
 .session-watch-bubble::before { content: ""; position: absolute; top: -5px; right: 8px; width: 8px; height: 8px; border-left: 1px solid var(--hairline-strong); border-top: 1px solid var(--hairline-strong); background: var(--surface-panel-raised); transform: rotate(45deg); }
 .session-watch-bubble__text { min-width: 0; }
-.session-watch-bubble.is-reviewing { color: var(--text-tertiary); }
-.session-watch-bubble.is-alert { border-color: color-mix(in oklch, var(--warn) 55%, transparent); color: var(--text-primary); }
 .session-watch-bubble.is-reveal { border-color: color-mix(in oklch, var(--console-use-badge) 55%, transparent); color: var(--text-primary); }
-.session-watch-bubble.is-alert::before { border-color: color-mix(in oklch, var(--warn) 55%, transparent); }
-.session-watch-bubble.is-failed { border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
-.session-watch-bubble__toggle { margin-inline-start: auto; padding: 0 var(--space-2); border: 1px solid transparent; border-radius: var(--radius-pill); background: var(--control-rest); color: var(--text-secondary); font: inherit; cursor: pointer; }
-.session-watch-bubble__toggle:hover { color: var(--brass-ink); border-color: transparent; background: var(--control-hover-fill); }
-.session-watch-bubble__toggle:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
-.session-watch-bubble__body { flex-basis: 100%; margin: 0; font-family: var(--font-content); font-size: calc(var(--font-content-size) * 0.857143); letter-spacing: 0; color: var(--text-primary); white-space: pre-wrap; }
-
-/* 고대비(forced-colors) — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다
-   (Quiet Controls C′). */
-@media (forced-colors: active) {
-  .session-watch-bubble__toggle { border-color: ButtonBorder; }
-}
 
 /* 이전 대화 밴드 — 스크롤 컨테이너의 첫 자식. 아래 목록과의 간격만 진다. */
 .session-analyst__chat > .fc-history-band + ol { margin-top: var(--space-3); }

@@ -460,16 +460,13 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     const row = rows().values.find((r) => r.id === args.operationId);
     if (!row) throw new ConsoleControlError("unknown_operation");
     const obs = control?.observe(args.operationId);
-    const target = node(args.operationId);
+    node(args.operationId); // 행 목록과 별개로 Operation 자체가 풀려야 한다 — 없으면 unknown_operation.
     const me = caller(ctx);
     const asks = readActions().pendingAsks?.(args.operationId) ?? [];
-    const watch = target.payload.watch;
-    const last = watch && typeof watch === "object" ? (watch as { last?: unknown }).last : undefined;
-    const lastReview = last && typeof last === "object" ? (() => { const r = last as Record<string, unknown>; const pick = (key: string) => typeof r[key] === "string" ? r[key] : undefined; return { phase: pick("phase") ?? "unknown", kind: pick("kind"), title: pick("title"), summary: pick("summary") ?? pick("detail"), at: typeof r.at === "number" ? new Date(r.at).toISOString() : undefined }; })() : null;
     const read = args.read ?? "summary";
     const summaryText = read === "summary" ? `${row.title} 봄` : read === "transcript" ? `${row.title} 전사 읽음` : read === "jobs" ? `${row.title} 잡 목록 봄` : `${row.title} 카탈로그 봄`;
     gesture(ctx, "console_operation", summaryText, "gaze", opTarget(args.operationId));
-    const base = { ...row, lifecycle: obs?.lifecycle ?? "unknown", supportedActions: allowControl ? obs?.supportedActions ?? [] : [], ...(asks.length ? { asks } : {}), lastReview, output: args.includeOutput ? obs?.output ?? { status: "unavailable", outcome: "unknown" } : { status: "not_requested", outcome: obs?.output.outcome ?? "unknown" } };
+    const base = { ...row, lifecycle: obs?.lifecycle ?? "unknown", supportedActions: allowControl ? obs?.supportedActions ?? [] : [], ...(asks.length ? { asks } : {}), output: args.includeOutput ? obs?.output ?? { status: "unavailable", outcome: "unknown" } : { status: "not_requested", outcome: obs?.output.outcome ?? "unknown" } };
     if (read === "transcript") {
       const page = await need("transcript")(args.operationId, args.cursor, args.limit ?? 50, ctx.signal);
       if ("error" in page) throw new ConsoleControlError(page.error);
