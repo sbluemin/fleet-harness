@@ -1679,6 +1679,7 @@ html[data-view-mode="mobile"] .objectives-commodore-scrim { display: none; }
 .objectives-commodore-wake.is-message .objectives-commodore-wake-head b { color: var(--text-secondary); }
 .objectives-commodore-wake-text { margin: 0; min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.6; overflow-wrap: anywhere; }
 .objectives-commodore-wake.is-message .objectives-commodore-wake-text { white-space: pre-wrap; }
+.objectives-commodore-undelivered { color: var(--warn-ink); font-size: var(--t-2xs); }
 /* 사령관의 Markdown — 공용 렌더러의 코드·표는 가로로 흐르는 상자다. 서랍 안에서는 줄을 바꾼다. */
 /* 공용 본문의 읽기 폭(78ch) 대신 기록 칸 폭을 따른다 — 구분선·도구 줄과 같은 오른쪽 끝에서 줄을 바꾼다. */
 .objectives-commodore-sheet .markdown-body { max-inline-size: none; margin-inline: 0; }
@@ -1779,6 +1780,9 @@ html[data-view-mode="mobile"] .objectives-commodore-scrim { display: none; }
 .objectives-commodore-composer-send svg { width: 16px; height: 16px; }
 .objectives-commodore-composer-send.is-armed { background: var(--brass); color: var(--text-on-brass); }
 .objectives-commodore-composer-send:disabled { cursor: default; }
+.objectives-commodore-composer.is-disabled { cursor: default; }
+.objectives-commodore-composer-input:disabled { color: var(--text-tertiary); cursor: default; }
+.objectives-commodore-composer-idle { max-width: 880px; margin-top: 6px; }
 .objectives-commodore-composer-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
 /* 자율 운영 중 결정 요청 머리의 「사령관이 답하는 중」 — 사이드바 줄 메모와 같은 brass 잉크. */

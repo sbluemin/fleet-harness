@@ -95,14 +95,22 @@ describe("commodore theater state", () => {
     expect((await h.route("commodore/state", { theaterId: "t1" })).status).toBe(401);
   });
 
-  it("appends the log in order and pages it from the newest end", async () => {
+  it("refuses messages a stopped Commodore would never read, appends the log in order and pages it from the newest end", async () => {
     const h = harness();
     h.store.transcriptAppend("t1", { kind: "session", event: "opened" });
     h.store.transcriptAppend("t1", { kind: "wake", reasons: ["directive changed"] });
     h.store.transcriptAppend("t1", { kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o1", title: "Remote pairing" });
+    // 사령관이 돌지 않으면 메시지는 거절되고 기록에 남지 않는다 — 실험 기능 꺼짐, 그 Theater 의 자율 운영 꺼짐 각각.
+    expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_disabled" } });
+    h.setExperiments({ commodore: true });
+    expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
+    expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
+    h.store.setAutonomy("t1", true);
     const sent = await h.route("commodore/message", { theaterId: "t1", text: "Prefer small objectives." });
     expect(sent.value.entry).toMatchObject({ seq: 4, kind: "message", text: "Prefer small objectives." });
     expect(h.events.filter((event) => event.op === "transcript")).toHaveLength(4);
+    h.setExperiments({ commodore: false });
+    expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_disabled" } });
 
     const page = (await h.route("commodore/transcript", { theaterId: "t1", limit: 2 })).value as { entries: { seq: number; kind: string }[]; hasMore: boolean };
     expect(page.entries.map((entry) => entry.seq)).toEqual([3, 4]);
@@ -420,9 +428,15 @@ describe("commodore supervisor", () => {
       expect(sessions[1]!.sent[0]).toContain("This is a replacement session. Summary of your recent actions");
       expect(h.store.read("t1")!.run!.session).toBe(2);
 
-      // 끔 — 글리프를 끄면 세션이 닫히고 깨우기가 멈춘다; 실험 기능을 끄면 같다.
+      // 끔 — 글리프를 끄면 세션이 닫히고 깨우기가 멈춘다; 실험 기능을 끄면 같다. 모으는 중이던 메시지는 다시 보내지 않고
+      // 기록에 「전달되지 않음」으로 남는다(새 사령관은 지난 메시지를 읽지 않는다).
+      const sentCount = sessions[1]!.sent.length;
+      const pendingMessage = h.store.transcriptAppend("t1", { kind: "message", text: "Hold the release." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS - 500);
       h.store.setAutonomy("t1", false);
       await vi.advanceTimersByTimeAsync(10);
+      expect(sessions[1]!.sent).toHaveLength(sentCount);
+      expect(h.store.transcriptRead("t1").entries.slice(-2)).toMatchObject([{ kind: "undelivered", seqs: [pendingMessage.seq] }, { kind: "session", event: "stopped" }]);
       expect(sessions[1]!.disposed).toBe(true);
       expect(supervisor.status("t1")).toBeNull();
       expect(sessionEvents().at(-1)).toBe("stopped");

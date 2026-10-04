@@ -14,7 +14,8 @@ import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_
  * `objectives:commodore` 사건으로 갱신되므로 응답은 확인용이다.
  *
  * 실험 기능 「자율 운영」이 꺼져 있어도 지시·정보는 읽고 쓸 수 있다(데이터는 사람의 것이다). 꺼진 채로 자율 운영을 켜는
- * 것만 거절한다 — 켜져 보이는데 돌지 않는 상태를 만들지 않는다.
+ * 것은 거절한다 — 켜져 보이는데 돌지 않는 상태를 만들지 않는다. 메시지도 사령관이 돌지 않으면 거절한다: 지시·정보와 달리
+ * 메시지는 다음 턴에만 실리고 새 사령관은 지난 메시지를 읽지 않으므로, 기록에 남겨 두면 사람의 문장이 조용히 사라진다.
  */
 
 export interface CommodoreRoute {
@@ -107,7 +108,14 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       return view(theaterId, store.setCommander(theaterId, model === null ? null : { model, ...(effort ? { effort } : {}) }));
     }) },
     { name: "commodore/patrol", method: "POST", summary: "Set or clear a Theater's Commodore patrol interval in minutes; cleared falls back to 60. The Commodore can patrol sooner but not later; board events, the directive, intel and messages still wake it at once.", handler: json(theaterRef.extend({ minutes: commodorePatrolSchema.nullable() }).strict(), ({ theaterId, minutes }) => { read(theaterId); return view(theaterId, store.setPatrol(theaterId, minutes)); }) },
-    { name: "commodore/message", method: "POST", summary: "Send the person's message to a Theater's Commodore; it is kept in the log and wakes the next turn.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT) }).strict(), ({ theaterId, text }) => { read(theaterId); return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text }) }; }) },
+    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT) }).strict(), ({ theaterId, text }) => {
+      const state = read(theaterId);
+      // 서버가 권위다 — 다른 창에서 막 끈 경합도 여기서 거절되고 기록에 남지 않는다. 실험 기능이 꺼졌으면 `commodore_disabled`
+      // (자율 운영 켜기와 같은 낱말), 그 Theater 의 자율 운영만 꺼졌으면 `commodore_inactive`(상태 보기의 `active` 와 같은 축).
+      if (!experiments().commodore) throw new ObjectiveStoreError("commodore_disabled");
+      if (!state.autonomy) throw new ObjectiveStoreError("commodore_inactive");
+      return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text }) };
+    }) },
     { name: "commodore/retry", method: "POST", summary: "Retry now instead of waiting for the next scheduled retry after a failed Commodore turn.", handler: json(theaterRef, async ({ theaterId }) => {
       read(theaterId);
       if (!hooks.retry) throw new ObjectiveStoreError("commodore_not_retrying");
