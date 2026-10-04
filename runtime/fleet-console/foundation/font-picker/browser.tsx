@@ -161,6 +161,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   const builtInsGroupId = `${listboxId}-built-ins`;
   const installedGroupId = `${listboxId}-installed`;
   const missingGroupId = `${listboxId}-missing`;
+  const builtInRows = indexedRows.filter(({ row }) => row.source === "builtin");
   const installedRows = indexedRows.filter(({ row }) => row.source === "system" && !row.collapsible);
   const missingRows = indexedRows.filter(({ row }) => row.collapsible);
 
@@ -254,14 +255,15 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
           aria-busy={props.loading || undefined}
           onKeyDown={onListboxKeyDown}
         >
-          <FontGroup groupId={builtInsGroupId} label={labels.builtInGroup} unavailableLabel={labels.unavailable} rows={indexedRows.filter(({ row }) => row.source === "builtin")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
-          {/* 빈 묶음의 머리말은 없는 목록을 있는 것처럼 보이게 한다(목록을 못 받았거나 검색에 걸린 것이 없을 때). */}
+          {/* 빈 묶음의 머리말은 없는 목록을 있는 것처럼 보이게 한다(목록을 못 받았거나 검색에 걸린 것이 없을 때).
+              구분선은 위에 묶음이 있을 때만 긋는다. */}
+          {builtInRows.length ? <FontGroup groupId={builtInsGroupId} label={labels.builtInGroup} unavailableLabel={labels.unavailable} rows={builtInRows} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} /> : null}
           {installedRows.length ? <>
-            <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
+            {builtInRows.length ? <div className="fc-font-browser__separator" role="separator" aria-hidden="true" /> : null}
             <FontGroup groupId={installedGroupId} label={labels.installedGroup} unavailableLabel={labels.unavailable} rows={installedRows} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
           </> : null}
           {missingRows.length ? <>
-            <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
+            {builtInRows.length || installedRows.length ? <div className="fc-font-browser__separator" role="separator" aria-hidden="true" /> : null}
             <FontGroup groupId={missingGroupId} label={labels.missingGroup} note={labels.missingGroupNote} unavailableLabel={labels.unavailable} rows={missingRows} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
           </> : null}
           {!props.loading && !indexedRows.length && !collapsedCount ? <p className="fc-font-browser__state">{labels.noMatch}</p> : null}
