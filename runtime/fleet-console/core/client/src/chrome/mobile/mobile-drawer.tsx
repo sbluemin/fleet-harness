@@ -169,7 +169,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
     destinations.push({
       key: binding.entry.id,
       icon: { node: typeof binding.entry.icon === "function" ? binding.entry.icon() : binding.entry.icon },
-      label: resolveLocalizedText(binding.entry.title, locale),
+      label: resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, locale),
       count: attention.filter((row) => row.kind === "plugin" && row.entryId === binding.entry.id).length,
       current: path === "/operations" && destination.kind === "plugin" && destination.entryId === binding.entry.id,
       run: () => {

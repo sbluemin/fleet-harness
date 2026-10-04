@@ -23,7 +23,7 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   const binding = bindings.find((item) => item.entry.id === entryId);
   const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId);
   const activeRail = useRailActivePanelId();
-  const title = binding ? resolveLocalizedText(binding.entry.title, language) : "";
+  const title = binding ? resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, language) : "";
   const bar = useMobilePluginBar({ title });
 
   // 페인이 서려면 레일 스토어가 이 엔트리를 열어 둔 상태여야 한다. 화면을 떠나면 닫는다.
