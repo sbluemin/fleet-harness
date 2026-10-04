@@ -23,7 +23,7 @@ export function createCuaComputerUsePlatform(directory: string, runtime: Compute
     supported: cuaInstallSupported,
     unavailableError: "computer_use_platform_unsupported",
     endHint: "Fleet closed its private Cua session and daemon. No shared Cua daemon or other app was stopped. Use computer_status without reconnecting to inspect cleanup.",
-    appTargetSchema: { type: "string", minLength: 1, maxLength: 4096, description: "Exact app identifier or cua: window identifier from computer_apps. Multiple windows require an exact cua: identifier; no window is chosen automatically. Identifiers expire when the broker ends." },
+    appTargetSchema: { type: "string", minLength: 1, maxLength: 4096, description: "Exact app identifier or cua: window identifier from computer_apps. Multiple windows need an exact cua: identifier (never chosen automatically). Identifiers expire when the broker ends." },
     inspectInstallation: async () => Boolean(await resolveCuaDriver(directory)),
     createBroker: async options => { broker = await CuaComputerUseBackend.create(options, runtime); return broker; },
     resolveTarget: async app => app.startsWith("cua:") || process.platform !== "darwin" ? app : mac.resolveTarget(app),
