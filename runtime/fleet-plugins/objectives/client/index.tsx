@@ -7,7 +7,8 @@ import { objectivesArchiveSections } from "./archive.js";
 import { objectivesClusterSource } from "./clusters.js";
 import { CommodoreDrawerHost } from "./commodore-drawer.js";
 import { CommodoreMenuItem, CommodoreRow } from "./commodore-row.js";
-import { installCommodoreState } from "./commodore-state.js";
+import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
+import { installCommodoreState, subscribeCommodoreMentions } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
@@ -90,6 +91,10 @@ const objectivesPlugin = definePlugin({
   archiveSections: objectivesArchiveSections,
   // 사령관(자율 운영) — Theater 머리 아래 줄과 「…」 메뉴의 「사령관 지시…」. 실험 기능이 꺼져 있으면 둘 다 그리지 않는다.
   theaterContributions: [{ id: "commodore", row: (context) => <CommodoreRow {...context} />, menu: (context) => <CommodoreMenuItem {...context} /> }],
+  // Quick Launch '@' — 지금 Theater 의 사령관(자율 운영이 실제로 돌 때만)에게 사령관 기록 입력과 같은 경로로 보낸다.
+  mentionTargets: commodoreMentionTargets,
+  subscribeMentionTargets: subscribeCommodoreMentions,
+  messageMentionTarget: messageCommodoreMention,
   // 「사령관 기록」 서랍은 줄이 접혀 사라져도 열린 채로 남는다.
   persistentComponents: [{ id: "commodore-drawer", render: (context) => <CommodoreDrawerHost {...context} /> }],
 });

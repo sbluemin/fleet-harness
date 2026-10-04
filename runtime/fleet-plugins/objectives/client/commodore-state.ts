@@ -46,6 +46,11 @@ export function noteCommodoreLanguage(next: "en" | "ko"): void {
   language = next;
 }
 
+/** 마지막으로 알려진 사람의 언어 — 리액트 밖에서 읽히는 Quick Launch '@' 행이 문구를 고른다. */
+export function commodoreLanguage(): "en" | "ko" | undefined {
+  return language ?? undefined;
+}
+
 const withLanguage = <B extends Record<string, unknown>>(body: B): B & { language?: "en" | "ko" } => (language ? { ...body, language } : body);
 
 let drawer: { readonly theaterId: string; readonly tab: CommodoreTab; readonly openedAt: number } | null = null;
@@ -105,9 +110,34 @@ export function subscribeCommodore(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
+/** 활성 Theater 가 바뀌었을 때만 울리는 구독자 — 사령관 사건은 `subscribeCommodore` 가 따로 알린다. */
+const activeTheaterListeners = new Set<() => void>();
+
+/** Quick Launch '@' 덱이 다시 읽을 때 — 사령관 상태가 바뀌었거나 활성 Theater 가 바뀌었다. */
+export function subscribeCommodoreMentions(listener: () => void): () => void {
+  const offCommodore = subscribeCommodore(listener);
+  activeTheaterListeners.add(listener);
+  return () => { offCommodore(); activeTheaterListeners.delete(listener); };
+}
+
+/** 지금 사람이 보고 있는 Theater — '@' 덱은 그 Theater 의 사령관만 행선지로 세운다. */
+export function commodoreActiveTheaterId(): string | null {
+  return installed?.consoleState.getActiveTheaterId() ?? null;
+}
+
 export function installCommodoreState(ctx: PluginInstallContext): () => void {
   installed = ctx;
   enabledSnapshot = readEnabled();
+  // 사이드바 줄이 서지 않는 화면에서도 '@' 덱이 활성 Theater 의 사령관을 알 수 있게, 활성 Theater 는 직접 읽어 둔다.
+  let activeTheater = ctx.consoleState.getActiveTheaterId();
+  if (activeTheater) void loadCommodore(activeTheater);
+  const offConsole = ctx.consoleState.subscribe(() => {
+    const next = ctx.consoleState.getActiveTheaterId();
+    if (next === activeTheater) return;
+    activeTheater = next;
+    if (next) void loadCommodore(next);
+    for (const listener of [...activeTheaterListeners]) listener();
+  });
   const offEvents = ctx.consoleEvents.subscribe(COMMODORE_CHANNEL, (payload) => {
     const event = payload as CommodoreEvent | null;
     if (!event || typeof event.theaterId !== "string") return;
@@ -144,9 +174,11 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     if (!next) drawer = null;
     // 켜고 끈 결과는 서버의 view(enabled·active)에도 실린다 — 읽어 둔 Theater 를 다시 읽는다.
     for (const [theaterId, current] of theaters) if (current.view) void loadCommodore(theaterId, true);
+    if (next && activeTheater) void loadCommodore(activeTheater);
     notify();
   });
   return () => {
+    offConsole();
     offEvents();
     offReconnect?.();
     offExperiments();
