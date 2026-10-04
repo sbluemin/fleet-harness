@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Select } from "@fleet-console/sdk/react/browser";
-import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
@@ -11,7 +11,7 @@ import { theaterInitials } from "../../workspace/client/sidebar/theater-initials
 import { TheaterMonogram } from "../../workspace/client/sidebar/theater-monogram.js";
 import { CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS, fetchTheaterSubagents, fetchTheaterSystemPrompt, saveTheaterSubagents, saveTheaterSystemPrompt, type ClaudeCodeSystemPromptMode, type TheaterSystemPrompt } from "./execution-settings.js";
 import "./theater-system-prompt-sheet.css";
-import { MobileGroupLabel, MobileRadioRow, MobileToggleRow } from "./settings-mobile.js";
+import { MobileGroupLabel, MobileRadioRow } from "./settings-mobile.js";
 import { MobileSheet } from "../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { getMobileSheetStack, popMobileSheet, pushMobileSheet, type MobileSheetKind } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
@@ -567,10 +567,11 @@ function TheaterSubagentsSection({ theaterId, mobile = false }: { readonly theat
     return state === "loading" ? <p className="settings-mobile-note" role="status">{t("sidebar.theater.prompt.loading")}</p>
       : state === "loadFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.subagents.loadFailed")}</p>
         : <>
-          <div className="mobile-group settings-mobile-card">
-            <MobileToggleRow title={t("sidebar.theater.subagents.toggle")} checked={replaced === true} busy={state === "saving"} onChange={change} />
-          </div>
-          <p className="settings-mobile-note">{t(replaced ? "sidebar.theater.subagents.on" : "sidebar.theater.subagents.off")}</p>
+          <SettingsCard>
+            <SettingsRow label={t("sidebar.theater.subagents.toggle")} hint={t(replaced ? "sidebar.theater.subagents.on" : "sidebar.theater.subagents.off")}>
+              <SettingsToggle checked={replaced === true} busy={state === "saving"} ariaLabel={t("sidebar.theater.subagents.toggle")} onChange={change} />
+            </SettingsRow>
+          </SettingsCard>
           {state === "saveFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.subagents.saveFailed")}</p> : null}
         </>;
   }

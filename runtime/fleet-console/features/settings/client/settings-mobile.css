@@ -1,48 +1,7 @@
 /* Settings in the mobile grammar (impl-spec S-02, S-16, S-48). Colours are mobile tokens only. */
 
-/* S-02 toggle: 44×26 track, 20 knob that travels 18. */
-.settings-mobile-switch {
-  position: relative;
-  flex: none;
-  width: 44px;
-  height: 26px;
-  padding: 0;
-  background: var(--m-chip);
-  border: 0;
-  border-radius: 13px;
-  cursor: pointer;
-}
-.settings-mobile-switch i {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 20px;
-  height: 20px;
-  background: var(--m-text-muted);
-  border-radius: 50%;
-  transition: transform 150ms;
-}
-.settings-mobile-switch.is-on { background: var(--m-inverse); }
-.settings-mobile-switch.is-on i { background: var(--m-on-inverse); transform: translateX(18px); }
-.settings-mobile-switch:disabled { cursor: default; opacity: 0.4; }
-/* The settings detail floors every button at 44px; the switch is not its own target — its row is. */
-.mobile-group-row .settings-mobile-switch { min-width: 44px; min-height: 0; }
-.settings-mobile-switch:focus-visible { outline: 2px solid var(--m-text); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) {
-  .settings-mobile-switch i { transition: none; }
-}
-
-.settings-mobile-toggle-row { cursor: pointer; }
-.settings-mobile-toggle-row.is-dim { cursor: default; }
-
 /* S-02 `.glab`: the muted label above a group. */
 .settings-mobile-glab { margin: 0; padding: 6px 4px 0; color: var(--m-text-muted); font-size: var(--t-md); font-weight: var(--weight-bold); }
-
-/* Experiments (S-48): the current pick reads as the row's second line; › opens its sheet. */
-.settings-mobile-caret { flex: none; color: var(--m-text-muted); }
-.settings-mobile-glyph { display: grid; flex: none; place-items: center; width: 22px; height: 22px; }
-.settings-mobile-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.settings-mobile-alert { margin: 0; padding: 0 4px; color: var(--m-danger); font-size: var(--t-sm); }
 
 /* System prompt sheet (S-16). */
 .settings-mobile-lead { margin: 0; padding: 0 4px; color: var(--m-text-faint); font-size: var(--t-sm); }
@@ -50,7 +9,8 @@
 .settings-mobile-note { margin: 0; padding: 0 4px; color: var(--m-text-faint); font-size: var(--t-sm); }
 .settings-mobile-note.is-warning { color: var(--m-running); }
 .settings-mobile-note.is-error { color: var(--m-danger); }
-.settings-mobile-textlink { padding: 0; color: var(--m-text); font: inherit; text-decoration: underline; background: none; border: 0; }
+.settings-mobile-textlink { padding: 0; color: var(--m-text-nav); font: inherit; text-decoration: underline; background: none; border: 0; }
+.settings-mobile-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-mobile-body { display: flex; flex-direction: column; gap: 6px; }
 .settings-mobile-body textarea { min-height: 104px; resize: vertical; line-height: 22px; }
 .settings-mobile-count { align-self: flex-end; color: var(--m-text-faint); font-size: var(--t-sm); }
