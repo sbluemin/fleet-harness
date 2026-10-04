@@ -47,7 +47,9 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
 
   useEffect(() => {
     const owner = ownerRef.current;
-    publish(null);
+    // 자식 페인의 effect가 이 effect보다 먼저 돈다 — 페인이 화면과 같은 커밋에 서면(rail.open을 먼저 부른 진입) 이미 선언한
+    // 막대가 있다. 그때 기본 막대로 덮으면 보조 줄·⋮가 사라지므로, 선언된 것이 있으면 그것을 올린다.
+    publish(specRef.current);
     const onPop = () => {
       if (swallowRef.current > 0) { swallowRef.current -= 1; return; }
       const spec = specRef.current;
