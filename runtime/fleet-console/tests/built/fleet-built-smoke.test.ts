@@ -140,6 +140,42 @@ afterEach(async () => {
     expect(await exited).toEqual({ code: 0, signal: null });
     expect(fs.existsSync(lock)).toBe(false);
   }, 40_000);
+
+  // `fleet console stop` must not cut a shutdown that is still running: an open chat turn alone takes about 2s to reap its
+  // SDK child, and killing that cleanup orphans the child and leaves launch temp files. POSIX only, like the case above.
+  it.skipIf(process.platform === "win32")("lets a verified Console finish a slow shutdown before stop returns", async () => {
+    const root = createRoot("fleet-console-slow-stop-");
+    const slot = path.join(root, "console");
+    const lock = path.join(slot, "console.lock");
+    const held = path.join(root, "held");
+    const preload = path.join(root, "slow.mjs");
+    // Test-only preload: the last cleanup step (lock release) takes 1.5s, a shutdown still in progress well past the old 200ms.
+    fs.writeFileSync(preload, [
+      "import fs from 'node:fs';",
+      "import { syncBuiltinESMExports } from 'node:module';",
+      `const lock = ${JSON.stringify(lock)}, held = ${JSON.stringify(held)};`,
+      "const pause = new Int32Array(new SharedArrayBuffer(4));",
+      "for (const name of ['rmSync', 'unlinkSync']) {",
+      "  const original = fs[name];",
+      "  fs[name] = function (target, ...rest) {",
+      "    if (String(target) === lock) { fs.writeFileSync(held, ''); Atomics.wait(pause, 0, 0, 1500); }",
+      "    return original.call(this, target, ...rest);",
+      "  };",
+      "}",
+      "syncBuiltinESMExports();",
+    ].join("\n"));
+    const spawnedAt = Date.now();
+    const child = spawnServe(preload, root, slot);
+    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
+    await waitForFile(lock, 15_000);
+    // stop proves the pid by its start time only for a Console started at least 2s before the identity probe.
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, spawnedAt + 2_500 - Date.now())));
+    const stop = spawnSync(process.execPath, [cliDist, "stop"], { env: isolatedEnv(root, slot), encoding: "utf8", timeout: 30_000 });
+    expect(await exited).toEqual({ code: 0, signal: null });
+    expect(fs.existsSync(held)).toBe(true);
+    expect(stop.status).toBe(0);
+    expect(fs.existsSync(lock)).toBe(false);
+  }, 40_000);
 });
 
 function createRoot(prefix: string): string {
@@ -148,13 +184,17 @@ function createRoot(prefix: string): string {
   return root;
 }
 
-function spawnServe(preload: string, root: string, slot: string): ChildProcess {
+function isolatedEnv(root: string, slot: string): NodeJS.ProcessEnv {
   // 실행 중인 Console에서 상속한 FLEET_*(resume port, legacy dir 등)가 격리된 serve로 새지 않게 모두 걷어 낸다.
   const env: NodeJS.ProcessEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("FLEET_") && key !== "INIT_CWD"));
   env.FLEET_DATA_DIR = root;
   env.FLEET_CONSOLE_DATA_DIR = slot;
+  return env;
+}
+
+function spawnServe(preload: string, root: string, slot: string): ChildProcess {
   // --import takes a module specifier: a bare Windows path (C:\...) reads as a "c:" URL scheme and Node exits.
-  const child = spawn(process.execPath, ["--import", pathToFileURL(preload).href, cliDist, "serve"], { env, stdio: "ignore" });
+  const child = spawn(process.execPath, ["--import", pathToFileURL(preload).href, cliDist, "serve"], { env: isolatedEnv(root, slot), stdio: "ignore" });
   SERVES.add(child);
   return child;
 }
