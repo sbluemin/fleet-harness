@@ -2538,8 +2538,12 @@ button.chip:focus-visible {
   color: var(--text-tertiary);
 }
 
+/* 좁은 레일(분할 배치의 최소 폭)에서는 칩을 다음 줄로 넘긴다 — 한 줄 nowrap이면 행이
+   navigator 폭을 넘고, 헬스 래퍼가 flex-shrink로 눌려 내부 칩 문구를 가렸다.
+   넓은 폭에서는 모두 한 줄에 들어가 줄바꿈이 일어나지 않는다. */
 .codex-nav-quick-row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--surface-rim);
@@ -2612,6 +2616,7 @@ button.chip:focus-visible {
   display: flex;
   align-items: center;
   min-width: 0;
+  max-width: 100%;
   margin-left: auto;
 }
 
@@ -2627,7 +2632,11 @@ button.chip:focus-visible {
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
   line-height: 1.35;
-  white-space: nowrap;
+  /* 한 줄에 혼자 남아도 넘치는 긴 문구는 잘라내지 않고 칩 안에서 줄바꿈한다. */
+  min-width: 0;
+  max-width: 100%;
+  text-align: start;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 
