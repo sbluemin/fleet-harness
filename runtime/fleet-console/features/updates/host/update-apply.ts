@@ -247,13 +247,25 @@ main()
     log("failed: " + reason);
     // 실패는 복구를 시도하기 전에 기록한다. 복구가 끝나기를 기다리는 동안이나 복구가 실패해도
     // 다음에 뜨는 Console이 읽을 결론은 이미 디스크에 있다. 다만 기록이 실패해도 복구는 반드시
-    // 간다 — 실패를 말할 화면을 다시 세우는 일이 그 기록보다 먼저다. 기록하지 못했으면 복구 뒤에
-    // 한 번 더 시도한다.
-    const recorded = tryWriteStatus("failed", { error: reason });
+    // 간다 — 실패를 말할 화면을 다시 세우는 일이 그 기록보다 먼저다.
+    const failure = { error: reason };
+    const progressRecorded = writeProgress("failed", failure);
+    try {
+      writeStatusFile("failed", failure);
+    } catch {
+      // 진단 파일을 쓰지 못해도 복구는 간다.
+    }
+    log("phase: failed");
     // 콘솔을 이미 내린 뒤에 실패했다면, 실패를 말할 화면조차 없다. 옛 버전이라도
     // 다시 세워야 사용자가 무엇이 잘못됐는지 읽을 수 있다.
     if (consoleStopped) await recoverConsoleBestEffort();
-    if (!recorded) tryWriteStatus("failed", { error: reason });
+    // 사용자가 읽을 기록을 남기지 못했을 때만 복구 뒤에 다시 쓴다. 복구된 Console은 새 업데이트를
+    // 받을 수 있으므로, 그 사이 다른 실행이 쓴 기록(startedAt이 다름)은 덮어쓰지 않는다.
+    if (!progressRecorded) {
+      const current = readProgressStartedAt();
+      if (current === "missing" || current === config.startedAt) writeProgress("failed", failure);
+      else log("left the progress record alone: it belongs to another update run");
+    }
     process.exitCode = 1;
   })
   .finally(() => {
@@ -265,14 +277,20 @@ main()
   });
 
 function writeStatus(phase, extra = {}) {
-  const updatedAt = new Date().toISOString();
-  // 재기동한 데몬이 읽는 것은 이 고정 이름의 기록이다. 아래 타임스탬프가 붙은 파일은
-  // 이 실행의 진단 흔적이고, 이쪽이 "방금 무슨 일이 있었는가"에 답한다. 그래서 먼저 쓴다 —
+  // 재기동한 데몬이 읽는 것은 고정 이름의 progress 기록이다. 타임스탬프가 붙은 status 파일은
+  // 이 실행의 진단 흔적이고, progress가 "방금 무슨 일이 있었는가"에 답한다. 그래서 먼저 쓴다 —
   // 진단 파일 쓰기가 실패해도 사용자가 읽을 기록은 이미 남아 있다.
+  writeProgress(phase, extra);
+  writeStatusFile(phase, extra);
+  log("phase: " + phase);
+}
+
+/** 사용자가 읽을 progress 기록. 쓰지 못해도 던지지 않고, 썼는지만 돌려준다. */
+function writeProgress(phase, extra = {}) {
   const record = {
     phase,
     startedAt: config.startedAt,
-    updatedAt,
+    updatedAt: new Date().toISOString(),
     targetVersion: config.targetVersion,
     fromVersion: config.fromVersion,
   };
@@ -280,20 +298,30 @@ function writeStatus(phase, extra = {}) {
   if (typeof extra.error === "string") record.error = extra.error;
   try {
     fs.writeFileSync(config.progressFile, JSON.stringify(record, null, 2), { mode: 0o600 });
-  } catch {
-    // 진단 기록이 없다고 업데이트를 멈추지는 않는다.
-  }
-  fs.writeFileSync(config.statusFile, JSON.stringify({ phase, updatedAt, ...extra }, null, 2), { mode: 0o600 });
-  log("phase: " + phase);
-}
-
-/** 실패 경로용: 기록이 실패해도 던지지 않는다. 기록했는지만 돌려준다. */
-function tryWriteStatus(phase, extra) {
-  try {
-    writeStatus(phase, extra);
     return true;
   } catch {
+    // 진단 기록이 없다고 업데이트를 멈추지는 않는다.
     return false;
+  }
+}
+
+function writeStatusFile(phase, extra = {}) {
+  fs.writeFileSync(config.statusFile, JSON.stringify({ phase, updatedAt: new Date().toISOString(), ...extra }, null, 2), { mode: 0o600 });
+}
+
+/** progress 기록이 어느 실행의 것인지(startedAt). 파일이 없으면 "missing", 읽지 못하면 null. */
+function readProgressStartedAt() {
+  let raw;
+  try {
+    raw = fs.readFileSync(config.progressFile, "utf8");
+  } catch (error) {
+    return error && error.code === "ENOENT" ? "missing" : null;
+  }
+  try {
+    const record = JSON.parse(raw);
+    return record && typeof record.startedAt === "string" ? record.startedAt : null;
+  } catch {
+    return null;
   }
 }
 
@@ -387,9 +415,11 @@ async function identifyOldConsole() {
     const health = pidAlive ? await probeOldConsoleHealth() : { kind: "unanswered" };
     let identity = identifyConsoleLockOwner({ lockPid: pid, pidAlive, health });
     // 거절된 주소는 stale lock일 수도, listener를 먼저 닫고 정리 중이거나 그 도중 멈춘 Console일 수도
-    // 있다(CLI stop과 같은 판단). 그 Console의 lock이 그대로면 끝났다고 보지 않는다.
-    if (identity === "absent" && pidAlive && isLockStillHeldByOldConsole()) identity = "unverified";
-    verdict = { identity, basis: "lock-token-health", pidAlive, health: pidAlive ? health.kind : "not-probed", ...(health.kind === "answered" ? { answeredPid: health.pid } : {}) };
+    // 있다(CLI stop과 같은 판단). 그 Console의 lock이 풀렸다고 확인될 때만 끝났다고 본다 — 읽지 못한
+    // lock은 풀렸다는 증거가 아니다.
+    const lock = describeOldConsoleLock();
+    if (identity === "absent" && pidAlive && lock !== "missing" && lock !== "replaced") identity = "unverified";
+    verdict = { identity, basis: "lock-token-health", pidAlive, health: pidAlive ? health.kind : "not-probed", lock, ...(health.kind === "answered" ? { answeredPid: health.pid } : {}) };
   }
   const line = describeVerdict(verdict);
   if (line !== lastVerdictLine) {
@@ -401,7 +431,7 @@ async function identifyOldConsole() {
 
 function describeVerdict(verdict) {
   const detail = verdict.basis === "lock-token-health"
-    ? " pidAlive=" + verdict.pidAlive + " health=" + verdict.health + (verdict.health === "answered" ? " answeredPid=" + String(verdict.answeredPid) : "")
+    ? " pidAlive=" + verdict.pidAlive + " health=" + verdict.health + (verdict.health === "answered" ? " answeredPid=" + String(verdict.answeredPid) : "") + " lock=" + verdict.lock
     : verdict.basis === "parent-alive" ? " ppid=" + process.ppid : " ppid=" + process.ppid + " (was " + config.currentPid + ")";
   return verdict.identity + " for pid " + config.currentPid + " via " + verdict.basis + detail;
 }
@@ -427,9 +457,19 @@ async function probeOldConsoleHealth() {
   }
 }
 
+/**
+ * 이전 Console이 쥐었던 lock의 지금 상태. held(같은 pid·token), replaced(다른 주인), missing(파일 없음),
+ * unreadable(읽거나 해석하지 못함). CLI와 Desktop처럼 파일이 없을 때만 없다고 보고, 읽지 못한 lock을
+ * 풀렸다고 보지 않는다.
+ */
+function describeOldConsoleLock() {
+  const state = readLockState();
+  if (state.kind !== "present") return state.kind;
+  return state.lock.pid === config.currentPid && state.lock.token === config.currentLockToken ? "held" : "replaced";
+}
+
 function isLockStillHeldByOldConsole() {
-  const lock = readLock();
-  return !!lock && lock.pid === config.currentPid && lock.token === config.currentLockToken;
+  return describeOldConsoleLock() === "held";
 }
 
 function detectPackageManager() {
@@ -568,7 +608,10 @@ function spawnExit(command, args, env = process.env) {
 
 /** 끝난 이전 Console의 락만 지운다 — 같은 pid·token이 아니면(그 사이 올라온 새 콘솔의 락) 건드리지 않는다. */
 function removeStaleLock() {
-  if (!isLockStillHeldByOldConsole()) return;
+  const lock = describeOldConsoleLock();
+  // 읽지 못한 lock은 누구의 것인지 모르므로 지우지 않는다.
+  if (lock === "unreadable") log("left the lock in place: it could not be read");
+  if (lock !== "held") return;
   try {
     fs.rmSync(config.lockFile, { force: true });
     log("removed the stale lock of the console that exited");
@@ -577,12 +620,26 @@ function removeStaleLock() {
   }
 }
 
-function readLock() {
+/** 파일이 없을 때(ENOENT)만 missing이다. 읽기·해석 실패는 unreadable로 따로 돌려준다. */
+function readLockState() {
+  let raw;
   try {
-    return JSON.parse(fs.readFileSync(config.lockFile, "utf8"));
-  } catch {
-    return null;
+    raw = fs.readFileSync(config.lockFile, "utf8");
+  } catch (error) {
+    return error && error.code === "ENOENT" ? { kind: "missing" } : { kind: "unreadable" };
   }
+  try {
+    const lock = JSON.parse(raw);
+    return lock && typeof lock === "object" ? { kind: "present", lock } : { kind: "unreadable" };
+  } catch {
+    return { kind: "unreadable" };
+  }
+}
+
+/** 읽어서 쓸 수 있는 lock만 돌려준다. 새 데몬·복구 확인은 읽힌 lock의 health로만 성공을 판단한다. */
+function readLock() {
+  const state = readLockState();
+  return state.kind === "present" ? state.lock : null;
 }
 
 async function isNewHealthOk(lock) {
