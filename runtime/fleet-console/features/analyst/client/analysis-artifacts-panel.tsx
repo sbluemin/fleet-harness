@@ -1,5 +1,7 @@
 import type { ConsoleTheme, OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
+import { isFleetMobileShell } from "@fleet-console/link/core";
+import { createPortal } from "react-dom";
 
 import { AgentGlyph } from "../../execution/client/agent/agent-glyphs.js";
 import type { AnalysisArtifact } from "./analysis-types.js";
@@ -138,6 +140,10 @@ export function ArtifactExportGlyph({ context, active }: { readonly context: Ope
   // 메뉴 인스턴스 세대 — 열림/닫힘마다 증가한다. 진행 중이던 clipboard 완료는 자신이 출발한
   // 세대가 그대로일 때만 현재 메뉴를 만질 수 있어, 닫았다 재연 메뉴로의 오귀속을 막는다.
   const exportGeneration = React.useRef(0);
+  // Fleet Mobile 셸은 두 번째 창을 열지 않는다(Console origin `_blank`는 조용히 버려진다). 그 셸에서는
+  // 새 탭 대신 같은 sandbox iframe을 페이지 안 전체 화면으로 띄운다. 브라우저와 Desktop은 새 탭 그대로다.
+  const inMobileShell = isFleetMobileShell();
+  const [fullscreen, setFullscreen] = React.useState<AnalysisArtifact | null>(null);
   const clearExportFeedback = () => {
     if (copiedTimer.current !== null) {
       clearTimeout(copiedTimer.current);
@@ -174,6 +180,7 @@ export function ArtifactExportGlyph({ context, active }: { readonly context: Ope
   }, [exportOpen]);
   React.useEffect(() => {
     if (!active) closeExport();
+    setFullscreen((current) => (current && current.id !== active?.id ? null : current));
   }, [active?.id]);
   React.useEffect(() => {
     // active 아티팩트 교체는 메뉴를 닫지 않으므로, 여기서 세대를 올려 이전 아티팩트를
@@ -255,6 +262,11 @@ export function ArtifactExportGlyph({ context, active }: { readonly context: Ope
     closeExport(true);
     window.open(analysisArtifactUrl(active.id, context.theme, getArtifactColors()), "_blank", "noopener");
   };
+  const viewActiveFullscreen = () => {
+    if (!active) return;
+    closeExport();
+    setFullscreen(active);
+  };
   const handleExportMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -291,10 +303,78 @@ export function ArtifactExportGlyph({ context, active }: { readonly context: Ope
         <div className="session-analyst__export-menu" id={exportId} role="menu" ref={exportMenu} onKeyDown={handleExportMenuKeyDown}>
           <button type="button" role="menuitem" onClick={() => { void downloadActive(); }}>{t(exportFailed ? "terminal.artifacts.exportFailed" : "terminal.artifacts.exportDownload")}</button>
           <button type="button" role="menuitem" onClick={() => { void copyActive(); }}>{t(exportCopied ? "terminal.artifacts.exportCopied" : "terminal.artifacts.exportCopy")}</button>
-          <button type="button" role="menuitem" onClick={openActiveInNewTab}>{t("terminal.artifacts.exportOpenTab")}</button>
+          {inMobileShell
+            ? <button type="button" role="menuitem" onClick={viewActiveFullscreen}>{t("terminal.artifacts.exportFullscreen")}</button>
+            : <button type="button" role="menuitem" onClick={openActiveInNewTab}>{t("terminal.artifacts.exportOpenTab")}</button>}
         </div>
       ) : null}
+      {fullscreen ? (
+        <ArtifactFullscreen artifact={fullscreen} theme={context.theme} language={language} onClose={() => setFullscreen(null)} returnFocus={focusTrigger} />
+      ) : null}
     </span>
+  );
+}
+
+const FULLSCREEN_FOCUSABLE = 'button:not([disabled]), iframe';
+
+/**
+ * 모바일 셸의 전체 화면 보기 — 미리보기와 같은 sandbox iframe을 화면 전체에 띄운다. 모달 계약은 다른
+ * 콘솔 다이얼로그와 같다: 뒤 셸은 inert, 닫기 버튼과 Escape로 닫고, 포커스는 원래 트리거로 돌아간다.
+ * Escape는 포커스가 이 문서에 있을 때만 받는다 — opaque origin iframe 안의 키는 바깥으로 오지 않는다.
+ */
+function ArtifactFullscreen({ artifact, theme, language, onClose, returnFocus }: {
+  readonly artifact: AnalysisArtifact;
+  readonly theme: ConsoleTheme;
+  readonly language: ConsoleLocale;
+  readonly onClose: () => void;
+  readonly returnFocus: () => void;
+}) {
+  const t = getT(language);
+  const sheetRef = React.useRef<HTMLDivElement>(null);
+  const returnFocusRef = React.useRef(returnFocus);
+  returnFocusRef.current = returnFocus;
+  React.useEffect(() => {
+    const shell = document.querySelector<HTMLElement>(".console-shell");
+    const previousInert = shell?.inert ?? false;
+    if (shell) shell.inert = true;
+    sheetRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => {
+      // inert를 먼저 풀어야 트리거의 focus()가 먹는다.
+      if (shell) shell.inert = previousInert;
+      returnFocusRef.current();
+    };
+  }, []);
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...(sheetRef.current?.querySelectorAll<HTMLElement>(FULLSCREEN_FOCUSABLE) ?? [])];
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const current = document.activeElement;
+      if (!first || !last) return;
+      if (!sheetRef.current?.contains(current) || (event.shiftKey ? current === first : current === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  return createPortal(
+    <div className="session-analyst__artifact-fullscreen" role="dialog" aria-modal="true" aria-label={artifact.title} ref={sheetRef}>
+      <header>
+        <span className="session-analyst__artifact-title">{artifact.title}</span>
+        <AnalystGlyphButton label={t("terminal.artifacts.fullscreenClose")} onClick={onClose}><AgentGlyph name="close" /></AnalystGlyphButton>
+      </header>
+      <iframe title={artifact.title} src={analysisArtifactUrl(artifact.id, theme, getArtifactColors())} sandbox="allow-scripts" />
+    </div>,
+    document.body,
   );
 }
 
