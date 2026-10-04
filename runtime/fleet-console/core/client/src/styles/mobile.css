@@ -9,6 +9,7 @@
   min-height: 0;
   overflow: hidden;
   color: var(--m-text);
+  font-family: var(--m-sans);
   background: var(--m-bg);
 }
 
@@ -21,7 +22,7 @@
   min-height: 0;
   overflow: hidden;
   color: var(--text-primary);
-  background: var(--m-bg, var(--canvas-sea-core));
+  background: var(--m-bg);
 }
 
 .mobile-shell-content,
@@ -836,7 +837,7 @@
 .mobile-drawer-head .mobile-bar-button { color: var(--m-text-nav); }
 
 .mobile-wordmark {
-  font-family: var(--m-font-reading, var(--font-display));
+  font-family: var(--m-reading);
   font-size: 30px;
   font-weight: var(--weight-medium);
   line-height: 36px;
@@ -907,7 +908,7 @@
 .mobile-drawer-dest-icon svg { width: 22px; height: 22px; }
 .mobile-drawer-count { margin-left: auto; color: var(--m-awaiting); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
 
-.mobile-drawer-rule { height: 1px; margin: 8px 20px; background: var(--m-hairline-on-deep, var(--m-hairline)); }
+.mobile-drawer-rule { height: 1px; margin: 8px 20px; background: var(--m-hairline-on-deep); }
 
 .mobile-drawer-section {
   display: flex;
@@ -1038,7 +1039,7 @@
 .mobile-sheet.is-dragging { animation: none; }
 
 .mobile-sheet-handle { display: grid; place-items: center; flex: none; height: 22px; cursor: grab; touch-action: none; }
-.mobile-sheet-handle i { width: 32px; height: 4px; background: var(--m-handle, var(--m-chip)); border-radius: 2px; }
+.mobile-sheet-handle i { width: 32px; height: 4px; background: var(--m-handle); border-radius: 2px; }
 
 .mobile-sheet-title { position: relative; flex: none; padding: 2px 56px 10px; font-size: var(--t-lg); font-weight: var(--weight-bold); text-align: center; }
 .mobile-sheet-close {
