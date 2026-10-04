@@ -62,8 +62,17 @@ export interface ConsoleDaemonLifecycleDeps {
   readonly startupTimeoutMs?: number;
   readonly pollIntervalMs?: number;
   readonly cleanupGraceMs?: number;
+  /** SIGTERM을 받은 Console이 정리를 마칠 때까지 stop이 기다리는 한도. 이를 넘기면 정체로 보고 정체를 다시 증명한 뒤 SIGKILL한다. */
+  readonly shutdownTimeoutMs?: number;
   readonly health?: ReturnType<typeof createConsoleHealthClient>;
+  /** 사용자에게 알릴 한 줄(대기 안내, 강제 종료 경고). 기본은 stderr다. */
+  readonly report?: (message: string) => void;
 }
+
+/** stop의 결말. forced는 정리를 끝내지 못한 Console을 SIGKILL로 내렸다는 뜻이다 — 그 Console이 띄운 자식과 임시파일이 남을 수 있다. */
+export type ConsoleStopResult =
+  | { readonly forced: false }
+  | { readonly forced: true; readonly shutdownTimeoutMs: number };
 
 export interface StartFleetConsoleDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "ensureDaemon" | "probe">;
@@ -96,6 +105,7 @@ export type ConsoleHookCommand =
 
 export interface ConsoleRestartDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop" | "ensureDaemon" | "probe">;
+  readonly report?: (message: string) => void;
 }
 
 export interface BuildConsoleHelpTextOptions {
@@ -114,7 +124,13 @@ const STOP_IDENTITY_TIMEOUT_MS = 5_000;
 // 먼저 닫고 정리를 마친 뒤 lock을 놓는다. 그 사이를 stale로 보면 살아 있는 Console 옆에 두 번째 Console이 뜬다.
 const STOP_SETTLE_ATTEMPTS = 20;
 const STOP_SETTLE_POLL_MS = 50;
-const STOP_SIGTERM_GRACE_MS = 200;
+// SIGTERM 뒤 Console이 정리를 마치고 lock을 스스로 놓기까지 기다리는 한도. 정상 정리 실측: 유휴 수십 ms, 열린 chat 턴 약 2s
+// (SDK가 stdin을 닫고 2s 뒤 자식에 SIGTERM — chat이 여럿이어도 병렬이다), SIGTERM을 무시하는 자식이면 SDK의 SIGKILL까지 약 7s.
+// 그 위에 plugin·MCP 정리와 느린 기계의 여유를 더했다. Desktop의 SHUTDOWN_SETTLE_MS와 같은 값이다. 이보다 짧으면 진행 중인
+// 정리를 끊어 SDK 자식과 그 MCP 자식을 고아로, launch 임시파일을 잔재로 남긴다.
+const STOP_SHUTDOWN_TIMEOUT_MS = 10_000;
+// 정리가 이만큼 길어지면 사용자에게 기다리는 중이라고 한 번 알린다.
+const STOP_SHUTDOWN_NOTICE_MS = 1_000;
 const STOP_SIGKILL_EXIT_ATTEMPTS = 20;
 // `ps -o lstart`는 초 단위로 내림한 값이다. Linux는 boot time 반올림으로 1초 더 어긋날 수 있다. 시작 시각이 정체 증명
 // 시점보다 이 값 이상 앞서야 그 시각을 정체 표지로 쓴다.
@@ -237,6 +253,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const startupTimeoutMs = Math.max(0, deps.startupTimeoutMs ?? STARTUP_TIMEOUT_MS);
   const pollIntervalMs = Math.max(1, deps.pollIntervalMs ?? STARTUP_POLL_INTERVAL_MS);
   const cleanupGraceMs = Math.max(0, deps.cleanupGraceMs ?? CHILD_CLEANUP_GRACE_MS);
+  const shutdownTimeoutMs = Math.max(0, deps.shutdownTimeoutMs ?? STOP_SHUTDOWN_TIMEOUT_MS);
+  const report = deps.report ?? reportToStderr;
   const paths = createConsolePaths({ env });
   const lock = createConsoleLock();
   const health = deps.health ?? createConsoleHealthClient();
@@ -295,9 +313,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     return { ...probeResult, buildStale: payload ? stale.isBuildStale(payload, serverModulePath) : false };
   }
 
-  async function stop(): Promise<void> {
+  async function stop(): Promise<ConsoleStopResult> {
     const payload = readTrustedLock();
-    if (!payload) return;
+    if (!payload) return { forced: false };
     // 정체 증명(health 요청)보다 먼저 잰 벽시계 시각. 이보다 먼저 시작한 프로세스만 증명된 Console과 같은 프로세스일 수 있다.
     const identityProbedAt = Date.now();
     const owner = await identifyLockOwner(payload);
@@ -311,14 +329,30 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       assertCliCanControlDaemon(payload);
       const provenStart = await captureProvenProcessStart(payload.pid, identityProbedAt);
       signalLockProcess(payload.pid, "SIGTERM");
-      await sleep(STOP_SIGTERM_GRACE_MS);
-      // 정상 종료한 Console은 lock을 스스로 지운다. lock이 남아 있으면 종료 지연일 수도, Console이 lock을 남긴 채 죽고
-      // pid가 재할당된 것일 수도 있다. lock 파일이 그대로라는 사실은 증명이 아니므로 SIGKILL 직전에 정체를 다시 증명한다.
-      if (isLockStillHeldBy(payload)) await escalateStalledShutdown(payload, provenStart);
+      // 정상 종료한 Console은 정리를 모두 마친 뒤에야 lock을 스스로 지운다. 그 정리가 끝나거나 한도를 넘을 때까지 기다린다.
+      // 한도를 넘겨 lock이 남아 있으면 정리가 멈춘 것일 수도, Console이 lock을 남긴 채 죽고 pid가 재할당된 것일 수도 있다.
+      // lock 파일이 그대로라는 사실은 증명이 아니므로 SIGKILL 직전에 정체를 다시 증명한다.
+      if (!await waitForShutdown(payload) && await escalateStalledShutdown(payload, provenStart)) {
+        removeLockHeldBy(payload);
+        return { forced: true, shutdownTimeoutMs };
+      }
     }
-    // 여기까지 온 lock은 pid가 끝났거나(ESRCH, SIGKILL 뒤 종료 확인) 주인이 lock을 이미 놓은 것이다. 신호 없이
+    // 여기까지 온 lock은 pid가 끝났거나(ESRCH) 주인이 lock을 이미 놓은 것이다. 신호 없이
     // 같은 pid·token의 lock일 때만 지운다.
     removeLockHeldBy(payload);
+    return { forced: false };
+  }
+
+  /** SIGTERM을 보낸 Console이 끝나거나 lock을 놓을 때까지 기다린다. 한도 안에 둘 중 하나가 일어나면 참이다. */
+  async function waitForShutdown(payload: ConsoleLockPayload): Promise<boolean> {
+    const attempts = Math.ceil(shutdownTimeoutMs / STOP_SETTLE_POLL_MS);
+    const noticeAttempt = Math.ceil(STOP_SHUTDOWN_NOTICE_MS / STOP_SETTLE_POLL_MS);
+    for (let attempt = 0; ; attempt += 1) {
+      if (!isLockProcessAlive(payload.pid) || !isLockStillHeldBy(payload)) return true;
+      if (attempt >= attempts) return false;
+      if (attempt === noticeAttempt) report("Waiting for Fleet Console to finish shutting down...");
+      await sleep(STOP_SETTLE_POLL_MS);
+    }
   }
 
   /**
@@ -326,24 +360,25 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
    * 지금도 같은 프로세스라는 것만 보이면 된다. 증명 전에 시작한 프로세스의 시작 시각이 그대로면 같은 프로세스다 —
    * 그 사이 pid가 재할당됐다면 새 프로세스는 증명 뒤에 시작했으므로 시작 시각이 다르다. 시작 시각을 얻지 못하거나
    * 달라졌으면 health 정체 판별로 돌아간다. 어느 경우에도 살아 있는 pid의 lock만 지우고 성공으로 끝내지 않는다.
+   * SIGKILL로 내렸으면 참, 그 전에 pid가 끝났거나 lock이 풀려 신호 없이 끝났으면 거짓이다.
    */
-  async function escalateStalledShutdown(payload: ConsoleLockPayload, provenStart: number | null): Promise<void> {
+  async function escalateStalledShutdown(payload: ConsoleLockPayload, provenStart: number | null): Promise<boolean> {
     let proven = false;
     if (provenStart !== null) {
       // SIGKILL 직전 재관측: 시작 시각과 lock 소유를 다시 읽는다.
       const currentStart = await readProcessStartTime(payload.pid, env);
-      if (currentStart === null && !isLockProcessAlive(payload.pid)) return;
+      if (currentStart === null && !isLockProcessAlive(payload.pid)) return false;
       proven = currentStart === provenStart && isLockStillHeldBy(payload);
     }
     if (!proven) {
       const survivor = await identifyLockOwner(payload);
       if (survivor === "unverified") throw lockOwnerUnverifiedError(payload);
-      if (survivor === "absent") return;
+      if (survivor === "absent") return false;
     }
     signalLockProcess(payload.pid, "SIGKILL");
     // 마지막 대기 뒤에도 한 번 더 확인한다. 그 사이 끝난 pid를 살아 있다고 보고 lock을 남기지 않는다.
     for (let attempt = 0; ; attempt += 1) {
-      if (!isLockProcessAlive(payload.pid)) return;
+      if (!isLockProcessAlive(payload.pid)) return true;
       if (attempt >= STOP_SIGKILL_EXIT_ATTEMPTS) break;
       await sleep(STOP_SETTLE_POLL_MS);
     }
@@ -430,7 +465,10 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (!isBuildStale) return current.endpoint;
       if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
     }
-    if (current) await stop();
+    if (current) {
+      const stopped = await stop();
+      if (stopped.forced) report(describeForcedStop(stopped.shutdownTimeoutMs));
+    }
 
     let child: ConsoleDaemonProcess | null;
     try {
@@ -721,8 +759,19 @@ export async function runConsoleStatus(deps: ConsoleStatusDeps = {}): Promise<st
 
 export async function runConsoleStop(deps: ConsoleStopDeps = {}): Promise<string> {
   const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
-  await lifecycle.stop();
+  const result = await lifecycle.stop();
+  // Console은 내려갔지만 정리를 끝내지 못했다. 성공으로 보고하면 남은 자식·임시파일이 숨는다 — 두 진입점 모두 오류를 stderr·exit 1로 낸다.
+  if (result.forced) throw new Error(describeForcedStop(result.shutdownTimeoutMs));
   return "Fleet Console server stopped.";
+}
+
+function reportToStderr(message: string): void {
+  process.stderr.write(`${message}\n`);
+}
+
+function describeForcedStop(shutdownTimeoutMs: number): string {
+  return `Fleet Console was force-stopped: it did not finish shutting down within ${Math.round(shutdownTimeoutMs / 1_000)}s of SIGTERM. `
+    + "Agent processes and temporary files it started may remain; end any leftover agent processes before starting it again.";
 }
 
 export function assertCliCanControlDaemon(payload: ConsoleLockPayload): void {
@@ -795,8 +844,9 @@ function parsePsLstartUtc(output: string): number | null {
 
 export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<StartFleetConsoleResult> {
   const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
-  // 기존 데몬을 정지한 뒤 새 데몬을 띄운다.
-  await lifecycle.stop();
+  // 기존 데몬을 정지한 뒤 새 데몬을 띄운다. 강제 종료였어도 목표(실행 중인 Console)는 이룰 수 있으므로 경고만 남긴다.
+  const stopped = await lifecycle.stop();
+  if (stopped.forced) (deps.report ?? reportToStderr)(describeForcedStop(stopped.shutdownTimeoutMs));
   return startFleetConsole({ lifecycle });
 }
 

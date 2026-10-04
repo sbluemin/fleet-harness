@@ -8,7 +8,9 @@ import { resolvePathBinary, type ResolvedBinary } from "@fleet-console/process";
 import type { UpdateCommandIo } from "./dispatcher.js";
 
 const CONSOLE_BIN = "fleet-console";
-const STOP_TIMEOUT_MS = 15_000;
+// stop은 Console이 정리를 마칠 때까지 최대 10s 기다린 뒤에야 정체를 다시 증명하고 강제 종료한다. 정체 증명(health·ps)까지 더한
+// 최악 소요는 20s를 넘을 수 있다. 그보다 먼저 끊으면 Console이 살아 있는 채로 설치가 진행되어 이 정지의 목적(파일 잠금 해제)을 잃는다.
+const STOP_TIMEOUT_MS = 30_000;
 const CONSOLE_PACKAGE_NAME = "@dotobokuri/fleet-console";
 
 export interface StopRunningConsoleDeps {
@@ -52,6 +54,12 @@ export async function stopRunningConsoleBeforeUpdate(
   }
   io.stdout.write("Stopping the running Fleet Console to release file locks before update...\n");
   await runConsoleStop(consoleBin, io, deps.spawn ?? spawn);
+}
+
+// stop이 0이 아니면 Console이 강제 종료됐거나(남은 자식·임시파일이 있을 수 있다) 정지되지 않은 것이다. update는 막지 않고 알린다.
+function warnUncleanStop(code: number | null, io: UpdateCommandIo): void {
+  if (code === null || code === 0) return;
+  io.stderr.write("Fleet Console did not stop cleanly (it was force-stopped or could not be stopped); continuing with the update.\n");
 }
 
 // 소스(cli/update/*.ts)와 번들(dist/fleet.mjs) 모두에서 패키지 루트의 dist/cli.mjs를 찾는다.
@@ -102,7 +110,10 @@ function runNodeStop(
       resolve();
     };
     child.on("error", finish);
-    child.on("exit", finish);
+    child.on("exit", (code) => {
+      warnUncleanStop(code, io);
+      finish();
+    });
   });
 }
 
@@ -127,6 +138,9 @@ function runConsoleStop(
       resolve();
     };
     child.on("error", finish);
-    child.on("exit", finish);
+    child.on("exit", (code) => {
+      warnUncleanStop(code, io);
+      finish();
+    });
   });
 }
