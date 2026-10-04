@@ -13,9 +13,11 @@ import type { ConsoleState, OperationNode } from "../../integration/types.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { mobileDestinationBindings, mobilePluginRows, type MobileAttentionRow } from "./mobile-destinations.js";
+import { AttentionReason } from "./mobile-attention-reason.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, runAfterOverlayRelease } from "./mobile-overlay-history.js";
+import { unwindDetailsThen } from "./mobile-unwind.js";
 import { pushMobileSheet, setMobileDestination, setMobileDrawerOpen, useMobileDestination, useMobileDrawerOpen } from "./mobile-store.js";
 
 const EDGE_ZONE = 22;
@@ -159,11 +161,13 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
   const attentionOperationIds = new Set(attention.flatMap((row) => row.kind === "operation" ? [row.operation.id] : []));
   const recent = operations.filter((operation) => !attentionOperationIds.has(operation.id));
 
-  const go = (action: () => void) => close(action);
-  const toOperations = () => { if (path !== "/operations") navigate("/operations"); };
+  // 루트 이동 전에 쌓아 둔 상세(플러그인 depth·설정 섹션) 항목을 걷는다 — 남겨 두면 새 루트 아래에서 뒤로가 헛돈다.
+  const go = (action: () => void) => close(() => unwindDetailsThen(location.pathname, location.search, action));
+  // 루트끼리의 이동은 history를 늘리지 않는다(S-51) — 라우트는 replace.
+  const toOperations = () => { if (path !== "/operations") navigate("/operations", { replace: true }); };
 
   const destinations: DestinationRow[] = [
-    { key: "theater", icon: { name: "theater" }, label: t("mobile.drawer.theater"), count: 0, current: path === "/theaters", run: () => navigate("/theaters") },
+    { key: "theater", icon: { name: "theater" }, label: t("mobile.drawer.theater"), count: 0, current: path === "/theaters", run: () => navigate("/theaters", { replace: true }) },
   ];
   for (const binding of mobileDestinationBindings(bindings)) {
     destinations.push({
@@ -184,7 +188,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
   if (mobilePluginRows(bindings).length > 0) {
     destinations.push({ key: "plugins", icon: { name: "grid" }, label: t("mobile.drawer.plugins"), count: 0, current: path === "/operations" && destination.kind === "plugins", run: () => { setMobileDestination({ kind: "plugins" }); toOperations(); } });
   }
-  destinations.push({ key: "settings", icon: { name: "gear" }, label: t("mobile.drawer.settings"), count: 0, current: path === "/settings", run: () => navigate("/settings") });
+  destinations.push({ key: "settings", icon: { name: "gear" }, label: t("mobile.drawer.settings"), count: 0, current: path === "/settings", run: () => navigate("/settings", { replace: true }) });
 
   return (
     <>
@@ -220,9 +224,9 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
               <span>{t("mobile.drawer.attention")}</span><small>{attention.length} ›</small>
             </button>
             {attention.slice(0, MAX_ATTENTION_ROWS).map((row) => row.kind === "operation" ? (
-              <DrawerRow key={row.key} glyph="awaiting" title={row.operation.title} reason={t("mobile.attention.awaiting")} tall current={activeOperationId === row.operation.id && path === "/operations" && destination.kind === "home"} onPress={() => go(() => onOpenOperation(row.operation.id))} />
+              <DrawerRow key={row.key} glyph="awaiting" title={row.operation.title} reason={<AttentionReason row={row} />} tall current={activeOperationId === row.operation.id && path === "/operations" && destination.kind === "home"} onPress={() => go(() => onOpenOperation(row.operation.id))} />
             ) : (
-              <DrawerRow key={row.key} glyph="review" title={row.item.title} reason={row.item.reason} tall onPress={() => go(() => { setMobileDestination({ kind: "plugin", entryId: row.entryId }); toOperations(); row.item.open(); })} />
+              <DrawerRow key={row.key} glyph="review" title={row.item.title} reason={<AttentionReason row={row} />} tall onPress={() => go(() => { setMobileDestination({ kind: "plugin", entryId: row.entryId }); toOperations(); row.item.open(); })} />
             ))}
           </>
         ) : null}
@@ -266,7 +270,7 @@ function markOf(operation: OperationNode, state: ConsoleState, idleArrivalIds: R
 function DrawerRow({ glyph, title, reason, tall = false, current = false, onPress }: {
   readonly glyph: OperationMarkVisual | "review";
   readonly title: string;
-  readonly reason?: string;
+  readonly reason?: ReactNode;
   readonly tall?: boolean;
   readonly current?: boolean;
   readonly onPress: () => void;

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 
 import type { ClientMobileBarCapability, MobileBarSpec } from "@fleet-console/sdk/pane";
 
-import { claimMobileBar, releaseMobileBar, type MobileBarState } from "./mobile-store.js";
+import { claimMobileBar, releaseMobileBar, setMobilePluginDepth, type MobileBarState } from "./mobile-store.js";
 
 /**
  * 모바일 목적지 화면이 페인에 건네는 상단 막대 창구. 컨텍스트로 두는 이유는 이 값이 있고 없음이 곧
@@ -51,12 +51,14 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       const spec = specRef.current;
       if (!spec || spec.depth <= 0 || pushedRef.current <= 0) return;
       pushedRef.current -= 1;
+      setMobilePluginDepth(pushedRef.current);
       fromPopRef.current = true;
       spec.onBack?.();
     };
     window.addEventListener("popstate", onPop);
     return () => {
       window.removeEventListener("popstate", onPop);
+      setMobilePluginDepth(0);
       releaseMobileBar(owner);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,6 +79,7 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
         window.history.go(-surplus);
       }
       fromPopRef.current = false;
+      setMobilePluginDepth(pushedRef.current);
       publish(specRef.current);
     },
   }), []);

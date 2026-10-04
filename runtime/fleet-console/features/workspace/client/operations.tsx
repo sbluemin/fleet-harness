@@ -523,8 +523,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         setMobileDestination({ kind: "home" });
         const url = new URL(window.location.href);
         url.searchParams.set("op", operationId);
+        // Operation끼리의 이동은 history를 늘리지 않는다 — 뒤로는 작업 목록이 아니라 드로어가 받는다(S-51).
         if (new URL(window.location.href).searchParams.get("op") !== operationId) {
-          window.history.pushState({ ...window.history.state, fleetMobileOperation: true }, "", url);
+          window.history.replaceState({ ...window.history.state, fleetMobileOperation: true }, "", url);
         }
         window.dispatchEvent(new Event("popstate"));
       }

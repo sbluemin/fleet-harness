@@ -35,6 +35,8 @@ export function useMobileDestination(): MobileDestination {
   return useSyncExternalStore(subscribe, () => destination);
 }
 
+export function getMobileDestination(): MobileDestination { return destination; }
+
 export function setMobileDestination(next: MobileDestination): void {
   if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId) return;
   destination = next;
@@ -179,3 +181,8 @@ export function setMobileBarExtraSlot(element: HTMLElement | null): void {
   extraSlot = element;
   emit();
 }
+
+// 플러그인 목적지 화면이 쌓아 둔 상세 깊이 — 루트 이동 전에 걷어야 하는 history 항목 수(S-51).
+let pluginDepth = 0;
+export function getMobilePluginDepth(): number { return pluginDepth; }
+export function setMobilePluginDepth(next: number): void { pluginDepth = next; }

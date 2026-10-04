@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useConsoleLocale } from "../../i18n/index.js";
@@ -10,7 +10,8 @@ import { mobileDestinationBindings, useMobileAttention } from "./mobile-destinat
 import { MobileDrawer } from "./mobile-drawer.js";
 import { MobileSheetHost } from "./mobile-sheet-host.js";
 import { MobileTopBar } from "./mobile-top-bar.js";
-import { registerMobileDestinationEntries, setMobileDestination } from "./mobile-store.js";
+import { installMobileHistory } from "./mobile-history.js";
+import { getMobileDrawerOpen, getMobileDestination, registerMobileDestinationEntries, setMobileDestination, setMobileDrawerOpen } from "./mobile-store.js";
 import "../../styles/mobile.css";
 
 /**
@@ -31,6 +32,19 @@ export function MobileFrame({ state, children }: { readonly state: ConsoleState;
   // 다른 화면에서 /operations로 돌아오는 길이 도구·목적지 상태를 붙들고 있지 않게: 라우트가 홈이 아니면 홈으로 되돌려 둔다.
   const path = location.pathname.replace(/\/+$/, "");
   useEffect(() => { if (path === "/theaters" || path === "/settings") setMobileDestination({ kind: "home" }); }, [path]);
+
+  // 뒤로가 마지막 가드에 닿으면 — 목적지 루트이면 홈으로, 홈이면 드로어를 연다(S-51 3·4).
+  const homeRef = useRef<() => void>(() => undefined);
+  homeRef.current = () => {
+    if (getMobileDrawerOpen()) return;
+    if (path !== "/operations" || getMobileDestination().kind !== "home") {
+      setMobileDestination({ kind: "home" });
+      if (path !== "/operations") navigate("/operations", { replace: true });
+      return;
+    }
+    setMobileDrawerOpen(true);
+  };
+  useEffect(() => installMobileHistory(() => homeRef.current()), []);
 
   const openOperation = (operationId: string) => {
     setMobileDestination({ kind: "home" });
