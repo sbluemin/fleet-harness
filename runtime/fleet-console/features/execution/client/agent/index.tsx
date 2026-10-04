@@ -49,6 +49,7 @@ import "./agent-cli.css";
 import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
 import { createChatLinkInterceptor, openOperationLink, useLinkOpenChoice } from "./link-open.js";
 import { UseRequestCards, setUseRequestApi } from "./use-request-card.js";
+import { MobileGlyph, MobileSurfaceProvider, mobileOperationOf, useMobileMenuItems, useMobileSurface, type MobileMenuItemLike, type MobileOperationLike } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OPERATION_REVEAL_EVENT_CHANNEL, getOperationReveal, isOperationRevealEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, recordOperationReveal, setComputerUse, setConsoleUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeOperationReveals, type OperationReveal } from "./experiments-api.js";
 import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
@@ -494,7 +495,17 @@ function toggleCompanionPanel(
  * 모듈 저장소에서 읽는다 — 세션·분석가·읽기 폭 선호는 이미 그렇고, 전환의 진행/실패만 이번에
  * 저장소를 하나 얻었다(`view-switch-store`).
  */
+/**
+ * 모바일 Operation 화면에서는 셸이 막대를 그리고 보기 전환은 ⋮ 항목이 진다(AgentMobileMenu) — 캡션 선반을
+ * 비워 막대 빈칸에 칩이 끼지 않게 한다. 창구의 유무는 한 마운트 동안 바뀌지 않지만, 훅 순서를 판정에
+ * 걸지 않으려고 안쪽 컴포넌트로 가른다.
+ */
 function AgentCaptionActions({ context }: { readonly context: OperationRenderContext }) {
+  if (mobileOperationOf(context)) return null;
+  return <AgentCaptionActionsBody context={context} />;
+}
+
+function AgentCaptionActionsBody({ context }: { readonly context: OperationRenderContext }) {
   const t = getT(context.language ?? "en");
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
@@ -702,7 +713,102 @@ function removeExitedSession(sessionId: string, mountedGeneration: string | unde
 
 const SORTIE_RIBBON_INLINE_LIMIT = 2;
 
+/**
+ * 모바일 Operation 화면이면 본문 전체를 모바일 판정으로 감싸고(CSS는 `[data-mobile-surface]`만 읽는다)
+ * ⋮ 항목을 셸에 올린다. 데스크톱은 감싸지 않아 DOM이 그대로다.
+ */
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
+  const mobile = mobileOperationOf(context);
+  if (!mobile) return <AgentOperationBody context={context} />;
+  return (
+    <MobileSurfaceProvider mobile>
+      <AgentMobileMenu context={context} mobile={mobile} />
+      <div className="agent-mobile-surface" data-mobile-surface="">
+        <AgentOperationBody context={context} />
+      </div>
+    </MobileSurfaceProvider>
+  );
+}
+
+/**
+ * 모바일 ⋮의 에이전트 항목(impl-spec S-08). 보기 전환은 지금 보기의 반대이고, 채팅→터미널은 바로, 터미널→채팅은
+ * 확인 시트(S-14)를 거친다. 「컴퓨터 사용 계속 허용」은 이 Operation의 계속 허용 스위치이며, 설정에서 컴퓨터 사용
+ * 실험이 꺼져 있으면 서지 않는다(D7). 캡션의 같은 동작과 같은 경로를 탄다.
+ */
+function AgentMobileMenu({ context, mobile }: { readonly context: OperationRenderContext; readonly mobile: MobileOperationLike }) {
+  const t = getT(context.language ?? "en");
+  const state = useAgentState();
+  const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
+  const chatMode = context.operation.payload.chatMode === true;
+  const { terminalPending } = useViewSwitchState(context.operationId);
+  const experiments = useExperimentsSnapshot();
+  const computerUseEnabled = readComputerUseEnabled(context.operation.payload);
+  const [usePending, setUsePending] = React.useState(false);
+  const canSwitch = chatMode || session.status !== "dormant";
+
+  const toTerminal = async () => {
+    setTerminalHandoff(context.operationId, { pending: true, error: "none" });
+    try {
+      await openTerminalForOperation(context);
+    } catch {
+      setTerminalHandoff(context.operationId, { error: "failed" });
+    } finally {
+      setTerminalHandoff(context.operationId, { pending: false });
+    }
+  };
+  const toChat = async () => {
+    const confirmed = await mobile.confirm({
+      title: t("terminal.mobile.toChatTitle"),
+      body: t("terminal.mobile.toChatBody"),
+      cancelLabel: t("terminal.chat.confirmKeep"),
+      confirmLabel: t("terminal.mobile.toChatTitle"),
+    });
+    if (!confirmed) return;
+    try {
+      await convertAgentSessionToChat(context.operationId);
+    } catch {
+      // 무엇이 끝나야 넘어갈 수 있는지(바쁨 사유)는 본문의 전환 오버레이가 이미 말한다 — 거기서 다시 묻는다.
+      setChatPromptOpen(context.operationId, true);
+    }
+  };
+  const toggleComputerUse = () => {
+    if (usePending || !installedApi) return;
+    setUsePending(true);
+    const api = installedApi;
+    void setComputerUse(api, context.operationId, !computerUseEnabled, context.language ?? "en")
+      .then(() => api.resync())
+      .catch(() => undefined)
+      .finally(() => setUsePending(false));
+  };
+
+  const items: MobileMenuItemLike[] = [];
+  if (canSwitch) {
+    items.push({
+      id: "agent-view-switch",
+      label: chatMode ? t(terminalPending ? "terminal.chat.openingTerminal" : "terminal.mobile.viewTerminal") : t("terminal.mobile.viewChat"),
+      icon: <MobileGlyph name="swap" />,
+      disabled: terminalPending,
+      run: () => { void (chatMode ? toTerminal() : toChat()); },
+    });
+  }
+  if (experiments?.computerUse === true) {
+    items.push({
+      id: "agent-computer-use",
+      label: t("terminal.mobile.keepComputerUse"),
+      icon: <MobileGlyph name="check" />,
+      checked: computerUseEnabled,
+      disabled: usePending,
+      run: toggleComputerUse,
+    });
+  }
+  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
+  return null;
+}
+
+function AgentOperationBody({ context }: { readonly context: OperationRenderContext }) {
+  const mobileSurface = useMobileSurface();
+  // CLI 확인 줄은 입력 대기 신호(훅이 지는 축)가 선 동안만 — 터미널 출력을 해석해 추정하지 않는다.
+  const awaitingInput = context.runtimeState?.lifecycle === "live" && context.runtimeState.activity === "awaiting";
   const state = useAgentState();
   const observed = state.sessions[context.operationId];
   const session = observed ?? sessionFromOperation(context);
@@ -792,6 +898,8 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         keyboardFocusRequestId={context.keyboardFocusRequestId}
         zoom={context.zoom}
         theme={context.theme}
+        mobile={mobileSurface}
+        awaitingConfirm={mobileSurface && awaitingInput}
         locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onOpenLink={chooseLinkWithSharedFallback}

@@ -8,7 +8,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
-import { NO_LATCHED_MODIFIERS, TerminalKeyBar, type TerminalKeyBarModifiers } from "./terminal-key-bar.js";
+import { MobileTerminalKeyBar, NO_LATCHED_MODIFIERS, TerminalConfirmRow, TerminalKeyBar, type TerminalKeyBarModifiers } from "./terminal-key-bar.js";
 import { applyTerminalModifiers, terminalKeySequence, type TerminalKeyId } from "./terminal-key-sequences.js";
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalAlternateScreenController } from "./terminal-alternate-screen.js";
@@ -50,6 +50,13 @@ export interface TerminalSurfaceProps {
   /** 독립 Shell은 terminal tint를, Operation 안의 Agent는 panel tint를 기준으로 투명 RGB floor를 만든다. */
   readonly surface?: "panel" | "shell";
   readonly theme?: TerminalThemeId;
+  /**
+   * 모바일 Operation 화면의 본문인가(호스트가 막대를 그리는 화면). 그러면 키 줄이 포인터 종류와 무관하게
+   * 서고 모바일 문법(한 줄 가로 밀기 + 키보드 원, impl-spec S-30)으로 그려진다.
+   */
+  readonly mobile?: boolean;
+  /** 터미널 프롬프트가 사람의 답을 기다리는 중 — 모바일 키 줄 위에 CLI 확인 줄을 세운다(D26). */
+  readonly awaitingConfirm?: boolean;
   /**
    * PTY가 끝났다. 그 순간의 화면을 흐린 글자로 옮긴 전사본을 함께 준다 — 같은 자리에 새 셸을 다시 붙이는
    * 표면(Shell 재시작)이 앞 화면을 이어 보여 줄 수 있게 한다. 쓰지 않는 표면은 무시하면 된다.
@@ -307,7 +314,7 @@ export interface TerminalCarryOver {
   readonly cols?: number;
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", mobile = false, awaitingConfirm = false, onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -353,7 +360,12 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // A touch keyboard has no Escape, no arrows, and no Ctrl, so the surface carries them itself.
   // The check is read once at mount: a device does not grow a keyboard mid-session, and re-reading
   // it every render would flip the bar in and out under a hybrid's changing pointer.
-  const [keyBarVisible] = useState(prefersTouchTerminal);
+  const [touchKeyBar] = useState(prefersTouchTerminal);
+  const keyBarVisible = touchKeyBar || mobile;
+  // 모바일 키 줄의 Ctrl 고정(무장에서 한 번 더 누름) — 고정 동안은 키를 보내도 Ctrl이 풀리지 않는다.
+  const [ctrlLocked, setCtrlLocked] = useState(false);
+  const ctrlLockedRef = useRef(ctrlLocked);
+  ctrlLockedRef.current = ctrlLocked;
   const [keyPanelOpen, setKeyPanelOpen] = useState(false);
   const keyPanelOpenRef = useRef(keyPanelOpen);
   keyPanelOpenRef.current = keyPanelOpen;
@@ -417,8 +429,10 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   const consumeLatchedModifiers = useCallback((): TerminalKeyBarModifiers => {
     const modifiers = latchedModifiersRef.current;
     if (modifiers.ctrl || modifiers.alt) {
-      latchedModifiersRef.current = NO_LATCHED_MODIFIERS;
-      setLatchedModifiers(NO_LATCHED_MODIFIERS);
+      // 고정된 Ctrl은 남기고 일회성 걸쇠(무장 Ctrl·Alt)만 거둔다.
+      const kept = ctrlLockedRef.current ? { ctrl: true, alt: false } : NO_LATCHED_MODIFIERS;
+      latchedModifiersRef.current = kept;
+      setLatchedModifiers(kept);
     }
     return modifiers;
   }, []);
@@ -443,9 +457,28 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
 
   const toggleBarModifier = useCallback((modifier: "ctrl" | "alt") => {
     const current = latchedModifiersRef.current;
+    // 모바일 Ctrl은 세 단을 돈다: 꺼짐 → 무장 → 고정 → 꺼짐. 그 밖(데스크톱 터치 바·Alt)은 켬/끔이다.
+    if (mobile && modifier === "ctrl" && current.ctrl && !ctrlLockedRef.current) {
+      ctrlLockedRef.current = true;
+      setCtrlLocked(true);
+      return;
+    }
+    if (modifier === "ctrl" && ctrlLockedRef.current) {
+      ctrlLockedRef.current = false;
+      setCtrlLocked(false);
+    }
     const next = { ...current, [modifier]: !current[modifier] };
     latchedModifiersRef.current = next;
     setLatchedModifiers(next);
+  }, [mobile]);
+
+  // 모바일 키보드 원 — 터미널 입력에 초점이 있으면 소프트 키보드를 내리고, 없으면 올린다.
+  const toggleSoftKeyboard = useCallback(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    const textarea = terminal.textarea;
+    if (textarea && document.activeElement === textarea) terminal.blur();
+    else terminal.focus();
   }, []);
 
   const toggleKeyPanel = useCallback(() => {
@@ -1070,7 +1103,21 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         </div>
         {/* A read-only session takes no input, so the bar stays away rather than offering keys that
             would go nowhere. */}
-        {keyBarVisible && !isViewing ? (
+        {mobile && !isViewing ? (
+          <div className="terminal-mobile-dock">
+            {awaitingConfirm ? <TerminalConfirmRow locale={locale} disabled={inputLocked} onKey={sendBarKey} onText={sendBarText} /> : null}
+            <MobileTerminalKeyBar
+              locale={locale}
+              modifiers={latchedModifiers}
+              ctrlLocked={ctrlLocked}
+              disabled={inputLocked}
+              onToggleModifier={toggleBarModifier}
+              onToggleKeyboard={toggleSoftKeyboard}
+              onKey={sendBarKey}
+              onText={sendBarText}
+            />
+          </div>
+        ) : keyBarVisible && !isViewing ? (
           <TerminalKeyBar
             locale={locale}
             modifiers={latchedModifiers}
