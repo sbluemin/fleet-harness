@@ -88,6 +88,26 @@ export function isCompatibleDesktopOwner(owner: ConsoleOwnerMetadata | undefined
     && version === expected.version;
 }
 
+/** What a lock-token-authenticated `/api/v1/health` probe of a Console lock endpoint showed. */
+export type ConsoleLockHealthEvidence =
+  | { readonly kind: "answered"; readonly pid: unknown }
+  | { readonly kind: "refused" }
+  | { readonly kind: "unanswered" };
+
+/**
+ * Whether a host may signal the pid a Console lock names. A lock outlives a crashed Console and the OS can
+ * hand its pid to an unrelated program, so only a health answer authenticated by the lock token that reports
+ * that same pid proves identity. A dead pid or a refused endpoint means nothing serves the lock: it is stale,
+ * and only the file may go. Anything else alive is unverified: neither signal it nor remove its lock.
+ */
+export type ConsoleLockOwnerIdentity = "verified" | "absent" | "unverified";
+
+export function identifyConsoleLockOwner(input: { readonly lockPid: number; readonly pidAlive: boolean; readonly health: ConsoleLockHealthEvidence }): ConsoleLockOwnerIdentity {
+  if (!input.pidAlive) return "absent";
+  if (input.health.kind === "answered" && input.health.pid === input.lockPid) return "verified";
+  return input.health.kind === "refused" ? "absent" : "unverified";
+}
+
 export function resolveCanonicalStableConsolePaths(input: ResolveCanonicalConsolePathsInput): CanonicalConsolePaths {
   const dir = input.consoleDirOverride ?? path.join(input.tmpDir, `${LOCK_DIR_NAME}-${input.uid}-stable`);
   const dataDir = input.consoleDirOverride ?? path.join(input.fleetDataDir, CONSOLE_DATA_DIR_NAME);
