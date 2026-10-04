@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 
-import { reportMobileChrome } from "../../integration/mobile-appearance-store.js";
+import { useConsoleState } from "../../hooks/use-store.js";
+import { forgetReportedMobileChrome, reportMobileChrome } from "../../integration/mobile-appearance-store.js";
 import { useConsoleLocale } from "../../i18n/index.js";
 import { focusOperation } from "../../integration/store.js";
 import type { ConsoleState } from "../../integration/types.js";
@@ -62,9 +63,23 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   // 시스템 바 색(S-03): 드로어가 열리면 위·아래가 드로어 면, 시트가 열리면 아래가 시트 면. 앱이면 네이티브가 칠하고 브라우저는 무시한다.
   const drawerOpen = useMobileDrawerOpen();
   const sheetOpen = useMobileSheetStack().length > 0;
+  const connection = useConsoleState().connection;
+  const reportChrome = () => reportMobileChrome(drawerOpen ? "bg-deep" : "bg", sheetOpen ? "surface" : drawerOpen ? "bg-deep" : "bg");
+  const reportChromeRef = useRef(reportChrome);
+  reportChromeRef.current = reportChrome;
+  useEffect(() => { reportChrome(); }, [drawerOpen, sheetOpen]);
+  // 재연결·페이지 복귀 뒤에는 지금 겹침 상태를 앱에 다시 알린다(NV-7) — 앱이 상태 바를 되돌려 놓았을 수 있다.
   useEffect(() => {
-    reportMobileChrome(drawerOpen ? "bg-deep" : "bg", sheetOpen ? "surface" : drawerOpen ? "bg-deep" : "bg");
-  }, [drawerOpen, sheetOpen]);
+    if (connection !== "live") return;
+    forgetReportedMobileChrome();
+    reportChromeRef.current();
+  }, [connection]);
+  useEffect(() => {
+    const resend = () => { if (document.visibilityState === "hidden") return; forgetReportedMobileChrome(); reportChromeRef.current(); };
+    window.addEventListener("pageshow", resend);
+    document.addEventListener("visibilitychange", resend);
+    return () => { window.removeEventListener("pageshow", resend); document.removeEventListener("visibilitychange", resend); };
+  }, []);
 
   const openOperation = (operationId: string) => {
     setMobileDestination({ kind: "home" });

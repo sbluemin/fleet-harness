@@ -28,6 +28,8 @@ export type MobileConsoleIdentity = {
   readonly label: string;
   readonly monogram: string | null;
   readonly tone: MobileIdentityTone | null;
+  /** v1.3 — 앱이 아는 이 Console의 주소(표시용). 없으면 주소 줄을 숨긴다(루프백 주소를 대신 보이지 않는다). */
+  readonly address: string | null;
 };
 
 export type MobileAppearanceSnapshot = {
@@ -57,6 +59,7 @@ type NativeAppearance = {
 const IDENTITY_TONES: ReadonlySet<string> = new Set(["crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose"]);
 const CONSOLE_LABEL_MAX = 64;
 const CONSOLE_MONOGRAM_MAX = 3;
+const CONSOLE_ADDRESS_MAX = 120;
 
 type NativeMessageTarget = { postMessage(body: string): void };
 
@@ -96,7 +99,10 @@ function parseConsoleIdentity(value: unknown): MobileConsoleIdentity | null {
     ? record.monogram.trim()
     : null;
   const tone = typeof record.tone === "string" && IDENTITY_TONES.has(record.tone) ? record.tone as MobileIdentityTone : null;
-  return { label, monogram, tone };
+  const address = typeof record.address === "string" && record.address.trim().length > 0 && record.address.trim().length <= CONSOLE_ADDRESS_MAX
+    ? record.address.trim()
+    : null;
+  return { label, monogram, tone, address };
 }
 
 function readNativeAppearance(): NativeAppearance | null {
@@ -148,7 +154,7 @@ function setSnapshot(next: MobileAppearanceSnapshot): void {
   const same = next.colorMode === snapshot.colorMode && next.fontScale === snapshot.fontScale
     && next.scheme === snapshot.scheme && next.nativeOwned === snapshot.nativeOwned
     && next.console?.label === snapshot.console?.label && next.console?.monogram === snapshot.console?.monogram
-    && next.console?.tone === snapshot.console?.tone;
+    && next.console?.tone === snapshot.console?.tone && next.console?.address === snapshot.console?.address;
   applyToDocument(next);
   if (same) return;
   snapshot = next;
@@ -258,6 +264,11 @@ export function reportMobileChrome(top: MobileChromeTop, bottom: MobileChromeBot
   if (key === lastChrome) return;
   lastChrome = key;
   postToNative({ v: 1, type: "chrome", top, bottom });
+}
+
+/** 연결이 다시 선 뒤·페이지가 다시 보일 때 — 같은 값이라도 앱이 한 번 더 받도록 마지막 보고를 잊는다(NV-7). */
+export function forgetReportedMobileChrome(): void {
+  lastChrome = "";
 }
 
 /**

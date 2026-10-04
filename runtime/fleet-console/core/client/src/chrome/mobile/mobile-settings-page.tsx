@@ -19,7 +19,7 @@ import {
 } from "../../../../../features/settings/client/sections.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { useConsoleState } from "../../hooks/use-store.js";
-import { setMobileColorMode, setMobileFontScale, useMobileAppearance, type MobileAppearanceSnapshot } from "../../integration/mobile-appearance-store.js";
+import { openConsoleSwitcher, setMobileColorMode, setMobileFontScale, useMobileAppearance, type MobileAppearanceSnapshot } from "../../integration/mobile-appearance-store.js";
 import { openWhatsNew } from "../../integration/store.js";
 import type { GlobalSettingsState } from "../../integration/types.js";
 import { setViewModePreference, useViewMode, type ViewModePreference } from "../../integration/view-mode-store.js";
@@ -150,15 +150,17 @@ export function MobileSettingsPage() {
 
   const connected = consoleState.connection === "live";
   const consoleName = appearance.console?.label ?? window.location.hostname;
+  // 앱에서는 네이티브가 알려 준 주소만 보인다 — 웹뷰가 보는 루프백 주소는 사용자의 Console 주소가 아니다(NV-5).
+  const consoleAddress = appearance.nativeOwned ? appearance.console?.address ?? null : window.location.host;
   return (
     <section className="mobile-settings-page" aria-labelledby="mobile-settings-title">
       <h1 id="mobile-settings-title" className="mobile-visually-hidden">{t("mobile.drawer.settings")}</h1>
       <div className="mobile-settings-scroll">
         <div className="mobile-settings-groups">
           {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-          <button type="button" className="mobile-console-card" onClick={() => pushMobileSheet({ kind: "console" })}>
+          <button type="button" className="mobile-console-card" onClick={() => { if (!openConsoleSwitcher()) pushMobileSheet({ kind: "console" }); }}>
             <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? consoleName.charAt(0).toUpperCase()} round size={36} />
-            <span className="mobile-console-card-copy"><strong>{consoleName}</strong><small>{window.location.host}</small></span>
+            <span className="mobile-console-card-copy"><strong>{consoleName}</strong>{consoleAddress === null ? null : <small>{consoleAddress}</small>}</span>
             <span className="mobile-state-chip"><span className={statusGlyphClassName(connected ? "idle" : "running")} aria-hidden="true" />{t(connected ? "mobile.settings.connected" : "mobile.settings.reconnecting")}</span>
             <MobileIcon name="down" size={18} className="mobile-group-row-caret" />
           </button>
