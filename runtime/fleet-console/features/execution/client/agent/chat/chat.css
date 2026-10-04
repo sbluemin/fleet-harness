@@ -2375,6 +2375,7 @@
     var(--apex-ink) 0%,
     color-mix(in oklch, var(--apex) 55%, white) 16%,
     var(--apex-ink) 32%,
+    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
     color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
     var(--apex-ink) 64%,
     color-mix(in oklch, var(--apex) 55%, white) 80%,
@@ -2726,6 +2727,7 @@
     var(--apex-ink) 0%,
     color-mix(in oklch, var(--apex) 55%, white) 16%,
     var(--apex-ink) 32%,
+    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
     color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
     var(--apex-ink) 64%,
     color-mix(in oklch, var(--apex) 55%, white) 80%,

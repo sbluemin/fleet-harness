@@ -11159,6 +11159,7 @@ body[data-companion-resizing="true"] .canvas-operation {
       var(--gauge-apex) 40%,
       color-mix(in oklch, var(--gauge-apex) 62%, white) 58%,
       var(--gauge-apex) 76%,
+      /* Intentional: oklch arcs apex→brass through rose (~330) for the aurora tail; oklab would grey it out. */
       color-mix(in oklch, var(--gauge-apex) 75%, var(--gauge-fill)) 100%);
   background-size: 100% 100%, 180% 100%;
   animation: effort-ultra-aurora-drift 3.6s ease-in-out infinite alternate; animation-name: var(--state-motion, effort-ultra-aurora-drift);
@@ -11466,6 +11467,7 @@ body[data-companion-resizing="true"] .canvas-operation {
     var(--apex-ink) 0%,
     color-mix(in oklch, var(--apex) 55%, white) 16%,
     var(--apex-ink) 32%,
+    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
     color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
     var(--apex-ink) 64%,
     color-mix(in oklch, var(--apex) 55%, white) 80%,
@@ -16990,6 +16992,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
     var(--apex-ink) 0%,
     color-mix(in oklch, var(--apex) 55%, white) 16%,
     var(--apex-ink) 32%,
+    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
     color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
     var(--apex-ink) 64%,
     color-mix(in oklch, var(--apex) 55%, white) 80%,
@@ -17772,6 +17775,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
     var(--apex-ink) 0%,
     color-mix(in oklch, var(--apex) 55%, white) 16%,
     var(--apex-ink) 32%,
+    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
     color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
     var(--apex-ink) 64%,
     color-mix(in oklch, var(--apex) 55%, white) 80%,
