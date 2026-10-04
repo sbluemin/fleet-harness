@@ -1,7 +1,7 @@
 import { launchProviderGlyph, serviceGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
-import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { ModelPicker, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
 import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
@@ -197,49 +197,43 @@ function AiGatewayCompactTimingCard() {
   };
 
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.compactTiming")}>
+    <SettingsGroup ariaLabel={t("terminal.settings.compactTiming")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            <span id="compact-timing-label">{t("terminal.settings.compactTiming")}</span>
-            <SettingsHelp title={t("terminal.settings.compactTiming")}>
-              <p>{t("terminal.settings.compactTimingHelp")}</p>
-            </SettingsHelp>
-          </p>
-        </div>
-        <div className="segmented" role="group" aria-labelledby="compact-timing-label">
-          <SegmentedThumb />
-          <button type="button" className={`segmented-option${policy === "auto" ? " is-active" : ""}`} disabled={saving} onClick={() => savePolicy("auto")}>
-            {t("terminal.settings.compactTimingAuto")}
-          </button>
-          <button type="button" className={`segmented-option${policy === "early" ? " is-active" : ""}`} disabled={saving} onClick={() => savePolicy("early")}>
-            {t("terminal.settings.compactTimingEarly")}
-          </button>
-          <button type="button" className={`segmented-option${policy === "late" ? " is-active" : ""}`} disabled={saving} onClick={() => savePolicy("late")}>
-            {t("terminal.settings.compactTimingLate")}
-          </button>
-          <button type="button" className={`segmented-option${policy === "custom" ? " is-active" : ""}`} disabled={saving} onClick={() => savePolicy("custom")}>
-            {t("terminal.settings.compactTimingCustom")}
-          </button>
-        </div>
-      </div>
+      <SettingsItem
+        label={t("terminal.settings.compactTiming")}
+        labelId="compact-timing-label"
+        helpTip={(
+          <SettingsHelp title={t("terminal.settings.compactTiming")}>
+            <p>{t("terminal.settings.compactTimingHelp")}</p>
+          </SettingsHelp>
+        )}
+      >
+        <SettingsSegments
+          ariaLabelledBy="compact-timing-label"
+          value={policy}
+          disabled={saving}
+          options={[
+            { value: "auto", label: t("terminal.settings.compactTimingAuto") },
+            { value: "early", label: t("terminal.settings.compactTimingEarly") },
+            { value: "late", label: t("terminal.settings.compactTimingLate") },
+            { value: "custom", label: t("terminal.settings.compactTimingCustom") },
+          ] as const}
+          onChange={savePolicy}
+        />
+      </SettingsItem>
       {previewModels.length > 0 ? (
-        <div className="global-settings-row">
-          <div className="global-settings-row-text">
-            <p className="global-settings-resp-title">
-              {/* id는 제목 글자만 감싼 span이 진다 — 팁 버튼이 제목 안에 서면 그 접근성 이름까지 선택기 이름에 딸려 들어간다. */}
-              <span id="compact-timing-preview-label">{t("terminal.settings.compactTimingPreview")}</span>
-              <SettingsHelp title={t("terminal.settings.compactTimingPreview")}>{t("terminal.settings.compactTimingPreviewHelp")}</SettingsHelp>
-            </p>
-          </div>
+        <SettingsItem
+          label={t("terminal.settings.compactTimingPreview")}
+          labelId="compact-timing-preview-label"
+          helpTip={<SettingsHelp title={t("terminal.settings.compactTimingPreview")}>{t("terminal.settings.compactTimingPreviewHelp")}</SettingsHelp>}
+        >
           <ModelPicker
             value={preview?.id ?? ""}
             options={previewModels.map((model) => ({ id: model.id, label: model.name, provider: model.provider, contextWindow: model.contextWindow }))}
             aria-labelledby="compact-timing-preview-label"
             onChange={(id) => setPreviewId(id)}
           />
-        </div>
+        </SettingsItem>
       ) : null}
       <div className="compact-timing-track-wrap">
         {/* 보이는 range 하나가 트랙이다 — 숨긴 range와 따로 그린 손잡이를 겹치면 포커스 링이 트랙 래퍼
@@ -299,7 +293,7 @@ function AiGatewayCompactTimingCard() {
             })}
         </p>
       ) : null}
-    </section>
+    </SettingsGroup>
   );
 }
 
@@ -335,7 +329,7 @@ function AiGatewayRoutingCard() {
     void setSystemPromptSettingsField("delegationRoutingMode", next);
   };
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayRouting")}>
+    <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayRouting")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       <SettingToggleRow
         title={t("terminal.settings.aiGatewayRouting")}
@@ -346,31 +340,26 @@ function AiGatewayRoutingCard() {
       />
       {state.delegationRoutingEnabled ? (
         <>
-          <div className="global-settings-row">
-            <div className="global-settings-row-text">
-              <p className="global-settings-resp-title">
-                <span id="delegation-routing-mode-label">{t("terminal.settings.aiGatewayDelegationRoutingMode")}</span>
-                <SettingsHelp title={t("terminal.settings.aiGatewayDelegationRoutingMode")}>
-                  <p>{t("terminal.settings.aiGatewayDelegationRoutingModeHelp")}</p>
-                </SettingsHelp>
-              </p>
-            </div>
-            <div className="segmented" role="group" aria-labelledby="delegation-routing-mode-label">
-              <SegmentedThumb />
-              <button
-                type="button"
-                className={`segmented-option${jevStored ? " is-active" : ""}`}
-                disabled={modeSaving || !typesafeSignedIn}
-                onClick={() => saveMode("jev")}
-              >
-                {t("terminal.settings.aiGatewayDelegationRoutingJev")}
-              </button>
-              <button type="button" className={`segmented-option${mode === "model" ? " is-active" : ""}`}
-                disabled={modeSaving} onClick={() => saveMode("model")}>
-                {t("terminal.settings.aiGatewayRoutingModel")}
-              </button>
-            </div>
-          </div>
+          <SettingsItem
+            label={t("terminal.settings.aiGatewayDelegationRoutingMode")}
+            labelId="delegation-routing-mode-label"
+            helpTip={(
+              <SettingsHelp title={t("terminal.settings.aiGatewayDelegationRoutingMode")}>
+                <p>{t("terminal.settings.aiGatewayDelegationRoutingModeHelp")}</p>
+              </SettingsHelp>
+            )}
+          >
+            <SettingsSegments
+              ariaLabelledBy="delegation-routing-mode-label"
+              value={jevStored ? "jev" : mode}
+              disabled={modeSaving}
+              options={[
+                { value: "jev", label: t("terminal.settings.aiGatewayDelegationRoutingJev"), disabled: !typesafeSignedIn },
+                { value: "model", label: t("terminal.settings.aiGatewayRoutingModel") },
+              ] as const}
+              onChange={saveMode}
+            />
+          </SettingsItem>
           {jevActive ? (
             <p className="global-settings-help">{t("terminal.settings.aiGatewayDelegationRoutingJevNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p>
           ) : null}
@@ -379,12 +368,7 @@ function AiGatewayRoutingCard() {
           ) : null}
           {!typesafeSignedIn ? <p className="global-settings-help">{t("terminal.settings.aiGatewayDelegationRoutingJevSignIn")}</p> : null}
           {mode === "model" ? (
-            <div className="global-settings-row">
-              <div className="global-settings-row-text">
-                <p className="global-settings-resp-title">
-                  <span id="routing-model-label">{t("terminal.settings.aiGatewayRoutingModel")}</span>
-                </p>
-              </div>
+            <SettingsItem label={t("terminal.settings.aiGatewayRoutingModel")} labelId="routing-model-label">
               <ModelPicker
                 value={state.delegationRoutingModel ?? "sonnet"}
                 options={[
@@ -399,13 +383,13 @@ function AiGatewayRoutingCard() {
                 disabled={saving.has("delegationRoutingModel")}
                 onChange={id => void setSystemPromptSettingsField("delegationRoutingModel", id)}
               />
-            </div>
+            </SettingsItem>
           ) : null}
           {mode === "model" ? <p className="global-settings-help">{t("terminal.settings.aiGatewayRoutingModelNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p> : null}
           <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? "sonnet"}`} mode={mode} disabled={modeSaving || (mode === "jev" && !typesafeSignedIn)} />
         </>
       ) : null}
-    </section>
+    </SettingsGroup>
   );
 }
 
@@ -480,7 +464,7 @@ function AiGatewayDiagnosticsCard() {
   }
 
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayDiagnostics")}>
+    <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayDiagnostics")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       <SettingToggleRow
         title={t("terminal.settings.aiGatewayWireLog")}
@@ -489,7 +473,7 @@ function AiGatewayDiagnosticsCard() {
         busy={saving.has("wireLogEnabled")}
         onToggle={() => void setSystemPromptSettingsField("wireLogEnabled", !state.wireLogEnabled)}
       />
-    </section>
+    </SettingsGroup>
   );
 }
 
@@ -1817,15 +1801,7 @@ function useLoadSystemPromptSettings() {
 }
 function SettingToggleRow({ title, help, value, busy, onToggle }: SettingToggleRowProps) {
   return (
-    <div className="global-settings-row">
-      <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">
-          {title}
-          <SettingsHelp title={title}>
-            {help}
-          </SettingsHelp>
-        </p>
-      </div>
+    <SettingsItem label={title} helpTip={<SettingsHelp title={title}>{help}</SettingsHelp>}>
       {/* 켬/끔은 콘솔 전체에서 SDK 스위치 한 모양이다 — 예전의 "Off" 글자 버튼은 스타일 없는 세 번째 문법이었다. */}
       <SettingsToggle
         checked={value}
@@ -1833,7 +1809,7 @@ function SettingToggleRow({ title, help, value, busy, onToggle }: SettingToggleR
         ariaLabel={title}
         onChange={onToggle}
       />
-    </div>
+    </SettingsItem>
   );
 }
 

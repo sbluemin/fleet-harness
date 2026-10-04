@@ -20,7 +20,7 @@ import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser
 import type { ClientExecutionProvider, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { React, defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
-import { SettingsCheckbox, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
@@ -1142,7 +1142,26 @@ function ClaudeCodeHarnessCard() {
   const t = getT(locale);
   const consoleState = useConsoleState();
   const mobile = useViewMode().effective === "mobile";
+  const mobileHost = useMobileSettingsHost() !== null;
   const theater = consoleState.theaters.find((item) => item.id === consoleState.activeTheaterId);
+
+  const promptButton = theater
+    ? <button type="button" onClick={(event) => openTheaterSystemPrompt(theater, event.currentTarget, event.currentTarget.getBoundingClientRect())}>{t("terminal.settings.theaterPromptOpen", { theater: theater.label })}</button>
+    : null;
+  if (mobileHost) {
+    // 폰: 정보 행 — 설명 줄에 안내 + 글자 버튼(S-16 시스템 프롬프트 시트로).
+    return (
+      <SettingsGroup
+        ariaLabel={t("terminal.settings.harnessClaudeCode")}
+        title={t("terminal.settings.harnessClaudeCode")}
+        titleHelp={<SettingsHelp title={t("terminal.settings.harnessClaudeCode")}>{t("terminal.settings.harnessFoot")}</SettingsHelp>}
+      >
+        <SettingsItem label={t("terminal.settings.claudeSystemPromptTitle")} hint={<>{t("terminal.settings.theaterPromptNoticeMobile")}{promptButton ? <> {promptButton}</> : null}</>}>
+          {null}
+        </SettingsItem>
+      </SettingsGroup>
+    );
+  }
 
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.harnessClaudeCode")}>
@@ -1153,7 +1172,7 @@ function ClaudeCodeHarnessCard() {
       </h3>
       <div className="theater-prompt-settings-note">
         <span>{t(mobile ? "terminal.settings.theaterPromptNoticeMobile" : "terminal.settings.theaterPromptNotice")}</span>
-        {theater ? <button type="button" onClick={(event) => openTheaterSystemPrompt(theater, event.currentTarget, event.currentTarget.getBoundingClientRect())}>{t("terminal.settings.theaterPromptOpen", { theater: theater.label })}</button> : null}
+        {promptButton}
       </div>
     </section>
   );
@@ -1164,15 +1183,12 @@ function ChatReadingWidthSettingsCard() {
   const t = getT(useTerminalLocale());
   const width = useChatReadingWidth();
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.chatReadingWidthAria")}>
-      <h3 className="global-settings-card-title">{t("terminal.settings.chatGroup")}</h3>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            <span id="terminal-chat-reading-width-label">{t("terminal.settings.chatReadingWidthTitle")}</span>
-            <SettingsHelp title={t("terminal.settings.chatReadingWidthTitle")}>{t("terminal.settings.chatReadingWidthHelp")}</SettingsHelp>
-          </p>
-        </div>
+    <SettingsGroup ariaLabel={t("terminal.settings.chatReadingWidthAria")} title={t("terminal.settings.chatGroup")}>
+      <SettingsItem
+        label={t("terminal.settings.chatReadingWidthTitle")}
+        labelId="terminal-chat-reading-width-label"
+        helpTip={<SettingsHelp title={t("terminal.settings.chatReadingWidthTitle")}>{t("terminal.settings.chatReadingWidthHelp")}</SettingsHelp>}
+      >
         <Select
           aria-labelledby="terminal-chat-reading-width-label"
           value={width}
@@ -1183,8 +1199,8 @@ function ChatReadingWidthSettingsCard() {
           ]}
           onChange={(value) => { setChatReadingWidth(value as ChatReadingWidth); }}
         />
-      </div>
-    </section>
+      </SettingsItem>
+    </SettingsGroup>
   );
 }
 
@@ -1233,19 +1249,18 @@ function AgentSessionsSettingsCard() {
   })();
 
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.harnessAgentSessions")}>
-      <h3 className="global-settings-card-title">{t("terminal.settings.harnessAgentSessions")}</h3>
+    <SettingsGroup ariaLabel={t("terminal.settings.harnessAgentSessions")} title={t("terminal.settings.harnessAgentSessions")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
       {state ? (
-        <div className="global-settings-row">
-          <div className="global-settings-row-text">
-            <p className="global-settings-resp-title">
-              <span id="idle-agent-sessions-label">{t("terminal.settings.idleAgent")}</span>
-              <SettingsHelp title={t("terminal.settings.idleAgent")} id="idle-agent-sessions-help">
-                {t("terminal.settings.idleAgentHelp")}
-              </SettingsHelp>
-            </p>
-          </div>
+        <SettingsItem
+          label={t("terminal.settings.idleAgent")}
+          labelId="idle-agent-sessions-label"
+          helpTip={(
+            <SettingsHelp title={t("terminal.settings.idleAgent")} id="idle-agent-sessions-help">
+              {t("terminal.settings.idleAgentHelp")}
+            </SettingsHelp>
+          )}
+        >
           <Select
             aria-labelledby="idle-agent-sessions-label"
             value={selectValue}
@@ -1256,11 +1271,11 @@ function AgentSessionsSettingsCard() {
               void setSystemPromptSettingsField("agentIdleDormantMinutes", next);
             }}
           />
-        </div>
+        </SettingsItem>
       ) : (
         <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
       )}
-    </section>
+    </SettingsGroup>
   );
 }
 
@@ -1288,6 +1303,22 @@ function AgentCliAvailabilityCard() {
       });
     return () => abort.abort();
   }, [refresh]);
+
+  const mobileHost = useMobileSettingsHost() !== null;
+  if (mobileHost) {
+    return (
+      <SettingsGroup
+        ariaLabel={t("terminal.settings.agentCliAvailable")}
+        title={t("terminal.settings.agentCliAvailable")}
+        titleHelp={<SettingsHelp title={t("terminal.settings.agentCliAvailable")}><p>{t("terminal.settings.agentCliHelp")}</p></SettingsHelp>}
+      >
+        {error ? <p className="settings-error">{error}</p> : null}
+        {clis.map((cli) => (
+          <AgentCliMobileRow key={cli.id} cli={cli} diagnostics={diagnostics.find((entry) => entry.cliCommand === cli.id)} onChanged={refresh} />
+        ))}
+      </SettingsGroup>
+    );
+  }
 
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.agentCliAvailable")}>
@@ -1343,6 +1374,44 @@ const AGENT_CLI_PATH_ERROR_KEYS = {
   path_not_file: "terminal.settings.agentCliErrorNotFile",
   probe_failed: "terminal.settings.agentCliErrorProbeFailed",
 } as const satisfies Record<string, TerminalMessageKey>;
+
+/**
+ * 폰의 Agent CLI 행(P-4): `[이름 / 사용 가능 · {버전} · {경로}]`을 누르면 경로 입력 시트가 열린다. 사용자가 정한 경로가 있으면 「지우기」가 있고,
+ * 환경 변수가 정한 경로는 읽기 전용 정보 행이다. 오류는 시트 오류 줄에 현지화한 문장으로 선다.
+ */
+function AgentCliMobileRow({ cli, diagnostics, onChanged }: {
+  readonly cli: AgentCliStatus;
+  readonly diagnostics?: AgentCliDiagnosticsEntry;
+  readonly onChanged: (signal?: AbortSignal) => Promise<void>;
+}) {
+  const t = getT(useTerminalLocale());
+  const envManaged = diagnostics?.resolutionSource === "env";
+  const configured = diagnostics?.configuredPath ?? null;
+  const save = async (next: string | null) => {
+    try {
+      await setAgentCliPath(cli.id, next);
+    } catch (error) {
+      const key = error instanceof Error ? AGENT_CLI_PATH_ERROR_KEYS[error.message as keyof typeof AGENT_CLI_PATH_ERROR_KEYS] : undefined;
+      throw new Error(t(key ?? "terminal.settings.agentCliErrorProbeFailed"));
+    }
+    await onChanged();
+  };
+  const status = [cli.available ? t("terminal.settings.available") : t("terminal.settings.missing"), cli.available ? cli.version : null, envManaged ? t("terminal.settings.agentCliSourceEnv") : configured].filter(Boolean).join(" · ");
+  return (
+    <SettingsInputRow
+      label={cli.displayName}
+      valueText={status}
+      readOnly={envManaged}
+      input={{
+        value: configured ?? "",
+        placeholder: t("terminal.settings.agentCliPathPlaceholder"),
+        description: t("terminal.settings.agentCliPathLabel"),
+        onSave: (value) => save(value),
+        ...(configured !== null && !envManaged ? { onClear: () => save(null) } : {}),
+      }}
+    />
+  );
+}
 
 function AgentCliRow({
   cli,
@@ -1627,63 +1696,38 @@ function TerminalDrawingCard({ terminalRenderer, terminalInactiveFlush }: {
     instant: t("terminal.settings.inactiveFlushInstant"),
   } as const;
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.terminalDrawingAria")}>
-      <h3 className="global-settings-card-title">{t("terminal.settings.terminalGroup")}</h3>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("terminal.settings.terminalRenderer")}
-            <SettingsHelp title={t("terminal.settings.terminalRenderer")}>
-              <p>{t("terminal.settings.terminalRendererHelp")}</p>
-            </SettingsHelp>
-          </p>
-        </div>
-        <div className="segmented" role="group" aria-label={t("terminal.settings.terminalRendererAria")}>
-          <SegmentedThumb />
-          {RENDERER_IDS.map((rendererId) => {
-            const isActive = rendererId === terminalRenderer;
-            return (
-              <button
-                key={rendererId}
-                type="button"
-                aria-pressed={isActive}
-                className={`segmented-option ${isActive ? "is-active" : ""}`}
-                onClick={() => setTerminalRenderer(rendererId)}
-              >
-                {rendererLabels[rendererId]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("terminal.settings.inactiveFlush")}
-            <SettingsHelp title={t("terminal.settings.inactiveFlush")}>
-              <p>{t("terminal.settings.inactiveFlushHelp")}</p>
-            </SettingsHelp>
-          </p>
-        </div>
-        <div className="segmented" role="group" aria-label={t("terminal.settings.inactiveFlushAria")}>
-          <SegmentedThumb />
-          {INACTIVE_FLUSH_IDS.map((inactiveFlushId) => {
-            const isActive = inactiveFlushId === terminalInactiveFlush;
-            return (
-              <button
-                key={inactiveFlushId}
-                type="button"
-                aria-pressed={isActive}
-                className={`segmented-option ${isActive ? "is-active" : ""}`}
-                onClick={() => setTerminalInactiveFlush(inactiveFlushId)}
-              >
-                {inactiveFlushLabels[inactiveFlushId]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </section>
+    <SettingsGroup ariaLabel={t("terminal.settings.terminalDrawingAria")} title={t("terminal.settings.terminalGroup")}>
+      <SettingsItem
+        label={t("terminal.settings.terminalRenderer")}
+        helpTip={(
+          <SettingsHelp title={t("terminal.settings.terminalRenderer")}>
+            <p>{t("terminal.settings.terminalRendererHelp")}</p>
+          </SettingsHelp>
+        )}
+      >
+        <SettingsSegments
+          ariaLabel={t("terminal.settings.terminalRendererAria")}
+          value={terminalRenderer}
+          options={RENDERER_IDS.map((rendererId) => ({ value: rendererId, label: rendererLabels[rendererId] }))}
+          onChange={setTerminalRenderer}
+        />
+      </SettingsItem>
+      <SettingsItem
+        label={t("terminal.settings.inactiveFlush")}
+        helpTip={(
+          <SettingsHelp title={t("terminal.settings.inactiveFlush")}>
+            <p>{t("terminal.settings.inactiveFlushHelp")}</p>
+          </SettingsHelp>
+        )}
+      >
+        <SettingsSegments
+          ariaLabel={t("terminal.settings.inactiveFlushAria")}
+          value={terminalInactiveFlush}
+          options={INACTIVE_FLUSH_IDS.map((inactiveFlushId) => ({ value: inactiveFlushId, label: inactiveFlushLabels[inactiveFlushId] }))}
+          onChange={setTerminalInactiveFlush}
+        />
+      </SettingsItem>
+    </SettingsGroup>
   );
 }
 
@@ -1695,62 +1739,39 @@ function TerminalBehaviorCard() {
   const { scrollback, copyOnSelect } = useTerminalPrefs();
   const numberFormat = new Intl.NumberFormat(locale);
   return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.terminalBehaviorAria")}>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("terminal.settings.scrollback")}
-            <SettingsHelp title={t("terminal.settings.scrollback")}>
-              <p>{t("terminal.settings.scrollbackHelp")}</p>
-            </SettingsHelp>
-          </p>
-        </div>
-        <div className="segmented" role="group" aria-label={t("terminal.settings.scrollbackAria")}>
-          <SegmentedThumb />
-          {TERMINAL_SCROLLBACK_CHOICES.map((choice) => {
-            const isActive = choice === scrollback;
-            return (
-              <button
-                key={choice}
-                type="button"
-                aria-pressed={isActive}
-                className={`segmented-option ${isActive ? "is-active" : ""}`}
-                onClick={() => setTerminalScrollback(choice)}
-              >
-                {t("terminal.settings.scrollbackLines", { count: numberFormat.format(choice) })}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("terminal.settings.copyOnSelect")}
-            <SettingsHelp title={t("terminal.settings.copyOnSelect")}>
-              <p>{t("terminal.settings.copyOnSelectHelp")}</p>
-            </SettingsHelp>
-          </p>
-        </div>
-        <div className="segmented" role="group" aria-label={t("terminal.settings.copyOnSelect")}>
-          <SegmentedThumb />
-          {([true, false] as const).map((value) => {
-            const isActive = value === copyOnSelect;
-            return (
-              <button
-                key={String(value)}
-                type="button"
-                aria-pressed={isActive}
-                className={`segmented-option ${isActive ? "is-active" : ""}`}
-                onClick={() => setTerminalCopyOnSelect(value)}
-              >
-                {t(value ? "terminal.settings.toggleOn" : "terminal.settings.toggleOff")}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </section>
+    <SettingsGroup ariaLabel={t("terminal.settings.terminalBehaviorAria")}>
+      <SettingsItem
+        label={t("terminal.settings.scrollback")}
+        helpTip={(
+          <SettingsHelp title={t("terminal.settings.scrollback")}>
+            <p>{t("terminal.settings.scrollbackHelp")}</p>
+          </SettingsHelp>
+        )}
+      >
+        <SettingsSegments
+          ariaLabel={t("terminal.settings.scrollbackAria")}
+          value={scrollback}
+          options={TERMINAL_SCROLLBACK_CHOICES.map((choice) => ({ value: choice, label: t("terminal.settings.scrollbackLines", { count: numberFormat.format(choice) }) }))}
+          onChange={setTerminalScrollback}
+        />
+      </SettingsItem>
+      <SettingsItem
+        label={t("terminal.settings.copyOnSelect")}
+        helpTip={(
+          <SettingsHelp title={t("terminal.settings.copyOnSelect")}>
+            <p>{t("terminal.settings.copyOnSelectHelp")}</p>
+          </SettingsHelp>
+        )}
+      >
+        <SettingsSegments
+          toggle
+          ariaLabel={t("terminal.settings.copyOnSelect")}
+          value={copyOnSelect}
+          options={([true, false] as const).map((value) => ({ value, label: t(value ? "terminal.settings.toggleOn" : "terminal.settings.toggleOff") }))}
+          onChange={setTerminalCopyOnSelect}
+        />
+      </SettingsItem>
+    </SettingsGroup>
   );
 }
 
