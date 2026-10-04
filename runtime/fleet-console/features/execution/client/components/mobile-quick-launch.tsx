@@ -13,16 +13,16 @@ import { getMobileDrawerOpen, getMobileSheetStack } from "../../../../core/clien
 import { reportMobileChrome } from "../../../../core/client/src/integration/mobile-appearance-store.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { buildQuickLaunchEffortDeck, isMentionSelectable, mentionTargetName, type QuickLaunchMentionTarget, type QuickLaunchPluginMentionRow } from "../quick-launch.js";
-import type { QuickLaunchStartView } from "../quick-launch-preferences.js";
 import "./mobile-quick-launch.css";
 
 /**
  * 모바일 「새 작업」 시트(S-11a~e). 상태·효과·제출은 데스크톱 Quick Launch 컴포넌트가 그대로 소유하고, 이 화면은
- * 그 값과 콜백을 받아 모바일 문법으로만 그린다 — 로직 사본이 없다. 하네스 칩은 현행 모델 그룹(제공자), 모델 시트는
- * 그 그룹의 모델과 강도 글자 탭, 옵션 묶음은 게이트 펼치기 · 채팅뷰로 시작 · 다이나믹 워크플로우다(D20·D41).
+ * 그 값과 콜백을 받아 모바일 문법으로만 그린다 — 로직 사본이 없다. 모델 시트는 현행 모델 그룹의 모델과 강도 글자 탭,
+ * 옵션 묶음은 게이트 펼치기 · 다이나믹 워크플로우다(D20·D41). 하네스·시작 보기 선택은 없다 — 폰의 새 작업은 늘
+ * 채팅으로 열리고(실효값은 데스크톱 컴포넌트가 정한다), 실행 하네스는 그룹과 무관하게 같다(NT).
  */
 
-type Sub = "theater" | "model" | "harness" | "attach";
+type Sub = "theater" | "model" | "attach";
 
 interface Attachment { readonly key: string; readonly name: string; readonly previewUrl: string; readonly uploading: boolean }
 
@@ -38,9 +38,6 @@ export interface MobileQuickLaunchProps {
   readonly effort: string | null;
   readonly onModelRow: (row: OperationLaunchVariantRow) => void;
   readonly onEffort: (effort: string | null) => void;
-  readonly chatStartAvailable: boolean;
-  readonly chatStart: boolean;
-  readonly onStartView: (view: QuickLaunchStartView) => void;
   readonly ultracodeArmed: boolean;
   readonly hasUltracodeWord: boolean;
   readonly onUltracode: (on: boolean) => void;
@@ -198,15 +195,6 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
               <Toggle on={deck.gateOpen} />
             </button>
           ) : null}
-          {props.chatStartAvailable ? (
-            <button type="button" role="switch" aria-checked={props.chatStart} className="mql-gr is-two" onClick={() => props.onStartView(props.chatStart ? "terminal" : "chat")}>
-              <span className="mql-gr-tx">
-                {t("chrome.quickLaunch.mobile.chatStart")}
-                <small>{props.chatStart ? t("chrome.quickLaunch.startViewChatHint") : `${t("chrome.quickLaunch.startViewTerminal")} · ${t("chrome.quickLaunch.startViewTerminalHint")}`}</small>
-              </span>
-              <Toggle on={props.chatStart} />
-            </button>
-          ) : null}
           <button type="button" role="switch" aria-checked={props.ultracodeArmed} className="mql-gr is-two" onClick={() => props.onUltracode(!props.ultracodeArmed)}>
             <span className="mql-gr-tx">
               {t("chrome.quickLaunch.mobile.dynamic")}
@@ -214,32 +202,6 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
             </span>
             <Toggle on={props.ultracodeArmed} />
           </button>
-        </div>
-      </MobileSheet>
-    );
-  }
-
-  if (sub === "harness") {
-    return (
-      <MobileSheet key="harness" title={t("chrome.quickLaunch.mobile.harness")} onClose={() => setSub(null)} className="mql-sheet">
-        <div className="mql-grp">
-          {groups.map((candidate) => (
-            <button
-              key={candidate.id}
-              type="button"
-              role="radio"
-              aria-checked={candidate.id === group?.id}
-              className="mql-gr"
-              onClick={() => {
-                // 하네스를 바꾸면 그 그룹의 첫 모델로 선다 — 같은 그룹이면 고른 모델을 지킨다.
-                const row = candidate.id === group?.id ? selectedRow : candidate.rows[0] ?? null;
-                if (row && row.id !== selectedRow?.id) props.onModelRow(row);
-                setSub(null);
-              }}
-            >
-              <Radio on={candidate.id === group?.id} /><span className="mql-gr-tx">{candidate.label}</span>
-            </button>
-          ))}
         </div>
       </MobileSheet>
     );
@@ -326,7 +288,6 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
           <button type="button" className="mobile-pill-secondary" onClick={() => setSub("model")} disabled={!selectedRow}>
             {selectedRow?.label ?? t("chrome.quickLaunch.modelUnset")}{selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? <span className="mql-chip-effort">{effortLabel}</span> : null}
           </button>
-          <button type="button" className="mobile-pill-secondary" onClick={() => setSub("harness")} disabled={groups.length === 0}>{group?.label ?? t("chrome.quickLaunch.mobile.harness")}</button>
           <button type="button" className="mobile-pill-secondary" onClick={() => setSub("attach")}><MobileIcon name="plus" size={18} />{t("chrome.quickLaunch.mobile.attach")}</button>
         </div>
       ) : null}

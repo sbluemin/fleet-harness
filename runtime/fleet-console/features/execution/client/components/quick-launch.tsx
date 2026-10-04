@@ -199,7 +199,9 @@ export function QuickLaunch() {
   // 플러그인이 채팅을 아는지 몰라야 한다. 능력이 없으면 기억이 무엇이라 말하든 무장은
   // 성립하지 않고 발사는 터미널로 정규화된다(카탈로그가 늦게 오는 첫 프레임도 같은 계약).
   const chatStartAvailable = target?.kind.launchViews?.includes("chat") === true;
-  const chatStart = chatStartAvailable && startView === "chat";
+  // 모바일 새 작업은 늘 채팅으로 연다 — 폰에는 시작 보기 선택이 없고, 기억(startView)은 데스크톱의 것이라
+  // 읽지도 쓰지도 않는다. 채팅을 선언하지 않은 종류만 터미널로 접힌다(위 계약 그대로).
+  const chatStart = chatStartAvailable && (mobileLayout || startView === "chat");
 
   const activeTheater = theaters.find((candidate) => candidate.id === theaterId) ?? null;
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
@@ -1605,9 +1607,6 @@ export function QuickLaunch() {
           writeQuickLaunchModelEffort(rowModel, nextEffort);
         }}
         onEffort={(next) => { setEffort(next); writeQuickLaunchModelEffort(model, next); }}
-        chatStartAvailable={chatStartAvailable}
-        chatStart={chatStart}
-        onStartView={(view) => { setStartView(view); writeQuickLaunchStartView(view); }}
         ultracodeArmed={ultracodeArmed}
         hasUltracodeWord={ultracodeTokens.length > 0}
         onUltracode={(on) => {
