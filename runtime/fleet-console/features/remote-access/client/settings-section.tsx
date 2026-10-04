@@ -1,7 +1,7 @@
 import "@fleet-console/font-picker/styles.css";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
-import { ExperimentalBadge, SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import { ExperimentalBadge, SettingsGroup, SettingsRow, SettingsSubScreenRow, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
@@ -14,11 +14,7 @@ import { PairDeviceDialog } from "../../remote-access/client/pair-device-dialog.
 import { forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../../remote-access/client/remote-hosts.js";
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../../settings/client/global-settings-api.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
-import { MobileToggleRow } from "../../settings/client/settings-mobile.js";
-import { MobileIcon } from "../../../core/client/src/chrome/mobile/mobile-icons.js";
-import { MobileSheet } from "../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushMobileSheet } from "../../../core/client/src/chrome/mobile/mobile-store.js";
-import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 type T = Translate<CoreMessageKey>;
 const REMOTE_GRANT_TTL_MINUTES = 15;
 const ROTATE_ARM_TIMEOUT_MS = 5_000;
@@ -27,9 +23,9 @@ const FLEET_DESKTOP_RELEASES_URL = "https://github.com/sbluemin/fleet-harness/re
 
 
 export function RemoteAccessSection({ remote, saving }: { readonly remote: RemoteAccessState; readonly saving: boolean }) {
-  // 폰은 시안 S-48의 토글 행 + 상태 행 + 「세부 설정 ›」로 읽는다. 세부 설정은 아래 데스크톱 카드 그대로를 전체 높이 시트로 연다.
+  // 폰은 SDK 설정 키트로 읽는다: 토글 행 + 「세부 설정」 하위 화면 행(요약 줄이 수신 상태, 화면은 아래 데스크톱 카드 그대로).
   // 렌더만 갈린다 — 상태 읽기·저장·발급·해지는 두 배치가 같은 함수를 쓴다.
-  if (useViewMode().effective === "mobile") return <MobileRemoteAccess remote={remote} saving={saving} />;
+  if (useMobileSettingsHost()) return <MobileRemoteAccess remote={remote} saving={saving} />;
   return <DesktopRemoteAccess remote={remote} saving={saving} />;
 }
 
@@ -213,37 +209,24 @@ function MobileRemoteAccess({ remote, saving }: { readonly remote: RemoteAccessS
       resolve: (confirmed) => { if (confirmed) save({ ...remote, enabled: false }); },
     });
   };
+  const blocked = !remote.enabled && !ready;
+  const detail = listening ? status?.listener.origin : status?.listener.lastError;
   return (
-    <div className="mobile-group settings-mobile-card" aria-label={t("settings.remote.title")}>
-      <MobileToggleRow
-        title={t("settings.remote.title")}
-        sub={t("settings.remote.lede")}
-        checked={remote.enabled}
-        busy={saving}
-        disabled={!remote.enabled && !ready}
-        onChange={toggle}
-      />
-      <div className="mobile-group-row is-two">
-        <span className="mobile-group-row-copy">{t(state)}{listening && status?.listener.origin ? <small>{status.listener.origin}</small> : status?.listener.lastError ? <small>{status.listener.lastError}</small> : null}</span>
-      </div>
-      <button type="button" className="mobile-group-row" onClick={() => pushMobileSheet({ kind: "custom", render: (close) => <RemoteDetailSheet onClose={close} /> })}>
-        <span className="mobile-group-row-copy">{t("settings.remote.mobile.details")}</span>
-        <MobileIcon name="right" size={18} className="settings-mobile-caret" />
-      </button>
-    </div>
+    <SettingsGroup ariaLabel={t("settings.remote.title")}>
+      <SettingsRow label={t("settings.remote.title")} hint={t("settings.remote.lede")} badge={<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>} disabled={blocked}>
+        <SettingsToggle checked={remote.enabled} busy={saving} disabled={blocked} ariaLabel={t("settings.remote.title")} onChange={toggle} />
+      </SettingsRow>
+      {/* 수신 상태는 세부 설정 행의 요약 줄이다 — 열지 않고도 지금 상태(와 수신 주소·실패 사유)를 읽는다. */}
+      <SettingsSubScreenRow label={t("settings.remote.mobile.details")} summary={detail ? `${t(state)} · ${detail}` : t(state)} render={() => <RemoteDetailScreen />} />
+    </SettingsGroup>
   );
 }
 
-/** 세부 설정 — 데스크톱 카드 그대로. 시트는 스토어를 읽으므로 저장이 곧바로 보인다. */
-function RemoteDetailSheet({ onClose }: { readonly onClose: () => void }) {
-  const t = useT();
+/** 세부 설정 하위 화면 — 데스크톱 카드 그대로. 스토어를 읽으므로 저장이 곧바로 보인다. */
+function RemoteDetailScreen() {
   const store = useGlobalSettingsStore();
   const remote = store.state?.remoteAccess;
-  return (
-    <MobileSheet full title={t("settings.remote.title")} onClose={onClose} className="remote-detail-sheet">
-      {remote === undefined ? null : <DesktopRemoteAccess remote={remote} saving={store.savingFields.has("remoteAccess")} />}
-    </MobileSheet>
-  );
+  return remote === undefined ? null : <DesktopRemoteAccess remote={remote} saving={store.savingFields.has("remoteAccess")} />;
 }
 
 /**

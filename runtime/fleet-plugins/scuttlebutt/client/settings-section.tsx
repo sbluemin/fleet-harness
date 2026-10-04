@@ -8,11 +8,11 @@ import {
   SettingsSlider,
   SettingsToggle,
   defineSettingsSection,
+  useMobileSettingsHost,
   useModelPickerOptions,
 } from "@fleet-console/sdk/settings/browser";
 
 import { readModelOptions } from "./console-read.js";
-import { MobileScuttlebuttSettings, useMobileLayout } from "./settings-mobile.js";
 
 import {
   BIRD_WIDTH_STEP,
@@ -56,7 +56,7 @@ function ScuttlebuttSettingsSection() {
   const t = getT(document.documentElement.lang === "ko" ? "ko" : "en");
   const settings = useStoreSnapshot(subscribeScuttlebuttSettings, getScuttlebuttSettings);
   const [saving, setSaving] = React.useState(false);
-  const mobile = useMobileLayout();
+  const mobile = useMobileSettingsHost() !== null;
 
   const save = async (patch: Parameters<typeof writeScuttlebuttSettings>[0]) => {
     setSaving(true);
@@ -92,17 +92,62 @@ function ScuttlebuttSettingsSection() {
   const onDuty = AIDES.filter((aide) => settings[aide]);
 
   // 폰에서는 같은 상태·같은 저장 경로를 모바일 문법(묶음 행·토글 행·라디오 묶음)으로 그린다.
-  if (mobile) return <MobileScuttlebuttSettings t={t} settings={settings} saving={saving} save={save} />;
+  const sizeSlider = (aide: ScuttlebuttAideId) => {
+    const name = t(`bird.${aide}`);
+    return (
+      <SettingsSlider
+        value={settings.sizes[aide]}
+        min={MIN_BIRD_WIDTH}
+        max={MAX_BIRD_WIDTH}
+        step={BIRD_WIDTH_STEP}
+        label={t("settings.section.sizeAria", { name })}
+        decreaseLabel={t("settings.section.sizeDecrease", { name })}
+        increaseLabel={t("settings.section.sizeIncrease", { name })}
+        formatValue={(value) => `${value}px`}
+        onPreview={(next) => previewSize(aide, next)}
+        onCommit={(next) => commitSize(aide, next)}
+        /* 기본값으로 돌아가는 길은 항상 설정 안에 있어야 한다 — 부관 위의 조작면은
+           모달이 열리면 죽고, 화면을 가린 부관은 그때 되돌릴 방법이 없다. */
+        defaultValue={DEFAULT_BIRD_WIDTH}
+        resetLabel={t("settings.section.sizeResetShort")}
+        resetAriaLabel={t("settings.section.sizeReset", { name })}
+      />
+    );
+  };
+  const title = (
+    <>
+      {t("settings.section.title")}
+      <ExperimentalBadge>{t("settings.section.experimental")}</ExperimentalBadge>
+    </>
+  );
+
+  // 폰: SDK 설정 키트가 모바일 문법으로 그린다. 데스크톱의 복수 선택 세그먼트만 키트에 없어, 부관마다 토글 행으로 세우고
+  // 크기도 부관마다 슬라이더 행 하나로 나눈다. 도움말(「?」)은 묶음 아래 설명이 된다. 상태·저장은 데스크톱과 같다.
+  if (mobile) {
+    return (
+      <>
+        <SettingsCard title={title} description={t("settings.section.rosterHint")}>
+          {AIDES.map((aide) => (
+            <SettingsRow key={aide} label={t(`bird.${aide}`)}>
+              <SettingsToggle ariaLabel={t(`bird.${aide}`)} checked={settings[aide]} busy={saving} onChange={(next) => void save({ [aide]: next })} />
+            </SettingsRow>
+          ))}
+        </SettingsCard>
+        {onDuty.length > 0 ? (
+          <SettingsCard title={t("settings.section.size")} description={t("settings.section.sizeHint")}>
+            {onDuty.map((aide) => <SettingsRow key={aide} label={t(`bird.${aide}`)}>{sizeSlider(aide)}</SettingsRow>)}
+          </SettingsCard>
+        ) : null}
+        <SettingsCard>
+          <ModelRow t={t} saving={saving} model={settings.model} effort={settings.effort} onSave={save} />
+          <DepartureRow t={t} saving={saving} checked={settings.departureBell} onSave={save} />
+        </SettingsCard>
+      </>
+    );
+  }
 
   return (
-    <SettingsCard
-      title={
-        <>
-          {t("settings.section.title")}
-          <ExperimentalBadge>{t("settings.section.experimental")}</ExperimentalBadge>
-        </>
-      }
-    >
+    <SettingsCard title={title}>
       <SettingsRow
         label={t("settings.section.roster")}
         helpTip={
@@ -140,28 +185,10 @@ function ScuttlebuttSettingsSection() {
         >
           <div className="scuttlebutt-settings-sizes">
             {onDuty.map((aide) => {
-              const shown = settings.sizes[aide];
-              const name = t(`bird.${aide}`);
               return (
                 <div className="scuttlebutt-settings-size" key={aide}>
-                  <span className="scuttlebutt-settings-size-name">{name}</span>
-                  <SettingsSlider
-                    value={shown}
-                    min={MIN_BIRD_WIDTH}
-                    max={MAX_BIRD_WIDTH}
-                    step={BIRD_WIDTH_STEP}
-                    label={t("settings.section.sizeAria", { name })}
-                    decreaseLabel={t("settings.section.sizeDecrease", { name })}
-                    increaseLabel={t("settings.section.sizeIncrease", { name })}
-                    formatValue={(value) => `${value}px`}
-                    onPreview={(next) => previewSize(aide, next)}
-                    onCommit={(next) => commitSize(aide, next)}
-                    /* 기본값으로 돌아가는 길은 항상 설정 안에 있어야 한다 — 부관 위의 조작면은
-                       모달이 열리면 죽고, 화면을 가린 부관은 그때 되돌릴 방법이 없다. */
-                    defaultValue={DEFAULT_BIRD_WIDTH}
-                    resetLabel={t("settings.section.sizeResetShort")}
-                    resetAriaLabel={t("settings.section.sizeReset", { name })}
-                  />
+                  <span className="scuttlebutt-settings-size-name">{t(`bird.${aide}`)}</span>
+                  {sizeSlider(aide)}
                 </div>
               );
             })}
@@ -169,21 +196,7 @@ function ScuttlebuttSettingsSection() {
         </SettingsRow>
       ) : null}
       <ModelRow t={t} saving={saving} model={settings.model} effort={settings.effort} onSave={save} />
-      <SettingsRow
-        label={t("settings.section.departure")}
-        helpTip={
-          <SettingsHelpTip ariaLabel={t("settings.helpTipAria", { title: t("settings.section.departure") })}>
-            {t("settings.section.departureHint")}
-          </SettingsHelpTip>
-        }
-      >
-        <SettingsToggle
-          ariaLabel={t("settings.section.departureToggle")}
-          checked={settings.departureBell}
-          busy={saving}
-          onChange={(enabled) => void save({ departureBell: enabled })}
-        />
-      </SettingsRow>
+      <DepartureRow t={t} saving={saving} checked={settings.departureBell} onSave={save} />
     </SettingsCard>
   );
 }
@@ -222,6 +235,31 @@ function ModelRow({ t, saving, model, effort, onSave }: {
           labelOf: (level) => t(`effort.${level as AideEffort}`),
           onChange: (next) => void onSave({ effort: next as AideEffort }),
         }}
+      />
+    </SettingsRow>
+  );
+}
+
+function DepartureRow({ t, saving, checked, onSave }: {
+  readonly t: ReturnType<typeof getT>;
+  readonly saving: boolean;
+  readonly checked: boolean;
+  readonly onSave: (patch: Parameters<typeof writeScuttlebuttSettings>[0]) => Promise<void>;
+}) {
+  return (
+    <SettingsRow
+      label={t("settings.section.departure")}
+      helpTip={
+        <SettingsHelpTip ariaLabel={t("settings.helpTipAria", { title: t("settings.section.departure") })}>
+          {t("settings.section.departureHint")}
+        </SettingsHelpTip>
+      }
+    >
+      <SettingsToggle
+        ariaLabel={t("settings.section.departureToggle")}
+        checked={checked}
+        busy={saving}
+        onChange={(enabled) => void onSave({ departureBell: enabled })}
       />
     </SettingsRow>
   );
