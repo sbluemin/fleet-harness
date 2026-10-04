@@ -40,6 +40,9 @@
 .objectives-m-meter { height: 6px; margin-top: 8px; overflow: hidden; border-radius: 3px; background: var(--m-chip); }
 .objectives-m-meter i { display: block; height: 100%; background: var(--m-text-nav); }
 
+/* 질문 카드를 쌓는 칸 — 카드 사이 10. */
+.objectives-m-stack { display: flex; flex-direction: column; gap: 10px; }
+
 /* 결정 요청 카드 — 허용 요청 카드와 같은 틀(모서리 24, 테두리 hairline-strong). */
 .objectives-m-ucard { display: flex; flex-direction: column; gap: 6px; padding: 14px 14px 12px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
 .objectives-m-ucard-hd { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; }
@@ -53,12 +56,14 @@
 .objectives-m-ind { position: relative; flex: none; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--m-text-muted); border-radius: 50%; }
 .objectives-m-ind.is-on { border-color: var(--m-text); }
 .objectives-m-ind.is-on::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--m-text); }
-/* 여러 개 고르는 질문 — 같은 크기의 모서리 둥근 네모와 체크. */
-.objectives-m-ind.is-check { border-radius: 6px; }
-.objectives-m-ind.is-check.is-on { background: var(--m-text); }
-.objectives-m-ind.is-check.is-on::after { inset: auto; left: 5px; top: 1.5px; width: 5px; height: 9px; border: solid var(--m-bg); border-width: 0 2px 2px 0; border-radius: 0; background: none; transform: rotate(45deg); }
+/* 여러 개 고르는 질문 — 같은 크기의 모서리 6 네모, 켜지면 면이 차고 안쪽에 체크(선 2). */
+.objectives-m-ind.is-check { display: grid; place-items: center; border-radius: 6px; }
+.objectives-m-ind.is-check.is-on { background: var(--m-text); color: var(--m-bg); }
+.objectives-m-ind.is-check.is-on::after { content: none; }
+.objectives-m-ind.is-check svg { stroke-width: 2.4; }
 .objectives-m-hint { margin: 0; font-size: 13px; color: var(--m-text-faint); }
 .objectives-m-field { display: block; width: 100%; box-sizing: border-box; height: 104px; padding: 12px 14px; border: 1px solid var(--m-hairline-strong); border-radius: 14px; background: var(--m-bg); color: var(--m-text); font: inherit; font-size: 16px; line-height: 22px; resize: none; }
+.objectives-m-field.is-unfold { height: 88px; margin-top: 4px; animation: objectives-m-unfold .2s ease-out; }
 .objectives-m-field::placeholder { color: var(--m-text-muted); }
 .objectives-m-field:focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; }
 .objectives-m-ucard-ft { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
@@ -84,8 +89,43 @@
 .objectives-m-sg.is-review { border-color: var(--m-awaiting); background: var(--m-awaiting-glow); }
 .objectives-m-sg.is-review::after, .objectives-m-sg.is-done::after { left: 3.2px; top: 1.4px; width: 2.6px; height: 4.8px; border: solid var(--m-awaiting); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
 .objectives-m-sg.is-done::after { border-color: var(--m-idle); }
+/* 보조 알약 — 받는 사람 칩, 시트의 「보내기」(.is-inv). */
+.objectives-m-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.objectives-m-sheet-layer button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; }
+.objectives-m-sheet-layer .objectives-m-pill2 { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 20px; background: var(--m-chip); color: var(--m-text); font-size: 15px; font-weight: 500; }
+.objectives-m-sheet-layer .objectives-m-pill2.is-inv { background: var(--m-inverse); color: var(--m-on-inverse); font-weight: 600; }
+.objectives-m-sheet-layer .objectives-m-pill2:disabled { opacity: .4; cursor: default; }
+.objectives-m-secnote { margin: 0; padding: 0 4px; font-size: 13px; color: var(--m-text-faint); }
+
+/* 하단 시트 — 스크림 + 위 모서리 28 판. 손잡이에서 끌어내려 닫는다. */
+.objectives-m-sheet-layer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; justify-content: flex-end; color: var(--m-text); font-family: var(--font-ui); font-size: 16px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
+.objectives-m-scrim { position: absolute; inset: 0; background: var(--m-scrim); animation: objectives-m-fade .2s ease-out; }
+.objectives-m-sheet { position: relative; display: flex; flex-direction: column; max-height: calc(100% - 56px); padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); border-radius: 28px 28px 0 0; background: var(--m-surface); animation: objectives-m-sheet-in .3s cubic-bezier(.05,.7,.1,1); transition: transform .2s cubic-bezier(.05,.7,.1,1); }
+.objectives-m-sheet.is-dragging { transition: none; }
+.objectives-m-sheet-layer.is-closing .objectives-m-scrim { opacity: 0; transition: opacity .2s; }
+.objectives-m-sheet-layer.is-closing .objectives-m-sheet { transform: translateY(100%); transition: transform .22s cubic-bezier(.3,0,.8,.15); }
+.objectives-m-sheet-handle { display: grid; place-items: center; height: 22px; flex: none; touch-action: none; cursor: grab; }
+.objectives-m-sheet-handle i { width: 32px; height: 4px; border-radius: 2px; background: var(--m-handle, var(--m-chip)); }
+.objectives-m-sheet-head { position: relative; flex: none; padding: 2px 56px 10px; text-align: center; }
+.objectives-m-sheet-head h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 24px; }
+.objectives-m-sheet-layer .objectives-m-sheet-x { position: absolute; top: -8px; right: 12px; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 20px; color: var(--m-text-muted); }
+.objectives-m-sheet-layer .objectives-m-sheet-x:active { background: var(--m-selected); }
+.objectives-m-sheet-body { display: flex; flex-direction: column; gap: 10px; min-height: 0; padding: 0 16px; overflow-y: auto; scrollbar-width: none; }
+.objectives-m-sheet-body::-webkit-scrollbar { display: none; }
+.objectives-m-sheet-layer .objectives-m-field { height: 104px; }
+.objectives-m-sheet-ft { display: flex; justify-content: flex-end; gap: 8px; flex: none; padding: 10px 16px 0; }
+.objectives-m-sheet-layer :focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+
+/* 토스트 — 화면 아래 150, 6초 뒤 사라진다. 라이트에서만 테두리. */
+.objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--font-ui); font-size: 15px; animation: objectives-m-fade .2s ease-out; }
+html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m-hairline); }
+
+@keyframes objectives-m-fade { from { opacity: 0; } }
+@keyframes objectives-m-sheet-in { from { transform: translateY(100%); } }
+@keyframes objectives-m-unfold { from { height: 0; opacity: 0; } }
 @keyframes objectives-m-spin { to { transform: rotate(360deg); } }
 @keyframes objectives-m-breathe { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) {
   .objectives-m-sg::before, .objectives-m-sg::after { animation: none !important; }
+  .objectives-m-sheet, .objectives-m-scrim, .objectives-m-toast, .objectives-m-field.is-unfold { animation: none; transition: none; }
 }

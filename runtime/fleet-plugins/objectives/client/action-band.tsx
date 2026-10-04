@@ -189,8 +189,18 @@ const MESSAGE_REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   resume_unavailable: "objectives.band.reason.recipientUnreachable",
 };
 
+/** 실패 코드를 띠의 사유 한 줄로 — 메시지의 거절은 받는 이의 사정이 먼저다. 모바일 ⋮ 도 같은 문구를 쓴다. */
+export function bandFailure(t: T, error: unknown, options: { readonly message: boolean; readonly talk: boolean }): string {
+  const code = error instanceof Error ? error.message : "unknown";
+  const reasonKey = options.message ? MESSAGE_REASONS[code] ?? REASONS[code] : REASONS[code];
+  const reason = reasonKey ? t(reasonKey) : t("objectives.band.reason.other", { code });
+  return t(options.talk ? "objectives.band.failed" : "objectives.band.failedAction", { reason });
+}
+
+type ChooseInput = Pick<ActionBandProps, "objective" | "working" | "commanderAwaiting" | "memberAwaiting">;
+
 /** 지금 상태의 주행동과, 펼치면 함께 고르는 것. 제안이 남아 잠긴 개시·스티어링은 gated 가 말한다(주행동은 「다시 구상」). */
-function choose(props: ActionBandProps): { readonly primary: IntentKey | null; readonly alts: readonly IntentKey[]; readonly gated?: true } {
+function choose(props: ChooseInput): { readonly primary: IntentKey | null; readonly alts: readonly IntentKey[]; readonly gated?: true } {
   const { objective, working, commanderAwaiting, memberAwaiting } = props;
   if (objective.done) return { primary: "extend", alts: [] };
   const started = objective.commander.started;
@@ -208,17 +218,24 @@ function choose(props: ActionBandProps): { readonly primary: IntentKey | null; r
   return objective.missions.length === 0 ? { primary: "plan", alts: ["start"] } : { primary: "start", alts: ["plan"] };
 }
 
-export function ActionBand(props: ActionBandProps) {
-  const { objective, t, request, recipients } = props;
+/** 띠가 지금 고를 수 있는 할 일 — 주행동·펼침 목록·후속 후보 펼침·메시지 가능 여부. 모바일 ⋮ 가 같은 판정을 쓴다. */
+export function bandChoices(props: ChooseInput & { readonly commanderExists: boolean; readonly recipientCount: number }) {
+  const { objective } = props;
   const { primary, alts: stateAlts, gated } = choose(props);
   // 후속 후보(A안) — 검토 대기 + 후보 1건 이상 + edited 아님이 `complete` 와 겹치면 띠는 바로 완료하지 않고 위로 펼쳐 고른다.
   // 후보가 없으면 기존 완료 띠 그대로다. 선택은 완료를 누르기 전까지 로컬 초안이다.
   const followupCandidates = openFollowups(objective);
   const followupAvailable = primary === "complete" && !gated && isFollowupSelectable(objective) && followupCandidates.length > 0;
   // 「메시지」 — 깨어난 지휘관이 있으면 어느 상태에서든 펼친 칸에서 고른다. 결정 대기(띠 자체가 이동)·후속 후보·잠긴 띠는 제 할 일이 먼저다.
-  const messageable = !!primary && !objective.done && objective.commander.started && props.commanderExists && recipients.length > 0
+  const messageable = !!primary && !objective.done && objective.commander.started && props.commanderExists && props.recipientCount > 0
     && primary !== "decide" && primary !== "decideMember" && !gated && !followupAvailable;
   const alts: readonly IntentKey[] = messageable ? [...stateAlts, "message"] : stateAlts;
+  return { primary, alts, gated, followupCandidates, followupAvailable };
+}
+
+export function ActionBand(props: ActionBandProps) {
+  const { objective, t, request, recipients } = props;
+  const { primary, alts, gated, followupCandidates, followupAvailable } = bandChoices({ ...props, recipientCount: recipients.length });
   const followupSelection = useFollowupSelection(objective.id);
   const followupOpen = useFollowupOpen(objective.id);
   const [followupOpenId, setFollowupOpenId] = useState<string | null>(null);
@@ -438,10 +455,7 @@ export function ActionBand(props: ActionBandProps) {
       setOpen(false);
       requestAnimationFrame(() => bandRef.current?.focus());
     } catch (failure) {
-      const code = failure instanceof Error ? failure.message : "unknown";
-      const reasonKey = key === "message" ? MESSAGE_REASONS[code] ?? REASONS[code] : REASONS[code];
-      const reason = reasonKey ? t(reasonKey) : t("objectives.band.reason.other", { code });
-      setError(t(chosen.talk ? "objectives.band.failed" : "objectives.band.failedAction", { reason }));
+      setError(bandFailure(t, failure, { message: key === "message", talk: chosen.talk }));
     } finally {
       setPending(null);
     }

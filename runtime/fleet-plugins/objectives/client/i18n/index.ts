@@ -792,7 +792,10 @@ export const objectivesEn = {
   "objectives.mobile.decision.asks": "The Commander asks",
   "objectives.mobile.decision.send": "Send answer",
   "objectives.mobile.decision.sent": "Answer sent",
-  "objectives.mobile.decision.n": "{n}/{total}",
+  "objectives.mobile.decision.firstOf": "The Commander asks · Question {n}/{total}",
+  "objectives.mobile.decision.of": "Question {n}/{total}",
+  "objectives.mobile.toast.decision": "Sent your answer to the Commander",
+  "objectives.mobile.message.send": "Send",
   "objectives.mobile.sessions": "Sessions",
   "objectives.mobile.attention": "{count} decision requests",
 };
@@ -1588,7 +1591,10 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.mobile.decision.asks": "지휘관이 묻습니다",
   "objectives.mobile.decision.send": "답 보내기",
   "objectives.mobile.decision.sent": "답을 보냈습니다",
-  "objectives.mobile.decision.n": "{n}/{total}",
+  "objectives.mobile.decision.firstOf": "The Commander asks · Question {n}/{total}",
+  "objectives.mobile.decision.of": "Question {n}/{total}",
+  "objectives.mobile.toast.decision": "Sent your answer to the Commander",
+  "objectives.mobile.message.send": "Send",
   "objectives.mobile.sessions": "세션",
   "objectives.mobile.attention": "결정 요청 {count}건",
 };
