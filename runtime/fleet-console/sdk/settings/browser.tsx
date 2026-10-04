@@ -39,6 +39,10 @@ export interface SettingsRowProps {
   readonly helpTip?: React.ReactNode;
   /** 모바일 설정 행의 앞 아이콘. 데스크톱은 그리지 않는다. */
   readonly icon?: React.ReactNode;
+  /** 제목 바로 뒤의 배지 — 보통 `<ExperimentalBadge>` 노드. */
+  readonly badge?: React.ReactNode;
+  /** 지금 쓸 수 없는 행. 모바일은 행 전체를 흐리게 하고 누름을 막는다 — 컨트롤의 `disabled`는 호출부가 따로 준다. 이유 문장은 `hint` 끝에 붙인다. */
+  readonly disabled?: boolean;
   readonly children: React.ReactNode;
 }
 
@@ -130,6 +134,9 @@ export interface SettingsSliderProps {
 export function defineSettingsSection(descriptor: SettingsSectionDescriptor): SettingsSectionDescriptor {
   return descriptor;
 }
+
+/** 모바일 `SettingsRow`(자기가 <label>) 안에 있다는 표시 — 안의 토글이 라벨을 또 만들지 않는다. */
+const MobileSettingsRowContext = React.createContext(false);
 
 export function ExperimentalBadge({ children }: { readonly children: React.ReactNode }): React.ReactElement {
   return <span className="experimental-badge">{children}</span>;
@@ -268,6 +275,17 @@ export function SettingsHelpTip({ ariaLabel, id, children }: SettingsHelpTipProp
 }
 
 export function SettingsCard({ title, description, children }: SettingsCardProps): React.ReactElement {
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    // 폰: 카드 제목은 묶음 머리, 본문은 묶음 카드(행 사이 2 틈), 설명은 묶음 아래 secnote다.
+    return (
+      <section className="fc-settings-card is-mobile">
+        {title ? <h3 className="fc-settings-card__title">{title}</h3> : null}
+        <div className="fc-settings-card__body">{children}</div>
+        {description ? <p className="fc-settings-card__desc">{description}</p> : null}
+      </section>
+    );
+  }
   return (
     <section className="fc-settings-card">
       {title ? <h3 className="fc-settings-card__title">{title}</h3> : null}
@@ -277,22 +295,23 @@ export function SettingsCard({ title, description, children }: SettingsCardProps
   );
 }
 
-export function SettingsRow({ label, hint, helpTip, icon, children }: SettingsRowProps): React.ReactElement {
+export function SettingsRow({ label, hint, helpTip, icon, badge, disabled = false, children }: SettingsRowProps): React.ReactElement {
   const labelId = React.useId();
   const hintId = React.useId();
   const mobileHost = useMobileSettingsHost();
   if (mobileHost) {
-    // 폰: 아이콘 + 제목 + 설명 여러 줄(힌트 → 도움말) + 오른쪽 컨트롤(토글 등).
+    // 폰: 행 전체가 누름 영역이다 — <label>이라 안의 토글·팝업 트리거가 행을 누르면 대신 눌린다.
+    // 아이콘 + 제목(+배지) + 설명 여러 줄(힌트 → 도움말) + 컨트롤.
     return (
-      <div className="fc-settings-row is-mobile" role="group" aria-labelledby={labelId} aria-describedby={hint ? hintId : undefined}>
+      <label className={`fc-settings-row is-mobile${disabled ? " is-disabled" : ""}`} aria-disabled={disabled || undefined} aria-describedby={hint ? hintId : undefined}>
         {icon ? <span className="fc-settings-row__icon" aria-hidden="true">{icon}</span> : null}
-        <div className="fc-settings-row__copy">
-          <div className="fc-settings-row__label"><span id={labelId}>{label}</span></div>
-          {hint ? <div className="fc-settings-row__hint" id={hintId}>{hint}</div> : null}
+        <span className="fc-settings-row__copy">
+          <span className="fc-settings-row__label"><span id={labelId}>{label}</span>{badge}</span>
+          {hint ? <span className="fc-settings-row__hint" id={hintId}>{hint}</span> : null}
           {helpTip}
-        </div>
-        <div className="fc-settings-row__control">{children}</div>
-      </div>
+        </span>
+        <MobileSettingsRowContext.Provider value><span className="fc-settings-row__control">{children}</span></MobileSettingsRowContext.Provider>
+      </label>
     );
   }
   return (
@@ -302,6 +321,7 @@ export function SettingsRow({ label, hint, helpTip, icon, children }: SettingsRo
             이름 계산에 버튼의 접근성 이름까지 딸려 들어가 그룹 이름이 "라벨 + 라벨 도움말"이 된다. */}
         <div className="fc-settings-row__label">
           <span id={labelId}>{label}</span>
+          {badge}
           {helpTip}
         </div>
         {hint ? <div className="fc-settings-row__hint" id={hintId}>{hint}</div> : null}
@@ -320,8 +340,10 @@ export function SettingsRow({ label, hint, helpTip, icon, children }: SettingsRo
 export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled = false, busy = false }: SettingsToggleProps): React.ReactElement {
   const id = React.useId();
   const blocked = busy && !disabled;
+  const insideMobileRow = React.useContext(MobileSettingsRowContext);
+  const Root = insideMobileRow ? "span" : "label";
   return (
-    <label className="fc-settings-toggle" htmlFor={id}>
+    <Root className="fc-settings-toggle" {...(insideMobileRow ? {} : { htmlFor: id })}>
       <input
         id={id}
         className="fc-settings-toggle__input"
@@ -338,7 +360,7 @@ export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled =
         <span className="settings-switch-knob" />
       </span>
       {label ? <span className="fc-settings-toggle__label">{label}</span> : null}
-    </label>
+    </Root>
   );
 }
 
