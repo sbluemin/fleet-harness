@@ -247,6 +247,8 @@ async function searchContents(
   let receivedOutput = false;
   let skippedPaths = 0;
   let settled = false;
+  // limit보다 한 건 더 모아야 정확히 limit건과 잘림을 구분한다. RG_CONTENT_MATCH_CAP은 그대로 상한이다.
+  const stopAt = Math.min(RG_CONTENT_MATCH_CAP, limit + 1);
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -262,7 +264,7 @@ async function searchContents(
           if (!line) continue;
           const item = parseContentMatch(line, query);
           if (item) candidates.push(item);
-          if (candidates.length >= Math.min(RG_CONTENT_MATCH_CAP, limit)) {
+          if (candidates.length >= stopAt) {
             settled = true;
             child.kill();
             resolve();
@@ -288,6 +290,15 @@ async function searchContents(
   }
 
   skippedPaths = countSkippedPaths(stderr);
+  if (settled && !options.signal?.aborted) {
+    // 잘리면 rg를 조기 종료하므로 읽지 못한 경로에 아직 닿지 않았을 수 있다. 같은 hidden/ignore
+    // 범위의 경로 catalog가 세는 건너뜀 수로 보완해 잘림 안내와 건너뜀 안내를 독립적으로 유지한다.
+    try {
+      skippedPaths = Math.max(skippedPaths, (await getPathCatalog(root, options)).skippedPaths);
+    } catch {
+      // catalog 실패는 내용 검색 결과를 막지 않는다. stderr에서 센 값을 유지한다.
+    }
+  }
   return {
     items: candidates.slice(0, limit),
     totalMatches: settled ? undefined : candidates.length,
