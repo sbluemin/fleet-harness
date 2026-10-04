@@ -561,8 +561,13 @@ export class BrowserService {
     this.closedTabsMemory = [];
     this.emitGlobalState();
     const restoredIds: string[] = [];
-    for (const item of tabsToRestore) {
-      if (this.globalBrowser.tabs.size >= MAX_TABS) break;
+    for (const [index, item] of tabsToRestore.entries()) {
+      if (this.globalBrowser.tabs.size >= MAX_TABS) {
+        // 탭이 열린 채 복원하면 자리가 모자랄 수 있다 — 열지 못한 주소는 버리지 않고 제안에 남긴다.
+        this.closedTabsMemory = tabsToRestore.slice(index);
+        this.emitGlobalState();
+        break;
+      }
       try {
         const tab = await this.createTab(GLOBAL_BROWSER_OWNER_ID, item.url, "user");
         restoredIds.push(tab.id);
