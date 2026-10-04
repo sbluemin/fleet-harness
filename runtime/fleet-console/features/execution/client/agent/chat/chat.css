@@ -4693,6 +4693,27 @@
   font-size: var(--m-fs-secondary);
 }
 
+/* 빈 상태 배치(FIN-1) — 데스크톱은 초대와 컴포저를 한 덩어리로 가운데에 띄우지만, 폰에서는 입력 독이 처음부터
+   화면 맨 아래에 붙고(첫 메시지 뒤와 같은 자리) 초대 문구만 위쪽 가운데(높이의 40% 안팎)에 선다.
+   받침(settle)은 서지 않고, 로그가 남는 높이를 위 1 : 아래 1.5로 나눠 초대를 세운다. */
+[data-mobile-surface] .agent-chat-settle,
+[data-mobile-surface] .agent-chat-settle.is-inviting {
+  flex-grow: 0;
+  transition: none;
+}
+
+[data-mobile-surface] .agent-chat-log.is-inviting::before,
+[data-mobile-surface] .agent-chat-log.is-inviting::after {
+  content: "";
+  flex: 1 1 0;
+}
+
+[data-mobile-surface] .agent-chat-log.is-inviting::after { flex-grow: 1.5; }
+
+[data-mobile-surface] .agent-chat-log.is-inviting > * + * { margin-top: 0; }
+
+[data-mobile-surface] .agent-chat-log.is-inviting .agent-chat-hero { margin-block: 0; }
+
 /* 입력 독(S-27) — 패딩 8/16/12, 둥근 입력창 하나. 아래 줄: [+] [모델·강도] · · · [멈춤] [보내기]. */
 [data-mobile-surface] .agent-chat-composer {
   padding: 8px 16px 12px;
