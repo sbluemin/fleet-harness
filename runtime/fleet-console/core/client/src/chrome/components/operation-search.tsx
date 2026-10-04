@@ -1,5 +1,6 @@
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
+import { focusToolbarItemQuietly } from "../toolbar/toolbar-tip.js";
 import { createHostPaneTargetPorts } from "../../integration/plugin-capabilities.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -494,10 +495,13 @@ export function OperationSearch({
           previousFocusRef.current = null;
           const shown = toggleZenSideBar();
           requestAnimationFrame(() => {
-            // 숨기면 섬의 사이드바 토글로, 펼치면 카드의 접기 컨트롤로 간다.
+            // 숨기면 섬의 사이드바 토글로, 펼치면 카드의 접기 컨트롤로 간다. 섬의 토글은 도구모음 칸이라
+            // 되돌려 놓은 포커스로 말풍선을 띄우지 않는다(⌘B와 같은 계약).
+            const anchor = shown ? null : document.querySelector<HTMLElement>(".zen-bar [data-zen-sidebar-anchor]");
+            if (anchor) { focusToolbarItemQuietly(anchor); return; }
             (shown
               ? document.querySelector<HTMLElement>(".side-bar-collapse")
-              : document.querySelector<HTMLElement>(".zen-bar [data-zen-sidebar-anchor]") ?? document.querySelector<HTMLElement>(".operations-center-stage"))?.focus({ preventScroll: true });
+              : document.querySelector<HTMLElement>(".operations-center-stage"))?.focus({ preventScroll: true });
           });
           break;
         }
