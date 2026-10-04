@@ -733,11 +733,13 @@ export function isLockProcessAlive(pid: number): boolean {
 const PS_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
- * pid의 시작 시각(epoch ms, 초 단위 내림)을 `ps -o lstart`로 읽는다. 프로세스가 없거나 ps를 쓸 수 없는 플랫폼이면 null이다.
+ * pid의 시작 시각(epoch ms, 초 단위 내림)을 읽는다. macOS·Linux는 `ps -o lstart`, Windows는 PowerShell `Get-Process`다.
+ * 프로세스가 없거나 시작 시각을 읽을 수 없으면 null이다.
  * macOS의 µs 시작 시각은 sysctl kern.proc에만 있어 Node 표준 API로 읽을 수 없으므로 macOS·Linux 공통 형식인 ps를 쓴다.
  */
 function readProcessStartTime(pid: number, env: NodeJS.ProcessEnv = process.env): Promise<number | null> {
-  if (process.platform === "win32" || !Number.isSafeInteger(pid) || pid <= 0) return Promise.resolve(null);
+  if (!Number.isSafeInteger(pid) || pid <= 0) return Promise.resolve(null);
+  if (process.platform === "win32") return readWindowsProcessStartTime(pid, env);
   return new Promise((resolve) => {
     execFile("ps", ["-o", "lstart=", "-p", String(pid)], {
       // 증명의 전제다. LC_ALL=C는 파싱할 영문 날짜 형식을, TZ=UTC는 Date.UTC 해석을 보장한다. TZ가 빠지면 지역 시간대
@@ -751,6 +753,25 @@ function readProcessStartTime(pid: number, env: NodeJS.ProcessEnv = process.env)
         return;
       }
       resolve(parsePsLstartUtc(String(stdout)));
+    });
+  });
+}
+
+/**
+ * Windows 프로세스의 시작 시각을 PowerShell로 읽는다. Windows는 ps가 없고 Node도 시작 시각을 주지 않는다.
+ * UTC epoch ms를 정수로 출력하게 해 지역 시간대·문화권 형식에 기대지 않는다. ps와 같은 정밀도로 맞추려고 초 단위로 내린다.
+ * PowerShell은 SystemRoot 등 Windows 환경이 있어야 뜨므로 env를 그대로 넘긴다.
+ */
+function readWindowsProcessStartTime(pid: number, env: NodeJS.ProcessEnv): Promise<number | null> {
+  const script = `[DateTimeOffset]::new((Get-Process -Id ${pid} -ErrorAction Stop).StartTime).ToUnixTimeMilliseconds()`;
+  return new Promise((resolve) => {
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      env,
+      timeout: 10_000,
+      windowsHide: true,
+    }, (error, stdout) => {
+      const millis = Number(String(stdout).trim());
+      resolve(error || !Number.isSafeInteger(millis) || millis <= 0 ? null : Math.floor(millis / 1_000) * 1_000);
     });
   });
 }
