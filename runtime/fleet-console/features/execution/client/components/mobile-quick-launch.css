@@ -1,5 +1,5 @@
 /*
- * 모바일 「새 작업」 시트(S-11a~e). 시트 골격·행·보조 알약·입력칸은 셸의 모바일 클래스(mobile-sheet·mobile-sheet-row·
+ * 모바일 「새 작업」 시트(S-11a~e). 칩 줄·모델 시트·옵션은 NT-1(S-56)을 따른다. 시트 골격·행·보조 알약·입력칸은 셸의 모바일 클래스(mobile-sheet·mobile-sheet-row·
  * mobile-pill-secondary·mobile-field)를 그대로 쓰고, 여기서는 시안에만 있는 칩 줄·묶음 카드·라디오·토글·강도 글자 탭·
  * 멘션 목록만 더한다. 색은 모바일 토큰(--m-*)만 쓴다.
  */
@@ -10,11 +10,15 @@
 /* 입력칸 면 — 다크는 화면 바탕, 라이트는 흰 면(S-02 .field). */
 html[data-mobile-scheme="light"] .mql-input { background: var(--m-surface); }
 
-/* 칩 줄 — 보조 알약, 줄바꿈 허용, 간격 8. 강도 글자만 text-nav. */
-.mql-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.mql-chips .mobile-pill-secondary { max-width: 100%; }
-.mql-chips .mobile-monogram { width: 20px; height: 20px; border-radius: 6px; font-size: .6em; }
-.mql-chip-effort { margin-left: 4px; color: var(--m-text-nav); }
+/* 칩 한 줄(NT-1b) — [＋ 원형 40] [Theater ≤176, 이름 말줄임] [모델 칩], 줄바꿈 없음, 간격 8. 강도 글자만 text-nav. */
+.mql-chips { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; min-width: 0; }
+.mql-chips .mobile-pill-secondary { flex: none; max-width: 100%; white-space: nowrap; }
+.mql-circ { display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 0; color: var(--m-text); background: var(--m-chip); border: 0; border-radius: 50%; }
+.mql-chips .mql-theater-chip { flex: 0 1 auto; min-width: 0; max-width: 176px; }
+.mql-chips .mql-model-chip { flex: 0 1 auto; min-width: 0; }
+.mql-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mql-chips .mobile-monogram { flex: none; width: 20px; height: 20px; border-radius: 6px; font-size: .6em; }
+.mql-chip-effort { flex: none; margin-left: 4px; color: var(--m-text-nav); }
 .mql-secnote { margin: 0; padding: 0 2px; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
 .mql-message { margin: 0; padding: 0 2px; color: var(--m-danger); font-size: var(--m-fs-caption); }
 

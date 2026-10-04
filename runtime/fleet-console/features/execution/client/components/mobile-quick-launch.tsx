@@ -289,14 +289,14 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
       ) : null}
       {props.mentionTarget === null ? (
         <div className="mql-chips">
-          <button type="button" className="mobile-pill-secondary" onClick={() => setSub("theater")} disabled={theaters.length === 0}>
+          <button type="button" className="mql-circ" aria-label={t("chrome.quickLaunch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>
+          <button type="button" className="mobile-pill-secondary mql-theater-chip" aria-label={theater ? t("chrome.quickLaunch.mobile.theaterChip", { name: theater.label }) : t("chrome.quickLaunch.mobile.theater")} onClick={() => setSub("theater")} disabled={theaters.length === 0}>
             {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} size={20} /> : null}
-            {theater?.label ?? t("chrome.quickLaunch.mobile.theater")}
+            <span className="mql-chip-name">{theater?.label ?? t("chrome.quickLaunch.mobile.theater")}</span>
           </button>
-          <button type="button" className="mobile-pill-secondary" onClick={() => setSub("model")} disabled={!selectedRow}>
-            {selectedRow?.label ?? t("chrome.quickLaunch.modelUnset")}{selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? <span className="mql-chip-effort">{effortLabel}</span> : null}
+          <button type="button" className="mobile-pill-secondary mql-model-chip" onClick={() => setSub("model")} disabled={!selectedRow}>
+            <span className="mql-chip-name">{selectedRow?.label ?? t("chrome.quickLaunch.modelUnset")}</span>{selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? <span className="mql-chip-effort">{effortLabel}</span> : null}
           </button>
-          <button type="button" className="mobile-pill-secondary" onClick={() => setSub("attach")}><MobileIcon name="plus" size={18} />{t("chrome.quickLaunch.mobile.attach")}</button>
         </div>
       ) : null}
       {props.message ? <p className="mql-message" role="alert">{props.message}</p> : <p className="mql-secnote">{t("chrome.quickLaunch.mobile.defaults")}</p>}
