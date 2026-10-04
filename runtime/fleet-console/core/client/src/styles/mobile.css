@@ -746,7 +746,7 @@
 }
 :root[data-mobile-scheme="light"] .mobile-choice { border: 1px solid var(--m-hairline); }
 .mobile-choice-scrim.is-leaving .mobile-choice { transform: scale(0.97); transition: transform 150ms cubic-bezier(0.3, 0, 0.8, 0.15); }
-.mobile-choice-title { margin: 0; padding: 20px 22px 8px; font-size: 18px; font-weight: var(--weight-bold); line-height: 24px; text-align: left; }
+.mobile-choice-title { margin: 0; padding: 20px 22px 8px; font-size: var(--m-fs-title); font-weight: var(--weight-bold); line-height: 24px; text-align: left; }
 .mobile-choice-list { min-height: 0; overflow-y: auto; }
 .mobile-choice-row {
   display: flex;
@@ -768,12 +768,23 @@
 .mobile-choice-icon { display: inline-flex; flex: none; width: 22px; height: 22px; color: var(--m-text-muted); }
 .mobile-choice-icon svg { width: 22px; height: 22px; }
 .mobile-choice-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.mobile-choice-label { font-size: 17px; font-weight: var(--weight-regular); line-height: 24px; }
-.mobile-choice-copy small { color: var(--m-text-muted); font-size: 13px; line-height: 18px; }
+.mobile-choice-label { font-size: var(--m-fs-body); font-weight: var(--weight-regular); line-height: 24px; }
+.mobile-choice-copy small { color: var(--m-text-muted); font-size: var(--m-fs-caption); line-height: 18px; }
+.mobile-choice-check-slot { flex: none; width: 22px; height: 22px; }
 .mobile-choice-check { flex: none; color: var(--m-text); stroke-width: 2; }
 .mobile-choice-row.is-selected { color: var(--m-text); }
 .mobile-choice-row.is-selected .mobile-choice-label { font-weight: var(--weight-bold); }
 .mobile-choice-row.is-selected .mobile-choice-icon { color: var(--m-text); }
+/* 모델 팝업 변형 — 제공자 묶음 머리, 구분선, 「추론 강도」 글자 탭 줄(S-11b와 같은 문법). */
+.mobile-choice-band { display: flex; align-items: center; gap: 8px; padding: 12px 22px 4px; color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-bold); line-height: 18px; }
+.mobile-choice-band-icon { display: inline-flex; width: 16px; height: 16px; }
+.mobile-choice-band-icon svg { width: 16px; height: 16px; }
+.mobile-choice-meta { flex: none; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
+.mobile-choice-rule { height: 1px; margin: 8px 22px; background: var(--m-hairline); }
+.mobile-choice-tabs { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 22px 4px; }
+.mobile-choice-tab { min-height: 36px; padding: 0 0 4px; color: var(--m-text-nav); font-size: var(--m-fs-secondary); background: transparent; border: 0; border-bottom: 2px solid transparent; }
+.mobile-choice-tab.is-on { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-text); }
+.mobile-choice-tab:focus-visible { outline: 2px solid var(--m-text); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   .mobile-choice { animation: none; }
   .mobile-choice-scrim.is-leaving .mobile-choice { transform: none; }
@@ -1308,9 +1319,9 @@ html[data-view-mode="mobile"] .app-toast-action {
  * 카드 = 묶음 머리(.glab) + 묶음 카드(행 사이 2 틈, 바깥 22) + 아래 secnote. 행 = [아이콘][제목+설명 여러 줄][컨트롤].
  */
 :root .fc-settings-card.is-mobile { gap: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
-:root .fc-settings-card.is-mobile .fc-settings-card__title { gap: 8px; padding: 6px 4px; color: var(--m-text-muted); font-size: 15px; font-weight: var(--weight-bold); letter-spacing: 0; text-transform: none; }
+:root .fc-settings-card.is-mobile .fc-settings-card__title { gap: 8px; padding: 6px 4px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); letter-spacing: 0; text-transform: none; }
 :root .fc-settings-card.is-mobile .fc-settings-card__body { gap: 2px; }
-:root .fc-settings-card.is-mobile .fc-settings-card__desc { margin: 0; padding: 8px 18px 0; color: var(--m-text-faint); font-size: 13px; line-height: 18px; }
+:root .fc-settings-card.is-mobile .fc-settings-card__desc { margin: 0; padding: 8px 18px 0; color: var(--m-text-faint); font-size: var(--m-fs-caption); line-height: 18px; }
 :root .fc-settings-card.is-mobile .fc-settings-card__body > .fc-settings-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
 :root .fc-settings-card.is-mobile .fc-settings-card__body > .fc-settings-row:last-child { border-bottom-right-radius: 22px; border-bottom-left-radius: 22px; }
 
@@ -1332,13 +1343,13 @@ html[data-view-mode="mobile"] .app-toast-action {
 .fc-settings-row.is-mobile .fc-settings-row__icon { display: grid; place-items: center; flex: none; width: 22px; height: 22px; color: var(--m-text-muted); }
 .fc-settings-row.is-mobile .fc-settings-row__icon svg { width: 22px; height: 22px; }
 :root .fc-settings-row.is-mobile .fc-settings-row__copy { display: flex; flex: 1; flex-direction: column; gap: 6px; max-width: none; min-width: 0; }
-:root .fc-settings-row.is-mobile .fc-settings-row__label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--m-text); font-size: 17px; font-weight: var(--weight-medium); letter-spacing: 0; line-height: 23px; }
+:root .fc-settings-row.is-mobile .fc-settings-row__label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--m-text); font-size: var(--m-fs-body); font-weight: var(--weight-medium); letter-spacing: 0; line-height: 23px; }
 :root .fc-settings-row.is-mobile .fc-settings-row__hint,
-.fc-settings-row.is-mobile .settings-help-line { display: block; margin: 0; color: var(--m-text-muted); font-family: inherit; font-size: 15px; line-height: 21px; }
+.fc-settings-row.is-mobile .settings-help-line { display: block; margin: 0; color: var(--m-text-muted); font-family: inherit; font-size: var(--m-fs-secondary); line-height: 21px; }
 .fc-settings-row.is-mobile .settings-help-line p { margin: 0; }
 .fc-settings-row.is-mobile .fc-settings-row__control { flex: none; gap: 16px; }
 .fc-settings-row.is-mobile.is-disabled { pointer-events: none; opacity: 0.45; }
-.fc-settings-row.is-mobile .experimental-badge { height: 20px; padding: 0 7px; color: var(--m-text-nav); font-size: 11px; font-weight: var(--weight-bold); line-height: 20px; letter-spacing: 0.04em; background: var(--m-chip); border: 0; border-radius: 6px; }
+.fc-settings-row.is-mobile .experimental-badge { height: 20px; padding: 0 7px; color: var(--m-text-nav); font-size: var(--m-fs-micro); font-weight: var(--weight-bold); line-height: 20px; letter-spacing: 0.04em; background: var(--m-chip); border: 0; border-radius: 6px; }
 
 /* 토글(44×26) — 켬 = 반전 면 + 반전 위 손잡이. 신호색·파란 켬은 쓰지 않는다. */
 .fc-settings-row.is-mobile .fc-settings-toggle { opacity: 1; }
@@ -1359,7 +1370,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .fc-settings-row.is-mobile:has(.fc-select--mobile) .settings-help-line { grid-column: 2; grid-row: 4; margin-top: 5px; }
 .fc-settings-row.is-mobile:not(:has(.fc-settings-row__icon)):has(.fc-select--mobile) { grid-template-columns: minmax(0, 1fr); }
 .fc-settings-row.is-mobile:not(:has(.fc-settings-row__icon)):has(.fc-select--mobile) > * { grid-column: 1; }
-:root .fc-settings-row.is-mobile .fc-select--mobile { all: unset; display: block; min-height: 0; color: var(--m-text-muted); font-size: 15px; line-height: 21px; text-align: left; cursor: pointer; }
+:root .fc-settings-row.is-mobile .fc-select--mobile { all: unset; display: block; min-height: 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); line-height: 21px; text-align: left; cursor: pointer; }
 .fc-settings-row.is-mobile .fc-select--mobile .fc-select__caret { display: none; }
 .fc-settings-row.is-mobile .fc-select--mobile:focus-visible { outline: 2px solid var(--m-text); outline-offset: 2px; }
 
