@@ -1072,6 +1072,365 @@
   }
 }
 
+/* ── 모바일 팔레트 (data-view-mode="mobile" × data-mobile-scheme) ─────────────────
+   모바일 배치는 Console 테마(general.theme)를 따르지 않고 자기 다크/라이트를 쓴다. 루트에 얹는
+   이유는 포털 시트·메뉴와 루트 계산값을 읽는 JS 소비자(터미널 배경·Mermaid·Analyst)가 모두 같은
+   답을 읽어야 하기 때문이다 — 서브트리 스코프로는 그들이 데스크톱 색을 쓴다.
+   - 모바일 고유 값은 --m-* 한 벌(다크·라이트)뿐이고, 기존 토큰은 아래에서 그것을 가리킨다. 코어·
+     플러그인 CSS는 고치지 않고도 모바일 색을 받는다. 모바일 셸 CSS는 --m-*를 직접 쓴다.
+   - 선택자는 속성 셋(0,3,0)이라 data-theme 블록(0,2,0)과 유리 게이트(0,2,0)를 순서와 무관하게
+     이긴다. 데스크톱은 data-view-mode가 "mobile"이 아니므로 이 블록이 아예 매치되지 않는다.
+   - 어떤 Console 테마가 다시 조율하는 토큰이든 여기서 다시 정의한다 — 빠뜨리면 그 테마 값이
+     모바일에 섞인다(계약 테스트가 덮음을 고정한다). 유리는 모바일에서 닫는다: 틴트 채널을
+     불투명 면으로 직접 싣고 --glass-panel-face를 불투명으로 두어 JS 게이트 판정도 닫힌다.
+   - 채널 문법은 그대로다: 신호=상태(같은 색상각), 위치·포커스·주 동작=brass 채널을 무채색
+     반전(--m-inverse)으로, 정체성=--m-id-* 8톤. 금색이 아니라 채널 구분을 지키는 규칙이다. */
+:root[data-view-mode="mobile"][data-mobile-scheme="dark"],
+:root[data-view-mode="mobile"][data-mobile-scheme="light"] {
+  /* 서체(명세 D1) — 시안 가족 중 Console이 번들하는 것은 JetBrains Mono뿐이라 mono만 번들 이름
+     ("JetBrains Mono Variable")을 앞에 두고 한글은 번들 Nanum Gothic Coding으로 잇는다. Noto Sans KR·
+     Noto Serif는 번들하지 않는다 — 네이티브처럼 보이는 것이 목표라 기기 시스템 서체(iOS SF·Apple SD
+     Gothic Neo, Android Roboto·Noto CJK)로 떨어지는 편이 맞다. 대조는 크기·굵기·줄높이·세리프/고딕으로. */
+  --m-sans: "Noto Sans KR", system-ui, -apple-system, "Roboto", "Apple SD Gothic Neo", sans-serif;
+  /* 한글 글리프가 없는 라틴 세리프를 앞에 둬 한글은 고딕으로 떨어진다(레퍼런스와 같은 섞임).
+     ui-serif는 iOS의 New York을 이름 대신 부르는 길이다. */
+  --m-reading: "Noto Serif", "New York", ui-serif, Georgia, "Noto Sans KR", system-ui, sans-serif;
+  --m-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "Roboto Mono", "Nanum Gothic Coding", monospace;
+
+  /* 모바일 글자 사다리 — 데스크톱 12–14 기반을 손가락 거리의 13–17로 올린다. 사람이 고른 UI
+     배율(--font-ui-scale)은 그대로 곱한다. */
+  --t-2xs: calc(11px * var(--font-ui-scale));
+  --t-xs: calc(12px * var(--font-ui-scale));
+  --t-sm: calc(13px * var(--font-ui-scale));
+  --t-md: calc(15px * var(--font-ui-scale));
+  --t-base: calc(16px * var(--font-ui-scale));
+  --t-lg: calc(17px * var(--font-ui-scale));
+  --t-xl: calc(22px * var(--font-ui-scale));
+  --radius-xs: 8px;
+  --radius-md: 14px;
+  /* 라이트의 450 광학 보정은 데스크톱 Whites의 것이다 — 모바일은 두 테마 모두 400. */
+  --weight-regular: 400;
+
+  /* 모바일에는 캔버스 장식·계기 결·표류가 없다. */
+  --canvas-weave-opacity: 0;
+  --canvas-bloom-aurora: 0%;
+  --canvas-bloom-brass: 0%;
+  --gauge-texture: 0%;
+  --gauge-drift: paused;
+  --gauge-weight-quiet: 100%;
+  --gauge-weight-warn: 100%;
+  --gauge-weight-critical: 100%;
+  --quiet-halo-gain: 0;
+
+  /* ── 기존 토큰 → --m-* (두 테마 공통 별칭) ── */
+  --text-primary: var(--m-text);
+  --text-secondary: var(--m-text-nav);
+  --text-tertiary: var(--m-text-muted);
+  --text-on-brass: var(--m-on-inverse);
+  --text-console-use: var(--m-running);
+  --live-sweep-trough: var(--m-text-faint);
+  --live-sweep-crest: var(--m-text);
+
+  --hairline: var(--m-hairline);
+  --hairline-strong: var(--m-hairline-strong);
+
+  --ink-abyss: var(--m-bg-deep);
+  --ink-deep: var(--m-bg);
+  --ink-mid: var(--m-surface);
+  --ink-veil: var(--m-chip);
+  --ink-rim: var(--m-hairline-strong);
+  --ink-fog: var(--m-text-faint);
+  --ink-muted: var(--m-text-muted);
+  --ink-spectral: var(--m-text-nav);
+  --ink-pearl: var(--m-text);
+  --ink-brand-dev: var(--m-id-cerulean);
+
+  /* 위치·포커스·주 동작 채널 = 무채색 반전. 호버 워시·열림 테두리처럼 base에서 brass로 파생되는
+     토큰(--control-hover-fill·--control-tint-fill·--control-open-rim)은 자동으로 무채색이 된다. */
+  --brass: var(--m-inverse);
+  --brass-bright: var(--m-inverse);
+  --brass-deep: var(--m-selected);
+  --brass-quiet: var(--m-selected);
+  --brass-ink: var(--m-text);
+  --brass-quiet-ink: var(--m-text);
+  --brass-glow: color-mix(in srgb, var(--m-inverse) 12%, transparent);
+  /* halo는 합성 목록 안에서도 쓰이므로 none이 아니라 0 0 transparent로 단락한다. */
+  --brass-halo: 0 0 transparent;
+  --positive-halo: 0 0 transparent;
+  --apex-halo: 0 0 transparent;
+  --crest-halo: 0 0 transparent;
+
+  /* 신호 — 대기=청록, 진행=호박, 유휴·완료=초록, 위험=붉음. --m-* 값이 두 테마 모두 면 위 글자
+     AA를 넘으므로 -ink·-deep는 base 신호를 그대로 별칭한다. */
+  --aurora: var(--m-awaiting);
+  --aurora-deep: var(--m-awaiting);
+  --aurora-ink: var(--m-awaiting);
+  --aurora-glow: var(--m-awaiting-glow);
+  --warn: var(--m-running);
+  --warn-ink: var(--m-running);
+  --warn-glow: var(--m-running-glow);
+  --positive: var(--m-idle);
+  --positive-ink: var(--m-idle);
+  --positive-glow: var(--m-idle-glow);
+  --coral: var(--m-danger);
+  --coral-ink: var(--m-danger);
+  --coral-glow: var(--m-danger-glow);
+  --apex-ink: var(--apex);
+  --crest-ink: var(--crest);
+
+  /* 계기 — 채움은 읽기 단계 회색(시안의 진행 막대), 손잡이는 면, 경고 단만 신호를 빌린다. */
+  --gauge-face: var(--m-surface);
+  --gauge-fill: var(--m-text-nav);
+  --gauge-apex: var(--apex);
+  --gauge-crest: var(--crest);
+  --gauge-rim: var(--m-hairline-strong);
+  --gauge-fill-neutral: var(--m-text-muted);
+  --gauge-fill-warn: var(--m-running);
+
+  --canvas-abyss: var(--m-bg-deep);
+  --canvas-sea-core: var(--m-bg);
+  --canvas-sea-near: var(--m-bg);
+  --canvas-sea-mid: var(--m-bg);
+  --canvas-sea-far: var(--m-bg);
+  --canvas-field: linear-gradient(var(--m-bg), var(--m-bg));
+  --canvas-field-triage: linear-gradient(var(--m-bg), var(--m-bg));
+  /* 지형 4슬롯 고정 어휘는 지킨다 — 빈 슬롯은 투명 그라디언트. */
+  --canvas-weave:
+    linear-gradient(transparent, transparent),
+    linear-gradient(transparent, transparent),
+    linear-gradient(transparent, transparent),
+    linear-gradient(transparent, transparent);
+
+  --id-crimson: var(--m-id-crimson);
+  --id-amber: var(--m-id-amber);
+  --id-moss: var(--m-id-moss);
+  --id-teal: var(--m-id-teal);
+  --id-cerulean: var(--m-id-cerulean);
+  --id-indigo: var(--m-id-indigo);
+  --id-plum: var(--m-id-plum);
+  --id-rose: var(--m-id-rose);
+  --identity-file-code: var(--m-id-cerulean);
+  --identity-file-markup: var(--m-id-amber);
+  --identity-file-data: var(--m-id-moss);
+  --identity-file-config: var(--m-id-teal);
+  --identity-file-error: var(--m-id-crimson);
+  --identity-small-tag: var(--m-text-faint);
+
+  /* 면 — 화면·채팅 로그·Operation 본문은 bg, 그 위에 얹히는 말풍선·카드·메뉴·시트는 surface.
+     크롬과 본문 사이에 이음매가 없다(헤더·탭 막대·본문이 한 면). 모두 불투명이다. */
+  --surface-glass: var(--m-surface);
+  --surface-chrome: var(--m-bg);
+  --surface-panel: var(--m-bg);
+  --surface-panel-raised: var(--m-surface);
+  --surface-glass-strong: var(--m-surface);
+  --surface-pillar: var(--m-surface);
+  --surface-rim: var(--m-hairline);
+  --surface-rim-strong: var(--m-hairline-strong);
+  --surface-band: var(--m-bg);
+
+  /* 유리 닫기 — 게이트 블록보다 높은 특이도로 틴트 채널을 불투명 면에 직접 싣는다. */
+  --glass-underlay: var(--m-surface);
+  --float-underlay: var(--m-surface);
+  --float-underlay-dark: var(--m-surface);
+  --glass-tint-strong: var(--m-surface);
+  --glass-tint-rail: var(--m-surface);
+  --glass-tint-expanded: var(--m-surface);
+  --glass-panel-face: var(--m-bg);
+  --glass-tint-soft: var(--m-surface);
+  --glass-tint-pillar: var(--m-surface);
+  --glass-tint-raised: var(--m-surface);
+  --glass-tint-deep: var(--m-bg);
+  --glass-tint-abyss: var(--m-bg-deep);
+  --glass-tint-chrome: var(--m-bg);
+  --glass-tint-panel: var(--m-bg);
+  --glass-tint-panel-face: var(--m-bg);
+  --glass-tint-caption: var(--m-bg);
+  /* 터미널 필드·거터·Shell 면은 한 값 — terminal-surface가 이 계산값을 xterm 배경으로 읽는다. */
+  --glass-tint-field: var(--m-term-bg);
+  --glass-tint-terminal: var(--m-term-bg);
+  --glass-tint-terminal-floor: var(--m-term-bg);
+  --glass-tint-band: var(--m-bg);
+  --glass-pane-light: transparent;
+  --canvas-ambience: var(--m-bg);
+  --canvas-wash-near: var(--m-bg);
+  --canvas-wash-mid: var(--m-bg);
+  --canvas-wash-far: var(--m-bg);
+  --glass-rim: transparent;
+  --glass-bevel: transparent;
+  --glass-lift: var(--m-shadow);
+  --glass-sheen: linear-gradient(transparent, transparent);
+
+  /* 컨트롤 — 쉬는 몸은 칩 면(침묵이 아니라 낮은 목소리), 누름·선택은 한 단 밝은 selected.
+     rest < wash 순서를 지킨다. 포커스는 무채색 2px 링. */
+  --control-rest: var(--m-chip);
+  --control-rest-hover: var(--m-selected);
+  --control-wash: var(--m-selected);
+  --control-wash-hover: var(--m-chip);
+  --control-hover-rim: var(--m-hairline-strong);
+  --control-tint-ink: var(--m-text);
+  --control-focus-ring: var(--m-text);
+
+  --quiet-switch-track: var(--m-inverse);
+  --quiet-switch-rim: var(--m-inverse);
+  --quiet-switch-knob: var(--m-on-inverse);
+  --quiet-choice-rim: var(--m-hairline-strong);
+  --quiet-choice-fill: var(--m-selected);
+  --quiet-decor-ink: var(--m-text-muted);
+  --quiet-lens-border: 1px solid var(--m-text-muted);
+  --quiet-lens-fill: color-mix(in srgb, var(--m-text) 6%, transparent);
+  --quiet-bracket: var(--m-hairline-strong);
+  --quiet-chip-fill: var(--m-chip);
+  --quiet-anchor-ink: var(--m-text-nav);
+  --quiet-anchor-active-fill: var(--m-inverse);
+  --quiet-anchor-active-ink: var(--m-on-inverse);
+  --quiet-anchor-ring: transparent;
+  --quiet-resume-rim: var(--m-hairline-strong);
+  --quiet-resume-fill: var(--m-chip);
+  --quiet-resume-ink: var(--m-text);
+  --quiet-count-fill: var(--m-chip);
+  --quiet-count-ink: var(--m-text-muted);
+  --quiet-attention-rim: var(--m-hairline-strong);
+  --quiet-attention-fill: transparent;
+
+  /* 그림자는 메뉴·떠 있는 알림만 — 나머지는 합성 목록 안에서도 안전한 0 0 transparent. */
+  --shadow-floating: var(--m-shadow);
+  --shadow-soft: 0 0 transparent;
+  --shadow-anchor: 0 0 transparent;
+  --scrollbar-thumb: color-mix(in srgb, var(--m-text-muted) 30%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--m-text-muted) 50%, transparent);
+  --scrollbar-thumb-classic: color-mix(in srgb, var(--m-text-muted) 45%, transparent);
+}
+
+:root[data-view-mode="mobile"][data-mobile-scheme="dark"] {
+  color-scheme: dark;
+
+  --m-bg-deep: #111111;
+  --m-bg: #151515;
+  --m-surface: #20201f;
+  --m-chip: #313131;
+  --m-selected: #414141;
+  --m-hairline: #212120;
+  --m-hairline-strong: #3d3c3a;
+  /* bg-deep(드로어) 위에서는 --m-hairline이 보이지 않아 한 단 올린 구분선. */
+  --m-hairline-on-deep: #2a2a28;
+  --m-handle: #4a4a48;
+  --m-text: #f9f9f7;
+  --m-text-nav: #c3c2b7;
+  --m-text-muted: #97958d;
+  --m-text-faint: #898781;
+  --m-inverse: #f9f9f7;
+  --m-on-inverse: #282827;
+  --m-scrim: rgb(0 0 0 / 0.5);
+  --m-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  --m-awaiting: #6fc6d6;
+  --m-running: #d9b46a;
+  --m-idle: #74c99a;
+  --m-danger: #e66767;
+  --m-awaiting-glow: rgb(111 198 214 / 0.16);
+  --m-running-glow: rgb(217 180 106 / 0.16);
+  --m-idle-glow: rgb(116 201 154 / 0.16);
+  --m-danger-glow: rgb(230 103 103 / 0.16);
+  --m-id-crimson: #d49a95;
+  --m-id-amber: #c8a47a;
+  --m-id-moss: #94b68c;
+  --m-id-teal: #75b9b4;
+  --m-id-cerulean: #7fb2d1;
+  --m-id-indigo: #a0a7d7;
+  --m-id-plum: #be9dc8;
+  --m-id-rose: #ce99b1;
+  /* 다크 터미널은 화면 bg와 같은 값이라 상단 막대·키 줄과 한 면으로 이어진다. */
+  --m-term-bg: #151515;
+  --m-term-fg: #e9e7e0;
+
+  /* 계량기 강조 단계(apex 296·crest 48) — 같은 색상각을 모바일 명도로. */
+  --apex: oklch(74% 0.11 296);
+  --apex-glow: oklch(74% 0.11 296 / 16%);
+  --crest: oklch(74% 0.11 48);
+  --crest-glow: oklch(74% 0.11 48 / 16%);
+  --gauge-face-lift: 0 1px 3px rgb(0 0 0 / 0.55);
+  --gauge-face-lift-strong: 0 2px 8px rgb(0 0 0 / 0.62);
+  --control-field: var(--m-bg);
+
+  /* 테마와 무관한 정체성 표지(제공자 글리프·배지)는 극성만 맞춘다 — 다크는 base 값. */
+  --agent-control-badge: oklch(57% 0.16 285);
+  --console-use-badge: oklch(76% 0.11 60);
+  --provider-claude: oklch(76% 0.09 62);
+  --provider-typesafe: oklch(73% 0.09 339);
+  --provider-codex: oklch(78% 0.035 248);
+  --provider-cursor: oklch(72% 0.085 238);
+  --provider-opencode: oklch(72% 0.07 165);
+  --provider-xai: oklch(76% 0.055 258);
+  --provider-antigravity: oklch(73% 0.085 288);
+}
+
+:root[data-view-mode="mobile"][data-mobile-scheme="light"] {
+  color-scheme: light;
+
+  --m-bg-deep: #efeee9;
+  --m-bg: #f7f6f2;
+  --m-surface: #ffffff;
+  --m-chip: #ebe9e3;
+  --m-selected: #e2e0d8;
+  --m-hairline: #e4e2da;
+  --m-hairline-strong: #d3d0c6;
+  --m-hairline-on-deep: #e4e2da;
+  --m-handle: #ebe9e3;
+  --m-text: #1b1b19;
+  --m-text-nav: #45443f;
+  --m-text-muted: #64625b;
+  --m-text-faint: #706e66;
+  --m-inverse: #1f1f1d;
+  --m-on-inverse: #f9f9f7;
+  --m-scrim: rgb(20 20 18 / 0.32);
+  --m-shadow: 0 8px 24px rgb(20 20 18 / 0.14);
+  --m-awaiting: #0f7487;
+  --m-running: #8f6512;
+  --m-idle: #1a7a4b;
+  --m-danger: #b8352f;
+  --m-awaiting-glow: rgb(15 116 135 / 0.14);
+  --m-running-glow: rgb(143 101 18 / 0.14);
+  --m-idle-glow: rgb(26 122 75 / 0.14);
+  --m-danger-glow: rgb(184 53 47 / 0.14);
+  --m-id-crimson: #924c47;
+  --m-id-amber: #85581b;
+  --m-id-moss: #44703b;
+  --m-id-teal: #00746f;
+  --m-id-cerulean: #1c6b91;
+  --m-id-indigo: #575d99;
+  --m-id-plum: #7a5186;
+  --m-id-rose: #8b4b6b;
+  --m-term-bg: #fbfaf7;
+  --m-term-fg: #1b1b19;
+
+  --apex: oklch(50% 0.14 296);
+  --apex-glow: oklch(50% 0.14 296 / 14%);
+  --crest: oklch(50% 0.14 48);
+  --crest-glow: oklch(50% 0.14 48 / 14%);
+  --gauge-face-lift: 0 1px 3px rgb(20 20 18 / 0.26);
+  --gauge-face-lift-strong: 0 2px 8px rgb(20 20 18 / 0.34);
+  /* 라이트 입력칸은 흰 면(종이보다 밝은 쪽) — 잉크 워시를 깔면 파인 우물이 된다. */
+  --control-field: var(--m-surface);
+
+  /* 라이트는 Whites의 극성 값 — 밝은 바탕에서 글리프가 읽히는 쪽. */
+  --agent-control-badge: oklch(57% 0.24 285);
+  --console-use-badge: oklch(76% 0.15 60);
+  --provider-claude: oklch(54% 0.135 62);
+  --provider-typesafe: oklch(52% 0.135 339);
+  --provider-codex: oklch(43% 0.035 255);
+  --provider-cursor: oklch(50% 0.115 238);
+  --provider-opencode: oklch(48% 0.08 165);
+  --provider-xai: oklch(46% 0.06 258);
+  --provider-antigravity: oklch(51% 0.1 288);
+}
+
+/* 문서 바탕도 모바일 화면 면을 따른다 — 오버스크롤·셸 바깥 틈에 데스크톱 abyss가 비치지 않게. */
+:root[data-view-mode="mobile"][data-mobile-scheme="dark"],
+:root[data-view-mode="mobile"][data-mobile-scheme="light"],
+:root[data-view-mode="mobile"][data-mobile-scheme="dark"] body,
+:root[data-view-mode="mobile"][data-mobile-scheme="light"] body {
+  background: var(--m-bg);
+}
+
 *,
 *::before,
 *::after {

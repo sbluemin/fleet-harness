@@ -3,6 +3,7 @@
 // 유효 id 목록은 client types.ts의 ThemeId와 수동 동기화한다(플레인 JS라 import 불가).
 (() => {
   migrateLegacyGlassOff();
+  stampMobileAppearance();
   // 서버 주입이 권위값 — 힌트는 미주입 서빙 경로 폴백 전용이다.
   if (document.documentElement.getAttribute("data-theme-source") === "server") return;
   try {
@@ -18,6 +19,35 @@
     // localStorage 접근 불가 환경(사파리 프라이빗 등)에서는 기본 instrument 유지.
   }
 })();
+
+// 모바일 팔레트(theme.css의 :root[data-view-mode="mobile"][data-mobile-scheme] 블록)가 첫 페인트부터
+// 서도록 두 속성을 미리 붙인다. data-view-mode는 원래 React effect가 첫 렌더 뒤에 붙여서, 그 사이
+// 한 프레임은 데스크톱 팔레트로 그려졌다. 판정 규칙은 view-mode-store.ts의 createSnapshot과 수동
+// 동기화한다(플레인 JS라 import 불가): Electron은 언제나 desktop, 명시 선호가 이기고, auto면
+// FleetMobile UA 또는 폭 767px 이하. 같은 규칙이라 뒤이은 effect가 값을 뒤집지 않는다.
+// data-mobile-scheme은 데스크톱에서도 붙여 둔다 — 블록이 view-mode와 함께만 매치되므로 무해하고,
+// 데스크톱 창을 좁혀 모바일 배치로 넘어가는 순간 바로 팔레트가 선다.
+function stampMobileAppearance() {
+  const root = document.documentElement;
+  const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent || "";
+  let preference = "auto";
+  let colorMode = "system";
+  try {
+    const storedView = localStorage.getItem("fleet-console.view-mode.preference");
+    if (storedView === "mobile" || storedView === "desktop") preference = storedView;
+    const storedMode = localStorage.getItem("fleet-console.mobile-color-mode");
+    if (storedMode === "dark" || storedMode === "light") colorMode = storedMode;
+  } catch {
+    // 저장소가 막힌 환경에서는 auto·system으로 판정한다.
+  }
+  const narrow = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches;
+  const mobile = userAgent.includes("Electron")
+    ? false
+    : preference === "auto" ? /(?:^|\s)FleetMobile\/\d/.test(userAgent) || narrow : preference === "mobile";
+  root.setAttribute("data-view-mode", mobile ? "mobile" : "desktop");
+  const systemLight = typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: light)").matches;
+  root.setAttribute("data-mobile-scheme", colorMode === "system" ? (systemLight ? "light" : "dark") : colorMode);
+}
 
 // 퇴역한 리퀴드 글래스 스위치를 꺼 두었던 사람은 이 기기에서 처음 뜰 때 네 유리 불투명도를
 // 100%(완전 불투명)로 옮긴다 — 스위치가 사라져도 보던 화면이 그대로 남는다. 판단 근거는 서버

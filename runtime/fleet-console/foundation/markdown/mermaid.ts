@@ -148,9 +148,13 @@ export function installDiagramHydrator(root: ParentNode, labels?: DiagramHydrato
   // 로케일 전환 시 동일 root 재설치에도 라벨만 갱신할 수 있게, WeakSet 가드보다 먼저 반영한다.
   if (!fontsObserverInstalled) {
     fontsObserverInstalled = true;
+    // Mermaid는 렌더 순간 루트 토큰을 SVG에 굽는다 — 서체뿐 아니라 팔레트가 바뀌어도(Console 테마,
+    // 모바일 배치·색상 모드) 다시 그려야 옛 색의 도형이 남지 않는다. 서명은 굽는 색 토큰 몇 개로 잡는다.
     const signature = () => {
       const style = getComputedStyle(document.documentElement);
-      return style.getPropertyValue("--font-content") + style.getPropertyValue("--font-content-size");
+      return ["--font-content", "--font-content-size", "--brass", "--aurora-deep", "--ink-pearl", "--ink-deep"]
+        .map((name) => style.getPropertyValue(name))
+        .join("|");
     };
     let previous = signature();
     new MutationObserver(() => {
@@ -164,7 +168,7 @@ export function installDiagramHydrator(root: ParentNode, labels?: DiagramHydrato
         delete block.dataset.diagramHydrating;
       }
       void document.fonts.ready.then(() => scan(document));
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme", "data-view-mode", "data-mobile-scheme"] });
   }
   if (labels) diagramLabels = { ...DEFAULT_DIAGRAM_LABELS, ...labels };
   if (hydratedRoots.has(root)) return;

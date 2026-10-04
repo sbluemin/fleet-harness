@@ -25,6 +25,7 @@ import { createTerminalTouchGestures } from "./terminal-touch-gestures.js";
 import { createXtermGestureOriginGuard } from "./terminal-xterm-gesture-origin.js";
 import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { MOBILE_SCHEME_ATTRIBUTES, readMobileScheme, type MobileScheme } from "@fleet-console/sdk/settings/mobile-scheme";
 
 import { getT } from "../../agent/i18n/index.js";
 import { terminalInactiveFlushMs, useTerminalPrefs } from "./terminal-preferences.js";
@@ -36,6 +37,9 @@ import { useTerminalWebglGrant } from "./terminal-webgl-budget.js";
 import "./terminal-key-bar.css";
 
 type TerminalThemeId = "instrument" | "maritime" | "carbon" | "whites";
+/* 모바일 배치에서는 Console 테마 id가 아니라 모바일 색상 모드가 터미널 팔레트를 정한다 — 루트 토큰이
+   모바일 팔레트로 바뀌었는데 ANSI·대비 하한만 데스크톱 id를 따르면 밝은 바탕에 다크용 색이 깔린다. */
+type TerminalPaletteId = TerminalThemeId | "mobile-dark" | "mobile-light";
 
 export interface TerminalSurfaceProps {
   readonly operationId: string;
@@ -216,20 +220,77 @@ const WHITES_TERMINAL_THEME: ITheme = {
   brightWhite: "oklch(99.3% 0.003 100)",
 };
 
+/* 모바일 팔레트의 ANSI — 크롬과 같은 따뜻한 중성 회색 위에 신호와 같은 색상각을 쓴다. 커서·선택은
+   신호 채널을 빌리지 않는 무채색이다. 배경 리터럴은 jsdom 폴백이고 실제 배경은 루트의
+   --glass-tint-terminal(= --m-term-bg) 계산값이다. 다크는 화면 bg와 같은 값이라 상단 막대·키 줄과
+   한 면으로 이어진다. brightBlack(4.5:1)이 다크 대비 보정(mCR=1) 없이 판독 하한을 지킨다. */
+const MOBILE_DARK_TERMINAL_THEME: ITheme = {
+  background: "#151515",
+  foreground: "#e9e7e0",
+  cursor: "#f9f9f7",
+  selectionBackground: "rgb(249 249 247 / 18%)",
+  black: "#2b2b29",
+  brightBlack: "#7e7c74",
+  red: "#e66767",
+  green: "#74c99a",
+  yellow: "#d9b46a",
+  blue: "#7ea8e0",
+  magenta: "#c69ad9",
+  cyan: "#6fc6d6",
+  white: "#c9c7bf",
+  brightRed: "#f08c86",
+  brightGreen: "#98dcb5",
+  brightYellow: "#ecca8c",
+  brightBlue: "#a0c1ee",
+  brightMagenta: "#dab8e9",
+  brightCyan: "#95dae6",
+  brightWhite: "#f9f9f7",
+};
+
+/* 라이트는 Whites와 같은 이유로 bright 칸을 더 진하게 잡고 white를 회색으로 둔다(밝은 바탕의 흰
+   글자 소멸 방지). 모든 칸이 4.5:1을 넘지만 agent CLI가 찍는 다크용 truecolor 때문에 대비 하한은
+   켠다(LIGHT_TERMINAL_THEMES). */
+const MOBILE_LIGHT_TERMINAL_THEME: ITheme = {
+  background: "#fbfaf7",
+  foreground: "#1b1b19",
+  cursor: "#1b1b19",
+  selectionBackground: "rgb(27 27 25 / 14%)",
+  black: "#1b1b19",
+  brightBlack: "#64625b",
+  red: "#b8352f",
+  green: "#1a7a4b",
+  yellow: "#8f6512",
+  blue: "#2d5fa6",
+  magenta: "#86409c",
+  cyan: "#0f7487",
+  white: "#706e66",
+  brightRed: "#9e2a25",
+  brightGreen: "#14663e",
+  brightYellow: "#77530c",
+  brightBlue: "#234f8e",
+  brightMagenta: "#723386",
+  brightCyan: "#0b6273",
+  brightWhite: "#45443f",
+};
+
 /* 라이트 터미널은 agent CLI가 직접 찍는 다크용 truecolor(회색 #999/#ccc, 연한 액센트)가 팔레트
    재매핑 밖에서 1.3~2.5:1로 붕괴한다. xterm minimumContrastRatio(4.5)는 WebGL·DOM 렌더러 모두에서
    truecolor를 포함한 전경색을 hue를 보존하며 바닥 대비까지 어둡게 보정하고 box-drawing 글리프는
    제외한다. 한계: dim(SGR 2) 셀은 dim 적용 "전" 색으로 floor/2를 판정한 뒤 알파 0.5를 곱하므로
    색상 dim은 보정을 받지 못한다 — dim 개선은 별도 트랙. 다크 테마는 1(off) 유지. */
-const LIGHT_TERMINAL_THEMES: ReadonlySet<TerminalThemeId> = new Set(["whites"]);
+const LIGHT_TERMINAL_THEMES: ReadonlySet<TerminalPaletteId> = new Set(["whites", "mobile-light"]);
 const LIGHT_MINIMUM_CONTRAST_RATIO = 4.5;
 
-function terminalContrastFloorFor(theme: TerminalThemeId): number {
+function terminalContrastFloorFor(theme: TerminalPaletteId): number {
   return LIGHT_TERMINAL_THEMES.has(theme) ? LIGHT_MINIMUM_CONTRAST_RATIO : 1;
 }
 
-function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
+function terminalPolarityFor(theme: TerminalPaletteId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
+}
+
+function terminalPaletteFor(theme: TerminalThemeId, mobileScheme: MobileScheme | null): TerminalPaletteId {
+  return mobileScheme === null ? theme : `mobile-${mobileScheme}`;
 }
 
 export interface TerminalExitInfo {
@@ -251,7 +312,10 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
   ticketFieldsRef.current = ticketFields;
-  const activeTheme = theme;
+  // 모바일 팔레트가 서 있으면 그 극성이 팔레트를 정한다. 루트 속성 변이를 구독해 열린 터미널도
+  // 리로드 없이 ANSI·대비 하한·배경을 다시 받는다(아래 테마 적용 effect가 이 값에 걸려 있다).
+  const [mobileScheme, setMobileScheme] = useState<MobileScheme | null>(() => readMobileScheme());
+  const activeTheme = terminalPaletteFor(theme, mobileScheme);
   const { renderer: terminalRenderer, inactiveFlush: terminalInactiveFlush, font: terminalFontSettings, scrollback: terminalScrollback, copyOnSelect: terminalCopyOnSelect } = useTerminalPrefs();
   const copyOnSelectRef = useRef(terminalCopyOnSelect);
   copyOnSelectRef.current = terminalCopyOnSelect;
@@ -796,10 +860,15 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // prefers-reduced-transparency·테마 극성 세 게이트를 모두 통과했을 때만 backdrop 채널이 none이 아니다).
   const [liquidGlassPane, setLiquidGlassPane] = useState(() => readLiquidGlassPaneActive());
   useEffect(() => {
-    const sync = () => setLiquidGlassPane(readLiquidGlassPaneActive());
+    const sync = () => {
+      setLiquidGlassPane(readLiquidGlassPaneActive());
+      setMobileScheme(readMobileScheme());
+    };
     sync();
     const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    // 팔레트를 바꾸는 루트 속성은 data-theme만이 아니다 — 모바일 배치·색상 모드 전환도 terminal
+    // 채널 계산값을 바꾸므로 같은 sync로 받아야 열린 터미널이 낡은 배경을 붙들지 않는다.
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", ...MOBILE_SCHEME_ATTRIBUTES] });
     // OS 접근성 설정(prefers-reduced-transparency)은 속성 변이 없이 채널을 닫는다 —
     // 미디어쿼리 변화도 같은 sync로 받아야 열린 터미널이 즉시 불투명 계약으로 돌아간다.
     // jsdom에는 matchMedia가 없으므로 기능 검사로 가드한다(테스트 환경 크래시 방지).
@@ -1017,12 +1086,14 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   );
 }
 
-function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
+function baseTerminalThemeFor(theme: TerminalPaletteId): ITheme {
   switch (theme) {
     case "instrument": return INSTRUMENT_TERMINAL_THEME;
     case "maritime": return MARITIME_TERMINAL_THEME;
     case "carbon": return CARBON_TERMINAL_THEME;
     case "whites": return WHITES_TERMINAL_THEME;
+    case "mobile-dark": return MOBILE_DARK_TERMINAL_THEME;
+    case "mobile-light": return MOBILE_LIGHT_TERMINAL_THEME;
   }
 }
 
@@ -1044,7 +1115,7 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
    생략·% 알파)을 xterm 파서가 검정으로 낙하시키므로(실측) canvas로 rgba() 정규화해 넘긴다.
    위 ITheme의 background 리터럴은 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이다. */
 export function resolvePanelSurface(
-  theme: TerminalThemeId,
+  theme: TerminalPaletteId,
   fallback: string,
   surface: "panel" | "shell" = "panel",
 ): string {
@@ -1137,7 +1208,7 @@ export function readLiquidGlassPaneActive(): boolean {
   return getComputedStyle(document.documentElement).getPropertyValue("--glass-panel-face").trim() === "transparent";
 }
 
-function terminalThemeFor(theme: TerminalThemeId, surface: "panel" | "shell"): ITheme {
+function terminalThemeFor(theme: TerminalPaletteId, surface: "panel" | "shell"): ITheme {
   const base = baseTerminalThemeFor(theme);
   return { ...base, background: resolvePanelSurface(theme, base.background ?? "", surface) };
 }

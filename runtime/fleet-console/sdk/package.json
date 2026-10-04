@@ -72,6 +72,12 @@
       "import": "./settings/fonts.ts",
       "default": "./settings/fonts.ts"
     },
+    "./settings/mobile-scheme": {
+      "types": "./settings/mobile-scheme.ts",
+      "browser": "./settings/mobile-scheme.ts",
+      "import": "./settings/mobile-scheme.ts",
+      "default": "./settings/mobile-scheme.ts"
+    },
     "./settings/browser": {
       "types": "./settings/browser.tsx",
       "browser": "./settings/browser.tsx",

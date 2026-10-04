@@ -217,6 +217,16 @@ function source(path: string): string {
   return fs.readFileSync(new URL(path, CLIENT_ROOT), "utf8").replace(/\r\n/g, "\n");
 }
 
+/* theme.css의 모바일 팔레트 구역은 Console 테마가 아니라 모바일 배치의 루트 오버레이다. 테마 사이의
+   토큰 분화 수를 세는 단언은 그 앞(데스크톱 테마 구역)만 본다 — 모바일 구역은 자기 계약이 고정한다. */
+const MOBILE_PALETTE_MARKER = "/* ── 모바일 팔레트";
+
+function desktopThemeSource(): string {
+  const theme = source("styles/theme.css");
+  const start = theme.indexOf(MOBILE_PALETTE_MARKER);
+  return start < 0 ? theme : theme.slice(0, start);
+}
+
 /* 선언 스캔용 — 콜론을 담은 주석 한 줄이 팔레트 선언으로 오독되는 것을 막는다. */
 function stripComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -716,7 +726,7 @@ describe("Instrument core design contract", () => {
 
   it("lets each theme own the Map terrain while the canvas CSS stays theme-blind", () => {
     const components = source("styles/components.css");
-    const theme = source("styles/theme.css");
+    const theme = desktopThemeSource();
     const overlays = source("../../../features/workspace/client/canvas/canvas-overlays.tsx");
 
     // Map의 두 바닥은 채널을 소비만 한다 — 연출 리터럴이 여기로 돌아오면 세 다크가 다시 한 판을 쓴다.
@@ -1967,7 +1977,7 @@ describe("Instrument core design contract", () => {
     const scuttlebuttCss = externalSource(SCUTTLEBUTT_CSS_PATH);
     // 팝업은 유리 틴트 위에 팝업 전용 바탕층을 깐다. 이 채널은 다크 유리 게이트와 투명도 축소
     // 폴백 어느 쪽도 덮어쓰지 않으므로 모든 테마에서 불투명이다 — 상주 크롬·패널만 --glass-underlay로 비친다.
-    const theme = source("styles/theme.css");
+    const theme = desktopThemeSource();
     expect(theme).toContain("--float-underlay: var(--ink-deep);");
     const gates = theme.slice(theme.indexOf(':root:not([data-theme="whites"]) {'));
     expect(gates).not.toContain("--float-underlay:");
@@ -2411,8 +2421,54 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain("transition: none !important;");
   });
 
+  it("keeps the mobile palette a complete root overlay that no Console theme can leak into", () => {
+    // 모바일 배치는 Console 테마와 독립된 다크/라이트를 루트 속성 쌍으로 얹는다. 데스크톱은
+    // data-view-mode가 "mobile"이 아니므로 매치되지 않고, 속성 셋(0,3,0)이라 테마 블록·유리 게이트를
+    // 순서와 무관하게 이긴다. 어느 Console 테마가 다시 조율하는 토큰을 빠뜨리면 그 테마 값이 모바일
+    // 화면에 섞이므로, 덮음 자체가 계약이다.
+    const theme = stripComments(source("styles/theme.css"));
+    const declared = (block: string) => new Set([...block.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gm)].map((match) => match[1]!));
+    const blocksFor = (selectorPattern: RegExp) => [...theme.matchAll(selectorPattern)].map((match) => match[1]!);
+    const mobileRule = /^(:root\[data-view-mode="mobile"\]\[data-mobile-scheme="(?:dark|light)"\](?:,\n:root\[data-view-mode="mobile"\]\[data-mobile-scheme="(?:dark|light)"\])*) \{\n([\s\S]*?)\n\}/gm;
+    const schemeTokens = { dark: new Set<string>(), light: new Set<string>() };
+    const mTokens = { dark: new Set<string>(), light: new Set<string>() };
+    for (const match of theme.matchAll(mobileRule)) {
+      const tokens = declared(match[2]!);
+      for (const scheme of ["dark", "light"] as const) {
+        if (!match[1]!.includes(`[data-mobile-scheme="${scheme}"]`)) continue;
+        for (const token of tokens) schemeTokens[scheme].add(token);
+        if (!match[1]!.includes(",")) {
+          expect(match[2]).toContain(`color-scheme: ${scheme};`);
+          for (const token of tokens) if (token.startsWith("--m-")) mTokens[scheme].add(token);
+        }
+      }
+    }
+    expect(mTokens.dark.size).toBeGreaterThan(0);
+    // 모바일 고유 토큰은 두 극성이 같은 이름 한 벌이다 — 한쪽에만 있으면 다른 극성에서 값이 비어 소비처가 무효가 된다.
+    expect([...mTokens.light].sort()).toEqual([...mTokens.dark].sort());
+
+    const themeTuned = new Set<string>();
+    for (const block of blocksFor(/^:root\[data-theme="[a-z]+"\](?:,\n:root\[data-theme="[a-z]+"\])* \{\n([\s\S]*?)\n\}/gm)) {
+      for (const token of declared(block)) themeTuned.add(token);
+    }
+    for (const block of blocksFor(/^\s*:root:not\(\[data-theme="whites"\]\) \{\n([\s\S]*?)\n\s*\}/gm)) {
+      for (const token of declared(block)) themeTuned.add(token);
+    }
+    // [doctrine] 유리 재료(--glass-on-*·--canvas-on-ambience)는 게이트를 거쳐서만 화면에 닿고, 모바일은
+    // 틴트 채널을 불투명 면에 직접 실어 게이트를 건너뛴다. 지형 피치는 색이 아니다.
+    const exempt = (token: string) => /^--(?:glass-on-|canvas-on-ambience$|canvas-weave-(?:major|minor)$)/.test(token);
+    for (const scheme of ["dark", "light"] as const) {
+      const missing = [...themeTuned].filter((token) => !exempt(token) && !schemeTokens[scheme].has(token));
+      expect(missing, `mobile ${scheme} leaves Console-theme tokens undefined`).toEqual([]);
+    }
+    // 유리는 모바일에서 닫힌다 — 패널 면이 transparent면 터미널이 유리 경로(투명 필드)를 탄다.
+    const panelFace = theme.match(/data-mobile-scheme="light"\] \{[\s\S]*?--glass-panel-face: ([^;]+);/)?.[1] ?? "";
+    expect(panelFace).not.toBe("");
+    expect(panelFace).not.toBe("transparent");
+  });
+
   it("keeps the Instrument base tokens and selector while blocking legacy palette escapes", () => {
-    const theme = source("styles/theme.css");
+    const theme = desktopThemeSource();
     const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
     expect(theme).toContain(':root[data-theme="instrument"]');
     expect(base).toContain("--ink-abyss: oklch(13% 0.014 245);");
@@ -3710,7 +3766,7 @@ describe("Effort track interaction grammar", () => {
   it("pins the gauge weight channel so light never inherits the dark lightness order", () => {
     const components = source("styles/components.css");
     const quota = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
-    const theme = source("styles/theme.css");
+    const theme = desktopThemeSource();
     const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
     const whites = theme.slice(theme.indexOf(':root[data-theme="whites"]'));
 

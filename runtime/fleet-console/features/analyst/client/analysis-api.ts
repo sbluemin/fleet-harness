@@ -1,5 +1,6 @@
 import type { ClientApiCapability, ConsoleTheme } from "@fleet-console/sdk/plugin";
 import { ApiError } from "@fleet-console/sdk/operations/browser";
+import { mobilePolarityTheme } from "@fleet-console/sdk/settings/mobile-scheme";
 import { parseAnalysisCatalog, parseAnalysisError, parseAnalysisEvent, type AnalysisCatalog, type AnalysisError, type AnalysisEvent } from "./analysis-types.js";
 
 export class AnalysisApiError extends Error { constructor(readonly code: string, message: string) { super(message); } }
@@ -60,7 +61,9 @@ export type ArtifactThemeColors = {
 const ARTIFACT_OPTIONAL_PARAMS = ["card", "inset", "hairline", "hairlineStrong", "accent", "muted", "faint", "positive", "warn", "critical", "focus", "sansFont", "monoFont", "sansFamily", "monoFamily", "sansSize", "monoSize"] as const;
 
 export function analysisArtifactUrl(artifactId: string, theme: ConsoleTheme, colors: ArtifactThemeColors): string {
-  const query = new URLSearchParams({ theme, ground: colors.ground, foreground: colors.foreground });
+  // 서버는 테마 id로 color-scheme(라이트/다크)을 박는다. 모바일 팔레트가 서 있으면 색은 루트 토큰
+  // (= 모바일 값)에서 오므로, id도 그 극성에 맞춰야 밝은 모바일 바탕 위에 다크 문서가 서지 않는다.
+  const query = new URLSearchParams({ theme: mobilePolarityTheme(theme), ground: colors.ground, foreground: colors.foreground });
   for (const key of ARTIFACT_OPTIONAL_PARAMS) {
     const value = colors[key];
     if (value) query.set(key, value);

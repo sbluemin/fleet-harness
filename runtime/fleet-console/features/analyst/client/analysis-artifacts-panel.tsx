@@ -1,6 +1,7 @@
 import type { ConsoleTheme, OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { isFleetMobileShell } from "@fleet-console/link/core";
+import { MOBILE_SCHEME_ATTRIBUTES, readMobileScheme } from "@fleet-console/sdk/settings/mobile-scheme";
 import { createPortal } from "react-dom";
 
 import { AgentGlyph } from "../../execution/client/agent/agent-glyphs.js";
@@ -383,14 +384,16 @@ function ActiveArtifact({ artifact, theme, language }: { readonly artifact: Anal
   React.useEffect(() => {
     const signature = () => {
       const style = getComputedStyle(document.documentElement);
-      return ["content", "code"].map((axis) => style.getPropertyValue(`--font-${axis}`) + style.getPropertyValue(`--font-${axis}-size`)).join(";");
+      // 팔레트(테마·모바일 색상 모드)가 바뀌어도 아티팩트 URL에 실리는 색이 바뀐다 — 같은 서명으로 다시 그린다.
+      const palette = `${document.documentElement.getAttribute("data-theme") ?? ""}|${readMobileScheme() ?? ""}`;
+      return [palette, ...["content", "code"].map((axis) => style.getPropertyValue(`--font-${axis}`) + style.getPropertyValue(`--font-${axis}-size`))].join(";");
     };
     let previous = signature();
     const observer = new MutationObserver(() => {
       const next = signature();
       if (next !== previous) { previous = next; setFontRevision((revision) => revision + 1); }
     });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme", ...MOBILE_SCHEME_ATTRIBUTES] });
     return () => observer.disconnect();
   }, []);
   if (!artifact.id) return null;
