@@ -140,8 +140,8 @@ export function ArtifactExportGlyph({ context, active }: { readonly context: Ope
   // 메뉴 인스턴스 세대 — 열림/닫힘마다 증가한다. 진행 중이던 clipboard 완료는 자신이 출발한
   // 세대가 그대로일 때만 현재 메뉴를 만질 수 있어, 닫았다 재연 메뉴로의 오귀속을 막는다.
   const exportGeneration = React.useRef(0);
-  // Fleet Mobile 셸은 두 번째 창을 열지 않는다(Console origin `_blank`는 조용히 버려진다). 그 셸에서는
-  // 새 탭 대신 같은 sandbox iframe을 페이지 안 전체 화면으로 띄운다. 브라우저와 Desktop은 새 탭 그대로다.
+  // Fleet Mobile 셸은 다운로드와 새 창을 열지 않는다. 다운로드는 숨기고 새 탭 대신 같은 sandbox
+  // iframe을 페이지 안 전체 화면으로 띄운다. 브라우저와 Desktop의 내보내기는 그대로다.
   const inMobileShell = isFleetMobileShell();
   const [fullscreen, setFullscreen] = React.useState<AnalysisArtifact | null>(null);
   const clearExportFeedback = () => {
@@ -301,7 +301,7 @@ export function ArtifactExportGlyph({ context, active }: { readonly context: Ope
       ><AgentGlyph name="export" /></AnalystGlyphButton>
       {exportOpen ? (
         <div className="session-analyst__export-menu" id={exportId} role="menu" ref={exportMenu} onKeyDown={handleExportMenuKeyDown}>
-          <button type="button" role="menuitem" onClick={() => { void downloadActive(); }}>{t(exportFailed ? "terminal.artifacts.exportFailed" : "terminal.artifacts.exportDownload")}</button>
+          {!inMobileShell ? <button type="button" role="menuitem" onClick={() => { void downloadActive(); }}>{t(exportFailed ? "terminal.artifacts.exportFailed" : "terminal.artifacts.exportDownload")}</button> : null}
           <button type="button" role="menuitem" onClick={() => { void copyActive(); }}>{t(exportCopied ? "terminal.artifacts.exportCopied" : "terminal.artifacts.exportCopy")}</button>
           {inMobileShell
             ? <button type="button" role="menuitem" onClick={viewActiveFullscreen}>{t("terminal.artifacts.exportFullscreen")}</button>
