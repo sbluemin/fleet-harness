@@ -265,7 +265,8 @@ function buildMobileSettingsGroups({ state, appearance, viewMode, version, plugi
   for (const section of pluginSections) {
     if (section.group === "setup" || section.group === "experiments") continue;
     if (section.group === "machine") continue;
-    agent.push({ id: section.id, title: section.sectionTitle, value: section.pluginLabel === section.sectionTitle ? null : section.pluginLabel, icon: <MobileIcon name="harness" /> });
+    // 보조 값은 플러그인 이름(「Terminal」)이 아니라 그 섹션의 지금 값이어야 읽힌다 — 값을 알 수 없는 행은 이름만 둔다.
+    agent.push({ id: section.id, title: section.sectionTitle, value: null, icon: <MobileIcon name={section.sectionTitle.toLowerCase().includes("gateway") ? "gate" : section.sectionTitle.toLowerCase().includes("터미널") || section.sectionTitle.toLowerCase().includes("terminal") ? "term" : "harness"} /> });
   }
   agent.push({ id: "advanced", title: t("settings.core.advanced.label"), value: null, icon: <MobileIcon name="gate" /> });
   const use: MobileSettingsRow[] = [
