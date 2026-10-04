@@ -85,14 +85,19 @@ describe("sidecar supervisor", () => {
       await expect(instance.stop()).resolves.toBeUndefined();
       expect(sigterms).toBe(1);
       expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
-      // 아무도 lock 주소를 듣지 않으면 lock은 stale이다 — 신호 없이 파일만 치우고 시작을 이어 간다.
+      // lock 주소가 연결을 거절해도 pid가 살아 있으면 종료 정리 중인 Console일 수 있다 — 그동안 lock을 지우거나 새 Console을
+      // 띄우지 않고 기다린다. pid가 끝나면 그 lock은 stale이므로 신호 없이 파일만 치우고 시작을 이어 간다.
       await new Promise<void>((resolve) => impostor.close(() => resolve()));
-      await expect(instance.startOrAdopt()).rejects.toThrow("reached_spawn");
-      expect(fs.existsSync(reusedLock)).toBe(false);
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      const starting = instance.startOrAdopt();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
+      expect(resolveRuntime).not.toHaveBeenCalled();
       expect(sigterms).toBe(1);
       expect(bystanderSignal).toBeNull();
       expect(() => process.kill(bystander.pid!, 0)).not.toThrow();
+      bystander.kill("SIGKILL");
+      await expect(starting).rejects.toThrow("reached_spawn");
+      expect(fs.existsSync(reusedLock)).toBe(false);
     } finally {
       impostor.close();
       bystander.kill("SIGKILL");

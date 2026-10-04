@@ -12,18 +12,21 @@ interface MissingLockProbe { readonly kind: "missing"; }
 interface UnhealthyLockProbe { readonly kind: "unhealthy"; readonly stored: StoredLock; readonly health: ConsoleLockHealthEvidence; }
 interface HealthyLockProbe { readonly kind: "healthy"; readonly stored: StoredLock; readonly url: string; readonly health: ConsoleLockHealthEvidence; }
 type LockProbe = MissingLockProbe | UnhealthyLockProbe | HealthyLockProbe;
+type StartLockProbe = MissingLockProbe | HealthyLockProbe | (UnhealthyLockProbe & { readonly lingering?: true });
 
 const STARTUP_ATTEMPTS = 40;
 const STARTUP_DELAY_CAP_MS = 1_000;
 const STOP_ATTEMPTS = 30;
 const STOP_DELAY_MS = 100;
+// 종료 중인 Console은 listener를 먼저 닫고 plugin·execution·MCP 정리를 마친 뒤에야 lock을 놓는다. 그 정리를 덮는 대기 한도.
+const SHUTDOWN_SETTLE_MS = 10_000;
 
 export class SidecarSupervisor {
   private child: ChildProcess | null = null;
   private serviceVersion: string;
   constructor(private readonly options: SidecarSupervisorOptions) { this.serviceVersion = options.serviceVersion; }
   async startOrAdopt(): Promise<string> {
-    const current = await this.probe();
+    const current = await this.probeForStart();
     if (current.kind === "healthy") {
       if (this.isOwned(current.stored.lock)) return current.url;
       // 시작 경로는 같은 Desktop 소유 sidecar만 채택한다. 외부 런타임 페어링은
@@ -31,7 +34,7 @@ export class SidecarSupervisor {
       throw new Error("cli_daemon_requires_confirmation");
     }
     if (current.kind === "unhealthy") {
-      const identity = this.identifyLockProcess(current);
+      const identity = current.lingering ? "unverified" : this.identifyLockProcess(current);
       if (identity === "absent") {
         this.removeStaleLock(current.stored);
       } else if (!this.isOwned(current.stored.lock)) {
@@ -122,6 +125,32 @@ export class SidecarSupervisor {
     const health = await this.probeHealth(stored);
     if (health.kind !== "answered") return { kind: "unhealthy", stored, health };
     return { kind: "healthy", stored, url: new URL("console/", stored.lock.endpoint).toString(), health };
+  }
+  /**
+   * 시작 경로의 probe. 연결은 거절되는데 lock pid가 살아 있으면 종료 정리 중인 Console일 수 있다 — 그 Console은 아직 공유
+   * 상태를 정리하는 중이고 lock은 끝에서야 놓으므로, 여기서 lock을 지우고 새 Console을 띄우면 두 Console이 같은 데이터를
+   * 동시에 만진다. 그래서 pid가 끝나거나 lock이 바뀌거나 사라질 때까지 기다렸다가 다시 묻는다. 신호는 보내지 않는다.
+   * 한도 뒤에도 거절·생존이 그대로면 lingering으로 표시해 unverified로 다룬다(lock 유지, 충돌로 종료). 그 대가로, 크래시 뒤
+   * pid가 오래 사는 무관한 프로세스에 재할당되고 lock 주소에서 아무도 듣지 않는 경우에도 이제는 lock을 자동으로 치우지 않고
+   * 충돌로 멈춘다. pid가 실제로 죽은 일반 크래시의 stale lock은 기다림 없이 그대로 자동 정리된다.
+   */
+  private async probeForStart(): Promise<StartLockProbe> {
+    let current = await this.probe();
+    const deadline = Date.now() + SHUTDOWN_SETTLE_MS;
+    while (current.kind === "unhealthy" && current.health.kind === "refused" && !this.isOwnLiveChild(current.stored.lock.pid) && this.isProcessAlive(current.stored.lock.pid)) {
+      if (Date.now() >= deadline) return { ...current, lingering: true };
+      await delay(STOP_DELAY_MS);
+      if (this.isProcessAlive(current.stored.lock.pid) && this.isLockUnchanged(current.stored)) continue;
+      current = await this.probe();
+    }
+    return current;
+  }
+  private isLockUnchanged(stored: StoredLock): boolean {
+    try {
+      return this.readLock()?.contents === stored.contents;
+    } catch {
+      return false;
+    }
   }
   // lock이 적은 endpoint와 token으로 health를 묻는다. 정상 응답(2xx)만 answered이며, 그 본문의 pid가 정체 증거다.
   private async probeHealth(stored: StoredLock): Promise<ConsoleLockHealthEvidence> {
