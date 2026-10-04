@@ -159,9 +159,9 @@ describe("global fleet browser host contract", () => {
       const existing = await service.createTab(GLOBAL_BROWSER_OWNER_ID, existingUrl, "user");
       for (let index = 0; index < 5; index += 1) await service.createTab(GLOBAL_BROWSER_OWNER_ID, null, "user");
       (service as unknown as { closedTabsMemory: { url: string; title: string }[] }).closedTabsMemory =
-        [existingUrl, firstUrl, firstUrl, secondUrl, remainingUrl].map((url) => ({ url, title: url }));
+        [existingUrl, firstUrl, firstUrl, secondUrl, remainingUrl, existingUrl].map((url) => ({ url, title: url }));
 
-      // 열린 주소와 목록 안 중복이 빈자리를 먹지 않으며, 상한 밖 주소는 다음 복원에 남는다.
+      // 열린 주소와 목록 안 중복이 빈자리를 먹지 않으며, 상한 밖 주소는 남고 이미 열린 주소는 상한 밖에서도 걷힌다.
       const restored = await service.restoreClosedTabs();
       const state = service.globalState();
       expect(restored).toHaveLength(2);

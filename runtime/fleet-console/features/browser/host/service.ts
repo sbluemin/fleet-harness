@@ -572,10 +572,19 @@ export class BrowserService {
     this.restoringClosedTabs = Promise.resolve().then(async () => {
       const restoredIds: string[] = [];
       while (this.closedTabsMemory.length > 0) {
-        // 아직 Map에 들어오지 않은 생성도 자리를 차지한다. 시도하지 못한 주소는 제안에 남긴다.
-        if (this.globalBrowser.tabs.size + this.globalBrowser.pendingTabs >= MAX_TABS) break;
+        const openUrls = new Set([...this.globalBrowser.tabs.values()].map((tab) => tab.url));
+        // 아직 Map에 들어오지 않은 생성도 자리를 차지한다. 시도하지 못한 주소는 제안에 남기되,
+        // 이미 열린 주소는 자리가 필요 없으니 상한에 막혀도 제안에서 걷어 낸다.
+        if (this.globalBrowser.tabs.size + this.globalBrowser.pendingTabs >= MAX_TABS) {
+          const pending = this.closedTabsMemory.filter((tab) => !openUrls.has(tab.url));
+          if (pending.length !== this.closedTabsMemory.length) {
+            this.closedTabsMemory = pending;
+            this.emitGlobalState();
+          }
+          break;
+        }
         const item = this.closedTabsMemory[0]!;
-        const existing = [...this.globalBrowser.tabs.values()].some((tab) => tab.url === item.url);
+        const existing = openUrls.has(item.url);
         const remaining = this.closedTabsMemory.slice(1);
         this.closedTabsMemory = remaining;
         this.emitGlobalState();
