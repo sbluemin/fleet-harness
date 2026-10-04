@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
@@ -148,6 +148,20 @@ export function MobileSettingsPage() {
     while (ids.length > subDepth) releaseOverlayHistory(ids.pop()!);
   }, [subDepth]);
   useEffect(() => (subDepth > 0 ? pushBackLayer(() => popMobileSubScreen()) : undefined), [subDepth]);
+  // 하위 화면은 섹션과 같은 스크롤 칸에 그려진다 — 들어가면 맨 위에서 시작하고, 나오면 들어가기 전 자리로 돌아간다.
+  const detailScrollRef = useRef<HTMLDivElement | null>(null);
+  const savedScrollRef = useRef<number[]>([]);
+  const lastDepthRef = useRef(subDepth);
+  useLayoutEffect(() => {
+    const scroller = detailScrollRef.current;
+    const saved = savedScrollRef.current;
+    const previous = lastDepthRef.current;
+    lastDepthRef.current = subDepth;
+    if (scroller === null || previous === subDepth) return;
+    if (subDepth > previous) { saved[previous] = scroller.scrollTop; scroller.scrollTop = 0; return; }
+    scroller.scrollTop = saved[subDepth] ?? 0;
+    saved.length = subDepth;
+  }, [subDepth]);
   // 다른 섹션으로 가거나 목록으로 돌아가면 하위 화면은 모두 걷는다.
   const activeId = active?.id ?? null;
   useEffect(() => () => clearMobileSubScreens(), [activeId]);
@@ -166,7 +180,7 @@ export function MobileSettingsPage() {
       <section className="mobile-settings-page" aria-labelledby="mobile-settings-detail-title">
         <h1 id="mobile-settings-detail-title" className="mobile-visually-hidden">{active.title}</h1>
         <span className="mobile-settings-saving" role="status" aria-live="polite">{saving ? t("settings.saving") : ""}</span>
-        <div className="mobile-settings-scroll">
+        <div className="mobile-settings-scroll" ref={detailScrollRef}>
           <div className="mobile-settings-detail">
             {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
             {subScreen !== null

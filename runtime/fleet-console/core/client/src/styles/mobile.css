@@ -1397,6 +1397,9 @@ html[data-view-mode="mobile"] .app-toast-action {
 :root .fc-settings-row.is-mobile .fc-settings-row__hint,
 .fc-settings-row.is-mobile .settings-help-line { display: block; margin: 0; color: var(--m-text-muted); font-family: inherit; font-size: var(--m-fs-secondary); line-height: 21px; }
 .fc-settings-row.is-mobile .settings-help-line p { margin: 0; }
+/* 원격 접속 「세부 설정」 하위 화면은 데스크톱 카드를 그대로 쓴다 — 거기서 도움말 줄은 제목 옆이 아니라 제목 아래 한 줄로 선다. */
+.mobile-settings-detail .remote-card-title { flex: 1; flex-wrap: wrap; min-width: 0; row-gap: 4px; }
+.mobile-settings-detail .remote-card-title .settings-help-line { flex-basis: 100%; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-regular); line-height: 21px; }
 .fc-settings-row.is-mobile .fc-settings-row__hint button,
 .fc-settings-row.is-mobile .settings-help-line button { min-height: 0; padding: 0; color: var(--m-text-nav); font: inherit; text-decoration: underline; background: transparent; border: 0; }
 .fc-settings-row.is-mobile .fc-settings-row__control { flex: none; gap: 16px; }
@@ -1406,6 +1409,9 @@ html[data-view-mode="mobile"] .app-toast-action {
 
 /* 토글(44×26) — 켬 = 반전 면 + 반전 위 손잡이. 신호색·파란 켬은 쓰지 않는다. */
 .fc-settings-row.is-mobile .fc-settings-toggle { opacity: 1; }
+/* 숨은 체크박스(position: absolute)의 기준을 토글 자신으로 묶는다. 스크롤 칸이 static이라 기준이 바깥 .mobile-frame까지
+   올라가면, 입력이 스크롤 칸에 잘리지 않고 frame의 스크롤 높이를 늘리며, 행을 누를 때 초점이 frame 전체를 밀어 올린다. */
+.mobile-settings-detail .fc-settings-toggle { position: relative; }
 :root .fc-settings-row.is-mobile .settings-switch { position: relative; width: 44px; height: 26px; padding: 0; background: var(--m-chip); border: 0; border-radius: 13px; }
 :root .fc-settings-row.is-mobile .settings-switch-knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; background: var(--m-text-faint); border-radius: 50%; transform: none; transition: transform 150ms ease-out; }
 :root .fc-settings-row.is-mobile .fc-settings-toggle__input:checked + .settings-switch { background: var(--m-inverse); border: 0; }
