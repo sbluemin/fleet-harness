@@ -673,6 +673,7 @@ export const pagesEn = {
   "mobile.settings.back": "Back to settings",
   "mobile.settings.on": "On",
   "mobile.settings.off": "Off",
+  "mobile.settings.experimentsOn": "{count} on",
 } as const;
 
 export const pagesKo: Record<keyof typeof pagesEn, string> = {
@@ -1335,4 +1336,5 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "mobile.settings.back": "설정으로 돌아가기",
   "mobile.settings.on": "켜짐",
   "mobile.settings.off": "꺼짐",
+  "mobile.settings.experimentsOn": "{count}개 켜짐",
 };

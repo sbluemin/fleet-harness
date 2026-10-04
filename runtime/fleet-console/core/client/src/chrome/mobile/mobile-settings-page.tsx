@@ -355,7 +355,7 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, 
   });
   agent.push({ id: "advanced", title: t("settings.core.advanced.label"), value: null, icon: <MobileIcon name="gate" /> });
   use.push(
-    { id: "experiments", title: t("settings.core.experiments.label"), value: describeConnectivity(state, t), icon: <MobileIcon name="flask" /> },
+    { id: "experiments", title: t("settings.core.experiments.label"), value: describeExperiments(state, t), icon: <MobileIcon name="flask" /> },
   );
   const appVersion = appearance.appVersion;
   const about: MobileSettingsRow[] = [
@@ -376,10 +376,13 @@ function languageLabel(state: GlobalSettingsState, t: (key: CoreMessageKey) => s
  * remoteAccess가 실리지 않은 콘솔은 그 기능을 아예 갖고 있지 않다 — 데스크톱이 카드를 세우지
  * 않는 것과 같은 읽기로, 폰도 포트만 말한다.
  */
-function describeConnectivity(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
+/**
+ * 「실험 기능」 행의 보조 줄 — 켜진 실험 기능의 개수(시안 S-47: 「{n}개 켜짐」, 하나도 없으면 「꺼짐」).
+ * 세는 것은 이 페이지의 켬/끔 기능(자율 운영 · 컴퓨터 사용)이다. 포트·원격 접속은 같은 페이지에 있어도 실험 기능 개수가 아니다.
+ */
+function describeExperiments(state: GlobalSettingsState | null, t: (key: CoreMessageKey, params?: Record<string, string | number>) => string): string | null {
   if (state === null) return null;
-  const port = t(state.consolePortMode === "static" ? "settings.port.static" : "settings.port.dynamic");
-  if (state.remoteAccess === undefined) return port;
-  return [port, t(state.remoteAccess.enabled ? "mobile.settings.on" : "mobile.settings.off")].join(" · ");
+  const on = [state.experiments.commodore, state.experiments.computerUse].filter(Boolean).length;
+  return on === 0 ? t("mobile.settings.off") : t("mobile.settings.experimentsOn", { count: on });
 }
 
