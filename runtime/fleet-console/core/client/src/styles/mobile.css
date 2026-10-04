@@ -706,7 +706,7 @@
   margin: 0;
   overflow: hidden;
   font-size: var(--t-lg);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-bold);
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -859,7 +859,7 @@
 .mobile-theater-switch:active { background: var(--m-selected); }
 .mobile-theater-switch:disabled { opacity: 0.6; }
 .mobile-theater-switch-copy { display: flex; flex-direction: column; min-width: 0; }
-.mobile-theater-switch-copy strong { overflow: hidden; font-size: var(--t-base); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.mobile-theater-switch-copy strong { overflow: hidden; font-size: var(--t-base); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-theater-switch-copy small { display: flex; align-items: center; gap: 6px; color: var(--m-text-muted); font-size: var(--t-sm); }
 .mobile-awaiting-chip { display: inline-flex; align-items: center; gap: 5px; color: var(--m-awaiting); }
 .mobile-theater-switch-caret { margin-left: auto; color: var(--m-text-muted); }
@@ -917,7 +917,7 @@
   padding: 20px 20px 8px 28px;
   color: var(--m-text-muted);
   font-size: var(--t-md);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-bold);
   text-align: left;
   background: transparent;
   border: 0;
@@ -970,7 +970,7 @@
   padding: 0 22px 0 18px;
   color: var(--m-on-inverse);
   font-size: var(--t-base);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-bold);
   background: var(--m-inverse);
   border: 0;
   border-radius: 24px;
@@ -991,7 +991,7 @@
   border: 0;
   border-radius: 20px;
 }
-.mobile-pill-secondary.is-inverse { color: var(--m-on-inverse); font-weight: var(--weight-medium); background: var(--m-inverse); }
+.mobile-pill-secondary.is-inverse { color: var(--m-on-inverse); font-weight: var(--weight-bold); background: var(--m-inverse); }
 .mobile-pill-secondary:disabled { opacity: 0.4; }
 
 .mobile-field {
@@ -1040,7 +1040,7 @@
 .mobile-sheet-handle { display: grid; place-items: center; flex: none; height: 22px; cursor: grab; touch-action: none; }
 .mobile-sheet-handle i { width: 32px; height: 4px; background: var(--m-handle, var(--m-chip)); border-radius: 2px; }
 
-.mobile-sheet-title { position: relative; flex: none; padding: 2px 56px 10px; font-size: var(--t-lg); font-weight: var(--weight-medium); text-align: center; }
+.mobile-sheet-title { position: relative; flex: none; padding: 2px 56px 10px; font-size: var(--t-lg); font-weight: var(--weight-bold); text-align: center; }
 .mobile-sheet-close {
   position: absolute;
   top: -8px;

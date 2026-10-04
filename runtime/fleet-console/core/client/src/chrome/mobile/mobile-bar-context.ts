@@ -37,6 +37,7 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
         ...(spec.subtitle ? { subtitle: spec.subtitle } : {}),
         leading: spec.depth > 0 ? "back" : "menu",
         ...(spec.depth > 0 ? { onBack: () => window.history.back() } : {}),
+        ...(spec.actions && spec.actions.length > 0 ? { actions: spec.actions } : {}),
         ...(spec.menu && spec.menu.items.length > 0 ? { menu: { label: spec.title, ...(spec.menu.caption ? { caption: spec.menu.caption } : {}), items: spec.menu.items } } : {}),
       };
     claimMobileBar(ownerRef.current, state);

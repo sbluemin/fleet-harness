@@ -1,7 +1,7 @@
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useSyncExternalStore } from "react";
 
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
-import type { MobileBarMenuItem } from "@fleet-console/sdk/pane";
+import type { MobileBarAction, MobileBarMenuItem } from "@fleet-console/sdk/pane";
 
 /**
  * 모바일 셸의 클라이언트 상태. 라우트(/operations·/theaters·/settings)가 큰 자리를 정하고, 이 스토어는
@@ -115,13 +115,6 @@ export function closeMobileSheets(): void {
 }
 
 // ── 상단 막대 ────────────────────────────────────────────────────────────
-
-export interface MobileBarAction {
-  readonly id: string;
-  readonly icon: ReactNode;
-  readonly label: string;
-  readonly run: () => void;
-}
 
 export interface MobileBarState {
   /** `operation`은 왼쪽 정렬 제목(글리프 + 두 줄), `centered`는 가운데 제목이다. */
