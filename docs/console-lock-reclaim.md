@@ -22,7 +22,9 @@ Desktop cannot import `lock.ts` (Console internals), so it does not take part in
 3. **Start `serve`.** `serve`'s `acquireLock` reclaims an exited Console's lock. If it does not take the lock, it exits with `CONSOLE_SERVE_EXIT_LOCK_HELD` (73). Before exiting it writes the lock text to stderr once, as plain text that can span several lines (for example `EEXIST: … is already held.` followed by `… is held by running pid N.`), and records it as one JSON entry in the Console failure log (`errors.jsonl` in the data directory, size-capped). Desktop reports that as `console_lock_held`, with the stderr tail in the dialog.
 4. **Quit** never removes a lock. An exited Console's lock is left for the next start.
 
-Desktop decides whether to start, and does not leave that to `serve`'s refusal, because `serve` restores durable state, boots plugins, and binds its port **before** `acquireLock`. A `serve` that loses the lock has already touched shared data next to the owner.
+현재 `serve`는 실제 loopback 포트를 먼저 bind하되 요청과 upgrade를 차단하고, `acquireLock` 뒤에만 settings 초기화·legacy 승계·durable 복원·execution·plugin·remote 초기화를 수행한다. 패자는 자기 listener를 닫고 exit 73으로 끝나며, lock 프로토콜의 staging과 `lock_held` 진단 외에는 제품 상태를 쓰지 않는다. Desktop의 사전 slot 판정은 그대로 유지한다. 구버전 runtime의 lock 전 쓰기를 피하고, live owner 옆에 불필요한 child를 띄우지 않기 위해서다.
+
+초기화 중인 lock 소유자의 token-authenticated health는 `503 {"error":"console_starting","pid":…}`를 반환한다. CLI `ensureDaemon`은 기존 startup 예산(기본 60초), Desktop `probeForStart`는 기존 launch 예산(40회, delay 최대 1초) 안에서 live PID의 이 응답만 기다린다. 준비 뒤에만 기존 healthy/owner 호환 판정을 적용한다. 일반 unhealthy 503과 구분하며, starting 자체는 신호나 lock 삭제 권한이 아니다. 구버전 Desktop의 자기 child 대기는 non-healthy를 이미 재시도하지만, 다른 시작의 initializing lock 채택은 이 starting 처리를 포함한 Desktop부터 기다린다.
 
 ### Legacy branch: runtimes without the reclaim protocol
 
@@ -52,7 +54,7 @@ Console releases up to and including **1.212.0** publish the lock with `O_EXCL` 
 
 ### Remaining races and limits
 
-- **Start versus another starter.** Desktop's last ESRCH judgement and `serve`'s `acquireLock` are separated by `serve`'s pre-lock work. A CLI `start` or another `serve` that begins in that window can make two processes touch durable state before one loses the lock. This is the same window two concurrent CLI starts have. Closing it needs the Console to take the lock before it restores state. That is a Console change, tracked separately.
+- **Start versus another starter.** Desktop의 마지막 slot 판정과 `serve`의 `acquireLock` 사이에 다른 시작이 이길 수 있다. 현재 runtime은 이 경쟁에서 제품 상태를 쓰기 전에 패배하므로 두 writer가 복원을 실행하지 않는다. 이 순서 변경 전의 runtime에는 lock 전 쓰기 창이 남아 있으므로, Desktop의 사전 판정만으로 구버전의 동시 시작까지 막는다고 보장하지 않는다.
 - **Waiting on a closing Console.** After it sends SIGTERM, Desktop treats a Console that refuses connections but is still alive as "closing" and waits for ESRCH before it starts. In the current flows this path is defensive only: the startup termination path is reached only for Desktop's own child, which is escalated to SIGKILL and awaited until ESRCH. The effective protections are the startup settle wait (refused endpoint + live pid) and the second slot judgement just before the start.
 - **Untrusted lock with a live pid.** Its endpoint cannot be asked, so Desktop never proves its identity. The user has to check that pid by hand.
 - **Pid reuse.** A crashed Console's pid can be reused by an unrelated live process. Every participant then sees a live owner and refuses. The guidance asks the user to confirm and delete the lock by hand.
@@ -63,7 +65,7 @@ The worker that applies a Console update stops the old Console, installs the tar
 
 - **Its daemons run without stdio, like every detached Console.** The `serve` outlives the worker, so nothing could keep reading or bounding its output. A `serve` that does not take the lock records why (the holder, or the manual-recovery steps) in the Console failure log, `errors.jsonl` in the data directory. That log is size-capped and rotated once. The worker's run log records the lock state the worker last saw and names that file. The failure text in the progress record names the file without its path, because that record reaches the browser.
 - **An early exit ends the wait.** The new daemon and the failure recovery both watch their `serve`'s exit. Each poll looks for a healthy Console first and checks the exit only after that. If no healthy Console answers, exit status 73 (`CONSOLE_SERVE_EXIT_LOCK_HELD`) fails the step at once with "did not take the Console lock", and any other exit before health fails it with the exit code. Neither waits out the 60 s start timeout.
-- **#1557's recovery check stays first.** If the old lock is still held by its pid and token, and that pid is alive, recovery does not start a `serve` at all. The early-exit check covers the refusals that check cannot foresee: an ownerless lock, a third party's live lock, or a reclaim marker that another participant holds.
+- **spawn 전 health 선판정.** 새 daemon 단계는 이전 PID와 다른 lock이 목표 버전의 healthy Console을 가리키면 spawn 없이 성공한다. recovery는 살아 있는 lock PID의 healthy Console이 있으면 버전과 무관하게 spawn을 생략한다. 그 뒤에도 #1557의 old pid·token lock 보존 판정은 유지한다. 기존 old lock을 살아 있는 PID가 계속 쥐고 있으면 recovery는 spawn하지 않는다. 시작하지 않은 상태나 일반 health 실패를 죽음의 증거로 쓰지 않는다.
 
 Remaining limits of the worker:
 
@@ -71,6 +73,6 @@ Remaining limits of the worker:
   - If it is healthy and reports the target version, the new daemon step accepts it and the update completes.
   - Otherwise, the new `serve` exits 73 and the update fails quickly with that reason, even though the target is already installed.
   - Recovery after a failed step treats any healthy Console on the lock as recovered.
-  The race with `serve`'s pre-lock work (see Desktop) applies here too.
-- **The worker always starts its `serve` before it looks for a healthy Console.** The new-daemon step and the recovery both spawn first and poll for health afterwards. When another Console already holds the lock, that `serve` restores state and boots plugins before it loses the lock, then exits 73 and adds a `lock_held` entry to `errors.jsonl`. This happens even when the update completes or recovery succeeds through that other Console, and the `serve` may exit only after the worker has finished. It is the same pre-lock-work issue as the start race above.
+  현재 runtime에서는 이 경쟁의 패자도 durable 복원 전에 거부된다. 구버전 runtime의 lock 전 쓰기 제한은 Desktop 절의 설명과 같다.
+- **선판정 뒤 경쟁은 남는다.** health 선판정 뒤 다른 Console이 slot을 차지하거나, 이미 lock을 쥔 Console이 아직 starting일 수 있다. worker는 기존 spawn 후 health-first/exit-second poll을 유지한다. 현재 `serve`는 lock 패배 시 제품 상태를 쓰지 않지만, exit 73과 `errors.jsonl`의 `lock_held` 진단은 남길 수 있다. 선판정은 중복 spawn을 줄이는 보완이며 single-writer 보장은 Console의 acquireLock 경계가 맡는다.
 - **The worker's verdict that the old Console is gone can rest on the parent link alone.** On POSIX, a worker reparented away from the old Console counts it as exited. Only the new `serve`'s ESRCH check decides whether its lock is reclaimed, so a reused pid ends in R6 rather than in a wrong removal.

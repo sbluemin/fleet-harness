@@ -9,7 +9,7 @@ import path from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
@@ -37,7 +37,7 @@ describe("Console daemon lifecycle integration", () => {
   it("keeps a real child through delayed readiness and later stops it, killing a stalled shutdown", async () => {
     const fixture = createFixturePaths("ready");
     const lifecycle = createConsoleDaemonLifecycle({
-      env: fixture.env,
+      env: { ...fixture.env, FLEET_TEST_CONSOLE_BIND_BEFORE_READY: "1" },
       serverModulePath: FIXTURE_PATH,
       startupTimeoutMs: 8_000,
       pollIntervalMs: 20,
@@ -51,10 +51,20 @@ describe("Console daemon lifecycle integration", () => {
     void ensure.catch(() => {});
     const pid = await readPidWhenReady(fixture.pidFile);
     CHILD_PIDS.add(pid);
+    await vi.waitFor(async () => expect((await lifecycle.probe()).starting).toBe(true));
+    const lockBefore = fs.readFileSync(fixture.lockFile, "utf8");
+    // 이미 lock을 잡고 초기화 중인 Console은 다른 start의 짧은 대기 한도로 죽거나 교체되지 않는다.
+    const impatient = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH, startupTimeoutMs: 100, pollIntervalMs: 10 });
+    await expect(impatient.ensureDaemon()).rejects.toThrow("was not signalled");
+    expect(fs.readFileSync(fixture.lockFile, "utf8")).toBe(lockBefore);
+    expect(() => process.kill(pid, 0)).not.toThrow();
+    const concurrentEnsure = lifecycle.ensureDaemon();
+    void concurrentEnsure.catch(() => {});
     await delay(3_100);
     fs.writeFileSync(fixture.releaseFile, "ready\n", "utf8");
 
     const endpoint = await ensure;
+    expect(await concurrentEnsure).toBe(endpoint);
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(3_000);
     expect(endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
     expect(createConsoleLock().readLock(fixture.lockFile)?.pid).toBe(pid);

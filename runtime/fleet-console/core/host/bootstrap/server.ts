@@ -522,11 +522,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 인스턴스를 가리지 않는 한 벌이었으므로 이 슬롯으로 한 번 승계한다.
   const agentOptions = createAgentOptionsService({ store: consoleSettingsStore, legacyDirs: [fleetDataDir] });
   const theaterSystemPrompts = createTheaterSystemPromptService(agentOptions, (id) => theaters.get(id) !== null);
-  // 워크스페이스 지식과 하네스 트리는 파일이 아니라 디렉터리라 승계 판정기가 다루지 않는다.
-  // 전자는 옮기고(내용이 사용자 자산이다), 후자는 렌더 산출물이라 걷기만 한다 — 이 슬롯의
-  // 공유 트리도 포함한다. 플러그인은 이제 루프백 zip으로 나가고 디스크 트리는 아무도 읽지 않는다.
-  adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
-  reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
     getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
     getLegacyGlassOff: () => consoleSettingsStore.load().general?.liquidGlass === false,
@@ -817,11 +812,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       broadcastComputerCapture();
       watchComputerCapture();
     },
-    platform: computerUsePlatforms[readExperimentSettings(consoleSettingsStore).computerUseBackend],
+    platform: computerUsePlatforms[readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUseBackend],
     directory: computerUseDirectory,
     onFailure: recordFailure,
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
-    enabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
+    enabled: () => readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUse,
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
     onActiveOwnerChange: () => scheduleOperationUseBroadcast(),
   });
@@ -843,7 +838,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     log: (message) => process.stdout.write(`[fleet-browser] ${message}\n`),
     desktop: desktopEngine,
     defaultProfile: {
-      read: () => consoleSettingsStore.load().browser?.defaultProfile ?? null,
+      // 미기동 Browser의 실패 정리도 상태를 읽는다. lock 패자의 정리가 설정 승계를 쓰면 안 된다.
+      read: () => consoleSettingsStore.readSnapshot().browser?.defaultProfile ?? null,
       write: (profile) => { consoleSettingsStore.update((current) => ({ ...current, browser: profile === null ? {} : { defaultProfile: profile } })); },
     },
   });
@@ -1227,6 +1223,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     return { plugins: result };
   }
+  let ready = false;
   let server: http.Server | null = null;
   let loopbackServer: http.Server | null = null;
   let lockHandle: ConsoleLockHandle | null = null;
@@ -1599,6 +1596,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 403, { error: "host_mismatch" });
       return;
     }
+    // bind는 lock의 실제 endpoint를 정할 뿐이다. 소유권·복원·활성화가 끝나기 전에는 요청을 실행하지 않는다.
+    if (!ready) {
+      if (pathname === "/api/v1/health") handleHealth(req, res);
+      else writeJson(res, 503, { error: "console_starting" });
+      return;
+    }
     if (archiveStorage.blocked() && (pathname.startsWith("/api/") || pathname.startsWith("/mcp/")) && pathname !== "/api/v1/health") {
       writeJson(res, 503, { error: "archive_recovery_required" });
       return;
@@ -1774,6 +1777,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const token = handle?.payload.token;
     if (handle && token && req.headers.authorization === `Bearer ${token}`) {
       const payload = handle.payload;
+      if (!ready) {
+        writeJson(res, 503, { error: "console_starting", pid: payload.pid });
+        return;
+      }
       const body: ConsoleHealth = {
         ok: true,
         pid: payload.pid,
@@ -2022,6 +2029,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function cleanupAfterFailedStart(): Promise<void> {
+    ready = false;
+    operationArchive.dispose();
+    deletionCoordinator.dispose();
     const current = server;
     const currentLoopback = loopbackServer;
     const currentLock = lockHandle;
@@ -2557,6 +2567,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function stopServer(): Promise<void> {
+    ready = false;
     const current = server;
     const currentLoopback = loopbackServer;
     const currentLock = lockHandle;
@@ -2598,8 +2609,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     host,
     port,
     async start(lockPaths) {
-      if (server && lockHandle) return lockHandle.payload.endpoint;
+      if (ready && lockHandle) return lockHandle.payload.endpoint;
       try {
+        const result = await listenConsolePort(resolveConsolePortListenPlan());
+        server = result.srv;
+        loopbackServer = result.localLoopbackServer;
+        portState = result.portState;
+        // 실제 포트만 먼저 확보한다. 패자는 제품 상태를 읽어 복원하거나 플러그인을 실행하기 전에 끝난다.
+        lockHandle = await lock.acquireLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
+        activeLockFile = lockPaths.lockFile;
+        activeEndpoint = result.endpoint;
+        // 워크스페이스 승계·옛 렌더 트리 회수·설정 기본값 확정도 durable writer의 일이다.
+        adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
+        reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
+        consoleSettingsStore.load();
         await rehydrateDurableState();
         // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
         // 같은 루프백 전용 불투명 경로이고, 리스너가 뜬 뒤에야 주소가 정해지므로 런치가 그때 묻는다.
@@ -2637,21 +2660,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         operationArchive.flushEvents();
         deletionCoordinator.sweepExpired();
         await pluginClientAssets.prepare();
-        const listenPlan = resolveConsolePortListenPlan();
-        const result = await listenConsolePort(listenPlan);
-        server = result.srv;
-        loopbackServer = result.localLoopbackServer;
-        portState = result.portState;
-        // A lock left by an exited Console is reclaimed inside the acquisition. Losing throws before lockHandle is assigned,
-        // so a loser never reaches the leftover reclaim below.
-        const acquired = await lock.acquireLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
-        lockHandle = acquired;
-        activeLockFile = lockPaths.lockFile;
-        activeEndpoint = result.endpoint;
         // 지난 프로세스의 잔재 회수는 lock 소유자만 한다 — lock을 쓰기 전에 지우면 lock에서 질 프로세스가
         // 서비스 중인 Console의 파일을 지운다.
         launchPromptDirectories.reclaimLeftovers();
         execution.reclaimAttachmentLeftovers();
+        // 인증서·페어링·공표 endpoint를 쓰는 원격 활성화는 lock 소유자만 한다.
+        await startRemoteAccessGuarded(result.actualPort);
+        ready = true;
       } catch (error) {
         await cleanupAfterFailedStart();
         throw error;
@@ -2704,7 +2719,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         fallback: "none",
       };
     }
-    const options = consoleSettingsStore.load().general ?? {};
+    const options = consoleSettingsStore.readSnapshot().general ?? {};
     if (options.consolePortMode === "static" && isValidConsoleStaticPort(options.consoleStaticPort)) {
       return {
         port: options.consoleStaticPort,
@@ -2958,6 +2973,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   /** 업그레이드도 요청과 같은 판정을 거치고, 입장시킨 세션에 소켓을 묶는다 — 세션이 끝나면 WebSocket도 닫힌다. */
   function remoteAdmission(req: http.IncomingMessage): boolean {
+    if (!ready) return false;
     const resolved = listenerForRequest(req);
     if (resolved === null || resolved.audience === "local") return true;
     const admission = remoteRequestAdmission(resolved, req, getPathname(req));
@@ -2999,7 +3015,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {
     return new Promise((resolve, reject) => {
-      const srv = createHttpServer(handleRequest, upgradeRegistry, isRequestHostAllowed);
+      const srv = createHttpServer(handleRequest, upgradeRegistry, isRequestHostAllowed, () => ready);
       const onError = (error: Error) => {
         reject(error);
       };
@@ -3013,8 +3029,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         listeners = [createLoopbackListenerIdentity(actualPort)];
         boundPort = actualPort;
         try {
-          await startRemoteAccessGuarded(actualPort);
-          const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry, isRequestHostAllowed);
+          const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry, isRequestHostAllowed, () => ready);
           resolve({
             srv,
             localLoopbackServer,
@@ -3154,13 +3169,14 @@ function createHttpServer(
   handler: http.RequestListener,
   upgradeRegistry: UpgradeRegistry,
   isHostAllowed: (req: http.IncomingMessage) => boolean,
+  isAdmitted: (req: http.IncomingMessage) => boolean,
 ): http.Server {
   const srv = http.createServer(handler);
   srv.timeout = SERVER_TIMEOUT_MS;
   srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
   srv.headersTimeout = SERVER_TIMEOUT_MS + 1000;
   trackUpgradedSockets(srv);
-  srv.on("upgrade", createUpgradeListener({ isHostAllowed, upgradeRegistry }));
+  srv.on("upgrade", createUpgradeListener({ isHostAllowed, upgradeRegistry, isAdmitted }));
   return srv;
 }
 
@@ -3187,9 +3203,10 @@ async function maybeStartLoopbackServer(
   handler: http.RequestListener,
   upgradeRegistry: UpgradeRegistry,
   isHostAllowed: (req: http.IncomingMessage) => boolean,
+  isAdmitted: (req: http.IncomingMessage) => boolean,
 ): Promise<http.Server | null> {
   if (isLoopbackHost(host) || isWildcardHost(host)) return null;
-  const srv = createHttpServer(handler, upgradeRegistry, isHostAllowed);
+  const srv = createHttpServer(handler, upgradeRegistry, isHostAllowed, isAdmitted);
   await new Promise<void>((resolve, reject) => {
     srv.once("error", reject);
     srv.listen(actualPort, "127.0.0.1", () => {

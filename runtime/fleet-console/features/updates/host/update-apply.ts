@@ -586,6 +586,9 @@ function describeServeExit(serve) {
 }
 
 async function startNewDaemon() {
+  // 설치하는 동안 다른 호스트가 목표 버전의 Console을 이미 세웠다면 중복 serve를 띄우지 않는다.
+  const existing = readLock();
+  if (existing && existing.pid !== config.currentPid && await isNewHealthOk(existing)) return existing;
   const serve = spawnServe();
   const deadline = Date.now() + startTimeoutMs;
   while (Date.now() < deadline) {
@@ -603,6 +606,12 @@ async function startNewDaemon() {
  */
 async function recoverConsoleBestEffort() {
   try {
+    // 복구할 화면이 이미 살아 있으면 버전과 무관하게 그 Console을 남긴다.
+    const existing = readLock();
+    if (existing && isProcessAlive(existing.pid) && await isAnyHealthOk(existing)) {
+      log("recovery skipped: a healthy console is already running");
+      return;
+    }
     // A live pid that still holds the old lock (same pid and token) makes serve refuse it, so a spawn here could only
     // wait out the timeout. Read the lock only: the user has to stop that process before a Console can start.
     if (isLockStillHeldByOldConsole() && isProcessAlive(config.currentPid)) {

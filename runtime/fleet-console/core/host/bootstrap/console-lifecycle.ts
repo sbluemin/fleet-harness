@@ -500,8 +500,19 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   }
 
   async function ensureDaemon(): Promise<string> {
-    const current = await readLockForStart();
-    const probeResult = await health.probe(current);
+    let current = await readLockForStart();
+    let probeResult = await health.probe(current);
+    const startingDeadline = now() + startupTimeoutMs;
+    // 다른 호스트가 이미 lock을 얻고 복원 중이면 건드리지 않는다. lock 교체도 대기 예산을 늘리지 않는다.
+    while (current && probeResult.starting && isLockProcessAlive(current.pid)) {
+      const remaining = startingDeadline - now();
+      if (remaining <= 0) throw lockOwnerUnverifiedError(current);
+      await sleep(Math.min(pollIntervalMs, remaining));
+      current = await readLockForStart();
+      probeResult = await health.probe(current, { timeoutMs: Math.max(0, startingDeadline - now()) });
+      // 마지막 probe의 예산 소진을 기존 unhealthy→stop 경로로 바꾸지 않는다.
+      if (!probeResult.healthy && now() >= startingDeadline && current && isLockProcessAlive(current.pid)) throw lockOwnerUnverifiedError(current);
+    }
     const isBuildStale = current ? stale.isBuildStale(current, serverModulePath) : false;
     if (probeResult.healthy && current) {
       if (!isBuildStale) return current.endpoint;

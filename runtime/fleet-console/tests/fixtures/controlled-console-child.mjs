@@ -11,6 +11,7 @@ if (!dataDir || !pidFile || !releaseFile) throw new Error("controlled Console fi
 
 const lockFile = path.join(dataDir, "console.lock");
 const token = "controlled-console-token";
+const startedAt = Date.now();
 let server = null;
 let stopping = false;
 
@@ -26,7 +27,7 @@ void start().catch(async (error) => {
 });
 
 async function start() {
-  while (!fs.existsSync(releaseFile)) {
+  while (process.env.FLEET_TEST_CONSOLE_BIND_BEFORE_READY !== "1" && !fs.existsSync(releaseFile)) {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   server = http.createServer((request, response) => {
@@ -36,6 +37,11 @@ async function start() {
     }
     if (request.url !== "/api/v1/health" && request.url !== "/health") {
       response.writeHead(404).end();
+      return;
+    }
+    if (!fs.existsSync(releaseFile)) {
+      response.writeHead(503, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "console_starting", pid: process.pid }));
       return;
     }
     const address = server.address();
@@ -54,7 +60,7 @@ async function start() {
       effectivePort: address.port,
       portHonored: true,
       endpoint: `http://127.0.0.1:${address.port}/`,
-      startedAt: 1,
+      startedAt,
       version: "fixture",
       workspaceCount: 0,
     }));
@@ -70,7 +76,7 @@ async function start() {
     host: "127.0.0.1",
     port: address.port,
     endpoint: `http://127.0.0.1:${address.port}/`,
-    startedAt: 1,
+    startedAt,
     token,
     version: "fixture",
   };

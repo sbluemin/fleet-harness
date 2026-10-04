@@ -160,6 +160,65 @@ describe("console terminal observability", () => {
     expect(serialized).not.toContain("providerSession");
   });
 
+  it("owns the lock before shared-state startup and admits requests only after activation", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-startup-owner-"));
+    tempDirs.push(dir);
+    const fleetDataDir = path.join(dir, "fleet-home");
+    const consoleDir = path.join(fleetDataDir, "console");
+    const lockFile = path.join(dir, "console.lock");
+    const entered = createDeferred<void>();
+    const release = createDeferred<void>();
+    const hooks = globalThis as typeof globalThis & { __fleetStartupGate?: () => Promise<void> };
+    hooks.__fleetStartupGate = async () => { entered.resolve(); await release.promise; };
+    const plugin = createPluginPackageRoot({ demoRoutes: "export async function register() { await globalThis.__fleetStartupGate(); }" });
+    const deps = { port: 0, dataDir: fleetDataDir, pluginHomeDir: dir, release: plugin.release };
+    const winner = createConsoleServer(deps);
+    servers.push(winner);
+    const starting = winner.start({ dir, lockFile });
+    void starting.catch(() => {});
+    try {
+      await entered.promise;
+      const owner = createConsoleLock().readLock(lockFile)!;
+      const lockBefore = fs.readFileSync(lockFile, "utf8");
+      const healthUrl = new URL("api/v1/health", owner.endpoint);
+      const healthHeaders = { Authorization: `Bearer ${owner.token}` };
+      const health = await fetch(healthUrl, { headers: healthHeaders });
+      expect(health.status).toBe(503);
+      await expect(health.json()).resolves.toEqual({ error: "console_starting", pid: owner.pid });
+      expect((await fetch(healthUrl)).status).toBe(401);
+      expect((await fetch(new URL("api/v1/theaters", owner.endpoint), { method: "POST", body: "{}" })).status).toBe(503);
+
+      // 승자가 소비한 seed를 다시 두어, 패자 constructor와 start의 공유 쓰기를 함께 잡는다.
+      const settingsFile = path.join(consoleDir, "settings.json");
+      const stateFile = path.join(consoleDir, "state.json");
+      const settings = JSON.stringify({ version: 1, general: {}, plugins: { terminal: {} } });
+      const state = JSON.stringify({ version: 5, theaters: [], operations: [] });
+      fs.writeFileSync(settingsFile, settings);
+      fs.writeFileSync(stateFile, state);
+      fs.mkdirSync(path.join(fleetDataDir, "workspaces", "probe"), { recursive: true });
+      fs.mkdirSync(path.join(fleetDataDir, "harness"), { recursive: true });
+      const legacyFile = path.join(fleetDataDir, "harness", "probe.txt");
+      fs.writeFileSync(legacyFile, "keep");
+      const loser = createConsoleServer(deps);
+      servers.push(loser);
+      await expect(loser.start({ dir, lockFile })).rejects.toMatchObject({ consoleLockHeld: true });
+      await loser.stop();
+      expect(fs.readFileSync(settingsFile, "utf8")).toBe(settings);
+      expect(fs.readFileSync(stateFile, "utf8")).toBe(state);
+      expect(fs.existsSync(`${stateFile}.pre-archive-backup`)).toBe(false);
+      expect(fs.readFileSync(legacyFile, "utf8")).toBe("keep");
+      expect(fs.existsSync(path.join(fleetDataDir, "workspaces", "probe"))).toBe(true);
+      expect(fs.readFileSync(lockFile, "utf8")).toBe(lockBefore);
+      release.resolve();
+      expect(await starting).toBe(owner.endpoint);
+      expect((await fetch(healthUrl, { headers: healthHeaders })).status).toBe(200);
+    } finally {
+      release.resolve();
+      await starting.catch(() => {});
+      delete hooks.__fleetStartupGate;
+    }
+  });
+
   it("starts on a fresh dynamic port when the update resume port is already taken", async () => {
     // 업데이트 워커는 옛 포트를 넘겨 새 콘솔을 띄운다. 그 포트를 누가 쥐고 있어도 콘솔은 떠야 하고,
     // 사용자는 포트를 요청한 적이 없으므로 설정 화면에는 동적 모드로 보고된다.

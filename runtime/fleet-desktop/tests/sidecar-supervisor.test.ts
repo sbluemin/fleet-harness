@@ -45,10 +45,17 @@ describe("sidecar supervisor", () => {
     }));
   });
 
-  it("adopts only a healthy matching desktop owner", async () => {
-    writeLock({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })));
+  it("waits for a starting matching desktop owner and adopts it only when healthy", async () => {
+    writeLock({ pid: process.pid, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
+    const before = fs.readFileSync(lockFile, "utf8");
+    const fetchHealth = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "console_starting", pid: process.pid }), { status: 503 }))
+      .mockResolvedValue(new Response(JSON.stringify({ pid: process.pid }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchHealth);
+    const kill = vi.spyOn(process, "kill");
     await expect(supervisor().startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
+    expect(fs.readFileSync(lockFile, "utf8")).toBe(before);
+    expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
   });
 
   it("rejects a healthy CLI-owned daemon without resolving, pairing, or signaling it", async () => {

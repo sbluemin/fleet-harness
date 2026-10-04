@@ -202,7 +202,7 @@ const MAX_CONSOLE_STATIC_PORT = 65535;
 const MAX_SEEN_FEATURE_TOURS = 64;
 const MAX_FEATURE_TOUR_KEY_LENGTH = 64;
 
-export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps = {}): DurableJsonStore<ConsoleSettingsData> {
+export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps = {}): DurableJsonStore<ConsoleSettingsData> & { readSnapshot(): ConsoleSettingsData } {
   const paths = deps.paths ?? createConsoleDataPaths();
   const createStore = deps.createStore ?? createDurableJsonStore;
   const randomInt = deps.randomInt ?? crypto.randomInt;
@@ -230,6 +230,8 @@ export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps 
   }
   return {
     path: base.path,
+    // runtime lock 전의 포트·백엔드 선택은 기본값 확정이나 마이그레이션을 저장하지 않는다.
+    readSnapshot: () => base.load(),
     load: initialize,
     save(data) { initialized = true; base.save(data); },
     update(mutate) {
@@ -765,7 +767,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
 }
 
 /** 저장된 실험 설정 — 플러그인 호스트 능력이 매 요청마다 읽는다. */
-export function readExperimentSettings(store: DurableJsonStore<ConsoleSettingsData>): ConsoleExperimentSettings {
+export function readExperimentSettings(store: Pick<DurableJsonStore<ConsoleSettingsData>, "load">): ConsoleExperimentSettings {
   return store.load().general?.experiments ?? DEFAULT_EXPERIMENT_SETTINGS;
 }
 
