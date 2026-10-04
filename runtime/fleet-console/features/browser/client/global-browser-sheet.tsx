@@ -1,6 +1,6 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { themePolarity } from "../../../core/client/src/integration/store.js";
@@ -155,7 +155,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   // Zen 아래는 부유 섬 위 12px 규칙 유지.
   // 아레나가 최소 숨구멍보다 좁으면 사이드바·레일을 무시하고 밴드 아래 창 전체를 쓰고,
   // 그것도 모자라면 여백을 줄여서라도 보이게 한다 — 「열림」인데 안 보이는 상태는 두지 않는다.
-  const measureGeometry = React.useCallback(() => {
+  // hold: 크롬이 움직이는 동안에는 시트가 줄어들기만 한다(가장자리마다 안쪽으로만). 넓어지는 쪽은 정착 뒤에 선다.
+  const measureGeometry = React.useCallback((hold = false) => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -175,7 +176,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       && window.getComputedStyle(sidebar).visibility !== "hidden"
       ? sidebar.getBoundingClientRect()
       : null;
-    const railCardRect = rail !== null && rail.offsetWidth > 4
+    // 레일도 사이드바와 같은 규칙이다 — 닫힘(is-open 해제) 전이의 잔폭은 카드가 아니다.
+    const railCardRect = rail !== null && rail.classList.contains("is-open") && rail.offsetWidth > 4
       && window.getComputedStyle(rail).visibility !== "hidden"
       ? rail.getBoundingClientRect()
       : null;
@@ -228,27 +230,123 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       top = Math.max(8, vh - bottom - MIN_SHEET_HEIGHT);
     }
     const measured = { left, top, right, bottom };
-    setGeometry((current) => current && current.left === left && current.top === top && current.right === right && current.bottom === bottom
-      ? current
-      : measured);
-    // 복귀 중 크롬의 기하 전이가 남았다면 다음 배치 때 최종 자리를 다시 잰다.
-    const settling = [sidebar, rail, island, band].some((element) => (element?.getAnimations?.() ?? []).some((animation) =>
-      ["width", "height", "transform", "left", "right", "top", "bottom"].includes((animation as CSSTransition).transitionProperty)));
+    setGeometry((current) => {
+      const next = hold && current
+        ? { left: Math.max(current.left, left), top: Math.max(current.top, top), right: Math.max(current.right, right), bottom: Math.max(current.bottom, bottom) }
+        : measured;
+      return current && current.left === next.left && current.top === next.top && current.right === next.right && current.bottom === next.bottom
+        ? current
+        : next;
+    });
+    // 크롬의 기하 전이나 끌기 리사이즈가 남았다면 자리는 아직 움직이는 중이다 — 최종 자리는 멈춘 뒤에 다시 잰다.
+    // 섬·밴드는 위·아래 선만 정하므로 세로 기하만 본다(섬의 가로 물러남은 시트 자리를 바꾸지 않는다).
+    const cardMotion = ["width", "height", "transform", "left", "right", "top", "bottom"];
+    const lineMotion = ["height", "transform", "top", "bottom"];
+    const settling = sidebar?.dataset.resizing === "true" || rail?.classList.contains("is-dragging") === true
+      || ([[sidebar, cardMotion], [rail, cardMotion], [island, lineMotion], [band, lineMotion]] as const).some(([element, properties]) =>
+        (element?.getAnimations?.() ?? []).some((animation) => properties.includes((animation as CSSTransition).transitionProperty)));
     return { ...measured, settling };
   }, []);
 
+  // ---- 크롬 기하 변화: 사이드바 펼침·접힘, 레일 열기·닫기, 끌기 리사이즈 ----
+  // 시트 면(DOM)은 IPC가 없으니 매 프레임 따라가되 움직이는 동안에는 줄어들기만 한다. 네이티브 뷰는
+  // Console 왕복(POST → SSE → setBounds)만큼 늦게 따라오므로 매 프레임 추종하면 크롬이 다가오는 쪽에서
+  // 그 지연만큼 덮고, 프레임마다 페이지 리사이즈가 일어난다. 그래서
+  // - 시트가 줄어드는(크롬이 다가오는) 움직임이면 뷰를 물린다. 물러남은 크기를 바꾸지 않는 z 순서 이동이다.
+  // - 시트가 넓어지는(크롬이 물러나는) 움직임이면 뷰는 제자리에 둔다. 비켜나는 크롬은 덮이지 않는다.
+  // 어느 쪽이든 정착한 뒤 최종 자리에 한 번 놓는다.
+  const [chromeParked, setChromeParked] = React.useState(false);
+  const chromeMovingRef = React.useRef(false);
+  const geometryRef = React.useRef(geometry);
+  geometryRef.current = geometry;
+
   React.useEffect(() => {
-    if (!open) { setGeometry(null); return; }
-    measureGeometry();
-    window.addEventListener("resize", measureGeometry);
-    const timer = setInterval(measureGeometry, 1000);
-    return () => { window.removeEventListener("resize", measureGeometry); clearInterval(timer); };
+    if (!open) { setGeometry(null); setChromeParked(false); return; }
+    type Measured = NonNullable<ReturnType<typeof measureGeometry>>;
+    type Edges = { left: number; top: number; right: number; bottom: number };
+    const same = (a: Edges, b: Edges) => a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+    const shrank = (from: Edges | null, to: Edges | null) => from !== null && to !== null
+      && (to.left > from.left || to.top > from.top || to.right > from.right || to.bottom > from.bottom);
+    let frame = 0;
+    let last: Measured | null = null;
+    let parkedForMotion = false;
+    // 한 번 재고, 시트가 줄어들면(또는 방향을 아직 모르면) 같은 커밋에서 뷰를 물린다 — 줄어든 자리로
+    // 먼저 setBounds했다가 다시 물리는 왕복을 만들지 않는다. rAF·관찰자 콜백의 갱신은 기본 우선순위로
+    // 미뤄져 페인트보다 늦을 수 있으니 같은 프레임에 동기로 커밋한다.
+    const step = (parkUnlessMoved: boolean) => {
+      const before = geometryRef.current;
+      let measured: Measured | undefined;
+      flushSync(() => {
+        measured = measureGeometry(true);
+        if (!measured || parkedForMotion) return;
+        const shown = before === null ? measured : {
+          left: Math.max(before.left, measured.left), top: Math.max(before.top, measured.top),
+          right: Math.max(before.right, measured.right), bottom: Math.max(before.bottom, measured.bottom),
+        };
+        const unknown = parkUnlessMoved && measured.settling && before !== null && same(before, measured);
+        if (unknown || shrank(before, shown)) {
+          parkedForMotion = true;
+          setChromeParked(true);
+        }
+      });
+      return { before, measured };
+    };
+    const follow = () => {
+      frame = 0;
+      const { measured } = step(false);
+      if (!measured) { chromeMovingRef.current = false; return; }
+      const stopped = last !== null && same(last, measured) && !measured.settling;
+      last = measured;
+      if (!stopped) { frame = requestAnimationFrame(follow); return; }
+      // 정착 — 넓어지는 쪽을 포함한 최종 자리를 세우고 물러남을 푼다. 배치가 그 자리를 확인하고 뷰를 한 번 놓는다.
+      chromeMovingRef.current = false;
+      parkedForMotion = false;
+      flushSync(() => { measureGeometry(); setChromeParked(false); });
+    };
+    // 클래스·인라인 폭이 바뀐 직후, 전이의 첫 프레임이 칠해지기 전에 판정한다. 접힌 사이드바가 펼쳐지거나
+    // 레일이 열리는 순간에는 카드 폭이 아직 0이라 방향을 모른다 — 그때도 기하 전이가 시작됐으면 먼저 물린다.
+    const onChromeChange = () => {
+      if (frame !== 0) return;
+      const { before, measured } = step(true);
+      if (!measured) return;
+      if (!measured.settling && before !== null && same(before, measured)) return;
+      chromeMovingRef.current = true;
+      last = measured;
+      frame = requestAnimationFrame(follow);
+    };
+    const observer = new MutationObserver(onChromeChange);
+    let watched: Element[] = [];
+    // 크롬은 모드·페이지에 따라 다시 마운트된다. 주기 재측정 때 관찰 대상을 다시 붙든다.
+    const watch = () => {
+      const next = [".operations-side-bar", ".right-rail", ".zen-bar", ".console-toolbar"]
+        .map((selector) => document.querySelector(selector))
+        .filter((element): element is Element => element !== null);
+      if (next.length === watched.length && next.every((element, index) => element === watched[index])) return;
+      observer.disconnect();
+      watched = next;
+      for (const element of watched) observer.observe(element, { attributes: true, attributeFilter: ["class", "style", "data-resizing"] });
+    };
+    const remeasure = () => {
+      watch();
+      if (frame === 0) measureGeometry();
+    };
+    remeasure();
+    window.addEventListener("resize", remeasure);
+    const timer = setInterval(remeasure, 1000);
+    return () => {
+      window.removeEventListener("resize", remeasure);
+      clearInterval(timer);
+      observer.disconnect();
+      if (frame !== 0) cancelAnimationFrame(frame);
+      chromeMovingRef.current = false;
+      setChromeParked(false);
+    };
   }, [open, measureGeometry]);
 
   // ---- 네이티브 뷰 배치: 겹침이 뜨면 즉시 물리고, 캐시된 정지 화면이 있으면 깐다. ----
   // 동기 캡처 대기는 절대 하지 않는다(H2). 정지 화면은 탭이 안정된 뒤 백그라운드에서 미리 찍어 둔다.
   // 토스트·말풍선은 뷰와 실제로 겹칠 때만 물린다 — 시트 밖으로 비킨 스택에 가려 정지만 보지 않게.
-  const parked = !available || activeTab === null || overlayActive || floatingOverlap;
+  const parked = !available || activeTab === null || overlayActive || floatingOverlap || chromeParked;
   const syncPlacement = React.useCallback(() => {
     if (!open) return;
     const element = viewportRef.current;
@@ -256,7 +354,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     if (!parked && !placeKeyRef.current.startsWith("1:")) {
       // 어느 오버레이에서 복귀하든, 물러난 동안 바뀐 크롬 기하를 먼저 잰다.
       // 새 기하가 DOM에 반영되기 전에는 낡은 bounds로 뷰를 되살리지 않는다.
-      const measured = measureGeometry();
+      const measured = measureGeometry(chromeMovingRef.current);
       if (!measured || measured.settling || !geometry || geometry.left !== measured.left || geometry.top !== measured.top
         || geometry.right !== measured.right || geometry.bottom !== measured.bottom) {
         place(false);
