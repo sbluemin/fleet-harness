@@ -105,7 +105,8 @@ function main() {
   const { options, command } = parseArgs(process.argv.slice(2));
   const realHome = realpathSync(userInfo().homedir);
   const forbidden = [
-    ...PROTECTED_HOME_ENTRIES.map((entry) => path.join(realHome, entry)),
+    // dotfile 관리자가 ~/.config·~/.claude를 심볼릭 링크로 두면 후보만 realpath해서는 비교가 빗나가므로 보호 경로도 해석한다.
+    ...PROTECTED_HOME_ENTRIES.map((entry) => resolveReal(path.join(realHome, entry))),
     ...['FLEET_DATA_DIR', 'FLEET_CONSOLE_DATA_DIR', 'FLEET_CONSOLE_DIR', 'FLEET_DESKTOP_DATA_DIR', 'CLAUDE_CONFIG_DIR']
       .map((name) => process.env[name]).filter((value) => value && path.isAbsolute(value)).map(resolveReal),
   ];

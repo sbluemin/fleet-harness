@@ -225,7 +225,8 @@ function keyDefinition(key, modifierNames) {
   // No nativeVirtualKeyCode: macOS Chromium reads it as a mac key code, and Escape's Windows code 27 is kVK_ANSI_Minus,
   // which floods thousands of Unidentified/Minus keydowns that never stop.
   const base = {
-    key, code, modifiers, windowsVirtualKeyCode: keyCode,
+    // DOM의 스페이스 키 값은 " "이다. 별칭 "Space"를 그대로 보내면 event.key가 비어 `e.key === " "` 핸들러가 놓친다.
+    key: code === 'Space' ? ' ' : key, code, modifiers, windowsVirtualKeyCode: keyCode,
     autoRepeat: false, isKeypad: false, ...(location ? { location } : {}),
   };
   return {
