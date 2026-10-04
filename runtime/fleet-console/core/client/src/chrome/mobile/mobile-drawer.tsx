@@ -155,7 +155,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
   const destination = useMobileDestination();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const appearance = useMobileAppearance();
-  const consoleName = appearance.console?.label ?? "Fleet";
+  const consoleName = appearance.console?.label ?? window.location.hostname;
   const theater = state.theaters.find((item) => item.id === state.activeTheaterId) ?? null;
   const path = location.pathname.replace(/\/+$/, "");
 

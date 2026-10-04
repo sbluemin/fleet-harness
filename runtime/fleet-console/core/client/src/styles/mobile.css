@@ -1205,3 +1205,4 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-search-field { padding: 0 16px 8px; }
 .mobile-search-row { width: calc(100% - 24px); }
 .mobile-drawer-row-copy small.is-plain { color: var(--m-text-muted); }
+.mobile-group-row.is-dim { opacity: 0.5; }

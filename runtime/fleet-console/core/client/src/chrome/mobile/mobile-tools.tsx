@@ -83,22 +83,26 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
       <section className="mobile-plugin-list">
         {rows.length === 0 ? <p className="mobile-plugin-list-empty">{t("mobile.plugins.empty")}</p> : (
           <div className="mobile-group">
-            {rows.map((row) => (
-              <button
-                type="button"
-                className="mobile-group-row"
-                key={row.entry.id}
-                disabled={theaterId === null && row.entry.scope !== "fleet"}
-                onClick={() => {
-                  if (row.entry.surfaceId) capabilities.surfaces.open({ surfaceId: row.entry.surfaceId });
-                  else capabilities.rail.open(row.entry.id);
-                }}
-              >
-                <span className="mobile-group-row-icon" aria-hidden="true">{typeof row.entry.icon === "function" ? row.entry.icon() : row.entry.icon}</span>
-                <span className="mobile-group-row-copy">{resolveLocalizedText(row.entry.title, language)}</span>
-                <MobileIcon name="right" size={18} className="mobile-group-row-caret" />
-              </button>
-            ))}
+            {rows.map((row) => {
+              const desktopOnly = row.entry.mobile?.available === false;
+              return (
+                <button
+                  type="button"
+                  className={`mobile-group-row${desktopOnly ? " is-dim" : ""}`}
+                  key={row.entry.id}
+                  aria-disabled={desktopOnly || undefined}
+                  disabled={desktopOnly || (theaterId === null && row.entry.scope !== "fleet")}
+                  onClick={() => {
+                    if (row.entry.surfaceId) capabilities.surfaces.open({ surfaceId: row.entry.surfaceId });
+                    else capabilities.rail.open(row.entry.id);
+                  }}
+                >
+                  <span className="mobile-group-row-icon" aria-hidden="true">{typeof row.entry.icon === "function" ? row.entry.icon() : row.entry.icon}</span>
+                  <span className="mobile-group-row-copy">{resolveLocalizedText(row.entry.title, language)}{desktopOnly ? <small>{t("mobile.plugins.desktopOnly")}</small> : null}</span>
+                  {desktopOnly ? null : <MobileIcon name="right" size={18} className="mobile-group-row-caret" />}
+                </button>
+              );
+            })}
           </div>
         )}
       </section>

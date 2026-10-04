@@ -146,7 +146,7 @@ function ForgetSheet({ state, theaterId, onDeferredDeletion }: { readonly state:
 function ConsoleSheet() {
   const t = useT();
   const appearance = useMobileAppearance();
-  const name = appearance.console?.label ?? "Fleet";
+  const name = appearance.console?.label ?? window.location.hostname;
   return (
     <MobileSheet title={t("mobile.sheet.console.title")} onClose={popMobileSheet}>
       <div className="mobile-sheet-row" aria-current="true">
