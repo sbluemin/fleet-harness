@@ -189,7 +189,14 @@ export interface RailEntryMobile {
    * `order`는 정렬 값이다 — 작은 쪽이 위. 호스트의 Theater 목적지가 항상 맨 위, 「플러그인」 줄이 항상 맨 아래이고
    * 이 값은 그 사이에서만 순서를 정한다. 같으면 등록 순서.
    */
-  readonly destination?: { readonly order: number };
+  readonly destination?: {
+    readonly order: number;
+    /**
+     * 드로어 행과 화면 제목에 쓸 짧은 이름(`title`과 같은 현지화 문자열 — 로케일 함수도 된다). 생략하면 엔트리의 `title`을 쓴다.
+     * 데스크톱 레일 제목이 「Codex — 프로젝트 위키」처럼 길어도 모바일 드로어에는 「위키」가 서게 한다.
+     */
+    readonly label?: LocalizedText;
+  };
 }
 
 /**
