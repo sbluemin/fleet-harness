@@ -423,7 +423,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
 
   function lockOwnerUnverifiedError(payload: ConsoleLockPayload): Error {
     return new Error([
-      `Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}. If that process is a stuck Fleet Console, stop it; if it is not a Fleet Console, delete ${paths.lockFile}.`,
+      `Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}, so it was not signalled.`,
+      `If that process is a stuck Fleet Console, stop it (kill -TERM ${payload.pid}; Windows: Stop-Process -Id ${payload.pid}), then run fleet console start. A suspended process (state T in ps) ignores TERM until resumed: kill -CONT ${payload.pid} lets it finish shutting down, or kill -KILL ${payload.pid} ends it.`,
+      `If it is not a Fleet Console, follow the check below and then delete ${paths.lockFile}.`,
       describeSlotQuiescenceCheck(paths.lockFile),
     ].join("\n"));
   }
