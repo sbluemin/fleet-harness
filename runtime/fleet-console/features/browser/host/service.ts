@@ -639,7 +639,7 @@ export class BrowserService {
     await this.disposeContext(op);
     for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
     op.tabs.clear();
-    op.pendingTabs = 0;
+    // 진행 중 생성은 리셋 뒤에도 자기 finally에서 예약을 해제한다. 먼저 0으로 덮으면 음수가 된다.
     op.activeTabId = null;
   }
 
