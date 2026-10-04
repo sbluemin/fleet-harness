@@ -264,6 +264,8 @@ export default function App(): React.JSX.Element {
     return () => subscription.remove();
   }, [addOpen, screen, state, showAllConsoles]);
 
+  const connectionOverlayVisible = screen === "console" && state !== "connected";
+  const consoleAccessibilityHidden = connectionOverlayVisible || screen === "landing";
   const retryBlocked = retryLeft !== null && retryLeft > 0;
   const retryTargetLabel = targets.find((target) => target.active)?.label.trim();
   const retryLabel = invalidLinkError && retryTargetLabel
@@ -273,8 +275,15 @@ export default function App(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#111318" />
-      <FleetConsoleView ref={consoleRef} style={styles.console} onFleetEvent={onFleetEvent} />
-      {screen === "console" && state !== "connected" ? (
+      <View
+        style={styles.console}
+        collapsable={false}
+        accessibilityElementsHidden={consoleAccessibilityHidden}
+        importantForAccessibility={consoleAccessibilityHidden ? "no-hide-descendants" : "auto"}
+      >
+        <FleetConsoleView ref={consoleRef} style={styles.console} onFleetEvent={onFleetEvent} />
+      </View>
+      {connectionOverlayVisible ? (
         <View style={[styles.overlay, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           <View style={styles.overlayStatus} accessible accessibilityRole="summary">
             <Text style={styles.eyebrow}>FLEET CONSOLE</Text>
