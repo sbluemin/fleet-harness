@@ -16,6 +16,7 @@ import { mobilePluginRows, useMobileDestinationBindings, type MobileAttentionRow
 import { AttentionReason } from "./mobile-attention-reason.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
+import { openedByKeyboard } from "./mobile-input-modality.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, runAfterOverlayRelease } from "./mobile-overlay-history.js";
 import { unwindDetailsThen } from "./mobile-unwind.js";
@@ -56,7 +57,8 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
       const frame = window.requestAnimationFrame(() => setShown(true));
       if (historyIdRef.current === null) historyIdRef.current = pushOverlayHistory(() => { historyIdRef.current = null; setMobileDrawerOpen(false); });
       const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      window.requestAnimationFrame(() => panelRef.current?.querySelector<HTMLElement>(".mobile-drawer-dest")?.focus({ preventScroll: true }));
+      // 키보드로 열었을 때만 첫 목적지로 포커스를 옮긴다(PR-0c) — 터치로 연 드로어에 흰 고리가 남지 않게.
+      if (openedByKeyboard()) window.requestAnimationFrame(() => panelRef.current?.querySelector<HTMLElement>(".mobile-drawer-dest")?.focus({ preventScroll: true }));
       return () => { window.cancelAnimationFrame(frame); opener?.focus?.({ preventScroll: true }); };
     }
     setShown(false);

@@ -6,6 +6,7 @@ import { useT } from "../../i18n/index.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { closeMobileChoice, useMobileChoice, type MobileChoiceState } from "./mobile-choice-store.js";
 import { MobileIcon } from "./mobile-icons.js";
+import { openedByKeyboard } from "./mobile-input-modality.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { showMobileToast } from "./mobile-toast.js";
 
@@ -59,7 +60,7 @@ function ChoiceShell({ title, titleId, onClosed, children, listRef, renderBody }
   }, []);
 
   useEffect(() => {
-    listRef.current?.querySelector<HTMLButtonElement>("[aria-checked='true']:not(:disabled), button:not(:disabled)")?.focus({ preventScroll: true });
+    if (openedByKeyboard()) listRef.current?.querySelector<HTMLButtonElement>("[aria-checked='true']:not(:disabled), button:not(:disabled)")?.focus({ preventScroll: true });
   }, [listRef]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import type { MobileBarMenuItem } from "@fleet-console/sdk/pane";
+import { openedByKeyboard } from "./mobile-input-modality.js";
 
 /**
  * ⋮ 메뉴 — ⋮ 바로 아래 오른쪽에 붙는 작은 판. 배경은 어둡게 하지 않고 투명 덮개만 둔다.
@@ -17,7 +18,7 @@ export function MobileMenu({ caption, items, label, onClose }: {
   const ordered = [...items.filter((item) => item.destructive !== true), ...items.filter((item) => item.destructive === true)];
 
   useEffect(() => {
-    panelRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
+    if (openedByKeyboard()) panelRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
   }, []);
 
   const close = (after?: () => void) => {

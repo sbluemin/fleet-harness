@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "
 
 import { useT } from "../../i18n/index.js";
 import { MobileIcon } from "./mobile-icons.js";
+import { openedByKeyboard } from "./mobile-input-modality.js";
 
 const DRAG_START = 6;
 const DRAG_CLOSE = 110;
@@ -34,7 +35,9 @@ export function MobileSheet({ title, onClose, full = false, footer, children, cl
   // (뒤로 가기의 history 항목은 시트 하나하나가 아니라 호스트가 쌓인 시트 전체에 대해 하나만 든다.)
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    panelRef.current?.querySelector<HTMLElement>("input, textarea, button:not(.mobile-sheet-close)")?.focus({ preventScroll: true });
+    // 입력칸은 터치로 열어도 포커스를 받는다(글을 쓰러 연 시트). 버튼으로는 키보드로 열었을 때만 옮긴다(PR-0c).
+    const target = openedByKeyboard() ? "input, textarea, button:not(.mobile-sheet-close)" : "input, textarea";
+    panelRef.current?.querySelector<HTMLElement>(target)?.focus({ preventScroll: true });
     return () => { opener?.focus?.({ preventScroll: true }); };
   }, []);
 

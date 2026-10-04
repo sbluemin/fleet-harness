@@ -16,6 +16,7 @@ import { RailSurface } from "../pane/rail-surface.js";
 import { closePane, useFocusedPaneId, useRailPanes } from "../pane/pane-store.js";
 import { closeRailPanel, useRailActivePanelId } from "../rail/rail-store.js";
 import { mobilePluginRows } from "./mobile-destinations.js";
+import { openedByKeyboard } from "./mobile-input-modality.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { setMobileTool, useMobileTool } from "./mobile-store.js";
@@ -79,7 +80,7 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
   useEffect(() => {
     if ((tool?.kind === "rail" && activeRail !== tool.id) || (tool?.kind === "surface" && !instance)) setMobileTool(null);
   }, [activeRail, instance, tool]);
-  useLayoutEffect(() => { if (tool) backRef.current?.focus({ preventScroll: true }); }, [tool, detail?.instanceId]);
+  useLayoutEffect(() => { if (tool && openedByKeyboard()) backRef.current?.focus({ preventScroll: true }); }, [tool, detail?.instanceId]);
 
   const close = () => {
     if (tool?.kind === "rail") closeRailPanel(tool.id);
