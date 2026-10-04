@@ -305,6 +305,11 @@ export interface ClientExperimentsCapability {
 export interface PersistentComponentContext {
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
+  /**
+   * 지금 콘솔이 서 있는 배치. 보기를 바꾸면 값이 바뀌고 상주 기여는 다시 그려진다. 폰 배치(`"mobile"`)에서는 데스크톱 전용
+   * 표면(포털 시트·서랍)을 그리지 않아야 한다. 구버전 호스트에는 없을 수 있다 — 없으면 `"desktop"`으로 다룬다.
+   */
+  readonly layout?: "mobile" | "desktop";
 }
 
 /** 화면 없는 상주 기여. 호스트가 콘솔 수명 동안 마운트해 둔다. */
