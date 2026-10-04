@@ -280,15 +280,20 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       // 살아 있는 무언가가 lock 주소를 붙잡고 있지만 lock token으로 정체를 증명하지 못했다(멈춘 Console이거나
       // 종료 중인 Console일 수 있다). 시그널은 무관한 프로세스를 죽일 수 있고, lock을 지우면 살아 있는
       // Console 옆에 두 번째 소유자가 생길 수 있으므로 둘 다 하지 않는다.
-      throw new Error(`Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}. If that process is a stuck Fleet Console, stop it; if it is not a Fleet Console, delete ${paths.lockFile}.`);
+      throw lockOwnerUnverifiedError(payload);
     }
     if (owner === "verified") {
       assertCliCanControlDaemon(payload);
       signalLockProcess(payload.pid, "SIGTERM");
       await sleep(200);
-      // 정상 종료한 Console은 lock을 스스로 지운다. 같은 token의 lock이 아직 남아 있을 때만 종료 지연으로
-      // 보고 강제 종료한다 — 이미 끝난 pid가 그 사이 재할당됐다면 여기서 멈춘다.
-      if (isLockStillHeldBy(payload)) signalLockProcess(payload.pid, "SIGKILL");
+      // 정상 종료한 Console은 lock을 스스로 지운다. lock이 남아 있으면 종료 지연일 수도, Console이 lock을 남긴 채 죽고
+      // pid가 재할당된 것일 수도 있다. lock 파일이 그대로라는 사실은 증명이 아니므로 SIGKILL 직전에 처음과 같은
+      // health 증명을 다시 받는다. 그 대가로 SIGTERM 뒤 멈춰 health에도 답하지 못하는 Console은 강제 종료하지 않고 알린다.
+      if (isLockStillHeldBy(payload)) {
+        const survivor = await identifyLockOwner(payload);
+        if (survivor === "unverified") throw lockOwnerUnverifiedError(payload);
+        if (survivor === "verified") signalLockProcess(payload.pid, "SIGKILL");
+      }
     }
     // "absent": lock pid가 죽었거나 lock 주소에 듣는 프로세스가 없다. pid가 재할당됐을 수 있으므로
     // 시그널 없이 stale lock만 치운다.
@@ -303,6 +308,10 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     const result = await health.probe(payload, { timeoutMs: STOP_IDENTITY_TIMEOUT_MS });
     const evidence: ConsoleLockHealthEvidence = result.healthy ? { kind: "answered", pid: result.health?.pid } : result.refused ? { kind: "refused" } : { kind: "unanswered" };
     return identifyConsoleLockOwner({ lockPid: payload.pid, pidAlive: true, health: evidence });
+  }
+
+  function lockOwnerUnverifiedError(payload: ConsoleLockPayload): Error {
+    return new Error(`Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}. If that process is a stuck Fleet Console, stop it; if it is not a Fleet Console, delete ${paths.lockFile}.`);
   }
 
   function isLockStillHeldBy(payload: ConsoleLockPayload): boolean {

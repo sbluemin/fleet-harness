@@ -43,7 +43,7 @@ export class SidecarSupervisor {
         this.options.log.error(`console_lock_process_unverified: pid ${current.stored.lock.pid} holds ${this.options.lockFile} but did not prove it is the Console`);
         throw new Error("console_lock_process_unverified");
       } else {
-        await this.terminateVerifiedProcess(current.stored);
+        if (!await this.terminateVerifiedProcess(current.stored)) throw new Error("console_lock_process_unverified");
         this.removeLockAfterOwnedTermination(current.stored);
       }
     }
@@ -112,12 +112,19 @@ export class SidecarSupervisor {
       }
       return;
     }
-    // 정체가 확인된 sidecar는 health에 답하지 못해도(멈춘 자기 sidecar) Quit이 남겨서는 안 된다.
+    // 정체가 확인된 sidecar는 health에 답하지 못해도(멈춘 자기 sidecar) Quit이 남겨서는 안 된다. 다만 채택한 sidecar가
+    // SIGTERM 뒤 정체를 다시 증명하지 못하면 승격하지 않고 남긴다(terminateVerifiedProcess가 기록한다). Quit은 막지 않는다.
     await this.terminateVerifiedProcess(current.stored);
   }
   private async probe(): Promise<LockProbe> {
     const stored = this.readLock();
     if (!stored) return { kind: "missing" };
+    const health = await this.probeHealth(stored);
+    if (health.kind !== "answered") return { kind: "unhealthy", stored, health };
+    return { kind: "healthy", stored, url: new URL("console/", stored.lock.endpoint).toString(), health };
+  }
+  // lock이 적은 endpoint와 token으로 health를 묻는다. 정상 응답(2xx)만 answered이며, 그 본문의 pid가 정체 증거다.
+  private async probeHealth(stored: StoredLock): Promise<ConsoleLockHealthEvidence> {
     const endpoint = new URL(stored.lock.endpoint);
     let response: Response | null = null;
     for (let attempt = 0; response === null; attempt += 1) {
@@ -127,15 +134,15 @@ export class SidecarSupervisor {
         // 연결 거절은 그 주소에서 아무도 듣지 않는다는 확정 신호다. 시간 초과는 무언가 살아 있을 수 있다.
         // 재사용된 keep-alive 소켓의 끊김은 한 번만 새 연결로 다시 물어 최신 증거를 얻는다.
         const code = (error as { cause?: { code?: unknown } } | null)?.cause?.code;
-        if (code === "ECONNREFUSED") return { kind: "unhealthy", stored, health: { kind: "refused" } };
+        if (code === "ECONNREFUSED") return { kind: "refused" };
         if (attempt === 0 && (code === "ECONNRESET" || code === "UND_ERR_SOCKET")) continue;
-        return { kind: "unhealthy", stored, health: { kind: "unanswered" } };
+        return { kind: "unanswered" };
       }
     }
-    if (!response.ok) return { kind: "unhealthy", stored, health: { kind: "unanswered" } };
-    // token을 인증한 health 본문의 pid가 lock pid의 정체 증명이다. 본문을 읽지 못하면 증명이 없을 뿐 채택 판단은 그대로다.
+    if (!response.ok) return { kind: "unanswered" };
+    // 본문을 읽지 못하면 정체 증명이 없을 뿐 채택 판단(2xx)은 그대로다.
     const pid = await response.json().then((body: unknown) => isRecord(body) ? body.pid : undefined, () => undefined);
-    return { kind: "healthy", stored, url: new URL("console/", endpoint).toString(), health: { kind: "answered", pid } };
+    return { kind: "answered", pid };
   }
   /**
    * lock pid에 신호를 보내도 되는지 판별한다. 근거는 둘뿐이다. 이 Desktop이 직접 spawn해 아직 수거되지 않은 child이거나
@@ -204,33 +211,35 @@ export class SidecarSupervisor {
       throw new Error(`console_lock_cleanup_failed: ${this.describeError(error)}`);
     }
   }
-  // 정체가 확인된 pid를 SIGTERM→(대기)→SIGKILL로 종료한다. 대기 중 pid가 끝나 재할당됐을 수 있으므로,
-  // SIGKILL 직전에 정체(아직 수거되지 않은 자기 child이거나 같은 token의 lock이 남아 있음)를 다시 확인한다.
-  private async terminateVerifiedProcess(stored: StoredLock): Promise<void> {
+  /**
+   * 정체가 확인된 pid를 SIGTERM→(대기)→SIGKILL로 종료한다. 돌려주는 값은 lock을 치워도 되는지다 — pid가 끝났거나
+   * lock 주소에서 더는 아무도 듣지 않으면(absent) 참, 정체를 증명하지 못한 프로세스가 살아 남았으면 거짓이다.
+   * 대기 중 그 프로세스가 lock을 남긴 채 죽고 pid가 무관한 프로세스에 재할당될 수 있으므로, SIGKILL 직전에 처음 판별과 같은
+   * 수준으로 정체를 다시 증명한다. lock 파일이 그대로라는 사실은 증명이 아니다. 아직 수거되지 않은 자기 child는 그대로 승격하고,
+   * 채택한 sidecar는 lock token health가 같은 pid를 다시 답할 때만 승격한다. 그 대가로 채택한 sidecar가 SIGTERM 뒤 멈춰
+   * health에도 답하지 못하면 SIGKILL하지 않고 남긴다.
+   */
+  private async terminateVerifiedProcess(stored: StoredLock): Promise<boolean> {
     const { pid } = stored.lock;
     await this.signal(pid, "SIGTERM");
     for (let attempt = 0; attempt < STOP_ATTEMPTS; attempt += 1) {
-      if (!this.isProcessAlive(pid)) return;
+      if (!this.isProcessAlive(pid)) return true;
       await delay(STOP_DELAY_MS);
     }
-    if (!this.isOwnLiveChild(pid) && !this.isLockStillHeldBy(stored)) {
-      this.options.log.error(`console lock for pid ${pid} changed during shutdown; not escalating to SIGKILL`);
-      return;
+    if (!this.isOwnLiveChild(pid)) {
+      const identity = identifyConsoleLockOwner({ lockPid: pid, pidAlive: this.isProcessAlive(pid), health: await this.probeHealth(stored) });
+      if (identity === "absent") return true;
+      if (identity === "unverified") {
+        this.options.log.error(`console_lock_process_unverified: pid ${pid} outlived SIGTERM but did not prove it is still the Console; not escalating to SIGKILL`);
+        return false;
+      }
     }
     await this.signal(pid, "SIGKILL");
     for (let attempt = 0; attempt < STOP_ATTEMPTS; attempt += 1) {
-      if (!this.isProcessAlive(pid)) return;
+      if (!this.isProcessAlive(pid)) return true;
       await delay(STOP_DELAY_MS);
     }
     throw new Error("console_lock_process_unhealthy");
-  }
-  private isLockStillHeldBy(stored: StoredLock): boolean {
-    try {
-      const current = this.readLock();
-      return current?.lock.pid === stored.lock.pid && current.lock.token === stored.lock.token;
-    } catch {
-      return false;
-    }
   }
   private isProcessAlive(pid: number): boolean {
     try {

@@ -48,20 +48,27 @@ describe("sidecar supervisor", () => {
 
   it("never signals a live process that a reused lock pid names", async () => {
     // Console이 owner 일치 lock을 남기고 죽은 뒤 OS가 그 pid를 무관한 프로세스에 재할당한 상황이다.
+    // bystander는 SIGTERM을 기록만 하고 버티므로, 받은 SIGTERM은 셀 수 있고 SIGKILL만이 그것을 끝낸다.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-reused-pid-"));
     const reusedLock = path.join(dir, "console.lock");
-    const bystander = spawn(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], { stdio: "ignore" });
+    const bystander = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => process.stdout.write('term\\n')); process.stdout.write('ready\\n'); setInterval(() => {}, 60_000)"], { stdio: ["ignore", "pipe", "ignore"] });
     let bystanderSignal: NodeJS.Signals | null = null;
+    let sigterms = 0;
     bystander.once("exit", (_code, signal) => { bystanderSignal = signal ?? "SIGHUP"; });
+    await new Promise<void>((resolve) => bystander.stdout!.once("data", () => resolve()));
+    bystander.stdout!.on("data", (chunk: Buffer) => { sigterms += chunk.toString().split("term").length - 1; });
     // lock 주소의 무언가가 token health에 200으로 답하지만 다른 pid를 댄다 — 정체 증명이 아니다.
-    let answer: "other-pid" | "unauthorized" = "other-pid";
+    let answer: "other-pid" | "unauthorized" | "lock-pid-once" = "other-pid";
     const impostor = http.createServer((_request, response) => {
-      if (answer === "other-pid") response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid: process.pid }));
-      else response.writeHead(401).end();
+      if (answer === "unauthorized") { response.writeHead(401).end(); return; }
+      const pid = answer === "lock-pid-once" ? bystander.pid : process.pid;
+      if (answer === "lock-pid-once") answer = "other-pid";
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid }));
     });
     await new Promise<void>((resolve) => impostor.listen(0, "127.0.0.1", resolve));
     const port = (impostor.address() as AddressInfo).port;
-    fs.writeFileSync(reusedLock, JSON.stringify({ pid: bystander.pid, endpoint: `http://127.0.0.1:${port}/`, token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }));
+    const lockContents = JSON.stringify({ pid: bystander.pid, endpoint: `http://127.0.0.1:${port}/`, token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
+    fs.writeFileSync(reusedLock, lockContents);
     const resolveRuntime = vi.fn(async (): Promise<SidecarRuntime> => { throw new Error("reached_spawn"); });
     const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: {}, lockFile: reusedLock, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
     try {
@@ -71,11 +78,19 @@ describe("sidecar supervisor", () => {
       answer = "unauthorized";
       await expect(instance.startOrAdopt()).rejects.toThrow("console_lock_process_unverified");
       expect(fs.existsSync(reusedLock)).toBe(true);
+      expect(sigterms).toBe(0);
+      // 증명된 Console이 SIGTERM 뒤 lock을 남긴 채 죽고 그 pid가 재할당된 경쟁: lock 파일은 그대로지만 정체를 다시
+      // 증명하지 못하므로 SIGKILL로 승격하지 않는다.
+      answer = "lock-pid-once";
+      await expect(instance.stop()).resolves.toBeUndefined();
+      expect(sigterms).toBe(1);
+      expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
       // 아무도 lock 주소를 듣지 않으면 lock은 stale이다 — 신호 없이 파일만 치우고 시작을 이어 간다.
       await new Promise<void>((resolve) => impostor.close(() => resolve()));
       await expect(instance.startOrAdopt()).rejects.toThrow("reached_spawn");
       expect(fs.existsSync(reusedLock)).toBe(false);
       await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(sigterms).toBe(1);
       expect(bystanderSignal).toBeNull();
       expect(() => process.kill(bystander.pid!, 0)).not.toThrow();
     } finally {
