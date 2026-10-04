@@ -121,9 +121,11 @@ describe("Files palette search", () => {
     await fs.writeFile(path.join(lockedPath, "secret.txt"), "export secret");
     await fs.chmod(lockedPath, 0);
     try {
-      const { ctx, writes } = searchContext({ theaterId: "theater-a", query: "export", limit: 8, scope: "contents" });
+      // 읽을 수 있는 match가 정확히 limit건이면 잘림이 아니며, 건너뛴 경로 안내와 독립적이다.
+      const { ctx, writes } = searchContext({ theaterId: "theater-a", query: "export", limit: 1, scope: "contents" });
       await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
       expect(writes[0]?.status).toBe(200);
+      expect(writes[0]?.body).not.toHaveProperty("truncated");
       expect(writes[0]?.body).toMatchObject({
         engine: "ripgrep",
         complete: false,

@@ -247,6 +247,8 @@ async function searchContents(
   let receivedOutput = false;
   let skippedPaths = 0;
   let settled = false;
+  // limit보다 한 건 더 모아야 정확히 limit건과 잘림을 구분한다. RG_CONTENT_MATCH_CAP은 그대로 상한이다.
+  const stopAt = Math.min(RG_CONTENT_MATCH_CAP, limit + 1);
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -262,7 +264,7 @@ async function searchContents(
           if (!line) continue;
           const item = parseContentMatch(line, query);
           if (item) candidates.push(item);
-          if (candidates.length >= Math.min(RG_CONTENT_MATCH_CAP, limit)) {
+          if (candidates.length >= stopAt) {
             settled = true;
             child.kill();
             resolve();
