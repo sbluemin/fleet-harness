@@ -7,7 +7,8 @@
 .objectives-m::-webkit-scrollbar { display: none; }
 .objectives-m-pad { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
 .objectives-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: left; cursor: pointer; }
-.objectives-m :focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+/* 누름 문법(data-press)이 붙은 조작부의 포커스 고리는 코어 누름 층이 모양대로 그린다(S-52 PR-1). */
+.objectives-m :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
 
 /* 묶음 머리 — 「끝남」은 접는 머리다(필터 버튼이 아니다). */
 .objectives-m-glab { margin: 0; padding: 6px 4px 0; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.4; color: var(--m-text-muted); }
@@ -23,7 +24,6 @@
 .objectives-m-row.is-mission .objectives-m-tx { font-size: var(--m-fs-list); }
 .objectives-m-grp > .objectives-m-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
 .objectives-m-grp > .objectives-m-row:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
-.objectives-m button.objectives-m-row:active { background: var(--m-selected); }
 .objectives-m-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .objectives-m-tx small { display: block; margin-top: 1px; font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
 .objectives-m-tx small.is-awaiting { color: var(--m-awaiting); }
@@ -112,12 +112,15 @@
 .objectives-m-sheet-head { position: relative; flex: none; padding: 2px 56px 10px; text-align: center; }
 .objectives-m-sheet-head h2 { margin: 0; font-size: var(--m-fs-title); font-weight: var(--weight-bold); line-height: 24px; }
 .objectives-m-sheet-layer .objectives-m-sheet-x { position: absolute; top: -8px; right: 12px; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 20px; color: var(--m-text-muted); }
-.objectives-m-sheet-layer .objectives-m-sheet-x:active { background: var(--m-selected); }
+/* 누름 모양(S-52 PR-2): 시트 ×는 원, 선택지 줄은 좌우 −8, 「더 보기」 글자 단추는 알약. */
+.objectives-m-sheet-layer .objectives-m-sheet-x { --pr-r: 50%; }
+.objectives-m .objectives-m-opt { --pr-inset: 0 -8px; }
+.objectives-m .objectives-m-more { --pr-inset: -6px -6px; --pr-r: 16px; }
 .objectives-m-sheet-body { display: flex; flex-direction: column; gap: 10px; min-height: 0; padding: 0 16px; overflow-y: auto; scrollbar-width: none; }
 .objectives-m-sheet-body::-webkit-scrollbar { display: none; }
 .objectives-m-sheet-layer .objectives-m-field { height: 104px; }
 .objectives-m-sheet-ft { display: flex; justify-content: flex-end; gap: 8px; flex: none; padding: 10px 16px 0; }
-.objectives-m-sheet-layer :focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+.objectives-m-sheet-layer :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
 
 /* 토스트 — 화면 아래 150, 6초 뒤 사라진다. 라이트에서만 테두리. */
 .objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: var(--m-fs-secondary); animation: objectives-m-fade .2s ease-out; }

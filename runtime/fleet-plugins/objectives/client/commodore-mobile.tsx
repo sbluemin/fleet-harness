@@ -142,7 +142,7 @@ function CommodoreDisabled({ t }: { readonly t: T }) {
     <div className="objectives-cm">
       <div className="objectives-cm-center">
         <p className="objectives-cm-center-text">{t("objectives.commodore.failed.disabled")}</p>
-        <a className="objectives-cm-pill" href="settings?section=experiments">{t("objectives.commodore.mobile.openExperiments")}</a>
+        <a data-press="r3" className="objectives-cm-pill" href="settings?section=experiments">{t("objectives.commodore.mobile.openExperiments")}</a>
       </div>
     </div>
   );
@@ -181,13 +181,13 @@ function CommodoreScreen({ t, theaterId, enabled }: { readonly t: T; readonly th
           ) : (
             <span className="objectives-cm-band-text is-danger">{[t("objectives.commodore.meta.error"), run.reason ? errorWord(t, run.reason) : null].filter(Boolean).join(" · ")}</span>
           )}
-          <button type="button" className="objectives-cm-band-act" disabled={!online} onClick={() => { clear(); void retryCommodore(theaterId).catch(fail); }}>{t("objectives.commodore.drawer.retryNow")}</button>
+          <button type="button" data-press="r1" className="objectives-cm-band-act" disabled={!online} onClick={() => { clear(); void retryCommodore(theaterId).catch(fail); }}>{t("objectives.commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
       <AutonomyRow t={t} theaterId={theaterId} view={view} online={online} onFail={fail} onClear={clear} />
       <div className="objectives-cm-tabs" role="tablist" aria-label={t("objectives.commodore.tabs.aria")}>
         {tabs.map((item) => (
-          <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? "is-on" : undefined} onClick={() => setCommodoreMobileTab(item.id)}>{item.label}</button>
+          <button key={item.id} type="button" role="tab" data-press="r1" aria-selected={tab === item.id} className={tab === item.id ? "is-on" : undefined} onClick={() => setCommodoreMobileTab(item.id)}>{item.label}</button>
         ))}
       </div>
       {tab === "log" ? <CommodoreMobileLog t={t} theaterId={theaterId} view={view} entries={entries} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
@@ -226,6 +226,7 @@ function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly
       <button
         type="button"
         role="switch"
+        data-press="r2"
         className="objectives-cm-trow"
         aria-checked={on}
         aria-busy={busy || undefined}
@@ -304,7 +305,7 @@ function CommodoreMobileLog({ t, theaterId, view, entries, hasMore, loaded, onli
   } else {
     body = (
       <>
-        {hasMore ? <button type="button" className="objectives-cm-tbtn is-center" disabled={loadingOlder} onClick={older}>{t("objectives.commodore.log.older")}</button> : null}
+        {hasMore ? <button type="button" data-press="r1" className="objectives-cm-tbtn is-center" disabled={loadingOlder} onClick={older}>{t("objectives.commodore.log.older")}</button> : null}
         {items.map((item) => {
           if (item.kind === "marker") return <p key={item.key} className="objectives-cm-mark"><span>{clockTime(item.at)} · {item.text}</span></p>;
           if (item.kind === "message") {
@@ -328,7 +329,7 @@ function CommodoreMobileLog({ t, theaterId, view, entries, hasMore, loaded, onli
               {item.notes.map((note) => <p key={note.key} className={`objectives-cm-note${note.tone === "dim" ? " is-dim" : ""}`}>{note.text}</p>)}
               {item.tools.length > 0 ? (
                 <>
-                  <button type="button" className="objectives-cm-tbtn objectives-cm-tools" aria-expanded={open} onClick={() => setToolsOpen((current) => { const next = new Set(current); if (next.has(item.key)) next.delete(item.key); else next.add(item.key); return next; })}>
+                  <button type="button" data-press="r1" className="objectives-cm-tbtn objectives-cm-tools" aria-expanded={open} onClick={() => setToolsOpen((current) => { const next = new Set(current); if (next.has(item.key)) next.delete(item.key); else next.add(item.key); return next; })}>
                     {t("objectives.commodore.log.tools", { summary: toolSummary(item.tools) })}<Chevron open={open} />
                   </button>
                   {open ? (
@@ -405,7 +406,7 @@ function CommodoreMobileComposer({ t, theaterId, active, online, failure, onFail
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && !touchFirst()) { event.preventDefault(); send(); } }}
         />
         <div className="objectives-cm-comp-bar">
-          <button type="button" className="objectives-cm-circ" aria-label={t("objectives.commodore.composer.send")} disabled={!usable || sending} onClick={send}><SendIcon /></button>
+          <button type="button" data-press="r3" className="objectives-cm-circ" aria-label={t("objectives.commodore.composer.send")} disabled={!usable || sending} onClick={send}><SendIcon /></button>
         </div>
       </div>
       {active ? null : <p id={`objectives-cm-idle-${theaterId}`} className="objectives-cm-secnote is-dock">{t("objectives.commodore.composer.idle")}</p>}
@@ -453,7 +454,7 @@ function CommodoreMobileDirective({ t, theaterId, view, online, failure, onFail,
         {failure ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
         <div className="objectives-cm-crow">
           <span className="objectives-cm-secnote is-grow">{directive.rev > 0 ? t("objectives.commodore.directive.rev", { rev: directive.rev, time: clockTime(directive.updatedAt) }) : ""}</span>
-          <button type="button" className="objectives-cm-pill is-inverse" disabled={saving || !dirty || !online} onClick={save}>{t("objectives.commodore.directive.save")}</button>
+          <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={saving || !dirty || !online} onClick={save}>{t("objectives.commodore.directive.save")}</button>
         </div>
         {saved && !dirty ? <p className="objectives-cm-secnote is-done" role="status">{t(view.active ? "objectives.commodore.directive.saved" : "objectives.commodore.directive.savedIdle")}</p> : null}
       </div>
@@ -484,14 +485,14 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
         {failure ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
         <div className="objectives-cm-crow">
           <span className="is-grow" />
-          <button type="button" className="objectives-cm-pill is-inverse" disabled={adding || !draft.trim() || !online} onClick={add}>{t("objectives.commodore.intel.add")}</button>
+          <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={adding || !draft.trim() || !online} onClick={add}>{t("objectives.commodore.intel.add")}</button>
         </div>
         {intel.length === 0 ? <p className="objectives-cm-secnote">{t("objectives.commodore.intel.empty")}</p> : (
           <div className="objectives-cm-grp">
             {intel.map((item) => (
               <div key={item.id} className="objectives-cm-gr">
                 <span className="objectives-cm-gr-tx">{item.text}<small>{day(item.at)} · {sourceLabel(item.source)}</small></span>
-                <button type="button" className="objectives-cm-tbtn" aria-label={t("objectives.commodore.intel.removeAria")} disabled={!online} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
+                <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("objectives.commodore.intel.removeAria")} disabled={!online} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
               </div>
             ))}
           </div>

@@ -1,10 +1,9 @@
 /*
  * 모바일 드로어 목적지 「사령관」(impl-spec S-54 CM-2) — 호스트 모바일 화면(data-host-surface="mobile-screen") 안에서만 선다.
  * 값은 시안 mobile-redesign.html 의 사령관 화면(.band · .cmd-top .trow · .ttabs · .chat · .cw · .cmsg · .dock .comp · .card-pad)
- * 그대로다. 색은 모바일 토큰(--m-*)만 쓴다. 누름은 S-52 문법: R1 바탕 없는 단추는 --m-selected 누름 면, R2 면 있는 행은 면이
- * --m-selected 로, R3 칠한 조작부는 제 글자색 12% 겹침. 나타남 0ms · 사라짐 150ms.
+ * 그대로다. 색은 모바일 토큰(--m-*)만 쓴다. 누름은 코어 누름 층(data-press r1·r2·r3, S-52)이 그린다.
  */
-.objectives-cm { --objectives-cm-press-out: 150ms; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+.objectives-cm { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
 /* 단추 초기화는 :where 로 특정도를 0 에 둔다 — 화면 안에 서는 호스트 팝업(모델·선택)의 행 문법을 덮지 않게. */
 :where(.objectives-cm) button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: left; cursor: pointer; -webkit-touch-callout: none; touch-action: manipulation; }
 :where(.objectives-cm) button:disabled { cursor: default; }
@@ -13,12 +12,11 @@
 /* 띠 — 재시도 대기 · 오류(S-34 문법). */
 .objectives-cm-band { flex: none; display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 16px; background: var(--m-bg-deep); color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .objectives-cm-band-text { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.objectives-cm .objectives-cm-band-act { margin-left: auto; margin-right: -10px; padding: 4px 10px; color: var(--m-text); font-weight: var(--weight-bold); white-space: nowrap; --objectives-cm-pr-r: 14px; }
+.objectives-cm .objectives-cm-band-act { margin-left: auto; margin-right: -10px; padding: 4px 10px; color: var(--m-text); font-weight: var(--weight-bold); white-space: nowrap; --pr-r: 14px; }
 
 /* 자율 운영 행 — 화면 위에 고정된 묶음 카드 한 행(P-2 토글 행). 행 전체가 스위치다. */
 .objectives-cm-top { flex: none; padding: 0 14px 10px; }
-.objectives-cm .objectives-cm-trow { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 14px 16px; border-radius: 22px; background: var(--m-surface); font-size: var(--m-fs-body); transition: background-color var(--objectives-cm-press-out) ease-out; }
-.objectives-cm .objectives-cm-trow:active:not(:disabled) { background: var(--m-selected); transition-duration: 0s; }
+.objectives-cm .objectives-cm-trow { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 14px 16px; border-radius: 22px; background: var(--m-surface); font-size: var(--m-fs-body); }
 .objectives-cm-trow-ic { display: grid; flex: none; place-items: center; width: 22px; }
 .objectives-cm-trow-tx { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .objectives-cm-trow-tx b { font-size: var(--m-fs-body); font-weight: var(--weight-medium); line-height: 23px; }
@@ -35,7 +33,7 @@
 
 /* 글자 탭(S-02 .ttabs). */
 .objectives-cm-tabs { flex: none; display: flex; gap: 20px; padding: 0 24px; border-bottom: 1px solid var(--m-hairline); }
-.objectives-cm .objectives-cm-tabs button { padding: 10px 0; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); --objectives-cm-pr-inset: 4px -10px; --objectives-cm-pr-r: 10px; }
+.objectives-cm .objectives-cm-tabs button { padding: 10px 0; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); --pr-inset: 4px -10px; --pr-r: 10px; }
 .objectives-cm .objectives-cm-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: var(--weight-bold); }
 
 /* 기록 탭 — 채팅 문법(S-26·S-27). */
@@ -118,19 +116,8 @@
 .objectives-cm-gr-tx { flex: 1; min-width: 0; font-size: var(--m-fs-list); overflow-wrap: anywhere; }
 .objectives-cm-gr-tx small { display: block; margin-top: 1px; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .objectives-cm-gr-tx small.is-mono { font-family: var(--m-mono); }
-.objectives-cm .objectives-cm-tbtn { padding: 6px 10px; border-radius: 16px; color: var(--m-text-nav); font-size: var(--m-fs-meta); font-weight: var(--weight-medium); white-space: nowrap; --objectives-cm-pr-r: 16px; }
+.objectives-cm .objectives-cm-tbtn { padding: 6px 10px; border-radius: 16px; color: var(--m-text-nav); font-size: var(--m-fs-meta); font-weight: var(--weight-medium); white-space: nowrap; --pr-r: 16px; }
 .objectives-cm-settings { gap: 14px; }
 
-/* 누름 R1 — 바탕 없는 단추(글자 탭 · 띠 동작 · 글자 단추)는 누름 면이 나타난다. */
-.objectives-cm :is(.objectives-cm-tabs button, .objectives-cm-band-act, .objectives-cm-tbtn) { position: relative; isolation: isolate; }
-.objectives-cm :is(.objectives-cm-tabs button, .objectives-cm-band-act, .objectives-cm-tbtn)::before { content: ""; position: absolute; inset: var(--objectives-cm-pr-inset, 0); z-index: -1; border-radius: var(--objectives-cm-pr-r, 12px); background: var(--m-selected); opacity: 0; pointer-events: none; transition: opacity var(--objectives-cm-press-out) ease-out; }
-.objectives-cm :is(.objectives-cm-tabs button, .objectives-cm-band-act, .objectives-cm-tbtn):active:not(:disabled)::before { opacity: 1; transition-duration: 0s; }
-/* 누름 R3 — 칠한 조작부(알약 · 보내기 원)는 제 글자색 12% 겹침. */
-.objectives-cm :is(.objectives-cm-pill, .objectives-cm-circ)::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: currentColor; opacity: 0; pointer-events: none; transition: opacity var(--objectives-cm-press-out) ease-out; }
-.objectives-cm :is(.objectives-cm-pill, .objectives-cm-circ):active:not(:disabled)::after { opacity: .12; transition-duration: 0s; }
-/* 키보드 포커스만 고리 — 누름 모양 그대로 안쪽 2px. */
-.objectives-cm :is(.objectives-cm-tabs button, .objectives-cm-band-act, .objectives-cm-tbtn, .objectives-cm-trow, .objectives-cm-pill, .objectives-cm-circ):focus { outline: none; }
-.objectives-cm :is(.objectives-cm-tabs button, .objectives-cm-band-act, .objectives-cm-tbtn):focus-visible::before { opacity: 1; background: transparent; box-shadow: inset 0 0 0 2px var(--m-text); transition: none; }
-.objectives-cm :is(.objectives-cm-trow, .objectives-cm-pill, .objectives-cm-circ):focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; }
+/* 누름·키보드 포커스는 코어 누름 층(data-press, impl-spec S-52)이 그린다 — 여기서는 PR-2 표의 모양(--pr-inset·--pr-r)만 정한다. */
 .objectives-cm-field:focus-visible { border-color: var(--m-text-muted); }
-@media (prefers-reduced-motion: reduce) { .objectives-cm { --objectives-cm-press-out: 0ms; } }

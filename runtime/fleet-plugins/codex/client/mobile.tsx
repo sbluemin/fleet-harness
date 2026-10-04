@@ -112,7 +112,7 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
           {results && results.length > 0 ? (
             <div className="codex-m-grp">
               {results.map((entry) => (
-                <button key={entry.id} type="button" className="codex-m-row" onClick={() => openEntry(entry.id)}>
+                <button key={entry.id} type="button" data-press="r2" className="codex-m-row" onClick={() => openEntry(entry.id)}>
                   <span className="codex-m-icon"><WikiIcon /></span>
                   <span className="codex-m-tx">{entry.title}</span>
                 </button>
@@ -132,7 +132,7 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
         {load.kind === "none" ? <p className="codex-m-note">{t("rail.codex.wikiUnavailable")}</p> : null}
         {load.kind === "ready" && load.pending > 0 ? (
           <div className="codex-m-grp">
-            <button type="button" className="codex-m-row is-two" onClick={openReview}>
+            <button type="button" data-press="r2" className="codex-m-row is-two" onClick={openReview}>
               <span className="codex-m-sg" aria-hidden="true" />
               <span className="codex-m-tx">{t("mobile.wiki.review")}<small>{t("mobile.wiki.reviewCount", { count: load.pending })}</small></span>
             </button>
@@ -144,7 +144,7 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
             {load.entries.length === 0 ? <p className="codex-m-note">{t("mobile.wiki.empty")}</p> : (
               <div className="codex-m-grp">
                 {load.entries.map((entry) => (
-                  <button key={entry.id} type="button" className="codex-m-row" onClick={() => openEntry(entry.id)}>
+                  <button key={entry.id} type="button" data-press="r2" className="codex-m-row" onClick={() => openEntry(entry.id)}>
                     <span className="codex-m-icon"><WikiIcon /></span>
                     <span className="codex-m-tx">{entry.title}</span>
                   </button>

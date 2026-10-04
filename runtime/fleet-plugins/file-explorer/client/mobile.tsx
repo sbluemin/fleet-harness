@@ -124,7 +124,7 @@ export function MobileFileTree(ctx: PaneContext) {
       const isDir = entry.kind === "dir";
       const expanded = isDir && open.has(entry.relativePath);
       const row = (
-        <button key={entry.relativePath} type="button" className="fexp-m-row" style={indent} aria-expanded={isDir ? expanded : undefined} onClick={() => (isDir ? toggle(entry) : openFile(entry))}>
+        <button key={entry.relativePath} type="button" data-press="r1" className="fexp-m-row" style={indent} aria-expanded={isDir ? expanded : undefined} onClick={() => (isDir ? toggle(entry) : openFile(entry))}>
           <span className="fexp-m-row-icon">{isDir ? <FolderGlyph /> : <FileGlyph />}</span>
           <span className="fexp-m-row-name">{entry.name}</span>
           {isDir ? <span className="fexp-m-row-chev"><Chevron open={expanded} /></span> : null}

@@ -164,7 +164,7 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
     const members = objective.members.length;
     const total = objective.criteria.length;
     return (
-      <button key={objective.id} type="button" className="objectives-m-row is-two" onClick={() => open(objective)}>
+      <button key={objective.id} type="button" data-press="r2" className="objectives-m-row is-two" onClick={() => open(objective)}>
         <StatusMark state={objectiveGlyph(objective, operations)} />
         <span className="objectives-m-tx">
           {objective.title}
@@ -280,7 +280,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
             <h2 className="objectives-m-glab">{t("objectives.mobile.sessions")}</h2>
             <div className="objectives-m-grp">
               {sessions.map((session) => (
-                <button key={session.id} type="button" className="objectives-m-row" onClick={() => focusOperation(session.id)}>
+                <button key={session.id} type="button" data-press="r2" className="objectives-m-row" onClick={() => focusOperation(session.id)}>
                   <StatusMark state={session.glyph} />
                   <span className="objectives-m-tx">{session.role}<small>{session.title}</small></span>
                   <span className="objectives-m-ri"><Chevron open={false} /></span>
@@ -333,7 +333,7 @@ function BriefCard({ objective, t }: { readonly objective: Objective; readonly t
         <>
           <h3 className="objectives-m-card-label">{t("objectives.objective.memo")}</h3>
           <p ref={textRef} className={`objectives-m-brief${open ? "" : " is-clamped"}`}><LinkText text={brief} /></p>
-          {overflows || open ? <button type="button" className="objectives-m-more" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{t(open ? "objectives.mobile.brief.less" : "objectives.mobile.brief.more")}</button> : null}
+          {overflows || open ? <button type="button" data-press="r1" className="objectives-m-more" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{t(open ? "objectives.mobile.brief.less" : "objectives.mobile.brief.more")}</button> : null}
         </>
       ) : null}
       {total > 0 ? (
@@ -460,13 +460,13 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
                   {question.options.map((option) => {
                     const on = !draft.own && draft.picked.includes(option.id);
                     return (
-                      <button key={option.id} type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} disabled={sending} className="objectives-m-opt" onClick={() => pick(question, option.id)}>
+                      <button key={option.id} type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} disabled={sending} data-press="r1" className="objectives-m-opt" onClick={() => pick(question, option.id)}>
                         <span className={`${indicator}${on ? " is-on" : ""}`} aria-hidden="true">{question.multiSelect && on ? <CheckIcon size={14} /> : null}</span>
                         <span className="objectives-m-opt-tx">{option.label}{option.description ? <small>{option.description}</small> : null}</span>
                       </button>
                     );
                   })}
-                  <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={draft.own} disabled={sending} className="objectives-m-opt" onClick={() => pickOwn(question)}>
+                  <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={draft.own} disabled={sending} data-press="r1" className="objectives-m-opt" onClick={() => pickOwn(question)}>
                     <span className={`${indicator}${draft.own ? " is-on" : ""}`} aria-hidden="true">{question.multiSelect && draft.own ? <CheckIcon size={14} /> : null}</span>
                     <span className="objectives-m-opt-tx">{t("objectives.decision.own")}</span>
                   </button>
@@ -488,7 +488,7 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
                 <div className="objectives-m-ucard-ft">
                   {many ? <span className="objectives-m-progress">{t("objectives.decision.progress", { done: doneCount, total })}</span> : null}
                   <span className="objectives-m-sp" />
-                  <button type="button" className="objectives-m-b2" disabled={sending || doneCount !== total} onClick={() => void submit()}>
+                  <button type="button" data-press="r3" className="objectives-m-b2" disabled={sending || doneCount !== total} onClick={() => void submit()}>
                     {t(sending ? "objectives.decision.sending" : "objectives.mobile.decision.send")}
                   </button>
                 </div>
@@ -584,12 +584,12 @@ function MessageSheet({ t, objectiveId, recipients, api, language, say, onClose 
         <div className="objectives-m-sheet-handle" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}><i /></div>
         <div className="objectives-m-sheet-head">
           <h2>{t("objectives.message")}</h2>
-          <button type="button" className="objectives-m-sheet-x" aria-label={t("objectives.detail.close")} onClick={close}><CloseIcon /></button>
+          <button type="button" data-press="r1" className="objectives-m-sheet-x" aria-label={t("objectives.detail.close")} onClick={close}><CloseIcon /></button>
         </div>
         <div className="objectives-m-sheet-body">
           <div className="objectives-m-chips" role="radiogroup" aria-label={t("objectives.message")}>
             {recipients.map((candidate) => (
-              <button key={candidate.id} type="button" role="radio" aria-checked={candidate.id === recipient?.id} className={`objectives-m-pill2${candidate.id === recipient?.id ? " is-inv" : ""}`} onClick={() => { setTo(candidate.id); setError(null); }}>{candidate.role}</button>
+              <button key={candidate.id} type="button" role="radio" aria-checked={candidate.id === recipient?.id} data-press="r3" className={`objectives-m-pill2${candidate.id === recipient?.id ? " is-inv" : ""}`} onClick={() => { setTo(candidate.id); setError(null); }}>{candidate.role}</button>
             ))}
           </div>
           <textarea
@@ -605,7 +605,7 @@ function MessageSheet({ t, objectiveId, recipients, api, language, say, onClose 
           {error ? <p className="objectives-m-fault" role="status">{error}</p> : how ? <p className="objectives-m-secnote">{how}</p> : null}
         </div>
         <div className="objectives-m-sheet-ft">
-          <button type="button" className="objectives-m-pill2 is-inv" disabled={!recipient || blocked || sending || !text.trim()} onClick={() => void send()}>
+          <button type="button" data-press="r3" className="objectives-m-pill2 is-inv" disabled={!recipient || blocked || sending || !text.trim()} onClick={() => void send()}>
             {t(sending ? "objectives.decision.sending" : "objectives.mobile.message.send")}
           </button>
         </div>

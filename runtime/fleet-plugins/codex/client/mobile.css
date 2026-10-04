@@ -5,7 +5,8 @@
 .codex-m { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
 .codex-m::-webkit-scrollbar { display: none; }
 .codex-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; text-align: left; cursor: pointer; }
-.codex-m :focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+/* 누름 문법(data-press)이 붙은 조작부의 포커스 고리는 코어 누름 층이 모양대로 그린다(S-52 PR-1). */
+.codex-m :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
 .codex-m-pad { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
 .codex-m-glab { margin: 0; padding: 6px 4px 0; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.4; color: var(--m-text-muted); }
 .codex-m .codex-m-note { margin: 0; padding: 24px 4px; font-size: var(--m-fs-meta); color: var(--m-text-muted); }
@@ -14,7 +15,6 @@
 .codex-m .codex-m-row.is-two { min-height: 72px; }
 .codex-m-grp > .codex-m-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
 .codex-m-grp > .codex-m-row:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
-.codex-m .codex-m-row:active { background: var(--m-selected); }
 .codex-m-icon { display: grid; place-items: center; flex: none; }
 .codex-m-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .codex-m-tx small { display: block; margin-top: 1px; font-size: var(--m-fs-secondary); color: var(--m-awaiting); }

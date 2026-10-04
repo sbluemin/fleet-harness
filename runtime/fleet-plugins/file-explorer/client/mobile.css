@@ -5,13 +5,13 @@
 .fexp-m { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
 .fexp-m::-webkit-scrollbar { display: none; }
 .fexp-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; text-align: left; cursor: pointer; }
-.fexp-m :focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+/* 누름 문법(data-press)이 붙은 조작부의 포커스 고리는 코어 누름 층이 모양대로 그린다(S-52 PR-1). */
+.fexp-m :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
 
 /* 빈·로딩·오류 줄은 드로어 빈 상태 문법(14 muted, 패딩 4/28/8)이다. 들여쓰기는 행과 같다. */
 /* 트리 — 행 44, 좌우 12 들여, 모서리 12, 왼쪽 = 16 + 깊이×18. */
 .fexp-m-tree { padding-top: 4px; padding-bottom: 24px; }
 .fexp-m .fexp-m-row { display: flex; align-items: center; gap: 16px; width: calc(100% - 24px); min-height: 44px; margin: 0 12px; padding: 0 16px 0 16px; border-radius: 12px; font-size: var(--m-fs-list); }
-.fexp-m .fexp-m-row:active { background: var(--m-selected); }
 .fexp-m-row-icon { display: grid; place-items: center; flex: none; color: var(--m-text-muted); }
 .fexp-m-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fexp-m-row-chev { display: grid; place-items: center; flex: none; color: var(--m-text-faint); }
