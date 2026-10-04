@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -16,7 +16,17 @@ function supervisor(log = { info: vi.fn(), error: vi.fn() }) {
 }
 
 describe("sidecar supervisor", () => {
-  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+  const children: ChildProcess[] = [];
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    await Promise.all(children.splice(0).map(async (child) => {
+      if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return;
+      const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+      child.kill("SIGKILL");
+      await exited;
+    }));
+  });
 
   it("adopts only a healthy matching desktop owner", async () => {
     vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }));
@@ -52,6 +62,7 @@ describe("sidecar supervisor", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-reused-pid-"));
     const reusedLock = path.join(dir, "console.lock");
     const bystander = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => process.stdout.write('term\\n')); process.stdout.write('ready\\n'); setInterval(() => {}, 60_000)"], { stdio: ["ignore", "pipe", "ignore"] });
+    children.push(bystander);
     let bystanderSignal: NodeJS.Signals | null = null;
     let sigterms = 0;
     bystander.once("exit", (_code, signal) => { bystanderSignal = signal ?? "SIGHUP"; });
@@ -88,6 +99,8 @@ describe("sidecar supervisor", () => {
       // lock 주소가 연결을 거절해도 pid가 살아 있으면 종료 정리 중인 Console일 수 있다 — 그동안 lock을 지우거나 새 Console을
       // 띄우지 않고 기다린다. pid가 끝나면 그 lock은 stale이므로 신호 없이 파일만 치우고 시작을 이어 간다.
       await new Promise<void>((resolve) => impostor.close(() => resolve()));
+      await expect(instance.stop()).resolves.toBeUndefined();
+      expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
       const starting = instance.startOrAdopt();
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
@@ -98,9 +111,12 @@ describe("sidecar supervisor", () => {
       bystander.kill("SIGKILL");
       await expect(starting).rejects.toThrow("reached_spawn");
       expect(fs.existsSync(reusedLock)).toBe(false);
+      // 죽은 pid가 남긴 lock은 Quit에서도 즉시 회수한다.
+      fs.writeFileSync(reusedLock, lockContents);
+      await expect(instance.stop()).resolves.toBeUndefined();
+      expect(fs.existsSync(reusedLock)).toBe(false);
     } finally {
       impostor.close();
-      bystander.kill("SIGKILL");
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }, 15_000);
