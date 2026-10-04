@@ -15,6 +15,7 @@ import { MobileRequestBanner } from "./mobile-request-banner.js";
 import { MobileToastHost } from "./mobile-toast.js";
 import { MobileSheetHost } from "./mobile-sheet-host.js";
 import { MobileTopBar } from "./mobile-top-bar.js";
+import { installMobileBackBridge } from "./mobile-back.js";
 import { installMobileHistory } from "./mobile-history.js";
 import { getMobileDrawerOpen, getMobileDestination, useMobileDestination, useMobileDrawerOpen, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl, setMobileDrawerOpen } from "./mobile-store.js";
 import "../../styles/mobile.css";
@@ -53,6 +54,8 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
     setMobileDrawerOpen(true);
   };
   useEffect(() => installMobileHistory(() => homeRef.current()), []);
+  // 앱의 하드웨어 뒤로: 같은 우선순위를 함수 호출로 받는다(history.back을 따로 쓰지 않는다).
+  useEffect(() => installMobileBackBridge(() => homeRef.current()), []);
 
   // 시스템 바 색(S-03): 드로어가 열리면 위·아래가 드로어 면, 시트가 열리면 아래가 시트 면. 앱이면 네이티브가 칠하고 브라우저는 무시한다.
   const drawerOpen = useMobileDrawerOpen();

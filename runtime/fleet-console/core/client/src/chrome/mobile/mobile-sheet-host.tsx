@@ -9,6 +9,7 @@ import { useMobileAppearance } from "../../integration/mobile-appearance-store.j
 import { setActiveTheater } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import type { ConsoleState } from "../../integration/types.js";
+import { pushBackLayer } from "./mobile-back.js";
 import { MobileFolderSheet } from "./mobile-folder-sheet.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { showMobileToast } from "./mobile-toast.js";
@@ -31,10 +32,13 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
       if (historyIdRef.current !== null) { releaseOverlayHistory(historyIdRef.current); historyIdRef.current = null; }
       return;
     }
+    // 시트가 열려 있는 동안은 하드웨어 뒤로가 맨 위 시트를 먼저 닫는다.
+    const releaseLayer = pushBackLayer(() => popMobileSheet());
     // 한 항목이 쌓인 모든 시트를 든다 — 뒤로가 시트를 하나 닫으면 남은 시트를 위해 이 효과가 항목을 다시 세운다.
     if (historyIdRef.current === null) {
       historyIdRef.current = pushOverlayHistory(() => { historyIdRef.current = null; popMobileSheet(); });
     }
+    return releaseLayer;
   }, [depth]);
 
   const top = stack.at(-1);

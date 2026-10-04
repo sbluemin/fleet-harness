@@ -1,3 +1,5 @@
+import { isFleetMobileShell } from "@fleet-console/link/core";
+
 import type { ConsoleState } from "../../../core/client/src/integration/types.js";
 export const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
 let whatsNewSeenVersionMemo: string | null = null;
@@ -13,6 +15,9 @@ export function evaluateAutomaticWhatsNew(current: ConsoleState): Pick<ConsoleSt
   if (!firstReal || !current.version || firstReal.version !== current.version || readStoredWhatsNewSeenVersion() === firstReal.version) {
     return unchanged;
   }
+  // Fleet 앱은 연결마다 웹 저장소가 비영속이라 「본 버전」 기록이 매번 사라진다 — 그대로 두면 새 기능이 연결할 때마다 뜬다.
+  // 앱에서는 자동으로 열지 않고 설정 › 정보 › 새 기능에서만 연다(브라우저는 현행).
+  if (isFleetMobileShell()) return unchanged;
   // 처음 설치한 사람에게는 "새 소식"이 성립하지 않는다 — 그들에게는 전부가 처음이라, 지난
   // 릴리스 묶음을 펼쳐 봤자 아직 본 적 없는 제품의 변경 이력일 뿐이다. 본 기록이 없고
   // Theater도 아직 없으면 첫 실행으로 보고, 현재 버전을 읽은 것으로 표시해 다음 릴리스부터

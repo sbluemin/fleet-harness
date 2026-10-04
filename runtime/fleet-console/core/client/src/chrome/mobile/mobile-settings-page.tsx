@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
@@ -9,6 +9,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { loadGlobalSettings, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../../i18n/index.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
+import { pushBackLayer } from "./mobile-back.js";
 import {
   collectPluginSettingsSections,
   renderSettingsSection,
@@ -114,6 +115,12 @@ export function MobileSettingsPage() {
   useClaimMobileBar(active !== null
     ? { variant: "centered", title: active.title, leading: "back", onBack: close }
     : { variant: "centered", title: t("mobile.drawer.settings"), leading: "menu", actions: [{ id: "about", icon: <MobileIcon name="info" />, label: t("mobile.settings.about"), run: () => open("about") }] });
+
+  // 섹션 상세가 열려 있는 동안 하드웨어 뒤로는 그것을 닫는다(목록으로).
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  const detailOpen = active !== null;
+  useEffect(() => (detailOpen ? pushBackLayer(() => closeRef.current()) : undefined), [detailOpen]);
 
   // An unknown section — a stale link, or one whose plugin is gone — resolves to the list rather
   // than to an empty screen, and the address is corrected so a reload does not repeat the miss.

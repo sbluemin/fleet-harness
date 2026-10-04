@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
 
 import { useT } from "../../i18n/index.js";
+import { pushBackLayer } from "./mobile-back.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMenu } from "./mobile-menu.js";
 import { getLiveMobileBar, setMobileBarExtraSlot, setMobileDrawerOpen, useMobileBar, type MobileBarState } from "./mobile-store.js";
@@ -18,6 +19,8 @@ export function MobileTopBar({ attentionDot }: { readonly attentionDot: boolean 
   const claimed = useMobileBar();
   const bar = claimed ?? DEFAULT_BAR;
   const [menuOpen, setMenuOpen] = useState(false);
+  // 열린 ⋮ 메뉴는 뒤로가 가장 먼저 닫는 겹침이다.
+  useEffect(() => (menuOpen ? pushBackLayer(() => setMenuOpen(false)) : undefined), [menuOpen]);
   // 화면이 막대를 올리지 않아도 ≡는 늘 서 있어야 한다 — 드로어로 가는 길이 끊기는 화면이 없게.
   if (bar.hidden) return null;
 

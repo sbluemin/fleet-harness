@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 
 import type { ClientMobileBarCapability, MobileBarSpec } from "@fleet-console/sdk/pane";
 
+import { pushBackLayer } from "./mobile-back.js";
 import { claimMobileBar, releaseMobileBar, setMobilePluginDepth, type MobileBarState } from "./mobile-store.js";
 
 /**
@@ -25,6 +26,7 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
   const pushedRef = useRef(0);
   const fromPopRef = useRef(false);
   const swallowRef = useRef(0);
+  const layerRef = useRef<(() => void) | null>(null);
   const fallbackTitleRef = useRef(fallback.title);
   fallbackTitleRef.current = fallback.title;
 
@@ -58,6 +60,8 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
     window.addEventListener("popstate", onPop);
     return () => {
       window.removeEventListener("popstate", onPop);
+      layerRef.current?.();
+      layerRef.current = null;
       setMobilePluginDepth(0);
       releaseMobileBar(owner);
     };
@@ -80,6 +84,9 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       }
       fromPopRef.current = false;
       setMobilePluginDepth(pushedRef.current);
+      // 상세가 쌓여 있는 동안 하드웨어 뒤로는 그것을 하나 걷는다(브라우저 뒤로와 같은 history 한 칸).
+      if (depth > 0 && layerRef.current === null) layerRef.current = pushBackLayer(() => window.history.back());
+      if (depth === 0 && layerRef.current !== null) { layerRef.current(); layerRef.current = null; }
       publish(specRef.current);
     },
   }), []);
