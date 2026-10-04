@@ -332,6 +332,13 @@ export const en = {
   "common.diagram.zoomControlsAria": "Diagram zoom controls",
   "common.diagram.zoomInAria": "Zoom in",
   "common.diagram.zoomOutAria": "Zoom out",
+  "mobile.wiki.title": "Wiki",
+  "mobile.wiki.review": "Review queue",
+  "mobile.wiki.reviewCount": "{count} AI edit proposals",
+  "mobile.wiki.items": "Entries",
+  "mobile.wiki.empty": "No wiki entries yet.",
+  "mobile.wiki.loading": "Loading…",
+  "mobile.wiki.failed": "Couldn't load the wiki · Tap to retry",
 } as const;
 
 export const ko: Record<keyof typeof en, string> = {
@@ -666,6 +673,13 @@ export const ko: Record<keyof typeof en, string> = {
   "common.diagram.zoomControlsAria": "다이어그램 확대/축소 컨트롤",
   "common.diagram.zoomInAria": "확대",
   "common.diagram.zoomOutAria": "축소",
+  "mobile.wiki.title": "위키",
+  "mobile.wiki.review": "검토 대기",
+  "mobile.wiki.reviewCount": "AI 편집 제안 {count}건",
+  "mobile.wiki.items": "항목",
+  "mobile.wiki.empty": "아직 위키 항목이 없습니다.",
+  "mobile.wiki.loading": "불러오는 중…",
+  "mobile.wiki.failed": "위키를 불러오지 못했습니다 · 눌러서 다시 시도",
 };
 
 export type CodexMessageKey = keyof typeof en;

@@ -173,6 +173,14 @@ function CodexReaderPane(ctx: PaneContext) {
     panes.replaceParams({ title: next });
   }, [addressTitle, documentState.title, panes]);
 
+  // 모바일 목적지 화면 — 막대는 호스트가 그린다. 문서 제목과 뒤로(문서를 닫고 목록으로)만 선언한다.
+  const { mobileBar, visible } = ctx;
+  const barTitle = documentState.title || addressTitle || t("mobile.wiki.title");
+  useEffect(() => {
+    if (!visible || !mobileBar) return;
+    mobileBar.set({ title: barTitle, depth: 1, onBack: () => { closeCodexReader(); panes.close(); } });
+  }, [mobileBar, visible, barTitle, panes]);
+
   return (
     <div className="codex-doc-pane">
       <div className="codex-theater-context"><CodexTheaterBadge theaterId={theaterId} consoleState={ctx.consoleState} /></div>

@@ -31,6 +31,7 @@ import { openCodexRailPanel, openCodexReaderByAddress } from "./host.js";
 import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
 import { loadInitialData } from "./codex/state.js";
 import { CodexTheaterBadge } from "./codex-theater-badge.js";
+import { MobileWikiList } from "./mobile.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -63,7 +64,8 @@ export const codexPane: PaneDescriptor = {
   role: "primary",
   mounts: ["rail"],
   title: (ctx) => getT(ctx.language ?? "en")("rail.codex.title"),
-  render: (ctx) => <CodexRailPanel ctx={ctx} />,
+  // 모바일 목적지 화면에서는 호스트가 막대 창구(mobileBar)를 싣는다 — 그때만 모바일 목록이 선다.
+  render: (ctx) => (ctx.mobileBar ? <MobileWikiList ctx={ctx} /> : <CodexRailPanel ctx={ctx} />),
   defaultWidth: 420,
   minWidth: 248,
   search: async ({ query, theaterId, limit, signal, language }) => {

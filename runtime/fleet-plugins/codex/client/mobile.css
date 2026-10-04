@@ -1,0 +1,26 @@
+/*
+ * 모바일 목적지 「위키」(S-44) — 호스트 모바일 화면 안에서만 선다. 값은 시안의 카드형 화면 문법(.card-pad·.grp·.gr·.glab) 그대로다.
+ * 색은 모바일 토큰(--m-*)만 쓴다.
+ */
+.codex-m { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; background: var(--m-bg); color: var(--m-text); font-family: var(--font-ui); font-size: 16px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
+.codex-m::-webkit-scrollbar { display: none; }
+.codex-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; text-align: left; cursor: pointer; }
+.codex-m :focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+.codex-m-pad { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
+.codex-m-glab { margin: 0; padding: 6px 4px 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--m-text-muted); }
+.codex-m .codex-m-note { margin: 0; padding: 24px 4px; font-size: 14px; color: var(--m-text-muted); }
+.codex-m-grp { display: flex; flex-direction: column; gap: 2px; }
+.codex-m .codex-m-row { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 10px 16px; border-radius: 4px; background: var(--m-surface); font-size: 17px; }
+.codex-m .codex-m-row.is-two { min-height: 72px; }
+.codex-m-grp > .codex-m-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+.codex-m-grp > .codex-m-row:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
+.codex-m .codex-m-row:active { background: var(--m-selected); }
+.codex-m-icon { display: grid; place-items: center; flex: none; }
+.codex-m-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.codex-m-tx small { display: block; margin-top: 1px; font-size: 15px; color: var(--m-awaiting); }
+/* 검토 대기 글리프 — 상태 글리프 문법의 review(청록 테두리·옅은 면·체크). */
+.codex-m-sg { position: relative; display: inline-block; flex: none; box-sizing: border-box; width: 12px; height: 12px; border: 1.5px solid var(--m-awaiting); border-radius: 50%; background: var(--m-awaiting-glow); }
+.codex-m-sg::after { content: ""; position: absolute; left: 3.2px; top: 1.4px; width: 2.6px; height: 4.8px; border: solid var(--m-awaiting); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+
+/* 리더 열이 모바일 화면에 설 때 — Theater 표식은 막대 부제가 대신한다. */
+[data-host-surface="mobile-screen"] .codex-doc-pane > .codex-theater-context { display: none; }
