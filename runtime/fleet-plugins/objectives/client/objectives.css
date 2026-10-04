@@ -1507,7 +1507,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   display: block;
   width: 14px;
   height: 14px;
-  color: var(--brass);
+  color: var(--brass-ink);
   filter: drop-shadow(0 0 2px color-mix(in oklch, var(--brass) 45%, transparent));
   transition: color var(--duration-fast) var(--ease-spring), opacity var(--duration-fast) var(--ease-spring), filter var(--duration-fast) var(--ease-spring);
 }
