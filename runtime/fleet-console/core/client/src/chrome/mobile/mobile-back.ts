@@ -6,15 +6,15 @@
  *   3) 홈이 아닌 목적지 루트면 홈으로, 4) 홈이면 드로어를 연다.
  * 겹침·상세는 열린 동안 자기 닫기를 이 레지스트리에 올려 둔다 — 같은 일을 history 항목도 하므로(브라우저 뒤로) 두 길이 한 닫기 함수를 쓴다.
  */
-interface BackLayer { readonly id: number; readonly close: () => void }
+interface BackLayer { readonly id: number; readonly close: () => void; readonly kind?: "drawer" }
 
 const layers: BackLayer[] = [];
 let nextId = 1;
 
 /** 겹침·상세가 열렸다고 알린다. 반환값은 그것이 닫혔을 때 부르는 해제 함수. 나중에 올린 것이 먼저 닫힌다. */
-export function pushBackLayer(close: () => void): () => void {
+export function pushBackLayer(close: () => void, kind?: "drawer"): () => void {
   const id = nextId++;
-  layers.push({ id, close });
+  layers.push({ id, close, ...(kind ? { kind } : {}) });
   return () => {
     const index = layers.findIndex((layer) => layer.id === id);
     if (index >= 0) layers.splice(index, 1);
@@ -34,8 +34,11 @@ declare global {
 }
 
 /** 모바일 배치가 서 있는 동안만 정의한다. `fallback`은 3·4순위(목적지 루트 → 홈 / 홈 → 드로어)다. */
-export function installMobileBackBridge(fallback: () => void): () => void {
+export function installMobileBackBridge(fallback: () => void, atHome: () => boolean): () => void {
   const handler = (): boolean => {
+    // 홈 위의 드로어 한 겹(그 위에 시트·메뉴가 없을 때)은 사실상 최상위 화면이다 — 앱에 넘겨 앱 기본(Console 목록)으로 가게 한다(false).
+    // 홈이 아닌 화면 위의 드로어는 다른 겹침처럼 닫고 true.
+    if (layers.at(-1)?.kind === "drawer" && atHome()) return false;
     if (closeTopBackLayer()) return true;
     fallback();
     return true;

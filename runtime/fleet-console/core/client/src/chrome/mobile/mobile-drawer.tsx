@@ -82,7 +82,7 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
   }, []);
 
   // 열린 드로어는 하드웨어 뒤로가 닫는 겹침이다(메뉴·시트가 위에 있으면 그것이 먼저).
-  useEffect(() => (open ? pushBackLayer(() => close()) : undefined), [open, close]);
+  useEffect(() => (open ? pushBackLayer(() => close(), "drawer") : undefined), [open, close]);
 
   // 가장자리 끌기로 열기 — 드로어가 닫혀 있을 때 왼쪽 22dp에서 시작한다.
   const onEdgeDown = (event: PointerEvent<HTMLDivElement>) => {

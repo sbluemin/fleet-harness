@@ -43,6 +43,8 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   useEffect(() => { syncMobileDestinationUrl(); }, [path, destination]);
 
   // 뒤로가 마지막 가드에 닿으면 — 목적지 루트이면 홈으로, 홈이면 드로어를 연다(S-51 3·4).
+  const pathRef = useRef(path);
+  pathRef.current = path;
   const homeRef = useRef<() => void>(() => undefined);
   homeRef.current = () => {
     if (getMobileDrawerOpen()) return;
@@ -55,7 +57,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   };
   useEffect(() => installMobileHistory(() => homeRef.current()), []);
   // 앱의 하드웨어 뒤로: 같은 우선순위를 함수 호출로 받는다(history.back을 따로 쓰지 않는다).
-  useEffect(() => installMobileBackBridge(() => homeRef.current()), []);
+  useEffect(() => installMobileBackBridge(() => homeRef.current(), () => pathRef.current === "/operations" && getMobileDestination().kind === "home"), []);
 
   // 시스템 바 색(S-03): 드로어가 열리면 위·아래가 드로어 면, 시트가 열리면 아래가 시트 면. 앱이면 네이티브가 칠하고 브라우저는 무시한다.
   const drawerOpen = useMobileDrawerOpen();
