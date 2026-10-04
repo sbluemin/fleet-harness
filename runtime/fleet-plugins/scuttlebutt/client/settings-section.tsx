@@ -12,6 +12,7 @@ import {
 } from "@fleet-console/sdk/settings/browser";
 
 import { readModelOptions } from "./console-read.js";
+import { MobileScuttlebuttSettings, useMobileLayout } from "./settings-mobile.js";
 
 import {
   BIRD_WIDTH_STEP,
@@ -55,6 +56,7 @@ function ScuttlebuttSettingsSection() {
   const t = getT(document.documentElement.lang === "ko" ? "ko" : "en");
   const settings = useStoreSnapshot(subscribeScuttlebuttSettings, getScuttlebuttSettings);
   const [saving, setSaving] = React.useState(false);
+  const mobile = useMobileLayout();
 
   const save = async (patch: Parameters<typeof writeScuttlebuttSettings>[0]) => {
     setSaving(true);
@@ -88,6 +90,9 @@ function ScuttlebuttSettingsSection() {
   };
 
   const onDuty = AIDES.filter((aide) => settings[aide]);
+
+  // 폰에서는 같은 상태·같은 저장 경로를 모바일 문법(묶음 행·토글 행·라디오 묶음)으로 그린다.
+  if (mobile) return <MobileScuttlebuttSettings t={t} settings={settings} saving={saving} save={save} />;
 
   return (
     <SettingsCard
