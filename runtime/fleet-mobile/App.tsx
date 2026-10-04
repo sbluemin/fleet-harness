@@ -52,12 +52,17 @@ function useReducedMotion(): boolean {
 export default function App(): React.JSX.Element {
   const consoleRef = useRef<FleetConsoleViewHandle>(null);
   const [state, setState] = useState<ShellState>("waiting");
+  const stateRef = useRef<ShellState>(state);
+  stateRef.current = state;
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [targetLabel, setTargetLabel] = useState<string | null>(null);
   const [targetOrigin, setTargetOrigin] = useState<string | null>(null);
   const [invalidLinkError, setInvalidLinkError] = useState(false);
   const [canReturnToConsole, setCanReturnToConsole] = useState(false);
   const [screen, setScreen] = useState<Screen>("console");
+  // The event handler is stable, so it reads what is on screen through these rather than its closure.
+  const screenRef = useRef<Screen>(screen);
+  screenRef.current = screen;
   const [targets, setTargets] = useState<FleetConsoleTarget[]>([]);
   const [lastError, setLastError] = useState<Record<string, string>>({});
   const [retryLeft, setRetryLeft] = useState<number | null>(null);
@@ -160,7 +165,10 @@ export default function App(): React.JSX.Element {
     setChrome(PLAIN_CHROME);
     const invalidLink = nativeEvent.type === "error" && nativeEvent.code === "pairing_target_invalid";
     setInvalidLinkError(invalidLink);
-    setCanReturnToConsole(invalidLink && nativeEvent.active === true);
+    // Any failed attempt beside a live console can step back to it — a rejected or throttled link
+    // as much as a malformed one — so the failure is shown rather than hidden behind that console.
+    const returnable = nativeEvent.type === "error" && nativeEvent.active === true;
+    setCanReturnToConsole(returnable);
     setTargetLabel(nativeEvent.label ?? null);
     setTargetOrigin(nativeEvent.origin ?? null);
     refreshTargets();
@@ -183,7 +191,9 @@ export default function App(): React.JSX.Element {
         setRetryLeft(null);
         return;
       case "connecting":
-        if (nativeEvent.active) return;
+        // While the live console is on screen its replacement loads behind it; anywhere else (the
+        // list, a warm link from outside) the attempt shows its progress.
+        if (nativeEvent.active && screenRef.current === "console" && stateRef.current === "connected") return;
         setState("connecting");
         setErrorCode(null);
         setRetryLeft(null);
@@ -197,17 +207,11 @@ export default function App(): React.JSX.Element {
         setScreen("landing");
         return;
       case "error":
-        if (nativeEvent.active && !invalidLink) {
-          // 살아 있는 Console은 유지하되 붙여넣기가 올린 Checking 오버레이는 정리한다.
-          setState("connected");
-          setErrorCode(null);
-          setRetryLeft(null);
-          return;
-        }
         setState("error");
         setErrorCode(nativeEvent.code ?? "unknown");
-        setRetryLeft(nativeEvent.retryAfterSeconds ?? null);
-        if (invalidLink) setScreen("console");
+        // Going back to the live console is never something to wait for.
+        setRetryLeft(returnable ? null : nativeEvent.retryAfterSeconds ?? null);
+        if (invalidLink || returnable) setScreen("console");
         return;
     }
   }, [refreshTargets]);
@@ -379,9 +383,9 @@ export default function App(): React.JSX.Element {
   const retryTargetLabel = targets.find((target) => target.active)?.label.trim();
   const retryLabel = retryBlocked
     ? strings.retryIn(retryLeft)
-    : invalidLinkError && retryTargetLabel
-      ? canReturnToConsole ? strings.backTo(retryTargetLabel) : strings.retryWith(retryTargetLabel)
-      : strings.retry;
+    : canReturnToConsole && retryTargetLabel ? strings.backTo(retryTargetLabel)
+      : invalidLinkError && retryTargetLabel ? strings.retryWith(retryTargetLabel)
+        : strings.retry;
   const linkReady = linkDraft.trim().toLowerCase().startsWith("fleet://");
   const scanning = screen === "scanner";
   const surfaceColor = scanning ? SCANNER.bg : palette.bg;
