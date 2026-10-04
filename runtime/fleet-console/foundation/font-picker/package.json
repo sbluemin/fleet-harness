@@ -9,6 +9,16 @@
       "import": "./browser.tsx",
       "default": "./browser.tsx"
     },
+    "./classify": {
+      "types": "./classify.ts",
+      "import": "./classify.ts",
+      "default": "./classify.ts"
+    },
+    "./local-fonts": {
+      "types": "./local-fonts.ts",
+      "import": "./local-fonts.ts",
+      "default": "./local-fonts.ts"
+    },
     "./resolve": {
       "types": "./resolve.ts",
       "import": "./resolve.ts",

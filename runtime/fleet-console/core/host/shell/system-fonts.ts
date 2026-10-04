@@ -1,29 +1,13 @@
 import { execFile } from "node:child_process";
 import type http from "node:http";
 
+import { normalizeSystemFonts, type SystemFontFace } from "@fleet-console/font-picker/classify";
+import type { SystemFontRecord, SystemFontsResponse } from "@fleet-console/font-picker/system-fonts";
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import fontList from "font-list";
 
-export interface SystemFontRecord {
-  readonly family: string;
-  readonly monospace: boolean;
-  readonly uiSuitable: boolean;
-}
-
-export interface SystemFontsResponse {
-  readonly version: 1;
-  readonly fonts: readonly SystemFontRecord[];
-}
-
 export interface SystemFontsService {
   getFonts(): Promise<readonly SystemFontRecord[]>;
-}
-
-/** 분류에 필요한 face 한 벌. font-list와 fc-list가 서로 다른 모양으로 주므로 이 모양으로 모은다. */
-export interface SystemFontFace {
-  readonly familyName: string;
-  readonly style: string;
-  readonly monospace: boolean;
 }
 
 export interface SystemFontsServiceDeps {
@@ -43,22 +27,8 @@ interface CachedSystemFontsFailure {
   readonly cachedAt: number;
 }
 
-interface FontFamilyGroup {
-  readonly family: string;
-  readonly faces: readonly SystemFontFace[];
-}
-
-const MAX_FAMILY_LENGTH = 128;
 const SUCCESS_TTL_MS = 5 * 60 * 1000;
 const FAILURE_TTL_MS = 30 * 1000;
-const CONTROL_CHARACTER_PATTERN = /[\x00-\x1F\x7F]/g;
-const NORMAL_FACE_MARKERS = ["normal", "regular", "roman", "book"];
-const TEXT_FAMILY_ALLOWLIST = new Set([
-  "arial", "arial nova", "avenir", "avenir next", "calibri", "candara", "helvetica", "helvetica neue", "inter", "manrope", "noto sans", "noto serif", "segoe ui", "sf pro text", "system ui", "times new roman", "verdana",
-  "apple sd gothic neo", "hiragino sans", "hiragino kaku gothic pro", "malgun gothic", "meiryo", "microsoft yahei", "noto sans cjk", "noto serif cjk", "pingfang sc", "pingfang tc", "yu gothic",
-]);
-const TEXT_FAMILY_MARKERS = ["sans", "serif", "text", "grotesk", "gothic", "roman", "book", "humanist"];
-const DENY_FAMILY_MARKERS = ["hidden", "vertical", "symbol", "icon", "emoji", "dingbat", "ornament", "music", "math", "display", "decorative"];
 const EMPTY_SYSTEM_FONTS_ERROR = new Error("system font enumeration returned no usable families");
 /* fontconfig spacing: 0 proportional, 90 dual(CJK 고정폭처럼 반각·전각 두 폭), 100 mono, 110 charcell.
    font-list의 Linux 구현은 이 숫자를 'mono' 문자열로 찾고 이름 키워드에 기대며, family마다 첫 face
@@ -139,46 +109,8 @@ function parseFcList(output: string): readonly SystemFontFace[] {
   return faces;
 }
 
-export function normalizeSystemFonts(fonts: readonly SystemFontFace[]): readonly SystemFontRecord[] {
-  const groups = new Map<string, { family: string; faces: SystemFontFace[] }>();
-  for (const font of fonts) {
-    if (!isSystemFontFace(font)) continue;
-    const family = sanitizeFamilyName(font.familyName);
-    if (!family) continue;
-    const key = family.toLocaleLowerCase();
-    const group = groups.get(key) ?? { family, faces: [] };
-    group.faces.push(font);
-    groups.set(key, group);
-  }
-  return [...groups.values()]
-    .map(toSystemFontRecord)
-    .sort((left, right) => left.family.localeCompare(right.family, undefined, { sensitivity: "base" }) || left.family.localeCompare(right.family));
-}
-
 function buildSystemFontsResponse(fonts: readonly SystemFontRecord[]): SystemFontsResponse {
   return { version: 1, fonts };
-}
-
-function isSystemFontFace(value: unknown): value is SystemFontFace {
-  return typeof value === "object" && value !== null && typeof (value as SystemFontFace).familyName === "string" && typeof (value as SystemFontFace).monospace === "boolean" && typeof (value as SystemFontFace).style === "string";
-}
-
-function sanitizeFamilyName(value: string): string {
-  return value.replace(CONTROL_CHARACTER_PATTERN, "").trim().slice(0, MAX_FAMILY_LENGTH);
-}
-
-function toSystemFontRecord(group: FontFamilyGroup): SystemFontRecord {
-  const normalizedFamily = group.family.toLocaleLowerCase();
-  const monospace = group.faces.length > 0 && group.faces.every((face) => face.monospace);
-  const hasNormalNonMonospaceFace = group.faces.some((face) => !face.monospace && isNormalFace(face));
-  const denied = DENY_FAMILY_MARKERS.some((marker) => normalizedFamily.includes(marker));
-  const textFamily = TEXT_FAMILY_ALLOWLIST.has(normalizedFamily) || TEXT_FAMILY_MARKERS.some((marker) => normalizedFamily.includes(marker));
-  return { family: group.family, monospace, uiSuitable: !denied && hasNormalNonMonospaceFace && textFamily };
-}
-
-function isNormalFace(face: SystemFontFace): boolean {
-  const style = face.style.toLocaleLowerCase();
-  return NORMAL_FACE_MARKERS.some((marker) => style.includes(marker));
 }
 
 export interface SystemFontsRouteDeps {

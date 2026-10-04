@@ -119,6 +119,34 @@ describe("secure window policy", () => {
     expect(callback).toHaveBeenLastCalledWith(false);
   });
 
+  // 이 기기의 서체 목록은 핑거프린팅 표면이다. 이 기기의 Console 화면 main frame에만 내주고,
+  // 원격 Console이 활성인 동안에는 같은 창이라도 거부한다.
+  it("grants local fonts only to the main frame of the loopback Console origin", () => {
+    const REMOTE = "https://fleet.example:8443";
+    const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn() };
+    const contents = { on: vi.fn(), setWindowOpenHandler: vi.fn(), session };
+    const policy = applyWindowPolicy(contents as never, async () => undefined);
+    const check = session.setPermissionCheckHandler.mock.calls[0]![0] as (requestingContents: unknown, permission: string, requestingOrigin: string, details: { requestingUrl?: string; isMainFrame: boolean }) => boolean;
+    const request = session.setPermissionRequestHandler.mock.calls[0]![0] as (_contents: unknown, permission: string, callback: (allowed: boolean) => void, details: { requestingUrl: string; isMainFrame: boolean }) => void;
+    const callback = vi.fn();
+
+    policy.activateConsoleOrigin(HOME);
+    expect(check(contents, "local-fonts", HOME, { requestingUrl: `${HOME}/console/settings`, isMainFrame: true })).toBe(true);
+    request(contents, "local-fonts", callback, { requestingUrl: `${HOME}/console/settings`, isMainFrame: true });
+    expect(callback).toHaveBeenLastCalledWith(true);
+    request(contents, "local-fonts", callback, { requestingUrl: `${HOME}/console/settings`, isMainFrame: false });
+    expect(callback).toHaveBeenLastCalledWith(false);
+    request(contents, "unknown", callback, { requestingUrl: `${HOME}/console/settings`, isMainFrame: true });
+    expect(callback).toHaveBeenLastCalledWith(false);
+    expect(check({}, "local-fonts", HOME, { requestingUrl: `${HOME}/console/settings`, isMainFrame: true })).toBe(false);
+
+    policy.admitRemoteConsoleOrigin(REMOTE);
+    policy.activateConsoleOrigin(REMOTE);
+    expect(check(contents, "local-fonts", REMOTE, { requestingUrl: `${REMOTE}/console/settings`, isMainFrame: true })).toBe(false);
+    request(contents, "local-fonts", callback, { requestingUrl: `${REMOTE}/console/settings`, isMainFrame: true });
+    expect(callback).toHaveBeenLastCalledWith(false);
+  });
+
   it("blocks popups and navigation while brokering HTTP links only", async () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
     const openExternal = vi.fn(async () => undefined);

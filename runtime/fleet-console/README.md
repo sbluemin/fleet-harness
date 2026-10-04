@@ -186,6 +186,8 @@ Updates apply in-session only to ordinary global packages through the npm-global
 
 Settings lists the fonts installed where the Console runs. Inside WSL that is the Linux distribution, which usually has only a handful of fonts and none for Korean, Japanese, or Chinese, while the screen showing the Console may be a Windows browser or Desktop with fonts of its own. A font the viewing device cannot draw appears under **Not on this device**.
 
+In Chrome, Edge, or Fleet Desktop showing a Console on the same machine, the font menu offers **Load this device's fonts**, which lists the fonts of the device you are looking at instead. The browser asks for permission first; the list stays on that screen and is never sent to the Console or saved.
+
 To let the WSL Console list Windows fonts, and to let a browser running inside WSL draw them, register the Windows font folders with fontconfig for your Linux user. Create `~/.config/fontconfig/fonts.conf`:
 
 ```xml

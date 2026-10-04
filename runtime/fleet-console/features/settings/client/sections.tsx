@@ -15,11 +15,13 @@ import { RemoteAccessSection } from "../../remote-access/client/settings-section
 export { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 
 import { BackendApiSection } from "../../../core/client/src/chrome/components/backend-api-section.js";
+import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { renderMessage, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 import { setActiveTheme, setUnfocusedPanelFade } from "../../../core/client/src/integration/store.js";
 import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
+import { loadDeviceFonts, useDeviceFonts, useDeviceFontsPermission } from "./device-fonts.js";
 import { ExperimentsSection } from "./experiments-section.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
@@ -485,15 +487,28 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
     }).finally(() => { if (!controller.signal.aborted) setFontsLoading(false); });
     return () => controller.abort();
   }, [t]);
+  const deviceFonts = useDeviceFonts();
+  const devicePermission = useDeviceFontsPermission();
+  const deviceLoaded = deviceFonts.status === "loaded";
+  // 이 기기의 목록을 받았으면 그것이 진실이다. 호스트에만 있는 family는 "이 기기에 없음"으로 내린다.
+  const pickerFonts = useMemo(() => {
+    if (deviceFonts.status !== "loaded") return installedFonts;
+    const deviceKeys = new Set(deviceFonts.fonts.map((font) => font.family.toLocaleLowerCase()));
+    return [
+      ...deviceFonts.fonts.map((font) => ({ ...font, available: true })),
+      ...installedFonts.filter((font) => !deviceKeys.has(font.family.toLocaleLowerCase())).map((font) => ({ ...font, available: false })),
+    ];
+  }, [deviceFonts, installedFonts]);
   useEffect(() => {
     if (!advanced) return;
     let cancelled = false;
     setScanning(true);
     void (async () => {
       const candidates: FontPickerInstalledFont[] = [];
-      for (let index = 0; index < installedFonts.length; index += 24) {
+      const scanned = pickerFonts.filter((font) => font.available !== false);
+      for (let index = 0; index < scanned.length; index += 24) {
         if (cancelled) return;
-        for (const font of installedFonts.slice(index, index + 24)) {
+        for (const font of scanned.slice(index, index + 24)) {
           if ((await fontCjkScripts(font.family)).length) candidates.push({ ...font, available: true });
         }
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -501,11 +516,32 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
       if (!cancelled) { setCjkFonts(candidates); setScanning(false); }
     })();
     return () => { cancelled = true; };
-  }, [advanced, installedFonts]);
+  }, [advanced, pickerFonts]);
   // 목록은 Console 호스트의 것이고 판정은 이 화면의 것이다. 둘이 다른 기기임을 아는 쪽은 렌더러뿐이라,
   // 호스트 목록 대부분을 여기서 그릴 수 없을 때만 그 사실과 WSL에서의 해법을 알린다.
   const hostMismatch = useMemo(() => installedFonts.length > 0 && installedFonts.filter((font) => !fontResolves(font.family)).length * 2 >= installedFonts.length, [installedFonts]);
-  const pickerFooter = hostMismatch ? <p className="settings-font-note">{t("settings.typography.picker.hostMismatch")}</p> : null;
+  // 저장된 서체가 축 목록에서 빠져도(예: 등폭 서체를 UI 축에 저장) 이 기기의 목록이 있으면 그것으로 답한다.
+  const deviceFontAvailable = (family: string): boolean | undefined => deviceFonts.status === "loaded" ? deviceFonts.fonts.some((font) => font.family.toLocaleLowerCase() === family.toLocaleLowerCase()) : undefined;
+  // Desktop의 거부는 원격 Console에 대한 정책이라 사용자가 풀 수 없다 — 버튼을 감춘다. 브라우저의 거부는
+  // 사이트 설정에서 풀 수 있으므로 방법을 알린다.
+  const desktopShell = isDesktopShell();
+  const canLoadDeviceFonts = devicePermission !== null && !deviceLoaded && !(desktopShell && devicePermission === "denied");
+  const deviceDenied = !desktopShell && devicePermission !== null && (devicePermission === "denied" || deviceFonts.status === "denied");
+  const footerNotes = [
+    !deviceLoaded && hostMismatch ? <p key="mismatch" className="settings-font-note">{t("settings.typography.picker.hostMismatch")}</p> : null,
+    canLoadDeviceFonts ? <div key="device" className="settings-device-fonts">
+      <button type="button" className="settings-device-fonts-button" aria-disabled={deviceFonts.status === "loading" || undefined} onClick={(event) => {
+        if (deviceFonts.status === "loading") return;
+        // 목록이 바뀌면 이 버튼은 사라진다. 포커스가 문서로 빠지지 않게 검색 칸으로 돌려놓는다.
+        const search = event.currentTarget.closest(".fc-font-browser")?.querySelector<HTMLInputElement>("input[type=search]");
+        void loadDeviceFonts().then(() => search?.focus());
+      }}>{t(deviceFonts.status === "loading" ? "settings.typography.picker.deviceFontsLoading" : "settings.typography.picker.loadDeviceFonts")}</button>
+      <p className="settings-font-note">{t("settings.typography.picker.deviceFontsPrivacy")}</p>
+    </div> : null,
+    deviceDenied ? <p key="denied" className="settings-font-note" role="status">{t("settings.typography.picker.deviceFontsDenied")}</p> : null,
+    canLoadDeviceFonts && deviceFonts.status === "failed" ? <p key="failed" className="settings-font-note" role="status">{t("settings.typography.picker.deviceFontsFailed")}</p> : null,
+  ].filter(Boolean);
+  const pickerFooter = footerNotes.length ? footerNotes : null;
   const pickerLabels: FontPickerLabels = {
     browserAria: t("settings.typography.picker.browserAria"),
     searchLabel: t("settings.typography.picker.searchLabel"),
@@ -513,9 +549,9 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
     loading: t("settings.typography.picker.loading"),
     choicesAria: t("settings.typography.picker.choicesAria"),
     builtInGroup: t("settings.typography.picker.builtInGroup"),
-    installedGroup: t("settings.typography.picker.installedGroup"),
+    installedGroup: t(deviceLoaded ? "settings.typography.picker.deviceGroup" : "settings.typography.picker.installedGroup"),
     missingGroup: t("settings.typography.picker.missingGroup"),
-    missingGroupNote: t("settings.typography.picker.missingGroupNote"),
+    missingGroupNote: t(deviceLoaded ? "settings.typography.picker.hostOnlyNote" : "settings.typography.picker.missingGroupNote"),
     noMatch: t("settings.typography.picker.noMatch"),
     preview: t("settings.typography.picker.preview"),
     available: t("settings.typography.picker.available"),
@@ -545,8 +581,9 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
     return <div key={axis} className="global-settings-row settings-font-row" data-font-axis={axis}>
       <div className="global-settings-row-text"><p className="global-settings-resp-title">{label}</p><p className="global-settings-help">{t(`settings.fonts.${axis}Hint`)}</p></div>
       <div className="settings-font-controls">
-        <FontMenu label={label} selectedLabel={labelFor(value.font)} builtIns={choices} installedFonts={installedFonts.filter((font) => role === "code" ? font.monospace : font.uiSuitable)} selected={selected}
+        <FontMenu label={label} selectedLabel={labelFor(value.font)} builtIns={choices} installedFonts={pickerFonts.filter((font) => role === "code" ? font.monospace : font.uiSuitable)} selected={selected}
           selectedSystemFont={value.font.source === "system" ? value.font.familyName : null}
+          selectedSystemFontAvailable={value.font.source === "system" ? deviceFontAvailable(value.font.familyName) : undefined}
           fallbackStack={fontFamilyForAxis(fonts, role)} previewText={t("settings.typography.preview")} loading={fontsLoading} error={fontsError} disabled={unavailable} busy={saving}
         labels={pickerLabels} footer={pickerFooter}
           onSelectionChange={(selection) => setAxis({ ...value, font: selection.source === "builtin" && selection.id === "inherit" ? { source: "inherit" } : selection as FontAxisSettings["font"] })}
@@ -580,6 +617,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
           <div className="global-settings-row-text"><p className="global-settings-resp-title">{t("settings.fonts.cjkAxis", { axis: t(`settings.fonts.${axis}`) })}</p></div>
           <div className="settings-font-controls">
             <FontMenu label={t("settings.fonts.cjkAxis", { axis: t(`settings.fonts.${axis}`) })} selectedLabel={fonts[axis].cjk || t("settings.fonts.automatic")} selected={fonts[axis].cjk ? { source: "system", familyName: fonts[axis].cjk } : { source: "builtin", id: "auto" }}
+              selectedSystemFontAvailable={fonts[axis].cjk ? deviceFontAvailable(fonts[axis].cjk) : undefined}
               builtIns={[{ id: "auto", label: t("settings.fonts.automatic"), family: fontFamilyForAxis({ ...fonts, [axis]: { ...fonts[axis], cjk: "" } }, axis) }]}
               installedFonts={cjkFonts} fallbackStack={fontFamilyForAxis(fonts, axis)} previewText={t("settings.typography.preview")} loading={fontsLoading || scanning} error={fontsError} disabled={unavailable} busy={saving}
               labels={pickerLabels}

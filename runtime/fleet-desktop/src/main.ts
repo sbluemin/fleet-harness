@@ -478,7 +478,9 @@ async function boot(): Promise<void> {
         });
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
-        policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external));
+        policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external), {
+          onPermissionDenied: (permission, phase) => logger.info(`window permission ${phase} denied permission=${permission}`),
+        });
         installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
         bridge.attach(createdWindow.consoleContents);
         createdWindow.consoleContents.on("did-navigate", (_event, url) => {

@@ -84,6 +84,9 @@ export interface FontPickerProps {
   readonly installedFonts: readonly FontPickerInstalledFont[];
   readonly selected: FontPickerSelection;
   readonly selectedSystemFont?: string | null;
+  /* 저장된 시스템 서체가 이 목록에 없을 때(축 필터에서 빠졌을 때 등) 그 존재를 소비자가 이미 안다면
+     싣는다. 없으면 폭 탐침으로 묻는다 — 목록에 없다는 것이 이 기기에 없다는 뜻은 아니다. */
+  readonly selectedSystemFontAvailable?: boolean;
   readonly fallbackStack: string;
   readonly previewText: string;
   /* 크기 축은 선택적이다 — 주 서체를 고르는 브라우저는 크기까지 함께 정하지만, 다른 선택을 보조하는
@@ -329,7 +332,7 @@ function createRows(props: FontPickerProps, labels: ResolvedFontPickerLabels): r
   const installed = props.installedFonts.map((font) => ({ id: `system-${normalizeFontKey(font.family)}`, label: font.family, family: font.family, previewFamily: withFontFallback(font.family, props.fallbackStack), source: "system" as const, selection: { source: "system" as const, familyName: font.family }, description: font.description ?? (font.monospace ? labels.monospace : labels.systemFont), unavailable: !(font.available ?? fontResolves(font.family)) }));
   const persistedSystemName = props.selected.source === "system" ? props.selected.familyName : null;
   if (persistedSystemName !== null && !installed.some((font) => font.family === persistedSystemName)) {
-    installed.unshift({ id: `system-${normalizeFontKey(persistedSystemName)}`, label: props.selectedSystemFont ?? persistedSystemName, family: persistedSystemName, previewFamily: withFontFallback(persistedSystemName, props.fallbackStack), source: "system", selection: { source: "system", familyName: persistedSystemName }, description: labels.savedSystemFont, unavailable: true });
+    installed.unshift({ id: `system-${normalizeFontKey(persistedSystemName)}`, label: props.selectedSystemFont ?? persistedSystemName, family: persistedSystemName, previewFamily: withFontFallback(persistedSystemName, props.fallbackStack), source: "system", selection: { source: "system", familyName: persistedSystemName }, description: labels.savedSystemFont, unavailable: !(props.selectedSystemFontAvailable ?? fontResolves(persistedSystemName)) });
   }
   // 행 순서가 곧 키보드 순서다 — 그릴 수 없는 행은 맨 아래 "이 기기에 없음" 묶음과 같은 자리로 내린다.
   return [...builtIns, ...installed.filter((font) => !font.unavailable), ...installed.filter((font) => font.unavailable)];

@@ -25,6 +25,14 @@ export interface WindowPolicy {
   withdrawRemoteConsoleOrigin(origin: string): void;
 }
 
+export interface WindowPolicyOptions {
+  /**
+   * 거부한 권한 이름을 단계·이름마다 한 번 알린다. Electron 타입에 없는 권한(local-fonts 등)이
+   * 실제로 어떤 문자열로 도착하는지 확인하는 길이다. 이름만 넘기고 요청 내용은 넘기지 않는다.
+   */
+  readonly onPermissionDenied?: (permission: string, phase: "check" | "request") => void;
+}
+
 const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
 /** Instrument의 `--canvas-sea-far`. 사용자 테마를 모를 때의 창 바탕이다. */
@@ -97,12 +105,13 @@ export function createSecureShellWindow(
   return createDesktopShellWindow(base, consoleView, stack);
 }
 
-export function applyWindowPolicy(contents: WebContents, openExternal: (url: string) => Promise<void>): WindowPolicy;
+export function applyWindowPolicy(contents: WebContents, openExternal: (url: string) => Promise<void>, options?: WindowPolicyOptions): WindowPolicy;
 export function applyWindowPolicy(contents: WebContents, origin: string, openExternal: (url: string) => Promise<void>): WindowPolicy;
-export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: string | ((url: string) => Promise<void>), legacyOpenExternal?: (url: string) => Promise<void>): WindowPolicy {
+export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: string | ((url: string) => Promise<void>), legacyOpenExternalOrOptions?: ((url: string) => Promise<void>) | WindowPolicyOptions): WindowPolicy {
   let consoleOrigin: string | undefined = typeof originOrOpenExternal === "string" ? originOrOpenExternal : undefined;
   let pendingConsoleOrigin: string | undefined;
-  const openExternal = typeof originOrOpenExternal === "function" ? originOrOpenExternal : legacyOpenExternal;
+  const openExternal = typeof originOrOpenExternal === "function" ? originOrOpenExternal : typeof legacyOpenExternalOrOptions === "function" ? legacyOpenExternalOrOptions : undefined;
+  const options: WindowPolicyOptions = typeof legacyOpenExternalOrOptions === "object" ? legacyOpenExternalOrOptions : {};
   if (!openExternal) throw new Error("window_policy_open_external_required");
   contents.on("will-navigate", (event, url) => {
     if (!consoleOrigin || (!isAllowedConsoleUrl(url, consoleOrigin) && (!pendingConsoleOrigin || !isAllowedConsoleUrl(url, pendingConsoleOrigin)))) event.preventDefault();
@@ -116,15 +125,37 @@ export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: s
   const permitsDisplayCapture = (permission: string, requestingUrl: string): boolean =>
     permission === "display-capture" && Boolean(consoleOrigin && isLoopbackConsoleOrigin(consoleOrigin))
     && isAllowedConsoleUrl(requestingUrl, consoleOrigin ?? "");
+  // 이 기기의 서체 목록(queryLocalFonts)은 핑거프린팅 표면이다. 이 기기의 Console 화면에만 내준다 —
+  // 원격 Console 페이지(같은 origin에 실린 외부 플러그인 포함)가 이 기기의 목록을 읽어 가지 못하게.
+  const permitsLocalFonts = (permission: string, requestingUrl: string): boolean =>
+    permission === "local-fonts" && Boolean(consoleOrigin && isLoopbackConsoleOrigin(consoleOrigin))
+    && isAllowedConsoleUrl(requestingUrl, consoleOrigin ?? "");
+  const reportedDenials = new Set<string>();
+  const deny = (permission: string, phase: "check" | "request"): false => {
+    const key = `${phase}\u0000${permission}`;
+    if (!reportedDenials.has(key)) {
+      reportedDenials.add(key);
+      options.onPermissionDenied?.(permission, phase);
+    }
+    return false;
+  };
   // Chromium은 플랫폼별로 check에서 곧장 끝내기도, 거부된 check 뒤 request로 이어 가기도 한다.
   // 둘을 같은 exact-origin 판정에 묶어 Windows에서도 쓰기를 허용하되 권한 범위는 넓히지 않는다.
-  contents.session.setPermissionCheckHandler((requestingContents, permission, requestingOrigin, details) =>
-    (requestingContents === null || requestingContents === contents)
-    && (permitsClipboardWrite(permission, details.requestingUrl ?? requestingOrigin)
-      || (requestingContents === contents && permitsDisplayCapture(permission, details.requestingUrl ?? requestingOrigin))));
-  contents.session.setPermissionRequestHandler((wc, permission, callback, details) => callback(permitsClipboardWrite(permission, details.requestingUrl)
-    || (wc === contents && details.isMainFrame && permission === "media" && "mediaTypes" in details && details.mediaTypes?.length === 0
-      && permitsDisplayCapture("display-capture", details.requestingUrl))));
+  contents.session.setPermissionCheckHandler((requestingContents, permission, requestingOrigin, details) => {
+    const requestingUrl = details.requestingUrl ?? requestingOrigin;
+    return ((requestingContents === null || requestingContents === contents)
+      && (permitsClipboardWrite(permission, requestingUrl)
+        || (requestingContents === contents && permitsDisplayCapture(permission, requestingUrl))
+        || (requestingContents === contents && details.isMainFrame && permitsLocalFonts(permission, requestingUrl))))
+      || deny(permission, "check");
+  });
+  contents.session.setPermissionRequestHandler((wc, permission, callback, details) => {
+    const allowed = permitsClipboardWrite(permission, details.requestingUrl)
+      || (wc === contents && details.isMainFrame && permission === "media" && "mediaTypes" in details && details.mediaTypes?.length === 0
+        && permitsDisplayCapture("display-capture", details.requestingUrl))
+      || (wc === contents && details.isMainFrame && permitsLocalFonts(permission, details.requestingUrl));
+    callback(allowed || deny(permission, "request"));
+  });
   const admittedRemoteOrigins = new Set<string>();
   const validateOrigin = (origin: string): void => {
     // 루프백은 언제나, 원격은 지문을 대조해 들인 뒤에만.
