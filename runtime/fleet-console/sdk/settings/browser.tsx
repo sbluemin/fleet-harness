@@ -2,7 +2,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 
 import { groupModelsByLaunchProvider, isLaunchProviderGlyphId, launchProviderCaption, launchProviderGlyph, type LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
-import { SegmentedThumb, useMobileSettingsHost, useSelect } from "../react/browser.js";
+import { MobileSettingsRowLabelContext, SegmentedThumb, useMobileSettingsHost, useSelect } from "../react/browser.js";
 import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, type ExperimentModelOption } from "./experiments.js";
 import type { SettingsSectionDescriptor } from "./types.js";
 
@@ -21,7 +21,7 @@ export {
 } from "./experiments.js";
 // 모바일 셸이 설정 화면에 주입하는 능력(선택 팝업) — 특수한 섹션이 직접 열 때 쓴다.
 export { MobileSettingsHostContext, useMobileSettingsHost } from "../react/browser.js";
-export type { MobileChoiceOption, MobileChoiceSpec, MobileSettingsHost } from "../react/browser.js";
+export type { MobileChoiceOption, MobileChoiceSpec, MobileModelChoiceProps, MobileModelGroup, MobileSettingsHost } from "../react/browser.js";
 export type { ShortcutBindings } from "./shortcuts.js";
 export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";
 
@@ -134,9 +134,6 @@ export interface SettingsSliderProps {
 export function defineSettingsSection(descriptor: SettingsSectionDescriptor): SettingsSectionDescriptor {
   return descriptor;
 }
-
-/** 모바일 `SettingsRow`(자기가 <label>) 안에 있다는 표시 — 안의 토글이 라벨을 또 만들지 않는다. */
-const MobileSettingsRowContext = React.createContext(false);
 
 export function ExperimentalBadge({ children }: { readonly children: React.ReactNode }): React.ReactElement {
   return <span className="experimental-badge">{children}</span>;
@@ -310,7 +307,7 @@ export function SettingsRow({ label, hint, helpTip, icon, badge, disabled = fals
           {hint ? <span className="fc-settings-row__hint" id={hintId}>{hint}</span> : null}
           {helpTip}
         </span>
-        <MobileSettingsRowContext.Provider value><span className="fc-settings-row__control">{children}</span></MobileSettingsRowContext.Provider>
+        <MobileSettingsRowLabelContext.Provider value={label}><span className="fc-settings-row__control">{children}</span></MobileSettingsRowLabelContext.Provider>
       </label>
     );
   }
@@ -340,7 +337,7 @@ export function SettingsRow({ label, hint, helpTip, icon, badge, disabled = fals
 export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled = false, busy = false }: SettingsToggleProps): React.ReactElement {
   const id = React.useId();
   const blocked = busy && !disabled;
-  const insideMobileRow = React.useContext(MobileSettingsRowContext);
+  const insideMobileRow = React.useContext(MobileSettingsRowLabelContext) !== null;
   const Root = insideMobileRow ? "span" : "label";
   return (
     <Root className="fc-settings-toggle" {...(insideMobileRow ? {} : { htmlFor: id })}>
@@ -512,6 +509,46 @@ export function ModelPicker({
       : {};
   const levels = effort?.levels ?? [];
   const rootClassName = ["fc-model-picker", levels.length > 0 ? "has-effort" : "", className ?? ""].filter(Boolean).join(" ");
+
+  const mobileHost = useMobileSettingsHost();
+  const rowLabel = React.useContext(MobileSettingsRowLabelContext);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  if (mobileHost?.ModelChoice) {
+    // 폰: 값 줄(「{모델} · {강도}」)만 서고, 탭하면 모델 팝업이 선다 — 팝업은 이 컴포넌트가 열려 있는 동안 다시 그려져 값이 살아 있다.
+    const ModelChoice = mobileHost.ModelChoice;
+    const effortCurrent = effort && levels.length > 0 ? (levels.includes(effort.value) ? effort.value : levels[Math.floor(levels.length / 2)] ?? levels[0]!) : null;
+    const effortText = effort && effortCurrent !== null ? (effort.labelOf ? effort.labelOf(effortCurrent) : effortCurrent) : null;
+    return (
+      <>
+        <button
+          type="button"
+          id={id}
+          className={["fc-select__trigger", "fc-select--mobile", className ?? ""].filter(Boolean).join(" ")}
+          disabled={disabled}
+          aria-haspopup="dialog"
+          {...nameProps}
+          onClick={() => setMobileOpen(true)}
+        >
+          <span className="fc-select__value">{selected?.label ?? value}{effortText ? ` · ${effortText}` : ""}</span>
+        </button>
+        {mobileOpen ? (
+          <ModelChoice
+            title={rowLabel ?? label ?? selected?.label ?? value}
+            groups={groups.map((group) => ({
+              key: group.provider ?? "etc",
+              label: group.provider ? launchProviderCaption(group.provider) : "…",
+              ...(group.provider ? { icon: launchProviderGlyph(group.provider) } : {}),
+              options: group.models.map((option) => ({ value: option.id, label: option.label, ...(formatModelContextWindow(option.contextWindow) ? { meta: formatModelContextWindow(option.contextWindow)! } : {}) })),
+            }))}
+            value={value}
+            onSelect={onChange}
+            {...(effort && effortCurrent !== null ? { effort: { label: effort.ariaLabel, levels: levels.map((level) => ({ value: level, label: effort.labelOf ? effort.labelOf(level) : level })), value: effortCurrent, onSelect: effort.onChange } } : {})}
+            onClose={() => setMobileOpen(false)}
+          />
+        ) : null}
+      </>
+    );
+  }
 
   let index = -1;
   return (

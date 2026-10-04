@@ -57,12 +57,44 @@ export interface MobileChoiceSpec {
   readonly anchor?: { readonly top: number; readonly bottom: number };
 }
 
+/** 모델 팝업의 한 묶음(제공자) — 머리 글자와 앞 아이콘, 그 아래 모델 행들. */
+export interface MobileModelGroup {
+  readonly key: string;
+  readonly label: string;
+  readonly icon?: React.ReactNode;
+  readonly options: readonly { readonly value: string; readonly label: string; readonly meta?: string }[];
+}
+
+/**
+ * 모델 팝업(P-1 변형)의 속성. 호출자(`ModelPicker`)가 열려 있는 동안 계속 다시 그려 주므로 값은 늘 살아 있다 —
+ * 모델을 골라도 팝업은 열린 채이고, 강도 사다리가 모델에 따라 바뀌어도 따라온다. 닫기는 `onClose`다.
+ */
+export interface MobileModelChoiceProps {
+  readonly title: string;
+  readonly groups: readonly MobileModelGroup[];
+  readonly value: string;
+  readonly onSelect: (value: string) => void;
+  /** 주면 구분선 아래에 「추론 강도」 머리 + 글자 탭 줄이 선다. */
+  readonly effort?: {
+    readonly label: string;
+    readonly levels: readonly { readonly value: string; readonly label: string }[];
+    readonly value: string;
+    readonly onSelect: (value: string) => void;
+  };
+  readonly onClose: () => void;
+}
+
 export interface MobileSettingsHost {
   /** 선택 팝업을 연다. 고르면 팝업이 닫히고 `onSelect`가 불린다. */
   readonly openChoice: (spec: MobileChoiceSpec) => void;
+  /** 모델 팝업을 그리는 컴포넌트. `ModelPicker`가 열려 있는 동안 이것을 세운다. 없으면 `ModelPicker`는 데스크톱 모양 그대로다. */
+  readonly ModelChoice?: React.ComponentType<MobileModelChoiceProps>;
 }
 
 export const MobileSettingsHostContext = React.createContext<MobileSettingsHost | null>(null);
+
+/** 모바일 `SettingsRow`가 세우는 값 — 행의 제목. 안의 `Select`·`ModelPicker`가 팝업 제목으로 쓴다. 행 밖이면 `null`. */
+export const MobileSettingsRowLabelContext = React.createContext<string | null>(null);
 
 /** 호스트가 모바일 설정 능력을 세웠으면 그 값, 아니면 `null`(데스크톱 그대로 그린다). */
 export function useMobileSettingsHost(): MobileSettingsHost | null {
@@ -444,6 +476,7 @@ export function Select({
   const select = useSelect({ value, options, onChange, disabled, id, compact });
   const selected = options.find((option) => option.value === value);
   const mobileHost = useMobileSettingsHost();
+  const rowLabel = React.useContext(MobileSettingsRowLabelContext);
   if (mobileHost) {
     const sharedMobileLabel = ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : label ? { "aria-label": label } : {};
     return (
@@ -456,7 +489,7 @@ export function Select({
         {...sharedMobileLabel}
         onClick={(event) => mobileHost.openChoice({
           anchor: event.currentTarget.getBoundingClientRect(),
-          title: label ?? selected?.label ?? "",
+          title: rowLabel ?? label ?? selected?.label ?? "",
           options: options.map((option) => ({ value: option.value, label: option.label, ...(option.disabled ? { disabled: true } : {}) })),
           value,
           onSelect: onChange,
