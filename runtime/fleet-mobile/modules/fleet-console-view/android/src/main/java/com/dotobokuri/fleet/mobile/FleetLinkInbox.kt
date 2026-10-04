@@ -23,9 +23,10 @@ internal object FleetLinkInbox {
     drain()
   }
 
-  fun attach(next: (String) -> Unit) {
+  /** Returns whether a pending link was handed to [next] during attach. */
+  fun attach(next: (String) -> Unit): Boolean {
     receiver.set(next)
-    drain()
+    return drain()
   }
 
   fun detach(next: (String) -> Unit) {
@@ -34,8 +35,10 @@ internal object FleetLinkInbox {
 
   internal fun consume(): String? = pending.getAndSet(null)
 
-  private fun drain() {
-    val active = receiver.get() ?: return
-    consume()?.let(active)
+  private fun drain(): Boolean {
+    val active = receiver.get() ?: return false
+    val link = consume() ?: return false
+    active(link)
+    return true
   }
 }
