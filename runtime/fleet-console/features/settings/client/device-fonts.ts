@@ -1,4 +1,4 @@
-import { localFontsPermission, localFontsSupported, queryLocalFontFamilies, type LocalFontsPermission } from "@fleet-console/font-picker/local-fonts";
+import { localFontsSupported, queryLocalFontFamilies, watchLocalFontsPermission, type LocalFontsPermission } from "@fleet-console/font-picker/local-fonts";
 import type { SystemFontRecord } from "@fleet-console/font-picker/system-fonts";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
@@ -39,12 +39,8 @@ export function useDeviceFontsPermission(): LocalFontsPermission | null {
   const supported = localFontsSupported();
   const [permission, setPermission] = useState<LocalFontsPermission | null>(null);
   const status = useDeviceFonts().status;
-  useEffect(() => {
-    if (!supported) return;
-    let cancelled = false;
-    void localFontsPermission().then((next) => { if (!cancelled) setPermission(next); });
-    return () => { cancelled = true; };
-  }, [supported, status]);
+  // 불러오기를 마칠 때마다 다시 묻는다 — 프롬프트를 닫은 경우처럼 change 이벤트 없이 바뀌는 상태도 있다.
+  useEffect(() => supported ? watchLocalFontsPermission(setPermission) : undefined, [supported, status]);
   // 첫 답 전에 버튼을 세웠다가 거부로 걷으면 깜박인다 — 답이 올 때까지 없는 것으로 둔다.
   return supported ? permission : null;
 }

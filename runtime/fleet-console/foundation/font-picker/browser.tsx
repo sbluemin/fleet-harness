@@ -62,7 +62,7 @@ const DEFAULT_LABELS: ResolvedFontPickerLabels = {
   builtInGroup: "Built-in",
   installedGroup: "Installed on the Console host",
   missingGroup: "Not on this device",
-  missingGroupNote: "These fonts are installed where the Console runs, but the device showing this screen cannot draw them.",
+  missingGroupNote: "Installed where the Console runs, but this screen could not draw them.",
   noMatch: "No fonts match this search.",
   preview: "Preview",
   available: "Available",
@@ -153,6 +153,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   const builtInsGroupId = `${listboxId}-built-ins`;
   const installedGroupId = `${listboxId}-installed`;
   const missingGroupId = `${listboxId}-missing`;
+  const installedRows = indexedRows.filter(({ row }) => row.source === "system" && !row.unavailable);
   const missingRows = indexedRows.filter(({ row }) => row.source === "system" && row.unavailable);
 
   React.useEffect(() => {
@@ -246,8 +247,11 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
           onKeyDown={onListboxKeyDown}
         >
           <FontGroup groupId={builtInsGroupId} label={labels.builtInGroup} unavailableLabel={labels.unavailable} rows={indexedRows.filter(({ row }) => row.source === "builtin")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
-          <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
-          <FontGroup groupId={installedGroupId} label={labels.installedGroup} unavailableLabel={labels.unavailable} rows={indexedRows.filter(({ row }) => row.source === "system" && !row.unavailable)} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
+          {/* 빈 묶음의 머리말은 없는 목록을 있는 것처럼 보이게 한다(목록을 못 받았거나 검색에 걸린 것이 없을 때). */}
+          {installedRows.length ? <>
+            <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
+            <FontGroup groupId={installedGroupId} label={labels.installedGroup} unavailableLabel={labels.unavailable} rows={installedRows} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
+          </> : null}
           {missingRows.length ? <>
             <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
             <FontGroup groupId={missingGroupId} label={labels.missingGroup} note={labels.missingGroupNote} unavailableLabel={labels.unavailable} rows={missingRows} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />

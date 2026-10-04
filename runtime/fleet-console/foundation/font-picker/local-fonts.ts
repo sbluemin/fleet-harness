@@ -46,6 +46,28 @@ export async function localFontsPermission(options: LocalFontsOptions = {}): Pro
   }
 }
 
+/** 권한 상태와 그 변화를 듣는다(사이트 설정에서 거부를 푸는 경우 등). 반환값으로 듣기를 멈춘다. */
+export function watchLocalFontsPermission(listener: (permission: LocalFontsPermission) => void, options: LocalFontsOptions = {}): () => void {
+  const permissions = localFontsWindow(options)?.navigator.permissions;
+  let stopped = false;
+  let status: PermissionStatus | null = null;
+  const onChange = () => { if (!stopped && status) listener(status.state); };
+  if (!permissions) {
+    listener("unknown");
+    return () => { stopped = true; };
+  }
+  permissions.query({ name: "local-fonts" as PermissionName }).then((next) => {
+    if (stopped) return;
+    status = next;
+    status.addEventListener("change", onChange);
+    listener(status.state);
+  }, () => { if (!stopped) listener("unknown"); });
+  return () => {
+    stopped = true;
+    status?.removeEventListener("change", onChange);
+  };
+}
+
 /** 사용자 제스처 안에서 부른다. 권한이 거부돼 있으면 열거를 시도하지 않는다. */
 export async function queryLocalFontFamilies(options: LocalFontsOptions = {}): Promise<LocalFontsResult> {
   const target = localFontsWindow(options);
@@ -60,7 +82,7 @@ export async function queryLocalFontFamilies(options: LocalFontsOptions = {}): P
   }
   // 로컬 서체가 하나도 없는 OS는 없다. 빈 목록은 권한이 없다는 조용한 답이다(Chrome 미허용, Desktop 정책 거부).
   if (fonts.length === 0) return await afterRefusal(options);
-  const records = normalizeSystemFonts(toFaces(fonts, target.document));
+  const records = normalizeSystemFonts(toFaces(fonts, target.document), { uniformStyleIsNormal: true });
   return records.length ? { status: "loaded", fonts: records } : { status: "failed" };
 }
 
