@@ -97,7 +97,7 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
                     else capabilities.rail.open(row.entry.id);
                   }}
                 >
-                  <span className="mobile-group-row-icon" aria-hidden="true">{typeof row.entry.icon === "function" ? row.entry.icon() : row.entry.icon}</span>
+                  <span className="mobile-group-row-icon" aria-hidden="true">{(() => { const icon = row.entry.mobile?.icon ?? row.entry.icon; return typeof icon === "function" ? icon() : icon; })()}</span>
                   <span className="mobile-group-row-copy">{resolveLocalizedText(row.entry.title, language)}{desktopOnly ? <small>{t("mobile.plugins.desktopOnly")}</small> : null}</span>
                   {desktopOnly ? null : <MobileIcon name="right" size={18} className="mobile-group-row-caret" />}
                 </button>

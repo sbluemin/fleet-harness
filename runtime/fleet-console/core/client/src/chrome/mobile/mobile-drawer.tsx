@@ -179,7 +179,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
   for (const binding of mobileDestinationBindings(bindings)) {
     destinations.push({
       key: binding.entry.id,
-      icon: { node: typeof binding.entry.icon === "function" ? binding.entry.icon() : binding.entry.icon },
+      icon: { node: renderEntryIcon(binding.entry.mobile?.icon ?? binding.entry.icon) },
       label: resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, locale),
       count: attention.filter((row) => row.kind === "plugin" && row.entryId === binding.entry.id).length,
       current: path === "/operations" && destination.kind === "plugin" && destination.entryId === binding.entry.id,
@@ -295,3 +295,7 @@ function DrawerRow({ glyph, title, reason, tall = false, current = false, onPres
   );
 }
 
+
+function renderEntryIcon(icon: ReactNode | (() => ReactNode)): ReactNode {
+  return typeof icon === "function" ? icon() : icon;
+}
