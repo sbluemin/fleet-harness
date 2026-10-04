@@ -18,8 +18,9 @@ function install(): void {
   installed = true;
   window.addEventListener("popstate", () => {
     if (swallowPops > 0) { swallowPops -= 1; return; }
-    const top = stack.pop();
-    top?.close();
+    // 위에 있던 오버레이의 항목이 실제로 걷혔을 때만 그것을 닫는다 — 오버레이와 상관없는 popstate(라우터·가드)가 열린 오버레이를 닫지 않게.
+    const top = stack.at(-1);
+    if (top && !isOnTop(top.id)) { stack.pop(); top.close(); }
   });
 }
 
@@ -32,18 +33,33 @@ export function pushOverlayHistory(close: () => void): number {
   return id;
 }
 
-/** UI가 직접 닫았을 때 — 쌓아 둔 history 항목을 걷는다. 이미 뒤로가 닫은 것(스택에 없음)이면 아무 일도 하지 않는다. */
-export function releaseOverlayHistory(id: number): void {
+function isOnTop(id: number): boolean {
+  return ((window.history.state as { fleetMobileOverlay?: number } | null) ?? {}).fleetMobileOverlay === id;
+}
+
+function dropFromStack(id: number): void {
   const index = stack.findIndex((overlay) => overlay.id === id);
-  if (index < 0) return;
-  stack.splice(index, 1);
+  if (index >= 0) stack.splice(index, 1);
+}
+
+/**
+ * UI가 직접 닫았을 때 — 쌓아 둔 history 항목을 걷는다. 지금 항목이 정말 그 오버레이(맨 위)일 때만 걷는다:
+ * 이미 뒤로가 걷었거나 다른 항목 위로 옮겨 갔다면 아무 일도 하지 않는다(엉뚱한 항목을 걷지 않는다).
+ */
+export function releaseOverlayHistory(id: number): void {
+  const onTop = isOnTop(id);
+  dropFromStack(id);
+  if (!onTop) return;
   swallowPops += 1;
   window.history.back();
 }
 
-/** 닫은 뒤 이동을 해야 할 때: 걷기가 끝나(popstate) 항목이 사라진 다음에 동작한다 — 걷기 전에 이동하면 새 항목이 걷히는 쪽에 낀다. */
+/**
+ * 닫은 뒤 이동을 해야 할 때: 걷기가 끝나(popstate) 항목이 사라진 다음에 동작한다 — 걷기 전에 이동하면 새 상태가 걷히는 항목에 쓰여 사라진다.
+ * 스택 기록이 아니라 지금 항목의 표식으로 판정한다(다른 popstate가 스택 기록을 먼저 비우는 경우가 있다).
+ */
 export function runAfterOverlayRelease(id: number | null, action: () => void): void {
-  if (id === null || !stack.some((overlay) => overlay.id === id)) { action(); return; }
+  if (id === null || !isOnTop(id)) { if (id !== null) dropFromStack(id); action(); return; }
   const done = () => { window.removeEventListener("popstate", done); window.clearTimeout(timer); action(); };
   const timer = window.setTimeout(done, 400);
   window.addEventListener("popstate", done);

@@ -84,9 +84,11 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   const closeOperation = (operationId: string) => {
     // Leave the session immediately so Close is not stuck on a disposing terminal, then
     // dispose through the same host path the canvas and palette already use.
-    replaceOperationId(null);
-    setSelectedOperationId(null);
-    onSelectOperation(null);
+    // 보관 뒤에는 같은 Theater의 다음 Operation으로 간다(없으면 빈 홈) — S-51.
+    const next = operations.find((operation) => operation.id !== operationId) ?? null;
+    replaceOperationId(next?.id ?? null);
+    setSelectedOperationId(next?.id ?? null);
+    onSelectOperation(next?.id ?? null);
     onCloseOperation(operationId);
   };
 
