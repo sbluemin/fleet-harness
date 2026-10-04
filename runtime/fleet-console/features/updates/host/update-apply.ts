@@ -246,11 +246,14 @@ main()
     const reason = sanitizeError(error);
     log("failed: " + reason);
     // 실패는 복구를 시도하기 전에 기록한다. 복구가 끝나기를 기다리는 동안이나 복구가 실패해도
-    // 다음에 뜨는 Console이 읽을 결론은 이미 디스크에 있다.
-    writeStatus("failed", { error: reason });
+    // 다음에 뜨는 Console이 읽을 결론은 이미 디스크에 있다. 다만 기록이 실패해도 복구는 반드시
+    // 간다 — 실패를 말할 화면을 다시 세우는 일이 그 기록보다 먼저다. 기록하지 못했으면 복구 뒤에
+    // 한 번 더 시도한다.
+    const recorded = tryWriteStatus("failed", { error: reason });
     // 콘솔을 이미 내린 뒤에 실패했다면, 실패를 말할 화면조차 없다. 옛 버전이라도
     // 다시 세워야 사용자가 무엇이 잘못됐는지 읽을 수 있다.
     if (consoleStopped) await recoverConsoleBestEffort();
+    if (!recorded) tryWriteStatus("failed", { error: reason });
     process.exitCode = 1;
   })
   .finally(() => {
@@ -263,9 +266,9 @@ main()
 
 function writeStatus(phase, extra = {}) {
   const updatedAt = new Date().toISOString();
-  fs.writeFileSync(config.statusFile, JSON.stringify({ phase, updatedAt, ...extra }, null, 2), { mode: 0o600 });
-  // 재기동한 데몬이 읽는 것은 이 고정 이름의 기록이다. 타임스탬프가 붙은 위 파일은
-  // 이 실행의 진단 흔적이고, 아래가 "방금 무슨 일이 있었는가"에 답하는 쪽이다.
+  // 재기동한 데몬이 읽는 것은 이 고정 이름의 기록이다. 아래 타임스탬프가 붙은 파일은
+  // 이 실행의 진단 흔적이고, 이쪽이 "방금 무슨 일이 있었는가"에 답한다. 그래서 먼저 쓴다 —
+  // 진단 파일 쓰기가 실패해도 사용자가 읽을 기록은 이미 남아 있다.
   const record = {
     phase,
     startedAt: config.startedAt,
@@ -280,11 +283,27 @@ function writeStatus(phase, extra = {}) {
   } catch {
     // 진단 기록이 없다고 업데이트를 멈추지는 않는다.
   }
+  fs.writeFileSync(config.statusFile, JSON.stringify({ phase, updatedAt, ...extra }, null, 2), { mode: 0o600 });
   log("phase: " + phase);
 }
 
+/** 실패 경로용: 기록이 실패해도 던지지 않는다. 기록했는지만 돌려준다. */
+function tryWriteStatus(phase, extra) {
+  try {
+    writeStatus(phase, extra);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 진단 흔적일 뿐이다 — 쓰지 못해도 업데이트·복구의 흐름을 바꾸지 않는다. */
 function log(message) {
-  fs.appendFileSync(config.logFile, new Date().toISOString() + " " + message + "\\n", { mode: 0o600 });
+  try {
+    fs.appendFileSync(config.logFile, new Date().toISOString() + " " + message + "\\n", { mode: 0o600 });
+  } catch {
+    // 로그 파일을 쓸 수 없어도 계속한다.
+  }
 }
 
 function cleanupStaleWorkers() {
