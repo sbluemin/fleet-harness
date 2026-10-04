@@ -171,30 +171,17 @@ function UseRequestCard({ request, member, language, now }: { readonly request: 
         </div>
         <p className="use-request-lead">{t(isConsole ? "terminal.useRequest.consoleLead" : "terminal.useRequest.computerLead")}</p>
         {request.tools.length > 0 ? <p className="use-request-tools">{request.tools.join(" · ")}</p> : null}
-        {request.blocked === "experiment_disabled" ? (
-          <>
-            <p className="use-request-blocked">{t("terminal.useRequest.blocked")}</p>
-            <div className="use-request-foot">
-              <button type="button" className="use-request-pill" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
-              <span className="use-request-gap" />
-              <button type="button" className="use-request-pill is-primary" onClick={openUseRequestSettings}>{t("terminal.useRequest.openSettings")}</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="use-request-foot">
-              <button type="button" className="use-request-pill" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
-              <span className="use-request-gap" />
-              <button type="button" className="use-request-pill" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
-              <button type="button" className="use-request-pill is-primary" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
-            </div>
-            <button type="button" className="use-request-scope" aria-expanded={fineOpen} onClick={() => setFineOpen((open) => !open)}>
-              <MobileGlyph name="info" size={14} />
-              {t("terminal.mobile.useRequestScope")}
-            </button>
-            {fineOpen ? <p className="use-request-fine">{t("terminal.useRequest.fine")}</p> : null}
-          </>
-        )}
+        <div className="use-request-foot">
+          <button type="button" className="use-request-pill" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
+          <span className="use-request-gap" />
+          <button type="button" className="use-request-pill" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
+          <button type="button" className="use-request-pill is-primary" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
+        </div>
+        <button type="button" className="use-request-scope" aria-expanded={fineOpen} onClick={() => setFineOpen((open) => !open)}>
+          <MobileGlyph name="info" size={14} />
+          {t("terminal.mobile.useRequestScope")}
+        </button>
+        {fineOpen ? <p className="use-request-fine">{t("terminal.useRequest.fine")}</p> : null}
         {failed ? <p className="use-request-error" role="alert">{t("terminal.useRequest.failed")}</p> : null}
       </div>
     );

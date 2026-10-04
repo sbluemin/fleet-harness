@@ -110,7 +110,7 @@ export function useMobileAttention(state: ConsoleState): { readonly rows: readon
     const inTheater = state.operations.filter((operation) => operation.theaterId === theaterId);
     const requested = inTheater
       .map((operation) => ({ operation, request: useRequests.filter((item) => item.operationId === operation.id).sort((a, b) => a.expiresAt - b.expiresAt)[0] }))
-      .filter((item): item is { operation: OperationNode; request: OperationUseRequest } => item.request !== undefined && item.request.blocked === null)
+      .filter((item): item is { operation: OperationNode; request: OperationUseRequest } => item.request !== undefined)
       .sort((a, b) => a.request.expiresAt - b.request.expiresAt);
     const requestedIds = new Set(requested.map((item) => item.operation.id));
     const waiting = inTheater.filter((operation) => !requestedIds.has(operation.id) && resolveOperationActivity(operation, state.operationRuntime) === "awaiting");

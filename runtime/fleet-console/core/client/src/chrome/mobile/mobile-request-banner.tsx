@@ -32,7 +32,7 @@ export function MobileRequestBanner({ state, viewingOperationId, onOpen }: {
     seenRef.current = ids;
     // 처음 읽은 스냅샷에 이미 있던 요청은 새로 온 것이 아니다.
     if (previous === null) return;
-    const fresh = requests.filter((request) => !previous.has(request.id) && request.blocked === null && request.operationId !== viewingOperationId);
+    const fresh = requests.filter((request) => !previous.has(request.id) && request.operationId !== viewingOperationId);
     const latest = fresh.at(-1);
     if (latest) { setShown(latest); setLeaving(false); }
   }, [requests, viewingOperationId]);

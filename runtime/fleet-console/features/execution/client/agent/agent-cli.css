@@ -2116,8 +2116,7 @@
   line-height: 21px;
 }
 
-.use-request-card.is-mobile .use-request-tools,
-.use-request-card.is-mobile .use-request-blocked {
+.use-request-card.is-mobile .use-request-tools {
   margin: 0;
   padding: 0;
   border: 0;
