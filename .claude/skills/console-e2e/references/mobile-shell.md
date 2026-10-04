@@ -28,7 +28,7 @@ Record the preflight's `adb server` state (running or not running) in the report
 
 ## 1. Start your own Consoles
 
-Per Console, follow [Isolated Console setup](setup.md#isolate-the-console) with its own `E2E_DIR` (all four of `FLEET_DATA_DIR`, `FLEET_CONSOLE_DATA_DIR`, `FLEET_DESKTOP_DATA_DIR`, `CLAUDE_CONFIG_DIR` under it), started as a background process whose PID you record: `CONSOLE_PID=$!`, appended to the env file with `EMU_PID` and `UDID`. For two Consoles, use two `E2E_DIR`s; nothing is shared. Read each port and token from that Console's `$E2E_DIR/console/console.lock`, check it answers `200`, and never print the token. Do not touch `127.0.0.1:50000` or any Console whose lock is not under your `E2E_DIR`.
+Per Console, follow [Isolated Console setup](setup.md#isolate-the-console) with its own `E2E_DIR` (all four of `FLEET_DATA_DIR`, `FLEET_CONSOLE_DATA_DIR`, `FLEET_DESKTOP_DATA_DIR`, `CLAUDE_CONFIG_DIR` under it), started as a background process whose PID you record: `CONSOLE_PID=$!`, appended to the env file with `EMU_PID` and `UDID`. For two Consoles, use two `E2E_DIR`s; nothing is shared. Read each port with the [fixed lock read](setup.md#read-the-lock-without-the-token) of that Console's `$E2E_DIR/console/console.lock` and check it answers `200`; `issue-access-link.mjs` reads the token itself. Do not touch `127.0.0.1:50000` or any Console whose lock is not under your `E2E_DIR`.
 
 ## 2. Issue an access link
 
