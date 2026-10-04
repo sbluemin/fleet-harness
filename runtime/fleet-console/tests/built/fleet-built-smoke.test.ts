@@ -94,7 +94,7 @@ afterEach(async () => {
     expect(diagnostic).toMatchObject({ kind: "unhandledRejection", message: "request_path_rejection_probe" });
     expect(diagnostic?.stack).toContain("request_path_rejection_probe");
     expect(payload).not.toBeNull();
-    const response = await fetch(new URL("/api/v1/health", payload!.endpoint), { headers: { authorization: `Bearer ${payload!.token}` } });
+    const response = await waitForHealthyConsole(lock, Math.max(1, deadline - Date.now()));
     expect(response.ok).toBe(true);
     expect(child.exitCode).toBeNull();
   }, 25_000);
@@ -167,7 +167,7 @@ afterEach(async () => {
     const spawnedAt = Date.now();
     const child = spawnServe(preload, root, slot);
     const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
-    await waitForFile(lock, 15_000);
+    await waitForHealthyConsole(lock, 15_000);
     // stop proves the pid by its start time only for a Console started at least 2s before the identity probe.
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, spawnedAt + 2_500 - Date.now())));
     const stop = spawnSync(process.execPath, [cliDist, "stop"], { env: isolatedEnv(root, slot), encoding: "utf8", timeout: 30_000 });
@@ -197,6 +197,23 @@ function spawnServe(preload: string, root: string, slot: string): ChildProcess {
   const child = spawn(process.execPath, ["--import", pathToFileURL(preload).href, cliDist, "serve"], { env: isolatedEnv(root, slot), stdio: "ignore" });
   SERVES.add(child);
   return child;
+}
+
+// lock은 writer 소유권이지 readiness가 아니다. 실제 health가 준비될 때까지 같은 예산 안에서 기다린다.
+async function waitForHealthyConsole(lockFile: string, timeoutMs: number): Promise<Response> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const lock = JSON.parse(fs.readFileSync(lockFile, "utf8")) as { endpoint: string; token: string };
+      const response = await fetch(new URL("/api/v1/health", lock.endpoint), {
+        headers: { authorization: `Bearer ${lock.token}` },
+        signal: AbortSignal.timeout(Math.min(1_000, Math.max(1, deadline - Date.now()))),
+      });
+      if (response.ok) return response;
+    } catch { /* lock 공개와 listener 준비를 기다린다. */ }
+    await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(0, deadline - Date.now()))));
+  }
+  throw new Error(`Console did not become healthy within ${timeoutMs}ms`);
 }
 
 async function waitForFile(file: string, timeoutMs: number): Promise<void> {

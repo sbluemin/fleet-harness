@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
 import os from "node:os";
 
 import { getFleetDataDir } from "@fleet-console/infra";
@@ -33,7 +32,7 @@ export interface LocalConsoleScanDeps {
   readonly platform?: NodeJS.Platform;
   /** 지금 돌고 있는 WSL 배포판 이름들. */
   readonly listWslDistros?: () => readonly string[];
-  /** WSL 콘솔의 생존 판정. pid는 쓸 수 없으므로 포트로 확인한다. */
+  /** WSL 콘솔의 준비 판정. pid는 쓸 수 없으므로 HTTP로 확인한다. */
   readonly reachable?: (origin: string) => Promise<boolean>;
 }
 
@@ -79,14 +78,18 @@ export async function listLocalConsoles(deps: LocalConsoleScanDeps = {}): Promis
     const entry = readLock(fileSystem, candidate.file, candidate.distro);
     if (entry === null || seen.has(entry.console.origin)) continue;
     // 배포판 안의 pid는 그쪽 네임스페이스의 것이라 여기서 물으면 남의 프로세스를 가리킨다.
-    // 살아 있는지는 포트가 답하는지로만 판정한다.
-    const reachable = deps.reachable ?? portAnswers;
-    if (!(await reachable(entry.console.origin))) continue;
     seen.add(entry.console.origin);
     entries.push(entry.console);
   }
 
-  return entries.sort((left, right) => left.origin.localeCompare(right.origin));
+  // lock 공개나 열린 포트는 writer의 존재만 뜻한다. 초기화 중인 콘솔을 선택지에 올리면 셸이
+  // 503 문서로 항해하므로, 준비된 HTTP 대상만 내준다. 병렬 probe로 후보 수만큼 기다리지 않는다.
+  const ready = await Promise.all(entries.map(async (entry) => {
+    const probe = entry.distro === null ? consoleReady : (deps.reachable ?? consoleReady);
+    return await probe(entry.origin) ? entry : null;
+  }));
+  return ready.filter((entry): entry is LocalConsoleEntry => entry !== null)
+    .sort((left, right) => left.origin.localeCompare(right.origin));
 }
 
 /** 스캔할 수 있는 곳은 이 둘뿐이다. 목록을 늘리려면 락을 쓰는 쪽 계약부터 늘어나야 한다. */
@@ -196,24 +199,16 @@ function processIsAlive(pid: number): boolean {
   }
 }
 
-function portAnswers(origin: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    let url: URL;
-    try {
-      url = new URL(origin);
-    } catch {
-      resolve(false);
-      return;
-    }
-    const socket = net.connect({ host: url.hostname, port: Number(url.port) }, () => {
-      socket.destroy();
-      resolve(true);
+async function consoleReady(origin: string): Promise<boolean> {
+  try {
+    // 셸이 쓰는 공개 readiness 경로다. bearer를 읽거나 프로세스 제어 권한으로 쓰지 않는다.
+    const response = await fetch(new URL("/api/v1/status", origin), {
+      redirect: "error",
+      signal: AbortSignal.timeout(REACHABLE_TIMEOUT_MS),
     });
-    const fail = (): void => {
-      socket.destroy();
-      resolve(false);
-    };
-    socket.setTimeout(REACHABLE_TIMEOUT_MS, fail);
-    socket.on("error", fail);
-  });
+    await response.body?.cancel();
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
