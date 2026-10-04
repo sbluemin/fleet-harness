@@ -48,3 +48,29 @@ export function MobileToastHost() {
     </div>
   );
 }
+
+/**
+ * 상태가 앱 루트에 있는 토스트(보관·삭제 되돌리기)의 모바일 모양 — 문구 하나와 오른쪽 글자 버튼 여럿(S-33: 「되돌리기」·「보관함」).
+ * 열림·닫힘은 호출한 쪽이 정한다(되돌리기 창이 끝나면 닫힌다).
+ */
+export function MobileActionToast({ open, text, actions }: { readonly open: boolean; readonly text: string; readonly actions: readonly { readonly label: string; readonly run: () => void }[] }) {
+  if (!open) return null;
+  return (
+    <div className="mobile-toast-host">
+      <div className="app-toast app-toast--undo" role="status" aria-live="polite">
+        <div className="app-toast-body"><p className="app-toast-title">{text}</p></div>
+        {actions.map((action) => <button key={action.label} type="button" className="app-toast-action" onClick={action.run}>{action.label}</button>)}
+      </div>
+    </div>
+  );
+}
+
+// 보관한 Operation의 제목 — 보관 뒤에는 목록에서 사라지므로 토스트가 부를 수 있게 보관하는 순간 적어 둔다.
+const archivedTitles = new Map<string, string>();
+export function rememberArchivedTitle(operationId: string, title: string): void {
+  archivedTitles.set(operationId, title);
+  if (archivedTitles.size > 20) archivedTitles.delete(archivedTitles.keys().next().value as string);
+}
+export function recallArchivedTitle(operationId: string): string | undefined {
+  return archivedTitles.get(operationId);
+}

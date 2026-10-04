@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
@@ -126,6 +126,8 @@ export type MobileSheetKind =
   | { readonly kind: "theater" }
   | { readonly kind: "folder" }
   | { readonly kind: "console" }
+  /** 호스트 밖 기능(설정 섹션 등)이 자기 시트를 호스트의 쌓기·뒤로·스크림에 태운다. `render`는 `MobileSheet`를 그리고 닫기 함수를 받는다. */
+  | { readonly kind: "custom"; readonly render: (close: () => void) => ReactNode }
   | { readonly kind: "confirm"; readonly spec: MobileConfirmSpec; readonly resolve: (confirmed: boolean) => void }
   | { readonly kind: "forget"; readonly theaterId: string }
   | { readonly kind: "rename"; readonly operationId: string };

@@ -52,6 +52,8 @@ import { useTriageActive } from "../../../../features/workspace/client/canvas/tr
 import { subscribeDormantAutoMinimize } from "../../../../features/workspace/client/canvas/dormant-auto-minimize.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
+import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
+import { MobileActionToast, recallArchivedTitle } from "../chrome/mobile/mobile-toast.js";
 import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { MobileTheaterPage } from "../chrome/mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
@@ -597,8 +599,22 @@ function ConnectedApp() {
         : activeUndo.receipt.operationIds.length > 1
           ? t("chrome.toast.operationsArchived", { count: activeUndo.receipt.operationIds.length })
           : t("chrome.toast.operationArchived");
+  // 모바일 배치(S-33): 「「{제목}」을(를) 보관했습니다」 + 오른쪽 글자 버튼(되돌리기 · 보관함) — 데스크톱의 세 줄 토스트를 쓰지 않는다.
+  const mobileUndoText = activeUndo === null ? "" : activeUndo.kind === "archive" && !undoAuthor && activeUndo.receipt.operationIds.length <= 1
+    ? (() => { const title = recallArchivedTitle(activeUndo.receipt.targetId); return title ? t("mobile.toast.archived", { title }) : undoTitle; })()
+    : undoTitle;
   const deletionToast = (
     <>
+      {mobileLayout ? (
+        <MobileActionToast
+          open={activeUndo !== null}
+          text={mobileUndoText}
+          actions={[
+            { label: activeUndo?.kind === "archive" ? t("chrome.toast.archiveUndo") : t("chrome.toast.undo"), run: undoLastClose },
+            ...(activeUndo?.kind === "archive" ? [{ label: t("chrome.toast.openArchive"), run: () => { setMobileDestination({ kind: "archive" }); navigate("/operations", { replace: true }); } }] : []),
+          ]}
+        />
+      ) : (
       <Toast
         open={activeUndo !== null}
         tone="undo"
@@ -610,6 +626,7 @@ function ConnectedApp() {
         onSecondaryAction={activeUndo?.kind === "archive" ? openArchiveSheet : undefined}
         progress={activeUndo ? (activeUndo.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
       />
+      )}
       <Toast open={undoNotice !== null} tone="warn" title={undoNotice ? t(undoNotice.key) : ""} onDismiss={() => setUndoNotice(null)} />
     </>
   );

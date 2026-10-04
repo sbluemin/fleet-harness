@@ -45,6 +45,7 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
   if (!top) return null;
   if (top.kind === "rename") return <RenameSheet key={top.operationId} state={state} operationId={top.operationId} />;
   if (top.kind === "console") return <ConsoleSheet />;
+  if (top.kind === "custom") return <>{top.render(popMobileSheet)}</>;
   if (top.kind === "confirm") return <ConfirmSheet spec={top.spec} resolve={top.resolve} />;
   if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void registerTheaterFromPath(path); }} />;
   if (top.kind === "forget") return <ForgetSheet key={top.theaterId} state={state} theaterId={top.theaterId} onDeferredDeletion={onDeferredDeletion} />;

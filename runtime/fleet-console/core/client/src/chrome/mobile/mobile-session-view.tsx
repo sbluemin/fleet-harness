@@ -8,6 +8,7 @@ import { useT } from "../../i18n/index.js";
 import type { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import type { OperationGeometry, OperationNode } from "../../integration/types.js";
 import { openQuickLaunch } from "../../integration/store.js";
+import { rememberArchivedTitle } from "./mobile-toast.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { pushMobileSheet, setMobileOperationMenu, useMobileOperationMenu } from "./mobile-store.js";
@@ -51,6 +52,7 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
 
   // 세션 머리의 보관도 데스크톱과 같이 한 번에 끝난다 — 되돌리기는 같은 토스트가 맡는다.
   const archive = () => {
+    rememberArchivedTitle(operation.id, operation.title);
     onClose();
   };
 
