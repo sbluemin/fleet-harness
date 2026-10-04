@@ -75,9 +75,12 @@ export function applySearchParams(
 
 export function navigateConsoleRoute(pathname: string, search = window.location.search): void {
   // 모바일 배치의 루트 이동은 history를 늘리지 않는다(S-51) — 늘리면 뒤로가 이전 목적지로 헛돈다.
-  if (navigate) navigate({ pathname, search }, { replace: getViewModeSnapshot().effective === "mobile" });
+  const replace = getViewModeSnapshot().effective === "mobile";
+  if (navigate) navigate({ pathname, search }, { replace });
   else {
-    window.history.pushState(null, "", `/console${pathname}${search}`);
+    // 라우터가 아직 안 붙은 구간도 같은 규칙이다 — 모바일 루트 이동은 항목을 쌓지 않는다.
+    if (replace) window.history.replaceState(window.history.state, "", `/console${pathname}${search}`);
+    else window.history.pushState(null, "", `/console${pathname}${search}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
 }
