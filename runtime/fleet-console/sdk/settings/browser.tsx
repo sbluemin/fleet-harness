@@ -2,6 +2,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 
 import { groupModelsByLaunchProvider, isLaunchProviderGlyphId, launchProviderCaption, launchProviderGlyph, type LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
+import type { MobileModelReset } from "../react/browser.js";
 import { MobileSettingsRowLabelContext, SegmentedThumb, Select, useMobileSettingsHost, useSelect } from "../react/browser.js";
 import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, type ExperimentModelOption } from "./experiments.js";
 import type { SettingsSectionDescriptor } from "./types.js";
@@ -21,7 +22,7 @@ export {
 } from "./experiments.js";
 // 모바일 셸이 설정 화면에 주입하는 능력(선택 팝업) — 특수한 섹션이 직접 열 때 쓴다.
 export { MobileSettingsHostContext, useMobileSettingsHost } from "../react/browser.js";
-export type { MobileChoiceOption, MobileChoiceSpec, MobileInputSpec, MobileModelChoiceProps, MobileModelGroup, MobileSettingsHost, MobileSubScreenSpec } from "../react/browser.js";
+export type { MobileChoiceOption, MobileChoiceSpec, MobileInputSpec, MobileModelChoiceProps, MobileModelGroup, MobileModelReset, MobileSettingsHost, MobileSubScreenSpec } from "../react/browser.js";
 export type { ShortcutBindings } from "./shortcuts.js";
 export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";
 
@@ -638,6 +639,10 @@ export interface ModelPickerProps {
   readonly onChange: (next: string) => void;
   /** 주면 트리거 오른쪽에 강도 세그먼트가 이어 붙는다. 사다리가 비면 그려지지 않는다. */
   readonly effort?: ModelPickerEffort;
+  /** 폰 전용 — 모델 팝업 맨 아래에 「기본값 사용」 행을 세운다. 데스크톱 선택기는 읽지 않는다. 값을 바꾼 상태일 때만 넘긴다. */
+  readonly reset?: MobileModelReset;
+  /** 폰 전용 — 값 줄 끝에 ` · {suffix}`를 덧붙인다(예: 기본값을 쓰는 중이면 「기본」). 데스크톱 선택기는 읽지 않는다. */
+  readonly valueSuffix?: string;
   readonly disabled?: boolean;
   readonly id?: string;
   readonly className?: string;
@@ -708,6 +713,8 @@ export function ModelPicker({
   options,
   onChange,
   effort,
+  reset,
+  valueSuffix,
   disabled = false,
   id,
   className,
@@ -754,7 +761,7 @@ export function ModelPicker({
           {...nameProps}
           onClick={() => setMobileOpen(true)}
         >
-          <span className="fc-select__value">{selected?.label ?? value}{effortText ? ` · ${effortText}` : ""}</span>
+          <span className="fc-select__value">{selected?.label ?? value}{effortText ? ` · ${effortText}` : ""}{valueSuffix ? ` · ${valueSuffix}` : ""}</span>
         </button>
         {mobileOpen ? (
           <ModelChoice
@@ -768,6 +775,7 @@ export function ModelPicker({
             value={value}
             onSelect={onChange}
             {...(effort && effortCurrent !== null ? { effort: { label: effort.ariaLabel, levels: levels.map((level) => ({ value: level, label: effort.labelOf ? effort.labelOf(level) : level })), value: effortCurrent, onSelect: effort.onChange } } : {})}
+            {...(reset ? { reset } : {})}
             onClose={() => setMobileOpen(false)}
           />
         ) : null}

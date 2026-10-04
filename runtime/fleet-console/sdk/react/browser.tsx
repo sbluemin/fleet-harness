@@ -81,7 +81,16 @@ export interface MobileModelChoiceProps {
     readonly value: string;
     readonly onSelect: (value: string) => void;
   };
+  /** 주면 맨 아래에 구분선 + 두 줄 행(「기본값 사용」)이 선다. 누르면 `onSelect`를 부르고 팝업을 닫는다. 값을 바꾼 상태일 때만 넘긴다. */
+  readonly reset?: MobileModelReset;
   readonly onClose: () => void;
+}
+
+/** 모델 팝업 맨 아래의 되돌리기 행. `description`은 되돌아갈 기본값(예: 「Sonnet 4.5 · 보통」). */
+export interface MobileModelReset {
+  readonly label: string;
+  readonly description?: string;
+  readonly onSelect: () => void;
 }
 
 /**
