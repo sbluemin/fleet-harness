@@ -797,6 +797,7 @@ export const objectivesEn = {
   "objectives.mobile.toast.decision": "Sent your answer to the Commander",
   "objectives.mobile.message.send": "Send",
   "objectives.mobile.sessions": "Sessions",
+  "objectives.mobile.menuLabel": "Objective menu",
   "objectives.mobile.attention": "{count} decision requests",
 };
 
@@ -1596,6 +1597,7 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.mobile.toast.decision": "지휘관에게 답을 보냈습니다",
   "objectives.mobile.message.send": "보내기",
   "objectives.mobile.sessions": "세션",
+  "objectives.mobile.menuLabel": "목표 메뉴",
   "objectives.mobile.attention": "결정 요청 {count}건",
 };
 

@@ -253,7 +253,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
       // 중단은 다시 개시할 수 있어 파괴 동작이 아니다 — 일반 색.
       if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
     }
-    mobileBar.set({ title, depth: 1, onBack: () => panes.close(), ...(items.length > 0 ? { menu: { caption: title, items } } : {}) });
+    mobileBar.set({ title, depth: 1, onBack: () => panes.close(), ...(items.length > 0 ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
   }, [mobileBar, visible, title, panes, menuKey, t, act]);
 
   if (!objective || !actions) return <div className="objectives-m" />;

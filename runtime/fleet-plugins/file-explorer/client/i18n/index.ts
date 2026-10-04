@@ -201,6 +201,7 @@ export const fileExplorerEn = {
   "fileExplorer.status.loadFailedRetry": "Try again",
   "fileExplorer.status.expanding": "Opening folder…",
   "fileExplorer.mobile.copyPath": "Copy path",
+  "fileExplorer.mobile.menuLabel": "File menu",
   "fileExplorer.error.listTimeout": "The connection is busy and the list didn't arrive",
 } as const;
 
@@ -400,6 +401,7 @@ export const fileExplorerKo: Record<keyof typeof fileExplorerEn, string> = {
   "fileExplorer.status.loadFailedRetry": "다시 시도",
   "fileExplorer.status.expanding": "폴더 여는 중…",
   "fileExplorer.mobile.copyPath": "경로 복사",
+  "fileExplorer.mobile.menuLabel": "파일 메뉴",
   "fileExplorer.error.listTimeout": "연결이 바빠 목록을 불러오지 못했습니다",
 };
 

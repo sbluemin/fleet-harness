@@ -189,7 +189,7 @@ export function MobileFileDocument(ctx: PaneContext) {
       title: name,
       depth: 1,
       onBack: () => { if (theaterId) setDocumentPaneOpen(theaterId, false); panes.close(); },
-      menu: { caption: name, items },
+      menu: { label: t("fileExplorer.mobile.menuLabel"), caption: name, items },
     });
   }, [mobileBar, visible, name, t, panes, theaterId, openShell, copyPath]);
 
