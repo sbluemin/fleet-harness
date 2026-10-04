@@ -5,6 +5,8 @@
 1. Identify `<path>`, `<parent-repo-root>`, and `<branch>` using the active target's `git rev-parse --show-toplevel`, `git worktree list --porcelain`, and `git branch --show-current`. Use absolute paths.
 2. **Before any removal command**, stop for the main checkout or a `main`/`master`/`canary` checkout. If `HEAD` is detached or the worktree-specific Git directory contains `fleet-baseline`, use only the removal section of [Baseline](baseline.md), then stop this branch flow. An empty branch without a confirmed detached `HEAD` is an error; report and stop. Never treat a missing baseline record as permission to remove an unowned detached checkout.
 3. Inspect `git -C <path> status --short --branch`, upstream counts with `git -C <path> rev-list --left-right --count '@{upstream}...HEAD'` when available, and merge state. Disclose dirty/untracked files and unpushed/unmerged commits. Never clean another session's resources.
+   In an Objective, the Commander's pre-hand-off cleanup scope includes ordinary branch worktrees and branches its members created for that Objective, shown by their report or the objective record, plus verified isolated processes launched from them, once no session still uses them; step 4 still governs authorization.
+   Resources of other sessions or objectives, or of uncertain ownership, stay protected. Ask the member that created a detached baseline to remove it under [Baseline](baseline.md)'s gates.
 4. Apply the user's current-worktree removal request or authorized post-merge cleanup scope. Default `<force>=yes` permits force cleanup after disclosing inspected local state. Explicit `<force>=no` prohibits force commands. A general task request or reading this file does not authorize deletion.
 
 ## Execution
