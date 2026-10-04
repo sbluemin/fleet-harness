@@ -48,7 +48,7 @@ export const codexEntry: RailEntryDescriptor = {
   icon: () => <CodexIcon />,
   panes: ["codex", CODEX_READER_PANE_ID],
   // 모바일 드로어의 고정 목적지 — 목표 다음 위키.
-  mobile: { destination: { order: 30 } },
+  mobile: { destination: { order: 30, label: (locale) => getT(locale)("mobile.wiki.title") } },
   handles: {
     openWikiEntry: (request, host) => {
       if (!host.consoleState.getTheaters().some(theater => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };

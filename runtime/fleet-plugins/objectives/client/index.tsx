@@ -78,7 +78,7 @@ export const objectivesEntry: RailEntryDescriptor = {
     items: decisionAttentionItems,
   },
   // 모바일 드로어의 고정 목적지 — Theater 다음, 파일·위키 위.
-  mobile: { destination: { order: 10 } },
+  mobile: { destination: { order: 10, label: (locale) => getT(locale)("objectives.panel.title") } },
   search: async ({ query, theaterId, limit, language }) => {
     const api = objectivesApi();
     if (!api) return [];
