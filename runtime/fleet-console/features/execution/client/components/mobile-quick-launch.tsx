@@ -320,7 +320,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
       ) : null}
       {props.mentionTarget === null ? (
         <div className="mql-chips">
-          <button type="button" className="mql-circ" aria-label={t("chrome.quickLaunch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>
+          <button type="button" className="mql-circ" data-press="r3" aria-label={t("chrome.quickLaunch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>
           <button type="button" className="mobile-pill-secondary mql-theater-chip" aria-label={theater ? t("chrome.quickLaunch.mobile.theaterChip", { name: theater.label }) : t("chrome.quickLaunch.mobile.theater")} onClick={() => setSub("theater")} disabled={theaters.length === 0}>
             {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} size={20} /> : null}
             <span className="mql-chip-name">{theater?.label ?? t("chrome.quickLaunch.mobile.theater")}</span>
