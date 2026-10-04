@@ -59,6 +59,13 @@ function ChoiceShell({ title, titleId, onClosed, children, listRef, renderBody }
     };
   }, []);
 
+  // 터치로 열면 포커스가 팝업 안에 없다 — 연결된 키보드의 Esc도 닫히도록 문서에서 듣는다(PR-0c 뒤에도 Esc가 닿게).
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); requestCloseRef.current(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => {
     if (openedByKeyboard()) listRef.current?.querySelector<HTMLButtonElement>("[aria-checked='true']:not(:disabled), button:not(:disabled)")?.focus({ preventScroll: true });
   }, [listRef]);

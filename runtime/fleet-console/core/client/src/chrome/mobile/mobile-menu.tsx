@@ -21,10 +21,21 @@ export function MobileMenu({ caption, items, label, onClose }: {
     if (openedByKeyboard()) panelRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
   }, []);
 
+  const closingRef = useRef(false);
   const close = (after?: () => void) => {
+    if (closingRef.current) return;
+    closingRef.current = true;
     setLeaving(true);
     window.setTimeout(() => { onClose(); after?.(); }, 100);
   };
+  // 터치로 열면 포커스가 메뉴 안에 없다 — 연결된 키보드의 Esc도 닫히도록 문서에서 듣는다(PR-0c 뒤에도 Esc가 닿게).
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); closeRef.current(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); return; }
     const buttons = Array.from(panelRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
