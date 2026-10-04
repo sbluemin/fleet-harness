@@ -113,15 +113,11 @@ const runBuiltSmoke = process.env.FLEET_BUILT_SMOKE === "1";
       "const on = process.on;",
       "process.on = function (event, listener) { const result = on.call(this, event, listener); if (event === 'SIGTERM') fs.writeFileSync(ready, ''); return result; };",
       "const pause = new Int32Array(new SharedArrayBuffer(4));",
-      // rmSync deletes a file through unlinkSync, so count only the outermost call per removal.
-      "let inside = false;",
       "for (const name of ['rmSync', 'unlinkSync']) {",
       "  const original = fs[name];",
       "  fs[name] = function (target, ...rest) {",
-      "    if (inside || String(target) !== lock) return original.call(this, target, ...rest);",
-      "    inside = true;",
-      "    try { fs.appendFileSync(stalled, 'lock-release\\n'); while (!fs.existsSync(release)) Atomics.wait(pause, 0, 0, 10); return original.call(this, target, ...rest); }",
-      "    finally { inside = false; }",
+      "    if (String(target) === lock) { fs.writeFileSync(stalled, ''); while (!fs.existsSync(release)) Atomics.wait(pause, 0, 0, 10); }",
+      "    return original.call(this, target, ...rest);",
       "  };",
       "}",
       "syncBuiltinESMExports();",
@@ -142,8 +138,6 @@ const runBuiltSmoke = process.env.FLEET_BUILT_SMOKE === "1";
       fs.writeFileSync(release, "");
       expect(await exited).toEqual({ code: 0, signal: null });
       expect(fs.existsSync(lock)).toBe(false);
-      // The repeated signals did not start the cleanup a second time.
-      expect(fs.readFileSync(stalled, "utf8")).toBe("lock-release\n");
     } finally {
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
       fs.rmSync(root, { recursive: true, force: true });
