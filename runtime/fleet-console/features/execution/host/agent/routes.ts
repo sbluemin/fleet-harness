@@ -247,6 +247,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
     dataDir: ctx.host.paths.consoleDataDir,
     plugin: ctx.agentCliPlugin,
+    ...(ctx.launchPromptDirectories ? { promptDirectories: ctx.launchPromptDirectories } : {}),
     infraServices: deps,
     ...(deps.theaterSystemPrompts ? { theaterSystemPrompts: deps.theaterSystemPrompts } : {}),
     readAgentCliPaths,

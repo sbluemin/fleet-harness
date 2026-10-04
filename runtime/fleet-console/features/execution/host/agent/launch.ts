@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { resolvePathBinary } from "@fleet-console/process";
 import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@fleet-console/ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@fleet-console/ai-gateway";
-import { ALL_SUBAGENTS, createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle } from "@fleet-console/agent-runtime/fleet";
+import { ALL_SUBAGENTS, createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle, type LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
 import type { AgentOptionsService } from "@fleet-console/infra";
 
@@ -46,6 +46,8 @@ export interface TerminalLaunchResolverDeps {
   readonly dataDir: string;
   /** 기동에 한 번 렌더해 둔 플러그인 트리. 런치는 이것을 쓰기만 한다. */
   readonly plugin: AgentCliPlugin;
+  /** launch 프롬프트 파일의 자리(이 Console의 lock 도메인). 생략하면 OS temp에 바로 만든다. */
+  readonly promptDirectories?: LaunchPromptDirectoryAllocator;
   readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
   readonly theaterSystemPrompts?: TheaterSystemPromptService;
   readonly agentRuntime?: FleetGatewayAgentRuntimeLifecycle;
@@ -198,6 +200,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       env: launchEnv,
       hookEntry,
       plugin: deps.plugin,
+      ...(deps.promptDirectories ? { promptDirectories: deps.promptDirectories } : {}),
       infraServices,
       ...(deps.theaterSystemPrompts ? { theaterSystemPrompts: deps.theaterSystemPrompts } : {}),
       theaterId: context?.theaterId,
@@ -238,6 +241,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly prompt?: string;
   readonly hookEntry: ConsoleHookCommandEntry;
   readonly plugin: AgentCliPlugin;
+  readonly promptDirectories?: LaunchPromptDirectoryAllocator;
   readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
   readonly theaterSystemPrompts?: TheaterSystemPromptService;
   readonly injectProfile: typeof injectAgentCliProfile;
@@ -302,6 +306,7 @@ async function createAgentCliLaunchSpec(options: {
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       workspaceHookExec: buildConsoleWorkspaceHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
+      ...(options.promptDirectories ? { promptDirectories: options.promptDirectories } : {}),
       // Theater 설정은 새 세션에만 적용된다 — 값이 없으면 Claude Code 기본값으로 연다.
       ...(theaterPrompt ? { claudeCodeSystemPrompt: theaterPrompt.mode, claudeCodeCustomSystemPrompt: theaterPrompt.body } : {}),
       ...(options.disableSubagents ? { claudeCodeDisabledAgents: [ALL_SUBAGENTS] } : {}),

@@ -1,4 +1,4 @@
-import type { AgentCliPlugin } from "@fleet-console/agent-runtime/fleet";
+import type { AgentCliPlugin, LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/sdk/routing";
@@ -13,6 +13,7 @@ export function createConsoleRuntimeContext(deps: {
   readonly legacyDataDir: string;
   readonly agentOptions: AgentOptionsService;
   readonly agentCliPlugin: AgentCliPlugin;
+  readonly launchPromptDirectories?: LaunchPromptDirectoryAllocator;
   readonly routes: RouteRegistry;
   readonly upgrades: UpgradeRegistry;
   readonly catalog: ApiCatalogEntry[];
@@ -36,6 +37,7 @@ export function createConsoleRuntimeContext(deps: {
     legacyDataDir: deps.legacyDataDir,
     agentOptions: deps.agentOptions,
     agentCliPlugin: deps.agentCliPlugin,
+    ...(deps.launchPromptDirectories ? { launchPromptDirectories: deps.launchPromptDirectories } : {}),
     basePath,
     wsBasePath,
     registerRouter: (value, handler, catalog) => {

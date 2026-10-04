@@ -27,6 +27,7 @@ export {
   WINDOWS_CMD_SHIM_COMMAND_LINE_MAX_CHARS,
   WINDOWS_CREATE_PROCESS_COMMAND_LINE_MAX_CHARS,
   type LaunchCommandLineLimit,
+  type LaunchPromptDirectoryAllocator,
   type LaunchPromptErrorCode,
 } from "./agent-cli/prompt.js";
 
