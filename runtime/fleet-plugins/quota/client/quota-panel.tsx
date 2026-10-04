@@ -91,9 +91,9 @@ export function credentialUnavailableKey(message: string | undefined): QuotaMess
 }
 
 /** 이 Gateway가 아직 보고하지 않는 공급자 — 카드를 빼지 않고 읽을 수 없음으로 둔다. */
-const UNREPORTED_PROVIDER: ProviderDto = { status: "error" };
+export const UNREPORTED_PROVIDER: ProviderDto = { status: "error" };
 
-function isConnectable(id: ProviderId): id is ConnectableProviderId {
+export function isConnectable(id: ProviderId): id is ConnectableProviderId {
   return id === "claude";
 }
 
@@ -110,7 +110,7 @@ export function isLatestRequestGeneration(generation: RequestGeneration, capture
   return generation.current === captured;
 }
 
-function elapsed(at: number | undefined, now: number): string {
+export function elapsed(at: number | undefined, now: number): string {
   const delta = Math.max(0, now - (at ?? now));
   const days = Math.floor(delta / 86_400_000);
   if (days > 0) return `${days}d`;
@@ -234,7 +234,7 @@ export function mostUrgentWindow(windows: readonly QuotaWindow[] | undefined): Q
  * 구독은 살아 있지만 지금 진행 중인 사용 창이 없다(Muse Code는 이때 사용량을 싣지 않는다).
  * 수치가 없는 성공을 따로 말하지 않으면 아직 읽지 못한 카드와 구분되지 않는다.
  */
-function isIdle(id: ProviderId, provider: ProviderDto): boolean {
+export function isIdle(id: ProviderId, provider: ProviderDto): boolean {
   return id === "muse-code"
     && provider.status === "ok"
     && (provider.windows === undefined || provider.windows.length === 0);
@@ -561,15 +561,10 @@ interface RememberedPanel {
 let rememberedPanel: RememberedPanel | null = null;
 
 /**
- * 사용 한도 팝업의 내용 — 머리(제목·갱신 시각·범례·새로고침), 공급자 카드(고정 순서), 바닥의
- * 「도구모음에 표시」 글리프 줄. 열려 있는 동안 폴링은 이 패널 몫이다(holdQuotaPanel).
+ * 사용 한도 요약의 읽기 상태 — 팝업 패널(데스크톱)과 폰의 설정 상세가 같은 원천·같은 폴링·같은 연결 동작을 쓴다.
+ * 마운트되어 있는 동안 폴링은 이 훅의 소유자 몫이다(holdQuotaPanel).
  */
-export function QuotaPanel({ api, locale, labelId }: {
-  readonly api: ClientApiCapability;
-  readonly locale: ConsoleLocale;
-  readonly labelId: string;
-}) {
-  const t = useMemo(() => getT(locale), [locale]);
+export function useQuotaData(api: ClientApiCapability) {
   const [restored] = useState(() => rememberedPanel);
   // 처음 여는 순간에도 도구모음 요약이 이미 읽어 둔 값이 있으면 그것부터 그린다(같은 원천).
   const [shared] = useState(() => getQuotaSummarySnapshot());
@@ -672,6 +667,20 @@ export function QuotaPanel({ api, locale, labelId }: {
     };
   }, [refresh]);
 
+  return { data, checkedAt, now, requestError, refresh, connect };
+}
+
+/**
+ * 사용 한도 팝업의 내용 — 머리(제목·갱신 시각·범례·새로고침), 공급자 카드(고정 순서), 바닥의
+ * 「도구모음에 표시」 글리프 줄. 열려 있는 동안 폴링은 이 패널 몫이다(holdQuotaPanel).
+ */
+export function QuotaPanel({ api, locale, labelId }: {
+  readonly api: ClientApiCapability;
+  readonly locale: ConsoleLocale;
+  readonly labelId: string;
+}) {
+  const t = useMemo(() => getT(locale), [locale]);
+  const { data, checkedAt, now, requestError, refresh, connect } = useQuotaData(api);
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));

@@ -3,7 +3,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
 import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
-import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
+import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 export const aiGatewaySettingsSection = defineSettingsSection({
@@ -22,6 +22,18 @@ export const aiGatewaySettingsSection = defineSettingsSection({
     "게이트웨이 공급자 모델 키 라우팅 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
+  // 폰의 설정 목록 보조 줄 — 켠 모델이 하나라도 있으면 켜짐(데스크톱은 이 필드를 읽지 않는다).
+  mobile: {
+    summary: (locale) => {
+      const state = getSystemPromptSettingsStoreState().state;
+      if (state === null) return null;
+      return getT(locale)((state.aiGateway?.models?.length ?? 0) > 0 ? "terminal.settings.mobileGatewayOn" : "terminal.settings.mobileGatewayOff");
+    },
+    subscribe: (listener) => {
+      void loadSystemPromptSettings();
+      return subscribeSystemPromptSettings(listener);
+    },
+  },
 });
 
 function AiGatewaySection() {

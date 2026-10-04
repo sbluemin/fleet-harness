@@ -1,0 +1,15 @@
+/* 폰의 「설정 › 사용량」 — 색은 토큰만 쓴다(모바일에서 토큰이 --m-*로 덮인다). */
+.quota-m { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
+.quota-m-note { margin: 0; padding: 18px; color: var(--text-secondary); font-size: var(--t-md); }
+.quota-m-head { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 6px 4px 0; color: var(--text-tertiary); font-size: var(--t-md); font-weight: var(--weight-bold); }
+.quota-m-head small { font-size: var(--t-sm); font-weight: var(--weight-regular); }
+.quota-m-group { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.quota-m-row { display: flex; align-items: center; gap: 14px; min-height: 72px; padding: 10px 16px; color: var(--text-primary); font-size: var(--t-lg); text-align: left; background: var(--surface-panel-raised); border: 0; border-radius: 4px; }
+.quota-m-group > .quota-m-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+.quota-m-group > .quota-m-row:last-child { border-bottom-right-radius: 22px; border-bottom-left-radius: 22px; }
+.quota-m-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.quota-m-copy small { margin-top: 1px; color: var(--text-tertiary); font-size: var(--t-md); }
+.quota-m-bar { display: block; height: 6px; margin-top: 8px; overflow: hidden; background: var(--ink-veil); border-radius: 3px; }
+.quota-m-bar i { display: block; height: 100%; background: var(--text-secondary); }
+.quota-m-bar i.is-warning { background: var(--warn); }
+.quota-m-bar i.is-critical { background: var(--coral); }

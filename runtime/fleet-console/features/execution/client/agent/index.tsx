@@ -1,4 +1,5 @@
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
+import { harnessSummary, subscribeHarnessSummary } from "./mobile-harness-summary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
@@ -167,6 +168,8 @@ export const generalSettingsSection = defineSettingsSection({
  */
 export const harnessSettingsSection = defineSettingsSection({
   id: "harness",
+  // 폰의 설정 목록 보조 줄 — 쓸 수 있는 CLI 이름.
+  mobile: { summary: () => harnessSummary(), subscribe: subscribeHarnessSummary },
   title: (locale) => getT(locale)("terminal.settings.harness"),
   group: "work",
   keywords: [
