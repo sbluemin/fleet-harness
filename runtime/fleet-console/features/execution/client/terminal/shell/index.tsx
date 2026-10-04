@@ -172,6 +172,14 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
     mount.target.append(host);
   }, [host, mount]);
 
+  // 모바일 Shell 화면(impl-spec S-45: 터미널 + 키 줄, CLI 확인 줄 없음). 표면 컨텍스트에는 모바일 표식이 없어
+  // 호스트 계약의 공개 신호(모바일 화면·시트 컨테이너의 data-host-surface)로 가른다. 에이전트 본문과 같은
+  // [data-mobile-surface] 범위를 상주 호스트에 달아 터미널 면의 모바일 규칙도 그대로 받는다.
+  const mobileShell = mount.target?.closest('[data-host-surface="mobile-screen"], [data-host-surface="mobile-sheet"]') != null;
+  React.useLayoutEffect(() => {
+    host.toggleAttribute("data-mobile-surface", mobileShell);
+  }, [host, mobileShell]);
+
   // 재시작(restart-at)으로 끝난 PTY 뒤에는 같은 자리에 새 표면을 붙인다 — 새 티켓이 새 PTY를 띄운다.
   const [surfaceKey, setSurfaceKey] = React.useState(0);
   // 재시작으로 갈아 끼운 셸 위에 앞 셸의 흐린 화면과 구분선을 잇는다(K-10). 새 표면이 마운트 때 한 번 쓴다.
@@ -220,6 +228,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
         ticketPath={SHELL_TICKET_PATH}
         wsPath={SHELL_WS_PATH}
         surface="shell"
+        mobile={mobileShell}
         onCellWidth={(width) => context.reportMinPaneWidth?.(Math.ceil(width * 80 + 20))}
         theme={theme ?? context.theme ?? "instrument"}
         active={mount.target !== null && context.focused}
