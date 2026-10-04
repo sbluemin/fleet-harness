@@ -6,13 +6,14 @@ import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features
 import { openConsoleSwitcher, useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import type { RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
 
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { openQuickLaunch } from "../../integration/store.js";
 import type { ConsoleState, OperationNode } from "../../integration/types.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useRailEntries } from "../pane/pane-registry.js";
-import { mobilePluginRows, useMobileDestinationBindings, type MobileAttentionRow } from "./mobile-destinations.js";
+import { mobilePluginRows, useMobileDestinationBindings, useMobileDestinationTrailing, type MobileAttentionRow } from "./mobile-destinations.js";
 import { AttentionReason } from "./mobile-attention-reason.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
@@ -159,6 +160,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
   const capabilities = useHostCapabilities();
   const bindings = useRailEntries();
   const shownDestinations = useMobileDestinationBindings(bindings, state.activeTheaterId);
+  const trailing = useMobileDestinationTrailing(bindings, state.activeTheaterId);
   const destination = useMobileDestination();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const appearance = useMobileAppearance();
@@ -176,15 +178,14 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
   // 루트끼리의 이동은 history를 늘리지 않는다(S-51) — 라우트는 replace.
   const toOperations = () => { if (path !== "/operations") navigate("/operations", { replace: true }); };
 
-  const destinations: DestinationRow[] = [
-    { key: "theater", icon: { name: "theater" }, label: t("mobile.drawer.theater"), count: 0, current: path === "/theaters", run: () => navigate("/theaters", { replace: true }) },
-  ];
+  const destinations: DestinationRow[] = [];
   for (const binding of shownDestinations) {
     destinations.push({
       key: binding.entry.id,
       icon: { node: renderEntryIcon(binding.entry.mobile?.icon ?? binding.entry.icon) },
       label: resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, locale),
       count: attention.filter((row) => row.kind === "plugin" && row.entryId === binding.entry.id).length,
+      trailing: trailing.get(binding.entry.id) ?? null,
       current: path === "/operations" && destination.kind === "plugin" && destination.entryId === binding.entry.id,
       run: () => {
         setMobileDestination({ kind: "plugin", entryId: binding.entry.id });
@@ -223,7 +224,12 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
           <button type="button" key={row.key} className={`mobile-drawer-dest${row.current ? " is-current" : ""}`} aria-current={row.current ? "page" : undefined} onClick={() => go(row.run)}>
             <span className="mobile-drawer-dest-icon" aria-hidden="true">{"name" in row.icon ? <MobileIcon name={row.icon.name} /> : row.icon.node}</span>
             <span>{row.label}</span>
-            {row.count > 0 ? <span className="mobile-drawer-count">{row.count}</span> : null}
+            {row.trailing ? (
+              <span className={`mobile-drawer-cst${row.trailing.tone ? ` is-${row.trailing.tone}` : ""}`}>
+                {row.trailing.glyph ? <span className={statusGlyphClassName(row.trailing.glyph)} aria-hidden="true" /> : null}
+                {row.trailing.text}
+              </span>
+            ) : row.count > 0 ? <span className="mobile-drawer-count">{row.count}</span> : null}
           </button>
         ))}
         <div className="mobile-drawer-rule" />
@@ -267,6 +273,8 @@ interface DestinationRow {
   readonly icon: { readonly name: MobileIconName } | { readonly node: ReactNode };
   readonly label: string;
   readonly count: number;
+  /** 플러그인이 올린 오른쪽 칸(상태 낱말) — 있으면 건수 자리를 이것이 쓴다. */
+  readonly trailing?: RailEntryDestinationTrailingValue | null;
   readonly current: boolean;
   readonly run: () => void;
 }

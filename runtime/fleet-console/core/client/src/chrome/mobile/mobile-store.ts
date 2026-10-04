@@ -5,7 +5,7 @@ import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
 import type { MobileBarAction, MobileBarMenuItem } from "@fleet-console/sdk/pane";
 
 /**
- * 모바일 셸의 클라이언트 상태. 라우트(/operations·/theaters·/settings)가 큰 자리를 정하고, 이 스토어는
+ * 모바일 셸의 클라이언트 상태. 라우트(/operations·/settings)가 큰 자리를 정하고, 이 스토어는
  * 그 안쪽 — 드로어, 하단 시트, 상단 막대, /operations 안의 목적지 — 을 든다. 본문·PTY의 수명은
  * 기존 페인/표면 소유자가 지킨다.
  */

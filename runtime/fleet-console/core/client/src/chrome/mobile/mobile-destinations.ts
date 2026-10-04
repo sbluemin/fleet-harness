@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { RailEntryAttentionItem } from "@fleet-console/sdk/rail";
+import type { RailEntryAttentionItem, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
 
 import { useAllOperationUseRequests, type OperationUseRequest } from "../../../../../features/computer-use/client/computer-screen-share.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-pane.js";
@@ -38,6 +38,34 @@ export function useMobileDestinationBindings(bindings: readonly RailEntryBinding
   );
   // eslint-disable-next-line react-hooks/exhaustive-deps -- key는 shown 상태가 바뀌었다는 신호다.
   return useMemo(() => mobileDestinationBindings(bindings, theaterId), [bindings, theaterId, key]);
+}
+
+/** 드로어 행 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(glyph·text·tone)이 같으면 다시 그리지 않는다. */
+export function useMobileDestinationTrailing(bindings: readonly RailEntryBinding[], theaterId: string | null): ReadonlyMap<string, RailEntryDestinationTrailingValue> {
+  const key = useSyncExternalStore(
+    (listener) => {
+      const disposers = bindings.flatMap((binding) => binding.entry.mobile?.destination?.trailing ? [binding.entry.mobile.destination.trailing.subscribe(listener)] : []);
+      return () => { for (const dispose of disposers) dispose(); };
+    },
+    () => trailingVersion(bindings, theaterId),
+    () => trailingVersion(bindings, theaterId),
+  );
+  return useMemo(() => {
+    const values = new Map<string, RailEntryDestinationTrailingValue>();
+    for (const binding of bindings) {
+      const value = binding.entry.mobile?.destination?.trailing?.get(theaterId);
+      if (value) values.set(binding.entry.id, value);
+    }
+    return values;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key는 trailing 값이 바뀌었다는 신호다.
+  }, [bindings, theaterId, key]);
+}
+
+function trailingVersion(bindings: readonly RailEntryBinding[], theaterId: string | null): string {
+  return bindings.map((binding) => {
+    const value = binding.entry.mobile?.destination?.trailing?.get(theaterId);
+    return value ? `${binding.entry.id}:${value.glyph ?? ""}\u0001${value.text}\u0001${value.tone ?? ""}` : "";
+  }).join("|");
 }
 
 function shownVersion(bindings: readonly RailEntryBinding[], theaterId: string | null): string {

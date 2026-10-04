@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
 import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
-import { useT } from "../../i18n/index.js";
+import { openTheaterSystemPrompt } from "../../../../../features/settings/client/theater-system-prompt-sheet.js";
+import { useConsoleLocale, useT } from "../../i18n/index.js";
+import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { getState, setActiveTheater } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
@@ -102,6 +104,8 @@ function TheaterSheet({ state, fromDrawer }: { readonly state: ConsoleState; rea
   // 드로어에서 연 시트는 드로어를 닫고 서며, 고르거나 닫으면 드로어로 돌아간다(S-07).
   const leave = () => { if (fromDrawer) setMobileDrawerOpen(true); };
   const cancel = () => { popMobileSheet(); leave(); };
+  const active = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
+  const pluginRows = useTheaterSheetPluginRows(active?.id ?? null);
   return (
     <>
       <MobileSheet title={t("mobile.sheet.theater.title")} onClose={cancel}>
@@ -133,9 +137,56 @@ function TheaterSheet({ state, fromDrawer }: { readonly state: ConsoleState; rea
           <span className="mobile-sheet-row-copy"><strong>{t("mobile.sheet.theater.add")}</strong></span>
         </button>
         {state.theaterError !== null ? <p className="mobile-sheet-error" role="alert">{state.theaterError}</p> : null}
+        {active ? (
+          <>
+            <div className="mobile-sheet-sep" role="separator" />
+            <div className="mobile-sheet-group-label">{t("mobile.sheet.theater.current", { name: active.label })}</div>
+            <button type="button" className="mobile-sheet-row" onClick={() => openTheaterSystemPrompt(active, null)}>
+              <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
+              <span className="mobile-sheet-row-copy"><strong>{t("mobile.menu.prompt")}</strong></span>
+            </button>
+            {pluginRows.map((row) => (
+              <button type="button" className="mobile-sheet-row" key={row.id} onClick={() => { closeMobileSheets(); row.run(); }}>
+                <span className="mobile-sheet-row-glyph">{row.icon}</span>
+                <span className="mobile-sheet-row-copy"><strong>{row.label}</strong></span>
+              </button>
+            ))}
+            <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "forget", theaterId: active.id })}>
+              <span className="mobile-sheet-row-glyph"><MobileIcon name="minus" /></span>
+              <span className="mobile-sheet-row-copy"><strong>{t("mobile.menu.forgetTheater")}</strong></span>
+            </button>
+          </>
+        ) : null}
       </MobileSheet>
     </>
   );
+}
+
+interface TheaterSheetPluginRow { readonly id: string; readonly label: string; readonly icon: ReactNode; readonly run: () => void }
+
+/** 플러그인이 `TheaterContribution.mobileRow`로 거는 행 — `subscribe`의 변화에 맞춰 다시 읽고, 글이 같으면 다시 그리지 않는다. */
+function useTheaterSheetPluginRows(theaterId: string | null): readonly TheaterSheetPluginRow[] {
+  const { theaterContributions } = usePluginRegistry();
+  const locale = useConsoleLocale();
+  const contributions = useMemo(() => theaterContributions.filter((contribution) => contribution.mobileRow !== undefined), [theaterContributions]);
+  const version = () => contributions.map((contribution) => theaterId === null ? "" : contribution.mobileRow?.get(theaterId, locale)?.label ?? "").join("\u0001");
+  const key = useSyncExternalStore(
+    (listener) => {
+      const disposers = contributions.flatMap((contribution) => contribution.mobileRow ? [contribution.mobileRow.subscribe(listener)] : []);
+      return () => { for (const dispose of disposers) dispose(); };
+    },
+    version,
+    version,
+  );
+  return useMemo(() => {
+    if (theaterId === null) return [];
+    return contributions.flatMap((contribution) => {
+      const row = contribution.mobileRow;
+      const value = row?.get(theaterId, locale);
+      return row && value ? [{ id: contribution.id, label: value.label, icon: value.icon, run: () => row.run(theaterId) }] : [];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key는 플러그인 행의 글이 바뀌었다는 신호다.
+  }, [contributions, locale, theaterId, key]);
 }
 
 /** S-17 — 목록에서 빼기 확인. 폴더와 파일은 지우지 않는다. 되돌리기는 앱의 삭제 토스트가 맡는다. */

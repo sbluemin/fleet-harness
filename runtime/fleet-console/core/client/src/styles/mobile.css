@@ -85,14 +85,6 @@
   font-size: 24px;
 }
 
-/* Theater page — one row per registered Theater, each carrying what is happening inside it so the
-   tab is a place to read rather than a picker that throws you out on the first tap. */
-.mobile-theater-page {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  height: 100%;
-  min-height: 0;
-}
 
 .mobile-theater-rows {
   display: grid;
@@ -185,11 +177,6 @@
   cursor: wait;
 }
 
-.mobile-theater-error {
-  margin: 0;
-  color: var(--coral-ink);
-  font-size: var(--t-md);
-}
 
 .mobile-tab {
   display: grid;
@@ -945,6 +932,10 @@
 .mobile-drawer-dest.is-current { width: calc(100% - 24px); margin: 0 12px; padding-left: 16px; }
 .mobile-drawer-dest-icon { display: grid; place-items: center; flex: none; width: 22px; height: 22px; }
 .mobile-drawer-dest-icon svg { width: 22px; height: 22px; }
+.mobile-drawer-cst { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--m-text-muted); font-size: var(--m-fs-caption); font-variant-numeric: tabular-nums; }
+.mobile-drawer-cst .status-glyph { flex: none; width: 12px; height: 12px; }
+.mobile-drawer-cst.is-faint { color: var(--m-text-faint); font-size: var(--m-fs-small); }
+.mobile-drawer-cst.is-danger { color: var(--m-danger); }
 .mobile-drawer-count { margin-left: auto; color: var(--m-awaiting); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
 
 .mobile-drawer-rule { height: 1px; margin: 8px 20px; background: var(--m-hairline-on-deep); }
@@ -1122,6 +1113,9 @@
 .mobile-sheet-row-copy small.is-awaiting { color: var(--m-awaiting); }
 .mobile-sheet-row-glyph { display: grid; place-items: center; flex: none; width: 28px; height: 28px; color: var(--m-text); }
 .mobile-sheet-check { color: var(--m-text); }
+/* 지금 Theater 묶음(S-55) — 구분선 1dp 좌우 8 들여 위 4, 머리 6/8/0 */
+.mobile-sheet-sep { height: 1px; margin: 4px 8px 0; background: var(--m-hairline); }
+.mobile-sheet-group-label { padding: 6px 8px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
 .mobile-sheet-error { margin: 0; color: var(--m-danger); font-size: var(--t-md); }
 
 /* 묶음 카드(목록 화면 공통) */
@@ -1278,10 +1272,7 @@ html[data-view-mode="mobile"] .app-toast-action {
   border: 0;
 }
 
-/* Theater 화면 · 빈 홈 · 첫 실행 */
-.mobile-theater-page { height: 100%; overflow-y: auto; background: var(--m-bg); }
-.mobile-theater-page .mobile-group-row-copy small .is-awaiting { color: var(--m-awaiting); }
-.mobile-theater-error { padding: 0 18px; }
+/* 빈 홈 · 첫 실행 */
 .mobile-group.is-flush { padding-right: 0; padding-left: 0; }
 
 .mobile-empty-home { gap: 10px; }

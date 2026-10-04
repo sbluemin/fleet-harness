@@ -52,7 +52,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
 
   // 다른 화면에서 /operations로 돌아오는 길이 도구·목적지 상태를 붙들고 있지 않게: 라우트가 홈이 아니면 홈으로 되돌려 둔다.
   const path = location.pathname.replace(/\/+$/, "");
-  useEffect(() => { if (path === "/theaters" || path === "/settings") setMobileDestination({ kind: "home" }); }, [path]);
+  useEffect(() => { if (path === "/settings") setMobileDestination({ kind: "home" }); }, [path]);
   // 라우트 이동(replace)이 주소의 `?dest=`를 지울 수 있다 — 라우트가 정착한 뒤 목적지를 주소에 다시 적는다(새로고침 복원용).
   useEffect(() => { syncMobileDestinationUrl(); }, [path, destination]);
 

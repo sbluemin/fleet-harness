@@ -56,7 +56,6 @@ import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
 import { MobileActionToast, recallArchivedTitle } from "../chrome/mobile/mobile-toast.js";
 import { MobileConnectionBand } from "../chrome/mobile/mobile-connection-band.js";
 import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
-import { MobileTheaterPage } from "../chrome/mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
@@ -692,9 +691,6 @@ function ConnectedApp() {
               <Routes>
                 <Route path="/" element={<Navigate to="/operations" replace />} />
                 <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
-                {/* Theater is a phone-only destination: the desktop switches Theater from the band
-                    and lists every Theater in its sidebar, so this route has nothing to add there. */}
-                <Route path="/theaters" element={mobileLayout ? <MobileTheaterPage state={state} /> : <Navigate to="/operations" replace />} />
                 <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>
