@@ -194,6 +194,8 @@ interface Tab {
 interface OperationBrowser {
   readonly operationId: string;
   contextId: string;
+  /** 리셋 전에 시작한 생성은 새 컨텍스트나 탭을 등록할 수 없다. */
+  resetGeneration: number;
   /** 사람이 고른 세션의 정체. 기본은 임시(`null`) — 에이전트가 모는 브라우저라 로그인이 기본으로 남으면 안 된다. */
   profile: string | null;
   tabs: Map<string, Tab>;
@@ -345,6 +347,7 @@ export class BrowserService {
     this.globalBrowser = {
       operationId: GLOBAL_BROWSER_OWNER_ID,
       contextId: "",
+      resetGeneration: 0,
       profile: DESKTOP_BROWSER_DEFAULT_PROFILE,
       tabs: new Map(),
       activeTabId: null,
@@ -481,16 +484,27 @@ export class BrowserService {
     if (!op) {
       // 새로 열리는 Operation 은 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
       const preferred = this.deps.defaultProfile.read();
-      op = { operationId, contextId: "", profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, pane: null, viewportFollowsPane: true, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
+      op = { operationId, contextId: "", resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, pane: null, viewportFollowsPane: true, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
       this.operations.set(operationId, op);
     }
     return op;
   }
 
+  private assertContextGeneration(op: OperationBrowser, generation: number): void {
+    if (op.resetGeneration !== generation) throw new BrowserPolicyError("browser_call_interrupted", "The tab creation was interrupted because its browser session was reset. Do not retry automatically.");
+  }
+
   private async context(op: OperationBrowser): Promise<{ client: CdpClient; contextId: string }> {
+    const generation = op.resetGeneration;
     const client = await this.engineClient();
+    this.assertContextGeneration(op, generation);
     if (!op.contextId) {
       const created = await client.send<{ browserContextId: string }>("Target.createBrowserContext", { disposeOnDetach: false, fleetProfile: op.profile });
+      if (op.resetGeneration !== generation) {
+        // 아직 op에 등록되지 않아 리셋이 거두지 못한 컨텍스트는 생성자가 자기 ID로 거둔다.
+        try { await client.send("Target.disposeBrowserContext", { browserContextId: created.browserContextId }); } catch { /* 이미 사라졌다 */ }
+        this.assertContextGeneration(op, generation);
+      }
       op.contextId = created.browserContextId;
     }
     return { client, contextId: op.contextId };
@@ -634,6 +648,8 @@ export class BrowserService {
    * 컨텍스트는 이 Operation 의 것이지만 프로필은 모두의 것이다.
    */
   private async resetContext(op: OperationBrowser): Promise<void> {
+    // 첫 await 전에 무효화한다 — 빈 contextId여도 진행 중 생성은 더 이상 등록할 수 없다.
+    op.resetGeneration += 1;
     for (const call of op.agentCalls) call.abort();
     op.agentCalls.clear();
     await this.disposeContext(op);
@@ -760,15 +776,25 @@ export class BrowserService {
     // 상한 검사·동기 주소 검증·예약을 첫 await 전에 마친다. 부착 중 생성도 한 자리를 차지하고,
     // 마지막 완성 탭이 닫혀도 진행 중 생성의 컨텍스트는 거두지 않는다.
     op.pendingTabs += 1;
+    const generation = op.resetGeneration;
     let client: CdpClient;
     let tab: Tab;
     try {
       const context = await this.context(op);
+      this.assertContextGeneration(op, generation);
       client = context.client;
       const created = await client.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: context.contextId });
-      const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
-      tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
-      op.tabs.set(tab.id, tab);
+      try {
+        this.assertContextGeneration(op, generation);
+        const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
+        this.assertContextGeneration(op, generation);
+        tab = { id: crypto.randomUUID().slice(0, 8), targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
+        op.tabs.set(tab.id, tab);
+      } catch (error) {
+        // 리셋으로 등록이 거부되거나 부착이 실패한 타깃은 생성자가 끝까지 정리한다.
+        try { await client.send("Target.closeTarget", { targetId: created.targetId }); } catch { /* 이미 닫혔다 */ }
+        throw error;
+      }
     } finally {
       op.pendingTabs -= 1;
     }
