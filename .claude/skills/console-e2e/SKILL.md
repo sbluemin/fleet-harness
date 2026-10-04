@@ -29,6 +29,7 @@ Read references only when starting the corresponding activity.
 | Browser connection, interaction, diagnostics, session cleanup | [agent-browser](references/agent-browser.md) — default driver |
 | UI-only page API responses or Objectives member sessions | [Pre-navigation fetch mock](references/agent-browser.md#mock-page-api-responses-before-navigation) / [child-session fixture](references/setup.md#objective-member-child-session-fixture), as needed |
 | A live agent process, chat protocol, or Console MCP call without a model turn | [No-cost fake Claude](references/setup.md#no-cost-fake-claude) |
+| Commodore autonomy transitions without provider calls | [No-cost fake Commodore](references/setup.md#no-cost-fake-commodore) — inject the existing AgentHost port instead of starting an SDK child |
 | agent-browser unavailable or blocked in this environment | [Fleet Browser fallback](references/fleet-browser.md); record why before switching |
 | Console SPA observation, focus/input safeguards, narrow-viewport (mobile layout) runs, fix verification | [Verification](references/verification.md), with the selected driver |
 | A claim about one real key press (Escape, Alt/⌘ shortcuts) or touch/coarse-pointer behavior | [Exact CDP input](references/cdp-input.md) |

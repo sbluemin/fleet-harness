@@ -80,6 +80,30 @@ When the claim needs a live agent process, MCP tools, or chat protocol traffic b
 - Objective Commence and other Console prompts into a fake terminal pass only after the Theater was added through the folder dialog ([trust preflight](claude-state.md#prepare-folder-trust-through-the-normal-gate), step 4); otherwise they return 409 `claude_trust_required` before the fake sees input.
 - Label results as fixture evidence. A fake proves launch, lifecycle, MCP and protocol paths, not real CLI behavior, authentication, trust prompts, or model quality.
 
+### No-cost fake Commodore
+
+The Commodore SDK does not honor `CLAUDE_BIN` and may use default Keychain authentication even with an isolated home. For no-cost autonomy transition checks, use the test-only [`fake-commodore.mjs`](../scripts/fake-commodore.mjs) loader on Node 22.15+. It replaces **only the existing `ctx.host.agent` port during objectives registration**, without changing product source or build files or running the real SDK, CLI, or provider. Other plugins and Operations are not faked; do not launch them.
+
+```bash
+cd <absolute-worktree>
+pnpm --filter @dotobokuri/fleet-console build
+E2E_DIR="<owned-run>"
+node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$E2E_DIR" \
+  --set NODE_ENV=test --set FAKE_COMMODORE_DIR="$E2E_DIR/fake-commodore" --check \
+  -- node --import <worktree>/.claude/skills/console-e2e/scripts/fake-commodore.mjs \
+  <worktree>/runtime/fleet-console/dist/cli.mjs serve
+```
+
+Remove only `--check` and run the same command as a managed background process. **Before enabling autonomy**, verify that `$E2E_DIR/fake-commodore/installed.json` has `fake: true`, `plugin: "objectives"`, and a `pid` matching this Console's lock, and that `log.jsonl` contains `installed`. If any evidence is missing, stop without enabling autonomy: the loader has not been confirmed. The loader requires `NODE_ENV=test` and the wrapper's owned directory layout. No SDK child starts, so this route does not establish real authentication, CLI trust, or model quality.
+
+In a registered throwaway Theater, enable the experiment and autonomy, then confirm `created`, `send`, and a zero-cost successful result in the transcript. Create and remove control files under `$E2E_DIR/fake-commodore/` with plain Node:
+
+- `hold-turn`: holds the next fake turn until cancellation. Send a message, confirm `run.phase=turn` and `send.held=true`, queue another message, then turn autonomy off. Confirm `cancel`, `dispose`, and `undelivered` for both message seqs. Re-enabling must not redeliver them.
+- `complete-on-cancel`: with `hold-turn`, finishes the turn with `ok` despite the stop race. That turn's message must not be marked `undelivered`.
+- `hold-experiments`: create after disabling the experiment has removed the runner while stored autonomy remains true. Re-enabling records `experiments-held` and delays only subscriber notification. A message during that gap must return `409 commodore_inactive` without entering the transcript. Remove the file, confirm `experiments-released` and runner status, then confirm the same request returns 200. This is a deterministic fixture of the real host's save→async reconciliation→notification boundary, not a timing measurement of a natural race.
+
+Before cleanup, remove the control files and disable autonomy. Stop only the owned Console through the same wrapper and run directory using `cli.mjs stop`. Preserve fake logs and HTTP/transcript results as fixture evidence.
+
 ### UI-only Operation fixtures
 
 For proposal/audit screens that need Operations but no model turn, prefer a dormant fixture in the **owned, stopped runtime's** `state.json`, using the current durable schema and restore tests as the source of truth. Never copy user state or overwrite a running server's state. Inspect `features/workspace/host/durable-state.ts` and the terminal restore contract for the current `payload.session` shape before authoring a fixture. Resume affordances require supported session identity; a fabricated identity is not proof that resume works. Verify the restored Operations through the API and UI without launching a provider.

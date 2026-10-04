@@ -249,12 +249,12 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
           ) : null}
           <div className={`objectives-commodore-body is-${tab}`} role="tabpanel" id={`objectives-commodore-panel-${tab}`} aria-labelledby={`objectives-commodore-tab-${tab}`}>
             {tab === "log" ? <CommodoreLog t={t} theaterId={theaterId} entries={entries} hasMore={hasMore} loaded={transcriptLoaded} /> : null}
-            {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onFail={fail} /> : null}
-            {tab === "intel" && view ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} /> : null}
+            {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onFail={fail} onClear={() => setFailure(null)} /> : null}
+            {tab === "intel" && view ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} /> : null}
             {tab === "settings" && view ? <CommodoreSettings t={t} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
           </div>
           {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
-          {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} onFail={fail} /></footer> : null}
+          {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
         </div>
       </section>
     </>,
@@ -637,7 +637,7 @@ function CommodoreLog({ t, theaterId, entries, hasMore, loaded }: { readonly t: 
  * 자율 운영이 꺼져 있으면 닿지 않을 메시지이므로 입력을 잠그고 사유를 말한다. 쓰던 초안은 그대로 두어 다시 켜면 보낼 수 있다.
  * 다른 창에서 막 끈 경합은 서버가 거절하고(`commodore_inactive`) 초안은 지우지 않는다.
  */
-function CommodoreComposer({ t, theaterId, active, onFail }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly onFail: (error: unknown) => void }) {
+function CommodoreComposer({ t, theaterId, active, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const composing = useRef(false);
@@ -646,6 +646,7 @@ function CommodoreComposer({ t, theaterId, active, onFail }: { readonly t: T; re
   const send = () => {
     const value = text.trim();
     if (!active || !value || sending) return;
+    onClear();
     setSending(true);
     void messageCommodore(theaterId, value).then(() => setText("")).catch(onFail).finally(() => { setSending(false); inputRef.current?.focus({ preventScroll: true }); });
   };
@@ -681,7 +682,7 @@ function CommodoreComposer({ t, theaterId, active, onFail }: { readonly t: T; re
 
 /* ── 지시 ─────────────────────────────────────────────────────────────── */
 
-function CommodoreDirective({ t, theaterId, directive, active, onFail }: { readonly t: T; readonly theaterId: string; readonly directive: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly active: boolean; readonly onFail: (error: unknown) => void }) {
+function CommodoreDirective({ t, theaterId, directive, active, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly directive: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly active: boolean; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const [draft, setDraft] = useState(directive.text);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -694,6 +695,7 @@ function CommodoreDirective({ t, theaterId, directive, active, onFail }: { reado
   const dirty = draft !== directive.text;
   const save = () => {
     if (saving || !dirty) return;
+    onClear();
     setSaving(true);
     setSaved(false);
     void saveCommodoreDirective(theaterId, draft).then(() => setSaved(true)).catch(onFail).finally(() => setSaving(false));
@@ -721,12 +723,13 @@ function CommodoreDirective({ t, theaterId, directive, active, onFail }: { reado
 
 /* ── 정보 ─────────────────────────────────────────────────────────────── */
 
-function CommodoreIntel({ t, theaterId, intel, sources, onFail }: {
+function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }: {
   readonly t: T;
   readonly theaterId: string;
   readonly intel: readonly { readonly id: string; readonly at: number; readonly source: string; readonly text: string }[];
   readonly sources: readonly { readonly id: string; readonly kind: string; readonly label: string; readonly locator: string }[];
   readonly onFail: (error: unknown) => void;
+  readonly onClear: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
@@ -734,6 +737,7 @@ function CommodoreIntel({ t, theaterId, intel, sources, onFail }: {
   const add = () => {
     const value = draft.trim();
     if (!value || adding) return;
+    onClear();
     setAdding(true);
     void addCommodoreIntel(theaterId, value).then(() => setDraft("")).catch(onFail).finally(() => setAdding(false));
   };
@@ -760,7 +764,7 @@ function CommodoreIntel({ t, theaterId, intel, sources, onFail }: {
               <li key={item.id}>
                 <span className="objectives-commodore-intel-when">{day(item.at)}</span>
                 <span className="objectives-commodore-intel-text">{item.text}<span className="objectives-commodore-intel-source">{sourceLabel(item.source)}</span></span>
-                <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.removeAria")} onClick={() => { void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
+                <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.removeAria")} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
               </li>
             ))}
           </ul>
