@@ -563,6 +563,19 @@ export interface TheaterContribution {
    * Escape reach them; call `onClose` before opening another surface.
    */
   readonly menu?: (context: TheaterMenuContext) => ReactNode;
+  /**
+   * 폰의 Theater 시트 「지금 Theater」 묶음에 서는 행 — 시스템 프롬프트 다음, 「목록에서 빼기」 앞. 데스크톱은 이 필드를 읽지 않는다.
+   * 데스크톱 `menu`는 DOM을 그리지만 폰 시트는 호스트의 행 문법으로 그리므로, 플러그인은 글과 동작만 준다.
+   */
+  readonly mobileRow?: TheaterContributionMobileRow;
+}
+
+/** 폰 Theater 시트의 플러그인 행. `get`이 null이면 행이 없다(실험 기능이 꺼진 때). 호스트는 값(label)으로 비교한다. */
+export interface TheaterContributionMobileRow {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly get: (theaterId: string, language: "en" | "ko") => { readonly label: string; /** 24 격자·선 1.7·`currentColor` 아이콘. */ readonly icon: ReactNode } | null;
+  /** 행을 눌렀을 때 — 호스트가 시트를 모두 닫은 **뒤에** 부른다. */
+  readonly run: (theaterId: string) => void;
 }
 
 /** 구성원(단계)의 진행 — 세션 활동이 아니라 구조 안의 자리다. 막힘은 선행이 안 끝난 것, 열림은 시작을 기다리는 것. */
