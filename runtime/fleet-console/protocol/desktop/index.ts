@@ -148,7 +148,7 @@ export function describeConsoleLockSlotQuiescenceCheck(lockFile: string): string
     "  - quit the Fleet desktop app and any update in progress, and do not run fleet console start/stop/restart or serve for it meanwhile;",
     "  - list remaining Fleet processes and check each one:  ps -A -o pid,lstart,command | grep -i fleet   (Windows: Get-CimInstance Win32_Process | Where-Object CommandLine -match 'fleet')",
     "    a \"fleet console stop\" or \"start\" can be the one finishing the cleanup, not only \"serve\".",
-    "If any of them is still running or you cannot tell what it is, leave the files in place.",
+    "If a Fleet command, a Console, or the Fleet desktop app is still running, or you cannot tell what a listed entry is, leave the files in place.",
   ].join("\n");
 }
 
