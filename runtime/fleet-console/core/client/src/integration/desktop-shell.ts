@@ -96,7 +96,9 @@ export function useDesktopHomeOrigin(reloadToken = 0): DesktopShellHome {
       .then((shell) => {
         // 스트림이 먼저 실어 온 집을 뒤늦은 빈 답이 지우지 않는다 — 빈 답은 "아직 게시 전"일 수 있다.
         if (shell.origin === null && snapshot.origin !== null) return;
-        publish({ ...shell, pending: false });
+        // 셸은 집만 적은 몸을 먼저 게시하므로, 그 순간을 읽은 답이 능력을 실은 스트림 이벤트보다 늦게 올 수 있다.
+        // 빠진 능력은 "모른다"이지 "없다"가 아니다 — 스트림 경로처럼 이미 아는 값을 지우지 않는다.
+        publish({ ...shell, capabilities: shell.capabilities ?? snapshot.capabilities, pending: false });
       })
       // 끊긴 요청은 답이 아니다 — 이 화면은 이미 사라졌거나 곧 다시 묻는다.
       .catch(() => { if (!controller.signal.aborted && snapshot.pending) publish({ origin: null, pending: false, desktopVersion: null, capabilities: [] }); });
@@ -114,11 +116,11 @@ export function applyDesktopShellSnapshot(value: unknown): void {
   publish({ origin, pending: false, desktopVersion: readDesktopVersion(value) ?? snapshot.desktopVersion, capabilities: readCapabilities(value) ?? snapshot.capabilities });
 }
 
-async function fetchDesktopShell(signal?: AbortSignal): Promise<Pick<DesktopShellHome, "origin" | "desktopVersion" | "capabilities">> {
+async function fetchDesktopShell(signal?: AbortSignal): Promise<Pick<DesktopShellHome, "origin" | "desktopVersion"> & { readonly capabilities: readonly string[] | null }> {
   const response = await fetch("/api/v1/desktop/shell", { signal });
-  if (!response.ok) return { origin: null, desktopVersion: null, capabilities: [] };
+  if (!response.ok) return { origin: null, desktopVersion: null, capabilities: null };
   const body: unknown = await response.json();
-  return { origin: readHomeOrigin(body), desktopVersion: readDesktopVersion(body), capabilities: readCapabilities(body) ?? [] };
+  return { origin: readHomeOrigin(body), desktopVersion: readDesktopVersion(body), capabilities: readCapabilities(body) };
 }
 
 function readCapabilities(value: unknown): readonly string[] | null {
