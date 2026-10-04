@@ -20,7 +20,8 @@ Both listeners come from the one isolated server the base workflow already start
 The listener binds a real address of this machine (`remoteAccess.listenAddress`); loopback names are rejected on purpose.
 
 ```bash
-BIND=$(ipconfig getifaddr en0)   # macOS; on Linux read the LAN address of the active interface
+BIND=$(ipconfig getifaddr "$(route -n get default | awk '/interface:/{print $2}')")   # macOS, default-route interface; on Linux read the LAN address of the active interface
+[ -n "$BIND" ] || { echo "no LAN address: stop"; exit 1; }   # an empty listenAddress is refused with 400 invalid_remote_access
 ```
 
 Enable it through the settings API with an `Origin` header, then read `/api/v1/access-links` back. That route reports the **live** listener, not the setting, so it is the only honest answer to "is remote access actually on". The write takes the whole `remoteAccess` object, so start from the current value: the server rejects the retired `bindHost` field, and a public endpoint (`publicEndpointEnabled: true`) also needs a matching `acknowledgment`, which this LAN-only run leaves off.
@@ -33,13 +34,14 @@ await fetch(`${origin}/api/v1/settings/global`, {
   body: JSON.stringify({ remoteAccess: { ...current, enabled: true, publicEndpointEnabled: false, listenAddress: BIND, acknowledgment: null } }),
 });
 const status = await (await fetch(`${origin}/api/v1/access-links`)).json();
-// status.listening === true; status.origin === `https://${BIND}:<remote port>`
-const remotePort = Number(new URL(status.origin).port || 443); // URL drops the default HTTPS port
+// status.listener.listening === true; status.listener.origin === `https://${BIND}:<remote port>`
+// (the body is { listener: { listening, origin, lastError }, interfaces, links, devices, … })
+const remotePort = Number(new URL(status.listener.origin).port || 443); // URL drops the default HTTPS port
 ```
 
 Recheck the input contract in `runtime/fleet-console/features/settings/host/settings-domain.ts` (`isValidRemoteAccessInput`) when the request is refused; a `400 invalid_remote_access` is a fixture error, not a product result.
 
-`listening: false` with a `lastError` means the bind failed; the console stays up and the UI must say so. Never read the setting and call it proof.
+`listener.listening: false` with a `listener.lastError` means the bind failed; the console stays up and the UI must say so. Never read the setting and call it proof.
 
 ## Issue a link and decode it
 
