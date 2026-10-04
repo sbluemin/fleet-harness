@@ -13,3 +13,19 @@ export function setWikiSearchOpen(open: boolean): void {
 export function wikiReaderDepth(): number {
   return searchOpen ? 2 : 1;
 }
+
+/**
+ * 모바일 위키 화면이 서 있는가. 모바일에서는 상단 막대가 history를 소유한다(깊이만큼 항목을 쌓고 뒤로를 한 길로 모은다).
+ * 그동안 리더 주소 동기화가 문서마다 history를 따로 쌓으면 두 스택이 엇갈려 닫은 문서의 주소가 남는다 — 그래서 이 값이
+ * 켜져 있으면 리더는 주소를 쌓지 않고, 남은 리더 주소만 걷는다.
+ */
+let mobileWikiSurfaces = 0;
+
+export function enterMobileWiki(): () => void {
+  mobileWikiSurfaces += 1;
+  return () => { mobileWikiSurfaces = Math.max(0, mobileWikiSurfaces - 1); };
+}
+
+export function mobileWikiActive(): boolean {
+  return mobileWikiSurfaces > 0;
+}

@@ -6,8 +6,8 @@ import type { SearchEntry } from "../server/codex/contracts.js";
 import { fetchDrydock, fetchSearch } from "./codex/api.js";
 import { CODEX_READER_PANE_ID } from "./codex-reader-pane.js";
 import { getT } from "./i18n/index.js";
-import { setWikiSearchOpen } from "./mobile-stack.js";
-import { openCodexReader } from "./reader-store.js";
+import { enterMobileWiki, setWikiSearchOpen } from "./mobile-stack.js";
+import { openCodexReader, useReaderState } from "./reader-store.js";
 import { publishResolvedWorkspace, resolveCodexWorkspace } from "./workspace-store.js";
 import "./mobile.css";
 
@@ -44,6 +44,13 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   const [results, setResults] = useState<readonly SearchEntry[] | null>(null);
   const workspaceRef = useRef<string | null>(null);
   const searchLabel = t("mobile.wiki.search");
+  // 이 화면이 서 있는 동안 리더 주소 동기화는 history를 쌓지 않는다(막대가 소유).
+  useEffect(() => enterMobileWiki(), []);
+  // 링크(주소)로 연 문서는 리더 상태로만 도착한다 — 그 문서를 상세 장으로 세운다.
+  const reader = useReaderState().codexReader;
+  useEffect(() => {
+    if (visible && reader !== null && !panes.isOpen(CODEX_READER_PANE_ID)) panes.open({ paneId: CODEX_READER_PANE_ID });
+  }, [visible, reader, panes]);
   useEffect(() => { setWikiSearchOpen(searching); }, [searching]);
   useEffect(() => () => setWikiSearchOpen(false), []);
   useEffect(() => {
