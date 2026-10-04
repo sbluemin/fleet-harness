@@ -155,7 +155,8 @@ export const fileExplorerDocumentPane: PaneDescriptor = {
   mounts: ["rail", "expanded"],
   title: (ctx) => documentPaneTitle(ctx),
   render: (ctx) => (ctx.mobileBar ? <MobileFileDocument {...ctx} /> : <FileExplorerDocumentPane {...ctx} />),
-  captionActions: (ctx) => <FileExplorerDocumentCaptionActions {...ctx} />,
+  // 모바일 목적지 화면에서는 막대가 ⋮ 메뉴를 진다 — 데스크톱 캡션 동작(뒤로·앞으로·줄바꿈)은 그리지 않는다.
+  captionActions: (ctx) => (ctx.mobileBar ? null : <FileExplorerDocumentCaptionActions {...ctx} />),
   defaultWidth: DOCUMENT_PANE_DEFAULT_WIDTH,
   minWidth: MIN_VIEWER_PX,
   keepAlive: true,

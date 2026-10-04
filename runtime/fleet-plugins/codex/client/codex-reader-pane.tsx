@@ -44,7 +44,8 @@ export const codexReaderPane: PaneDescriptor = {
   mounts: ["rail"],
   title: (ctx) => documentTitle(ctx),
   render: (ctx) => <CodexReaderPane {...ctx} />,
-  captionActions: (ctx) => <CodexReaderCaptionActions {...ctx} />,
+  // 모바일 목적지 화면에서는 막대가 제목과 뒤로를 진다 — 데스크톱 캡션 동작은 그리지 않는다.
+  captionActions: (ctx) => (ctx.mobileBar ? null : <CodexReaderCaptionActions {...ctx} />),
   // 이 열이 곧 "무엇을 읽고 있는가"다. 열만 치우고 그 사실을 남겨 두면, 다음 상태 발행에서
   // 카탈로그가 사용자가 닫은 열을 되살린다.
   //
