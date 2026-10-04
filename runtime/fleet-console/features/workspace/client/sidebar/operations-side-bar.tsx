@@ -20,6 +20,7 @@ import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/clie
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../../../../core/client/src/integration/types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { focusEdgeDockWhenPanelContainsActiveElement, useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { focusToolbarItemQuietly } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
@@ -483,9 +484,11 @@ export function OperationsSideBar({
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
-    // Zen·War Room 에는 엣지 독이 없다 — 부유 섬의 사이드바 토글이 포커스를 받는다.
+    // Zen·War Room 에는 엣지 독이 없다 — 부유 섬의 사이드바 토글이 포커스를 받는다. 접기를 누른 사람이 그 칸을
+    // 겨눈 것은 아니므로 말풍선은 띄우지 않는다(띄우면 Fleet 브라우저 뷰와 겹쳐 뷰가 물러선 채 남는다).
     if (!previousCollapsedRef.current && collapsed && !document.querySelector(".side-bar-edge-dock")) {
-      focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, document.querySelector(".zen-bar [data-zen-sidebar-anchor]") ? ".zen-bar [data-zen-sidebar-anchor]" : ".operations-center-stage");
+      if (document.querySelector(".zen-bar [data-zen-sidebar-anchor]")) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".zen-bar [data-zen-sidebar-anchor]", focusToolbarItemQuietly);
+      else focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".operations-center-stage");
     }
     // 대칭 — 엣지 독에 포커스를 둔 채 단축키로 펼치면 독이 사라지며 포커스가 BODY 로 빠진다. 접기 셰브런이 받는다.
     if (previousCollapsedRef.current && !collapsed && document.activeElement === document.body) rootRef.current?.querySelector<HTMLElement>(".side-bar-collapse")?.focus();
