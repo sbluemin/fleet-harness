@@ -53,7 +53,9 @@ type LockObservation =
 interface MissingLockProbe { readonly kind: "missing"; }
 interface BlockedLockProbe { readonly kind: "blocked"; readonly code: "console_lock_refused" | "console_lock_ownerless"; readonly detail: string; }
 interface UntrustedLockProbe { readonly kind: "untrusted"; readonly contents: string; readonly pid: number; readonly issue: string; }
-interface UnhealthyLockProbe { readonly kind: "unhealthy"; readonly stored: StoredLock; readonly health: ConsoleLockHealthEvidence; }
+// 초기화 안내는 대기에만 쓴다. signal 정체 판정에는 여전히 unanswered로 전달한다.
+type SidecarHealth = ConsoleLockHealthEvidence & { readonly starting?: true };
+interface UnhealthyLockProbe { readonly kind: "unhealthy"; readonly stored: StoredLock; readonly health: SidecarHealth; }
 interface HealthyLockProbe { readonly kind: "healthy"; readonly stored: StoredLock; readonly url: string; readonly health: ConsoleLockHealthEvidence; }
 type LockProbe = MissingLockProbe | BlockedLockProbe | UntrustedLockProbe | UnhealthyLockProbe | HealthyLockProbe;
 type StartLockProbe = Exclude<LockProbe, UnhealthyLockProbe> | (UnhealthyLockProbe & { readonly lingering?: true });
@@ -97,9 +99,9 @@ export class SidecarSupervisor {
   constructor(private readonly options: SidecarSupervisorOptions) { this.serviceVersion = options.serviceVersion; }
   /**
    * Adopts this Desktop's running Console or starts one. This Desktop never removes a Console lock: the Console it starts
-   * reclaims a lock whose pid has exited, under Console's reclaim protocol. It starts one only when the lock is absent or
-   * its pid has exited, because a starting Console touches shared state before it takes the lock. The slot is judged once
-   * more after the runtime is resolved, since procurement can take long.
+   * reclaims a lock whose pid has exited, under Console's reclaim protocol.
+   * 살아 있는 소유자는 아직 초기화·정리 중일 수 있으므로 lock이 없거나 pid가 끝났을 때만 시작한다.
+   * 런타임 조달은 길어질 수 있어, 조달 뒤에도 slot을 다시 판정한다.
    */
   async startOrAdopt(): Promise<string> {
     let runtime: SidecarRuntime | null = null;
@@ -286,6 +288,12 @@ export class SidecarSupervisor {
    */
   private async probeForStart(): Promise<StartLockProbe> {
     let current = await this.probe({ settleOwnerless: true });
+    // 같은 lock도 starting→ready로 바뀐다. bytes가 같다는 이유로 health 재조회를 생략하지 않는다.
+    for (let attempt = 0; current.kind === "unhealthy" && current.health.starting && this.isProcessAlive(current.stored.lock.pid); attempt += 1) {
+      if (attempt >= STARTUP_ATTEMPTS) return { ...current, lingering: true };
+      await delay(Math.min(100 * (attempt + 1), STARTUP_DELAY_CAP_MS));
+      current = await this.probe({ settleOwnerless: false });
+    }
     const deadline = Date.now() + SHUTDOWN_SETTLE_MS;
     while (current.kind === "unhealthy" && current.health.kind === "refused" && !this.isOwnLiveChild(current.stored.lock.pid) && this.isProcessAlive(current.stored.lock.pid)) {
       if (Date.now() >= deadline) return { ...current, lingering: true };
@@ -300,7 +308,7 @@ export class SidecarSupervisor {
     return observed.kind === "trusted" && observed.stored.contents === stored.contents;
   }
   // lock이 적은 endpoint와 token으로 health를 묻는다. 정상 응답(2xx)만 answered이며, 그 본문의 pid가 정체 증거다.
-  private async probeHealth(stored: StoredLock): Promise<ConsoleLockHealthEvidence> {
+  private async probeHealth(stored: StoredLock): Promise<SidecarHealth> {
     const endpoint = new URL(stored.lock.endpoint);
     let response: Response | null = null;
     for (let attempt = 0; response === null; attempt += 1) {
@@ -314,6 +322,10 @@ export class SidecarSupervisor {
         if (attempt === 0 && (code === "ECONNRESET" || code === "UND_ERR_SOCKET")) continue;
         return { kind: "unanswered" };
       }
+    }
+    if (response.status === 503) {
+      const body: unknown = await response.json().catch(() => null);
+      if (isRecord(body) && body.error === "console_starting" && body.pid === stored.lock.pid) return { kind: "unanswered", starting: true };
     }
     if (!response.ok) return { kind: "unanswered" };
     // 본문을 읽지 못하면 정체 증명이 없을 뿐 채택 판단(2xx)은 그대로다.

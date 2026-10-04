@@ -64,29 +64,35 @@ const REACHABLE_TIMEOUT_MS = 700;
 export async function listLocalConsoles(deps: LocalConsoleScanDeps = {}): Promise<readonly LocalConsoleEntry[]> {
   const fileSystem = deps.fileSystem ?? fs;
   const isAlive = deps.isAlive ?? processIsAlive;
-  const entries: LocalConsoleEntry[] = [];
-  const seen = new Set<string>();
+  const candidates: { readonly console: LocalConsoleEntry; readonly pid: number }[] = [];
 
   for (const file of deps.lockFiles ?? canonicalLockFiles()) {
     const entry = readLock(fileSystem, file, null);
     // 같은 기계의 콘솔이므로 pid로 판정한다.
-    if (entry === null || !isAlive(entry.pid) || seen.has(entry.console.origin)) continue;
-    seen.add(entry.console.origin);
-    entries.push(entry.console);
+    if (entry === null || !isAlive(entry.pid)) continue;
+    candidates.push(entry);
   }
 
   for (const candidate of wslLockFiles(deps, fileSystem)) {
     const entry = readLock(fileSystem, candidate.file, candidate.distro);
-    if (entry === null || seen.has(entry.console.origin)) continue;
-    // 배포판 안의 pid는 그쪽 네임스페이스의 것이라 여기서 물으면 남의 프로세스를 가리킨다.
-    // 살아 있는지는 포트가 답하는지로만 판정한다.
-    const reachable = deps.reachable ?? portAnswers;
-    if (!(await reachable(entry.console.origin))) continue;
-    seen.add(entry.console.origin);
-    entries.push(entry.console);
+    if (entry !== null) candidates.push(entry);
   }
 
-  return entries.sort((left, right) => left.origin.localeCompare(right.origin));
+  // 새로 공개된 starting 구간만 숨긴다. 느리거나 응답하지 않는 후보의 기존 생존 판정은 바꾸지 않는다.
+  // WSL의 pid는 다른 네임스페이스이므로 기존 TCP 판정을 유지하고, 두 probe도 병렬로 묶는다.
+  const entries = await Promise.all(candidates.map(async ({ console: entry, pid }) => {
+    const [alive, starting] = await Promise.all([
+      entry.distro === null ? true : (deps.reachable ?? portAnswers)(entry.origin),
+      consoleStarting(entry.origin, pid),
+    ]);
+    return alive && !starting ? entry : null;
+  }));
+  const seen = new Set<string>();
+  return entries.filter((entry): entry is LocalConsoleEntry => {
+    if (entry === null || seen.has(entry.origin)) return false;
+    seen.add(entry.origin);
+    return true;
+  }).sort((left, right) => left.origin.localeCompare(right.origin));
 }
 
 /** 스캔할 수 있는 곳은 이 둘뿐이다. 목록을 늘리려면 락을 쓰는 쪽 계약부터 늘어나야 한다. */
@@ -193,6 +199,25 @@ function processIsAlive(pid: number): boolean {
   } catch (error) {
     // EPERM은 "남의 프로세스지만 살아 있다"는 뜻이다.
     return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+async function consoleStarting(origin: string, pid: number): Promise<boolean> {
+  try {
+    const response = await fetch(new URL("/api/v1/status", origin), {
+      redirect: "error",
+      signal: AbortSignal.timeout(REACHABLE_TIMEOUT_MS),
+    });
+    if (response.status !== 503) {
+      await response.body?.cancel();
+      return false;
+    }
+    const body = await response.json() as { error?: unknown; pid?: unknown } | null;
+    // 공개 status는 현재 pid를 보내지 않는다. 제공되는 경우에만 대조하며, 어느 쪽도 소유권 증명은 아니다.
+    return body?.error === "console_starting" && (body.pid === undefined || body.pid === pid);
+  } catch {
+    // timeout·연결 오류·잘못된 본문은 starting의 증거가 아니다.
+    return false;
   }
 }
 
