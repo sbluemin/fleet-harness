@@ -185,8 +185,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
       current: path === "/operations" && destination.kind === "plugin" && destination.entryId === binding.entry.id,
       run: () => {
         setMobileDestination({ kind: "plugin", entryId: binding.entry.id });
-        // 페인 없이 확대 표면만 여는 엔트리(Shell)는 그 표면을 열어 화면 본문으로 삼는다.
-        if (!binding.entry.panes?.length && binding.entry.surfaceId) capabilities.surfaces.open({ surfaceId: binding.entry.surfaceId });
+        // 페인 없이 확대 표면만 여는 엔트리(Shell)는 목적지 화면이 그 표면을 스스로 열어 본문으로 삼는다.
         toOperations();
       },
     });

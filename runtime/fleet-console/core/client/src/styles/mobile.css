@@ -1255,3 +1255,8 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-update-title { font-size: var(--t-lg); font-weight: var(--weight-bold); }
 .mobile-update-sub { margin: 0; color: var(--m-text-muted); font-size: var(--t-md); line-height: 22px; text-align: center; }
 .mobile-update-track { width: 220px; margin-top: 6px; }
+
+/* 확대 표면 본문(Shell)이 목적지 화면을 채운다 — 도구 시트의 표면 규칙과 같다. */
+.mobile-surface-screen-body { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.mobile-surface-screen-body > .expanded-surface-pane { flex: 1; min-height: 0; width: 100%; }
+.mobile-surface-screen .expanded-surface-pane-close { display: none; }

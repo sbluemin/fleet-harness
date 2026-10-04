@@ -1,15 +1,18 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
 
 import { getState, subscribe } from "../../integration/store.js";
+import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
+import { SurfacePane } from "../expanded-surface/layer.js";
+import { closeExpandedSurface, getExpandedSurfaceState, useExpandedSurfaces } from "../expanded-surface/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { closeRailPanel, useRailActivePanelId } from "../rail/rail-store.js";
-import { MobileBarContext, useMobilePluginBar } from "./mobile-bar-context.js";
+import { MobileBarContext, useClaimMobileBar, useMobilePluginBar } from "./mobile-bar-context.js";
 import "../../styles/rail.css";
 
 /**
@@ -34,6 +37,9 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryId, binding === undefined]);
 
+  if (binding && binding.panes.length === 0 && binding.entry.surfaceId) {
+    return <MobileSurfaceScreen surfaceId={binding.entry.surfaceId} title={title} theme={theme} language={language} />;
+  }
   if (!binding || binding.panes.length === 0) return null;
   return (
     <section className="mobile-plugin-screen" data-host-surface="mobile-screen" aria-label={title}>
@@ -44,6 +50,72 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
           ) : null}
         </MobileBarContext.Provider>
       </PluginErrorBoundary>
+    </section>
+  );
+}
+
+/**
+ * 페인 없이 확대 표면만 여는 엔트리(Shell)의 목적지 화면 — 다른 목적지와 같은 문법이다: ≡ + 제목 + 보조 줄(지금 Theater 이름).
+ * 표면 본문은 도구 시트 때와 같은 SurfacePane이고, 컨테이너의 `data-host-surface="mobile-screen"`이 플러그인에게 시트가 아닌 화면임을 알린다.
+ */
+function MobileSurfaceScreen({ surfaceId, title, theme, language }: { readonly surfaceId: string; readonly title: string; readonly theme: ConsoleTheme; readonly language: "ko" | "en" }) {
+  const capabilities = useHostCapabilities();
+  const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId);
+  const theaterLabel = useSyncExternalStore(subscribe, () => getState().theaters.find((item) => item.id === getState().activeTheaterId)?.label ?? "");
+  const descriptors = useExpandedSurfaceDescriptors();
+  const { instances } = useExpandedSurfaces();
+  const instance = instances.find((item) => item.surfaceId === surfaceId);
+  const descriptor = instance ? descriptors.get(instance.surfaceId) : undefined;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const instanceId = instance?.instanceId;
+
+  useClaimMobileBar({ variant: "centered", title, ...(theaterLabel ? { subtitle: theaterLabel } : {}), leading: "menu" });
+
+  // 새로고침 등으로 표면이 아직 서 있지 않으면 연다. 화면을 떠나면 닫는다.
+  useEffect(() => {
+    if (instance === undefined) capabilities.surfaces.open({ surfaceId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instance === undefined, surfaceId]);
+  useEffect(() => () => {
+    for (const item of getExpandedSurfaceState().instances) if (item.surfaceId === surfaceId) closeExpandedSurface(item.instanceId);
+  }, [surfaceId]);
+
+  useLayoutEffect(() => {
+    const node = bodyRef.current;
+    if (!node) return;
+    const measure = () => setWidth(node.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [instanceId]);
+
+  return (
+    <section className="mobile-plugin-screen mobile-surface-screen" data-host-surface="mobile-screen" aria-label={title}>
+      <div className="mobile-surface-screen-body" ref={bodyRef}>
+        <PluginErrorBoundary>
+          {instance && descriptor ? (
+            <SurfacePane
+              key={instance.instanceId}
+              instance={instance}
+              descriptor={descriptor}
+              index={0}
+              paneCount={1}
+              paneWidth={width}
+              focused
+              theaterId={theaterId}
+              theme={theme}
+              language={language}
+              capabilities={capabilities}
+              isLast
+              onReportMinimum={() => undefined}
+              onDividerPointerDown={() => undefined}
+              onDividerNudge={() => undefined}
+            />
+          ) : null}
+        </PluginErrorBoundary>
+      </div>
     </section>
   );
 }

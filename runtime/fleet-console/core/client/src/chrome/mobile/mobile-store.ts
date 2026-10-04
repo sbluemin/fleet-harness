@@ -89,6 +89,12 @@ export function setMobileTool(next: MobileTool | null): void {
     emit();
     return;
   }
+  // 목적지 화면(Shell 등 확대 표면 엔트리)이 서 있는 동안 연 표면은 그 화면이 본문으로 쓴다 — 도구 시트로 바꾸지 않는다.
+  if (next?.kind === "surface" && destination.kind === "plugin") {
+    activeTool = null;
+    emit();
+    return;
+  }
   activeTool = next;
   if (next !== null) setMobileDestination({ kind: "plugins" });
   emit();
