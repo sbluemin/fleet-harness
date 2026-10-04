@@ -1561,7 +1561,8 @@ function RepositoryIcon() {
 export const repositoryEntry: RailEntryDescriptor = {
   id: "repository",
   // 폰에서는 쓸 수 없다 — 모바일 「플러그인」 화면에 「데스크톱에서만」 흐린 행으로 선다(S-46).
-  mobile: { available: false },
+  // 모바일 드로어·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
+  mobile: { available: false, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></svg> },
   title: (locale) => getT(locale)("repository.panel.title"),
   icon: () => <RepositoryIcon />,
   surfaceId: REPOSITORY_SURFACE_ID,

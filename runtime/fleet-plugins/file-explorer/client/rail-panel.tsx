@@ -65,7 +65,8 @@ export const fileExplorerEntry: RailEntryDescriptor = {
   icon: FileExplorerIcon,
   panes: ["file-explorer", DOCUMENT_PANE_ID],
   // 모바일 드로어의 고정 목적지 — 목표 다음 파일.
-  mobile: { destination: { order: 20, label: (locale) => getT(locale)("fileExplorer.panel.title") } },
+  // 모바일 드로어·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
+  mobile: { destination: { order: 20, label: (locale) => getT(locale)("fileExplorer.panel.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></svg> },
   handles: {
     openFile: async (request) => {
       const ref = parseFileLocation(request.path);
