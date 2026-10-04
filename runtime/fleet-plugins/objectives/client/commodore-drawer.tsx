@@ -21,6 +21,7 @@ import {
   noteCommodoreLanguage,
   removeCommodoreIntel,
   retryCommodore,
+  routeCommodoreDrawerToMobile,
   saveCommodoreDirective,
   setCommodoreAutonomy,
   setCommodoreCommander,
@@ -54,18 +55,22 @@ const SHEET_COMPACT_WIDTH = 720;
 /** 보드 읽기는 행위가 아니다 — 기록의 행위 칩에는 보드를 바꾼 호출만 선다. */
 const READ_ACTIONS = new Set(["view", "read", "list", "get", "inbox", "fleet", "history", "evidence", "transcript"]);
 /** 순찰 간격 사다리 — 서버 `COMMODORE_PATROL_MINUTES` 와 같다(서버 모듈은 브라우저 번들에 싣지 않는다). */
-const PATROL_STEPS: readonly CommodorePatrolMinutes[] = [15, 30, 60, 120, 240, 480];
-const DEFAULT_PATROL: CommodorePatrolMinutes = 60;
+export const PATROL_STEPS: readonly CommodorePatrolMinutes[] = [15, 30, 60, 120, 240, 480];
+export const DEFAULT_PATROL: CommodorePatrolMinutes = 60;
 const PATROL_MENU_WIDTH = 248;
 const PATROL_MENU_MARGIN = 12;
 
 /** 상주 기여 — 시트는 사령관 줄이 접혀 사라져도 열린 채로 남는다. */
-export function CommodoreDrawerHost({ language }: PersistentComponentContext) {
+export function CommodoreDrawerHost({ language, layout }: PersistentComponentContext) {
   const enabled = useCommodoreEnabled();
   const drawer = useCommodoreDrawer();
+  const mobile = layout === "mobile";
+  // 폰 배치에서는 이 시트가 서지 않는다 — 사령관은 드로어 목적지 화면이다. 서랍을 여는 길(데스크톱에서 연 채 보기를 바꾼 경우 등)은
+  // 서랍을 닫고 같은 구역으로 그 화면을 연다.
+  useEffect(() => { if (mobile && drawer) routeCommodoreDrawerToMobile(); }, [mobile, drawer]);
   // 상주 기여라 서랍이 닫혀 있어도 언어를 알린다 — 리액트 밖의 Quick Launch '@' 행이 이 값으로 문구를 고른다.
   if (language) noteCommodoreLanguage(language);
-  if (!enabled || !drawer) return null;
+  if (!enabled || !drawer || mobile) return null;
   return <CommodoreSheet key={drawer.theaterId} theaterId={drawer.theaterId} tab={drawer.tab} openedAt={drawer.openedAt} language={language ?? "en"} />;
 }
 
@@ -350,7 +355,7 @@ function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t
 
 /* ── 순찰 간격 ───────────────────────────────────────────────────────── */
 
-function patrolWord(t: T, minutes: number): string {
+export function patrolWord(t: T, minutes: number): string {
   if (minutes < 60) return t("objectives.commodore.patrol.minutes", { n: minutes });
   return minutes === 60 ? t("objectives.commodore.patrol.hour") : t("objectives.commodore.patrol.hours", { n: minutes / 60 });
 }
@@ -453,27 +458,27 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
   );
 }
 
-function errorWord(t: T, code: string): string {
+export function errorWord(t: T, code: string): string {
   const key = `objectives.commodore.errorCode.${code}`;
   return key in objectivesEn ? t(key as ObjectiveMessageKey) : code;
 }
 
 /** 깨움 이유 — `code` 또는 `code:N` 토큰. 모르는 토큰(문장)은 그대로 보인다. */
-function reasonWord(t: T, reason: string): string {
+export function reasonWord(t: T, reason: string): string {
   const match = /^([a-z][a-z-]*)(?::(\d+))?$/.exec(reason);
   if (!match) return reason;
   const key = `objectives.commodore.reason.${match[1]}`;
   return key in objectivesEn ? t(key as ObjectiveMessageKey, { n: match[2] ?? "" }).trim() : reason;
 }
 
-function actionWord(t: T, action: string): string {
+export function actionWord(t: T, action: string): string {
   const key = `objectives.commodore.action.${action}`;
   return key in objectivesEn ? t(key as ObjectiveMessageKey) : action;
 }
 
 /* ── 기록 ─────────────────────────────────────────────────────────────── */
 
-type ToolEntry = Extract<CommodoreTranscriptEntry, { kind: "tool" }>;
+export type ToolEntry = Extract<CommodoreTranscriptEntry, { kind: "tool" }>;
 
 interface WakeGroup {
   readonly kind: "wake";
@@ -554,7 +559,7 @@ export function groupTranscript(t: T, entries: readonly CommodoreTranscriptEntry
  * 사령관이 쓴 글 — Markdown 이다. Console 이 에이전트 글에 쓰는 같은 렌더러(정제된 HTML, 원시 HTML 없음)로 그리고,
  * 코드 블록의 복사 단추는 결과물 보기와 같은 위임으로 받는다.
  */
-function CommodoreMarkdown({ t, text }: { readonly t: T; readonly text: string }) {
+export function CommodoreMarkdown({ t, text }: { readonly t: T; readonly text: string }) {
   const html = useMemo(() => renderMarkdown(text, { copyLabel: t("objectives.results.copy"), copyAriaLabel: (language) => t("objectives.results.copyCode", { language }) }).html, [t, text]);
   const onCopy = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
@@ -569,7 +574,7 @@ function CommodoreMarkdown({ t, text }: { readonly t: T; readonly text: string }
   return <div className="markdown-body objectives-commodore-wake-text" onClick={onCopy} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-function toolSummary(tools: readonly ToolEntry[]): string {
+export function toolSummary(tools: readonly ToolEntry[]): string {
   const counts = new Map<string, number>();
   for (const tool of tools) counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
   return [...counts].map(([name, count]) => `${name} × ${count}`).join(" · ");

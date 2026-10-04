@@ -8,6 +8,7 @@ import type { RailEntryAttentionItem } from "@fleet-console/sdk/rail";
 
 import type { Decision, DecisionQuestion, Objective } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
+import { commodoreBoardOf, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { focusOperation, hasDecisionRequest, post, readAllTheaters, readTheater, revealObjective, subscribeObjective, takeReveal, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
@@ -101,23 +102,32 @@ const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObje
 // ── 「확인 필요」 행 ──
 
 const NO_ITEMS: readonly RailEntryAttentionItem[] = [];
-const attentionMemo = new Map<string, { readonly source: readonly Objective[]; readonly locale: ConsoleLocale; readonly items: readonly RailEntryAttentionItem[] }>();
+const attentionMemo = new Map<string, { readonly source: readonly Objective[]; readonly locale: ConsoleLocale; readonly answering: boolean; readonly items: readonly RailEntryAttentionItem[] }>();
+
+/** 「확인 필요」 행의 갱신 신호 — 목표 상태와 사령관 상태(답하는 중 메모)가 모두 행을 바꾼다. */
+export function subscribeDecisionAttention(listener: () => void): () => void {
+  const offObjective = subscribeObjective(listener);
+  const offCommodore = subscribeCommodore(listener);
+  return () => { offObjective(); offCommodore(); };
+}
 
 /** 결정 요청마다 한 행. 스냅샷이므로 같은 목록 상태·같은 언어면 같은 배열을 돌려준다. */
 export function decisionAttentionItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryAttentionItem[] {
   const source = readTheater(theaterId).objectives;
   const key = theaterId ?? "";
+  // 자율 운영이 실제로 돌면 사령관이 답한다 — 데스크톱 사이드바 메모와 같은 판정(S-53 CM-1d). 그래도 사람의 일로 센다.
+  const answering = theaterId !== null && commodoreBoardOf(theaterId).active;
   const hit = attentionMemo.get(key);
-  if (hit && hit.source === source && hit.locale === locale) return hit.items;
+  if (hit && hit.source === source && hit.locale === locale && hit.answering === answering) return hit.items;
   const t = getT(locale);
   const pending = source.filter((objective) => hasDecisionRequest(objective) && isListedObjective(objective));
   const items = pending.length === 0 ? NO_ITEMS : pending.map((objective) => ({
     id: objective.id,
     title: objective.title,
-    reason: t("objectives.mobile.attention", { count: requestCount(objective) }),
+    reason: answering ? `${t("objectives.mobile.attention", { count: requestCount(objective) })} · ${t("objectives.commodore.note.answering")}` : t("objectives.mobile.attention", { count: requestCount(objective) }),
     open: () => revealObjective({ objectiveId: objective.id }),
   }));
-  attentionMemo.set(key, { source, locale, items });
+  attentionMemo.set(key, { source, locale, answering, items });
   return items;
 }
 
@@ -126,6 +136,7 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
 export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
   const t = getT(ctx.language);
   const state = useObjectiveTheater(ctx.theaterId);
+  const commodore = useCommodoreBoard(ctx.theaterId ?? "");
   const operations = operationIndex(useOperationSummaries());
   const reveal = useReveal();
   const [doneOpen, setDoneOpen] = useState(false);
@@ -159,6 +170,7 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
           {objective.title}
           <small className={pending ? "is-awaiting" : undefined}>
             {pending ? t("objectives.mobile.row.decision", { count: requestCount(objective) }) : ""}
+            {pending && commodore.active ? `${t("objectives.commodore.note.answering")} · ` : ""}
             {total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members })}
           </small>
         </span>
@@ -365,6 +377,8 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
   const [sending, setSending] = useState(false);
   const [fault, setFault] = useState<string | null>(null);
   const [, setSentTick] = useState(0);
+  // 자율 운영이 실제로 돌면 사령관이 이 요청에 답한다 — 데스크톱 결정 카드 머리 메모와 같은 판정(S-53 CM-1d). 폰에는 툴팁이 없어 설명을 줄로 보인다.
+  const commodore = useCommodoreBoard(objective.theaterId);
   useEffect(() => { setDraftMap(storedDrafts(objective.id, request?.id)); setFault(null); }, [objective.id, request?.id]);
 
   if (!request) {
@@ -437,7 +451,8 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
           const indicator = `objectives-m-ind${question.multiSelect ? " is-check" : ""}`;
           return (
             <section key={question.id} className="objectives-m-ucard" aria-label={head}>
-              <div className="objectives-m-ucard-hd"><StatusMark state="review" />{head}</div>
+              <div className="objectives-m-ucard-hd"><StatusMark state="review" />{head}{index === 0 && commodore.active ? <span className="objectives-m-ucard-handler">{t("objectives.commodore.note.answering")}</span> : null}</div>
+              {index === 0 && commodore.active ? <p className="objectives-m-fine">{t("objectives.commodore.decisionHint")}</p> : null}
               <p className="objectives-m-ucard-p is-question"><LinkText text={question.text} /></p>
               {hasOptions && question.multiSelect ? <p className="objectives-m-hint">{t("objectives.decision.multiHint")}</p> : null}
               {hasOptions ? (

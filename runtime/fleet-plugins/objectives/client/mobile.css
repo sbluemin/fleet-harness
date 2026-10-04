@@ -46,6 +46,9 @@
 /* 결정 요청 카드 — 허용 요청 카드와 같은 틀(모서리 24, 테두리 hairline-strong). */
 .objectives-m-ucard { display: flex; flex-direction: column; gap: 6px; padding: 14px 14px 12px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
 .objectives-m-ucard-hd { display: flex; align-items: center; gap: 10px; font-size: var(--m-fs-list); font-weight: var(--weight-bold); }
+/* 자율 운영 중 — 머리 오른쪽(남은 시간 칸 자리)의 「사령관이 답하는 중」과 그 아래 설명 줄(S-53 CM-1d). */
+.objectives-m-ucard-handler { margin-left: auto; color: var(--m-awaiting); font-size: var(--m-fs-caption); font-weight: var(--weight-regular); white-space: nowrap; }
+.objectives-m-fine { margin: 0; color: var(--m-text-faint); font-size: var(--m-fs-small); line-height: 18px; }
 .objectives-m-ucard-tm { margin-left: auto; font-size: var(--m-fs-caption); font-weight: var(--weight-regular); color: var(--m-text-muted); font-variant-numeric: tabular-nums; }
 .objectives-m-ucard-p { margin: 0; font-size: var(--m-fs-secondary); line-height: 21px; color: var(--m-text-muted); overflow-wrap: anywhere; }
 .objectives-m-ucard-p.is-question, .objectives-m-answer { color: var(--m-text); }
