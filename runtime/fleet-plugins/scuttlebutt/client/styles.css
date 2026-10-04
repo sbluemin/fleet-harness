@@ -765,6 +765,9 @@
   animation: none;
   overflow: visible;
 }
+/* 카드 자신은 사라진 조작의 포커스를 받아 두는 자리라 Tab 정지점이 아니다. 마우스로 지운 뒤의 프로그램
+   포커스에는 고리를 그리지 않고, 키보드로 지웠을 때는 :focus-visible 휴리스틱대로 위치 표시를 남긴다. */
+.scuttlebutt-chat-card.is-embedded:focus:not(:focus-visible) { outline: none; }
 .scuttlebutt-chat-card.is-embedded .scuttlebutt-chat-log { overflow-wrap: anywhere; }
 .scuttlebutt-chat-card.is-embedded .scuttlebutt-menu { position: absolute; }
 
@@ -1401,6 +1404,14 @@
 .scuttlebutt-dock-glyph svg {
   width: 16px;
   height: 16px;
+  /* 마스코트 색은 테마와 무관하게 고정이라(theme.css --scuttlebutt-qk-*) 라이트 밴드에서는 파스텔 얼굴이
+     바탕과 같은 밝기가 되고, 16px에서는 그림 자체의 윤곽선도 0.3px 아래로 사라진다. 색은 그대로 두고
+     이웃 밴드 아이콘의 잉크(--text-tertiary)로 실루엣 가장자리만 세운다 — 다크에서는 밝은 얼굴에 묻혀
+     거의 보이지 않는다. 0.5px 세 겹은 번진 후광이 아니라 선 아이콘 한 획만 한 가장자리를 만든다. */
+  filter:
+    drop-shadow(0 0 0.5px var(--text-tertiary))
+    drop-shadow(0 0 0.5px var(--text-tertiary))
+    drop-shadow(0 0 0.5px var(--text-tertiary));
 }
 
 .scuttlebutt-dock-glyph:hover,

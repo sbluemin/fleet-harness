@@ -355,6 +355,16 @@
   min-height: 0;
 }
 
+/* 분할된 detail 창은 문서·로그를 읽는 시트다 — 「도구 패널 불투명도」를 따르는 슬롯 유리
+   (.right-rail-panel-slot::before)만 깔리면 다크에서 뒤 캔버스의 글자가 본문과 겹쳐 비친다.
+   읽는 시트의 판독성 계약대로 확장 표면과 같은 재질을 불투명 --float-underlay 위에 깐다.
+   목록(primary)은 슬롯 유리를 그대로 쓴다. 오버레이 창은 아래 .is-overlay가 덮는다. */
+.rail-pane.role-detail {
+  background:
+    linear-gradient(var(--glass-tint-expanded), var(--glass-tint-expanded)),
+    var(--float-underlay);
+}
+
 /* ── 분할선 ─────────────────────────────────────────────────────────────
    두 열 사이의 경계는 어느 쪽의 부속도 아니므로 표면이 그린다. 히트 영역은 4px이지만
    실제 선은 1px이고 나머지는 잡기 위한 여유다. */
