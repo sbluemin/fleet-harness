@@ -27,6 +27,8 @@
 .scuttlebutt-m-switch i { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; background: var(--m-text-muted); border-radius: 50%; transition: transform 150ms; }
 .scuttlebutt-m-switch.is-on { background: var(--m-inverse); }
 .scuttlebutt-m-switch.is-on i { background: var(--m-on-inverse); transform: translateX(18px); }
+/* 설정 상세는 버튼마다 44px 바닥을 깐다(.mobile-settings-detail button) — 토글은 자기 표적이 아니라 행이 표적이라 바닥을 걷는다. */
+.scuttlebutt-m .scuttlebutt-m-switch { min-height: 0; }
 .scuttlebutt-m-switch:disabled { cursor: default; opacity: .4; }
 .scuttlebutt-m-switch:focus-visible { outline: 2px solid var(--m-text); outline-offset: 2px; }
 

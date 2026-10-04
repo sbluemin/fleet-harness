@@ -24,6 +24,8 @@ import { setActiveTheme, setUnfocusedPanelFade } from "../../../core/client/src/
 import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
 import { loadDeviceFonts, requestDesktopDeviceFonts, useDeviceFonts, useDeviceFontsPermission, usePageVisible } from "./device-fonts.js";
 import { ExperimentsSection } from "./experiments-section.js";
+import { MobileGroupLabel, MobileRadioRow } from "./settings-mobile.js";
+import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
 
@@ -725,11 +727,75 @@ export function ConsolePortCard({
 }) {
   const t = useT();
   const consoleState = useConsoleState();
+  // 폰은 같은 상태·같은 저장을 묶음 카드(라디오 행 · 입력 행 · 상태 행)로 읽는다 — 세그먼트·「?」 칩은 쓰지 않는다.
+  if (useViewMode().effective === "mobile") return <MobileConsolePort state={state} saving={saving} consoleState={consoleState} />;
   return (
     <section className="global-settings-card" aria-label={t("settings.port.title")}>
       <h3 className="global-settings-card-title">{t("settings.port.title")}</h3>
       <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
     </section>
+  );
+}
+
+/** 고정 포트 입력의 초안 — 유효한 값만 그 자리에서 저장하고, 거부된 입력은 지우지 않고 남긴다. 두 배치가 같은 판정을 쓴다. */
+function useConsolePortDraft(state: GlobalSettingsState) {
+  const [draftPort, setDraftPort] = useState(state.consoleStaticPort?.toString() ?? "");
+  useEffect(() => {
+    setDraftPort(state.consoleStaticPort?.toString() ?? "");
+  }, [state.consoleStaticPort]);
+  const trimmed = draftPort.trim();
+  const draftIsInvalid = state.consolePortMode === "static" && trimmed.length > 0 && !isValidConsoleStaticPort(Number(trimmed));
+  const editDraft = (next: string) => {
+    setDraftPort(next);
+    const nextPort = Number(next.trim());
+    if (isValidConsoleStaticPort(nextPort)) void setGlobalSettingsField("consoleStaticPort", nextPort);
+  };
+  return { draftPort, draftIsInvalid, editDraft };
+}
+
+function MobileConsolePort({ state, saving, consoleState }: {
+  readonly state: GlobalSettingsState;
+  readonly saving: boolean;
+  readonly consoleState: ReturnType<typeof useConsoleState>;
+}) {
+  const t = useT();
+  const { draftPort, draftIsInvalid, editDraft } = useConsolePortDraft(state);
+  const effectivePort = consoleState.effectivePort;
+  const fallbackActive = consoleState.portMode === "static" && !consoleState.portHonored;
+  return (
+    <>
+      <MobileGroupLabel>{t("settings.port.title")}</MobileGroupLabel>
+      <div className="mobile-group settings-mobile-card" role="radiogroup" aria-label={t("settings.port.modeAria")}>
+        {buildPortModes(t).map((mode) => (
+          <MobileRadioRow key={mode.id} checked={state.consolePortMode === mode.id} label={mode.label} disabled={saving} onSelect={() => void setGlobalSettingsField("consolePortMode", mode.id)} />
+        ))}
+      </div>
+      {state.consolePortMode === "static" ? (
+        <div className="settings-mobile-body">
+          <input
+            className="mobile-field"
+            inputMode="numeric"
+            placeholder="8080"
+            value={draftPort}
+            disabled={saving}
+            aria-label={t("settings.port.staticPort")}
+            aria-invalid={draftIsInvalid}
+            onChange={(event) => editDraft(event.target.value)}
+          />
+          <p className={`settings-mobile-note${draftIsInvalid ? " is-error" : ""}`}>{t("settings.port.hint")}</p>
+        </div>
+      ) : null}
+      <div className="mobile-group settings-mobile-card">
+        <div className="mobile-group-row is-two">
+          <span className="mobile-group-row-copy">{t("settings.port.currentlyReachable")}<small>127.0.0.1:{effectivePort || "..."}{fallbackActive ? t("settings.port.dynamicSuffix") : ""}</small></span>
+        </div>
+      </div>
+      {fallbackActive && consoleState.requestedPort ? (
+        <p className="settings-mobile-note is-warning" role="status">
+          {renderMessage(t("settings.port.fallback"), { port: <strong>{consoleState.requestedPort}</strong>, mode: <strong>{t("settings.port.dynamic")}</strong>, host: <strong>{`127.0.0.1:${effectivePort || "..."}`}</strong> })}
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -748,22 +814,13 @@ function ConsolePortSettings({
 }) {
   const t = useT();
   const portModes = buildPortModes(t);
-  const [draftPort, setDraftPort] = useState(state.consoleStaticPort?.toString() ?? "");
+  const { draftPort, draftIsInvalid, editDraft } = useConsolePortDraft(state);
   const effectivePort = consoleState.effectivePort;
   const fallbackActive = consoleState.portMode === "static" && !consoleState.portHonored;
   // runtimeRequestedPort는 마지막 기동에서 실제로 시도한 포트(런타임 사실)이고,
   // 다음 재시작 동작은 저장된 설정(state)으로 안내해야 한다 — 둘을 섞으면 오안내가 된다.
   const runtimeRequestedPort = consoleState.requestedPort;
   const nextRestartStatic = state.consolePortMode === "static" && state.consoleStaticPort !== null;
-  const trimmedDraftPort = draftPort.trim();
-  const parsedPort = Number(trimmedDraftPort);
-  const draftHasValue = trimmedDraftPort.length > 0;
-  const draftIsValid = draftHasValue && isValidConsoleStaticPort(parsedPort);
-  const draftIsInvalid = state.consolePortMode === "static" && draftHasValue && !draftIsValid;
-
-  useEffect(() => {
-    setDraftPort(state.consoleStaticPort?.toString() ?? "");
-  }, [state.consoleStaticPort]);
 
   return (
     <div className="global-settings-row is-stack console-port-row">
@@ -805,12 +862,7 @@ function ConsolePortSettings({
               disabled={saving}
               aria-invalid={draftIsInvalid}
               aria-describedby="console-static-port-hint"
-              onChange={(event) => {
-                const next = event.target.value;
-                setDraftPort(next);
-                const nextPort = Number(next.trim());
-                if (isValidConsoleStaticPort(nextPort)) void setGlobalSettingsField("consoleStaticPort", nextPort);
-              }}
+              onChange={(event) => editDraft(event.target.value)}
             />
             <span id="console-static-port-hint" className={`console-port-hint ${draftIsInvalid ? "is-invalid" : ""}`}>
               {t("settings.port.hint")}

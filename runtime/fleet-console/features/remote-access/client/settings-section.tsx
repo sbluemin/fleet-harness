@@ -214,7 +214,7 @@ function MobileRemoteAccess({ remote, saving }: { readonly remote: RemoteAccessS
     });
   };
   return (
-    <div className="mobile-group is-flush" aria-label={t("settings.remote.title")}>
+    <div className="mobile-group settings-mobile-card" aria-label={t("settings.remote.title")}>
       <MobileToggleRow
         title={t("settings.remote.title")}
         sub={t("settings.remote.lede")}
