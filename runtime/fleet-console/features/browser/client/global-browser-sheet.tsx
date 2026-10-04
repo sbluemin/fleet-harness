@@ -606,6 +606,30 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
               disabled={!available || busy}
               onClick={() => runTab(() => createGlobalTab())}
             >+</button>
+            {/* 탭이 있을 때의 닫힌 탭 제안 — 본문은 네이티브 뷰 자리라 탭 줄 끝에 탭 알약 문법으로 둔다.
+                탭이 0개면 빈 상태의 큰 제안이 같은 일을 하므로 그리지 않는다. */}
+            {available && closedTabs.length > 0 && !empty ? (
+              <div
+                className="op-browser__tab fleet-browser-sheet__restore-tab"
+                title={t(persistent ? "terminal.globalBrowser.restoreClosedHelpPersistent" : "terminal.globalBrowser.restoreClosedHelpEphemeral")}
+              >
+                <button
+                  type="button"
+                  className="fleet-browser-sheet__restore-run"
+                  disabled={busy}
+                  onClick={() => runTab(() => restoreClosedGlobalTabs())}
+                >
+                  <ReloadGlyph />
+                  <span className="op-browser__tab-title">{t("terminal.globalBrowser.restoreClosed", { count: String(closedTabs.length) })}</span>
+                </button>
+                <button
+                  type="button"
+                  className="op-browser__tab-close"
+                  aria-label={t("terminal.globalBrowser.dismissClosed")}
+                  onClick={() => { void dismissClosedGlobalTabs(); }}
+                >×</button>
+              </div>
+            ) : null}
           </div>
           <div className="op-browser__profile">
             <button

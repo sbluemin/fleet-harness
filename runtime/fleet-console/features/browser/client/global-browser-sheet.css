@@ -185,6 +185,49 @@ html[data-view-mode="mobile"] .fleet-browser-scrim {
   color: var(--text-tertiary);
 }
 
+/* 탭이 있을 때의 닫힌 탭 제안 — 탭 알약 문법(제목 + ×)을 빌리되 점선 테두리로 진짜 탭과 구별한다.
+   본문 클릭은 복원, ×는 치우기. 줄어들어 사라지지 않게 고정 폭 쪽으로 둔다. */
+.fleet-browser-sheet__restore-tab {
+  flex: none;
+  max-width: 220px;
+  padding: 0 var(--space-1) 0 0;
+  border-style: dashed;
+  border-color: var(--hairline-strong);
+  cursor: default;
+}
+
+.fleet-browser-sheet__restore-run {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 2px var(--space-1) 2px var(--space-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: inherit;
+  font: inherit;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.fleet-browser-sheet__restore-run svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.fleet-browser-sheet__restore-run:hover:not(:disabled),
+.fleet-browser-sheet__restore-run:focus-visible {
+  color: var(--brass-ink);
+  outline: none;
+}
+
+.fleet-browser-sheet__restore-run:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* 시트가 열려 있는 동안 토스트 스택은 시트 밖(상단)으로 비킨다. */
 html[data-fleet-browser-sheet="open"] .app-toast-host {
   top: 48px;
