@@ -164,7 +164,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
   };
   const fail = (error: unknown) => {
     const code = error instanceof Error ? error.message : "failed";
-    setFailure(code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : t("objectives.commodore.failed", { code }));
+    setFailure(code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code }));
   };
   const tabs: readonly { readonly id: CommodoreTab; readonly label: string }[] = [
     { id: "log", label: t("objectives.commodore.tabs.log") },
@@ -254,7 +254,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
             {tab === "settings" && view ? <CommodoreSettings t={t} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
           </div>
           {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
-          {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} onFail={fail} /></footer> : null}
+          {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} onFail={fail} /></footer> : null}
         </div>
       </section>
     </>,
@@ -489,12 +489,14 @@ interface WakeGroup {
 type LogItem =
   | WakeGroup
   | { readonly kind: "marker"; readonly key: string; readonly at: number; readonly text: string }
-  | { readonly kind: "message"; readonly key: string; readonly at: number; readonly text: string };
+  | { readonly kind: "message"; readonly key: string; readonly at: number; readonly text: string; readonly undelivered: boolean };
 
 /** 서버는 사건마다 한 줄을 쌓는다 — 깨움에서 결과까지를 한 묶음으로 모으고, 세션 구분선과 사람의 말은 따로 선다. */
 export function groupTranscript(t: T, entries: readonly CommodoreTranscriptEntry[]): LogItem[] {
   const items: LogItem[] = [];
   let open: WakeGroup | null = null;
+  // 끌 때 싣지 못한 메시지 — 뒤에 오는 줄이 앞의 메시지를 가리킨다. 따로 서지 않고 그 메시지에 표시가 붙는다.
+  const undelivered = new Set(entries.flatMap((entry) => entry.kind === "undelivered" ? entry.seqs : []));
   const start = (entry: CommodoreTranscriptEntry, reasons: readonly string[]): WakeGroup => {
     const group: WakeGroup = { kind: "wake", key: `w${entry.seq}`, at: entry.at, reasons, texts: [], actions: [], tools: [], notes: [] };
     items.push(group);
@@ -510,7 +512,9 @@ export function groupTranscript(t: T, entries: readonly CommodoreTranscriptEntry
         items.push({ kind: "marker", key: `s${entry.seq}`, at: entry.at, text: t(`objectives.commodore.log.session.${entry.event}`) });
         break;
       case "message":
-        items.push({ kind: "message", key: `m${entry.seq}`, at: entry.at, text: entry.text });
+        items.push({ kind: "message", key: `m${entry.seq}`, at: entry.at, text: entry.text, undelivered: undelivered.has(entry.seq) });
+        break;
+      case "undelivered":
         break;
       case "text": {
         const group: WakeGroup = open ?? (open = start(entry, []));
@@ -585,7 +589,10 @@ function CommodoreLog({ t, theaterId, entries, hasMore, loaded }: { readonly t: 
         if (item.kind === "message") {
           return (
             <div key={item.key} className="objectives-commodore-wake is-message">
-              <p className="objectives-commodore-wake-head"><span>{clockTime(item.at)}</span><b>{t("objectives.commodore.log.you")}</b></p>
+              <p className="objectives-commodore-wake-head">
+                <span>{clockTime(item.at)}</span><b>{t("objectives.commodore.log.you")}</b>
+                {item.undelivered ? <span className="objectives-commodore-undelivered" title={t("objectives.commodore.log.undeliveredHint")}>{t("objectives.commodore.log.undelivered")}</span> : null}
+              </p>
               <p className="objectives-commodore-wake-text">{item.text}</p>
             </div>
           );
@@ -625,25 +632,32 @@ function CommodoreLog({ t, theaterId, entries, hasMore, loaded }: { readonly t: 
   );
 }
 
-/** 사령관에게 말하기 — 채팅 화면의 입력과 같은 문법: 한 상자 안에 자라는 입력과 원형 전송, 초점이면 상자가 brass 로 선다. */
-function CommodoreComposer({ t, theaterId, onFail }: { readonly t: T; readonly theaterId: string; readonly onFail: (error: unknown) => void }) {
+/**
+ * 사령관에게 말하기 — 채팅 화면의 입력과 같은 문법: 한 상자 안에 자라는 입력과 원형 전송, 초점이면 상자가 brass 로 선다.
+ * 자율 운영이 꺼져 있으면 닿지 않을 메시지이므로 입력을 잠그고 사유를 말한다. 쓰던 초안은 그대로 두어 다시 켜면 보낼 수 있다.
+ * 다른 창에서 막 끈 경합은 서버가 거절하고(`commodore_inactive`) 초안은 지우지 않는다.
+ */
+function CommodoreComposer({ t, theaterId, active, onFail }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly onFail: (error: unknown) => void }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const composing = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const armed = !!text.trim() && !sending;
+  const armed = active && !!text.trim() && !sending;
   const send = () => {
     const value = text.trim();
-    if (!value || sending) return;
+    if (!active || !value || sending) return;
     setSending(true);
     void messageCommodore(theaterId, value).then(() => setText("")).catch(onFail).finally(() => { setSending(false); inputRef.current?.focus({ preventScroll: true }); });
   };
   return (
-    <div className="objectives-commodore-composer" onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+    <>
+    <div className={`objectives-commodore-composer${active ? "" : " is-disabled"}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
       <ComposerInput
         ref={inputRef}
         className="objectives-commodore-composer-input"
         value={text}
+        disabled={!active}
+        aria-describedby={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
         rows={1}
         placeholder={t("objectives.commodore.composer.placeholder")}
         aria-label={t("objectives.commodore.composer.aria")}
@@ -660,6 +674,8 @@ function CommodoreComposer({ t, theaterId, onFail }: { readonly t: T; readonly t
         onClick={send}
       />
     </div>
+    {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("objectives.commodore.composer.idle")}</p>}
+    </>
   );
 }
 
