@@ -1,4 +1,5 @@
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
+import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
@@ -147,6 +148,15 @@ export const generalSettingsSection = defineSettingsSection({
     "터미널 글꼴 서체 고정폭 렌더러 읽기 폭 폴백 한글 일본어 중국어 가나 한자 글리프 커버리지",
   ],
   render: () => <GeneralSection />,
+  // 폰의 설정 목록 보조 줄 — 터미널 글자 크기(터미널 전용 값이 없으면 코드 축을 따른다).
+  mobile: {
+    summary: (locale) => {
+      const fonts = getGlobalSettingsStoreState().state?.fonts;
+      if (!fonts) return null;
+      return getT(locale)("terminal.settings.mobileSummary", { size: fonts.terminal?.size ?? fonts.code.size });
+    },
+    subscribe: subscribeGlobalSettings,
+  },
 });
 
 /**
