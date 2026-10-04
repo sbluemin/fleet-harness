@@ -113,7 +113,9 @@ function parseConsoleIdentity(value: unknown): MobileConsoleIdentity | null {
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
   const label = typeof record.label === "string" ? record.label.trim() : "";
-  if (!label || label.length > CONSOLE_LABEL_MAX) return null;
+  // 길이는 코드 포인트로 센다 — 네이티브가 코드 포인트 64개로 자르므로(Android codePointCount·iOS unicodeScalars),
+  // UTF-16 단위로 세면 이모지 같은 보충 문자 33개 이상인 이름을 웹만 거부해 정체 전체가 사라진다.
+  if (!label || [...label].length > CONSOLE_LABEL_MAX) return null;
   const monogram = typeof record.monogram === "string" && record.monogram.trim().length > 0 && [...record.monogram.trim()].length <= CONSOLE_MONOGRAM_MAX
     ? record.monogram.trim()
     : null;
