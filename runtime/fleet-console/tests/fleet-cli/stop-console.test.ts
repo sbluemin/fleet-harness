@@ -65,7 +65,7 @@ describe("stopRunningConsoleBeforeUpdate", () => {
     const io = createIo();
 
     const promise = stopRunningConsoleBeforeUpdate(io, { siblingCliPath: "" });
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     await expect(promise).resolves.toBeUndefined();
     expect(child.kill).toHaveBeenCalledTimes(1);

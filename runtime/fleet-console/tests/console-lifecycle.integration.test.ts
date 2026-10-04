@@ -37,6 +37,8 @@ describe("Console daemon lifecycle integration", () => {
       startupTimeoutMs: 8_000,
       pollIntervalMs: 20,
       cleanupGraceMs: 500,
+      shutdownTimeoutMs: 300,
+      report: () => {},
     });
 
     const startedAt = Date.now();
@@ -54,7 +56,7 @@ describe("Console daemon lifecycle integration", () => {
 
     // SIGTERM을 받은 Console이 listener만 닫고 lock을 쥔 채 멈춘다. SIGTERM 전에 증명한 그 프로세스이므로 강제 종료한다.
     fs.writeFileSync(fixture.stallFile, "stall\n", "utf8");
-    await lifecycle.stop();
+    expect(await lifecycle.stop()).toEqual({ forced: true, shutdownTimeoutMs: 300 });
     await expectProcessGone(pid);
     CHILD_PIDS.delete(pid);
     expect(createConsoleLock().readLock(fixture.lockFile)).toBeNull();

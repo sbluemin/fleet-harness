@@ -207,6 +207,7 @@ describe("fleet console CLI", () => {
       lifecycle: {
         stop: async () => {
           calls.push("stop");
+          return { forced: false };
         },
       },
     });

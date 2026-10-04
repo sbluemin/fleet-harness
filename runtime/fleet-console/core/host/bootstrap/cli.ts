@@ -25,6 +25,7 @@ export {
   type ConsoleRestartDeps,
   type ConsoleStatusDeps,
   type ConsoleStopDeps,
+  type ConsoleStopResult,
   type StartFleetConsoleDeps,
   type StartFleetConsoleResult,
 } from "./console-lifecycle.js";
