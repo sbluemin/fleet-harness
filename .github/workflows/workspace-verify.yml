@@ -50,6 +50,13 @@ jobs:
         run: pnpm typecheck
       - name: Test every workspace package
         run: pnpm test
+      # built smoke는 FLEET_BUILT_SMOKE 없이는 스스로 skip한다. POSIX 신호 계약은 Windows job에서
+      # 돌 수 없으므로 여기서 postinstall이 만든 dist로 돈다. -t 필터는 이름이 바뀌면 0건으로 통과하므로
+      # 파일 단위로만 고른다.
+      - name: Test POSIX Console signal lifecycle on built artifacts
+        env:
+          FLEET_BUILT_SMOKE: "1"
+        run: pnpm --filter @dotobokuri/fleet-console exec vitest run tests/built/fleet-built-smoke.test.ts
 
   console-windows-lifecycle:
     runs-on: windows-2022
