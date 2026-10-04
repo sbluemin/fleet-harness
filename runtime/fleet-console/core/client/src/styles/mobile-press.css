@@ -1,6 +1,6 @@
 /* ── 모바일 누름 문법 (impl-spec S-52, PR-0~PR-2) ──────────────────────────────
    모바일 배치(`:root[data-view-mode="mobile"]`) 아래에서만 건다 — 데스크톱 누름·hover는 그대로다.
-   - PR-0  파란 tap-highlight 없음, 조작부는 길게 누름 메뉴·더블탭 확대 지연 없음, 비활성에는 누름 없음.
+   - PR-0  파란 tap-highlight 없음, 조작부는 길게 눌러도 글자 선택·시스템 메뉴·더블탭 확대 지연 없음, 비활성에는 누름 없음.
    - R1    바탕 없는 행·아이콘 버튼: `::before`의 --m-selected 면이 구성요소 모양(--pr-inset·--pr-r)으로 나타난다.
    - R2    면 있는 묶음 행·카드: 제 면이 --m-selected로 바뀐다.
    - R3    칠한 조작부(알약·칩·원형 버튼·키): 제 글자색 12%를 `::after`로 같은 모양에 겹친다.
@@ -15,9 +15,36 @@
 @media (prefers-reduced-motion: reduce) {
   :root[data-view-mode="mobile"] { --press-out: 0ms; }
 }
-:root[data-view-mode="mobile"] :where(button, a[href], [role="button"], summary, label) {
+/* 조작부는 길게 눌러도 글자 선택(iOS 파란 선택·Android 선택 핸들)과 시스템 미리보기·메뉴가 남지 않는다 — 사람이 신고한
+   「파란 잔상」의 다른 갈래다. 본문(채팅 말풍선·마크다운·터미널·기록·위키·파일 내용)은 조작부가 아니라 그대로 선택된다:
+   user-select: none은 이 요소와 그 안에만 걸리고, 채팅·문서 표면이 컨테이너에 되살린 text는 형제 본문에 남는다. */
+:root[data-view-mode="mobile"] :where(
+  button, [role="button"], [role="switch"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"],
+  [role="radio"], [role="checkbox"], [role="option"], summary, label, [data-press]
+) {
+  -webkit-user-select: none;
+  user-select: none;
   -webkit-touch-callout: none;
   touch-action: manipulation;
+}
+/* 셸 크롬(상단 막대·드로어·시트·메뉴·선택 팝업·빈 화면 안내·위 알림·토스트)의 글자도 조작부 쪽이다 — 제목·안내 문구를
+   길게 눌러도 선택이 남지 않는다. 시트 안 입력칸은 아래 규칙이 다시 연다. */
+:root[data-view-mode="mobile"] :where(
+  .mobile-top-bar, .mobile-drawer, .mobile-sheet, .mobile-menu, .mobile-choice, .mobile-empty, .mobile-empty-home,
+  .mobile-request-banner, .mobile-toast-host, .app-toast
+) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* 링크는 본문 글 안에도 있어 선택은 막지 않고, 길게 누름 미리보기·더블탭 확대 지연만 끈다. */
+:root[data-view-mode="mobile"] :where(a[href]) {
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+/* 입력칸은 조작부(label·행) 안에 있어도 글을 고르고 고친다. */
+:root[data-view-mode="mobile"] :where(input, textarea, select, [contenteditable]:not([contenteditable="false"])) {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* ── R1 면이 나타남 ── */
