@@ -182,6 +182,11 @@ export interface RailEntryDescriptor {
 /** 모바일 배치에서 레일 엔트리가 서는 자리. */
 export interface RailEntryMobile {
   /**
+   * 모바일 드로어 목적지 행과 「플러그인」 화면 행에 쓸 아이콘(데스크톱 레일 아이콘과 다른 모양이 필요할 때). 24×24 격자에 선 1.7·둥근 끝이고
+   * 색은 글자색(`currentColor`)을 따른다. 생략하면 엔트리의 `icon`을 쓴다.
+   */
+  readonly icon?: ReactNode | (() => ReactNode);
+  /**
    * 폰에서 쓸 수 있는가. `false`면 모바일 드로어의 「플러그인」 화면에 흐린 행(「데스크톱에서만」)으로 남고 눌러도 열리지 않는다 —
    * 쓸 수 없는 도구도 어디서 쓰는지 알 수 있게 목록에는 둔다. 생략하면 쓸 수 있다.
    */
