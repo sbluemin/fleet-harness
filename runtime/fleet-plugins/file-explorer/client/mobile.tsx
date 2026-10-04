@@ -57,13 +57,16 @@ export function MobileFileTree(ctx: PaneContext) {
 
   const clientRef = useRef(files);
   clientRef.current = files;
-  const load = useCallback((relativePath: string) => {
-    setFolders((current) => new Map(current).set(relativePath, { kind: "loading" }));
-    // 늦게 온 앞 Theater 의 응답은 버린다 — 응답이 자기 클라이언트가 아직 현재일 때만 지도에 오른다.
+  /**
+   * 폴더 하나를 읽는다. `quiet`면 이미 그린 목록을 로딩 줄로 바꾸지 않고 응답이 오면 갈아 끼운다(다시 보일 때의 재검증).
+   * 늦게 온 앞 Theater 의 응답은 버린다 — 응답이 자기 클라이언트가 아직 현재일 때만 지도에 오른다.
+   */
+  const load = useCallback((relativePath: string, quiet = false) => {
+    if (!quiet) setFolders((current) => new Map(current).set(relativePath, { kind: "loading" }));
     const settle = (folder: Folder) => { if (clientRef.current === files) setFolders((current) => new Map(current).set(relativePath, folder)); };
     files.listFolder(relativePath || undefined, { timeoutMs: LIST_TIMEOUT_MS })
       .then((result) => settle({ kind: "loaded", result }))
-      .catch(() => settle({ kind: "failed" }));
+      .catch(() => { if (!quiet) settle({ kind: "failed" }); });
   }, [files]);
 
   // Theater 가 바뀌면 처음부터 다시 연다.
@@ -73,6 +76,25 @@ export function MobileFileTree(ctx: PaneContext) {
     setOpen(new Set());
     load("");
   }, [theaterId, load]);
+
+  // 모바일 트리는 watch 연결을 열지 않는다(F3 — 브라우저의 출처당 연결 자리를 아낀다). 대신 이 화면에 다시 들어오거나
+  // 앱이 다시 보일 때 루트와 펼친 폴더를 조용히 다시 읽어 낡은 트리가 남지 않게 한다.
+  const openRef = useRef(open);
+  openRef.current = open;
+  const revalidate = useCallback(() => {
+    if (!theaterId) return;
+    for (const relativePath of ["", ...openRef.current]) load(relativePath, true);
+  }, [theaterId, load]);
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    if (visible && !wasVisible.current) revalidate();
+    wasVisible.current = visible;
+  }, [visible, revalidate]);
+  useEffect(() => {
+    const onVisibility = () => { if (document.visibilityState === "visible") revalidate(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [revalidate]);
 
   const toggle = (entry: FolderEntry) => {
     const next = new Set(open);
