@@ -25,12 +25,12 @@ Read references only when starting the corresponding activity.
 | Situation | Read and use |
 |---|---|
 | Any run that may start Claude CLI or an SDK child, including chat and fake Claude | [Claude state and trust preflight](references/claude-state.md), before booting the host or launching an Operation; its Theater-trust step for objective Commence and terminal prompts runs after boot, before the first prompt |
-| Browser build and boot | [Isolated Console setup](references/setup.md), including its onboarding seed before the first navigation |
+| Browser build and boot | [Isolated Console setup](references/setup.md), including its onboarding seed and optional deputy/Wiki fixtures before the first navigation |
 | Browser connection, interaction, diagnostics, session cleanup | [agent-browser](references/agent-browser.md) — default driver |
 | UI-only page API responses or Objectives member sessions | [Pre-navigation fetch mock](references/agent-browser.md#mock-page-api-responses-before-navigation) / [child-session fixture](references/setup.md#objective-member-child-session-fixture), as needed |
 | A live agent process, chat protocol, or Console MCP call without a model turn | [No-cost fake Claude](references/setup.md#no-cost-fake-claude) |
 | agent-browser unavailable or blocked in this environment | [Fleet Browser fallback](references/fleet-browser.md); record why before switching |
-| Console SPA observation, focus/input safeguards, fix verification | [Verification](references/verification.md), with the selected driver |
+| Console SPA observation, focus/input safeguards, narrow-viewport (mobile layout) runs, fix verification | [Verification](references/verification.md), with the selected driver |
 | A claim about one real key press (Escape, Alt/⌘ shortcuts) or touch/coarse-pointer behavior | [Exact CDP input](references/cdp-input.md) |
 | Console in Electron, native shell, runtime ownership, packaging | [Desktop route](references/desktop.md), then only the required Desktop lane references |
 | Real Agent CLI, model pinning, wire/transcript | [Live agent prompt testing](references/live-agent-prompt-testing.md) |

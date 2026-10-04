@@ -83,6 +83,12 @@ Before measuring an activation flow, including non-modal surfaces, list its star
 - Programmatic `focus()` followed by a key is supporting activation-handler evidence only, not proof of normal keyboard reachability or visible focus. Do not remove `inert`, disabled state, focus traps, or pointer blocking to make the scenario pass.
 - Report what each route proves, what remains unverified, and what is not applicable. Keyboard activation can establish the resulting reveal or surface reuse, but not the covered control's pointer handler or hit testing. Mark pointer access not applicable only when intentional blocking is supported by design or implementation evidence; separate that intent judgment from observed behavior and record any untested handler separately. Report observed failures, such as focus hidden behind a covering surface, with their evidence rather than as unverified; judge separately whether they are product defects.
 
+## Narrow viewports use the mobile layout
+
+The browser Console picks its layout from the viewport width, so a phone-width run such as `set viewport 390 844` never reaches the desktop canvas, rail, or chips. `initializeViewportQueries` in `core/client/src/integration/view-mode-store.ts` switches to mobile at `max-width: 767px` and back to desktop at `min-width: 832px`. Between the two widths the previous layout stays, and a page first opened there starts on desktop. A stored `fleet-console.view-mode.preference` of `mobile` or `desktop` overrides the width on that origin, and an Electron renderer is always desktop. Before measuring at a narrow width, confirm which layout rendered, for example from the presence of `.mobile-tab-bar`, rather than inferring it from the width.
+
+In the mobile layout, panels open from the bottom tabs (**Theater**, **Operations**, **Tools**, **Alerts**, **Settings**). **Wiki**, **Files**, and **Shell** open from **Tools** once a Theater is active, and Settings is its own route. When a desktop selector returns null at a narrow width, the panel has a different entry path in this layout. That alone is not a product finding.
+
 ## Lifecycle, network, and storage changes
 
 Use this only when the change touches state lifetime, a connection or retry path, or durable storage. Choose the representative inputs that exercise the changed mechanism, not a matrix of every state:

@@ -98,7 +98,7 @@ The scheme is `fleet`, registered by `plugins/withFleetIos.ts`. On a cold start 
 
 - Only your `AVD` name, `PORT`, `SERIAL`, `UDID`, `E2E_DIR`, and `CONSOLE_PID` are yours. Never run `pkill`, `killall`, `adb emu kill` without `-s`, `simctl shutdown all`, `simctl erase all`, or `xcrun simctl delete unavailable`, or `adb kill-server` outside the rule in step 6.
 - Do not reuse a data root, an emulator, or a Console that was running before you started. Recheck the preflight's `in-use` line before booting and before cleanup.
-- Do not print process command lines or tokens; identify processes by the PIDs and ports you recorded.
+- Do not print process command lines or tokens; identify processes by the PIDs and ports you recorded, within the [process-listing scope](setup.md#keep-the-real-home-out).
 
 ## 6. Clean up (success or failure)
 
