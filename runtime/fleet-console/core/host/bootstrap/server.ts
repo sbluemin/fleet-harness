@@ -122,7 +122,13 @@ interface ConsolePortListenPlan {
   readonly port: number;
   readonly requestedPort: number | null;
   readonly portMode: "dynamic" | "static";
-  readonly allowFallback: boolean;
+  /**
+   * 바인드 실패 시 port 0으로 물러설 근거. 두 경우는 보고가 다르다:
+   * - "requested": 사용자가 고정 포트를 요청했으나 쓰지 못했다 — 설정 화면이 그 사실을 알려야 한다.
+   * - "resume": 업데이트 복귀용 옛 포트를 되찾지 못했다 — 사용자는 아무 포트도 요청하지 않았으므로
+   *   동적 모드 보고(requestedPort null, portHonored true)를 그대로 유지한다.
+   */
+  readonly fallback: "none" | "requested" | "resume";
 }
 
 /** Operation 스트림에 실리는 브라우저 상태 프레임의 이름. 화면은 이 채널로 탭·주소·조작 여부를 듣는다. */
@@ -2672,12 +2678,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 다만 이것은 **바인드할 포트**일 뿐, 사용자가 요청한 포트가 아니다. 보고되는 portMode와
    * requestedPort를 건드리면 설정 화면이 "요청한 포트를 쓰지 못했습니다"라고 말하게 되는데,
    * 사용자는 그런 포트를 요청한 적이 없다. 그리고 사용자가 고정 포트를 지정해 두었다면
-   * 그쪽이 이긴다 — 명시된 설정이 복귀 편의보다 앞선다.
+   * 그쪽이 이긴다 — 명시된 설정이 복귀 편의보다 앞선다. 옛 포트를 이미 누가 쥐고 있으면
+   * 새 포트로 뜬다 — 복귀는 편의일 뿐이고, 업데이트 뒤 콘솔이 아예 못 뜨는 것보다 낫다.
    */
   function resolveConsolePortListenPlan(): ConsolePortListenPlan {
     const plan = resolveConfiguredConsolePortListenPlan();
     if (resumePort === null || plan.portMode !== "dynamic") return plan;
-    return { ...plan, port: resumePort, allowFallback: true };
+    return { ...plan, port: resumePort, fallback: "resume" };
   }
 
   function resolveConfiguredConsolePortListenPlan(): ConsolePortListenPlan {
@@ -2686,7 +2693,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         port,
         requestedPort: null,
         portMode: "dynamic",
-        allowFallback: false,
+        fallback: "none",
       };
     }
     if (channel === "local") {
@@ -2694,7 +2701,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         port: DEFAULT_PORT,
         requestedPort: null,
         portMode: "dynamic",
-        allowFallback: false,
+        fallback: "none",
       };
     }
     const options = consoleSettingsStore.load().general ?? {};
@@ -2703,14 +2710,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         port: options.consoleStaticPort,
         requestedPort: options.consoleStaticPort,
         portMode: "static",
-        allowFallback: true,
+        fallback: "requested",
       };
     }
     return {
       port: DEFAULT_PORT,
       requestedPort: null,
       portMode: "dynamic",
-      allowFallback: false,
+      fallback: "none",
     };
   }
 
@@ -2722,7 +2729,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         portHonored: true,
       });
     } catch (error) {
-      if (!plan.allowFallback || plan.requestedPort === null) throw error;
+      if (plan.fallback === "resume") {
+        return listenOnce(DEFAULT_PORT, {
+          requestedPort: plan.requestedPort,
+          portMode: plan.portMode,
+          portHonored: true,
+        });
+      }
+      if (plan.fallback !== "requested" || plan.requestedPort === null) throw error;
       return listenOnce(DEFAULT_PORT, {
         requestedPort: plan.requestedPort,
         portMode: "static",

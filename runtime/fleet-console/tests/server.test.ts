@@ -160,6 +160,25 @@ describe("console terminal observability", () => {
     expect(serialized).not.toContain("providerSession");
   });
 
+  it("starts on a fresh dynamic port when the update resume port is already taken", async () => {
+    // 업데이트 워커는 옛 포트를 넘겨 새 콘솔을 띄운다. 그 포트를 누가 쥐고 있어도 콘솔은 떠야 하고,
+    // 사용자는 포트를 요청한 적이 없으므로 설정 화면에는 동적 모드로 보고된다.
+    const holder = http.createServer();
+    await new Promise<void>((resolve) => holder.listen(0, "127.0.0.1", resolve));
+    const heldPort = (holder.address() as { port: number }).port;
+    process.env.FLEET_CONSOLE_RESUME_PORT = String(heldPort);
+    try {
+      const fixture = await startFixture();
+      const status = await getJson<Record<string, unknown>>(`${fixture.endpoint}api/v1/status`);
+
+      expect(new URL(fixture.endpoint).port).not.toBe(String(heldPort));
+      expect(status).toMatchObject({ portMode: "dynamic", requestedPort: null, portHonored: true, effectivePort: fixture.lock.port });
+    } finally {
+      delete process.env.FLEET_CONSOLE_RESUME_PORT;
+      await new Promise<void>((resolve) => holder.close(() => resolve()));
+    }
+  });
+
 });
 
 describe("console static and terminal ticket boundary", () => {
