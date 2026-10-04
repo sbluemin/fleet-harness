@@ -122,7 +122,8 @@ function subscribe(listener: () => void): () => void {
 
 export const quotaSettingsSection: SettingsSectionDescriptor = {
   id: "usage",
-  title: (locale) => getT(locale)("quota.panel.title"),
+  // 시안·명세의 행·상세 제목은 「사용량」이다(데스크톱 팝업의 「사용 한도」와 다른 자리).
+  title: (locale) => getT(locale)("mobile.usage.title"),
   group: "work",
   render: () => <UsageBody />,
   mobile: { only: true, group: "use", order: -1, summary, subscribe },
