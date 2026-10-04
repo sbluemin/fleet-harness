@@ -16,7 +16,8 @@
  * It refuses a run dir, --bin, or --set path (each `:`-separated segment; a relative one resolved against the cwd) inside the real home's
  * agent, Fleet, shell, or credential stores, or inside an inherited Fleet or Claude directory, and refuses `~` in a
  * --set value because nothing expands it. It refuses --set for managed names and credential-like names; the one
- * exception is a known local placeholder (ANTHROPIC_API_KEY=sk-ant-fleet-local), which is not a credential. --check
+ * exception is a known local placeholder (ANTHROPIC_API_KEY=sk-ant-fleet-local), which is not a credential. On macOS
+ * and Linux it also refuses a run dir whose <run-dir>/tmp is too long for a Unix socket path (tsx's IPC socket). --check
  * prints the plan and runs nothing. Otherwise it forwards SIGINT/SIGTERM/SIGHUP, exits with the child's status, and
  * prints which entries appeared in the owned home. It does not isolate the macOS Keychain, launchd session keys, or
  * network access.
@@ -129,6 +130,12 @@ function main() {
   const runDir = checkPath('--run-dir', options.runDir);
   if (inside(realHome, runDir)) fail('--run-dir must not be the real home or one of its ancestors');
   const owned = Object.fromEntries(OWNED_DIRS.map((name) => [name, path.join(runDir, name)]));
+  // tsx listens on $TMPDIR/tsx-<uid>/<pid>.pipe; past sun_path the kernel truncates silently and concurrent tsx collide.
+  const sunPath = { darwin: 103, linux: 107 }[process.platform];
+  const socket = path.join(owned.tmp, `tsx-${userInfo().uid}`, '9999999.pipe');
+  if (sunPath && Buffer.byteLength(socket) > sunPath) {
+    fail(`--run-dir is too long: its tsx socket path needs ${Buffer.byteLength(socket)} bytes, the limit is ${sunPath}; shorten it by ${Buffer.byteLength(socket) - sunPath}, e.g. <repo-root>/.fleet/e2e-<short-id> (references/setup.md#isolate-the-console)`);
+  }
 
   const links = { node: process.execPath };
   for (const bin of options.bins) {

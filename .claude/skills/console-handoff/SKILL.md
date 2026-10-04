@@ -18,7 +18,7 @@ Resolve values from the request and task context. Live turns spend real quota; c
 ## Procedure
 
 1. Read [Build and seeding](references/setup-and-seeding.md), then build changed dependencies before Console.
-2. Boot from an absolute binary path with a fresh runtime directory in the session scratchpad. Confirm the PID command points inside `<worktree>` and read the lock's port without printing its token.
+2. Boot from an absolute binary path with a fresh runtime directory placed per console-e2e's [run-directory rule](../console-e2e/references/setup.md#isolate-the-console). Confirm the PID command points inside `<worktree>` and read the lock's port with its [fixed read](../console-e2e/references/setup.md#read-the-lock-without-the-token).
 3. Create a small throwaway Theater in the scratchpad that the agent may read and edit. Never use the user's checkout or the worktree as the scenario Theater.
 4. Use `scripts/seed-console.mjs` to prepare only the required state. Distinguish requested state from actual seed results; adjust the prompt/fixture when they differ. Do not report a failed setup as ready.
 5. Read [Handoff format](references/handoff.md), open the seeded URL in this Operation's Fleet Browser, leave that tab, then deliver the URL, seeded Operations/states, interactions, recreation prompt, build branch/SHA, data path, model/quota use, and PID concisely. Explain first-run dialogs and Escape behavior.

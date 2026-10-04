@@ -17,7 +17,12 @@ if (!e2eDir || !path.isAbsolute(e2eDir)) throw new Error("usage: BIND=<lan addre
 if (!bind) throw new Error("BIND must be this machine's LAN address (empty is refused with 400 invalid_remote_access)");
 if (!["full", "monitoring"].includes(access)) throw new Error("access must be full or monitoring");
 
-const lock = JSON.parse(fs.readFileSync(path.join(e2eDir, "console", "console.lock"), "utf8"));
+let lock;
+try {
+  lock = JSON.parse(fs.readFileSync(path.join(e2eDir, "console", "console.lock"), "utf8"));
+} catch {
+  throw new Error("console.lock not readable yet"); // a JSON error would quote the token
+}
 const origin = `http://127.0.0.1:${lock.port}`;
 const { remoteAccess: current } = await (await fetch(`${origin}/api/v1/settings/global`)).json();
 const put = await fetch(`${origin}/api/v1/settings/global`, {

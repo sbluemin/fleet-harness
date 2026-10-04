@@ -46,6 +46,7 @@ let sessionHeader;
 let nextId = 1;
 async function rpc(method, params, notification = false) {
   const body = notification ? { jsonrpc: "2.0", method, params } : { jsonrpc: "2.0", id: nextId++, method, params };
+  // A restarted Console refuses the saved launch; say so instead of an unhandled fetch rejection.
   const response = await fetch(server.url, {
     method: "POST",
     headers: {
@@ -55,7 +56,7 @@ async function rpc(method, params, notification = false) {
       ...(sessionHeader ? { "mcp-session-id": sessionHeader } : {}),
     },
     body: JSON.stringify(body),
-  });
+  }).catch((error) => fail(`${method} -> ${error.cause?.code ?? error.message} (Console restarted? resume the Operation and pass the new --pid)`));
   sessionHeader = response.headers.get("mcp-session-id") ?? sessionHeader;
   if (notification) return undefined;
   const text = await response.text();

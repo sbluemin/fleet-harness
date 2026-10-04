@@ -18,7 +18,7 @@ nohup node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-
   -- node <worktree>/runtime/fleet-console/dist/cli.mjs serve > <handoff-dir>.log 2>&1 &
 ```
 
-- `<handoff-dir>` is a fresh directory under the session scratchpad outside the repo. Setting only `FLEET_CONSOLE_DATA_DIR` is not enough: an inherited `FLEET_DATA_DIR` still points at the user's real Fleet root, whose legacy values are carried into the new slot once and removed from their old location.
+- `<handoff-dir>` is a fresh run directory placed per console-e2e's [run-directory rule](../../console-e2e/references/setup.md#isolate-the-console); the wrapper refuses one too long for its sockets. Setting only `FLEET_CONSOLE_DATA_DIR` is not enough: an inherited `FLEET_DATA_DIR` still points at the user's real Fleet root, whose legacy values are carried into the new slot once and removed from their old location.
 - The Console slot owns provider credentials, so a fresh handoff starts signed out. Prefer a scenario that needs no provider, or the [no-cost fake Claude](../../console-e2e/references/setup.md#no-cost-fake-claude) (`CLAUDE_BIN`, `FAKE_CLAUDE_DIR`) when the user only needs live Operations. A live turn needs the user's explicit choice of credential path and quota; the user can sign in inside the handed-over Console. Never copy real credential files, reuse the real Fleet root, or reuse the real Claude home without that authorization, and disclose any non-isolated store before launch.
 - `nohup … &` so the instance outlives the tool call. The user is going to be using it for a while. Node does not keep nohup's SIGHUP ignore, so a direct SIGHUP still stops it.
 - `FLEET_AI_GATEWAY_MODEL` pins every request whatever the picker says — cheaper than walking the user through the AI Gateway settings before they can test. Omit it when no provider is used.
@@ -26,10 +26,10 @@ nohup node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-
 **Then prove which binary booted.** `Bash` tool calls reset cwd between invocations, so a relative `node runtime/…/cli.mjs` silently starts the *main checkout's* Console and the log line looks identical:
 
 ```bash
-ps -p "$(python3 -c "import json;print(json.load(open('<handoff-dir>/console/console.lock'))['pid'])")" -o command=
+ps -p <pid> -o command=   # <pid> and <port> from the fixed lock read linked below
 ```
 
-The printed path must be inside `<worktree>`. Read `port` from the same lock file; never print `token`.
+The printed path must be inside `<worktree>`. Read `pid` and `port` with the [fixed lock read](../../console-e2e/references/setup.md#read-the-lock-without-the-token).
 
 ### 3. Build the scenario's Theater outside the repo
 
