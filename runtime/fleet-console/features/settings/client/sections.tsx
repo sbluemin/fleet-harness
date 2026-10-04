@@ -496,7 +496,9 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
   // Console에 미리 허용한 경우, 원격 Console을 이 실행에서 허용한 경우, 브라우저 사이트가 허용된 경우가 여기에 든다.
   // 'prompt'에서는 버튼을 기다린다. 목록은 여전히 이 화면의 메모리에만 머문다.
   useEffect(() => {
-    if (devicePermission === "granted" && (deviceFonts.status === "idle" || deviceFonts.status === "denied")) void loadDeviceFonts();
+    // 거부로 판정했던 상태(브라우저 거부, Desktop 거부)에서도 허용이 확인되면 되살린다. 'failed'는 제외한다 —
+    // 허용된 채 실패한 열거를 되풀이하지 않기 위해서다(버튼으로 다시 시도한다).
+    if (devicePermission === "granted" && (deviceFonts.status === "idle" || deviceFonts.status === "denied" || deviceFonts.status === "desktopDenied")) void loadDeviceFonts();
   }, [devicePermission, deviceFonts.status]);
   // 이 기기의 목록을 받았으면 그것이 진실이다. 호스트에만 있는 family는 "이 기기에 없음"으로 내린다.
   // Windows 호스트 목록은 등폭 여부가 비어 온다 — 이 화면이 그릴 수 있는 것은 여기서 재서 고친다.
@@ -506,7 +508,9 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
     const deviceKeys = new Set(deviceFonts.fonts.map((font) => font.family.toLocaleLowerCase()));
     return [
       ...deviceFonts.fonts.map((font) => ({ ...font, available: true })),
-      ...hostFonts.filter((font) => !deviceKeys.has(font.family.toLocaleLowerCase())).map((font) => ({ ...font, available: false })),
+      // 호스트에만 있는 이름이 이 기기에 없다는 뜻은 아니다 — Windows 호스트는 GDI 이름("Segoe UI Semibold")을,
+      // 렌더러 목록은 DirectWrite family("Segoe UI")를 준다. 그래서 단정하지 않고 폭 탐침에 맡긴다.
+      ...hostFonts.filter((font) => !deviceKeys.has(font.family.toLocaleLowerCase())),
     ];
   }, [deviceFonts, hostFonts]);
   useEffect(() => {
@@ -532,7 +536,8 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
   // 같은 기기라도 라틴이 없는 서체는 없는 것으로 읽힌다 — 그래서 원인(WSL·원격·라틴 없음)은 단정하지 않는다.
   const hostMismatch = (axisFonts: readonly FontPickerInstalledFont[]): boolean => axisFonts.length > 0 && axisFonts.filter((font) => !fontResolves(font.family)).length * 2 >= axisFonts.length;
   // 저장된 서체가 축 목록에서 빠져도(예: 등폭 서체를 UI 축에 저장) 이 기기의 목록이 있으면 그것으로 답한다.
-  const deviceFontAvailable = (family: string): boolean | undefined => deviceFonts.status === "loaded" ? deviceFonts.fonts.some((font) => font.family.toLocaleLowerCase() === family.toLocaleLowerCase()) : undefined;
+  // 목록에서 찾으면 있는 것이고, 못 찾았다고 없는 것은 아니다(이름 체계가 다를 수 있다) — 그때는 폭 탐침에 맡긴다.
+  const deviceFontAvailable = (family: string): true | undefined => deviceFonts.status === "loaded" && deviceFonts.fonts.some((font) => font.family.toLocaleLowerCase() === family.toLocaleLowerCase()) ? true : undefined;
   // 거부된 동안에는 누를 수 없는 버튼을 세우지 않는다. 브라우저의 거부는 사이트 설정에서 풀 수 있으므로 그
   // 방법만 알린다 — 풀면 권한 변경을 듣고 있다가 버튼을 다시 세운다. Desktop은 이 기기의 Console에는 미리
   // 허용하고, 원격 Console에는 거부한 채로 둔다가 이 버튼을 누르면 확인창으로 묻는다. 그 신호를 모르는 옛
@@ -554,13 +559,14 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
     ].filter(Boolean);
     return notes.length ? notes : null;
   };
+  const deviceFontsBusy = deviceFonts.status === "loading" || deviceFonts.status === "awaitingDesktop";
   const deviceFontsAction = <div key="device" className="settings-device-fonts">
-      <button type="button" className="settings-device-fonts-button" aria-disabled={deviceFonts.status === "loading" || undefined} onClick={(event) => {
-        if (deviceFonts.status === "loading") return;
+      <button type="button" className="settings-device-fonts-button" aria-disabled={deviceFontsBusy || undefined} onClick={(event) => {
+        if (deviceFontsBusy) return;
         // 목록이 바뀌면 이 버튼은 사라진다. 포커스가 문서로 빠지지 않게 검색 칸으로 돌려놓는다.
         const search = event.currentTarget.closest(".fc-font-browser")?.querySelector<HTMLInputElement>("input[type=search]");
         void (askDesktop ? requestDesktopDeviceFonts() : loadDeviceFonts()).then(() => search?.focus());
-      }}>{t(deviceFonts.status === "loading" ? "settings.typography.picker.deviceFontsLoading" : "settings.typography.picker.loadDeviceFonts")}</button>
+      }}>{t(deviceFonts.status === "awaitingDesktop" ? "settings.typography.picker.deviceFontsAwaitingDesktop" : deviceFonts.status === "loading" ? "settings.typography.picker.deviceFontsLoading" : "settings.typography.picker.loadDeviceFonts")}</button>
       <p className="settings-font-note">{t("settings.typography.picker.deviceFontsPrivacy")}</p>
     </div>;
   const pickerLabels: FontPickerLabels = {
@@ -573,7 +579,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
     installedGroup: t(deviceLoaded ? "settings.typography.picker.deviceGroup" : "settings.typography.picker.installedGroup"),
     missingGroup: t("settings.typography.picker.missingGroup"),
     missingGroupNote: t(deviceLoaded ? "settings.typography.picker.hostOnlyNote" : "settings.typography.picker.missingGroupNote"),
-    missingSummary: t(deviceLoaded ? "settings.typography.picker.hostOnlySummary" : "settings.typography.picker.missingSummary", { count: "{count}" }),
+    missingSummary: (count) => t(`settings.typography.picker.${deviceLoaded ? "hostOnlySummary" : "missingSummary"}_${count === 1 ? "one" : "other"}`, { count }),
     noMatch: t("settings.typography.picker.noMatch"),
     preview: t("settings.typography.picker.preview"),
     available: t("settings.typography.picker.available"),

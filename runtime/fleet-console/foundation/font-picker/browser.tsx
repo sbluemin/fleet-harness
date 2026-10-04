@@ -35,8 +35,8 @@ export interface FontPickerLabels {
   readonly installedGroup?: string;
   readonly missingGroup?: string;
   readonly missingGroupNote?: string;
-  /** 접힌 "그릴 수 없는 서체" 묶음의 요약. `{count}`가 개수로 바뀐다. */
-  readonly missingSummary?: string;
+  /** 접힌 "그릴 수 없는 서체" 묶음의 요약. 단·복수는 소비자의 카탈로그가 정한다. */
+  readonly missingSummary?: (count: number) => string;
   readonly noMatch?: string;
   readonly preview?: string;
   readonly available?: string;
@@ -51,9 +51,7 @@ export interface FontPickerLabels {
   readonly savedSystemFont?: string;
 }
 
-type ResolvedFontPickerLabels = {
-  readonly [K in keyof Required<FontPickerLabels>]: string;
-};
+type ResolvedFontPickerLabels = Required<FontPickerLabels>;
 
 const DEFAULT_LABELS: ResolvedFontPickerLabels = {
   browserAria: "Font browser",
@@ -65,7 +63,7 @@ const DEFAULT_LABELS: ResolvedFontPickerLabels = {
   installedGroup: "Installed on the Console host",
   missingGroup: "Not on this device",
   missingGroupNote: "Installed where the Console runs, but this screen could not draw them.",
-  missingSummary: "{count} fonts this screen can't draw",
+  missingSummary: (count) => count === 1 ? "1 font this screen can't draw" : `${count} fonts this screen can't draw`,
   noMatch: "No fonts match this search.",
   preview: "Preview",
   available: "Available",
@@ -277,7 +275,7 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
             disabled={props.disabled}
             onClick={() => setMissingExpanded((expanded) => !expanded)}
           >
-            <span>{labels.missingSummary.replace("{count}", String(collapsedCount))}</span>
+            <span>{labels.missingSummary(collapsedCount)}</span>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={missingExpanded ? "m2 3.5 3 3 3-3" : "m3.5 2 3 3-3 3"} /></svg>
           </button>
         ) : null}
