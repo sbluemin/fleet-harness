@@ -64,7 +64,8 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
           </div>
         );
       })}
-      {/* 자율 운영 — 켬/끔과 사령관 세션의 기본 모델·강도. 보조 AI 행과 같은 선택기에 스위치가 붙는다. */}
+      {/* 자율 운영 — 켬/끔뿐이다. 사령관의 모델·강도는 사이드바 사령관 시트의 설정에서 Theater 마다 고른다. 저장된 commodoreModel·Effort 는
+          시트 값이 없을 때의 기본 좌표로 남는다. */}
       <div className="global-settings-row experiments-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
@@ -73,20 +74,6 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
           </p>
         </div>
         <div className="experiments-row-controls">
-          <ModelPicker
-            value={experiments.commodoreModel}
-            options={options}
-            disabled={saving}
-            label={t("settings.experiments.modelAria", { feature: t("settings.experiments.commodore.title") })}
-            onChange={(value) => save({ ...experiments, commodoreModel: value })}
-            effort={{
-              value: experiments.commodoreEffort,
-              levels: EXPERIMENT_EFFORTS,
-              ariaLabel: t("settings.experiments.effortAria", { feature: t("settings.experiments.commodore.title") }),
-              labelOf: (level) => t(`settings.experiments.effort.${level as ExperimentEffort}`),
-              onChange: (next) => save({ ...experiments, commodoreEffort: next as ExperimentEffort }),
-            }}
-          />
           <SettingsToggle
             checked={experiments.commodore}
             busy={saving}
