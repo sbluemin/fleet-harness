@@ -94,13 +94,25 @@ function androidChecks() {
     return emulator;
   }, 'sdkmanager "emulator"');
 
+  // The run creates its own AVD, so what must exist is avdmanager and the system image the guide uses;
+  // existing AVDs are listed only so they are not reused.
+  const abi = process.arch === "arm64" ? "arm64-v8a" : "x86_64";
+  const image = `system-images;android-${COMPILE_SDK};google_apis;${abi}`;
+  const avdmanager = path.join(sdk, "cmdline-tools", "latest", "bin", process.platform === "win32" ? "avdmanager.bat" : "avdmanager");
+  check("android", "avdmanager", () => {
+    if (!existsSync(avdmanager)) throw new Error(`${avdmanager} is missing`);
+    return avdmanager;
+  }, 'Android Studio > SDK Manager > SDK Tools: install "Android SDK Command-line Tools (latest)"');
+  check("android", "system-image", () => {
+    const dir = path.join(sdk, "system-images", `android-${COMPILE_SDK}`, "google_apis", abi);
+    if (!existsSync(dir)) throw new Error(`${dir} is missing`);
+    return image;
+  }, `sdkmanager "${image}"`);
   if (existsSync(emulator)) {
     check("android", "avd", () => {
-      const { status, out } = probe(emulator, ["-list-avds"]);
-      const avds = out.split("\n").map((line) => line.trim()).filter((line) => /^[\w.-]+$/.test(line));
-      if (status !== 0 || avds.length === 0) throw new Error("no AVD is available");
-      return `${avds.length} available: ${avds.join(", ")}`;
-    }, `Create your own AVD with avdmanager (system image under ${path.join(sdk, "system-images")}); never reuse another session's AVD`);
+      const avds = probe(emulator, ["-list-avds"]).out.split("\n").map((line) => line.trim()).filter((line) => /^[\w.-]+$/.test(line));
+      return { status: "note", detail: `${avds.length ? `existing: ${avds.join(", ")}` : "none yet"} — create your own with avdmanager; never reuse another session's AVD` };
+    });
   }
 
   // Devices another session may be using. adb is asked only when its server already listens on 5037,
@@ -108,8 +120,15 @@ function androidChecks() {
   // and ports without printing any command line.
   check("android", "in-use", () => {
     const parts = [];
-    const listening = probe("/usr/sbin/lsof", ["-nP", "-iTCP:5037", "-sTCP:LISTEN", "-t"]).out.trim() !== "";
-    if (listening && existsSync(adb)) {
+    let listening;
+    try {
+      listening = probe("lsof", ["-nP", "-iTCP:5037", "-sTCP:LISTEN", "-t"]).out.trim() !== "";
+    } catch {
+      listening = undefined; // no lsof on PATH: the server state is unknown, which is not a toolchain failure
+    }
+    if (listening === undefined) {
+      parts.push("adb server state unknown (lsof unavailable; not probed)");
+    } else if (listening && existsSync(adb)) {
       const devices = probe(adb, ["devices", "-l"]).out.split("\n").slice(1).map((l) => l.trim()).filter(Boolean);
       parts.push(devices.length ? `adb devices: ${devices.map((d) => d.split(/\s+/).slice(0, 2).join(" ")).join("; ")}` : "adb devices: none");
     } else {

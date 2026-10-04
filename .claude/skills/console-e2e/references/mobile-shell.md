@@ -46,7 +46,7 @@ A link is single-use. Run it again for every launch attempt.
 
 ## 3. Android
 
-**Your AVD** (never reuse one from the preflight's list that you did not create):
+**Your AVD** (never reuse one from the preflight's `avd` note that you did not create). Use the package id the preflight's `system-image` line prints (`arm64-v8a` on Apple silicon, `x86_64` elsewhere):
 
 ```bash
 echo no | avdmanager create avd -n "$AVD" -k "system-images;android-36;google_apis;arm64-v8a" -d pixel_7; echo "avdmanager exit $?"
@@ -84,7 +84,8 @@ adb -s "$SERIAL" shell "am start -W -a android.intent.action.VIEW -d '$(cat "$E2
 Same Console and link as above; the simulator needs no address change. There is no promoted debug-build script for iOS (`ios:build:release` needs signing material), so install a development build:
 
 ```bash
-xcrun simctl create "$SIM_NAME" "iPhone 17 Pro" "com.apple.CoreSimulator.SimRuntime.iOS-26-5"   # prints your UDID
+xcrun simctl list runtimes available; xcrun simctl list devicetypes iPhone   # pick an installed iOS runtime id and iPhone device type id
+xcrun simctl create "$SIM_NAME" "<device type id>" "<runtime id>"   # prints your UDID
 xcrun simctl boot "$UDID"
 pnpm --dir <worktree>/runtime/fleet-mobile exec expo run:ios --device "$UDID"   # builds and installs com.dotobokuri.fleet.mobile
 xcrun simctl terminate "$UDID" com.dotobokuri.fleet.mobile
