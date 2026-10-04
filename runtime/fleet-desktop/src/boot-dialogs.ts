@@ -29,6 +29,7 @@ export interface BootFailureDialogDependencies {
 export function describeBootFailure(error: unknown, logDirectory?: string | null): BootFailureNotice {
   const code = error instanceof Error ? error.message : String(error);
   const where = logDirectory ? `\n\nDiagnostic log: ${logDirectory}` : "";
+  const reported = readFailureDetail(error);
   if (code === "managed_node_engine_unsupported") {
     return {
       title: "Fleet Console Desktop could not start",
@@ -36,11 +37,28 @@ export function describeBootFailure(error: unknown, logDirectory?: string | null
       detail: `Install the latest Fleet Console Desktop release, which ships a matching runtime.${where}`,
     };
   }
+  if (CONSOLE_LOCK_ERRORS.has(code)) {
+    // The lock is left as it was. What holds it, or how to clear it by hand, is the Console's own lock text.
+    return {
+      title: "Fleet Console Desktop could not start",
+      message: "Fleet Console's lock file is in the way, so no Console was started. The lock file was left untouched.",
+      detail: `${reported ?? `Reported cause: ${code}`}${where}`,
+    };
+  }
   return {
     title: "Fleet Console Desktop could not start",
     message: "Startup stopped before the Console window opened.",
-    detail: `Try opening it again. If it keeps failing, reinstall from the latest release.${where}\n\nReported cause: ${code}`,
+    detail: `Try opening it again. If it keeps failing, reinstall from the latest release.${where}\n\nReported cause: ${code}${reported ? `\n${reported}` : ""}`,
   };
+}
+
+const CONSOLE_LOCK_ERRORS = new Set(["console_lock_held", "console_lock_ownerless", "console_lock_refused"]);
+
+/** The explanation a startup failure carries for the user (SidecarStartError.detail), when there is one. */
+function readFailureDetail(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  const detail = (error as { detail?: unknown }).detail;
+  return typeof detail === "string" && detail.length > 0 ? detail : null;
 }
 
 export function showBootFailureAndExit(error: unknown, dependencies: BootFailureDialogDependencies): void {

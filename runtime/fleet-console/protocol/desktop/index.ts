@@ -108,6 +108,62 @@ export function identifyConsoleLockOwner(input: { readonly lockPid: number; read
   return input.health.kind === "refused" ? "absent" : "unverified";
 }
 
+/**
+ * The exit status of a Console `serve` that did not take the Console lock: a running owner holds it, it has no readable
+ * owner, it was refused, or its reclaim could not finish. The serve writes why, with any manual-recovery steps, to
+ * stderr before exiting. A host that does not know this status sees an ordinary failed start.
+ */
+export const CONSOLE_SERVE_EXIT_LOCK_HELD = 73;
+
+export type ConsoleLockContent =
+  /** No participant may remove this lock: nothing in it names an owner pid whose exit could be observed. */
+  | { readonly kind: "ownerless"; readonly reason: string }
+  | { readonly kind: "owner"; readonly pid: number; readonly payload: Readonly<Record<string, unknown>> };
+
+/**
+ * Whether the text of a Console lock names an owner pid. Only a positive integer pid in a JSON object does; the other
+ * fields decide whether the lock can be trusted, not whether it has an owner.
+ */
+export function classifyConsoleLockContent(text: string): ConsoleLockContent {
+  if (text.length === 0) return { kind: "ownerless", reason: "empty" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { kind: "ownerless", reason: "invalid JSON" };
+  }
+  if (!isRecord(parsed)) return { kind: "ownerless", reason: "invalid payload" };
+  const pid = parsed.pid;
+  if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0) return { kind: "ownerless", reason: "invalid pid" };
+  return { kind: "owner", pid, payload: parsed };
+}
+
+/**
+ * The shared manual-recovery check. Every message that suggests deleting a lock file or a reclaim marker by hand puts
+ * this first: the command finishing a reclaim may be a `stop` or `start`, not only a `serve`.
+ */
+export function describeConsoleLockSlotQuiescenceCheck(lockFile: string): string {
+  return [
+    `Before deleting anything, make sure nothing else is using this Console data directory (${path.dirname(lockFile)}):`,
+    "  - quit the Fleet desktop app and any update in progress, and do not run fleet console start/stop/restart or serve for it meanwhile;",
+    "  - list remaining Fleet processes and check each one:  ps -A -o pid,lstart,command | grep -i fleet   (Windows: Get-CimInstance Win32_Process | Where-Object CommandLine -match 'fleet')",
+    "    a \"fleet console stop\" or \"start\" can be the one finishing the cleanup, not only \"serve\".",
+    "If any of them is still running or you cannot tell what it is, leave the files in place.",
+  ].join("\n");
+}
+
+export function describeOwnerlessConsoleLock(lockFile: string, reason: string): string {
+  return [
+    `Fleet Console lock ${lockFile} has no readable owner (${reason}), so it was left in place.`,
+    describeConsoleLockSlotQuiescenceCheck(lockFile),
+    `Then delete ${lockFile} and start again.`,
+  ].join("\n");
+}
+
+export function describeRefusedConsoleLock(lockFile: string, reason: string): string {
+  return `Refusing Fleet Console lock ${lockFile}: ${reason}. It was not removed; inspect it (ls -l ${lockFile}) before starting Fleet Console.`;
+}
+
 export function resolveCanonicalStableConsolePaths(input: ResolveCanonicalConsolePathsInput): CanonicalConsolePaths {
   const dir = input.consoleDirOverride ?? path.join(input.tmpDir, `${LOCK_DIR_NAME}-${input.uid}-stable`);
   const dataDir = input.consoleDirOverride ?? path.join(input.fleetDataDir, CONSOLE_DATA_DIR_NAME);

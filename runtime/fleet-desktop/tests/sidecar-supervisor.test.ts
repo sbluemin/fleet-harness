@@ -5,19 +5,36 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SidecarSupervisor, type SidecarRuntime } from "../src/sidecar-supervisor.js";
 
-const lockFile = "/tmp/fleet-desktop-test.lock";
+let lockFile = "";
 
 function supervisor(log = { info: vi.fn(), error: vi.fn() }) {
   return new SidecarSupervisor({ nodePath: "/sidecar/node", cliPath: "/sidecar/fleet-console/dist/cli.mjs", serviceRoot: "/sidecar/fleet-console", serviceVersion: "1.23.0", env: {}, lockFile, ownerId: "owner-1", log });
 }
 
+function writeLock(payload: unknown): void {
+  fs.writeFileSync(lockFile, JSON.stringify(payload), { mode: 0o600 });
+}
+
+/** A pid that has exited and been reaped: the leftover of a crashed Console. */
+async function exitedPid(): Promise<number> {
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  return child.pid!;
+}
+
 describe("sidecar supervisor", () => {
   const children: ChildProcess[] = [];
+  let lockDir = "";
+  beforeEach(() => {
+    lockDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-lock-"));
+    lockFile = path.join(lockDir, "console.lock");
+  });
   afterEach(async () => {
+    fs.rmSync(lockDir, { recursive: true, force: true });
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     await Promise.all(children.splice(0).map(async (child) => {
@@ -29,13 +46,13 @@ describe("sidecar supervisor", () => {
   });
 
   it("adopts only a healthy matching desktop owner", async () => {
-    vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }));
+    writeLock({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
     vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })));
     await expect(supervisor().startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
   });
 
   it("rejects a healthy CLI-owned daemon without resolving, pairing, or signaling it", async () => {
-    vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
+    writeLock({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } });
     const fetchFor = vi.fn(async (_url: string | URL) => new Response("ok", { status: 200 }));
     vi.stubGlobal("fetch", fetchFor);
     const kill = vi.spyOn(process, "kill");
@@ -49,7 +66,7 @@ describe("sidecar supervisor", () => {
   });
 
   it("reports a live unhealthy foreign lock without signaling it", async () => {
-    vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
+    writeLock({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } });
     vi.stubGlobal("fetch", vi.fn(async () => new Response("bad", { status: 500 })));
     const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
     await expect(supervisor().startOrAdopt()).rejects.toThrow("console_lock_foreign_process_unhealthy");
@@ -96,8 +113,8 @@ describe("sidecar supervisor", () => {
       await expect(instance.stop()).resolves.toBeUndefined();
       expect(sigterms).toBe(1);
       expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
-      // lock 주소가 연결을 거절해도 pid가 살아 있으면 종료 정리 중인 Console일 수 있다 — 그동안 lock을 지우거나 새 Console을
-      // 띄우지 않고 기다린다. pid가 끝나면 그 lock은 stale이므로 신호 없이 파일만 치우고 시작을 이어 간다.
+      // lock 주소가 연결을 거절해도 pid가 살아 있으면 종료 정리 중인 Console일 수 있다 — 그동안 새 Console을 띄우지 않고
+      // 기다린다. 새 Console은 lock을 쥐기 전에 공유 상태를 만지기 때문이다. pid가 끝나면 신호 없이 시작을 이어 간다.
       await new Promise<void>((resolve) => impostor.close(() => resolve()));
       await expect(instance.stop()).resolves.toBeUndefined();
       expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
@@ -110,14 +127,44 @@ describe("sidecar supervisor", () => {
       expect(() => process.kill(bystander.pid!, 0)).not.toThrow();
       bystander.kill("SIGKILL");
       await expect(starting).rejects.toThrow("reached_spawn");
-      expect(fs.existsSync(reusedLock)).toBe(false);
-      // 죽은 pid가 남긴 lock은 Quit에서도 즉시 회수한다.
-      fs.writeFileSync(reusedLock, lockContents);
+      // Desktop은 lock을 지우지 않는다 — 끝난 pid의 lock은 새로 뜨는 Console이 회수한다. Quit도 그대로 둔다.
+      expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
       await expect(instance.stop()).resolves.toBeUndefined();
-      expect(fs.existsSync(reusedLock)).toBe(false);
+      expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
     } finally {
       impostor.close();
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it("leaves an exited Console's lock for the Console it starts to reclaim, and keeps a lock without an owner", async () => {
+    const cliPath = path.join(lockDir, "console", "dist", "cli.mjs");
+    fs.mkdirSync(path.dirname(cliPath), { recursive: true });
+    // Stands in for a serve that reclaims under Console's protocol: it takes over only the exact dead lock it was told about.
+    fs.writeFileSync(cliPath, `
+      import fs from "node:fs"; import http from "node:http";
+      if (fs.readFileSync(process.env.LOCK_FILE, "utf8") !== process.env.DEAD_LOCK) process.exit(73);
+      fs.unlinkSync(process.env.LOCK_FILE);
+      const server = http.createServer((request, response) => response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid: process.pid })));
+      server.listen(0, "127.0.0.1", () => fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, endpoint: "http://127.0.0.1:" + server.address().port + "/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }), { flag: "wx", mode: 0o600 }));
+      process.on("SIGTERM", () => process.exit(0));
+    `);
+    const deadLock = JSON.stringify({ pid: await exitedPid(), endpoint: "http://127.0.0.1:9/", token: "old", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
+    const runtime: SidecarRuntime = { nodePath: process.execPath, cliPath, serviceRoot: path.dirname(path.dirname(cliPath)), serviceVersion: "1.23.0" };
+    const resolveRuntime = vi.fn(async () => runtime);
+    const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: { LOCK_FILE: lockFile, DEAD_LOCK: deadLock }, lockFile, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
+    try {
+      // A lock with no readable owner may belong to a running Console: it stays, and no Console is started next to it.
+      fs.writeFileSync(lockFile, "", { mode: 0o600 });
+      await expect(instance.startOrAdopt()).rejects.toThrow("console_lock_ownerless");
+      expect(fs.readFileSync(lockFile, "utf8")).toBe("");
+      expect(resolveRuntime).not.toHaveBeenCalled();
+      // A lock whose pid exited reaches the started Console untouched, and the Console that took it over is adopted.
+      fs.writeFileSync(lockFile, deadLock, { mode: 0o600 });
+      await expect(instance.startOrAdopt()).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/console\/$/);
+      expect(JSON.parse(fs.readFileSync(lockFile, "utf8")).token).toBe("secret");
+    } finally {
+      await instance.stop();
     }
   }, 15_000);
 

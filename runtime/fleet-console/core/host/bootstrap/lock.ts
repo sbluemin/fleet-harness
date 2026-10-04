@@ -3,8 +3,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
+import {
+  classifyConsoleLockContent,
+  describeConsoleLockSlotQuiescenceCheck,
+  describeOwnerlessConsoleLock,
+  describeRefusedConsoleLock,
+} from "@fleet-console/protocol/desktop";
+
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import type { ConsoleOwnerMetadata } from "../shell/desktop-protocol.js";
+
+export {
+  describeConsoleLockSlotQuiescenceCheck as describeSlotQuiescenceCheck,
+  describeOwnerlessConsoleLock as describeOwnerlessLock,
+  describeRefusedConsoleLock as describeRefusedLock,
+};
 
 export interface ConsoleLockDeps {
   readonly fs?: typeof fs;
@@ -126,8 +139,8 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
       }
       const observed = await observeLockUntil(input.lockFile, deadline);
       if (observed.kind === "absent") continue;
-      if (observed.kind === "refused") throw lockHeldError(input.lockFile, describeRefusedLock(input.lockFile, observed.reason));
-      if (observed.kind === "unknown") throw lockHeldError(input.lockFile, describeOwnerlessLock(input.lockFile, observed.reason));
+      if (observed.kind === "refused") throw lockHeldError(input.lockFile, describeRefusedConsoleLock(input.lockFile, observed.reason));
+      if (observed.kind === "unknown") throw lockHeldError(input.lockFile, describeOwnerlessConsoleLock(input.lockFile, observed.reason));
       if (observed.alive) throw lockHeldError(input.lockFile, `Fleet Console lock ${input.lockFile} is held by running pid ${observed.instance.pid}.`);
       const result = await reclaimUntil(input.lockFile, observed.instance, deadline);
       if (result.kind === "removed") {
@@ -569,65 +582,42 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   return { ensureLockDir, readLock, acquireLock, observeLock, observeLockWithin, reclaimLock, assertLockModes, assertTrustedLock };
 }
 
-/**
- * The shared manual-recovery check. Every message that suggests deleting a lock file or a reclaim marker by hand puts
- * this first: the process finishing a reclaim may be a `stop` or `start`, not only a `serve`.
- */
-export function describeSlotQuiescenceCheck(lockFile: string): string {
-  return [
-    `Before deleting anything, make sure nothing else is using this Console data directory (${path.dirname(lockFile)}):`,
-    "  - quit the Fleet desktop app and any update in progress, and do not run fleet console start/stop/restart or serve for it meanwhile;",
-    "  - list remaining Fleet processes and check each one:  ps -A -o pid,lstart,command | grep -i fleet   (Windows: Get-CimInstance Win32_Process | Where-Object CommandLine -match 'fleet')",
-    "    a \"fleet console stop\" or \"start\" can be the one finishing the cleanup, not only \"serve\".",
-    "If any Fleet process is still running or you cannot tell what it is, leave the files in place.",
-  ].join("\n");
-}
-
-export function describeOwnerlessLock(lockFile: string, reason: string): string {
-  return [
-    `Fleet Console lock ${lockFile} has no readable owner (${reason}), so it was left in place.`,
-    describeSlotQuiescenceCheck(lockFile),
-    `Then delete ${lockFile} and start again.`,
-  ].join("\n");
-}
-
-export function describeRefusedLock(lockFile: string, reason: string): string {
-  return `Refusing Fleet Console lock ${lockFile}: ${reason}. It was not removed; inspect it (ls -l ${lockFile}) before starting Fleet Console.`;
-}
-
 /** Text for a reclaim that ended without removing the lock for a reason other than a live lock pid. */
 export function describeReclaimResult(lockFile: string, result: Exclude<ConsoleLockReclaimResult, { kind: "removed" | "gone" | "alive" }>): string {
   if (result.kind === "failed") return `Fleet Console lock ${lockFile} could not be reclaimed (${result.reason}); it was left in place`;
   if (result.holderPid !== null) {
     return [
       `Fleet Console lock ${lockFile} is being reclaimed by pid ${result.holderPid} (${result.claimPath}). Nothing was removed. If that process is a Fleet command that is still running, let it finish; if it is not a Fleet process, follow the check below and then delete ${result.claimPath}.`,
-      describeSlotQuiescenceCheck(lockFile),
+      describeConsoleLockSlotQuiescenceCheck(lockFile),
     ].join("\n");
   }
   return [
     `Fleet Console lock ${lockFile} has a reclaim marker whose owner cannot be read or is not yours (${result.claimPath}: ${result.reason ?? "unknown"}). Nothing was removed.`,
-    describeSlotQuiescenceCheck(lockFile),
+    describeConsoleLockSlotQuiescenceCheck(lockFile),
     `Then delete ${result.claimPath}.`,
   ].join("\n");
 }
 
+/**
+ * True for the error acquireLock throws when this process did not take the lock. A serve ending on it exits with
+ * CONSOLE_SERVE_EXIT_LOCK_HELD so a host can tell it from other failed starts. A property, not a class, because
+ * bundles may carry separate copies of this module.
+ */
+export function isConsoleLockHeldError(error: unknown): boolean {
+  return error instanceof Error && (error as { consoleLockHeld?: unknown }).consoleLockHeld === true;
+}
+
 function lockHeldError(lockFile: string, detail: string): NodeJS.ErrnoException {
-  const error: NodeJS.ErrnoException = new Error(`EEXIST: Fleet Console lock ${lockFile} is already held.\n${detail}`);
+  const error: NodeJS.ErrnoException & { consoleLockHeld?: true } = new Error(`EEXIST: Fleet Console lock ${lockFile} is already held.\n${detail}`);
   error.code = "EEXIST";
+  error.consoleLockHeld = true;
   return error;
 }
 
 function parseLockBytes(bytes: Buffer): { readonly payload: ConsoleLockPayload } | { readonly reason: string } {
-  if (bytes.length === 0) return { reason: "empty" };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(bytes.toString("utf8"));
-  } catch {
-    return { reason: "invalid JSON" };
-  }
-  if (!isPlainObject(parsed)) return { reason: "invalid payload" };
-  if (!isPositiveSafeInteger(parsed.pid)) return { reason: "invalid pid" };
-  return { payload: parsed as unknown as ConsoleLockPayload };
+  const content = classifyConsoleLockContent(bytes.toString("utf8"));
+  if (content.kind === "ownerless") return { reason: content.reason };
+  return { payload: content.payload as unknown as ConsoleLockPayload };
 }
 
 /** Only ESRCH means the process is gone. A live pid, EPERM, and any undecidable error all count as alive. */

@@ -146,6 +146,7 @@ async function boot(): Promise<void> {
     env: environment.serviceEnv,
     lockFile: path.join(environment.consoleDir, "console.lock"),
     ownerId: environment.ownerId,
+    legacyLockCleanup: isPackaged,
     serviceVersion: initialServiceVersion,
     log: logger,
   });
