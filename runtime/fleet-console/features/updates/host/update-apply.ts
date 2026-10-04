@@ -620,7 +620,11 @@ function removeStaleLock() {
   }
 }
 
-/** 파일이 없을 때(ENOENT)만 missing이다. 읽기·해석 실패는 unreadable로 따로 돌려준다. */
+/**
+ * 파일이 없을 때(ENOENT)만 missing이다. 읽기·해석 실패와, pid·token이 lock 형식에 맞지 않는 내용은
+ * unreadable로 따로 돌려준다 — Desktop이 그런 lock을 malformed로 거부하듯, 형식이 깨진 lock은 다른
+ * 주인이 잡았다는 증거가 아니다.
+ */
 function readLockState() {
   let raw;
   try {
@@ -630,7 +634,10 @@ function readLockState() {
   }
   try {
     const lock = JSON.parse(raw);
-    return lock && typeof lock === "object" ? { kind: "present", lock } : { kind: "unreadable" };
+    const wellFormed = lock && typeof lock === "object"
+      && Number.isSafeInteger(lock.pid) && lock.pid > 0
+      && typeof lock.token === "string" && lock.token.length > 0;
+    return wellFormed ? { kind: "present", lock } : { kind: "unreadable" };
   } catch {
     return { kind: "unreadable" };
   }
