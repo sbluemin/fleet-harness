@@ -32,7 +32,7 @@ Defaults: base `canary`, merge `squash`, `auto_merge=true`. The base is always `
 
 ## Waiting and termination
 
-For initial Codex silence, explicitly request activation and check for a default 60 seconds. Continued silence becomes `codex_activation_timeout` and may proceed through normal merge gates, but is not approval and never bypasses required checks.
+When no activation signal ([Review wait](references/review-wait.md) step 1) exists yet, explicitly request review and check for a default 60 seconds. Still no activation signal becomes `codex_activation_timeout` and may proceed through normal merge gates, but is not approval and never bypasses required checks.
 
 Use signal-driven background waiting. Do not treat stale `+1`, `eyes`, or re-anchored inline comments as fresh approval/feedback. A usage-limit notice means that request is not shown to have produced a review; it does not mean no review ever ran, and it does not approve the head; classify it as [Review wait](references/review-wait.md) describes and record `codex_usage_limit`. End the review loop on a pass with no FIX findings, with a default maximum of 3 passes. Continuing requires a named reproduced defect. Disclose timeouts, omissions, and failures.
 
