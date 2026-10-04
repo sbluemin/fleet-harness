@@ -407,8 +407,9 @@ export function mountNavigatorInto(
         : attention
           ? t("codex.nav.healthIssues", { count: issueCount })
           : t("codex.nav.healthOk");
+    // 접근 이름은 보이는 상태 문구로 시작해야 한다(WCAG 2.5.3 Label in Name).
     healthStrip.innerHTML = `
-      <button class="codex-nav-health-chip" data-health-detail type="button" aria-expanded="false" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
+      <button class="codex-nav-health-chip" data-health-detail type="button" aria-expanded="false" aria-label="${escapeHtml(`${label} — ${t("codex.nav.healthDetailsAria")}`)}">
         <span class="codex-nav-health-dot is-${tone}" aria-hidden="true"></span>${escapeHtml(label)}
       </button>
     `;
