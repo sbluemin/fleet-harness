@@ -15,6 +15,9 @@ import { MobileDrawer } from "./mobile-drawer.js";
 import { MobileRequestBanner } from "./mobile-request-banner.js";
 import { MobileToastHost } from "./mobile-toast.js";
 import { MobileSheetHost } from "./mobile-sheet-host.js";
+import { MobileChoicePopup } from "./mobile-choice-popup.js";
+import { openMobileChoice } from "./mobile-choice-store.js";
+import { MobileSettingsHostContext } from "@fleet-console/sdk/settings/browser";
 import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileBackBridge } from "./mobile-back.js";
 import { installMobileHistory } from "./mobile-history.js";
@@ -63,6 +66,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   // 시스템 바 색(S-03): 드로어가 열리면 위·아래가 드로어 면, 시트가 열리면 아래가 시트 면. 앱이면 네이티브가 칠하고 브라우저는 무시한다.
   const drawerOpen = useMobileDrawerOpen();
   const sheetOpen = useMobileSheetStack().length > 0;
+  const settingsHost = useMemo(() => ({ openChoice: openMobileChoice }), []);
   const connection = useConsoleState().connection;
   const reportChrome = () => reportMobileChrome(drawerOpen ? "bg-deep" : "bg", sheetOpen ? "surface" : drawerOpen ? "bg-deep" : "bg");
   const reportChromeRef = useRef(reportChrome);
@@ -88,6 +92,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   };
 
   return (
+    <MobileSettingsHostContext.Provider value={settingsHost}>
     <MobileAttentionProvider rows={rows}>
       <div className="mobile-frame" lang={locale}>
         <div className="mobile-frame-head">
@@ -103,8 +108,10 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
           onOpen={openOperation}
         />
         <MobileSheetHost state={state} onDeferredDeletion={onDeferredDeletion} />
+        <MobileChoicePopup />
         <MobileToastHost />
       </div>
     </MobileAttentionProvider>
+    </MobileSettingsHostContext.Provider>
   );
 }

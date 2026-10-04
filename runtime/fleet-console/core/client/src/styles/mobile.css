@@ -719,6 +719,31 @@
 .mobile-menu .is-destructive,
 .mobile-menu .is-destructive svg { color: var(--m-danger); }
 
+/* 설정 선택 팝업 — 목록 위에 뜨는 작은 판(⋮ 메뉴와 같은 면·그림자). 위치는 연 컨트롤 기준으로 스크립트가 top을 준다. */
+.mobile-choice {
+  position: fixed;
+  right: 12px;
+  z-index: 45;
+  width: min(280px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  padding: 8px 0;
+  overflow-y: auto;
+  color: var(--m-text);
+  background: var(--m-surface);
+  border-radius: 14px;
+  box-shadow: var(--m-shadow);
+  animation: mobile-menu-in 150ms ease-out;
+}
+.mobile-choice.is-leaving { animation: mobile-fade-out 100ms forwards; }
+.mobile-choice button { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 20px; color: inherit; font-size: var(--t-base); text-align: left; background: transparent; border: 0; }
+.mobile-choice button:active { background: var(--m-selected); }
+.mobile-choice button:disabled { opacity: 0.5; }
+.mobile-choice button:focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+.mobile-choice-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.mobile-choice-copy small { color: var(--m-text-muted); font-size: var(--t-sm); }
+.mobile-choice-icon svg { width: 20px; height: 20px; color: var(--m-text-muted); }
+.mobile-choice-check { flex: none; color: var(--m-text); }
+
 /* 드로어 */
 .mobile-drawer-edge { position: absolute; top: 0; bottom: 0; left: 0; z-index: 39; width: 22px; touch-action: pan-y; }
 
