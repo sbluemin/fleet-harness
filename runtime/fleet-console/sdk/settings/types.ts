@@ -43,6 +43,14 @@ export interface SettingsSectionMobile {
   /** 같은 묶음 안의 정렬 값. 작은 쪽이 위, 같으면 등록 순서. */
   readonly order?: number;
   /** 행의 보조 값 한 줄 — 열지 않고도 지금 값을 말한다. 값이 없으면 null. `subscribe`가 있으면 그 신호로 다시 읽는다. */
+  /**
+   * 모바일 「플러그인」 화면에 이 섹션을 행 하나로 올린다 — 제목은 섹션 `title`. 누르면 설정 › 이 섹션의 상세로 간다.
+   * 레일 엔트리가 없는 플러그인(사용량 등)이 그 화면에 설 자리다. 사용할 수 있는 행이 먼저, 데스크톱 전용 행이 뒤에 선다.
+   */
+  readonly pluginRow?: {
+    readonly icon?: import("react").ReactNode;
+    readonly subtitle?: import("../i18n/types.js").LocalizedText;
+  };
   readonly summary?: (locale: import("../i18n/types.js").ConsoleLocale) => string | null;
   readonly subscribe?: (listener: () => void) => () => void;
 }
