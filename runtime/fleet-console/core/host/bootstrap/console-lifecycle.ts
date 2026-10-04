@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -110,6 +110,15 @@ const STARTUP_POLL_INTERVAL_MS = 100;
 const CHILD_CLEANUP_GRACE_MS = 500;
 // stop이 lock pid의 정체를 health로 확인하는 전체 예산. 정상 Console은 수 ms 안에 답한다.
 const STOP_IDENTITY_TIMEOUT_MS = 5_000;
+// lock 주소는 거절되는데 lock pid가 살아 있을 때 pid 종료나 lock 해제를 기다리는 한도. 종료 중인 Console은 listener를
+// 먼저 닫고 정리를 마친 뒤 lock을 놓는다. 그 사이를 stale로 보면 살아 있는 Console 옆에 두 번째 Console이 뜬다.
+const STOP_SETTLE_ATTEMPTS = 20;
+const STOP_SETTLE_POLL_MS = 50;
+const STOP_SIGTERM_GRACE_MS = 200;
+const STOP_SIGKILL_EXIT_ATTEMPTS = 20;
+// `ps -o lstart`는 초 단위로 내림한 값이다. Linux는 boot time 반올림으로 1초 더 어긋날 수 있다. 시작 시각이 정체 증명
+// 시점보다 이 값 이상 앞서야 그 시각을 정체 표지로 쓴다.
+const PROCESS_START_MARGIN_MS = 2_000;
 
 type ConsoleDaemonChildFailure =
   | { readonly kind: "error"; readonly detail: string }
@@ -275,29 +284,60 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   async function stop(): Promise<void> {
     const payload = readTrustedLock();
     if (!payload) return;
+    // 정체 증명(health 요청)보다 먼저 잰 벽시계 시각. 이보다 먼저 시작한 프로세스만 증명된 Console과 같은 프로세스일 수 있다.
+    const identityProbedAt = Date.now();
     const owner = await identifyLockOwner(payload);
     if (owner === "unverified") {
-      // 살아 있는 무언가가 lock 주소를 붙잡고 있지만 lock token으로 정체를 증명하지 못했다(멈춘 Console이거나
+      // 살아 있는 무언가가 lock을 붙잡고 있지만 lock token으로 정체를 증명하지 못했다(멈춘 Console이거나
       // 종료 중인 Console일 수 있다). 시그널은 무관한 프로세스를 죽일 수 있고, lock을 지우면 살아 있는
       // Console 옆에 두 번째 소유자가 생길 수 있으므로 둘 다 하지 않는다.
       throw lockOwnerUnverifiedError(payload);
     }
     if (owner === "verified") {
       assertCliCanControlDaemon(payload);
+      const provenStart = await captureProvenProcessStart(payload.pid, identityProbedAt);
       signalLockProcess(payload.pid, "SIGTERM");
-      await sleep(200);
+      await sleep(STOP_SIGTERM_GRACE_MS);
       // 정상 종료한 Console은 lock을 스스로 지운다. lock이 남아 있으면 종료 지연일 수도, Console이 lock을 남긴 채 죽고
-      // pid가 재할당된 것일 수도 있다. lock 파일이 그대로라는 사실은 증명이 아니므로 SIGKILL 직전에 처음과 같은
-      // health 증명을 다시 받는다. 그 대가로 SIGTERM 뒤 멈춰 health에도 답하지 못하는 Console은 강제 종료하지 않고 알린다.
-      if (isLockStillHeldBy(payload)) {
-        const survivor = await identifyLockOwner(payload);
-        if (survivor === "unverified") throw lockOwnerUnverifiedError(payload);
-        if (survivor === "verified") signalLockProcess(payload.pid, "SIGKILL");
-      }
+      // pid가 재할당된 것일 수도 있다. lock 파일이 그대로라는 사실은 증명이 아니므로 SIGKILL 직전에 정체를 다시 증명한다.
+      if (isLockStillHeldBy(payload)) await escalateStalledShutdown(payload, provenStart);
     }
-    // "absent": lock pid가 죽었거나 lock 주소에 듣는 프로세스가 없다. pid가 재할당됐을 수 있으므로
-    // 시그널 없이 stale lock만 치운다.
-    lock.removeLock(paths.lockFile, payload.pid);
+    // 여기까지 온 lock은 pid가 끝났거나(ESRCH, SIGKILL 뒤 종료 확인) 주인이 lock을 이미 놓은 것이다. 신호 없이
+    // 같은 pid·token의 lock일 때만 지운다.
+    removeLockHeldBy(payload);
+  }
+
+  /**
+   * SIGTERM 뒤에도 lock을 놓지 않은 pid를 SIGKILL로 정리한다. 그 pid는 SIGTERM 전에 health로 정체가 증명됐으므로,
+   * 지금도 같은 프로세스라는 것만 보이면 된다. 증명 전에 시작한 프로세스의 시작 시각이 그대로면 같은 프로세스다 —
+   * 그 사이 pid가 재할당됐다면 새 프로세스는 증명 뒤에 시작했으므로 시작 시각이 다르다. 시작 시각을 얻지 못하거나
+   * 달라졌으면 health 정체 판별로 돌아간다. 어느 경우에도 살아 있는 pid의 lock만 지우고 성공으로 끝내지 않는다.
+   */
+  async function escalateStalledShutdown(payload: ConsoleLockPayload, provenStart: number | null): Promise<void> {
+    let proven = false;
+    if (provenStart !== null) {
+      // SIGKILL 직전 재관측: 시작 시각과 lock 소유를 다시 읽는다.
+      const currentStart = await readProcessStartTime(payload.pid, env);
+      if (currentStart === null && !isLockProcessAlive(payload.pid)) return;
+      proven = currentStart === provenStart && isLockStillHeldBy(payload);
+    }
+    if (!proven) {
+      const survivor = await identifyLockOwner(payload);
+      if (survivor === "unverified") throw lockOwnerUnverifiedError(payload);
+      if (survivor === "absent") return;
+    }
+    signalLockProcess(payload.pid, "SIGKILL");
+    for (let attempt = 0; attempt < STOP_SIGKILL_EXIT_ATTEMPTS; attempt += 1) {
+      if (!isLockProcessAlive(payload.pid)) return;
+      await sleep(STOP_SETTLE_POLL_MS);
+    }
+    throw new Error(`Fleet Console pid ${payload.pid} did not exit after SIGKILL; ${paths.lockFile} was left in place.`);
+  }
+
+  /** 정체 증명 시각보다 충분히 앞서 시작한 프로세스의 시작 시각만 돌려준다. 그렇지 않으면 정체 표지로 쓰지 않는다. */
+  async function captureProvenProcessStart(pid: number, provenAt: number): Promise<number | null> {
+    const startedAt = await readProcessStartTime(pid, env);
+    return startedAt !== null && startedAt + PROCESS_START_MARGIN_MS <= provenAt ? startedAt : null;
   }
 
   /** stop이 lock pid에 시그널을 보내도 되는지 판별한다. lock token을 인증한 health 응답만 정체 증명이다. */
@@ -307,11 +347,38 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     if (typeof payload.token !== "string" || payload.token.length === 0) return "absent";
     const result = await health.probe(payload, { timeoutMs: STOP_IDENTITY_TIMEOUT_MS });
     const evidence: ConsoleLockHealthEvidence = result.healthy ? { kind: "answered", pid: result.health?.pid } : result.refused ? { kind: "refused" } : { kind: "unanswered" };
+    // 거절된 lock 주소는 stale lock일 수도, listener를 닫고 정리 중이거나 그 도중 멈춘 Console일 수도 있다. pid가 끝나거나
+    // lock이 풀릴 때만 stale로 본다. 한도 안에 둘 다 일어나지 않으면 정체를 증명하지 못한 것으로 다룬다.
+    if (evidence.kind === "refused" && !await waitForRefusedOwnerToSettle(payload)) return "unverified";
     return identifyConsoleLockOwner({ lockPid: payload.pid, pidAlive: true, health: evidence });
+  }
+
+  async function waitForRefusedOwnerToSettle(payload: ConsoleLockPayload): Promise<boolean> {
+    for (let attempt = 0; ; attempt += 1) {
+      if (!isLockProcessAlive(payload.pid) || isLockReleasedBy(payload)) return true;
+      if (attempt >= STOP_SETTLE_ATTEMPTS) return false;
+      await sleep(STOP_SETTLE_POLL_MS);
+    }
   }
 
   function lockOwnerUnverifiedError(payload: ConsoleLockPayload): Error {
     return new Error(`Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}. If that process is a stuck Fleet Console, stop it; if it is not a Fleet Console, delete ${paths.lockFile}.`);
+  }
+
+  /** lock이 없어졌거나 다른 주인의 것으로 바뀌었다. 읽지 못하면 풀렸다고 보지 않는다. */
+  function isLockReleasedBy(payload: ConsoleLockPayload): boolean {
+    try {
+      const current = lock.readLock(paths.lockFile);
+      return current?.pid !== payload.pid || current.token !== payload.token;
+    } catch {
+      return false;
+    }
+  }
+
+  function removeLockHeldBy(payload: ConsoleLockPayload): void {
+    const current = lock.readLock(paths.lockFile);
+    if (current?.pid !== payload.pid || current.token !== payload.token) return;
+    lock.removeLock(paths.lockFile, payload.pid);
   }
 
   function isLockStillHeldBy(payload: ConsoleLockPayload): boolean {
@@ -646,6 +713,37 @@ export function isLockProcessAlive(pid: number): boolean {
     // EPERM은 살아있지만 권한이 없는 프로세스 — 보호 대상으로 취급한다. ESRCH만 죽은 것으로 본다.
     return (err as NodeJS.ErrnoException).code !== "ESRCH";
   }
+}
+
+const PS_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * pid의 시작 시각(epoch ms, 초 단위 내림)을 `ps -o lstart`로 읽는다. 프로세스가 없거나 ps를 쓸 수 없는 플랫폼이면 null이다.
+ * macOS의 µs 시작 시각은 sysctl kern.proc에만 있어 Node 표준 API로 읽을 수 없으므로 macOS·Linux 공통 형식인 ps를 쓴다.
+ */
+function readProcessStartTime(pid: number, env: NodeJS.ProcessEnv = process.env): Promise<number | null> {
+  if (process.platform === "win32" || !Number.isSafeInteger(pid) || pid <= 0) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile("ps", ["-o", "lstart=", "-p", String(pid)], {
+      env: { PATH: env.PATH ?? "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC" },
+      timeout: 2_000,
+      windowsHide: true,
+    }, (error, stdout) => {
+      if (error) {
+        resolve(null);
+        return;
+      }
+      resolve(parsePsLstartUtc(String(stdout)));
+    });
+  });
+}
+
+function parsePsLstartUtc(output: string): number | null {
+  const match = /^[A-Z][a-z]{2}\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})$/.exec(output.trim());
+  if (!match) return null;
+  const month = PS_MONTHS.indexOf(match[1]!);
+  if (month < 0) return null;
+  return Date.UTC(Number(match[6]), month, Number(match[2]), Number(match[3]), Number(match[4]), Number(match[5]));
 }
 
 export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<StartFleetConsoleResult> {

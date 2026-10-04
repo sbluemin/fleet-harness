@@ -29,7 +29,7 @@ afterEach(async () => {
 });
 
 describe("Console daemon lifecycle integration", () => {
-  it("keeps a real child through delayed readiness and later stops it", async () => {
+  it("keeps a real child through delayed readiness and later stops it, killing a stalled shutdown", async () => {
     const fixture = createFixturePaths("ready");
     const lifecycle = createConsoleDaemonLifecycle({
       env: fixture.env,
@@ -52,6 +52,8 @@ describe("Console daemon lifecycle integration", () => {
     expect(endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
     expect(createConsoleLock().readLock(fixture.lockFile)?.pid).toBe(pid);
 
+    // SIGTERM을 받은 Console이 listener만 닫고 lock을 쥔 채 멈춘다. SIGTERM 전에 증명한 그 프로세스이므로 강제 종료한다.
+    fs.writeFileSync(fixture.stallFile, "stall\n", "utf8");
     await lifecycle.stop();
     await expectProcessGone(pid);
     CHILD_PIDS.delete(pid);
@@ -99,13 +101,20 @@ describe("Console daemon lifecycle integration", () => {
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
     expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
 
-    // 아무도 lock 주소를 듣지 않으면 lock은 stale이다 — 시그널 없이 파일만 치운다.
+    // 아무도 lock 주소를 듣지 않아도 pid가 살아 있으면 listener를 닫고 정리 중이거나 멈춘 Console과 구별되지 않는다.
+    // 신호도 lock 삭제도 하지 않는다 — 이 lock을 지우면 다음 start가 살아 있는 Console 옆에 두 번째 Console을 띄운다.
     await new Promise<void>((resolve) => impostor.close(() => resolve()));
-    await lifecycle.stop();
-    expect(consoleLock.readLock(fixture.lockFile)).toBeNull();
-    await delay(300);
+    await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
+    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
     expect(bystanderSignal).toBeNull();
     expect(() => process.kill(bystanderPid, 0)).not.toThrow();
+
+    // lock pid가 끝난 stale lock은 신호 없이 파일만 치운다(크래시 복구).
+    bystander.kill("SIGKILL");
+    await expectProcessGone(bystanderPid);
+    CHILD_PIDS.delete(bystanderPid);
+    await lifecycle.stop();
+    expect(consoleLock.readLock(fixture.lockFile)).toBeNull();
   });
 });
 
@@ -114,14 +123,16 @@ function createFixturePaths(name: string) {
   TEMP_DIRS.push(dir);
   const pidFile = path.join(dir, "child.pid");
   const releaseFile = path.join(dir, "release");
+  const stallFile = path.join(dir, "stall");
   const env = {
     ...process.env,
     FLEET_CONSOLE_DATA_DIR: dir,
     FLEET_TEST_CONSOLE_PID_FILE: pidFile,
     FLEET_TEST_CONSOLE_RELEASE_FILE: releaseFile,
+    FLEET_TEST_CONSOLE_STALL_FILE: stallFile,
   };
   const lockFile = createConsolePaths({ env }).lockFile;
-  return { dir, env, pidFile, releaseFile, lockFile };
+  return { dir, env, pidFile, releaseFile, stallFile, lockFile };
 }
 
 function delay(ms: number): Promise<void> {

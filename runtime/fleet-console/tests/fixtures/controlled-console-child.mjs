@@ -5,6 +5,8 @@ import path from "node:path";
 const dataDir = process.env.FLEET_CONSOLE_DATA_DIR;
 const pidFile = process.env.FLEET_TEST_CONSOLE_PID_FILE;
 const releaseFile = process.env.FLEET_TEST_CONSOLE_RELEASE_FILE;
+// 이 파일이 있으면 종료 중 listener만 닫고 lock을 쥔 채 멈춘다 — dispose 도중 멈춘 Console을 흉내 낸다.
+const stallFile = process.env.FLEET_TEST_CONSOLE_STALL_FILE;
 if (!dataDir || !pidFile || !releaseFile) throw new Error("controlled Console fixture environment is incomplete");
 
 const lockFile = path.join(dataDir, "console.lock");
@@ -86,6 +88,10 @@ async function shutdown(exitCode) {
   stopping = true;
   if (server) {
     await new Promise((resolve) => server.close(() => resolve()));
+  }
+  if (stallFile && fs.existsSync(stallFile)) {
+    setInterval(() => {}, 60_000);
+    return;
   }
   try {
     const current = JSON.parse(fs.readFileSync(lockFile, "utf8"));
