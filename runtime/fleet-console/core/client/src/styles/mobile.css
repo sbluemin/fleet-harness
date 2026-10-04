@@ -52,32 +52,7 @@
   overflow: auto;
 }
 
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
 .mobile-list-header h1,
-}
-
-}
-
-}
 
 .mobile-theater-mark {
   flex: none;
@@ -90,29 +65,9 @@
   border-radius: var(--radius-xs);
 }
 
-}
-
-}
-
-}
-
 .mobile-header-icon-button:focus-visible,
-}
-
-}
-
-}
 
 .mobile-new-operation:focus-visible,
-}
-
-}
-
-}
-
-}
-
-}
 
 .mobile-operation-empty {
   margin: 0;
@@ -121,23 +76,9 @@
   text-align: center;
 }
 
-}
-
-}
-
 .mobile-operation-card:focus-visible,
-}
-
-}
 
 .mobile-operation-card-copy strong,
-}
-
-}
-
-}
-
-}
 
 .mobile-operation-chevron {
   color: var(--text-tertiary);
@@ -250,8 +191,6 @@
   font-size: var(--t-md);
 }
 
-}
-
 .mobile-tab {
   display: grid;
   place-items: center;
@@ -267,10 +206,6 @@
   border-radius: var(--radius-xs);
 }
 
-}
-
-}
-
 .mobile-session-view {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -283,8 +218,6 @@
   background: var(--canvas-sea-core);
 }
 
-}
-}
 .mobile-tool-sheet {
   display: flex;
   flex-direction: column;
@@ -325,12 +258,6 @@
   scroll-padding-bottom: var(--space-4);
 }
 
-}
-
-}
-
-}
-
 /* ===== Settings — 목록 화면과 상세 화면 ===== */
 
 .mobile-settings-page {
@@ -344,14 +271,6 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-
-}
-
-}
-
-}
-
 }
 
 /* 헤더는 뒤로가기·제목·저장 표시 세 자리다. 제목이 가운데 자리를 다 쓰도록 남은 둘은 늘어나지 않는다. */
@@ -646,7 +565,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-
 
 /* ───────────────────────── 상단 막대 · 드로어 · ⋮ 메뉴 · 하단 시트 ─────────────────────────
    색은 var()만 쓴다. 모바일 토큰(--m-*)은 theme.css가 정의하고, 이 파일은 이름으로만 소비한다. */
