@@ -40,6 +40,8 @@ export function wrapPlugin(plugin) {
     register(ctx) {
       let serial = 0;
       const timers = new Set();
+      const calls = path.join(dir, "calls");
+      const claimed = new Set();
       const agent = {
         async createSession(options) {
           const id = ++serial;
@@ -53,6 +55,43 @@ export function wrapPlugin(plugin) {
             resolve();
           };
           log("created", { id });
+          // calls/<name>.json {"tool","args"} runs that tools.custom entry in an owned cwd; the result goes to <name>.json.out.
+          const tools = (options.tools?.custom ?? []).flatMap((group) => group.tools ?? []);
+          let cwd;
+          const poll = setInterval(async () => {
+            let tool = null;
+            try {
+              if (!fs.existsSync(calls) || fs.realpathSync(calls) !== calls) return;
+              for (const name of fs.readdirSync(calls)) {
+                const file = path.join(calls, name);
+                if (!name.endsWith(".json") || claimed.has(name) || fs.existsSync(`${file}.out`) || !fs.lstatSync(file).isFile()) continue;
+                claimed.add(name);
+                tool = null;
+                let ok = false;
+                let out;
+                try {
+                  const request = JSON.parse(fs.readFileSync(file, "utf8"));
+                  tool = typeof request.tool === "string" ? request.tool : null;
+                  const entry = tools.find((candidate) => candidate.name === tool);
+                  if (entry) {
+                    cwd ??= fs.mkdtempSync(path.join(dir, "cwd-"));
+                    out = await entry.execute(request.args ?? {}, { cwd });
+                    ok = true;
+                  } else {
+                    out = { error: "no_such_tool", have: tools.map((candidate) => candidate.name) };
+                  }
+                } catch (error) {
+                  out = { thrown: String(error?.message ?? error) };
+                }
+                fs.writeFileSync(`${file}.out`, JSON.stringify(out), { flag: "wx", mode: 0o600 });
+                log("call", { id, tool, ok });
+              }
+            } catch {
+              log("call", { id, tool, ok: false });
+            }
+          }, 100);
+          poll.unref();
+          timers.add(poll);
           return {
             async send(text) {
               if (closed) throw new Error("session_disposed");
@@ -65,7 +104,7 @@ export function wrapPlugin(plugin) {
               }
             },
             cancel() { log("cancel", { id }); settle(marker("complete-on-cancel")); },
-            async dispose() { closed = true; settle(false); log("dispose", { id }); },
+            async dispose() { closed = true; clearInterval(poll); timers.delete(poll); settle(false); log("dispose", { id }); },
           };
         },
       };
