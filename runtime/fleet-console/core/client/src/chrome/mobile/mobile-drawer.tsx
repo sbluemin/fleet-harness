@@ -18,7 +18,7 @@ import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, runAfterOverlayRelease } from "./mobile-overlay-history.js";
 import { unwindDetailsThen } from "./mobile-unwind.js";
-import { pushMobileSheet, setMobileDestination, setMobileDrawerOpen, useMobileDestination, useMobileDrawerOpen } from "./mobile-store.js";
+import { getMobileSheetStack, pushMobileSheet, setMobileDestination, setMobileDrawerOpen, useMobileDestination, useMobileDrawerOpen } from "./mobile-store.js";
 
 const EDGE_ZONE = 22;
 const DRAG_ARM = 12;
@@ -65,7 +65,8 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); close(); } };
+    // 시트가 위에 있으면 Esc는 시트가 받는다 — 겹침은 위에서부터 하나씩 닫는다.
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && getMobileSheetStack().length === 0) { event.preventDefault(); close(); } };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
