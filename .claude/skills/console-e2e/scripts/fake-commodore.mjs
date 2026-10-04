@@ -58,7 +58,9 @@ export function wrapPlugin(plugin) {
           // calls/<name>.json {"tool","args"} runs that tools.custom entry in an owned cwd; the result goes to <name>.json.out.
           const tools = (options.tools?.custom ?? []).flatMap((group) => group.tools ?? []);
           let cwd;
-          const poll = setInterval(async () => {
+          // 진행 중인 polling 한 번 — dispose가 이것을 기다려야 정리 뒤에 도구 효과가 남지 않는다.
+          let running = null;
+          const drain = async () => {
             let tool = null;
             try {
               if (!fs.existsSync(calls) || fs.realpathSync(calls) !== calls) return;
@@ -89,7 +91,8 @@ export function wrapPlugin(plugin) {
             } catch {
               log("call", { id, tool, ok: false });
             }
-          }, 100);
+          };
+          const poll = setInterval(() => { running ??= drain().finally(() => { running = null; }); }, 100);
           poll.unref();
           timers.add(poll);
           return {
@@ -104,7 +107,7 @@ export function wrapPlugin(plugin) {
               }
             },
             cancel() { log("cancel", { id }); settle(marker("complete-on-cancel")); },
-            async dispose() { closed = true; clearInterval(poll); timers.delete(poll); settle(false); log("dispose", { id }); },
+            async dispose() { closed = true; clearInterval(poll); timers.delete(poll); settle(false); await running; log("dispose", { id }); },
           };
         },
       };
