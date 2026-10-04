@@ -28,6 +28,14 @@ const CONSOLE_RING = 500;
 const NETWORK_RING = 400;
 const BODY_LIMIT = 64 * 1024;
 const TEXT_LIMIT = 200_000;
+/**
+ * `resolution: "device"` 캡처의 상한. 기기 배율은 셸이 알린 화면 배율(pane.scale)을 따르되 이 배율을 넘지 않고,
+ * 출력 픽셀 수가 이 한도를 넘으면 그 안에 들도록 배율을 낮춘다(최소 1, 즉 CSS 크기). 시트 정지 화면용이다.
+ * 픽셀 한도는 Desktop 중계 본문 64 MiB 에서 정한다 — 압축되지 않는 RGBA PNG(4B/px)의 base64 가 한도 안에 남아야 한다.
+ * 3200² 는 최악 약 52 MiB, 4096² 는 85 MiB 라 중계가 거절하고 캡처가 시간 초과까지 묶인다.
+ */
+const DEVICE_CAPTURE_MAX_SCALE = 2;
+const DEVICE_CAPTURE_MAX_PIXELS = 3200 * 3200;
 
 /** 브라우저를 쓸 수 없는 까닭. 도구·패널·글리프가 같은 낱말로 안내한다. */
 export type BrowserUnavailableReason = "desktop_required" | "shared";
@@ -1320,7 +1328,7 @@ export class BrowserService {
     return `${tab.id}:${layout.width}x${layout.height}:${this.paneOfTab(tab)?.scale ?? op.viewport.scale}`;
   }
 
-  async screenshot(operationId: string, options: { tabId?: string | null; clip?: { x: number; y: number; width: number; height: number }; format?: "png" | "jpeg"; signal?: AbortSignal } = {}): Promise<{ pixels: { width: number; height: number }; geometryVersion: string; data: string; mimeType: string; width: number; height: number; viewport: { width: number; height: number; preset: ViewportPreset; followsPane: boolean }; layout: { width: number; height: number } | null; staleViewport: boolean }> {
+  async screenshot(operationId: string, options: { tabId?: string | null; clip?: { x: number; y: number; width: number; height: number }; format?: "png" | "jpeg"; resolution?: "css" | "device"; signal?: AbortSignal } = {}): Promise<{ pixels: { width: number; height: number }; geometryVersion: string; data: string; mimeType: string; width: number; height: number; viewport: { width: number; height: number; preset: ViewportPreset; followsPane: boolean }; layout: { width: number; height: number } | null; staleViewport: boolean }> {
     const op = this.operation(operationId);
     const tab = this.tab(op, options.tabId);
     const client = await this.engineClient();
@@ -1356,7 +1364,9 @@ export class BrowserService {
     this.throwIfAborted(options.signal);
     let result: { data: string };
     try {
-      result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: 1 / pane.scale }, captureBeyondViewport: false }, tab.sessionId);
+      // 기본은 출력 1px = CSS 1px(에이전트 좌표 계약). "device" 는 화면 배율로 찍되 상한 안에서만 — width·height 는 그대로 CSS px 이고 pixels 만 커진다.
+      const output = options.resolution === "device" ? deviceCaptureScale(pane.scale, clip) : 1;
+      result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: output / pane.scale }, captureBeyondViewport: false }, tab.sessionId);
     } catch (error) {
       // Chromium 은 캡처 동안 에뮬레이션을 잠시 바꿨다 되돌린다 — 실패한 캡처가 페이지를 뷰 크기로 풀어 두지 않게 다시 건다.
       if (!op.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
@@ -1617,6 +1627,13 @@ export interface ElementInfo {
   readonly component: string | null;
   readonly source: string | null;
   readonly styles: Record<string, string>;
+}
+
+/** 화면 배율을 상한(배율·픽셀 수) 안으로 줄인다. 이상값(NaN·1 미만)은 CSS 크기(1)로 돌아간다. */
+function deviceCaptureScale(deviceScale: number, clip: { width: number; height: number }): number {
+  if (!Number.isFinite(deviceScale) || deviceScale <= 1) return 1;
+  const byPixels = Math.sqrt(DEVICE_CAPTURE_MAX_PIXELS / Math.max(1, clip.width * clip.height));
+  return Math.max(1, Math.min(deviceScale, DEVICE_CAPTURE_MAX_SCALE, byPixels));
 }
 
 /** ref 클릭 직전 — 가운데 점이 자신(또는 자손)인지, disabled 인지. */

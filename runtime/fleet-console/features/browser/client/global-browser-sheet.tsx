@@ -79,7 +79,7 @@ type StillFrame = Box & { readonly tabId: string; readonly url: string; readonly
 
 /**
  * 찍힌 장이 지금 자리와 맞는가. 물러난 뷰는 마지막으로 놓였던 크기를 지키므로, 그 뒤 자리가 바뀌었으면 맞지 않는다.
- * 캡처는 DIP, 자리는 CSS px라 Console 배율(⌘+)만큼 고르게 다를 수 있다 — 배율 하나로 맞춰 본 뒤
+ * 캡처는 화면 배율(DPR 2면 자리의 두 배) 픽셀, 자리는 CSS px라 화면·Console 배율(⌘+)만큼 고르게 다르다 — 배율 하나로 맞춰 본 뒤
  * 남는 어긋남이 자리 기준 2px 안이어야 한다. 늘이거나 잘라 끼우는 장은 보이지 않는다.
  */
 function stillFits(still: Box, box: Box): boolean {
@@ -441,7 +441,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       && activeTabRef.current?.id === tabId && activeTabRef.current?.url === url;
     void (async () => {
       try {
-        const response = await fetch("/api/v1/browser/global/screenshot", { signal: task.controller.signal });
+        const response = await fetch("/api/v1/browser/global/screenshot?resolution=device", { signal: task.controller.signal });
         if (!response.ok) return;
         const shot = await response.json() as { data?: string; mimeType?: string; mime?: string };
         if (!shot || typeof shot.data !== "string" || !current()) return;
