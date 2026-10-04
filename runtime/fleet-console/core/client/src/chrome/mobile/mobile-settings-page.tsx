@@ -1,4 +1,7 @@
 import { useEffect, type ReactNode } from "react";
+
+import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
+import { isFleetMobileShell } from "@fleet-console/link/core";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { loadGlobalSettings, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
@@ -12,8 +15,14 @@ import {
   type SettingsSectionId,
 } from "../../../../../features/settings/client/sections.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
-import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS } from "../../../../../features/settings/client/ui-font.js";
-import type { GlobalSettingsState, ThemeId } from "../../integration/types.js";
+import { useConsoleState } from "../../hooks/use-store.js";
+import { setMobileColorMode, setMobileFontScale, useMobileAppearance, type MobileAppearanceSnapshot } from "../../integration/mobile-appearance-store.js";
+import { openWhatsNew } from "../../integration/store.js";
+import type { GlobalSettingsState } from "../../integration/types.js";
+import { setViewModePreference, useViewMode, type ViewModePreference } from "../../integration/view-mode-store.js";
+import { MobileIcon } from "./mobile-icons.js";
+import { MobileMonogram } from "./mobile-monogram.js";
+import { pushMobileSheet } from "./mobile-store.js";
 import "../../styles/mobile.css";
 
 /**
@@ -26,8 +35,16 @@ import "../../styles/mobile.css";
  * return to the list instead of leaving Settings.
  */
 
-/** 폰과 데스크톱은 같은 `/settings` 주소를 쓰므로 섹션 id 어휘도 하나다. */
-type MobileSectionId = SettingsSectionId;
+/**
+ * 폰의 설정(S-47/S-48): 위에 지금 Console 카드, 아래에 눈에 보이는 머리 없는 묶음 넷 — 화면 · 에이전트 · 사용 · 정보.
+ * 행을 열면 상세(push)다. 색상 모드·글자 크기·화면 배치는 폰 전용 선호(모바일 외관 스토어·보기 모드)라 서버 설정을 쓰지 않는다 —
+ * Console 테마 선택은 없다(BD-G7 a). 그 밖의 섹션은 현행 설정 본문을 그대로 그린다.
+ */
+
+/** 폰과 데스크톱은 같은 `/settings` 주소를 쓰므로 섹션 id 어휘도 하나다. 폰 전용 상세는 아래 LOCAL_IDS다. */
+type MobileSectionId = SettingsSectionId | LocalSectionId;
+type LocalSectionId = "color-mode" | "font-scale" | "layout" | "about" | "help";
+const LOCAL_IDS: ReadonlySet<string> = new Set(["color-mode", "font-scale", "layout", "about", "help"]);
 
 interface MobileSettingsRow {
   readonly id: MobileSectionId;
@@ -35,11 +52,12 @@ interface MobileSettingsRow {
   /** What this row currently holds, so the list answers without being opened. */
   readonly value: string | null;
   readonly icon: ReactNode;
+  /** 상세 대신 시트·동작으로 가는 행(새 기능). */
+  readonly act?: () => void;
 }
 
 interface MobileSettingsGroup {
   readonly key: string;
-  readonly label: string;
   readonly rows: readonly MobileSettingsRow[];
 }
 
@@ -57,6 +75,9 @@ export function MobileSettingsPage() {
   const t = useT();
   const location = useLocation();
   const navigate = useNavigate();
+  const appearance = useMobileAppearance();
+  const viewMode = useViewMode();
+  const consoleState = useConsoleState();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,18 +86,17 @@ export function MobileSettingsPage() {
   }, []);
 
   const pluginSections = collectPluginSettingsSections(registry.providers, locale, t);
-  const groups = buildMobileSettingsGroups(state, pluginSections, t);
-  const rows = groups.flatMap((group) => group.rows);
-  const requested = new URLSearchParams(location.search).get("section");
-  // 옛 id와 상대 레이아웃이 만든 id를 데스크톱과 같은 판정으로 옮긴다. 닿지 못한 id는 여기서
-  // 대신할 섹션을 고르지 않는다 — 폰에는 돌아갈 목록이 있고, 아래 effect가 그리로 되돌린다.
-  const resolved = resolveSettingsSectionId(requested, new Set(rows.map((row) => row.id)));
-  const active = resolved === null ? null : rows.find((row) => row.id === resolved) ?? null;
-
   const open = (id: MobileSectionId) => {
     const entry: MobileSettingsLocationState = { mobileSettingsEntry: true };
     navigate({ pathname: "/settings", search: `?section=${encodeURIComponent(id)}` }, { state: entry });
   };
+  const groups = buildMobileSettingsGroups({ state, appearance, viewMode: viewMode.preference, version: consoleState.version, pluginSections, t });
+  const rows = groups.flatMap((group) => group.rows);
+  const requested = new URLSearchParams(location.search).get("section");
+  // 폰 전용 상세는 그대로, 그 밖의 옛 id와 상대 레이아웃이 만든 id는 데스크톱과 같은 판정으로 옮긴다.
+  const resolved = requested !== null && LOCAL_IDS.has(requested) ? requested : resolveSettingsSectionId(requested, new Set(rows.map((row) => row.id)));
+  const active = resolved === null ? null : rows.find((row) => row.id === resolved && row.act === undefined) ?? (resolved === "language" ? LANGUAGE_ROW(t) : null);
+
   const close = () => {
     // Popping is only correct when the entry above is this list. A direct load or a reload has no
     // such entry, and popping there would leave the Console entirely.
@@ -84,10 +104,10 @@ export function MobileSettingsPage() {
     navigate({ pathname: "/settings", search: "" }, { replace: true });
   };
 
-  // 막대는 호스트가 그린다 — 목록은 ≡, 섹션 상세는 ‹(목록에서 왔으면 history 되돌리기).
+  // 막대는 호스트가 그린다 — 목록은 ≡ + ⓘ(버전), 섹션 상세는 ‹(목록에서 왔으면 history 되돌리기).
   useClaimMobileBar(active !== null
     ? { variant: "centered", title: active.title, leading: "back", onBack: close }
-    : { variant: "centered", title: t("mobile.drawer.settings"), leading: "menu" });
+    : { variant: "centered", title: t("mobile.drawer.settings"), leading: "menu", actions: [{ id: "about", icon: <MobileIcon name="info" />, label: t("mobile.settings.about"), run: () => open("about") }] });
 
   // An unknown section — a stale link, or one whose plugin is gone — resolves to the list rather
   // than to an empty screen, and the address is corrected so a reload does not repeat the miss.
@@ -106,34 +126,37 @@ export function MobileSettingsPage() {
         <div className="mobile-settings-scroll">
           <div className="mobile-settings-detail">
             {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-            {renderSettingsSection(active.id, state, settings.savingFields, pluginSections, t)}
+            {LOCAL_IDS.has(active.id)
+              ? <LocalDetail id={active.id as LocalSectionId} appearance={appearance} viewMode={viewMode.preference} version={consoleState.version} openSection={open} />
+              : renderSettingsSection(active.id as SettingsSectionId, state, settings.savingFields, pluginSections, t)}
           </div>
         </div>
       </section>
     );
   }
 
+  const connected = consoleState.connection === "live";
+  const consoleName = appearance.console?.label ?? window.location.hostname;
   return (
     <section className="mobile-settings-page" aria-labelledby="mobile-settings-title">
       <h1 id="mobile-settings-title" className="mobile-visually-hidden">{t("mobile.drawer.settings")}</h1>
       <div className="mobile-settings-scroll">
         <div className="mobile-settings-groups">
           {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+          <button type="button" className="mobile-console-card" onClick={() => pushMobileSheet({ kind: "console" })}>
+            <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? null} round size={36} />
+            <span className="mobile-console-card-copy"><strong>{consoleName}</strong><small>{window.location.host}</small></span>
+            <span className="mobile-state-chip"><span className={statusGlyphClassName(connected ? "idle" : "running")} aria-hidden="true" />{t(connected ? "mobile.settings.connected" : "mobile.settings.reconnecting")}</span>
+            <MobileIcon name="down" size={18} className="mobile-group-row-caret" />
+          </button>
           {groups.map((group) => (
-            <div className="mobile-settings-group" key={group.key}>
-              <p className="mobile-settings-group-label">{group.label}</p>
-              <div className="mobile-settings-rows">
-                {group.rows.map((row) => (
-                  <button type="button" className="mobile-settings-row" key={row.id} onClick={() => open(row.id)}>
-                    <span className="mobile-settings-row-icon" aria-hidden="true">{row.icon}</span>
-                    <span className="mobile-settings-row-copy">
-                      <strong>{row.title}</strong>
-                      {row.value === null ? null : <span>{row.value}</span>}
-                    </span>
-                    <span className="mobile-operation-chevron" aria-hidden="true">›</span>
-                  </button>
-                ))}
-              </div>
+            <div className="mobile-group is-flush" key={group.key}>
+              {group.rows.map((row) => (
+                <button type="button" className={`mobile-group-row${row.value === null ? "" : " is-two"}`} key={row.id} onClick={() => (row.act ? row.act() : open(row.id))}>
+                  <span className="mobile-group-row-icon" aria-hidden="true">{row.icon}</span>
+                  <span className="mobile-group-row-copy">{row.title}{row.value === null ? null : <small>{row.value}</small>}</span>
+                </button>
+              ))}
             </div>
           ))}
         </div>
@@ -142,54 +165,118 @@ export function MobileSettingsPage() {
   );
 }
 
+const LANGUAGE_ROW = (t: (key: CoreMessageKey) => string): MobileSettingsRow => ({ id: "language", title: t("settings.core.language.label" as CoreMessageKey), value: null, icon: null });
+
+/** 폰 전용 상세 — 라디오 행과 한 줄 설명으로만 이루어진다. */
+function LocalDetail({ id, appearance, viewMode, version, openSection }: {
+  readonly id: LocalSectionId;
+  readonly appearance: MobileAppearanceSnapshot;
+  readonly viewMode: ViewModePreference;
+  readonly version: string;
+  readonly openSection: (id: MobileSectionId) => void;
+}) {
+  const t = useT();
+  if (id === "color-mode") {
+    return (
+      <>
+        <div className="mobile-group is-flush">
+          <RadioRow checked={appearance.colorMode === "system"} label={t("mobile.settings.color.system")} sub={t("mobile.settings.color.systemSub")} onSelect={() => setMobileColorMode("system")} />
+          <RadioRow checked={appearance.colorMode === "dark"} label={t("mobile.settings.color.dark")} onSelect={() => setMobileColorMode("dark")} />
+          <RadioRow checked={appearance.colorMode === "light"} label={t("mobile.settings.color.light")} onSelect={() => setMobileColorMode("light")} />
+        </div>
+        <p className="mobile-secnote">{t("mobile.settings.color.note")}</p>
+      </>
+    );
+  }
+  if (id === "font-scale") {
+    return (
+      <div className="mobile-group is-flush">
+        {(["small", "default", "large"] as const).map((scale) => (
+          <RadioRow key={scale} checked={appearance.fontScale === scale} label={t(`mobile.settings.font.${scale}`)} onSelect={() => setMobileFontScale(scale)} />
+        ))}
+      </div>
+    );
+  }
+  if (id === "layout") {
+    // Fleet 앱에서는 데스크톱 배치를 고를 수 없다(D38) — 브라우저에서는 활성이고 여기서 늘 돌아올 수 있다.
+    const app = isFleetMobileShell();
+    return (
+      <div className="mobile-group is-flush">
+        <RadioRow checked={viewMode === "auto"} label={t("mobile.settings.layout.auto")} sub={t("mobile.settings.layout.autoSub")} onSelect={() => setViewModePreference("auto")} />
+        <RadioRow checked={viewMode === "mobile"} label={t("mobile.settings.layout.mobile")} sub={t("mobile.settings.layout.mobileSub")} onSelect={() => setViewModePreference("mobile")} />
+        <RadioRow checked={viewMode === "desktop"} label={t("mobile.settings.layout.desktop")} sub={app ? t("mobile.settings.layout.desktopApp") : undefined} disabled={app} onSelect={() => setViewModePreference("desktop")} />
+      </div>
+    );
+  }
+  if (id === "help") {
+    return (
+      <>
+        <div className="mobile-group is-flush">
+          {(["drawer", "start", "request", "pairing"] as const).map((topic) => (
+            <div className="mobile-group-row" key={topic}>
+              <span className="mobile-group-row-icon" aria-hidden="true"><MobileIcon name="help" /></span>
+              <span className="mobile-group-row-copy">{t(`mobile.settings.help.${topic}`)}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mobile-secnote">{t("mobile.settings.help.note")}</p>
+      </>
+    );
+  }
+  return (
+    <div className="mobile-group is-flush">
+      <div className="mobile-group-row is-two"><span className="mobile-group-row-copy">Console<small>{version}</small></span></div>
+      <button type="button" className="mobile-group-row" onClick={() => openWhatsNew()}><span className="mobile-group-row-copy">{t("mobile.settings.whatsNew")}</span></button>
+      <button type="button" className="mobile-group-row" onClick={() => openSection("help")}><span className="mobile-group-row-copy">{t("mobile.settings.helpRow")}</span></button>
+    </div>
+  );
+}
+
+function RadioRow({ checked, label, sub, disabled, onSelect }: { readonly checked: boolean; readonly label: string; readonly sub?: string; readonly disabled?: boolean; readonly onSelect: () => void }) {
+  return (
+    <button type="button" role="radio" aria-checked={checked} className={`mobile-group-row${sub ? " is-two" : ""}${disabled ? " is-dim" : ""}`} disabled={disabled} onClick={onSelect}>
+      <span className={`mobile-radio${checked ? " is-on" : ""}`} aria-hidden="true" />
+      <span className="mobile-group-row-copy">{label}{sub ? <small>{sub}</small> : null}</span>
+    </button>
+  );
+}
+
 /**
  * 폰은 목록과 섹션을 두 화면으로 가르지만, 어떤 섹션이 있는지는 데스크톱과 같은 어휘로 읽는다 —
  * 두 레이아웃이 같은 주소를 공유하므로 한쪽만 아는 섹션이 생기면 그 링크가 다른 쪽에서 끊긴다.
- * 각 행은 열지 않고도 지금 무엇이 들어 있는지 말한다.
+ * 각 행은 열지 않고도 지금 무엇이 들어 있는지 말한다. 행의 대응은 spec-decisions D37.
  */
-function buildMobileSettingsGroups(
-  state: GlobalSettingsState | null,
-  pluginSections: readonly PluginSettingsNavItem[],
-  t: (key: CoreMessageKey) => string,
-): readonly MobileSettingsGroup[] {
-  const setupRows: MobileSettingsRow[] = [
-    // 언어는 데스크톱과 같이 겉모습 페이지의 첫 카드다 — 폰에서만 별도 행으로 두면 같은 설정이 두 자리에 선다.
-    { id: "appearance", title: t("settings.core.appearance.label"), value: describeAppearance(state, t), icon: <AppearanceIcon /> },
+function buildMobileSettingsGroups({ state, appearance, viewMode, version, pluginSections, t }: {
+  readonly state: GlobalSettingsState | null;
+  readonly appearance: MobileAppearanceSnapshot;
+  readonly viewMode: ViewModePreference;
+  readonly version: string;
+  readonly pluginSections: readonly PluginSettingsNavItem[];
+  readonly t: (key: CoreMessageKey) => string;
+}): readonly MobileSettingsGroup[] {
+  const display: MobileSettingsRow[] = [
+    { id: "color-mode", title: t("mobile.settings.colorMode"), value: t(`mobile.settings.color.${appearance.colorMode}`), icon: <MobileIcon name="moon" /> },
+    { id: "font-scale", title: t("mobile.settings.fontScale"), value: t(`mobile.settings.font.${appearance.fontScale}`), icon: <MobileIcon name="text" /> },
+    { id: "language", title: t("mobile.settings.language"), value: state === null ? null : languageLabel(state, t), icon: <MobileIcon name="globe" /> },
+    { id: "layout", title: t("mobile.settings.layout"), value: t(`mobile.settings.layout.${viewMode}`), icon: <MobileIcon name="layout" /> },
   ];
-  const machineRows: MobileSettingsRow[] = [
-    { id: "advanced", title: t("settings.core.advanced.label"), value: null, icon: <ApiIcon /> },
-  ];
-
-  // 플러그인이 선언한 group은 두 레이아웃에서 같은 뜻이어야 한다 — 폰이 전부 Work로 몰아 넣으면
-  // 방금 연 SDK 계약이 화면마다 다르게 읽힌다.
-  const workRows: MobileSettingsRow[] = [];
+  // 플러그인이 선언한 group은 두 레이아웃에서 같은 뜻이어야 한다 — 하네스·터미널·AI Gateway 같은 작업 섹션이 「에이전트」, 고급이 그 끝이다.
+  const agent: MobileSettingsRow[] = [];
   for (const section of pluginSections) {
-    const row: MobileSettingsRow = {
-      id: section.id,
-      title: section.sectionTitle,
-      value: section.pluginLabel === section.sectionTitle ? null : section.pluginLabel,
-      icon: <PluginIcon />,
-    };
-    if (section.group === "setup") setupRows.push(row);
-    else if (section.group === "machine") machineRows.push(row);
-    else if (section.group === "experiments") continue;
-    else workRows.push(row);
+    if (section.group === "setup" || section.group === "experiments") continue;
+    if (section.group === "machine") continue;
+    agent.push({ id: section.id, title: section.sectionTitle, value: section.pluginLabel === section.sectionTitle ? null : section.pluginLabel, icon: <MobileIcon name="harness" /> });
   }
-
-  const groups: MobileSettingsGroup[] = [{ key: "setup", label: t("settings.group.setup"), rows: setupRows }];
-  if (workRows.length > 0) groups.push({ key: "work", label: t("settings.group.work"), rows: workRows });
-  groups.push({ key: "machine", label: t("settings.group.machine"), rows: machineRows });
-  // 연결과 실험 그룹 플러그인 섹션은 실험 페이지 안의 카드다 — 폰도 행을 따로 세우지 않는다.
-  const experimentRows: MobileSettingsRow[] = [
-    { id: "experiments", title: t("settings.core.experiments.label"), value: describeConnectivity(state, t), icon: <RemoteIcon /> },
+  agent.push({ id: "advanced", title: t("settings.core.advanced.label"), value: null, icon: <MobileIcon name="gate" /> });
+  const use: MobileSettingsRow[] = [
+    { id: "experiments", title: t("settings.core.experiments.label"), value: describeConnectivity(state, t), icon: <MobileIcon name="flask" /> },
   ];
-  groups.push({ key: "experiments", label: t("settings.group.experiments"), rows: experimentRows });
-  return groups;
-}
-
-function describeAppearance(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
-  if (state === null) return null;
-  return [languageLabel(state, t), themeLabel(state.theme, t), fontLabel(state)].join(" · ");
+  const about: MobileSettingsRow[] = [
+    { id: "about", title: t("mobile.settings.whatsNew"), value: version, icon: <MobileIcon name="spark" />, act: () => openWhatsNew() },
+    { id: "help", title: t("mobile.settings.helpRow"), value: null, icon: <MobileIcon name="help" /> },
+    { id: "about", title: t("mobile.settings.version"), value: `Console ${version}`, icon: <MobileIcon name="info" /> },
+  ];
+  return [{ key: "display", rows: display }, { key: "agent", rows: agent }, { key: "use", rows: use }, { key: "about", rows: about }];
 }
 
 function languageLabel(state: GlobalSettingsState, t: (key: CoreMessageKey) => string): string {
@@ -207,52 +294,3 @@ function describeConnectivity(state: GlobalSettingsState | null, t: (key: CoreMe
   return [port, t(state.remoteAccess.enabled ? "mobile.settings.on" : "mobile.settings.off")].join(" · ");
 }
 
-function themeLabel(theme: ThemeId, t: (key: CoreMessageKey) => string): string {
-  switch (theme) {
-    case "maritime": return t("settings.theme.maritime");
-    case "carbon": return t("settings.theme.carbon");
-    case "whites": return t("settings.theme.whites");
-    default: return t("settings.theme.instrument");
-  }
-}
-
-function fontLabel(state: GlobalSettingsState): string {
-  const uiFont = state.uiFont ?? DEFAULT_UI_FONT;
-  if (uiFont.source === "system") return uiFont.familyName;
-  return UI_FONT_BUILT_INS.find((font) => font.id === uiFont.id)?.label ?? uiFont.id;
-}
-
-function AppearanceIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="10" cy="10" r="6.4" />
-      <path d="M10 3.6v12.8" />
-    </svg>
-  );
-}
-
-
-function RemoteIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4.4 12.4a5.6 5.6 0 0 1 11.2 0M1.9 9.4a9 9 0 0 1 16.2 0" />
-      <circle cx="10" cy="15.1" r="1.2" />
-    </svg>
-  );
-}
-
-function ApiIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M7.2 4 3.6 10l3.6 6M12.8 4l3.6 6-3.6 6" />
-    </svg>
-  );
-}
-
-function PluginIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M10 3.2 16 6.6v6.8L10 16.8 4 13.4V6.6Z" />
-    </svg>
-  );
-}

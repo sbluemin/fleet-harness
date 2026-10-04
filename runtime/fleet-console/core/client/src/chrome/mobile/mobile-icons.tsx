@@ -30,6 +30,16 @@ const PATHS = {
   copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M5 16V6a2 2 0 0 1 2-2h9" /></>,
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   minus: <path d="M6 12h12" />,
+  moon: <path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" />,
+  text: <path d="M4 18l5-12 5 12M6 14h6M15 18v-6a2.5 2.5 0 0 1 5 0v6M15 15h5" />,
+  globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" /></>,
+  layout: <><rect x="3" y="4" width="18" height="12" rx="1.5" /><rect x="8" y="12" width="7" height="9" rx="1.5" /></>,
+  harness: <path d="M8 3v4M16 3v4M6 7h12v5a6 6 0 0 1-12 0z M12 18v3" />,
+  gate: <path d="M4 20V9l8-5 8 5v11M9 20v-6h6v6" />,
+  chart: <><path d="M4 4v16h16" /><path d="M8 15l3-4 3 2 5-6" /></>,
+  flask: <path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3" />,
+  help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5v.7M12 17v.2" /></>,
+  spark: <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6" />,
   trash: <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />,
 } satisfies Record<string, ReactNode>;
 
