@@ -8,13 +8,12 @@ import "../../execution/client/agent/computer-screen-share.css";
 type CaptureTarget = { id: string; operationId: string; title: string };
 type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void };
 const CaptureContext = createContext<Capture | null>(null);
-/** 패널 안 허용 요청 — 서버가 붙잡아 둔 호출 하나(합쳐진 도구 이름·막힌 사유·시한). 인자·내용은 없다. */
+/** 패널 안 허용 요청 — 서버가 붙잡아 둔 호출 하나(합쳐진 도구 이름·시한). 인자·내용은 없다. */
 export interface OperationUseRequest {
   readonly id: string;
   readonly operationId: string;
   readonly capability: "console" | "computer";
   readonly tools: readonly string[];
-  readonly blocked: "experiment_disabled" | null;
   readonly expiresAt: number;
 }
 type OperationUseActivity = {
@@ -54,7 +53,7 @@ function readRequests(value: unknown): OperationUseRequest[] {
     const record = item as Record<string, unknown>;
     if (typeof record.id !== "string" || typeof record.operationId !== "string" || (record.capability !== "console" && record.capability !== "computer") || typeof record.expiresAt !== "number") return [];
     const tools = Array.isArray(record.tools) ? record.tools.filter((tool): tool is string => typeof tool === "string") : [];
-    return [{ id: record.id, operationId: record.operationId, capability: record.capability, tools, blocked: record.blocked === "experiment_disabled" ? "experiment_disabled" : null, expiresAt: record.expiresAt }];
+    return [{ id: record.id, operationId: record.operationId, capability: record.capability, tools, expiresAt: record.expiresAt }];
   });
 }
 

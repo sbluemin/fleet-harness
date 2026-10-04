@@ -12,8 +12,8 @@ import { FLEET_COMPUTER_USE_MCP_SERVER, type ComputerUsePluginConnection, type C
 export interface PluginAgentDeps {
   readonly baseUrl: () => string | null;
   readonly consoleUse: ConsoleUseMcpHost;
-  /** 컴퓨터 사용 서버. 없는 호스트(테스트·실험 없는 구성)에서는 `tools.computerUse` 요청이 조용히 빠진다. */
-  readonly computerUseMcp?: { connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection };
+  /** 컴퓨터 사용 서버. 없는 호스트(테스트·실험 없는 구성)나 실험이 꺼진 동안에는 `tools.computerUse` 요청이 조용히 빠진다. */
+  readonly computerUseMcp?: { connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection | null };
   readonly createSdk?: typeof createClaudeGatewaySdk;
 }
 
@@ -169,9 +169,11 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         computerConnection = deps.computerUseMcp.connectPlugin({
           enabled: () => !closed && active && !cancelled && !turnController?.signal.aborted && computerOptions.enabled(),
           ...(computerOptions.language ? { language: computerOptions.language } : {}),
-        });
-        servers[FLEET_COMPUTER_USE_MCP_SERVER] = computerConnection.embeddedServer;
-        allowed.push(...computerConnection.toolNames.map((name) => `mcp__${FLEET_COMPUTER_USE_MCP_SERVER}__${name}`));
+        }) ?? undefined;
+        if (computerConnection) {
+          servers[FLEET_COMPUTER_USE_MCP_SERVER] = computerConnection.embeddedServer;
+          allowed.push(...computerConnection.toolNames.map((name) => `mcp__${FLEET_COMPUTER_USE_MCP_SERVER}__${name}`));
+        }
       }
       await loop.start();
       if (disposed || closed) throw new Error("agent_host_disposed");

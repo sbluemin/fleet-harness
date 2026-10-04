@@ -40,8 +40,8 @@ export interface ComputerUseRequestPort {
     readonly tool: string;
     readonly signal?: AbortSignal;
     readonly authorized: () => boolean;
-    readonly blocked?: () => "experiment_disabled" | null;
-  }): Promise<"turn" | "always" | "authorized" | "declined" | "no_response" | "stopped">;
+    readonly withdrawn?: () => boolean;
+  }): Promise<"turn" | "always" | "authorized" | "declined" | "no_response" | "stopped" | "withdrawn">;
   granted(operationId: string, capability: "computer"): boolean;
   touch(operationId: string, capability: "computer"): void;
 }
@@ -142,24 +142,26 @@ function denyComputerUse(deps: ComputerUseMcpDeps, sessionLabel: string | undefi
 }
 
 /**
- * 허용받지 않은 Operation 호출을 붙잡아 그 패널에 허용 요청 카드를 띄운다. 실험 스위치가 꺼져 있으면 카드는
- * 설정으로 안내하고(카드에서 허용할 수 없다), 켜지면 같은 카드에서 허용할 수 있게 된다.
+ * 허용받지 않은 Operation 호출을 붙잡아 그 패널에 허용 요청 카드를 띄운다. 카드는 그 Operation의 허용만 묻는다 —
+ * 실험 스위치를 끈 것은 사람이 이미 내린 답이므로 붙잡지 않고 바로 거부하고, 기다리는 사이 스위치가 꺼지면
+ * 카드를 거두고 같은 사유로 거부한다.
  */
 async function holdComputerUse(deps: ComputerUseMcpDeps, sessionLabel: string, tool: string, signal: AbortSignal) {
   const denial = computerUseDenial(deps, sessionLabel);
   if (!denial) return null;
   const requests = deps.requests;
-  if (!requests || !denial.operationId || (denial.reason !== "operation_not_authorized" && denial.reason !== "experiment_disabled")) return refuse(denial.reason, denial.operationId, denial.language);
+  if (!requests || !denial.operationId || denial.reason !== "operation_not_authorized") return refuse(denial.reason, denial.operationId, denial.language);
   const outcome = await requests.hold({
     operationId: denial.operationId,
     capability: "computer",
     tool,
     signal,
     authorized: () => computerUseDenial(deps, sessionLabel) === null,
-    blocked: () => deps.experimentEnabled?.() === true ? null : "experiment_disabled",
+    withdrawn: () => deps.experimentEnabled?.() !== true,
   });
   if (outcome === "declined") return refuse("declined_by_user", denial.operationId, denial.language);
   if (outcome === "no_response") return refuse("no_response", denial.operationId, denial.language);
+  if (outcome === "withdrawn") return refuse("experiment_disabled", denial.operationId, denial.language);
   if (outcome === "stopped") return refuse(denial.reason, denial.operationId, denial.language);
   return denyComputerUse(deps, sessionLabel);
 }
@@ -206,8 +208,8 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         registry.registerAgentTool({ ...spec, ...(deps.requests ? { description: `${spec.description} ${OPERATION_REQUEST_NOTE}` } : {}), execute: async (args, context) => {
           const parsed = schema.safeParse(args);
           if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session or arguments unavailable" }], isError: true };
-          // 허용은 도구 호출마다 다시 읽는다 — 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다. 허용받지 않았으면
-          // 패널에서 사람의 답을 기다린다.
+          // 허용은 도구 호출마다 다시 읽는다 — Operation 토글과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
+          // Operation의 허용을 받지 않았으면 패널에서 사람의 답을 기다린다.
           const denied = await holdComputerUse(deps, context.sessionLabel, spec.id, AbortSignal.any([controller.signal, ...(context.signal ? [context.signal] : [])]));
           if (denied) return denied;
           if (controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
@@ -235,8 +237,11 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         getEndpoint: async () => { if (closed) throw new Error("Computer Use MCP disposed"); return manager.getEndpoint(); },
         issueSessionToken: (request) => {
           if (closed) throw new Error("Computer Use MCP disposed");
-          // 도구는 세션이 열릴 때부터 실려 있고 허용은 호출 시점에 판정한다(콘솔 사용과 같은 정책) —
-          // 실험을 켜고 끄는 데 세션을 다시 열 필요가 없다.
+          // 실험 스위치는 런치가 이 서버를 싣는지를 정한다. 꺼져 있으면 토큰을 내지 않고, 런치는 토큰이 없는
+          // 서버를 빼므로 그 세션에는 도구가 없다. 켜진 채 연 세션은 도중에 꺼도 도구가 남지만 호출은 바로
+          // 거부되고(호출마다 판정), 꺼진 채 연 세션은 도중에 켜도 다음 자식 런치(새 세션·재개·휴면 해제·
+          // 표면 전환)부터 도구를 받는다 — Agent CLI의 MCP 구성은 spawn 시점에 고정된다.
+          if (!deps.service.status().enabled) { manager.releaseSessionToken(request.label); return []; }
           return manager.issueSessionToken(request);
         },
         cancelSession: release,
@@ -259,10 +264,12 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
      * Operation이 아닌 호출자(플러그인 에이전트 세션)에게 붙는 서버. HTTP 세션 토큰 대신 세션에
      * 묻어 들어가는 임베디드 서버이고, 허용은 호출마다 `enabled()`와 실험 스위치를 함께 묻는다 —
      * 콘솔 사용의 플러그인 연결과 같은 정책이다. 소유자 라벨은 연결마다 유일해 `revoke()`가 자기
-     * 것만 놓는다.
+     * 것만 놓는다. 실험 스위치가 꺼져 있으면 서버를 내주지 않는다(null) — Operation 런치와 같이 꺼진 채
+     * 연 세션에는 도구가 없다.
      */
-    connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection {
+    connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection | null {
       if (disposed) throw new Error("Computer Use MCP host is disposed");
+      if (!deps.service.status().enabled) return null;
       const owner = `${randomUUID()}:plugin`;
       const controller = new AbortController();
       const calls = new Set<AbortController>();
@@ -272,7 +279,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject;
         return defineTool(spec.id, spec.description, schema.shape, async (args) => {
           if (closed || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
-          // 허용은 도구 호출마다 다시 읽는다 — 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다.
+          // 허용은 도구 호출마다 다시 읽는다 — 부관의 허용과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
           if (deps.experimentEnabled?.() !== true) return refuse("experiment_disabled", null, language());
           if (!options.enabled()) return refuse("plugin_not_authorized", null, language());
           const parsed = schema.safeParse(args);

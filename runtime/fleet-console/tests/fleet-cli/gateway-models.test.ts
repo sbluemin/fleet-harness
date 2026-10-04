@@ -124,7 +124,7 @@ describe("fleet-console-use host", () => {
 
       const held = call();
       const first = await pendingRequest();
-      expect(first).toMatchObject({ operationId: "op-a", capability: "console", tools: ["console_context"], blocked: null });
+      expect(first).toMatchObject({ operationId: "op-a", capability: "console", tools: ["console_context"] });
       // 패널의 답은 experiments 라우터로 들어온다. Host·Origin 게이트를 넘지 못한 요청은 403이고 붙잡힌 호출을 풀지 못한다.
       let route: RouteHandler | undefined;
       let replied: { status: number; body: unknown } | undefined;

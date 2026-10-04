@@ -2228,9 +2228,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
             includeTool: (toolId) => isHostSessionToolAllowed(toolId),
             label: mcpTokenLabel,
           });
-          return endpoint.servers.map((server) => {
-            const token = tokens.find((entry) => entry.name === server.name)?.token;
-            if (!token) throw new Error(`Dedicated MCP token missing for ${server.name}`);
+          // 토큰을 기준으로 싣는다 — 이번 런치에 토큰을 내지 않은 서버(꺼진 실험 기능)는 빠지고, 토큰은 있는데
+          // 주소가 없으면 조립 오류다. PTY 주입(`injectAgentCliProfile`)과 같은 규칙이다.
+          return tokens.map(({ name, token }) => {
+            const server = endpoint.servers.find((entry) => entry.name === name);
+            if (!server) throw new Error(`Dedicated MCP endpoint missing for ${name}`);
             return {
               name: server.name,
               url: server.url,

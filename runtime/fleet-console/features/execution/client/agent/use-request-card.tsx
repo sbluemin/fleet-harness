@@ -2,10 +2,7 @@ import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "@fleet-console/
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
-import { openPane } from "../../../../core/client/src/chrome/pane/pane-store.js";
-import { openRailPanel } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { useOperationUseRequests, type OperationUseRequest } from "../../../computer-use/client/computer-screen-share.js";
-import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
 import { answerUseRequest } from "./experiments-api.js";
 import { getT } from "./i18n/index.js";
 
@@ -64,11 +61,6 @@ export function useRequestSecondsLeft(request: OperationUseRequest, now: number)
 
 export function formatUseRequestTime(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-export function openUseRequestSettings(): void {
-  openRailPanel(SETTINGS_RAIL_ENTRY_ID);
-  openPane({ paneId: SETTINGS_PANE_ID, params: { section: "experiments" } });
 }
 
 export function UseRequestGlyph({ capability }: { readonly capability: OperationUseRequest["capability"] }) {
@@ -162,23 +154,13 @@ function UseRequestCard({ request, language, now }: { readonly request: Operatio
       </div>
       <p className="use-request-lead">{t(isConsole ? "terminal.useRequest.consoleLead" : "terminal.useRequest.computerLead")}</p>
       {request.tools.length > 0 ? <p className="use-request-tools">{request.tools.join(" · ")}</p> : null}
-      {request.blocked === "experiment_disabled" ? (
-        <div className="use-request-foot">
-          <button type="button" className="agent-chat-ask-send is-quiet" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
-          <span className="use-request-blocked">{t("terminal.useRequest.blocked")}</span>
-          <button type="button" className="agent-chat-ask-send" onClick={openUseRequestSettings}>{t("terminal.useRequest.openSettings")}</button>
-        </div>
-      ) : (
-        <>
-          <div className="use-request-foot">
-            <button type="button" className="agent-chat-ask-send is-quiet" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
-            <span className="use-request-gap" />
-            <button type="button" className="agent-chat-ask-send is-quiet" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
-            <button type="button" className="agent-chat-ask-send" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
-          </div>
-          <p className="use-request-fine">{t("terminal.useRequest.fine")}</p>
-        </>
-      )}
+      <div className="use-request-foot">
+        <button type="button" className="agent-chat-ask-send is-quiet" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
+        <span className="use-request-gap" />
+        <button type="button" className="agent-chat-ask-send is-quiet" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
+        <button type="button" className="agent-chat-ask-send" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
+      </div>
+      <p className="use-request-fine">{t("terminal.useRequest.fine")}</p>
       {failed ? <p className="use-request-error" role="alert">{t("terminal.useRequest.failed")}</p> : null}
     </div>
   );

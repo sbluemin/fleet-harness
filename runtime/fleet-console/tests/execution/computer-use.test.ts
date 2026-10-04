@@ -119,16 +119,18 @@ describe("Computer Use authorization and lifecycle", () => {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
       })).json();
+      // 꺼진 채 여는 런치에는 토큰이 없다 — 런치는 토큰이 없는 서버를 싣지 않으므로 그 세션에는 도구가 없다.
       f.enable(false);
-      expect((await connection.getEndpoint()).servers).toEqual([endpoint]);
-      const off = connection.issueSessionToken({ label: "off", cwd: process.cwd() })[0]!;
-      expect((await rpc(off.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toContain("computer_state");
-      expect((await rpc(off.token, "tools/call", { name: "computer_state", arguments: { app: "com.apple.TextEdit" } })).result.isError).toBe(true);
-      expect(f.call).not.toHaveBeenCalled();
+      expect(connection.issueSessionToken({ label: "off", cwd: process.cwd() })).toEqual([]);
       f.enable(true);
       expect((await connection.getEndpoint()).servers).toEqual([endpoint]);
       const on = connection.issueSessionToken({ label: "on", cwd: process.cwd() })[0]!;
       expect((await rpc(on.token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["computer_apps", "computer_open", "computer_state", "computer_action", "computer_paste"]));
+      // 켜진 채 연 세션은 도중에 꺼도 도구가 남지만 호출은 기기에 닿기 전에 거부된다.
+      f.enable(false);
+      expect((await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.apple.TextEdit" } })).result.isError).toBe(true);
+      expect(f.call).not.toHaveBeenCalled();
+      f.enable(true);
       f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: Fixture, URL: localhost</app_state>" }, { type: "image", mimeType: "image/png", data: "b2xk" }] });
       f.call.mockResolvedValueOnce({ captureWindow: { pid: 1, windowId: 42, processStartedAt: 123, title: "Fixture" }, content: [{ type: "text", text: '<app_state>App=Chrome (bundleID com.google.chrome.for.testing, pid 1)\nWindow: "Fixture", App: Chrome.\n0 standard window URL: localhost, Secondary Actions: Raise, Fixture - Chrome - Profile\nHTML 콘텐츠 Fixture\n27 증감자 (settable, float) 수량, Value: 1</app_state>' }, { type: "image", mimeType: "image/png", data: "bmV3" }] });
       const partial = await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing", fullTree: true } });

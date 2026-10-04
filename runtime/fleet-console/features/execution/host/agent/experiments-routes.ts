@@ -109,7 +109,7 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
       ctx.host.operations.patch(operation.id, { payload });
     }
     const answered = requests.answer(operation.id, requestId, decision);
-    if (!answered.ok) { ctx.host.http.writeJson(res, answered.error === "request_not_found" ? 404 : 409, { error: answered.error }); return true; }
+    if (!answered.ok) { ctx.host.http.writeJson(res, 404, { error: answered.error }); return true; }
     ctx.host.http.writeJson(res, 200, { decision, capability: answered.capability });
     return true;
   }

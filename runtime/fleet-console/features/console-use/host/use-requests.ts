@@ -12,9 +12,11 @@ import { randomUUID } from "node:crypto";
 
 export type UseCapability = "console" | "computer";
 export type UseAnswer = "deny" | "turn" | "always";
-/** 붙잡은 호출의 결말. `authorized` 는 사람이 답하기 전에 다른 길(메뉴 스위치 등)로 허용이 선 경우다. */
-export type UseHoldOutcome = "turn" | "always" | "authorized" | "declined" | "no_response" | "stopped";
-export type UseRequestBlock = "experiment_disabled";
+/**
+ * 붙잡은 호출의 결말. `authorized` 는 사람이 답하기 전에 다른 길(메뉴 스위치 등)로 허용이 선 경우고,
+ * `withdrawn` 은 사람의 답으로 허용할 수 없게 된 경우(예: 실험 스위치를 끔)다.
+ */
+export type UseHoldOutcome = "turn" | "always" | "authorized" | "declined" | "no_response" | "stopped" | "withdrawn";
 
 export interface UseRequestView {
   readonly id: string;
@@ -22,8 +24,6 @@ export interface UseRequestView {
   readonly capability: UseCapability;
   /** 이 요청에 합쳐진 도구 이름(중복 없이, 들어온 순서). 인자·내용은 싣지 않는다. */
   readonly tools: readonly string[];
-  /** 사람이 이 카드에서 바로 허용할 수 없는 사유. 풀리면 null 로 돌아온다. */
-  readonly blocked: UseRequestBlock | null;
   readonly expiresAt: number;
 }
 
@@ -34,13 +34,13 @@ export interface UseHoldInput {
   readonly signal?: AbortSignal;
   /** 지금 이 호출이 이미 허용되는가 — 메뉴 스위치가 켜지면 답을 기다리지 않고 풀어 준다. */
   readonly authorized: () => boolean;
-  /** 카드에서 허용할 수 없게 막는 사유. 매 조회마다 다시 읽는다. */
-  readonly blocked?: () => UseRequestBlock | null;
+  /** 참이 되면 사람의 답으로도 허용할 수 없다 — 카드를 거두고 `withdrawn` 으로 끝낸다. 순찰마다 다시 읽는다. */
+  readonly withdrawn?: () => boolean;
 }
 
 export interface UseRequestBroker {
   hold(input: UseHoldInput): Promise<UseHoldOutcome>;
-  answer(operationId: string, requestId: string, answer: UseAnswer): { readonly ok: true; readonly capability: UseCapability } | { readonly ok: false; readonly error: "request_not_found" | "experiment_disabled" };
+  answer(operationId: string, requestId: string, answer: UseAnswer): { readonly ok: true; readonly capability: UseCapability } | { readonly ok: false; readonly error: "request_not_found" };
   /** 「이번 작업만」 허가가 살아 있는가. 유휴 시한을 넘긴 허가는 여기서 걷힌다. */
   granted(operationId: string, capability: UseCapability): boolean;
   /** 허가로 통과한 호출이 있었다 — 유휴 시한을 다시 잰다. */
@@ -112,14 +112,15 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
     options.onChange?.();
   };
 
-  // 메뉴 스위치·설정으로 허용이 선 것을 알아채는 순찰. 요청이 있을 때만 돈다.
+  // 메뉴 스위치·설정으로 허용이 서거나 거두어진 것을 알아채는 순찰. 요청이 있을 때만 돈다.
   let recheck: ReturnType<typeof setInterval> | null = null;
   const syncRecheck = () => {
     if (pending.size > 0 && !recheck && !disposed) {
       recheck = setInterval(() => {
         for (const request of [...pending.values()]) {
           const waiter = request.waiters.values().next().value;
-          if (waiter?.input.authorized()) finish(request, "authorized");
+          if (withdrawnOf(request)) finish(request, "withdrawn");
+          else if (waiter?.input.authorized()) finish(request, "authorized");
         }
         syncRecheck();
       }, options.recheckMs ?? 250);
@@ -130,13 +131,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
     }
   };
 
-  const blockedOf = (request: PendingRequest): UseRequestBlock | null => {
-    for (const waiter of request.waiters) {
-      const blocked = waiter.input.blocked?.() ?? null;
-      if (blocked) return blocked;
-    }
-    return null;
-  };
+  const withdrawnOf = (request: PendingRequest): boolean => [...request.waiters].some((waiter) => waiter.input.withdrawn?.() === true);
 
   const granted = (operationId: string, capability: UseCapability) => {
     const k = key(operationId, capability);
@@ -149,6 +144,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
   return {
     hold(input) {
       if (disposed || input.signal?.aborted) return Promise.resolve("stopped");
+      if (input.withdrawn?.() === true) return Promise.resolve("withdrawn");
       if (input.authorized()) return Promise.resolve("authorized");
       const k = key(input.operationId, input.capability);
       let request = pending.get(k);
@@ -190,7 +186,8 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
     answer(operationId, requestId, answer) {
       const request = [...pending.values()].find((candidate) => candidate.id === requestId && candidate.operationId === operationId);
       if (!request) return { ok: false, error: "request_not_found" };
-      if (answer !== "deny" && blockedOf(request)) return { ok: false, error: "experiment_disabled" };
+      // 순찰 사이에 거두어졌으면 허용 답은 받지 않고 요청을 거둔다 — 붙잡힌 호출은 `withdrawn` 으로 끝난다.
+      if (answer !== "deny" && withdrawnOf(request)) { finish(request, "withdrawn"); return { ok: false, error: "request_not_found" }; }
       if (answer === "turn") { grants.set(key(operationId, request.capability), now()); scheduleGrantExpiry(key(operationId, request.capability)); }
       finish(request, answer === "deny" ? "declined" : answer);
       return { ok: true, capability: request.capability };
@@ -226,7 +223,6 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
         operationId: request.operationId,
         capability: request.capability,
         tools: [...request.tools],
-        blocked: blockedOf(request),
         expiresAt: request.expiresAt,
       }));
       const active = { console: [] as string[], computer: [] as string[] };
