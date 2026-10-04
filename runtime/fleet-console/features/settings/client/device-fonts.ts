@@ -111,6 +111,18 @@ function isBusy(status: DeviceFontsState["status"]): boolean {
   return status === "loading" || status === "awaitingDesktop";
 }
 
+/** 이 페이지가 지금 보이는가. 숨은 탭에서는 서체 열거가 거절되므로 자동 로드는 보일 때만 시작한다. */
+export function usePageVisible(): boolean {
+  const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", update);
+    update();
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+  return visible;
+}
+
 /** API가 없거나 첫 조회가 끝나기 전이면 null. 권한 상태는 버튼을 보일지 정할 때만 쓴다. */
 export function useDeviceFontsPermission(): LocalFontsPermission | null {
   const supported = localFontsSupported();

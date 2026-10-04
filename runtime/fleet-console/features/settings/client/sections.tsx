@@ -22,7 +22,7 @@ import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { renderMessage, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 import { setActiveTheme, setUnfocusedPanelFade } from "../../../core/client/src/integration/store.js";
 import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
-import { loadDeviceFonts, requestDesktopDeviceFonts, useDeviceFonts, useDeviceFontsPermission } from "./device-fonts.js";
+import { loadDeviceFonts, requestDesktopDeviceFonts, useDeviceFonts, useDeviceFontsPermission, usePageVisible } from "./device-fonts.js";
 import { ExperimentsSection } from "./experiments-section.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
@@ -495,11 +495,14 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
   // 이미 허용된 기기라면 묻지 않고 불러온다 — 허용된 상태의 열거에는 사용자 제스처가 필요 없다. Desktop이 이 기기의
   // Console에 미리 허용한 경우, 원격 Console을 이 실행에서 허용한 경우, 브라우저 사이트가 허용된 경우가 여기에 든다.
   // 'prompt'에서는 버튼을 기다린다. 목록은 여전히 이 화면의 메모리에만 머문다.
+  // 보이는 화면에서만 시작한다 — 브라우저는 숨은 페이지의 열거를 거절하고(Edge SecurityError, Chrome 거절), 그 실패는
+  // 자동으로 되풀이하지 않으므로 버튼을 누르기 전까지 남는다. 탭이 보이게 되면 다시 시도한다.
+  const pageVisible = usePageVisible();
   useEffect(() => {
     // 거부로 판정했던 상태(브라우저 거부, Desktop 거부)에서도 허용이 확인되면 되살린다. 'failed'는 제외한다 —
     // 허용된 채 실패한 열거를 되풀이하지 않기 위해서다(버튼으로 다시 시도한다).
-    if (devicePermission === "granted" && (deviceFonts.status === "idle" || deviceFonts.status === "denied" || deviceFonts.status === "desktopDenied")) void loadDeviceFonts();
-  }, [devicePermission, deviceFonts.status]);
+    if (pageVisible && devicePermission === "granted" && (deviceFonts.status === "idle" || deviceFonts.status === "denied" || deviceFonts.status === "desktopDenied")) void loadDeviceFonts();
+  }, [pageVisible, devicePermission, deviceFonts.status]);
   // 이 기기의 목록을 받았으면 그것이 진실이다. 호스트에만 있는 family는 "이 기기에 없음"으로 내린다.
   // Windows 호스트 목록은 등폭 여부가 비어 온다 — 이 화면이 그릴 수 있는 것은 여기서 재서 고친다.
   const hostFonts = useMemo(() => correctHostMonospace(installedFonts, (family) => fontResolves(family)), [installedFonts]);
