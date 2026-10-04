@@ -31,9 +31,11 @@ const TEXT_LIMIT = 200_000;
 /**
  * `resolution: "device"` 캡처의 상한. 기기 배율은 셸이 알린 화면 배율(pane.scale)을 따르되 이 배율을 넘지 않고,
  * 출력 픽셀 수가 이 한도를 넘으면 그 안에 들도록 배율을 낮춘다(최소 1, 즉 CSS 크기). 시트 정지 화면용이다.
+ * 픽셀 한도는 Desktop 중계 본문 64 MiB 에서 정한다 — 압축되지 않는 RGBA PNG(4B/px)의 base64 가 한도 안에 남아야 한다.
+ * 3200² 는 최악 약 52 MiB, 4096² 는 85 MiB 라 중계가 거절하고 캡처가 시간 초과까지 묶인다.
  */
 const DEVICE_CAPTURE_MAX_SCALE = 2;
-const DEVICE_CAPTURE_MAX_PIXELS = 4096 * 4096;
+const DEVICE_CAPTURE_MAX_PIXELS = 3200 * 3200;
 
 /** 브라우저를 쓸 수 없는 까닭. 도구·패널·글리프가 같은 낱말로 안내한다. */
 export type BrowserUnavailableReason = "desktop_required" | "shared";
