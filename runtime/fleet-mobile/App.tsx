@@ -275,16 +275,18 @@ export default function App(): React.JSX.Element {
       <StatusBar barStyle="light-content" backgroundColor="#111318" />
       <FleetConsoleView ref={consoleRef} style={styles.console} onFleetEvent={onFleetEvent} />
       {screen === "console" && state !== "connected" ? (
-        <View style={[styles.overlay, { paddingTop: insets.top, paddingBottom: insets.bottom }]} accessible accessibilityRole="summary">
-          <Text style={styles.eyebrow}>FLEET CONSOLE</Text>
-          <Text style={styles.title}>{targetLabel ?? "Mobile access"}</Text>
-          <Text style={styles.message}>{MESSAGES[state]}</Text>
-          {detail ? <Text style={styles.detail}>{detail}</Text> : null}
-          {state === "error" && retryLeft !== null ? (
-            <Text style={styles.countdown}>
-              {retryLeft > 0 ? `You can try again in ${retryLeft}s.` : "You can try again now."}
-            </Text>
-          ) : null}
+        <View style={[styles.overlay, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+          <View style={styles.overlayStatus} accessible accessibilityRole="summary">
+            <Text style={styles.eyebrow}>FLEET CONSOLE</Text>
+            <Text style={styles.title}>{targetLabel ?? "Mobile access"}</Text>
+            <Text style={styles.message}>{MESSAGES[state]}</Text>
+            {detail ? <Text style={styles.detail}>{detail}</Text> : null}
+            {state === "error" && retryLeft !== null ? (
+              <Text style={styles.countdown}>
+                {retryLeft > 0 ? `You can try again in ${retryLeft}s.` : "You can try again now."}
+              </Text>
+            ) : null}
+          </View>
           {state === "error" ? (
             <Pressable
               accessibilityRole="button"
@@ -504,6 +506,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 36,
     backgroundColor: "#111318",
   },
+  overlayStatus: { alignItems: "center", maxWidth: "100%" },
   eyebrow: { color: "#a89572", fontSize: 11, fontWeight: "700", letterSpacing: 2.2, marginBottom: 14 },
   title: { color: "#f1eee8", fontSize: 29, fontWeight: "600", letterSpacing: -0.5, textAlign: "center" },
   message: { color: "#b9b5ae", fontSize: 16, lineHeight: 24, marginTop: 16, maxWidth: 360, textAlign: "center" },
