@@ -1,5 +1,14 @@
 /* 승인 A: 한 줄 글자 목차와 한 단계 그룹. 색·서체는 Console의 네 테마와 역할 축을 그대로 쓴다. */
 .settings-pane { gap: 20px; padding: 12px 16px 28px; }
+/* 설정은 레일 폭 전체를 읽는 시트다 — 「도구 패널 불투명도」 슬롯 유리(rail.css .right-rail-panel-slot::before)만
+   깔리면 다크에서 그룹 사이·섹션 제목·하단 여백으로 뒤 캔버스 글자가 비친다. 분할 detail 창(.rail-pane.role-detail)과
+   같은 재질을 불투명 --float-underlay 위에 깐다. 목록 primary 페인은 슬라이더가 겨냥하는 유리라 그대로 둔다.
+   대가: 슬라이더가 이 페인 안에 있어도 그 효과는 설정 밖 목록 페인에서만 보인다. */
+.rail-pane-body > .settings-pane {
+  background:
+    linear-gradient(var(--glass-tint-expanded), var(--glass-tint-expanded)),
+    var(--float-underlay);
+}
 .settings-pane .settings-search { min-height: 32px; border: 0; border-radius: var(--radius-xs); background: color-mix(in oklab, var(--text-primary) 6%, transparent); }
 .settings-index { position: relative; min-width: 0; border-bottom: 1px solid var(--hairline); }
 .settings-index-tabs { display: flex; gap: 18px; overflow-x: auto; scrollbar-width: none; min-width: 0; padding: 0 2px; }
