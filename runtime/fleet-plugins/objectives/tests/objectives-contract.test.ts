@@ -523,6 +523,23 @@ describe("Objectives contract", () => {
       hostChat.get(reviewer.id)!.pending = null;
       expect(shown()).toMatchObject({ model: "sonnet", next: { model: "opus[1m]", failed: "coordinates_not_applied" } });
       await route("member/next-cancel", { objectiveId: objective.id, memberId: reviewer.id });
+      // 감시자가 저장한 실패 줄 — 실행값이 예약과 다르면 남고, 사람이 채팅에서 그 모델로 바꾸면(launch-changed) 저장 기록째 거둔다.
+      await pick("opus[1m]", "high");
+      hostChat.get(reviewer.id)!.pending = null;
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(store.storedMember(objective.id, reviewer.id)?.next).toMatchObject({ model: "opus[1m]", failed: "coordinates_not_applied" });
+      launch.operationChanged(reviewer.id);
+      expect(shown().next).toMatchObject({ model: "opus[1m]", failed: "coordinates_not_applied" });
+      Object.assign(hostChat.get(reviewer.id)!, { model: "opus[1m]", effort: "high" });
+      Object.assign(session(), { model: "opus[1m]", effort: "high" });
+      launch.operationChanged(reviewer.id);
+      expect(shown()).toMatchObject({ model: "opus[1m]", effort: "high", next: null });
+      // 다시 다른 모델로 바꿔도 거둔 줄은 되살아나지 않는다.
+      Object.assign(hostChat.get(reviewer.id)!, { model: "sonnet", effort: "low" });
+      Object.assign(session(), { model: "sonnet", effort: "low" });
+      launch.operationChanged(reviewer.id);
+      expect(shown()).toMatchObject({ model: "sonnet", next: null });
+      expect(store.storedMember(objective.id, reviewer.id)?.next).toBeUndefined();
     } finally { vi.useRealTimers(); }
     // 유휴 채팅은 곧바로 바뀐다 — 실행값은 호스트가 고친 세션 좌표에만 있어도, 방송된 행이 새 실행값을 말한다.
     activity.set(reviewer.id, "idle");

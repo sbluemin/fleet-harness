@@ -1281,7 +1281,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
     operationChanged(operationId) {
       const current = store.find(operationId) ?? store.findMember(operationId)?.objective;
-      if (current) store.refresh(current.id);
+      if (!current) return;
+      // 경계에서 적용되지 못한 호스트 예약 줄은 감시가 끝났다 — 사람이 채팅에서 그 모델로 직접 바꿨으면 예약이 이뤄진 것이라 거둔다.
+      // 실행값이 예약과 다르면 실패 표시를 그대로 둔다.
+      const next = store.storedMember(current.id, operationId)?.next;
+      const host = next?.failed && next.held === "host" ? hostCoordinates(operationId) : null;
+      if (host && heldNextOutcome(next!, host) === "applied") store.memberLaunchState(current.id, operationId, { next: null, routed: null });
+      store.refresh(current.id);
     },
 
     dispose: () => {
