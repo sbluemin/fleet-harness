@@ -864,7 +864,7 @@ export function AgentChatComposer({
             <div className="agent-chat-composer-tools">
               <ComposerAttachControl
                 className="agent-chat-composer-attach"
-                label={t("terminal.chat.composerAttach")}
+                label={t("terminal.mobile.attach")}
                 onFiles={addFiles}
               >
                 <MobileGlyph name="plus" />
@@ -877,8 +877,7 @@ export function AgentChatComposer({
                   className="agent-chat-composer-stop"
                   disabled={stopping}
                   onClick={() => { void stop(); }}
-                  aria-label={t("terminal.chat.stopAria")}
-                  title={t("terminal.chat.stopTitle")}
+                  aria-label={t("terminal.mobile.stop")}
                 >
                   <MobileGlyph name="stop" />
                 </button>
@@ -890,7 +889,8 @@ export function AgentChatComposer({
                   // 초점을 옮긴다 — 손가락이 닿은 자리에서 바로 쓰기 시작하게.
                   aria-disabled={!canSend || undefined}
                   onClick={() => { if (canSend) void send(); else inputRef.current?.focus(); }}
-                  aria-label={t(turnRunning ? "terminal.chat.composerQueue" : "terminal.chat.composerSend")}
+                  // 폰에는 Enter 키 안내가 뜻이 없다 — 명세 이름(「보내기」·「멈춤」)만 싣는다(FD-30 ①).
+                  aria-label={t(turnRunning ? "terminal.mobile.queue" : "terminal.mobile.send")}
                 >
                   <MobileGlyph name="send" strokeWidth={2.2} />
                 </ComposerSubmitButton>
