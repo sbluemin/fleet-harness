@@ -39,30 +39,42 @@ export async function loadDeviceFonts(): Promise<void> {
 const DESKTOP_DIALOG_APPEAR_MS = 1500;
 const DESKTOP_ANSWER_POLL_MS = 300;
 const DESKTOP_ANSWER_POLLS = 10;
+const DESKTOP_UNSEEN_POLL_MS = 1000;
+const DESKTOP_UNSEEN_LIMIT_MS = 120_000;
+const PERMISSION_RECHECK_MIN_MS = 1000;
 
 /**
  * Desktop이 원격 Console에 서체 목록을 내주기 전에 사용자에게 묻게 한다. 셸은 항해를 막고 부모 창 모달
  * 확인창을 띄운다. Electron은 권한 변화를 알리지 않으므로 화면은 답을 다시 물어 알아낸다.
- * - 창이 포커스를 잃으면(확인창) 되찾을 때까지 기다린다 — 사용자가 오래 열어 두어도 시간 상한은 없다.
- * - 포커스를 잃지 않았다면 셸이 이미 답을 기억하고 있거나, 확인창이 늦게 떴거나, 이 플랫폼이 blur를 주지
- *   않는 것이다. 그래서 바로 판정하지 않고 짧게 여러 번 다시 묻는다(늦게 뜬 확인창이면 다시 기다린다).
- * - 확인창이 닫히는 순간과 셸이 답을 기록하는 순간의 순서도 정해져 있지 않아, 그 경주도 같은 재조회가 흡수한다.
- * 그래도 허용이 아니면 거부로 본다. 오판이었다면 포커스·가시성 재조회와 자동 로드가 같은 화면에서 되살린다.
+ * - 창이 포커스를 잃으면(확인창이 뜬 것) 되찾을 때까지 기다린다 — 시간 상한은 없다. 닫힌 뒤에는 셸이 답을
+ *   기록하는 순간과의 경주를 짧은 재조회로 흡수하고, 그래도 허용이 아니면 거부로 본다.
+ * - 포커스를 잃지 않으면 확정하지 않는다. 확인창이 렌더러에 blur를 주지 않는 플랫폼(macOS 시트 등), 늦게 뜬
+ *   확인창, 이미 답을 기억한 셸을 화면은 구별할 수 없다 — 그래서 대기 상태를 유지한 채 2분 동안 1초마다 묻고,
+ *   그 사이 포커스를 잃으면 위 경로로 넘어간다. 2분이 지나도 허용이 아니면 거부로 본다.
+ * 거부로 본 뒤에도 같은 화면에서 되살아난다: 권한 재조회(포커스·가시성·입력·주기)와 자동 로드가 이어받는다.
  */
 export async function requestDesktopDeviceFonts(): Promise<void> {
   if (isBusy(state.status)) return;
   publish({ status: "awaitingDesktop" });
-  await new Promise<void>((resolve) => {
-    const onBlur = () => { clearTimeout(timer); resolve(); };
-    const timer = setTimeout(() => { window.removeEventListener("blur", onBlur); resolve(); }, DESKTOP_DIALOG_APPEAR_MS);
-    window.addEventListener("blur", onBlur, { once: true });
-    location.assign(desktopLocalFontsUrl(location.origin));
-  });
+  let dialogSeen = false;
+  const onBlur = () => { dialogSeen = true; };
+  window.addEventListener("blur", onBlur);
   let granted = false;
-  for (let attempt = 0; attempt < DESKTOP_ANSWER_POLLS && !granted; attempt += 1) {
-    await untilFocused();
-    granted = await localFontsPermission() === "granted";
-    if (!granted) await new Promise((resolve) => setTimeout(resolve, DESKTOP_ANSWER_POLL_MS));
+  try {
+    location.assign(desktopLocalFontsUrl(location.origin));
+    await waitUntil(() => dialogSeen, DESKTOP_DIALOG_APPEAR_MS);
+    if (dialogSeen || !document.hasFocus()) {
+      granted = await answerAfterDialog();
+    } else {
+      const deadline = Date.now() + DESKTOP_UNSEEN_LIMIT_MS;
+      while (Date.now() < deadline) {
+        if (await localFontsPermission() === "granted") { granted = true; break; }
+        if (dialogSeen || !document.hasFocus()) { granted = await answerAfterDialog(); break; }
+        await sleep(DESKTOP_UNSEEN_POLL_MS);
+      }
+    }
+  } finally {
+    window.removeEventListener("blur", onBlur);
   }
   if (!granted) {
     publish({ status: "desktopDenied" });
@@ -70,6 +82,24 @@ export async function requestDesktopDeviceFonts(): Promise<void> {
   }
   const result = await queryLocalFontFamilies();
   publish(result.status === "loaded" ? { status: "loaded", fonts: result.fonts } : { status: "failed" });
+}
+
+async function answerAfterDialog(): Promise<boolean> {
+  for (let attempt = 0; attempt < DESKTOP_ANSWER_POLLS; attempt += 1) {
+    await untilFocused();
+    if (await localFontsPermission() === "granted") return true;
+    await sleep(DESKTOP_ANSWER_POLL_MS);
+  }
+  return false;
+}
+
+async function waitUntil(done: () => boolean, limitMs: number): Promise<void> {
+  const deadline = Date.now() + limitMs;
+  while (!done() && Date.now() < deadline) await sleep(100);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function untilFocused(): Promise<void> {
@@ -90,19 +120,41 @@ export function useDeviceFontsPermission(): LocalFontsPermission | null {
   useEffect(() => supported ? watchLocalFontsPermission(setPermission) : undefined, [supported, status]);
   // Electron은 check 결과가 바뀌어도 change 이벤트를 내지 않는다. 확인창이 닫히거나 창으로 돌아올 때마다 다시
   // 물어, 늦게 기록된 Desktop의 답도 같은 화면에서 반영되게 한다.
+  // 확인창이 렌더러에 포커스 이벤트를 주지 않는 플랫폼에서는 사용자의 다음 입력이 그 신호다 — 입력마다(초당 한 번까지) 묻는다.
   useEffect(() => {
     if (!supported) return;
     let current = true;
+    let lastCheck = 0;
     const recheck = () => { void localFontsPermission().then((next) => { if (current) setPermission(next); }); };
+    const onInput = () => {
+      if (Date.now() - lastCheck < PERMISSION_RECHECK_MIN_MS) return;
+      lastCheck = Date.now();
+      recheck();
+    };
     const onVisibility = () => { if (document.visibilityState === "visible") recheck(); };
     window.addEventListener("focus", recheck);
+    window.addEventListener("pointerdown", onInput, true);
+    window.addEventListener("keydown", onInput, true);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       current = false;
       window.removeEventListener("focus", recheck);
+      window.removeEventListener("pointerdown", onInput, true);
+      window.removeEventListener("keydown", onInput, true);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [supported]);
+  // Desktop 거부로 본 뒤에도 2분 동안은 1초마다 묻는다 — 늦게 기록된 허용을 입력 없이도 받아 자동 로드로 넘긴다.
+  useEffect(() => {
+    if (!supported || status !== "desktopDenied") return;
+    let current = true;
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - startedAt > DESKTOP_UNSEEN_LIMIT_MS) { clearInterval(timer); return; }
+      void localFontsPermission().then((next) => { if (current) setPermission(next); });
+    }, DESKTOP_UNSEEN_POLL_MS);
+    return () => { current = false; clearInterval(timer); };
+  }, [supported, status]);
   // 첫 답 전에 버튼을 세웠다가 거부로 걷으면 깜박인다 — 답이 올 때까지 없는 것으로 둔다.
   return supported ? permission : null;
 }
