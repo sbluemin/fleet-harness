@@ -80,7 +80,13 @@ function objectiveGlyph(objective: Objective, operations: OperationIndex): Glyph
 }
 
 const criteriaMet = (objective: Objective) => objective.criteria.filter((criterion) => criterion.met !== undefined).length;
-const questionCount = (objective: Objective) => objective.decisionRequest?.questions.length ?? 0;
+/** 결정은 요청 단위로 센다 — 목표마다 요청은 하나이고, 질문이 여럿이어도 「결정 요청 1건」이다. */
+const requestCount = (objective: Objective) => (hasDecisionRequest(objective) ? 1 : 0);
+/**
+ * 목록에 서는 목표 — 기록이 없는 항목(`recorded === false`, 따로 만든 에이전트 Operation 이 「목표 밖」에 선 것)은 목표가 아니다.
+ * 데스크톱 보드는 그것을 「목표 밖」으로 가르지만, 모바일 목표 화면에는 그 구역이 없다.
+ */
+const isListedObjective = (objective: Objective) => !objective.removed && objective.recorded !== false;
 
 /** 모든 Theater 에서 목표 하나 — 「확인 필요」에서 다른 Theater 의 목표로 와도 찾는다. 같은 상태면 같은 참조. */
 function findObjective(objectiveId: string): Objective | null {
@@ -104,11 +110,11 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
   const hit = attentionMemo.get(key);
   if (hit && hit.source === source && hit.locale === locale) return hit.items;
   const t = getT(locale);
-  const pending = source.filter((objective) => hasDecisionRequest(objective) && !objective.removed);
+  const pending = source.filter((objective) => hasDecisionRequest(objective) && isListedObjective(objective));
   const items = pending.length === 0 ? NO_ITEMS : pending.map((objective) => ({
     id: objective.id,
     title: objective.title,
-    reason: t("objectives.mobile.attention", { count: questionCount(objective) }),
+    reason: t("objectives.mobile.attention", { count: requestCount(objective) }),
     open: () => revealObjective({ objectiveId: objective.id }),
   }));
   attentionMemo.set(key, { source, locale, items });
@@ -135,7 +141,7 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
     if (target) panes.open({ paneId: OBJECTIVE_MOBILE_DETAIL_PANE, params: { objectiveId: target.objectiveId } });
   }, [reveal, panes]);
 
-  const shown = state.objectives.filter((objective) => !objective.removed);
+  const shown = state.objectives.filter(isListedObjective);
   const need = shown.filter((objective) => hasDecisionRequest(objective));
   const running = shown.filter((objective) => !objective.done && !hasDecisionRequest(objective));
   const done = shown.filter((objective) => !!objective.done);
@@ -143,7 +149,8 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
 
   const row = (objective: Objective) => {
     const pending = hasDecisionRequest(objective);
-    const members = sessionsOf(objective, operations, t).length;
+    // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
+    const members = objective.members.length;
     const total = objective.criteria.length;
     return (
       <button key={objective.id} type="button" className="objectives-m-row is-two" onClick={() => open(objective)}>
@@ -151,7 +158,7 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
         <span className="objectives-m-tx">
           {objective.title}
           <small className={pending ? "is-awaiting" : undefined}>
-            {pending ? t("objectives.mobile.row.decision", { count: questionCount(objective) }) : ""}
+            {pending ? t("objectives.mobile.row.decision", { count: requestCount(objective) }) : ""}
             {total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members })}
           </small>
         </span>
