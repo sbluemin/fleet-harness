@@ -119,6 +119,85 @@ describe("secure window policy", () => {
     expect(callback).toHaveBeenLastCalledWith(false);
   });
 
+  // 이 기기의 서체 목록은 핑거프린팅 표면이다. 이 기기의 Console 화면 main frame에는 바로 내주고, 승인된 원격
+  // Console에는 사용자가 확인창에서 허용했을 때만 이 실행 동안 내준다. 거부도 기억해 확인창을 되풀이하지 않는다.
+  it("grants local fonts to the loopback Console and to a remote one only after the user allows it", async () => {
+    const REMOTE = "https://fleet.example:8443";
+    const OTHER = "https://other.example:8443";
+    const listeners = new Map<string, (...args: never[]) => unknown>();
+    const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn() };
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session };
+    let answer: (allowed: boolean) => void = () => undefined;
+    const confirmRemoteLocalFonts = vi.fn((_origin: string) => new Promise<boolean>((resolve) => { answer = resolve; }));
+    const policy = applyWindowPolicy(contents as never, async () => undefined, { confirmRemoteLocalFonts });
+    const check = session.setPermissionCheckHandler.mock.calls[0]![0] as (requestingContents: unknown, permission: string, requestingOrigin: string, details: { requestingUrl?: string; isMainFrame: boolean }) => boolean;
+    const request = session.setPermissionRequestHandler.mock.calls[0]![0] as (_contents: unknown, permission: string, callback: (allowed: boolean) => void, details: { requestingUrl: string; isMainFrame: boolean }) => void;
+    const ask = (origin: string, isMainFrame = true) => {
+      const preventDefault = vi.fn();
+      (listeners.get("will-navigate") as (event: { preventDefault(): void }, url: string, isInPlace: boolean, isMainFrame: boolean) => void)({ preventDefault }, `${origin}/console/?desktop-surface=local-fonts`, false, isMainFrame);
+      return preventDefault;
+    };
+    const fontsAllowed = (origin: string) => check(contents, "local-fonts", origin, { requestingUrl: `${origin}/console/settings`, isMainFrame: true });
+    const callback = vi.fn();
+
+    policy.activateConsoleOrigin(HOME);
+    expect(fontsAllowed(HOME)).toBe(true);
+    request(contents, "local-fonts", callback, { requestingUrl: `${HOME}/console/settings`, isMainFrame: true });
+    expect(callback).toHaveBeenLastCalledWith(true);
+    request(contents, "local-fonts", callback, { requestingUrl: `${HOME}/console/settings`, isMainFrame: false });
+    expect(callback).toHaveBeenLastCalledWith(false);
+    request(contents, "unknown", callback, { requestingUrl: `${HOME}/console/settings`, isMainFrame: true });
+    expect(callback).toHaveBeenLastCalledWith(false);
+    expect(check({}, "local-fonts", HOME, { requestingUrl: `${HOME}/console/settings`, isMainFrame: true })).toBe(false);
+    // 루프백은 이미 허용돼 있으므로 신호는 묻지 않고 삼킨다.
+    expect(ask(HOME)).toHaveBeenCalledOnce();
+    expect(confirmRemoteLocalFonts).not.toHaveBeenCalled();
+
+    policy.admitRemoteConsoleOrigin(REMOTE);
+    policy.activateConsoleOrigin(REMOTE);
+    expect(fontsAllowed(REMOTE)).toBe(false);
+    // subframe의 신호는 묻지 않는다.
+    ask(REMOTE, false);
+    expect(confirmRemoteLocalFonts).not.toHaveBeenCalled();
+    // 확인창이 떠 있는 동안 거듭된 신호는 두 번째 창을 띄우지 않는다.
+    expect(ask(REMOTE)).toHaveBeenCalledOnce();
+    ask(REMOTE);
+    expect(confirmRemoteLocalFonts).toHaveBeenCalledOnce();
+    expect(confirmRemoteLocalFonts).toHaveBeenLastCalledWith(REMOTE);
+    answer(true);
+    await vi.waitFor(() => expect(fontsAllowed(REMOTE)).toBe(true));
+    request(contents, "local-fonts", callback, { requestingUrl: `${REMOTE}/console/settings`, isMainFrame: true });
+    expect(callback).toHaveBeenLastCalledWith(true);
+    expect(check({}, "local-fonts", REMOTE, { requestingUrl: `${REMOTE}/console/settings`, isMainFrame: true })).toBe(false);
+    expect(check(contents, "local-fonts", REMOTE, { requestingUrl: `${REMOTE}/console/settings`, isMainFrame: false })).toBe(false);
+    ask(REMOTE);
+    expect(confirmRemoteLocalFonts).toHaveBeenCalledOnce();
+
+    // 거부는 이 실행 동안 기억한다 — 원격 페이지가 신호를 되풀이해도 확인창은 다시 뜨지 않는다.
+    policy.admitRemoteConsoleOrigin(OTHER);
+    policy.activateConsoleOrigin(OTHER);
+    ask(OTHER);
+    answer(false);
+    await vi.waitFor(() => expect(confirmRemoteLocalFonts).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fontsAllowed(OTHER)).toBe(false);
+    ask(OTHER);
+    expect(confirmRemoteLocalFonts).toHaveBeenCalledTimes(2);
+
+    // 승인을 거둔 origin의 허용은 남지 않고, 활성 origin이 아닌 곳을 향한 신호는 묻지 않는다.
+    policy.withdrawRemoteConsoleOrigin(REMOTE);
+    policy.admitRemoteConsoleOrigin(REMOTE);
+    policy.activateConsoleOrigin(REMOTE);
+    expect(fontsAllowed(REMOTE)).toBe(false);
+    ask(OTHER);
+    expect(confirmRemoteLocalFonts).toHaveBeenCalledTimes(2);
+    // 승인이 철회된 origin의 화면은 더 묻지 못한다.
+    policy.withdrawRemoteConsoleOrigin(REMOTE);
+    ask(REMOTE);
+    expect(confirmRemoteLocalFonts).toHaveBeenCalledTimes(2);
+    expect(fontsAllowed(REMOTE)).toBe(false);
+  });
+
   it("blocks popups and navigation while brokering HTTP links only", async () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
     const openExternal = vi.fn(async () => undefined);

@@ -8,6 +8,23 @@ export const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
 export const PICKER_AT_PARAM = "at";
 export const PICKER_ANCHOR_PARAM = "anchor";
 
+/**
+ * 원격 Console 화면이 이 기기의 서체 목록을 셸에게 청하는 신호. 셸이 같은 리터럴로 가로채 항해를 막고
+ * 확인창을 띄운다 — Electron의 권한 check에는 "묻기" 상태가 없어 브라우저처럼 프롬프트로 넘어갈 수 없다.
+ */
+export const LOCAL_FONTS_SURFACE = "local-fonts";
+
+export function desktopLocalFontsUrl(origin: string): string {
+  const url = new URL("/console/", `${origin}/`);
+  url.searchParams.set(PICKER_SURFACE_PARAM, LOCAL_FONTS_SURFACE);
+  return url.toString();
+}
+
+/** 셸이 이 신호를 안다고 게시했을 때만 묻는다. 옛 셸은 이 항해를 막지 않고 화면을 다시 읽는다. */
+export function desktopAsksForLocalFonts(capabilities: readonly string[]): boolean {
+  return capabilities.includes(LOCAL_FONTS_SURFACE);
+}
+
 export function desktopPickerUrl(homeOrigin: string, surface: string = PICKER_SURFACE_OPEN, at?: string, anchor?: string): string {
   const url = new URL("/console/", `${homeOrigin}/`);
   url.searchParams.set(PICKER_SURFACE_PARAM, surface);
@@ -34,6 +51,8 @@ export interface DesktopShellHome {
   readonly pending: boolean;
   /** 창을 든 Desktop 앱의 버전. 셸이 없거나 옛 Desktop이면 null. */
   readonly desktopVersion: string | null;
+  /** 셸이 해석한다고 게시한 Console 신호. 셸이 없거나 옛 Desktop이면 비어 있다. */
+  readonly capabilities: readonly string[];
 }
 
 type Listener = () => void;
@@ -42,7 +61,7 @@ type Listener = () => void;
  * "아직 모른다"와 "집이 없다"는 다르다. 둘을 하나의 null로 합치면, 답이 오기 전 잠깐 동안
  * 손님 콘솔이 자기가 집인 것처럼 보인다 — 그 사이 사용자가 칩을 누르면 남의 목록이 펼쳐진다.
  */
-let snapshot: DesktopShellHome = { origin: null, pending: true, desktopVersion: null };
+let snapshot: DesktopShellHome = { origin: null, pending: true, desktopVersion: null, capabilities: [] };
 const listeners = new Set<Listener>();
 
 function publish(next: DesktopShellHome): void {
@@ -77,10 +96,12 @@ export function useDesktopHomeOrigin(reloadToken = 0): DesktopShellHome {
       .then((shell) => {
         // 스트림이 먼저 실어 온 집을 뒤늦은 빈 답이 지우지 않는다 — 빈 답은 "아직 게시 전"일 수 있다.
         if (shell.origin === null && snapshot.origin !== null) return;
-        publish({ ...shell, pending: false });
+        // 셸은 집만 적은 몸을 먼저 게시하므로, 그 순간을 읽은 답이 능력을 실은 스트림 이벤트보다 늦게 올 수 있다.
+        // 빠진 능력은 "모른다"이지 "없다"가 아니다 — 스트림 경로처럼 이미 아는 값을 지우지 않는다.
+        publish({ ...shell, capabilities: shell.capabilities ?? snapshot.capabilities, pending: false });
       })
       // 끊긴 요청은 답이 아니다 — 이 화면은 이미 사라졌거나 곧 다시 묻는다.
-      .catch(() => { if (!controller.signal.aborted && snapshot.pending) publish({ origin: null, pending: false, desktopVersion: null }); });
+      .catch(() => { if (!controller.signal.aborted && snapshot.pending) publish({ origin: null, pending: false, desktopVersion: null, capabilities: [] }); });
     return () => controller.abort();
   }, [reloadToken]);
 
@@ -91,14 +112,21 @@ export function useDesktopHomeOrigin(reloadToken = 0): DesktopShellHome {
 export function applyDesktopShellSnapshot(value: unknown): void {
   const origin = readHomeOrigin(value);
   if (origin === null) return;
-  publish({ origin, pending: false, desktopVersion: readDesktopVersion(value) ?? snapshot.desktopVersion });
+  // 셸은 집만 적은 몸을 먼저, 버전과 능력을 실은 몸을 뒤에 보낸다 — 앞의 것이 뒤의 것을 지우지 않는다.
+  publish({ origin, pending: false, desktopVersion: readDesktopVersion(value) ?? snapshot.desktopVersion, capabilities: readCapabilities(value) ?? snapshot.capabilities });
 }
 
-async function fetchDesktopShell(signal?: AbortSignal): Promise<Pick<DesktopShellHome, "origin" | "desktopVersion">> {
+async function fetchDesktopShell(signal?: AbortSignal): Promise<Pick<DesktopShellHome, "origin" | "desktopVersion"> & { readonly capabilities: readonly string[] | null }> {
   const response = await fetch("/api/v1/desktop/shell", { signal });
-  if (!response.ok) return { origin: null, desktopVersion: null };
+  if (!response.ok) return { origin: null, desktopVersion: null, capabilities: null };
   const body: unknown = await response.json();
-  return { origin: readHomeOrigin(body), desktopVersion: readDesktopVersion(body) };
+  return { origin: readHomeOrigin(body), desktopVersion: readDesktopVersion(body), capabilities: readCapabilities(body) };
+}
+
+function readCapabilities(value: unknown): readonly string[] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entry = (value as Record<string, unknown>).capabilities;
+  return Array.isArray(entry) ? entry.filter((capability): capability is string => typeof capability === "string") : null;
 }
 
 function readDesktopVersion(value: unknown): string | null {

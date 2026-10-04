@@ -104,6 +104,11 @@
 .settings-font-popover .fc-font-browser__row-meta { white-space: normal; }
 .settings-font-popover .fc-font-browser__search { width: 100%; min-width: 0; box-sizing: border-box; }
 .settings-font-popover .fc-font-browser__row-status { white-space: normal; }
+.settings-font-popover .settings-font-note { margin: 0; }
+.settings-device-fonts { display: grid; justify-items: start; gap: 4px; }
+.settings-device-fonts-button { padding: 4px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: none; color: var(--text-primary); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-device-fonts-button:hover:not([aria-disabled="true"]) { background: var(--control-wash); }
+.settings-device-fonts-button[aria-disabled="true"] { cursor: progress; opacity: var(--control-disabled-opacity); }
 @container (max-width: 380px) {
   .settings-pane .settings-font-controls { flex-wrap: wrap; }
   .settings-pane :is(.fc-settings-row__control, .experiments-row-controls) { flex-wrap: wrap; }

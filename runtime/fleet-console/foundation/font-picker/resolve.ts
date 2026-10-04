@@ -94,6 +94,14 @@ export function fontDrawsText(familyName: string, probeText: string, options: Fo
   return covered;
 }
 
+/* "없음" 판정만 잊는다. 있는 서체가 세션 중에 사라지는 일은 드물지만, 화면을 열어 둔 채 서체를
+   설치하는 일은 흔하다 — 거짓을 계속 기억하면 그 서체는 새로고침 전까지 사용 불가로 남는다. */
+export function forgetUnresolvedFonts(): void {
+  for (const [key, resolved] of resolutionCache) {
+    if (!resolved) resolutionCache.delete(key);
+  }
+}
+
 export function clearFontResolutionCache(): void {
   resolutionCache.clear();
   coverageCache.clear();
