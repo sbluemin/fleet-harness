@@ -775,6 +775,44 @@
 .mobile-choice-row.is-selected { color: var(--m-text); }
 .mobile-choice-row.is-selected .mobile-choice-label { font-weight: var(--weight-bold); }
 .mobile-choice-row.is-selected .mobile-choice-icon { color: var(--m-text); }
+/* 설명 접기(P-2) — 5줄을 넘으면 4줄에서 말줄임, 「더 보기」가 그 자리에서 펼친다. */
+.fc-settings-row.is-mobile .fc-clamp-body.is-clamped { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
+.fc-settings-row.is-mobile .fc-settings-more { display: block; min-height: 0; padding: 4px 0 0; color: var(--m-text-nav); font: inherit; font-size: var(--m-fs-caption); background: transparent; border: 0; }
+
+/* 슬라이더 행(P-5) — 위 줄 [제목 … 값 · 기본값], 아래 줄 전체 폭 트랙(높이 4, 면 chip, 채움 text-nav, 손잡이 22 원). */
+:root .fc-settings-row.is-mobile:has(.fc-settings-slider) { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 12px; row-gap: 2px; align-items: center; }
+.fc-settings-row.is-mobile:has(.fc-settings-slider) .fc-settings-row__icon { display: none; }
+.fc-settings-row.is-mobile:has(.fc-settings-slider) .fc-settings-row__copy { grid-column: 1; grid-row: 1; }
+.fc-settings-row.is-mobile:has(.fc-settings-slider) .fc-settings-row__control,
+.fc-settings-row.is-mobile .fc-settings-slider { display: contents; }
+.fc-settings-row.is-mobile .fc-settings-slider__value { grid-column: 2; grid-row: 1; color: var(--m-text-muted); font-size: var(--m-fs-secondary); }
+:root .fc-settings-row.is-mobile .fc-settings-reset { grid-column: 3; grid-row: 1; min-height: 0; padding: 0; color: var(--m-text-nav); font-size: var(--m-fs-caption); font-weight: var(--weight-regular); background: transparent; border: 0; }
+.fc-settings-row.is-mobile .fc-settings-slider__range { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+.fc-settings-row.is-mobile .fleet-slider {
+  --slider-fill-tone: var(--m-text-nav);
+  --gauge-fill: var(--m-text-nav);
+  --surface-rim-strong: var(--m-chip);
+  --slider-face: radial-gradient(circle, var(--m-text) 0 11px, transparent 11.5px);
+  --slider-face-focus: radial-gradient(circle, var(--m-text) 0 11px, transparent 11.5px);
+  --gauge-face-lift: 0 0 0 transparent;
+}
+
+/* 체크 목록(P-5) — 묶음 카드 안의 행: [체크 상자 20][이름 17 / 설명 13], 최소 높이 52. */
+:root .fc-settings-card.is-mobile .fc-settings-card__body > .fc-settings-check { min-height: 52px; padding: 12px 16px; background: var(--m-surface); border-radius: 4px; }
+:root .fc-settings-card.is-mobile .fc-settings-card__body > .fc-settings-check:active { background: var(--m-selected); }
+:root .fc-settings-card.is-mobile .fc-settings-card__body > .fc-settings-check:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+:root .fc-settings-card.is-mobile .fc-settings-card__body > .fc-settings-check:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
+.fc-settings-card.is-mobile .fc-settings-check__label { color: var(--m-text); font-size: var(--m-fs-body); line-height: 23px; }
+.fc-settings-card.is-mobile .fc-settings-check__desc { color: var(--m-text-muted); font-size: var(--m-fs-caption); line-height: 18px; }
+
+/* 모델별 추론 강도 칩(AI Gateway 하위 화면) — 제목 아래 한 줄로 전체 폭을 쓴다. */
+:root .fc-settings-row.is-mobile:has(.ai-gateway-effort) { flex-wrap: wrap; row-gap: 10px; }
+.fc-settings-row.is-mobile:has(.ai-gateway-effort) .fc-settings-row__copy { flex-basis: 100%; }
+.fc-settings-row.is-mobile:has(.ai-gateway-effort) .fc-settings-row__control { flex: 1 1 100%; }
+.fc-settings-row.is-mobile .ai-gateway-effort { display: flex; flex-wrap: wrap; gap: 8px; }
+.fc-settings-row.is-mobile .ai-gateway-effort-label { display: none; }
+.fc-settings-row.is-mobile .ai-gateway-effort-level { min-height: 36px; padding: 0 14px; }
+
 /* 입력 시트(P-4) — 설명 → 입력칸 → 오류 줄, 발 왼쪽에 「지우기」. */
 .mobile-input-desc { margin: 0 0 12px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); line-height: 21px; }
 .mobile-input-wrap { position: relative; }

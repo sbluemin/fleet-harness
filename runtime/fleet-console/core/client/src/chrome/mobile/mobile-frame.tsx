@@ -5,7 +5,7 @@ import type { DeferredDeletionReceipt } from "../../integration/api.js";
 
 import { useConsoleState } from "../../hooks/use-store.js";
 import { forgetReportedMobileChrome, reportMobileChrome } from "../../integration/mobile-appearance-store.js";
-import { useConsoleLocale } from "../../i18n/index.js";
+import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { focusOperation } from "../../integration/store.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -18,6 +18,7 @@ import { MobileSheetHost } from "./mobile-sheet-host.js";
 import { MobileChoicePopup, MobileModelChoice } from "./mobile-choice-popup.js";
 import { openMobileChoice } from "./mobile-choice-store.js";
 import { openMobileInput } from "./mobile-input-sheet.js";
+import { openMobileSubScreen } from "./mobile-subscreen-store.js";
 import { MobileSettingsHostContext } from "@fleet-console/sdk/settings/browser";
 import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileBackBridge } from "./mobile-back.js";
@@ -67,7 +68,8 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   // 시스템 바 색(S-03): 드로어가 열리면 위·아래가 드로어 면, 시트가 열리면 아래가 시트 면. 앱이면 네이티브가 칠하고 브라우저는 무시한다.
   const drawerOpen = useMobileDrawerOpen();
   const sheetOpen = useMobileSheetStack().length > 0;
-  const settingsHost = useMemo(() => ({ openChoice: openMobileChoice, openInput: openMobileInput, ModelChoice: MobileModelChoice }), []);
+  const t = useT();
+  const settingsHost = useMemo(() => ({ moreLabel: t("mobile.settings.more"), openChoice: openMobileChoice, openInput: openMobileInput, openSubScreen: openMobileSubScreen, ModelChoice: MobileModelChoice }), [t]);
   const connection = useConsoleState().connection;
   const reportChrome = () => reportMobileChrome(drawerOpen ? "bg-deep" : "bg", sheetOpen ? "surface" : drawerOpen ? "bg-deep" : "bg");
   const reportChromeRef = useRef(reportChrome);

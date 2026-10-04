@@ -41,6 +41,8 @@ export type MobileAppearanceSnapshot = {
   readonly nativeOwned: boolean;
   /** 앱이 넘긴 지금 Console 표시값. 브라우저·구버전 셸이면 null. */
   readonly console: MobileConsoleIdentity | null;
+  /** v1.4 — 앱(Fleet 앱)의 버전 문자열. 브라우저·구버전 셸이면 null. */
+  readonly appVersion: string | null;
 };
 
 const COLOR_MODE_KEY = "fleet-console.mobile-color-mode";
@@ -54,6 +56,7 @@ type NativeAppearance = {
   readonly systemScheme: MobileScheme;
   readonly fontScale: MobileFontScale;
   readonly console: MobileConsoleIdentity | null;
+  readonly appVersion: string | null;
 };
 
 const IDENTITY_TONES: ReadonlySet<string> = new Set(["crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose"]);
@@ -86,7 +89,14 @@ function parseNativeAppearance(value: unknown): NativeAppearance | null {
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
   if (record.v !== 1 || !isColorMode(record.colorMode) || !isScheme(record.systemScheme) || !isFontScale(record.fontScale)) return null;
-  return { colorMode: record.colorMode, systemScheme: record.systemScheme, fontScale: record.fontScale, console: parseConsoleIdentity(record.console) };
+  return { colorMode: record.colorMode, systemScheme: record.systemScheme, fontScale: record.fontScale, console: parseConsoleIdentity(record.console), appVersion: parseAppVersion(record.app) };
+}
+
+/** v1.4 선택 필드 — 앱 버전 문자열(최대 64자). 없거나 틀리면 줄을 그리지 않는다. */
+function parseAppVersion(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  const version = (value as Record<string, unknown>).version;
+  return typeof version === "string" && version.trim().length > 0 && version.trim().length <= 64 ? version.trim() : null;
 }
 
 /** v1.1 선택 필드 — 없거나 틀리면 표시값만 비우고 겉모습 값은 그대로 쓴다(v1 셸 호환). */
@@ -133,14 +143,14 @@ function resolveScheme(colorMode: MobileColorMode, system: MobileScheme): Mobile
 }
 
 function fromNative(native: NativeAppearance): MobileAppearanceSnapshot {
-  return { colorMode: native.colorMode, fontScale: native.fontScale, scheme: resolveScheme(native.colorMode, native.systemScheme), nativeOwned: true, console: native.console };
+  return { colorMode: native.colorMode, fontScale: native.fontScale, scheme: resolveScheme(native.colorMode, native.systemScheme), nativeOwned: true, console: native.console, appVersion: native.appVersion };
 }
 
 function initialSnapshot(): MobileAppearanceSnapshot {
   const native = readNativeAppearance();
   if (native) return fromNative(native);
   const colorMode = readStored(COLOR_MODE_KEY, isColorMode, "system");
-  return { colorMode, fontScale: readStored(FONT_SCALE_KEY, isFontScale, "default"), scheme: resolveScheme(colorMode, systemScheme()), nativeOwned: false, console: null };
+  return { colorMode, fontScale: readStored(FONT_SCALE_KEY, isFontScale, "default"), scheme: resolveScheme(colorMode, systemScheme()), nativeOwned: false, console: null, appVersion: null };
 }
 
 function applyToDocument(next: MobileAppearanceSnapshot): void {
@@ -154,7 +164,7 @@ function setSnapshot(next: MobileAppearanceSnapshot): void {
   const same = next.colorMode === snapshot.colorMode && next.fontScale === snapshot.fontScale
     && next.scheme === snapshot.scheme && next.nativeOwned === snapshot.nativeOwned
     && next.console?.label === snapshot.console?.label && next.console?.monogram === snapshot.console?.monogram
-    && next.console?.tone === snapshot.console?.tone && next.console?.address === snapshot.console?.address;
+    && next.console?.tone === snapshot.console?.tone && next.console?.address === snapshot.console?.address && next.appVersion === snapshot.appVersion;
   applyToDocument(next);
   if (same) return;
   snapshot = next;

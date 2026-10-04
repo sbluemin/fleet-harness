@@ -140,7 +140,7 @@ export function useModelAuthStore(): ModelAuthStoreState {
   return React.useSyncExternalStore(subscribe, getModelAuthStoreState, getModelAuthStoreState);
 }
 
-function getModelAuthStoreState(): ModelAuthStoreState {
+export function getModelAuthStoreState(): ModelAuthStoreState {
   return snapshot;
 }
 

@@ -28,6 +28,8 @@ import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { openMobileChoice, type HostChoiceOption } from "./mobile-choice-store.js";
 import { pushMobileSheet } from "./mobile-store.js";
+import { clearMobileSubScreens, popMobileSubScreen, useMobileSubScreens } from "./mobile-subscreen-store.js";
+import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import "../../styles/mobile.css";
 
 /**
@@ -123,7 +125,11 @@ export function MobileSettingsPage() {
   };
 
   // 막대는 호스트가 그린다 — 목록은 ≡ + ⓘ(버전), 섹션 상세는 ‹(목록에서 왔으면 history 되돌리기).
-  useClaimMobileBar(active !== null
+  const subScreens = useMobileSubScreens();
+  const subScreen = subScreens.at(-1) ?? null;
+  useClaimMobileBar(subScreen !== null
+    ? { variant: "centered", title: subScreen.title, leading: "back", onBack: popMobileSubScreen }
+    : active !== null
     ? { variant: "centered", title: active.title, leading: "back", onBack: close }
     : { variant: "centered", title: t("mobile.drawer.settings"), leading: "menu", actions: [{ id: "about", icon: <MobileIcon name="info" />, label: t("mobile.settings.about"), run: () => document.getElementById("mobile-settings-version")?.scrollIntoView({ block: "center", behavior: "smooth" }) }] });
 
@@ -132,6 +138,19 @@ export function MobileSettingsPage() {
   closeRef.current = close;
   const detailOpen = active !== null;
   useEffect(() => (detailOpen ? pushBackLayer(() => closeRef.current()) : undefined), [detailOpen]);
+
+  // 하위 화면은 한 단마다 뒤로 레지스트리 층과 history 항목 하나를 든다 — 하드웨어·브라우저 뒤로가 한 단씩 걷는다.
+  const subDepth = subScreens.length;
+  const subHistoryRef = useRef<number[]>([]);
+  useEffect(() => {
+    const ids = subHistoryRef.current;
+    while (ids.length < subDepth) ids.push(pushOverlayHistory(() => { popMobileSubScreen(); }));
+    while (ids.length > subDepth) releaseOverlayHistory(ids.pop()!);
+  }, [subDepth]);
+  useEffect(() => (subDepth > 0 ? pushBackLayer(() => popMobileSubScreen()) : undefined), [subDepth]);
+  // 다른 섹션으로 가거나 목록으로 돌아가면 하위 화면은 모두 걷는다.
+  const activeId = active?.id ?? null;
+  useEffect(() => () => clearMobileSubScreens(), [activeId]);
 
   // An unknown section — a stale link, or one whose plugin is gone — resolves to the list rather
   // than to an empty screen, and the address is corrected so a reload does not repeat the miss.
@@ -150,7 +169,9 @@ export function MobileSettingsPage() {
         <div className="mobile-settings-scroll">
           <div className="mobile-settings-detail">
             {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-            {LOCAL_IDS.has(active.id)
+            {subScreen !== null
+              ? subScreen.render()
+              : LOCAL_IDS.has(active.id)
               ? <LocalDetail id={active.id as LocalSectionId} />
               : renderSettingsSection(active.id as SettingsSectionId, state, settings.savingFields, pluginSections, t)}
           </div>
@@ -322,10 +343,11 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, 
   use.push(
     { id: "experiments", title: t("settings.core.experiments.label"), value: describeConnectivity(state, t), icon: <MobileIcon name="flask" /> },
   );
+  const appVersion = appearance.appVersion;
   const about: MobileSettingsRow[] = [
     { id: "whatsnew", title: t("mobile.settings.whatsNew"), value: version, icon: <MobileIcon name="spark" />, act: () => openWhatsNew() },
     { id: "help", title: t("mobile.settings.helpRow"), value: null, icon: <MobileIcon name="help" /> },
-    { id: "version", title: t("mobile.settings.version"), value: `Console ${version}${consoleLatest ? ` · ${t("mobile.settings.latest")}` : ""}`, icon: <MobileIcon name="info" />, info: true },
+    { id: "version", title: t("mobile.settings.version"), value: `Console ${version}${consoleLatest ? ` · ${t("mobile.settings.latest")}` : ""}${appVersion ? ` · ${t("mobile.settings.appVersion")} ${appVersion}` : ""}`, icon: <MobileIcon name="info" />, info: true },
   ];
   return [{ key: "display", rows: display, note: t("mobile.settings.color.note") }, { key: "agent", rows: agent }, { key: "use", rows: use }, { key: "about", rows: about }];
 }
