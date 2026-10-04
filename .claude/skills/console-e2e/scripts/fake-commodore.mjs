@@ -5,9 +5,11 @@ import path from "node:path";
 import { registerHooks } from "node:module";
 import { fileURLToPath } from "node:url";
 
-const dir = process.env.FAKE_COMMODORE_DIR;
-if (process.env.NODE_ENV !== "test" || !dir || !path.isAbsolute(dir)) throw new Error("fake_commodore_test_environment_required");
-const run = path.dirname(dir);
+const given = process.env.FAKE_COMMODORE_DIR;
+if (process.env.NODE_ENV !== "test" || !given || !path.isAbsolute(given)) throw new Error("fake_commodore_test_environment_required");
+// wrapper는 --run-dir를 실제 경로로 풀어 HOME 등을 준다(macOS의 /tmp → /private/tmp). 같은 기준으로 비교한다.
+const run = fs.realpathSync(path.dirname(given));
+const dir = path.join(run, path.basename(given));
 for (const [key, leaf] of [["HOME", "home"], ["FLEET_DATA_DIR", "root"], ["FLEET_CONSOLE_DATA_DIR", "console"], ["CLAUDE_CONFIG_DIR", "claude"]]) {
   if (process.env[key] !== path.join(run, leaf)) throw new Error("fake_commodore_owned_environment_required");
 }
