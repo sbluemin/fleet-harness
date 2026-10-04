@@ -1126,6 +1126,7 @@
 .mobile-group-row-copy { flex: 1; min-width: 0; }
 .mobile-group-row-copy small { display: block; margin-top: 1px; color: var(--m-text-muted); font-size: var(--t-md); }
 .mobile-group-row-copy small.is-awaiting { color: var(--m-awaiting); }
+.mobile-group-row-value { flex: none; color: var(--m-text-muted); font-size: var(--m-fs-meta); }
 .mobile-group-row-caret { flex: none; color: var(--m-text-muted); }
 .mobile-secnote { margin: 0; padding: 0 18px 24px; color: var(--m-text-faint); font-size: var(--t-sm); }
 

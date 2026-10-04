@@ -1,10 +1,12 @@
 import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
-import { useT } from "../../i18n/index.js";
+import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { navigateConsoleRoute } from "../../integration/console-location.js";
 import { focusOperation } from "../../integration/store.js";
 import { AttentionReason } from "./mobile-attention-reason.js";
 import { useMobileAttentionRows } from "./mobile-attention-context.js";
+import { useRailEntries } from "../pane/pane-registry.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { setMobileDestination } from "./mobile-store.js";
 
@@ -12,6 +14,13 @@ import { setMobileDestination } from "./mobile-store.js";
 export function MobileAttentionScreen() {
   const t = useT();
   const rows = useMobileAttentionRows();
+  const locale = useConsoleLocale();
+  const bindings = useRailEntries();
+  // 플러그인 항목의 오른쪽 값은 그 항목이 온 목적지의 이름(예: 「목표」)이다 — 어디서 온 일인지 알린다.
+  const sourceName = (entryId: string): string | null => {
+    const entry = bindings.find((binding) => binding.entry.id === entryId)?.entry;
+    return entry ? resolveLocalizedText(entry.mobile?.destination?.label ?? entry.title, locale) : null;
+  };
   useClaimMobileBar({ variant: "centered", title: t("mobile.drawer.attention"), leading: "menu" });
   return (
     <section className="mobile-attention-screen">
@@ -27,6 +36,7 @@ export function MobileAttentionScreen() {
               <button type="button" className="mobile-group-row is-two" key={row.key} onClick={() => { setMobileDestination({ kind: "plugin", entryId: row.entryId }); navigateConsoleRoute("/operations"); row.item.open(); }}>
                 <span className={statusGlyphClassName("review")} aria-hidden="true" />
                 <span className="mobile-group-row-copy">{row.item.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
+                {sourceName(row.entryId) ? <span className="mobile-group-row-value">{sourceName(row.entryId)}</span> : null}
               </button>
             ))}
           </div>
