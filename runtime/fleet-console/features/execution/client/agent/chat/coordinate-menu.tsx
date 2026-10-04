@@ -13,7 +13,9 @@ import {
 import { EffortTrack, resolveRowEffort } from "../../components/effort-track.js";
 import { cancelAgentChatCoordinates, changeAgentChatCoordinates } from "../api.js";
 import { getT } from "../i18n/index.js";
+import { useMobileSurface } from "../mobile-surface.js";
 import type { AgentChatCoordinatePair } from "./chat-events.js";
+import { MobileCoordinateSheet } from "./mobile-coordinate-sheet.js";
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 
 /** `/model`은 모델 목록부터, `/effort`와 좌표 클릭은 지금 모델의 강도 트랙부터 연다. */
@@ -80,6 +82,8 @@ export function SessionCoordinateMenu({
   readonly onCompact: () => void;
 }) {
   const t = getT(language);
+  // 모바일 표면에서는 같은 좌표·같은 적용 경로를 S-11b 모델 시트로 연다(데스크톱 포털 메뉴 대신).
+  const mobile = useMobileSurface();
   const [open, setOpen] = React.useState(false);
   const [stage, setStage] = React.useState<CoordinateMenuStage>("effort");
   const [groups, setGroups] = React.useState<readonly LaunchGroup[] | null>(null);
@@ -156,7 +160,7 @@ export function SessionCoordinateMenu({
   }, [open, stage, groups]);
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || mobile) return;
     const onPointerDown = (event: PointerEvent) => {
       const node = event.target as Node;
       if (!menuRef.current?.contains(node) && !triggerRef.current?.contains(node)) setOpen(false);
@@ -194,7 +198,7 @@ export function SessionCoordinateMenu({
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [open]);
+  }, [open, mobile]);
 
   const apply = React.useCallback(async (next: AgentChatCoordinatePair) => {
     if (busy) return;
@@ -231,7 +235,7 @@ export function SessionCoordinateMenu({
         ref={triggerRef}
         type="button"
         className={`agent-chat-coord is-control${coordinates.ultracode ? " is-ultracode" : ""}`}
-        aria-haspopup="menu"
+        aria-haspopup={mobile ? "dialog" : "menu"}
         aria-expanded={open}
         aria-label={t("terminal.chat.coordMenuAria", { model, effort })}
         {...(coordinates.title ? { title: coordinates.title } : {})}
@@ -264,7 +268,22 @@ export function SessionCoordinateMenu({
           </button>
         </span>
       ) : null}
-      {open ? createPortal(
+      {open && mobile ? (
+        <MobileCoordinateSheet
+          groups={groups}
+          target={target}
+          current={current}
+          occupied={occupied}
+          working={working}
+          failed={failed}
+          language={language}
+          formatTokens={formatTokens}
+          onApply={(next) => { void apply(next); }}
+          onCompact={onCompact}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+      {open && !mobile ? createPortal(
         <div
           ref={menuRef}
           className={`agent-chat-coord-pop${showEffort ? " is-focused" : ""}`}
