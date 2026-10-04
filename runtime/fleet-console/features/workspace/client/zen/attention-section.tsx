@@ -7,6 +7,7 @@ import { OperationNameMark } from "../../../execution/client/components/operatio
 import { useTriageActive } from "../canvas/triage-store.js";
 import { DecisionRequestMark, hasDecisionRequest } from "../decision-request-mark.js";
 import { useClusterIndex } from "../operation-clusters.js";
+import { ClusterRowMark } from "../sidebar/side-bar-cluster-row.js";
 import { theaterInitials } from "../sidebar/theater-initials.js";
 import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import { useAttentionQueue } from "./use-attention-queue.js";
@@ -59,6 +60,7 @@ export function AttentionSection({ onFocus, onOpenOperationMenu }: {
           const visual = resolveOperationMarkVisual({ activity: entry?.activity ?? "idle", operationId: operation.id, idleArrivalIds: arrivals });
           const theater = state.theaters.find((theater) => theater.id === operation.theaterId)?.label ?? operation.theaterId;
           const decision = hasDecisionRequest(clusters, operation.id);
+          const mark = clusters.rootOf.get(operation.id)?.cluster.row?.mark;
           const active = warRoom ? operation.id === stagedId : operation.id === state.activeOperationId;
           return <button key={operation.id} type="button" className={`side-bar-attention-row${active ? " is-active" : ""}${minimizedIds.has(operation.id) ? " is-minimized" : ""}`} data-attention-operation={operation.id}
             data-keep-operation-active="" aria-current={active ? "true" : undefined} title={`${operation.title} · ${theater}`}
@@ -76,6 +78,7 @@ export function AttentionSection({ onFocus, onOpenOperationMenu }: {
             <OperationNameMark operation={operation} status={visual} decorative className="side-bar-attention-mark" />
             <span className="side-bar-attention-title">{operation.title}</span>
             {decision ? <DecisionRequestMark /> : null}
+            {mark ? <ClusterRowMark mark={mark} decorative={false} /> : null}
             <TheaterMonogram>{theaterInitials(theater)}</TheaterMonogram>
           </button>;
         })}

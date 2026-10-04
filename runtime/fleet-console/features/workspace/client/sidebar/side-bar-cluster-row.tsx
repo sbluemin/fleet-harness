@@ -2,7 +2,7 @@ import { useRef, type CSSProperties, type KeyboardEvent, type MouseEvent, type P
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationClusterRow } from "@fleet-console/sdk/plugin";
+import type { OperationClusterRow, OperationClusterRowMark, OperationClusterRowSquare } from "@fleet-console/sdk/plugin";
 import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
@@ -173,11 +173,15 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const selected = !active && anchor?.selected === true;
   const selectMode = onSelect !== undefined && anchor !== null;
   const minimized = anchor?.minimized === true;
-  const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" | "accent" | "warn" }[] = [];
+  const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" | "accent" | "warn"; readonly square?: OperationClusterRowSquare; readonly prov?: true }[] = [];
   if (row.decisionRequestedAt !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions ?? 1 }), tone: "req" });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `✓ ${row.progress.done}/${row.progress.total}` });
   if (row.due) meta.push({ key: "due", text: formatDue(row.due.date, locale), ...(row.due.overdue ? { tone: "late" as const } : {}) });
   if (row.followup) meta.push({ key: "from", text: row.followup.originTitle ? t("sidebar.row.followupOf", { title: row.followup.originTitle }) : t("sidebar.row.followup"), tone: "from" });
+  row.provenance?.forEach((part, index) => {
+    const text = resolveLocalizedText(part.text, locale);
+    if (text) meta.push({ key: `prov-${index}`, text, prov: true, ...(part.tone ? { tone: part.tone } : {}), ...(part.square ? { square: part.square } : {}) });
+  });
   row.notes?.forEach((note, index) => {
     const text = resolveLocalizedText(note.text, locale);
     if (text) meta.push({ key: `note-${index}`, text, ...(note.tone ? { tone: note.tone } : {}) });
@@ -267,7 +271,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         type="button"
         className="side-bar-cluster-row-main"
         aria-current={active ? "true" : undefined}
-        aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), groupDot ? groupDot.name : "", selected ? t("sidebar.row.selected") : ""].filter(Boolean).join(", ")}
+        aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), row.mark ? resolveLocalizedText(row.mark.label, locale) : "", groupDot ? groupDot.name : "", selected ? t("sidebar.row.selected") : ""].filter(Boolean).join(", ")}
         onClick={activate}
         onDoubleClick={selectMode ? () => { if (pointerTypeRef.current !== "touch" && !dragging) open(); } : undefined}
         onKeyDown={selectMode ? handleKeyDown : undefined}
@@ -277,14 +281,31 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         {meta.length > 0 ? (
           <span className="side-bar-cluster-row-meta" aria-hidden="true">
             {meta.map((part) => (
-              <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{part.text}</span>
+              <span key={part.key} className={[part.tone ? `is-${part.tone}` : "", part.prov ? "is-prov" : "", part.square ? "has-square" : ""].filter(Boolean).join(" ") || undefined}>
+                {part.square ? <i className={`side-bar-cluster-row-square is-${part.square}`} /> : null}
+                {part.text}
+              </span>
             ))}
           </span>
         ) : null}
       </button>
-      {groupDot ? <span className="side-bar-cluster-row-dot" style={{ "--grp-color": groupDot.color } as CSSProperties} title={groupDot.name} aria-hidden="true" /> : <span aria-hidden="true" />}
+      <span className="side-bar-cluster-row-aside" aria-hidden="true">
+        {row.mark ? <ClusterRowMark mark={row.mark} /> : null}
+        {groupDot ? <span className="side-bar-cluster-row-dot" style={{ "--grp-color": groupDot.color } as CSSProperties} title={groupDot.name} /> : null}
+      </span>
     </li>
   );
+}
+
+/**
+ * 줄 오른쪽 끝의 사각 표식 — 플러그인이 정한 맡은 이가 다루는 줄. 채움은 맡은 이가 돌고 있는지(스위치 켬·끔)이고,
+ * 맡은 이의 줄에 머무는 동안은 같은 표식들이 함께 밝아진다. 뜻은 줄의 접근 이름이 말하므로 여기서는 제목만 단다.
+ * 「확인 필요」 목록의 줄도 같은 표식을 쓴다.
+ */
+export function ClusterRowMark({ mark, decorative = true }: { readonly mark: OperationClusterRowMark; readonly decorative?: boolean }) {
+  const locale = useConsoleLocale();
+  const label = resolveLocalizedText(mark.label, locale);
+  return <i className={`side-bar-cluster-row-mark is-${mark.square}${mark.emphasized ? " is-emphasized" : ""}`} title={label} {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label })} />;
 }
 
 /** 구역의 줄들이 낸 구역 머리 말 — 처음 나온 말 하나만, 같은 말은 한 번. */

@@ -1,6 +1,6 @@
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { Objective, ObjectiveActor } from "../server/types.js";
+import type { Objective, ObjectiveActionKind, ObjectiveActor } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 
 type T = Translate<ObjectiveMessageKey>;
@@ -76,3 +76,20 @@ export function nonHumanEditors(t: T, actors: readonly ObjectiveActor[] | undefi
   const names = (actors ?? []).filter((actor) => actorKind(actor) !== "human").map((actor) => actorName(t, actor));
   return [...new Set(names)];
 }
+
+/** 출처의 「최근 조작」이 읽는 한 행위 — 보드 행위 기록의 종류이거나 결정 답변. */
+export type ObjectiveAct = ObjectiveActionKind | "answer";
+
+/**
+ * 이 목표를 마지막으로 손댄 행위 — 보드 행위 기록과 결정 답변(행위 기록 밖의 결정 기록) 가운데 가장 늦은 것. 추가는 행위가
+ * 아니라 목표의 `addedBy` 다. 아무 손도 대지 않았으면 null.
+ */
+export function lastAct(objective: Objective): { readonly by: ObjectiveActor; readonly act: ObjectiveAct; readonly at: number } | null {
+  let latest: { by: ObjectiveActor; act: ObjectiveAct; at: number } | null = null;
+  for (const action of objective.actions ?? []) if (!latest || action.at >= latest.at) latest = { by: action.by, act: action.kind, at: action.at };
+  for (const decision of objective.decisions) if (!latest || decision.at > latest.at) latest = { by: decision.by ?? "human", act: "answer", at: decision.at };
+  return latest;
+}
+
+/** 사령관이 (마지막으로) 개시한 목표. 개시 출처를 기록하기 전에 개시한 목표는 누가 개시했는지 모르므로 아니다로 다룬다. */
+export const commencedByCommodore = (objective: Objective): boolean => objective.commencedBy !== undefined && actorKind(objective.commencedBy) === "commodore";

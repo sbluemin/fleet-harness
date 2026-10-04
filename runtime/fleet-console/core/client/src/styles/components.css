@@ -7764,9 +7764,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   margin-top: calc((var(--t-md) * 1.3 - 12px) / 2);
 }
 
-.side-bar-cluster-row:has(.side-bar-cluster-row-meta) .side-bar-cluster-row-dot {
-  margin-top: calc((var(--t-md) * 1.3 - 5px) / 2);
-}
 
 /* 칩의 24px 비콘 칸과 같은 격자 — 글리프 칸 폭이 같아 제목이 칩 이름과 같은 x에서 시작하고,
    메타 없는 한 줄이면 칩과 같은 높이에 상태 글리프가 줄 가운데에 선다. */
@@ -7821,8 +7818,9 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--warn-ink);
 }
 
-/* 후속 줄의 원래 목표 — 긴 제목은 한 줄로 말줄인다. */
-.side-bar-cluster-row-meta .is-from {
+/* 후속 줄의 원래 목표와 출처(추가·최근 조작한 손) — 긴 제목은 한 줄로 말줄인다. */
+.side-bar-cluster-row-meta .is-from,
+.side-bar-cluster-row-meta .is-prov {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -7900,12 +7898,69 @@ body[data-companion-resizing="true"] .canvas-operation {
   }
 }
 
+/* 줄 오른쪽 끝 — 맡은 이 표식과 구역으로 올라간 줄의 그룹 점. 제목 줄(13px × 1.3) 높이에 서서 두 줄이어도 제목과 같은 중심선이다. */
+.side-bar-cluster-row-aside {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: calc(var(--t-md) * 1.3);
+}
+
 /* 구역으로 올라간 줄의 원래 그룹 — 5px 점 하나. */
 .side-bar-cluster-row-dot {
+  flex: none;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--grp-color);
+}
+
+/* 맡은 이 표식(사령관이 개시한 목표 등) — 사령관 스위치와 같은 사각 문법: 켬은 채운 brass, 끔은 빈 사각.
+   줄은 자리를 옮기지 않고 채움만 바뀐다. 맡은 이의 줄에 머무는 동안(is-emphasized)은 스위치의 고리와 같은 brass 고리로 함께 밝아진다. */
+.side-bar-cluster-row-mark {
+  flex: none;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border-radius: 2.5px;
+  background: var(--brass);
+  transition: box-shadow var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-cluster-row-mark.is-hollow {
+  background: transparent;
+  border: 1.3px solid color-mix(in oklch, var(--brass) 80%, var(--text-tertiary));
+}
+
+.side-bar-cluster-row-mark.is-emphasized {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--brass) 22%, transparent);
+}
+
+/* 출처 글 앞의 작은 사각 — 같은 맡은 이의 손. 줄 끝 표식과 같은 채움 문법이다. */
+.side-bar-cluster-row-meta .has-square {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.side-bar-cluster-row-square {
+  flex: none;
+  box-sizing: border-box;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--brass);
+}
+
+.side-bar-cluster-row-square.is-hollow {
+  background: transparent;
+  border: 1.2px solid var(--brass);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-bar-cluster-row-mark {
+    transition: none;
+  }
 }
 
 /* 결정 요청·오늘 구역 — 접지 않는 머리. 뒤따르는 가는 선이 구역의 끝을 긋지 않고 자리만 잡는다. */

@@ -1755,6 +1755,10 @@ describe("Objectives contract", () => {
     expect(await board({ objectiveId: id, commence: true })).toMatchObject({ objectiveId: id, failed: [] });
     // 구상 요청과 개시도 부른 손으로 남는다. 개시한 손은 행위 기록이 접혀도 commencedBy 로 남아 사이드바가 읽는다.
     expect((await board({ objectiveId: id })).objective).toMatchObject({ commencedBy: actor, actions: expect.arrayContaining([expect.objectContaining({ kind: "plan", by: actor }), expect.objectContaining({ kind: "commence", by: actor })]) });
+    // 사이드바 줄 — 사령관이 개시한 목표는 제자리에서 사령관 사각을 단다(자율 운영 글리프를 따라 채움). 실험 기능이 꺼지면 사각이 없다.
+    const commodoreRow = (board: { enabled: boolean; autonomy: boolean }) => clustersOf([store.find(id)!], new Map(), () => false, () => ({ active: board.enabled && board.autonomy, stalled: [], ...board }))[0]!.row!;
+    expect(commodoreRow({ enabled: true, autonomy: false }).mark?.square).toBe("hollow");
+    expect(commodoreRow({ enabled: false, autonomy: false }).mark).toBeUndefined();
     expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.objectContaining({ state: "idle" })] }) }));
     expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
     // 일하는 구성원은 이번 턴 뒤로 예약된다 — 세션 좌표는 그대로다. 라우팅으로 되돌리면 예약을 거두고 실행값은 남는다.

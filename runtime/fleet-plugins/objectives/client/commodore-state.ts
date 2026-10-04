@@ -69,14 +69,26 @@ export function commodoreRevision(): number {
 
 /**
  * 사이드바 줄이 읽는 사령관의 지금 — 자율 운영이 실제로 돌고 있는가(실험 기능 + 글리프), 그리고 감독자가 정체로 본 목표.
- * 읽지 않은 Theater 는 돌지 않는 것으로 다룬다.
+ * 읽지 않은 Theater 는 돌지 않는 것으로 다룬다. `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다), `autonomy` 는 글리프,
+ * `peek` 는 사람이 이 Theater 의 사령관 줄에 머무는 중이다.
  */
-export function commodoreBoardOf(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[] } {
-  const view = enabledSnapshot ? theaters.get(theaterId)?.view : undefined;
-  if (!view?.active) return INACTIVE_BOARD;
-  return { active: true, stalled: view.run.stalled ?? [] };
+export function commodoreBoardOf(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled: boolean; readonly autonomy: boolean; readonly peek: boolean } {
+  if (!enabledSnapshot) return DISABLED_BOARD;
+  const view = theaters.get(theaterId)?.view;
+  const peek = peekTheater === theaterId;
+  if (!view?.active) return { active: false, stalled: [], enabled: true, autonomy: view?.state.autonomy === true, peek };
+  return { active: true, stalled: view.run.stalled ?? [], enabled: true, autonomy: true, peek };
 }
-const INACTIVE_BOARD = { active: false, stalled: [] as readonly string[] };
+const DISABLED_BOARD = { active: false, stalled: [] as readonly string[], enabled: false, autonomy: false, peek: false };
+
+/** 사람이 머무는 사령관 줄의 Theater — 그동안 사이드바의 사령관 표식이 함께 밝아진다. */
+let peekTheater: string | null = null;
+
+export function setCommodorePeek(theaterId: string | null): void {
+  if (peekTheater === theaterId) return;
+  peekTheater = theaterId;
+  notify();
+}
 
 /** 보드 화면용 — 줄 계산과 같은 값을 React 로. 읽지 않은 Theater 면 읽기를 건다. */
 export function useCommodoreBoard(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[] } {
@@ -86,9 +98,10 @@ export function useCommodoreBoard(theaterId: string): { readonly active: boolean
   return board;
 }
 
-const boardSnapshots = new Map<string, { readonly key: string; readonly value: ReturnType<typeof commodoreBoardOf> }>();
-function boardSnapshot(theaterId: string): ReturnType<typeof commodoreBoardOf> {
-  const value = commodoreBoardOf(theaterId);
+const boardSnapshots = new Map<string, { readonly key: string; readonly value: { readonly active: boolean; readonly stalled: readonly string[] } }>();
+function boardSnapshot(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[] } {
+  const { active, stalled } = commodoreBoardOf(theaterId);
+  const value = { active, stalled };
   const key = `${value.active}:${value.stalled.join(",")}`;
   const cached = boardSnapshots.get(theaterId);
   if (cached?.key === key) return cached.value;
