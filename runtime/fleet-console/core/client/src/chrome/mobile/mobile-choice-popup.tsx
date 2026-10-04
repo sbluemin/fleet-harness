@@ -138,7 +138,7 @@ function ChoiceCard({ choice }: { readonly choice: MobileChoiceState }) {
  * 모델 팝업(P-1 변형) — 제공자별 묶음, 구분선, 「추론 강도」 글자 탭. 모델을 골라도 열린 채다(강도까지 고르게).
  * 값은 `ModelPicker`가 다시 그려 줄 때마다 갱신된다. 닫기는 바깥 탭·뒤로·Esc다.
  */
-export function MobileModelChoice({ title, groups, value, onSelect, effort, onClose }: MobileModelChoiceProps) {
+export function MobileModelChoice({ title, groups, value, onSelect, effort, reset, onClose }: MobileModelChoiceProps) {
   const titleId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   return (
@@ -147,7 +147,7 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, onCl
       titleId={titleId}
       listRef={listRef}
       onClosed={onClose}
-      renderBody={() => (
+      renderBody={(requestClose) => (
         <div className="mobile-choice-list" ref={listRef}>
           <div role="radiogroup" aria-labelledby={titleId}>
             {groups.map((group) => (
@@ -180,6 +180,21 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, onCl
                   );
                 })}
               </div>
+            </>
+          ) : null}
+          {reset ? (
+            <>
+              <div className="mobile-choice-rule" role="separator" />
+              <button
+                type="button"
+                className={`mobile-choice-row${reset.description ? " has-description" : ""}`}
+                onClick={() => { reset.onSelect(); window.setTimeout(requestClose, CLOSE_AFTER_PICK_MS); }}
+              >
+                <span className="mobile-choice-copy">
+                  <span className="mobile-choice-label">{reset.label}</span>
+                  {reset.description ? <small>{reset.description}</small> : null}
+                </span>
+              </button>
             </>
           ) : null}
         </div>
