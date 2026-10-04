@@ -18,6 +18,7 @@ import {
 import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
 
 import { getT } from "../i18n/index.js";
+import { MobileGlyph, useMobileSurface } from "../mobile-surface.js";
 import type { TerminalMessageKey } from "../i18n/index.js";
 import { CHAT_READING_WIDTHS, nextChatReadingWidth, setChatReadingWidth, useChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import type { ChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
@@ -562,8 +563,21 @@ export function AgentChatComposer({
     ? `${t("terminal.chat.composerHintQueue")} · ${t("terminal.chat.composerHintStop")} · ${t("terminal.chat.composerHintNewline")}`
     : `${t("terminal.chat.composerHintEnter")} · ${t("terminal.chat.composerHintNewline")}`;
 
+  // 모바일 독(impl-spec S-27): 좌표(모델·강도 알약)는 상자 안 아래 줄로 내려가고, 표시줄에는 알림과
+  // 작업 선반만 남는다(없으면 표시줄 자체가 서지 않는다). 채팅 폭 글리프는 폰에서 뜻이 없어 서지 않는다.
+  const mobileSurface = useMobileSurface();
+  const ledgeNode = ledge !== undefined ? ledge(notice !== null) : null;
   return (
     <div className="agent-chat-composer" ref={composerRef}>
+      {mobileSurface ? (
+        notice !== null || ledgeNode !== null ? (
+          <div className="agent-chat-composer-meta">
+            {notice !== null ? <span className="agent-chat-composer-error" role="alert">{notice}</span> : null}
+            {ledgeNode}
+          </div>
+        ) : null
+      ) : (
+      <>
       {/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용 표식)와 채팅 폭 글리프가 여기 선다; 오류 알림은
           좌표 자리를 잠시 빌린다(Cowork·Analyst의 「모델 · 강도 · Settings에서 변경」 줄과 같은 자리). */}
       {/* 표시줄은 세 칸이다: 좌표(또는 알림) · 선반 · 폭 글리프. 양 끝은 자기 크기만큼만 쓰고
@@ -573,7 +587,7 @@ export function AgentChatComposer({
         {notice !== null ? (
           <span className="agent-chat-composer-error" role="alert">{notice}</span>
         ) : coordinate}
-        {ledge !== undefined ? ledge(notice !== null) : <span className="agent-chat-composer-gap" aria-hidden="true" />}
+        {ledgeNode ?? <span className="agent-chat-composer-gap" aria-hidden="true" />}
         {/* 채팅 폭 글리프 — 읽는 폭과 쓰는 폭을 함께 지는 하나의 문이다. 캡션에 있던 같은 순환을
             이 자리로 내렸다: 폭이 바뀌는 판면 바로 옆이라 결과가 같은 시야에 들어오고, 캡션이
             물러나는 좁은 패널에서도 남는 쪽이 여기다. 이 폭에서 세 단이 전부 같은 폭이면
@@ -596,6 +610,8 @@ export function AgentChatComposer({
           <CaptionReadingWidthGlyph preset={readingWidth} />
         </button>
       </div>
+      </>
+      )}
       <div
         className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${ultracodeArmed ? " is-ultracode" : ""}${highlightSpans.length > 0 ? " is-mirrored" : ""}`}
         {...(tourAnchor ? { "data-chat-tour": "composer" } : {})}
@@ -796,6 +812,7 @@ export function AgentChatComposer({
                 onBlur={() => setFocused(false)}
               />
             </span>
+            {mobileSurface ? null : (
             <span className="agent-chat-composer-actions">
               {/* 첨부는 도는 동안 물러난다 — 다음 지시에만 실리므로 예약 전송과 함께 돌아오면 충분하고,
                   좁은 패널의 오른쪽이 [계기][중지][예약]으로 숨 쉴 자리를 얻는다. */}
@@ -839,7 +856,47 @@ export function AgentChatComposer({
                 />
               )}
             </span>
+            )}
           </div>
+          {mobileSurface ? (
+            // 아래 줄: [+ 첨부] [모델·강도 알약] · · · [멈춤] [보내기]. 진행 중에는 멈춤이 서고, 그 사이 친
+            // 다음 지시는 보내기(예약)로 나간다 — 두 문은 서로 배타적이지 않다(데스크톱과 같은 계약).
+            <div className="agent-chat-composer-tools">
+              <ComposerAttachControl
+                className="agent-chat-composer-attach"
+                label={t("terminal.mobile.attach")}
+                onFiles={addFiles}
+              >
+                <MobileGlyph name="plus" />
+              </ComposerAttachControl>
+              {coordinate}
+              <span className="agent-chat-composer-gap" aria-hidden="true" />
+              {turnRunning ? (
+                <button
+                  type="button"
+                  className="agent-chat-composer-stop"
+                  disabled={stopping}
+                  onClick={() => { void stop(); }}
+                  aria-label={t("terminal.mobile.stop")}
+                >
+                  <MobileGlyph name="stop" />
+                </button>
+              ) : null}
+              {!turnRunning || canSend ? (
+                <ComposerSubmitButton
+                  className={`agent-chat-composer-send${turnRunning ? " is-queue" : ""}${canSend ? " is-armed" : ""}`}
+                  // 보내기 원은 늘 반전 활성 모양이다(FD-19). 보낼 것이 없을 때 누르면 보내지 않고 입력칸으로
+                  // 초점을 옮긴다 — 손가락이 닿은 자리에서 바로 쓰기 시작하게.
+                  aria-disabled={!canSend || undefined}
+                  onClick={() => { if (canSend) void send(); else inputRef.current?.focus(); }}
+                  // 폰에는 Enter 키 안내가 뜻이 없다 — 명세 이름(「보내기」·「멈춤」)만 싣는다(FD-30 ①).
+                  aria-label={t(turnRunning ? "terminal.mobile.queue" : "terminal.mobile.send")}
+                >
+                  <MobileGlyph name="send" strokeWidth={2.2} />
+                </ComposerSubmitButton>
+              ) : null}
+            </div>
+          ) : null}
         </ComposerField>
       </div>
     </div>

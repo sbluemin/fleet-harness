@@ -1,2 +1,2 @@
 export { FleetConsoleView } from "./FleetConsoleView";
-export type { FleetConsoleEvent, FleetConsoleTarget, FleetConsoleViewHandle } from "./FleetConsoleView";
+export type { ColorMode, FleetAppearance, FleetConsoleEvent, FleetConsoleTarget, FleetConsoleViewHandle, FontScale } from "./FleetConsoleView";

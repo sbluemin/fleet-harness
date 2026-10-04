@@ -2,7 +2,8 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 
 import { groupModelsByLaunchProvider, isLaunchProviderGlyphId, launchProviderCaption, launchProviderGlyph, type LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
-import { SegmentedThumb, useSelect } from "../react/browser.js";
+import type { MobileModelReset } from "../react/browser.js";
+import { MobileSettingsRowLabelContext, SegmentedThumb, Select, useMobileSettingsHost, useSelect } from "../react/browser.js";
 import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, type ExperimentModelOption } from "./experiments.js";
 import type { SettingsSectionDescriptor } from "./types.js";
 
@@ -19,6 +20,9 @@ export {
   isExperimentModelId,
   resolveExperimentSettings,
 } from "./experiments.js";
+// 모바일 셸이 설정 화면에 주입하는 능력(선택 팝업) — 특수한 섹션이 직접 열 때 쓴다.
+export { MobileSettingsHostContext, useMobileSettingsHost } from "../react/browser.js";
+export type { MobileChoiceOption, MobileChoiceSpec, MobileInputSpec, MobileModelChoiceProps, MobileModelGroup, MobileModelReset, MobileSettingsHost, MobileSubScreenSpec } from "../react/browser.js";
 export type { ShortcutBindings } from "./shortcuts.js";
 export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";
 
@@ -34,6 +38,12 @@ export interface SettingsRowProps {
   readonly hint?: React.ReactNode;
   /** 라벨 오른쪽에 서는 도움말 팁 — `<SettingsHelpTip>` 노드를 그대로 받는다. */
   readonly helpTip?: React.ReactNode;
+  /** 모바일 설정 행의 앞 아이콘. 데스크톱은 그리지 않는다. */
+  readonly icon?: React.ReactNode;
+  /** 제목 바로 뒤의 배지 — 보통 `<ExperimentalBadge>` 노드. */
+  readonly badge?: React.ReactNode;
+  /** 지금 쓸 수 없는 행. 모바일은 행 전체를 흐리게 하고 누름을 막는다 — 컨트롤의 `disabled`는 호출부가 따로 준다. 이유 문장은 `hint` 끝에 붙인다. */
+  readonly disabled?: boolean;
   readonly children: React.ReactNode;
 }
 
@@ -131,6 +141,34 @@ export function ExperimentalBadge({ children }: { readonly children: React.React
 }
 
 /**
+ * 모바일 설명 줄 — 5줄까지는 그대로 다 보이고, 넘으면 4줄에서 말줄임하고 「더 보기」 글자 버튼이 그 자리에서 펼친다(P-2).
+ * 호스트가 `moreLabel`을 주지 않으면 접지 않는다.
+ */
+function MobileClamp({ className, id, children }: { readonly className: string; readonly id?: string; readonly children: React.ReactNode }): React.ReactElement {
+  const host = useMobileSettingsHost();
+  const bodyRef = React.useRef<HTMLSpanElement | null>(null);
+  const [overflow, setOverflow] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+  React.useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body || !host?.moreLabel) return;
+    const measure = () => {
+      const lineHeight = Number.parseFloat(getComputedStyle(body).lineHeight) || 21;
+      setOverflow(body.scrollHeight > lineHeight * 5 + 2);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [host?.moreLabel, children]);
+  return (
+    <span className={className} id={id}>
+      <span ref={bodyRef} className={`fc-clamp-body${overflow && !open ? " is-clamped" : ""}`}>{children}</span>
+      {overflow && !open && host?.moreLabel ? <button type="button" className="fc-settings-more" onClick={() => setOpen(true)}>{host.moreLabel}</button> : null}
+    </span>
+  );
+}
+
+/**
  * 행·카드 제목 옆의 '?' — 설정 설명의 단일 공개 문법.
  *
  * 설명은 매 방문마다 화면을 차지하는 대신 요구가 있는 순간에만 선다: hover(또는 키보드
@@ -150,6 +188,7 @@ export function ExperimentalBadge({ children }: { readonly children: React.React
 export function SettingsHelpTip({ ariaLabel, id, children }: SettingsHelpTipProps): React.ReactElement {
   const autoId = React.useId();
   const bubbleId = id ?? autoId;
+  const mobileHost = useMobileSettingsHost();
   const wrapRef = React.useRef<HTMLSpanElement | null>(null);
   const bubbleRef = React.useRef<HTMLDivElement | null>(null);
   const closeTimer = React.useRef<number | null>(null);
@@ -207,6 +246,9 @@ export function SettingsHelpTip({ ariaLabel, id, children }: SettingsHelpTipProp
 
   React.useEffect(() => clearCloseTimer, []);
 
+  // 모바일에서는 「?」 칩이 없다 — 설명이 행 아래 한 줄로 서고, 언제나 보인다.
+  if (mobileHost) return <MobileClamp className="settings-help-line" id={bubbleId}>{children}</MobileClamp>;
+
   return (
     <span
       ref={wrapRef}
@@ -259,6 +301,17 @@ export function SettingsHelpTip({ ariaLabel, id, children }: SettingsHelpTipProp
 }
 
 export function SettingsCard({ title, description, children }: SettingsCardProps): React.ReactElement {
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    // 폰: 카드 제목은 묶음 머리, 본문은 묶음 카드(행 사이 2 틈), 설명은 묶음 아래 secnote다.
+    return (
+      <section className="fc-settings-card is-mobile">
+        {title ? <h3 className="fc-settings-card__title">{title}</h3> : null}
+        <div className="fc-settings-card__body">{children}</div>
+        {description ? <p className="fc-settings-card__desc">{description}</p> : null}
+      </section>
+    );
+  }
   return (
     <section className="fc-settings-card">
       {title ? <h3 className="fc-settings-card__title">{title}</h3> : null}
@@ -268,9 +321,25 @@ export function SettingsCard({ title, description, children }: SettingsCardProps
   );
 }
 
-export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps): React.ReactElement {
+export function SettingsRow({ label, hint, helpTip, icon, badge, disabled = false, children }: SettingsRowProps): React.ReactElement {
   const labelId = React.useId();
   const hintId = React.useId();
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    // 폰: 행 전체가 누름 영역이다 — <label>이라 안의 토글·팝업 트리거가 행을 누르면 대신 눌린다.
+    // 아이콘 + 제목(+배지) + 설명 여러 줄(힌트 → 도움말) + 컨트롤.
+    return (
+      <label className={`fc-settings-row is-mobile${disabled ? " is-disabled" : ""}`} aria-disabled={disabled || undefined} aria-describedby={hint ? hintId : undefined}>
+        {icon ? <span className="fc-settings-row__icon" aria-hidden="true">{icon}</span> : null}
+        <span className="fc-settings-row__copy">
+          <span className="fc-settings-row__label"><span id={labelId}>{label}</span>{badge}</span>
+          {hint ? <MobileClamp className="fc-settings-row__hint" id={hintId}>{hint}</MobileClamp> : null}
+          {helpTip}
+        </span>
+        <MobileSettingsRowLabelContext.Provider value={label}><span className="fc-settings-row__control">{children}</span></MobileSettingsRowLabelContext.Provider>
+      </label>
+    );
+  }
   return (
     <div className="fc-settings-row" role="group" aria-labelledby={labelId} aria-describedby={hint ? hintId : undefined}>
       <div className="fc-settings-row__copy">
@@ -278,11 +347,209 @@ export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps
             이름 계산에 버튼의 접근성 이름까지 딸려 들어가 그룹 이름이 "라벨 + 라벨 도움말"이 된다. */}
         <div className="fc-settings-row__label">
           <span id={labelId}>{label}</span>
+          {badge}
           {helpTip}
         </div>
         {hint ? <div className="fc-settings-row__hint" id={hintId}>{hint}</div> : null}
       </div>
       <div className="fc-settings-row__control">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * 코어 설정 카드의 한 줄 — 데스크톱에서는 `global-settings-row` 문법 그대로(제목 + 도움말 팁 + 오른쪽 컨트롤)이고,
+ * 모바일 호스트 안에서는 `SettingsRow`(아이콘 + 제목 + 설명 줄 + 컨트롤, 행 전체가 누름 영역)가 된다.
+ * 기존 마크업을 손으로 쓰던 자리가 데스크톱 모양을 바꾸지 않고 모바일 문법으로 따라오게 하는 얇은 껍데기다.
+ */
+export interface SettingsItemProps {
+  readonly label: string;
+  /** 제목 글자를 가리키는 id — `aria-labelledby`가 이 행을 참조하는 자리용. */
+  readonly labelId?: string;
+  /** 제목 옆의 도움말 — `<SettingsHelpTip>` 노드. 모바일에서는 설명 줄이 된다. */
+  readonly helpTip?: React.ReactNode;
+  /** 제목 아래 설명 한 줄. */
+  readonly hint?: React.ReactNode;
+  readonly icon?: React.ReactNode;
+  readonly badge?: React.ReactNode;
+  /** 모바일에서 행 전체를 흐리게 하고 누름을 막는다. 컨트롤의 `disabled`는 따로 준다. */
+  readonly disabled?: boolean;
+  readonly children: React.ReactNode;
+}
+
+export function SettingsItem({ label, labelId, helpTip, hint, icon, badge, disabled, children }: SettingsItemProps): React.ReactElement {
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    return <SettingsRow label={label} hint={hint} helpTip={helpTip} icon={icon} badge={badge} disabled={disabled}>{children}</SettingsRow>;
+  }
+  return (
+    <div className="global-settings-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">
+          {labelId ? <span id={labelId}>{label}</span> : label}
+          {badge}
+          {helpTip}
+        </p>
+        {hint ? <p className="global-settings-help">{hint}</p> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * 하위 화면으로 가는 행(모바일 전용) — `[아이콘] [제목 / 요약]`을 누르면 `render()`가 하위 화면에 선다.
+ * 모바일 호스트가 없으면 `null`이라, 호출부가 `useMobileSettingsHost()`로 갈라 데스크톱은 본문을 그대로 그린다.
+ */
+export interface SettingsSubScreenRowProps {
+  readonly label: string;
+  /** 지금 상태를 한 줄로 — 열지 않고도 알 수 있게. */
+  readonly summary: string;
+  readonly icon?: React.ReactNode;
+  readonly render: () => React.ReactNode;
+}
+
+export function SettingsSubScreenRow({ label, summary, icon, render }: SettingsSubScreenRowProps): React.ReactElement | null {
+  const mobileHost = useMobileSettingsHost();
+  if (!mobileHost?.openSubScreen) return null;
+  const openSubScreen = mobileHost.openSubScreen;
+  return (
+    <SettingsRow label={label} icon={icon}>
+      <button type="button" className="fc-select__trigger fc-select--mobile" aria-haspopup="dialog" onClick={() => openSubScreen({ title: label, render })}>
+        <span className="fc-select__value">{summary}</span>
+      </button>
+    </SettingsRow>
+  );
+}
+
+/**
+ * 한 칸 입력 행(모바일 전용) — `[아이콘] [제목 / 지금 값]` 행을 누르면 입력 시트(P-4)가 열린다. 모바일 호스트가 없으면 `null`이라,
+ * 데스크톱 입력칸을 쓰던 자리는 호출부가 `useMobileSettingsHost()`로 갈라 이 행을 대신 세운다.
+ */
+export interface SettingsInputRowProps {
+  readonly label: string;
+  /** 행의 보조 줄 — 지금 값(비밀은 「설정됨」/「없음」). */
+  readonly valueText: string;
+  readonly helpTip?: React.ReactNode;
+  readonly hint?: React.ReactNode;
+  readonly icon?: React.ReactNode;
+  readonly disabled?: boolean;
+  /** 눌러도 시트가 열리지 않는 읽기 전용 값(정보 행). */
+  readonly readOnly?: boolean;
+  readonly input: Omit<import("../react/browser.js").MobileInputSpec, "title">;
+}
+
+export function SettingsInputRow({ label, valueText, helpTip, hint, icon, disabled = false, readOnly = false, input }: SettingsInputRowProps): React.ReactElement | null {
+  const mobileHost = useMobileSettingsHost();
+  if (!mobileHost?.openInput) return null;
+  const openInput = mobileHost.openInput;
+  return (
+    <SettingsRow label={label} hint={hint} helpTip={helpTip} icon={icon} disabled={disabled}>
+      <button
+        type="button"
+        className="fc-select__trigger fc-select--mobile"
+        disabled={disabled || readOnly}
+        aria-haspopup={readOnly ? undefined : "dialog"}
+        onClick={() => openInput({ title: label, ...input })}
+      >
+        <span className="fc-select__value">{valueText}</span>
+      </button>
+    </SettingsRow>
+  );
+}
+
+/**
+ * 코어 설정 카드(제목 + 행들) — 데스크톱은 `global-settings-card` 그대로, 모바일은 `SettingsCard`(묶음 머리 · 묶음 카드 · 아래 안내).
+ * 제목 옆의 도움말(`titleHelp`)은 모바일에서 카드 아래 안내 글이 된다(P-3).
+ */
+export interface SettingsGroupProps {
+  readonly ariaLabel: string;
+  readonly title?: React.ReactNode;
+  readonly titleHelp?: React.ReactNode;
+  readonly note?: string;
+  readonly children: React.ReactNode;
+}
+
+export function SettingsGroup({ ariaLabel, title, titleHelp, note, children }: SettingsGroupProps): React.ReactElement {
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    return (
+      <section className="fc-settings-card is-mobile" aria-label={ariaLabel}>
+        {title ? <h3 className="fc-settings-card__title">{title}</h3> : null}
+        <div className="fc-settings-card__body">{children}</div>
+        {titleHelp || note ? <div className="fc-settings-card__desc">{titleHelp}{note}</div> : null}
+      </section>
+    );
+  }
+  return (
+    <section className="global-settings-card" aria-label={ariaLabel}>
+      {title ? <h3 className="global-settings-card-title">{title}{titleHelp}</h3> : null}
+      {children}
+    </section>
+  );
+}
+
+export interface SettingsSegmentOption<T extends string | number | boolean> {
+  readonly value: T;
+  readonly label: string;
+  /** 이 옵션만 고를 수 없다(예: 로그인이 필요한 옵션). 모바일 팝업에서는 흐린 행이 된다. */
+  readonly disabled?: boolean;
+}
+
+export interface SettingsSegmentsProps<T extends string | number | boolean> {
+  readonly value: T;
+  readonly options: readonly SettingsSegmentOption<T>[];
+  readonly onChange: (next: T) => void;
+  readonly ariaLabel?: string;
+  readonly ariaLabelledBy?: string;
+  readonly title?: string;
+  readonly disabled?: boolean;
+  /** 옵션이 켬/끔 둘뿐일 때 — 모바일에서 팝업 대신 토글 행이 된다(P-2). `value`는 boolean이어야 한다. */
+  readonly toggle?: boolean;
+}
+
+/**
+ * 배타 선택(세그먼트). 데스크톱은 세그먼트 그대로, 모바일 호스트 안에서는 현재값 줄이 있는 팝업 행(뜻이 켬/끔이면 토글)이 된다.
+ * `SettingsItem` 안에 둔다 — 행 제목이 팝업 제목이 된다.
+ */
+export function SettingsSegments<T extends string | number | boolean>({ value, options, onChange, ariaLabel, ariaLabelledBy, title, disabled = false, toggle = false }: SettingsSegmentsProps<T>): React.ReactElement {
+  const mobileHost = useMobileSettingsHost();
+  if (mobileHost) {
+    if (toggle && typeof value === "boolean") {
+      return <SettingsToggle checked={value} onChange={(next) => onChange(next as T)} ariaLabel={ariaLabel} disabled={disabled} />;
+    }
+    return (
+      <Select
+        value={String(value)}
+        options={options.map((option) => ({ value: String(option.value), label: option.label, ...(option.disabled ? { disabled: true } : {}) }))}
+        disabled={disabled}
+        {...(ariaLabel ? { label: ariaLabel } : {})}
+        {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})}
+        onChange={(raw) => {
+          const found = options.find((option) => String(option.value) === raw);
+          if (found) onChange(found.value);
+        }}
+      />
+    );
+  }
+  return (
+    <div className="segmented" role="group" {...(ariaLabel ? { "aria-label": ariaLabel } : {})} {...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {})} {...(title ? { title } : {})}>
+      <SegmentedThumb />
+      {options.map((option) => {
+        const isActive = option.value === value;
+        return (
+          <button
+            key={String(option.value)}
+            type="button"
+            aria-pressed={isActive}
+            className={`segmented-option ${isActive ? "is-active" : ""}`}
+            disabled={disabled || option.disabled}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -296,8 +563,10 @@ export function SettingsRow({ label, hint, helpTip, children }: SettingsRowProps
 export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled = false, busy = false }: SettingsToggleProps): React.ReactElement {
   const id = React.useId();
   const blocked = busy && !disabled;
+  const insideMobileRow = React.useContext(MobileSettingsRowLabelContext) !== null;
+  const Root = insideMobileRow ? "span" : "label";
   return (
-    <label className="fc-settings-toggle" htmlFor={id}>
+    <Root className="fc-settings-toggle" {...(insideMobileRow ? {} : { htmlFor: id })}>
       <input
         id={id}
         className="fc-settings-toggle__input"
@@ -314,7 +583,7 @@ export function SettingsToggle({ checked, onChange, label, ariaLabel, disabled =
         <span className="settings-switch-knob" />
       </span>
       {label ? <span className="fc-settings-toggle__label">{label}</span> : null}
-    </label>
+    </Root>
   );
 }
 
@@ -370,6 +639,10 @@ export interface ModelPickerProps {
   readonly onChange: (next: string) => void;
   /** 주면 트리거 오른쪽에 강도 세그먼트가 이어 붙는다. 사다리가 비면 그려지지 않는다. */
   readonly effort?: ModelPickerEffort;
+  /** 폰 전용 — 모델 팝업 맨 아래에 「기본값 사용」 행을 세운다. 데스크톱 선택기는 읽지 않는다. 값을 바꾼 상태일 때만 넘긴다. */
+  readonly reset?: MobileModelReset;
+  /** 폰 전용 — 값 줄 끝에 ` · {suffix}`를 덧붙인다(예: 기본값을 쓰는 중이면 「기본」). 데스크톱 선택기는 읽지 않는다. */
+  readonly valueSuffix?: string;
   readonly disabled?: boolean;
   readonly id?: string;
   readonly className?: string;
@@ -440,6 +713,8 @@ export function ModelPicker({
   options,
   onChange,
   effort,
+  reset,
+  valueSuffix,
   disabled = false,
   id,
   className,
@@ -466,6 +741,47 @@ export function ModelPicker({
       : {};
   const levels = effort?.levels ?? [];
   const rootClassName = ["fc-model-picker", levels.length > 0 ? "has-effort" : "", className ?? ""].filter(Boolean).join(" ");
+
+  const mobileHost = useMobileSettingsHost();
+  const rowLabel = React.useContext(MobileSettingsRowLabelContext);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  if (mobileHost?.ModelChoice) {
+    // 폰: 값 줄(「{모델} · {강도}」)만 서고, 탭하면 모델 팝업이 선다 — 팝업은 이 컴포넌트가 열려 있는 동안 다시 그려져 값이 살아 있다.
+    const ModelChoice = mobileHost.ModelChoice;
+    const effortCurrent = effort && levels.length > 0 ? (levels.includes(effort.value) ? effort.value : levels[Math.floor(levels.length / 2)] ?? levels[0]!) : null;
+    const effortText = effort && effortCurrent !== null ? (effort.labelOf ? effort.labelOf(effortCurrent) : effortCurrent) : null;
+    return (
+      <>
+        <button
+          type="button"
+          id={id}
+          className={["fc-select__trigger", "fc-select--mobile", className ?? ""].filter(Boolean).join(" ")}
+          disabled={disabled}
+          aria-haspopup="dialog"
+          {...nameProps}
+          onClick={() => setMobileOpen(true)}
+        >
+          <span className="fc-select__value">{selected?.label ?? value}{effortText ? ` · ${effortText}` : ""}{valueSuffix ? ` · ${valueSuffix}` : ""}</span>
+        </button>
+        {mobileOpen ? (
+          <ModelChoice
+            title={rowLabel ?? label ?? selected?.label ?? value}
+            groups={groups.map((group) => ({
+              key: group.provider ?? "etc",
+              label: group.provider ? launchProviderCaption(group.provider) : "…",
+              ...(group.provider ? { icon: launchProviderGlyph(group.provider) } : {}),
+              options: group.models.map((option) => ({ value: option.id, label: option.label, ...(formatModelContextWindow(option.contextWindow) ? { meta: formatModelContextWindow(option.contextWindow)! } : {}) })),
+            }))}
+            value={value}
+            onSelect={onChange}
+            {...(effort && effortCurrent !== null ? { effort: { label: effort.ariaLabel, levels: levels.map((level) => ({ value: level, label: effort.labelOf ? effort.labelOf(level) : level })), value: effortCurrent, onSelect: effort.onChange } } : {})}
+            {...(reset ? { reset } : {})}
+            onClose={() => setMobileOpen(false)}
+          />
+        ) : null}
+      </>
+    );
+  }
 
   let index = -1;
   return (

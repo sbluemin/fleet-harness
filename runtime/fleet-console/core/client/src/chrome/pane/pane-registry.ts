@@ -178,6 +178,15 @@ export function useRailEntries(side: "right" = "right"): readonly RailEntryBindi
 }
 
 /**
+ * 데스크톱 레일·팔레트가 읽는 엔트리 — `mobile.desktop === false`(폰 전용 엔트리)를 뺀 것. 페인 색인·호스트 능력·모바일 호스트는
+ * 전체 목록(`useRailEntries`)을 그대로 읽는다.
+ */
+export function useDesktopRailEntries(side: "right" = "right"): readonly RailEntryBinding[] {
+  const bindings = useRailEntries(side);
+  return useMemo(() => bindings.filter((binding) => binding.entry.mobile?.desktop !== false), [bindings]);
+}
+
+/**
  * 모든 페인을 id로 찾는 색인. `panes.open`이 이름만 받아 여는 근거다.
  *
  * 레일 바인딩이 아니라 레지스트리에서 만든다 — 계약이 독립 등록을 허용하므로, 어느 레일

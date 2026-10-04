@@ -37,7 +37,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { createHostCapabilities } from "../integration/plugin-capabilities.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "../integration/console-location.js";
 import type { PaletteSearchPanel } from "../integration/operation-search.js";
-import { useRailEntries } from "../chrome/pane/pane-registry.js";
+import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
 import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration/plugin-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
@@ -51,10 +51,11 @@ import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTrackin
 import { useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { subscribeDormantAutoMinimize } from "../../../../features/workspace/client/canvas/dormant-auto-minimize.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
-import { useMobileSessionOpen } from "../chrome/mobile/mobile-store.js";
-import { MobileTabBar } from "../chrome/mobile/mobile-tab-bar.js";
+import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
+import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
+import { MobileActionToast, recallArchivedTitle } from "../chrome/mobile/mobile-toast.js";
+import { MobileConnectionBand } from "../chrome/mobile/mobile-connection-band.js";
 import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
-import { MobileTheaterPage } from "../chrome/mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
@@ -181,7 +182,6 @@ function ConnectedApp() {
   const operationsViewVisible = pathname.startsWith("/operations");
   const isTransitionalRoute = pathname === "/";
   const mobileLayout = useViewMode().effective === "mobile";
-  const mobileSessionOpen = useMobileSessionOpen();
   const zenState = useZenModeState();
   const zenTransitionActive = useZenTransitionActive();
   const zenMode = zenState.active;
@@ -256,7 +256,7 @@ function ConnectedApp() {
   // 팔레트의 "Open panel"과 패널 검색 목록 — RightRail과 같은 레지스트리를 읽어 같은 순서로 선다.
   // 이름은 엔트리가, 검색은 그 엔트리가 세우는 페인들이 말한다. 한 엔트리에 검색을 가진 페인이
   // 여럿이면 결과를 한 그룹으로 합친다 — 팔레트가 보는 단위는 여전히 "무엇을 여는가"다.
-  const railBindings = useRailEntries();
+  const railBindings = useDesktopRailEntries();
   // 설정 검색 공급자는 React 밖에서 불린다 — 플러그인 섹션 스냅샷을 여기서 실어 준다.
   useEffect(() => { syncSettingsSearchPlugins(registry.providers); syncExperimentModelOptionPlugins(registry.providers); }, [registry.providers]);
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
@@ -599,8 +599,22 @@ function ConnectedApp() {
         : activeUndo.receipt.operationIds.length > 1
           ? t("chrome.toast.operationsArchived", { count: activeUndo.receipt.operationIds.length })
           : t("chrome.toast.operationArchived");
+  // 모바일 배치(S-33): 「「{제목}」을(를) 보관했습니다」 + 오른쪽 글자 버튼(되돌리기 · 보관함) — 데스크톱의 세 줄 토스트를 쓰지 않는다.
+  const mobileUndoText = activeUndo === null ? "" : activeUndo.kind === "archive" && !undoAuthor && activeUndo.receipt.operationIds.length <= 1
+    ? (() => { const title = recallArchivedTitle(activeUndo.receipt.targetId); return title ? t("mobile.toast.archived", { title }) : undoTitle; })()
+    : undoTitle;
   const deletionToast = (
     <>
+      {mobileLayout ? (
+        <MobileActionToast
+          open={activeUndo !== null}
+          text={mobileUndoText}
+          actions={[
+            { label: activeUndo?.kind === "archive" ? t("chrome.toast.archiveUndo") : t("chrome.toast.undo"), run: undoLastClose },
+            ...(activeUndo?.kind === "archive" ? [{ label: t("chrome.toast.openArchive"), run: () => { setMobileDestination({ kind: "archive" }); navigate("/operations", { replace: true }); } }] : []),
+          ]}
+        />
+      ) : (
       <Toast
         open={activeUndo !== null}
         tone="undo"
@@ -612,8 +626,36 @@ function ConnectedApp() {
         onSecondaryAction={activeUndo?.kind === "archive" ? openArchiveSheet : undefined}
         progress={activeUndo ? (activeUndo.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
       />
+      )}
       <Toast open={undoNotice !== null} tone="warn" title={undoNotice ? t(undoNotice.key) : ""} onDismiss={() => setUndoNotice(null)} />
     </>
+  );
+
+  const shellBars = (
+    <div className="console-shell-bars">
+      {/* 배너는 링크가 live가 아닌 동안 유지한다 — offline에만 걸면 재연결 시도가 시작되는 순간
+          배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
+      {/* 업데이트 중에는 링크 상실이 고장이 아니라 진행이다. 같은 순간에 두 가지 이야기를
+          내보내면 사용자는 더 무서운 쪽을 믿는다 — 커튼이 떠 있는 동안 배너는 침묵한다. */}
+      {state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching && mobileLayout ? (
+        <MobileConnectionBand failed={state.connection === "offline"}><ReconnectButton /></MobileConnectionBand>
+      ) : state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching ? (
+        <div className="console-link-banner" role="status" aria-live="polite">
+          <span>{t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}. {t("chrome.link.bannerDetail", { time: connectionLostTime })}</span>
+          <ReconnectButton />
+        </div>
+      ) : null}
+      <UpdateCurtain />
+      {/* 런타임 축이 degraded면 화면의 활동 표시는 마지막으로 알던 값일 뿐 지금의 사실이 아니다.
+          칩마다 물음표를 뿌리는 대신 배너 하나로만 말한다(제품 결정) — 어느 쪽이든 모르는 상태를
+          유휴나 휴면으로 추정하지는 않는다. */}
+      {state.connection === "live" && state.operationRuntimeHydration === "degraded" && !updateProgress.watching ? (
+        <div className="console-link-banner" role="status" aria-live="polite">
+          <span>{t("chrome.runtime.degraded")}</span>
+        </div>
+      ) : null}
+      <ControlBar />
+    </div>
   );
 
   return (
@@ -642,47 +684,21 @@ function ConnectedApp() {
             바를 열거한 뒤 업데이트 결과 바가 남아 있었다). 이 자리를 한 곳으로 만들면 CSS가
             :has(*) 하나로 "지금 흐름 바가 서 있는가"를 직접 물을 수 있고, 앞으로 여기에 무엇을
             더 넣든 게이트가 저절로 닫힌다. 상자는 만들지 않는다(display: contents). */}
-        <div className="console-shell-bars">
-          {/* 배너는 링크가 live가 아닌 동안 유지한다 — offline에만 걸면 재연결 시도가 시작되는 순간
-              배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
-          {/* 업데이트 중에는 링크 상실이 고장이 아니라 진행이다. 같은 순간에 두 가지 이야기를
-              내보내면 사용자는 더 무서운 쪽을 믿는다 — 커튼이 떠 있는 동안 배너는 침묵한다. */}
-          {state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching ? (
-            <div className="console-link-banner" role="status" aria-live="polite">
-              <span>{t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}. {t("chrome.link.bannerDetail", { time: connectionLostTime })}</span>
-              <ReconnectButton />
-            </div>
-          ) : null}
-          <UpdateCurtain />
-          {/* 런타임 축이 degraded면 화면의 활동 표시는 마지막으로 알던 값일 뿐 지금의 사실이 아니다.
-              칩마다 물음표를 뿌리는 대신 배너 하나로만 말한다(제품 결정) — 어느 쪽이든 모르는 상태를
-              유휴나 휴면으로 추정하지는 않는다. */}
-          {state.connection === "live" && state.operationRuntimeHydration === "degraded" && !updateProgress.watching ? (
-            <div className="console-link-banner" role="status" aria-live="polite">
-              <span>{t("chrome.runtime.degraded")}</span>
-            </div>
-          ) : null}
-          <ControlBar />
-        </div>
+        {mobileLayout ? null : shellBars}
         {(() => {
           const routeContent = (
             <main className="console-route-content">
               <Routes>
                 <Route path="/" element={<Navigate to="/operations" replace />} />
                 <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
-                {/* Theater is a phone-only destination: the desktop switches Theater from the band
-                    and lists every Theater in its sidebar, so this route has nothing to add there. */}
-                <Route path="/theaters" element={mobileLayout ? <MobileTheaterPage state={state} /> : <Navigate to="/operations" replace />} />
                 <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>
             </main>
           );
-          // The tab bar sits outside the routes because its destinations are routes: settings is a
-          // tab, and a bar that unmounted with the operations route would strand the way back.
-          return mobileLayout
-            ? <div className="mobile-frame">{routeContent}{mobileSessionOpen ? null : <MobileTabBar />}</div>
-            : routeContent;
+          // The mobile frame sits outside the routes: the top bar and the drawer reach every destination,
+          // so a frame that unmounted with the operations route would strand the way back.
+          return mobileLayout ? <MobileFrame state={state} bands={shellBars} onDeferredDeletion={enqueueDeletion}>{routeContent}</MobileFrame> : routeContent;
         })()}
         <OperationSearch
           state={state}
@@ -698,9 +714,9 @@ function ConnectedApp() {
         <ArchiveSheet />
         <TheaterSystemPromptSheet />
         <WhatsNewModal state={state} automaticSuspended={terminalFocused} />
-        <CommissioningOverlay state={state} />
+        {mobileLayout ? null : <CommissioningOverlay state={state} />}
         <OnboardingHost
-          toursSuspended={zenTransitionActive || terminalFocused}
+          toursSuspended={zenTransitionActive || terminalFocused || mobileLayout}
           core={CORE_ONBOARDING}
           plugins={registry.onboarding}
           language={consoleLocale}

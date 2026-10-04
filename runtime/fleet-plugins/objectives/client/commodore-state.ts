@@ -36,6 +36,8 @@ const theaters = new Map<string, TheaterCommodore>();
 const loading = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let enabledSnapshot = false;
+/** 전역 설정을 한 번이라도 읽었는가 — 읽기 전에는 실험 기능 켜짐을 모른다. */
+let experimentsKnown = false;
 /**
  * 사람이 읽는 Console 언어 — 사령관 줄·서랍이 그릴 때 알려 주고, 모든 commodore/* 요청 본문에 실린다. 서버는 Theater 마다
  * 기억해 사령관이 그 언어로 기록을 쓴다(목표 라우트가 language 를 싣는 것과 같다).
@@ -94,7 +96,7 @@ export function setCommodorePeek(theaterId: string | null): void {
 export function useCommodoreBoard(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[] } {
   const enabled = useCommodoreEnabled();
   const board = useSyncExternalStore(subscribeCommodore, () => boardSnapshot(theaterId), () => boardSnapshot(theaterId));
-  useEffect(() => { if (enabled) void loadCommodore(theaterId); }, [enabled, theaterId]);
+  useEffect(() => { if (enabled && theaterId) void loadCommodore(theaterId); }, [enabled, theaterId]);
   return board;
 }
 
@@ -117,6 +119,20 @@ function setTheater(theaterId: string, patch: Partial<TheaterCommodore>): void {
 function readEnabled(): boolean {
   return installed?.experiments.read()?.commodore === true;
 }
+
+function readExperimentsKnown(): boolean {
+  return (installed?.experiments.read() ?? null) !== null;
+}
+
+/**
+ * 모바일 드로어 「사령관」 목적지의 보임 — 실험 기능 「자율 운영」이 켜져 있을 때만 선다(Theater 가 아직 안 읽힌 부팅 직후에도 판정은 같다).
+ * 전역 설정을 아직 읽지 못한 부팅 직후에는 둔다: 이때 false 를 돌려주면 사령관 화면을 보던 새로고침이 홈으로 튕긴다.
+ * 드로어는 부팅 직후 닫혀 있으므로 줄이 잠깐 서는 일은 보이지 않는다.
+ */
+export const commodoreDestinationShown = {
+  subscribe: (listener: () => void) => subscribeCommodore(listener),
+  get: (_theaterId: string | null): boolean => !experimentsKnown || enabledSnapshot,
+};
 
 export function subscribeCommodore(listener: () => void): () => void {
   listeners.add(listener);
@@ -141,6 +157,7 @@ export function commodoreActiveTheaterId(): string | null {
 export function installCommodoreState(ctx: PluginInstallContext): () => void {
   installed = ctx;
   enabledSnapshot = readEnabled();
+  experimentsKnown = readExperimentsKnown();
   // 사이드바 줄이 서지 않는 화면에서도 '@' 덱이 활성 Theater 의 사령관을 알 수 있게, 활성 Theater 는 직접 읽어 둔다.
   let activeTheater = ctx.consoleState.getActiveTheaterId();
   if (activeTheater) void loadCommodore(activeTheater);
@@ -182,7 +199,10 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
   });
   const offExperiments = ctx.experiments.subscribe(() => {
     const next = readEnabled();
-    if (next === enabledSnapshot) return;
+    const known = readExperimentsKnown();
+    if (next === enabledSnapshot && known === experimentsKnown) return;
+    experimentsKnown = known;
+    if (next === enabledSnapshot) { notify(); return; }
     enabledSnapshot = next;
     if (!next) drawer = null;
     // 켜고 끈 결과는 서버의 view(enabled·active)에도 실린다 — 읽어 둔 Theater 를 다시 읽는다.
@@ -278,6 +298,38 @@ export function openCommodoreDrawer(theaterId: string, tab: CommodoreTab = "log"
   notify();
 }
 
+export const COMMODORE_ENTRY_ID = "commodore";
+
+/** 폰 사령관 화면의 고른 구역 — 다시 들어와도 유지한다(S-54 CM-2a). 서랍을 열려던 길·Theater 시트 행도 여기에 구역을 남긴다. */
+let mobileTab: CommodoreTab = "log";
+
+export function setCommodoreMobileTab(tab: CommodoreTab): void {
+  if (mobileTab === tab) return;
+  mobileTab = tab;
+  notify();
+}
+
+export function useCommodoreMobileTab(): CommodoreTab {
+  return useSyncExternalStore(subscribeCommodore, () => mobileTab, () => mobileTab);
+}
+
+/** 폰 사령관 화면을 고른 구역으로 연다 — 모바일 호스트는 목적지로 선언된 엔트리의 `rail.open`을 화면으로 연다. */
+export function openCommodoreMobile(tab: CommodoreTab): void {
+  setCommodoreMobileTab(tab);
+  installed?.rail.open(COMMODORE_ENTRY_ID);
+}
+
+/**
+ * 폰 배치에서 서랍이 열려 있으면 — 상주 시트는 폰에서 서지 않는다 — 서랍을 닫고 같은 구역으로 드로어 목적지 「사령관」 화면을 연다.
+ */
+export function routeCommodoreDrawerToMobile(): void {
+  if (!drawer) return;
+  const tab = drawer.tab;
+  drawer = null;
+  notify();
+  openCommodoreMobile(tab);
+}
+
 export function setCommodoreTab(tab: CommodoreTab): void {
   if (!drawer || drawer.tab === tab) return;
   drawer = { ...drawer, tab };
@@ -347,4 +399,35 @@ export function isWaitingObjective(objective: Objective): boolean {
     || objective.decisionRequest !== null
     || objective.awaitingReview
     || objective.followups.some((followup) => followup.state === "open");
+}
+
+/* ── 폰 화면이 읽는 콘솔 사실 ───────────────────────────────────────── */
+
+/** 실험 기능 켜짐을 아는가 — 전역 설정을 읽기 전이면 「꺼짐」 화면 대신 불러오는 중으로 둔다. */
+export function useCommodoreExperimentKnown(): boolean {
+  return useSyncExternalStore(subscribeCommodore, () => experimentsKnown, () => experimentsKnown);
+}
+
+function readOnline(): boolean {
+  return (installed?.consoleState.getConnection?.() ?? "live") === "live";
+}
+
+/** 콘솔 이벤트 스트림이 살아 있는가 — 끊기면 폰 사령관 화면의 입력·토글·저장을 잠근다(채팅과 같음). */
+export function useCommodoreOnline(): boolean {
+  return useSyncExternalStore((listener) => installed?.consoleState.subscribe(listener) ?? (() => undefined), readOnline, readOnline);
+}
+
+/** 사령관 모델 선택지 — 실험 기능 모델(Claude 별칭 + Gateway). 서버는 같은 판정(`isExperimentModelId`)으로 받는다. */
+export function commodoreModelOptions(): Promise<readonly import("@fleet-console/sdk/settings").ExperimentModelOption[]> {
+  return installed?.experiments.modelOptions() ?? Promise.resolve([]);
+}
+
+/** 실험 기능 「자율 운영」 — 리액트 밖(호스트가 구독으로 읽는 공급원)에서 쓰는 지금 값. */
+export function isCommodoreEnabled(): boolean {
+  return enabledSnapshot;
+}
+
+/** Theater 의 표시 이름을 React 로 — Theater 목록이 늦게 읽혀도 따라온다. */
+export function useCommodoreTheaterLabel(theaterId: string): string {
+  return useSyncExternalStore((listener) => installed?.consoleState.subscribe(listener) ?? (() => undefined), () => commodoreTheaterLabel(theaterId), () => commodoreTheaterLabel(theaterId));
 }

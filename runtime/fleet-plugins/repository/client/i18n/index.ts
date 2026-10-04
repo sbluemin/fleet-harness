@@ -320,6 +320,7 @@ const repositoryEn = {
   "repository.filetree.empty": "Empty folder",
   "repository.filetree.error": "Unable to load this folder",
   "repository.filetree.hint": "Files changed in this commit are marked; select one to open its diff.",
+  "repository.mobile.description": "Changes · History",
 } as const;
 
 const repositoryKo: Record<keyof typeof repositoryEn, string> = {
@@ -610,6 +611,7 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.filetree.empty": "빈 폴더",
   "repository.filetree.error": "이 폴더를 불러올 수 없습니다",
   "repository.filetree.hint": "이 커밋에서 바뀐 파일에 표시가 붙습니다. 선택하면 diff가 열립니다.",
+  "repository.mobile.description": "변경·히스토리",
 };
 
 export const REPOSITORY_MESSAGES = { en: repositoryEn, ko: repositoryKo } as const;

@@ -250,6 +250,9 @@ function SkillsIcon() {
 
 export const skillsEntry: RailEntryDescriptor = {
   id: "skills",
+  // 폰에서는 쓸 수 없다 — 모바일 「플러그인」 화면에 「데스크톱에서만」 흐린 행으로 선다(S-46).
+  // 모바일 드로어·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
+  mobile: { available: false, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6" /></svg> },
   title: (locale) => getT(locale)("skills.panel.title"),
   icon: SkillsIcon,
   panes: ["skills"],

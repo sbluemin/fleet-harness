@@ -1,7 +1,7 @@
 import "@fleet-console/font-picker/styles.css";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
-import { ExperimentalBadge, SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import { ExperimentalBadge, SettingsGroup, SettingsRow, SettingsSubScreenRow, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
@@ -13,7 +13,8 @@ import { REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, buildRemoteEndpointPresenta
 import { PairDeviceDialog } from "../../remote-access/client/pair-device-dialog.js";
 import { forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../../remote-access/client/remote-hosts.js";
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../../settings/client/global-settings-api.js";
-import { setGlobalSettingsField } from "../../settings/client/global-settings-store.js";
+import { setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
+import { pushMobileSheet } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 type T = Translate<CoreMessageKey>;
 const REMOTE_GRANT_TTL_MINUTES = 15;
 const ROTATE_ARM_TIMEOUT_MS = 5_000;
@@ -22,20 +23,16 @@ const FLEET_DESKTOP_RELEASES_URL = "https://github.com/sbluemin/fleet-harness/re
 
 
 export function RemoteAccessSection({ remote, saving }: { readonly remote: RemoteAccessState; readonly saving: boolean }) {
-  const t = useT();
-  const [status, setStatus] = useState<RemoteAccessStatus | null>(null);
-  const [link, setLink] = useState<RemoteAccessLink | null>(null);
-  const [monitoringOnly, setMonitoringOnly] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"create" | "rotate" | "revoke" | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [rotateArmed, setRotateArmed] = useState(false);
-  const [reloadToken, setReloadToken] = useState(0);
-  // 방금 만든 링크를 QR로 넘기는 창. 발급된 링크 자체(link)와 분리해 둔다 — 창을 닫아도 링크는
-  // 카드에 남아야 하고, 카드에 남은 링크는 다시 열 수 있어야 한다.
-  const [pairing, setPairing] = useState<RemoteAccessLink | null>(null);
-  const showQrRef = useRef<HTMLButtonElement>(null);
+  // 폰은 SDK 설정 키트로 읽는다: 토글 행 + 「세부 설정」 하위 화면 행(요약 줄이 수신 상태, 화면은 아래 데스크톱 카드 그대로).
+  // 렌더만 갈린다 — 상태 읽기·저장·발급·해지는 두 배치가 같은 함수를 쓴다.
+  if (useMobileSettingsHost()) return <MobileRemoteAccess remote={remote} saving={saving} />;
+  return <DesktopRemoteAccess remote={remote} saving={saving} />;
+}
 
+/** 리스너 상태 — 저장된 설정이 바뀔 때와 `refresh` 때 다시 읽는다. 두 배치가 같은 읽기를 쓴다. */
+function useRemoteAccessStatus(remote: RemoteAccessState): { readonly status: RemoteAccessStatus | null; readonly refresh: () => void } {
+  const [status, setStatus] = useState<RemoteAccessStatus | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     void fetchRemoteAccessStatus(controller.signal)
@@ -43,6 +40,22 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
       .catch(() => { if (!controller.signal.aborted) setStatus(null); });
     return () => controller.abort();
   }, [remote.enabled, remote.publicEndpointEnabled, remote.listenAddress, remote.listenPort.value, remote.advertisedHost, remote.advertisedPort.value, reloadToken]);
+  return { status, refresh: () => setReloadToken((token) => token + 1) };
+}
+
+function DesktopRemoteAccess({ remote, saving }: { readonly remote: RemoteAccessState; readonly saving: boolean }) {
+  const t = useT();
+  const { status, refresh } = useRemoteAccessStatus(remote);
+  const [link, setLink] = useState<RemoteAccessLink | null>(null);
+  const [monitoringOnly, setMonitoringOnly] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"create" | "rotate" | "revoke" | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [rotateArmed, setRotateArmed] = useState(false);
+  // 방금 만든 링크를 QR로 넘기는 창. 발급된 링크 자체(link)와 분리해 둔다 — 창을 닫아도 링크는
+  // 카드에 남아야 하고, 카드에 남은 링크는 다시 열 수 있어야 한다.
+  const [pairing, setPairing] = useState<RemoteAccessLink | null>(null);
+  const showQrRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!rotateArmed) return;
@@ -50,7 +63,6 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
     return () => clearTimeout(timer);
   }, [rotateArmed]);
 
-  const refresh = () => setReloadToken((token) => token + 1);
   const save = (next: RemoteAccessState) => {
     setLink(null);
     // 리스너가 바뀌면 그 링크가 가리키던 주소가 사라진다 — 살아 있는 QR을 그대로 두면 이미
@@ -170,6 +182,51 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
       ) : null}
     </>
   );
+}
+
+/**
+ * 폰의 원격 접속(impl-spec S-48 실험 기능의 토글 행). 토글은 데스크톱 카드의 「시작」·「중지」와 같은 저장이고,
+ * 수신 중일 때 끄기는 데스크톱과 같은 「수신을 중지할까요?」 확인을 거친다. 켜기는 주소가 준비됐을 때만 된다.
+ * 리스너·신원·링크·기기 해지는 「세부 설정 ›」가 연 전체 높이 시트에 데스크톱 카드 그대로 선다.
+ * (원격 세션에는 서버가 이 설정을 보내지 않고 쓰기도 거절한다 — 이 화면은 이 컴퓨터에서만 선다.)
+ */
+function MobileRemoteAccess({ remote, saving }: { readonly remote: RemoteAccessState; readonly saving: boolean }) {
+  const t = useT();
+  const { status } = useRemoteAccessStatus(remote);
+  const listening = status?.listener.listening === true;
+  const ready = buildRemoteEndpointPresentation(remote).ready;
+  const save = (next: RemoteAccessState) => void setGlobalSettingsField("remoteAccess", next);
+  const state: CoreMessageKey = status === null ? "settings.remote.status.checking"
+    : listening ? "settings.remote.status.listening"
+      : status.listener.lastError ? "settings.remote.status.failed"
+        : ready ? "settings.remote.status.stopped" : "settings.remote.status.setupRequired";
+  const toggle = (next: boolean) => {
+    if (next) { if (ready) save({ ...remote, enabled: true }); return; }
+    if (!listening) { save({ ...remote, enabled: false }); return; }
+    pushMobileSheet({
+      kind: "confirm",
+      spec: { title: t("settings.remote.stop.title"), body: t("settings.remote.stop.body"), cancelLabel: t("settings.remote.cancel"), confirmLabel: t("settings.remote.action.stop") },
+      resolve: (confirmed) => { if (confirmed) save({ ...remote, enabled: false }); },
+    });
+  };
+  const blocked = !remote.enabled && !ready;
+  const detail = listening ? status?.listener.origin : status?.listener.lastError;
+  return (
+    <SettingsGroup ariaLabel={t("settings.remote.title")}>
+      <SettingsRow label={t("settings.remote.title")} hint={t("settings.remote.lede")} badge={<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>} disabled={blocked}>
+        <SettingsToggle checked={remote.enabled} busy={saving} disabled={blocked} ariaLabel={t("settings.remote.title")} onChange={toggle} />
+      </SettingsRow>
+      {/* 수신 상태는 세부 설정 행의 요약 줄이다 — 열지 않고도 지금 상태(와 수신 주소·실패 사유)를 읽는다. */}
+      <SettingsSubScreenRow label={t("settings.remote.mobile.details")} summary={detail ? `${t(state)} · ${detail}` : t(state)} render={() => <RemoteDetailScreen />} />
+    </SettingsGroup>
+  );
+}
+
+/** 세부 설정 하위 화면 — 데스크톱 카드 그대로. 스토어를 읽으므로 저장이 곧바로 보인다. */
+function RemoteDetailScreen() {
+  const store = useGlobalSettingsStore();
+  const remote = store.state?.remoteAccess;
+  return remote === undefined ? null : <DesktopRemoteAccess remote={remote} saving={store.savingFields.has("remoteAccess")} />;
 }
 
 /**

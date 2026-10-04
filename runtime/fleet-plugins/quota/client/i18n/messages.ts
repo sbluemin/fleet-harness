@@ -5,6 +5,11 @@ export const quotaEn = {
   "quota.meter.cycle": "Included usage",
   "quota.meter.used": "{pct}% used",
   "quota.meter.resets": "Resets in {t}",
+  "mobile.usage.title": "Usage",
+  "mobile.usage.reset": "resets in {t}",
+  "mobile.usage.session": "5-hour limit",
+  "mobile.usage.weekly": "Weekly limit",
+  "mobile.usage.connect": "Connect",
   "quota.meter.resets.at": "Resets in {t} · {at}",
   "quota.meter.pace": "{n}× the pace this window refills",
   "quota.meter.exhausts": "Out in {t}",
@@ -55,6 +60,7 @@ export const quotaEn = {
   "quota.privacy": "Reads usage with your local CLI sign-in. Requests go only to each provider; nothing else leaves this machine.",
   "quota.loading.title": "Reading provider usage",
   "quota.loading.body": "Querying each provider with your local CLI sign-in. Nothing else leaves this machine.",
+  "mobile.usage.subtitle": "Subscription limits summary",
 } as const;
 
 export const quotaKo: Record<keyof typeof quotaEn, string> = {
@@ -64,6 +70,11 @@ export const quotaKo: Record<keyof typeof quotaEn, string> = {
   "quota.meter.cycle": "포함된 사용량",
   "quota.meter.used": "{pct}% 사용",
   "quota.meter.resets": "리셋까지 {t}",
+  "mobile.usage.title": "사용량",
+  "mobile.usage.reset": "{t} 뒤 초기화",
+  "mobile.usage.session": "5시간 한도",
+  "mobile.usage.weekly": "주간 한도",
+  "mobile.usage.connect": "연결",
   "quota.meter.resets.at": "리셋까지 {t} · {at}",
   "quota.meter.pace": "회복 속도의 {n}배로 소진 중",
   "quota.meter.exhausts": "{t} 후 소진",
@@ -114,6 +125,7 @@ export const quotaKo: Record<keyof typeof quotaEn, string> = {
   "quota.privacy": "로컬 CLI 로그인 정보로 사용량을 조회합니다. 요청은 각 공급자에게만 전송되며 그 외에는 이 기기를 떠나지 않습니다.",
   "quota.loading.title": "사용량을 읽는 중",
   "quota.loading.body": "로컬 CLI 로그인 정보로 각 공급자에 사용량을 조회합니다. 그 외에는 이 기기를 떠나지 않습니다.",
+  "mobile.usage.subtitle": "구독 한도 요약",
 };
 
 export const QUOTA_MESSAGES = { en: quotaEn, ko: quotaKo } as const;

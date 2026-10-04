@@ -85,3 +85,121 @@
   outline: 2px solid var(--brass);
   outline-offset: 1px;
 }
+
+/* ── 모바일 Operation 화면의 터미널 독(impl-spec S-30) ──────────────────────────────────
+   [CLI 확인 줄(대기 중일 때만)] + [키 줄]. 키 줄은 면 + 강한 헤어라인, 모서리 24, 높이 56. 키는 칩 알약 40,
+   모노 13 600. 키 영역만 가로로 밀고 오른쪽 키보드 원은 고정이다. 색은 모바일 팔레트 토큰만 쓴다. */
+.terminal-mobile-dock {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 16px 12px;
+  background: var(--m-bg);
+}
+
+.terminal-key-bar.is-mobile {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  height: 56px;
+  padding: 0 8px;
+  border: 1px solid var(--m-hairline-strong);
+  border-radius: 24px;
+  background: var(--m-surface);
+}
+
+.terminal-key-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.terminal-key-strip::-webkit-scrollbar { display: none; }
+
+.terminal-key-bar.is-mobile .terminal-key,
+.terminal-confirm-row .terminal-key {
+  flex: none;
+  min-width: 44px;
+  min-height: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--m-chip);
+  color: var(--m-text);
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-mono);
+  font-weight: var(--weight-bold);
+}
+
+/* 누름은 S-52 R3(mobile-press.css의 글자색 12% 겹침) — 데스크톱 brass 누름 면이 넘어오지 않게 제 면을 지킨다. */
+.terminal-key-bar.is-mobile .terminal-key:active,
+.terminal-confirm-row .terminal-key:active {
+  background: var(--m-chip);
+  color: var(--m-text);
+}
+
+/* Ctrl 무장 = 반전 면, 고정 = 반전 + 바깥 2 고리. */
+.terminal-key-bar.is-mobile .terminal-key[aria-pressed="true"] {
+  background: var(--m-inverse);
+  color: var(--m-on-inverse);
+}
+
+.terminal-key-bar.is-mobile .terminal-key.is-locked { box-shadow: 0 0 0 2px var(--m-hairline-strong); }
+
+.terminal-key-bar.is-mobile .terminal-key:focus-visible,
+.terminal-confirm-row .terminal-key:focus-visible,
+.terminal-key-keyboard:focus-visible {
+  outline: 2px solid var(--m-text);
+  outline-offset: -2px;
+}
+
+.terminal-key-keyboard {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--m-chip);
+  color: var(--m-text);
+  touch-action: manipulation;
+}
+
+/* CLI 확인 줄 — 13 대기 신호색, 간격 6, 좌우 4. 키는 키 줄과 같은 문법. */
+/* 시안 askbar 줄바꿈 규칙(FD-28) — 빠른 키는 문구 바로 뒤에 같은 줄로 흐르고, 폭이 모자라면 남은 키만
+   다음 줄 왼쪽으로 넘어간다. 라벨(무엇을 기다리는지)은 잘리지 않는다. */
+.terminal-confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--m-awaiting);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-caption);
+}
+
+.terminal-confirm-label { white-space: nowrap; }
+
+.terminal-confirm-keys { display: contents; }
+
+/* 연결이 끊긴 동안(D27) — 입력창과 같은 비활성. */
+.terminal-key-bar.is-mobile.is-disabled,
+.terminal-confirm-row.is-disabled { opacity: 0.55; }
+
+/* 모바일 본문의 터미널 면(S-30) — 테두리 없이 화면과 한 면이고, 격자는 10/14만큼 안으로 들어온다.
+   레일 Shell 카드의 테두리는 슬롯 크롬이 소유하던 것이라 이 화면에는 해당하지 않는다. */
+[data-mobile-surface] .terminal-shell {
+  border: 0;
+  border-radius: 0;
+}
+
+[data-mobile-surface] .terminal-canvas { inset: 10px 14px; }

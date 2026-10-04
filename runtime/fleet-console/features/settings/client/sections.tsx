@@ -9,8 +9,8 @@ import { SystemFontsFetchError, fetchSystemFonts } from "@fleet-console/font-pic
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
-import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
-import { SettingsSlider, SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import type { SettingsSectionDescriptor, SettingsSectionGroup, SettingsSectionMobile } from "@fleet-console/sdk/settings";
+import { SettingsGroup, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSlider, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 export { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
@@ -98,6 +98,7 @@ export interface PluginSettingsNavItem {
   readonly sectionTitle: string;
   readonly entries: readonly string[];
   readonly render?: () => ReactNode;
+  readonly mobile?: SettingsSectionMobile;
 }
 
 export const SETTINGS_GROUP_ORDER: readonly SettingsSectionGroup[] = ["setup", "work", "machine", "experiments"];
@@ -290,9 +291,11 @@ export function collectPluginSettingsSections(
   plugins: readonly { readonly id: string | null; readonly settingsSections?: readonly SettingsSectionDescriptor[] }[],
   locale: ConsoleLocale,
   t: T,
+  layout: "desktop" | "mobile" = "desktop",
 ): readonly PluginSettingsNavItem[] {
   return plugins.flatMap((plugin) =>
-    (plugin.settingsSections ?? []).map((section) => ({
+    // 폰에서만 서는 섹션(`mobile.only`)은 데스크톱 목록·검색에 올리지 않는다.
+    (plugin.settingsSections ?? []).filter((section) => layout === "mobile" || section.mobile?.only !== true).map((section) => ({
       id: `${plugin.id ?? "terminal"}:${section.id}` as const,
       // 플러그인 설정은 대부분 작업 도구의 동작이다. 다른 자리가 필요하면 섹션이 직접 말한다.
       group: section.group ?? "work" as const,
@@ -301,6 +304,7 @@ export function collectPluginSettingsSections(
       sectionTitle: resolveLocalizedText(section.title, locale),
       entries: (section.keywords ?? []).map((keyword) => resolveLocalizedText(keyword, locale)),
       render: section.render,
+      ...(section.mobile === undefined ? {} : { mobile: section.mobile }),
     })),
   );
 }
@@ -721,11 +725,64 @@ export function ConsolePortCard({
 }) {
   const t = useT();
   const consoleState = useConsoleState();
+  // 폰은 같은 상태·같은 저장을 SDK 설정 키트(모드 팝업 행 · 고정 포트 입력 행 · 접속 주소 정보 행)로 읽는다.
+  if (useMobileSettingsHost()) return <MobileConsolePort state={state} saving={saving} consoleState={consoleState} />;
   return (
     <section className="global-settings-card" aria-label={t("settings.port.title")}>
       <h3 className="global-settings-card-title">{t("settings.port.title")}</h3>
       <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
     </section>
+  );
+}
+
+function MobileConsolePort({ state, saving, consoleState }: {
+  readonly state: GlobalSettingsState;
+  readonly saving: boolean;
+  readonly consoleState: ReturnType<typeof useConsoleState>;
+}) {
+  const t = useT();
+  const effectivePort = consoleState.effectivePort;
+  const fallbackActive = consoleState.portMode === "static" && !consoleState.portHonored;
+  const host = `127.0.0.1:${effectivePort || "..."}`;
+  return (
+    <SettingsGroup ariaLabel={t("settings.port.title")} title={t("settings.port.title")} note={t("settings.port.help")}>
+      <SettingsItem label={t("settings.port.label")}>
+        <SettingsSegments
+          value={state.consolePortMode}
+          options={buildPortModes(t).map((mode) => ({ value: mode.id, label: mode.label }))}
+          disabled={saving}
+          onChange={(next) => void setGlobalSettingsField("consolePortMode", next)}
+        />
+      </SettingsItem>
+      {state.consolePortMode === "static" ? (
+        <SettingsInputRow
+          label={t("settings.port.staticPort")}
+          valueText={state.consoleStaticPort?.toString() ?? "—"}
+          hint={t("settings.port.hint")}
+          disabled={saving}
+          input={{
+            value: state.consoleStaticPort?.toString() ?? "",
+            placeholder: "8080",
+            inputMode: "numeric",
+            // 데스크톱 입력칸과 같은 판정 — 범위 밖 값은 저장하지 않고 시트에 남긴다.
+            onSave: async (raw) => {
+              const port = Number(raw);
+              if (!isValidConsoleStaticPort(port)) throw new Error(t("settings.port.hint"));
+              await setGlobalSettingsField("consoleStaticPort", port);
+            },
+          }}
+        />
+      ) : null}
+      <SettingsInputRow
+        readOnly
+        label={t("settings.port.currentlyReachable")}
+        valueText={`${host}${fallbackActive ? t("settings.port.dynamicSuffix") : ""}`}
+        hint={fallbackActive && consoleState.requestedPort
+          ? renderMessage(t("settings.port.fallback"), { port: <strong>{consoleState.requestedPort}</strong>, mode: <strong>{t("settings.port.dynamic")}</strong>, host: <strong>{host}</strong> })
+          : undefined}
+        input={{ value: host, onSave: () => undefined }}
+      />
+    </SettingsGroup>
   );
 }
 

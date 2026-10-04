@@ -4494,3 +4494,544 @@
   font-family: var(--font-content);
   font-size: var(--font-content-size);
 }
+
+/* ── 모바일 Operation 화면의 채팅(impl-spec S-26·S-27·S-29) ─────────────────────────────
+   셸이 상단 막대를 그리는 모바일 화면에서만 선다 — 본문 루트의 [data-mobile-surface]는 셸이 실어 준
+   창구(ctx.mobileOperation)의 존재로만 붙으므로, 데스크톱 캔버스·War Room·확대 표면은 이 구역과 무관하다.
+   색은 모바일 팔레트 토큰(--m-*)만 쓴다. 원장의 데스크톱 문법(턴 노드·경과 시계·답 이름표)은 거두고,
+   메신저 문법(사람 말풍선 오른쪽, AI 응답은 말풍선 없이 읽기 세리프)으로 그린다. */
+[data-mobile-surface] .agent-chat {
+  --agent-chat-measure: none;
+  --agent-chat-gutter: 0px;
+  background: var(--m-bg);
+}
+
+[data-mobile-surface] .agent-chat-log {
+  padding: 8px 24px 16px;
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+}
+
+[data-mobile-surface] .agent-chat-log::-webkit-scrollbar { display: none; }
+
+[data-mobile-surface] .agent-chat-log > * + * { margin-top: 16px; }
+
+/* 사람 말풍선 — 오른쪽, 최대 82%, 면 하나. 라이트에서만 헤어라인을 두른다(흰 면이 종이 위에서 녹지 않게). */
+[data-mobile-surface] .agent-chat-dispatch-meta { display: none; }
+
+[data-mobile-surface] .agent-chat-dispatch-bubble {
+  max-width: 82%;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-list);
+  line-height: 23px;
+}
+
+:root[data-mobile-scheme="light"] [data-mobile-surface] .agent-chat-dispatch-bubble { border-color: var(--m-hairline); }
+
+[data-mobile-surface] .agent-chat-dispatch-md,
+[data-mobile-surface] .agent-chat-dispatch-text {
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-list);
+}
+
+/* 진행 중 턴의 경과 시계와 답 이름표는 데스크톱 원장의 문법이다 — 폰에서는 진행 줄과 끝 안내가 그 말을 진다. */
+[data-mobile-surface] .agent-chat-turn-head,
+[data-mobile-surface] .agent-chat-answer-kicker,
+[data-mobile-surface] .agent-chat-completion-node,
+[data-mobile-surface] .agent-chat-completion-rule,
+[data-mobile-surface] .agent-chat-completion-answer,
+[data-mobile-surface] .agent-chat-completion-handoff { display: none; }
+
+[data-mobile-surface] .agent-chat-answer,
+[data-mobile-surface] .agent-chat-answer.has-seam,
+[data-mobile-surface] .agent-chat-stream { margin-top: 12px; }
+
+/* AI 응답 — 말풍선 없이 읽기 세리프 17/26, 문단 아래 10, 굵게 600. */
+[data-mobile-surface] .agent-chat .markdown-body {
+  --font-size-body: var(--m-fs-body);
+  font-family: var(--m-reading);
+  font-size: var(--m-fs-body);
+  line-height: 26px;
+  color: var(--m-text);
+}
+
+[data-mobile-surface] .agent-chat .markdown-body > * + * { margin-top: 0; }
+
+[data-mobile-surface] .agent-chat .markdown-body p { margin: 0 0 10px; }
+
+[data-mobile-surface] .agent-chat .markdown-body > :last-child { margin-bottom: 0; }
+
+[data-mobile-surface] .agent-chat .markdown-body strong { font-weight: var(--weight-bold); }
+
+[data-mobile-surface] .agent-chat .markdown-body :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--m-chip);
+  font-family: var(--m-mono);
+  font-size: 0.86em;
+}
+
+/* 코드 블록 — 면 + 강한 헤어라인, 모서리 12, 모노 13/20, 가로로 밀어 본다(바는 숨김). 언어·복사 머리 줄은
+   시안에 없다 — 복사는 응답 동작 줄의 [복사]가 진다. */
+[data-mobile-surface] .agent-chat .markdown-body pre {
+  margin: 0 0 10px;
+  padding: 0;
+  border: 1px solid var(--m-hairline-strong);
+  border-radius: 12px;
+  background: var(--m-surface);
+  box-shadow: none;
+}
+
+[data-mobile-surface] .agent-chat .markdown-body .code-block-toolbar { display: none; }
+
+[data-mobile-surface] .agent-chat .markdown-body pre code {
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: none;
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-mono);
+  line-height: 20px;
+  scrollbar-width: none;
+}
+
+[data-mobile-surface] .agent-chat .markdown-body pre code::-webkit-scrollbar { display: none; }
+
+/* 도구 실행 줄 — 끝난 턴의 작업 접힘이 왼쪽 알약 하나로 선다(높이 32, 모서리 16, 칩 면). */
+[data-mobile-surface] .agent-chat-fold { margin-top: 0; }
+
+[data-mobile-surface] .agent-chat-fold > summary,
+[data-mobile-surface] .agent-chat-fold.leads-to-answer > summary {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  gap: 8px;
+  border-radius: 16px;
+  background: var(--m-chip);
+  color: var(--m-text-muted);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-caption);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+[data-mobile-surface] .agent-chat-fold > summary::before {
+  content: "";
+  flex: none;
+  width: 11px;
+  height: 6px;
+  margin-top: -3px;
+  border-left: 1.7px solid currentColor;
+  border-bottom: 1.7px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+[data-mobile-surface] .agent-chat-fold-chev { display: none; }
+
+[data-mobile-surface] .agent-chat-fold-body { margin-top: 8px; }
+
+/* 진행 줄 — 도는 글리프 + 진행 문구, 14 sans muted. */
+[data-mobile-surface] .agent-chat-tally {
+  gap: 10px;
+  padding: 0;
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-meta);
+  color: var(--m-text-muted);
+}
+
+/* 응답 동작 줄 — 응답 아래 위 2, 아이콘 18, 간격 22. 누를 자리는 아이콘보다 넓게 잡고 바깥 여백으로 되돌린다. */
+.agent-chat-answer-actions {
+  display: flex;
+  gap: 22px;
+  margin-top: 2px;
+  color: var(--m-text-muted);
+}
+
+.agent-chat-answer-action {
+  display: grid;
+  place-items: center;
+  margin: -7px;
+  padding: 7px;
+  border-radius: var(--radius-pill);
+  color: inherit;
+}
+
+/* 끝 안내(D22) — 대화 맨 아래 한 줄, 13 faint. */
+.agent-chat-end-note {
+  margin: 0;
+  color: var(--m-text-faint);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-caption);
+}
+
+/* 빈 상태(D23) — 현행 초대를 모바일 문법으로: 고딕 제목, 보조 문구 muted. */
+[data-mobile-surface] .agent-chat-hero-sigil { color: var(--m-text-faint); }
+
+[data-mobile-surface] .agent-chat-hero-title {
+  color: var(--m-text);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-heading);
+  font-weight: var(--weight-bold);
+}
+
+[data-mobile-surface] .agent-chat-hero-body {
+  color: var(--m-text-muted);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-secondary);
+}
+
+/* 빈 상태 배치(FIN-1) — 데스크톱은 초대와 컴포저를 한 덩어리로 가운데에 띄우지만, 폰에서는 입력 독이 처음부터
+   화면 맨 아래에 붙고(첫 메시지 뒤와 같은 자리) 초대 문구만 위쪽 가운데(높이의 40% 안팎)에 선다.
+   받침(settle)은 서지 않고, 로그가 남는 높이를 위 1 : 아래 1.5로 나눠 초대를 세운다. */
+[data-mobile-surface] .agent-chat-settle,
+[data-mobile-surface] .agent-chat-settle.is-inviting {
+  flex-grow: 0;
+  transition: none;
+}
+
+[data-mobile-surface] .agent-chat-log.is-inviting::before,
+[data-mobile-surface] .agent-chat-log.is-inviting::after {
+  content: "";
+  flex: 1 1 0;
+}
+
+[data-mobile-surface] .agent-chat-log.is-inviting::after { flex-grow: 1.5; }
+
+[data-mobile-surface] .agent-chat-log.is-inviting > * + * { margin-top: 0; }
+
+[data-mobile-surface] .agent-chat-log.is-inviting .agent-chat-hero { margin-block: 0; }
+
+/* 입력 독(S-27) — 패딩 8/16/12, 둥근 입력창 하나. 아래 줄: [+] [모델·강도] · · · [멈춤] [보내기]. */
+[data-mobile-surface] .agent-chat-composer {
+  padding: 8px 16px 12px;
+  background: var(--m-bg);
+}
+
+[data-mobile-surface] .agent-chat-composer-meta {
+  max-width: none;
+  margin: 0 0 8px;
+  font-family: var(--m-sans);
+}
+
+[data-mobile-surface] .agent-chat-composer-frame {
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 8px 8px;
+  border: 1px solid var(--m-hairline-strong);
+  border-radius: 24px;
+  background: var(--m-surface);
+  box-shadow: none;
+}
+
+[data-mobile-surface] .agent-chat-composer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+[data-mobile-surface] .agent-chat-composer-row { padding: 0; }
+
+[data-mobile-surface] .agent-chat-composer-input,
+[data-mobile-surface] .agent-chat-composer-highlight {
+  min-height: 44px;
+  padding: 0 10px;
+  color: var(--m-text);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-list);
+  line-height: 22px;
+}
+
+[data-mobile-surface] .agent-chat-composer-input::placeholder { color: var(--m-text-muted); }
+
+.agent-chat-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-chat-composer-tools .agent-chat-composer-gap { flex: 1; }
+
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-attach,
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-stop,
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-send {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--m-chip);
+  color: var(--m-text);
+  opacity: 1;
+}
+
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-attach svg,
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-stop svg,
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-send svg {
+  width: 20px;
+  height: 20px;
+}
+
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-send {
+  background: var(--m-inverse);
+  color: var(--m-on-inverse);
+}
+
+/* FD-19 — 빈 입력에서도 반전 활성 모양 그대로(누르면 입력칸 초점). 보내는 중(disabled)만 물러난다. */
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-send:disabled { opacity: 0.45; }
+
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-stop:disabled { opacity: 0.55; }
+
+/* 모델·강도 알약 — 높이 40, 모서리 20, 칩 면, 강도는 보조 강조 글자. */
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-coord {
+  height: 40px;
+  padding: 0 14px;
+  gap: 6px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--m-chip);
+  color: var(--m-text);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-meta);
+}
+
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-coord-glyph,
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-coord-mark,
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-coord-sep { display: none; }
+
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-coord-model { color: var(--m-text); }
+
+[data-mobile-surface] .agent-chat-composer-tools .agent-chat-coord-effort {
+  color: var(--m-text-nav);
+  text-decoration: none;
+}
+
+[data-mobile-surface] .agent-chat-composer-tools button:focus-visible {
+  outline: 2px solid var(--m-text);
+  outline-offset: 2px;
+}
+
+/* 질문 카드(S-29) — 허용 요청 카드와 같은 틀을 기록 안에 둔다. */
+[data-mobile-surface] .agent-chat-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--m-hairline-strong);
+  border-radius: 24px;
+  background: var(--m-surface);
+  font-family: var(--m-sans);
+}
+
+[data-mobile-surface] .agent-chat-ask-head { gap: 10px; }
+
+[data-mobile-surface] .agent-chat-ask-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--m-text);
+  font-size: var(--m-fs-list);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-mobile-surface] .agent-chat-ask-text {
+  margin: 0;
+  color: var(--m-text);
+  font-size: var(--m-fs-secondary);
+  line-height: 21px;
+}
+
+[data-mobile-surface] .agent-chat-ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+[data-mobile-surface] .agent-chat-ask-option {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 12px;
+  align-content: center;
+  align-items: center;
+  justify-items: start;
+  min-height: 48px;
+  padding: 4px 4px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--m-text);
+  font-size: var(--m-fs-secondary);
+  text-align: left;
+}
+
+[data-mobile-surface] .agent-chat-ask-option[aria-pressed="true"] {
+  background: none;
+  border-color: transparent;
+  color: var(--m-text);
+}
+
+[data-mobile-surface] .agent-chat-ask-option-label {
+  grid-column: 2;
+  color: var(--m-text);
+  font-weight: var(--weight-regular);
+  font-size: var(--m-fs-secondary);
+  text-align: left;
+}
+
+[data-mobile-surface] .agent-chat-ask-option .agent-chat-ask-radio {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+[data-mobile-surface] .agent-chat-ask-option-desc {
+  grid-column: 2;
+  color: var(--m-text-muted);
+  font-size: var(--m-fs-caption);
+  text-align: left;
+}
+
+[data-mobile-surface] .agent-chat-ask-caption {
+  margin: 0;
+  color: var(--m-text-muted);
+  font-size: var(--m-fs-caption);
+  font-weight: var(--weight-bold);
+}
+
+[data-mobile-surface] .agent-chat-ask-multi {
+  margin: 0;
+  color: var(--m-text-faint);
+  font-size: var(--m-fs-caption);
+}
+
+[data-mobile-surface] .agent-chat-ask-own {
+  min-height: 88px;
+  margin-top: 4px;
+  resize: none;
+  line-height: 22px;
+}
+
+.agent-chat-ask-radio {
+  position: relative;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--m-text-muted);
+  border-radius: var(--radius-pill);
+}
+
+.agent-chat-ask-radio.is-multi { border-radius: 6px; }
+
+[aria-pressed="true"] > .agent-chat-ask-radio { border-color: var(--m-text); }
+
+[aria-pressed="true"] > .agent-chat-ask-radio::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: inherit;
+  background: var(--m-text);
+}
+
+[data-mobile-surface] .agent-chat-ask-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+[data-mobile-surface] .agent-chat-ask-hint { display: none; }
+
+[data-mobile-surface] .agent-chat-ask-mini {
+  height: 40px;
+  margin-right: auto;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--m-chip);
+  color: var(--m-text);
+  font-size: var(--m-fs-meta);
+}
+
+[data-mobile-surface] .agent-chat-ask-send {
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--m-inverse);
+  color: var(--m-on-inverse);
+  font-size: var(--m-fs-meta);
+  font-weight: var(--weight-bold);
+}
+
+[data-mobile-surface] .agent-chat-ask-send:disabled { opacity: 0.4; }
+
+[data-mobile-surface] .agent-chat-ask-send.is-quiet {
+  background: var(--m-chip);
+  color: var(--m-text);
+  font-weight: var(--weight-medium);
+}
+
+[data-mobile-surface] .agent-chat-ask-input {
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--m-hairline-strong);
+  border-radius: 14px;
+  background: var(--m-bg);
+  color: var(--m-text);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-list);
+}
+
+:root[data-mobile-scheme="light"] [data-mobile-surface] .agent-chat-ask-input { background: var(--m-surface); }
+
+[data-mobile-surface] .agent-chat-ask-dot { display: none; }
+
+[data-mobile-surface] .agent-chat-ask-badge::before {
+  content: "";
+  flex: none;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--m-awaiting);
+  border-radius: var(--radius-pill);
+  background: radial-gradient(circle, var(--m-awaiting) 0 2px, transparent 2.5px);
+  box-shadow: 0 0 0 3px var(--m-awaiting-glow);
+  animation: agent-mobile-await 1.8s ease-in-out infinite;
+}
+
+/* 답한 뒤 — 끝 안내 문법(13 faint)의 한 줄. */
+.agent-chat-ask-settled-line {
+  margin: 0;
+  color: var(--m-text-faint);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-caption);
+}
+
+@keyframes agent-mobile-await {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--m-awaiting-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}

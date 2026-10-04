@@ -2,6 +2,7 @@ import type { OpenFileRequest, OpenWikiEntryRequest, OpenResult } from "../navig
 import type { PluginInstallContext } from "../plugin/types.js";
 import type { PaneTarget } from "../pane/types.js";
 import type { ReactNode } from "react";
+import type { StatusGlyphState } from "../components/status-glyph.js";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { OpenLinkHandler } from "../link/types.js";
@@ -161,6 +162,11 @@ export interface RailEntryDescriptor {
    */
   readonly attention?: RailEntryAttention;
   /**
+   * 모바일 배치에서 이 도구가 서는 자리. 생략하면 드로어의 「플러그인」 줄에 한 행으로 서고, 현행 도구 시트로 열린다.
+   * 데스크톱 레일은 이 값을 읽지 않는다.
+   */
+  readonly mobile?: RailEntryMobile;
+  /**
    * 이 entry가 여는 표면이 레일 패널·확대 표면이 아닐 때(activate 전용) 켜짐을 말하는 법.
    * 선언하면 그 표면이 서 있는 동안 아이콘이 펼친 패널과 같은 문법(아래 brass 선 +
    * aria-pressed)으로 켜진다. 선언하지 않은 entry의 동작은 바뀌지 않는다.
@@ -172,6 +178,81 @@ export interface RailEntryDescriptor {
    * 가리면 도구모음 칸이 나타났다 사라져 근육 기억을 깨므로 쓰지 않는다.
    */
   readonly visible?: () => boolean;
+}
+
+/** 모바일 배치에서 레일 엔트리가 서는 자리. */
+export interface RailEntryMobile {
+  /**
+   * 「플러그인」 화면 행의 보조 줄 설명(예: 「변경·히스토리」). 데스크톱 전용 행이면 호스트가 뒤에 「 — 데스크톱에서만」을 붙인다.
+   * 생략하면 보조 줄은 필요한 말(데스크톱 전용 표시)만 선다.
+   */
+  readonly description?: LocalizedText;
+  /**
+   * 모바일 드로어 목적지 행과 「플러그인」 화면 행에 쓸 아이콘(데스크톱 레일 아이콘과 다른 모양이 필요할 때). 24×24 격자에 선 1.7·둥근 끝이고
+   * 색은 글자색(`currentColor`)을 따른다. 생략하면 엔트리의 `icon`을 쓴다.
+   */
+  readonly icon?: ReactNode | (() => ReactNode);
+  /**
+   * 폰에서 쓸 수 있는가. `false`면 모바일 드로어의 「플러그인」 화면에 흐린 행(「데스크톱에서만」)으로 남고 눌러도 열리지 않는다 —
+   * 쓸 수 없는 도구도 어디서 쓰는지 알 수 있게 목록에는 둔다. 생략하면 쓸 수 있다.
+   */
+  readonly available?: boolean;
+  /**
+   * `false`면 이 엔트리는 모바일 배치에서만 선다 — 데스크톱 우측 레일·팔레트의 패널 목록에는 오르지 않는다.
+   * 데스크톱에 이미 다른 표면(사이드바 줄 등)으로 서 있는 기능을 폰의 목적지 화면으로만 더 올릴 때 쓴다.
+   * 페인 등록과 `panes.open`은 그대로 동작한다. 생략하면 데스크톱 레일에도 선다.
+   */
+  readonly desktop?: false;
+  /**
+   * 드로어의 고정 목적지로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
+   * 그 화면의 본문은 이 엔트리의 primary 페인이다 — 모바일 호스트가 페인 컨텍스트에 `mobileBar`를 싣는다.
+   * 이름과 아이콘은 엔트리의 `title`·`icon`을 쓴다.
+   *
+   * `order`는 정렬 값이다 — 작은 쪽이 위. 「보관함」·「플러그인」·「설정」 줄은 항상 이 목적지들 아래에 서고
+   * 이 값은 플러그인 목적지끼리의 순서만 정한다. 같으면 등록 순서.
+   */
+  readonly destination?: {
+    readonly order: number;
+    /**
+     * 이 목적지 행을 지금 둘지. 상태(실험 기능 켜짐·활성 Theater)에 따라 줄이 서고 사라져야 할 때 쓴다 — 문서 단위의
+     * `visible`은 정적이라 맞지 않다. 생략하면 늘 둔다. `get`이 false면 드로어 행이 없고, 그 목적지를 보고 있던 중에
+     * false가 되면 호스트가 홈으로 돌려보낸다. 호스트는 `useSyncExternalStore`로 읽으므로 `get`은 부작용 없이
+     * 같은 상태에 같은 값을 돌려준다. 코어 호스트는 `theaterId`로 활성 Theater(없으면 null)를 건넨다.
+     */
+    readonly shown?: RailEntryDestinationShown;
+    /**
+     * 드로어 행 오른쪽 끝 상태 칸 — 「꺼짐」·「판단 중」처럼 이 목적지가 가진 상태를 글리프와 낱말로 말한다. 생략하거나 `get`이 null이면 칸을 비운다.
+     * 호스트는 값을 그대로 그리기만 하고 플러그인 상태를 읽지 않는다. 사람이 답할 일의 수는 이 칸이 아니라 `attention.count`다.
+     */
+    readonly trailing?: RailEntryDestinationTrailing;
+    /**
+     * 드로어 행과 화면 제목에 쓸 짧은 이름(`title`과 같은 현지화 문자열 — 로케일 함수도 된다). 생략하면 엔트리의 `title`을 쓴다.
+     * 데스크톱 레일 제목이 「Codex — 프로젝트 위키」처럼 길어도 모바일 드로어에는 「위키」가 서게 한다.
+     */
+    readonly label?: LocalizedText;
+  };
+}
+
+/** 모바일 드로어 목적지 행 오른쪽 끝 칸의 내용. 문자열은 이미 현지화되어 있다. */
+export interface RailEntryDestinationTrailingValue {
+  /** 낱말 앞에 서는 12px 상태 글리프. 생략하면 낱말만 선다. */
+  readonly glyph?: StatusGlyphState;
+  readonly text: string;
+  /** 낱말의 톤 — 기본 `muted`, 꺼짐처럼 가라앉은 상태는 `faint`, 오류는 `danger`. */
+  readonly tone?: "muted" | "faint" | "danger";
+}
+
+/** 모바일 드로어 목적지 행 오른쪽 칸의 공급원 — `RailEntryMobile.destination.trailing`. 호스트는 값(glyph·text·tone)으로 비교하므로 매번 새 객체를 돌려줘도 된다. */
+export interface RailEntryDestinationTrailing {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly get: (theaterId: string | null) => RailEntryDestinationTrailingValue | null;
+}
+
+/** 모바일 드로어 목적지 행의 보임 공급원 — `RailEntryMobile.destination.shown`. */
+export interface RailEntryDestinationShown {
+  readonly subscribe: (listener: () => void) => () => void;
+  /** 지금 이 목적지 행을 둘지. */
+  readonly get: (theaterId: string | null) => boolean;
 }
 
 /**
@@ -194,4 +275,23 @@ export interface RailEntryAttention {
   readonly count: (theaterId: string | null) => number;
   /** 배지의 이름 — 아이콘 이름 뒤에 붙어 말풍선과 스크린 리더가 읽는다(예: "결정 요청 2"). */
   readonly label: (count: number, locale: ConsoleLocale) => string;
+  /**
+   * 기다리는 일 하나하나. 모바일 드로어의 「확인 필요」 구역이 대기 Operation과 함께 행으로 세운다.
+   * `count`는 배지, 이 목록은 행이다 — 같은 일을 가리키는 것이 정상이다. 생략하면 배지만 서고 행은 오르지 않는다.
+   * 갱신은 위 `subscribe`로 한다. `count`처럼 부작용 없이 같은 상태에 같은 값을 돌려주고,
+   * 상태가 바뀌지 않았으면 **같은 배열 참조**를 돌려준다(`useSyncExternalStore` 스냅샷이다).
+   */
+  readonly items?: (theaterId: string | null, locale: ConsoleLocale) => readonly RailEntryAttentionItem[];
+}
+
+/** 사람의 손을 기다리는 일 하나. 문자열은 모두 이미 현지화되어 있다. */
+export interface RailEntryAttentionItem {
+  /** 같은 엔트리 안에서 안정적인 키 — 목록이 갱신돼도 행의 정체성이 된다. */
+  readonly id: string;
+  /** 행의 제목(예: 목표 이름). */
+  readonly title: string;
+  /** 행의 보조 줄(예: 「결정 요청 1건」). */
+  readonly reason: string;
+  /** 행을 눌렀을 때. 호스트는 이 엔트리의 자리로 먼저 이동한 **뒤에** 부른다. */
+  readonly open: () => void;
 }

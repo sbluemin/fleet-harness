@@ -8,7 +8,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 import type { PaneSearchResult, PaneTarget } from "@fleet-console/sdk/pane";
 import { openExpandedSurface } from "../expanded-surface/store.js";
-import { useRailEntries } from "../pane/pane-registry.js";
+import { useDesktopRailEntries } from "../pane/pane-registry.js";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { OperationNameMark } from "../../../../../features/execution/client/components/operation-name-mark.js";
@@ -109,7 +109,7 @@ export function OperationSearch({
   const triageMapOpen = useTriageMapOpen();
   const warRoomAvailable = useViewMode().effective !== "mobile";
   const sessions = useAgentState().sessions;
-  const railBindings = useRailEntries();
+  const railBindings = useDesktopRailEntries();
   const navigate = useNavigate();
   const location = useLocation();
   const [mode, setMode] = useState<PaletteMode>("operations");

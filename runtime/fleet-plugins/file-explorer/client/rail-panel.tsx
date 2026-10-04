@@ -39,6 +39,7 @@ import { filePaneTarget, findReferencedFile, FileNavigationError, parseFileLocat
 import { showFileNavigationError, setDocumentPaneOpen, setFileRevealTarget, setSelectedPath } from "./view-store.js";
 import { parentDirOf } from "./viewer/stale.js";
 import { ShellActionNotice, useShellAction } from "./shell-action.js";
+import { MobileFileDocument, MobileFileTree } from "./mobile.js";
 
 const FEEDBACK_DURATION_MS = 2_500;
 /** 트리 열이 처음 설 때의 폭 — 문서 창이 열리기 전에는 표면 전체가 이 폭이다. */
@@ -63,6 +64,9 @@ export const fileExplorerEntry: RailEntryDescriptor = {
   title: (locale) => getT(locale)("fileExplorer.panel.title"),
   icon: FileExplorerIcon,
   panes: ["file-explorer", DOCUMENT_PANE_ID],
+  // 모바일 드로어의 고정 목적지 — 목표 다음 파일.
+  // 모바일 드로어·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
+  mobile: { destination: { order: 20, label: (locale) => getT(locale)("fileExplorer.panel.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></svg> },
   handles: {
     openFile: async (request) => {
       const ref = parseFileLocation(request.path);
@@ -85,7 +89,8 @@ export const fileExplorerPane: PaneDescriptor = {
   role: "primary",
   mounts: ["rail"],
   title: (ctx) => getT(ctx.language ?? "en")("fileExplorer.panel.title"),
-  render: (ctx) => <FileExplorerTreePane {...ctx} />,
+  // 모바일 목적지 화면에서는 호스트가 막대 창구(mobileBar)를 싣는다 — 그때만 모바일 트리가 선다.
+  render: (ctx) => (ctx.mobileBar ? <MobileFileTree {...ctx} /> : <FileExplorerTreePane {...ctx} />),
   defaultWidth: TREE_PANE_DEFAULT_WIDTH,
   minWidth: MIN_TREE_PX,
   search: async ({ query, theaterId, limit, signal, language }) => {
@@ -150,8 +155,9 @@ export const fileExplorerDocumentPane: PaneDescriptor = {
   role: "detail",
   mounts: ["rail", "expanded"],
   title: (ctx) => documentPaneTitle(ctx),
-  render: (ctx) => <FileExplorerDocumentPane {...ctx} />,
-  captionActions: (ctx) => <FileExplorerDocumentCaptionActions {...ctx} />,
+  render: (ctx) => (ctx.mobileBar ? <MobileFileDocument {...ctx} /> : <FileExplorerDocumentPane {...ctx} />),
+  // 모바일 목적지 화면에서는 막대가 ⋮ 메뉴를 진다 — 데스크톱 캡션 동작(뒤로·앞으로·줄바꿈)은 그리지 않는다.
+  captionActions: (ctx) => (ctx.mobileBar ? null : <FileExplorerDocumentCaptionActions {...ctx} />),
   defaultWidth: DOCUMENT_PANE_DEFAULT_WIDTH,
   minWidth: MIN_VIEWER_PX,
   keepAlive: true,

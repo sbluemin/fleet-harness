@@ -50,6 +50,10 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // 어느 타깃/게이트웨이의 뷰인지 되찾을 수 있어야 한다 — Android는 WebViewClient가 staged를
   // 캡처해 그 역할을 하지만, 여기서는 뷰 identity로 찾으므로 활성 로드를 따로 들고 있어야 한다.
   private var activeLoad: StagedLoad?
+  private let appearanceStore = AppearanceStore(store: UserDefaultsKeyValueStore(suiteName: "fleet-mobile-appearance"))
+  private lazy var appearance: Appearance = appearanceStore.load()
+  private var systemDark: Bool { traitCollection.userInterfaceStyle == .dark }
+  private var lastSystemDark: Bool?
   // 시도가 시작되어 커밋/실패로 정착하기 전까지 참. resume()이 이 값을 보지 않으면 포그라운드
   // 복귀가 인플라이트 시도를 저장된 타깃으로 덮어쓴다 — 콜드 스타트 링크는 attempt 카운터를
   // 뺏기고 조용히 사라진다(실기기에서 재현). 메인 스레드에서만 읽고 쓴다.
@@ -348,6 +352,8 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     let nonce = UUID().uuidString
     let config = WKWebViewConfiguration()
     config.userContentController.add(self, name: Self.readinessObject)
+    config.userContentController.add(self, name: AppearanceBridge.messageObject)
+    config.userContentController.addUserScript(appearanceUserScript(for: candidate))
     config.preferences.javaScriptCanOpenWindowsAutomatically = false
     // 의도적으로 Android와 다르다. Android는 기본(영속) WebView 프로필에 DOM storage를 켜므로
     // 콘솔의 localStorage가 재시작을 넘어 살아남는다. iOS는 시도마다 새 스토어를 쓴다 —
@@ -404,6 +410,18 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // MARK: - WKScriptMessageHandler (readiness)
 
   public func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+    if message.name == AppearanceBridge.messageObject {
+      // 스테이징 중인 뷰는 아직 커밋되지 않았으므로 셸을 대신해 말할 수 없다.
+      let origin = message.frameInfo.securityOrigin
+      let gatewayOrigin = activeGateway?.origin
+      let accepted = AppearanceBridge.accept(
+        fromCommittedView: activeView != nil && message.webView === activeView,
+        isMainFrame: message.frameInfo.isMainFrame,
+        fromGatewayOrigin: gatewayOrigin != nil && "\(origin.protocol)://\(origin.host):\(origin.port)" == gatewayOrigin,
+        body: message.body)
+      if let accepted { onAppearanceMessage(accepted) }
+      return
+    }
     guard let staged = staging, message.name == Self.readinessObject, isCurrent(staged.attemptId) else { return }
     let frame = message.frameInfo
     let origin = frame.securityOrigin
@@ -527,6 +545,68 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       delegateExternally(url)
     }
     return nil
+  }
+
+  // MARK: - Appearance bridge
+
+  public func getAppearance() -> [String: Any] {
+    ["colorMode": appearance.colorMode.rawValue, "fontScale": appearance.fontScale.rawValue]
+  }
+
+  /// Android 내비게이션 바 아이콘 대비용. iOS 홈 인디케이터는 스스로 대비를 맞춘다.
+  public func setNavigationBarStyle(_ dark: Bool) {}
+
+  public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+    super.traitCollectionDidChange(previousTraitCollection)
+    let dark = systemDark
+    if lastSystemDark == dark { return }
+    let first = lastSystemDark == nil
+    lastSystemDark = dark
+    if !first { refreshAppearance() }
+  }
+
+  private func appearanceScript(for target: PersistedTarget) -> String {
+    AppearanceBridge.script(appearance, systemDark: systemDark, console: ConsolePresentation.of(label: target.label, origin: target.origin, hostname: target.hostname, port: target.port), appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+  }
+
+  private func appearanceUserScript(for target: PersistedTarget) -> WKUserScript {
+    WKUserScript(source: appearanceScript(for: target), injectionTime: .atDocumentStart, forMainFrameOnly: true)
+  }
+
+  /// 살아 있는 페이지마다 다시 알린다: 다음 로드는 문서 시작 스크립트로, 열린 페이지는 지금 바로.
+  private func refreshAppearance() {
+    if let staged = staging {
+      let content = staged.view.configuration.userContentController
+      content.removeAllUserScripts()
+      content.addUserScript(appearanceUserScript(for: staged.target))
+    }
+    if let view = activeView, let target = activeLoad?.target ?? activeTarget {
+      let content = view.configuration.userContentController
+      content.removeAllUserScripts()
+      content.addUserScript(appearanceUserScript(for: target))
+      view.evaluateJavaScript(appearanceScript(for: target), completionHandler: nil)
+    }
+    emitPayload(["type": "appearance", "colorMode": appearance.colorMode.rawValue, "fontScale": appearance.fontScale.rawValue])
+  }
+
+  private func onAppearanceMessage(_ message: AppearanceMessage) {
+    switch message {
+    case .set(let next):
+      if next != appearance {
+        appearance = next
+        appearanceStore.save(next)
+      }
+      // 값이 같아도 확정을 보낸다 — 페이지는 낙관적으로 먼저 칠하고 이 응답을 기다린다.
+      refreshAppearance()
+    case .chrome(let top, let bottom):
+      emitPayload(["type": "chrome", "top": top, "bottom": bottom])
+    case .consoles:
+      emitPayload(["type": "consoles"])
+    }
+  }
+
+  private func emitPayload(_ payload: [String: Any]) {
+    main { self.onFleetEvent(payload) }
   }
 
   // MARK: - readiness JS

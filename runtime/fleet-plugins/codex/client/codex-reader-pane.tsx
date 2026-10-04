@@ -15,6 +15,7 @@ import {
   subscribeCodexReaderHistory,
 } from "./codex-host.js";
 import { getT } from "./i18n/index.js";
+import { wikiReaderDepth } from "./mobile-stack.js";
 import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./workspace-store.js";
 import { closeCodexReader, expandCodexReader, getReaderState, openCodexReader, useConsoleLocale, useReaderState } from "./reader-store.js";
 import { loadInitialData } from "./codex/state.js";
@@ -43,7 +44,8 @@ export const codexReaderPane: PaneDescriptor = {
   mounts: ["rail"],
   title: (ctx) => documentTitle(ctx),
   render: (ctx) => <CodexReaderPane {...ctx} />,
-  captionActions: (ctx) => <CodexReaderCaptionActions {...ctx} />,
+  // 모바일 목적지 화면에서는 막대가 제목과 뒤로를 진다 — 데스크톱 캡션 동작은 그리지 않는다.
+  captionActions: (ctx) => (ctx.mobileBar ? null : <CodexReaderCaptionActions {...ctx} />),
   // 이 열이 곧 "무엇을 읽고 있는가"다. 열만 치우고 그 사실을 남겨 두면, 다음 상태 발행에서
   // 카탈로그가 사용자가 닫은 열을 되살린다.
   //
@@ -172,6 +174,14 @@ function CodexReaderPane(ctx: PaneContext) {
     if (!next || next === addressTitle) return;
     panes.replaceParams({ title: next });
   }, [addressTitle, documentState.title, panes]);
+
+  // 모바일 목적지 화면 — 막대는 호스트가 그린다. 문서 제목과 뒤로(문서를 닫고 목록으로)만 선언한다.
+  const { mobileBar, visible } = ctx;
+  const barTitle = documentState.title || addressTitle || t("mobile.wiki.title");
+  useEffect(() => {
+    if (!visible || !mobileBar) return;
+    mobileBar.set({ title: barTitle, depth: wikiReaderDepth(), onBack: () => { closeCodexReader(); panes.close(); } });
+  }, [mobileBar, visible, barTitle, panes]);
 
   return (
     <div className="codex-doc-pane">

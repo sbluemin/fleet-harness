@@ -200,6 +200,9 @@ export const fileExplorerEn = {
   "fileExplorer.status.loadFailedTitle": "Couldn't load this folder",
   "fileExplorer.status.loadFailedRetry": "Try again",
   "fileExplorer.status.expanding": "Opening folder…",
+  "fileExplorer.mobile.copyPath": "Copy path",
+  "fileExplorer.mobile.menuLabel": "File menu",
+  "fileExplorer.error.listTimeout": "The connection is busy and the list didn't arrive",
 } as const;
 
 export const fileExplorerKo: Record<keyof typeof fileExplorerEn, string> = {
@@ -397,6 +400,9 @@ export const fileExplorerKo: Record<keyof typeof fileExplorerEn, string> = {
   "fileExplorer.status.loadFailedTitle": "이 폴더를 불러올 수 없습니다",
   "fileExplorer.status.loadFailedRetry": "다시 시도",
   "fileExplorer.status.expanding": "폴더 여는 중…",
+  "fileExplorer.mobile.copyPath": "경로 복사",
+  "fileExplorer.mobile.menuLabel": "파일 메뉴",
+  "fileExplorer.error.listTimeout": "연결이 바빠 목록을 불러오지 못했습니다",
 };
 
 const FILE_EXPLORER_MESSAGES = { en: fileExplorerEn, ko: fileExplorerKo } as const;
@@ -457,6 +463,7 @@ const SERVER_ERROR_KEYS = {
   size_exceeded: "fileExplorer.error.sizeExceeded",
   search_failed: "fileExplorer.error.searchFailed",
   list_failed: "fileExplorer.error.listFailed",
+  list_timeout: "fileExplorer.error.listTimeout",
   read_failed: "fileExplorer.error.readFailed",
   no_theater: "fileExplorer.error.noTheater",
   "Unable to load file": "fileExplorer.status.unableToLoadFile",

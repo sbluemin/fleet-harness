@@ -5,6 +5,7 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
 
 import { getT } from "../i18n/index.js";
+import { MobileGlyph, useMobileSurface } from "../mobile-surface.js";
 import { useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
 import { agentChatAttachmentPreviewUrl, messageAgentSession, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
@@ -228,6 +229,15 @@ export function AgentChatView({
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
   // 있음"은 아직 모른다는 뜻이고, 그것을 초대로 읽으면 과거가 있는 세션에도 초대가 잠깐 스친다.
   const awaitingFirstTurn = state.turns.length === 0 && !state.replaying && state.connection === "open";
+  const mobileSurface = useMobileSurface();
+  // 모바일 「다시 시도」는 마지막 턴에 사람이 보낸 지시를 같은 길로 한 번 더 보낸다 — 새 턴이 서고, 지난 턴은
+  // 기록에 남는다. 플러그인·Console Use가 보낸 지시는 사람이 쓴 문면이 아니므로 대상이 아니다.
+  const lastDispatch = state.turns[state.turns.length - 1]?.dispatch;
+  const retryText = lastDispatch && !lastDispatch.by && lastDispatch.text ? lastDispatch.text : null;
+  const retry = React.useCallback(() => {
+    if (retryText === null) return;
+    void messageAgentSession(context.operationId, retryText).catch(() => undefined);
+  }, [context.operationId, retryText]);
 
   // 델타가 흐르는 동안에도 바닥 추적이 이어지도록 draft 길이를 스크롤 신호에 합산한다.
   const scrollSignal = state.turns.reduce(
@@ -768,8 +778,11 @@ export function AgentChatView({
           openedTools={openedToolIds}
           onToggleTool={toggleToolId}
           onOpenTool={openToolId}
+          {...(mobileSurface && retryText !== null && !turnRunning ? { onRetry: retry } : {})}
         />
       ) : null}
+      {/* 모바일 끝 안내(impl-spec S-26, D22) — 대화 맨 아래 한 줄. 데스크톱 원장에는 서지 않는다. */}
+      {mobileSurface && turns.length > 0 ? <p className="agent-chat-end-note">{t("terminal.mobile.endNote")}</p> : null}
       {state.errorCode === "chat_turn_failed"
         ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
         : null}
@@ -1224,9 +1237,12 @@ const ChatTurn = React.memo(function ChatTurn({
   openedTools,
   onToggleTool,
   onOpenTool,
+  onRetry,
 }: {
   readonly operationId: string;
   readonly turn: AgentChatTurn;
+  /** 모바일 응답 동작 줄의 「다시 시도」 — 마지막 턴에만 넘어온다. */
+  readonly onRetry?: () => void;
   readonly openedTools: ReadonlySet<string>;
   readonly onToggleTool: (id: string) => void;
   readonly onOpenTool: (id: string) => void;
@@ -1240,6 +1256,7 @@ const ChatTurn = React.memo(function ChatTurn({
   readonly onAnswer: AgentChatViewState["answerAsk"];
 }) {
   const t = getT(language);
+  const mobileSurface = useMobileSurface();
   const view = splitAgentChatTurn(turn);
   const working = turn.state === "working";
   // 변경 목록의 펼침은 턴이 진다 — 라이브 목록과 접힘 안 목록은 서로 다른 자리에 서므로 목록
@@ -1424,6 +1441,7 @@ const ChatTurn = React.memo(function ChatTurn({
                   streaming={false}
                   language={language}
                 />
+                {mobileSurface ? <AnswerActions text={view.answer} language={language} {...(onRetry ? { onRetry } : {})} /> : null}
               </div>
             ) : null}
           </div>
@@ -1432,6 +1450,36 @@ const ChatTurn = React.memo(function ChatTurn({
     </>
   );
 });
+
+/**
+ * 모바일 응답 동작 줄(impl-spec S-26) — AI 응답 바로 아래 [복사] [다시 시도] 아이콘 두 개. 복사는 응답 원문
+ * (마크다운)을 그대로 담고, 잠깐 「복사했습니다」를 읽어 준다.
+ */
+function AnswerActions({ text, language, onRetry }: { readonly text: string; readonly language: "en" | "ko"; readonly onRetry?: () => void }) {
+  const t = getT(language);
+  const [copied, setCopied] = React.useState(false);
+  React.useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  const copy = () => {
+    void navigator.clipboard?.writeText(text).then(() => setCopied(true)).catch(() => undefined);
+  };
+  return (
+    <div className="agent-chat-answer-actions">
+      <button type="button" className="agent-chat-answer-action" aria-label={t(copied ? "terminal.mobile.copied" : "terminal.mobile.copy")} onClick={copy}>
+        <MobileGlyph name={copied ? "check" : "copy"} size={18} />
+      </button>
+      {onRetry ? (
+        <button type="button" className="agent-chat-answer-action" aria-label={t("terminal.mobile.retry")} onClick={onRetry}>
+          <MobileGlyph name="retry" size={18} />
+        </button>
+      ) : null}
+      <span className="agent-chat-sr-only" aria-live="polite">{copied ? t("terminal.mobile.copied") : ""}</span>
+    </div>
+  );
+}
 
 /** 진행 중 턴 헤드의 라이브 티커 — 시각 전용이라 라이브 리전이 아니다(매초 재낭독 방지).
  *  집계 줄과 같은 명도 물결을 진다: 둘 다 "이 턴이 아직 살아 있다"를 말하므로 같은 어휘다. */
@@ -2114,6 +2162,7 @@ function AskCard({
   const [note, setNote] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const mobileSurface = useMobileSurface();
 
   if (ask.outcome !== undefined) return <AskSettled ask={ask} language={language} />;
 
@@ -2196,8 +2245,9 @@ function AskCard({
     return (picks[index] ?? []).join(", ");
   });
   const complete = values.every((value) => value.length > 0);
-  // 다중 선택은 값이 생긴 뒤에도 더 고를 수 있어야 하므로 자동 전송에서 뺀다.
-  const autoSend = !ask.questions.some((question) => question.multiSelect);
+  // 다중 선택은 값이 생긴 뒤에도 더 고를 수 있어야 하므로 자동 전송에서 뺀다. 모바일은 선택지 행이 크고
+  // 손가락이 스치기 쉬워 고른 뒤 「답 보내기」로 확정한다(impl-spec S-29).
+  const autoSend = !mobileSurface && !ask.questions.some((question) => question.multiSelect);
 
   const submit = (next: readonly string[]): void => {
     void send({ askId: ask.id, answers: [...next] });
@@ -2232,6 +2282,8 @@ function AskCard({
           free={free[index] ?? ""}
           disabled={pending}
           language={language}
+          mobile={mobileSurface}
+          onClearPicks={() => { setPicks(picks.map((entry, at) => (at === index ? [] : entry))); }}
           onChoose={(label) => { choose(index, label, question.multiSelect); }}
           onType={(value) => { setFree(free.map((entry, at) => (at === index ? value : entry))); }}
         />
@@ -2270,9 +2322,13 @@ function AskQuestion({
   free,
   disabled,
   language,
+  mobile,
+  onClearPicks,
   onChoose,
   onType,
 }: {
+  readonly mobile: boolean;
+  readonly onClearPicks: () => void;
   readonly question: AgentChatQuestion;
   readonly index: number;
   readonly total: number;
@@ -2284,6 +2340,70 @@ function AskQuestion({
   readonly onType: (value: string) => void;
 }) {
   const t = getT(language);
+  // 모바일은 직접 쓰기 칸을 「내 의견으로 답하기」 행 뒤에 접어 둔다(impl-spec S-29 → S-39b′). 고르면 칸이
+  // 펼쳐지고 다른 선택은 풀린다 — 직접 쓴 답은 홀로 선다(데스크톱 카드와 같은 규칙: 쓴 값이 고른 값을 이긴다).
+  const [ownOpen, setOwnOpen] = React.useState(false);
+  const own = mobile && (ownOpen || free.trim().length > 0);
+  if (mobile) {
+    return (
+      <div className="agent-chat-ask-question">
+        <div className="agent-chat-ask-head">
+          <span className="agent-chat-ask-badge">
+            <span className="agent-chat-ask-dot" aria-hidden="true" />
+            {t("terminal.chat.ask.questionBadge")}
+          </span>
+          {total > 1 ? <span className="agent-chat-ask-counter">{t("terminal.chat.ask.counter", { index: index + 1, total })}</span> : null}
+        </div>
+        {/* 질문 머리글(header)은 질문 위 캡션으로 선다(FD-20, S-39b′). */}
+        {question.header ? <p className="agent-chat-ask-caption">{question.header}</p> : null}
+        <p className="agent-chat-ask-text">{question.question}</p>
+        {question.multiSelect ? <p className="agent-chat-ask-multi">{t("terminal.mobile.multiHint")}</p> : null}
+        <div className="agent-chat-ask-options">
+          {question.options.map((option) => {
+            const chosen = !own && picks.includes(option.label);
+            return (
+              <button
+                key={option.label}
+                type="button"
+                className="agent-chat-ask-option"
+                disabled={disabled}
+                aria-pressed={chosen}
+                onClick={() => {
+                  if (own) { setOwnOpen(false); onType(""); }
+                  onChoose(option.label);
+                }}
+              >
+                <span className={`agent-chat-ask-radio${question.multiSelect ? " is-multi" : ""}`} aria-hidden="true" />
+                <span className="agent-chat-ask-option-label">{option.label}</span>
+                {option.description ? <span className="agent-chat-ask-option-desc">{option.description}</span> : null}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className="agent-chat-ask-option"
+            disabled={disabled}
+            aria-pressed={own}
+            onClick={() => { setOwnOpen(true); onClearPicks(); }}
+          >
+            <span className={`agent-chat-ask-radio${question.multiSelect ? " is-multi" : ""}`} aria-hidden="true" />
+            <span className="agent-chat-ask-option-label">{t("terminal.mobile.ownAnswer")}</span>
+          </button>
+        </div>
+        {own ? (
+          <textarea
+            className="agent-chat-ask-input agent-chat-ask-own"
+            value={free}
+            disabled={disabled}
+            rows={3}
+            placeholder={t("terminal.chat.ask.freePlaceholder")}
+            aria-label={t("terminal.chat.ask.freeAria")}
+            onChange={(event) => { onType(event.target.value); }}
+          />
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="agent-chat-ask-question">
       <div className="agent-chat-ask-head">
@@ -2340,6 +2460,7 @@ function AskSettled({
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
+  const mobileSurface = useMobileSurface();
   const settled = ask.outcome === "answered" || ask.outcome === "approved";
   const rows = ask.answers && ask.answers.length > 0
     ? ask.answers
@@ -2347,6 +2468,16 @@ function AskSettled({
       header: ask.form === "plan" ? t("terminal.chat.ask.planBadge") : t("terminal.chat.ask.questionBadge"),
       value: t(`terminal.chat.ask.outcome.${ask.outcome ?? "dismissed"}` as Parameters<typeof t>[0]),
     }];
+  // 모바일은 끝 안내 문법(13 faint)의 한 줄 「답: …」로 카드 자리를 대신한다(impl-spec S-29).
+  if (mobileSurface) {
+    return (
+      <>
+        {rows.map((row, index) => (
+          <p key={index} className="agent-chat-ask-settled-line">{t("terminal.mobile.answered", { value: row.value })}</p>
+        ))}
+      </>
+    );
+  }
   return (
     <>
       {rows.map((row, index) => (

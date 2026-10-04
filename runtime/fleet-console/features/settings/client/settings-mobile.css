@@ -1,0 +1,19 @@
+/* Settings in the mobile grammar (impl-spec S-02, S-16, S-48). Colours are mobile tokens only. */
+
+/* S-02 `.glab`: the muted label above a group. */
+.settings-mobile-glab { margin: 0; padding: 6px 4px 0; color: var(--m-text-muted); font-size: var(--t-md); font-weight: var(--weight-bold); }
+
+/* System prompt sheet (S-16). */
+.settings-mobile-lead { margin: 0; padding: 0 4px; color: var(--m-text-faint); font-size: var(--t-sm); }
+.settings-mobile-lead strong { color: inherit; font-weight: inherit; }
+.settings-mobile-note { margin: 0; padding: 0 4px; color: var(--m-text-faint); font-size: var(--t-sm); }
+.settings-mobile-note.is-warning { color: var(--m-running); }
+.settings-mobile-note.is-error { color: var(--m-danger); }
+.settings-mobile-textlink { padding: 0; color: var(--m-text-nav); font: inherit; text-decoration: underline; background: none; border: 0; }
+.settings-mobile-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-mobile-body { display: flex; flex-direction: column; gap: 6px; }
+.settings-mobile-body textarea { min-height: 104px; resize: vertical; line-height: 22px; }
+.settings-mobile-count { align-self: flex-end; color: var(--m-text-faint); font-size: var(--t-sm); }
+.settings-mobile-count.is-over { color: var(--m-danger); }
+.settings-mobile-kept { margin: 0; padding: 0 4px; color: var(--m-text-muted); font-size: var(--t-sm); white-space: pre-wrap; }
+.mobile-group.settings-mobile-card { padding: 0; }

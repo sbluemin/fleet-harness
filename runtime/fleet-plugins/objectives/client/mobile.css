@@ -1,0 +1,139 @@
+/*
+ * 모바일 목적지 「목표」 — 호스트 모바일 화면(data-host-surface="mobile-screen") 안에서만 선다.
+ * 값은 시안 mobile-redesign.html 의 카드형 화면 문법(.card-pad·.grp·.gr·.glab·.ccard·.ucard·.opt·.radio·.meter·.sg) 그대로다.
+ * 색은 모바일 토큰(--m-*)만 쓴다 — 이 화면은 모바일 루트 블록이 있을 때만 그려진다.
+ */
+.objectives-m { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
+.objectives-m::-webkit-scrollbar { display: none; }
+.objectives-m-pad { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
+.objectives-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: left; cursor: pointer; }
+/* 누름 문법(data-press)이 붙은 조작부의 포커스 고리는 코어 누름 층이 모양대로 그린다(S-52 PR-1). */
+.objectives-m :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+
+/* 묶음 머리 — 「끝남」은 접는 머리다(필터 버튼이 아니다). */
+.objectives-m-glab { margin: 0; padding: 6px 4px 0; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.4; color: var(--m-text-muted); }
+.objectives-m .objectives-m-glab.is-fold { display: flex; align-items: center; gap: 6px; padding: 6px 4px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
+.objectives-m-glab.is-fold svg { width: 16px; height: 16px; flex: none; }
+/* 접는 머리는 바탕 없는 단추라 R1(S-52), 반경 12. 머리 상자는 위 6·왼쪽 4·아래 0 여백이라 글자가 면 가장자리에 붙는다 — 배치를 바꾸지 않고 면만 좌우 8·아래 6 바깥으로 넓힌다. */
+.objectives-m .objectives-m-glab.is-fold { --pr-inset: 0 -8px -6px; --pr-r: 12px; }
+.objectives-m-note { margin: 0; padding: 24px 4px; font-size: var(--m-fs-meta); color: var(--m-text-muted); }
+
+/* 묶음 카드 — 행 사이 2 틈, 바깥 모서리 22 / 안쪽 4. */
+.objectives-m-grp { display: flex; flex-direction: column; gap: 2px; }
+.objectives-m .objectives-m-row { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 10px 16px; border-radius: 4px; background: var(--m-surface); font-size: var(--m-fs-body); }
+.objectives-m .objectives-m-row.is-two { min-height: 72px; }
+.objectives-m .objectives-m-row.is-mission { min-height: 52px; cursor: default; }
+.objectives-m-row.is-mission .objectives-m-tx { font-size: var(--m-fs-list); }
+.objectives-m-grp > .objectives-m-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+.objectives-m-grp > .objectives-m-row:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
+.objectives-m-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.objectives-m-tx small { display: block; margin-top: 1px; font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
+.objectives-m-tx small.is-awaiting { color: var(--m-awaiting); }
+.objectives-m-ri { display: flex; align-items: center; color: var(--m-text-muted); }
+.objectives-m-ri svg { width: 22px; height: 22px; }
+
+/* 브리핑 카드 */
+.objectives-m-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--m-hairline-strong); border-radius: 16px; background: var(--m-surface); }
+.objectives-m-card-label { margin: 0; font-size: var(--m-fs-caption); font-weight: var(--weight-bold); color: var(--m-text-muted); }
+.objectives-m-brief { margin: 0; font-size: var(--m-fs-secondary); line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-m-brief.is-clamped { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.objectives-m .objectives-m-more { font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+.objectives-m-criteria { margin: 4px 0 0; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+.objectives-m-meter { height: 6px; margin-top: 8px; overflow: hidden; border-radius: 3px; background: var(--m-chip); }
+.objectives-m-meter i { display: block; height: 100%; background: var(--m-text-nav); }
+
+/* 질문 카드를 쌓는 칸 — 카드 사이 10. */
+.objectives-m-stack { display: flex; flex-direction: column; gap: 10px; }
+
+/* 결정 요청 카드 — 허용 요청 카드와 같은 틀(모서리 24, 테두리 hairline-strong). */
+.objectives-m-ucard { display: flex; flex-direction: column; gap: 6px; padding: 14px 14px 12px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
+.objectives-m-ucard-hd { display: flex; align-items: center; gap: 10px; font-size: var(--m-fs-list); font-weight: var(--weight-bold); }
+/* 자율 운영 중 — 머리 오른쪽(남은 시간 칸 자리)의 「사령관이 답하는 중」과 그 아래 설명 줄(S-53 CM-1d). */
+.objectives-m-ucard-handler { margin-left: auto; color: var(--m-awaiting); font-size: var(--m-fs-caption); font-weight: var(--weight-regular); white-space: nowrap; }
+.objectives-m-fine { margin: 0; color: var(--m-text-faint); font-size: var(--m-fs-small); line-height: 18px; }
+.objectives-m-ucard-tm { margin-left: auto; font-size: var(--m-fs-caption); font-weight: var(--weight-regular); color: var(--m-text-muted); font-variant-numeric: tabular-nums; }
+.objectives-m-ucard-p { margin: 0; font-size: var(--m-fs-secondary); line-height: 21px; color: var(--m-text-muted); overflow-wrap: anywhere; }
+.objectives-m-ucard-p.is-question, .objectives-m-answer { color: var(--m-text); }
+.objectives-m .objectives-m-opt { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; font-size: var(--m-fs-secondary); }
+.objectives-m .objectives-m-opt:disabled { cursor: default; }
+.objectives-m-opt-tx { min-width: 0; overflow-wrap: anywhere; }
+.objectives-m-opt-tx small { display: block; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+.objectives-m-ind { position: relative; flex: none; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--m-text-muted); border-radius: 50%; }
+.objectives-m-ind.is-on { border-color: var(--m-text); }
+.objectives-m-ind.is-on::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--m-text); }
+/* 여러 개 고르는 질문 — 같은 크기의 모서리 6 네모, 켜지면 면이 차고 안쪽에 체크(선 2). */
+.objectives-m-ind.is-check { display: grid; place-items: center; border-radius: 6px; }
+.objectives-m-ind.is-check.is-on { background: var(--m-text); color: var(--m-bg); }
+.objectives-m-ind.is-check.is-on::after { content: none; }
+.objectives-m-ind.is-check svg { stroke-width: 2.4; }
+.objectives-m-hint { margin: 0; font-size: var(--m-fs-caption); color: var(--m-text-faint); }
+.objectives-m-field { display: block; width: 100%; box-sizing: border-box; height: 104px; padding: 12px 14px; border: 1px solid var(--m-hairline-strong); border-radius: 14px; background: var(--m-bg); color: var(--m-text); font: inherit; font-size: var(--m-fs-list); line-height: 22px; resize: none; }
+.objectives-m-field.is-unfold { height: 88px; margin-top: 4px; animation: objectives-m-unfold .2s ease-out; }
+.objectives-m-field::placeholder { color: var(--m-text-muted); }
+.objectives-m-field:focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; }
+.objectives-m-ucard-ft { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.objectives-m-sp { flex: 1; }
+.objectives-m-progress { font-size: var(--m-fs-caption); color: var(--m-text-muted); font-variant-numeric: tabular-nums; }
+.objectives-m .objectives-m-b2 { height: 40px; padding: 0 16px; border-radius: 20px; background: var(--m-inverse); color: var(--m-on-inverse); font-size: var(--m-fs-meta); font-weight: var(--weight-bold); }
+.objectives-m .objectives-m-b2:disabled { opacity: .4; cursor: default; }
+.objectives-m-fault { margin: 0; font-size: var(--m-fs-caption); color: var(--m-danger); }
+
+/* 상태 글리프 — 12 원, 테두리 1.5. 모양으로 갈리고 색은 신호 토큰이다. 맥동은 대기 하나뿐. */
+.objectives-m-sg { position: relative; display: inline-block; flex: none; box-sizing: border-box; width: 12px; height: 12px; border: 1.5px solid var(--m-hairline-strong); border-radius: 50%; }
+.objectives-m-sg::before, .objectives-m-sg::after { content: ""; position: absolute; }
+.objectives-m-sg.is-fresh { border-color: var(--m-text-faint); opacity: .7; }
+.objectives-m-sg.is-running { border-color: color-mix(in oklab, var(--m-running) 30%, transparent); }
+.objectives-m-sg.is-running::before { inset: -1.5px; border: 1.5px solid transparent; border-top-color: var(--m-running); border-right-color: var(--m-running); border-radius: 50%; animation: objectives-m-spin 1.4s linear infinite; }
+.objectives-m-sg.is-background { border: 1.5px dashed var(--m-running); }
+.objectives-m-sg.is-awaiting { border-color: var(--m-awaiting); }
+.objectives-m-sg.is-awaiting::before { inset: -1.5px; border-radius: 50%; box-shadow: 0 0 0 3px var(--m-awaiting-glow); animation: objectives-m-breathe 1.8s ease-in-out infinite; }
+.objectives-m-sg.is-awaiting::after, .objectives-m-sg.is-idle::after { top: 50%; left: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; }
+.objectives-m-sg.is-awaiting::after { background: var(--m-awaiting); }
+.objectives-m-sg.is-idle::after { background: var(--m-idle); }
+.objectives-m-sg.is-ended::after { top: 50%; left: 50%; width: 5px; height: 1.5px; margin: -.75px 0 0 -2.5px; border-radius: 1px; background: var(--m-text-faint); }
+.objectives-m-sg.is-review { border-color: var(--m-awaiting); background: var(--m-awaiting-glow); }
+.objectives-m-sg.is-review::after, .objectives-m-sg.is-done::after { left: 3.2px; top: 1.4px; width: 2.6px; height: 4.8px; border: solid var(--m-awaiting); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.objectives-m-sg.is-done::after { border-color: var(--m-idle); }
+/* 보조 알약 — 받는 사람 칩, 시트의 「보내기」(.is-inv). */
+.objectives-m-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.objectives-m-sheet-layer button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; }
+.objectives-m-sheet-layer .objectives-m-pill2 { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 20px; background: var(--m-chip); color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-medium); }
+.objectives-m-sheet-layer .objectives-m-pill2.is-inv { background: var(--m-inverse); color: var(--m-on-inverse); font-weight: var(--weight-bold); }
+.objectives-m-sheet-layer .objectives-m-pill2:disabled { opacity: .4; cursor: default; }
+.objectives-m-secnote { margin: 0; padding: 0 4px; font-size: var(--m-fs-caption); color: var(--m-text-faint); }
+
+/* 하단 시트 — 스크림 + 위 모서리 28 판. 손잡이에서 끌어내려 닫는다. */
+.objectives-m-sheet-layer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; justify-content: flex-end; color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
+.objectives-m-scrim { position: absolute; inset: 0; background: var(--m-scrim); animation: objectives-m-fade .2s ease-out; }
+.objectives-m-sheet { position: relative; display: flex; flex-direction: column; max-height: calc(100% - 56px); padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); border-radius: 28px 28px 0 0; background: var(--m-surface); animation: objectives-m-sheet-in .3s cubic-bezier(.05,.7,.1,1); transition: transform .2s cubic-bezier(.05,.7,.1,1); }
+.objectives-m-sheet.is-dragging { transition: none; }
+.objectives-m-sheet-layer.is-closing .objectives-m-scrim { opacity: 0; transition: opacity .2s; }
+.objectives-m-sheet-layer.is-closing .objectives-m-sheet { transform: translateY(100%); transition: transform .22s cubic-bezier(.3,0,.8,.15); }
+.objectives-m-sheet-handle { display: grid; place-items: center; height: 22px; flex: none; touch-action: none; cursor: grab; }
+.objectives-m-sheet-handle i { width: 32px; height: 4px; border-radius: 2px; background: var(--m-handle, var(--m-chip)); }
+.objectives-m-sheet-head { position: relative; flex: none; padding: 2px 56px 10px; text-align: center; }
+.objectives-m-sheet-head h2 { margin: 0; font-size: var(--m-fs-title); font-weight: var(--weight-bold); line-height: 24px; }
+.objectives-m-sheet-layer .objectives-m-sheet-x { position: absolute; top: -8px; right: 12px; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 20px; color: var(--m-text-muted); }
+/* 누름 모양(S-52 PR-2): 시트 ×는 원, 선택지 줄은 좌우 −8, 「더 보기」 글자 단추는 알약. */
+.objectives-m-sheet-layer .objectives-m-sheet-x { --pr-r: 50%; }
+.objectives-m .objectives-m-opt { --pr-inset: 0 -8px; }
+.objectives-m .objectives-m-more { --pr-inset: -6px -6px; --pr-r: 16px; }
+.objectives-m-sheet-body { display: flex; flex-direction: column; gap: 10px; min-height: 0; padding: 0 16px; overflow-y: auto; scrollbar-width: none; }
+.objectives-m-sheet-body::-webkit-scrollbar { display: none; }
+.objectives-m-sheet-layer .objectives-m-field { height: 104px; }
+.objectives-m-sheet-ft { display: flex; justify-content: flex-end; gap: 8px; flex: none; padding: 10px 16px 0; }
+.objectives-m-sheet-layer :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+
+/* 토스트 — 화면 아래 150, 6초 뒤 사라진다. 라이트에서만 테두리. */
+.objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: var(--m-fs-secondary); animation: objectives-m-fade .2s ease-out; }
+html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m-hairline); }
+
+@keyframes objectives-m-fade { from { opacity: 0; } }
+@keyframes objectives-m-sheet-in { from { transform: translateY(100%); } }
+@keyframes objectives-m-unfold { from { height: 0; opacity: 0; } }
+@keyframes objectives-m-spin { to { transform: rotate(360deg); } }
+@keyframes objectives-m-breathe { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) {
+  .objectives-m-sg::before, .objectives-m-sg::after { animation: none !important; }
+  .objectives-m-sheet, .objectives-m-scrim, .objectives-m-toast, .objectives-m-field.is-unfold { animation: none; transition: none; }
+}

@@ -6,6 +6,8 @@ import { prepareReaderSessionScroll, stepReaderHistoryTo } from "./codex-host.js
 import { openCodexRailPanel } from "./host.js";
 import { closeCodexReader, collapseCodexReader, expandCodexReader, openCodexReader, setActiveTheater } from "./reader-store.js";
 
+import { mobileWikiActive } from "./mobile-stack.js";
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ENTRY_PARAM = "codex";
@@ -68,7 +70,8 @@ export function useCodexReaderUrlSync(): void {
       // 여기서 확대만 접으면 리더는 같은 문서를 그대로 들고 있어, 반대 방향 effect가
       // 그 문서를 주소에 다시 밀어 넣는다 — 뒤로가기가 리더 앞으로 나갈 수 없게 된다.
       targetRef.current = null;
-      if (reader !== null) closeCodexReader();
+      // 모바일에서는 리더가 주소에 없다(막대가 history를 소유) — 주소에 문서가 없다는 것이 닫으라는 뜻이 아니다.
+      if (reader !== null && !mobileWikiActive()) closeCodexReader();
       return;
     }
     targetRef.current = { entryId, expanded: wantExpanded, theaterId: wantTheater };
@@ -131,6 +134,13 @@ export function useCodexReaderUrlSync(): void {
     const currentEntry = params.get(ENTRY_PARAM);
     const currentView = params.get(VIEW_PARAM);
     const currentTheater = params.get(THEATER_PARAM);
+    // 모바일 위키 화면 — 주소를 쌓지 않는다. 링크로 들어와 이미 소비한 리더 주소만 제자리에서 걷는다.
+    if (mobileWikiActive()) {
+      if (currentEntry === null && currentView === null && currentTheater === null) return;
+      writtenRef.current = "||";
+      hostCapabilities().navigation.setSearchParams({ [ENTRY_PARAM]: null, [VIEW_PARAM]: null, [THEATER_PARAM]: null }, { replace: true });
+      return;
+    }
     const nextEntry = reader?.kind === "entry" ? reader.entryId : null;
     const nextView = nextEntry && expanded ? VIEW_FULL : null;
     const nextTheater = nextEntry ? theaterId : null;

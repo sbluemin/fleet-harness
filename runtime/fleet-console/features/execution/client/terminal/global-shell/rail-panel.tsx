@@ -19,6 +19,8 @@ export const globalShellEntry: RailEntryDescriptor = {
   icon: TerminalGlyphIcon,
   // 셸이 서 있는 동안 아이콘이 켜져 있다 — 어느 표면을 여는지 호스트에게 말해 둔다.
   surfaceId: SHELL_SURFACE_ID,
+  // 모바일 드로어에서는 목표·파일·위키 다음의 고정 목적지다 — 순서만 선언하고 화면은 호스트가 연다.
+  mobile: { destination: { order: 40 } },
   activate: (ctx: RailPanelContext) => {
     const surfaces = ctx.surfaces;
     if (!surfaces) return;

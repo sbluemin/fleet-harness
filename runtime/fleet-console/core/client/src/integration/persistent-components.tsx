@@ -7,6 +7,7 @@ import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useConsoleLocale } from "../i18n/index.js";
 import { usePluginRegistry } from "./plugin-registry.js";
 import { getState, subscribe } from "./store.js";
+import { useViewMode } from "./view-mode-store.js";
 
 /**
  * 플러그인의 화면 없는 상주 기여를 마운트해 두는 자리.
@@ -25,7 +26,8 @@ export function PersistentPluginComponents() {
   useLocation();
   const language = useConsoleLocale();
   const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
-  const context = useMemo<PersistentComponentContext>(() => ({ language, theme }), [language, theme]);
+  const layout = useViewMode().effective === "mobile" ? "mobile" : "desktop";
+  const context = useMemo<PersistentComponentContext>(() => ({ language, theme, layout }), [language, theme, layout]);
 
   if (persistentComponents.length === 0) return null;
 

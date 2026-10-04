@@ -15,6 +15,7 @@ import type {
 
 import type { HostPaneContext } from "./pane-registry.js";
 import { useHostSideBarVisible } from "../../integration/zen-chrome-toggles.js";
+import { useMobileBarCapabilityValue } from "../mobile/mobile-bar-context.js";
 
 /**
  * 페인 컨텍스트와 본문 — 마운트가 어디든 같은 것을 그린다.
@@ -119,6 +120,8 @@ export function usePaneContext({
   }), [descriptor.id, handleOpen, isOpen, onClose, onCloseOther, onReplaceParams]);
 
   const sideBarVisible = useHostSideBarVisible();
+  // 모바일 목적지 화면 안에서만 공급자가 있다 — 있으면 호스트가 상단 막대를 그려 준다는 뜻이다.
+  const mobileBar = useMobileBarCapabilityValue();
   const ctx = useMemo<HostPaneContext>(() => ({
     paneId: descriptor.id,
     instanceId,
@@ -143,10 +146,11 @@ export function usePaneContext({
     language,
     theme,
     sideBarVisible,
+    ...(mobileBar === null ? {} : { mobileBar }),
     legacySurfaces,
     legacyLaunchOperation,
     ...(openLink === undefined ? {} : { openLink }),
-  }), [opening, api, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mount, openLink, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
+  }), [opening, api, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mobileBar, mount, openLink, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
 
   return ctx;
 }

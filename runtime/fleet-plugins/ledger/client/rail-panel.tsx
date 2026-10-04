@@ -634,6 +634,9 @@ function LedgerIcon() {
 // to every caller. The check against the contract is identical; the concrete shape survives it.
 export const ledgerEntry: RailEntryDescriptor = {
   id: "ledger",
+  // 폰에서는 쓸 수 없다 — 모바일 「플러그인」 화면에 「데스크톱에서만」 흐린 행으로 선다(S-46).
+  // 모바일 드로어·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
+  mobile: { available: false, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9M10 13h4" /></svg> },
   title: (locale) => getT(locale)("ledger.panel.title"),
   icon: LedgerIcon,
   panes: ["ledger"],

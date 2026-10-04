@@ -1,0 +1,185 @@
+/* ── 모바일 누름 문법 (impl-spec S-52, PR-0~PR-2) ──────────────────────────────
+   모바일 배치(`:root[data-view-mode="mobile"]`) 아래에서만 건다 — 데스크톱 누름·hover는 그대로다.
+   - PR-0  파란 tap-highlight 없음, 조작부는 길게 눌러도 글자 선택·시스템 메뉴·더블탭 확대 지연 없음, 비활성에는 누름 없음.
+   - R1    바탕 없는 행·아이콘 버튼: `::before`의 --m-selected 면이 구성요소 모양(--pr-inset·--pr-r)으로 나타난다.
+   - R2    면 있는 묶음 행·카드: 제 면이 --m-selected로 바뀐다.
+   - R3    칠한 조작부(알약·칩·원형 버튼·키): 제 글자색 12%를 `::after`로 같은 모양에 겹친다.
+   나타남 0ms, 사라짐 --press-out(150ms ease-out). 포커스 고리는 키보드(:focus-visible)에만, 누름과 같은 모양.
+   플러그인처럼 이 파일이 클래스를 모르는 표면은 `data-press="r1|r2|r3"`로 같은 문법을 고른다
+   (R1 모양은 그 요소의 --pr-inset·--pr-r로 정한다). */
+
+:root[data-view-mode="mobile"] {
+  -webkit-tap-highlight-color: transparent;
+  --press-out: 150ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-view-mode="mobile"] { --press-out: 0ms; }
+}
+/* 조작부는 길게 눌러도 글자 선택(iOS 파란 선택·Android 선택 핸들)과 시스템 미리보기·메뉴가 남지 않는다 — 사람이 신고한
+   「파란 잔상」의 다른 갈래다. 본문(채팅 말풍선·마크다운·터미널·기록·위키·파일 내용)은 조작부가 아니라 그대로 선택된다:
+   user-select: none은 이 요소와 그 안에만 걸리고, 채팅·문서 표면이 컨테이너에 되살린 text는 형제 본문에 남는다. */
+:root[data-view-mode="mobile"] :where(
+  button, [role="button"], [role="switch"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"],
+  [role="radio"], [role="checkbox"], [role="option"], summary, label, [data-press]
+) {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+/* 셸 크롬(상단 막대·드로어·시트·메뉴·선택 팝업·빈 화면 안내·위 알림·토스트)의 글자도 조작부 쪽이다 — 제목·안내 문구를
+   길게 눌러도 선택이 남지 않는다. 시트 안 입력칸은 아래 규칙이 다시 연다. */
+:root[data-view-mode="mobile"] :where(
+  .mobile-top-bar, .mobile-drawer, .mobile-sheet, .mobile-menu, .mobile-choice, .mobile-empty, .mobile-empty-home,
+  .mobile-request-banner, .mobile-toast-host, .app-toast
+) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* 링크는 본문 글 안에도 있어 선택은 막지 않고, 길게 누름 미리보기·더블탭 확대 지연만 끈다. */
+:root[data-view-mode="mobile"] :where(a[href]) {
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+/* 입력칸은 조작부(label·행) 안에 있어도 글을 고르고 고친다. */
+:root[data-view-mode="mobile"] :where(input, textarea, select, [contenteditable]:not([contenteditable="false"])) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ── R1 면이 나타남 ── */
+/* 기준 상자 — 명시도 0이라 제 position(시트 ×의 absolute 등)을 이미 가진 요소는 그대로 둔다. */
+:where(:root[data-view-mode="mobile"]) :where(
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
+  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
+  .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
+) {
+  position: relative;
+  isolation: isolate;
+}
+:root[data-view-mode="mobile"] :is(
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
+  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
+  .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
+)::before {
+  position: absolute;
+  inset: var(--pr-inset, 0);
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  background: var(--m-selected);
+  border-radius: var(--pr-r, 12px);
+  opacity: 0;
+  transition: opacity var(--press-out) ease-out;
+}
+
+/* 모양 — PR-2 표. 들여(--pr-inset)는 요소 상자 안쪽 거리, 음수는 바깥. */
+:root[data-view-mode="mobile"] :is(.mobile-bar-button, .mobile-sheet-close, .agent-chat-answer-action) { --pr-r: 50%; }
+:root[data-view-mode="mobile"] .mobile-drawer-dest { --pr-inset: 0 12px; }
+:root[data-view-mode="mobile"] .mobile-drawer-dest.is-current { --pr-inset: 0; }
+:root[data-view-mode="mobile"] .mobile-drawer-section.is-button { --pr-inset: 10px 12px 0; }
+:root[data-view-mode="mobile"] :is(.mobile-menu button, .mobile-choice-row) { --pr-inset: 0 8px; }
+:root[data-view-mode="mobile"] [data-mobile-surface] .agent-chat-ask-option { --pr-inset: 0 -8px; }
+:root[data-view-mode="mobile"] :is(.mobile-choice-tab, .mql-efft button) { --pr-inset: 0 -10px; --pr-r: 10px; }
+:root[data-view-mode="mobile"] :is(.app-toast-action, .app-toast-message .app-toast-link) { --pr-r: 18px; }
+/* 글자 단추(.tbtn) — 패딩 6/10 알약 면. 배치를 바꾸지 않게 면만 바깥으로 넓힌다. */
+:root[data-view-mode="mobile"] :is(.mobile-sheet-clear, .settings-mobile-textlink, .mobile-folder-crumb) { --pr-inset: -6px -6px; --pr-r: 16px; }
+:root[data-view-mode="mobile"] .mobile-input-reveal { --pr-inset: 0 -6px 0 0; --pr-r: 16px; }
+/* 폴더 행의 들어가기(›) 칸 — 칸 가운데 원 44. */
+:root[data-view-mode="mobile"] .mobile-folder-enter { --pr-inset: calc(50% - 22px) 6px; --pr-r: 22px; }
+
+:root[data-view-mode="mobile"] :is(
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
+  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
+  .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
+):active:not(:disabled, [aria-disabled="true"])::before {
+  opacity: 1;
+  transition-duration: 0s;
+}
+:root[data-view-mode="mobile"] :is(
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
+  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
+  .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
+):focus-visible {
+  outline: none;
+}
+:root[data-view-mode="mobile"] :is(
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
+  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
+  .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
+):focus-visible::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--m-text);
+  opacity: 1;
+  transition: none;
+}
+
+/* ── R2 면이 바뀜 ── */
+:root[data-view-mode="mobile"] :is([data-press="r2"], button.mobile-group-row, label.mobile-group-row, .mql-gr, .mobile-console-card, .fc-settings-row.is-mobile) {
+  transition: background-color var(--press-out) ease-out;
+}
+:root[data-view-mode="mobile"] :is([data-press="r2"], button.mobile-group-row, label.mobile-group-row, .mql-gr, .mobile-console-card, .fc-settings-row.is-mobile):active:not(:disabled, [aria-disabled="true"]) {
+  background: var(--m-selected);
+  transition-duration: 0s;
+}
+/* 정보 행처럼 안에 버튼이 따로 있는 div 행은 누름이 없다 — 안의 버튼만 제 규칙. 폴더 행은 고르기 칸을 누르면 행 전체가 R2. */
+:root[data-view-mode="mobile"] div.mobile-group-row:active { background: var(--m-surface); }
+:root[data-view-mode="mobile"] .mobile-group-row.mobile-folder-row:has(> .mobile-folder-pick:active:not(:disabled)) {
+  background: var(--m-selected);
+}
+
+/* ── R3 겹침 ── */
+:where(:root[data-view-mode="mobile"]) :where(
+  [data-press="r3"], .mobile-pill, .mobile-pill-secondary, .mobile-avatar, .mobile-request-banner button,
+  .agent-chat-composer-attach, .agent-chat-composer-send, .agent-chat-composer-stop, .agent-chat-coord.is-control,
+  .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
+  .terminal-confirm-row .terminal-key
+) {
+  position: relative;
+}
+:root[data-view-mode="mobile"] :is(
+  [data-press="r3"], .mobile-pill, .mobile-pill-secondary, .mobile-avatar, .mobile-request-banner button,
+  .agent-chat-composer-attach, .agent-chat-composer-send, .agent-chat-composer-stop, .agent-chat-coord.is-control,
+  .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
+  .terminal-confirm-row .terminal-key
+)::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: currentColor;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--press-out) ease-out;
+}
+:root[data-view-mode="mobile"] :is(
+  [data-press="r3"], .mobile-pill, .mobile-pill-secondary, .mobile-avatar, .mobile-request-banner button,
+  .agent-chat-composer-attach, .agent-chat-composer-send, .agent-chat-composer-stop, .agent-chat-coord.is-control,
+  .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
+  .terminal-confirm-row .terminal-key
+):active:not(:disabled, [aria-disabled="true"])::after {
+  opacity: 0.12;
+  transition-duration: 0s;
+}
+
+/* ── R2·R3 키보드 포커스 — 요소 모서리를 따르는 안쪽 고리(모서리를 덮어쓰지 않는다) ── */
+:root[data-view-mode="mobile"] :is(
+  [data-press="r2"], [data-press="r3"], button.mobile-group-row, label.mobile-group-row, .mql-gr, .mobile-console-card,
+  .mobile-pill, .mobile-pill-secondary, .mobile-avatar, .mobile-request-banner button,
+  .agent-chat-composer-attach, .agent-chat-composer-send, .agent-chat-composer-stop, .agent-chat-coord.is-control,
+  .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
+  .terminal-confirm-row .terminal-key
+):focus-visible {
+  outline: 2px solid var(--m-text);
+  outline-offset: -2px;
+}

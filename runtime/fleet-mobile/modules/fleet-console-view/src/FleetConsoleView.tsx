@@ -4,7 +4,7 @@ import type { ComponentType, RefAttributes } from "react";
 import type { NativeSyntheticEvent, ViewProps } from "react-native";
 
 export interface FleetConsoleEvent {
-  readonly type: "waiting" | "connecting" | "connected" | "error" | "insets";
+  readonly type: "waiting" | "connecting" | "connected" | "error" | "insets" | "appearance" | "chrome" | "consoles";
   readonly code?: string;
   /** 표시할 Console 이름. 링크 파싱 오류에는 대상이 없으므로 생략한다. */
   readonly label?: string;
@@ -17,6 +17,20 @@ export interface FleetConsoleEvent {
   readonly insetRight?: number;
   readonly insetBottom?: number;
   readonly insetLeft?: number;
+  /** On "appearance": the stored mode, after the page changed it or the system scheme moved. */
+  readonly colorMode?: ColorMode;
+  readonly fontScale?: FontScale;
+  /** On "chrome": which mobile surface the page shows against the status bar and the gesture bar. */
+  readonly top?: "bg" | "bg-deep" | "scrim";
+  readonly bottom?: "bg" | "bg-deep" | "surface" | "scrim";
+}
+
+export type ColorMode = "system" | "dark" | "light";
+export type FontScale = "small" | "default" | "large";
+
+export interface FleetAppearance {
+  readonly colorMode: ColorMode;
+  readonly fontScale: FontScale;
 }
 
 export interface FleetConsoleTarget {
@@ -30,6 +44,8 @@ export interface FleetConsoleTarget {
 }
 
 export interface FleetConsoleViewHandle {
+  getAppearance(): Promise<FleetAppearance>;
+  setNavigationBarStyle(dark: boolean): void;
   retry(): void;
   resume(): void;
   dismissLinkError(): void;
@@ -41,6 +57,8 @@ export interface FleetConsoleViewHandle {
 }
 
 interface NativeFleetConsoleViewHandle {
+  getAppearance(): Promise<FleetAppearance>;
+  setNavigationBarStyle(dark: boolean): void;
   retry(): void;
   resume(): void;
   dismissLinkError(): void;
@@ -71,6 +89,10 @@ export const FleetConsoleView = forwardRef<FleetConsoleViewHandle, FleetConsoleV
     async listTargets(): Promise<FleetConsoleTarget[]> {
       return (await nativeRef.current?.listTargets()) ?? [];
     },
+    async getAppearance(): Promise<FleetAppearance> {
+      return (await nativeRef.current?.getAppearance()) ?? { colorMode: "system", fontScale: "default" };
+    },
+    setNavigationBarStyle(dark: boolean): void { nativeRef.current?.setNavigationBarStyle(dark); },
     async navigateBack(): Promise<boolean> {
       return (await nativeRef.current?.navigateBack()) ?? false;
     },

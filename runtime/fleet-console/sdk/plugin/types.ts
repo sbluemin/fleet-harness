@@ -305,6 +305,11 @@ export interface ClientExperimentsCapability {
 export interface PersistentComponentContext {
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
+  /**
+   * 지금 콘솔이 서 있는 배치. 보기를 바꾸면 값이 바뀌고 상주 기여는 다시 그려진다. 폰 배치(`"mobile"`)에서는 데스크톱 전용
+   * 표면(포털 시트·서랍)을 그리지 않아야 한다. 구버전 호스트에는 없을 수 있다 — 없으면 `"desktop"`으로 다룬다.
+   */
+  readonly layout?: "mobile" | "desktop";
 }
 
 /** 화면 없는 상주 기여. 호스트가 콘솔 수명 동안 마운트해 둔다. */
@@ -558,6 +563,19 @@ export interface TheaterContribution {
    * Escape reach them; call `onClose` before opening another surface.
    */
   readonly menu?: (context: TheaterMenuContext) => ReactNode;
+  /**
+   * 폰의 Theater 시트 「지금 Theater」 묶음에 서는 행 — 시스템 프롬프트 다음, 「목록에서 빼기」 앞. 데스크톱은 이 필드를 읽지 않는다.
+   * 데스크톱 `menu`는 DOM을 그리지만 폰 시트는 호스트의 행 문법으로 그리므로, 플러그인은 글과 동작만 준다.
+   */
+  readonly mobileRow?: TheaterContributionMobileRow;
+}
+
+/** 폰 Theater 시트의 플러그인 행. `get`이 null이면 행이 없다(실험 기능이 꺼진 때). 호스트는 값(label)으로 비교한다. */
+export interface TheaterContributionMobileRow {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly get: (theaterId: string, language: "en" | "ko") => { readonly label: string; /** 24 격자·선 1.7·`currentColor` 아이콘. */ readonly icon: ReactNode } | null;
+  /** 행을 눌렀을 때 — 호스트가 시트를 모두 닫은 **뒤에** 부른다. */
+  readonly run: (theaterId: string) => void;
 }
 
 /** 구성원(단계)의 진행 — 세션 활동이 아니라 구조 안의 자리다. 막힘은 선행이 안 끝난 것, 열림은 시작을 기다리는 것. */
@@ -817,6 +835,10 @@ export interface OperationMenuContext {
 }
 
 export interface OperationRenderContext extends OperationContext {
+  /**
+   * 모바일 Operation 화면에서만 실린다. 없다는 것이 「호스트가 ⋮을 그려 주지 않는다」는 말이다(데스크톱 캔버스·War Room 등).
+   */
+  readonly mobileOperation?: ClientMobileOperationCapability;
   readonly navigate: ClientNavigateCapability;
   readonly shell: ClientShellCapability;
   readonly rail: ClientRailCapability;
@@ -1211,3 +1233,21 @@ export type {
   RailPanelDescriptor,
   SettingsSectionDescriptor,
 };
+
+/** 모바일 Operation 화면의 호스트 창구 — ⋮ 메뉴에 항목을 끼우고, 호스트 시트 문법의 확인을 띄운다. */
+export interface ClientMobileOperationCapability {
+  /**
+   * 이 Operation의 ⋮에 끼울 항목. 마지막 호출이 이긴다. 순서는 호스트가 [이름 변경, …이 항목들…, 보관]으로 둔다.
+   * 본문이 내려갈 때 빈 목록으로 거두는 것은 본문의 몫이다.
+   */
+  setMenuItems(items: readonly import("../pane/types.js").MobileBarMenuItem[]): void;
+  /** 호스트 시트 문법의 확인 시트. 확정이면 true, 취소·닫기·뒤로면 false. */
+  confirm(spec: MobileConfirmSpec): Promise<boolean>;
+}
+
+export interface MobileConfirmSpec {
+  readonly title: string;
+  readonly body: string;
+  readonly cancelLabel: string;
+  readonly confirmLabel: string;
+}

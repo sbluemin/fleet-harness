@@ -18,6 +18,7 @@ import {
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { getT } from "./i18n/index.js";
 import { useObjectiveTheater } from "./objectives-state.js";
+import type { Objective } from "../server/types.js";
 
 export const clockTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 
@@ -46,24 +47,7 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
 
   const on = view?.state.autonomy === true;
   const open = drawer?.theaterId === theaterId;
-  const run = view?.run;
-  const running = board.objectives.filter(isRunningObjective).length;
-  const waiting = board.objectives.filter(isWaitingObjective).length;
-  const meta: { readonly key: string; readonly text: string; readonly tone?: "on" | "warn" }[] = on
-    ? [
-      { key: "mode", text: t("objectives.commodore.meta.autonomous"), tone: "on" },
-      ...(run?.phase === "turn" ? [{ key: "turn", text: t("objectives.commodore.meta.turn") }] : []),
-      ...(run?.phase === "retrying" && run.nextWakeAt ? [{ key: "retry", text: t("objectives.commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }), tone: "warn" as const }] : []),
-      ...(run?.phase === "error" ? [{ key: "error", text: t("objectives.commodore.meta.error"), tone: "warn" as const }] : []),
-      { key: "running", text: t("objectives.commodore.meta.running", { n: running }) },
-      { key: "handled", text: t("objectives.commodore.meta.handled", { n: run?.totals.actions ?? 0 }) },
-    ]
-    : [
-      { key: "mode", text: t("objectives.commodore.meta.manual") },
-      { key: "waiting", text: t("objectives.commodore.meta.waiting", { n: waiting }) },
-    ];
-  const patrol = on && run?.phase === "idle" && run.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null;
-  const errorReason = on && (run?.phase === "error" || run?.phase === "retrying") ? run.reason ?? null : null;
+  const { meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
 
   const toggle = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -107,6 +91,36 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
       </button>
     </div>
   );
+}
+
+type CommodoreView = ReturnType<typeof useCommodore>["view"];
+export type CommodoreMetaPart = { readonly key: string; readonly text: string; readonly tone?: "on" | "warn" };
+
+/**
+ * 사령관의 지금을 말하는 짧은 조각들 — 사이드바 줄과 모바일 드로어·화면이 같은 말을 쓴다.
+ * 켜져 있으면 자율·응답 중·재시도·오류·진행·처리, 꺼져 있으면 수동·대기. 다음 순찰과 오류 사유는 따로 돌려준다.
+ */
+export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView, objectives: readonly Objective[]): { readonly on: boolean; readonly meta: readonly CommodoreMetaPart[]; readonly patrol: string | null; readonly errorReason: string | null } {
+  const on = view?.state.autonomy === true;
+  const run = view?.run;
+  const running = objectives.filter(isRunningObjective).length;
+  const waiting = objectives.filter(isWaitingObjective).length;
+  const meta: CommodoreMetaPart[] = on
+    ? [
+      { key: "mode", text: t("objectives.commodore.meta.autonomous"), tone: "on" },
+      ...(run?.phase === "turn" ? [{ key: "turn", text: t("objectives.commodore.meta.turn") }] : []),
+      ...(run?.phase === "retrying" && run.nextWakeAt ? [{ key: "retry", text: t("objectives.commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }), tone: "warn" as const }] : []),
+      ...(run?.phase === "error" ? [{ key: "error", text: t("objectives.commodore.meta.error"), tone: "warn" as const }] : []),
+      { key: "running", text: t("objectives.commodore.meta.running", { n: running }) },
+      { key: "handled", text: t("objectives.commodore.meta.handled", { n: run?.totals.actions ?? 0 }) },
+    ]
+    : [
+      { key: "mode", text: t("objectives.commodore.meta.manual") },
+      { key: "waiting", text: t("objectives.commodore.meta.waiting", { n: waiting }) },
+    ];
+  const patrol = on && run?.phase === "idle" && run.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null;
+  const errorReason = on && (run?.phase === "error" || run?.phase === "retrying") ? run.reason ?? null : null;
+  return { on, meta, patrol, errorReason };
 }
 
 /** Theater 「…」 메뉴의 「사령관 지시…」 — 서랍을 지시 탭으로 연다. */

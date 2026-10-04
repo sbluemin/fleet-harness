@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Select } from "@fleet-console/sdk/react/browser";
-import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
@@ -11,6 +11,9 @@ import { theaterInitials } from "../../workspace/client/sidebar/theater-initials
 import { TheaterMonogram } from "../../workspace/client/sidebar/theater-monogram.js";
 import { CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS, fetchTheaterSubagents, fetchTheaterSystemPrompt, saveTheaterSubagents, saveTheaterSystemPrompt, type ClaudeCodeSystemPromptMode, type TheaterSystemPrompt } from "./execution-settings.js";
 import "./theater-system-prompt-sheet.css";
+import { MobileGroupLabel, MobileRadioRow } from "./settings-mobile.js";
+import { MobileSheet } from "../../../core/client/src/chrome/mobile/mobile-sheet.js";
+import { getMobileSheetStack, popMobileSheet, pushMobileSheet, type MobileSheetKind } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
 interface OpenRequest { readonly theater: TheaterInfo; readonly anchor: DOMRect | null; readonly returnFocus: HTMLElement | null }
@@ -41,6 +44,34 @@ export function subscribeTheaterSystemPromptChange(listener: (theaterId: string,
   };
   window.addEventListener(CHANGED_EVENT, handler);
   return () => window.removeEventListener(CHANGED_EVENT, handler);
+}
+
+/**
+ * On a phone the sheet is drawn by the mobile sheet host (S-16), while this component keeps every
+ * piece of state and every save. Each render publishes what the sheet shows; the hosted sheet
+ * only reads it, so nothing about loading, saving or forgetting is written twice.
+ */
+interface MobilePromptView { readonly title: string; readonly body: ReactNode; readonly close: () => void }
+let mobilePromptView: MobilePromptView | null = null;
+const mobilePromptListeners = new Set<() => void>();
+function publishMobilePromptView(view: MobilePromptView | null) {
+  if (view === mobilePromptView) return;
+  mobilePromptView = view;
+  for (const listener of mobilePromptListeners) listener();
+}
+function subscribeMobilePromptView(listener: () => void) {
+  mobilePromptListeners.add(listener);
+  return () => { mobilePromptListeners.delete(listener); };
+}
+
+function MobilePromptSheetView({ sheet, onDismiss }: { readonly sheet: MobileSheetKind; readonly onDismiss: () => void }) {
+  const view = useSyncExternalStore(subscribeMobilePromptView, () => mobilePromptView, () => null);
+  // The host can drop this sheet on its own (hardware back, Esc); the open prompt then closes with it.
+  useEffect(() => () => { mobilePromptView?.close(); }, []);
+  if (!view) return null;
+  // A late dismissal must never pop whichever sheet came after this one.
+  const dismiss = () => { if (getMobileSheetStack().at(-1) === sheet) onDismiss(); };
+  return <MobileSheet title={view.title} onClose={dismiss}>{view.body}</MobileSheet>;
 }
 
 function announce(theaterId: string, prompt: TheaterSystemPrompt | null) {
@@ -87,6 +118,16 @@ export function TheaterSystemPromptSheet() {
   const openIdRef = useRef(0);
   const revisionRef = useRef(0);
   const dirtyRef = useRef(false);
+  const mobileViewRef = useRef<MobilePromptView | null>(null);
+  mobileViewRef.current = null;
+  useLayoutEffect(() => { publishMobilePromptView(mobileViewRef.current); });
+  const mobileSheetOpen = mobile && request !== null;
+  useEffect(() => {
+    if (!mobileSheetOpen) return;
+    const sheet: MobileSheetKind = { kind: "custom", render: (close) => <MobilePromptSheetView sheet={sheet} onDismiss={close} /> };
+    pushMobileSheet(sheet);
+    return () => { if (getMobileSheetStack().at(-1) === sheet) popMobileSheet(); };
+  }, [mobileSheetOpen]);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -385,9 +426,59 @@ export function TheaterSystemPromptSheet() {
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   };
+  if (mobile) {
+    const modes = Object.keys(modeNames) as ClaudeCodeSystemPromptMode[];
+    const over = draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS;
+    mobileViewRef.current = {
+      title: t("sidebar.theater.prompt.title"),
+      close,
+      body: <>
+        <p className="settings-mobile-lead"><strong>{theater.label}</strong> · {t("sidebar.theater.prompt.scope")}</p>
+        {forgotten ? <>
+          <p className="settings-mobile-note is-error" role="alert"><strong>{t("sidebar.theater.prompt.forgottenTitle")}</strong> {unsaved ? t(draft.body ? "sidebar.theater.prompt.forgottenUnsavedCopy" : "sidebar.theater.prompt.forgottenUnsaved") : null}</p>
+          {unsaved && draft.body ? <>
+            <textarea ref={forgottenTextRef} className="mobile-field" readOnly value={draft.body} rows={5} aria-label={t("sidebar.theater.prompt.bodyLabel")} />
+            <div className="settings-mobile-actions">
+              <button type="button" className="mobile-pill-secondary" onClick={copyDraft}>{t("sidebar.theater.prompt.copy")}</button>
+              {copied ? <span className="settings-mobile-note" role="status">{t("sidebar.theater.prompt.copied")}</span> : null}
+            </div>
+          </> : null}
+          <p className="settings-mobile-note">{t(unsaved ? "sidebar.theater.prompt.forgottenRestoreUnsaved" : "sidebar.theater.prompt.forgottenRestore")}</p>
+        </> : loading ? <p className="settings-mobile-note" role="status">{t("sidebar.theater.prompt.loading")}</p>
+          : loadFailed ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.prompt.loadFailed")}</p> : <>
+            <div className="mobile-group settings-mobile-card" role="radiogroup" aria-label={t("sidebar.theater.prompt.modeLabel")}>
+              {modes.map((mode) => <MobileRadioRow key={mode} checked={draft.mode === mode} label={modeNames[mode]} onSelect={() => changeMode(mode)} />)}
+            </div>
+            {draft.mode === "on" && draft.body ? <p className="settings-mobile-kept">{t("sidebar.theater.prompt.kept", { count: draft.body.length })} · {t(over ? "sidebar.theater.prompt.draftNotApplied" : "sidebar.theater.prompt.keptHelp")}</p> : null}
+            {draft.mode !== "on" ? <label className="settings-mobile-body">
+              <MobileGroupLabel>{t("sidebar.theater.prompt.bodyLabel")}</MobileGroupLabel>
+              <SyncedTextarea ref={draftTextRef} className="mobile-field" value={draft.body} onChange={(event) => changeBody(event.target.value)} onBlur={flush} rows={5} aria-invalid={over} />
+              <small className={`settings-mobile-count${over ? " is-over" : ""}`}>{draft.body.length.toLocaleString()} / 16,000</small>
+            </label> : null}
+            {/* The default needs no explanation; the other modes change what reaches the model, so they say so. */}
+            {draft.mode !== "on" ? <p className={`settings-mobile-note${draft.mode === "off" ? " is-warning" : ""}`}>{caption}</p> : null}
+            {stored || undo ? <p className="settings-mobile-note">
+              {stored ? <>{t("sidebar.theater.prompt.own")} · <button type="button" className="settings-mobile-textlink" onClick={reset}>{t("sidebar.theater.prompt.reset")}</button></> : null}
+              {undo ? <><span role="status">{t("sidebar.theater.prompt.resetDone")}</span> <button ref={undoRef} type="button" className="settings-mobile-textlink" onClick={restore}>{t("sidebar.theater.prompt.undo")}</button></> : null}
+            </p> : null}
+            {status !== "untouched" ? <p className={`settings-mobile-note${status === "error" || status === "over" ? " is-error" : ""}`} role={status === "over" ? "alert" : "status"} aria-live="polite">{t(`sidebar.theater.prompt.save.${status}`)}</p> : null}
+            {over ? <>
+              <p className="settings-mobile-note">{t("sidebar.theater.prompt.draftHelp")}</p>
+              <div className="settings-mobile-actions">
+                <button type="button" className="mobile-pill-secondary" onClick={copyDraft}>{t("sidebar.theater.prompt.copy")}</button>
+                <button type="button" className="mobile-pill-secondary" onClick={discardDraft}>{t("sidebar.theater.prompt.discardDraft")}</button>
+                {copied ? <span className="settings-mobile-note" role="status">{t("sidebar.theater.prompt.copied")}</span> : null}
+              </div>
+            </> : null}
+          </>}
+        {forgotten ? null : <TheaterSubagentsSection key={theater.id} theaterId={theater.id} mobile />}
+      </>,
+    };
+    return null;
+  }
   return createPortal(<>
-    <div className={`theater-prompt-backdrop${mobile ? " is-mobile" : ""}`} onPointerDown={close} aria-hidden="true" />
-    <section ref={dialogRef} className={`theater-prompt-sheet${mobile ? " is-mobile" : ""}`} style={position} role="dialog" aria-modal="true" aria-label={t("sidebar.theater.prompt.dialogAria", { theater: theater.label })} onKeyDown={trapTab}>
+    <div className="theater-prompt-backdrop" onPointerDown={close} aria-hidden="true" />
+    <section ref={dialogRef} className="theater-prompt-sheet" style={position} role="dialog" aria-modal="true" aria-label={t("sidebar.theater.prompt.dialogAria", { theater: theater.label })} onKeyDown={trapTab}>
       <header className="theater-prompt-header">
         <span className="theater-prompt-mark" aria-hidden="true"><TheaterMonogram>{theaterInitials(theater.label)}</TheaterMonogram></span>
         <span className="theater-prompt-heading"><strong>{theater.label}</strong><small>{t("sidebar.theater.prompt.title")}</small></span>
@@ -441,7 +532,7 @@ export function TheaterSystemPromptSheet() {
  * Theater의 서브에이전트 — 켜져 있으면(기본) 서브에이전트 호출 자리에 Objectives 구성원이 선다. 프롬프트와 달리
  * Console이 호출마다 읽으므로 실행 중인 세션도 다음 호출부터 따른다. 저장은 누르는 즉시이며, 실패하면 되돌린다.
  */
-function TheaterSubagentsSection({ theaterId }: { readonly theaterId: string }) {
+function TheaterSubagentsSection({ theaterId, mobile = false }: { readonly theaterId: string; readonly mobile?: boolean }) {
   const t = useT();
   const [replaced, setReplaced] = useState<boolean | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "saving" | "loadFailed" | "saveFailed">("loading");
@@ -472,6 +563,18 @@ function TheaterSubagentsSection({ theaterId }: { readonly theaterId: string }) 
     });
   };
 
+  if (mobile) {
+    return state === "loading" ? <p className="settings-mobile-note" role="status">{t("sidebar.theater.prompt.loading")}</p>
+      : state === "loadFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.subagents.loadFailed")}</p>
+        : <>
+          <SettingsCard>
+            <SettingsRow label={t("sidebar.theater.subagents.toggle")} hint={t(replaced ? "sidebar.theater.subagents.on" : "sidebar.theater.subagents.off")}>
+              <SettingsToggle checked={replaced === true} busy={state === "saving"} ariaLabel={t("sidebar.theater.subagents.toggle")} onChange={change} />
+            </SettingsRow>
+          </SettingsCard>
+          {state === "saveFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.subagents.saveFailed")}</p> : null}
+        </>;
+  }
   return (
     <div className="theater-subagents" role="group" aria-labelledby="theater-subagents-title">
       <strong id="theater-subagents-title">{t("sidebar.theater.subagents.title")}</strong>
