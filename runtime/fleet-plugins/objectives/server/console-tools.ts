@@ -1,4 +1,5 @@
 import type { ConsoleCaller, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
 
@@ -17,19 +18,27 @@ const MAX_ADD_PER_TURN = 10;
  * add 와 함께 오면 조용히 버려지는 읽기 전용 키 — 생성 전에 이유 있게 거절한다.
  * 읽기로 쓸 때(view·objective·groups + groupId·objectiveId·filter)는 그대로 두므로 읽기 계약은 바뀌지 않는다.
  */
-const ADD_READ_KEYS = ["groupId", "objectiveId", "view", "filter", "resultId", "offset", "limit", "memberId", "cursor"] as const;
+const ADD_READ_KEYS = ["groupId", "objectiveId", "view", "filter", "resultId", "offset", "limit", "memberId", "cursor", "rejudge"] as const;
 /** 세션 전사 한 번에 읽는 줄 수의 기본값 — 꼬리 읽기의 크기이기도 하다. */
 const TRANSCRIPT_DEFAULT_LIMIT = 30;
 /** 정리(지우기·합치기·되돌리기) 한 번에 받는 목표 수, 그리고 호출자마다 10분에 받는 정리 호출 수. */
 const MAX_TIDY_IDS = 20;
 const MAX_TIDY_PER_TURN = 20;
-const TARGET_WRITES = ["plan", "commence", "criteria", "answer", "complete", "reopen", "steer", "message", "stop", "compact", "extend", "edit", "followup"] as const;
+const TARGET_WRITES = ["plan", "commence", "criteria", "answer", "complete", "reopen", "steer", "message", "stop", "compact", "extend", "edit", "followup", "member"] as const;
+/** 구성원 모델 목록의 출처 — Console 이 내놓는 실행 카탈로그와 Gateway 한도 요약. 둘 다 루프백 HTTP 로만 읽는다. */
+const CATALOG_PATH = "/api/v1/operations/catalog";
+const QUOTA_PATH = "/api/v1/ai-gateway/quota";
+const CATALOG_TIMEOUT_MS = 5_000;
+const QUOTA_TIMEOUT_MS = 5_000;
+const QUOTA_MAX_BYTES = 65_536;
 const WRITE_KEYS = ["add", "remove", "merge", "restore", ...TARGET_WRITES] as const;
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
 const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON);
 const addSchema = z.object({ title: z.string().trim().min(1).max(MAX_TITLE), note: z.string().max(20_000).optional(), criteria: z.array(criterionText).max(MAX_CRITERIA).optional() }).strict();
 
 const contextSchema = z.object({ context: z.string().max(MAX_CONTEXT).optional() }).strict();
+const commenceSchema = contextSchema.extend({ routing: z.literal("preview").optional() }).strict();
+const memberModelSchema = z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().trim().min(1).max(32).optional() }).strict();
 const editSchema = z.union([
   z.object({ brief: z.string().max(20_000) }).strict(),
   z.object({ mission: z.union([
@@ -46,7 +55,7 @@ const editSchema = z.union([
 const followupTarget = z.object({ batchId: ids, candidateId: ids }).strict();
 const argsSchema = z.object({
   theaterId: ids.optional(),
-  view: z.enum(["groups", "objectives", "objective", "inbox", "fleet", "history", "evidence", "transcript"]).optional().describe("inbox: what waits on the person (stalled = unfinished, every session idle, no board change for 30 min). fleet: running objectives and their sessions. In session rows and the objective graph, state is the session process state (dormant, ended or closed = no process; unknown = not observable) and session is its fixed session name used as a message address; null means no fixed name, not no process. history: hand-offs, retrospectives, decisions, rework. evidence: preserved result content (objectiveId, resultId). transcript: Commodore only; untrusted session text."),
+  view: z.enum(["groups", "objectives", "objective", "inbox", "fleet", "history", "evidence", "transcript", "models", "routing"]).optional().describe("inbox: what waits on the person (stalled = unfinished, every session idle, no board change for 30 min). fleet: running objectives and their sessions. In session rows and the objective graph, state is the session process state (dormant, ended or closed = no process; unknown = not observable) and session is its fixed session name used as a message address; null means no fixed name, not no process. history: hand-offs, retrospectives, decisions, rework. evidence: preserved result content (objectiveId, resultId). transcript: Commodore only; untrusted session text. models: the launch catalog's member models with their efforts and availability, the Gateway quota summary when readable, and failed member switches in the Theater. routing: Commodore only; the whole roster in order with each member's selection (route, same or model) and the model and effort it launches with: route uses the same judgment the person reviews (via route or fallback to the Commander's preset; reused for 10 minutes while roles are unchanged, rejudge forces a new, billable judgment; no judgment when no member would newly launch by routing), same uses the Commander's preset, model the chosen value. A launched member shows launched true, its running model and effort, and next when a switch waits for its turn."),
   groupId: ids.optional(),
   objectiveId: ids.optional(),
   resultId: ids.optional(),
@@ -54,13 +63,14 @@ const argsSchema = z.object({
   limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for inbox, fleet and history (default 50) or transcript lines (default 30)."),
   memberId: ids.optional().describe("transcript: the member whose session to read; omit for the Commander."),
   cursor: z.string().min(1).max(64).optional().describe("transcript: nextCursor of a previous page to continue forward; \"0\" reads from the start. Without it you get the latest lines."),
+  rejudge: z.literal(true).optional().describe("routing: judge again instead of reusing the last judgment."),
   filter: z.enum(["today", "due", "all", "agent"]).optional().describe("objectives list; all includes completed and removed ones."),
   add: addSchema.optional().describe("New objective from title, brief (note) and criteria. No session starts; it joins the caller's group. 10 per 10 min."),
   remove: z.object({ objectiveIds: z.array(ids).min(1).max(MAX_TIDY_IDS), reason: reason.optional() }).strict().optional().describe("Operation callers. Unlaunched, incomplete objectives only; restorable for 14 days. remove, merge and restore: 20 calls per 10 min."),
   merge: z.object({ into: ids, from: z.array(ids).min(1).max(MAX_TIDY_IDS), reason: reason.optional() }).strict().optional().describe("Operation callers. Moves unlaunched sources' brief and criteria into the target."),
   restore: z.array(ids).min(1).max(MAX_TIDY_IDS).optional(),
   plan: z.union([z.literal(true), contextSchema]).optional().describe("Ask the Commander for a lineup."),
-  commence: z.union([z.literal(true), contextSchema]).optional().describe("Launch or resume the lineup."),
+  commence: z.union([z.literal(true), commenceSchema]).optional().describe("Launch or resume the lineup. routing \"preview\" launches routed members with the judgment view routing returned, without judging again; it is refused with routing_preview_stale when a role or brief changed or the judgment expired."),
   criteria: z.union([z.object({ approve: ids }).strict(), z.object({ reject: ids }).strict()]).optional().describe("Approve or reject one criteria proposal; approve: \"all\" approves every one."),
   answer: decisionAnswersSchema.optional().describe("Answer every question of the open decision request."),
   complete: z.union([z.literal(true), followupSelectionSchema.strict()]).optional().describe("Complete, optionally selecting follow-ups."),
@@ -72,6 +82,7 @@ const argsSchema = z.object({
   extend: z.object({ context: z.string().trim().min(1).max(MAX_CONTEXT) }).strict().optional(),
   edit: editSchema.optional().describe("Change the brief, a mission or a criterion under the screen's running-session rules."),
   followup: z.union([z.object({ retry: followupTarget }).strict(), z.object({ abandon: followupTarget }).strict(), z.object({ discard: ids }).strict()]).optional().describe("Retry or abandon a follow-up creation, or discard a candidate."),
+  member: z.object({ memberId: ids, launch: memberModelSchema.nullable() }).strict().optional().describe("Commodore only. Set a member's model and effort from view models; null returns it to routing. Outcome set: not launched yet, Commence launches it with this value (routing skips it). applied: the session now runs it. pending: the member is working and switches after its turn (next). A launched member that returns to routing keeps its running model. Refused: a model outside the catalog (model_not_in_catalog), a disabled kind (model_unavailable), an effort the model does not offer (invalid_effort), an unreadable catalog (catalog_unavailable), or the host's code."),
 }).strict();
 type Args = z.output<typeof argsSchema>;
 
@@ -110,7 +121,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
 
   const tool: PluginMcpTool = {
     name: "console_objectives",
-    description: "A Theater's Objectives board: read it and take the person's outer-loop actions (add, plan, commence, criteria, answer, complete, steer and the rest). One write per call, attributed to the caller. An Operation cannot write to an objective it commands or belongs to (own_objective); missions stay with fleet-objectives. A Commodore connection is confined to its Theater.",
+    description: "A Theater's Objectives board: read it and take the person's outer-loop actions (add, plan, commence, criteria, answer, complete, steer and the rest). One write per call, attributed to the caller. An Operation cannot write to an objective it commands or belongs to (own_objective); missions stay with fleet-objectives. A Commodore connection is confined to its Theater; only it reads routing judgments and transcripts and sets a member's model and effort (member). Routing itself is unchanged: a member set to a model is launched with it instead of being routed.",
     // 모르는 키는 호스트 선검사에서 그대로 막는다 — 실행할 수 없는 호출에 사람의 권한 요청을 띄우지 않는다.
     inputSchema: z.toJSONSchema(argsSchema),
     surface: {
@@ -128,9 +139,10 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         if (args.remove) { const removeIds = args.remove.objectiveIds; return { theaterId: theaterOf(removeIds[0]), summary: removeIds.length === 1 ? `목표 지움 「${titleOf(removeIds[0]!)}」` : `목표 ${removeIds.length}개 지움`, view: "objectives", gesture: "press" }; }
         if (args.merge) return { theaterId: theaterOf(args.merge.into), summary: `목표 ${args.merge.from.length}개를 「${titleOf(args.merge.into)}」에 합침`, view: "objective", path: args.merge.into, gesture: "press" };
         if (args.restore) return { theaterId: theaterOf(args.restore[0]), summary: args.restore.length === 1 ? `목표 되돌림 「${titleOf(args.restore[0]!)}」` : `목표 ${args.restore.length}개 되돌림`, view: "objectives", gesture: "press" };
+        if (args.member) return { theaterId, summary: `구성원 모델 바꿈 「${short(found?.title ?? "")}」`, view: "objective", ...(found ? { path: found.id } : {}), gesture: "press" };
         const write = TARGET_WRITES.find((key) => args[key] !== undefined);
         if (write) return { theaterId, summary: `목표 ${write} 「${short(found?.title ?? "")}」`, view: "objective", ...(found ? { path: found.id } : {}), gesture: "press" };
-        return { theaterId, summary: args.view === "transcript" ? `세션 기록 봄 「${short(found?.title ?? "")}」` : args.view === "objective" || (args.objectiveId && !args.view) ? `목표 봄 「${short(found?.title ?? "")}」` : args.view === "groups" ? "그룹 봄" : "목표 목록 봄", view: args.view === "evidence" || args.view === "transcript" ? "objective" : args.view && ["inbox", "fleet", "history"].includes(args.view) ? "objectives" : args.view ?? (args.objectiveId ? "objective" : "objectives"), ...(found ? { path: found.id } : {}) };
+        return { theaterId, summary: args.view === "transcript" ? `세션 기록 봄 「${short(found?.title ?? "")}」` : args.view === "routing" ? `라우팅 검토 「${short(found?.title ?? "")}」` : args.view === "models" ? "모델 목록 봄" : args.view === "objective" || (args.objectiveId && !args.view) ? `목표 봄 「${short(found?.title ?? "")}」` : args.view === "groups" ? "그룹 봄" : "목표 목록 봄", view: args.view === "evidence" || args.view === "transcript" || args.view === "routing" ? "objective" : args.view && ["inbox", "fleet", "history", "models"].includes(args.view) ? "objectives" : args.view ?? (args.objectiveId ? "objective" : "objectives"), ...(found ? { path: found.id } : {}) };
       },
     },
     execute: async (raw, context) => {
@@ -160,6 +172,8 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         }
         const write = TARGET_WRITES.find((key) => args[key] !== undefined);
         if (write) {
+          // 구성원 모델은 사령관만 바꾼다 — 사람은 화면에서, 지휘관은 구성원 설명에 필요한 모델을 적는다.
+          if (args.member && !bound) return refuse("commodore_only", { hint: "The person changes member models in the Objectives panel." });
           if (!args.objectiveId) return refuse("objective_required");
           const current = scoped(args.objectiveId);
           const actor = actorOf(caller);
@@ -168,9 +182,10 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           const actions = createObjectiveActions(ctx, store, launch, actor);
           const ref = { objectiveId: current.id, language: language(caller) };
           const withContext = (value: true | { context?: string }) => ({ ...ref, ...(value === true ? {} : value) });
+          if (args.member) return text(await memberLaunch(actions, current, args.member, context.signal));
           const result = await (async () => {
             if (args.plan) return actions.plan(withContext(args.plan));
-            if (args.commence) return actions.commence(withContext(args.commence));
+            if (args.commence) return actions.commence({ ...withContext(args.commence), ...(args.commence !== true && args.commence.routing ? { routing: args.commence.routing } : {}) });
             if (args.criteria) return "approve" in args.criteria ? (args.criteria.approve === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: args.criteria.approve })) : actions.reject({ ...ref, proposalId: args.criteria.reject });
             if (args.answer) return actions.answer({ ...ref, ...args.answer });
             if (args.complete) return actions.complete({ ...ref, ...(args.complete === true ? {} : args.complete) });
@@ -231,6 +246,15 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             }
             return { ...text(details), content: [...text(details).content, { type: "image", data: data.toString("base64"), mimeType: metadata.mediaType }] };
           }
+          if (args.view === "models") return text(await models(args, caller, context.signal));
+          if (args.view === "routing") {
+            // 판단 한 번은 과금되는 Gateway 호출이다 — 사람의 확인 시트와 사령관만 부른다.
+            if (!bound) return refuse("commodore_only", { hint: "The person reviews routing in the Objectives panel." });
+            if (!args.objectiveId) return refuse("objective_required");
+            const current = scoped(args.objectiveId);
+            if (launch.busy(current.id)) return refuse("objective_busy");
+            return text(await lineup(current, args.rejudge === true));
+          }
           if (args.view === "transcript") {
             if (!bound) return refuse("commodore_only", { hint: "Operations read sessions with console_operation." });
             if (!args.objectiveId) return refuse("objective_required");
@@ -258,6 +282,116 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
       }
     },
   };
+
+  /**
+   * 사령관의 구성원 모델 선택 — 사람의 모델 칩과 같은 memberPatch 경로다(띄우기 전이면 선택만, 띄웠으면 #1417 의 지금·턴 뒤 전환).
+   * 고른 값은 카탈로그에 있는 모델과 그 모델의 강도여야 하고, 카탈로그를 읽지 못하면 추측으로 통과시키지 않는다.
+   */
+  async function memberLaunch(actions: ReturnType<typeof createObjectiveActions>, objective: Objective, input: NonNullable<Args["member"]>, signal: AbortSignal | undefined) {
+    if (!objective.members.some((member) => member.id === input.memberId)) throw new ObjectiveStoreError("unknown_member");
+    if (input.launch) {
+      const catalog = await loadCatalog(signal);
+      if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
+      const row = catalog.find((entry) => entry.model === input.launch!.model);
+      if (!row) throw new ObjectiveStoreError("model_not_in_catalog");
+      if (!row.available) throw new ObjectiveStoreError("model_unavailable", undefined, row.reason ? { reason: row.reason } : {});
+      if (input.launch.effort !== undefined && !row.efforts.includes(input.launch.effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { efforts: row.efforts });
+    }
+    const launched = !!(ctx.host.operations.describe ? ctx.host.operations.describe(input.memberId) : ctx.host.operations.get(input.memberId));
+    const { objective: updated } = await actions.memberPatch({ objectiveId: objective.id, memberId: input.memberId, patch: { launch: input.launch } });
+    const member = updated.members.find((entry) => entry.id === input.memberId);
+    const outcome = !launched ? "set" : member?.next && !member.next.failed ? "pending" : "applied";
+    return { ok: true, objectiveId: updated.id, memberId: input.memberId, outcome, launch: member?.launch ?? null, model: member?.model ?? null, effort: member?.effort ?? null, next: member?.next ?? null };
+  }
+
+  /**
+   * 개시 전 라인업 — 로스터 전원을 순서대로, 띄울 때 쓸 모델·강도와 함께. 라우팅 구성원은 사람의 확인 시트와 같은 판단(routingPreview)이고
+   * 폴백이면 지휘관 프리셋, same 은 지휘관 프리셋, model 은 고른 값이다. 띄운 구성원은 실행값과 턴 뒤 예약이다. 새로 띄울 라우팅 구성원이
+   * 없으면 판단하지 않는다.
+   */
+  async function lineup(objective: Objective, rejudge: boolean) {
+    const launched = (id: string) => !!(ctx.host.operations.describe ? ctx.host.operations.describe(id) : ctx.host.operations.get(id));
+    const routing = objective.members.some((member) => member.launch.mode === "route" && !launched(member.id));
+    const preview = routing ? await launch.routingPreview(objective.id, rejudge ? { rejudge: true } : undefined) : null;
+    const current = scoped(objective.id);
+    const decisions = new Map(preview?.members.map((entry) => [entry.id, entry]) ?? []);
+    const commander = { ...(current.commander.model ? { model: current.commander.model } : {}), ...(current.commander.effort ? { effort: current.commander.effort } : {}) };
+    const members = current.members.map((member) => {
+      const row = { id: member.id, role: member.role, selection: member.launch.mode };
+      if (launched(member.id)) return { ...row, launched: true, ...(member.model ? { model: member.model } : {}), ...(member.effort ? { effort: member.effort } : {}), ...(member.next ? { next: member.next } : {}) };
+      if (member.launch.mode === "model") return { ...row, launched: false, model: member.launch.model, ...(member.launch.effort ? { effort: member.launch.effort } : {}) };
+      if (member.launch.mode === "same") return { ...row, launched: false, ...commander };
+      const { id: _id, ...decision } = decisions.get(member.id) ?? { id: member.id, via: "fallback" as const, reason: "routing_failed", ...commander };
+      return { ...row, launched: false, ...decision };
+    });
+    return { objectiveId: current.id, judged: preview?.judged ?? false, ...(preview ? { at: preview.at, expiresAt: preview.expiresAt } : {}), members };
+  }
+
+  /** Console 의 루프백 GET — origin 이 없거나 실패·시간 초과면 null. */
+  async function loopback(pathname: string, timeoutMs: number, signal: AbortSignal | undefined): Promise<unknown> {
+    const origin = ctx.host.server.origin();
+    if (!origin) return null;
+    try {
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const response = await fetch(`${origin}${pathname}`, { method: "GET", headers: { origin, accept: "application/json" }, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+      if (!response.ok) return null;
+      const body = await response.text();
+      return body.length > 0 ? JSON.parse(body) as unknown : null;
+    } catch { return null; }
+  }
+
+  /** 실행 카탈로그의 모델 행 — 화면의 모델 메뉴(loadLaunchGroups)와 같은 해석이다: 변형 행의 launch.model, 강도는 그 행의 칩. 처음 나온 모델이 이긴다. */
+  async function loadCatalog(signal: AbortSignal | undefined) {
+    const body = await loopback(CATALOG_PATH, CATALOG_TIMEOUT_MS, signal);
+    if (!isRecord(body) || !Array.isArray(body.plugins)) return null;
+    const rows: { model: string; label: string; provider: string | null; efforts: string[]; available: boolean; reason?: string }[] = [];
+    const seen = new Set<string>();
+    for (const plugin of body.plugins) {
+      if (!isRecord(plugin) || !Array.isArray(plugin.kinds)) continue;
+      for (const kind of plugin.kinds) {
+        if (!isRecord(kind)) continue;
+        const available = kind.disabled !== true;
+        const reason = !available && typeof kind.disabledReason === "string" ? kind.disabledReason.slice(0, 200) : undefined;
+        for (const group of readLaunchVariantGroups(kind.variants)) {
+          for (const row of group.rows) {
+            const model = row.launch.model;
+            if (!model || seen.has(model)) continue;
+            seen.add(model);
+            const efforts = (row.chips ?? []).flatMap((chip) => (chip.launch.effort ? [chip.launch.effort] : []));
+            rows.push({ model, label: row.label, provider: providerOf(group.id, model), efforts, available, ...(reason ? { reason } : {}) });
+          }
+        }
+      }
+    }
+    return rows;
+  }
+
+  /** Gateway 한도 요약(공급자별 창의 사용률) — 읽지 못하면 null 이고 목록은 그대로 낸다. */
+  async function loadQuota(signal: AbortSignal | undefined) {
+    const body = await loopback(`${QUOTA_PATH}?stale=1`, QUOTA_TIMEOUT_MS, signal);
+    const providers = isRecord(body) && isRecord(body.providers) ? body.providers : null;
+    if (!providers || JSON.stringify(providers).length > QUOTA_MAX_BYTES) return null;
+    const quota: Record<string, { status: string; windows?: { id: string; label?: string; usedPercent: number; resetsAt?: number }[] }> = {};
+    for (const [provider, entry] of Object.entries(providers)) {
+      if (!isRecord(entry) || typeof entry.status !== "string") continue;
+      const windows = Array.isArray(entry.windows) ? entry.windows.flatMap((window) => isRecord(window) && typeof window.id === "string" && typeof window.usedPercent === "number" && Number.isFinite(window.usedPercent)
+        ? [{ id: window.id, ...(typeof window.label === "string" ? { label: window.label.slice(0, 80) } : {}), usedPercent: window.usedPercent, ...(typeof window.resetsAt === "number" ? { resetsAt: window.resetsAt } : {}) }]
+        : []) : [];
+      quota[provider] = { status: entry.status, ...(windows.length ? { windows } : {}) };
+    }
+    return Object.keys(quota).length ? quota : null;
+  }
+
+  async function models(args: Args, caller: BoardCaller | undefined, signal: AbortSignal | undefined) {
+    const [catalog, quota] = await Promise.all([loadCatalog(signal), loadQuota(signal)]);
+    if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
+    const theaterId = args.theaterId ?? theaterOfCaller(caller);
+    // 바꾸지 못한 턴 뒤 전환 — 그 모델로 다시 고르기 전에 볼 사유다.
+    const failedSwitches = theaterId ? store.list(theaterId).filter((objective) => !objective.done && !objective.removed).flatMap((objective) => objective.members.flatMap((member) => member.next?.failed
+      ? [{ objectiveId: objective.id, memberId: member.id, role: member.role, model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}), failed: member.next.failed }]
+      : [])) : [];
+    return { models: catalog, quota, failedSwitches };
+  }
 
   /** 목표 세션의 전사 — 지휘관 또는 구성원. Theater 경계는 호출 전에 scoped 가 지켰고, 소유(이 플러그인이 띄운 세션)는 호스트가 지킨다. */
   async function transcript(objective: Objective, args: Args, signal: AbortSignal | undefined) {
@@ -323,3 +457,8 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
 
   return [tool];
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+/** 카탈로그 묶음의 공급자 — native 는 Claude, gateway:<공급자>; 없으면 모델 id 의 접두. 한도 요약의 키와 같다. */
+const providerOf = (groupId: string, model: string): string | null =>
+  groupId === "native" ? "claude" : groupId.startsWith("gateway:") ? groupId.slice("gateway:".length) || null : !model.includes("--") ? "claude" : model.split("--", 1)[0] || null;
