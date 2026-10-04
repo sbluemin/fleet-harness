@@ -40,6 +40,6 @@ Use signal-driven background waiting. Do not treat stale `+1`, `eyes`, or re-anc
 
 Record `FINAL_AUDIT_BASE`; check base advancement and PR-file overlap again immediately before merging. Conflicts or overlapping advancement require head integration through `rebase-on-canary`, validation, and **head-only** `--force-with-lease`, then repeated audit/remote checks. Do not rewrite history in the ordinary path.
 
-When review fixes landed, merge also requires the re-check evidence that [Merge and cleanup](references/merge-and-cleanup.md) defines. Merge only through `gh pr merge`. Never use `--admin`, protected-branch direct pushes, or required-check bypasses. Confirm actual `MERGED` state before cleaning the owned head worktree through `git-worktree`. Preserve draft/blocked/unmerged work.
+When FIX commits remain in the head, merge also requires the re-check evidence that [Merge and cleanup](references/merge-and-cleanup.md) defines. Merge only through `gh pr merge`. Never use `--admin`, protected-branch direct pushes, or required-check bypasses. Confirm actual `MERGED` state before cleaning the owned head worktree through `git-worktree`. Preserve draft/blocked/unmerged work.
 
 Report PR URL/head/base, frozen SHAs/final audit, FIX/DECLINE/DEFER, commits/push targets, validation, review termination basis, merge SHA or unmerged reason, stopped waits, and cleanup. The host owns title/body/changelog/final-report synthesis.

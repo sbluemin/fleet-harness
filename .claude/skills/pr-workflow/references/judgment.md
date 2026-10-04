@@ -62,4 +62,4 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
    EOF
    )"
    ```
-6. Return to Phase 3 to await the next review pass.
+6. Return to Phase 3 to await the next review pass. When these fixes answer the third pass, go to Phase 6 instead; its re-check gate decides whether they may merge.
