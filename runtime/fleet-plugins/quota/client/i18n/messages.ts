@@ -60,6 +60,7 @@ export const quotaEn = {
   "quota.privacy": "Reads usage with your local CLI sign-in. Requests go only to each provider; nothing else leaves this machine.",
   "quota.loading.title": "Reading provider usage",
   "quota.loading.body": "Querying each provider with your local CLI sign-in. Nothing else leaves this machine.",
+  "mobile.usage.subtitle": "Subscription limits summary",
 } as const;
 
 export const quotaKo: Record<keyof typeof quotaEn, string> = {
@@ -124,6 +125,7 @@ export const quotaKo: Record<keyof typeof quotaEn, string> = {
   "quota.privacy": "로컬 CLI 로그인 정보로 사용량을 조회합니다. 요청은 각 공급자에게만 전송되며 그 외에는 이 기기를 떠나지 않습니다.",
   "quota.loading.title": "사용량을 읽는 중",
   "quota.loading.body": "로컬 CLI 로그인 정보로 각 공급자에 사용량을 조회합니다. 그 외에는 이 기기를 떠나지 않습니다.",
+  "mobile.usage.subtitle": "구독 한도 요약",
 };
 
 export const QUOTA_MESSAGES = { en: quotaEn, ko: quotaKo } as const;

@@ -126,5 +126,12 @@ export const quotaSettingsSection: SettingsSectionDescriptor = {
   title: (locale) => getT(locale)("mobile.usage.title"),
   group: "work",
   render: () => <UsageBody />,
-  mobile: { only: true, group: "use", order: -1, summary, subscribe },
+  // 폰의 「플러그인」 화면에도 한 행으로 선다(S-46 「사용량 / 구독 한도 요약」) — 누르면 설정 › 사용량.
+  mobile: {
+    only: true, group: "use", order: -1, summary, subscribe,
+    pluginRow: {
+      icon: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4v16h16" /><path d="M8 15l3-4 3 2 5-6" /></svg>,
+      subtitle: (locale) => getT(locale)("mobile.usage.subtitle"),
+    },
+  },
 };
