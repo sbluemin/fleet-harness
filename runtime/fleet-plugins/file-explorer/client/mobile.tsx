@@ -7,7 +7,7 @@ import type { FolderEntry, FolderListResult } from "../server/types.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";
 import { DOCUMENT_PANE_ID } from "./file-navigation.js";
 import { LIST_TIMEOUT_MS, makeFilesClient } from "./files-client.js";
-import { getT } from "./i18n/index.js";
+import { getT, translateServerError } from "./i18n/index.js";
 import { readShowHidden, sortEntries } from "./tree.js";
 import { activateStoredDocument, getFileExplorerSnapshot, setDocumentPaneOpen, useFileExplorerViewState } from "./view-store.js";
 import { BinaryViewer } from "./viewer/binary.js";
@@ -39,7 +39,7 @@ function useTheaterLabel(ctx: PaneContext): string {
   return useSyncExternalStore(consoleState.subscribe, () => consoleState.getTheaters().find((theater) => theater.id === theaterId)?.label ?? "", () => "");
 }
 
-type Folder = { readonly kind: "loaded"; readonly result: FolderListResult } | { readonly kind: "loading" } | { readonly kind: "failed" };
+type Folder = { readonly kind: "loaded"; readonly result: FolderListResult } | { readonly kind: "loading" } | { readonly kind: "failed"; readonly code: string };
 
 // ── 트리 ──
 
@@ -66,7 +66,7 @@ export function MobileFileTree(ctx: PaneContext) {
     const settle = (folder: Folder) => { if (clientRef.current === files) setFolders((current) => new Map(current).set(relativePath, folder)); };
     files.listFolder(relativePath || undefined, { timeoutMs: LIST_TIMEOUT_MS })
       .then((result) => settle({ kind: "loaded", result }))
-      .catch(() => { if (!quiet) settle({ kind: "failed" }); });
+      .catch((error: unknown) => { if (!quiet) settle({ kind: "failed", code: error instanceof Error ? error.message : "list_failed" }); });
   }, [files]);
 
   // Theater 가 바뀌면 처음부터 다시 연다.
@@ -116,7 +116,7 @@ export function MobileFileTree(ctx: PaneContext) {
     const indent = { paddingLeft: `${16 + depth * 18}px` };
     if (!folder || folder.kind === "loading") return [<p key={`${relativePath}:loading`} className="fexp-m-note" style={indent} role="status">{t("fileExplorer.status.loading")}</p>];
     if (folder.kind === "failed") {
-      return [<button key={`${relativePath}:failed`} type="button" className="fexp-m-note is-retry" style={indent} onClick={() => load(relativePath)}>{t("fileExplorer.status.loadFailedTitle")} · {t("fileExplorer.status.loadFailedRetry")}</button>];
+      return [<button key={`${relativePath}:failed`} type="button" className="fexp-m-note is-retry" style={indent} onClick={() => load(relativePath)}>{translateServerError(folder.code, t)} · {t("fileExplorer.status.loadFailedRetry")}</button>];
     }
     const entries = sortEntries(folder.result.entries, "name").filter((entry) => showHidden || !entry.name.startsWith("."));
     if (entries.length === 0) return [<p key={`${relativePath}:empty`} className="fexp-m-note" style={indent}>{t("fileExplorer.status.emptyFolder")}</p>];
