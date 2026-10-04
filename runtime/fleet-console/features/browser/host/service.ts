@@ -557,8 +557,11 @@ export class BrowserService {
   }
 
   async restoreClosedTabs(): Promise<readonly string[]> {
-    const tabsToRestore = [...this.closedTabsMemory];
-    this.closedTabsMemory = [];
+    // 탭이 열린 채 복원하면 자리가 모자랄 수 있다 — 남은 자리만큼만 가져가고 나머지는 제안에 남긴다.
+    // 나누기는 기다리기 전에 끝낸다. 복원 도중 들어온 치우기를 나중 대입이 되돌리지 않게.
+    const slots = Math.max(0, MAX_TABS - this.globalBrowser.tabs.size);
+    const tabsToRestore = this.closedTabsMemory.slice(0, slots);
+    this.closedTabsMemory = this.closedTabsMemory.slice(slots);
     this.emitGlobalState();
     const restoredIds: string[] = [];
     for (const item of tabsToRestore) {
