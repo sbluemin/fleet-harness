@@ -34,6 +34,7 @@ import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import expo.modules.kotlin.AppContext
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 import java.io.ByteArrayInputStream
@@ -41,9 +42,8 @@ import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.util.UUID
 import java.util.WeakHashMap
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -239,26 +239,36 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     }
   }
 
-  /** True when the active WebView consumed the back press; false asks JS to leave for the landing. */
-  fun navigateBack(): Boolean {
-    if (Looper.myLooper() == Looper.getMainLooper()) return navigateBackOnMain()
-    val latch = CountDownLatch(1)
-    var consumed = false
+  /**
+   * True when the page took the back press; false asks JS to leave for the console list.
+   *
+   * The page decides first (bridge contract §8): `window.__fleetMobileBack()` returns true when it
+   * stepped back itself — a sheet, the drawer, a detail screen. It has [PAGE_BACK_BUDGET_MS] to
+   * answer; silence, false, or a throw hand the press to the shell. A page without the function
+   * (an older Console) keeps the earlier rule: back leaves an open operation through history.
+   */
+  fun navigateBack(promise: Promise) {
     main.post {
-      consumed = navigateBackOnMain()
-      latch.countDown()
+      val view = activeView ?: run {
+        promise.resolve(false)
+        return@post
+      }
+      // View functions run on the main thread, so the answer is awaited by callback, not by blocking.
+      val settled = AtomicBoolean(false)
+      val settle = { handled: Boolean -> if (settled.compareAndSet(false, true)) promise.resolve(handled) }
+      main.postDelayed({ settle(false) }, PAGE_BACK_BUDGET_MS)
+      view.evaluateJavascript(PAGE_BACK_SCRIPT) { result ->
+        when {
+          settled.get() -> Unit
+          result == "\"absent\"" -> settle(legacyOperationBack(view))
+          else -> settle(result == "true")
+        }
+      }
     }
-    if (!latch.await(2, TimeUnit.SECONDS)) return false
-    return consumed
   }
 
-  private fun navigateBackOnMain(): Boolean {
-    val view = activeView ?: return false
-    // Back leaves an open operation, and anywhere else it belongs to this shell, which answers
-    // with its console list. Without that rule the console's own page history would answer first,
-    // walking between its screens instead of coming back here.
-    if (!isOperationOpen(view)) return false
-    if (!view.canGoBack()) return false
+  private fun legacyOperationBack(view: WebView): Boolean {
+    if (view !== activeView || !isOperationOpen(view) || !view.canGoBack()) return false
     view.goBack()
     return true
   }
@@ -842,6 +852,12 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
 
   private companion object {
     const val READINESS_OBJECT = "fleetReadiness"
+    const val PAGE_BACK_BUDGET_MS = 300L
+
+    /** Only a literal `true` counts as handled; anything else the page does is the shell's press. */
+    const val PAGE_BACK_SCRIPT =
+      "(() => { const f = window.__fleetMobileBack; if (typeof f !== \"function\") return \"absent\"; " +
+        "try { return f() === true; } catch (_) { return false; } })()"
 
     /** Version mirrors the module version in build.gradle. */
     const val USER_AGENT_PRODUCT = "FleetMobile/0.1.0"

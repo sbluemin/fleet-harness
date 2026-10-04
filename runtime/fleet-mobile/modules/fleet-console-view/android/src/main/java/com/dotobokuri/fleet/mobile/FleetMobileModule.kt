@@ -1,5 +1,6 @@
 package com.dotobokuri.fleet.mobile
 
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -38,8 +39,8 @@ class FleetMobileModule : Module() {
         view.listTargets()
       }
 
-      AsyncFunction("navigateBack") { view: FleetConsoleView ->
-        view.navigateBack()
+      AsyncFunction("navigateBack") { view: FleetConsoleView, promise: Promise ->
+        view.navigateBack(promise)
       }
 
       AsyncFunction("getAppearance") { view: FleetConsoleView ->
