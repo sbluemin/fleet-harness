@@ -1,4 +1,7 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,6 +79,33 @@ describe("Console daemon lifecycle integration", () => {
     CHILD_PIDS.delete(pid);
     expect(createConsoleLock().readLock(fixture.lockFile)).toBeNull();
     expectFileCanBeRenamed(fixture.pidFile);
+  });
+  it("never signals a live process that a stale lock's pid now names", async () => {
+    // Console이 lock을 남기고 죽은 뒤 OS가 그 pid를 다른 프로세스에 재할당한 상황이다.
+    const fixture = createFixturePaths("reused-pid");
+    const bystander = spawn(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], { stdio: "ignore" });
+    const bystanderPid = bystander.pid!;
+    CHILD_PIDS.add(bystanderPid);
+    let bystanderSignal: NodeJS.Signals | null = null;
+    bystander.once("exit", (_code, signal) => { bystanderSignal = signal ?? "SIGHUP"; });
+    // lock 주소에서 무언가 듣고 있지만 lock token을 증명하지 못한다 — 멈춘 Console일 수도 있으므로 lock도 지우지 않는다.
+    const impostor = http.createServer((_request, response) => response.writeHead(401).end());
+    await new Promise<void>((resolve) => impostor.listen(0, "127.0.0.1", resolve));
+    const port = (impostor.address() as AddressInfo).port;
+    const consoleLock = createConsoleLock();
+    consoleLock.writeLock({ dir: fixture.dir, lockFile: fixture.lockFile, pid: bystanderPid, port, endpoint: `http://127.0.0.1:${port}/`, version: "crashed" });
+    const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH });
+
+    await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
+    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+
+    // 아무도 lock 주소를 듣지 않으면 lock은 stale이다 — 시그널 없이 파일만 치운다.
+    await new Promise<void>((resolve) => impostor.close(() => resolve()));
+    await lifecycle.stop();
+    expect(consoleLock.readLock(fixture.lockFile)).toBeNull();
+    await delay(300);
+    expect(bystanderSignal).toBeNull();
+    expect(() => process.kill(bystanderPid, 0)).not.toThrow();
   });
 });
 

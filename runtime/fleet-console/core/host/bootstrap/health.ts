@@ -7,6 +7,8 @@ export interface ConsoleProbeResult {
   readonly lock: ConsoleLockPayload | null;
   readonly health?: ConsoleHealth;
   readonly error?: string;
+  /** endpoint가 연결을 거절했다 — 그 주소에서 아무 프로세스도 듣고 있지 않다는 확정 신호다. */
+  readonly refused?: true;
 }
 
 export interface ConsoleHealthDeps {
@@ -40,7 +42,9 @@ export function createConsoleHealthClient(deps: ConsoleHealthDeps = {}) {
     const remaining = remainingBudget(deadline);
     if (remaining <= 0) return primary;
     const legacy = await probeEndpoint(`${lock.endpoint}health`, lock, remaining, options.signal);
-    return legacy.healthy ? legacy : primary;
+    if (legacy.healthy) return legacy;
+    // 재사용된 keep-alive 소켓이 먼저 끊김으로 실패해도, 뒤이은 새 연결의 거절이 "아무도 듣지 않음"의 최신 증거다.
+    return legacy.refused ? { ...primary, refused: true } : primary;
   }
 
   async function probeEndpoint(
@@ -64,7 +68,8 @@ export function createConsoleHealthClient(deps: ConsoleHealthDeps = {}) {
         if (!res.ok) return { healthy: false, lock, error: `health failed: ${res.status}` };
         return { healthy: true, lock, health: await res.json() as ConsoleHealth };
       } catch (err) {
-        return { healthy: false, lock, error: err instanceof Error ? err.message : String(err) };
+        const refused = (err as { cause?: { code?: unknown } } | null)?.cause?.code === "ECONNREFUSED";
+        return { healthy: false, lock, error: err instanceof Error ? err.message : String(err), ...(refused ? { refused: true as const } : {}) };
       }
     })();
     try {

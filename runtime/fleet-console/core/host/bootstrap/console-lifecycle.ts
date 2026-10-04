@@ -107,6 +107,8 @@ const FIXED_HOST = "127.0.0.1";
 const STARTUP_TIMEOUT_MS = 60_000;
 const STARTUP_POLL_INTERVAL_MS = 100;
 const CHILD_CLEANUP_GRACE_MS = 500;
+// stop이 lock pid의 정체를 health로 확인하는 전체 예산. 정상 Console은 수 ms 안에 답한다.
+const STOP_IDENTITY_TIMEOUT_MS = 5_000;
 
 type ConsoleDaemonChildFailure =
   | { readonly kind: "error"; readonly detail: string }
@@ -272,22 +274,51 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   async function stop(): Promise<void> {
     const payload = readTrustedLock();
     if (!payload) return;
-    // 소유권 가드는 살아있는 desktop 프로세스에 시그널을 보내는 것만 막는다 —
-    // sidecar가 락을 남기고 죽었을 때까지 막으면 stale lock을 CLI가 영영 정리할 수 없다.
-    if (isLockProcessAlive(payload.pid)) assertCliCanControlDaemon(payload);
-    try {
-      process.kill(payload.pid, "SIGTERM");
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+    const owner = await identifyLockOwner(payload);
+    if (owner === "unverified") {
+      // 살아 있는 무언가가 lock 주소를 붙잡고 있지만 lock token으로 정체를 증명하지 못했다(멈춘 Console이거나
+      // 종료 중인 Console일 수 있다). 시그널은 무관한 프로세스를 죽일 수 있고, lock을 지우면 살아 있는
+      // Console 옆에 두 번째 소유자가 생길 수 있으므로 둘 다 하지 않는다.
+      throw new Error(`Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}. If that process is a stuck Fleet Console, stop it; if it is not a Fleet Console, delete ${paths.lockFile}.`);
     }
-    await sleep(200);
-    try {
-      process.kill(payload.pid, 0);
-      process.kill(payload.pid, "SIGKILL");
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+    if (owner === "verified") {
+      assertCliCanControlDaemon(payload);
+      signalLockProcess(payload.pid, "SIGTERM");
+      await sleep(200);
+      // 정상 종료한 Console은 lock을 스스로 지운다. 같은 token의 lock이 아직 남아 있을 때만 종료 지연으로
+      // 보고 강제 종료한다 — 이미 끝난 pid가 그 사이 재할당됐다면 여기서 멈춘다.
+      if (isLockStillHeldBy(payload)) signalLockProcess(payload.pid, "SIGKILL");
     }
+    // "absent": lock pid가 죽었거나 lock 주소에 듣는 프로세스가 없다. pid가 재할당됐을 수 있으므로
+    // 시그널 없이 stale lock만 치운다.
     lock.removeLock(paths.lockFile, payload.pid);
+  }
+
+  /** stop이 lock pid에 시그널을 보내도 되는지 판별한다. lock token을 인증한 health 응답만 정체 증명이다. */
+  async function identifyLockOwner(payload: ConsoleLockPayload): Promise<"verified" | "absent" | "unverified"> {
+    if (!isLockProcessAlive(payload.pid)) return "absent";
+    // token 없는 lock은 어떤 Fleet Console도 쓰지 않는다 — 신뢰할 수 없는 lock처럼 파일만 폐기한다.
+    if (typeof payload.token !== "string" || payload.token.length === 0) return "absent";
+    const result = await health.probe(payload, { timeoutMs: STOP_IDENTITY_TIMEOUT_MS });
+    if (result.healthy && result.health?.pid === payload.pid) return "verified";
+    return !result.healthy && result.refused ? "absent" : "unverified";
+  }
+
+  function isLockStillHeldBy(payload: ConsoleLockPayload): boolean {
+    try {
+      const current = lock.readLock(paths.lockFile);
+      return current?.pid === payload.pid && current.token === payload.token;
+    } catch {
+      return false;
+    }
+  }
+
+  function signalLockProcess(pid: number, signal: NodeJS.Signals): void {
+    try {
+      process.kill(pid, signal);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+    }
   }
 
   async function ensureDaemon(): Promise<string> {

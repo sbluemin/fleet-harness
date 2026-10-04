@@ -14,7 +14,6 @@ import {
   type ConsoleDaemonLifecycleDeps,
   type ConsoleDaemonProcess,
   isCliDirectRun,
-  isLockProcessAlive,
   main,
   startFleetConsole,
   parseConsoleCliMode,
@@ -58,20 +57,6 @@ afterEach(() => {
 });
 
 describe("fleet console CLI", () => {
-
-  it("treats only dead lock processes as cleanable so a crashed desktop sidecar cannot brick the CLI", () => {
-    // 살아있는 pid(자기 자신)는 보호 대상, 존재하지 않는 pid는 stale lock 정리 대상이다.
-    expect(isLockProcessAlive(process.pid)).toBe(true);
-    let deadPid = process.pid + 40_000;
-    for (; deadPid < process.pid + 41_000; deadPid++) {
-      try {
-        process.kill(deadPid, 0);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ESRCH") break;
-      }
-    }
-    expect(isLockProcessAlive(deadPid)).toBe(false);
-  });
 
   it("never lets a Console session's subagent call run without Console's answer", async () => {
     // 서브에이전트 hook의 침묵은 곧 실행이다 — Console이 사유를 주면 그 사유로, 답하지 못하면 고정 사유로 막는다.
