@@ -462,6 +462,12 @@ export interface ClientConsoleStateCapability {
    */
   getConnection?(): ConsoleConnectionState;
   /**
+   * 런타임 축(활동·수명주기)을 지금 신뢰할 수 있는지 — 축의 권위자가 `runtime.setHydration` 으로 보고한 값을 읽기만 한다.
+   * `pending`·`degraded` 동안 `getOperations` 의 `activity` 는 관측이 아니라 폴백(유휴·종료)이므로, 그 값으로 판정을 내리지 않는다.
+   * 바뀌면 `subscribe` 가 울린다. 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 `ready` 로 다룬다.
+   */
+  getOperationRuntimeHydration?(): OperationRuntimeHydration;
+  /**
    * 사람이 사이드바에서 열지 않고 고르기만 한 Operation — 「더블클릭으로 열기」를 켰을 때의 한 번 클릭이다. 무대는 그대로이므로
    * 활성과 다르며, 활성과 같아지거나 열리는 순간 null 로 돌아간다. 문맥을 따라가는 표면은 `getSelectedOperationId() ??
    * getActiveOperationId()` 를 읽는다. 바뀌면 `subscribe` 가 알리고, 고를 때는 `onMapOperationSelected` 도 함께 온다.

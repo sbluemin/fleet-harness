@@ -102,6 +102,8 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       getActiveOperationId: () => null,
       // 스트림이 없는 사본은 끊긴 적도 없다 — offline 으로 두면 플러그인이 영원히 단절로 읽는다.
       getConnection: () => "live",
+      // 런타임 축을 보고하는 권위자가 없는 사본은 기다릴 것도 없다 — 호스트 스토어의 기본값과 같다.
+      getOperationRuntimeHydration: () => "ready",
       getSelectedOperationId: () => null,
       setActiveTheater: () => undefined,
       subscribe: () => () => undefined,

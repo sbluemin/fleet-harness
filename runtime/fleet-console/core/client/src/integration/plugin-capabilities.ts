@@ -146,6 +146,7 @@ export function createHostCapabilities(
       getActiveTheaterId: () => getState().activeTheaterId,
       getActiveOperationId: () => getState().activeOperationId,
       getConnection: () => getState().connection,
+      getOperationRuntimeHydration: () => getState().operationRuntimeHydration,
       getSelectedOperationId: () => getState().selectedOperationId,
       setActiveTheater: (theaterId) => setActiveTheater(theaterId),
       subscribe: (listener) => subscribe(listener),
