@@ -1491,7 +1491,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 }
 .objectives-commodore-row.is-open .objectives-commodore-row-title { color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary)); }
 
-/* 글리프 스위치 — 누르는 자리는 24px, 보이는 사각은 12px. 제목 줄(13px × 1.3)의 세로 가운데에 선다. */
+/* 글리프 스위치 — 누르는 자리는 24px, 보이는 사령관 마크는 14px. 제목 줄(13px × 1.3)의 세로 가운데에 선다. */
 .objectives-commodore-switch {
   display: grid;
   place-items: center;
@@ -1503,27 +1503,22 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   background: transparent;
   cursor: pointer;
 }
-.objectives-commodore-switch i {
+.objectives-commodore-switch-glyph {
   display: block;
-  box-sizing: border-box;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  background: var(--brass);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--brass) 16%, transparent);
-  transition: background var(--duration-fast) var(--ease-spring), box-shadow var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
+  width: 14px;
+  height: 14px;
+  color: var(--brass);
+  filter: drop-shadow(0 0 2px color-mix(in oklch, var(--brass) 45%, transparent));
+  transition: color var(--duration-fast) var(--ease-spring), opacity var(--duration-fast) var(--ease-spring), filter var(--duration-fast) var(--ease-spring);
 }
-.objectives-commodore-switch[aria-checked="false"] i { background: transparent; border: 1.5px solid var(--text-tertiary); box-shadow: none; }
+.objectives-commodore-switch[aria-checked="false"] .objectives-commodore-switch-glyph { color: var(--text-tertiary); opacity: 0.7; filter: none; }
 .objectives-commodore-switch:hover:not(:disabled) { background: color-mix(in oklch, var(--ink-spectral) 10%, transparent); }
-.objectives-commodore-switch:hover:not(:disabled)[aria-checked="false"] i { border-color: var(--text-secondary); }
+.objectives-commodore-switch:hover:not(:disabled)[aria-checked="false"] .objectives-commodore-switch-glyph { color: var(--text-secondary); opacity: 1; }
 .objectives-commodore-switch:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .objectives-commodore-switch:disabled { cursor: default; opacity: 0.6; }
-.objectives-commodore-switch[aria-busy="true"] i { opacity: 0.6; }
-.objectives-commodore-switch.is-large { width: 28px; height: 28px; margin-top: 0; flex: none; }
-.objectives-commodore-switch.is-large i { width: 20px; height: 20px; border-radius: 5px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--brass) 14%, transparent); }
-.objectives-commodore-switch.is-large[aria-checked="false"] i { box-shadow: none; }
+.objectives-commodore-switch[aria-busy="true"] .objectives-commodore-switch-glyph { opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) {
-  .objectives-commodore-row, .objectives-commodore-switch i { transition: none; }
+  .objectives-commodore-row, .objectives-commodore-switch-glyph { transition: none; }
 }
 /* Quick Launch '@' 덱의 사령관 마크 — svg 는 currentColor 로 그린다. */
 .objectives-commodore-mention-glyph { color: var(--brass-ink); }
