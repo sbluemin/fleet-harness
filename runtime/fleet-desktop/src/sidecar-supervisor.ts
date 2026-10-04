@@ -2,15 +2,15 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { isCompatibleDesktopOwner, type ConsoleOwnerMetadata } from "@fleet-console/protocol/desktop";
+import { identifyConsoleLockOwner, isCompatibleDesktopOwner, type ConsoleLockHealthEvidence, type ConsoleLockOwnerIdentity, type ConsoleOwnerMetadata } from "@fleet-console/protocol/desktop";
 
 export interface SidecarRuntime { readonly nodePath: string; readonly cliPath: string; readonly serviceRoot: string; readonly serviceVersion: string; }
 export interface SidecarSupervisorOptions { readonly nodePath?: string; readonly cliPath?: string; readonly serviceRoot?: string; readonly serviceVersion: string; readonly resolveRuntime?: () => Promise<SidecarRuntime>; readonly env: NodeJS.ProcessEnv; readonly lockFile: string; readonly ownerId: string; readonly log: { info(message: string): void; error(message: string): void }; }
 interface LockPayload { readonly pid: number; readonly endpoint: string; readonly token: string; readonly version: string; readonly owner?: ConsoleOwnerMetadata; }
 interface StoredLock { readonly contents: string; readonly lock: LockPayload; }
 interface MissingLockProbe { readonly kind: "missing"; }
-interface UnhealthyLockProbe { readonly kind: "unhealthy"; readonly stored: StoredLock; }
-interface HealthyLockProbe { readonly kind: "healthy"; readonly stored: StoredLock; readonly url: string; }
+interface UnhealthyLockProbe { readonly kind: "unhealthy"; readonly stored: StoredLock; readonly health: ConsoleLockHealthEvidence; }
+interface HealthyLockProbe { readonly kind: "healthy"; readonly stored: StoredLock; readonly url: string; readonly health: ConsoleLockHealthEvidence; }
 type LockProbe = MissingLockProbe | UnhealthyLockProbe | HealthyLockProbe;
 
 const STARTUP_ATTEMPTS = 40;
@@ -31,14 +31,20 @@ export class SidecarSupervisor {
       throw new Error("cli_daemon_requires_confirmation");
     }
     if (current.kind === "unhealthy") {
-      if (this.isProcessAlive(current.stored.lock.pid)) {
-        // 자기 소유(desktop owner 일치) sidecar는 unhealthy여도 안전하게 회수한다 —
+      const identity = this.identifyLockProcess(current);
+      if (identity === "absent") {
+        this.removeStaleLock(current.stored);
+      } else if (!this.isOwned(current.stored.lock)) {
         // 타 소유의 살아 있는 잠금은 신호를 보내지 않고 별도 충돌로 종료한다.
-        if (!this.isOwned(current.stored.lock)) throw new Error("console_lock_foreign_process_unhealthy");
-        await this.terminateOwnedProcess(current.stored.lock.pid);
-        this.removeLockAfterOwnedTermination(current.stored);
+        throw new Error("console_lock_foreign_process_unhealthy");
+      } else if (identity === "unverified") {
+        // 살아 있는 lock pid가 정체를 증명하지 못했다(멈춘 이전 sidecar일 수도, pid를 물려받은 무관한 프로세스일 수도 있다).
+        // 신호는 무관한 프로세스를 죽일 수 있고 lock을 지우면 살아 있는 Console 옆에 두 번째 소유자가 생기므로 둘 다 하지 않는다.
+        this.options.log.error(`console_lock_process_unverified: pid ${current.stored.lock.pid} holds ${this.options.lockFile} but did not prove it is the Console`);
+        throw new Error("console_lock_process_unverified");
       } else {
-        this.removeProvenDeadLock(current.stored);
+        await this.terminateVerifiedProcess(current.stored);
+        this.removeLockAfterOwnedTermination(current.stored);
       }
     }
     const runtime = await this.resolveRuntime();
@@ -92,25 +98,57 @@ export class SidecarSupervisor {
   async stop(): Promise<void> {
     const current = await this.probe();
     if (current.kind === "missing" || !this.isOwned(current.stored.lock)) return;
-    if (current.kind === "unhealthy") {
-      // 소유한 sidecar가 health에 답하지 못해도 Quit이 프로세스를 남겨서는 안 된다 —
-      // 살아 있으면 start 경로와 동일한 소유 종료 절차로 정리한다(죽은 잠금 정리는 start가 담당).
-      if (this.isProcessAlive(current.stored.lock.pid)) await this.terminateOwnedProcess(current.stored.lock.pid);
+    const identity = this.identifyLockProcess(current);
+    if (identity === "unverified") {
+      // Quit은 막지 않되 정체를 증명하지 못한 pid에는 신호를 보내지 않고, lock도 그대로 둔다.
+      this.options.log.error(`console_lock_process_unverified: pid ${current.stored.lock.pid} holds ${this.options.lockFile} but did not prove it is the Console; left running`);
       return;
     }
-    // SIGTERM 직후 health가 먼저 내려가고 프로세스만 남는 경우가 있어(정리 지연),
-    // health 재검사 대신 pid 생존 기반의 소유 종료 절차로 SIGKILL 승격까지 보장한다.
-    await this.terminateOwnedProcess(current.stored.lock.pid);
+    if (identity === "absent") {
+      try {
+        this.removeStaleLock(current.stored);
+      } catch (error) {
+        this.options.log.error(`stale console lock left in place: ${this.describeError(error)}`);
+      }
+      return;
+    }
+    // 정체가 확인된 sidecar는 health에 답하지 못해도(멈춘 자기 sidecar) Quit이 남겨서는 안 된다.
+    await this.terminateVerifiedProcess(current.stored);
   }
   private async probe(): Promise<LockProbe> {
     const stored = this.readLock();
     if (!stored) return { kind: "missing" };
-    try {
-      const endpoint = new URL(stored.lock.endpoint);
-      const response = await fetch(new URL("api/v1/health", endpoint), { headers: { Authorization: `Bearer ${stored.lock.token}` }, signal: AbortSignal.timeout(1000) });
-      if (!response.ok) return { kind: "unhealthy", stored };
-      return { kind: "healthy", stored, url: new URL("console/", endpoint).toString() };
-    } catch { return { kind: "unhealthy", stored }; }
+    const endpoint = new URL(stored.lock.endpoint);
+    let response: Response | null = null;
+    for (let attempt = 0; response === null; attempt += 1) {
+      try {
+        response = await fetch(new URL("api/v1/health", endpoint), { headers: { Authorization: `Bearer ${stored.lock.token}` }, signal: AbortSignal.timeout(1000) });
+      } catch (error) {
+        // 연결 거절은 그 주소에서 아무도 듣지 않는다는 확정 신호다. 시간 초과는 무언가 살아 있을 수 있다.
+        // 재사용된 keep-alive 소켓의 끊김은 한 번만 새 연결로 다시 물어 최신 증거를 얻는다.
+        const code = (error as { cause?: { code?: unknown } } | null)?.cause?.code;
+        if (code === "ECONNREFUSED") return { kind: "unhealthy", stored, health: { kind: "refused" } };
+        if (attempt === 0 && (code === "ECONNRESET" || code === "UND_ERR_SOCKET")) continue;
+        return { kind: "unhealthy", stored, health: { kind: "unanswered" } };
+      }
+    }
+    if (!response.ok) return { kind: "unhealthy", stored, health: { kind: "unanswered" } };
+    // token을 인증한 health 본문의 pid가 lock pid의 정체 증명이다. 본문을 읽지 못하면 증명이 없을 뿐 채택 판단은 그대로다.
+    const pid = await response.json().then((body: unknown) => isRecord(body) ? body.pid : undefined, () => undefined);
+    return { kind: "healthy", stored, url: new URL("console/", endpoint).toString(), health: { kind: "answered", pid } };
+  }
+  /**
+   * lock pid에 신호를 보내도 되는지 판별한다. 근거는 둘뿐이다. 이 Desktop이 직접 spawn해 아직 수거되지 않은 child이거나
+   * (수거 전 pid는 OS가 재할당하지 않는다), lock token을 인증한 health가 같은 pid를 답한 경우다.
+   */
+  private identifyLockProcess(probe: UnhealthyLockProbe | HealthyLockProbe): ConsoleLockOwnerIdentity {
+    const { pid } = probe.stored.lock;
+    if (this.isOwnLiveChild(pid)) return "verified";
+    return identifyConsoleLockOwner({ lockPid: pid, pidAlive: this.isProcessAlive(pid), health: probe.health });
+  }
+  private isOwnLiveChild(pid: number): boolean {
+    const child = this.child;
+    return child !== null && child.pid === pid && child.exitCode === null && child.signalCode === null;
   }
   private readLock(): StoredLock | null {
     let contents: string;
@@ -154,10 +192,11 @@ export class SidecarSupervisor {
       throw new Error(`console_lock_cleanup_failed: ${this.describeError(error)}`);
     }
   }
-  private removeProvenDeadLock(stored: StoredLock): void {
-    if (this.isProcessAlive(stored.lock.pid)) throw new Error("console_lock_process_unhealthy");
+  // 정체 판별이 "absent"인 lock — pid가 죽었거나 lock 주소에서 아무도 듣지 않는다. 신호 없이 같은 내용일 때만 파일을 치운다.
+  private removeStaleLock(stored: StoredLock): void {
     const current = this.readLock();
-    if (!current || current.contents !== stored.contents) throw new Error("console_lock_changed_before_cleanup");
+    if (!current) return;
+    if (current.contents !== stored.contents) throw new Error("console_lock_changed_before_cleanup");
     try {
       fs.unlinkSync(this.options.lockFile);
     } catch (error) {
@@ -165,12 +204,18 @@ export class SidecarSupervisor {
       throw new Error(`console_lock_cleanup_failed: ${this.describeError(error)}`);
     }
   }
-  // 소유가 확인된 pid를 SIGTERM→(대기)→SIGKILL로 종료하고, 끝내 살아 있으면 기존 하드 스톱으로 승격한다.
-  private async terminateOwnedProcess(pid: number): Promise<void> {
+  // 정체가 확인된 pid를 SIGTERM→(대기)→SIGKILL로 종료한다. 대기 중 pid가 끝나 재할당됐을 수 있으므로,
+  // SIGKILL 직전에 정체(아직 수거되지 않은 자기 child이거나 같은 token의 lock이 남아 있음)를 다시 확인한다.
+  private async terminateVerifiedProcess(stored: StoredLock): Promise<void> {
+    const { pid } = stored.lock;
     await this.signal(pid, "SIGTERM");
     for (let attempt = 0; attempt < STOP_ATTEMPTS; attempt += 1) {
       if (!this.isProcessAlive(pid)) return;
       await delay(STOP_DELAY_MS);
+    }
+    if (!this.isOwnLiveChild(pid) && !this.isLockStillHeldBy(stored)) {
+      this.options.log.error(`console lock for pid ${pid} changed during shutdown; not escalating to SIGKILL`);
+      return;
     }
     await this.signal(pid, "SIGKILL");
     for (let attempt = 0; attempt < STOP_ATTEMPTS; attempt += 1) {
@@ -178,6 +223,14 @@ export class SidecarSupervisor {
       await delay(STOP_DELAY_MS);
     }
     throw new Error("console_lock_process_unhealthy");
+  }
+  private isLockStillHeldBy(stored: StoredLock): boolean {
+    try {
+      const current = this.readLock();
+      return current?.lock.pid === stored.lock.pid && current.lock.token === stored.lock.token;
+    } catch {
+      return false;
+    }
   }
   private isProcessAlive(pid: number): boolean {
     try {

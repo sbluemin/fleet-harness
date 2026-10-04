@@ -6,6 +6,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
+import { identifyConsoleLockOwner, type ConsoleLockHealthEvidence, type ConsoleLockOwnerIdentity } from "@fleet-console/protocol/desktop";
 
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import { describeDaemonStartFailure } from "../transport/failure-notice.js";
@@ -295,13 +296,13 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   }
 
   /** stop이 lock pid에 시그널을 보내도 되는지 판별한다. lock token을 인증한 health 응답만 정체 증명이다. */
-  async function identifyLockOwner(payload: ConsoleLockPayload): Promise<"verified" | "absent" | "unverified"> {
+  async function identifyLockOwner(payload: ConsoleLockPayload): Promise<ConsoleLockOwnerIdentity> {
     if (!isLockProcessAlive(payload.pid)) return "absent";
     // token 없는 lock은 어떤 Fleet Console도 쓰지 않는다 — 신뢰할 수 없는 lock처럼 파일만 폐기한다.
     if (typeof payload.token !== "string" || payload.token.length === 0) return "absent";
     const result = await health.probe(payload, { timeoutMs: STOP_IDENTITY_TIMEOUT_MS });
-    if (result.healthy && result.health?.pid === payload.pid) return "verified";
-    return !result.healthy && result.refused ? "absent" : "unverified";
+    const evidence: ConsoleLockHealthEvidence = result.healthy ? { kind: "answered", pid: result.health?.pid } : result.refused ? { kind: "refused" } : { kind: "unanswered" };
+    return identifyConsoleLockOwner({ lockPid: payload.pid, pidAlive: true, health: evidence });
   }
 
   function isLockStillHeldBy(payload: ConsoleLockPayload): boolean {
