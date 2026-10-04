@@ -1313,7 +1313,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "mobile.theaters.here": "현재",
   "mobile.theaters.add": "Theater 추가…",
   "mobile.operations.empty": "새 Operation을 시작해 작업을 시작하세요.",
-  "mobile.operations.new": "새 Operation",
+  "mobile.operations.new": "새 작업",
   "mobile.settings.back": "설정으로 돌아가기",
   "mobile.settings.on": "켜짐",
   "mobile.settings.off": "꺼짐",

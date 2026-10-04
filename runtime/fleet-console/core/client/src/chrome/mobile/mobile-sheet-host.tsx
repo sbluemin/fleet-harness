@@ -170,7 +170,7 @@ function ConsoleSheet() {
   return (
     <MobileSheet title={t("mobile.sheet.console.title")} onClose={popMobileSheet}>
       <div className="mobile-sheet-row" aria-current="true">
-        <MobileMonogram label={name} toneKey={name} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? null} round size={36} />
+        <MobileMonogram label={name} toneKey={name} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? name.charAt(0).toUpperCase()} round size={36} />
         <span className="mobile-sheet-row-copy"><strong>{name}</strong><small>{t("mobile.sheet.console.connected")}</small></span>
         <MobileIcon name="check" className="mobile-sheet-check" />
       </div>

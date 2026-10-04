@@ -1,3 +1,4 @@
+import { getViewModeSnapshot } from "./view-mode-store.js";
 /**
  * 주소 표시줄에 대한 코어의 단일 창구.
  *
@@ -73,7 +74,8 @@ export function applySearchParams(
 }
 
 export function navigateConsoleRoute(pathname: string, search = window.location.search): void {
-  if (navigate) navigate({ pathname, search });
+  // 모바일 배치의 루트 이동은 history를 늘리지 않는다(S-51) — 늘리면 뒤로가 이전 목적지로 헛돈다.
+  if (navigate) navigate({ pathname, search }, { replace: getViewModeSnapshot().effective === "mobile" });
   else {
     window.history.pushState(null, "", `/console${pathname}${search}`);
     window.dispatchEvent(new PopStateEvent("popstate"));

@@ -157,7 +157,7 @@ export function MobileSettingsPage() {
         <div className="mobile-settings-groups">
           {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
           <button type="button" className="mobile-console-card" onClick={() => pushMobileSheet({ kind: "console" })}>
-            <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? null} round size={36} />
+            <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? consoleName.charAt(0).toUpperCase()} round size={36} />
             <span className="mobile-console-card-copy"><strong>{consoleName}</strong><small>{window.location.host}</small></span>
             <span className="mobile-state-chip"><span className={statusGlyphClassName(connected ? "idle" : "running")} aria-hidden="true" />{t(connected ? "mobile.settings.connected" : "mobile.settings.reconnecting")}</span>
             <MobileIcon name="down" size={18} className="mobile-group-row-caret" />

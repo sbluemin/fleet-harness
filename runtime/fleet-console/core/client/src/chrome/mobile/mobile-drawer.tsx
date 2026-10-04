@@ -249,7 +249,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
       </div>
       <div className="mobile-drawer-foot">
         <button type="button" className="mobile-avatar" aria-label={t("mobile.drawer.consoleSwitch", { name: consoleName })} onClick={() => { if (!openConsoleSwitcher()) pushMobileSheet({ kind: "console" }); }}>
-          <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? null} round size={44} />
+          <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? consoleName.charAt(0).toUpperCase()} round size={44} />
           {state.connection !== "live" ? <span className="mobile-avatar-dot" data-state={state.connection === "offline" ? "failed" : "reconnecting"} aria-hidden="true" /> : null}
         </button>
         <button type="button" className="mobile-pill" onClick={() => go(openQuickLaunch)}><MobileIcon name="plus" size={18} />{t("mobile.drawer.newOperation")}</button>
