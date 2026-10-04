@@ -31,7 +31,8 @@
 /* 마크다운 미리보기 — 읽기 서체 17/26, 첫 제목 22 500. 데스크톱 뷰어의 안쪽 여백·폭 제한·글자 사다리는 걷는다. */
 .fexp-m-reading { font-family: var(--m-reading); font-size: 17px; line-height: 26px; }
 .fexp-m-reading .fexp-md-wrap,
-.fexp-m-reading .markdown-body { max-width: none; margin: 0; padding: 0; font-family: inherit; font-size: inherit; line-height: inherit; }
+.fexp-m-reading .markdown-body { max-width: none; margin: 0; padding: 0; color: var(--m-text); font-family: inherit; font-size: inherit; line-height: inherit; }
+.fexp-m-reading .markdown-body :is(h1, h2, h3, h4, h5, h6, p, li) { color: var(--m-text); font-family: var(--m-reading); }
 .fexp-m-reading .markdown-body > :first-child { margin-top: 0; }
 .fexp-m-reading .markdown-body :is(p, ul, ol, blockquote, pre, table) { margin: 0 0 10px; }
 .fexp-m-reading .markdown-body :is(h1, h2) { margin: 16px 0 8px; font-size: 22px; font-weight: 500; line-height: 30px; }
