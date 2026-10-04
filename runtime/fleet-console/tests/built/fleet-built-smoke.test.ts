@@ -94,4 +94,67 @@ const runBuiltSmoke = process.env.FLEET_BUILT_SMOKE === "1";
       fs.rmSync(root, { recursive: true, force: true });
     }
   }, 25_000);
+
+  // POSIX 신호 계약이다. Windows의 kill은 신호 없이 프로세스를 끝내므로 정상 종료 경로 자체가 없다.
+  it.skipIf(process.platform === "win32")("finishes its shutdown when SIGTERM and SIGINT arrive again mid-cleanup", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-resignal-"));
+    const slot = path.join(root, "console");
+    const lock = path.join(slot, "console.lock");
+    const ready = path.join(root, "ready");
+    const stalled = path.join(root, "stalled");
+    const release = path.join(root, "release");
+    const preload = path.join(root, "stall.mjs");
+    // Test-only preload: marks when serve starts listening for SIGTERM, and holds the last cleanup step (lock release)
+    // until the release file exists, so the repeated signals land mid-cleanup.
+    fs.writeFileSync(preload, [
+      "import fs from 'node:fs';",
+      "import { syncBuiltinESMExports } from 'node:module';",
+      `const lock = ${JSON.stringify(lock)}, ready = ${JSON.stringify(ready)}, stalled = ${JSON.stringify(stalled)}, release = ${JSON.stringify(release)};`,
+      "const on = process.on;",
+      "process.on = function (event, listener) { const result = on.call(this, event, listener); if (event === 'SIGTERM') fs.writeFileSync(ready, ''); return result; };",
+      "const pause = new Int32Array(new SharedArrayBuffer(4));",
+      // rmSync deletes a file through unlinkSync, so count only the outermost call per removal.
+      "let inside = false;",
+      "for (const name of ['rmSync', 'unlinkSync']) {",
+      "  const original = fs[name];",
+      "  fs[name] = function (target, ...rest) {",
+      "    if (inside || String(target) !== lock) return original.call(this, target, ...rest);",
+      "    inside = true;",
+      "    try { fs.appendFileSync(stalled, 'lock-release\\n'); while (!fs.existsSync(release)) Atomics.wait(pause, 0, 0, 10); return original.call(this, target, ...rest); }",
+      "    finally { inside = false; }",
+      "  };",
+      "}",
+      "syncBuiltinESMExports();",
+    ].join("\n"));
+    const env: NodeJS.ProcessEnv = { ...process.env, FLEET_DATA_DIR: root, FLEET_CONSOLE_DATA_DIR: slot };
+    delete env.INIT_CWD;
+    const child = spawn(process.execPath, ["--import", pathToFileURL(preload).href, cliDist, "serve"], { env, stdio: "ignore" });
+    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
+    try {
+      await waitForFile(ready, 15_000);
+      child.kill("SIGTERM");
+      await waitForFile(stalled, 10_000);
+      child.kill("SIGTERM");
+      child.kill("SIGINT");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(child.signalCode).toBeNull();
+      expect(child.exitCode).toBeNull();
+      fs.writeFileSync(release, "");
+      expect(await exited).toEqual({ code: 0, signal: null });
+      expect(fs.existsSync(lock)).toBe(false);
+      // The repeated signals did not start the cleanup a second time.
+      expect(fs.readFileSync(stalled, "utf8")).toBe("lock-release\n");
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 40_000);
 });
+
+async function waitForFile(file: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!fs.existsSync(file)) {
+    if (Date.now() >= deadline) throw new Error(`${path.basename(file)} did not appear within ${timeoutMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
