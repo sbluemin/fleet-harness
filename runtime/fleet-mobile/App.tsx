@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
   AppState,
   BackHandler,
   Platform,
@@ -18,7 +17,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { FleetConsoleView } from "./modules/fleet-console-view/src";
 import type { FleetAppearance, FleetConsoleEvent, FleetConsoleTarget, FleetConsoleViewHandle } from "./modules/fleet-console-view/src";
-import { BottomSheet, Pill, Pill2 } from "./shell/controls";
+import { BottomSheet, OVERLAY_PEAK, Pill, Pill2, PressLayer, useReducedMotion, usePressFace } from "./shell/controls";
 import { CheckMark, GridMark, KebabMark, Monogram, PlusMark, QrMark, StatusGlyph } from "./shell/marks";
 import { PALETTE, SCANNER, monogramFor, toneFor } from "./shell/palette";
 import type { Palette } from "./shell/palette";
@@ -38,16 +37,6 @@ const PLAIN_CHROME: Chrome = { top: "bg", bottom: "bg" };
 const CHROME_FILL = { "bg": "bg", "bg-deep": "bgDeep", "surface": "surface" } as const;
 
 const WORDMARK_FONT = Platform.select({ ios: "ui-serif", android: "serif", default: "serif" });
-
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduced, () => {});
-    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduced);
-    return () => subscription.remove();
-  }, []);
-  return reduced;
-}
 
 export default function App(): React.JSX.Element {
   const consoleRef = useRef<FleetConsoleViewHandle>(null);
@@ -446,9 +435,7 @@ export default function App(): React.JSX.Element {
                 <Pill2 palette={palette} label={strings.allConsoles} onPress={showAllConsoles} />
               </>
             ) : (
-              <Pressable accessibilityRole="button" onPress={showAllConsoles} style={styles.textButton}>
-                <Text style={styles.textButtonLabel}>{strings.allConsoles}</Text>
-              </Pressable>
+              <TextButton label={strings.allConsoles} onPress={showAllConsoles} palette={palette} styles={styles} />
             )}
           </View>
         </View>
@@ -641,12 +628,16 @@ function SheetRow({ palette, styles, lead, label, detail, trail, onPress }: {
   readonly trail?: React.ReactNode;
   readonly onPress: () => void;
 }): React.JSX.Element {
+  const press = usePressFace();
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.sheetRow, pressed && { backgroundColor: palette.selected }]}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={styles.sheetRow}
     >
+      <PressLayer face={press.face} color={palette.selected} peak={1} shape={styles.sheetRowShape} />
       {lead}
       <View style={styles.rowText}>
         <Text style={styles.sheetRowLabel} numberOfLines={1}>{label}</Text>
@@ -657,18 +648,38 @@ function SheetRow({ palette, styles, lead, label, detail, trail, onPress }: {
   );
 }
 
+/** A text button (R1 pill): no face of its own; pressing shows a `selected` pill behind the words. */
+function TextButton({ label, onPress, palette, styles }: {
+  readonly label: string;
+  readonly onPress: () => void;
+  readonly palette: Palette;
+  readonly styles: ReturnType<typeof paint>;
+}): React.JSX.Element {
+  const press = usePressFace();
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} onPressIn={press.onPressIn} onPressOut={press.onPressOut} style={styles.textButton}>
+      <PressLayer face={press.face} color={palette.selected} peak={1} shape={styles.textButtonShape} />
+      <Text style={styles.textButtonLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function ScanButton({ label, onPress, inverse, styles }: {
   readonly label: string;
   readonly onPress: () => void;
   readonly inverse?: boolean;
   readonly styles: ReturnType<typeof paint>;
 }): React.JSX.Element {
+  const press = usePressFace();
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.scanButton, inverse && styles.scanButtonInverse, pressed && styles.scanButtonPressed]}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[styles.scanButton, inverse && styles.scanButtonInverse]}
     >
+      <PressLayer face={press.face} color={inverse ? SCANNER.inverseInk : SCANNER.ink} peak={OVERLAY_PEAK} shape={styles.scanButtonShape} />
       <Text style={[styles.scanButtonLabel, inverse && styles.scanButtonInverseLabel]}>{label}</Text>
     </Pressable>
   );
@@ -688,15 +699,17 @@ function ConsoleRow({ target, first, last, connectedNow, pairingLost, armed, pal
   readonly onArm: (origin: string | null) => void;
   readonly onRemove: (origin: string) => void;
 }): React.JSX.Element {
-  // The whole row takes the pressed face, as the web group row does, not just the tappable part.
-  const [pressed, setPressed] = useState(false);
+  // The whole row takes the pressed face (R2), as the web group row does, not just the tappable part.
+  const press = usePressFace();
+  const kebabPress = usePressFace();
   return (
-    <View style={[styles.row, first && styles.rowFirst, last && styles.rowLast, pressed && styles.rowPressed]}>
+    <View style={[styles.row, first && styles.rowFirst, last && styles.rowLast]}>
+      <PressLayer face={press.face} color={palette.selected} peak={1} shape={[styles.rowShape, first && styles.rowFirst, last && styles.rowLast]} />
       <Pressable
         accessibilityRole="button"
         onPress={() => onOpen(target.origin)}
-        onPressIn={() => setPressed(true)}
-        onPressOut={() => setPressed(false)}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
         style={styles.rowMain}
       >
         <Monogram
@@ -731,8 +744,11 @@ function ConsoleRow({ target, first, last, connectedNow, pairingLost, armed, pal
             accessibilityRole="button"
             accessibilityLabel={strings.menuFor(target.label)}
             onPress={() => onArm(target.origin)}
-            style={({ pressed }) => [styles.kebab, pressed && styles.rowPressed]}
+            onPressIn={kebabPress.onPressIn}
+            onPressOut={kebabPress.onPressOut}
+            style={styles.kebab}
           >
+            <PressLayer face={kebabPress.face} color={palette.selected} peak={1} shape={styles.kebabShape} />
             <KebabMark color={palette.text} />
           </Pressable>
         </View>
@@ -751,6 +767,7 @@ function paint(p: Palette) {
     centerText: { color: p.textMuted, fontSize: 15, lineHeight: 22, textAlign: "center", flexShrink: 1 },
     progressRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     textButton: { paddingHorizontal: 14, paddingVertical: 8 },
+    textButtonShape: { borderRadius: 16 },
     textButtonLabel: { color: p.textMuted, fontSize: 15, fontWeight: "500" },
     landingHead: { paddingTop: 28, paddingHorizontal: 28, paddingBottom: 10 },
     wordmark: { color: p.text, fontFamily: WORDMARK_FONT, fontSize: 30, lineHeight: 36, fontWeight: "500", letterSpacing: -0.3 },
@@ -780,7 +797,7 @@ function paint(p: Palette) {
       paddingVertical: 10,
       paddingLeft: 16,
     },
-    rowPressed: { backgroundColor: p.selected },
+    rowShape: { borderRadius: 4 },
     rowText: { flex: 1, minWidth: 0 },
     rowName: { color: p.text, fontSize: 17, lineHeight: 24 },
     rowAddress: { color: p.textMuted, fontSize: 15, lineHeight: 21, marginTop: 1, fontVariant: ["tabular-nums"] },
@@ -789,9 +806,11 @@ function paint(p: Palette) {
     chip: { height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: p.chip, flexDirection: "row", alignItems: "center", gap: 6 },
     chipLabel: { color: p.text, fontSize: 13, lineHeight: 18 },
     kebab: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+    kebabShape: { borderRadius: 18 },
     fab: { position: "absolute", right: 16 },
     band: { position: "absolute", left: 0, right: 0 },
     sheetRow: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 60, padding: 8, borderRadius: 12 },
+    sheetRowShape: { borderRadius: 12 },
     sheetRowLabel: { color: p.text, fontSize: 16, lineHeight: 22 },
     sheetRowDetail: { color: p.textMuted, fontSize: 13, lineHeight: 18 },
     sheetLead: { color: p.textMuted, fontSize: 15, lineHeight: 21, paddingHorizontal: 4, marginBottom: 6 },
@@ -816,7 +835,7 @@ function paint(p: Palette) {
     scanError: { color: SCANNER.danger, fontSize: 14, lineHeight: 20, marginTop: 8, paddingHorizontal: 32, textAlign: "center" },
     scanBar: { position: "absolute", left: 16, right: 16, flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 10 },
     scanButton: { height: 44, paddingHorizontal: 18, borderRadius: 22, backgroundColor: SCANNER.button, alignItems: "center", justifyContent: "center" },
-    scanButtonPressed: { opacity: 0.75 },
+    scanButtonShape: { borderRadius: 22 },
     scanButtonLabel: { color: SCANNER.ink, fontSize: 15 },
     scanButtonInverse: { backgroundColor: SCANNER.ink },
     scanButtonInverseLabel: { color: SCANNER.inverseInk, fontWeight: "600" },

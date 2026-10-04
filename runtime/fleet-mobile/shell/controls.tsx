@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  AccessibilityInfo,
   Animated,
   Easing,
   KeyboardAvoidingView,
@@ -21,6 +22,65 @@ import type { Palette } from "./palette";
 const EMPHASIZED_DECELERATE = Easing.bezier(0.05, 0.7, 0.1, 1);
 const EMPHASIZED_ACCELERATE = Easing.bezier(0.3, 0, 0.8, 0.15);
 
+/** Reduced-motion preference, followed live. */
+export function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduced, () => {});
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduced);
+    return () => subscription.remove();
+  }, []);
+  return reduced;
+}
+
+/**
+ * The press grammar of the native screens (impl-spec S-52 PR-3, the same table as the web PR-1/PR-2).
+ * A face appears the moment a finger lands and fades out over 150ms on release (0ms under reduced
+ * motion). There is no Android ripple and no opacity flash: R1 shows a `selected` face in the
+ * control's own shape, R2 turns a filled row's face to `selected`, R3 lays the control's own text
+ * colour at 12% over its fill.
+ */
+export function usePressFace(): {
+  readonly face: Animated.Value;
+  readonly onPressIn: () => void;
+  readonly onPressOut: () => void;
+} {
+  const face = useRef(new Animated.Value(0)).current;
+  const reduced = useReducedMotion();
+  return useMemo(() => ({
+    face,
+    onPressIn: () => {
+      face.stopAnimation();
+      face.setValue(1);
+    },
+    onPressOut: () => {
+      if (reduced) {
+        face.setValue(0);
+        return;
+      }
+      Animated.timing(face, { toValue: 0, duration: 150, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
+    },
+  }), [face, reduced]);
+}
+
+/** The press face itself — first child of the pressed shape, under its content. `peak` is 1 for R1/R2 and .12 for R3. */
+export function PressLayer({ face, color, peak, shape }: {
+  readonly face: Animated.Value;
+  readonly color: string;
+  readonly peak: number;
+  readonly shape: StyleProp<ViewStyle>;
+}): React.JSX.Element {
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, shape, { backgroundColor: color, opacity: face.interpolate({ inputRange: [0, 1], outputRange: [0, peak] }) }]}
+    />
+  );
+}
+
+/** R3 overlay strength: the control's text colour at 12%. */
+export const OVERLAY_PEAK = 0.12;
+
 /** The primary pill: inverse face, 48 high. */
 export function Pill({ palette, label, icon, onPress, disabled, wide, style }: {
   readonly palette: Palette;
@@ -31,21 +91,24 @@ export function Pill({ palette, label, icon, onPress, disabled, wide, style }: {
   readonly wide?: boolean;
   readonly style?: StyleProp<ViewStyle>;
 }): React.JSX.Element {
+  const press = usePressFace();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: disabled === true }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[
         controls.pill,
         { backgroundColor: palette.inverse },
         wide && controls.wide,
         disabled && controls.disabled,
-        pressed && !disabled && controls.pressed,
         style,
       ]}
     >
+      <PressLayer face={press.face} color={palette.onInverse} peak={OVERLAY_PEAK} shape={controls.pillShape} />
       {icon}
       <Text numberOfLines={1} style={[controls.pillLabel, { color: palette.onInverse }]}>{label}</Text>
     </Pressable>
@@ -61,24 +124,28 @@ export function Pill2({ palette, label, onPress, variant, disabled }: {
   readonly disabled?: boolean;
 }): React.JSX.Element {
   const inverse = variant === "inverse";
+  const ink = inverse ? palette.onInverse : variant === "danger" ? palette.danger : palette.text;
+  const press = usePressFace();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: disabled === true }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={[
         controls.pill2,
         { backgroundColor: inverse ? palette.inverse : palette.chip },
         disabled && controls.disabled,
-        pressed && !disabled && controls.pressed,
       ]}
     >
+      <PressLayer face={press.face} color={ink} peak={OVERLAY_PEAK} shape={controls.pill2Shape} />
       <Text
         numberOfLines={1}
         style={[
           controls.pill2Label,
-          { color: inverse ? palette.onInverse : variant === "danger" ? palette.danger : palette.text },
+          { color: ink },
           inverse && controls.pill2Strong,
         ]}
       >
@@ -108,6 +175,7 @@ export function BottomSheet({ open, onClose, title, closeLabel, palette, insetBo
   const window = useWindowDimensions();
   const [panelHeight, setPanelHeight] = useState(900);
   const shown = useRef(new Animated.Value(0)).current;
+  const closePress = usePressFace();
   const scrim = useRef(new Animated.Value(0)).current;
   const drag = useRef(new Animated.Value(0)).current;
   const closeRef = useRef(onClose);
@@ -173,7 +241,8 @@ export function BottomSheet({ open, onClose, title, closeLabel, palette, insetBo
             </View>
             <View style={controls.head}>
               <Text accessibilityRole="header" style={[controls.title, { color: palette.text }]}>{title}</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose} style={({ pressed }) => [controls.close, pressed && { backgroundColor: palette.selected }]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose} onPressIn={closePress.onPressIn} onPressOut={closePress.onPressOut} style={controls.close}>
+                <PressLayer face={closePress.face} color={palette.selected} peak={1} shape={controls.closeShape} />
                 <CloseMark color={palette.textMuted} />
               </Pressable>
             </View>
@@ -204,7 +273,9 @@ const controls = StyleSheet.create({
   pill2Label: { fontSize: 15, fontWeight: "500" },
   pill2Strong: { fontWeight: "600" },
   disabled: { opacity: 0.4 },
-  pressed: { opacity: 0.8 },
+  pillShape: { borderRadius: 24 },
+  pill2Shape: { borderRadius: 20 },
+  closeShape: { borderRadius: 20 },
   sheetRoot: { flex: 1, justifyContent: "flex-end" },
   sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28 },
   handleZone: { height: 22, alignItems: "center", justifyContent: "center" },
