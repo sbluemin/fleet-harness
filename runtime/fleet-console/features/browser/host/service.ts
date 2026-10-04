@@ -564,24 +564,46 @@ export class BrowserService {
     for (const listener of this.stateListeners) { try { listener(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
   }
 
-  async restoreClosedTabs(): Promise<readonly string[]> {
-    // 탭이 열린 채 복원하면 자리가 모자랄 수 있다 — 남은 자리만큼만 가져가고 나머지는 제안에 남긴다.
-    // 나누기는 기다리기 전에 끝낸다. 복원 도중 들어온 치우기를 나중 대입이 되돌리지 않게.
-    const slots = Math.max(0, MAX_TABS - this.globalBrowser.tabs.size);
-    const tabsToRestore = this.closedTabsMemory.slice(0, slots);
-    this.closedTabsMemory = this.closedTabsMemory.slice(slots);
-    this.emitGlobalState();
-    const restoredIds: string[] = [];
-    for (const item of tabsToRestore) {
-      if (this.globalBrowser.tabs.size >= MAX_TABS) break;
-      try {
-        const tab = await this.createTab(GLOBAL_BROWSER_OWNER_ID, item.url, "user");
-        restoredIds.push(tab.id);
-      } catch {
-        // 개별 탭 복구 실패 시 계속 진행
+  private restoringClosedTabs: Promise<readonly string[]> | null = null;
+
+  restoreClosedTabs(): Promise<readonly string[]> {
+    if (this.restoringClosedTabs) return this.restoringClosedTabs;
+    // 상태 알림이 재진입해도 같은 복원을 받도록, 목록을 만지기 전에 Promise를 등록한다.
+    this.restoringClosedTabs = Promise.resolve().then(async () => {
+      const restoredIds: string[] = [];
+      while (this.closedTabsMemory.length > 0) {
+        const openUrls = new Set([...this.globalBrowser.tabs.values()].map((tab) => tab.url));
+        // 아직 Map에 들어오지 않은 생성도 자리를 차지한다. 시도하지 못한 주소는 제안에 남기되,
+        // 이미 열린 주소는 자리가 필요 없으니 상한에 막혀도 제안에서 걷어 낸다.
+        if (this.globalBrowser.tabs.size + this.globalBrowser.pendingTabs >= MAX_TABS) {
+          const pending = this.closedTabsMemory.filter((tab) => !openUrls.has(tab.url));
+          if (pending.length !== this.closedTabsMemory.length) {
+            this.closedTabsMemory = pending;
+            this.emitGlobalState();
+          }
+          break;
+        }
+        const item = this.closedTabsMemory[0]!;
+        const existing = openUrls.has(item.url);
+        const remaining = this.closedTabsMemory.slice(1);
+        this.closedTabsMemory = remaining;
+        this.emitGlobalState();
+        // 치우기나 새 엔진 닫힘 기록이 목록을 교체했다면, 옛 복원은 그 목록을 건드리지 않는다.
+        if (this.closedTabsMemory !== remaining) break;
+        if (existing) continue;
+        try {
+          const tab = await this.createTab(GLOBAL_BROWSER_OWNER_ID, item.url, "user");
+          restoredIds.push(tab.id);
+        } catch {
+          // 개별 탭 복구 실패 시 해당 주소는 소비한 채 계속 진행한다.
+        }
+        if (this.closedTabsMemory !== remaining) break;
       }
-    }
-    return restoredIds;
+      return restoredIds;
+    }).finally(() => {
+      this.restoringClosedTabs = null;
+    });
+    return this.restoringClosedTabs;
   }
 
   dismissClosedTabs(): void {
