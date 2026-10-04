@@ -182,6 +182,11 @@ export interface RailEntryDescriptor {
 /** 모바일 배치에서 레일 엔트리가 서는 자리. */
 export interface RailEntryMobile {
   /**
+   * 「플러그인」 화면 행의 보조 줄 설명(예: 「변경·히스토리」). 데스크톱 전용 행이면 호스트가 뒤에 「 — 데스크톱에서만」을 붙인다.
+   * 생략하면 보조 줄은 필요한 말(데스크톱 전용 표시)만 선다.
+   */
+  readonly description?: LocalizedText;
+  /**
    * 모바일 드로어 목적지 행과 「플러그인」 화면 행에 쓸 아이콘(데스크톱 레일 아이콘과 다른 모양이 필요할 때). 24×24 격자에 선 1.7·둥근 끝이고
    * 색은 글자색(`currentColor`)을 따른다. 생략하면 엔트리의 `icon`을 쓴다.
    */
