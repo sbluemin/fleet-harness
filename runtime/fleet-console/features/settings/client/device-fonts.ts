@@ -34,7 +34,7 @@ export async function loadDeviceFonts(): Promise<void> {
   publish(result.status === "loaded" ? { status: "loaded", fonts: result.fonts } : { status: result.status });
 }
 
-/** API가 없으면 null. 권한 상태는 버튼을 보일지 정할 때만 쓴다. */
+/** API가 없거나 첫 조회가 끝나기 전이면 null. 권한 상태는 버튼을 보일지 정할 때만 쓴다. */
 export function useDeviceFontsPermission(): LocalFontsPermission | null {
   const supported = localFontsSupported();
   const [permission, setPermission] = useState<LocalFontsPermission | null>(null);
@@ -45,5 +45,6 @@ export function useDeviceFontsPermission(): LocalFontsPermission | null {
     void localFontsPermission().then((next) => { if (!cancelled) setPermission(next); });
     return () => { cancelled = true; };
   }, [supported, status]);
-  return supported ? permission ?? "unknown" : null;
+  // 첫 답 전에 버튼을 세웠다가 거부로 걷으면 깜박인다 — 답이 올 때까지 없는 것으로 둔다.
+  return supported ? permission : null;
 }

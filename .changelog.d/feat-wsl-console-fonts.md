@@ -12,3 +12,8 @@ branch: feat/wsl-console-fonts
   ko: 글꼴 메뉴가 목록의 글꼴을 "이 기기에 설치됨" 대신 Console 호스트에 설치된 글꼴로 표시하고, 이 기기에서 그릴 수 없는 글꼴은 따로 묶어 보여 줍니다.
 - On Linux and WSL, monospaced fonts such as Consolas now appear in the code font menu.
   ko: Linux와 WSL에서 Consolas 같은 고정폭 글꼴이 코드 글꼴 메뉴에 나타납니다.
+
+### fleet-desktop
+#### Added
+- Load this device's fonts now works in Fleet Desktop for a Console running on the same computer, including one in WSL, without a permission prompt. Earlier Desktop versions do not show the option, and it stays hidden for Consoles on other computers.
+  ko: Fleet Desktop에서 같은 컴퓨터(WSL 포함)에서 실행 중인 Console이라면 권한 확인 없이 "이 기기의 글꼴 불러오기"를 쓸 수 있습니다. 이전 버전의 Desktop에서는 이 항목이 보이지 않으며, 다른 컴퓨터의 Console에서는 계속 숨겨집니다.

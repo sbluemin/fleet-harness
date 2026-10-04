@@ -18,7 +18,7 @@ const TEXT_FAMILY_ALLOWLIST = new Set([
   "apple sd gothic neo", "hiragino sans", "hiragino kaku gothic pro", "malgun gothic", "meiryo", "microsoft yahei", "noto sans cjk", "noto serif cjk", "pingfang sc", "pingfang tc", "yu gothic",
 ]);
 const TEXT_FAMILY_MARKERS = ["sans", "serif", "text", "grotesk", "gothic", "roman", "book", "humanist"];
-const DENY_FAMILY_MARKERS = ["hidden", "vertical", "symbol", "icon", "emoji", "dingbat", "ornament", "music", "math", "display", "decorative"];
+const DENY_FAMILY_MARKERS = ["hidden", "vertical", "symbol", "icon", "emoji", "dingbat", "ornament", "music", "math", "display", "decorative", "webdings", "wingdings", "marlett", "mdl2"];
 
 interface FontFamilyGroup {
   readonly family: string;
@@ -51,9 +51,10 @@ function sanitizeFamilyName(value: string): string {
 
 function toSystemFontRecord(group: FontFamilyGroup): SystemFontRecord {
   const normalizedFamily = group.family.toLocaleLowerCase();
-  const monospace = group.faces.length > 0 && group.faces.every((face) => face.monospace);
-  const hasNormalNonMonospaceFace = group.faces.some((face) => !face.monospace && isNormalFace(face));
   const denied = DENY_FAMILY_MARKERS.some((marker) => normalizedFamily.includes(marker));
+  // 기호 서체는 라틴 자리에 같은 폭의 그림을 두어 등폭으로 읽힌다. monospace는 곧 코드 축 후보라 함께 거른다.
+  const monospace = !denied && group.faces.length > 0 && group.faces.every((face) => face.monospace);
+  const hasNormalNonMonospaceFace = group.faces.some((face) => !face.monospace && isNormalFace(face));
   const textFamily = TEXT_FAMILY_ALLOWLIST.has(normalizedFamily) || TEXT_FAMILY_MARKERS.some((marker) => normalizedFamily.includes(marker));
   return { family: group.family, monospace, uiSuitable: !denied && hasNormalNonMonospaceFace && textFamily };
 }

@@ -139,12 +139,11 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   const commitQueue = React.useRef(Promise.resolve());
   const listboxId = React.useId();
   const listbox = React.useRef<HTMLDivElement>(null);
-  // 열릴 때마다 "없음" 판정을 다시 묻는다 — 화면을 연 채 설치한 서체가 새로고침 전까지 사용 불가로 남지 않게.
-  const freshResolution = React.useRef(false);
-  if (!freshResolution.current) {
-    freshResolution.current = true;
+  // 열릴 때마다(마운트당 한 번) "없음" 판정을 다시 묻는다 — 화면을 연 채 설치한 서체가 새로고침 전까지 사용 불가로 남지 않게.
+  React.useState(() => {
     forgetUnresolvedFonts();
-  }
+    return true;
+  });
   const rows = React.useMemo(() => createRows(props, labels), [props, labels]);
   const filteredRows = React.useMemo(() => filterRows(rows, query), [rows, query]);
   const indexedRows = React.useMemo(() => filteredRows.map((row, index) => ({ row, index })), [filteredRows]);
