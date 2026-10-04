@@ -256,10 +256,12 @@ export function ActionBand(props: ActionBandProps) {
   // 시트의 판단 응답이 닫은 뒤나 다른 목표에서 늦게 닿으면 버린다.
   const sheetToken = useRef(0);
   const sheetContext = useRef("");
+  // 라우팅 확인 시트를 키보드로 열었을 때 첫 ready 안착 대상(이대로 개시 우선)으로 포커스를 옮긴다.
+  const sheetFocusPending = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(noticeTimer.current), []);
-  useEffect(() => { sheetToken.current += 1; setSheet(null); clearTimeout(noticeTimer.current); setNotice(null); }, [objective.id]);
+  useEffect(() => { sheetToken.current += 1; setSheet(null); sheetFocusPending.current = false; clearTimeout(noticeTimer.current); setNotice(null); }, [objective.id]);
 
   // 컨텍스트 압축 — 두 번 눌러 지휘관과 구성원 모두에게 /compact 를 보낸다. 주행동 보내기와는 서로 잠그지 않는다(이동 칸과 같다).
   const [compactPhase, setCompactPhase] = useState<"idle" | "armed" | "busy" | "done">("idle");
@@ -351,6 +353,47 @@ export function ActionBand(props: ActionBandProps) {
     field.style.height = `${Math.min(field.scrollHeight, 132)}px`;
   }, [draft, open, intent]);
 
+  // 라우팅 확인 시트 포커스 — 키보드로 시트를 연 첫 ready 때 첫 대상(이대로 개시 우선)으로 옮긴다.
+  // judging 중에는 BODY로 떨어지지 않게 시트 컨테이너에 머물게 하고, 이미 시트 안 다른 곳으로 옮겼거나 재판단 시에는 빼앗지 않는다.
+  useEffect(() => {
+    if (!sheet) return;
+    const container = compRef.current;
+    if (!container) return;
+    if (sheet.phase === "judging") {
+      const active = document.activeElement;
+      if (!active || active === document.body || !container.contains(active)) {
+        container.focus();
+      }
+      return;
+    }
+    if (sheet.phase === "ready" && sheetFocusPending.current) {
+      sheetFocusPending.current = false;
+      const active = document.activeElement;
+      if (active && active !== container && container.contains(active)) return;
+      const goBtn = container.querySelector<HTMLButtonElement>("button.objectives-comp-send");
+      if (goBtn && !goBtn.disabled && goBtn.getAttribute("aria-disabled") !== "true") {
+        goBtn.focus();
+        return;
+      }
+      const rowTrigger = container.querySelector<HTMLButtonElement>(".objectives-routing-list button:not([disabled])");
+      if (rowTrigger && rowTrigger.getAttribute("aria-disabled") !== "true") {
+        rowTrigger.focus();
+        return;
+      }
+      const rejudgeBtn = container.querySelector<HTMLButtonElement>(".objectives-routing-foot button:not([disabled])");
+      if (rejudgeBtn && rejudgeBtn.getAttribute("aria-disabled") !== "true") {
+        rejudgeBtn.focus();
+        return;
+      }
+      const anyBtn = container.querySelector<HTMLButtonElement>("button:not([disabled])");
+      if (anyBtn && anyBtn.getAttribute("aria-disabled") !== "true") {
+        anyBtn.focus();
+        return;
+      }
+      container.focus();
+    }
+  }, [sheet?.phase]);
+
   if (!primary && !pending) return null;
   const current = open && intent ? intents[intent] : null;
   const unavailable = (key: IntentKey) => intents[key].talk && !props.launchAvailable;
@@ -378,7 +421,14 @@ export function ActionBand(props: ActionBandProps) {
     // 메시지는 말이 곧 내용이다 — 빈 칸은 보내지 않고 칸으로 돌아간다. 허용 대기 중인 받는 이는 호스트가 거절하므로 잠근다.
     if ((key === "extend" && !draft.trim()) || (key === "message" && (!draft.trim() || !recipient || recipientBlocked))) { fieldRef.current?.focus(); return; }
     // 확인을 켰으면 개시가 판단 → 확인 → 기동으로 나뉜다 — 여기서는 판단만 하고 시트를 연다.
-    if (willReview(key)) { sheetContext.current = draft.trim(); setError(null); loadPreview(false); return; }
+    if (willReview(key)) {
+      sheetContext.current = draft.trim();
+      setError(null);
+      setOpen(false);
+      sheetFocusPending.current = true;
+      loadPreview(false);
+      return;
+    }
     setPending(key);
     setError(null);
     try {
@@ -442,8 +492,10 @@ export function ActionBand(props: ActionBandProps) {
   };
   const closeSheet = () => {
     sheetToken.current += 1;
+    sheetFocusPending.current = false;
     if (sheet?.preview) say(t("objectives.routing.kept", { minutes: ttlMinutes }));
     setSheet(null);
+    setOpen(false);
     requestAnimationFrame(() => bandRef.current?.focus());
   };
   /** 시트의 직접 지정 — 구성원 선택을 바꾸고(라우팅으로 되돌리기 포함) 결과를 다시 읽는다. 함께 판단한 구성원이면 새 판단은 없다. */
@@ -472,6 +524,7 @@ export function ActionBand(props: ActionBandProps) {
       const context = sheetContext.current;
       reportFailed(await request("/commander/start", { objectiveId, routing: "preview", ...(context ? { context } : {}) }));
       sheetToken.current += 1;
+      sheetFocusPending.current = false;
       setDraft("");
       setSheet(null);
       setOpen(false);
@@ -712,7 +765,7 @@ export function ActionBand(props: ActionBandProps) {
     };
     return (
       <div className="objectives-group objectives-start-group">
-        <div ref={compRef} className="objectives-comp objectives-routing" role="dialog" aria-label={t("objectives.routing.title")} aria-busy={judging || undefined}
+        <div ref={compRef} className="objectives-comp objectives-routing" role="dialog" aria-label={t("objectives.routing.title")} aria-busy={judging || undefined} tabIndex={-1}
           onKeyDown={(event) => { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); closeSheet(); } }}>
           <div className="objectives-comp-top">
             <span className="objectives-routing-head"><b>{t("objectives.routing.title")}</b><span aria-live="polite">{judging ? <><Spinner />{status}</> : status}</span></span>
@@ -725,7 +778,8 @@ export function ActionBand(props: ActionBandProps) {
           {sheet.error ? <div className="objectives-band-error" role="alert">{sheet.error === "routing_preview_stale" ? reasonText(sheet.error) : t("objectives.routing.failed", { reason: reasonText(sheet.error) })}</div> : null}
           <div className="objectives-routing-foot">
             <span>{routeCount ? t("objectives.routing.foot", { count: routeCount, minutes: ttlMinutes }) : t("objectives.routing.footNone")}</span>
-            <button type="button" className="objectives-btn is-small" disabled={settling || sending || routeCount === 0} onClick={() => loadPreview(true)}>{t("objectives.routing.rejudge")}</button>
+            {/* 재판단 대기·보내는 중은 일시 상태라 aria-disabled로 막는다(onClick이 거른다) — 키보드로 막 누른 「다시 판단」의 포커스를 지킨다. */}
+            <button type="button" className="objectives-btn is-small" disabled={routeCount === 0} aria-disabled={settling || sending || undefined} aria-busy={settling || undefined} onClick={() => { if (settling || sending || routeCount === 0) return; loadPreview(true); }}>{t("objectives.routing.rejudge")}</button>
           </div>
           {/* 판단 대기(settling)·보내는 중은 모두 저절로 끝나는 일시 상태라 aria-disabled로만 막는다(goSheet가 둘 다 거른다).
               결과가 낡아 거절되면 goSheet가 곧바로 다시 읽어(refreshing) — native disabled면 막 누른 이 버튼의 포커스가 실패 직후 문서로 빠진다. */}
