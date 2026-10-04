@@ -115,10 +115,18 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
   const computerUse = useComputerUseStatus(experiments.computerUse, experiments.computerUseBackend);
   const backend = experiments.computerUseBackend;
   const computerUseReady = computerUse.status?.backend === backend && computerUse.status.supported && !computerUse.unavailable && computerUse.status.installation === "available";
+  const computerUseLocked = !experiments.computerUse && !computerUseReady;
+  // Why the switch cannot turn on yet, as one sentence at the end of the description (P-2).
+  const lockReason = !computerUseLocked ? null
+    : computerUse.unavailable ? t("settings.computerUse.connectionFailed")
+      : computerUse.status === null || computerUse.status.backend !== backend ? t("settings.computerUse.checking")
+        : !computerUse.status.supported ? t("settings.computerUse.unavailable")
+          : computerUse.status.installation === "missing" ? t(backend === "cua-driver" ? "settings.computerUse.missing" : "settings.computerUse.skyMissing")
+            : null;
   const computerUseHint = (
     <>
       {t("settings.computerUse.help")}
-      {computerUse.status?.installation === "missing" ? <> {t(backend === "cua-driver" ? "settings.computerUse.missing" : "settings.computerUse.skyMissing")}</> : null}
+      {lockReason ? <> {lockReason}</> : null}
       {computerUse.code ? <span role="alert"> {t(`settings.computerUse.${computerUse.errorKey}`)}</span> : null}
       {backend === "cua-driver" && computerUse.status?.installation === "missing" && computerUse.status.installer?.supported
         ? <> <button type="button" className="settings-mobile-textlink" disabled={computerUse.installing} onClick={(event) => { event.stopPropagation(); void computerUse.install(); }}>{t(computerUse.installing ? "settings.computerUse.installing" : "settings.computerUse.install")}</button></> : null}
@@ -158,11 +166,11 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
           onChange={(next) => saveExperiments({ ...experiments, commodore: next })}
         />
       </SettingsRow>
-      <SettingsRow label={t("settings.computerUse.title")} hint={computerUseHint} icon={<MobileIcon name="layout" />}>
+      <SettingsRow label={t("settings.computerUse.title")} hint={computerUseHint} icon={<MobileIcon name="layout" />} disabled={computerUseLocked}>
         <SettingsToggle
           checked={experiments.computerUse}
           busy={saving || computerUse.working}
-          disabled={!experiments.computerUse && !computerUseReady}
+          disabled={computerUseLocked}
           ariaLabel={t("settings.computerUse.title")}
           onChange={(next) => saveExperiments({ ...experiments, computerUse: next })}
         />
