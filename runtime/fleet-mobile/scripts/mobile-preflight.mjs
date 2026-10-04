@@ -68,11 +68,12 @@ function androidChecks() {
     "Install Android Studio (its bundled JDK is used on macOS) or set FLEET_ANDROID_JAVA_HOME to an absolute JDK directory. JAVA_HOME alone is ignored outside CI");
   if (javaHome) {
     check("android", "jdk-version", () => `${javaHome} -> Java ${requireJavaMajor(javaHome)}`);
+    // avdmanager and sdkmanager read JAVA_HOME and ignore FLEET_ANDROID_JAVA_HOME; the build scripts do the opposite.
     const ambient = process.env.JAVA_HOME;
-    if (ambient && path.resolve(ambient) !== path.resolve(javaHome)) {
+    if (!ambient || path.resolve(ambient) !== path.resolve(javaHome)) {
       results.push({
-        platform: "android", id: "jdk-ambient", status: "note",
-        detail: `JAVA_HOME=${ambient} differs from the JDK builds use (${javaHome}); the build scripts ignore JAVA_HOME unless CI=true`,
+        platform: "android", id: "jdk-cmdline-tools", status: "note",
+        detail: `${ambient ? `JAVA_HOME=${ambient} differs from` : "JAVA_HOME is unset, but"} the JDK builds use; avdmanager/sdkmanager fail with "Unable to locate a Java Runtime" without it. Before calling them: export JAVA_HOME="${javaHome}"`,
       });
     }
   }

@@ -8,55 +8,58 @@ When a counter or state (an attempt count, a retry flag) looks like the cause, l
 
 ## 0. Pick names and run the preflight
 
-Choose one unique `RUN` id and keep its values for the whole run: Console data root `$RUN_DIR`, your AVD name, your emulator port (an even number 5554–5680 that no listed emulator uses), and so on. Everything below is addressed by these values, never by "the running emulator".
+Choose one unique `RUN` id and keep its values for the whole run: Console data root `$E2E_DIR`, your AVD name, your emulator port (an even number 5554–5680 that no listed emulator uses), and so on. Everything below is addressed by these values, never by "the running emulator".
+
+**Shell variables do not survive between tool calls.** Put them in one env file and `source` it at the start of every step:
 
 ```bash
+ENVF=<abs scratch dir>/fleet-mobile-<id>.env     # replace every <…> with a literal value
+cat > "$ENVF" <<'EOF'
+export E2E_DIR=<abs dir> AVD=fleet-repro-<id> PORT=<even port> SERIAL=emulator-<port>
 export ANDROID_SDK_ROOT="$HOME/Library/Android/sdk"   # must be set; ANDROID_HOME, if set, must match
+export JAVA_HOME="<jdk path from the preflight>"      # avdmanager/sdkmanager need it; the build scripts do not
 export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+EOF
+source "$ENVF"
 node <worktree>/runtime/fleet-mobile/scripts/mobile-preflight.mjs [--platform android|ios] [--json]
 ```
 
-It is read-only and starts nothing. Exit `0` means every required check passed; `20` means a `FAIL` line names what is missing and prints its fix. Its verdicts come from the build scripts' own functions (`scripts/lib/android-tools.mjs`, `ios-tools.mjs`), so a pass means `android:build:debug` will accept the toolchain. JDK: Android Studio's bundled JDK is used on macOS; `JAVA_HOME` is ignored outside CI, so set `FLEET_ANDROID_JAVA_HOME` to override. The `NOTE … in-use` lines list adb devices, running emulators, and booted simulators: they belong to someone else. Do not use, restart, or kill them.
+Record the preflight's `adb server` state (running or not running) in the report; cleanup depends on it. The preflight is read-only and starts nothing. Exit `0` means every required check passed; `20` means a `FAIL` line names what is missing and prints its fix. Its verdicts come from the build scripts' own functions (`scripts/lib/android-tools.mjs`, `ios-tools.mjs`), so a pass means `android:build:debug` will accept the toolchain. JDK: the build scripts use Android Studio's bundled JDK on macOS and ignore `JAVA_HOME` outside CI (override with `FLEET_ANDROID_JAVA_HOME`); `avdmanager` and `sdkmanager` do the opposite and need `JAVA_HOME`, which the `jdk-cmdline-tools` note spells out. The `NOTE … in-use` lines list adb devices, running emulators, and booted simulators: they belong to someone else. Do not use, restart, or kill them.
 
 ## 1. Start your own Consoles
 
-Per Console, follow [Isolated Console setup](setup.md#isolate-the-console) with its own `E2E_DIR` (all four of `FLEET_DATA_DIR`, `FLEET_CONSOLE_DATA_DIR`, `FLEET_DESKTOP_DATA_DIR`, `CLAUDE_CONFIG_DIR` under it), started as a background process whose PID you record: `CONSOLE_PID=$!`. For two Consoles, use two `E2E_DIR`s; nothing is shared. Read each port and token from that Console's `$E2E_DIR/console/console.lock`, check it answers `200`, and never print the token. Do not touch `127.0.0.1:50000` or any Console whose lock is not under your `E2E_DIR`.
+Per Console, follow [Isolated Console setup](setup.md#isolate-the-console) with its own `E2E_DIR` (all four of `FLEET_DATA_DIR`, `FLEET_CONSOLE_DATA_DIR`, `FLEET_DESKTOP_DATA_DIR`, `CLAUDE_CONFIG_DIR` under it), started as a background process whose PID you record: `CONSOLE_PID=$!`, appended to the env file with `EMU_PID` and `UDID`. For two Consoles, use two `E2E_DIR`s; nothing is shared. Read each port and token from that Console's `$E2E_DIR/console/console.lock`, check it answers `200`, and never print the token. Do not touch `127.0.0.1:50000` or any Console whose lock is not under your `E2E_DIR`.
 
 ## 2. Issue an access link
 
 Use the listener and `/api/v1/access-links` procedure in [Remote access testing](remote-access-testing.md#turn-the-listener-on). What mobile changes:
 
-- **Address.** The remote listener must bind this machine's LAN address (`BIND=$(ipconfig getifaddr en0)`; loopback is rejected). The emulator reaches it by that same LAN address, so use the link exactly as issued. `10.0.2.2` is the emulator's alias for host *loopback* and cannot reach this listener. A simulator shares the host network and uses the same link.
-- **Format.** `fleet://join?code=<base64url envelope>`; nothing else in the query (see `protocol/remote/index.ts`). Choose `?access=full` or `?access=monitoring` as the claim needs.
-- **Secrecy.** The link carries a one-time credential. Write it to an owner-only file and pass it by command substitution; do not echo it, log it, or paste it into a report.
+- **Address.** The remote listener must bind this machine's LAN address, taken from the default-route interface: `export BIND=$(ipconfig getifaddr "$(route -n get default | awk '/interface:/{print $2}')")`. Stop if it is empty (`en0` is not always the default interface). The emulator reaches that address directly, so use the link exactly as issued. `10.0.2.2` is the emulator's alias for host *loopback* and cannot reach this listener. A simulator shares the host network and uses the same link.
+- **Format.** `fleet://join?code=<base64url envelope>`; nothing else in the query (see `protocol/remote/index.ts`).
+- **Secrecy.** The link carries a one-time credential. [`scripts/issue-access-link.mjs`](../scripts/issue-access-link.mjs) enables the listener, checks `listener.listening` (response shape in [Remote access testing](remote-access-testing.md#turn-the-listener-on)), and writes the link to an owner-only `$E2E_DIR/link.txt` without printing it or the lock token. Pass it to the device by command substitution; do not echo, log, or report it.
 
-```js
-// node, run once per Console; origin = http://127.0.0.1:<lock port>, token from the lock
-const { remoteAccess: cur } = await (await fetch(`${origin}/api/v1/settings/global`)).json();
-await fetch(`${origin}/api/v1/settings/global`, { method: "PUT",
-  headers: { "Content-Type": "application/json", Origin: origin },
-  body: JSON.stringify({ remoteAccess: { ...cur, enabled: true, publicEndpointEnabled: false, listenAddress: BIND, acknowledgment: null } }) });
-if (!(await (await fetch(`${origin}/api/v1/access-links`)).json()).listening) throw new Error("listener is not up");
-const { link } = await (await fetch(`${origin}/api/v1/access-links?access=full`,
-  { method: "POST", headers: { Authorization: `Bearer ${token}` } })).json();
-fs.writeFileSync(`${E2E_DIR}/link.txt`, link, { mode: 0o600 });
+```bash
+BIND="$BIND" node <worktree>/.claude/skills/console-e2e/scripts/issue-access-link.mjs "$E2E_DIR" [full|monitoring]
 ```
 
-A link is single-use. Issue a new one for every launch attempt.
+A link is single-use. Run it again for every launch attempt.
 
 ## 3. Android
 
 **Your AVD** (never reuse one from the preflight's list that you did not create):
 
 ```bash
-avdmanager create avd -n "$AVD" -k "system-images;android-36;google_apis;arm64-v8a" -d pixel_7
+echo no | avdmanager create avd -n "$AVD" -k "system-images;android-36;google_apis;arm64-v8a" -d pixel_7; echo "avdmanager exit $?"
 emulator -avd "$AVD" -port "$PORT" -no-window -no-audio -no-snapshot-save -no-boot-anim > "$E2E_DIR/emulator.log" 2>&1 &
-SERIAL="emulator-$PORT"
-adb -s "$SERIAL" wait-for-device
-until [ "$(adb -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 2; done
+EMU_PID=$!; echo "export EMU_PID=$EMU_PID" >> "$ENVF"
+for i in $(seq 1 120); do
+  kill -0 $EMU_PID 2>/dev/null || { echo "emulator died"; tail "$E2E_DIR/emulator.log"; break; }
+  [ "$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && { echo booted; break; }
+  sleep 2
+done
 ```
 
-Use `-no-window` unless the claim needs pixels; a visible emulator window can take the user's focus. Every adb call carries `-s "$SERIAL"`; a bare `adb` command is refused here because other sessions' devices are attached.
+The `echo no` answers the custom-hardware-profile prompt; read the exit code without a trailing pipe. Do not use `adb wait-for-device`: it waits forever when the emulator exits at once (for example an unknown AVD). Stop unless the loop printed `booted`. Use `-no-window` unless the claim needs pixels; a visible emulator window can take the user's focus. Every adb call carries `-s "$SERIAL"`; a bare `adb` command is refused here because other sessions' devices are attached.
 
 **Build and install the debug APK.** The existing script prebuilds, runs Gradle, and verifies the manifest; it takes minutes and replaces the checkout's `runtime/fleet-mobile/android/`.
 
@@ -92,18 +95,20 @@ The scheme is `fleet`, registered by `plugins/withFleetIos.ts`. On a cold start 
 
 ## 5. Stay apart from other sessions
 
-- Only your `AVD` name, `PORT`, `SERIAL`, `UDID`, `E2E_DIR`, and `CONSOLE_PID` are yours. Never run `adb kill-server`, `pkill`, `killall`, `adb emu kill` without `-s`, `simctl shutdown all`, `simctl erase all`, or `xcrun simctl delete unavailable`.
+- Only your `AVD` name, `PORT`, `SERIAL`, `UDID`, `E2E_DIR`, and `CONSOLE_PID` are yours. Never run `pkill`, `killall`, `adb emu kill` without `-s`, `simctl shutdown all`, `simctl erase all`, or `xcrun simctl delete unavailable`, or `adb kill-server` outside the rule in step 6.
 - Do not reuse a data root, an emulator, or a Console that was running before you started. Recheck the preflight's `in-use` line before booting and before cleanup.
 - Do not print process command lines or tokens; identify processes by the PIDs and ports you recorded.
 
 ## 6. Clean up (success or failure)
 
 ```bash
-kill "$CONSOLE_PID"                               # each Console you started; then confirm its port no longer listens
+kill "$CONSOLE_PID"                               # each Console you started
 adb -s "$SERIAL" emu kill                          # only your serial
 avdmanager delete avd -n "$AVD"                    # only an AVD you created for this run
 xcrun simctl shutdown "$UDID"; xcrun simctl delete "$UDID"   # only your simulator
 rm -rf "$E2E_DIR"                                  # only after the Consoles stopped; this removes link.txt too
 ```
+
+The adb server that your first `adb -s` call started may outlive the run. Run `adb kill-server` only if the step-0 preflight said `adb server not running` **and** `adb devices` is now empty; otherwise leave it, since someone else's device depends on it.
 
 Confirm: `lsof -nP -iTCP:<console port> -sTCP:LISTEN` is empty for every Console you started, `adb devices` no longer lists your serial, `emulator -list-avds` and `xcrun simctl list devices` no longer list yours, and the preflight's `in-use` line shows only what was there before. Keep the AVD and `E2E_DIR` only when the run is being handed on, and say so in the report. Leave `runtime/fleet-mobile/android/` and `dist/` (build output) in the worktree unless the user asked for the checkout to be clean.
