@@ -100,6 +100,14 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
 
 const saveExperiments = (next: ConsoleExperimentSettings) => void setGlobalSettingsField("experiments", next);
 
+/** [pennant] 사령관 깃발(impl-spec §A) — 폰의 「자율 운영」 행과 드로어 「사령관」 줄이 같은 아이콘을 쓴다. */
+const PennantGlyph = () => (
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M5.5 21V3.5" />
+    <path d="M5.5 4.5h13l-3.6 4.25 3.6 4.25h-13" />
+  </svg>
+);
+
 const AIDE_ICONS: Partial<Record<ExperimentAideId, MobileIconName>> = { cowork: "wiki", analyst: "chart" };
 
 /**
@@ -159,7 +167,7 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
           </SettingsRow>
         );
       })}
-      <SettingsRow label={t("settings.experiments.commodore.title")} hint={t("settings.experiments.commodore.help")} icon={<MobileIcon name="target" />}>
+      <SettingsRow label={t("settings.experiments.commodore.title")} hint={t("settings.experiments.commodore.mobileHelp")} icon={<PennantGlyph />}>
         <SettingsToggle
           checked={experiments.commodore}
           busy={saving}
