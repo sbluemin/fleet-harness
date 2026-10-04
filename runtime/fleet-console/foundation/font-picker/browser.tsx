@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { fontResolves, withFontFallback } from "./resolve.js";
+import { fontResolves, forgetUnresolvedFonts, withFontFallback } from "./resolve.js";
 
 export interface FontPickerBuiltIn {
   readonly id: string;
@@ -33,6 +33,8 @@ export interface FontPickerLabels {
   readonly choicesAria?: string;
   readonly builtInGroup?: string;
   readonly installedGroup?: string;
+  readonly missingGroup?: string;
+  readonly missingGroupNote?: string;
   readonly noMatch?: string;
   readonly preview?: string;
   readonly available?: string;
@@ -58,7 +60,9 @@ const DEFAULT_LABELS: ResolvedFontPickerLabels = {
   loading: "Loading installed fonts…",
   choicesAria: "Font choices",
   builtInGroup: "Built-in",
-  installedGroup: "Installed on this machine",
+  installedGroup: "Installed on the Console host",
+  missingGroup: "Not on this device",
+  missingGroupNote: "These fonts are installed where the Console runs, but the device showing this screen cannot draw them.",
   noMatch: "No fonts match this search.",
   preview: "Preview",
   available: "Available",
@@ -91,6 +95,8 @@ export interface FontPickerProps {
   readonly error?: string | null;
   readonly disabled?: boolean;
   readonly labels?: FontPickerLabels;
+  /** 목록 아래에 소비자가 붙이는 안내·동작. 피커는 그 내용을 해석하지 않는다. */
+  readonly footer?: React.ReactNode;
   readonly onSelectionChange: (selection: FontPickerSelection) => void;
   readonly onSizeCommit?: (size: number) => void | Promise<void>;
 }
@@ -130,6 +136,12 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   const commitQueue = React.useRef(Promise.resolve());
   const listboxId = React.useId();
   const listbox = React.useRef<HTMLDivElement>(null);
+  // 열릴 때마다 "없음" 판정을 다시 묻는다 — 화면을 연 채 설치한 서체가 새로고침 전까지 사용 불가로 남지 않게.
+  const freshResolution = React.useRef(false);
+  if (!freshResolution.current) {
+    freshResolution.current = true;
+    forgetUnresolvedFonts();
+  }
   const rows = React.useMemo(() => createRows(props, labels), [props, labels]);
   const filteredRows = React.useMemo(() => filterRows(rows, query), [rows, query]);
   const indexedRows = React.useMemo(() => filteredRows.map((row, index) => ({ row, index })), [filteredRows]);
@@ -138,6 +150,8 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   const activeRow = indexedRows[Math.min(activeIndex, Math.max(0, indexedRows.length - 1))]?.row ?? null;
   const builtInsGroupId = `${listboxId}-built-ins`;
   const installedGroupId = `${listboxId}-installed`;
+  const missingGroupId = `${listboxId}-missing`;
+  const missingRows = indexedRows.filter(({ row }) => row.source === "system" && row.unavailable);
 
   React.useEffect(() => {
     if (props.size !== undefined) setDraftSize(props.size);
@@ -231,9 +245,14 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
         >
           <FontGroup groupId={builtInsGroupId} label={labels.builtInGroup} unavailableLabel={labels.unavailable} rows={indexedRows.filter(({ row }) => row.source === "builtin")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
           <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
-          <FontGroup groupId={installedGroupId} label={labels.installedGroup} unavailableLabel={labels.unavailable} rows={indexedRows.filter(({ row }) => row.source === "system")} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
+          <FontGroup groupId={installedGroupId} label={labels.installedGroup} unavailableLabel={labels.unavailable} rows={indexedRows.filter(({ row }) => row.source === "system" && !row.unavailable)} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
+          {missingRows.length ? <>
+            <div className="fc-font-browser__separator" role="separator" aria-hidden="true" />
+            <FontGroup groupId={missingGroupId} label={labels.missingGroup} note={labels.missingGroupNote} unavailableLabel={labels.unavailable} rows={missingRows} activeRow={activeRow} selected={props.selected} listboxId={listboxId} disabled={props.disabled} onSelect={handleRowSelect} />
+          </> : null}
           {!props.loading && !indexedRows.length ? <p className="fc-font-browser__state">{labels.noMatch}</p> : null}
         </div>
+        {props.footer ? <div className="fc-font-browser__footer">{props.footer}</div> : null}
       </div>
       {props.presentation !== "choices" ? <aside className="fc-font-browser__preview" aria-live="polite">
         <div className="fc-font-browser__preview-head">
@@ -273,10 +292,11 @@ export function FontPicker(props: FontPickerProps): React.ReactElement {
   );
 }
 
-function FontGroup({ groupId, label, unavailableLabel, rows, activeRow, selected, listboxId, disabled, onSelect }: { readonly groupId: string; readonly label: string; readonly unavailableLabel: string; readonly rows: readonly IndexedFontPickerRow[]; readonly activeRow: FontPickerRow | null; readonly selected: FontPickerSelection; readonly listboxId: string; readonly disabled?: boolean; readonly onSelect: (index: number, selection: FontPickerSelection) => void }): React.ReactElement {
+function FontGroup({ groupId, label, note, unavailableLabel, rows, activeRow, selected, listboxId, disabled, onSelect }: { readonly groupId: string; readonly label: string; readonly note?: string; readonly unavailableLabel: string; readonly rows: readonly IndexedFontPickerRow[]; readonly activeRow: FontPickerRow | null; readonly selected: FontPickerSelection; readonly listboxId: string; readonly disabled?: boolean; readonly onSelect: (index: number, selection: FontPickerSelection) => void }): React.ReactElement {
   return (
-    <div className="fc-font-browser__group" role="group" aria-labelledby={groupId}>
+    <div className="fc-font-browser__group" role="group" aria-labelledby={groupId} aria-describedby={note ? `${groupId}-note` : undefined}>
       <h3 id={groupId} className="fc-font-browser__group-label">{label}</h3>
+      {note ? <p id={`${groupId}-note`} className="fc-font-browser__group-note">{note}</p> : null}
       {rows.map(({ row, index }) => (
         <button
           key={row.id}
@@ -311,7 +331,8 @@ function createRows(props: FontPickerProps, labels: ResolvedFontPickerLabels): r
   if (persistedSystemName !== null && !installed.some((font) => font.family === persistedSystemName)) {
     installed.unshift({ id: `system-${normalizeFontKey(persistedSystemName)}`, label: props.selectedSystemFont ?? persistedSystemName, family: persistedSystemName, previewFamily: withFontFallback(persistedSystemName, props.fallbackStack), source: "system", selection: { source: "system", familyName: persistedSystemName }, description: labels.savedSystemFont, unavailable: true });
   }
-  return [...builtIns, ...installed];
+  // 행 순서가 곧 키보드 순서다 — 그릴 수 없는 행은 맨 아래 "이 기기에 없음" 묶음과 같은 자리로 내린다.
+  return [...builtIns, ...installed.filter((font) => !font.unavailable), ...installed.filter((font) => font.unavailable)];
 }
 
 function filterRows(rows: readonly FontPickerRow[], query: string): readonly FontPickerRow[] {

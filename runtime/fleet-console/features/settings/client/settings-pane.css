@@ -104,6 +104,7 @@
 .settings-font-popover .fc-font-browser__row-meta { white-space: normal; }
 .settings-font-popover .fc-font-browser__search { width: 100%; min-width: 0; box-sizing: border-box; }
 .settings-font-popover .fc-font-browser__row-status { white-space: normal; }
+.settings-font-popover .settings-font-note { margin: 0; }
 @container (max-width: 380px) {
   .settings-pane .settings-font-controls { flex-wrap: wrap; }
   .settings-pane :is(.fc-settings-row__control, .experiments-row-controls) { flex-wrap: wrap; }

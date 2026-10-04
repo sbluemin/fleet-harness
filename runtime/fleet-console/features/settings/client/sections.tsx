@@ -1,7 +1,8 @@
 import { FontMenu } from "./font-menu.js";
 import { fontCjkScripts } from "../../execution/client/terminal/shared/cjk-coverage.js";
 import { DEFAULT_FONTS, FONT_BUILT_INS, FONT_SIZE_RANGES, fontFamilyForAxis, type FontAxis, type FontAxisSettings, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
-import { type FontPickerInstalledFont } from "@fleet-console/font-picker/browser";
+import { type FontPickerInstalledFont, type FontPickerLabels } from "@fleet-console/font-picker/browser";
+import { fontResolves } from "@fleet-console/font-picker/resolve";
 import "@fleet-console/font-picker/styles.css";
 import { SystemFontsFetchError, fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
@@ -9,7 +10,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
 import { SettingsSlider, SettingsToggle } from "@fleet-console/sdk/settings/browser";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 export { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 
@@ -501,6 +502,33 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
     })();
     return () => { cancelled = true; };
   }, [advanced, installedFonts]);
+  // 목록은 Console 호스트의 것이고 판정은 이 화면의 것이다. 둘이 다른 기기임을 아는 쪽은 렌더러뿐이라,
+  // 호스트 목록 대부분을 여기서 그릴 수 없을 때만 그 사실과 WSL에서의 해법을 알린다.
+  const hostMismatch = useMemo(() => installedFonts.length > 0 && installedFonts.filter((font) => !fontResolves(font.family)).length * 2 >= installedFonts.length, [installedFonts]);
+  const pickerFooter = hostMismatch ? <p className="settings-font-note">{t("settings.typography.picker.hostMismatch")}</p> : null;
+  const pickerLabels: FontPickerLabels = {
+    browserAria: t("settings.typography.picker.browserAria"),
+    searchLabel: t("settings.typography.picker.searchLabel"),
+    searchPlaceholder: t("settings.typography.picker.searchPlaceholder"),
+    loading: t("settings.typography.picker.loading"),
+    choicesAria: t("settings.typography.picker.choicesAria"),
+    builtInGroup: t("settings.typography.picker.builtInGroup"),
+    installedGroup: t("settings.typography.picker.installedGroup"),
+    missingGroup: t("settings.typography.picker.missingGroup"),
+    missingGroupNote: t("settings.typography.picker.missingGroupNote"),
+    noMatch: t("settings.typography.picker.noMatch"),
+    preview: t("settings.typography.picker.preview"),
+    available: t("settings.typography.picker.available"),
+    unavailable: t("settings.typography.picker.unavailable"),
+    fontSizeAria: t("settings.typography.picker.fontSizeAria"),
+    decreaseSizeAria: t("settings.typography.picker.decreaseSizeAria"),
+    sizeValueAria: t("settings.typography.picker.sizeValueAria"),
+    increaseSizeAria: t("settings.typography.picker.increaseSizeAria"),
+    sizeSliderAria: t("settings.typography.picker.sizeSliderAria"),
+    monospace: t("settings.typography.picker.monospace"),
+    systemFont: t("settings.typography.picker.systemFont"),
+    savedSystemFont: t("settings.typography.picker.savedSystemFont"),
+  };
   const save = (next: ConsoleFontSettings) => { void setGlobalSettingsField("fonts", next); };
   // 로딩 전(!state)만 native disabled다. 저장 중은 aria-disabled로 막는다 — 키보드로 막 누른 컨트롤에서 포커스가 문서로 빠지지 않게.
   const unavailable = !state;
@@ -520,27 +548,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
         <FontMenu label={label} selectedLabel={labelFor(value.font)} builtIns={choices} installedFonts={installedFonts.filter((font) => role === "code" ? font.monospace : font.uiSuitable)} selected={selected}
           selectedSystemFont={value.font.source === "system" ? value.font.familyName : null}
           fallbackStack={fontFamilyForAxis(fonts, role)} previewText={t("settings.typography.preview")} loading={fontsLoading} error={fontsError} disabled={unavailable} busy={saving}
-        labels={{
-          browserAria: t("settings.typography.picker.browserAria"),
-          searchLabel: t("settings.typography.picker.searchLabel"),
-          searchPlaceholder: t("settings.typography.picker.searchPlaceholder"),
-          loading: t("settings.typography.picker.loading"),
-          choicesAria: t("settings.typography.picker.choicesAria"),
-          builtInGroup: t("settings.typography.picker.builtInGroup"),
-          installedGroup: t("settings.typography.picker.installedGroup"),
-          noMatch: t("settings.typography.picker.noMatch"),
-          preview: t("settings.typography.picker.preview"),
-          available: t("settings.typography.picker.available"),
-          unavailable: t("settings.typography.picker.unavailable"),
-          fontSizeAria: t("settings.typography.picker.fontSizeAria"),
-          decreaseSizeAria: t("settings.typography.picker.decreaseSizeAria"),
-          sizeValueAria: t("settings.typography.picker.sizeValueAria"),
-          increaseSizeAria: t("settings.typography.picker.increaseSizeAria"),
-          sizeSliderAria: t("settings.typography.picker.sizeSliderAria"),
-          monospace: t("settings.typography.picker.monospace"),
-          systemFont: t("settings.typography.picker.systemFont"),
-          savedSystemFont: t("settings.typography.picker.savedSystemFont"),
-        }}
+        labels={pickerLabels} footer={pickerFooter}
           onSelectionChange={(selection) => setAxis({ ...value, font: selection.source === "builtin" && selection.id === "inherit" ? { source: "inherit" } : selection as FontAxisSettings["font"] })}
         />
         <div className="settings-font-size" role="group" aria-label={t("settings.fonts.sizeAria", { axis: label })}>
@@ -574,7 +582,7 @@ export function TypographyCard({ state, saving }: { readonly state: GlobalSettin
             <FontMenu label={t("settings.fonts.cjkAxis", { axis: t(`settings.fonts.${axis}`) })} selectedLabel={fonts[axis].cjk || t("settings.fonts.automatic")} selected={fonts[axis].cjk ? { source: "system", familyName: fonts[axis].cjk } : { source: "builtin", id: "auto" }}
               builtIns={[{ id: "auto", label: t("settings.fonts.automatic"), family: fontFamilyForAxis({ ...fonts, [axis]: { ...fonts[axis], cjk: "" } }, axis) }]}
               installedFonts={cjkFonts} fallbackStack={fontFamilyForAxis(fonts, axis)} previewText={t("settings.typography.preview")} loading={fontsLoading || scanning} error={fontsError} disabled={unavailable} busy={saving}
-              labels={{ searchLabel: t("settings.typography.picker.searchLabel"), searchPlaceholder: t("settings.typography.picker.searchPlaceholder"), builtInGroup: t("settings.typography.picker.builtInGroup"), installedGroup: t("settings.typography.picker.installedGroup"), browserAria: t("settings.typography.picker.browserAria"), choicesAria: t("settings.typography.picker.choicesAria"), loading: t("settings.typography.picker.loading"), noMatch: t("settings.typography.picker.noMatch"), unavailable: t("settings.typography.picker.unavailable"), savedSystemFont: t("settings.typography.picker.savedSystemFont"), monospace: t("settings.typography.picker.monospace"), systemFont: t("settings.typography.picker.systemFont") }}
+              labels={pickerLabels}
               onSelectionChange={(selection) => save({ ...fonts, [axis]: { ...fonts[axis], cjk: selection.source === "system" ? selection.familyName : "" } })} />
           </div>
         </div>)}

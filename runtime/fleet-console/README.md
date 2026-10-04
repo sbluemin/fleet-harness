@@ -182,6 +182,24 @@ Published stable CLI/browser and Desktop-supervised Console share one canonical 
 
 Updates apply in-session only to ordinary global packages through the npm-global worker. For a Desktop-managed `console/latest` runtime, `POST /api/v1/updates/apply` never mutates the live runtime: it answers `delegated` and hands the request to the supervising Desktop, which relaunches so its hardened entry-flow installer installs the new version. The `/api/v1/pairing-identity` endpoint is discovery only, never authentication.
 
+## Fonts on WSL
+
+Settings lists the fonts installed where the Console runs. Inside WSL that is the Linux distribution, which usually has only a handful of fonts and none for Korean, Japanese, or Chinese, while the screen showing the Console may be a Windows browser or Desktop with fonts of its own. A font the viewing device cannot draw appears under **Not on this device**.
+
+To let the WSL Console list Windows fonts, and to let a browser running inside WSL draw them, register the Windows font folders with fontconfig for your Linux user. Create `~/.config/fontconfig/fonts.conf`:
+
+```xml
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <dir>/mnt/c/Windows/Fonts</dir>
+  <!-- Fonts installed for one Windows user; replace <windows-user>. -->
+  <dir>/mnt/c/Users/<windows-user>/AppData/Local/Microsoft/Windows/Fonts</dir>
+</fontconfig>
+```
+
+Then run `fc-cache -f` (slow the first time, because it reads the Windows drive) and check the result with `fc-list : family | sort -u`. The Console refreshes its font list within five minutes, or right away after `fleet console restart`. This changes only your own fontconfig; the Console never writes it for you, and nothing is copied out of Windows.
+
 ## Development
 
 Source is split under `core/host/` for the Node CLI/backend and `core/client/` for the Vite React SPA. Agent, Terminal, and AI Gateway runtime implementations live under `core/host/`; their UI lives under `core/client/src/`. The private `@fleet-console/sdk` package under `sdk/` is the shared plugin contract surface for core and built-in plugins.
