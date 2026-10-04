@@ -28,6 +28,19 @@ export const LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX = "Read and follow the launch
 export const CUSTOM_SYSTEM_PROMPT_TEMP_DIR_PREFIX = "fleet-system-prompt-";
 export const CUSTOM_SYSTEM_PROMPT_FILE_NAME = "system-prompt.md";
 
+/**
+ * launch 프롬프트 파일을 둘 디렉터리를 정하는 호스트 포트.
+ *
+ * 이 패키지는 파일을 쓰고 세션 수명에 묶을 뿐, 정리 없이 끝난 프로세스의 잔재를 누가 언제
+ * 회수할지는 알지 못한다 — 그 판정에는 호스트의 runtime lock과 프로세스 수명이 필요하다.
+ * 포트가 없으면 OS temp에 고유 디렉터리를 바로 만든다(독립 `fleet` launcher처럼 회수 주체가
+ * 없는 호출자).
+ */
+export interface LaunchPromptDirectoryAllocator {
+  /** `prefix`로 이름이 시작하는 새 디렉터리(0700)를 만들고 그 절대 경로를 돌려준다. */
+  allocateDir(prefix: string): string;
+}
+
 export function launchPromptHasCmdUnsafeChars(prompt: string): boolean {
   return CMD_UNSAFE_PROMPT_PATTERN.test(prompt);
 }
@@ -226,8 +239,9 @@ export function writeLaunchPromptPointer(
   body: string,
   onCleanup: (cleanup: () => void) => void,
   cmdWrapped: boolean,
+  directories?: LaunchPromptDirectoryAllocator,
 ): string {
-  const written = writeLaunchPromptFile(body, onCleanup);
+  const written = writeLaunchPromptFile(body, onCleanup, directories);
   try {
     assertLaunchPromptShimSafe(written.instruction, cmdWrapped ? ["cmd-shim"] : []);
   } catch (error) {
@@ -246,8 +260,9 @@ export function writeLaunchPromptPointer(
 export function writeLaunchPromptFile(
   body: string,
   onCleanup: (cleanup: () => void) => void,
+  directories?: LaunchPromptDirectoryAllocator,
 ): { readonly cleanup: () => void; readonly filePath: string; readonly instruction: string } {
-  const written = writePromptFile(body, onCleanup, LAUNCH_PROMPT_TEMP_DIR_PREFIX, LAUNCH_PROMPT_FILE_NAME);
+  const written = writePromptFile(body, onCleanup, LAUNCH_PROMPT_TEMP_DIR_PREFIX, LAUNCH_PROMPT_FILE_NAME, directories);
   return {
     cleanup: written.cleanup,
     filePath: written.filePath,
@@ -270,12 +285,14 @@ export function writeCustomSystemPromptFile(
   body: string,
   onCleanup: (cleanup: () => void) => void,
   cmdWrapped: boolean,
+  directories?: LaunchPromptDirectoryAllocator,
 ): string {
   const written = writePromptFile(
     body,
     onCleanup,
     CUSTOM_SYSTEM_PROMPT_TEMP_DIR_PREFIX,
     CUSTOM_SYSTEM_PROMPT_FILE_NAME,
+    directories,
   );
   try {
     assertLaunchPromptShimSafe(written.filePath, cmdWrapped ? ["cmd-shim"] : []);
@@ -297,12 +314,9 @@ function writePromptFile(
   onCleanup: (cleanup: () => void) => void,
   tempDirPrefix: string,
   fileName: string,
+  directories?: LaunchPromptDirectoryAllocator,
 ): { readonly cleanup: () => void; readonly filePath: string } {
-  // os.tmpdir()은 TEMP/TMP가 상대값이면 상대 경로를 돌려준다. Claude의 cwd는 Theater라
-  // 상대 경로는 방금 만든 파일을 찾지 못한다 — argv에는 절대 경로만 실어야 한다.
-  const tempRoot = path.resolve(os.tmpdir());
-  mkdirSync(tempRoot, { recursive: true });
-  const tempDir = mkdtempSync(path.join(tempRoot, tempDirPrefix));
+  const tempDir = directories ? directories.allocateDir(tempDirPrefix) : createDefaultPromptDir(tempDirPrefix);
   const cleanup = () => rmBestEffort(tempDir);
   try {
     const filePath = path.join(tempDir, fileName);
@@ -316,6 +330,14 @@ function writePromptFile(
     cleanup();
     throw error;
   }
+}
+
+function createDefaultPromptDir(tempDirPrefix: string): string {
+  // os.tmpdir()은 TEMP/TMP가 상대값이면 상대 경로를 돌려준다. Claude의 cwd는 Theater라
+  // 상대 경로는 방금 만든 파일을 찾지 못한다 — argv에는 절대 경로만 실어야 한다.
+  const tempRoot = path.resolve(os.tmpdir());
+  mkdirSync(tempRoot, { recursive: true });
+  return mkdtempSync(path.join(tempRoot, tempDirPrefix));
 }
 
 function chmodBestEffort(targetPath: string, mode: number): void {

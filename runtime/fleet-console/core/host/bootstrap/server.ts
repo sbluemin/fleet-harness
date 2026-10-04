@@ -26,6 +26,7 @@ import { CORE_AGENT_SENSITIVE_FIELDS, startConsoleExecution } from "./execution.
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
 import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
+import { createLaunchPromptNamespace } from "../../../features/execution/host/agent/launch-prompt-namespace.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, readOperationLaunch, withSubagentSpawn, withUserQuestions, type OperationLaunchChangedEvent } from "@fleet-console/sdk/operations";
@@ -2596,6 +2597,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
         // 같은 루프백 전용 불투명 경로이고, 리스너가 뜬 뒤에야 주소가 정해지므로 런치가 그때 묻는다.
         const agentCliPlugin = renderConsoleAgentCliPlugin({ transport: mcpHttp.transport });
+        // launch 프롬프트 파일은 이 lock 도메인의 자리에 둔다. 지난 프로세스가 남긴 것의 회수는 lock을 쓴 뒤에만 한다.
+        const launchPromptDirectories = createLaunchPromptNamespace({ lockFile: lockPaths.lockFile });
         const execution = await startConsoleExecution(createConsoleRuntimeContext({
           consoleControl,
           agentCallRedirect: (operationId) => {
@@ -2611,6 +2614,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
           agentOptions,
           agentCliPlugin,
+          launchPromptDirectories,
           routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
         }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
         coreLaunchKinds = execution.launchKinds;
@@ -2634,6 +2638,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
         activeLockFile = lockPaths.lockFile;
         activeEndpoint = result.endpoint;
+        launchPromptDirectories.reclaimLeftovers();
       } catch (error) {
         await cleanupAfterFailedStart();
         throw error;

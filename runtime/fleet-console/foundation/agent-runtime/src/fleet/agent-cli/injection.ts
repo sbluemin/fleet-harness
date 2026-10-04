@@ -15,6 +15,7 @@ import {
   launchPromptHasCmdLineBreak,
   launchPromptHasCmdUnsafeChars,
   writeLaunchPromptPointer,
+  type LaunchPromptDirectoryAllocator,
 } from "./prompt.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
@@ -44,6 +45,11 @@ export interface InjectAgentCliProfileOptions {
   // 작전명 자동 작명(UserPromptSubmit) hook. host가 빌드해 주입한다.
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
+  /**
+   * launch·시스템 프롬프트 파일을 둘 자리. 정리 없이 끝난 프로세스의 잔재를 회수할 호스트(Console)만
+   * 넘긴다. 생략하면 OS temp에 고유 디렉터리를 바로 만든다.
+   */
+  readonly promptDirectories?: LaunchPromptDirectoryAllocator;
   /**
    * 이 세션의 시스템 프롬프트를 무엇으로 세울지. 생략하면 `on` — 플래그 없는 런치가 이미
    * 하는 일이다. `append`는 기본 프롬프트 뒤에 사용자 본문을 잇고, `off`는 사용자 본문이
@@ -123,6 +129,7 @@ export async function injectAgentCliProfile(
         body,
         (cleanupFn) => tempCleanups.push(cleanupFn),
         cmdWrapped,
+        options.promptDirectories,
       )];
       deliveredViaFile = true;
     };
@@ -151,6 +158,7 @@ export async function injectAgentCliProfile(
         customSystemPromptBody,
         (cleanupFn) => tempCleanups.push(cleanupFn),
         cmdWrapped,
+        options.promptDirectories,
       );
     const session = await prepareClaudeSession({
       cliId: profile.id,
