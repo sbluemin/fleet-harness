@@ -1,5 +1,6 @@
-import type { OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowNote, OperationClusterSource } from "@fleet-console/sdk/plugin";
+import type { ConsoleOperationSummary, OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowNote, OperationClusterSource } from "@fleet-console/sdk/plugin";
 
+import { stalledObjectives, type BoardObservation, type BoardObserver } from "../server/board-state.js";
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
@@ -56,7 +57,7 @@ export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Ob
 }
 
 /**
- * 자율 운영 중의 줄 메모 — 사람의 손을 기다리던 자리를 사령관이 맡고 있다는 사실, 그리고 감독자가 본 정체. 모듈 상수라
+ * 줄 메모 — 자율 운영 중이면 사람의 손을 기다리던 자리를 사령관이 맡고 있다는 사실, 그리고 정체. 모듈 상수라
  * 줄 서명이 메모의 종류로 비교된다(글은 로케일마다 호스트가 푼다).
  */
 const NOTE_ANSWERING: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.answering"), tone: "accent" };
@@ -68,8 +69,12 @@ const ZONE_HANDLING = (locale: "en" | "ko") => getT(locale)("objectives.commodor
 export interface CommodoreBoard { readonly active: boolean; readonly stalled: readonly string[] }
 const NO_COMMODORE: CommodoreBoard = { active: false, stalled: [] };
 
-function commodoreNotes(objective: Objective, board: CommodoreBoard): Pick<OperationClusterRow, "notes" | "zoneNote"> {
-  if (!board.active) return {};
+/**
+ * 정체는 자율 운영과 상관없이 사람의 줄에 선다. 자율 운영이 돌면 감독자가 본 정체를 그대로 쓰고(깨움과 같은 값), 꺼져 있으면
+ * 보드가 같은 판정(`stalledObjectives`)으로 직접 센 값을 쓴다 — 한 줄에 정체 메모는 언제나 한 출처에서 하나다.
+ */
+function commodoreNotes(objective: Objective, board: CommodoreBoard, stalled: boolean): Pick<OperationClusterRow, "notes" | "zoneNote"> {
+  if (!board.active) return stalled ? { notes: [NOTE_STALLED] } : {};
   const notes: OperationClusterRowNote[] = [];
   if (objective.decisionRequest) notes.push(NOTE_ANSWERING);
   if (objective.awaitingReview) notes.push(NOTE_REVIEWING);
@@ -78,7 +83,7 @@ function commodoreNotes(objective: Objective, board: CommodoreBoard): Pick<Opera
 }
 
 /** 사이드바 줄 — 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
-function rowOf(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined, board: CommodoreBoard = NO_COMMODORE): OperationClusterRow | null {
+function rowOf(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined, board: CommodoreBoard = NO_COMMODORE, stalled = false): OperationClusterRow | null {
   if (objective.removed || objective.done) return null;
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
@@ -94,7 +99,7 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     ...(objective.decisionRequest ? { decisionRequestedAt: objective.decisionRequest.createdAt, decisionQuestions: objective.decisionRequest.questions.length } : {}),
     ...(objective.missions.length ? { progress: { done: doneMissions, total: objective.missions.length } } : {}),
     ...(originTitle !== undefined ? { followup: { originTitle } } : {}),
-    ...commodoreNotes(objective, board),
+    ...commodoreNotes(objective, board, stalled),
     ...(selected ? { selected: true } : {}),
     ...(review ? { review: (language: "en" | "ko") => reviewObjective(objective, language) } : {}),
     moveToGroup: (groupId: string | null) => moveObjective(objective, groupId),
@@ -118,8 +123,9 @@ function moveObjective(objective: Objective, groupId: string | null): void {
   if (api && groupId !== objective.groupId) void post(api, "/objective/patch", { objectiveId: objective.id, patch: { groupId } }).catch(() => undefined);
 }
 
-export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE): OperationCluster[] {
+export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE, observe: BoardObserver = () => null, now = Date.now()): OperationCluster[] {
   const out: OperationCluster[] = [];
+  const stalled = new Set(stalledObjectives(objectives, observe, now));
   const orderIn = new Map<string, number>();
   const byId = new Map(objectives.map((objective) => [objective.id, objective]));
   for (const objective of objectives) {
@@ -129,7 +135,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const live = (operationId: string | null | undefined): string | null => (operationId && operationId !== commander && activity.has(operationId) ? operationId : null);
     const liveMembers = objective.members.flatMap((member) => { const operationId = live(member.id); return operationId ? [{ member, operationId }] : []; });
     const fold = [...new Set([...(activity.has(commander) ? [commander] : []), ...liveMembers.map((entry) => entry.operationId), ...objective.missions.flatMap((mission) => { const operationId = live(mission.operationId); return operationId ? [operationId] : []; })])];
-    const row = rowOf(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.theaterId));
+    const row = rowOf(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.theaterId), stalled.has(objective.id));
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Operation 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
     const decisionRequest = !!objective.decisionRequest && !objective.done;
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
@@ -204,6 +210,17 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
 const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.zoneNote ? "zone" : "", row.selected === true] : null);
 const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
+/**
+ * 보드 줄의 관측 — 호스트 런타임 맵에서 온 요약 활동. 휴면(ended)은 수명주기 dormant 로 넘기고, 목록에 없는 Operation 은
+ * 관측 없음(null)이라 정체로 세지 않는다. 지휘관은 구성원을 끌어올리기 전 자기 활동으로 본다(서버 관측과 같은 축).
+ */
+const observationOf = (summary: ConsoleOperationSummary): BoardObservation => {
+  const activity = summary.ownActivity ?? summary.activity;
+  return activity === "ended" ? { lifecycle: "dormant", activity } : { lifecycle: "live", activity };
+};
+/** 정체의 30분 경계는 보드 사건 없이 지나가므로 시계로 다시 센다 — 감독자의 정체 점검과 같은 5분 간격. */
+const STALL_TICK_MS = 5 * 60_000;
+
 let cached: readonly OperationCluster[] = [];
 let cachedSignature = "";
 /** 마지막 계산의 입력 — 호스트는 렌더마다(끌기·캔버스 이동의 매 프레임) 스냅숏을 읽으므로, 입력이 같으면 다시 셈하지 않는다. */
@@ -214,7 +231,8 @@ export const objectivesClusterSource: OperationClusterSource = {
     const offObjective = subscribeObjective(listener);
     const offView = subscribeObjectiveView(listener);
     const offCommodore = subscribeCommodore(listener);
-    return () => { offObjective(); offView(); offCommodore(); };
+    const stallTick = setInterval(listener, STALL_TICK_MS);
+    return () => { offObjective(); offView(); offCommodore(); clearInterval(stallTick); };
   },
   get: () => {
     const summaries = operationSummaries();
@@ -224,11 +242,13 @@ export const objectivesClusterSource: OperationClusterSource = {
     const surfaceOpen = isObjectiveSurfaceOpen() && !activeOperationId();
     const theaterId = activeTheaterId();
     const selected = surfaceOpen ? readObjectiveView(theaterId).selected : null;
-    // 기한 지남은 날짜로 판정하므로 날이 바뀌면 다시 셈한다.
-    const inputs = [summaries, surfaceOpen, theaterId, selected, todayIso(), commodoreRevision(), ...theaterStates];
+    // 기한 지남은 날짜로, 정체는 시간으로 판정하므로 날·정체 점검 간격이 바뀌면 다시 셈한다.
+    const now = Date.now();
+    const inputs = [summaries, surfaceOpen, theaterId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), commodoreRevision(), ...theaterStates];
     if (inputs.length === cachedInputs.length && inputs.every((input, index) => input === cachedInputs[index])) return cached;
     const activity = new Map(summaries.map((summary) => [summary.id, summary.activity]));
-    const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf);
+    const observations = new Map(summaries.map((summary) => [summary.id, observationOf(summary)]));
+    const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, (operationId) => observations.get(operationId) ?? null, now);
     const nextSignature = signature(next);
     cachedInputs = inputs;
     if (nextSignature === cachedSignature) return cached;
