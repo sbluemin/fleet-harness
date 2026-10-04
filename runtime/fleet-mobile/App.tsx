@@ -265,7 +265,8 @@ export default function App(): React.JSX.Element {
   }, [addOpen, screen, state, showAllConsoles]);
 
   const connectionOverlayVisible = screen === "console" && state !== "connected";
-  const consoleAccessibilityHidden = connectionOverlayVisible || screen === "landing";
+  // 랜딩·스캐너처럼 Console을 덮는 전체 화면이 떠 있으면 뒤 WebView를 스크린 리더에서 숨긴다.
+  const consoleAccessibilityHidden = connectionOverlayVisible || screen !== "console";
   const retryBlocked = retryLeft !== null && retryLeft > 0;
   const retryTargetLabel = targets.find((target) => target.active)?.label.trim();
   const retryLabel = invalidLinkError && retryTargetLabel
