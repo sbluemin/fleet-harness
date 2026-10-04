@@ -52,6 +52,7 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
   return (
     <MobileSheet
       full
+      focusInputOnTouch={false}
       title={t("mobile.sheet.folder.title")}
       onClose={onClose}
       footer={<>
