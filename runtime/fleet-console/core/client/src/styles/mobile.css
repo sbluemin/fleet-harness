@@ -1284,20 +1284,6 @@ html[data-view-mode="mobile"] .quick-launch-pop {
 }
 html[data-view-mode="mobile"] .quick-launch-pop-item { min-height: 52px; }
 
-/* 새 기능(What's New, S-20) — 하단 시트 문법: 위 모서리 28, surface, 손잡이. 본문은 현행 릴리스 노트 데이터 그대로(D13). */
-html[data-view-mode="mobile"] .whatsnew-overlay { place-items: end stretch; padding: 0; }
-html[data-view-mode="mobile"] .whatsnew-card {
-  width: 100%;
-  max-width: none;
-  max-height: calc(100% - 56px);
-  color: var(--m-text);
-  background: var(--m-surface);
-  border: 0;
-  border-radius: 28px 28px 0 0;
-  box-shadow: none;
-  animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1);
-}
-html[data-view-mode="mobile"] .whatsnew-scrim { background: var(--m-scrim); }
 
 /* ⋮ 메뉴의 스위치 행(0.8배, 44×26 → 약 35×21) */
 .mobile-switch { position: relative; flex: none; width: 35px; height: 21px; margin-left: auto; background: var(--m-chip); border-radius: 11px; }
@@ -1329,3 +1315,22 @@ html[data-view-mode="mobile"] .whatsnew-scrim { background: var(--m-scrim); }
 .mobile-radio { position: relative; flex: none; width: 20px; height: 20px; border: 2px solid var(--m-text-muted); border-radius: 50%; }
 .mobile-radio.is-on { border-color: var(--m-text); }
 .mobile-radio.is-on::after { content: ""; position: absolute; inset: 3px; background: var(--m-text); border-radius: 50%; }
+
+/* 새 기능 시트 본문 · 업데이트 화면(S-50) */
+.mobile-whatsnew-version { margin: 8px 4px 6px; font-family: var(--m-reading); font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 32px; }
+.mobile-update-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 36px;
+  color: var(--m-text);
+  background: var(--m-bg);
+}
+.mobile-update-title { font-size: var(--t-lg); font-weight: var(--weight-bold); }
+.mobile-update-sub { margin: 0; color: var(--m-text-muted); font-size: var(--t-md); line-height: 22px; text-align: center; }
+.mobile-update-track { width: 220px; margin-top: 6px; }

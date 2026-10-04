@@ -8,6 +8,9 @@ import { deriveWhatsNewOverview, deriveWhatsNewTabs, filterWhatsNewSections, isW
 import { closeWhatsNew, selectReleaseNote } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, ReleaseNoteItem, ReleaseNoteSection } from "../../../core/client/src/integration/types.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
+import { MobileIcon } from "../../../core/client/src/chrome/mobile/mobile-icons.js";
+import { MobileSheet } from "../../../core/client/src/chrome/mobile/mobile-sheet.js";
+import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 
 interface WhatsNewModalProps {
   readonly state: ConsoleState;
@@ -38,6 +41,7 @@ export function WhatsNewModal({ state, automaticSuspended = false }: WhatsNewMod
   const tabRefs = useRef(new Map<WhatsNewTabId, HTMLButtonElement>());
   const [activeTab, setActiveTab] = useState<WhatsNewTabId>("overview");
   const globalSettings = useGlobalSettingsStore();
+  const mobileLayout = useViewMode().effective === "mobile";
   // 본문은 마지막으로 적용된 릴리스 노트 언어를 따르고, 첫 fetch 전만 Console 언어에서 기본값을 얻는다.
   // 모달 chrome은 별도로 useT()를 사용하므로 Settings의 Auto/명시 언어를 계속 따른다.
   const locale = state.releaseNotesLocale ?? resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
@@ -143,6 +147,28 @@ export function WhatsNewModal({ state, automaticSuspended = false }: WhatsNewMod
     setActiveTab(tabId);
     requestAnimationFrame(() => tabRefs.current.get(tabId)?.focus());
   };
+
+  // 모바일 배치: 하단 시트 — 큰 버전 제목, 항목 행(아이콘 · 제목 · 한 줄 요약), 「확인」. 데이터는 현행 릴리스 노트 그대로(D13).
+  if (mobileLayout) {
+    const overview = deriveWhatsNewOverview(selected);
+    return (
+      <MobileSheet
+        title={t("chrome.whatsnew.title")}
+        onClose={closeWhatsNew}
+        footer={<button type="button" className="mobile-pill-secondary is-inverse" onClick={closeWhatsNew}>{t("mobile.sheet.confirm")}</button>}
+      >
+        <div className="mobile-whatsnew-version">{selected.version === "Unreleased" ? t("chrome.whatsnew.versionUnreleased") : selected.version}</div>
+        <div className="mobile-group is-flush">
+          {overview.map((item) => (
+            <div className="mobile-group-row is-two" key={item.id}>
+              <span className="mobile-group-row-icon" aria-hidden="true"><MobileIcon name="spark" /></span>
+              <span className="mobile-group-row-copy">{item.label}<small lang={contentLanguage}>{item.summary}</small></span>
+            </div>
+          ))}
+        </div>
+      </MobileSheet>
+    );
+  }
 
   return (
     <div className="whatsnew-overlay" role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">

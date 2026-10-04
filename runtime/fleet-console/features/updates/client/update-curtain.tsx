@@ -1,4 +1,6 @@
 import { useT } from "../../../core/client/src/i18n/index.js";
+import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
+import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { UPDATE_CURTAIN_STAGES, acknowledgeUpdateOutcome, useUpdateProgress } from "./update-progress-store.js";
 
 /**
@@ -14,6 +16,8 @@ import { UPDATE_CURTAIN_STAGES, acknowledgeUpdateOutcome, useUpdateProgress } fr
 export function UpdateCurtain() {
   const t = useT();
   const state = useUpdateProgress();
+  const mobileLayout = useViewMode().effective === "mobile";
+  const currentVersion = useConsoleState().version;
 
   if (state.outcome !== null) {
     const failed = state.outcome === "failed";
@@ -40,6 +44,27 @@ export function UpdateCurtain() {
   const activeIndex = UPDATE_CURTAIN_STAGES.indexOf(state.stage);
   // 지나간 단계와 남을 단계의 이름은 싣지 않는다 — 기다리는 사람에게 필요한 것은 지금 무엇을
   // 하고 있는지와 얼마나 남았는지뿐이다. 칸들이 "얼마나"를, 한 줄이 "무엇을" 말한다.
+  // 모바일 배치(S-50): 가운데 묶음 — 워드마크, 「Console을 업데이트하는 중」, 「이전 → 새 버전」과 끝 안내, 진행 칸.
+  // 닫기 알약과 「진행 중인 작업은 멈추지 않습니다」는 넣지 않는다: 이 커튼에는 닫는 동작이 없고(종착 기록만 걷는다),
+  // 작업이 멈추지 않는다는 사실은 확인되지 않았다(D40).
+  if (mobileLayout) {
+    return (
+      <div className="mobile-update-screen" role="status" aria-live="polite">
+        <span className="mobile-wordmark">Fleet</span>
+        <strong className="mobile-update-title">{t("mobile.update.title")}</strong>
+        <p className="mobile-update-sub">
+          {state.targetVersion ? `${currentVersion} → ${state.targetVersion}` : t(`chrome.update.step.${state.stage}`)}
+          <br />
+          {t("mobile.update.note")}
+        </p>
+        <span className="update-curtain-track mobile-update-track" aria-hidden="true">
+          {UPDATE_CURTAIN_STAGES.map((key, index) => (
+            <i key={key} className={index < activeIndex ? "is-done" : index === activeIndex ? "is-now" : undefined} />
+          ))}
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="update-curtain" role="status" aria-live="polite">
       <div className="update-curtain-plate">

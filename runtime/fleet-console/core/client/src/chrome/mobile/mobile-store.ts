@@ -32,7 +32,28 @@ export type MobileDestination =
   | { readonly kind: "plugins" }
   | { readonly kind: "plugin"; readonly entryId: string };
 
-let destination: MobileDestination = { kind: "home" };
+// 새로고침해도 보던 목적지를 잃지 않게 주소(`?dest=`)에 남긴다 — 첫 화면(IA-G2)은 앱을 새로 열 때의 기본이고, 새로고침은 그 자리 유지다.
+const DEST_PARAM = "dest";
+
+function readDestinationFromUrl(): MobileDestination {
+  if (typeof window === "undefined") return { kind: "home" };
+  const raw = new URLSearchParams(window.location.search).get(DEST_PARAM);
+  if (raw === "attention" || raw === "archive" || raw === "search" || raw === "plugins") return { kind: raw };
+  if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) return { kind: "plugin", entryId: raw.slice(7) };
+  return { kind: "home" };
+}
+
+function writeDestinationToUrl(next: MobileDestination): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}` : next.kind;
+  if ((url.searchParams.get(DEST_PARAM)) === value) return;
+  if (value === null) url.searchParams.delete(DEST_PARAM);
+  else url.searchParams.set(DEST_PARAM, value);
+  window.history.replaceState(window.history.state, "", url);
+}
+
+let destination: MobileDestination = readDestinationFromUrl();
 
 export function useMobileDestination(): MobileDestination {
   return useSyncExternalStore(subscribe, () => destination);
@@ -43,6 +64,7 @@ export function getMobileDestination(): MobileDestination { return destination; 
 export function setMobileDestination(next: MobileDestination): void {
   if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId) return;
   destination = next;
+  writeDestinationToUrl(next);
   emit();
 }
 
