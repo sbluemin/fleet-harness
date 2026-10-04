@@ -9,6 +9,8 @@ import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-ico
 import { MobileMonogram } from "../../../../core/client/src/chrome/mobile/mobile-monogram.js";
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
+import { getMobileDrawerOpen, getMobileSheetStack } from "../../../../core/client/src/chrome/mobile/mobile-store.js";
+import { reportMobileChrome } from "../../../../core/client/src/integration/mobile-appearance-store.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { buildQuickLaunchEffortDeck, isMentionSelectable, mentionTargetName, type QuickLaunchMentionTarget, type QuickLaunchPluginMentionRow } from "../quick-launch.js";
 import type { QuickLaunchStartView } from "../quick-launch-preferences.js";
@@ -98,6 +100,22 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
     // 열려 있는 동안 한 번 — 닫기 콜백은 store 동작이라 바뀌지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // 시트가 떠 있는 동안 앱의 아래 시스템 바는 시트 면이다(S-03) — 셸 시트와 같은 신호를 보내고, 닫히면 셸 상태(드로어·셸 시트)로 되돌린다.
+  useEffect(() => {
+    reportMobileChrome("bg", "surface");
+    return () => {
+      const drawer = getMobileDrawerOpen();
+      reportMobileChrome(drawer ? "bg-deep" : "bg", getMobileSheetStack().length > 0 ? "surface" : drawer ? "bg-deep" : "bg");
+    };
+  }, []);
+  // 하위 시트에서 새 작업 시트로 돌아올 때는 입력칸에 포커스를 되돌리지 않는다 — 폰에서는 키보드가 다시 떠 뒤로를 한 번 더 눌러야 한다.
+  // (시트 골격은 열릴 때 첫 입력에 포커스를 주므로 그 직후에 거둔다. 자식 효과가 먼저 돌아 이 효과가 마지막이다.)
+  const previousSubRef = useRef<Sub | null>(null);
+  useEffect(() => {
+    const returning = previousSubRef.current !== null && sub === null;
+    previousSubRef.current = sub;
+    if (returning && document.activeElement === inputRef.current) inputRef.current?.blur();
+  }, [sub, inputRef]);
   useEffect(() => {
     if (sub === null) return;
     let id: number | null = pushOverlayHistory(() => { id = null; setSub(null); });
