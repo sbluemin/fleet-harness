@@ -1206,3 +1206,95 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-search-row { width: calc(100% - 24px); }
 .mobile-drawer-row-copy small.is-plain { color: var(--m-text-muted); }
 .mobile-group-row.is-dim { opacity: 0.5; }
+
+/* 새 작업(Quick Launch, S-11a) — 데스크톱의 가운데 부유 카드를 모바일에서는 하단 시트 문법으로 입힌다.
+   로직·멘션·첨부·모델 메뉴는 그대로이고 표면만 바뀐다(「하단에 고정」·멘션 포커스는 모바일에서 숨긴다 — D41). */
+html[data-view-mode="mobile"] .quick-launch-overlay {
+  place-items: end stretch;
+  padding: 0;
+  background: var(--m-scrim);
+  animation: mobile-fade-in 200ms;
+}
+
+html[data-view-mode="mobile"] .quick-launch-card {
+  width: 100%;
+  max-width: none !important;
+  padding: 26px 16px max(18px, env(safe-area-inset-bottom));
+  color: var(--m-text);
+  background: var(--m-surface);
+  border: 0;
+  border-radius: 28px 28px 0 0;
+  box-shadow: none;
+  animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+
+html[data-view-mode="mobile"] .quick-launch-card::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  width: 32px;
+  height: 4px;
+  background: var(--m-handle);
+  border-radius: 2px;
+  transform: translateX(-50%);
+}
+
+html[data-view-mode="mobile"] .quick-launch-glass { display: none; }
+html[data-view-mode="mobile"] .quick-launch-bar-toggles { display: none; }
+
+html[data-view-mode="mobile"] .quick-launch-field { background: transparent; border: 0; padding: 0; }
+html[data-view-mode="mobile"] .quick-launch-input {
+  min-height: 104px;
+  padding: 12px 14px;
+  color: var(--m-text);
+  font-size: var(--t-base);
+  line-height: 22px;
+  background: var(--m-bg);
+  border: 1px solid var(--m-hairline-strong);
+  border-radius: 14px;
+}
+
+html[data-view-mode="mobile"] .quick-launch-chip {
+  height: 40px;
+  padding: 0 16px;
+  color: var(--m-text);
+  font-size: var(--t-md);
+  background: var(--m-chip);
+  border: 0;
+  border-radius: 20px;
+}
+
+html[data-view-mode="mobile"] .quick-launch-submit {
+  width: 40px;
+  height: 40px;
+  color: var(--m-on-inverse);
+  background: var(--m-inverse);
+  border: 0;
+  border-radius: 50%;
+}
+html[data-view-mode="mobile"] .quick-launch-submit:disabled { opacity: 0.4; }
+
+html[data-view-mode="mobile"] .quick-launch-pop {
+  color: var(--m-text);
+  background: var(--m-surface);
+  border: 0;
+  border-radius: 14px;
+  box-shadow: var(--m-shadow);
+}
+html[data-view-mode="mobile"] .quick-launch-pop-item { min-height: 52px; }
+
+/* 새 기능(What's New, S-20) — 하단 시트 문법: 위 모서리 28, surface, 손잡이. 본문은 현행 릴리스 노트 데이터 그대로(D13). */
+html[data-view-mode="mobile"] .whatsnew-overlay { place-items: end stretch; padding: 0; }
+html[data-view-mode="mobile"] .whatsnew-card {
+  width: 100%;
+  max-width: none;
+  max-height: calc(100% - 56px);
+  color: var(--m-text);
+  background: var(--m-surface);
+  border: 0;
+  border-radius: 28px 28px 0 0;
+  box-shadow: none;
+  animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+html[data-view-mode="mobile"] .whatsnew-scrim { background: var(--m-scrim); }
