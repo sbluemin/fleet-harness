@@ -73,8 +73,9 @@ internal sealed interface AppearanceMessage {
 internal object AppearanceBridge {
   const val MESSAGE_OBJECT = "fleetAppearance"
   private const val MAX_BODY = 256
-  private val CHROME_TOP = setOf("bg", "bg-deep")
-  private val CHROME_BOTTOM = setOf("bg", "bg-deep", "surface")
+  // "scrim" (v1.5): the mode's bg under the page's sheet scrim, so the bars dim with the page.
+  private val CHROME_TOP = setOf("bg", "bg-deep", "scrim")
+  private val CHROME_BOTTOM = setOf("bg", "bg-deep", "surface", "scrim")
 
   /** The whole gate. Each argument is a condition the caller measured on the arriving message. */
   fun accept(fromCommittedView: Boolean, isMainFrame: Boolean, fromGatewayOrigin: Boolean, body: String?): AppearanceMessage? {
@@ -121,8 +122,10 @@ internal object AppearanceBridge {
     }
     // The shell's own version, for the page's version row (v1.4). Read from the package, still quoted.
     appVersion?.takeIf { it.isNotBlank() }?.let { value.put("app", JSONObject().put("version", it.take(64))) }
+    // What this shell's chrome channel accepts beyond v1 (v1.5): the page sends "scrim" only when this says so.
+    value.put("chrome", JSONObject().put("scrim", true))
     val literal = JSONObject.quote(value.toString())
-    return "(() => { const v = JSON.parse($literal); if (v.console) Object.freeze(v.console); Object.freeze(v); " +
+    return "(() => { const v = JSON.parse($literal); if (v.console) Object.freeze(v.console); if (v.chrome) Object.freeze(v.chrome); Object.freeze(v); " +
       "Object.defineProperty(window, \"__fleetMobileAppearance\", { value: v, configurable: true, enumerable: false, writable: false }); " +
       "window.dispatchEvent(new CustomEvent(\"fleet-mobile-appearance\", { detail: v })); })();"
   }

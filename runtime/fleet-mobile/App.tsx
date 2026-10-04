@@ -31,10 +31,10 @@ type WindowInsets = { readonly top: number; readonly right: number; readonly bot
 const NO_INSETS: WindowInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /** The surfaces the page reports behind the status bar and the gesture bar (impl-spec S-03). */
-type Chrome = { readonly top: "bg" | "bg-deep"; readonly bottom: "bg" | "bg-deep" | "surface" };
+type Chrome = { readonly top: "bg" | "bg-deep" | "scrim"; readonly bottom: "bg" | "bg-deep" | "surface" | "scrim" };
 
 const PLAIN_CHROME: Chrome = { top: "bg", bottom: "bg" };
-const CHROME_FILL = { "bg": "bg", "bg-deep": "bgDeep", "surface": "surface" } as const;
+const CHROME_FILL = { "bg": "bg", "bg-deep": "bgDeep", "surface": "surface", "scrim": "bgUnderScrim" } as const;
 
 const WORDMARK_FONT = Platform.select({ ios: "ui-serif", android: "serif", default: "serif" });
 
@@ -381,15 +381,19 @@ export default function App(): React.JSX.Element {
   const overlayName = targetLabel?.trim() || null;
   const pageShown = screen === "console" && state === "connected";
 
+  // A bar under the page's scrim is a dark face in either mode, so its icons turn light (bridge chrome "scrim").
+  const topDimmed = pageShown && chrome.top === "scrim";
+  const bottomDimmed = pageShown && chrome.bottom === "scrim";
+
   // Android draws the gesture-bar icons itself; they follow whatever face the shell shows.
   useEffect(() => {
-    consoleRef.current?.setNavigationBarStyle(scanning || dark);
-  }, [scanning, dark]);
+    consoleRef.current?.setNavigationBarStyle(scanning || dark || bottomDimmed);
+  }, [scanning, dark, bottomDimmed]);
 
   return (
     <View style={[styles.root, { backgroundColor: surfaceColor }]}>
       <StatusBar
-        barStyle={scanning || palette.scheme === "dark" ? "light-content" : "dark-content"}
+        barStyle={scanning || palette.scheme === "dark" || topDimmed ? "light-content" : "dark-content"}
         backgroundColor={surfaceColor}
       />
       <View

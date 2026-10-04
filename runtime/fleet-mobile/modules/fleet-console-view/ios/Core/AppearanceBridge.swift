@@ -60,8 +60,9 @@ public enum AppearanceMessage: Equatable {
 public enum AppearanceBridge {
   public static let messageObject = "fleetAppearance"
   private static let maxBody = 256
-  private static let chromeTop: Set<String> = ["bg", "bg-deep"]
-  private static let chromeBottom: Set<String> = ["bg", "bg-deep", "surface"]
+  // "scrim"(v1.5) — 페이지 시트 스크림 아래의 지금 모드 bg. 바가 페이지와 함께 어두워진다.
+  private static let chromeTop: Set<String> = ["bg", "bg-deep", "scrim"]
+  private static let chromeBottom: Set<String> = ["bg", "bg-deep", "surface", "scrim"]
 
   /// 게이트 전체. 인자 하나하나가 호출자가 도착한 메시지에서 잰 조건이다.
   public static func accept(fromCommittedView: Bool, isMainFrame: Bool, fromGatewayOrigin: Bool, body: Any?) -> AppearanceMessage? {
@@ -104,9 +105,11 @@ public enum AppearanceBridge {
     }
     // 셸 자신의 버전(v1.4) — 페이지의 버전 행이 쓴다. 번들에서 읽은 값이지만 그래도 인용한다.
     if let appVersion, !appVersion.isEmpty { value["app"] = ["version": String(appVersion.prefix(64))] }
+    // v1 너머로 이 셸의 chrome 통로가 받는 것(v1.5) — 페이지는 이것이 있을 때만 "scrim"을 보낸다.
+    value["chrome"] = ["scrim": true]
     let json = (try? JSONSerialization.data(withJSONObject: value)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
     let literal = (try? JSONEncoder().encode(json)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"{}\""
-    return "(() => { const v = JSON.parse(\(literal)); if (v.console) Object.freeze(v.console); Object.freeze(v); "
+    return "(() => { const v = JSON.parse(\(literal)); if (v.console) Object.freeze(v.console); if (v.chrome) Object.freeze(v.chrome); Object.freeze(v); "
       + "Object.defineProperty(window, \"__fleetMobileAppearance\", { value: v, configurable: true, enumerable: false, writable: false }); "
       + "window.dispatchEvent(new CustomEvent(\"fleet-mobile-appearance\", { detail: v })); })();"
   }

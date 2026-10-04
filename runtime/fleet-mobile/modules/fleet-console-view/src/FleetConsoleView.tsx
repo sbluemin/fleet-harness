@@ -21,8 +21,8 @@ export interface FleetConsoleEvent {
   readonly colorMode?: ColorMode;
   readonly fontScale?: FontScale;
   /** On "chrome": which mobile surface the page shows against the status bar and the gesture bar. */
-  readonly top?: "bg" | "bg-deep";
-  readonly bottom?: "bg" | "bg-deep" | "surface";
+  readonly top?: "bg" | "bg-deep" | "scrim";
+  readonly bottom?: "bg" | "bg-deep" | "surface" | "scrim";
 }
 
 export type ColorMode = "system" | "dark" | "light";

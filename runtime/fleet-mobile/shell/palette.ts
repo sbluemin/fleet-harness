@@ -33,11 +33,13 @@ export interface Palette {
   readonly handle: string;
   /** The input field face; the web sets white on light rather than the surface token. */
   readonly field: string;
+  /** `bg` under `scrim`: the bar colour while the page dims for a sheet (bridge chrome "scrim", v1.5). */
+  readonly bgUnderScrim: string;
   readonly id: Readonly<Record<IdTone, string>>;
 }
 
 export const PALETTE: Readonly<Record<Scheme, Palette>> = {
-  dark: {
+  dark: withScrimBar({
     scheme: "dark",
     bgDeep: "#111111",
     bg: "#151515",
@@ -70,8 +72,8 @@ export const PALETTE: Readonly<Record<Scheme, Palette>> = {
       plum: "#be9dc8",
       rose: "#ce99b1",
     },
-  },
-  light: {
+  }),
+  light: withScrimBar({
     scheme: "light",
     bgDeep: "#efeee9",
     bg: "#f7f6f2",
@@ -104,8 +106,29 @@ export const PALETTE: Readonly<Record<Scheme, Palette>> = {
       plum: "#7a5186",
       rose: "#8b4b6b",
     },
-  },
+  }),
 };
+
+function withScrimBar(palette: Omit<Palette, "bgUnderScrim">): Palette {
+  return { ...palette, bgUnderScrim: overlay(palette.bg, palette.scrim) };
+}
+
+/**
+ * Lays an `rgba()` colour over an opaque `#rrggbb`, the way the WebView paints the page's scrim: the alpha
+ * is quantised to 8 bits first and each channel rounded, so the bars match the dimmed page to the digit
+ * (dark #151515 under 50% black → #0a0a0a, light #f7f6f2 under rgb(20 20 18 / .32) → #aeadaa).
+ */
+export function overlay(base: string, rgba: string): string {
+  const under = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(base);
+  const over = /^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/.exec(rgba);
+  if (!under || !over) return base;
+  const alpha = Math.round(Number(over[4]) * 255) / 255;
+  const channel = (index: number) => {
+    const value = Math.round(parseInt(under[index]!, 16) * (1 - alpha) + Number(over[index]) * alpha);
+    return value.toString(16).padStart(2, "0");
+  };
+  return `#${channel(1)}${channel(2)}${channel(3)}`;
+}
 
 /** The scanner is a camera context and stays dark whatever the mode (impl-spec S-24). */
 export const SCANNER = {
