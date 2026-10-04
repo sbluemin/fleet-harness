@@ -24,6 +24,7 @@ export interface SidecarSupervisorOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly lockFile: string;
   readonly ownerId: string;
+  readonly shutdownSettleMs?: number;
   /**
    * Released runtimes only. A Console release that predates the lock reclaim protocol (see isPreReclaimConsoleVersion)
    * cannot clear the lock an exited Console left, so for that runtime alone this Desktop still clears it itself.
@@ -53,14 +54,14 @@ type LockObservation =
 interface MissingLockProbe { readonly kind: "missing"; }
 interface BlockedLockProbe { readonly kind: "blocked"; readonly code: "console_lock_refused" | "console_lock_ownerless"; readonly detail: string; }
 interface UntrustedLockProbe { readonly kind: "untrusted"; readonly contents: string; readonly pid: number; readonly issue: string; }
-// 초기화 안내는 대기에만 쓴다. signal 정체 판정에는 여전히 unanswered로 전달한다.
+// 초기화 안내는 시작 대기와 Quit의 최초 정체 확인에 쓴다. SIGKILL 재증명에서는 여전히 unanswered다.
 type SidecarHealth = ConsoleLockHealthEvidence & { readonly starting?: true };
 interface UnhealthyLockProbe { readonly kind: "unhealthy"; readonly stored: StoredLock; readonly health: SidecarHealth; }
 interface HealthyLockProbe { readonly kind: "healthy"; readonly stored: StoredLock; readonly url: string; readonly health: ConsoleLockHealthEvidence; }
 type LockProbe = MissingLockProbe | BlockedLockProbe | UntrustedLockProbe | UnhealthyLockProbe | HealthyLockProbe;
 type StartLockProbe = Exclude<LockProbe, UnhealthyLockProbe> | (UnhealthyLockProbe & { readonly lingering?: true });
 type SlotDecision = { readonly kind: "adopt"; readonly url: string } | { readonly kind: "ready" } | { readonly kind: "changed" };
-type TerminationOutcome = "exited" | "closing" | "unverified";
+type TerminationOutcome = "exited" | "released" | "unverified" | "unhealthy";
 
 const STARTUP_ATTEMPTS = 40;
 const STARTUP_DELAY_CAP_MS = 1_000;
@@ -153,12 +154,9 @@ export class SidecarSupervisor {
       throw new Error("console_lock_process_unverified");
     }
     const outcome = await this.terminateVerifiedProcess(current.stored);
-    if (outcome === "closing" && !await this.waitForExit(pid, SHUTDOWN_SETTLE_MS)) {
-      this.options.log.error(`console_lock_process_unverified: pid ${pid} closed its listener after SIGTERM but did not exit; no second Console was started`);
-      throw new Error("console_lock_process_unverified");
-    }
     if (outcome === "unverified") throw new Error("console_lock_process_unverified");
-    // The Console has exited. It released its lock itself, or the next pass finds a dead lock for the new Console to reclaim.
+    if (outcome === "unhealthy") throw new Error("console_lock_process_unhealthy");
+    // pid가 끝났거나 lock을 놓았다. 잔존 Console의 자식 수거는 방해하지 않고 다음 pass에서 slot을 다시 확인한다.
     return { kind: "changed" };
   }
   /**
@@ -245,11 +243,16 @@ export class SidecarSupervisor {
   }
   /** Quit. Never removes the lock: a lock left by an exited Console is reclaimed by the next Console that starts. */
   async stop(): Promise<void> {
+    // 최초 health 재시도 2s + 정리 예산 + 강제 종료 확인 3s. 재증명 시간은 마지막 확인 예산에서만 차감한다.
+    const deadline = Date.now() + 2_000 + this.shutdownSettleMs + STOP_ATTEMPTS * STOP_DELAY_MS;
     const current = await this.probe({ settleOwnerless: false });
     if (current.kind !== "healthy" && current.kind !== "unhealthy") return;
     if (!this.isOwned(current.stored.lock)) return;
     const { pid } = current.stored.lock;
-    const identity = this.identifyLockProcess(current);
+    // token 인증을 통과한 503+pid는 초기화 중인 소유자다. 채택은 하지 않지만 Quit 정리 대상으로 존중한다.
+    const identity = current.kind === "unhealthy" && current.health.starting && this.isProcessAlive(pid)
+      ? "verified"
+      : this.identifyLockProcess(current);
     if (identity === "unverified") {
       // Quit은 막지 않되 정체를 증명하지 못한 pid에는 신호를 보내지 않고, lock도 그대로 둔다.
       this.options.log.error(`console_lock_process_unverified: pid ${pid} holds ${this.options.lockFile} but did not prove it is the Console; left running`);
@@ -264,10 +267,12 @@ export class SidecarSupervisor {
       this.options.log.info(`left the lock of exited pid ${pid} in place for the next Console to reclaim`);
       return;
     }
-    // 정체가 확인된 sidecar는 health에 답하지 못해도(멈춘 자기 sidecar) Quit이 남겨서는 안 된다. 다만 채택한 sidecar가
-    // SIGTERM 뒤 정체를 다시 증명하지 못하면 승격하지 않고 남긴다(terminateVerifiedProcess가 기록한다). Quit은 막지 않는다.
-    // 리스너를 닫고 정리 중인 Console(closing)은 스스로 끝나며 lock도 직접 놓는다. Quit은 그것을 기다리지 않는다.
-    await this.terminateVerifiedProcess(current.stored);
+    // 재증명 실패나 강제 종료 실패는 기록하되 Quit 자체는 막지 않는다. lock 해제 뒤 잔존 구간에는 신호를 보내지 않는다.
+    try {
+      await this.terminateVerifiedProcess(current.stored, deadline);
+    } catch (error) {
+      this.options.log.error(`console_lock_process_unhealthy: pid ${pid} could not be stopped; continuing Quit: ${this.describeError(error)}`);
+    }
   }
   private async probe(options: { readonly settleOwnerless: boolean }): Promise<LockProbe> {
     const observed = options.settleOwnerless ? await this.observeLockSettled() : this.observeLock();
@@ -413,31 +418,53 @@ export class SidecarSupervisor {
       throw new Error(`console_lock_cleanup_failed: ${this.describeError(error)}`);
     }
   }
+  private get shutdownSettleMs(): number { return this.options.shutdownSettleMs ?? SHUTDOWN_SETTLE_MS; }
+  /** pid·token이 달라지거나 lock이 없어야 해제 증거다. 읽기 실패는 해제로 추정하지 않는다. */
+  private shutdownLockState(stored: StoredLock): "held" | "released" | "unknown" {
+    const observed = this.observeLock();
+    if (observed.kind === "absent") return "released";
+    if (observed.kind !== "trusted") return "unknown";
+    return observed.stored.lock.pid === stored.lock.pid && observed.stored.lock.token === stored.lock.token ? "held" : "released";
+  }
   /**
-   * 정체가 확인된 pid를 SIGTERM→(대기)→SIGKILL로 종료한다. exited는 pid가 끝났다(ESRCH)는 뜻이다. closing은 채택한
-   * sidecar가 SIGTERM 뒤 listener를 닫았지만 아직 살아 있다는 뜻이다 — 정리를 마치고 lock을 스스로 놓는 중이므로 신호를
-   * 더 보내지 않는다. unverified는 정체를 다시 증명하지 못한 프로세스가 살아 남았다는 뜻이다.
-   * 대기 중 그 프로세스가 lock을 남긴 채 죽고 pid가 무관한 프로세스에 재할당될 수 있으므로, SIGKILL 직전에 처음 판별과 같은
-   * 수준으로 정체를 다시 증명한다. lock 파일이 그대로라는 사실은 증명이 아니다. 아직 수거되지 않은 자기 child는 그대로 승격하고,
-   * 채택한 sidecar는 lock token health가 같은 pid를 다시 답할 때만 승격한다. 그 대가로 채택한 sidecar가 SIGTERM 뒤 멈춰
-   * health에도 답하지 못하면 SIGKILL하지 않고 남긴다.
+   * pid 종료 또는 같은 pid·token lock의 해제까지 기다린다. lock을 놓은 Console은 SDK 자식을 수거하는 중일 수 있어
+   * SIGTERM조차 더 보내지 않는다. 정리 예산 뒤에도 같은 lock이 남아 있을 때만 정체를 다시 증명하고 SIGKILL한다.
+   * own은 미수거 handle, adopted는 token health의 같은 pid 응답이 증거다. lock 자체는 정체 증거가 아니다.
    */
-  private async terminateVerifiedProcess(stored: StoredLock): Promise<TerminationOutcome> {
+  private async terminateVerifiedProcess(stored: StoredLock, quitDeadline = Infinity): Promise<TerminationOutcome> {
     const { pid } = stored.lock;
+    if (!this.isProcessAlive(pid)) return "exited";
+    const initialLock = this.shutdownLockState(stored);
+    if (initialLock === "released") return "released";
+    if (initialLock !== "held") return this.leaveUnverifiedShutdown(pid);
     await this.signal(pid, "SIGTERM");
-    if (await this.waitForExit(pid, STOP_ATTEMPTS * STOP_DELAY_MS)) return "exited";
-    if (!this.isOwnLiveChild(pid)) {
-      const pidAlive = this.isProcessAlive(pid);
-      const identity = identifyConsoleLockOwner({ lockPid: pid, pidAlive, health: await this.probeHealth(stored) });
-      if (identity === "absent") return pidAlive && this.isProcessAlive(pid) ? "closing" : "exited";
-      if (identity === "unverified") {
-        this.options.log.error(`console_lock_process_unverified: pid ${pid} outlived SIGTERM but did not prove it is still the Console; not escalating to SIGKILL`);
-        return "unverified";
-      }
+    const deadline = Date.now() + this.shutdownSettleMs;
+    for (;;) {
+      if (!this.isProcessAlive(pid)) return "exited";
+      if (this.shutdownLockState(stored) === "released") return "released";
+      if (Date.now() >= deadline) break;
+      await delay(STOP_DELAY_MS);
     }
+    const settledLock = this.shutdownLockState(stored);
+    if (settledLock === "released") return "released";
+    if (settledLock !== "held") return this.leaveUnverifiedShutdown(pid);
+    // 대기 전의 own 여부를 재사용하지 않는다. 수거되었거나 다른 child로 바뀌었으면 health로 다시 증명해야 한다.
+    const health = this.isOwnLiveChild(pid) ? null : await this.probeHealth(stored);
+    const identity = this.isOwnLiveChild(pid) || (health !== null && identifyConsoleLockOwner({ lockPid: pid, pidAlive: this.isProcessAlive(pid), health }) === "verified");
+    if (!this.isProcessAlive(pid)) return "exited";
+    // health를 기다리는 동안 해제될 수 있으므로 승격 직전에 정지 증거도 다시 확인한다.
+    const finalLock = this.shutdownLockState(stored);
+    if (finalLock === "released") return "released";
+    if (!identity || finalLock !== "held") return this.leaveUnverifiedShutdown(pid);
     await this.signal(pid, "SIGKILL");
-    if (await this.waitForExit(pid, STOP_ATTEMPTS * STOP_DELAY_MS)) return "exited";
-    throw new Error("console_lock_process_unhealthy");
+    const exitBudget = Math.max(0, Math.min(STOP_ATTEMPTS * STOP_DELAY_MS, quitDeadline - Date.now()));
+    if (await this.waitForExit(pid, exitBudget)) return "exited";
+    this.options.log.error(`console_lock_process_unhealthy: pid ${pid} outlived SIGKILL; left running`);
+    return "unhealthy";
+  }
+  private leaveUnverifiedShutdown(pid: number): "unverified" {
+    this.options.log.error(`console_lock_process_unverified: pid ${pid} lacks shutdown ownership or identity evidence; no further signal sent`);
+    return "unverified";
   }
   private async waitForExit(pid: number, budgetMs: number): Promise<boolean> {
     const deadline = Date.now() + budgetMs;
