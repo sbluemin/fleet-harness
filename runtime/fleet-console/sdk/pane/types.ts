@@ -291,6 +291,11 @@ export interface MobileBarMenuItem {
   /** 파괴 항목 — 호스트가 맨 아래로 내리고 위험 색을 입힌다. */
   readonly destructive?: boolean;
   readonly disabled?: boolean;
+  /**
+   * 있으면 행 오른쪽에 스위치를 그린다(role=menuitemcheckbox, aria-checked). `run`이 토글이고 다음 상태는 플러그인이 정해
+   * 다시 `set`/`setMenuItems`로 올린다.
+   */
+  readonly checked?: boolean;
   readonly run: () => void;
 }
 
