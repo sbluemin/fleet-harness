@@ -1054,11 +1054,14 @@ describe("Instrument core design contract", () => {
     );
     expect(between).not.toBe("");
     const elementsBetween = [...between.matchAll(/^\s{8}<([A-Za-z][\w.]*)/gm)].map((m) => m[1]);
-    expect(elementsBetween).toEqual(["FloatingWidgetLayer", "div"]);
-    expect(between).toContain('<div className="console-shell-bars">');
+    // 바 자리는 한 곳(`shellBars`)에서 정의되고 데스크톱은 이 구간에, 모바일 배치는 상단 막대 아래에 같은 자리를 놓는다.
+    expect(elementsBetween).toEqual(["FloatingWidgetLayer"]);
+    expect(between).toContain("shellBars");
+    const slot = app.slice(app.indexOf("const shellBars"));
+    expect(slot).toContain('<div className="console-shell-bars">');
     // 알려진 흐름 바 넷은 그 자리 안에 있어야 한다.
     for (const bar of ["console-link-banner", "<UpdateCurtain />", "<ControlBar />"]) {
-      expect(between.slice(between.indexOf('<div className="console-shell-bars">'))).toContain(bar);
+      expect(slot.slice(slot.indexOf('<div className="console-shell-bars">'))).toContain(bar);
     }
   });
 
