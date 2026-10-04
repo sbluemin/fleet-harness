@@ -575,6 +575,14 @@ export function operationSummaries(): readonly ConsoleOperationSummary[] {
   return combinedSnapshot;
 }
 
+/**
+ * 일반 목록의 Operation 만 — 보관 describe 요약을 뺀다. 보드의 정체 관측은 이것만 본다: 서버는 보관된 Operation 의 관측 세션을
+ * 지워 관측 없음(null)으로 판정하므로, 화면용 「ended」 고정값을 휴면 관측으로 세면 클라이언트에만 거짓 정체가 선다.
+ */
+export function listedOperationSummaries(): readonly ConsoleOperationSummary[] {
+  return operationsSnapshot;
+}
+
 export function useOperationSummaries(): readonly ConsoleOperationSummary[] {
   return useSyncExternalStore(subscribeObjective, operationSummaries, operationSummaries);
 }
