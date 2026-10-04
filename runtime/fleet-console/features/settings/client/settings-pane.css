@@ -68,8 +68,6 @@
 .settings-pane :is(input, textarea, select) { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .settings-pane :is(.ai-gateway-model-controls, .ai-gateway-roster-head, .ai-gateway-endpoint, .agent-cli-path-actions) { flex-wrap: wrap; min-width: 0; max-width: 100%; }
 .settings-pane :is(.ai-gateway-model-row, .ai-gateway-model-text, .agent-cli-row, .agent-cli-path-form) { min-width: 0; max-width: 100%; }
-.settings-pane .ai-gateway-model-row { grid-template-columns: minmax(0, 1fr); }
-.settings-pane .ai-gateway-model-row .ai-gateway-model-controls { margin-left: 0; justify-content: flex-start; }
 .settings-pane :is(.ai-gateway-model-name, .agent-cli-name, .ai-gateway-provider-name) { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 .settings-pane .ai-gateway-roster-head { gap: 8px; }
 .settings-pane .backend-api-section-heading { letter-spacing: 0; text-transform: none; }
