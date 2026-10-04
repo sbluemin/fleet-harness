@@ -24,6 +24,8 @@ import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGly
 import { EffortTrack, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
 import { ChatBubbleIcon, TerminalViewIcon } from "./start-view-glyphs.js";
 import { ComposerAttachControl, ComposerBar, ComposerChip, ComposerField, ComposerInput, ComposerRestStrip, ComposerSubmitButton, renderUltracodeHighlight, syncComposerHighlight } from "./composer-blocks.js";
+import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
+import { MobileQuickLaunch } from "./mobile-quick-launch.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -98,6 +100,12 @@ export function QuickLaunch() {
   const location = useLocation();
   const registry = usePluginRegistry();
   useShortcutOverrides();
+  // 모바일 배치는 같은 상태·효과·제출 위에서 렌더만 갈라 시트(S-11)로 그린다. 고정(도킹)은 데스크톱 배치의 뜻이라
+  // 모바일에서는 서지 않고(D41), '/' 커맨드 덱도 없다 — 보이지 않는 덱이 제출을 막지 않게 파싱부터 끈다.
+  const mobileLayout = useViewMode().effective === "mobile";
+  const mobileLayoutRef = useRef(mobileLayout);
+  mobileLayoutRef.current = mobileLayout;
+  const readCommand = (value: string, caret: number): QuickLaunchCommandInput | null => (mobileLayoutRef.current ? null : readCommandInput(value, caret));
   // Cmd+K·사이드바·커맨드 밴드와 같은 마크 축. 미확인 완료도 어느 Operation을 고르는
   // 표면인가에 따라 사라지지 않아야 하므로 멘션 덱이 같은 외부 원장을 구독한다.
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
@@ -181,7 +189,7 @@ export function QuickLaunch() {
     if (dockSuppressed) setCollapsed(true);
   }, [dockSuppressed]);
 
-  const pinned = state.quickLaunchPinned && !dockSuppressed;
+  const pinned = state.quickLaunchPinned && !dockSuppressed && !mobileLayout;
   // 고정 중에는 컴포저가 상주한다 — 열림 여부가 아니라 배치가 이 표면의 존재를 결정한다.
   const open = state.quickLaunchOpen || pinned;
   const theaters = state.theaters ?? [];
@@ -459,7 +467,7 @@ export function QuickLaunch() {
     setMentionTarget(openingMention);
     // Escape가 보존한 미완의 커맨드("/model")도 초안이다 — 비운 채 되열면 덱 없는 문면에 Enter가
     // 프로즈 발사로 흘러, 보존이 명령을 프롬프트로 둔갑시킨다. 복원 문면을 그대로 재파싱한다.
-    setCommandInput(openingMention ? null : readCommandInput(restoredPrompt, restoredPrompt.length));
+    setCommandInput(openingMention ? null : readCommand(restoredPrompt, restoredPrompt.length));
     setCommandActiveIndex(0);
     setAttachmentErrorKey(null);
     setDragOver(false);
@@ -488,7 +496,7 @@ export function QuickLaunch() {
     setMentionTarget(addressed);
     setMentionToken(null);
     if (addressed) setMentionErrorKey(null);
-    setCommandInput(addressed ? null : readCommandInput(promptRef.current, promptRef.current.length));
+    setCommandInput(addressed ? null : readCommand(promptRef.current, promptRef.current.length));
     window.setTimeout(() => inputRef.current?.focus(), 0);
     setCommandActiveIndex(0);
   }, [open, pinned, resolveOpeningMention, state.quickLaunchMentionSeed]);
@@ -567,7 +575,7 @@ export function QuickLaunch() {
     }
     // 시드가 초안을 비운 뒤에는 빈 문면을 재파싱한다. 접힘/펼침 왕복은 유지된 문면에서
     // 커맨드를 되살린다 — "/model"을 프로즈로 둔갑시키지 않는다.
-    setCommandInput(nextMention ? null : readCommandInput(promptRef.current, promptRef.current.length));
+    setCommandInput(nextMention ? null : readCommand(promptRef.current, promptRef.current.length));
     setCommandActiveIndex(0);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [resolveOpeningMention]);
@@ -685,7 +693,7 @@ export function QuickLaunch() {
     const caret = element.selectionStart ?? nextPrompt.length;
     // 멘션 보유 중에는 '@'도 '/'도 리터럴로 남는다 — 행선지가 발사 좌표를 대신하는 동안 좌표
     // 커맨드는 설 자리가 없다(바가 런치 3종을 접는 것과 같은 배타).
-    const command = mentionTarget ? null : readCommandInput(nextPrompt, caret);
+    const command = mentionTarget ? null : readCommand(nextPrompt, caret);
     setCommandInput(command);
     setCommandActiveIndex(0);
     if (mentionTarget || command !== null) {
@@ -727,7 +735,7 @@ export function QuickLaunch() {
   // 파싱 상태를 문면과 같은 자리에서 함께 갱신해야 덱이 입력과 어긋나지 않는다.
   const applyCommandPrompt = useCallback((next: string) => {
     setPrompt(next);
-    setCommandInput(mentionTarget ? null : readCommandInput(next, next.length));
+    setCommandInput(mentionTarget ? null : readCommand(next, next.length));
     setCommandActiveIndex(0);
     const element = inputRef.current;
     // 제어 컴포넌트라 값 반영 뒤에야 높이를 잴 수 있다(pickMention과 같은 계약).
@@ -1575,6 +1583,64 @@ export function QuickLaunch() {
       : null);
   // 접힌 띠의 힌트는 등록부의 현재 조합을 말한다 — 재배정이 바뀌면 함께 바뀐다.
   const toggleChords = resolveShortcutChords("console.quick-launch");
+
+  if (mobileLayout) {
+    return (
+      <MobileQuickLaunch
+        inputRef={inputRef}
+        prompt={prompt}
+        onPromptChange={updatePrompt}
+        theaters={theaters}
+        theaterId={theaterId}
+        onTheater={(id) => { setTheaterId(id); writeQuickLaunchTheater(id); }}
+        groups={groups}
+        selectedRow={selectedRow}
+        effort={effort}
+        onModelRow={(row) => {
+          // 새 모델의 사다리에 없는 강도는 들고 갈 수 없다(모델 픽커·커맨드 덱과 같은 규칙).
+          const rowModel = row.launch.model ?? null;
+          const nextEffort = resolveRowEffort(row, effort);
+          setModel(rowModel);
+          setEffort(nextEffort);
+          writeQuickLaunchModelEffort(rowModel, nextEffort);
+        }}
+        onEffort={(next) => { setEffort(next); writeQuickLaunchModelEffort(model, next); }}
+        chatStartAvailable={chatStartAvailable}
+        chatStart={chatStart}
+        onStartView={(view) => { setStartView(view); writeQuickLaunchStartView(view); }}
+        ultracodeArmed={ultracodeArmed}
+        hasUltracodeWord={ultracodeTokens.length > 0}
+        onUltracode={(on) => {
+          // 켜기는 사람이 직접 친 것과 같은 결과다 — 문면 끝에 단어를 붙이거나, 이 초안에서 껐던 표식을 되살린다.
+          // 끄기는 현행 Backspace 감추기와 같다(단어는 남고 무장만 풀린다).
+          if (!on) { setUltracodeIgnored(true); return; }
+          if (ultracodeTokens.length > 0) { setUltracodeIgnored(false); return; }
+          const next = `${prompt}${prompt.length === 0 || /\s$/.test(prompt) ? "" : " "}ultracode`;
+          setPrompt(next);
+          promptRef.current = next;
+        }}
+        attachments={attachments}
+        onAddFiles={addAttachmentFiles}
+        onRemoveAttachment={removeAttachment}
+        mentionDeckOpen={mentionDeckOpen}
+        mentionEntries={mentionEntries}
+        pluginMentionRows={pluginMentionRows}
+        mentionTarget={mentionTarget}
+        onPickMention={pickMention}
+        onClearMention={clearMention}
+        // 바의 상태 줄과 같은 우선순위 — 상한 초과 · 첨부 · 멘션 전달 · 실행 거절.
+        message={overLimit ? t("chrome.quickLaunch.tooLong", { over: String(promptLength - QUICK_LAUNCH_PROMPT_MAX_CHARS) })
+          : attachmentErrorKey ? t(attachmentErrorKey as Parameters<typeof t>[0])
+          : mentionErrorKey ? t(mentionErrorKey as Parameters<typeof t>[0])
+          : rejectionKey ? t(rejectionKey as Parameters<typeof t>[0], state.quickLaunchErrorShortenBy === null ? undefined : { over: String(state.quickLaunchErrorShortenBy) })
+          : null}
+        canSubmit={canSubmit}
+        submitting={submitting}
+        onSubmit={submit}
+        onClose={closeQuickLaunch}
+      />
+    );
+  }
 
   return (
     <div

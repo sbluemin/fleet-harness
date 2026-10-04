@@ -1,0 +1,68 @@
+/*
+ * 모바일 「새 작업」 시트(S-11a~e). 시트 골격·행·보조 알약·입력칸은 셸의 모바일 클래스(mobile-sheet·mobile-sheet-row·
+ * mobile-pill-secondary·mobile-field)를 그대로 쓰고, 여기서는 시안에만 있는 칩 줄·묶음 카드·라디오·토글·강도 글자 탭·
+ * 멘션 목록만 더한다. 색은 모바일 토큰(--m-*)만 쓴다.
+ */
+.mql-sheet .mobile-sheet-body { gap: 10px; }
+
+.mql-compose { position: relative; }
+.mql-input { display: block; height: 104px; min-height: 104px; max-height: 40vh; line-height: 22px; resize: none; }
+/* 입력칸 면 — 다크는 화면 바탕, 라이트는 흰 면(S-02 .field). */
+html[data-mobile-scheme="light"] .mql-input { background: var(--m-surface); }
+
+/* 칩 줄 — 보조 알약, 줄바꿈 허용, 간격 8. 강도 글자만 text-nav. */
+.mql-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mql-chips .mobile-pill-secondary { max-width: 100%; }
+.mql-chips .mobile-monogram { width: 20px; height: 20px; border-radius: 6px; font-size: .6em; }
+.mql-chip-effort { margin-left: 4px; color: var(--m-text-nav); }
+.mql-secnote { margin: 0; padding: 0 2px; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
+.mql-message { margin: 0; padding: 0 2px; color: var(--m-danger); font-size: var(--m-fs-caption); }
+
+/* 묶음 카드 — 행 사이 2 틈, 바깥 모서리 22 / 안쪽 4. */
+.mql-grp { display: flex; flex-direction: column; gap: 2px; }
+.mql-gr { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 10px 16px; color: var(--m-text); font: inherit; font-size: var(--m-fs-body); text-align: left; background: var(--m-surface); border: 0; border-radius: 4px; cursor: pointer; }
+.mql-gr.is-two { min-height: 72px; }
+.mql-grp > .mql-gr:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+.mql-grp > .mql-gr:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
+.mql-gr:active { background: var(--m-selected); }
+.mql-gr:focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; }
+.mql-gr-tx { flex: 1; min-width: 0; }
+.mql-gr-tx small { display: block; margin-top: 1px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); }
+.mql-glab { margin: 0; padding: 6px 4px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
+.mql-glab.is-options { margin-top: 10px; }
+
+/* 라디오 20 · 토글 44×26. */
+.mql-radio { position: relative; flex: none; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--m-text-muted); border-radius: 50%; }
+.mql-radio.is-on { border-color: var(--m-text); }
+.mql-radio.is-on::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--m-text); }
+.mql-toggle { position: relative; flex: none; width: 44px; height: 26px; border-radius: 13px; background: var(--m-selected); }
+.mql-toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--m-text-muted); transition: transform .15s; }
+.mql-toggle.is-on { background: var(--m-inverse); }
+.mql-toggle.is-on::after { background: var(--m-on-inverse); transform: translateX(18px); }
+
+/* 추론 강도 글자 탭 — 간격 16, 패딩 4/8, 15. 고른 칸은 text 600 + 아래 2. */
+.mql-efft { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 8px; font-size: var(--m-fs-secondary); }
+.mql-efft button { padding: 4px 0; color: var(--m-text-muted); font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.mql-efft button.is-on { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-text); }
+
+/* '@' 멘션 — 입력칸 바로 위에 서는 목록(메뉴 문법: surface, 모서리 14, shadow, 행 52). 시트 본문은 스크롤 영역이라
+   절대 위치로 띄우면 잘린다 — 흐름 안에 두어 시트가 위로 늘어난다. */
+.mql-mentions { display: flex; flex-direction: column; max-height: 260px; margin-bottom: 8px; overflow-y: auto; padding: 8px 0; background: var(--m-surface); border: 1px solid var(--m-hairline); border-radius: 14px; box-shadow: var(--m-shadow); }
+.mql-mention-row { display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 0 16px; color: var(--m-text); font: inherit; font-size: var(--m-fs-list); text-align: left; background: none; border: 0; cursor: pointer; }
+.mql-mention-row:active { background: var(--m-selected); }
+.mql-mention-row:disabled { opacity: .5; cursor: default; }
+.mql-mention-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mql-mention-name small { display: block; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
+.mql-mention-mark { display: grid; place-items: center; flex: none; width: 20px; height: 20px; color: var(--m-text-muted); }
+.mql-mention-chip { margin-bottom: 8px; }
+
+/* 첨부 미리보기 — 56 정사각, 누르면 뺀다. */
+.mql-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+.mql-thumb { position: relative; width: 56px; height: 56px; padding: 0; overflow: hidden; background: var(--m-chip); border: 1px solid var(--m-hairline-strong); border-radius: 12px; cursor: pointer; }
+.mql-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.mql-thumb.is-uploading img { opacity: .5; }
+.mql-thumb-x { position: absolute; top: 3px; right: 3px; display: grid; place-items: center; width: 20px; height: 20px; color: var(--m-text); background: var(--m-chip); border-radius: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mql-toggle::after { transition: none; }
+}
