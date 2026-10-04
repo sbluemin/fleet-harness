@@ -1744,6 +1744,7 @@ describe("Objectives contract", () => {
     expect(await refusal(commodore, pick({ mode: "model", model: "unlisted" }))).toBe("model_not_in_catalog");
     expect(await refusal(commodore, pick({ mode: "model", model: "sonnet", effort: "high" }))).toBe("invalid_effort");
     expect(await board(pick({ mode: "model", model: "sonnet", effort: "low" }))).toMatchObject({ outcome: "set", launch: { mode: "model", model: "sonnet", effort: "low" } });
+    expect((await board({ objectiveId: id, view: "routing" })).members).toEqual([{ id: workerId, role: "worker", selection: "model", launched: false, model: "sonnet", effort: "low" }]);
     // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 순찰까지 멈추지 않는다.
     expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);
     activity.set(id, "running");

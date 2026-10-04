@@ -55,7 +55,7 @@ const editSchema = z.union([
 const followupTarget = z.object({ batchId: ids, candidateId: ids }).strict();
 const argsSchema = z.object({
   theaterId: ids.optional(),
-  view: z.enum(["groups", "objectives", "objective", "inbox", "fleet", "history", "evidence", "transcript", "models", "routing"]).optional().describe("inbox: what waits on the person (stalled = unfinished, every session idle, no board change for 30 min). fleet: running objectives and their sessions. In session rows and the objective graph, state is the session process state (dormant, ended or closed = no process; unknown = not observable) and session is its fixed session name used as a message address; null means no fixed name, not no process. history: hand-offs, retrospectives, decisions, rework. evidence: preserved result content (objectiveId, resultId). transcript: Commodore only; untrusted session text. models: the launch catalog's member models with their efforts and availability, the Gateway quota summary when readable, and failed member switches in the Theater. routing: Commodore only; the routing judgment for each member Commence would newly launch by routing, the same judgment the person reviews (reused for 10 minutes while roles are unchanged; rejudge forces a new, billable judgment)."),
+  view: z.enum(["groups", "objectives", "objective", "inbox", "fleet", "history", "evidence", "transcript", "models", "routing"]).optional().describe("inbox: what waits on the person (stalled = unfinished, every session idle, no board change for 30 min). fleet: running objectives and their sessions. In session rows and the objective graph, state is the session process state (dormant, ended or closed = no process; unknown = not observable) and session is its fixed session name used as a message address; null means no fixed name, not no process. history: hand-offs, retrospectives, decisions, rework. evidence: preserved result content (objectiveId, resultId). transcript: Commodore only; untrusted session text. models: the launch catalog's member models with their efforts and availability, the Gateway quota summary when readable, and failed member switches in the Theater. routing: Commodore only; the whole roster in order with each member's selection (route, same or model) and the model and effort it launches with: route uses the same judgment the person reviews (via route or fallback to the Commander's preset; reused for 10 minutes while roles are unchanged, rejudge forces a new, billable judgment; no judgment when no member would newly launch by routing), same uses the Commander's preset, model the chosen value. A launched member shows launched true, its running model and effort, and next when a switch waits for its turn."),
   groupId: ids.optional(),
   objectiveId: ids.optional(),
   resultId: ids.optional(),
@@ -253,9 +253,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             if (!args.objectiveId) return refuse("objective_required");
             const current = scoped(args.objectiveId);
             if (launch.busy(current.id)) return refuse("objective_busy");
-            const preview = await launch.routingPreview(current.id, args.rejudge ? { rejudge: true } : undefined);
-            const roles = new Map(scoped(current.id).members.map((member) => [member.id, member.role]));
-            return text({ objectiveId: current.id, ...preview, members: preview.members.map((member) => ({ ...member, role: roles.get(member.id) ?? null })) });
+            return text(await lineup(current, args.rejudge === true));
           }
           if (args.view === "transcript") {
             if (!bound) return refuse("commodore_only", { hint: "Operations read sessions with console_operation." });
@@ -304,6 +302,29 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     const member = updated.members.find((entry) => entry.id === input.memberId);
     const outcome = !launched ? "set" : member?.next && !member.next.failed ? "pending" : "applied";
     return { ok: true, objectiveId: updated.id, memberId: input.memberId, outcome, launch: member?.launch ?? null, model: member?.model ?? null, effort: member?.effort ?? null, next: member?.next ?? null };
+  }
+
+  /**
+   * 개시 전 라인업 — 로스터 전원을 순서대로, 띄울 때 쓸 모델·강도와 함께. 라우팅 구성원은 사람의 확인 시트와 같은 판단(routingPreview)이고
+   * 폴백이면 지휘관 프리셋, same 은 지휘관 프리셋, model 은 고른 값이다. 띄운 구성원은 실행값과 턴 뒤 예약이다. 새로 띄울 라우팅 구성원이
+   * 없으면 판단하지 않는다.
+   */
+  async function lineup(objective: Objective, rejudge: boolean) {
+    const launched = (id: string) => !!(ctx.host.operations.describe ? ctx.host.operations.describe(id) : ctx.host.operations.get(id));
+    const routing = objective.members.some((member) => member.launch.mode === "route" && !launched(member.id));
+    const preview = routing ? await launch.routingPreview(objective.id, rejudge ? { rejudge: true } : undefined) : null;
+    const current = scoped(objective.id);
+    const decisions = new Map(preview?.members.map((entry) => [entry.id, entry]) ?? []);
+    const commander = { ...(current.commander.model ? { model: current.commander.model } : {}), ...(current.commander.effort ? { effort: current.commander.effort } : {}) };
+    const members = current.members.map((member) => {
+      const row = { id: member.id, role: member.role, selection: member.launch.mode };
+      if (launched(member.id)) return { ...row, launched: true, ...(member.model ? { model: member.model } : {}), ...(member.effort ? { effort: member.effort } : {}), ...(member.next ? { next: member.next } : {}) };
+      if (member.launch.mode === "model") return { ...row, launched: false, model: member.launch.model, ...(member.launch.effort ? { effort: member.launch.effort } : {}) };
+      if (member.launch.mode === "same") return { ...row, launched: false, ...commander };
+      const { id: _id, ...decision } = decisions.get(member.id) ?? { id: member.id, via: "fallback" as const, reason: "routing_failed", ...commander };
+      return { ...row, launched: false, ...decision };
+    });
+    return { objectiveId: current.id, judged: preview?.judged ?? false, ...(preview ? { at: preview.at, expiresAt: preview.expiresAt } : {}), members };
   }
 
   /** Console 의 루프백 GET — origin 이 없거나 실패·시간 초과면 null. */
