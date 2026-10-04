@@ -80,6 +80,30 @@ When the claim needs a live agent process, MCP tools, or chat protocol traffic b
 - Objective Commence and other Console prompts into a fake terminal pass only after the Theater was added through the folder dialog ([trust preflight](claude-state.md#prepare-folder-trust-through-the-normal-gate), step 4); otherwise they return 409 `claude_trust_required` before the fake sees input.
 - Label results as fixture evidence. A fake proves launch, lifecycle, MCP and protocol paths, not real CLI behavior, authentication, trust prompts, or model quality.
 
+### No-cost fake Commodore
+
+사령관 SDK는 `CLAUDE_BIN`을 따르지 않으며, 격리 홈에서도 기본 Keychain 인증을 사용할 수 있다. 켜기·끄기 경계를 무과금으로 검증할 때는 Node 22.15+의 테스트 전용 [`fake-commodore.mjs`](../scripts/fake-commodore.mjs) 로더로 **objectives 등록의 기존 `ctx.host.agent` port만** 교체한다. 제품 코드·빌드 파일을 바꾸지 않고, 실제 SDK·CLI·provider도 실행하지 않는다. 다른 플러그인이나 Operation은 fake가 아니므로 실행하지 않는다.
+
+```bash
+cd <absolute-worktree>
+pnpm --filter @dotobokuri/fleet-console build
+E2E_DIR="<owned-run>"
+node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$E2E_DIR" \
+  --set NODE_ENV=test --set FAKE_COMMODORE_DIR="$E2E_DIR/fake-commodore" --check \
+  -- node --import <worktree>/.claude/skills/console-e2e/scripts/fake-commodore.mjs \
+  <worktree>/runtime/fleet-console/dist/cli.mjs serve
+```
+
+같은 명령에서 `--check`만 빼고 관리되는 백그라운드 프로세스로 실행한다. **자율 운영을 켜기 전에** `$E2E_DIR/fake-commodore/installed.json`의 `fake: true`, `plugin: "objectives"`, `pid`가 이 Console lock의 PID와 같고 `log.jsonl`에 `installed`가 있는지 확인한다. 이 증거가 없으면 로더가 적용되지 않은 것이므로 켜지 말고 중단한다. `NODE_ENV=test`와 wrapper의 owned 디렉터리 배치를 벗어나면 로더는 거절한다. SDK 자식이 전혀 없으므로 이 경로는 실제 인증·CLI trust·모델 품질의 증거가 아니다.
+
+등록한 throwaway Theater에서 실험 기능과 자율 운영을 켠 뒤 `created`·`send`와 기록의 0 비용 성공 결말을 확인한다. 제어 파일은 모두 `$E2E_DIR/fake-commodore/`에 plain Node로 만들고 지운다:
+
+- `hold-turn`: 다음 fake 턴을 cancel까지 붙든다. 메시지를 보내 `run.phase=turn`·`send.held=true`를 확인하고, 다음 턴 메시지도 하나 보낸 뒤 끈다. `cancel`·`dispose`와 두 메시지 seq의 `undelivered`를 확인한다. 다시 켜도 재전달되지 않는다.
+- `complete-on-cancel`: `hold-turn`과 함께 두면 끄는 경합에서도 정상 `ok` 결말로 끝난다. 그 턴 메시지에는 `undelivered`가 없어야 한다.
+- `hold-experiments`: 자율 운영 저장값이 true인 채 실험 기능을 꺼 runner를 없앤 뒤 만든다. 실험 기능을 켜면 `experiments-held`로 구독 알림만 지연된다. 그 사이 메시지는 `409 commodore_inactive`이고 기록에 남지 않아야 한다. 파일을 지워 `experiments-released`·runner 상태를 확인한 뒤 같은 요청이 200으로 받아지는지 검증한다. 이는 실제 호스트의 저장→비동기 조정→구독 알림 경계에 대한 결정적 fixture이지 자연 경합의 소요 시간 측정이 아니다.
+
+종료 전에 제어 파일을 지우고 자율 운영을 끈다. Console은 동일 wrapper·run-dir의 `cli.mjs stop`으로만 종료하고, fake 로그와 HTTP/기록 결과를 fixture 증거로 보존한다.
+
 ### UI-only Operation fixtures
 
 For proposal/audit screens that need Operations but no model turn, prefer a dormant fixture in the **owned, stopped runtime's** `state.json`, using the current durable schema and restore tests as the source of truth. Never copy user state or overwrite a running server's state. Inspect `features/workspace/host/durable-state.ts` and the terminal restore contract for the current `payload.session` shape before authoring a fixture. Resume affordances require supported session identity; a fabricated identity is not proof that resume works. Verify the restored Operations through the API and UI without launching a provider.

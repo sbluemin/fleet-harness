@@ -295,7 +295,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.patrolSet = false;
       const outcome = await session.turn({ reasons, sentences, ...(replacementSummary ? { replacementSummary } : {}), ...(messages.length ? { messages: messages.map((message) => message.text) } : {}) });
       noteOutcome(runner, outcome);
-      if (runner.stopping) return;
+      if (runner.stopping) {
+        // 끄기로 끝나지 못한 턴의 메시지도 stop()이 표시한다. 성공한 턴은 이미 전달됐으므로 제외한다.
+        // 이 runner는 이미 제거됐고 다시 깨우지 않는다 — 재전달·재시도용으로 돌려놓는 것이 아니다.
+        if (outcome.outcome !== "ok") runner.messages.unshift(...messages);
+        return;
+      }
       if (outcome.outcome === "error") {
         for (const [code, reason] of pending) if (!runner.pending.has(code)) runner.pending.set(code, reason);
         runner.messages.unshift(...messages);
@@ -347,9 +352,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runners.delete(theaterId);
     clearTimer(runner, "coalesce"); clearTimer(runner, "patrol"); clearTimer(runner, "retry");
     runner.pending.clear();
-    // 아직 턴에 싣지 못한 메시지(모으는 중·재시도 대기) — 새 사령관은 지난 메시지를 읽지 않으므로 기록에 「전달되지 않음」을 남긴다.
-    // 다시 보내지는 않는다. 턴에 이미 실린 메시지는 그 턴의 결말(취소 등)이 기록에 선다.
-    const undelivered = runner.messages.splice(0).map((message) => message.seq);
+    // 모으는 중·재시도 대기뿐 아니라 취소된 진행 중 턴도, 결말을 기다린 뒤 아래에서 함께 표시한다.
+    // 새 사령관은 지난 메시지를 읽지 않는다 — 다시 보내지는 않는다.
     runner.nextWakeAt = undefined;
     runner.session?.cancel();
     setPhase(runner, "off", reason);
@@ -360,6 +364,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // TS 는 위에서 비운 값으로 좁히지만, 기다리는 동안 runTurn 의 openSession 이 다시 붙일 수 있다.
     const opened = runner.session as CommodoreSession | null;
     runner.session = null;
+    const undelivered = runner.messages.splice(0).map((message) => message.seq);
     for (let index = 0; index < undelivered.length; index += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "undelivered", seqs: undelivered.slice(index, index + MAX_TRANSCRIPT_PAGE) });
     record(runner, { kind: "session", event: "stopped", reason });
     await session?.dispose();

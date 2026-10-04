@@ -38,7 +38,7 @@ export interface CommodoreStateView {
   readonly run: CommodoreRunStatus;
 }
 
-/** 감독자가 라우트에 꽂는 손 — 없으면 상태 읽기만 가능하고 메시지는 기록에만 남는다. */
+/** 감독자가 라우트에 꽂는 손 — 메시지는 실제 runner가 있을 때만 받는다. */
 export interface CommodoreRouteHooks {
   readonly run?: (theaterId: string) => Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기(`retrying`·`error`)를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying` 을 던진다. */
@@ -111,9 +111,9 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT) }).strict(), ({ theaterId, text }) => {
       const state = read(theaterId);
       // 서버가 권위다 — 다른 창에서 막 끈 경합도 여기서 거절되고 기록에 남지 않는다. 실험 기능이 꺼졌으면 `commodore_disabled`
-      // (자율 운영 켜기와 같은 낱말), 그 Theater 의 자율 운영만 꺼졌으면 `commodore_inactive`(상태 보기의 `active` 와 같은 축).
+      // (자율 운영 켜기와 같은 낱말), 자율 운영이 꺼졌거나 설정 변경 알림 전에 runner가 아직 없으면 `commodore_inactive`.
       if (!experiments().commodore) throw new ObjectiveStoreError("commodore_disabled");
-      if (!state.autonomy) throw new ObjectiveStoreError("commodore_inactive");
+      if (!state.autonomy || !hooks.run?.(theaterId)) throw new ObjectiveStoreError("commodore_inactive");
       return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text }) };
     }) },
     { name: "commodore/retry", method: "POST", summary: "Retry now instead of waiting for the next scheduled retry after a failed Commodore turn.", handler: json(theaterRef, async ({ theaterId }) => {

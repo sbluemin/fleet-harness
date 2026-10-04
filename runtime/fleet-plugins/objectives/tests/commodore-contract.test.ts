@@ -7,7 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { commodoreActive, createCommodoreRoutes } from "../server/commodore/routes.js";
+import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../server/commodore/routes.js";
 import { createCommodoreSession } from "../server/commodore/session.js";
 import { createCommodoreStore } from "../server/commodore/store.js";
 import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, RETRY_DELAYS_MS, STALL_CHECK_MS, STALL_MS } from "../server/commodore/supervisor.js";
@@ -41,10 +41,10 @@ function harness() {
   } as unknown as FleetPluginServerContext;
   let clock = 1_000;
   const store = createCommodoreStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), emit: (event) => events.push(event), now: () => clock++ });
-  const route = async (name: string, body: Record<string, unknown>) => {
+  const route = async (name: string, body: Record<string, unknown>, hooks: CommodoreRouteHooks = {}) => {
     routeBody = body;
     routeResult = { status: 0, value: null };
-    await createCommodoreRoutes(ctx, store).find((entry) => entry.name === name)!.handler({ req: { method: "POST" } as never, res: {} as never, pathname: name });
+    await createCommodoreRoutes(ctx, store, hooks).find((entry) => entry.name === name)!.handler({ req: { method: "POST" } as never, res: {} as never, pathname: name });
     return routeResult as { status: number; value: Record<string, unknown> & { state?: Record<string, unknown>; error?: string } };
   };
   return { ctx, store, events, route, objectivesDir, experiments: () => experiments, setExperiments: (next: Partial<typeof experiments>) => { experiments = { ...experiments, ...next }; }, setAuthorized: (next: boolean) => { authorized = next; } };
@@ -106,7 +106,10 @@ describe("commodore theater state", () => {
     expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
     h.store.setAutonomy("t1", true);
-    const sent = await h.route("commodore/message", { theaterId: "t1", text: "Prefer small objectives." });
+    // 설정은 켜졌지만 감독자 알림이 아직 오지 않은 경계 — 받을 runner가 없으면 기록도 남기지 않는다.
+    expect(await h.route("commodore/message", { theaterId: "t1", text: "Before the runner." }, { run: () => null })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
+    expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
+    const sent = await h.route("commodore/message", { theaterId: "t1", text: "Prefer small objectives." }, { run: () => ({ phase: "idle" }) });
     expect(sent.value.entry).toMatchObject({ seq: 4, kind: "message", text: "Prefer small objectives." });
     expect(h.events.filter((event) => event.op === "transcript")).toHaveLength(4);
     h.setExperiments({ commodore: false });
@@ -292,6 +295,9 @@ describe("commodore supervisor", () => {
       const sessions: { options: AgentSessionOptions; sent: string[]; disposed: boolean }[] = [];
       let fail: string | null = null;
       let inputTokens = 1_000;
+      let holdTurn = false;
+      let completeOnCancel = false;
+      let cancelTurn: (() => void) | undefined;
       const agent: AgentHost = {
         createSession: async (options) => {
           const entry = { options, sent: [] as string[], disposed: false };
@@ -300,10 +306,14 @@ describe("commodore supervisor", () => {
             send: async (text) => {
               entry.sent.push(text);
               if (fail) throw new Error(fail);
+              if (holdTurn) {
+                await new Promise<void>((resolve) => { cancelTurn = () => { options.onEvent?.(completeOnCancel ? { kind: "result", isError: false, source: "message" } : { kind: "cancelled" }); cancelTurn = undefined; resolve(); }; });
+                return;
+              }
               options.onEvent?.({ kind: "text", text: "ok" });
               options.onEvent?.({ kind: "result", isError: false, source: "message", usage: { inputTokens, outputTokens: 10, costUsd: 0.01 } });
             },
-            cancel: () => undefined,
+            cancel: () => cancelTurn?.(),
             dispose: async () => { entry.disposed = true; },
           };
         },
@@ -419,6 +429,7 @@ describe("commodore supervisor", () => {
       h.store.addIntel("t1", { text: "d" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
+      inputTokens = 1_000;
       h.store.addIntel("t1", { text: "e" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(2);
@@ -428,15 +439,19 @@ describe("commodore supervisor", () => {
       expect(sessions[1]!.sent[0]).toContain("This is a replacement session. Summary of your recent actions");
       expect(h.store.read("t1")!.run!.session).toBe(2);
 
-      // 끔 — 글리프를 끄면 세션이 닫히고 깨우기가 멈춘다; 실험 기능을 끄면 같다. 모으는 중이던 메시지는 다시 보내지 않고
-      // 기록에 「전달되지 않음」으로 남는다(새 사령관은 지난 메시지를 읽지 않는다).
+      // 끔 — 진행 중 턴에 실린 메시지와 다음 턴 대기 메시지를 모두 표시하고 다시 보내지 않는다.
+      holdTurn = true;
+      const activeMessage = h.store.transcriptAppend("t1", { kind: "message", text: "Cancel this instruction." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "turn" });
+      expect(sessions[1]!.sent.at(-1)).toContain("Cancel this instruction.");
       const sentCount = sessions[1]!.sent.length;
       const pendingMessage = h.store.transcriptAppend("t1", { kind: "message", text: "Hold the release." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS - 500);
       h.store.setAutonomy("t1", false);
       await vi.advanceTimersByTimeAsync(10);
       expect(sessions[1]!.sent).toHaveLength(sentCount);
-      expect(h.store.transcriptRead("t1").entries.slice(-2)).toMatchObject([{ kind: "undelivered", seqs: [pendingMessage.seq] }, { kind: "session", event: "stopped" }]);
+      expect(h.store.transcriptRead("t1").entries.slice(-3)).toMatchObject([{ kind: "result", outcome: "cancelled" }, { kind: "undelivered", seqs: [activeMessage.seq, pendingMessage.seq] }, { kind: "session", event: "stopped" }]);
       expect(sessions[1]!.disposed).toBe(true);
       expect(supervisor.status("t1")).toBeNull();
       expect(sessionEvents().at(-1)).toBe("stopped");
@@ -444,6 +459,19 @@ describe("commodore supervisor", () => {
       h.store.addIntel("t1", { text: "f" });
       await vi.advanceTimersByTimeAsync(DEFAULT_PATROL_MS);
       expect(sessions).toHaveLength(2);
+      // 다시 켜도 취소된 메시지는 재전달하지 않는다. stop과 겹쳐도 성공 결말이면 전달 실패로 바꾸지 않는다.
+      completeOnCancel = true;
+      h.store.setAutonomy("t1", true);
+      const delivered = await h.route("commodore/message", { theaterId: "t1", text: "Already received." }, { run: (id) => supervisor.status(id) });
+      expect(delivered.status).toBe(200);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(3);
+      expect(sessions[2]!.sent[0]).toContain("Already received.");
+      expect(sessions[2]!.sent[0]).not.toMatch(/Cancel this instruction|Hold the release/);
+      h.store.setAutonomy("t1", false);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(h.store.transcriptRead("t1").entries.slice(-2)).toMatchObject([{ kind: "result", outcome: "ok" }, { kind: "session", event: "stopped" }]);
+      expect(h.store.transcriptRead("t1").entries.filter((entry) => entry.kind === "undelivered")).toHaveLength(1);
       await supervisor.dispose();
     } finally { vi.useRealTimers(); }
   });
