@@ -10,10 +10,12 @@ import { openQuickLaunch } from "../../integration/store.js";
 import type { OperationNode, OperationNotification } from "../../integration/types.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
+import { MobileMonogram } from "./mobile-monogram.js";
 import { MobilePluginScreen } from "./mobile-plugin-screen.js";
 import { MobileSessionView } from "./mobile-session-view.js";
 import { MobileTools } from "./mobile-tools.js";
-import { useMobileDestination } from "./mobile-store.js";
+import { pushMobileSheet, useMobileDestination } from "./mobile-store.js";
+import { useConsoleState } from "../../hooks/use-store.js";
 import { MobileAttentionScreen } from "./mobile-attention-screen.js";
 import "../../styles/mobile.css";
 
@@ -118,13 +120,41 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   );
 }
 
-/** Operation이 열려 있지 않을 때의 홈 — 상단 막대에는 지금 Theater 이름이 서고, 본문은 시작을 권한다. */
+/**
+ * Operation이 열려 있지 않을 때의 홈. Theater가 없으면 첫 실행 화면(S-49, 상단 막대 없음), Theater는 있는데 작업이 없으면 빈 홈(S-37),
+ * 작업은 있는데 열린 것이 없으면 고르라는 안내.
+ */
 function MobileEmptyHome({ theaterLabel, hasOperations }: { readonly theaterLabel: string | null; readonly hasOperations: boolean }) {
   const t = useT();
-  useClaimMobileBar({ variant: "centered", title: theaterLabel ?? "Fleet", leading: "menu" });
+  const state = useConsoleState();
+  const theater = state.theaters.find((item) => item.id === state.activeTheaterId) ?? null;
+  const firstRun = state.bootstrapped && state.theaters.length === 0;
+  useClaimMobileBar(firstRun
+    ? { variant: "centered", title: "", leading: "menu", hidden: true }
+    : { variant: "centered", title: "", leading: "menu" });
+
+  if (firstRun) {
+    return (
+      <section className="mobile-first-run">
+        <span className="mobile-wordmark">Fleet</span>
+        <p className="mobile-first-run-lead">{t("mobile.firstRun.lead")}</p>
+        <div className="mobile-group is-flush">
+          {([["folder", "mobile.firstRun.step1", "mobile.firstRun.step1Sub"], ["newop", "mobile.firstRun.step2", "mobile.firstRun.step2Sub"], ["menu", "mobile.firstRun.step3", "mobile.firstRun.step3Sub"]] as const).map(([icon, title, sub]) => (
+            <div className="mobile-group-row is-two" key={title}>
+              <span className="mobile-group-row-icon"><MobileIcon name={icon} /></span>
+              <span className="mobile-group-row-copy">{t(title)}<small>{t(sub)}</small></span>
+            </div>
+          ))}
+        </div>
+        <button type="button" className="mobile-pill" onClick={() => pushMobileSheet({ kind: "folder" })}><MobileIcon name="plus" size={18} />{t("mobile.sheet.theater.add")}</button>
+      </section>
+    );
+  }
   return (
     <section className="mobile-empty-home">
-      <p>{theaterLabel === null ? t("mobile.home.noTheater") : hasOperations ? t("mobile.home.pick") : t("mobile.operations.empty")}</p>
+      {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} size={56} /> : null}
+      {theaterLabel ? <strong className="mobile-empty-home-name">{theaterLabel}</strong> : null}
+      <p>{theaterLabel === null ? t("mobile.home.noTheater") : hasOperations ? t("mobile.home.pick") : t("mobile.home.emptyTheater")}</p>
       {theaterLabel !== null ? (
         <button type="button" className="mobile-pill" onClick={openQuickLaunch}><MobileIcon name="plus" size={18} />{t("mobile.drawer.newOperation")}</button>
       ) : null}

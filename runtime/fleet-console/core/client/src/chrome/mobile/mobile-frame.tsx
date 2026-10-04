@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import type { DeferredDeletionReceipt } from "../../integration/api.js";
+
 import { useConsoleLocale } from "../../i18n/index.js";
 import { focusOperation } from "../../integration/store.js";
 import type { ConsoleState } from "../../integration/types.js";
@@ -9,6 +11,7 @@ import { MobileAttentionProvider } from "./mobile-attention-context.js";
 import { mobileDestinationBindings, useMobileAttention } from "./mobile-destinations.js";
 import { MobileDrawer } from "./mobile-drawer.js";
 import { MobileRequestBanner } from "./mobile-request-banner.js";
+import { MobileToastHost } from "./mobile-toast.js";
 import { MobileSheetHost } from "./mobile-sheet-host.js";
 import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileHistory } from "./mobile-history.js";
@@ -19,7 +22,7 @@ import "../../styles/mobile.css";
  * 모바일 배치의 틀: 상단 막대 · 화면(라우트) · 드로어 · 하단 시트. 탭 막대는 없다 — 목적지는 모두 드로어가 연다.
  * 「확인 필요」를 여기서 한 번 계산해 ≡ 점·드로어 구역·전체 화면이 같은 행을 읽게 한다.
  */
-export function MobileFrame({ state, bands, children }: { readonly state: ConsoleState; readonly bands: ReactNode; readonly children: ReactNode }) {
+export function MobileFrame({ state, bands, onDeferredDeletion, children }: { readonly state: ConsoleState; readonly bands: ReactNode; readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void; readonly children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const bindings = useRailEntries();
@@ -69,7 +72,8 @@ export function MobileFrame({ state, bands, children }: { readonly state: Consol
           viewingOperationId={path === "/operations" && destination.kind === "home" ? state.activeOperationId : null}
           onOpen={openOperation}
         />
-        <MobileSheetHost state={state} />
+        <MobileSheetHost state={state} onDeferredDeletion={onDeferredDeletion} />
+        <MobileToastHost />
       </div>
     </MobileAttentionProvider>
   );

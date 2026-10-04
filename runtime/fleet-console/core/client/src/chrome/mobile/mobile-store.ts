@@ -91,6 +91,8 @@ export function setMobileDrawerOpen(next: boolean): void {
 /** 시트 종류. 시트에서 시트를 열면 쌓이고, 닫기·스크림은 앞 시트로 돌아간다. */
 export type MobileSheetKind =
   | { readonly kind: "theater" }
+  | { readonly kind: "folder" }
+  | { readonly kind: "forget"; readonly theaterId: string }
   | { readonly kind: "rename"; readonly operationId: string };
 
 let sheetStack: readonly MobileSheetKind[] = [];

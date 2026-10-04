@@ -682,7 +682,7 @@ function ConnectedApp() {
           );
           // The mobile frame sits outside the routes: the top bar and the drawer reach every destination,
           // so a frame that unmounted with the operations route would strand the way back.
-          return mobileLayout ? <MobileFrame state={state} bands={shellBars}>{routeContent}</MobileFrame> : routeContent;
+          return mobileLayout ? <MobileFrame state={state} bands={shellBars} onDeferredDeletion={enqueueDeletion}>{routeContent}</MobileFrame> : routeContent;
         })()}
         <OperationSearch
           state={state}
@@ -698,9 +698,9 @@ function ConnectedApp() {
         <ArchiveSheet />
         <TheaterSystemPromptSheet />
         <WhatsNewModal state={state} automaticSuspended={terminalFocused} />
-        <CommissioningOverlay state={state} />
+        {mobileLayout ? null : <CommissioningOverlay state={state} />}
         <OnboardingHost
-          toursSuspended={zenTransitionActive || terminalFocused}
+          toursSuspended={zenTransitionActive || terminalFocused || mobileLayout}
           core={CORE_ONBOARDING}
           plugins={registry.onboarding}
           language={consoleLocale}

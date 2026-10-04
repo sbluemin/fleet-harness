@@ -1154,3 +1154,41 @@ html[data-view-mode="mobile"] .app-toast-action {
   background: transparent;
   border: 0;
 }
+
+/* Theater 화면 · 빈 홈 · 첫 실행 */
+.mobile-theater-page { height: 100%; overflow-y: auto; background: var(--m-bg); }
+.mobile-theater-page .mobile-group-row-copy small .is-awaiting { color: var(--m-awaiting); }
+.mobile-theater-error { padding: 0 18px; }
+.mobile-group.is-flush { padding-right: 0; padding-left: 0; }
+
+.mobile-empty-home { gap: 10px; }
+.mobile-empty-home-name { color: var(--m-text); font-size: var(--t-lg); font-weight: var(--weight-bold); }
+.mobile-empty-home .mobile-monogram { border-radius: 16px; font-size: var(--t-lg); }
+.mobile-empty-home .mobile-pill { margin-top: 6px; }
+
+.mobile-first-run { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 14px; height: 100%; padding: 0 36px; overflow-y: auto; background: var(--m-bg); }
+.mobile-first-run .mobile-wordmark { text-align: center; }
+.mobile-first-run-lead { margin: 0; color: var(--m-text-muted); font-size: var(--t-md); line-height: 22px; text-align: center; }
+.mobile-first-run .mobile-group { padding: 8px 0 0; }
+.mobile-first-run .mobile-group-row { cursor: default; }
+.mobile-first-run .mobile-pill { align-self: center; margin-top: 8px; }
+
+/* 시트 안 문단 · 폴더 시트 · 위험 알약 */
+.mobile-sheet-lead { margin: 0; padding: 0 4px; color: var(--m-text-muted); font-size: var(--t-md); line-height: 22px; }
+.mobile-pill-secondary.is-danger { color: var(--m-danger); }
+.mobile-folder-path { margin: 0; padding: 0 4px; color: var(--m-text-faint); font-family: var(--m-mono); font-size: var(--t-sm); word-break: break-all; }
+.mobile-folder-crumbs { display: flex; flex: none; flex-wrap: nowrap; gap: 6px; padding: 0 2px; overflow-x: auto; scrollbar-width: none; }
+.mobile-folder-crumbs::-webkit-scrollbar { display: none; }
+.mobile-folder-crumb { flex: none; padding: 6px 4px; color: var(--m-text-muted); font-size: var(--t-md); background: transparent; border: 0; }
+.mobile-folder-crumb.is-current { color: var(--m-text); font-weight: var(--weight-bold); }
+.mobile-folder-tools { display: flex; align-items: center; gap: 8px; }
+.mobile-folder-tools .mobile-field { flex: 1; min-width: 0; }
+.mobile-folder-state { margin: 0; padding: 18px; color: var(--m-text-muted); font-size: var(--t-md); }
+.mobile-folder-locked { color: var(--m-text-faint); font-size: var(--t-sm); }
+
+/* 모바일 토스트 호스트 — 앱 루트 호스트와 같은 자리·같은 문법 */
+.mobile-toast-host { position: fixed; right: 16px; bottom: 150px; left: 16px; z-index: 47; display: flex; flex-direction: column; gap: 8px; }
+.mobile-toast-host .app-toast { display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; color: var(--m-text); font-size: var(--t-md); background: var(--m-surface); border: 0; border-radius: 14px; box-shadow: var(--m-shadow); animation: mobile-fade-in 200ms; }
+.mobile-toast-host .app-toast-body { flex: 1; }
+.mobile-toast-host .app-toast-title { margin: 0; font-size: var(--t-md); font-weight: var(--weight-regular); }
+.mobile-toast-host .app-toast-action { padding: 8px; color: var(--m-text); font-size: var(--t-md); font-weight: var(--weight-bold); background: transparent; border: 0; }
