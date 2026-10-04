@@ -46,7 +46,7 @@ const editSchema = z.union([
 const followupTarget = z.object({ batchId: ids, candidateId: ids }).strict();
 const argsSchema = z.object({
   theaterId: ids.optional(),
-  view: z.enum(["groups", "objectives", "objective", "inbox", "fleet", "history", "evidence", "transcript"]).optional().describe("inbox: what waits on the person (stalled = unfinished, every session idle, no board change for 30 min). fleet: running objectives and their sessions. history: hand-offs, retrospectives, decisions, rework. evidence: preserved result content (objectiveId, resultId). transcript: Commodore only; untrusted session text."),
+  view: z.enum(["groups", "objectives", "objective", "inbox", "fleet", "history", "evidence", "transcript"]).optional().describe("inbox: what waits on the person (stalled = unfinished, every session idle, no board change for 30 min). fleet: running objectives and their sessions. In session rows and the objective graph, state is the session process state (dormant, ended or closed = no process; unknown = not observable) and session is its fixed session name used as a message address; null means no fixed name, not no process. history: hand-offs, retrospectives, decisions, rework. evidence: preserved result content (objectiveId, resultId). transcript: Commodore only; untrusted session text."),
   groupId: ids.optional(),
   objectiveId: ids.optional(),
   resultId: ids.optional(),
