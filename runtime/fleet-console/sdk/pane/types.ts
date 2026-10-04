@@ -271,6 +271,8 @@ export interface MobileBarSpec {
   readonly menu?: {
     /** 메뉴 머리의 대상 이름. */
     readonly caption?: string;
+    /** ⋮ 버튼과 메뉴의 접근성 이름(이미 현지화된 문자열). 없으면 막대 제목을 쓴다. */
+    readonly label?: string;
     readonly items: readonly MobileBarMenuItem[];
   };
 }
