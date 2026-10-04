@@ -1,6 +1,6 @@
 # Console Lock Reclaim Across Hosts
 
-How the Console lock (`console.lock` in the Console runtime slot) is released and reclaimed when Fleet Console, the `fleet` CLI, Fleet Desktop, and the Console update worker share one slot, including mixed releases. This page is the rationale and the known limits. The rules themselves live in `runtime/fleet-console/core/host/bootstrap/lock.ts` (reclaim protocol) and `runtime/fleet-desktop/src/sidecar-supervisor.ts` (Desktop's side).
+How the Console lock (`console.lock` in the Console runtime slot) is released and reclaimed when Fleet Console, the `fleet` CLI, Fleet Desktop, and the Console update worker share one slot, including mixed releases. This page is the rationale and the known limits. The rules themselves live in `runtime/fleet-console/core/host/bootstrap/lock.ts` (reclaim protocol), `runtime/fleet-desktop/src/sidecar-supervisor.ts` (Desktop's side), and the worker script in `runtime/fleet-console/features/updates/host/update-apply.ts` (the update's side).
 
 ## The rule
 
@@ -37,16 +37,16 @@ Console releases up to and including **1.212.0** publish the lock with `O_EXCL` 
 
 ### Mixed releases
 
-"New" means a release with the reclaim protocol and the Desktop delegation. D = first Desktop with the delegation; X = first Console release after 1.212.0.
+"New" means a release with the reclaim protocol and the delegation. D = first Desktop with the delegation; X = first Console release after 1.212.0. The update worker is emitted by the Console being updated, so its behavior follows that Console's release, not the target's.
 
 | # | Desktop | Console runtime | Outcome and limits |
 |---|---|---|---|
 | R1 | ≥ D | ≥ X | Every removal of another's lock goes through the reclaim chain. |
 | R2 | ≥ D | ≤ 1.212.0 (offline, a failed install, or a lagging release check) | Legacy branch: Desktop clears an exited Console's lock itself (remaining TOCTOU above). A pre-1.212.0 prerelease is unknown and blocks the start instead. |
 | R3 | < D (≤ 0.17.1) | ≥ X | Old Desktop still compares and unlinks before it starts `serve`, outside the reclaim chain, and stops with `console_lock_malformed` on an ownerless lock. Only a Desktop update fixes this. `serve` still reclaims what Desktop leaves. Exit status 73 reaches the old Desktop as `sidecar_exited_before_ready: code=73` with the generic dialog, the same path as exit status 1 before; the lock text is only in the Desktop log. |
-| R4 | – | – | *Update worker: see below.* |
-| R5 | – | – | *Update worker: see below.* |
-| R6 | – | – | *Update worker: see below.* |
+| R4 | – | Updating from ≤ 1.212.0 to ≥ X | The worker comes from the old Console, so it still removes the exited Console's lock itself (pid and token compare, then `rmSync`), outside the reclaim chain, for this one update. The new `serve` reclaims whatever is left. Updates from X onward delegate. |
+| R5 | – | Updating from ≥ X to a target ≤ 1.212.0 (a downgrade or an experimental tag), or a failed install whose recovery starts pre-X code | The worker no longer clears the lock and the pre-X `serve` cannot reclaim. A lock left by the old Console (only after a crash or a SIGKILL escalation; a Console stopped by SIGTERM releases its own) makes both the new daemon and the recovery exit early, so the update fails quickly and leaves no Console running. The progress record and the update log say so. Starting Console again handles the lock by the rules of whatever starts it. |
+| R6 | – | ≥ X, old Console SIGKILLed and its pid reused before the new `serve` starts | `serve` sees a live owner and exits 73; the update fails within seconds. Recovery is then skipped (#1557: the old lock is still held and its pid is alive). The user has to confirm that pid and clear the lock by hand. The worker used to remove that lock on the parent-exit proof; ESRCH as the only death evidence costs this rare case. |
 | R7 | any | any, with a pre-X `fleet` CLI running against the same slot | The old CLI's untrusted-lock cleanup and `removeLock` stay outside the chain until the CLI is updated. |
 | R8 | ≥ D on Windows | ≥ X | A reclaim marker needs hard links. On a volume without them the reclaim fails, `serve` exits 73, and Desktop shows the guidance. The default temporary directory (NTFS) has hard links. |
 
@@ -59,4 +59,13 @@ Console releases up to and including **1.212.0** publish the lock with `O_EXCL` 
 
 ## Console update worker
 
-*To be completed after the update worker change (`runtime/fleet-console/features/updates/host/update-apply.ts`) lands: the removal of the worker's own lock deletion, the stderr routing of the daemons it starts, and rows R4–R6 (a worker emitted by a pre-X Console; a downgrade target or a recovery that starts pre-X code; SIGKILL followed by pid reuse).*
+The worker that applies a Console update stops the old Console, installs the target, and starts the new Console. It runs as a standalone script and cannot use `lock.ts`, so, like Desktop, it no longer removes a lock: after the old Console is proven gone it logs the lock state (`held`, `missing`, `replaced`, or `unreadable`) and leaves the lock for the new `serve` to reclaim.
+
+- **Its daemons' stderr goes to the run's update log.** A `serve` that does not take the lock writes why (the holder, or the manual-recovery steps) to stderr before it exits. The worker opens the run's log file and hands it to the detached `serve` as its stderr. The same file then also collects that Console's later stderr, for as long as it runs. Before, that stderr was discarded.
+- **An early exit ends the wait.** The new daemon and the failure recovery both watch their `serve`'s exit. Exit status 73 (`CONSOLE_SERVE_EXIT_LOCK_HELD`) fails the step at once with "did not take the Console lock", and any other exit before health fails it with the exit code. Neither waits out the 60 s start timeout.
+- **#1557's recovery check stays first.** If the old lock is still held by its pid and token, and that pid is alive, recovery does not start a `serve` at all. The early-exit check covers the refusals that check cannot foresee: an ownerless lock, a third party's live lock, or a reclaim marker that another participant holds.
+
+Remaining limits of the worker:
+
+- **Another starter can take the slot between the old Console's exit and the new `serve`'s `acquireLock`.** Examples are a Desktop launch or a CLI `start`. The new `serve` then exits 73 and the update fails with its reason, even though the target is already installed. The race with `serve`'s pre-lock work (see Desktop) applies here too.
+- **The worker's verdict that the old Console is gone can rest on the parent link alone.** On POSIX, a worker reparented away from the old Console counts it as exited. Only the new `serve`'s ESRCH check decides whether its lock is reclaimed, so a reused pid ends in R6 rather than in a wrong removal.
