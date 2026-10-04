@@ -28,7 +28,7 @@ Record the preflight's `adb server` state (running or not running) in the report
 
 ## 1. Start your own Consoles
 
-Per Console, follow [Isolated Console setup](setup.md#isolate-the-console) with its own `E2E_DIR` (all four of `FLEET_DATA_DIR`, `FLEET_CONSOLE_DATA_DIR`, `FLEET_DESKTOP_DATA_DIR`, `CLAUDE_CONFIG_DIR` under it), started as a background process whose PID you record: `CONSOLE_PID=$!`, appended to the env file with `EMU_PID` and `UDID`. For two Consoles, use two `E2E_DIR`s; nothing is shared. Read each port with the [fixed lock read](setup.md#read-the-lock-without-the-token) of that Console's `$E2E_DIR/console/console.lock` and check it answers `200`; `issue-access-link.mjs` reads the token itself. Do not touch `127.0.0.1:50000` or any Console whose lock is not under your `E2E_DIR`.
+Per Console, follow [Isolated Console setup](setup.md#isolate-the-console) with its own `E2E_DIR` (all four of `FLEET_DATA_DIR`, `FLEET_CONSOLE_DATA_DIR`, `FLEET_DESKTOP_DATA_DIR`, `CLAUDE_CONFIG_DIR` under it), started as a background process whose PID you record: `CONSOLE_PID=$!`, appended to the env file with `EMU_PID` and `UDID`. A Console handed on to later missions must be detached (`nohup … & disown`); a tool-managed background job is stopped at its time limit. For two Consoles, use two `E2E_DIR`s; nothing is shared. Read each port with the [fixed lock read](setup.md#read-the-lock-without-the-token) of that Console's `$E2E_DIR/console/console.lock` and check it answers `200`; `issue-access-link.mjs` reads the token itself. Do not touch `127.0.0.1:50000` or any Console whose lock is not under your `E2E_DIR`.
 
 ## 2. Issue an access link
 
@@ -42,7 +42,7 @@ Use the listener and `/api/v1/access-links` procedure in [Remote access testing]
 BIND="$BIND" node <worktree>/.claude/skills/console-e2e/scripts/issue-access-link.mjs "$E2E_DIR" [full|monitoring]
 ```
 
-A link is single-use. Run it again for every launch attempt.
+A link is single-use. Run it again for every launch attempt. Each run overwrites `link.txt`, so when two devices share one `E2E_DIR`, use the link right after issuing it. A Console serves one paired device at a time; after a Console restart the first device to reconnect takes the session, so stop the other device's app before reconnecting the one under test.
 
 ## 3. Android
 
@@ -77,22 +77,24 @@ adb -s "$SERIAL" shell "am start -W -a android.intent.action.VIEW -d '$(cat "$E2
 
 `am start -W` must print `Status: ok`. A link already consumed or an unreachable address shows up in the app, not here, so confirm the result below. For a warm-start comparison, run the second command without the `force-stop`.
 
-**Observe.** Screenshot to an absolute path outside the worktree: `adb -s "$SERIAL" exec-out screencap -p > <evidence>/shot.png`. App-side logs: `adb -s "$SERIAL" logcat -d | grep -i -e ReactNativeJS -e AndroidRuntime`. Console-side proof that the device paired: the owner's Settings → Remote access table, or the device count in `$E2E_DIR/console/remote/paired-devices.json` (count only; the file holds device names).
+**Observe.** Screenshot to an absolute path outside the worktree: `adb -s "$SERIAL" exec-out screencap -p > <evidence>/shot.png`. App-side logs: `adb -s "$SERIAL" logcat -d | grep -i -e ReactNativeJS -e AndroidRuntime`. The shell logs nothing when it refuses a navigation; judge from the screenshot and `adb -s "$SERIAL" shell dumpsys activity activities | grep topResumedActivity` (an OS browser takes over there, a refusal leaves `MainActivity`). Console-side proof that the device paired: the owner's Settings → Remote access table, or the device count in `$E2E_DIR/console/remote/paired-devices.json` (count only; the file holds device names).
+
+**Desktop-only surfaces.** The mobile layout opens no companion panels (Analyst, Operation Browser). To reach one, tap the view-mode toggle in the Operations header until it shows desktop (auto → mobile → desktop). At a phone's physical density the desktop view clips the bottom row of a companion panel; on your own emulator, `adb -s "$SERIAL" shell wm density 200` in landscape widens the viewport enough (undo with `wm density reset`). A density change recreates the activity and reloads the page.
 
 ## 4. iOS simulator
 
-Same Console and link as above; the simulator needs no address change. There is no promoted debug-build script for iOS (`ios:build:release` needs signing material), so install a development build:
+Same Console and link as above; the simulator needs no address change. There is no promoted debug-build script for iOS (`ios:build:release` needs signing material), so install a simulator build. Use `--configuration Release` so the JS bundle is embedded; a Debug build without a running Metro shows the React Native red error screen. `pod install` inside `expo run:ios` fails unless `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` are set:
 
 ```bash
 xcrun simctl list runtimes available; xcrun simctl list devicetypes iPhone   # pick an installed iOS runtime id and iPhone device type id
 xcrun simctl create "$SIM_NAME" "<device type id>" "<runtime id>"   # prints your UDID
 xcrun simctl boot "$UDID"
-pnpm --dir <worktree>/runtime/fleet-mobile exec expo run:ios --device "$UDID"   # builds and installs com.dotobokuri.fleet.mobile
+LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pnpm --dir <worktree>/runtime/fleet-mobile exec expo run:ios --configuration Release --device "$UDID"   # builds and installs com.dotobokuri.fleet.mobile
 xcrun simctl terminate "$UDID" com.dotobokuri.fleet.mobile
 xcrun simctl openurl "$UDID" "$(cat "$E2E_DIR/link.txt")"
 ```
 
-The scheme is `fleet`, registered by `plugins/withFleetIos.ts`. On a cold start the link reaches the app through `willFinishLaunching` (`FleetLinkAppDelegateSubscriber`). The system may show an "Open in Fleet?" confirmation that a person or UI automation must accept; record whether it appeared. Screenshots: `xcrun simctl io "$UDID" screenshot <evidence>/shot.png`. The `expo run:ios` install route is unverified in this repository's docs; record the actual command used.
+The scheme is `fleet`, registered by `plugins/withFleetIos.ts`. On a cold start the link reaches the app through `willFinishLaunching` (`FleetLinkAppDelegateSubscriber`). The system shows an "Open in Fleet?" confirmation on every `openurl`, and it must be accepted. `simctl` has no tap or input command: drive the app headlessly with a scratch UI-test bundle that launches the installed app by bundle id (`XCUIApplication(bundleIdentifier:)`) and runs through `xcodebuild test -destination "id=$UDID"`; the Console WebView exposes its controls by their accessible labels. Keep that project outside the repository, and do not take over the user's foreground with desktop clicks or keystrokes. Screenshots: `xcrun simctl io "$UDID" screenshot <evidence>/shot.png`. The `expo run:ios` install route is unverified in this repository's docs; record the actual command used.
 
 ## 5. Stay apart from other sessions
 

@@ -332,6 +332,12 @@
 .session-analyst__artifacts article p[role="alert"] { margin: 0; padding: var(--space-3); color: var(--coral-ink); font-size: var(--t-sm); }
 /* 아티팩트 문서의 바닥은 패널면과 융합한다(v2 브리지) — 시트가 다른 회색으로 떠 보이지 않는다. */
 .session-analyst__artifacts iframe { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: var(--surface-panel); }
+/* 모바일 셸 전체 화면 보기 — Fleet Mobile은 두 번째 창을 열지 않으므로 새 탭 대신 화면 전체에 띄운다. 기기 안전 영역을 비켜 선다. */
+.session-analyst__artifact-fullscreen { position: fixed; inset: 0; z-index: var(--z-overlay); display: flex; flex-direction: column; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); color: var(--text-primary); background: var(--surface-panel); }
+.session-analyst__artifact-fullscreen header { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; border-bottom: 1px solid var(--hairline); padding: 0 var(--space-2) 0 var(--space-3); background: var(--canvas-sea-core); }
+.session-analyst__artifact-fullscreen header .session-analyst__glyph-slot { margin-left: auto; }
+.session-analyst__artifact-fullscreen header .session-analyst__glyph-tip { top: calc(100% + 6px); bottom: auto; }
+.session-analyst__artifact-fullscreen iframe { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: var(--surface-panel); }
 
 @keyframes analyst-orbit { to { transform: rotate(360deg); } }
 @keyframes analyst-orbit-pulse { from { opacity: .7; transform: scale(.92); } to { opacity: 0; transform: scale(1.12); } }

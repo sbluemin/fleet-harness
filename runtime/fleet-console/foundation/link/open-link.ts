@@ -66,6 +66,24 @@ export function isRoutableLink(url: string, currentOrigin?: string): boolean {
   }
 }
 
+const FLEET_MOBILE_UA_MARKER = /(?:^|\s)FleetMobile\/\d/;
+
+/**
+ * Fleet Mobile 셸은 user agent에 표식을 단다. 너비로는 이 셸을 가릴 수 없고(가로 화면은 데스크톱
+ * 경계를 넘는다), 로컬 게이트웨이 origin이 재연결마다 바뀌어 저장한 선호도 남지 않는다.
+ */
+export function isFleetMobileUserAgent(userAgent: string): boolean {
+  return FLEET_MOBILE_UA_MARKER.test(userAgent);
+}
+
+/**
+ * 지금 페이지가 Fleet Mobile 셸 안에서 도는지. 그 셸은 두 번째 창을 열지 않고 외부 http(s)만 OS
+ * 브라우저로 넘기므로, Console origin을 `_blank`로 여는 기능은 셸 안에서 페이지 안 표시로 대신해야 한다.
+ */
+export function isFleetMobileShell(): boolean {
+  return typeof navigator !== "undefined" && isFleetMobileUserAgent(navigator.userAgent ?? "");
+}
+
 /**
  * OS 기본 브라우저로 여는 단일 헬퍼.
  * 모든 "내 브라우저" 탈출구는 이 함수를 통과하여 일관된 window.open 정책을 유지한다.
