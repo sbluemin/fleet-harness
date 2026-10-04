@@ -10,13 +10,38 @@ import { useConsoleLocale } from "../../i18n/index.js";
 import type { OperationNode, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 
-/** 드로어가 고정 목적지로 올리는 플러그인 엔트리 — `RailEntryDescriptor.mobile.destination`을 선언한 것을 order 순으로. */
-export function mobileDestinationBindings(bindings: readonly RailEntryBinding[]): readonly RailEntryBinding[] {
+/**
+ * 드로어가 고정 목적지로 올리는 플러그인 엔트리 — `RailEntryDescriptor.mobile.destination`을 선언하고 `shown`이 허락한 것을 order 순으로.
+ * 순수 계산이다 — 화면은 `useMobileDestinationBindings`로 `shown`의 갱신을 구독한다.
+ */
+export function mobileDestinationBindings(bindings: readonly RailEntryBinding[], theaterId: string | null): readonly RailEntryBinding[] {
   return bindings
     .map((binding, index) => ({ binding, index, order: binding.entry.mobile?.destination?.order }))
-    .filter((item): item is { binding: RailEntryBinding; index: number; order: number } => item.order !== undefined && visible(item.binding))
+    .filter((item): item is { binding: RailEntryBinding; index: number; order: number } => item.order !== undefined && visible(item.binding) && destinationShown(item.binding, theaterId))
     .sort((left, right) => left.order - right.order || left.index - right.index)
     .map((item) => item.binding);
+}
+
+function destinationShown(binding: RailEntryBinding, theaterId: string | null): boolean {
+  return binding.entry.mobile?.destination?.shown?.get(theaterId) !== false;
+}
+
+/** `mobileDestinationBindings`를 읽되, 엔트리가 `shown.subscribe`로 알리는 변화(실험 기능·Theater)에 맞춰 다시 그린다. */
+export function useMobileDestinationBindings(bindings: readonly RailEntryBinding[], theaterId: string | null): readonly RailEntryBinding[] {
+  const key = useSyncExternalStore(
+    (listener) => {
+      const disposers = bindings.flatMap((binding) => binding.entry.mobile?.destination?.shown ? [binding.entry.mobile.destination.shown.subscribe(listener)] : []);
+      return () => { for (const dispose of disposers) dispose(); };
+    },
+    () => shownVersion(bindings, theaterId),
+    () => shownVersion(bindings, theaterId),
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- key는 shown 상태가 바뀌었다는 신호다.
+  return useMemo(() => mobileDestinationBindings(bindings, theaterId), [bindings, theaterId, key]);
+}
+
+function shownVersion(bindings: readonly RailEntryBinding[], theaterId: string | null): string {
+  return bindings.map((binding) => binding.entry.mobile?.destination?.shown ? `${binding.entry.id}:${binding.entry.mobile.destination.shown.get(theaterId) ? 1 : 0}` : "").join("|");
 }
 
 /** 「플러그인」 줄 — 고정 목적지가 아니고, 설정(드로어가 따로 연다)이 아닌 보이는 엔트리 전부. */

@@ -30,7 +30,7 @@ import {
   type StoredPanelWidths,
 } from "./pane-width.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
-import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
+import { useDesktopRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { openOtherSurfaceLink } from "../../../../../features/browser/client/global-link.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
@@ -80,7 +80,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   const soloMaxWidthRef = useRef(soloMaxWidth);
   soloMaxWidthRef.current = soloMaxWidth;
   const requestedExtra = soloWidth === null ? requestedExtraWidth : 0;
-  const bindings = useRailEntries();
+  const bindings = useDesktopRailEntries();
   // 페인을 세우는 엔트리와 그냥 실행하는 엔트리의 구분은 "이 엔트리가 세우는 페인이 있는가"라는
   // 사실 하나가 진다(pane 계약, #957). 활성 패널·폭 계산은 페인 엔트리만 본다.
   const paneEntries = bindings.filter((binding) => binding.panes.length > 0);
@@ -380,7 +380,7 @@ export function RailToolIcons({ context }: { readonly context: RailToolContext }
   const t = useT();
   const language = context.language;
   const activePanelId = useRailActivePanelId();
-  const bindings = useRailEntries();
+  const bindings = useDesktopRailEntries();
   // 문서 단위 숨김(entry.visible) — 선언하지 않은 entry는 그대로 둔다.
   // 레일 패널·확대 표면이 아닌 표면(activate 전용)의 켜짐은 각 entry의 RailIcon이 읽는다.
   const listedBindings = useMemo(

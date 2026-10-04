@@ -12,7 +12,7 @@ import { openQuickLaunch } from "../../integration/store.js";
 import type { ConsoleState, OperationNode } from "../../integration/types.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useRailEntries } from "../pane/pane-registry.js";
-import { mobileDestinationBindings, mobilePluginRows, type MobileAttentionRow } from "./mobile-destinations.js";
+import { mobilePluginRows, useMobileDestinationBindings, type MobileAttentionRow } from "./mobile-destinations.js";
 import { AttentionReason } from "./mobile-attention-reason.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
@@ -156,6 +156,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
   const location = useLocation();
   const capabilities = useHostCapabilities();
   const bindings = useRailEntries();
+  const shownDestinations = useMobileDestinationBindings(bindings, state.activeTheaterId);
   const destination = useMobileDestination();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const appearance = useMobileAppearance();
@@ -176,7 +177,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
   const destinations: DestinationRow[] = [
     { key: "theater", icon: { name: "theater" }, label: t("mobile.drawer.theater"), count: 0, current: path === "/theaters", run: () => navigate("/theaters", { replace: true }) },
   ];
-  for (const binding of mobileDestinationBindings(bindings)) {
+  for (const binding of shownDestinations) {
     destinations.push({
       key: binding.entry.id,
       icon: { node: renderEntryIcon(binding.entry.mobile?.icon ?? binding.entry.icon) },

@@ -37,7 +37,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { createHostCapabilities } from "../integration/plugin-capabilities.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "../integration/console-location.js";
 import type { PaletteSearchPanel } from "../integration/operation-search.js";
-import { useRailEntries } from "../chrome/pane/pane-registry.js";
+import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
 import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration/plugin-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
@@ -257,7 +257,7 @@ function ConnectedApp() {
   // 팔레트의 "Open panel"과 패널 검색 목록 — RightRail과 같은 레지스트리를 읽어 같은 순서로 선다.
   // 이름은 엔트리가, 검색은 그 엔트리가 세우는 페인들이 말한다. 한 엔트리에 검색을 가진 페인이
   // 여럿이면 결과를 한 그룹으로 합친다 — 팔레트가 보는 단위는 여전히 "무엇을 여는가"다.
-  const railBindings = useRailEntries();
+  const railBindings = useDesktopRailEntries();
   // 설정 검색 공급자는 React 밖에서 불린다 — 플러그인 섹션 스냅샷을 여기서 실어 준다.
   useEffect(() => { syncSettingsSearchPlugins(registry.providers); syncExperimentModelOptionPlugins(registry.providers); }, [registry.providers]);
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
