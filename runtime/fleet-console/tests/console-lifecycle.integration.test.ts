@@ -55,8 +55,10 @@ describe("Console daemon lifecycle integration", () => {
     expect(createConsoleLock().readLock(fixture.lockFile)?.pid).toBe(pid);
 
     // SIGTERM을 받은 Console이 listener만 닫고 lock을 쥔 채 멈춘다. SIGTERM 전에 증명한 그 프로세스이므로 강제 종료한다.
+    // Windows의 SIGTERM은 TerminateProcess라 정리가 아예 돌지 않는다 — 멈출 정리가 없으니 강제 종료도 아니며, 남은 lock은
+    // 끝난 pid의 것이라 stop이 치운다. 정체를 SIGKILL로 끝내는 계약은 POSIX에서만 성립한다.
     fs.writeFileSync(fixture.stallFile, "stall\n", "utf8");
-    expect(await lifecycle.stop()).toEqual({ forced: true, shutdownTimeoutMs: 300 });
+    expect(await lifecycle.stop()).toEqual(process.platform === "win32" ? { forced: false } : { forced: true, shutdownTimeoutMs: 300 });
     await expectProcessGone(pid);
     CHILD_PIDS.delete(pid);
     expect(createConsoleLock().readLock(fixture.lockFile)).toBeNull();
