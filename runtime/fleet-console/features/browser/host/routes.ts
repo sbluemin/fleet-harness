@@ -4,9 +4,10 @@ import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from
 import { writeImageToClipboard } from "./clipboard.js";
 
 export interface BrowserGlobalTabsInput {
-  readonly action: "create" | "close" | "select";
+  readonly action: "create" | "open" | "close" | "select";
   readonly tabId?: string | null;
   readonly url?: string | null;
+  readonly activate?: boolean;
 }
 
 export interface BrowserGlobalNavigateInput {
@@ -183,6 +184,12 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         if (action === "tabs") {
           const tabId = typeof body?.tabId === "string" ? body.tabId : null;
           if (body?.action === "create") { const tab = await browserService.createTab(GLOBAL_BROWSER_OWNER_ID, typeof body.url === "string" ? body.url : null, "user"); writeJson(res, 200, { tab }); return true; }
+          if (body?.action === "open") {
+            if (typeof body.url !== "string" || (body.activate !== undefined && typeof body.activate !== "boolean")) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+            const tab = await browserService.openGlobalUrl(body.url, { activate: body.activate !== false });
+            writeJson(res, 200, { tab });
+            return true;
+          }
           if (body?.action === "close" && tabId) { await browserService.closeTab(GLOBAL_BROWSER_OWNER_ID, tabId); writeJson(res, 200, { closed: tabId }); return true; }
           if (body?.action === "select" && tabId) { await browserService.selectTab(GLOBAL_BROWSER_OWNER_ID, tabId); writeJson(res, 200, { selected: tabId }); return true; }
           writeJson(res, 400, { error: "invalid_request" }); return true;

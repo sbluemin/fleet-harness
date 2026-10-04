@@ -253,26 +253,9 @@ export async function dismissClosedGlobalTabs(): Promise<boolean> {
  * 없을 때의 첫 뒤 탭은 활성이 된다. 같은 주소 탭이 이미 있으면 그대로 둔다.
  */
 export async function focusOrCreateGlobalTab(url: string, options?: { readonly activate?: boolean }): Promise<boolean> {
-  const foreground = options?.activate !== false;
-  try {
-    const current = await getGlobalState();
-    const existing = current?.tabs.find((tab) => tab.url === url);
-    if (existing) {
-      if (!foreground) return true;
-      const moved = await selectGlobalTab(existing.id);
-      if (moved) return true;
-    } else if (!foreground && current && current.tabs.length > 0) {
-      const previous = current.activeTabId;
-      const created = await createGlobalTab(url);
-      if (!created) return false;
-      // 새로 난 탭이 앞선 순서로 활성이 되므로, 보던 탭을 앞자리로 되돌린다.
-      if (previous) await selectGlobalTab(previous).catch(() => false);
-      return true;
-    }
-  } catch {
-    // 출발점 읽기에 실패하면 만들기로 떨어진다.
-  }
-  return createGlobalTab(url);
+  // 생성 중인 주소의 합류와 배경 활성 유지는 서버의 한 동작으로 판정한다.
+  const response = await postGlobal("tabs", { action: "open", url, activate: options?.activate !== false });
+  return response !== null && response.ok;
 }
 
 // ---------- shared 폴백 안내(세션당 한 번) ----------
