@@ -853,12 +853,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const id = objectiveId ?? randomUUID();
       if (store.recorded(id)) return objective(id);
       if (referenceNode(id)) throw new ObjectiveStoreError("operation_id_taken");
-      // 사령관이 만든 목표(직접 추가·사령관이 고른 후속)는 사령관 설정의 지휘관으로 시작한다 — 사람이 만든 목표는 보드 기본값 그대로다.
+      // 사령관이 만든 목표(직접 추가·사령관이 고른 후속)는 사령관 설정의 지휘관으로, 채팅 뷰에서 시작한다 — 원본 지휘관의 뷰를
+      // 이어받지 않는다. 사람이 만든 목표는 보드 기본값(또는 이어받은 뷰) 그대로이고, 개시 전에는 누구든 뷰를 바꿀 수 있다.
       const actor = options?.actor ?? init.by;
-      const commander = actor && typeof actor === "object" && actor.kind === "commodore" ? serviceOptions.commodoreCommander?.(input.theaterId) ?? null : null;
+      const byCommodore = !!actor && typeof actor === "object" && actor.kind === "commodore";
+      const commander = byCommodore ? serviceOptions.commodoreCommander?.(input.theaterId) ?? null : null;
       return store.adopt(id, { ...init, by: actor }, {
         theaterId: input.theaterId, title: input.title, groupId: input.groupId, createdAt: Date.now(),
-        sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: input.viewMode ?? "terminal",
+        sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: byCommodore ? "chat" : input.viewMode ?? "terminal",
       });
     },
 
