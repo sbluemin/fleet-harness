@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { constants, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -57,9 +57,13 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
     delete env.OPENAI_API_KEY;
     delete env.OPENAI_BASE_URL;
     env.CODEX_HOME = this.directory;
-    const child = spawn(this.deps.installation.codex, [...this.deps.installation.codexArgs, "app-server", "--stdio", "--enable", "computer_use", "--enable", "plugins", "--enable", "tool_call_mcp_elicitation"], {
-      cwd: this.directory, env, stdio: ["pipe", "pipe", "pipe"],
-    });
+    // The Console owns this long-lived child: it leads a registered process group the Console's deadline ends.
+    const child = this.deps.runtime.spawnProcess({
+      command: this.deps.installation.codex,
+      args: [...this.deps.installation.codexArgs, "app-server", "--stdio", "--enable", "computer_use", "--enable", "plugins", "--enable", "tool_call_mcp_elicitation"],
+      cwd: this.directory,
+      env,
+    }) as ChildProcessWithoutNullStreams;
     this.process = child;
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => this.receive(chunk));

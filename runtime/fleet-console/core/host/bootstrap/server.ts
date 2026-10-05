@@ -522,6 +522,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const updateApply = deps.updateApply ?? createConsoleUpdateApplyService({ fleetDataDir, failureLogName: CONSOLE_FAILURE_LOG_FILE });
   const recordFailure = createConsoleFailureLog(durablePaths.dir);
+  // Every long-lived child this instance starts on purpose (agent CLIs, the Computer Use broker) leads a group registered here.
+  const ownedProcesses = deps.ownedProcesses ?? createOwnedProcessRegistry();
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService({
     readRelease: () => release,
     onLookupFailure: (error) => recordFailure("update_check_failed", error),
@@ -808,6 +810,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const computerUseRuntime = {
     resolveCodex: () => resolveAgentCliBinary({ cliCommand: "codex", env: process.env, userPaths: {} }).resolved ?? null,
     childEnv: () => stripConsoleInternalEnv(process.env),
+    spawnProcess: (request: Parameters<typeof ownedProcesses.spawn>[0]) => ownedProcesses.spawn(request),
   };
   const computerUsePlatforms = {
     "sky-computer-use": createMacOSComputerUsePlatform(computerUseRuntime),
@@ -1238,7 +1241,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return { plugins: result };
   }
   const lifecycle = deps.lifecycle ?? createConsoleServeLifecycle();
-  const ownedProcesses = deps.ownedProcesses ?? createOwnedProcessRegistry();
   const isReady = () => lifecycle.state() === "ready";
   let server: http.Server | null = null;
   let loopbackServer: http.Server | null = null;
