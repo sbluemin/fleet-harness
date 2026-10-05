@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { REAPER_DRAIN_MAX_MS, consoleLockInstanceState, createConsoleHealthClient, isPidAlive, observeConsoleInstance, readProcessStartTime, reproveConsoleInstance, runStopLadder, type ConsoleLockFilePayload } from "@fleet-console/lifecycle";
 import { DESKTOP_PROTOCOL_VERSION } from "@fleet-console/protocol/desktop";
-import { CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, LOCK_AUTHOR_REPLACED_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, LOCK_AUTHOR_REPLACED_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS, describeReplacedLockAuthor } from "@fleet-console/protocol/lifecycle";
 
 import { createDesktopEnvironment } from "../src/environment.js";
 import { SidecarSupervisor, type SidecarClock, type SidecarRuntime } from "../src/sidecar-supervisor.js";
@@ -508,10 +508,14 @@ afterEach(async () => {
     const desktopFailure = await supervisor.startOrAdopt().then(() => null, (error: unknown) => error);
     expect(desktopFailure, "Desktop must refuse to start beside the reused pid").toBeInstanceOf(Error);
     expect((desktopFailure as Error).message, "a blocked lock, not a Console conflict").toBe("console_lock_held");
+    // The same verdict, not merely a failure: both actors report the contract's `replaced` reading of this lock.
+    const replaced = describeReplacedLockAuthor(lockFile, bystander.pid!);
+    expect((desktopFailure as { detail?: unknown }).detail, "Desktop reads the lock as replaced").toBe(replaced);
     expect(resolveRuntime, "Desktop must not procure or spawn a Console").not.toHaveBeenCalled();
 
     const cli = spawnSync(process.execPath, [cliPath, "start"], { env: { ...desktop.serviceEnv, PATH: SYSTEM_PATH.join(":") }, encoding: "utf8", timeout: 60_000 });
     expect(cli.status, "fleet console start must refuse too").not.toBe(0);
+    expect(cli.stderr.includes(replaced), `the CLI reads the lock as replaced too; stderr: ${cli.stderr.slice(0, 400)}`).toBe(true);
 
     expect(serves(), "no serve started beside the reused pid").toBe(servesBefore);
     expect(fs.readFileSync(lockFile, "utf8"), "the lock stays as it was").toBe(bytes);
