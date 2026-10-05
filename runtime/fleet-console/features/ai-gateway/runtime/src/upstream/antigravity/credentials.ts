@@ -13,12 +13,31 @@ import {
  * The credential the Antigravity CLI (`agy`) and the Antigravity IDE share.
  *
  * Fleet never runs the Antigravity OAuth flow. `agy` owns the login, writes the
- * token through Go's `go-keyring`, and refreshes it on its own schedule; this
- * module only reads what that CLI left behind. That is also why a silent refresh
- * here is never written back (see {@link resolveAntigravityAuth}).
+ * token, and refreshes it on its own schedule; this module only reads what that
+ * CLI left behind. That is also why a silent refresh here is never written back
+ * (see {@link resolveAntigravityAuth}).
+ *
+ * `agy` picks one of two stores per run, so a reader that looks in only one of
+ * them reads a signed-in user as signed out. By default it writes the OS
+ * credential store through Go's `go-keyring`; it switches to
+ * {@link antigravityTokenFilePath} when it detects an SSH session, when a
+ * keyring timeout was recorded recently, or when its caller asks (its own log
+ * lines, `agy` as of 2026-10-04). Measured 2026-10-05 over SSH on macOS: every
+ * run logged "Using file-based token storage because SSH session detected",
+ * kept renewing that file, and left no keychain item at all.
  */
 export const ANTIGRAVITY_KEYCHAIN_SERVICE = "gemini";
 export const ANTIGRAVITY_KEYCHAIN_ACCOUNT = "antigravity";
+
+/**
+ * The file store, relative to the home directory. It holds the same JSON the
+ * keychain item does, without the `go-keyring` wrapper.
+ */
+const ANTIGRAVITY_TOKEN_FILE_SEGMENTS = [".gemini", "antigravity-cli", "antigravity-oauth-token"] as const;
+
+function antigravityTokenFilePath(deps: Pick<CredentialResolverDeps, "homedir">): string {
+  return path.join(deps.homedir(), ...ANTIGRAVITY_TOKEN_FILE_SEGMENTS);
+}
 
 /** `go-keyring` base64-wraps any value containing bytes the OS store rejects. */
 const GO_KEYRING_BASE64_PREFIX = "go-keyring-base64:";
@@ -127,10 +146,11 @@ function firstString(
 }
 
 /**
- * Decode whatever `go-keyring` handed back.
+ * Decode whatever `go-keyring` or the token file handed back.
  *
  * `agy` stores `{"token":{"access_token","token_type","refresh_token","expiry"},"auth_method"}`
- * base64-wrapped (verified against a live `agy` login, 2026-08-22). The looser
+ * base64-wrapped in the keychain (verified against a live `agy` login, 2026-08-22)
+ * and as plain JSON in the file store (2026-10-05). The looser
  * shapes below are the ones OpenUsage found across Antigravity builds; accepting
  * them costs nothing and keeps a build change from reading as a signed-out user.
  */
@@ -367,14 +387,54 @@ async function runVendorRefresh(
   return task;
 }
 
+/** A decoded token and the store it came from. */
+interface StoredAntigravityCredential {
+  readonly token: StoredAntigravityToken;
+  readonly method: CredentialMethod;
+}
+
+async function readStore(
+  method: CredentialMethod,
+  readRaw: () => Promise<string | null>,
+): Promise<StoredAntigravityCredential | null> {
+  let raw: string | null;
+  try {
+    raw = await readRaw();
+  } catch {
+    // A missing item or file, a locked keychain, and an absent `secret-tool` all
+    // land here; none of them is distinguishable from "not signed in" to a reader.
+    return null;
+  }
+  const token = raw === null ? null : parseAntigravityKeychainValue(raw);
+  return token ? { token, method } : null;
+}
+
+/**
+ * Read both stores `agy` may have written and keep the fresher one.
+ *
+ * `agy` renews only the store it chose for that run, so when both hold a token
+ * the later expiry is the live session and the other is what an earlier run,
+ * under the other choice, left behind.
+ */
+async function readStoredCredential(deps: CredentialResolverDeps): Promise<StoredAntigravityCredential | null> {
+  const [keychain, file] = await Promise.all([
+    readStore("keychain", () => readKeychainValue(deps)),
+    readStore("file", () => deps.readBounded(antigravityTokenFilePath(deps), MAX_CREDENTIAL_BYTES)),
+  ]);
+  if (!keychain || !file) return keychain ?? file;
+  const rank = (stored: StoredAntigravityCredential): number =>
+    stored.token.expiresAt ?? Number.NEGATIVE_INFINITY;
+  return rank(file) > rank(keychain) ? file : keychain;
+}
+
 /**
  * Resolve the Antigravity credential `agy` owns.
  *
- * Fleet reads this store and never writes it. A lapsed token is renewed by
+ * Fleet reads these stores and never writes them. A lapsed token is renewed by
  * asking the vendor CLI to renew it — Fleet holds no OAuth client, mints no
- * token, and takes no part in a read-modify-write race over one keychain item.
- * The CLI persists what it renews, so the next reader on the machine, Fleet or
- * otherwise, sees the fresh value too.
+ * token, and takes no part in a read-modify-write race over the stored
+ * credential. The CLI persists what it renews, so the next reader on the
+ * machine, Fleet or otherwise, sees the fresh value too.
  */
 export async function resolveAntigravityAuth(
   deps: CredentialResolverDeps,
@@ -382,36 +442,24 @@ export async function resolveAntigravityAuth(
 ): Promise<AntigravityAuthResult> {
   const now = options.now ?? Date.now;
 
-  const read = async (): Promise<StoredAntigravityToken | null> => {
-    let raw: string | null;
-    try {
-      raw = await readKeychainValue(deps);
-    } catch {
-      // A missing item, a locked keychain, and an absent `secret-tool` all land
-      // here; none of them is distinguishable from "not signed in" to a reader.
-      return null;
-    }
-    return raw === null ? null : parseAntigravityKeychainValue(raw);
-  };
-
-  const usable = (token: StoredAntigravityToken): AntigravityAuthResult | null => {
+  const usable = ({ token, method }: StoredAntigravityCredential): AntigravityAuthResult | null => {
     if (!token.accessToken) return null;
     if (token.expiresAt !== undefined && token.expiresAt <= now()) return null;
     return {
       status: "ok",
       credentials: {
         accessToken: token.accessToken,
-        method: "keychain",
+        method,
         ...(token.expiresAt === undefined ? {} : { expiresAt: token.expiresAt }),
       },
     };
   };
 
-  const stored = await read();
+  const stored = await readStoredCredential(deps);
   if (!stored) return { status: "signed_out" };
 
-  const stale = stored.expiresAt !== undefined
-    && stored.expiresAt - now() <= ANTIGRAVITY_REFRESH_BUFFER_MS;
+  const stale = stored.token.expiresAt !== undefined
+    && stored.token.expiresAt - now() <= ANTIGRAVITY_REFRESH_BUFFER_MS;
   if (options.forceRefresh !== true && !stale) {
     const ready = usable(stored);
     if (ready) return ready;
@@ -419,12 +467,14 @@ export async function resolveAntigravityAuth(
 
   // Nothing here can renew the session on its own, so a store with no refresh
   // token is simply what it says it is rather than something to retry.
-  if (!stored.refreshToken) {
-    return usable(stored) ?? { status: stored.accessToken ? "expired" : "signed_out" };
+  if (!stored.token.refreshToken) {
+    return usable(stored) ?? { status: stored.token.accessToken ? "expired" : "signed_out" };
   }
 
   await runVendorRefresh(deps, options.refreshVendorCredential ?? spawnVendorRefresh);
-  const renewed = await read();
+  // The CLI inherits this process's environment and may renew the other store
+  // than the one just read, so both are read again.
+  const renewed = await readStoredCredential(deps);
   const ready = renewed ? usable(renewed) : null;
   if (ready) return ready;
   // The CLI ran and the stored token is still lapsed: the session itself is

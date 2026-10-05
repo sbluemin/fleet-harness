@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -14,7 +16,6 @@ import {
   fetchAntigravityUsage,
   loadAntigravityCodeAssist,
   isAntigravitySignature,
-  parseAntigravityKeychainValue,
   parseAntigravityQuotaSummary,
   resolveAntigravityAuth,
   resolveAntigravityModelSelection,
@@ -95,16 +96,37 @@ async function collect(events: AsyncIterable<CanonicalResponseEvent>): Promise<C
 const SIGNATURE = "EsMCCsAC".padEnd(120, "AbC+/9=");
 
 describe("antigravity credentials", () => {
-  it("decodes the go-keyring envelope the CLI writes", () => {
-    const parsed = parseAntigravityKeychainValue(keychainValue({
-      access_token: ACCESS,
-      refresh_token: REFRESH,
-      expiry: "2026-08-22T15:14:03.075366+09:00",
+  it("reads whichever store the CLI chose and keeps the fresher token when both hold one", async () => {
+    const tokenFile = path.join("/home/tester", ".gemini", "antigravity-cli", "antigravity-oauth-token");
+    const fileExpiry = new Date(Date.now() + 3_600_000).toISOString();
+    const keychainExpiry = new Date(Date.now() + 7_200_000).toISOString();
+    const readBounded = async (filePath: string): Promise<string | null> => {
+      if (filePath !== tokenFile) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+      return JSON.stringify({
+        token: { access_token: "file-access", token_type: "Bearer", refresh_token: REFRESH, expiry: fileExpiry },
+        auth_method: "consumer",
+      });
+    };
+
+    // Over SSH `agy` keeps its login in the file and leaves no keychain item.
+    const itemNotFound = Object.assign(new Error("item not found"), { code: 44 });
+    const fileOnly = await resolveAntigravityAuth(credentialDeps({
+      readBounded,
+      execFile: async () => { throw itemNotFound; },
     }));
-    expect(parsed).toEqual({
-      accessToken: ACCESS,
-      refreshToken: REFRESH,
-      expiresAt: Date.parse("2026-08-22T15:14:03.075366+09:00"),
+    expect(fileOnly).toEqual({
+      status: "ok",
+      credentials: { accessToken: "file-access", method: "file", expiresAt: Date.parse(fileExpiry) },
+    });
+
+    // A later run that chose the keychain renewed only that store.
+    const both = await resolveAntigravityAuth(credentialDeps({
+      readBounded,
+      execFile: async () => keychainValue({ access_token: ACCESS, refresh_token: REFRESH, expiry: keychainExpiry }),
+    }));
+    expect(both).toEqual({
+      status: "ok",
+      credentials: { accessToken: ACCESS, method: "keychain", expiresAt: Date.parse(keychainExpiry) },
     });
   });
 
