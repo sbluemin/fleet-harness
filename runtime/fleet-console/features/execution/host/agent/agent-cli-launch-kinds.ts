@@ -1,7 +1,7 @@
 import type { OperationLaunchKind, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 import type { AiGatewaySelection } from "@fleet-console/ai-gateway";
 
-import { buildModelRoster } from "../../../ai-gateway/host/model-roster.js";
+import { buildModelRoster, buildRosterFallbackGroup } from "../../../ai-gateway/host/model-roster.js";
 import type { AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 
 export { EFFORT_LABELS } from "../../../ai-gateway/host/model-roster.js";
@@ -35,11 +35,12 @@ export function buildAgentCliLaunchKinds(
 
 /**
  * Claude 종류의 런치 행은 모델 로스터의 launch 투영 그대로다 — Settings › AI Gateway에서 켠 모델(Claude 항목 포함)이
- * Quick Launch·채팅 좌표·캔버스·Objectives 보드의 유일한 선택지다. 로스터가 비면 행도 없고, 모델 없이 띄운 실행은
- * 서버가 최후 폴백(sonnet)으로 연다.
+ * Quick Launch·채팅 좌표·캔버스·Objectives 보드의 유일한 선택지다. 로스터가 비면 최후 폴백(sonnet) 한 행의 폴백 띠만
+ * 서고, 표면은 그 띠를 폴백 표식으로 그린다.
  */
 function buildClaudeLaunchVariants(selection?: AiGatewaySelection): readonly OperationLaunchVariantGroup[] {
-  return selection ? buildModelRoster(selection, "launch") : [];
+  const roster = selection ? buildModelRoster(selection, "launch") : [];
+  return roster.length > 0 ? roster : [buildRosterFallbackGroup()];
 }
 
 function resolveDisabledReason(cli: AgentCliLaunchMetadata): string | undefined {

@@ -93,8 +93,8 @@ describe("buildAgentCliLaunchKinds", () => {
   });
 
   it("projects the Gateway roster once for every target and resolves stored coordinates without rewriting them", () => {
-    // 빈 로스터에는 하드코딩 바닥 행이 없다 — 실행은 서버의 최후 폴백(sonnet)이 맡는다.
-    expect(buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], "agent", resolveAiGatewaySelection({ version: 1, models: [] }))[0]?.variants).toEqual([]);
+    // 빈 로스터에는 공급자 띠가 없다 — 최후 폴백(sonnet) 한 행의 폴백 띠만 서서 표면이 폴백 표식으로 그린다.
+    expect(buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], "agent", resolveAiGatewaySelection({ version: 1, models: [] }))[0]?.variants?.map((group) => [group.id, group.rows.map((row) => row.launch.model)])).toEqual([["roster-fallback", ["sonnet"]]]);
     const settings = {
       version: 1 as const,
       models: [{ id: "claude--sonnet" }, { id: "codex--gpt-6-sol-fast", efforts: ["low", "high"] }],

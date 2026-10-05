@@ -1,3 +1,4 @@
+import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../../ai-gateway/client/roster-fallback.js";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -338,10 +339,12 @@ export function SessionCoordinateMenu({
               {(groups ?? []).map((group, index) => (
                 <div key={group.id} className="agent-chat-coord-pop-group" role="group" aria-label={group.caption}>
                   {index > 0 ? <div className="agent-chat-coord-pop-divider" role="separator" /> : null}
-                  <p className={`operation-launch-variant-caption agent-chat-coord-pop-caption${group.provider ? ` is-${group.provider}` : ""}`} aria-hidden="true">
-                    {group.provider ? <span className="operation-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(group.provider)}</span> : null}
-                    <span>{group.caption}</span>
-                  </p>
+                  {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice className="agent-chat-coord-pop-caption" /> : (
+                    <p className={`operation-launch-variant-caption agent-chat-coord-pop-caption${group.provider ? ` is-${group.provider}` : ""}`} aria-hidden="true">
+                      {group.provider ? <span className="operation-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(group.provider)}</span> : null}
+                      <span>{group.caption}</span>
+                    </p>
+                  )}
                   {group.rows.map((row) => {
                     const active = row.launch.model === target?.model;
                     // 지금 모델은 막지 않는다 — 그 창에 이미 들어앉은 대화다.

@@ -43,6 +43,16 @@ const EFFORT_ORDER: readonly string[] = [...AGENT_EFFORTS, "ultra"];
  */
 export const ROSTER_FALLBACK_MODEL = "sonnet";
 
+/**
+ * 로스터가 비었을 때 실행 카탈로그가 세우는 유일한 띠의 id. 그 띠의 한 행은 최후 폴백 좌표다 — 실행 표면은 이 띠를
+ * 공급자 띠 대신 「로스터가 비어 Sonnet으로 실행」 표식과 AI Gateway로 가는 길로 그린다.
+ */
+export const ROSTER_FALLBACK_GROUP_ID = "roster-fallback";
+
+export function isRosterFallbackGroup(id: string | null | undefined): boolean {
+  return id === ROSTER_FALLBACK_GROUP_ID;
+}
+
 /** 서버 브로드캐스트 채널 — 로스터가 바뀌면 값 없이 울린다. 받은 쪽이 다시 읽는다. */
 export const MODEL_ROSTER_CHANGED_CHANNEL = "models:roster-changed";
 

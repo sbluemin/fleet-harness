@@ -1,3 +1,4 @@
+import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
 import { Fragment, useEffect, useRef, useState, type ChangeEvent, type MutableRefObject, type ReactNode } from "react";
 
 import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -187,6 +188,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
   const grouped = groups.length > 1;
   const modelGroups = grouped ? groups : groups.slice(0, 1);
   const autoLabel = t("launchVariants.effort.auto");
+  const fallbackBadge = t("settings.models.fallback");
   const { deck, toggleGate } = useMobileEffortGate(selectedRow, effort, autoLabel, props.onEffort);
   const effortLabel = deck.options.find((option) => option.checked)?.label ?? autoLabel;
   const onPickFiles = (event: ChangeEvent<HTMLInputElement>) => {
@@ -215,7 +217,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
       <MobileSheet key="model" title={t("chrome.quickLaunch.mobile.model")} onClose={() => setSub(null)} className="mql-sheet">
         {modelGroups.map((candidate, index) => (
           <Fragment key={candidate.id}>
-            {grouped ? <h3 className={`mql-glab${index > 0 ? " is-next" : ""}`}>{candidate.label}</h3> : null}
+            {isRosterFallbackGroup(candidate.id) ? <RosterFallbackNotice className="mql-glab" /> : grouped ? <h3 className={`mql-glab${index > 0 ? " is-next" : ""}`}>{candidate.label}</h3> : null}
             <div className="mql-grp" role="radiogroup" aria-label={grouped ? candidate.label : t("chrome.quickLaunch.mobile.model")}>
               {candidate.rows.map((row) => (
                 <button key={row.id} type="button" role="radio" aria-checked={row.id === selectedRow?.id} className="mql-gr" onClick={() => props.onModelRow(row)}>
@@ -326,7 +328,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
             <span className="mql-chip-name">{theater?.label ?? t("chrome.quickLaunch.mobile.theater")}</span>
           </button>
           <button type="button" className="mobile-pill-secondary mql-model-chip" onClick={() => setSub("model")} disabled={!selectedRow}>
-            <span className="mql-chip-name">{selectedRow?.label ?? t("chrome.quickLaunch.modelUnset")}</span>{selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? <span className="mql-chip-effort">{effortLabel}</span> : null}
+            <span className="mql-chip-name">{selectedRow ? (groups.some((group) => isRosterFallbackGroup(group.id) && group.rows.includes(selectedRow)) ? `${selectedRow.label} · ${fallbackBadge}` : selectedRow.label) : t("chrome.quickLaunch.modelUnset")}</span>{selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? <span className="mql-chip-effort">{effortLabel}</span> : null}
           </button>
         </div>
       ) : null}

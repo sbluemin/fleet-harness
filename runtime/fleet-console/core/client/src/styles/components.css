@@ -16520,6 +16520,13 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .fc-coord-menu-provider.is-cursor, .fc-coord-trigger-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .fc-coord-menu-provider.is-opencode, .fc-coord-trigger-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .fc-coord-menu-provider.is-antigravity, .fc-coord-trigger-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
+/* 빈 로스터의 폴백 띠 머리 — Quick Launch·캔버스·채팅 좌표가 공급자 띠 대신 그린다. 폴백은 상태라 warn이 말하고, 길 안내는 brass 잉크다. */
+.roster-fallback-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-ui); font-size: var(--t-xs); line-height: 1.45; letter-spacing: 0; text-transform: none; color: var(--text-tertiary); white-space: normal; }
+.roster-fallback-badge { flex: none; padding: 0 5px; border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: var(--radius-pill); color: var(--warn-ink); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
+.roster-fallback-copy { flex: 1 1 12em; min-width: 0; }
+.roster-fallback-link { flex: none; padding: 0; border: 0; background: none; color: var(--brass-ink); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.roster-fallback-link:hover { color: var(--text-primary); }
+.roster-fallback-link:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 /* Muse Code에는 아직 공급자 토큰이 없다 — 톤 없이 비지 않도록 Etc와 같은 머리글 잉크를 빌린다. */
 .fc-coord-menu-provider.is-muse-code, .fc-coord-trigger-provider.is-muse-code,
 .operation-launch-variant-caption.is-muse-code { --launch-provider-tone: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary)); }

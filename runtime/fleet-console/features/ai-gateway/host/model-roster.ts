@@ -3,6 +3,7 @@ import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fl
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import {
   MODEL_ROSTER_CHANGED_CHANNEL,
+  ROSTER_FALLBACK_GROUP_ID,
   ROSTER_FALLBACK_MODEL,
   isModelRosterTarget,
   resolveRosterCoordinate,
@@ -66,6 +67,28 @@ const ROSTER_PROVIDER_ORDER: readonly GatewayProvider[] = [
   "claude",
   ...GATEWAY_PROVIDERS.filter((provider) => provider !== "claude"),
 ];
+
+/**
+ * 빈 로스터의 launch 카탈로그 — 최후 폴백 좌표(sonnet) 한 행만 둔 띠. 실행 표면이 모델 행 없이 멈추지 않게 하고,
+ * 그 띠 id로 「폴백」임을 드러낸다. 강도 축은 launch 대상의 전체 축이다(서버가 실행 시 그대로 싣는다).
+ */
+export function buildRosterFallbackGroup(): OperationLaunchVariantGroup {
+  const model = ROSTER_FALLBACK_MODEL;
+  const ordinary = ["low", "medium", "high", "xhigh", "max"] as const;
+  return {
+    id: ROSTER_FALLBACK_GROUP_ID,
+    label: "Claude",
+    rows: [{
+      id: model,
+      label: "Sonnet",
+      launch: { model },
+      contextWindow: CLAUDE_DEFAULT_CONTEXT_WINDOW,
+      effortAxis: [...ordinary, ULTRACODE_LAUNCH_EFFORT],
+      gatedEfforts: ["max", ULTRACODE_LAUNCH_EFFORT],
+      chips: [...ordinary, ULTRACODE_LAUNCH_EFFORT].map((effort) => effortChip(model, effort)),
+    }],
+  };
+}
 
 /** 정준 id(실행 id). Claude는 Claude Code 별칭, 나머지는 scoped id. */
 export function canonicalGatewayModelId(model: GatewayModel): string {

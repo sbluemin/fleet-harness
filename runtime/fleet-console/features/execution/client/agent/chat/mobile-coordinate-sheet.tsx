@@ -1,3 +1,4 @@
+import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../../ai-gateway/client/roster-fallback.js";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -86,7 +87,7 @@ export function MobileCoordinateSheet({
       {groups === null ? <p className="mql-glab">{t("terminal.chat.coordMenuLoading")}</p> : null}
       {(groups ?? []).map((group) => (
         <React.Fragment key={group.id}>
-          {(groups?.length ?? 0) > 1 ? <h3 className="mql-glab">{group.caption}</h3> : null}
+          {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice className="mql-glab" /> : (groups?.length ?? 0) > 1 ? <h3 className="mql-glab">{group.caption}</h3> : null}
           <div className="mql-grp" role="radiogroup" aria-label={group.caption}>
             {group.rows.map((row) => {
               const blocked = tooLarge(row);

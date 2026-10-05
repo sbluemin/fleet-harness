@@ -1,3 +1,4 @@
+import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantRow, OperationLaunchView } from "@fleet-console/sdk/operations";
 
@@ -652,7 +653,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                         {directKinds.length > 0 || kindIndex > 0 || groupIndex > 0
                           ? <div className="theater-menu-divider" role="separator" />
                           : null}
-                        {(() => {
+                        {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice className="operation-launch-variant-caption" /> : (() => {
                           const provider = launchProviderFromGroupId(group.id);
                           const caption = group.id === "native"
                             ? t("launchVariants.group.native")
