@@ -349,7 +349,7 @@ export function SessionCoordinateMenu({
               {(groups ?? []).map((group, index) => (
                 <div key={group.id} className="agent-chat-coord-pop-group" role="group" aria-label={group.caption}>
                   {index > 0 ? <div className="agent-chat-coord-pop-divider" role="separator" /> : null}
-                  {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice className="agent-chat-coord-pop-caption" /> : (
+                  {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice onOpened={() => setOpen(false)} /> : (
                     <p className={`operation-launch-variant-caption agent-chat-coord-pop-caption${group.provider ? ` is-${group.provider}` : ""}`} aria-hidden="true">
                       {group.provider ? <span className="operation-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(group.provider)}</span> : null}
                       <span>{group.caption}</span>

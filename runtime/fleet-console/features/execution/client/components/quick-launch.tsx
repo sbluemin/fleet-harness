@@ -2212,7 +2212,7 @@ export function QuickLaunch() {
             >
               {groups.map((group) => (
                 <div key={group.id} className="quick-launch-pop-group">
-                  {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice className="quick-launch-pop-band" /> : (() => {
+                  {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice onOpened={closePopover} /> : (() => {
                     const provider = launchProviderFromGroupId(group.id);
                     return (
                       <p className={`quick-launch-pop-band${provider ? ` is-${provider}` : ""}`}>

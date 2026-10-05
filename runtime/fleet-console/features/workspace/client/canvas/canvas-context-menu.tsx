@@ -653,7 +653,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                         {directKinds.length > 0 || kindIndex > 0 || groupIndex > 0
                           ? <div className="theater-menu-divider" role="separator" />
                           : null}
-                        {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice className="operation-launch-variant-caption" /> : (() => {
+                        {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice onOpened={onClose} /> : (() => {
                           const provider = launchProviderFromGroupId(group.id);
                           const caption = group.id === "native"
                             ? t("launchVariants.group.native")

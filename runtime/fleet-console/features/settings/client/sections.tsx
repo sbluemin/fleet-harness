@@ -26,6 +26,7 @@ import { loadDeviceFonts, requestDesktopDeviceFonts, useDeviceFonts, useDeviceFo
 import { ExperimentsSection } from "./experiments-section.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
+import { pluginSettingsSectionId } from "./settings-entry.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -296,7 +297,7 @@ export function collectPluginSettingsSections(
   return plugins.flatMap((plugin) =>
     // 폰에서만 서는 섹션(`mobile.only`)은 데스크톱 목록·검색에 올리지 않는다.
     (plugin.settingsSections ?? []).filter((section) => layout === "mobile" || section.mobile?.only !== true).map((section) => ({
-      id: `${plugin.id ?? "terminal"}:${section.id}` as const,
+      id: pluginSettingsSectionId(plugin.id, section.id),
       // 플러그인 설정은 대부분 작업 도구의 동작이다. 다른 자리가 필요하면 섹션이 직접 말한다.
       group: section.group ?? "work" as const,
       pluginId: plugin.id,
