@@ -9,7 +9,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CONSOLE_STOP_DEADLINE_MS } from "@fleet-console/protocol/lifecycle";
+import { REAPER_DRAIN_MAX_MS } from "@fleet-console/lifecycle";
+import { CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
 import { createDesktopEnvironment } from "../src/environment.js";
 import { SidecarSupervisor, type SidecarRuntime } from "../src/sidecar-supervisor.js";
@@ -238,8 +239,9 @@ const FAKE_AGENT = path.join(consoleFixtures, "lifecycle-fake-agent.mjs");
 const LIFECYCLE_KNOWN_DEFECTS = JSON.parse(fs.readFileSync(path.join(consoleFixtures, "lifecycle-known-defects.json"), "utf8")) as ReadonlyArray<{ readonly case: string; readonly followup: string; readonly releasedBy: string }>;
 const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
 const AGENT_ROLES = new Set(["chat", "chat-mcp", "terminal", "terminal-mcp"]);
-// Long enough for anything that reaps after the Console is gone (a containment helper's own grace included).
-const SETTLE_MS = 10_000;
+// Long enough for anything that reaps after the Console is gone: the reaper's own cap, the process-table read it may still
+// be inside when that cap fires, and the escalation margin for a loaded runner.
+const SETTLE_MS = REAPER_DRAIN_MAX_MS + PROCESS_TABLE_TIMEOUT_MS + ESCALATION_MARGIN_MS;
 
 // Needs the built Console (pnpm --filter @dotobokuri/fleet-console build); POSIX signal semantics only.
 const runLifecycle = process.env.FLEET_BUILT_SMOKE === "1" && process.platform !== "win32";

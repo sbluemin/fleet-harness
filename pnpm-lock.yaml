@@ -440,6 +440,9 @@ importers:
       '@electron/fuses':
         specifier: 2.1.3
         version: 2.1.3
+      '@fleet-console/lifecycle':
+        specifier: workspace:*
+        version: link:../fleet-console/foundation/lifecycle
       '@fleet-console/process':
         specifier: workspace:*
         version: link:../fleet-console/foundation/process
