@@ -546,7 +546,7 @@ afterEach(async () => {
     const pluginChildren = await openPluginChildren(run, endpoint);
     const started = pluginChildren;
     const breakaway = JSON.parse(fs.readFileSync(breakawayFile, "utf8")) as { ok?: boolean; err?: number };
-    expect(breakaway.ok, "CREATE_BREAKAWAY_FROM_JOB must fail inside the group job").toBe(false);
+    expect(breakaway.ok, `CREATE_BREAKAWAY_FROM_JOB must fail inside the group job (${JSON.stringify(breakaway)})`).toBe(false);
     expect(breakaway.err, "breakaway is denied").toBe(5);
     for (const role of ["detached", "native"]) {
       expect(pluginChildren.some((child) => child.command === `tokscale ${role}`), `${role} grandchild was not started`).toBe(true);
@@ -902,6 +902,7 @@ function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefi
     "  try { require('fs').mkdirSync(require('path').join(__dirname, 'grandchildren.lock')); once = true; } catch (error) {}",
     "  if (once) try {",
     "    const fs = require('fs');",
+    "    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);",
     "    const path = require('path');",
     "    const { spawn, spawnSync } = require('child_process');",
     "    const note = (text) => record('windows-error', String(text).replace(/\\s+/g, ' ').slice(0, 400));",
