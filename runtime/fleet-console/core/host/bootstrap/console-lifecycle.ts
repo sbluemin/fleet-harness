@@ -10,6 +10,7 @@ import {
   captureProvenProcessStart,
   createConsoleHealthClient,
   createOwnedProcessRegistry,
+  killSameGroupDescendants,
   isPidAlive,
   observeConsoleInstance,
   readConsoleExitRecord,
@@ -285,11 +286,20 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       // left behind is reclaimed by the next Console once this pid is ESRCH.
       onStopRequested: () => {
         deadline = setTimeout(() => {
-          let killed = 0;
-          try { killed = ownedProcesses.killAll({ env, onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error) }); }
+          const unavailable = (error: unknown) => recordFailure("shutdown_process_table_unavailable", error);
+          // ① The owned groups first: a group led by an unreaped child needs no process table, so a table that cannot be
+          // read never costs those (E1).
+          let groups = 0;
+          try { groups = ownedProcesses.killAll({ env, onProcessTableUnavailable: unavailable }); }
           catch (error) { recordFailure("shutdown_owned_processes_failed", error); }
+          // ② Then whatever no one registered that still shares this process's group (a plugin's tool, a git or ripgrep
+          // call, a stdio MCP transport). This one needs the table and skips everything without it.
+          let strays = 0;
+          try { strays = killSameGroupDescendants({ env, onProcessTableUnavailable: unavailable }); }
+          catch (error) { recordFailure("shutdown_process_table_unavailable", error); }
+          const killed = groups + strays;
           const settled = lifecycle.isStartupSettled();
-          recordFailure(settled ? "shutdown_timeout" : "startup_shutdown_timeout", new Error(`Console ${settled ? "shutdown" : "startup shutdown"} did not finish within ${CONSOLE_STOP_DEADLINE_MS}ms; SIGKILL sent to ${killed} owned process group(s)`));
+          recordFailure(settled ? "shutdown_timeout" : "startup_shutdown_timeout", new Error(`Console ${settled ? "shutdown" : "startup shutdown"} did not finish within ${CONSOLE_STOP_DEADLINE_MS}ms; SIGKILL sent to ${groups} owned process group(s) and ${strays} other leftover child process(es)`));
           exitOutcome = { outcome: "deadline", killed };
           process.exit(1);
         }, CONSOLE_STOP_DEADLINE_MS);

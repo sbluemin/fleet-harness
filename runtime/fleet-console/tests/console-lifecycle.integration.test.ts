@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { proveExitedLeaderGroup } from "@fleet-console/lifecycle";
+import { proveExitedLeaderGroup, selectSameGroupDescendants } from "@fleet-console/lifecycle";
 
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
@@ -211,6 +211,30 @@ describe("Console daemon lifecycle integration", () => {
     expect(createConsoleLock().readLock(fixture.lockFile)).toEqual(reusedLock);
     expect(signals).toEqual([]);
     expect(() => process.kill(bystanderPid, 0)).not.toThrow();
+  });
+
+  // After the owned groups, the deadline SIGKILLs what no one registered. Only this Console's own descendants that stay in its
+  // process group qualify: never the group as a whole (a Desktop sidecar shares Desktop's group), never a child that leads a
+  // group of its own (an owned group, the update worker and the Console it starts, a PTY session), never the ps that
+  // produced the table.
+  it("limits the deadline's fallback SIGKILL to unregistered descendants that stay in the Console's process group", () => {
+    const rows = [
+      { pid: 1, ppid: 0, pgid: 1 },
+      { pid: 500, ppid: 1, pgid: 500 }, // Desktop
+      { pid: 600, ppid: 500, pgid: 500 }, // the Console sidecar, in Desktop's group
+      { pid: 601, ppid: 500, pgid: 500 }, // another child of Desktop
+      { pid: 610, ppid: 600, pgid: 500 }, // an unregistered tool call
+      { pid: 611, ppid: 610, pgid: 500 }, // its child
+      { pid: 615, ppid: 600, pgid: 615 }, // an owned agent CLI group
+      { pid: 616, ppid: 615, pgid: 615 }, // its MCP child
+      { pid: 620, ppid: 600, pgid: 620 }, // detached update worker
+      { pid: 621, ppid: 620, pgid: 620 }, // the Console the worker starts
+      { pid: 630, ppid: 600, pgid: 630 }, // PTY session leader
+      { pid: 631, ppid: 630, pgid: 630 }, // a process in that terminal
+      { pid: 640, ppid: 600, pgid: 500 }, // the ps that listed this table
+    ];
+    expect(selectSameGroupDescendants(rows, 600, [640]).sort((left, right) => left - right)).toEqual([610, 611]);
+    expect(selectSameGroupDescendants(rows.filter((row) => row.pid !== 600), 600)).toEqual([]);
   });
 
   // The deadline signals a registered group whose leader already exited only when the process table proves the members are

@@ -185,3 +185,82 @@ function groupHasMembers(pgid: number): boolean {
     return (error as NodeJS.ErrnoException | null)?.code !== "ESRCH";
   }
 }
+
+/** One row of `ps -A -o pid=,ppid=,pgid=`: enough to walk a process's descendants and their process groups. */
+export interface ProcessTreeRow {
+  readonly pid: number;
+  readonly ppid: number;
+  readonly pgid: number;
+}
+
+/**
+ * The fallback the stop deadline runs after the owned groups: descendants of `rootPid` that stay in its process group,
+ * deepest first. Those are children no one registered (a plugin's tool, a git or ripgrep call, a stdio MCP transport) that
+ * would otherwise outlive the Console. A child that leads a group of its own is either registered (the registry ended
+ * it) or handed off on purpose (the detached update worker, a PTY session), so it and everything under it are left alone.
+ * The group itself is never signalled as a whole: a Desktop sidecar shares Desktop's. Without a row for `rootPid`
+ * nothing is selected.
+ */
+export function selectSameGroupDescendants(rows: readonly ProcessTreeRow[], rootPid: number, excludePids: readonly number[] = []): number[] {
+  const root = rows.find((row) => row.pid === rootPid);
+  if (!root) return [];
+  const children = new Map<number, ProcessTreeRow[]>();
+  for (const row of rows) {
+    if (row.pid === row.ppid) continue;
+    const siblings = children.get(row.ppid);
+    if (siblings) siblings.push(row);
+    else children.set(row.ppid, [row]);
+  }
+  const excluded = new Set(excludePids);
+  const seen = new Set<number>([rootPid]);
+  const selected: Array<{ readonly pid: number; readonly depth: number }> = [];
+  const visit = (pid: number, depth: number) => {
+    for (const child of children.get(pid) ?? []) {
+      if (seen.has(child.pid) || child.pgid !== root.pgid) continue;
+      seen.add(child.pid);
+      if (!excluded.has(child.pid)) selected.push({ pid: child.pid, depth });
+      visit(child.pid, depth + 1);
+    }
+  };
+  visit(rootPid, 1);
+  return selected.sort((left, right) => right.depth - left.depth).map((entry) => entry.pid);
+}
+
+/**
+ * SIGKILLs this process's unregistered descendants that stay in its process group (see selectSameGroupDescendants) and
+ * returns how many were signalled. POSIX only. Without a readable process table nothing is signalled — an orphan is
+ * better than a signal to an unrelated process. Synchronous, so a direct child cannot be reaped (and its pid reused)
+ * between the snapshot and its SIGKILL.
+ */
+export function killSameGroupDescendants(input: OwnedProcessKillInput = {}): number {
+  if (process.platform === "win32") return 0;
+  const listing = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid="], {
+    env: { PATH: (input.env ?? process.env).PATH ?? "/usr/bin:/bin", LC_ALL: "C" },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: PROCESS_TABLE_TIMEOUT_MS,
+    windowsHide: true,
+  });
+  if (listing.error || listing.status !== 0 || typeof listing.stdout !== "string") {
+    input.onProcessTableUnavailable?.(listing.error ?? new Error(`ps exited with ${listing.status ?? listing.signal}`));
+    return 0;
+  }
+  const rows: ProcessTreeRow[] = [];
+  for (const line of listing.stdout.split("\n")) {
+    const fields = line.trim().split(/\s+/).map(Number);
+    if (fields.length === 3 && fields.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+      rows.push({ pid: fields[0]!, ppid: fields[1]!, pgid: fields[2]! });
+    }
+  }
+  // ps itself was this process's child and is already reaped; its pid must not be signalled.
+  let killed = 0;
+  for (const pid of selectSameGroupDescendants(rows, process.pid, listing.pid ? [listing.pid] : [])) {
+    try {
+      process.kill(pid, "SIGKILL");
+      killed += 1;
+    } catch {
+      // Already gone.
+    }
+  }
+  return killed;
+}

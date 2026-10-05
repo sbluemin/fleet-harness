@@ -69,7 +69,7 @@ A Console instance that held the lock writes its own exit record beside its lock
 | Outcome | Written by | Meaning |
 |---|---|---|
 | `clean` | the Console, at exit | the shutdown finished and the process exited on its own |
-| `deadline` | the Console, at exit | B_int ran out; `killed` owned process groups were SIGKILLed |
+| `deadline` | the Console, at exit | B_int ran out; `killed` counts the owned process groups and other leftover children it SIGKILLed |
 | `crash` | the Console, at exit | an uncaught exception ended it |
 | `failed` | the Console, at exit | it took the lock, then its start or its shutdown failed, and it ended with an error |
 | `external` | the containment watcher *(pending)*, or inferred by a reader of a Console that reports `lifecycleWire` | the process vanished without a record |
@@ -124,12 +124,13 @@ A Console's children must not outlive it on any exit path (I2).
 ### Owned process groups
 
 - Every agent CLI the Console's SDK users start — Agent chat, Analyst, and the AI Gateway's routing model — goes through one spawn port (`ConsoleRuntimeContext.spawnAgentProcess`), and so does the Computer Use codex app-server. On POSIX each starts as the leader of a **process group of its own** and is registered in the Console's owned-process registry (`createOwnedProcessRegistry`); its MCP servers and tool processes stay in that group. The port is required where those children are composed, so none of them can be started without it.
-- A child the Console hands off on purpose is never registered and never signalled by the Console: the detached update worker (and the Console it starts) and PTY sessions (their terminal ends them). Children a plugin starts (the ledger CLI) are not yet registered *(pending: the same port offered to plugins)*.
+- A child the Console hands off on purpose is never registered and never signalled by the Console: the detached update worker (and the Console it starts) and PTY sessions (their terminal ends them). A child a plugin starts in a group of its own (the ledger CLI) is not yet registered and so is reached by neither step below *(pending: the same port offered to plugins)*.
 - On a normal stop the SDK closes each agent CLI (stdin close, SIGTERM to the leader after 2 s, SIGKILL after 5 more).
-- When the stop deadline fires, the Console SIGKILLs the registered groups before it exits:
+- When the stop deadline fires, the Console first SIGKILLs the registered groups:
   - A group whose leader is still the Console's **unreaped child** is signalled as a whole without reading the process table: an unreaped child's pid, and so its group number, cannot be reused (E1). This is the common case — an agent CLI that ignored SIGTERM — and it needs no `ps`, so a process table that cannot be read in time no longer leaves orphans (follow-up e7874487:N8).
   - A group whose leader already exited but which still has members is signalled only when a `ps` snapshot proves them: no process holds the leader's pid, and every member started between the group's spawn (less the 2 s start-time margin) and now. If the table cannot be read within `PROCESS_TABLE_TIMEOUT_MS`, that group is left alone (I1 before I2) *(pending: the per-Console watcher retries)*.
   - Never the Console's own group (a Desktop sidecar shares Desktop's) and never a group number ≤ 1.
+- Then, as a fallback, it SIGKILLs every **unregistered** descendant that still shares the Console's own process group (a plugin's tool, a git or ripgrep call, a stdio MCP transport that hung), deepest first, from one `ps` snapshot. The only judgment is "same group as the Console": a child that leads a group of its own is either registered (already handled above) or handed off on purpose, and is never signalled here. Without a readable table this step signals nothing; the registered groups led by unreaped children were already ended without it.
 - Windows has no process groups: a direct child is ended with the Console by libuv's job object; grandchildren are not yet measured *(pending: U2)*.
 - A crash or an external SIGKILL is not yet covered *(pending: a per-Console watcher that reclaims the registered groups after re-proving each one)*. The real Claude Code CLI (2.1.289) does not exit on stdin EOF while a turn is open and survives its parent's SIGKILL together with its MCP children (measured, U1), so that watcher is required.
 

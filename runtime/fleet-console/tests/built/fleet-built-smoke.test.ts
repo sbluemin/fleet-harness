@@ -339,10 +339,11 @@ afterEach(async () => {
   }, 90_000);
 
   // L9, N4. The Console ends by its own deadline (stop's own process-table read is the slow one here, so stop never gets to
-  // escalate); stop must not report that as a clean stop.
+  // escalate); stop must not report that as a clean stop. The deadline also ends a hung child that no one registered in the
+  // Console's process group: nothing the Console started may outlive it.
   it("reports a Console that ended by its own deadline as not cleanly stopped", async () => {
     const run = createRun("outcome");
-    const stall = stallShutdownWithLockHeld(run);
+    const stall = stallShutdownWithLockHeld(run, { strayChild: true });
     const consoleProcess = spawnConsole(run, { preload: stall.preload });
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
@@ -680,11 +681,12 @@ function writePreload(run: LifecycleRun, name: string, lines: readonly string[])
 
 /**
  * Test-only preload: closing the main listener never completes, so the shutdown stalls while the lock is still held.
+ * `strayChild` also starts a child that no one registers and that never ends by itself, in the Console's process group.
  * `freezeOnSignalMs` also blocks the event loop that long when the first SIGTERM arrives, before the Console handles it.
  * `freezeBeforeDeadline` blocks it for FREEZE_BEFORE_DEADLINE_MS starting 200ms before the Console's own stop deadline, so the
  * deadline's cleanup runs late while its process-table read keeps the full budget.
  */
-function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number; readonly freezeBeforeDeadline?: boolean } = {}): { readonly preload: string; readonly marker: string; readonly freeze: string } {
+function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number; readonly freezeBeforeDeadline?: boolean; readonly strayChild?: boolean } = {}): { readonly preload: string; readonly marker: string; readonly freeze: string } {
   const marker = path.join(run.dir, "stalled");
   // {t0, start, end} in epoch ms: the first SIGTERM and the pre-deadline freeze, for the case's timeline.
   const freeze = path.join(run.dir, "freeze.jsonl");
@@ -693,6 +695,8 @@ function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freeze
     "import http from 'node:http';",
     `const lock = ${JSON.stringify(run.lockFile)}, marker = ${JSON.stringify(marker)}, freeze = ${JSON.stringify(freeze)};`,
     ...(options.freezeOnSignalMs ? [`process.prependOnceListener('SIGTERM', () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${options.freezeOnSignalMs}));`] : []),
+    // A child no one registered, in the Console's own process group, that never ends by itself (a hung tool call).
+    ...(options.strayChild ? ["import('node:child_process').then(({ spawn }) => spawn('/bin/sleep', ['300'], { stdio: 'ignore' }));"] : []),
     ...(options.freezeBeforeDeadline ? [
       "process.prependOnceListener('SIGTERM', () => {",
       "  const t0 = Date.now();",
