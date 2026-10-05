@@ -316,6 +316,28 @@ afterEach(async () => {
     lifecycleCheck("L12", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
   }, 90_000);
 
+  // L14, e7874487:N8 (I4, I2). The shutdown stalls with the lock held and the Console's process-table read cannot answer
+  // within its budget. The agent CLI ignores SIGTERM, so its group's leader is still this Console's child: the deadline must
+  // end that group without the table, and stop must still let the deadline finish first.
+  it("ends a live agent group at the deadline without a process table", async () => {
+    const run = createRun("no-ps");
+    const stall = stallShutdownWithLockHeld(run);
+    const consoleProcess = spawnConsole(run, { preload: stall.preload, env: { PATH: [hangingProcessTable(run), run.env.PATH].join(":") } });
+    const startedAt = Date.now();
+    const endpoint = await waitForReady(run, consoleProcess.pid!);
+    await openWorkload(run, endpoint, { terminal: false });
+    const started = descendantsOf(consoleProcess.pid!);
+    await provableByStartTime(startedAt);
+
+    await runStop(run.env);
+    const exit = await exitOf(consoleProcess, 30_000);
+
+    expect(fs.existsSync(stall.marker), "the injected stall must hold the shutdown with the lock held").toBe(true);
+    lifecycleCheck("L14", exit.signal !== "SIGKILL", "I4: stop does not SIGKILL the Console before its own deadline ends it", { detail: exit });
+    const left = await survivors(run, started);
+    lifecycleCheck("L14", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
+  }, 90_000);
+
   // L9, N4. The Console ends by its own deadline (stop's own process-table read is the slow one here, so stop never gets to
   // escalate); stop must not report that as a clean stop.
   it("reports a Console that ended by its own deadline as not cleanly stopped", async () => {
@@ -584,10 +606,10 @@ function createRun(name: string): LifecycleRun {
   return run;
 }
 
-function spawnConsole(run: LifecycleRun, options: { readonly preload?: string } = {}): ChildProcess {
+function spawnConsole(run: LifecycleRun, options: { readonly preload?: string; readonly env?: Record<string, string> } = {}): ChildProcess {
   const args = [...(options.preload ? ["--import", pathToFileURL(options.preload).href] : []), cliDist, "serve"];
   // Detached like `fleet console start`: the Console leads its own process group.
-  const child = spawn(process.execPath, args, { env: run.env, stdio: "ignore", detached: true });
+  const child = spawn(process.execPath, args, { env: { ...run.env, ...options.env }, stdio: "ignore", detached: true });
   own(child.pid!);
   return child;
 }
@@ -723,6 +745,14 @@ function failureKinds(run: LifecycleRun): string[] {
   } catch {
     return [];
   }
+}
+
+/** A `ps` that never answers within any process-table budget, put on one process's PATH only. */
+function hangingProcessTable(run: LifecycleRun): string {
+  const dir = path.join(run.dir, "hanging-ps");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "ps"), "#!/bin/sh\nexec sleep 30\n", { mode: 0o755 });
+  return dir;
 }
 
 /** A `ps` that answers after `delayMs`, put on one process's PATH only: its process-table read is slow, nobody else's. */

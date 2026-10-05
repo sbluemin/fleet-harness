@@ -79,6 +79,7 @@ export class AnalystSession {
       modelPolicy: claudeGatewayModelPolicy,
       models: [this.options.model],
       ...(this.options.env ? { env: { ...this.options.env } } : {}),
+      ...(this.options.spawnProcess ? { spawnProcess: this.options.spawnProcess } : {}),
     };
   }
 

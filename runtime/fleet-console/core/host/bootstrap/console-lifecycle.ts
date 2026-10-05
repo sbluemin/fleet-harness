@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -9,6 +9,7 @@ import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 import {
   captureProvenProcessStart,
   createConsoleHealthClient,
+  createOwnedProcessRegistry,
   isPidAlive,
   observeConsoleInstance,
   readConsoleExitRecord,
@@ -27,7 +28,6 @@ import {
   CONSOLE_STOP_DEADLINE_MS,
   EXTERNAL_ESCALATION_MS,
   PRELOCK_CHILD_GRACE_MS,
-  PROCESS_TABLE_TIMEOUT_MS,
   type ConsoleExitOutcome,
 } from "@fleet-console/protocol/lifecycle";
 
@@ -276,18 +276,20 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // server API all make the same stop request: the first arms the one deadline below, the shutdown runs once, and it
     // releases the lock only at its end.
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    // Every agent CLI this instance starts leads a registered process group; the deadline ends exactly those.
+    const ownedProcesses = createOwnedProcessRegistry();
     let exitOutcome: { readonly outcome: ConsoleExitOutcome; readonly killed: number } | null = null;
     const lifecycle = createConsoleServeLifecycle({
       // From the first stop request until the process exits, whatever is still running: a stalled start, a cleanup stuck
-      // with the lock, or a child that outlives the released lock. Leftover children are SIGKILLed first; a lock left
-      // behind is reclaimed by the next Console once this pid is ESRCH.
+      // with the lock, or a child that outlives the released lock. The owned process groups are SIGKILLed first; a lock
+      // left behind is reclaimed by the next Console once this pid is ESRCH.
       onStopRequested: () => {
         deadline = setTimeout(() => {
           let killed = 0;
-          try { killed = killShutdownStragglers(env, recordFailure); }
-          catch (error) { recordFailure("shutdown_process_table_unavailable", error); }
+          try { killed = ownedProcesses.killAll({ env, onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error) }); }
+          catch (error) { recordFailure("shutdown_owned_processes_failed", error); }
           const settled = lifecycle.isStartupSettled();
-          recordFailure(settled ? "shutdown_timeout" : "startup_shutdown_timeout", new Error(`Console ${settled ? "shutdown" : "startup shutdown"} did not finish within ${CONSOLE_STOP_DEADLINE_MS}ms; SIGKILL sent to ${killed} leftover child process(es)`));
+          recordFailure(settled ? "shutdown_timeout" : "startup_shutdown_timeout", new Error(`Console ${settled ? "shutdown" : "startup shutdown"} did not finish within ${CONSOLE_STOP_DEADLINE_MS}ms; SIGKILL sent to ${killed} owned process group(s)`));
           exitOutcome = { outcome: "deadline", killed };
           process.exit(1);
         }, CONSOLE_STOP_DEADLINE_MS);
@@ -299,7 +301,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       },
       // From here only leftover handles (an SDK child still being reaped) keep the process alive. An unref'd deadline
       // fires only while something still does, so a clean exit is never delayed and a stuck one still ends.
-      onReleased: () => deadline?.unref(),
+      onShutdownEnded: () => deadline?.unref(),
     });
     // The serve process owns these handlers until it exits, not until runServer returns: after the lock is released the
     // process stays alive while the SDK reaps a child that ignored SIGTERM (its 5s SIGKILL timer runs inside this
@@ -332,7 +334,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now() });
       } catch (error) { recordFailure("exit_record_failed", error); }
     });
-    const server = createConsoleServer({ lifecycle });
+    const server = createConsoleServer({ lifecycle, ownedProcesses });
     // Signals are accepted before the lock is published; a stop requested during startup waits for it to settle.
     const onSignal = () => { void lifecycle.requestStop("signal").catch(() => { /* Recorded by onShutdownFailed. */ }); };
     process.on("SIGTERM", onSignal);
@@ -915,84 +917,6 @@ function reportsLifecycleWire(observed: ConsoleInstanceObservation<ConsoleLockPa
 
 export function assertCliCanControlDaemon(payload: ConsoleLockPayload): void {
   void payload;
-}
-
-/** One row of the process table: enough to walk this process's descendants and their process groups. */
-export interface ConsoleProcessTableRow {
-  readonly pid: number;
-  readonly ppid: number;
-  readonly pgid: number;
-}
-
-/**
- * The processes the shutdown deadline may SIGKILL: descendants of `rootPid` that stay in its process group, deepest first.
- * A child that leads a group of its own was handed off on purpose (the detached update worker) or ends with its terminal
- * (a PTY session), so it and everything under it are left alone. The group itself is never signalled as a whole: a
- * Desktop sidecar shares Desktop's group. Without a row for `rootPid` nothing is selected.
- */
-export function selectShutdownStragglers(rows: readonly ConsoleProcessTableRow[], rootPid: number, excludePids: readonly number[] = []): number[] {
-  const root = rows.find((row) => row.pid === rootPid);
-  if (!root) return [];
-  const children = new Map<number, ConsoleProcessTableRow[]>();
-  for (const row of rows) {
-    if (row.pid === row.ppid) continue;
-    const siblings = children.get(row.ppid);
-    if (siblings) siblings.push(row);
-    else children.set(row.ppid, [row]);
-  }
-  const excluded = new Set(excludePids);
-  const seen = new Set<number>([rootPid]);
-  const selected: Array<{ readonly pid: number; readonly depth: number }> = [];
-  const visit = (pid: number, depth: number) => {
-    for (const child of children.get(pid) ?? []) {
-      if (seen.has(child.pid) || child.pgid !== root.pgid) continue;
-      seen.add(child.pid);
-      if (!excluded.has(child.pid)) selected.push({ pid: child.pid, depth });
-      visit(child.pid, depth + 1);
-    }
-  };
-  visit(rootPid, 1);
-  return selected.sort((left, right) => right.depth - left.depth).map((entry) => entry.pid);
-}
-
-/**
- * SIGKILLs this process's remaining descendants (see selectShutdownStragglers) before the shutdown deadline exits, so the
- * exit leaves no agent CLI or MCP child behind. POSIX only: Windows ends a Console without running its signal handlers.
- * Without a trustworthy process table nothing is signalled — an orphan is better than a signal to an unrelated process.
- * Runs synchronously, so a direct child cannot be reaped (and its pid reused) between the snapshot and its SIGKILL.
- */
-function killShutdownStragglers(env: NodeJS.ProcessEnv, recordFailure: (kind: string, error: unknown) => void): number {
-  if (process.platform === "win32") return 0;
-  const listing = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid="], {
-    env: { PATH: env.PATH ?? "/usr/bin:/bin", LC_ALL: "C" },
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: PROCESS_TABLE_TIMEOUT_MS,
-    windowsHide: true,
-  });
-  if (listing.error || listing.status !== 0 || typeof listing.stdout !== "string") {
-    recordFailure("shutdown_process_table_unavailable", listing.error ?? new Error(`ps exited with ${listing.status ?? listing.signal}`));
-    return 0;
-  }
-  const rows: ConsoleProcessTableRow[] = [];
-  for (const line of listing.stdout.split("\n")) {
-    const fields = line.trim().split(/\s+/).map(Number);
-    if (fields.length === 3 && fields.every((value) => Number.isSafeInteger(value) && value >= 0)) {
-      rows.push({ pid: fields[0]!, ppid: fields[1]!, pgid: fields[2]! });
-    }
-  }
-  // ps itself was this process's child and is already reaped; its pid must not be signalled.
-  const targets = selectShutdownStragglers(rows, process.pid, listing.pid ? [listing.pid] : []);
-  let killed = 0;
-  for (const pid of targets) {
-    try {
-      process.kill(pid, "SIGKILL");
-      killed += 1;
-    } catch {
-      // Already gone.
-    }
-  }
-  return killed;
 }
 
 export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<StartFleetConsoleResult> {

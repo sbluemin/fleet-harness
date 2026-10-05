@@ -1,9 +1,9 @@
-import crypto from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import type { LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
+import { consoleNamespaceKey, isReclaimableNamespaceEntry, resolveRealPath } from "@fleet-console/lifecycle";
 
 /**
  * launch 프롬프트 파일(Theater 시스템 프롬프트, Windows Quick Launch 지시)이 놓이는 OS temp의 자리와,
@@ -37,8 +37,6 @@ export interface LaunchPromptNamespace extends LaunchPromptDirectoryAllocator {
 }
 
 const NAMESPACE_PREFIX = "fleet-launch-";
-/** `<prefix><pid>-<mkdtemp 6자>`. 이 모양이 아닌 항목은 만든 주체를 읽을 수 없으므로 건드리지 않는다. */
-const ENTRY_OWNER_PATTERN = /-(\d+)-[A-Za-z0-9]{6}$/;
 
 export function createLaunchPromptNamespace(options: {
   /** 이 Console의 runtime lock 파일. 회수 도메인의 키다. */
@@ -50,7 +48,7 @@ export function createLaunchPromptNamespace(options: {
   // 같은 경로의 다른 표기(/tmp ↔ /private/tmp, 심볼릭 링크)는 같은 lock이므로 같은 자리여야 한다.
   // 다르게 해시하면 서로 지우지는 않지만, 다른 표기로 기동한 Console의 잔재를 영영 회수하지 못한다.
   const tempRoot = resolveRealPath(options.tmpDir ?? os.tmpdir());
-  const key = crypto.createHash("sha256").update(resolveRealPath(options.lockFile)).digest("hex").slice(0, 12);
+  const key = consoleNamespaceKey(options.lockFile);
   const root = path.join(tempRoot, `${NAMESPACE_PREFIX}${key}`);
   const owned = new Set<string>();
   let reclaimed = false;
@@ -90,12 +88,7 @@ export function createLaunchPromptNamespace(options: {
       try {
         if (!rootIsOwned()) return 0;
         for (const name of readdirSync(root)) {
-          if (owned.has(name)) continue;
-          const match = ENTRY_OWNER_PATTERN.exec(name);
-          const creator = match ? Number(match[1]) : NaN;
-          if (!Number.isSafeInteger(creator) || creator <= 0) continue;
-          // 이 pid의 항목은 전부 집합에 있다 — 집합 밖이면 같은 pid를 썼던 죽은 프로세스의 것이다.
-          if (creator !== process.pid && isProcessAlive(creator)) continue;
+          if (!isReclaimableNamespaceEntry(name, owned)) continue;
           try {
             rmSync(path.join(root, name), { force: true, recursive: true });
             removed += 1;
@@ -114,35 +107,8 @@ export function createLaunchPromptNamespace(options: {
   };
 }
 
-/** 살아 있다고 볼 수 없을 때(ESRCH)만 false다. 권한 부족(EPERM)이나 모르는 오류는 살아 있는 쪽으로 둔다. */
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-}
-
 /** 소유를 증명하지 못한 root 대신 쓰는 자리 — 회수 대상이 아닌, 포트가 없을 때와 같은 위치다. */
 function createFallbackDir(tempRoot: string, prefix: string): string {
   mkdirSync(tempRoot, { recursive: true });
   return mkdtempSync(path.join(tempRoot, prefix));
-}
-
-/** 아직 없는 경로(첫 기동의 lock 파일)는 존재하는 가장 가까운 상위를 해석하고 나머지를 붙인다. */
-function resolveRealPath(target: string): string {
-  const absolute = path.resolve(target);
-  const rest: string[] = [];
-  let current = absolute;
-  for (;;) {
-    try {
-      return path.join(realpathSync(current), ...rest);
-    } catch {
-      const parent = path.dirname(current);
-      if (parent === current) return absolute;
-      rest.unshift(path.basename(current));
-      current = parent;
-    }
-  }
 }

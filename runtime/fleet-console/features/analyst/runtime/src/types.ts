@@ -37,6 +37,17 @@ export interface AnalystSessionOptions extends SessionToolOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly language?: "en" | "ko";
   /**
+   * 분석가 CLI를 띄우는 호스트 포트(`ClaudeGatewaySdkOptions.spawnProcess`와 같은 모양). Console은 이 자식을 자기가
+   * 소유한 process group에 두려고 넘긴다. 생략하면 SDK가 스스로 띄운다.
+   */
+  readonly spawnProcess?: (request: {
+    readonly command: string;
+    readonly args: readonly string[];
+    readonly cwd?: string;
+    readonly env: Readonly<Record<string, string | undefined>>;
+    readonly signal?: AbortSignal;
+  }) => import("node:child_process").ChildProcess;
+  /**
    * 테스트 seam. 세션이 조립한 생성 인자를 그대로 받는다 — 인자 없이 받으면 조립 자체가 검증
    * 밖으로 나간다. 타입은 구조적으로 두어 이 패키지의 공개 표면이 SDK 타입을 이름으로 끌어오지
    * 않게 한다.

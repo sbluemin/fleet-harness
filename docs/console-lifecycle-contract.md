@@ -3,7 +3,7 @@
 One Console `serve` process has one lifecycle, and every actor that deals with it — the serve process itself, CLI `start`/`stop`/`restart`, the Fleet Desktop sidecar supervisor, the Console update worker and its recovery, and the local Console list — follows this contract instead of its own judgment. This page is the contract and its rationale. The code lives in two places:
 
 - `@fleet-console/protocol/lifecycle` (`runtime/fleet-console/protocol/lifecycle/`): the pure contract — states, time budgets, the instance classifier (`classifyConsoleInstance`), the exit record schema, and lock-slot classification.
-- `@fleet-console/lifecycle` (`runtime/fleet-console/foundation/lifecycle/`): observation and IO — pid liveness and process start times, the token-authenticated health probe, instance observation (`observeConsoleInstance`), the stop ladder (`runStopLadder`), and exit records.
+- `@fleet-console/lifecycle` (`runtime/fleet-console/foundation/lifecycle/`): observation and IO — pid liveness and process start times, the token-authenticated health probe, instance observation (`observeConsoleInstance`), the stop ladder (`runStopLadder`), exit records, the owned-process registry, and Console-owned temporary namespaces.
 
 The serve state owner is `runtime/fleet-console/core/host/bootstrap/serve-lifecycle.ts`. Lock publication and the reclaim of another instance's lock are a separate, referenced contract: [Console Lock Reclaim Across Hosts](console-lock-reclaim.md).
 
@@ -35,7 +35,7 @@ One serve process runs one instance: its server starts at most once, and a serve
 ### One stop request, one shutdown
 
 - Every way a Console is asked to stop is the same request: SIGTERM or SIGINT, an accepted in-place update stopping itself, and a programmatic `server.stop()`. The first request moves the instance to *stopping*, arms the deadline, and starts the single cleanup; every later request receives that same cleanup and never starts another. A request during startup waits for startup to settle before the cleanup runs, so a writer that is still restoring state never loses its lock under it. Such an instance stays *stopping* and never becomes *ready*, even when activation then completes; it does not admit requests on its way down.
-- The lock is released once, at the very end of that cleanup. No request — the first or any later one — settles before then, so no caller sees a Console as stopped while it still holds the lock and runs cleanup. (Before this contract an update's self-stop did not arm the deadline, and a SIGTERM arriving during it returned before the cleanup and the lock release: follow-up 3b17763a.)
+- The lock is released once, at the very end of that cleanup. No request — the first or any later one — settles before then, so no caller sees a Console as stopped while it still holds the lock and runs cleanup. (Before this contract an update's self-stop did not arm the deadline, and a SIGTERM arriving during it returned before the cleanup and the lock release: follow-up 3b17763a.) A cleanup that fails part-way leaves the instance *stopping* — it may still hold the lock — until the process ends (outcome `failed`); the next `serve` reclaims a lock left that way once the pid is ESRCH, and outside actors see a held lock and follow the stop ladder.
 - The signal handlers are installed before the lock is published and stay until the process exits, including *releasing*, where the SDK may still be reaping a child that ignored SIGTERM. Later signals are accepted and ignored.
 - An uncaught exception while *ready* exits at once with status 1 (outcome `crash`); children are left to the containment described under [Children](#children). During *stopping* or *releasing* it only sets the exit status to 1 (still outcome `crash`) and lets the cleanup or the deadline finish.
 
@@ -69,7 +69,7 @@ A Console instance that held the lock writes its own exit record beside its lock
 | Outcome | Written by | Meaning |
 |---|---|---|
 | `clean` | the Console, at exit | the shutdown finished and the process exited on its own |
-| `deadline` | the Console, at exit | B_int ran out; `killed` leftover children were SIGKILLed |
+| `deadline` | the Console, at exit | B_int ran out; `killed` owned process groups were SIGKILLed |
 | `crash` | the Console, at exit | an uncaught exception ended it |
 | `failed` | the Console, at exit | it took the lock, then its start or its shutdown failed, and it ended with an error |
 | `external` | the containment watcher *(pending)*, or inferred by a reader of a Console that reports `lifecycleWire` | the process vanished without a record |
@@ -119,7 +119,25 @@ An actor that sees an instance someone else is stopping only waits, and reports 
 
 ## Children
 
-A Console's children must not outlive it on any exit path (I2). Today the normal shutdown and the deadline cover them on POSIX: the SDK closes each agent CLI (stdin close, SIGTERM after 2 s, SIGKILL after 5 more), and the deadline SIGKILLs descendants still in the Console's process group, leaving alone a child that leads its own group (the detached update worker, PTY sessions). A crash or an external SIGKILL is not yet covered *(pending: an owned-child registry, agent CLIs in their own process groups, and a per-Console watcher that reclaims them after re-proving each group's identity)*.
+A Console's children must not outlive it on any exit path (I2).
+
+### Owned process groups
+
+- Every agent CLI the Console's SDK users start — Agent chat, Analyst, and the AI Gateway's routing model — goes through one spawn port (`ConsoleRuntimeContext.spawnAgentProcess`). On POSIX it starts as the leader of a **process group of its own** and is registered in the Console's owned-process registry (`createOwnedProcessRegistry`); its MCP servers and tool processes stay in that group. The port is required in the runtime context, so an SDK user cannot be composed without it.
+- A child the Console hands off on purpose is never registered and never signalled by the Console: the detached update worker (and the Console it starts), PTY sessions (their terminal ends them), and plugins' short-lived tools.
+- On a normal stop the SDK closes each agent CLI (stdin close, SIGTERM to the leader after 2 s, SIGKILL after 5 more).
+- When the stop deadline fires, the Console SIGKILLs the registered groups before it exits:
+  - A group whose leader is still the Console's **unreaped child** is signalled as a whole without reading the process table: an unreaped child's pid, and so its group number, cannot be reused (E1). This is the common case — an agent CLI that ignored SIGTERM — and it needs no `ps`, so a process table that cannot be read in time no longer leaves orphans (follow-up e7874487:N8).
+  - A group whose leader already exited but which still has members is signalled only when a `ps` snapshot proves them: no process holds the leader's pid, and every member started between the group's spawn (less the 2 s start-time margin) and now. If the table cannot be read within `PROCESS_TABLE_TIMEOUT_MS`, that group is left alone (I1 before I2) *(pending: the per-Console watcher retries)*.
+  - Never the Console's own group (a Desktop sidecar shares Desktop's) and never a group number ≤ 1.
+- Windows has no process groups: a direct child is ended with the Console by libuv's job object; grandchildren are not yet measured *(pending: U2)*.
+- A crash or an external SIGKILL is not yet covered *(pending: a per-Console watcher that reclaims the registered groups after re-proving each one)*. The real Claude Code CLI (2.1.289) does not exit on stdin EOF while a turn is open and survives its parent's SIGKILL together with its MCP children (measured, U1), so that watcher is required.
+
+Because the Console spawns agent CLIs itself, the SDK no longer reads their stderr: the spawn adapter drains it (and forwards it to an SDK `stderr` callback when one is set) and delivers the exit once stderr has closed, as the SDK's own spawner does. The SDK's exit errors no longer end with a `stderr:` tail; instead the Console writes the last 2 KB of a CLI that exits with a non-zero code or an unexpected signal to its failure log (`agent_cli_exit` in `errors.jsonl`). The SDK's default debug file is not passed either; it only applies when SDK debugging is enabled.
+
+### Console-owned temporary files
+
+Launch prompt files and Quick Launch attachments live in temporary namespaces a Console owns. Each namespace is keyed by a hash of the **real path** of what it belongs to (the lock file for launch prompts, the data directory for attachments), so every spelling of one slot shares it. An entry's name carries its creator's pid. Only the lock owner reclaims leftovers, right after taking the lock, and only entries whose creator is ESRCH (or that an earlier process with this same pid left); an entry of a Console that is still running stays even when lock exclusivity was broken (follow-up f64f5d65). On shutdown a Console removes its own entries and removes the namespace root only when it is empty.
 
 ## Rationale and history
 

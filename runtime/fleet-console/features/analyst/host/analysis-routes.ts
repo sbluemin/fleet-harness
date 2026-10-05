@@ -1,3 +1,4 @@
+import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import type { FleetPluginHostCapabilities, ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
@@ -13,6 +14,8 @@ interface AnalystHostContext {
     readonly lifecycle: Pick<FleetPluginHostCapabilities["lifecycle"], "registerCleanup">;
   };
   readonly basePath: string;
+  /** Console's owned-process port. Every analyst CLI must be a child the Console's deadline ends. */
+  readonly spawnAgentProcess: ClaudeProcessSpawner;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
 import type http from "node:http";
@@ -140,6 +143,7 @@ export function registerAnalysisRoutes(ctx: AnalystHostContext, deps: AnalysisRo
       const result = await registry.start(operation.id, (onEvent) => createSession({
         baseUrl: resolveAnalysisGatewayBaseUrl(origin), model: selection.model, effort: selection.effort || undefined, cwd,
         capturePath: transcript.transcriptPath!, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)),
+        spawnProcess: ctx.spawnAgentProcess,
       }), selection.model);
       return result === "stopped" ? "analyst_unavailable" : null;
     } catch { return "analyst_unavailable"; }
@@ -766,6 +770,7 @@ async function handleStart(
       cwd,
       capturePath: transcriptPath,
       onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)),
+      spawnProcess: ctx.spawnAgentProcess,
     }), selection.model);
     if (result === "exists") writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.sessionExists, "Analysis session already exists.");
     else if (result === "stopped") writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was stopped before it started.");

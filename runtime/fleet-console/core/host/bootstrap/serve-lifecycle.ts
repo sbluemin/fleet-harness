@@ -11,8 +11,11 @@ export interface ConsoleServeLifecycleHooks {
   readonly onStopRequested?: (reason: ConsoleStopReason) => void;
   /** The single shutdown failed. Every stop request still settles. */
   readonly onShutdownFailed?: (error: unknown) => void;
-  /** The single shutdown ended and the lock is released; only leftover handles keep the process alive now. */
-  readonly onReleased?: () => void;
+  /**
+   * The single shutdown ended. When it succeeded the lock is released and only leftover handles keep the process alive;
+   * when it failed the instance stays stopping, possibly still holding the lock, until the process ends.
+   */
+  readonly onShutdownEnded?: () => void;
 }
 
 /**
@@ -85,15 +88,18 @@ export function createConsoleServeLifecycle(hooks: ConsoleServeLifecycleHooks = 
       if (state === "binding" || state === "starting" || state === "ready") state = "stopping";
       hooks.onStopRequested?.(reason);
       stopping = (async () => {
+        let failed = false;
         try {
           if (startupRun) await startupRun;
           await shutdown?.();
         } catch (error) {
+          failed = true;
           hooks.onShutdownFailed?.(error);
           throw error;
         } finally {
-          state = "releasing";
-          hooks.onReleased?.();
+          // A shutdown that failed part-way may not have released the lock: the instance stays stopping (§2.2).
+          if (!failed) state = "releasing";
+          hooks.onShutdownEnded?.();
           markStopped();
         }
       })();

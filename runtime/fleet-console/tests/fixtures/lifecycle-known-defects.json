@@ -2,6 +2,5 @@
   { "case": "L4d", "followup": "eca5f8c7", "releasedBy": "PR3a" },
   { "case": "L5", "followup": "d48e62ac", "releasedBy": "PR2b" },
   { "case": "L6", "followup": "e7874487:X1", "releasedBy": "PR2b" },
-  { "case": "L10", "followup": "f64f5d65", "releasedBy": "PR2a" },
   { "case": "L12", "followup": "eca5f8c7", "releasedBy": "PR2b" }
 ]

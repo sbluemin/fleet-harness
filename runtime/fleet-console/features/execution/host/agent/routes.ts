@@ -35,7 +35,7 @@ import { writeAgentSessionEvents } from "./observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./osc-agent-activity.js";
 import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
-import { AgentChatRegistry, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
+import { AgentChatRegistry, createChatSdkFactory, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
 import { maskChatText, neutralizeChatOriginTag, type ChatOrigin } from "./chat-events.js";
 import type { ConsoleUseActions } from "../../../console-use/host/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
@@ -213,7 +213,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
   const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
-  const chatRegistry = new AgentChatRegistry(testChatSdkFactory, (operationId) => terminalRuntime.awaitWriterExit(operationId, PRIOR_WRITER_EXIT_WAIT_MS));
+  const chatRegistry = new AgentChatRegistry(testChatSdkFactory ?? createChatSdkFactory(ctx.spawnAgentProcess), (operationId) => terminalRuntime.awaitWriterExit(operationId, PRIOR_WRITER_EXIT_WAIT_MS));
   // 줄바꿈 URL 확인은 호버마다 온다 — transcript 꼬리는 파일이 바뀔 때만 다시 읽는다.
   const transcriptLinks = createTranscriptLinkReader();
   const unbindChatAttach = terminalRuntime.bindChatAttach((socket, context, lifetime) => {

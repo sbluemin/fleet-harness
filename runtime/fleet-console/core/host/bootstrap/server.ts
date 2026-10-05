@@ -39,7 +39,7 @@ import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
-import { pruneConsoleExitRecords } from "@fleet-console/lifecycle";
+import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { CONSOLE_LIFECYCLE_WIRE } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
@@ -77,6 +77,7 @@ import { createFleetPluginHost, createPluginClientAssets } from "../plugin-host/
 import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopFullscreenRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopFullscreenSnapshot, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
 import { readDesktopProtocolEnvironment } from "../shell/desktop-protocol.js";
 import { createConsoleServeLifecycle, type ConsoleServeLifecycle } from "./serve-lifecycle.js";
+import { createAgentProcessSpawner } from "./agent-process.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "../shell/system-fonts.js";
 import { buildApiCatalog, type ApiCatalogEntry } from "../transport/api-catalog.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterInfo } from "../transport/console-contract-types.js";
@@ -110,6 +111,11 @@ export interface ConsoleServerDeps {
    * server keeps its own, so every stop request still runs one shutdown.
    */
   readonly lifecycle?: ConsoleServeLifecycle;
+  /**
+   * The process groups this instance owns. `serve` passes the one its shutdown deadline ends; without it the server keeps
+   * its own, so every agent CLI still starts in a registered group of its own.
+   */
+  readonly ownedProcesses?: OwnedProcessRegistry;
 }
 
 export interface ConsoleServer {
@@ -1232,6 +1238,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return { plugins: result };
   }
   const lifecycle = deps.lifecycle ?? createConsoleServeLifecycle();
+  const ownedProcesses = deps.ownedProcesses ?? createOwnedProcessRegistry();
   const isReady = () => lifecycle.state() === "ready";
   let server: http.Server | null = null;
   let loopbackServer: http.Server | null = null;
@@ -2664,6 +2671,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         agentOptions,
         agentCliPlugin,
         launchPromptDirectories,
+        spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
       }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
       coreLaunchKinds = execution.launchKinds;

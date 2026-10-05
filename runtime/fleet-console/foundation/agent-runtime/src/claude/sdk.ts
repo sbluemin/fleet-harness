@@ -21,6 +21,7 @@ import {
 import { createIsolatedClaudeConfigDir, createSharedClaudeConfigHome } from "./config-dir.js";
 import { claudeGatewayLaunchEnv } from "./launch-env.js";
 import { runVendorQuery, runVendorSession } from "./vendor-sdk.js";
+import { toVendorProcessSpawner } from "./process-spawn.js";
 
 type AcceptedModel = ClaudeModelResolution;
 
@@ -136,6 +137,7 @@ export async function createClaudeGatewaySdk(
       : { includePartialMessages: request.includePartialMessages }),
     ...(request.abortController === undefined ? {} : { abortController: request.abortController }),
     ...(request.stderr === undefined ? {} : { stderr: request.stderr }),
+    ...(options.spawnProcess === undefined ? {} : { spawnClaudeCodeProcess: toVendorProcessSpawner(options.spawnProcess, request.stderr) }),
   });
 
   const sdk: ClaudeGatewaySdk = {

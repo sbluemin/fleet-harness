@@ -12,6 +12,7 @@ import {
   type ClaudeGatewayMessage,
   type ClaudeGatewaySdk,
   type ClaudeGatewaySdkOptions,
+  type ClaudeProcessSpawner,
   type ClaudeGatewayServedMcpServer,
   type ClaudeGatewaySession,
   type ClaudeGatewaySystemPrompt,
@@ -272,6 +273,11 @@ interface PendingAsk {
  * 쓴다 — 좁혀 두면 홈 정책처럼 뒤에 붙는 옵션이 주입점을 통과하지 못한다.
  */
 export type CreateChatSdk = (options: ClaudeGatewaySdkOptions) => Promise<ClaudeGatewaySdk>;
+
+/** The chat SDK factory. With Console's owned-process port, every chat CLI starts in a process group the Console owns. */
+export function createChatSdkFactory(spawnProcess?: ClaudeProcessSpawner): CreateChatSdk {
+  return (options) => createClaudeGatewaySdk({ ...options, modelPolicy: claudeGatewayModelPolicy, ...(spawnProcess ? { spawnProcess } : {}) });
+}
 
 /** 질문 정책이 막힌 세션의 남은 질문 호출에 돌려주는 거절 — 자식이 읽는 사실 한 줄이다. */
 const USER_QUESTIONS_OFF = "Asking the person is turned off for this session. Send what needs deciding to the session that assigned this work.";
@@ -3252,7 +3258,7 @@ export class AgentChatRegistry {
   private readonly awaitPriorWriterExit: ((operationId: string) => Promise<boolean>) | undefined;
 
   constructor(
-    createSdk: CreateChatSdk = (options) => createClaudeGatewaySdk({ ...options, modelPolicy: claudeGatewayModelPolicy }),
+    createSdk: CreateChatSdk = createChatSdkFactory(),
     awaitPriorWriterExit?: (operationId: string) => Promise<boolean>,
   ) {
     this.createSdk = createSdk;

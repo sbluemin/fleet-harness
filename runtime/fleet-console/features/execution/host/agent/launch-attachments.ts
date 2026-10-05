@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
+
+import { consoleNamespaceKey, isReclaimableNamespaceEntry, resolveRealPath } from "@fleet-console/lifecycle";
 
 /**
  * Quick Launch 이미지 첨부의 서버측 보관소.
@@ -260,7 +262,8 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
         );
       }
       mkdirSync(namespaceRoot, { recursive: true });
-      const dir = mkdtempSync(path.join(namespaceRoot, "attachment-"));
+      // The creator's pid in the name lets the next lock owner tell a dead Console's leftover from a live one's file.
+      const dir = mkdtempSync(path.join(namespaceRoot, `attachment-${process.pid}-`));
       const filePath = path.join(dir, `image.${sniffed.ext}`);
       try {
         writeFileSync(filePath, bytes, { flag: "wx", mode: LAUNCH_ATTACHMENT_FILE_MODE });
@@ -369,7 +372,9 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
           removed = 1;
         } else {
           for (const name of readdirSync(namespaceRoot)) {
-            if (own.has(name)) continue;
+            // Only a dead creator's entry is a leftover: a Console still serving from the same data root (lock exclusivity
+            // broken by hand or by a legacy shell) keeps its files.
+            if (!isReclaimableNamespaceEntry(name, own)) continue;
             try {
               rmSync(path.join(namespaceRoot, name), { force: true, recursive: true });
               removed += 1;
@@ -389,13 +394,13 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
     },
     cleanup() {
       for (const entry of [...entries.values()]) removeEntry(entry);
-      // 루트는 lock 소유자만 거둔다 — 빈 루트를 남기지 않되, lock에서 진 프로세스의 실패 정리가
-      // 서비스 중인 Console의 루트를 지우지 않게 한다.
+      // 루트는 lock 소유자만, 비었을 때만 거둔다 — lock에서 진 프로세스의 실패 정리나, lock 독점이 깨져 함께 돌던
+      // Console의 종료가 서비스 중인 Console의 첨부를 지우지 않게 한다.
       if (!reclaimed) return;
       try {
-        rmSync(namespaceRoot, { force: true, recursive: true });
+        rmdirSync(namespaceRoot);
       } catch {
-        // best-effort.
+        // 비어 있지 않거나 이미 없다 — 남은 항목은 그 생성자가 거둔다.
       }
     },
   };
@@ -407,8 +412,9 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
  * 이유) 여기서 고정한다.
  */
 export function resolveLaunchAttachmentNamespaceRoot(dataDir: string): string {
-  const hash = crypto.createHash("sha256").update(path.resolve(dataDir)).digest("hex").slice(0, 12);
-  return path.join(path.resolve(os.tmpdir()), `${LAUNCH_ATTACHMENT_NAMESPACE_PREFIX}${hash}`);
+  // Every spelling of one data root (a symlinked parent, /var and /private/var) is one namespace, so a Console started under
+  // another spelling still reclaims what a killed one left.
+  return path.join(resolveRealPath(os.tmpdir()), `${LAUNCH_ATTACHMENT_NAMESPACE_PREFIX}${consoleNamespaceKey(dataDir)}`);
 }
 
 function chmodBestEffort(targetPath: string, mode: number): void {

@@ -13,6 +13,7 @@ it("does not launch a catalog routing model after it is removed from the roster"
     directory: "/unused-routing-test",
     settings: { version: 1, delegationRoutingModel: "claude--fable", models: [] },
     instructions: [], state: {}, criteria: {}, difficulty: { instructions: [], criteria: {} },
+    spawnProcess: () => { throw new Error("unexpected spawn"); },
   })).rejects.toThrow("Routing model is not exposed");
   expect(sdk).not.toHaveBeenCalled();
 });
