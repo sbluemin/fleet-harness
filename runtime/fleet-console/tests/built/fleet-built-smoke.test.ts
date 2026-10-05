@@ -354,6 +354,8 @@ afterEach(async () => {
     ]);
     const start = await runCli(["start"], { ...run.env, NODE_OPTIONS: `--import ${pathToFileURL(preload).href}` }, 120_000);
     const lockPid = readRunLock(run)?.pid;
+    // start가 detached로 띄운 Console이다. 기다리기 전에 등록해야 start보다 오래 사는 Console도 afterEach가 거둔다.
+    if (lockPid !== undefined) own(lockPid);
     if (lockPid !== undefined) await waitUntil(() => !isAlive(lockPid), 20_000, "the starting Console outlived start's cleanup");
 
     expect(fs.existsSync(marker), "the Console must hold the lock and still be starting when start gives up").toBe(true);
