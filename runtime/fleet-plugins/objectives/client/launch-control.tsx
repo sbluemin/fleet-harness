@@ -167,11 +167,6 @@ interface LaunchControlProps {
    * 지휘관 메뉴에는 넘기지 않는다.
    */
   readonly subagents?: { readonly allowed: boolean; readonly onToggle: () => void };
-  /**
-   * 고른 모델·강도를 메뉴가 닫힐 때 한 번만 알린다. 행을 고르면 강도 단계가 이어지므로 고를 때마다 알리면 한 번의 선택이 두 번의 변경이
-   * 된다 — 변경이 곧 세션 재기동·모델 전환인 곳(띄운 구성원)에서 쓴다. 선택 방식(extras)은 따로 곧바로다.
-   */
-  readonly commitOnClose?: boolean;
 }
 
 /** 선택기의 로스터 — 아직 읽기 전이면 null(메뉴가 「읽는 중」을 보인다). */
@@ -179,7 +174,7 @@ function useLaunchRoster(): ModelRoster | null {
   return useModelRoster(models, "launch");
 }
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption, commitOnClose = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption }: LaunchControlProps) {
   const roster = useLaunchRoster();
   const viewPrefix = viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} /><span className="objectives-launch-view-word">{startViewLabel(t, viewMode)}</span></span><span className="objectives-launch-separator" aria-hidden="true" /></> : undefined;
   const footer = (viewMode && onViewChange) || subagents ? (
@@ -208,7 +203,6 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
       // 비어 있으면 Console 기본 좌표를 보인다. 라우팅처럼 선택 방식이 있는 메뉴는 기본 모델을 추정하지 않는다.
       {...(extras?.length ? {} : { fallback: DEFAULT_LAUNCH })}
       onChange={onChange}
-      commit={commitOnClose ? "on-close" : "immediate"}
       startAt={startAtList ? "list" : "focused"}
       locked={locked}
       labels={{

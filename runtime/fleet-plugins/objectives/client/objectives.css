@@ -1617,23 +1617,6 @@ html[data-view-mode="mobile"] .objectives-commodore-scrim { display: none; }
 }
 .objectives-commodore-default:hover { color: var(--text-primary); text-decoration-color: currentColor; }
 .objectives-commodore-default:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
-/* 선택 상자 — 지휘관 메뉴·순찰 메뉴의 트리거를 설정 줄의 선택 칸 모양으로. 메뉴는 같은 Objectives 메뉴다. */
-.objectives-commodore-select { display: inline-flex; }
-.objectives-commodore-select > .objectives-launch {
-  position: relative; justify-content: flex-start;
-  width: 240px; min-height: 36px; margin-left: 0; padding: 0 34px 0 12px;
-  border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs);
-  background: var(--control-field); font-size: var(--t-sm); letter-spacing: 0.02em;
-}
-.objectives-commodore-select > .objectives-launch::after {
-  content: ""; position: absolute; right: 14px; top: 50%;
-  width: 6px; height: 6px; margin-top: -5px;
-  border-right: 1.4px solid var(--text-tertiary); border-bottom: 1.4px solid var(--text-tertiary);
-  transform: rotate(45deg);
-}
-.objectives-commodore-select > .objectives-launch:hover, .objectives-commodore-select > .objectives-launch[aria-expanded="true"] { border-color: var(--control-hover-rim); background: var(--control-field); }
-.objectives-commodore-select > .objectives-launch:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
-.objectives-commodore-select :is(.objectives-launch-model, .fc-coord-trigger-model) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-commodore-close {
   display: grid; place-items: center; flex: none;
   width: 26px; height: 26px; padding: 0;
