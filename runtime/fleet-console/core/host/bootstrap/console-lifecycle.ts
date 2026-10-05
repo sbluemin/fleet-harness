@@ -854,9 +854,18 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     ]);
   }
 
+  /**
+   * The lock stop and status act on, or null when there is none. A lock that cannot be judged (no readable owner, even
+   * one that parses, or one refused as a symlink or another user's) throws, so it is never taken as no Console at all;
+   * nothing is signalled and the lock stays. An owner's lock must pass the structural trust checks; a tokenless one
+   * goes on to the observation, which treats it as untrusted.
+   */
   function readTrustedLock(): ConsoleLockPayload | null {
-    const payload = readConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
-    if (!payload) return null;
+    const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
+    if (observed.kind === "absent") return null;
+    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    const payload = observed.instance.payload;
     assertTrustedConsoleLock({
       dir: paths.dir,
       lockFile: paths.lockFile,
