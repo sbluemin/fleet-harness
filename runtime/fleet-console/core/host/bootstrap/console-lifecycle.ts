@@ -6,7 +6,9 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
-import { CONSOLE_SERVE_EXIT_LOCK_HELD, identifyConsoleLockOwner, type ConsoleLockHealthEvidence, type ConsoleLockOwnerIdentity } from "@fleet-console/protocol/desktop";
+import { writeConsoleExitRecord } from "@fleet-console/lifecycle";
+import { identifyConsoleLockOwner, type ConsoleLockHealthEvidence, type ConsoleLockOwnerIdentity } from "@fleet-console/protocol/desktop";
+import { CONSOLE_EXIT_RECORD_VERSION, CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, PROCESS_TABLE_TIMEOUT_MS, type ConsoleExitOutcome } from "@fleet-console/protocol/lifecycle";
 
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import { describeDaemonStartFailure } from "../transport/failure-notice.js";
@@ -25,6 +27,7 @@ import {
 import { readFleetCliRelease } from "../../../cli/release.js";
 import { createConsoleLock, describeOwnerlessLock, isConsoleLockHeldError, describeReclaimResult, describeRefusedLock, describeSlotQuiescenceCheck, type ConsoleLockReclaimResult } from "./lock.js";
 import { createConsoleDataPaths, createConsolePaths } from "./paths.js";
+import { createConsoleServeLifecycle } from "./serve-lifecycle.js";
 import { createConsoleServer } from "./server.js";
 
 export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
@@ -124,13 +127,11 @@ const STOP_IDENTITY_TIMEOUT_MS = 5_000;
 // 먼저 닫고 정리를 마친 뒤 lock을 놓는다. 그 사이를 stale로 보면 살아 있는 Console 옆에 두 번째 Console이 뜬다.
 const STOP_SETTLE_ATTEMPTS = 20;
 const STOP_SETTLE_POLL_MS = 50;
-// SIGTERM 뒤 Console이 정리를 마치고 lock을 스스로 놓기까지 기다리는 한도. 정상 정리 실측: 유휴 수십 ms, 열린 chat 턴 약 2s
+// stop이 SIGTERM 뒤 Console이 정리를 마치고 lock을 스스로 놓기까지 기다리는 한도. 정상 정리 실측: 유휴 수십 ms, 열린 chat 턴 약 2s
 // (SDK가 stdin을 닫고 2s 뒤 자식에 SIGTERM — chat이 여럿이어도 병렬이다), SIGTERM을 무시하는 자식이면 SDK의 SIGKILL까지 약 7s.
 // 그 위에 plugin·MCP 정리와 느린 기계의 여유를 더했다. Desktop의 SHUTDOWN_SETTLE_MS와 같은 값이다. 이보다 짧으면 진행 중인
 // 정리를 끊어 SDK 자식과 그 MCP 자식을 고아로, launch 임시파일을 잔재로 남긴다.
 const STOP_SHUTDOWN_TIMEOUT_MS = 10_000;
-// 종료 상한이 남은 자식을 찾으려고 process table을 읽는 한도. 실측 수십 ms(약 700행 10ms)다. 넘기면 신호 없이 끝낸다.
-const SHUTDOWN_PROCESS_TABLE_TIMEOUT_MS = 1_000;
 // 정리가 이만큼 길어지면 사용자에게 기다리는 중이라고 한 번 알린다.
 const STOP_SHUTDOWN_NOTICE_MS = 1_000;
 const STOP_SIGKILL_EXIT_ATTEMPTS = 20;
@@ -268,20 +269,48 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     };
     try { recordFailure = createConsoleFailureLog(createConsoleDataPaths({ env }).dir); }
     catch { /* Diagnostics setup cannot prevent Console startup. */ }
+    // One state owner for this instance (docs/console-lifecycle-contract.md §2). A signal, an accepted update, and the
+    // server API all make the same stop request: the first arms the one deadline below, the shutdown runs once, and it
+    // releases the lock only at its end.
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    let exitOutcome: { readonly outcome: ConsoleExitOutcome; readonly killed: number } | null = null;
+    const lifecycle = createConsoleServeLifecycle({
+      // From the first stop request until the process exits, whatever is still running: a stalled start, a cleanup stuck
+      // with the lock, or a child that outlives the released lock. Leftover children are SIGKILLed first; a lock left
+      // behind is reclaimed by the next Console once this pid is ESRCH.
+      onStopRequested: () => {
+        deadline = setTimeout(() => {
+          let killed = 0;
+          try { killed = killShutdownStragglers(env, recordFailure); }
+          catch (error) { recordFailure("shutdown_process_table_unavailable", error); }
+          const settled = lifecycle.isStartupSettled();
+          recordFailure(settled ? "shutdown_timeout" : "startup_shutdown_timeout", new Error(`Console ${settled ? "shutdown" : "startup shutdown"} did not finish within ${CONSOLE_STOP_DEADLINE_MS}ms; SIGKILL sent to ${killed} leftover child process(es)`));
+          exitOutcome = { outcome: "deadline", killed };
+          process.exit(1);
+        }, CONSOLE_STOP_DEADLINE_MS);
+      },
+      onShutdownFailed: (error) => {
+        recordFailure("shutdown_failed", error);
+        process.exitCode = 1;
+      },
+      // From here only leftover handles (an SDK child still being reaped) keep the process alive. An unref'd deadline
+      // fires only while something still does, so a clean exit is never delayed and a stuck one still ends.
+      onReleased: () => deadline?.unref(),
+    });
     // The serve process owns these handlers until it exits, not until runServer returns: after the lock is released the
     // process stays alive while the SDK reaps a child that ignored SIGTERM (its 5s SIGKILL timer runs inside this
     // process). A signal or crash that killed it there would take that timer along and orphan the child and its MCP
     // children. Signal listeners do not keep the event loop alive, so keeping them never delays the natural exit.
-    let stopping = false;
     const onRejection = (error: unknown) => recordFailure("unhandledRejection", error);
     const onException = (error: Error) => {
       recordFailure("uncaughtException", error);
-      // Once shutdown has begun, leave the exit to the cleanup in progress or to the shutdown deadline below. Exiting here
+      // Once shutdown has begun, leave the exit to the cleanup in progress or to the shutdown deadline. Exiting here
       // drops the SDK's reap timers and orphans the children it is still waiting on.
-      if (stopping) {
+      if (lifecycle.stopRequested()) {
         process.exitCode = 1;
         return;
       }
+      exitOutcome = { outcome: "crash", killed: 0 };
       process.exit(1);
     };
     // Only the Console serve process owns global policy; a failed registration must not block boot.
@@ -289,49 +318,28 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       process.on("unhandledRejection", onRejection);
       process.on("uncaughtException", onException);
     } catch (error) { recordFailure("handler_install_failed", error); }
-    const server = createConsoleServer();
-    let startupSettled = false;
-    let settleStartup!: () => void;
-    const startup = new Promise<void>((resolve) => { settleStartup = resolve; });
-    let served = false;
-    let shutdownDeadline: ReturnType<typeof setTimeout> | undefined;
-    // lock 공개 전부터 신호를 받되, 시작 작업과 정리를 겹치지 않는다 — 아직 쓰는 중인 writer의 lock을 먼저 풀면 안 된다.
-    // 정리는 첫 SIGTERM·SIGINT에서 한 번만 시작하고, 그 뒤의 신호는 프로세스가 끝날 때까지 받아서 무시한다.
-    let stopped!: () => void;
-    const done = new Promise<void>((resolve) => { stopped = resolve; });
-    const shutdown = () => {
-      if (stopping) return;
-      stopping = true;
-      // 첫 신호부터 프로세스 종료까지의 상한 하나. 시작이 멈춰도, lock을 쥔 정리가 멈춰도, lock을 놓은 뒤 자식이 끝나지
-      // 않아도 신호를 무한히 붙잡지 않는다. 남은 자식을 먼저 SIGKILL하고 끝내며, 남은 lock은 다음 Console의 ESRCH 회수에 맡긴다.
-      shutdownDeadline = setTimeout(() => {
-        let killed = 0;
-        try { killed = killShutdownStragglers(env, recordFailure); }
-        catch (error) { recordFailure("shutdown_process_table_unavailable", error); }
-        const kind = startupSettled ? "shutdown_timeout" : "startup_shutdown_timeout";
-        const phase = startupSettled ? "shutdown" : "startup shutdown";
-        recordFailure(kind, new Error(`Console ${phase} did not finish within ${shutdownTimeoutMs}ms; SIGKILL sent to ${killed} leftover child process(es)`));
-        process.exit(1);
-      }, shutdownTimeoutMs);
-      if (served) shutdownDeadline.unref();
-      void startup.then(() => server.stop()).catch((error) => {
-        recordFailure("shutdown_failed", error);
-        process.exitCode = 1;
-      }).finally(stopped);
-    };
-    process.on("SIGTERM", shutdown);
-    process.on("SIGINT", shutdown);
+    // The instance that held the lock says how it ended, beside that lock, as the process exits. A serve that never took
+    // the lock writes nothing into a slot another Console owns.
+    process.on("exit", (code) => {
+      const instance = lifecycle.lockInstance();
+      if (!instance) return;
+      const ended = exitOutcome ?? { outcome: code === 0 ? "clean" : "crash", killed: 0 };
+      try {
+        writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now() });
+      } catch (error) { recordFailure("exit_record_failed", error); }
+    });
+    const server = createConsoleServer({ lifecycle });
+    // Signals are accepted before the lock is published; a stop requested during startup waits for it to settle.
+    const onSignal = () => { void lifecycle.requestStop("signal").catch(() => { /* Recorded by onShutdownFailed. */ }); };
+    process.on("SIGTERM", onSignal);
+    process.on("SIGINT", onSignal);
     try {
-      try { await server.start(paths); }
-      finally { startupSettled = true; settleStartup(); }
-      await done;
-    } finally {
-      if (stopping) await done;
-      served = true;
-      // From here only leftover handles (an SDK child still being reaped) keep the process alive. An unref'd deadline
-      // fires only while something still does, so a clean exit is never delayed and a stuck one still ends.
-      shutdownDeadline?.unref();
+      await server.start(paths);
+    } catch (error) {
+      if (lifecycle.stopRequested()) await lifecycle.whenStopped();
+      throw error;
     }
+    await lifecycle.whenStopped();
   }
 
   async function probe(timeoutMs?: number, signal?: AbortSignal) {
@@ -984,7 +992,7 @@ function killShutdownStragglers(env: NodeJS.ProcessEnv, recordFailure: (kind: st
     env: { PATH: env.PATH ?? "/usr/bin:/bin", LC_ALL: "C" },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
-    timeout: SHUTDOWN_PROCESS_TABLE_TIMEOUT_MS,
+    timeout: PROCESS_TABLE_TIMEOUT_MS,
     windowsHide: true,
   });
   if (listing.error || listing.status !== 0 || typeof listing.stdout !== "string") {

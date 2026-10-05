@@ -10,7 +10,7 @@
 | `core/host/` | Bootstrap, transport, plugin adapters, and native-shell composition |
 | `core/client/` | Application composition, global chrome, and feature integration |
 | `features/` | Vertical product owners: execution, AI Gateway, Analyst, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates, Onboarding |
-| `foundation/` | Agent runtime, process/infra primitives, Markdown, and Font Picker |
+| `foundation/` | Agent runtime, process/infra primitives, process lifecycle contract IO, Markdown, and Font Picker |
 | `protocol/` | Shared remote-access and Console-Desktop protocol contracts |
 | `sdk/` | Plugin-facing contracts and stateless helpers |
 | `tests/` | Service, security, state, and integration contracts |

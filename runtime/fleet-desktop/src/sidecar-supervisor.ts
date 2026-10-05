@@ -3,16 +3,18 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  CONSOLE_SERVE_EXIT_LOCK_HELD,
-  classifyConsoleLockContent,
-  describeOwnerlessConsoleLock,
-  describeRefusedConsoleLock,
   identifyConsoleLockOwner,
   isCompatibleDesktopOwner,
   type ConsoleLockHealthEvidence,
   type ConsoleLockOwnerIdentity,
   type ConsoleOwnerMetadata,
 } from "@fleet-console/protocol/desktop";
+import {
+  CONSOLE_SERVE_EXIT_LOCK_HELD,
+  classifyConsoleLockContent,
+  describeOwnerlessConsoleLock,
+  describeRefusedConsoleLock,
+} from "@fleet-console/protocol/lifecycle";
 
 export interface SidecarRuntime { readonly nodePath: string; readonly cliPath: string; readonly serviceRoot: string; readonly serviceVersion: string; }
 export interface SidecarSupervisorOptions {

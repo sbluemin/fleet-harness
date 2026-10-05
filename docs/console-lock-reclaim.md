@@ -1,12 +1,12 @@
 # Console Lock Reclaim Across Hosts
 
-How the Console lock (`console.lock` in the Console runtime slot) is released and reclaimed when Fleet Console, the `fleet` CLI, Fleet Desktop, and the Console update worker share one slot, including mixed releases. This page is the rationale and the known limits. The rules themselves live in `runtime/fleet-console/core/host/bootstrap/lock.ts` (reclaim protocol), `runtime/fleet-desktop/src/sidecar-supervisor.ts` (Desktop's side), and the worker script in `runtime/fleet-console/features/updates/host/update-apply.ts` (the update's side).
+How the Console lock (`console.lock` in the Console runtime slot) is released and reclaimed when Fleet Console, the `fleet` CLI, Fleet Desktop, and the Console update worker share one slot, including mixed releases. This page is the rationale and the known limits; the lifecycle around the lock — states, stop requests, time budgets, and exit records — is the [Console Process Lifecycle Contract](console-lifecycle-contract.md). The rules themselves live in `runtime/fleet-console/core/host/bootstrap/lock.ts` (reclaim protocol), `runtime/fleet-desktop/src/sidecar-supervisor.ts` (Desktop's side), and the worker script in `runtime/fleet-console/features/updates/host/update-apply.ts` (the update's side).
 
 ## The rule
 
 - A Console removes **its own** lock on exit (pid guard).
 - Only the reclaim protocol in `lock.ts` removes **someone else's** lock. It requires a lock whose pid is ESRCH right now, the exact bytes that were judged, and the newest reclaim marker for those bytes. Participants are `serve` (inside `acquireLock`), CLI `start`/`stop`, and the CLI's cleanup of a child it spawned.
-- A lock with no readable owner (empty, invalid JSON, not an object, invalid pid, unreadable, not a regular file) is never removed by anyone. A symlink or a lock owned by another user is refused and also never removed. A person clears both by hand, following the text in `describeOwnerlessConsoleLock` / `describeRefusedConsoleLock` (`@fleet-console/protocol/desktop`).
+- A lock with no readable owner (empty, invalid JSON, not an object, invalid pid, unreadable, not a regular file) is never removed by anyone. A symlink or a lock owned by another user is refused and also never removed. A person clears both by hand, following the text in `describeOwnerlessConsoleLock` / `describeRefusedConsoleLock` (`@fleet-console/protocol/lifecycle`).
 - Elapsed time, a refused endpoint, or an unchanged file is never proof that an owner is gone. Only ESRCH counts.
 
 ## Fleet Desktop
@@ -55,7 +55,7 @@ Console releases up to and including **1.212.0** publish the lock with `O_EXCL` 
 ### Remaining races and limits
 
 - **Start versus another starter.** Another starter can win between Desktop's last slot check and `serve`'s `acquireLock`. The current runtime loses that race before writing product state, so two writers do not both restore it. Older runtimes retain their pre-lock-write window; Desktop's preliminary check alone does not guarantee safe concurrent starts with those versions.
-- **Waiting on a closing Console.** After it sends SIGTERM, Desktop treats a Console that refuses connections but is still alive as "closing" and waits for ESRCH before it starts. In the current flows this path is defensive only: the startup termination path is reached only for Desktop's own child, which is escalated to SIGKILL and awaited until ESRCH. The effective protections are the startup settle wait (refused endpoint + live pid) and the second slot judgement just before the start.
+- **Waiting on a closing Console.** After it sends SIGTERM, Desktop treats a Console that refuses connections but is still alive as "closing" and waits for ESRCH before it starts. In the current flows this path is defensive only: the startup termination path is reached only for Desktop's own child. After the settle wait and a fresh identity proof that child is escalated to SIGKILL, and its exit is confirmed for at most 3 s; a child that outlives that is reported as unhealthy and left running, not awaited until ESRCH. The effective protections are the startup settle wait (refused endpoint + live pid) and the second slot judgement just before the start.
 - **Untrusted lock with a live pid.** Its endpoint cannot be asked, so Desktop never proves its identity. The user has to check that pid by hand.
 - **Pid reuse.** A crashed Console's pid can be reused by an unrelated live process. Every participant then sees a live owner and refuses. The guidance asks the user to confirm and delete the lock by hand.
 

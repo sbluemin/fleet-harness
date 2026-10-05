@@ -15,6 +15,7 @@ on:
       - 'runtime/fleet-console/core/host/bootstrap/local-consoles.ts'
       - 'runtime/fleet-console/core/host/bootstrap/cli.ts'
       - 'runtime/fleet-console/core/host/bootstrap/server.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/serve-lifecycle.ts'
       - 'runtime/fleet-console/features/updates/host/update-apply.ts'
       - 'runtime/fleet-console/features/execution/host/agent/launch-attachments.ts'
       - 'runtime/fleet-console/features/execution/host/agent/launch-prompt-namespace.ts'
@@ -39,6 +40,7 @@ on:
       - 'runtime/fleet-console/core/host/bootstrap/local-consoles.ts'
       - 'runtime/fleet-console/core/host/bootstrap/cli.ts'
       - 'runtime/fleet-console/core/host/bootstrap/server.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/serve-lifecycle.ts'
       - 'runtime/fleet-console/features/updates/host/update-apply.ts'
       - 'runtime/fleet-console/features/execution/host/agent/launch-attachments.ts'
       - 'runtime/fleet-console/features/execution/host/agent/launch-prompt-namespace.ts'
@@ -76,7 +78,9 @@ jobs:
         env:
           FLEET_BUILT_SMOKE: "1"
         run: pnpm --filter @dotobokuri/fleet-console exec vitest run tests/built/fleet-built-smoke.test.ts tests/server.test.ts
+      # The Desktop half runs even when the Console half failed, so one run reports both.
       - name: Desktop supervisor over a built Console
+        if: ${{ !cancelled() }}
         env:
           FLEET_BUILT_SMOKE: "1"
         run: pnpm --filter @dotobokuri/fleet-desktop exec vitest run tests/sidecar-supervisor.test.ts

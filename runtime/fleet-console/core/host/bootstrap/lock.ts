@@ -8,7 +8,8 @@ import {
   describeConsoleLockSlotQuiescenceCheck,
   describeOwnerlessConsoleLock,
   describeRefusedConsoleLock,
-} from "@fleet-console/protocol/desktop";
+} from "@fleet-console/protocol/lifecycle";
+import { isPidAlive } from "@fleet-console/lifecycle";
 
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import type { ConsoleOwnerMetadata } from "../shell/desktop-protocol.js";
@@ -618,16 +619,6 @@ function parseLockBytes(bytes: Buffer): { readonly payload: ConsoleLockPayload }
   const content = classifyConsoleLockContent(bytes.toString("utf8"));
   if (content.kind === "ownerless") return { reason: content.reason };
   return { payload: content.payload as unknown as ConsoleLockPayload };
-}
-
-/** Only ESRCH means the process is gone. A live pid, EPERM, and any undecidable error all count as alive. */
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return errnoOf(error) !== "ESRCH";
-  }
 }
 
 function claimPrefix(lockFile: string): string {

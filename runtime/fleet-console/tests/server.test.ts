@@ -15,6 +15,7 @@ import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { deriveOperationLabel } from "../features/execution/host/agent/auto-name.js";
 import { createConsoleObservabilityStore } from "../features/execution/host/agent/observability-store.js";
+import { createConsoleServeLifecycle } from "../core/host/bootstrap/serve-lifecycle.js";
 import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
 import type { AgentCliDetector } from "../features/execution/host/agent/agent-cli-detect.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
@@ -255,6 +256,7 @@ describe("console terminal observability", () => {
   // and the SIGTERM the update worker sends then ends in this same call: neither may report the Console stopped, nor may the
   // lock go, while that shutdown's cleanup still runs. Two orders: the second request arrives once the cleanup is running
   // (3b17763a), or in the same tick as the first (N3), when the second request overtakes the first into the cleanup.
+  // N2 (POSIX): the update's own stop is the stop request that arms serve's deadline, before any worker signal arrives.
   it("finishes every overlapping stop request only after the one shutdown has ended", async () => {
     const hooks = globalThis as typeof globalThis & { __fleetSlowCleanup?: () => Promise<void> };
     const plugin = createPluginPackageRoot({ demoRoutes: "export function register(ctx) { ctx.host.lifecycle.registerCleanup(() => globalThis.__fleetSlowCleanup?.()); }" });
@@ -269,7 +271,9 @@ describe("console terminal observability", () => {
       return state;
     };
     try {
+      const stopRequests: string[] = [];
       const update = await startFixture({
+        lifecycle: createConsoleServeLifecycle({ onStopRequested: (reason) => stopRequests.push(reason) }),
         release: { ...plugin.release!, channel: "stable", version: "1.0.0" },
         updateCheck: {
           getStatus: () => ({ updateAvailable: true, latestVersion: "9.9.9" }),
@@ -282,7 +286,9 @@ describe("console terminal observability", () => {
       const origin = new URL(update.endpoint).origin;
       expect((await fetch(new URL("api/v1/updates/apply", update.endpoint), { method: "POST", headers: { Origin: origin } })).status).toBe(202);
       await vi.waitFor(() => expect(afterCleanupStarted.entered).toBe(true), { timeout: 10_000 });
+      lifecycleCheck("L7", stopRequests.join() === "update", "the update's own stop arms the shutdown deadline as the stop request");
       await update.server.stop();
+      lifecycleCheck("L7", stopRequests.join() === "update", "a later stop request joins the update's shutdown instead of starting another");
       lifecycleCheck("L7", afterCleanupStarted.finished, "a stop requested during the update's own shutdown returns only after its cleanup");
       lifecycleCheck("L7", !fs.existsSync(update.lockFile), "a stop requested during the update's own shutdown returns only after the lock is released");
       await vi.waitFor(() => expect(afterCleanupStarted.finished).toBe(true), { timeout: 10_000 });
@@ -773,6 +779,7 @@ async function startFixture(options: {
   readonly release?: ConsoleServerDeps["release"];
   readonly updateApply?: ConsoleServerDeps["updateApply"];
   readonly updateCheck?: ConsoleServerDeps["updateCheck"];
+  readonly lifecycle?: ConsoleServerDeps["lifecycle"];
   readonly useDefaultPort?: boolean;
 } = {}): Promise<ServerFixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-server-"));
@@ -802,6 +809,7 @@ async function startFixture(options: {
     release: options.release,
     updateApply: options.updateApply,
     updateCheck: options.updateCheck,
+    lifecycle: options.lifecycle,
   });
   servers.push(server);
   const endpoint = await server.start({ dir, lockFile });
