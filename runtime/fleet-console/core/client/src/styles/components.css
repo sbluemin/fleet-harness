@@ -16439,6 +16439,91 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   text-transform: uppercase;
 }
 
+/* ── 모델 좌표 선택기(ModelCoordinatePicker) ─────────────────────────────────────────────
+   Console의 모든 모델·강도 선택이 같은 트리거·같은 메뉴 문법을 쓴다. 원형은 Objectives 지휘관 메뉴(맵 우클릭과 같은 문법)다.
+   트리거 변형: inline(글자 한 줄) · field(설정 행의 선택 상자) · glyph(아이콘 하나). */
+.fc-coord-trigger { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
+.fc-coord-trigger:hover, .fc-coord-trigger[aria-expanded="true"] { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 10%, transparent); }
+.fc-coord-trigger:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.fc-coord-trigger:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+.fc-coord-trigger.is-locked { cursor: default; opacity: 0.75; }
+.fc-coord-trigger.is-glyph { padding: 0; margin: 0; width: 22px; height: 22px; display: inline-grid; place-items: center; color: var(--text-tertiary); border-color: transparent; }
+.fc-coord-trigger.is-glyph:hover, .fc-coord-trigger.is-glyph[aria-expanded="true"] { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }
+.fc-coord-trigger.is-field {
+  position: relative; justify-content: flex-start;
+  width: 240px; max-width: 100%; min-height: 36px; margin-left: 0; padding: 0 34px 0 12px;
+  border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs);
+  background: var(--control-field); font-size: var(--t-sm); letter-spacing: 0.02em;
+}
+.fc-coord-trigger.is-field::after {
+  content: ""; position: absolute; right: 14px; top: 50%;
+  width: 6px; height: 6px; margin-top: -5px;
+  border-right: 1.4px solid var(--text-tertiary); border-bottom: 1.4px solid var(--text-tertiary);
+  transform: rotate(45deg);
+}
+.fc-coord-trigger.is-field:hover, .fc-coord-trigger.is-field[aria-expanded="true"] { border-color: var(--control-hover-rim); background: var(--control-field); }
+.fc-coord-trigger.is-field:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.fc-coord-trigger.is-field > * { flex: none; }
+.fc-coord-trigger.is-field .fc-coord-trigger-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-coord-trigger-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
+.operation-launch-provider-glyph.fc-coord-trigger-provider { border: 0; background: none; }
+.fc-coord-trigger-provider svg { width: 14px; height: 14px; }
+.fc-coord-trigger-model { color: var(--text-primary); }
+.fc-coord-trigger-model.is-off { color: var(--text-tertiary); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--text-tertiary) 60%, transparent); }
+.fc-coord-trigger-dot { color: var(--text-tertiary); }
+.fc-coord-trigger-effort { color: var(--brass-ink); text-transform: uppercase; }
+/* 꺼짐·폴백은 상태다 — 신호 토큰(warn)이 말한다. */
+.fc-coord-trigger-badge { padding: 0 5px; border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: var(--radius-pill); color: var(--warn-ink); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.fc-coord-menu {
+  position: fixed;
+  z-index: 60;
+  padding: var(--space-1);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)), color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))),
+    var(--float-underlay);
+  box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent));
+  display: flex; flex-direction: column;
+  max-height: min(520px, calc(100vh - 24px)); overflow-y: auto; scrollbar-width: none;
+}
+.fc-coord-menu::-webkit-scrollbar { display: none; }
+.fc-coord-menu-head { display: grid; gap: 2px; margin: 0 0 4px; padding: 6px var(--space-2) 8px; border-bottom: 1px solid var(--hairline); font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); }
+.fc-coord-menu-head b { color: var(--text-primary); font-weight: var(--weight-medium); }
+.fc-coord-menu-group { display: flex; flex-direction: column; }
+.fc-coord-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
+.fc-coord-menu-caption.is-off { color: var(--warn-ink); }
+.fc-coord-menu-caption.fc-coord-menu-note { padding: 2px var(--space-2) 4px 14px; font-family: inherit; letter-spacing: 0; text-transform: none; color: var(--text-tertiary); }
+.fc-coord-menu-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 7px var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; text-align: left; cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
+.fc-coord-menu-item:hover, .fc-coord-menu-item:focus-visible { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 12%, transparent); outline: none; }
+.fc-coord-menu-item.is-active { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 8%, transparent); }
+.fc-coord-menu-item:disabled { cursor: default; opacity: var(--control-disabled-opacity, 0.45); }
+.fc-coord-menu-item:disabled:hover { background: transparent; color: var(--text-secondary); }
+.fc-coord-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-coord-menu-item .fc-coord-menu-label { padding-left: 4px; }
+.fc-coord-menu-hint { font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0; text-transform: none; font-family: var(--font-ui); }
+.fc-coord-menu-extra .fc-coord-menu-label, .fc-coord-menu-reset .fc-coord-menu-label { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; letter-spacing: 0; }
+.fc-coord-menu-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); }
+.fc-coord-menu-chev svg { width: 10px; height: 10px; }
+.fc-coord-menu-back { color: var(--text-primary); position: relative; justify-content: center; padding-left: 30px; padding-right: 30px; gap: 8px; }
+.fc-coord-menu-back .fc-coord-menu-chev { position: absolute; left: var(--space-2); top: 50%; transform: translateY(-50%); }
+.fc-coord-menu-back .fc-coord-menu-label { flex: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-coord-menu-provider { margin-left: 2px; }
+.fc-coord-menu-track { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px var(--space-2) 10px; }
+.fc-coord-menu-track .effort-track-value { display: none; }
+.fc-coord-menu-effort-word { flex: none; font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass-ink); }
+.fc-coord-menu-divider { height: 1px; margin: var(--space-1) var(--space-1); background: var(--surface-rim); }
+.fc-coord-menu-empty { padding: 6px var(--space-2); font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-tertiary); }
+.fc-coord-menu-provider.is-claude, .fc-coord-trigger-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
+.fc-coord-menu-provider.is-codex, .fc-coord-trigger-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
+.fc-coord-menu-provider.is-xai, .fc-coord-trigger-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
+.fc-coord-menu-provider.is-cursor, .fc-coord-trigger-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.fc-coord-menu-provider.is-opencode, .fc-coord-trigger-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+.fc-coord-menu-provider.is-antigravity, .fc-coord-trigger-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
+/* Muse Code에는 아직 공급자 토큰이 없다 — 톤 없이 비지 않도록 Etc와 같은 머리글 잉크를 빌린다. */
+.fc-coord-menu-provider.is-muse-code, .fc-coord-trigger-provider.is-muse-code,
+.operation-launch-variant-caption.is-muse-code { --launch-provider-tone: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary)); }
+
 @media (prefers-reduced-motion: reduce) {
   .fc-select__trigger,
   .fc-select__caret,
