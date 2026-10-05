@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
+import { describeReplacedLockAuthor } from "@fleet-console/protocol/lifecycle";
 
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
@@ -133,7 +134,7 @@ describe("Console daemon lifecycle integration", () => {
     fs.rmSync(fixture.lockFile);
     await createConsoleLock({ now: () => Date.now() - 60_000 }).acquireLock(lockInput);
     fs.writeFileSync(fixture.releaseFile, "ready\n", "utf8");
-    await expect(lifecycle.ensureDaemon()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
+    await expect(lifecycle.ensureDaemon()).rejects.toThrow(describeReplacedLockAuthor(fixture.lockFile, bystanderPid));
     expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(bystanderPid);
     expect(fs.existsSync(fixture.pidFile)).toBe(false);
     expect(bystanderSignal).toBeNull();

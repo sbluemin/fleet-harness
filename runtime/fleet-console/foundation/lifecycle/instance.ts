@@ -93,16 +93,24 @@ export async function reproveConsoleInstance<L extends ConsoleObservedLock>(inpu
  * How a stop ladder ended.
  * - exited: the pid is gone (whether or not it released the lock first).
  * - released-alive: the lock was released but the process outlived EXTERNAL_ESCALATION_MS; never killed for that.
- * - held: still holding the lock after EXTERNAL_ESCALATION_MS, and this actor did not request the stop, so it may not escalate.
+ * - held: still holding the lock after EXTERNAL_ESCALATION_MS, and this actor did not request the stop (`request: "none"`), so it may not escalate.
  * - unproven: still holding the lock, but identity could not be proven again; nothing was signalled.
  * - forced: SIGKILLed after EXTERNAL_ESCALATION_MS and seen gone within KILL_CONFIRM_MS.
  * - kill-failed: SIGKILLed but still alive after KILL_CONFIRM_MS.
  */
 export type ConsoleStopLadderResult = "exited" | "released-alive" | "held" | "unproven" | "forced" | "kill-failed";
 
+/**
+ * How this actor's stop request reaches the Console (docs/console-lifecycle-contract.md, "Stop ladder").
+ * - signal: this actor requests the stop by SIGTERM now, and may escalate after EXTERNAL_ESCALATION_MS.
+ * - delivered: this actor's request already reached the Console another way (an accepted update stops the Console by
+ *   itself), so no SIGTERM is sent — on Windows SIGTERM is TerminateProcess — but it may still escalate.
+ * - none: someone else stops it; this actor only waits and never signals.
+ */
+export type ConsoleStopRequest = "signal" | "delivered" | "none";
+
 export interface ConsoleStopLadderInput {
-  /** True for the actor that requests the stop: it sends SIGTERM and may escalate. Anyone else only waits. */
-  readonly requester: boolean;
+  readonly request: ConsoleStopRequest;
   readonly isAlive: () => boolean;
   /** Whether the same lock instance is gone or replaced. A lock that cannot be read counts as held. */
   readonly isReleased: () => boolean;
@@ -119,7 +127,8 @@ const WAITING_NOTICE_MS = 1_000;
 
 /**
  * The stop ladder (docs/console-lifecycle-contract.md, "Stop ladder"): one SIGTERM, a wait of EXTERNAL_ESCALATION_MS on a
- * monotonic deadline for the pid to exit or the lock to be released, and — only for the requester, only while the same
+ * monotonic deadline for the pid to exit or the lock to be released, and — only for an actor whose request was sent or
+ * delivered, only while the same
  * lock is still held, and only after identity is proven again — SIGKILL. A released lock is never escalated: the
  * Console's own deadline bounds what remains.
  */
@@ -129,7 +138,7 @@ export async function runStopLadder(input: ConsoleStopLadderInput): Promise<Cons
   const requestedAt = now();
   const deadline = requestedAt + EXTERNAL_ESCALATION_MS;
   let noticed = false;
-  if (input.requester) input.signal("SIGTERM");
+  if (input.request === "signal") input.signal("SIGTERM");
   const wait = async (until: () => boolean): Promise<boolean> => {
     for (;;) {
       if (until()) return true;
@@ -144,7 +153,7 @@ export async function runStopLadder(input: ConsoleStopLadderInput): Promise<Cons
   await wait(() => !input.isAlive() || input.isReleased());
   if (!input.isAlive()) return "exited";
   if (input.isReleased()) return await wait(() => !input.isAlive()) ? "exited" : "released-alive";
-  if (!input.requester) return "held";
+  if (input.request === "none") return "held";
   if (!await input.reprove()) return input.isAlive() ? "unproven" : "exited";
   // Proving can take a health round trip: the Console may have finished meanwhile.
   if (!input.isAlive()) return "exited";

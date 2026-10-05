@@ -3,6 +3,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -39,6 +40,7 @@ describe("console update apply worker", () => {
     await expect(service.start({
       currentEndpoint: "http://127.0.0.1:4000/",
       currentLockToken: "token",
+      currentLockStartedAt: Date.now(),
       currentPackageRoot: "/not-a-global-install",
       currentPid: 111,
       dataDir: "/data/console",
@@ -60,7 +62,7 @@ describe("console update apply worker", () => {
     const writeFile = vi.fn();
     const service = createConsoleUpdateApplyService({ preflightInstall, writeFile, spawnWorker: () => { throw new Error("must not spawn"); } });
 
-    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentLockToken: "token", currentPackageRoot: latest, currentPid: 111, dataDir: root, fromVersion: "1.2.2", lockFile: path.join(root, "console.lock"), release: createRelease("1.2.3", Buffer.from("tarball")) })).rejects.toThrow("managed_runtime_update_requires_relaunch");
+    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentLockToken: "token", currentLockStartedAt: Date.now(), currentPackageRoot: latest, currentPid: 111, dataDir: root, fromVersion: "1.2.2", lockFile: path.join(root, "console.lock"), release: createRelease("1.2.3", Buffer.from("tarball")) })).rejects.toThrow("managed_runtime_update_requires_relaunch");
     expect(preflightInstall).not.toHaveBeenCalled();
     expect(writeFile).not.toHaveBeenCalled();
   });
@@ -87,7 +89,7 @@ describe("console update apply worker", () => {
       spawnWorker,
     });
 
-    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentLockToken: "token", currentPackageRoot: "/global/root/@dotobokuri/fleet-console", currentPid: 111, dataDir: fleetDataDir, fromVersion: "1.2.2", lockFile: path.join(fleetDataDir, "console.lock"), release })).rejects.toThrow("checksum_mismatch");
+    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentLockToken: "token", currentLockStartedAt: Date.now(), currentPackageRoot: "/global/root/@dotobokuri/fleet-console", currentPid: 111, dataDir: fleetDataDir, fromVersion: "1.2.2", lockFile: path.join(fleetDataDir, "console.lock"), release })).rejects.toThrow("checksum_mismatch");
 
     expect(requested).toEqual(["https://github.com/sbluemin/fleet-harness/releases/download/v1.2.3/fleet-console-1.2.3.tgz"]);
     // 검증에 실패한 바이트는 설치 후보로 남지 않고, Console을 멈출 worker도 만들어지지 않는다.
@@ -118,7 +120,7 @@ describe("console update apply worker", () => {
         `import fs from "node:fs"; import http from "node:http";`,
         `fs.writeFileSync(${JSON.stringify(daemonPidFile)}, String(process.pid));`,
         `const server = http.createServer((req, res) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ pid: process.pid, version: "1.2.3" })); });`,
-        `server.listen(0, "127.0.0.1", () => fs.writeFileSync(${JSON.stringify(lockFile)}, JSON.stringify({ pid: process.pid, endpoint: \`http://127.0.0.1:\${server.address().port}/\`, token: "next" })));`,
+        `server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(${JSON.stringify(lockFile)}, JSON.stringify({ pid: process.pid, host: "127.0.0.1", port, endpoint: \`http://127.0.0.1:\${port}/\`, startedAt: Date.now(), token: "next", version: "1.2.3" }), { mode: 0o600 }); });`,
       ].join("\n"));
       const service = createConsoleUpdateApplyService({
         env: { PATH: process.env.PATH, TMPDIR: root, FLEET_CONSOLE_NO_SYSTEM_CA: "1" },
@@ -127,11 +129,15 @@ describe("console update apply worker", () => {
         preflightInstall: () => ({ bin: process.execPath, command: "npm", globalRoot, prefixArgs: [packageManager] }),
         downloadTarball: async () => ({ ok: true, tarballPath: path.join(root, "fleet-console-1.2.3.tgz") }),
         serverModulePath: nextConsole,
+        // The built lifecycle runtime, as an installed Console ships it beside its bundle.
+        workerRuntimePath: fileURLToPath(new URL("../dist/lifecycle-worker-runtime.mjs", import.meta.url)),
       });
 
       await service.start({
         currentEndpoint: `http://127.0.0.1:${await closedLoopbackPort()}/`,
         currentLockToken: "the-exited-console",
+        // The exited Console wrote its lock well before the unrelated program took its pid.
+        currentLockStartedAt: Date.now() - 60_000,
         currentPackageRoot: packageRoot,
         currentPid: unrelated.pid!,
         dataDir,

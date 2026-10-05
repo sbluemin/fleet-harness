@@ -28,6 +28,12 @@ export type ConsoleStopReason = "signal" | "update" | "api";
  */
 export const CONSOLE_LIFECYCLE_WIRE = 1;
 
+/**
+ * The revision of the update worker's lifecycle runtime (the bundle an accepted update copies beside its worker). The
+ * worker loads a copy only when its bytes and this revision match what the Console that wrote the worker expected.
+ */
+export const CONSOLE_LIFECYCLE_CONTRACT_VERSION = 1;
+
 // ---------- Time budgets ----------
 // Every wait and escalation in Console, CLI, Desktop, and the update worker is derived from these. Never restate a value.
 
@@ -99,8 +105,13 @@ export type ConsoleHealthEvidence =
   | { readonly kind: "refused" }
   | { readonly kind: "unanswered" };
 
-/** A Console instance as an outside actor observes it (docs/console-lifecycle-contract.md, "Observing an instance"). */
-export type ConsoleObservedState = "exited" | "starting" | "ready" | "stopping" | "releasing" | "unverified";
+/**
+ * A Console instance as an outside actor observes it (docs/console-lifecycle-contract.md, "Observing an instance").
+ * `exited` means the lock pid is gone (ESRCH). `replaced` means the lock pid is alive but started after the lock was
+ * written, so another program reused the pid of a Console that ended: no actor signals it, removes the lock, or starts a
+ * new serve beside it, because only ESRCH grants those (a start-time comparison may block an action, never allow one).
+ */
+export type ConsoleObservedState = "exited" | "replaced" | "starting" | "ready" | "stopping" | "releasing" | "unverified";
 
 /**
  * Whether the observer may treat the lock pid as that Console: `verified` is the only basis for a signal, `absent` means
@@ -129,7 +140,8 @@ export interface ConsoleInstanceEvidence {
  * a signal either. A Console that reports a newer lifecycle wire than this contract is unverified.
  */
 export function classifyConsoleInstance(input: ConsoleInstanceEvidence): { readonly state: ConsoleObservedState; readonly identity: ConsoleIdentity } {
-  if (!input.pidAlive || input.authorReplaced) return { state: "exited", identity: "absent" };
+  if (!input.pidAlive) return { state: "exited", identity: "absent" };
+  if (input.authorReplaced) return { state: "replaced", identity: "unverified" };
   if (!input.lockHeldBySameInstance) return { state: "releasing", identity: "unverified" };
   if (!input.trusted || input.health === null) return { state: "unverified", identity: "unverified" };
   const health = input.health;
@@ -272,6 +284,15 @@ export function describeOwnerlessConsoleLock(lockFile: string, reason: string): 
     `Fleet Console lock ${lockFile} has no readable owner (${reason}), so it was left in place.`,
     describeConsoleLockSlotQuiescenceCheck(lockFile),
     `Then delete ${lockFile} and start again.`,
+  ].join("\n");
+}
+
+/** The lock pid is alive but started after the lock was written: another program reused an ended Console's pid. */
+export function describeReplacedLockAuthor(lockFile: string, pid: number): string {
+  return [
+    `Fleet Console lock ${lockFile} names pid ${pid}, which is running but started after the lock was written: it is another program that reused the pid of a Console that has ended. The lock was left in place, and no Console starts beside it while that pid runs.`,
+    describeConsoleLockSlotQuiescenceCheck(lockFile),
+    `If pid ${pid} is not a Fleet process, delete ${lockFile} and start again; otherwise wait until it exits.`,
   ].join("\n");
 }
 

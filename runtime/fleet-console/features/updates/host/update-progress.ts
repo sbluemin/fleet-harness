@@ -30,6 +30,11 @@ export interface ConsoleUpdateProgressRecord {
   /** 같은 주소로 돌아오지 못했을 때만 true. 그때만 워커가 새 창을 연다. */
   readonly endpointChanged?: boolean;
   readonly error?: string;
+  /**
+   * How the Console the update replaced ended, from its exit record (docs/console-lifecycle-contract.md, "Exit record"),
+   * once the worker saw it gone. Additive: a reader that does not know it ignores it.
+   */
+  readonly oldConsoleOutcome?: string;
 }
 
 export type ConsoleUpdateProgressState = "idle" | "running" | "completed" | "failed";
@@ -42,6 +47,7 @@ export interface ConsoleUpdateProgressStatus {
   readonly fromVersion?: string;
   readonly endpointChanged?: boolean;
   readonly error?: string;
+  readonly oldConsoleOutcome?: string;
 }
 
 export const IDLE_CONSOLE_UPDATE_PROGRESS: ConsoleUpdateProgressStatus = { state: "idle" };
@@ -92,6 +98,7 @@ function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecord, nowM
     targetVersion: record.targetVersion,
     fromVersion: record.fromVersion,
     ...(record.endpointChanged === true ? { endpointChanged: true } : {}),
+    ...(record.oldConsoleOutcome ? { oldConsoleOutcome: record.oldConsoleOutcome } : {}),
   };
   if (record.phase === "completed" || record.phase === "failed") {
     const finishedAtMs = Date.parse(record.updatedAt);
@@ -127,6 +134,7 @@ function parseConsoleUpdateProgressRecord(raw: string): ConsoleUpdateProgressRec
     fromVersion: entry.fromVersion,
     ...(entry.endpointChanged === true ? { endpointChanged: true } : {}),
     ...(typeof entry.error === "string" ? { error: entry.error } : {}),
+    ...(typeof entry.oldConsoleOutcome === "string" ? { oldConsoleOutcome: entry.oldConsoleOutcome } : {}),
   };
 }
 

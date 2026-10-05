@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,8 +10,8 @@ import { consoleReleaseTarballDir, createGlobalPackageUpdater, downloadVerifiedC
 import type { ConsoleTarballDownload, GlobalPackageManagerCommand } from "@fleet-console/updates";
 import { getFleetDataDir } from "@fleet-console/infra/data-dir";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
-import { DESKTOP_RESOURCE_ROOT_MARKER, identifyConsoleLockOwner, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
-import { CONSOLE_SERVE_EXIT_LOCK_HELD } from "@fleet-console/protocol/lifecycle";
+import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
+import { CONSOLE_LIFECYCLE_CONTRACT_VERSION, CONSOLE_SERVE_EXIT_LOCK_HELD, EXTERNAL_ESCALATION_MS, STOP_POLL_MS } from "@fleet-console/protocol/lifecycle";
 import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
 import { CONSOLE_UPDATE_PROGRESS_FILE, writeConsoleUpdateProgress } from "./update-progress.js";
@@ -25,6 +26,8 @@ export interface ConsoleUpdateApplyRequest {
   readonly currentEndpoint: string;
   /** The token of the lock this Console holds; the worker proves the pid it signals with it. */
   readonly currentLockToken: string;
+  /** The `startedAt` of that lock: with the pid, the key of this Console's exit record. */
+  readonly currentLockStartedAt: number;
   readonly currentPackageRoot: string;
   readonly lockFile: string;
   /** The release the update check verified; its version is the target and its sha256 guards the bytes. */
@@ -55,12 +58,19 @@ export interface CreateConsoleUpdateApplyServiceDeps {
   readonly serverModulePath?: string;
   readonly spawnWorker?: ConsoleUpdateWorkerSpawner;
   readonly tmpDir?: string;
+  /** The built lifecycle runtime the worker imports (dist/lifecycle-worker-runtime.mjs beside the Console bundle). */
+  readonly workerRuntimePath?: string;
   readonly writeFile?: (filePath: string, content: string, options: { readonly mode: number }) => void;
 }
 
 export interface ConsoleUpdateWorkerScriptConfig {
   readonly currentEndpoint: string;
   readonly currentLockToken: string;
+  readonly currentLockStartedAt: number;
+  /** The copy of the lifecycle runtime beside the worker, the sha256 of its bytes, and the revision it must report. */
+  readonly lifecycleRuntimePath: string;
+  readonly lifecycleRuntimeSha256: string;
+  readonly lifecycleContractVersion: number;
   readonly fromVersion: string;
   readonly progressFile: string;
   /**
@@ -110,6 +120,7 @@ const PACKAGE_NAMES = ["@dotobokuri/fleet-console"] as const;
 export const CONSOLE_UPDATE_OLD_CONSOLE_UNVERIFIED = "old_console_unverified";
 const WORKER_FILE_PREFIX = "fleet-console-update-";
 const WORKER_FILE_SUFFIX = ".mjs";
+const RUNTIME_FILE_SUFFIX = ".lifecycle.mjs";
 const STATUS_FILE_SUFFIX = ".status.json";
 const LOG_FILE_SUFFIX = ".log";
 const TEMP_FILE_MODE = 0o600;
@@ -130,6 +141,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
   const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
   const spawnWorker = deps.spawnWorker ?? defaultSpawnWorker;
   const tmpDir = deps.tmpDir ?? os.tmpdir();
+  const workerRuntimePath = deps.workerRuntimePath ?? resolveDefaultWorkerRuntimePath();
   const writeFile = deps.writeFile ?? ((filePath, content, options) => {
     fs.writeFileSync(filePath, content, { mode: options.mode });
   });
@@ -167,9 +179,23 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     const logFile = path.join(request.dataDir, `${WORKER_FILE_PREFIX}${stamp}${LOG_FILE_SUFFIX}`);
     const progressFile = path.join(request.dataDir, CONSOLE_UPDATE_PROGRESS_FILE);
     const startedAt = new Date(now()).toISOString();
+    // The worker judges the old Console with this Console's lifecycle runtime. It is copied now, while the installed
+    // package is still intact, and before anything stops: a missing or unreadable runtime fails the update here.
+    let runtime: string;
+    try {
+      runtime = fs.readFileSync(workerRuntimePath, "utf8");
+    } catch {
+      throw new Error("update_worker_unavailable");
+    }
+    const lifecycleRuntimePath = path.join(tmpDir, `${WORKER_FILE_PREFIX}${stamp}${RUNTIME_FILE_SUFFIX}`);
+    writeFile(lifecycleRuntimePath, runtime, { mode: TEMP_FILE_MODE });
     const script = emitConsoleUpdateWorkerScript({
       currentEndpoint: request.currentEndpoint,
       currentLockToken: request.currentLockToken,
+      currentLockStartedAt: request.currentLockStartedAt,
+      lifecycleRuntimePath,
+      lifecycleRuntimeSha256: crypto.createHash("sha256").update(runtime, "utf8").digest("hex"),
+      lifecycleContractVersion: CONSOLE_LIFECYCLE_CONTRACT_VERSION,
       currentPackageRoot: request.currentPackageRoot,
       currentPid: request.currentPid,
       fromVersion: request.fromVersion,
@@ -209,38 +235,46 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
 
 export function emitConsoleUpdateWorkerScript(config: ConsoleUpdateWorkerScriptConfig): string {
   return `import { execFileSync, spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const config = ${JSON.stringify(config)};
 const stalePrefix = ${JSON.stringify(WORKER_FILE_PREFIX)};
 const workerSuffix = ${JSON.stringify(WORKER_FILE_SUFFIX)};
 const unverifiedError = ${JSON.stringify(CONSOLE_UPDATE_OLD_CONSOLE_UNVERIFIED)};
 const lockHeldExitCode = ${JSON.stringify(CONSOLE_SERVE_EXIT_LOCK_HELD)};
-const stopTimeoutMs = 60000;
-const startTimeoutMs = 60000;
-const healthTimeoutMs = 1000;
-const sleepMs = 250;
-// The protocol's own verdict, emitted from the function the host imports — never a copy of bundled text.
-const identifyConsoleLockOwner = ${String(identifyConsoleLockOwner)};
-// Read before anything can wait: the Console that spawned this worker is its parent. While the parent is
+// The contract's budgets, fixed when the Console wrote this worker: the only judgment the worker makes without its
+// runtime is waiting for the old pid's ESRCH within them.
+const externalEscalationMs = ${JSON.stringify(EXTERNAL_ESCALATION_MS)};
+const stopPollMs = ${JSON.stringify(STOP_POLL_MS)};
+// Read before anything can wait, including the import of the lifecycle runtime: the Console that spawned this worker is its parent. While the parent is
 // alive its pid cannot be handed to another process, and once it exits the OS reparents this worker at once,
 // even while the exited parent is still an unreaped zombie. Windows keeps the original parent pid after it
 // exits, so there the parent link proves nothing and only the lock-token health answer counts.
 const startedAsChild = os.platform() !== "win32" && process.ppid === config.currentPid;
 
 let consoleStopped = false;
-let lastVerdictLine = "";
+// The Console's lifecycle runtime (docs/console-lifecycle-contract.md, "Update worker"): every judgment about the old and
+// the new Console comes from it. Null until loaded, and never loaded from bytes the Console did not hand over.
+let lifecycle = null;
+// How the old Console ended, once known; carried on every later progress record.
+let oldConsoleOutcome = null;
 
 async function main() {
   writeStatus("starting");
   cleanupStaleWorkers();
+  lifecycle = await loadLifecycleRuntime();
+  if (!lifecycle) {
+    await failWithoutLifecycleRuntime();
+    return;
+  }
   const manager = detectPackageManager();
   ensureGlobalRootWritable(manager);
   writeStatus("preflight-ok", { manager: manager.command });
   await stopCurrentConsole();
-  await waitForOldConsoleExit();
   writeStatus("installing", { manager: manager.command });
   await installPackages(manager);
   writeStatus("starting-daemon");
@@ -268,7 +302,7 @@ main()
     log("phase: failed");
     // 콘솔을 이미 내린 뒤에 실패했다면, 실패를 말할 화면조차 없다. 옛 버전이라도
     // 다시 세워야 사용자가 무엇이 잘못됐는지 읽을 수 있다.
-    if (consoleStopped) await recoverConsoleBestEffort();
+    if (consoleStopped && lifecycle) await recoverConsoleBestEffort();
     // 사용자가 읽을 기록을 남기지 못했을 때만 복구 뒤에 다시 쓴다. 복구된 Console은 새 업데이트를
     // 받을 수 있으므로, 그 사이 다른 실행이 쓴 기록(startedAt이 다름)은 덮어쓰지 않는다.
     if (!progressRecorded) {
@@ -279,12 +313,85 @@ main()
     process.exitCode = 1;
   })
   .finally(() => {
-    try {
-      fs.rmSync(config.workerPath, { force: true });
-    } catch {
-      // 자가 정리는 실패해도 업데이트 결과를 막지 않는다.
+    for (const file of [config.workerPath, config.lifecycleRuntimePath]) {
+      try {
+        fs.rmSync(file, { force: true });
+      } catch {
+        // 자가 정리는 실패해도 업데이트 결과를 막지 않는다.
+      }
     }
   });
+
+/**
+ * Imports the lifecycle runtime the Console copied beside this worker, only when its bytes and revision are the ones
+ * that Console expected. Anything else returns null: the copy may be damaged or replaced, so nothing it says is trusted.
+ */
+async function loadLifecycleRuntime() {
+  let bytes;
+  try {
+    bytes = fs.readFileSync(config.lifecycleRuntimePath);
+  } catch (error) {
+    log("lifecycle runtime unreadable: " + sanitizeError(error));
+    return null;
+  }
+  const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+  if (digest !== config.lifecycleRuntimeSha256) {
+    log("lifecycle runtime mismatch: its sha256 is not the one the console recorded");
+    return null;
+  }
+  try {
+    const runtime = await import(pathToFileURL(config.lifecycleRuntimePath).href);
+    if (runtime.CONSOLE_LIFECYCLE_CONTRACT_VERSION !== config.lifecycleContractVersion) {
+      log("lifecycle runtime mismatch: revision " + String(runtime.CONSOLE_LIFECYCLE_CONTRACT_VERSION) + " is not " + config.lifecycleContractVersion);
+      return null;
+    }
+    return runtime;
+  } catch (error) {
+    log("lifecycle runtime failed to load: " + sanitizeError(error));
+    return null;
+  }
+}
+
+/**
+ * Without a trusted runtime this worker judges nothing it cannot prove, so it signals nothing and installs nothing. The
+ * Console that accepted the update stops itself after its response; a serve started before that Console ends would only
+ * find the lock held. So the worker waits, without a signal, for the old pid's ESRCH — the one piece of evidence that
+ * frees a slot (docs/console-lifecycle-contract.md, "Evidence direction") — within EXTERNAL_ESCALATION_MS, and starts one
+ * serve only then; serve itself still refuses a lock someone else holds.
+ */
+async function failWithoutLifecycleRuntime() {
+  let failure = { error: "lifecycle_runtime_mismatch" };
+  writeProgress("failed", failure);
+  try {
+    writeStatusFile("failed", failure);
+  } catch {
+    // 진단 파일을 쓰지 못해도 복구는 간다.
+  }
+  log("phase: failed (lifecycle_runtime_mismatch); waiting for the old console to end before starting one serve");
+  const deadline = Date.now() + externalEscalationMs;
+  while (pidExists(config.currentPid) && Date.now() < deadline) await sleep(stopPollMs);
+  if (pidExists(config.currentPid)) {
+    failure = { error: "lifecycle_runtime_mismatch: the old console was still running, so no console was started" };
+    log("no serve started: pid " + config.currentPid + " was still running " + externalEscalationMs + "ms later and may still hold the lock");
+  } else {
+    log("old console ended; starting one serve to bring a console back");
+    spawnServe();
+  }
+  // The Console records the accepted update right after it spawns this worker; a failure this fast must not stay under it.
+  const current = readProgressStartedAt();
+  if (current === "missing" || current === config.startedAt) writeProgress("failed", failure);
+  process.exitCode = 1;
+}
+
+/** Only ESRCH means the pid is gone; any other answer counts as running. */
+function pidExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(error && error.code === "ESRCH");
+  }
+}
 
 function writeStatus(phase, extra = {}) {
   // 재기동한 데몬이 읽는 것은 고정 이름의 progress 기록이다. 타임스탬프가 붙은 status 파일은
@@ -305,6 +412,7 @@ function writeProgress(phase, extra = {}) {
     fromVersion: config.fromVersion,
   };
   if (extra.endpointChanged === true) record.endpointChanged = true;
+  if (typeof oldConsoleOutcome === "string") record.oldConsoleOutcome = oldConsoleOutcome;
   if (typeof extra.error === "string") record.error = extra.error;
   try {
     fs.writeFileSync(config.progressFile, JSON.stringify(record, null, 2), { mode: 0o600 });
@@ -361,126 +469,35 @@ function cleanupStaleWorkers() {
 
 async function stopCurrentConsole() {
   writeStatus("stopping-console");
-  // 수락한 Console은 응답 뒤 스스로 정지를 시작한다. 신호를 보내지 못해도 이미 내려가는 중이다.
+  // 수락한 Console은 응답 뒤 스스로 정지를 시작한다. 이 worker의 요청은 이미 전달됐으므로 SIGTERM을 보내지 않고(Windows에서는
+  // 곧 TerminateProcess다), 정지 예산 뒤에도 정체를 다시 증명한 같은 Console이 lock을 쥐고 있을 때만 SIGKILL한다.
   consoleStopped = true;
-  await signalOldConsoleIfVerified("SIGTERM");
-}
-
-/**
- * 이전 Console이 끝났다고 증명될 때(absent)까지 기다린다. 끝나지 않으면 마지막 10s에 한 번 SIGKILL로
- * 올리되, 그 직전의 판정이 verified일 때만 보낸다. pid가 살아 있다는 사실은 증명이 아니다 — 그 사이
- * 이전 Console이 끝나고 pid가 무관한 프로세스에 재할당될 수 있다.
- */
-async function waitForOldConsoleExit() {
-  const deadline = Date.now() + stopTimeoutMs;
-  let escalated = false;
-  let verdict = await identifyOldConsole();
-  while (verdict.identity !== "absent") {
-    if (Date.now() >= deadline) {
-      if (verdict.identity === "verified") throw new Error("old console did not stop before timeout");
-      // 신호도 lock 삭제도 하지 않는다. 그 pid가 멈춘 Console이면 사용자가 직접 끝내야 한다.
-      log("no signal sent: pid " + config.currentPid + " never proved it is the console being updated");
-      throw new Error(unverifiedError);
-    }
-    if (!escalated && Date.now() > deadline - 10000 && verdict.identity === "verified") {
-      escalated = true;
-      await signalOldConsoleIfVerified("SIGKILL");
-    }
-    await sleep(sleepMs);
-    verdict = await identifyOldConsole();
+  const stopped = await lifecycle.stopUpdatedConsole({
+    console: { lockFile: config.lockFile, pid: config.currentPid, endpoint: config.currentEndpoint, token: config.currentLockToken, startedAt: config.currentLockStartedAt },
+    isParent: () => startedAsChild && process.ppid === config.currentPid,
+    log,
+  });
+  if (stopped.ending !== null) oldConsoleOutcome = stopped.ending;
+  if (stopped.result === "unverified") {
+    // 신호도 lock 삭제도 하지 않았다. 그 pid가 멈춘 Console이면 사용자가 직접 끝내야 한다.
+    log("no signal sent: pid " + config.currentPid + " never proved it is the console being updated");
+    throw new Error(unverifiedError);
   }
-  // 이전 Console이 끝났다. 남긴 lock이 있으면 지우지 않는다 — 새 Console의 serve가 그 pid의 ESRCH를 확인하고
-  // 회수 프로토콜로 치운다. worker가 지우면 그 회수 사슬 밖의 삭제가 되어, 그 사이 다른 시작이 쓴 lock을 지울 수 있다.
-  log("old console exited; its lock is " + describeOldConsoleLock() + " and is left for the new console to reclaim");
-}
-
-/** 신호 직전에 정체를 다시 판정하고, verified일 때만 보낸다. 판정 근거는 그때마다 기록한다. */
-async function signalOldConsoleIfVerified(signal) {
-  const verdict = await identifyOldConsole();
-  if (verdict.identity !== "verified") {
-    log(signal + " withheld: " + describeVerdict(verdict));
-    return;
+  if (stopped.result === "kill-failed") throw new Error("old console did not stop before timeout");
+  if (stopped.result === "replaced") {
+    // 옛 pid를 다른 프로그램이 물려받았고 lock은 그대로다. 그 pid가 끝나기 전에는 어떤 Console도 시작할 수 없으므로 설치하지
+    // 않는다. 신호도, lock 삭제도, spawn도 없다.
+    log("not installed: " + stopped.detail);
+    throw new Error(String(stopped.detail).split("\\n")[0]);
   }
-  log(signal + " sent: " + describeVerdict(verdict));
-  try {
-    process.kill(config.currentPid, signal);
-  } catch (error) {
-    if (!isNoSuchProcess(error)) throw error;
+  if (stopped.result === "still-running") {
+    // lock은 놓았지만 옛 프로세스가 자식을 거두며 아직 살아 있다. 그 프로세스가 올린 파일을 그 아래에서 바꾸지 않는다.
+    log("not installed: pid " + config.currentPid + " released its lock but was still running after the stop budget");
+    throw new Error("the old console released its lock but was still running, so the update was not installed");
   }
-}
-
-/**
- * 이전 Console의 정체. 근거는 Desktop의 sidecar 판정과 같은 둘뿐이다. 이 worker를 띄운 부모가 아직
- * 살아 있는 경우(Desktop이 수거 전 자기 child를 믿는 것과 같은 이유)와, lock token을 인증한 health가
- * 같은 pid를 답한 경우다. 나머지는 identifyConsoleLockOwner가 정한다.
- */
-async function identifyOldConsole() {
-  const pid = config.currentPid;
-  let verdict;
-  if (startedAsChild) {
-    verdict = process.ppid === pid
-      ? { identity: "verified", basis: "parent-alive" }
-      : { identity: identifyConsoleLockOwner({ lockPid: pid, pidAlive: false, health: { kind: "unanswered" } }), basis: "parent-exited" };
-  } else {
-    const pidAlive = isProcessAlive(pid);
-    const health = pidAlive ? await probeOldConsoleHealth() : { kind: "unanswered" };
-    let identity = identifyConsoleLockOwner({ lockPid: pid, pidAlive, health });
-    // 거절된 주소는 stale lock일 수도, listener를 먼저 닫고 정리 중이거나 그 도중 멈춘 Console일 수도
-    // 있다(CLI stop과 같은 판단). 그 Console의 lock이 풀렸다고 확인될 때만 끝났다고 본다 — 읽지 못한
-    // lock은 풀렸다는 증거가 아니다.
-    const lock = describeOldConsoleLock();
-    if (identity === "absent" && pidAlive && lock !== "missing" && lock !== "replaced") identity = "unverified";
-    verdict = { identity, basis: "lock-token-health", pidAlive, health: pidAlive ? health.kind : "not-probed", lock, ...(health.kind === "answered" ? { answeredPid: health.pid } : {}) };
-  }
-  const line = describeVerdict(verdict);
-  if (line !== lastVerdictLine) {
-    lastVerdictLine = line;
-    log("identity: " + line);
-  }
-  return verdict;
-}
-
-function describeVerdict(verdict) {
-  const detail = verdict.basis === "lock-token-health"
-    ? " pidAlive=" + verdict.pidAlive + " health=" + verdict.health + (verdict.health === "answered" ? " answeredPid=" + String(verdict.answeredPid) : "") + " lock=" + verdict.lock
-    : verdict.basis === "parent-alive" ? " ppid=" + process.ppid : " ppid=" + process.ppid + " (was " + config.currentPid + ")";
-  return verdict.identity + " for pid " + config.currentPid + " via " + verdict.basis + detail;
-}
-
-/** lock이 적은 주소와 token으로 묻는다. 정상 응답(2xx)의 pid만 정체 증거다. 연결 거절은 아무도 듣지 않는다는 뜻이다. */
-async function probeOldConsoleHealth() {
-  for (let attempt = 0; ; attempt += 1) {
-    let response;
-    try {
-      response = await fetch(new URL("api/v1/health", config.currentEndpoint), {
-        headers: { authorization: "Bearer " + config.currentLockToken },
-        signal: AbortSignal.timeout(healthTimeoutMs),
-      });
-    } catch (error) {
-      const code = error && error.cause ? error.cause.code : undefined;
-      if (code === "ECONNREFUSED") return { kind: "refused" };
-      if (attempt === 0 && (code === "ECONNRESET" || code === "UND_ERR_SOCKET")) continue;
-      return { kind: "unanswered" };
-    }
-    if (!response.ok) return { kind: "unanswered" };
-    const pid = await response.json().then((body) => (body && typeof body === "object" ? body.pid : undefined), () => undefined);
-    return { kind: "answered", pid };
-  }
-}
-
-/**
- * 이전 Console이 쥐었던 lock의 지금 상태. held(같은 pid·token), replaced(다른 주인), missing(파일 없음),
- * unreadable(읽거나 해석하지 못함). CLI와 Desktop처럼 파일이 없을 때만 없다고 보고, 읽지 못한 lock을
- * 풀렸다고 보지 않는다.
- */
-function describeOldConsoleLock() {
-  const state = readLockState();
-  if (state.kind !== "present") return state.kind;
-  return state.lock.pid === config.currentPid && state.lock.token === config.currentLockToken ? "held" : "replaced";
-}
-
-function isLockStillHeldByOldConsole() {
-  return describeOldConsoleLock() === "held";
+  // 이전 Console이 끝났거나 lock을 놓았다. 남긴 lock은 지우지 않는다 — 새 Console의 serve가 그 pid의 ESRCH를 확인하고
+  // 회수 프로토콜로 치운다.
+  log("old console stopped" + (oldConsoleOutcome ? " (" + oldConsoleOutcome + ")" : "") + "; its lock is left for the new console to reclaim");
 }
 
 function detectPackageManager() {
@@ -580,26 +597,47 @@ function spawnServe() {
 /** The failure text stays free of paths: it reaches the browser through the progress record. The run log names the file. */
 function describeServeExit(serve) {
   if (serve.code === lockHeldExitCode) {
-    log("the new console did not take the Console lock; the old console's lock is " + describeOldConsoleLock() + (config.failureLogFile ? "; the reason is recorded in " + config.failureLogFile : ""));
+    log("the new console did not take the Console lock; the slot is " + describeSlot(judgeSlot()) + (config.failureLogFile ? "; the reason is recorded in " + config.failureLogFile : ""));
     return "the new console did not take the Console lock" + (config.failureLogFile ? "; the reason is recorded in " + path.basename(config.failureLogFile) + " in the Console data folder" : "");
   }
   return "the new console exited before it became healthy (code=" + serve.code + " signal=" + serve.signal + ")";
 }
 
+/** Whether a new serve may start: only when the lock is gone or its pid is ESRCH (the runtime's judgment). */
+function judgeSlot() {
+  return lifecycle.judgeSlotForStart(config.lockFile, { pid: config.currentPid, token: config.currentLockToken });
+}
+
+function describeSlot(slot) {
+  return slot.kind === "held" || slot.kind === "blocked" ? slot.kind + " (" + slot.detail + ")" : slot.kind;
+}
+
+/** The Console now in the slot. With requireTargetVersion, only a Console other than the old one at the target version counts. */
+function probeSlot(requireTargetVersion, deadline) {
+  return lifecycle.probeSlotConsole(config.lockFile, requireTargetVersion
+    ? { deadline, targetVersion: config.targetVersion, oldPid: config.currentPid }
+    : { deadline });
+}
+
 async function startNewDaemon() {
   // 다른 호스트가 lock을 얻고 초기화 중이면 ready까지 기다린다. 503을 보고 경쟁자를 더 띄우지 않는다.
-  const deadline = Date.now() + startTimeoutMs;
+  const deadline = Date.now() + lifecycle.CONSOLE_START_TIMEOUT_MS;
   const existing = await waitForExistingConsole(true, deadline);
   if (existing) return existing;
   if (Date.now() >= deadline) throw new Error("new console daemon did not become healthy");
+  // 살아 있는 pid가 쥔 lock 옆에는 띄우지 않는다. 그 pid가 무관한 프로그램이어도 ESRCH만 slot을 비운다.
+  const slot = judgeSlot();
+  if (slot.kind === "held" || slot.kind === "blocked") {
+    log("new console not started: the slot is " + describeSlot(slot));
+    throw new Error("the new console could not start: the Console lock is still held");
+  }
   const serve = spawnServe();
   while (Date.now() < deadline) {
-    const lock = readLock();
-    const health = await probeConsoleHealth(lock, true, deadline);
-    if (health === "healthy") return lock;
+    const probe = await probeSlot(true, deadline);
+    if (probe.state === "healthy") return probe;
     // 선판정 뒤 경쟁에서 졌어도 새 소유자가 초기화 중이면 같은 deadline 안에서 계속 기다린다.
-    if (serve.exited && (serve.code !== lockHeldExitCode || health !== "starting")) throw new Error(describeServeExit(serve));
-    await sleep(Math.min(sleepMs, Math.max(0, deadline - Date.now())));
+    if (serve.exited && (serve.code !== lockHeldExitCode || probe.state !== "starting")) throw new Error(describeServeExit(serve));
+    await sleep(Math.min(lifecycle.CONSOLE_START_POLL_MS, Math.max(0, deadline - Date.now())));
   }
   throw new Error("new console daemon did not become healthy");
 }
@@ -611,7 +649,7 @@ async function startNewDaemon() {
 async function recoverConsoleBestEffort() {
   try {
     // 복구할 화면이 이미 살아 있으면 버전과 무관하게 그 Console을 남긴다.
-    const deadline = Date.now() + startTimeoutMs;
+    const deadline = Date.now() + lifecycle.CONSOLE_START_TIMEOUT_MS;
     const existing = await waitForExistingConsole(false, deadline);
     if (existing) {
       log("recovery skipped: a healthy console is already running");
@@ -621,26 +659,26 @@ async function recoverConsoleBestEffort() {
       log("recovery did not become healthy before timeout");
       return;
     }
-    // A live pid that still holds the old lock (same pid and token) makes serve refuse it, so a spawn here could only
-    // wait out the timeout. Read the lock only: the user has to stop that process before a Console can start.
-    if (isLockStillHeldByOldConsole() && isProcessAlive(config.currentPid)) {
-      log("recovery skipped: pid " + config.currentPid + " is alive and still holds the lock, so no Console can start until it is stopped");
+    // A live pid holds the lock (the old Console, or another program that reused its pid), or the lock cannot be read:
+    // serve would refuse it, so a spawn here could only wait out the timeout. The user has to free the slot first.
+    const slot = judgeSlot();
+    if (slot.kind === "held" || slot.kind === "blocked") {
+      log("recovery skipped: the slot is " + describeSlot(slot) + ", so no Console can start until it is freed");
       return;
     }
     const serve = spawnServe();
     while (Date.now() < deadline) {
-      const lock = readLock();
-      const health = await probeConsoleHealth(lock, false, deadline);
-      if (health === "healthy") {
+      const probe = await probeSlot(false, deadline);
+      if (probe.state === "healthy") {
         log("recovered console after failure");
         return;
       }
       // lock을 얻은 다른 Console의 초기화만 기다린다. 그 외 child 실패는 숨기지 않는다.
-      if (serve.exited && (serve.code !== lockHeldExitCode || health !== "starting")) {
+      if (serve.exited && (serve.code !== lockHeldExitCode || probe.state !== "starting")) {
         log("recovery failed: " + describeServeExit(serve));
         return;
       }
-      await sleep(Math.min(sleepMs, Math.max(0, deadline - Date.now())));
+      await sleep(Math.min(lifecycle.CONSOLE_START_POLL_MS, Math.max(0, deadline - Date.now())));
     }
     log("recovery did not become healthy before timeout");
   } catch (error) {
@@ -664,93 +702,14 @@ function spawnExit(command, args, env = process.env) {
   });
 }
 
-/**
- * 파일이 없을 때(ENOENT)만 missing이다. 읽기·해석 실패와, pid·token이 lock 형식에 맞지 않는 내용은
- * unreadable로 따로 돌려준다 — Console과 Desktop이 그런 lock을 소유자 없는 lock으로 보존하듯, 형식이 깨진 lock은
- * 다른 주인이 잡았다는 증거가 아니다.
- */
-function readLockState() {
-  let raw;
-  try {
-    raw = fs.readFileSync(config.lockFile, "utf8");
-  } catch (error) {
-    return error && error.code === "ENOENT" ? { kind: "missing" } : { kind: "unreadable" };
-  }
-  try {
-    const lock = JSON.parse(raw);
-    const wellFormed = lock && typeof lock === "object"
-      && Number.isSafeInteger(lock.pid) && lock.pid > 0
-      && typeof lock.token === "string" && lock.token.length > 0;
-    return wellFormed ? { kind: "present", lock } : { kind: "unreadable" };
-  } catch {
-    return { kind: "unreadable" };
-  }
-}
-
-/** 읽어서 쓸 수 있는 lock만 돌려준다. 새 데몬·복구 확인은 읽힌 lock의 health로만 성공을 판단한다. */
-function readLock() {
-  const state = readLockState();
-  return state.kind === "present" ? state.lock : null;
-}
-
 async function waitForExistingConsole(requireTargetVersion, deadline) {
   while (Date.now() < deadline) {
-    const lock = readLock();
-    const health = await probeConsoleHealth(lock, requireTargetVersion, deadline);
-    if (health === "healthy") return lock;
-    if (health !== "starting") return null;
-    await sleep(Math.min(sleepMs, Math.max(0, deadline - Date.now())));
+    const probe = await probeSlot(requireTargetVersion, deadline);
+    if (probe.state === "healthy") return probe;
+    if (probe.state !== "starting") return null;
+    await sleep(Math.min(lifecycle.CONSOLE_START_POLL_MS, Math.max(0, deadline - Date.now())));
   }
   return null;
-}
-
-/** starting은 대기 힌트일 뿐이다. 기존 healthy 채택 조건이나 프로세스 제어 권한을 넓히지 않는다. */
-async function probeConsoleHealth(lock, requireTargetVersion, deadline) {
-  if (!lock || typeof lock.endpoint !== "string" || typeof lock.token !== "string") return "unhealthy";
-  if (!requireTargetVersion && !isProcessAlive(lock.pid)) return "unhealthy";
-  try {
-    const response = await fetch(new URL("api/v1/health", lock.endpoint), {
-      headers: { authorization: "Bearer " + lock.token },
-      signal: AbortSignal.timeout(Math.min(healthTimeoutMs, Math.max(1, deadline - Date.now()))),
-    });
-    if (response.status === 503) {
-      const body = await response.json().catch(() => null);
-      if (body && body.error === "console_starting" && body.pid === lock.pid && isProcessAlive(lock.pid)) return "starting";
-    }
-    if (!response.ok) return "unhealthy";
-    if (!requireTargetVersion) return "healthy";
-    if (lock.pid === config.currentPid) return "unhealthy";
-    const version = await readHealthVersion(response);
-    if (version === null) {
-      log("new health response did not expose a version; waiting for verified target");
-      return "unhealthy";
-    }
-    return version === config.targetVersion ? "healthy" : "unhealthy";
-  } catch {
-    return "unhealthy";
-  }
-}
-
-async function readHealthVersion(response) {
-  try {
-    const payload = await response.json();
-    return typeof payload.version === "string" ? payload.version : null;
-  } catch {
-    return null;
-  }
-}
-
-function isProcessAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return !isNoSuchProcess(error);
-  }
-}
-
-function isNoSuchProcess(error) {
-  return error && typeof error === "object" && error.code === "ESRCH";
 }
 
 function safeRealpath(targetPath) {
@@ -787,7 +746,8 @@ function sanitizeError(error) {
     .replaceAll(config.logFile, "[path]")
     .replaceAll(config.statusFile, "[path]")
     .replaceAll(config.tarballPath, "[path]")
-    .replaceAll(config.workerPath, "[path]");
+    .replaceAll(config.workerPath, "[path]")
+    .replaceAll(config.lifecycleRuntimePath, "[path]");
 }
 `;
 }
@@ -868,6 +828,11 @@ function defaultSpawnWorker(
   const child = spawn(execPath, [...args], options);
   child.once("error", () => {});
   return child;
+}
+
+/** The lifecycle runtime ships beside the Console bundle (dist/lifecycle-worker-runtime.mjs). */
+function resolveDefaultWorkerRuntimePath(): string {
+  return fileURLToPath(new URL("./lifecycle-worker-runtime.mjs", import.meta.url));
 }
 
 function resolveDefaultServerModulePath(): string {

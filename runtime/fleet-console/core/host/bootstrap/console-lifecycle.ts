@@ -41,6 +41,7 @@ import {
   describeConsoleLockSlotQuiescenceCheck,
   describeOwnerlessConsoleLock,
   describeRefusedConsoleLock,
+  describeReplacedLockAuthor,
   type ConsoleExitOutcome,
 } from "@fleet-console/protocol/lifecycle";
 
@@ -410,8 +411,11 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // 정체 증명(health 요청)보다 먼저 잰 벽시계 시각. 이보다 먼저 시작한 프로세스만 증명된 Console과 같은 프로세스일 수 있다.
     const identityProbedAt = Date.now();
     const observed = await observe(payload);
+    // lock pid가 살아 있지만 lock을 쓴 뒤에 시작했다: 끝난 Console의 pid를 무관한 프로그램이 물려받았다. 시작 시각 비교는
+    // 행동을 막는 데만 쓰므로 신호도, lock 삭제도, 새 serve도 없이 막힘으로 보고한다(계약 §3.4).
+    if (observed.state === "replaced") throw new Error(describeReplacedLockAuthor(paths.lockFile, payload.pid));
     if (observed.state === "exited") {
-      // lock만 남았다(pid가 끝났거나 lock을 쓴 뒤 재할당됐다). 신호 없이 같은 instance의 lock일 때만 회수 프로토콜로 지운다.
+      // lock만 남았다(pid가 끝났다). 신호 없이 같은 instance의 lock일 때만 회수 프로토콜로 지운다.
       await removeLockHeldBy(payload);
       return { outcome: "not-running", killed: 0 };
     }
@@ -425,7 +429,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     if (requester) assertCliCanControlDaemon(payload);
     const provenStart = requester ? await captureProvenProcessStart(payload.pid, identityProbedAt, env) : null;
     const ended = await runStopLadder({
-      requester,
+      request: requester ? "signal" : "none",
       isAlive: () => isPidAlive(payload.pid),
       isReleased: () => isLockReleasedBy(payload),
       reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart, observe, env }),
@@ -765,7 +769,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         // A child that took the lock may be writing durable state: it gets the stop ladder and its own deadline, never a
         // SIGKILL right after SIGTERM. The unreaped child handle proves its identity, so the pid cannot have been reused.
         const ended = await runStopLadder({
-          requester: true,
+          request: "signal",
           isAlive: () => !observation.exited,
           isReleased: () => childLockState(pid) === "released",
           reprove: async () => !observation.exited,
