@@ -9,6 +9,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CONSOLE_STOP_DEADLINE_MS } from "@fleet-console/protocol/lifecycle";
+
 import { createDesktopEnvironment } from "../src/environment.js";
 import { SidecarSupervisor, type SidecarRuntime } from "../src/sidecar-supervisor.js";
 
@@ -267,8 +269,9 @@ afterEach(async () => {
 
 (runLifecycle ? describe : describe.skip)("sidecar supervisor over a built Console", () => {
   // L4d, eca5f8c7 (I4, then I2). Quit while the Console's shutdown stalls with the lock held: only the Console's own 10s
-  // deadline reaps the agent that ignores SIGTERM. A process-table read that takes 600ms (inside the Console's own 1s
-  // allowance) moves that reap later; Quit must still not SIGKILL the Console first. The signature is the order: a reaper
+  // deadline reaps the agent that ignores SIGTERM. The Console's event loop freezes for 800ms just before that deadline
+  // (inside the escalation margin the contract allows a busy loop), which moves the reap to about 10.6s; Quit must still not
+  // SIGKILL the Console first. The signature is the order: a reaper
   // would hide the orphan before Desktop's own fix lands.
   it("lets the Console's own shutdown deadline finish before Quit escalates", async () => {
     const cliPath = requireFromTest.resolve("@dotobokuri/fleet-console/cli");
@@ -286,11 +289,8 @@ afterEach(async () => {
     const agentDir = path.join(dir, "agent");
     const theater = path.join(tmp, "theater");
     const pathbin = path.join(dir, "bin");
-    const slowPs = path.join(dir, "slow-ps");
-    for (const target of [root, agentDir, theater, pathbin, slowPs, path.join(dir, "home")]) fs.mkdirSync(target, { recursive: true, mode: 0o700 });
+    for (const target of [root, agentDir, theater, pathbin, path.join(dir, "home")]) fs.mkdirSync(target, { recursive: true, mode: 0o700 });
     fs.symlinkSync(process.execPath, path.join(pathbin, "node"));
-    const realPs = SYSTEM_PATH.map((entry) => path.join(entry, "ps")).find((candidate) => fs.existsSync(candidate))!;
-    fs.writeFileSync(path.join(slowPs, "ps"), `#!/bin/sh\nsleep 0.6\nexec ${realPs} "$@"\n`, { mode: 0o755 });
     const lockFile = path.join(slot, "console.lock");
     const stalled = path.join(dir, "stalled");
     const exited = path.join(dir, "exited");
@@ -304,6 +304,7 @@ afterEach(async () => {
       `const lock = ${JSON.stringify(lockFile)}, stalled = ${JSON.stringify(stalled)}, exited = ${JSON.stringify(exited)};`,
       `if (process.argv[1] === ${JSON.stringify(cliPath)} && process.argv[2] === 'serve') {`,
       "  process.on('exit', (code) => fs.writeFileSync(exited, String(code)));",
+      `  process.prependOnceListener('SIGTERM', () => setTimeout(() => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800), ${CONSOLE_STOP_DEADLINE_MS - 200}).unref());`,
       "  const close = http.Server.prototype.close;",
       "  http.Server.prototype.close = function (callback) {",
       "    let port = null;",
@@ -334,7 +335,7 @@ afterEach(async () => {
     };
     const desktop = createDesktopEnvironment(path.join(dir, "userdata"), "0.0.0-lifecycle", serviceRoot, false, baseEnv);
     expect(path.join(desktop.consoleDir, "console.lock")).toBe(lockFile);
-    const serviceEnv: NodeJS.ProcessEnv = { ...desktop.serviceEnv, NODE_OPTIONS: `--import ${pathToFileURL(preload).href}`, PATH: [slowPs, pathbin, ...SYSTEM_PATH].join(":") };
+    const serviceEnv: NodeJS.ProcessEnv = { ...desktop.serviceEnv, NODE_OPTIONS: `--import ${pathToFileURL(preload).href}`, PATH: [pathbin, ...SYSTEM_PATH].join(":") };
     expect(serviceEnv.HOME).toBe(baseEnv.HOME);
     const serviceVersion = (JSON.parse(fs.readFileSync(path.join(serviceRoot, "package.json"), "utf8")) as { version: string }).version;
     const supervisor = new SidecarSupervisor({
@@ -383,7 +384,14 @@ afterEach(async () => {
       left = left.filter((entry) => processStartTime(entry.pid) === entry.startedAt);
     }
     const roles = new Map(agentProcs().filter((entry) => AGENT_ROLES.has(entry.role)).map((entry) => [entry.pid, entry.role] as const));
-    lifecycleCheck("L4d", left.length === 0, "I2: nothing the Console started outlives it", { detail: left.map((entry) => roles.get(entry.pid) ?? entry.command), signature: false });
+    const failureLog = (() => {
+      try {
+        return fs.readFileSync(path.join(slot, "errors.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => { try { return String((JSON.parse(line) as { kind?: unknown }).kind); } catch { return "unreadable"; } });
+      } catch {
+        return [];
+      }
+    })();
+    lifecycleCheck("L4d", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left.map((entry) => roles.get(entry.pid) ?? entry.command), failureLog }, signature: false });
   }, 90_000);
 });
 
