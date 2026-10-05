@@ -59,6 +59,7 @@ All waits derive from the constants in `@fleet-console/protocol/lifecycle`. No a
 | `ESCALATION_MARGIN_MS` | 1 s | Covers a busy event loop delaying the stop handler at signal time and the deadline timer at expiry. |
 | `EXTERNAL_ESCALATION_MS` (B_ext) | B_int + 1 s + 1 s = 12 s | How long an actor that sent SIGTERM waits before it may SIGKILL. Defined only as that sum. |
 | `KILL_CONFIRM_MS` | 3 s | How long an actor that sent SIGKILL waits to see the pid exit. |
+| `LOCK_OBSERVE_BUDGET_MS` | 2 s | How long a lock without a readable owner is read again (every `LOCK_REREAD_INTERVAL_MS`, 50 ms) before it is reported, and how long a lock acquirer waits on another reclaimer. Elapsed time is never evidence that the owner is dead. |
 | `OWNED_GROUP_TERM_GRACE_MS` | 2 s | From SIGTERM to SIGKILL for an owned process group: the Console's stop path for its plugins' groups and the reaper after a crash use this one value, the same gap as the agent SDK's. With the one process-table read the stop path may take when that grace ends, it must hold `OWNED_GROUP_TERM_GRACE_MS + PROCESS_TABLE_TIMEOUT_MS + ε < B_int − ESCALATION_MARGIN_MS` (3 s ≪ 9 s). |
 
 Why B_ext is derived: an external SIGKILL that lands at the same moment as the Console's own deadline races the Console's cleanup of its children. Polling phase only ever delays an external escalation, so the margin needed is the Console's own worst-case delay: its process-table read plus event-loop lag. With B_ext = B_int + that delay, a Console within its own budget always finishes first (I4). A Console whose loop is blocked for more than a second at signal time can still lose that race; containment must then still leave no children (I2).
@@ -97,7 +98,7 @@ New outcomes may be added without a version change. A reader that meets an outco
 
 ## Observing an instance from outside
 
-An external actor reads the lock, the pid's liveness (only ESRCH is death), and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI does; Desktop, the update worker, and the local Console list still apply their own reading *(pending)*.
+An external actor reads the lock through the one lock observer, `observeConsoleLockFile` in `@fleet-console/lifecycle` (absent, refused, no readable owner, or an owner with its exact bytes, liveness, and the first trust problem, if any), then the pid's liveness (only ESRCH is death) and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI and `serve` do; Desktop, the update worker, and the local Console list still apply their own reading *(pending)*. A trusted lock has the POSIX modes 0700/0600, belongs to this user, names the loopback host and a valid port, has an endpoint of exactly `http://<host>:<port>/`, a token, and a numeric `startedAt`; a shell may add its own adoption policy on top. Whether the lock still holds one instance is `consoleLockInstanceState` over the same observer: `released` when there is no lock or it names another pid (or token), `held` when it names that instance, and `unknown` when it cannot be judged — a lock without a readable owner, even one that parses (`{}`, `null`), is never taken as released.
 
 | Lock | Pid | Health | Observed | May do |
 |---|---|---|---|---|

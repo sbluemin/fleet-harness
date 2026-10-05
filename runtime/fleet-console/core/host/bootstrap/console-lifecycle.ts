@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 import {
+  assertTrustedConsoleLock,
   captureProvenProcessStart,
+  consoleLockInstanceState,
   createConsoleHealthClient,
   createOwnedProcessRegistry,
   createProcessTableSnapshot,
@@ -16,11 +18,15 @@ import {
   type ConsoleReaperLink,
   isPidAlive,
   observeConsoleInstance,
+  observeConsoleLockFile,
+  observeConsoleLockFileWithin,
   readConsoleExitRecord,
+  readConsoleLockFile,
   readProcessStartTime,
   runStopLadder,
   writeConsoleExitRecord,
   type ConsoleInstanceObservation,
+  type ConsoleLockInstanceState,
   type ConsoleProbeOptions,
   type ConsoleProbeResult,
 } from "@fleet-console/lifecycle";
@@ -493,14 +499,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     return new Error(`Fleet Console pid ${payload.pid} released its lock but was still running ${Math.round(EXTERNAL_ESCALATION_MS / 1_000)}s after the stop request, so it was not signalled. Its own shutdown deadline ends it; if it keeps running, stop it (kill -TERM ${payload.pid}; Windows: Stop-Process -Id ${payload.pid}).`);
   }
 
-  /** lock이 없어졌거나 다른 주인의 것으로 바뀌었다. 읽지 못하면 풀렸다고 보지 않는다. */
+  /** lock이 없어졌거나 다른 주인의 것으로 바뀌었다. 판정할 수 없는 lock(소유자를 읽을 수 없음, 거부)은 풀렸다고 보지 않는다. */
   function isLockReleasedBy(payload: ConsoleLockPayload): boolean {
-    try {
-      const current = lock.readLock(paths.lockFile);
-      return current?.pid !== payload.pid || current.token !== payload.token;
-    } catch {
-      return false;
-    }
+    return consoleLockInstanceState(paths.lockFile, payload) === "released";
   }
 
   /**
@@ -508,7 +509,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
    * decide signalling and waiting; the deletion itself goes through the reclaim protocol, which requires ESRCH now.
    */
   async function removeLockHeldBy(payload: ConsoleLockPayload): Promise<void> {
-    const observed = lock.observeLock(paths.lockFile);
+    const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return;
     if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
     if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
@@ -521,12 +522,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   }
 
   function isLockStillHeldBy(payload: ConsoleLockPayload): boolean {
-    try {
-      const current = lock.readLock(paths.lockFile);
-      return current?.pid === payload.pid && current.token === payload.token;
-    } catch {
-      return false;
-    }
+    return consoleLockInstanceState(paths.lockFile, payload) === "held";
   }
 
   function signalLockProcess(pid: number, signal: NodeJS.Signals): void {
@@ -543,7 +539,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
    * pid is ESRCH. A lock without a readable owner, a symlink, or another user's lock is refused.
    */
   async function readLockForStart(): Promise<ConsoleLockPayload | null> {
-    const observed = await lock.observeLockWithin(paths.lockFile);
+    const observed = await observeConsoleLockFileWithin<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return null;
     if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
     if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
@@ -820,12 +816,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     }
   }
 
-  /** Whether the lock names `pid`. A lock that cannot be judged is neither held by it for sure nor released. */
-  function childLockState(pid: number): "held" | "released" | "unknown" {
-    const observed = lock.observeLock(paths.lockFile);
-    if (observed.kind === "absent") return "released";
-    if (observed.kind !== "owner") return "unknown";
-    return observed.instance.pid === pid ? "held" : "released";
+  /** Whether the lock names `pid` (a child's token is not known). A lock that cannot be judged is `unknown`. */
+  function childLockState(pid: number): ConsoleLockInstanceState {
+    return consoleLockInstanceState(paths.lockFile, { pid });
   }
 
   /**
@@ -833,7 +826,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
    * The lock is removed only through the reclaim protocol (exact bytes, ESRCH now); otherwise it stays and is reported.
    */
   async function reclaimExitedChildLock(childPid: number): Promise<string | null> {
-    const observed = lock.observeLock(paths.lockFile);
+    const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return null;
     if (observed.kind !== "owner") return `the lock ${paths.lockFile} could not be judged (${observed.reason}); it was left in place`;
     if (observed.instance.pid !== childPid) return null;
@@ -861,10 +854,19 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     ]);
   }
 
+  /**
+   * The lock stop and status act on, or null when there is none. A lock that cannot be judged (no readable owner, even
+   * one that parses, or one refused as a symlink or another user's) throws, so it is never taken as no Console at all;
+   * nothing is signalled and the lock stays. An owner's lock must pass the structural trust checks; a tokenless one
+   * goes on to the observation, which treats it as untrusted.
+   */
   function readTrustedLock(): ConsoleLockPayload | null {
-    const payload = lock.readLock(paths.lockFile);
-    if (!payload) return null;
-    lock.assertTrustedLock({
+    const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
+    if (observed.kind === "absent") return null;
+    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    const payload = observed.instance.payload;
+    assertTrustedConsoleLock({
       dir: paths.dir,
       lockFile: paths.lockFile,
       payload,
@@ -1098,7 +1100,7 @@ function readHookSessionId(env: NodeJS.ProcessEnv): string {
 async function postAgentHook(pathname: string, body: Record<string, unknown>, env: NodeJS.ProcessEnv): Promise<void> {
   try {
     const paths = createConsolePaths({ env });
-    const lock = createConsoleLock().readLock(paths.lockFile);
+    const lock = readConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
     if (!lock) return;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1500);
@@ -1135,7 +1137,7 @@ export async function decideAgentCall(sessionId: string | undefined, input: stri
   if (!sessionId) return null;
   if (!isAgentToolCall(input)) return null;
   try {
-    const lock = createConsoleLock().readLock(createConsolePaths({ env }).lockFile);
+    const lock = readConsoleLockFile<ConsoleLockPayload>(createConsolePaths({ env }).lockFile);
     if (!lock) return AGENT_CALL_UNREACHABLE_REASON;
     const response = await fetchImpl(`${lock.endpoint}api/v1/agent/sessions/${encodeURIComponent(sessionId)}/agent-call`, {
       method: "POST",

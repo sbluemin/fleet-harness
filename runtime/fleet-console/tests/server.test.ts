@@ -8,11 +8,11 @@ import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
+import { readConsoleLockFile } from "@fleet-console/lifecycle";
 import type { ConsoleLockPayload } from "../core/host/transport/console-contract-types.js";
 import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/shell/desktop-contract.js";
 import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/shell/desktop-contract.js";
 import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/protocol/desktop";
-import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { deriveOperationLabel } from "../features/execution/host/agent/auto-name.js";
 import { createConsoleObservabilityStore } from "../features/execution/host/agent/observability-store.js";
 import { createConsoleServeLifecycle } from "../core/host/bootstrap/serve-lifecycle.js";
@@ -192,7 +192,7 @@ describe("console terminal observability", () => {
     void starting.catch(() => {});
     try {
       await entered.promise;
-      const owner = createConsoleLock().readLock(lockFile)!;
+      const owner = readConsoleLockFile(lockFile)!;
       const lockBefore = fs.readFileSync(lockFile, "utf8");
       const healthUrl = new URL("api/v1/health", owner.endpoint);
       const healthHeaders = { Authorization: `Bearer ${owner.token}` };
@@ -813,7 +813,7 @@ async function startFixture(options: {
   });
   servers.push(server);
   const endpoint = await server.start({ dir, lockFile });
-  const lock = createConsoleLock().readLock(lockFile)!;
+  const lock = readConsoleLockFile<ConsoleLockPayload>(lockFile)!;
   return { dir, fleetDataDir, lockFile, server, endpoint, lock };
 }
 

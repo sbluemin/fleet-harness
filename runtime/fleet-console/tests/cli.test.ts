@@ -23,6 +23,7 @@ import {
   runConsoleStop,
 } from "../core/host/bootstrap/cli.js";
 import { describeDaemonStartFailure } from "../core/host/transport/failure-notice.js";
+import { readConsoleLockFile } from "@fleet-console/lifecycle";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 
@@ -172,7 +173,7 @@ describe("fleet console CLI", () => {
 
       expect(fake.kill.mock.calls.map(([signal]) => signal)).toEqual(["SIGTERM"]);
       expect(fake.unref).toHaveBeenCalledTimes(1);
-      expect(createConsoleLock().readLock(paths.lockFile)?.pid).toBe(replacement.pid);
+      expect(readConsoleLockFile(paths.lockFile)?.pid).toBe(replacement.pid);
     });
   });
 

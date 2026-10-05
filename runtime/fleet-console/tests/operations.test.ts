@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { assertOperationNode, fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
-import { createConsoleLock } from "../core/host/bootstrap/lock.js";
+import { readConsoleLockFile } from "@fleet-console/lifecycle";
 import { CORE_AGENT_SENSITIVE_FIELDS } from "../core/host/bootstrap/execution.js";
 import { createOperationsRouter } from "../features/execution/host/operations/operations-domain.js";
 import { createSanitizedOpDto } from "../features/execution/host/operations/operations-domain.js";
@@ -238,7 +238,7 @@ async function startCatalogFixture(): Promise<{ readonly endpoint: string }> {
   });
   servers.push(server);
   const endpoint = await server.start({ dir, lockFile });
-  expect(createConsoleLock().readLock(lockFile)).not.toBeNull();
+  expect(readConsoleLockFile(lockFile)).not.toBeNull();
   return { endpoint };
 }
 
