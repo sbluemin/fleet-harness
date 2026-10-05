@@ -139,7 +139,7 @@ describe("sidecar supervisor", () => {
       answer = "other-pid";
       const clock = fastClock();
       const ended = await runStopLadder({
-        requester: true,
+        request: "signal",
         isAlive: () => isPidAlive(bystander.pid!),
         isReleased: () => consoleLockInstanceState(reusedLock, { pid: reused.pid, token: reused.token }) === "released",
         reprove: () => reproveConsoleInstance({

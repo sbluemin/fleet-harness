@@ -375,7 +375,7 @@ export class SidecarSupervisor {
     const { pid, lock } = target;
     const instance = { pid, ...(lock ? { token: lock.token } : {}) };
     const ended = await runStopLadder({
-      requester: true,
+      request: "signal",
       isAlive: () => isPidAlive(pid),
       isReleased: () => consoleLockInstanceState(this.options.lockFile, instance) === "released",
       // An own child that gave up before its lock was read is proven only by its unreaped handle (E1).
@@ -411,7 +411,7 @@ export class SidecarSupervisor {
   private waitForOthersStop(stored: StoredLock): Promise<ConsoleStopLadderResult> {
     const { pid, token } = stored.lock;
     return runStopLadder({
-      requester: false,
+      request: "none",
       isAlive: () => isPidAlive(pid),
       isReleased: () => consoleLockInstanceState(this.options.lockFile, { pid, token }) === "released",
       reprove: async () => false,

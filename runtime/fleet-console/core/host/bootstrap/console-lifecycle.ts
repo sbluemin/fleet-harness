@@ -429,7 +429,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     if (requester) assertCliCanControlDaemon(payload);
     const provenStart = requester ? await captureProvenProcessStart(payload.pid, identityProbedAt, env) : null;
     const ended = await runStopLadder({
-      requester,
+      request: requester ? "signal" : "none",
       isAlive: () => isPidAlive(payload.pid),
       isReleased: () => isLockReleasedBy(payload),
       reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart, observe, env }),
@@ -769,7 +769,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         // A child that took the lock may be writing durable state: it gets the stop ladder and its own deadline, never a
         // SIGKILL right after SIGTERM. The unreaped child handle proves its identity, so the pid cannot have been reused.
         const ended = await runStopLadder({
-          requester: true,
+          request: "signal",
           isAlive: () => !observation.exited,
           isReleased: () => childLockState(pid) === "released",
           reprove: async () => !observation.exited,
