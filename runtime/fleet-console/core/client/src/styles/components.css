@@ -16441,7 +16441,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 /* ── 모델 좌표 선택기(ModelCoordinatePicker) ─────────────────────────────────────────────
    Console의 모든 모델·강도 선택이 같은 트리거·같은 메뉴 문법을 쓴다. 원형은 Objectives 지휘관 메뉴(맵 우클릭과 같은 문법)다.
-   트리거 변형: inline(글자 한 줄) · field(설정 행의 선택 상자) · glyph(아이콘 하나). */
+   트리거 변형: inline(글자 한 줄) · field(설정 행의 값 자리 — 아래 「행 값」) · glyph(아이콘 하나). */
 .fc-coord-trigger { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
 .fc-coord-trigger:hover, .fc-coord-trigger[aria-expanded="true"] { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 10%, transparent); }
 .fc-coord-trigger:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
@@ -16449,22 +16449,35 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .fc-coord-trigger.is-locked { cursor: default; opacity: 0.75; }
 .fc-coord-trigger.is-glyph { padding: 0; margin: 0; width: 22px; height: 22px; display: inline-grid; place-items: center; color: var(--text-tertiary); border-color: transparent; }
 .fc-coord-trigger.is-glyph:hover, .fc-coord-trigger.is-glyph[aria-expanded="true"] { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }
-.fc-coord-trigger.is-field {
-  position: relative; justify-content: flex-start;
-  width: 240px; max-width: 100%; min-height: 36px; margin-left: 0; padding: 0 34px 0 12px;
-  border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs);
-  background: var(--control-field); font-size: var(--t-sm); letter-spacing: 0.02em;
+/* 행 값 — 설정 행 오른쪽 끝에 붙는 값 텍스트(「[글리프] 모델 · 강도 ⌄」, 「⏱ 1시간 ⌄」). 쉴 때는 테두리·면이 없어 행과 한 몸으로
+   읽히고, hover·열림 때만 옅은 면이 깔린다. 기준 문법은 AI Gateway 「우선 소진 — 순위 없음 ⌄」(Select compact)이다.
+   모델 좌표 선택기의 field 변형과 Objectives 사령관 서랍의 순찰 간격이 같은 계약(fc-row-value)을 쓴다. 패딩은 끝 여백을
+   음수로 상쇄해 글자 끝선이 같은 행의 토글·세그먼트 끝선과 맞는다. */
+.fc-row-value, .fc-coord-trigger.is-field {
+  position: relative; display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px;
+  /* 내용 폭을 지킨다 — 이름은 상한(320px)에 닿을 때만 말줄임한다. 상한을 %로 두면 내용 크기로 정해지는 컨트롤 칸과
+     서로를 기준으로 삼아 함께 줄어든다(이름이 「Son…」으로 잘린다). */
+  flex: none; max-width: 320px; min-height: 0; margin: 0 -8px 0 auto; padding: 6px 24px 6px 8px;
+  border: 0; border-radius: var(--radius-xs); background: transparent; box-shadow: none;
+  color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-sm); line-height: 1.2; letter-spacing: 0.02em;
+  cursor: pointer; transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
-.fc-coord-trigger.is-field::after {
-  content: ""; position: absolute; right: 14px; top: 50%;
-  width: 6px; height: 6px; margin-top: -5px;
-  border-right: 1.4px solid var(--text-tertiary); border-bottom: 1.4px solid var(--text-tertiary);
-  transform: rotate(45deg);
+.fc-row-value::after, .fc-coord-trigger.is-field::after {
+  content: ""; position: absolute; right: 9px; top: 50%;
+  width: 5px; height: 5px; margin-top: -4px;
+  border-right: 1.3px solid var(--text-tertiary); border-bottom: 1.3px solid var(--text-tertiary);
+  transform: rotate(45deg); transition: transform var(--duration-fast) var(--ease-glide);
 }
-.fc-coord-trigger.is-field:hover, .fc-coord-trigger.is-field[aria-expanded="true"] { border-color: var(--control-hover-rim); background: var(--control-field); }
-.fc-coord-trigger.is-field:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
-.fc-coord-trigger.is-field > * { flex: none; }
-.fc-coord-trigger.is-field .fc-coord-trigger-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-row-value:hover, .fc-row-value[aria-expanded="true"],
+.fc-coord-trigger.is-field:hover, .fc-coord-trigger.is-field[aria-expanded="true"] { color: var(--text-primary); background: var(--control-hover-fill); }
+.fc-row-value[aria-expanded="true"]::after, .fc-coord-trigger.is-field[aria-expanded="true"]::after { margin-top: -1px; transform: rotate(-135deg); }
+.fc-row-value:focus-visible, .fc-coord-trigger.is-field:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+/* 잠김·비활성 — 누를 수 없다는 것을 캐럿과 hover 면이 없는 것으로 말한다. */
+.fc-row-value:disabled, .fc-coord-trigger.is-field:disabled, .fc-coord-trigger.is-field.is-locked { padding-right: 8px; background: transparent; }
+.fc-row-value:disabled::after, .fc-coord-trigger.is-field:disabled::after, .fc-coord-trigger.is-field.is-locked::after { display: none; }
+.fc-row-value > *, .fc-coord-trigger.is-field > * { flex: none; }
+/* 이름만 말줄임한다 — 강도와 꺼짐·폴백 배지는 늘 보인다. */
+.fc-row-value .fc-row-value-text, .fc-coord-trigger.is-field .fc-coord-trigger-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-coord-trigger-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
 .operation-launch-provider-glyph.fc-coord-trigger-provider { border: 0; background: none; }
 .fc-coord-trigger-provider svg { width: 14px; height: 14px; }
