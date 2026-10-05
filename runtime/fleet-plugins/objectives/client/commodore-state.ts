@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
+import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
 import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
 import type { CommodoreStateView } from "../server/commodore/routes.js";
@@ -417,9 +418,17 @@ export function useCommodoreOnline(): boolean {
   return useSyncExternalStore((listener) => installed?.consoleState.subscribe(listener) ?? (() => undefined), readOnline, readOnline);
 }
 
-/** 사령관 모델 선택지 — 실험 기능 모델(Claude 별칭 + Gateway). 서버는 같은 판정(`isExperimentModelId`)으로 받는다. */
-export function commodoreModelOptions(): Promise<readonly import("@fleet-console/sdk/settings").ExperimentModelOption[]> {
-  return installed?.experiments.modelOptions() ?? Promise.resolve([]);
+/**
+ * 사령관·지휘관 좌표의 선택지 — Console의 모델 로스터. 사령관 세션은 `agent`(Agent SDK, ULTRACODE 없음), 사령관이 만드는
+ * 목표의 지휘관은 `launch`(Agent CLI) 대상이다. Settings › AI Gateway에서 모델을 켜고 끄면(다른 탭·기기 포함) 다시 그린다.
+ * 첫 읽기가 로스터 읽기를 시작하고, 아직이면 null이다.
+ */
+export function useCommodoreRoster(target: ModelRosterTarget): ModelRoster | null {
+  return useSyncExternalStore(
+    (listener) => installed?.models?.subscribe(listener) ?? (() => undefined),
+    () => installed?.models?.read(target) ?? null,
+    () => null,
+  );
 }
 
 /** 실험 기능 「자율 운영」 — 리액트 밖(호스트가 구독으로 읽는 공급원)에서 쓰는 지금 값. */

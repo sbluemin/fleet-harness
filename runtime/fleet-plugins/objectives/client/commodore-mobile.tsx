@@ -6,16 +6,14 @@ import type { PaneContext } from "@fleet-console/sdk/pane";
 import type { TheaterContributionMobileRow } from "@fleet-console/sdk/plugin";
 import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
 import { useMobileSettingsHost } from "@fleet-console/sdk/react/browser";
-import { ModelPicker, SettingsCard, SettingsRow, useModelPickerOptions } from "@fleet-console/sdk/settings/browser";
-import type { ExperimentModelOption } from "@fleet-console/sdk/settings";
+import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
 
 import type { CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
-import { actionWord, CommodoreMarkdown, DEFAULT_PATROL, errorWord, groupTranscript, PATROL_STEPS, patrolWord, reasonWord, toolSummary } from "./commodore-drawer.js";
+import { actionWord, commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, CommodoreMarkdown, commodoreValue, DEFAULT_PATROL, errorWord, groupTranscript, PATROL_STEPS, patrolWord, reasonWord, toolSummary } from "./commodore-drawer.js";
 import { clockTime, commodoreSummary } from "./commodore-row.js";
 import {
   addCommodoreIntel,
   commodoreLanguage,
-  commodoreModelOptions,
   loadCommodore,
   loadTranscript,
   messageCommodore,
@@ -40,7 +38,7 @@ import {
   type CommodoreTab,
 } from "./commodore-state.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
-import { DEFAULT_LAUNCH, launchWords, useLaunchGroups } from "./launch-control.js";
+import { DEFAULT_LAUNCH } from "./launch-control.js";
 import { useObjectiveTheater } from "./objectives-state.js";
 import "./commodore-mobile.css";
 
@@ -74,11 +72,6 @@ const StatusMark = ({ state }: { readonly state: Glyph }) => <span className={`o
 function failWord(t: T, error: unknown): string {
   const code = error instanceof Error ? error.message : "failed";
   return code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code });
-}
-
-function effortWord(t: T, effort: string): string {
-  const key = `objectives.commodore.mobile.effort.${effort}`;
-  return key in objectivesEn ? t(key as ObjectiveMessageKey) : effort;
 }
 
 /* ── 드로어 줄 오른쪽 상태(S-53 CM-1c) ─────────────────────────────── */
@@ -511,36 +504,14 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
 
 /* ── 설정 탭(CM-2e) ───────────────────────────────────────────────────── */
 
-const COMMODORE_EFFORT_LADDER = ["low", "medium", "high"] as const;
-
 function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
   const { state, defaults, run } = view;
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   const host = useMobileSettingsHost();
-  const commodoreOptions = useModelPickerOptions(commodoreModelOptions);
-  const groups = useLaunchGroups();
-  const catalogOptions = useMemo<readonly ExperimentModelOption[]>(() => groups.flatMap((group) => group.rows.flatMap((row) => row.launch.model ? [{ id: row.launch.model, label: row.label, ...(group.provider ? { provider: group.provider } : {}) }] : [])), [groups]);
   const defaultWord = t("objectives.commodore.patrol.default");
-  const labelOf = (options: readonly ExperimentModelOption[], id: string) => options.find((option) => option.id === id)?.label ?? id;
-
-  // 사령관 모델 — 좌표는 모델과 강도를 함께 저장한다. 비우면 실험 기능 행의 기본값이다.
-  const model = state.model ?? defaults.model;
-  const effort = state.effort ?? defaults.effort;
+  // 좌표 두 칸은 데스크톱 서랍과 같은 공유 선택기 — 폰 설정 화면 안이라 호스트의 좌표 시트로 열린다. 비우면 기본값이다.
   const modelOverridden = state.model !== undefined;
-  const modelLevels = (commodoreOptions.find((option) => option.id === model)?.effortLevels ?? COMMODORE_EFFORT_LADDER).filter((level) => (COMMODORE_EFFORT_LADDER as readonly string[]).includes(level) || level === "xhigh" || level === "max");
-
-  // 지휘관 모델 — 비우면 보드 기본값(DEFAULT_LAUNCH).
-  const commanderModel = state.commanderModel ?? DEFAULT_LAUNCH.model;
-  const commanderEffort = state.commanderModel ? state.commanderEffort : DEFAULT_LAUNCH.effort;
   const commanderOverridden = state.commanderModel !== undefined;
-  const commanderRow = groups.flatMap((group) => group.rows).find((row) => row.launch.model === commanderModel);
-  // 카탈로그에 없는 모델(CLI 가 없거나 아직 읽기 전)도 사람이 읽는 이름으로 — 데스크톱 지휘관 메뉴와 같은 낱말 규칙(launchWords)이다.
-  const launchOptions = useMemo<readonly ExperimentModelOption[]>(() => {
-    const ensure = (id: string) => catalogOptions.some((option) => option.id === id) ? [] : [{ id, label: launchWords([], id, undefined, "").model }];
-    return [...catalogOptions, ...ensure(commanderModel), ...ensure(DEFAULT_LAUNCH.model).filter((option) => option.id !== commanderModel)];
-  }, [catalogOptions, commanderModel]);
-  const chipLevels = (commanderRow?.chips ?? []).flatMap((chip) => chip.launch.effort ? [chip.launch.effort] : []);
-  const commanderLevels = chipLevels.length > 0 ? chipLevels : commanderEffort ? [commanderEffort] : [];
 
   const patrol = state.patrolMinutes ?? DEFAULT_PATROL;
   const usage = [t("objectives.commodore.drawer.session", { n: run.totals.session }), t("objectives.commodore.drawer.cost", { cost: run.totals.costUsd.toFixed(2) })].join(" · ");
@@ -551,13 +522,15 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
         {failure ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
         <SettingsCard description={t("objectives.commodore.settings.modelHint")}>
           <SettingsRow label={t("objectives.commodore.settings.model")} icon={<SparkIcon />} disabled={!online}>
-            <ModelPicker
-              value={model}
-              options={commodoreOptions}
+            <CommodoreCoordinateField
+              t={t}
+              target="agent"
+              label={t("objectives.commodore.drawer.modelAria")}
+              value={commodoreValue(state)}
+              fallback={defaults}
               disabled={!online}
-              onChange={(next) => act(() => setCommodoreCoordinates(theaterId, { model: next, effort }))}
-              effort={{ value: effort, levels: modelLevels, ariaLabel: t("objectives.commander.effortAria"), labelOf: (level) => effortWord(t, level), onChange: (next) => act(() => setCommodoreCoordinates(theaterId, { model, effort: next })) }}
-              {...(modelOverridden ? { reset: { label: t("objectives.commodore.settings.useDefault"), description: `${labelOf(commodoreOptions, defaults.model)} · ${effortWord(t, defaults.effort)}`, onSelect: () => act(() => setCommodoreCoordinates(theaterId, null)) } } : { valueSuffix: defaultWord })}
+              {...(modelOverridden ? { reset: { label: t("objectives.commodore.settings.useDefault"), onSelect: () => act(() => setCommodoreCoordinates(theaterId, null)) } } : {})}
+              onChange={(next) => act(() => setCommodoreCoordinates(theaterId, commodoreCoordinates(state, defaults, next)))}
             />
           </SettingsRow>
         </SettingsCard>
@@ -586,13 +559,15 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
         </SettingsCard>
         <SettingsCard description={t("objectives.commodore.settings.commanderHint")}>
           <SettingsRow label={t("objectives.commodore.settings.commander")} icon={<TargetIcon />} disabled={!online}>
-            <ModelPicker
-              value={commanderModel}
-              options={launchOptions}
+            <CommodoreCoordinateField
+              t={t}
+              target="launch"
+              label={t("objectives.commodore.settings.commanderAria")}
+              value={commanderValue(state)}
+              fallback={DEFAULT_LAUNCH}
               disabled={!online}
-              onChange={(next) => act(() => setCommodoreCommander(theaterId, { model: next, ...(commanderEffort ? { effort: commanderEffort } : {}) }))}
-              {...(commanderLevels.length > 0 ? { effort: { value: commanderEffort ?? "", levels: commanderLevels, ariaLabel: t("objectives.commander.effortAria"), labelOf: (level: string) => effortWord(t, level), onChange: (next: string) => act(() => setCommodoreCommander(theaterId, { model: commanderModel, effort: next })) } } : {})}
-              {...(commanderOverridden ? { reset: { label: t("objectives.commodore.settings.useDefault"), description: `${labelOf(launchOptions, DEFAULT_LAUNCH.model)} · ${effortWord(t, DEFAULT_LAUNCH.effort)}`, onSelect: () => act(() => setCommodoreCommander(theaterId, null)) } } : { valueSuffix: defaultWord })}
+              {...(commanderOverridden ? { reset: { label: t("objectives.commodore.settings.useDefault"), onSelect: () => act(() => setCommodoreCommander(theaterId, null)) } } : {})}
+              onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
             />
           </SettingsRow>
         </SettingsCard>
