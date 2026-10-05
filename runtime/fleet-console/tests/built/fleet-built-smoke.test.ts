@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { REAPER_DRAIN_MAX_MS } from "@fleet-console/lifecycle";
 import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
@@ -26,14 +27,23 @@ const SERVES = new Set<ChildProcess>();
 const ROOTS: string[] = [];
 
 afterEach(async () => {
+  // A killed Console's reaper records how it ended under the root: take its helpers (proved by start time) before the kill
+  // and let them finish before the root is removed.
+  const helpers: Array<readonly [number, string]> = [];
   await Promise.all([...SERVES].map(async (child) => {
     if (child.exitCode !== null || child.signalCode !== null) return;
+    for (const entry of descendantsOf(child.pid!)) helpers.push([entry.pid, entry.startedAt]);
     const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
     child.kill("SIGKILL");
     await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 5_000))]);
   }));
   SERVES.clear();
-  for (const root of ROOTS.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  const deadline = Date.now() + REAPER_DRAIN_MAX_MS + 1_000;
+  for (const [pid, startedAt] of helpers) {
+    while (processStartTime(pid) === startedAt && Date.now() < deadline) await delay(25);
+    if (processStartTime(pid) === startedAt) try { process.kill(pid, "SIGKILL"); } catch { /* Already gone. */ }
+  }
+  for (const root of ROOTS.splice(0)) fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 });
 });
 
 (runBuiltSmoke ? describe : describe.skip)("built dual-entry smoke", () => {
@@ -178,6 +188,9 @@ afterEach(async () => {
   const unproven = UNPROVEN_RECORDS.splice(0);
   // The suite keeps I1 itself: only a pid whose start time still matches is signalled, and nothing may be left behind.
   const left: string[] = [];
+  // A Console's reaper reacts to its Console's end: take whatever the owned processes started (proved the same way) before
+  // they are killed, so nothing still writes into a run directory while it is removed.
+  for (const [pid, startedAt] of [...OWNED]) if (processStartTime(pid) === startedAt) for (const entry of descendantsOf(pid)) own(entry.pid);
   if (OWNED.size > 0) {
     for (const [pid, startedAt] of OWNED) {
       if (processStartTime(pid) === startedAt) {
@@ -191,7 +204,7 @@ afterEach(async () => {
     }
     OWNED.clear();
   }
-  for (const run of runs) for (const dir of [run.dir, run.tmp]) fs.rmSync(dir, { recursive: true, force: true });
+  for (const run of runs) for (const dir of [run.dir, run.tmp]) fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   if (left.length > 0) throw new Error(`lifecycle processes survived SIGKILL: ${left.join("; ")}`);
   if (unproven.length > 0) throw new Error(`agent records that no live process proves (not signalled): ${unproven.join("; ")}`);
 });
@@ -346,7 +359,8 @@ afterEach(async () => {
   it("reports a Console that ended by its own deadline as not cleanly stopped", async () => {
     const run = createRun("outcome");
     const stall = stallShutdownWithLockHeld(run, { strayChild: true, recordSignal: true });
-    const consoleProcess = spawnConsole(run, { preload: stall.preload, env: { PATH: [slowProcessTable(run, 600), run.env.PATH].join(":"), FAKE_AGENT_LEADER_EXITS: "1" } });
+    const psCalls = path.join(run.dir, "console-ps-calls");
+    const consoleProcess = spawnConsole(run, { preload: stall.preload, env: { PATH: [slowProcessTable(run, 400, psCalls), run.env.PATH].join(":"), FAKE_AGENT_LEADER_EXITS: "1" } });
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
     await openWorkload(run, endpoint, { terminal: false });
@@ -355,8 +369,11 @@ afterEach(async () => {
     const started = descendantsOf(consoleProcess.pid!);
     await provableByStartTime(startedAt);
 
+    const readsBeforeStop = callsFrom(psCalls, consoleProcess.pid!);
     const stop = await runStop({ ...run.env, PATH: [slowProcessTable(run, 600), run.env.PATH].join(":") });
     const exit = await exitOf(consoleProcess, 30_000);
+    // Only the Console's own calls: its reaper reads the same PATH once the Console is gone.
+    const reads = callsFrom(psCalls, consoleProcess.pid!) - readsBeforeStop;
 
     expect(fs.existsSync(stall.marker), "the injected stall must hold the shutdown with the lock held").toBe(true);
     expect(exit.signal, "the Console must end by its own deadline in this case").toBeNull();
@@ -364,6 +381,8 @@ afterEach(async () => {
     const left = await survivors(run, started);
     lifecycleCheck("L9", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
     const recordedMs = deadlineRecordedAfterSignal(run, stall.signalled);
+    // The count is the deterministic half: the bound below also depends on the scheduler.
+    lifecycleCheck("L9", reads === 1, "I4: the stopping Console reads the process table once", { detail: { reads } });
     lifecycleCheck("L9", recordedMs !== null && recordedMs <= CONSOLE_STOP_DEADLINE_MS + PROCESS_TABLE_TIMEOUT_MS + 100, "I4: the deadline spends one process-table budget at most", { detail: { recordedMs } });
     lifecycleCheck("L9", stop.status !== 0, "stop does not report a deadline-ended Console as cleanly stopped", { detail: { status: stop.status, stdout: stop.stdout.trim() } });
   }, 90_000);
@@ -440,6 +459,7 @@ afterEach(async () => {
     const endpoint = await waitForReady(run, consolePid);
     const attachment = await uploadAttachment(run, endpoint);
     await openWorkload(run, endpoint, { terminal: true });
+    await openPluginChildren(run, endpoint);
     const started = descendantsOf(consolePid);
 
     process.kill(consolePid, "SIGKILL");
@@ -781,14 +801,23 @@ function hangingProcessTable(run: LifecycleRun): string {
   return dir;
 }
 
-/** A `ps` that answers after `delayMs`, put on one process's PATH only: its process-table read is slow, nobody else's. */
-function slowProcessTable(run: LifecycleRun, delayMs: number): string {
-  const dir = path.join(run.dir, `slow-ps-${delayMs}`);
+/**
+ * A `ps` that answers after `delayMs`, put on one process's PATH only: its process-table read is slow, nobody else's. With
+ * `calls`, every invocation first appends its caller's pid to that file (a shell builtin: no extra exec on the timed path).
+ */
+function slowProcessTable(run: LifecycleRun, delayMs: number, calls?: string): string {
+  const dir = path.join(run.dir, `slow-ps-${delayMs}${calls ? "-counted" : ""}`);
   fs.mkdirSync(dir, { recursive: true });
   const realPs = SYSTEM_PATH.map((entry) => path.join(entry, "ps")).find((candidate) => fs.existsSync(candidate));
   if (!realPs) throw new Error("ps is not on the system PATH");
-  fs.writeFileSync(path.join(dir, "ps"), `#!/bin/sh\nsleep ${delayMs / 1000}\nexec ${realPs} "$@"\n`, { mode: 0o755 });
+  const count = calls ? `echo "$PPID" >> ${JSON.stringify(calls)}\n` : "";
+  fs.writeFileSync(path.join(dir, "ps"), `#!/bin/sh\n${count}sleep ${delayMs / 1000}\nexec ${realPs} "$@"\n`, { mode: 0o755 });
   return dir;
+}
+
+/** How many recorded calls came from `caller`. */
+function callsFrom(file: string, caller: number): number {
+  try { return fs.readFileSync(file, "utf8").split("\n").filter((line) => Number(line) === caller).length; } catch { return 0; }
 }
 
 /**
@@ -864,6 +893,30 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
     await consoleApi(endpoint, "/api/v1/agent/sessions", { theaterId, cliId: "claude" });
     await waitUntil(() => count("terminal") > terminals, 20_000, "the terminal did not start");
   }
+}
+
+/**
+ * A built-in plugin's own long-running child (N7): a Ledger summary request starts tokscale, and a stand-in installed where
+ * Ledger looks for it hangs and ignores SIGTERM, so only the Console's containment ends it. The suite owns each one at once:
+ * one that escapes is reparented away from the Console and would otherwise outlive the case.
+ */
+async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<void> {
+  const pkg = path.join(run.root, "console", "plugins", "ledger", "cli", "node_modules", "tokscale");
+  const pids = path.join(pkg, "pids");
+  fs.mkdirSync(pkg, { recursive: true });
+  // Ledger refuses anything but its pinned version.
+  fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "tokscale", version: "4.7.0" }));
+  fs.writeFileSync(path.join(pkg, "bin.js"), [
+    `require("fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");`,
+    "process.on('SIGTERM', () => {});",
+    "setInterval(() => {}, 1 << 30);",
+  ].join("\n"));
+  // The summary answers only once tokscale does; the request ends with the Console.
+  fetch(new URL("plugins/ledger/summary?window=week", endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
+  const recorded = () => fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map(Number) : [];
+  // One tokscale for the report and one for the model breakdown.
+  await waitUntil(() => recorded().length >= 2, 20_000, "the Ledger plugin did not start its CLI");
+  for (const pid of recorded()) own(pid);
 }
 
 const ONE_PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");

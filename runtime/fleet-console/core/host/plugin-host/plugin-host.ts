@@ -27,7 +27,7 @@ export type {
   OperationLaunchKind,
   OperationLaunchView,
 } from "@fleet-console/sdk/plugin";
-import type { ApiCatalogEntry, FleetPluginHostCapabilities, FleetPluginManifest, FleetPluginRouteModule, FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import type { ApiCatalogEntry, FleetPluginHostCapabilities, FleetPluginManifest, FleetPluginOwnedProcess, FleetPluginOwnedSpawnRequest, FleetPluginRouteModule, FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
@@ -378,6 +378,8 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
   readonly registerAdmiralMcp: (pluginId: string, tools: Parameters<FleetPluginHostCapabilities["admiralMcp"]["register"]>[0]) => () => void;
   /** 플러그인 id 를 호스트가 묶는다 — 플러그인은 다른 플러그인의 이름으로 Console Use 도구를 실을 수 없다. */
   readonly contributeConsoleUse?: (pluginId: string, tools: Parameters<NonNullable<FleetPluginHostCapabilities["consoleUse"]["contribute"]>>[0]) => () => void;
+  /** The host binds the plugin id: a plugin cannot start a child in another plugin's name. */
+  readonly spawnOwnedProcess?: (pluginId: string, request: FleetPluginOwnedSpawnRequest) => FleetPluginOwnedProcess;
   readonly createAgentHost?: (pluginId: string) => AgentHost & { dispose(): Promise<void> };
   /** 플러그인 id 를 호스트가 묶는 Console 제어 — 플러그인은 다른 이름으로 Operation 을 시작하거나 메시지할 수 없다. */
   readonly consoleControlFor?: (pluginId: string) => NonNullable<FleetPluginHostCapabilities["consoleControl"]>;
@@ -518,6 +520,7 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
       ...deps.host,
       ...(agent ? { agent } : {}),
       ...(consoleControl ? { consoleControl } : {}),
+      ...(deps.spawnOwnedProcess ? { processes: { spawnOwned: (request: FleetPluginOwnedSpawnRequest) => deps.spawnOwnedProcess!(plugin.manifest.id, request) } } : {}),
       admiralMcp: {
         connect: () => deps.host.admiralMcp.connect(),
         register: (tools) => deps.registerAdmiralMcp(plugin.manifest.id, tools),

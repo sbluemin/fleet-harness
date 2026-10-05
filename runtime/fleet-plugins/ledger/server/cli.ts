@@ -1,7 +1,8 @@
-import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { execFile, spawn, type SpawnOptions } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import type { FleetPluginOwnedProcess, FleetPluginProcessesHost } from "@fleet-console/sdk/plugin";
 import { resolvePathBinary } from "@fleet-console/process";
 import { withHidden } from "@fleet-console/process";
 
@@ -155,21 +156,23 @@ export function ensureTokscaleBin(
   return _bootstrapPromise;
 }
 
-export function createDefaultExecutor(cliHome: string): CliExecutor {
+/**
+ * Runs tokscale. With the host's owned-process port the CLI is a child the Console ends however the Console ends; the
+ * Console makes it lead its own process group, so the timeout below still ends its whole tree. Without the port (an
+ * older Console) it is spawned the same way by hand.
+ */
+export function createDefaultExecutor(cliHome: string, processes?: FleetPluginProcessesHost): CliExecutor {
   return async (args, { cwd, timeout }) => {
     const binPath = await ensureTokscaleBin(cliHome);
     return new Promise<CliResult>((resolve, reject) => {
-      const spawnOptions: SpawnOptions = withHidden({
-        shell: false,
-        cwd,
-        detached: process.platform !== "win32",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      const child = spawn(
-        process.execPath,
-        [binPath, ...args],
-        spawnOptions,
-      );
+      const child: FleetPluginOwnedProcess = processes
+        ? processes.spawnOwned({ command: process.execPath, args: [binPath, ...args], cwd, stdin: "ignore" })
+        : spawn(process.execPath, [binPath, ...args], withHidden<SpawnOptions>({
+          shell: false,
+          cwd,
+          detached: process.platform !== "win32",
+          stdio: ["ignore", "pipe", "pipe"],
+        }));
       const stdoutParts: string[] = [];
       const stderrParts: string[] = [];
       let bufferedBytes = 0;
@@ -217,7 +220,7 @@ export function createDefaultExecutor(cliHome: string): CliExecutor {
   };
 }
 
-function terminateProcessTree(child: ChildProcess): void {
+function terminateProcessTree(child: Pick<FleetPluginOwnedProcess, "pid" | "exitCode" | "kill">): void {
   if (!child.pid || child.exitCode !== null) return;
   if (process.platform === "win32") {
     execFile("taskkill", ["/PID", String(child.pid), "/T"], withHidden({ shell: false }), () => {});
@@ -230,7 +233,7 @@ function terminateProcessTree(child: ChildProcess): void {
   }
 }
 
-function forceKillProcessTree(child: ChildProcess): void {
+function forceKillProcessTree(child: Pick<FleetPluginOwnedProcess, "pid" | "kill">): void {
   if (!child.pid) return;
   if (process.platform === "win32") {
     execFile("taskkill", ["/PID", String(child.pid), "/T", "/F"], withHidden({ shell: false }), () => {});

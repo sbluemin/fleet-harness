@@ -1153,6 +1153,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     host: pluginHostCapabilities,
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
     contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
+    // A plugin's child leads a group this Console owns and ends however the Console ends; spawn is all a plugin gets.
+    spawnOwnedProcess: (pluginId, request) => ownedProcesses.spawn({
+      command: request.command,
+      args: request.args,
+      ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+      env: request.env ?? process.env,
+      stdin: request.stdin ?? "pipe",
+      owner: `plugin:${pluginId}`,
+    }),
     // Console 제어 — `console_launch`·`console_send` 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
     consoleControlFor: (pluginId) => ({
       request: async (input) => {

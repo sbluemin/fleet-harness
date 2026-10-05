@@ -25,3 +25,4 @@
 - Consumers import the domain/runtime subpath they need. Do not add broad client or server facade exports.
 
 - Plugins consume Agent execution through `ctx.host.agent`; vendor and lower-layer runtime constructors are Console implementation details. Agent events are server-internal, not browser DTOs. See `../../../docs/console-agent-sdk.md` for usage.
+- `ctx.host.processes` is an optional, spawn-only capability: a plugin child that must end with the Console starts through `spawnOwned`, and a child meant to outlive the Console never does. Never widen it to register existing pids, list or end the Console's children, or signal anything but the returned child. Contract: `../../../docs/console-lifecycle-contract.md` (Children).
