@@ -20,9 +20,9 @@ import {
   observeConsoleInstance,
   observeConsoleLockFile,
   observeConsoleLockFileWithin,
-  readConsoleExitRecord,
+  readConsoleEnding,
   readConsoleLockFile,
-  readProcessStartTime,
+  reproveConsoleInstance,
   runStopLadder,
   writeConsoleExitRecord,
   type ConsoleInstanceObservation,
@@ -425,7 +425,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       requester,
       isAlive: () => isPidAlive(payload.pid),
       isReleased: () => isLockReleasedBy(payload),
-      reprove: () => reproveLockOwner(payload, provenStart),
+      reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart, observe, env }),
       signal: (signal) => signalLockProcess(payload.pid, signal),
       onWaiting: () => report("Waiting for Fleet Console to finish shutting down..."),
       now,
@@ -442,27 +442,14 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       recordForcedExit(instance);
       return { outcome: "forced-external", killed: 0 };
     }
-    const record = readConsoleExitRecord(paths.lockFile, instance);
-    if (record) return { outcome: record.outcome, killed: record.killed };
-    // 기록 없이 사라졌다. 계약을 아는 Console이면 밖에서 끝난 것이다. 계약 이전 Console이거나, Windows에서 SIGTERM이 곧
-    // TerminateProcess라 정리가 돌지 않은 경우는 탓할 근거가 없으므로 지금까지처럼 정지로 본다.
-    const unattributable = !reportsLifecycleWire(observed) || (requester && process.platform === "win32");
-    return { outcome: unattributable ? "unrecorded" : "external", killed: 0 };
+    // 기록이 없으면 계약을 아는 Console은 밖에서 끝난 것이고, 계약 이전 Console이나 Windows에서 이 stop이 끝낸 Console은
+    // 탓할 근거가 없어 지금까지처럼 정지로 본다(readConsoleEnding).
+    return readConsoleEnding(paths.lockFile, instance, { lifecycleWire: observed.probe?.health?.lifecycleWire, terminatedByReader: requester });
   }
 
   function observe(payload: ConsoleLockPayload): Promise<ConsoleInstanceObservation<ConsoleLockPayload>> {
     // readTrustedLock already passed the lock's trust checks; a tokenless lock stays untrusted inside the observation.
     return observeConsoleInstance({ lock: payload, trusted: true, isHeld: () => !isLockReleasedBy(payload), probe: (target, options) => health.probe(target, options), env });
-  }
-
-  /**
-   * Right before SIGKILL: is the stalled pid still the Console proven before SIGTERM? A start time captured before that
-   * proof that is unchanged, with the same lock still held, proves it — a reused pid starts after the proof. Otherwise a
-   * fresh authenticated health answer must prove it again.
-   */
-  async function reproveLockOwner(payload: ConsoleLockPayload, provenStart: number | null): Promise<boolean> {
-    if (provenStart !== null && await readProcessStartTime(payload.pid, env) === provenStart && isLockStillHeldBy(payload)) return true;
-    return (await observe(payload)).identity === "verified";
   }
 
   /** This stop SIGKILLed the instance: nothing ran inside it to record how it ended, so the stop records it. */
@@ -519,10 +506,6 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     if (result.kind === "removed" || result.kind === "gone") return;
     if (result.kind === "alive") throw lockOwnerUnverifiedError(payload);
     throw new Error(describeReclaimResult(paths.lockFile, result));
-  }
-
-  function isLockStillHeldBy(payload: ConsoleLockPayload): boolean {
-    return consoleLockInstanceState(paths.lockFile, payload) === "held";
   }
 
   function signalLockProcess(pid: number, signal: NodeJS.Signals): void {
@@ -947,11 +930,6 @@ function describeUncleanStop(result: ConsoleStopResult): string | null {
   }
 }
 
-/** Whether the Console answered health with a lifecycle wire, so it writes an exit record when it ends. */
-function reportsLifecycleWire(observed: ConsoleInstanceObservation<ConsoleLockPayload>): boolean {
-  const wire = observed.probe?.health?.lifecycleWire;
-  return typeof wire === "number" && wire >= 1;
-}
 
 export function assertCliCanControlDaemon(payload: ConsoleLockPayload): void {
   void payload;

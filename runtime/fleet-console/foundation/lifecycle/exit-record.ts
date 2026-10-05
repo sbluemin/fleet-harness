@@ -85,6 +85,32 @@ export function readConsoleExitRecord(lockFile: string, instance: ConsoleInstanc
   }
 }
 
+/** How an instance an actor waited for ended: its recorded outcome, or `unrecorded` when it cannot be blamed. */
+export type ConsoleEndingOutcome = ConsoleExitRecordRead["outcome"] | "unrecorded";
+
+export interface ConsoleEndingEvidence {
+  /** The `lifecycleWire` its authenticated health reported when the reader asked it, if it did. */
+  readonly lifecycleWire: unknown;
+  /** The reader itself sent SIGTERM. On Windows that is TerminateProcess, so no shutdown ran that could write a record. */
+  readonly terminatedByReader: boolean;
+  readonly platform?: NodeJS.Platform;
+}
+
+/**
+ * How an instance ended, read once its process is gone (docs/console-lifecycle-contract.md, "Exit record"): its own record
+ * when it left one. Without one, a Console that reported `lifecycleWire` ≥ 1 knows the contract, so it was ended from
+ * outside (`external`), never a clean stop; a Console from before the contract, or one this reader terminated on Windows,
+ * cannot be blamed (`unrecorded`).
+ */
+export function readConsoleEnding(lockFile: string, instance: ConsoleInstanceKey, evidence: ConsoleEndingEvidence): { readonly outcome: ConsoleEndingOutcome; readonly killed: number } {
+  const record = readConsoleExitRecord(lockFile, instance);
+  if (record) return { outcome: record.outcome, killed: record.killed };
+  const wire = evidence.lifecycleWire;
+  const knowsContract = typeof wire === "number" && wire >= 1;
+  const terminated = evidence.terminatedByReader && (evidence.platform ?? process.platform) === "win32";
+  return { outcome: knowsContract && !terminated ? "external" : "unrecorded", killed: 0 };
+}
+
 /**
  * Prunes the exit records beside `lockFile`. Only the current lock owner calls this, right after it took the lock, so a
  * serve that loses the lock never touches the slot. The newest CONSOLE_EXIT_RECORD_RETAIN records stay; an older one goes
