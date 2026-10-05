@@ -115,8 +115,10 @@ describe("console update apply worker", () => {
       const globalRoot = path.join(root, "global");
       const packageRoot = path.join(globalRoot, "@dotobokuri", "fleet-console");
       fs.mkdirSync(packageRoot, { recursive: true });
+      const prefixDir = path.join(root, "prefix");
+      fs.mkdirSync(path.join(prefixDir, "bin"), { recursive: true });
       const packageManager = path.join(root, "package-manager.mjs");
-      fs.writeFileSync(packageManager, `if (process.argv[2] === "root") console.log(${JSON.stringify(globalRoot)});`);
+      fs.writeFileSync(packageManager, `if (process.argv[2] === "root") console.log(${JSON.stringify(globalRoot)}); else if (process.argv[2] === "prefix") console.log(${JSON.stringify(prefixDir)});`);
       const dataDir = path.join(root, "console");
       const lockFile = path.join(dataDir, "console.lock");
       // The next Console: takes the lock and answers health with the target version, like `serve` does.
@@ -190,13 +192,67 @@ describe("console update apply worker", () => {
     }
   }, UPDATE_WORKER_PREFLIGHT_MS + 10_000);
 
+  // root는 쓸 수 있지만 전역 bin만 막힌 경우: 같은 preflight-failed로 거절하고 Console을 정지하지 않는다.
+  // lib/node_modules 거절과 메커니즘이 다른 별개의 방어다.
+  it("keeps the Console serving when the global bin directory is not writable", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-update-bin-"));
+    TEMP_DIRS.push(root);
+    const globalRoot = path.join(root, "global");
+    const packageRoot = path.join(globalRoot, "@dotobokuri", "fleet-console");
+    fs.mkdirSync(packageRoot, { recursive: true });
+    // bin 해결이 파일 아래를 가리키게 한다: ENOTDIR라서 root 권한과 무관하게 W_OK가 실패한다.
+    const prefixFile = path.join(root, "prefix-file");
+    fs.writeFileSync(prefixFile, "not a directory");
+    const calls = path.join(root, "calls");
+    const manager = path.join(root, "npm.mjs");
+    fs.writeFileSync(manager, `import fs from "node:fs";
+const calls = ${JSON.stringify(calls)};
+fs.appendFileSync(calls, process.argv[2] + "\\n");
+if (process.argv[2] === "root") console.log(${JSON.stringify(globalRoot)});
+else if (process.argv[2] === "prefix") console.log(${JSON.stringify(prefixFile)});
+else process.exitCode = 1;
+`);
+    const serveMarker = path.join(root, "serve-called");
+    fs.writeFileSync(path.join(root, "serve.mjs"), `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(serveMarker)}, "unexpected");`);
+    const service = createConsoleUpdateApplyService({
+      env: { PATH: process.env.PATH, TMPDIR: root, FLEET_CONSOLE_NO_SYSTEM_CA: "1" },
+      fleetDataDir: root, tmpDir: root,
+      preflightInstall: () => {
+        execFileSync(process.execPath, [manager, "root", "-g"]);
+        return { bin: process.execPath, command: "npm", globalRoot, prefixArgs: [manager] };
+      },
+      downloadTarball: async () => ({ ok: true, tarballPath: path.join(root, "release.tgz") }),
+      serverModulePath: path.join(root, "serve.mjs"),
+      workerRuntimePath: fileURLToPath(new URL("../dist/lifecycle-worker-runtime.mjs", import.meta.url)),
+    });
+    const request = {
+      currentEndpoint: "http://127.0.0.1:1/", currentLockToken: "fixture", currentLockStartedAt: Date.now(),
+      currentPackageRoot: packageRoot, currentPid: process.pid, dataDir: root, fromVersion: "1.2.2",
+      lockFile: path.join(root, "console.lock"), release: createRelease("1.2.3", Buffer.from("fixture")),
+    };
+    const fixture = { root, calls, serveMarker, service, request };
+    const stop = vi.fn(async () => undefined);
+    const routes = applyRoutes(fixture, stop);
+    const response = new EventEmitter() as http.ServerResponse & { result: { status: number; body: any } };
+    await routes.handleUpdateApply({ method: "POST", headers: {} } as http.IncomingMessage, response);
+    expect(response.result.status).toBe(503);
+    const progress = response.result.body.progress;
+    expect(progress).toMatchObject({ state: "failed", phase: "failed", reason: "preflight-failed", failureStage: "preflight", fromVersion: "1.2.2", targetVersion: "1.2.3" });
+    expect(progress.description).toBeTruthy();
+    expect(JSON.stringify(progress)).not.toContain(root);
+    expect(readConsoleUpdateProgress(root)).toMatchObject(progress);
+    expect(stop).not.toHaveBeenCalled();
+    expect(fs.readFileSync(calls, "utf8").trim().split("\n")).toEqual(["root", "root", "prefix"]);
+    expect(fs.existsSync(serveMarker)).toBe(false);
+  }, UPDATE_WORKER_PREFLIGHT_MS + 10_000);
+
   it("retires an uncommitted ready worker without signalling, installing, or recovering", async () => {
     const fixture = workerFixture("ready");
     const prepared = await fixture.service.start(fixture.request);
     await prepared.cancelled;
     await expect(prepared.commit()).rejects.toThrow();
     expect(readConsoleUpdateProgress(fixture.root)).toMatchObject({ state: "failed", reason: "handoff-aborted", failureStage: "handoff" });
-    expect(fs.readFileSync(fixture.calls, "utf8").trim().split("\n")).toEqual(["root", "root"]);
+    expect(fs.readFileSync(fixture.calls, "utf8").trim().split("\n")).toEqual(["root", "root", "prefix"]);
     expect(fs.existsSync(fixture.serveMarker)).toBe(false);
   }, UPDATE_WORKER_COMMIT_MS + 10_000);
 
@@ -208,7 +264,7 @@ describe("console update apply worker", () => {
     await routes.handleUpdateApply({ method: "POST", headers: {} } as http.IncomingMessage, response);
     expect(stop).not.toHaveBeenCalled();
     expect(readConsoleUpdateProgress(fixture.root)).toMatchObject({ state: "failed", reason: "handoff-aborted" });
-    expect(fs.readFileSync(fixture.calls, "utf8").trim().split("\n")).toEqual(["root", "root"]);
+    expect(fs.readFileSync(fixture.calls, "utf8").trim().split("\n")).toEqual(["root", "root", "prefix"]);
   });
 
   it("hands one Desktop relaunch per update and answers a second apply as already in progress", async () => {
@@ -270,15 +326,25 @@ function workerFixture(mode: "failure" | "hung" | "ready") {
   const globalRoot = path.join(root, "global");
   const packageRoot = path.join(globalRoot, "@dotobokuri", "fleet-console");
   fs.mkdirSync(packageRoot, { recursive: true });
+  const prefixDir = path.join(root, "prefix");
+  fs.mkdirSync(path.join(prefixDir, "bin"), { recursive: true });
   const calls = path.join(root, "calls");
   const manager = path.join(root, "npm.mjs");
   fs.writeFileSync(manager, `import fs from "node:fs";
 const calls = ${JSON.stringify(calls)};
 const first = !fs.existsSync(calls);
 fs.appendFileSync(calls, process.argv[2] + "\\n");
-if (first || ${JSON.stringify(mode)} === "ready") console.log(${JSON.stringify(globalRoot)});
-else if (${JSON.stringify(mode)} === "hung") setInterval(() => {}, 1000);
-else process.exitCode = 1;
+const mode = ${JSON.stringify(mode)};
+const arg = process.argv[2];
+if (arg === "root") {
+  if (first || mode === "ready") console.log(${JSON.stringify(globalRoot)});
+  else if (mode === "hung") setInterval(() => {}, 1000);
+  else process.exitCode = 1;
+} else {
+  if (mode === "ready") console.log(${JSON.stringify(prefixDir)});
+  else if (mode === "hung") setInterval(() => {}, 1000);
+  else process.exitCode = 1;
+}
 `);
   const serveMarker = path.join(root, "serve-called");
   const serve = path.join(root, "serve.mjs");
