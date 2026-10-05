@@ -9,7 +9,7 @@ import { ComputerUseInputError, type ComputerUseResult, type ComputerUseBackend 
 import { createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { createComputerUseMcpHost } from "../../features/computer-use/host/mcp.js";
 
-const macOSComputerUsePlatform = createMacOSComputerUsePlatform({ resolveCodex: () => null, childEnv: () => ({}) });
+const macOSComputerUsePlatform = createMacOSComputerUsePlatform({ resolveCodex: () => null, childEnv: () => ({}), spawnProcess: () => { throw new Error("unexpected spawn"); } });
 
 // 기존 MCP 테스트는 읽기 전용 Console 목록뿐이다. 실제 기기 접근의 승인·소유권·회수 경계를 여기서 검증한다.
 describe("Computer Use authorization and lifecycle", () => {

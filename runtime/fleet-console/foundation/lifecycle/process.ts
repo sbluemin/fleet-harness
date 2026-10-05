@@ -69,7 +69,8 @@ function readWindowsProcessStartTime(pid: number, env: NodeJS.ProcessEnv): Promi
   });
 }
 
-function parsePsLstartUtc(output: string): number | null {
+/** A `ps -o lstart` value (C locale) as epoch ms in UTC, or null. Requires the reader to have run `ps` with TZ=UTC. */
+export function parsePsLstartUtc(output: string): number | null {
   const match = /^[A-Z][a-z]{2}\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})$/.exec(output.trim());
   if (!match) return null;
   const month = PS_MONTHS.indexOf(match[1]!);

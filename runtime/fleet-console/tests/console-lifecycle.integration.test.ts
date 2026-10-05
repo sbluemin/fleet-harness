@@ -11,7 +11,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createConsoleDaemonLifecycle, selectShutdownStragglers, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
+import { proveExitedLeaderGroup, selectSameGroupDescendants } from "@fleet-console/lifecycle";
+
+import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 
@@ -211,25 +213,42 @@ describe("Console daemon lifecycle integration", () => {
     expect(() => process.kill(bystanderPid, 0)).not.toThrow();
   });
 
-  // The shutdown deadline SIGKILLs what is left before it exits. Only this Console's own descendants that stay in its process
-  // group qualify: never the group as a whole (a Desktop sidecar shares Desktop's group), never a child handed off into a
-  // group of its own (the update worker and the Console it starts, a PTY session), never the ps that produced the table.
-  it("limits the shutdown deadline's SIGKILL to descendants that stay in the Console's process group", () => {
+  // After the owned groups, the deadline SIGKILLs what no one registered. Only this Console's own descendants that stay in its
+  // process group qualify: never the group as a whole (a Desktop sidecar shares Desktop's group), never a child that leads a
+  // group of its own (an owned group, the update worker and the Console it starts, a PTY session), never the ps that
+  // produced the table.
+  it("limits the deadline's fallback SIGKILL to unregistered descendants that stay in the Console's process group", () => {
     const rows = [
       { pid: 1, ppid: 0, pgid: 1 },
       { pid: 500, ppid: 1, pgid: 500 }, // Desktop
       { pid: 600, ppid: 500, pgid: 500 }, // the Console sidecar, in Desktop's group
       { pid: 601, ppid: 500, pgid: 500 }, // another child of Desktop
-      { pid: 610, ppid: 600, pgid: 500 }, // an agent CLI
-      { pid: 611, ppid: 610, pgid: 500 }, // its MCP child
+      { pid: 610, ppid: 600, pgid: 500 }, // an unregistered tool call
+      { pid: 611, ppid: 610, pgid: 500 }, // its child
+      { pid: 615, ppid: 600, pgid: 615 }, // an owned agent CLI group
+      { pid: 616, ppid: 615, pgid: 615 }, // its MCP child
       { pid: 620, ppid: 600, pgid: 620 }, // detached update worker
       { pid: 621, ppid: 620, pgid: 620 }, // the Console the worker starts
       { pid: 630, ppid: 600, pgid: 630 }, // PTY session leader
       { pid: 631, ppid: 630, pgid: 630 }, // a process in that terminal
       { pid: 640, ppid: 600, pgid: 500 }, // the ps that listed this table
     ];
-    expect(selectShutdownStragglers(rows, 600, [640]).sort((left, right) => left - right)).toEqual([610, 611]);
-    expect(selectShutdownStragglers(rows.filter((row) => row.pid !== 600), 600)).toEqual([]);
+    expect(selectSameGroupDescendants(rows, 600, [640]).sort((left, right) => left - right)).toEqual([610, 611]);
+    expect(selectSameGroupDescendants(rows.filter((row) => row.pid !== 600), 600)).toEqual([]);
+  });
+
+  // The deadline signals a registered group whose leader already exited only when the process table proves the members are
+  // that group's: a number now held by a live process (the leader's pid reused) or members that started before the group
+  // was spawned mean the number names someone else's group, which is never signalled (I1).
+  it("signals an exited-leader group only when its members prove to be that group's", () => {
+    const spawnedAt = Date.UTC(2026, 9, 5, 12, 0, 0);
+    const group = { pgid: 700, spawnedAt };
+    const member = { pid: 701, pgid: 700, startedAt: spawnedAt + 1_000 };
+    expect(proveExitedLeaderGroup([member], group, spawnedAt + 60_000)).toBe(true);
+    expect(proveExitedLeaderGroup([{ pid: 700, pgid: 700, startedAt: spawnedAt + 30_000 }, member], group, spawnedAt + 60_000)).toBe(false);
+    expect(proveExitedLeaderGroup([member, { pid: 702, pgid: 700, startedAt: spawnedAt - 600_000 }], group, spawnedAt + 60_000)).toBe(false);
+    expect(proveExitedLeaderGroup([], group, spawnedAt + 60_000)).toBe(false);
+    expect(proveExitedLeaderGroup([{ pid: 2, pgid: 1, startedAt: spawnedAt }], { pgid: 1, spawnedAt }, spawnedAt + 60_000)).toBe(false);
   });
 });
 

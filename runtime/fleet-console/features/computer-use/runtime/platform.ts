@@ -91,4 +91,14 @@ export function computerUseText(value: ComputerUseResult): string {
 export interface ComputerUseRuntimeDependencies {
   readonly resolveCodex: () => { bin: string; prefixArgs: readonly string[] } | null;
   readonly childEnv: () => NodeJS.ProcessEnv;
+  /**
+   * Spawns a long-lived backend child (the codex app-server) with piped stdio into a process group the Console owns, so
+   * the Console's shutdown deadline ends it with everything it started.
+   */
+  readonly spawnProcess: (request: {
+    readonly command: string;
+    readonly args: readonly string[];
+    readonly cwd?: string;
+    readonly env: Readonly<Record<string, string | undefined>>;
+  }) => import("node:child_process").ChildProcess;
 }

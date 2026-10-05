@@ -193,6 +193,11 @@ export interface ClaudeGatewaySdkOptions {
   /** 호스트가 선택한 Claude Code 실행 파일의 절대 경로. 생략하면 SDK 동봉 실행기를 사용한다.
    * 지정한 경로가 실패해도 다른 실행기로 폴백하지 않는다. 턴 입력으로는 바꿀 수 없다. */
   readonly executablePath?: string;
+  /**
+   * 자식 CLI를 띄우는 호스트의 포트. 호스트가 자식의 수명을 직접 책임질 때(자기 process group에 두고 소유
+   * 등록부에 올리는 Console) 넘긴다. 생략하면 SDK가 스스로 띄운다 — 지금까지와 같다.
+   */
+  readonly spawnProcess?: ClaudeProcessSpawner;
   /** 격리 config dir을 만들 부모 디렉터리. 기본값은 OS 임시 디렉터리. `home`이 공유면 무시된다. */
   readonly tempRoot?: string;
   /**
@@ -558,3 +563,22 @@ export interface ClaudeGatewaySdk {
   /** 진행 중인 턴·세션을 끊고 격리 디렉터리를 지운다. 두 번 불러도 안전하다. */
   dispose(): Promise<void>;
 }
+
+/** 자식 CLI 하나를 띄울 때 SDK가 정한 명령과 환경. 인자는 SDK가 조립한 그대로다. */
+export interface ClaudeProcessSpawnRequest {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly cwd?: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /**
+   * SDK의 강제 종료 신호. SDK가 stdin을 닫고 유예(약 2초)를 준 **뒤에만** abort된다 — 그대로 spawn에
+   * 넘겨도 정상 종료 기회를 빼앗지 않는다.
+   */
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * 자식 CLI를 띄우는 포트. stdin·stdout·stderr를 모두 pipe로 연 Node 자식을 돌려줘야 한다. 이 패키지가
+ * stderr를 끝까지 읽어 pipe가 차지 않게 하고, SDK가 기다리는 exit을 stderr가 닫힌 뒤에 전한다.
+ */
+export type ClaudeProcessSpawner = (request: ClaudeProcessSpawnRequest) => import("node:child_process").ChildProcess;

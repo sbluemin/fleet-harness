@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { createClaudeGatewaySdk } from "@fleet-console/agent-runtime/claude";
+import { createClaudeGatewaySdk, type ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import { claudeGatewayModelPolicy, buildGatewayModelConstraints, difficultyQuestionId, findGatewayModel, resolveAiGatewaySelection, toClaudeGatewayModelId, type AiGatewayStoredSettings, type RoutingChoice, type RoutingDifficultyQuestion } from "@fleet-console/ai-gateway";
 
 interface RoutingModelTurn {
@@ -10,6 +10,8 @@ interface RoutingModelTurn {
   readonly state: unknown;
   readonly criteria: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
+  /** Console's owned-process port: the routing model's CLI must be a child the Console's deadline ends. */
+  readonly spawnProcess: ClaudeProcessSpawner;
   readonly schema: {
     readonly type: "object";
     readonly properties: Readonly<Record<string, { readonly type: "string"; readonly enum: readonly string[] }>>;
@@ -41,6 +43,8 @@ export async function chooseRoutingModel(input: {
   readonly criteria: Readonly<Record<string, string>>;
   readonly difficulty: RoutingDifficultyQuestion;
   readonly signal?: AbortSignal;
+  /** Console's owned-process port: the routing model's CLI must be a child the Console's deadline ends. */
+  readonly spawnProcess: ClaudeProcessSpawner;
 }): Promise<RoutingChoice> {
   const keys = Object.keys(input.criteria);
   const parsed = await runRoutingModelTurn({
@@ -77,6 +81,8 @@ export async function chooseRoutingModels(input: {
   readonly difficulty: RoutingDifficultyQuestion;
   readonly tasks: readonly string[];
   readonly signal?: AbortSignal;
+  /** Console's owned-process port: the routing model's CLI must be a child the Console's deadline ends. */
+  readonly spawnProcess: ClaudeProcessSpawner;
 }): Promise<Record<string, RoutingChoice>> {
   const keys = Object.keys(input.criteria);
   const levels = Object.keys(input.difficulty.criteria);
@@ -136,6 +142,7 @@ async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
       home: { kind: "isolated" },
       settingSources: [],
       allowAmbientMcpServers: false,
+      spawnProcess: input.spawnProcess,
     });
     if (controller.signal.aborted) throw controller.signal.reason;
     const run = await sdk.startTurn({

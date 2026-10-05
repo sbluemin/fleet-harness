@@ -1,3 +1,4 @@
+import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import type { AgentCliPlugin, LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
@@ -43,6 +44,11 @@ export interface ConsoleRuntimeContext {
   readonly agentCliPlugin: AgentCliPlugin;
   /** launch 프롬프트 파일의 자리. 이 Console의 runtime lock 도메인에 묶여 있고, 회수는 부트스트랩이 lock 뒤에 부른다. */
   readonly launchPromptDirectories?: LaunchPromptDirectoryAllocator;
+  /**
+   * Spawns every agent CLI this Console's SDK users start (chat, Analyst, the routing model) into a process group this
+   * Console owns. Required: an SDK user without it would spawn children the Console's deadline never ends.
+   */
+  readonly spawnAgentProcess: ClaudeProcessSpawner;
   readonly host: ConsoleRuntimeHost;
   readonly consoleControl?: import("../../console-use/host/console-control.js").ConsoleControl;
   /**

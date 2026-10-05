@@ -210,6 +210,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     legacyDataDir: fleetDataDir,
     agentOptions: agentOptionsStub,
     agentCliPlugin: { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} },
+    spawnAgentProcess: () => { throw new Error("unexpected agent CLI spawn"); },
     basePath: "/api/v1",
     wsBasePath: "/api/v1/terminal/ws",
     registerRouter: (_path: string, handler: RouteHandler) => { route = handler; },

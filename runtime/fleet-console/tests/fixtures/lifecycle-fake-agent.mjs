@@ -5,6 +5,8 @@
 // alive past stdin EOF, so only SIGKILL ends it. Every launch, chat or terminal, starts one stdio MCP child that exits on
 // stdin EOF, as real MCP servers do. Each process appends {role, pid, ppid} to $FAKE_AGENT_DIR/procs.jsonl so a suite can
 // count what a Console left behind; nothing else (argv may carry local bearer tokens) is recorded.
+// With FAKE_AGENT_LEADER_EXITS=1 a chat launch leaves a child that ignores SIGTERM in its process group and exits as its turn
+// opens: a registered group whose leader is gone but which still has a member.
 import { spawn } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -62,6 +64,11 @@ if (!chat) {
         out({ type: "system", subtype: "init", session_id: sessionId, model: "default", cwd: process.cwd(), tools: [], mcp_servers: [], permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
         out({ type: "stream_event", event: { type: "message_start", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: "default", content: [], usage: { input_tokens: 0, output_tokens: 0 } } }, ...envelope() });
         record({ role: "turn-open", pid: process.pid });
+        if (process.env.FAKE_AGENT_LEADER_EXITS === "1") {
+          const orphan = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);"], { stdio: "ignore" });
+          record({ role: "chat-orphan", pid: orphan.pid, ppid: process.pid });
+          setTimeout(() => process.exit(0), 100);
+        }
       }
     }
   });

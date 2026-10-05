@@ -1,3 +1,4 @@
+import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import path from "node:path";
 import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
 import { chooseRoutingModel, chooseRoutingModels } from "./routing-model.js";
@@ -45,6 +46,8 @@ interface GatewayStartContext {
    * installation; absent leaves them unresolved and native alias relays are refused.
    */
   readonly resolveClaudeExecutable?: () => Promise<string | undefined>;
+  /** Console's owned-process port. The routing model's CLI must be a child the Console's deadline ends. */
+  readonly spawnAgentProcess: ClaudeProcessSpawner;
 }
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
@@ -177,6 +180,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
             settings: aiGatewayStore.read(),
             baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
             directory: path.join(ctx.dataDir, "routing-model"),
+            spawnProcess: ctx.spawnAgentProcess,
           }),
         } : { client: jevClient }),
         forceDecision: test,
@@ -237,6 +241,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
             settings: aiGatewayStore.read(),
             baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
             directory: path.join(ctx.dataDir, "routing-model"),
+            spawnProcess: ctx.spawnAgentProcess,
           }),
         } : { client: jevBatchClient }),
         refreshExposure: () => currentExposure(),
