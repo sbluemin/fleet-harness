@@ -28,6 +28,12 @@ export type ConsoleStopReason = "signal" | "update" | "api";
  */
 export const CONSOLE_LIFECYCLE_WIRE = 1;
 
+/**
+ * The revision of the update worker's lifecycle runtime (the bundle an accepted update copies beside its worker). The
+ * worker loads a copy only when its bytes and this revision match what the Console that wrote the worker expected.
+ */
+export const CONSOLE_LIFECYCLE_CONTRACT_VERSION = 1;
+
 // ---------- Time budgets ----------
 // Every wait and escalation in Console, CLI, Desktop, and the update worker is derived from these. Never restate a value.
 

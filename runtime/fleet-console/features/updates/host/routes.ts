@@ -29,7 +29,7 @@ interface UpdatesRouteDeps {
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly readUrl: (req: http.IncomingMessage) => URL;
-  readonly currentRuntime: () => { readonly lockHandle: { readonly payload: { readonly token: string } } | null; readonly activeEndpoint: string | null; readonly activeLockFile: string | null };
+  readonly currentRuntime: () => { readonly lockHandle: { readonly payload: { readonly token: string; readonly startedAt: number } } | null; readonly activeEndpoint: string | null; readonly activeLockFile: string | null };
   readonly publishDesktopUpdateRequest: (request: { readonly requestedVersion: string; readonly requestId: string }) => void;
   readonly env?: NodeJS.ProcessEnv;
   readonly now?: () => number;
@@ -197,6 +197,7 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
       await updateApply.start({
         currentEndpoint: activeEndpoint,
         currentLockToken: handle.payload.token,
+        currentLockStartedAt: handle.payload.startedAt,
         currentPackageRoot: release.packageRoot,
         currentPid: process.pid,
         dataDir: durablePaths.dir,
