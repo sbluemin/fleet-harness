@@ -19,6 +19,7 @@ const runBuiltSmoke = process.env.FLEET_BUILT_SMOKE === "1";
 // 실프로세스 serve와 임시 루트는 테스트 본문이 아니라 여기서 정리한다 — 끝나지 않는 await에 걸린 본문은
 // 타임아웃 뒤에도 finally에 도달하지 못해 serve가 남는다.
 const SERVES = new Set<ChildProcess>();
+const STRAGGLERS = new Set<number>();
 const ROOTS: string[] = [];
 
 afterEach(async () => {
@@ -29,6 +30,10 @@ afterEach(async () => {
     await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 5_000))]);
   }));
   SERVES.clear();
+  for (const pid of STRAGGLERS) {
+    try { process.kill(pid, "SIGKILL"); } catch { /* Already gone. */ }
+  }
+  STRAGGLERS.clear();
   for (const root of ROOTS.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -100,20 +105,27 @@ afterEach(async () => {
   }, 25_000);
 
   // POSIX 신호 계약이다. Windows의 kill은 신호 없이 프로세스를 끝내므로 정상 종료 경로 자체가 없다.
-  it.skipIf(process.platform === "win32")("finishes its shutdown when SIGTERM and SIGINT arrive again mid-cleanup", async () => {
+  // 반복 신호는 두 구간 모두에서 무해해야 한다: lock을 쥔 정리 도중, 그리고 lock을 놓은 뒤 SDK가 SIGTERM을 무시한 agent CLI를
+  // 거두는 동안. 뒤 구간에서 serve가 죽으면 SDK의 SIGKILL 타이머가 함께 사라져 그 자식과 MCP 자식이 고아로 남는다.
+  it.skipIf(process.platform === "win32")("finishes its shutdown when SIGTERM and SIGINT arrive again mid-cleanup and after the lock is released", async () => {
     const root = createRoot("fleet-console-resignal-");
     const slot = path.join(root, "console");
     const lock = path.join(slot, "console.lock");
     const ready = path.join(root, "ready");
     const stalled = path.join(root, "stalled");
     const release = path.join(root, "release");
+    const straggler = path.join(root, "straggler");
     const preload = path.join(root, "stall.mjs");
-    // Test-only preload: marks when serve starts listening for SIGTERM, and holds the last cleanup step (lock release)
-    // until the release file exists, so the repeated signals land mid-cleanup.
+    // Test-only preload: marks when serve starts listening for SIGTERM, holds the last cleanup step (lock release) until the
+    // release file exists, so the repeated signals land mid-cleanup, and starts a child that ignores SIGTERM, standing in
+    // for an agent CLI that keeps serve alive after the lock is released.
     fs.writeFileSync(preload, [
       "import fs from 'node:fs';",
+      "import { spawn } from 'node:child_process';",
       "import { syncBuiltinESMExports } from 'node:module';",
-      `const lock = ${JSON.stringify(lock)}, ready = ${JSON.stringify(ready)}, stalled = ${JSON.stringify(stalled)}, release = ${JSON.stringify(release)};`,
+      `const lock = ${JSON.stringify(lock)}, ready = ${JSON.stringify(ready)}, stalled = ${JSON.stringify(stalled)}, release = ${JSON.stringify(release)}, straggler = ${JSON.stringify(straggler)};`,
+      "const child = spawn(process.execPath, ['-e', 'process.on(\\'SIGTERM\\', () => {}); setInterval(() => {}, 1000);'], { stdio: 'ignore' });",
+      "fs.writeFileSync(straggler, String(child.pid));",
       "const on = process.on;",
       "process.on = function (event, listener) { const result = on.call(this, event, listener); if (event === 'SIGTERM') fs.writeFileSync(ready, ''); return result; };",
       "const pause = new Int32Array(new SharedArrayBuffer(4));",
@@ -129,6 +141,8 @@ afterEach(async () => {
     const child = spawnServe(preload, root, slot);
     const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
     await waitForFile(ready, 15_000);
+    const stragglerPid = Number(fs.readFileSync(straggler, "utf8"));
+    STRAGGLERS.add(stragglerPid);
     child.kill("SIGTERM");
     await waitForFile(stalled, 10_000);
     child.kill("SIGTERM");
@@ -137,8 +151,16 @@ afterEach(async () => {
     expect(child.signalCode).toBeNull();
     expect(child.exitCode).toBeNull();
     fs.writeFileSync(release, "");
+    await waitForFileGone(lock, 10_000);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    child.kill("SIGTERM");
+    child.kill("SIGINT");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(child.signalCode).toBeNull();
+    expect(child.exitCode).toBeNull();
+    // The child ends the way the SDK's own SIGKILL would end it; serve then exits on its own.
+    process.kill(stragglerPid, "SIGKILL");
     expect(await exited).toEqual({ code: 0, signal: null });
-    expect(fs.existsSync(lock)).toBe(false);
   }, 40_000);
 
   // `fleet console stop` must not cut a shutdown that is still running: an open chat turn alone takes about 2s to reap its
@@ -214,6 +236,14 @@ async function waitForHealthyConsole(lockFile: string, timeoutMs: number): Promi
     await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(0, deadline - Date.now()))));
   }
   throw new Error(`Console did not become healthy within ${timeoutMs}ms`);
+}
+
+async function waitForFileGone(file: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (fs.existsSync(file)) {
+    if (Date.now() >= deadline) throw new Error(`${path.basename(file)} was still present after ${timeoutMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
 }
 
 async function waitForFile(file: string, timeoutMs: number): Promise<void> {

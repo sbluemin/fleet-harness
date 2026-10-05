@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -129,6 +129,8 @@ const STOP_SETTLE_POLL_MS = 50;
 // 그 위에 plugin·MCP 정리와 느린 기계의 여유를 더했다. Desktop의 SHUTDOWN_SETTLE_MS와 같은 값이다. 이보다 짧으면 진행 중인
 // 정리를 끊어 SDK 자식과 그 MCP 자식을 고아로, launch 임시파일을 잔재로 남긴다.
 const STOP_SHUTDOWN_TIMEOUT_MS = 10_000;
+// 종료 상한이 남은 자식을 찾으려고 process table을 읽는 한도. 실측 수십 ms(약 700행 10ms)다. 넘기면 신호 없이 끝낸다.
+const SHUTDOWN_PROCESS_TABLE_TIMEOUT_MS = 1_000;
 // 정리가 이만큼 길어지면 사용자에게 기다리는 중이라고 한 번 알린다.
 const STOP_SHUTDOWN_NOTICE_MS = 1_000;
 const STOP_SIGKILL_EXIT_ATTEMPTS = 20;
@@ -266,9 +268,20 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     };
     try { recordFailure = createConsoleFailureLog(createConsoleDataPaths({ env }).dir); }
     catch { /* Diagnostics setup cannot prevent Console startup. */ }
+    // The serve process owns these handlers until it exits, not until runServer returns: after the lock is released the
+    // process stays alive while the SDK reaps a child that ignored SIGTERM (its 5s SIGKILL timer runs inside this
+    // process). A signal or crash that killed it there would take that timer along and orphan the child and its MCP
+    // children. Signal listeners do not keep the event loop alive, so keeping them never delays the natural exit.
+    let stopping = false;
     const onRejection = (error: unknown) => recordFailure("unhandledRejection", error);
     const onException = (error: Error) => {
       recordFailure("uncaughtException", error);
+      // Once shutdown has begun, leave the exit to the cleanup in progress or to the shutdown deadline below. Exiting here
+      // drops the SDK's reap timers and orphans the children it is still waiting on.
+      if (stopping) {
+        process.exitCode = 1;
+        return;
+      }
       process.exit(1);
     };
     // Only the Console serve process owns global policy; a failed registration must not block boot.
@@ -276,47 +289,48 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       process.on("unhandledRejection", onRejection);
       process.on("uncaughtException", onException);
     } catch (error) { recordFailure("handler_install_failed", error); }
+    const server = createConsoleServer();
+    let startupSettled = false;
+    let settleStartup!: () => void;
+    const startup = new Promise<void>((resolve) => { settleStartup = resolve; });
+    let served = false;
+    let shutdownDeadline: ReturnType<typeof setTimeout> | undefined;
+    // lock 공개 전부터 신호를 받되, 시작 작업과 정리를 겹치지 않는다 — 아직 쓰는 중인 writer의 lock을 먼저 풀면 안 된다.
+    // 정리는 첫 SIGTERM·SIGINT에서 한 번만 시작하고, 그 뒤의 신호는 프로세스가 끝날 때까지 받아서 무시한다.
+    let stopped!: () => void;
+    const done = new Promise<void>((resolve) => { stopped = resolve; });
+    const shutdown = () => {
+      if (stopping) return;
+      stopping = true;
+      // 첫 신호부터 프로세스 종료까지의 상한 하나. 시작이 멈춰도, lock을 쥔 정리가 멈춰도, lock을 놓은 뒤 자식이 끝나지
+      // 않아도 신호를 무한히 붙잡지 않는다. 남은 자식을 먼저 SIGKILL하고 끝내며, 남은 lock은 다음 Console의 ESRCH 회수에 맡긴다.
+      shutdownDeadline = setTimeout(() => {
+        let killed = 0;
+        try { killed = killShutdownStragglers(env, recordFailure); }
+        catch (error) { recordFailure("shutdown_process_table_unavailable", error); }
+        const kind = startupSettled ? "shutdown_timeout" : "startup_shutdown_timeout";
+        const phase = startupSettled ? "shutdown" : "startup shutdown";
+        recordFailure(kind, new Error(`Console ${phase} did not finish within ${shutdownTimeoutMs}ms; SIGKILL sent to ${killed} leftover child process(es)`));
+        process.exit(1);
+      }, shutdownTimeoutMs);
+      if (served) shutdownDeadline.unref();
+      void startup.then(() => server.stop()).catch((error) => {
+        recordFailure("shutdown_failed", error);
+        process.exitCode = 1;
+      }).finally(stopped);
+    };
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
     try {
-      const server = createConsoleServer();
-      let startupSettled = false;
-      let settleStartup!: () => void;
-      const startup = new Promise<void>((resolve) => { settleStartup = resolve; });
-      let startupShutdownTimeout: ReturnType<typeof setTimeout> | undefined;
-      // lock 공개 전부터 신호를 받되, 시작 작업과 정리를 겹치지 않는다 — 아직 쓰는 중인 writer의 lock을 먼저 풀면 안 된다.
-      // 정리는 첫 SIGTERM·SIGINT에서 한 번만 시작하고, 정리가 끝날 때까지 뒤따르는 신호도 받는다.
-      let stopping = false;
-      let stopped!: () => void;
-      const done = new Promise<void>((resolve) => { stopped = resolve; });
-      const shutdown = () => {
-        if (stopping) return;
-        stopping = true;
-        if (!startupSettled) {
-          // 시작 자체가 멈춰도 SIGTERM을 무한히 붙잡지 않는다. 상한 뒤 남은 lock은 다음 Console의 ESRCH 회수에 맡긴다.
-          startupShutdownTimeout = setTimeout(() => {
-            recordFailure("startup_shutdown_timeout", new Error(`Console startup shutdown did not finish within ${shutdownTimeoutMs}ms`));
-            process.exit(1);
-          }, shutdownTimeoutMs);
-        }
-        void startup.then(() => server.stop()).catch((error) => {
-          recordFailure("shutdown_failed", error);
-          process.exitCode = 1;
-        }).finally(stopped);
-      };
-      process.on("SIGTERM", shutdown);
-      process.on("SIGINT", shutdown);
-      try {
-        try { await server.start(paths); }
-        finally { startupSettled = true; settleStartup(); }
-        await done;
-      } finally {
-        if (stopping) await done;
-        if (startupShutdownTimeout !== undefined) clearTimeout(startupShutdownTimeout);
-        process.removeListener("SIGTERM", shutdown);
-        process.removeListener("SIGINT", shutdown);
-      }
+      try { await server.start(paths); }
+      finally { startupSettled = true; settleStartup(); }
+      await done;
     } finally {
-      process.removeListener("unhandledRejection", onRejection);
-      process.removeListener("uncaughtException", onException);
+      if (stopping) await done;
+      served = true;
+      // From here only leftover handles (an SDK child still being reaped) keep the process alive. An unref'd deadline
+      // fires only while something still does, so a clean exit is never delayed and a stuck one still ends.
+      shutdownDeadline?.unref();
     }
   }
 
@@ -918,6 +932,84 @@ function parsePsLstartUtc(output: string): number | null {
   const month = PS_MONTHS.indexOf(match[1]!);
   if (month < 0) return null;
   return Date.UTC(Number(match[6]), month, Number(match[2]), Number(match[3]), Number(match[4]), Number(match[5]));
+}
+
+/** One row of the process table: enough to walk this process's descendants and their process groups. */
+export interface ConsoleProcessTableRow {
+  readonly pid: number;
+  readonly ppid: number;
+  readonly pgid: number;
+}
+
+/**
+ * The processes the shutdown deadline may SIGKILL: descendants of `rootPid` that stay in its process group, deepest first.
+ * A child that leads a group of its own was handed off on purpose (the detached update worker) or ends with its terminal
+ * (a PTY session), so it and everything under it are left alone. The group itself is never signalled as a whole: a
+ * Desktop sidecar shares Desktop's group. Without a row for `rootPid` nothing is selected.
+ */
+export function selectShutdownStragglers(rows: readonly ConsoleProcessTableRow[], rootPid: number, excludePids: readonly number[] = []): number[] {
+  const root = rows.find((row) => row.pid === rootPid);
+  if (!root) return [];
+  const children = new Map<number, ConsoleProcessTableRow[]>();
+  for (const row of rows) {
+    if (row.pid === row.ppid) continue;
+    const siblings = children.get(row.ppid);
+    if (siblings) siblings.push(row);
+    else children.set(row.ppid, [row]);
+  }
+  const excluded = new Set(excludePids);
+  const seen = new Set<number>([rootPid]);
+  const selected: Array<{ readonly pid: number; readonly depth: number }> = [];
+  const visit = (pid: number, depth: number) => {
+    for (const child of children.get(pid) ?? []) {
+      if (seen.has(child.pid) || child.pgid !== root.pgid) continue;
+      seen.add(child.pid);
+      if (!excluded.has(child.pid)) selected.push({ pid: child.pid, depth });
+      visit(child.pid, depth + 1);
+    }
+  };
+  visit(rootPid, 1);
+  return selected.sort((left, right) => right.depth - left.depth).map((entry) => entry.pid);
+}
+
+/**
+ * SIGKILLs this process's remaining descendants (see selectShutdownStragglers) before the shutdown deadline exits, so the
+ * exit leaves no agent CLI or MCP child behind. POSIX only: Windows ends a Console without running its signal handlers.
+ * Without a trustworthy process table nothing is signalled — an orphan is better than a signal to an unrelated process.
+ * Runs synchronously, so a direct child cannot be reaped (and its pid reused) between the snapshot and its SIGKILL.
+ */
+function killShutdownStragglers(env: NodeJS.ProcessEnv, recordFailure: (kind: string, error: unknown) => void): number {
+  if (process.platform === "win32") return 0;
+  const listing = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid="], {
+    env: { PATH: env.PATH ?? "/usr/bin:/bin", LC_ALL: "C" },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: SHUTDOWN_PROCESS_TABLE_TIMEOUT_MS,
+    windowsHide: true,
+  });
+  if (listing.error || listing.status !== 0 || typeof listing.stdout !== "string") {
+    recordFailure("shutdown_process_table_unavailable", listing.error ?? new Error(`ps exited with ${listing.status ?? listing.signal}`));
+    return 0;
+  }
+  const rows: ConsoleProcessTableRow[] = [];
+  for (const line of listing.stdout.split("\n")) {
+    const fields = line.trim().split(/\s+/).map(Number);
+    if (fields.length === 3 && fields.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+      rows.push({ pid: fields[0]!, ppid: fields[1]!, pgid: fields[2]! });
+    }
+  }
+  // ps itself was this process's child and is already reaped; its pid must not be signalled.
+  const targets = selectShutdownStragglers(rows, process.pid, listing.pid ? [listing.pid] : []);
+  let killed = 0;
+  for (const pid of targets) {
+    try {
+      process.kill(pid, "SIGKILL");
+      killed += 1;
+    } catch {
+      // Already gone.
+    }
+  }
+  return killed;
 }
 
 export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<StartFleetConsoleResult> {
