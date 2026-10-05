@@ -548,9 +548,17 @@ afterEach(async () => {
     await openWorkload(run, endpoint, { terminal: false });
     const pluginChildren = await openPluginChildren(run, endpoint);
     const started = [...pluginChildren, ...descendantsOf(consoleProcess.pid!)];
-    const breakaway = JSON.parse(fs.readFileSync(breakawayFile, "utf8")) as { ok?: boolean; err?: number };
-    expect(breakaway.ok, `CREATE_BREAKAWAY_FROM_JOB must fail inside the group job (${JSON.stringify(breakaway)}) log=${failureKinds(run).join(",") || "none"}`).toBe(false);
-    expect(breakaway.err, "breakaway is denied").toBe(5);
+    const breakaway = JSON.parse(fs.readFileSync(breakawayFile, "utf8")) as { ok?: boolean; err?: number; pid?: number };
+    // Nested with libuv's breakaway-ok job, Windows may accept the flag and still keep the child in our job.
+    // Either the call is denied, or the process it created dies with the console. A survivor is the failure.
+    if (breakaway.ok) {
+      const startedAt = processStartTime(breakaway.pid ?? 0);
+      expect(startedAt, `breakaway process was not visible (${JSON.stringify(breakaway)})`).not.toBeNull();
+      own(breakaway.pid!);
+      started.push({ pid: breakaway.pid!, startedAt: startedAt!, command: "breakaway" });
+    } else {
+      expect(breakaway.err, `breakaway failed for an unexpected reason (${JSON.stringify(breakaway)})`).toBe(5);
+    }
     for (const role of ["detached", "native"]) {
       expect(pluginChildren.some((child) => child.command === `tokscale ${role}`), `${role} grandchild was not started`).toBe(true);
     }
