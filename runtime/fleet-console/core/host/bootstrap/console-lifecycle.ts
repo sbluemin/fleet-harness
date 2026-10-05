@@ -38,6 +38,9 @@ import {
   CONSOLE_STOP_DEADLINE_MS,
   EXTERNAL_ESCALATION_MS,
   PRELOCK_CHILD_GRACE_MS,
+  describeConsoleLockSlotQuiescenceCheck,
+  describeOwnerlessConsoleLock,
+  describeRefusedConsoleLock,
   type ConsoleExitOutcome,
 } from "@fleet-console/protocol/lifecycle";
 
@@ -55,7 +58,7 @@ import {
   stripAnsi,
 } from "../../../cli/styles/tokens.js";
 import { readFleetCliRelease } from "../../../cli/release.js";
-import { createConsoleLock, describeOwnerlessLock, isConsoleLockHeldError, describeReclaimResult, describeRefusedLock, describeSlotQuiescenceCheck, type ConsoleLockReclaimResult } from "./lock.js";
+import { createConsoleLock, isConsoleLockHeldError, describeReclaimResult, type ConsoleLockReclaimResult } from "./lock.js";
 import { createConsoleDataPaths, createConsolePaths } from "./paths.js";
 import { createConsoleServeLifecycle } from "./serve-lifecycle.js";
 import { createConsoleServer } from "./server.js";
@@ -466,7 +469,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       headline,
       `If that process is a stuck Fleet Console, stop it (kill -TERM ${payload.pid}; Windows: Stop-Process -Id ${payload.pid}), then run fleet console start. A suspended process (state T in ps) ignores TERM until resumed: kill -CONT ${payload.pid} lets it finish shutting down, or kill -KILL ${payload.pid} ends it.`,
       `If it is not a Fleet Console, follow the check below and then delete ${paths.lockFile}.`,
-      describeSlotQuiescenceCheck(paths.lockFile),
+      describeConsoleLockSlotQuiescenceCheck(paths.lockFile),
     ].join("\n"));
   }
 
@@ -498,8 +501,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   async function removeLockHeldBy(payload: ConsoleLockPayload): Promise<void> {
     const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return;
-    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
-    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    if (observed.kind === "refused") throw new Error(describeRefusedConsoleLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessConsoleLock(paths.lockFile, observed.reason));
     const held = observed.instance.payload;
     if (held.pid !== payload.pid || held.token !== payload.token) return;
     const result = await lock.reclaimLock(paths.lockFile, observed.instance);
@@ -524,8 +527,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   async function readLockForStart(): Promise<ConsoleLockPayload | null> {
     const observed = await observeConsoleLockFileWithin<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return null;
-    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
-    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    if (observed.kind === "refused") throw new Error(describeRefusedConsoleLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessConsoleLock(paths.lockFile, observed.reason));
     if (observed.untrusted === null) return observed.instance.payload;
     if (observed.alive) throw new Error(describeUntrustedLiveLock(observed.instance.pid, observed.untrusted));
     report(`Fleet Console lock ${paths.lockFile} belongs to pid ${observed.instance.pid}, which is no longer running; the new Console will reclaim it.`);
@@ -537,7 +540,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       `Fleet Console lock pid ${pid} is alive but its lock ${paths.lockFile} cannot be trusted (${issue}), so no second Console was started.`,
       `If that process is a Fleet Console, stop it (kill -TERM ${pid}; Windows: Stop-Process -Id ${pid}; or quit the Fleet desktop app that owns it), then start again — the lock of an exited Console is reclaimed automatically.`,
       `If it is not a Fleet Console, follow the check below and then delete ${paths.lockFile}.`,
-      describeSlotQuiescenceCheck(paths.lockFile),
+      describeConsoleLockSlotQuiescenceCheck(paths.lockFile),
     ].join("\n");
   }
 
@@ -846,8 +849,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   function readTrustedLock(): ConsoleLockPayload | null {
     const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return null;
-    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
-    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    if (observed.kind === "refused") throw new Error(describeRefusedConsoleLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessConsoleLock(paths.lockFile, observed.reason));
     const payload = observed.instance.payload;
     assertTrustedConsoleLock({
       dir: paths.dir,

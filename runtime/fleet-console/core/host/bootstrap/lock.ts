@@ -23,12 +23,6 @@ import {
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import type { ConsoleOwnerMetadata } from "../shell/desktop-protocol.js";
 
-export {
-  describeConsoleLockSlotQuiescenceCheck as describeSlotQuiescenceCheck,
-  describeOwnerlessConsoleLock as describeOwnerlessLock,
-  describeRefusedConsoleLock as describeRefusedLock,
-};
-
 export interface ConsoleLockDeps {
   readonly now?: () => number;
   readonly randomToken?: () => string;
