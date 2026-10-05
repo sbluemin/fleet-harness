@@ -30,7 +30,6 @@ export {
 };
 
 export interface ConsoleLockDeps {
-  readonly fs?: typeof fs;
   readonly now?: () => number;
   readonly randomToken?: () => string;
   readonly hostname?: () => string;
@@ -74,7 +73,6 @@ const CLAIM_LOST_CODES = new Set(["ENOTEMPTY", "EEXIST", "ENOTDIR"]);
 const STAGING_SUFFIX = /^(\d+)-[A-Za-z0-9_-]{12}$/;
 
 export function createConsoleLock(deps: ConsoleLockDeps = {}) {
-  const fsImpl = deps.fs ?? fs;
   const now = deps.now ?? Date.now;
   const randomToken = deps.randomToken ?? (() => crypto.randomBytes(32).toString("base64url"));
   const hostname = deps.hostname ?? (() => "127.0.0.1");
@@ -82,8 +80,8 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   let linkFallbackReported = false;
 
   function ensureLockDir(dir: string): void {
-    fsImpl.mkdirSync(dir, { recursive: true, mode: CONSOLE_LOCK_DIR_MODE });
-    fsImpl.chmodSync(dir, CONSOLE_LOCK_DIR_MODE);
+    fs.mkdirSync(dir, { recursive: true, mode: CONSOLE_LOCK_DIR_MODE });
+    fs.chmodSync(dir, CONSOLE_LOCK_DIR_MODE);
   }
 
   /**
@@ -134,7 +132,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     // The pid guard also treats "no lock yet" as do-not-delete, so a lock another owner published in between survives.
     if (!current || current.pid !== pid) return;
     try {
-      fsImpl.rmSync(lockFile, { force: true });
+      fs.rmSync(lockFile, { force: true });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
@@ -149,7 +147,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     const staging = stagingPath(lockFile, "tmp");
     writeExclusiveFile(staging, bytes);
     try {
-      fsImpl.linkSync(staging, lockFile);
+      fs.linkSync(staging, lockFile);
       return "published";
     } catch (error) {
       const code = errnoOf(error);
@@ -171,12 +169,12 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   }
 
   function writeExclusiveFile(filePath: string, bytes: Buffer): void {
-    const fd = fsImpl.openSync(filePath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, CONSOLE_LOCK_FILE_MODE);
+    const fd = fs.openSync(filePath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, CONSOLE_LOCK_FILE_MODE);
     try {
-      fsImpl.writeFileSync(fd, bytes);
-      fsImpl.fchmodSync(fd, CONSOLE_LOCK_FILE_MODE);
+      fs.writeFileSync(fd, bytes);
+      fs.fchmodSync(fd, CONSOLE_LOCK_FILE_MODE);
     } finally {
-      fsImpl.closeSync(fd);
+      fs.closeSync(fd);
     }
   }
 
@@ -242,7 +240,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   function finalizeReclaim(lockFile: string, target: ConsoleLockInstance, h: string): ConsoleLockReclaimResult {
     let stat: fs.Stats;
     try {
-      stat = fsImpl.lstatSync(lockFile);
+      stat = fs.lstatSync(lockFile);
     } catch (error) {
       if (errnoOf(error) === "ENOENT") return goneAfterCleanup(lockFile, h);
       return { kind: "failed", reason: `the lock could not be read (${errnoOf(error) ?? "error"})` };
@@ -253,7 +251,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     }
     let current: Buffer;
     try {
-      current = fsImpl.readFileSync(lockFile);
+      current = fs.readFileSync(lockFile);
     } catch (error) {
       if (errnoOf(error) === "ENOENT") return goneAfterCleanup(lockFile, h);
       return { kind: "failed", reason: `the lock could not be read (${errnoOf(error) ?? "error"})` };
@@ -261,7 +259,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     if (!current.equals(target.bytes)) return goneAfterCleanup(lockFile, h);
     if (isPidAlive(target.pid)) return { kind: "alive", pid: target.pid };
     try {
-      fsImpl.unlinkSync(lockFile);
+      fs.unlinkSync(lockFile);
     } catch (error) {
       if (errnoOf(error) === "ENOENT") return goneAfterCleanup(lockFile, h);
       return { kind: "failed", reason: `the lock could not be removed (${errnoOf(error) ?? "error"})` };
@@ -286,7 +284,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     if (process.platform === "win32") {
       writeExclusiveFile(staging, owner);
       try {
-        fsImpl.linkSync(staging, claimPath);
+        fs.linkSync(staging, claimPath);
         return "won";
       } catch (error) {
         if (errnoOf(error) === "EEXIST") return "lost";
@@ -295,7 +293,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
         removeQuietly(staging);
       }
     }
-    fsImpl.mkdirSync(staging, { mode: CONSOLE_LOCK_DIR_MODE });
+    fs.mkdirSync(staging, { mode: CONSOLE_LOCK_DIR_MODE });
     try {
       writeExclusiveFile(path.join(staging, CLAIM_OWNER_FILE), owner);
     } catch (error) {
@@ -303,7 +301,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
       throw error;
     }
     try {
-      fsImpl.renameSync(staging, claimPath);
+      fs.renameSync(staging, claimPath);
     } catch (error) {
       removeQuietly(staging);
       if (CLAIM_LOST_CODES.has(errnoOf(error) ?? "")) return "lost";
@@ -325,7 +323,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     const uid = currentUid();
     let stat: fs.Stats;
     try {
-      stat = fsImpl.lstatSync(claimPath);
+      stat = fs.lstatSync(claimPath);
     } catch (error) {
       if (errnoOf(error) === "ENOENT") return { kind: "absent" };
       return { kind: "unreadable", reason: `unreadable: ${errnoOf(error) ?? "error"}` };
@@ -337,7 +335,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
       ownerPath = path.join(claimPath, CLAIM_OWNER_FILE);
       let ownerStat: fs.Stats;
       try {
-        ownerStat = fsImpl.lstatSync(ownerPath);
+        ownerStat = fs.lstatSync(ownerPath);
       } catch (error) {
         const code = errnoOf(error);
         if (code === "ENOENT" || code === "ENOTDIR") return { kind: "corrupt" };
@@ -351,7 +349,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     }
     let bytes: Buffer;
     try {
-      bytes = fsImpl.readFileSync(ownerPath);
+      bytes = fs.readFileSync(ownerPath);
     } catch (error) {
       if (errnoOf(error) === "ENOENT") return { kind: "absent" };
       return { kind: "unreadable", reason: `unreadable: ${errnoOf(error) ?? "error"}` };
@@ -369,7 +367,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   function newestClaimGeneration(lockFile: string, h: string): number {
     const prefix = `${claimPrefix(lockFile)}${h}-`;
     let newest = 0;
-    for (const name of fsImpl.readdirSync(path.dirname(lockFile))) {
+    for (const name of fs.readdirSync(path.dirname(lockFile))) {
       if (!name.startsWith(prefix)) continue;
       const suffix = name.slice(prefix.length);
       if (!/^[1-9]\d{0,14}$/.test(suffix)) continue;
@@ -384,7 +382,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     const pattern = new RegExp(`^${escapeRegExp(claimPrefix(lockFile))}([0-9a-f]{64})-[1-9]\\d{0,14}$`);
     let names: string[];
     try {
-      names = fsImpl.readdirSync(dir);
+      names = fs.readdirSync(dir);
     } catch {
       return;
     }
@@ -405,7 +403,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     const dir = path.dirname(lockFile);
     let names: string[];
     try {
-      names = fsImpl.readdirSync(dir);
+      names = fs.readdirSync(dir);
     } catch {
       return;
     }
@@ -425,7 +423,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
 
   function isOwnEntry(entryPath: string): boolean {
     try {
-      const stat = fsImpl.lstatSync(entryPath);
+      const stat = fs.lstatSync(entryPath);
       const uid = currentUid();
       return !stat.isSymbolicLink() && (uid === null || stat.uid === uid);
     } catch {
@@ -435,7 +433,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
 
   function removeQuietly(entryPath: string): void {
     try {
-      fsImpl.rmSync(entryPath, { recursive: true, force: true });
+      fs.rmSync(entryPath, { recursive: true, force: true });
     } catch {
       // Best-effort cleanup of entries no one depends on.
     }
