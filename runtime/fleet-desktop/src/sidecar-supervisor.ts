@@ -403,7 +403,7 @@ export class SidecarSupervisor {
     // Only a recorded clean shutdown is reported as one; no record, an unknown one, or an external ending is not.
     if (outcome === "clean") this.options.log.info(line);
     else this.options.log.error(line);
-    if (ended === "unproven") throw this.conflict("console_lock_process_unverified", pid, "stopping", "its identity could not be proven again before SIGKILL; no further signal sent");
+    if (ended === "unproven") throw this.conflict("console_lock_process_unverified", pid, "unverified", "its identity could not be proven again before SIGKILL; no further signal sent");
     if (ended === "kill-failed") throw this.conflict("console_lock_process_unhealthy", pid, "stopping", "it outlived SIGKILL");
     return ended;
   }
