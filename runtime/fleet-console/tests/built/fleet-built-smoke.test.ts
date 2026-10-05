@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CONSOLE_SERVE_EXIT_LOCK_HELD } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
 import { resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";
@@ -132,10 +132,11 @@ afterEach(async () => {
     await waitForHealthyConsole(lock, 15_000);
     // stop proves the pid by its start time only for a Console started at least 2s before the identity probe.
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, spawnedAt + 2_500 - Date.now())));
-    const stop = spawnSync(process.execPath, [cliDist, "stop"], { env: isolatedEnv(root, slot), encoding: "utf8", timeout: 30_000 });
+    // stop waits for the Console's exit to read how it ended, so this test must keep reaping its child while stop runs.
+    const stop = await exitOf(spawn(process.execPath, [cliDist, "stop"], { env: isolatedEnv(root, slot), stdio: "ignore" }), 30_000);
     expect(await exited).toEqual({ code: 0, signal: null });
     expect(fs.existsSync(held)).toBe(true);
-    expect(stop.status).toBe(0);
+    expect(stop).toEqual({ code: 0, signal: null });
     expect(fs.existsSync(lock)).toBe(false);
   }, 40_000);
 });
@@ -161,6 +162,8 @@ const LIFECYCLE_KNOWN_DEFECTS = JSON.parse(fs.readFileSync(fileURLToPath(new URL
 const SETTLE_MS = 10_000;
 const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
 const AGENT_ROLES = new Set(["chat", "chat-mcp", "terminal", "terminal-mcp"]);
+/** How long the escalation cases freeze the Console's event loop just before its own stop deadline. */
+const FREEZE_BEFORE_DEADLINE_MS = 800;
 const FAKE_AGENT = fileURLToPath(new URL("../fixtures/lifecycle-fake-agent.mjs", import.meta.url));
 const repoRoot = path.resolve(packageRoot, "../..");
 /** Every process a lifecycle case started or observed, by pid, with the start time that proves it is still that process. */
@@ -265,13 +268,13 @@ afterEach(async () => {
   }, 60_000);
 
   // L4c, eca5f8c7 (I4, then I2; I1). The shutdown stalls with the lock held, so only the Console's own 10s deadline reaps the
-  // agent. A process-table read that takes 600ms (inside the Console's own 1s allowance) moves that reap later; stop must
-  // still not SIGKILL the Console first. The signature is the order, not the orphan: a reaper would hide the orphan before
+  // agent. The Console's event loop freezes for 800ms just before that deadline (inside the escalation margin the contract
+  // allows a busy loop), which moves the reap to about 10.6s; stop must still not SIGKILL the Console first. The signature is the order, not the orphan: a reaper would hide the orphan before
   // stop's own fix lands. The Console shares a process group with a parent and a sibling, as a Desktop sidecar does.
   it("lets the Console's own shutdown deadline finish before stop escalates", async () => {
     const run = createRun("escalation");
-    const stall = stallShutdownWithLockHeld(run);
-    const group = spawnGroup(run, { preload: stall.preload, env: { PATH: [slowProcessTable(run, 600), run.env.PATH].join(":") } });
+    const stall = stallShutdownWithLockHeld(run, { freezeBeforeDeadline: true });
+    const group = spawnGroup(run, { preload: stall.preload });
     const consolePid = await group.consolePid;
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consolePid);
@@ -283,9 +286,12 @@ afterEach(async () => {
     const exit = await group.consoleExit(30_000);
 
     expect(fs.existsSync(stall.marker), "the injected stall must hold the shutdown with the lock held").toBe(true);
-    lifecycleCheck("L4c", exit.signal !== "SIGKILL", "I4: stop does not SIGKILL the Console before its own deadline ends it", { detail: exit });
+    const timeline = deadlineTimeline(run, stall.freeze);
+    // Printed on every run so CI logs show how much of the escalation margin the deadline actually used.
+    console.info(`L4c timeline ${JSON.stringify(timeline)}`);
+    lifecycleCheck("L4c", exit.signal !== "SIGKILL", "I4: stop does not SIGKILL the Console before its own deadline ends it", { detail: { exit, timeline } });
     const left = await survivors(run, started);
-    lifecycleCheck("L4c", left.length === 0, "I2: nothing the Console started outlives it", { detail: left, signature: false });
+    lifecycleCheck("L4c", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run), timeline }, signature: false });
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
   }, 90_000);
 
@@ -307,7 +313,7 @@ afterEach(async () => {
 
     expect(fs.existsSync(stall.marker), "the injected stall must hold the shutdown with the lock held").toBe(true);
     const left = await survivors(run, started);
-    lifecycleCheck("L12", left.length === 0, "I2: nothing the Console started outlives it", { detail: left });
+    lifecycleCheck("L12", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
   }, 90_000);
 
   // L9, N4. The Console ends by its own deadline (stop's own process-table read is the slow one here, so stop never gets to
@@ -388,7 +394,7 @@ afterEach(async () => {
 
     lifecycleCheck("L3", readRunLock(run)?.pid === next.pid, "I5: the next Console owns the lock");
     const left = await survivors(run, started);
-    lifecycleCheck("L5", left.length === 0, "I2: nothing the crashed Console started outlives it", { detail: left });
+    lifecycleCheck("L5", left.length === 0, "I2: nothing the crashed Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
   }, 60_000);
 
@@ -413,7 +419,7 @@ afterEach(async () => {
 
     lifecycleCheck("L3", readRunLock(run)?.pid === next.pid, "I5: the next Console owns the lock");
     const left = await survivors(run, started);
-    lifecycleCheck("L6", left.length === 0, "I2: nothing the killed Console started outlives it", { detail: left });
+    lifecycleCheck("L6", left.length === 0, "I2: nothing the killed Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
     const leftovers = attachment.filter((file) => fs.existsSync(file));
     lifecycleCheck("L10", leftovers.length === 0, "I5: the next Console reclaims the killed Console's attachments whatever the slot's spelling", { detail: leftovers });
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
@@ -653,14 +659,28 @@ function writePreload(run: LifecycleRun, name: string, lines: readonly string[])
 /**
  * Test-only preload: closing the main listener never completes, so the shutdown stalls while the lock is still held.
  * `freezeOnSignalMs` also blocks the event loop that long when the first SIGTERM arrives, before the Console handles it.
+ * `freezeBeforeDeadline` blocks it for FREEZE_BEFORE_DEADLINE_MS starting 200ms before the Console's own stop deadline, so the
+ * deadline's cleanup runs late while its process-table read keeps the full budget.
  */
-function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number } = {}): { readonly preload: string; readonly marker: string } {
+function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number; readonly freezeBeforeDeadline?: boolean } = {}): { readonly preload: string; readonly marker: string; readonly freeze: string } {
   const marker = path.join(run.dir, "stalled");
+  // {t0, start, end} in epoch ms: the first SIGTERM and the pre-deadline freeze, for the case's timeline.
+  const freeze = path.join(run.dir, "freeze.jsonl");
   const preload = writePreload(run, "stall-close.mjs", [
     "import fs from 'node:fs';",
     "import http from 'node:http';",
-    `const lock = ${JSON.stringify(run.lockFile)}, marker = ${JSON.stringify(marker)};`,
+    `const lock = ${JSON.stringify(run.lockFile)}, marker = ${JSON.stringify(marker)}, freeze = ${JSON.stringify(freeze)};`,
     ...(options.freezeOnSignalMs ? [`process.prependOnceListener('SIGTERM', () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${options.freezeOnSignalMs}));`] : []),
+    ...(options.freezeBeforeDeadline ? [
+      "process.prependOnceListener('SIGTERM', () => {",
+      "  const t0 = Date.now();",
+      "  setTimeout(() => {",
+      "    const start = Date.now();",
+      `    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${FREEZE_BEFORE_DEADLINE_MS});`,
+      "    fs.appendFileSync(freeze, JSON.stringify({ t0, start, end: Date.now() }) + '\\n');",
+      `  }, ${CONSOLE_STOP_DEADLINE_MS - 200}).unref();`,
+      "});",
+    ] : []),
     "const close = http.Server.prototype.close;",
     "http.Server.prototype.close = function (callback) {",
     "  let port = null;",
@@ -670,7 +690,39 @@ function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freeze
     "  return close.call(this, callback);",
     "};",
   ]);
-  return { preload, marker };
+  return { preload, marker, freeze };
+}
+
+/**
+ * When, after the Console's first SIGTERM, the pre-deadline freeze started and ended and the deadline recorded its timeout
+ * (after its process-table read and SIGKILLs), in ms. The record lands once the deadline callback, delayed by the freeze,
+ * has read the process table, so recorded − freezeEnd is about that read.
+ */
+function deadlineTimeline(run: LifecycleRun, freeze: string): { readonly freezeStartMs: number; readonly freezeEndMs: number; readonly deadlineRecordedMs: number | null } | null {
+  try {
+    const { t0, start, end } = JSON.parse(fs.readFileSync(freeze, "utf8").split("\n")[0]!) as { t0: number; start: number; end: number };
+    let recorded: number | null = null;
+    try {
+      for (const line of fs.readFileSync(path.join(run.root, "console", "errors.jsonl"), "utf8").split("\n").filter(Boolean)) {
+        const entry = JSON.parse(line) as { kind?: unknown; ts?: unknown };
+        if ((entry.kind === "shutdown_timeout" || entry.kind === "startup_shutdown_timeout") && typeof entry.ts === "string") recorded = Date.parse(entry.ts) - t0;
+      }
+    } catch { /* No failure log: the deadline never fired. */ }
+    return { freezeStartMs: start - t0, freezeEndMs: end - t0, deadlineRecordedMs: recorded };
+  } catch {
+    return null;
+  }
+}
+
+/** The failure kinds the run's Console recorded (errors.jsonl), to tell why an I2 case left a process behind. */
+function failureKinds(run: LifecycleRun): string[] {
+  try {
+    return fs.readFileSync(path.join(run.root, "console", "errors.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => {
+      try { return String((JSON.parse(line) as { kind?: unknown }).kind); } catch { return "unreadable"; }
+    });
+  } catch {
+    return [];
+  }
 }
 
 /** A `ps` that answers after `delayMs`, put on one process's PATH only: its process-table read is slow, nobody else's. */

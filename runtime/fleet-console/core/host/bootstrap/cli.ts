@@ -7,7 +7,6 @@ export {
   buildConsoleHelpText,
   createConsoleDaemonLifecycle,
   decideAgentCall,
-  isLockProcessAlive,
   main,
   resolveDefaultServerModulePath,
   startFleetConsole,

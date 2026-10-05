@@ -41,8 +41,6 @@ describe("Console daemon lifecycle integration", () => {
       serverModulePath: FIXTURE_PATH,
       startupTimeoutMs: 8_000,
       pollIntervalMs: 20,
-      cleanupGraceMs: 500,
-      shutdownTimeoutMs: 300,
       report: () => {},
     });
 
@@ -69,11 +67,11 @@ describe("Console daemon lifecycle integration", () => {
     expect(endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
     expect(createConsoleLock().readLock(fixture.lockFile)?.pid).toBe(pid);
 
-    // SIGTERM을 받은 Console이 listener만 닫고 lock을 쥔 채 멈춘다. SIGTERM 전에 증명한 그 프로세스이므로 강제 종료한다.
-    // Windows의 SIGTERM은 TerminateProcess라 정리가 아예 돌지 않는다 — 멈출 정리가 없으니 강제 종료도 아니며, 남은 lock은
-    // 끝난 pid의 것이라 stop이 치운다. 정체를 SIGKILL로 끝내는 계약은 POSIX에서만 성립한다.
+    // SIGTERM을 받은 Console이 listener만 닫고 lock을 쥔 채 멈춘다. EXTERNAL_ESCALATION_MS가 지나도록 lock을 놓지 않으면, SIGTERM
+    // 전에 증명한 그 프로세스임을 다시 증명한 뒤 강제 종료한다. Windows의 SIGTERM은 TerminateProcess라 정리가 아예 돌지 않는다 —
+    // 멈출 정리가 없으니 강제 종료도 아니며, 남은 lock은 끝난 pid의 것이라 stop이 치운다. 정체를 SIGKILL로 끝내는 계약은 POSIX에서만 성립한다.
     fs.writeFileSync(fixture.stallFile, "stall\n", "utf8");
-    expect(await lifecycle.stop()).toEqual(process.platform === "win32" ? { forced: false } : { forced: true, shutdownTimeoutMs: 300 });
+    expect(await lifecycle.stop()).toEqual(process.platform === "win32" ? { outcome: "unrecorded", killed: 0 } : { outcome: "forced-external", killed: 0 });
     await expectProcessGone(pid);
     CHILD_PIDS.delete(pid);
     expect(createConsoleLock().readLock(fixture.lockFile)).toBeNull();
@@ -87,7 +85,6 @@ describe("Console daemon lifecycle integration", () => {
       serverModulePath: FIXTURE_PATH,
       startupTimeoutMs: 4_000,
       pollIntervalMs: 20,
-      cleanupGraceMs: 500,
     });
 
     const ensure = lifecycle.ensureDaemon();
@@ -121,10 +118,11 @@ describe("Console daemon lifecycle integration", () => {
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
     expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
 
-    // 아무도 lock 주소를 듣지 않는데 lock을 쓰기 전에 시작한 pid가 살아 있으면, listener를 닫고 정리 중이거나 멈춘 Console과
-    // 구별되지 않는다. 신호도 lock 삭제도 하지 않는다 — 지우면 다음 start가 살아 있는 Console 옆에 두 번째 Console을 띄운다.
+    // 아무도 lock 주소를 듣지 않는데 lock을 쓰기 전에 시작한 pid가 살아 있으면, listener를 닫고 정리 중인 Console과 구별되지
+    // 않는다(계약의 stopping). 정지 예산만큼 기다릴 뿐 신호도 lock 삭제도 하지 않는다 — 지우면 다음 start가 살아 있는 Console
+    // 옆에 두 번째 Console을 띄운다.
     await new Promise<void>((resolve) => impostor.close(() => resolve()));
-    await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
+    await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} no longer answers at the lock's address`);
     expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
 
     // A pid that started after the lock was written cannot be its author, but while that pid lives the lock stays: only

@@ -1,4 +1,4 @@
-import { execFile, spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -6,14 +6,34 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
-import { writeConsoleExitRecord } from "@fleet-console/lifecycle";
-import { identifyConsoleLockOwner, type ConsoleLockHealthEvidence, type ConsoleLockOwnerIdentity } from "@fleet-console/protocol/desktop";
-import { CONSOLE_EXIT_RECORD_VERSION, CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, PROCESS_TABLE_TIMEOUT_MS, type ConsoleExitOutcome } from "@fleet-console/protocol/lifecycle";
+import {
+  captureProvenProcessStart,
+  createConsoleHealthClient,
+  isPidAlive,
+  observeConsoleInstance,
+  readConsoleExitRecord,
+  readProcessStartTime,
+  runStopLadder,
+  writeConsoleExitRecord,
+  type ConsoleInstanceObservation,
+  type ConsoleProbeOptions,
+  type ConsoleProbeResult,
+} from "@fleet-console/lifecycle";
+import {
+  CONSOLE_EXIT_RECORD_VERSION,
+  CONSOLE_SERVE_EXIT_LOCK_HELD,
+  CONSOLE_START_POLL_MS,
+  CONSOLE_START_TIMEOUT_MS,
+  CONSOLE_STOP_DEADLINE_MS,
+  EXTERNAL_ESCALATION_MS,
+  PRELOCK_CHILD_GRACE_MS,
+  PROCESS_TABLE_TIMEOUT_MS,
+  type ConsoleExitOutcome,
+} from "@fleet-console/protocol/lifecycle";
 
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import { describeDaemonStartFailure } from "../transport/failure-notice.js";
 import { createConsoleFailureLog } from "./failure-log.js";
-import { createConsoleHealthClient } from "./health.js";
 import { createConsoleStalePolicy } from "./stale.js";
 import {
   command,
@@ -64,18 +84,29 @@ export interface ConsoleDaemonLifecycleDeps {
   readonly now?: () => number;
   readonly startupTimeoutMs?: number;
   readonly pollIntervalMs?: number;
-  readonly cleanupGraceMs?: number;
-  /** SIGTERM을 받은 Console이 정리를 마칠 때까지 stop이 기다리는 한도. 이를 넘기면 정체로 보고 정체를 다시 증명한 뒤 SIGKILL한다. */
-  readonly shutdownTimeoutMs?: number;
-  readonly health?: ReturnType<typeof createConsoleHealthClient>;
+  readonly health?: ConsoleLockHealthProbe;
   /** 사용자에게 알릴 한 줄(대기 안내, 강제 종료 경고). 기본은 stderr다. */
   readonly report?: (message: string) => void;
 }
 
-/** stop의 결말. forced는 정리를 끝내지 못한 Console을 SIGKILL로 내렸다는 뜻이다 — 그 Console이 띄운 자식과 임시파일이 남을 수 있다. */
-export type ConsoleStopResult =
-  | { readonly forced: false }
-  | { readonly forced: true; readonly shutdownTimeoutMs: number };
+/** The token-authenticated health probe of a Console lock (`createConsoleHealthClient` from `@fleet-console/lifecycle`). */
+export interface ConsoleLockHealthProbe {
+  probe(lock: ConsoleLockPayload | null, options?: ConsoleProbeOptions): Promise<ConsoleProbeResult<ConsoleLockPayload>>;
+}
+
+/**
+ * How a stop ended, from the stopped instance's exit record (docs/console-lifecycle-contract.md, "Exit record").
+ * - not-running: no Console ran under the lock; at most an exited Console's lock was cleared.
+ * - unrecorded: the Console exited without a record and cannot be blamed for it — it predates the contract, or Windows
+ *   ended it on SIGTERM (TerminateProcess), where no shutdown runs.
+ * - an exit outcome: what the instance recorded (`unknown` for an outcome this version does not know), or `external`
+ *   when a contract Console vanished without a record, or `forced-external` when this stop escalated to SIGKILL.
+ */
+export interface ConsoleStopResult {
+  readonly outcome: "not-running" | "unrecorded" | "unknown" | ConsoleExitOutcome;
+  /** Leftover child processes the Console killed on its way out. */
+  readonly killed: number;
+}
 
 export interface StartFleetConsoleDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "ensureDaemon" | "probe">;
@@ -118,32 +149,6 @@ export interface BuildConsoleHelpTextOptions {
 }
 
 const FIXED_HOST = "127.0.0.1";
-const STARTUP_TIMEOUT_MS = 60_000;
-const STARTUP_POLL_INTERVAL_MS = 100;
-const CHILD_CLEANUP_GRACE_MS = 500;
-// stop이 lock pid의 정체를 health로 확인하는 전체 예산. 정상 Console은 수 ms 안에 답한다.
-const STOP_IDENTITY_TIMEOUT_MS = 5_000;
-// lock 주소는 거절되는데 lock pid가 살아 있을 때 pid 종료나 lock 해제를 기다리는 한도. 종료 중인 Console은 listener를
-// 먼저 닫고 정리를 마친 뒤 lock을 놓는다. 그 사이를 stale로 보면 살아 있는 Console 옆에 두 번째 Console이 뜬다.
-const STOP_SETTLE_ATTEMPTS = 20;
-const STOP_SETTLE_POLL_MS = 50;
-// stop이 SIGTERM 뒤 Console이 정리를 마치고 lock을 스스로 놓기까지 기다리는 한도. 정상 정리 실측: 유휴 수십 ms, 열린 chat 턴 약 2s
-// (SDK가 stdin을 닫고 2s 뒤 자식에 SIGTERM — chat이 여럿이어도 병렬이다), SIGTERM을 무시하는 자식이면 SDK의 SIGKILL까지 약 7s.
-// 그 위에 plugin·MCP 정리와 느린 기계의 여유를 더했다. Desktop의 SHUTDOWN_SETTLE_MS와 같은 값이다. 이보다 짧으면 진행 중인
-// 정리를 끊어 SDK 자식과 그 MCP 자식을 고아로, launch 임시파일을 잔재로 남긴다.
-const STOP_SHUTDOWN_TIMEOUT_MS = 10_000;
-// 정리가 이만큼 길어지면 사용자에게 기다리는 중이라고 한 번 알린다.
-const STOP_SHUTDOWN_NOTICE_MS = 1_000;
-const STOP_SIGKILL_EXIT_ATTEMPTS = 20;
-// `ps -o lstart`는 초 단위로 내림한 값이다. Linux는 boot time 반올림으로 1초 더 어긋날 수 있다. 시작 시각이 정체 증명
-// 시점보다 이 값 이상 앞서야 그 시각을 정체 표지로 쓴다.
-const PROCESS_START_MARGIN_MS = 2_000;
-// Console은 listen 뒤에 lock을 쓰므로 lock 작성자의 시작 시각은 항상 lock.startedAt보다 앞선다. lock pid의 시작 시각이
-// startedAt보다 이 값 이상 늦으면 그 pid는 작성자가 죽은 뒤 재할당된 것이다. 1초는 lstart 내림과 Linux boot time 반올림을
-// 덮는다. 나머지는 Linux에서 Console 시작 뒤 벽시계가 앞으로 step하면 그만큼 같은 Console의 lstart도 밀리는 경우를 덮는다.
-// 크래시 뒤 재부팅이나 수 초 이상 지난 재할당은 이 한도를 넉넉히 넘는다.
-const LOCK_AUTHOR_REPLACED_MARGIN_MS = 10_000;
-
 type ConsoleDaemonChildFailure =
   | { readonly kind: "error"; readonly detail: string }
   | { readonly kind: "exit"; readonly detail: string };
@@ -253,14 +258,12 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const spawnDaemon = deps.spawnDaemon ?? ((bin, args, options) => spawn(bin, [...args], options));
   const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const now = deps.now ?? (() => performance.now());
-  const startupTimeoutMs = Math.max(0, deps.startupTimeoutMs ?? STARTUP_TIMEOUT_MS);
-  const pollIntervalMs = Math.max(1, deps.pollIntervalMs ?? STARTUP_POLL_INTERVAL_MS);
-  const cleanupGraceMs = Math.max(0, deps.cleanupGraceMs ?? CHILD_CLEANUP_GRACE_MS);
-  const shutdownTimeoutMs = Math.max(0, deps.shutdownTimeoutMs ?? STOP_SHUTDOWN_TIMEOUT_MS);
+  const startupTimeoutMs = Math.max(0, deps.startupTimeoutMs ?? CONSOLE_START_TIMEOUT_MS);
+  const pollIntervalMs = Math.max(1, deps.pollIntervalMs ?? CONSOLE_START_POLL_MS);
   const report = deps.report ?? reportToStderr;
   const paths = createConsolePaths({ env });
   const lock = createConsoleLock({ report });
-  const health = deps.health ?? createConsoleHealthClient();
+  const health: ConsoleLockHealthProbe = deps.health ?? createConsoleHealthClient();
   const stale = createConsoleStalePolicy();
 
   async function runServer(): Promise<void> {
@@ -291,6 +294,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       },
       onShutdownFailed: (error) => {
         recordFailure("shutdown_failed", error);
+        exitOutcome ??= { outcome: "failed", killed: 0 };
         process.exitCode = 1;
       },
       // From here only leftover handles (an SDK child still being reaped) keep the process alive. An unref'd deadline
@@ -306,11 +310,11 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       recordFailure("uncaughtException", error);
       // Once shutdown has begun, leave the exit to the cleanup in progress or to the shutdown deadline. Exiting here
       // drops the SDK's reap timers and orphans the children it is still waiting on.
+      exitOutcome = { outcome: "crash", killed: 0 };
       if (lifecycle.stopRequested()) {
         process.exitCode = 1;
         return;
       }
-      exitOutcome = { outcome: "crash", killed: 0 };
       process.exit(1);
     };
     // Only the Console serve process owns global policy; a failed registration must not block boot.
@@ -323,7 +327,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     process.on("exit", (code) => {
       const instance = lifecycle.lockInstance();
       if (!instance) return;
-      const ended = exitOutcome ?? { outcome: code === 0 ? "clean" : "crash", killed: 0 };
+      const ended = exitOutcome ?? { outcome: code === 0 ? "clean" : "failed", killed: 0 };
       try {
         writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now() });
       } catch (error) { recordFailure("exit_record_failed", error); }
@@ -336,6 +340,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     try {
       await server.start(paths);
     } catch (error) {
+      // A start that failed after it took the lock ends this instance with an error; a lost lock never had an instance.
+      if (lifecycle.lockInstance()) exitOutcome ??= { outcome: "failed", killed: 0 };
       if (lifecycle.stopRequested()) await lifecycle.whenStopped();
       throw error;
     }
@@ -353,119 +359,100 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
 
   async function stop(): Promise<ConsoleStopResult> {
     const payload = readTrustedLock();
-    if (!payload) return { forced: false };
+    if (!payload) return { outcome: "not-running", killed: 0 };
     // 정체 증명(health 요청)보다 먼저 잰 벽시계 시각. 이보다 먼저 시작한 프로세스만 증명된 Console과 같은 프로세스일 수 있다.
     const identityProbedAt = Date.now();
-    const owner = await identifyLockOwner(payload);
-    if (owner === "unverified") {
-      // 살아 있는 무언가가 lock을 붙잡고 있지만 lock token으로 정체를 증명하지 못했다(멈춘 Console이거나
-      // 종료 중인 Console일 수 있다). 시그널은 무관한 프로세스를 죽일 수 있고, lock을 지우면 살아 있는
-      // Console 옆에 두 번째 소유자가 생길 수 있으므로 둘 다 하지 않는다.
-      throw lockOwnerUnverifiedError(payload);
+    const observed = await observe(payload);
+    if (observed.state === "exited") {
+      // lock만 남았다(pid가 끝났거나 lock을 쓴 뒤 재할당됐다). 신호 없이 같은 instance의 lock일 때만 회수 프로토콜로 지운다.
+      await removeLockHeldBy(payload);
+      return { outcome: "not-running", killed: 0 };
     }
-    if (owner === "verified") {
-      assertCliCanControlDaemon(payload);
-      const provenStart = await captureProvenProcessStart(payload.pid, identityProbedAt);
-      signalLockProcess(payload.pid, "SIGTERM");
-      // 정상 종료한 Console은 정리를 모두 마친 뒤에야 lock을 스스로 지운다. 그 정리가 끝나거나 한도를 넘을 때까지 기다린다.
-      // 한도를 넘겨 lock이 남아 있으면 정리가 멈춘 것일 수도, Console이 lock을 남긴 채 죽고 pid가 재할당된 것일 수도 있다.
-      // lock 파일이 그대로라는 사실은 증명이 아니므로 SIGKILL 직전에 정체를 다시 증명한다.
-      if (!await waitForShutdown(payload) && await escalateStalledShutdown(payload, provenStart)) {
-        await removeLockHeldBy(payload);
-        return { forced: true, shutdownTimeoutMs };
-      }
-    }
-    // 여기까지 온 lock은 pid가 끝났거나(ESRCH) 주인이 lock을 이미 놓은 것이다. 신호 없이
-    // 같은 pid·token의 lock일 때만 지운다.
+    // 살아 있는 무언가가 lock을 붙잡고 있지만 lock token으로 정체를 증명하지 못했다. 신호는 무관한 프로세스를 죽일 수 있고,
+    // lock을 지우면 살아 있는 Console 옆에 두 번째 소유자가 생길 수 있으므로 둘 다 하지 않는다.
+    if (observed.state === "unverified") throw lockOwnerUnverifiedError(payload);
+    if (observed.state === "starting") throw lockOwnerStartingError(payload);
+    // ready만 이 stop이 정지를 요청한다. 이미 정지 중인(listener를 닫고 정리 중인) Console이나 lock을 놓고 자식을 거두는
+    // Console에는 신호를 다시 보내지 않고 같은 예산 안에서 끝나기를 기다린다.
+    const requester = observed.state === "ready";
+    if (requester) assertCliCanControlDaemon(payload);
+    const provenStart = requester ? await captureProvenProcessStart(payload.pid, identityProbedAt, env) : null;
+    const ended = await runStopLadder({
+      requester,
+      isAlive: () => isPidAlive(payload.pid),
+      isReleased: () => isLockReleasedBy(payload),
+      reprove: () => reproveLockOwner(payload, provenStart),
+      signal: (signal) => signalLockProcess(payload.pid, signal),
+      onWaiting: () => report("Waiting for Fleet Console to finish shutting down..."),
+      now,
+      sleep,
+    });
+    const instance = { pid: payload.pid, lockStartedAt: payload.startedAt };
+    if (ended === "held") throw lockOwnerStillStoppingError(payload);
+    if (ended === "unproven") throw lockOwnerUnverifiedError(payload);
+    if (ended === "released-alive") throw lockReleasedOwnerAliveError(payload);
+    if (ended === "kill-failed") throw new Error(`Fleet Console pid ${payload.pid} did not exit after SIGKILL; ${paths.lockFile} was left in place.`);
+    // 끝난 Console이 남긴 lock은 그 pid가 ESRCH인 지금 회수 프로토콜로 지운다.
     await removeLockHeldBy(payload);
-    return { forced: false };
+    if (ended === "forced") {
+      recordForcedExit(instance);
+      return { outcome: "forced-external", killed: 0 };
+    }
+    const record = readConsoleExitRecord(paths.lockFile, instance);
+    if (record) return { outcome: record.outcome, killed: record.killed };
+    // 기록 없이 사라졌다. 계약을 아는 Console이면 밖에서 끝난 것이다. 계약 이전 Console이거나, Windows에서 SIGTERM이 곧
+    // TerminateProcess라 정리가 돌지 않은 경우는 탓할 근거가 없으므로 지금까지처럼 정지로 본다.
+    const unattributable = !reportsLifecycleWire(observed) || (requester && process.platform === "win32");
+    return { outcome: unattributable ? "unrecorded" : "external", killed: 0 };
   }
 
-  /** SIGTERM을 보낸 Console이 끝나거나 lock을 놓을 때까지 기다린다. 한도 안에 둘 중 하나가 일어나면 참이다. */
-  async function waitForShutdown(payload: ConsoleLockPayload): Promise<boolean> {
-    const attempts = Math.ceil(shutdownTimeoutMs / STOP_SETTLE_POLL_MS);
-    const noticeAttempt = Math.ceil(STOP_SHUTDOWN_NOTICE_MS / STOP_SETTLE_POLL_MS);
-    for (let attempt = 0; ; attempt += 1) {
-      // A lock that cannot be read is still held: only an exited pid or a lock that is gone or replaced ends the wait.
-      if (!isLockProcessAlive(payload.pid) || isLockReleasedBy(payload)) return true;
-      if (attempt >= attempts) return false;
-      if (attempt === noticeAttempt) report("Waiting for Fleet Console to finish shutting down...");
-      await sleep(STOP_SETTLE_POLL_MS);
-    }
+  function observe(payload: ConsoleLockPayload): Promise<ConsoleInstanceObservation<ConsoleLockPayload>> {
+    // readTrustedLock already passed the lock's trust checks; a tokenless lock stays untrusted inside the observation.
+    return observeConsoleInstance({ lock: payload, trusted: true, isHeld: () => !isLockReleasedBy(payload), probe: (target, options) => health.probe(target, options), env });
   }
 
   /**
-   * SIGTERM 뒤에도 lock을 놓지 않은 pid를 SIGKILL로 정리한다. 그 pid는 SIGTERM 전에 health로 정체가 증명됐으므로,
-   * 지금도 같은 프로세스라는 것만 보이면 된다. 증명 전에 시작한 프로세스의 시작 시각이 그대로면 같은 프로세스다 —
-   * 그 사이 pid가 재할당됐다면 새 프로세스는 증명 뒤에 시작했으므로 시작 시각이 다르다. 시작 시각을 얻지 못하거나
-   * 달라졌으면 health 정체 판별로 돌아간다. 어느 경우에도 살아 있는 pid의 lock만 지우고 성공으로 끝내지 않는다.
-   * SIGKILL로 내렸으면 참, 그 전에 pid가 끝났거나 lock이 풀려 신호 없이 끝났으면 거짓이다.
+   * Right before SIGKILL: is the stalled pid still the Console proven before SIGTERM? A start time captured before that
+   * proof that is unchanged, with the same lock still held, proves it — a reused pid starts after the proof. Otherwise a
+   * fresh authenticated health answer must prove it again.
    */
-  async function escalateStalledShutdown(payload: ConsoleLockPayload, provenStart: number | null): Promise<boolean> {
-    let proven = false;
-    if (provenStart !== null) {
-      // SIGKILL 직전 재관측: 시작 시각과 lock 소유를 다시 읽는다.
-      const currentStart = await readProcessStartTime(payload.pid, env);
-      if (currentStart === null && !isLockProcessAlive(payload.pid)) return false;
-      proven = currentStart === provenStart && isLockStillHeldBy(payload);
-    }
-    if (!proven) {
-      const survivor = await identifyLockOwner(payload);
-      if (survivor === "unverified") throw lockOwnerUnverifiedError(payload);
-      if (survivor === "absent") return false;
-    }
-    signalLockProcess(payload.pid, "SIGKILL");
-    // 마지막 대기 뒤에도 한 번 더 확인한다. 그 사이 끝난 pid를 살아 있다고 보고 lock을 남기지 않는다.
-    for (let attempt = 0; ; attempt += 1) {
-      if (!isLockProcessAlive(payload.pid)) return true;
-      if (attempt >= STOP_SIGKILL_EXIT_ATTEMPTS) break;
-      await sleep(STOP_SETTLE_POLL_MS);
-    }
-    throw new Error(`Fleet Console pid ${payload.pid} did not exit after SIGKILL; ${paths.lockFile} was left in place.`);
+  async function reproveLockOwner(payload: ConsoleLockPayload, provenStart: number | null): Promise<boolean> {
+    if (provenStart !== null && await readProcessStartTime(payload.pid, env) === provenStart && isLockStillHeldBy(payload)) return true;
+    return (await observe(payload)).identity === "verified";
   }
 
-  /** 정체 증명 시각보다 충분히 앞서 시작한 프로세스의 시작 시각만 돌려준다. 그렇지 않으면 정체 표지로 쓰지 않는다. */
-  async function captureProvenProcessStart(pid: number, provenAt: number): Promise<number | null> {
-    const startedAt = await readProcessStartTime(pid, env);
-    return startedAt !== null && startedAt + PROCESS_START_MARGIN_MS <= provenAt ? startedAt : null;
-  }
-
-  /** stop이 lock pid에 시그널을 보내도 되는지 판별한다. lock token을 인증한 health 응답만 정체 증명이다. */
-  async function identifyLockOwner(payload: ConsoleLockPayload): Promise<ConsoleLockOwnerIdentity> {
-    if (!isLockProcessAlive(payload.pid)) return "absent";
-    // No Fleet Console writes a tokenless lock, and a live pid behind one cannot prove anything: never signal it or clear its lock.
-    if (typeof payload.token !== "string" || payload.token.length === 0) return "unverified";
-    const result = await health.probe(payload, { timeoutMs: STOP_IDENTITY_TIMEOUT_MS });
-    const evidence: ConsoleLockHealthEvidence = result.healthy ? { kind: "answered", pid: result.health?.pid } : result.refused ? { kind: "refused" } : { kind: "unanswered" };
-    // 거절된 lock 주소는 stale lock일 수도, listener를 닫고 정리 중이거나 그 도중 멈춘 Console일 수도 있다. pid가 lock을 쓴 뒤에
-    // 시작한 프로세스면(크래시 뒤 pid 재할당) 작성자는 이미 끝났다. 그렇지 않으면 pid가 끝나거나 lock이 풀릴 때만 stale로 본다.
-    // 한도 안에 둘 다 일어나지 않으면 정체를 증명하지 못한 것으로 다룬다.
-    if (evidence.kind === "refused" && !await isLockAuthorReplaced(payload) && !await waitForRefusedOwnerToSettle(payload)) return "unverified";
-    return identifyConsoleLockOwner({ lockPid: payload.pid, pidAlive: true, health: evidence });
-  }
-
-  /** lock pid의 현재 프로세스가 lock 작성 뒤에 시작했는가. 작성자가 끝났다는 사실은 되돌아가지 않으므로 이 증거는 낡지 않는다. */
-  async function isLockAuthorReplaced(payload: ConsoleLockPayload): Promise<boolean> {
-    if (!Number.isFinite(payload.startedAt)) return false;
-    const startedAt = await readProcessStartTime(payload.pid, env);
-    return startedAt !== null && startedAt > payload.startedAt + LOCK_AUTHOR_REPLACED_MARGIN_MS;
-  }
-
-  async function waitForRefusedOwnerToSettle(payload: ConsoleLockPayload): Promise<boolean> {
-    for (let attempt = 0; ; attempt += 1) {
-      if (!isLockProcessAlive(payload.pid) || isLockReleasedBy(payload)) return true;
-      if (attempt >= STOP_SETTLE_ATTEMPTS) return false;
-      await sleep(STOP_SETTLE_POLL_MS);
+  /** This stop SIGKILLed the instance: nothing ran inside it to record how it ended, so the stop records it. */
+  function recordForcedExit(instance: { readonly pid: number; readonly lockStartedAt: number }): void {
+    try {
+      writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, ...instance, outcome: "forced-external", killed: 0, at: Date.now() });
+    } catch {
+      // The record only informs later readers; the stop's own result already says it was forced.
     }
   }
 
-  function lockOwnerUnverifiedError(payload: ConsoleLockPayload): Error {
+  function describeStuckOwner(payload: ConsoleLockPayload, headline: string): Error {
     return new Error([
-      `Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}, so it was not signalled.`,
+      headline,
       `If that process is a stuck Fleet Console, stop it (kill -TERM ${payload.pid}; Windows: Stop-Process -Id ${payload.pid}), then run fleet console start. A suspended process (state T in ps) ignores TERM until resumed: kill -CONT ${payload.pid} lets it finish shutting down, or kill -KILL ${payload.pid} ends it.`,
       `If it is not a Fleet Console, follow the check below and then delete ${paths.lockFile}.`,
       describeSlotQuiescenceCheck(paths.lockFile),
     ].join("\n"));
+  }
+
+  function lockOwnerUnverifiedError(payload: ConsoleLockPayload): Error {
+    return describeStuckOwner(payload, `Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}, so it was not signalled.`);
+  }
+
+  function lockOwnerStillStoppingError(payload: ConsoleLockPayload): Error {
+    return describeStuckOwner(payload, `Fleet Console lock pid ${payload.pid} no longer answers at the lock's address but still held ${paths.lockFile} ${Math.round(EXTERNAL_ESCALATION_MS / 1_000)}s later (a Console still shutting down, or another process), so it was not signalled.`);
+  }
+
+  function lockOwnerStartingError(payload: ConsoleLockPayload): Error {
+    return new Error(`Fleet Console pid ${payload.pid} holds ${paths.lockFile} and is still starting, so it was not signalled. Run fleet console stop again once fleet console status shows it running.`);
+  }
+
+  function lockReleasedOwnerAliveError(payload: ConsoleLockPayload): Error {
+    return new Error(`Fleet Console pid ${payload.pid} released its lock but was still running ${Math.round(EXTERNAL_ESCALATION_MS / 1_000)}s after the stop request, so it was not signalled. Its own shutdown deadline ends it; if it keeps running, stop it (kill -TERM ${payload.pid}; Windows: Stop-Process -Id ${payload.pid}).`);
   }
 
   /** lock이 없어졌거나 다른 주인의 것으로 바뀌었다. 읽지 못하면 풀렸다고 보지 않는다. */
@@ -542,14 +529,14 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     let probeResult = await health.probe(current);
     const startingDeadline = now() + startupTimeoutMs;
     // 다른 호스트가 이미 lock을 얻고 복원 중이면 건드리지 않는다. lock 교체도 대기 예산을 늘리지 않는다.
-    while (current && probeResult.starting && isLockProcessAlive(current.pid)) {
+    while (current && probeResult.starting && isPidAlive(current.pid)) {
       const remaining = startingDeadline - now();
       if (remaining <= 0) throw lockOwnerUnverifiedError(current);
       await sleep(Math.min(pollIntervalMs, remaining));
       current = await readLockForStart();
       probeResult = await health.probe(current, { timeoutMs: Math.max(0, startingDeadline - now()) });
       // 마지막 probe의 예산 소진을 기존 unhealthy→stop 경로로 바꾸지 않는다.
-      if (!probeResult.healthy && now() >= startingDeadline && current && isLockProcessAlive(current.pid)) throw lockOwnerUnverifiedError(current);
+      if (!probeResult.healthy && now() >= startingDeadline && current && isPidAlive(current.pid)) throw lockOwnerUnverifiedError(current);
     }
     const isBuildStale = current ? stale.isBuildStale(current, serverModulePath) : false;
     if (probeResult.healthy && current) {
@@ -557,8 +544,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
     }
     if (current) {
-      const stopped = await stop();
-      if (stopped.forced) report(describeForcedStop(stopped.shutdownTimeoutMs));
+      const unclean = describeUncleanStop(await stop());
+      if (unclean) report(unclean);
     }
 
     let child: ConsoleDaemonProcess | null;
@@ -750,20 +737,29 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       errors.push("the spawned process did not expose a pid");
     }
     if (child.pid !== undefined && !observation.exited) {
-      try {
-        child.kill("SIGTERM");
-      } catch (error) {
-        errors.push(`SIGTERM failed: ${describeUnknownError(error)}`);
+      const pid = child.pid;
+      if (childLockState(pid) === "held") {
+        // A child that took the lock may be writing durable state: it gets the stop ladder and its own deadline, never a
+        // SIGKILL right after SIGTERM. The unreaped child handle proves its identity, so the pid cannot have been reused.
+        const ended = await runStopLadder({
+          requester: true,
+          isAlive: () => !observation.exited,
+          isReleased: () => childLockState(pid) === "released",
+          reprove: async () => !observation.exited,
+          signal: (signal) => killOwnedChild(child, signal, errors),
+          now,
+          sleep,
+        });
+        if (ended === "released-alive") errors.push("the spawned Console released its lock but did not exit");
+      } else {
+        // Before the lock a child has written nothing, so a short grace is enough.
+        killOwnedChild(child, "SIGTERM", errors);
+        await waitForChildExit(observation);
+        if (!observation.exited) {
+          killOwnedChild(child, "SIGKILL", errors);
+          await waitForChildExit(observation);
+        }
       }
-      await waitForChildExit(observation);
-    }
-    if (child.pid !== undefined && !observation.exited) {
-      try {
-        child.kill("SIGKILL");
-      } catch (error) {
-        errors.push(`SIGKILL failed: ${describeUnknownError(error)}`);
-      }
-      await waitForChildExit(observation);
     }
     if (child.pid !== undefined && observation.exited) {
       try {
@@ -776,6 +772,22 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       errors.push("the spawned process did not exit after SIGKILL");
     }
     return errors.length > 0 ? errors.join("; ") : null;
+  }
+
+  function killOwnedChild(child: ConsoleDaemonProcess, signal: NodeJS.Signals, errors: string[]): void {
+    try {
+      child.kill(signal);
+    } catch (error) {
+      errors.push(`${signal} failed: ${describeUnknownError(error)}`);
+    }
+  }
+
+  /** Whether the lock names `pid`. A lock that cannot be judged is neither held by it for sure nor released. */
+  function childLockState(pid: number): "held" | "released" | "unknown" {
+    const observed = lock.observeLock(paths.lockFile);
+    if (observed.kind === "absent") return "released";
+    if (observed.kind !== "owner") return "unknown";
+    return observed.instance.pid === pid ? "held" : "released";
   }
 
   /**
@@ -797,7 +809,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     if (observation.exited) return;
     if (!deps.sleep) {
       await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, cleanupGraceMs);
+        const timer = setTimeout(resolve, PRELOCK_CHILD_GRACE_MS);
         void observation.exitPromise.then(() => {
           clearTimeout(timer);
           resolve();
@@ -807,7 +819,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     }
     await Promise.race([
       observation.exitPromise,
-      sleep(cleanupGraceMs),
+      sleep(PRELOCK_CHILD_GRACE_MS),
     ]);
   }
 
@@ -859,9 +871,9 @@ export async function runConsoleStatus(deps: ConsoleStatusDeps = {}): Promise<st
 
 export async function runConsoleStop(deps: ConsoleStopDeps = {}): Promise<string> {
   const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
-  const result = await lifecycle.stop();
   // Console은 내려갔지만 정리를 끝내지 못했다. 성공으로 보고하면 남은 자식·임시파일이 숨는다 — 두 진입점 모두 오류를 stderr·exit 1로 낸다.
-  if (result.forced) throw new Error(describeForcedStop(result.shutdownTimeoutMs));
+  const unclean = describeUncleanStop(await lifecycle.stop());
+  if (unclean) throw new Error(unclean);
   return "Fleet Console server stopped.";
 }
 
@@ -869,77 +881,40 @@ function reportToStderr(message: string): void {
   process.stderr.write(`${message}\n`);
 }
 
-function describeForcedStop(shutdownTimeoutMs: number): string {
-  return `Fleet Console was force-stopped: it did not finish shutting down within ${Math.round(shutdownTimeoutMs / 1_000)}s of SIGTERM. `
-    + "Agent processes and temporary files it started may remain; end any leftover agent processes before starting it again.";
+const LEFTOVER_ADVICE = "Agent processes and temporary files it started may remain; end any leftover agent processes before starting it again.";
+
+/** What to tell a person about a stop that did not end in a clean shutdown, or null when it did. */
+function describeUncleanStop(result: ConsoleStopResult): string | null {
+  switch (result.outcome) {
+    case "not-running":
+    case "unrecorded":
+    case "clean":
+      return null;
+    case "deadline":
+      return `Fleet Console did not finish shutting down within ${Math.round(CONSOLE_STOP_DEADLINE_MS / 1_000)}s and ended itself`
+        + (result.killed > 0 ? `, killing ${result.killed} leftover process(es) it had started.` : ".")
+        + " Temporary files it started may remain.";
+    case "crash":
+      return `Fleet Console crashed on an unexpected error instead of shutting down cleanly; the Console failure log (errors.jsonl in its data directory) says why. ${LEFTOVER_ADVICE}`;
+    case "failed":
+      return `Fleet Console failed while starting or shutting down and ended with an error; the Console failure log (errors.jsonl in its data directory) says why. ${LEFTOVER_ADVICE}`;
+    case "unknown":
+      return `Fleet Console ended in a way this fleet version does not recognize, so it is not reported as cleanly stopped. ${LEFTOVER_ADVICE}`;
+    case "external":
+      return `Fleet Console ended without recording how: it was killed from outside or stopped responding. ${LEFTOVER_ADVICE}`;
+    case "forced-external":
+      return `Fleet Console was force-stopped: it did not finish shutting down within ${Math.round(EXTERNAL_ESCALATION_MS / 1_000)}s of SIGTERM. ${LEFTOVER_ADVICE}`;
+  }
+}
+
+/** Whether the Console answered health with a lifecycle wire, so it writes an exit record when it ends. */
+function reportsLifecycleWire(observed: ConsoleInstanceObservation<ConsoleLockPayload>): boolean {
+  const wire = observed.probe?.health?.lifecycleWire;
+  return typeof wire === "number" && wire >= 1;
 }
 
 export function assertCliCanControlDaemon(payload: ConsoleLockPayload): void {
   void payload;
-}
-
-export function isLockProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    // EPERM은 살아있지만 권한이 없는 프로세스 — 보호 대상으로 취급한다. ESRCH만 죽은 것으로 본다.
-    return (err as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-}
-
-const PS_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/**
- * pid의 시작 시각(epoch ms, 초 단위 내림)을 읽는다. macOS·Linux는 `ps -o lstart`, Windows는 PowerShell `Get-Process`다.
- * 프로세스가 없거나 시작 시각을 읽을 수 없으면 null이다.
- * macOS의 µs 시작 시각은 sysctl kern.proc에만 있어 Node 표준 API로 읽을 수 없으므로 macOS·Linux 공통 형식인 ps를 쓴다.
- */
-function readProcessStartTime(pid: number, env: NodeJS.ProcessEnv = process.env): Promise<number | null> {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return Promise.resolve(null);
-  if (process.platform === "win32") return readWindowsProcessStartTime(pid, env);
-  return new Promise((resolve) => {
-    execFile("ps", ["-o", "lstart=", "-p", String(pid)], {
-      // 증명의 전제다. LC_ALL=C는 파싱할 영문 날짜 형식을, TZ=UTC는 Date.UTC 해석을 보장한다. TZ가 빠지면 지역 시간대
-      // 오프셋만큼 시작 시각이 어긋나 PROCESS_START_MARGIN_MS·LOCK_AUTHOR_REPLACED_MARGIN_MS가 무력화된다.
-      env: { PATH: env.PATH ?? "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC" },
-      timeout: 2_000,
-      windowsHide: true,
-    }, (error, stdout) => {
-      if (error) {
-        resolve(null);
-        return;
-      }
-      resolve(parsePsLstartUtc(String(stdout)));
-    });
-  });
-}
-
-/**
- * Windows 프로세스의 시작 시각을 PowerShell로 읽는다. Windows는 ps가 없고 Node도 시작 시각을 주지 않는다.
- * UTC epoch ms를 정수로 출력하게 해 지역 시간대·문화권 형식에 기대지 않는다. ps와 같은 정밀도로 맞추려고 초 단위로 내린다.
- * PowerShell은 SystemRoot 등 Windows 환경이 있어야 뜨므로 env를 그대로 넘긴다.
- */
-function readWindowsProcessStartTime(pid: number, env: NodeJS.ProcessEnv): Promise<number | null> {
-  const script = `[DateTimeOffset]::new((Get-Process -Id ${pid} -ErrorAction Stop).StartTime).ToUnixTimeMilliseconds()`;
-  return new Promise((resolve) => {
-    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-      env,
-      timeout: 10_000,
-      windowsHide: true,
-    }, (error, stdout) => {
-      const millis = Number(String(stdout).trim());
-      resolve(error || !Number.isSafeInteger(millis) || millis <= 0 ? null : Math.floor(millis / 1_000) * 1_000);
-    });
-  });
-}
-
-function parsePsLstartUtc(output: string): number | null {
-  const match = /^[A-Z][a-z]{2}\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})$/.exec(output.trim());
-  if (!match) return null;
-  const month = PS_MONTHS.indexOf(match[1]!);
-  if (month < 0) return null;
-  return Date.UTC(Number(match[6]), month, Number(match[2]), Number(match[3]), Number(match[4]), Number(match[5]));
 }
 
 /** One row of the process table: enough to walk this process's descendants and their process groups. */
@@ -1023,8 +998,8 @@ function killShutdownStragglers(env: NodeJS.ProcessEnv, recordFailure: (kind: st
 export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<StartFleetConsoleResult> {
   const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
   // 기존 데몬을 정지한 뒤 새 데몬을 띄운다. 강제 종료였어도 목표(실행 중인 Console)는 이룰 수 있으므로 경고만 남긴다.
-  const stopped = await lifecycle.stop();
-  if (stopped.forced) (deps.report ?? reportToStderr)(describeForcedStop(stopped.shutdownTimeoutMs));
+  const unclean = describeUncleanStop(await lifecycle.stop());
+  if (unclean) (deps.report ?? reportToStderr)(unclean);
   return startFleetConsole({ lifecycle });
 }
 
