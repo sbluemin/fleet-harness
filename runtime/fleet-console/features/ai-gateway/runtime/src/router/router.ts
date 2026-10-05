@@ -128,7 +128,8 @@ export async function readXaiSubscriptionToken(): Promise<string | null> {
 }
 
 /**
- * The credential the Antigravity CLI (`agy`) left in the OS credential store.
+ * The credential the Antigravity CLI (`agy`) left in the OS credential store or
+ * its token file.
  *
  * Fleet holds no Antigravity OAuth client and mints no token of its own: `agy
  * login` owns the sign-in, and this reader only decodes what that CLI wrote. A
