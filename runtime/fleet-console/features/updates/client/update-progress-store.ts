@@ -4,7 +4,7 @@ import { UPDATE_FAILED_CONSOLE_RETURN_MS } from "@fleet-console/protocol/lifecyc
 
 import { fetchUpdateProgress } from "../../../core/client/src/integration/api.js";
 import { hasConsoleVersionDrifted } from "../../../core/client/src/integration/console-version.js";
-import type { ConsoleUpdateProgress } from "../../../core/client/src/integration/types.js";
+import type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateProgress } from "../../../core/client/src/integration/types.js";
 
 /**
  * 업데이트는 이 화면이 잠시 서버를 잃는 일이다. 그동안 사실을 들고 있을 수 있는 것은
@@ -109,6 +109,12 @@ export function beginUpdateWatch(targetVersion: string | null): void {
   writeSessionValue(STAGE_KEY, "stopping");
   setStore({ ...store, watching: true, outcome: null, delegated: false, targetVersion, stage: "stopping", silentPastReturn: false });
   schedulePoll(0);
+}
+
+/** 아직 살아 있는 host가 거절한 이번 실행의 결론. 사유와 설명은 DTO 그대로 표시한다. */
+export function reportUpdateApplyFailure(progress: ConsoleUpdateApplyFailureProgress): void {
+  stopWatching();
+  setStore({ ...IDLE_SNAPSHOT, progress, outcome: "failed", targetVersion: progress.targetVersion });
 }
 
 /** 이 설치 레이아웃은 셸이 갈아 끼운다. 창은 곧 재시작되므로 서버가 닿는지만 지켜본다. */
