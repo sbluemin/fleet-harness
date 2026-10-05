@@ -138,9 +138,12 @@ export function rosterProviderOf(roster: ModelRoster | null, model: string | und
 /** 「Opus」·「HIGH」 — 트리거와 메뉴가 같은 낱말을 쓴다. 로스터에 없는 모델은 id를 다듬어 쓴다. */
 export function rosterCoordinateWords(roster: ModelRoster | null, value: ModelCoordinateValue, autoLabel: string): { readonly model: string; readonly effort: string } {
   const row = value.model ? findRosterRow(roster, value.model) : null;
+  const model = row?.label ?? (value.model ? prettyModelId(value.model) : "");
+  // 강도를 받지 않는 모델(사다리가 없는 행)은 강도를 말하지 않는다 — 저장값에 남은 이전 강도는 실행에 실리지 않는다.
+  if (row && (row.chips?.length ?? 0) === 0) return { model, effort: "" };
   const chip = row?.chips?.find((candidate) => candidate.id === value.effort);
   return {
-    model: row?.label ?? (value.model ? prettyModelId(value.model) : ""),
+    model,
     effort: chip?.label ?? (value.effort && value.effort !== "auto" ? value.effort.toUpperCase() : autoLabel),
   };
 }
@@ -197,8 +200,7 @@ function TriggerText({ display, prefix }: { readonly display: DisplayState; read
       {prefix}
       <ProviderMark provider={display.provider} className="fc-coord-trigger-provider" />
       <span className={`fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
-      <span className="fc-coord-trigger-dot" aria-hidden="true">·</span>
-      <span className="fc-coord-trigger-effort">{display.words.effort}</span>
+      {display.words.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{display.words.effort}</span></> : null}
       {display.badge ? <span className={`fc-coord-trigger-badge${display.struck ? " is-off" : ""}`}>{display.badge}</span> : null}
     </>
   );
@@ -306,7 +308,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   }, [open]);
 
   const variant = trigger?.variant ?? (trigger?.node ? "glyph" : "inline");
-  const title = trigger?.title ?? (trigger?.text ? undefined : `${display.words.model} · ${display.words.effort}${display.badge ? ` · ${display.badge}` : ""}`);
+  const title = trigger?.title ?? (trigger?.text ? undefined : [display.words.model, display.words.effort, display.badge].filter(Boolean).join(" · "));
   const text = trigger?.text ?? <TriggerText display={display} prefix={trigger?.prefix} />;
   const triggerClass = ["fc-coord-trigger", `is-${variant}`, trigger?.className ?? ""].filter(Boolean).join(" ");
   if (locked) {
@@ -482,7 +484,7 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
     keepDraft(null);
     notify(last);
   };
-  const text = props.trigger?.text ?? `${display.words.model} · ${display.words.effort}${display.badge ? ` · ${display.badge}` : ""}`;
+  const text = props.trigger?.text ?? [display.words.model, display.words.effort, display.badge].filter(Boolean).join(" · ");
   if (locked) return <span className="fc-select__trigger fc-select--mobile fc-coord-trigger is-locked"><span className="fc-select__value">{text}</span></span>;
   return (
     <>
