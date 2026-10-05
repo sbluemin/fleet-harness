@@ -23,7 +23,6 @@ const runBuiltSmoke = process.env.FLEET_BUILT_SMOKE === "1";
 // 실프로세스 serve와 임시 루트는 테스트 본문이 아니라 여기서 정리한다 — 끝나지 않는 await에 걸린 본문은
 // 타임아웃 뒤에도 finally에 도달하지 못해 serve가 남는다.
 const SERVES = new Set<ChildProcess>();
-const STRAGGLERS = new Set<number>();
 const ROOTS: string[] = [];
 
 afterEach(async () => {
@@ -34,10 +33,6 @@ afterEach(async () => {
     await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 5_000))]);
   }));
   SERVES.clear();
-  for (const pid of STRAGGLERS) {
-    try { process.kill(pid, "SIGKILL"); } catch { /* Already gone. */ }
-  }
-  STRAGGLERS.clear();
   for (const root of ROOTS.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -108,65 +103,6 @@ afterEach(async () => {
     expect(child.exitCode).toBeNull();
   }, 25_000);
 
-  // POSIX 신호 계약이다. Windows의 kill은 신호 없이 프로세스를 끝내므로 정상 종료 경로 자체가 없다.
-  // 반복 신호는 두 구간 모두에서 무해해야 한다: lock을 쥔 정리 도중, 그리고 lock을 놓은 뒤 SDK가 SIGTERM을 무시한 agent CLI를
-  // 거두는 동안. 뒤 구간에서 serve가 죽으면 SDK의 SIGKILL 타이머가 함께 사라져 그 자식과 MCP 자식이 고아로 남는다.
-  it.skipIf(process.platform === "win32")("finishes its shutdown when SIGTERM and SIGINT arrive again mid-cleanup and after the lock is released", async () => {
-    const root = createRoot("fleet-console-resignal-");
-    const slot = path.join(root, "console");
-    const lock = path.join(slot, "console.lock");
-    const ready = path.join(root, "ready");
-    const stalled = path.join(root, "stalled");
-    const release = path.join(root, "release");
-    const straggler = path.join(root, "straggler");
-    const preload = path.join(root, "stall.mjs");
-    // Test-only preload: marks when serve starts listening for SIGTERM, holds the last cleanup step (lock release) until the
-    // release file exists, so the repeated signals land mid-cleanup, and starts a child that ignores SIGTERM, standing in
-    // for an agent CLI that keeps serve alive after the lock is released.
-    fs.writeFileSync(preload, [
-      "import fs from 'node:fs';",
-      "import { spawn } from 'node:child_process';",
-      "import { syncBuiltinESMExports } from 'node:module';",
-      `const lock = ${JSON.stringify(lock)}, ready = ${JSON.stringify(ready)}, stalled = ${JSON.stringify(stalled)}, release = ${JSON.stringify(release)}, straggler = ${JSON.stringify(straggler)};`,
-      "const child = spawn(process.execPath, ['-e', 'process.on(\\'SIGTERM\\', () => {}); setInterval(() => {}, 1000);'], { stdio: 'ignore' });",
-      "fs.writeFileSync(straggler, String(child.pid));",
-      "const on = process.on;",
-      "process.on = function (event, listener) { const result = on.call(this, event, listener); if (event === 'SIGTERM') fs.writeFileSync(ready, ''); return result; };",
-      "const pause = new Int32Array(new SharedArrayBuffer(4));",
-      "for (const name of ['rmSync', 'unlinkSync']) {",
-      "  const original = fs[name];",
-      "  fs[name] = function (target, ...rest) {",
-      "    if (String(target) === lock) { fs.writeFileSync(stalled, ''); while (!fs.existsSync(release)) Atomics.wait(pause, 0, 0, 10); }",
-      "    return original.call(this, target, ...rest);",
-      "  };",
-      "}",
-      "syncBuiltinESMExports();",
-    ].join("\n"));
-    const child = spawnServe(preload, root, slot);
-    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
-    await waitForFile(ready, 15_000);
-    const stragglerPid = Number(fs.readFileSync(straggler, "utf8"));
-    STRAGGLERS.add(stragglerPid);
-    child.kill("SIGTERM");
-    await waitForFile(stalled, 10_000);
-    child.kill("SIGTERM");
-    child.kill("SIGINT");
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(child.signalCode).toBeNull();
-    expect(child.exitCode).toBeNull();
-    fs.writeFileSync(release, "");
-    await waitForFileGone(lock, 10_000);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    child.kill("SIGTERM");
-    child.kill("SIGINT");
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(child.signalCode).toBeNull();
-    expect(child.exitCode).toBeNull();
-    // The child ends the way the SDK's own SIGKILL would end it; serve then exits on its own.
-    process.kill(stragglerPid, "SIGKILL");
-    expect(await exited).toEqual({ code: 0, signal: null });
-  }, 40_000);
-
   // `fleet console stop` must not cut a shutdown that is still running: an open chat turn alone takes about 2s to reap its
   // SDK child, and killing that cleanup orphans the child and leaves launch temp files. POSIX only, like the case above.
   it.skipIf(process.platform === "win32")("lets a verified Console finish a slow shutdown before stop returns", async () => {
@@ -233,7 +169,7 @@ const RUNS: LifecycleRun[] = [];
 
 afterEach(async () => {
   const runs = RUNS.splice(0);
-  for (const run of runs) for (const entry of agentProcs(run)) own(entry.pid);
+  for (const run of runs) for (const entry of agentProcs(run)) ownRecorded(entry);
   // The suite keeps I1 itself: only a pid whose start time still matches is signalled, and nothing may be left behind.
   const left: string[] = [];
   if (OWNED.size > 0) {
@@ -272,6 +208,55 @@ afterEach(async () => {
     expect(stop.status).toBe(0);
     expect(exit).toEqual({ code: 0, signal: null });
     expect(readRunLock(run)).toBeNull();
+    expect(await survivors(run, started)).toEqual([]);
+  }, 60_000);
+
+  // L11 (#1543, #1565; I2). Repeated signals are harmless in both stretches of a shutdown: mid-cleanup with the lock held,
+  // and after the lock is released while the SDK still reaps an agent that ignored SIGTERM. A serve that died in the second
+  // stretch would take the SDK's SIGKILL timer with it and orphan the agent and its MCP child.
+  it("finishes its shutdown and leaves no process behind when SIGTERM and SIGINT arrive again mid-cleanup and after the lock is released", async () => {
+    const run = createRun("resignal");
+    const stalled = path.join(run.dir, "stalled");
+    const release = path.join(run.dir, "release");
+    // Test-only preload: the last cleanup step (lock release) waits for the release file, so the repeated signals land
+    // mid-cleanup with the lock still held.
+    const preload = writePreload(run, "hold-lock-release.mjs", [
+      "import fs from 'node:fs';",
+      "import { syncBuiltinESMExports } from 'node:module';",
+      `const lock = ${JSON.stringify(run.lockFile)}, stalled = ${JSON.stringify(stalled)}, release = ${JSON.stringify(release)};`,
+      "const pause = new Int32Array(new SharedArrayBuffer(4));",
+      "for (const name of ['rmSync', 'unlinkSync']) {",
+      "  const original = fs[name];",
+      "  fs[name] = function (target, ...rest) {",
+      "    if (String(target) === lock) { fs.writeFileSync(stalled, ''); while (!fs.existsSync(release)) Atomics.wait(pause, 0, 0, 10); }",
+      "    return original.call(this, target, ...rest);",
+      "  };",
+      "}",
+      "syncBuiltinESMExports();",
+    ]);
+    const consoleProcess = spawnConsole(run, { preload });
+    const endpoint = await waitForReady(run, consoleProcess.pid!);
+    await openWorkload(run, endpoint, { terminal: false });
+    const started = descendantsOf(consoleProcess.pid!);
+    const agent = agentProcs(run).find((entry) => entry.role === "chat")!;
+    const exited = exitOf(consoleProcess, 40_000);
+
+    consoleProcess.kill("SIGTERM");
+    await waitUntil(() => fs.existsSync(stalled), 10_000, "the shutdown did not reach the lock release");
+    consoleProcess.kill("SIGTERM");
+    consoleProcess.kill("SIGINT");
+    await delay(300);
+    expect(consoleProcess.exitCode ?? consoleProcess.signalCode).toBeNull();
+    fs.writeFileSync(release, "");
+    await waitUntil(() => readRunLock(run) === null, 10_000, "the lock was not released");
+    await delay(300);
+    expect(isAlive(agent.pid), "the SDK must still be reaping the agent after the lock is released").toBe(true);
+    consoleProcess.kill("SIGTERM");
+    consoleProcess.kill("SIGINT");
+    await delay(300);
+    expect(consoleProcess.exitCode ?? consoleProcess.signalCode).toBeNull();
+
+    expect(await exited).toEqual({ code: 0, signal: null });
     expect(await survivors(run, started)).toEqual([]);
   }, 60_000);
 
@@ -357,9 +342,11 @@ afterEach(async () => {
       `if (process.argv[1] === ${JSON.stringify(cliDist)} && process.argv[2] === 'serve') {`,
       "  process.on('exit', (code) => fs.writeFileSync(exited, String(code)));",
       "  const mkdir = fs.promises.mkdir;",
-      // Startup work after the lock is published never settles: the Console holds the lock and stays starting.
+      "  const ownsLock = () => { try { return JSON.parse(fs.readFileSync(lock, 'utf8')).pid === process.pid; } catch { return false; } };",
+      // Startup stands still at its first asynchronous directory creation after this Console published its lock, whatever
+      // that step is: the Console holds the lock and stays starting, as a long durable restore would leave it.
       "  fs.promises.mkdir = function (target, ...rest) {",
-      "    if (String(target).includes('plugin-cache') && fs.existsSync(lock)) { fs.writeFileSync(marker, ''); return new Promise(() => {}); }",
+      "    if (ownsLock()) { fs.writeFileSync(marker, ''); return new Promise(() => {}); }",
       "    return mkdir.call(this, target, ...rest);",
       "  };",
       "  syncBuiltinESMExports();",
@@ -776,7 +763,7 @@ async function uploadAttachment(run: LifecycleRun, endpoint: string): Promise<st
   return added;
 }
 
-function agentProcs(run: LifecycleRun): Array<{ role: string; pid: number }> {
+function agentProcs(run: LifecycleRun): Array<{ role: string; pid: number; at?: number }> {
   try {
     return fs.readFileSync(path.join(run.agentDir, "procs.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
   } catch {
@@ -790,8 +777,20 @@ function own(pid: number): void {
   if (startedAt !== null && !OWNED.has(pid)) OWNED.set(pid, startedAt);
 }
 
+/**
+ * Owns a pid the agent stand-in recorded only while the process holding it started when the record was written: a pid that
+ * died before it was first observed may name someone else's process by now.
+ */
+function ownRecorded(entry: { readonly pid: number; readonly at?: number }): void {
+  const startedAt = processStartTime(entry.pid);
+  if (startedAt === null || OWNED.has(entry.pid) || entry.at === undefined) return;
+  // lstart has one-second resolution and the record follows the start by a process boot at most.
+  if (Math.abs(entry.at - Date.parse(startedAt)) <= 2_000) OWNED.set(entry.pid, startedAt);
+}
+
 function processStartTime(pid: number): string | null {
-  const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" });
+  // The C locale keeps lstart in the one format Date.parse reads.
+  const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", env: { ...process.env, LC_ALL: "C" } });
   return result.status === 0 && result.stdout.trim() ? result.stdout.trim() : null;
 }
 
@@ -823,7 +822,7 @@ function descendantsOf(pid: number): Array<{ readonly pid: number; readonly star
  */
 async function survivors(run: LifecycleRun, started: ReturnType<typeof descendantsOf>): Promise<string[]> {
   const roles = new Map(agentProcs(run).filter((entry) => AGENT_ROLES.has(entry.role)).map((entry) => [entry.pid, entry.role] as const));
-  for (const pid of roles.keys()) own(pid);
+  for (const entry of agentProcs(run)) if (AGENT_ROLES.has(entry.role)) ownRecorded(entry);
   const watched = new Map<number, { readonly startedAt: string | null; readonly name: string }>();
   for (const entry of started) watched.set(entry.pid, { startedAt: entry.startedAt, name: roles.get(entry.pid) ?? entry.command });
   for (const [pid, role] of roles) if (!watched.has(pid)) watched.set(pid, { startedAt: OWNED.get(pid) ?? null, name: role });

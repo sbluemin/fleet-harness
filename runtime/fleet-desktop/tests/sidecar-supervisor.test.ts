@@ -235,6 +235,7 @@ const consoleFixtures = path.resolve(testsDir, "../../fleet-console/tests/fixtur
 const FAKE_AGENT = path.join(consoleFixtures, "lifecycle-fake-agent.mjs");
 const LIFECYCLE_KNOWN_DEFECTS = JSON.parse(fs.readFileSync(path.join(consoleFixtures, "lifecycle-known-defects.json"), "utf8")) as ReadonlyArray<{ readonly case: string; readonly followup: string; readonly releasedBy: string }>;
 const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+const AGENT_ROLES = new Set(["chat", "chat-mcp", "terminal", "terminal-mcp"]);
 // Long enough for anything that reaps after the Console is gone (a containment helper's own grace included).
 const SETTLE_MS = 10_000;
 
@@ -278,6 +279,8 @@ afterEach(async () => {
     const dir = fs.mkdtempSync(path.join(base, "desktop-quit-"));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-lifecycle-desktop-"));
     LIFECYCLE_DIRS.push(dir, tmp);
+    const outside = path.relative(fs.realpathSync(repoRoot), fs.realpathSync(tmp));
+    if (!outside.startsWith("..") && !path.isAbsolute(outside)) throw new Error("TMPDIR must stay outside the checkout");
     const root = path.join(dir, "root");
     const slot = path.join(root, "console");
     const agentDir = path.join(dir, "agent");
@@ -379,7 +382,7 @@ afterEach(async () => {
       await delay(100);
       left = left.filter((entry) => processStartTime(entry.pid) === entry.startedAt);
     }
-    const roles = new Map(agentProcs().map((entry) => [entry.pid, entry.role] as const));
+    const roles = new Map(agentProcs().filter((entry) => AGENT_ROLES.has(entry.role)).map((entry) => [entry.pid, entry.role] as const));
     lifecycleCheck("L4d", left.length === 0, "I2: nothing the Console started outlives it", { detail: left.map((entry) => roles.get(entry.pid) ?? entry.command), signature: false });
   }, 90_000);
 });
@@ -402,7 +405,7 @@ function own(pid: number): void {
 }
 
 function processStartTime(pid: number): string | null {
-  const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" });
+  const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", env: { ...process.env, LC_ALL: "C" } });
   return result.status === 0 && result.stdout.trim() ? result.stdout.trim() : null;
 }
 
