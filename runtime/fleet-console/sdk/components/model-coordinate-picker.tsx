@@ -159,17 +159,22 @@ interface DisplayState {
   readonly provider: LaunchProviderGlyphId | null;
   readonly badge: string | null;
   readonly off: boolean;
+  /** 트리거가 꺼진 저장값 자체를 말하고 있는지(취소선). 로스터가 비어 폴백 좌표를 보일 때는 아니다. */
+  readonly struck: boolean;
 }
 
-/** 트리거가 말할 좌표와 표식. 값이 있으면 그 값(로스터 밖이면 꺼짐), 없으면 기본 좌표, 로스터가 비면 최후 폴백. */
+/**
+ * 트리거가 말할 좌표와 표식. 값이 있으면 그 값(로스터 밖이면 「꺼짐」 — 다시 켜면 그대로 돌아온다), 없으면 기본 좌표.
+ * 로스터가 비면 실행이 서는 최후 폴백 좌표를 「폴백」 표식과 함께 보인다(저장값은 메뉴의 꺼짐 띠에 남는다).
+ */
 function useDisplay(props: ModelCoordinatePickerProps): DisplayState {
   const { roster, value, fallback, labels } = props;
   const stored = value.model ? value : null;
   const off = Boolean(stored?.model) && roster !== null && !findRosterRow(roster, stored!.model);
   let shown: ModelCoordinateValue = stored ?? { model: fallback?.model, effort: value.effort ?? fallback?.effort };
   let badge: string | null = off ? labels.off ?? null : null;
-  if (!stored && roster !== null) {
-    const resolved = resolveRosterCoordinate(roster, {}, { model: fallback?.model, effort: value.effort ?? fallback?.effort });
+  if (roster !== null && (!stored || roster.length === 0)) {
+    const resolved = resolveRosterCoordinate(roster, stored ? { effort: stored.effort } : {}, { model: fallback?.model, effort: value.effort ?? fallback?.effort });
     shown = { model: resolved.model, ...(resolved.effort ? { effort: resolved.effort } : {}) };
     if (resolved.reason === "roster_empty") badge = labels.fallback ?? null;
   }
@@ -179,6 +184,7 @@ function useDisplay(props: ModelCoordinatePickerProps): DisplayState {
     provider: rosterProviderOf(roster, shown.model),
     badge,
     off,
+    struck: off && shown === stored,
   };
 }
 
@@ -187,10 +193,10 @@ function TriggerText({ display, prefix }: { readonly display: DisplayState; read
     <>
       {prefix}
       <ProviderMark provider={display.provider} className="fc-coord-trigger-provider" />
-      <span className={`fc-coord-trigger-model${display.off ? " is-off" : ""}`}>{display.words.model}</span>
+      <span className={`fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
       <span className="fc-coord-trigger-dot" aria-hidden="true">·</span>
       <span className="fc-coord-trigger-effort">{display.words.effort}</span>
-      {display.badge ? <span className={`fc-coord-trigger-badge${display.off ? " is-off" : ""}`}>{display.badge}</span> : null}
+      {display.badge ? <span className={`fc-coord-trigger-badge${display.struck ? " is-off" : ""}`}>{display.badge}</span> : null}
     </>
   );
 }
