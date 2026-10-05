@@ -366,7 +366,7 @@ async function preflight() {
   probeAbort.signal.throwIfAborted();
   const manager = await detectPackageManager();
   probeAbort.signal.throwIfAborted();
-  ensureGlobalRootWritable(manager);
+  ensureGlobalInstallWritable(manager);
   return manager;
 }
 
@@ -598,34 +598,79 @@ async function stopCurrentConsole() {
 async function detectPackageManager() {
   const configured = config.packageManager;
   try {
-    const root = (await new Promise((resolve, reject) => {
-      execFile(configured.bin, [...configured.prefixArgs, "root", "-g"], {
-        encoding: "utf8", signal: probeAbort.signal, killSignal: "SIGKILL", windowsHide: true,
-      }, (error, stdout) => error ? reject(error) : resolve(stdout));
-    })).trim();
+    const root = (await execManagerCommand(configured, ["root", "-g"])).trim();
     if (!root) throw new Error("global package manager root is empty");
     const rootReal = safeRealpath(root);
     const packageReal = normalizeExistingPath(config.currentPackageRoot);
     if (!rootReal || !packageReal) throw new Error("global package manager root could not be resolved");
+    let verifiedRoot = null;
     if (isPathInside(packageReal, rootReal)) {
-      return { ...configured, root: rootReal };
-    }
-    for (const packageName of config.packageNames) {
-      if (packageReal === safeRealpath(path.join(root, packageName))) {
-        return { ...configured, root: rootReal };
+      verifiedRoot = rootReal;
+    } else {
+      for (const packageName of config.packageNames) {
+        if (packageReal === safeRealpath(path.join(root, packageName))) {
+          verifiedRoot = rootReal;
+          break;
+        }
       }
     }
+    if (!verifiedRoot) throw updateFailure(reasons.preflightFailed, "no supported global package manager found");
+    probeAbort.signal.throwIfAborted();
+    const binDir = await resolveGlobalBinDir(configured);
+    probeAbort.signal.throwIfAborted();
+    return { ...configured, root: verifiedRoot, binDir };
   } catch (error) {
+    if (error && error.updateReason) throw error;
     throw updateFailure(reasons.preflightFailed, "no supported global package manager found: " + sanitizeError(error));
   }
-  throw updateFailure(reasons.preflightFailed, "no supported global package manager found");
 }
 
-function ensureGlobalRootWritable(manager) {
+function execManagerCommand(managerConfig, args) {
+  return new Promise((resolve, reject) => {
+    execFile(managerConfig.bin, [...managerConfig.prefixArgs, ...args], {
+      encoding: "utf8", signal: probeAbort.signal, killSignal: "SIGKILL", windowsHide: true,
+    }, (error, stdout) => error ? reject(error) : resolve(stdout));
+  });
+}
+
+async function resolveGlobalBinDir(managerConfig) {
+  // global-package-updater.ts의 resolveNpmGlobalBinDir/normalizeGlobalBinPath와 같은 판정이다.
+  // worker는 복사된 lifecycle runtime만으로 자족해야 하므로(계약 Its runtime) path 판정을
+  // inline으로 mirror한다 — 기존 safeRealpath/normalizePath/isPathInside와 같은 방식이다.
+  // npm 9+에는 npm bin -g가 없으므로 prefix에서 유도한다. 양쪽을 함께 고친다.
+  try {
+    let raw;
+    if (managerConfig.command === "npm") {
+      const prefix = (await execManagerCommand(managerConfig, ["prefix", "-g"])).trim();
+      if (!prefix) throw new Error("global npm prefix is empty");
+      raw = os.platform() === "win32"
+        ? path.win32.resolve(prefix).toLowerCase()
+        : path.posix.join(path.posix.resolve(prefix), "bin");
+    } else {
+      const bin = (await execManagerCommand(managerConfig, ["bin", "-g"])).trim();
+      if (!bin) throw new Error("global pnpm bin is empty");
+      raw = os.platform() === "win32"
+        ? path.win32.resolve(bin).toLowerCase()
+        : path.posix.resolve(bin);
+    }
+    const real = safeRealpath(raw);
+    return real || raw;
+  } catch (error) {
+    if (error && error.updateReason) throw error;
+    throw updateFailure(reasons.preflightFailed, "no supported global package manager found: " + sanitizeError(error));
+  }
+}
+
+function ensureGlobalInstallWritable(manager) {
   try {
     fs.accessSync(manager.root, fs.constants.W_OK);
   } catch {
     throw updateFailure(reasons.preflightFailed, "global package manager root is not writable");
+  }
+  try {
+    fs.accessSync(manager.binDir, fs.constants.W_OK);
+  } catch {
+    throw updateFailure(reasons.preflightFailed, "global package manager bin is not writable");
   }
 }
 

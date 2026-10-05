@@ -26,6 +26,8 @@ type MaybePromise<T> = T | Promise<T>;
 export interface GlobalPackageManagerInstall {
   readonly command: GlobalPackageManagerCommand;
   readonly globalRoot: string;
+  /** 전역 설치가 쓰는 bin 디렉터리: npm은 `prefix -g`의 bin(POSIX)·prefix 자체(Windows), pnpm은 `bin -g`. */
+  readonly globalBinDir: string;
   readonly resolved: ResolvedBinary;
 }
 
@@ -104,6 +106,29 @@ export function formatConsoleReleaseInstallCommands(manifest: Pick<ConsoleReleas
   return [`npm i -g ${url}`, `pnpm add -g ${url}`];
 }
 
+/**
+ * npm 전역 bin 디렉터리: `prefix -g`의 bin(POSIX), prefix 자체(Windows).
+ * npm 9+에는 `npm bin -g`가 없으므로 prefix에서 유도한다.
+ * host 조기 검사의 판정이며, worker preflight(host/update-apply.ts의 resolveGlobalBinDir)가
+ * 같은 규칙을 inline으로 mirror한다. 양쪽을 함께 고친다.
+ */
+function resolveNpmGlobalBinDir(prefixOutput: string, platform: NodeJS.Platform): string {
+  const prefix = prefixOutput.trim();
+  if (platform === "win32") {
+    return path.win32.resolve(prefix).toLowerCase();
+  }
+  return path.posix.join(path.posix.resolve(prefix), "bin");
+}
+
+/** pnpm 전역 bin 디렉터리: `pnpm bin -g` 출력 자체. worker preflight가 같은 규칙을 mirror한다. */
+function normalizeGlobalBinPath(binOutput: string, platform: NodeJS.Platform): string {
+  const value = binOutput.trim();
+  if (platform === "win32") {
+    return path.win32.resolve(value).toLowerCase();
+  }
+  return path.posix.resolve(value);
+}
+
 function resolveDeps(deps: CreateGlobalPackageUpdaterDeps): ResolvedUpdaterDeps {
   if (deps.packageNames.length === 0) {
     throw new Error("packageNames must contain at least one package");
@@ -176,10 +201,35 @@ function createManagerDetection(
   if (!deps.canWrite(globalRoot)) {
     return { manager: undefined, reason: "permission" };
   }
+  // 전역 설치는 lib/node_modules와 bin 양쪽에 쓴다. bin이 막히면 `npm i -g`가
+  // 실패하므로 root만 보고 수락하지 않고 같은 permission으로 거절한다.
+  let rawBinDir: string;
+  try {
+    if (command === "npm") {
+      const prefixOutput = deps.execFile(resolved.bin, [...resolved.prefixArgs, "prefix", "-g"]);
+      rawBinDir = resolveNpmGlobalBinDir(prefixOutput, deps.platform);
+    } else {
+      const binOutput = deps.execFile(resolved.bin, [...resolved.prefixArgs, "bin", "-g"]);
+      rawBinDir = normalizeGlobalBinPath(binOutput, deps.platform);
+    }
+  } catch (error) {
+    deps.report?.(`Failed to detect global ${command} bin: ${formatError(error)}`);
+    return { manager: undefined, reason: "permission" };
+  }
+  let binDir = rawBinDir;
+  try {
+    binDir = normalizePath(deps, deps.realpath(rawBinDir));
+  } catch {
+    // 존재하지 않거나 읽을 수 없는 bin은 아래 쓰기 검사에서 걸러진다.
+  }
+  if (!deps.canWrite(binDir)) {
+    return { manager: undefined, reason: "permission" };
+  }
   return {
     manager: {
       command,
       globalRoot,
+      globalBinDir: binDir,
       resolved,
     },
     reason: undefined,
