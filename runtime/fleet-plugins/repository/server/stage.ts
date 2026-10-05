@@ -157,7 +157,8 @@ export async function handleRepositoryDiscard(
   if (tracked === null || untracked === null) { ctx.host.http.writeJson(res, 400, { error: "invalid_paths" }); return; }
   try {
     if (tracked.length > 0) {
-      await runGit(["restore", "--worktree", "--", ...literalPathspecs(tracked)], { cwd: resolved.gitCwd });
+      // A smudge filter (git-lfs) may download while restoring, so the Console owns this git like a fetch.
+      await runGit(["restore", "--worktree", "--", ...literalPathspecs(tracked)], { cwd: resolved.gitCwd, processes: ctx.host.processes });
     }
     if (untracked.length > 0) {
       // clean은 저장소 경계 안에서만 지운다 — fs 직접 삭제 대신 git의 경계 판정을 그대로 쓴다.
