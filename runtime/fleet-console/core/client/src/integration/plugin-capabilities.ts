@@ -116,6 +116,7 @@ export function createHostCapabilities(
     // 모델 로스터 — Settings › AI Gateway에서 켠 모델. 모든 모델 선택지가 이 캐시 하나를 읽는다.
     models: {
       read: (target) => readModelRoster(target),
+      load: (target) => loadModelRoster(target),
       subscribe: (listener) => subscribeModelRoster(listener),
       refresh: () => refreshModelRoster(),
     },

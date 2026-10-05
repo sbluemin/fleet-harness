@@ -67,12 +67,17 @@ function wire(): void {
   });
 }
 
-/** 지금 캐시된 로스터. 처음 읽는 대상이면 읽기를 시작하고 null을 돌려준다. */
-export function readModelRoster(target: ModelRosterTarget): ModelRoster | null {
+/**
+ * 앱 시작 때 한 번 — 다른 탭·기기에서 바꾼 로스터 브로드캐스트를 듣는다. 선택기가 하나도 열려 있지 않아도 운영 카탈로그
+ * (Quick Launch·채팅 좌표·캔버스)가 같은 신호로 다시 읽어야 하기 때문이다.
+ */
+export function installModelRosterSync(): void {
   wire();
-  const cached = cache.get(target);
-  if (!cached && !inflight.has(target)) void load(target);
-  return cached ?? null;
+}
+
+/** 지금 캐시된 로스터. 부수효과가 없다 — 아직 읽지 않았으면 null이다(읽기는 `loadModelRoster`가 시작한다). */
+export function readModelRoster(target: ModelRosterTarget): ModelRoster | null {
+  return cache.get(target) ?? null;
 }
 
 export function loadModelRoster(target: ModelRosterTarget): Promise<ModelRoster> {

@@ -39,6 +39,7 @@ import { fetchGlobalSettingsState } from "../../../../features/settings/client/g
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
 import { connectOperationsSse, installOperationsSseWake } from "../integration/operations-sse.js";
 import { installOperationArchive } from "../integration/operation-archive.js";
+import { installModelRosterSync } from "../../../../features/ai-gateway/client/model-roster-store.js";
 import { installModalOpenMarker } from "../integration/modal-open-marker.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
@@ -128,6 +129,8 @@ if (app && hostPicker) {
   installConsoleUseGestures({ operations: () => operationsIncludingNested(), subscribeConsoleChannel });
   // 보관함의 수와 목록 — 보관된 Operation은 일반 목록에 없으므로 자기 사건으로 따라간다.
   installOperationArchive(subscribeConsoleChannel);
+  // 모델 로스터 변경(다른 탭·기기의 AI Gateway 저장)이 운영 카탈로그와 모든 모델 선택지를 다시 읽게 한다.
+  installModelRosterSync();
   connectOperationsSse();
   installOperationsSseWake();
   consumeInitialZenModeParam();
