@@ -17,6 +17,8 @@ import { subscribeConsoleChannel, subscribeConsoleReconnect } from "../../../cor
 const cache = new Map<ModelRosterTarget, ModelRoster>();
 const inflight = new Map<ModelRosterTarget, Promise<ModelRoster>>();
 const stale = new Set<ModelRosterTarget>();
+/** 한 번이라도 읽기를 시작한 대상 — 첫 읽기가 진행 중이거나 실패해 캐시에 없어도 다시 읽기 신호를 받는다. */
+const requested = new Set<ModelRosterTarget>();
 const listeners = new Set<() => void>();
 let wired = false;
 
@@ -25,6 +27,7 @@ function emit(): void {
 }
 
 function load(target: ModelRosterTarget): Promise<ModelRoster> {
+  requested.add(target);
   const running = inflight.get(target);
   if (running) {
     // 읽는 중에 바뀌었다는 신호가 오면 끝난 뒤 한 번 더 읽는다 — 이미 떠난 요청은 옛 값을 들고 올 수 있다.
@@ -49,9 +52,13 @@ function load(target: ModelRosterTarget): Promise<ModelRoster> {
   return request;
 }
 
-/** 읽은 적 있는 대상만 다시 읽는다 — 아무도 보지 않는 대상까지 미리 당기지 않는다. */
+/**
+ * 읽기를 시작한 적 있는 대상만 다시 읽는다 — 아무도 보지 않는 대상까지 미리 당기지 않는다. 캐시가 아니라 요청 기록을 도는
+ * 이유: 첫 읽기가 진행 중이면 끝난 뒤 한 번 더 읽어야 하고(옛 응답이 바뀐 로스터를 덮지 않게), 실패했으면 재접속·화면 복귀·
+ * 변경 신호에서 다시 읽어야 열린 선택기가 「읽는 중」에 갇히지 않는다.
+ */
 export function refreshModelRoster(): void {
-  for (const target of cache.keys()) void load(target);
+  for (const target of requested) void load(target);
 }
 
 function wire(): void {

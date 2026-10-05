@@ -433,6 +433,18 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
   const display = useDisplay(props);
   const rowLabel = React.useContext(MobileSettingsRowLabelContext);
   const [open, setOpen] = React.useState(false);
+  // on-close — 시트가 열려 있는 동안 고른 좌표는 시트에만 보이고, 닫힐 때 지금 값과 다르면 한 번 알린다(데스크톱 메뉴와 같은
+  // 계약). 모델과 강도를 차례로 고르는 한 번의 선택이 두 번의 저장(세션 재기동)이 되지 않게 한다. 기본값 되돌리기·선택 방식은 따로 곧바로다.
+  const commitOnClose = props.commit === "on-close";
+  const draftRef = React.useRef<{ readonly model: string; readonly effort?: string } | null>(null);
+  const [draft, setDraft] = React.useState<{ readonly model: string; readonly effort?: string } | null>(null);
+  const keepDraft = (next: { readonly model: string; readonly effort?: string } | null) => { draftRef.current = next; setDraft(next); };
+  const closeSheet = () => {
+    setOpen(false);
+    const last = draftRef.current;
+    keepDraft(null);
+    if (last && (last.model !== value.model || (last.effort ?? "") !== (value.effort ?? ""))) onChange(last);
+  };
   const text = props.trigger?.text ?? `${display.words.model} · ${display.words.effort}${display.badge ? ` · ${display.badge}` : ""}`;
   if (locked) return <span className="fc-select__trigger fc-select--mobile fc-coord-trigger is-locked"><span className="fc-select__value">{text}</span></span>;
   return (
@@ -444,14 +456,14 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
         <Sheet
           title={rowLabel ?? labels.menu}
           roster={roster ?? []}
-          value={value.model ? value : display.shown}
-          onSelect={(next) => onChange(next)}
+          value={draft ?? (value.model ? value : display.shown)}
+          onSelect={(next) => { if (commitOnClose) keepDraft(next); else onChange(next); }}
           effort={props.effort ?? "track"}
           effortLabel={labels.effort}
           {...(labels.off ? { offLabel: labels.off } : {})}
-          {...(extras ? { extras } : {})}
-          {...(reset ? { reset } : {})}
-          onClose={() => setOpen(false)}
+          {...(extras ? { extras: commitOnClose ? extras.map((extra) => ({ ...extra, onPick: () => { keepDraft(null); extra.onPick(); } })) : extras } : {})}
+          {...(reset ? { reset: commitOnClose ? { ...reset, onSelect: () => { keepDraft(null); reset.onSelect(); } } : reset } : {})}
+          onClose={closeSheet}
         />
       ) : null}
     </>
