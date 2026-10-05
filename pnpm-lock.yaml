@@ -519,9 +519,6 @@ importers:
 
   runtime/fleet-plugins/codex:
     dependencies:
-      '@fleet-console/ai-gateway':
-        specifier: workspace:*
-        version: link:../../fleet-console/features/ai-gateway/runtime
       '@fleet-console/infra':
         specifier: workspace:*
         version: link:../../fleet-console/foundation/infra

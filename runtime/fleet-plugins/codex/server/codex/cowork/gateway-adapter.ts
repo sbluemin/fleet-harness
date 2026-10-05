@@ -1,10 +1,9 @@
 import { EventEmitter } from "node:events";
 
-import type { AgentHost, AgentEvent, AgentSession, AgentEffort } from "@fleet-console/sdk/agent";
+import type { AgentHost, AgentEvent, AgentSession } from "@fleet-console/sdk/agent";
+import { isAgentEffort } from "@fleet-console/sdk/models";
+import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import type { CoworkAgentClient, CoworkConnectOptions, CoworkConnector } from "./index.js";
-
-/** 게이트웨이 강도 사다리. 여기 없는 값은 싣지 않는다 — 사용자가 고르지 않은 강도로 도는 것보다 낫다. */
-const GATEWAY_EFFORTS = new Set<AgentEffort>(["low", "medium", "high", "xhigh", "max"]);
 
 /**
  * 한 턴이 아무 종료 신호 없이 늘어지는 것을 끊는 상한.
@@ -15,15 +14,28 @@ const TURN_WATCHDOG_MS = 10 * 60 * 1000;
 
 export interface CoworkGatewayAdapterDeps {
   readonly agent: AgentHost;
+  /**
+   * Console의 모델 로스터 해석. 세션 좌표(정준 id)를 Agent SDK wire id로 풀고, Gateway에서 끈 모델은 폴백 좌표로
+   * 실행한다. 없는 호스트에서는 좌표를 그대로 싣는다.
+   */
+  readonly models?: Pick<FleetPluginModelsHost, "resolve">;
 }
 
 export function createCoworkGatewayConnector(deps: CoworkGatewayAdapterDeps): CoworkConnector {
   return {
     async connect(options: CoworkConnectOptions): Promise<CoworkAgentClient> {
       const client = new CoworkGatewayClient();
+      const coordinate = deps.models?.resolve({ model: options.model ?? null, effort: options.effort ?? null }, "agent");
+      if (coordinate?.fallback) {
+        // 실행 기록에는 좌표만 남긴다 — 프롬프트·문서 내용은 싣지 않는다.
+        console.warn(`[codex] cowork model ${options.model || "(default)"} unavailable (${coordinate.reason ?? "fallback"}); running ${coordinate.model}`);
+      }
+      const model = coordinate?.wireModel ?? (options.model || "sonnet");
+      // 강도는 Agent SDK 사다리에 있는 값만 싣는다 — 사용자가 고르지 않은 강도로 도는 것보다 낫다.
+      const effort = coordinate ? coordinate.effort : options.effort;
       const session = await deps.agent.createSession({
-        model: options.model || "sonnet",
-        ...(options.effort && GATEWAY_EFFORTS.has(options.effort as AgentEffort) ? { effort: options.effort as AgentEffort } : {}),
+        model,
+        ...(isAgentEffort(effort) ? { effort } : {}),
         systemPrompt: options.systemPrompt,
         tools: { builtins: [], custom: options.tools },
         continuation: "oneshot",
