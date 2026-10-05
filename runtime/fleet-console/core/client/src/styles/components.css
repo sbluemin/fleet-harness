@@ -7885,8 +7885,9 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: var(--grp-color);
 }
 
-/* 맡은 이 표식(사령관이 개시한 목표 등) — 사령관 스위치와 같은 사각 문법: 켬은 채운 brass, 끔은 빈 사각.
-   줄은 자리를 옮기지 않고 채움만 바뀐다. 맡은 이의 줄에 머무는 동안(is-emphasized)은 스위치의 고리와 같은 brass 고리로 함께 밝아진다. */
+/* 맡은 이 표식(사령관의 목표 등) — 맡은 이 스위치와 같은 문법: 켬은 brass, 끔은 가라앉은 표식.
+   줄은 자리를 옮기지 않고 켬·끔만 바뀐다. 맡은 이의 줄에 머무는 동안(is-emphasized)은 스위치의 고리와 같은 brass 고리로 함께 밝아진다.
+   플러그인이 맡은 이의 글리프를 주지 않으면 사각을 그린다. */
 .side-bar-cluster-row-mark {
   flex: none;
   box-sizing: border-box;
@@ -7894,7 +7895,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 9px;
   border-radius: 2.5px;
   background: var(--brass);
-  transition: box-shadow var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+  transition: box-shadow var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring), opacity var(--duration-fast) var(--ease-spring);
 }
 
 .side-bar-cluster-row-mark.is-hollow {
@@ -7906,25 +7907,31 @@ body[data-companion-resizing="true"] .canvas-operation {
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--brass) 22%, transparent);
 }
 
-/* 출처 글 앞의 작은 사각 — 같은 맡은 이의 손. 줄 끝 표식과 같은 채움 문법이다. */
-.side-bar-cluster-row-meta .has-square {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.side-bar-cluster-row-square {
-  flex: none;
-  box-sizing: border-box;
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  background: var(--brass);
-}
-
-.side-bar-cluster-row-square.is-hollow {
+/* 맡은 이의 글리프 — 스위치 글리프를 줄 크기로. 잉크는 스위치와 같다: 켬은 brass 잉크, 끔은 tertiary 로 가라앉힌다. */
+.side-bar-cluster-row-mark.has-glyph {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 3px;
   background: transparent;
-  border: 1.2px solid var(--brass);
+  color: var(--brass-ink);
+}
+
+.side-bar-cluster-row-mark.has-glyph.is-hollow {
+  color: var(--text-tertiary);
+  opacity: 0.7;
+}
+
+.side-bar-cluster-row-mark.has-glyph.is-emphasized {
+  opacity: 1;
+}
+
+.side-bar-cluster-row-mark.has-glyph > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,9 +1,10 @@
 import type { LocalizedText } from "@fleet-console/sdk/i18n";
-import type { ConsoleOperationSummary, OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowMark, OperationClusterRowNote, OperationClusterRowProvenance, OperationClusterRowSquare, OperationClusterSource } from "@fleet-console/sdk/plugin";
+import type { ConsoleOperationSummary, OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowMark, OperationClusterRowNote, OperationClusterRowProvenance, OperationClusterSource } from "@fleet-console/sdk/plugin";
 
 import { stalledObjectives, type BoardObservation, type BoardObserver } from "../server/board-state.js";
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
-import { actorKind, actorName, commencedByCommodore, lastAct } from "./actors.js";
+import { actorKind, actorName, addedByCommodore, commencedByCommodore, lastAct } from "./actors.js";
+import { renderCommodoreRowGlyph } from "./commodore-mention-glyph.js";
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
@@ -69,8 +70,8 @@ const NOTE_KEYS = new Map<OperationClusterRowNote, string>([[NOTE_ANSWERING, "an
 const ZONE_HANDLING = (locale: "en" | "ko") => getT(locale)("objectives.commodore.zone.handling");
 
 /**
- * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 사각이 서지 않는다),
- * `autonomy` 는 글리프(사각의 채움), `peek` 는 사람이 사령관 줄에 머무는 중(사각이 함께 밝아진다).
+ * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다),
+ * `autonomy` 는 스위치(표식의 켬·끔), `peek` 는 사람이 사령관 줄에 머무는 중(표식이 함께 밝아진다).
  */
 export interface CommodoreBoard { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled?: boolean; readonly autonomy?: boolean; readonly peek?: boolean }
 const NO_COMMODORE: CommodoreBoard = { active: false, stalled: [] };
@@ -85,18 +86,13 @@ function ageOf(at: number, now: number): { readonly unit: "now" } | { readonly u
 }
 
 /**
- * 줄 둘째 줄의 출처 — 사람이 아닌 손이 더한 목표면 그 손(사람은 기본 주인이라 적지 않고, 후속은 `followup` 이 원천을 말한다),
- * 그리고 마지막으로 손댄 이와 그 행위·때. 사령관의 손은 사령관 스위치와 같은 사각으로 시작한다(실험 기능이 꺼지면 글만 남는다).
+ * 줄 둘째 줄의 출처 — 다른 세션이 더한 목표면 그 세션(사람은 기본 주인이라 적지 않고, 후속은 `followup` 이 원천을 말하며,
+ * 사령관이 더한 목표는 줄 끝 사령관 표식이 말한다), 그리고 마지막으로 손댄 이와 그 행위·때. 사령관의 손은 brass 글자로만 선다.
  */
-function provenanceOf(objective: Objective, board: CommodoreBoard, now: number): OperationClusterRowProvenance[] {
-  const square: OperationClusterRowSquare | undefined = board.enabled ? (board.autonomy ? "filled" : "hollow") : undefined;
-  const commodoreHand = { tone: "accent" as const, ...(square ? { square } : {}) };
+function provenanceOf(objective: Objective, now: number): OperationClusterRowProvenance[] {
   const out: OperationClusterRowProvenance[] = [];
   const added = objective.addedBy;
-  if (added && !objective.origin) {
-    if ("kind" in added) out.push({ text: (locale) => getT(locale)("objectives.prov.addedByCommodore"), ...commodoreHand });
-    else out.push({ text: (locale) => { const t = getT(locale); return t("objectives.prov.addedBy", { who: added.title ?? t("objectives.actor.agent") }); } });
-  }
+  if (added && !("kind" in added) && !objective.origin) out.push({ text: (locale) => { const t = getT(locale); return t("objectives.prov.addedBy", { who: added.title ?? t("objectives.actor.agent") }); } });
   const last = lastAct(objective);
   if (last) {
     const age = ageOf(last.at, now);
@@ -105,17 +101,20 @@ function provenanceOf(objective: Objective, board: CommodoreBoard, now: number):
         const t = getT(locale);
         return t("objectives.prov.recent", { who: actorName(t, last.by), act: t(`objectives.prov.act.${last.act}`), age: age.unit === "now" ? t("objectives.prov.age.now") : t(`objectives.prov.age.${age.unit}`, { n: age.n }) });
       },
-      ...(actorKind(last.by) === "commodore" ? commodoreHand : {}),
+      ...(actorKind(last.by) === "commodore" ? { tone: "accent" as const } : {}),
     });
   }
   return out;
 }
 
-/** 사령관이 개시한 목표의 줄 끝 사각 — 실험 기능이 꺼져 있으면 서지 않고, 자율 운영 글리프를 따라 채움이 바뀐다. */
+/**
+ * 사령관의 목표(사령관이 더했거나 개시했다)의 줄 끝 표식 — 사령관 스위치와 같은 글리프다. 실험 기능이 꺼져 있으면 서지 않고,
+ * 자율 운영 스위치를 따라 켬·끔이 바뀐다.
+ */
 function commodoreMarkOf(objective: Objective, board: CommodoreBoard): OperationClusterRowMark | undefined {
-  if (!board.enabled || !commencedByCommodore(objective)) return undefined;
+  if (!board.enabled || !(addedByCommodore(objective) || commencedByCommodore(objective))) return undefined;
   const on = board.autonomy === true;
-  return { square: on ? "filled" : "hollow", ...(board.peek ? { emphasized: true } : {}), label: (locale) => getT(locale)(on ? "objectives.mark.commodore.on" : "objectives.mark.commodore.off") };
+  return { square: on ? "filled" : "hollow", renderGlyph: renderCommodoreRowGlyph, ...(board.peek ? { emphasized: true } : {}), label: (locale) => getT(locale)(on ? "objectives.mark.commodore.on" : "objectives.mark.commodore.off") };
 }
 
 /**
@@ -134,7 +133,7 @@ function commodoreNotes(objective: Objective, board: CommodoreBoard, stalled: bo
 /** 사이드바 줄 — 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
 function rowOf(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined, board: CommodoreBoard = NO_COMMODORE, stalled = false, now = Date.now()): OperationClusterRow | null {
   if (objective.removed || objective.done) return null;
-  const provenance = provenanceOf(objective, board, now);
+  const provenance = provenanceOf(objective, now);
   const mark = commodoreMarkOf(objective, board);
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
@@ -262,7 +261,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
 
 const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.zoneNote ? "zone" : "", row.selected === true,
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
-  row.provenance?.map((part) => [resolveText(part.text), part.square ?? "", part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label)] : null] : null);
+  row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label)] : null] : null);
 const resolveText = (text: LocalizedText): string => (typeof text === "string" ? text : text("en"));
 const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
