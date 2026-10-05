@@ -9,6 +9,7 @@ import { CommodoreDrawerHost } from "./commodore-drawer.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, commodoreTheaterMobileRow, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { CommodoreMenuItem, CommodoreRow } from "./commodore-row.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
+import { installLaunchRoster } from "./launch-control.js";
 import { COMMODORE_ENTRY_ID, commodoreDestinationShown, installCommodoreState, isCommodoreEnabled, subscribeCommodoreMentions } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
 import { decisionAttentionItems, MobileObjectiveDetail, MobileObjectiveList, OBJECTIVE_MOBILE_DETAIL_PANE, subscribeDecisionAttention } from "./mobile.js";
@@ -123,9 +124,11 @@ const objectivesPlugin = definePlugin({
   install: (ctx) => {
     const dispose = installObjectiveState(ctx);
     const disposeCommodore = installCommodoreState(ctx);
+    // 지휘관·구성원 메뉴는 Console 모델 로스터를 구독한다.
+    const disposeRoster = installLaunchRoster(ctx.models);
     const theaterId = activeTheaterId();
     if (theaterId) void loadTheater(ctx.api, theaterId);
-    return () => { disposeCommodore(); dispose(); };
+    return () => { disposeRoster(); disposeCommodore(); dispose(); };
   },
   onMapOperationSelected: handleMapOperationSelected,
   railEntries: [objectivesEntry, commodoreEntry],

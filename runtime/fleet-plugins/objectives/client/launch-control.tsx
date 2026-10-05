@@ -1,11 +1,12 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import { ModelCoordinatePicker } from "@fleet-console/sdk/components/model-coordinate-picker";
 import type { ModelRoster } from "@fleet-console/sdk/models";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import type { Translate } from "@fleet-console/sdk/i18n";
-import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import type { ClientModelsCapability } from "@fleet-console/sdk/plugin";
+import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
 import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
@@ -18,38 +19,32 @@ export const DEFAULT_LAUNCH = { model: "opus[1m]", effort: "high" } as const;
 
 export interface LaunchGroup { readonly provider: LaunchProviderGlyphId | null; readonly caption: string; readonly rows: readonly OperationLaunchVariantRow[] }
 
-let cached: readonly LaunchGroup[] | null = null;
-let cachedAt = 0;
-const CACHE_MS = 60_000;
+/**
+ * 지휘관·구성원 메뉴의 원천 — Console 모델 로스터(`launch` 대상). 코어 캐시 하나를 구독하므로 Settings › AI Gateway에서
+ * 모델을 켜고 끄면(다른 탭·기기 포함) 열려 있는 메뉴도 곧 다시 그린다. 플러그인이 설치될 때 능력을 받는다.
+ */
+let models: ClientModelsCapability | null = null;
+/** 마지막으로 투영한 띠 — 리액트 밖의 이름 조회(modelFullName)가 쓴다. */
+let lastGroups: readonly LaunchGroup[] = [];
+let lastRoster: ModelRoster | null = null;
 
-export async function loadLaunchGroups(signal?: AbortSignal): Promise<readonly LaunchGroup[]> {
-  if (cached && Date.now() - cachedAt < CACHE_MS) return cached;
-  const plugins = await fetchOperationCatalog(signal);
-  const groups: LaunchGroup[] = [];
-  const seen = new Set<string>();
-  for (const plugin of plugins) {
-    for (const kind of plugin.kinds) {
-      for (const group of kind.variants ?? []) {
-        const rows = group.rows.filter((row) => { const model = row.launch.model; if (!model || seen.has(model)) return false; seen.add(model); return true; });
-        if (rows.length === 0) continue;
-        const provider = launchProviderFromGroupId(group.id) ?? launchProviderFromModelId(rows[0]!.launch.model);
-        groups.push({ provider, caption: provider ? launchProviderCaption(provider) : group.label, rows });
-      }
-    }
-  }
-  cached = groups;
-  cachedAt = Date.now();
-  return groups;
+export function installLaunchRoster(capability: ClientModelsCapability): () => void {
+  models = capability;
+  return () => { if (models === capability) models = null; };
+}
+
+function toLaunchGroups(roster: ModelRoster | null): readonly LaunchGroup[] {
+  if (roster === lastRoster) return lastGroups;
+  lastRoster = roster;
+  lastGroups = (roster ?? []).map((group) => {
+    const provider = launchProviderFromGroupId(group.id) ?? launchProviderFromModelId(group.rows[0]?.launch.model);
+    return { provider, caption: provider ? launchProviderCaption(provider) : group.label, rows: group.rows };
+  });
+  return lastGroups;
 }
 
 export function useLaunchGroups(): readonly LaunchGroup[] {
-  const [groups, setGroups] = useState<readonly LaunchGroup[]>(cached ?? []);
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadLaunchGroups(controller.signal).then(setGroups).catch(() => undefined);
-    return () => controller.abort();
-  }, []);
-  return groups;
+  return toLaunchGroups(useModelRoster(models, "launch"));
 }
 export const useLaunchRows = (): readonly OperationLaunchVariantRow[] => useLaunchGroups().flatMap((group) => group.rows);
 
@@ -96,7 +91,6 @@ export function routingReason(t: Translate<ObjectiveMessageKey>, code: string): 
   const key = `objectives.routing.reason.${code}`;
   return key in objectivesEn ? t(key as ObjectiveMessageKey) : t("objectives.routing.reason.other", { code });
 }
-export const loadLaunchRows = async (signal?: AbortSignal) => (await loadLaunchGroups(signal)).flatMap((group) => group.rows);
 
 /** "Opus" / "HIGH" — 카드·행·메뉴가 같은 낱말을 쓴다. 카탈로그에 없는 모델은 id 그대로. */
 export function launchWords(rows: readonly OperationLaunchVariantRow[], model: string | undefined, effort: string | undefined, autoLabel: string): { readonly model: string; readonly effort: string } {
@@ -130,7 +124,7 @@ export function modelFullName(rows: readonly OperationLaunchVariantRow[], model:
   // 라우팅은 "codex/gpt-…", 카탈로그는 "codex--gpt-…" — 같은 모델의 두 표기.
   const id = canonicalModelId(model);
   const row = findLaunchRow(rows, model);
-  const group = row ? cached?.find((candidate) => candidate.rows.includes(row)) : undefined;
+  const group = row ? lastGroups.find((candidate) => candidate.rows.includes(row)) : undefined;
   const provider = group?.provider ?? launchProviderFromModelId(id);
   const caption = group?.caption ?? (provider ? launchProviderCaption(provider) : null);
   const name = row?.label ?? prettyModelId(id.includes("--") ? id.slice(id.indexOf("--") + 2) : id);
@@ -180,14 +174,9 @@ interface LaunchControlProps {
   readonly commitOnClose?: boolean;
 }
 
-/** 운영 카탈로그의 띠를 선택기의 로스터 모양으로 — 띠 id가 공급자 글리프를 말한다. 아직 읽기 전이면 null. */
+/** 선택기의 로스터 — 아직 읽기 전이면 null(메뉴가 「읽는 중」을 보인다). */
 function useLaunchRoster(): ModelRoster | null {
-  const groups = useLaunchGroups();
-  return useMemo(() => groups.length === 0 ? null : groups.map((group, index) => ({
-    id: group.provider ? `gateway:${group.provider}` : `etc-${index}`,
-    label: group.caption,
-    rows: group.rows,
-  })), [groups]);
+  return useModelRoster(models, "launch");
 }
 
 export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption, commitOnClose = false }: LaunchControlProps) {

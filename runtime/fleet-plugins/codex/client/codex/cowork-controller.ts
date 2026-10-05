@@ -475,7 +475,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   // Settings › AI Gateway에서 모델을 켜고 끄면(다른 탭·기기 포함) 목록과 「꺼짐」 폴백 표식도 따라간다.
   // 캐시는 읽은 적 있는 대상만 다시 읽으므로 한 번 읽어 두어야 바뀐 신호가 온다.
   const unsubscribeModels = hostCapabilities.bound()?.models?.subscribe(refreshOptions);
-  hostCapabilities.bound()?.models?.read("agent");
+  void hostCapabilities.bound()?.models?.load("agent").catch(() => undefined);
 
   // ── 세션 수명주기 ───────────────────────────────────────────────────────────
 

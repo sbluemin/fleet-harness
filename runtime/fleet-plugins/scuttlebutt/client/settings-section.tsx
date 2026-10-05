@@ -1,6 +1,6 @@
 import { ModelCoordinatePicker } from "@fleet-console/sdk/components/model-coordinate-picker";
 import { isAgentEffort } from "@fleet-console/sdk/models";
-import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
+import { React, useModelRoster, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 import {
   ExperimentalBadge,
   SettingsCard,
@@ -12,7 +12,7 @@ import {
   useMobileSettingsHost,
 } from "@fleet-console/sdk/settings/browser";
 
-import { readAideRoster, subscribeAideRoster } from "./console-read.js";
+import { aideModels } from "./console-read.js";
 
 import {
   BIRD_WIDTH_STEP,
@@ -215,7 +215,7 @@ function ModelRow({ t, saving, model, effort, onSave }: {
   readonly effort: string;
   readonly onSave: (patch: Parameters<typeof writeScuttlebuttSettings>[0]) => Promise<void>;
 }) {
-  const roster = useStoreSnapshot(subscribeAideRoster, readAideRoster);
+  const roster = useModelRoster(aideModels(), "agent");
   return (
     <SettingsRow
       label={t("settings.section.model")}

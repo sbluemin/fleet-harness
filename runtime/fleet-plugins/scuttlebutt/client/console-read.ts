@@ -1,5 +1,4 @@
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
-import type { ModelRoster } from "@fleet-console/sdk/models";
 
 import type { ConsoleSnapshotPayload } from "./chat-session.js";
 
@@ -49,13 +48,9 @@ export function readConsoleSnapshot(): ConsoleSnapshotPayload | null {
 }
 
 /**
- * 부관 좌표의 선택지 — Console의 모델 로스터(Agent SDK 대상). 첫 읽기가 로스터 읽기를 시작하고, 아직이면 null이다.
- * Settings › AI Gateway에서 모델을 켜고 끄면(다른 탭·기기 포함) 구독으로 다시 그린다.
+ * 부관 좌표의 선택지 — Console의 모델 로스터(Agent SDK 대상) 능력. 화면은 `useModelRoster(aideModels(), "agent")`로 읽는다
+ * (마운트가 읽기를 시작하고, Settings › AI Gateway에서 모델을 켜고 끄면 다른 탭·기기 포함 다시 그린다).
  */
-export function readAideRoster(): ModelRoster | null {
-  return models?.read("agent") ?? null;
-}
-
-export function subscribeAideRoster(listener: () => void): () => void {
-  return models?.subscribe(listener) ?? (() => undefined);
+export function aideModels(): PluginInstallContext["models"] | null {
+  return models;
 }
