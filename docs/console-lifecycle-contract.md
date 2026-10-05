@@ -95,6 +95,7 @@ New outcomes may be added without a version change. A reader that meets an outco
 
 - The lock payload and the meaning of health answers do not change; additions only. The authenticated health answer carries `lifecycleWire: CONSOLE_LIFECYCLE_WIRE`. Its absence means wire 0 (before this contract).
 - An observer that meets a wire newer than its own treats that instance as unverified: it neither signals it nor removes its lock on that basis. Adopting sends no signal, so Desktop still adopts a Console of a compatible owner whose authenticated health answers with the lock's own pid, whatever wire it reports. A Quit then signals a newer-wire Console only when it is this Desktop's own unreaped child (E1); any other newer-wire Console it adopted is left running, and the Quit logs it.
+- A change that raises the wire must not lengthen `CONSOLE_STOP_DEADLINE_MS` (B_int) without settling the escalation hierarchy again: an older Desktop or CLI still SIGKILLs its own child after its own, older B_ext, which a longer internal deadline would put before the Console's deadline ends it (I4). The PR that first raises the wire decides it — keep B_int from growing, or give actors a rule that holds SIGKILL for a newer-wire child.
 - Shipped Desktop builds and update workers carry frozen copies of the contract. The published `./desktop-protocol` export surface is unchanged by it.
 
 ## Observing an instance from outside
