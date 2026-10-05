@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ConsoleLockPayload } from "../core/host/transport/console-contract-types.js";
-import { createConsoleHealthClient } from "../core/host/bootstrap/health.js";
+import { createConsoleHealthClient } from "@fleet-console/lifecycle";
 
 const LOCK: ConsoleLockPayload = {
   pid: 1234,

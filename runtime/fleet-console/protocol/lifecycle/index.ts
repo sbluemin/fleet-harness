@@ -44,6 +44,83 @@ export const ESCALATION_MARGIN_MS = 1_000;
 export const EXTERNAL_ESCALATION_MS = CONSOLE_STOP_DEADLINE_MS + PROCESS_TABLE_TIMEOUT_MS + ESCALATION_MARGIN_MS;
 /** How long an actor that sent SIGKILL waits to see the pid exit. */
 export const KILL_CONFIRM_MS = 3_000;
+/** How often a waiting actor looks again at the pid and the lock. */
+export const STOP_POLL_MS = 50;
+/** The whole budget for one token-authenticated health probe, primary and legacy endpoints together. */
+export const HEALTH_PROBE_TIMEOUT_MS = 5_000;
+/** How long `fleet console start` waits for a Console it spawned, or one another starter is restoring, to become ready. */
+export const CONSOLE_START_TIMEOUT_MS = 60_000;
+/** How often `fleet console start` probes while it waits. */
+export const CONSOLE_START_POLL_MS = 100;
+/**
+ * How long a starter waits after SIGTERM before SIGKILL for a child it spawned that has not taken the lock: such a child
+ * has written nothing yet. A child that holds the lock gets the full stop ladder instead.
+ */
+export const PRELOCK_CHILD_GRACE_MS = 500;
+
+// ---------- Identity ----------
+
+/**
+ * Process start times are read in whole seconds (`ps -o lstart`), and Linux can round the boot time by one more. A start
+ * time proves identity only when it precedes the moment identity was proven by at least this much.
+ */
+export const PROCESS_START_MARGIN_MS = 2_000;
+/**
+ * A Console listens before it writes its lock, so the lock's author always started before the lock's `startedAt`. A lock
+ * pid that started this much later than `startedAt` is a reused pid: the author is gone. The margin covers start-time
+ * rounding and a wall clock stepped forward after the Console started.
+ */
+export const LOCK_AUTHOR_REPLACED_MARGIN_MS = 10_000;
+
+/** What one token-authenticated health probe of a lock's endpoint showed. */
+export type ConsoleHealthEvidence =
+  | { readonly kind: "answered"; readonly pid: unknown; readonly lifecycleWire?: unknown }
+  | { readonly kind: "starting"; readonly pid: unknown }
+  | { readonly kind: "refused" }
+  | { readonly kind: "unanswered" };
+
+/** A Console instance as an outside actor observes it (docs/console-lifecycle-contract.md, "Observing an instance"). */
+export type ConsoleObservedState = "exited" | "starting" | "ready" | "stopping" | "releasing" | "unverified";
+
+/**
+ * Whether the observer may treat the lock pid as that Console: `verified` is the only basis for a signal, `absent` means
+ * nothing runs under the lock any more (only the lock file may go, through the reclaim protocol), and `unverified`
+ * forbids both a signal and a removal.
+ */
+export type ConsoleIdentity = "verified" | "absent" | "unverified";
+
+export interface ConsoleInstanceEvidence {
+  readonly lockPid: number;
+  /** False only on ESRCH. */
+  readonly pidAlive: boolean;
+  /** The lock passed every trust check and carries a token, so its endpoint may be asked. */
+  readonly trusted: boolean;
+  /** The lock pid started well after the lock was written (see LOCK_AUTHOR_REPLACED_MARGIN_MS). */
+  readonly authorReplaced: boolean;
+  /** The lock file still holds the same instance (pid and token) the observer read. */
+  readonly lockHeldBySameInstance: boolean;
+  /** The health probe, or null when the endpoint was not asked. */
+  readonly health: ConsoleHealthEvidence | null;
+}
+
+/**
+ * The one rule every actor uses to read an instance from outside. A refused endpoint behind a live pid that still holds
+ * the same lock is a Console that closed its listener and is cleaning up — stopping, never absent — and it is no basis for
+ * a signal either. A Console that reports a newer lifecycle wire than this contract is unverified.
+ */
+export function classifyConsoleInstance(input: ConsoleInstanceEvidence): { readonly state: ConsoleObservedState; readonly identity: ConsoleIdentity } {
+  if (!input.pidAlive || input.authorReplaced) return { state: "exited", identity: "absent" };
+  if (!input.lockHeldBySameInstance) return { state: "releasing", identity: "unverified" };
+  if (!input.trusted || input.health === null) return { state: "unverified", identity: "unverified" };
+  const health = input.health;
+  if (health.kind === "refused") return { state: "stopping", identity: "unverified" };
+  if (health.kind === "starting" && health.pid === input.lockPid) return { state: "starting", identity: "verified" };
+  if (health.kind === "answered" && health.pid === input.lockPid) {
+    const wire = health.lifecycleWire === undefined ? 0 : health.lifecycleWire;
+    if (typeof wire === "number" && Number.isSafeInteger(wire) && wire >= 0 && wire <= CONSOLE_LIFECYCLE_WIRE) return { state: "ready", identity: "verified" };
+  }
+  return { state: "unverified", identity: "unverified" };
+}
 
 // ---------- Exit record ----------
 

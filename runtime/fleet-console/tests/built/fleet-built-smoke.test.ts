@@ -132,10 +132,11 @@ afterEach(async () => {
     await waitForHealthyConsole(lock, 15_000);
     // stop proves the pid by its start time only for a Console started at least 2s before the identity probe.
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, spawnedAt + 2_500 - Date.now())));
-    const stop = spawnSync(process.execPath, [cliDist, "stop"], { env: isolatedEnv(root, slot), encoding: "utf8", timeout: 30_000 });
+    // stop waits for the Console's exit to read how it ended, so this test must keep reaping its child while stop runs.
+    const stop = await exitOf(spawn(process.execPath, [cliDist, "stop"], { env: isolatedEnv(root, slot), stdio: "ignore" }), 30_000);
     expect(await exited).toEqual({ code: 0, signal: null });
     expect(fs.existsSync(held)).toBe(true);
-    expect(stop.status).toBe(0);
+    expect(stop).toEqual({ code: 0, signal: null });
     expect(fs.existsSync(lock)).toBe(false);
   }, 40_000);
 });

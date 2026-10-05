@@ -1,11 +1,25 @@
 import { performance } from "node:perf_hooks";
 
-import type { ConsoleHealth, ConsoleLockPayload } from "../transport/console-contract-types.js";
+import { HEALTH_PROBE_TIMEOUT_MS, type ConsoleHealthEvidence } from "@fleet-console/protocol/lifecycle";
 
-export interface ConsoleProbeResult {
+/** The lock fields a health probe needs: where to ask, with which token, and which pid must answer. */
+export interface ConsoleHealthTarget {
+  readonly pid: number;
+  readonly endpoint: string;
+  readonly token?: unknown;
+}
+
+/** An authenticated health answer. Only the fields the lifecycle contract reads are named; the caller owns the rest. */
+export interface ConsoleHealthAnswer {
+  readonly pid?: unknown;
+  readonly lifecycleWire?: unknown;
+  readonly [field: string]: unknown;
+}
+
+export interface ConsoleProbeResult<L extends ConsoleHealthTarget = ConsoleHealthTarget> {
   readonly healthy: boolean;
-  readonly lock: ConsoleLockPayload | null;
-  readonly health?: ConsoleHealth;
+  readonly lock: L | null;
+  readonly health?: ConsoleHealthAnswer;
   readonly error?: string;
   /** 인증된 health의 초기화 안내. 기다릴 이유일 뿐 healthy나 신호 권한은 아니다. */
   readonly starting?: true;
@@ -25,13 +39,15 @@ export interface ConsoleProbeOptions {
   readonly signal?: AbortSignal;
 }
 
-const HEALTH_TIMEOUT_MS = 5_000;
-
+/**
+ * The token-authenticated health probe every actor uses. A 503 `console_starting` from the lock's own pid is a reason to
+ * wait, never health or a signal right; a refused connection is the one definite "nobody listens here".
+ */
 export function createConsoleHealthClient(deps: ConsoleHealthDeps = {}) {
   const fetchImpl = deps.fetch ?? fetch;
   const now = deps.now ?? (() => performance.now());
 
-  async function probe(lock: ConsoleLockPayload | null, options: ConsoleProbeOptions = {}): Promise<ConsoleProbeResult> {
+  async function probe<L extends ConsoleHealthTarget>(lock: L | null, options: ConsoleProbeOptions = {}): Promise<ConsoleProbeResult<L>> {
     if (!lock) return { healthy: false, lock: null, error: "lock missing" };
     const deadline = options.timeoutMs === undefined
       ? Number.POSITIVE_INFINITY
@@ -49,22 +65,22 @@ export function createConsoleHealthClient(deps: ConsoleHealthDeps = {}) {
     return legacy.refused ? { ...primary, refused: true } : primary;
   }
 
-  async function probeEndpoint(
+  async function probeEndpoint<L extends ConsoleHealthTarget>(
     url: string,
-    lock: ConsoleLockPayload,
+    lock: L,
     budgetMs: number,
     callerSignal?: AbortSignal,
-  ): Promise<ConsoleProbeResult> {
-    const timeoutMs = Math.min(HEALTH_TIMEOUT_MS, budgetMs);
+  ): Promise<ConsoleProbeResult<L>> {
+    const timeoutMs = Math.min(HEALTH_PROBE_TIMEOUT_MS, budgetMs);
     if (callerSignal?.aborted) return { healthy: false, lock, error: "health check aborted" };
     if (timeoutMs <= 0) return { healthy: false, lock, error: "health check timed out" };
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let removeCallerAbort: (() => void) | undefined;
-    const request = (async (): Promise<ConsoleProbeResult> => {
+    const request = (async (): Promise<ConsoleProbeResult<L>> => {
       try {
         const res = await fetchImpl(url, {
-          headers: { Authorization: `Bearer ${lock.token}` },
+          headers: { Authorization: `Bearer ${String(lock.token)}` },
           signal: controller.signal,
         });
         if (res.status === 503) {
@@ -74,20 +90,20 @@ export function createConsoleHealthClient(deps: ConsoleHealthDeps = {}) {
           }
         }
         if (!res.ok) return { healthy: false, lock, error: `health failed: ${res.status}` };
-        return { healthy: true, lock, health: await res.json() as ConsoleHealth };
+        return { healthy: true, lock, health: await res.json() as ConsoleHealthAnswer };
       } catch (err) {
         const refused = (err as { cause?: { code?: unknown } } | null)?.cause?.code === "ECONNREFUSED";
         return { healthy: false, lock, error: err instanceof Error ? err.message : String(err), ...(refused ? { refused: true as const } : {}) };
       }
     })();
     try {
-      const timedOut = new Promise<ConsoleProbeResult>((resolve) => {
+      const timedOut = new Promise<ConsoleProbeResult<L>>((resolve) => {
         timeout = setTimeout(() => {
           resolve({ healthy: false, lock, error: "health check timed out" });
           controller.abort();
         }, timeoutMs);
       });
-      const interrupted = new Promise<ConsoleProbeResult>((resolve) => {
+      const interrupted = new Promise<ConsoleProbeResult<L>>((resolve) => {
         if (!callerSignal) return;
         const onAbort = (): void => {
           resolve({ healthy: false, lock, error: "health check aborted" });
@@ -109,6 +125,13 @@ export function createConsoleHealthClient(deps: ConsoleHealthDeps = {}) {
   function remainingBudget(deadline: number): number {
     return Number.isFinite(deadline)
       ? Math.max(0, deadline - now())
-      : HEALTH_TIMEOUT_MS;
+      : HEALTH_PROBE_TIMEOUT_MS;
   }
+}
+
+/** The contract's evidence from one probe of `lockPid`'s lock. */
+export function toConsoleHealthEvidence(result: ConsoleProbeResult): ConsoleHealthEvidence {
+  if (result.healthy) return { kind: "answered", pid: result.health?.pid, lifecycleWire: result.health?.lifecycleWire };
+  if (result.starting) return { kind: "starting", pid: result.lock?.pid };
+  return result.refused ? { kind: "refused" } : { kind: "unanswered" };
 }

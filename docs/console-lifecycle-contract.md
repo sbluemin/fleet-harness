@@ -2,8 +2,8 @@
 
 One Console `serve` process has one lifecycle, and every actor that deals with it — the serve process itself, CLI `start`/`stop`/`restart`, the Fleet Desktop sidecar supervisor, the Console update worker and its recovery, and the local Console list — follows this contract instead of its own judgment. This page is the contract and its rationale. The code lives in two places:
 
-- `@fleet-console/protocol/lifecycle` (`runtime/fleet-console/protocol/lifecycle/`): the pure contract — states, time budgets, the exit record schema, and lock-slot classification.
-- `@fleet-console/lifecycle` (`runtime/fleet-console/foundation/lifecycle/`): observation and IO — pid liveness and reading and writing exit records.
+- `@fleet-console/protocol/lifecycle` (`runtime/fleet-console/protocol/lifecycle/`): the pure contract — states, time budgets, the instance classifier (`classifyConsoleInstance`), the exit record schema, and lock-slot classification.
+- `@fleet-console/lifecycle` (`runtime/fleet-console/foundation/lifecycle/`): observation and IO — pid liveness and process start times, the token-authenticated health probe, instance observation (`observeConsoleInstance`), the stop ladder (`runStopLadder`), and exit records.
 
 The serve state owner is `runtime/fleet-console/core/host/bootstrap/serve-lifecycle.ts`. Lock publication and the reclaim of another instance's lock are a separate, referenced contract: [Console Lock Reclaim Across Hosts](console-lock-reclaim.md).
 
@@ -69,8 +69,8 @@ A Console instance that held the lock writes its own exit record beside its lock
 | `clean` | the Console, at exit | the shutdown finished and the process exited on its own |
 | `deadline` | the Console, at exit | B_int ran out; `killed` leftover children were SIGKILLed |
 | `crash` | the Console, at exit | an uncaught exception, a failed shutdown, or a failed start |
-| `external` | the containment watcher *(pending)*, or inferred by a reader | the process vanished without a record |
-| `forced-external` | the actor that sent SIGKILL *(pending)* | escalation after B_ext |
+| `external` | the containment watcher *(pending)*, or inferred by a reader of a Console that reports `lifecycleWire` | the process vanished without a record |
+| `forced-external` | the actor that sent SIGKILL (the CLI; Desktop and the update worker *(pending)*) | escalation after B_ext |
 
 A reader that finds no record for the instance it observed decides from the lock's `version` and the health `lifecycleWire` whether the Console predates the contract; a pre-contract Console keeps its old meaning (no record).
 
@@ -82,14 +82,14 @@ A reader that finds no record for the instance it observed decides from the lock
 
 ## Observing an instance from outside
 
-An external actor reads the lock, the pid's liveness (only ESRCH is death), and the token-authenticated health endpoint. *(pending: these rules become one shared classifier as each actor moves onto the contract.)*
+An external actor reads the lock, the pid's liveness (only ESRCH is death), and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI does; Desktop, the update worker, and the local Console list still apply their own reading *(pending)*.
 
 | Lock | Pid | Health | Observed | May do |
 |---|---|---|---|---|
 | none | — | — | absent | start |
 | owner | ESRCH | — | exited, lock left behind | nothing; the next `serve` reclaims it |
-| trusted | alive | 200, same pid | ready | the actor that requests the stop may SIGTERM |
-| trusted | alive | 503 `console_starting`, same pid | starting | wait within its start budget |
+| trusted | alive | 200, same pid, `lifecycleWire` not newer than the observer's | ready | the actor that requests the stop may SIGTERM |
+| trusted | alive | 503 `console_starting`, same pid | starting | wait within its start budget; only its own parent may stop it |
 | trusted, same bytes as before | alive | refused | **stopping** | wait up to B_ext; never SIGTERM again |
 | gone or replaced since observed | alive | — | releasing | wait for the process; never SIGKILL — the Console's own deadline bounds it |
 | trusted | alive | timeout, 401/404, other pid | unverified | nothing |
@@ -110,7 +110,7 @@ An actor that asks a Console to stop:
 6. Past B_ext with the lock still held, it proves identity again (own child, parent link, unchanged start time, or a fresh health answer). Without proof it signals nothing.
 7. SIGKILL, then confirm the exit within `KILL_CONFIRM_MS`; the result is `forced-external`.
 
-An actor that sees an instance someone else is stopping only waits. On Windows `process.kill(pid, "SIGTERM")` terminates the process outright, so an actor never signals an instance that is already stopping there; it waits up to B_ext.
+An actor that sees an instance someone else is stopping only waits, and reports it when it is still stopping after B_ext. A starter that gives up on its own child applies the ladder too once that child holds the lock — it may be writing durable state — and gives a child that has not taken the lock only `PRELOCK_CHILD_GRACE_MS` before SIGKILL; its unreaped child handle is its identity proof. On Windows `process.kill(pid, "SIGTERM")` terminates the process outright, so an actor never signals an instance that is already stopping there; it waits up to B_ext.
 
 ## Children
 
