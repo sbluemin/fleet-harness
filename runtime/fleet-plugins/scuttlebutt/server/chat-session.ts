@@ -1,5 +1,6 @@
 import type { AgentHost, AgentSession, AgentEvent, AgentUsage, AgentToolGroup, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { AgentEffort } from "@fleet-console/sdk/models";
 
 /**
  * 기본 모델·강도. 사용자가 설정에서 고르지 않았을 때의 값이다. 구체 id가 아니라 별칭인 것이
@@ -11,14 +12,6 @@ export const SCUTTLEBUTT_AGENT = {
   model: "sonnet",
   effort: "low",
 } as const;
-
-/** 부관이 고를 수 있는 강도. 빠른 답이 일이라 xhigh·max는 두지 않는다. */
-export const AIDE_EFFORTS = ["low", "medium", "high"] as const;
-export type AideEffort = (typeof AIDE_EFFORTS)[number];
-
-export function isAideEffort(value: unknown): value is AideEffort {
-  return typeof value === "string" && (AIDE_EFFORTS as readonly string[]).includes(value);
-}
 
 /**
  * 펫이 가질 수 있는 툴 전부.
@@ -181,9 +174,12 @@ export type ChatEvent =
 
 export interface ChatSessionOptions {
   readonly admiral: AdmiralId;
-  /** 사용자가 고른 모델·강도. 없으면 기본값. */
+  /**
+   * 실행 좌표 — 호스트 모델 로스터가 푼 Agent SDK wire id와 강도. 없으면 기본값. 강도가 `null`이면 강도를 받지 않는
+   * 모델이라 싣지 않는다.
+   */
   readonly model?: string;
-  readonly effort?: AideEffort;
+  readonly effort?: AgentEffort | null;
   readonly locale?: ConsoleLocale;
   /** Console이 서빙 중인 AI gateway의 절대 URL. 호스트만 아는 값이라 주입받는다. */
   readonly agent: AgentHost;
@@ -232,9 +228,10 @@ export class ChatSession implements ChatSessionLike {
   private async open(): Promise<void> {
     const consoleUse = this.options.consoleUse;
     const computerUse = this.options.computerUse;
+    const effort = this.options.effort === null ? undefined : this.options.effort ?? SCUTTLEBUTT_AGENT.effort;
     const session = await this.options.agent.createSession({
       model: this.options.model ?? SCUTTLEBUTT_AGENT.model,
-      effort: this.options.effort ?? SCUTTLEBUTT_AGENT.effort,
+      ...(effort ? { effort } : {}),
       systemPrompt: [ADMIRAL_SYSTEM_PROMPTS[this.options.admiral], localeAddendum(this.options.locale), ...(consoleUse ? [consoleUse.promptAddendum] : []), ...(computerUse ? [computerUse.promptAddendum] : [])].join("\n\n"),
       continuation: "conversation",
       settlement: "result",

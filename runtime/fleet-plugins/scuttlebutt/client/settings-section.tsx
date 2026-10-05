@@ -1,7 +1,8 @@
+import { ModelCoordinatePicker } from "@fleet-console/sdk/components/model-coordinate-picker";
+import { isAgentEffort } from "@fleet-console/sdk/models";
 import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 import {
   ExperimentalBadge,
-  ModelPicker,
   SettingsCard,
   SettingsHelpTip,
   SettingsRow,
@@ -9,10 +10,9 @@ import {
   SettingsToggle,
   defineSettingsSection,
   useMobileSettingsHost,
-  useModelPickerOptions,
 } from "@fleet-console/sdk/settings/browser";
 
-import { readModelOptions } from "./console-read.js";
+import { readAideRoster, subscribeAideRoster } from "./console-read.js";
 
 import {
   BIRD_WIDTH_STEP,
@@ -22,13 +22,13 @@ import {
 } from "./roaming.js";
 import { getT } from "./scuttlebutt-catalog.js";
 import {
-  AIDE_EFFORTS,
+  DEFAULT_AIDE_EFFORT,
+  DEFAULT_AIDE_MODEL,
   getScuttlebuttSettings,
   previewAideSize,
   subscribeScuttlebuttSettings,
   writeAideSize,
   writeScuttlebuttSettings,
-  type AideEffort,
   type ScuttlebuttAideId,
 } from "./settings-store.js";
 
@@ -204,15 +204,18 @@ function ScuttlebuttSettingsSection() {
 /**
  * 부관단 공통 모델·강도. 실험 페이지의 규약 — 모델을 쓰는 기능은 자기 선택기를 갖는다 — 를
  * 이 카드도 따른다. 부관마다 다르게 두지 않는다: 셋의 정체성은 목소리이지 모델이 아니다.
+ *
+ * Console 공유 선택기 하나로 고른다. 선택지는 모델 로스터(Agent SDK 대상)이고 강도는 고른 모델이 내놓는 사다리 전체다.
+ * 로스터 밖 저장값은 「꺼짐」으로 남아 보이고 고쳐 쓰지 않는다. 폰에서는 호스트의 좌표 시트로 열린다.
  */
 function ModelRow({ t, saving, model, effort, onSave }: {
   readonly t: ReturnType<typeof getT>;
   readonly saving: boolean;
   readonly model: string;
-  readonly effort: AideEffort;
+  readonly effort: string;
   readonly onSave: (patch: Parameters<typeof writeScuttlebuttSettings>[0]) => Promise<void>;
 }) {
-  const options = useModelPickerOptions(readModelOptions);
+  const roster = useStoreSnapshot(subscribeAideRoster, readAideRoster);
   return (
     <SettingsRow
       label={t("settings.section.model")}
@@ -222,19 +225,27 @@ function ModelRow({ t, saving, model, effort, onSave }: {
         </SettingsHelpTip>
       }
     >
-      <ModelPicker
-        value={model}
-        options={options}
+      <ModelCoordinatePicker
+        roster={roster}
+        value={{ model, effort }}
+        fallback={{ model: DEFAULT_AIDE_MODEL, effort: DEFAULT_AIDE_EFFORT }}
         disabled={saving}
-        label={t("settings.section.modelAria")}
-        onChange={(next) => void onSave({ model: next })}
-        effort={{
-          value: effort,
-          levels: AIDE_EFFORTS,
-          ariaLabel: t("settings.section.effortAria"),
-          labelOf: (level) => t(`effort.${level as AideEffort}`),
-          onChange: (next) => void onSave({ effort: next as AideEffort }),
+        onChange={(next) => void onSave({
+          ...(next.model ? { model: next.model } : {}),
+          // 강도를 받지 않는 모델을 고르면 강도는 그대로 둔다 — 강도 있는 모델로 돌아오면 그 값이 산다.
+          ...(isAgentEffort(next.effort) ? { effort: next.effort } : {}),
+        })}
+        labels={{
+          menu: t("settings.section.modelAria"),
+          effort: t("settings.section.effortAria"),
+          auto: t("settings.section.modelAuto"),
+          back: t("settings.section.modelBack"),
+          loading: t("settings.section.modelLoading"),
+          empty: t("settings.section.modelEmpty"),
+          off: t("settings.section.modelOff"),
+          fallback: t("settings.section.modelFallback"),
         }}
+        trigger={{ variant: "field" }}
       />
     </SettingsRow>
   );

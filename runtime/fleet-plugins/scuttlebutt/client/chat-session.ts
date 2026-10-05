@@ -1,4 +1,5 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { AgentEffort } from "@fleet-console/sdk/models";
 
 import {
   appendNotice,
@@ -24,7 +25,7 @@ export type AdmiralId = "tori" | "bori" | "dori";
 
 export interface ChatLaunchChoice {
   readonly model: string;
-  readonly effort: "low" | "medium" | "high";
+  readonly effort: AgentEffort;
 }
 
 export interface ChatSessionDeps {

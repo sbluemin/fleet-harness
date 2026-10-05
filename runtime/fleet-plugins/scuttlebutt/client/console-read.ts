@@ -1,5 +1,5 @@
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
-import type { ExperimentModelOption } from "@fleet-console/sdk/settings";
+import type { ModelRoster } from "@fleet-console/sdk/models";
 
 import type { ConsoleSnapshotPayload } from "./chat-session.js";
 
@@ -12,10 +12,12 @@ import type { ConsoleSnapshotPayload } from "./chat-session.js";
 
 let consoleState: PluginInstallContext["consoleState"] | null = null;
 let experiments: PluginInstallContext["experiments"] | null = null;
+let models: PluginInstallContext["models"] | null = null;
 
 export function connectConsoleRead(context: PluginInstallContext): void {
   consoleState = context.consoleState;
   experiments = context.experiments;
+  models = context.models ?? null;
 }
 
 /** Console Use는 전역으로 항상 열려 있다 — 부관 메뉴의 grant 행도 항상 선다. */
@@ -46,7 +48,14 @@ export function readConsoleSnapshot(): ConsoleSnapshotPayload | null {
   };
 }
 
-/** 모델 선택지 — Claude 별칭 + Gateway 모델. 호스트가 아직 없으면 빈 목록. */
-export function readModelOptions(): Promise<readonly ExperimentModelOption[]> {
-  return experiments?.modelOptions() ?? Promise.resolve([]);
+/**
+ * 부관 좌표의 선택지 — Console의 모델 로스터(Agent SDK 대상). 첫 읽기가 로스터 읽기를 시작하고, 아직이면 null이다.
+ * Settings › AI Gateway에서 모델을 켜고 끄면(다른 탭·기기 포함) 구독으로 다시 그린다.
+ */
+export function readAideRoster(): ModelRoster | null {
+  return models?.read("agent") ?? null;
+}
+
+export function subscribeAideRoster(listener: () => void): () => void {
+  return models?.subscribe(listener) ?? (() => undefined);
 }
