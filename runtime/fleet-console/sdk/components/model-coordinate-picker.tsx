@@ -70,7 +70,10 @@ export interface ModelCoordinatePickerProps {
   readonly fallback?: ModelCoordinateValue;
   /** `track`: 행의 사다리 전체(EffortTrack). `none`: 모델만 고른다(행을 고르면 곧 닫힌다). */
   readonly effort?: "track" | "none";
-  /** `on-close`: 고른 좌표를 메뉴가 닫힐 때 한 번만 알린다(변경이 곧 재기동인 곳). */
+  /**
+   * @deprecated 확정 방식은 하나다 — 강도를 누르면(또는 Enter) 한 번 알리고 닫는다. 이 값은 받기만 하고 쓰지 않는다.
+   * Fleet 1.215.0에서 제거한다.
+   */
   readonly commit?: "immediate" | "on-close";
   /** 열 때 목록부터(`list`) 또는 고른 모델의 강도 단계부터(`focused`). */
   readonly startAt?: "list" | "focused";
@@ -135,9 +138,12 @@ export function rosterProviderOf(roster: ModelRoster | null, model: string | und
 /** 「Opus」·「HIGH」 — 트리거와 메뉴가 같은 낱말을 쓴다. 로스터에 없는 모델은 id를 다듬어 쓴다. */
 export function rosterCoordinateWords(roster: ModelRoster | null, value: ModelCoordinateValue, autoLabel: string): { readonly model: string; readonly effort: string } {
   const row = value.model ? findRosterRow(roster, value.model) : null;
+  const model = row?.label ?? (value.model ? prettyModelId(value.model) : "");
+  // 강도를 받지 않는 모델(사다리가 없는 행)은 강도를 말하지 않는다 — 저장값에 남은 이전 강도는 실행에 실리지 않는다.
+  if (row && (row.chips?.length ?? 0) === 0) return { model, effort: "" };
   const chip = row?.chips?.find((candidate) => candidate.id === value.effort);
   return {
-    model: row?.label ?? (value.model ? prettyModelId(value.model) : ""),
+    model,
     effort: chip?.label ?? (value.effort && value.effort !== "auto" ? value.effort.toUpperCase() : autoLabel),
   };
 }
@@ -194,8 +200,7 @@ function TriggerText({ display, prefix }: { readonly display: DisplayState; read
       {prefix}
       <ProviderMark provider={display.provider} className="fc-coord-trigger-provider" />
       <span className={`fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
-      <span className="fc-coord-trigger-dot" aria-hidden="true">·</span>
-      <span className="fc-coord-trigger-effort">{display.words.effort}</span>
+      {display.words.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{display.words.effort}</span></> : null}
       {display.badge ? <span className={`fc-coord-trigger-badge${display.struck ? " is-off" : ""}`}>{display.badge}</span> : null}
     </>
   );
@@ -204,7 +209,6 @@ function TriggerText({ display, prefix }: { readonly display: DisplayState; read
 function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.ReactElement | null {
   const { roster, value, onChange, labels, trigger, head, extras, extrasCaption, footer, reset, locked = false, disabled = false } = props;
   const effortMode = props.effort ?? "track";
-  const commitOnClose = props.commit === "on-close";
   const startAtList = props.startAt === "list";
   const display = useDisplay(props);
   const groups = React.useMemo(() => {
@@ -220,19 +224,28 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   const activeModel = picked?.model ?? (extraActive ? null : display.shown.model ?? null);
   const currentEffort = picked ? picked.effort : display.shown.effort;
   const [open, setOpen] = React.useState(false);
-  React.useEffect(() => { if (locked || disabled) setOpen(false); }, [locked, disabled]);
-  const pending = React.useRef<{ readonly model?: string; readonly effort?: string } | null>(null);
-  const wasOpen = React.useRef(false);
-  React.useEffect(() => {
-    if (open) { wasOpen.current = true; return; }
-    if (!wasOpen.current) return;
-    wasOpen.current = false;
-    const last = pending.current;
-    pending.current = null;
-    if (!last || locked || (last.model === value.model && (last.effort ?? "") === (value.effort ?? ""))) return;
-    onChange(last);
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- 닫히는 순간 한 번만, 그 렌더의 값으로 알린다.
-  const choose = (next: { readonly model?: string; readonly effort?: string }) => { if (commitOnClose) pending.current = next; else onChange(next); };
+  // 확정은 한 번이다. 모델 행은 강도 단계로 넘어가기만 하고(staged), 강도 노브에서 손을 떼거나 Enter를 치는 순간 그 좌표를
+  // 한 번 알리고 닫는다. 강도를 받지 않는 행·모델만 고르는 선택기는 행이 곧 확정이다. 행만 고르고 바깥을 누르거나 Tab으로
+  // 나가면 고른 모델로 한 번 확정하고, Esc는 아무것도 저장하지 않는다. 그래서 한 번의 선택은 늘 저장(세션 전환) 한 번이다.
+  const staged = React.useRef<{ readonly model: string; readonly effort?: string } | null>(null);
+  const notify = (next: { readonly model: string; readonly effort?: string } | null) => {
+    if (!next || locked || (next.model === value.model && (next.effort ?? "") === (value.effort ?? ""))) return;
+    onChange(next);
+  };
+  const closeMenu = (mode: "commit" | "cancel", refocus = false) => {
+    const last = staged.current;
+    staged.current = null;
+    setOpen(false);
+    if (mode === "commit") notify(last);
+    if (refocus) triggerRef.current?.focus();
+  };
+  const settle = (next: { readonly model: string; readonly effort?: string }) => {
+    staged.current = null;
+    notify(next);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+  React.useEffect(() => { if (locked || disabled) { staged.current = null; setOpen(false); } }, [locked, disabled]);
   React.useEffect(() => { setPicked(null); }, [value.model, value.effort, open]);
   const [focused, setFocused] = React.useState(!startAtList);
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
@@ -240,6 +253,9 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   const focusIntent = React.useRef<"first" | "last" | null>(null);
   const [pos, setPos] = React.useState<React.CSSProperties>({});
   const menuWidth = props.menuWidth ?? MENU_WIDTH;
+  // 문서 리스너는 열릴 때 한 번 붙는다 — 그 뒤 렌더의 값(value·staged)으로 닫도록 최신 닫기 함수를 ref로 읽는다.
+  const closeMenuRef = React.useRef(closeMenu);
+  closeMenuRef.current = closeMenu;
 
   React.useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
@@ -263,10 +279,10 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     if (!open) return;
     const onDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
+      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) closeMenuRef.current("commit");
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); triggerRef.current?.focus(); return; }
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMenuRef.current("cancel", true); return; }
       if (!menuRef.current || !(event.target instanceof Node) || !menuRef.current.contains(event.target)) return;
       // 캔버스가 window keydown에서 Space를 삼켜 button의 keyup 클릭이 사라진다 — 체크 항목만 여기서 한 번 누른다.
       if (!event.repeat && (event.key === " " || event.code === "Space") && event.target instanceof Element) {
@@ -282,9 +298,8 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
       } else if (event.key === "Home") { event.preventDefault(); items[0]?.focus(); }
       else if (event.key === "End") { event.preventDefault(); items.at(-1)?.focus(); }
       else if (event.key === "Tab" && (event.shiftKey ? index === 0 : index === items.length - 1)) {
-        // 메뉴 밖으로 나가는 Tab — 닫고 트리거로 초점을 돌려 브라우저가 그다음으로 가게 한다.
-        setOpen(false);
-        triggerRef.current?.focus();
+        // 메뉴 밖으로 나가는 Tab — 고른 모델을 확정해 닫고 트리거로 초점을 돌려 브라우저가 그다음으로 가게 한다.
+        closeMenuRef.current("commit", true);
       }
     };
     document.addEventListener("pointerdown", onDown, true);
@@ -293,7 +308,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   }, [open]);
 
   const variant = trigger?.variant ?? (trigger?.node ? "glyph" : "inline");
-  const title = trigger?.title ?? (trigger?.text ? undefined : `${display.words.model} · ${display.words.effort}${display.badge ? ` · ${display.badge}` : ""}`);
+  const title = trigger?.title ?? (trigger?.text ? undefined : [display.words.model, display.words.effort, display.badge].filter(Boolean).join(" · "));
   const text = trigger?.text ?? <TriggerText display={display} prefix={trigger?.prefix} />;
   const triggerClass = ["fc-coord-trigger", `is-${variant}`, trigger?.className ?? ""].filter(Boolean).join(" ");
   if (locked) {
@@ -308,10 +323,12 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   };
   const pickRow = (row: OperationLaunchVariantRow) => {
     const model = row.launch.model ?? row.id;
-    if (effortMode === "none") { choose({ model }); setOpen(false); triggerRef.current?.focus(); return; }
+    // 모델만 고르는 선택기·강도를 받지 않는 행은 행이 곧 확정이다.
+    if (effortMode === "none" || (row.chips?.length ?? 0) === 0) { settle({ model }); return; }
     const chosenEffort = resolveRowEffort(row, currentEffort ?? null) ?? undefined;
-    setPicked({ model, ...(chosenEffort ? { effort: chosenEffort } : {}) });
-    choose({ model, ...(chosenEffort ? { effort: chosenEffort } : {}) });
+    const next = { model, ...(chosenEffort ? { effort: chosenEffort } : {}) };
+    setPicked(next);
+    staged.current = next;
     setFocused(true);
   };
   const showTrack = effortMode === "track" && focused && chosenRow !== null && (chosenRow.chips?.length ?? 0) > 0;
@@ -335,15 +352,34 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
           setOpen(true);
         }}
         onClick={(event) => {
+          // 열린 메뉴의 트리거를 다시 누르는 것은 바깥 누름과 같다 — 고른 모델이 있으면 한 번 확정하고 닫는다.
+          if (open) { closeMenu("commit"); return; }
           setFocused(!startAtList);
-          setOpen((current) => { const next = !current; if (next && event.detail === 0) focusIntent.current = "first"; return next; });
+          if (event.detail === 0) focusIntent.current = "first";
+          setOpen(true);
         }}
       >
         {trigger?.node ?? text}
       </button>
       {/* body 포털 — 확대 표면은 transform 조상이라 fixed가 그 안에 갇히고 overflow에 잘린다. */}
       {open ? createPortal(
-        <div ref={menuRef} className={["fc-coord-menu", showTrack ? "is-focused" : "", props.menuClassName ?? ""].filter(Boolean).join(" ")} role="menu" aria-label={labels.menu} style={pos}>
+        <div
+          ref={menuRef}
+          className={["fc-coord-menu", showTrack ? "is-focused" : "", props.menuClassName ?? ""].filter(Boolean).join(" ")}
+          role="menu"
+          aria-label={labels.menu}
+          style={pos}
+          // 메뉴는 body 포털이지만 React 이벤트는 컴포넌트 트리를 따라 선택기를 품은 서랍·패널·시트로 올라간다. 그쪽의 Esc 닫기가
+          // 문서 리스너보다 먼저 돌므로, 메뉴 안의 키는 여기서 먼저 처리하고 멈춘다 — Esc는 메뉴만 취소해 닫는다. 강도 트랙에서의
+          // Tab은 목록 항목의 경계 Tab처럼 지금 미리보기 좌표로 한 번 확정하고 닫는다(Shift+Tab도 같다).
+          onKeyDown={(event) => {
+            if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMenu("cancel", true); return; }
+            if (event.key === "Tab" && event.target instanceof Element && event.target.closest(".effort-track")) {
+              event.stopPropagation();
+              closeMenu("commit", true);
+            }
+          }}
+        >
           {head ? <div className="fc-coord-menu-head">{head}</div> : null}
           {showTrack && chosenRow ? (
             <>
@@ -359,13 +395,14 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
                   row={chosenRow}
                   apexPinnedOpen
                   value={resolveRowEffort(chosenRow, currentEffort ?? null)}
+                  // 끄는 동안·방향키는 미리보기다. 손을 떼거나 Enter를 치면 그 강도로 한 번 확정하고 닫는다.
                   onChange={(next) => {
                     const model = chosenRow.launch.model ?? chosenRow.id;
-                    setPicked({ model, ...(next ? { effort: next } : {}) });
-                    choose({ model, ...(next ? { effort: next } : {}) });
+                    const preview = { model, ...(next ? { effort: next } : {}) };
+                    setPicked(preview);
+                    staged.current = preview;
                   }}
-                  // 고른 노브를 한 번 더 누르거나 Enter는 「이걸로」 — 메뉴만 닫는다(on-close면 닫힐 때 알린다).
-                  onConfirmCurrent={() => { setOpen(false); triggerRef.current?.focus(); }}
+                  onSettle={(next) => settle({ model: chosenRow.launch.model ?? chosenRow.id, ...(next ? { effort: next } : {}) })}
                   autoLabel={labels.auto}
                   autoValueText={labels.auto}
                   ariaLabel={labels.effort}
@@ -377,7 +414,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
               {extras?.length ? (
                 <div className="fc-coord-menu-group">
                   {extras.map((extra) => (
-                    <button key={extra.id} type="button" role="menuitemradio" aria-checked={extra.active} disabled={extra.disabled} className={`fc-coord-menu-item fc-coord-menu-extra${extra.active ? " is-active" : ""}`} onClick={() => { pending.current = null; extra.onPick(); setOpen(false); }}>
+                    <button key={extra.id} type="button" role="menuitemradio" aria-checked={extra.active} disabled={extra.disabled} className={`fc-coord-menu-item fc-coord-menu-extra${extra.active ? " is-active" : ""}`} onClick={() => { staged.current = null; extra.onPick(); setOpen(false); }}>
                       <span className="fc-coord-menu-label">{extra.label}{extra.hint ? <span className="fc-coord-menu-hint">{extra.hint}</span> : null}</span>
                       {extra.active ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
                     </button>
@@ -414,7 +451,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
           {reset ? (
             <div className="fc-coord-menu-group">
               <div className="fc-coord-menu-divider" role="separator" />
-              <button type="button" role="menuitem" className="fc-coord-menu-item fc-coord-menu-reset" onClick={() => { pending.current = null; reset.onSelect(); setOpen(false); triggerRef.current?.focus(); }}>
+              <button type="button" role="menuitem" className="fc-coord-menu-item fc-coord-menu-reset" onClick={() => { staged.current = null; reset.onSelect(); setOpen(false); triggerRef.current?.focus(); }}>
                 <span className="fc-coord-menu-label">{reset.label}{reset.description ? <span className="fc-coord-menu-hint">{reset.description}</span> : null}</span>
               </button>
             </div>
@@ -433,19 +470,21 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
   const display = useDisplay(props);
   const rowLabel = React.useContext(MobileSettingsRowLabelContext);
   const [open, setOpen] = React.useState(false);
-  // on-close — 시트가 열려 있는 동안 고른 좌표는 시트에만 보이고, 닫힐 때 지금 값과 다르면 한 번 알린다(데스크톱 메뉴와 같은
-  // 계약). 모델과 강도를 차례로 고르는 한 번의 선택이 두 번의 저장(세션 재기동)이 되지 않게 한다. 기본값 되돌리기·선택 방식은 따로 곧바로다.
-  const commitOnClose = props.commit === "on-close";
+  // 데스크톱 메뉴와 같은 확정 규칙 — 시트가 「확정」으로 알린 선택(강도 탭, 강도 없는 모델)은 한 번 알리고 시트는 스스로 닫힌다.
+  // 모델 탭은 강도 단계로 넘어가는 초안일 뿐이고, 그 상태로 시트를 닫으면(뒤로·바깥) 고른 모델로 한 번 확정한다.
   const draftRef = React.useRef<{ readonly model: string; readonly effort?: string } | null>(null);
   const [draft, setDraft] = React.useState<{ readonly model: string; readonly effort?: string } | null>(null);
   const keepDraft = (next: { readonly model: string; readonly effort?: string } | null) => { draftRef.current = next; setDraft(next); };
+  const notify = (next: { readonly model: string; readonly effort?: string } | null) => {
+    if (next && (next.model !== value.model || (next.effort ?? "") !== (value.effort ?? ""))) onChange(next);
+  };
   const closeSheet = () => {
     setOpen(false);
     const last = draftRef.current;
     keepDraft(null);
-    if (last && (last.model !== value.model || (last.effort ?? "") !== (value.effort ?? ""))) onChange(last);
+    notify(last);
   };
-  const text = props.trigger?.text ?? `${display.words.model} · ${display.words.effort}${display.badge ? ` · ${display.badge}` : ""}`;
+  const text = props.trigger?.text ?? [display.words.model, display.words.effort, display.badge].filter(Boolean).join(" · ");
   if (locked) return <span className="fc-select__trigger fc-select--mobile fc-coord-trigger is-locked"><span className="fc-select__value">{text}</span></span>;
   return (
     <>
@@ -457,12 +496,15 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
           title={rowLabel ?? labels.menu}
           roster={roster ?? []}
           value={draft ?? (value.model ? value : display.shown)}
-          onSelect={(next) => { if (commitOnClose) keepDraft(next); else onChange(next); }}
+          onSelect={(next, meta) => {
+            if (meta?.final) { keepDraft(null); notify(next); return; }
+            keepDraft(next);
+          }}
           effort={props.effort ?? "track"}
           effortLabel={labels.effort}
           {...(labels.off ? { offLabel: labels.off } : {})}
-          {...(extras ? { extras: commitOnClose ? extras.map((extra) => ({ ...extra, onPick: () => { keepDraft(null); extra.onPick(); } })) : extras } : {})}
-          {...(reset ? { reset: commitOnClose ? { ...reset, onSelect: () => { keepDraft(null); reset.onSelect(); } } : reset } : {})}
+          {...(extras ? { extras: extras.map((extra) => ({ ...extra, onPick: () => { keepDraft(null); extra.onPick(); } })) } : {})}
+          {...(reset ? { reset: { ...reset, onSelect: () => { keepDraft(null); reset.onSelect(); } } } : {})}
           onClose={closeSheet}
         />
       ) : null}

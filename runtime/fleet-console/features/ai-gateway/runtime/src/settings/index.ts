@@ -1,4 +1,5 @@
 import {
+  CLAUDE_DEFAULT_CONTEXT_WINDOW,
   hasClaudeOneMillionMarker,
   normalizeCompactCeiling,
   type CompactCeiling,
@@ -30,14 +31,9 @@ export interface AiGatewayStoredModel {
   /**
    * true면 모델은 와이어(`/v1/models`, `/v1/messages` 노출 게이트, 실행 선택기)에 남지만
    * 위임 배정 후보에서는 빠진다. 부재는 위임 가능이며, 저장 정규형은 true만 보존한다.
-   * Claude family는 Claude Code 네이티브 모델이라 이 표식이 위임에서 빼지 않는다.
+   * Claude도 같은 뜻이다 — 로스터·실행·`/model`·라우팅 판정 모델은 그대로이고 위임 배정만 받지 않는다.
    */
   readonly hostOnly?: boolean;
-}
-
-/** 위임 후보에서만 본다. Claude 저장 hostOnly는 지우지 않고 위임에서도 빼지 않는다. */
-function retainStoredHostOnly(model: GatewayModel, hostOnly: unknown): boolean {
-  return hostOnly === true && model.provider !== "claude";
 }
 
 /**
@@ -49,9 +45,23 @@ export const DEFAULT_ROSTER_SEED_MODEL_IDS: readonly string[] = ["claude--fable-
 
 /**
  * 모델 로스터 이행 판(版). 저장 파일의 `rosterSeedVersion`이 이 값에 닿으면 이행은 끝났다 — 다시 기동해도, 사용자가 그 뒤
- * Claude를 꺼도 되살리지 않는다. 이 판을 올리는 것은 새 이행을 한 번 더 돌리겠다는 결정이다.
+ * Claude를 끄거나 호스트 전용으로 다시 지정해도 되돌리지 않는다. 이 판을 올리는 것은 새 이행을 한 번 더 돌리겠다는 결정이다.
+ *
+ * - 1: 로스터를 고른 적 없는 설치에 Claude 항목을 써 넣는다.
+ * - 2: Claude 호스트 전용이 무시되던 시기(2026-09-22~)의 저장값 `hostOnly:true`를 한 번 해제한다 — 그 시기 화면은 그 값을
+ *   꺼진 것으로 보였으므로, 되살리면 사용자가 모르는 사이 Claude가 위임에서 빠진다.
  */
-export const ROSTER_SEED_VERSION = 1;
+export const ROSTER_SEED_VERSION = 2;
+
+/**
+ * 카탈로그 모델의 컨텍스트 창. Claude는 Claude Code가 아는 두 좌표뿐이다 — 1M 항목은 카탈로그에 창이 있고, 나머지는 기본
+ * 200k다. 다른 공급자는 카탈로그 값을 그대로 쓴다. Models 응답(설정 카탈로그·`fleet gateway models`·Console 로스터)이 Claude를
+ * 다른 모델과 같은 정보로 내리도록 이 한 곳에서 정한다.
+ */
+export function gatewayModelContextWindow(model: GatewayModel): number | null {
+  if (typeof model.contextWindow === "number" && model.contextWindow > 0) return model.contextWindow;
+  return model.provider === "claude" ? CLAUDE_DEFAULT_CONTEXT_WINDOW : null;
+}
 
 /**
  * AI Gateway 설정 파일에 저장되는 형태. models 부재 = 한 번도 고르지 않음(기본 로스터 이행 대상),
@@ -240,7 +250,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   for (const entry of settings?.models ?? []) {
     const model = findGatewayModel(entry.id);
     if (!model) continue;
-    if (retainStoredHostOnly(model, entry.hostOnly)) hostOnlyIds.add(model.id);
+    if (entry.hostOnly === true) hostOnlyIds.add(model.id);
     if (enabled.includes(model)) continue;
     enabled.push(model);
     const exposed = narrowEffortLadder(model, entry.efforts);
@@ -437,7 +447,7 @@ function toCatalogModel(model: GatewayModel): AiGatewayCatalogModel {
   return {
     id: model.id,
     name: bareModelName(model),
-    contextWindow: model.contextWindow ?? null,
+    contextWindow: gatewayModelContextWindow(model),
     oneMillion: hasClaudeOneMillionMarker(toClaudeGatewayModelId(model)),
     fast: model.id.endsWith("-fast"),
     capabilityClass: model.capabilityClass ?? null,

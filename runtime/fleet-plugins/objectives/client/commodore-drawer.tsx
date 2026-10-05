@@ -303,7 +303,6 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
       value={value}
       fallback={fallback}
       onChange={onChange}
-      commit="on-close"
       startAt="list"
       {...(disabled ? { disabled } : {})}
       {...(reset ? { reset: { ...reset, description: [fallbackWords.model, fallbackWords.effort].filter(Boolean).join(" · ") } } : {})}
@@ -355,14 +354,12 @@ function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t
         label={t("objectives.commodore.settings.patrol")}
         hint={<>{t("objectives.commodore.settings.patrolHint")}{state.patrolMinutes !== undefined ? <UseDefault t={t} onClick={() => act(() => setCommodorePatrol(theaterId, null))} /> : null}</>}
       >
-        <span className="objectives-commodore-select">
-          <PatrolControl
-            t={t}
-            minutes={patrol}
-            nextPatrolAt={on && run.phase === "idle" ? run.nextWakeAt : undefined}
-            onPick={(minutes) => act(() => setCommodorePatrol(theaterId, minutes === DEFAULT_PATROL ? null : minutes))}
-          />
-        </span>
+        <PatrolControl
+          t={t}
+          minutes={patrol}
+          nextPatrolAt={on && run.phase === "idle" ? run.nextWakeAt : undefined}
+          onPick={(minutes) => act(() => setCommodorePatrol(theaterId, minutes === DEFAULT_PATROL ? null : minutes))}
+        />
       </SettingsRow>
       <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow
@@ -481,7 +478,8 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
       <button
         ref={triggerRef}
         type="button"
-        className="objectives-launch objectives-commodore-patrol"
+        // 설정 행의 값 자리 — 모델 좌표 선택기의 field 변형과 같은 호스트 계약(fc-row-value)으로 그린다.
+        className="fc-row-value objectives-commodore-patrol"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${t("objectives.commodore.patrol.aria")} · ${word}`}
@@ -490,7 +488,7 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
         onClick={(event) => { focusOnOpen.current = event.detail === 0; setOpen((value) => !value); }}
       >
         <span className="objectives-commodore-patrol-glyph"><PatrolGlyph /></span>
-        <span className="objectives-launch-model">{word}</span>
+        <span className="fc-row-value-text">{word}</span>
       </button>
       {open ? createPortal(
         <div ref={menuRef} className="objectives-menu objectives-commodore-patrol-menu" role="menu" aria-label={t("objectives.commodore.patrol.aria")} style={pos} onKeyDown={onMenuKey}>

@@ -147,7 +147,16 @@ function ChoiceCard({ choice }: { readonly choice: MobileChoiceState }) {
  * 모델 팝업(P-1 변형) — 제공자별 묶음, 구분선, 「추론 강도」 글자 탭. 모델을 골라도 열린 채다(강도까지 고르게).
  * 값은 `ModelPicker`가 다시 그려 줄 때마다 갱신된다. 닫기는 바깥 탭·뒤로·Esc다.
  */
-export function MobileModelChoice({ title, groups, value, onSelect, effort, reset, onClose }: MobileModelChoiceProps) {
+/**
+ * 코어 안에서만 쓰는 확장 — 고르는 것이 곧 확정인 탭이면 그 값을 알린 뒤 시트가 스스로 닫힌다(✓가 옮겨 그려진 뒤).
+ * 좌표 시트가 「강도 탭 = 확정 + 닫힘」을 이 자리로 낸다. 호스트 계약(`MobileModelChoiceProps`)은 그대로다.
+ */
+type MobileModelChoiceInternalProps = MobileModelChoiceProps & {
+  readonly closeAfterSelect?: (value: string) => boolean;
+  readonly closeAfterEffort?: boolean;
+};
+
+export function MobileModelChoice({ title, groups, value, onSelect, effort, reset, onClose, closeAfterSelect, closeAfterEffort = false }: MobileModelChoiceInternalProps) {
   const titleId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   return (
@@ -165,7 +174,7 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, rese
                 {group.options.map((option) => {
                   const selected = option.value === value;
                   return (
-                    <button type="button" role="radio" key={option.value} aria-checked={selected} className={`mobile-choice-row${selected ? " is-selected" : ""}`} onClick={() => onSelect(option.value)}>
+                    <button type="button" role="radio" key={option.value} aria-checked={selected} className={`mobile-choice-row${selected ? " is-selected" : ""}`} onClick={() => { onSelect(option.value); if (closeAfterSelect?.(option.value)) window.setTimeout(requestClose, CLOSE_AFTER_PICK_MS); }}>
                       <span className="mobile-choice-copy"><span className="mobile-choice-label">{withoutGroupPrefix(option.label, group.label)}</span></span>
                       {option.meta ? <span className="mobile-choice-meta">{option.meta}</span> : null}
                       {selected ? <MobileIcon name="check" size={22} className="mobile-choice-check" /> : <span className="mobile-choice-check-slot" aria-hidden="true" />}
@@ -183,7 +192,7 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, rese
                 {effort.levels.map((level) => {
                   const on = level.value === effort.value;
                   return (
-                    <button type="button" role="radio" key={level.value} aria-checked={on} className={`mobile-choice-tab${on ? " is-on" : ""}`} onClick={() => effort.onSelect(level.value)}>
+                    <button type="button" role="radio" key={level.value} aria-checked={on} className={`mobile-choice-tab${on ? " is-on" : ""}`} onClick={() => { effort.onSelect(level.value); if (closeAfterEffort) window.setTimeout(requestClose, CLOSE_AFTER_PICK_MS); }}>
                       {level.label}
                     </button>
                   );
@@ -245,6 +254,12 @@ export function MobileCoordinateChoice({ title, roster, value, onSelect, effort,
   const activeExtra = extras?.find((extra) => extra.active);
   const ladder = effort === "track" && row && !activeExtra ? rosterRowEfforts(row) : [];
   const currentEffort = clampRosterEffort(ladder, value.effort);
+  // 강도 탭이 서지 않는 탭 — 선택 방식, 그리고 강도를 받지 않는 모델(또는 모델만 고르는 칸)의 모델 탭 — 은 고르는 것이 곧 확정이다.
+  const settlesOnTap = (next: string): boolean => {
+    if (next.startsWith(EXTRA_VALUE_PREFIX)) return true;
+    const target = findRosterRow(roster, next);
+    return effort !== "track" || !target || rosterRowEfforts(target).length === 0;
+  };
   return (
     <MobileModelChoice
       title={title}
@@ -257,14 +272,16 @@ export function MobileCoordinateChoice({ title, roster, value, onSelect, effort,
         }
         const target = findRosterRow(roster, next);
         const nextEffort = target && effort === "track" ? clampRosterEffort(rosterRowEfforts(target), value.effort) : undefined;
-        onSelect({ model: next, ...(nextEffort ? { effort: nextEffort } : {}) });
+        onSelect({ model: next, ...(nextEffort ? { effort: nextEffort } : {}) }, { final: settlesOnTap(next) });
       }}
+      closeAfterSelect={settlesOnTap}
+      closeAfterEffort
       {...(ladder.length > 0 && currentEffort && row ? {
         effort: {
           label: effortLabel,
           levels: (row.chips ?? []).map((chip) => ({ value: chip.id, label: chip.label })),
           value: currentEffort,
-          onSelect: (next: string) => onSelect({ model: row.launch.model ?? row.id, effort: next }),
+          onSelect: (next: string) => onSelect({ model: row.launch.model ?? row.id, effort: next }, { final: true }),
         },
       } : {})}
       {...(reset ? { reset } : {})}

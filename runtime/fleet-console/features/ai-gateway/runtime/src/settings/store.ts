@@ -41,15 +41,20 @@ export interface AiGatewaySettingsStore {
   /** `undefined`는 xaiEndpoint 키를 제거해 기본(direct)으로 돌아간다. */
   readonly writeXaiEndpoint: (endpoint: XaiEndpointPreference | undefined) => AiGatewayStoredSettings;
   /**
-   * 모델 로스터 일회 이행 — `rosterSeedVersion` 표식이 {@link ROSTER_SEED_VERSION}에 닿지 않은 설치에서 한 번만 돈다.
+   * 모델 로스터 일회 이행 — `rosterSeedVersion` 표식이 {@link ROSTER_SEED_VERSION}에 닿지 않은 설치에서 한 번만 돈다. 표식이
+   * 가리키는 판보다 뒤의 단계만 돈다.
    *
+   * 1판(Claude 시드):
    * - `models` 키 부재(한 번도 고르지 않음): 주어진 모델을 로스터로 써 넣는다.
    * - Claude 항목 없이 비어 있지 않은 목록: 주어진 모델을 뒤에 더한다 — 예전에는 Claude가 늘 깔려 있었으므로, Claude 없는
    *   목록은 Claude를 끈다는 선택이 아니었다.
    * - 빈 배열(사용자가 모두 끔)·Claude 항목이 이미 있는 목록: 목록은 건드리지 않는다.
    *
-   * 어느 경우든 표식을 남기므로 다시 불러도, 그 뒤 사용자가 Claude를 꺼도 되살리지 않는다(멱등). 승계(legacyDirs)를 먼저
-   * 마친 뒤 판단한다. 목록을 바꿨으면 true.
+   * 2판(Claude 호스트 전용 일회 해제): 남아 있는 Claude 항목의 `hostOnly:true`를 지운다. Claude 호스트 전용이 무시되던 시기의
+   * 값이라 화면은 그것을 꺼진 것으로 보였다. 다른 공급자의 표식과 노출 강도는 그대로다.
+   *
+   * 어느 경우든 표식을 남기므로 다시 불러도, 그 뒤 사용자가 Claude를 끄거나 호스트 전용으로 다시 켜도 되돌리지 않는다(멱등).
+   * 승계(legacyDirs)를 먼저 마친 뒤 판단한다. 목록을 바꿨으면 true.
    */
   readonly seedModels: (ids: readonly string[]) => boolean;
 }
@@ -71,6 +76,8 @@ export interface CreateAiGatewaySettingsStoreDeps {
   readonly staleLockMs?: number;
   readonly timeoutMs?: number;
 }
+
+const isClaudeEntry = (id: string): boolean => findGatewayModel(id)?.provider === "claude";
 
 export function createAiGatewaySettingsStore(
   deps: CreateAiGatewaySettingsStoreDeps,
@@ -156,18 +163,29 @@ export function createAiGatewaySettingsStore(
     seedModels: (ids) => {
       let seeded = false;
       update((current) => {
-        if ((current.rosterSeedVersion ?? 0) >= ROSTER_SEED_VERSION) return current;
-        const marked = { ...current, rosterSeedVersion: ROSTER_SEED_VERSION };
-        const seed = ids.map((id) => ({ id }));
-        if (current.models === undefined) {
-          seeded = true;
-          return normalizeAiGatewaySettings({ ...marked, models: seed });
+        const from = current.rosterSeedVersion ?? 0;
+        if (from >= ROSTER_SEED_VERSION) return current;
+        let models = current.models;
+        if (from < 1) {
+          const seed = ids.map((id) => ({ id }));
+          if (models === undefined) {
+            seeded = true;
+            models = seed;
+          } else if (models.length > 0 && !models.some((entry) => isClaudeEntry(entry.id))) {
+            seeded = true;
+            const present = new Set(models.map((entry) => entry.id));
+            models = [...models, ...seed.filter((entry) => !present.has(entry.id))];
+          }
         }
-        const hasClaude = current.models.some((entry) => findGatewayModel(entry.id)?.provider === "claude");
-        if (current.models.length === 0 || hasClaude) return normalizeAiGatewaySettings(marked);
-        seeded = true;
-        const present = new Set(current.models.map((entry) => entry.id));
-        return normalizeAiGatewaySettings({ ...marked, models: [...current.models, ...seed.filter((entry) => !present.has(entry.id))] });
+        if (from < 2 && models?.some((entry) => entry.hostOnly === true && isClaudeEntry(entry.id))) {
+          seeded = true;
+          models = models.map((entry) => {
+            if (entry.hostOnly !== true || !isClaudeEntry(entry.id)) return entry;
+            const { hostOnly: _released, ...rest } = entry;
+            return rest;
+          });
+        }
+        return normalizeAiGatewaySettings({ ...current, ...(models !== undefined ? { models } : {}), rosterSeedVersion: ROSTER_SEED_VERSION });
       });
       return seeded;
     },

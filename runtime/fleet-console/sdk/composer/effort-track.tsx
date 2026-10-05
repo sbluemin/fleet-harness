@@ -30,6 +30,12 @@ export interface EffortTrackProps {
    * 아무 일도 없다(Quick Launch처럼 제출이 다른 자리인 표면).
    */
   readonly onConfirmCurrent?: () => void;
+  /**
+   * 고른 값을 확정할 때 — 주버튼으로 트랙 안에서 손을 뗄 때(다른 단으로 옮겼든 같은 단을 다시 눌렀든)와 Enter에서 그때의
+   * 값으로 한 번 부른다. 주면 `onChange`는 미리보기일 뿐이고 저장은 여기서 한다(모델 좌표 선택기의 「강도를 누르면 확정」).
+   * 주면 `onConfirmCurrent`는 쓰지 않는다.
+   */
+  readonly onSettle?: (effort: string | null) => void;
   /** 강도를 비운 상태를 트랙 맨 앞 자리로 노출한다. */
   readonly autoLabel: string;
   /**
@@ -61,6 +67,7 @@ export function EffortTrack({
   value,
   onChange,
   onConfirmCurrent,
+  onSettle,
   autoLabel,
   autoSlot = true,
   ariaLabel,
@@ -190,7 +197,7 @@ export function EffortTrack({
     // 시작한 포인터만 끝낸다 — 다른 접촉의 up이 활성 제스처를 지우면 안 된다.
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     gestureRef.current = null;
-    if (!confirm || gesture.dirty || !onConfirmCurrent) return;
+    if (!confirm || (!onSettle && (gesture.dirty || !onConfirmCurrent))) return;
     // 주버튼으로 트랙 안에서 손을 뗄 때만 확정한다 — 우클릭·가운데 클릭이나
     // 세로로 트랙 밖까지 끌어 뺀 해제는 값을 고르는 실수가 되지 않게 막는다.
     if (event.button !== 0) return;
@@ -205,10 +212,12 @@ export function EffortTrack({
     ) {
       return;
     }
+    // 확정 경로 — 손을 뗀 그때의 값(제스처가 마지막으로 고른 단)을 한 번 알린다.
+    if (onSettle) { onSettle(slots[liveIndexRef.current]?.id ?? null); return; }
     const next = indexFromPointer(event.clientX);
     // 처음부터 고른 단을 다시 눌렀고, 그 사이 다른 단으로 옮기지 않았을 때만 확정한다.
-    if (next === gesture.originIndex) onConfirmCurrent();
-  }, [indexFromPointer, onConfirmCurrent]);
+    if (next === gesture.originIndex) onConfirmCurrent?.();
+  }, [indexFromPointer, onConfirmCurrent, onSettle, slots]);
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     const direction = event.key === "ArrowLeft" || event.key === "ArrowDown"
@@ -223,10 +232,11 @@ export function EffortTrack({
     }
     if (event.key === "Home") next = 0;
     if (event.key === "End") next = nearestSelectable(last);
-    if (event.key === "Enter" && onConfirmCurrent) {
+    if (event.key === "Enter" && (onSettle || onConfirmCurrent)) {
       event.preventDefault();
       event.stopPropagation();
-      onConfirmCurrent();
+      if (onSettle) onSettle(slots[liveIndexRef.current]?.id ?? null);
+      else onConfirmCurrent?.();
       return;
     }
     if (next === null) return;
@@ -234,7 +244,7 @@ export function EffortTrack({
     // 트랙은 메뉴 안에 산다. 방향키가 위로 새면 메뉴가 항목 이동으로 받아 함께 움직인다.
     event.stopPropagation();
     commit(next);
-  }, [commit, index, last, nearestSelectable, onConfirmCurrent, slots]);
+  }, [commit, index, last, nearestSelectable, onConfirmCurrent, onSettle, slots]);
 
 
   return (

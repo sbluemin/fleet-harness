@@ -9,6 +9,7 @@ import {
   resolveRosterCoordinate,
   type ModelCoordinate,
   type ModelRoster,
+  type ModelRosterRow,
   type ModelRosterTarget,
   type ResolvedWireCoordinate,
 } from "@fleet-console/sdk/models";
@@ -18,6 +19,7 @@ import {
   CLAUDE_DEFAULT_CONTEXT_WINDOW,
   exposableEffortLadder,
   findClaudeGatewayModel,
+  gatewayModelContextWindow,
   GATEWAY_PROVIDER_NAMES,
   GATEWAY_PROVIDERS,
   resolveAiGatewaySelection,
@@ -119,11 +121,14 @@ function toRosterRow(
   // 일상 단은 노출/카탈로그 사다리만 따른다 — ultra는 이 어휘에 없으니 여기서는 절대 나오지 않는다.
   const ordinary: readonly GatewayReasoningEffort[] = selection.effortExposure[model.id] ?? exposableEffortLadder(model);
   const contextWindow = rosterContextWindow(model, id);
-  const base = {
+  const base: ModelRosterRow = {
     id,
     label: rosterLabel(model, siblings),
     launch: { model: id },
     ...(contextWindow ? { contextWindow } : {}),
+    // 모델 정보 — Claude도 다른 모델과 같다. 호스트 전용은 위임 후보에서만 빠지고 선택기에는 그대로 선다.
+    ...(selection.delegationModels.includes(model) ? {} : { hostOnly: true as const }),
+    ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
   };
   if (target === "agent") {
     // Agent SDK 세션은 ultra를 받지 않고 게이트도 없다 — 모델이 내놓는 사다리가 곧 전체다.
@@ -156,7 +161,7 @@ function effortChip(model: string, effort: string) {
 function rosterContextWindow(model: GatewayModel, id: string): number | undefined {
   // Claude Code는 두 좌표만 안다 — `[1m]` 표기가 1M 창을 켠다.
   if (model.provider === "claude") return id.endsWith("[1m]") ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
-  return typeof model.contextWindow === "number" && model.contextWindow > 0 ? model.contextWindow : undefined;
+  return gatewayModelContextWindow(model) ?? undefined;
 }
 
 /** 같은 Claude 가족의 200k·1M 좌표를 둘 다 켰을 때만 1M 행에 표식을 붙인다 — 하나뿐이면 이름이 곧 그 좌표다. */

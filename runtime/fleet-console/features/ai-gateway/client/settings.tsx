@@ -352,6 +352,9 @@ function AiGatewayRoutingCard() {
   const jevStored = mode === "jev";
   const jevActive = jevStored && typesafeSignedIn;
   const jevFallback = jevStored && !typesafeSignedIn;
+  // 위임 후보 — 켠 모델 중 호스트 전용이 아닌 것. 0개면 라우팅은 배정하지 않고 위임 실행은 세션 모델로 돈다(Claude만 켜고
+  // 모두 호스트 전용으로 둔 설치가 처음 겪을 수 있다). 그 사실을 카드에 말하고 테스트를 막는다.
+  const delegable = (state.aiGateway?.models ?? []).filter((entry) => entry.hostOnly !== true).length;
   const saveMode = (next: DelegationRoutingMode): void => {
     if (next === "jev" && !typesafeSignedIn) return;
     void setSystemPromptSettingsField("delegationRoutingMode", next);
@@ -411,7 +414,8 @@ function AiGatewayRoutingCard() {
             </SettingsItem>
           ) : null}
           {mode === "model" ? <p className="global-settings-help">{t("terminal.settings.aiGatewayRoutingModelNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p> : null}
-          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? "sonnet"}`} mode={mode} disabled={modeSaving || (mode === "jev" && !typesafeSignedIn)} />
+          {delegable === 0 ? <p className="global-settings-help" role="status">{t("terminal.settings.aiGatewayRoutingNoCandidates")}</p> : null}
+          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? "sonnet"}`} mode={mode} disabled={modeSaving || delegable === 0 || (mode === "jev" && !typesafeSignedIn)} />
         </>
       ) : null}
     </SettingsGroup>
@@ -436,7 +440,7 @@ function RoutingTest({ mode, disabled }: { readonly mode: DelegationRoutingMode;
         body: JSON.stringify({ prompt }), signal: controller.signal,
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
+      if (!response.ok) throw new Error(data.error === "routing_disabled_or_no_candidates" ? t("terminal.settings.aiGatewayRoutingNoCandidates") : data.error ?? `HTTP ${response.status}`);
       if (!controller.signal.aborted) setResult(data);
     } catch (e) {
       if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e));
@@ -550,7 +554,7 @@ export function buildAiGatewayRoster(
           provider,
           model,
           efforts: entry.efforts,
-          hostOnly: entry.hostOnly === true && provider.id !== "claude",
+          hostOnly: entry.hostOnly === true,
           rank: priority.indexOf(provider.id as AiGatewayProviderId),
           order,
         }];
@@ -688,7 +692,6 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
     });
   };
   const setModelHostOnly = (model: AiGatewayCatalogModel, next: boolean): void => {
-    if (model.id.startsWith("claude--")) return;
     save({
       ...selection,
       models: enabled.map((entry) => {
@@ -778,7 +781,6 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
               {group.entries.map((entry) => {
                 const { model, efforts, hostOnly } = entry;
                 const ladder = model.effort?.levels ?? [];
-                const claudeNative = providerId === "claude";
                 const chips = [formatAiGatewayContextWindow(model.contextWindow), model.fast ? t("terminal.settings.aiGatewayFast") : null, model.description || null].filter(Boolean).join(" · ");
                 return (
                   <React.Fragment key={model.id}>
@@ -790,8 +792,8 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
                         <AiGatewayEffortBadge model={model} exposed={resolveExposedEfforts(ladder, efforts)} hostOnly={hostOnly} saving={saving} onSetEfforts={(next) => setModelEfforts(model, next)} />
                       </SettingsItem>
                     ) : null}
-                    <SettingsItem label={`${model.name} · ${t("terminal.settings.aiGatewayHostOnly")}`} hint={t(claudeNative ? "terminal.settings.aiGatewayHostOnlyClaudeTip" : "terminal.settings.aiGatewayHostOnlyTip")} disabled={claudeNative}>
-                      <SettingsToggle checked={hostOnly} disabled={saving || claudeNative} ariaLabel={claudeNative ? t("terminal.settings.aiGatewayHostOnlyClaudeAria", { name: model.name }) : t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })} onChange={() => setModelHostOnly(model, !hostOnly)} />
+                    <SettingsItem label={`${model.name} · ${t("terminal.settings.aiGatewayHostOnly")}`} hint={t("terminal.settings.aiGatewayHostOnlyTip")}>
+                      <SettingsToggle checked={hostOnly} disabled={saving} ariaLabel={t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })} onChange={() => setModelHostOnly(model, !hostOnly)} />
                     </SettingsItem>
                   </React.Fragment>
                 );
@@ -1714,7 +1716,6 @@ export function AiGatewayModelRow({
   const { model, efforts, hostOnly } = entry;
   const contextLabel = formatAiGatewayContextWindow(model.contextWindow);
   const ladder = model.effort?.levels ?? [];
-  const claudeNative = entry.provider.id === "claude";
 
   return (
     <div className="ai-gateway-model-row">
@@ -1740,18 +1741,14 @@ export function AiGatewayModelRow({
             type="button"
             className={`ai-gateway-host-only ${hostOnly ? "is-on" : ""}`}
             aria-pressed={hostOnly}
-            aria-label={claudeNative
-              ? t("terminal.settings.aiGatewayHostOnlyClaudeAria", { name: model.name })
-              : t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })}
-            disabled={saving || claudeNative}
+            aria-label={t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })}
+            disabled={saving}
             onClick={onToggleHostOnly}
           >
             {t("terminal.settings.aiGatewayHostOnly")}
           </button>
           <span className="ai-gateway-host-only-tip" role="tooltip">
-            {t(claudeNative
-              ? "terminal.settings.aiGatewayHostOnlyClaudeTip"
-              : "terminal.settings.aiGatewayHostOnlyTip")}
+            {t("terminal.settings.aiGatewayHostOnlyTip")}
           </span>
         </span>
         <button
