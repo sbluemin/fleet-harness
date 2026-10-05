@@ -1,0 +1,82 @@
+name: Console Lifecycle
+
+# Real-process Console lifecycle invariants (built Console, fake agent, no billing): the lifecycle cases in the built smoke,
+# the stop-sharing case in the server suite, and the Desktop supervisor over a built Console. Runs on pull requests that touch
+# the code those invariants protect, so a defect is caught before merge rather than on canary. Windows keeps the canary-only
+# lifecycle job in workspace-verify. Every path below also selects the Desktop suite: the known-defect ratchet and the agent
+# stand-in it reads live with the Console fixtures, and a change to them must run both halves.
+on:
+  pull_request:
+    paths:
+      - 'runtime/fleet-console/protocol/lifecycle/**'
+      - 'runtime/fleet-console/foundation/lifecycle/**'
+      - 'runtime/fleet-console/core/host/bootstrap/console-lifecycle.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/lock.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/local-consoles.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/cli.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/server.ts'
+      - 'runtime/fleet-console/features/updates/host/update-apply.ts'
+      - 'runtime/fleet-console/features/execution/host/agent/launch-attachments.ts'
+      - 'runtime/fleet-console/features/execution/host/agent/launch-prompt-namespace.ts'
+      - 'runtime/fleet-console/features/execution/host/agent/routes.ts'
+      - 'runtime/fleet-console/features/execution/host/agent/chat-session.ts'
+      - 'runtime/fleet-console/foundation/agent-runtime/src/claude/sdk.ts'
+      - 'runtime/fleet-console/foundation/agent-runtime/src/claude/vendor-sdk.ts'
+      - 'runtime/fleet-desktop/src/sidecar-supervisor.ts'
+      - 'runtime/fleet-console/tests/built/fleet-built-smoke.test.ts'
+      - 'runtime/fleet-console/tests/server.test.ts'
+      - 'runtime/fleet-console/tests/fixtures/lifecycle-*'
+      - 'runtime/fleet-desktop/tests/sidecar-supervisor.test.ts'
+      - '.github/workflows/console-lifecycle.yml'
+  push:
+    branches:
+      - canary
+    paths:
+      - 'runtime/fleet-console/protocol/lifecycle/**'
+      - 'runtime/fleet-console/foundation/lifecycle/**'
+      - 'runtime/fleet-console/core/host/bootstrap/console-lifecycle.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/lock.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/local-consoles.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/cli.ts'
+      - 'runtime/fleet-console/core/host/bootstrap/server.ts'
+      - 'runtime/fleet-console/features/updates/host/update-apply.ts'
+      - 'runtime/fleet-console/features/execution/host/agent/launch-attachments.ts'
+      - 'runtime/fleet-console/features/execution/host/agent/launch-prompt-namespace.ts'
+      - 'runtime/fleet-console/features/execution/host/agent/routes.ts'
+      - 'runtime/fleet-console/features/execution/host/agent/chat-session.ts'
+      - 'runtime/fleet-console/foundation/agent-runtime/src/claude/sdk.ts'
+      - 'runtime/fleet-console/foundation/agent-runtime/src/claude/vendor-sdk.ts'
+      - 'runtime/fleet-desktop/src/sidecar-supervisor.ts'
+      - 'runtime/fleet-console/tests/built/fleet-built-smoke.test.ts'
+      - 'runtime/fleet-console/tests/server.test.ts'
+      - 'runtime/fleet-console/tests/fixtures/lifecycle-*'
+      - 'runtime/fleet-desktop/tests/sidecar-supervisor.test.ts'
+      - '.github/workflows/console-lifecycle.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # postinstall builds the workspace: the suites run the built Console (dist/cli.mjs).
+      - run: pnpm install --frozen-lockfile
+      # Files are named rather than filtered with -t: a renamed case would otherwise pass as zero tests.
+      - name: Console lifecycle invariants
+        env:
+          FLEET_BUILT_SMOKE: "1"
+        run: pnpm --filter @dotobokuri/fleet-console exec vitest run tests/built/fleet-built-smoke.test.ts tests/server.test.ts
+      - name: Desktop supervisor over a built Console
+        env:
+          FLEET_BUILT_SMOKE: "1"
+        run: pnpm --filter @dotobokuri/fleet-desktop exec vitest run tests/sidecar-supervisor.test.ts
