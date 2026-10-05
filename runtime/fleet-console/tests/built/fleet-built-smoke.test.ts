@@ -814,7 +814,7 @@ function createRun(name: string): LifecycleRun {
   if (process.platform === "win32") {
     // Chat refuses a .cmd CLAUDE_BIN (`chat_cli_wrapper_unsupported`): resolveBinary wraps .cmd/.bat as
     // cmd.exe /c call, and the SDK spawns `bin` with no shell. A real claude.exe is what that path accepts.
-    compileWindowsFakeAgent(path.join(pathbin, "claude-fake.exe"));
+    compileWindowsFakeAgent(path.join(pathbin, "claude-fake.exe"), process.execPath, FAKE_AGENT, agentDir);
   } else {
     // The agent stand-in is a `#!/usr/bin/env node` script: only this Node goes on PATH, never a directory of real CLIs.
     fs.symlinkSync(process.execPath, path.join(pathbin, "node"));
@@ -826,8 +826,10 @@ function createRun(name: string): LifecycleRun {
  * An .exe the SDK can CreateProcess. It waits briefly so the Console can assign the leader to its job, then runs the
  * fake agent under node with the SDK's own arguments and proxies the pipes. .NET Framework csc ships on windows-2022.
  */
-function compileWindowsFakeAgent(exePath: string): void {
+function compileWindowsFakeAgent(exePath: string, nodePath: string, scriptPath: string, agentDir: string): void {
   const source = path.join(path.dirname(exePath), "claude-fake.cs");
+  const logPath = path.join(path.dirname(exePath), "claude-fake.log");
+  const csQuote = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
   const winDir = process.env.WINDIR ?? process.env.SystemRoot ?? "C:\\Windows";
   const compilers = [
     path.join(winDir, "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe"),
@@ -841,9 +843,11 @@ function compileWindowsFakeAgent(exePath: string): void {
     "using System.Threading;",
     "class Program {",
     "  static int Main(string[] args) {",
-    "    string node = Environment.GetEnvironmentVariable(\"FAKE_AGENT_NODE\");",
-    "    string script = Environment.GetEnvironmentVariable(\"FAKE_AGENT_SCRIPT\");",
-    "    if (string.IsNullOrEmpty(node) || string.IsNullOrEmpty(script)) return 2;",
+    `    string node = ${csQuote(nodePath)};`,
+    `    string script = ${csQuote(scriptPath)};`,
+    `    string dir = ${csQuote(agentDir)};`,
+    `    string logPath = ${csQuote(logPath)};`,
+    "    System.IO.File.AppendAllText(logPath, \"start\\r\\n\");",
     "    Thread.Sleep(300);",
     "    var psi = new ProcessStartInfo();",
     "    psi.FileName = node;",
@@ -851,8 +855,11 @@ function compileWindowsFakeAgent(exePath: string): void {
     "    psi.CreateNoWindow = true;",
     "    psi.Arguments = Quote(script);",
     "    foreach (string arg in args) psi.Arguments += \" \" + Quote(arg);",
+    "    psi.EnvironmentVariables[\"FAKE_AGENT_DIR\"] = dir;",
     "    var child = Process.Start(psi);",
+    "    if (child == null) { System.IO.File.AppendAllText(logPath, \"start-failed\\r\\n\"); return 3; }",
     "    child.WaitForExit();",
+    "    System.IO.File.AppendAllText(logPath, \"exit \" + child.ExitCode + \"\\r\\n\");",
     "    return child.ExitCode;",
     "  }",
     "  static string Quote(string value) {",
@@ -892,7 +899,7 @@ function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefi
     "      else note('detached spawn returned no pid');",
     "    } catch (error) { note('detached ' + (error && error.message || error)); }",
     "    const quote = (value) => \"'\" + String(value).replace(/'/g, \"''\") + \"'\";",
-    "    const started = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$p = Start-Process -FilePath ' + quote(process.execPath) + ' -ArgumentList ' + quote(stay) + ' -PassThru; Write-Output $p.Id'], { encoding: 'utf8', windowsHide: true, timeout: 20000 });",
+    "    const started = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$p = Start-Process -FilePath ' + quote(process.execPath) + ' -ArgumentList ' + quote(stay) + ' -PassThru; Write-Output $p.Id'], { encoding: 'utf8', windowsHide: true, timeout: 20000, input: '' });",
     "    const startedPid = Number(String(started.stdout || '').trim().split(/\\s+/).pop());",
     "    if (startedPid) record('start-process', startedPid);",
     "    else note('Start-Process status ' + started.status + ' ' + String(started.stderr || started.error || '').replace(/\\s+/g, ' ').slice(0, 300));",
@@ -1230,7 +1237,9 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
     const procs = fs.existsSync(procsFile) ? fs.readFileSync(procsFile, "utf8") : "(no procs)";
     const errorsFile = path.join(run.root, "console", "errors.jsonl");
     const errors = fs.existsSync(errorsFile) ? fs.readFileSync(errorsFile, "utf8").slice(-2_000) : "(no errors)";
-    throw new Error(`the chat turn did not open\nprocs:\n${procs}\nerrors:\n${errors}`);
+    const launcherLog = path.join(run.dir, "bin", "claude-fake.log");
+    const launcher = fs.existsSync(launcherLog) ? fs.readFileSync(launcherLog, "utf8") : "(no launcher log)";
+    throw new Error(`the chat turn did not open\nprocs:\n${procs}\nlauncher:\n${launcher}\nerrors:\n${errors}`);
   }
   if (options.terminal) {
     const terminals = count("terminal");
