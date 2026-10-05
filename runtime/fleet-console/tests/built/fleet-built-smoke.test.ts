@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
 import { resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";
@@ -161,7 +161,7 @@ const LIFECYCLE_KNOWN_DEFECTS = JSON.parse(fs.readFileSync(fileURLToPath(new URL
 // Long enough for anything that reaps after the Console is gone (a containment helper's own grace included).
 const SETTLE_MS = 10_000;
 const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
-const AGENT_ROLES = new Set(["chat", "chat-mcp", "terminal", "terminal-mcp"]);
+const AGENT_ROLES = new Set(["chat", "chat-mcp", "chat-orphan", "terminal", "terminal-mcp"]);
 /** How long the escalation cases freeze the Console's event loop just before its own stop deadline. */
 const FREEZE_BEFORE_DEADLINE_MS = 800;
 const FAKE_AGENT = fileURLToPath(new URL("../fixtures/lifecycle-fake-agent.mjs", import.meta.url));
@@ -338,16 +338,20 @@ afterEach(async () => {
     lifecycleCheck("L14", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
   }, 90_000);
 
-  // L9, N4. The Console ends by its own deadline (stop's own process-table read is the slow one here, so stop never gets to
-  // escalate); stop must not report that as a clean stop. The deadline also ends a hung child that no one registered in the
-  // Console's process group: nothing the Console started may outlive it.
+  // L9, N4. The Console ends by its own deadline (stop's own process-table read is slow here, so stop never gets to
+  // escalate); stop must not report that as a clean stop. The deadline also ends a hung child that no one registered in
+  // the Console's process group and the member of a registered group whose leader already exited: nothing the Console
+  // started may outlive it. Both need the Console's (slow) process table, which the deadline reads once, so it ends within
+  // one table budget of its own and the external escalation keeps its margin.
   it("reports a Console that ended by its own deadline as not cleanly stopped", async () => {
     const run = createRun("outcome");
-    const stall = stallShutdownWithLockHeld(run, { strayChild: true });
-    const consoleProcess = spawnConsole(run, { preload: stall.preload });
+    const stall = stallShutdownWithLockHeld(run, { strayChild: true, recordSignal: true });
+    const consoleProcess = spawnConsole(run, { preload: stall.preload, env: { PATH: [slowProcessTable(run, 600), run.env.PATH].join(":"), FAKE_AGENT_LEADER_EXITS: "1" } });
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
     await openWorkload(run, endpoint, { terminal: false });
+    const leader = agentProcs(run).find((entry) => entry.role === "chat")!;
+    await waitUntil(() => !isAlive(leader.pid), 10_000, "the agent's group leader did not exit");
     const started = descendantsOf(consoleProcess.pid!);
     await provableByStartTime(startedAt);
 
@@ -357,7 +361,10 @@ afterEach(async () => {
     expect(fs.existsSync(stall.marker), "the injected stall must hold the shutdown with the lock held").toBe(true);
     expect(exit.signal, "the Console must end by its own deadline in this case").toBeNull();
     expect(exit.code).not.toBe(0);
-    expect(await survivors(run, started)).toEqual([]);
+    const left = await survivors(run, started);
+    lifecycleCheck("L9", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
+    const recordedMs = deadlineRecordedAfterSignal(run, stall.signalled);
+    lifecycleCheck("L9", recordedMs !== null && recordedMs <= CONSOLE_STOP_DEADLINE_MS + PROCESS_TABLE_TIMEOUT_MS + 100, "I4: the deadline spends one process-table budget at most", { detail: { recordedMs } });
     lifecycleCheck("L9", stop.status !== 0, "stop does not report a deadline-ended Console as cleanly stopped", { detail: { status: stop.status, stdout: stop.stdout.trim() } });
   }, 90_000);
 
@@ -685,15 +692,18 @@ function writePreload(run: LifecycleRun, name: string, lines: readonly string[])
  * `freezeOnSignalMs` also blocks the event loop that long when the first SIGTERM arrives, before the Console handles it.
  * `freezeBeforeDeadline` blocks it for FREEZE_BEFORE_DEADLINE_MS starting 200ms before the Console's own stop deadline, so the
  * deadline's cleanup runs late while its process-table read keeps the full budget.
+ * `recordSignal` writes when the first SIGTERM arrived (epoch ms) to `signalled`.
  */
-function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number; readonly freezeBeforeDeadline?: boolean; readonly strayChild?: boolean } = {}): { readonly preload: string; readonly marker: string; readonly freeze: string } {
+function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number; readonly freezeBeforeDeadline?: boolean; readonly strayChild?: boolean; readonly recordSignal?: boolean } = {}): { readonly preload: string; readonly marker: string; readonly freeze: string; readonly signalled: string } {
   const marker = path.join(run.dir, "stalled");
+  const signalled = path.join(run.dir, "signalled");
   // {t0, start, end} in epoch ms: the first SIGTERM and the pre-deadline freeze, for the case's timeline.
   const freeze = path.join(run.dir, "freeze.jsonl");
   const preload = writePreload(run, "stall-close.mjs", [
     "import fs from 'node:fs';",
     "import http from 'node:http';",
     `const lock = ${JSON.stringify(run.lockFile)}, marker = ${JSON.stringify(marker)}, freeze = ${JSON.stringify(freeze)};`,
+    ...(options.recordSignal ? [`process.prependOnceListener('SIGTERM', () => fs.writeFileSync(${JSON.stringify(signalled)}, String(Date.now())));`] : []),
     ...(options.freezeOnSignalMs ? [`process.prependOnceListener('SIGTERM', () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${options.freezeOnSignalMs}));`] : []),
     // A child no one registered, in the Console's own process group, that never ends by itself (a hung tool call).
     ...(options.strayChild ? ["import('node:child_process').then(({ spawn }) => spawn('/bin/sleep', ['300'], { stdio: 'ignore' }));"] : []),
@@ -716,7 +726,19 @@ function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freeze
     "  return close.call(this, callback);",
     "};",
   ]);
-  return { preload, marker, freeze };
+  return { preload, marker, freeze, signalled };
+}
+
+/** How long after the Console's first SIGTERM its stop deadline recorded the timeout (after its SIGKILLs), in ms. */
+function deadlineRecordedAfterSignal(run: LifecycleRun, signalled: string): number | null {
+  try {
+    const t0 = Number(fs.readFileSync(signalled, "utf8"));
+    for (const line of fs.readFileSync(path.join(run.root, "console", "errors.jsonl"), "utf8").split("\n").filter(Boolean)) {
+      const entry = JSON.parse(line) as { kind?: unknown; ts?: unknown };
+      if (entry.kind === "shutdown_timeout" && typeof entry.ts === "string") return Date.parse(entry.ts) - t0;
+    }
+  } catch { /* No signal or no failure log: the deadline never fired. */ }
+  return null;
 }
 
 /**

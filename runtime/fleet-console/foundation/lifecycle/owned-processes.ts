@@ -23,7 +23,12 @@ export interface OwnedProcessSpawnRequest {
 
 export interface OwnedProcessKillInput {
   readonly env?: NodeJS.ProcessEnv;
-  /** The process table could not be read, so no group whose leader had exited was signalled. */
+  /**
+   * The process table to judge by. The stop deadline passes one `createProcessTableSnapshot` to every step, so the table is
+   * read (and its budget spent) at most once; without it each call reads its own.
+   */
+  readonly table?: ProcessTableSnapshot;
+  /** The process table could not be read, so nothing that needed it was signalled. */
   readonly onProcessTableUnavailable?: (error: unknown) => void;
 }
 
@@ -105,7 +110,7 @@ export function createOwnedProcessRegistry(): OwnedProcessRegistry {
         }
       }
       if (orphaned.length === 0) return killed;
-      const table = readProcessGroupTable(input.env ?? process.env);
+      const table = (input.table ?? createProcessTableSnapshot(input.env ?? process.env))();
       if ("error" in table) {
         input.onProcessTableUnavailable?.(table.error);
         return killed;
@@ -123,7 +128,7 @@ export function createOwnedProcessRegistry(): OwnedProcessRegistry {
 export interface ProcessGroupRow {
   readonly pid: number;
   readonly pgid: number;
-  /** Start time, epoch ms rounded down to the second. */
+  /** Start time, epoch ms rounded down to the second; NaN when ps gave one that cannot be read. */
   readonly startedAt: number;
 }
 
@@ -141,8 +146,26 @@ export function proveExitedLeaderGroup(rows: readonly ProcessGroupRow[], group: 
   return members.every((row) => row.startedAt >= group.spawnedAt - PROCESS_START_MARGIN_MS && row.startedAt <= now);
 }
 
-function readProcessGroupTable(env: NodeJS.ProcessEnv): { readonly rows: readonly ProcessGroupRow[] } | { readonly error: unknown } {
-  const listing = spawnSync("ps", ["-A", "-o", "pid=,pgid=,lstart="], {
+/** One row of `ps -A -o pid=,ppid=,pgid=,lstart=`: enough to prove a group and to walk descendants. */
+export interface ProcessTableRow extends ProcessGroupRow, ProcessTreeRow {}
+
+export type ProcessTable = { readonly rows: readonly ProcessTableRow[] } | { readonly error: unknown };
+
+/** Reads the process table on its first call, within PROCESS_TABLE_TIMEOUT_MS, and answers every later call with that read. */
+export type ProcessTableSnapshot = () => ProcessTable;
+
+/**
+ * One process-table read, shared. The stop deadline's steps each need the table; reading it once keeps the deadline within
+ * one PROCESS_TABLE_TIMEOUT_MS of its own budget, which the external escalation margin is sized for. Synchronous, so a
+ * direct child cannot be reaped (and its pid reused) between the read and a signal in the same turn.
+ */
+export function createProcessTableSnapshot(env: NodeJS.ProcessEnv): ProcessTableSnapshot {
+  let table: ProcessTable | null = null;
+  return () => (table ??= readProcessTable(env));
+}
+
+function readProcessTable(env: NodeJS.ProcessEnv): ProcessTable {
+  const listing = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,lstart="], {
     env: { PATH: env.PATH ?? "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC" },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
@@ -152,12 +175,15 @@ function readProcessGroupTable(env: NodeJS.ProcessEnv): { readonly rows: readonl
   if (listing.error || listing.status !== 0 || typeof listing.stdout !== "string") {
     return { error: listing.error ?? new Error(`ps exited with ${listing.status ?? listing.signal}`) };
   }
-  const rows: ProcessGroupRow[] = [];
+  const rows: ProcessTableRow[] = [];
   for (const line of listing.stdout.split("\n")) {
-    const match = /^\s*(\d+)\s+(\d+)\s+(\S.*\S)\s*$/.exec(line);
+    const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S.*\S)\s*$/.exec(line);
     if (!match) continue;
-    const startedAt = parsePsLstartUtc(match[3]!);
-    if (startedAt !== null) rows.push({ pid: Number(match[1]), pgid: Number(match[2]), startedAt });
+    const pid = Number(match[1]);
+    // ps itself was this process's child and is already reaped; its pid must not be judged or signalled.
+    if (pid === listing.pid) continue;
+    // A start time that cannot be read proves nothing: NaN fails every start-time comparison.
+    rows.push({ pid, ppid: Number(match[2]), pgid: Number(match[3]), startedAt: parsePsLstartUtc(match[4]!) ?? Number.NaN });
   }
   return { rows };
 }
@@ -234,27 +260,13 @@ export function selectSameGroupDescendants(rows: readonly ProcessTreeRow[], root
  */
 export function killSameGroupDescendants(input: OwnedProcessKillInput = {}): number {
   if (process.platform === "win32") return 0;
-  const listing = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid="], {
-    env: { PATH: (input.env ?? process.env).PATH ?? "/usr/bin:/bin", LC_ALL: "C" },
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: PROCESS_TABLE_TIMEOUT_MS,
-    windowsHide: true,
-  });
-  if (listing.error || listing.status !== 0 || typeof listing.stdout !== "string") {
-    input.onProcessTableUnavailable?.(listing.error ?? new Error(`ps exited with ${listing.status ?? listing.signal}`));
+  const table = (input.table ?? createProcessTableSnapshot(input.env ?? process.env))();
+  if ("error" in table) {
+    input.onProcessTableUnavailable?.(table.error);
     return 0;
   }
-  const rows: ProcessTreeRow[] = [];
-  for (const line of listing.stdout.split("\n")) {
-    const fields = line.trim().split(/\s+/).map(Number);
-    if (fields.length === 3 && fields.every((value) => Number.isSafeInteger(value) && value >= 0)) {
-      rows.push({ pid: fields[0]!, ppid: fields[1]!, pgid: fields[2]! });
-    }
-  }
-  // ps itself was this process's child and is already reaped; its pid must not be signalled.
   let killed = 0;
-  for (const pid of selectSameGroupDescendants(rows, process.pid, listing.pid ? [listing.pid] : [])) {
+  for (const pid of selectSameGroupDescendants(table.rows, process.pid)) {
     try {
       process.kill(pid, "SIGKILL");
       killed += 1;

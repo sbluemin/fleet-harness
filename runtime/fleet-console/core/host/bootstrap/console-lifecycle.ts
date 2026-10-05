@@ -10,6 +10,7 @@ import {
   captureProvenProcessStart,
   createConsoleHealthClient,
   createOwnedProcessRegistry,
+  createProcessTableSnapshot,
   killSameGroupDescendants,
   isPidAlive,
   observeConsoleInstance,
@@ -286,16 +287,23 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       // left behind is reclaimed by the next Console once this pid is ESRCH.
       onStopRequested: () => {
         deadline = setTimeout(() => {
-          const unavailable = (error: unknown) => recordFailure("shutdown_process_table_unavailable", error);
+          // One process-table read at most, shared by both steps: the external escalation leaves room for one.
+          const table = createProcessTableSnapshot(env);
+          let unavailableRecorded = false;
+          const unavailable = (error: unknown) => {
+            if (unavailableRecorded) return;
+            unavailableRecorded = true;
+            recordFailure("shutdown_process_table_unavailable", error);
+          };
           // ① The owned groups first: a group led by an unreaped child needs no process table, so a table that cannot be
           // read never costs those (E1).
           let groups = 0;
-          try { groups = ownedProcesses.killAll({ env, onProcessTableUnavailable: unavailable }); }
+          try { groups = ownedProcesses.killAll({ table, onProcessTableUnavailable: unavailable }); }
           catch (error) { recordFailure("shutdown_owned_processes_failed", error); }
           // ② Then whatever no one registered that still shares this process's group (a plugin's tool, a git or ripgrep
           // call, a stdio MCP transport). This one needs the table and skips everything without it.
           let strays = 0;
-          try { strays = killSameGroupDescendants({ env, onProcessTableUnavailable: unavailable }); }
+          try { strays = killSameGroupDescendants({ table, onProcessTableUnavailable: unavailable }); }
           catch (error) { recordFailure("shutdown_process_table_unavailable", error); }
           const killed = groups + strays;
           const settled = lifecycle.isStartupSettled();
