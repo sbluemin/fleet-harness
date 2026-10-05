@@ -5,6 +5,33 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.214.0] - 2026-10-05
+
+### fleet-cli
+
+#### Changed
+- `fleet gateway models`가 Claude 모델도 다른 모델처럼 컨텍스트 창과 호스트 전용 여부를 함께 보여 주고, `fleet gateway`에서 Claude 모델을 호스트 전용으로 지정할 수 있습니다.
+
+#### Fixed
+- SSH 접속 중에 Antigravity CLI(`agy`)로 로그인했을 때 `fleet`의 Antigravity 모델이 로그아웃 상태로 실패하지 않습니다.
+- `fleet console stop`은 깨끗하게 종료되지 않은 Console을 더 이상 "stopped"로 보고하지 않습니다. 10초 뒤 스스로 종료했거나, 오류로 끝났거나, 강제로 끝난 경우 `stop`은 무엇이 남았을 수 있는지 알려 주는 오류로 끝나고, `restart`는 같은 경고를 보여 준 뒤 새 Console을 시작합니다.
+- `fleet console stop`은 멈춘 Console을 강제 종료하기 전에 종료 시간을 끝까지 기다리고, 이미 종료 중인 Console은 1초 만에 실패하는 대신 끝날 때까지 기다립니다.
+- `fleet console start`가 기다리기를 포기할 때 아직 데이터를 복원 중인 Console을 더 이상 강제로 끝내지 않습니다. 그 Console은 이제 스스로 안전하게 종료합니다.
+
+### fleet-console
+
+#### Changed
+- 사령관이 추가했거나 개시한 목표는 사이드바 줄 끝에 사령관 마크가 붙습니다. 그래서 줄에 「사령관 추가」나 사령관의 최근 조작 앞 사각을 따로 적지 않습니다.
+- Console의 모든 모델 선택기는 이제 Settings › AI Gateway에서 켠 모델(Claude 포함)만 보여 주고, 목록이 바뀌면 열려 있는 모든 창에 바로 반영됩니다. 업데이트 후 목록에 Claude 모델이 없던 설치에는 Opus, Sonnet, Fable이 한 번 켜지며, 원하지 않으면 AI Gateway에서 끄면 됩니다.
+- Settings의 모델·강도 선택(Cowork, Session Analyst, 사령관 기본값, Scuttlebutt 부관, AI Gateway 라우팅)과 사령관 서랍이 Objectives 지휘관·구성원과 같은 선택기를 쓰며, 상자형 단추가 아니라 행의 값처럼 보이고, Low·Medium·High만이 아니라 모델이 지원하는 강도를 모두 고를 수 있습니다. 강도를 한 번 고르면 설정과 Objectives 모두 곧바로 확정되고 저장도 한 번만 일어납니다.
+- 저장해 둔 모델을 나중에 끄면 선택은 그대로 남고 「꺼짐」으로 표시되며, 다시 켤 때까지 실행은 Sonnet으로 이뤄집니다. 켜진 모델이 하나도 없으면 실행은 Sonnet으로 진행되고, 그 사실과 AI Gateway로 가는 링크가 함께 표시됩니다.
+- 이제 Settings > AI Gateway에서 Claude 모델도 다른 모델처럼 호스트 전용으로 지정할 수 있습니다. 호스트 전용 모델은 모든 모델 선택기에 그대로 남고 위임 실행에만 배정되지 않습니다. 예전 버전에서 Claude에 저장된 호스트 전용 값은 업데이트 때 한 번 해제되니, 계속 쓰려면 다시 켜 주세요. 켠 모델이 모두 호스트 전용이라 위임을 받을 모델이 없으면 위임 라우팅 설정에 그 사실이 표시됩니다.
+
+#### Fixed
+- SSH 접속 중에 Antigravity CLI(`agy`)로 로그인했을 때 Antigravity 모델과 사용량 한도가 로그아웃 상태로 표시되지 않습니다.
+- Muse 턴이 다음 작업을 예고만 하고 멈추면, "계속"이라고 말해 주지 않아도 그 작업을 이어서 진행합니다.
+- 종료 중인 Console에 로그아웃이나 반복된 `kill` 같은 종료 요청이 한 번 더 와도 에이전트 프로세스가 백그라운드에 남지 않습니다. 종료가 멈춘 Console은 이제 약 10초 안에 에이전트 프로세스를 먼저 정리한 뒤 스스로 종료합니다.
+
 ## [1.213.0] - 2026-10-05
 
 ### fleet-cli

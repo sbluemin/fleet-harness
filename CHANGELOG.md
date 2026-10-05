@@ -5,6 +5,33 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.214.0] - 2026-10-05
+
+### fleet-cli
+
+#### Changed
+- `fleet gateway models` reports Claude models with their context window and host-only state like other models, and `fleet gateway` lets you mark a Claude model host-only.
+
+#### Fixed
+- Antigravity models in `fleet` no longer fail as signed out when you signed in with the Antigravity CLI (`agy`) over SSH.
+- `fleet console stop` no longer reports "stopped" for a Console that did not shut down cleanly: when it had to end itself after 10 seconds, failed, or was killed, `stop` exits with an error that says what may remain, and `restart` shows the same warning before starting a new Console.
+- `fleet console stop` now gives a stuck Console its full shutdown time before force-stopping it, and waits for a Console that is already shutting down instead of failing after a second.
+- `fleet console start` no longer force-kills a Console that is still restoring its data when start gives up waiting; that Console now shuts itself down safely.
+
+### fleet-console
+
+#### Changed
+- Objectives the Commodore added or commenced now carry the Commodore's own mark at the end of their sidebar row, so the row no longer repeats "Added by Commodore" or a square before the Commodore's latest action.
+- Every model picker in Console now offers exactly the models you turn on in Settings > AI Gateway, including Claude, and updates in every open window when that list changes. After the update, Opus, Sonnet and Fable are turned on once for installs whose list had no Claude model; turn them off in AI Gateway if you don't want them.
+- Model and effort choices in Settings (Cowork, Session Analyst, the Commodore's default, Scuttlebutt aides and AI Gateway routing) and in the Commodore drawer now use the same picker as the Objectives Commander and members, sit in their rows as a plain value instead of a boxed button, and offer each model's full effort range instead of only Low, Medium and High. Picking an effort confirms the choice in one step and saves it once, in Settings and Objectives alike.
+- A saved model that you later turn off stays selected and is marked as off, while runs use Sonnet until you turn it back on; with no models turned on, launches run on Sonnet and say so with a link to AI Gateway.
+- Claude models can be marked host-only in Settings > AI Gateway like any other model, so delegated runs are never assigned to them while they stay in every model picker. A host-only setting saved for Claude in an earlier version is cleared once on update; turn it on again if you still want it. Delegation routing also shows when no model can take delegated runs because every enabled model is host-only.
+
+#### Fixed
+- Antigravity models and usage limits no longer show you as signed out when you signed in with the Antigravity CLI (`agy`) over SSH.
+- Muse turns that announce their next step and then stop now carry on with that step instead of waiting for you to say "continue".
+- Stopping Console no longer leaves agent processes running in the background when another stop request, such as a logout or a repeated `kill`, arrives while it is still shutting down. A Console whose shutdown gets stuck now ends itself within about 10 seconds and stops its agent processes first.
+
 ## [1.213.0] - 2026-10-05
 
 ### fleet-cli
