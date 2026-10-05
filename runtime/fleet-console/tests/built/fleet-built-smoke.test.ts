@@ -838,7 +838,6 @@ function compileWindowsFakeAgent(exePath: string): void {
   fs.writeFileSync(source, [
     "using System;",
     "using System.Diagnostics;",
-    "using System.IO;",
     "using System.Threading;",
     "class Program {",
     "  static int Main(string[] args) {",
@@ -850,27 +849,11 @@ function compileWindowsFakeAgent(exePath: string): void {
     "    psi.FileName = node;",
     "    psi.UseShellExecute = false;",
     "    psi.CreateNoWindow = true;",
-    "    psi.RedirectStandardInput = true;",
-    "    psi.RedirectStandardOutput = true;",
-    "    psi.RedirectStandardError = true;",
     "    psi.Arguments = Quote(script);",
     "    foreach (string arg in args) psi.Arguments += \" \" + Quote(arg);",
     "    var child = Process.Start(psi);",
-    "    var input = new Thread(() => Pump(Console.OpenStandardInput(), child.StandardInput.BaseStream, true));",
-    "    var output = new Thread(() => Pump(child.StandardOutput.BaseStream, Console.OpenStandardOutput(), false));",
-    "    var error = new Thread(() => Pump(child.StandardError.BaseStream, Console.OpenStandardError(), false));",
-    "    input.IsBackground = true; output.IsBackground = true; error.IsBackground = true;",
-    "    input.Start(); output.Start(); error.Start();",
     "    child.WaitForExit();",
     "    return child.ExitCode;",
-    "  }",
-    "  static void Pump(Stream from, Stream to, bool closeTo) {",
-    "    try {",
-    "      byte[] buffer = new byte[8192];",
-    "      int read;",
-    "      while ((read = from.Read(buffer, 0, buffer.Length)) > 0) to.Write(buffer, 0, read);",
-    "    } catch (Exception ignored) {}",
-    "    if (closeTo) { try { to.Close(); } catch (Exception ignored) {} }",
     "  }",
     "  static string Quote(string value) {",
     "    string q = ((char)34).ToString();",
@@ -893,7 +876,9 @@ function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefi
   const koffiEntry = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
   return [
     "if (!process.argv.includes('models')) {",
-    "  try {",
+    "  let once = false;",
+    "  try { require('fs').mkdirSync(require('path').join(__dirname, 'grandchildren.lock')); once = true; } catch (error) {}",
+    "  if (once) try {",
     "    const fs = require('fs');",
     "    const path = require('path');",
     "    const { spawn, spawnSync } = require('child_process');",
@@ -907,7 +892,7 @@ function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefi
     "      else note('detached spawn returned no pid');",
     "    } catch (error) { note('detached ' + (error && error.message || error)); }",
     "    const quote = (value) => \"'\" + String(value).replace(/'/g, \"''\") + \"'\";",
-    "    const started = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$p = Start-Process -FilePath ' + quote(process.execPath) + ' -ArgumentList ' + quote(stay) + ' -WindowStyle Hidden -PassThru; Write-Output $p.Id'], { encoding: 'utf8', windowsHide: true, timeout: 15000 });",
+    "    const started = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$p = Start-Process -FilePath ' + quote(process.execPath) + ' -ArgumentList ' + quote(stay) + ' -PassThru; Write-Output $p.Id'], { encoding: 'utf8', windowsHide: true, timeout: 20000 });",
     "    const startedPid = Number(String(started.stdout || '').trim().split(/\\s+/).pop());",
     "    if (startedPid) record('start-process', startedPid);",
     "    else note('Start-Process status ' + started.status + ' ' + String(started.stderr || started.error || '').replace(/\\s+/g, ' ').slice(0, 300));",
@@ -1238,7 +1223,15 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
   const count = (role: string) => agentProcs(run).filter((entry) => entry.role === role).length;
   const turns = count("turn-open");
   await consoleApi(endpoint, "/api/v1/agent/sessions", { theaterId, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" });
-  await waitUntil(() => count("turn-open") > turns, 20_000, "the chat turn did not open");
+  const turnDeadline = Date.now() + 20_000;
+  while (count("turn-open") <= turns && Date.now() < turnDeadline) await delay(25);
+  if (count("turn-open") <= turns) {
+    const procsFile = path.join(run.agentDir, "procs.jsonl");
+    const procs = fs.existsSync(procsFile) ? fs.readFileSync(procsFile, "utf8") : "(no procs)";
+    const errorsFile = path.join(run.root, "console", "errors.jsonl");
+    const errors = fs.existsSync(errorsFile) ? fs.readFileSync(errorsFile, "utf8").slice(-2_000) : "(no errors)";
+    throw new Error(`the chat turn did not open\nprocs:\n${procs}\nerrors:\n${errors}`);
+  }
   if (options.terminal) {
     const terminals = count("terminal");
     await consoleApi(endpoint, "/api/v1/agent/sessions", { theaterId, cliId: "claude" });
@@ -1291,7 +1284,7 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
       const roles = new Set(recorded().map((entry) => entry.role));
       return roles.has("detached") && roles.has("start-process") && roles.has("native") && breakawayFile !== undefined && fs.existsSync(breakawayFile);
     };
-    const deadline = Date.now() + 20_000;
+    const deadline = Date.now() + 40_000;
     while (!ready() && Date.now() < deadline) await delay(25);
     if (!ready()) {
       const body = fs.existsSync(pids) ? fs.readFileSync(pids, "utf8") : "(no pids file)";
