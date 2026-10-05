@@ -297,7 +297,8 @@ afterEach(async () => {
     const lockFile = path.join(slot, "console.lock");
     const stalled = path.join(dir, "stalled");
     const exited = path.join(dir, "exited");
-    // {t0, start, end} in epoch ms: the first SIGTERM and the pre-deadline freeze, for the case's timeline.
+    // Epoch ms for the case's timeline: a start line {t0, start} (the first SIGTERM, the freeze beginning) written before the
+    // freeze and an end line {end} after it, so a Console killed during the freeze still leaves when the freeze began.
     const freeze = path.join(dir, "freeze.jsonl");
     const preload = path.join(dir, "stall-close.mjs");
     // Test-only preload, active in the Console's `serve` process only (NODE_OPTIONS reaches every Node child it starts):
@@ -312,9 +313,9 @@ afterEach(async () => {
       "  process.prependOnceListener('SIGTERM', () => {",
       "    const t0 = Date.now();",
       "    setTimeout(() => {",
-      "      const start = Date.now();",
+      "      fs.appendFileSync(freeze, JSON.stringify({ t0, start: Date.now() }) + '\\n');",
       "      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800);",
-      "      fs.appendFileSync(freeze, JSON.stringify({ t0, start, end: Date.now() }) + '\\n');",
+      "      fs.appendFileSync(freeze, JSON.stringify({ end: Date.now() }) + '\\n');",
       `    }, ${CONSOLE_STOP_DEADLINE_MS - 200}).unref();`,
       "  });",
       "  const close = http.Server.prototype.close;",
@@ -397,12 +398,15 @@ afterEach(async () => {
     })();
     const failureLog = failureEntries.map((entry) => String(entry.kind));
     // When, after the Console's first SIGTERM, the freeze ran and the deadline recorded its timeout (after its process-table
-    // read): printed on every run so CI logs show how much of the escalation margin the deadline actually used.
+    // read): printed on every run so CI logs show how much of the escalation margin the deadline actually used. A null
+    // freezeEndMs means the Console died during the freeze, before its own deadline could run.
     const timeline = (() => {
       try {
-        const { t0, start, end } = JSON.parse(fs.readFileSync(freeze, "utf8").split("\n")[0]!) as { t0: number; start: number; end: number };
+        const lines = fs.readFileSync(freeze, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as { t0?: number; start?: number; end?: number });
+        const { t0, start } = lines[0] as { t0: number; start: number };
+        const end = lines[1]?.end;
         const recorded = failureEntries.filter((entry) => entry.kind === "shutdown_timeout" && typeof entry.ts === "string").map((entry) => Date.parse(entry.ts as string) - t0).at(-1) ?? null;
-        return { freezeStartMs: start - t0, freezeEndMs: end - t0, deadlineRecordedMs: recorded };
+        return { freezeStartMs: start - t0, freezeEndMs: typeof end === "number" ? end - t0 : null, deadlineRecordedMs: recorded };
       } catch {
         return null;
       }
