@@ -65,6 +65,8 @@ on:
       - 'runtime/fleet-console/tests/fixtures/lifecycle-*'
       - 'runtime/fleet-desktop/tests/sidecar-supervisor.test.ts'
       - '.github/workflows/console-lifecycle.yml'
+  # A canary push that GitHub never delivered can be re-run by hand on the same ref.
+  workflow_dispatch:
 
 permissions:
   contents: read

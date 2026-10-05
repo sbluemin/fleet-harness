@@ -22,6 +22,8 @@ on:
         description: 검증할 git ref/sha (미지정 시 이벤트 ref)
         required: false
         type: string
+  # A canary push that GitHub never delivered can be re-run by hand on the same ref.
+  workflow_dispatch:
 
 permissions:
   contents: read
