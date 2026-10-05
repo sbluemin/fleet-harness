@@ -257,6 +257,7 @@ export function hydrateUpdateProgress(): void {
     schedulePoll(0);
     return;
   }
+  const generation = watchGeneration;
   void (async () => {
     let progress: ConsoleUpdateProgress | null = null;
     try {
@@ -264,7 +265,7 @@ export function hydrateUpdateProgress(): void {
     } catch {
       return;
     }
-    if (progress.state === "idle") return;
+    if (generation !== watchGeneration || progress.state === "idle") return;
     // 이 탭은 업데이트를 시작시키지 않았지만, 서버는 지금 갈아 끼워지는 중이다. 정상 화면을
     // 내주면 곧 사라질 콘솔을 멀쩡한 것처럼 보여주게 된다 — 지금 붙어서 함께 지켜본다.
     if (progress.state === "running") {

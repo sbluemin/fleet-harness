@@ -51,23 +51,26 @@ export interface ConsoleUpdateApplyFailureResponse {
 export interface ConsoleUpdateWorkerMessage {
   readonly v: number;
   readonly runId: string;
-  readonly kind: "prepare" | "ready" | "commit" | "abort" | "failed";
+  readonly kind: "prepare" | "ready" | "commit" | "committed" | "abort" | "failed";
   readonly reason?: ConsoleUpdateFailureReason;
   readonly failureStage?: ConsoleUpdateFailureStage;
 }
 
-export function isConsoleUpdateWorkerMessage(value: unknown, runId: string): value is ConsoleUpdateWorkerMessage {
+export function isConsoleUpdateWorkerMessage(value: unknown, runId: string, version: number): value is ConsoleUpdateWorkerMessage {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
-  return entry.v === UPDATE_WORKER_HANDSHAKE_VERSION && entry.runId === runId
-    && ["prepare", "ready", "commit", "abort", "failed"].includes(entry.kind as string);
+  return entry.v === version && entry.runId === runId
+    && ["prepare", "ready", "commit", "committed", "abort", "failed"].includes(entry.kind as string);
 }
 
 /** The command that starts the Console for this data directory, or explains what keeps it from starting. */
 export const CONSOLE_START_COMMAND = "fleet console start";
 
 /**
- * Why an accepted update failed, as the update worker records it (`reason` on the progress record).
+ * 준비 또는 수락 이후 업데이트의 실패 사유(`reason`).
+ * - preflight-failed: 실제 worker의 설치 준비에 실패했다.
+ * - preflight-timeout: 실제 worker의 준비 예산이 소진됐다.
+ * - handoff-aborted: commit 또는 host의 실제 정지로 인계가 이어지지 않았다.
  * - lifecycle-runtime-mismatch: the worker's copy of the lifecycle runtime did not match what the Console recorded.
  * - old-console-unverified: the old Console still held its lock after B_ext and its identity could not be proven again.
  * - old-console-replaced: the old Console's lock names a live pid that started after the lock was written.
@@ -151,7 +154,7 @@ export function describeConsoleUpdateFailure(reason: ConsoleUpdateFailureReason 
     case "preflight-timeout":
       return `The update worker did not finish its checks within ${seconds(UPDATE_WORKER_PREFLIGHT_MS)}. The update did not ask the Console to stop and installed nothing.`;
     case "handoff-aborted":
-      return "The update was not handed over to its worker. The update did not ask the Console to stop, install anything, or start another Console.";
+      return "The update handoff did not complete. Its worker sent no stop signal, installed nothing, and started no other Console.";
     case "lifecycle-runtime-mismatch":
       if (facts.failureStage === "preflight") return "The update worker could not verify its copy of the Console lifecycle runtime. The update did not ask the Console to stop, install anything, or start another Console.";
       return "The update worker's copy of the Console lifecycle runtime did not match what the Console recorded, so it judged, signalled, and installed nothing. It started the previous version once the old Console had ended, and started nothing if the old Console was still running.";
