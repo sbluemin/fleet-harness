@@ -86,13 +86,17 @@ function ageOf(at: number, now: number): { readonly unit: "now" } | { readonly u
 }
 
 /**
- * 줄 둘째 줄의 출처 — 다른 세션이 더한 목표면 그 세션(사람은 기본 주인이라 적지 않고, 후속은 `followup` 이 원천을 말하며,
- * 사령관이 더한 목표는 줄 끝 사령관 표식이 말한다), 그리고 마지막으로 손댄 이와 그 행위·때. 사령관의 손은 brass 글자로만 선다.
+ * 줄 둘째 줄의 출처 — 사람이 아닌 손이 더한 목표면 그 손(사람은 기본 주인이라 적지 않고, 후속은 `followup` 이 원천을 말한다),
+ * 그리고 마지막으로 손댄 이와 그 행위·때. 사령관이 더한 목표는 줄 끝 사령관 표식이 말하므로, 실험 기능이 꺼져 표식이 서지 않을
+ * 때만 글로 적는다. 사령관의 손은 brass 글자로만 선다.
  */
-function provenanceOf(objective: Objective, now: number): OperationClusterRowProvenance[] {
+function provenanceOf(objective: Objective, board: CommodoreBoard, now: number): OperationClusterRowProvenance[] {
   const out: OperationClusterRowProvenance[] = [];
   const added = objective.addedBy;
-  if (added && !("kind" in added) && !objective.origin) out.push({ text: (locale) => { const t = getT(locale); return t("objectives.prov.addedBy", { who: added.title ?? t("objectives.actor.agent") }); } });
+  if (added && !objective.origin) {
+    if (!("kind" in added)) out.push({ text: (locale) => { const t = getT(locale); return t("objectives.prov.addedBy", { who: added.title ?? t("objectives.actor.agent") }); } });
+    else if (!board.enabled) out.push({ text: (locale) => getT(locale)("objectives.prov.addedByCommodore"), tone: "accent" });
+  }
   const last = lastAct(objective);
   if (last) {
     const age = ageOf(last.at, now);
@@ -133,7 +137,7 @@ function commodoreNotes(objective: Objective, board: CommodoreBoard, stalled: bo
 /** 사이드바 줄 — 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
 function rowOf(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined, board: CommodoreBoard = NO_COMMODORE, stalled = false, now = Date.now()): OperationClusterRow | null {
   if (objective.removed || objective.done) return null;
-  const provenance = provenanceOf(objective, now);
+  const provenance = provenanceOf(objective, board, now);
   const mark = commodoreMarkOf(objective, board);
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
