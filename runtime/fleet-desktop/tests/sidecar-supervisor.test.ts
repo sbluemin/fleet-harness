@@ -1,12 +1,15 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createDesktopEnvironment } from "../src/environment.js";
 import { SidecarSupervisor, type SidecarRuntime } from "../src/sidecar-supervisor.js";
 
 let lockFile = "";
@@ -221,3 +224,219 @@ describe("sidecar supervisor", () => {
     }
   }, 15_000);
 });
+
+// Process lifecycle over a real built Console: the real SidecarSupervisor quits it and nothing is mocked. The invariants, the
+// Console half of the suite and the known-defect ratchet are explained in runtime/fleet-console/tests/built/fleet-built-smoke.test.ts.
+const requireFromTest = createRequire(import.meta.url);
+const testsDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(testsDir, "../../..");
+// Test fixtures of the Console half, shared as files: the agent stand-in runs as CLAUDE_BIN and the ratchet list is read.
+const consoleFixtures = path.resolve(testsDir, "../../fleet-console/tests/fixtures");
+const FAKE_AGENT = path.join(consoleFixtures, "lifecycle-fake-agent.mjs");
+const LIFECYCLE_KNOWN_DEFECTS = JSON.parse(fs.readFileSync(path.join(consoleFixtures, "lifecycle-known-defects.json"), "utf8")) as ReadonlyArray<{ readonly case: string; readonly followup: string; readonly releasedBy: string }>;
+const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+// Long enough for anything that reaps after the Console is gone (a containment helper's own grace included).
+const SETTLE_MS = 10_000;
+
+// Needs the built Console (pnpm --filter @dotobokuri/fleet-console build); POSIX signal semantics only.
+const runLifecycle = process.env.FLEET_BUILT_SMOKE === "1" && process.platform !== "win32";
+const LIFECYCLE_DIRS: string[] = [];
+/** Every process the case started or observed, by pid, with the start time that proves it is still that process. */
+const OWNED = new Map<number, string>();
+
+afterEach(async () => {
+  // The suite keeps I1 itself: only a pid whose start time still matches is signalled, and nothing may be left behind.
+  const left: string[] = [];
+  if (OWNED.size > 0) {
+    for (const [pid, startedAt] of OWNED) {
+      if (processStartTime(pid) === startedAt) {
+        try { process.kill(pid, "SIGKILL"); } catch { /* Already gone. */ }
+      }
+    }
+    const deadline = Date.now() + 3_000;
+    for (const [pid, startedAt] of OWNED) {
+      while (processStartTime(pid) === startedAt && Date.now() < deadline) await delay(25);
+      if (processStartTime(pid) === startedAt) left.push(String(pid));
+    }
+    OWNED.clear();
+  }
+  for (const dir of LIFECYCLE_DIRS.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  if (left.length > 0) throw new Error(`lifecycle processes survived SIGKILL: ${left.join(", ")}`);
+});
+
+(runLifecycle ? describe : describe.skip)("sidecar supervisor over a built Console", () => {
+  // L4d, eca5f8c7 (I4, then I2). Quit while the Console's shutdown stalls with the lock held: only the Console's own 10s
+  // deadline reaps the agent that ignores SIGTERM. A process-table read that takes 600ms (inside the Console's own 1s
+  // allowance) moves that reap later; Quit must still not SIGKILL the Console first. The signature is the order: a reaper
+  // would hide the orphan before Desktop's own fix lands.
+  it("lets the Console's own shutdown deadline finish before Quit escalates", async () => {
+    const cliPath = requireFromTest.resolve("@dotobokuri/fleet-console/cli");
+    const serviceRoot = path.dirname(path.dirname(cliPath));
+    const base = path.join(repoRoot, ".fleet", "isolated", "lifecycle");
+    fs.mkdirSync(base, { recursive: true });
+    // Fleet data in the checkout's isolated root; TMPDIR and the Theater outside the checkout.
+    const dir = fs.mkdtempSync(path.join(base, "desktop-quit-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-lifecycle-desktop-"));
+    LIFECYCLE_DIRS.push(dir, tmp);
+    const root = path.join(dir, "root");
+    const slot = path.join(root, "console");
+    const agentDir = path.join(dir, "agent");
+    const theater = path.join(tmp, "theater");
+    const pathbin = path.join(dir, "bin");
+    const slowPs = path.join(dir, "slow-ps");
+    for (const target of [root, agentDir, theater, pathbin, slowPs, path.join(dir, "home")]) fs.mkdirSync(target, { recursive: true, mode: 0o700 });
+    fs.symlinkSync(process.execPath, path.join(pathbin, "node"));
+    const realPs = SYSTEM_PATH.map((entry) => path.join(entry, "ps")).find((candidate) => fs.existsSync(candidate))!;
+    fs.writeFileSync(path.join(slowPs, "ps"), `#!/bin/sh\nsleep 0.6\nexec ${realPs} "$@"\n`, { mode: 0o755 });
+    const lockFile = path.join(slot, "console.lock");
+    const stalled = path.join(dir, "stalled");
+    const exited = path.join(dir, "exited");
+    const preload = path.join(dir, "stall-close.mjs");
+    // Test-only preload, active in the Console's `serve` process only (NODE_OPTIONS reaches every Node child it starts):
+    // closing the main listener never completes, so shutdown stalls with the lock held, and the Console records reaching its
+    // own exit, which a SIGKILL from outside never lets it do.
+    fs.writeFileSync(preload, [
+      "import fs from 'node:fs';",
+      "import http from 'node:http';",
+      `const lock = ${JSON.stringify(lockFile)}, stalled = ${JSON.stringify(stalled)}, exited = ${JSON.stringify(exited)};`,
+      `if (process.argv[1] === ${JSON.stringify(cliPath)} && process.argv[2] === 'serve') {`,
+      "  process.on('exit', (code) => fs.writeFileSync(exited, String(code)));",
+      "  const close = http.Server.prototype.close;",
+      "  http.Server.prototype.close = function (callback) {",
+      "    let port = null;",
+      "    try { port = JSON.parse(fs.readFileSync(lock, 'utf8')).port; } catch {}",
+      "    const address = this.address();",
+      "    if (port !== null && address && typeof address === 'object' && address.port === port) { fs.writeFileSync(stalled, ''); return this; }",
+      "    return close.call(this, callback);",
+      "  };",
+      "}",
+    ].join("\n"));
+    const user = os.userInfo().username;
+    // Built from nothing, never inherited, so a Console that launched this suite cannot lend it its slot or session marker.
+    const baseEnv: NodeJS.ProcessEnv = {
+      HOME: path.join(dir, "home"),
+      TMPDIR: tmp,
+      PATH: [pathbin, ...SYSTEM_PATH].join(":"),
+      USER: user,
+      LOGNAME: user,
+      LANG: "en_US.UTF-8",
+      SHELL: "/bin/sh",
+      FLEET_DATA_DIR: root,
+      FLEET_CONSOLE_DATA_DIR: slot,
+      FLEET_DESKTOP_DATA_DIR: path.join(dir, "desktop"),
+      CLAUDE_CONFIG_DIR: path.join(dir, "claude"),
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      CLAUDE_BIN: FAKE_AGENT,
+      FAKE_AGENT_DIR: agentDir,
+    };
+    const desktop = createDesktopEnvironment(path.join(dir, "userdata"), "0.0.0-lifecycle", serviceRoot, false, baseEnv);
+    expect(path.join(desktop.consoleDir, "console.lock")).toBe(lockFile);
+    const serviceEnv: NodeJS.ProcessEnv = { ...desktop.serviceEnv, NODE_OPTIONS: `--import ${pathToFileURL(preload).href}`, PATH: [slowPs, pathbin, ...SYSTEM_PATH].join(":") };
+    expect(serviceEnv.HOME).toBe(baseEnv.HOME);
+    const serviceVersion = (JSON.parse(fs.readFileSync(path.join(serviceRoot, "package.json"), "utf8")) as { version: string }).version;
+    const supervisor = new SidecarSupervisor({
+      nodePath: process.execPath,
+      cliPath,
+      serviceRoot,
+      serviceVersion,
+      env: serviceEnv,
+      lockFile,
+      ownerId: desktop.ownerId,
+      log: { info: () => {}, error: () => {} },
+    });
+
+    const endpoint = await supervisor.startOrAdopt();
+    const consolePid = (JSON.parse(fs.readFileSync(lockFile, "utf8")) as { pid: number }).pid;
+    own(consolePid);
+    const agentProcs = () => {
+      try {
+        return fs.readFileSync(path.join(agentDir, "procs.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as { role: string; pid: number });
+      } catch {
+        return [];
+      }
+    };
+    const origin = new URL(endpoint).origin;
+    const api = async <T>(route: string, body: unknown): Promise<T> => {
+      const response = await fetch(new URL(route, endpoint), { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
+      const text = await response.text();
+      if (!response.ok) throw new Error(`${route}: ${response.status} ${text.slice(0, 200)}`);
+      return JSON.parse(text) as T;
+    };
+    const grant = await api<{ folderGrantId?: string; id?: string; grant?: { id: string } }>("/api/v1/theaters/folder-grants", { path: theater });
+    const created = await api<{ id?: string; theater?: { id: string } }>("/api/v1/theaters", { folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
+    await api("/api/v1/agent/sessions", { theaterId: created.id ?? created.theater?.id, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" });
+    await waitUntil(() => agentProcs().some((entry) => entry.role === "turn-open"), 20_000, "the chat turn did not open");
+    const started = descendantsOf(consolePid);
+
+    await supervisor.stop();
+    await waitUntil(() => processStartTime(consolePid) === null, 30_000, "the Console outlived Quit");
+
+    expect(fs.existsSync(stalled), "the injected stall must hold the shutdown with the lock held").toBe(true);
+    lifecycleCheck("L4d", fs.existsSync(exited), "I4: Quit does not SIGKILL the Console before its own deadline ends it");
+    const deadline = Date.now() + SETTLE_MS;
+    let left = started.filter((entry) => processStartTime(entry.pid) === entry.startedAt);
+    while (left.length > 0 && Date.now() < deadline) {
+      await delay(100);
+      left = left.filter((entry) => processStartTime(entry.pid) === entry.startedAt);
+    }
+    const roles = new Map(agentProcs().map((entry) => [entry.pid, entry.role] as const));
+    lifecycleCheck("L4d", left.length === 0, "I2: nothing the Console started outlives it", { detail: left.map((entry) => roles.get(entry.pid) ?? entry.command), signature: false });
+  }, 90_000);
+});
+
+/** Asserts one lifecycle invariant; a listed known defect asserts its signature instead (fleet-built-smoke.test.ts). */
+function lifecycleCheck(caseId: string, holds: boolean, invariant: string, options: { readonly detail?: unknown; readonly signature?: boolean } = {}): void {
+  const detail = options.detail === undefined ? "" : `: ${JSON.stringify(options.detail)}`;
+  const known = LIFECYCLE_KNOWN_DEFECTS.find((entry) => entry.case === caseId);
+  if (known && process.env.FLEET_LIFECYCLE_RATCHET !== "off") {
+    if (options.signature === false) return;
+    expect.soft(holds, `known defect ${known.followup} (${caseId}) no longer reproduces: "${invariant}" holds; ${known.releasedBy} removes its entry from lifecycle-known-defects.json${detail}`).toBe(false);
+  } else {
+    expect.soft(holds, `${caseId}${known ? ` (${known.followup})` : ""}: ${invariant}${detail}`).toBe(true);
+  }
+}
+
+function own(pid: number): void {
+  const startedAt = processStartTime(pid);
+  if (startedAt !== null && !OWNED.has(pid)) OWNED.set(pid, startedAt);
+}
+
+function processStartTime(pid: number): string | null {
+  const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" });
+  return result.status === 0 && result.stdout.trim() ? result.stdout.trim() : null;
+}
+
+/** Every live descendant of `pid` now, whatever started it. */
+function descendantsOf(pid: number): Array<{ readonly pid: number; readonly startedAt: string; readonly command: string }> {
+  const table = spawnSync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8" }).stdout.trim().split("\n").map((line) => line.trim().split(/\s+/).map(Number));
+  const found: number[] = [];
+  const queue = [pid];
+  while (queue.length > 0) {
+    const parent = queue.shift()!;
+    for (const [child, ppid] of table) {
+      if (child !== undefined && ppid === parent && !found.includes(child)) {
+        found.push(child);
+        queue.push(child);
+      }
+    }
+  }
+  return found.flatMap((child) => {
+    const startedAt = processStartTime(child);
+    if (startedAt === null) return [];
+    own(child);
+    const command = spawnSync("ps", ["-o", "command=", "-p", String(child)], { encoding: "utf8" }).stdout.trim();
+    return [{ pid: child, startedAt, command: path.basename(command.split(/\s+/)[0] ?? "") }];
+  });
+}
+
+async function waitUntil(condition: () => boolean, timeoutMs: number, message: string): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() >= deadline) throw new Error(message);
+    await delay(25);
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

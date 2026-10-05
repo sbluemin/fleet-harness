@@ -84,6 +84,19 @@ interface ExitablePty extends TerminalPtyHandle {
   emitExit(): void;
 }
 
+// Process lifecycle known-defect ratchet, shared with tests/built/fleet-built-smoke.test.ts (which explains it): a listed case
+// asserts its defect's signature until the fix removes the entry. FLEET_LIFECYCLE_RATCHET=off asserts every invariant.
+const LIFECYCLE_KNOWN_DEFECTS = JSON.parse(fs.readFileSync(fileURLToPath(new URL("./fixtures/lifecycle-known-defects.json", import.meta.url)), "utf8")) as ReadonlyArray<{ readonly case: string; readonly followup: string; readonly releasedBy: string }>;
+
+function lifecycleCheck(caseId: string, holds: boolean, invariant: string): void {
+  const known = LIFECYCLE_KNOWN_DEFECTS.find((entry) => entry.case === caseId);
+  if (known && process.env.FLEET_LIFECYCLE_RATCHET !== "off") {
+    expect.soft(holds, `known defect ${known.followup} (${caseId}) no longer reproduces: "${invariant}" holds; ${known.releasedBy} removes its entry from lifecycle-known-defects.json`).toBe(false);
+  } else {
+    expect.soft(holds, `${caseId}${known ? ` (${known.followup})` : ""}: ${invariant}`).toBe(true);
+  }
+}
+
 const tempDirs: string[] = [];
 const servers: ConsoleServer[] = [];
 let previousStaticIndex: string | null | undefined;
@@ -235,6 +248,56 @@ describe("console terminal observability", () => {
     } finally {
       delete process.env.FLEET_CONSOLE_RESUME_PORT;
       await new Promise<void>((resolve) => holder.close(() => resolve()));
+    }
+  });
+
+  // L7, 3b17763a and N3: every stop request shares the one shutdown. An accepted in-place update stops the Console from inside,
+  // and the SIGTERM the update worker sends then ends in this same call: neither may report the Console stopped, nor may the
+  // lock go, while that shutdown's cleanup still runs. Two orders: the second request arrives once the cleanup is running
+  // (3b17763a), or in the same tick as the first (N3), when the second request overtakes the first into the cleanup.
+  it("finishes every overlapping stop request only after the one shutdown has ended", async () => {
+    const hooks = globalThis as typeof globalThis & { __fleetSlowCleanup?: () => Promise<void> };
+    const plugin = createPluginPackageRoot({ demoRoutes: "export function register(ctx) { ctx.host.lifecycle.registerCleanup(() => globalThis.__fleetSlowCleanup?.()); }" });
+    const slowCleanup = (lockFile: string) => {
+      const state = { entered: false, finished: false, lockHeldAtEnd: false };
+      hooks.__fleetSlowCleanup = async () => {
+        state.entered = true;
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        state.lockHeldAtEnd = fs.existsSync(lockFile);
+        state.finished = true;
+      };
+      return state;
+    };
+    try {
+      const update = await startFixture({
+        release: { ...plugin.release!, channel: "stable", version: "1.0.0" },
+        updateCheck: {
+          getStatus: () => ({ updateAvailable: true, latestVersion: "9.9.9" }),
+          refresh: async () => ({ updateAvailable: true, latestVersion: "9.9.9" }),
+          latestRelease: () => ({ version: "9.9.9" }) as never,
+        },
+        updateApply: { start: async () => ({}) as never },
+      });
+      const afterCleanupStarted = slowCleanup(update.lockFile);
+      const origin = new URL(update.endpoint).origin;
+      expect((await fetch(new URL("api/v1/updates/apply", update.endpoint), { method: "POST", headers: { Origin: origin } })).status).toBe(202);
+      await vi.waitFor(() => expect(afterCleanupStarted.entered).toBe(true), { timeout: 10_000 });
+      await update.server.stop();
+      lifecycleCheck("L7", afterCleanupStarted.finished, "a stop requested during the update's own shutdown returns only after its cleanup");
+      lifecycleCheck("L7", !fs.existsSync(update.lockFile), "a stop requested during the update's own shutdown returns only after the lock is released");
+      await vi.waitFor(() => expect(afterCleanupStarted.finished).toBe(true), { timeout: 10_000 });
+
+      const fixture = await startFixture({ release: plugin.release });
+      const sameTick = slowCleanup(fixture.lockFile);
+      const returned: Array<{ readonly cleanupFinished: boolean }> = [];
+      const first = fixture.server.stop().then(() => { returned.push({ cleanupFinished: sameTick.finished }); });
+      const second = fixture.server.stop().then(() => { returned.push({ cleanupFinished: sameTick.finished }); });
+      await Promise.all([first, second]);
+      expect(sameTick.entered).toBe(true);
+      lifecycleCheck("L7-N3", sameTick.lockHeldAtEnd, "the lock is held until the shutdown's cleanup has finished");
+      lifecycleCheck("L7-N3", returned.every((entry) => entry.cleanupFinished), "no overlapping stop returns before the shutdown's cleanup has finished");
+    } finally {
+      delete hooks.__fleetSlowCleanup;
     }
   });
 
