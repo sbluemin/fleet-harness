@@ -250,6 +250,9 @@ const OWNED = new Map<number, string>();
 afterEach(async () => {
   // The suite keeps I1 itself: only a pid whose start time still matches is signalled, and nothing may be left behind.
   const left: string[] = [];
+  // A Console's reaper reacts to its Console's end: take whatever the owned processes started (proved the same way) before
+  // they are killed, so nothing still writes into a run directory while it is removed.
+  for (const [pid, startedAt] of [...OWNED]) if (processStartTime(pid) === startedAt) for (const entry of descendantsOf(pid)) own(entry.pid);
   if (OWNED.size > 0) {
     for (const [pid, startedAt] of OWNED) {
       if (processStartTime(pid) === startedAt) {
@@ -263,7 +266,7 @@ afterEach(async () => {
     }
     OWNED.clear();
   }
-  for (const dir of LIFECYCLE_DIRS.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  for (const dir of LIFECYCLE_DIRS.splice(0)) fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   if (left.length > 0) throw new Error(`lifecycle processes survived SIGKILL: ${left.join(", ")}`);
 });
 

@@ -21,6 +21,14 @@ export interface OwnedProcessSpawnRequest {
   readonly signal?: AbortSignal;
 }
 
+/** What a watcher outside the Console must hear about the registry, as it happens. */
+export interface OwnedProcessRegistryEvents {
+  readonly onRegistered?: (group: OwnedProcessGroup) => void;
+  readonly onLeaderExited?: (group: OwnedProcessGroup) => void;
+  /** The group has no member left and was dropped. */
+  readonly onRemoved?: (pgid: number) => void;
+}
+
 export interface OwnedProcessKillInput {
   readonly env?: NodeJS.ProcessEnv;
   /**
@@ -57,13 +65,17 @@ interface Entry {
   leaderExitedAt: number | null;
 }
 
-export function createOwnedProcessRegistry(): OwnedProcessRegistry {
+export function createOwnedProcessRegistry(events: OwnedProcessRegistryEvents = {}): OwnedProcessRegistry {
   const entries = new Map<number, Entry>();
+  const snapshot = (entry: Entry): OwnedProcessGroup => ({ pgid: entry.pgid, spawnedAt: entry.spawnedAt, leaderExitedAt: entry.leaderExitedAt });
+  const remove = (pgid: number): void => {
+    if (entries.delete(pgid)) events.onRemoved?.(pgid);
+  };
 
   /** Drops groups whose leader exited and that no longer have a member. */
   function prune(): void {
     for (const entry of [...entries.values()]) {
-      if (entry.leaderExitedAt !== null && !groupHasMembers(entry.pgid)) entries.delete(entry.pgid);
+      if (entry.leaderExitedAt !== null && !groupHasMembers(entry.pgid)) remove(entry.pgid);
     }
   }
 
@@ -85,15 +97,17 @@ export function createOwnedProcessRegistry(): OwnedProcessRegistry {
       if (pgid !== undefined && process.platform !== "win32") {
         const entry: Entry = { pgid, spawnedAt, child, leaderExitedAt: null };
         entries.set(pgid, entry);
+        events.onRegistered?.(snapshot(entry));
         child.once("exit", () => {
           entry.leaderExitedAt = Date.now();
-          if (!groupHasMembers(pgid)) entries.delete(pgid);
+          events.onLeaderExited?.(snapshot(entry));
+          if (!groupHasMembers(pgid)) remove(pgid);
         });
       }
       return child;
     },
     groups() {
-      return [...entries.values()].map((entry) => ({ pgid: entry.pgid, spawnedAt: entry.spawnedAt, leaderExitedAt: entry.leaderExitedAt }));
+      return [...entries.values()].map(snapshot);
     },
     killAll(input = {}) {
       if (process.platform === "win32") return 0;
@@ -133,6 +147,19 @@ export interface ProcessGroupRow {
 }
 
 /**
+ * Whether a registered group whose leader may still run is that group, from outside the Console (R-proof): the process
+ * holding the leader's pid must have started within the start-time margin of the group's spawn. A different start time
+ * means the number now names another process. A group whose leader is gone falls back to `proveExitedLeaderGroup`.
+ */
+export function proveOwnedGroup(rows: readonly ProcessGroupRow[], group: OwnedProcessGroup, now: number): boolean {
+  if (!isSignallableGroup(group.pgid)) return false;
+  const leader = rows.find((row) => row.pid === group.pgid);
+  if (!leader) return proveExitedLeaderGroup(rows, group, now);
+  if (leader.pgid !== group.pgid) return false;
+  return Math.abs(leader.startedAt - Math.floor(group.spawnedAt / 1_000) * 1_000) <= PROCESS_START_MARGIN_MS;
+}
+
+/**
  * Whether the members the table shows under a registered group whose leader already exited are that group's (R-proof):
  * no process may now hold the leader's pid (its number would then lead someone else's group), and every member must have
  * started between the group's spawn (less the start-time rounding margin) and now. A group with no member is proven
@@ -164,7 +191,8 @@ export function createProcessTableSnapshot(env: NodeJS.ProcessEnv): ProcessTable
   return () => (table ??= readProcessTable(env));
 }
 
-function readProcessTable(env: NodeJS.ProcessEnv): ProcessTable {
+/** A fresh process-table read within PROCESS_TABLE_TIMEOUT_MS, or why it could not be read. */
+export function readProcessTable(env: NodeJS.ProcessEnv): ProcessTable {
   const listing = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,lstart="], {
     env: { PATH: env.PATH ?? "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC" },
     encoding: "utf8",
@@ -189,13 +217,13 @@ function readProcessTable(env: NodeJS.ProcessEnv): ProcessTable {
 }
 
 /** Never this process's own group (a Desktop sidecar shares Desktop's), and never a group number ≤ 1. */
-function isSignallableGroup(pgid: number): boolean {
+export function isSignallableGroup(pgid: number): boolean {
   return Number.isSafeInteger(pgid) && pgid > 1 && pgid !== process.pid;
 }
 
-function signalGroup(pgid: number): boolean {
+export function signalGroup(pgid: number, signal: NodeJS.Signals = "SIGKILL"): boolean {
   try {
-    process.kill(-pgid, "SIGKILL");
+    process.kill(-pgid, signal);
     return true;
   } catch {
     return false;
@@ -203,7 +231,7 @@ function signalGroup(pgid: number): boolean {
 }
 
 /** Only ESRCH means the group is empty. */
-function groupHasMembers(pgid: number): boolean {
+export function groupHasMembers(pgid: number): boolean {
   try {
     process.kill(-pgid, 0);
     return true;

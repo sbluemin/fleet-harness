@@ -4,3 +4,5 @@ export { observeConsoleInstance, runStopLadder, type ConsoleInstanceObservation,
 export { captureProvenProcessStart, isLockAuthorReplaced, isPidAlive, readProcessStartTime } from "./process.js";
 export { createOwnedProcessRegistry, createProcessTableSnapshot, killSameGroupDescendants, proveExitedLeaderGroup, selectSameGroupDescendants, type OwnedProcessGroup, type OwnedProcessKillInput, type OwnedProcessRegistry, type OwnedProcessSpawnRequest, type ProcessGroupRow, type ProcessTable, type ProcessTableRow, type ProcessTableSnapshot, type ProcessTreeRow } from "./owned-processes.js";
 export { consoleNamespaceKey, isReclaimableNamespaceEntry, resolveRealPath } from "./temp-namespace.js";
+export { startConsoleReaper, type ConsoleReaperInput, type ConsoleReaperLink } from "./reaper-link.js";
+export { REAPER_DRAIN_MAX_MS, type ReaperMessage } from "./reaper.js";

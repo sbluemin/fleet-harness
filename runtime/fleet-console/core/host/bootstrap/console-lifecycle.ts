@@ -12,6 +12,8 @@ import {
   createOwnedProcessRegistry,
   createProcessTableSnapshot,
   killSameGroupDescendants,
+  startConsoleReaper,
+  type ConsoleReaperLink,
   isPidAlive,
   observeConsoleInstance,
   readConsoleExitRecord,
@@ -278,10 +280,26 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // server API all make the same stop request: the first arms the one deadline below, the shutdown runs once, and it
     // releases the lock only at its end.
     let deadline: ReturnType<typeof setTimeout> | undefined;
-    // Every agent CLI this instance starts leads a registered process group; the deadline ends exactly those.
-    const ownedProcesses = createOwnedProcessRegistry();
+    // Every long-lived child this instance starts on purpose leads a registered process group. The deadline ends those
+    // while the Console runs; the reaper, told about each group as it happens, ends them once the Console is gone.
+    let reaper: ConsoleReaperLink | null = null;
+    const ownedProcesses = createOwnedProcessRegistry({
+      onRegistered: (group) => reaper?.registered(group),
+      onLeaderExited: (group) => reaper?.leaderExited(group),
+      onRemoved: (pgid) => reaper?.removed(pgid),
+    });
     let exitOutcome: { readonly outcome: ConsoleExitOutcome; readonly killed: number } | null = null;
     const lifecycle = createConsoleServeLifecycle({
+      // Only the lock owner starts a reaper, before any owned child exists (a lock loser starts nothing).
+      onLockAcquired: (instance) => {
+        reaper = startConsoleReaper({
+          script: resolveReaperScriptPath(),
+          env,
+          instance: { consolePid: instance.pid, lockFile: paths.lockFile, lockStartedAt: instance.startedAt },
+          groups: () => ownedProcesses.groups(),
+          onDegraded: (error) => recordFailure("reaper_degraded", error),
+        });
+      },
       // From the first stop request until the process exits, whatever is still running: a stalled start, a cleanup stuck
       // with the lock, or a child that outlives the released lock. The owned process groups are SIGKILLed first; a lock
       // left behind is reclaimed by the next Console once this pid is ESRCH.
@@ -1056,6 +1074,11 @@ export async function runConsolePublishedCommand(
  */
 function describeConsoleReady(headline: string): string {
   return `${headline} Open the console address below in your browser.`;
+}
+
+/** The reaper ships beside the Console bundle (dist/console-reaper.mjs). */
+function resolveReaperScriptPath(moduleUrl: string = import.meta.url): string {
+  return fileURLToPath(new URL("./console-reaper.mjs", moduleUrl));
 }
 
 export function resolveDefaultServerModulePath(moduleUrl: string = import.meta.url): string {

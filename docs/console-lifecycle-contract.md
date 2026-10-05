@@ -30,6 +30,15 @@ Actors are being moved onto the contract in stages. A section marked *(pending)*
 | releasing | released | none | the last handle closes (→ exited) or the deadline fires |
 | exited | left behind only after a crash, a deadline, or an external kill | — | — |
 
+The reaper's states move with the Console's (see [Children](#children)):
+
+| Console | Reaper |
+|---|---|
+| binding | none — a lock loser never starts one |
+| starting (the lock was just published, before any owned child) | **armed**; it fails to start → `reaper_degraded` |
+| ready · stopping · releasing | armed; replaced once if it ends, then degraded |
+| exited, any way | **draining** (pipe end or its liveness check) → **gone** within `REAPER_DRAIN_MAX_MS` |
+
 One serve process runs one instance: its server starts at most once, and a server whose start failed or that has stopped is never started again — a new instance is a new `serve`.
 
 ### One stop request, one shutdown
@@ -72,7 +81,7 @@ A Console instance that held the lock writes its own exit record beside its lock
 | `deadline` | the Console, at exit | B_int ran out; `killed` counts the owned process groups and other leftover children it SIGKILLed |
 | `crash` | the Console, at exit | an uncaught exception ended it |
 | `failed` | the Console, at exit | it took the lock, then its start or its shutdown failed, and it ended with an error |
-| `external` | the containment watcher *(pending)*, or inferred by a reader of a Console that reports `lifecycleWire` | the process vanished without a record |
+| `external` | the Console's reaper, or inferred by a reader of a Console that reports `lifecycleWire` | the process vanished without a record (SIGKILL, or a frozen loop killed from outside) |
 | `forced-external` | the actor that sent SIGKILL (the CLI; Desktop and the update worker *(pending)*) | escalation after B_ext |
 
 A reader that finds no record for the instance it observed decides from the lock's `version` and the health `lifecycleWire` whether the Console predates the contract; a pre-contract Console keeps its old meaning (no record).
@@ -128,11 +137,16 @@ A Console's children must not outlive it on any exit path (I2).
 - On a normal stop the SDK closes each agent CLI (stdin close, SIGTERM to the leader after 2 s, SIGKILL after 5 more).
 - When the stop deadline fires, the Console reads the process table **at most once**, when the first step below needs it, and both steps judge by that one snapshot; so the deadline adds at most one `PROCESS_TABLE_TIMEOUT_MS` to B_int, which is the delay B_ext is sized for. It first SIGKILLs the registered groups:
   - A group whose leader is still the Console's **unreaped child** is signalled as a whole without reading the process table: an unreaped child's pid, and so its group number, cannot be reused (E1). This is the common case — an agent CLI that ignored SIGTERM — and it needs no `ps`, so a process table that cannot be read in time no longer leaves orphans (follow-up e7874487:N8).
-  - A group whose leader already exited but which still has members is signalled only when a `ps` snapshot proves them: no process holds the leader's pid, and every member started between the group's spawn (less the 2 s start-time margin) and now. If the table cannot be read within `PROCESS_TABLE_TIMEOUT_MS`, that group is left alone (I1 before I2) *(pending: the per-Console watcher retries)*.
+  - A group whose leader already exited but which still has members is signalled only when a `ps` snapshot proves them: no process holds the leader's pid, and every member started between the group's spawn (less the 2 s start-time margin) and now. If the table cannot be read within `PROCESS_TABLE_TIMEOUT_MS`, that group is left alone (I1 before I2); the reaper below gets a second chance once the Console is gone.
   - Never the Console's own group (a Desktop sidecar shares Desktop's) and never a group number ≤ 1.
 - Then, as a fallback, it SIGKILLs every **unregistered** descendant that still shares the Console's own process group (a plugin's tool, a git or ripgrep call, a stdio MCP transport that hung), deepest first, from that same snapshot. The only judgment is "same group as the Console": a child that leads a group of its own is either registered (already handled above) or handed off on purpose, and is never signalled here. Without a readable table this step signals nothing; the registered groups led by unreaped children were already ended without it.
 - Windows has no process groups: a direct child is ended with the Console by libuv's job object; grandchildren are not yet measured *(pending: U2)*.
-- A crash or an external SIGKILL is not yet covered *(pending: a per-Console watcher that reclaims the registered groups after re-proving each one)*. The real Claude Code CLI (2.1.289) does not exit on stdin EOF while a turn is open and survives its parent's SIGKILL together with its MCP children (measured, U1), so that watcher is required.
+- **The reaper** covers every exit path the Console cannot run code on — a crash, an external SIGKILL, a frozen loop killed from outside. The real Claude Code CLI (2.1.289) does not exit on stdin EOF while a turn is open and survives its parent's SIGKILL together with its MCP children (measured, U1), so a watcher outside the Console is required:
+  - **Lifecycle.** Only the lock owner starts one, synchronously when it publishes the lock and before it starts any owned child (a lock loser starts none). It is a Node helper (`console-reaper.mjs` beside the Console bundle) in a session of its own, with the Console holding the write end of its stdin; it is not one of the Console's groups and never keeps the Console's event loop alive. The Console tells it about each group as it is registered, its leader exits, or it empties. A reaper that ends while its Console runs is replaced once and told everything again; a second loss is recorded as `reaper_degraded` and containment falls back to the Console's own deadline.
+  - **Trigger.** The pipe's end (the Console's death closes it), or — should the write end ever leak — its 5 s check that the Console's pid still runs.
+  - **Drain.** It writes `external` if the instance left no exit record, then ends every registered group it can prove from a `ps` snapshot: a group whose leader still runs only when the leader's start time matches the registration (± 2 s); a group whose leader exited by the member window above. A table that cannot be read is asked again while the budget lasts. It sends SIGTERM, waits up to 2 s, proves again, and sends SIGKILL to what remains; it never signals its own group, a group number ≤ 1, or anything it cannot prove (I1), and sends nothing at all on Windows.
+  - **Lifetime.** It exits when the drain ends and at the latest `REAPER_DRAIN_MAX_MS` (8 s) after the Console is gone, so it never becomes an orphan itself. A SIGTERM while its Console runs makes it exit without touching anything (the Console replaces it); SIGINT and SIGHUP are ignored.
+  - **Crash.** An uncaught exception while *ready* still exits at once (outcome `crash`); the reaper then gives the agent CLIs SIGTERM, which lets the real CLI flush and exit, and SIGKILL after 2 s.
 
 Because the Console spawns agent CLIs itself, the SDK no longer reads their stderr: the spawn adapter drains it (and forwards it to an SDK `stderr` callback when one is set) and delivers the exit once stderr has closed, as the SDK's own spawner does. The SDK's exit errors no longer end with a `stderr:` tail; instead the Console writes the last 2 KB of a CLI that exits with a non-zero code or an unexpected signal to its failure log (`agent_cli_exit` in `errors.jsonl`). The SDK's default debug file is not passed either; it only applies when SDK debugging is enabled.
 

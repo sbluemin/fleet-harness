@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessByStdio } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessByStdio } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import http from "node:http";
@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { proveExitedLeaderGroup, selectSameGroupDescendants } from "@fleet-console/lifecycle";
+import { proveExitedLeaderGroup, readConsoleExitRecord, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
 
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
@@ -19,6 +19,7 @@ import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 
 const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/controlled-console-child.mjs", import.meta.url));
 const CLAIMANT_FIXTURE_PATH = fileURLToPath(new URL("./fixtures/lock-reclaim-claimant.ts", import.meta.url));
+const REAPER_SOURCE = fileURLToPath(new URL("../foundation/lifecycle/reaper-main.ts", import.meta.url));
 const TSX_LOADER_URL = pathToFileURL(path.join(path.dirname(createRequire(import.meta.url).resolve("tsx/package.json")), "dist/loader.mjs")).href;
 const TEMP_DIRS: string[] = [];
 const CHILD_PIDS = new Set<number>();
@@ -213,6 +214,54 @@ describe("Console daemon lifecycle integration", () => {
     expect(() => process.kill(bystanderPid, 0)).not.toThrow();
   });
 
+  // L13 (I1, I2). Once its Console is gone (the pipe ends), the reaper ends every registered group it can prove is still that
+  // group — one whose leader still runs, and one whose leader exited and whose first process-table read fails — never a
+  // registration a reused number would make it signal, records that the Console vanished, and exits within its drain cap.
+  it.skipIf(process.platform === "win32")("lets the reaper end only the groups it proves, then exit", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-reaper-"));
+    TEMP_DIRS.push(dir);
+    const lockFile = path.join(dir, "console.lock");
+    const consolePid = await deadProcessPid();
+    const lockStartedAt = Date.now();
+    const leading = (spawnedAt: number, args: readonly string[]) => {
+      const child = spawn(args[0]!, args.slice(1), { detached: true, stdio: ["ignore", "pipe", "ignore"] });
+      CHILD_PIDS.add(child.pid!);
+      return { child, group: { pgid: child.pid!, spawnedAt, leaderExitedAt: null } };
+    };
+    const owned = leading(Date.now(), ["/bin/sleep", "300"]);
+    // The number a registration names may belong to another process by now: its start time does not match.
+    const reused = leading(Date.now() - 600_000, ["/bin/sleep", "300"]);
+    const orphaned = leading(Date.now(), ["/bin/sh", "-c", "/bin/sleep 300 & echo $!"]);
+    const member = Number((await readFirstLine(orphaned.child as ChildProcessByStdio<null, Readable, null>)).trim());
+    CHILD_PIDS.add(member);
+    await new Promise((resolve) => orphaned.child.once("exit", resolve));
+    // The first process-table read fails; the reaper must ask again.
+    const shim = path.join(dir, "bin");
+    fs.mkdirSync(shim);
+    fs.writeFileSync(path.join(shim, "ps"), `#!/bin/sh\nif [ ! -f ${JSON.stringify(path.join(dir, "failed-once"))} ]; then : > ${JSON.stringify(path.join(dir, "failed-once"))}; exit 1; fi\nexec /bin/ps "$@"\n`, { mode: 0o755 });
+
+    const reaper = spawn(process.execPath, ["--import", TSX_LOADER_URL, REAPER_SOURCE], {
+      detached: true,
+      stdio: ["pipe", "ignore", "ignore"],
+      env: { ...process.env, PATH: [shim, "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":") },
+    });
+    CHILD_PIDS.add(reaper.pid!);
+    const reaperExit = new Promise<void>((resolve) => reaper.once("exit", () => resolve()));
+    const line = (message: unknown) => reaper.stdin!.write(`${JSON.stringify(message)}\n`);
+    line({ hello: { consolePid, lockFile, lockStartedAt } });
+    for (const entry of [owned, reused, orphaned]) line({ add: entry.group });
+    line({ leaderExited: { pgid: orphaned.group.pgid, at: Date.now() } });
+    reaper.stdin!.end();
+
+    const ended = await Promise.race([reaperExit.then(() => true), delay(REAPER_DRAIN_MAX_MS + 5_000).then(() => false)]);
+    expect(ended, "the reaper exits within its drain cap").toBe(true);
+    expect(isRunning(owned.group.pgid), "a proven group whose leader runs is ended").toBe(false);
+    expect(isRunning(member), "a proven group whose leader exited is ended after a failed table read").toBe(false);
+    expect(isRunning(reused.group.pgid), "a registration its process does not match is never signalled").toBe(true);
+    expect(fs.existsSync(path.join(dir, "failed-once"))).toBe(true);
+    expect(readConsoleExitRecord(lockFile, { pid: consolePid, lockStartedAt })?.outcome).toBe("external");
+  }, 30_000);
+
   // After the owned groups, the deadline SIGKILLs what no one registered. Only this Console's own descendants that stay in its
   // process group qualify: never the group as a whole (a Desktop sidecar shares Desktop's group), never a child that leads a
   // group of its own (an owned group, the update worker and the Console it starts, a PTY session), never the ps that
@@ -300,6 +349,24 @@ async function readFirstLine(child: ChildProcessByStdio<null, Readable, null>): 
       reject(new Error(`reclaimer exited with ${code}: ${output}`));
     });
   });
+}
+
+/** A pid that just exited: the Console a reaper outlives. */
+async function deadProcessPid(): Promise<number> {
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  await new Promise((resolve) => child.once("exit", resolve));
+  return child.pid!;
+}
+
+/** Alive and not a zombie this test still has to reap. */
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  const state = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).stdout.trim();
+  return state.length > 0 && !state.startsWith("Z");
 }
 
 function delay(ms: number): Promise<void> {

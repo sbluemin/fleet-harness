@@ -7,6 +7,11 @@ export interface ConsoleServeLockInstance {
 }
 
 export interface ConsoleServeLifecycleHooks {
+  /**
+   * binding → starting: this serve just published its lock and has not started any owned child yet. The serve starts its
+   * reaper here, synchronously, so no child can be started before the reaper knows the Console.
+   */
+  readonly onLockAcquired?: (instance: ConsoleServeLockInstance) => void;
   /** Runs once, synchronously, on the first accepted stop request — before any cleanup. The serve arms its deadline here. */
   readonly onStopRequested?: (reason: ConsoleStopReason) => void;
   /** The single shutdown failed. Every stop request still settles. */
@@ -76,6 +81,7 @@ export function createConsoleServeLifecycle(hooks: ConsoleServeLifecycleHooks = 
     lockAcquired(instance) {
       lock = { pid: instance.pid, startedAt: instance.startedAt };
       if (state === "binding") state = "starting";
+      hooks.onLockAcquired?.(lock);
     },
     activated() {
       if (state === "starting") state = "ready";
