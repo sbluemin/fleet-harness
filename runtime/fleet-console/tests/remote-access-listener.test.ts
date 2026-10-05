@@ -8,7 +8,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createConsoleLock } from "../core/host/bootstrap/lock.js";
+import { readConsoleLockFile } from "@fleet-console/lifecycle";
 import { PAIRED_DEVICE_LIMIT } from "../features/remote-access/host/paired-devices.js";
 import { normalizeFingerprint } from "../features/remote-access/host/remote-identity.js";
 import { parseAccessLink } from "../features/remote-access/host/access-link.js";
@@ -622,7 +622,7 @@ async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string
   });
   servers.push(server);
   const loopbackEndpoint = await server.start({ dir, lockFile: path.join(dir, "console.lock") });
-  const lock = createConsoleLock().readLock(path.join(dir, "console.lock"))!;
+  const lock = readConsoleLockFile(path.join(dir, "console.lock"))!;
   const certificateFile = path.join(consoleDataDir, "remote", "identity-cert.pem");
   const fingerprint = remote && fs.existsSync(certificateFile)
     ? new crypto.X509Certificate(fs.readFileSync(certificateFile, "utf8")).fingerprint256

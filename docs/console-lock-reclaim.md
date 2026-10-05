@@ -1,6 +1,6 @@
 # Console Lock Reclaim Across Hosts
 
-How the Console lock (`console.lock` in the Console runtime slot) is released and reclaimed when Fleet Console, the `fleet` CLI, Fleet Desktop, and the Console update worker share one slot, including mixed releases. This page is the rationale and the known limits; the lifecycle around the lock — states, stop requests, time budgets, and exit records — is the [Console Process Lifecycle Contract](console-lifecycle-contract.md). The rules themselves live in `runtime/fleet-console/core/host/bootstrap/lock.ts` (reclaim protocol), `runtime/fleet-desktop/src/sidecar-supervisor.ts` (Desktop's side), and the worker script in `runtime/fleet-console/features/updates/host/update-apply.ts` (the update's side).
+How the Console lock (`console.lock` in the Console runtime slot) is released and reclaimed when Fleet Console, the `fleet` CLI, Fleet Desktop, and the Console update worker share one slot, including mixed releases. This page is the rationale and the known limits; the lifecycle around the lock — states, stop requests, time budgets, and exit records — is the [Console Process Lifecycle Contract](console-lifecycle-contract.md). The rules themselves live in `runtime/fleet-console/core/host/bootstrap/lock.ts` (reclaim protocol), `observeConsoleLockFile` in `@fleet-console/lifecycle` (reading the lock and judging whether it can be trusted, for `serve`, the CLI, and its hooks), `runtime/fleet-desktop/src/sidecar-supervisor.ts` (Desktop's side), and the worker script in `runtime/fleet-console/features/updates/host/update-apply.ts` (the update's side).
 
 ## The rule
 
@@ -13,7 +13,7 @@ How the Console lock (`console.lock` in the Console runtime slot) is released an
 
 Desktop cannot import `lock.ts` (Console internals), so it does not take part in the reclaim protocol. It never removes a lock, except in the legacy branch below. Instead it decides only **whether to start** a Console, and leaves the reclaim to the `serve` it starts.
 
-1. **Judge the slot.** Desktop reads the lock with the same classification as `lock.ts` (`classifyConsoleLockContent` plus its own lstat/uid checks):
+1. **Judge the slot.** Desktop reads the lock with the same classification as the Console's lock observer, `observeConsoleLockFile` (`classifyConsoleLockContent` plus the lstat/uid checks):
    - absent → may start;
    - refused or ownerless (ownerless is re-read for 2 s first) → no start, the dialog shows the Console recovery text, the lock stays;
    - an owner whose fields cannot be trusted → if its pid is alive, unverified (conflict dialog); if ESRCH, may start;

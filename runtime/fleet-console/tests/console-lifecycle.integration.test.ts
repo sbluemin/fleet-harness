@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { proveExitedLeaderGroup, readConsoleExitRecord, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
+import { proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
 
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
@@ -68,7 +68,7 @@ describe("Console daemon lifecycle integration", () => {
     expect(await concurrentEnsure).toBe(endpoint);
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(3_000);
     expect(endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
-    expect(createConsoleLock().readLock(fixture.lockFile)?.pid).toBe(pid);
+    expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(pid);
 
     // SIGTERM을 받은 Console이 listener만 닫고 lock을 쥔 채 멈춘다. EXTERNAL_ESCALATION_MS가 지나도록 lock을 놓지 않으면, SIGTERM
     // 전에 증명한 그 프로세스임을 다시 증명한 뒤 강제 종료한다. Windows의 SIGTERM은 TerminateProcess라 정리가 아예 돌지 않는다 —
@@ -77,7 +77,7 @@ describe("Console daemon lifecycle integration", () => {
     expect(await lifecycle.stop()).toEqual(process.platform === "win32" ? { outcome: "unrecorded", killed: 0 } : { outcome: "forced-external", killed: 0 });
     await expectProcessGone(pid);
     CHILD_PIDS.delete(pid);
-    expect(createConsoleLock().readLock(fixture.lockFile)).toBeNull();
+    expect(readConsoleLockFile(fixture.lockFile)).toBeNull();
     expectFileCanBeRenamed(fixture.pidFile);
   });
 
@@ -98,7 +98,7 @@ describe("Console daemon lifecycle integration", () => {
     await expect(ensure).rejects.toThrow("did not become healthy within 4 seconds");
     await expectProcessGone(pid);
     CHILD_PIDS.delete(pid);
-    expect(createConsoleLock().readLock(fixture.lockFile)).toBeNull();
+    expect(readConsoleLockFile(fixture.lockFile)).toBeNull();
     expectFileCanBeRenamed(fixture.pidFile);
   });
   it("never signals a live process that a stale lock's pid now names", async () => {
@@ -119,14 +119,14 @@ describe("Console daemon lifecycle integration", () => {
     const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH, pollIntervalMs: 20 });
 
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
-    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+    expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(bystanderPid);
 
     // 아무도 lock 주소를 듣지 않는데 lock을 쓰기 전에 시작한 pid가 살아 있으면, listener를 닫고 정리 중인 Console과 구별되지
     // 않는다(계약의 stopping). 정지 예산만큼 기다릴 뿐 신호도 lock 삭제도 하지 않는다 — 지우면 다음 start가 살아 있는 Console
     // 옆에 두 번째 Console을 띄운다.
     await new Promise<void>((resolve) => impostor.close(() => resolve()));
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} no longer answers at the lock's address`);
-    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+    expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(bystanderPid);
 
     // A pid that started after the lock was written cannot be its author, but while that pid lives the lock stays: only
     // ESRCH right before the unlink grants deletion. start refuses instead of booting a Console beside it.
@@ -134,7 +134,7 @@ describe("Console daemon lifecycle integration", () => {
     await createConsoleLock({ now: () => Date.now() - 60_000 }).acquireLock(lockInput);
     fs.writeFileSync(fixture.releaseFile, "ready\n", "utf8");
     await expect(lifecycle.ensureDaemon()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
-    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+    expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(bystanderPid);
     expect(fs.existsSync(fixture.pidFile)).toBe(false);
     expect(bystanderSignal).toBeNull();
     expect(() => process.kill(bystanderPid, 0)).not.toThrow();
@@ -153,7 +153,7 @@ describe("Console daemon lifecycle integration", () => {
     const claimantPid = claimant.pid!;
     CHILD_PIDS.add(claimantPid);
     expect(await readFirstLine(claimant)).toBe("alive");
-    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+    expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(bystanderPid);
 
     // The lock is dead now, yet no other reclaimer may take over while that claimant is alive: start fails and keeps it.
     process.kill(bystanderPid, "SIGKILL");
@@ -162,7 +162,7 @@ describe("Console daemon lifecycle integration", () => {
     fs.writeFileSync(fixture.releaseFile, "ready\n", "utf8");
     const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH, startupTimeoutMs: 8_000, pollIntervalMs: 20, report: () => {} });
     await expect(lifecycle.ensureDaemon()).rejects.toThrow();
-    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(bystanderPid);
+    expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(bystanderPid);
     expect(fs.existsSync(fixture.pidFile)).toBe(false);
 
     // Once the claimant has exited, the next reclaimer takes over, removes the dead lock, and the new Console owns the slot.
@@ -174,7 +174,7 @@ describe("Console daemon lifecycle integration", () => {
     const consolePid = await readPidWhenReady(fixture.pidFile);
     CHILD_PIDS.add(consolePid);
     await expect(ensure).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
-    expect(consoleLock.readLock(fixture.lockFile)?.pid).toBe(consolePid);
+    expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(consolePid);
 
     await lifecycle.stop();
     await expectProcessGone(consolePid);
@@ -209,7 +209,7 @@ describe("Console daemon lifecycle integration", () => {
     });
 
     await expect(lifecycle.ensureDaemon()).rejects.toThrow();
-    expect(createConsoleLock().readLock(fixture.lockFile)).toEqual(reusedLock);
+    expect(readConsoleLockFile(fixture.lockFile)).toEqual(reusedLock);
     expect(signals).toEqual([]);
     expect(() => process.kill(bystanderPid, 0)).not.toThrow();
   });

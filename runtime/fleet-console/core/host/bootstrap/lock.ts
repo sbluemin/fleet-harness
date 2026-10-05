@@ -4,12 +4,21 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import {
-  classifyConsoleLockContent,
   describeConsoleLockSlotQuiescenceCheck,
   describeOwnerlessConsoleLock,
   describeRefusedConsoleLock,
+  LOCK_OBSERVE_BUDGET_MS,
+  LOCK_REREAD_INTERVAL_MS,
 } from "@fleet-console/protocol/lifecycle";
-import { isPidAlive } from "@fleet-console/lifecycle";
+import {
+  CONSOLE_LOCK_DIR_MODE,
+  CONSOLE_LOCK_FILE_MODE,
+  isPidAlive,
+  observeConsoleLockFileUntil,
+  readConsoleLockFile,
+  type ConsoleLockFileInstance,
+  type ConsoleLockFileObservation,
+} from "@fleet-console/lifecycle";
 
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import type { ConsoleOwnerMetadata } from "../shell/desktop-protocol.js";
@@ -44,28 +53,9 @@ export interface ConsoleLockHandle {
   release(): void;
 }
 
-export interface ConsoleLockTrustInput {
-  readonly dir: string;
-  readonly lockFile: string;
-  readonly payload: ConsoleLockPayload;
-  readonly host: string;
-}
-
-/** One published lock instance: its exact bytes identify it, its pid names its writer. */
-export interface ConsoleLockInstance {
-  readonly bytes: Buffer;
-  readonly pid: number;
-  readonly payload: ConsoleLockPayload;
-}
-
-export type ConsoleLockObservation =
-  | { readonly kind: "absent" }
-  /** A symlink or a lock/directory owned by another user. Never followed, never reclaimed. */
-  | { readonly kind: "refused"; readonly reason: string }
-  /** No readable owner (empty, unparseable, invalid payload, read error, not a file). Never reclaimed. */
-  | { readonly kind: "unknown"; readonly reason: string }
-  /** `alive` is false only on ESRCH. `untrusted` names the first trust problem, or null for a fully trusted lock. */
-  | { readonly kind: "owner"; readonly instance: ConsoleLockInstance; readonly alive: boolean; readonly untrusted: string | null };
+/** One published lock instance, as `observeConsoleLockFile` read it: its exact bytes identify it. */
+export type ConsoleLockInstance = ConsoleLockFileInstance<ConsoleLockPayload>;
+export type ConsoleLockObservation = ConsoleLockFileObservation<ConsoleLockPayload>;
 
 export type ConsoleLockReclaimResult =
   | { readonly kind: "removed" }
@@ -78,11 +68,6 @@ export type ConsoleLockReclaimResult =
   /** The reclaim could not be finished safely. Whatever was published is left in place. */
   | { readonly kind: "failed"; readonly reason: string };
 
-const LOCK_DIR_MODE = 0o700;
-const LOCK_FILE_MODE = 0o600;
-/** Monotonic budget for re-reading an ownerless lock and for waiting on another reclaimer. Not a bound on blocking file I/O. */
-export const LOCK_OBSERVE_BUDGET_MS = 2_000;
-const LOCK_REREAD_INTERVAL_MS = 50;
 const LOCK_PUBLISH_ATTEMPTS = 3;
 const CLAIM_OWNER_FILE = "owner.json";
 const CLAIM_LOST_CODES = new Set(["ENOTEMPTY", "EEXIST", "ENOTDIR"]);
@@ -97,21 +82,8 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   let linkFallbackReported = false;
 
   function ensureLockDir(dir: string): void {
-    fsImpl.mkdirSync(dir, { recursive: true, mode: LOCK_DIR_MODE });
-    fsImpl.chmodSync(dir, LOCK_DIR_MODE);
-  }
-
-  function readLock(lockFile: string): ConsoleLockPayload | null {
-    try {
-      const stat = fsImpl.lstatSync(lockFile);
-      if (stat.isSymbolicLink()) {
-        throw new Error(`Refusing symbolic console lock: ${lockFile}`);
-      }
-      return JSON.parse(fsImpl.readFileSync(lockFile, "utf8")) as ConsoleLockPayload;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw err;
-    }
+    fsImpl.mkdirSync(dir, { recursive: true, mode: CONSOLE_LOCK_DIR_MODE });
+    fsImpl.chmodSync(dir, CONSOLE_LOCK_DIR_MODE);
   }
 
   /**
@@ -138,7 +110,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
         sweepLeftovers(input.lockFile, sha256(bytes));
         return { payload, release: () => removeOwnLock(input.lockFile, payload.pid) };
       }
-      const observed = await observeLockUntil(input.lockFile, deadline);
+      const observed = await observeConsoleLockFileUntil<ConsoleLockPayload>(input.lockFile, deadline, { host: hostname() });
       if (observed.kind === "absent") continue;
       if (observed.kind === "refused") throw lockHeldError(input.lockFile, describeRefusedConsoleLock(input.lockFile, observed.reason));
       if (observed.kind === "unknown") throw lockHeldError(input.lockFile, describeOwnerlessConsoleLock(input.lockFile, observed.reason));
@@ -158,7 +130,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
 
   /** Self-release: removes the lock only while it still names this pid. */
   function removeOwnLock(lockFile: string, pid: number): void {
-    const current = readLock(lockFile);
+    const current = readConsoleLockFile<ConsoleLockPayload>(lockFile);
     // The pid guard also treats "no lock yet" as do-not-delete, so a lock another owner published in between survives.
     if (!current || current.pid !== pid) return;
     try {
@@ -199,76 +171,13 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   }
 
   function writeExclusiveFile(filePath: string, bytes: Buffer): void {
-    const fd = fsImpl.openSync(filePath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, LOCK_FILE_MODE);
+    const fd = fsImpl.openSync(filePath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, CONSOLE_LOCK_FILE_MODE);
     try {
       fsImpl.writeFileSync(fd, bytes);
-      fsImpl.fchmodSync(fd, LOCK_FILE_MODE);
+      fsImpl.fchmodSync(fd, CONSOLE_LOCK_FILE_MODE);
     } finally {
       fsImpl.closeSync(fd);
     }
-  }
-
-  /** Classifies the lock once. Sends no signal, asks no health endpoint, and starts no subprocess. */
-  function observeLock(lockFile: string): ConsoleLockObservation {
-    let stat: fs.Stats;
-    try {
-      stat = fsImpl.lstatSync(lockFile);
-    } catch (error) {
-      if (errnoOf(error) === "ENOENT") return { kind: "absent" };
-      return { kind: "unknown", reason: `unreadable: ${errnoOf(error) ?? "error"}` };
-    }
-    if (stat.isSymbolicLink()) return { kind: "refused", reason: "it is a symbolic link" };
-    const uid = currentUid();
-    if (uid !== null) {
-      if (stat.uid !== uid) return { kind: "refused", reason: `it is owned by uid ${stat.uid}` };
-      let dirUid: number;
-      try {
-        dirUid = fsImpl.statSync(path.dirname(lockFile)).uid;
-      } catch (error) {
-        return { kind: "unknown", reason: `unreadable directory: ${errnoOf(error) ?? "error"}` };
-      }
-      if (dirUid !== uid) return { kind: "refused", reason: `its directory is owned by uid ${dirUid}` };
-    }
-    if (!stat.isFile()) return { kind: "unknown", reason: "not a regular file" };
-    let bytes: Buffer;
-    try {
-      bytes = fsImpl.readFileSync(lockFile);
-    } catch (error) {
-      if (errnoOf(error) === "ENOENT") return { kind: "absent" };
-      return { kind: "unknown", reason: `unreadable: ${errnoOf(error) ?? "error"}` };
-    }
-    const parsed = parseLockBytes(bytes);
-    if ("reason" in parsed) return { kind: "unknown", reason: parsed.reason };
-    return {
-      kind: "owner",
-      instance: { bytes, pid: parsed.payload.pid, payload: parsed.payload },
-      alive: isPidAlive(parsed.payload.pid),
-      untrusted: describeTrustIssue(lockFile, parsed.payload),
-    };
-  }
-
-  /** Re-reads an ownerless lock until the budget ends. Elapsed time is never evidence of death. */
-  function observeLockWithin(lockFile: string, budgetMs = LOCK_OBSERVE_BUDGET_MS): Promise<ConsoleLockObservation> {
-    return observeLockUntil(lockFile, performance.now() + budgetMs);
-  }
-
-  async function observeLockUntil(lockFile: string, deadline: number): Promise<ConsoleLockObservation> {
-    for (;;) {
-      const observed = observeLock(lockFile);
-      if (observed.kind !== "unknown" || performance.now() >= deadline) return observed;
-      await delay(LOCK_REREAD_INTERVAL_MS);
-    }
-  }
-
-  function describeTrustIssue(lockFile: string, payload: ConsoleLockPayload): string | null {
-    try {
-      assertTrustedLock({ dir: path.dirname(lockFile), lockFile, payload, host: hostname() });
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error);
-    }
-    if (typeof payload.token !== "string" || payload.token.length === 0) return "it has no token";
-    if (!Number.isFinite(payload.startedAt)) return "its startedAt is not a number";
-    return null;
   }
 
   /**
@@ -386,7 +295,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
         removeQuietly(staging);
       }
     }
-    fsImpl.mkdirSync(staging, { mode: LOCK_DIR_MODE });
+    fsImpl.mkdirSync(staging, { mode: CONSOLE_LOCK_DIR_MODE });
     try {
       writeExclusiveFile(path.join(staging, CLAIM_OWNER_FILE), owner);
     } catch (error) {
@@ -532,55 +441,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     }
   }
 
-  function assertLockModes(lockFile: string): void {
-    // POSIX 권한 비트(0700/0600)는 POSIX 플랫폼에서만 의미가 있다. Windows는 chmod로
-    // 이 모드를 강제할 수 없어 mode가 항상 0666으로 보고되므로, 같은 환경에서 uid 검사를
-    // 건너뛰는 것과 동일한 기준(getuid 부재)으로 POSIX 권한 검증도 건너뛴다.
-    // Windows에서는 사용자 프로필 하위 임시 디렉터리 ACL이 보호를 대신한다.
-    if (typeof process.getuid !== "function") return;
-    const dir = path.dirname(lockFile);
-    const dirMode = fsImpl.statSync(dir).mode & 0o777;
-    const fileMode = fsImpl.statSync(lockFile).mode & 0o777;
-    if (dirMode !== LOCK_DIR_MODE) {
-      throw new Error(`Console lock directory mode must be 0700, got ${dirMode.toString(8)}`);
-    }
-    if (fileMode !== LOCK_FILE_MODE) {
-      throw new Error(`Console lock file mode must be 0600, got ${fileMode.toString(8)}`);
-    }
-  }
-
-  function assertTrustedLock(input: ConsoleLockTrustInput): void {
-    const dirStat = fsImpl.statSync(input.dir);
-    const fileStat = fsImpl.lstatSync(input.lockFile);
-    if (fileStat.isSymbolicLink()) {
-      throw new Error(`Refusing symbolic console lock: ${input.lockFile}`);
-    }
-    assertLockModes(input.lockFile);
-    const currentUid = typeof process.getuid === "function" ? process.getuid() : null;
-    if (currentUid != null && (dirStat.uid !== currentUid || fileStat.uid !== currentUid)) {
-      throw new Error("Console lock owner does not match current user");
-    }
-    if (input.payload.host !== input.host) {
-      throw new Error(`Console lock host must match ${input.host}: ${input.payload.host}`);
-    }
-    // 포트는 OS가 할당하는 랜덤 포트이므로 고정값을 강제하지 않는다.
-    // 대신 유효한 TCP 포트인지와 endpoint가 host:port와 내부적으로 일관되는지만 검증한다.
-    if (!Number.isInteger(input.payload.port) || input.payload.port < 1 || input.payload.port > 65535) {
-      throw new Error(`Console lock port must be a valid TCP port, got ${input.payload.port}`);
-    }
-    const endpoint = new URL(input.payload.endpoint);
-    if (endpoint.protocol !== "http:" || endpoint.pathname !== "/") {
-      throw new Error("Console lock endpoint must be the loopback server root");
-    }
-    if (endpoint.hostname !== input.host || Number(endpoint.port) !== input.payload.port) {
-      throw new Error("Console lock endpoint must use the loopback host and the lock port");
-    }
-    if (input.payload.endpoint !== `http://${input.host}:${input.payload.port}/`) {
-      throw new Error("Console lock endpoint must match the lock host and port");
-    }
-  }
-
-  return { ensureLockDir, readLock, acquireLock, observeLock, observeLockWithin, reclaimLock, assertLockModes, assertTrustedLock };
+  return { ensureLockDir, acquireLock, reclaimLock };
 }
 
 /** Text for a reclaim that ended without removing the lock for a reason other than a live lock pid. */
@@ -613,12 +474,6 @@ function lockHeldError(lockFile: string, detail: string): NodeJS.ErrnoException 
   error.code = "EEXIST";
   error.consoleLockHeld = true;
   return error;
-}
-
-function parseLockBytes(bytes: Buffer): { readonly payload: ConsoleLockPayload } | { readonly reason: string } {
-  const content = classifyConsoleLockContent(bytes.toString("utf8"));
-  if (content.kind === "ownerless") return { reason: content.reason };
-  return { payload: content.payload as unknown as ConsoleLockPayload };
 }
 
 function claimPrefix(lockFile: string): string {

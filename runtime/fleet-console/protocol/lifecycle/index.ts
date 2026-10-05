@@ -52,6 +52,14 @@ export const KILL_CONFIRM_MS = 3_000;
 export const OWNED_GROUP_TERM_GRACE_MS = 2_000;
 /** How often a waiting actor looks again at the pid and the lock. */
 export const STOP_POLL_MS = 50;
+/**
+ * How long a lock without a readable owner (empty, being written, unparseable) is read again before an actor reports
+ * it, and how long a lock acquirer waits on another reclaimer. A monotonic budget, not a bound on blocking file I/O;
+ * elapsed time is never evidence that the owner is dead.
+ */
+export const LOCK_OBSERVE_BUDGET_MS = 2_000;
+/** How often such a lock is read again within that budget. */
+export const LOCK_REREAD_INTERVAL_MS = 50;
 /** The whole budget for one token-authenticated health probe, primary and legacy endpoints together. */
 export const HEALTH_PROBE_TIMEOUT_MS = 5_000;
 /** How long `fleet console start` waits for a Console it spawned, or one another starter is restoring, to become ready. */

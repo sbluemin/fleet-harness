@@ -6,3 +6,4 @@ export { createOwnedProcessRegistry, createProcessTableSnapshot, killSameGroupDe
 export { consoleNamespaceKey, isReclaimableNamespaceEntry, resolveRealPath } from "./temp-namespace.js";
 export { startConsoleReaper, type ConsoleReaperInput, type ConsoleReaperLink } from "./reaper-link.js";
 export { REAPER_DRAIN_MAX_MS, type ReaperMessage } from "./reaper.js";
+export { assertConsoleLockModes, assertTrustedConsoleLock, CONSOLE_LOCK_DIR_MODE, CONSOLE_LOCK_FILE_MODE, describeConsoleLockTrustIssue, observeConsoleLockFile, observeConsoleLockFileUntil, observeConsoleLockFileWithin, readConsoleLockFile, type ConsoleLockFileInstance, type ConsoleLockFileObservation, type ConsoleLockFilePayload, type ConsoleLockTrustInput, type ConsoleLockTrustOptions } from "./lock-file.js";
