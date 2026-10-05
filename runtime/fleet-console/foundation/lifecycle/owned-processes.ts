@@ -61,6 +61,13 @@ export interface OwnedProcessRegistry {
    * are this group's (`proveExitedLeaderGroup`); without a readable table it is left alone. POSIX only.
    */
   killAll(input?: OwnedProcessKillInput): number;
+  /**
+   * The stop path's end for the selected groups (docs/console-lifecycle-contract.md, "Children"): SIGTERM now, SIGKILL
+   * after `graceMs`, each only while the group's leader is still this process's unreaped child (E1), so no process
+   * table is read and nothing that has ended or been reused is signalled. A group whose leader already exited is left to
+   * the watcher. The SIGKILL timer never keeps the process alive. Returns how many groups got SIGTERM. POSIX only.
+   */
+  endGroups(select: (group: OwnedProcessGroup) => boolean, graceMs: number): number;
 }
 
 interface Entry {
@@ -114,6 +121,20 @@ export function createOwnedProcessRegistry(events: OwnedProcessRegistryEvents = 
     },
     groups() {
       return [...entries.values()].map(snapshot);
+    },
+    endGroups(select, graceMs) {
+      if (process.platform === "win32") return 0;
+      const unreaped = (entry: Entry) => entry.child.exitCode === null && entry.child.signalCode === null;
+      const chosen = [...entries.values()].filter((entry) => isSignallableGroup(entry.pgid) && select(snapshot(entry)));
+      let signalled = 0;
+      for (const entry of chosen) if (unreaped(entry) && signalGroup(entry.pgid, "SIGTERM")) signalled += 1;
+      if (signalled > 0) {
+        const escalate = setTimeout(() => {
+          for (const entry of chosen) if (unreaped(entry)) signalGroup(entry.pgid, "SIGKILL");
+        }, graceMs);
+        escalate.unref?.();
+      }
+      return signalled;
     },
     killAll(input = {}) {
       if (process.platform === "win32") return 0;
@@ -220,6 +241,19 @@ export function readProcessTable(env: NodeJS.ProcessEnv): ProcessTable {
     rows.push({ pid, ppid: Number(match[2]), pgid: Number(match[3]), startedAt: parsePsLstartUtc(match[4]!) ?? Number.NaN });
   }
   return { rows };
+}
+
+/**
+ * Signals a child this process spawned as a group leader together with everything it started, under the registry's proof
+ * rule: only while the child itself is unreaped, when its pid, and so its group number, cannot name anything else (E1).
+ * Once it has been reaped nothing is signalled; whatever its group still holds is left to the stop deadline and the
+ * watcher, which prove it from the process table. On Windows, without process groups, it signals the child alone.
+ */
+export function signalChildGroup(child: ChildProcess, signal: NodeJS.Signals = "SIGTERM"): boolean {
+  if (process.platform === "win32") return child.kill(signal);
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return false;
+  if (!isSignallableGroup(child.pid)) return false;
+  return signalGroup(child.pid, signal);
 }
 
 /** Never this process's own group (a Desktop sidecar shares Desktop's), and never a group number ≤ 1. */

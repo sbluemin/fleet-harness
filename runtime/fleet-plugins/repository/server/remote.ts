@@ -159,7 +159,7 @@ export async function handleRepositoryPush(
       ...(upstreamRemote ? [] : ["--set-upstream"]),
       remote,
       `refs/heads/${branch}:refs/heads/${branch}`,
-    ], { cwd: gitCwd, timeoutMs: REMOTE_TIMEOUT_MS });
+    ], { cwd: gitCwd, timeoutMs: REMOTE_TIMEOUT_MS, processes: ctx.host.processes });
     const outcome = parsePushOutcome(pushed.stdout, branch);
     // `[up to date]`는 이동이 없었다는 확정이므로 0으로 답하고, 새 브랜치·해석 불가만 null로 물러난다.
     const sent = outcome === null ? null
@@ -196,7 +196,7 @@ export async function handleRepositoryPull(
       "--no-rebase",
       "--upload-pack=git-upload-pack",
       "--no-recurse-submodules",
-    ], { cwd: gitCwd, timeoutMs: REMOTE_TIMEOUT_MS });
+    ], { cwd: gitCwd, timeoutMs: REMOTE_TIMEOUT_MS, processes: ctx.host.processes });
     const received = before === null ? null : await countCommits(gitCwd, `${before}..HEAD`);
     ctx.host.http.writeJson(res, 200, { ok: true, remote: upstreamRemote, branch, ...(received === null ? {} : { received }) });
   } catch (error) {

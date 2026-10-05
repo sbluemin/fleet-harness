@@ -475,6 +475,30 @@ afterEach(async () => {
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
   }, 60_000);
 
+  // L6n, e7874487:N9 (I2, I4; L6's plugin child on the normal stop path). The same hung Ledger child that ignores SIGTERM
+  // must not hold a normal stop to the deadline: the single cleanup ends the plugins' registered groups after their grace,
+  // so stop succeeds well inside B_int, the instance records `clean`, and nothing it started outlives it.
+  it("ends a hung plugin child on a normal stop and reports the stop as clean", async () => {
+    const run = createRun("plugin-stop");
+    const consoleProcess = spawnConsole(run);
+    const startedAt = Date.now();
+    const endpoint = await waitForReady(run, consoleProcess.pid!);
+    await openPluginChildren(run, endpoint);
+    const started = descendantsOf(consoleProcess.pid!);
+    await provableByStartTime(startedAt);
+
+    const stoppedAt = Date.now();
+    const stop = await runStop(run.env);
+    const exit = await exitOf(consoleProcess, 30_000);
+    const elapsedMs = Date.now() - stoppedAt;
+
+    lifecycleCheck("L6n", stop.status === 0, "a normal stop with a hung plugin child is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), elapsedMs } });
+    lifecycleCheck("L6n", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "the Console ends by itself and records `clean`", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run) } });
+    lifecycleCheck("L6n", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
+    const left = await survivors(run, started);
+    lifecycleCheck("L6n", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
+  }, 60_000);
+
   // L2 over real processes and L10 E2. A second Console that loses the lock exits without touching anything except its
   // `lock_held` entry in the failure log (docs/console-lock-reclaim.md, the one documented exception). When lock exclusivity
   // is broken anyway (the lock file removed by hand, or by a legacy shell), the Console that then wins may reclaim only what a
@@ -780,6 +804,14 @@ function deadlineTimeline(run: LifecycleRun, freeze: string): { readonly freezeS
   } catch {
     return null;
   }
+}
+
+/** The outcome the run's Console `pid` recorded for itself, or null when it left no record. */
+function exitOutcome(run: LifecycleRun, pid: number): string | null {
+  const dir = path.dirname(run.lockFile);
+  const file = fs.readdirSync(dir).find((name) => name.startsWith(`console.exit.${pid}-`) && name.endsWith(".json"));
+  if (!file) return null;
+  try { return String((JSON.parse(fs.readFileSync(path.join(dir, file), "utf8")) as { outcome?: unknown }).outcome); } catch { return null; }
 }
 
 /** The failure kinds the run's Console recorded (errors.jsonl), to tell why an I2 case left a process behind. */

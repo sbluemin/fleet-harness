@@ -44,6 +44,12 @@ export const ESCALATION_MARGIN_MS = 1_000;
 export const EXTERNAL_ESCALATION_MS = CONSOLE_STOP_DEADLINE_MS + PROCESS_TABLE_TIMEOUT_MS + ESCALATION_MARGIN_MS;
 /** How long an actor that sent SIGKILL waits to see the pid exit. */
 export const KILL_CONFIRM_MS = 3_000;
+/**
+ * SIGTERM to an owned process group, then this long before SIGKILL: the Console's own stop path for its plugins' groups
+ * and its watcher after a crash use this one value, the same gap as the agent SDK's between its SIGTERM and SIGKILL. It
+ * must stay well inside the stop deadline: OWNED_GROUP_TERM_GRACE_MS + ε < CONSOLE_STOP_DEADLINE_MS − ESCALATION_MARGIN_MS.
+ */
+export const OWNED_GROUP_TERM_GRACE_MS = 2_000;
 /** How often a waiting actor looks again at the pid and the lock. */
 export const STOP_POLL_MS = 50;
 /** The whole budget for one token-authenticated health probe, primary and legacy endpoints together. */

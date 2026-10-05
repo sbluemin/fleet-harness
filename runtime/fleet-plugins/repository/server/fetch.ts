@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type http from "node:http";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import type { FleetPluginProcessesHost, FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { InvalidRepoError, resolveGitCwd } from "./diff.js";
 import { GitExecutorError, runGit } from "./git-executor.js";
@@ -139,7 +139,7 @@ async function readThrottleResult(gitDirs: readonly string[], commonDir: string)
   return { ok: true, skipped: "throttled", lastFetchAt: newest.toISOString() };
 }
 
-async function fetchRepository(gitCwd: string): Promise<FetchResult> {
+async function fetchRepository(gitCwd: string, processes?: FleetPluginProcessesHost): Promise<FetchResult> {
   const remote = await resolveDefaultRemote(gitCwd);
   if (!remote) throw new NoRemoteError();
   const credentialArgs = await resolveCredentialHelperArgs(gitCwd);
@@ -170,7 +170,7 @@ async function fetchRepository(gitCwd: string): Promise<FetchResult> {
     "--no-tags",
     // fetch.pruneTags=true인 저장소가 --prune과 결합해 로컬 전용 태그를 지우는 것을 막는다.
     "--no-prune-tags",
-  ], { cwd: gitCwd });
+  ], { cwd: gitCwd, processes });
   const fetchedAt = new Date().toISOString();
   return {
     ok: true,
@@ -199,12 +199,12 @@ async function fetchHeadCandidates(identity: GitIdentity): Promise<readonly stri
   return [...candidates];
 }
 
-async function runAutoFetch(gitCwd: string, identity: GitIdentity): Promise<FetchResult> {
+async function runAutoFetch(gitCwd: string, identity: GitIdentity, processes?: FleetPluginProcessesHost): Promise<FetchResult> {
   const throttled = await readThrottleResult(await fetchHeadCandidates(identity), identity.commonDir);
-  return throttled ?? fetchRepository(gitCwd);
+  return throttled ?? fetchRepository(gitCwd, processes);
 }
 
-async function fetchAutoSingleFlight(gitCwd: string, identity: GitIdentity): Promise<FetchResult> {
+async function fetchAutoSingleFlight(gitCwd: string, identity: GitIdentity, processes?: FleetPluginProcessesHost): Promise<FetchResult> {
   const key = identity.commonDir;
   const existing = autoFetchInFlight.get(key);
   if (existing) {
@@ -213,7 +213,7 @@ async function fetchAutoSingleFlight(gitCwd: string, identity: GitIdentity): Pro
     if (throttled) return throttled;
   }
 
-  const operation = runAutoFetch(gitCwd, identity);
+  const operation = runAutoFetch(gitCwd, identity, processes);
   autoFetchInFlight.set(key, operation);
   try {
     return await operation;
@@ -263,8 +263,8 @@ export async function handleRepositoryFetch(
   try {
     const identity = await resolveGitIdentity(gitCwd);
     const result = body.mode === "auto"
-      ? await fetchAutoSingleFlight(gitCwd, identity)
-      : await (autoFetchInFlight.get(identity.commonDir) ?? fetchRepository(gitCwd));
+      ? await fetchAutoSingleFlight(gitCwd, identity, ctx.host.processes)
+      : await (autoFetchInFlight.get(identity.commonDir) ?? fetchRepository(gitCwd, ctx.host.processes));
     if ("fetchedAt" in result) lastSuccessfulFetchAt.set(identity.commonDir, Date.parse(result.fetchedAt));
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {

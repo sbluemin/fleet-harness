@@ -19,7 +19,7 @@ export default definePlugin({
   id: "skills",
   register(ctx) {
     const cliHome = path.join(ctx.host.paths.pluginDataDir("skills"), "cli");
-    const executor = createDefaultExecutor(cliHome);
+    const executor = createDefaultExecutor(cliHome, ctx.host.processes);
 
     registerRouter(ctx, "list", async ({ req, res }) => {
       await handleList(req, res, ctx, executor);
