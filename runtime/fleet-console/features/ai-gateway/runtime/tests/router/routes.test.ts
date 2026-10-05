@@ -1171,10 +1171,11 @@ describe("Muse Code routing", () => {
     }
   });
 
-  it("draws a tool-result turn again when Muse skipped reasoning and only announced its next step", async () => {
+  it("nudges a tool-result turn on when Muse skipped reasoning and only announced its next step", async () => {
     // Muse sometimes skips reasoning and ends a tool loop on "Now I'll run the tests." with no
-    // call; the same request drawn again reasons and calls the tool. The client must see one
-    // message — the second draw — and the gateway must draw at most once more.
+    // call, and the same request drawn again repeats it. The gateway asks once more with that
+    // announcement and a short nudge appended. The client must see one message — the announcement
+    // followed by the recovered call — and the gateway must ask at most once more.
     const created = { type: "response.created", response: { id: "r4", model: "muse-spark-1.3-contributor", usage: null } };
     const completed = (outputTokens: number, reasoningTokens: number) => ({
       type: "response.completed",
@@ -1202,10 +1203,14 @@ describe("Muse Code routing", () => {
     ];
     const scripts = [announced, recovered, announced, announced, recovered];
     let served = 0;
-    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
-      scripts[served++]!.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
-      { headers: { "content-type": "text/event-stream" } },
-    ));
+    const sentInputs: Array<Array<Record<string, unknown>>> = [];
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      sentInputs.push((JSON.parse(String(init?.body)) as { input: Array<Record<string, unknown>> }).input);
+      return new Response(
+        scripts[served++]!.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    });
     const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
     const afterToolResult = [
       { role: "user", content: "fix the build" },
@@ -1219,12 +1224,19 @@ describe("Muse Code routing", () => {
       const recoveredRes = response();
       await router.handle(ctx({ res: recoveredRes, token: ANTHROPIC_CRED, rawBody: mainTurn }));
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      // The second ask is the first one plus the announcement and a developer nudge, nothing else.
+      expect(sentInputs[1]!.slice(0, -2)).toEqual(sentInputs[0]);
+      expect(sentInputs[1]!.slice(-2)).toEqual([
+        { type: "message", role: "assistant", content: "Now I'll run the tests." },
+        { type: "message", role: "developer", content: expect.any(String) },
+      ]);
       expect(recoveredRes.body.match(/event: message_start/g)).toHaveLength(1);
-      expect(recoveredRes.body).not.toContain("Now I'll run the tests.");
-      expect(recoveredRes.body).toContain('"name":"Bash"');
+      expect(recoveredRes.body.match(/Now I'll run the tests\./g)).toHaveLength(1);
+      expect(recoveredRes.body.indexOf("Now I'll run the tests.")).toBeLessThan(recoveredRes.body.indexOf('"name":"Bash"'));
       expect(recoveredRes.body).toContain('"stop_reason":"tool_use"');
 
-      // A second draw that announces again is what the client gets; there is no third draw.
+      // A second ask that only announces again is dropped: the client gets the first answer, and
+      // there is no third ask.
       const againRes = response();
       await router.handle(ctx({ res: againRes, token: ANTHROPIC_CRED, rawBody: mainTurn }));
       expect(fetchMock).toHaveBeenCalledTimes(4);

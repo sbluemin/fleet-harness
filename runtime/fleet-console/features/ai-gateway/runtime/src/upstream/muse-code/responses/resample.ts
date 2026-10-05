@@ -3,18 +3,36 @@ import { UpstreamIdleTimeoutError } from "../../../transport/upstream-sse.js";
 import { wireLog } from "../../../transport/wire-log.js";
 
 /**
- * Muse의 무추론 단답 재샘플.
+ * Muse의 무추론 단답 재요청.
  *
- * Muse는 `reasoning.effort`를 받아도 확률적으로 추론을 건너뛰는 분기에 들어가고, 그 분기에서 도구
- * 결과 직후 "이제 X를 확인합니다" 같은 예고 한 줄만 내고 정상 완료한다(objective b6a79a92, H15).
- * 같은 요청을 다시 보내면 추론을 하고 도구를 부른다(5/5 실측). 그래서 도구 결과 직후의 무추론·무도구
- * 텍스트 응답은 클라이언트에 내보내기 전에 같은 요청으로 한 번 다시 받는다.
+ * Muse는 `reasoning.effort`를 받아도 추론을 건너뛰는 분기에 들어가고, 그 분기에서 도구 결과 직후
+ * "이제 X를 확인합니다" 같은 예고 한 줄만 내고 정상 완료한다(H15). 그 분기는 입력에 거의 결정적으로
+ * 묶인다: 같은 요청을 다시 보내면 2/8만 도구를 불렀고(#1458 실측 2/5, 2026-10-05 0/3, 대부분 같은
+ * 문장), 예고 뒤에 짧은 지시("진행해")가 붙은 입력은 3/3 바로 추론하고 도구를 불렀다. 그래서 도구
+ * 결과 직후의 무추론·무도구 텍스트 응답은 클라이언트에 내보내기 전에, 그 예고를 assistant 발화로 넣고
+ * 짧은 developer 지시를 붙인 요청으로 한 번 다시 받는다.
  *
  * 이 동작은 canonical 이벤트 수준에서 일어나므로 스트리밍·비스트리밍이 같은 결과를 받는다. 공급자
- * 의미론이라 Muse 어댑터 안에만 있고, 다른 공급자에는 닿지 않는다. 설계 근거는 X1 명세다.
+ * 의미론이라 Muse 어댑터 안에만 있고, 다른 공급자에는 닿지 않는다.
  */
 
 const LABEL = "muse-code-responses.resample";
+
+/**
+ * 재요청에만 붙는 지시. 클라이언트 기록에는 남지 않는다. 사람이 쓴 한 마디로도 회복됐으므로 짧게
+ * 두고, 실제로 끝난 작업이면 최종 답을 내도록 탈출구를 둔다.
+ */
+export const RESAMPLE_NUDGE =
+  "You announced the next step but ended without calling a tool. Make that tool call now, without writing "
+  + "anything first. If the task is actually complete, end without adding anything.";
+
+/** 재요청 입력 끝에 붙는 항목: 첫 응답의 예고와 지시. 둘 다 Muse가 받는 문자열 content 메시지다. */
+export function resampleNudgeItems(announcement: string): Record<string, unknown>[] {
+  return [
+    { type: "message", role: "assistant", content: announcement },
+    { type: "message", role: "developer", content: RESAMPLE_NUDGE },
+  ];
+}
 /** 이보다 작은 출력 상한은 짧은 판정형 부속 호출이다(보안 모니터: 64). */
 const MIN_RESAMPLE_MAX_OUTPUT_TOKENS = 1024;
 
@@ -91,8 +109,11 @@ export function resampleInScope(
 export interface MuseCodeResampleContext {
   readonly signal?: AbortSignal;
   readonly startedAt: number;
-  /** 같은 요청을 다시 보낸다. 응답을 받지 못하면 던진다. */
-  readonly reopen: () => Promise<AdapterResponse>;
+  /**
+   * 첫 응답의 예고(`announcement`)와 지시를 입력 끝에 붙여 다시 보낸다({@link resampleNudgeItems}).
+   * 응답을 받지 못하면 던진다.
+   */
+  readonly reopen: (announcement: string) => Promise<AdapterResponse>;
 }
 
 type CompletedEvent = Extract<CanonicalResponseEvent, { type: "response.completed" }>;
@@ -100,7 +121,7 @@ type CompletedEvent = Extract<CanonicalResponseEvent, { type: "response.complete
 /**
  * 첫 응답 하나에만 적용하는 상태 기계. `response.created`는 바로 내보내므로 클라이언트는 평소처럼 첫
  * 바이트를 받는다. 첫 message 항목부터는 보류하다가, 추론이나 도구 호출이 보이면 보류분을 내보내고 그대로
- * 흘린다. 보류한 채 정상 완료에 닿으면 재샘플 여부를 정한다. 보류 동안 다운스트림은 keepalive 주석으로
+ * 흘린다. 보류한 채 정상 완료에 닿으면 재요청 여부를 정한다. 보류 동안 다운스트림은 keepalive 주석으로
  * 유휴 감시를 넘긴다.
  */
 export async function* withMuseCodeResample(
@@ -165,7 +186,7 @@ export async function* withMuseCodeResample(
         const firstMs = Date.now() - context.startedAt;
         // 구독 사용량 관측(`response.subscription_usage`)은 completed 뒤에 오므로 첫 스트림을 끝까지 읽는다.
         await drainRest(iterator, context.signal);
-        yield* resample(held, event, firstMs, context);
+        yield* resample(held, event, text, firstMs, context);
         return;
       }
       if (event.type === "response.output_text.delta") deltaText += event.delta;
@@ -177,7 +198,7 @@ export async function* withMuseCodeResample(
   }
 }
 
-/** 추론이나 도구 호출이 보였으면 그 사유. 보이는 순간 재샘플 대상이 아니다. */
+/** 추론이나 도구 호출이 보였으면 그 사유. 보이는 순간 재요청 대상이 아니다. */
 function showsWork(event: CanonicalResponseEvent): "reasoning_present" | "function_call" | undefined {
   switch (event.type) {
     case "response.reasoning_summary_text.delta":
@@ -195,7 +216,7 @@ function showsWork(event: CanonicalResponseEvent): "reasoning_present" | "functi
   }
 }
 
-/** 재샘플하지 않을 사유, 또는 재샘플이면 `undefined`. */
+/** 재요청하지 않을 사유, 또는 재요청이면 `undefined`. */
 function resampleVerdict(
   event: CompletedEvent,
   text: string,
@@ -231,16 +252,25 @@ type Outcome =
   | "fallback_stream_error"
   | "fallback_idle"
   | "fallback_empty"
+  | "fallback_incomplete"
   | `fallback_http_${number}`;
 
 /**
- * 같은 요청을 한 번 다시 받는다. 두 번째 응답은 상태 없이 흘린다(재재샘플은 없다). 두 번째 응답이 첫
- * 출력 전에 실패하면 보관한 첫 응답을 원래 종료 이벤트와 usage 그대로 내보낸다 — 오류가 아니라 지금의
- * 동작으로 돌아가는 것이다. 클라이언트가 끊었으면 받을 사람이 없으므로 아무것도 내보내지 않는다.
+ * 예고와 지시를 붙여 한 번 다시 받는다(재재요청은 없다). 두 번째 응답은 도구 호출이 보일 때까지
+ * 보류한다. 보이면 회복이다: 첫 예고를 먼저 내보내고 두 번째 응답을 잇는다. 그러면 Muse가 추론할 때
+ * 스스로 내는 `[예고, 추론, 도구 호출]` 순서가 되고, 클라이언트 기록은 모델이 본 문맥(자기가 한 예고)과
+ * 어긋나지 않는다. 다운스트림은 항목 id로 블록을 가르므로 두 응답의 항목이 한 메시지에 섞여도 된다.
+ *
+ * 추론만으로는 회복이 아니다. 첫 응답이 실제 최종 보고였던 턴에서 두 번째는 추론한 뒤 같은 보고를
+ * 짧게 되풀이했다(2026-10-05 실측) — 그 답을 붙이면 보고가 두 번 보인다. 그래서 두 번째가 도구 없이
+ * 끝나거나 출력 전에 실패하면 보관한 첫 응답을 원래 종료 이벤트와 usage 그대로 내보낸다 — 오류가
+ * 아니라 지금의 동작으로 돌아가는 것이다. 클라이언트가 끊었으면 받을 사람이 없으므로 아무것도 내보내지
+ * 않는다.
  */
 async function* resample(
   held: readonly CanonicalResponseEvent[],
   firstCompleted: CompletedEvent,
+  announcement: string,
   firstMs: number,
   context: MuseCodeResampleContext,
 ): AsyncGenerator<CanonicalResponseEvent> {
@@ -249,12 +279,14 @@ async function* resample(
   let ttfbAt: number | undefined;
   const toolNames = new Map<string, string>();
   let sawReasoning = false;
+  let secondText = "";
   let secondCompleted: CompletedEvent | undefined;
 
   const report = (outcome: Outcome): void => {
     const usage = secondCompleted?.response.usage;
     wireLog(`${LABEL}.outcome`, {
       outcome,
+      mode: "nudge",
       firstMs,
       resampleTtfbMs: ttfbAt === undefined ? null : ttfbAt - startedAt,
       resampleMs: Date.now() - startedAt,
@@ -263,6 +295,8 @@ async function* resample(
       secondReasoningTokens: usage?.reasoning_output_tokens ?? null,
       secondFunctionCalls: toolNames.size,
       secondToolNames: [...toolNames.values()],
+      // 두 번째가 예고를 되풀이했는지 보려는 길이. 문구는 기록하지 않는다(본문은 wire 이벤트에 있다).
+      secondTextChars: secondText.length,
     });
   };
   const aborted = (): never => {
@@ -279,7 +313,7 @@ async function* resample(
   if (context.signal?.aborted) aborted();
   let second: AdapterResponse;
   try {
-    second = await context.reopen();
+    second = await context.reopen(announcement);
   } catch {
     if (context.signal?.aborted) aborted();
     yield* fallback("fallback_fetch_error");
@@ -291,8 +325,15 @@ async function* resample(
   }
 
   const iterator = second.events[Symbol.asyncIterator]();
+  const secondHeld: CanonicalResponseEvent[] = [];
   let committed = false;
   let terminal: Outcome | undefined;
+  const track = (event: CanonicalResponseEvent): void => {
+    if (showsWork(event) === "reasoning_present") sawReasoning = true;
+    if ((event.type === "response.output_item.added" || event.type === "response.output_item.done")
+      && event.item.type === "function_call") toolNames.set(event.item.id, event.item.name);
+    if (event.type === "response.output_text.delta") secondText += event.delta;
+  };
   try {
     while (true) {
       let next: IteratorResult<CanonicalResponseEvent>;
@@ -319,32 +360,40 @@ async function* resample(
       const event = next.value;
       // message_start는 첫 응답의 created로 이미 나갔다.
       if (event.type === "response.created") continue;
+      track(event);
+      ttfbAt ??= Date.now();
       if (!committed) {
-        // 출력 전의 실패, 그리고 아무것도 내지 않은 정상 완료는 첫 응답보다 나을 것이 없다.
+        // 출력 전의 실패는 첫 응답보다 나을 것이 없다.
         if (event.type === "response.failed" || event.type === "error") {
           yield* fallback("fallback_stream_error");
           return;
         }
-        if (event.type === "response.completed" && event.response.incomplete === undefined) {
-          yield* fallback("fallback_empty");
+        if (event.type === "response.completed") {
+          // 도구 없이 끝난 두 번째는 첫 응답보다 나을 것이 없다. 사용량 관측을 위해 꼬리를 읽는다.
+          secondCompleted = event;
+          await drainRest(iterator, context.signal);
+          yield* fallback(event.response.incomplete !== undefined
+            ? "fallback_incomplete"
+            : secondHeld.length === 0
+              ? "fallback_empty"
+              : sawReasoning || (event.response.usage?.reasoning_output_tokens ?? 0) > 0
+                ? "reasoning_final"
+                : "text_again");
           return;
         }
+        if (showsWork(event) !== "function_call") {
+          secondHeld.push(event);
+          continue;
+        }
         committed = true;
-        ttfbAt = Date.now();
-        resumedAt = ttfbAt;
+        resumedAt = Date.now();
+        yield* held;
+        yield* secondHeld.splice(0);
       }
-      if (showsWork(event) === "reasoning_present") sawReasoning = true;
-      if ((event.type === "response.output_item.added" || event.type === "response.output_item.done")
-        && event.item.type === "function_call") toolNames.set(event.item.id, event.item.name);
       if (event.type === "response.completed") {
         secondCompleted = event;
-        terminal = event.response.incomplete !== undefined
-          ? "incomplete"
-          : toolNames.size > 0
-            ? "tool_recovered"
-            : sawReasoning || (event.response.usage?.reasoning_output_tokens ?? 0) > 0
-              ? "reasoning_final"
-              : "text_again";
+        // 커밋은 도구 호출에서만 일어나므로 끝까지 온 두 번째는 회복이다.
+        terminal = event.response.incomplete !== undefined ? "incomplete" : "tool_recovered";
       } else if (event.type === "response.failed" || event.type === "error") {
         terminal = "error_after_commit";
       }
