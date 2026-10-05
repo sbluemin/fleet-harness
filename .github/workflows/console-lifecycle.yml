@@ -78,7 +78,9 @@ jobs:
         env:
           FLEET_BUILT_SMOKE: "1"
         run: pnpm --filter @dotobokuri/fleet-console exec vitest run tests/built/fleet-built-smoke.test.ts tests/server.test.ts
+      # The Desktop half runs even when the Console half failed, so one run reports both.
       - name: Desktop supervisor over a built Console
+        if: ${{ !cancelled() }}
         env:
           FLEET_BUILT_SMOKE: "1"
         run: pnpm --filter @dotobokuri/fleet-desktop exec vitest run tests/sidecar-supervisor.test.ts

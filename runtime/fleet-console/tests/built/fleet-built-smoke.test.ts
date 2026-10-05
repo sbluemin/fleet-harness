@@ -165,11 +165,14 @@ const FAKE_AGENT = fileURLToPath(new URL("../fixtures/lifecycle-fake-agent.mjs",
 const repoRoot = path.resolve(packageRoot, "../..");
 /** Every process a lifecycle case started or observed, by pid, with the start time that proves it is still that process. */
 const OWNED = new Map<number, string>();
+/** Live pids the agent stand-in recorded whose process started away from the record: never signalled, always reported. */
+const UNPROVEN_RECORDS: string[] = [];
 const RUNS: LifecycleRun[] = [];
 
 afterEach(async () => {
   const runs = RUNS.splice(0);
-  for (const run of runs) for (const entry of agentProcs(run)) ownRecorded(entry);
+  for (const run of runs) for (const entry of agentProcs(run)) if (AGENT_ROLES.has(entry.role)) ownRecorded(entry);
+  const unproven = UNPROVEN_RECORDS.splice(0);
   // The suite keeps I1 itself: only a pid whose start time still matches is signalled, and nothing may be left behind.
   const left: string[] = [];
   if (OWNED.size > 0) {
@@ -187,6 +190,7 @@ afterEach(async () => {
   }
   for (const run of runs) for (const dir of [run.dir, run.tmp]) fs.rmSync(dir, { recursive: true, force: true });
   if (left.length > 0) throw new Error(`lifecycle processes survived SIGKILL: ${left.join("; ")}`);
+  if (unproven.length > 0) throw new Error(`agent records that no live process proves (not signalled): ${unproven.join("; ")}`);
 });
 
 // POSIX signal semantics: Windows TerminateProcess runs no shutdown path at all.
@@ -780,14 +784,16 @@ function own(pid: number): void {
 }
 
 /**
- * Owns a pid the agent stand-in recorded only while the process holding it started when the record was written: a pid that
- * died before it was first observed may name someone else's process by now.
+ * Owns a pid the agent stand-in recorded at its spawn only while the process holding it started when the record was written:
+ * a pid that died before it was first observed may name someone else's process by now. Such a pid is never signalled, but
+ * the mismatch fails the case once cleanup is done, so a missed or wrong record cannot hide a survivor.
  */
 function ownRecorded(entry: { readonly pid: number; readonly at?: number }): void {
   const startedAt = processStartTime(entry.pid);
-  if (startedAt === null || OWNED.has(entry.pid) || entry.at === undefined) return;
+  if (startedAt === null || OWNED.has(entry.pid)) return;
   // lstart has one-second resolution and the record follows the start by a process boot at most.
-  if (Math.abs(entry.at - Date.parse(startedAt)) <= 2_000) OWNED.set(entry.pid, startedAt);
+  if (entry.at !== undefined && Math.abs(entry.at - Date.parse(startedAt)) <= 2_000) OWNED.set(entry.pid, startedAt);
+  else UNPROVEN_RECORDS.push(`pid ${entry.pid} recorded at ${entry.at === undefined ? "an unknown time" : new Date(entry.at).toISOString()}, live process started ${startedAt}`);
 }
 
 function processStartTime(pid: number): string | null {
