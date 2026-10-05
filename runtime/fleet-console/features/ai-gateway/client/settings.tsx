@@ -1,11 +1,28 @@
 import { launchProviderGlyph, serviceGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
-import { ModelPicker, SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSubScreenRow, SettingsToggle, defineSettingsSection, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
+import { SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSubScreenRow, SettingsToggle, defineSettingsSection, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
 import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
 import { getModelAuthStoreState, loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
+import { ModelCoordinatePicker, type ModelCoordinatePickerLabels } from "@fleet-console/sdk/components/model-coordinate-picker";
+import { findRosterRow, rosterRows } from "@fleet-console/sdk/models";
+import { useModelRoster } from "./model-roster-store.js";
+
+/** 이 화면의 모델 선택기 문구 — 접근 이름은 그 행의 제목이다. */
+function rosterPickerLabels(t: ReturnType<typeof getT>, title: string): ModelCoordinatePickerLabels {
+  return {
+    menu: title,
+    effort: title,
+    auto: t("terminal.settings.models.auto"),
+    back: t("terminal.settings.models.back"),
+    loading: t("terminal.settings.models.loading"),
+    empty: t("terminal.settings.models.empty"),
+    off: t("terminal.settings.models.off"),
+    fallback: t("terminal.settings.models.fallback"),
+  };
+}
 export const aiGatewaySettingsSection = defineSettingsSection({
   id: "agent-cli",
   title: (locale) => getT(locale)("terminal.settings.agentCli"),
@@ -131,6 +148,7 @@ function AiGatewayCompactTimingCard() {
   const saving = settings.savingFields.has("compactCeiling");
   const mobile = useMobileSettingsHost() !== null;
   const [previewId, setPreviewId] = React.useState<string>("");
+  const previewRoster = useModelRoster("agent");
   // 끌리는 동안의 값은 화면에만 싣고, 손을 뗄 때(pointerup·값을 움직인 keyup·blur) 한 번 저장한다 —
   // SettingsSlider와 같은 계약. 키 한 번마다 저장하면 방향키를 누르고 있는 동안 설정 문서가 연달아 다시 쓰인다.
   const [dragPercent, setDragPercent] = React.useState<number | null>(null);
@@ -147,10 +165,9 @@ function AiGatewayCompactTimingCard() {
 
   const ceiling = state.compactCeiling;
   const policy = compactPolicyFromCeiling(ceiling);
-  const previewModels = state.aiGatewayCatalog.providers.flatMap((provider) => provider.models
-    .filter((model) => typeof model.contextWindow === "number" && model.contextWindow > 0)
-    .map((model) => ({ ...model, provider: provider.id })));
-  const preview = previewModels.find((model) => model.id === previewId) ?? previewModels[0];
+  // 미리보기도 모델 로스터(켠 모델)에서 고른다 — 로스터가 비면 기본 창(272K)으로 그린다.
+  const previewModels = rosterRows(previewRoster).filter((row) => typeof row.contextWindow === "number" && row.contextWindow > 0);
+  const preview = (previewId ? findRosterRow(previewRoster, previewId) : null) ?? previewModels[0];
   const previewWindow = preview?.contextWindow ?? 272_000;
   const liveCeiling: CompactCeiling | null = policy === "custom" && dragPercent !== null
     ? dragPercent
@@ -231,11 +248,13 @@ function AiGatewayCompactTimingCard() {
           labelId="compact-timing-preview-label"
           helpTip={<SettingsHelp title={t("terminal.settings.compactTimingPreview")}>{t("terminal.settings.compactTimingPreviewHelp")}</SettingsHelp>}
         >
-          <ModelPicker
-            value={preview?.id ?? ""}
-            options={previewModels.map((model) => ({ id: model.id, label: model.name, provider: model.provider, contextWindow: model.contextWindow }))}
-            aria-labelledby="compact-timing-preview-label"
-            onChange={(id) => setPreviewId(id)}
+          <ModelCoordinatePicker
+            roster={previewRoster?.map((group) => ({ ...group, rows: group.rows.filter((row) => previewModels.includes(row)) })).filter((group) => group.rows.length > 0) ?? null}
+            value={{ ...(preview ? { model: preview.launch.model ?? preview.id } : {}) }}
+            effort="none"
+            onChange={(next) => { if (next.model) setPreviewId(next.model); }}
+            labels={rosterPickerLabels(t, t("terminal.settings.compactTimingPreview"))}
+            trigger={{ variant: "field", text: preview ? `${preview.label} · ${formatAiGatewayContextWindow(preview.contextWindow ?? null) ?? ""}` : undefined }}
           />
         </SettingsItem>
       ) : null}
@@ -313,6 +332,7 @@ function AiGatewayRoutingCard() {
   const t = getT(useTerminalLocale());
   const settings = useSystemPromptSettingsStore();
   const auth = useModelAuthStore();
+  const routingRoster = useModelRoster("agent");
   const state = settings.state;
   const saving = settings.savingFields;
 
@@ -377,19 +397,16 @@ function AiGatewayRoutingCard() {
           {!typesafeSignedIn ? <p className="global-settings-help">{t("terminal.settings.aiGatewayDelegationRoutingJevSignIn")}</p> : null}
           {mode === "model" ? (
             <SettingsItem label={t("terminal.settings.aiGatewayRoutingModel")} labelId="routing-model-label">
-              <ModelPicker
-                value={state.delegationRoutingModel ?? "sonnet"}
-                options={[
-                  { id: "opus", label: "Opus", provider: "claude" },
-                  { id: "sonnet", label: "Sonnet", provider: "claude" },
-                  ...state.aiGatewayCatalog.providers.flatMap(provider => provider.models
-                    .filter(model => state.aiGateway?.models?.some(selected => selected.id === model.id))
-                    .filter(model => model.id !== "claude--sonnet" && model.id !== "claude--opus")
-                    .map(model => ({ id: model.id, label: model.name, provider: provider.id, contextWindow: model.contextWindow }))),
-                ]}
-                aria-labelledby="routing-model-label"
+              {/* 라우팅 판정기는 모델만 고른다 — 강도는 실행이 빠른 단(low)으로 정한다. 선택지는 모델 로스터 하나다. */}
+              <ModelCoordinatePicker
+                roster={routingRoster}
+                value={state.delegationRoutingModel ? { model: state.delegationRoutingModel } : {}}
+                fallback={{ model: "sonnet" }}
+                effort="none"
                 disabled={saving.has("delegationRoutingModel")}
-                onChange={id => void setSystemPromptSettingsField("delegationRoutingModel", id)}
+                onChange={(next) => { if (next.model) void setSystemPromptSettingsField("delegationRoutingModel", next.model); }}
+                labels={rosterPickerLabels(t, t("terminal.settings.aiGatewayRoutingModel"))}
+                trigger={{ variant: "field" }}
               />
             </SettingsItem>
           ) : null}
