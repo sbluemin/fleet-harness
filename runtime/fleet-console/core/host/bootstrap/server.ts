@@ -40,8 +40,8 @@ import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
-import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
-import { CONSOLE_LIFECYCLE_WIRE } from "@fleet-console/protocol/lifecycle";
+import { createOwnedProcessRegistry, pruneConsoleExitRecords, signalChildGroup, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
+import { CONSOLE_LIFECYCLE_WIRE, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
 import { createBrowserRouter } from "../../../features/browser/host/routes.js";
@@ -1154,14 +1154,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
     contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
     // A plugin's child leads a group this Console owns and ends however the Console ends; spawn is all a plugin gets.
-    spawnOwnedProcess: (pluginId, request) => ownedProcesses.spawn({
-      command: request.command,
-      args: request.args,
-      ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
-      env: request.env ?? process.env,
-      stdin: request.stdin ?? "pipe",
-      owner: `plugin:${pluginId}`,
-    }),
+    spawnOwnedProcess: (pluginId, request) => {
+      const child = ownedProcesses.spawn({
+        command: request.command,
+        args: request.args,
+        ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+        env: request.env ?? process.env,
+        stdin: request.stdin ?? "pipe",
+        owner: `plugin:${pluginId}`,
+      });
+      return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => signalChildGroup(child, signal) });
+    },
     // Console 제어 — `console_launch`·`console_send` 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
     consoleControlFor: (pluginId) => ({
       request: async (input) => {
@@ -2099,6 +2102,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         console.warn(`[fleet-console] Plugin cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
       }
     }
+    // Plugins' own registered children (a CLI or git still waiting on the network) have no one else to end them on this
+    // path: give them SIGTERM and, after the grace, SIGKILL, without holding the lock for it. Agent CLIs are left to the
+    // SDK's own close, which lets them flush, and the stop deadline still covers everything.
+    ownedProcesses.endGroups((group) => group.owner?.startsWith("plugin:") === true, OWNED_GROUP_TERM_GRACE_MS, {
+      onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error),
+    });
     for (const cleanup of [...executionCleanupCallbacks].reverse()) {
       try { await cleanup(); } catch (error) { console.warn("[fleet-console] Execution cleanup failed:", error); }
     }

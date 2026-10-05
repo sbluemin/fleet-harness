@@ -1,5 +1,6 @@
 import { spawn, type SpawnOptions } from "node:child_process";
 import { withHidden } from "@fleet-console/process";
+import type { FleetPluginOwnedProcess, FleetPluginProcessesHost } from "@fleet-console/sdk/plugin";
 
 export type GitErrorCode = "timeout" | "non_zero_exit" | "spawn_failed" | "no_git_repo" | "git_unavailable";
 
@@ -49,7 +50,22 @@ function sanitizeGitEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessE
 
 export function runGit(
   args: readonly string[],
-  opts: { readonly cwd: string; readonly timeoutMs?: number; readonly maxBuffer?: number; readonly allowExitCodes?: readonly number[]; readonly signal?: AbortSignal },
+  opts: {
+    readonly cwd: string;
+    readonly timeoutMs?: number;
+    readonly maxBuffer?: number;
+    readonly allowExitCodes?: readonly number[];
+    readonly signal?: AbortSignal;
+    /**
+     * The host's owned-process port, for commands that can wait on the network: fetch, push, pull, and the commands
+     * that write the worktree back (restore, stash push -u, apply, pop), whose smudge filters, git-lfs among them, may
+     * download. git then leads a group the Console ends however
+     * the Console ends, and a timeout ends git's helpers (git-remote-https, ssh, a filter process) with it. The other
+     * commands are local and run no hooks (every hook-capable command here sets core.hooksPath to the null device), so
+     * they run as plain children.
+     */
+    readonly processes?: FleetPluginProcessesHost;
+  },
 ): Promise<GitRunResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBuffer = opts.maxBuffer ?? DEFAULT_MAX_BUFFER;
@@ -61,13 +77,19 @@ export function runGit(
       return;
     }
     let child;
+    let owned: FleetPluginOwnedProcess | undefined;
     try {
-      // Windows에서 자식 프로세스 콘솔 창이 깜빡이며 떴다 사라지는 현상 방지
-      child = spawn("git", hardenedArgs, withHidden({
-        cwd: opts.cwd,
-        env: sanitizeGitEnvironment(process.env),
-        shell: false,
-      }));
+      if (opts.processes) {
+        owned = opts.processes.spawnOwned({ command: "git", args: hardenedArgs, cwd: opts.cwd, env: sanitizeGitEnvironment(process.env) });
+        child = owned;
+      } else {
+        // Windows에서 자식 프로세스 콘솔 창이 깜빡이며 떴다 사라지는 현상 방지
+        child = spawn("git", hardenedArgs, withHidden({
+          cwd: opts.cwd,
+          env: sanitizeGitEnvironment(process.env),
+          shell: false,
+        }));
+      }
     } catch (error) {
       // spawn 동기 예외에서도 ENOENT는 git 바이너리 미설치로 분류한다(방어적 처리).
       const code = (error as NodeJS.ErrnoException).code === "ENOENT" ? "git_unavailable" : "spawn_failed";
@@ -85,7 +107,8 @@ export function runGit(
 
     const abort = () => {
       timedOut = true;
-      child.kill("SIGTERM");
+      if (owned) owned.killGroup("SIGTERM");
+      else child.kill("SIGTERM");
       reject(new GitExecutorError("timeout"));
     };
     opts.signal?.addEventListener("abort", abort, { once: true });
@@ -98,7 +121,7 @@ export function runGit(
       opts.signal?.removeEventListener("abort", abort);
     };
 
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout?.on("data", (chunk: Buffer) => {
       if (truncated) return;
       const remaining = maxBuffer - stdoutLen;
       if (chunk.length >= remaining) {
@@ -111,7 +134,7 @@ export function runGit(
       }
     });
 
-    child.stderr.on("data", (chunk: Buffer) => {
+    child.stderr?.on("data", (chunk: Buffer) => {
       if (stderrTruncated) return;
       const remaining = STDERR_MAX_BUFFER - stderrLen;
       if (chunk.length >= remaining) {

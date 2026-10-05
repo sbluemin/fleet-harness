@@ -1029,8 +1029,8 @@ export interface FleetPluginModelsHost {
  * a crash, or an external kill. Never start a child that has to outlive the Console here.
  *
  * Spawn only: there is no way to register an existing pid, list the Console's children, or end them all; a plugin
- * signals only the child it was given (for example its own group on a timeout). Windows has no process groups; there a
- * direct child still ends with the Console.
+ * signals only the child it was given, and its group only through `killGroup` (for example on a timeout). Windows has no
+ * process groups; there a direct child still ends with the Console.
  */
 export interface FleetPluginProcessesHost {
   /** The child is tagged with this plugin's id, which the host binds. */
@@ -1055,6 +1055,12 @@ export interface FleetPluginOwnedProcess {
   readonly stdout: NodeJS.ReadableStream | null;
   readonly stderr: NodeJS.ReadableStream | null;
   kill(signal?: NodeJS.Signals): boolean;
+  /**
+   * Signals the child together with everything it started (its process group on POSIX, default SIGTERM), but only while
+   * the child itself has not exited: after that its number may name another process, so nothing is signalled and the
+   * Console ends what is left. On Windows it signals the child alone. Returns whether a signal was sent.
+   */
+  killGroup(signal?: NodeJS.Signals): boolean;
   on(event: "close" | "exit", listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
   on(event: "error", listener: (error: Error) => void): unknown;
 }

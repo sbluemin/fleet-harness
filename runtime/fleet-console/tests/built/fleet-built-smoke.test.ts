@@ -459,8 +459,8 @@ afterEach(async () => {
     const endpoint = await waitForReady(run, consolePid);
     const attachment = await uploadAttachment(run, endpoint);
     await openWorkload(run, endpoint, { terminal: true });
-    await openPluginChildren(run, endpoint);
-    const started = descendantsOf(consolePid);
+    const pluginChildren = await openPluginChildren(run, endpoint);
+    const started = [...descendantsOf(consolePid).filter((entry) => !pluginChildren.some((child) => child.pid === entry.pid)), ...pluginChildren];
 
     process.kill(consolePid, "SIGKILL");
     await group.consoleExit(5_000);
@@ -473,6 +473,32 @@ afterEach(async () => {
     const leftovers = attachment.filter((file) => fs.existsSync(file));
     lifecycleCheck("L10", leftovers.length === 0, "I5: the next Console reclaims the killed Console's attachments whatever the slot's spelling", { detail: leftovers });
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
+  }, 60_000);
+
+  // L6n, e7874487:N9 (I2, I4; L6's plugin children on the normal stop path). The same hung Ledger children must not hold a
+  // normal stop to the deadline: the single cleanup ends the plugins' registered groups after their grace — those whose
+  // CLI ignores SIGTERM by E1, those whose CLI ended (on SIGTERM, or by itself before the stop) but left a helper holding
+  // its pipes by one proving process-table read — so stop succeeds well inside B_int, the instance records `clean`, and
+  // nothing it started outlives it.
+  it("ends a hung plugin child on a normal stop and reports the stop as clean", async () => {
+    const run = createRun("plugin-stop");
+    const consoleProcess = spawnConsole(run);
+    const startedAt = Date.now();
+    const endpoint = await waitForReady(run, consoleProcess.pid!);
+    const pluginChildren = await openPluginChildren(run, endpoint);
+    const started = [...descendantsOf(consoleProcess.pid!).filter((entry) => !pluginChildren.some((child) => child.pid === entry.pid)), ...pluginChildren];
+    await provableByStartTime(startedAt);
+
+    const stoppedAt = Date.now();
+    const stop = await runStop(run.env);
+    const exit = await exitOf(consoleProcess, 30_000);
+    const elapsedMs = Date.now() - stoppedAt;
+
+    lifecycleCheck("L6n", stop.status === 0, "a normal stop with a hung plugin child is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), elapsedMs } });
+    lifecycleCheck("L6n", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "the Console ends by itself and records `clean`", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run) } });
+    lifecycleCheck("L6n", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
+    const left = await survivors(run, started);
+    lifecycleCheck("L6n", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
   }, 60_000);
 
   // L2 over real processes and L10 E2. A second Console that loses the lock exits without touching anything except its
@@ -782,6 +808,14 @@ function deadlineTimeline(run: LifecycleRun, freeze: string): { readonly freezeS
   }
 }
 
+/** The outcome the run's Console `pid` recorded for itself, or null when it left no record. */
+function exitOutcome(run: LifecycleRun, pid: number): string | null {
+  const dir = path.dirname(run.lockFile);
+  const file = fs.readdirSync(dir).find((name) => name.startsWith(`console.exit.${pid}-`) && name.endsWith(".json"));
+  if (!file) return null;
+  try { return String((JSON.parse(fs.readFileSync(path.join(dir, file), "utf8")) as { outcome?: unknown }).outcome); } catch { return null; }
+}
+
 /** The failure kinds the run's Console recorded (errors.jsonl), to tell why an I2 case left a process behind. */
 function failureKinds(run: LifecycleRun): string[] {
   try {
@@ -896,27 +930,51 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
 }
 
 /**
- * A built-in plugin's own long-running child (N7): a Ledger summary request starts tokscale, and a stand-in installed where
- * Ledger looks for it hangs and ignores SIGTERM, so only the Console's containment ends it. The suite owns each one at once:
- * one that escapes is reparented away from the Console and would otherwise outlive the case.
+ * A built-in plugin's own long-running children (N7): two Ledger summaries (week and month) start tokscale four times, and
+ * a stand-in installed where Ledger looks for it hangs in the three shapes a CLI leaves behind. The report runs ignore
+ * SIGTERM themselves. The week model run ends on SIGTERM but leaves a helper that ignores it and holds the run's inherited
+ * stdout and stderr (N9). The month model run leaves the same helper and exits by itself before any stop, as a CLI that
+ * timed out does. Only the Console's containment ends them. Returns every process recorded, with its start time, so a
+ * case watches the helpers too once they are no longer the Console's descendants. The suite owns each one at once: one
+ * that escapes is reparented away from the Console and would otherwise outlive the case.
  */
-async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<void> {
+async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<Array<{ readonly pid: number; readonly startedAt: string; readonly command: string }>> {
   const pkg = path.join(run.root, "console", "plugins", "ledger", "cli", "node_modules", "tokscale");
   const pids = path.join(pkg, "pids");
   fs.mkdirSync(pkg, { recursive: true });
   // Ledger refuses anything but its pinned version.
   fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "tokscale", version: "4.7.0" }));
   fs.writeFileSync(path.join(pkg, "bin.js"), [
-    `require("fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");`,
-    "process.on('SIGTERM', () => {});",
+    `const record = (role, pid) => require("fs").appendFileSync(${JSON.stringify(pids)}, role + " " + pid + "\\n");`,
+    "const gone = process.argv.includes('--month');",
+    "if (process.argv.includes('models')) {",
+    "  const helper = require('child_process').spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);\"], { stdio: 'inherit' });",
+    "  record(gone ? 'helper-gone' : 'helper', helper.pid);",
+    "  record(gone ? 'cli-gone' : 'cli-honours', process.pid);",
+    "  if (gone) setTimeout(() => process.exit(0), 100);",
+    "} else {",
+    "  process.on('SIGTERM', () => {});",
+    "  record('cli-ignores', process.pid);",
+    "}",
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
-  // The summary answers only once tokscale does; the request ends with the Console.
-  fetch(new URL("plugins/ledger/summary?window=week", endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
-  const recorded = () => fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map(Number) : [];
-  // One tokscale for the report and one for the model breakdown.
-  await waitUntil(() => recorded().length >= 2, 20_000, "the Ledger plugin did not start its CLI");
-  for (const pid of recorded()) own(pid);
+  // Each summary answers only once tokscale does; the requests end with the Console.
+  for (const window of ["week", "month"]) {
+    fetch(new URL(`plugins/ledger/summary?window=${window}`, endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
+  }
+  const recorded = () => fs.existsSync(pids)
+    ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map((line) => { const [role, pid] = line.split(" "); return { role: role!, pid: Number(pid) }; })
+    : [];
+  // Two report runs, two model runs, and their two helpers.
+  await waitUntil(() => recorded().length >= 6, 20_000, "the Ledger plugin did not start its CLI");
+  const entries = recorded();
+  for (const entry of entries) own(entry.pid);
+  const gone = entries.find((entry) => entry.role === "cli-gone")!;
+  await waitUntil(() => !isAlive(gone.pid), 10_000, "the timed-out CLI stand-in did not exit by itself");
+  return entries.flatMap((entry) => {
+    const startedAt = processStartTime(entry.pid);
+    return startedAt === null ? [] : [{ pid: entry.pid, startedAt, command: `tokscale ${entry.role}` }];
+  });
 }
 
 const ONE_PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");

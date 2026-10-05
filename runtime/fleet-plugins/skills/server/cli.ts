@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { resolvePathBinary } from "@fleet-console/process";
 import { withHidden } from "@fleet-console/process";
+import type { FleetPluginOwnedProcess, FleetPluginProcessesHost } from "@fleet-console/sdk/plugin";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ const SKILLS_VERSION = "1.5.14";
 
 const SKILLS_PACKAGE = "skills";
 const BOOTSTRAP_TIMEOUT_MS = 60_000;
+const CLI_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const ANSI_RE = /(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)|\x1B[^[\x9B\]]|\x9C/g;
 const WARMUP_LINE = "Preparing skills CLI (first run may take a moment)…";
 
@@ -94,7 +96,7 @@ export function resolveNpmCommand(
   return { file: resolved.bin, args: [...resolved.prefixArgs, ...npmArgs] };
 }
 
-async function runNpmInstall(cliHome: string): Promise<void> {
+async function runNpmInstall(cliHome: string, processes?: FleetPluginProcessesHost): Promise<void> {
   const { file, args } = resolveNpmCommand([
     "install",
     `${SKILLS_PACKAGE}@${SKILLS_VERSION}`,
@@ -106,12 +108,14 @@ async function runNpmInstall(cliHome: string): Promise<void> {
     "--loglevel=error",
   ]);
   return new Promise<void>((resolve, reject) => {
-    const child = execFile(
-      file,
-      args,
-      // windowsHide: GUI 콘솔에서 하위 프로세스(cmd.exe 심 래퍼) 콘솔 창이 순간 표시되는 것을 막는다.
-      withHidden({ shell: false, timeout: BOOTSTRAP_TIMEOUT_MS }),
-    );
+    const child = processes
+      ? bounded(processes.spawnOwned({ command: file, args }), BOOTSTRAP_TIMEOUT_MS)
+      : execFile(
+        file,
+        args,
+        // windowsHide: GUI 콘솔에서 하위 프로세스(cmd.exe 심 래퍼) 콘솔 창이 순간 표시되는 것을 막는다.
+        withHidden({ shell: false, timeout: BOOTSTRAP_TIMEOUT_MS }),
+      );
     child.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`npm install exited with code ${code}`));
@@ -120,7 +124,28 @@ async function runNpmInstall(cliHome: string): Promise<void> {
   });
 }
 
-async function ensureCliMjs(cliHome: string, onBootstrap?: (line: string) => void): Promise<string> {
+/**
+ * What execFile gave the host-owned child: it is ended (with everything it started, through `killGroup`) once it runs
+ * past `timeoutMs` or prints more than `maxBuffer` bytes, and its output is always read so it never blocks on a full pipe.
+ * The Console ends it anyway if the Console itself ends first.
+ */
+function bounded(child: FleetPluginOwnedProcess, timeoutMs: number, maxBuffer = CLI_MAX_BUFFER_BYTES): FleetPluginOwnedProcess {
+  let bytes = 0;
+  const stop = () => { child.killGroup("SIGTERM"); };
+  const timer = setTimeout(stop, timeoutMs);
+  timer.unref?.();
+  const count = (chunk: Buffer) => {
+    bytes += chunk.length;
+    if (bytes > maxBuffer) stop();
+  };
+  child.stdout?.on("data", count);
+  child.stderr?.on("data", count);
+  child.on("close", () => clearTimeout(timer));
+  child.on("error", () => clearTimeout(timer));
+  return child;
+}
+
+async function ensureCliMjs(cliHome: string, onBootstrap?: (line: string) => void, processes?: FleetPluginProcessesHost): Promise<string> {
   if (_cliMjsPath) return _cliMjsPath;
   if (_bootstrapPromise) return _bootstrapPromise;
 
@@ -140,7 +165,7 @@ async function ensureCliMjs(cliHome: string, onBootstrap?: (line: string) => voi
     if (needsInstall) {
       onBootstrap?.(WARMUP_LINE);
       await fs.mkdir(cliHome, { recursive: true });
-      await runNpmInstall(cliHome);
+      await runNpmInstall(cliHome, processes);
     }
 
     _cliMjsPath = mjsPath;
@@ -160,17 +185,24 @@ async function ensureCliMjs(cliHome: string, onBootstrap?: (line: string) => voi
   return _bootstrapPromise;
 }
 
-export function createDefaultExecutor(cliHome: string): CliExecutor {
+/**
+ * Runs the skills CLI. With the host's owned-process port (`ctx.host.processes`) the CLI and its npm bootstrap are
+ * children the Console ends however the Console ends, including a crash or a kill while a registry call hangs; without it
+ * (an older Console, a test) they are execFile children as before.
+ */
+export function createDefaultExecutor(cliHome: string, processes?: FleetPluginProcessesHost): CliExecutor {
   return (args, { cwd, timeout, onChunk, onBootstrap }) =>
     new Promise((resolve, reject) => {
-      void ensureCliMjs(cliHome, onBootstrap)
+      void ensureCliMjs(cliHome, onBootstrap, processes)
         .then((mjsPath) => {
-          const child = execFile(
-            process.execPath,
-            [mjsPath, ...args],
-            // windowsHide: GUI 콘솔에서 하위 node.exe 콘솔 창이 순간 표시되는 것을 막는다.
-            withHidden({ shell: false, cwd, timeout, maxBuffer: 10 * 1024 * 1024, env: cliChildEnv() }),
-          );
+          const child = processes
+            ? bounded(processes.spawnOwned({ command: process.execPath, args: [mjsPath, ...args], cwd, env: cliChildEnv() }), timeout)
+            : execFile(
+              process.execPath,
+              [mjsPath, ...args],
+              // windowsHide: GUI 콘솔에서 하위 node.exe 콘솔 창이 순간 표시되는 것을 막는다.
+              withHidden({ shell: false, cwd, timeout, maxBuffer: CLI_MAX_BUFFER_BYTES, env: cliChildEnv() }),
+            );
 
           const stdoutParts: string[] = [];
           const stderrParts: string[] = [];

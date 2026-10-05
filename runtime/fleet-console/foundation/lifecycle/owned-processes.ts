@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { execFile, spawn, spawnSync, type ChildProcess } from "node:child_process";
 
 import { PROCESS_START_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
@@ -61,6 +61,15 @@ export interface OwnedProcessRegistry {
    * are this group's (`proveExitedLeaderGroup`); without a readable table it is left alone. POSIX only.
    */
   killAll(input?: OwnedProcessKillInput): number;
+  /**
+   * The stop path's end for the selected groups (docs/console-lifecycle-contract.md, "Children"): SIGTERM now and
+   * SIGKILL after `graceMs`, each to a group whose leader is still this process's unreaped child (E1), with no process
+   * table. When the grace ends, a selected group whose leader has exited but which still has members (a helper that
+   * ignored SIGTERM, or one a leader left before the stop, which then gets no SIGTERM) is SIGKILLed only if one
+   * asynchronous process-table read proves it (`proveExitedLeaderGroup`); without a readable table it is left alone.
+   * The timer never keeps the process alive. Returns how many groups got SIGTERM. POSIX only.
+   */
+  endGroups(select: (group: OwnedProcessGroup) => boolean, graceMs: number, input?: OwnedProcessKillInput): number;
 }
 
 interface Entry {
@@ -114,6 +123,35 @@ export function createOwnedProcessRegistry(events: OwnedProcessRegistryEvents = 
     },
     groups() {
       return [...entries.values()].map(snapshot);
+    },
+    endGroups(select, graceMs, input = {}) {
+      if (process.platform === "win32") return 0;
+      const unreaped = (entry: Entry) => entry.child.exitCode === null && entry.child.signalCode === null;
+      const chosen = [...entries.values()].filter((entry) => isSignallableGroup(entry.pgid) && select(snapshot(entry)));
+      let signalled = 0;
+      for (const entry of chosen) if (unreaped(entry) && signalGroup(entry.pgid, "SIGTERM")) signalled += 1;
+      if (signalled > 0 || chosen.some((entry) => groupHasMembers(entry.pgid))) {
+        const escalate = setTimeout(() => {
+          const leaderless: Entry[] = [];
+          for (const entry of chosen) {
+            if (unreaped(entry)) signalGroup(entry.pgid, "SIGKILL");
+            else if (groupHasMembers(entry.pgid)) leaderless.push(entry);
+          }
+          // Only here does this path read the process table, once for every such group: a leader gone with members left
+          // behind (a helper that ignored SIGTERM, or one left by a leader that had exited before the stop).
+          if (leaderless.length === 0) return;
+          void readProcessTableAsync(input.env ?? process.env).then((table) => {
+            if ("error" in table) {
+              input.onProcessTableUnavailable?.(table.error);
+              return;
+            }
+            const now = Date.now();
+            for (const entry of leaderless) if (proveExitedLeaderGroup(table.rows, entry, now)) signalGroup(entry.pgid, "SIGKILL");
+          });
+        }, graceMs);
+        escalate.unref?.();
+      }
+      return signalled;
     },
     killAll(input = {}) {
       if (process.platform === "win32") return 0;
@@ -209,17 +247,52 @@ export function readProcessTable(env: NodeJS.ProcessEnv): ProcessTable {
   if (listing.error || listing.status !== 0 || typeof listing.stdout !== "string") {
     return { error: listing.error ?? new Error(`ps exited with ${listing.status ?? listing.signal}`) };
   }
+  return { rows: parseProcessTable(listing.stdout, listing.pid) };
+}
+
+/**
+ * The same read without blocking the event loop, for a path that judges only groups whose leader is already reaped: no
+ * direct child can be reaped, and its number reused, between this read and a signal, so it need not be synchronous.
+ */
+export function readProcessTableAsync(env: NodeJS.ProcessEnv): Promise<ProcessTable> {
+  return new Promise((resolve) => {
+    const child = execFile("ps", ["-A", "-o", "pid=,ppid=,pgid=,lstart="], {
+      env: { PATH: env.PATH ?? "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC" },
+      encoding: "utf8",
+      timeout: PROCESS_TABLE_TIMEOUT_MS,
+      windowsHide: true,
+    }, (error, stdout) => {
+      if (error) resolve({ error });
+      else resolve({ rows: parseProcessTable(stdout, child.pid) });
+    });
+  });
+}
+
+function parseProcessTable(stdout: string, readerPid: number | undefined): ProcessTableRow[] {
   const rows: ProcessTableRow[] = [];
-  for (const line of listing.stdout.split("\n")) {
+  for (const line of stdout.split("\n")) {
     const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S.*\S)\s*$/.exec(line);
     if (!match) continue;
     const pid = Number(match[1]);
     // ps itself was this process's child and is already reaped; its pid must not be judged or signalled.
-    if (pid === listing.pid) continue;
+    if (pid === readerPid) continue;
     // A start time that cannot be read proves nothing: NaN fails every start-time comparison.
     rows.push({ pid, ppid: Number(match[2]), pgid: Number(match[3]), startedAt: parsePsLstartUtc(match[4]!) ?? Number.NaN });
   }
-  return { rows };
+  return rows;
+}
+
+/**
+ * Signals a child this process spawned as a group leader together with everything it started, under the registry's proof
+ * rule: only while the child itself is unreaped, when its pid, and so its group number, cannot name anything else (E1).
+ * Once it has been reaped nothing is signalled; whatever its group still holds is left to the stop deadline and the
+ * watcher, which prove it from the process table. On Windows, without process groups, it signals the child alone.
+ */
+export function signalChildGroup(child: ChildProcess, signal: NodeJS.Signals = "SIGTERM"): boolean {
+  if (process.platform === "win32") return child.kill(signal);
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return false;
+  if (!isSignallableGroup(child.pid)) return false;
+  return signalGroup(child.pid, signal);
 }
 
 /** Never this process's own group (a Desktop sidecar shares Desktop's), and never a group number ≤ 1. */

@@ -111,7 +111,8 @@ export async function handleRepositoryStash(
         ...STASH_HARDENING_ARGS,
         "stash", "push", "-u",
         ...(trimmed ? ["-m", trimmed] : []),
-      ], { cwd: gitCwd });
+        // Resetting the worktree runs smudge filters (git-lfs among them), which may download: the Console owns this git.
+      ], { cwd: gitCwd, processes: ctx.host.processes });
       if (/No local changes to save/i.test(result.stdout)) {
         ctx.host.http.writeJson(res, 422, { error: "nothing_to_stash" });
         return;
@@ -150,7 +151,8 @@ export async function handleRepositoryStash(
       });
       return;
     }
-    await runGit([...STASH_HARDENING_ARGS, "stash", action, name as string], { cwd: gitCwd });
+    // apply and pop write the worktree through smudge filters, like a restore; drop touches only refs.
+    await runGit([...STASH_HARDENING_ARGS, "stash", action, name as string], { cwd: gitCwd, ...(action === "drop" ? {} : { processes: ctx.host.processes }) });
     ctx.host.http.writeJson(res, 200, { ok: true });
   } catch (error) {
     if (error instanceof GitExecutorError) {

@@ -1,11 +1,9 @@
-import { CONSOLE_EXIT_RECORD_VERSION, KILL_CONFIRM_MS, PROCESS_TABLE_TIMEOUT_MS, STOP_POLL_MS } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_EXIT_RECORD_VERSION, KILL_CONFIRM_MS, OWNED_GROUP_TERM_GRACE_MS, PROCESS_TABLE_TIMEOUT_MS, STOP_POLL_MS } from "@fleet-console/protocol/lifecycle";
 
 import { readConsoleExitRecord, writeConsoleExitRecord } from "./exit-record.js";
 import { groupHasMembers, isSignallableGroup, proveOwnedGroup, readProcessTable, signalGroup, type OwnedProcessGroup } from "./owned-processes.js";
 import { isPidAlive } from "./process.js";
 
-/** SIGTERM to the owned groups, then this long before SIGKILL: the SDK's own grace between its SIGTERM and SIGKILL. */
-export const REAPER_TERM_GRACE_MS = 2_000;
 /** After its pipe ends, how long the reaper waits for the Console's pid to be gone before it judges anything. */
 const CONSOLE_GONE_WAIT_MS = 1_000;
 /**
@@ -23,7 +21,7 @@ const PROCESS_TABLE_RETRY_MS = 300;
  */
 export const REAPER_DRAIN_MAX_MS = CONSOLE_GONE_WAIT_MS
   + FIRST_PROOF_READS * PROCESS_TABLE_TIMEOUT_MS + PROCESS_TABLE_RETRY_MS
-  + REAPER_TERM_GRACE_MS
+  + OWNED_GROUP_TERM_GRACE_MS
   + KILL_PROOF_READS * PROCESS_TABLE_TIMEOUT_MS
   + KILL_CONFIRM_MS
   + 1_000;
@@ -113,7 +111,7 @@ export function runReaper(io: ReaperIo): void {
       const proven = await proveGroups([...groups.values()], endedAt, FIRST_PROOF_READS);
       if (proven.length === 0) return;
       for (const pgid of proven) signalGroup(pgid, "SIGTERM");
-      await waitForEmpty(proven, REAPER_TERM_GRACE_MS);
+      await waitForEmpty(proven, OWNED_GROUP_TERM_GRACE_MS);
       const left = proven.filter(groupHasMembers);
       if (left.length === 0) return;
       // The grace let numbers be freed and reused: prove again right before SIGKILL.
