@@ -1202,7 +1202,8 @@
   transition: background-color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
 }
 
-.host-switcher-row:hover:not(:disabled):not(.is-current),
+/* 고를 수 없는 줄은 native disabled가 아니라 aria-disabled다(현재 줄과 같은 문법) — 포커스는 받되 hover 채움은 입지 않는다. */
+.host-switcher-row:hover:not([aria-disabled="true"]),
 .host-switcher-row:focus-visible:not(.is-current) {
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
@@ -1214,9 +1215,9 @@
 }
 
 .host-switcher-row.is-current:focus-visible { border-color: var(--control-hover-rim); }
-.host-switcher-row:disabled { cursor: not-allowed; }
-/* 닿지 않는 줄은 이름과 주소만 물러선다 — 왜 고를 수 없는지 말하는 상태 낱말은 그대로 읽혀야 한다. */
-.host-switcher-row:disabled > :not(.host-switcher-trail) { opacity: var(--control-disabled-opacity); }
+.host-switcher-row[aria-disabled="true"]:not(.is-current) { cursor: not-allowed; }
+/* 고를 수 없는 줄은 이름과 주소만 물러선다 — 왜 고를 수 없는지 말하는 상태 낱말은 그대로 읽혀야 한다. */
+.host-switcher-row[aria-disabled="true"]:not(.is-current) > :not(.host-switcher-trail) { opacity: var(--control-disabled-opacity); }
 
 .host-switcher-name {
   grid-area: name;

@@ -578,7 +578,7 @@ describe("Instrument core design contract", () => {
       '.command-band-mode-seg:hover:not(:disabled):not([aria-pressed="true"])',
       '.command-band-mode-tool:hover:not(:disabled):not([aria-pressed="true"])',
     ]) expect(layout).toContain(selector);
-    expect(components).toContain(".host-switcher-row:hover:not(:disabled):not(.is-current)");
+    expect(components).toContain('.host-switcher-row:hover:not([aria-disabled="true"])');
     expect(components).toContain('.fleet-caption-action:hover:not(:disabled):not([aria-pressed="true"])');
     expect(explorer).toContain('.fexp-view-mode button:hover:not(:disabled):not([aria-pressed="true"])');
     expect(repository).toContain(".repository-toggle-btn:hover:not(.is-active)");

@@ -133,7 +133,7 @@ The local Console list reads no lock token (#1563), so it observes in a public m
 | alive | any other answer | ready |
 | alive | timeout or no answer | unresponsive |
 
-Which states the list shows is its own policy: it hides starting, exited, unreachable, and replaced, and shows ready, stopping, and unresponsive — a slow Console stays listed.
+Which states the list shows is its own policy: it hides starting, exited, unreachable, and replaced, and lists ready, stopping, and unresponsive with that state on each entry (`state`, an additive field a reader without it takes as ready). Nothing listed is dropped, because Desktop admits a navigation to a local Console only when the same list names it: a slow Console stays listed and openable, marked only as slow to answer, and a stopping one stays visible so a Console stuck while stopping can be noticed, shown as stopping and not selectable. The list's screen reads that state and nothing else — no probe or timer of its own.
 
 ### Stop ladder
 

@@ -9,7 +9,7 @@ import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../f
 import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
-import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
+import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type LocalConsoleState, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
 import { openPane } from "../pane/pane-store.js";
@@ -229,7 +229,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
     };
     const frame = window.requestAnimationFrame(focusInitialItem);
     const observer = new MutationObserver(focusInitialItem);
-    observer.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-checked", "disabled"] });
+    observer.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-checked", "aria-disabled"] });
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Node;
       if (panel.contains(target)) {
@@ -318,7 +318,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   const homeIsLive = homeOrigin !== null
     && (homeOrigin === location.origin || local.length === 0 || local.some((entry) => entry.origin === homeOrigin));
   const home = homeIsLive ? homeOrigin : null;
-  const placeholder = (origin: string): LocalConsole => ({ origin, version: "", owner: null, distro: null });
+  const placeholder = (origin: string): LocalConsole => ({ origin, version: "", owner: null, distro: null, state: "ready" });
   const nearby: readonly { readonly entry: LocalConsole; readonly home: boolean }[] = [
     ...(home !== null ? [{ entry: local.find((item) => item.origin === home) ?? placeholder(home), home: true }] : []),
     // 지금 서 있는 루프백 콘솔은 스캔에 안 잡혀도(격리 실행 등) 목록에 있어야 한다 — 눈앞에 있으니까.
@@ -432,16 +432,21 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
           {nearby.length > 0 ? (
             <>
               <p className="host-switcher-heading">{t("chrome.hosts.nearby")}</p>
-              {nearby.map(({ entry, home }) => (
-                <HostRow
-                  key={entry.origin}
-                  name={nearbyName(home, entry.origin === currentOrigin, currentLabel, t)}
-                  detail={nearbyDetail(entry, home)}
-                  status={home || entry.origin === currentOrigin ? undefined : { label: t("chrome.hosts.discovered") }}
-                  current={entry.origin === currentOrigin}
-                  onOpen={() => go(entry.origin)}
-                />
-              ))}
+              {nearby.map(({ entry, home }) => {
+                // 집과 지금 서 있는 줄은 상태를 입지 않는다 — 이 화면 자체가 그 콘솔의 생존 증거다.
+                const plain = home || entry.origin === currentOrigin;
+                return (
+                  <HostRow
+                    key={entry.origin}
+                    name={nearbyName(home, entry.origin === currentOrigin, currentLabel, t)}
+                    detail={nearbyDetail(entry, home)}
+                    status={plain ? undefined : nearbyStatus(entry.state, t)}
+                    current={entry.origin === currentOrigin}
+                    disabled={!plain && entry.state === "stopping"}
+                    onOpen={() => go(entry.origin)}
+                  />
+                );
+              })}
             </>
           ) : null}
           {hosts.length > 0 ? (
@@ -498,6 +503,9 @@ interface HostStatus {
 /**
  * 모든 호스트 줄은 같은 모양이다 — 이름 / 주소 두 줄, 오른쪽 한 자리에 상태 낱말과 현재 체크.
  * 집 콘솔도 따로 접거나 칠하지 않는다: 어디에 서 있는지는 체크가, 어떤 상태인지는 낱말이 말한다.
+ *
+ * 고를 수 없는 줄도 native `disabled`를 쓰지 않는다. 그러면 방향키 순회와 스크린 리더에서 줄째로 빠져 왜 고를 수 없는지
+ * 말하는 상태 낱말까지 사라진다. 현재 줄과 같이 `aria-disabled`로 포커스는 받고, 실행만 하지 않는다.
  */
 function HostRow({
   name,
@@ -514,15 +522,15 @@ function HostRow({
   readonly disabled?: boolean;
   readonly onOpen?: () => void;
 }) {
+  const blocked = current || disabled === true || onOpen === undefined;
   return (
     <button
       type="button"
       role="menuitemradio"
       aria-checked={current}
       className={`host-switcher-row${current ? " is-current" : ""}`}
-      disabled={!current && (disabled === true || onOpen === undefined)}
-      aria-disabled={current || disabled === true || onOpen === undefined}
-      onClick={current || disabled === true ? undefined : onOpen}
+      aria-disabled={blocked}
+      onClick={blocked ? undefined : onOpen}
     >
       <span className="host-switcher-name">{name}</span>
       <small className="host-switcher-detail">{detail}</small>
@@ -578,6 +586,17 @@ function nearbyName(home: boolean, current: boolean, currentName: string, t: Ret
   return t("chrome.hosts.console");
 }
 
+
+/**
+ * 이 기계의 다른 콘솔이 지금 어떤지. 서버가 계약의 공개 관측으로 본 값을 낱말로 옮길 뿐이다.
+ * 응답 지연은 경고 잉크로 알리기만 하고 고를 수 있게 둔다 — 700ms 안에 답하지 못한 정상 콘솔일 수 있다.
+ * 종료 중은 고를 수 없게 하되(리스너가 닫혀 열리지 않는다) 사용자가 멈춘 정상 전이이므로 신호 잉크를 입히지 않는다.
+ */
+function nearbyStatus(state: LocalConsoleState, t: ReturnType<typeof useT>): HostStatus {
+  if (state === "stopping") return { label: t("chrome.hosts.stopping") };
+  if (state === "unresponsive") return { label: t("chrome.hosts.slow"), tone: "warn" };
+  return { label: t("chrome.hosts.discovered") };
+}
 
 /** 주소 줄에는 어디인지만 둔다. 닿지 않는 호스트에는 마지막으로 연 때를 곁들인다. */
 function hostDetail(host: RemoteHost, state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): string {
