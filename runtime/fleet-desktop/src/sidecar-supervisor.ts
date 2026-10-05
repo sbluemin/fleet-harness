@@ -1,22 +1,43 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 
 import {
-  identifyConsoleLockOwner,
-  isCompatibleDesktopOwner,
-  type ConsoleLockHealthEvidence,
-  type ConsoleLockOwnerIdentity,
-  type ConsoleOwnerMetadata,
-} from "@fleet-console/protocol/desktop";
+  captureProvenProcessStart,
+  consoleLockInstanceState,
+  createConsoleHealthClient,
+  isPidAlive,
+  observeConsoleInstance,
+  observeConsoleLockFile,
+  observeConsoleLockFileWithin,
+  readConsoleEnding,
+  reproveConsoleInstance,
+  runStopLadder,
+  writeConsoleExitRecord,
+  type ConsoleInstanceObservation,
+  type ConsoleLockFileObservation,
+  type ConsoleLockFilePayload,
+  type ConsoleProbeResult,
+  type ConsoleStopLadderResult,
+} from "@fleet-console/lifecycle";
+import { isCompatibleDesktopOwner, type ConsoleOwnerMetadata } from "@fleet-console/protocol/desktop";
 import {
+  CONSOLE_EXIT_RECORD_VERSION,
   CONSOLE_SERVE_EXIT_LOCK_HELD,
-  classifyConsoleLockContent,
+  CONSOLE_START_POLL_MS,
+  CONSOLE_START_TIMEOUT_MS,
+  INTERACTIVE_PROBE_TIMEOUT_MS,
+  KILL_CONFIRM_MS,
+  PRELOCK_CHILD_GRACE_MS,
+  STOP_POLL_MS,
   describeOwnerlessConsoleLock,
   describeRefusedConsoleLock,
 } from "@fleet-console/protocol/lifecycle";
 
 export interface SidecarRuntime { readonly nodePath: string; readonly cliPath: string; readonly serviceRoot: string; readonly serviceVersion: string; }
+/** The supervisor's time source. Every wait derives from the lifecycle contract's budgets; a test may advance it faster. */
+export interface SidecarClock { now(): number; sleep(ms: number): Promise<void>; }
 export interface SidecarSupervisorOptions {
   readonly nodePath?: string;
   readonly cliPath?: string;
@@ -26,7 +47,7 @@ export interface SidecarSupervisorOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly lockFile: string;
   readonly ownerId: string;
-  readonly shutdownSettleMs?: number;
+  readonly clock?: SidecarClock;
   /**
    * Released runtimes only. A Console release that predates the lock reclaim protocol (see isPreReclaimConsoleVersion)
    * cannot clear the lock an exited Console left, so for that runtime alone this Desktop still clears it itself.
@@ -36,49 +57,50 @@ export interface SidecarSupervisorOptions {
   readonly log: { info(message: string): void; error(message: string): void };
 }
 
+/** How a sidecar ended: its exit status and the outcome its exit record names (null when it left none). */
+export interface SidecarEnding { readonly pid: number; readonly code: number | null; readonly signal: NodeJS.Signals | null; readonly outcome: string | null; }
+
 /** A startup failure with text for the user. `detail` is read when the failure is shown, after the sidecar's stderr is in. */
 export class SidecarStartError extends Error {
-  constructor(code: string, private readonly readDetail: () => string) { super(code); }
+  constructor(code: string, private readonly readDetail: () => string, readonly ending: SidecarEnding | null = null) { super(code); }
   get detail(): string { return this.readDetail(); }
 }
 
-interface LockPayload { readonly pid: number; readonly endpoint: string; readonly token: string; readonly version: string; readonly owner?: ConsoleOwnerMetadata; }
-interface StoredLock { readonly contents: string; readonly lock: LockPayload; }
-/**
- * One reading of the lock, classified the way Console's own lock does. Only a lock with a readable pid has an owner whose
- * exit can be observed; a symlink or another user's lock is refused, and anything without a readable owner is kept.
- */
-type LockObservation =
+/** What the supervisor saw about the process that holds the Console lock when it refused to adopt, start beside, or stop it. */
+export interface SidecarLockDiagnostic {
+  readonly pid: number;
+  readonly lockFile: string;
+  /** The lifecycle contract's observed state, or `untrusted` for a lock that failed the trust checks. */
+  readonly observed: string;
+  readonly reason: string;
+}
+type SidecarLockConflictCode = "console_lock_process_unverified" | "console_lock_foreign_process_unhealthy" | "console_lock_process_unhealthy";
+/** The message stays the bare code the boot dialogs match on; the diagnostic carries the data behind it. */
+export class SidecarLockConflictError extends Error {
+  constructor(code: SidecarLockConflictCode, readonly diagnostic: SidecarLockDiagnostic) { super(code); }
+}
+
+interface LockPayload extends ConsoleLockFilePayload { readonly owner?: ConsoleOwnerMetadata; }
+interface StoredLock { readonly bytes: Buffer; readonly lock: LockPayload; }
+/** One reading of the lock through the contract's observer, plus this Desktop's adoption checks (version, owner). */
+type LockRead =
   | { readonly kind: "absent" }
   | { readonly kind: "blocked"; readonly code: "console_lock_refused" | "console_lock_ownerless"; readonly detail: string }
-  | { readonly kind: "untrusted"; readonly contents: string; readonly pid: number; readonly issue: string }
-  | { readonly kind: "trusted"; readonly stored: StoredLock };
-interface MissingLockProbe { readonly kind: "missing"; }
-interface BlockedLockProbe { readonly kind: "blocked"; readonly code: "console_lock_refused" | "console_lock_ownerless"; readonly detail: string; }
-interface UntrustedLockProbe { readonly kind: "untrusted"; readonly contents: string; readonly pid: number; readonly issue: string; }
-// 초기화 안내는 시작 대기와 Quit의 최초 정체 확인에 쓴다. SIGKILL 재증명에서는 여전히 unanswered다.
-type SidecarHealth = ConsoleLockHealthEvidence & { readonly starting?: true };
-interface UnhealthyLockProbe { readonly kind: "unhealthy"; readonly stored: StoredLock; readonly health: SidecarHealth; }
-interface HealthyLockProbe { readonly kind: "healthy"; readonly stored: StoredLock; readonly url: string; readonly health: ConsoleLockHealthEvidence; }
-type LockProbe = MissingLockProbe | BlockedLockProbe | UntrustedLockProbe | UnhealthyLockProbe | HealthyLockProbe;
-type StartLockProbe = Exclude<LockProbe, UnhealthyLockProbe> | (UnhealthyLockProbe & { readonly lingering?: true });
+  | { readonly kind: "untrusted"; readonly bytes: Buffer; readonly pid: number; readonly alive: boolean; readonly issue: string }
+  | { readonly kind: "trusted"; readonly stored: StoredLock; readonly alive: boolean };
 type SlotDecision = { readonly kind: "adopt"; readonly url: string } | { readonly kind: "ready" } | { readonly kind: "changed" };
-type TerminationOutcome = "exited" | "released" | "unverified" | "unhealthy";
+/**
+ * What a stop requested by this Desktop targets: the pid, the lock instance it published when known (an own child that
+ * gave up before its lock was read has none), and the `lifecycleWire` its health reported, for reading how it ended.
+ */
+interface StopTarget { readonly pid: number; readonly lock?: LockPayload; readonly lifecycleWire?: unknown; }
 
-const STARTUP_ATTEMPTS = 40;
-const STARTUP_DELAY_CAP_MS = 1_000;
-const STOP_ATTEMPTS = 30;
-const STOP_DELAY_MS = 100;
-// 종료 중인 Console은 listener를 먼저 닫고 plugin·execution·MCP 정리를 마친 뒤에야 lock을 놓는다. 그 정리를 덮는 대기 한도.
-const SHUTDOWN_SETTLE_MS = 10_000;
-// Console's own lock re-reads an ownerless lock for the same budget: a lock published in place can be briefly empty.
-const OWNERLESS_OBSERVE_MS = 2_000;
-const OWNERLESS_REREAD_MS = 50;
 // Each pass either adopts, finds the slot ready, or ends a Console this Desktop owns; more passes mean the slot keeps changing.
 const SLOT_PASSES = 4;
 const STDERR_TAIL_CHARS = 4_000;
 /** The newest Fleet Console release whose serve publishes its lock with O_EXCL alone and never reclaims a dead one. */
 const LAST_PRE_RECLAIM_CONSOLE_VERSION = [1, 212, 0] as const;
+const SYSTEM_CLOCK: SidecarClock = { now: () => performance.now(), sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
 
 /**
  * Whether a Console version is certainly a release from before the lock reclaim protocol. Only a plain release version
@@ -96,10 +118,23 @@ export function isPreReclaimConsoleVersion(version: string): boolean {
   return true;
 }
 
+/**
+ * Starts, adopts, and quits this Desktop's Console under the single lifecycle contract (docs/console-lifecycle-contract.md):
+ * the lock and the instance are read through the contract's observer, every wait derives from its budgets, and a signal
+ * goes only to a process whose identity is proven — an unreaped own child (E1), or an authenticated health answer with
+ * its process start time (E3 + E4).
+ */
 export class SidecarSupervisor {
   private child: ChildProcess | null = null;
+  /** The lock the current child published and the `lifecycleWire` it answered with, once seen. */
+  private childLock: LockPayload | null = null;
+  private childLifecycleWire: unknown = undefined;
   private serviceVersion: string;
-  constructor(private readonly options: SidecarSupervisorOptions) { this.serviceVersion = options.serviceVersion; }
+  private readonly clock: SidecarClock;
+  constructor(private readonly options: SidecarSupervisorOptions) {
+    this.serviceVersion = options.serviceVersion;
+    this.clock = options.clock ?? SYSTEM_CLOCK;
+  }
   /**
    * Adopts this Desktop's running Console or starts one. This Desktop never removes a Console lock: the Console it starts
    * reclaims a lock whose pid has exited, under Console's reclaim protocol.
@@ -118,57 +153,62 @@ export class SidecarSupervisor {
     return this.launch(runtime);
   }
   private async prepareSlot(runtime: SidecarRuntime | null): Promise<SlotDecision> {
-    const current = await this.probeForStart();
-    if (current.kind === "missing") return { kind: "ready" };
-    if (current.kind === "blocked") throw new SidecarStartError(current.code, () => current.detail);
-    if (current.kind === "healthy") {
-      if (this.isOwned(current.stored.lock)) return { kind: "adopt", url: current.url };
+    const read = await this.readLockSettled();
+    if (read.kind === "absent") return { kind: "ready" };
+    if (read.kind === "blocked") throw new SidecarStartError(read.code, () => read.detail);
+    if (read.kind === "untrusted") {
+      // No Console writes such a lock and its endpoint cannot be asked, so a live pid behind it proves nothing.
+      if (read.alive) throw this.conflict("console_lock_process_unverified", read.pid, "untrusted", `the lock cannot be trusted (${read.issue})`);
+      return this.leaveExitedLock(read.bytes, read.pid, runtime);
+    }
+    const { stored } = read;
+    const { pid } = stored.lock;
+    if (!read.alive) return this.leaveExitedLock(stored.bytes, pid, runtime);
+    const owned = this.isOwned(stored.lock);
+    if (this.isOwnLiveChild(pid)) {
+      // This Desktop's unreaped child: its handle proves identity (E1), so it is adopted when it answers and ended otherwise.
+      const own = await this.observe(stored.lock);
+      if (owned && this.answersFor(own.probe, pid)) return { kind: "adopt", url: consoleUrl(stored.lock) };
+      await this.stopRequested({ pid, lock: stored.lock, lifecycleWire: own.probe?.health?.lifecycleWire ?? this.childLifecycleWire }, null);
+      return { kind: "changed" };
+    }
+    let observed = await this.observe(stored.lock);
+    // An instance still starting is waited for within the contract's start budget, never adopted or signalled meanwhile.
+    const startDeadline = this.clock.now() + CONSOLE_START_TIMEOUT_MS;
+    while (observed.state === "starting" && this.clock.now() < startDeadline) {
+      await this.clock.sleep(CONSOLE_START_POLL_MS);
+      observed = await this.observe(stored.lock);
+    }
+    if (observed.state === "exited") return this.leaveExitedLock(stored.bytes, pid, runtime);
+    // The lock changed or went while it was observed: the next pass reads the slot again.
+    if (observed.state === "releasing") return { kind: "changed" };
+    if (observed.state === "stopping") {
+      // A Console that closed its listener and still holds the lock is cleaning up shared state, whoever stops it: starting
+      // another beside it would let two Consoles write the same data. Wait for it without a signal.
+      const ended = await this.waitForOthersStop(stored);
+      if (ended === "held") throw this.conflict("console_lock_process_unverified", pid, "stopping", "it closed its listener but kept the lock past the stop budget");
+      return { kind: "changed" };
+    }
+    if (this.answersFor(observed.probe, pid)) {
+      if (owned) return { kind: "adopt", url: consoleUrl(stored.lock) };
       // 시작 경로는 같은 Desktop 소유 sidecar만 채택한다. 외부 런타임 페어링은
       // Console handoff 이후 사용자가 네이티브 메뉴에서 명시적으로 요청할 때만 수행한다.
       throw new Error("cli_daemon_requires_confirmation");
     }
-    if (current.kind === "untrusted") {
-      // No Console writes such a lock and its endpoint cannot be asked, so a live pid behind it proves nothing.
-      if (this.isProcessAlive(current.pid)) {
-        this.options.log.error(`console_lock_process_unverified: pid ${current.pid} holds ${this.options.lockFile}, which cannot be trusted (${current.issue})`);
-        throw new Error("console_lock_process_unverified");
-      }
-      return this.leaveExitedLock(current.contents, current.pid, runtime);
-    }
-    const { pid } = current.stored.lock;
-    const identity = current.lingering ? "unverified" : this.identifyLockProcess(current);
-    if (identity === "absent") {
-      // A refused endpoint with a live pid can be a Console still cleaning up: only an exited pid frees the slot.
-      if (this.isProcessAlive(pid)) {
-        this.options.log.error(`console_lock_process_unverified: pid ${pid} holds ${this.options.lockFile} but did not prove it is the Console`);
-        throw new Error("console_lock_process_unverified");
-      }
-      return this.leaveExitedLock(current.stored.contents, pid, runtime);
-    }
-    if (!this.isOwned(current.stored.lock)) {
-      // 타 소유의 살아 있는 잠금은 신호를 보내지 않고 별도 충돌로 종료한다.
-      throw new Error("console_lock_foreign_process_unhealthy");
-    }
-    if (identity === "unverified") {
-      // 살아 있는 lock pid가 정체를 증명하지 못했다(멈춘 이전 sidecar일 수도, pid를 물려받은 무관한 프로세스일 수도 있다).
-      // 신호는 무관한 프로세스를 죽일 수 있고 lock을 지우면 살아 있는 Console 옆에 두 번째 소유자가 생기므로 둘 다 하지 않는다.
-      this.options.log.error(`console_lock_process_unverified: pid ${pid} holds ${this.options.lockFile} but did not prove it is the Console`);
-      throw new Error("console_lock_process_unverified");
-    }
-    const outcome = await this.terminateVerifiedProcess(current.stored);
-    if (outcome === "unverified") throw new Error("console_lock_process_unverified");
-    if (outcome === "unhealthy") throw new Error("console_lock_process_unhealthy");
-    // pid가 끝났거나 lock을 놓았다. 잔존 Console의 자식 수거는 방해하지 않고 다음 pass에서 slot을 다시 확인한다.
-    return { kind: "changed" };
+    // 타 소유의 살아 있는 잠금은 신호를 보내지 않고 별도 충돌로 종료한다.
+    if (!owned) throw this.conflict("console_lock_foreign_process_unhealthy", pid, observed.state, "another owner's Console did not answer as healthy");
+    // 살아 있는 lock pid가 정체를 증명하지 못했다(멈춘 이전 sidecar일 수도, pid를 물려받은 무관한 프로세스일 수도 있다).
+    // 신호는 무관한 프로세스를 죽일 수 있고 lock을 지우면 살아 있는 Console 옆에 두 번째 소유자가 생기므로 둘 다 하지 않는다.
+    throw this.conflict("console_lock_process_unverified", pid, observed.state, observed.state === "starting" ? "it kept starting past the start budget" : "it did not prove it is the Console");
   }
   /**
    * The lock's pid has exited. The Console about to start reclaims it, so it stays. Only a runtime that is certainly a
    * pre-reclaim release, which cannot reclaim it, gets the old same-contents removal.
    */
-  private leaveExitedLock(contents: string, pid: number, runtime: SidecarRuntime | null): SlotDecision {
+  private leaveExitedLock(bytes: Buffer, pid: number, runtime: SidecarRuntime | null): SlotDecision {
     if (runtime === null) return { kind: "ready" };
     if (this.options.legacyLockCleanup === true && isPreReclaimConsoleVersion(runtime.serviceVersion)) {
-      this.removeLegacyStaleLock(contents);
+      this.removeLegacyStaleLock(bytes);
       this.options.log.info(`removed the lock left by exited pid ${pid}: Console ${runtime.serviceVersion} cannot reclaim it`);
       return { kind: "ready" };
     }
@@ -179,6 +219,8 @@ export class SidecarSupervisor {
     let startupFailure: Error | null = null;
     let sidecarReady = false;
     let stderrTail = "";
+    this.childLock = null;
+    this.childLifecycleWire = undefined;
     try {
       this.child = spawn(runtime.nodePath, [runtime.cliPath, "serve"], { cwd: path.dirname(path.dirname(runtime.cliPath)), env: this.options.env, stdio: ["ignore", "pipe", "pipe"], detached: false, windowsHide: true });
     } catch (error) {
@@ -198,221 +240,218 @@ export class SidecarSupervisor {
       this.options.log.error(failure.message);
     });
     child.once("exit", (code, signal) => {
+      const ending = this.readEnding(child, code, signal);
       if (this.child === child) this.child = null;
       const summary = `code=${code ?? "null"} signal=${signal ?? "null"}`;
       if (!sidecarReady && code === CONSOLE_SERVE_EXIT_LOCK_HELD) {
         // The Console did not take the lock and left it as it was; its stderr says who holds it or how to recover.
-        startupFailure ??= new SidecarStartError("console_lock_held", readStderrTail);
+        startupFailure ??= new SidecarStartError("console_lock_held", readStderrTail, ending);
         this.options.log.error(`console_lock_held: the sidecar exited without taking ${this.options.lockFile} (${summary})`);
         return;
       }
       const failureCode = `${sidecarReady ? "sidecar_exited" : "sidecar_exited_before_ready"}: ${summary}`;
-      const failure = sidecarReady ? new Error(failureCode) : new SidecarStartError(failureCode, readStderrTail);
+      const failure = sidecarReady ? new Error(failureCode) : new SidecarStartError(failureCode, readStderrTail, ending);
       if (!sidecarReady) startupFailure ??= failure;
-      this.options.log.error(failure.message);
+      // An unknown or missing record is never reported as a clean stop.
+      this.options.log.error(`${failure.message} outcome=${ending?.outcome ?? "unrecorded"}`);
     });
+    const deadline = this.clock.now() + CONSOLE_START_TIMEOUT_MS;
     try {
-      for (let attempt = 0; attempt < STARTUP_ATTEMPTS; attempt += 1) {
+      for (;;) {
         if (startupFailure) throw startupFailure;
-        await delay(Math.min(100 * (attempt + 1), STARTUP_DELAY_CAP_MS));
+        if (this.clock.now() >= deadline) throw new Error("sidecar_readiness_timeout");
+        await this.clock.sleep(CONSOLE_START_POLL_MS);
         if (startupFailure) throw startupFailure;
         // Until the new Console publishes, the lock can be absent, the exited Console's lock awaiting reclaim, or briefly
         // unreadable while it is published in place. None of that is a failure; the child's own exit is.
-        const ready = await this.probe({ settleOwnerless: false });
-        if (ready.kind === "healthy" && this.isOwned(ready.stored.lock)) {
-          sidecarReady = true;
-          return ready.url;
-        }
-        if (ready.kind === "healthy") throw new Error("cli_daemon_requires_confirmation");
+        const read = this.readLock();
+        if (read.kind !== "trusted" || !read.alive) continue;
+        const { lock } = read.stored;
+        const own = lock.pid === child.pid;
+        if (own) this.childLock = lock;
+        const answer = await this.probe(lock);
+        if (!this.answersFor(answer, lock.pid)) continue;
+        if (own) this.childLifecycleWire = answer.health?.lifecycleWire;
+        if (!this.isOwned(lock)) throw new Error("cli_daemon_requires_confirmation");
+        sidecarReady = true;
+        return consoleUrl(lock);
       }
-      throw new Error("sidecar_readiness_timeout");
     } catch (error) {
-      throw this.failStartup(error);
+      throw await this.failStartup(error);
     }
   }
-  // startup 실패로 빠져나갈 때 스폰해 둔 child를 정리한다 — 부모가 죽어도 child는 자동 종료되지 않으므로
-  // 여기서 시그널을 보내지 않으면 고아 sidecar와 잠금이 남아 다음 실행이 unhealthy-lock 경로에 갇힌다.
-  private failStartup(error: unknown): Error {
+  /**
+   * Startup is giving up on its own child, which does not end with this process. A child that holds the lock may be
+   * writing durable state, so it gets the stop ladder and its own deadline; one that has not taken the lock has written
+   * nothing and gets only a short grace. The unreaped child handle proves its identity throughout.
+   */
+  private async failStartup(error: unknown): Promise<Error> {
+    const failure = error instanceof Error ? error : new Error(String(error));
     const child = this.child;
-    if (child && child.exitCode === null && child.signalCode === null) {
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        // 이미 종료된 프로세스 — 무시한다.
+    if (!child || child.pid === undefined || !this.isOwnLiveChild(child.pid)) return failure;
+    const pid = child.pid;
+    try {
+      if (consoleLockInstanceState(this.options.lockFile, { pid }) === "held") {
+        const read = this.readLock();
+        const lock = read.kind === "trusted" && read.stored.lock.pid === pid ? read.stored.lock : this.childLock;
+        await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: this.childLifecycleWire }, null);
+      } else {
+        signalPid(pid, "SIGTERM");
+        if (!await this.waitUntil(() => !this.isOwnLiveChild(pid), PRELOCK_CHILD_GRACE_MS)) {
+          signalPid(pid, "SIGKILL");
+          await this.waitUntil(() => !this.isOwnLiveChild(pid), KILL_CONFIRM_MS);
+        }
       }
+    } catch (cleanupError) {
+      this.options.log.error(`sidecar_cleanup_failed: pid ${pid}: ${this.describeError(cleanupError)}`);
     }
-    return error instanceof Error ? error : new Error(String(error));
+    return failure;
   }
   /** Quit. Never removes the lock: a lock left by an exited Console is reclaimed by the next Console that starts. */
   async stop(): Promise<void> {
-    // 최초 health 재시도 2s + 정리 예산 + 강제 종료 확인 3s. 재증명 시간은 마지막 확인 예산에서만 차감한다.
-    const deadline = Date.now() + 2_000 + this.shutdownSettleMs + STOP_ATTEMPTS * STOP_DELAY_MS;
-    const current = await this.probe({ settleOwnerless: false });
-    if (current.kind !== "healthy" && current.kind !== "unhealthy") return;
-    if (!this.isOwned(current.stored.lock)) return;
-    const { pid } = current.stored.lock;
-    // token 인증을 통과한 503+pid는 초기화 중인 소유자다. 채택은 하지 않지만 Quit 정리 대상으로 존중한다.
-    const identity = current.kind === "unhealthy" && current.health.starting && this.isProcessAlive(pid)
-      ? "verified"
-      : this.identifyLockProcess(current);
-    if (identity === "unverified") {
-      // Quit은 막지 않되 정체를 증명하지 못한 pid에는 신호를 보내지 않고, lock도 그대로 둔다.
-      this.options.log.error(`console_lock_process_unverified: pid ${pid} holds ${this.options.lockFile} but did not prove it is the Console; left running`);
-      return;
-    }
-    if (identity === "absent") {
-      // listener만 닫고 정리 중인 Console일 수 있다. Quit은 기다리지 않되 살아 있는 pid의 lock은 보존한다.
-      if (this.isProcessAlive(pid)) {
-        this.options.log.error(`console_lock_process_unverified: pid ${pid} holds ${this.options.lockFile} but did not prove it is the Console; left running`);
-        return;
-      }
+    const read = this.readLock();
+    if (read.kind !== "trusted") return;
+    const { lock } = read.stored;
+    if (!this.isOwned(lock)) return;
+    const { pid } = lock;
+    if (!read.alive) {
       this.options.log.info(`left the lock of exited pid ${pid} in place for the next Console to reclaim`);
       return;
     }
     // 재증명 실패나 강제 종료 실패는 기록하되 Quit 자체는 막지 않는다. lock 해제 뒤 잔존 구간에는 신호를 보내지 않는다.
     try {
-      await this.terminateVerifiedProcess(current.stored, deadline);
+      if (this.isOwnLiveChild(pid)) {
+        await this.stopRequested({ pid, lock, lifecycleWire: this.childLifecycleWire }, null);
+        return;
+      }
+      // The wall-clock moment identity is about to be proven: only a process that started before it can be that Console.
+      const provenAt = Date.now();
+      const observed = await this.observe(lock);
+      if (observed.identity !== "verified") {
+        // Unverified: a signal could hit an unrelated process. Stopping or releasing: someone else's stop is already under
+        // way, and Quit has nothing to do after waiting for it, so it returns without a signal.
+        this.options.log.error(`console_lock_process_${observed.state}: pid ${pid} holds ${this.options.lockFile}; left running without a signal`);
+        return;
+      }
+      await this.stopRequested({ pid, lock, lifecycleWire: observed.probe?.health?.lifecycleWire }, await captureProvenProcessStart(pid, provenAt));
     } catch (error) {
       this.options.log.error(`console_lock_process_unhealthy: pid ${pid} could not be stopped; continuing Quit: ${this.describeError(error)}`);
     }
   }
-  private async probe(options: { readonly settleOwnerless: boolean }): Promise<LockProbe> {
-    const observed = options.settleOwnerless ? await this.observeLockSettled() : this.observeLock();
-    if (observed.kind === "absent") return { kind: "missing" };
-    if (observed.kind === "blocked" || observed.kind === "untrusted") return observed;
-    const { stored } = observed;
-    const health = await this.probeHealth(stored);
-    if (health.kind !== "answered") return { kind: "unhealthy", stored, health };
-    return { kind: "healthy", stored, url: new URL("console/", stored.lock.endpoint).toString(), health };
-  }
   /**
-   * 시작 경로의 probe. 연결은 거절되는데 lock pid가 살아 있으면 종료 정리 중인 Console일 수 있다 — 그 Console은 아직 공유
-   * 상태를 정리하는 중이고 lock은 끝에서야 놓으므로, 지금 새 Console을 띄우면 두 Console이 같은 데이터를 동시에 만진다.
-   * 그래서 pid가 끝나거나 lock이 바뀌거나 사라질 때까지 기다렸다가 다시 묻는다. 신호는 보내지 않는다.
-   * 한도 뒤에도 거절·생존이 그대로면 lingering으로 표시해 unverified로 다룬다(lock 유지, 충돌로 종료). 그 대가로, 크래시 뒤
-   * pid가 오래 사는 무관한 프로세스에 재할당되고 lock 주소에서 아무도 듣지 않는 경우에도 lock을 자동으로 치우지 않고
-   * 충돌로 멈춘다. pid가 실제로 죽은 일반 크래시의 lock은 기다림 없이 새 Console의 회수에 맡긴다.
+   * The stop ladder for a Console this Desktop asks to stop (docs/console-lifecycle-contract.md, "Stop ladder"): one
+   * SIGTERM, a wait of EXTERNAL_ESCALATION_MS for its exit or its lock's release, and SIGKILL only while the same lock is
+   * still held and identity is proven again. A lock that cannot be read counts as held.
    */
-  private async probeForStart(): Promise<StartLockProbe> {
-    let current = await this.probe({ settleOwnerless: true });
-    // 같은 lock도 starting→ready로 바뀐다. bytes가 같다는 이유로 health 재조회를 생략하지 않는다.
-    for (let attempt = 0; current.kind === "unhealthy" && current.health.starting && this.isProcessAlive(current.stored.lock.pid); attempt += 1) {
-      if (attempt >= STARTUP_ATTEMPTS) return { ...current, lingering: true };
-      await delay(Math.min(100 * (attempt + 1), STARTUP_DELAY_CAP_MS));
-      current = await this.probe({ settleOwnerless: false });
-    }
-    const deadline = Date.now() + SHUTDOWN_SETTLE_MS;
-    while (current.kind === "unhealthy" && current.health.kind === "refused" && !this.isOwnLiveChild(current.stored.lock.pid) && this.isProcessAlive(current.stored.lock.pid)) {
-      if (Date.now() >= deadline) return { ...current, lingering: true };
-      await delay(STOP_DELAY_MS);
-      if (this.isProcessAlive(current.stored.lock.pid) && this.isLockUnchanged(current.stored)) continue;
-      current = await this.probe({ settleOwnerless: true });
-    }
-    return current;
-  }
-  private isLockUnchanged(stored: StoredLock): boolean {
-    const observed = this.observeLock();
-    return observed.kind === "trusted" && observed.stored.contents === stored.contents;
-  }
-  // lock이 적은 endpoint와 token으로 health를 묻는다. 정상 응답(2xx)만 answered이며, 그 본문의 pid가 정체 증거다.
-  private async probeHealth(stored: StoredLock): Promise<SidecarHealth> {
-    const endpoint = new URL(stored.lock.endpoint);
-    let response: Response | null = null;
-    for (let attempt = 0; response === null; attempt += 1) {
+  private async stopRequested(target: StopTarget, provenStart: number | null): Promise<ConsoleStopLadderResult> {
+    const { pid, lock } = target;
+    const instance = { pid, ...(lock ? { token: lock.token } : {}) };
+    const ended = await runStopLadder({
+      requester: true,
+      isAlive: () => isPidAlive(pid),
+      isReleased: () => consoleLockInstanceState(this.options.lockFile, instance) === "released",
+      // An own child that gave up before its lock was read is proven only by its unreaped handle (E1).
+      reprove: () => lock
+        ? reproveConsoleInstance({ lockFile: this.options.lockFile, lock, provenStart, isOwnChild: () => this.isOwnLiveChild(pid), observe: (target) => this.observe(target) })
+        : Promise.resolve(this.isOwnLiveChild(pid)),
+      signal: (signal) => signalPid(pid, signal),
+      now: () => this.clock.now(),
+      sleep: (ms) => this.clock.sleep(ms),
+    });
+    const key = lock ? { pid, lockStartedAt: lock.startedAt } : null;
+    // A Console that recorded its own ending (its deadline) as the SIGKILL landed keeps that record: it is the outcome.
+    let forcedRecorded = ended === "forced";
+    if (ended === "forced" && key) {
       try {
-        response = await fetch(new URL("api/v1/health", endpoint), { headers: { Authorization: `Bearer ${stored.lock.token}` }, signal: AbortSignal.timeout(1000) });
-      } catch (error) {
-        // 연결 거절은 그 주소에서 아무도 듣지 않는다는 확정 신호다. 시간 초과는 무언가 살아 있을 수 있다.
-        // 재사용된 keep-alive 소켓의 끊김은 한 번만 새 연결로 다시 물어 최신 증거를 얻는다.
-        const code = (error as { cause?: { code?: unknown } } | null)?.cause?.code;
-        if (code === "ECONNREFUSED") return { kind: "refused" };
-        if (attempt === 0 && (code === "ECONNRESET" || code === "UND_ERR_SOCKET")) continue;
-        return { kind: "unanswered" };
+        forcedRecorded = writeConsoleExitRecord(this.options.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, ...key, outcome: "forced-external", killed: 0, at: Date.now() });
+      } catch {
+        // The record only informs later readers; this ladder's own result still says the stop was forced.
       }
     }
-    if (response.status === 503) {
-      const body: unknown = await response.json().catch(() => null);
-      if (isRecord(body) && body.error === "console_starting" && body.pid === stored.lock.pid) return { kind: "unanswered", starting: true };
-    }
-    if (!response.ok) return { kind: "unanswered" };
-    // 본문을 읽지 못하면 정체 증명이 없을 뿐 채택 판단(2xx)은 그대로다.
-    const pid = await response.json().then((body: unknown) => isRecord(body) ? body.pid : undefined, () => undefined);
-    return { kind: "answered", pid };
+    const outcome = forcedRecorded
+      ? "forced-external"
+      : ended !== "exited" && ended !== "forced" ? null : key ? readConsoleEnding(this.options.lockFile, key, { lifecycleWire: target.lifecycleWire, terminatedByReader: true }).outcome : "unrecorded";
+    const line = `console_stop: pid ${pid} ${ended}${outcome === null ? "" : ` outcome=${outcome}`}`;
+    // Only a recorded clean shutdown is reported as one; no record, an unknown one, or an external ending is not.
+    if (outcome === "clean") this.options.log.info(line);
+    else this.options.log.error(line);
+    if (ended === "unproven") throw this.conflict("console_lock_process_unverified", pid, "stopping", "its identity could not be proven again before SIGKILL; no further signal sent");
+    if (ended === "kill-failed") throw this.conflict("console_lock_process_unhealthy", pid, "stopping", "it outlived SIGKILL");
+    return ended;
+  }
+  /** Someone else's stop, or a Console that stops itself: only waits, never signals, up to EXTERNAL_ESCALATION_MS. */
+  private waitForOthersStop(stored: StoredLock): Promise<ConsoleStopLadderResult> {
+    const { pid, token } = stored.lock;
+    return runStopLadder({
+      requester: false,
+      isAlive: () => isPidAlive(pid),
+      isReleased: () => consoleLockInstanceState(this.options.lockFile, { pid, token }) === "released",
+      reprove: async () => false,
+      signal: () => {},
+      now: () => this.clock.now(),
+      sleep: (ms) => this.clock.sleep(ms),
+    });
+  }
+  private observe(lock: LockPayload): Promise<ConsoleInstanceObservation<LockPayload>> {
+    const { pid, token } = lock;
+    return observeConsoleInstance({
+      lock,
+      trusted: true,
+      isHeld: () => consoleLockInstanceState(this.options.lockFile, { pid, token }) !== "released",
+      probe: (lock, options) => createConsoleHealthClient().probe(lock, options),
+      probeTimeoutMs: INTERACTIVE_PROBE_TIMEOUT_MS,
+    });
+  }
+  private probe(lock: LockPayload) {
+    return createConsoleHealthClient().probe(lock, { timeoutMs: INTERACTIVE_PROBE_TIMEOUT_MS });
   }
   /**
-   * lock pid에 신호를 보내도 되는지 판별한다. 근거는 둘뿐이다. 이 Desktop이 직접 spawn해 아직 수거되지 않은 child이거나
-   * (수거 전 pid는 OS가 재할당하지 않는다), lock token을 인증한 health가 같은 pid를 답한 경우다.
+   * Whether the lock's own pid answered the authenticated health probe: the condition to adopt or report readiness.
+   * Adoption sends no signal, so a Console reporting a newer lifecycle wire is still adopted when its owner is compatible.
    */
-  private identifyLockProcess(probe: UnhealthyLockProbe | HealthyLockProbe): ConsoleLockOwnerIdentity {
-    const { pid } = probe.stored.lock;
-    if (this.isOwnLiveChild(pid)) return "verified";
-    return identifyConsoleLockOwner({ lockPid: pid, pidAlive: this.isProcessAlive(pid), health: probe.health });
+  private answersFor(probe: ConsoleProbeResult<LockPayload> | null, pid: number): boolean {
+    return probe !== null && probe.healthy && probe.health?.pid === pid;
   }
   private isOwnLiveChild(pid: number): boolean {
     const child = this.child;
     return child !== null && child.pid === pid && child.exitCode === null && child.signalCode === null;
   }
+  /** The child's exit status and how it ended (its exit record, or the contract's reading of none), once it is gone. */
+  private readEnding(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): SidecarEnding | null {
+    if (child.pid === undefined) return null;
+    const lock = this.child === child && this.childLock?.pid === child.pid ? this.childLock : null;
+    const outcome = lock === null
+      ? null
+      : readConsoleEnding(this.options.lockFile, { pid: child.pid, lockStartedAt: lock.startedAt }, { lifecycleWire: this.childLifecycleWire, terminatedByReader: false }).outcome;
+    return { pid: child.pid, code, signal, outcome };
+  }
   /** Reads the lock once. Sends no signal and asks no endpoint. Follows no symlink and reads no other user's lock. */
-  private observeLock(): LockObservation {
+  private readLock(): LockRead {
+    return this.toLockRead(observeConsoleLockFile<LockPayload>(this.options.lockFile));
+  }
+  /** Re-reads a lock without a readable owner for LOCK_OBSERVE_BUDGET_MS. Elapsed time is never evidence that its writer is gone. */
+  private async readLockSettled(): Promise<LockRead> {
+    return this.toLockRead(await observeConsoleLockFileWithin<LockPayload>(this.options.lockFile));
+  }
+  private toLockRead(observed: ConsoleLockFileObservation<LockPayload>): LockRead {
     const { lockFile } = this.options;
-    let stat: fs.Stats;
-    try {
-      stat = fs.lstatSync(lockFile);
-    } catch (error) {
-      if (errnoOf(error) === "ENOENT") return { kind: "absent" };
-      return this.ownerless(`unreadable: ${errnoOf(error) ?? "error"}`);
-    }
-    if (stat.isSymbolicLink()) return this.refused("it is a symbolic link");
-    const uid = typeof process.getuid === "function" ? process.getuid() : null;
-    if (uid !== null) {
-      if (stat.uid !== uid) return this.refused(`it is owned by uid ${stat.uid}`);
-      let dirUid: number;
-      try {
-        dirUid = fs.statSync(path.dirname(lockFile)).uid;
-      } catch (error) {
-        return this.ownerless(`unreadable directory: ${errnoOf(error) ?? "error"}`);
-      }
-      if (dirUid !== uid) return this.refused(`its directory is owned by uid ${dirUid}`);
-    }
-    if (!stat.isFile()) return this.ownerless("not a regular file");
-    let contents: string;
-    try {
-      contents = fs.readFileSync(lockFile, "utf8");
-    } catch (error) {
-      if (errnoOf(error) === "ENOENT") return { kind: "absent" };
-      return this.ownerless(`unreadable: ${errnoOf(error) ?? "error"}`);
-    }
-    const content = classifyConsoleLockContent(contents);
-    if (content.kind === "ownerless") return this.ownerless(content.reason);
-    const trusted = readTrustedPayload(content.payload);
-    if (typeof trusted === "string") return { kind: "untrusted", contents, pid: content.pid, issue: trusted };
-    return { kind: "trusted", stored: { contents, lock: trusted } };
-  }
-  /** Re-reads an ownerless lock until the budget ends. Elapsed time is never evidence that its writer is gone. */
-  private async observeLockSettled(): Promise<LockObservation> {
-    const deadline = Date.now() + OWNERLESS_OBSERVE_MS;
-    for (;;) {
-      const observed = this.observeLock();
-      if (observed.kind !== "blocked" || observed.code !== "console_lock_ownerless" || Date.now() >= deadline) return observed;
-      await delay(OWNERLESS_REREAD_MS);
-    }
-  }
-  private ownerless(reason: string): LockObservation {
-    return { kind: "blocked", code: "console_lock_ownerless", detail: describeOwnerlessConsoleLock(this.options.lockFile, reason) };
-  }
-  private refused(reason: string): LockObservation {
-    return { kind: "blocked", code: "console_lock_refused", detail: describeRefusedConsoleLock(this.options.lockFile, reason) };
+    if (observed.kind === "absent") return observed;
+    if (observed.kind === "refused") return { kind: "blocked", code: "console_lock_refused", detail: describeRefusedConsoleLock(lockFile, observed.reason) };
+    if (observed.kind === "unknown") return { kind: "blocked", code: "console_lock_ownerless", detail: describeOwnerlessConsoleLock(lockFile, observed.reason) };
+    const { instance, alive } = observed;
+    const issue = observed.untrusted ?? adoptionPolicyIssue(instance.payload);
+    if (issue !== null) return { kind: "untrusted", bytes: instance.bytes, pid: instance.pid, alive, issue };
+    return { kind: "trusted", stored: { bytes: instance.bytes, lock: instance.payload }, alive };
   }
   /**
    * Pre-reclaim runtimes only (leaveExitedLock): such a Console publishes with O_EXCL and never reclaims, so the lock an
-   * exited Console left is cleared here, and only while it still has the same contents. This removal takes no part in the
+   * exited Console left is cleared here, and only while it still has the same bytes. This removal takes no part in the
    * reclaim protocol; retire it when the oldest runtime Desktop starts includes that protocol.
    */
-  private removeLegacyStaleLock(contents: string): void {
-    const current = this.observeLock();
+  private removeLegacyStaleLock(bytes: Buffer): void {
+    const current = observeConsoleLockFile(this.options.lockFile);
     if (current.kind === "absent") return;
-    const currentContents = current.kind === "trusted" ? current.stored.contents : current.kind === "untrusted" ? current.contents : null;
-    if (currentContents !== contents) throw new Error("console_lock_changed_before_cleanup");
+    if (current.kind !== "owner" || !current.instance.bytes.equals(bytes)) throw new Error("console_lock_changed_before_cleanup");
     try {
       fs.unlinkSync(this.options.lockFile);
     } catch (error) {
@@ -420,78 +459,18 @@ export class SidecarSupervisor {
       throw new Error(`console_lock_cleanup_failed: ${this.describeError(error)}`);
     }
   }
-  private get shutdownSettleMs(): number { return this.options.shutdownSettleMs ?? SHUTDOWN_SETTLE_MS; }
-  /** pid·token이 달라지거나 lock이 없어야 해제 증거다. 읽기 실패는 해제로 추정하지 않는다. */
-  private shutdownLockState(stored: StoredLock): "held" | "released" | "unknown" {
-    const observed = this.observeLock();
-    if (observed.kind === "absent") return "released";
-    if (observed.kind !== "trusted") return "unknown";
-    return observed.stored.lock.pid === stored.lock.pid && observed.stored.lock.token === stored.lock.token ? "held" : "released";
-  }
-  /**
-   * pid 종료 또는 같은 pid·token lock의 해제까지 기다린다. lock을 놓은 Console은 SDK 자식을 수거하는 중일 수 있어
-   * SIGTERM조차 더 보내지 않는다. 정리 예산 뒤에도 같은 lock이 남아 있을 때만 정체를 다시 증명하고 SIGKILL한다.
-   * own은 미수거 handle, adopted는 token health의 같은 pid 응답이 증거다. lock 자체는 정체 증거가 아니다.
-   */
-  private async terminateVerifiedProcess(stored: StoredLock, quitDeadline = Infinity): Promise<TerminationOutcome> {
-    const { pid } = stored.lock;
-    if (!this.isProcessAlive(pid)) return "exited";
-    const initialLock = this.shutdownLockState(stored);
-    if (initialLock === "released") return "released";
-    if (initialLock !== "held") return this.leaveUnverifiedShutdown(pid);
-    await this.signal(pid, "SIGTERM");
-    const deadline = Date.now() + this.shutdownSettleMs;
+  private async waitUntil(done: () => boolean, budgetMs: number): Promise<boolean> {
+    const deadline = this.clock.now() + budgetMs;
     for (;;) {
-      if (!this.isProcessAlive(pid)) return "exited";
-      if (this.shutdownLockState(stored) === "released") return "released";
-      if (Date.now() >= deadline) break;
-      await delay(STOP_DELAY_MS);
-    }
-    const settledLock = this.shutdownLockState(stored);
-    if (settledLock === "released") return "released";
-    if (settledLock !== "held") return this.leaveUnverifiedShutdown(pid);
-    // 대기 전의 own 여부를 재사용하지 않는다. 수거되었거나 다른 child로 바뀌었으면 health로 다시 증명해야 한다.
-    const health = this.isOwnLiveChild(pid) ? null : await this.probeHealth(stored);
-    const identity = this.isOwnLiveChild(pid) || (health !== null && identifyConsoleLockOwner({ lockPid: pid, pidAlive: this.isProcessAlive(pid), health }) === "verified");
-    if (!this.isProcessAlive(pid)) return "exited";
-    // health를 기다리는 동안 해제될 수 있으므로 승격 직전에 정지 증거도 다시 확인한다.
-    const finalLock = this.shutdownLockState(stored);
-    if (finalLock === "released") return "released";
-    if (!identity || finalLock !== "held") return this.leaveUnverifiedShutdown(pid);
-    await this.signal(pid, "SIGKILL");
-    const exitBudget = Math.max(0, Math.min(STOP_ATTEMPTS * STOP_DELAY_MS, quitDeadline - Date.now()));
-    if (await this.waitForExit(pid, exitBudget)) return "exited";
-    this.options.log.error(`console_lock_process_unhealthy: pid ${pid} outlived SIGKILL; left running`);
-    return "unhealthy";
-  }
-  private leaveUnverifiedShutdown(pid: number): "unverified" {
-    this.options.log.error(`console_lock_process_unverified: pid ${pid} lacks shutdown ownership or identity evidence; no further signal sent`);
-    return "unverified";
-  }
-  private async waitForExit(pid: number, budgetMs: number): Promise<boolean> {
-    const deadline = Date.now() + budgetMs;
-    for (;;) {
-      if (!this.isProcessAlive(pid)) return true;
-      if (Date.now() >= deadline) return false;
-      await delay(STOP_DELAY_MS);
+      if (done()) return true;
+      if (this.clock.now() >= deadline) return false;
+      await this.clock.sleep(STOP_POLL_MS);
     }
   }
-  /** Only ESRCH means the process is gone. A live pid, EPERM, and any undecidable error all count as alive. */
-  private isProcessAlive(pid: number): boolean {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch (error) {
-      return errnoOf(error) !== "ESRCH";
-    }
-  }
-  private async signal(pid: number, signal: NodeJS.Signals): Promise<void> {
-    try {
-      process.kill(pid, signal);
-    } catch (error) {
-      if (errnoOf(error) === "ESRCH") return;
-      throw error;
-    }
+  private conflict(code: SidecarLockConflictCode, pid: number, observed: string, reason: string): SidecarLockConflictError {
+    const diagnostic = { pid, lockFile: this.options.lockFile, observed, reason };
+    this.options.log.error(`${code}: pid ${pid} holds ${this.options.lockFile} (${observed}): ${reason}`);
+    return new SidecarLockConflictError(code, diagnostic);
   }
   private isOwned(lock: LockPayload): boolean { return isCompatibleDesktopOwner(lock.owner, lock.version, { id: this.options.ownerId, version: this.serviceVersion }); }
   private async resolveRuntime(): Promise<SidecarRuntime> {
@@ -507,24 +486,21 @@ export class SidecarSupervisor {
   private createSpawnFailure(error: unknown): Error { return new Error(`sidecar_spawn_failed: ${error instanceof Error ? error.message : String(error)}`); }
   private describeError(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 }
-function delay(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
+/** Only ESRCH means the target is already gone; any other failure to signal is reported. */
+function signalPid(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if (errnoOf(error) !== "ESRCH") throw error;
+  }
+}
+function consoleUrl(lock: LockPayload): string { return new URL("console/", lock.endpoint).toString(); }
 function errnoOf(error: unknown): string | undefined { return (error as NodeJS.ErrnoException | null)?.code; }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null; }
 function isConsoleOwnerMetadata(value: unknown): value is ConsoleOwnerMetadata { return isRecord(value) && (value.kind === "cli" || value.kind === "desktop") && typeof value.id === "string" && value.id.length > 0 && Number.isSafeInteger(value.protocolVersion); }
-/** The fields this Desktop needs to ask and adopt a lock's Console. Returns the first problem when the lock cannot be trusted. */
-function readTrustedPayload(payload: Readonly<Record<string, unknown>>): LockPayload | string {
-  const { pid, endpoint: endpointValue, token, version, owner } = payload;
-  if (typeof pid !== "number") return "invalid pid";
-  if (typeof token !== "string" || token.length === 0) return "it has no token";
-  if (typeof version !== "string" || version.length === 0) return "it has no version";
-  if (owner !== undefined && !isConsoleOwnerMetadata(owner)) return "invalid owner";
-  if (typeof endpointValue !== "string") return "invalid endpoint";
-  let endpoint: URL;
-  try {
-    endpoint = new URL(endpointValue);
-  } catch {
-    return "invalid endpoint";
-  }
-  if (endpoint.protocol !== "http:" || endpoint.hostname !== "127.0.0.1" || !endpoint.port || endpoint.pathname !== "/" || endpoint.search || endpoint.hash || endpoint.username || endpoint.password) return "invalid endpoint";
-  return { pid, endpoint: endpointValue, token, version, owner: owner as ConsoleOwnerMetadata | undefined };
+/** This Desktop's adoption checks on top of the contract's trust checks: a version to compare and a well-formed owner. */
+function adoptionPolicyIssue(payload: LockPayload): string | null {
+  if (typeof payload.version !== "string" || payload.version.length === 0) return "it has no version";
+  if (payload.owner !== undefined && !isConsoleOwnerMetadata(payload.owner)) return "invalid owner";
+  return null;
 }

@@ -12,7 +12,7 @@ export default defineConfig({
   entry: { main: "src/main.ts" },
   external: ["electron"],
   format: ["esm"],
-  noExternal: [/^@fleet-console\/protocol(\/|$)/],
+  noExternal: [/^@fleet-console\/protocol(\/|$)/, /^@fleet-console\/lifecycle$/],
   outDir: "dist",
   outExtension: () => ({ js: ".mjs" }),
   platform: "node",

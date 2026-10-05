@@ -23,9 +23,18 @@ const EXIT_RECORD_STAGING = /^\.console\.exit\.[^/]*\.json\.([1-9]\d*)-[A-Za-z0-
  * `exit` handler. The record is staged under a fresh exclusive name and renamed into place: a reader sees no record or
  * the whole record, never a partial file, and a symlink at the record path is replaced rather than followed. Throws when
  * the slot cannot be written; the caller decides whether that matters.
+ *
+ * Several writers can record one instance, and the one that knows most wins whatever order they write in
+ * (docs/console-lifecycle-contract.md, "Exit record"): the Console's own outcome replaces anything; `forced-external`, from
+ * the actor that sent SIGKILL, replaces only no record or an inferred `external`; `external`, inferred by the reaper, is
+ * only ever created and never replaces a record. Returns whether this record was written.
  */
-export function writeConsoleExitRecord(lockFile: string, record: ConsoleExitRecord): void {
+export function writeConsoleExitRecord(lockFile: string, record: ConsoleExitRecord): boolean {
   const target = consoleExitRecordPath(lockFile, record);
+  if (record.outcome === "forced-external") {
+    const current = readConsoleExitRecord(lockFile, record);
+    if (current !== null && current.outcome !== "external") return false;
+  }
   const staging = path.join(path.dirname(target), `.${path.basename(target)}.${process.pid}-${crypto.randomBytes(6).toString("base64url")}.tmp`);
   const fd = fs.openSync(staging, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, EXIT_RECORD_MODE);
   try {
@@ -35,7 +44,20 @@ export function writeConsoleExitRecord(lockFile: string, record: ConsoleExitReco
     } finally {
       fs.closeSync(fd);
     }
-    fs.renameSync(staging, target);
+    if (record.outcome !== "external") {
+      fs.renameSync(staging, target);
+      return true;
+    }
+    // A link fails on an existing path, so an inferred ending never overwrites a record another writer already left.
+    try {
+      fs.linkSync(staging, target);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") return false;
+      throw error;
+    } finally {
+      fs.rmSync(staging, { force: true });
+    }
+    return true;
   } catch (error) {
     fs.rmSync(staging, { force: true });
     throw error;
@@ -61,6 +83,32 @@ export function readConsoleExitRecord(lockFile: string, instance: ConsoleInstanc
   } catch {
     return unknown;
   }
+}
+
+/** How an instance an actor waited for ended: its recorded outcome, or `unrecorded` when it cannot be blamed. */
+export type ConsoleEndingOutcome = ConsoleExitRecordRead["outcome"] | "unrecorded";
+
+export interface ConsoleEndingEvidence {
+  /** The `lifecycleWire` its authenticated health reported when the reader asked it, if it did. */
+  readonly lifecycleWire: unknown;
+  /** The reader itself sent SIGTERM. On Windows that is TerminateProcess, so no shutdown ran that could write a record. */
+  readonly terminatedByReader: boolean;
+  readonly platform?: NodeJS.Platform;
+}
+
+/**
+ * How an instance ended, read once its process is gone (docs/console-lifecycle-contract.md, "Exit record"): its own record
+ * when it left one. Without one, a Console that reported `lifecycleWire` ≥ 1 knows the contract, so it was ended from
+ * outside (`external`), never a clean stop; a Console from before the contract, or one this reader terminated on Windows,
+ * cannot be blamed (`unrecorded`).
+ */
+export function readConsoleEnding(lockFile: string, instance: ConsoleInstanceKey, evidence: ConsoleEndingEvidence): { readonly outcome: ConsoleEndingOutcome; readonly killed: number } {
+  const record = readConsoleExitRecord(lockFile, instance);
+  if (record) return { outcome: record.outcome, killed: record.killed };
+  const wire = evidence.lifecycleWire;
+  const knowsContract = typeof wire === "number" && wire >= 1;
+  const terminated = evidence.terminatedByReader && (evidence.platform ?? process.platform) === "win32";
+  return { outcome: knowsContract && !terminated ? "external" : "unrecorded", killed: 0 };
 }
 
 /**

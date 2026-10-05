@@ -9,10 +9,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CONSOLE_STOP_DEADLINE_MS } from "@fleet-console/protocol/lifecycle";
+import { REAPER_DRAIN_MAX_MS, consoleLockInstanceState, createConsoleHealthClient, isPidAlive, observeConsoleInstance, readProcessStartTime, reproveConsoleInstance, runStopLadder, type ConsoleLockFilePayload } from "@fleet-console/lifecycle";
+import { CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
 import { createDesktopEnvironment } from "../src/environment.js";
-import { SidecarSupervisor, type SidecarRuntime } from "../src/sidecar-supervisor.js";
+import { SidecarSupervisor, type SidecarClock, type SidecarRuntime } from "../src/sidecar-supervisor.js";
 
 let lockFile = "";
 
@@ -22,6 +23,17 @@ function supervisor(log = { info: vi.fn(), error: vi.fn() }) {
 
 function writeLock(payload: unknown): void {
   fs.writeFileSync(lockFile, JSON.stringify(payload), { mode: 0o600 });
+}
+
+/** A lock as a Console publishes it, so it passes the contract's trust checks; `fields` sets the pid, port, and owner. */
+function lockPayload(fields: { readonly pid: number; readonly port: number; readonly token?: string; readonly owner?: unknown }): Record<string, unknown> {
+  return { pid: fields.pid, host: "127.0.0.1", port: fields.port, endpoint: `http://127.0.0.1:${fields.port}/`, startedAt: Date.now(), token: fields.token ?? "secret", version: "1.23.0", owner: fields.owner ?? { kind: "desktop", id: "owner-1", protocolVersion: 1 } };
+}
+
+/** Advances the supervisor's waits without sleeping them out, while still yielding so child processes and sockets progress. */
+function fastClock(): SidecarClock {
+  let now = 0;
+  return { now: () => now, sleep: async (ms) => { now += ms; await new Promise((resolve) => setTimeout(resolve, Math.min(ms, 5))); } };
 }
 
 /** A pid that has exited and been reaped: the leftover of a crashed Console. */
@@ -51,7 +63,7 @@ describe("sidecar supervisor", () => {
   });
 
   it("waits for a starting matching desktop owner and adopts it only when healthy", async () => {
-    writeLock({ pid: process.pid, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
+    writeLock(lockPayload({ pid: process.pid, port: 4310 }));
     const before = fs.readFileSync(lockFile, "utf8");
     const fetchHealth = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: "console_starting", pid: process.pid }), { status: 503 }))
@@ -64,8 +76,8 @@ describe("sidecar supervisor", () => {
   });
 
   it("rejects a healthy CLI-owned daemon without resolving, pairing, or signaling it", async () => {
-    writeLock({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } });
-    const fetchFor = vi.fn(async (_url: string | URL) => new Response("ok", { status: 200 }));
+    writeLock(lockPayload({ pid: process.pid, port: 4310, owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
+    const fetchFor = vi.fn(async (_url: string | URL) => new Response(JSON.stringify({ pid: process.pid }), { status: 200 }));
     vi.stubGlobal("fetch", fetchFor);
     const kill = vi.spyOn(process, "kill");
     const resolveRuntime = vi.fn(async () => ({ nodePath: "/runtime/node", cliPath: "/runtime/console/dist/cli.mjs", serviceRoot: "/runtime/console", serviceVersion: "1.23.0" }));
@@ -74,11 +86,11 @@ describe("sidecar supervisor", () => {
     expect(resolveRuntime).not.toHaveBeenCalled();
     expect(fetchFor).toHaveBeenCalledOnce();
     expect(String(fetchFor.mock.calls[0]![0])).toBe("http://127.0.0.1:4310/api/v1/health");
-    expect(kill).not.toHaveBeenCalled();
+    expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
   });
 
   it("reports a live unhealthy foreign lock without signaling it", async () => {
-    writeLock({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } });
+    writeLock(lockPayload({ pid: 4321, port: 4310, owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
     vi.stubGlobal("fetch", vi.fn(async () => new Response("bad", { status: 500 })));
     const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
     await expect(supervisor().startOrAdopt()).rejects.toThrow("console_lock_foreign_process_unhealthy");
@@ -98,19 +110,17 @@ describe("sidecar supervisor", () => {
     await new Promise<void>((resolve) => bystander.stdout!.once("data", () => resolve()));
     bystander.stdout!.on("data", (chunk: Buffer) => { sigterms += chunk.toString().split("term").length - 1; });
     // lock 주소의 무언가가 token health에 200으로 답하지만 다른 pid를 댄다 — 정체 증명이 아니다.
-    let answer: "other-pid" | "unauthorized" | "lock-pid-once" = "other-pid";
+    let answer: "other-pid" | "unauthorized" = "other-pid";
     const impostor = http.createServer((_request, response) => {
       if (answer === "unauthorized") { response.writeHead(401).end(); return; }
-      const pid = answer === "lock-pid-once" ? bystander.pid : process.pid;
-      if (answer === "lock-pid-once") answer = "other-pid";
-      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid }));
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid: process.pid }));
     });
     await new Promise<void>((resolve) => impostor.listen(0, "127.0.0.1", resolve));
     const port = (impostor.address() as AddressInfo).port;
-    const lockContents = JSON.stringify({ pid: bystander.pid, endpoint: `http://127.0.0.1:${port}/`, token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
-    fs.writeFileSync(reusedLock, lockContents);
+    const lockContents = JSON.stringify(lockPayload({ pid: bystander.pid!, port }));
+    fs.writeFileSync(reusedLock, lockContents, { mode: 0o600 });
     const resolveRuntime = vi.fn(async (): Promise<SidecarRuntime> => { throw new Error("reached_spawn"); });
-    const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: {}, lockFile: reusedLock, ownerId: "owner-1", shutdownSettleMs: 200, log: { info: vi.fn(), error: vi.fn() } });
+    const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: {}, lockFile: reusedLock, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
     try {
       // Quit은 막히지 않지만 증명하지 못한 pid에는 신호도, lock 삭제도 하지 않는다.
       await expect(instance.stop()).resolves.toBeUndefined();
@@ -119,11 +129,31 @@ describe("sidecar supervisor", () => {
       await expect(instance.startOrAdopt()).rejects.toThrow("console_lock_process_unverified");
       expect(fs.existsSync(reusedLock)).toBe(true);
       expect(sigterms).toBe(0);
-      // 증명된 Console이 SIGTERM 뒤 lock을 남긴 채 죽고 그 pid가 재할당된 경쟁: lock 파일은 그대로지만 정체를 다시
-      // 증명하지 못하므로 SIGKILL로 승격하지 않는다.
-      answer = "lock-pid-once";
-      await expect(instance.stop()).resolves.toBeUndefined();
-      expect(sigterms).toBe(1);
+      // 증명된 Console이 SIGTERM 뒤 lock을 남긴 채 죽고 그 pid가 재할당된 경쟁. 재할당된 프로세스는 증명 뒤에 시작하므로 증명 때
+      // 잡은 시작 시각과 다르고(실제 시작 시각보다 60s 이른 값으로 흉내 낸다. ps는 실제로 읽는다), 새 health도 그 pid를 대지
+      // 않는다. 재증명이 실패하므로 사다리는 SIGKILL로 승격하지 않는다.
+      const reused = JSON.parse(lockContents) as ConsoleLockFilePayload;
+      const actualStart = await readProcessStartTime(bystander.pid!);
+      expect(actualStart).not.toBeNull();
+      answer = "other-pid";
+      const clock = fastClock();
+      const ended = await runStopLadder({
+        requester: true,
+        isAlive: () => isPidAlive(bystander.pid!),
+        isReleased: () => consoleLockInstanceState(reusedLock, { pid: reused.pid, token: reused.token }) === "released",
+        reprove: () => reproveConsoleInstance({
+          lockFile: reusedLock,
+          lock: reused,
+          provenStart: actualStart! - 60_000,
+          observe: (lock) => observeConsoleInstance({ lock, trusted: true, isHeld: () => consoleLockInstanceState(reusedLock, lock) !== "released", probe: (target, options) => createConsoleHealthClient().probe(target, options) }),
+        }),
+        signal: (signal) => process.kill(bystander.pid!, signal),
+        now: clock.now,
+        sleep: clock.sleep,
+      });
+      expect(ended).toBe("unproven");
+      await vi.waitFor(() => expect(sigterms).toBe(1));
+      expect(bystanderSignal).toBeNull();
       expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
       // lock 주소가 연결을 거절해도 pid가 살아 있으면 종료 정리 중인 Console일 수 있다 — 그동안 새 Console을 띄우지 않고
       // 기다린다. 새 Console은 lock을 쥐기 전에 공유 상태를 만지기 때문이다. pid가 끝나면 신호 없이 시작을 이어 간다.
@@ -158,10 +188,10 @@ describe("sidecar supervisor", () => {
       if (fs.readFileSync(process.env.LOCK_FILE, "utf8") !== process.env.DEAD_LOCK) process.exit(73);
       fs.unlinkSync(process.env.LOCK_FILE);
       const server = http.createServer((request, response) => response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid: process.pid })));
-      server.listen(0, "127.0.0.1", () => fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, endpoint: "http://127.0.0.1:" + server.address().port + "/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }), { flag: "wx", mode: 0o600 }));
+      server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, host: "127.0.0.1", port, endpoint: "http://127.0.0.1:" + port + "/", startedAt: Date.now(), token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }), { flag: "wx", mode: 0o600 }); });
       process.on("SIGTERM", () => process.exit(0));
     `);
-    const deadLock = JSON.stringify({ pid: await exitedPid(), endpoint: "http://127.0.0.1:9/", token: "old", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
+    const deadLock = JSON.stringify(lockPayload({ pid: await exitedPid(), port: 9, token: "old" }));
     const runtime: SidecarRuntime = { nodePath: process.execPath, cliPath, serviceRoot: path.dirname(path.dirname(cliPath)), serviceVersion: "1.23.0" };
     const resolveRuntime = vi.fn(async () => runtime);
     const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: { LOCK_FILE: lockFile, DEAD_LOCK: deadLock }, lockFile, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
@@ -197,10 +227,10 @@ describe("sidecar supervisor", () => {
         answered = true;
         response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid: process.pid }));
       });
-      server.listen(0, "127.0.0.1", () => fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, endpoint: "http://127.0.0.1:" + server.address().port + "/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } })));
+      server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, host: "127.0.0.1", port, endpoint: "http://127.0.0.1:" + port + "/", startedAt: Date.now(), token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }), { mode: 0o600 }); });
     `);
     const runtime: SidecarRuntime = { nodePath: process.execPath, cliPath, serviceRoot: path.dirname(path.dirname(cliPath)), serviceVersion: "1.23.0" };
-    const instance = new SidecarSupervisor({ resolveRuntime: async () => runtime, serviceVersion: "1.23.0", env: { LOCK_FILE: ownLock, LOCK_STATE: lockState }, lockFile: ownLock, ownerId: "owner-1", shutdownSettleMs: 200, log: { info: vi.fn(), error: vi.fn() } });
+    const instance = new SidecarSupervisor({ resolveRuntime: async () => runtime, serviceVersion: "1.23.0", env: { LOCK_FILE: ownLock, LOCK_STATE: lockState }, lockFile: ownLock, ownerId: "owner-1", clock: fastClock(), log: { info: vi.fn(), error: vi.fn() } });
     let sidecarPid: number | undefined;
     try {
       await expect(instance.startOrAdopt()).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/console\/$/);
@@ -238,8 +268,9 @@ const FAKE_AGENT = path.join(consoleFixtures, "lifecycle-fake-agent.mjs");
 const LIFECYCLE_KNOWN_DEFECTS = JSON.parse(fs.readFileSync(path.join(consoleFixtures, "lifecycle-known-defects.json"), "utf8")) as ReadonlyArray<{ readonly case: string; readonly followup: string; readonly releasedBy: string }>;
 const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
 const AGENT_ROLES = new Set(["chat", "chat-mcp", "terminal", "terminal-mcp"]);
-// Long enough for anything that reaps after the Console is gone (a containment helper's own grace included).
-const SETTLE_MS = 10_000;
+// Long enough for anything that reaps after the Console is gone: the reaper's own cap, the process-table read it may still
+// be inside when that cap fires, and the escalation margin for a loaded runner.
+const SETTLE_MS = REAPER_DRAIN_MAX_MS + PROCESS_TABLE_TIMEOUT_MS + ESCALATION_MARGIN_MS;
 
 // Needs the built Console (pnpm --filter @dotobokuri/fleet-console build); POSIX signal semantics only.
 const runLifecycle = process.env.FLEET_BUILT_SMOKE === "1" && process.platform !== "win32";
@@ -297,7 +328,8 @@ afterEach(async () => {
     const lockFile = path.join(slot, "console.lock");
     const stalled = path.join(dir, "stalled");
     const exited = path.join(dir, "exited");
-    // {t0, start, end} in epoch ms: the first SIGTERM and the pre-deadline freeze, for the case's timeline.
+    // Epoch ms for the case's timeline: a start line {t0, start} (the first SIGTERM, the freeze beginning) written before the
+    // freeze and an end line {end} after it, so a Console killed during the freeze still leaves when the freeze began.
     const freeze = path.join(dir, "freeze.jsonl");
     const preload = path.join(dir, "stall-close.mjs");
     // Test-only preload, active in the Console's `serve` process only (NODE_OPTIONS reaches every Node child it starts):
@@ -312,9 +344,9 @@ afterEach(async () => {
       "  process.prependOnceListener('SIGTERM', () => {",
       "    const t0 = Date.now();",
       "    setTimeout(() => {",
-      "      const start = Date.now();",
+      "      fs.appendFileSync(freeze, JSON.stringify({ t0, start: Date.now() }) + '\\n');",
       "      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800);",
-      "      fs.appendFileSync(freeze, JSON.stringify({ t0, start, end: Date.now() }) + '\\n');",
+      "      fs.appendFileSync(freeze, JSON.stringify({ end: Date.now() }) + '\\n');",
       `    }, ${CONSOLE_STOP_DEADLINE_MS - 200}).unref();`,
       "  });",
       "  const close = http.Server.prototype.close;",
@@ -397,12 +429,15 @@ afterEach(async () => {
     })();
     const failureLog = failureEntries.map((entry) => String(entry.kind));
     // When, after the Console's first SIGTERM, the freeze ran and the deadline recorded its timeout (after its process-table
-    // read): printed on every run so CI logs show how much of the escalation margin the deadline actually used.
+    // read): printed on every run so CI logs show how much of the escalation margin the deadline actually used. A null
+    // freezeEndMs means the Console died during the freeze, before its own deadline could run.
     const timeline = (() => {
       try {
-        const { t0, start, end } = JSON.parse(fs.readFileSync(freeze, "utf8").split("\n")[0]!) as { t0: number; start: number; end: number };
+        const lines = fs.readFileSync(freeze, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as { t0?: number; start?: number; end?: number });
+        const { t0, start } = lines[0] as { t0: number; start: number };
+        const end = lines[1]?.end;
         const recorded = failureEntries.filter((entry) => entry.kind === "shutdown_timeout" && typeof entry.ts === "string").map((entry) => Date.parse(entry.ts as string) - t0).at(-1) ?? null;
-        return { freezeStartMs: start - t0, freezeEndMs: end - t0, deadlineRecordedMs: recorded };
+        return { freezeStartMs: start - t0, freezeEndMs: typeof end === "number" ? end - t0 : null, deadlineRecordedMs: recorded };
       } catch {
         return null;
       }

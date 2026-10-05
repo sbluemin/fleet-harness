@@ -61,6 +61,7 @@ All waits derive from the constants in `@fleet-console/protocol/lifecycle`. No a
 | `KILL_CONFIRM_MS` | 3 s | How long an actor that sent SIGKILL waits to see the pid exit. |
 | `LOCK_OBSERVE_BUDGET_MS` | 2 s | How long a lock without a readable owner is read again (every `LOCK_REREAD_INTERVAL_MS`, 50 ms) before it is reported, and how long a lock acquirer waits on another reclaimer. Elapsed time is never evidence that the owner is dead. |
 | `OWNED_GROUP_TERM_GRACE_MS` | 2 s | From SIGTERM to SIGKILL for an owned process group: the Console's stop path for its plugins' groups and the reaper after a crash use this one value, the same gap as the agent SDK's. With the one process-table read the stop path may take when that grace ends, it must hold `OWNED_GROUP_TERM_GRACE_MS + PROCESS_TABLE_TIMEOUT_MS + ε < B_int − ESCALATION_MARGIN_MS` (3 s ≪ 9 s). |
+| `INTERACTIVE_PROBE_TIMEOUT_MS` | 2 s | One health probe on a path a person waits on, such as quitting Desktop. A probe that times out proves nothing, so nothing is signalled. The CLI's identity probe keeps `HEALTH_PROBE_TIMEOUT_MS` (5 s). |
 
 Why B_ext is derived: an external SIGKILL that lands at the same moment as the Console's own deadline races the Console's cleanup of its children. Polling phase only ever delays an external escalation, so the margin needed is the Console's own worst-case delay: its process-table read plus event-loop lag. With B_ext = B_int + that delay, a Console within its own budget always finishes first (I4). A Console whose loop is blocked for more than a second at signal time can still lose that race; containment must then still leave no children (I2).
 
@@ -75,6 +76,7 @@ A Console instance that held the lock writes its own exit record beside its lock
 - `pid` and `lockStartedAt` (the `startedAt` of the lock that instance published) are the instance key. A reader opens only the file of the instance it observed. One file per instance means no instance overwrites another's evidence: a previous owner still reaping children after it released the lock writes its own record even if a successor has taken the slot, started, and ended meanwhile.
 - The record is staged under an exclusive name and renamed into place (mode 0600), so a reader sees no record or the whole record, never a partial file. It never carries the lock token.
 - A serve that never took the lock writes no record (I3). A start that fails after the lock was taken records `failed`.
+- One instance's record can have more than one writer, and the writer that knows most wins whatever order they write in: the Console's own outcome, then `forced-external`, then `external`. The Console's own record replaces anything. The actor that sent SIGKILL replaces only no record or an `external` one. The reaper only creates the file, exclusively, and never replaces a record. Both outside outcomes are abnormal endings, so the order never changes whether a stop counts as clean. The actor that sent SIGKILL reports the record it left in place when the Console's own record was already there. If the reaper cannot create its `external` record (a volume without hard links), a reader reaches the same ending: no record from a Console that reports `lifecycleWire` reads as `external`.
 - Retention: the lock owner, right after it takes the lock, keeps the newest `CONSOLE_EXIT_RECORD_RETAIN` (16) records and removes older ones whose pid is ESRCH, along with abandoned staging files whose writer is ESRCH. Nobody else removes records.
 
 | Outcome | Written by | Meaning |
@@ -84,21 +86,21 @@ A Console instance that held the lock writes its own exit record beside its lock
 | `crash` | the Console, at exit | an uncaught exception ended it |
 | `failed` | the Console, at exit | it took the lock, then its start or its shutdown failed, and it ended with an error |
 | `external` | the Console's reaper, or inferred by a reader of a Console that reports `lifecycleWire` | the process vanished without a record (SIGKILL, or a frozen loop killed from outside) |
-| `forced-external` | the actor that sent SIGKILL (the CLI; Desktop and the update worker *(pending)*) | escalation after B_ext |
+| `forced-external` | the actor that sent SIGKILL (the CLI, Desktop; the update worker *(pending)*) | escalation after B_ext |
 
-A reader that finds no record for the instance it observed decides from the lock's `version` and the health `lifecycleWire` whether the Console predates the contract; a pre-contract Console keeps its old meaning (no record).
+A reader that finds no record for the instance it observed decides from the health `lifecycleWire` whether the Console predates the contract (`readConsoleEnding`): a Console that reported wire 1 or later and left no record was ended from outside (`external`), never a clean stop; a pre-contract Console, or one the reader itself terminated on Windows, is `unrecorded`: it cannot be blamed for the missing record.
 
 New outcomes may be added without a version change. A reader that meets an outcome it does not know, or a record file for the instance that it cannot read (another version, malformed, a symlink, naming another instance), treats it as `unknown` and never reports it as a clean stop (fail closed): a newer Console may describe an ending an older reader cannot interpret.
 
 ## Wire compatibility
 
 - The lock payload and the meaning of health answers do not change; additions only. The authenticated health answer carries `lifecycleWire: CONSOLE_LIFECYCLE_WIRE`. Its absence means wire 0 (before this contract).
-- An observer that meets a wire newer than its own treats that instance as unverified: it neither signals it nor removes its lock on that basis.
+- An observer that meets a wire newer than its own treats that instance as unverified: it neither signals it nor removes its lock on that basis. Adopting sends no signal, so Desktop still adopts a Console of a compatible owner whose authenticated health answers with the lock's own pid, whatever wire it reports. A Quit then signals a newer-wire Console only when it is this Desktop's own unreaped child (E1); any other newer-wire Console it adopted is left running, and the Quit logs it.
 - Shipped Desktop builds and update workers carry frozen copies of the contract. The published `./desktop-protocol` export surface is unchanged by it.
 
 ## Observing an instance from outside
 
-An external actor reads the lock through the one lock observer, `observeConsoleLockFile` in `@fleet-console/lifecycle` (absent, refused, no readable owner, or an owner with its exact bytes, liveness, and the first trust problem, if any), then the pid's liveness (only ESRCH is death) and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI and `serve` do; Desktop, the update worker, and the local Console list still apply their own reading *(pending)*. A trusted lock has the POSIX modes 0700/0600, belongs to this user, names the loopback host and a valid port, has an endpoint of exactly `http://<host>:<port>/`, a token, and a numeric `startedAt`; a shell may add its own adoption policy on top. Whether the lock still holds one instance is `consoleLockInstanceState` over the same observer: `released` when there is no lock or it names another pid (or token), `held` when it names that instance, and `unknown` when it cannot be judged — a lock without a readable owner, even one that parses (`{}`, `null`), is never taken as released.
+An external actor reads the lock through the one lock observer, `observeConsoleLockFile` in `@fleet-console/lifecycle` (absent, refused, no readable owner, or an owner with its exact bytes, liveness, and the first trust problem, if any), then the pid's liveness (only ESRCH is death) and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI, `serve`, and Desktop do; the update worker and the local Console list still apply their own reading *(pending)*. A trusted lock has the POSIX modes 0700/0600, belongs to this user, names the loopback host and a valid port, has an endpoint of exactly `http://<host>:<port>/`, a token, and a numeric `startedAt`; a shell may add its own adoption policy on top. Whether the lock still holds one instance is `consoleLockInstanceState` over the same observer: `released` when there is no lock or it names another pid (or token), `held` when it names that instance, and `unknown` when it cannot be judged — a lock without a readable owner, even one that parses (`{}`, `null`), is never taken as released.
 
 | Lock | Pid | Health | Observed | May do |
 |---|---|---|---|---|
@@ -112,7 +114,7 @@ An external actor reads the lock through the one lock observer, `observeConsoleL
 | untrusted or tokenless | alive | — | unverified | nothing |
 | symlink, another user's, or no readable owner | — | — | blocked | nothing; manual recovery text |
 
-A refused endpoint with a live pid that still holds the same lock is a Console that has closed its listener and is cleaning up — never an absent owner. The pre-contract helper `identifyConsoleLockOwner` in `@fleet-console/protocol/desktop` still maps that case to `absent`; its remaining consumers correct for it and it is removed when the last of them moves onto the contract.
+A refused endpoint with a live pid that still holds the same lock is a Console that has closed its listener and is cleaning up — never an absent owner. The pre-contract helper `identifyConsoleLockOwner` in `@fleet-console/protocol/desktop` still maps that case to `absent`; its remaining consumer, the update worker, corrects for it, and it is removed when the worker moves onto the contract.
 
 ### Stop ladder
 
@@ -123,10 +125,10 @@ An actor that asks a Console to stop:
 3. Sends SIGTERM once.
 4. Waits, on a monotonic deadline, until the pid exits or the same lock instance is released, up to B_ext.
 5. If it saw the release, it sends nothing more and reads the exit record once the process is gone.
-6. Past B_ext with the lock still held, it proves identity again (own child, parent link, unchanged start time, or a fresh health answer). Without proof it signals nothing.
+6. Past B_ext with the lock still held, it proves identity again: an own child or a parent link, or — while the same lock instance is still held — an unchanged start time or a fresh health answer (`reproveConsoleInstance`; a lock that cannot be read proves nothing). Without proof it signals nothing.
 7. SIGKILL, then confirm the exit within `KILL_CONFIRM_MS`; the result is `forced-external`.
 
-An actor that sees an instance someone else is stopping only waits, and reports it when it is still stopping after B_ext. A starter that gives up on its own child applies the ladder too once that child holds the lock — it may be writing durable state — and gives a child that has not taken the lock only `PRELOCK_CHILD_GRACE_MS` before SIGKILL; its unreaped child handle is its identity proof. On Windows `process.kill(pid, "SIGTERM")` terminates the process outright, so an actor never signals an instance that is already stopping there; it waits up to B_ext.
+An actor that sees an instance someone else is stopping never signals it. B_ext bounds how long it may wait: a starter waits, and reports the instance when it is still stopping after B_ext; Desktop Quit has nothing to do after the wait and returns at once. A starter that gives up on its own child applies the ladder too once that child holds the lock — it may be writing durable state — and gives a child that has not taken the lock only `PRELOCK_CHILD_GRACE_MS` before SIGKILL; its unreaped child handle is its identity proof. On Windows `process.kill(pid, "SIGTERM")` terminates the process outright, so an actor never signals an instance that is already stopping there; it waits up to B_ext.
 
 ## Children
 

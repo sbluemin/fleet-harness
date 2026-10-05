@@ -11,7 +11,8 @@ import {
 } from "@fleet-console/protocol/lifecycle";
 
 import { toConsoleHealthEvidence, type ConsoleHealthTarget, type ConsoleProbeOptions, type ConsoleProbeResult } from "./health.js";
-import { isLockAuthorReplaced, isPidAlive } from "./process.js";
+import { consoleLockInstanceState } from "./lock-file.js";
+import { isLockAuthorReplaced, isPidAlive, readProcessStartTime } from "./process.js";
 
 /** The lock instance an observer read: the pid it names, when it was written, and its token. */
 export interface ConsoleObservedLock extends ConsoleHealthTarget {
@@ -32,6 +33,8 @@ export interface ObserveConsoleInstanceInput<L extends ConsoleObservedLock> {
   /** Whether the lock file still holds this same instance (pid and token). A lock that cannot be read counts as held. */
   readonly isHeld: () => boolean;
   readonly probe: (lock: L, options: ConsoleProbeOptions) => Promise<ConsoleProbeResult<L>>;
+  /** The observer's probe budget: HEALTH_PROBE_TIMEOUT_MS, or INTERACTIVE_PROBE_TIMEOUT_MS on a path a person waits on. */
+  readonly probeTimeoutMs?: number;
   readonly env?: NodeJS.ProcessEnv;
 }
 
@@ -42,7 +45,7 @@ export async function observeConsoleInstance<L extends ConsoleObservedLock>(inpu
   let probe: ConsoleProbeResult<L> | null = null;
   let authorReplaced = false;
   if (isPidAlive(lock.pid) && trusted) {
-    probe = await input.probe(lock, { timeoutMs: HEALTH_PROBE_TIMEOUT_MS });
+    probe = await input.probe(lock, { timeoutMs: input.probeTimeoutMs ?? HEALTH_PROBE_TIMEOUT_MS });
     if (probe.refused) authorReplaced = await isLockAuthorReplaced(lock, input.env);
   }
   const health = probe ? toConsoleHealthEvidence(probe) : null;
@@ -55,6 +58,35 @@ export async function observeConsoleInstance<L extends ConsoleObservedLock>(inpu
     health,
   });
   return { ...classified, probe };
+}
+
+export interface ReproveConsoleInstanceInput<L extends ConsoleObservedLock> {
+  readonly lockFile: string;
+  /** The lock instance whose identity was proven before SIGTERM. */
+  readonly lock: L;
+  /** Its process start time captured with that proof (`captureProvenProcessStart`), or null when it could not be. */
+  readonly provenStart: number | null;
+  /** True while the pid is the requester's own unreaped child: its handle alone proves identity (E1). */
+  readonly isOwnChild?: () => boolean;
+  /** A fresh observation of the same lock instance (the actor's own `observeConsoleInstance`). */
+  readonly observe: (lock: L) => Promise<ConsoleInstanceObservation<L>>;
+  readonly env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * Right before SIGKILL: is the pid still the instance proven before SIGTERM (docs/console-lifecycle-contract.md, "Stop
+ * ladder" step 6)? An unreaped own child is (E1). Otherwise the same lock instance must still be held — a lock that
+ * cannot be read proves nothing — and either the start time captured with the proof is unchanged (E4: a reused pid starts
+ * after the proof) or a fresh authenticated health answer names the pid again (E3).
+ */
+export async function reproveConsoleInstance<L extends ConsoleObservedLock>(input: ReproveConsoleInstanceInput<L>): Promise<boolean> {
+  if (input.isOwnChild?.() === true) return true;
+  const { lock } = input;
+  const instance = { pid: lock.pid, ...(typeof lock.token === "string" ? { token: lock.token } : {}) };
+  const held = () => consoleLockInstanceState(input.lockFile, instance) === "held";
+  if (input.provenStart !== null && await readProcessStartTime(lock.pid, input.env) === input.provenStart && held()) return true;
+  if (!held()) return false;
+  return (await input.observe(lock)).identity === "verified";
 }
 
 /**

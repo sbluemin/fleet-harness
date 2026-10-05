@@ -62,6 +62,12 @@ export const LOCK_OBSERVE_BUDGET_MS = 2_000;
 export const LOCK_REREAD_INTERVAL_MS = 50;
 /** The whole budget for one token-authenticated health probe, primary and legacy endpoints together. */
 export const HEALTH_PROBE_TIMEOUT_MS = 5_000;
+/**
+ * The health probe budget on a path a person is waiting on, such as quitting the app. A probe that runs out reads as
+ * unverified and nothing is signalled, so waiting longer would not change the outcome; a working Console answers in
+ * milliseconds.
+ */
+export const INTERACTIVE_PROBE_TIMEOUT_MS = 2_000;
 /** How long `fleet console start` waits for a Console it spawned, or one another starter is restoring, to become ready. */
 export const CONSOLE_START_TIMEOUT_MS = 60_000;
 /** How often `fleet console start` probes while it waits. */

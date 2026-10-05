@@ -20,9 +20,9 @@ import {
   observeConsoleInstance,
   observeConsoleLockFile,
   observeConsoleLockFileWithin,
-  readConsoleExitRecord,
+  readConsoleEnding,
   readConsoleLockFile,
-  readProcessStartTime,
+  reproveConsoleInstance,
   runStopLadder,
   writeConsoleExitRecord,
   type ConsoleInstanceObservation,
@@ -38,6 +38,9 @@ import {
   CONSOLE_STOP_DEADLINE_MS,
   EXTERNAL_ESCALATION_MS,
   PRELOCK_CHILD_GRACE_MS,
+  describeConsoleLockSlotQuiescenceCheck,
+  describeOwnerlessConsoleLock,
+  describeRefusedConsoleLock,
   type ConsoleExitOutcome,
 } from "@fleet-console/protocol/lifecycle";
 
@@ -55,7 +58,7 @@ import {
   stripAnsi,
 } from "../../../cli/styles/tokens.js";
 import { readFleetCliRelease } from "../../../cli/release.js";
-import { createConsoleLock, describeOwnerlessLock, isConsoleLockHeldError, describeReclaimResult, describeRefusedLock, describeSlotQuiescenceCheck, type ConsoleLockReclaimResult } from "./lock.js";
+import { createConsoleLock, isConsoleLockHeldError, describeReclaimResult, type ConsoleLockReclaimResult } from "./lock.js";
 import { createConsoleDataPaths, createConsolePaths } from "./paths.js";
 import { createConsoleServeLifecycle } from "./serve-lifecycle.js";
 import { createConsoleServer } from "./server.js";
@@ -425,7 +428,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       requester,
       isAlive: () => isPidAlive(payload.pid),
       isReleased: () => isLockReleasedBy(payload),
-      reprove: () => reproveLockOwner(payload, provenStart),
+      reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart, observe, env }),
       signal: (signal) => signalLockProcess(payload.pid, signal),
       onWaiting: () => report("Waiting for Fleet Console to finish shutting down..."),
       now,
@@ -438,16 +441,12 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     if (ended === "kill-failed") throw new Error(`Fleet Console pid ${payload.pid} did not exit after SIGKILL; ${paths.lockFile} was left in place.`);
     // 끝난 Console이 남긴 lock은 그 pid가 ESRCH인 지금 회수 프로토콜로 지운다.
     await removeLockHeldBy(payload);
-    if (ended === "forced") {
-      recordForcedExit(instance);
-      return { outcome: "forced-external", killed: 0 };
-    }
-    const record = readConsoleExitRecord(paths.lockFile, instance);
-    if (record) return { outcome: record.outcome, killed: record.killed };
-    // 기록 없이 사라졌다. 계약을 아는 Console이면 밖에서 끝난 것이다. 계약 이전 Console이거나, Windows에서 SIGTERM이 곧
-    // TerminateProcess라 정리가 돌지 않은 경우는 탓할 근거가 없으므로 지금까지처럼 정지로 본다.
-    const unattributable = !reportsLifecycleWire(observed) || (requester && process.platform === "win32");
-    return { outcome: unattributable ? "unrecorded" : "external", killed: 0 };
+    // SIGKILL이 Console 자신의 종료 기록(예: deadline)과 겹치면 그 기록이 실제 결말이다. 우선순위상 forced-external이
+    // 그것을 덮지 않으므로, 쓰지 못했을 때는 남아 있는 기록으로 보고한다.
+    if (ended === "forced" && recordForcedExit(instance)) return { outcome: "forced-external", killed: 0 };
+    // 기록이 없으면 계약을 아는 Console은 밖에서 끝난 것이고, 계약 이전 Console이나 Windows에서 이 stop이 끝낸 Console은
+    // 탓할 근거가 없어 지금까지처럼 정지로 본다(readConsoleEnding).
+    return readConsoleEnding(paths.lockFile, instance, { lifecycleWire: observed.probe?.health?.lifecycleWire, terminatedByReader: requester });
   }
 
   function observe(payload: ConsoleLockPayload): Promise<ConsoleInstanceObservation<ConsoleLockPayload>> {
@@ -456,21 +455,15 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   }
 
   /**
-   * Right before SIGKILL: is the stalled pid still the Console proven before SIGTERM? A start time captured before that
-   * proof that is unchanged, with the same lock still held, proves it — a reused pid starts after the proof. Otherwise a
-   * fresh authenticated health answer must prove it again.
+   * This stop SIGKILLed the instance, so the stop records it. False when the instance's own record already says how it
+   * ended (it recorded its deadline as the SIGKILL landed): that record, not this stop, is the outcome.
    */
-  async function reproveLockOwner(payload: ConsoleLockPayload, provenStart: number | null): Promise<boolean> {
-    if (provenStart !== null && await readProcessStartTime(payload.pid, env) === provenStart && isLockStillHeldBy(payload)) return true;
-    return (await observe(payload)).identity === "verified";
-  }
-
-  /** This stop SIGKILLed the instance: nothing ran inside it to record how it ended, so the stop records it. */
-  function recordForcedExit(instance: { readonly pid: number; readonly lockStartedAt: number }): void {
+  function recordForcedExit(instance: { readonly pid: number; readonly lockStartedAt: number }): boolean {
     try {
-      writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, ...instance, outcome: "forced-external", killed: 0, at: Date.now() });
+      return writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, ...instance, outcome: "forced-external", killed: 0, at: Date.now() });
     } catch {
-      // The record only informs later readers; the stop's own result already says it was forced.
+      // The record only informs later readers; the stop's own result still says it was forced.
+      return true;
     }
   }
 
@@ -479,7 +472,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       headline,
       `If that process is a stuck Fleet Console, stop it (kill -TERM ${payload.pid}; Windows: Stop-Process -Id ${payload.pid}), then run fleet console start. A suspended process (state T in ps) ignores TERM until resumed: kill -CONT ${payload.pid} lets it finish shutting down, or kill -KILL ${payload.pid} ends it.`,
       `If it is not a Fleet Console, follow the check below and then delete ${paths.lockFile}.`,
-      describeSlotQuiescenceCheck(paths.lockFile),
+      describeConsoleLockSlotQuiescenceCheck(paths.lockFile),
     ].join("\n"));
   }
 
@@ -511,18 +504,14 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   async function removeLockHeldBy(payload: ConsoleLockPayload): Promise<void> {
     const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return;
-    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
-    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    if (observed.kind === "refused") throw new Error(describeRefusedConsoleLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessConsoleLock(paths.lockFile, observed.reason));
     const held = observed.instance.payload;
     if (held.pid !== payload.pid || held.token !== payload.token) return;
     const result = await lock.reclaimLock(paths.lockFile, observed.instance);
     if (result.kind === "removed" || result.kind === "gone") return;
     if (result.kind === "alive") throw lockOwnerUnverifiedError(payload);
     throw new Error(describeReclaimResult(paths.lockFile, result));
-  }
-
-  function isLockStillHeldBy(payload: ConsoleLockPayload): boolean {
-    return consoleLockInstanceState(paths.lockFile, payload) === "held";
   }
 
   function signalLockProcess(pid: number, signal: NodeJS.Signals): void {
@@ -541,8 +530,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   async function readLockForStart(): Promise<ConsoleLockPayload | null> {
     const observed = await observeConsoleLockFileWithin<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return null;
-    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
-    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    if (observed.kind === "refused") throw new Error(describeRefusedConsoleLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessConsoleLock(paths.lockFile, observed.reason));
     if (observed.untrusted === null) return observed.instance.payload;
     if (observed.alive) throw new Error(describeUntrustedLiveLock(observed.instance.pid, observed.untrusted));
     report(`Fleet Console lock ${paths.lockFile} belongs to pid ${observed.instance.pid}, which is no longer running; the new Console will reclaim it.`);
@@ -554,7 +543,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       `Fleet Console lock pid ${pid} is alive but its lock ${paths.lockFile} cannot be trusted (${issue}), so no second Console was started.`,
       `If that process is a Fleet Console, stop it (kill -TERM ${pid}; Windows: Stop-Process -Id ${pid}; or quit the Fleet desktop app that owns it), then start again — the lock of an exited Console is reclaimed automatically.`,
       `If it is not a Fleet Console, follow the check below and then delete ${paths.lockFile}.`,
-      describeSlotQuiescenceCheck(paths.lockFile),
+      describeConsoleLockSlotQuiescenceCheck(paths.lockFile),
     ].join("\n");
   }
 
@@ -863,8 +852,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   function readTrustedLock(): ConsoleLockPayload | null {
     const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return null;
-    if (observed.kind === "refused") throw new Error(describeRefusedLock(paths.lockFile, observed.reason));
-    if (observed.kind === "unknown") throw new Error(describeOwnerlessLock(paths.lockFile, observed.reason));
+    if (observed.kind === "refused") throw new Error(describeRefusedConsoleLock(paths.lockFile, observed.reason));
+    if (observed.kind === "unknown") throw new Error(describeOwnerlessConsoleLock(paths.lockFile, observed.reason));
     const payload = observed.instance.payload;
     assertTrustedConsoleLock({
       dir: paths.dir,
@@ -947,11 +936,6 @@ function describeUncleanStop(result: ConsoleStopResult): string | null {
   }
 }
 
-/** Whether the Console answered health with a lifecycle wire, so it writes an exit record when it ends. */
-function reportsLifecycleWire(observed: ConsoleInstanceObservation<ConsoleLockPayload>): boolean {
-  const wire = observed.probe?.health?.lifecycleWire;
-  return typeof wire === "number" && wire >= 1;
-}
 
 export function assertCliCanControlDaemon(payload: ConsoleLockPayload): void {
   void payload;
