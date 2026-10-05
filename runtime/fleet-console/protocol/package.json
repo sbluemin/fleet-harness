@@ -19,6 +19,11 @@
       "import": "./lifecycle/index.ts",
       "default": "./lifecycle/index.ts"
     },
+    "./lifecycle/update": {
+      "types": "./lifecycle/update.ts",
+      "import": "./lifecycle/update.ts",
+      "default": "./lifecycle/update.ts"
+    },
     "./release": {
       "types": "./release/index.ts",
       "import": "./release/index.ts",

@@ -1,0 +1,132 @@
+import { CONSOLE_START_TIMEOUT_MS, EXTERNAL_ESCALATION_MS, HEALTH_PROBE_TIMEOUT_MS, KILL_CONFIRM_MS } from "./budgets.js";
+import type { ConsoleExitOutcome } from "./index.js";
+
+/**
+ * What an accepted in-place update reports to the Console that comes back and to the screen that waited for it
+ * (docs/console-lifecycle-contract.md, "Update worker"). Import-free apart from the budgets, so the browser reads the same
+ * reasons, budgets, and shared text the worker and the Console use.
+ */
+
+/**
+ * The longest the update worker takes to conclude the old Console's stop: one health observation, B_ext, one re-proof,
+ * and the kill confirmation. By then it is installing, or it has recorded why it did not.
+ */
+export const UPDATE_OLD_CONSOLE_STOP_CONCLUSION_MS = HEALTH_PROBE_TIMEOUT_MS + EXTERNAL_ESCALATION_MS + HEALTH_PROBE_TIMEOUT_MS + KILL_CONFIRM_MS;
+
+/**
+ * Measured from the moment the old Console stopped answering (a stopping Console closes its listeners first): an update
+ * that failed before its install has brought a Console back by then if it can bring one back at all. The install has no
+ * budget, so a Console still silent after this is either still installing or gone with nothing to come back to; only
+ * the progress record of a Console that answers again says which.
+ */
+export const UPDATE_FAILED_CONSOLE_RETURN_MS = UPDATE_OLD_CONSOLE_STOP_CONCLUSION_MS + CONSOLE_START_TIMEOUT_MS;
+
+/** The command that starts the Console for this data directory, or explains what keeps it from starting. */
+export const CONSOLE_START_COMMAND = "fleet console start";
+
+/**
+ * Why an accepted update failed, as the update worker records it (`reason` on the progress record).
+ * - lifecycle-runtime-mismatch: the worker's copy of the lifecycle runtime did not match what the Console recorded.
+ * - old-console-unverified: the old Console still held its lock after B_ext and its identity could not be proven again.
+ * - old-console-replaced: the old Console's lock names a live pid that started after the lock was written.
+ * - old-console-still-running: the old Console released its lock but was still running after B_ext.
+ * - old-console-kill-failed: the old Console outlived SIGKILL.
+ * - install-failed: the package manager could not be used, or the install exited with an error.
+ * - new-console-not-started: the new Console could not take the Console lock.
+ * - new-console-unhealthy: the new Console did not become healthy within CONSOLE_START_TIMEOUT_MS.
+ * - worker-lost: the worker is gone (ESRCH) without having recorded an outcome.
+ * Additive: a reader that meets a reason it does not know reads `unknown`, never a success.
+ */
+export type ConsoleUpdateFailureReason =
+  | "lifecycle-runtime-mismatch"
+  | "old-console-unverified"
+  | "old-console-replaced"
+  | "old-console-still-running"
+  | "old-console-kill-failed"
+  | "install-failed"
+  | "new-console-not-started"
+  | "new-console-unhealthy"
+  | "worker-lost";
+
+const UPDATE_FAILURE_REASONS: readonly ConsoleUpdateFailureReason[] = [
+  "lifecycle-runtime-mismatch",
+  "old-console-unverified",
+  "old-console-replaced",
+  "old-console-still-running",
+  "old-console-kill-failed",
+  "install-failed",
+  "new-console-not-started",
+  "new-console-unhealthy",
+  "worker-lost",
+];
+
+/** A recorded reason as a reader sees it; null when nothing was recorded. */
+export function parseConsoleUpdateFailureReason(value: unknown): ConsoleUpdateFailureReason | "unknown" | null {
+  if (value === undefined || value === null) return null;
+  return UPDATE_FAILURE_REASONS.includes(value as ConsoleUpdateFailureReason) ? value as ConsoleUpdateFailureReason : "unknown";
+}
+
+/**
+ * How the old Console ended, as the update's progress record carries it (`oldConsoleOutcome`): its exit record's outcome,
+ * `unrecorded` when it cannot be blamed, or `unknown` for an outcome this reader does not name.
+ */
+export type ConsoleUpdateOldConsoleEnding = ConsoleExitOutcome | "unrecorded" | "unknown";
+
+const OLD_CONSOLE_ENDINGS: readonly ConsoleUpdateOldConsoleEnding[] = ["clean", "deadline", "crash", "failed", "external", "forced-external", "unrecorded"];
+
+/** A recorded ending as a reader sees it; null when nothing was recorded. */
+export function parseConsoleUpdateOldConsoleEnding(value: unknown): ConsoleUpdateOldConsoleEnding | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  return OLD_CONSOLE_ENDINGS.includes(value as ConsoleUpdateOldConsoleEnding) ? value as ConsoleUpdateOldConsoleEnding : "unknown";
+}
+
+/** Facts a failure text may name. Never a path: this text reaches the browser. */
+export interface ConsoleUpdateFailureFacts {
+  /** The pid of the Console the update replaced. */
+  readonly oldConsolePid?: number;
+}
+
+const seconds = (ms: number): string => `${Math.round(ms / 1_000)}s`;
+
+/**
+ * The shared, path-free explanation of an update failure: what happened and what was not done. The Console serves it
+ * with the update's progress; the lock file and the full manual steps are printed by `fleet console start` on the machine
+ * itself, where paths may be shown.
+ */
+export function describeConsoleUpdateFailure(reason: ConsoleUpdateFailureReason | "unknown", facts: ConsoleUpdateFailureFacts = {}): string {
+  const pid = facts.oldConsolePid === undefined ? "" : ` (pid ${facts.oldConsolePid})`;
+  const lockPid = facts.oldConsolePid === undefined ? "the previous Console's pid" : `pid ${facts.oldConsolePid}`;
+  switch (reason) {
+    case "lifecycle-runtime-mismatch":
+      return "The update worker's copy of the Console lifecycle runtime did not match what the Console recorded, so it judged, signalled, and installed nothing. It started the previous version once the old Console had ended, and started nothing if the old Console was still running.";
+    case "old-console-unverified":
+      return `The previous Console${pid} still held its lock ${seconds(EXTERNAL_ESCALATION_MS)} after it was asked to stop, and the update could not prove again that the process was that Console, so it sent no signal and installed nothing. If that process is a stuck Fleet Console, end it, then start Fleet Console again.`;
+    case "old-console-replaced":
+      return `The Console lock names ${lockPid}, which is now another program that reused the pid of a Console that has ended. The lock was left in place and nothing was installed; no Console starts beside it while that pid runs.`;
+    case "old-console-still-running":
+      return `The previous Console${pid} released its lock but was still running ${seconds(EXTERNAL_ESCALATION_MS)} later, still ending its own child processes, so nothing was installed under it. The update then started the previous version again.`;
+    case "old-console-kill-failed":
+      return `The previous Console${pid} was force-quit after ${seconds(EXTERNAL_ESCALATION_MS)} but was still running ${seconds(KILL_CONFIRM_MS)} later, so nothing was installed.`;
+    case "install-failed":
+      return "The new release could not be installed: the package manager could not be used or its install failed. The previous version stays installed.";
+    case "new-console-not-started":
+      return "The new release was installed, but its Console could not take the Console lock because something still holds it.";
+    case "new-console-unhealthy":
+      return `The new release was installed, but its Console did not become healthy within ${seconds(CONSOLE_START_TIMEOUT_MS)}.`;
+    case "worker-lost":
+      return "The update worker ended before it recorded how the update finished.";
+    default:
+      return "The update failed for a reason this Console does not recognize.";
+  }
+}
+
+/**
+ * The shared manual recovery for an update that left no Console answering. It names no path: `fleet console start`
+ * prints the lock file and the steps for whatever holds it (describeReplacedLockAuthor, the quiescence check, and so on).
+ */
+export function describeConsoleUpdateRecovery(): string {
+  return [
+    `On the machine that runs Fleet Console, run:  ${CONSOLE_START_COMMAND}`,
+    "It starts the Console again, or, if something still holds the Console lock, starts none beside it and prints what holds the lock, where the lock file is, and how to free it.",
+  ].join("\n");
+}

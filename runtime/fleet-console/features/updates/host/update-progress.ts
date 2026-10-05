@@ -1,6 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { isPidAlive } from "@fleet-console/lifecycle";
+import {
+  describeConsoleUpdateFailure,
+  parseConsoleUpdateFailureReason,
+  parseConsoleUpdateOldConsoleEnding,
+  type ConsoleUpdateFailureReason,
+  type ConsoleUpdateOldConsoleEnding,
+} from "@fleet-console/protocol/lifecycle";
+
 /**
  * 업데이트는 이 콘솔이 잠시 사라졌다 돌아오는 일이다. 그 사이 서버는 살아 있지 않으므로,
  * 진행 상태를 들고 있을 수 있는 것은 메모리가 아니라 디스크뿐이다 — 그리고 그것을 읽어
@@ -35,6 +44,12 @@ export interface ConsoleUpdateProgressRecord {
    * once the worker saw it gone. Additive: a reader that does not know it ignores it.
    */
   readonly oldConsoleOutcome?: string;
+  /** Why the update failed, by the contract's reasons (ConsoleUpdateFailureReason). Written by workers since it was added. */
+  readonly reason?: string;
+  /** The pid of the Console the update replaced, on a failure record: the shared failure text may name it. */
+  readonly oldConsolePid?: number;
+  /** The worker's pid. A running record whose worker is gone (ESRCH) is read as lost at once. */
+  readonly workerPid?: number;
 }
 
 export type ConsoleUpdateProgressState = "idle" | "running" | "completed" | "failed";
@@ -46,15 +61,22 @@ export interface ConsoleUpdateProgressStatus {
   readonly targetVersion?: string;
   readonly fromVersion?: string;
   readonly endpointChanged?: boolean;
+  /** The worker's own words, for diagnosis. Free text without paths. */
   readonly error?: string;
-  readonly oldConsoleOutcome?: string;
+  readonly oldConsoleOutcome?: ConsoleUpdateOldConsoleEnding;
+  /** Set on every failure: the contract's reason, or `unknown`. */
+  readonly reason?: ConsoleUpdateFailureReason | "unknown";
+  /** The contract's shared, path-free explanation of `reason` (describeConsoleUpdateFailure). */
+  readonly description?: string;
 }
 
 export const IDLE_CONSOLE_UPDATE_PROGRESS: ConsoleUpdateProgressStatus = { state: "idle" };
 
 /**
  * 워커가 죽으면 마지막 국면이 영원히 남는다. 그 기록을 "진행 중"으로 계속 읽으면 화면의
- * 커튼도 영원히 걷히지 않으므로, 갱신이 끊긴 기록은 진행이 아니라 실패로 판정한다.
+ * 커튼도 영원히 걷히지 않으므로, 워커 pid가 사라진(ESRCH) 기록은 그 자리에서 실패로 판정한다.
+ * 이 시한은 워커 pid를 남기지 않은 옛 워커의 기록과, 그 pid를 다른 프로그램이 물려받아 사라졌다고
+ * 말할 수 없는 기록에만 남은 마지막 판정이다.
  */
 export const CONSOLE_UPDATE_PROGRESS_STALE_MS = 10 * 60 * 1000;
 
@@ -75,11 +97,14 @@ export function consoleUpdateProgressPath(dataDir: string): string {
 export interface ReadConsoleUpdateProgressDeps {
   readonly readFile?: (filePath: string) => string;
   readonly now?: () => number;
+  /** Only ESRCH means the worker is gone (the lifecycle contract's evidence direction). */
+  readonly isPidAlive?: (pid: number) => boolean;
 }
 
 export function readConsoleUpdateProgress(dataDir: string, deps: ReadConsoleUpdateProgressDeps = {}): ConsoleUpdateProgressStatus {
   const readFile = deps.readFile ?? ((filePath: string) => fs.readFileSync(filePath, "utf8"));
   const now = deps.now ?? Date.now;
+  const pidAlive = deps.isPidAlive ?? isPidAlive;
   let raw: string;
   try {
     raw = readFile(consoleUpdateProgressPath(dataDir));
@@ -88,30 +113,52 @@ export function readConsoleUpdateProgress(dataDir: string, deps: ReadConsoleUpda
   }
   const record = parseConsoleUpdateProgressRecord(raw);
   if (!record) return IDLE_CONSOLE_UPDATE_PROGRESS;
-  return toConsoleUpdateProgressStatus(record, now());
+  return toConsoleUpdateProgressStatus(record, now(), pidAlive);
 }
 
-function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecord, nowMs: number): ConsoleUpdateProgressStatus {
+function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecord, nowMs: number, pidAlive: (pid: number) => boolean): ConsoleUpdateProgressStatus {
+  const oldConsoleOutcome = parseConsoleUpdateOldConsoleEnding(record.oldConsoleOutcome);
   const shared = {
     phase: record.phase,
     startedAt: record.startedAt,
     targetVersion: record.targetVersion,
     fromVersion: record.fromVersion,
     ...(record.endpointChanged === true ? { endpointChanged: true } : {}),
-    ...(record.oldConsoleOutcome ? { oldConsoleOutcome: record.oldConsoleOutcome } : {}),
+    ...(oldConsoleOutcome ? { oldConsoleOutcome } : {}),
   };
+  const failed = (reason: ConsoleUpdateFailureReason | "unknown", error: string | undefined): ConsoleUpdateProgressStatus => ({
+    state: "failed",
+    ...shared,
+    ...(error ? { error } : {}),
+    reason,
+    description: describeConsoleUpdateFailure(reason, record.oldConsolePid === undefined ? {} : { oldConsolePid: record.oldConsolePid }),
+  });
   if (record.phase === "completed" || record.phase === "failed") {
     const finishedAtMs = Date.parse(record.updatedAt);
     if (Number.isFinite(finishedAtMs) && nowMs - finishedAtMs > CONSOLE_UPDATE_OUTCOME_TTL_MS) return IDLE_CONSOLE_UPDATE_PROGRESS;
     if (record.phase === "completed") return { state: "completed", ...shared };
-    return { state: "failed", ...shared, ...(record.error ? { error: record.error } : {}) };
+    return failed(recordedFailureReason(record), record.error);
   }
   if (!RUNNING_PHASES.has(record.phase)) return IDLE_CONSOLE_UPDATE_PROGRESS;
+  // The worker ended without writing an outcome: the record can never move again, so it is a failure now.
+  if (record.workerPid !== undefined && !pidAlive(record.workerPid)) return failed("worker-lost", UPDATE_WORKER_LOST);
   const updatedAtMs = Date.parse(record.updatedAt);
-  if (Number.isFinite(updatedAtMs) && nowMs - updatedAtMs > CONSOLE_UPDATE_PROGRESS_STALE_MS) {
-    return { state: "failed", ...shared, error: "update_worker_lost" };
-  }
+  if (Number.isFinite(updatedAtMs) && nowMs - updatedAtMs > CONSOLE_UPDATE_PROGRESS_STALE_MS) return failed("worker-lost", UPDATE_WORKER_LOST);
   return { state: "running", ...shared };
+}
+
+const UPDATE_WORKER_LOST = "update_worker_lost";
+
+/**
+ * The contract's reason for a failure record. Workers written before `reason` existed recorded two of these only as
+ * codes in `error`; every other failure of theirs reads as unknown.
+ */
+function recordedFailureReason(record: ConsoleUpdateProgressRecord): ConsoleUpdateFailureReason | "unknown" {
+  const recorded = parseConsoleUpdateFailureReason(record.reason);
+  if (recorded !== null) return recorded;
+  if (record.error === "old_console_unverified") return "old-console-unverified";
+  if (record.error?.startsWith("lifecycle_runtime_mismatch")) return "lifecycle-runtime-mismatch";
+  return "unknown";
 }
 
 function parseConsoleUpdateProgressRecord(raw: string): ConsoleUpdateProgressRecord | null {
@@ -135,7 +182,14 @@ function parseConsoleUpdateProgressRecord(raw: string): ConsoleUpdateProgressRec
     ...(entry.endpointChanged === true ? { endpointChanged: true } : {}),
     ...(typeof entry.error === "string" ? { error: entry.error } : {}),
     ...(typeof entry.oldConsoleOutcome === "string" ? { oldConsoleOutcome: entry.oldConsoleOutcome } : {}),
+    ...(typeof entry.reason === "string" ? { reason: entry.reason } : {}),
+    ...(isPositivePid(entry.oldConsolePid) ? { oldConsolePid: entry.oldConsolePid } : {}),
+    ...(isPositivePid(entry.workerPid) ? { workerPid: entry.workerPid } : {}),
   };
+}
+
+function isPositivePid(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 function isConsoleUpdatePhase(value: unknown): value is ConsoleUpdatePhase {

@@ -40,6 +40,15 @@ function record(overrides: Partial<ConsoleUpdateProgressRecord> = {}): ConsoleUp
 }
 
 describe("console update progress", () => {
+  it("concludes a running update as lost the moment its worker is gone, instead of holding the curtain", () => {
+    // Only ESRCH ends a worker: a running record whose worker pid is gone can never move again.
+    const dir = makeDir();
+    writeConsoleUpdateProgress(dir, record({ workerPid: 4242 }));
+    const read = (alive: boolean) => readConsoleUpdateProgress(dir, { now: () => JUST_AFTER, isPidAlive: () => alive });
+
+    expect(read(true).state).toBe("running");
+    expect(read(false)).toMatchObject({ state: "failed", reason: "worker-lost" });
+  });
 
   it("treats an unreadable or malformed record as no update rather than a failure", () => {
     const dir = makeDir();

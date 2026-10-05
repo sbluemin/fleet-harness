@@ -1,3 +1,4 @@
+import type { ConsoleUpdateFailureReason, ConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
 import type { ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
 import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -129,7 +130,14 @@ export interface ConsoleUpdateProgress {
   readonly targetVersion?: string;
   readonly fromVersion?: string;
   readonly endpointChanged?: boolean;
+  /** The worker's own words, for diagnosis. */
   readonly error?: string;
+  /** How the Console the update replaced ended (the lifecycle contract's ending). */
+  readonly oldConsoleOutcome?: ConsoleUpdateOldConsoleEnding;
+  /** On a failure: the contract's reason, judged by the worker and the Console, never by this screen. */
+  readonly reason?: ConsoleUpdateFailureReason | "unknown";
+  /** On a failure: the contract's shared, path-free explanation of the reason. */
+  readonly description?: string;
 }
 
 export interface ConsoleUpdateApplyAcceptedResponse {
