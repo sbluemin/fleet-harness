@@ -7,6 +7,7 @@ import type { ConsoleRuntimeContext } from "../../../features/execution/host/con
 import { registerWsHandler } from "../../../features/execution/host/context.js";
 
 import { AI_GATEWAY_ROUTE_SEGMENT } from "../../../features/ai-gateway/host/routes.js";
+import { createModelRosterHost, registerModelRosterRoutes } from "../../../features/ai-gateway/host/model-roster.js";
 import { registerAnalysisRoutes } from "../../../features/analyst/host/analysis-routes.js";
 import { registerExperimentRoutes } from "../../../features/execution/host/agent/experiments-routes.js";
 import { registerAgentRoutes } from "../../../features/execution/host/agent/routes.js";
@@ -32,12 +33,16 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
       return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
     },
   });
+  // 모든 모델 선택지가 읽는 로스터 — 같은 Gateway 설정 파일의 투영이다. 저장 직후 열린 화면 전부에 다시 읽으라고 알린다.
+  const models = createModelRosterHost({ readSettings: aiGatewayStore.read });
+  const modelRoster = registerModelRosterRoutes(ctx, models);
   registerTerminalSettingsRoutes(ctx, {
     agentOptionsService: ctx.agentOptions,
     theaterSystemPrompts,
     aiGatewayStore,
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     wireLogRuntime: wireLog,
+    onAiGatewayChanged: modelRoster.notify,
   });
   const runtime = createTerminalRuntime(ctx);
   // Operation Browser 의 스크린샷 첨부 — 서버가 올린 이미지를 CLI 가 읽도록 Windows 는 Alt+V(ESC v), 나머지는 Ctrl+V 를
@@ -65,8 +70,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   registerShellRoutes(ctx, runtime);
   registerTerminalCwdRoute(ctx);
   const analysis = registerAnalysisRoutes(ctx, {
-    // 분석가는 이제 게이트웨이 위에서 돈다. 고를 수 있는 모델은 사용자가 켠 선별이다.
-    readAiGatewaySettings: aiGatewayStore.read,
+    // 분석가는 게이트웨이 위에서 돈다. 고를 수 있는 모델은 모델 로스터(사용자가 켠 선별)다.
+    models,
   });
   registerExperimentRoutes(ctx);
   const agent = await registerAgentRoutes(ctx, runtime, {

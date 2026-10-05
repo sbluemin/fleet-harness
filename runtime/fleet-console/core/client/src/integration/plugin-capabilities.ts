@@ -9,7 +9,7 @@ import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
 import type { ShellOpenAtResult } from "@fleet-console/sdk/navigation";
 
-import { collectExperimentModelOptions } from "./experiment-model-options.js";
+import { loadModelRoster, readModelRoster, refreshModelRoster, rosterModelOptions, subscribeModelRoster } from "../../../../features/ai-gateway/client/model-roster-store.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, subscribe as subscribeGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
 import { applySearchParams, navigateConsoleRoute, subscribeConsoleLocation } from "./console-location.js";
 import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
@@ -111,7 +111,13 @@ export function createHostCapabilities(
       subscribe: (listener) => subscribeGlobalSettings(listener),
       update: (next) => setGlobalSettingsField("experiments", next),
       saving: () => isSavingGlobalSettingsField("experiments"),
-      modelOptions: () => collectExperimentModelOptions(),
+      modelOptions: async () => rosterModelOptions(await loadModelRoster("agent")),
+    },
+    // 모델 로스터 — Settings › AI Gateway에서 켠 모델. 모든 모델 선택지가 이 캐시 하나를 읽는다.
+    models: {
+      read: (target) => readModelRoster(target),
+      subscribe: (listener) => subscribeModelRoster(listener),
+      refresh: () => refreshModelRoster(),
     },
     runtime: {
       set: (operationId, runtimeState) => setOperationRuntime(operationId, runtimeState),

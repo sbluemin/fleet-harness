@@ -1,7 +1,15 @@
-import { AI_GATEWAY_ROUTE_SEGMENT, toClaudeGatewayModelId, type GatewayModel } from "@fleet-console/ai-gateway";
-import { NATIVE_CLAUDE_MODEL_ALIASES } from "@fleet-console/agent-runtime/fleet";
+import { AI_GATEWAY_ROUTE_SEGMENT } from "@fleet-console/ai-gateway";
 import type { AnalystSession as AnalystSessionInstance } from "@fleet-console/analyst";
-import { DEFAULT_EXPERIMENT_AIDE_SELECTION, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import {
+  clampRosterEffort,
+  resolveRosterCoordinate,
+  rosterRowEfforts,
+  rosterRows,
+  type ModelCoordinate,
+  type ModelRoster,
+  type ResolvedModelCoordinate,
+} from "@fleet-console/sdk/models";
+import { experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 export const ANALYSIS_ERROR_CODES = {
   captureMissing: "analysis_capture_missing",
@@ -46,6 +54,7 @@ const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude";
  */
 const ANALYST_DEFAULT_MODEL = "sonnet";
 const ANALYST_DEFAULT_EFFORT = "low";
+const ANALYST_DEFAULT_COORDINATE: ModelCoordinate = { model: ANALYST_DEFAULT_MODEL, effort: ANALYST_DEFAULT_EFFORT };
 /**
  * 분석가가 여는 강도. Quick Launch 트랙의 일상 단과 같고, xhigh·max·ultra는
  * 이 표면에 서지 않는다 — 카탈로그가 더 내놓아도 여기서 자른다.
@@ -62,31 +71,6 @@ function clampAnalystDefaultEffort(levels: readonly string[], fallback?: string 
   if (levels.includes(ANALYST_DEFAULT_EFFORT)) return ANALYST_DEFAULT_EFFORT;
   return levels[0];
 }
-/**
- * 분석가가 고를 수 있는 native Claude 별칭.
- *
- * Console Launch가 실제로 띄우는 로스터와 같은 출처를 쓴다. 예전에는 ACP 패키지의 모델
- * 레지스트리를 읽었는데, 그쪽은 Launch가 제공하지 않는 별칭까지 담고 있어 분석가만 다른 목록을
- * 보여 주고 있었다.
- */
-const NATIVE_CLAUDE_LABELS: Readonly<Record<string, string>> = {
-  "fable[1m]": "Claude Fable",
-  sonnet: "Claude Sonnet",
-  "opus[1m]": "Claude Opus [1M]",
-};
-
-export function nativeClaudeAnalystModels(): readonly {
-  readonly modelId: string;
-  readonly name: string;
-  readonly effort: { readonly supported: true; readonly levels: readonly string[] };
-}[] {
-  return NATIVE_CLAUDE_MODEL_ALIASES.map((modelId) => ({
-    modelId,
-    name: NATIVE_CLAUDE_LABELS[modelId] ?? modelId,
-    effort: { supported: true, levels: [...ANALYST_EFFORT_LEVELS] },
-  }));
-}
-
 export type AnalysisSession = AnalystSessionInstance;
 /** 사람이 아닌 질문자 — Console Use 로 물은 Operation. 제목만 싣는다. */
 export type AnalysisOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
@@ -114,89 +98,44 @@ export function resolveAnalysisGatewayBaseUrl(origin: string): string {
 }
 
 /**
- * 분석가가 고를 수 있는 모델.
- *
- * 두 갈래를 한 목록으로 낸다. native Claude 별칭은 게이트웨이 카탈로그에 없지만 라우터가 호출자
- * 자격증명으로 Anthropic에 원문 중계하므로 그대로 돌고, 오늘 분석가가 제공하던 선택지가 바로
- * 그것이다. 거기에 사용자가 Console에서 켠 게이트웨이 모델을 덧붙인다.
+ * 분석가가 고를 수 있는 모델 — 모델 로스터(`agent` 대상)를 그대로 편다. Settings › AI Gateway에서 켠 모델이
+ * 곧 이 목록이고, 행 id는 정준 id다. 로스터가 비어도 시작은 막지 않는다 — 실행은 최후 폴백(sonnet)으로 서고
+ * 선택의 `fallback`이 그 사실을 드러낸다.
  */
 export function buildAnalysisCatalog(
-  nativeModels: readonly {
-    readonly modelId: string;
-    readonly name: string;
-    readonly effort: { readonly supported: boolean; readonly levels?: readonly string[]; readonly default?: string | null };
-  }[],
-  gatewayModels: readonly GatewayModel[],
+  roster: ModelRoster,
   available: boolean,
+  settings: ConsoleExperimentSettings,
+  resolve: (stored: ModelCoordinate) => ResolvedModelCoordinate = (stored) => resolveRosterCoordinate(roster, stored, ANALYST_DEFAULT_COORDINATE),
 ): AnalysisCatalog {
-  const native = nativeModels.map((model) => {
-    const effortLevels = model.effort.supported ? clampAnalystEffortLevels(model.effort.levels ?? []) : [];
-    const defaultEffort = model.modelId === ANALYST_DEFAULT_MODEL
-      ? clampAnalystDefaultEffort(effortLevels, ANALYST_DEFAULT_EFFORT)
-      : model.effort.supported
-        ? clampAnalystDefaultEffort(effortLevels, model.effort.default)
-        : undefined;
+  const models = rosterRows(roster).map((row) => {
+    const effortLevels = clampAnalystEffortLevels(rosterRowEfforts(row));
+    const defaultEffort = clampAnalystDefaultEffort(effortLevels, ANALYST_DEFAULT_EFFORT);
     return {
-      id: model.modelId,
-      label: model.name,
+      id: row.launch.model ?? row.id,
+      label: row.label,
       effortLevels,
       ...(defaultEffort ? { defaultEffort } : {}),
     };
   });
-  const gateway = gatewayModels.map((model) => {
-    const effortLevels = model.effort.supported ? clampAnalystEffortLevels(model.effort.levels) : [];
-    return {
-      id: toClaudeGatewayModelId(model),
-      label: model.displayName,
-      // 게이트웨이 모델 스키마에는 기본 강도가 없다. 없는 값을 지어내면 사용자가 고르지 않은
-      // 강도로 돈다. 클램프 후 단이 비면 강도 없는 모델과 같다.
-      effortLevels,
-    };
-  });
-  const models = [...native, ...gateway];
+  const resolved = resolve(experimentAideSelection(settings, "analyst"));
+  const levels = resolved.row ? clampAnalystEffortLevels(rosterRowEfforts(resolved.row)) : [...ANALYST_EFFORT_LEVELS];
+  const effort = levels.length === 0 ? "" : clampRosterEffort(levels, resolved.effort ?? settings.analystEffort) ?? "";
   return {
     clis: [{
       cliId: ANALYST_GATEWAY_CLI_ID,
       label: "AI Gateway",
-      // 고를 모델이 없거나 Console이 아직 리슨 전이면 시작할 수 없다.
-      available: available && models.length > 0,
-      defaultModel: models.some((model) => model.id === ANALYST_DEFAULT_MODEL)
-        ? ANALYST_DEFAULT_MODEL
-        : models[0]?.id ?? "",
+      // Console이 아직 리슨 전이면 시작할 수 없다.
+      available,
+      defaultModel: resolved.model,
       models,
     }],
+    selection: { cliId: ANALYST_GATEWAY_CLI_ID, model: resolved.model, effort, fallback: resolved.fallback },
   };
 }
 
 export function analysisError(code: AnalysisErrorCode, message: string): AnalysisError {
   return { error: { code, message } };
-}
-
-/**
- * Settings의 Session Analyst 좌표를 카탈로그와 대조해 실행 좌표를 정한다. 강도는 모델의 사다리 안에서만
- * 유효하고, 사다리가 비면(강도 없는 Gateway 모델) 빈 값으로 돈다.
- */
-export function resolveAnalystSelection(catalog: AnalysisCatalog, settings: ConsoleExperimentSettings): AnalysisSelection | undefined {
-  const cli = catalog.clis.find((candidate) => candidate.cliId === ANALYST_GATEWAY_CLI_ID) ?? catalog.clis[0];
-  if (!cli) return undefined;
-  const wanted = experimentAideSelection(settings, "analyst");
-  const configured = cli.models.find((candidate) => candidate.id === wanted.model);
-  const model = configured
-    ?? cli.models.find((candidate) => candidate.id === DEFAULT_EXPERIMENT_AIDE_SELECTION.model)
-    ?? cli.models.find((candidate) => candidate.id === cli.defaultModel)
-    ?? cli.models[0];
-  if (!model) return undefined;
-  const effort = model.effortLevels.length === 0
-    ? ""
-    : model.effortLevels.includes(wanted.effort)
-      ? wanted.effort
-      : clampAnalystDefaultEffort(model.effortLevels, model.defaultEffort) ?? "";
-  return { cliId: cli.cliId, model: model.id, effort, fallback: configured === undefined };
-}
-
-export function withAnalystSelection(catalog: AnalysisCatalog, settings: ConsoleExperimentSettings): AnalysisCatalog {
-  const selection = resolveAnalystSelection(catalog, settings);
-  return selection ? { ...catalog, selection } : catalog;
 }
 
 /** 시작 요청 본문 — 좌표는 서버가 Settings에서 정하므로 출력 언어만 받는다. */

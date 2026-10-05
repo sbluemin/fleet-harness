@@ -6,14 +6,21 @@ vi.mock("node:fs/promises", () => ({ mkdir: vi.fn() }));
 
 import { chooseRoutingModel } from "./routing-model.js";
 
-it("does not launch a catalog routing model after it is removed from the roster", async () => {
-  sdk.mockRejectedValue(new Error("unexpected SDK launch"));
-  await expect(chooseRoutingModel({
+it("keeps a removed routing model stored but runs the roster fallback instead of launching it", async () => {
+  const turns: Array<{ model: string; effort?: string }> = [];
+  sdk.mockResolvedValue({
+    startTurn: async (options: { model: string; effort?: string }) => {
+      turns.push({ model: options.model, ...(options.effort ? { effort: options.effort } : {}) });
+      return (async function* () { yield { type: "result", subtype: "success", structured_output: {} }; })();
+    },
+    dispose: async () => undefined,
+  });
+  await chooseRoutingModel({
     baseUrl: "http://127.0.0.1:1",
     directory: "/unused-routing-test",
-    settings: { version: 1, delegationRoutingModel: "claude--fable", models: [] },
-    instructions: [], state: {}, criteria: {}, difficulty: { instructions: [], criteria: {} },
+    settings: { version: 1, delegationRoutingModel: "claude--fable", models: [{ id: "claude--sonnet" }] },
+    instructions: [], state: {}, criteria: { seat: "x" }, difficulty: { instructions: [], criteria: {} },
     spawnProcess: () => { throw new Error("unexpected spawn"); },
-  })).rejects.toThrow("Routing model is not exposed");
-  expect(sdk).not.toHaveBeenCalled();
+  }).catch(() => undefined);
+  expect(turns).toEqual([{ model: "sonnet", effort: "low" }]);
 });

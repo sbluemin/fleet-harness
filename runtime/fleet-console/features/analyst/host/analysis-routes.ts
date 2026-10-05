@@ -1,5 +1,5 @@
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
-import type { FleetPluginHostCapabilities, ApiCatalogEntry } from "@fleet-console/sdk/plugin";
+import type { FleetPluginHostCapabilities, FleetPluginModelsHost, ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
 interface AnalystHostContext {
@@ -20,14 +20,13 @@ interface AnalystHostContext {
 }
 import type http from "node:http";
 
-import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import { AnalystSession, type AnalystEvent } from "@fleet-console/analyst";
 import type { OperationNode } from "@fleet-console/sdk/plugin";
 import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 
 import { AnalysisRegistry } from "./analysis-registry.js";
 import { DEFAULT_EXPERIMENT_SETTINGS, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
-import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, nativeClaudeAnalystModels, isAnalysisStartBody, isMessageBody, resolveAnalysisGatewayBaseUrl, withAnalystSelection, type AnalysisCatalog, type AnalysisEvent, type AnalysisOrigin } from "./analysis-types.js";
+import { ANALYSIS_ERROR_CODES, analysisError, buildAnalysisCatalog, isAnalysisStartBody, isMessageBody, resolveAnalysisGatewayBaseUrl, type AnalysisCatalog, type AnalysisEvent, type AnalysisOrigin } from "./analysis-types.js";
 import { readAnalysisProviderSession } from "../../execution/host/agent/provider-session.js";
 import { resolveTranscriptPath } from "../../execution/host/agent/transcript-path.js";
 
@@ -84,13 +83,28 @@ type AnalysisSessionOptions = ConstructorParameters<typeof AnalystSession>[0];
 
 type AnalysisRouteDeps = {
   readonly createSession?: (options: AnalysisSessionOptions) => AnalystSession;
-  /** 사용자가 Console에서 켠 게이트웨이 모델 선별. 미주입이면 분석가를 시작할 수 없다. */
-  readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
-  /** 분석가가 고를 수 있는 native Claude 별칭. */
-  readonly nativeModels?: typeof nativeClaudeAnalystModels;
+  /**
+   * 모델 로스터와 좌표 해석. 미주입이면 플러그인 호스트의 것을 쓰고, 그것도 없으면 빈 로스터(sonnet 폴백)다.
+   */
+  readonly models?: Pick<FleetPluginModelsHost, "roster" | "resolve">;
   /** Settings › 실험 기능 읽기 — 분석가의 모델·강도 좌표. 미주입이면 호스트의 실험 설정을 읽는다. */
   readonly readExperiments?: () => ConsoleExperimentSettings;
 };
+
+/** 분석가 기본 좌표 — 저장 모델이 로스터 밖일 때 서는 자리. */
+const ANALYST_FALLBACK_COORDINATE = { model: "sonnet", effort: "low" } as const;
+
+/**
+ * 저장 좌표를 그대로 쓰지 못하고 폴백으로 연 세션은 서버 로그에 남긴다 — 패널은 카탈로그 선택의 `fallback`으로
+ * 같은 사실을 보이고, 로그는 화면을 보지 않은 사람에게 남는 실행 기록이다.
+ */
+function recordModelFallback(selection: { readonly model: string; readonly effort: string; readonly fallback: boolean }): void {
+  if (!selection.fallback) return;
+  process.stdout.write(`[fleet-analyst] ${JSON.stringify({ ts: new Date().toISOString(), event: "model_fallback", model: selection.model, effort: selection.effort || null })}\n`);
+}
+
+/** 카탈로그 DTO와, 세션에만 넘기는 wire id. wire id는 브라우저 DTO에 싣지 않는다. */
+type AnalysisRun = { readonly catalog: AnalysisCatalog; readonly wireModel: string };
 
 type InFlightStartDeletionMarker = {
   readonly operationId: string;
@@ -114,24 +128,34 @@ const CONSOLE_ARTIFACT_HTML_CAP = 200_000;
 export function registerAnalysisRoutes(ctx: AnalystHostContext, deps: AnalysisRouteDeps = {}): AnalysisConsoleService {
   const registry = new AnalysisRegistry();
   const createSession = deps.createSession ?? ((options) => new AnalystSession(options));
-  const readAiGatewaySettings = deps.readAiGatewaySettings;
-  // 분석가가 쓸 수 있는 모델은 사용자가 켠 선별이고, 시작 가능 여부는 Console이 리슨 중인지에
+  // 분석가가 쓸 수 있는 모델은 모델 로스터이고, 시작 가능 여부는 Console이 리슨 중인지에
   // 달렸다. 등록 시점에 고정하면 이후 설정 변경이 카탈로그에 반영되지 않는다.
-  const nativeModels = deps.nativeModels ?? nativeClaudeAnalystModels;
+  const models = deps.models;
   const readExperiments = deps.readExperiments ?? (() => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS);
   // 좌표(모델·강도)는 Settings의 것이다 — 카탈로그를 읽을 때마다 함께 대조하므로 바꾼 직후의 조회부터 새 값을 본다.
-  const catalog = async (): Promise<AnalysisCatalog> => withAnalystSelection(buildAnalysisCatalog(
-    nativeModels(),
-    readAiGatewaySettings ? resolveAiGatewaySelection(readAiGatewaySettings()).models : [],
-    ctx.host.server.origin() !== null,
-  ), readExperiments());
+  // 세션에는 정준 id가 아니라 Agent SDK wire id를 넘긴다. 폴백했으면 실행 기록(서버 로그)에 남긴다.
+  const resolveCatalog = (): AnalysisRun => {
+    let wireModel: string | undefined;
+    const catalog = buildAnalysisCatalog(
+      models?.roster("agent") ?? [],
+      ctx.host.server.origin() !== null,
+      readExperiments(),
+      models ? (stored) => {
+        const resolved = models.resolve(stored, "agent", ANALYST_FALLBACK_COORDINATE);
+        wireModel = resolved.wireModel;
+        return resolved;
+      } : undefined,
+    );
+    return { catalog, wireModel: wireModel ?? catalog.selection?.model ?? "" };
+  };
+  const catalog = async (): Promise<AnalysisCatalog> => resolveCatalog().catalog;
   const inFlightStartDeletionMarkers = new Set<InFlightStartDeletionMarker>();
 
   const ensureStarted = async (operation: OperationNode): Promise<string | null> => {
     if (registry.activeOperationIds().includes(operation.id)) return null;
-    const currentCatalog = await catalog();
-    const selection = currentCatalog.selection;
-    const cli = currentCatalog.clis.find((candidate) => candidate.cliId === selection?.cliId);
+    const run = resolveCatalog();
+    const selection = run.catalog.selection;
+    const cli = run.catalog.clis.find((candidate) => candidate.cliId === selection?.cliId);
     if (!selection || !cli?.available) return "analyst_unavailable";
     const transcript = await resolveOperationTranscript(operation);
     if (!transcript.captureFound) return "capture_missing";
@@ -141,10 +165,11 @@ export function registerAnalysisRoutes(ctx: AnalystHostContext, deps: AnalysisRo
     if (!cwd || !origin || !getAgentOperation(ctx, operation.id)) return "analyst_unavailable";
     try {
       const result = await registry.start(operation.id, (onEvent) => createSession({
-        baseUrl: resolveAnalysisGatewayBaseUrl(origin), model: selection.model, effort: selection.effort || undefined, cwd,
+        baseUrl: resolveAnalysisGatewayBaseUrl(origin), model: run.wireModel, effort: selection.effort || undefined, cwd,
         capturePath: transcript.transcriptPath!, onEvent: (event: AnalystEvent) => onEvent(toBrowserEvent(event)),
         spawnProcess: ctx.spawnAgentProcess,
       }), selection.model);
+      if (result !== "stopped") recordModelFallback(selection);
       return result === "stopped" ? "analyst_unavailable" : null;
     } catch { return "analyst_unavailable"; }
   };
@@ -235,7 +260,7 @@ export function registerAnalysisRoutes(ctx: AnalystHostContext, deps: AnalysisRo
       const deletionMarker: InFlightStartDeletionMarker = { operationId, deleted: false };
       inFlightStartDeletionMarkers.add(deletionMarker);
       try {
-        return await handleStart(ctx, req, res, operation, registry, catalog, createSession, deletionMarker);
+        return await handleStart(ctx, req, res, operation, registry, resolveCatalog, createSession, deletionMarker);
       } finally {
         inFlightStartDeletionMarkers.delete(deletionMarker);
       }
@@ -725,16 +750,16 @@ async function handleStart(
   res: http.ServerResponse,
   operation: OperationNode,
   registry: AnalysisRegistry,
-  catalog: () => Promise<AnalysisCatalog>,
+  resolveCatalog: () => AnalysisRun,
   createSession: (options: AnalysisSessionOptions) => AnalystSession,
   deletionMarker: InFlightStartDeletionMarker,
 ): Promise<boolean> {
   if (req.method !== "POST") return methodNotAllowed(ctx, res);
   if (!isJsonRequest(req)) return unsupportedMediaType(ctx, res);
   const body = await ctx.host.http.readJsonBody(req);
-  const currentCatalog = await catalog();
-  const selection = currentCatalog.selection;
-  const cli = currentCatalog.clis.find((candidate) => candidate.cliId === selection?.cliId);
+  const run = resolveCatalog();
+  const selection = run.catalog.selection;
+  const cli = run.catalog.clis.find((candidate) => candidate.cliId === selection?.cliId);
   if (!isAnalysisStartBody(body) || !selection || !cli?.available) {
     writeError(ctx, res, 400, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis selection is unavailable.");
     return true;
@@ -764,7 +789,7 @@ async function handleStart(
     if (!origin) throw new Error("analysis_gateway_unavailable");
     const result = await registry.start(operation.id, (onEvent) => createSession({
       baseUrl: resolveAnalysisGatewayBaseUrl(origin),
-      model: selection.model,
+      model: run.wireModel,
       effort: selection.effort || undefined,
       language: body.language,
       cwd,
@@ -774,7 +799,10 @@ async function handleStart(
     }), selection.model);
     if (result === "exists") writeError(ctx, res, 409, ANALYSIS_ERROR_CODES.sessionExists, "Analysis session already exists.");
     else if (result === "stopped") writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was stopped before it started.");
-    else ctx.host.http.writeJson(res, 200, { started: true });
+    else {
+      recordModelFallback(selection);
+      ctx.host.http.writeJson(res, 200, { started: true });
+    }
   } catch {
     if (deletionMarker.deleted) writeError(ctx, res, 404, ANALYSIS_ERROR_CODES.sessionNotFound, "Analysis session was stopped before it started.");
     else writeError(ctx, res, 503, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis session could not start.");

@@ -11,8 +11,11 @@ import { MobileIcon, type MobileIconName } from "../../../core/client/src/chrome
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
 import type { CoreMessageKey } from "../../../core/client/src/i18n/messages/index.js";
-import { collectExperimentModelOptions } from "../../../core/client/src/integration/experiment-model-options.js";
+import { loadModelRoster, rosterModelOptions } from "../../ai-gateway/client/model-roster-store.js";
 import type { GlobalSettingsState } from "../../../core/client/src/integration/types.js";
+
+/** 이행 중의 다리 — Settings 행은 M5에서 공유 좌표 선택기로 바뀐다. 선택지 원천은 이미 모델 로스터 하나다. */
+const loadAgentModelOptions = async () => rosterModelOptions(await loadModelRoster("agent"));
 
 interface AideRow {
   readonly id: ExperimentAideId;
@@ -36,7 +39,7 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
 function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
   const t = useT();
   const experiments = state.experiments;
-  const options = useModelPickerOptions(collectExperimentModelOptions);
+  const options = useModelPickerOptions(loadAgentModelOptions);
   const save = (next: ConsoleExperimentSettings) => void setGlobalSettingsField("experiments", next);
 
   return (
@@ -119,7 +122,7 @@ const AIDE_ICONS: Partial<Record<ExperimentAideId, MobileIconName>> = { cowork: 
 function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
   const t = useT();
   const experiments = state.experiments;
-  const options = useModelPickerOptions(collectExperimentModelOptions);
+  const options = useModelPickerOptions(loadAgentModelOptions);
   const computerUse = useComputerUseStatus(experiments.computerUse, experiments.computerUseBackend);
   const backend = experiments.computerUseBackend;
   const computerUseReady = computerUse.status?.backend === backend && computerUse.status.supported && !computerUse.unavailable && computerUse.status.installation === "available";

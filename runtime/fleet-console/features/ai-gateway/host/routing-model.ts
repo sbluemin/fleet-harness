@@ -1,6 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import { createClaudeGatewaySdk, type ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
-import { claudeGatewayModelPolicy, buildGatewayModelConstraints, difficultyQuestionId, findGatewayModel, resolveAiGatewaySelection, toClaudeGatewayModelId, type AiGatewayStoredSettings, type RoutingChoice, type RoutingDifficultyQuestion } from "@fleet-console/ai-gateway";
+import { claudeGatewayModelPolicy, difficultyQuestionId, resolveAiGatewaySelection, type AiGatewayStoredSettings, type RoutingChoice, type RoutingDifficultyQuestion } from "@fleet-console/ai-gateway";
+import { ROSTER_FALLBACK_MODEL, isAgentEffort, resolveRosterCoordinate, rosterRowEfforts } from "@fleet-console/sdk/models";
+import { buildModelRoster, rosterWireModelId } from "./model-roster.js";
 
 interface RoutingModelTurn {
   readonly baseUrl: string;
@@ -114,18 +116,18 @@ export async function chooseRoutingModels(input: {
 }
 
 async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
-  const selected = input.settings.delegationRoutingModel ?? "sonnet";
-  const model = findGatewayModel(selected);
-  const isClaude = model?.provider === "claude" || ["sonnet", "opus"].includes(selected);
-  const selection = resolveAiGatewaySelection(input.settings);
-  if (!["sonnet", "opus"].includes(selected) && (!model || !selection.models.some(entry => entry.id === model.id))) {
-    throw new Error("Routing model is not exposed");
+  // 라우팅 모델도 모델 로스터 하나에서 고른다. 저장값이 로스터 밖(끈 모델)이면 저장값은 두고 sonnet(로스터에
+  // 없으면 첫 행, 로스터가 비면 최후 폴백 sonnet)으로 돈다 — 다시 켜면 사용자의 선택이 그대로 돌아온다.
+  const roster = buildModelRoster(resolveAiGatewaySelection(input.settings), "agent");
+  const resolved = resolveRosterCoordinate(roster, { model: input.settings.delegationRoutingModel ?? ROSTER_FALLBACK_MODEL }, { model: ROSTER_FALLBACK_MODEL });
+  if (resolved.fallback) {
+    process.stderr.write(`[fleet-routing-model] ${JSON.stringify({ ts: new Date().toISOString(), event: "model_fallback", stored: input.settings.delegationRoutingModel ?? null, model: resolved.model, reason: resolved.reason ?? null })}\n`);
   }
-  const id = isClaude ? (model ? toClaudeGatewayModelId(model) : selected) : (model ? `claude-gateway--${model.id}` : selected);
-  const constraints = model ? buildGatewayModelConstraints(model) : undefined;
-  const ladder = model && constraints ? selection.effortExposure[model.id] ?? constraints.effortLadder : [];
-  const effort = constraints ? (constraints.effortSupported
-    ? (ladder.includes("low") ? "low" : ladder[0]) : undefined) : "low";
+  const id = rosterWireModelId(resolved.model);
+  // 판정기는 빨라야 한다 — 사다리에 low가 있으면 low, 없으면 첫 단. 강도를 받지 않는 모델은 생략한다.
+  const ladder = rosterRowEfforts(resolved.row);
+  const rung = resolved.row ? (ladder.includes("low") ? "low" : ladder[0]) : "low";
+  const effort = isAgentEffort(rung) ? rung : undefined;
   await mkdir(input.directory, { recursive: true });
   const controller = new AbortController();
   const abort = () => controller.abort(input.signal?.reason);
