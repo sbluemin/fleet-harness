@@ -130,6 +130,8 @@ export class SidecarSupervisor {
   /** The lock the current child published and the `lifecycleWire` it answered with, once seen. */
   private childLock: LockPayload | null = null;
   private childLifecycleWire: unknown = undefined;
+  /** The own child this Desktop is stopping: its ending is reported once, by the stop that ends it, not by its exit handler. */
+  private stoppingChild: ChildProcess | null = null;
   private serviceVersion: string;
   private readonly clock: SidecarClock;
   constructor(private readonly options: SidecarSupervisorOptions) {
@@ -260,6 +262,11 @@ export class SidecarSupervisor {
       const failureCode = `${sidecarReady ? "sidecar_exited" : "sidecar_exited_before_ready"}: ${summary}`;
       const failure = sidecarReady ? new Error(failureCode) : new SidecarStartError(failureCode, readStderrTail, ending);
       if (!sidecarReady) startupFailure ??= failure;
+      // A child this Desktop is stopping is reported by that stop, which reads its record after any forced-external write.
+      if (this.stoppingChild === child) {
+        this.options.log.info(`${failure.message} (stop requested)`);
+        return;
+      }
       // An unknown or missing record is never reported as a clean stop.
       this.options.log.error(`${failure.message} outcome=${ending?.outcome ?? "unrecorded"}`);
     });
@@ -304,6 +311,7 @@ export class SidecarSupervisor {
         const lock = read.kind === "trusted" && read.stored.lock.pid === pid ? read.stored.lock : this.childLock;
         await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: this.childLifecycleWire }, null);
       } else {
+        this.stoppingChild = child;
         signalPid(pid, "SIGTERM");
         if (!await this.waitUntil(() => !this.isOwnLiveChild(pid), PRELOCK_CHILD_GRACE_MS)) {
           signalPid(pid, "SIGKILL");
@@ -312,6 +320,8 @@ export class SidecarSupervisor {
       }
     } catch (cleanupError) {
       this.options.log.error(`sidecar_cleanup_failed: pid ${pid}: ${this.describeError(cleanupError)}`);
+    } finally {
+      if (this.stoppingChild === child) this.stoppingChild = null;
     }
     return failure;
   }
@@ -352,6 +362,16 @@ export class SidecarSupervisor {
    * still held and identity is proven again. A lock that cannot be read counts as held.
    */
   private async stopRequested(target: StopTarget, provenStart: number | null): Promise<ConsoleStopLadderResult> {
+    const { pid, lock } = target;
+    const own = this.child !== null && this.child.pid === pid ? this.child : null;
+    if (own) this.stoppingChild = own;
+    try {
+      return await this.runRequestedStop(target, provenStart);
+    } finally {
+      if (own && this.stoppingChild === own) this.stoppingChild = null;
+    }
+  }
+  private async runRequestedStop(target: StopTarget, provenStart: number | null): Promise<ConsoleStopLadderResult> {
     const { pid, lock } = target;
     const instance = { pid, ...(lock ? { token: lock.token } : {}) };
     const ended = await runStopLadder({
@@ -427,6 +447,7 @@ export class SidecarSupervisor {
   /** The child's exit status and how it ended (its exit record, or the contract's reading of none), once it is gone. */
   private readEnding(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): SidecarEnding | null {
     if (child.pid === undefined) return null;
+    if (this.stoppingChild === child) return { pid: child.pid, code, signal, outcome: null };
     const lock = this.child === child && this.childLock?.pid === child.pid ? this.childLock : null;
     const outcome = lock === null
       ? null
