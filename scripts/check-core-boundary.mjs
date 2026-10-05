@@ -52,7 +52,38 @@ for (const file of files(foundation)) {
 for (const file of files(path.join(repoRoot, "packages"))) {
   if (/\.(?:[cm]?ts|tsx|json)$/.test(file)) report(file, "retired root packages tree still contains source or a manifest");
 }
+// Deprecated SDK model-picker surfaces stay exported for one release for external plugins only. Console code and
+// built-in plugins must already read the model roster (`ctx.models` / ModelCoordinatePicker); the SDK itself keeps the
+// deprecated implementations, and hosts may still provide the deprecated members as object-literal definitions.
+const DEPRECATED_SDK_IMPORTS = new Map([
+  ["@fleet-console/sdk/settings", ["CLAUDE_EXPERIMENT_MODEL_OPTIONS"]],
+  ["@fleet-console/sdk/settings/browser", ["CLAUDE_EXPERIMENT_MODEL_OPTIONS", "ModelPicker", "ModelPickerProps", "ModelPickerEffort", "useModelPickerOptions"]],
+]);
+const DEPRECATED_MEMBER_READS = new Set(["modelOptions", "experimentModelOptions", "ModelChoice"]);
+const builtInRoots = [consoleRoot, path.join(repoRoot, "runtime/fleet-plugins")];
+for (const file of builtInRoots.flatMap((root) => files(root))) {
+  if (!/\.(?:[cm]?ts|tsx)$/.test(file) || file.endsWith(".d.ts")) continue;
+  if (file.startsWith(path.join(consoleRoot, "sdk") + path.sep)) continue;
+  const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+  function visitDeprecated(node) {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const banned = DEPRECATED_SDK_IMPORTS.get(node.moduleSpecifier.text);
+      const named = ts.isImportDeclaration(node)
+        ? node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings) ? node.importClause.namedBindings.elements : []
+        : node.exportClause && ts.isNamedExports(node.exportClause) ? node.exportClause.elements : [];
+      for (const element of banned ? named : []) {
+        const imported = (element.propertyName ?? element.name).text;
+        if (banned.includes(imported)) report(file, `imports deprecated ${imported} from ${node.moduleSpecifier.text}; read the model roster instead`);
+      }
+    }
+    if (ts.isPropertyAccessExpression(node) && DEPRECATED_MEMBER_READS.has(node.name.text)) {
+      report(file, `reads deprecated .${node.name.text}; read the model roster (ctx.models / CoordinateChoice) instead`);
+    }
+    ts.forEachChild(node, visitDeprecated);
+  }
+  visitDeprecated(source);
+}
 if (violations.length) {
-  console.error("Console foundation boundary violations:\n" + violations.map((v) => `- ${v}`).join("\n"));
+  console.error("Console boundary violations:\n" + violations.map((v) => `- ${v}`).join("\n"));
   process.exitCode = 1;
-} else console.log("Console foundation boundary passed");
+} else console.log("Console foundation boundary and deprecated SDK model-picker guard passed");
