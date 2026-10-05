@@ -624,7 +624,13 @@ afterEach(async () => {
   // containment_degraded. Create and assign failures are the same record kind, locked on the port itself.
   it.skipIf(process.platform !== "win32")("boots and records containment_degraded when koffi will not load", async () => {
     const run = createRun("win-degraded");
-    const consoleProcess = spawnConsole(run, { preload: writePreload(run, "koffi-fail.mjs", koffiFailPreload()) });
+    // The same injection the host already trusts. The directory is outside the checkout, so module lookup cannot
+    // walk back into this repo's node_modules and find koffi. No test-only product hook.
+    const fakeRoot = path.join(run.tmp, "empty-console-package");
+    fs.mkdirSync(fakeRoot);
+    fs.writeFileSync(path.join(fakeRoot, "package.json"), JSON.stringify({ name: "@dotobokuri/fleet-console", version: "0.0.0" }));
+    run.env.FLEET_CONSOLE_PACKAGE_ROOT = fakeRoot;
+    const consoleProcess = spawnConsole(run);
     await waitForReady(run, consoleProcess.pid!);
 
     expect(isAlive(consoleProcess.pid!), "a koffi load failure must not kill the Console").toBe(true);
@@ -664,20 +670,6 @@ function handoffPreload(handoffFile: string): readonly string[] {
     "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1 << 30);'], { detached: true, stdio: 'ignore', windowsHide: true });",
     "child.unref();",
     "fs.writeFileSync(handoffFile, JSON.stringify({ pid: child.pid }));",
-  ];
-}
-
-/** The next createRequire('koffi') throws, which is the representative load failure. */
-function koffiFailPreload(): readonly string[] {
-  return [
-    "import module from 'node:module';",
-    "const original = module.createRequire;",
-    "module.createRequire = function (filename) {",
-    "  const req = original.call(this, filename);",
-    "  const wrapped = (id) => { if (id === 'koffi') throw new Error('lifecycle suite injected koffi load failure'); return req(id); };",
-    "  wrapped.resolve = (id) => { if (id === 'koffi') throw new Error('lifecycle suite injected koffi load failure'); return req.resolve(id); };",
-    "  return wrapped;",
-    "};",
   ];
 }
 
@@ -820,8 +812,9 @@ function createRun(name: string): LifecycleRun {
   if (!relative.startsWith("..") && !path.isAbsolute(relative)) throw new Error("TMPDIR must stay outside the checkout");
   for (const target of [root, home, agentDir, theater, pathbin]) fs.mkdirSync(target, { recursive: true, mode: 0o700 });
   if (process.platform === "win32") {
-    // Windows will not run a shebang. The shim is what CLAUDE_BIN already names; it must not contain cmd metacharacters.
-    fs.writeFileSync(path.join(pathbin, "claude-fake.cmd"), `@echo off\r\n"${process.execPath}" "${FAKE_AGENT}" %*\r\n`);
+    // Chat refuses a .cmd CLAUDE_BIN (`chat_cli_wrapper_unsupported`): resolveBinary wraps .cmd/.bat as
+    // cmd.exe /c call, and the SDK spawns `bin` with no shell. A real claude.exe is what that path accepts.
+    compileWindowsFakeAgent(path.join(pathbin, "claude-fake.exe"));
   } else {
     // The agent stand-in is a `#!/usr/bin/env node` script: only this Node goes on PATH, never a directory of real CLIs.
     fs.symlinkSync(process.execPath, path.join(pathbin, "node"));
@@ -829,48 +822,125 @@ function createRun(name: string): LifecycleRun {
   return run;
 }
 
-/** Runs only when the plugin child sees LEDGER_WINDOWS_GRANDCHILDREN. POSIX generations of this stand-in never enter it. */
-function windowsGrandchildLines(): readonly string[] {
+/**
+ * An .exe the SDK can CreateProcess. It waits briefly so the Console can assign the leader to its job, then runs the
+ * fake agent under node with the SDK's own arguments and proxies the pipes. .NET Framework csc ships on windows-2022.
+ */
+function compileWindowsFakeAgent(exePath: string): void {
+  const source = path.join(path.dirname(exePath), "claude-fake.cs");
+  const winDir = process.env.WINDIR ?? process.env.SystemRoot ?? "C:\\Windows";
+  const compilers = [
+    path.join(winDir, "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe"),
+    path.join(winDir, "Microsoft.NET", "Framework", "v4.0.30319", "csc.exe"),
+  ];
+  const csc = compilers.find((candidate) => fs.existsSync(candidate));
+  if (!csc) throw new Error(`csc.exe was not found (${compilers.join(", ")})`);
+  fs.writeFileSync(source, [
+    "using System;",
+    "using System.Diagnostics;",
+    "using System.IO;",
+    "using System.Threading;",
+    "class Program {",
+    "  static int Main(string[] args) {",
+    "    string node = Environment.GetEnvironmentVariable(\"FAKE_AGENT_NODE\");",
+    "    string script = Environment.GetEnvironmentVariable(\"FAKE_AGENT_SCRIPT\");",
+    "    if (string.IsNullOrEmpty(node) || string.IsNullOrEmpty(script)) return 2;",
+    "    Thread.Sleep(300);",
+    "    var psi = new ProcessStartInfo();",
+    "    psi.FileName = node;",
+    "    psi.UseShellExecute = false;",
+    "    psi.CreateNoWindow = true;",
+    "    psi.RedirectStandardInput = true;",
+    "    psi.RedirectStandardOutput = true;",
+    "    psi.RedirectStandardError = true;",
+    "    psi.Arguments = Quote(script);",
+    "    foreach (string arg in args) psi.Arguments += \" \" + Quote(arg);",
+    "    var child = Process.Start(psi);",
+    "    var input = new Thread(() => Pump(Console.OpenStandardInput(), child.StandardInput.BaseStream, true));",
+    "    var output = new Thread(() => Pump(child.StandardOutput.BaseStream, Console.OpenStandardOutput(), false));",
+    "    var error = new Thread(() => Pump(child.StandardError.BaseStream, Console.OpenStandardError(), false));",
+    "    input.IsBackground = true; output.IsBackground = true; error.IsBackground = true;",
+    "    input.Start(); output.Start(); error.Start();",
+    "    child.WaitForExit();",
+    "    return child.ExitCode;",
+    "  }",
+    "  static void Pump(Stream from, Stream to, bool closeTo) {",
+    "    try {",
+    "      byte[] buffer = new byte[8192];",
+    "      int read;",
+    "      while ((read = from.Read(buffer, 0, buffer.Length)) > 0) to.Write(buffer, 0, read);",
+    "    } catch (Exception ignored) {}",
+    "    if (closeTo) { try { to.Close(); } catch (Exception ignored) {} }",
+    "  }",
+    "  static string Quote(string value) {",
+    "    string q = ((char)34).ToString();",
+    "    return q + value.Replace(q, ((char)92).ToString() + q) + q;",
+    "  }",
+    "}",
+  ].join("\r\n"));
+  const compiled = spawnSync(csc, ["/nologo", "/t:exe", `/out:${exePath}`, source], { encoding: "utf8", windowsHide: true });
+  if (compiled.status !== 0 || !fs.existsSync(exePath)) {
+    throw new Error(`csc.exe failed to build the fake agent (${compiled.status}): ${compiled.stdout}\n${compiled.stderr}`);
+  }
+}
+
+/**
+ * Grandchild setup baked into the stand-in. The plugin spawn does not take a custom env, so the flag is not read at
+ * runtime. A failure is appended to the same pids file the timeout prints.
+ */
+function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefined): readonly string[] {
+  if (!enabled || breakawayFile === undefined) return [];
   const koffiEntry = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
   return [
-    "if (process.env.LEDGER_WINDOWS_GRANDCHILDREN === '1') {",
-    "  const fs = require('fs');",
-    "  const path = require('path');",
-    "  const { spawn, spawnSync } = require('child_process');",
-    "  const stay = path.join(__dirname, 'stay.js');",
-    "  fs.writeFileSync(stay, 'setInterval(() => {}, 1 << 30);\\n');",
-    "  const detached = spawn(process.execPath, [stay], { detached: true, stdio: 'ignore', windowsHide: true });",
-    "  detached.unref();",
-    "  record('detached', detached.pid);",
-    "  const quote = (value) => \"'\" + String(value).replace(/'/g, \"''\") + \"'\";",
-    "  const started = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$p = Start-Process -FilePath ' + quote(process.execPath) + ' -ArgumentList ' + quote(stay) + ' -WindowStyle Hidden -PassThru; Write-Output $p.Id'], { encoding: 'utf8', windowsHide: true, timeout: 15000 });",
-    "  const startedPid = Number(String(started.stdout || '').trim().split(/\\s+/).pop());",
-    "  if (startedPid) record('start-process', startedPid);",
-    "  const pidFile = path.join(__dirname, 'native.pid');",
-    "  const bridge = path.join(__dirname, 'native-bridge.js');",
-    "  fs.writeFileSync(bridge, \"const {spawn}=require('child_process'); const fs=require('fs'); const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 400'],{stdio:'ignore',windowsHide:true}); fs.writeFileSync(process.argv[2], String(child.pid)); setInterval(()=>{},1<<30);\\n\");",
-    "  spawn(process.execPath, [bridge, pidFile], { stdio: 'ignore', windowsHide: true });",
-    "  const deadline = Date.now() + 5000;",
-    "  while (!fs.existsSync(pidFile) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);",
-    "  if (fs.existsSync(pidFile)) record('native', Number(fs.readFileSync(pidFile, 'utf8')));",
-    "  let breakaway = { ok: false, err: -1 };",
+    "if (!process.argv.includes('models')) {",
     "  try {",
-    `    const koffi = require(${JSON.stringify(koffiEntry)});`,
-    "    const kernel32 = koffi.load('kernel32.dll');",
-    "    const u16ptr = koffi.pointer('uint16');",
-    "    const u8ptr = koffi.pointer('uint8');",
-    "    const CreateProcessW = kernel32.func('__stdcall', 'CreateProcessW', 'int', ['void *', u16ptr, 'void *', 'void *', 'int', 'uint32', 'void *', 'void *', u8ptr, u8ptr]);",
-    "    const GetLastError = kernel32.func('__stdcall', 'GetLastError', 'uint32', []);",
-    "    const cmd = Buffer.from('cmd.exe /c exit 0\\\\0', 'utf16le');",
-    "    const si = Buffer.alloc(104);",
-    "    si.writeUInt32LE(104, 0);",
-    "    const pi = Buffer.alloc(24);",
-    "    const ok = CreateProcessW(null, cmd, null, null, 0, 0x01000000, null, null, si, pi);",
-    "    breakaway = { ok: Boolean(ok), err: ok ? 0 : Number(typeof koffi.errno === 'function' ? koffi.errno() : 0) || Number(GetLastError()) };",
+    "    const fs = require('fs');",
+    "    const path = require('path');",
+    "    const { spawn, spawnSync } = require('child_process');",
+    "    const note = (text) => record('windows-error', String(text).replace(/\\s+/g, ' ').slice(0, 400));",
+    "    const stay = path.join(__dirname, 'stay.js');",
+    "    fs.writeFileSync(stay, 'setInterval(() => {}, 1 << 30);\\n');",
+    "    try {",
+    "      const detached = spawn(process.execPath, [stay], { detached: true, stdio: 'ignore', windowsHide: true });",
+    "      detached.unref();",
+    "      if (detached.pid) record('detached', detached.pid);",
+    "      else note('detached spawn returned no pid');",
+    "    } catch (error) { note('detached ' + (error && error.message || error)); }",
+    "    const quote = (value) => \"'\" + String(value).replace(/'/g, \"''\") + \"'\";",
+    "    const started = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$p = Start-Process -FilePath ' + quote(process.execPath) + ' -ArgumentList ' + quote(stay) + ' -WindowStyle Hidden -PassThru; Write-Output $p.Id'], { encoding: 'utf8', windowsHide: true, timeout: 15000 });",
+    "    const startedPid = Number(String(started.stdout || '').trim().split(/\\s+/).pop());",
+    "    if (startedPid) record('start-process', startedPid);",
+    "    else note('Start-Process status ' + started.status + ' ' + String(started.stderr || started.error || '').replace(/\\s+/g, ' ').slice(0, 300));",
+    "    const pidFile = path.join(__dirname, 'native.pid');",
+    "    const bridge = path.join(__dirname, 'native-bridge.js');",
+    "    fs.writeFileSync(bridge, \"const {spawn}=require('child_process'); const fs=require('fs'); const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 400'],{stdio:'ignore',windowsHide:true}); fs.writeFileSync(process.argv[2], String(child.pid)); setInterval(()=>{},1<<30);\\n\");",
+    "    spawn(process.execPath, [bridge, pidFile], { stdio: 'ignore', windowsHide: true });",
+    "    const deadline = Date.now() + 5000;",
+    "    while (!fs.existsSync(pidFile) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);",
+    "    if (fs.existsSync(pidFile)) record('native', Number(fs.readFileSync(pidFile, 'utf8')));",
+    "    else note('native grandchild pid was not written');",
+    "    let breakaway = { ok: false, err: -1 };",
+    "    try {",
+    `      const koffi = require(${JSON.stringify(koffiEntry)});`,
+    "      const kernel32 = koffi.load('kernel32.dll');",
+    "      const u16ptr = koffi.pointer('uint16');",
+    "      const u8ptr = koffi.pointer('uint8');",
+    "      const CreateProcessW = kernel32.func('__stdcall', 'CreateProcessW', 'int', ['void *', u16ptr, 'void *', 'void *', 'int', 'uint32', 'void *', 'void *', u8ptr, u8ptr]);",
+    "      const GetLastError = kernel32.func('__stdcall', 'GetLastError', 'uint32', []);",
+    "      const cmd = Buffer.from('cmd.exe /c exit 0\\\\0', 'utf16le');",
+    "      const si = Buffer.alloc(104);",
+    "      si.writeUInt32LE(104, 0);",
+    "      const pi = Buffer.alloc(24);",
+    "      const ok = CreateProcessW(null, cmd, null, null, 0, 0x01000000, null, null, si, pi);",
+    "      breakaway = { ok: Boolean(ok), err: ok ? 0 : Number(typeof koffi.errno === 'function' ? koffi.errno() : 0) || Number(GetLastError()) };",
+    "    } catch (error) {",
+    "      breakaway = { ok: false, err: -1, message: String(error && error.message || error) };",
+    "      note('breakaway ' + breakaway.message);",
+    "    }",
+    `    fs.writeFileSync(${JSON.stringify(breakawayFile)}, JSON.stringify(breakaway));`,
     "  } catch (error) {",
-    "    breakaway = { ok: false, err: -1, message: String(error && error.message || error) };",
+    "    try { record('windows-error', String(error && error.message || error).replace(/\\s+/g, ' ').slice(0, 400)); } catch {}",
     "  }",
-    "  if (process.env.LEDGER_BREAKAWAY_RESULT) fs.writeFileSync(process.env.LEDGER_BREAKAWAY_RESULT, JSON.stringify(breakaway));",
     "}",
   ];
 }
@@ -900,7 +970,9 @@ function windowsRunEnv(home: string, tmp: string, pathbin: string, root: string,
     FLEET_DESKTOP_DATA_DIR: path.join(dir, "desktop"),
     CLAUDE_CONFIG_DIR: path.join(dir, "claude"),
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    CLAUDE_BIN: path.join(pathbin, "claude-fake.cmd"),
+    CLAUDE_BIN: path.join(pathbin, "claude-fake.exe"),
+    FAKE_AGENT_NODE: process.execPath,
+    FAKE_AGENT_SCRIPT: FAKE_AGENT,
     FAKE_AGENT_DIR: agentDir,
   };
 }
@@ -1201,7 +1273,7 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
     "  process.on('SIGTERM', () => {});",
     "  record('cli-ignores', process.pid);",
     "}",
-    ...windowsGrandchildLines(),
+    ...windowsGrandchildLines(run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1", run.env.LEDGER_BREAKAWAY_RESULT),
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
   // Each summary answers only once tokscale does; the requests end with the Console.
@@ -1215,10 +1287,16 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
   await waitUntil(() => recorded().length >= 6, 20_000, "the Ledger plugin did not start its CLI");
   if (run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1") {
     const breakawayFile = run.env.LEDGER_BREAKAWAY_RESULT;
-    await waitUntil(() => {
+    const ready = () => {
       const roles = new Set(recorded().map((entry) => entry.role));
       return roles.has("detached") && roles.has("start-process") && roles.has("native") && breakawayFile !== undefined && fs.existsSync(breakawayFile);
-    }, 20_000, "the plugin child did not start its Windows grandchildren");
+    };
+    const deadline = Date.now() + 20_000;
+    while (!ready() && Date.now() < deadline) await delay(25);
+    if (!ready()) {
+      const body = fs.existsSync(pids) ? fs.readFileSync(pids, "utf8") : "(no pids file)";
+      throw new Error(`the plugin child did not start its Windows grandchildren\n${body}`);
+    }
   }
   const entries = recorded();
   for (const entry of entries) own(entry.pid);
