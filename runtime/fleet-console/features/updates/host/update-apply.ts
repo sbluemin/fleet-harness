@@ -11,7 +11,7 @@ import type { ConsoleTarballDownload, GlobalPackageManagerCommand } from "@fleet
 import { getFleetDataDir } from "@fleet-console/infra/data-dir";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
-import { CONSOLE_LIFECYCLE_CONTRACT_VERSION, CONSOLE_SERVE_EXIT_LOCK_HELD } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_LIFECYCLE_CONTRACT_VERSION, CONSOLE_SERVE_EXIT_LOCK_HELD, EXTERNAL_ESCALATION_MS, STOP_POLL_MS } from "@fleet-console/protocol/lifecycle";
 import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
 import { CONSOLE_UPDATE_PROGRESS_FILE, writeConsoleUpdateProgress } from "./update-progress.js";
@@ -246,6 +246,10 @@ const stalePrefix = ${JSON.stringify(WORKER_FILE_PREFIX)};
 const workerSuffix = ${JSON.stringify(WORKER_FILE_SUFFIX)};
 const unverifiedError = ${JSON.stringify(CONSOLE_UPDATE_OLD_CONSOLE_UNVERIFIED)};
 const lockHeldExitCode = ${JSON.stringify(CONSOLE_SERVE_EXIT_LOCK_HELD)};
+// The contract's budgets, fixed when the Console wrote this worker: the only judgment the worker makes without its
+// runtime is waiting for the old pid's ESRCH within them.
+const externalEscalationMs = ${JSON.stringify(EXTERNAL_ESCALATION_MS)};
+const stopPollMs = ${JSON.stringify(STOP_POLL_MS)};
 // Read before anything can wait, including the import of the lifecycle runtime: the Console that spawned this worker is its parent. While the parent is
 // alive its pid cannot be handed to another process, and once it exits the OS reparents this worker at once,
 // even while the exited parent is still an unreaped zombie. Windows keeps the original parent pid after it
@@ -349,21 +353,44 @@ async function loadLifecycleRuntime() {
 }
 
 /**
- * Without a trusted runtime this worker can judge nothing, so it signals nothing and installs nothing. The Console
- * that accepted the update stops itself; one serve is started so a Console comes back. Serve itself refuses a lock that
- * is still held, without writing anything, so this start needs no judgment of its own.
+ * Without a trusted runtime this worker judges nothing it cannot prove, so it signals nothing and installs nothing. The
+ * Console that accepted the update stops itself after its response; a serve started before that Console ends would only
+ * find the lock held. So the worker waits, without a signal, for the old pid's ESRCH — the one piece of evidence that
+ * frees a slot (docs/console-lifecycle-contract.md, "Evidence direction") — within EXTERNAL_ESCALATION_MS, and starts one
+ * serve only then; serve itself still refuses a lock someone else holds.
  */
 async function failWithoutLifecycleRuntime() {
-  const failure = { error: "lifecycle_runtime_mismatch" };
+  let failure = { error: "lifecycle_runtime_mismatch" };
   writeProgress("failed", failure);
   try {
     writeStatusFile("failed", failure);
   } catch {
     // 진단 파일을 쓰지 못해도 복구는 간다.
   }
-  log("phase: failed (lifecycle_runtime_mismatch); starting one serve to bring a console back");
-  spawnServe();
+  log("phase: failed (lifecycle_runtime_mismatch); waiting for the old console to end before starting one serve");
+  const deadline = Date.now() + externalEscalationMs;
+  while (pidExists(config.currentPid) && Date.now() < deadline) await sleep(stopPollMs);
+  if (pidExists(config.currentPid)) {
+    failure = { error: "lifecycle_runtime_mismatch: the old console was still running, so no console was started" };
+    log("no serve started: pid " + config.currentPid + " was still running " + externalEscalationMs + "ms later and may still hold the lock");
+  } else {
+    log("old console ended; starting one serve to bring a console back");
+    spawnServe();
+  }
+  // The Console records the accepted update right after it spawns this worker; a failure this fast must not stay under it.
+  const current = readProgressStartedAt();
+  if (current === "missing" || current === config.startedAt) writeProgress("failed", failure);
   process.exitCode = 1;
+}
+
+/** Only ESRCH means the pid is gone; any other answer counts as running. */
+function pidExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(error && error.code === "ESRCH");
+  }
 }
 
 function writeStatus(phase, extra = {}) {
@@ -457,6 +484,17 @@ async function stopCurrentConsole() {
     throw new Error(unverifiedError);
   }
   if (stopped.result === "kill-failed") throw new Error("old console did not stop before timeout");
+  if (stopped.result === "replaced") {
+    // 옛 pid를 다른 프로그램이 물려받았고 lock은 그대로다. 그 pid가 끝나기 전에는 어떤 Console도 시작할 수 없으므로 설치하지
+    // 않는다. 신호도, lock 삭제도, spawn도 없다.
+    log("not installed: " + stopped.detail);
+    throw new Error(String(stopped.detail).split("\\n")[0]);
+  }
+  if (stopped.result === "still-running") {
+    // lock은 놓았지만 옛 프로세스가 자식을 거두며 아직 살아 있다. 그 프로세스가 올린 파일을 그 아래에서 바꾸지 않는다.
+    log("not installed: pid " + config.currentPid + " released its lock but was still running after the stop budget");
+    throw new Error("the old console released its lock but was still running, so the update was not installed");
+  }
   // 이전 Console이 끝났거나 lock을 놓았다. 남긴 lock은 지우지 않는다 — 새 Console의 serve가 그 pid의 ESRCH를 확인하고
   // 회수 프로토콜로 치운다.
   log("old console stopped" + (oldConsoleOutcome ? " (" + oldConsoleOutcome + ")" : "") + "; its lock is left for the new console to reclaim");

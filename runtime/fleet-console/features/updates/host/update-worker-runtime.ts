@@ -23,6 +23,7 @@ import {
   CONSOLE_START_POLL_MS,
   CONSOLE_START_TIMEOUT_MS,
   HEALTH_PROBE_TIMEOUT_MS,
+  describeReplacedLockAuthor,
 } from "@fleet-console/protocol/lifecycle";
 
 export { CONSOLE_LIFECYCLE_CONTRACT_VERSION, CONSOLE_START_POLL_MS, CONSOLE_START_TIMEOUT_MS };
@@ -48,15 +49,21 @@ export interface StopUpdatedConsoleInput {
 
 /**
  * How stopping the updated Console ended.
- * - stopped: it is gone, or it released its lock, or it was replaced; the install may go on.
+ * - stopped: its process is gone (or its released lock now names another program); the install may go on.
+ * - still-running: it released its lock but its process outlived EXTERNAL_ESCALATION_MS, still reaping children; files
+ *   it has loaded must not be replaced under it, so the install does not start. Nothing is signalled for that.
+ * - replaced: its lock is still held by a live pid that started after the lock was written, another program that reused
+ *   the pid; no Console can start there until that pid exits, so the install does not start. Nothing is signalled.
  * - unverified: still holding its lock after the stop budget, and its identity could not be proven again; nothing was
  *   signalled.
  * - kill-failed: it outlived SIGKILL.
- * `ending` is how it ended once it is gone (its exit record, or the contract's reading of none), else null.
+ * `ending` is how it ended once it is gone (its exit record, or the contract's reading of none), else null; `detail`
+ * explains a replaced lock with the contract's shared text.
  */
 export interface StopUpdatedConsoleResult {
-  readonly result: "stopped" | "unverified" | "kill-failed";
+  readonly result: "stopped" | "still-running" | "replaced" | "unverified" | "kill-failed";
   readonly ending: string | null;
+  readonly detail?: string;
 }
 
 /**
@@ -71,12 +78,17 @@ export async function stopUpdatedConsole(input: StopUpdatedConsoleInput): Promis
   const provenAt = Date.now();
   const observed = await observe(target.lockFile, lock);
   log(`old console ${target.pid}: ${observed.state} (identity ${observed.identity}${isParent() ? ", parent link" : ""})`);
-  // Gone, released, or a pid another program reused: nothing to stop and nothing to signal.
-  if (observed.state === "exited" || observed.state === "releasing" || observed.state === "replaced") {
-    return { result: "stopped", ending: endingOf(target, observed, false) };
-  }
-  const provenStart = observed.identity === "verified" && !isParent() ? await captureProvenProcessStart(target.pid, provenAt) : null;
   const instance = { pid: target.pid, token: target.token };
+  if (observed.state === "exited") return { result: "stopped", ending: endingOf(target, observed, false) };
+  if (observed.state === "replaced") {
+    // The pid now names another program. With the old lock released the old Console is gone and the slot is free; with
+    // the old lock still in place no Console can start until that program exits, so the update stops here.
+    if (consoleLockInstanceState(target.lockFile, instance) === "released") return { result: "stopped", ending: null };
+    return { result: "replaced", ending: null, detail: describeReplacedLockAuthor(target.lockFile, target.pid) };
+  }
+  // Every other state, a Console that already released its lock included, goes through the ladder: the install waits for
+  // the old process to end within EXTERNAL_ESCALATION_MS, and only a proven Console still holding its lock is SIGKILLed.
+  const provenStart = observed.identity === "verified" && !isParent() ? await captureProvenProcessStart(target.pid, provenAt) : null;
   const ended = await runStopLadder({
     request: "delivered",
     isAlive: () => isPidAlive(target.pid),
@@ -86,6 +98,7 @@ export async function stopUpdatedConsole(input: StopUpdatedConsoleInput): Promis
   });
   log(`old console ${target.pid}: stop ladder ${ended}`);
   if (ended === "unproven" || ended === "held") return { result: "unverified", ending: null };
+  if (ended === "released-alive") return { result: "still-running", ending: null };
   if (ended === "kill-failed") return { result: "kill-failed", ending: null };
   if (ended === "forced") {
     let recorded = true;
@@ -96,7 +109,7 @@ export async function stopUpdatedConsole(input: StopUpdatedConsoleInput): Promis
     }
     return { result: "stopped", ending: recorded ? "forced-external" : endingOf(target, observed, false) };
   }
-  return { result: "stopped", ending: ended === "exited" ? endingOf(target, observed, false) : null };
+  return { result: "stopped", ending: endingOf(target, observed, false) };
 }
 
 /** What the slot holds right now, for a worker that may start a Console there. */

@@ -136,7 +136,8 @@ describe("console update apply worker", () => {
       await service.start({
         currentEndpoint: `http://127.0.0.1:${await closedLoopbackPort()}/`,
         currentLockToken: "the-exited-console",
-        currentLockStartedAt: Date.now(),
+        // The exited Console wrote its lock well before the unrelated program took its pid.
+        currentLockStartedAt: Date.now() - 60_000,
         currentPackageRoot: packageRoot,
         currentPid: unrelated.pid!,
         dataDir,
