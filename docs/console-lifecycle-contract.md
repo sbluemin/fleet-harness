@@ -88,14 +88,14 @@ A Console instance that held the lock writes its own exit record beside its lock
 | `external` | the Console's reaper, or inferred by a reader of a Console that reports `lifecycleWire` | the process vanished without a record (SIGKILL, or a frozen loop killed from outside) |
 | `forced-external` | the actor that sent SIGKILL (the CLI, Desktop; the update worker *(pending)*) | escalation after B_ext |
 
-A reader that finds no record for the instance it observed decides from the lock's `version` and the health `lifecycleWire` whether the Console predates the contract; a pre-contract Console keeps its old meaning (no record).
+A reader that finds no record for the instance it observed decides from the health `lifecycleWire` whether the Console predates the contract (`readConsoleEnding`): a Console that reported wire 1 or later and left no record was ended from outside (`external`), never a clean stop; a pre-contract Console, or one the reader itself terminated on Windows, is `unrecorded`: it cannot be blamed for the missing record.
 
 New outcomes may be added without a version change. A reader that meets an outcome it does not know, or a record file for the instance that it cannot read (another version, malformed, a symlink, naming another instance), treats it as `unknown` and never reports it as a clean stop (fail closed): a newer Console may describe an ending an older reader cannot interpret.
 
 ## Wire compatibility
 
 - The lock payload and the meaning of health answers do not change; additions only. The authenticated health answer carries `lifecycleWire: CONSOLE_LIFECYCLE_WIRE`. Its absence means wire 0 (before this contract).
-- An observer that meets a wire newer than its own treats that instance as unverified: it neither signals it nor removes its lock on that basis. Adopting sends no signal, so Desktop still adopts a Console of a compatible owner whose authenticated health answers with the lock's own pid, whatever wire it reports.
+- An observer that meets a wire newer than its own treats that instance as unverified: it neither signals it nor removes its lock on that basis. Adopting sends no signal, so Desktop still adopts a Console of a compatible owner whose authenticated health answers with the lock's own pid, whatever wire it reports. A Quit then signals a newer-wire Console only when it is this Desktop's own unreaped child (E1); any other newer-wire Console it adopted is left running, and the Quit logs it.
 - Shipped Desktop builds and update workers carry frozen copies of the contract. The published `./desktop-protocol` export surface is unchanged by it.
 
 ## Observing an instance from outside
@@ -125,7 +125,7 @@ An actor that asks a Console to stop:
 3. Sends SIGTERM once.
 4. Waits, on a monotonic deadline, until the pid exits or the same lock instance is released, up to B_ext.
 5. If it saw the release, it sends nothing more and reads the exit record once the process is gone.
-6. Past B_ext with the lock still held, it proves identity again (own child, parent link, unchanged start time, or a fresh health answer). Without proof it signals nothing.
+6. Past B_ext with the lock still held, it proves identity again: an own child or a parent link, or — while the same lock instance is still held — an unchanged start time or a fresh health answer (`reproveConsoleInstance`; a lock that cannot be read proves nothing). Without proof it signals nothing.
 7. SIGKILL, then confirm the exit within `KILL_CONFIRM_MS`; the result is `forced-external`.
 
 An actor that sees an instance someone else is stopping never signals it. B_ext bounds how long it may wait: a starter waits, and reports the instance when it is still stopping after B_ext; Desktop Quit has nothing to do after the wait and returns at once. A starter that gives up on its own child applies the ladder too once that child holds the lock — it may be writing durable state — and gives a child that has not taken the lock only `PRELOCK_CHILD_GRACE_MS` before SIGKILL; its unreaped child handle is its identity proof. On Windows `process.kill(pid, "SIGTERM")` terminates the process outright, so an actor never signals an instance that is already stopping there; it waits up to B_ext.

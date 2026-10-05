@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { REAPER_DRAIN_MAX_MS } from "@fleet-console/lifecycle";
+import { REAPER_DRAIN_MAX_MS, consoleLockInstanceState, createConsoleHealthClient, isPidAlive, observeConsoleInstance, readProcessStartTime, reproveConsoleInstance, runStopLadder, type ConsoleLockFilePayload } from "@fleet-console/lifecycle";
 import { CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
 import { createDesktopEnvironment } from "../src/environment.js";
@@ -129,6 +129,32 @@ describe("sidecar supervisor", () => {
       await expect(instance.startOrAdopt()).rejects.toThrow("console_lock_process_unverified");
       expect(fs.existsSync(reusedLock)).toBe(true);
       expect(sigterms).toBe(0);
+      // 증명된 Console이 SIGTERM 뒤 lock을 남긴 채 죽고 그 pid가 재할당된 경쟁. 재할당된 프로세스는 증명 뒤에 시작하므로 증명 때
+      // 잡은 시작 시각과 다르고(실제 시작 시각보다 60s 이른 값으로 흉내 낸다. ps는 실제로 읽는다), 새 health도 그 pid를 대지
+      // 않는다. 재증명이 실패하므로 사다리는 SIGKILL로 승격하지 않는다.
+      const reused = JSON.parse(lockContents) as ConsoleLockFilePayload;
+      const actualStart = await readProcessStartTime(bystander.pid!);
+      expect(actualStart).not.toBeNull();
+      answer = "other-pid";
+      const clock = fastClock();
+      const ended = await runStopLadder({
+        requester: true,
+        isAlive: () => isPidAlive(bystander.pid!),
+        isReleased: () => consoleLockInstanceState(reusedLock, { pid: reused.pid, token: reused.token }) === "released",
+        reprove: () => reproveConsoleInstance({
+          lockFile: reusedLock,
+          lock: reused,
+          provenStart: actualStart! - 60_000,
+          observe: (lock) => observeConsoleInstance({ lock, trusted: true, isHeld: () => consoleLockInstanceState(reusedLock, lock) !== "released", probe: (target, options) => createConsoleHealthClient().probe(target, options) }),
+        }),
+        signal: (signal) => process.kill(bystander.pid!, signal),
+        now: clock.now,
+        sleep: clock.sleep,
+      });
+      expect(ended).toBe("unproven");
+      await vi.waitFor(() => expect(sigterms).toBe(1));
+      expect(bystanderSignal).toBeNull();
+      expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
       // lock 주소가 연결을 거절해도 pid가 살아 있으면 종료 정리 중인 Console일 수 있다 — 그동안 새 Console을 띄우지 않고
       // 기다린다. 새 Console은 lock을 쥐기 전에 공유 상태를 만지기 때문이다. pid가 끝나면 신호 없이 시작을 이어 간다.
       await new Promise<void>((resolve) => impostor.close(() => resolve()));
@@ -138,7 +164,7 @@ describe("sidecar supervisor", () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
       expect(resolveRuntime).not.toHaveBeenCalled();
-      expect(sigterms).toBe(0);
+      expect(sigterms).toBe(1);
       expect(bystanderSignal).toBeNull();
       expect(() => process.kill(bystander.pid!, 0)).not.toThrow();
       bystander.kill("SIGKILL");

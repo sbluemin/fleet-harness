@@ -11,8 +11,8 @@ import {
   observeConsoleInstance,
   observeConsoleLockFile,
   observeConsoleLockFileWithin,
-  readConsoleExitRecord,
-  readProcessStartTime,
+  readConsoleEnding,
+  reproveConsoleInstance,
   runStopLadder,
   writeConsoleExitRecord,
   type ConsoleInstanceObservation,
@@ -89,8 +89,11 @@ type LockRead =
   | { readonly kind: "untrusted"; readonly bytes: Buffer; readonly pid: number; readonly alive: boolean; readonly issue: string }
   | { readonly kind: "trusted"; readonly stored: StoredLock; readonly alive: boolean };
 type SlotDecision = { readonly kind: "adopt"; readonly url: string } | { readonly kind: "ready" } | { readonly kind: "changed" };
-/** What a stop requested by this Desktop targets: a lock instance, or an own child whose lock (and token) may be unknown. */
-interface StopTarget { readonly pid: number; readonly token?: string; readonly startedAt?: number; }
+/**
+ * What a stop requested by this Desktop targets: the pid, the lock instance it published when known (an own child that
+ * gave up before its lock was read has none), and the `lifecycleWire` its health reported, for reading how it ended.
+ */
+interface StopTarget { readonly pid: number; readonly lock?: LockPayload; readonly lifecycleWire?: unknown; }
 
 // Each pass either adopts, finds the slot ready, or ends a Console this Desktop owns; more passes mean the slot keeps changing.
 const SLOT_PASSES = 4;
@@ -123,8 +126,9 @@ export function isPreReclaimConsoleVersion(version: string): boolean {
  */
 export class SidecarSupervisor {
   private child: ChildProcess | null = null;
-  /** The `startedAt` of the lock the current child published, once seen: the key of that child's exit record. */
-  private childLockStartedAt: number | null = null;
+  /** The lock the current child published and the `lifecycleWire` it answered with, once seen. */
+  private childLock: LockPayload | null = null;
+  private childLifecycleWire: unknown = undefined;
   private serviceVersion: string;
   private readonly clock: SidecarClock;
   constructor(private readonly options: SidecarSupervisorOptions) {
@@ -163,16 +167,17 @@ export class SidecarSupervisor {
     const owned = this.isOwned(stored.lock);
     if (this.isOwnLiveChild(pid)) {
       // This Desktop's unreaped child: its handle proves identity (E1), so it is adopted when it answers and ended otherwise.
-      if (owned && this.answersFor((await this.observe(stored)).probe, pid)) return { kind: "adopt", url: consoleUrl(stored.lock) };
-      await this.stopRequested(stored.lock, null);
+      const own = await this.observe(stored.lock);
+      if (owned && this.answersFor(own.probe, pid)) return { kind: "adopt", url: consoleUrl(stored.lock) };
+      await this.stopRequested({ pid, lock: stored.lock, lifecycleWire: own.probe?.health?.lifecycleWire ?? this.childLifecycleWire }, null);
       return { kind: "changed" };
     }
-    let observed = await this.observe(stored);
+    let observed = await this.observe(stored.lock);
     // An instance still starting is waited for within the contract's start budget, never adopted or signalled meanwhile.
     const startDeadline = this.clock.now() + CONSOLE_START_TIMEOUT_MS;
     while (observed.state === "starting" && this.clock.now() < startDeadline) {
       await this.clock.sleep(CONSOLE_START_POLL_MS);
-      observed = await this.observe(stored);
+      observed = await this.observe(stored.lock);
     }
     if (observed.state === "exited") return this.leaveExitedLock(stored.bytes, pid, runtime);
     // The lock changed or went while it was observed: the next pass reads the slot again.
@@ -214,7 +219,8 @@ export class SidecarSupervisor {
     let startupFailure: Error | null = null;
     let sidecarReady = false;
     let stderrTail = "";
-    this.childLockStartedAt = null;
+    this.childLock = null;
+    this.childLifecycleWire = undefined;
     try {
       this.child = spawn(runtime.nodePath, [runtime.cliPath, "serve"], { cwd: path.dirname(path.dirname(runtime.cliPath)), env: this.options.env, stdio: ["ignore", "pipe", "pipe"], detached: false, windowsHide: true });
     } catch (error) {
@@ -261,8 +267,11 @@ export class SidecarSupervisor {
         const read = this.readLock();
         if (read.kind !== "trusted" || !read.alive) continue;
         const { lock } = read.stored;
-        if (lock.pid === child.pid) this.childLockStartedAt = lock.startedAt;
-        if (!this.answersFor(await this.probe(lock), lock.pid)) continue;
+        const own = lock.pid === child.pid;
+        if (own) this.childLock = lock;
+        const answer = await this.probe(lock);
+        if (!this.answersFor(answer, lock.pid)) continue;
+        if (own) this.childLifecycleWire = answer.health?.lifecycleWire;
         if (!this.isOwned(lock)) throw new Error("cli_daemon_requires_confirmation");
         sidecarReady = true;
         return consoleUrl(lock);
@@ -284,8 +293,8 @@ export class SidecarSupervisor {
     try {
       if (consoleLockInstanceState(this.options.lockFile, { pid }) === "held") {
         const read = this.readLock();
-        const lock = read.kind === "trusted" && read.stored.lock.pid === pid ? read.stored.lock : null;
-        await this.stopRequested(lock ?? { pid }, null);
+        const lock = read.kind === "trusted" && read.stored.lock.pid === pid ? read.stored.lock : this.childLock;
+        await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: this.childLifecycleWire }, null);
       } else {
         signalPid(pid, "SIGTERM");
         if (!await this.waitUntil(() => !this.isOwnLiveChild(pid), PRELOCK_CHILD_GRACE_MS)) {
@@ -312,19 +321,19 @@ export class SidecarSupervisor {
     // 재증명 실패나 강제 종료 실패는 기록하되 Quit 자체는 막지 않는다. lock 해제 뒤 잔존 구간에는 신호를 보내지 않는다.
     try {
       if (this.isOwnLiveChild(pid)) {
-        await this.stopRequested(lock, null);
+        await this.stopRequested({ pid, lock, lifecycleWire: this.childLifecycleWire }, null);
         return;
       }
       // The wall-clock moment identity is about to be proven: only a process that started before it can be that Console.
       const provenAt = Date.now();
-      const observed = await this.observe(read.stored);
+      const observed = await this.observe(lock);
       if (observed.identity !== "verified") {
         // Unverified: a signal could hit an unrelated process. Stopping or releasing: someone else's stop is already under
         // way, and Quit has nothing to do after waiting for it, so it returns without a signal.
         this.options.log.error(`console_lock_process_${observed.state}: pid ${pid} holds ${this.options.lockFile}; left running without a signal`);
         return;
       }
-      await this.stopRequested(lock, await captureProvenProcessStart(pid, provenAt));
+      await this.stopRequested({ pid, lock, lifecycleWire: observed.probe?.health?.lifecycleWire }, await captureProvenProcessStart(pid, provenAt));
     } catch (error) {
       this.options.log.error(`console_lock_process_unhealthy: pid ${pid} could not be stopped; continuing Quit: ${this.describeError(error)}`);
     }
@@ -335,18 +344,21 @@ export class SidecarSupervisor {
    * still held and identity is proven again. A lock that cannot be read counts as held.
    */
   private async stopRequested(target: StopTarget, provenStart: number | null): Promise<ConsoleStopLadderResult> {
-    const { pid } = target;
-    const instance = { pid, ...(target.token === undefined ? {} : { token: target.token }) };
+    const { pid, lock } = target;
+    const instance = { pid, ...(lock ? { token: lock.token } : {}) };
     const ended = await runStopLadder({
       requester: true,
       isAlive: () => isPidAlive(pid),
       isReleased: () => consoleLockInstanceState(this.options.lockFile, instance) === "released",
-      reprove: () => this.reprove(target, provenStart),
+      // An own child that gave up before its lock was read is proven only by its unreaped handle (E1).
+      reprove: () => lock
+        ? reproveConsoleInstance({ lockFile: this.options.lockFile, lock, provenStart, isOwnChild: () => this.isOwnLiveChild(pid), observe: (target) => this.observe(target) })
+        : Promise.resolve(this.isOwnLiveChild(pid)),
       signal: (signal) => signalPid(pid, signal),
       now: () => this.clock.now(),
       sleep: (ms) => this.clock.sleep(ms),
     });
-    const key = target.startedAt === undefined ? null : { pid, lockStartedAt: target.startedAt };
+    const key = lock ? { pid, lockStartedAt: lock.startedAt } : null;
     if (ended === "forced" && key) {
       try {
         writeConsoleExitRecord(this.options.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, ...key, outcome: "forced-external", killed: 0, at: Date.now() });
@@ -354,25 +366,16 @@ export class SidecarSupervisor {
         // The record only informs later readers; this ladder's own result already says the stop was forced.
       }
     }
-    const outcome = ended === "forced" ? "forced-external" : ended === "exited" && key ? readConsoleExitRecord(this.options.lockFile, key)?.outcome ?? "unrecorded" : null;
+    const outcome = ended === "forced"
+      ? "forced-external"
+      : ended !== "exited" ? null : key ? readConsoleEnding(this.options.lockFile, key, { lifecycleWire: target.lifecycleWire, terminatedByReader: true }).outcome : "unrecorded";
     const line = `console_stop: pid ${pid} ${ended}${outcome === null ? "" : ` outcome=${outcome}`}`;
-    if (ended === "exited" && (outcome === "clean" || outcome === "unrecorded")) this.options.log.info(line);
+    // Only a recorded clean shutdown is reported as one; no record, an unknown one, or an external ending is not.
+    if (outcome === "clean") this.options.log.info(line);
     else this.options.log.error(line);
     if (ended === "unproven") throw this.conflict("console_lock_process_unverified", pid, "stopping", "its identity could not be proven again before SIGKILL; no further signal sent");
     if (ended === "kill-failed") throw this.conflict("console_lock_process_unhealthy", pid, "stopping", "it outlived SIGKILL");
     return ended;
-  }
-  /** Right before SIGKILL: is the pid still the Console proven before SIGTERM? */
-  private async reprove(target: StopTarget, provenStart: number | null): Promise<boolean> {
-    if (this.isOwnLiveChild(target.pid)) return true;
-    if (target.token === undefined || target.startedAt === undefined) return false;
-    const instance = { pid: target.pid, token: target.token };
-    // A start time captured before the proof that is unchanged, with the same lock still held, proves it (E4): a reused pid
-    // starts after the proof. Otherwise a fresh authenticated health answer must prove it again (E3).
-    if (provenStart !== null && await readProcessStartTime(target.pid) === provenStart && consoleLockInstanceState(this.options.lockFile, instance) === "held") return true;
-    const read = this.readLock();
-    if (read.kind !== "trusted" || read.stored.lock.pid !== target.pid || read.stored.lock.token !== target.token) return false;
-    return (await this.observe(read.stored)).identity === "verified";
   }
   /** Someone else's stop, or a Console that stops itself: only waits, never signals, up to EXTERNAL_ESCALATION_MS. */
   private waitForOthersStop(stored: StoredLock): Promise<ConsoleStopLadderResult> {
@@ -387,10 +390,10 @@ export class SidecarSupervisor {
       sleep: (ms) => this.clock.sleep(ms),
     });
   }
-  private observe(stored: StoredLock): Promise<ConsoleInstanceObservation<LockPayload>> {
-    const { pid, token } = stored.lock;
+  private observe(lock: LockPayload): Promise<ConsoleInstanceObservation<LockPayload>> {
+    const { pid, token } = lock;
     return observeConsoleInstance({
-      lock: stored.lock,
+      lock,
       trusted: true,
       isHeld: () => consoleLockInstanceState(this.options.lockFile, { pid, token }) !== "released",
       probe: (lock, options) => createConsoleHealthClient().probe(lock, options),
@@ -411,12 +414,14 @@ export class SidecarSupervisor {
     const child = this.child;
     return child !== null && child.pid === pid && child.exitCode === null && child.signalCode === null;
   }
-  /** The child's exit status and its exit record, read once the process is gone. */
+  /** The child's exit status and how it ended (its exit record, or the contract's reading of none), once it is gone. */
   private readEnding(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): SidecarEnding | null {
     if (child.pid === undefined) return null;
-    const startedAt = this.child === child ? this.childLockStartedAt : null;
-    const record = startedAt === null ? null : readConsoleExitRecord(this.options.lockFile, { pid: child.pid, lockStartedAt: startedAt });
-    return { pid: child.pid, code, signal, outcome: record?.outcome ?? null };
+    const lock = this.child === child && this.childLock?.pid === child.pid ? this.childLock : null;
+    const outcome = lock === null
+      ? null
+      : readConsoleEnding(this.options.lockFile, { pid: child.pid, lockStartedAt: lock.startedAt }, { lifecycleWire: this.childLifecycleWire, terminatedByReader: false }).outcome;
+    return { pid: child.pid, code, signal, outcome };
   }
   /** Reads the lock once. Sends no signal and asks no endpoint. Follows no symlink and reads no other user's lock. */
   private readLock(): LockRead {
