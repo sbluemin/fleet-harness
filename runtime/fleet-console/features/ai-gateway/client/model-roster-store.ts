@@ -1,3 +1,4 @@
+import { useEffect, useSyncExternalStore } from "react";
 import { MODEL_ROSTER_CHANGED_CHANNEL, MODEL_ROSTER_PATH, type ModelRoster, type ModelRosterTarget } from "@fleet-console/sdk/models";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import { OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
@@ -86,6 +87,15 @@ export function subscribeModelRoster(listener: () => void): () => void {
   return () => {
     listeners.delete(listener);
   };
+}
+
+/** 코어 화면의 로스터 구독 — 첫 마운트가 읽기를 시작하고, 바뀌면 다시 그린다. 읽기 전에는 null. */
+export function useModelRoster(target: ModelRosterTarget): ModelRoster | null {
+  useEffect(() => {
+    wire();
+    void loadModelRoster(target);
+  }, [target]);
+  return useSyncExternalStore(subscribeModelRoster, () => cache.get(target) ?? null, () => null);
 }
 
 /** 옛 `ExperimentModelOption` 모양 — deprecated `experiments.modelOptions()`와 이행 중인 화면만 쓴다. */
