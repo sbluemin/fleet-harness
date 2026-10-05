@@ -361,7 +361,23 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
       </button>
       {/* body 포털 — 확대 표면은 transform 조상이라 fixed가 그 안에 갇히고 overflow에 잘린다. */}
       {open ? createPortal(
-        <div ref={menuRef} className={["fc-coord-menu", showTrack ? "is-focused" : "", props.menuClassName ?? ""].filter(Boolean).join(" ")} role="menu" aria-label={labels.menu} style={pos}>
+        <div
+          ref={menuRef}
+          className={["fc-coord-menu", showTrack ? "is-focused" : "", props.menuClassName ?? ""].filter(Boolean).join(" ")}
+          role="menu"
+          aria-label={labels.menu}
+          style={pos}
+          // 메뉴는 body 포털이지만 React 이벤트는 컴포넌트 트리를 따라 선택기를 품은 서랍·패널·시트로 올라간다. 그쪽의 Esc 닫기가
+          // 문서 리스너보다 먼저 돌므로, 메뉴 안의 키는 여기서 먼저 처리하고 멈춘다 — Esc는 메뉴만 취소해 닫는다. 강도 트랙에서의
+          // Tab은 목록 항목의 경계 Tab처럼 지금 미리보기 좌표로 한 번 확정하고 닫는다(Shift+Tab도 같다).
+          onKeyDown={(event) => {
+            if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMenu("cancel", true); return; }
+            if (event.key === "Tab" && event.target instanceof Element && event.target.closest(".effort-track")) {
+              event.stopPropagation();
+              closeMenu("commit", true);
+            }
+          }}
+        >
           {head ? <div className="fc-coord-menu-head">{head}</div> : null}
           {showTrack && chosenRow ? (
             <>
