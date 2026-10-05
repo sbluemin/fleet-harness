@@ -29,6 +29,12 @@ const role = chat ? "chat" : "terminal";
 const mcp = spawn(process.execPath, ["-e", "process.stdin.resume(); process.stdin.on('end', () => process.exit(0)); setInterval(() => {}, 1 << 30);"], { stdio: ["pipe", "ignore", "ignore"] });
 record({ role, pid: process.pid, ppid: process.ppid });
 record({ role: `${role}-mcp`, pid: mcp.pid, ppid: process.pid });
+// A detached grandchild the libuv job would not keep. Only the Windows cases opt in; POSIX containment is the process group.
+if (chat && process.env.FAKE_AGENT_DETACHED_GRANDCHILD === "1") {
+  const detached = spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30);"], { detached: true, stdio: "ignore", windowsHide: true });
+  detached.unref();
+  record({ role: "chat-detached", pid: detached.pid, ppid: process.pid });
+}
 
 if (!chat) {
   // A terminal session ends the way a PTY ends it: hangup or the default SIGTERM disposition.

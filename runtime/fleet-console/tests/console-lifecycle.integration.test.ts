@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
+import { createWindowsJobContainment, type WindowsJobBindings } from "../core/host/bootstrap/windows-job-containment.js";
 import { describeReplacedLockAuthor } from "@fleet-console/protocol/lifecycle";
 
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
@@ -299,6 +300,45 @@ describe("Console daemon lifecycle integration", () => {
     expect(proveExitedLeaderGroup([member, { pid: 702, pgid: 700, startedAt: spawnedAt - 600_000 }], group, spawnedAt + 60_000)).toBe(false);
     expect(proveExitedLeaderGroup([], group, spawnedAt + 60_000)).toBe(false);
     expect(proveExitedLeaderGroup([{ pid: 2, pgid: 1, startedAt: spawnedAt }], { pgid: 1, spawnedAt }, spawnedAt + 60_000)).toBe(false);
+  });
+});
+
+// The representative Windows containment failure, at the port rather than a second Console boot. A failed create or
+// assign is reported and returns null, a throw does not escape, and a job that still has members is not closed.
+describe("Windows job containment failure", () => {
+  it("reports a failed job and never throws or closes a job that still has members", () => {
+    const closed: string[] = [];
+    const bindings = (overrides: Partial<WindowsJobBindings>): WindowsJobBindings => ({
+      createJob: () => "job",
+      setKillOnJobClose: () => true,
+      openProcess: () => "proc",
+      assign: () => true,
+      activeProcesses: () => 1,
+      terminate: () => true,
+      close: (handle) => { closed.push(String(handle)); },
+      lastError: () => 5,
+      ...overrides,
+    });
+
+    const created: string[] = [];
+    expect(createWindowsJobContainment(bindings({ setKillOnJobClose: () => false }), (detail) => created.push(detail.stage)).contain(41)).toBeNull();
+    expect(created).toEqual(["create"]);
+    expect(closed.splice(0)).toEqual(["job"]);
+
+    const assigned: string[] = [];
+    expect(createWindowsJobContainment(bindings({ assign: () => false }), (detail) => assigned.push(detail.stage)).contain(42)).toBeNull();
+    expect(assigned).toEqual(["assign"]);
+    expect(closed.splice(0)).toEqual(["proc", "job"]);
+
+    const thrown: string[] = [];
+    expect(createWindowsJobContainment(bindings({ createJob: () => { throw new Error("injected"); } }), (detail) => thrown.push(detail.stage)).contain(43)).toBeNull();
+    expect(thrown).toEqual(["create"]);
+
+    const port = createWindowsJobContainment(bindings({}), () => { throw new Error("a live job must not be reported degraded"); });
+    const held = port.contain(44);
+    expect(held?.hasMembers()).toBe(true);
+    held?.close();
+    expect(closed).toEqual([]);
   });
 });
 

@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createRequire } from "node:module";
 import crypto from "node:crypto";
 import os from "node:os";
 import fs from "node:fs";
@@ -171,7 +172,7 @@ const LIFECYCLE_KNOWN_DEFECTS = JSON.parse(fs.readFileSync(fileURLToPath(new URL
 // Long enough for anything that reaps after the Console is gone (a containment helper's own grace included).
 const SETTLE_MS = 10_000;
 const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
-const AGENT_ROLES = new Set(["chat", "chat-mcp", "chat-orphan", "terminal", "terminal-mcp"]);
+const AGENT_ROLES = new Set(["chat", "chat-mcp", "chat-orphan", "chat-detached", "terminal", "terminal-mcp"]);
 /** How long the escalation cases freeze the Console's event loop just before its own stop deadline. */
 const FREEZE_BEFORE_DEADLINE_MS = 800;
 const FAKE_AGENT = fileURLToPath(new URL("../fixtures/lifecycle-fake-agent.mjs", import.meta.url));
@@ -209,11 +210,12 @@ afterEach(async () => {
   if (unproven.length > 0) throw new Error(`agent records that no live process proves (not signalled): ${unproven.join("; ")}`);
 });
 
-// POSIX signal semantics: Windows TerminateProcess runs no shutdown path at all.
-(runBuiltSmoke && process.platform !== "win32" ? describe : describe.skip)("Console process lifecycle invariants", () => {
+// POSIX signal cases stay skipped on Windows: TerminateProcess runs no shutdown. The Windows cases below are the
+// containment contract (a job per owned group) and run only on win32. Both halves share this block's cleanup.
+(runBuiltSmoke ? describe : describe.skip)("Console process lifecycle invariants", () => {
   // I2 main path: `fleet console stop` while an agent is mid-turn and ignores SIGTERM. The Console must account for that
   // agent and everything else it started before it is gone, although stop returns as soon as the lock is released.
-  it("stops with an agent mid-turn and leaves no process behind", async () => {
+  it.skipIf(process.platform === "win32")("stops with an agent mid-turn and leaves no process behind", async () => {
     const run = createRun("graceful");
     const consoleProcess = spawnConsole(run);
     const startedAt = Date.now();
@@ -234,7 +236,7 @@ afterEach(async () => {
   // L11 (#1543, #1565; I2). Repeated signals are harmless in both stretches of a shutdown: mid-cleanup with the lock held,
   // and after the lock is released while the SDK still reaps an agent that ignored SIGTERM. A serve that died in the second
   // stretch would take the SDK's SIGKILL timer with it and orphan the agent and its MCP child.
-  it("finishes its shutdown and leaves no process behind when SIGTERM and SIGINT arrive again mid-cleanup and after the lock is released", async () => {
+  it.skipIf(process.platform === "win32")("finishes its shutdown and leaves no process behind when SIGTERM and SIGINT arrive again mid-cleanup and after the lock is released", async () => {
     const run = createRun("resignal");
     const stalled = path.join(run.dir, "stalled");
     const release = path.join(run.dir, "release");
@@ -284,7 +286,7 @@ afterEach(async () => {
   // agent. The Console's event loop freezes for 800ms just before that deadline (inside the escalation margin the contract
   // allows a busy loop), which moves the reap to about 10.6s; stop must still not SIGKILL the Console first. The signature is the order, not the orphan: a reaper would hide the orphan before
   // stop's own fix lands. The Console shares a process group with a parent and a sibling, as a Desktop sidecar does.
-  it("lets the Console's own shutdown deadline finish before stop escalates", async () => {
+  it.skipIf(process.platform === "win32")("lets the Console's own shutdown deadline finish before stop escalates", async () => {
     const run = createRun("escalation");
     const stall = stallShutdownWithLockHeld(run, { freezeBeforeDeadline: true });
     const group = spawnGroup(run, { preload: stall.preload });
@@ -311,7 +313,7 @@ afterEach(async () => {
   // L12, the residual risk of the escalation budget (I2 only; I4 is broken on purpose). The Console's event loop is blocked
   // for 2.5s when the stop signal arrives, so its own deadline lands after any external escalation: whatever kills the
   // Console then, nothing it started may outlive it.
-  it("leaves no process behind when stop has to escalate past a Console stalled at the signal", async () => {
+  it.skipIf(process.platform === "win32")("leaves no process behind when stop has to escalate past a Console stalled at the signal", async () => {
     const run = createRun("frozen");
     const stall = stallShutdownWithLockHeld(run, { freezeOnSignalMs: 2_500 });
     const consoleProcess = spawnConsole(run, { preload: stall.preload });
@@ -332,7 +334,7 @@ afterEach(async () => {
   // L14, e7874487:N8 (I4, I2). The shutdown stalls with the lock held and the Console's process-table read cannot answer
   // within its budget. The agent CLI ignores SIGTERM, so its group's leader is still this Console's child: the deadline must
   // end that group without the table, and stop must still let the deadline finish first.
-  it("ends a live agent group at the deadline without a process table", async () => {
+  it.skipIf(process.platform === "win32")("ends a live agent group at the deadline without a process table", async () => {
     const run = createRun("no-ps");
     const stall = stallShutdownWithLockHeld(run);
     const consoleProcess = spawnConsole(run, { preload: stall.preload, env: { PATH: [hangingProcessTable(run), run.env.PATH].join(":") } });
@@ -356,7 +358,7 @@ afterEach(async () => {
   // the Console's process group and the member of a registered group whose leader already exited: nothing the Console
   // started may outlive it. Both need the Console's (slow) process table, which the deadline reads once, so it ends within
   // one table budget of its own and the external escalation keeps its margin.
-  it("reports a Console that ended by its own deadline as not cleanly stopped", async () => {
+  it.skipIf(process.platform === "win32")("reports a Console that ended by its own deadline as not cleanly stopped", async () => {
     const run = createRun("outcome");
     const stall = stallShutdownWithLockHeld(run, { strayChild: true, recordSignal: true });
     const psCalls = path.join(run.dir, "console-ps-calls");
@@ -390,7 +392,7 @@ afterEach(async () => {
   // L8, N1 (storage integrity). `fleet console start` gives up on a Console that holds the lock but is still starting (its
   // durable restore can outlast start's 60s). That Console may be mid-write; it must get its own deadline to stop instead of
   // a SIGKILL right after SIGTERM.
-  it("lets a starting Console that holds the lock stop by itself when start gives up on it", async () => {
+  it.skipIf(process.platform === "win32")("lets a starting Console that holds the lock stop by itself when start gives up on it", async () => {
     const run = createRun("starting");
     const marker = path.join(run.dir, "starting-stalled");
     const exited = path.join(run.dir, "exited");
@@ -424,7 +426,7 @@ afterEach(async () => {
 
   // L5, d48e62ac (I2; L3 and I1 as guards). An uncaught exception while serving ends the Console at once; the next Console
   // must find the slot usable, nothing the crashed one started may still run, and whatever reaps it stays inside its tree.
-  it("leaves no process behind and a reclaimable lock after a crash while serving", async () => {
+  it.skipIf(process.platform === "win32")("leaves no process behind and a reclaimable lock after a crash while serving", async () => {
     const run = createRun("crash");
     const preload = writePreload(run, "crash.mjs", [
       "process.on('SIGUSR2', () => setImmediate(() => { throw new Error('lifecycle suite injected crash'); }));",
@@ -450,7 +452,7 @@ afterEach(async () => {
   // L6, X1 (I2; L3, L10 E1 and I1). Nothing runs inside a SIGKILLed Console, so containment and the next Console cover it.
   // The killed Console reached its slot through a symlinked parent (as /var reaches /private/var on macOS) and the next one
   // through the real path: both spellings name one slot, so the killed Console's leftovers are the next one's to reclaim.
-  it("leaves no process behind and reclaims the lock and leftovers after an external SIGKILL", async () => {
+  it.skipIf(process.platform === "win32")("leaves no process behind and reclaims the lock and leftovers after an external SIGKILL", async () => {
     const run = createRun("sigkill");
     const linked = path.join(run.dir, "linked-root");
     fs.symlinkSync(run.root, linked, "dir");
@@ -480,7 +482,7 @@ afterEach(async () => {
   // CLI ignores SIGTERM by E1, those whose CLI ended (on SIGTERM, or by itself before the stop) but left a helper holding
   // its pipes by one proving process-table read — so stop succeeds well inside B_int, the instance records `clean`, and
   // nothing it started outlives it.
-  it("ends a hung plugin child on a normal stop and reports the stop as clean", async () => {
+  it.skipIf(process.platform === "win32")("ends a hung plugin child on a normal stop and reports the stop as clean", async () => {
     const run = createRun("plugin-stop");
     const consoleProcess = spawnConsole(run);
     const startedAt = Date.now();
@@ -505,7 +507,7 @@ afterEach(async () => {
   // `lock_held` entry in the failure log (docs/console-lock-reclaim.md, the one documented exception). When lock exclusivity
   // is broken anyway (the lock file removed by hand, or by a legacy shell), the Console that then wins may reclaim only what a
   // dead Console left: the attachments of a Console that is still serving are not leftovers.
-  it("never lets another Console write or remove what a live Console owns", async () => {
+  it.skipIf(process.platform === "win32")("never lets another Console write or remove what a live Console owns", async () => {
     const run = createRun("exclusive");
     const owner = spawnConsole(run);
     const endpoint = await waitForReady(run, owner.pid!);
@@ -529,12 +531,174 @@ afterEach(async () => {
     expect(isAlive(owner.pid!)).toBe(true);
     lifecycleCheck("L10", attachment.every((file) => fs.existsSync(file)), "the attachments of a Console still serving are never reclaimed");
   }, 60_000);
+
+  // W1 and W5. A stuck plugin child (spawnOwned) starts a detached grandchild, a Start-Process grandchild, and a
+  // non-libuv grandchild, and CREATE_BREAKAWAY_FROM_JOB is denied. Self-stop — not CLI stop, which is TerminateProcess
+  // and stays unrecorded — ends clean inside B_int, and every one of those processes is gone.
+  it.skipIf(process.platform !== "win32")("ends a hung plugin child's grandchildren on a self-stop and denies breakaway", async () => {
+    const run = createRun("win-plugin-stop");
+    const stopFile = path.join(run.dir, "self-stop");
+    const breakawayFile = path.join(run.dir, "breakaway.json");
+    run.env.LEDGER_WINDOWS_GRANDCHILDREN = "1";
+    run.env.LEDGER_BREAKAWAY_RESULT = breakawayFile;
+    const consoleProcess = spawnConsole(run, { preload: writePreload(run, "self-stop.mjs", selfStopPreload(stopFile)) });
+    const endpoint = await waitForReady(run, consoleProcess.pid!);
+    const pluginChildren = await openPluginChildren(run, endpoint);
+    const started = pluginChildren;
+    const breakaway = JSON.parse(fs.readFileSync(breakawayFile, "utf8")) as { ok?: boolean; err?: number };
+    expect(breakaway.ok, "CREATE_BREAKAWAY_FROM_JOB must fail inside the group job").toBe(false);
+    expect(breakaway.err, "breakaway is denied").toBe(5);
+    for (const role of ["detached", "start-process", "native"]) {
+      expect(pluginChildren.some((child) => child.command === `tokscale ${role}`), `${role} grandchild was not started`).toBe(true);
+    }
+
+    const stoppedAt = Date.now();
+    fs.writeFileSync(stopFile, "");
+    const exit = await exitOf(consoleProcess, 30_000);
+    const elapsedMs = Date.now() - stoppedAt;
+
+    lifecycleCheck("W1", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "a self-stop records clean", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run), elapsedMs } });
+    lifecycleCheck("W1", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the hung plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
+    const left = await survivors(run, started);
+    lifecycleCheck("W1", left.length === 0, "I2: the plugin child and its grandchildren do not outlive the Console", { detail: { survivors: left, failureLog: failureKinds(run) } });
+  }, 90_000);
+
+  // W2. An uncaught exception while a fake agent, its MCP child, and a detached grandchild are running. The job closes
+  // with the process, so none of them is still the process we recorded.
+  it.skipIf(process.platform !== "win32")("leaves no grandchild after a crash", async () => {
+    const run = createRun("win-crash");
+    const crashFile = path.join(run.dir, "crash");
+    const consoleProcess = spawnConsole(run, {
+      preload: writePreload(run, "crash.mjs", crashPreload(crashFile)),
+      env: { FAKE_AGENT_DETACHED_GRANDCHILD: "1" },
+    });
+    const endpoint = await waitForReady(run, consoleProcess.pid!);
+    await openWorkload(run, endpoint, { terminal: false });
+    const started = descendantsOf(consoleProcess.pid!);
+    expect(agentProcs(run).some((entry) => entry.role === "chat-mcp")).toBe(true);
+    expect(agentProcs(run).some((entry) => entry.role === "chat-detached")).toBe(true);
+
+    fs.writeFileSync(crashFile, "");
+    await exitOf(consoleProcess, 20_000);
+
+    lifecycleCheck("W2", exitOutcome(run, consoleProcess.pid!) === "crash", "a crash records crash", { detail: { outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run) } });
+    const left = await survivors(run, started);
+    lifecycleCheck("W2", left.length === 0, "I2: nothing the crashed Console started outlives it", { detail: { survivors: left } });
+  }, 90_000);
+
+  // W3. External TerminateProcess, both as process.kill and as taskkill /F /PID without /T. The tree dies because the
+  // kernel closes the job, not because the killer walked it. The record stays unrecorded or external, never clean.
+  it.skipIf(process.platform !== "win32")("leaves no grandchild after TerminateProcess", async () => {
+    await expectWindowsExternalKill("terminate");
+  }, 90_000);
+
+  it.skipIf(process.platform !== "win32")("leaves no grandchild after taskkill /F without /T", async () => {
+    await expectWindowsExternalKill("taskkill");
+  }, 90_000);
+
+  // W4. A sentinel this test started, and a detached child the Console started the way it starts the update worker
+  // (not registered), are still the same processes after the Console is killed. A second Console is not booted: the
+  // sentinel is already an unrelated pid.
+  it.skipIf(process.platform !== "win32")("does not signal a sentinel or a detached hand-off when the Console is killed", async () => {
+    const run = createRun("win-sentinel");
+    const handoffFile = path.join(run.dir, "handoff.json");
+    const consoleProcess = spawnConsole(run, { preload: writePreload(run, "handoff.mjs", handoffPreload(handoffFile)) });
+    await waitForReady(run, consoleProcess.pid!);
+    const handoff = JSON.parse(fs.readFileSync(handoffFile, "utf8")) as { pid: number };
+    const handoffStarted = processStartTime(handoff.pid);
+    own(handoff.pid);
+    const sentinel = spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30);"], { stdio: "ignore", windowsHide: true });
+    own(sentinel.pid!);
+    const sentinelStarted = processStartTime(sentinel.pid!);
+    expect(handoffStarted, "the hand-off child must be observable").not.toBeNull();
+    expect(sentinelStarted, "the sentinel must be observable").not.toBeNull();
+
+    spawnSync("taskkill.exe", ["/F", "/PID", String(consoleProcess.pid)], { windowsHide: true });
+    await exitOf(consoleProcess, 20_000);
+
+    lifecycleCheck("W4", processStartTime(handoff.pid) === handoffStarted, "I1: a detached hand-off is not killed with the Console", { detail: { pid: handoff.pid } });
+    lifecycleCheck("W4", processStartTime(sentinel.pid!) === sentinelStarted, "I1: an unrelated process is not signalled", { detail: { pid: sentinel.pid } });
+  }, 60_000);
+
+  // W6. The representative degraded path: koffi will not load. The Console still becomes ready and records
+  // containment_degraded. Create and assign failures are the same record kind, locked on the port itself.
+  it.skipIf(process.platform !== "win32")("boots and records containment_degraded when koffi will not load", async () => {
+    const run = createRun("win-degraded");
+    const consoleProcess = spawnConsole(run, { preload: writePreload(run, "koffi-fail.mjs", koffiFailPreload()) });
+    await waitForReady(run, consoleProcess.pid!);
+
+    expect(isAlive(consoleProcess.pid!), "a koffi load failure must not kill the Console").toBe(true);
+    lifecycleCheck("W6", failureKinds(run).includes("containment_degraded"), "a koffi load failure is recorded as containment_degraded", { detail: failureKinds(run) });
+  }, 60_000);
 });
 
 /**
  * Asserts one invariant of a lifecycle case. While the case is a listed known defect (and the ratchet is on), a signature
  * check asserts the defect instead and any other check of that case is left unasserted.
  */
+/** Emits SIGTERM inside the Console, so Windows runs the shutdown instead of TerminateProcess. */
+function selfStopPreload(stopFile: string): readonly string[] {
+  return [
+    "import fs from 'node:fs';",
+    `const stopFile = ${JSON.stringify(stopFile)};`,
+    "const timer = setInterval(() => { if (fs.existsSync(stopFile)) { clearInterval(timer); process.emit('SIGTERM'); } }, 50);",
+    "timer.unref();",
+  ];
+}
+
+function crashPreload(crashFile: string): readonly string[] {
+  return [
+    "import fs from 'node:fs';",
+    `const crashFile = ${JSON.stringify(crashFile)};`,
+    "const timer = setInterval(() => { if (fs.existsSync(crashFile)) { clearInterval(timer); throw new Error('lifecycle suite injected crash'); } }, 50);",
+    "timer.unref();",
+  ];
+}
+
+/** A detached child the registry never sees, the shape of the update worker. */
+function handoffPreload(handoffFile: string): readonly string[] {
+  return [
+    "import { spawn } from 'node:child_process';",
+    "import fs from 'node:fs';",
+    `const handoffFile = ${JSON.stringify(handoffFile)};`,
+    "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1 << 30);'], { detached: true, stdio: 'ignore', windowsHide: true });",
+    "child.unref();",
+    "fs.writeFileSync(handoffFile, JSON.stringify({ pid: child.pid }));",
+  ];
+}
+
+/** The next createRequire('koffi') throws, which is the representative load failure. */
+function koffiFailPreload(): readonly string[] {
+  return [
+    "import module from 'node:module';",
+    "const original = module.createRequire;",
+    "module.createRequire = function (filename) {",
+    "  const req = original.call(this, filename);",
+    "  const wrapped = (id) => { if (id === 'koffi') throw new Error('lifecycle suite injected koffi load failure'); return req(id); };",
+    "  wrapped.resolve = (id) => { if (id === 'koffi') throw new Error('lifecycle suite injected koffi load failure'); return req.resolve(id); };",
+    "  return wrapped;",
+    "};",
+  ];
+}
+
+async function expectWindowsExternalKill(kind: "terminate" | "taskkill"): Promise<void> {
+  const run = createRun(kind === "taskkill" ? "win-taskkill" : "win-terminate");
+  const consoleProcess = spawnConsole(run, { env: { FAKE_AGENT_DETACHED_GRANDCHILD: "1" } });
+  const endpoint = await waitForReady(run, consoleProcess.pid!);
+  await openWorkload(run, endpoint, { terminal: false });
+  const started = descendantsOf(consoleProcess.pid!);
+  expect(agentProcs(run).some((entry) => entry.role === "chat-detached")).toBe(true);
+
+  if (kind === "taskkill") spawnSync("taskkill.exe", ["/F", "/PID", String(consoleProcess.pid)], { windowsHide: true });
+  else process.kill(consoleProcess.pid!);
+  await exitOf(consoleProcess, 20_000);
+
+  const outcome = exitOutcome(run, consoleProcess.pid!);
+  lifecycleCheck("W3", outcome !== "clean", "an external kill is not recorded as clean", { detail: { kind, outcome } });
+  const left = await survivors(run, started);
+  lifecycleCheck("W3", left.length === 0, "I2: nothing the killed Console started outlives it", { detail: { kind, survivors: left } });
+}
+
 function lifecycleCheck(caseId: string, holds: boolean, invariant: string, options: { readonly detail?: unknown; readonly signature?: boolean } = {}): void {
   const detail = options.detail === undefined ? "" : `: ${JSON.stringify(options.detail)}`;
   const known = LIFECYCLE_KNOWN_DEFECTS.find((entry) => entry.case === caseId);
@@ -633,7 +797,7 @@ function createRun(name: string): LifecycleRun {
     tmp,
     agentDir,
     theater,
-    env: {
+    env: process.platform === "win32" ? windowsRunEnv(home, tmp, pathbin, root, dir, agentDir) : {
       HOME: home,
       TMPDIR: tmp,
       PATH: [pathbin, ...SYSTEM_PATH].join(":"),
@@ -655,9 +819,90 @@ function createRun(name: string): LifecycleRun {
   const relative = path.relative(fs.realpathSync(repoRoot), fs.realpathSync(tmp));
   if (!relative.startsWith("..") && !path.isAbsolute(relative)) throw new Error("TMPDIR must stay outside the checkout");
   for (const target of [root, home, agentDir, theater, pathbin]) fs.mkdirSync(target, { recursive: true, mode: 0o700 });
-  // The agent stand-in is a `#!/usr/bin/env node` script: only this Node goes on PATH, never a directory of real CLIs.
-  fs.symlinkSync(process.execPath, path.join(pathbin, "node"));
+  if (process.platform === "win32") {
+    // Windows will not run a shebang. The shim is what CLAUDE_BIN already names; it must not contain cmd metacharacters.
+    fs.writeFileSync(path.join(pathbin, "claude-fake.cmd"), `@echo off\r\n"${process.execPath}" "${FAKE_AGENT}" %*\r\n`);
+  } else {
+    // The agent stand-in is a `#!/usr/bin/env node` script: only this Node goes on PATH, never a directory of real CLIs.
+    fs.symlinkSync(process.execPath, path.join(pathbin, "node"));
+  }
   return run;
+}
+
+/** Runs only when the plugin child sees LEDGER_WINDOWS_GRANDCHILDREN. POSIX generations of this stand-in never enter it. */
+function windowsGrandchildLines(): readonly string[] {
+  const koffiEntry = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
+  return [
+    "if (process.env.LEDGER_WINDOWS_GRANDCHILDREN === '1') {",
+    "  const fs = require('fs');",
+    "  const path = require('path');",
+    "  const { spawn, spawnSync } = require('child_process');",
+    "  const stay = path.join(__dirname, 'stay.js');",
+    "  fs.writeFileSync(stay, 'setInterval(() => {}, 1 << 30);\\n');",
+    "  const detached = spawn(process.execPath, [stay], { detached: true, stdio: 'ignore', windowsHide: true });",
+    "  detached.unref();",
+    "  record('detached', detached.pid);",
+    "  const quote = (value) => \"'\" + String(value).replace(/'/g, \"''\") + \"'\";",
+    "  const started = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$p = Start-Process -FilePath ' + quote(process.execPath) + ' -ArgumentList ' + quote(stay) + ' -WindowStyle Hidden -PassThru; Write-Output $p.Id'], { encoding: 'utf8', windowsHide: true, timeout: 15000 });",
+    "  const startedPid = Number(String(started.stdout || '').trim().split(/\\s+/).pop());",
+    "  if (startedPid) record('start-process', startedPid);",
+    "  const pidFile = path.join(__dirname, 'native.pid');",
+    "  const bridge = path.join(__dirname, 'native-bridge.js');",
+    "  fs.writeFileSync(bridge, \"const {spawn}=require('child_process'); const fs=require('fs'); const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 400'],{stdio:'ignore',windowsHide:true}); fs.writeFileSync(process.argv[2], String(child.pid)); setInterval(()=>{},1<<30);\\n\");",
+    "  spawn(process.execPath, [bridge, pidFile], { stdio: 'ignore', windowsHide: true });",
+    "  const deadline = Date.now() + 5000;",
+    "  while (!fs.existsSync(pidFile) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);",
+    "  if (fs.existsSync(pidFile)) record('native', Number(fs.readFileSync(pidFile, 'utf8')));",
+    "  let breakaway = { ok: false, err: -1 };",
+    "  try {",
+    `    const koffi = require(${JSON.stringify(koffiEntry)});`,
+    "    const kernel32 = koffi.load('kernel32.dll');",
+    "    const u16ptr = koffi.pointer('uint16');",
+    "    const u8ptr = koffi.pointer('uint8');",
+    "    const CreateProcessW = kernel32.func('__stdcall', 'CreateProcessW', 'int', ['void *', u16ptr, 'void *', 'void *', 'int', 'uint32', 'void *', 'void *', u8ptr, u8ptr]);",
+    "    const GetLastError = kernel32.func('__stdcall', 'GetLastError', 'uint32', []);",
+    "    const cmd = Buffer.from('cmd.exe /c exit 0\\\\0', 'utf16le');",
+    "    const si = Buffer.alloc(104);",
+    "    si.writeUInt32LE(104, 0);",
+    "    const pi = Buffer.alloc(24);",
+    "    const ok = CreateProcessW(null, cmd, null, null, 0, 0x01000000, null, null, si, pi);",
+    "    breakaway = { ok: Boolean(ok), err: ok ? 0 : Number(typeof koffi.errno === 'function' ? koffi.errno() : 0) || Number(GetLastError()) };",
+    "  } catch (error) {",
+    "    breakaway = { ok: false, err: -1, message: String(error && error.message || error) };",
+    "  }",
+    "  if (process.env.LEDGER_BREAKAWAY_RESULT) fs.writeFileSync(process.env.LEDGER_BREAKAWAY_RESULT, JSON.stringify(breakaway));",
+    "}",
+  ];
+}
+
+function windowsRunEnv(home: string, tmp: string, pathbin: string, root: string, dir: string, agentDir: string): LifecycleRun["env"] {
+  const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:\\Windows";
+  const pathValue = [pathbin, path.dirname(process.execPath), path.join(systemRoot, "System32"), path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0")].join(";");
+  const comSpec = process.env.ComSpec ?? path.join(systemRoot, "System32", "cmd.exe");
+  const user = os.userInfo().username;
+  return {
+    HOME: home,
+    TMP: tmp,
+    TEMP: tmp,
+    TMPDIR: tmp,
+    PATH: pathValue,
+    Path: pathValue,
+    PATHEXT: process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD",
+    SystemRoot: systemRoot,
+    SYSTEMROOT: systemRoot,
+    ComSpec: comSpec,
+    COMSPEC: comSpec,
+    USER: user,
+    USERNAME: user,
+    LANG: "en_US.UTF-8",
+    FLEET_DATA_DIR: root,
+    FLEET_CONSOLE_DATA_DIR: path.join(root, "console"),
+    FLEET_DESKTOP_DATA_DIR: path.join(dir, "desktop"),
+    CLAUDE_CONFIG_DIR: path.join(dir, "claude"),
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    CLAUDE_BIN: path.join(pathbin, "claude-fake.cmd"),
+    FAKE_AGENT_DIR: agentDir,
+  };
 }
 
 function spawnConsole(run: LifecycleRun, options: { readonly preload?: string; readonly env?: Record<string, string> } = {}): ChildProcess {
@@ -956,6 +1201,7 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
     "  process.on('SIGTERM', () => {});",
     "  record('cli-ignores', process.pid);",
     "}",
+    ...windowsGrandchildLines(),
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
   // Each summary answers only once tokscale does; the requests end with the Console.
@@ -967,6 +1213,13 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
     : [];
   // Two report runs, two model runs, and their two helpers.
   await waitUntil(() => recorded().length >= 6, 20_000, "the Ledger plugin did not start its CLI");
+  if (run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1") {
+    const breakawayFile = run.env.LEDGER_BREAKAWAY_RESULT;
+    await waitUntil(() => {
+      const roles = new Set(recorded().map((entry) => entry.role));
+      return roles.has("detached") && roles.has("start-process") && roles.has("native") && breakawayFile !== undefined && fs.existsSync(breakawayFile);
+    }, 20_000, "the plugin child did not start its Windows grandchildren");
+  }
   const entries = recorded();
   for (const entry of entries) own(entry.pid);
   const gone = entries.find((entry) => entry.role === "cli-gone")!;
@@ -1016,13 +1269,62 @@ function ownRecorded(entry: { readonly pid: number; readonly at?: number }): voi
 }
 
 function processStartTime(pid: number): string | null {
+  if (process.platform === "win32") return windowsProcesses().get(pid)?.startedAt ?? null;
   // The C locale keeps lstart in the one format Date.parse reads.
   const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", env: { ...process.env, LC_ALL: "C" } });
   return result.status === 0 && result.stdout.trim() ? result.stdout.trim() : null;
 }
 
+/**
+ * One CIM snapshot, reused for the synchronous lookups in a single survivors pass. The next pass is a fresh read, so a
+ * process that exits between polls is not still "the same start time".
+ */
+let windowsProcessSnapshot: { readonly at: number; readonly rows: Map<number, { readonly ppid: number; readonly startedAt: string; readonly name: string }> } | null = null;
+
+function windowsProcesses(): Map<number, { readonly ppid: number; readonly startedAt: string; readonly name: string }> {
+  const now = Date.now();
+  if (windowsProcessSnapshot && now - windowsProcessSnapshot.at < 50) return windowsProcessSnapshot.rows;
+  const script = [
+    "Get-CimInstance Win32_Process | ForEach-Object {",
+    "  if ($null -eq $_.CreationDate) { return }",
+    "  '{0}|{1}|{2}|{3}' -f $_.ProcessId, $_.ParentProcessId, $_.CreationDate.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ'), ($_.Name -replace '[|]', '_')",
+    "}",
+  ].join(" ");
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", windowsHide: true, timeout: 20_000 });
+  const rows = new Map<number, { readonly ppid: number; readonly startedAt: string; readonly name: string }>();
+  if (result.status === 0) {
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const [pid, ppid, startedAt, name] = line.split("|");
+      if (!pid || !ppid || !startedAt) continue;
+      rows.set(Number(pid), { ppid: Number(ppid), startedAt, name: name ?? "" });
+    }
+  }
+  windowsProcessSnapshot = { at: now, rows };
+  return rows;
+}
+
 /** Every live descendant of `pid` now, whatever started it (agents, their MCP children, PTYs, helpers). */
 function descendantsOf(pid: number): Array<{ readonly pid: number; readonly startedAt: string; readonly command: string }> {
+  if (process.platform === "win32") {
+    const table = windowsProcesses();
+    const found: number[] = [];
+    const queue = [pid];
+    while (queue.length > 0) {
+      const parent = queue.shift()!;
+      for (const [child, row] of table) {
+        if (row.ppid === parent && !found.includes(child)) {
+          found.push(child);
+          queue.push(child);
+        }
+      }
+    }
+    return found.flatMap((child) => {
+      const row = table.get(child);
+      if (!row) return [];
+      own(child);
+      return [{ pid: child, startedAt: row.startedAt, command: row.name }];
+    });
+  }
   const table = spawnSync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8" }).stdout.trim().split("\n").map((line) => line.trim().split(/\s+/).map(Number));
   const found: number[] = [];
   const queue = [pid];
@@ -1119,6 +1421,7 @@ function isAlive(pid: number): boolean {
 }
 
 function commandOf(pid: number): string {
+  if (process.platform === "win32") return windowsProcesses().get(pid)?.name ?? "";
   const result = spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
   return result.status === 0 ? result.stdout : "";
 }

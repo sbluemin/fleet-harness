@@ -62,6 +62,8 @@ jobs:
 
   console-windows-lifecycle:
     runs-on: windows-2022
+    # A hung Windows process must not hold the runner. No secrets: the cases use the fake agent only.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,7 +77,8 @@ jobs:
           cache: pnpm
       # postinstall이 Fleet Console까지 빌드하므로 따로 빌드하지 않는다.
       - run: pnpm install --frozen-lockfile
-      # mock signal만 확인하면 Windows에서 남은 프로세스와 잠긴 파일을 놓친다.
+      # The Windows cases live in these files and run when platform is win32. POSIX-only cases stay skipped.
+      # There is no -t filter: a renamed case would otherwise pass as zero tests. No secrets.
       - name: Test Windows Console process lifecycle
         shell: pwsh
         run: |
