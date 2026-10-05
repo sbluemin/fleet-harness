@@ -6,6 +6,8 @@ on:
     branches:
       - canary
       - main
+  # A canary push that GitHub never delivered can be re-run by hand on the same ref.
+  workflow_dispatch:
 
 permissions:
   contents: read
