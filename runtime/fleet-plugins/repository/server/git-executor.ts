@@ -57,8 +57,9 @@ export function runGit(
     readonly allowExitCodes?: readonly number[];
     readonly signal?: AbortSignal;
     /**
-     * The host's owned-process port, for commands that can wait on the network: fetch, push, pull, and a worktree
-     * restore (its smudge filters, git-lfs among them, may download). git then leads a group the Console ends however
+     * The host's owned-process port, for commands that can wait on the network: fetch, push, pull, and the commands
+     * that write the worktree back (restore, stash push -u, apply, pop), whose smudge filters, git-lfs among them, may
+     * download. git then leads a group the Console ends however
      * the Console ends, and a timeout ends git's helpers (git-remote-https, ssh, a filter process) with it. The other
      * commands are local and run no hooks (every hook-capable command here sets core.hooksPath to the null device), so
      * they run as plain children.
