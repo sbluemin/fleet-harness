@@ -47,30 +47,12 @@ export type AnalystCliId = "claude";
 const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude";
 
 /**
- * 분석가의 기본 선택.
- *
- * 오늘의 기본값은 `opus[1m]`/`xhigh`였다. 소유자가 sonnet/low로 낮추기로 정했으므로 여기서
- * 한 곳으로 고정한다. 강도 사다리는 ANALYST_EFFORT_LEVELS가 자른다.
+ * 분석가의 기본 선택 — 소유자가 정한 sonnet/low. 강도는 모델 로스터 행의 사다리 전체를 쓰고, 사다리에 low가 없으면
+ * 실행 시점 클램프(그 이하의 가장 높은 단, 없으면 첫 단)가 정한다.
  */
 const ANALYST_DEFAULT_MODEL = "sonnet";
 const ANALYST_DEFAULT_EFFORT = "low";
 const ANALYST_DEFAULT_COORDINATE: ModelCoordinate = { model: ANALYST_DEFAULT_MODEL, effort: ANALYST_DEFAULT_EFFORT };
-/**
- * 분석가가 여는 강도. Quick Launch 트랙의 일상 단과 같고, xhigh·max·ultra는
- * 이 표면에 서지 않는다 — 카탈로그가 더 내놓아도 여기서 자른다.
- */
-const ANALYST_EFFORT_LEVELS = ["low", "medium", "high"] as const;
-export type AnalystEffortLevel = (typeof ANALYST_EFFORT_LEVELS)[number];
-
-function clampAnalystEffortLevels(levels: readonly string[]): readonly string[] {
-  return ANALYST_EFFORT_LEVELS.filter((level) => levels.includes(level));
-}
-
-function clampAnalystDefaultEffort(levels: readonly string[], fallback?: string | null): string | undefined {
-  if (fallback && levels.includes(fallback)) return fallback;
-  if (levels.includes(ANALYST_DEFAULT_EFFORT)) return ANALYST_DEFAULT_EFFORT;
-  return levels[0];
-}
 export type AnalysisSession = AnalystSessionInstance;
 /** 사람이 아닌 질문자 — Console Use 로 물은 Operation. 제목만 싣는다. */
 export type AnalysisOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
@@ -109,8 +91,8 @@ export function buildAnalysisCatalog(
   resolve: (stored: ModelCoordinate) => ResolvedModelCoordinate = (stored) => resolveRosterCoordinate(roster, stored, ANALYST_DEFAULT_COORDINATE),
 ): AnalysisCatalog {
   const models = rosterRows(roster).map((row) => {
-    const effortLevels = clampAnalystEffortLevels(rosterRowEfforts(row));
-    const defaultEffort = clampAnalystDefaultEffort(effortLevels, ANALYST_DEFAULT_EFFORT);
+    const effortLevels = rosterRowEfforts(row);
+    const defaultEffort = clampRosterEffort(effortLevels, ANALYST_DEFAULT_EFFORT);
     return {
       id: row.launch.model ?? row.id,
       label: row.label,
@@ -119,8 +101,8 @@ export function buildAnalysisCatalog(
     };
   });
   const resolved = resolve(experimentAideSelection(settings, "analyst"));
-  const levels = resolved.row ? clampAnalystEffortLevels(rosterRowEfforts(resolved.row)) : [...ANALYST_EFFORT_LEVELS];
-  const effort = levels.length === 0 ? "" : clampRosterEffort(levels, resolved.effort ?? settings.analystEffort) ?? "";
+  // 행이 있으면 해석이 이미 그 사다리 안으로 클램프했다. 로스터가 비어 최후 폴백이면 저장 강도를 그대로 싣는다.
+  const effort = resolved.row ? resolved.effort ?? "" : resolved.effort ?? settings.analystEffort;
   return {
     clis: [{
       cliId: ANALYST_GATEWAY_CLI_ID,
