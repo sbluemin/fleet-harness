@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { ApiError, ConsoleUpdateApplyFailure, applyConsoleUpdate, checkConsoleUpdate } from "../../integration/api.js";
-import { beginUpdateWatch, markUpdateDelegated, reportUpdateApplyFailure } from "../../../../../features/updates/client/update-progress-store.js";
+import { beginUpdateWatch, markUpdateDelegated, reportUpdateApplyFailure, useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
@@ -690,6 +690,9 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
     && (shellUpdate.stage === "available" || shellUpdate.stage === "downloading" || shellUpdate.stage === "ready");
   // 셸이 먼저 바뀌어야 하는 Console 갱신은 셸 갱신에 실려 올 때만 알린다 — 따로 알릴 버튼이 없다.
   const notice = useUpdateNotice({ shellUpdate, updateAvailable: shellUpdateRequired ? consoleFoldsIntoShell : updateAvailable, latestVersion, onHomeConsole });
+  // 업데이트 결과 배너가 서 있는 동안 말풍선은 물러선다 — 같은 자리에 겹치면 배너가 전하는 사유가 가려진다.
+  // 닫기(dismiss)와 달리 기억하지 않으므로, 배너를 확인하면 말풍선이 돌아와 다시 시도할 수 있다.
+  const outcomeShowing = useUpdateProgress().outcome !== null;
   // "화면 안내 다시 보기"는 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다 —
   // 카탈로그의 모든 피처 투어 시청 기록과 최초 설정 가이드 기록을 함께 지워, 어느 화면에
   // 있든 온보딩을 처음부터 다시 보게 한다.
@@ -712,7 +715,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
       <HelpGlyph />
       {updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
     </button>
-    {!open && notice.kind !== null && !notice.dismissed ? (
+    {!open && !outcomeShowing && notice.kind !== null && !notice.dismissed ? (
       <UpdateNoticeBubble
         kind={notice.kind}
         shellUpdate={shellUpdate}
