@@ -7,7 +7,6 @@ One Console `serve` process has one lifecycle, and every actor that deals with i
 
 The serve state owner is `runtime/fleet-console/core/host/bootstrap/serve-lifecycle.ts`. Lock publication and the reclaim of another instance's lock are a separate, referenced contract: [Console Lock Reclaim Across Hosts](console-lock-reclaim.md).
 
-Actors are being moved onto the contract in stages. A section marked *(pending)* names behavior an actor still implements on its own until its stage lands; the contract text is the target.
 
 ## Invariants
 
@@ -100,7 +99,7 @@ New outcomes may be added without a version change. A reader that meets an outco
 
 ## Observing an instance from outside
 
-An external actor reads the lock through the one lock observer, `observeConsoleLockFile` in `@fleet-console/lifecycle` (absent, refused, no readable owner, or an owner with its exact bytes, liveness, and the first trust problem, if any), then the pid's liveness (only ESRCH is death) and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI, `serve`, Desktop, and the update worker do; the local Console list still applies its own reading *(pending)*. A trusted lock has the POSIX modes 0700/0600, belongs to this user, names the loopback host and a valid port, has an endpoint of exactly `http://<host>:<port>/`, a token, and a numeric `startedAt`; a shell may add its own adoption policy on top. Whether the lock still holds one instance is `consoleLockInstanceState` over the same observer: `released` when there is no lock or it names another pid (or token), `held` when it names that instance, and `unknown` when it cannot be judged — a lock without a readable owner, even one that parses (`{}`, `null`), is never taken as released.
+An external actor reads the lock through the one lock observer, `observeConsoleLockFile` in `@fleet-console/lifecycle` (absent, refused, no readable owner, or an owner with its exact bytes, liveness, and the first trust problem, if any), then the pid's liveness (only ESRCH is death) and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI, `serve`, Desktop, the update worker, and the local Console list do. A trusted lock has the POSIX modes 0700/0600, belongs to this user, names the loopback host and a valid port, has an endpoint of exactly `http://<host>:<port>/`, a token, and a numeric `startedAt`; a shell may add its own adoption policy on top. Whether the lock still holds one instance is `consoleLockInstanceState` over the same observer: `released` when there is no lock or it names another pid (or token), `held` when it names that instance, and `unknown` when it cannot be judged — a lock without a readable owner, even one that parses (`{}`, `null`), is never taken as released.
 
 | Lock | Pid | Health | Observed | May do |
 |---|---|---|---|---|
@@ -118,6 +117,22 @@ An external actor reads the lock through the one lock observer, `observeConsoleL
 A refused endpoint with a live pid that still holds the same lock is a Console that has closed its listener and is cleaning up — never an absent owner.
 
 Evidence direction: only ESRCH grants an action that frees the slot — removing a lock, signalling as an absent owner, or starting a new `serve`. A comparison of two wall-clock readings taken at different times (the lock's `startedAt` against the pid's `ps` start time) may only block an action. This limit covers only that comparison between a lock and a process; the identity proofs that compare a process with itself or with its own registration still grant a signal as this contract describes them — an unchanged start time read again (E4), and a registered group's spawn time against `ps` in the deadline and the reaper. So a live pid that started after its lock was written is `replaced`, not `exited`: every actor leaves it and its lock alone, and `serve` itself would not take that lock while the pid runs.
+
+### Without credentials: the local Console list
+
+The local Console list reads no lock token (#1563), so it observes in a public mode with the same rules and no authority to act (`observeConsolePublic`, `classifyConsolePublic`). It reads each lock through the same observer and leaves out a lock that fails the trust checks, since the list would take a person to its address. A Console on this machine is alive unless its pid is ESRCH; a Console inside WSL has a pid from another namespace, so a TCP connect to its port stands in. One unauthenticated `/api/v1/status` request, within `PUBLIC_STATUS_TIMEOUT_MS` (700 ms), then gives:
+
+| Pid or port | Status | Public state |
+|---|---|---|
+| ESRCH | — | exited |
+| a WSL Console whose port refuses a connection | — | unreachable |
+| alive | 503 `console_starting` | starting |
+| alive | refused, and the pid started after the lock was written | replaced |
+| alive | refused | stopping |
+| alive | any other answer | ready |
+| alive | timeout or no answer | unresponsive |
+
+Which states the list shows is its own policy: it hides starting, exited, unreachable, and replaced, and shows ready, stopping, and unresponsive — a slow Console stays listed.
 
 ### Stop ladder
 
