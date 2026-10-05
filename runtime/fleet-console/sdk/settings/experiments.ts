@@ -85,8 +85,8 @@ export interface ExperimentModelOption {
 }
 
 /**
- * 선택지에 항상 서는 Claude 별칭. Gateway 모델은 그것을 아는 플러그인이 `experimentModelOptions`로
- * 덧붙인다 — 코어는 어떤 공급자가 켜져 있는지 모른다.
+ * @deprecated 모델 선택지의 원천은 모델 로스터(Settings › AI Gateway) 하나다. 내장 코드는 이 목록을 읽지 않는다.
+ * Fleet 1.215.0에서 제거한다.
  */
 export const CLAUDE_EXPERIMENT_MODEL_OPTIONS: readonly ExperimentModelOption[] = [
   { id: "fable[1m]", label: "Fable" },

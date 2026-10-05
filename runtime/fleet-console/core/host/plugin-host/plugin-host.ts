@@ -244,6 +244,7 @@ const SHIM_DEFINITIONS: readonly ShimDefinition[] = [
   { name: "sdk-react-browser", specifier: "@fleet-console/sdk/react/browser", globalKey: "@fleet-console/sdk/react/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/react/browser"] ?? [] },
   { name: "sdk-components-failure-notice", specifier: "@fleet-console/sdk/components/failure-notice", globalKey: "@fleet-console/sdk/components/failure-notice", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/failure-notice"] ?? [] },
   { name: "sdk-components-effort-track", specifier: "@fleet-console/sdk/components/effort-track", globalKey: "@fleet-console/sdk/components/effort-track", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/effort-track"] ?? [] },
+  { name: "sdk-components-model-coordinate-picker", specifier: "@fleet-console/sdk/components/model-coordinate-picker", globalKey: "@fleet-console/sdk/components/model-coordinate-picker", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/model-coordinate-picker"] ?? [] },
   { name: "sdk-components-launch-provider-glyphs", specifier: "@fleet-console/sdk/components/launch-provider-glyphs", globalKey: "@fleet-console/sdk/components/launch-provider-glyphs", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/launch-provider-glyphs"] ?? [] },
   { name: "sdk-components-shell-glyph", specifier: "@fleet-console/sdk/components/shell-glyph", globalKey: "@fleet-console/sdk/components/shell-glyph", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/shell-glyph"] ?? [] },
 ];

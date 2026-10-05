@@ -180,6 +180,12 @@
       "import": "./components/effort-track.tsx",
       "default": "./components/effort-track.tsx"
     },
+    "./components/model-coordinate-picker": {
+      "types": "./components/model-coordinate-picker.tsx",
+      "browser": "./components/model-coordinate-picker.tsx",
+      "import": "./components/model-coordinate-picker.tsx",
+      "default": "./components/model-coordinate-picker.tsx"
+    },
     "./components/caption-actions": {
       "types": "./components/caption-actions.tsx",
       "browser": "./components/caption-actions.tsx",
