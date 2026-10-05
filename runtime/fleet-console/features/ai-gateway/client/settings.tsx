@@ -628,20 +628,14 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
     // 우선순위는 이 저장에 싣지 않는다 — 키 부재를 서버가 "보존"으로 읽으므로, 다른
     // 호스트가 그 사이 바꾼 소진 순서를 모델 편집이 스테일 스냅숏으로 덮지 않는다.
     // 우선순위를 싣는 경로는 순위 셀렉트(savePriority)와, 순위가 실제로 바뀌는 제거뿐이다.
-    const normalized = models.length === 0 ? null : { models };
-    void setSystemPromptSettingsField("aiGateway", normalized);
+    // 빈 배열도 그대로 싣는다 — 「모두 끔」은 선택이라 서버가 기본 로스터 이행 대상(키 부재)과 구별해 보존한다.
+    void setSystemPromptSettingsField("aiGateway", { models });
   };
 
   const savePriority = (nextPriority: readonly AiGatewayProviderId[]): void => {
     // 전체-값 PUT 계약상 우선순위만 보내면 모델 선택이 지워진다 — 현재 스냅숏을 함께
-    // 싣는다. 빈 배열은 명시 해제의 유일한 철자이고, 해제할 것도 없는 전량 공백만 null.
-    const value: AiGatewaySettings = {
-      ...(enabled.length > 0 ? { models: enabled } : {}),
-      providerPriority: nextPriority,
-    };
-    const nothingElse = enabled.length === 0;
-    const normalized = nothingElse && nextPriority.length === 0 && priority.length === 0 ? null : value;
-    void setSystemPromptSettingsField("aiGateway", normalized);
+    // 싣는다. 빈 배열은 명시 해제의 유일한 철자다.
+    void setSystemPromptSettingsField("aiGateway", { models: enabled, providerPriority: nextPriority });
   };
 
   const addModel = (model: AiGatewayCatalogModel): void => {
@@ -654,10 +648,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
     // 켠 모델 없는 공급자를 거르므로, 저장값과 화면을 그 사실에 맞추는 것이다.
     if ((next.providerPriority ?? []).length !== (selection.providerPriority ?? []).length) {
       const models = next.models ?? [];
-      void setSystemPromptSettingsField(
-        "aiGateway",
-        models.length === 0 ? null : { models, providerPriority: next.providerPriority ?? [] },
-      );
+      void setSystemPromptSettingsField("aiGateway", { models, providerPriority: next.providerPriority ?? [] });
       return;
     }
     save(next);

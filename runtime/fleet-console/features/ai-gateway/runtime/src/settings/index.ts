@@ -10,7 +10,7 @@ import {
   buildGatewayModelConstraints,
   findGatewayModel,
 } from "../models.js";
-import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
+import { findClaudeGatewayModel, toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import type {
   GatewayCapabilityClass,
   GatewayEffortExposure,
@@ -40,7 +40,17 @@ function retainStoredHostOnly(model: GatewayModel, hostOnly: unknown): boolean {
   return hostOnly === true && model.provider !== "claude";
 }
 
-/** AI Gateway 설정 파일에 저장되는 형태. models 부재/공백 = 미구성(노출 없음). */
+/**
+ * 로스터를 한 번도 고른 적 없는 설치(`models` 키 부재)에 일회 써 넣는 Claude 항목. Console의 모든 모델 선택지가
+ * 이 로스터 하나를 읽으므로, 이행이 없으면 기존 설치의 선택지가 하루아침에 빈다. 써 넣은 항목은 AI Gateway
+ * 화면에 그대로 보이고 사용자가 끌 수 있다.
+ */
+export const DEFAULT_ROSTER_SEED_MODEL_IDS: readonly string[] = ["claude--fable-1m", "claude--opus-1m", "claude--sonnet"];
+
+/**
+ * AI Gateway 설정 파일에 저장되는 형태. models 부재 = 한 번도 고르지 않음(기본 로스터 이행 대상),
+ * 빈 배열 = 사용자가 모두 끔. 둘 다 노출은 없다.
+ */
 export interface AiGatewayStoredSettings {
   readonly version: 1;
   readonly models?: readonly AiGatewayStoredModel[];
@@ -150,9 +160,13 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
   const xaiEndpoint = sanitizeXaiEndpoint(value.xaiEndpoint);
   return {
     version: 1,
-    ...(models.length > 0 ? { models } : {}),
+    // 빈 배열도 보존한다 — 「모델을 모두 껐다」는 사용자의 선택이고, 키 부재(한 번도 고른 적 없음)와 달리
+    // 기본 로스터 이행(seedDefaultModels)의 대상이 아니다.
+    ...(Array.isArray(value.models) ? { models } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
-    ...(typeof value.delegationRoutingModel === "string" && (["sonnet", "opus", "haiku", "fable", "sonnet[1m]", "opus[1m]", "fable[1m]"].includes(value.delegationRoutingModel) || findGatewayModel(value.delegationRoutingModel)) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
+    // 라우팅 모델은 카탈로그가 아는 id(정준 실행 id·scoped·레거시 `claude-gateway--` 표기)만 남긴다. 켰는지는
+    // 실행 시점에 로스터가 정한다 — 끈 모델의 저장값을 지우면 다시 켰을 때 사용자의 선택이 돌아오지 않는다.
+    ...(typeof value.delegationRoutingModel === "string" && findClaudeGatewayModel(value.delegationRoutingModel) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
     ...(value.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
     ...((value.delegationRoutingMode === "jev" || value.delegationRoutingMode === "model") ? { delegationRoutingMode: value.delegationRoutingMode } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
@@ -323,13 +337,14 @@ export function parseAiGatewayUpdate(value: unknown):
     }
   }
 
-  if (models.length === 0 && providerPriority === undefined) {
+  if (record.models === undefined && providerPriority === undefined) {
     return { ok: true, value: undefined };
   }
   return {
     ok: true,
     value: {
-      ...(models.length > 0 ? { models } : {}),
+      // 명시한 빈 배열은 「모두 끔」이라는 선택이다. 부재로 접으면 다음 기동의 기본 로스터 이행이 되살린다.
+      ...(record.models !== undefined ? { models } : {}),
       ...(providerPriority !== undefined ? { providerPriority } : {}),
     },
   };

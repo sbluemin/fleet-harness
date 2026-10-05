@@ -201,10 +201,12 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(aiGateway.delegationRoutingMode === "jev"
             ? { delegationRoutingMode: "jev" }
             : {}),
+          models: [],
           ...(value ?? {}),
         });
         return aiGateway;
       },
+      seedModels: () => false,
       writeDelegationRoutingEnabled: (enabled) => {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({

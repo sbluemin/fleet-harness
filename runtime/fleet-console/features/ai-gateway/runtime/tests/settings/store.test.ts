@@ -59,7 +59,7 @@ describe("ai-gateway settings store", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
 
     store.write({ providerPriority: ["codex"] });
-    expect(store.read()).toEqual({ version: 1, providerPriority: ["codex"] });
+    expect(store.read()).toEqual({ version: 1, models: [], providerPriority: ["codex"] });
 
     store.write({ models: [{ id: "opencode--glm-5.3" }] });
     expect(store.read()).toEqual({
@@ -69,7 +69,7 @@ describe("ai-gateway settings store", () => {
     });
 
     store.write({ providerPriority: [] });
-    expect(store.read()).toEqual({ version: 1 });
+    expect(store.read()).toEqual({ version: 1, models: [] });
   });
 
   it("persists compactCeiling independently of models", () => {
@@ -121,9 +121,9 @@ describe("ai-gateway settings store", () => {
     store.writeWireLogEnabled(false);
     expect(store.read()).toEqual({ version: 1, models: [{ id: "opencode--glm-5.3" }], wireLogEnabled: false });
     store.write(undefined);
-    expect(store.read()).toEqual({ version: 1, wireLogEnabled: false });
+    expect(store.read()).toEqual({ version: 1, models: [], wireLogEnabled: false });
     store.writeWireLogEnabled(undefined);
-    expect(store.read()).toEqual({ version: 1 });
+    expect(store.read()).toEqual({ version: 1, models: [] });
   });
 
   it("adopts the settings from the host directory it is given, without announcing it", () => {
@@ -184,14 +184,38 @@ describe("ai-gateway settings store", () => {
     expect(store.read()).toEqual({ version: 1, models: [{ id: "opencode--glm-5.3" }] });
   });
 
-  it("treats an emptied selection as a real state rather than something to re-adopt", () => {
+  it("treats an emptied selection as a real state rather than something to re-adopt or re-seed", () => {
     const dataDir = createDataDir();
     const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
-    // 사용자가 전부 지운 상태. 정규형은 승계 전과 구분되지 않으므로 파일 존재로만 판정해야 한다.
+    // 사용자가 전부 지운 상태. 빈 배열로 남아 승계도, 기본 로스터 이행도 되살리지 않는다.
     createAiGatewaySettingsStore({ dataDir }).write(undefined);
 
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
-    expect(store.read()).toEqual({ version: 1 });
+    expect(store.read()).toEqual({ version: 1, models: [] });
+    expect(store.seedModels(["claude--sonnet"])).toBe(false);
+    expect(store.read()).toEqual({ version: 1, models: [] });
+  });
+
+  it("seeds the default roster once, only where the models key was never written", () => {
+    const fresh = createAiGatewaySettingsStore({ dataDir: createDataDir() });
+    fresh.writeWireLogEnabled(false);
+    const seed = ["claude--fable-1m", "claude--opus-1m", "claude--sonnet"];
+    expect(fresh.seedModels(seed)).toBe(true);
+    const seeded = { version: 1, wireLogEnabled: false, models: seed.map((id) => ({ id })) };
+    expect(fresh.read()).toEqual(seeded);
+    // 멱등 — 두 번째 기동은 아무것도 쓰지 않고, 사용자가 그 사이 바꾼 로스터도 건드리지 않는다.
+    expect(fresh.seedModels(seed)).toBe(false);
+    expect(fresh.read()).toEqual(seeded);
+    fresh.write({ models: [{ id: "codex--gpt-6-sol" }] });
+    expect(fresh.seedModels(seed)).toBe(false);
+    expect(fresh.read()?.models).toEqual([{ id: "codex--gpt-6-sol" }]);
+
+    // 승계가 먼저다 — 옛 자리에 선별이 있던 설치는 이행 대신 그 선별을 갖는다.
+    const dataDir = createDataDir();
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
+    const adopted = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
+    expect(adopted.seedModels(seed)).toBe(false);
+    expect(adopted.read()?.models).toEqual([{ id: "codex--gpt-6-sol" }]);
   });
 
   it("stays unconfigured when the host directory holds nothing usable", () => {

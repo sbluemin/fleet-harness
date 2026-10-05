@@ -18,6 +18,7 @@ import {
   resolveAiGatewaySelection,
   createAiGatewaySettingsStore,
   createProviderAuthService,
+  DEFAULT_ROSTER_SEED_MODEL_IDS,
   setWireLogTarget,
   wireLogEnabled,
   OPENCODE_AUTH_PROVIDER_ID,
@@ -92,6 +93,13 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // 가장 최근 자리(Fleet 루트)를 앞에, 그 이전의 플러그인 데이터 슬롯을 뒤에 둔다.
     legacyDirs: [ctx.host.paths.fleetDataDir, ctx.legacyDataDir],
   });
+  // 모델 로스터 일회 이행 — `models` 키가 아예 없는 설치에만 Claude 항목을 써 넣는다(빈 배열은 사용자의 선택).
+  // 승계(legacyDirs)를 먼저 마친 뒤 판단하므로 옛 자리에 선별이 있던 설치는 그 선별을 그대로 갖는다.
+  try {
+    aiGatewayStore.seedModels(DEFAULT_ROSTER_SEED_MODEL_IDS);
+  } catch {
+    // 잠금 경합·승계 미결은 결론이 아니다 — 이번 기동은 빈 로스터(sonnet 폴백)로 서고 다음 기동이 다시 시도한다.
+  }
   const wireLog = createWireLogRuntime(ctx);
   applyStoredWireLog(ctx, aiGatewayStore.read);
   ctx.host.lifecycle.registerCleanup(() => setWireLogTarget(undefined));

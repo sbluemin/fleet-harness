@@ -38,6 +38,12 @@ export interface AiGatewaySettingsStore {
   readonly writeCompactCeiling: (ceiling: CompactCeiling | undefined) => AiGatewayStoredSettings;
   /** `undefined`는 xaiEndpoint 키를 제거해 기본(direct)으로 돌아간다. */
   readonly writeXaiEndpoint: (endpoint: XaiEndpointPreference | undefined) => AiGatewayStoredSettings;
+  /**
+   * 일회 이행: 설정 파일에 `models` 키가 아예 없는 설치에만 주어진 모델을 로스터로 써 넣는다. 빈 배열은
+   * 사용자가 모두 끈 상태라 건드리지 않는다. 한 번 쓰면 키가 생기므로 다시 불러도 아무 일도 없다(멱등).
+   * 써 넣었으면 true.
+   */
+  readonly seedModels: (ids: readonly string[]) => boolean;
 }
 
 export interface CreateAiGatewaySettingsStoreDeps {
@@ -133,8 +139,19 @@ export function createAiGatewaySettingsStore(
       ...(current.providerPriority ? { providerPriority: current.providerPriority } : {}),
       ...(current.compactCeiling !== undefined ? { compactCeiling: current.compactCeiling } : {}),
       ...(current.xaiEndpoint !== undefined ? { xaiEndpoint: current.xaiEndpoint } : {}),
+      // 선별을 저장하는 것은 그 자체로 선택이다. 모델이 없으면 빈 배열로 남겨 기본 로스터 이행과 구별한다.
+      models: [],
       ...(value ?? {}),
     })),
+    seedModels: (ids) => {
+      let seeded = false;
+      update((current) => {
+        if (current.models !== undefined) return current;
+        seeded = true;
+        return normalizeAiGatewaySettings({ ...current, models: ids.map((id) => ({ id })) });
+      });
+      return seeded;
+    },
     writeDelegationRoutingModel: (model) => update(current => normalizeAiGatewaySettings({ ...current, delegationRoutingModel: model })),
     writeDelegationRoutingEnabled: (enabled) => update((current) => normalizeAiGatewaySettings({
       ...current,
@@ -177,7 +194,7 @@ export function createAiGatewaySettingsStore(
 }
 
 function hasStoredValue(settings: AiGatewayStoredSettings): boolean {
-  return (settings.models?.length ?? 0) > 0
+  return settings.models !== undefined
     || settings.wireLogEnabled !== undefined
     || settings.providerPriority !== undefined
     || settings.delegationRoutingEnabled !== undefined
