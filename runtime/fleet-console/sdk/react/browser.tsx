@@ -135,14 +135,15 @@ export interface MobileSettingsHost {
 }
 
 /**
- * 폰의 좌표 시트 속성 — 모델 로스터의 공급자 띠·모델 행과 고른 행의 강도 탭. 고르면 값만 바뀌고 시트는 열린 채다
- * (강도까지 고르게). 호출자가 열려 있는 동안 다시 그려 주므로 값은 늘 살아 있다. 닫기는 `onClose`다.
+ * 폰의 좌표 시트 속성 — 모델 로스터의 공급자 띠·모델 행과 고른 행의 강도 탭. 강도 탭(그리고 강도를 받지 않는 모델 탭)은
+ * 확정이다: `onSelect(next, { final: true })`로 알리고 시트는 스스로 닫는다. 강도가 있는 모델 탭은 강도 단계로 넘어가는
+ * 초안(`final` 없음)이고 시트는 열린 채다. 호출자가 열려 있는 동안 다시 그려 주므로 값은 늘 살아 있다. 닫기는 `onClose`다.
  */
 export interface MobileCoordinateChoiceProps {
   readonly title: string;
   readonly roster: ModelRoster;
   readonly value: { readonly model?: string; readonly effort?: string };
-  readonly onSelect: (next: { readonly model: string; readonly effort?: string }) => void;
+  readonly onSelect: (next: { readonly model: string; readonly effort?: string }, meta?: { readonly final: boolean }) => void;
   /** `none`이면 강도 탭이 서지 않는다(모델만 고르는 칸). */
   readonly effort: "track" | "none";
   readonly effortLabel: string;
