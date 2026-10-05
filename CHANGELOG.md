@@ -5,6 +5,59 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.213.0] - 2026-10-05
+
+### fleet-cli
+
+#### Fixed
+- `fleet console start` no longer starts a second Console on a data folder whose Console is still running, and starting Console directly after a killed or crashed Console no longer fails until you run `stop` first. Console now clears a leftover lock only when its process has exited.
+- When Console cannot tell whether a lock's owner is still running, such as an empty or unreadable lock or a pid now used by another process, `start` and `stop` exit with an error instead of deleting it. The error names the lock file and explains how to confirm that nothing is using that data folder before you remove it.
+- `fleet console stop`, `restart`, and `fleet update` now wait for Console to finish shutting down, so a chat that was mid-reply no longer leaves its agent processes and temporary files behind. If Console stays stuck for 10 seconds it is force-stopped, and `stop` exits with an error that says what may remain.
+
+### fleet-console
+
+#### Added
+- Answer Objective decision requests and approve or deny computer and Console use requests from your phone.
+- Choose a light, dark, or system color mode and a text size for phones only, without changing the desktop Console theme.
+- With the autonomy experiment on, open the Commodore from the phone drawer to read its log, message it, change its settings, and turn autonomy on or off.
+- Choose fonts installed on the device you are viewing the Console from, such as Windows fonts for a Console running in WSL. In Chrome or Edge, allow it once with Load this device's fonts in the font menu, and the list loads by itself afterward. The list stays on that screen and is never sent or saved.
+
+#### Changed
+- Objectives the Commodore creates, including follow-ups it picks, now start their Commander in chat view; you can still switch it to the terminal before the objective starts.
+- In Settings, Autonomous operation under Experiments now has only its on/off switch; the Commodore's model and effort are chosen only in the sidebar Commodore sheet, for each Theater. Haiku is not in the sheet's list, so it can no longer be newly chosen, but a Commodore already set to Haiku keeps using it.
+- Redesign Console on phones around a single drawer that holds your Theaters, Objectives, files, wiki, Shell, settings, the items that need your attention, and recent work, replacing the bottom tabs.
+- New tasks started from a phone always open in chat view, and the phone new-task sheet drops the harness picker; gateway models are listed by provider in the model sheet.
+
+#### Fixed
+- The file list no longer stays stuck loading when many live connections are open; it now offers to try again.
+- Tapping on a phone no longer leaves a blue rectangle behind; presses show a brief gray highlight shaped like the control.
+- Font menus no longer lead with fonts marked Unavailable: fonts this screen cannot draw are folded into one summary line, and the rest are labeled as installed on the Console host instead of on this machine.
+- Monospaced fonts such as Consolas now appear in the code font menu for a Console running on Windows, Linux, or WSL.
+- Starting a second Console on the same data folder while one is already running no longer deletes the images attached to that running Console's sessions and drafts.
+- Agent sessions started while Computer Use is off no longer receive Computer Use tools. Turning Computer Use on applies from the next session start or resume, and turning it off refuses calls from running sessions right away instead of waiting for an answer.
+- When an update cannot start the new Console because its lock is held and no up-to-date Console answers, the update now fails within seconds and Console's error log records what holds the lock, instead of waiting a minute without a reason.
+- Temporary copies of a Theater's system prompt no longer pile up in the temp folder after Console is force-quit or crashes; the next start removes them. Copies left by versions before this fix are not removed automatically.
+- Applying a Console update no longer risks quitting an unrelated program that happened to reuse the previous Console's process ID; if the previous Console cannot be confirmed and does not shut down, the update now fails and tells you to quit it yourself instead of force-quitting it.
+
+#### Removed
+- Remove the experimental Quick Launch prompt refinement and Session watch features, including their settings and Operation menu switch.
+
+### fleet-desktop
+
+#### Added
+- Font menus in Fleet Desktop list this computer's fonts: right away for a Console on the same computer, including one in WSL, and after you allow it in a dialog for a Console on another computer. Your answer lasts until Fleet Desktop quits, and earlier Desktop versions keep the Console host's list.
+
+#### Fixed
+- When Console's lock file is unreadable, or another start holds it, Desktop now explains what is holding it and how to clear it safely instead of showing a generic startup error, and it leaves the lock untouched.
+- A Desktop launch that fails while Console is starting no longer leaves that Console running in the background.
+- Quitting or restarting Desktop while a chat is replying no longer leaves its agent processes running in the background. Desktop now lets Console finish shutting down and force-stops it only when it is confirmed stuck, and Quit still completes if Console cannot be stopped.
+
+### fleet-mobile
+
+#### Changed
+- Redesign the Console list, connection, and QR screens in Korean and English, following the phone's color mode, with status and navigation bars that match the screen.
+- The Android back button now steps back through Console screens and drawers before leaving for the Console list.
+
 ## [1.212.0] - 2026-10-04
 
 ### fleet-cli
