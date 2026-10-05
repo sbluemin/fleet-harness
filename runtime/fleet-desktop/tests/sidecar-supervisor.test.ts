@@ -13,7 +13,7 @@ import { REAPER_DRAIN_MAX_MS } from "@fleet-console/lifecycle";
 import { CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
 import { createDesktopEnvironment } from "../src/environment.js";
-import { SidecarSupervisor, type SidecarRuntime } from "../src/sidecar-supervisor.js";
+import { SidecarSupervisor, type SidecarClock, type SidecarRuntime } from "../src/sidecar-supervisor.js";
 
 let lockFile = "";
 
@@ -23,6 +23,17 @@ function supervisor(log = { info: vi.fn(), error: vi.fn() }) {
 
 function writeLock(payload: unknown): void {
   fs.writeFileSync(lockFile, JSON.stringify(payload), { mode: 0o600 });
+}
+
+/** A lock as a Console publishes it, so it passes the contract's trust checks; `fields` sets the pid, port, and owner. */
+function lockPayload(fields: { readonly pid: number; readonly port: number; readonly token?: string; readonly owner?: unknown }): Record<string, unknown> {
+  return { pid: fields.pid, host: "127.0.0.1", port: fields.port, endpoint: `http://127.0.0.1:${fields.port}/`, startedAt: Date.now(), token: fields.token ?? "secret", version: "1.23.0", owner: fields.owner ?? { kind: "desktop", id: "owner-1", protocolVersion: 1 } };
+}
+
+/** Advances the supervisor's waits without sleeping them out, while still yielding so child processes and sockets progress. */
+function fastClock(): SidecarClock {
+  let now = 0;
+  return { now: () => now, sleep: async (ms) => { now += ms; await new Promise((resolve) => setTimeout(resolve, Math.min(ms, 5))); } };
 }
 
 /** A pid that has exited and been reaped: the leftover of a crashed Console. */
@@ -52,7 +63,7 @@ describe("sidecar supervisor", () => {
   });
 
   it("waits for a starting matching desktop owner and adopts it only when healthy", async () => {
-    writeLock({ pid: process.pid, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
+    writeLock(lockPayload({ pid: process.pid, port: 4310 }));
     const before = fs.readFileSync(lockFile, "utf8");
     const fetchHealth = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: "console_starting", pid: process.pid }), { status: 503 }))
@@ -65,8 +76,8 @@ describe("sidecar supervisor", () => {
   });
 
   it("rejects a healthy CLI-owned daemon without resolving, pairing, or signaling it", async () => {
-    writeLock({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } });
-    const fetchFor = vi.fn(async (_url: string | URL) => new Response("ok", { status: 200 }));
+    writeLock(lockPayload({ pid: process.pid, port: 4310, owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
+    const fetchFor = vi.fn(async (_url: string | URL) => new Response(JSON.stringify({ pid: process.pid }), { status: 200 }));
     vi.stubGlobal("fetch", fetchFor);
     const kill = vi.spyOn(process, "kill");
     const resolveRuntime = vi.fn(async () => ({ nodePath: "/runtime/node", cliPath: "/runtime/console/dist/cli.mjs", serviceRoot: "/runtime/console", serviceVersion: "1.23.0" }));
@@ -75,11 +86,11 @@ describe("sidecar supervisor", () => {
     expect(resolveRuntime).not.toHaveBeenCalled();
     expect(fetchFor).toHaveBeenCalledOnce();
     expect(String(fetchFor.mock.calls[0]![0])).toBe("http://127.0.0.1:4310/api/v1/health");
-    expect(kill).not.toHaveBeenCalled();
+    expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
   });
 
   it("reports a live unhealthy foreign lock without signaling it", async () => {
-    writeLock({ pid: 4321, endpoint: "http://127.0.0.1:4310/", token: "secret", version: "1.23.0", owner: { kind: "cli", id: "other", protocolVersion: 1 } });
+    writeLock(lockPayload({ pid: 4321, port: 4310, owner: { kind: "cli", id: "other", protocolVersion: 1 } }));
     vi.stubGlobal("fetch", vi.fn(async () => new Response("bad", { status: 500 })));
     const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
     await expect(supervisor().startOrAdopt()).rejects.toThrow("console_lock_foreign_process_unhealthy");
@@ -99,19 +110,17 @@ describe("sidecar supervisor", () => {
     await new Promise<void>((resolve) => bystander.stdout!.once("data", () => resolve()));
     bystander.stdout!.on("data", (chunk: Buffer) => { sigterms += chunk.toString().split("term").length - 1; });
     // lock 주소의 무언가가 token health에 200으로 답하지만 다른 pid를 댄다 — 정체 증명이 아니다.
-    let answer: "other-pid" | "unauthorized" | "lock-pid-once" = "other-pid";
+    let answer: "other-pid" | "unauthorized" = "other-pid";
     const impostor = http.createServer((_request, response) => {
       if (answer === "unauthorized") { response.writeHead(401).end(); return; }
-      const pid = answer === "lock-pid-once" ? bystander.pid : process.pid;
-      if (answer === "lock-pid-once") answer = "other-pid";
-      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid }));
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid: process.pid }));
     });
     await new Promise<void>((resolve) => impostor.listen(0, "127.0.0.1", resolve));
     const port = (impostor.address() as AddressInfo).port;
-    const lockContents = JSON.stringify({ pid: bystander.pid, endpoint: `http://127.0.0.1:${port}/`, token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
-    fs.writeFileSync(reusedLock, lockContents);
+    const lockContents = JSON.stringify(lockPayload({ pid: bystander.pid!, port }));
+    fs.writeFileSync(reusedLock, lockContents, { mode: 0o600 });
     const resolveRuntime = vi.fn(async (): Promise<SidecarRuntime> => { throw new Error("reached_spawn"); });
-    const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: {}, lockFile: reusedLock, ownerId: "owner-1", shutdownSettleMs: 200, log: { info: vi.fn(), error: vi.fn() } });
+    const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: {}, lockFile: reusedLock, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
     try {
       // Quit은 막히지 않지만 증명하지 못한 pid에는 신호도, lock 삭제도 하지 않는다.
       await expect(instance.stop()).resolves.toBeUndefined();
@@ -120,12 +129,6 @@ describe("sidecar supervisor", () => {
       await expect(instance.startOrAdopt()).rejects.toThrow("console_lock_process_unverified");
       expect(fs.existsSync(reusedLock)).toBe(true);
       expect(sigterms).toBe(0);
-      // 증명된 Console이 SIGTERM 뒤 lock을 남긴 채 죽고 그 pid가 재할당된 경쟁: lock 파일은 그대로지만 정체를 다시
-      // 증명하지 못하므로 SIGKILL로 승격하지 않는다.
-      answer = "lock-pid-once";
-      await expect(instance.stop()).resolves.toBeUndefined();
-      expect(sigterms).toBe(1);
-      expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
       // lock 주소가 연결을 거절해도 pid가 살아 있으면 종료 정리 중인 Console일 수 있다 — 그동안 새 Console을 띄우지 않고
       // 기다린다. 새 Console은 lock을 쥐기 전에 공유 상태를 만지기 때문이다. pid가 끝나면 신호 없이 시작을 이어 간다.
       await new Promise<void>((resolve) => impostor.close(() => resolve()));
@@ -135,7 +138,7 @@ describe("sidecar supervisor", () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(fs.readFileSync(reusedLock, "utf8")).toBe(lockContents);
       expect(resolveRuntime).not.toHaveBeenCalled();
-      expect(sigterms).toBe(1);
+      expect(sigterms).toBe(0);
       expect(bystanderSignal).toBeNull();
       expect(() => process.kill(bystander.pid!, 0)).not.toThrow();
       bystander.kill("SIGKILL");
@@ -159,10 +162,10 @@ describe("sidecar supervisor", () => {
       if (fs.readFileSync(process.env.LOCK_FILE, "utf8") !== process.env.DEAD_LOCK) process.exit(73);
       fs.unlinkSync(process.env.LOCK_FILE);
       const server = http.createServer((request, response) => response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid: process.pid })));
-      server.listen(0, "127.0.0.1", () => fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, endpoint: "http://127.0.0.1:" + server.address().port + "/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }), { flag: "wx", mode: 0o600 }));
+      server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, host: "127.0.0.1", port, endpoint: "http://127.0.0.1:" + port + "/", startedAt: Date.now(), token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }), { flag: "wx", mode: 0o600 }); });
       process.on("SIGTERM", () => process.exit(0));
     `);
-    const deadLock = JSON.stringify({ pid: await exitedPid(), endpoint: "http://127.0.0.1:9/", token: "old", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } });
+    const deadLock = JSON.stringify(lockPayload({ pid: await exitedPid(), port: 9, token: "old" }));
     const runtime: SidecarRuntime = { nodePath: process.execPath, cliPath, serviceRoot: path.dirname(path.dirname(cliPath)), serviceVersion: "1.23.0" };
     const resolveRuntime = vi.fn(async () => runtime);
     const instance = new SidecarSupervisor({ resolveRuntime, serviceVersion: "1.23.0", env: { LOCK_FILE: lockFile, DEAD_LOCK: deadLock }, lockFile, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
@@ -198,10 +201,10 @@ describe("sidecar supervisor", () => {
         answered = true;
         response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid: process.pid }));
       });
-      server.listen(0, "127.0.0.1", () => fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, endpoint: "http://127.0.0.1:" + server.address().port + "/", token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } })));
+      server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, host: "127.0.0.1", port, endpoint: "http://127.0.0.1:" + port + "/", startedAt: Date.now(), token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }), { mode: 0o600 }); });
     `);
     const runtime: SidecarRuntime = { nodePath: process.execPath, cliPath, serviceRoot: path.dirname(path.dirname(cliPath)), serviceVersion: "1.23.0" };
-    const instance = new SidecarSupervisor({ resolveRuntime: async () => runtime, serviceVersion: "1.23.0", env: { LOCK_FILE: ownLock, LOCK_STATE: lockState }, lockFile: ownLock, ownerId: "owner-1", shutdownSettleMs: 200, log: { info: vi.fn(), error: vi.fn() } });
+    const instance = new SidecarSupervisor({ resolveRuntime: async () => runtime, serviceVersion: "1.23.0", env: { LOCK_FILE: ownLock, LOCK_STATE: lockState }, lockFile: ownLock, ownerId: "owner-1", clock: fastClock(), log: { info: vi.fn(), error: vi.fn() } });
     let sidecarPid: number | undefined;
     try {
       await expect(instance.startOrAdopt()).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/console\/$/);

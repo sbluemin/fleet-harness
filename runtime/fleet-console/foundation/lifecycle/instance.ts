@@ -32,6 +32,8 @@ export interface ObserveConsoleInstanceInput<L extends ConsoleObservedLock> {
   /** Whether the lock file still holds this same instance (pid and token). A lock that cannot be read counts as held. */
   readonly isHeld: () => boolean;
   readonly probe: (lock: L, options: ConsoleProbeOptions) => Promise<ConsoleProbeResult<L>>;
+  /** The observer's probe budget: HEALTH_PROBE_TIMEOUT_MS, or INTERACTIVE_PROBE_TIMEOUT_MS on a path a person waits on. */
+  readonly probeTimeoutMs?: number;
   readonly env?: NodeJS.ProcessEnv;
 }
 
@@ -42,7 +44,7 @@ export async function observeConsoleInstance<L extends ConsoleObservedLock>(inpu
   let probe: ConsoleProbeResult<L> | null = null;
   let authorReplaced = false;
   if (isPidAlive(lock.pid) && trusted) {
-    probe = await input.probe(lock, { timeoutMs: HEALTH_PROBE_TIMEOUT_MS });
+    probe = await input.probe(lock, { timeoutMs: input.probeTimeoutMs ?? HEALTH_PROBE_TIMEOUT_MS });
     if (probe.refused) authorReplaced = await isLockAuthorReplaced(lock, input.env);
   }
   const health = probe ? toConsoleHealthEvidence(probe) : null;

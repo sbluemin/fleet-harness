@@ -86,7 +86,7 @@ A Console instance that held the lock writes its own exit record beside its lock
 | `crash` | the Console, at exit | an uncaught exception ended it |
 | `failed` | the Console, at exit | it took the lock, then its start or its shutdown failed, and it ended with an error |
 | `external` | the Console's reaper, or inferred by a reader of a Console that reports `lifecycleWire` | the process vanished without a record (SIGKILL, or a frozen loop killed from outside) |
-| `forced-external` | the actor that sent SIGKILL (the CLI; Desktop and the update worker *(pending)*) | escalation after B_ext |
+| `forced-external` | the actor that sent SIGKILL (the CLI, Desktop; the update worker *(pending)*) | escalation after B_ext |
 
 A reader that finds no record for the instance it observed decides from the lock's `version` and the health `lifecycleWire` whether the Console predates the contract; a pre-contract Console keeps its old meaning (no record).
 
@@ -95,12 +95,12 @@ New outcomes may be added without a version change. A reader that meets an outco
 ## Wire compatibility
 
 - The lock payload and the meaning of health answers do not change; additions only. The authenticated health answer carries `lifecycleWire: CONSOLE_LIFECYCLE_WIRE`. Its absence means wire 0 (before this contract).
-- An observer that meets a wire newer than its own treats that instance as unverified: it neither signals it nor removes its lock on that basis.
+- An observer that meets a wire newer than its own treats that instance as unverified: it neither signals it nor removes its lock on that basis. Adopting sends no signal, so Desktop still adopts a Console of a compatible owner whose authenticated health answers with the lock's own pid, whatever wire it reports.
 - Shipped Desktop builds and update workers carry frozen copies of the contract. The published `./desktop-protocol` export surface is unchanged by it.
 
 ## Observing an instance from outside
 
-An external actor reads the lock through the one lock observer, `observeConsoleLockFile` in `@fleet-console/lifecycle` (absent, refused, no readable owner, or an owner with its exact bytes, liveness, and the first trust problem, if any), then the pid's liveness (only ESRCH is death) and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI and `serve` do; Desktop, the update worker, and the local Console list still apply their own reading *(pending)*. A trusted lock has the POSIX modes 0700/0600, belongs to this user, names the loopback host and a valid port, has an endpoint of exactly `http://<host>:<port>/`, a token, and a numeric `startedAt`; a shell may add its own adoption policy on top. Whether the lock still holds one instance is `consoleLockInstanceState` over the same observer: `released` when there is no lock or it names another pid (or token), `held` when it names that instance, and `unknown` when it cannot be judged — a lock without a readable owner, even one that parses (`{}`, `null`), is never taken as released.
+An external actor reads the lock through the one lock observer, `observeConsoleLockFile` in `@fleet-console/lifecycle` (absent, refused, no readable owner, or an owner with its exact bytes, liveness, and the first trust problem, if any), then the pid's liveness (only ESRCH is death) and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI, `serve`, and Desktop do; the update worker and the local Console list still apply their own reading *(pending)*. A trusted lock has the POSIX modes 0700/0600, belongs to this user, names the loopback host and a valid port, has an endpoint of exactly `http://<host>:<port>/`, a token, and a numeric `startedAt`; a shell may add its own adoption policy on top. Whether the lock still holds one instance is `consoleLockInstanceState` over the same observer: `released` when there is no lock or it names another pid (or token), `held` when it names that instance, and `unknown` when it cannot be judged — a lock without a readable owner, even one that parses (`{}`, `null`), is never taken as released.
 
 | Lock | Pid | Health | Observed | May do |
 |---|---|---|---|---|
@@ -114,7 +114,7 @@ An external actor reads the lock through the one lock observer, `observeConsoleL
 | untrusted or tokenless | alive | — | unverified | nothing |
 | symlink, another user's, or no readable owner | — | — | blocked | nothing; manual recovery text |
 
-A refused endpoint with a live pid that still holds the same lock is a Console that has closed its listener and is cleaning up — never an absent owner. The pre-contract helper `identifyConsoleLockOwner` in `@fleet-console/protocol/desktop` still maps that case to `absent`; its remaining consumers correct for it and it is removed when the last of them moves onto the contract.
+A refused endpoint with a live pid that still holds the same lock is a Console that has closed its listener and is cleaning up — never an absent owner. The pre-contract helper `identifyConsoleLockOwner` in `@fleet-console/protocol/desktop` still maps that case to `absent`; its remaining consumer, the update worker, corrects for it, and it is removed when the worker moves onto the contract.
 
 ### Stop ladder
 
@@ -128,7 +128,7 @@ An actor that asks a Console to stop:
 6. Past B_ext with the lock still held, it proves identity again (own child, parent link, unchanged start time, or a fresh health answer). Without proof it signals nothing.
 7. SIGKILL, then confirm the exit within `KILL_CONFIRM_MS`; the result is `forced-external`.
 
-An actor that sees an instance someone else is stopping only waits, and reports it when it is still stopping after B_ext. A starter that gives up on its own child applies the ladder too once that child holds the lock — it may be writing durable state — and gives a child that has not taken the lock only `PRELOCK_CHILD_GRACE_MS` before SIGKILL; its unreaped child handle is its identity proof. On Windows `process.kill(pid, "SIGTERM")` terminates the process outright, so an actor never signals an instance that is already stopping there; it waits up to B_ext.
+An actor that sees an instance someone else is stopping never signals it. B_ext bounds how long it may wait: a starter waits, and reports the instance when it is still stopping after B_ext; Desktop Quit has nothing to do after the wait and returns at once. A starter that gives up on its own child applies the ladder too once that child holds the lock — it may be writing durable state — and gives a child that has not taken the lock only `PRELOCK_CHILD_GRACE_MS` before SIGKILL; its unreaped child handle is its identity proof. On Windows `process.kill(pid, "SIGTERM")` terminates the process outright, so an actor never signals an instance that is already stopping there; it waits up to B_ext.
 
 ## Children
 
