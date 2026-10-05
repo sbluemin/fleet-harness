@@ -1,15 +1,17 @@
 import { useState } from "react";
 
-import { CONSOLE_START_COMMAND, UPDATE_FAILED_CONSOLE_RETURN_MS, describeConsoleUpdateRecovery } from "@fleet-console/protocol/lifecycle/update";
+import {
+  CONSOLE_START_COMMAND,
+  describeConsoleUpdateOldConsoleEnding,
+  describeConsoleUpdateRecovery,
+  describeConsoleUpdateSilence,
+} from "@fleet-console/protocol/lifecycle/update";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import type { ConsoleUpdateProgress } from "../../../core/client/src/integration/types.js";
 import { UPDATE_CURTAIN_STAGES, acknowledgeUpdateOutcome, dismissUpdateWatch, useUpdateProgress } from "./update-progress-store.js";
-
-/** The contract's return budget in whole seconds, as the screen states it. */
-const RETURN_BUDGET_SECONDS = Math.round(UPDATE_FAILED_CONSOLE_RETURN_MS / 1_000);
 
 /**
  * 업데이트를 **연결 오류가 아니라 진행 상태**로 만드는 화면.
@@ -21,8 +23,9 @@ const RETURN_BUDGET_SECONDS = Math.round(UPDATE_FAILED_CONSOLE_RETURN_MS / 1_000
  * 단계는 이 화면이 관측할 수 있는 사실만큼만 나눈다. 서버가 닿지 않는 동안 설치와 기동은
  * 구별할 방법이 없으므로 한 단계다.
  *
- * 이 화면은 무엇도 판정하지 않는다. 실패와 그 사유·옛 Console의 결말은 worker와 돌아온 Console이
- * 정해 보내고, 복구 안내를 여는 시각과 그 설명은 수명주기 계약의 상수·공유 문구에서 온다.
+ * 이 화면은 무엇도 판정하지 않고, 사유·결말·상태의 해석을 제 말로 쓰지 않는다. 실패와 그 사유·옛 Console의 결말은
+ * worker와 돌아온 Console이 정해 보내고, 그것을 사람에게 말하는 문장과 복구 안내를 여는 시각은 수명주기 계약의
+ * 상수·공유 문구(describe*)에서 온다. 이 화면의 말(i18n)은 제목·필드 이름·버튼 같은 틀뿐이다. 계약 문구는 영어다.
  */
 export function UpdateCurtain() {
   const t = useT();
@@ -38,10 +41,7 @@ export function UpdateCurtain() {
         <span className="update-outcome-signal" aria-hidden="true" />
         <span className="update-outcome-text">
           {t("chrome.update.outcomeDone", { version: state.progress?.targetVersion ?? "" })}
-          {/* 정상 종료는 말할 거리가 아니다 — 옛 Console이 다르게 끝났을 때만 덧붙인다. */}
-          {ending && ending !== "clean" ? (
-            <span className="update-outcome-note">{t("chrome.update.oldConsoleEnding", { ending: t(`chrome.update.ending.${ending}`) })}</span>
-          ) : null}
+          {ending ? <span className="update-outcome-note">{describeConsoleUpdateOldConsoleEnding(ending)}</span> : null}
           {state.progress?.endpointChanged === true ? (
             <span className="update-outcome-note">{t("chrome.update.addressMoved")}</span>
           ) : null}
@@ -105,22 +105,18 @@ export function UpdateCurtain() {
 
 /**
  * 계약의 복귀 시한을 넘긴 침묵. 실패로 확정하지 않는다 — 설치에는 계약 예산이 없어서, 아직 설치 중인 업데이트와
- * 돌아갈 Console 없이 끝난 업데이트를 이 화면은 구별할 수 없다. 그래서 두 경우를 모두 말하고, 계속 확인하면서,
- * 사람이 직접 할 수 있는 일(계약의 시작 명령과 그 공유 설명)을 내준다. lock 경로는 싣지 않는다: 경로가 담긴
- * 진단은 그 명령이 터미널에 출력한다.
+ * 돌아갈 Console 없이 끝난 업데이트를 이 화면은 구별할 수 없다. 그 해석(describeConsoleUpdateSilence)과 사람이 직접
+ * 할 수 있는 일(describeConsoleUpdateRecovery, 시작 명령)은 모두 계약 문구이고, 화면은 계속 확인한다. lock 경로는
+ * 싣지 않는다: 경로가 담긴 진단은 그 명령이 터미널에 출력한다.
  */
 function SilentConsoleRecovery() {
   const t = useT();
   return (
-    <section className="update-recovery update-recovery--waiting" aria-label={t("chrome.update.silentTitle", { seconds: RETURN_BUDGET_SECONDS })}>
-      <strong className="update-recovery-title">{t("chrome.update.silentTitle", { seconds: RETURN_BUDGET_SECONDS })}</strong>
-      <p className="update-recovery-body">{t("chrome.update.silentBody", { seconds: RETURN_BUDGET_SECONDS })}</p>
-      <p className="update-recovery-body">{t("chrome.update.silentAction")}</p>
+    <section className="update-recovery update-recovery--waiting" aria-label={t("chrome.update.recoveryTitle")}>
+      <strong className="update-recovery-title">{t("chrome.update.recoveryTitle")}</strong>
+      <p className="update-recovery-contract">{describeConsoleUpdateSilence()}</p>
+      <p className="update-recovery-contract">{describeConsoleUpdateRecovery()}</p>
       <StartCommand />
-      <details className="update-recovery-details">
-        <summary>{t("chrome.update.recoveryDetails")}</summary>
-        <pre>{describeConsoleUpdateRecovery()}</pre>
-      </details>
       <div className="update-recovery-actions">
         <button type="button" className="update-recovery-leave" onClick={dismissUpdateWatch}>{t("chrome.update.leaveCurtain")}</button>
       </div>
@@ -143,32 +139,29 @@ function StartCommand() {
 }
 
 /**
- * 돌아온 Console이 읽어 준 실패. 사유와 옛 Console의 결말은 계약의 이름표를 사람의 말로 옮길 뿐이고, 무슨 일이
- * 있었는지는 계약의 공유 문구(description)를 그대로 보인다. worker가 남긴 원문은 진단용으로만 덧붙인다.
+ * 돌아온 Console이 읽어 준 실패. 무슨 일이 있었는지와 옛 Console이 어떻게 끝났는지는 계약의 공유 문구를 본문에
+ * 그대로 보인다(사유 문구는 Console이 description으로 보내고, 결말 문구는 계약이 만든다). worker가 남긴 원문은
+ * 진단용으로만 접어 둔다.
  */
 function UpdateFailureNotice({ progress, currentVersion }: { readonly progress: ConsoleUpdateProgress | null; readonly currentVersion: string }) {
   const t = useT();
-  const reason = progress?.reason ?? "unknown";
   const ending = progress?.oldConsoleOutcome;
   const words = progress?.error && progress.error !== progress.description ? progress.error : null;
   return (
     <div className="update-outcome update-outcome--failed" role="status" aria-live="polite">
       <span className="update-outcome-signal" aria-hidden="true" />
       <div className="update-outcome-text">
-        <div className="update-outcome-headline">
-          <strong>{t("chrome.update.outcomeFailedTitle")}</strong>
-          <span>{t(`chrome.update.reason.${reason}`)}</span>
-        </div>
+        <strong className="update-outcome-headline">{t("chrome.update.outcomeFailedTitle")}</strong>
+        {progress?.description ? <p className="update-outcome-contract">{progress.description}</p> : null}
+        {ending ? <p className="update-outcome-contract">{describeConsoleUpdateOldConsoleEnding(ending)}</p> : null}
         <div className="update-outcome-facts">
-          {ending ? <span>{t("chrome.update.oldConsoleEnding", { ending: t(`chrome.update.ending.${ending}`) })}</span> : null}
           {currentVersion ? <span>{t("chrome.update.runningNow", { version: currentVersion })}</span> : null}
           {progress?.endpointChanged === true ? <span>{t("chrome.update.addressMoved")}</span> : null}
         </div>
-        {progress?.description || words ? (
+        {words ? (
           <details className="update-recovery-details">
-            <summary>{t("chrome.update.details")}</summary>
-            {progress?.description ? <pre>{progress.description}</pre> : null}
-            {words ? <pre className="update-recovery-words">{t("chrome.update.workerWords")}: {words}</pre> : null}
+            <summary>{t("chrome.update.workerWords")}</summary>
+            <pre>{words}</pre>
           </details>
         ) : null}
       </div>

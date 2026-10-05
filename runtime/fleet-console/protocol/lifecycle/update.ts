@@ -1,4 +1,4 @@
-import { CONSOLE_START_TIMEOUT_MS, EXTERNAL_ESCALATION_MS, HEALTH_PROBE_TIMEOUT_MS, KILL_CONFIRM_MS } from "./budgets.js";
+import { CONSOLE_START_TIMEOUT_MS, CONSOLE_STOP_DEADLINE_MS, EXTERNAL_ESCALATION_MS, HEALTH_PROBE_TIMEOUT_MS, KILL_CONFIRM_MS } from "./budgets.js";
 import type { ConsoleExitOutcome } from "./index.js";
 
 /**
@@ -120,13 +120,41 @@ export function describeConsoleUpdateFailure(reason: ConsoleUpdateFailureReason 
   }
 }
 
+/** The shared explanation of how the Console an update replaced ended (`oldConsoleOutcome`). */
+export function describeConsoleUpdateOldConsoleEnding(ending: ConsoleUpdateOldConsoleEnding): string {
+  switch (ending) {
+    case "clean":
+      return "The previous Console shut down normally.";
+    case "deadline":
+      return `The previous Console reached its ${seconds(CONSOLE_STOP_DEADLINE_MS)} stop deadline and ended its leftover child processes.`;
+    case "crash":
+      return "The previous Console crashed.";
+    case "failed":
+      return "The previous Console ended with an error.";
+    case "external":
+      return "The previous Console was ended from outside before it could record how it ended.";
+    case "forced-external":
+      return `The previous Console was force-quit after it was still holding its lock ${seconds(EXTERNAL_ESCALATION_MS)} after it was asked to stop.`;
+    case "unrecorded":
+      return "The previous Console ended without a record of how.";
+    default:
+      return "The previous Console ended in a way this Console does not recognize.";
+  }
+}
+
+/**
+ * What a screen that waited for an update can say once the Console has been silent for UPDATE_FAILED_CONSOLE_RETURN_MS:
+ * not a failure, only the two things that silence can mean.
+ */
+export function describeConsoleUpdateSilence(): string {
+  const budget = seconds(UPDATE_FAILED_CONSOLE_RETURN_MS);
+  return `Fleet Console has not answered for ${budget} since it stopped for the update. An update that fails before installing brings a Console back within ${budget}, so this one may still be installing, or it may have ended with no Console to come back to. This screen keeps checking.`;
+}
+
 /**
  * The shared manual recovery for an update that left no Console answering. It names no path: `fleet console start`
  * prints the lock file and the steps for whatever holds it (describeReplacedLockAuthor, the quiescence check, and so on).
  */
 export function describeConsoleUpdateRecovery(): string {
-  return [
-    `On the machine that runs Fleet Console, run:  ${CONSOLE_START_COMMAND}`,
-    "It starts the Console again, or, if something still holds the Console lock, starts none beside it and prints what holds the lock, where the lock file is, and how to free it.",
-  ].join("\n");
+  return `If it still does not come back, run ${CONSOLE_START_COMMAND} in a terminal on the machine that runs Fleet Console. It starts the Console again, or, if something still holds the Console lock, starts none beside it and prints what holds the lock, where the lock file is, and how to free it.`;
 }
