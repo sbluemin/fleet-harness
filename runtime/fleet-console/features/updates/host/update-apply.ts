@@ -295,6 +295,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const config = ${JSON.stringify(config)};
+const stalePrefix = ${JSON.stringify(WORKER_FILE_PREFIX)};
+const workerSuffix = ${JSON.stringify(WORKER_FILE_SUFFIX)};
 const unverifiedError = ${JSON.stringify(CONSOLE_UPDATE_OLD_CONSOLE_UNVERIFIED)};
 const reasons = ${JSON.stringify(WORKER_FAILURE_REASONS)};
 const lockHeldExitCode = ${JSON.stringify(CONSOLE_SERVE_EXIT_LOCK_HELD)};
@@ -371,6 +373,7 @@ async function preflight() {
 async function main() {
   await Promise.race([prepareGate, cancelled]);
   writeStatus("starting");
+  cleanupStaleWorkers();
   const manager = await Promise.race([preflight(), cancelled]);
   writeStatus("preflight-ok", { manager: manager.command });
   failureStage = "handoff";
@@ -540,6 +543,22 @@ function log(message) {
     fs.appendFileSync(config.logFile, new Date().toISOString() + " " + message + "\\n", { mode: 0o600 });
   } catch {
     // 로그 파일을 쓸 수 없어도 계속한다.
+  }
+}
+
+/** 비정상 종료로 남은 worker와 runtime 복사본을 정리하되 이번 실행의 두 파일은 보존한다. */
+function cleanupStaleWorkers() {
+  const now = Date.now();
+  for (const entry of fs.readdirSync(os.tmpdir())) {
+    if (!entry.startsWith(stalePrefix) || !entry.endsWith(workerSuffix)) continue;
+    const filePath = path.join(os.tmpdir(), entry);
+    if (filePath === config.workerPath || filePath === config.lifecycleRuntimePath) continue;
+    try {
+      const stat = fs.statSync(filePath);
+      if (now - stat.mtimeMs > 24 * 60 * 60 * 1000) fs.rmSync(filePath, { force: true });
+    } catch {
+      // 오래된 임시 파일의 정리 실패는 업데이트를 막지 않는다.
+    }
   }
 }
 
