@@ -23,7 +23,7 @@ import {
 import { logRawWireEvent, wireLog } from "../../../transport/wire-log.js";
 import type { QuotaWindow } from "../../../quota/types.js";
 import { parseMuseCodeSubscriptionUsage } from "../quota.js";
-import { resampleArming, withMuseCodeResample } from "./resample.js";
+import { resampleArming, resampleNudgeItems, withMuseCodeResample } from "./resample.js";
 
 /**
  * Muse Code 구독 키가 쓰는 Meta Model API Responses 엔드포인트.
@@ -151,8 +151,14 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
       events: withMuseCodeResample(first.events, {
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         startedAt,
-        // 재샘플은 같은 본문·키·헤더로, 같은 게이트를 거쳐 새 연결로 보낸다. 호출자 abort에도 묶인다.
-        reopen: () => this.send(payload, options.apiKey, options.signal, true),
+        // 재요청은 같은 본문 끝에 첫 응답의 예고와 지시만 붙여, 같은 키·헤더·게이트로 새 연결에 보낸다.
+        // 호출자 abort에도 묶인다.
+        reopen: (announcement) => this.send(
+          { ...payload, input: [...payload.input, ...resampleNudgeItems(announcement)] },
+          options.apiKey,
+          options.signal,
+          true,
+        ),
       }),
     };
   }
