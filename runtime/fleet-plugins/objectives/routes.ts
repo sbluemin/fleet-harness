@@ -136,6 +136,8 @@ export default definePlugin({
       store: commodore, agent: ctx.host.agent,
       experiments: () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
       ...(ctx.host.experiments?.subscribe ? { subscribeExperiments: (listener) => ctx.host.experiments!.subscribe!(listener) } : {}),
+      // 사령관 좌표는 Console의 모델 로스터에 대조해 연다 — 꺼진 모델은 폴백하고 기록에 남긴다.
+      ...(ctx.host.models ? { models: ctx.host.models } : {}),
       theater: (theaterId) => { const root = ctx.host.paths.resolveTheaterPath(theaterId); return root ? { label: path.basename(root) || root, root } : null; },
       objectives: (theaterId) => store.list(theaterId),
       // 사령관 언어의 폴백 — 목표 라우트가 지휘관 Operation 에 남긴 언어(가장 최근 것).

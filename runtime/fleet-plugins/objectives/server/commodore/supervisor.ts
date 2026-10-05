@@ -1,13 +1,15 @@
 import type { AgentHost } from "@fleet-console/sdk/agent";
 import type { ConsoleOperationObservation, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { isAgentEffort } from "@fleet-console/sdk/models";
+import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 import { inboxReasons, objectiveStatus, STALL_MS, stalledObjectives, type ObjectiveStatus } from "../board-state.js";
 import type { Objective, ObjectiveEvent } from "../types.js";
-import { createCommodoreSession, type CommodoreSession, type CommodoreTurnOutcome } from "./session.js";
+import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
-import { DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreCoordinates, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
+import { DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
 
 /**
  * 감독자 — Theater 마다 하나. 사령관 세션은 턴이 끝나면 쉬고, 끝없이 도는 것은 이 감독자가 보장한다.
@@ -38,6 +40,11 @@ export interface CommodoreSupervisorDeps {
   readonly agent: AgentHost;
   readonly experiments: () => ConsoleExperimentSettings;
   readonly subscribeExperiments?: (listener: () => void) => () => void;
+  /**
+   * Console의 모델 로스터 해석 — 저장 좌표를 Agent SDK wire id로 풀고, Gateway에서 끈 모델은 저장값을 고쳐 쓰지 않은 채
+   * 폴백 좌표로 연다. 없는 호스트에서는 저장 좌표를 그대로 쓴다.
+   */
+  readonly models?: Pick<FleetPluginModelsHost, "resolve">;
   /** Theater 의 이름과 루트 실경로 — 모르면 null(잊힌·떨어진 Theater). */
   readonly theater: (theaterId: string) => { readonly label: string; readonly root: string } | null;
   readonly objectives: (theaterId: string) => readonly Objective[];
@@ -50,6 +57,13 @@ export interface CommodoreSupervisorDeps {
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
+}
+
+/** 한 턴을 여는 실행 좌표. `model`은 Agent SDK wire id다. */
+interface RunCoordinates extends CommodoreSessionCoordinates {
+  readonly contextWindow: number;
+  /** 로스터 폴백으로 섰으면 실행 기록에 남길 사유(`fallback:<reason>:<model>`). */
+  readonly fallback?: string;
 }
 
 export interface CommodoreSupervisor {
@@ -145,7 +159,7 @@ interface Runner {
   /** 마지막 턴이 끝난 시각 — 기본 순찰은 여기서 한 간격 뒤다. */
   lastTurnAt: number;
   lastInputTokens: number;
-  coordinates: CommodoreCoordinates | null;
+  coordinates: CommodoreSessionCoordinates | null;
   language: "en" | "ko";
   rotateNext: "replaced" | "restarted" | null;
   recentActions: string[];
@@ -168,10 +182,19 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const settings = () => { try { return deps.experiments(); } catch { return DEFAULT_EXPERIMENT_SETTINGS; } };
   const shouldRun = (theaterId: string) => settings().commodore && deps.store.read(theaterId)?.autonomy === true && deps.theater(theaterId) !== null;
   const resolveLanguage = (theaterId: string): "en" | "ko" => deps.store.read(theaterId)?.language ?? deps.language?.(theaterId) ?? "en";
-  const resolveCoordinates = (theaterId: string): CommodoreCoordinates => {
+  /** 실행 좌표 — Theater 좌표, 없으면 실험 기능 행의 기본값을 로스터(`agent` 대상)에 대조한다. 턴마다 다시 푼다. */
+  const resolveCoordinates = (theaterId: string): RunCoordinates => {
     const state = deps.store.read(theaterId);
-    if (state?.model && state.effort) return { model: state.model, effort: state.effort };
-    return experimentAideSelection(settings(), "commodore");
+    const stored = state?.model && state.effort ? { model: state.model, effort: state.effort } : experimentAideSelection(settings(), "commodore");
+    if (!deps.models) return { model: stored.model, effort: stored.effort, contextWindow: contextWindow(stored.model) };
+    const resolved = deps.models.resolve(stored, "agent");
+    return {
+      model: resolved.wireModel,
+      ...(isAgentEffort(resolved.effort) ? { effort: resolved.effort } : {}),
+      contextWindow: resolved.row?.contextWindow ?? contextWindow(resolved.model),
+      // 실행 기록에는 사유와 실제로 도는 모델 id만 남긴다.
+      ...(resolved.fallback ? { fallback: `fallback:${resolved.reason ?? "model_off"}:${resolved.model}` } : {}),
+    };
   };
 
   const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}) });
@@ -238,7 +261,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const coordinates = resolveCoordinates(runner.theaterId);
     const language = resolveLanguage(runner.theaterId);
     const session = createCommodoreSession({
-      theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates,
+      theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) },
       boardTools: deps.boardTools(runner.theaterId).map((tool) => selfAttributed(runner, tool)), now,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       ...(deps.execute ? { execute: deps.execute } : {}),
@@ -249,7 +272,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.language = language;
     runner.lastInputTokens = 0;
     deps.store.addRunTotals(runner.theaterId, { session: 1 });
-    record(runner, { kind: "session", event });
+    record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}) });
+    if (coordinates.fallback) console.warn(`[objectives] commodore ${coordinates.fallback}`);
     return session;
   };
 
@@ -332,7 +356,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const needsRotation = (runner: Runner) => {
     const coordinates = resolveCoordinates(runner.theaterId);
     if (!runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.theaterId)) return true;
-    return runner.lastInputTokens >= CONTEXT_ROTATE_RATIO * contextWindow(coordinates.model);
+    return runner.lastInputTokens >= CONTEXT_ROTATE_RATIO * coordinates.contextWindow;
   };
 
   const start = (theaterId: string, reason: WakeCode) => {

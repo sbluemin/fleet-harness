@@ -4,6 +4,7 @@ import path from "node:path";
 
 import type { AgentEvent, AgentHost, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import { resolveRosterCoordinate, type ModelCoordinate } from "@fleet-console/sdk/models";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -78,7 +79,8 @@ describe("commodore theater state", () => {
     expect(added.value.state!.intel).toMatchObject([{ source: "person", text: "Pairing fails after sleep." }, { source: "person", text: "Users report dropped remote sessions." }]);
     expect((await h.route("commodore/intel/remove", { theaterId: "t1", intelId: "nope" })).status).toBe(404);
     expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "sonnet", effort: null })).status).toBe(400);
-    expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet", effort: "xhigh" });
+    // Gateway scoped Claude 표기도 받되 정준 id(실행 id)로 접어 저장한다.
+    expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "claude--sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet", effort: "xhigh" });
 
     // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽고, 실험 기능이 꺼지면 플래그만 꺼진다(저장값은 남는다).
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, unknown>;
@@ -287,7 +289,10 @@ describe("commodore supervisor", () => {
     vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
     try {
       const h = harness();
-      h.setExperiments({ commodore: true, commodoreModel: "sonnet", commodoreEffort: "medium" });
+      // 저장된 기본 모델은 Gateway에서 꺼져 있다 — 저장값은 그대로 두고 로스터 폴백(sonnet)으로 열며 그 사실을 기록에 남긴다.
+      h.setExperiments({ commodore: true, commodoreModel: "codex--gpt-6-luna", commodoreEffort: "medium" });
+      const sonnetRow = { id: "sonnet", label: "Sonnet", launch: { model: "sonnet" }, chips: ["low", "medium", "high", "xhigh", "max"].map((effort) => ({ id: effort, label: effort, launch: { model: "sonnet", effort } })) };
+      const models = { resolve: (stored: ModelCoordinate, _target: unknown, fallback?: ModelCoordinate) => ({ ...resolveRosterCoordinate([{ id: "gateway:claude", label: "Claude", rows: [sonnetRow] }], stored, fallback ?? { model: "sonnet" }), wireModel: "sonnet" }) };
       h.store.setAutonomy("t1", true);
       h.store.setLanguage("t1", "ko");
       const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
@@ -322,7 +327,7 @@ describe("commodore supervisor", () => {
       const boardListeners: ((event: ObjectiveEvent) => void)[] = [];
       const runs: CommodoreEvent[] = [];
       const supervisor = createCommodoreSupervisor({
-        store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "fleet-harness", root: theaterRoot }),
+        store: h.store, agent, experiments: () => h.experiments(), models, theater: () => ({ label: "fleet-harness", root: theaterRoot }),
         objectives: () => objectives, subscribeObjectives: (listener) => { boardListeners.push(listener); return () => undefined; },
         // 사령관의 보드 쓰기 — 개시하면 그 목표가 진행 중이 되고 사건이 난다(실제 도구처럼 쓰는 동안).
         boardTools: () => [{ name: "console_objectives", description: "", inputSchema: {}, execute: async (args) => {
@@ -344,6 +349,8 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.options.systemPrompt).toContain("The person reads the log in Korean.");
       expect(tokens()).toEqual([["restart", "empty"]]);
       expect(sessionEvents()).toEqual(["restarted"]);
+      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "session")).toMatchObject({ reason: "fallback:model_off:sonnet" });
+      expect(h.experiments().commodoreModel).toBe("codex--gpt-6-luna");
       expect(sessions[0]!.sent[0]).toContain("Console restarted; the board is empty");
       const patrolAt = supervisor.status("t1")!.nextWakeAt!;
       expect(supervisor.status("t1")!.phase).toBe("idle");
