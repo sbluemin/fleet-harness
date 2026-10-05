@@ -9,6 +9,7 @@ import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 import {
   assertTrustedConsoleLock,
   captureProvenProcessStart,
+  consoleLockInstanceState,
   createConsoleHealthClient,
   createOwnedProcessRegistry,
   createProcessTableSnapshot,
@@ -25,6 +26,7 @@ import {
   runStopLadder,
   writeConsoleExitRecord,
   type ConsoleInstanceObservation,
+  type ConsoleLockInstanceState,
   type ConsoleProbeOptions,
   type ConsoleProbeResult,
 } from "@fleet-console/lifecycle";
@@ -497,14 +499,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     return new Error(`Fleet Console pid ${payload.pid} released its lock but was still running ${Math.round(EXTERNAL_ESCALATION_MS / 1_000)}s after the stop request, so it was not signalled. Its own shutdown deadline ends it; if it keeps running, stop it (kill -TERM ${payload.pid}; Windows: Stop-Process -Id ${payload.pid}).`);
   }
 
-  /** lock이 없어졌거나 다른 주인의 것으로 바뀌었다. 읽지 못하면 풀렸다고 보지 않는다. */
+  /** lock이 없어졌거나 다른 주인의 것으로 바뀌었다. 판정할 수 없는 lock(소유자를 읽을 수 없음, 거부)은 풀렸다고 보지 않는다. */
   function isLockReleasedBy(payload: ConsoleLockPayload): boolean {
-    try {
-      const current = readConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
-      return current?.pid !== payload.pid || current.token !== payload.token;
-    } catch {
-      return false;
-    }
+    return consoleLockInstanceState(paths.lockFile, payload) === "released";
   }
 
   /**
@@ -525,12 +522,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   }
 
   function isLockStillHeldBy(payload: ConsoleLockPayload): boolean {
-    try {
-      const current = readConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
-      return current?.pid === payload.pid && current.token === payload.token;
-    } catch {
-      return false;
-    }
+    return consoleLockInstanceState(paths.lockFile, payload) === "held";
   }
 
   function signalLockProcess(pid: number, signal: NodeJS.Signals): void {
@@ -824,12 +816,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     }
   }
 
-  /** Whether the lock names `pid`. A lock that cannot be judged is neither held by it for sure nor released. */
-  function childLockState(pid: number): "held" | "released" | "unknown" {
-    const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
-    if (observed.kind === "absent") return "released";
-    if (observed.kind !== "owner") return "unknown";
-    return observed.instance.pid === pid ? "held" : "released";
+  /** Whether the lock names `pid` (a child's token is not known). A lock that cannot be judged is `unknown`. */
+  function childLockState(pid: number): ConsoleLockInstanceState {
+    return consoleLockInstanceState(paths.lockFile, { pid });
   }
 
   /**

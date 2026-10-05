@@ -110,6 +110,23 @@ export async function observeConsoleLockFileUntil<P extends ConsoleLockFilePaylo
   }
 }
 
+export type ConsoleLockInstanceState = "held" | "released" | "unknown";
+
+/**
+ * Whether the lock still holds one instance, judged through `observeConsoleLockFile`: `released` when there is no lock
+ * or it names another pid (or, when `instance.token` is given, another token); `held` when it names this one; `unknown`
+ * when it cannot be judged (no readable owner, refused). A lock that cannot be judged is never taken as released.
+ */
+export function consoleLockInstanceState(lockFile: string, instance: { readonly pid: number; readonly token?: string }, options: ConsoleLockTrustOptions = {}): ConsoleLockInstanceState {
+  const observed = observeConsoleLockFile(lockFile, options);
+  if (observed.kind === "absent") return "released";
+  if (observed.kind !== "owner") return "unknown";
+  const held = observed.instance.payload;
+  if (held.pid !== instance.pid) return "released";
+  if (instance.token !== undefined && held.token !== instance.token) return "released";
+  return "held";
+}
+
 /**
  * The lock's payload as written, or null when there is no lock. Throws on a symbolic link and on content that is not
  * JSON; the payload is not validated, so a caller judging identity compares its fields itself.
