@@ -1,3 +1,5 @@
+import { ROSTER_FALLBACK_MODEL, resolveRosterCoordinate } from "@fleet-console/sdk/models";
+import { buildModelRoster } from "../../../ai-gateway/host/model-roster.js";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -269,6 +271,23 @@ async function createAgentCliLaunchSpec(options: {
       ? resolveAiGatewaySelection(options.readAiGatewaySettings())
       : undefined;
     let resolvedModel = options.model;
+    let effort = options.effort;
+    // 모델 로스터 — 새로 띄우는 Claude 네이티브 별칭도 로스터(Settings › AI Gateway) 소속을 본다. 로스터 밖(끈 Claude
+    // 항목)이거나 모델 없이 빈 로스터로 띄우면 요청을 고쳐 쓰지 않고 실행만 폴백(sonnet, 없으면 첫 행)하며 기록을 남긴다.
+    // 강도는 그 행의 노출 사다리로 클램프한다. 재개는 막지 않는다 — 이어 붙이는 세션은 원래 좌표 그대로다.
+    if (cliId === "claude" && gatewaySelection && !options.resumeSessionId) {
+      const nativeAlias = resolvedModel ? resolveNativeClaudeModelAlias(resolvedModel) : undefined;
+      if (resolvedModel ? nativeAlias !== undefined : gatewaySelection.models.length === 0) {
+        const coordinate = resolveRosterCoordinate(buildModelRoster(gatewaySelection, "launch"), { model: nativeAlias ?? null, effort: effort ?? null }, { model: ROSTER_FALLBACK_MODEL });
+        if (coordinate.fallback) {
+          process.stderr.write(`[fleet-launch] ${JSON.stringify({ ts: new Date().toISOString(), event: "model_fallback", requested: nativeAlias ?? null, model: coordinate.model, effort: coordinate.effort ?? null, reason: coordinate.reason ?? null })}\n`);
+          resolvedModel = coordinate.model;
+          effort = coordinate.effort;
+        } else if (effort !== undefined) {
+          effort = coordinate.effort;
+        }
+      }
+    }
     if (cliId === "claude" && resolvedModel) {
       const nativeAlias = resolveNativeClaudeModelAlias(resolvedModel);
       if (nativeAlias) {
@@ -283,10 +302,10 @@ async function createAgentCliLaunchSpec(options: {
             `Gateway model "${resolvedModel}" is not enabled.`,
           );
         }
-        if (options.effort !== undefined && (!gatewaySelection || !isGatewayLaunchEffortAllowed(gatewaySelection, model, options.effort))) {
+        if (effort !== undefined && (!gatewaySelection || !isGatewayLaunchEffortAllowed(gatewaySelection, model, effort))) {
           throw new GatewayLaunchOptionError(
             "invalid_effort",
-            `Gateway effort "${options.effort}" is not enabled for model "${resolvedModel}".`,
+            `Gateway effort "${effort}" is not enabled for model "${resolvedModel}".`,
           );
         }
         resolvedModel = toClaudeGatewayModelId(model);
@@ -296,7 +315,7 @@ async function createAgentCliLaunchSpec(options: {
       cliId,
       resumeSessionId: options.resumeSessionId,
       model: resolvedModel,
-      effort: options.effort,
+      effort,
       prompt: options.prompt,
       sessionName: options.sessionName,
     });

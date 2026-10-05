@@ -14,20 +14,9 @@ const APEX_EFFORTS = ["max", "ultra"];
 // max를 내지 않는 gateway 모델의 축 — max 자리는 건너뛰고, 하네스 능력인 ultra가 끝에 선다.
 const MAX_LESS_AXIS = [...EVERYDAY_AXIS, "ultra"];
 
-const builtinVariants = {
-  id: "native",
-  label: "Claude",
-  rows: [
-    // Claude Code's 1M coordinates launch under their plain labels.
-    builtinRow("fable[1m]", "Fable"),
-    builtinRow("opus[1m]", "Opus"),
-    builtinRow("sonnet", "Sonnet"),
-  ],
-};
-
 describe("buildAgentCliLaunchKinds", () => {
 
-  it("adds enabled gateway models in provider order with their exposed effort ladders", () => {
+  it("projects the enabled roster as launch variants in provider order with exposed effort ladders", () => {
     const resolved = resolveAiGatewaySelection({
       version: 1,
       models: [
@@ -44,7 +33,22 @@ describe("buildAgentCliLaunchKinds", () => {
     );
 
     expect(result[0]?.variants).toEqual([
-      builtinVariants,
+      // Claude 항목도 로스터의 한 띠다 — 하드코딩 네이티브 띠는 없다. 1M 좌표는 Claude Code 별칭으로 선다.
+      {
+        id: "gateway:claude",
+        label: "Claude",
+        rows: [
+          {
+            id: "sonnet[1m]",
+            label: expect.any(String),
+            launch: { model: "sonnet[1m]" },
+            contextWindow: 1_000_000,
+            effortAxis: EFFORT_AXIS,
+            gatedEfforts: APEX_EFFORTS,
+            chips: ["low", "medium", "high", "xhigh", "max", "ultra"].map((effort) => expect.objectContaining({ id: effort, launch: { model: "sonnet[1m]", effort } })),
+          },
+        ],
+      },
       {
         id: "gateway:codex",
         label: "Codex",
@@ -89,6 +93,8 @@ describe("buildAgentCliLaunchKinds", () => {
   });
 
   it("projects the Gateway roster once for every target and resolves stored coordinates without rewriting them", () => {
+    // 빈 로스터에는 하드코딩 바닥 행이 없다 — 실행은 서버의 최후 폴백(sonnet)이 맡는다.
+    expect(buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], "agent", resolveAiGatewaySelection({ version: 1, models: [] }))[0]?.variants).toEqual([]);
     const settings = {
       version: 1 as const,
       models: [{ id: "claude--sonnet" }, { id: "codex--gpt-6-sol-fast", efforts: ["low", "high"] }],
@@ -134,27 +140,6 @@ describe("buildAgentCliLaunchKinds", () => {
     ]);
   });
 });
-
-function builtinRow(model: string, label: string) {
-  return {
-    id: model,
-    label,
-    launch: { model },
-    // Claude Code의 두 좌표 — 채팅 중 창이 작은 모델로 내려가는 변경을 막는 근거다.
-    contextWindow: model.endsWith("[1m]") ? 1_000_000 : 200_000,
-    effortAxis: EFFORT_AXIS,
-    gatedEfforts: APEX_EFFORTS,
-    // ultracode는 하네스 능력이라 네이티브 행도 ultra 칩을 낸다.
-    chips: [
-      gatewayChip(model, "low", "LOW"),
-      gatewayChip(model, "medium", "MED"),
-      gatewayChip(model, "high", "HIGH"),
-      gatewayChip(model, "xhigh", "XHIGH"),
-      gatewayChip(model, "max", "MAX"),
-      gatewayChip(model, "ultra", "ULTRACODE"),
-    ],
-  };
-}
 
 function gatewayChip(model: string, effort: string, label: string) {
   return {
