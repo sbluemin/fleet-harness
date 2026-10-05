@@ -38,6 +38,7 @@ import {
   GATEWAY_MODELS,
   GatewayRoutingDistribution,
   parseGatewayAssignmentRequest,
+  resolveAiGatewaySelection,
   SystemOneClient,
   SystemOneError,
 } from "../../src/index.js";
@@ -291,6 +292,13 @@ describe("delegation assignment", () => {
 
     expect(decision.model).not.toBe(reserved);
     expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
+    // Claude도 같다 — 저장 설정에서 호스트 전용으로 둔 Claude는 위임 후보(gateway_models)에 서지 않고, 켜 둔 Claude는 다른
+    // 모델과 같은 정보(창·강도·등급)로 선다.
+    const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] });
+    expect(claude.models.map((model) => model.id)).toEqual(["claude--opus-1m", "claude--sonnet"]);
+    expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: claude.delegationModels }).models).toEqual([
+      expect.objectContaining({ modelId: "sonnet", provider: "claude", contextWindow: 200_000, capabilityClass: expect.any(String) }),
+    ]);
   });
 
   it("routes a workflow stage instead of letting it keep the model it inherited", async () => {
