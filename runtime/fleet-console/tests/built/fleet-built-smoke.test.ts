@@ -540,11 +540,14 @@ afterEach(async () => {
     const stopFile = path.join(run.dir, "self-stop");
     const breakawayFile = path.join(run.dir, "breakaway.json");
     run.env.LEDGER_WINDOWS_GRANDCHILDREN = "1";
-    run.env.LEDGER_BREAKAWAY_RESULT = breakawayFile;
+    run.env.FAKE_AGENT_BREAKAWAY_RESULT = breakawayFile;
+    run.env.FAKE_AGENT_KOFFI = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
     const consoleProcess = spawnConsole(run, { preload: writePreload(run, "self-stop.mjs", selfStopPreload(stopFile)) });
     const endpoint = await waitForReady(run, consoleProcess.pid!);
+    // Breakaway is attempted by the agent. That process is born inside the group job; the plugin child is not a reliable caller.
+    await openWorkload(run, endpoint, { terminal: false });
     const pluginChildren = await openPluginChildren(run, endpoint);
-    const started = pluginChildren;
+    const started = [...pluginChildren, ...descendantsOf(consoleProcess.pid!)];
     const breakaway = JSON.parse(fs.readFileSync(breakawayFile, "utf8")) as { ok?: boolean; err?: number };
     expect(breakaway.ok, `CREATE_BREAKAWAY_FROM_JOB must fail inside the group job (${JSON.stringify(breakaway)}) log=${failureKinds(run).join(",") || "none"}`).toBe(false);
     expect(breakaway.err, "breakaway is denied").toBe(5);
@@ -561,7 +564,7 @@ afterEach(async () => {
     lifecycleCheck("W1", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the hung plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
     const left = await survivors(run, started);
     lifecycleCheck("W1", left.length === 0, "I2: the plugin child and its grandchildren do not outlive the Console", { detail: { survivors: left, failureLog: failureKinds(run) } });
-  }, 90_000);
+  }, 150_000);
 
   // W2. An uncaught exception while a fake agent, its MCP child, and a detached grandchild are running. The job closes
   // with the process, so none of them is still the process we recorded.
@@ -893,9 +896,8 @@ function compileWindowsFakeAgent(exePath: string, nodePath: string, scriptPath: 
  * Grandchild setup baked into the stand-in. The plugin spawn does not take a custom env, so the flag is not read at
  * runtime. A failure is appended to the same pids file the timeout prints.
  */
-function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefined): readonly string[] {
-  if (!enabled || breakawayFile === undefined) return [];
-  const koffiEntry = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
+function windowsGrandchildLines(enabled: boolean): readonly string[] {
+  if (!enabled) return [];
   return [
     "if (!process.argv.includes('models')) {",
     "  let once = false;",
@@ -923,31 +925,6 @@ function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefi
     "    while (!fs.existsSync(pidFile) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);",
     "    if (fs.existsSync(pidFile)) record('native', Number(fs.readFileSync(pidFile, 'utf8')));",
     "    else note('native grandchild pid was not written');",
-    "    let breakaway = { ok: false, err: -1 };",
-    "    try {",
-    `      const koffi = require(${JSON.stringify(koffiEntry)});`,
-    "      const kernel32 = koffi.load('kernel32.dll');",
-    "      const u16ptr = koffi.pointer('uint16');",
-    "      const u8ptr = koffi.pointer('uint8');",
-    "      const i32ptr = koffi.pointer('int');",
-    "      const CreateProcessW = kernel32.func('__stdcall', 'CreateProcessW', 'int', ['void *', u16ptr, 'void *', 'void *', 'int', 'uint32', 'void *', 'void *', u8ptr, u8ptr]);",
-    "      const GetLastError = kernel32.func('__stdcall', 'GetLastError', 'uint32', []);",
-    "      const GetCurrentProcess = kernel32.func('__stdcall', 'GetCurrentProcess', 'void *', []);",
-    "      const IsProcessInJob = kernel32.func('__stdcall', 'IsProcessInJob', 'int', ['void *', 'void *', i32ptr]);",
-    "      const inJob = [0];",
-    "      const inJobOk = IsProcessInJob(GetCurrentProcess(), null, inJob);",
-    "      breakaway.inAnyJob = Boolean(inJobOk) && Number(inJob[0]) !== 0;",
-    "      const cmd = Buffer.from('cmd.exe /c exit 0\\\\0', 'utf16le');",
-    "      const si = Buffer.alloc(104);",
-    "      si.writeUInt32LE(104, 0);",
-    "      const pi = Buffer.alloc(24);",
-    "      const ok = CreateProcessW(null, cmd, null, null, 0, 0x01000000, null, null, si, pi);",
-    "      breakaway = { ok: Boolean(ok), err: ok ? 0 : Number(typeof koffi.errno === 'function' ? koffi.errno() : 0) || Number(GetLastError()), inAnyJob: breakaway.inAnyJob };",
-    "    } catch (error) {",
-    "      breakaway = { ok: false, err: -1, message: String(error && error.message || error) };",
-    "      note('breakaway ' + breakaway.message);",
-    "    }",
-    `    fs.writeFileSync(${JSON.stringify(breakawayFile)}, JSON.stringify(breakaway));`,
     "  } catch (error) {",
     "    try { record('windows-error', String(error && error.message || error).replace(/\\s+/g, ' ').slice(0, 400)); } catch {}",
     "  }",
@@ -1293,7 +1270,7 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
     "  process.on('SIGTERM', () => {});",
     "  record('cli-ignores', process.pid);",
     "}",
-    ...windowsGrandchildLines(run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1", run.env.LEDGER_BREAKAWAY_RESULT),
+    ...windowsGrandchildLines(run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1"),
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
   // Each summary answers only once tokscale does; the requests end with the Console.
@@ -1306,10 +1283,9 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
   // Two report runs, two model runs, and their two helpers.
   await waitUntil(() => recorded().length >= 6, 20_000, "the Ledger plugin did not start its CLI");
   if (run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1") {
-    const breakawayFile = run.env.LEDGER_BREAKAWAY_RESULT;
     const ready = () => {
       const roles = new Set(recorded().map((entry) => entry.role));
-      return roles.has("detached") && roles.has("native") && breakawayFile !== undefined && fs.existsSync(breakawayFile);
+      return roles.has("detached") && roles.has("native");
     };
     const deadline = Date.now() + 40_000;
     while (!ready() && Date.now() < deadline) await delay(25);
