@@ -359,16 +359,18 @@ export class SidecarSupervisor {
       sleep: (ms) => this.clock.sleep(ms),
     });
     const key = lock ? { pid, lockStartedAt: lock.startedAt } : null;
+    // A Console that recorded its own ending (its deadline) as the SIGKILL landed keeps that record: it is the outcome.
+    let forcedRecorded = ended === "forced";
     if (ended === "forced" && key) {
       try {
-        writeConsoleExitRecord(this.options.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, ...key, outcome: "forced-external", killed: 0, at: Date.now() });
+        forcedRecorded = writeConsoleExitRecord(this.options.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, ...key, outcome: "forced-external", killed: 0, at: Date.now() });
       } catch {
-        // The record only informs later readers; this ladder's own result already says the stop was forced.
+        // The record only informs later readers; this ladder's own result still says the stop was forced.
       }
     }
-    const outcome = ended === "forced"
+    const outcome = forcedRecorded
       ? "forced-external"
-      : ended !== "exited" ? null : key ? readConsoleEnding(this.options.lockFile, key, { lifecycleWire: target.lifecycleWire, terminatedByReader: true }).outcome : "unrecorded";
+      : ended !== "exited" && ended !== "forced" ? null : key ? readConsoleEnding(this.options.lockFile, key, { lifecycleWire: target.lifecycleWire, terminatedByReader: true }).outcome : "unrecorded";
     const line = `console_stop: pid ${pid} ${ended}${outcome === null ? "" : ` outcome=${outcome}`}`;
     // Only a recorded clean shutdown is reported as one; no record, an unknown one, or an external ending is not.
     if (outcome === "clean") this.options.log.info(line);

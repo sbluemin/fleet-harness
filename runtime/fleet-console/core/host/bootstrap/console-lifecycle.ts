@@ -441,10 +441,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     if (ended === "kill-failed") throw new Error(`Fleet Console pid ${payload.pid} did not exit after SIGKILL; ${paths.lockFile} was left in place.`);
     // 끝난 Console이 남긴 lock은 그 pid가 ESRCH인 지금 회수 프로토콜로 지운다.
     await removeLockHeldBy(payload);
-    if (ended === "forced") {
-      recordForcedExit(instance);
-      return { outcome: "forced-external", killed: 0 };
-    }
+    // SIGKILL이 Console 자신의 종료 기록(예: deadline)과 겹치면 그 기록이 실제 결말이다. 우선순위상 forced-external이
+    // 그것을 덮지 않으므로, 쓰지 못했을 때는 남아 있는 기록으로 보고한다.
+    if (ended === "forced" && recordForcedExit(instance)) return { outcome: "forced-external", killed: 0 };
     // 기록이 없으면 계약을 아는 Console은 밖에서 끝난 것이고, 계약 이전 Console이나 Windows에서 이 stop이 끝낸 Console은
     // 탓할 근거가 없어 지금까지처럼 정지로 본다(readConsoleEnding).
     return readConsoleEnding(paths.lockFile, instance, { lifecycleWire: observed.probe?.health?.lifecycleWire, terminatedByReader: requester });
@@ -455,12 +454,16 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     return observeConsoleInstance({ lock: payload, trusted: true, isHeld: () => !isLockReleasedBy(payload), probe: (target, options) => health.probe(target, options), env });
   }
 
-  /** This stop SIGKILLed the instance: nothing ran inside it to record how it ended, so the stop records it. */
-  function recordForcedExit(instance: { readonly pid: number; readonly lockStartedAt: number }): void {
+  /**
+   * This stop SIGKILLed the instance, so the stop records it. False when the instance's own record already says how it
+   * ended (it recorded its deadline as the SIGKILL landed): that record, not this stop, is the outcome.
+   */
+  function recordForcedExit(instance: { readonly pid: number; readonly lockStartedAt: number }): boolean {
     try {
-      writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, ...instance, outcome: "forced-external", killed: 0, at: Date.now() });
+      return writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, ...instance, outcome: "forced-external", killed: 0, at: Date.now() });
     } catch {
-      // The record only informs later readers; the stop's own result already says it was forced.
+      // The record only informs later readers; the stop's own result still says it was forced.
+      return true;
     }
   }
 
