@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { REAPER_DRAIN_MAX_MS } from "@fleet-console/lifecycle";
 import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
@@ -26,14 +27,23 @@ const SERVES = new Set<ChildProcess>();
 const ROOTS: string[] = [];
 
 afterEach(async () => {
+  // A killed Console's reaper records how it ended under the root: take its helpers (proved by start time) before the kill
+  // and let them finish before the root is removed.
+  const helpers: Array<readonly [number, string]> = [];
   await Promise.all([...SERVES].map(async (child) => {
     if (child.exitCode !== null || child.signalCode !== null) return;
+    for (const entry of descendantsOf(child.pid!)) helpers.push([entry.pid, entry.startedAt]);
     const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
     child.kill("SIGKILL");
     await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 5_000))]);
   }));
   SERVES.clear();
-  for (const root of ROOTS.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  const deadline = Date.now() + REAPER_DRAIN_MAX_MS + 1_000;
+  for (const [pid, startedAt] of helpers) {
+    while (processStartTime(pid) === startedAt && Date.now() < deadline) await delay(25);
+    if (processStartTime(pid) === startedAt) try { process.kill(pid, "SIGKILL"); } catch { /* Already gone. */ }
+  }
+  for (const root of ROOTS.splice(0)) fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 });
 });
 
 (runBuiltSmoke ? describe : describe.skip)("built dual-entry smoke", () => {
@@ -359,8 +369,11 @@ afterEach(async () => {
     const started = descendantsOf(consoleProcess.pid!);
     await provableByStartTime(startedAt);
 
+    const readsBeforeStop = callsFrom(psCalls, consoleProcess.pid!);
     const stop = await runStop({ ...run.env, PATH: [slowProcessTable(run, 600), run.env.PATH].join(":") });
     const exit = await exitOf(consoleProcess, 30_000);
+    // Only the Console's own calls: its reaper reads the same PATH once the Console is gone.
+    const reads = callsFrom(psCalls, consoleProcess.pid!) - readsBeforeStop;
 
     expect(fs.existsSync(stall.marker), "the injected stall must hold the shutdown with the lock held").toBe(true);
     expect(exit.signal, "the Console must end by its own deadline in this case").toBeNull();
@@ -369,8 +382,7 @@ afterEach(async () => {
     lifecycleCheck("L9", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
     const recordedMs = deadlineRecordedAfterSignal(run, stall.signalled);
     // The count is the deterministic half: the bound below also depends on the scheduler.
-    const reads = recordedMs === null ? null : callTimes(psCalls).filter((at) => at >= stall.signalledAt() && at <= stall.signalledAt() + recordedMs).length;
-    lifecycleCheck("L9", reads === 1, "I4: from its first SIGTERM to the deadline's record, the Console reads the process table once", { detail: { reads } });
+    lifecycleCheck("L9", reads === 1, "I4: the stopping Console reads the process table once", { detail: { reads } });
     lifecycleCheck("L9", recordedMs !== null && recordedMs <= CONSOLE_STOP_DEADLINE_MS + PROCESS_TABLE_TIMEOUT_MS + 100, "I4: the deadline spends one process-table budget at most", { detail: { recordedMs } });
     lifecycleCheck("L9", stop.status !== 0, "stop does not report a deadline-ended Console as cleanly stopped", { detail: { status: stop.status, stdout: stop.stdout.trim() } });
   }, 90_000);
@@ -702,7 +714,7 @@ function writePreload(run: LifecycleRun, name: string, lines: readonly string[])
  * deadline's cleanup runs late while its process-table read keeps the full budget.
  * `recordSignal` writes when the first SIGTERM arrived (epoch ms) to `signalled`.
  */
-function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number; readonly freezeBeforeDeadline?: boolean; readonly strayChild?: boolean; readonly recordSignal?: boolean } = {}): { readonly preload: string; readonly marker: string; readonly freeze: string; readonly signalled: string; readonly signalledAt: () => number } {
+function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number; readonly freezeBeforeDeadline?: boolean; readonly strayChild?: boolean; readonly recordSignal?: boolean } = {}): { readonly preload: string; readonly marker: string; readonly freeze: string; readonly signalled: string } {
   const marker = path.join(run.dir, "stalled");
   const signalled = path.join(run.dir, "signalled");
   // {t0, start, end} in epoch ms: the first SIGTERM and the pre-deadline freeze, for the case's timeline.
@@ -734,7 +746,7 @@ function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freeze
     "  return close.call(this, callback);",
     "};",
   ]);
-  return { preload, marker, freeze, signalled, signalledAt: () => Number(fs.readFileSync(signalled, "utf8")) };
+  return { preload, marker, freeze, signalled };
 }
 
 /** How long after the Console's first SIGTERM its stop deadline recorded the timeout (after its SIGKILLs), in ms. */
@@ -791,20 +803,21 @@ function hangingProcessTable(run: LifecycleRun): string {
 
 /**
  * A `ps` that answers after `delayMs`, put on one process's PATH only: its process-table read is slow, nobody else's. With
- * `calls`, every invocation first appends its start time (epoch ms) to that file.
+ * `calls`, every invocation first appends its caller's pid to that file (a shell builtin: no extra exec on the timed path).
  */
 function slowProcessTable(run: LifecycleRun, delayMs: number, calls?: string): string {
   const dir = path.join(run.dir, `slow-ps-${delayMs}${calls ? "-counted" : ""}`);
   fs.mkdirSync(dir, { recursive: true });
   const realPs = SYSTEM_PATH.map((entry) => path.join(entry, "ps")).find((candidate) => fs.existsSync(candidate));
   if (!realPs) throw new Error("ps is not on the system PATH");
-  const count = calls ? `perl -MTime::HiRes=time -e 'printf("%d\\n", time() * 1000)' >> ${JSON.stringify(calls)}\n` : "";
+  const count = calls ? `echo "$PPID" >> ${JSON.stringify(calls)}\n` : "";
   fs.writeFileSync(path.join(dir, "ps"), `#!/bin/sh\n${count}sleep ${delayMs / 1000}\nexec ${realPs} "$@"\n`, { mode: 0o755 });
   return dir;
 }
 
-function callTimes(file: string): number[] {
-  try { return fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(Number); } catch { return []; }
+/** How many recorded calls came from `caller`. */
+function callsFrom(file: string, caller: number): number {
+  try { return fs.readFileSync(file, "utf8").split("\n").filter((line) => Number(line) === caller).length; } catch { return 0; }
 }
 
 /**
