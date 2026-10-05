@@ -2105,7 +2105,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // Plugins' own registered children (a CLI or git still waiting on the network) have no one else to end them on this
     // path: give them SIGTERM and, after the grace, SIGKILL, without holding the lock for it. Agent CLIs are left to the
     // SDK's own close, which lets them flush, and the stop deadline still covers everything.
-    ownedProcesses.endGroups((group) => group.owner?.startsWith("plugin:") === true, OWNED_GROUP_TERM_GRACE_MS);
+    ownedProcesses.endGroups((group) => group.owner?.startsWith("plugin:") === true, OWNED_GROUP_TERM_GRACE_MS, {
+      onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error),
+    });
     for (const cleanup of [...executionCleanupCallbacks].reverse()) {
       try { await cleanup(); } catch (error) { console.warn("[fleet-console] Execution cleanup failed:", error); }
     }

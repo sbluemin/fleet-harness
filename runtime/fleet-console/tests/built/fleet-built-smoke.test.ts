@@ -475,9 +475,10 @@ afterEach(async () => {
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
   }, 60_000);
 
-  // L6n, e7874487:N9 (I2, I4; L6's plugin child on the normal stop path). The same hung Ledger child that ignores SIGTERM
-  // must not hold a normal stop to the deadline: the single cleanup ends the plugins' registered groups after their grace,
-  // so stop succeeds well inside B_int, the instance records `clean`, and nothing it started outlives it.
+  // L6n, e7874487:N9 (I2, I4; L6's plugin children on the normal stop path). The same hung Ledger children must not hold a
+  // normal stop to the deadline: the single cleanup ends the plugins' registered groups after their grace — the one whose
+  // CLI ignores SIGTERM by E1, the one whose CLI ended but left a helper holding its pipes by one proving process-table
+  // read — so stop succeeds well inside B_int, the instance records `clean`, and nothing it started outlives it.
   it("ends a hung plugin child on a normal stop and reports the stop as clean", async () => {
     const run = createRun("plugin-stop");
     const consoleProcess = spawnConsole(run);
@@ -928,9 +929,11 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
 }
 
 /**
- * A built-in plugin's own long-running child (N7): a Ledger summary request starts tokscale, and a stand-in installed where
- * Ledger looks for it hangs and ignores SIGTERM, so only the Console's containment ends it. The suite owns each one at once:
- * one that escapes is reparented away from the Console and would otherwise outlive the case.
+ * A built-in plugin's own long-running children (N7): a Ledger summary request starts tokscale twice, and a stand-in
+ * installed where Ledger looks for it hangs. The report run ignores SIGTERM itself. The model run is the common CLI shape
+ * (N9): it ends on SIGTERM but leaves a helper that ignores SIGTERM and holds its inherited stdout and stderr. Only the
+ * Console's containment ends them. The suite owns each one at once: one that escapes is reparented away from the Console
+ * and would otherwise outlive the case.
  */
 async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<void> {
   const pkg = path.join(run.root, "console", "plugins", "ledger", "cli", "node_modules", "tokscale");
@@ -939,15 +942,21 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
   // Ledger refuses anything but its pinned version.
   fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "tokscale", version: "4.7.0" }));
   fs.writeFileSync(path.join(pkg, "bin.js"), [
-    `require("fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");`,
-    "process.on('SIGTERM', () => {});",
+    `const record = (pid) => require("fs").appendFileSync(${JSON.stringify(pids)}, pid + "\\n");`,
+    "record(process.pid);",
+    "if (process.argv.includes('models')) {",
+    "  const helper = require('child_process').spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);\"], { stdio: 'inherit' });",
+    "  record(helper.pid);",
+    "} else {",
+    "  process.on('SIGTERM', () => {});",
+    "}",
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
   // The summary answers only once tokscale does; the request ends with the Console.
   fetch(new URL("plugins/ledger/summary?window=week", endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
   const recorded = () => fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map(Number) : [];
-  // One tokscale for the report and one for the model breakdown.
-  await waitUntil(() => recorded().length >= 2, 20_000, "the Ledger plugin did not start its CLI");
+  // One tokscale for the report, one for the model breakdown, and the latter's helper.
+  await waitUntil(() => recorded().length >= 3, 20_000, "the Ledger plugin did not start its CLI");
   for (const pid of recorded()) own(pid);
 }
 
