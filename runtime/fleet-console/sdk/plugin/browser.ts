@@ -74,6 +74,12 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       saving: () => false,
       modelOptions: async () => [],
     },
+    // 로스터는 호스트 클라이언트 상태다 — 사본은 「아직 읽지 않음」으로 남고 Console이 실제 스토어로 덮는다.
+    models: {
+      read: () => null,
+      subscribe: () => () => undefined,
+      refresh: () => undefined,
+    },
     terminal: {
       requestTicket: async (pluginId, path, operationId, signal) => {
         const response = await fetch(resolvePluginPath(pluginId, path), {

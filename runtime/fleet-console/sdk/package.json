@@ -35,6 +35,11 @@
       "import": "./operations/identity-tones.ts",
       "default": "./operations/identity-tones.ts"
     },
+    "./models": {
+      "types": "./models/index.ts",
+      "import": "./models/index.ts",
+      "default": "./models/index.ts"
+    },
     "./version": {
       "types": "./version.ts",
       "import": "./version.ts",

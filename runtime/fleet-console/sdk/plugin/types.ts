@@ -17,6 +17,7 @@ import type { RailEntryDescriptor, RailPanelDescriptor } from "../rail/types.js"
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { ConsoleExperimentSettings, ExperimentModelOption, SettingsSectionDescriptor } from "../settings/types.js";
+import type { ModelCoordinate, ModelRoster, ModelRosterTarget, ResolvedWireCoordinate } from "../models/index.js";
 
 export interface LaunchContext {
   readonly theaterId: string;
@@ -242,8 +243,8 @@ export interface ClientExecutionProvider {
   readonly discardLaunchAttachment?: (id: string) => Promise<void>;
   readonly renderLaunchIcon?: (kind: OperationLaunchKind) => ReactNode;
   /**
-   * 모델 좌석 선택지에 보태는 모델들. 코어는 Claude 별칭만 알고, Gateway에서 켠 모델은 그것을
-   * 아는 플러그인이 내놓는다.
+   * @deprecated 모델 선택지는 이제 코어의 모델 로스터(`ctx.models`) 하나가 소유한다. 호스트는 이 값을 더 읽지 않는다.
+   * Fleet 1.215.0에서 제거한다.
    */
   readonly experimentModelOptions?: () => Promise<readonly ExperimentModelOption[]>;
   /**
@@ -276,6 +277,18 @@ export interface PluginInstallContext {
   readonly rail: ClientRailCapability;
   readonly consoleEvents: ClientConsoleEventsCapability;
   readonly experiments: ClientExperimentsCapability;
+  readonly models: ClientModelsCapability;
+}
+
+/**
+ * 모델 로스터 읽기 — Console의 모든 모델 선택지가 쓰는 원천. 코어 스토어 하나가 캐시를 갖고, Gateway 저장·
+ * 서버 브로드캐스트(다른 탭·기기의 저장 포함)·화면 복귀 때 다시 읽는다. 아직 읽히지 않았으면 null이고,
+ * 첫 `read`가 읽기를 시작한다.
+ */
+export interface ClientModelsCapability {
+  read(target: ModelRosterTarget): ModelRoster | null;
+  subscribe(listener: () => void): () => void;
+  refresh(): void;
 }
 
 /**
@@ -293,7 +306,11 @@ export interface ClientExperimentsCapability {
    * 플러그인 행은 이 동안 자기 컨트롤을 잠가 눌린 값이 조용히 버려지는 일을 막는다.
    */
   saving(): boolean;
-  /** 모델 선택지 — Claude 별칭 + 등록된 플러그인이 내놓는 Gateway 모델. 플러그인 카드가 자기 행의 선택기에 쓴다. */
+  /**
+   * 모델 선택지 — 모델 로스터(`agent` 대상)를 옛 옵션 모양으로 편 것.
+   * @deprecated `ctx.models.read("agent")`와 `@fleet-console/sdk/components/model-coordinate-picker`를 쓴다.
+   * Fleet 1.215.0에서 제거한다.
+   */
   modelOptions(): Promise<readonly ExperimentModelOption[]>;
 }
 
@@ -978,6 +995,24 @@ export interface FleetPluginHostCapabilities {
    * 옵트인의 부재는 꺼짐이다.
    */
   readonly experiments?: FleetPluginExperimentsHost;
+  /**
+   * 모델 로스터(Settings › AI Gateway에서 켠 모델)와 저장 좌표의 실행 해석. 플러그인은 자기 설정의 모델·강도를
+   * 여기서 풀어 세션을 연다 — Gateway 설정 파일을 직접 열지 않는다. 없는 호스트(구버전·테스트 스텁)에서는
+   * 저장 좌표를 그대로 쓴다.
+   */
+  readonly models?: FleetPluginModelsHost;
+}
+
+/** 서버 쪽 모델 로스터 읽기. 저장값을 매번 읽으므로 Gateway를 저장한 직후의 요청부터 새 로스터를 본다. */
+export interface FleetPluginModelsHost {
+  roster(target: ModelRosterTarget): ModelRoster;
+  /**
+   * 저장 좌표를 로스터에 대조해 실행 좌표를 정한다. 저장값은 고쳐 쓰지 않는다. 로스터 밖이면 `fallback`
+   * 좌표(생략하면 sonnet) 쪽으로 서고 `fallback:true`다 — 소비자는 그 사실을 실행 기록에 남긴다.
+   */
+  resolve(stored: ModelCoordinate, target: ModelRosterTarget, fallback?: ModelCoordinate): ResolvedWireCoordinate;
+  /** 로스터가 바뀐 직후 울린다. 요청마다 읽지 않는 상주 작업이 쓰는 통로다. */
+  subscribe?(listener: () => void): () => void;
 }
 
 /** 서버 쪽 실험 설정 읽기 — 저장값을 매번 읽으므로 설정을 바꾼 직후의 요청부터 새 값을 본다. */
