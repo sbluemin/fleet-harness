@@ -1,7 +1,7 @@
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
-import { EffortTrack, resolveRowEffort } from "@fleet-console/sdk/composer";
+import { ModelCoordinatePicker } from "@fleet-console/sdk/components/model-coordinate-picker";
+import type { ModelRoster } from "@fleet-console/sdk/models";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
@@ -10,9 +10,8 @@ import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
- * 지휘관의 모델·강도 — 한 줄의 글("Opus · HIGH")이고, 누르면 **맵 우클릭 메뉴와 같은 문법**의 메뉴가 뜬다:
- * 공급자 띠(글리프 + 이름) 아래 모델 행(이름 · 강도 게이지 · ›). 행을 고르면 목록이 접히고 그 모델 한 줄과
- * 강도 트랙만 남는다(2단계); 모델 이름을 다시 누르면 목록으로 돌아간다. 지휘관은 첫 실행 전에 시작 뷰도 고른다.
+ * 지휘관·구성원의 모델·강도 — 한 줄의 글("Opus · HIGH")이고, 누르면 Console 공유 선택기(`ModelCoordinatePicker`)의
+ * 메뉴가 뜬다. 이 파일은 Objectives 고유 부분(시작 뷰·서브에이전트·실행 낱말·라우팅 사유)만 갖는 어댑터다.
  */
 
 export const DEFAULT_LAUNCH = { model: "opus[1m]", effort: "high" } as const;
@@ -142,8 +141,6 @@ function prettyModelId(id: string): string {
     .map((token) => (/^(gpt|o\d|glm|qwen)/i.test(token) ? token.toUpperCase() : token.charAt(0).toUpperCase() + token.slice(1))).join(" ");
 }
 
-const Chevron = ({ back }: { readonly back?: boolean }) => <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{back ? <path d="M7.5 2.5L4 6l3.5 3.5" /> : <path d="M4.5 2.5L8 6l-3.5 3.5" />}</svg>;
-
 export type StartView = "terminal" | "chat";
 export const StartViewGlyph = ({ view }: { readonly view: StartView }) => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{view === "chat" ? <path d="M2.75 4.25c0-.83.67-1.5 1.5-1.5h7.5c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5H7.2L4.5 13.1v-2.35h-.25c-.83 0-1.5-.67-1.5-1.5z" /> : <path d="M3 4.5 6.5 8 3 11.5M8 12h5" />}</svg>;
 export const startViewLabel = (t: Translate<ObjectiveMessageKey>, view: StartView) => t(view === "chat" ? "objectives.view.chat" : "objectives.view.terminal");
@@ -178,212 +175,78 @@ interface LaunchControlProps {
   readonly subagents?: { readonly allowed: boolean; readonly onToggle: () => void };
   /**
    * 고른 모델·강도를 메뉴가 닫힐 때 한 번만 알린다. 행을 고르면 강도 단계가 이어지므로 고를 때마다 알리면 한 번의 선택이 두 번의 변경이
-   * 된다 — 변경이 곧 세션 재기동·모델 전환인 곳(띄운 구성원)에서 쓴다. 고르는 동안은 메뉴의 표시만 바뀐다. 선택 방식(extras)은 따로 곧바로다.
+   * 된다 — 변경이 곧 세션 재기동·모델 전환인 곳(띄운 구성원)에서 쓴다. 선택 방식(extras)은 따로 곧바로다.
    */
   readonly commitOnClose?: boolean;
 }
 
-const MENU_WIDTH = 216;
-const MENU_MARGIN = 12;
-const menuItems = (root: HTMLElement): HTMLButtonElement[] => [...root.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled),[role="menuitemradio"]:not(:disabled),[role="menuitemcheckbox"]:not(:disabled)')];
+/** 운영 카탈로그의 띠를 선택기의 로스터 모양으로 — 띠 id가 공급자 글리프를 말한다. 아직 읽기 전이면 null. */
+function useLaunchRoster(): ModelRoster | null {
+  const groups = useLaunchGroups();
+  return useMemo(() => groups.length === 0 ? null : groups.map((group, index) => ({
+    id: group.provider ? `gateway:${group.provider}` : `etc-${index}`,
+    label: group.caption,
+    rows: group.rows,
+  })), [groups]);
+}
 
 export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption, commitOnClose = false }: LaunchControlProps) {
-  const groups = useLaunchGroups();
-  const rows = groups.flatMap((group) => group.rows);
-  const currentModel = model ?? DEFAULT_LAUNCH.model;
-  // 메뉴에서 방금 고른 값 — 저장이 방송으로 돌아오기 전에도 2단계(모델 한 줄 + 강도 트랙)가 그 모델로 선다. 값이 돌아오거나 메뉴가 닫히면 거둔다.
-  const [picked, setPicked] = useState<{ readonly model: string; readonly effort?: string } | null>(null);
-  // 라우팅·지휘관과 같게를 골랐으면 모델 행은 선택이 아니다 — 모델이 비어 기본(Opus)으로 읽힌 행이 함께 체크되지 않게 한다.
-  const activeModel = picked?.model ?? (extras?.some((extra) => extra.active) ? null : currentModel);
-  const currentEffort = picked ? picked.effort : effort ?? (model || extras?.length ? undefined : DEFAULT_LAUNCH.effort);
-  const words = launchWords(rows, model, effort, t("objectives.commander.effortAuto"));
-  const [open, setOpen] = useState(false);
-  useEffect(() => { if (locked) setOpen(false); }, [locked]);
-  // commitOnClose — 아직 알리지 않은 마지막 선택. 메뉴가 닫히는 순간(바깥 누름·Esc·Tab·고른 노브 다시 누름 모두) 지금 값과 다르면 한 번 알린다.
-  const pending = useRef<{ readonly model?: string; readonly effort?: string } | null>(null);
-  const wasOpen = useRef(false);
-  useEffect(() => {
-    if (open) { wasOpen.current = true; return; }
-    if (!wasOpen.current) return;
-    wasOpen.current = false;
-    const last = pending.current;
-    pending.current = null;
-    if (!last || locked || (last.model === model && (last.effort ?? "") === (effort ?? ""))) return;
-    onChange(last);
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- 닫히는 순간 한 번만 — 그 렌더의 값으로 알린다.
-  const choose = (next: { readonly model?: string; readonly effort?: string }) => { if (commitOnClose) pending.current = next; else onChange(next); };
-  useEffect(() => { setPicked(null); }, [model, effort, open]);
-  // 2단계 — 고른 모델 한 줄과 강도 트랙. 메뉴는 여기서 열리고, 모델명을 누르면 목록(1단계)으로 간다.
-  const [focused, setFocused] = useState(!startAtList);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const focusIntent = useRef<"first" | "last" | null>(null);
-  const [pos, setPos] = useState<CSSProperties>({});
-  const menuWidth = subagents ? 232 : MENU_WIDTH;
-
-  useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    const left = Math.max(MENU_MARGIN, Math.min(rect.left, window.innerWidth - menuWidth - MENU_MARGIN));
-    const below = rect.bottom + 6;
-    const height = menuRef.current?.offsetHeight ?? 320;
-    const top = below + height > window.innerHeight - MENU_MARGIN ? Math.max(MENU_MARGIN, rect.top - height - 6) : below;
-    setPos({ left, top, width: menuWidth });
-  }, [open, groups.length, currentModel, focused, menuWidth, subagents?.allowed]);
-
-  useLayoutEffect(() => {
-    if (!open || !focusIntent.current || !menuRef.current) return;
-    const items = menuItems(menuRef.current);
-    const target = focusIntent.current === "last" ? items.at(-1) : items[0];
-    focusIntent.current = null;
-    target?.focus();
-  }, [open, focused, groups.length, subagents?.allowed]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); triggerRef.current?.focus(); return; }
-      if (!subagents || !menuRef.current || !(event.target instanceof Node) || !menuRef.current.contains(event.target)) return;
-      // 캔버스가 window keydown에서 Space를 삼켜 button의 keyup 클릭이 사라진다. 체크만 여기서 한 번 토글하고, Enter의 기본 클릭은 그대로 둔다.
-      if (!event.repeat && (event.key === " " || event.code === "Space") && event.target instanceof Element && event.target.closest("[role='menuitemcheckbox']")) {
-        event.preventDefault();
-        event.stopPropagation();
-        subagents.onToggle();
-        return;
-      }
-      const items = menuItems(menuRef.current);
-      const index = items.indexOf(event.target as HTMLButtonElement);
-      if (index < 0) return;
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
-      } else if (event.key === "Home") { event.preventDefault(); items[0]?.focus(); }
-      else if (event.key === "End") { event.preventDefault(); items.at(-1)?.focus(); }
-      else if (event.key === "Tab" && (event.shiftKey ? index === 0 : index === items.length - 1)) {
-        // 메뉴 밖으로 나가는 Tab — 닫고 트리거에 초점을 돌려, 브라우저가 트리거 다음(또는 이전)으로 가게 한다.
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey); };
-  }, [open, subagents]);
-
-  const chosenProvider = groups.find((group) => group.rows.some((row) => row.launch.model === currentModel))?.provider ?? launchProviderFromModelId(currentModel);
-  const text = (
+  const roster = useLaunchRoster();
+  const viewPrefix = viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} /><span className="objectives-launch-view-word">{startViewLabel(t, viewMode)}</span></span><span className="objectives-launch-separator" aria-hidden="true" /></> : undefined;
+  const footer = (viewMode && onViewChange) || subagents ? (
     <>
-      {viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} /><span className="objectives-launch-view-word">{startViewLabel(t, viewMode)}</span></span><span className="objectives-launch-separator" aria-hidden="true" /></> : null}
-      {chosenProvider ? <span className={`operation-launch-provider-glyph objectives-launch-provider is-${chosenProvider}`} aria-hidden="true">{launchProviderGlyph(chosenProvider)}</span> : null}
-      <span className="objectives-launch-model">{words.model}</span>
-      <span className="objectives-launch-dot" aria-hidden="true">·</span>
-      <span className="objectives-launch-effort">{words.effort}</span>
+      {viewMode && onViewChange ? <div className="fc-coord-menu-group">
+        <div className="fc-coord-menu-divider" role="separator" />
+        <p className="fc-coord-menu-caption">{t("objectives.view.label")}</p>
+        {(["terminal", "chat"] as const).map((view) => <button key={view} type="button" role="menuitemradio" aria-checked={viewMode === view} className={`fc-coord-menu-item${viewMode === view ? " is-active" : ""}`} onClick={() => onViewChange(view)}><span className="objectives-launch-view"><StartViewGlyph view={view} /></span><span className="fc-coord-menu-label">{startViewLabel(t, view)}</span></button>)}
+      </div> : null}
+      {subagents ? <div className="fc-coord-menu-group" role="group" aria-label={t("objectives.members.subagentsGroup")}>
+        <div className="fc-coord-menu-divider" role="separator" />
+        <button type="button" role="menuitemcheckbox" aria-checked={subagents.allowed} className={`fc-coord-menu-item objectives-menu-check${subagents.allowed ? " is-active" : ""}`} onClick={() => subagents.onToggle()}>
+          <span className="objectives-menu-box" aria-hidden="true" />
+          <span className="objectives-menu-check-copy">
+            <span className="fc-coord-menu-label">{t("objectives.members.subagents")}</span>
+            <span className="fc-coord-menu-hint">{t("objectives.members.subagentsHint")}</span>
+          </span>
+        </button>
+      </div> : null}
     </>
-  );
-  // 좁은 칸에서 줄임표로 접힌 모델 이름의 풀네임 — 호출부가 따로 주지 않으면 이 컨트롤이 그리는 낱말에서 만든다.
-  const title = triggerTitle ?? (triggerText ? undefined : `${modelFullName(rows, currentModel) || words.model} · ${words.effort}`);
-  if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={title ? `${title}\n${t("objectives.commander.locked")}` : t("objectives.commander.locked")}>{triggerText ?? text}</span>;
-
-  const chosenRow = activeModel ? rows.find((row) => row.launch.model === activeModel) ?? null : null;
-  const providerOf = (row: OperationLaunchVariantRow) => groups.find((group) => group.rows.includes(row))?.provider ?? null;
-
+  ) : undefined;
   return (
-    <>
-      <button ref={triggerRef} type="button" className={`objectives-launch${trigger ? " is-glyph objectives-glyph" : ""}`} aria-haspopup="menu" aria-expanded={open} aria-label={triggerLabel ?? t("objectives.launch.menuAria")} title={trigger ? triggerLabel : title} onKeyDown={subagents ? (event) => {
-        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-        event.preventDefault();
-        focusIntent.current = event.key === "ArrowUp" ? "last" : "first";
-        setFocused(!startAtList);
-        setOpen(true);
-      } : undefined} onClick={(event) => { setFocused(!startAtList); setOpen((value) => { const next = !value; if (next && subagents && event.detail === 0) focusIntent.current = "first"; return next; }); }}>
-        {trigger ?? triggerText ?? text}
-      </button>
-      {/* body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에 갇히고 overflow 에 잘린다(캔버스 메뉴와 같은 이유). */}
-      {open ? createPortal(
-        <div ref={menuRef} className={`objectives-menu${focused ? " is-focused" : ""}`} role="menu" aria-label={triggerLabel ?? t("objectives.launch.menuAria")} style={pos}>
-          {head ? <div className="objectives-menu-head">{head}</div> : null}
-          {focused && chosenRow ? (
-            <>
-              <button type="button" role="menuitem" className="objectives-menu-item objectives-menu-back" onClick={() => setFocused(false)} aria-label={t("objectives.launch.backToModels")}>
-                <span className="objectives-menu-chev" aria-hidden="true"><Chevron back /></span>
-                {providerOf(chosenRow) ? <span className={`operation-launch-provider-glyph objectives-menu-provider is-${providerOf(chosenRow)}`} aria-hidden="true">{launchProviderGlyph(providerOf(chosenRow)!)}</span> : null}
-                <span className="objectives-menu-label objectives-menu-back-label">{chosenRow.label}</span>
-                {/* 강도 낱말은 모델 이름 오른쪽 — 한 줄이 「무엇을 · 얼마나」를 다 말한다. 트랙은 그 아래 한 줄. */}
-                <span className="objectives-menu-effort-word">{chosenRow.chips?.find((chip) => chip.launch.effort === resolveRowEffort(chosenRow, currentEffort ?? null))?.label ?? t("objectives.commander.effortAuto")}</span>
-              </button>
-              {/* 게이트는 고정 개방 — MAX·ULTRACODE 까지 한 축에 펼쳐지고(펼친 폭 유지·apex 모션 유지) 접기/펼치기가 없다. */}
-              <div className="objectives-menu-track">
-                <EffortTrack
-                  row={chosenRow}
-                  apexPinnedOpen
-                  value={resolveRowEffort(chosenRow, currentEffort ?? null)}
-                  onChange={(next) => { if (chosenRow.launch.model) setPicked({ model: chosenRow.launch.model, ...(next ? { effort: next } : {}) }); choose({ model: chosenRow.launch.model, effort: next ?? undefined }); }}
-                  // 값은 이미 골랐다 — 고른 노브를 한 번 더 누르거나 Enter 는 「이걸로」라는 뜻이라 메뉴만 닫는다(commitOnClose 면 닫힐 때 알린다).
-                  onConfirmCurrent={() => { setOpen(false); triggerRef.current?.focus(); }}
-                  autoLabel={t("objectives.commander.effortAuto")}
-                  autoValueText={t("objectives.commander.effortAuto")}
-                  ariaLabel={t("objectives.commander.effortAria")}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              {extras?.length ? (
-                <div className="objectives-menu-group">
-                  {extras.map((extra) => (
-                    <button key={extra.id} type="button" role="menuitemradio" aria-checked={extra.active} disabled={extra.disabled} className={`objectives-menu-item objectives-menu-extra${extra.active ? " is-active" : ""}`} onClick={() => { pending.current = null; extra.onPick(); setOpen(false); }}>
-                      <span className="objectives-menu-label">{extra.label}{extra.hint ? <span className="objectives-menu-hint">{extra.hint}</span> : null}</span>
-                      {extra.active ? <span className="objectives-menu-chev" aria-hidden="true"><Chevron /></span> : null}
-                    </button>
-                  ))}
-                  {extrasCaption ? <p className="objectives-menu-caption objectives-menu-note">{extrasCaption}</p> : null}
-                  <div className="objectives-menu-divider" role="separator" />
-                </div>
-              ) : null}
-              {groups.map((group, index) => (
-                <div key={group.provider ?? `etc-${index}`} className="objectives-menu-group">
-                  {index > 0 ? <div className="objectives-menu-divider" role="separator" /> : null}
-                  <p className={`operation-launch-variant-caption objectives-menu-caption${group.provider ? ` is-${group.provider}` : ""}`}>
-                    {group.provider ? <span className="operation-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(group.provider)}</span> : null}
-                    <span>{group.caption}</span>
-                  </p>
-                  {group.rows.map((row) => {
-                    const active = row.launch.model === activeModel;
-                    return (
-                      <button key={row.id} type="button" role="menuitemradio" aria-checked={active} className={`objectives-menu-item${active ? " is-active" : ""}`}
-                        onClick={() => { const chosenEffort = resolveRowEffort(row, currentEffort ?? null) ?? undefined; if (row.launch.model) setPicked({ model: row.launch.model, ...(chosenEffort ? { effort: chosenEffort } : {}) }); choose({ model: row.launch.model, effort: chosenEffort }); setFocused(true); }}>
-                        <span className="objectives-menu-label">{row.label}</span>
-                        {active ? <span className="objectives-menu-chev" aria-hidden="true"><Chevron /></span> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-              {groups.length === 0 ? <div className="objectives-menu-empty">{t("objectives.launch.loading")}</div> : null}
-            </>
-          )}
-          {viewMode && onViewChange ? <div className="objectives-menu-group">
-            <div className="objectives-menu-divider" role="separator" />
-            <p className="objectives-menu-caption">{t("objectives.view.label")}</p>
-            {(["terminal", "chat"] as const).map((view) => <button key={view} type="button" role="menuitemradio" aria-checked={viewMode === view} className={`objectives-menu-item${viewMode === view ? " is-active" : ""}`} onClick={() => onViewChange(view)}><span className="objectives-launch-view"><StartViewGlyph view={view} /></span><span className="objectives-menu-label">{startViewLabel(t, view)}</span></button>)}
-          </div> : null}
-          {subagents ? <div className="objectives-menu-group" role="group" aria-label={t("objectives.members.subagentsGroup")}>
-            <div className="objectives-menu-divider" role="separator" />
-            <button type="button" role="menuitemcheckbox" aria-checked={subagents.allowed} className={`objectives-menu-item objectives-menu-check${subagents.allowed ? " is-active" : ""}`} onClick={() => subagents.onToggle()}>
-              <span className="objectives-menu-box" aria-hidden="true" />
-              <span className="objectives-menu-check-copy">
-                <span className="objectives-menu-label">{t("objectives.members.subagents")}</span>
-                <span className="objectives-menu-hint">{t("objectives.members.subagentsHint")}</span>
-              </span>
-            </button>
-          </div> : null}
-        </div>,
-        document.body,
-      ) : null}
-    </>
+    <ModelCoordinatePicker
+      roster={roster}
+      value={{ ...(model ? { model } : {}), ...(effort ? { effort } : {}) }}
+      // 비어 있으면 Console 기본 좌표를 보인다. 라우팅처럼 선택 방식이 있는 메뉴는 기본 모델을 추정하지 않는다.
+      {...(extras?.length ? {} : { fallback: DEFAULT_LAUNCH })}
+      onChange={onChange}
+      commit={commitOnClose ? "on-close" : "immediate"}
+      startAt={startAtList ? "list" : "focused"}
+      locked={locked}
+      labels={{
+        menu: triggerLabel ?? t("objectives.launch.menuAria"),
+        effort: t("objectives.commander.effortAria"),
+        auto: t("objectives.commander.effortAuto"),
+        back: t("objectives.launch.backToModels"),
+        loading: t("objectives.launch.loading"),
+        empty: t("objectives.launch.empty"),
+        off: t("objectives.launch.off"),
+        fallback: t("objectives.launch.fallback"),
+        locked: t("objectives.commander.locked"),
+      }}
+      trigger={{
+        variant: trigger ? "glyph" : "inline",
+        ...(trigger ? { node: trigger } : {}),
+        ...(triggerText ? { text: triggerText } : {}),
+        ...(triggerTitle ? { title: triggerTitle } : {}),
+        ...(viewPrefix ? { prefix: viewPrefix } : {}),
+        // 행 배치 오버라이드(objectives.css)가 이 이름으로 자리를 잡는다.
+        className: `objectives-launch${trigger ? " objectives-glyph" : ""}`,
+      }}
+      {...(head ? { head } : {})}
+      {...(extras ? { extras } : {})}
+      {...(extrasCaption ? { extrasCaption } : {})}
+      {...(footer ? { footer } : {})}
+      {...(subagents ? { menuWidth: 232 } : {})}
+    />
   );
 }
