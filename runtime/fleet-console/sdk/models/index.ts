@@ -1,3 +1,4 @@
+import { readLaunchVariantGroups } from "../operations/launch-variants.js";
 import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../operations/types.js";
 
 /**
@@ -25,6 +26,51 @@ export function isModelRosterTarget(value: unknown): value is ModelRosterTarget 
 
 /** 공급자 밴드별 행. 행의 `launch.model`이 정준 모델 id(실행 id)다. */
 export type ModelRoster = readonly OperationLaunchVariantGroup[];
+
+/**
+ * 로스터 행이 선택기 모양(`OperationLaunchVariantRow`) 위에 얹어 싣는 모델 정보. Claude도 다른 모델과 같은 정보를 싣는다.
+ *
+ * - `hostOnly`: Settings › AI Gateway에서 호스트 전용으로 둔 모델. 선택기와 실행에는 그대로 서고, 위임 배정 후보에서만 빠진다.
+ * - `capabilityClass`: 공급자가 밝힌 라인업 위치(라우팅이 읽는 유일한 품질 신호). 라우팅 별칭처럼 없으면 생략한다.
+ */
+export interface ModelRosterRowInfo {
+  readonly hostOnly?: true;
+  readonly capabilityClass?: string;
+}
+
+export type ModelRosterRow = OperationLaunchVariantRow & ModelRosterRowInfo;
+
+/** 행의 모델 정보. 모르는 값은 버린다. */
+export function rosterRowInfo(row: OperationLaunchVariantRow): ModelRosterRowInfo {
+  const value = row as OperationLaunchVariantRow & { readonly hostOnly?: unknown; readonly capabilityClass?: unknown };
+  return {
+    ...(value.hostOnly === true ? { hostOnly: true as const } : {}),
+    ...(typeof value.capabilityClass === "string" && value.capabilityClass.length > 0 ? { capabilityClass: value.capabilityClass } : {}),
+  };
+}
+
+/**
+ * HTTP로 받은 로스터를 읽는다 — 행 모양은 런치 카탈로그 파서가 검증하고, 그 위의 모델 정보({@link ModelRosterRowInfo})는
+ * 같은 자리의 원본 행에서 되살린다.
+ */
+export function parseModelRoster(value: unknown): ModelRoster {
+  const groups = readLaunchVariantGroups(value);
+  if (!Array.isArray(value)) return groups;
+  const raw = new Map<string, unknown>();
+  for (const group of value) {
+    if (!group || typeof group !== "object" || !Array.isArray((group as { rows?: unknown }).rows)) continue;
+    for (const row of (group as { rows: unknown[] }).rows) {
+      if (row && typeof row === "object" && typeof (row as { id?: unknown }).id === "string") raw.set((row as { id: string }).id, row);
+    }
+  }
+  return groups.map((group) => ({
+    ...group,
+    rows: group.rows.map((row) => {
+      const source = raw.get(row.id);
+      return source ? { ...row, ...rosterRowInfo(source as OperationLaunchVariantRow) } : row;
+    }),
+  }));
+}
 
 /** Agent SDK 세션이 받는 강도 사다리. `ultra`는 Claude Code 하네스 센티넬이라 여기 없다. */
 export const AGENT_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;

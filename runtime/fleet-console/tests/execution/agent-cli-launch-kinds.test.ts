@@ -1,7 +1,7 @@
 import { resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 import { describe, expect, it } from "vitest";
 
-import { resolveRosterCoordinate } from "@fleet-console/sdk/models";
+import { parseModelRoster, resolveRosterCoordinate } from "@fleet-console/sdk/models";
 
 import { buildAgentCliLaunchKinds } from "../../features/execution/host/agent/agent-cli-launch-kinds.js";
 import { buildModelRoster, createModelRosterHost } from "../../features/ai-gateway/host/model-roster.js";
@@ -43,6 +43,7 @@ describe("buildAgentCliLaunchKinds", () => {
             label: expect.any(String),
             launch: { model: "sonnet[1m]" },
             contextWindow: 1_000_000,
+            capabilityClass: expect.any(String),
             effortAxis: EFFORT_AXIS,
             gatedEfforts: APEX_EFFORTS,
             chips: ["low", "medium", "high", "xhigh", "max", "ultra"].map((effort) => expect.objectContaining({ id: effort, launch: { model: "sonnet[1m]", effort } })),
@@ -58,6 +59,7 @@ describe("buildAgentCliLaunchKinds", () => {
             label: "GPT-6-Sol-Fast",
             launch: { model: "codex--gpt-6-sol-fast" },
             contextWindow: expect.any(Number),
+            capabilityClass: expect.any(String),
             effortAxis: EFFORT_AXIS,
             gatedEfforts: APEX_EFFORTS,
             chips: [
@@ -80,6 +82,7 @@ describe("buildAgentCliLaunchKinds", () => {
             label: "Muse-Spark-1.3-Contributor",
             launch: { model: "opencode--muse-spark-1.3-contributor" },
             contextWindow: expect.any(Number),
+            capabilityClass: expect.any(String),
             effortAxis: MAX_LESS_AXIS,
             gatedEfforts: ["ultra"],
             chips: [
@@ -121,6 +124,10 @@ describe("buildAgentCliLaunchKinds", () => {
     const host = createModelRosterHost({ readSettings: () => settings });
     expect(host.resolve({ model: "codex--gpt-6-sol-fast" }, "agent")).toMatchObject({ model: "codex--gpt-6-sol-fast", wireModel: expect.stringMatching(/^claude-gateway--codex--gpt-6-sol-fast/) });
     expect(host.resolve({ model: "sonnet" }, "agent").wireModel).toBe("sonnet");
+
+    // 호스트 전용 Claude도 다른 모델처럼 로스터에 그대로 서고, 행이 그 사실과 200k 창을 싣는다(브라우저 파서도 보존한다).
+    const reserved = buildModelRoster(resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--sonnet", hostOnly: true }] }), "agent");
+    expect(parseModelRoster(JSON.parse(JSON.stringify(reserved)))[0]?.rows[0]).toMatchObject({ launch: { model: "sonnet" }, contextWindow: 200_000, hostOnly: true });
   });
 
   it("keeps disabled reasons and does not attach variants to a disabled gateway kind", () => {

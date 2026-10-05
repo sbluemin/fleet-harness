@@ -1,6 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { MODEL_ROSTER_CHANGED_CHANNEL, MODEL_ROSTER_PATH, type ModelRoster, type ModelRosterTarget } from "@fleet-console/sdk/models";
-import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
+import { MODEL_ROSTER_CHANGED_CHANNEL, MODEL_ROSTER_PATH, parseModelRoster, type ModelRoster, type ModelRosterTarget } from "@fleet-console/sdk/models";
 import { OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import { launchProviderFromGroupId } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import type { ExperimentModelOption } from "@fleet-console/sdk/settings";
@@ -38,7 +37,7 @@ function load(target: ModelRosterTarget): Promise<ModelRoster> {
     .then(async (response) => {
       if (!response.ok) throw new Error(`Model roster request failed: ${response.status}`);
       const body = await response.json() as { readonly roster?: unknown };
-      const roster = readLaunchVariantGroups(body.roster);
+      const roster = parseModelRoster(body.roster);
       cache.set(target, roster);
       emit();
       return roster;
