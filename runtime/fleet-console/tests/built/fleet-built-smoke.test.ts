@@ -443,6 +443,7 @@ afterEach(async () => {
     const endpoint = await waitForReady(run, consolePid);
     const attachment = await uploadAttachment(run, endpoint);
     await openWorkload(run, endpoint, { terminal: true });
+    await openPluginChildren(run, endpoint);
     const started = descendantsOf(consolePid);
 
     process.kill(consolePid, "SIGKILL");
@@ -867,6 +868,30 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
     await consoleApi(endpoint, "/api/v1/agent/sessions", { theaterId, cliId: "claude" });
     await waitUntil(() => count("terminal") > terminals, 20_000, "the terminal did not start");
   }
+}
+
+/**
+ * A built-in plugin's own long-running child (N7): a Ledger summary request starts tokscale, and a stand-in installed where
+ * Ledger looks for it hangs and ignores SIGTERM, so only the Console's containment ends it. The suite owns each one at once:
+ * one that escapes is reparented away from the Console and would otherwise outlive the case.
+ */
+async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<void> {
+  const pkg = path.join(run.root, "console", "plugins", "ledger", "cli", "node_modules", "tokscale");
+  const pids = path.join(pkg, "pids");
+  fs.mkdirSync(pkg, { recursive: true });
+  // Ledger refuses anything but its pinned version.
+  fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "tokscale", version: "4.7.0" }));
+  fs.writeFileSync(path.join(pkg, "bin.js"), [
+    `require("fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");`,
+    "process.on('SIGTERM', () => {});",
+    "setInterval(() => {}, 1 << 30);",
+  ].join("\n"));
+  // The summary answers only once tokscale does; the request ends with the Console.
+  fetch(new URL("plugins/ledger/summary?window=week", endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
+  const recorded = () => fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map(Number) : [];
+  // One tokscale for the report and one for the model breakdown.
+  await waitUntil(() => recorded().length >= 2, 20_000, "the Ledger plugin did not start its CLI");
+  for (const pid of recorded()) own(pid);
 }
 
 const ONE_PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");

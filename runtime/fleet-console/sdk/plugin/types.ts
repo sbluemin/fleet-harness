@@ -1004,6 +1004,11 @@ export interface FleetPluginHostCapabilities {
    * 저장 좌표를 그대로 쓴다.
    */
   readonly models?: FleetPluginModelsHost;
+  /**
+   * Starts children the Console owns. A host without it (an older Console, a test stub) leaves the plugin to spawn by
+   * itself as before.
+   */
+  readonly processes?: FleetPluginProcessesHost;
 }
 
 /** 서버 쪽 모델 로스터 읽기. 저장값을 매번 읽으므로 Gateway를 저장한 직후의 요청부터 새 로스터를 본다. */
@@ -1016,6 +1021,42 @@ export interface FleetPluginModelsHost {
   resolve(stored: ModelCoordinate, target: ModelRosterTarget, fallback?: ModelCoordinate): ResolvedWireCoordinate;
   /** 로스터가 바뀐 직후 울린다. 요청마다 읽지 않는 상주 작업이 쓰는 통로다. */
   subscribe?(listener: () => void): () => void;
+}
+
+/**
+ * The one way a plugin starts a child the Console must not outlive. A child started here leads a process group the
+ * Console owns (POSIX): the Console ends it with everything it started however the Console ends — its stop deadline,
+ * a crash, or an external kill. Never start a child that has to outlive the Console here.
+ *
+ * Spawn only: there is no way to register an existing pid, list the Console's children, or end them all; a plugin
+ * signals only the child it was given (for example its own group on a timeout). Windows has no process groups; there a
+ * direct child still ends with the Console.
+ */
+export interface FleetPluginProcessesHost {
+  /** The child is tagged with this plugin's id, which the host binds. */
+  spawnOwned(request: FleetPluginOwnedSpawnRequest): FleetPluginOwnedProcess;
+}
+
+export interface FleetPluginOwnedSpawnRequest {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly cwd?: string;
+  /** Defaults to the Console's own environment. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  /** `ignore` gives the child no stdin, for tools that would otherwise wait for its end. Default `pipe`. */
+  readonly stdin?: "pipe" | "ignore";
+}
+
+/** The started child: the part of a Node `ChildProcess` a plugin needs. stdout and stderr are always piped. */
+export interface FleetPluginOwnedProcess {
+  readonly pid?: number;
+  readonly exitCode: number | null;
+  readonly stdin: NodeJS.WritableStream | null;
+  readonly stdout: NodeJS.ReadableStream | null;
+  readonly stderr: NodeJS.ReadableStream | null;
+  kill(signal?: NodeJS.Signals): boolean;
+  on(event: "close" | "exit", listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
+  on(event: "error", listener: (error: Error) => void): unknown;
 }
 
 /** 서버 쪽 실험 설정 읽기 — 저장값을 매번 읽으므로 설정을 바꾼 직후의 요청부터 새 값을 본다. */

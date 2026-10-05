@@ -11,6 +11,8 @@ export interface OwnedProcessGroup {
   readonly spawnedAt: number;
   /** When this Console saw the leader exit; its group may still hold children it started. */
   readonly leaderExitedAt: number | null;
+  /** Who asked for it, for diagnostics only (`plugin:<id>` for a plugin's child). */
+  readonly owner?: string;
 }
 
 export interface OwnedProcessSpawnRequest {
@@ -19,6 +21,9 @@ export interface OwnedProcessSpawnRequest {
   readonly cwd?: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal;
+  /** `ignore` gives the child no stdin, for tools that would otherwise wait for its end. Default `pipe`. */
+  readonly stdin?: "pipe" | "ignore";
+  readonly owner?: string;
 }
 
 /** What a watcher outside the Console must hear about the registry, as it happens. */
@@ -62,12 +67,13 @@ interface Entry {
   readonly pgid: number;
   readonly spawnedAt: number;
   readonly child: ChildProcess;
+  readonly owner?: string;
   leaderExitedAt: number | null;
 }
 
 export function createOwnedProcessRegistry(events: OwnedProcessRegistryEvents = {}): OwnedProcessRegistry {
   const entries = new Map<number, Entry>();
-  const snapshot = (entry: Entry): OwnedProcessGroup => ({ pgid: entry.pgid, spawnedAt: entry.spawnedAt, leaderExitedAt: entry.leaderExitedAt });
+  const snapshot = (entry: Entry): OwnedProcessGroup => ({ pgid: entry.pgid, spawnedAt: entry.spawnedAt, leaderExitedAt: entry.leaderExitedAt, ...(entry.owner === undefined ? {} : { owner: entry.owner }) });
   const remove = (pgid: number): void => {
     if (entries.delete(pgid)) events.onRemoved?.(pgid);
   };
@@ -86,7 +92,7 @@ export function createOwnedProcessRegistry(events: OwnedProcessRegistryEvents = 
       const child = spawn(request.command, [...request.args], {
         ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
         env: { ...request.env },
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: [request.stdin ?? "pipe", "pipe", "pipe"],
         // A group of its own lets the deadline and the watcher end the child together with everything it started.
         // Windows has no process groups; there libuv's job object ends a direct child with the Console.
         detached: process.platform !== "win32",
@@ -95,7 +101,7 @@ export function createOwnedProcessRegistry(events: OwnedProcessRegistryEvents = 
       });
       const pgid = child.pid;
       if (pgid !== undefined && process.platform !== "win32") {
-        const entry: Entry = { pgid, spawnedAt, child, leaderExitedAt: null };
+        const entry: Entry = { pgid, spawnedAt, child, leaderExitedAt: null, ...(request.owner === undefined ? {} : { owner: request.owner }) };
         entries.set(pgid, entry);
         events.onRegistered?.(snapshot(entry));
         child.once("exit", () => {

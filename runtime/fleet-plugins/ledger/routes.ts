@@ -12,7 +12,7 @@ export default definePlugin({
     const cliHome = path.join(ctx.host.paths.pluginDataDir("ledger"), "cli");
     const service = createLedgerService({
       cliHome,
-      executor: createDefaultExecutor(cliHome),
+      executor: createDefaultExecutor(cliHome, ctx.host.processes),
     });
     registerRouter(ctx, "summary", async ({ req, res }) => {
       await handleSummary(req, res, ctx, service);
