@@ -39,10 +39,14 @@ import {
   EXTERNAL_ESCALATION_MS,
   PRELOCK_CHILD_GRACE_MS,
   describeConsoleLockSlotQuiescenceCheck,
+  describeConsoleOwnerOutlivedKill,
   describeOwnerlessConsoleLock,
   describeRefusedConsoleLock,
   describeReplacedLockAuthor,
+  describeUnprovenConsoleLockOwner,
   type ConsoleExitOutcome,
+  type ConsoleLockOwnerRecovery,
+  type UnprovenConsoleLockOwnerState,
 } from "@fleet-console/protocol/lifecycle";
 
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
@@ -421,8 +425,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     }
     // 살아 있는 무언가가 lock을 붙잡고 있지만 lock token으로 정체를 증명하지 못했다. 신호는 무관한 프로세스를 죽일 수 있고,
     // lock을 지우면 살아 있는 Console 옆에 두 번째 소유자가 생길 수 있으므로 둘 다 하지 않는다.
-    if (observed.state === "unverified") throw lockOwnerUnverifiedError(payload);
-    if (observed.state === "starting") throw lockOwnerStartingError(payload);
+    if (observed.state === "unverified") throw lockOwnerUnprovenError(payload, "unverified");
+    if (observed.state === "starting") throw lockOwnerUnprovenError(payload, "starting");
     // ready만 이 stop이 정지를 요청한다. 이미 정지 중인(listener를 닫고 정리 중인) Console이나 lock을 놓고 자식을 거두는
     // Console에는 신호를 다시 보내지 않고 같은 예산 안에서 끝나기를 기다린다.
     const requester = observed.state === "ready";
@@ -439,10 +443,10 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       sleep,
     });
     const instance = { pid: payload.pid, lockStartedAt: payload.startedAt };
-    if (ended === "held") throw lockOwnerStillStoppingError(payload);
-    if (ended === "unproven") throw lockOwnerUnverifiedError(payload);
+    if (ended === "held") throw lockOwnerUnprovenError(payload, "stopping");
+    if (ended === "unproven") throw lockOwnerUnprovenError(payload, "unverified");
     if (ended === "released-alive") throw lockReleasedOwnerAliveError(payload);
-    if (ended === "kill-failed") throw new Error(`Fleet Console pid ${payload.pid} did not exit after SIGKILL; ${paths.lockFile} was left in place.`);
+    if (ended === "kill-failed") throw new Error(describeConsoleOwnerOutlivedKill(paths.lockFile, payload.pid, CLI_LOCK_OWNER_RECOVERY.restart));
     // 끝난 Console이 남긴 lock은 그 pid가 ESRCH인 지금 회수 프로토콜로 지운다.
     await removeLockHeldBy(payload);
     // SIGKILL이 Console 자신의 종료 기록(예: deadline)과 겹치면 그 기록이 실제 결말이다. 우선순위상 forced-external이
@@ -471,25 +475,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     }
   }
 
-  function describeStuckOwner(payload: ConsoleLockPayload, headline: string): Error {
-    return new Error([
-      headline,
-      `If that process is a stuck Fleet Console, stop it (kill -TERM ${payload.pid}; Windows: Stop-Process -Id ${payload.pid}), then run fleet console start. A suspended process (state T in ps) ignores TERM until resumed: kill -CONT ${payload.pid} lets it finish shutting down, or kill -KILL ${payload.pid} ends it.`,
-      `If it is not a Fleet Console, follow the check below and then delete ${paths.lockFile}.`,
-      describeConsoleLockSlotQuiescenceCheck(paths.lockFile),
-    ].join("\n"));
-  }
-
-  function lockOwnerUnverifiedError(payload: ConsoleLockPayload): Error {
-    return describeStuckOwner(payload, `Fleet Console lock pid ${payload.pid} is alive but did not prove it owns ${paths.lockFile}, so it was not signalled.`);
-  }
-
-  function lockOwnerStillStoppingError(payload: ConsoleLockPayload): Error {
-    return describeStuckOwner(payload, `Fleet Console lock pid ${payload.pid} no longer answers at the lock's address but still held ${paths.lockFile} ${Math.round(EXTERNAL_ESCALATION_MS / 1_000)}s later (a Console still shutting down, or another process), so it was not signalled.`);
-  }
-
-  function lockOwnerStartingError(payload: ConsoleLockPayload): Error {
-    return new Error(`Fleet Console pid ${payload.pid} holds ${paths.lockFile} and is still starting, so it was not signalled. Run fleet console stop again once fleet console status shows it running.`);
+  function lockOwnerUnprovenError(payload: ConsoleLockPayload, observed: UnprovenConsoleLockOwnerState): Error {
+    return new Error(describeUnprovenConsoleLockOwner(paths.lockFile, payload.pid, observed, CLI_LOCK_OWNER_RECOVERY));
   }
 
   function lockReleasedOwnerAliveError(payload: ConsoleLockPayload): Error {
@@ -514,7 +501,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     if (held.pid !== payload.pid || held.token !== payload.token) return;
     const result = await lock.reclaimLock(paths.lockFile, observed.instance);
     if (result.kind === "removed" || result.kind === "gone") return;
-    if (result.kind === "alive") throw lockOwnerUnverifiedError(payload);
+    if (result.kind === "alive") throw lockOwnerUnprovenError(payload, "unverified");
     throw new Error(describeReclaimResult(paths.lockFile, result));
   }
 
@@ -558,12 +545,12 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // 다른 호스트가 이미 lock을 얻고 복원 중이면 건드리지 않는다. lock 교체도 대기 예산을 늘리지 않는다.
     while (current && probeResult.starting && isPidAlive(current.pid)) {
       const remaining = startingDeadline - now();
-      if (remaining <= 0) throw lockOwnerUnverifiedError(current);
+      if (remaining <= 0) throw lockOwnerUnprovenError(current, "unverified");
       await sleep(Math.min(pollIntervalMs, remaining));
       current = await readLockForStart();
       probeResult = await health.probe(current, { timeoutMs: Math.max(0, startingDeadline - now()) });
       // 마지막 probe의 예산 소진을 기존 unhealthy→stop 경로로 바꾸지 않는다.
-      if (!probeResult.healthy && now() >= startingDeadline && current && isPidAlive(current.pid)) throw lockOwnerUnverifiedError(current);
+      if (!probeResult.healthy && now() >= startingDeadline && current && isPidAlive(current.pid)) throw lockOwnerUnprovenError(current, "unverified");
     }
     const isBuildStale = current ? stale.isBuildStale(current, serverModulePath) : false;
     if (probeResult.healthy && current) {
@@ -913,6 +900,12 @@ export async function runConsoleStop(deps: ConsoleStopDeps = {}): Promise<string
 function reportToStderr(message: string): void {
   process.stderr.write(`${message}\n`);
 }
+
+/** The CLI's own next steps inside the shared lock-owner explanations. */
+const CLI_LOCK_OWNER_RECOVERY: ConsoleLockOwnerRecovery = {
+  restart: "run fleet console start",
+  retryWhenStarted: "Run fleet console stop again once fleet console status shows it running.",
+};
 
 const LEFTOVER_ADVICE = "Agent processes and temporary files it started may remain; end any leftover agent processes before starting it again.";
 
