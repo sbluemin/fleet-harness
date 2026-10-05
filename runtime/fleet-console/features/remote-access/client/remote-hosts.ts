@@ -95,7 +95,14 @@ export interface LocalConsole {
   readonly owner: "cli" | "desktop" | null;
   /** WSL 배포판 안에서 돌고 있다면 그 이름. 같은 루프백 주소라도 어디 사는지가 다르다. */
   readonly distro: string | null;
+  /**
+   * 서버가 계약의 공개 관측으로 본 상태(docs/console-lifecycle-contract.md). 화면은 이 값만 읽고 따로 묻거나 재지 않는다.
+   * stopping은 리스너가 닫혀 열리지 않고, unresponsive는 정해진 시간 안에 답이 없었을 뿐 느린 정상 Console일 수 있다.
+   */
+  readonly state: LocalConsoleState;
 }
+
+export type LocalConsoleState = "ready" | "stopping" | "unresponsive";
 
 /**
  * 원격 콘솔을 보고 있을 때 이 요청은 401로 끝난다 — 그쪽 루프백 주소는 여기서 다른 기계를
@@ -105,7 +112,16 @@ export async function fetchLocalConsoles(signal?: AbortSignal): Promise<readonly
   const response = await fetch("/api/v1/local-consoles", { signal });
   if (!response.ok) return [];
   const payload = await response.json() as { readonly consoles?: unknown };
-  return Array.isArray(payload.consoles) ? payload.consoles.filter(isLocalConsole) : [];
+  return Array.isArray(payload.consoles) ? payload.consoles.filter(isLocalConsole).map(withState) : [];
+}
+
+/**
+ * 상태는 가산 필드다. 그것을 모르는 서버(업데이트 직후 새로 고치지 않은 창의 반대편 등)나 이 화면이 모르는 값은 ready로
+ * 읽는다 — 상태가 생기기 전의 모습 그대로이고, 모르는 것을 막지는 않는다.
+ */
+function withState(entry: LocalConsole): LocalConsole {
+  const state = (entry as { readonly state?: unknown }).state;
+  return { ...entry, state: state === "stopping" || state === "unresponsive" ? state : "ready" };
 }
 
 function isLocalConsole(value: unknown): value is LocalConsole {

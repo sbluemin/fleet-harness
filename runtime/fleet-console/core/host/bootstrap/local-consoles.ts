@@ -25,7 +25,15 @@ export interface LocalConsoleEntry {
   readonly owner: "cli" | "desktop" | null;
   /** WSL 배포판 안에서 돌고 있다면 그 이름. Windows에서만 채워진다. */
   readonly distro: string | null;
+  /**
+   * 계약의 공개 관측이 본 상태. 목록에 오르는 셋뿐이고, 화면은 이것으로만 줄을 다르게 그린다 — 새 판정을 더하지 않는다.
+   * 가산 필드라 이 값이 없는 응답(옛 서버)은 ready로 읽는다.
+   */
+  readonly state: LocalConsoleState;
 }
+
+/** 목록에 오르는 공개 상태. ready는 열리고, unresponsive는 열릴지 모르며, stopping은 리스너가 닫혀 열리지 않는다. */
+export type LocalConsoleState = Extract<ConsolePublicState, "ready" | "stopping" | "unresponsive">;
 
 export interface LocalConsoleScanDeps {
   /** WSL 배포판의 /tmp 목록을 읽는 데만 쓴다. lock 자체는 계약의 관측기가 읽는다. */
@@ -56,9 +64,15 @@ function isUsableDistroName(name: string): boolean {
 const WSL_LIST_TIMEOUT_MS = 3_000;
 /**
  * 목록이 보여 주는 관측 상태(정책). 시작 중인 Console(#1563), 끝난 Console, 포트가 닿지 않는 WSL Console, 끝난 Console의 pid를
- * 무관한 프로그램이 물려받은 lock은 숨긴다. 응답이 느리거나 정리 중인 Console은 지금처럼 보여 준다 — 표시 정책은 이 분류와 별개다(b3eb0761).
+ * 무관한 프로그램이 물려받은 lock은 숨긴다. 응답이 느리거나 정리 중인 Console은 숨기지 않고 그 상태를 실어 보낸다 — 700ms 안에
+ * 답하지 못한 정상 Console도 목록과 Desktop의 열기 허용(같은 목록을 다시 묻는다)에 남아야 하고, 종료 중에 갇힌 Console은
+ * 사용자가 알아챌 수 있어야 한다. 그 줄을 어떻게 그릴지는 화면의 몫이다.
  */
 const LISTED_STATES: ReadonlySet<ConsolePublicState> = new Set(["ready", "stopping", "unresponsive"]);
+
+function isListedState(state: ConsolePublicState): state is LocalConsoleState {
+  return LISTED_STATES.has(state);
+}
 
 export async function listLocalConsoles(deps: LocalConsoleScanDeps = {}): Promise<readonly LocalConsoleEntry[]> {
   const fileSystem = deps.fileSystem ?? fs;
@@ -76,7 +90,7 @@ export async function listLocalConsoles(deps: LocalConsoleScanDeps = {}): Promis
       ...(deps.isAlive ? { isAlive: deps.isAlive } : {}),
       ...(deps.reachable ? { portOpen: deps.reachable } : {}),
     });
-    return LISTED_STATES.has(state) ? candidate.console : null;
+    return isListedState(state) ? { ...candidate.console, state } : null;
   }));
   const seen = new Set<string>();
   return entries.filter((entry): entry is LocalConsoleEntry => {
@@ -151,7 +165,7 @@ function runningWslDistros(): readonly string[] {
 }
 
 interface LockCandidate {
-  readonly console: LocalConsoleEntry;
+  readonly console: Omit<LocalConsoleEntry, "state">;
   readonly pid: number;
   readonly startedAt: unknown;
 }
