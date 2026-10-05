@@ -2,6 +2,7 @@ import type {
   ClientConsoleStateCapability,
   ClientExpandedSurfacesCapability,
   ClientExperimentsCapability,
+  ClientModelsCapability,
   ClientNavigationCapability,
   ClientRailCapability,
   ConsoleTheme,
@@ -23,6 +24,8 @@ interface CodexHostCapabilities {
   readonly rail: ClientRailCapability;
   /** 실험 설정 읽기·구독 — Cowork 좌표가 바뀌면 열려 있는 도크가 따라간다. */
   readonly experiments: ClientExperimentsCapability;
+  /** 모델 로스터 구독 — Gateway에서 모델을 켜고 끄면 Cowork 목록과 폴백 표식이 따라간다. */
+  readonly models?: ClientModelsCapability;
 }
 
 let capabilities: CodexHostCapabilities | null = null;

@@ -3,8 +3,10 @@ import * as React from "react";
 
 import { assertOperationNode, ApiError } from "../operations/browser.js";
 import type { OperationNode } from "../operations/types.js";
+import type { ModelRoster, ModelRosterTarget } from "../models/index.js";
 import type {
   ClientApiCapability,
+  ClientModelsCapability,
   ClientOperationRuntimeCapability,
   ClientPreferencesCapability,
   ClientSettingsCapability,
@@ -73,6 +75,13 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       update: async () => false,
       saving: () => false,
       modelOptions: async () => [],
+    },
+    // 로스터는 호스트 클라이언트 상태다 — 사본은 「아직 읽지 않음」으로 남고 Console이 실제 스토어로 덮는다.
+    models: {
+      read: () => null,
+      load: async () => [],
+      subscribe: () => () => undefined,
+      refresh: () => undefined,
     },
     terminal: {
       requestTicket: async (pluginId, path, operationId, signal) => {
@@ -237,6 +246,18 @@ export function usePluginStorage<T>(preferences: ClientPreferencesCapability, ke
     preferences.write(key, next);
   }, [preferences, key]);
   return [value, write];
+}
+
+/**
+ * 모델 로스터 구독 — 마운트(와 대상 변경)가 읽기를 시작하고, 로스터가 바뀌면 다시 그린다. 읽기 전에는 null이다.
+ * 스냅샷은 캐시만 본다 — 읽기 시작은 렌더 밖(effect)에서 한다.
+ */
+export function useModelRoster(models: ClientModelsCapability | null | undefined, target: ModelRosterTarget): ModelRoster | null {
+  React.useEffect(() => {
+    void models?.load(target).catch(() => undefined);
+  }, [models, target]);
+  const subscribe = React.useCallback((listener: () => void) => models?.subscribe(listener) ?? (() => undefined), [models]);
+  return React.useSyncExternalStore(subscribe, () => models?.read(target) ?? null, () => null);
 }
 
 export function useOperationRuntime(runtime: ClientOperationRuntimeCapability, operationId: string): BoundOperationRuntime {

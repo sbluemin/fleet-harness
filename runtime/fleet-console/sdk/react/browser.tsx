@@ -1,4 +1,5 @@
 import * as React from "react";
+import type { ModelRoster } from "../models/index.js";
 import { createPortal } from "react-dom";
 
 export interface PluginErrorBoundaryProps {
@@ -124,8 +125,32 @@ export interface MobileSettingsHost {
   readonly openInput?: (spec: MobileInputSpec) => void;
   /** 선택 팝업을 연다. 고르면 팝업이 닫히고 `onSelect`가 불린다. */
   readonly openChoice: (spec: MobileChoiceSpec) => void;
-  /** 모델 팝업을 그리는 컴포넌트. `ModelPicker`가 열려 있는 동안 이것을 세운다. 없으면 `ModelPicker`는 데스크톱 모양 그대로다. */
+  /**
+   * 모델 팝업을 그리는 컴포넌트. `ModelPicker`가 열려 있는 동안 이것을 세운다. 없으면 `ModelPicker`는 데스크톱 모양 그대로다.
+   * @deprecated `CoordinateChoice`가 대신한다. Fleet 1.215.0에서 제거한다.
+   */
   readonly ModelChoice?: React.ComponentType<MobileModelChoiceProps>;
+  /** 모델·강도 좌표 시트. `ModelCoordinatePicker`가 열려 있는 동안 세운다. 없으면 선택기는 데스크톱 메뉴로 그린다. */
+  readonly CoordinateChoice?: React.ComponentType<MobileCoordinateChoiceProps>;
+}
+
+/**
+ * 폰의 좌표 시트 속성 — 모델 로스터의 공급자 띠·모델 행과 고른 행의 강도 탭. 고르면 값만 바뀌고 시트는 열린 채다
+ * (강도까지 고르게). 호출자가 열려 있는 동안 다시 그려 주므로 값은 늘 살아 있다. 닫기는 `onClose`다.
+ */
+export interface MobileCoordinateChoiceProps {
+  readonly title: string;
+  readonly roster: ModelRoster;
+  readonly value: { readonly model?: string; readonly effort?: string };
+  readonly onSelect: (next: { readonly model: string; readonly effort?: string }) => void;
+  /** `none`이면 강도 탭이 서지 않는다(모델만 고르는 칸). */
+  readonly effort: "track" | "none";
+  readonly effortLabel: string;
+  /** 로스터 밖 저장값의 띠 머리(「꺼짐」). */
+  readonly offLabel?: string;
+  readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void }[];
+  readonly reset?: MobileModelReset;
+  readonly onClose: () => void;
 }
 
 export const MobileSettingsHostContext = React.createContext<MobileSettingsHost | null>(null);

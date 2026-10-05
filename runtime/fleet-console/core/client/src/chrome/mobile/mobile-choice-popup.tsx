@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
-import type { MobileModelChoiceProps } from "@fleet-console/sdk/settings/browser";
+import type { MobileCoordinateChoiceProps, MobileModelChoiceProps, MobileModelGroup } from "@fleet-console/sdk/settings/browser";
+import { clampRosterEffort, findRosterRow, rosterRowEfforts } from "@fleet-console/sdk/models";
+import { launchProviderCaption, launchProviderFromGroupId, launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 
 import { useT } from "../../i18n/index.js";
 import { pushBackLayer } from "./mobile-back.js";
@@ -206,6 +208,67 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, rese
           ) : null}
         </div>
       )}
+    />
+  );
+}
+
+const EXTRA_VALUE_PREFIX = "extra:";
+
+function formatContextWindow(contextWindow: number | undefined): string | undefined {
+  if (!contextWindow || contextWindow <= 0) return undefined;
+  return contextWindow >= 1_000_000 ? "1M" : `${Math.round(contextWindow / 1000)}K`;
+}
+
+/**
+ * 좌표 시트 — 모델 로스터를 모델 팝업의 문법(공급자 묶음 → 구분선 → 강도 탭)으로 편다. 강도 탭은 고른 행이 내놓는
+ * 사다리 전체다. 로스터 밖 저장값은 「꺼짐」 묶음에 그대로 서고, 선택 방식(extras)은 맨 위 묶음이다.
+ */
+export function MobileCoordinateChoice({ title, roster, value, onSelect, effort, effortLabel, offLabel, extras, reset, onClose }: MobileCoordinateChoiceProps) {
+  const row = findRosterRow(roster, value.model);
+  const groups: MobileModelGroup[] = [];
+  if (extras?.length) {
+    groups.push({ key: "extras", label: "", options: extras.filter((extra) => !extra.disabled).map((extra) => ({ value: `${EXTRA_VALUE_PREFIX}${extra.id}`, label: extra.label, ...(extra.hint ? { meta: extra.hint } : {}) })) });
+  }
+  for (const group of roster) {
+    const provider = launchProviderFromGroupId(group.id);
+    groups.push({
+      key: group.id,
+      label: provider ? launchProviderCaption(provider) : group.label,
+      ...(provider ? { icon: launchProviderGlyph(provider) } : {}),
+      options: group.rows.map((candidate) => {
+        const meta = formatContextWindow(candidate.contextWindow);
+        return { value: candidate.launch.model ?? candidate.id, label: candidate.label, ...(meta ? { meta } : {}) };
+      }),
+    });
+  }
+  if (value.model && !row) groups.push({ key: "off", label: offLabel ?? "…", options: [{ value: value.model, label: value.model }] });
+  const activeExtra = extras?.find((extra) => extra.active);
+  const ladder = effort === "track" && row && !activeExtra ? rosterRowEfforts(row) : [];
+  const currentEffort = clampRosterEffort(ladder, value.effort);
+  return (
+    <MobileModelChoice
+      title={title}
+      groups={groups}
+      value={activeExtra ? `${EXTRA_VALUE_PREFIX}${activeExtra.id}` : row?.launch.model ?? value.model ?? ""}
+      onSelect={(next) => {
+        if (next.startsWith(EXTRA_VALUE_PREFIX)) {
+          extras?.find((extra) => `${EXTRA_VALUE_PREFIX}${extra.id}` === next)?.onPick();
+          return;
+        }
+        const target = findRosterRow(roster, next);
+        const nextEffort = target && effort === "track" ? clampRosterEffort(rosterRowEfforts(target), value.effort) : undefined;
+        onSelect({ model: next, ...(nextEffort ? { effort: nextEffort } : {}) });
+      }}
+      {...(ladder.length > 0 && currentEffort && row ? {
+        effort: {
+          label: effortLabel,
+          levels: (row.chips ?? []).map((chip) => ({ value: chip.id, label: chip.label })),
+          value: currentEffort,
+          onSelect: (next: string) => onSelect({ model: row.launch.model ?? row.id, effort: next }),
+        },
+      } : {})}
+      {...(reset ? { reset } : {})}
+      onClose={onClose}
     />
   );
 }

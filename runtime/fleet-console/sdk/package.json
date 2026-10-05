@@ -35,6 +35,11 @@
       "import": "./operations/identity-tones.ts",
       "default": "./operations/identity-tones.ts"
     },
+    "./models": {
+      "types": "./models/index.ts",
+      "import": "./models/index.ts",
+      "default": "./models/index.ts"
+    },
     "./version": {
       "types": "./version.ts",
       "import": "./version.ts",
@@ -174,6 +179,12 @@
       "browser": "./components/effort-track.tsx",
       "import": "./components/effort-track.tsx",
       "default": "./components/effort-track.tsx"
+    },
+    "./components/model-coordinate-picker": {
+      "types": "./components/model-coordinate-picker.tsx",
+      "browser": "./components/model-coordinate-picker.tsx",
+      "import": "./components/model-coordinate-picker.tsx",
+      "default": "./components/model-coordinate-picker.tsx"
     },
     "./components/caption-actions": {
       "types": "./components/caption-actions.tsx",

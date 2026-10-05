@@ -1,5 +1,6 @@
 import type http from "node:http";
 
+import { canonicalModelId } from "@fleet-console/sdk/models";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, isExperimentModelId, type ExperimentAideSelection } from "@fleet-console/sdk/settings";
@@ -100,12 +101,14 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     { name: "commodore/coordinates", method: "POST", summary: "Set or clear a Theater's Commodore model and effort; cleared falls back to the experiment defaults. Applies from the next turn.", handler: json(theaterRef.extend({ model: z.string().refine(isExperimentModelId).nullable(), effort: z.enum(COMMODORE_EFFORTS).nullable() }).strict(), ({ theaterId, model, effort }) => {
       read(theaterId);
       if ((model === null) !== (effort === null)) throw new ObjectiveStoreError("invalid_request");
-      return view(theaterId, store.setCoordinates(theaterId, model !== null && effort !== null ? { model, effort } : null));
+      // 정준 id(실행 id)로 접어 저장한다 — 옛 표기(`claude-gateway--…`)도 받는다. Gateway에서 꺼진 모델도 저장은 하고
+      // 실행만 폴백한다(감독자가 턴마다 로스터에 대조한다).
+      return view(theaterId, store.setCoordinates(theaterId, model !== null && effort !== null ? { model: canonicalModelId(model), effort } : null));
     }) },
     { name: "commodore/commander", method: "POST", summary: "Set or clear the Commander model and effort for objectives the Commodore creates; cleared falls back to the board's Commander default.", handler: json(theaterRef.extend({ model: z.string().trim().min(1).max(128).nullable(), effort: z.string().trim().min(1).max(32).nullable().optional() }).strict(), ({ theaterId, model, effort }) => {
       read(theaterId);
       if (model === null && effort) throw new ObjectiveStoreError("invalid_request");
-      return view(theaterId, store.setCommander(theaterId, model === null ? null : { model, ...(effort ? { effort } : {}) }));
+      return view(theaterId, store.setCommander(theaterId, model === null ? null : { model: canonicalModelId(model), ...(effort ? { effort } : {}) }));
     }) },
     { name: "commodore/patrol", method: "POST", summary: "Set or clear a Theater's Commodore patrol interval in minutes; cleared falls back to 60. The Commodore can patrol sooner but not later; board events, the directive, intel and messages still wake it at once.", handler: json(theaterRef.extend({ minutes: commodorePatrolSchema.nullable() }).strict(), ({ theaterId, minutes }) => { read(theaterId); return view(theaterId, store.setPatrol(theaterId, minutes)); }) },
     { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT) }).strict(), ({ theaterId, text }) => {

@@ -4,8 +4,10 @@ import { createPortal } from "react-dom";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import "@fleet-console/markdown/styles.css";
 
+import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateValue } from "@fleet-console/sdk/components/model-coordinate-picker";
 import { ComposerInput, ComposerSubmitButton } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
+import { isAgentEffort, type ModelRosterTarget } from "@fleet-console/sdk/models";
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
@@ -32,10 +34,11 @@ import {
   useCommodore,
   useCommodoreDrawer,
   useCommodoreEnabled,
+  useCommodoreRoster,
   type CommodoreTab,
 } from "./commodore-state.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
-import { DEFAULT_LAUNCH, LaunchControl } from "./launch-control.js";
+import { DEFAULT_LAUNCH } from "./launch-control.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -277,18 +280,57 @@ function UseDefault({ t, onClick }: { readonly t: T; readonly onClick: () => voi
 }
 
 /**
- * 설정 — Console 설정과 같은 줄(제목·설명·오른쪽 컨트롤). 모델·강도는 Objectives 의 지휘관 메뉴(LaunchControl)를 그대로 쓰고,
- * 오른쪽 칸에서는 선택 상자 모양으로 선다.
+ * 사령관·지휘관 좌표 한 칸 — Console 공유 선택기(설정 행의 선택 상자). 사령관 세션은 `agent` 대상이라 ULTRACODE가 서지 않고,
+ * 지휘관은 Agent CLI 실행 대상이라 선다. 로스터 밖 저장값은 「꺼짐」으로 남아 보이고, 실행만 폴백한다. 폰 설정 화면 안에서는
+ * 호스트의 좌표 시트로 열린다. 값이 비면 `fallback`(기본 좌표)을 보이고, `reset`은 그 기본값의 낱말을 설명으로 단다.
+ */
+export function CommodoreCoordinateField({ t, target, label, value, fallback, disabled, reset, onChange }: {
+  readonly t: T;
+  readonly target: ModelRosterTarget;
+  readonly label: string;
+  readonly value: ModelCoordinateValue;
+  readonly fallback: ModelCoordinateValue;
+  readonly disabled?: boolean;
+  readonly reset?: { readonly label: string; readonly onSelect: () => void };
+  readonly onChange: (next: { readonly model?: string; readonly effort?: string }) => void;
+}) {
+  const roster = useCommodoreRoster(target);
+  const auto = t("objectives.commander.effortAuto");
+  const fallbackWords = rosterCoordinateWords(roster, fallback, auto);
+  return (
+    <ModelCoordinatePicker
+      roster={roster}
+      value={value}
+      fallback={fallback}
+      onChange={onChange}
+      commit="on-close"
+      startAt="list"
+      {...(disabled ? { disabled } : {})}
+      {...(reset ? { reset: { ...reset, description: [fallbackWords.model, fallbackWords.effort].filter(Boolean).join(" · ") } } : {})}
+      labels={{
+        menu: label,
+        effort: t("objectives.commander.effortAria"),
+        auto,
+        back: t("objectives.launch.backToModels"),
+        loading: t("objectives.launch.loading"),
+        empty: t("objectives.launch.empty"),
+        off: t("objectives.launch.off"),
+        fallback: t("objectives.launch.fallback"),
+      }}
+      trigger={{ variant: "field" }}
+    />
+  );
+}
+
+/**
+ * 설정 — Console 설정과 같은 줄(제목·설명·오른쪽 컨트롤). 모델·강도는 Console 공유 선택기 하나로 고른다(사령관은 Agent SDK
+ * 로스터, 지휘관은 Agent CLI 로스터).
  */
 function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const { state, defaults, run } = view;
   const on = state.autonomy === true;
-  const model = state.model ?? defaults.model;
-  const effort = state.effort ?? defaults.effort;
   const modelOverridden = state.model !== undefined;
   const patrol = state.patrolMinutes ?? DEFAULT_PATROL;
-  const commanderModel = state.commanderModel ?? DEFAULT_LAUNCH.model;
-  const commanderEffort = state.commanderModel ? state.commanderEffort : DEFAULT_LAUNCH.effort;
   const commanderOverridden = state.commanderModel !== undefined;
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   return (
@@ -300,23 +342,14 @@ function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t
         label={t("objectives.commodore.settings.model")}
         hint={<>{t("objectives.commodore.settings.modelHint")}{modelOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCoordinates(theaterId, null))} /> : null}</>}
       >
-        <span className="objectives-commodore-select">
-          <LaunchControl
-            t={t}
-            model={model}
-            effort={effort}
-            locked={false}
-            commitOnClose
-            startAtList
-            triggerLabel={t("objectives.commodore.drawer.modelAria")}
-            onChange={(next) => {
-              const nextModel = next.model ?? model;
-              // 트랙의 「자동」은 사령관에게 실험 기능 행의 강도다 — 좌표는 모델과 강도를 함께 저장한다.
-              const nextEffort = next.effort ?? defaults.effort;
-              act(() => setCommodoreCoordinates(theaterId, { model: nextModel, effort: nextEffort }));
-            }}
-          />
-        </span>
+        <CommodoreCoordinateField
+          t={t}
+          target="agent"
+          label={t("objectives.commodore.drawer.modelAria")}
+          value={commodoreValue(state)}
+          fallback={defaults}
+          onChange={(next) => act(() => setCommodoreCoordinates(theaterId, commodoreCoordinates(state, defaults, next)))}
+        />
       </SettingsRow>
       <SettingsRow
         label={t("objectives.commodore.settings.patrol")}
@@ -336,21 +369,45 @@ function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t
         label={t("objectives.commodore.settings.commander")}
         hint={<>{t("objectives.commodore.settings.commanderHint")}{commanderOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCommander(theaterId, null))} /> : null}</>}
       >
-        <span className="objectives-commodore-select">
-          <LaunchControl
-            t={t}
-            model={commanderModel}
-            effort={commanderEffort}
-            locked={false}
-            commitOnClose
-            startAtList
-            triggerLabel={t("objectives.commodore.settings.commanderAria")}
-            onChange={(next) => act(() => setCommodoreCommander(theaterId, { model: next.model ?? commanderModel, ...(next.effort ? { effort: next.effort } : {}) }))}
-          />
-        </span>
+        <CommodoreCoordinateField
+          t={t}
+          target="launch"
+          label={t("objectives.commodore.settings.commanderAria")}
+          value={commanderValue(state)}
+          fallback={DEFAULT_LAUNCH}
+          onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
+        />
       </SettingsRow>
     </div>
   );
+}
+
+type CommodoreStateFields = CommodoreView["state"];
+
+/** 사령관 좌표의 저장값 — 비어 있으면 선택기가 실험 기능 행의 기본값을 보인다. */
+export function commodoreValue(state: CommodoreStateFields): ModelCoordinateValue {
+  return { ...(state.model ? { model: state.model } : {}), ...(state.effort ? { effort: state.effort } : {}) };
+}
+
+/**
+ * 고른 사령관 좌표 — 모델과 강도를 함께 저장한다. 트랙의 「자동」이나 강도를 받지 않는 모델이면 지금 강도(없으면 실험 기능
+ * 행의 강도)를 남긴다: 실행은 행 사다리 안으로 클램프되고, 강도 있는 모델로 돌아오면 그 값이 산다.
+ */
+export function commodoreCoordinates(state: CommodoreStateFields, defaults: CommodoreView["defaults"], next: { readonly model?: string; readonly effort?: string }) {
+  const model = next.model ?? state.model ?? defaults.model;
+  const effort = isAgentEffort(next.effort) ? next.effort : state.effort ?? defaults.effort;
+  return { model, effort };
+}
+
+/** 지휘관 좌표의 저장값 — 비어 있으면 선택기가 보드 기본값(DEFAULT_LAUNCH)을 보인다. */
+export function commanderValue(state: CommodoreStateFields): ModelCoordinateValue {
+  return state.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : {};
+}
+
+export function commanderCoordinates(state: CommodoreStateFields, next: { readonly model?: string; readonly effort?: string }) {
+  const model = next.model ?? state.commanderModel ?? DEFAULT_LAUNCH.model;
+  const effort = next.effort ?? (next.model ? undefined : state.commanderEffort);
+  return { model, ...(effort ? { effort } : {}) };
 }
 
 /* ── 순찰 간격 ───────────────────────────────────────────────────────── */
@@ -471,6 +528,13 @@ export function reasonWord(t: T, reason: string): string {
   return key in objectivesEn ? t(key as ObjectiveMessageKey, { n: match[2] ?? "" }).trim() : reason;
 }
 
+/** 세션 기록의 로스터 폴백(`fallback:<reason>:<model>`) — 실제로 도는 모델과 사유. 다른 사유는 표시하지 않는다. */
+function fallbackWord(t: T, reason: string): string {
+  const match = /^fallback:(model_off|roster_empty):(.+)$/u.exec(reason);
+  if (!match) return "";
+  return t(match[1] === "roster_empty" ? "objectives.commodore.log.fallback.rosterEmpty" : "objectives.commodore.log.fallback.modelOff", { model: match[2]! });
+}
+
 export function actionWord(t: T, action: string): string {
   const key = `objectives.commodore.action.${action}`;
   return key in objectivesEn ? t(key as ObjectiveMessageKey) : action;
@@ -514,7 +578,7 @@ export function groupTranscript(t: T, entries: readonly CommodoreTranscriptEntry
         break;
       case "session":
         open = null;
-        items.push({ kind: "marker", key: `s${entry.seq}`, at: entry.at, text: t(`objectives.commodore.log.session.${entry.event}`) });
+        items.push({ kind: "marker", key: `s${entry.seq}`, at: entry.at, text: [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ") });
         break;
       case "message":
         items.push({ kind: "message", key: `m${entry.seq}`, at: entry.at, text: entry.text, undelivered: undelivered.has(entry.seq) });

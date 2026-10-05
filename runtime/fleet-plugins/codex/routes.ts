@@ -3,7 +3,6 @@ import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
-import { createAiGatewaySettingsStore } from "@fleet-console/ai-gateway";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { createWikiWorkspaceResolver } from "./server/wiki/index.js";
 
@@ -55,13 +54,11 @@ export default definePlugin({
       registrations = registrations.then(() => work).catch(() => undefined);
     };
 
-    // Gateway 선별 파일은 Fleet 루트의 것이다 — Console이 구성한 공통 설정을 읽기만 한다.
-    // dataDir는 호스트의 유효 루트라야 격리 Console이 사용자의 진짜 설정을 읽지 않는다.
-    const aiGatewaySettings = createAiGatewaySettingsStore({ dataDir: ctx.host.paths.consoleDataDir });
     const gateway = createCodexGateway({
       host: "127.0.0.1",
       version: "1",
-      readAiGatewaySettings: aiGatewaySettings.read,
+      // 모델 목록과 실행 좌표는 Console의 모델 로스터에서 온다 — Gateway 설정 파일을 플러그인이 직접 열지 않는다.
+      ...(ctx.host.models ? { models: ctx.host.models } : {}),
       readExperiments: () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
       theaterPaths: {
         canonicalize: (cwd) => ctx.host.paths.canonicalizeTheaterPath(cwd),

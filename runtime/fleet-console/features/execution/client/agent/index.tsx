@@ -27,7 +27,7 @@ import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus,
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { openTheaterSystemPrompt } from "../../../settings/client/theater-system-prompt-sheet.js";
-import { fetchAnalysisCatalog, fetchAnalysisReady } from "../../../analyst/client/analysis-api.js";
+import { fetchAnalysisReady } from "../../../analyst/client/analysis-api.js";
 import { AnalystChatPanel } from "../../../analyst/client/analysis-chat-panel.js";
 import { disposeAnalysisStore, useAnalysisStore } from "../../../analyst/client/analysis-store.js";
 import {
@@ -224,12 +224,6 @@ export const agentExecution: ClientExecutionProvider = {
   settingsSections: [generalSettingsSection, harnessSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
   install: (ctx) => installAgentExecution(ctx),
-  // 실험: 모델 좌석 선택지 — 분석가 카탈로그가 곧 "이 호스트가 실행할 수 있는 모델"이다.
-  experimentModelOptions: async () => {
-    if (!installedApi) return [];
-    const catalog = await fetchAnalysisCatalog(installedApi);
-    return catalog.clis.flatMap((cli) => cli.models.map((model) => ({ id: model.id, label: model.label, effortLevels: model.effortLevels })));
-  },
   closeOperation: async (operationId) => {
     try {
       await terminateAgentSession(operationId);

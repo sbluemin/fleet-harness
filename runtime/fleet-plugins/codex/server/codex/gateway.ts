@@ -9,7 +9,7 @@ import type { MemoryPaths, WikiWorkspaceResolver } from "../wiki/index.js";
 import { handleApiRequest } from "./routes.js";
 import { CoworkService, CoworkStore } from "./cowork/index.js";
 import type { CoworkConnector } from "./cowork/index.js";
-import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
+import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";
@@ -59,10 +59,10 @@ interface CodexGatewayDeps {
    */
   readonly whenRegistrationsSettle?: () => Promise<void>;
   /**
-   * 사용자가 켠 Gateway 모델 선별. Cowork 모델 목록이 켜진 좌표만 싣도록 요청마다 읽는다 —
-   * 등록 시점에 고정하면 이후 설정 변경이 목록에 반영되지 않는다. 생략하면 카탈로그 모델을 싣지 않는다.
+   * Console의 모델 로스터(Settings › AI Gateway에서 켠 모델)와 좌표 해석. Cowork 목록과 실행 좌표가 여기서 온다 —
+   * 요청마다 읽으므로 Gateway를 바꾼 직후부터 새 로스터를 본다. 생략하면 로스터가 빈 것으로 본다.
    */
-  readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
+  readonly models?: Pick<FleetPluginModelsHost, "roster" | "resolve">;
   /** Settings › 실험 기능 읽기 — Cowork의 모델·강도 좌표. 요청마다 읽어 바꾼 직후부터 새 값을 본다. */
   readonly readExperiments?: () => ConsoleExperimentSettings;
   readonly security: {
@@ -118,6 +118,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   // Console이 제공한 연결만 사용한다. 다른 플러그인의 마운트를 알지 않는다.
   const coworkConnector: CoworkConnector = createCoworkGatewayConnector({
     agent: deps.agent,
+    ...(deps.models ? { models: deps.models } : {}),
   });
 
   /**
@@ -220,7 +221,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       externalMode: true,
       admitted: deps.security.isWriteAdmitted(request),
       coworkService,
-      enabledGatewayModels: deps.readAiGatewaySettings ? resolveAiGatewaySelection(deps.readAiGatewaySettings()).models : [],
+      ...(deps.models ? { models: deps.models } : {}),
       readExperiments: deps.readExperiments,
     });
     request.url = originalUrl;

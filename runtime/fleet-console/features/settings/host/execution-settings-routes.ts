@@ -21,7 +21,7 @@ import {
 
 import {
   buildAiGatewayCatalog,
-  findGatewayModel,
+  findClaudeGatewayModel,
   normalizeCompactCeiling,
   parseAiGatewayUpdate,
   DEFAULT_XAI_ENDPOINT_PREFERENCE,
@@ -46,6 +46,8 @@ interface TerminalSettingsRouteDeps {
     readonly enabled: () => boolean;
     readonly apply: (stored: boolean | undefined) => void;
   };
+  /** AI Gateway 설정을 쓴 직후. 모델 로스터가 그 파일에서 투영되므로 열린 화면에 다시 읽으라고 알린다. */
+  readonly onAiGatewayChanged?: () => void;
 }
 
 interface TerminalSettingsBody {
@@ -127,6 +129,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       if ("aiGateway" in update) {
         // AI Gateway 선별은 Fleet 전역 옵션이 아니라 core-ai-gateway가 소유하는 자기 축이다.
         const stored = deps.aiGatewayStore.write(update.aiGateway);
+        deps.onAiGatewayChanged?.();
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
           deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
@@ -351,7 +354,7 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
       : null;
   }
   if (keys[0] === "delegationRoutingModel") {
-    return body.delegationRoutingModel === null || (typeof body.delegationRoutingModel === "string" && (["sonnet", "opus"].includes(body.delegationRoutingModel) || findGatewayModel(body.delegationRoutingModel)))
+    return body.delegationRoutingModel === null || (typeof body.delegationRoutingModel === "string" && findClaudeGatewayModel(body.delegationRoutingModel))
       ? { delegationRoutingModel: body.delegationRoutingModel as string | null } : null;
   }
   if (keys[0] === "delegationRoutingMode") {

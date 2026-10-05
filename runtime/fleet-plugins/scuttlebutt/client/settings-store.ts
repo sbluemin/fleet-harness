@@ -1,3 +1,4 @@
+import { isAgentEffort, type AgentEffort } from "@fleet-console/sdk/models";
 import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
 import { DEFAULT_BIRD_WIDTH, clampBirdWidth } from "./roaming.js";
@@ -26,10 +27,8 @@ export interface AideGrants {
 }
 export type GrantMap = Record<ScuttlebuttAideId, AideGrants>;
 
-export type AideEffort = "low" | "medium" | "high";
-export const AIDE_EFFORTS: readonly AideEffort[] = ["low", "medium", "high"];
 export const DEFAULT_AIDE_MODEL = "sonnet";
-export const DEFAULT_AIDE_EFFORT: AideEffort = "low";
+export const DEFAULT_AIDE_EFFORT: AgentEffort = "low";
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._\-\[\]:]{0,127}$/u;
 
 export interface ScuttlebuttSettings {
@@ -46,9 +45,12 @@ export interface ScuttlebuttSettings {
   readonly docked: DockedMap;
   readonly sizes: SizeMap;
   readonly grants: GrantMap;
-  /** 부관단 공통 모델·강도. 실험 설정의 모델 좌석과 같은 id 규약이다. */
+  /**
+   * 부관단 공통 모델·강도. 모델은 정준 id(실행 id)이고 옛 표기(`claude-gateway--…`)도 그대로 읽는다 — 서버가 로스터에
+   * 대조할 때 접는다. 강도는 Agent SDK 사다리 전체(low…max)다.
+   */
   readonly model: string;
-  readonly effort: AideEffort;
+  readonly effort: AgentEffort;
   /** 첫 출근 소개를 이미 보았는지. */
   readonly introduced: boolean;
 }
@@ -189,7 +191,7 @@ function parseSettings(value: Record<string, unknown> | null): ScuttlebuttSettin
     sizes: parseSizeMap(value.sizes),
     grants: parseGrantMap(value.grants),
     model: typeof value.model === "string" && MODEL_ID.test(value.model) ? value.model : DEFAULT_AIDE_MODEL,
-    effort: AIDE_EFFORTS.includes(value.effort as AideEffort) ? value.effort as AideEffort : DEFAULT_AIDE_EFFORT,
+    effort: isAgentEffort(value.effort) ? value.effort : DEFAULT_AIDE_EFFORT,
     introduced: value.introduced === true,
   };
 }

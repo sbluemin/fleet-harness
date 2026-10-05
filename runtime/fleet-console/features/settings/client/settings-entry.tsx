@@ -10,6 +10,15 @@ export const SETTINGS_RAIL_ENTRY_ID = "settings";
 export const SETTINGS_PANE_ID = "settings";
 
 /**
+ * 플러그인(코어 실행 기능 포함)이 등록한 설정 섹션의 주소 id — 데스크톱 패널의 칩과 폰의 `/settings?section=`이 같은 값을
+ * 쓴다. 섹션을 여는 링크는 이 함수로 만든다; 섹션 자신의 id만 넘기면 닿지 못한 id로 읽혀 기본 섹션이 열린다.
+ * 실행 기능처럼 플러그인 id가 없는 공급자는 `terminal` 아래에 선다.
+ */
+export function pluginSettingsSectionId(pluginId: string | null, sectionId: string): `${string}:${string}` {
+  return `${pluginId ?? "terminal"}:${sectionId}`;
+}
+
+/**
  * 톱니 — 이가 링에 붙은 쐐기여야 16px에서 톱니로 읽힌다. 이 톱니는 이제 설정의 유일한
  * 문이다: 옛 커맨드 밴드의 페이더 글리프는 페이지와 함께 은퇴했고, "레일을 손보는 자리이지
  * 설정의 문이 아니다"라던 옛 메뉴 독트린은 이 결정으로 뒤집혔다 — 레일 취향도 이 문 뒤의

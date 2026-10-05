@@ -1,10 +1,10 @@
-import type { AgentEvent, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
+import type { AgentEffort, AgentEvent, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 
 import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
-import { MAX_TRANSCRIPT_TEXT, type CommodoreCoordinates, type CommodoreTranscriptInput } from "./types.js";
+import { MAX_TRANSCRIPT_TEXT, type CommodoreTranscriptInput } from "./types.js";
 
 /**
  * 사령관 세션 — `ctx.host.agent.createSession` 으로 연 플러그인 소유 세션 하나. Operation 이 아니다.
@@ -15,6 +15,12 @@ import { MAX_TRANSCRIPT_TEXT, type CommodoreCoordinates, type CommodoreTranscrip
  * (`transcript.jsonl`)에 쌓이고 같은 길로 방송된다 — 도구 입력 전체·원시 오류·경로는 기록에 들어가지 않는다.
  */
 
+/** 세션이 여는 좌표 — `model`은 Agent SDK wire id다. 강도를 받지 않는 모델이면 강도가 없다. */
+export interface CommodoreSessionCoordinates {
+  readonly model: string;
+  readonly effort?: AgentEffort;
+}
+
 export interface CommodoreSessionOptions {
   readonly theaterId: string;
   readonly theaterLabel: string;
@@ -23,7 +29,7 @@ export interface CommodoreSessionOptions {
   readonly theaterRoot: string;
   readonly agent: AgentHost;
   readonly store: CommodoreStore;
-  readonly coordinates: CommodoreCoordinates;
+  readonly coordinates: CommodoreSessionCoordinates;
   /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 `console_objectives`. */
   readonly boardTools: readonly PluginMcpTool[];
   readonly onNextWake: (at: number, reason: string) => void;
@@ -51,7 +57,7 @@ export interface CommodoreTurnOutcome {
 }
 
 export interface CommodoreSession {
-  readonly coordinates: CommodoreCoordinates;
+  readonly coordinates: CommodoreSessionCoordinates;
   start(): Promise<void>;
   /** 한 턴 — 세션의 턴은 순서대로 돈다. 세션 오류는 결말로 돌아오고 던지지 않는다(폐기된 세션만 던진다). */
   turn(input: CommodoreTurnInput): Promise<CommodoreTurnOutcome>;
@@ -150,7 +156,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     const tools = createCommodoreTools({ theaterId: options.theaterId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
-      effort: options.coordinates.effort,
+      ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
       systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language),
       continuation: "conversation",
       settlement: "result",

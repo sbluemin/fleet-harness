@@ -1,4 +1,4 @@
-import type { AgentEffort } from "@fleet-console/sdk/agent";
+import { AGENT_EFFORTS, type AgentEffort } from "@fleet-console/sdk/models";
 import { isExperimentModelId } from "@fleet-console/sdk/settings";
 import { z } from "zod";
 
@@ -36,8 +36,8 @@ export type CommodorePatrolMinutes = (typeof COMMODORE_PATROL_MINUTES)[number];
 export const commodorePatrolSchema = z.literal(COMMODORE_PATROL_MINUTES);
 
 const ids = z.string().min(1).max(128);
-/** Theater 별 강도는 세션이 받는 사다리 전체다 — 지휘관 LaunchControl 의 강도 트랙과 같다. 실험 기능 행의 기본값은 3단으로 남는다. */
-export const COMMODORE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const satisfies readonly AgentEffort[];
+/** Theater 별 강도는 Agent SDK 세션이 받는 사다리 전체(low…max)다. ULTRACODE는 하네스 능력이라 받지 않는다. */
+export const COMMODORE_EFFORTS = AGENT_EFFORTS;
 const effort = z.enum(COMMODORE_EFFORTS);
 const modelId = z.string().refine(isExperimentModelId, "invalid_model");
 

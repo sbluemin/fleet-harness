@@ -148,7 +148,7 @@ describe("global settings routes", () => {
     }
   });
 
-  it("reserves computer access opt-in to the local owner", async () => {
+  it("reserves computer access opt-in to the local owner and validates aide coordinates", async () => {
     const remote = createRouterHarness({ local: false, body: { experiments: { computerUse: true } } });
     await remote.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(remote.writes[0]?.status).toBe(403);
@@ -164,6 +164,13 @@ describe("global settings routes", () => {
     const invalid = createRouterHarness({ body: { experiments: { computerUseBackend: "unknown" } } });
     await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(invalid.writes[0]?.status).toBe(400);
+    // 보조 AI 강도는 Agent SDK 사다리 전체(low…max)를 받고, 하네스 센티넬 ultra는 거절한다.
+    const deep = createRouterHarness({ body: { experiments: { analystEffort: "xhigh" } } });
+    await deep.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(deep.currentGeneral()?.experiments?.analystEffort).toBe("xhigh");
+    const ultra = createRouterHarness({ body: { experiments: { analystEffort: "ultra" } } });
+    await ultra.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(ultra.writes[0]?.status).toBe(400);
     const missing = createRouterHarness({ installation: "missing", body: { experiments: { computerUse: true } } });
     await missing.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(missing.writes[0]).toMatchObject({ status: 409, body: { error: "computer_use_install_required" } });

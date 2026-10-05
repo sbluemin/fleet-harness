@@ -51,8 +51,10 @@ describe("session controls", () => {
   it("passes the chosen model, effort and locale to the session and rejects an unsafe model id", async () => {
     // 모델 id는 `--model`에 그대로 들어간다 — 모양이 어긋난 값은 자식에게 닿기 전에 거절한다.
     const created: unknown[] = [];
-    const harness = createHarness(true, { admiral: "tori", model: "haiku", effort: "high", locale: "ko", grants: { consoleUse: true, computerUse: true } });
-    Object.assign(harness.ctx.host, { experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, computerUse: true }) } });
+    // 강도는 Agent SDK 사다리 전체(xhigh 포함)를 받는다. 좌표는 호스트 모델 로스터가 wire id로 푼다.
+    const harness = createHarness(true, { admiral: "tori", model: "codex--gpt-6-luna", effort: "xhigh", locale: "ko", grants: { consoleUse: true, computerUse: true } });
+    const resolve = vi.fn((stored: { model?: string | null; effort?: string | null }) => ({ model: stored.model ?? "sonnet", wireModel: `claude-gateway--${stored.model}[1m]`, effort: stored.effort ?? "low", row: null, fallback: false }));
+    Object.assign(harness.ctx.host, { experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, computerUse: true }) }, models: { roster: () => [], resolve } });
     registerChatRoutes(harness.ctx, {
       createSession: (options) => {
         created.push(options);
@@ -66,7 +68,8 @@ describe("session controls", () => {
       pathname: "/plugins/scuttlebutt/chat/start",
     });
     expect(harness.writeJson.mock.calls.at(-1)?.[1]).toBe(200);
-    expect(created[0]).toMatchObject({ admiral: "tori", model: "haiku", effort: "high", locale: "ko" });
+    expect(resolve).toHaveBeenCalledWith({ model: "codex--gpt-6-luna", effort: "xhigh" }, "agent", { model: "sonnet", effort: "low" });
+    expect(created[0]).toMatchObject({ admiral: "tori", model: "claude-gateway--codex--gpt-6-luna[1m]", effort: "xhigh", locale: "ko" });
     expect(created[0]).toHaveProperty("agent", harness.ctx.host.agent);
     const injected = (created[0] as { consoleUse: { consoleUse: { enabled: () => boolean; tools: string[] } } }).consoleUse.consoleUse;
     expect(injected.tools).toEqual(CONSOLE_CONTROL_TOOLS);

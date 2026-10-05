@@ -60,7 +60,7 @@ import type {
 } from "./contracts.js";
 import { withSecurityHeaders } from "./contracts.js";
 import { handleCoworkRequest } from "./cowork/routes.js";
-import type { GatewayModel } from "@fleet-console/ai-gateway";
+import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -77,8 +77,8 @@ interface RouteContext {
   /** 이 요청이 통과한 리스너가 쓰기를 허락하는가. 게이트웨이가 리스너로 판정해 넘긴다. */
   admitted: boolean;
   coworkService?: CoworkService;
-  /** 사용자가 Settings › AI Gateway에서 켠 카탈로그 모델. Cowork가 받을 수 있는 모델 목록의 근거다. */
-  enabledGatewayModels?: readonly GatewayModel[];
+  /** Console의 모델 로스터와 좌표 해석. Cowork가 받을 수 있는 모델 목록과 실행 좌표의 근거다. */
+  models?: Pick<FleetPluginModelsHost, "roster" | "resolve">;
   /** Settings › 실험 기능 읽기 — Cowork 좌표(모델·강도)가 여기서 온다. 요청마다 읽는다. */
   readExperiments?: () => ConsoleExperimentSettings;
 }

@@ -35,6 +35,7 @@ const SPECIFIER_ENTRIES = [
   ["@fleet-console/sdk/react/browser", path.join(sdkRoot, "react", "browser.tsx")],
   ["@fleet-console/sdk/components/failure-notice", path.join(sdkRoot, "components", "failure-notice.tsx")],
   ["@fleet-console/sdk/components/effort-track", path.join(sdkRoot, "components", "effort-track.tsx")],
+  ["@fleet-console/sdk/components/model-coordinate-picker", path.join(sdkRoot, "components", "model-coordinate-picker.tsx")],
   ["@fleet-console/sdk/components/launch-provider-glyphs", path.join(sdkRoot, "components", "launch-provider-glyphs.tsx")],
   ["@fleet-console/sdk/components/shell-glyph", path.join(sdkRoot, "components", "shell-glyph.tsx")],
 ];

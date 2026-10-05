@@ -32,6 +32,7 @@ import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-va
 import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, readOperationLaunch, withSubagentSpawn, withUserQuestions, type OperationLaunchChangedEvent } from "@fleet-console/sdk/operations";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
+import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
 import { createLaunchKeyLedger } from "../../../features/console-use/host/launch-keys.js";
 import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../features/console-use/host/console-use.js";
@@ -1105,6 +1106,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         };
       },
     },
+    // 플러그인의 모델 좌표 해석. Gateway 설정 파일을 플러그인이 직접 열지 않도록 같은 파일의 로스터 투영만 내준다.
+    models: createModelRosterHost({ readSettings: gatewaySettings.read }),
     experiments: {
       read: () => readExperimentSettings(consoleSettingsStore),
       subscribe: (listener) => {

@@ -1,3 +1,4 @@
+import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../../ai-gateway/client/roster-fallback.js";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -5,7 +6,7 @@ import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { MobileSheet } from "../../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { reportSheetChrome, reportShellChrome } from "../../../../../core/client/src/chrome/mobile/mobile-chrome.js";
-import { pushOverlayHistory, releaseOverlayHistory } from "../../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
+import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { resolveRowEffort } from "../../components/effort-track.js";
 import { MobileEffortGateRow, MobileEffortTabs, useMobileEffortGate } from "../../components/mobile-quick-launch.js";
 import { getT } from "../i18n/index.js";
@@ -56,16 +57,24 @@ export function MobileCoordinateSheet({
   closeRef.current = onClose;
 
   // 하드웨어·브라우저 뒤로는 화면을 떠나지 않고 시트를 닫는다(새 작업 시트와 같은 계약), 떠 있는 동안 아래 시스템 바는 시트 면이다(S-03).
+  const historyRef = React.useRef<number | null>(null);
   React.useEffect(() => {
-    let id: number | null = pushOverlayHistory(() => { id = null; closeRef.current(); });
+    const id = pushOverlayHistory(() => { historyRef.current = null; closeRef.current(); });
+    historyRef.current = id;
     const releaseLayer = pushBackLayer(() => closeRef.current());
     reportSheetChrome();
     return () => {
       releaseLayer();
-      if (id !== null) releaseOverlayHistory(id);
+      if (historyRef.current === id) { historyRef.current = null; releaseOverlayHistory(id); }
       reportShellChrome();
     };
   }, []);
+  // 시트 안에서 다른 화면으로 가는 길 — history 항목을 먼저 걷고 시트를 닫은 다음에 옮긴다(새 작업 시트와 같은 순서).
+  const leaveSheet = (go: () => void) => {
+    const id = historyRef.current;
+    historyRef.current = null;
+    runAfterOverlayRelease(id, () => { closeRef.current(); go(); });
+  };
 
   const rows = (groups ?? []).flatMap((group) => group.rows);
   const targetRow = target ? rows.find((row) => row.launch.model === target.model) ?? null : null;
@@ -86,7 +95,7 @@ export function MobileCoordinateSheet({
       {groups === null ? <p className="mql-glab">{t("terminal.chat.coordMenuLoading")}</p> : null}
       {(groups ?? []).map((group) => (
         <React.Fragment key={group.id}>
-          {(groups?.length ?? 0) > 1 ? <h3 className="mql-glab">{group.caption}</h3> : null}
+          {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice className="mql-glab" onFollow={leaveSheet} /> : (groups?.length ?? 0) > 1 ? <h3 className="mql-glab">{group.caption}</h3> : null}
           <div className="mql-grp" role="radiogroup" aria-label={group.caption}>
             {group.rows.map((row) => {
               const blocked = tooLarge(row);

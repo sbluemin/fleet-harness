@@ -594,6 +594,8 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
   await registerAgentRoutes(ctx, terminalRuntime, {
     agentOptionsService: agentOptionsStub,
+    // 모델 좌표 후보는 모델 로스터(Settings › AI Gateway)다 — 운영처럼 Claude 항목이 켜진 로스터를 둔다.
+    readAiGatewaySettings: () => ({ version: 1, models: [{ id: "claude--sonnet" }, { id: "claude--opus-1m" }] }),
     ...(options.theaterPrompt ? { theaterSystemPrompts: { exists: (id: string) => id === "theater-1", read: (id: string | undefined) => id === "theater-1" ? options.theaterPrompt! : null, save: () => null, subagentsKept: () => false, keepSubagents: () => false, purge: () => {} } } : {}),
   });
   cleanups.push(async () => {

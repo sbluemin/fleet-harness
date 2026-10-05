@@ -11,6 +11,8 @@
  * 유일한 좌표이고, 서버가 요청마다 여기서 읽어 세션에 싣는다.
  */
 
+import { AGENT_EFFORTS, isAgentEffort, type AgentEffort } from "../models/index.js";
+
 export type ComputerUseBackendId = "sky-computer-use" | "cua-driver";
 export function isComputerUseBackendId(value: unknown): value is ComputerUseBackendId {
   return value === "sky-computer-use" || value === "cua-driver";
@@ -24,9 +26,12 @@ export type ExperimentAideId = "cowork" | "analyst" | "commodore";
 
 export const EXPERIMENT_AIDES: readonly ExperimentAideId[] = ["cowork", "analyst", "commodore"];
 
-/** 보조 AI의 강도 사다리 — 부관단 카드와 같은 고정 3단. 강도를 받지 않는 모델은 무시한다. */
-export const EXPERIMENT_EFFORTS = ["low", "medium", "high"] as const;
-export type ExperimentEffort = (typeof EXPERIMENT_EFFORTS)[number];
+/**
+ * 보조 AI의 강도 어휘 — Agent SDK 세션이 받는 사다리 전체(low…max). 화면은 고른 모델의 사다리를 보이고, 실행은
+ * 그 사다리 안으로 클램프한다(저장값은 고쳐 쓰지 않는다). `ultra`는 Claude Code 하네스 센티넬이라 여기 없다.
+ */
+export const EXPERIMENT_EFFORTS = AGENT_EFFORTS;
+export type ExperimentEffort = AgentEffort;
 
 export interface ExperimentAideSelection {
   readonly model: string;
@@ -85,8 +90,8 @@ export interface ExperimentModelOption {
 }
 
 /**
- * 선택지에 항상 서는 Claude 별칭. Gateway 모델은 그것을 아는 플러그인이 `experimentModelOptions`로
- * 덧붙인다 — 코어는 어떤 공급자가 켜져 있는지 모른다.
+ * @deprecated 모델 선택지의 원천은 모델 로스터(Settings › AI Gateway) 하나다. 내장 코드는 이 목록을 읽지 않는다.
+ * Fleet 1.215.0에서 제거한다.
  */
 export const CLAUDE_EXPERIMENT_MODEL_OPTIONS: readonly ExperimentModelOption[] = [
   { id: "fable[1m]", label: "Fable" },
@@ -102,7 +107,7 @@ export function isExperimentModelId(value: unknown): value is string {
 }
 
 export function isExperimentEffort(value: unknown): value is ExperimentEffort {
-  return typeof value === "string" && (EXPERIMENT_EFFORTS as readonly string[]).includes(value);
+  return isAgentEffort(value);
 }
 
 /**

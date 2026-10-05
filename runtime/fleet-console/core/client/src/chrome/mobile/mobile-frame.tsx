@@ -15,7 +15,7 @@ import { MobileDrawer } from "./mobile-drawer.js";
 import { MobileRequestBanner } from "./mobile-request-banner.js";
 import { MobileToastHost } from "./mobile-toast.js";
 import { MobileSheetHost } from "./mobile-sheet-host.js";
-import { MobileChoicePopup, MobileModelChoice } from "./mobile-choice-popup.js";
+import { MobileChoicePopup, MobileCoordinateChoice, MobileModelChoice } from "./mobile-choice-popup.js";
 import { reportShellChrome } from "./mobile-chrome.js";
 import { openMobileChoice, useMobileChoice } from "./mobile-choice-store.js";
 import { openMobileInput } from "./mobile-input-sheet.js";
@@ -78,7 +78,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   const drawerOpen = useMobileDrawerOpen();
   const sheetOpen = useMobileSheetStack().length > 0;
   const t = useT();
-  const settingsHost = useMemo(() => ({ moreLabel: t("mobile.settings.more"), openChoice: openMobileChoice, openInput: openMobileInput, openSubScreen: openMobileSubScreen, ModelChoice: MobileModelChoice }), [t]);
+  const settingsHost = useMemo(() => ({ moreLabel: t("mobile.settings.more"), openChoice: openMobileChoice, openInput: openMobileInput, openSubScreen: openMobileSubScreen, ModelChoice: MobileModelChoice, CoordinateChoice: MobileCoordinateChoice }), [t]);
   const connection = useConsoleState().connection;
   const choiceOpen = useMobileChoice() !== null;
   const reportChrome = reportShellChrome;

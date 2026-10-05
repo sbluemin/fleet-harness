@@ -27,5 +27,10 @@ describe("Cowork Console Agent integration", () => {
     expect(complete).toHaveBeenCalledOnce();
     await client.disconnect();
     expect(dispose).toHaveBeenCalledOnce();
+    // 세션 좌표(정준 id)는 호스트 로스터가 Agent SDK wire id로 푼다 — Gateway에서 끈 모델은 폴백 좌표로 연다.
+    const resolve = vi.fn(() => ({ model: "sonnet", wireModel: "sonnet", effort: "high", row: null, fallback: true, reason: "model_off" as const }));
+    await createCoworkGatewayConnector({ agent, models: { resolve } }).connect({ model: "codex--gpt-6-luna", effort: "high", systemPrompt: "Wiki editor", tools });
+    expect(resolve).toHaveBeenCalledWith({ model: "codex--gpt-6-luna", effort: "high" }, "agent");
+    expect(options).toMatchObject({ model: "sonnet", effort: "high" });
   });
 });

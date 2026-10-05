@@ -5,15 +5,15 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId } from "@fleet-console/sdk/settings";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { isAgentEffort, type AgentEffort } from "@fleet-console/sdk/models";
 
 import { COMPUTER_PROMPT_ADDENDUM, createConsoleUseTools, isConsoleSnapshot, type ConsoleSnapshot } from "./console-tools.js";
 
 import {
   ADMIRAL_IDS,
   ChatSession,
-  isAideEffort,
+  SCUTTLEBUTT_AGENT,
   type AdmiralId,
-  type AideEffort,
   type ChatSessionLike,
 } from "./chat-session.js";
 import { SessionRegistry } from "./session-registry.js";
@@ -115,11 +115,11 @@ async function handleStart(
     const computerUse = experiments.computerUse
       ? { computerUse: { enabled: () => granted("computerUse"), language: () => body.locale ?? null }, promptAddendum: COMPUTER_PROMPT_ADDENDUM }
       : undefined;
+    const coordinate = resolveAideCoordinate(ctx, body);
     result = await registry.start(chatId, (onEvent) => createSession({
       agent: ctx.host.agent,
       admiral: body.admiral,
-      ...(body.model ? { model: body.model } : {}),
-      ...(body.effort ? { effort: body.effort } : {}),
+      ...coordinate,
       ...(body.locale ? { locale: body.locale } : {}),
       onEvent,
       ...(consoleUse ? { consoleUse } : {}),
@@ -279,12 +279,25 @@ function isMessageBody(value: unknown): value is { readonly text: string; readon
   return value.console === undefined || isConsoleSnapshot(value.console);
 }
 
+/**
+ * 고른 좌표를 Console의 모델 로스터(`agent` 대상)에 대조해 실행 좌표로 푼다. Gateway에서 끈 모델은 저장값을 고쳐 쓰지
+ * 않고 폴백 좌표(기본 sonnet)로 실행하며, 그 사실을 서버 로그에 모델 id와 사유만으로 남긴다. 로스터를 모르는 호스트에서는
+ * 고른 좌표를 그대로 싣는다.
+ */
+function resolveAideCoordinate(ctx: FleetPluginServerContext, body: StartBody): { readonly model?: string; readonly effort?: AgentEffort | null } {
+  const models = ctx.host.models;
+  if (!models) return { ...(body.model ? { model: body.model } : {}), ...(body.effort ? { effort: body.effort } : {}) };
+  const resolved = models.resolve({ model: body.model ?? null, effort: body.effort ?? null }, "agent", SCUTTLEBUTT_AGENT);
+  if (resolved.fallback) console.warn(`[scuttlebutt] aide model ${body.model ?? "(default)"} unavailable (${resolved.reason ?? "fallback"}); running ${resolved.model}`);
+  return { model: resolved.wireModel, effort: isAgentEffort(resolved.effort) ? resolved.effort : null };
+}
+
 const LOCALES: readonly ConsoleLocale[] = ["en", "ko"];
 
 interface StartBody {
   readonly admiral: AdmiralId;
   readonly model?: string;
-  readonly effort?: AideEffort;
+  readonly effort?: AgentEffort;
   readonly locale?: ConsoleLocale;
   readonly grants?: AideGrants;
 }
@@ -307,7 +320,7 @@ function isStartBody(value: unknown): value is StartBody {
   if (typeof value.admiral !== "string" || !ADMIRAL_IDS.some((admiral) => admiral === value.admiral)) return false;
   if (value.grants !== undefined && !isGrants(value.grants)) return false;
   if (value.model !== undefined && !isExperimentModelId(value.model)) return false;
-  if (value.effort !== undefined && !isAideEffort(value.effort)) return false;
+  if (value.effort !== undefined && !isAgentEffort(value.effort)) return false;
   if (value.locale !== undefined && !(LOCALES as readonly unknown[]).includes(value.locale)) return false;
   return true;
 }

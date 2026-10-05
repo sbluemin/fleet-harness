@@ -59,7 +59,6 @@ import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
-import { syncExperimentModelOptionPlugins } from "../integration/experiment-model-options.js";
 import { isZenMode, setZenMode, toggleZenMode, useZenModeState, useZenTransitionActive } from "../integration/zen-mode.js";
 import { useZenDesktopFullscreen } from "../integration/desktop-fullscreen.js";
 import { ZenBar } from "../chrome/zen/zen-bar.js";
@@ -258,7 +257,7 @@ function ConnectedApp() {
   // 여럿이면 결과를 한 그룹으로 합친다 — 팔레트가 보는 단위는 여전히 "무엇을 여는가"다.
   const railBindings = useDesktopRailEntries();
   // 설정 검색 공급자는 React 밖에서 불린다 — 플러그인 섹션 스냅샷을 여기서 실어 준다.
-  useEffect(() => { syncSettingsSearchPlugins(registry.providers); syncExperimentModelOptionPlugins(registry.providers); }, [registry.providers]);
+  useEffect(() => { syncSettingsSearchPlugins(registry.providers); }, [registry.providers]);
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
     () => railBindings
       // 페인을 세우지 않는 엔트리도 찾을 것을 가질 수 있다 — 확대 표면을 여는 기여가 그렇다.

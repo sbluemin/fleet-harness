@@ -22,7 +22,7 @@ export {
 } from "./experiments.js";
 // 모바일 셸이 설정 화면에 주입하는 능력(선택 팝업) — 특수한 섹션이 직접 열 때 쓴다.
 export { MobileSettingsHostContext, useMobileSettingsHost } from "../react/browser.js";
-export type { MobileChoiceOption, MobileChoiceSpec, MobileInputSpec, MobileModelChoiceProps, MobileModelGroup, MobileModelReset, MobileSettingsHost, MobileSubScreenSpec } from "../react/browser.js";
+export type { MobileChoiceOption, MobileChoiceSpec, MobileCoordinateChoiceProps, MobileInputSpec, MobileModelChoiceProps, MobileModelGroup, MobileModelReset, MobileSettingsHost, MobileSubScreenSpec } from "../react/browser.js";
 export type { ShortcutBindings } from "./shortcuts.js";
 export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";
 
@@ -652,6 +652,8 @@ export interface ModelPickerProps {
 }
 
 /**
+ * @deprecated 모델 선택지는 모델 로스터(`ctx.models.read(target)`) 하나가 소유한다. Fleet 1.215.0에서 제거한다.
+ *
  * 모델 선택지를 비동기로 채우는 한 훅. Claude 별칭은 즉시 서고, 로더(코어의 수집기 또는
  * 플러그인 브리지)가 늦거나 실패해도 별칭은 남는다 — 카드마다 같은 useState/useEffect를
  * 되풀이하면 그중 하나가 빈 목록으로 떨어지는 날이 온다.
@@ -697,6 +699,9 @@ function modelPickerProviderOf(option: ExperimentModelOption): LaunchProviderGly
 }
 
 /**
+ * @deprecated `@fleet-console/sdk/components/model-coordinate-picker`의 `ModelCoordinatePicker`(`trigger.variant: "field"`)를 쓴다.
+ * Fleet 1.215.0에서 제거한다.
+ *
  * 설정 화면에서 모델 하나를 고르는 단일 문법.
  *
  * 트리거는 프로바이더 글리프·표시 이름·컨텍스트 메타를 한 줄로 말하고, 팝업은 런치 메뉴와 같은

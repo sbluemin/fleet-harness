@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { toClaudeGatewayModelId, type GatewayModel } from "@fleet-console/ai-gateway";
-import { CLAUDE_EXPERIMENT_MODEL_OPTIONS, DEFAULT_EXPERIMENT_AIDE_SELECTION, DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import { AGENT_EFFORTS, canonicalModelId, resolveRosterCoordinate, rosterRowEfforts, type ResolvedModelCoordinate } from "@fleet-console/sdk/models";
+import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import type { MemoryPaths } from "../../wiki/index.js";
 import type { CoworkAnnotationDto, CoworkService, CoworkStoredEvent } from "./index.js";
 import { encodeSseData } from "../contracts.js";
@@ -9,38 +10,34 @@ import type { CoworkModelRow, CoworkOptionsResponse } from "../contracts.js";
 
 const CONFLICT_ERRORS = new Set(["cowork_busy", "cowork_apply_stale", "cowork_apply_busy", "cowork_apply_stale_revision", "cowork_reapply_conflict", "cowork_reapply_limit"]);
 
-// Cowork는 문서 위 경량 코워크다 — 강도는 게이트웨이 5단 중 상위 두 단(xhigh/max)을 내리지
-// 않는다. 모델은 컴포저가 고르지 않는다: Settings › 실험 기능 › AI 확장 › Cowork 행이 유일한 좌표이고,
-// 이 라우트는 그 값을 받을 수 있는 목록(Claude 별칭 + 켜진 Gateway 모델)과 대조해 실행 좌표를 정한다.
-const COWORK_EFFORTS = ["low", "medium", "high"] as const;
+/** 로스터가 비어 최후 폴백으로 설 때의 행 이름 — 그 좌표(`sonnet`)는 로스터에 없으니 라벨도 여기서 정한다. */
+const ROSTER_EMPTY_LABEL = "Sonnet";
 
 /**
- * 받을 수 있는 모델 행 — 공급자 밴드와 짧은 라벨은 서버가 정한다. 클라이언트는 id를 해석하지 않는다.
- * 목록은 설정 선택기와 같은 얼굴(Claude 별칭 + Settings › AI Gateway에서 켠 모델)이다 — 라우터가
- * 켜지지 않은 모델을 403으로 거절하므로, 켜지지 않은 좌표는 여기서 걸러 Sonnet으로 내려보낸다.
+ * Cowork 좌표와 받을 수 있는 모델 행. 모델은 컴포저가 고르지 않는다: Settings › 실험 기능 › AI 확장 › Cowork 행이
+ * 유일한 좌표이고, 그 값을 Console의 모델 로스터(`agent` 대상)에 대조해 실행 좌표를 정한다. 로스터 밖 저장값은
+ * 고쳐 쓰지 않고 폴백 좌표로 실행하며 `fallback`을 싣는다. 강도는 해석된 행이 내놓는 사다리 전체다.
  */
-function coworkModelRows(enabledGatewayModels: readonly GatewayModel[]): readonly CoworkModelRow[] {
-  const native = CLAUDE_EXPERIMENT_MODEL_OPTIONS.map((option): CoworkModelRow => ({ id: option.id, label: option.label, provider: "claude" }));
-  const gateway = enabledGatewayModels.map((model): CoworkModelRow => {
-    // 카탈로그 displayName은 "Codex-GPT-6-Luna"처럼 공급자 접두를 단다 — 밴드가 공급자를
-    // 말하므로 행에는 모델 이름만 남긴다.
-    const prefix = `${model.provider}-`;
-    const label = model.displayName.toLowerCase().startsWith(prefix) ? model.displayName.slice(prefix.length) : model.displayName;
-    return { id: toClaudeGatewayModelId(model), label, provider: model.provider };
-  });
-  return [...native, ...gateway];
-}
-
-/** Settings의 Cowork 좌표를 목록과 대조한다 — 목록 밖 모델은 Sonnet(없으면 첫 행)으로 내려간다. */
-export function resolveCoworkSelection(settings: ConsoleExperimentSettings, rows: readonly CoworkModelRow[]): { readonly model: string; readonly effort: string; readonly fallback: boolean } {
+export function coworkOptions(settings: ConsoleExperimentSettings, models?: Pick<FleetPluginModelsHost, "roster" | "resolve">): CoworkOptionsResponse {
+  const roster = models?.roster("agent") ?? [];
   const wanted = experimentAideSelection(settings, "cowork");
-  const ids = rows.map((row) => row.id);
-  if (ids.includes(wanted.model)) return { model: wanted.model, effort: wanted.effort, fallback: false };
-  const fallbackModel = ids.includes(DEFAULT_EXPERIMENT_AIDE_SELECTION.model) ? DEFAULT_EXPERIMENT_AIDE_SELECTION.model : ids[0] ?? "";
-  return { model: fallbackModel, effort: wanted.effort, fallback: true };
+  const resolved: ResolvedModelCoordinate = models?.resolve(wanted, "agent") ?? resolveRosterCoordinate(roster, wanted);
+  // 공급자 밴드와 짧은 라벨은 로스터가 정한다 — 클라이언트는 id를 해석하지 않는다.
+  const rows: readonly CoworkModelRow[] = resolved.row
+    ? roster.flatMap((group) => group.rows.map((row): CoworkModelRow => ({ id: canonicalModelId(row.launch.model ?? row.id), label: row.label, provider: group.id.replace(/^gateway:/u, "") })))
+    : [{ id: resolved.model, label: ROSTER_EMPTY_LABEL, provider: "claude" }];
+  const efforts: readonly string[] = resolved.row ? rosterRowEfforts(resolved.row) : [...AGENT_EFFORTS];
+  return {
+    models: rows.map((row) => row.id),
+    efforts,
+    defaultModel: resolved.model,
+    ...(resolved.effort ? { defaultEffort: resolved.effort } : {}),
+    rows,
+    fallback: resolved.fallback,
+  };
 }
 
-export async function handleCoworkRequest(request: IncomingMessage, response: ServerResponse, context: { workspaceId: string; paths: MemoryPaths; coworkService: CoworkService; allowedOrigins: Set<string>; port: number; admitted: boolean; enabledGatewayModels?: readonly GatewayModel[]; readExperiments?: () => ConsoleExperimentSettings }): Promise<boolean> {
+export async function handleCoworkRequest(request: IncomingMessage, response: ServerResponse, context: { workspaceId: string; paths: MemoryPaths; coworkService: CoworkService; allowedOrigins: Set<string>; port: number; admitted: boolean; models?: Pick<FleetPluginModelsHost, "roster" | "resolve">; readExperiments?: () => ConsoleExperimentSettings }): Promise<boolean> {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (!url.pathname.startsWith("/api/cowork")) return false;
   // Read gate: an admitted listener always; when a browser supplies Origin it must be an allowed one.
@@ -54,12 +51,7 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
     // Cowork는 Agent CLI도 모델도 고르지 않는다 — 좌표는 Settings › 실험 기능 › AI 확장 › Cowork 한 곳이고,
     // 전송은 Console의 AI Gateway가 담당한다. 요청마다 설정을 읽으므로 바꾼 직후의 조회부터 새 값을 본다.
     if (request.method === "GET" && parts.length === 3 && parts[2] === "options") {
-      const rows = coworkModelRows(context.enabledGatewayModels ?? []);
-      const models = rows.map((row) => row.id);
-      const efforts: readonly string[] = [...COWORK_EFFORTS];
-      const selection = resolveCoworkSelection(context.readExperiments?.() ?? DEFAULT_EXPERIMENT_SETTINGS, rows);
-      const effort = efforts.includes(selection.effort) ? selection.effort : DEFAULT_EXPERIMENT_AIDE_SELECTION.effort;
-      const payload: CoworkOptionsResponse = { models, efforts, defaultModel: selection.model, defaultEffort: effort, rows, fallback: selection.fallback };
+      const payload = coworkOptions(context.readExperiments?.() ?? DEFAULT_EXPERIMENT_SETTINGS, context.models);
       return json(response, 200, payload);
     }
     if (request.method === "POST" && parts.length === 3 && parts[2] === "sessions") { const b = await body(request); if (typeof b.entryId !== "string") return json(response, 400, { error: "invalid_entry_id" }); return json(response, 201, await service.describe(await service.create(context.workspaceId, b.entryId, identity(b)))); }

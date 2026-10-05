@@ -1,7 +1,8 @@
+import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../../ai-gateway/client/roster-fallback.js";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
-import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
+import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import {
   launchProviderCaption,
   launchProviderFromGroupId,
@@ -108,6 +109,16 @@ export function SessionCoordinateMenu({
     setOpen(true);
   }, [openRequest]);
 
+  // 열려 있는 동안 카탈로그가 바뀌면(이 탭의 Gateway 저장, 다른 탭·기기의 로스터 브로드캐스트) 다시 읽는다 —
+  // Quick Launch·Settings·Objectives 선택기처럼 열린 채로 따라간다.
+  const [catalogEpoch, setCatalogEpoch] = React.useState(0);
+  React.useEffect(() => {
+    if (!open) return;
+    const onChanged = () => setCatalogEpoch((epoch) => epoch + 1);
+    window.addEventListener(OPERATION_CATALOG_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(OPERATION_CATALOG_CHANGED_EVENT, onChanged);
+  }, [open]);
+
   // 열 때마다 카탈로그를 새로 읽는다. 설정에서 모델을 켜고 끈 직후에도 목록이 실제와 어긋나지 않는다.
   React.useEffect(() => {
     if (!open) return;
@@ -139,7 +150,7 @@ export function SessionCoordinateMenu({
         if (!abort.signal.aborted) setGroups([]);
       });
     return () => abort.abort();
-  }, [open]);
+  }, [open, catalogEpoch]);
 
   // 메뉴는 body 포털의 고정 위치다 — 패널은 확대 표면의 transform 조상 안에 있어 그 안의 fixed는 갇히고 잘린다.
   // 좌표는 패널 바닥에 앉으므로 아래 자리가 모자라면 위로 연다.
@@ -338,10 +349,12 @@ export function SessionCoordinateMenu({
               {(groups ?? []).map((group, index) => (
                 <div key={group.id} className="agent-chat-coord-pop-group" role="group" aria-label={group.caption}>
                   {index > 0 ? <div className="agent-chat-coord-pop-divider" role="separator" /> : null}
-                  <p className={`operation-launch-variant-caption agent-chat-coord-pop-caption${group.provider ? ` is-${group.provider}` : ""}`} aria-hidden="true">
-                    {group.provider ? <span className="operation-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(group.provider)}</span> : null}
-                    <span>{group.caption}</span>
-                  </p>
+                  {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice onOpened={() => setOpen(false)} /> : (
+                    <p className={`operation-launch-variant-caption agent-chat-coord-pop-caption${group.provider ? ` is-${group.provider}` : ""}`} aria-hidden="true">
+                      {group.provider ? <span className="operation-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(group.provider)}</span> : null}
+                      <span>{group.caption}</span>
+                    </p>
+                  )}
                   {group.rows.map((row) => {
                     const active = row.launch.model === target?.model;
                     // 지금 모델은 막지 않는다 — 그 창에 이미 들어앉은 대화다.

@@ -14,25 +14,39 @@ import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes
 // 이 스위트는 게이트웨이 카탈로그·런타임을 jsdom 수집에 끌어오지 않는다. 여기서 쓰는 세 표면만 세운다.
 vi.mock("@fleet-console/ai-gateway", () => ({
   AI_GATEWAY_ROUTE_SEGMENT: "ai-gateway",
-  resolveAiGatewaySelection: () => ({ models: [] }),
-  toClaudeGatewayModelId: (model: { id: string }) => `claude-gateway--${model.id}`,
 }));
 
+import { resolveRosterCoordinate, type ModelRoster } from "@fleet-console/sdk/models";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
-import { ANALYSIS_ERROR_CODES, buildAnalysisCatalog, isMessageBody, type AnalysisEvent } from "./analysis-types.js";
+import { ANALYSIS_ERROR_CODES, isMessageBody, type AnalysisEvent } from "./analysis-types.js";
 import { readProviderSession } from "../../execution/host/agent/provider-session.js";
 
 /**
- * 라우트 테스트가 쓰는 네이티브 별칭 로스터.
+ * 라우트 테스트가 쓰는 모델 로스터(`agent` 대상).
  *
- * 실제 native 별칭 로스터를 그대로 흘려보내면 이 스위트가 fleet-admiral의
- * models.json 내용에 묶인다 — 거기서 한 모델의 강도 사다리만 바뀌어도 분석가와 무관한 이유로
- * 여기가 깨진다. 강도를 지원하는 것과 아닌 것을 하나씩 둬서 두 갈래를 다 덮는다.
+ * 실제 Gateway 카탈로그를 그대로 흘려보내면 이 스위트가 models.json 내용에 묶인다 — 거기서 한 모델의
+ * 강도 사다리만 바뀌어도 분석가와 무관한 이유로 여기가 깨진다. 강도를 지원하는 것과 아닌 것을 하나씩 둬서
+ * 두 갈래를 다 덮는다. wire id는 정준 id에 접두를 붙여 세션이 정준 id 대신 그것을 받는지 본다.
  */
-const ANALYST_NATIVE_MODELS = [
-  { modelId: "sonnet", name: "Claude Sonnet", effort: { supported: true, levels: ["low", "high"], default: "medium" } },
-  { modelId: "fixed-effort", name: "Fixed Effort", effort: { supported: false } },
-] as const;
+const ANALYST_ROSTER: ModelRoster = [{
+  id: "gateway:claude",
+  label: "Claude",
+  rows: [
+    { id: "sonnet", label: "Sonnet", launch: { model: "sonnet" }, effortAxis: ["low", "high"], chips: [
+      { id: "low", label: "LOW", launch: { model: "sonnet", effort: "low" } },
+      { id: "high", label: "HIGH", launch: { model: "sonnet", effort: "high" } },
+    ] },
+    { id: "fixed-effort", label: "Fixed Effort", launch: { model: "fixed-effort" } },
+  ],
+}];
+
+const ANALYST_MODELS = {
+  roster: () => ANALYST_ROSTER,
+  resolve: (stored: { model?: string | null; effort?: string | null }, _target: "launch" | "agent", fallback?: { model?: string | null; effort?: string | null }) => {
+    const resolved = resolveRosterCoordinate(ANALYST_ROSTER, stored, fallback);
+    return { ...resolved, wireModel: `wire:${resolved.model}` };
+  },
+};
 
 /** 시작 본문 — 좌표는 서버가 Settings에서 정하므로 본문은 출력 언어뿐이다. */
 const START_SELECTION = {} as const;
@@ -41,7 +55,7 @@ type AnalysisRouteDeps = NonNullable<Parameters<typeof registerAnalysisRoutes>[1
 
 function registerAnalysis(router: { readonly ctx: unknown }, deps: Partial<AnalysisRouteDeps> = {}): void {
   registerAnalysisRoutes(router.ctx as never, {
-    nativeModels: (() => [...ANALYST_NATIVE_MODELS]) as never,
+    models: ANALYST_MODELS,
     ...deps,
   });
 }
@@ -100,7 +114,7 @@ describe("Session Analyst server contract", () => {
     expect(sessions).toEqual([]);
     await router.call("POST", "/api/v1/analysis/op/start", { language: "ko" });
     expect(router.responses.at(-1)).toEqual({ status: 200, body: { started: true } });
-    expect(sessions).toEqual([{ model: "fixed-effort", effort: undefined }]);
+    expect(sessions).toEqual([{ model: "wire:fixed-effort", effort: undefined }]);
 
     // 설정의 모델이 목록에 없으면(꺼진 Gateway 모델) Sonnet으로 내려가고, 강도는 그 모델의 사다리 안에서 산다.
     experiments = { ...experiments, analystModel: "claude-gateway--off-model" };
@@ -258,8 +272,8 @@ describe("Session Analyst server contract", () => {
   it("rejects a malicious Origin through the shared gate for every analysis action", async () => {
     const router = createRouterHarness(true);
     // 거부된 요청은 아무 일도 하지 않아야 한다. 설정을 읽었다면 경계 밖에서 일을 시작한 것이다.
-    const readAiGatewaySettings = vi.fn(() => ({}) as never);
-    registerAnalysis(router, { readAiGatewaySettings });
+    const roster = vi.fn(ANALYST_MODELS.roster);
+    registerAnalysis(router, { models: { ...ANALYST_MODELS, roster } });
     const requests = [
       ["GET", "/api/v1/analysis/catalog"],
       ["GET", "/api/v1/analysis/stream"],
@@ -278,7 +292,7 @@ describe("Session Analyst server contract", () => {
 
     expect(router.responses).toHaveLength(requests.length);
     expect(router.responses).toEqual(requests.map(() => ({ status: 403, body: { error: { code: "analysis_catalog_invalid", message: "Analysis request is not accepted by this host." } } })));
-    expect(readAiGatewaySettings).not.toHaveBeenCalled();
+    expect(roster).not.toHaveBeenCalled();
   });
 });
 

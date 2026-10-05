@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@fleet-console/ai-gateway": "workspace:*",
     "@fleet-console/infra": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
     "@fleet-console/sdk": "workspace:*",

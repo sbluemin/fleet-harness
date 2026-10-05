@@ -408,7 +408,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-row:has(> .objectives-launch) > .objectives-row-main { min-width: max-content; }
 .objectives-row > .objectives-launch:not(.is-glyph) { flex: 0 1 auto; min-width: 0; }
 .objectives-row > .objectives-launch > * { flex: none; }
-.objectives-row > .objectives-launch > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-row > .objectives-launch > :is(.objectives-launch-model, .fc-coord-trigger-model) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-row.is-expanded .objectives-row-main { color: var(--text-primary); }
 /* 시작 — 세부 창의 마지막 행동. brass 워시 한 장, 낱말은 굵게, 부제는 dim, 오른쪽 끝에 화살. 일하는 동안 같은 자리가 「중단」. */
 /* 시작 버튼은 스크롤 영역 아래에 놓되 별도 배경 띠 없이 세부 표면과 이어진다. */
@@ -553,10 +553,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-graph-tools { position: absolute; top: 4px; right: 5px; z-index: 1; display: inline-flex; align-items: center; gap: 4px; }
 .objectives-graph-frame .objectives-dag-box { padding-top: 30px; }
 /* 지휘관 모델·강도·표면 — 한 줄의 글. 누르면 캔버스 우클릭 메뉴와 같은 문법의 메뉴가 뜬다(글래스 언더레이·모노 xs·브라스 활성). */
-.objectives-launch { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
-.objectives-launch:hover, .objectives-launch[aria-expanded="true"] { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 10%, transparent); }
-.objectives-launch:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.objectives-launch.is-locked { cursor: default; opacity: 0.75; }
 /* 트리거·구성원 줄의 공급자 글리프 — 메뉴의 칩 상자 없이 글리프 자체만 공급자 톤으로 칠한다. */
 .objectives-launch-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
 .operation-launch-provider-glyph.objectives-launch-provider { border: 0; background: none; }
@@ -564,7 +560,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-launch-model { color: var(--text-primary); }
 .objectives-launch-dot { color: var(--text-tertiary); }
 .objectives-launch-effort { color: var(--brass-ink); text-transform: uppercase; }
-.objectives-launch-caret { color: var(--text-tertiary); line-height: 1; margin-top: -3px; }
 .objectives-menu {
   position: fixed;
   z-index: 60;
@@ -579,40 +574,22 @@ span.objectives-row-main { cursor: default; }
   max-height: min(520px, calc(100vh - 24px)); overflow-y: auto; scrollbar-width: none;
 }
 .objectives-menu::-webkit-scrollbar { display: none; }
-.objectives-menu-group { display: flex; flex-direction: column; }
 .objectives-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
 .objectives-menu-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 7px var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; text-align: left; cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
 .objectives-menu-item:hover, .objectives-menu-item:focus-visible { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 12%, transparent); outline: none; }
 .objectives-menu-item.is-active { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 8%, transparent); }
-.objectives-menu-surface { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--text-tertiary); border-radius: var(--radius-xs); }
-.objectives-menu-surface:hover { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 14%, transparent); }
-.objectives-menu-surface svg { width: 13px; height: 13px; }
 .objectives-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-menu-gauge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 3px 2px 5px; border: 1px solid transparent; border-radius: var(--radius-pill); color: var(--text-tertiary); }
-.objectives-menu-item.is-active .objectives-menu-gauge { border-color: color-mix(in oklch, var(--brass) 30%, transparent); }
-.objectives-menu-gauge svg { width: 14px; height: 10px; }
-.objectives-menu-effort { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
-.objectives-menu-item.is-active .objectives-menu-effort, .objectives-menu-back .objectives-menu-effort { color: var(--brass-ink); }
 .objectives-menu-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); }
 .objectives-menu-chev svg { width: 10px; height: 10px; }
 /* 2단계 머리 — ‹ 는 왼쪽에 두고, 글리프와 모델명은 가운데로 모은다. 강도 낱말은 아래 트랙이 말하므로 여기 두지 않는다. */
-.objectives-menu-back { color: var(--text-primary); position: relative; justify-content: center; padding-left: 30px; padding-right: 30px; gap: 8px; }
-.objectives-menu-back .objectives-menu-chev { position: absolute; left: var(--space-2); top: 50%; transform: translateY(-50%); }
-.objectives-menu-back .objectives-menu-label { flex: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-menu-back .objectives-menu-effort-word { flex: none; }
 .objectives-menu-item .objectives-menu-label { padding-left: 4px; }
-.objectives-menu-provider { margin-left: 2px; }
-.objectives-menu-provider.is-claude, .objectives-launch-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
-.objectives-menu-provider.is-codex, .objectives-launch-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
-.objectives-menu-provider.is-xai, .objectives-launch-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
-.objectives-menu-provider.is-cursor, .objectives-launch-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.objectives-menu-provider.is-opencode, .objectives-launch-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
-.objectives-menu-provider.is-antigravity, .objectives-launch-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
-.objectives-menu-track { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px var(--space-2) 10px; }
-.objectives-menu-track .effort-track-value { display: none; }
-.objectives-menu-effort-word { font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass-ink); }
+.objectives-launch-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
+.objectives-launch-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
+.objectives-launch-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
+.objectives-launch-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.objectives-launch-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+.objectives-launch-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .objectives-menu-divider { height: 1px; margin: var(--space-1) var(--space-1); background: var(--surface-rim); }
-.objectives-menu-empty { padding: 6px var(--space-2); font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-tertiary); }
 
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
 .objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
@@ -676,7 +653,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-meta > * { min-width: 0; max-width: 100%; }
 .objectives-member-meta .objectives-launch { margin: 0; }
 .objectives-member-meta .objectives-launch > * { flex: none; }
-.objectives-member-meta .objectives-launch > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-member-meta .objectives-launch > :is(.objectives-launch-model, .fc-coord-trigger-model) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-member-status { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-ui); color: var(--text-tertiary); }
 .objectives-member-subagents { color: var(--text-secondary); }
 .objectives-member-slot { display: contents; }
@@ -825,18 +802,15 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-mission-sub .objectives-launch-provider svg { width: 12px; height: 12px; }
 
 /* 임무 배정 — 글리프 트리거와 메뉴의 특별 항목. 배정 낱말은 담당 줄과 같은 자리, 조금 더 dim. */
-.objectives-launch.is-glyph { padding: 0; margin: 0; width: 22px; height: 22px; display: inline-grid; place-items: center; color: var(--text-tertiary); border-color: transparent; }
-.objectives-launch.is-glyph:hover, .objectives-launch.is-glyph[aria-expanded="true"] { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .objectives-mission-add .objectives-launch.is-glyph { margin-left: auto; }
 /* 선택 방식(라우팅·지휘관과 같게·라우팅 결과 쓰기)과 그 설명은 사람의 말이다 — 모노 글꼴과 자간에서는 한글 낱말 사이가 한 칸 더 벌어지므로 본문 글꼴로 쓴다. */
-.objectives-menu-extra .objectives-menu-label { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; font-family: var(--font-ui); letter-spacing: 0; }
 .objectives-menu-hint { font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0; text-transform: none; font-family: var(--font-ui); }
 /* 서브에이전트 허용 — 라디오가 아닌 체크. 보조 글은 두 줄까지 감싸고 자르지 않는다. 목록·강도 단계가 같은 푸터를 쓴다. */
 .objectives-menu-check { align-items: flex-start; }
 .objectives-menu-check-copy { display: grid; gap: 2px; flex: 1; min-width: 0; }
-.objectives-menu-check .objectives-menu-label,
-.objectives-menu-check .objectives-menu-hint { white-space: normal; overflow: visible; text-overflow: unset; padding-left: 0; }
-.objectives-menu-check .objectives-menu-hint { line-height: 1.45; min-height: 2.9em; }
+.objectives-menu-check :is(.objectives-menu-label, .fc-coord-menu-label),
+.objectives-menu-check :is(.objectives-menu-hint, .fc-coord-menu-hint) { white-space: normal; overflow: visible; text-overflow: unset; padding-left: 0; }
+.objectives-menu-check :is(.objectives-menu-hint, .fc-coord-menu-hint) { line-height: 1.45; min-height: 2.9em; }
 .objectives-menu-box { flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px; margin-top: 2px; border: 1px solid var(--surface-rim-strong); border-radius: 3px; }
 .objectives-menu-check[aria-checked="true"] .objectives-menu-box { border-color: var(--brass); background: var(--brass); }
 .objectives-menu-check[aria-checked="true"] .objectives-menu-box::after { content: ""; width: 6px; height: 3px; margin-top: -1px; border-left: 1.5px solid var(--text-on-brass); border-bottom: 1.5px solid var(--text-on-brass); transform: rotate(-45deg); }
@@ -1380,7 +1354,6 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
    표식(라우팅·폴백)이 말한다 — 라우팅은 중립 테두리, 폴백은 warn(상태 채널). 바뀌지 않았으면 coral 말풍선이다. */
 .objectives-menu-head { display: grid; gap: 2px; margin: 0 0 4px; padding: 6px var(--space-2) 8px; border-bottom: 1px solid var(--hairline); font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); }
 .objectives-menu-head b { color: var(--text-primary); font-weight: var(--weight-medium); }
-.objectives-menu-caption.objectives-menu-note { padding: 2px var(--space-2) 4px 14px; font-family: inherit; letter-spacing: 0; text-transform: none; color: var(--text-tertiary); }
 .objectives-menu-item:disabled { cursor: default; opacity: var(--control-disabled-opacity, 0.45); }
 .objectives-menu-item:disabled:hover { background: transparent; color: var(--text-secondary); }
 .objectives-member-via { flex: none; padding: 1px 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font: var(--weight-medium) var(--t-2xs)/1.3 var(--font-ui); }
@@ -1413,7 +1386,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   .objectives-member:has(> .objectives-member-bubble) > .objectives-member-meta { flex-wrap: nowrap; }
   .objectives-member:has(> .objectives-member-bubble) > .objectives-member-meta > .objectives-member-status { display: none; }
   /* 칩도 그동안 강도를 접어 모델 이름에 자리를 준다 — 강도는 칩의 title 에 남는다. */
-  .objectives-member:has(> .objectives-member-bubble) > .objectives-member-meta :is(.objectives-launch-dot, .objectives-launch-effort) { display: none; }
+  .objectives-member:has(> .objectives-member-bubble) > .objectives-member-meta :is(.objectives-launch-dot, .objectives-launch-effort, .fc-coord-trigger-dot, .fc-coord-trigger-effort) { display: none; }
   .objectives-member:has(> .objectives-member-bubble) > .objectives-member-remove { justify-self: end; }
   .objectives-member-bubble::before { top: 50%; right: auto; left: -4px; margin-top: -3px; border-top: 0; border-bottom: 1px solid; }
   .objectives-member-bubble:not(.is-failed, .is-applied) :is(.objectives-member-bubble-when, .objectives-member-bubble-arrow, .objectives-member-bubble-effort) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1446,7 +1419,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-routing-pick .objectives-launch { margin: 0; min-width: 0; max-width: 100%; white-space: nowrap; }
 .objectives-routing-pick .objectives-launch > *, .objectives-routing-words > * { flex: none; }
 .objectives-routing-pick .objectives-launch > .objectives-routing-words, .objectives-routing-pick > .objectives-routing-words { flex: 0 1 auto; max-width: 100%; }
-.objectives-routing-pick .objectives-launch > .objectives-launch-model, .objectives-routing-words > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-routing-pick .objectives-launch > :is(.objectives-launch-model, .fc-coord-trigger-model), .objectives-routing-words > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-routing-words { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 0; font: var(--weight-regular) var(--t-xs)/1.4 var(--font-ui); letter-spacing: 0.04em; color: var(--text-secondary); white-space: nowrap; }
 .objectives-routing-why { grid-area: why; justify-self: start; text-align: left; min-width: 0; font-size: var(--t-xs); line-height: 1.4; color: var(--text-tertiary); overflow-wrap: anywhere; }
 .objectives-routing-why.is-warn { color: var(--warn-ink); }
@@ -1660,7 +1633,7 @@ html[data-view-mode="mobile"] .objectives-commodore-scrim { display: none; }
 }
 .objectives-commodore-select > .objectives-launch:hover, .objectives-commodore-select > .objectives-launch[aria-expanded="true"] { border-color: var(--control-hover-rim); background: var(--control-field); }
 .objectives-commodore-select > .objectives-launch:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
-.objectives-commodore-select .objectives-launch-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-commodore-select :is(.objectives-launch-model, .fc-coord-trigger-model) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-commodore-close {
   display: grid; place-items: center; flex: none;
   width: 26px; height: 26px; padding: 0;

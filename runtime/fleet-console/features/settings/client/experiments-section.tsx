@@ -1,7 +1,7 @@
-import { ExperimentalBadge, ModelPicker, SettingsCard, SettingsRow, SettingsToggle, isComputerUseBackendId, useModelPickerOptions } from "@fleet-console/sdk/settings/browser";
+import { DEFAULT_EXPERIMENT_AIDE_SELECTION, ExperimentalBadge, SettingsCard, SettingsRow, SettingsToggle, isComputerUseBackendId, isExperimentEffort } from "@fleet-console/sdk/settings/browser";
 import { Select } from "@fleet-console/sdk/react/browser";
-import { EXPERIMENT_EFFORTS } from "@fleet-console/sdk/settings/browser";
-import type { ConsoleExperimentSettings, ExperimentAideId, ExperimentEffort } from "@fleet-console/sdk/settings";
+import { ModelCoordinatePicker } from "@fleet-console/sdk/components/model-coordinate-picker";
+import type { ConsoleExperimentSettings, ExperimentAideId } from "@fleet-console/sdk/settings";
 
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { BACKENDS, ComputerUseRow, useComputerUseStatus } from "./computer-use-row.js";
@@ -11,8 +11,51 @@ import { MobileIcon, type MobileIconName } from "../../../core/client/src/chrome
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
 import type { CoreMessageKey } from "../../../core/client/src/i18n/messages/index.js";
-import { collectExperimentModelOptions } from "../../../core/client/src/integration/experiment-model-options.js";
+import { useModelRoster } from "../../ai-gateway/client/model-roster-store.js";
 import type { GlobalSettingsState } from "../../../core/client/src/integration/types.js";
+
+/**
+ * 보조 AI 한 좌석의 모델·강도 — Console 공유 선택기 하나로 고른다. 선택지는 모델 로스터(Agent SDK 대상)이고 강도는
+ * 고른 모델이 내놓는 사다리 전체다. 로스터 밖 저장값은 「꺼짐」으로 남아 보이고, 다시 저장하기 전까지 고쳐 쓰지 않는다.
+ * 저장은 정준 id로 한다 — 옛 표기(`claude-gateway--…`)는 다음 저장 때 접힌다.
+ */
+function AideCoordinate({ aide, experiments, saving, title, onSave }: {
+  readonly aide: ExperimentAideId;
+  readonly experiments: ConsoleExperimentSettings;
+  readonly saving: boolean;
+  readonly title: string;
+  readonly onSave: (next: ConsoleExperimentSettings) => void;
+}) {
+  const t = useT();
+  const roster = useModelRoster("agent");
+  const modelField = `${aide}Model` as const;
+  const effortField = `${aide}Effort` as const;
+  return (
+    <ModelCoordinatePicker
+      roster={roster}
+      value={{ model: experiments[modelField], effort: experiments[effortField] }}
+      fallback={DEFAULT_EXPERIMENT_AIDE_SELECTION}
+      disabled={saving}
+      onChange={(next) => onSave({
+        ...experiments,
+        ...(next.model ? { [modelField]: next.model } : {}),
+        // 강도를 받지 않는 모델을 고르면 강도는 그대로 둔다 — 다시 강도 있는 모델로 돌아오면 그 값이 산다.
+        ...(isExperimentEffort(next.effort) ? { [effortField]: next.effort } : {}),
+      })}
+      labels={{
+        menu: t("settings.experiments.modelAria", { feature: title }),
+        effort: t("settings.experiments.effortAria", { feature: title }),
+        auto: t("settings.models.auto"),
+        back: t("settings.models.back"),
+        loading: t("settings.models.loading"),
+        empty: t("settings.models.empty"),
+        off: t("settings.models.off"),
+        fallback: t("settings.models.fallback"),
+      }}
+      trigger={{ variant: "field" }}
+    />
+  );
+}
 
 interface AideRow {
   readonly id: ExperimentAideId;
@@ -36,7 +79,6 @@ export function ExperimentsSection({ state, saving }: { readonly state: GlobalSe
 function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
   const t = useT();
   const experiments = state.experiments;
-  const options = useModelPickerOptions(collectExperimentModelOptions);
   const save = (next: ConsoleExperimentSettings) => void setGlobalSettingsField("experiments", next);
 
   return (
@@ -45,38 +87,20 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
         {t("settings.experiments.aiCard")}
         <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
       </h3>
-      {AIDE_ROWS.map((row) => {
-        const modelField = `${row.id}Model` as const;
-        const effortField = `${row.id}Effort` as const;
-        return (
-          <div className="global-settings-row experiments-row" key={row.id}>
-            <div className="global-settings-row-text">
-              <p className="global-settings-resp-title">
-                {t(row.titleKey)}
-                <SettingsHelp title={t(row.titleKey)}>{t(row.helpKey)}</SettingsHelp>
-              </p>
-            </div>
-            <div className="experiments-row-controls">
-              <ModelPicker
-                value={experiments[modelField]}
-                options={options}
-                disabled={saving}
-                label={t("settings.experiments.modelAria", { feature: t(row.titleKey) })}
-                onChange={(value) => save({ ...experiments, [modelField]: value })}
-                effort={{
-                  value: experiments[effortField],
-                  levels: EXPERIMENT_EFFORTS,
-                  ariaLabel: t("settings.experiments.effortAria", { feature: t(row.titleKey) }),
-                  labelOf: (level) => t(`settings.experiments.effort.${level as ExperimentEffort}`),
-                  onChange: (next) => save({ ...experiments, [effortField]: next as ExperimentEffort }),
-                }}
-              />
-            </div>
+      {AIDE_ROWS.map((row) => (
+        <div className="global-settings-row experiments-row" key={row.id}>
+          <div className="global-settings-row-text">
+            <p className="global-settings-resp-title">
+              {t(row.titleKey)}
+              <SettingsHelp title={t(row.titleKey)}>{t(row.helpKey)}</SettingsHelp>
+            </p>
           </div>
-        );
-      })}
-      {/* 자율 운영 — 켬/끔뿐이다. 사령관의 모델·강도는 사이드바 사령관 시트의 설정에서 Theater 마다 고른다. 저장된 commodoreModel·Effort 는
-          시트 값이 없을 때의 기본 좌표로 남는다. */}
+          <div className="experiments-row-controls">
+            <AideCoordinate aide={row.id} experiments={experiments} saving={saving} title={t(row.titleKey)} onSave={save} />
+          </div>
+        </div>
+      ))}
+      {/* 자율 운영 — 켬/끔. 사령관의 모델·강도는 Theater 마다 사령관 시트에서 고르고, 그 값이 없을 때 쓰는 기본 좌표는 아래 행이다. */}
       <div className="global-settings-row experiments-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
@@ -91,6 +115,17 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
             ariaLabel={t("settings.experiments.commodore.title")}
             onChange={(next) => save({ ...experiments, commodore: next })}
           />
+        </div>
+      </div>
+      <div className="global-settings-row experiments-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            {t("settings.experiments.commodoreCoordinate.title")}
+            <SettingsHelp title={t("settings.experiments.commodoreCoordinate.title")}>{t("settings.experiments.commodoreCoordinate.help")}</SettingsHelp>
+          </p>
+        </div>
+        <div className="experiments-row-controls">
+          <AideCoordinate aide="commodore" experiments={experiments} saving={saving} title={t("settings.experiments.commodoreCoordinate.title")} onSave={save} />
         </div>
       </div>
       <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
@@ -119,7 +154,6 @@ const AIDE_ICONS: Partial<Record<ExperimentAideId, MobileIconName>> = { cowork: 
 function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
   const t = useT();
   const experiments = state.experiments;
-  const options = useModelPickerOptions(collectExperimentModelOptions);
   const computerUse = useComputerUseStatus(experiments.computerUse, experiments.computerUseBackend);
   const backend = experiments.computerUseBackend;
   const computerUseReady = computerUse.status?.backend === backend && computerUse.status.supported && !computerUse.unavailable && computerUse.status.installation === "available";
@@ -144,29 +178,11 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
   );
   return (
     <SettingsCard title={<>{t("settings.experiments.aiCard")}<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge></>}>
-      {AIDE_ROWS.map((row) => {
-        const modelField = `${row.id}Model` as const;
-        const effortField = `${row.id}Effort` as const;
-        return (
-          <SettingsRow key={row.id} label={t(row.titleKey)} hint={t(row.helpKey)} icon={<MobileIcon name={AIDE_ICONS[row.id] ?? "spark"} />}>
-            <ModelPicker
-              value={experiments[modelField]}
-              options={options}
-              disabled={saving}
-              label={t("settings.experiments.modelAria", { feature: t(row.titleKey) })}
-              onChange={(value) => saveExperiments({ ...experiments, [modelField]: value })}
-              effort={{
-                value: experiments[effortField],
-                levels: EXPERIMENT_EFFORTS,
-                // On a phone this names the effort tabs inside the model popup, under the aide's own title.
-                ariaLabel: t("chrome.quickLaunch.mobile.effort"),
-                labelOf: (level) => t(`settings.experiments.effort.${level as ExperimentEffort}`),
-                onChange: (next) => saveExperiments({ ...experiments, [effortField]: next as ExperimentEffort }),
-              }}
-            />
-          </SettingsRow>
-        );
-      })}
+      {AIDE_ROWS.map((row) => (
+        <SettingsRow key={row.id} label={t(row.titleKey)} hint={t(row.helpKey)} icon={<MobileIcon name={AIDE_ICONS[row.id] ?? "spark"} />}>
+          <AideCoordinate aide={row.id} experiments={experiments} saving={saving} title={t(row.titleKey)} onSave={saveExperiments} />
+        </SettingsRow>
+      ))}
       <SettingsRow label={t("settings.experiments.commodore.title")} hint={t("settings.experiments.commodore.mobileHelp")} icon={<PennantGlyph />}>
         <SettingsToggle
           checked={experiments.commodore}
@@ -174,6 +190,9 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
           ariaLabel={t("settings.experiments.commodore.title")}
           onChange={(next) => saveExperiments({ ...experiments, commodore: next })}
         />
+      </SettingsRow>
+      <SettingsRow label={t("settings.experiments.commodoreCoordinate.title")} hint={t("settings.experiments.commodoreCoordinate.help")} icon={<PennantGlyph />}>
+        <AideCoordinate aide="commodore" experiments={experiments} saving={saving} title={t("settings.experiments.commodoreCoordinate.title")} onSave={saveExperiments} />
       </SettingsRow>
       <SettingsRow label={t("settings.computerUse.title")} hint={computerUseHint} icon={<MobileIcon name="layout" />} disabled={computerUseLocked}>
         <SettingsToggle

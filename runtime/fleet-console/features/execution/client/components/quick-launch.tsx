@@ -1,3 +1,4 @@
+import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type CSSProperties } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -1565,7 +1566,10 @@ export function QuickLaunch() {
   // 업로드 중인 첨부도 같은 계약으로 잠근다(submit의 가드와 짝).
   const canSubmit = promptLength > 0 && !overLimit && !submitting && !pluginAddressUnavailable && !deckHasRows && !commandDeckHasRows && !attachmentsUploading
     && (mentionTarget !== null || (!!theaterId && !!target && !!selectedRow));
-  const modelLabel = selectedRow?.label ?? t("chrome.quickLaunch.modelUnset");
+  // 로스터가 비어 최후 폴백 행으로 서면 칩에도 그 사실을 붙인다 — 골라 둔 모델로 도는 것처럼 보이면 안 된다.
+  const fallbackBadge = t("settings.models.fallback");
+  const onFallbackRow = selectedRow !== null && groups.some((group) => isRosterFallbackGroup(group.id) && group.rows.includes(selectedRow));
+  const modelLabel = selectedRow ? (onFallbackRow ? `${selectedRow.label} · ${fallbackBadge}` : selectedRow.label) : t("chrome.quickLaunch.modelUnset");
   const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
   // 거절은 접힘보다 우선한다 — 사유를 실은 바가 시선을 뗐다고 접히면, 클릭 한 번으로 사라지는
   // 에러가 된다. 상한 초과 경고도 같은 이유로 바를 펼친 채 붙잡는다.
@@ -2208,7 +2212,7 @@ export function QuickLaunch() {
             >
               {groups.map((group) => (
                 <div key={group.id} className="quick-launch-pop-group">
-                  {(() => {
+                  {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice onOpened={closePopover} /> : (() => {
                     const provider = launchProviderFromGroupId(group.id);
                     return (
                       <p className={`quick-launch-pop-band${provider ? ` is-${provider}` : ""}`}>
