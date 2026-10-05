@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { ApiError, applyConsoleUpdate, checkConsoleUpdate } from "../../integration/api.js";
-import { beginUpdateWatch, markUpdateDelegated } from "../../../../../features/updates/client/update-progress-store.js";
+import { ApiError, ConsoleUpdateApplyFailure, applyConsoleUpdate, checkConsoleUpdate } from "../../integration/api.js";
+import { beginUpdateWatch, markUpdateDelegated, reportUpdateApplyFailure } from "../../../../../features/updates/client/update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
@@ -795,6 +795,14 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdat
       else beginUpdateWatch(latestVersion);
       onStarted();
     } catch (error) {
+      if (error instanceof ConsoleUpdateApplyFailure) {
+        // Console은 멈추지 않고 거절했다. 사유는 상단 실패 배너가 host 문구 그대로 말한다 — 행은 다시 누를 수 있게
+        // 돌아가고, 메뉴는 닫아 배너를 가리지 않는다.
+        reportUpdateApplyFailure(error.progress);
+        setApplyState("idle");
+        onStarted();
+        return;
+      }
       const code = error instanceof ApiError ? error.message : "network_error";
       setErrorCode(code);
       if (code === "host_restart_confirmation_required") {
