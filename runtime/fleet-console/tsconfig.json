@@ -34,6 +34,9 @@
       ],
       "@fleet-console/protocol/desktop": [
         "protocol/desktop/index.ts"
+      ],
+      "@fleet-console/protocol/lifecycle": [
+        "protocol/lifecycle/index.ts"
       ]
     }
   },

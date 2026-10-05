@@ -9,7 +9,8 @@ import { consoleReleaseTarballDir, createGlobalPackageUpdater, downloadVerifiedC
 import type { ConsoleTarballDownload, GlobalPackageManagerCommand } from "@fleet-console/updates";
 import { getFleetDataDir } from "@fleet-console/infra/data-dir";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
-import { CONSOLE_SERVE_EXIT_LOCK_HELD, DESKTOP_RESOURCE_ROOT_MARKER, identifyConsoleLockOwner, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
+import { DESKTOP_RESOURCE_ROOT_MARKER, identifyConsoleLockOwner, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD } from "@fleet-console/protocol/lifecycle";
 import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
 import { CONSOLE_UPDATE_PROGRESS_FILE, writeConsoleUpdateProgress } from "./update-progress.js";

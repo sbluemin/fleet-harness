@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CONSOLE_SERVE_EXIT_LOCK_HELD } from "@fleet-console/protocol/desktop";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
 import { resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";

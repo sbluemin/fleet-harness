@@ -39,6 +39,7 @@ import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { CONSOLE_LIFECYCLE_WIRE } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
 import { createBrowserRouter } from "../../../features/browser/host/routes.js";
@@ -74,6 +75,7 @@ import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaun
 import { createFleetPluginHost, createPluginClientAssets } from "../plugin-host/plugin-host.js";
 import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopFullscreenRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopFullscreenSnapshot, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
 import { readDesktopProtocolEnvironment } from "../shell/desktop-protocol.js";
+import { createConsoleServeLifecycle, type ConsoleServeLifecycle } from "./serve-lifecycle.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "../shell/system-fonts.js";
 import { buildApiCatalog, type ApiCatalogEntry } from "../transport/api-catalog.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterInfo } from "../transport/console-contract-types.js";
@@ -102,6 +104,11 @@ export interface ConsoleServerDeps {
   readonly systemFonts?: SystemFontsService;
   /** 테스트가 Auto 포트 후보를 결정적으로 주입하는 경계. 반환값은 [min, maxExclusive) 범위다. */
   readonly remoteRandomInt?: (min: number, maxExclusive: number) => number;
+  /**
+   * The instance's lifecycle state owner. `serve` passes the one its signal handlers and deadline share; without it the
+   * server keeps its own, so every stop request still runs one shutdown.
+   */
+  readonly lifecycle?: ConsoleServeLifecycle;
 }
 
 export interface ConsoleServer {
@@ -1223,7 +1230,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     return { plugins: result };
   }
-  let ready = false;
+  const lifecycle = deps.lifecycle ?? createConsoleServeLifecycle();
+  const isReady = () => lifecycle.state() === "ready";
   let server: http.Server | null = null;
   let loopbackServer: http.Server | null = null;
   let lockHandle: ConsoleLockHandle | null = null;
@@ -1597,7 +1605,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     // bind는 lock의 실제 endpoint를 정할 뿐이다. 소유권·복원·활성화가 끝나기 전에는 요청을 실행하지 않는다.
-    if (!ready) {
+    if (!isReady()) {
       if (pathname === "/api/v1/health") handleHealth(req, res);
       else writeJson(res, 503, { error: "console_starting" });
       return;
@@ -1777,7 +1785,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const token = handle?.payload.token;
     if (handle && token && req.headers.authorization === `Bearer ${token}`) {
       const payload = handle.payload;
-      if (!ready) {
+      if (!isReady()) {
         writeJson(res, 503, { error: "console_starting", pid: payload.pid });
         return;
       }
@@ -1795,6 +1803,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         version: payload.version,
         ...(payload.owner ? { owner: payload.owner } : {}),
         workspaceCount: operations.list().length,
+        lifecycleWire: CONSOLE_LIFECYCLE_WIRE,
       };
       writeJson(res, 200, body);
       return;
@@ -2020,16 +2029,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  /** An accepted update stops this Console from inside: the same stop request a signal makes, with the same deadline. */
   async function stopAfterAcceptedUpdateApply(): Promise<void> {
     try {
-      await stopServer();
+      await lifecycle.requestStop("update");
     } catch (error) {
       console.warn(`[fleet-console] Update apply shutdown failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   async function cleanupAfterFailedStart(): Promise<void> {
-    ready = false;
     operationArchive.dispose();
     deletionCoordinator.dispose();
     const current = server;
@@ -2051,10 +2060,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     updateCheck.stop?.();
     unsubscribeUpdateCheckChanges?.();
     unsubscribeUpdateCheckChanges = null;
-    if (consoleResourcesDisposed) {
-      currentLock?.release();
-      return;
-    }
+    // The single shutdown and a failed start each run this once and release the lock at its end; nothing else releases it.
+    if (consoleResourcesDisposed) return;
     consoleResourcesDisposed = true;
     // 원격 리스너를 남겨 두면 콘솔이 내려간 뒤에도 포트가 열려 있는 것처럼 보인다.
     const closingRemote = remoteServer;
@@ -2567,7 +2574,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function stopServer(): Promise<void> {
-    ready = false;
     const current = server;
     const currentLoopback = loopbackServer;
     const currentLock = lockHandle;
@@ -2594,6 +2600,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await disposeConsoleResources(currentLock);
     }
   }
+  lifecycle.setShutdown(stopServer);
 
   const { handleTheaterFoldersList, handleTheaterFolderGrants, handleObserverTheaters, handleObserverTheaterItem, handleDeferredDeletionRestore } = createWorkspaceRoutes({ theaters, folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson, listTheaterInfos, toTheaterInfo, publishTheaterLifecycle, persistDurableState, migrateLegacyCaptureState });
 
@@ -2609,82 +2616,87 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     host,
     port,
     async start(lockPaths) {
-      if (ready && lockHandle) return lockHandle.payload.endpoint;
-      try {
-        const result = await listenConsolePort(resolveConsolePortListenPlan());
-        server = result.srv;
-        loopbackServer = result.localLoopbackServer;
-        portState = result.portState;
-        // 실제 포트만 먼저 확보한다. 패자는 제품 상태를 읽어 복원하거나 플러그인을 실행하기 전에 끝난다.
-        lockHandle = await lock.acquireLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
-        activeLockFile = lockPaths.lockFile;
-        activeEndpoint = result.endpoint;
-        // 워크스페이스 승계·옛 렌더 트리 회수·설정 기본값 확정도 durable writer의 일이다.
-        adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
-        reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
-        consoleSettingsStore.load();
-        await rehydrateDurableState();
-        // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
-        // 같은 루프백 전용 불투명 경로이고, 리스너가 뜬 뒤에야 주소가 정해지므로 런치가 그때 묻는다.
-        const agentCliPlugin = renderConsoleAgentCliPlugin({ transport: mcpHttp.transport });
-        // launch 프롬프트 파일은 이 lock 도메인의 자리에 둔다. 지난 프로세스가 남긴 것의 회수는 lock을 쓴 뒤에만 한다.
-        const launchPromptDirectories = createLaunchPromptNamespace({ lockFile: lockPaths.lockFile });
-        const execution = await startConsoleExecution(createConsoleRuntimeContext({
-          consoleControl,
-          agentCallRedirect: (operationId) => {
-            for (const reason of agentCallRedirects.values()) {
-              const answer = reason(operationId);
-              if (answer !== null) return answer;
-            }
-            return null;
-          },
-          host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, requestLifetime, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
-          dataDir: durablePaths.dir,
-          recordFailure,
-          legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
-          agentOptions,
-          agentCliPlugin,
-          launchPromptDirectories,
-          routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-        }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
-        coreLaunchKinds = execution.launchKinds;
-        sleepOperation = execution.actions.sleep;
-        resumeArchivedOperation = execution.actions.resume;
-        stopForArchive = execution.stopForArchive;
-        purgeCoreOperation = execution.purgeOperation;
-        consoleUse.activate({ ...consoleActions, ...execution.actions });
-        await pluginHost.boot();
-        // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
-        // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
-        announceRestoredTheaters();
-        operationArchive.flushEvents();
-        deletionCoordinator.sweepExpired();
-        await pluginClientAssets.prepare();
-        // 지난 프로세스의 잔재 회수는 lock 소유자만 한다 — lock을 쓰기 전에 지우면 lock에서 질 프로세스가
-        // 서비스 중인 Console의 파일을 지운다.
-        launchPromptDirectories.reclaimLeftovers();
-        execution.reclaimAttachmentLeftovers();
-        // 인증서·페어링·공표 endpoint를 쓰는 원격 활성화는 lock 소유자만 한다.
-        await startRemoteAccessGuarded(result.actualPort);
-        ready = true;
-      } catch (error) {
-        await cleanupAfterFailedStart();
-        throw error;
-      }
-      if (!activeEndpoint) throw new Error("Console endpoint unavailable");
-      if (unsubscribeUpdateCheckChanges === null) {
-        unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
-          broadcastUpdateAvailable();
-        }) ?? null;
-      }
-      updateCheck.start?.();
-      void updateCheck.refresh();
-      return activeEndpoint;
+      if (isReady() && lockHandle) return lockHandle.payload.endpoint;
+      return lifecycle.startup(() => startConsole(lockPaths));
     },
-    async stop() {
-      await stopServer();
+    stop() {
+      return lifecycle.requestStop("api");
     },
   };
+
+  async function startConsole(lockPaths: { readonly dir: string; readonly lockFile: string }): Promise<string> {
+    try {
+      const result = await listenConsolePort(resolveConsolePortListenPlan());
+      server = result.srv;
+      loopbackServer = result.localLoopbackServer;
+      portState = result.portState;
+      // 실제 포트만 먼저 확보한다. 패자는 제품 상태를 읽어 복원하거나 플러그인을 실행하기 전에 끝난다.
+      lockHandle = await lock.acquireLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
+      lifecycle.lockAcquired(lockHandle.payload);
+      activeLockFile = lockPaths.lockFile;
+      activeEndpoint = result.endpoint;
+      // 워크스페이스 승계·옛 렌더 트리 회수·설정 기본값 확정도 durable writer의 일이다.
+      adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
+      reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
+      consoleSettingsStore.load();
+      await rehydrateDurableState();
+      // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
+      // 같은 루프백 전용 불투명 경로이고, 리스너가 뜬 뒤에야 주소가 정해지므로 런치가 그때 묻는다.
+      const agentCliPlugin = renderConsoleAgentCliPlugin({ transport: mcpHttp.transport });
+      // launch 프롬프트 파일은 이 lock 도메인의 자리에 둔다. 지난 프로세스가 남긴 것의 회수는 lock을 쓴 뒤에만 한다.
+      const launchPromptDirectories = createLaunchPromptNamespace({ lockFile: lockPaths.lockFile });
+      const execution = await startConsoleExecution(createConsoleRuntimeContext({
+        consoleControl,
+        agentCallRedirect: (operationId) => {
+          for (const reason of agentCallRedirects.values()) {
+            const answer = reason(operationId);
+            if (answer !== null) return answer;
+          }
+          return null;
+        },
+        host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, requestLifetime, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
+        dataDir: durablePaths.dir,
+        recordFailure,
+        legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
+        agentOptions,
+        agentCliPlugin,
+        launchPromptDirectories,
+        routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
+      }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
+      coreLaunchKinds = execution.launchKinds;
+      sleepOperation = execution.actions.sleep;
+      resumeArchivedOperation = execution.actions.resume;
+      stopForArchive = execution.stopForArchive;
+      purgeCoreOperation = execution.purgeOperation;
+      consoleUse.activate({ ...consoleActions, ...execution.actions });
+      await pluginHost.boot();
+      // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
+      // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
+      announceRestoredTheaters();
+      operationArchive.flushEvents();
+      deletionCoordinator.sweepExpired();
+      await pluginClientAssets.prepare();
+      // 지난 프로세스의 잔재 회수는 lock 소유자만 한다 — lock을 쓰기 전에 지우면 lock에서 질 프로세스가
+      // 서비스 중인 Console의 파일을 지운다.
+      launchPromptDirectories.reclaimLeftovers();
+      execution.reclaimAttachmentLeftovers();
+      // 인증서·페어링·공표 endpoint를 쓰는 원격 활성화는 lock 소유자만 한다.
+      await startRemoteAccessGuarded(result.actualPort);
+      lifecycle.activated();
+    } catch (error) {
+      await cleanupAfterFailedStart();
+      throw error;
+    }
+    if (!activeEndpoint) throw new Error("Console endpoint unavailable");
+    if (unsubscribeUpdateCheckChanges === null) {
+      unsubscribeUpdateCheckChanges = updateCheck.onChange?.(() => {
+        broadcastUpdateAvailable();
+      }) ?? null;
+    }
+    updateCheck.start?.();
+    void updateCheck.refresh();
+    return activeEndpoint;
+  }
 
   /**
    * 업데이트가 방금 이 콘솔을 갈아 끼웠다면, 열려 있던 화면은 옛 주소를 계속 두드리고 있다.
@@ -2973,7 +2985,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   /** 업그레이드도 요청과 같은 판정을 거치고, 입장시킨 세션에 소켓을 묶는다 — 세션이 끝나면 WebSocket도 닫힌다. */
   function remoteAdmission(req: http.IncomingMessage): boolean {
-    if (!ready) return false;
+    if (!isReady()) return false;
     const resolved = listenerForRequest(req);
     if (resolved === null || resolved.audience === "local") return true;
     const admission = remoteRequestAdmission(resolved, req, getPathname(req));
@@ -3015,7 +3027,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {
     return new Promise((resolve, reject) => {
-      const srv = createHttpServer(handleRequest, upgradeRegistry, isRequestHostAllowed, () => ready);
+      const srv = createHttpServer(handleRequest, upgradeRegistry, isRequestHostAllowed, isReady);
       const onError = (error: Error) => {
         reject(error);
       };
@@ -3029,7 +3041,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         listeners = [createLoopbackListenerIdentity(actualPort)];
         boundPort = actualPort;
         try {
-          const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry, isRequestHostAllowed, () => ready);
+          const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry, isRequestHostAllowed, isReady);
           resolve({
             srv,
             localLoopbackServer,

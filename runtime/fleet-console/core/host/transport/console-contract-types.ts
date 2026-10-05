@@ -34,6 +34,8 @@ export interface ConsoleHealth {
   readonly channel?: "stable" | "local";
   readonly owner?: ConsoleOwnerMetadata;
   readonly workspaceCount: number;
+  /** The lifecycle contract wire revision (`CONSOLE_LIFECYCLE_WIRE`). A Console that omits it predates the contract (wire 0). */
+  readonly lifecycleWire?: number;
 }
 
 export interface ConsoleObservedWorkspace {
