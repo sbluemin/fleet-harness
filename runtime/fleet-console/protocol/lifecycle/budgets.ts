@@ -18,8 +18,10 @@ export const EXTERNAL_ESCALATION_MS = CONSOLE_STOP_DEADLINE_MS + PROCESS_TABLE_T
 export const KILL_CONFIRM_MS = 3_000;
 /**
  * SIGTERM to an owned process group, then this long before SIGKILL: the Console's own stop path for its plugins' groups
- * and its watcher after a crash use this one value, the same gap as the agent SDK's between its SIGTERM and SIGKILL. It
- * must stay well inside the stop deadline: OWNED_GROUP_TERM_GRACE_MS + ε < CONSOLE_STOP_DEADLINE_MS − ESCALATION_MARGIN_MS.
+ * and its watcher after a crash use this one value, the same gap as the agent SDK's between its SIGTERM and SIGKILL.
+ * On Windows the same wait is how long a plugin job may exit on its own before TerminateJobObject, and that path reads
+ * no process table. It must stay well inside the stop deadline:
+ * OWNED_GROUP_TERM_GRACE_MS + ε < CONSOLE_STOP_DEADLINE_MS − ESCALATION_MARGIN_MS.
  */
 export const OWNED_GROUP_TERM_GRACE_MS = 2_000;
 /** How often a waiting actor looks again at the pid and the lock. */

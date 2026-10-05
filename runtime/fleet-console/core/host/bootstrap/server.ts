@@ -40,7 +40,7 @@ import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
-import { createOwnedProcessRegistry, pruneConsoleExitRecords, signalChildGroup, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
+import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { CONSOLE_LIFECYCLE_WIRE, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
@@ -1163,7 +1163,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         stdin: request.stdin ?? "pipe",
         owner: `plugin:${pluginId}`,
       });
-      return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => signalChildGroup(child, signal) });
+      return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
     },
     // Console 제어 — `console_launch`·`console_send` 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
     consoleControlFor: (pluginId) => ({

@@ -34,6 +34,39 @@ export interface OwnedProcessRegistryEvents {
   readonly onRemoved?: (pgid: number) => void;
 }
 
+/**
+ * One Windows owned group: a job the Console alone holds. POSIX never sees this. The host injects it; this package does
+ * not load a native binding. Methods may throw; the registry treats a throw as "could not prove the job empty" and
+ * leaves the handle open.
+ */
+export interface ProcessGroupContainment {
+  /** True when the job still has a member. A failed query counts as members remaining, so a live job is never closed. */
+  hasMembers(): boolean;
+  /** Asks the kernel to end every member. False when the call fails; the handle stays open. */
+  terminate(): boolean;
+  /**
+   * Closes the leader's process handle and the job handle. Does nothing while `hasMembers()` is true: a job that still
+   * has members stays open so the kernel can end them when the Console itself dies.
+   */
+  close(): void;
+}
+
+/**
+ * Windows containment, injected by the Console host (`console-lifecycle.ts` only). `contain` never throws: a failed
+ * create or assign returns null, and that child stays in libuv's job instead of being registered.
+ */
+export interface ProcessContainmentPort {
+  contain(pid: number): ProcessGroupContainment | null;
+}
+
+export interface OwnedProcessRegistryOptions extends OwnedProcessRegistryEvents {
+  /**
+   * Windows only. When set, each spawned leader is assigned to a job of its own and the group is registered. Absent on
+   * Windows, nothing is registered and libuv's job is the whole containment, as before. Ignored on POSIX.
+   */
+  readonly containment?: ProcessContainmentPort;
+}
+
 export interface OwnedProcessKillInput {
   readonly env?: NodeJS.ProcessEnv;
   /**
@@ -51,14 +84,26 @@ export interface OwnedProcessKillInput {
  * PTY session, a plugin's short-lived tool) is simply never registered.
  */
 export interface OwnedProcessRegistry {
-  /** Spawns `command` with piped stdio as the leader of a process group of its own (POSIX) and registers that group. */
+  /**
+   * Spawns `command` with piped stdio as the leader of an owned group and registers that group. On POSIX the group is a
+   * process group (`detached`). On Windows, when a containment port is injected, the group is a job and the child stays
+   * non-detached so libuv's job remains the fallback. Without the port on Windows the child is not registered.
+   */
   spawn(request: OwnedProcessSpawnRequest): ChildProcess;
   groups(): readonly OwnedProcessGroup[];
+  /**
+   * Ends one registered group: a process-group signal on POSIX, or the job on Windows. A child that was never registered
+   * (no port, or that group's assign failed) is signalled alone. Returns whether an end was requested.
+   */
+  killGroup(child: ChildProcess, signal?: NodeJS.Signals): boolean;
   /**
    * SIGKILLs every registered group, synchronously, and returns how many groups were signalled. A group whose leader is
    * this process's unreaped child is signalled without a process table: an unreaped child's pid, and so its group number,
    * cannot be reused (E1). A group whose leader already exited is signalled only if the process table proves its members
-   * are this group's (`proveExitedLeaderGroup`); without a readable table it is left alone. POSIX only.
+   * are this group's (`proveExitedLeaderGroup`); without a readable table it is left alone.
+   * On Windows, with a containment port, every job that still has members is terminated and the return counts those
+   * calls that succeeded. The leader's open process handle is the pid-reuse proof (E1); there is no process table.
+   * Without the port this returns 0.
    */
   killAll(input?: OwnedProcessKillInput): number;
   /**
@@ -67,7 +112,9 @@ export interface OwnedProcessRegistry {
    * table. When the grace ends, a selected group whose leader has exited but which still has members (a helper that
    * ignored SIGTERM, or one a leader left before the stop, which then gets no SIGTERM) is SIGKILLed only if one
    * asynchronous process-table read proves it (`proveExitedLeaderGroup`); without a readable table it is left alone.
-   * The timer never keeps the process alive. Returns how many groups got SIGTERM. POSIX only.
+   * The timer never keeps the process alive. Returns how many groups got SIGTERM.
+   * On Windows, with a containment port, the same `graceMs` is time to exit on their own and then the job is terminated;
+   * there is no process-table read, and the return is how many jobs still had members. Without the port this returns 0.
    */
   endGroups(select: (group: OwnedProcessGroup) => boolean, graceMs: number, input?: OwnedProcessKillInput): number;
 }
@@ -78,20 +125,62 @@ interface Entry {
   readonly child: ChildProcess;
   readonly owner?: string;
   leaderExitedAt: number | null;
+  /** Set only for a Windows group whose job assign succeeded. Absent on POSIX and on a degraded Windows child. */
+  readonly containment?: ProcessGroupContainment;
 }
 
-export function createOwnedProcessRegistry(events: OwnedProcessRegistryEvents = {}): OwnedProcessRegistry {
+export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions = {}): OwnedProcessRegistry {
   const entries = new Map<number, Entry>();
+  const containment = process.platform === "win32" ? options.containment : undefined;
   const snapshot = (entry: Entry): OwnedProcessGroup => ({ pgid: entry.pgid, spawnedAt: entry.spawnedAt, leaderExitedAt: entry.leaderExitedAt, ...(entry.owner === undefined ? {} : { owner: entry.owner }) });
   const remove = (pgid: number): void => {
-    if (entries.delete(pgid)) events.onRemoved?.(pgid);
+    if (entries.delete(pgid)) options.onRemoved?.(pgid);
   };
+
+  /** A failed job query counts as members remaining: an uncertain job is never closed or dropped. */
+  function entryHasMembers(entry: Entry): boolean {
+    if (!entry.containment) return groupHasMembers(entry.pgid);
+    try { return entry.containment.hasMembers(); }
+    catch { return true; }
+  }
+
+  /** Drops a group that has no member left, closing its job only then. */
+  function releaseEntry(entry: Entry): void {
+    try { entry.containment?.close(); }
+    catch { /* The handle dies with the process, which still runs KILL_ON_JOB_CLOSE. */ }
+    remove(entry.pgid);
+  }
 
   /** Drops groups whose leader exited and that no longer have a member. */
   function prune(): void {
     for (const entry of [...entries.values()]) {
-      if (entry.leaderExitedAt !== null && !groupHasMembers(entry.pgid)) remove(entry.pgid);
+      if (entry.leaderExitedAt !== null && !entryHasMembers(entry)) releaseEntry(entry);
     }
+  }
+
+  function watchLeader(entry: Entry): void {
+    options.onRegistered?.(snapshot(entry));
+    entry.child.once("exit", () => {
+      entry.leaderExitedAt = Date.now();
+      options.onLeaderExited?.(snapshot(entry));
+      if (!entryHasMembers(entry)) releaseEntry(entry);
+    });
+  }
+
+  /**
+   * Assigns a Windows leader to a new job. Null means this child stays on libuv's job: no port, the assign failed, or
+   * the pid still names a live group. Never throws, so a containment failure cannot take down the Console.
+   */
+  function adoptContainment(pgid: number): ProcessGroupContainment | null {
+    if (!containment) return null;
+    const existing = entries.get(pgid);
+    if (existing?.containment) {
+      // The held process handle makes a live collision unreachable; refusing it keeps that job from being replaced.
+      if (entryHasMembers(existing)) return null;
+      releaseEntry(existing);
+    }
+    try { return containment.contain(pgid); }
+    catch { return null; }
   }
 
   return {
@@ -103,29 +192,60 @@ export function createOwnedProcessRegistry(events: OwnedProcessRegistryEvents = 
         env: { ...request.env },
         stdio: [request.stdin ?? "pipe", "pipe", "pipe"],
         // A group of its own lets the deadline and the watcher end the child together with everything it started.
-        // Windows has no process groups; there libuv's job object ends a direct child with the Console.
+        // Windows stays non-detached: libuv's job remains the fallback when this group's own job cannot be assigned.
         detached: process.platform !== "win32",
         windowsHide: true,
         ...(request.signal === undefined ? {} : { signal: request.signal }),
       });
       const pgid = child.pid;
-      if (pgid !== undefined && process.platform !== "win32") {
-        const entry: Entry = { pgid, spawnedAt, child, leaderExitedAt: null, ...(request.owner === undefined ? {} : { owner: request.owner }) };
-        entries.set(pgid, entry);
-        events.onRegistered?.(snapshot(entry));
-        child.once("exit", () => {
-          entry.leaderExitedAt = Date.now();
-          events.onLeaderExited?.(snapshot(entry));
-          if (!groupHasMembers(pgid)) remove(pgid);
-        });
+      if (pgid !== undefined && (process.platform !== "win32" || containment)) {
+        const held = adoptContainment(pgid);
+        if (process.platform !== "win32" || held) {
+          const entry: Entry = { pgid, spawnedAt, child, leaderExitedAt: null, ...(held ? { containment: held } : {}), ...(request.owner === undefined ? {} : { owner: request.owner }) };
+          entries.set(pgid, entry);
+          watchLeader(entry);
+        }
       }
       return child;
     },
     groups() {
+      // Windows drops an empty job when the groups are read, not only on the next spawn. POSIX keeps its previous timing.
+      if (containment) prune();
       return [...entries.values()].map(snapshot);
     },
+    killGroup(child, signal = "SIGTERM") {
+      const entry = child.pid === undefined ? undefined : entries.get(child.pid);
+      if (!entry?.containment) return signalChildGroup(child, signal);
+      try {
+        if (!entry.containment.hasMembers()) {
+          releaseEntry(entry);
+          return false;
+        }
+        const ended = entry.containment.terminate();
+        if (!entry.containment.hasMembers()) releaseEntry(entry);
+        return ended;
+      } catch {
+        return false;
+      }
+    },
     endGroups(select, graceMs, input = {}) {
-      if (process.platform === "win32") return 0;
+      if (process.platform === "win32") {
+        if (!containment) return 0;
+        prune();
+        const requested = [...entries.values()].filter((entry) => entry.containment && entryHasMembers(entry) && select(snapshot(entry)));
+        if (requested.length > 0) {
+          const escalate = setTimeout(() => {
+            for (const entry of requested) {
+              if (!entries.has(entry.pgid) || !entry.containment) continue;
+              try { if (entryHasMembers(entry)) entry.containment.terminate(); }
+              catch { /* Leave the handle open. The process exit still closes it. */ }
+              if (!entryHasMembers(entry)) releaseEntry(entry);
+            }
+          }, graceMs);
+          escalate.unref?.();
+        }
+        return requested.length;
+      }
       const unreaped = (entry: Entry) => entry.child.exitCode === null && entry.child.signalCode === null;
       const chosen = [...entries.values()].filter((entry) => isSignallableGroup(entry.pgid) && select(snapshot(entry)));
       let signalled = 0;
@@ -154,7 +274,24 @@ export function createOwnedProcessRegistry(events: OwnedProcessRegistryEvents = 
       return signalled;
     },
     killAll(input = {}) {
-      if (process.platform === "win32") return 0;
+      if (process.platform === "win32") {
+        if (!containment) return 0;
+        let killed = 0;
+        for (const entry of [...entries.values()]) {
+          if (!entry.containment) continue;
+          try {
+            if (!entryHasMembers(entry)) {
+              releaseEntry(entry);
+              continue;
+            }
+            if (entry.containment.terminate()) killed += 1;
+            if (!entryHasMembers(entry)) releaseEntry(entry);
+          } catch {
+            // Leave the handle open. Process exit still runs KILL_ON_JOB_CLOSE.
+          }
+        }
+        return killed;
+      }
       let killed = 0;
       const orphaned: Entry[] = [];
       for (const entry of entries.values()) {

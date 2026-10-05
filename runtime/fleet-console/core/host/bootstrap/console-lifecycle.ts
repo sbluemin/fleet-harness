@@ -52,6 +52,7 @@ import {
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import { describeDaemonStartFailure } from "../transport/failure-notice.js";
 import { createConsoleFailureLog } from "./failure-log.js";
+import { createWindowsJobContainment, loadWindowsJobBindings } from "./windows-job-containment.js";
 import { createConsoleStalePolicy } from "./stale.js";
 import {
   command,
@@ -267,6 +268,21 @@ function formatConsoleHelpRelease(): string {
   return `${release.version} · ${release.channel}`;
 }
 
+/**
+ * The Windows job port, or null everywhere else and when koffi or the kernel calls will not load. A failure is one
+ * `containment_degraded` line in the Console failure log (the same channel as `reaper_degraded`) and never a crash.
+ */
+function openWindowsProcessContainment(recordFailure: (kind: string, error: unknown) => void) {
+  if (process.platform !== "win32") return null;
+  const record = (error: unknown) => recordFailure("containment_degraded", error instanceof Error ? error : new Error(String(error)));
+  try {
+    return createWindowsJobContainment(loadWindowsJobBindings(), (detail) => record(detail.error));
+  } catch (error) {
+    record(error);
+    return null;
+  }
+}
+
 export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = {}) {
   const env = deps.env ?? process.env;
   // TLS 검사 프록시 환경 대응(issue #531): OS 신뢰 저장소를 기본 신뢰한다. opt-out은 FLEET_CONSOLE_NO_SYSTEM_CA=1.
@@ -297,7 +313,11 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // Every long-lived child this instance starts on purpose leads a registered process group. The deadline ends those
     // while the Console runs; the reaper, told about each group as it happens, ends them once the Console is gone.
     let reaper: ConsoleReaperLink | null = null;
+    // The only place a Windows job port is built. CLI stop, Desktop, and the update worker never reach this function.
+    // A load failure records containment_degraded once and leaves the registry on libuv's job; it must not block boot.
+    const windowsContainment = openWindowsProcessContainment(recordFailure);
     const ownedProcesses = createOwnedProcessRegistry({
+      ...(windowsContainment ? { containment: windowsContainment } : {}),
       onRegistered: (group) => reaper?.registered(group),
       onLeaderExited: (group) => reaper?.leaderExited(group),
       onRemoved: (pgid) => reaper?.removed(pgid),
