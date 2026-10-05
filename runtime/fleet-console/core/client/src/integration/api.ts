@@ -1,3 +1,4 @@
+import { parseConsoleUpdateFailureReason, parseConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
 import type { ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
@@ -502,6 +503,18 @@ function assertConsoleUpdateProgress(value: unknown, status: number): ConsoleUpd
     ...(typeof payload.fromVersion === "string" ? { fromVersion: payload.fromVersion } : {}),
     ...(payload.endpointChanged === true ? { endpointChanged: true } : {}),
     ...(typeof payload.error === "string" ? { error: payload.error } : {}),
+    ...readUpdateFailureFields(payload),
+  };
+}
+
+/** The contract's own parsers read what the Console sent; anything they do not name reads as `unknown`. */
+function readUpdateFailureFields(payload: Partial<ConsoleUpdateProgress>): Pick<ConsoleUpdateProgress, "oldConsoleOutcome" | "reason" | "description"> {
+  const oldConsoleOutcome = parseConsoleUpdateOldConsoleEnding(payload.oldConsoleOutcome);
+  const reason = parseConsoleUpdateFailureReason(payload.reason);
+  return {
+    ...(oldConsoleOutcome ? { oldConsoleOutcome } : {}),
+    ...(reason ? { reason } : {}),
+    ...(typeof payload.description === "string" ? { description: payload.description } : {}),
   };
 }
 

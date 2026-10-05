@@ -1433,6 +1433,9 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-update-title { font-size: var(--t-lg); font-weight: var(--weight-bold); }
 .mobile-update-sub { margin: 0; color: var(--m-text-muted); font-size: var(--t-md); line-height: 22px; text-align: center; }
 .mobile-update-track { width: 220px; margin-top: 6px; }
+.mobile-update-screen .update-recovery { width: min(360px, 100%); }
+/* 복구 안내가 붙으면 묶음이 화면보다 길어질 수 있다 — 가운데 정렬 대신 위에서부터 흘려 스크롤되게 한다. */
+.mobile-update-screen:has(.update-recovery) { justify-content: flex-start; padding-top: 48px; padding-bottom: 24px; overflow-y: auto; }
 
 /* 확대 표면 본문(Shell)이 목적지 화면을 채운다 — 도구 시트의 표면 규칙과 같다. */
 .mobile-surface-screen-body { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }

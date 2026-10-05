@@ -11,7 +11,7 @@ import type { ConsoleTarballDownload, GlobalPackageManagerCommand } from "@fleet
 import { getFleetDataDir } from "@fleet-console/infra/data-dir";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
-import { CONSOLE_LIFECYCLE_CONTRACT_VERSION, CONSOLE_SERVE_EXIT_LOCK_HELD, EXTERNAL_ESCALATION_MS, STOP_POLL_MS } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_LIFECYCLE_CONTRACT_VERSION, CONSOLE_SERVE_EXIT_LOCK_HELD, EXTERNAL_ESCALATION_MS, STOP_POLL_MS, type ConsoleUpdateFailureReason } from "@fleet-console/protocol/lifecycle";
 import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
 import { CONSOLE_UPDATE_PROGRESS_FILE, writeConsoleUpdateProgress } from "./update-progress.js";
@@ -118,6 +118,17 @@ export type ConsoleUpdateWorkerSpawner = (
 const PACKAGE_NAMES = ["@dotobokuri/fleet-console"] as const;
 /** The worker could not prove the pid it would signal is still the Console that started it, so it sent no signal. */
 export const CONSOLE_UPDATE_OLD_CONSOLE_UNVERIFIED = "old_console_unverified";
+/** The reasons the worker records, by the step that failed (`reason` on the progress record; the contract names them). */
+const WORKER_FAILURE_REASONS = {
+  runtimeMismatch: "lifecycle-runtime-mismatch",
+  oldUnverified: "old-console-unverified",
+  oldReplaced: "old-console-replaced",
+  oldStillRunning: "old-console-still-running",
+  oldKillFailed: "old-console-kill-failed",
+  installFailed: "install-failed",
+  newNotStarted: "new-console-not-started",
+  newUnhealthy: "new-console-unhealthy",
+} as const satisfies Record<string, ConsoleUpdateFailureReason>;
 const WORKER_FILE_PREFIX = "fleet-console-update-";
 const WORKER_FILE_SUFFIX = ".mjs";
 const RUNTIME_FILE_SUFFIX = ".lifecycle.mjs";
@@ -217,7 +228,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     writeFile(workerPath, script, { mode: TEMP_FILE_MODE });
     // 기록은 워커가 실제로 떠난 **뒤에** 남긴다. 띄우지도 못한 업데이트를 "진행 중"으로
     // 적어 두면, 그 사이 새로고침한 화면은 아무도 진행하지 않는 커튼 아래 갇힌다.
-    await spawnDetachedWorker(spawnWorker, execPath, [workerPath], childEnv);
+    const workerPid = await spawnDetachedWorker(spawnWorker, execPath, [workerPath], childEnv);
     // 그리고 워커가 첫 줄을 쓰기 전의 찰나에도 화면이 새로고침될 수 있다. 그때 "아무 일도
     // 없다"고 답하면 사용자는 업데이트가 취소된 줄 안다 — 수락은 여기서 기록한다.
     writeConsoleUpdateProgress(request.dataDir, {
@@ -226,6 +237,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       updatedAt: startedAt,
       targetVersion,
       fromVersion: request.fromVersion,
+      ...(workerPid === undefined ? {} : { workerPid }),
     }, { makeDir, writeFile });
     return { accepted: true };
   }
@@ -245,6 +257,7 @@ const config = ${JSON.stringify(config)};
 const stalePrefix = ${JSON.stringify(WORKER_FILE_PREFIX)};
 const workerSuffix = ${JSON.stringify(WORKER_FILE_SUFFIX)};
 const unverifiedError = ${JSON.stringify(CONSOLE_UPDATE_OLD_CONSOLE_UNVERIFIED)};
+const reasons = ${JSON.stringify(WORKER_FAILURE_REASONS)};
 const lockHeldExitCode = ${JSON.stringify(CONSOLE_SERVE_EXIT_LOCK_HELD)};
 // The contract's budgets, fixed when the Console wrote this worker: the only judgment the worker makes without its
 // runtime is waiting for the old pid's ESRCH within them.
@@ -288,11 +301,11 @@ async function main() {
 main()
   .catch(async (error) => {
     const reason = sanitizeError(error);
-    log("failed: " + reason);
+    log("failed: " + reason + (error && error.updateReason ? " (" + error.updateReason + ")" : ""));
     // 실패는 복구를 시도하기 전에 기록한다. 복구가 끝나기를 기다리는 동안이나 복구가 실패해도
     // 다음에 뜨는 Console이 읽을 결론은 이미 디스크에 있다. 다만 기록이 실패해도 복구는 반드시
     // 간다 — 실패를 말할 화면을 다시 세우는 일이 그 기록보다 먼저다.
-    const failure = { error: reason };
+    const failure = { error: reason, ...(error && typeof error.updateReason === "string" ? { reason: error.updateReason } : {}) };
     const progressRecorded = writeProgress("failed", failure);
     try {
       writeStatusFile("failed", failure);
@@ -360,7 +373,7 @@ async function loadLifecycleRuntime() {
  * serve only then; serve itself still refuses a lock someone else holds.
  */
 async function failWithoutLifecycleRuntime() {
-  let failure = { error: "lifecycle_runtime_mismatch" };
+  let failure = { error: "lifecycle_runtime_mismatch", reason: reasons.runtimeMismatch };
   writeProgress("failed", failure);
   try {
     writeStatusFile("failed", failure);
@@ -371,7 +384,7 @@ async function failWithoutLifecycleRuntime() {
   const deadline = Date.now() + externalEscalationMs;
   while (pidExists(config.currentPid) && Date.now() < deadline) await sleep(stopPollMs);
   if (pidExists(config.currentPid)) {
-    failure = { error: "lifecycle_runtime_mismatch: the old console was still running, so no console was started" };
+    failure = { error: "lifecycle_runtime_mismatch: the old console was still running, so no console was started", reason: reasons.runtimeMismatch };
     log("no serve started: pid " + config.currentPid + " was still running " + externalEscalationMs + "ms later and may still hold the lock");
   } else {
     log("old console ended; starting one serve to bring a console back");
@@ -381,6 +394,13 @@ async function failWithoutLifecycleRuntime() {
   const current = readProgressStartedAt();
   if (current === "missing" || current === config.startedAt) writeProgress("failed", failure);
   process.exitCode = 1;
+}
+
+/** An error that names the contract's reason for this failure (ConsoleUpdateFailureReason). */
+function updateFailure(reason, message) {
+  const error = new Error(message);
+  error.updateReason = reason;
+  return error;
 }
 
 /** Only ESRCH means the pid is gone; any other answer counts as running. */
@@ -414,6 +434,10 @@ function writeProgress(phase, extra = {}) {
   if (extra.endpointChanged === true) record.endpointChanged = true;
   if (typeof oldConsoleOutcome === "string") record.oldConsoleOutcome = oldConsoleOutcome;
   if (typeof extra.error === "string") record.error = extra.error;
+  if (typeof extra.reason === "string") record.reason = extra.reason;
+  if (phase === "failed") record.oldConsolePid = config.currentPid;
+  // The next Console reads this worker as lost the moment its pid is gone (ESRCH) with no outcome recorded.
+  record.workerPid = process.pid;
   try {
     fs.writeFileSync(config.progressFile, JSON.stringify(record, null, 2), { mode: 0o600 });
     return true;
@@ -481,19 +505,19 @@ async function stopCurrentConsole() {
   if (stopped.result === "unverified") {
     // 신호도 lock 삭제도 하지 않았다. 그 pid가 멈춘 Console이면 사용자가 직접 끝내야 한다.
     log("no signal sent: pid " + config.currentPid + " never proved it is the console being updated");
-    throw new Error(unverifiedError);
+    throw updateFailure(reasons.oldUnverified, unverifiedError);
   }
-  if (stopped.result === "kill-failed") throw new Error("old console did not stop before timeout");
+  if (stopped.result === "kill-failed") throw updateFailure(reasons.oldKillFailed, "old console did not stop before timeout");
   if (stopped.result === "replaced") {
     // 옛 pid를 다른 프로그램이 물려받았고 lock은 그대로다. 그 pid가 끝나기 전에는 어떤 Console도 시작할 수 없으므로 설치하지
     // 않는다. 신호도, lock 삭제도, spawn도 없다.
     log("not installed: " + stopped.detail);
-    throw new Error(String(stopped.detail).split("\\n")[0]);
+    throw updateFailure(reasons.oldReplaced, String(stopped.detail).split("\\n")[0]);
   }
   if (stopped.result === "still-running") {
     // lock은 놓았지만 옛 프로세스가 자식을 거두며 아직 살아 있다. 그 프로세스가 올린 파일을 그 아래에서 바꾸지 않는다.
     log("not installed: pid " + config.currentPid + " released its lock but was still running after the stop budget");
-    throw new Error("the old console released its lock but was still running, so the update was not installed");
+    throw updateFailure(reasons.oldStillRunning, "the old console released its lock but was still running, so the update was not installed");
   }
   // 이전 Console이 끝났거나 lock을 놓았다. 남긴 lock은 지우지 않는다 — 새 Console의 serve가 그 pid의 ESRCH를 확인하고
   // 회수 프로토콜로 치운다.
@@ -517,16 +541,16 @@ function detectPackageManager() {
       }
     }
   } catch (error) {
-    throw new Error("no supported global package manager found: " + sanitizeError(error));
+    throw updateFailure(reasons.installFailed, "no supported global package manager found: " + sanitizeError(error));
   }
-  throw new Error("no supported global package manager found");
+  throw updateFailure(reasons.installFailed, "no supported global package manager found");
 }
 
 function ensureGlobalRootWritable(manager) {
   try {
     fs.accessSync(manager.root, fs.constants.W_OK);
   } catch {
-    throw new Error("global package manager root is not writable");
+    throw updateFailure(reasons.installFailed, "global package manager root is not writable");
   }
 }
 
@@ -536,7 +560,7 @@ async function installPackages(manager) {
   const code = await spawnExit(manager.bin, [...manager.prefixArgs, "i", "-g", "--force", config.tarballPath], env);
   if (code !== 0) {
     removeFileBestEffort(config.tarballPath);
-    throw new Error("global package install failed with exit code " + code);
+    throw updateFailure(reasons.installFailed, "global package install failed with exit code " + code);
   }
   // pnpm records a tarball install as a file: dependency, so the installed tarball has to stay.
   // Everything older is no longer referenced once this install has succeeded.
@@ -624,22 +648,24 @@ async function startNewDaemon() {
   const deadline = Date.now() + lifecycle.CONSOLE_START_TIMEOUT_MS;
   const existing = await waitForExistingConsole(true, deadline);
   if (existing) return existing;
-  if (Date.now() >= deadline) throw new Error("new console daemon did not become healthy");
+  if (Date.now() >= deadline) throw updateFailure(reasons.newUnhealthy, "new console daemon did not become healthy");
   // 살아 있는 pid가 쥔 lock 옆에는 띄우지 않는다. 그 pid가 무관한 프로그램이어도 ESRCH만 slot을 비운다.
   const slot = judgeSlot();
   if (slot.kind === "held" || slot.kind === "blocked") {
     log("new console not started: the slot is " + describeSlot(slot));
-    throw new Error("the new console could not start: the Console lock is still held");
+    throw updateFailure(reasons.newNotStarted, "the new console could not start: the Console lock is still held");
   }
   const serve = spawnServe();
   while (Date.now() < deadline) {
     const probe = await probeSlot(true, deadline);
     if (probe.state === "healthy") return probe;
     // 선판정 뒤 경쟁에서 졌어도 새 소유자가 초기화 중이면 같은 deadline 안에서 계속 기다린다.
-    if (serve.exited && (serve.code !== lockHeldExitCode || probe.state !== "starting")) throw new Error(describeServeExit(serve));
+    if (serve.exited && (serve.code !== lockHeldExitCode || probe.state !== "starting")) {
+      throw updateFailure(serve.code === lockHeldExitCode ? reasons.newNotStarted : reasons.newUnhealthy, describeServeExit(serve));
+    }
     await sleep(Math.min(lifecycle.CONSOLE_START_POLL_MS, Math.max(0, deadline - Date.now())));
   }
-  throw new Error("new console daemon did not become healthy");
+  throw updateFailure(reasons.newUnhealthy, "new console daemon did not become healthy");
 }
 
 /**
@@ -802,7 +828,7 @@ function spawnDetachedWorker(
   execPath: string,
   args: readonly string[],
   env: NodeJS.ProcessEnv,
-): Promise<void> {
+): Promise<number | undefined> {
   return new Promise((resolve, reject) => {
     const child = spawnWorker(execPath, args, withHidden({ detached: true, env, stdio: "ignore" as const }));
     let settled = false;
@@ -815,7 +841,7 @@ function spawnDetachedWorker(
     queueMicrotask(() => {
       if (settled) return;
       settled = true;
-      resolve();
+      resolve(child.pid);
     });
   });
 }

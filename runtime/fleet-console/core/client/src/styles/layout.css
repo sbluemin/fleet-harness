@@ -211,7 +211,23 @@
 }
 
 .update-outcome--failed .update-outcome-signal { background: var(--coral); }
-.update-outcome--failed .update-outcome-text { color: var(--coral-ink); }
+
+/* 실패는 줄을 늘린다 — 제목, 계약이 말하는 무슨 일이 있었나·옛 Console의 결말, 지금 버전. 색은 제목 한 줄만 싣는다. */
+.update-outcome--failed { align-items: flex-start; padding-top: var(--space-2); padding-bottom: var(--space-2); }
+.update-outcome--failed .update-outcome-signal { margin-top: 6px; }
+.update-outcome-headline { color: var(--coral-ink); font-weight: var(--weight-bold); }
+.update-outcome-facts { display: flex; flex-wrap: wrap; gap: 0 var(--space-3); margin-top: 2px; color: var(--text-tertiary); }
+
+/* 계약의 공유 문구(영어)는 화면의 말과 구별되도록 터미널 글꼴로, 본문 그대로 보인다. */
+.update-outcome-contract,
+.update-recovery-contract {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
 
 .update-outcome-text {
   flex: 1;
@@ -244,6 +260,89 @@
   outline: 1px solid var(--brass);
   outline-offset: 1px;
 }
+
+/* 계약의 복귀 시한을 넘긴 침묵: 판정이 아니라 대기의 연장이므로 신호는 warn 한 색이다. 커튼은 그대로 두고,
+   판 아래에 사람이 직접 할 수 있는 일(시작 명령)과 그 공유 설명을 덧댄다. */
+.update-curtain-plate.is-silent { width: min(460px, 100%); }
+
+.update-recovery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--surface-rim);
+  text-align: left;
+}
+
+.update-recovery-title {
+  color: var(--warn-ink);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+}
+
+.update-recovery-command {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel);
+}
+
+.update-recovery-command > code {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-family: var(--font-code);
+  font-size: var(--t-xs);
+  user-select: all;
+}
+
+.update-recovery-command > button,
+.update-recovery-leave {
+  flex: none;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  cursor: pointer;
+}
+
+.update-recovery-command > button:hover,
+.update-recovery-leave:hover { color: var(--text-primary); border-color: var(--brass); }
+
+.update-recovery-command > button:focus-visible,
+.update-recovery-leave:focus-visible {
+  color: var(--text-primary);
+  outline: 1px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.update-recovery-details { color: var(--text-tertiary); font-size: var(--t-2xs); }
+.update-recovery-details > summary { cursor: pointer; width: fit-content; }
+.update-recovery-details > summary:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+
+/* 계약의 공유 문구는 터미널이 출력하는 것과 같은 글이다 — 같은 글꼴로, 줄바꿈 그대로 보인다. */
+.update-recovery-details > pre {
+  margin: var(--space-1) 0 0;
+  max-height: 180px;
+  overflow: auto;
+  color: var(--text-secondary);
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.update-recovery-words { color: var(--text-tertiary); }
+
+.update-recovery-actions { display: flex; justify-content: flex-end; }
 
 @keyframes update-outcome-drop {
   from { opacity: 0; transform: translateY(-4px); }

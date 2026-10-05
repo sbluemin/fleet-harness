@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { UPDATE_FAILED_CONSOLE_RETURN_MS } from "@fleet-console/protocol/lifecycle/update";
+
 import { fetchUpdateProgress } from "../../../core/client/src/integration/api.js";
 import { hasConsoleVersionDrifted } from "../../../core/client/src/integration/console-version.js";
 import type { ConsoleUpdateProgress } from "../../../core/client/src/integration/types.js";
@@ -38,6 +40,12 @@ export interface UpdateProgressSnapshot {
   readonly delegated: boolean;
   readonly targetVersion: string | null;
   readonly stage: UpdateCurtainStage;
+  /**
+   * The Console has stayed silent for UPDATE_FAILED_CONSOLE_RETURN_MS since it stopped answering (a stopping Console closes
+   * its listeners first). An update that failed before its install has brought a Console back by then; one that is still
+   * installing has not either. The screen says both and keeps watching: only a Console that answers again says which.
+   */
+  readonly silentPastReturn: boolean;
 }
 
 type Listener = () => void;
@@ -47,8 +55,6 @@ const WATCH_KEY = "fleet-console.update.watching";
 const STAGE_KEY = "fleet-console.update.stage";
 const SEEN_KEY = "fleet-console.update.seen";
 const POLL_INTERVAL_MS = 1_500;
-/** 종착 없이 이만큼 지나면 지켜보기를 멈춘다 — 커튼이 영원히 남는 것이 가장 나쁘다. */
-const WATCH_TIMEOUT_MS = 10 * 60 * 1000;
 /**
  * 한 번의 진행 조회가 기다리는 한도. 멈춘(SIGSTOP 등) 서버는 연결을 받고도 답하지 않아 요청이 끝나지 않는다 —
  * 그러면 다음 폴링도, 위의 지켜보기 한도도 영영 오지 않는다. 답 없는 조회는 닿지 않은 것으로 다룬다.
@@ -62,11 +68,15 @@ const POLL_REQUEST_TIMEOUT_MS = 5_000;
 const DELEGATED_TIMEOUT_MS = 60 * 1000;
 
 const listeners = new Set<Listener>();
-const IDLE_SNAPSHOT: UpdateProgressSnapshot = { watching: false, progress: null, outcome: null, delegated: false, targetVersion: null, stage: "stopping" };
+const IDLE_SNAPSHOT: UpdateProgressSnapshot = { watching: false, progress: null, outcome: null, delegated: false, targetVersion: null, stage: "stopping", silentPastReturn: false };
 let store: UpdateProgressSnapshot = IDLE_SNAPSHOT;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let delegatedTimer: ReturnType<typeof setTimeout> | null = null;
-let watchStartedAt: number | null = null;
+/**
+ * 이 탭이 Console의 침묵을 처음 본 시각. 정지하는 Console은 listener부터 닫으므로 이 시각이 곧 계약의 정지 진입이다 —
+ * 그 뒤의 설치는 옛 Console이 끝난 다음에야 시작하므로, 설치 중에 progress를 읽을 수 있는 Console은 없다.
+ */
+let silentSince: number | null = null;
 /** 지켜보기가 끝날 때마다 바뀐다. 끝난 지켜보기의 조회가 늦게 돌아와도 폴링을 되살리지 않는다. */
 let watchGeneration = 0;
 /**
@@ -95,17 +105,15 @@ function setStore(next: UpdateProgressSnapshot): void {
 
 /** 이 탭이 업데이트를 시작시켰다. 서버가 사라지는 것은 이제 고장이 아니라 진행이다. */
 export function beginUpdateWatch(targetVersion: string | null): void {
-  watchStartedAt = Date.now();
-  writeSessionValue(WATCH_KEY, String(watchStartedAt));
+  writeSessionValue(WATCH_KEY, String(Date.now()));
   writeSessionValue(STAGE_KEY, "stopping");
-  setStore({ ...store, watching: true, outcome: null, delegated: false, targetVersion, stage: "stopping" });
+  setStore({ ...store, watching: true, outcome: null, delegated: false, targetVersion, stage: "stopping", silentPastReturn: false });
   schedulePoll(0);
 }
 
 /** 이 설치 레이아웃은 셸이 갈아 끼운다. 창은 곧 재시작되므로 서버가 닿는지만 지켜본다. */
 export function markUpdateDelegated(targetVersion: string | null): void {
-  watchStartedAt = Date.now();
-  setStore({ ...store, watching: true, delegated: true, outcome: null, targetVersion, stage: "stopping" });
+  setStore({ ...store, watching: true, delegated: true, outcome: null, targetVersion, stage: "stopping", silentPastReturn: false });
   schedulePoll(POLL_INTERVAL_MS);
   if (delegatedTimer !== null) clearTimeout(delegatedTimer);
   delegatedTimer = setTimeout(() => {
@@ -117,6 +125,15 @@ export function markUpdateDelegated(targetVersion: string | null): void {
   }, DELEGATED_TIMEOUT_MS);
 }
 
+/**
+ * 사람이 기다림을 거둔다. 결과를 지어내지 않는다 — 진행 기록은 서버에 남아 있으므로, Console이 돌아오면 다음 부팅이
+ * 그 결과를 알린다.
+ */
+export function dismissUpdateWatch(): void {
+  stopWatching();
+  setStore(IDLE_SNAPSHOT);
+}
+
 export function acknowledgeUpdateOutcome(): void {
   const startedAt = store.progress?.startedAt;
   if (startedAt) writeLocalValue(SEEN_KEY, startedAt);
@@ -126,7 +143,7 @@ export function acknowledgeUpdateOutcome(): void {
 
 function stopWatching(): void {
   watchGeneration += 1;
-  watchStartedAt = null;
+  silentSince = null;
   // 재접속 뒤 드리프트 reload를 막는 표시는 이 실행에만 속한다. 같은 탭의 다음 업데이트는
   // 다시 옛 번들로 시작하므로 reload가 필요하다.
   reloadedAfterDisconnect = false;
@@ -158,13 +175,6 @@ function schedulePoll(delayMs: number): void {
 }
 
 async function pollOnce(): Promise<void> {
-  if (watchStartedAt !== null && Date.now() - watchStartedAt > WATCH_TIMEOUT_MS) {
-    // 여기서 멈추는 것은 "성공했다"가 아니라 "더는 알 수 없다"이다. 종착 기록이 없으므로
-    // 결과를 지어내지 않고, 커튼만 걷어 사용자가 화면을 되찾게 한다.
-    stopWatching();
-    setStore({ ...store, watching: false, delegated: false });
-    return;
-  }
   const generation = watchGeneration;
   let progress: ConsoleUpdateProgress | null = null;
   try {
@@ -173,10 +183,13 @@ async function pollOnce(): Promise<void> {
     if (generation !== watchGeneration) return;
     // 닿지 않는 것 자체가 진행 중이라는 신호다 — 커튼을 유지한 채 계속 두드린다.
     reachStage("installing");
+    noteSilence();
     schedulePoll(POLL_INTERVAL_MS);
     return;
   }
   if (generation !== watchGeneration) return;
+  silentSince = null;
+  if (store.silentPastReturn) setStore({ ...store, silentPastReturn: false });
   if (store.stage === "installing") reachStage("reconnecting");
   // 위임의 폴링은 닿는지만 본다. 결과를 말할 워커 기록이 없고, 이 창은 셸이 재시작한다.
   if (store.delegated) {
@@ -213,6 +226,14 @@ async function pollOnce(): Promise<void> {
   setStore(IDLE_SNAPSHOT);
 }
 
+/** 침묵이 계약의 복귀 시한(UPDATE_FAILED_CONSOLE_RETURN_MS)을 넘었는지. 위임은 셸이 창째 재시작하므로 해당하지 않는다. */
+function noteSilence(): void {
+  const now = Date.now();
+  if (silentSince === null) silentSince = now;
+  const pastReturn = !store.delegated && now - silentSince >= UPDATE_FAILED_CONSOLE_RETURN_MS;
+  if (pastReturn !== store.silentPastReturn) setStore({ ...store, silentPastReturn: pastReturn });
+}
+
 /**
  * 부팅 시 한 번. 두 가지를 회수한다 — 새로고침으로 잃은 커튼과, 재기동을 겪고 돌아온
  * 콘솔이 아직 말하지 않은 결과.
@@ -220,7 +241,6 @@ async function pollOnce(): Promise<void> {
 export function hydrateUpdateProgress(): void {
   const resumed = readSessionValue(WATCH_KEY);
   if (resumed !== null) {
-    watchStartedAt = Number.parseInt(resumed, 10) || Date.now();
     // 이 문서를 받았다는 것은 서버가 닿는다는 뜻이다. 앞선 문서가 끊김을 겪었다면 지금이
     // 곧 재연결이다 — 버전이 바뀌어 다시 받은 문서가 이 경우다.
     const resumedStage = readSessionValue(STAGE_KEY);
@@ -242,8 +262,7 @@ export function hydrateUpdateProgress(): void {
     // 이 탭은 업데이트를 시작시키지 않았지만, 서버는 지금 갈아 끼워지는 중이다. 정상 화면을
     // 내주면 곧 사라질 콘솔을 멀쩡한 것처럼 보여주게 된다 — 지금 붙어서 함께 지켜본다.
     if (progress.state === "running") {
-      watchStartedAt = Date.now();
-      writeSessionValue(WATCH_KEY, String(watchStartedAt));
+      writeSessionValue(WATCH_KEY, String(Date.now()));
       writeSessionValue(STAGE_KEY, "stopping");
       setStore({ ...store, watching: true, progress, targetVersion: progress.targetVersion ?? null, stage: "stopping" });
       schedulePoll(POLL_INTERVAL_MS);
