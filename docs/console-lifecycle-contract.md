@@ -53,15 +53,16 @@ Why B_ext is derived: an external SIGKILL that lands at the same moment as the C
 
 ## Exit record
 
-A Console instance that held the lock writes `console.exit.json` beside its lock as its process exits (`consoleExitRecordPath(lockFile)`):
+A Console instance that held the lock writes its own exit record beside its lock as its process exits, named by its instance key: `console.exit.<pid>-<lockStartedAt>.json` (`consoleExitRecordPath(lockFile, instance)`).
 
 ```json
 { "v": 1, "pid": 4242, "lockStartedAt": 1791163806746, "outcome": "deadline", "killed": 2, "at": 1791163817000 }
 ```
 
-- `pid` and `lockStartedAt` (the `startedAt` of the lock that instance published) pair the record with the instance a reader observed. A record for another pair says nothing about that instance; only the last ending is kept.
-- The record is staged under an exclusive name and renamed into place (mode 0600), so a reader sees the previous record or the new one, never a partial file. It never carries the lock token.
+- `pid` and `lockStartedAt` (the `startedAt` of the lock that instance published) are the instance key. A reader opens only the file of the instance it observed. One file per instance means no instance overwrites another's evidence: a previous owner still reaping children after it released the lock writes its own record even if a successor has taken the slot, started, and ended meanwhile.
+- The record is staged under an exclusive name and renamed into place (mode 0600), so a reader sees no record or the whole record, never a partial file. It never carries the lock token.
 - A serve that never took the lock writes no record (I3). A start that fails after the lock was taken records `crash`.
+- Retention: the lock owner, right after it takes the lock, keeps the newest `CONSOLE_EXIT_RECORD_RETAIN` (16) records and removes older ones whose pid is ESRCH, along with abandoned staging files whose writer is ESRCH. Nobody else removes records.
 
 | Outcome | Written by | Meaning |
 |---|---|---|

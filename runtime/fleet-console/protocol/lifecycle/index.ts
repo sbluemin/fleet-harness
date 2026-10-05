@@ -59,27 +59,43 @@ export type ConsoleExitOutcome = "clean" | "deadline" | "crash" | "external" | "
 
 export const CONSOLE_EXIT_RECORD_VERSION = 1;
 
-/**
- * The record a Console instance leaves beside its lock when it ends. `pid` and `lockStartedAt` (the `startedAt` of the
- * lock that instance published) pair it with the instance a reader observed; a record for any other pair says nothing
- * about that instance. Only the last ending is kept. It never carries the lock token.
- */
-export interface ConsoleExitRecord {
-  readonly v: typeof CONSOLE_EXIT_RECORD_VERSION;
+/** The pair that names one Console instance: its pid and the `startedAt` of the lock it published. */
+export interface ConsoleInstanceKey {
   readonly pid: number;
   readonly lockStartedAt: number;
+}
+
+/**
+ * The record a Console instance leaves beside its lock when it ends, in a file of its own named by its instance key.
+ * No instance ever overwrites another's record: a previous owner that ends after a successor took the slot writes its
+ * own file. A reader opens only the file of the instance it observed. It never carries the lock token.
+ */
+export interface ConsoleExitRecord extends ConsoleInstanceKey {
+  readonly v: typeof CONSOLE_EXIT_RECORD_VERSION;
   readonly outcome: ConsoleExitOutcome;
   /** Leftover child processes the instance killed on its way out (deadline). */
   readonly killed: number;
   readonly at: number;
 }
 
-const EXIT_RECORD_FILE_NAME = "console.exit.json";
+/** How many of the newest exit records a lock owner keeps when it prunes the slot right after taking the lock. */
+export const CONSOLE_EXIT_RECORD_RETAIN = 16;
+
+const EXIT_RECORD_NAME = /^console\.exit\.([1-9]\d*)-(\d+)\.json$/;
 const EXIT_OUTCOMES: readonly ConsoleExitOutcome[] = ["clean", "deadline", "crash", "external", "forced-external"];
 
-/** The exit record sits in the lock's own runtime slot, so every actor that knows the lock knows where to read it. */
-export function consoleExitRecordPath(lockFile: string): string {
-  return path.join(path.dirname(lockFile), EXIT_RECORD_FILE_NAME);
+/** The exit record of `instance`, in the lock's own runtime slot: every actor that knows the lock knows where to read it. */
+export function consoleExitRecordPath(lockFile: string, instance: ConsoleInstanceKey): string {
+  return path.join(path.dirname(lockFile), `console.exit.${instance.pid}-${instance.lockStartedAt}.json`);
+}
+
+/** The instance key an exit record file name carries, or null for any other name. */
+export function parseConsoleExitRecordName(name: string): ConsoleInstanceKey | null {
+  const match = EXIT_RECORD_NAME.exec(name);
+  if (!match) return null;
+  const pid = Number(match[1]);
+  const lockStartedAt = Number(match[2]);
+  return Number.isSafeInteger(pid) && Number.isSafeInteger(lockStartedAt) ? { pid, lockStartedAt } : null;
 }
 
 /** The record in `text`, or null when it is not a record of this version. */

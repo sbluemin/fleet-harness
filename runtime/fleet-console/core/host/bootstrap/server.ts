@@ -39,6 +39,7 @@ import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { pruneConsoleExitRecords } from "@fleet-console/lifecycle";
 import { CONSOLE_LIFECYCLE_WIRE } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
@@ -2633,6 +2634,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 실제 포트만 먼저 확보한다. 패자는 제품 상태를 읽어 복원하거나 플러그인을 실행하기 전에 끝난다.
       lockHandle = await lock.acquireLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
       lifecycle.lockAcquired(lockHandle.payload);
+      // Earlier instances' exit records are pruned only by the lock owner, after it took the lock (I3).
+      pruneConsoleExitRecords(lockPaths.lockFile);
       activeLockFile = lockPaths.lockFile;
       activeEndpoint = result.endpoint;
       // 워크스페이스 승계·옛 렌더 트리 회수·설정 기본값 확정도 durable writer의 일이다.
