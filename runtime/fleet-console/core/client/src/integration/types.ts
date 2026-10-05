@@ -1,4 +1,5 @@
-import type { ConsoleUpdateFailureReason, ConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
+export type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateApplyFailureResponse } from "@fleet-console/protocol/lifecycle/update";
+import type { ConsoleUpdateFailureStage, ConsoleUpdateFailureReason, ConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
 import type { ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
 import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -138,6 +139,7 @@ export interface ConsoleUpdateProgress {
   readonly reason?: ConsoleUpdateFailureReason | "unknown";
   /** On a failure: the contract's shared, path-free explanation of the reason. */
   readonly description?: string;
+  readonly failureStage?: ConsoleUpdateFailureStage;
 }
 
 export interface ConsoleUpdateApplyAcceptedResponse {

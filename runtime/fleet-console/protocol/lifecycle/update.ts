@@ -21,11 +21,56 @@ export const UPDATE_OLD_CONSOLE_STOP_CONCLUSION_MS = HEALTH_PROBE_TIMEOUT_MS + E
  */
 export const UPDATE_FAILED_CONSOLE_RETURN_MS = UPDATE_OLD_CONSOLE_STOP_CONCLUSION_MS + CONSOLE_START_TIMEOUT_MS;
 
+/** 실제 worker의 준비와 응답 이후 인계를 각각 제한한다. 다운로드 시간은 포함하지 않는다. */
+export const UPDATE_WORKER_PREFLIGHT_MS = 15_000;
+export const UPDATE_WORKER_COMMIT_MS = 5_000;
+/** 취소된 worker를 거둔 뒤에만 다음 실행이 progress를 쓸 수 있다. */
+export const UPDATE_WORKER_ABORT_MS = KILL_CONFIRM_MS;
+export const UPDATE_WORKER_HANDSHAKE_VERSION = 1;
+
+export type ConsoleUpdateFailureStage = "preflight" | "handoff";
+
+/** commit 전 거절의 공용 DTO. 설명은 host가 계약의 describe*로 만든다. */
+export interface ConsoleUpdateApplyFailureProgress {
+  readonly state: "failed";
+  readonly phase: "failed";
+  readonly startedAt: string;
+  readonly fromVersion: string;
+  readonly targetVersion: string;
+  readonly reason: ConsoleUpdateFailureReason | "unknown";
+  readonly failureStage: ConsoleUpdateFailureStage;
+  readonly description: string;
+}
+
+export interface ConsoleUpdateApplyFailureResponse {
+  readonly error: "update_worker_unavailable";
+  readonly progress: ConsoleUpdateApplyFailureProgress;
+}
+
+/** 익명 parent-child IPC 채널에서만 읽는다. runId 자체는 권한 증명이 아니다. */
+export interface ConsoleUpdateWorkerMessage {
+  readonly v: number;
+  readonly runId: string;
+  readonly kind: "prepare" | "ready" | "commit" | "committed" | "abort" | "failed";
+  readonly reason?: ConsoleUpdateFailureReason;
+  readonly failureStage?: ConsoleUpdateFailureStage;
+}
+
+export function isConsoleUpdateWorkerMessage(value: unknown, runId: string, version: number): value is ConsoleUpdateWorkerMessage {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return entry.v === version && entry.runId === runId
+    && ["prepare", "ready", "commit", "committed", "abort", "failed"].includes(entry.kind as string);
+}
+
 /** The command that starts the Console for this data directory, or explains what keeps it from starting. */
 export const CONSOLE_START_COMMAND = "fleet console start";
 
 /**
- * Why an accepted update failed, as the update worker records it (`reason` on the progress record).
+ * 준비 또는 수락 이후 업데이트의 실패 사유(`reason`).
+ * - preflight-failed: 실제 worker의 설치 준비에 실패했다.
+ * - preflight-timeout: 실제 worker의 준비 예산이 소진됐다.
+ * - handoff-aborted: commit 또는 host의 실제 정지로 인계가 이어지지 않았다.
  * - lifecycle-runtime-mismatch: the worker's copy of the lifecycle runtime did not match what the Console recorded.
  * - old-console-unverified: the old Console still held its lock after B_ext and its identity could not be proven again.
  * - old-console-replaced: the old Console's lock names a live pid that started after the lock was written.
@@ -38,6 +83,9 @@ export const CONSOLE_START_COMMAND = "fleet console start";
  * Additive: a reader that meets a reason it does not know reads `unknown`, never a success.
  */
 export type ConsoleUpdateFailureReason =
+  | "preflight-failed"
+  | "preflight-timeout"
+  | "handoff-aborted"
   | "lifecycle-runtime-mismatch"
   | "old-console-unverified"
   | "old-console-replaced"
@@ -49,6 +97,9 @@ export type ConsoleUpdateFailureReason =
   | "worker-lost";
 
 const UPDATE_FAILURE_REASONS: readonly ConsoleUpdateFailureReason[] = [
+  "preflight-failed",
+  "preflight-timeout",
+  "handoff-aborted",
   "lifecycle-runtime-mismatch",
   "old-console-unverified",
   "old-console-replaced",
@@ -84,6 +135,7 @@ export function parseConsoleUpdateOldConsoleEnding(value: unknown): ConsoleUpdat
 export interface ConsoleUpdateFailureFacts {
   /** The pid of the Console the update replaced. */
   readonly oldConsolePid?: number;
+  readonly failureStage?: ConsoleUpdateFailureStage;
 }
 
 const seconds = (ms: number): string => `${Math.round(ms / 1_000)}s`;
@@ -97,7 +149,14 @@ export function describeConsoleUpdateFailure(reason: ConsoleUpdateFailureReason 
   const pid = facts.oldConsolePid === undefined ? "" : ` (pid ${facts.oldConsolePid})`;
   const lockPid = facts.oldConsolePid === undefined ? "the previous Console's pid" : `pid ${facts.oldConsolePid}`;
   switch (reason) {
+    case "preflight-failed":
+      return "The update worker could not prepare the package manager or installation directory. The update did not ask the Console to stop and installed nothing.";
+    case "preflight-timeout":
+      return `The update worker did not finish its checks within ${seconds(UPDATE_WORKER_PREFLIGHT_MS)}. The update did not ask the Console to stop and installed nothing.`;
+    case "handoff-aborted":
+      return "The update handoff did not complete. Its worker sent no stop signal, installed nothing, and started no other Console.";
     case "lifecycle-runtime-mismatch":
+      if (facts.failureStage === "preflight") return "The update worker could not verify its copy of the Console lifecycle runtime. The update did not ask the Console to stop, install anything, or start another Console.";
       return "The update worker's copy of the Console lifecycle runtime did not match what the Console recorded, so it judged, signalled, and installed nothing. It started the previous version once the old Console had ended, and started nothing if the old Console was still running.";
     case "old-console-unverified":
       return `The previous Console${pid} still held its lock ${seconds(EXTERNAL_ESCALATION_MS)} after it was asked to stop, and the update could not prove again that the process was that Console, so it sent no signal and installed nothing. If that process is a stuck Fleet Console, end it, then start Fleet Console again.`;

@@ -280,7 +280,7 @@ describe("console terminal observability", () => {
           refresh: async () => ({ updateAvailable: true, latestVersion: "9.9.9" }),
           latestRelease: () => ({ version: "9.9.9" }) as never,
         },
-        updateApply: { start: async () => ({}) as never },
+        updateApply: { start: async () => ({ accepted: true, commit: async () => {}, abort: async () => {}, cancelled: new Promise<void>(() => {}) }) },
       });
       const afterCleanupStarted = slowCleanup(update.lockFile);
       const origin = new URL(update.endpoint).origin;

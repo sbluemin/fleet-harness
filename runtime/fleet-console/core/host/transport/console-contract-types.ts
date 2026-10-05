@@ -1,3 +1,5 @@
+export type { ConsoleUpdateApplyFailureResponse } from "@fleet-console/protocol/lifecycle";
+import type { ConsoleUpdateFailureReason, ConsoleUpdateFailureStage, ConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle";
 import type { ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
 import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { ConsoleThemeId, UiFontSettings } from "../../../features/settings/host/settings-domain.js";
@@ -247,6 +249,10 @@ export interface ConsoleUpdateProgressResponse {
   readonly fromVersion?: string;
   readonly endpointChanged?: boolean;
   readonly error?: string;
+  readonly reason?: ConsoleUpdateFailureReason | "unknown";
+  readonly failureStage?: ConsoleUpdateFailureStage;
+  readonly description?: string;
+  readonly oldConsoleOutcome?: ConsoleUpdateOldConsoleEnding;
 }
 
 export interface ConsoleOperationGeometry {

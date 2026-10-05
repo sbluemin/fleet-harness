@@ -11,13 +11,28 @@ import type { ConsoleTarballDownload, GlobalPackageManagerCommand } from "@fleet
 import { getFleetDataDir } from "@fleet-console/infra/data-dir";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
-import { CONSOLE_LIFECYCLE_CONTRACT_VERSION, CONSOLE_SERVE_EXIT_LOCK_HELD, EXTERNAL_ESCALATION_MS, STOP_POLL_MS, type ConsoleUpdateFailureReason } from "@fleet-console/protocol/lifecycle";
+import {
+  CONSOLE_LIFECYCLE_CONTRACT_VERSION, CONSOLE_SERVE_EXIT_LOCK_HELD,
+  UPDATE_WORKER_HANDSHAKE_VERSION, UPDATE_WORKER_PREFLIGHT_MS, UPDATE_WORKER_COMMIT_MS,
+  describeConsoleUpdateFailure, isConsoleUpdateWorkerMessage,
+  type ConsoleUpdateApplyFailureProgress, type ConsoleUpdateFailureStage, type ConsoleUpdateFailureReason,
+} from "@fleet-console/protocol/lifecycle";
 import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
-import { CONSOLE_UPDATE_PROGRESS_FILE, writeConsoleUpdateProgress } from "./update-progress.js";
+import { CONSOLE_UPDATE_PROGRESS_FILE, CONSOLE_UPDATE_OUTCOME_TTL_MS, writeConsoleUpdateProgress } from "./update-progress.js";
+import { prepareUpdateWorker, type PreparedUpdateWorker, type UpdateWorkerChild } from "./update-worker-handoff.js";
 
 export interface ConsoleUpdateApplyService {
   start(request: ConsoleUpdateApplyRequest): Promise<ConsoleUpdateApplyStartResult>;
+  /** 디스크 기록 실패에도 살아 있는 host는 자신이 확정한 거절을 읽어 준다. */
+  getFailure?(): ConsoleUpdateApplyFailureProgress | null;
+}
+
+export class ConsoleUpdateApplyPreflightError extends Error {
+  constructor(readonly progress: ConsoleUpdateApplyFailureProgress) {
+    super("update_worker_unavailable");
+    this.name = "ConsoleUpdateApplyPreflightError";
+  }
 }
 
 export interface ConsoleUpdateApplyRequest {
@@ -35,9 +50,7 @@ export interface ConsoleUpdateApplyRequest {
   readonly fromVersion: string;
 }
 
-export interface ConsoleUpdateApplyStartResult {
-  readonly accepted: true;
-}
+export type ConsoleUpdateApplyStartResult = PreparedUpdateWorker;
 
 export interface CreateConsoleUpdateApplyServiceDeps {
   readonly env?: NodeJS.ProcessEnv;
@@ -64,6 +77,7 @@ export interface CreateConsoleUpdateApplyServiceDeps {
 }
 
 export interface ConsoleUpdateWorkerScriptConfig {
+  readonly runId: string;
   readonly currentEndpoint: string;
   readonly currentLockToken: string;
   readonly currentLockStartedAt: number;
@@ -103,16 +117,12 @@ export interface ConsoleUpdatePackageManagerSpec {
   readonly prefixArgs: readonly string[];
 }
 
-export interface ConsoleUpdateWorkerProcess {
-  readonly pid?: number;
-  once(event: "error", listener: (error: Error) => void): this;
-  unref(): void;
-}
+export type ConsoleUpdateWorkerProcess = UpdateWorkerChild;
 
 export type ConsoleUpdateWorkerSpawner = (
   execPath: string,
   args: readonly string[],
-  options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore"; readonly windowsHide: true },
+  options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: ["ignore", "ignore", "ignore", "ipc"]; readonly windowsHide: true },
 ) => ConsoleUpdateWorkerProcess;
 
 const PACKAGE_NAMES = ["@dotobokuri/fleet-console"] as const;
@@ -120,6 +130,9 @@ const PACKAGE_NAMES = ["@dotobokuri/fleet-console"] as const;
 export const CONSOLE_UPDATE_OLD_CONSOLE_UNVERIFIED = "old_console_unverified";
 /** The reasons the worker records, by the step that failed (`reason` on the progress record; the contract names them). */
 const WORKER_FAILURE_REASONS = {
+  preflightFailed: "preflight-failed",
+  preflightTimeout: "preflight-timeout",
+  handoffAborted: "handoff-aborted",
   runtimeMismatch: "lifecycle-runtime-mismatch",
   oldUnverified: "old-console-unverified",
   oldReplaced: "old-console-replaced",
@@ -157,12 +170,38 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     fs.writeFileSync(filePath, content, { mode: options.mode });
   });
 
+  let lastStartedAt = 0;
+  let lastFailure: ConsoleUpdateApplyFailureProgress | null = null;
+  let failedAt = 0;
+  function recordFailure(request: ConsoleUpdateApplyRequest, startedAt: string, reason: ConsoleUpdateFailureReason | "unknown", failureStage: ConsoleUpdateFailureStage): ConsoleUpdateApplyPreflightError {
+    lastFailure = {
+      state: "failed", phase: "failed", startedAt, fromVersion: request.fromVersion,
+      targetVersion: request.release.version, reason, failureStage,
+      description: describeConsoleUpdateFailure(reason, { failureStage }),
+    };
+    failedAt = now();
+    try {
+      writeConsoleUpdateProgress(request.dataDir, { ...lastFailure, updatedAt: new Date(failedAt).toISOString() });
+    } catch {
+      // 살아 있는 host의 응답과 GET fallback은 기록 실패와 무관하게 같은 결론을 준다.
+    }
+    return new ConsoleUpdateApplyPreflightError(lastFailure);
+  }
+
   async function start(request: ConsoleUpdateApplyRequest): Promise<ConsoleUpdateApplyStartResult> {
     // This is an installation-layout boundary, not Desktop provenance or a Console
     // release channel. The managed runtime is updated only by Desktop's hardened
     // entry-flow transaction until a recoverable same-window handoff exists.
     if (isManagedRuntimePackageRoot(request.currentPackageRoot)) throw new Error("managed_runtime_update_requires_relaunch");
-    const packageManager = await preflightInstall(request.currentPackageRoot);
+    lastFailure = null;
+    lastStartedAt = Math.max(now(), lastStartedAt + 1);
+    const startedAt = new Date(lastStartedAt).toISOString();
+    let packageManager: ConsoleUpdatePackageManagerSpec;
+    try {
+      packageManager = await preflightInstall(request.currentPackageRoot);
+    } catch {
+      throw recordFailure(request, startedAt, "preflight-failed", "preflight");
+    }
     // Every byte is fetched and checked while this Console still serves. A failed download or a
     // hash mismatch is reported here, and nothing has been stopped or installed.
     const releasesDir = consoleReleaseTarballDir(deps.fleetDataDir ?? getFleetDataDir(env));
@@ -170,10 +209,11 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     if (!download.ok) throw new Error(download.reason);
     const targetVersion = request.release.version;
     try {
-      return await launchWorker(request, packageManager, { releasesDir, tarballPath: download.tarballPath, targetVersion });
+      return await launchWorker(request, packageManager, { releasesDir, tarballPath: download.tarballPath, targetVersion }, startedAt);
     } catch (error) {
-      removeFile(download.tarballPath);
-      throw error;
+      try { removeFile(download.tarballPath); } catch { /* 실패 결론을 정리 오류로 덮지 않는다. */ }
+      if (error instanceof ConsoleUpdateApplyPreflightError) throw error;
+      throw recordFailure(request, startedAt, "preflight-failed", "preflight");
     }
   }
 
@@ -181,26 +221,28 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     request: ConsoleUpdateApplyRequest,
     packageManager: ConsoleUpdatePackageManagerSpec,
     target: { readonly releasesDir: string; readonly tarballPath: string; readonly targetVersion: string },
+    startedAt: string,
   ): Promise<ConsoleUpdateApplyStartResult> {
     const { releasesDir, tarballPath, targetVersion } = target;
-    const stamp = `${now()}-${processPid}`;
+    const runId = crypto.randomUUID();
+    const stamp = `${now()}-${processPid}-${runId}`;
     const workerPath = path.join(tmpDir, `${WORKER_FILE_PREFIX}${stamp}${WORKER_FILE_SUFFIX}`);
     makeDir(request.dataDir, { recursive: true, mode: 0o700 });
     const statusFile = path.join(request.dataDir, `${WORKER_FILE_PREFIX}${stamp}${STATUS_FILE_SUFFIX}`);
     const logFile = path.join(request.dataDir, `${WORKER_FILE_PREFIX}${stamp}${LOG_FILE_SUFFIX}`);
     const progressFile = path.join(request.dataDir, CONSOLE_UPDATE_PROGRESS_FILE);
-    const startedAt = new Date(now()).toISOString();
     // The worker judges the old Console with this Console's lifecycle runtime. It is copied now, while the installed
     // package is still intact, and before anything stops: a missing or unreadable runtime fails the update here.
     let runtime: string;
     try {
       runtime = fs.readFileSync(workerRuntimePath, "utf8");
     } catch {
-      throw new Error("update_worker_unavailable");
+      throw recordFailure(request, startedAt, "lifecycle-runtime-mismatch", "preflight");
     }
     const lifecycleRuntimePath = path.join(tmpDir, `${WORKER_FILE_PREFIX}${stamp}${RUNTIME_FILE_SUFFIX}`);
     writeFile(lifecycleRuntimePath, runtime, { mode: TEMP_FILE_MODE });
     const script = emitConsoleUpdateWorkerScript({
+      runId,
       currentEndpoint: request.currentEndpoint,
       currentLockToken: request.currentLockToken,
       currentLockStartedAt: request.currentLockStartedAt,
@@ -226,27 +268,26 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       workerPath,
     });
     writeFile(workerPath, script, { mode: TEMP_FILE_MODE });
-    // 기록은 워커가 실제로 떠난 **뒤에** 남긴다. 띄우지도 못한 업데이트를 "진행 중"으로
-    // 적어 두면, 그 사이 새로고침한 화면은 아무도 진행하지 않는 커튼 아래 갇힌다.
-    const workerPid = await spawnDetachedWorker(spawnWorker, execPath, [workerPath], childEnv);
-    // 그리고 워커가 첫 줄을 쓰기 전의 찰나에도 화면이 새로고침될 수 있다. 그때 "아무 일도
-    // 없다"고 답하면 사용자는 업데이트가 취소된 줄 안다 — 수락은 여기서 기록한다.
-    writeConsoleUpdateProgress(request.dataDir, {
-      phase: "starting",
-      startedAt,
-      updatedAt: startedAt,
-      targetVersion,
-      fromVersion: request.fromVersion,
-      ...(workerPid === undefined ? {} : { workerPid }),
-    }, { makeDir, writeFile });
-    return { accepted: true };
+    const child = spawnWorker(execPath, [workerPath], withHidden({ detached: true, env: childEnv, stdio: ["ignore", "ignore", "ignore", "ipc"] }));
+    return prepareUpdateWorker(child, runId, () => {
+      // worker는 prepare를 받기 전에는 쓰지 않는다. host의 starting이 실패 결론을 덮지 않는다.
+      writeConsoleUpdateProgress(request.dataDir, {
+        phase: "starting", startedAt, updatedAt: startedAt, targetVersion,
+        fromVersion: request.fromVersion, workerPid: child.pid,
+      });
+    }, (reason, stage) => {
+      for (const file of [workerPath, lifecycleRuntimePath, tarballPath]) {
+        try { removeFile(file); } catch { /* 자신의 실행 파일만 최선 노력으로 정리한다. */ }
+      }
+      return recordFailure(request, startedAt, reason, stage);
+    });
   }
 
-  return { start };
+  return { start, getFailure: () => now() - failedAt <= CONSOLE_UPDATE_OUTCOME_TTL_MS ? lastFailure : null };
 }
 
 export function emitConsoleUpdateWorkerScript(config: ConsoleUpdateWorkerScriptConfig): string {
-  return `import { execFileSync, spawn } from "node:child_process";
+  return `import { execFile, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -259,10 +300,10 @@ const workerSuffix = ${JSON.stringify(WORKER_FILE_SUFFIX)};
 const unverifiedError = ${JSON.stringify(CONSOLE_UPDATE_OLD_CONSOLE_UNVERIFIED)};
 const reasons = ${JSON.stringify(WORKER_FAILURE_REASONS)};
 const lockHeldExitCode = ${JSON.stringify(CONSOLE_SERVE_EXIT_LOCK_HELD)};
-// The contract's budgets, fixed when the Console wrote this worker: the only judgment the worker makes without its
-// runtime is waiting for the old pid's ESRCH within them.
-const externalEscalationMs = ${JSON.stringify(EXTERNAL_ESCALATION_MS)};
-const stopPollMs = ${JSON.stringify(STOP_POLL_MS)};
+const UPDATE_WORKER_HANDSHAKE_VERSION = ${JSON.stringify(UPDATE_WORKER_HANDSHAKE_VERSION)};
+const preflightMs = ${JSON.stringify(UPDATE_WORKER_PREFLIGHT_MS)};
+const commitMs = ${JSON.stringify(UPDATE_WORKER_COMMIT_MS)};
+const isConsoleUpdateWorkerMessage = ${String(isConsoleUpdateWorkerMessage)};
 // Read before anything can wait, including the import of the lifecycle runtime: the Console that spawned this worker is its parent. While the parent is
 // alive its pid cannot be handed to another process, and once it exits the OS reparents this worker at once,
 // even while the exited parent is still an unreaped zombie. Windows keeps the original parent pid after it
@@ -275,18 +316,77 @@ let consoleStopped = false;
 let lifecycle = null;
 // How the old Console ended, once known; carried on every later progress record.
 let oldConsoleOutcome = null;
+let failureStage = "preflight";
+let controlState = "waiting";
+const probeAbort = new AbortController();
+let resolvePrepare;
+let resolveCommit;
+let rejectCancelled;
+const prepareGate = new Promise((resolve) => { resolvePrepare = resolve; });
+const commitGate = new Promise((resolve) => { resolveCommit = resolve; });
+const cancelled = new Promise((_, reject) => { rejectCancelled = reject; });
+cancelled.catch(() => {});
+let controlTimer = setTimeout(() => abortControl(reasons.preflightTimeout), preflightMs);
+process.on("message", onControlMessage);
+process.on("disconnect", () => {
+  if (controlState !== "committed") abortControl(reasons.handoffAborted);
+});
+
+function abortControl(reason) {
+  if (controlState === "aborted" || controlState === "committed") return;
+  controlState = "aborted";
+  clearTimeout(controlTimer);
+  probeAbort.abort();
+  rejectCancelled(updateFailure(reason, reason));
+}
+
+function onControlMessage(message) {
+  if (!isConsoleUpdateWorkerMessage(message, config.runId, UPDATE_WORKER_HANDSHAKE_VERSION)) return;
+  if (message.kind === "abort") abortControl(reasons.handoffAborted);
+  else if (message.kind === "prepare" && controlState === "waiting") {
+    controlState = "preflight";
+    resolvePrepare();
+  } else if (message.kind === "commit" && controlState === "ready") {
+    controlState = "committed";
+    clearTimeout(controlTimer);
+    resolveCommit();
+  }
+}
+
+function notifyHost(kind, extra = {}) {
+  return new Promise((resolve, reject) => {
+    if (!process.connected || !process.send) { reject(updateFailure(reasons.handoffAborted, "update host disconnected")); return; }
+    process.send({ v: UPDATE_WORKER_HANDSHAKE_VERSION, runId: config.runId, kind, ...extra }, (error) => error ? reject(error) : resolve());
+  });
+}
+
+async function preflight() {
+  lifecycle = await loadLifecycleRuntime();
+  if (!lifecycle) throw updateFailure(reasons.runtimeMismatch, "lifecycle_runtime_mismatch");
+  probeAbort.signal.throwIfAborted();
+  const manager = await detectPackageManager();
+  probeAbort.signal.throwIfAborted();
+  ensureGlobalRootWritable(manager);
+  return manager;
+}
 
 async function main() {
+  await Promise.race([prepareGate, cancelled]);
   writeStatus("starting");
   cleanupStaleWorkers();
-  lifecycle = await loadLifecycleRuntime();
-  if (!lifecycle) {
-    await failWithoutLifecycleRuntime();
-    return;
-  }
-  const manager = detectPackageManager();
-  ensureGlobalRootWritable(manager);
+  const manager = await Promise.race([preflight(), cancelled]);
   writeStatus("preflight-ok", { manager: manager.command });
+  failureStage = "handoff";
+  controlState = "ready";
+  clearTimeout(controlTimer);
+  controlTimer = setTimeout(() => abortControl(reasons.handoffAborted), commitMs);
+  await notifyHost("ready");
+  await Promise.race([commitGate, cancelled]);
+  await notifyHost("committed");
+  // commit 확인이 유실된 host는 정지하지 않는다. 실제 정지 관측 전에는 ladder도 신호도 없다.
+  const target = { lockFile: config.lockFile, pid: config.currentPid, endpoint: config.currentEndpoint, token: config.currentLockToken, startedAt: config.currentLockStartedAt };
+  if (!await lifecycle.waitForUpdatedConsoleStop(target)) throw updateFailure(reasons.handoffAborted, "the update host did not begin stopping");
+  failureStage = null;
   await stopCurrentConsole();
   writeStatus("installing", { manager: manager.command });
   await installPackages(manager);
@@ -305,8 +405,11 @@ main()
     // 실패는 복구를 시도하기 전에 기록한다. 복구가 끝나기를 기다리는 동안이나 복구가 실패해도
     // 다음에 뜨는 Console이 읽을 결론은 이미 디스크에 있다. 다만 기록이 실패해도 복구는 반드시
     // 간다 — 실패를 말할 화면을 다시 세우는 일이 그 기록보다 먼저다.
-    const failure = { error: reason, ...(error && typeof error.updateReason === "string" ? { reason: error.updateReason } : {}) };
+    const failure = {
+      ...(failureStage ? { reason: error?.updateReason ?? reasons.preflightFailed, failureStage } : { error: reason, ...(error?.updateReason ? { reason: error.updateReason } : {}) }),
+    };
     const progressRecorded = writeProgress("failed", failure);
+    if (failureStage) await notifyHost("failed", failure).catch(() => {});
     try {
       writeStatusFile("failed", failure);
     } catch {
@@ -326,6 +429,11 @@ main()
     process.exitCode = 1;
   })
   .finally(() => {
+    clearTimeout(controlTimer);
+    probeAbort.abort();
+    process.off("message", onControlMessage);
+    if (process.connected) process.disconnect();
+    if (failureStage) removeFileBestEffort(config.tarballPath);
     for (const file of [config.workerPath, config.lifecycleRuntimePath]) {
       try {
         fs.rmSync(file, { force: true });
@@ -365,52 +473,11 @@ async function loadLifecycleRuntime() {
   }
 }
 
-/**
- * Without a trusted runtime this worker judges nothing it cannot prove, so it signals nothing and installs nothing. The
- * Console that accepted the update stops itself after its response; a serve started before that Console ends would only
- * find the lock held. So the worker waits, without a signal, for the old pid's ESRCH — the one piece of evidence that
- * frees a slot (docs/console-lifecycle-contract.md, "Evidence direction") — within EXTERNAL_ESCALATION_MS, and starts one
- * serve only then; serve itself still refuses a lock someone else holds.
- */
-async function failWithoutLifecycleRuntime() {
-  let failure = { error: "lifecycle_runtime_mismatch", reason: reasons.runtimeMismatch };
-  writeProgress("failed", failure);
-  try {
-    writeStatusFile("failed", failure);
-  } catch {
-    // 진단 파일을 쓰지 못해도 복구는 간다.
-  }
-  log("phase: failed (lifecycle_runtime_mismatch); waiting for the old console to end before starting one serve");
-  const deadline = Date.now() + externalEscalationMs;
-  while (pidExists(config.currentPid) && Date.now() < deadline) await sleep(stopPollMs);
-  if (pidExists(config.currentPid)) {
-    failure = { error: "lifecycle_runtime_mismatch: the old console was still running, so no console was started", reason: reasons.runtimeMismatch };
-    log("no serve started: pid " + config.currentPid + " was still running " + externalEscalationMs + "ms later and may still hold the lock");
-  } else {
-    log("old console ended; starting one serve to bring a console back");
-    spawnServe();
-  }
-  // The Console records the accepted update right after it spawns this worker; a failure this fast must not stay under it.
-  const current = readProgressStartedAt();
-  if (current === "missing" || current === config.startedAt) writeProgress("failed", failure);
-  process.exitCode = 1;
-}
-
 /** An error that names the contract's reason for this failure (ConsoleUpdateFailureReason). */
 function updateFailure(reason, message) {
   const error = new Error(message);
   error.updateReason = reason;
   return error;
-}
-
-/** Only ESRCH means the pid is gone; any other answer counts as running. */
-function pidExists(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return !(error && error.code === "ESRCH");
-  }
 }
 
 function writeStatus(phase, extra = {}) {
@@ -435,11 +502,14 @@ function writeProgress(phase, extra = {}) {
   if (typeof oldConsoleOutcome === "string") record.oldConsoleOutcome = oldConsoleOutcome;
   if (typeof extra.error === "string") record.error = extra.error;
   if (typeof extra.reason === "string") record.reason = extra.reason;
+  if (typeof extra.failureStage === "string") record.failureStage = extra.failureStage;
   if (phase === "failed") record.oldConsolePid = config.currentPid;
   // The next Console reads this worker as lost the moment its pid is gone (ESRCH) with no outcome recorded.
   record.workerPid = process.pid;
   try {
-    fs.writeFileSync(config.progressFile, JSON.stringify(record, null, 2), { mode: 0o600 });
+    const staging = config.progressFile + "." + config.runId + ".tmp";
+    fs.writeFileSync(staging, JSON.stringify(record, null, 2), { mode: 0o600 });
+    fs.renameSync(staging, config.progressFile);
     return true;
   } catch {
     // 진단 기록이 없다고 업데이트를 멈추지는 않는다.
@@ -476,17 +546,18 @@ function log(message) {
   }
 }
 
+/** 비정상 종료로 남은 worker와 runtime 복사본을 정리하되 이번 실행의 두 파일은 보존한다. */
 function cleanupStaleWorkers() {
   const now = Date.now();
   for (const entry of fs.readdirSync(os.tmpdir())) {
     if (!entry.startsWith(stalePrefix) || !entry.endsWith(workerSuffix)) continue;
     const filePath = path.join(os.tmpdir(), entry);
-    if (filePath === config.workerPath) continue;
+    if (filePath === config.workerPath || filePath === config.lifecycleRuntimePath) continue;
     try {
       const stat = fs.statSync(filePath);
       if (now - stat.mtimeMs > 24 * 60 * 60 * 1000) fs.rmSync(filePath, { force: true });
     } catch {
-      // 오래된 임시 worker 정리는 최선 노력으로만 수행한다.
+      // 오래된 임시 파일의 정리 실패는 업데이트를 막지 않는다.
     }
   }
 }
@@ -524,10 +595,14 @@ async function stopCurrentConsole() {
   log("old console stopped" + (oldConsoleOutcome ? " (" + oldConsoleOutcome + ")" : "") + "; its lock is left for the new console to reclaim");
 }
 
-function detectPackageManager() {
+async function detectPackageManager() {
   const configured = config.packageManager;
   try {
-    const root = execFileSync(configured.bin, [...configured.prefixArgs, "root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const root = (await new Promise((resolve, reject) => {
+      execFile(configured.bin, [...configured.prefixArgs, "root", "-g"], {
+        encoding: "utf8", signal: probeAbort.signal, killSignal: "SIGKILL", windowsHide: true,
+      }, (error, stdout) => error ? reject(error) : resolve(stdout));
+    })).trim();
     if (!root) throw new Error("global package manager root is empty");
     const rootReal = safeRealpath(root);
     const packageReal = normalizeExistingPath(config.currentPackageRoot);
@@ -541,16 +616,16 @@ function detectPackageManager() {
       }
     }
   } catch (error) {
-    throw updateFailure(reasons.installFailed, "no supported global package manager found: " + sanitizeError(error));
+    throw updateFailure(reasons.preflightFailed, "no supported global package manager found: " + sanitizeError(error));
   }
-  throw updateFailure(reasons.installFailed, "no supported global package manager found");
+  throw updateFailure(reasons.preflightFailed, "no supported global package manager found");
 }
 
 function ensureGlobalRootWritable(manager) {
   try {
     fs.accessSync(manager.root, fs.constants.W_OK);
   } catch {
-    throw updateFailure(reasons.installFailed, "global package manager root is not writable");
+    throw updateFailure(reasons.preflightFailed, "global package manager root is not writable");
   }
 }
 
@@ -823,33 +898,10 @@ async function preflightPackageManager(packageRoot: string, env: NodeJS.ProcessE
   };
 }
 
-function spawnDetachedWorker(
-  spawnWorker: ConsoleUpdateWorkerSpawner,
-  execPath: string,
-  args: readonly string[],
-  env: NodeJS.ProcessEnv,
-): Promise<number | undefined> {
-  return new Promise((resolve, reject) => {
-    const child = spawnWorker(execPath, args, withHidden({ detached: true, env, stdio: "ignore" as const }));
-    let settled = false;
-    child.once("error", (error) => {
-      if (settled) return;
-      settled = true;
-      reject(error);
-    });
-    child.unref();
-    queueMicrotask(() => {
-      if (settled) return;
-      settled = true;
-      resolve(child.pid);
-    });
-  });
-}
-
 function defaultSpawnWorker(
   execPath: string,
   args: readonly string[],
-  options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore"; readonly windowsHide: true },
+  options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: ["ignore", "ignore", "ignore", "ipc"]; readonly windowsHide: true },
 ): ConsoleUpdateWorkerProcess {
   const child = spawn(execPath, [...args], options);
   child.once("error", () => {});

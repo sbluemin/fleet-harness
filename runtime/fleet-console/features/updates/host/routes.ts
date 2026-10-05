@@ -4,8 +4,8 @@ import { ConsoleReleaseNotesUnavailableError, type ConsoleReleaseNotesService, t
 import { IDLE_CONSOLE_UPDATE_PROGRESS, readConsoleUpdateProgress, type ConsoleUpdateProgressStatus } from "./update-progress.js";
 import type { ConsoleUpdateCheckService, ConsoleUpdateStatus } from "./update-check.js";
 import { hasDesktopGithubReleaseConsoleSource } from "@fleet-console/protocol/desktop";
-import { isManagedRuntimePackageRoot, type ConsoleUpdateApplyService } from "./update-apply.js";
-import type { ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "../../../core/host/transport/console-contract-types.js";
+import { ConsoleUpdateApplyPreflightError, isManagedRuntimePackageRoot, type ConsoleUpdateApplyService, type ConsoleUpdateApplyStartResult } from "./update-apply.js";
+import type { ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError, ConsoleUpdateApplyFailureResponse } from "../../../core/host/transport/console-contract-types.js";
 
 type UpdateApplyBody = Record<string, unknown>;
 // The body may only acknowledge; where the update comes from and what it installs is never the caller's to name.
@@ -84,7 +84,7 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
     } catch {
       progress = IDLE_CONSOLE_UPDATE_PROGRESS;
     }
-    writeJson(res, 200, progress);
+    writeJson(res, 200, updateApply.getFailure?.() ?? progress);
   }
 
   /**
@@ -193,8 +193,9 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
       writeJson(res, 503, { error: "console_not_ready" });
       return false;
     }
+    let prepared: ConsoleUpdateApplyStartResult;
     try {
-      await updateApply.start({
+      prepared = await updateApply.start({
         currentEndpoint: activeEndpoint,
         currentLockToken: handle.payload.token,
         currentLockStartedAt: handle.payload.startedAt,
@@ -206,6 +207,11 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
         release: latestRelease,
       });
     } catch (error) {
+      if (error instanceof ConsoleUpdateApplyPreflightError) {
+        const failure: ConsoleUpdateApplyFailureResponse = { error: "update_worker_unavailable", progress: error.progress };
+        if (!res.destroyed) writeJson(res, 503, failure);
+        return false;
+      }
       // 다운로드·검증 실패는 콘솔을 내리기 전에 난다. 콘솔은 그대로 서 있고 사용자는 이유를 읽는다.
       const message = error instanceof Error ? error.message : "";
       const updateError: ConsoleUpdateApplyError = UPDATE_APPLY_START_ERRORS.has(message as ConsoleUpdateApplyError)
@@ -214,13 +220,43 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
       writeJson(res, 503, { error: updateError });
       return false;
     }
-    res.once("finish", () => {
-      setImmediate(() => {
-        void stopAfterAcceptedUpdateApply();
-      });
+    // 응답 쓰기 전 관측한다. finish 이전 단절이나 worker 취소는 commit 권한이 아니다.
+    const delivered = await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const settle = (finished: boolean): void => {
+        if (settled) return;
+        settled = true;
+        res.off("finish", onFinish);
+        res.off("close", onClose);
+        res.off("error", onClose);
+        resolve(finished);
+      };
+      const onFinish = (): void => settle(true);
+      const onClose = (): void => settle(false);
+      res.once("finish", onFinish);
+      res.once("close", onClose);
+      res.once("error", onClose);
+      void prepared.cancelled.then(onClose);
+      if (res.destroyed) { settle(false); return; }
+      try {
+        const payload: ConsoleUpdateApplyAcceptedResponse = { status: "accepted" };
+        writeJson(res, 202, payload);
+      } catch {
+        settle(false);
+      }
     });
-    const payload: ConsoleUpdateApplyAcceptedResponse = { status: "accepted" };
-    writeJson(res, 202, payload);
+    if (!delivered) {
+      await prepared.abort();
+      return false;
+    }
+    try {
+      await prepared.commit();
+    } catch {
+      await prepared.abort();
+      return false;
+    }
+    // worker가 인계를 확인했다. 완료를 기다려 commit하는 것이 아니라 지금 self-stop을 요청한다.
+    void stopAfterAcceptedUpdateApply();
     return true;
   }
 

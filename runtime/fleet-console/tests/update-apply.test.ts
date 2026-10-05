@@ -1,4 +1,7 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { readConsoleUpdateProgress } from "../features/updates/host/update-progress.js";
+import { UPDATE_WORKER_COMMIT_MS, UPDATE_WORKER_PREFLIGHT_MS } from "@fleet-console/protocol/lifecycle";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -23,6 +26,8 @@ afterEach(() => { for (const dir of TEMP_DIRS.splice(0)) fs.rmSync(dir, { recurs
 describe("console update apply worker", () => {
 
   it("rejects worker spawn before writing the worker when no current global manager matches", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-update-preflight-"));
+    TEMP_DIRS.push(root);
     const writes: string[] = [];
     const service = createConsoleUpdateApplyService({
       preflightInstall: () => {
@@ -43,11 +48,11 @@ describe("console update apply worker", () => {
       currentLockStartedAt: Date.now(),
       currentPackageRoot: "/not-a-global-install",
       currentPid: 111,
-      dataDir: "/data/console",
+      dataDir: root,
       fromVersion: "1.2.2",
       lockFile: "/tmp/console.lock",
       release: createRelease("1.2.3", Buffer.from("tarball")),
-    })).rejects.toThrow("no supported global package manager found");
+    })).rejects.toMatchObject({ progress: { state: "failed", reason: "preflight-failed", failureStage: "preflight" } });
 
     expect(writes).toEqual([]);
   });
@@ -133,7 +138,7 @@ describe("console update apply worker", () => {
         workerRuntimePath: fileURLToPath(new URL("../dist/lifecycle-worker-runtime.mjs", import.meta.url)),
       });
 
-      await service.start({
+      const prepared = await service.start({
         currentEndpoint: `http://127.0.0.1:${await closedLoopbackPort()}/`,
         currentLockToken: "the-exited-console",
         // The exited Console wrote its lock well before the unrelated program took its pid.
@@ -146,6 +151,7 @@ describe("console update apply worker", () => {
         release: createRelease("1.2.3", Buffer.from("tarball")),
       });
 
+      await prepared.commit();
       const progressFile = path.join(dataDir, "update-progress.json");
       await vi.waitFor(() => {
         expect(JSON.parse(fs.readFileSync(progressFile, "utf8")).phase).toBe("completed");
@@ -158,6 +164,52 @@ describe("console update apply worker", () => {
       try { process.kill(Number(fs.readFileSync(daemonPidFile, "utf8")), "SIGKILL"); } catch { /* never started */ }
     }
   }, 30_000);
+
+  // host의 검사가 통과한 뒤 실제 worker에서만 실패하는 public apply 경계다.
+  it.each(["failure", "hung"] as const)("keeps the Console serving when worker preflight is %s", async (mode) => {
+    const fixture = workerFixture(mode);
+    const stop = vi.fn(async () => undefined);
+    const routes = applyRoutes(fixture, stop);
+    const response = new EventEmitter() as http.ServerResponse & { result: { status: number; body: any } };
+    await routes.handleUpdateApply({ method: "POST", headers: {} } as http.IncomingMessage, response);
+    expect(response.result.status).toBe(503);
+    const progress = response.result.body.progress;
+    expect(progress).toMatchObject({ state: "failed", phase: "failed", reason: mode === "hung" ? "preflight-timeout" : "preflight-failed", failureStage: "preflight", fromVersion: "1.2.2", targetVersion: "1.2.3" });
+    expect(progress.startedAt).toBeTruthy();
+    expect(progress.description).toBeTruthy();
+    expect(JSON.stringify(progress)).not.toContain(fixture.root);
+    expect(readConsoleUpdateProgress(fixture.root)).toMatchObject(progress);
+    expect(stop).not.toHaveBeenCalled();
+    expect(fs.readFileSync(fixture.calls, "utf8").trim().split("\n")).toEqual(["root", "root"]);
+    expect(fs.existsSync(fixture.serveMarker)).toBe(false);
+    // 거절한 실행은 자리를 비우며, 다음 실행의 식별자는 지난 결과 확인과 충돌하지 않는다.
+    if (mode === "failure") {
+      await routes.handleUpdateApply({ method: "POST", headers: {} } as http.IncomingMessage, response);
+      expect(response.result.status).toBe(503);
+      expect(response.result.body.progress.startedAt).not.toBe(progress.startedAt);
+    }
+  }, UPDATE_WORKER_PREFLIGHT_MS + 10_000);
+
+  it("retires an uncommitted ready worker without signalling, installing, or recovering", async () => {
+    const fixture = workerFixture("ready");
+    const prepared = await fixture.service.start(fixture.request);
+    await prepared.cancelled;
+    await expect(prepared.commit()).rejects.toThrow();
+    expect(readConsoleUpdateProgress(fixture.root)).toMatchObject({ state: "failed", reason: "handoff-aborted", failureStage: "handoff" });
+    expect(fs.readFileSync(fixture.calls, "utf8").trim().split("\n")).toEqual(["root", "root"]);
+    expect(fs.existsSync(fixture.serveMarker)).toBe(false);
+  }, UPDATE_WORKER_COMMIT_MS + 10_000);
+
+  it("aborts a prepared worker when the accepted response closes before finish", async () => {
+    const fixture = workerFixture("ready");
+    const stop = vi.fn(async () => undefined);
+    const routes = applyRoutes(fixture, stop, true);
+    const response = new EventEmitter() as http.ServerResponse;
+    await routes.handleUpdateApply({ method: "POST", headers: {} } as http.IncomingMessage, response);
+    expect(stop).not.toHaveBeenCalled();
+    expect(readConsoleUpdateProgress(fixture.root)).toMatchObject({ state: "failed", reason: "handoff-aborted" });
+    expect(fs.readFileSync(fixture.calls, "utf8").trim().split("\n")).toEqual(["root", "root"]);
+  });
 
   it("hands one Desktop relaunch per update and answers a second apply as already in progress", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-update-delegated-"));
@@ -211,6 +263,62 @@ describe("console update apply worker", () => {
   });
 
 });
+
+function workerFixture(mode: "failure" | "hung" | "ready") {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-update-barrier-"));
+  TEMP_DIRS.push(root);
+  const globalRoot = path.join(root, "global");
+  const packageRoot = path.join(globalRoot, "@dotobokuri", "fleet-console");
+  fs.mkdirSync(packageRoot, { recursive: true });
+  const calls = path.join(root, "calls");
+  const manager = path.join(root, "npm.mjs");
+  fs.writeFileSync(manager, `import fs from "node:fs";
+const calls = ${JSON.stringify(calls)};
+const first = !fs.existsSync(calls);
+fs.appendFileSync(calls, process.argv[2] + "\\n");
+if (first || ${JSON.stringify(mode)} === "ready") console.log(${JSON.stringify(globalRoot)});
+else if (${JSON.stringify(mode)} === "hung") setInterval(() => {}, 1000);
+else process.exitCode = 1;
+`);
+  const serveMarker = path.join(root, "serve-called");
+  const serve = path.join(root, "serve.mjs");
+  fs.writeFileSync(serve, `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(serveMarker)}, "unexpected");`);
+  const service = createConsoleUpdateApplyService({
+    env: { PATH: process.env.PATH, TMPDIR: root, FLEET_CONSOLE_NO_SYSTEM_CA: "1" },
+    fleetDataDir: root, tmpDir: root,
+    preflightInstall: () => {
+      execFileSync(process.execPath, [manager, "root", "-g"]);
+      return { bin: process.execPath, command: "npm", globalRoot, prefixArgs: [manager] };
+    },
+    downloadTarball: async () => ({ ok: true, tarballPath: path.join(root, "release.tgz") }),
+    serverModulePath: serve,
+    workerRuntimePath: fileURLToPath(new URL("../dist/lifecycle-worker-runtime.mjs", import.meta.url)),
+  });
+  const request = {
+    currentEndpoint: "http://127.0.0.1:1/", currentLockToken: "fixture", currentLockStartedAt: Date.now(),
+    currentPackageRoot: packageRoot, currentPid: process.pid, dataDir: root, fromVersion: "1.2.2",
+    lockFile: path.join(root, "console.lock"), release: createRelease("1.2.3", Buffer.from("fixture")),
+  };
+  return { root, calls, serveMarker, service, request };
+}
+
+function applyRoutes(fixture: ReturnType<typeof workerFixture>, stop: () => Promise<void>, closeBeforeFinish = false) {
+  return createUpdatesRoutes({
+    releaseNotes: {} as never,
+    updateCheck: { refresh: async () => ({ updateAvailable: true, latestVersion: "1.2.3" }), latestRelease: () => fixture.request.release } as never,
+    updateApply: fixture.service, durablePaths: { dir: fixture.root },
+    release: { packageRoot: fixture.request.currentPackageRoot }, version: "1.2.2", channel: "stable",
+    isExactConsoleOrigin: () => true, isLoopbackListener: () => true,
+    readJsonBody: async <T,>() => ({}) as T,
+    writeJson: (res, status, body) => {
+      Object.assign(res, { result: { status, body } });
+      res.emit(closeBeforeFinish ? "close" : "finish");
+    },
+    readUrl: () => new URL("http://127.0.0.1/"),
+    currentRuntime: () => ({ lockHandle: { payload: { token: "fixture", startedAt: fixture.request.currentLockStartedAt } }, activeEndpoint: fixture.request.currentEndpoint, activeLockFile: fixture.request.lockFile }),
+    publishDesktopUpdateRequest: () => {}, stopAfterAcceptedUpdateApply: stop,
+  });
+}
 
 function createRelease(version: string, bytes: Buffer): ConsoleReleaseManifest {
   return {

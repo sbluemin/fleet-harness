@@ -6,6 +6,7 @@ import {
   describeConsoleUpdateFailure,
   parseConsoleUpdateFailureReason,
   parseConsoleUpdateOldConsoleEnding,
+  type ConsoleUpdateFailureStage,
   type ConsoleUpdateFailureReason,
   type ConsoleUpdateOldConsoleEnding,
 } from "@fleet-console/protocol/lifecycle";
@@ -46,6 +47,7 @@ export interface ConsoleUpdateProgressRecord {
   readonly oldConsoleOutcome?: string;
   /** Why the update failed, by the contract's reasons (ConsoleUpdateFailureReason). Written by workers since it was added. */
   readonly reason?: string;
+  readonly failureStage?: ConsoleUpdateFailureStage;
   /** The pid of the Console the update replaced, on a failure record: the shared failure text may name it. */
   readonly oldConsolePid?: number;
   /** The worker's pid. A running record whose worker is gone (ESRCH) is read as lost at once. */
@@ -68,6 +70,7 @@ export interface ConsoleUpdateProgressStatus {
   readonly reason?: ConsoleUpdateFailureReason | "unknown";
   /** The contract's shared, path-free explanation of `reason` (describeConsoleUpdateFailure). */
   readonly description?: string;
+  readonly failureStage?: ConsoleUpdateFailureStage;
 }
 
 export const IDLE_CONSOLE_UPDATE_PROGRESS: ConsoleUpdateProgressStatus = { state: "idle" };
@@ -131,7 +134,8 @@ function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecord, nowM
     ...shared,
     ...(error ? { error } : {}),
     reason,
-    description: describeConsoleUpdateFailure(reason, record.oldConsolePid === undefined ? {} : { oldConsolePid: record.oldConsolePid }),
+    ...(record.failureStage ? { failureStage: record.failureStage } : {}),
+    description: describeConsoleUpdateFailure(reason, { oldConsolePid: record.oldConsolePid, failureStage: record.failureStage }),
   });
   if (record.phase === "completed" || record.phase === "failed") {
     const finishedAtMs = Date.parse(record.updatedAt);
@@ -183,6 +187,7 @@ function parseConsoleUpdateProgressRecord(raw: string): ConsoleUpdateProgressRec
     ...(typeof entry.error === "string" ? { error: entry.error } : {}),
     ...(typeof entry.oldConsoleOutcome === "string" ? { oldConsoleOutcome: entry.oldConsoleOutcome } : {}),
     ...(typeof entry.reason === "string" ? { reason: entry.reason } : {}),
+    ...(entry.failureStage === "preflight" || entry.failureStage === "handoff" ? { failureStage: entry.failureStage } : {}),
     ...(isPositivePid(entry.oldConsolePid) ? { oldConsolePid: entry.oldConsolePid } : {}),
     ...(isPositivePid(entry.workerPid) ? { workerPid: entry.workerPid } : {}),
   };
@@ -215,7 +220,13 @@ export function writeConsoleUpdateProgress(
     fs.mkdirSync(dirPath, options);
   });
   const writeFile = deps.writeFile ?? ((filePath, content, options) => {
-    fs.writeFileSync(filePath, content, { mode: options.mode });
+    const staging = `${filePath}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(staging, content, { mode: options.mode });
+      fs.renameSync(staging, filePath);
+    } finally {
+      fs.rmSync(staging, { force: true });
+    }
   });
   makeDir(dataDir, { recursive: true, mode: 0o700 });
   writeFile(consoleUpdateProgressPath(dataDir), JSON.stringify(record, null, 2), { mode: PROGRESS_FILE_MODE });

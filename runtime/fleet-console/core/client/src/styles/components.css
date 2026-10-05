@@ -16076,8 +16076,13 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   text-align: center;
 }
 
-.command-band-update-bubble-action:hover {
+.command-band-update-bubble-action:hover:not(:disabled) {
   background: color-mix(in oklab, var(--text-primary) 12%, transparent);
+}
+
+.command-band-update-bubble-action:disabled {
+  color: var(--text-secondary);
+  cursor: progress;
 }
 
 .command-band-system-menu {

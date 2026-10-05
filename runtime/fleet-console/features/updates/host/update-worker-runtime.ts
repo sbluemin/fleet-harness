@@ -23,6 +23,8 @@ import {
   CONSOLE_START_POLL_MS,
   CONSOLE_START_TIMEOUT_MS,
   HEALTH_PROBE_TIMEOUT_MS,
+  UPDATE_WORKER_COMMIT_MS,
+  STOP_POLL_MS,
   describeReplacedLockAuthor,
 } from "@fleet-console/protocol/lifecycle";
 
@@ -110,6 +112,22 @@ export async function stopUpdatedConsole(input: StopUpdatedConsoleInput): Promis
     return { result: "stopped", ending: recorded ? "forced-external" : endingOf(target, observed, false) };
   }
   return { result: "stopped", ending: endingOf(target, observed, false) };
+}
+
+/** commit 전달만으로 정지를 추정하지 않는다. 살아서 응답하는 host에는 ladder를 시작하지 않는다. */
+export async function waitForUpdatedConsoleStop(target: UpdatedConsole): Promise<boolean> {
+  const deadline = performance.now() + UPDATE_WORKER_COMMIT_MS;
+  while (performance.now() < deadline) {
+    const observation = await observeConsoleInstance({
+      lock: target,
+      trusted: true,
+      isHeld: () => consoleLockInstanceState(target.lockFile, target) !== "released",
+      probe: (lock) => createConsoleHealthClient().probe(lock, { timeoutMs: Math.max(1, Math.min(HEALTH_PROBE_TIMEOUT_MS, deadline - performance.now())) }),
+    });
+    if (["stopping", "releasing", "exited", "replaced"].includes(observation.state)) return true;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(STOP_POLL_MS, Math.max(0, deadline - performance.now()))));
+  }
+  return false;
 }
 
 /** What the slot holds right now, for a worker that may start a Console there. */

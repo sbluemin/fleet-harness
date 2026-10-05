@@ -1,5 +1,5 @@
 import { parseConsoleUpdateFailureReason, parseConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
-import type { ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { ConsoleUpdateApplyFailureProgress, ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -75,6 +75,14 @@ export class ApiError extends Error {
   }
 }
 
+/** apply 거절의 host 판정. 네트워크 오류나 일반 API 오류와 구별한다. */
+export class ConsoleUpdateApplyFailure extends ApiError {
+  constructor(status: number, readonly progress: ConsoleUpdateApplyFailureProgress) {
+    super(status, "update_worker_unavailable");
+    this.name = "ConsoleUpdateApplyFailure";
+  }
+}
+
 export async function fetchTheaters(signal?: AbortSignal | null): Promise<readonly TheaterInfo[]> {
   return (await fetchTheaterBootstrap(signal)).theaters;
 }
@@ -139,6 +147,23 @@ export async function applyConsoleUpdate(options: ApplyConsoleUpdateOptions = {}
     ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body }),
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  if (response.status === 503) {
+    const body: unknown = await response.clone().json().catch(() => null);
+    const failure = body as { error?: unknown; progress?: Partial<ConsoleUpdateApplyFailureProgress> } | null;
+    const progress = failure?.progress;
+    if (failure?.error === "update_worker_unavailable" && progress?.state === "failed" && progress.phase === "failed"
+      && typeof progress.startedAt === "string" && progress.startedAt.length > 0
+      && typeof progress.fromVersion === "string" && typeof progress.targetVersion === "string"
+      && typeof progress.reason === "string" && typeof progress.description === "string"
+      && (progress.failureStage === "preflight" || progress.failureStage === "handoff")) {
+      throw new ConsoleUpdateApplyFailure(response.status, {
+        state: "failed", phase: "failed", startedAt: progress.startedAt,
+        fromVersion: progress.fromVersion, targetVersion: progress.targetVersion,
+        reason: parseConsoleUpdateFailureReason(progress.reason) ?? "unknown",
+        failureStage: progress.failureStage, description: progress.description,
+      });
+    }
+  }
   await assertOk(response);
   return assertConsoleUpdateApplyAccepted(await response.json(), response.status);
 }
@@ -508,13 +533,14 @@ function assertConsoleUpdateProgress(value: unknown, status: number): ConsoleUpd
 }
 
 /** The contract's own parsers read what the Console sent; anything they do not name reads as `unknown`. */
-function readUpdateFailureFields(payload: Partial<ConsoleUpdateProgress>): Pick<ConsoleUpdateProgress, "oldConsoleOutcome" | "reason" | "description"> {
+function readUpdateFailureFields(payload: Partial<ConsoleUpdateProgress>): Pick<ConsoleUpdateProgress, "oldConsoleOutcome" | "reason" | "description" | "failureStage"> {
   const oldConsoleOutcome = parseConsoleUpdateOldConsoleEnding(payload.oldConsoleOutcome);
   const reason = parseConsoleUpdateFailureReason(payload.reason);
   return {
     ...(oldConsoleOutcome ? { oldConsoleOutcome } : {}),
     ...(reason ? { reason } : {}),
     ...(typeof payload.description === "string" ? { description: payload.description } : {}),
+    ...(payload.failureStage === "preflight" || payload.failureStage === "handoff" ? { failureStage: payload.failureStage } : {}),
   };
 }
 
