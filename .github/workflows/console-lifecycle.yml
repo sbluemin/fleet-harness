@@ -1,8 +1,9 @@
 name: Console Lifecycle
 
 # Real-process Console lifecycle invariants (built Console, fake agent, no billing): the lifecycle cases in the built smoke,
-# the stop-sharing case in the server suite, the lock reclaim and claim chain in the lifecycle integration suite, and the
-# Desktop supervisor over a built Console. Runs on pull requests that touch
+# the stop-sharing case in the server suite, the lock reclaim and claim chain in the lifecycle integration suite, the
+# update worker's identity proof before it signals the Console it replaces, and the Desktop supervisor over a built
+# Console. Runs on pull requests that touch
 # the code those invariants protect, so a defect is caught before merge rather than on canary. Windows keeps the canary-only
 # lifecycle job in workspace-verify. Every path below also selects the Desktop suite: the known-defect ratchet and the agent
 # stand-in it reads live with the Console fixtures, and a change to them must run both halves.
@@ -32,6 +33,7 @@ on:
       - 'runtime/fleet-console/tests/built/fleet-built-smoke.test.ts'
       - 'runtime/fleet-console/tests/server.test.ts'
       - 'runtime/fleet-console/tests/console-lifecycle.integration.test.ts'
+      - 'runtime/fleet-console/tests/update-apply.test.ts'
       - 'runtime/fleet-console/tests/fixtures/lifecycle-*'
       - 'runtime/fleet-desktop/tests/sidecar-supervisor.test.ts'
       - '.github/workflows/console-lifecycle.yml'
@@ -62,6 +64,7 @@ on:
       - 'runtime/fleet-console/tests/built/fleet-built-smoke.test.ts'
       - 'runtime/fleet-console/tests/server.test.ts'
       - 'runtime/fleet-console/tests/console-lifecycle.integration.test.ts'
+      - 'runtime/fleet-console/tests/update-apply.test.ts'
       - 'runtime/fleet-console/tests/fixtures/lifecycle-*'
       - 'runtime/fleet-desktop/tests/sidecar-supervisor.test.ts'
       - '.github/workflows/console-lifecycle.yml'
@@ -90,7 +93,7 @@ jobs:
       - name: Console lifecycle invariants
         env:
           FLEET_BUILT_SMOKE: "1"
-        run: pnpm --filter @dotobokuri/fleet-console exec vitest run tests/built/fleet-built-smoke.test.ts tests/server.test.ts tests/console-lifecycle.integration.test.ts
+        run: pnpm --filter @dotobokuri/fleet-console exec vitest run tests/built/fleet-built-smoke.test.ts tests/server.test.ts tests/console-lifecycle.integration.test.ts tests/update-apply.test.ts
       # The Desktop half runs even when the Console half failed, so one run reports both.
       - name: Desktop supervisor over a built Console
         if: ${{ !cancelled() }}
