@@ -41,7 +41,7 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
   // 언어를 먼저 알린다 — 첫 읽기부터 서버가 사람의 언어를 기억한다.
   noteCommodoreLanguage(language);
   useEffect(() => { void loadCommodore(theaterId); }, [theaterId]);
-  // 줄에 머무는(또는 키보드로 들어온) 동안 사이드바에서 사령관이 개시한 목표의 사각이 함께 밝아진다. 줄이 사라지면 거둔다.
+  // 줄에 머무는(또는 키보드로 들어온) 동안 사이드바에서 사령관의 목표 표식이 함께 밝아진다. 줄이 사라지면 거둔다.
   useEffect(() => () => setCommodorePeek(null), [theaterId]);
   const peek = (inside: boolean) => () => setCommodorePeek(inside ? theaterId : null);
 

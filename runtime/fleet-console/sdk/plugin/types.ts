@@ -671,8 +671,8 @@ export interface OperationClusterRow {
    */
   readonly provenance?: readonly OperationClusterRowProvenance[];
   /**
-   * 줄 오른쪽 끝의 사각 표식 — 플러그인이 정한 맡은 이(예: Theater 의 자율 운영자)가 다루는 줄. 맡은 이의 스위치와 같은 문법이라
-   * 줄이 자리를 옮기지 않고 사각의 채움만 바뀐다. 구역으로 올라간 줄의 그룹 점보다 앞에 선다.
+   * 줄 오른쪽 끝의 표식 — 플러그인이 정한 맡은 이(예: Theater 의 자율 운영자)가 다루는 줄. 맡은 이의 스위치와 같은 문법이라
+   * 줄이 자리를 옮기지 않고 켬·끔만 바뀐다. 구역으로 올라간 줄의 그룹 점보다 앞에 선다.
    */
   readonly mark?: OperationClusterRowMark;
   /**
@@ -706,14 +706,17 @@ export type OperationClusterRowSquare = "filled" | "hollow";
 
 export interface OperationClusterRowProvenance {
   readonly text: LocalizedText;
-  /** 글 앞의 작은 사각 — `mark` 와 같은 맡은 이의 손일 때. */
-  readonly square?: OperationClusterRowSquare;
-  /** `accent` 는 맡은 이의 brass 잉크(줄 메모의 `accent` 와 같다). */
+  /** `accent` 는 맡은 이의 brass 잉크(줄 메모의 `accent` 와 같다) — 맡은 이의 손은 글자색으로만 말한다. */
   readonly tone?: "accent";
 }
 
 export interface OperationClusterRowMark {
   readonly square: OperationClusterRowSquare;
+  /**
+   * 맡은 이의 정체성 글리프 — 맡은 이의 스위치가 그리는 그 모양. `currentColor` 로 그리면 호스트가 `square` 를 따라 켬은 brass,
+   * 끔은 가라앉은 잉크로 칠한다. 없으면 호스트의 기본 사각을 그린다.
+   */
+  readonly renderGlyph?: () => ReactNode;
   /** 맡은 이의 줄에 머무는 동안 — 같은 표식들이 함께 밝아져 어느 줄을 다루는지 한눈에 보인다. */
   readonly emphasized?: boolean;
   /** 사각만으로는 뜻이 전해지지 않는다 — 줄의 접근 이름과 사각의 제목에 들어간다. */

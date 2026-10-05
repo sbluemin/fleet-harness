@@ -3,7 +3,7 @@
  *
  * 둥근 판에서 별을 뚫어 낸 모양(evenodd)이고, 색은 currentColor 로 받아 CSS 가 brass-ink 를 준다. 호스트가 17×17 칸에
  * svg 를 채워 넣으므로 viewBox 는 정사각으로 둔다. 사이드바 사령관 줄의 자율 운영 스위치도 같은 마크를 그리며, 그때는
- * className 으로 스위치 전용 색·크기 규칙을 받는다.
+ * className 으로 스위치 전용 색·크기 규칙을 받는다. 사령관의 목표 줄 끝 표식도 같은 마크이고, 색·크기는 호스트가 준다.
  */
 export function CommodoreMentionGlyph({ className = "objectives-commodore-mention-glyph" }: { readonly className?: string } = {}) {
   return (
@@ -16,3 +16,6 @@ export function CommodoreMentionGlyph({ className = "objectives-commodore-mentio
     </svg>
   );
 }
+
+/** 사령관의 목표 줄 끝 표식 — 색(켬·끔)과 크기는 호스트 표식 칸이 정하므로 이 마크의 기본 색 규칙을 싣지 않는다. */
+export const renderCommodoreRowGlyph = () => <CommodoreMentionGlyph className="objectives-commodore-row-mark-glyph" />;
