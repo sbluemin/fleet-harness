@@ -99,11 +99,11 @@ export interface ConsoleLockHealthProbe {
  * - not-running: no Console ran under the lock; at most an exited Console's lock was cleared.
  * - unrecorded: the Console exited without a record and cannot be blamed for it — it predates the contract, or Windows
  *   ended it on SIGTERM (TerminateProcess), where no shutdown runs.
- * - an exit outcome: what the instance recorded, or `external` when a contract Console vanished without a record, or
- *   `forced-external` when this stop escalated to SIGKILL.
+ * - an exit outcome: what the instance recorded (`unknown` for an outcome this version does not know), or `external`
+ *   when a contract Console vanished without a record, or `forced-external` when this stop escalated to SIGKILL.
  */
 export interface ConsoleStopResult {
-  readonly outcome: "not-running" | "unrecorded" | ConsoleExitOutcome;
+  readonly outcome: "not-running" | "unrecorded" | "unknown" | ConsoleExitOutcome;
   /** Leftover child processes the Console killed on its way out. */
   readonly killed: number;
 }
@@ -294,6 +294,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       },
       onShutdownFailed: (error) => {
         recordFailure("shutdown_failed", error);
+        exitOutcome ??= { outcome: "failed", killed: 0 };
         process.exitCode = 1;
       },
       // From here only leftover handles (an SDK child still being reaped) keep the process alive. An unref'd deadline
@@ -309,11 +310,11 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       recordFailure("uncaughtException", error);
       // Once shutdown has begun, leave the exit to the cleanup in progress or to the shutdown deadline. Exiting here
       // drops the SDK's reap timers and orphans the children it is still waiting on.
+      exitOutcome = { outcome: "crash", killed: 0 };
       if (lifecycle.stopRequested()) {
         process.exitCode = 1;
         return;
       }
-      exitOutcome = { outcome: "crash", killed: 0 };
       process.exit(1);
     };
     // Only the Console serve process owns global policy; a failed registration must not block boot.
@@ -326,7 +327,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     process.on("exit", (code) => {
       const instance = lifecycle.lockInstance();
       if (!instance) return;
-      const ended = exitOutcome ?? { outcome: code === 0 ? "clean" : "crash", killed: 0 };
+      const ended = exitOutcome ?? { outcome: code === 0 ? "clean" : "failed", killed: 0 };
       try {
         writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now() });
       } catch (error) { recordFailure("exit_record_failed", error); }
@@ -339,6 +340,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     try {
       await server.start(paths);
     } catch (error) {
+      // A start that failed after it took the lock ends this instance with an error; a lost lock never had an instance.
+      if (lifecycle.lockInstance()) exitOutcome ??= { outcome: "failed", killed: 0 };
       if (lifecycle.stopRequested()) await lifecycle.whenStopped();
       throw error;
     }
@@ -892,7 +895,11 @@ function describeUncleanStop(result: ConsoleStopResult): string | null {
         + (result.killed > 0 ? `, killing ${result.killed} leftover process(es) it had started.` : ".")
         + " Temporary files it started may remain.";
     case "crash":
-      return `Fleet Console ended with an error instead of shutting down cleanly; the Console failure log (errors.jsonl in its data directory) says why. ${LEFTOVER_ADVICE}`;
+      return `Fleet Console crashed on an unexpected error instead of shutting down cleanly; the Console failure log (errors.jsonl in its data directory) says why. ${LEFTOVER_ADVICE}`;
+    case "failed":
+      return `Fleet Console failed while starting or shutting down and ended with an error; the Console failure log (errors.jsonl in its data directory) says why. ${LEFTOVER_ADVICE}`;
+    case "unknown":
+      return `Fleet Console ended in a way this fleet version does not recognize, so it is not reported as cleanly stopped. ${LEFTOVER_ADVICE}`;
     case "external":
       return `Fleet Console ended without recording how: it was killed from outside or stopped responding. ${LEFTOVER_ADVICE}`;
     case "forced-external":

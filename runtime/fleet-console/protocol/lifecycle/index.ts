@@ -128,11 +128,12 @@ export function classifyConsoleInstance(input: ConsoleInstanceEvidence): { reado
  * How one Console instance ended.
  * - clean: the shutdown finished and the process exited on its own.
  * - deadline: CONSOLE_STOP_DEADLINE_MS ran out; the Console killed its leftover children (`killed`) and exited 1.
- * - crash: the instance ended on an error — an uncaught exception, a failed shutdown, or a failed start after the lock.
+ * - crash: an uncaught exception ended the instance.
+ * - failed: the instance took the lock, then its start or its shutdown failed, and it ended with an error.
  * - external: the process vanished without writing a record (SIGKILL or a frozen loop killed from outside).
  * - forced-external: the actor that sent SIGKILL after EXTERNAL_ESCALATION_MS.
  */
-export type ConsoleExitOutcome = "clean" | "deadline" | "crash" | "external" | "forced-external";
+export type ConsoleExitOutcome = "clean" | "deadline" | "crash" | "failed" | "external" | "forced-external";
 
 export const CONSOLE_EXIT_RECORD_VERSION = 1;
 
@@ -159,7 +160,15 @@ export interface ConsoleExitRecord extends ConsoleInstanceKey {
 export const CONSOLE_EXIT_RECORD_RETAIN = 16;
 
 const EXIT_RECORD_NAME = /^console\.exit\.([1-9]\d*)-(\d+)\.json$/;
-const EXIT_OUTCOMES: readonly ConsoleExitOutcome[] = ["clean", "deadline", "crash", "external", "forced-external"];
+const EXIT_OUTCOMES: readonly ConsoleExitOutcome[] = ["clean", "deadline", "crash", "failed", "external", "forced-external"];
+
+/**
+ * A record as a reader sees it. A newer Console may write an outcome this reader does not know; that reads as `unknown`,
+ * which a reader must never report as a clean stop.
+ */
+export interface ConsoleExitRecordRead extends Omit<ConsoleExitRecord, "outcome"> {
+  readonly outcome: ConsoleExitOutcome | "unknown";
+}
 
 /** The exit record of `instance`, in the lock's own runtime slot: every actor that knows the lock knows where to read it. */
 export function consoleExitRecordPath(lockFile: string, instance: ConsoleInstanceKey): string {
@@ -175,8 +184,8 @@ export function parseConsoleExitRecordName(name: string): ConsoleInstanceKey | n
   return Number.isSafeInteger(pid) && Number.isSafeInteger(lockStartedAt) ? { pid, lockStartedAt } : null;
 }
 
-/** The record in `text`, or null when it is not a record of this version. */
-export function parseConsoleExitRecord(text: string): ConsoleExitRecord | null {
+/** The record in `text`, or null when it is not a record of this version. An outcome this contract does not name reads as `unknown`. */
+export function parseConsoleExitRecord(text: string): ConsoleExitRecordRead | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -186,9 +195,10 @@ export function parseConsoleExitRecord(text: string): ConsoleExitRecord | null {
   if (!isRecord(parsed) || parsed.v !== CONSOLE_EXIT_RECORD_VERSION) return null;
   const { pid, lockStartedAt, outcome, killed, at } = parsed;
   if (!isPositiveSafeInteger(pid) || !isFiniteNumber(lockStartedAt) || !isFiniteNumber(at)) return null;
-  if (typeof outcome !== "string" || !EXIT_OUTCOMES.includes(outcome as ConsoleExitOutcome)) return null;
+  if (typeof outcome !== "string" || outcome.length === 0) return null;
   if (typeof killed !== "number" || !Number.isSafeInteger(killed) || killed < 0) return null;
-  return { v: CONSOLE_EXIT_RECORD_VERSION, pid, lockStartedAt, outcome: outcome as ConsoleExitOutcome, killed, at };
+  const known = EXIT_OUTCOMES.includes(outcome as ConsoleExitOutcome) ? outcome as ConsoleExitOutcome : "unknown";
+  return { v: CONSOLE_EXIT_RECORD_VERSION, pid, lockStartedAt, outcome: known, killed, at };
 }
 
 // ---------- Lock slot ----------

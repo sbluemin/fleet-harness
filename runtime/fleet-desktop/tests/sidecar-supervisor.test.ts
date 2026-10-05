@@ -294,6 +294,8 @@ afterEach(async () => {
     const lockFile = path.join(slot, "console.lock");
     const stalled = path.join(dir, "stalled");
     const exited = path.join(dir, "exited");
+    // {t0, start, end} in epoch ms: the first SIGTERM and the pre-deadline freeze, for the case's timeline.
+    const freeze = path.join(dir, "freeze.jsonl");
     const preload = path.join(dir, "stall-close.mjs");
     // Test-only preload, active in the Console's `serve` process only (NODE_OPTIONS reaches every Node child it starts):
     // closing the main listener never completes, so shutdown stalls with the lock held, and the Console records reaching its
@@ -301,10 +303,17 @@ afterEach(async () => {
     fs.writeFileSync(preload, [
       "import fs from 'node:fs';",
       "import http from 'node:http';",
-      `const lock = ${JSON.stringify(lockFile)}, stalled = ${JSON.stringify(stalled)}, exited = ${JSON.stringify(exited)};`,
+      `const lock = ${JSON.stringify(lockFile)}, stalled = ${JSON.stringify(stalled)}, exited = ${JSON.stringify(exited)}, freeze = ${JSON.stringify(freeze)};`,
       `if (process.argv[1] === ${JSON.stringify(cliPath)} && process.argv[2] === 'serve') {`,
       "  process.on('exit', (code) => fs.writeFileSync(exited, String(code)));",
-      `  process.prependOnceListener('SIGTERM', () => setTimeout(() => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800), ${CONSOLE_STOP_DEADLINE_MS - 200}).unref());`,
+      "  process.prependOnceListener('SIGTERM', () => {",
+      "    const t0 = Date.now();",
+      "    setTimeout(() => {",
+      "      const start = Date.now();",
+      "      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800);",
+      "      fs.appendFileSync(freeze, JSON.stringify({ t0, start, end: Date.now() }) + '\\n');",
+      `    }, ${CONSOLE_STOP_DEADLINE_MS - 200}).unref();`,
+      "  });",
       "  const close = http.Server.prototype.close;",
       "  http.Server.prototype.close = function (callback) {",
       "    let port = null;",
@@ -376,7 +385,27 @@ afterEach(async () => {
     await waitUntil(() => processStartTime(consolePid) === null, 30_000, "the Console outlived Quit");
 
     expect(fs.existsSync(stalled), "the injected stall must hold the shutdown with the lock held").toBe(true);
-    lifecycleCheck("L4d", fs.existsSync(exited), "I4: Quit does not SIGKILL the Console before its own deadline ends it");
+    const failureEntries = (() => {
+      try {
+        return fs.readFileSync(path.join(slot, "errors.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => { try { return JSON.parse(line) as { kind?: unknown; ts?: unknown }; } catch { return { kind: "unreadable" }; } });
+      } catch {
+        return [];
+      }
+    })();
+    const failureLog = failureEntries.map((entry) => String(entry.kind));
+    // When, after the Console's first SIGTERM, the freeze ran and the deadline recorded its timeout (after its process-table
+    // read): printed on every run so CI logs show how much of the escalation margin the deadline actually used.
+    const timeline = (() => {
+      try {
+        const { t0, start, end } = JSON.parse(fs.readFileSync(freeze, "utf8").split("\n")[0]!) as { t0: number; start: number; end: number };
+        const recorded = failureEntries.filter((entry) => entry.kind === "shutdown_timeout" && typeof entry.ts === "string").map((entry) => Date.parse(entry.ts as string) - t0).at(-1) ?? null;
+        return { freezeStartMs: start - t0, freezeEndMs: end - t0, deadlineRecordedMs: recorded };
+      } catch {
+        return null;
+      }
+    })();
+    console.info(`L4d timeline ${JSON.stringify(timeline)}`);
+    lifecycleCheck("L4d", fs.existsSync(exited), "I4: Quit does not SIGKILL the Console before its own deadline ends it", { detail: { timeline } });
     const deadline = Date.now() + SETTLE_MS;
     let left = started.filter((entry) => processStartTime(entry.pid) === entry.startedAt);
     while (left.length > 0 && Date.now() < deadline) {
@@ -384,14 +413,7 @@ afterEach(async () => {
       left = left.filter((entry) => processStartTime(entry.pid) === entry.startedAt);
     }
     const roles = new Map(agentProcs().filter((entry) => AGENT_ROLES.has(entry.role)).map((entry) => [entry.pid, entry.role] as const));
-    const failureLog = (() => {
-      try {
-        return fs.readFileSync(path.join(slot, "errors.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => { try { return String((JSON.parse(line) as { kind?: unknown }).kind); } catch { return "unreadable"; } });
-      } catch {
-        return [];
-      }
-    })();
-    lifecycleCheck("L4d", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left.map((entry) => roles.get(entry.pid) ?? entry.command), failureLog }, signature: false });
+    lifecycleCheck("L4d", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left.map((entry) => roles.get(entry.pid) ?? entry.command), failureLog, timeline }, signature: false });
   }, 90_000);
 });
 

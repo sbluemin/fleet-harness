@@ -286,9 +286,12 @@ afterEach(async () => {
     const exit = await group.consoleExit(30_000);
 
     expect(fs.existsSync(stall.marker), "the injected stall must hold the shutdown with the lock held").toBe(true);
-    lifecycleCheck("L4c", exit.signal !== "SIGKILL", "I4: stop does not SIGKILL the Console before its own deadline ends it", { detail: exit });
+    const timeline = deadlineTimeline(run, stall.freeze);
+    // Printed on every run so CI logs show how much of the escalation margin the deadline actually used.
+    console.info(`L4c timeline ${JSON.stringify(timeline)}`);
+    lifecycleCheck("L4c", exit.signal !== "SIGKILL", "I4: stop does not SIGKILL the Console before its own deadline ends it", { detail: { exit, timeline } });
     const left = await survivors(run, started);
-    lifecycleCheck("L4c", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) }, signature: false });
+    lifecycleCheck("L4c", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run), timeline }, signature: false });
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
   }, 90_000);
 
@@ -659,14 +662,25 @@ function writePreload(run: LifecycleRun, name: string, lines: readonly string[])
  * `freezeBeforeDeadline` blocks it for FREEZE_BEFORE_DEADLINE_MS starting 200ms before the Console's own stop deadline, so the
  * deadline's cleanup runs late while its process-table read keeps the full budget.
  */
-function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number; readonly freezeBeforeDeadline?: boolean } = {}): { readonly preload: string; readonly marker: string } {
+function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freezeOnSignalMs?: number; readonly freezeBeforeDeadline?: boolean } = {}): { readonly preload: string; readonly marker: string; readonly freeze: string } {
   const marker = path.join(run.dir, "stalled");
+  // {t0, start, end} in epoch ms: the first SIGTERM and the pre-deadline freeze, for the case's timeline.
+  const freeze = path.join(run.dir, "freeze.jsonl");
   const preload = writePreload(run, "stall-close.mjs", [
     "import fs from 'node:fs';",
     "import http from 'node:http';",
-    `const lock = ${JSON.stringify(run.lockFile)}, marker = ${JSON.stringify(marker)};`,
+    `const lock = ${JSON.stringify(run.lockFile)}, marker = ${JSON.stringify(marker)}, freeze = ${JSON.stringify(freeze)};`,
     ...(options.freezeOnSignalMs ? [`process.prependOnceListener('SIGTERM', () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${options.freezeOnSignalMs}));`] : []),
-    ...(options.freezeBeforeDeadline ? [`process.prependOnceListener('SIGTERM', () => setTimeout(() => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${FREEZE_BEFORE_DEADLINE_MS}), ${CONSOLE_STOP_DEADLINE_MS - 200}).unref());`] : []),
+    ...(options.freezeBeforeDeadline ? [
+      "process.prependOnceListener('SIGTERM', () => {",
+      "  const t0 = Date.now();",
+      "  setTimeout(() => {",
+      "    const start = Date.now();",
+      `    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${FREEZE_BEFORE_DEADLINE_MS});`,
+      "    fs.appendFileSync(freeze, JSON.stringify({ t0, start, end: Date.now() }) + '\\n');",
+      `  }, ${CONSOLE_STOP_DEADLINE_MS - 200}).unref();`,
+      "});",
+    ] : []),
     "const close = http.Server.prototype.close;",
     "http.Server.prototype.close = function (callback) {",
     "  let port = null;",
@@ -676,7 +690,28 @@ function stallShutdownWithLockHeld(run: LifecycleRun, options: { readonly freeze
     "  return close.call(this, callback);",
     "};",
   ]);
-  return { preload, marker };
+  return { preload, marker, freeze };
+}
+
+/**
+ * When, after the Console's first SIGTERM, the pre-deadline freeze started and ended and the deadline recorded its timeout
+ * (after its process-table read and SIGKILLs), in ms. The record lands once the deadline callback, delayed by the freeze,
+ * has read the process table, so recorded − freezeEnd is about that read.
+ */
+function deadlineTimeline(run: LifecycleRun, freeze: string): { readonly freezeStartMs: number; readonly freezeEndMs: number; readonly deadlineRecordedMs: number | null } | null {
+  try {
+    const { t0, start, end } = JSON.parse(fs.readFileSync(freeze, "utf8").split("\n")[0]!) as { t0: number; start: number; end: number };
+    let recorded: number | null = null;
+    try {
+      for (const line of fs.readFileSync(path.join(run.root, "console", "errors.jsonl"), "utf8").split("\n").filter(Boolean)) {
+        const entry = JSON.parse(line) as { kind?: unknown; ts?: unknown };
+        if ((entry.kind === "shutdown_timeout" || entry.kind === "startup_shutdown_timeout") && typeof entry.ts === "string") recorded = Date.parse(entry.ts) - t0;
+      }
+    } catch { /* No failure log: the deadline never fired. */ }
+    return { freezeStartMs: start - t0, freezeEndMs: end - t0, deadlineRecordedMs: recorded };
+  } catch {
+    return null;
+  }
 }
 
 /** The failure kinds the run's Console recorded (errors.jsonl), to tell why an I2 case left a process behind. */

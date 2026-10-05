@@ -4,10 +4,12 @@ import path from "node:path";
 
 import {
   CONSOLE_EXIT_RECORD_RETAIN,
+  CONSOLE_EXIT_RECORD_VERSION,
   consoleExitRecordPath,
   parseConsoleExitRecord,
   parseConsoleExitRecordName,
   type ConsoleExitRecord,
+  type ConsoleExitRecordRead,
   type ConsoleInstanceKey,
 } from "@fleet-console/protocol/lifecycle";
 
@@ -41,17 +43,23 @@ export function writeConsoleExitRecord(lockFile: string, record: ConsoleExitReco
 }
 
 /**
- * The exit record `instance` left beside `lockFile`, or null when it left none, the file is a symlink or not a valid
- * record, or its content names another instance.
+ * The exit record `instance` left beside `lockFile`, or null when it left none. A file that is there but cannot be read
+ * as this instance's record — another version, malformed, a symlink, or naming another instance — reads as outcome
+ * `unknown`, never as no record, so a reader fails closed instead of reporting a clean stop.
  */
-export function readConsoleExitRecord(lockFile: string, instance: ConsoleInstanceKey): ConsoleExitRecord | null {
+export function readConsoleExitRecord(lockFile: string, instance: ConsoleInstanceKey): ConsoleExitRecordRead | null {
   const target = consoleExitRecordPath(lockFile, instance);
+  const unknown: ConsoleExitRecordRead = { v: CONSOLE_EXIT_RECORD_VERSION, ...instance, outcome: "unknown", killed: 0, at: 0 };
   try {
-    if (!fs.lstatSync(target).isFile()) return null;
+    if (!fs.lstatSync(target).isFile()) return unknown;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException | null)?.code === "ENOENT" ? null : unknown;
+  }
+  try {
     const record = parseConsoleExitRecord(fs.readFileSync(target, "utf8"));
-    return record && record.pid === instance.pid && record.lockStartedAt === instance.lockStartedAt ? record : null;
+    return record && record.pid === instance.pid && record.lockStartedAt === instance.lockStartedAt ? record : unknown;
   } catch {
-    return null;
+    return unknown;
   }
 }
 
