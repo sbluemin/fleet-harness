@@ -93,8 +93,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // 가장 최근 자리(Fleet 루트)를 앞에, 그 이전의 플러그인 데이터 슬롯을 뒤에 둔다.
     legacyDirs: [ctx.host.paths.fleetDataDir, ctx.legacyDataDir],
   });
-  // 모델 로스터 일회 이행 — `models` 키가 아예 없는 설치에만 Claude 항목을 써 넣는다(빈 배열은 사용자의 선택).
-  // 승계(legacyDirs)를 먼저 마친 뒤 판단하므로 옛 자리에 선별이 있던 설치는 그 선별을 그대로 갖는다.
+  // 모델 로스터 일회 이행(표식으로 멱등) — 키 부재면 Claude 항목을 써 넣고, Claude 없는 비어 있지 않은 목록에는 더한다.
+  // 빈 배열·Claude가 이미 있는 목록은 그대로 둔다. 승계(legacyDirs)를 먼저 마친 뒤 판단한다.
   try {
     aiGatewayStore.seedModels(DEFAULT_ROSTER_SEED_MODEL_IDS);
   } catch {

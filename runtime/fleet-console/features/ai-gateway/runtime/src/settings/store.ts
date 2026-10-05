@@ -3,7 +3,9 @@ import * as path from "node:path";
 import { createDurableJsonStore, createStoreCarryOver, jsonFileExists } from "@fleet-console/infra";
 
 import type { CompactCeiling } from "../downstream/harness/claude-code/context.js";
+import { findGatewayModel } from "../models.js";
 import {
+  ROSTER_SEED_VERSION,
   normalizeAiGatewaySettings,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
@@ -39,9 +41,15 @@ export interface AiGatewaySettingsStore {
   /** `undefined`는 xaiEndpoint 키를 제거해 기본(direct)으로 돌아간다. */
   readonly writeXaiEndpoint: (endpoint: XaiEndpointPreference | undefined) => AiGatewayStoredSettings;
   /**
-   * 일회 이행: 설정 파일에 `models` 키가 아예 없는 설치에만 주어진 모델을 로스터로 써 넣는다. 빈 배열은
-   * 사용자가 모두 끈 상태라 건드리지 않는다. 한 번 쓰면 키가 생기므로 다시 불러도 아무 일도 없다(멱등).
-   * 써 넣었으면 true.
+   * 모델 로스터 일회 이행 — `rosterSeedVersion` 표식이 {@link ROSTER_SEED_VERSION}에 닿지 않은 설치에서 한 번만 돈다.
+   *
+   * - `models` 키 부재(한 번도 고르지 않음): 주어진 모델을 로스터로 써 넣는다.
+   * - Claude 항목 없이 비어 있지 않은 목록: 주어진 모델을 뒤에 더한다 — 예전에는 Claude가 늘 깔려 있었으므로, Claude 없는
+   *   목록은 Claude를 끈다는 선택이 아니었다.
+   * - 빈 배열(사용자가 모두 끔)·Claude 항목이 이미 있는 목록: 목록은 건드리지 않는다.
+   *
+   * 어느 경우든 표식을 남기므로 다시 불러도, 그 뒤 사용자가 Claude를 꺼도 되살리지 않는다(멱등). 승계(legacyDirs)를 먼저
+   * 마친 뒤 판단한다. 목록을 바꿨으면 true.
    */
   readonly seedModels: (ids: readonly string[]) => boolean;
 }
@@ -139,6 +147,8 @@ export function createAiGatewaySettingsStore(
       ...(current.providerPriority ? { providerPriority: current.providerPriority } : {}),
       ...(current.compactCeiling !== undefined ? { compactCeiling: current.compactCeiling } : {}),
       ...(current.xaiEndpoint !== undefined ? { xaiEndpoint: current.xaiEndpoint } : {}),
+      // 이행 표식은 사용자의 저장과 무관하게 남아야 한다 — 지우면 다음 기동이 끈 Claude를 되살린다.
+      ...(current.rosterSeedVersion !== undefined ? { rosterSeedVersion: current.rosterSeedVersion } : {}),
       // 선별을 저장하는 것은 그 자체로 선택이다. 모델이 없으면 빈 배열로 남겨 기본 로스터 이행과 구별한다.
       models: [],
       ...(value ?? {}),
@@ -146,9 +156,18 @@ export function createAiGatewaySettingsStore(
     seedModels: (ids) => {
       let seeded = false;
       update((current) => {
-        if (current.models !== undefined) return current;
+        if ((current.rosterSeedVersion ?? 0) >= ROSTER_SEED_VERSION) return current;
+        const marked = { ...current, rosterSeedVersion: ROSTER_SEED_VERSION };
+        const seed = ids.map((id) => ({ id }));
+        if (current.models === undefined) {
+          seeded = true;
+          return normalizeAiGatewaySettings({ ...marked, models: seed });
+        }
+        const hasClaude = current.models.some((entry) => findGatewayModel(entry.id)?.provider === "claude");
+        if (current.models.length === 0 || hasClaude) return normalizeAiGatewaySettings(marked);
         seeded = true;
-        return normalizeAiGatewaySettings({ ...current, models: ids.map((id) => ({ id })) });
+        const present = new Set(current.models.map((entry) => entry.id));
+        return normalizeAiGatewaySettings({ ...marked, models: [...current.models, ...seed.filter((entry) => !present.has(entry.id))] });
       });
       return seeded;
     },

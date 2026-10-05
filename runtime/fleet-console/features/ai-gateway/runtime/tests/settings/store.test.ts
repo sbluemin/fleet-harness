@@ -193,29 +193,48 @@ describe("ai-gateway settings store", () => {
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
     expect(store.read()).toEqual({ version: 1, models: [] });
     expect(store.seedModels(["claude--sonnet"])).toBe(false);
-    expect(store.read()).toEqual({ version: 1, models: [] });
+    expect(store.read()).toEqual({ version: 1, models: [], rosterSeedVersion: 1 });
   });
 
-  it("seeds the default roster once, only where the models key was never written", () => {
+  it("migrates the roster once: seeds an unchosen roster, adds Claude to a Claude-less list, and never re-adds what the user turned off", () => {
+    const seed = ["claude--fable-1m", "claude--opus-1m", "claude--sonnet"];
+    const claude = seed.map((id) => ({ id }));
+
+    // 한 번도 고르지 않은 설치(키 부재) — 기본 로스터를 써 넣고 표식을 남긴다.
     const fresh = createAiGatewaySettingsStore({ dataDir: createDataDir() });
     fresh.writeWireLogEnabled(false);
-    const seed = ["claude--fable-1m", "claude--opus-1m", "claude--sonnet"];
     expect(fresh.seedModels(seed)).toBe(true);
-    const seeded = { version: 1, wireLogEnabled: false, models: seed.map((id) => ({ id })) };
+    const seeded = { version: 1, wireLogEnabled: false, models: claude, rosterSeedVersion: 1 };
     expect(fresh.read()).toEqual(seeded);
-    // 멱등 — 두 번째 기동은 아무것도 쓰지 않고, 사용자가 그 사이 바꾼 로스터도 건드리지 않는다.
+    // 멱등 — 두 번째 기동은 아무것도 바꾸지 않고, 사용자가 그 뒤 고친 로스터(Claude를 끈 것 포함)도 되살리지 않는다.
     expect(fresh.seedModels(seed)).toBe(false);
     expect(fresh.read()).toEqual(seeded);
     fresh.write({ models: [{ id: "codex--gpt-6-sol" }] });
     expect(fresh.seedModels(seed)).toBe(false);
-    expect(fresh.read()?.models).toEqual([{ id: "codex--gpt-6-sol" }]);
+    expect(fresh.read()).toEqual({ version: 1, wireLogEnabled: false, models: [{ id: "codex--gpt-6-sol" }], rosterSeedVersion: 1 });
 
-    // 승계가 먼저다 — 옛 자리에 선별이 있던 설치는 이행 대신 그 선별을 갖는다.
+    // 업그레이드 — Claude 없이 비어 있지 않은 목록에는 Claude를 뒤에 더한다(예전에는 Claude가 늘 깔려 있었다).
+    const upgraded = createAiGatewaySettingsStore({ dataDir: createDataDir() });
+    upgraded.write({ models: [{ id: "codex--gpt-6-sol", efforts: ["high"] }] });
+    expect(upgraded.seedModels(seed)).toBe(true);
+    expect(upgraded.read()?.models).toEqual([{ id: "codex--gpt-6-sol", efforts: ["high"] }, ...claude]);
+    // 이행 뒤 사용자가 Claude를 끄면 다음 기동이 다시 넣지 않는다.
+    upgraded.write({ models: [{ id: "codex--gpt-6-sol", efforts: ["high"] }] });
+    expect(upgraded.seedModels(seed)).toBe(false);
+    expect(upgraded.read()?.models).toEqual([{ id: "codex--gpt-6-sol", efforts: ["high"] }]);
+
+    // Claude 항목이 이미 있는 목록은 사용자가 Claude를 고른 것이다 — 목록은 그대로, 표식만 남긴다.
+    const chosen = createAiGatewaySettingsStore({ dataDir: createDataDir() });
+    chosen.write({ models: [{ id: "claude--opus-1m" }, { id: "codex--gpt-6-sol" }] });
+    expect(chosen.seedModels(seed)).toBe(false);
+    expect(chosen.read()).toEqual({ version: 1, models: [{ id: "claude--opus-1m" }, { id: "codex--gpt-6-sol" }], rosterSeedVersion: 1 });
+
+    // 승계가 먼저다 — 옛 자리의 선별을 받은 뒤 같은 규칙으로 이행한다.
     const dataDir = createDataDir();
     const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
     const adopted = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
-    expect(adopted.seedModels(seed)).toBe(false);
-    expect(adopted.read()?.models).toEqual([{ id: "codex--gpt-6-sol" }]);
+    expect(adopted.seedModels(seed)).toBe(true);
+    expect(adopted.read()?.models).toEqual([{ id: "codex--gpt-6-sol" }, ...claude]);
   });
 
   it("stays unconfigured when the host directory holds nothing usable", () => {

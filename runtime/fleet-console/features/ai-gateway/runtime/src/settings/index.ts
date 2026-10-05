@@ -48,12 +48,22 @@ function retainStoredHostOnly(model: GatewayModel, hostOnly: unknown): boolean {
 export const DEFAULT_ROSTER_SEED_MODEL_IDS: readonly string[] = ["claude--fable-1m", "claude--opus-1m", "claude--sonnet"];
 
 /**
+ * 모델 로스터 이행 판(版). 저장 파일의 `rosterSeedVersion`이 이 값에 닿으면 이행은 끝났다 — 다시 기동해도, 사용자가 그 뒤
+ * Claude를 꺼도 되살리지 않는다. 이 판을 올리는 것은 새 이행을 한 번 더 돌리겠다는 결정이다.
+ */
+export const ROSTER_SEED_VERSION = 1;
+
+/**
  * AI Gateway 설정 파일에 저장되는 형태. models 부재 = 한 번도 고르지 않음(기본 로스터 이행 대상),
  * 빈 배열 = 사용자가 모두 끔. 둘 다 노출은 없다.
  */
 export interface AiGatewayStoredSettings {
   readonly version: 1;
   readonly models?: readonly AiGatewayStoredModel[];
+  /**
+   * 마지막으로 끝난 모델 로스터 이행 판({@link ROSTER_SEED_VERSION}). 부재는 이행 전이다. 이행은 이 표식으로 한 번만 돈다.
+   */
+  readonly rosterSeedVersion?: number;
   /**
    * 부재는 env(`FLEET_GATEWAY_WIRE_LOG`) 폴백, true/false는 호스트가 강제하는 On/Off다.
    * **false를 정규형에서 지우면 안 된다** — env를 켜 둔 설치에서
@@ -163,6 +173,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     // 빈 배열도 보존한다 — 「모델을 모두 껐다」는 사용자의 선택이고, 키 부재(한 번도 고른 적 없음)와 달리
     // 기본 로스터 이행(seedDefaultModels)의 대상이 아니다.
     ...(Array.isArray(value.models) ? { models } : {}),
+    ...(typeof value.rosterSeedVersion === "number" && Number.isInteger(value.rosterSeedVersion) && value.rosterSeedVersion > 0 ? { rosterSeedVersion: value.rosterSeedVersion } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
     // 라우팅 모델은 카탈로그가 아는 id(정준 실행 id·scoped·레거시 `claude-gateway--` 표기)만 남긴다. 켰는지는
     // 실행 시점에 로스터가 정한다 — 끈 모델의 저장값을 지우면 다시 켰을 때 사용자의 선택이 돌아오지 않는다.
