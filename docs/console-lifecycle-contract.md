@@ -7,7 +7,6 @@ One Console `serve` process has one lifecycle, and every actor that deals with i
 
 The serve state owner is `runtime/fleet-console/core/host/bootstrap/serve-lifecycle.ts`. Lock publication and the reclaim of another instance's lock are a separate, referenced contract: [Console Lock Reclaim Across Hosts](console-lock-reclaim.md).
 
-Actors are being moved onto the contract in stages. A section marked *(pending)* names behavior an actor still implements on its own until its stage lands; the contract text is the target.
 
 ## Invariants
 
@@ -96,11 +95,12 @@ New outcomes may be added without a version change. A reader that meets an outco
 
 - The lock payload and the meaning of health answers do not change; additions only. The authenticated health answer carries `lifecycleWire: CONSOLE_LIFECYCLE_WIRE`. Its absence means wire 0 (before this contract).
 - An observer that meets a wire newer than its own treats that instance as unverified: it neither signals it nor removes its lock on that basis. Adopting sends no signal, so Desktop still adopts a Console of a compatible owner whose authenticated health answers with the lock's own pid, whatever wire it reports. A Quit then signals a newer-wire Console only when it is this Desktop's own unreaped child (E1); any other newer-wire Console it adopted is left running, and the Quit logs it.
+- A change that raises the wire must not lengthen `CONSOLE_STOP_DEADLINE_MS` (B_int) without settling the escalation hierarchy again: an older Desktop or CLI still SIGKILLs its own child after its own, older B_ext, which a longer internal deadline would put before the Console's deadline ends it (I4). The PR that first raises the wire decides it — keep B_int from growing, or give actors a rule that holds SIGKILL for a newer-wire child.
 - Shipped Desktop builds and update workers carry frozen copies of the contract. The published `./desktop-protocol` export surface is unchanged by it.
 
 ## Observing an instance from outside
 
-An external actor reads the lock through the one lock observer, `observeConsoleLockFile` in `@fleet-console/lifecycle` (absent, refused, no readable owner, or an owner with its exact bytes, liveness, and the first trust problem, if any), then the pid's liveness (only ESRCH is death) and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI, `serve`, Desktop, and the update worker do; the local Console list still applies its own reading *(pending)*. A trusted lock has the POSIX modes 0700/0600, belongs to this user, names the loopback host and a valid port, has an endpoint of exactly `http://<host>:<port>/`, a token, and a numeric `startedAt`; a shell may add its own adoption policy on top. Whether the lock still holds one instance is `consoleLockInstanceState` over the same observer: `released` when there is no lock or it names another pid (or token), `held` when it names that instance, and `unknown` when it cannot be judged — a lock without a readable owner, even one that parses (`{}`, `null`), is never taken as released.
+An external actor reads the lock through the one lock observer, `observeConsoleLockFile` in `@fleet-console/lifecycle` (absent, refused, no readable owner, or an owner with its exact bytes, liveness, and the first trust problem, if any), then the pid's liveness (only ESRCH is death) and the token-authenticated health endpoint, and classifies the instance with `classifyConsoleInstance` (through `observeConsoleInstance`). The CLI, `serve`, Desktop, the update worker, and the local Console list do. A trusted lock has the POSIX modes 0700/0600, belongs to this user, names the loopback host and a valid port, has an endpoint of exactly `http://<host>:<port>/`, a token, and a numeric `startedAt`; a shell may add its own adoption policy on top. Whether the lock still holds one instance is `consoleLockInstanceState` over the same observer: `released` when there is no lock or it names another pid (or token), `held` when it names that instance, and `unknown` when it cannot be judged — a lock without a readable owner, even one that parses (`{}`, `null`), is never taken as released.
 
 | Lock | Pid | Health | Observed | May do |
 |---|---|---|---|---|
@@ -118,6 +118,22 @@ An external actor reads the lock through the one lock observer, `observeConsoleL
 A refused endpoint with a live pid that still holds the same lock is a Console that has closed its listener and is cleaning up — never an absent owner.
 
 Evidence direction: only ESRCH grants an action that frees the slot — removing a lock, signalling as an absent owner, or starting a new `serve`. A comparison of two wall-clock readings taken at different times (the lock's `startedAt` against the pid's `ps` start time) may only block an action. This limit covers only that comparison between a lock and a process; the identity proofs that compare a process with itself or with its own registration still grant a signal as this contract describes them — an unchanged start time read again (E4), and a registered group's spawn time against `ps` in the deadline and the reaper. So a live pid that started after its lock was written is `replaced`, not `exited`: every actor leaves it and its lock alone, and `serve` itself would not take that lock while the pid runs.
+
+### Without credentials: the local Console list
+
+The local Console list reads no lock token (#1563), so it observes in a public mode with the same rules and no authority to act (`observeConsolePublic`, `classifyConsolePublic`). It reads each lock through the same observer and leaves out a lock that fails the trust checks, since the list would take a person to its address. A Console on this machine is alive unless its pid is ESRCH; a Console inside WSL has a pid from another namespace, so a TCP connect to its port stands in. One unauthenticated `/api/v1/status` request, within `PUBLIC_STATUS_TIMEOUT_MS` (700 ms), then gives:
+
+| Pid or port | Status | Public state |
+|---|---|---|
+| ESRCH | — | exited |
+| a WSL Console whose port refuses a connection | — | unreachable |
+| alive | 503 `console_starting` | starting |
+| alive | refused, and the pid started after the lock was written | replaced |
+| alive | refused | stopping |
+| alive | any other answer | ready |
+| alive | timeout or no answer | unresponsive |
+
+Which states the list shows is its own policy: it hides starting, exited, unreachable, and replaced, and shows ready, stopping, and unresponsive — a slow Console stays listed.
 
 ### Stop ladder
 
@@ -139,7 +155,7 @@ An accepted in-place update stops the Console that accepted it: the Console stop
 
 - **Its runtime.** The build emits the worker's lifecycle runtime as one self-contained file (`dist/lifecycle-worker-runtime.mjs` beside the Console bundle, with `CONSOLE_LIFECYCLE_CONTRACT_VERSION`). When the Console accepts an update, while its installed package is still intact and before anything stops, it copies that file beside the worker (`fleet-console-update-<stamp>.lifecycle.mjs`, mode 0600) and writes the sha256 of the copied bytes and the revision into the worker's configuration. The worker imports the copy only when both match, and uses that copy to the end, so files the install replaces never change what it runs.
 - **Stopping the old Console.** Its stop request is already delivered, so it sends no SIGTERM (on Windows that would terminate a Console cleaning up). It follows the stop ladder with `request: "delivered"` and installs only once the old process is gone: a Console that released its lock is waited for up to B_ext while it reaps its children, and if it is still running then, nothing is installed (no file it loaded is replaced under it) and nothing is signalled. One still holding its lock after B_ext is SIGKILLed only when its identity is proven again — the parent link (POSIX), an unchanged start time, or a fresh health answer — and the worker records `forced-external`; without proof it signals nothing and the update fails as unverified. A `replaced` lock whose instance is still in place stops the update before the install, reported with `describeReplacedLockAuthor`; once that lock is released the old Console is gone and the update goes on.
-- **Starting a Console.** It starts a `serve` only when the lock is gone or its pid is ESRCH, both for the new release and for recovering after a failed install; a lock whose pid still runs (the old Console, or another program that reused its pid) or that cannot be read is reported instead.
+- **Starting a Console.** It starts a `serve` only when the lock is gone or its pid is ESRCH, both for the new release and for recovering after a failed install; a lock whose pid still runs (the old Console, or another program that reused its pid) or that cannot be read is reported instead. After a stop that ended still-running, recovery may therefore start a `serve` of the old release while the old process, which already released its lock, is still reaping its children: the two run side by side for a moment, which the contract allows, since the slot belongs to whoever holds the lock.
 - **Result.** How the old Console ended (its exit record, or the reading of none) is carried on the update's progress record as `oldConsoleOutcome`.
 
 | Runtime copy | What happens |

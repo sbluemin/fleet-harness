@@ -154,6 +154,38 @@ export function classifyConsoleInstance(input: ConsoleInstanceEvidence): { reado
   return { state: "unverified", identity: "unverified" };
 }
 
+/** How long the local Console list waits for one unauthenticated status answer, or one TCP connect to a WSL Console. */
+export const PUBLIC_STATUS_TIMEOUT_MS = 700;
+
+/** What one unauthenticated `/api/v1/status` request showed. It carries no identity: the list reads no lock token. */
+export type ConsolePublicStatus = "answered" | "starting" | "refused" | "unanswered";
+
+/**
+ * A Console as the local Console list observes it without credentials (docs/console-lifecycle-contract.md, "Observing an
+ * instance"): the same liveness and author-replaced rules as every actor, and a public status in place of authenticated
+ * health. Which states the list shows is the list's policy.
+ */
+export type ConsolePublicState = "ready" | "starting" | "stopping" | "unresponsive" | "exited" | "unreachable" | "replaced";
+
+export interface ConsolePublicEvidence {
+  /** False only on ESRCH; null when the pid cannot be checked from here (a Console inside WSL). */
+  readonly pidAlive: boolean | null;
+  /** For a Console whose pid cannot be checked: whether its port accepted a TCP connection. Null otherwise. */
+  readonly portOpen: boolean | null;
+  /** The lock pid started well after the lock was written (see LOCK_AUTHOR_REPLACED_MARGIN_MS). */
+  readonly authorReplaced: boolean;
+  readonly status: ConsolePublicStatus;
+}
+
+export function classifyConsolePublic(input: ConsolePublicEvidence): ConsolePublicState {
+  if (input.pidAlive === false) return "exited";
+  // A refused port is not ESRCH: it says nothing reachable listens there, never that the pid is gone.
+  if (input.portOpen === false) return "unreachable";
+  if (input.status === "starting") return "starting";
+  if (input.status === "refused") return input.authorReplaced ? "replaced" : "stopping";
+  return input.status === "answered" ? "ready" : "unresponsive";
+}
+
 // ---------- Exit record ----------
 
 /**

@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
 import os from "node:os";
 
 import { getFleetDataDir } from "@fleet-console/infra";
+import { observeConsoleLockFile, observeConsolePublic } from "@fleet-console/lifecycle";
+import type { ConsolePublicState } from "@fleet-console/protocol/lifecycle";
 
 import { resolveCanonicalLocalConsolePaths, resolveCanonicalStableConsolePaths } from "../shell/desktop-protocol.js";
 import { readFleetConsoleRelease } from "./release.js";
@@ -27,7 +28,8 @@ export interface LocalConsoleEntry {
 }
 
 export interface LocalConsoleScanDeps {
-  readonly fileSystem?: Pick<typeof fs, "readFileSync" | "readdirSync">;
+  /** WSL 배포판의 /tmp 목록을 읽는 데만 쓴다. lock 자체는 계약의 관측기가 읽는다. */
+  readonly fileSystem?: Pick<typeof fs, "readdirSync">;
   readonly isAlive?: (pid: number) => boolean;
   readonly lockFiles?: readonly string[];
   readonly platform?: NodeJS.Platform;
@@ -35,13 +37,6 @@ export interface LocalConsoleScanDeps {
   readonly listWslDistros?: () => readonly string[];
   /** WSL 콘솔의 생존 판정. pid는 쓸 수 없으므로 포트로 확인한다. */
   readonly reachable?: (origin: string) => Promise<boolean>;
-}
-
-interface LockFileShape {
-  readonly pid?: unknown;
-  readonly endpoint?: unknown;
-  readonly version?: unknown;
-  readonly owner?: { readonly kind?: unknown };
 }
 
 const WSL_ROOT = "\\\\wsl.localhost";
@@ -59,33 +54,29 @@ function isUsableDistroName(name: string): boolean {
   return DISTRO_NAME.test(name) && !DOTS_ONLY.test(name);
 }
 const WSL_LIST_TIMEOUT_MS = 3_000;
-const REACHABLE_TIMEOUT_MS = 700;
+/**
+ * 목록이 보여 주는 관측 상태(정책). 시작 중인 Console(#1563), 끝난 Console, 포트가 닿지 않는 WSL Console, 끝난 Console의 pid를
+ * 무관한 프로그램이 물려받은 lock은 숨긴다. 응답이 느리거나 정리 중인 Console은 지금처럼 보여 준다 — 표시 정책은 이 분류와 별개다(b3eb0761).
+ */
+const LISTED_STATES: ReadonlySet<ConsolePublicState> = new Set(["ready", "stopping", "unresponsive"]);
 
 export async function listLocalConsoles(deps: LocalConsoleScanDeps = {}): Promise<readonly LocalConsoleEntry[]> {
   const fileSystem = deps.fileSystem ?? fs;
-  const isAlive = deps.isAlive ?? processIsAlive;
-  const candidates: { readonly console: LocalConsoleEntry; readonly pid: number }[] = [];
+  const candidates = [
+    ...(deps.lockFiles ?? canonicalLockFiles()).map((file) => readCandidate(file, null)),
+    ...wslLockFiles(deps, fileSystem).map((candidate) => readCandidate(candidate.file, candidate.distro)),
+  ].filter((candidate): candidate is LockCandidate => candidate !== null);
 
-  for (const file of deps.lockFiles ?? canonicalLockFiles()) {
-    const entry = readLock(fileSystem, file, null);
-    // 같은 기계의 콘솔이므로 pid로 판정한다.
-    if (entry === null || !isAlive(entry.pid)) continue;
-    candidates.push(entry);
-  }
-
-  for (const candidate of wslLockFiles(deps, fileSystem)) {
-    const entry = readLock(fileSystem, candidate.file, candidate.distro);
-    if (entry !== null) candidates.push(entry);
-  }
-
-  // 새로 공개된 starting 구간만 숨긴다. 느리거나 응답하지 않는 후보의 기존 생존 판정은 바꾸지 않는다.
-  // WSL의 pid는 다른 네임스페이스이므로 기존 TCP 판정을 유지하고, 두 probe도 병렬로 묶는다.
-  const entries = await Promise.all(candidates.map(async ({ console: entry, pid }) => {
-    const [alive, starting] = await Promise.all([
-      entry.distro === null ? true : (deps.reachable ?? portAnswers)(entry.origin),
-      consoleStarting(entry.origin, pid),
-    ]);
-    return alive && !starting ? entry : null;
+  // 계약의 공개 관측(docs/console-lifecycle-contract.md): 같은 기계의 Console은 pid(ESRCH만 죽음)로, WSL의 Console은 pid가
+  // 다른 네임스페이스라 포트로 생존을 보고, 비인증 status 하나로 상태를 나눈다. 후보마다 병렬로 묻는다.
+  const entries = await Promise.all(candidates.map(async (candidate) => {
+    const state = await observeConsolePublic({
+      lock: { pid: candidate.pid, startedAt: candidate.startedAt, origin: candidate.console.origin },
+      pidCheckable: candidate.console.distro === null,
+      ...(deps.isAlive ? { isAlive: deps.isAlive } : {}),
+      ...(deps.reachable ? { portOpen: deps.reachable } : {}),
+    });
+    return LISTED_STATES.has(state) ? candidate.console : null;
   }));
   const seen = new Set<string>();
   return entries.filter((entry): entry is LocalConsoleEntry => {
@@ -159,86 +150,35 @@ function runningWslDistros(): readonly string[] {
   }
 }
 
-function readLock(
-  fileSystem: Pick<typeof fs, "readFileSync">,
-  file: string,
-  distro: string | null,
-): { readonly console: LocalConsoleEntry; readonly pid: number } | null {
-  let parsed: LockFileShape;
-  try {
-    parsed = JSON.parse(fileSystem.readFileSync(file, "utf8")) as LockFileShape;
-  } catch {
-    return null;
-  }
-  if (typeof parsed?.pid !== "number" || typeof parsed.endpoint !== "string") return null;
+interface LockCandidate {
+  readonly console: LocalConsoleEntry;
+  readonly pid: number;
+  readonly startedAt: unknown;
+}
+
+/**
+ * 계약의 lock 관측기로 한 번 읽는다(symlink·남의 uid 거부, 소유자 없는 lock 제외, 신뢰 검사). 신뢰할 수 없는 lock의 주소는
+ * 보여 주지 않는다 — 목록은 그 주소로 사람을 데려가기 때문이다. token은 읽지만 쓰지도 내보내지도 않는다.
+ */
+function readCandidate(file: string, distro: string | null): LockCandidate | null {
+  const observed = observeConsoleLockFile(file);
+  if (observed.kind !== "owner" || observed.untrusted !== null) return null;
+  const { payload } = observed.instance;
   let origin: string;
   try {
-    const url = new URL(parsed.endpoint);
-    if (url.protocol !== "http:") return null;
-    origin = url.origin;
+    origin = new URL(payload.endpoint).origin;
   } catch {
     return null;
   }
-  const owner = parsed.owner?.kind;
+  const owner = (payload.owner as { readonly kind?: unknown } | undefined)?.kind;
   return {
-    pid: parsed.pid,
+    pid: payload.pid,
+    startedAt: payload.startedAt,
     console: {
       origin,
-      version: typeof parsed.version === "string" ? parsed.version : "",
+      version: typeof payload.version === "string" ? payload.version : "",
       owner: owner === "cli" || owner === "desktop" ? owner : null,
       distro,
     },
   };
-}
-
-/** 락 파일이 남아 있다고 콘솔이 살아 있는 것은 아니다. 죽은 줄을 목록에 올리면 누르는 사람만 손해다. */
-function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM은 "남의 프로세스지만 살아 있다"는 뜻이다.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
-async function consoleStarting(origin: string, pid: number): Promise<boolean> {
-  try {
-    const response = await fetch(new URL("/api/v1/status", origin), {
-      redirect: "error",
-      signal: AbortSignal.timeout(REACHABLE_TIMEOUT_MS),
-    });
-    if (response.status !== 503) {
-      await response.body?.cancel();
-      return false;
-    }
-    const body = await response.json() as { error?: unknown; pid?: unknown } | null;
-    // 공개 status는 현재 pid를 보내지 않는다. 제공되는 경우에만 대조하며, 어느 쪽도 소유권 증명은 아니다.
-    return body?.error === "console_starting" && (body.pid === undefined || body.pid === pid);
-  } catch {
-    // timeout·연결 오류·잘못된 본문은 starting의 증거가 아니다.
-    return false;
-  }
-}
-
-function portAnswers(origin: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    let url: URL;
-    try {
-      url = new URL(origin);
-    } catch {
-      resolve(false);
-      return;
-    }
-    const socket = net.connect({ host: url.hostname, port: Number(url.port) }, () => {
-      socket.destroy();
-      resolve(true);
-    });
-    const fail = (): void => {
-      socket.destroy();
-      resolve(false);
-    };
-    socket.setTimeout(REACHABLE_TIMEOUT_MS, fail);
-    socket.on("error", fail);
-  });
 }
