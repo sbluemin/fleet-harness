@@ -546,7 +546,7 @@ afterEach(async () => {
     const pluginChildren = await openPluginChildren(run, endpoint);
     const started = pluginChildren;
     const breakaway = JSON.parse(fs.readFileSync(breakawayFile, "utf8")) as { ok?: boolean; err?: number };
-    expect(breakaway.ok, `CREATE_BREAKAWAY_FROM_JOB must fail inside the group job (${JSON.stringify(breakaway)})`).toBe(false);
+    expect(breakaway.ok, `CREATE_BREAKAWAY_FROM_JOB must fail inside the group job (${JSON.stringify(breakaway)}) log=${failureKinds(run).join(",") || "none"}`).toBe(false);
     expect(breakaway.err, "breakaway is denied").toBe(5);
     for (const role of ["detached", "native"]) {
       expect(pluginChildren.some((child) => child.command === `tokscale ${role}`), `${role} grandchild was not started`).toBe(true);
@@ -929,14 +929,20 @@ function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefi
     "      const kernel32 = koffi.load('kernel32.dll');",
     "      const u16ptr = koffi.pointer('uint16');",
     "      const u8ptr = koffi.pointer('uint8');",
+    "      const i32ptr = koffi.pointer('int');",
     "      const CreateProcessW = kernel32.func('__stdcall', 'CreateProcessW', 'int', ['void *', u16ptr, 'void *', 'void *', 'int', 'uint32', 'void *', 'void *', u8ptr, u8ptr]);",
     "      const GetLastError = kernel32.func('__stdcall', 'GetLastError', 'uint32', []);",
+    "      const GetCurrentProcess = kernel32.func('__stdcall', 'GetCurrentProcess', 'void *', []);",
+    "      const IsProcessInJob = kernel32.func('__stdcall', 'IsProcessInJob', 'int', ['void *', 'void *', i32ptr]);",
+    "      const inJob = [0];",
+    "      const inJobOk = IsProcessInJob(GetCurrentProcess(), null, inJob);",
+    "      breakaway.inAnyJob = Boolean(inJobOk) && Number(inJob[0]) !== 0;",
     "      const cmd = Buffer.from('cmd.exe /c exit 0\\\\0', 'utf16le');",
     "      const si = Buffer.alloc(104);",
     "      si.writeUInt32LE(104, 0);",
     "      const pi = Buffer.alloc(24);",
     "      const ok = CreateProcessW(null, cmd, null, null, 0, 0x01000000, null, null, si, pi);",
-    "      breakaway = { ok: Boolean(ok), err: ok ? 0 : Number(typeof koffi.errno === 'function' ? koffi.errno() : 0) || Number(GetLastError()) };",
+    "      breakaway = { ok: Boolean(ok), err: ok ? 0 : Number(typeof koffi.errno === 'function' ? koffi.errno() : 0) || Number(GetLastError()), inAnyJob: breakaway.inAnyJob };",
     "    } catch (error) {",
     "      breakaway = { ok: false, err: -1, message: String(error && error.message || error) };",
     "      note('breakaway ' + breakaway.message);",
