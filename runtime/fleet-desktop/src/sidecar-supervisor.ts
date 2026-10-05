@@ -33,6 +33,7 @@ import {
   STOP_POLL_MS,
   describeOwnerlessConsoleLock,
   describeRefusedConsoleLock,
+  describeReplacedLockAuthor,
 } from "@fleet-console/protocol/lifecycle";
 
 export interface SidecarRuntime { readonly nodePath: string; readonly cliPath: string; readonly serviceRoot: string; readonly serviceVersion: string; }
@@ -180,6 +181,13 @@ export class SidecarSupervisor {
       observed = await this.observe(stored.lock);
     }
     if (observed.state === "exited") return this.leaveExitedLock(stored.bytes, pid, runtime);
+    // Another program reused an ended Console's pid: a start-time comparison may block a start, never allow one, so no
+    // serve starts beside it while that pid runs (the same verdict serve and the CLI reach). A lock problem, not a conflict.
+    if (observed.state === "replaced") {
+      const detail = describeReplacedLockAuthor(this.options.lockFile, pid);
+      this.options.log.error(`console_lock_held: ${detail.split("\n")[0]}`);
+      throw new SidecarStartError("console_lock_held", () => detail);
+    }
     // The lock changed or went while it was observed: the next pass reads the slot again.
     if (observed.state === "releasing") return { kind: "changed" };
     if (observed.state === "stopping") {

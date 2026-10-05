@@ -106,6 +106,7 @@ An external actor reads the lock through the one lock observer, `observeConsoleL
 |---|---|---|---|---|
 | none | — | — | absent | start |
 | owner | ESRCH | — | exited, lock left behind | nothing; the next `serve` reclaims it |
+| trusted | alive, but started more than `LOCK_AUTHOR_REPLACED_MARGIN_MS` after the lock was written | refused | **replaced**: another program reused an ended Console's pid | nothing: no signal, no removal, no new `serve`; report the lock as blocked (`describeReplacedLockAuthor`) until that pid exits |
 | trusted | alive | 200, same pid, `lifecycleWire` not newer than the observer's | ready | the actor that requests the stop may SIGTERM |
 | trusted | alive | 503 `console_starting`, same pid | starting | wait within its start budget; only its own parent may stop it |
 | trusted, same bytes as before | alive | refused | **stopping** | wait up to B_ext; never SIGTERM again |
@@ -114,7 +115,9 @@ An external actor reads the lock through the one lock observer, `observeConsoleL
 | untrusted or tokenless | alive | — | unverified | nothing |
 | symlink, another user's, or no readable owner | — | — | blocked | nothing; manual recovery text |
 
-A refused endpoint with a live pid that still holds the same lock is a Console that has closed its listener and is cleaning up — never an absent owner. The pre-contract helper `identifyConsoleLockOwner` in `@fleet-console/protocol/desktop` still maps that case to `absent`; its remaining consumer, the update worker, corrects for it, and it is removed when the worker moves onto the contract.
+A refused endpoint with a live pid that still holds the same lock is a Console that has closed its listener and is cleaning up — never an absent owner.
+
+Evidence direction: only ESRCH grants an action that frees the slot — removing a lock, signalling as an absent owner, or starting a new `serve`. A comparison of two wall-clock readings taken at different times (the lock's `startedAt` against the pid's `ps` start time) may only block an action. So a live pid that started after its lock was written is `replaced`, not `exited`: every actor leaves it and its lock alone, and `serve` itself would not take that lock while the pid runs. The pre-contract helper `identifyConsoleLockOwner` in `@fleet-console/protocol/desktop` still maps that case to `absent`; its remaining consumer, the update worker, corrects for it, and it is removed when the worker moves onto the contract.
 
 ### Stop ladder
 

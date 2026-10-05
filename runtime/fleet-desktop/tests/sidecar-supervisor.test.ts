@@ -10,7 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { REAPER_DRAIN_MAX_MS, consoleLockInstanceState, createConsoleHealthClient, isPidAlive, observeConsoleInstance, readProcessStartTime, reproveConsoleInstance, runStopLadder, type ConsoleLockFilePayload } from "@fleet-console/lifecycle";
-import { CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
+import { DESKTOP_PROTOCOL_VERSION } from "@fleet-console/protocol/desktop";
+import { CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, LOCK_AUTHOR_REPLACED_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
 import { createDesktopEnvironment } from "../src/environment.js";
 import { SidecarSupervisor, type SidecarClock, type SidecarRuntime } from "../src/sidecar-supervisor.js";
@@ -453,6 +454,71 @@ afterEach(async () => {
     const roles = new Map(agentProcs().filter((entry) => AGENT_ROLES.has(entry.role)).map((entry) => [entry.pid, entry.role] as const));
     lifecycleCheck("L4d", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left.map((entry) => roles.get(entry.pid) ?? entry.command), failureLog, timeline }, signature: false });
   }, 90_000);
+
+  // L15, e7874487:N10 (I1, one verdict across actors). A Console ended and an unrelated program now runs under its pid, so
+  // the lock names a live pid that started well after the lock was written, and its address refuses. Only ESRCH may free a
+  // slot: Desktop and `fleet console start` must both leave the program and the lock alone and start no Console beside it,
+  // as serve itself would refuse that lock. Before the contract's `replaced` state, Desktop read it as exited and spawned.
+  it("starts no Console beside a lock whose pid another program reused, in Desktop and the CLI alike", async () => {
+    const cliPath = requireFromTest.resolve("@dotobokuri/fleet-console/cli");
+    const serviceRoot = path.dirname(path.dirname(cliPath));
+    const base = path.join(repoRoot, ".fleet", "isolated", "lifecycle");
+    fs.mkdirSync(base, { recursive: true });
+    const dir = fs.mkdtempSync(path.join(base, "reused-pid-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-lifecycle-reused-"));
+    LIFECYCLE_DIRS.push(dir, tmp);
+    const root = path.join(dir, "root");
+    const slot = path.join(root, "console");
+    for (const target of [root, path.join(dir, "home")]) fs.mkdirSync(target, { recursive: true, mode: 0o700 });
+    const signals = path.join(dir, "bystander-signals");
+    // The unrelated program: it records any catchable signal and keeps running.
+    const bystander = spawn(process.execPath, ["-e", `for (const s of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(s, () => require("fs").appendFileSync(${JSON.stringify(signals)}, s + "\\n")); setInterval(() => {}, 1 << 30);`], { stdio: "ignore" });
+    own(bystander.pid!);
+    const bystanderStart = await waitForStart(bystander.pid!);
+    const user = os.userInfo().username;
+    const baseEnv: NodeJS.ProcessEnv = {
+      HOME: path.join(dir, "home"),
+      TMPDIR: tmp,
+      PATH: SYSTEM_PATH.join(":"),
+      USER: user,
+      LOGNAME: user,
+      LANG: "en_US.UTF-8",
+      SHELL: "/bin/sh",
+      FLEET_DATA_DIR: root,
+      FLEET_CONSOLE_DATA_DIR: slot,
+      FLEET_DESKTOP_DATA_DIR: path.join(dir, "desktop"),
+      CLAUDE_CONFIG_DIR: path.join(dir, "claude"),
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      CLAUDE_BIN: FAKE_AGENT,
+    };
+    const desktop = createDesktopEnvironment(path.join(dir, "userdata"), "0.0.0-lifecycle", serviceRoot, false, baseEnv);
+    const lockFile = path.join(desktop.consoleDir, "console.lock");
+    fs.mkdirSync(path.dirname(lockFile), { recursive: true, mode: 0o700 });
+    fs.chmodSync(path.dirname(lockFile), 0o700);
+    const serviceVersion = (JSON.parse(fs.readFileSync(path.join(serviceRoot, "package.json"), "utf8")) as { version: string }).version;
+    const port = await closedPort();
+    // A lock as the ended Console published it, written more than LOCK_AUTHOR_REPLACED_MARGIN_MS before the pid started.
+    const bytes = JSON.stringify({ pid: bystander.pid, host: "127.0.0.1", port, endpoint: `http://127.0.0.1:${port}/`, startedAt: bystanderStart - LOCK_AUTHOR_REPLACED_MARGIN_MS - 5_000, token: "ended-console", version: serviceVersion, owner: { kind: "desktop", id: desktop.ownerId, protocolVersion: DESKTOP_PROTOCOL_VERSION } });
+    fs.writeFileSync(lockFile, bytes, { mode: 0o600 });
+    const serves = () => spawnSync("ps", ["-A", "-o", "pid=,command="], { encoding: "utf8" }).stdout.split("\n").filter((line) => line.includes(`${cliPath} serve`)).length;
+    const servesBefore = serves();
+
+    const resolveRuntime = vi.fn(async (): Promise<SidecarRuntime> => ({ nodePath: process.execPath, cliPath, serviceRoot, serviceVersion }));
+    const supervisor = new SidecarSupervisor({ resolveRuntime, serviceVersion, env: desktop.serviceEnv, lockFile, ownerId: desktop.ownerId, log: { info: () => {}, error: () => {} } });
+    const desktopFailure = await supervisor.startOrAdopt().then(() => null, (error: unknown) => error);
+    expect(desktopFailure, "Desktop must refuse to start beside the reused pid").toBeInstanceOf(Error);
+    expect((desktopFailure as Error).message, "a blocked lock, not a Console conflict").toBe("console_lock_held");
+    expect(resolveRuntime, "Desktop must not procure or spawn a Console").not.toHaveBeenCalled();
+
+    const cli = spawnSync(process.execPath, [cliPath, "start"], { env: { ...desktop.serviceEnv, PATH: SYSTEM_PATH.join(":") }, encoding: "utf8", timeout: 60_000 });
+    expect(cli.status, "fleet console start must refuse too").not.toBe(0);
+
+    expect(serves(), "no serve started beside the reused pid").toBe(servesBefore);
+    expect(fs.readFileSync(lockFile, "utf8"), "the lock stays as it was").toBe(bytes);
+    expect(fs.existsSync(signals), "the unrelated program receives no signal").toBe(false);
+    expect(bystander.exitCode).toBeNull();
+    expect(bystander.signalCode).toBeNull();
+  }, 90_000);
 });
 
 /** Asserts one lifecycle invariant; a listed known defect asserts its signature instead (fleet-built-smoke.test.ts). */
@@ -506,6 +572,25 @@ async function waitUntil(condition: () => boolean, timeoutMs: number, message: s
     if (Date.now() >= deadline) throw new Error(message);
     await delay(25);
   }
+}
+
+/** The process start time in epoch ms as `ps` reads it, waiting until the new process shows up there. */
+async function waitForStart(pid: number): Promise<number> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const startedAt = await readProcessStartTime(pid);
+    if (startedAt !== null) return startedAt;
+    await delay(20);
+  }
+  throw new Error(`pid ${pid} never appeared in the process table`);
+}
+
+/** A loopback port nothing listens on: bound once, then released. */
+async function closedPort(): Promise<number> {
+  const server = http.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
 }
 
 function delay(ms: number): Promise<void> {
