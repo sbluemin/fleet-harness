@@ -30,10 +30,15 @@ export function openAiGatewaySettings(): void {
  * 로스터가 비어 실행이 최후 폴백(Sonnet)으로 서는 띠의 머리 — 공급자 띠 대신 그 사실과 AI Gateway로 가는 길을 말한다.
  * 공유 선택기의 빈 로스터 문구와 같은 말을 쓴다.
  */
-export function RosterFallbackNotice({ className, onOpened }: {
+export function RosterFallbackNotice({ className, onOpened, onFollow }: {
   readonly className?: string;
   /** 링크로 설정을 연 뒤 — 그 위를 덮는 메뉴는 여기서 스스로 닫는다. */
   readonly onOpened?: () => void;
+  /**
+   * 이동 순서를 표면이 정할 때 — 폰 시트는 자기 history 항목을 먼저 걷고 닫은 뒤에 `open`을 불러야 이동한 화면이 걷히는
+   * 쪽에 끼지 않는다. 주면 링크는 직접 이동하지 않고 이 함수에 맡긴다.
+   */
+  readonly onFollow?: (open: () => void) => void;
 }) {
   const t = useT();
   return (
@@ -45,7 +50,12 @@ export function RosterFallbackNotice({ className, onOpened }: {
         className="roster-fallback-link"
         // 메뉴의 바깥 누름·초점 이동으로 닫히기 전에 연다.
         onMouseDown={(event) => event.preventDefault()}
-        onClick={(event) => { event.stopPropagation(); openAiGatewaySettings(); onOpened?.(); }}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (onFollow) { onFollow(openAiGatewaySettings); return; }
+          openAiGatewaySettings();
+          onOpened?.();
+        }}
       >
         {t("settings.models.openGateway")}
       </button>

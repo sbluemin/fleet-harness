@@ -165,12 +165,27 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
     previousSubRef.current = sub;
     if (returning && document.activeElement === inputRef.current) inputRef.current?.blur();
   }, [sub, inputRef]);
+  const subHistoryRef = useRef<number | null>(null);
   useEffect(() => {
     if (sub === null) return;
-    let id: number | null = pushOverlayHistory(() => { id = null; setSub(null); });
+    const id = pushOverlayHistory(() => { subHistoryRef.current = null; setSub(null); });
+    subHistoryRef.current = id;
     const releaseLayer = pushBackLayer(() => setSub(null));
-    return () => { releaseLayer(); if (id !== null) releaseOverlayHistory(id); };
+    return () => {
+      releaseLayer();
+      if (subHistoryRef.current === id) { subHistoryRef.current = null; releaseOverlayHistory(id); }
+    };
   }, [sub]);
+
+  // 시트 안에서 다른 화면으로 가는 길(폴백 표식의 「AI Gateway 열기」) — 하위 시트와 새 작업 시트의 history 항목을 위에서부터
+  // 걷고, 시트를 닫은 다음에 옮긴다. 그래야 옮긴 화면이 걷히지 않고, 뒤로는 시트가 아니라 원래 화면으로 간다.
+  const leaveSheet = (go: () => void) => {
+    const subId = subHistoryRef.current;
+    subHistoryRef.current = null;
+    const sheetId = sheetHistoryRef.current;
+    sheetHistoryRef.current = null;
+    runAfterOverlayRelease(subId, () => runAfterOverlayRelease(sheetId, () => { onClose(); go(); }));
+  };
 
   // 실행은 Operations 화면으로 옮겨 간다 — 시트의 history 항목을 먼저 걷은 뒤에 보내야 이동한 화면이 걷히는 쪽에 끼지 않는다.
   // 멘션 전달은 화면을 옮기지 않고 실패하면 시트가 남으므로 그대로 보낸다.
@@ -217,7 +232,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
       <MobileSheet key="model" title={t("chrome.quickLaunch.mobile.model")} onClose={() => setSub(null)} className="mql-sheet">
         {modelGroups.map((candidate, index) => (
           <Fragment key={candidate.id}>
-            {isRosterFallbackGroup(candidate.id) ? <RosterFallbackNotice className="mql-glab" /> : grouped ? <h3 className={`mql-glab${index > 0 ? " is-next" : ""}`}>{candidate.label}</h3> : null}
+            {isRosterFallbackGroup(candidate.id) ? <RosterFallbackNotice className="mql-glab" onFollow={leaveSheet} /> : grouped ? <h3 className={`mql-glab${index > 0 ? " is-next" : ""}`}>{candidate.label}</h3> : null}
             <div className="mql-grp" role="radiogroup" aria-label={grouped ? candidate.label : t("chrome.quickLaunch.mobile.model")}>
               {candidate.rows.map((row) => (
                 <button key={row.id} type="button" role="radio" aria-checked={row.id === selectedRow?.id} className="mql-gr" onClick={() => props.onModelRow(row)}>
