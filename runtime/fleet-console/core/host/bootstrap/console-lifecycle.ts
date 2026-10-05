@@ -335,8 +335,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         });
       },
       // From the first stop request until the process exits, whatever is still running: a stalled start, a cleanup stuck
-      // with the lock, or a child that outlives the released lock. The owned process groups are SIGKILLed first; a lock
-      // left behind is reclaimed by the next Console once this pid is ESRCH.
+      // with the lock, or a child that outlives the released lock. The owned process groups are ended first (SIGKILL on
+      // POSIX, TerminateJobObject on Windows); a lock left behind is reclaimed by the next Console once this pid is ESRCH.
       onStopRequested: () => {
         deadline = setTimeout(() => {
           // One process-table read at most, shared by both steps: the external escalation leaves room for one.
@@ -359,7 +359,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
           catch (error) { recordFailure("shutdown_process_table_unavailable", error); }
           const killed = groups + strays;
           const settled = lifecycle.isStartupSettled();
-          recordFailure(settled ? "shutdown_timeout" : "startup_shutdown_timeout", new Error(`Console ${settled ? "shutdown" : "startup shutdown"} did not finish within ${CONSOLE_STOP_DEADLINE_MS}ms; SIGKILL sent to ${groups} owned process group(s) and ${strays} other leftover child process(es)`));
+          recordFailure(settled ? "shutdown_timeout" : "startup_shutdown_timeout", new Error(`Console ${settled ? "shutdown" : "startup shutdown"} did not finish within ${CONSOLE_STOP_DEADLINE_MS}ms; ended ${groups} owned process group(s) and ${strays} other leftover child process(es)`));
           exitOutcome = { outcome: "deadline", killed };
           process.exit(1);
         }, CONSOLE_STOP_DEADLINE_MS);

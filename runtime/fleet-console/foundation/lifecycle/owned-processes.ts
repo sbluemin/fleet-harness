@@ -236,7 +236,8 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
         if (requested.length > 0) {
           const escalate = setTimeout(() => {
             for (const entry of requested) {
-              if (!entries.has(entry.pgid) || !entry.containment) continue;
+              // The pid may have been freed and reused for a new group during the grace. Identity, not the key, decides.
+              if (entries.get(entry.pgid) !== entry || !entry.containment) continue;
               try { if (entryHasMembers(entry)) entry.containment.terminate(); }
               catch { /* Leave the handle open. The process exit still closes it. */ }
               if (!entryHasMembers(entry)) releaseEntry(entry);

@@ -104,10 +104,12 @@ export function createWindowsJobContainment(bindings: WindowsJobBindings, onDegr
     contain(pid) {
       let job: unknown = null;
       let processHandle: unknown = null;
+      let stage: "create" | "assign" = "create";
       try {
         job = bindings.createJob();
         if (!job) return degrade(onDegraded, bindings, "create", pid, job, processHandle);
         if (!bindings.setKillOnJobClose(job)) return degrade(onDegraded, bindings, "create", pid, job, processHandle);
+        stage = "assign";
         processHandle = bindings.openProcess(pid);
         if (!processHandle) return degrade(onDegraded, bindings, "assign", pid, job, processHandle);
         if (!bindings.assign(job, processHandle)) return degrade(onDegraded, bindings, "assign", pid, job, processHandle);
@@ -115,7 +117,7 @@ export function createWindowsJobContainment(bindings: WindowsJobBindings, onDegr
       } catch (error) {
         closeQuiet(bindings, processHandle);
         closeQuiet(bindings, job);
-        onDegraded({ stage: "create", pid, error });
+        onDegraded({ stage, pid, error });
         return null;
       }
     },
