@@ -105,6 +105,16 @@ export type {
   GatewayFailureSink,
 } from "./transport/failure-journal.js";
 export {
+  DEFAULT_REQUEST_TIMING_JOURNAL_MAX_BYTES,
+  createRequestTimingJournal,
+} from "./transport/request-timing.js";
+export type {
+  GatewayRequestTimingRecord,
+  GatewayRequestTimingSink,
+  RequestTimingJournal,
+  RequestTimingJournalOptions,
+} from "./transport/request-timing.js";
+export {
   GATEWAY_TRANSIENT_ERROR_STATUS,
   claudeRetryableUpstreamStatus,
 } from "./downstream/harness/claude-code/context.js";

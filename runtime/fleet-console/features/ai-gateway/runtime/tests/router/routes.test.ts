@@ -12,7 +12,7 @@ import type {
   AnthropicMessagesRequest,
   CanonicalResponseRequest,
 } from "../../src/index.js";
-import type { GatewayFailureRecord } from "../../src/index.js";
+import type { GatewayFailureRecord, GatewayRequestTimingRecord } from "../../src/index.js";
 import type { GatewayHttpHandlerContext } from "../../src/router/types.js";
 import { createHash } from "node:crypto";
 import http from "node:http";
@@ -1056,7 +1056,18 @@ describe("Muse Code routing", () => {
         headers: { "content-type": "text/event-stream" },
       });
     });
-    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
+    const timingRecords: GatewayRequestTimingRecord[] = [];
+    let throwOnTimingSink = false;
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readMuseCodeAuth: signedIn,
+      requestTiming: (record) => {
+        timingRecords.push(record);
+        if (throwOnTimingSink) {
+          throw new Error("simulated request timing sink failure");
+        }
+      },
+    });
     const tools = [
       ...SEARCH_CATALOG,
       { name: "Artifact", input_schema: { type: "object", properties: { file_paths: { type: "array", items: { type: "string", pattern: "^[^\\0]*$" } } } } },
@@ -1102,6 +1113,33 @@ describe("Muse Code routing", () => {
       expect(signature).toBeDefined();
       expect(first.body).not.toContain(MUSE_KEY);
 
+      expect(timingRecords.length).toBe(1);
+      const [timing] = timingRecords;
+      expect(timing.provider).toBe("muse-code");
+      expect(timing.route).toBe("translated");
+      expect(timing.outcome).toBe("ok");
+      expect(timing.status).toBe(200);
+      expect(timing.ms.upstreamStart).toBeDefined();
+      expect(timing.ms.upstreamHeaders).toBeDefined();
+      expect(timing.ms.thinkingBlockStart).toBeDefined();
+      expect(timing.ms.contentBlockStart).toBeDefined();
+      expect(timing.contentBlockKind).toBe("tool_use");
+
+      // Verify no sensitive prompts, completions, reasoning, tool arguments, or credentials leaked into the journal
+      const timingJson = JSON.stringify(timingRecords);
+      expect(timingJson).not.toContain("read b.ts");
+      expect(timingJson).not.toContain("Now a.ts.");
+      expect(timingJson).not.toContain("check a.ts");
+      expect(timingJson).not.toContain('"Read"');
+      expect(timingJson).not.toContain('"/a.ts"');
+      expect(timingJson).not.toContain(MUSE_KEY);
+      expect(timingJson).not.toContain(ANTHROPIC_CRED);
+      expect(timingJson).not.toContain("xai-blob");
+      expect(timingJson).not.toContain("muse-blob-new");
+
+      // Arm the sink to throw on the second turn: sink exceptions must be swallowed and must not alter the client response
+      throwOnTimingSink = true;
+
       await router.handle(ctx({
         res: second,
         token: ANTHROPIC_CRED,
@@ -1121,6 +1159,7 @@ describe("Muse Code routing", () => {
       }));
 
       expect(second.status).toBe(200);
+      expect(timingRecords.length).toBe(2);
       const replayed = calls[1]!.body.input.filter((item: { type: string }) => item.type === "reasoning");
       expect(replayed).toEqual([{ type: "reasoning", id: REASONING_ID, summary: [], encrypted_content: "muse-blob-new" }]);
       expect(JSON.stringify(calls[1]!.body.input)).not.toContain("reasoning_origin");
