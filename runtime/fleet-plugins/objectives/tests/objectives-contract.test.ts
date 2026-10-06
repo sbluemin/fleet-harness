@@ -1961,7 +1961,9 @@ describe("Objectives contract", () => {
       const firstInbox = await failureRows();
       expect.soft(firstInbox).toHaveLength(1);
       expect.soft(firstInbox).toContainEqual(expect.objectContaining({ sessions: expect.objectContaining({
-        members: expect.arrayContaining([expect.objectContaining({ operationId: memberId, failure: { ...compaction, consecutiveFailures: 1 } })]),
+        members: expect.arrayContaining([expect.objectContaining({ operationId: memberId, failure: { ...compaction, consecutiveFailures: 1 },
+          missions: expect.arrayContaining([expect.objectContaining({ missionId: mission.id, text: mission.text })]),
+        })]),
       }) }));
       await vi.advanceTimersByTimeAsync(5_000);
       expect.soft(notifications()).toHaveLength(1);
