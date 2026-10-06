@@ -1,5 +1,7 @@
 import path from "node:path";
 
+import { EXTERNAL_ESCALATION_MS } from "./budgets.js";
+
 /**
  * The single Console process lifecycle contract (docs/console-lifecycle-contract.md): the states one Console instance
  * passes through, the time budgets every actor derives its waits from, and how an instance reports the way it ended.
