@@ -176,6 +176,8 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagent
   readonly switchesLive: boolean;
   /** 이번 턴 뒤에 바뀔 값 — 실패했으면 failed 에 사유 코드이고 실행값은 그대로다. */
   readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null } | null;
+  /** 공개 세션 관측의 실패 결말. */
+  readonly outcome?: "failed";
 }
 
 /** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */
@@ -621,7 +623,7 @@ export interface Objective {
   readonly title: string;
   readonly createdAt: number;
   /** 지휘관 세션 — 이름·모델·강도·한 번이라도 깨었는지는 지휘관 Operation 에서 읽는다. */
-  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean };
+  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean; readonly outcome?: "failed" };
   readonly note: string;
   readonly attachments: readonly ObjectiveAttachment[];
   readonly results: readonly ObjectiveResult[];

@@ -145,6 +145,8 @@ export type AgentChatStreamEvent =
       readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
     }
   | { readonly kind: "turn-start"; readonly at?: number }
+  /** 모델 요청 시작 신호 (message_start, api_retry). 라이브 전용이며 저널에 실리지 않는다. */
+  | { readonly kind: "request-start" }
   | { readonly kind: "text"; readonly text: string }
   /** 라이브 전용 글자 단위 델타 — 저널에는 실리지 않으며, 완성 text 이벤트가 정정 앵커다. */
   | { readonly kind: "text-delta"; readonly text: string }

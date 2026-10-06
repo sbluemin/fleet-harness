@@ -46,21 +46,43 @@ export function roleIn(objective: Objective, caller: ConsoleCaller | undefined):
   return member ? { role: "member", memberId: member.id } : null;
 }
 
+export function deriveFailedOutcome(
+  observation: { readonly lifecycle: string; readonly activity: string; readonly output?: { readonly outcome?: string } } | null | undefined,
+): "failed" | undefined {
+  return observation && observation.lifecycle === "live" && observation.activity === "idle" && observation.output?.outcome === "failed"
+    ? "failed"
+    : undefined;
+}
+
 export function createBoardViews(ctx: FleetPluginServerContext, store: ObjectiveStore) {
-  const observe = (operationId: string) => {
+  const observe = (operationId: string): { readonly operationId: string; readonly title: string | null; readonly state: string; readonly outcome?: "failed" } => {
     const reference = ctx.host.operations.describe?.(operationId);
     const node = reference?.operation ?? ctx.host.operations.get(operationId);
-    if (!node) return { operationId, title: null, state: "closed" as const };
-    if (reference?.location === "archived") return { operationId, title: node.title, state: "dormant" as const };
+    if (!node) return { operationId, title: null, state: "closed" };
+    if (reference?.location === "archived") return { operationId, title: node.title, state: "dormant" };
     const observation = ctx.host.consoleControl?.observe(operationId) ?? null;
-    return { operationId, title: node.title, state: observation ? (observation.lifecycle === "dormant" ? "dormant" : observation.activity) : "unknown" };
+    const state = observation ? (observation.lifecycle === "dormant" ? "dormant" : observation.activity) : "unknown";
+    const outcome = deriveFailedOutcome(observation);
+    return {
+      operationId,
+      title: node.title,
+      state,
+      ...(outcome ? { outcome } : {}),
+    };
   };
   const graph = (objective: Objective) => {
     const nOf = (missionId: string) => objective.missions.findIndex((candidate) => candidate.id === missionId) + 1;
     return {
       // 지휘관 Operation 은 목표와 같은 id·제목이다 — 상태와 세션 이름만.
       // 기동 전 목표에는 지휘관 Operation 이 아직 없다 — 닫힘(closed)이 아니라 시작 전이다.
-      commander: { state: store.pending(objective.id) ? "not_started" as const : observe(objective.id).state, session: objective.commander.sessionName },
+      commander: (() => {
+        const obs = observe(objective.id);
+        return {
+          state: store.pending(objective.id) ? "not_started" as const : obs.state,
+          ...(obs.outcome ? { outcome: obs.outcome } : {}),
+          session: objective.commander.sessionName,
+        };
+      })(),
       ...(objective.planning ? { planning: true } : {}),
       // n 은 1부터 세는 임무 번호(편성 순서), missionId 는 변하지 않는 가리킴.
       missions: objective.missions.map((mission, index) => {
@@ -98,8 +120,19 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       criteriaProposals: objective.criteriaProposals.map((proposal, index) => ({ n: index + 1, id: proposal.id, kind: proposal.kind,
         ...withoutEmpty({ target: proposal.target, targetN: proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null, text: proposal.text, reason: proposal.reason, annotation: proposal.annotation, annotationBy: proposal.annotationBy }) })),
       // 구성원 id 가 곧 그 세션의 Operation id 다.
-      members: objective.members.map((member) => ({ id: member.id, role: member.role, ...withoutEmpty({ brief: member.brief, model: member.model, effort: member.effort }), by: member.by, subagents: member.subagents, session: member.sessionName,
-        state: ctx.host.operations.get(member.id) ? observe(member.id).state : "missing" as const })),
+      members: objective.members.map((member) => {
+        const obs = ctx.host.operations.get(member.id) ? observe(member.id) : null;
+        return {
+          id: member.id,
+          role: member.role,
+          ...withoutEmpty({ brief: member.brief, model: member.model, effort: member.effort }),
+          by: member.by,
+          subagents: member.subagents,
+          session: member.sessionName,
+          state: obs ? obs.state : ("missing" as const),
+          ...(obs?.outcome ? { outcome: obs.outcome } : {}),
+        };
+      }),
       done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
       handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
       extensions: objective.extensions.map((round) => ({ ...round, at: new Date(round.at).toISOString(),

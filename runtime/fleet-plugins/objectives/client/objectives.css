@@ -537,6 +537,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-recip-role { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
 .objectives-recip-state { flex: none; color: var(--text-tertiary); }
 .objectives-recip-state.is-awaiting { color: var(--aurora); }
+.objectives-recip-state.is-failed { color: var(--coral); }
 .objectives-comp-edits { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 8px 14px 0; font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-comp-chip { padding: 1px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); }
 .objectives-comp-field { display: flex; gap: 8px; padding: 6px 14px 8px; }
@@ -664,6 +665,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-status.is-background { color: color-mix(in oklab, var(--warn-ink) 70%, var(--text-tertiary)); }
 .objectives-member-status.is-idle { color: var(--positive); }
 .objectives-member-status.is-awaiting { color: var(--aurora); }
+.objectives-member-status.is-failed { color: var(--coral); }
 .objectives-assign-new input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-ui); }
 .objectives-assign-new input:focus { outline: none; border-color: var(--brass); }
 .objectives-mission-sub .objectives-member-mark, .objectives-assign-menu .objectives-member-mark { width: 16px; height: 16px; font-size: var(--t-2xs); }

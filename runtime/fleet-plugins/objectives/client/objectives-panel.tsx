@@ -713,7 +713,9 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
       const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
-      const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
+      const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
+      const failed = member.outcome === "failed" && !isWorkingOrAwaiting;
+      const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : isWorkingOrAwaiting ? (state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.working")) : t("objectives.members.idle");
       const allowed = memberSubagents(member);
       return (
         <div key={member.id} className="objectives-member-slot">
@@ -751,7 +753,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
               subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
               onChange={(next) => { const model = next.model ?? (member.launch.mode === "model" ? member.launch.model : undefined); if (model) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "model", model, effort: next.effort } } }); }} />
             )}
-            <span className={`objectives-member-status is-${state}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}{allowed ? <span className="objectives-member-subagents">{t("objectives.members.subagentsMark")}</span> : null}</span>
+            <span className={`objectives-member-status is-${state}${failed ? " is-failed" : ""}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}{allowed ? <span className="objectives-member-subagents">{t("objectives.members.subagentsMark")}</span> : null}</span>
           </div>
           {/* 모델 변경의 경과는 칩 아래(설명 줄의 오른쪽 칸)에 서서 칩을 가리키는 한 줄 말풍선이다 — 행의 칸이라 다른 행이나 조작을 덮지
               않고 레일 밖으로 넘치지 않는다. 실패의 사유는 길어서 말풍선의 title(과 읽기 도구용 문장)로 싣고, 다른 모델은 칩에서 고른다. */}
@@ -1921,11 +1923,25 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       ) : null}
   </>);
   // 「메시지」의 받는 이 — 지휘관(자기 활동)과 세션이 떠 있는 구성원. 상태 낱말은 명단 줄과 같은 말을 쓴다.
-  const memberStateWord = (state: string) => state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
+  const memberStateWord = (state: string, outcome?: string) => {
+    const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
+    if (outcome === "failed" && !isWorkingOrAwaiting) return t("objectives.members.failed");
+    if (state === "ended") return t("objectives.members.dormant");
+    if (state === "running" || state === "background") return t("objectives.members.working");
+    if (state === "awaiting") return t("objectives.awaiting.word");
+    return t("objectives.members.idle");
+  };
   const recipients: MessageRecipient[] = [
-    { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark />, state: operationOwnState(objective.id) },
-    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, state: operationState(member.id) })),
+    { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark />, state: operationOwnState(objective.id), outcome: objective.commander.outcome },
+    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, state: operationState(member.id), outcome: member.outcome })),
   ].filter((recipient) => recipient.state !== "closed");
+  // 재개 띠의 지휘관 상태 — 받는 이와 같이 실패를 먼저 보되, 실패가 아닐 때는 기존 기술어(stateLabel)를 그대로 쓴다.
+  // memberStateWord를 통째로 쓰면 closed·ended 같은 비실패 문구까지 명단 말로 바뀌므로, 실패 겹침만 덧씌운다.
+  const commanderStateWord = (state: string, outcome?: string) => {
+    const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
+    if (outcome === "failed" && !isWorkingOrAwaiting) return t("objectives.members.failed");
+    return stateLabel(state);
+  };
   const bottom = (
       <div className="objectives-detail-bottom" data-objectives-tour="action">
         {/* 결정 요청 — 띠와 따로 서서 작업 중에도 가려지지 않는다. 보내고 나면 한 줄 흔적만 잠시 남는다. */}
@@ -1940,7 +1956,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           commanderAwaiting={commanderAwaiting}
           memberAwaiting={memberAwaiting}
           launchAvailable={launchAvailable}
-          commanderState={stateLabel(operationState(objective.id))}
+          commanderState={commanderStateWord(operationState(objective.id), objective.commander.outcome)}
           commanderExists={operationState(objective.id) !== "closed"}
           recipients={recipients}
           stateWord={memberStateWord}

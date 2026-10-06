@@ -181,6 +181,11 @@ export type AgentChatStreamEvent =
       readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
     }
   | { readonly kind: "turn-start"; readonly at?: number }
+  /**
+   * 모델 요청이 시작되었다(message_start, api_retry). 라이브 전용이며 저널에 싣지 않는다.
+   * 자발 턴을 열 때 쓰이며 원장에 남기지 않는다.
+   */
+  | { readonly kind: "request-start" }
   | { readonly kind: "text"; readonly text: string }
   /** 라이브 전용 글자 단위 델타 — 저널에는 싣지 않는다. 완성 text 이벤트가 정정 앵커다. */
   | { readonly kind: "text-delta"; readonly text: string }
@@ -640,6 +645,9 @@ export function chatEventsFromSdkMessage(message: {
     const inner = (message as { readonly event?: unknown }).event;
     if (!inner || typeof inner !== "object") return [];
     const innerType = (inner as { readonly type?: unknown }).type;
+    if (innerType === "message_start") {
+      return [{ kind: "request-start" }];
+    }
     if (innerType === "content_block_start") {
       const block = (inner as { readonly content_block?: unknown }).content_block;
       if (!block || typeof block !== "object") return [];
@@ -662,6 +670,8 @@ export function chatEventsFromSdkMessage(message: {
   // 집어내지 않으면 아래 `return []`로 조용히 사라진다 — 턴 시계가 유일한 시계가 되는 지점이다.
   if (message.type === "system") {
     switch (message.subtype) {
+      case "api_retry":
+        return [{ kind: "request-start" }];
       case "task_started":
         return jobStartedEvent(message, options);
       case "task_progress":
