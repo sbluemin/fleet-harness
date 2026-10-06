@@ -10,7 +10,7 @@ import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "./res
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { criterionProposalSchema, memberAddSchema, MAX_MISSIONS, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
-import { createBoardViews, refuse, roleIn, text } from "./views.js";
+import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
  * `fleet-objectives` — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Operation 에 실리므로
@@ -48,6 +48,10 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
   const objectiveView = (objective: Objective) => { prStatus?.refresh(objective.id); return boardView(store.find(objective.id) ?? objective); };
   /** 쓰기 응답은 확인과 새로 생긴 가리킴만 — 보드 전체는 read·mine 이 준다. 결과물이 바뀌면 PR 관측만 앞당긴다. */
   const added = <T extends { readonly id: string }>(before: readonly T[], after: readonly T[]): T | undefined => after.find((entry) => !before.some((prior) => prior.id === entry.id));
+  const storedMission = (objectiveId: string, missionId: string) => {
+    const stored = store.find(objectiveId)?.missions.find((entry) => entry.id === missionId);
+    return stored ? { stored: { text: storedText(stored.text) } } : {};
+  };
   const find = (objectiveId: string): Objective => {
     const objective = store.find(objectiveId);
     if (!objective) throw new ObjectiveStoreError("unknown_objective");
@@ -131,7 +135,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     });
 
   return [
-    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's evidence directory, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective and the resources they created for this objective.`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's evidence directory, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. A directive that reads as reversed in meaning or unreadable goes to the Commander before it is carried out. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective and the resources they created for this objective.`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findMember(caller.operationId);
       if (assigned) {
@@ -184,7 +188,12 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((mission) => ({ missionId: mission.id, text: mission.text, ...(mission.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board and are referenced by missionId." });
         const planned = launch.planApplied(objective.id, { missions: args.missions, ...(args.members ? { members: args.members } : {}), ...(args.criteria !== undefined ? { criteria: args.criteria } : {}) });
         renumber(planned);
-        return text({ ok: true, missions: planned.missions.map((mission, index) => ({ n: index + 1, missionId: mission.id, text: mission.text })) });
+        const stored = store.find(objective.id) ?? planned;
+        return text({ ok: true, missions: stored.missions.map((mission, index) => ({ n: index + 1, missionId: mission.id, text: storedText(mission.text) })),
+          ...(args.criteria !== undefined || args.members ? { stored: {
+            ...(args.criteria !== undefined ? { criteria: stored.criteriaProposals.map(({ id, kind, target, text: proposed, reason }) => ({ id, kind, ...(target ? { target } : {}), ...(proposed !== undefined ? { text: storedText(proposed) } : {}), ...(reason ? { reason: storedText(reason) } : {}) })) } : {}),
+            ...(args.members ? { members: stored.members.map(({ id, role, brief }) => ({ id, role, ...(brief ? { brief: storedText(brief) } : {}) })) } : {}),
+          } } : {}) });
       }),
     commanderTool("add_mission", "Add a mission with its prerequisites — each the n or missionId of a mission on the board, finished or not, with an optional why — and optionally its member by roster id or role; none means the Commander. A mission added without prerequisites is ready at once and stands in the lineup's first column, ahead of missions that wait on others. The returned n is its number until the Commander's next read.",
       z.object({ objectiveId: ids, text: z.string().trim().min(1).max(200), prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
@@ -194,9 +203,9 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const next = launch.missionAdded(objective.id, { text: args.text, prerequisites: prerequisites.ids, ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...(args.member ? { member: resolveMember(objective, args.member) } : {}) });
         const mission = added(objective.missions, next.missions);
         if (!mission) return text({ ok: true });
-        if (!known) return text({ ok: true, missionId: mission.id });
+        if (!known) return text({ ok: true, missionId: mission.id, ...storedMission(objective.id, mission.id) });
         numbered.set(objective.id, [...known, mission.id]);
-        return text({ ok: true, missionId: mission.id, n: known.length + 1 });
+        return text({ ok: true, missionId: mission.id, n: known.length + 1, ...storedMission(objective.id, mission.id) });
       }),
     commanderTool("place_mission", "Replace an open mission's prerequisites — each a mission number n, or {n or missionId, why} — ([] makes it ready), and optionally set its member (null means the Commander). A member the person chose stays. Missions the person added stay unready until placed.",
       z.object({ ...missionRef, prerequisites: z.array(z.union([z.number().int().min(1), prerequisiteRef])).max(40), member: memberReference.nullable().optional() }).strict(),
@@ -213,7 +222,9 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       async ({ expectedRevision, questions }, objective, _caller, context) => {
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
         const placed = store.decisionRequest(objective.id, { expectedRevision, questions });
-        const head = { ok: true, requestId: placed.request.id, replacedRequestId: placed.replacedRequestId };
+        const kept = store.find(objective.id)?.decisionRequest;
+        const head = { ok: true, requestId: placed.request.id, replacedRequestId: placed.replacedRequestId,
+          ...(kept?.id === placed.request.id ? { stored: { questions: kept.questions.map((question) => ({ id: question.id, text: storedText(question.text), ...(question.options.length ? { options: question.options.map((option) => storedText(option.label)) } : {}) })) } } : {}) };
         const outcome = await launch.awaitDecision(objective.id, placed.request.id, decisionWaitMs, context.signal);
         const revision = store.find(objective.id)?.decisionRequestRevision ?? placed.objective.decisionRequestRevision;
         if (outcome === null) return text({ ...head, decisionRequestRevision: revision, answered: false });
@@ -265,7 +276,8 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (resultIds.length) prStatus?.refresh(objective.id);
         // 마지막 임무를 마쳤다 — 인계 대기로 넘어갔으면 인계를, 아니면 달성 기준을 스스로 다시 따지게 한다. 이미 넘긴 목표에는 붙이지 않는다.
         const next = done.awaitingHandoff ? handoffPrompt(done) : done.missions.every((mission) => mission.done) && !done.awaitingReview ? criteriaCheckPrompt(done) : undefined;
-        return text({ ok: true, missionId: target.id, ...(resultIds.length ? { resultIds } : {}), ...(next ? { next } : {}) });
+        const record = store.find(objective.id)?.missions.find((entry) => entry.id === target.id)?.records.at(-1);
+        return text({ ok: true, missionId: target.id, ...(record ? { stored: { record: record.lines.map(storedText) } } : {}), ...(resultIds.length ? { resultIds } : {}), ...(next ? { next } : {}) });
       }),
     commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. A candidate holds an improvement to the product features of the project worked on, as its users experience them; a finding with no user impact is not placed on the objective and stays only in the Commander's final report. Candidates can be added at any time until the objective is complete. add a candidate {title, summary (one line), userImpact (one line: what a user experiences differently), fromMission (the missionId of this objective's mission it came from), brief, criteria (1–10), evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note; at least one is a file with a line or a command)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective carrying that title, brief and criteria and no missions, and its evidence reaches that objective's Commander. A picked candidate is frozen; the person can also discard candidates.`,
       z.object({ objectiveId: ids, add: followupBodySchema.optional(), revise: followupReviseSchema.extend({ id: ids }).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
@@ -298,7 +310,8 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (!target) return refuse("unknown_criterion", { criteria: objective.criteria.length });
         if (args.met && !args.evidence) return refuse("evidence_required", { hint: "A met mark carries one line of evidence." });
         const next = store.criterionMet(objective.id, target.id, args.met ? args.evidence! : null);
-        return text({ ok: true, n: args.n, met: args.met, ...(next.awaitingHandoff ? { next: handoffPrompt(next) } : {}) });
+        const kept = store.find(objective.id)?.criteria.find((entry) => entry.id === target.id);
+        return text({ ok: true, n: args.n, met: args.met, ...(kept ? { stored: { text: storedText(kept.text), ...(kept.met ? { evidence: storedText(kept.met) } : {}) } } : {}), ...(next.awaitingHandoff ? { next: handoffPrompt(next) } : {}) });
       }),
   ];
 }

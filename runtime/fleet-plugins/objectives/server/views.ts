@@ -31,6 +31,13 @@ const resultView = (result: ObjectiveResult) => {
  * 도구 응답은 JSON 한 덩이: 텍스트와 structuredContent 가 같은 값이다.
  */
 
+const STORED_WHOLE = 600;
+const STORED_EDGE = 300;
+export const storedText = (value: string): string => {
+  const points = Array.from(value);
+  return points.length <= STORED_WHOLE ? value : `${points.slice(0, STORED_EDGE).join("")}…(${points.length} chars)…${points.slice(-STORED_EDGE).join("")}`;
+};
+
 export function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: (value && typeof value === "object" && !Array.isArray(value) ? value : { value }) as Record<string, unknown>, isError: false };
 }

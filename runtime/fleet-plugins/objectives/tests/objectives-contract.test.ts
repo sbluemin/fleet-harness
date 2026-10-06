@@ -1235,7 +1235,9 @@ describe("Objectives contract", () => {
     // 구상 중에는 편성만 — 명단이 비었을 때만 지휘관이 구성원을 제안하고(모델은 고르지 않아 라우팅), 임무에 구성원을 표시한다.
     // 임무 수행 쓰기와 구성원 기동은 거절된다.
     store.setPlanning(objective.id, true);
-    expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "p1", member: "build" }, { text: "p2", prerequisites: [{ n: 1 }] }], members: [{ role: "build", brief: "implements" }] }, commander)).isError).toBe(false);
+    const planned = await call("plan", { objectiveId: objective.id, missions: [{ text: "p1", member: "build" }, { text: "p2", prerequisites: [{ n: 1 }] }], members: [{ role: "build", brief: "implements" }] }, commander);
+    expect(planned.isError).toBe(false);
+    expect(planned.structuredContent).toMatchObject({ stored: { members: [{ role: "build", brief: "implements" }] } });
     expect(store.find(objective.id)!.members).toMatchObject([{ role: "build", by: "commander", launch: { mode: "route" } }]);
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["early"] }, commander)).structuredContent.error).toBe("planning_only");
     expect((await call("muster", { objectiveId: objective.id }, commander)).structuredContent.error).toBe("planning_only");
@@ -1248,6 +1250,9 @@ describe("Objectives contract", () => {
     const mustered = await call("muster", { objectiveId: objective.id }, commander);
     const member = (mustered.structuredContent.members as { id: string; state: string }[])[0]!;
     expect(member.state).toBe("launched");
+    const addedMission = await call("add_mission", { objectiveId: objective.id, text: "  padded  " }, commander);
+    expect(addedMission.structuredContent).toMatchObject({ stored: { text: store.find(objective.id)!.missions.find((entry) => entry.id === addedMission.structuredContent.missionId)!.text } });
+    expect((addedMission.structuredContent.stored as { text: string }).text).toBe("padded");
     // 구성원은 제 역할과 맡은 임무를 읽지만 쓰지 못한다.
     // 구성원은 보고·판단 요청을 보낼 지휘관의 세션 주소를 함께 받는다.
     expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, commander: { session: store.find(objective.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
@@ -1749,6 +1754,9 @@ describe("Objectives contract", () => {
     const beforeStart = (await board({ objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
     expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
     await board({ objectiveId: id, criteria: { approve: beforeStart.criteriaProposals[0]!.id } });
+    const priorNote = store.find(id)!.note;
+    expect(await board({ objectiveId: id, edit: { brief: "b".repeat(700) } })).toMatchObject({ stored: { brief: `${"b".repeat(300)}…(700 chars)…${"b".repeat(300)}` } });
+    await board({ objectiveId: id, edit: { brief: priorNote } });
     // 구성원 모델 — 사령관만, 자기 Theater 목표만, 카탈로그 안의 모델과 그 모델의 강도만 고른다. 띄우기 전의 선택은 개시가 그 값으로 띄운다.
     const workerId = (beforeStart as unknown as { members: readonly { id: string }[] }).members[0]!.id;
     const pick = (launch: unknown) => ({ objectiveId: id, member: { memberId: workerId, launch } });

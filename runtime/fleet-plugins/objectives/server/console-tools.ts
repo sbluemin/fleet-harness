@@ -8,7 +8,7 @@ import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { MAX_COMMODORE_WHY, MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
-import { createBoardViews, refuse, roleIn, text } from "./views.js";
+import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /** 바깥 루프의 보드. Console Use와 Theater에 묶인 사령관 세션이 같은 스키마와 도메인 함수를 쓴다. */
 
@@ -215,7 +215,14 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             return actions.criterionRemove({ ...ref, criterionId: edit.criterion.remove });
           })();
           const { objective: updated, ...details } = result;
-          return text({ ok: true, objectiveId: updated.id, ...details });
+          const kept = store.find(updated.id);
+          const fresh = <T extends { readonly id: string }>(now: readonly T[], then: readonly T[]) => now.find((entry) => !then.some((prior) => prior.id === entry.id));
+          const edit = args.edit;
+          const stored = !edit || !kept ? undefined
+            : "brief" in edit ? { brief: storedText(kept.note) }
+            : "mission" in edit ? ((mission) => mission && { mission: { id: mission.id, text: storedText(mission.text) } })(kept.missions.find((entry) => entry.id === ("add" in edit.mission ? fresh(kept.missions, current.missions)?.id : "patch" in edit.mission ? edit.mission.patch.missionId : undefined)))
+            : ((criterion) => criterion && { criterion: { id: criterion.id, text: storedText(criterion.text) } })(kept.criteria.find((entry) => entry.id === ("add" in edit.criterion ? fresh(kept.criteria, current.criteria)?.id : "patch" in edit.criterion ? edit.criterion.patch.criterionId : undefined)));
+          return text({ ok: true, objectiveId: updated.id, ...details, ...(stored ? { stored } : {}) });
         }
         if (args.remove || args.merge || args.restore) {
           // 정리는 에이전트 Operation 이 한다 — 누가 지웠는지가 사람의 보드에 남아야 한다.
@@ -278,7 +285,8 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           ...(add.criteria?.length ? { criteria: [...add.criteria] } : {}),
           ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: { ...caller, ...(args.why ? { why: args.why } : {}) } } : {}),
         }, { language: language(caller), ...(actorOf(caller, args.why) ? { actor: actorOf(caller, args.why)! } : {}) });
-        return text({ ok: true, objectiveId: objective.id });
+        const kept = store.find(objective.id) ?? objective;
+        return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(kept.criteria.length ? { criteria: kept.criteria.map((criterion) => storedText(criterion.text)) } : {}) } });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code, error.details ?? {});
         return refuse("objectives_failed");
