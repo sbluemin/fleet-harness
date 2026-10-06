@@ -6,6 +6,7 @@ import {
   describeConsoleUpdateRecovery,
   describeConsoleUpdateSilence,
 } from "@fleet-console/protocol/lifecycle/update";
+import { describeConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
@@ -49,6 +50,19 @@ export function UpdateCurtain() {
         <button type="button" className="update-outcome-dismiss" onClick={acknowledgeUpdateOutcome} aria-label={t("common.dismiss")}>
           ×
         </button>
+      </div>
+    );
+  }
+
+  // 수락 전 대기는 커튼이 아니다. 메뉴를 닫아도 남는 상태 줄이고, Console은 아직 멈추지 않았다.
+  if (state.preparing !== null && !state.watching) {
+    return (
+      <div className="update-outcome update-outcome--live" role="status" aria-live="polite" aria-busy="true">
+        <span className="update-outcome-signal" aria-hidden="true" />
+        <span className="update-outcome-text">
+          <strong className="update-outcome-headline">{t("chrome.system.update.requestingTitle")}</strong>
+          <p className="update-outcome-contract">{describeConsoleLifecycleWait("update-preflight")}</p>
+        </span>
       </div>
     );
   }

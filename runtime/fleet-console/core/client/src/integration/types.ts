@@ -1,5 +1,6 @@
 export type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateApplyFailureResponse } from "@fleet-console/protocol/lifecycle/update";
 import type { ConsoleUpdateFailureStage, ConsoleUpdateFailureReason, ConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
+import type { ConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
 import type { ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
 import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console/sdk/settings";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -140,6 +141,8 @@ export interface ConsoleUpdateProgress {
   /** On a failure: the contract's shared, path-free explanation of the reason. */
   readonly description?: string;
   readonly failureStage?: ConsoleUpdateFailureStage;
+  /** Set while the update is still being checked and the Console has not been asked to stop. */
+  readonly wait?: ConsoleLifecycleWait;
 }
 
 export interface ConsoleUpdateApplyAcceptedResponse {

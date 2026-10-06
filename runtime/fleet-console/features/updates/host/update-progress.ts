@@ -6,6 +6,7 @@ import {
   describeConsoleUpdateFailure,
   parseConsoleUpdateFailureReason,
   parseConsoleUpdateOldConsoleEnding,
+  type ConsoleLifecycleWait,
   type ConsoleUpdateFailureStage,
   type ConsoleUpdateFailureReason,
   type ConsoleUpdateOldConsoleEnding,
@@ -71,6 +72,11 @@ export interface ConsoleUpdateProgressStatus {
   /** The contract's shared, path-free explanation of `reason` (describeConsoleUpdateFailure). */
   readonly description?: string;
   readonly failureStage?: ConsoleUpdateFailureStage;
+  /**
+   * Set on a running record whose phase is still `starting`: the Console has not been asked to stop.
+   * Additive. A reader that does not know it ignores it. Not stored in the progress file.
+   */
+  readonly wait?: ConsoleLifecycleWait;
 }
 
 export const IDLE_CONSOLE_UPDATE_PROGRESS: ConsoleUpdateProgressStatus = { state: "idle" };
@@ -91,6 +97,11 @@ export const CONSOLE_UPDATE_PROGRESS_STALE_MS = 10 * 60 * 1000;
 export const CONSOLE_UPDATE_OUTCOME_TTL_MS = 6 * 60 * 60 * 1000;
 
 const RUNNING_PHASES = new Set<ConsoleUpdatePhase>(["starting", "preflight-ok", "stopping-console", "installing", "starting-daemon"]);
+/**
+ * `starting` is written before the worker sends `ready`. The host does not ask the Console to stop until after that
+ * handshake, so a running record still in this phase is the preflight wait, not a stop.
+ */
+const PREFLIGHT_PHASES = new Set<ConsoleUpdatePhase>(["starting"]);
 const PROGRESS_FILE_MODE = 0o600;
 
 export function consoleUpdateProgressPath(dataDir: string): string {
@@ -148,7 +159,11 @@ function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecord, nowM
   if (record.workerPid !== undefined && !pidAlive(record.workerPid)) return failed("worker-lost", UPDATE_WORKER_LOST);
   const updatedAtMs = Date.parse(record.updatedAt);
   if (Number.isFinite(updatedAtMs) && nowMs - updatedAtMs > CONSOLE_UPDATE_PROGRESS_STALE_MS) return failed("worker-lost", UPDATE_WORKER_LOST);
-  return { state: "running", ...shared };
+  return {
+    state: "running",
+    ...shared,
+    ...(PREFLIGHT_PHASES.has(record.phase) ? { wait: "update-preflight" as const } : {}),
+  };
 }
 
 const UPDATE_WORKER_LOST = "update_worker_lost";

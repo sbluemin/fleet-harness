@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import { ApiError, ConsoleUpdateApplyFailure, applyConsoleUpdate } from "../../integration/api.js";
+import { ApiError } from "../../integration/api.js";
 import { requestDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { useT } from "../../i18n/index.js";
 import { openWhatsNew } from "../../integration/store.js";
-import { beginUpdateWatch, markUpdateDelegated, reportUpdateApplyFailure } from "../../../../../features/updates/client/update-progress-store.js";
+import { requestConsoleUpdate, useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
 
 /**
  * 새 버전이 나왔다는 말풍선. 도움말 버튼에 달려, 그 점이 가리키는 것을 열어 보지 않아도 바로 편다 —
@@ -86,26 +86,19 @@ export function UpdateNoticeBubble({ kind, shellUpdate, latestVersion, consoleFo
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   }, [onEscape]);
-  const [consoleState, setConsoleState] = useState<"idle" | "armed" | "applying">("idle");
+  const [consoleState, setConsoleState] = useState<"idle" | "armed">("idle");
+  const preparing = useUpdateProgress().preparing !== null;
   const shell = kind === "shell";
   const stage = shellUpdate.stage;
 
   const applyConsole = async (): Promise<void> => {
-    if (latestVersion === null || consoleState === "applying") return;
+    if (latestVersion === null || preparing) return;
     const acknowledgeHostRestart = consoleState === "armed";
-    setConsoleState("applying");
     try {
-      const result = await applyConsoleUpdate(acknowledgeHostRestart ? { acknowledgeHostRestart: true } : {});
-      // 202는 시작됐다는 뜻일 뿐이다. 결과를 아는 것은 재기동을 겪고 돌아온 콘솔이고, 그때까지 화면은 커튼이 소유한다.
-      if (result.status === "delegated") markUpdateDelegated(latestVersion);
-      else beginUpdateWatch(latestVersion);
+      const result = await requestConsoleUpdate(latestVersion, acknowledgeHostRestart ? { acknowledgeHostRestart: true } : {});
+      if (result === "busy") return;
+      setConsoleState("idle");
     } catch (error) {
-      if (error instanceof ConsoleUpdateApplyFailure) {
-        // Console은 멈추지 않고 거절했다. 사유는 상단 실패 배너가 host 문구 그대로 말하고, 말풍선은 다시 누를 수 있게 남는다.
-        reportUpdateApplyFailure(error.progress);
-        setConsoleState("idle");
-        return;
-      }
       const code = error instanceof ApiError ? error.message : "network_error";
       // 남의 기계를 재시작하는 일은 한 번 더 누르게 한다 — 버전 행과 같은 문법이다.
       setConsoleState(code === "host_restart_confirmation_required" ? "armed" : "idle");
@@ -122,9 +115,9 @@ export function UpdateNoticeBubble({ kind, shellUpdate, latestVersion, consoleFo
   const actionLabel = shell
     ? stage === "ready" ? t("chrome.updateNotice.restart") : stage === "error" ? t("common.retry") : t("chrome.updateNotice.update")
     : consoleState === "armed" ? t("chrome.system.update.confirmHostRestartConfirm")
-      : consoleState === "applying" ? t("chrome.system.update.requesting") : t("chrome.updateNotice.update");
+      : preparing ? t("chrome.system.update.requesting") : t("chrome.updateNotice.update");
   // Console은 worker가 준비될 때까지 답을 미룬다. 그동안은 커튼이 아니라 누른 자리에서 요청 중임을 말한다.
-  const actionBusy = !shell && consoleState === "applying";
+  const actionBusy = !shell && preparing;
 
   return (
     <div ref={rootRef} className="command-band-update-bubble" role="status" aria-live="polite">
