@@ -152,6 +152,15 @@ if (!sdk) {
       out({ type: "system", subtype: "api_retry", attempt: 1, max_retries: 3, delay_ms: 500, ...envelope() });
     }
 
+    if (wake.error === "result-only") {
+      const errorText = 'API Error: 402 {"error":"Credit balance too low"}';
+      log({ event: "wake-emit", phase: "result_only_402", at: new Date().toISOString() });
+      out({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 1, duration_api_ms: 1, num_turns: 1, stop_reason: null, errors: [errorText], session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
+      log({ event: "turn-end", model: turnModel, error: "402-result-only" });
+      turnOpen = false;
+      return;
+    }
+
     log({ event: "wake-emit", phase: "message_start", at: new Date().toISOString() });
     out({ type: "stream_event", event: { type: "message_start", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [], usage: { input_tokens: 0, output_tokens: 0 } } }, ...envelope() });
     out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: null }, usage }, ...envelope() });
@@ -162,15 +171,6 @@ if (!sdk) {
       out({ type: "assistant", message: { id: randomUUID(), type: "message", role: "assistant", model: "<synthetic>", content: [{ type: "text", text: errorText }], stop_reason: "stop_sequence", stop_sequence: "", usage }, error: "unknown", isApiErrorMessage: true, apiErrorStatus: 402, ...envelope() });
       out({ type: "result", subtype: "success", is_error: true, duration_ms: 1, duration_api_ms: 1, num_turns: 1, result: errorText, stop_reason: "stop_sequence", session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
       log({ event: "turn-end", model: turnModel, error: "402-synthetic" });
-      turnOpen = false;
-      return;
-    }
-
-    if (wake.error === "result-only") {
-      const errorText = 'API Error: 402 {"error":"Credit balance too low"}';
-      log({ event: "wake-emit", phase: "result_only_402", at: new Date().toISOString() });
-      out({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 1, duration_api_ms: 1, num_turns: 1, stop_reason: null, errors: [errorText], session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
-      log({ event: "turn-end", model: turnModel, error: "402-result-only" });
       turnOpen = false;
       return;
     }
