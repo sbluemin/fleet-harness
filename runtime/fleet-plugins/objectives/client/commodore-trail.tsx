@@ -11,7 +11,7 @@ type T = Translate<ObjectiveMessageKey>;
 /**
  * 사령관이 목표에서 한 일 — 기록 곁 칸. 원천은 보드다: 목표마다 남는 행위 기록 중 행위자가 사령관인 것, 사령관이 대신 답한 결정,
  * 사령관이 만든 목표. 줄은 글리프·낱말·시각만 남고, 질문·답·이유는 툴팁과 기록 턴으로 간다.
- * 묶음은 마지막 활동이 오랜 것이 위, 줄도 오랜 것에서 최신으로. 스크롤은 바닥에서 시작하고, 바닥을 보는 중에만 새 줄을 따라간다.
+ * 묶음은 마지막 활동이 오랜 것이 위, 줄도 오랜 것에서 최신으로. 스크롤은 바닥에서 시작하고, 바닥을 보는 중에는 서랍 높이·내용 크기가 바뀌어도 바닥에 붙는다.
  */
 
 export type CommodoreTrailFamily = "progress" | "done" | "back" | "edit" | "added" | "decision";
@@ -166,13 +166,25 @@ export function CommodoreTrail({
   const groups = useMemo(() => commodoreTrail(t, theaterId, objectives), [t, theaterId, objectives]);
   const signature = groups.map((group) => `${group.objectiveId}:${group.entries.map((entry) => entry.key).join(",")}`).join("|");
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
   const stick = useRef(true);
   const [fresh, setFresh] = useState(false);
+  // 첫 측정은 서랍이 자리 잡기 전이라 칸이 더 높다. 그때 바닥에 붙이면 스크롤이 잘리고, 높이가 줄어도 효과가 다시 돌지 않는다.
+  // 칸과 목록의 크기가 바뀌는 동안 바닥을 보고 있으면 다시 붙인다. 위로 올려 읽는 중에는 자리를 지킨다.
   useLayoutEffect(() => {
-    const node = scrollRef.current;
-    if (!node) return;
-    if (stick.current) node.scrollTop = node.scrollHeight;
+    const scroll = scrollRef.current;
+    const list = listRef.current;
+    if (!scroll) return;
+    const pin = () => {
+      if (stick.current) scroll.scrollTop = scroll.scrollHeight;
+    };
+    pin();
     setFresh(!stick.current);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(pin);
+    observer.observe(scroll);
+    if (list) observer.observe(list);
+    return () => observer.disconnect();
   }, [signature]);
   const onScroll = () => {
     const node = scrollRef.current;
@@ -195,7 +207,7 @@ export function CommodoreTrail({
         <>
           <div ref={scrollRef} className="objectives-commodore-trail-scroll" onScroll={onScroll}>
             <div className="objectives-commodore-trail-spacer" />
-            <ul className="objectives-commodore-trail-list">
+            <ul ref={listRef} className="objectives-commodore-trail-list">
               {groups.map((group) => (
                 <li key={group.objectiveId} className={`objectives-commodore-trail-group${group.done ? " is-done" : ""}`}>
                   <button type="button" className="objectives-commodore-trail-objective" title={t("objectives.commodore.trail.open")} onClick={() => revealObjective({ objectiveId: group.objectiveId })}>{group.title}</button>
