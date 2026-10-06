@@ -1,4 +1,5 @@
 import { execFile, spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { performance } from "node:perf_hooks";
 
 import { PROCESS_START_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
@@ -119,8 +120,9 @@ export interface OwnedProcessRegistry {
   endGroups(select: (group: OwnedProcessGroup) => boolean, graceMs: number, input?: OwnedProcessKillInput): number;
   /**
    * 정지 단계만 활성화한다. selectNow가 고른 그룹은 기존 endGroups로 정리하고, 이미 리더가 종료된 그룹과
-   * 이후 리더가 종료되는 모든 등록 그룹의 잔여도 grace 뒤 같은 증명으로 종료한다. 살아 있는 비선택 리더에는
-   * 신호를 보내지 않는다. 반복 호출은 정지 단계를 초기화하지 않으며 타이머는 프로세스를 붙잡지 않는다.
+   * 이후 리더가 종료되는 모든 등록 그룹의 잔여도 같은 증명으로 종료한다. grace는 최초 beginStop부터 세므로
+   * 리더 exit 시 남은 grace만 기다리고, 이미 지났으면 즉시 정리한다. 살아 있는 비선택 리더에는 신호를 보내지
+   * 않는다. 반복 호출은 정지 단계를 초기화하지 않으며 타이머는 프로세스를 붙잡지 않는다.
    */
   beginStop(selectNow: (group: OwnedProcessGroup) => boolean, graceMs: number, input?: OwnedProcessKillInput): number;
 }
@@ -138,7 +140,7 @@ interface Entry {
 export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions = {}): OwnedProcessRegistry {
   const entries = new Map<number, Entry>();
   const containment = process.platform === "win32" ? options.containment : undefined;
-  let stopping: { readonly graceMs: number; readonly input: OwnedProcessKillInput } | null = null;
+  let stopping: { readonly graceEndsAt: number; readonly input: OwnedProcessKillInput } | null = null;
   const retiring = new WeakSet<Entry>();
   const snapshot = (entry: Entry): OwnedProcessGroup => ({ pgid: entry.pgid, spawnedAt: entry.spawnedAt, leaderExitedAt: entry.leaderExitedAt, ...(entry.owner === undefined ? {} : { owner: entry.owner }) });
   const remove = (pgid: number): void => {
@@ -170,11 +172,12 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
     const stop = stopping;
     if (!stop || entry.leaderExitedAt === null || retiring.has(entry) || !entryHasMembers(entry)) return;
     retiring.add(entry);
+    // 정지 grace는 리더 종료마다 새로 시작하지 않는다. 벽시계 조정에도 예산이 늘지 않도록 단조 시계를 쓴다.
     const timer = setTimeout(() => {
       // 키가 같아도 새 등록은 다른 그룹이다. 재사용된 pid나 살아 있는 새 리더에는 신호를 보내지 않는다.
       if (entries.get(entry.pgid) !== entry || entry.leaderExitedAt === null) return;
       registry.endGroups((group) => group.pgid === entry.pgid, 0, stop.input);
-    }, stop.graceMs);
+    }, Math.max(0, stop.graceEndsAt - performance.now()));
     timer.unref?.();
   }
 
@@ -207,7 +210,7 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
   const registry: OwnedProcessRegistry = {
     beginStop(selectNow, graceMs, input = {}) {
       if (!stopping) {
-        stopping = { graceMs, input };
+        stopping = { graceEndsAt: performance.now() + graceMs, input };
         prune();
         // 활성화 전 종료된 리더의 잔여도 등록된 그룹이다. 평상시에는 이 단계가 전혀 실행되지 않는다.
         for (const entry of entries.values()) retireExitedGroup(entry);
