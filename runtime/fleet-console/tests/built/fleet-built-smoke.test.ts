@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { REAPER_DRAIN_MAX_MS } from "@fleet-console/lifecycle";
-import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, OWNED_GROUP_TERM_GRACE_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
 import { resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";
@@ -172,7 +172,7 @@ const LIFECYCLE_KNOWN_DEFECTS = JSON.parse(fs.readFileSync(fileURLToPath(new URL
 // Long enough for anything that reaps after the Console is gone (a containment helper's own grace included).
 const SETTLE_MS = 10_000;
 const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
-const AGENT_ROLES = new Set(["chat", "chat-mcp", "chat-orphan", "chat-detached", "terminal", "terminal-mcp"]);
+const AGENT_ROLES = new Set(["chat", "chat-mcp", "chat-orphan", "chat-detached", "chat-residual", "terminal", "terminal-mcp"]);
 /** How long the escalation cases freeze the Console's event loop just before its own stop deadline. */
 const FREEZE_BEFORE_DEADLINE_MS = 800;
 const FAKE_AGENT = fileURLToPath(new URL("../fixtures/lifecycle-fake-agent.mjs", import.meta.url));
@@ -376,6 +376,8 @@ afterEach(async () => {
     const exit = await exitOf(consoleProcess, 30_000);
     // Only the Console's own calls: its reaper reads the same PATH once the Console is gone.
     const reads = callsFrom(psCalls, consoleProcess.pid!) - readsBeforeStop;
+    const signalledAt = Number(fs.readFileSync(stall.signalled, "utf8"));
+    const deadlineReads = callsFrom(psCalls, consoleProcess.pid!, signalledAt + CONSOLE_STOP_DEADLINE_MS);
 
     expect(fs.existsSync(stall.marker), "the injected stall must hold the shutdown with the lock held").toBe(true);
     expect(exit.signal, "the Console must end by its own deadline in this case").toBeNull();
@@ -383,8 +385,8 @@ afterEach(async () => {
     const left = await survivors(run, started);
     lifecycleCheck("L9", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
     const recordedMs = deadlineRecordedAfterSignal(run, stall.signalled);
-    // The count is the deterministic half: the bound below also depends on the scheduler.
-    lifecycleCheck("L9", reads === 1, "I4: the stopping Console reads the process table once", { detail: { reads } });
+    // 정지 grace의 조회와 deadline 조회를 구분한다. deadline의 1회 예산은 완화하지 않는다.
+    lifecycleCheck("L9", deadlineReads === 1, "I4: the stop deadline reads the process table once", { detail: { reads, deadlineReads } });
     lifecycleCheck("L9", recordedMs !== null && recordedMs <= CONSOLE_STOP_DEADLINE_MS + PROCESS_TABLE_TIMEOUT_MS + 100, "I4: the deadline spends one process-table budget at most", { detail: { recordedMs } });
     lifecycleCheck("L9", stop.status !== 0, "stop does not report a deadline-ended Console as cleanly stopped", { detail: { status: stop.status, stdout: stop.stdout.trim() } });
   }, 90_000);
@@ -482,11 +484,19 @@ afterEach(async () => {
   // CLI ignores SIGTERM by E1, those whose CLI ended (on SIGTERM, or by itself before the stop) but left a helper holding
   // its pipes by one proving process-table read — so stop succeeds well inside B_int, the instance records `clean`, and
   // nothing it started outlives it.
-  it.skipIf(process.platform === "win32")("ends a hung plugin child on a normal stop and reports the stop as clean", async () => {
+  // 에이전트 helper도 리더가 SDK 종료로 사라진 뒤 파이프를 잡는다. 플러그인만의 stop으로 이 방어를 대체할 수 없다.
+  it.skipIf(process.platform === "win32")("ends an agent residual and hung plugin children on a normal stop and reports clean", async () => {
+    // claude-agent-sdk 0.3.269 close(): EOF grace 2000ms + 최종 SIGKILL까지 5000ms. 벤더 갱신 시 재측정한다.
+    const sdkCloseMaxMs = 2_000 + 5_000;
+    expect(Math.max(sdkCloseMaxMs, OWNED_GROUP_TERM_GRACE_MS) + PROCESS_TABLE_TIMEOUT_MS + ESCALATION_MARGIN_MS,
+      "정지 grace는 SDK 종료와 겹쳐야 하고, 증명 조회와 스케줄링 여유까지 B_int 안에 들어야 한다").toBeLessThan(CONSOLE_STOP_DEADLINE_MS);
     const run = createRun("plugin-stop");
+    run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
     const consoleProcess = spawnConsole(run);
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
+    await openWorkload(run, endpoint, { terminal: false });
+    expect(agentProcs(run).some((entry) => entry.role === "chat-residual"), "에이전트 잔여 helper가 실행되어야 한다").toBe(true);
     const pluginChildren = await openPluginChildren(run, endpoint);
     const started = [...descendantsOf(consoleProcess.pid!).filter((entry) => !pluginChildren.some((child) => child.pid === entry.pid)), ...pluginChildren];
     await provableByStartTime(startedAt);
@@ -496,6 +506,7 @@ afterEach(async () => {
     const exit = await exitOf(consoleProcess, 30_000);
     const elapsedMs = Date.now() - stoppedAt;
 
+    console.log(`L6n stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: CONSOLE_STOP_DEADLINE_MS - elapsedMs })}`);
     lifecycleCheck("L6n", stop.status === 0, "a normal stop with a hung plugin child is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), elapsedMs } });
     lifecycleCheck("L6n", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "the Console ends by itself and records `clean`", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run) } });
     lifecycleCheck("L6n", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
@@ -532,22 +543,29 @@ afterEach(async () => {
     lifecycleCheck("L10", attachment.every((file) => fs.existsSync(file)), "the attachments of a Console still serving are never reclaimed");
   }, 60_000);
 
-  // W1 and W5. A stuck plugin child (spawnOwned) starts a detached grandchild, a Start-Process grandchild, and a
-  // non-libuv grandchild, and CREATE_BREAKAWAY_FROM_JOB is denied. Self-stop — not CLI stop, which is TerminateProcess
-  // and stays unrecorded — ends clean inside B_int, and every one of those processes is gone.
+  // W1/W5: 에이전트와 멈춘 플러그인을 함께 정지한다. 플러그인의 detached·native 손자와 에이전트 잔여가
+  // B_int 안에 사라지고 clean을 기록해야 하며, 플러그인 리더의 CREATE_BREAKAWAY_FROM_JOB은 error 5로 거부돼야 한다.
+  // Start-Process는 headless runner 한계로 필수 역할에서 제외한다(계약의 powershell-intermediate 잔류).
+  // 외부 CLI stop은 Windows에서 TerminateProcess이고 unrecorded이므로 여기서는 내부 self-stop을 사용한다.
   it.skipIf(process.platform !== "win32")("ends a hung plugin child's grandchildren on a self-stop and denies breakaway", async () => {
     const run = createRun("win-plugin-stop");
     const stopFile = path.join(run.dir, "self-stop");
     const breakawayFile = path.join(run.dir, "breakaway.json");
+    const pluginBreakawayFile = path.join(run.dir, "plugin-breakaway.json");
     run.env.LEDGER_WINDOWS_GRANDCHILDREN = "1";
+    run.env.LEDGER_BREAKAWAY_RESULT = pluginBreakawayFile;
+    run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
     run.env.FAKE_AGENT_BREAKAWAY_RESULT = breakawayFile;
     run.env.FAKE_AGENT_KOFFI = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
     const consoleProcess = spawnConsole(run, { preload: writePreload(run, "self-stop.mjs", selfStopPreload(stopFile)) });
     const endpoint = await waitForReady(run, consoleProcess.pid!);
-    // Breakaway is attempted by the agent. That process is born inside the group job; the plugin child is not a reliable caller.
     await openWorkload(run, endpoint, { terminal: false });
+    expect(agentProcs(run).some((entry) => entry.role === "chat-residual"), "에이전트 잔여 helper가 실행되어야 한다").toBe(true);
     const pluginChildren = await openPluginChildren(run, endpoint);
     const started = [...pluginChildren, ...descendantsOf(consoleProcess.pid!)];
+    const pluginBreakaway = JSON.parse(fs.readFileSync(pluginBreakawayFile, "utf8")) as { ok: boolean; err: number; inAnyJob?: boolean };
+    expect(pluginBreakaway.ok, `플러그인 리더는 breakaway할 수 없어야 한다: ${JSON.stringify(pluginBreakaway)}`).toBe(false);
+    expect(pluginBreakaway.err, "플러그인 breakaway는 ACCESS_DENIED여야 한다").toBe(5);
     const breakaway = JSON.parse(fs.readFileSync(breakawayFile, "utf8")) as { ok?: boolean; err?: number; pid?: number };
     // Nested with libuv's breakaway-ok job, Windows may accept the flag and still keep the child in our job.
     // Either the call is denied, or the process it created dies with the console. A survivor is the failure.
@@ -568,6 +586,7 @@ afterEach(async () => {
     const exit = await exitOf(consoleProcess, 30_000);
     const elapsedMs = Date.now() - stoppedAt;
 
+    console.log(`W1 stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: CONSOLE_STOP_DEADLINE_MS - elapsedMs })}`);
     lifecycleCheck("W1", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "a self-stop records clean", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run), elapsedMs } });
     lifecycleCheck("W1", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the hung plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
     const left = await survivors(run, started);
@@ -917,14 +936,17 @@ function windowsFakeAgentExe(): string {
  * Grandchild setup baked into the stand-in. The plugin spawn does not take a custom env, so the flag is not read at
  * runtime. A failure is appended to the same pids file the timeout prints.
  */
-function windowsGrandchildLines(enabled: boolean): readonly string[] {
+function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefined): readonly string[] {
   if (!enabled) return [];
+  if (!breakawayFile) throw new Error("플러그인 breakaway 결과 경로가 필요합니다");
+  const koffiEntry = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
   return [
     "if (!process.argv.includes('models')) {",
     "  let once = false;",
     "  try { require('fs').mkdirSync(require('path').join(__dirname, 'grandchildren.lock')); once = true; } catch (error) {}",
     "  if (once) try {",
     "    const fs = require('fs');",
+    "    // 할당 경합을 제거했다는 증거가 아니다. race 측정은 M2가 맡고 W1은 containment 게이트만 확인한다.",
     "    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);",
     "    const path = require('path');",
     "    const { spawn, spawnSync } = require('child_process');",
@@ -946,6 +968,31 @@ function windowsGrandchildLines(enabled: boolean): readonly string[] {
     "    while (!fs.existsSync(pidFile) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);",
     "    if (fs.existsSync(pidFile)) record('native', Number(fs.readFileSync(pidFile, 'utf8')));",
     "    else note('native grandchild pid was not written');",
+    "    let breakaway = { ok: false, err: -1 };",
+    "    try {",
+    `      const koffi = require(${JSON.stringify(koffiEntry)});`,
+    "      const kernel32 = koffi.load('kernel32.dll');",
+    "      const u16ptr = koffi.pointer('uint16');",
+    "      const u8ptr = koffi.pointer('uint8');",
+    "      const CreateProcessW = kernel32.func('__stdcall', 'CreateProcessW', 'int', ['void *', u16ptr, 'void *', 'void *', 'int', 'uint32', 'void *', 'void *', u8ptr, u8ptr]);",
+    "      const GetLastError = kernel32.func('__stdcall', 'GetLastError', 'uint32', []);",
+    "      const GetCurrentProcess = kernel32.func('__stdcall', 'GetCurrentProcess', 'void *', []);",
+    "      const IsProcessInJob = kernel32.func('__stdcall', 'IsProcessInJob', 'int', ['void *', 'void *', koffi.out(koffi.pointer('int32'))]);",
+    "      const inJob = [0];",
+    "      const queryOk = Boolean(IsProcessInJob(GetCurrentProcess(), null, inJob));",
+    "      // NULL(any-job)은 G 소속을 증명하지 못한다. 보조 진단이며 게이트는 아래 breakaway 거부이다.",
+    "      const inAnyJob = queryOk ? Number(inJob[0]) !== 0 : null;",
+    "      const cmd = Buffer.from('cmd.exe /c exit 0' + String.fromCharCode(0), 'utf16le');",
+    "      const si = Buffer.alloc(104);",
+    "      si.writeUInt32LE(104, 0);",
+    "      const pi = Buffer.alloc(24);",
+    "      const ok = CreateProcessW(null, cmd, null, null, 0, 0x01000000, null, null, si, pi);",
+    "      const err = ok ? 0 : Number(typeof koffi.errno === 'function' ? koffi.errno() : 0) || Number(GetLastError());",
+    "      breakaway = { ok: Boolean(ok), err, inAnyJob, queryOk, callerPid: process.pid };",
+    "    } catch (error) {",
+    "      breakaway = { ok: false, err: -1, message: String(error && error.message || error) };",
+    "    }",
+    `    fs.writeFileSync(${JSON.stringify(breakawayFile)}, JSON.stringify(breakaway));`,
     "  } catch (error) {",
     "    try { record('windows-error', String(error && error.message || error).replace(/\\s+/g, ' ').slice(0, 400)); } catch {}",
     "  }",
@@ -1171,14 +1218,19 @@ function slowProcessTable(run: LifecycleRun, delayMs: number, calls?: string): s
   fs.mkdirSync(dir, { recursive: true });
   const realPs = SYSTEM_PATH.map((entry) => path.join(entry, "ps")).find((candidate) => fs.existsSync(candidate));
   if (!realPs) throw new Error("ps is not on the system PATH");
-  const count = calls ? `echo "$PPID" >> ${JSON.stringify(calls)}\n` : "";
+  const count = calls ? `echo "$PPID $(${JSON.stringify(process.execPath)} -p 'Date.now()')" >> ${JSON.stringify(calls)}\n` : "";
   fs.writeFileSync(path.join(dir, "ps"), `#!/bin/sh\n${count}sleep ${delayMs / 1000}\nexec ${realPs} "$@"\n`, { mode: 0o755 });
   return dir;
 }
 
 /** How many recorded calls came from `caller`. */
-function callsFrom(file: string, caller: number): number {
-  try { return fs.readFileSync(file, "utf8").split("\n").filter((line) => Number(line) === caller).length; } catch { return 0; }
+function callsFrom(file: string, caller: number, notBefore = 0): number {
+  try {
+    return fs.readFileSync(file, "utf8").split("\n").filter((line) => {
+      const [pid, at] = line.split(" ");
+      return Number(pid) === caller && Number(at) >= notBefore;
+    }).length;
+  } catch { return 0; }
 }
 
 /**
@@ -1293,7 +1345,7 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
     "  process.on('SIGTERM', () => {});",
     "  record('cli-ignores', process.pid);",
     "}",
-    ...windowsGrandchildLines(run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1"),
+    ...windowsGrandchildLines(run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1", run.env.LEDGER_BREAKAWAY_RESULT),
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
   // Each summary answers only once tokscale does; the requests end with the Console.
@@ -1308,7 +1360,7 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
   if (run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1") {
     const ready = () => {
       const roles = new Set(recorded().map((entry) => entry.role));
-      return roles.has("detached") && roles.has("native");
+      return roles.has("detached") && roles.has("native") && run.env.LEDGER_BREAKAWAY_RESULT !== undefined && fs.existsSync(run.env.LEDGER_BREAKAWAY_RESULT);
     };
     const deadline = Date.now() + 40_000;
     while (!ready() && Date.now() < deadline) await delay(25);

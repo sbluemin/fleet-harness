@@ -29,6 +29,11 @@ const role = chat ? "chat" : "terminal";
 const mcp = spawn(process.execPath, ["-e", "process.stdin.resume(); process.stdin.on('end', () => process.exit(0)); setInterval(() => {}, 1 << 30);"], { stdio: ["pipe", "ignore", "ignore"] });
 record({ role, pid: process.pid, ppid: process.ppid });
 record({ role: `${role}-mcp`, pid: mcp.pid, ppid: process.pid });
+// 정상 stop 대표 사례: SDK가 리더만 종료한 뒤에도 같은 그룹의 helper가 출력 파이프를 잡고 남는다.
+if (chat && process.env.FAKE_AGENT_SHUTDOWN_RESIDUAL === "1") {
+  const residual = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);"], { stdio: "inherit", windowsHide: true });
+  record({ role: "chat-residual", pid: residual.pid, ppid: process.pid });
+}
 if (process.env.FAKE_AGENT_BREAKAWAY_RESULT && process.env.FAKE_AGENT_KOFFI) {
   // This process is already inside the group job: the launcher waits until the Console has assigned the leader.
   try {
