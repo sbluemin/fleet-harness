@@ -4,6 +4,12 @@ import type {
 } from "../wire/anthropic-messages/protocol.js";
 import type { GatewayModel, GatewayModelLookup } from "../../models.js";
 
+/** A tool call after whose result this client's turn legitimately ends to wait. */
+export interface GatewayYieldToolCall {
+  readonly name: string;
+  readonly whenArgumentTrue?: string;
+}
+
 /**
  * One client's answer to "what does an agent CLI need from this gateway".
  *
@@ -87,6 +93,12 @@ export interface GatewayHarnessProfile {
    * 읽는다. 부재는 그런 도구가 없다는 뜻이다.
    */
   readonly messagingToolNames?: readonly string[];
+  /**
+   * 이 클라이언트에서 턴을 넘기는 도구 호출: 백그라운드 작업을 띄우거나 알림·예약 깨우기를 기다리게 한다.
+   * 그 결과 직후의 짧은 텍스트 종료는 정당한 대기이므로, 응답을 다시 받는 공급자 정책이 범위를 좁힐 때
+   * 읽는다. `whenArgumentTrue`가 있으면 그 인자가 `true`인 호출만 해당한다. 부재는 그런 호출이 없다는 뜻이다.
+   */
+  readonly yieldToolCalls?: readonly GatewayYieldToolCall[];
   /**
    * 이 클라이언트가 한 대화를 식별하는 값을, 그 클라이언트의 요청 헤더에서 읽는다.
    *
