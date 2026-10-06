@@ -35,7 +35,10 @@ import {
   describeOwnerlessConsoleLock,
   describeRefusedConsoleLock,
   describeReplacedLockAuthor,
+  type ConsoleLifecycleWait,
 } from "@fleet-console/protocol/lifecycle";
+
+type LifecycleWaitReport = { wait(wait: ConsoleLifecycleWait): void };
 
 export interface SidecarRuntime { readonly nodePath: string; readonly cliPath: string; readonly serviceRoot: string; readonly serviceVersion: string; }
 /** The supervisor's time source. Every wait derives from the lifecycle contract's budgets; a test may advance it faster. */
@@ -152,18 +155,18 @@ export class SidecarSupervisor {
    * 살아 있는 소유자는 아직 초기화·정리 중일 수 있으므로 lock이 없거나 pid가 끝났을 때만 시작한다.
    * 런타임 조달은 길어질 수 있어, 조달 뒤에도 slot을 다시 판정한다.
    */
-  async startOrAdopt(): Promise<string> {
+  async startOrAdopt(report?: LifecycleWaitReport): Promise<string> {
     let runtime: SidecarRuntime | null = null;
     for (let pass = 0; ; pass += 1) {
-      const slot = await this.prepareSlot(runtime);
+      const slot = await this.prepareSlot(runtime, report);
       if (slot.kind === "adopt") return slot.url;
       if (slot.kind === "ready" && runtime) break;
       if (pass + 1 >= SLOT_PASSES) throw new Error("console_lock_changed_before_start");
       runtime ??= await this.resolveRuntime();
     }
-    return this.launch(runtime);
+    return this.launch(runtime, report);
   }
-  private async prepareSlot(runtime: SidecarRuntime | null): Promise<SlotDecision> {
+  private async prepareSlot(runtime: SidecarRuntime | null, report?: LifecycleWaitReport): Promise<SlotDecision> {
     const read = await this.readLockSettled();
     if (read.kind === "absent") return { kind: "ready" };
     if (read.kind === "blocked") throw new SidecarStartError(read.code, () => read.detail);
@@ -180,12 +183,14 @@ export class SidecarSupervisor {
       // This Desktop's unreaped child: its handle proves identity (E1), so it is adopted when it answers and ended otherwise.
       const own = await this.observe(stored.lock);
       if (owned && this.answersFor(own.probe, pid)) return { kind: "adopt", url: consoleUrl(stored.lock) };
+      report?.wait("stop-ladder");
       await this.stopRequested({ pid, lock: stored.lock, lifecycleWire: own.probe?.health?.lifecycleWire ?? this.childLifecycleWire, stopRequest: own.probe?.stopRequest ?? this.childStopRequest }, null);
       return { kind: "changed" };
     }
     let observed = await this.observe(stored.lock);
     // An instance still starting is waited for within the contract's start budget, never adopted or signalled meanwhile.
     const startDeadline = this.clock.now() + CONSOLE_START_TIMEOUT_MS;
+    if (observed.state === "starting") report?.wait("owner-starting");
     while (observed.state === "starting" && this.clock.now() < startDeadline) {
       await this.clock.sleep(CONSOLE_START_POLL_MS);
       observed = await this.observe(stored.lock);
@@ -203,6 +208,7 @@ export class SidecarSupervisor {
     if (observed.state === "stopping") {
       // A Console that closed its listener and still holds the lock is cleaning up shared state, whoever stops it: starting
       // another beside it would let two Consoles write the same data. Wait for it without a signal.
+      report?.wait("owner-stopping");
       const ended = await this.waitForOthersStop(stored);
       if (ended === "held") throw this.conflict("console_lock_process_unverified", pid, "stopping", "it closed its listener but kept the lock past the stop budget");
       return { kind: "changed" };
@@ -233,7 +239,7 @@ export class SidecarSupervisor {
     this.options.log.info(`left the lock of exited pid ${pid} in place for the starting Console to reclaim`);
     return { kind: "ready" };
   }
-  private async launch(runtime: SidecarRuntime): Promise<string> {
+  private async launch(runtime: SidecarRuntime, report?: LifecycleWaitReport): Promise<string> {
     let startupFailure: Error | null = null;
     let sidecarReady = false;
     let stderrTail = "";
@@ -280,6 +286,7 @@ export class SidecarSupervisor {
       this.options.log.error(`${failure.message} outcome=${ending?.outcome ?? "unrecorded"}`);
     });
     const deadline = this.clock.now() + CONSOLE_START_TIMEOUT_MS;
+    report?.wait("spawned-starting");
     try {
       for (;;) {
         if (startupFailure) throw startupFailure;
@@ -302,7 +309,7 @@ export class SidecarSupervisor {
         return consoleUrl(lock);
       }
     } catch (error) {
-      throw await this.failStartup(error);
+      throw await this.failStartup(error, report);
     }
   }
   /**
@@ -310,7 +317,7 @@ export class SidecarSupervisor {
    * writing durable state, so it gets the stop ladder and its own deadline; one that has not taken the lock has written
    * nothing and gets only a short grace. The unreaped child handle proves its identity throughout.
    */
-  private async failStartup(error: unknown): Promise<Error> {
+  private async failStartup(error: unknown, report?: LifecycleWaitReport): Promise<Error> {
     const failure = error instanceof Error ? error : new Error(String(error));
     const child = this.child;
     if (!child || child.pid === undefined || !this.isOwnLiveChild(child.pid)) return failure;
@@ -321,6 +328,7 @@ export class SidecarSupervisor {
         const lock = read.kind === "trusted" && read.stored.lock.pid === pid ? read.stored.lock : this.childLock;
         // A starting child answers 503, which still carries the stop request advertisement. It is read lazily inside
         // the stop decision, so off Windows no probe runs at all; the tracked wire stays the ending reader's answer.
+        report?.wait("stop-ladder");
         await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: this.childLifecycleWire, stopRequest: lock ? () => this.probe(lock).then((answer) => answer?.stopRequest ?? this.childStopRequest) : this.childStopRequest }, null);
       } else {
         this.stoppingChild = child;

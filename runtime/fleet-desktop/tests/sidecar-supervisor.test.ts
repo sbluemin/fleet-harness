@@ -71,7 +71,9 @@ describe("sidecar supervisor", () => {
       .mockResolvedValue(new Response(JSON.stringify({ pid: process.pid }), { status: 200 }));
     vi.stubGlobal("fetch", fetchHealth);
     const kill = vi.spyOn(process, "kill");
-    await expect(supervisor().startOrAdopt()).resolves.toBe("http://127.0.0.1:4310/console/");
+    const waits: string[] = [];
+    await expect(supervisor().startOrAdopt({ wait: (wait) => { waits.push(wait); } })).resolves.toBe("http://127.0.0.1:4310/console/");
+    expect(waits).toEqual(["owner-starting"]);
     expect(fs.readFileSync(lockFile, "utf8")).toBe(before);
     expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
   });

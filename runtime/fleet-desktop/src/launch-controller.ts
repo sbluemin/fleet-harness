@@ -1,6 +1,10 @@
+import { describeConsoleLifecycleWait, parseConsoleLifecycleWait, type ConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
+
 import type { EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryTone } from "./entry-page.js";
 
-export type RuntimeEntryState = "checking" | "node" | "installing" | "offline" | "firstfail" | "starting" | "dev";
+export type RuntimeEntryState = "checking" | "node" | "installing" | "offline" | "firstfail" | "starting" | "waiting" | "dev";
+
+type EntryWait = Exclude<ConsoleLifecycleWait, "update-preflight">;
 
 /** 오프라인 진입의 이유. 업데이트 설치가 실패했는지, 조회 자체가 닿지 않았는지를 가른다. */
 export type OfflineReason = "install-failed" | "unreachable";
@@ -21,7 +25,7 @@ export interface LaunchControllerDependencies {
   readonly synchronizeFullscreen?: (origin: string) => void | Promise<void>;
   readonly onConsoleLoaded?: () => void;
   readonly pushEntry: (contents: EntryPageWebContents, snapshot: EntryPageSnapshot) => Promise<void>;
-  readonly startOrAdopt: () => Promise<string>;
+  readonly startOrAdopt: (report: { wait(wait: EntryWait): void }) => Promise<string>;
   readonly dev?: boolean;
   readonly lang?: EntryLanguage;
   readonly desktopVersion?: string;
@@ -75,7 +79,7 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       let consoleUrl: string;
       while (true) {
         try {
-          consoleUrl = await dependencies.startOrAdopt();
+          consoleUrl = await dependencies.startOrAdopt({ wait: (wait) => { void push("waiting", wait); } });
           break;
         } catch (error) {
           if (!isFirstRunProcurementFailure(error)) throw error;
@@ -136,6 +140,12 @@ const COPY = {
     starting: "Console 시작 중",
     ready: "준비됐습니다",
     devDetail: "개발 빌드 · 업데이트 건너뜀",
+    wait: {
+      "owner-starting": "Console 시작 중",
+      "spawned-starting": "Console 시작 중",
+      "owner-stopping": "Console 종료를 기다리는 중",
+      "stop-ladder": "Console 종료를 기다리는 중",
+    },
   },
   en: {
     tagline: "Agent work, on one screen",
@@ -152,6 +162,12 @@ const COPY = {
     starting: "Starting Console",
     ready: "Ready",
     devDetail: "Development build · updates skipped",
+    wait: {
+      "owner-starting": "Starting Console",
+      "spawned-starting": "Starting Console",
+      "owner-stopping": "Waiting for Console to shut down",
+      "stop-ladder": "Waiting for Console to shut down",
+    },
   },
 } as const;
 
@@ -180,8 +196,15 @@ function lineFor(copy: (typeof COPY)[EntryLanguage], state: RuntimeEntryState, d
     case "offline": return { tone: "warning", title: detail === "install-failed" ? copy.offlineInstallFailed : copy.offlineUnreachable, detail: copy.offlineDetail };
     case "firstfail": return { tone: "failed", title: copy.firstfail, detail: copy.firstfailDetail };
     case "starting": return detail === "ready" ? { tone: "done", title: copy.ready, handoff: true } : { tone: "busy", title: copy.starting };
+    case "waiting": return waitingLine(copy, detail);
     default: return { tone: "busy", title: copy.checking };
   }
+}
+
+function waitingLine(copy: (typeof COPY)[EntryLanguage], detail: string | undefined): EntryLine {
+  const wait = parseConsoleLifecycleWait(detail);
+  if (wait === null || wait === "update-preflight") return { tone: "busy", title: copy.checking };
+  return { tone: "busy", title: copy.wait[wait], detail: describeConsoleLifecycleWait(wait) };
 }
 
 function versionLine(context: EntryContext): string {
