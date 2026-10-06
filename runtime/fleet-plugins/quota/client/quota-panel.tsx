@@ -13,12 +13,13 @@ import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting, toggleQuotaToolba
 
 type T = Translate<QuotaMessageKey>;
 /** Providers whose credential read is gated behind an explicit connect. */
-type ConnectableProviderId = "claude";
+type ConnectableProviderId = "claude" | "cursor";
 
 export const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   antigravity: "Antigravity",
   claude: "Claude Code",
   codex: "Codex",
+  cursor: "Cursor",
   "muse-code": "Muse Code",
   opencode: "OpenCode Go",
   xai: "xAI",
@@ -53,6 +54,7 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.antigravity.signedOut",
   claude: "quota.claude.signedOut",
   codex: "quota.codex.signedOut",
+  cursor: "quota.cursor.signedOut",
   "muse-code": "quota.museCode.signedOut",
   opencode: "quota.opencode.signedOut",
   xai: "quota.xai.signedOut",
@@ -62,17 +64,19 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.expired.antigravity",
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
+  cursor: "quota.expired.cursor",
   "muse-code": "quota.expired.museCode",
   opencode: "quota.expired.opencode",
   xai: "quota.expired.xai",
 };
 
-// OpenCode만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다),
+// Cursor·OpenCode만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다),
 // 프로바이더별 안내를 공용 문구로 대신하면 다른 공급자의 지시를 보여주게 되므로 나머지도 명시한다.
 export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.noSubscription",
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
+  cursor: "quota.cursor.noSubscription",
   "muse-code": "quota.noSubscription",
   opencode: "quota.opencode.noSubscription",
   xai: "quota.noSubscription",
@@ -94,7 +98,7 @@ export function credentialUnavailableKey(message: string | undefined): QuotaMess
 export const UNREPORTED_PROVIDER: ProviderDto = { status: "error" };
 
 export function isConnectable(id: ProviderId): id is ConnectableProviderId {
-  return id === "claude";
+  return id === "claude" || id === "cursor";
 }
 
 interface RequestGeneration {
@@ -217,13 +221,15 @@ export function meterSeverity(window: QuotaWindow): "normal" | "warning" | "crit
 /**
  * 공급자를 대변할 가장 급한 창 하나(도구모음 요약의 긴 창 줄).
  *
- * 순위는 퍼센트가 아니라 게이트웨이의 압력 판정이 먼저다.
- * 회차의 5분의 1 지점에서 44%를 쓴 창은 조용한
+ * 집계 창(isAggregate)은 형제 풀의 합이라 개별 풀이 말라도 평온하게 읽힌다 —
+ * 실제 풀이 하나라도 있으면 후보에서 뺀다. 그다음 순위는 퍼센트가 아니라 게이트웨이의
+ * 압력 판정이 먼저다. 회차의 5분의 1 지점에서 44%를 쓴 창은 조용한
  * 60% 창보다 급하고, 퍼센트만 보는 비교로는 그 사실을 볼 수 없다.
  */
 export function mostUrgentWindow(windows: readonly QuotaWindow[] | undefined): QuotaWindow | null {
   if (windows === undefined || windows.length === 0) return null;
-  return windows.reduce((worst, window) => {
+  const pools = windows.filter((window) => window.isAggregate !== true);
+  return (pools.length > 0 ? pools : windows).reduce((worst, window) => {
     const rank = SEVERITY_RANK[meterSeverity(window)] - SEVERITY_RANK[meterSeverity(worst)];
     if (rank !== 0) return rank > 0 ? window : worst;
     return window.usedPercent > worst.usedPercent ? window : worst;
@@ -485,11 +491,11 @@ function ProviderCard({
       <section className="quota-connect-card" data-provider={id}>
         <header className="quota-provider__header">
           <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
-          <h3>{t("quota.connect.title")}</h3>
+          <h3>{t(id === "claude" ? "quota.connect.title" : "quota.connect.title.cursor")}</h3>
         </header>
-        <p>{t("quota.connect.body")}</p>
+        <p>{t(id === "claude" ? "quota.connect.body" : "quota.connect.body.cursor")}</p>
         {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
-        <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t("quota.connect.action")}</button>
+        <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t(id === "claude" ? "quota.connect.action" : "quota.connect.action.cursor")}</button>
       </section>
     );
   }

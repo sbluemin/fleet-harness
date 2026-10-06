@@ -8,6 +8,7 @@ import type { GatewayModel, GatewayProvider } from "../models.js";
 import { upstreamModelId } from "../models.js";
 import { antigravityRequestPolicy } from "../upstream/antigravity/request-policy.js";
 import { codexRequestPolicy } from "../upstream/codex/request-policy.js";
+import { cursorRequestPolicy } from "../upstream/cursor/request-policy.js";
 import { museCodeRequestPolicy } from "../upstream/muse-code/request-policy.js";
 import { opencodeGoRequestPolicy } from "../upstream/opencode-go/request-policy.js";
 import { xaiRequestPolicy } from "../upstream/xai/request-policy.js";
@@ -75,6 +76,7 @@ const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
   antigravity: antigravityRequestPolicy,
   claude: claudeRequestPolicy,
   codex: codexRequestPolicy,
+  cursor: cursorRequestPolicy,
   "muse-code": museCodeRequestPolicy,
   // The provider id is `opencode`; its folder carries the `-go` subscription name.
   opencode: opencodeGoRequestPolicy,

@@ -25,6 +25,7 @@ const UPSTREAM_FOLDERS = [
   "anthropic",
   "antigravity",
   "codex",
+  "cursor",
   "opencode-go",
   "typesafe",
   "xai",
@@ -34,6 +35,7 @@ const UPSTREAM_FOLDERS = [
 const GATEWAY_PROVIDER_FOLDERS = [
   "antigravity",
   "codex",
+  "cursor",
   "opencode-go",
   "xai",
 ] as const;
@@ -463,6 +465,7 @@ describe("core-ai-gateway direction boundaries", () => {
       "gateway-router",
       "antigravity",
       "codex",
+      "cursor",
       "opencode-go",
       "xai",
       "openai-chat-adapter.ts",

@@ -32,7 +32,10 @@ export interface QuotaToolbarReading {
 
 function readableWindows(provider: ProviderDto | undefined): readonly QuotaWindow[] {
   if (provider === undefined || (provider.status !== "ok" && provider.status !== "stale")) return [];
-  return provider.windows ?? [];
+  // 집계 창은 형제 풀의 합이다 — 풀이 있으면 그 풀들이 공급자를 대변한다.
+  const windows = provider.windows ?? [];
+  const pools = windows.filter((window) => window.isAggregate !== true);
+  return pools.length > 0 ? pools : windows;
 }
 
 /** 고른 공급자마다 한 칸 — 고정 순서를 따른다. 값이 없어도 칸은 선다(켜고 끈 것만 폭을 바꾼다). */

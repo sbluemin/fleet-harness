@@ -52,7 +52,6 @@ describe("fleet gateway set", () => {
     expect(parseProviderPriority(" xai , codex ")).toEqual(["xai", "codex"]);
     expect(parseProviderPriority("none")).toEqual([]);
     expect(parseProviderPriority("xai,xai")).toBe("invalid");
-    expect(parseProviderPriority("cursor")).toBe("invalid");
     expect(parseProviderPriority("anthropic")).toBe("invalid");
     expect(parseProviderPriority("")).toBe("invalid");
   });

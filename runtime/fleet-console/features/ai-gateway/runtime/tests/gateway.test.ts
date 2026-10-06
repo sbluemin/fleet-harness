@@ -359,6 +359,7 @@ function minimalRegistry() {
     providers: {
       antigravity: provider("Antigravity", "gemini-3.7-flash"),
       codex: provider("Codex", "codex-model"),
+      cursor: provider("Cursor", "cursor-model"),
       opencode: provider("OpenCode", "minimax-m3"),
       xai: provider("Grok", "grok-4.6"),
       "muse-code": provider("Muse Code", "muse-spark-1.3"),

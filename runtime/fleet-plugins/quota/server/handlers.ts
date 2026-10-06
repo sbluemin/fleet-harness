@@ -18,6 +18,7 @@ export type GatewayQuotaSummary = QuotaSummaryDto & { readonly revalidating?: bo
 
 interface StoredSettings {
   readonly claudeConnected?: unknown;
+  readonly cursorConnected?: unknown;
 }
 
 async function readStoredSettings(ctx: FleetPluginServerContext): Promise<StoredSettings> {
@@ -28,9 +29,12 @@ async function readStoredSettings(ctx: FleetPluginServerContext): Promise<Stored
 }
 
 // 저장 문서에 남길 키의 화이트리스트. 카드 순서·접힘이 없어진 뒤 남은 옛 키(providerOrder·foldedProviders)는
-// 다음 쓰기에서 함께 걷힌다. claudeConnected는 Gateway(ai-gateway host start.ts)도 직접 읽는다.
+// 다음 쓰기에서 함께 걷힌다. claudeConnected·cursorConnected는 Gateway(ai-gateway host start.ts)도 직접 읽는다.
 function retainedSettings(settings: StoredSettings): Record<string, unknown> {
-  return typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {};
+  return {
+    ...(typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {}),
+    ...(typeof settings.cursorConnected === "boolean" ? { cursorConnected: settings.cursorConnected } : {}),
+  };
 }
 
 function rejectUnlessJsonPost(
@@ -95,7 +99,7 @@ export async function handleConnect(
   if (
     !body
     || Object.keys(body).length !== 2
-    || body.provider !== "claude"
+    || (body.provider !== "claude" && body.provider !== "cursor")
     || typeof body.connected !== "boolean"
   ) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_connect_request" });
@@ -104,7 +108,9 @@ export async function handleConnect(
   await serializeSettings(async () => {
     const next = {
       ...retainedSettings(await readStoredSettings(ctx)),
-      claudeConnected: body.connected,
+      ...(body.provider === "claude"
+        ? { claudeConnected: body.connected }
+        : { cursorConnected: body.connected }),
     };
     await ctx.host.storage.writeJson("quota", "settings", next);
   });

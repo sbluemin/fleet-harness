@@ -14,8 +14,8 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
     .map(model => {
       const constraints = buildGatewayModelConstraints(model);
       const efforts = exposedEffortLadder(model.id, constraints.effortLadder, exposure.effortExposure);
-      const pool = `${model.provider}:shared`;
-      quotaPools[pool] ??= normalizeRoutingQuota(exposure.quota?.[model.provider], now);
+      const pool = `${model.provider}:${constraints.quotaScope ?? "shared"}`;
+      quotaPools[pool] ??= normalizeRoutingQuota(exposure.quota?.[model.provider], constraints.quotaScope, now);
       const rank = preference.indexOf(model.provider);
       // Claude 200k 항목은 카탈로그에 창이 없다 — 다른 모델과 같은 정보를 싣도록 Claude Code 기본 좌표로 채운다.
       const contextWindow = gatewayModelContextWindow(model);

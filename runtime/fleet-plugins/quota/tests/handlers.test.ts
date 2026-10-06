@@ -69,13 +69,6 @@ describe("quota route handlers", () => {
     expect(json).not.toMatch(/accessToken|access_token|account_id|Users|\\\\Users/);
   });
 
-  it("rejects connection to a removed provider", async () => {
-    const test = harness("POST", "/plugins/quota/connect", { provider: "cursor", connected: true });
-    await handleConnect(test.req, test.res, test.ctx, test.service, test.serializeSettings);
-    expect(test.writes).toEqual([{ status: 400, payload: { error: "invalid_connect_request" } }]);
-    expect(test.writeJson).not.toHaveBeenCalled();
-  });
-
   it("guards the settings-writing connect route with method, auth, and media-type gates", async () => {
     const request = { provider: "claude", connected: true };
     const wrongMethod = harness("GET", "/plugins/quota/connect", request);

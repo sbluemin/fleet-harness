@@ -70,13 +70,15 @@ export function gatewayModelContextWindow(model: GatewayModel): number | null {
 export interface AiGatewayStoredSettings {
   readonly version: 1;
   readonly models?: readonly AiGatewayStoredModel[];
+  /** 부재/false는 기본 Off. 저장 정규형은 opt-in인 true만 보존한다. */
+  readonly cursorDiagnosticsEnabled?: boolean;
   /**
    * 마지막으로 끝난 모델 로스터 이행 판({@link ROSTER_SEED_VERSION}). 부재는 이행 전이다. 이행은 이 표식으로 한 번만 돈다.
    */
   readonly rosterSeedVersion?: number;
   /**
    * 부재는 env(`FLEET_GATEWAY_WIRE_LOG`) 폴백, true/false는 호스트가 강제하는 On/Off다.
-   * **false를 정규형에서 지우면 안 된다** — env를 켜 둔 설치에서
+   * 위 `cursorDiagnosticsEnabled`와 달리 **false를 정규형에서 지우면 안 된다** — env를 켜 둔 설치에서
    * 사용자가 UI로 Off한 뒤 재시작하면 부재가 다시 env 상속으로 읽혀 로깅이 되살아나고,
    * 토글이 꺼지지 않는 결함이 된다.
    */
@@ -184,6 +186,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     // 기본 로스터 이행(seedDefaultModels)의 대상이 아니다.
     ...(Array.isArray(value.models) ? { models } : {}),
     ...(typeof value.rosterSeedVersion === "number" && Number.isInteger(value.rosterSeedVersion) && value.rosterSeedVersion > 0 ? { rosterSeedVersion: value.rosterSeedVersion } : {}),
+    ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
     // 라우팅 모델은 카탈로그가 아는 id(정준 실행 id·scoped·레거시 `claude-gateway--` 표기)만 남긴다. 켰는지는
     // 실행 시점에 로스터가 정한다 — 끈 모델의 저장값을 지우면 다시 켰을 때 사용자의 선택이 돌아오지 않는다.

@@ -287,6 +287,9 @@
   color: var(--provider-codex);
 }
 
+.quota-provider__mark--cursor {
+  color: var(--provider-cursor);
+}
 
 .quota-provider__mark--opencode {
   color: var(--provider-opencode);
