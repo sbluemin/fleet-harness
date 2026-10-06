@@ -31,7 +31,7 @@ Instrument before the first prompt. Collect all layers that exist for the provid
 | Provider diagnostics | e.g. Cursor bridge/redirect events | Did a live connection park, attach, mismatch, expire, or replay? |
 | Host lifecycle | Operation state, transcript timestamps, processes | Did the agent finish, retry an auxiliary turn, or remain resident? |
 
-Collect a layer only when it exists for the chosen execution surface. The standalone runner creates no caller transcript, host lifecycle, or auxiliary turns; do not count those as zero or infer them from runner metrics. Do not infer one layer from another. A provider rejection is not a caller execution. A `function_call` in replay history is not a new tool call. A session registry state is not necessarily a terminal process state.
+Collect a layer only when it exists for the chosen execution surface. The standalone runner creates no caller transcript, host lifecycle, or auxiliary turns; do not count those as zero or infer them from runner metrics. Do not infer one layer from another. A provider rejection is not a caller execution. An adapter-layer rejection of a native tool is not written into the caller transcript. Do not treat the model's own account of what ran as evidence; cross-check it against the adapter and gateway records. A `function_call` in replay history is not a new tool call. A session registry state is not necessarily a terminal process state.
 
 ### Classify every request before counting it
 
