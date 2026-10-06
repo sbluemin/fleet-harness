@@ -1278,6 +1278,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
     missionPatch: (objectiveId, missionId, input, patchOptions) => {
       let assigned = false;
+      let reopened = false;
       const patched = update(objectiveId, (stored) => {
       const { at, mission } = missionOf(stored, missionId);
       const known = new Set(stored.missions.map((candidate) => candidate.id));
@@ -1297,12 +1298,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(input.member !== undefined ? { member: input.member ?? undefined, memberBy: patchOptions?.by } : {}),
       };
       if (memberChanged && input.member) assigned = true;
+      // 다시 연 배정 임무는 침묵이 새로 시작된다. 마지막 대상이 끝나 감시가 멈춘 뒤에도 깨움을 다시 건다.
+      if (input.done === false && mission.done && (input.member !== undefined ? input.member : mission.member)) reopened = true;
       const next: StoredMission = !memberChanged ? drafted : input.member ? { ...withoutAssignment(drafted), assignmentTs: now() } : withoutAssignment(drafted);
       const replaced = replaceMission(stored, at, next);
       // 끝난 임무를 되돌리면 새 일이다 — 충족 판단을 거둔다.
       return input.done === false && mission.done ? withoutMet(action(replaced, patchOptions?.by ?? "commander", "mission-reopened", { targetId: missionId })) : replaced;
       });
-      if (assigned) assignmentNoted(objectiveId);
+      if (assigned || reopened) assignmentNoted(objectiveId);
       return patched;
     },
 

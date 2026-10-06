@@ -158,7 +158,8 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
       ...(outcome ? { output: { outcome } } : {}),
     } : null;
   };
-  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => hostChat.get(id) ?? null, observe: observeSession });
+  let watchQuiet: () => void = () => {};
+  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => hostChat.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchQuiet() } : {}) });
   let routeBody: unknown;
   let authorized = true;
   let routeResult: { status: number; value: unknown } = { status: 0, value: null };
@@ -230,6 +231,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
     },
   } as unknown as FleetPluginServerContext;
   const launch = createLaunchService(ctx, store, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
+  watchQuiet = () => launch.watchReportQuiet();
   grouped.push((event) => launch.operationGrouped(event));
   // 결정 요청은 기본으로 기다리지 않는다 — 기다림은 그 계약을 다루는 테스트가 따로 켠다.
   const tools = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 0 });
@@ -1980,15 +1982,15 @@ describe("Objectives contract", () => {
     const commander = objective.id;
     expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "worker" }] }, commander)).isError).toBe(false);
     const before = new Set(store.find(objective.id)!.missions.map((mission) => mission.id));
-    expect((await call("add_mission", { objectiveId: objective.id, text: "stay quiet", member: "worker" }, commander)).isError).toBe(false);
-    const mission = store.find(objective.id)!.missions.find((entry) => !before.has(entry.id));
-    expect(mission?.assignmentTs).toEqual(expect.any(Number));
-    expect(mission?.member).toEqual(expect.any(String));
     activity.set(commander, "idle");
     const quietSends = () => sent.filter((entry) => entry.text.includes("No report for") || entry.text.includes("배정 후 보고 없이"));
     const steerSends = () => sent.filter((entry) => entry.text.includes("read the board again") || entry.text.includes("보드를 다시 읽고"));
     vi.useFakeTimers();
     try {
+      expect((await call("add_mission", { objectiveId: objective.id, text: "stay quiet", member: "worker" }, commander)).isError).toBe(false);
+      const mission = store.find(objective.id)!.missions.find((entry) => !before.has(entry.id));
+      expect(mission?.assignmentTs).toEqual(expect.any(Number));
+      expect(mission?.member).toEqual(expect.any(String));
       launch.watchReportQuiet();
       advanceClock(reportQuietMs + 5_000);
       await vi.advanceTimersByTimeAsync(1_000);
@@ -2011,6 +2013,14 @@ describe("Objectives contract", () => {
       advanceClock(reportQuietMs);
       await vi.advanceTimersByTimeAsync(5_000);
       expect(quietSends()).toHaveLength(1);
+      store.missionPatch(objective.id, mission!.id, { done: true });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(quietSends()).toHaveLength(1);
+      store.missionPatch(objective.id, mission!.id, { done: false });
+      advanceClock(reportQuietMs + 5_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(quietSends()).toHaveLength(2);
+      expect(steerSends()).toHaveLength(0);
     } finally {
       launch.dispose();
       vi.useRealTimers();

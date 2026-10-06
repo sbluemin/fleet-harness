@@ -1380,17 +1380,21 @@ function quietMissionLabel(objective: Objective, mission: ObjectiveMission, read
 function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, switcher, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
   const launchRows = useLaunchRows();
   const [quietNow, setQuietNow] = useState(() => Date.now());
+  // 문장은 경과 분이다. 임계에 닿은 뒤에도 1분마다 다시 읽어, 뱃지가 처음 분수에 멈물지 않게 한다.
   useEffect(() => {
     if (!objectiveUnderway(objective) || objective.decisionRequest || objective.awaitingReview) return;
     let next: number | null = null;
+    let showing = false;
     for (const mission of objective.missions) {
       if (mission.done || mission.member === null || mission.assignmentTs == null || !missionReady(objective.missions, mission)) continue;
       const due = quietSince(mission.assignmentTs, objective.boardUpdatedAt ?? mission.assignmentTs) + DISPLAY_QUIET_MS;
-      if (due <= quietNow) continue;
+      if (due <= quietNow) { showing = true; continue; }
       if (next === null || due < next) next = due;
     }
-    if (next === null) return;
-    const timer = setTimeout(() => setQuietNow(Date.now()), Math.max(0, next - Date.now()));
+    const untilShown = next === null ? null : Math.max(0, next - Date.now());
+    const wait = untilShown === null ? (showing ? 60_000 : null) : showing ? Math.min(untilShown, 60_000) : untilShown;
+    if (wait === null) return;
+    const timer = setTimeout(() => setQuietNow(Date.now()), wait);
     return () => clearTimeout(timer);
   }, [objective, quietNow]);
   const mode = commanderMode(objective.missions);
