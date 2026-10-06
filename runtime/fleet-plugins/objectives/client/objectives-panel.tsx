@@ -713,8 +713,9 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
       const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
-      const failed = member.outcome === "failed";
-      const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
+      const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
+      const failed = member.outcome === "failed" && !isWorkingOrAwaiting;
+      const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : isWorkingOrAwaiting ? (state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.working")) : t("objectives.members.idle");
       const allowed = memberSubagents(member);
       return (
         <div key={member.id} className="objectives-member-slot">
@@ -1922,7 +1923,14 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       ) : null}
   </>);
   // 「메시지」의 받는 이 — 지휘관(자기 활동)과 세션이 떠 있는 구성원. 상태 낱말은 명단 줄과 같은 말을 쓴다.
-  const memberStateWord = (state: string, outcome?: string) => outcome === "failed" ? t("objectives.members.failed") : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
+  const memberStateWord = (state: string, outcome?: string) => {
+    const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
+    if (outcome === "failed" && !isWorkingOrAwaiting) return t("objectives.members.failed");
+    if (state === "ended") return t("objectives.members.dormant");
+    if (state === "running" || state === "background") return t("objectives.members.working");
+    if (state === "awaiting") return t("objectives.awaiting.word");
+    return t("objectives.members.idle");
+  };
   const recipients: MessageRecipient[] = [
     { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark />, state: operationOwnState(objective.id), outcome: objective.commander.outcome },
     ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, state: operationState(member.id), outcome: member.outcome })),

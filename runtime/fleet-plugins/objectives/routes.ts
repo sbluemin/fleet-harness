@@ -123,6 +123,9 @@ export default definePlugin({
     // 구성원의 모델 예약 — 「다음 재개」 시절의 옛 기록은 적용으로 거두고, 이번 턴 뒤를 기다리던 예약은 감시를 다시 건다.
     try { launch.resumeReservations(); }
     catch (error) { console.warn(`[objectives] member reservation resume skipped: ${error instanceof Error ? error.message : String(error)}`); }
+    // 이미 live 인 지휘관·구성원 — 이 다음에 실패 판정이 바뀌면 열린 보드가 upsert 로 받는다. 활동 사건 채널은 없다.
+    try { launch.watchLiveOutcomes(); }
+    catch (error) { console.warn(`[objectives] outcome watch skipped: ${error instanceof Error ? error.message : String(error)}`); }
 
     const routes = createObjectiveRoutes(ctx, store, launch, prStatus);
     for (const route of routes) {

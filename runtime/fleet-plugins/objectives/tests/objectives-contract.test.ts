@@ -1843,6 +1843,65 @@ describe("Objectives contract", () => {
     launch.dispose();
   });
 
+  it("publishes a person-view upsert only when a watched live outcome changes between failed and not", async () => {
+    const { store, launch, events, activity, outcomes, add } = harness();
+    add("live-outcome", { payload: { session: { harness: "claude-code", sessionName: "cmdr" } } });
+    store.adopt("live-outcome", { note: "watch the open board" });
+    const memberId = store.memberAdd("live-outcome", { role: "worker" }, "human").members[0]!.id;
+    activity.set("live-outcome", "idle");
+    activity.set(memberId, "idle");
+    const upserts = () => events.filter((event) => event.op === "upsert" && event.objectiveId === "live-outcome" && event.objective);
+    const memberOutcome = () => upserts().at(-1)?.objective?.members.find((member) => member.id === memberId)?.outcome;
+    const commanderOutcome = () => upserts().at(-1)?.objective?.commander.outcome;
+    vi.useFakeTimers();
+    try {
+      const enrolled = upserts().length;
+      launch.watchLiveOutcomes();
+      expect(upserts()).toHaveLength(enrolled);
+      activity.set(memberId, "running");
+      await vi.advanceTimersByTimeAsync(1_000);
+      activity.set(memberId, "background");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(upserts()).toHaveLength(enrolled);
+
+      activity.set(memberId, "idle");
+      outcomes.set(memberId, "failed");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(upserts()).toHaveLength(enrolled + 1);
+      expect(memberOutcome()).toBe("failed");
+      expect(commanderOutcome()).toBeUndefined();
+
+      outcomes.delete(memberId);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(upserts()).toHaveLength(enrolled + 2);
+      expect(memberOutcome()).toBeUndefined();
+
+      activity.set(memberId, "running");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(upserts()).toHaveLength(enrolled + 2);
+
+      outcomes.set("live-outcome", "failed");
+      activity.set("live-outcome", "idle");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(commanderOutcome()).toBe("failed");
+      outcomes.delete("live-outcome");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(commanderOutcome()).toBeUndefined();
+
+      await launch.memberRemoved("live-outcome", memberId);
+      const removed = upserts().length;
+      outcomes.set(memberId, "failed");
+      activity.set(memberId, "idle");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(upserts()).toHaveLength(removed);
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+    } finally {
+      launch.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+      vi.useRealTimers();
+    }
+  });
+
   it("registers even when a registered Theater folder is gone", () => {
     // 등록된 Theater 폴더는 사라질 수 있다(옮김·외장 디스크). 등록이 그 Theater 를 읽다 던지면 Console 전체가 뜨지 않는다.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-register-"));

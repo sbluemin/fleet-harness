@@ -915,7 +915,7 @@ export function ActionBand(props: ActionBandProps) {
                   onKeyDown={(event) => onRecipientKey(event, candidate.id)}>
                   {candidate.mark}
                   <span className="objectives-recip-role">{candidate.role}</span>
-                  <span className={`objectives-recip-state is-${candidate.state}${candidate.outcome === "failed" ? " is-failed" : ""}`}>{props.stateWord(candidate.state, candidate.outcome)}</span>
+                  <span className={`objectives-recip-state is-${candidate.state}${candidate.outcome === "failed" && candidate.state !== "running" && candidate.state !== "background" && candidate.state !== "awaiting" ? " is-failed" : ""}`}>{props.stateWord(candidate.state, candidate.outcome)}</span>
                 </button>
               );
             })}
