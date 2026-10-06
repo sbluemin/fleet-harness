@@ -46,8 +46,9 @@ export function commodoreTrail(t: T, theaterId: string, objectives: readonly Obj
   const groups: CommodoreTrailGroup[] = [];
   for (const objective of objectives) {
     const entries: CommodoreTrailEntry[] = [];
-    const added = objective.addedBy && "kind" in objective.addedBy && objective.addedBy.theaterId === theaterId;
-    if (added) entries.push({ key: `${objective.id}:added`, at: objective.createdAt, kind: "act", word: t("objectives.prov.addedByCommodore") });
+    // 새 목표에는 행위 기록이 없다 — 추가의 근거는 addedBy 가 싣는다.
+    const added = objective.addedBy && "kind" in objective.addedBy && objective.addedBy.theaterId === theaterId ? objective.addedBy : null;
+    if (added) entries.push({ key: `${objective.id}:added`, at: objective.createdAt, kind: "act", word: t("objectives.prov.addedByCommodore"), ...(added.why ? { why: added.why } : {}) });
     for (const action of objective.actions ?? []) {
       const by = commodoreActor(action.by, theaterId);
       if (!by) continue;

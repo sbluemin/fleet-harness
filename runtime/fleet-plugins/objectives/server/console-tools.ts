@@ -274,7 +274,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           // 달성 기준 문장은 검증된 순서 그대로 기본 요구사항으로 함께 저장된다 — 한 건이라도 맞지 않으면 위 스키마에서
           // 거절되므로 목표가 기준 없이 먼저 생기지 않는다. AI 생성 표시는 목표의 addedBy 로 남는다.
           ...(add.criteria?.length ? { criteria: [...add.criteria] } : {}),
-          ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
+          ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: { ...caller, ...(args.why ? { why: args.why } : {}) } } : {}),
         }, { language: language(caller), ...(actorOf(caller, args.why) ? { actor: actorOf(caller, args.why)! } : {}) });
         return text({ ok: true, objectiveId: objective.id });
       } catch (error) {
