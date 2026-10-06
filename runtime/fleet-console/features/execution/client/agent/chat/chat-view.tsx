@@ -23,6 +23,7 @@ import {
   openAgentChatJobs,
   segmentAgentChatLedger,
   splitAgentChatTurn,
+  isPendingCompaction,
   type AgentChatAsk,
   type AgentChatAttachment,
   type AgentChatChange,
@@ -1178,6 +1179,10 @@ function ChatCommandRow({
     : Math.max(0, Math.min(100, Math.round(((compact.before - compact.after) / Math.max(1, compact.before)) * 100)));
   const gauge = running || reclaimed !== null;
   const coordinateChange = command.coordinates;
+  // 압축이 실제로 경계를 그었다 — 이 줄 위의 대화는 이제 요약으로만 자식에게 남는다. 사람이 친
+  // `/compact`든 자식이 스스로 한 압축이든 같은 사실이라 같은 안내를 단다. 숫자 없는 결말은
+  // 경계를 그었다고 말할 근거가 없으므로 달지 않는다.
+  const boundary = !running && !failed && compact !== undefined && !coordinateChange;
   const detail = coordinateChange
     ? `${describeCoordinatePair(coordinateChange.from, t)} → ${describeCoordinatePair(coordinateChange.to, t)}`
     : running
@@ -1192,14 +1197,22 @@ function ChatCommandRow({
           after: formatCompactTokens(compact.after),
           percent: String(reclaimed),
         })
-      : command.summary ?? (failed ? t("terminal.chat.commandFailed") : t("terminal.chat.commandDone"));
+      : command.summary ?? (failed
+        ? t(command.trigger ? "terminal.chat.compactFailed" : "terminal.chat.commandFailed")
+        : t("terminal.chat.commandDone"));
   return (
     <p
-      className={`agent-chat-command-row${running ? " is-running" : ""}${failed ? " is-failed" : ""}`}
+      className={`agent-chat-command-row${running ? " is-running" : ""}${failed ? " is-failed" : ""}${boundary ? " is-boundary" : ""}`}
       {...(running ? { role: "status" } : {})}
     >
       <span className="agent-chat-command-dot" aria-hidden="true" />
-      <span className="agent-chat-command-name">/{command.name}</span>
+      {/* 자식이 스스로 한 압축은 사람이 낸 명령이 아니다 — `/compact`로 적으면 사용자가 그것을
+          자기가 보낸 명령으로 읽는다. 자동·수동은 자식이 말한 trigger가 가른다. */}
+      <span className="agent-chat-command-name">
+        {command.trigger === undefined
+          ? `/${command.name}`
+          : t(command.trigger === "manual" ? "terminal.chat.compactManual" : "terminal.chat.compactAuto")}
+      </span>
       <span className="agent-chat-command-detail">{detail}</span>
       {gauge ? (
         <span
@@ -1219,7 +1232,26 @@ function ChatCommandRow({
       {compact?.durationMs !== undefined ? (
         <span className="agent-chat-command-elapsed">{(compact.durationMs / 1000).toFixed(1)}s</span>
       ) : null}
+      {boundary ? <span className="agent-chat-command-note">{t("terminal.chat.compactBoundaryNote")}</span> : null}
     </p>
+  );
+}
+
+/** 턴 안에서 자식이 스스로 한 압축 한 자리를 정비 줄과 같은 문법으로 그린다. */
+function ChatCompactionRow({ item, language }: { readonly item: AgentChatTurnItem; readonly language: "en" | "ko" }) {
+  const pending = isPendingCompaction(item);
+  return (
+    <ChatCommandRow
+      command={{
+        name: "compact",
+        trigger: item.compact?.trigger ?? "auto",
+        ...(item.compact === undefined ? {} : { compact: item.compact }),
+        ...(item.failed && item.text !== undefined ? { summary: item.text } : {}),
+        ...(pending ? { phase: "compacting" as const } : {}),
+      }}
+      state={pending ? "working" : item.failed ? "error" : "done"}
+      language={language}
+    />
   );
 }
 
@@ -1314,7 +1346,17 @@ export const ChatTurn = React.memo(function ChatTurn({
     : undefined;
   // 완료된 생각 흔적은 원장에 보이지 않으므로, 그것만 남은 턴에 빈 작업 접힘과 Answer 이음매를
   // 세우지 않는다. 라이브 "생각 중…"은 working 경로가 별도로 그린다.
-  const hasSettledWork = !working && (view.ledger.some((item) => item.type !== "thought") || view.changes.length > 0);
+  // 압축 자리는 일이 아니라 문맥의 사건이다 — 그것만 남은 턴에 작업 접힘을 세우지 않고, 아래의
+  // 바깥 줄 하나로 말한다.
+  const hasSettledWork = !working && (view.ledger.some((item) => item.type !== "thought" && item.type !== "compact") || view.changes.length > 0);
+  const foldOpened = workOpened ?? turn.items.some((item) => item.id !== undefined && openedTools.has(item.id));
+  // 끝난 턴의 압축은 접힘 밖, 접힘 뒤·Answer 앞에 선다. 접힘이 원장을 삼키면 경계도 함께 사라지고,
+  // 그것이 이 줄이 고치는 증상이다. 이 자리는 정확한 위치가 아니라 보수적인 위치다 — 압축 뒤에
+  // 한 일까지 "요약된 쪽"으로 읽히지, 압축 전의 일이 원문으로 남은 것처럼 읽히지 않는다. 원장이
+  // 펼쳐져 있으면(접힘을 열었거나 빠른 Shell이 원장을 붙잡고 있을 때) 정확한 자리의 줄이 이미
+  // 보이므로 같은 사건을 두 번 세우지 않는다.
+  const compactions = working ? [] : view.ledger.filter((item) => item.type === "compact");
+  const ledgerShown = holdingContinuity || (hasSettledWork && (stillRunning > 0 || foldOpened));
   // 정비 명령은 대화가 아니다. 말풍선도 턴 노드도 경과 시계도 세우지 않는다 — 그 문법 전체가
   // "모델이 생각하고 있다"를 말하는데, 이 동작들은 세션 상태를 즉시 바꾸고 둘은 모델을 아예
   // 부르지 않는다. 한 줄이 지시와 진행과 결말을 함께 진다.
@@ -1384,6 +1426,8 @@ export const ChatTurn = React.memo(function ChatTurn({
                   pending={view.streamingText === null
                     && continuityItem === null
                     && !view.ledger.some((item) => item.state === "running")
+                    // 압축하는 동안은 모델이 생각하는 것이 아니다 — 압축 줄이 스스로 진행을 말한다.
+                    && !view.ledger.some(isPendingCompaction)
                     // 답을 기다리는 동안에는 아무도 생각하지 않는다 — 카드 아래에서 링이 계속 돌면
                     // 화면이 두 사실을 동시에 말하고, 사용자는 자기 차례인지 알 수 없다.
                     && !view.awaiting}
@@ -1414,13 +1458,16 @@ export const ChatTurn = React.memo(function ChatTurn({
                 changes={view.changes}
                 language={language}
                 leadsToAnswer={view.answer !== null}
-                opened={workOpened ?? turn.items.some((item) => item.id !== undefined && openedTools.has(item.id))}
+                opened={foldOpened}
                 onToggleOpen={setWorkOpened}
               >
                 <ChangeStrip changes={view.changes} language={language} opened={changesOpened} onToggle={toggleChanges} targets={changeTargets} onOpenChange={openChange} />
                 <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} onAnswer={onAnswer} openedTools={openedTools} onToggleTool={onToggleTool} />
               </WorkFold>
             ) : null}
+            {compactions.length > 0 && !ledgerShown
+              ? compactions.map((item, index) => <ChatCompactionRow key={`compaction-${index}`} item={item} language={language} />)
+              : null}
             {/* 중지된 턴에서 흐르던 글도 여기 선다 — Answer가 아니므로 그 이름표를 달지 않고,
                 접힘에 넣지도 않는다. 방금 멈춘 사람이 가장 먼저 보려는 것이 그 글이다. */}
             {view.streamingText !== null ? (
@@ -1697,6 +1744,9 @@ function Ledger({
               }
               if (part.item.type === "received") {
                 return <ReceivedLine key={at} item={part.item} language={language} />;
+              }
+              if (part.item.type === "compact") {
+                return <ChatCompactionRow key={at} item={part.item} language={language} />;
               }
               return part.item.type === "ask" && part.item.ask
                 ? <AskCard key={`ask-${part.item.ask.id}`} ask={part.item.ask} language={language} onAnswer={onAnswer} />

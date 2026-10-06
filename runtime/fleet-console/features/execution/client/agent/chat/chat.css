@@ -228,6 +228,34 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 압축이 그은 경계. 위아래 헤어라인이 "여기서 대화가 갈렸다"를 말하고, 안내 한 줄이 그 뜻을
+   말한다 — 이 줄 위의 대화는 요약으로만 남았다. 좁은 폭에서는 게이지와 시간이 다음 줄로 접히고
+   안내는 늘 자기 줄을 지킨다. 선은 테마 토큰이라 밝은 테마에서도 보인다. */
+.agent-chat-command-row.is-boundary {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--hairline-strong);
+  border-bottom: 1px solid var(--hairline-strong);
+}
+
+/* 턴 안에 선 압축 줄은 원장의 폭을 따른다 — 로그 컬럼을 세우는 auto 여백을 그대로 쓰면 원장
+   안에서는 줄이 가운데로 몰린다(실측). */
+.agent-chat-turn-body .agent-chat-command-row {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.agent-chat-command-note {
+  flex-basis: 100%;
+  /* 점과 간격만큼 들여 이름 아래에 맞춘다. */
+  padding-left: calc(5px + var(--space-2));
+  font-family: var(--font-ui);
+  color: var(--text-tertiary);
+}
+
 /* 디스패치 — Quick Launch에서 온 사용자 지시. 메타는 버블 밖 위, 버블 안에는 지시 본문만.
    우하단 radius를 조여 발화 원점(하단 Quick Launch)을 가리킨다. */
 .agent-chat-dispatch {
