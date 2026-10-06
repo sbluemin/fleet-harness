@@ -8,13 +8,14 @@ import { fileURLToPath } from "node:url";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 import {
   assertTrustedConsoleLock,
-  captureProvenProcessStart,
   consoleLockInstanceState,
   createConsoleHealthClient,
   createOwnedProcessRegistry,
   createProcessTableSnapshot,
+  deliverConsoleStop,
   killSameGroupDescendants,
   startConsoleReaper,
+  startProvenStartCapture,
   type ConsoleReaperLink,
   isPidAlive,
   observeConsoleInstance,
@@ -37,6 +38,7 @@ import {
   CONSOLE_START_TIMEOUT_MS,
   CONSOLE_STOP_DEADLINE_MS,
   EXTERNAL_ESCALATION_MS,
+  HEALTH_PROBE_TIMEOUT_MS,
   OWNED_GROUP_TERM_GRACE_MS,
   PRELOCK_CHILD_GRACE_MS,
   describeConsoleLockSlotQuiescenceCheck,
@@ -47,6 +49,7 @@ import {
   describeUnprovenConsoleLockOwner,
   type ConsoleExitOutcome,
   type ConsoleLockOwnerRecovery,
+  type ConsoleStopReason,
   type UnprovenConsoleLockOwnerState,
 } from "@fleet-console/protocol/lifecycle";
 
@@ -90,6 +93,11 @@ export interface ConsoleDaemonLifecycleDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly execPath?: string;
   readonly serverModulePath?: string;
+  /**
+   * The platform the stop path is chosen for. Defaults to the host platform; a test proves the Windows-only route on
+   * another host by injecting `win32`. The stop decision itself stays in the lifecycle contract's single rule.
+   */
+  readonly platform?: NodeJS.Platform;
   /**
    * 게시된 ./cli 소비자가 쓰던 legacy seam. 반환값이 없으므로 소유 프로세스 정리는 보장하지 못하지만,
    * 기존 injector가 깨지지 않도록 유지한다. 새 테스트와 런타임 구현은 spawnDaemon을 사용한다.
@@ -296,6 +304,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const startupTimeoutMs = Math.max(0, deps.startupTimeoutMs ?? CONSOLE_START_TIMEOUT_MS);
   const pollIntervalMs = Math.max(1, deps.pollIntervalMs ?? CONSOLE_START_POLL_MS);
   const report = deps.report ?? reportToStderr;
+  const platform = deps.platform ?? process.platform;
   const paths = createConsolePaths({ env });
   const lock = createConsoleLock({ report });
   const health: ConsoleLockHealthProbe = deps.health ?? createConsoleHealthClient();
@@ -324,6 +333,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       onRemoved: (pgid) => reaper?.removed(pgid),
     });
     let exitOutcome: { readonly outcome: ConsoleExitOutcome; readonly killed: number } | null = null;
+    // Why this instance's shutdown runs: the first accepted stop request names it, and the exit record keeps it, so a
+    // token-authenticated stop request reads apart from an OS signal.
+    let stopReason: ConsoleStopReason | null = null;
     const lifecycle = createConsoleServeLifecycle({
       // Only the lock owner starts a reaper, before any owned child exists (a lock loser starts nothing).
       onLockAcquired: (instance) => {
@@ -338,7 +350,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       // From the first stop request until the process exits, whatever is still running: a stalled start, a cleanup stuck
       // with the lock, or a child that outlives the released lock. The owned process groups are ended first (SIGKILL on
       // POSIX, TerminateJobObject on Windows); a lock left behind is reclaimed by the next Console once this pid is ESRCH.
-      onStopRequested: () => {
+      onStopRequested: (reason) => {
+        stopReason ??= reason;
+        console.info(`[fleet-console] Stop requested (${reason})`);
         // 먼저 잔여 종료 관찰만 켠다. 살아 있는 리더와 플러그인 자체 cleanup 순서는 바꾸지 않는다.
         ownedProcesses.beginStop(() => false, OWNED_GROUP_TERM_GRACE_MS, {
           onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error),
@@ -406,7 +420,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (!instance) return;
       const ended = exitOutcome ?? { outcome: code === 0 ? "clean" : "failed", killed: 0 };
       try {
-        writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now() });
+        writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now(), ...(stopReason === null ? {} : { stopReason }) });
       } catch (error) { recordFailure("exit_record_failed", error); }
     });
     const server = createConsoleServer({ lifecycle, ownedProcesses });
@@ -456,30 +470,50 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // Console에는 신호를 다시 보내지 않고 같은 예산 안에서 끝나기를 기다린다.
     const requester = observed.state === "ready";
     if (requester) assertCliCanControlDaemon(payload);
-    const provenStart = requester ? await captureProvenProcessStart(payload.pid, identityProbedAt, env) : null;
-    const ended = await runStopLadder({
-      request: requester ? "signal" : "none",
-      isAlive: () => isPidAlive(payload.pid),
-      isReleased: () => isLockReleasedBy(payload),
-      reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart, observe, env }),
-      signal: (signal) => signalLockProcess(payload.pid, signal),
-      onWaiting: () => report("Waiting for Fleet Console to finish shutting down..."),
-      now,
-      sleep,
-    });
-    const instance = { pid: payload.pid, lockStartedAt: payload.startedAt };
-    if (ended === "held") throw lockOwnerUnprovenError(payload, "stopping");
-    if (ended === "unproven") throw lockOwnerUnprovenError(payload, "unverified");
-    if (ended === "released-alive") throw lockReleasedOwnerAliveError(payload);
-    if (ended === "kill-failed") throw new Error(describeConsoleOwnerOutlivedKill(paths.lockFile, payload.pid, CLI_LOCK_OWNER_RECOVERY.restart));
-    // 끝난 Console이 남긴 lock은 그 pid가 ESRCH인 지금 회수 프로토콜로 지운다.
-    await removeLockHeldBy(payload);
-    // SIGKILL이 Console 자신의 종료 기록(예: deadline)과 겹치면 그 기록이 실제 결말이다. 우선순위상 forced-external이
-    // 그것을 덮지 않으므로, 쓰지 못했을 때는 남아 있는 기록으로 보고한다.
-    if (ended === "forced" && recordForcedExit(instance)) return { outcome: "forced-external", killed: 0 };
-    // 기록이 없으면 계약을 아는 Console은 밖에서 끝난 것이고, 계약 이전 Console이나 Windows에서 이 stop이 끝낸 Console은
-    // 탓할 근거가 없어 지금까지처럼 정지로 본다(readConsoleEnding).
-    return readConsoleEnding(paths.lockFile, instance, { lifecycleWire: observed.probe?.health?.lifecycleWire, terminatedByReader: requester });
+    // The start-time proof starts now but is awaited only at escalation, so a slow reader (Windows PowerShell) never
+    // delays the request; it is aborted once the ladder ends either way.
+    const capture = requester ? startProvenStartCapture(payload.pid, identityProbedAt, env) : null;
+    // On Windows a Console that advertises the stop request route is asked through it, so its cleanup runs and its
+    // exit record says clean; anywhere else this stop signals as before. The ladder starts after the POST ends, so its
+    // clock never includes the request.
+    try {
+      const request = requester
+        ? await deliverConsoleStop({
+          lock: payload,
+          stopRequest: observed.probe?.stopRequest,
+          timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
+          platform,
+          observe: () => observe(payload).then((observation) => observation.state),
+        })
+        : "none";
+      if (request === "delivered") report("Stopping Fleet Console by request...");
+      const ended = await runStopLadder({
+        request,
+        isAlive: () => isPidAlive(payload.pid),
+        isReleased: () => isLockReleasedBy(payload),
+        reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart: capture?.provenStart ?? null, observe, env }),
+        signal: (signal) => signalLockProcess(payload.pid, signal),
+        onWaiting: () => report("Waiting for Fleet Console to finish shutting down..."),
+        now,
+        sleep,
+      });
+      const instance = { pid: payload.pid, lockStartedAt: payload.startedAt };
+      if (ended === "held") throw lockOwnerUnprovenError(payload, "stopping");
+      if (ended === "unproven") throw lockOwnerUnprovenError(payload, "unverified");
+      if (ended === "released-alive") throw lockReleasedOwnerAliveError(payload);
+      if (ended === "kill-failed") throw new Error(describeConsoleOwnerOutlivedKill(paths.lockFile, payload.pid, CLI_LOCK_OWNER_RECOVERY.restart));
+      // 끝난 Console이 남긴 lock은 그 pid가 ESRCH인 지금 회수 프로토콜로 지운다.
+      await removeLockHeldBy(payload);
+      // SIGKILL이 Console 자신의 종료 기록(예: deadline)과 겹치면 그 기록이 실제 결말이다. 우선순위상 forced-external이
+      // 그것을 덮지 않으므로, 쓰지 못했을 때는 남아 있는 기록으로 보고한다.
+      if (ended === "forced" && recordForcedExit(instance)) return { outcome: "forced-external", killed: 0 };
+      // 기록이 없으면 계약을 아는 Console은 밖에서 끝난 것이고, 계약 이전 Console이나 Windows에서 이 stop이 신호로 끝낸
+      // Console은 탓할 근거가 없어 지금까지처럼 정지로 본다(readConsoleEnding). 요청으로 정지한 Console은 신호를 보내지
+      // 않았으므로 terminatedByReader가 아니다.
+      return readConsoleEnding(paths.lockFile, instance, { lifecycleWire: observed.probe?.health?.lifecycleWire, terminatedByReader: request === "signal" });
+    } finally {
+      capture?.abort();
+    }
   }
 
   function observe(payload: ConsoleLockPayload): Promise<ConsoleInstanceObservation<ConsoleLockPayload>> {
@@ -780,8 +814,10 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (childLockState(pid) === "held") {
         // A child that took the lock may be writing durable state: it gets the stop ladder and its own deadline, never a
         // SIGKILL right after SIGTERM. The unreaped child handle proves its identity, so the pid cannot have been reused.
+        // A child that advertises the stop request route — its starting 503 answer advertises too — is asked through
+        // it, so the same single shutdown runs and its exit record says clean.
         const ended = await runStopLadder({
-          request: "signal",
+          request: await ownedChildStopRequest(pid),
           isAlive: () => !observation.exited,
           isReleased: () => childLockState(pid) === "released",
           reprove: async () => !observation.exited,
@@ -824,6 +860,25 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   /** Whether the lock names `pid` (a child's token is not known). A lock that cannot be judged is `unknown`. */
   function childLockState(pid: number): ConsoleLockInstanceState {
     return consoleLockInstanceState(paths.lockFile, { pid });
+  }
+
+  /**
+   * How to stop an owned child that holds the lock: the lock's token lets this parent ask. The advertisement is read
+   * lazily inside the stop decision, so off Windows no probe runs at all; the decision stays the contract's single
+   * rule, and without a readable token this stop signals as before.
+   */
+  async function ownedChildStopRequest(pid: number): Promise<"signal" | "delivered"> {
+    const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
+    if (observed.kind !== "owner" || observed.instance.pid !== pid) return "signal";
+    const target = observed.instance.payload;
+    if (typeof target.token !== "string" || target.token.length === 0) return "signal";
+    return deliverConsoleStop({
+      lock: target,
+      stopRequest: () => health.probe(target, { timeoutMs: HEALTH_PROBE_TIMEOUT_MS }).then((probed) => probed.stopRequest),
+      timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
+      platform,
+      observe: () => observe(target).then((observation) => observation.state),
+    });
   }
 
   /**
@@ -954,7 +1009,7 @@ function describeUncleanStop(result: ConsoleStopResult): string | null {
     case "external":
       return `Fleet Console ended without recording how: it was killed from outside or stopped responding. ${LEFTOVER_ADVICE}`;
     case "forced-external":
-      return `Fleet Console was force-stopped: it did not finish shutting down within ${Math.round(EXTERNAL_ESCALATION_MS / 1_000)}s of SIGTERM. ${LEFTOVER_ADVICE}`;
+      return `Fleet Console was force-stopped: it did not finish shutting down within ${Math.round(EXTERNAL_ESCALATION_MS / 1_000)}s of the stop request. ${LEFTOVER_ADVICE}`;
   }
 }
 

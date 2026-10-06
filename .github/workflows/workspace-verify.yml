@@ -84,3 +84,9 @@ jobs:
         run: |
           $env:FLEET_BUILT_SMOKE = "1"
           pnpm --filter @dotobokuri/fleet-console exec vitest run tests/built/fleet-built-smoke.test.ts tests/console-lifecycle.integration.test.ts
+      # Desktop Quit takes the same stop request route through SidecarSupervisor: this file holds only the Windows
+      # Quit case against a real built Console (no Electron). No -t filter, same reason as above. No secrets.
+      - name: Test Windows Desktop Quit lifecycle
+        shell: pwsh
+        run: |
+          pnpm --filter @dotobokuri/fleet-desktop exec vitest run tests/sidecar-supervisor-windows.test.ts

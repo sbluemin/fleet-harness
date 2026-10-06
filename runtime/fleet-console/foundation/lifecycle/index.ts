@@ -1,7 +1,8 @@
 export { pruneConsoleExitRecords, readConsoleEnding, readConsoleExitRecord, writeConsoleExitRecord, type ConsoleEndingEvidence, type ConsoleEndingOutcome } from "./exit-record.js";
 export { createConsoleHealthClient, toConsoleHealthEvidence, type ConsoleHealthAnswer, type ConsoleHealthDeps, type ConsoleHealthTarget, type ConsoleProbeOptions, type ConsoleProbeResult } from "./health.js";
+export { deliverConsoleStop, requestConsoleStop, type ConsoleStopRequestLock, type DeliverConsoleStopInput, type RequestConsoleStopOptions, type RequestConsoleStopResult } from "./stop-request.js";
 export { observeConsoleInstance, reproveConsoleInstance, runStopLadder, type ConsoleInstanceObservation, type ConsoleStopRequest, type ReproveConsoleInstanceInput, type ConsoleObservedLock, type ConsoleStopLadderInput, type ConsoleStopLadderResult, type ObserveConsoleInstanceInput } from "./instance.js";
-export { captureProvenProcessStart, isLockAuthorReplaced, isPidAlive, readProcessStartTime } from "./process.js";
+export { captureProvenProcessStart, isLockAuthorReplaced, isPidAlive, readProcessStartTime, startProvenStartCapture, type ProvenStartCapture } from "./process.js";
 export { createOwnedProcessRegistry, createProcessTableSnapshot, killSameGroupDescendants, signalChildGroup, proveExitedLeaderGroup, selectSameGroupDescendants, type OwnedProcessGroup, type OwnedProcessKillInput, type OwnedProcessRegistry, type OwnedProcessRegistryOptions, type OwnedProcessSpawnRequest, type ProcessContainmentPort, type ProcessGroupContainment, type ProcessGroupRow, type ProcessTable, type ProcessTableRow, type ProcessTableSnapshot, type ProcessTreeRow } from "./owned-processes.js";
 export { consoleNamespaceKey, isReclaimableNamespaceEntry, resolveRealPath } from "./temp-namespace.js";
 export { startConsoleReaper, type ConsoleReaperInput, type ConsoleReaperLink } from "./reaper-link.js";

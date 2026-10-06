@@ -25,6 +25,11 @@ export interface ConsoleProbeResult<L extends ConsoleHealthTarget = ConsoleHealt
   readonly starting?: true;
   /** endpoint가 연결을 거절했다 — 그 주소에서 아무 프로세스도 듣고 있지 않다는 확정 신호다. */
   readonly refused?: true;
+  /**
+   * The lock's `stopRequest` advertisement as answered: from a 200 health body, or from a 503 `console_starting`
+   * body while starting. Absent when the Console did not answer or predates the route.
+   */
+  readonly stopRequest?: unknown;
 }
 
 export interface ConsoleHealthDeps {
@@ -84,13 +89,14 @@ export function createConsoleHealthClient(deps: ConsoleHealthDeps = {}) {
           signal: controller.signal,
         });
         if (res.status === 503) {
-          const body = await res.json().catch(() => null) as { error?: unknown; pid?: unknown } | null;
+          const body = await res.json().catch(() => null) as { error?: unknown; pid?: unknown; stopRequest?: unknown } | null;
           if (body?.error === "console_starting" && body.pid === lock.pid) {
-            return { healthy: false, lock, starting: true, error: "console_starting" };
+            return { healthy: false, lock, starting: true, error: "console_starting", ...(body.stopRequest === undefined ? {} : { stopRequest: body.stopRequest }) };
           }
         }
         if (!res.ok) return { healthy: false, lock, error: `health failed: ${res.status}` };
-        return { healthy: true, lock, health: await res.json() as ConsoleHealthAnswer };
+        const health = await res.json() as ConsoleHealthAnswer;
+        return { healthy: true, lock, health, ...(health.stopRequest === undefined ? {} : { stopRequest: health.stopRequest }) };
       } catch (err) {
         const refused = (err as { cause?: { code?: unknown } } | null)?.cause?.code === "ECONNREFUSED";
         return { healthy: false, lock, error: err instanceof Error ? err.message : String(err), ...(refused ? { refused: true as const } : {}) };

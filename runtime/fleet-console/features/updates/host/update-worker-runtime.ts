@@ -5,7 +5,6 @@
  * lifecycle contract (docs/console-lifecycle-contract.md, "Update worker") instead of a copy of its own.
  */
 import {
-  captureProvenProcessStart,
   consoleLockInstanceState,
   createConsoleHealthClient,
   isPidAlive,
@@ -14,6 +13,7 @@ import {
   readConsoleEnding,
   reproveConsoleInstance,
   runStopLadder,
+  startProvenStartCapture,
   writeConsoleExitRecord,
   type ConsoleInstanceObservation,
 } from "@fleet-console/lifecycle";
@@ -90,28 +90,33 @@ export async function stopUpdatedConsole(input: StopUpdatedConsoleInput): Promis
   }
   // Every other state, a Console that already released its lock included, goes through the ladder: the install waits for
   // the old process to end within EXTERNAL_ESCALATION_MS, and only a proven Console still holding its lock is SIGKILLed.
-  const provenStart = observed.identity === "verified" && !isParent() ? await captureProvenProcessStart(target.pid, provenAt) : null;
-  const ended = await runStopLadder({
-    request: "delivered",
-    isAlive: () => isPidAlive(target.pid),
-    isReleased: () => consoleLockInstanceState(target.lockFile, instance) === "released",
-    reprove: () => reproveConsoleInstance({ lockFile: target.lockFile, lock, provenStart, isOwnChild: isParent, observe: (proven) => observe(target.lockFile, proven) }),
-    signal: (signal) => signalPid(target.pid, signal),
-  });
-  log(`old console ${target.pid}: stop ladder ${ended}`);
-  if (ended === "unproven" || ended === "held") return { result: "unverified", ending: null };
-  if (ended === "released-alive") return { result: "still-running", ending: null };
-  if (ended === "kill-failed") return { result: "kill-failed", ending: null };
-  if (ended === "forced") {
-    let recorded = true;
-    try {
-      recorded = writeConsoleExitRecord(target.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: target.pid, lockStartedAt: target.startedAt, outcome: "forced-external", killed: 0, at: Date.now() });
-    } catch {
-      // The record only informs later readers; this stop still knows it forced the Console.
+  // The start-time proof starts now but is awaited only at escalation, so a slow reader never delays the install wait.
+  const capture = observed.identity === "verified" && !isParent() ? startProvenStartCapture(target.pid, provenAt) : null;
+  try {
+    const ended = await runStopLadder({
+      request: "delivered",
+      isAlive: () => isPidAlive(target.pid),
+      isReleased: () => consoleLockInstanceState(target.lockFile, instance) === "released",
+      reprove: () => reproveConsoleInstance({ lockFile: target.lockFile, lock, provenStart: capture?.provenStart ?? null, isOwnChild: isParent, observe: (proven) => observe(target.lockFile, proven) }),
+      signal: (signal) => signalPid(target.pid, signal),
+    });
+    log(`old console ${target.pid}: stop ladder ${ended}`);
+    if (ended === "unproven" || ended === "held") return { result: "unverified", ending: null };
+    if (ended === "released-alive") return { result: "still-running", ending: null };
+    if (ended === "kill-failed") return { result: "kill-failed", ending: null };
+    if (ended === "forced") {
+      let recorded = true;
+      try {
+        recorded = writeConsoleExitRecord(target.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: target.pid, lockStartedAt: target.startedAt, outcome: "forced-external", killed: 0, at: Date.now() });
+      } catch {
+        // The record only informs later readers; this stop still knows it forced the Console.
+      }
+      return { result: "stopped", ending: recorded ? "forced-external" : endingOf(target, observed, false) };
     }
-    return { result: "stopped", ending: recorded ? "forced-external" : endingOf(target, observed, false) };
+    return { result: "stopped", ending: endingOf(target, observed, false) };
+  } finally {
+    capture?.abort();
   }
-  return { result: "stopped", ending: endingOf(target, observed, false) };
 }
 
 /** commit 전달만으로 정지를 추정하지 않는다. 살아서 응답하는 host에는 ladder를 시작하지 않는다. */

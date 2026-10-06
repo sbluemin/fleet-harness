@@ -9,10 +9,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { REAPER_DRAIN_MAX_MS } from "@fleet-console/lifecycle";
-import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, OWNED_GROUP_TERM_GRACE_MS, PROCESS_TABLE_TIMEOUT_MS } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, CONSOLE_STOP_REQUEST_REVISION, ESCALATION_MARGIN_MS, EXTERNAL_ESCALATION_MS, OWNED_GROUP_TERM_GRACE_MS, PROCESS_TABLE_TIMEOUT_MS, consoleExitRecordPath, parseConsoleExitRecord } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
-import { resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";
+import { createConsoleDaemonLifecycle, resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";
 import { CONSOLE_FAILURE_LOG_FILE } from "../../core/host/bootstrap/failure-log.js";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -506,10 +506,10 @@ afterEach(async () => {
     const exit = await exitOf(consoleProcess, 30_000);
     const elapsedMs = Date.now() - stoppedAt;
 
-    console.log(`L6n stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: CONSOLE_STOP_DEADLINE_MS - elapsedMs })}`);
+    console.log(`L6n stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: EXTERNAL_ESCALATION_MS - elapsedMs })}`);
     lifecycleCheck("L6n", stop.status === 0, "a normal stop with a hung plugin child is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), elapsedMs } });
     lifecycleCheck("L6n", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "the Console ends by itself and records `clean`", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run) } });
-    lifecycleCheck("L6n", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
+    lifecycleCheck("L6n", elapsedMs < EXTERNAL_ESCALATION_MS, "I4: a clean stop returns before the actor's escalation (B_ext)", { detail: { elapsedMs } });
     const left = await survivors(run, started);
     lifecycleCheck("L6n", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
   }, 60_000);
@@ -543,14 +543,46 @@ afterEach(async () => {
     lifecycleCheck("L10", attachment.every((file) => fs.existsSync(file)), "the attachments of a Console still serving are never reclaimed");
   }, 60_000);
 
+  // N9-W2 DR-3: the Windows client path through the real CLI stop composition against a real Console. The win32
+  // platform is injected so this runs on any host; on Windows it is the real path. No workload: the contract is the
+  // delivery (202 → exit record clean with stopReason request) with no escalation. Requires built dist artifacts
+  // (FLEET_BUILT_SMOKE=1).
+  it("delivers a token-authenticated stop request on the Windows client path and records clean without signals", async () => {
+    const run = createRun("win-request-stop");
+    const consoleProcess = spawnConsole(run);
+    const endpoint = await waitForReady(run, consoleProcess.pid!);
+    expect(endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+    const lock = readRunLock(run)!;
+    const startedAt = (JSON.parse(fs.readFileSync(run.lockFile, "utf8")) as { startedAt: number }).startedAt;
+
+    const healthResponse = await fetch(new URL("api/v1/health", lock.endpoint), { headers: { authorization: `Bearer ${lock.token}` } });
+    expect(healthResponse.status).toBe(200);
+    const health = await healthResponse.json() as { stopRequest?: unknown };
+    // A stale dist without the stop request route fails here instead of passing vacuously.
+    expect(health.stopRequest).toBe(CONSOLE_STOP_REQUEST_REVISION);
+
+    const lifecycle = createConsoleDaemonLifecycle({ env: run.env, platform: "win32", report: () => {} });
+    const stoppedAt = Date.now();
+    const result = await lifecycle.stop();
+    const elapsedMs = Date.now() - stoppedAt;
+    expect(result).toEqual({ outcome: "clean", killed: 0 });
+
+    const exit = await exitOf(consoleProcess, 30_000);
+    expect(exit).toEqual({ code: 0, signal: null });
+    expect(elapsedMs).toBeLessThan(CONSOLE_STOP_DEADLINE_MS);
+    expect(readRunLock(run)).toBeNull();
+    const record = parseConsoleExitRecord(fs.readFileSync(consoleExitRecordPath(run.lockFile, { pid: lock.pid, lockStartedAt: startedAt }), "utf8"));
+    expect(record?.outcome).toBe("clean");
+    expect(record?.stopReason).toBe("request");
+  }, 90_000);
+
   // W1/W5: 에이전트와 멈춘 플러그인을 함께 정지한다. 플러그인의 detached·native 손자와 에이전트 잔여가
   // B_int 안에 사라지고 clean을 기록해야 한다. 첫 spawn 전 direct breakaway는 error 5로 거부돼야 하고,
   // spawn 뒤 내부 libuv Job을 벗어나는 호출이 성공하면 장기 생존 자식이 stop과 함께 종료돼야 한다.
   // Start-Process는 headless runner 한계로 필수 역할에서 제외한다(계약의 powershell-intermediate 잔류).
-  // 외부 CLI stop은 Windows에서 TerminateProcess이고 unrecorded이므로 여기서는 내부 self-stop을 사용한다.
-  it.skipIf(process.platform !== "win32")("ends a hung plugin child's grandchildren on a self-stop and denies breakaway", async () => {
+  // N9-W2: 외부 CLI stop이 토큰 인증 정지 요청으로 cleanup을 실행하므로 실제 dist/cli.mjs stop으로 멈춘다.
+  it.skipIf(process.platform !== "win32")("ends a hung plugin child's grandchildren on an external stop and denies breakaway", async () => {
     const run = createRun("win-plugin-stop");
-    const stopFile = path.join(run.dir, "self-stop");
     const breakawayFile = path.join(run.dir, "breakaway.json");
     const pluginBreakawayFile = path.join(run.dir, "plugin-breakaway.json");
     run.env.LEDGER_WINDOWS_GRANDCHILDREN = "1";
@@ -558,7 +590,7 @@ afterEach(async () => {
     run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
     run.env.FAKE_AGENT_BREAKAWAY_RESULT = breakawayFile;
     run.env.FAKE_AGENT_KOFFI = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
-    const consoleProcess = spawnConsole(run, { preload: writePreload(run, "self-stop.mjs", selfStopPreload(stopFile)) });
+    const consoleProcess = spawnConsole(run);
     const endpoint = await waitForReady(run, consoleProcess.pid!);
     await openWorkload(run, endpoint, { terminal: false });
     expect(agentProcs(run).some((entry) => entry.role === "chat-residual"), "에이전트 잔여 helper가 실행되어야 한다").toBe(true);
@@ -610,13 +642,14 @@ afterEach(async () => {
     }
 
     const stoppedAt = Date.now();
-    fs.writeFileSync(stopFile, "");
+    const stop = await runStop(run.env);
     const exit = await exitOf(consoleProcess, 30_000);
     const elapsedMs = Date.now() - stoppedAt;
 
-    console.log(`W1 stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: CONSOLE_STOP_DEADLINE_MS - elapsedMs })}`);
-    lifecycleCheck("W1", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "a self-stop records clean", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run), elapsedMs } });
-    lifecycleCheck("W1", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the hung plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
+    console.log(`W1 stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: EXTERNAL_ESCALATION_MS - elapsedMs })}`);
+    lifecycleCheck("W1", stop.status === 0 && stop.stdout.includes("stopped"), "an external stop is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), stderr: stop.stderr.trim(), elapsedMs } });
+    lifecycleCheck("W1", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "an external stop records clean", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run), elapsedMs } });
+    lifecycleCheck("W1", elapsedMs < EXTERNAL_ESCALATION_MS, "I4: a clean stop returns before the actor's escalation (B_ext)", { detail: { elapsedMs } });
     const left = await survivors(run, started);
     if (after.ok) {
       expect(processStartTime(after.pid), `stop 뒤 성공한 breakaway 자식이 남으면 안 된다: pid=${after.pid}, startedAt=${pluginBreakawayStartedAt}`).not.toBe(pluginBreakawayStartedAt);
@@ -703,16 +736,6 @@ afterEach(async () => {
  * Asserts one invariant of a lifecycle case. While the case is a listed known defect (and the ratchet is on), a signature
  * check asserts the defect instead and any other check of that case is left unasserted.
  */
-/** Emits SIGTERM inside the Console, so Windows runs the shutdown instead of TerminateProcess. */
-function selfStopPreload(stopFile: string): readonly string[] {
-  return [
-    "import fs from 'node:fs';",
-    `const stopFile = ${JSON.stringify(stopFile)};`,
-    "const timer = setInterval(() => { if (fs.existsSync(stopFile)) { clearInterval(timer); process.emit('SIGTERM'); } }, 50);",
-    "timer.unref();",
-  ];
-}
-
 function crashPreload(crashFile: string): readonly string[] {
   return [
     "import fs from 'node:fs';",
@@ -1048,6 +1071,8 @@ function windowsRunEnv(home: string, tmp: string, pathbin: string, root: string,
     PATH: pathValue,
     Path: pathValue,
     PATHEXT: process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD",
+    // PowerShell hangs past its start-time timeout without its module path (N9-W2); pass the runner's through.
+    PSModulePath: process.env.PSModulePath ?? path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"),
     SystemRoot: systemRoot,
     SYSTEMROOT: systemRoot,
     ComSpec: comSpec,

@@ -38,6 +38,8 @@ export interface ConsoleHealth {
   readonly workspaceCount: number;
   /** The lifecycle contract wire revision (`CONSOLE_LIFECYCLE_WIRE`). A Console that omits it predates the contract (wire 0). */
   readonly lifecycleWire?: number;
+  /** The token-authenticated stop request revision (`CONSOLE_STOP_REQUEST_REVISION`). Absence predates the route. */
+  readonly stopRequest?: number;
 }
 
 export interface ConsoleObservedWorkspace {
