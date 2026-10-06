@@ -84,8 +84,12 @@ export async function requestConsoleStop(
 export interface DeliverConsoleStopInput {
   /** The lock instance to stop, or null when there is none: without a token there is no request to send. */
   readonly lock: ConsoleStopRequestLock | null;
-  /** The `stopRequest` advertisement already read for this lock (a 200 or a 503 `console_starting` answer). */
-  readonly stopRequest?: unknown;
+  /**
+   * The `stopRequest` advertisement already read for this lock (a 200 or a 503 `console_starting` answer), or a getter
+   * that reads it. A getter runs here, once, and only on the Windows token path — so an actor that already probed for
+   * readiness passes its answer, while an owned-child stop that would probe only for this never pays a probe off Windows.
+   */
+  readonly stopRequest?: unknown | (() => Promise<unknown>);
   /** The actor's POST budget (the CLI health probe budget, the Desktop interactive one). */
   readonly timeoutMs?: number;
   /** Injectable for the Windows-only client path. Defaults to the host platform. */
@@ -107,14 +111,26 @@ export interface DeliverConsoleStopInput {
  */
 export async function deliverConsoleStop(input: DeliverConsoleStopInput): Promise<ConsoleStopClientRoute> {
   const platform = input.platform ?? process.platform;
-  const advertised = input.lock !== null
-    && typeof input.lock.token === "string"
-    && input.lock.token.length > 0
-    && input.stopRequest === CONSOLE_STOP_REQUEST_REVISION;
-  if (input.lock === null || platform !== "win32" || !advertised) {
+  const lock = input.lock;
+  const hasToken = lock !== null && typeof lock.token === "string" && lock.token.length > 0;
+  if (lock === null || platform !== "win32" || !hasToken) {
+    return decideConsoleStopRoute({ platform, advertised: false, result: { kind: "rejected" } });
+  }
+  let stopRequest: unknown;
+  if (typeof input.stopRequest === "function") {
+    try {
+      stopRequest = await (input.stopRequest as () => Promise<unknown>)();
+    } catch {
+      stopRequest = undefined;
+    }
+  } else {
+    stopRequest = input.stopRequest;
+  }
+  const advertised = stopRequest === CONSOLE_STOP_REQUEST_REVISION;
+  if (!advertised) {
     return decideConsoleStopRoute({ platform, advertised, result: { kind: "rejected" } });
   }
-  const attempt = await requestConsoleStop(input.lock, { timeoutMs: input.timeoutMs, fetch: input.fetch, signal: input.signal });
+  const attempt = await requestConsoleStop(lock, { timeoutMs: input.timeoutMs, fetch: input.fetch, signal: input.signal });
   let result: ConsoleStopAttemptResult;
   if (attempt.kind === "accepted") {
     result = { kind: "accepted" };

@@ -8,11 +8,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { REAPER_DRAIN_MAX_MS, createConsoleHealthClient, deliverConsoleStop, observeConsoleInstance, reproveConsoleInstance, runStopLadder, startProvenStartCapture } from "@fleet-console/lifecycle";
-import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, CONSOLE_STOP_REQUEST_REVISION, ESCALATION_MARGIN_MS, EXTERNAL_ESCALATION_MS, HEALTH_PROBE_TIMEOUT_MS, OWNED_GROUP_TERM_GRACE_MS, PROCESS_TABLE_TIMEOUT_MS, consoleExitRecordPath, parseConsoleExitRecord } from "@fleet-console/protocol/lifecycle";
+import { REAPER_DRAIN_MAX_MS } from "@fleet-console/lifecycle";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, CONSOLE_STOP_REQUEST_REVISION, ESCALATION_MARGIN_MS, EXTERNAL_ESCALATION_MS, OWNED_GROUP_TERM_GRACE_MS, PROCESS_TABLE_TIMEOUT_MS, consoleExitRecordPath, parseConsoleExitRecord } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
-import { resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";
+import { createConsoleDaemonLifecycle, resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";
 import { CONSOLE_FAILURE_LOG_FILE } from "../../core/host/bootstrap/failure-log.js";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -543,10 +543,10 @@ afterEach(async () => {
     lifecycleCheck("L10", attachment.every((file) => fs.existsSync(file)), "the attachments of a Console still serving are never reclaimed");
   }, 60_000);
 
-  // N9-W2 DR-3: the Windows client path (token-authenticated stop request → delivered → clean) against a real
-  // Console. The win32 platform is injected so this runs on any host; on Windows it is the real path. No workload:
-  // the contract is the delivery (202 → exit record clean with stopReason request) with no signal sent and no
-  // escalation. Requires built dist artifacts (FLEET_BUILT_SMOKE=1).
+  // N9-W2 DR-3: the Windows client path through the real CLI stop composition against a real Console. The win32
+  // platform is injected so this runs on any host; on Windows it is the real path. No workload: the contract is the
+  // delivery (202 → exit record clean with stopReason request) with no escalation. Requires built dist artifacts
+  // (FLEET_BUILT_SMOKE=1).
   it("delivers a token-authenticated stop request on the Windows client path and records clean without signals", async () => {
     const run = createRun("win-request-stop");
     const consoleProcess = spawnConsole(run);
@@ -561,62 +561,16 @@ afterEach(async () => {
     // A stale dist without the stop request route fails here instead of passing vacuously.
     expect(health.stopRequest).toBe(CONSOLE_STOP_REQUEST_REVISION);
 
-    const target = { pid: lock.pid, endpoint: lock.endpoint, token: lock.token, startedAt };
-    const healthClient = createConsoleHealthClient();
-    const isHeld = (): boolean => {
-      try {
-        const current = JSON.parse(fs.readFileSync(run.lockFile, "utf8")) as { pid?: unknown; token?: unknown };
-        return current.pid === lock.pid && current.token === lock.token;
-      } catch {
-        // A lock that cannot be read counts as held: never act on what cannot be proven.
-        return true;
-      }
-    };
-    const observeLock = (again: typeof target) => observeConsoleInstance({
-      lock: again,
-      trusted: true,
-      isHeld,
-      probe: (probeTarget, options) => healthClient.probe(probeTarget, options),
-      env: run.env,
-    });
-    const capture = startProvenStartCapture(lock.pid, Date.now(), run.env);
-    const route = await deliverConsoleStop({
-      lock: target,
-      stopRequest: health.stopRequest,
-      timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
-      platform: "win32",
-      observe: () => observeLock(target).then((observation) => observation.state),
-    });
-    expect(route).toBe("delivered");
-
-    const signals: NodeJS.Signals[] = [];
+    const lifecycle = createConsoleDaemonLifecycle({ env: run.env, platform: "win32", report: () => {} });
     const stoppedAt = Date.now();
-    let ended: Awaited<ReturnType<typeof runStopLadder>>;
-    try {
-      ended = await runStopLadder({
-        request: route,
-        isAlive: () => isAlive(lock.pid),
-        isReleased: () => !isHeld(),
-        reprove: () => reproveConsoleInstance({ lockFile: run.lockFile, lock: target, provenStart: capture.provenStart, observe: observeLock, env: run.env }),
-        signal: (signal) => {
-          signals.push(signal);
-          try {
-            process.kill(lock.pid, signal);
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-          }
-        },
-      });
-    } finally {
-      capture.abort();
-    }
+    const result = await lifecycle.stop();
     const elapsedMs = Date.now() - stoppedAt;
+    expect(result).toEqual({ outcome: "clean", killed: 0 });
 
     const exit = await exitOf(consoleProcess, 30_000);
-    expect(signals, "the delivered request sends no signal and never escalates").toEqual([]);
-    expect(ended).toBe("exited");
     expect(exit).toEqual({ code: 0, signal: null });
     expect(elapsedMs).toBeLessThan(CONSOLE_STOP_DEADLINE_MS);
+    expect(readRunLock(run)).toBeNull();
     const record = parseConsoleExitRecord(fs.readFileSync(consoleExitRecordPath(run.lockFile, { pid: lock.pid, lockStartedAt: startedAt }), "utf8"));
     expect(record?.outcome).toBe("clean");
     expect(record?.stopReason).toBe("request");

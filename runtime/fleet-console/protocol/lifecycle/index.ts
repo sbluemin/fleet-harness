@@ -264,7 +264,9 @@ export const CONSOLE_EXIT_RECORD_RETAIN = 16;
 
 const EXIT_RECORD_NAME = /^console\.exit\.([1-9]\d*)-(\d+)\.json$/;
 const EXIT_OUTCOMES: readonly ConsoleExitOutcome[] = ["clean", "deadline", "crash", "failed", "external", "forced-external"];
-const STOP_REASONS: readonly ConsoleStopReason[] = ["signal", "update", "api", "request"];
+/** Every stop reason, with exhaustiveness checked against the union: adding a reason without an entry fails to compile. */
+const STOP_REASON_SET = { signal: true, update: true, api: true, request: true } satisfies Record<ConsoleStopReason, true>;
+const STOP_REASONS: readonly ConsoleStopReason[] = Object.keys(STOP_REASON_SET) as ConsoleStopReason[];
 
 /** A recorded stop reason as a reader sees it: the reason when it names one this contract knows, else absent. */
 export function parseConsoleStopReason(value: unknown): ConsoleStopReason | undefined {

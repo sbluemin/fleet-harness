@@ -319,10 +319,9 @@ export class SidecarSupervisor {
       if (consoleLockInstanceState(this.options.lockFile, { pid }) === "held") {
         const read = this.readLock();
         const lock = read.kind === "trusted" && read.stored.lock.pid === pid ? read.stored.lock : this.childLock;
-        // A starting child answers 503, which still carries the stop request advertisement: ask it through the route
-        // when it does, so its cleanup runs instead of a signal ending it.
-        const answer = lock ? await this.probe(lock) : null;
-        await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: answer?.health?.lifecycleWire ?? this.childLifecycleWire, stopRequest: answer?.stopRequest ?? this.childStopRequest }, null);
+        // A starting child answers 503, which still carries the stop request advertisement. It is read lazily inside
+        // the stop decision, so off Windows no probe runs at all; the tracked wire stays the ending reader's answer.
+        await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: this.childLifecycleWire, stopRequest: lock ? () => this.probe(lock).then((answer) => answer?.stopRequest ?? this.childStopRequest) : this.childStopRequest }, null);
       } else {
         this.stoppingChild = child;
         signalPid(pid, "SIGTERM");
