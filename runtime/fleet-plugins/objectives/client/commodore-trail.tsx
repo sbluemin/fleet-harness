@@ -168,6 +168,7 @@ export function CommodoreTrail({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
   const stick = useRef(true);
+  const last = useRef({ top: 0, height: 0 });
   const [fresh, setFresh] = useState(false);
   // 첫 측정은 서랍이 자리 잡기 전이라 칸이 더 높다. 그때 바닥에 붙이면 스크롤이 잘리고, 높이가 줄어도 효과가 다시 돌지 않는다.
   // 칸과 목록의 크기가 바뀌는 동안 바닥을 보고 있으면 다시 붙인다. 위로 올려 읽는 중에는 자리를 지킨다.
@@ -176,7 +177,9 @@ export function CommodoreTrail({
     const list = listRef.current;
     if (!scroll) return;
     const pin = () => {
-      if (stick.current) scroll.scrollTop = scroll.scrollHeight;
+      if (!stick.current) return;
+      scroll.scrollTop = scroll.scrollHeight;
+      last.current = { top: scroll.scrollTop, height: scroll.scrollHeight };
     };
     pin();
     setFresh(!stick.current);
@@ -186,12 +189,20 @@ export function CommodoreTrail({
     if (list) observer.observe(list);
     return () => observer.disconnect();
   }, [signature]);
+  // 칸이 줄거나 내용이 늘면 스크롤 이벤트가 크기 관찰보다 먼저 와 바닥에서 떨어져 보인다. 사람이 위로 올린 것만 따라가기를 푼다:
+  // 내용 높이가 그대로인데 scrollTop 이 줄었을 때.
   const onScroll = () => {
     const node = scrollRef.current;
     if (!node) return;
     const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < FOLLOW_SLACK_PX;
-    stick.current = atBottom;
-    if (atBottom) setFresh(false);
+    const scrolledUp = node.scrollTop < last.current.top && node.scrollHeight === last.current.height;
+    last.current = { top: node.scrollTop, height: node.scrollHeight };
+    if (atBottom) {
+      stick.current = true;
+      setFresh(false);
+    } else if (scrolledUp) {
+      stick.current = false;
+    }
   };
   const jump = () => {
     const node = scrollRef.current;
