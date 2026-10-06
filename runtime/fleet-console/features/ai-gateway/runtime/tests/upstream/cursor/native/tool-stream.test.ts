@@ -138,7 +138,7 @@ describe("Cursor client tool suspension", () => {
     expect(events.at(-1)?.type).toBe("response.completed");
   });
 
-  it("answers Cursor's MCP state query and keeps a thinking/text interleave well-formed", async () => {
+  it("answers Cursor's MCP state query, keeps a thinking/text interleave well-formed, and counts only generated output", async () => {
     // Measured on cursor-agent 2026.10.01: a model that picks a client tool mid-turn first asks
     // for MCP state (exec field 36), and thinks again after already writing text.
     const { events, stream } = await runSyntheticCursorTurn([
@@ -147,7 +147,11 @@ describe("Cursor client tool suspension", () => {
       rawCursorServerFrame(36, encodeWireMessage((writer) => {
         writer.tag(1, WireType.LengthDelimited).string(CURSOR_TOOL_PROVIDER_IDENTIFIER);
       }), 7, "mcp-state-7"),
+      // Cursor reports a finished tool's result as it enters the context, not as generated output.
+      { interactionUpdate: { toolCallCompleted: { callId: "native-read", toolCall: { readToolCall: {} } } } },
+      { interactionUpdate: { tokenDelta: { tokens: 2047 } } },
       { interactionUpdate: { thinkingDelta: { text: "use the tool" } } },
+      { interactionUpdate: { tokenDelta: { tokens: 5 } } },
       { interactionUpdate: { textDelta: { text: "Done." } } },
       { interactionUpdate: { turnEnded: {} } },
     ], request("claude-session-mcp-state"));
@@ -168,7 +172,7 @@ describe("Cursor client tool suspension", () => {
       order.push(event.item_id);
     }
     expect(order).toHaveLength(4);
-    expect(events.at(-1)?.type).toBe("response.completed");
+    expect(completedCursorUsage(events).output_tokens).toBeLessThan(2047);
   });
 
   it("bounds heartbeat-only Cursor stalls with a semantic timeout", async () => {

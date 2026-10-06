@@ -75,6 +75,7 @@ const CURSOR_UPSTREAM_ERROR_BODY_LIMIT = 64 * 1024;
 const CURSOR_UPSTREAM_ERROR_BODY_TIMEOUT_MS = 5_000;
 
 const CURSOR_UNKNOWN_EXEC_FIELDS = Symbol("cursorUnknownExecFields");
+const CURSOR_UNKNOWN_UPDATE_FIELDS = Symbol("cursorUnknownUpdateFields");
 
 const CURSOR_TOOL_LIMIT_NOTE_PREFIX = "[fleet-ai-gateway]";
 
@@ -272,6 +273,8 @@ function encodeCursorClientMessage(payload: unknown): Buffer {
 
 type CursorServerFrame = Record<string, unknown> & {
   readonly [CURSOR_UNKNOWN_EXEC_FIELDS]?: readonly UnknownField[];
+  /** Field numbers of an `interactionUpdate` this descriptor does not know. Payload-free. */
+  readonly [CURSOR_UNKNOWN_UPDATE_FIELDS]?: readonly number[];
 };
 
 function decodeCursorServerMessage(payload: Uint8Array): CursorServerFrame {
@@ -282,7 +285,21 @@ function decodeCursorServerMessage(payload: Uint8Array): CursorServerFrame {
   if (unknownExecFields.length > 0) {
     Object.defineProperty(json, CURSOR_UNKNOWN_EXEC_FIELDS, { value: unknownExecFields });
   }
+  const unknownUpdateFields = extractCursorUnknownUpdateFieldNumbers(message);
+  if (unknownUpdateFields.length > 0) {
+    Object.defineProperty(json, CURSOR_UNKNOWN_UPDATE_FIELDS, { value: unknownUpdateFields });
+  }
   return json as CursorServerFrame;
+}
+
+function extractCursorUnknownUpdateFieldNumbers(message: unknown): readonly number[] {
+  if (!isRecord(message) || !isRecord(message.message)) return [];
+  if (message.message.case !== "interactionUpdate" || !isRecord(message.message.value)) return [];
+  const fields = message.message.value.$unknown;
+  if (!Array.isArray(fields)) return [];
+  return [...new Set(fields
+    .map((field) => (isRecord(field) && typeof field.no === "number" ? field.no : undefined))
+    .filter((no): no is number => no !== undefined))].sort((left, right) => left - right);
 }
 
 function extractCursorUnknownExecFields(message: unknown): readonly UnknownField[] {
@@ -2260,6 +2277,13 @@ interface CursorResponseSegment {
   correlationInvalid: boolean;
   outputIndex: number;
   contextOutputTokens: number;
+  /**
+   * 직전 프레임이 도구 호출 완료였고 아직 모델이 새로 생성하지 않았다. Cursor는 도구 결과를 대화에
+   * 넣은 직후 그 결과의 토큰 수를 `tokenDelta`로 보내는데(측정: Read 한 번에 2047), 이것은 모델이
+   * 생성한 출력이 아니라 입력이다. 출력으로 세면 도구 턴마다 결과 크기만큼 output_tokens가 부풀어
+   * 출력 단가로 비용이 과대 집계된다.
+   */
+  ingestingToolResult: boolean;
   outputText: string;
   /** Text or thinking: the content kind that last streamed, and how often the kind switched. */
   lastContentKind?: "text" | "reasoning";
@@ -2503,6 +2527,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       correlationInvalid: false,
       outputIndex: 0,
       contextOutputTokens: 0,
+      ingestingToolResult: false,
       outputText: "",
       contentPhase: 0,
       estimatedInputTokens: segmentEstimatedInputTokens,
@@ -2958,7 +2983,13 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     // register an unsuspended item this Run can never suspend — mcpArgs is the only thing that
     // suspends one — which permanently disarms the turn-finish gate, and it would replay a
     // function_call the client already executed.
-    if (isSettledToolUpdate(update)) return;
+    if (isSettledToolUpdate(update)) {
+      if (isRecord(update.toolCallCompleted)) activeSegment.ingestingToolResult = true;
+      return;
+    }
+    if (!isRecord(update.tokenDelta) && !isRecord(update.heartbeat)) {
+      activeSegment.ingestingToolResult = isRecord(update.toolCallCompleted);
+    }
     if (isRecord(update.textDelta) && typeof update.textDelta.text === "string") {
       activeSegment.outputText += update.textDelta.text;
       emit({
@@ -2982,7 +3013,9 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     }
     if (isRecord(update.tokenDelta)) {
       const tokens = positiveTokenCount(update.tokenDelta.tokens);
-      if (tokens !== undefined) activeSegment.contextOutputTokens += tokens;
+      if (tokens !== undefined && !activeSegment.ingestingToolResult) {
+        activeSegment.contextOutputTokens += tokens;
+      }
       return;
     }
     if (isRecord(update.toolCallStarted)) {
@@ -3260,10 +3293,11 @@ function describeCursorServerFrame(
   unknownExecFields: readonly UnknownField[] = [],
 ): string {
   if (isRecord(frame.interactionUpdate)) {
-    return `interactionUpdate.${cursorNestedRecordCase(
-      frame.interactionUpdate,
-      CURSOR_INTERACTION_UPDATE_CASES,
-    )}`;
+    const knownCase = cursorNestedRecordCase(frame.interactionUpdate, CURSOR_INTERACTION_UPDATE_CASES);
+    const unknownFields = (frame as CursorServerFrame)[CURSOR_UNKNOWN_UPDATE_FIELDS];
+    return `interactionUpdate.${knownCase === "unknown" && unknownFields !== undefined
+      ? `unknownField${unknownFields.join("-")}`
+      : knownCase}`;
   }
   if (isRecord(frame.execServerMessage)) {
     const knownCase = cursorNestedRecordCase(frame.execServerMessage, CURSOR_EXEC_CASES);
@@ -3677,6 +3711,10 @@ function isCursorParkedResidueFrame(
   const update = isRecord(frame.interactionUpdate) ? frame.interactionUpdate : undefined;
   if (update === undefined) return false;
   if (isRecord(update.tokenDelta)) return true;
+  // 이 디스크립터가 모르는 필드만 실은 update(cursor-agent 2026.10.01의 18–27번 메타데이터)는
+  // attached 상태에서도 아무 동작 없이 지나간다. parked에서만 진행으로 보면 park 직후 도착한 이
+  // 프레임 하나가 warm bridge를 버리고, 다음 턴이 대화 전체를 다시 올린다(측정: 84K 토큰 재업로드).
+  if (Object.keys(update).length === 0) return true;
   const identifiers = cursorToolUpdateIdentifiers(update);
   if (identifiers === undefined || identifiers.length === 0 || parked === undefined) return false;
   const sealed = new Set(parked.flatMap((call) => [

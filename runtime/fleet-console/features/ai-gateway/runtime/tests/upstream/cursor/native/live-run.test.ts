@@ -7,6 +7,7 @@ import { deflateRawSync } from "node:zlib";
 
 import { fromBinary, fromJson, toBinary, toJson, type JsonValue } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";
+import { BinaryWriter, WireType } from "@bufbuild/protobuf/wire";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -125,7 +126,7 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
-  it("parks a call whose exec message is the first of the Run", async () => {
+  it("parks a call whose exec message is the first of the Run and keeps it across an unknown update", async () => {
     // Cursor numbers exec messages from zero and `id` has implicit presence, so the first client
     // tool of a Run arrives with no `id` field at all. Every other call here carries a nonzero id.
     const call = cursorCall("call-first-exec-of-run", 0);
@@ -142,6 +143,9 @@ describe("Cursor live client-tool Run bridge", () => {
 
     try {
       await collectCursorResponseWithDiagnostics(harness.adapter, initial, true);
+      // Measured 2026-10-06 (cursor-agent 2026.10.01): an update carrying only fields this
+      // descriptor does not know can land right after a park. It must not cost the warm Run.
+      await stream.emitFrames([unknownOnlyInteractionUpdate(25)]);
       const secondEvents = await collectCursorResponseWithDiagnostics(
         harness.adapter,
         cursorContinuation(initial, [call], [cursorResult(call, "README contents")]),
@@ -149,6 +153,10 @@ describe("Cursor live client-tool Run bridge", () => {
       );
 
       expect(canonicalText(secondEvents)).toBe("first exec completed");
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "server.frame",
+        frame: "interactionUpdate.unknownField25",
+      }));
       expect(diagnostics).toContainEqual(expect.objectContaining({
         event: "bridge.park",
         outcome: "client_tool_suspended",
@@ -712,8 +720,21 @@ function decodeCursorClientFrame(value: Buffer): Record<string, unknown> {
 }
 
 function encodeCursorServerFrame(value: unknown): Buffer {
+  if (value instanceof Uint8Array) return encodeConnectFrame(value);
   const message = fromJson(AgentServerMessageSchema, value as JsonValue);
   return encodeConnectFrame(toBinary(AgentServerMessageSchema, message));
+}
+
+/** An `interactionUpdate` whose only field is one the vendored descriptor does not declare. */
+function unknownOnlyInteractionUpdate(fieldNumber: number): Uint8Array {
+  const interactionUpdate = AgentServerMessageSchema.fields
+    .find((field) => field.localName === "interactionUpdate");
+  if (!interactionUpdate) throw new Error("Missing interactionUpdate field");
+  const inner = new BinaryWriter();
+  inner.tag(fieldNumber, WireType.Varint).uint64(1_760_000_000_000n);
+  const outer = new BinaryWriter();
+  outer.tag(interactionUpdate.number, WireType.LengthDelimited).bytes(inner.finish());
+  return outer.finish();
 }
 
 function cursorValue(value: JsonValue): string {

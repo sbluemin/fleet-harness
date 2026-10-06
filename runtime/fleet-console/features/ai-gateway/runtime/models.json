@@ -667,7 +667,7 @@
     "cursor": {
       "name": "Cursor",
       "defaultModel": "grok-4.7",
-      "source": "Restored 2026-10-06 with the lineup limited by owner request to Grok 4.7 and Muse Spark 1.3. Wire ids from cursor-agent 2026.10.01-e373342 `models`: grok-4.7-{low,medium,high,xhigh}[-fast] and muse-spark-1.3-{minimal,low,medium,high,xhigh,max}, all Muse Spark rungs labelled 1M. Grok 4.7 context windows (256000; 500000 with modelDetails.maxMode) and its Auto-pool membership come from the 2026-09-22 Run checkpoint measurement and owner confirmation; GetCurrentPeriodUsage autoBucketModels still omits both lines on 2026-10-06, so Muse Spark carries no quotaScope until a billed turn shows which pool it draws. Muse Spark minimal stays outside Fleet's effort ladder. The Muse Spark context window and both lines' live inference were not re-measured on 2026-10-06: the only local Cursor sign-in was a Free plan, which refuses named models.",
+      "source": "Restored 2026-10-06 with the lineup limited by owner request to Grok 4.7 and Muse Spark 1.3. Wire ids from cursor-agent 2026.10.01-e373342 `models`: grok-4.7-{low,medium,high,xhigh}[-fast] and muse-spark-1.3-{minimal,low,medium,high,xhigh,max}; Muse Spark minimal stays outside Fleet's effort ladder. Context windows from the Run checkpoint on 2026-10-06 (Ultra plan): grok-4.7 256000 and 500000 with modelDetails.maxMode; muse-spark-1.3 300000 and 1000000 with maxMode, although Cursor labels every Muse Spark rung 1M. Pools from GetCurrentPeriodUsage deltas around 42-turn runs on the same day: Grok 4.7 moved only autoPercentUsed, Muse Spark 1.3 only apiPercentUsed; autoBucketModels lists neither.",
       "models": [
         {
           "modelId": "grok-4.7",
@@ -746,7 +746,8 @@
           "modelId": "muse-spark-1.3",
           "name": "Muse-Spark-1.3",
           "capabilityClass": "flagship",
-          "contextWindow": 1000000,
+          "quotaScope": "api",
+          "contextWindow": 300000,
           "effort": {
             "supported": true,
             "levels": [
@@ -758,6 +759,26 @@
             ],
             "upstreamModelIdTemplate": "muse-spark-1.3-{effort}"
           }
+        },
+        {
+          "modelId": "muse-spark-1.3-1m",
+          "name": "Muse-Spark-1.3-1M",
+          "capabilityClass": "flagship",
+          "quotaScope": "api",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "muse-spark-1.3-{effort}"
+          },
+          "variantOf": "muse-spark-1.3",
+          "cursorMaxMode": true
         }
       ]
     },
