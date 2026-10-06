@@ -43,11 +43,11 @@
 /* 「목표」 구역 — 데스크톱 기록 곁 칸과 같은 컴포넌트를 폰 글자 크기로 편다. */
 .objectives-cm-goals { overflow-y: auto; padding: 8px 16px 16px; scrollbar-width: none; }
 .objectives-cm-goals::-webkit-scrollbar { display: none; }
-.objectives-cm-goals .objectives-commodore-trail { width: auto; padding: 0; border: 0; background: none; overflow: visible; }
+.objectives-cm-goals .objectives-commodore-trail { width: auto; height: 100%; padding: 0; border: 0; background: none; overflow: hidden; }
 .objectives-cm-goals .objectives-commodore-trail-title { display: none; }
 .objectives-cm-goals .objectives-commodore-trail-objective { font-size: var(--m-fs-body); color: var(--m-text); }
-.objectives-cm-goals .objectives-commodore-trail-entry { font-size: var(--m-fs-list); color: var(--m-text-muted); }
-.objectives-cm-goals .objectives-commodore-trail-why, .objectives-cm-goals .objectives-commodore-trail-time, .objectives-cm-goals .objectives-commodore-trail-empty { font-size: var(--m-fs-caption); color: var(--m-text-faint); }
+.objectives-cm-goals .objectives-commodore-trail-entry { font-size: var(--m-fs-list); }
+.objectives-cm-goals .objectives-commodore-trail-time, .objectives-cm-goals .objectives-commodore-trail-empty { font-size: var(--m-fs-caption); color: var(--m-text-faint); }
 .objectives-cm-chat.is-center { padding-top: 0; padding-bottom: 0; }
 .objectives-cm-head { display: flex; align-items: baseline; gap: 8px; margin: 0; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .objectives-cm-head b { color: var(--m-text-nav); font-weight: var(--weight-bold); }
