@@ -55,6 +55,8 @@ describe.skipIf(process.platform !== "win32")("sidecar supervisor Windows Quit",
       TMPDIR: tmp,
       PATH: [path.dirname(process.execPath), path.join(systemRoot, "System32")].join(";"),
       PATHEXT: process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD",
+      // PowerShell hangs past its start-time timeout without its module path (N9-W2); pass the runner's through.
+      PSModulePath: process.env.PSModulePath ?? path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"),
       SystemRoot: systemRoot,
       USER: user,
       USERNAME: user,

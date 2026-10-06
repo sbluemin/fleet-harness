@@ -4,7 +4,6 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import {
-  captureProvenProcessStart,
   consoleLockInstanceState,
   createConsoleHealthClient,
   deliverConsoleStop,
@@ -15,6 +14,7 @@ import {
   readConsoleEnding,
   reproveConsoleInstance,
   runStopLadder,
+  startProvenStartCapture,
   writeConsoleExitRecord,
   type ConsoleInstanceObservation,
   type ConsoleLockFileObservation,
@@ -356,6 +356,7 @@ export class SidecarSupervisor {
         return;
       }
       // The wall-clock moment identity is about to be proven: only a process that started before it can be that Console.
+      // The start-time proof starts now but is awaited only at escalation, so a slow reader never delays the request.
       const provenAt = Date.now();
       const observed = await this.observe(lock);
       if (observed.identity !== "verified") {
@@ -364,7 +365,12 @@ export class SidecarSupervisor {
         this.options.log.error(`console_lock_process_${observed.state}: pid ${pid} holds ${this.options.lockFile}; left running without a signal`);
         return;
       }
-      await this.stopRequested({ pid, lock, lifecycleWire: observed.probe?.health?.lifecycleWire, stopRequest: observed.probe?.stopRequest }, await captureProvenProcessStart(pid, provenAt));
+      const capture = startProvenStartCapture(pid, provenAt, this.options.env);
+      try {
+        await this.stopRequested({ pid, lock, lifecycleWire: observed.probe?.health?.lifecycleWire, stopRequest: observed.probe?.stopRequest }, capture.provenStart);
+      } finally {
+        capture.abort();
+      }
     } catch (error) {
       this.options.log.error(`console_lock_process_unhealthy: pid ${pid} could not be stopped; continuing Quit: ${this.describeError(error)}`);
     }
@@ -374,7 +380,7 @@ export class SidecarSupervisor {
    * SIGTERM, a wait of EXTERNAL_ESCALATION_MS for its exit or its lock's release, and SIGKILL only while the same lock is
    * still held and identity is proven again. A lock that cannot be read counts as held.
    */
-  private async stopRequested(target: StopTarget, provenStart: number | null): Promise<ConsoleStopLadderResult> {
+  private async stopRequested(target: StopTarget, provenStart: number | null | Promise<number | null>): Promise<ConsoleStopLadderResult> {
     const { pid, lock } = target;
     const own = this.child !== null && this.child.pid === pid ? this.child : null;
     if (own) this.stoppingChild = own;
@@ -384,7 +390,7 @@ export class SidecarSupervisor {
       if (own && this.stoppingChild === own) this.stoppingChild = null;
     }
   }
-  private async runRequestedStop(target: StopTarget, provenStart: number | null): Promise<ConsoleStopLadderResult> {
+  private async runRequestedStop(target: StopTarget, provenStart: number | null | Promise<number | null>): Promise<ConsoleStopLadderResult> {
     const { pid, lock } = target;
     const instance = { pid, ...(lock ? { token: lock.token } : {}) };
     // On Windows a Console that advertises the stop request route is asked through it, so its cleanup runs and its

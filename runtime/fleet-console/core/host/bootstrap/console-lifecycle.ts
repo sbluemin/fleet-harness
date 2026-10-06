@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 import {
   assertTrustedConsoleLock,
-  captureProvenProcessStart,
   consoleLockInstanceState,
   createConsoleHealthClient,
   createOwnedProcessRegistry,
@@ -16,6 +15,7 @@ import {
   deliverConsoleStop,
   killSameGroupDescendants,
   startConsoleReaper,
+  startProvenStartCapture,
   type ConsoleReaperLink,
   isPidAlive,
   observeConsoleInstance,
@@ -463,43 +463,49 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // Console에는 신호를 다시 보내지 않고 같은 예산 안에서 끝나기를 기다린다.
     const requester = observed.state === "ready";
     if (requester) assertCliCanControlDaemon(payload);
-    const provenStart = requester ? await captureProvenProcessStart(payload.pid, identityProbedAt, env) : null;
+    // The start-time proof starts now but is awaited only at escalation, so a slow reader (Windows PowerShell) never
+    // delays the request; it is aborted once the ladder ends either way.
+    const capture = requester ? startProvenStartCapture(payload.pid, identityProbedAt, env) : null;
     // On Windows a Console that advertises the stop request route is asked through it, so its cleanup runs and its
     // exit record says clean; anywhere else this stop signals as before. The ladder starts after the POST ends, so its
     // clock never includes the request.
-    const request = requester
-      ? await deliverConsoleStop({
-        lock: payload,
-        stopRequest: observed.probe?.stopRequest,
-        timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
-        platform: process.platform,
-        observe: () => observe(payload).then((observation) => observation.state),
-      })
-      : "none";
-    const ended = await runStopLadder({
-      request,
-      isAlive: () => isPidAlive(payload.pid),
-      isReleased: () => isLockReleasedBy(payload),
-      reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart, observe, env }),
-      signal: (signal) => signalLockProcess(payload.pid, signal),
-      onWaiting: () => report("Waiting for Fleet Console to finish shutting down..."),
-      now,
-      sleep,
-    });
-    const instance = { pid: payload.pid, lockStartedAt: payload.startedAt };
-    if (ended === "held") throw lockOwnerUnprovenError(payload, "stopping");
-    if (ended === "unproven") throw lockOwnerUnprovenError(payload, "unverified");
-    if (ended === "released-alive") throw lockReleasedOwnerAliveError(payload);
-    if (ended === "kill-failed") throw new Error(describeConsoleOwnerOutlivedKill(paths.lockFile, payload.pid, CLI_LOCK_OWNER_RECOVERY.restart));
-    // 끝난 Console이 남긴 lock은 그 pid가 ESRCH인 지금 회수 프로토콜로 지운다.
-    await removeLockHeldBy(payload);
-    // SIGKILL이 Console 자신의 종료 기록(예: deadline)과 겹치면 그 기록이 실제 결말이다. 우선순위상 forced-external이
-    // 그것을 덮지 않으므로, 쓰지 못했을 때는 남아 있는 기록으로 보고한다.
-    if (ended === "forced" && recordForcedExit(instance)) return { outcome: "forced-external", killed: 0 };
-    // 기록이 없으면 계약을 아는 Console은 밖에서 끝난 것이고, 계약 이전 Console이나 Windows에서 이 stop이 신호로 끝낸
-    // Console은 탓할 근거가 없어 지금까지처럼 정지로 본다(readConsoleEnding). 요청으로 정지한 Console은 신호를 보내지
-    // 않았으므로 terminatedByReader가 아니다.
-    return readConsoleEnding(paths.lockFile, instance, { lifecycleWire: observed.probe?.health?.lifecycleWire, terminatedByReader: request === "signal" });
+    try {
+      const request = requester
+        ? await deliverConsoleStop({
+          lock: payload,
+          stopRequest: observed.probe?.stopRequest,
+          timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
+          platform: process.platform,
+          observe: () => observe(payload).then((observation) => observation.state),
+        })
+        : "none";
+      const ended = await runStopLadder({
+        request,
+        isAlive: () => isPidAlive(payload.pid),
+        isReleased: () => isLockReleasedBy(payload),
+        reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart: capture?.provenStart ?? null, observe, env }),
+        signal: (signal) => signalLockProcess(payload.pid, signal),
+        onWaiting: () => report("Waiting for Fleet Console to finish shutting down..."),
+        now,
+        sleep,
+      });
+      const instance = { pid: payload.pid, lockStartedAt: payload.startedAt };
+      if (ended === "held") throw lockOwnerUnprovenError(payload, "stopping");
+      if (ended === "unproven") throw lockOwnerUnprovenError(payload, "unverified");
+      if (ended === "released-alive") throw lockReleasedOwnerAliveError(payload);
+      if (ended === "kill-failed") throw new Error(describeConsoleOwnerOutlivedKill(paths.lockFile, payload.pid, CLI_LOCK_OWNER_RECOVERY.restart));
+      // 끝난 Console이 남긴 lock은 그 pid가 ESRCH인 지금 회수 프로토콜로 지운다.
+      await removeLockHeldBy(payload);
+      // SIGKILL이 Console 자신의 종료 기록(예: deadline)과 겹치면 그 기록이 실제 결말이다. 우선순위상 forced-external이
+      // 그것을 덮지 않으므로, 쓰지 못했을 때는 남아 있는 기록으로 보고한다.
+      if (ended === "forced" && recordForcedExit(instance)) return { outcome: "forced-external", killed: 0 };
+      // 기록이 없으면 계약을 아는 Console은 밖에서 끝난 것이고, 계약 이전 Console이나 Windows에서 이 stop이 신호로 끝낸
+      // Console은 탓할 근거가 없어 지금까지처럼 정지로 본다(readConsoleEnding). 요청으로 정지한 Console은 신호를 보내지
+      // 않았으므로 terminatedByReader가 아니다.
+      return readConsoleEnding(paths.lockFile, instance, { lifecycleWire: observed.probe?.health?.lifecycleWire, terminatedByReader: request === "signal" });
+    } finally {
+      capture?.abort();
+    }
   }
 
   function observe(payload: ConsoleLockPayload): Promise<ConsoleInstanceObservation<ConsoleLockPayload>> {

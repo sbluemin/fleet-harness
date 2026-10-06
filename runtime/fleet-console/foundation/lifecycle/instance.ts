@@ -64,8 +64,11 @@ export interface ReproveConsoleInstanceInput<L extends ConsoleObservedLock> {
   readonly lockFile: string;
   /** The lock instance whose identity was proven before SIGTERM. */
   readonly lock: L;
-  /** Its process start time captured with that proof (`captureProvenProcessStart`), or null when it could not be. */
-  readonly provenStart: number | null;
+  /**
+   * Its process start time captured with that proof (`startProvenStartCapture`), or null when it could not be. A
+   * promise is awaited here, at the re-proof alone — never before — so a slow reader never delays the request.
+   */
+  readonly provenStart: number | null | Promise<number | null>;
   /** True while the pid is the requester's own unreaped child: its handle alone proves identity (E1). */
   readonly isOwnChild?: () => boolean;
   /** A fresh observation of the same lock instance (the actor's own `observeConsoleInstance`). */
@@ -84,7 +87,8 @@ export async function reproveConsoleInstance<L extends ConsoleObservedLock>(inpu
   const { lock } = input;
   const instance = { pid: lock.pid, ...(typeof lock.token === "string" ? { token: lock.token } : {}) };
   const held = () => consoleLockInstanceState(input.lockFile, instance) === "held";
-  if (input.provenStart !== null && await readProcessStartTime(lock.pid, input.env) === input.provenStart && held()) return true;
+  const provenStart = await input.provenStart;
+  if (provenStart !== null && await readProcessStartTime(lock.pid, input.env) === provenStart && held()) return true;
   if (!held()) return false;
   return (await input.observe(lock)).identity === "verified";
 }

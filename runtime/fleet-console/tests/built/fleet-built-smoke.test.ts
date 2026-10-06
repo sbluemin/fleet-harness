@@ -8,8 +8,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { REAPER_DRAIN_MAX_MS, captureProvenProcessStart, createConsoleHealthClient, deliverConsoleStop, observeConsoleInstance, reproveConsoleInstance, runStopLadder } from "@fleet-console/lifecycle";
-import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, CONSOLE_STOP_REQUEST_REVISION, ESCALATION_MARGIN_MS, HEALTH_PROBE_TIMEOUT_MS, OWNED_GROUP_TERM_GRACE_MS, PROCESS_TABLE_TIMEOUT_MS, consoleExitRecordPath, parseConsoleExitRecord } from "@fleet-console/protocol/lifecycle";
+import { REAPER_DRAIN_MAX_MS, createConsoleHealthClient, deliverConsoleStop, observeConsoleInstance, reproveConsoleInstance, runStopLadder, startProvenStartCapture } from "@fleet-console/lifecycle";
+import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, CONSOLE_STOP_REQUEST_REVISION, ESCALATION_MARGIN_MS, EXTERNAL_ESCALATION_MS, HEALTH_PROBE_TIMEOUT_MS, OWNED_GROUP_TERM_GRACE_MS, PROCESS_TABLE_TIMEOUT_MS, consoleExitRecordPath, parseConsoleExitRecord } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
 import { resolveDefaultServerModulePath } from "../../core/host/bootstrap/console-lifecycle.js";
@@ -506,10 +506,10 @@ afterEach(async () => {
     const exit = await exitOf(consoleProcess, 30_000);
     const elapsedMs = Date.now() - stoppedAt;
 
-    console.log(`L6n stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: CONSOLE_STOP_DEADLINE_MS - elapsedMs })}`);
+    console.log(`L6n stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: EXTERNAL_ESCALATION_MS - elapsedMs })}`);
     lifecycleCheck("L6n", stop.status === 0, "a normal stop with a hung plugin child is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), elapsedMs } });
     lifecycleCheck("L6n", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "the Console ends by itself and records `clean`", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run) } });
-    lifecycleCheck("L6n", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
+    lifecycleCheck("L6n", elapsedMs < EXTERNAL_ESCALATION_MS, "I4: a clean stop returns before the actor's escalation (B_ext)", { detail: { elapsedMs } });
     const left = await survivors(run, started);
     lifecycleCheck("L6n", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
   }, 60_000);
@@ -579,7 +579,7 @@ afterEach(async () => {
       probe: (probeTarget, options) => healthClient.probe(probeTarget, options),
       env: run.env,
     });
-    const provenStart = await captureProvenProcessStart(lock.pid, Date.now(), run.env);
+    const capture = startProvenStartCapture(lock.pid, Date.now(), run.env);
     const route = await deliverConsoleStop({
       lock: target,
       stopRequest: health.stopRequest,
@@ -591,20 +591,25 @@ afterEach(async () => {
 
     const signals: NodeJS.Signals[] = [];
     const stoppedAt = Date.now();
-    const ended = await runStopLadder({
-      request: route,
-      isAlive: () => isAlive(lock.pid),
-      isReleased: () => !isHeld(),
-      reprove: () => reproveConsoleInstance({ lockFile: run.lockFile, lock: target, provenStart, observe: observeLock, env: run.env }),
-      signal: (signal) => {
-        signals.push(signal);
-        try {
-          process.kill(lock.pid, signal);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-        }
-      },
-    });
+    let ended: Awaited<ReturnType<typeof runStopLadder>>;
+    try {
+      ended = await runStopLadder({
+        request: route,
+        isAlive: () => isAlive(lock.pid),
+        isReleased: () => !isHeld(),
+        reprove: () => reproveConsoleInstance({ lockFile: run.lockFile, lock: target, provenStart: capture.provenStart, observe: observeLock, env: run.env }),
+        signal: (signal) => {
+          signals.push(signal);
+          try {
+            process.kill(lock.pid, signal);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+          }
+        },
+      });
+    } finally {
+      capture.abort();
+    }
     const elapsedMs = Date.now() - stoppedAt;
 
     const exit = await exitOf(consoleProcess, 30_000);
@@ -687,10 +692,10 @@ afterEach(async () => {
     const exit = await exitOf(consoleProcess, 30_000);
     const elapsedMs = Date.now() - stoppedAt;
 
-    console.log(`W1 stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: CONSOLE_STOP_DEADLINE_MS - elapsedMs })}`);
+    console.log(`W1 stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: EXTERNAL_ESCALATION_MS - elapsedMs })}`);
     lifecycleCheck("W1", stop.status === 0 && stop.stdout.includes("stopped"), "an external stop is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), stderr: stop.stderr.trim(), elapsedMs } });
     lifecycleCheck("W1", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "an external stop records clean", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run), elapsedMs } });
-    lifecycleCheck("W1", elapsedMs < CONSOLE_STOP_DEADLINE_MS, "I4: the hung plugin child does not hold the stop to the deadline", { detail: { elapsedMs } });
+    lifecycleCheck("W1", elapsedMs < EXTERNAL_ESCALATION_MS, "I4: a clean stop returns before the actor's escalation (B_ext)", { detail: { elapsedMs } });
     const left = await survivors(run, started);
     if (after.ok) {
       expect(processStartTime(after.pid), `stop 뒤 성공한 breakaway 자식이 남으면 안 된다: pid=${after.pid}, startedAt=${pluginBreakawayStartedAt}`).not.toBe(pluginBreakawayStartedAt);
@@ -1112,6 +1117,8 @@ function windowsRunEnv(home: string, tmp: string, pathbin: string, root: string,
     PATH: pathValue,
     Path: pathValue,
     PATHEXT: process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD",
+    // PowerShell hangs past its start-time timeout without its module path (N9-W2); pass the runner's through.
+    PSModulePath: process.env.PSModulePath ?? path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"),
     SystemRoot: systemRoot,
     SYSTEMROOT: systemRoot,
     ComSpec: comSpec,
