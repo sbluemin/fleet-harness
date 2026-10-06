@@ -17,14 +17,20 @@
  * agent, Fleet, shell, or credential stores, or inside an inherited Fleet or Claude directory, and refuses `~` in a
  * --set value because nothing expands it. It refuses --set for managed names and credential-like names; the one
  * exception is a known local placeholder (ANTHROPIC_API_KEY=sk-ant-fleet-local), which is not a credential. On macOS
- * and Linux it also refuses a run dir whose <run-dir>/tmp is too long for a Unix socket path (tsx's IPC socket). --check
- * prints the plan and runs nothing. Otherwise it forwards SIGINT/SIGTERM/SIGHUP, exits with the child's status, and
+ * and Linux it also refuses a run dir whose <run-dir>/tmp is too long for a Unix socket path (tsx's IPC socket). It
+ * refuses a run dir another session is using: <run-dir>/console/console.lock names a live PID (judged from the lock's
+ * port and pid only, with a signal-0 probe) and <run-dir>/owner records a different caller. The caller is the Fleet
+ * Operation id (kept when Console restarts the session), else the Claude Code session id, else none, and owner keeps
+ * only its hash. A lock whose PID is dead never refuses. The remedy is another run dir name, never stopping or deleting
+ * the other run. --check passes the same checks, then prints the plan and runs nothing. Otherwise it records the caller
+ * in owner, forwards SIGINT/SIGTERM/SIGHUP, exits with the child's status, and
  * prints which entries appeared in the owned home. It does not isolate the macOS Keychain, launchd session keys, or
  * network access.
  */
 
 import { spawn } from 'node:child_process';
-import { accessSync, constants as fsConstants, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { accessSync, constants as fsConstants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { constants, userInfo } from 'node:os';
 import path from 'node:path';
 
@@ -81,6 +87,33 @@ function findOnPath(name) {
   return null;
 }
 
+/** A non-secret caller identity that survives a session resume; only its hash is stored. */
+function callerHash() {
+  const id = process.env.FLEET_CONSOLE_WORKSPACE_SESSION_ID
+    ? `fleet:${process.env.FLEET_CONSOLE_WORKSPACE_SESSION_ID}`
+    : process.env.CLAUDE_CODE_SESSION_ID ? `claude:${process.env.CLAUDE_CODE_SESSION_ID}` : 'none';
+  return createHash('sha256').update(id).digest('hex').slice(0, 16);
+}
+
+/** The lock's PID when it is alive, else null. Reads port and pid only, as references/setup.md#read-the-lock-without-the-token does. */
+function liveLockPid(lockPath) {
+  if (!existsSync(lockPath)) return null;
+  let pid;
+  try {
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    if (!lock.port || !Number.isInteger(lock.pid) || lock.pid <= 0) throw 0;
+    pid = lock.pid;
+  } catch {
+    return 'unreadable'; // Mid-write or foreign: treat as in use, and never quote the body.
+  }
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch (error) {
+    return error.code === 'ESRCH' ? null : pid;
+  }
+}
+
 function parseArgs(argv) {
   const separator = argv.indexOf('--');
   const flags = separator === -1 ? argv : argv.slice(0, separator);
@@ -134,7 +167,7 @@ function main() {
   const sunPath = { darwin: 103, linux: 107 }[process.platform];
   const socket = path.join(owned.tmp, `tsx-${userInfo().uid}`, '9999999.pipe');
   if (sunPath && Buffer.byteLength(socket) > sunPath) {
-    fail(`--run-dir is too long: its tsx socket path needs ${Buffer.byteLength(socket)} bytes, the limit is ${sunPath}; shorten it by ${Buffer.byteLength(socket) - sunPath}, e.g. <repo-root>/.fleet/e2e-<short-id> (references/setup.md#isolate-the-console)`);
+    fail(`--run-dir is too long: its tsx socket path needs ${Buffer.byteLength(socket)} bytes, the limit is ${sunPath}; shorten it by ${Buffer.byteLength(socket) - sunPath}, e.g. <repo-root>/.fleet/e2e-<role>-<short-id> (references/setup.md#isolate-the-console)`);
   }
 
   const links = { node: process.execPath };
@@ -178,6 +211,16 @@ function main() {
     setNames.push(name);
   }
 
+  // Another session's live Console on this run dir would share its slot, home, and lock; refuse before anything runs.
+  const ownerPath = path.join(runDir, 'owner');
+  const caller = callerHash();
+  let recordedOwner = null;
+  try { recordedOwner = readFileSync(ownerPath, 'utf8').trim(); } catch { /* No owner yet. */ }
+  const livePid = liveLockPid(path.join(owned.console, 'console.lock'));
+  if (livePid !== null && recordedOwner !== caller) {
+    fail(`this --run-dir is in use by another session: its Console lock names a live process${typeof livePid === 'number' ? ` (pid ${livePid})` : ''} that this session did not start. Choose a different run directory name, e.g. <repo-root>/.fleet/e2e-<role>-<short-id>; do not stop that Console or delete its directory (references/setup.md#isolate-the-console)`);
+  }
+
   const plan = {
     runDir,
     owned,
@@ -193,6 +236,7 @@ function main() {
   }
 
   for (const dir of Object.values(owned)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (recordedOwner !== caller) writeFileSync(ownerPath, `${caller}\n`, { mode: 0o600 });
   // Per call: a shared pathbin would let one call's --bin claude reach a fake-only host started earlier on this run.
   const callBin = mkdtempSync(path.join(owned.pathbin, 'call-'));
   for (const [name, source] of Object.entries(links)) symlinkSync(source, path.join(callBin, name));
