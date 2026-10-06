@@ -1803,7 +1803,7 @@ describe("Objectives contract", () => {
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;
     activity.set(id, "running");
-    expect(await board({ objectiveId: id, edit: { title: "Renamed while running" } })).toMatchObject({ ok: true });
+    expect(await board({ objectiveId: id, edit: { title: "Renamed while running" } })).toMatchObject({ ok: true, stored: { title: "Renamed while running" } });
     expect(store.find(id)!.title).toBe("Renamed while running");
     // 지휘관·구성원은 자기 목표를 외부 행위자로 승인할 수 없다. 요청을 지우거나 기록하지 않는 거절이다.
     for (const operationId of [id, memberId]) {

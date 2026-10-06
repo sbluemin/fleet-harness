@@ -219,6 +219,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           const fresh = <T extends { readonly id: string }>(now: readonly T[], then: readonly T[]) => now.find((entry) => !then.some((prior) => prior.id === entry.id));
           const edit = args.edit;
           const stored = !edit || !kept ? undefined
+            : "title" in edit ? { title: kept.title }
             : "brief" in edit ? { brief: storedText(kept.note) }
             : "mission" in edit ? ((mission) => mission && { mission: { id: mission.id, text: storedText(mission.text) } })(kept.missions.find((entry) => entry.id === ("add" in edit.mission ? fresh(kept.missions, current.missions)?.id : "patch" in edit.mission ? edit.mission.patch.missionId : undefined)))
             : ((criterion) => criterion && { criterion: { id: criterion.id, text: storedText(criterion.text) } })(kept.criteria.find((entry) => entry.id === ("add" in edit.criterion ? fresh(kept.criteria, current.criteria)?.id : "patch" in edit.criterion ? edit.criterion.patch.criterionId : undefined)));
