@@ -17,6 +17,7 @@ import {
   createAiGatewayRouter,
   createCursorDiagnosticLog,
   createFailureJournal,
+  createRequestTimingJournal,
   createClaudeCodexCompactionStore,
   readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
@@ -54,6 +55,15 @@ export function registerAiGatewayRoutes(
           "failures.jsonl",
         ),
       });
+  const ownedRequestTiming = deps.requestTiming
+    ? undefined
+    : createRequestTimingJournal({
+        filePath: path.join(
+          ctx.dataDir,
+          "ai-gateway",
+          "request-timing.jsonl",
+        ),
+      });
   const compactHookToken = randomUUID();
   const modHookToken = randomUUID();
   const compactionStore = createClaudeCodexCompactionStore({
@@ -68,6 +78,7 @@ export function registerAiGatewayRoutes(
     // 호출 시점의 노출을 읽는다 — 스냅숏이 아니라 지금 켜져 있는 모델이 답이 된다.
     assignRouting: deps.assignRouting,
     failureJournal: deps.failureJournal ?? ownedFailureJournal?.write,
+    requestTiming: deps.requestTiming ?? ownedRequestTiming?.write,
     // 자격증명 조달은 호스트 결정이다 — Console은 core-ai-gateway가 export한 기본 reader를 주입한다.
     readAuth: deps.readAuth ?? (() => readCodexSubscriptionAuth()),
     readCursorToken: deps.readCursorToken ?? (() => readCursorSubscriptionToken()),
@@ -83,6 +94,7 @@ export function registerAiGatewayRoutes(
     router.dispose();
     await ownedDiagnostics?.flush();
     await ownedFailureJournal?.flush();
+    await ownedRequestTiming?.flush();
   });
   ctx.registerRouter(AI_GATEWAY_ROUTE_SEGMENT, router.handle, [
     { method: "*", path: "/api/hello", summary: "Read the AI Gateway health response.", category: "Console Execution", gate: "loopback", transport: "http" },

@@ -56,6 +56,8 @@ import { createUpstreamGate } from "../transport/upstream-gate.js";
 import type { UpstreamGateOriginStats } from "../transport/upstream-gate.js";
 import { failureDetail } from "../transport/failure-journal.js";
 import type { GatewayFailureSink } from "../transport/failure-journal.js";
+import { RequestClock } from "../transport/request-timing.js";
+import type { GatewayRequestTimingSink } from "../transport/request-timing.js";
 
 import { applyGatewayRequestPolicy } from "./request-policy.js";
 import {
@@ -262,6 +264,11 @@ export interface AiGatewayRouteDeps {
    * once, so without a sink it leaves no trace anywhere. Absent means the gateway keeps no record.
    */
   readonly failureJournal?: GatewayFailureSink;
+  /**
+   * Always-on timing journal sink for request stage decomposition.
+   * Absent means the gateway records no timing journal.
+   */
+  readonly requestTiming?: GatewayRequestTimingSink;
   /**
    * Brings the Claude alias entries up to the installed Claude Code's latest versions.
    * Awaited before a native Claude alias is relayed; absent means the catalog is used as is.
@@ -508,6 +515,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return true;
     }
 
+    const clock = deps.requestTiming
+      ? new RequestClock(deps.requestTiming, (origin) => findGateStats(upstreamGate, origin))
+      : undefined;
+    if (clock) clock.observe(res);
+
     let body: AnthropicMessagesRequest | null;
     try {
       body = await readJsonBody<AnthropicMessagesRequest>(req, MAX_GATEWAY_REQUEST_BODY_BYTES);
@@ -516,17 +528,22 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         // 413이되 "context window"는 담지 않는다 — 그 문구는 Claude Code의 반응형 압축을 무장시키는
         // 별도 계약(canonical/index.ts ContextWindowExceededError)이고, 큰 본문이 곧 창 초과는 아니다.
         writeAnthropicError(res, 413, "invalid_request_error", `Request body exceeds the gateway limit of ${error.maxBytes} bytes.`);
+        clock?.finish("error", 413);
         return true;
       }
       writeAnthropicError(res, 400, "invalid_request_error", "Request body was not valid JSON");
+      clock?.finish("error", 400);
       return true;
     }
+    clock?.markBodyRead();
     if (!body || typeof body !== "object") {
       writeAnthropicError(res, 400, "invalid_request_error", "Request body must be a JSON object");
+      clock?.finish("error", 400);
       return true;
     }
     if (typeof body.model !== "string" || body.model.trim().length === 0) {
       writeAnthropicError(res, 400, "invalid_request_error", "Request model must be a non-empty string");
+      clock?.finish("error", 400);
       return true;
     }
     // 와이어가 허용하는 `system` 표기를 이 패키지가 읽는 한 가지 모양으로 줄인다. 공급자 정책과
@@ -534,6 +551,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     const normalizedSystem = normalizeAnthropicSystem(body);
     if (!normalizedSystem) {
       writeAnthropicError(res, 400, "invalid_request_error", "Request system must be a string or an array of text blocks");
+      clock?.finish("error", 400);
       return true;
     }
     body = normalizedSystem;
@@ -541,6 +559,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 요청이 지목한 모델이 어느 구독으로 가는지 정한다. env 오버라이드가 있으면 그쪽이 이긴다.
     const modelOverride = deps.readModelOverride?.();
     const requested = modelOverride ?? body.model;
+    clock?.setRequestBody(body, requested);
     let target = harness.findModel(requested, GATEWAY_MODELS);
     // Claude alias의 버전은 설치된 CLI가 정한다. 표를 갱신하면 카탈로그가 새로 지어지므로 다시 찾는다.
     if (target?.provider === "claude" && deps.ensureClaudeNativeModels) {
@@ -549,6 +568,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     }
     if (!target && !harness.relaysUnmatchedModel(requested)) {
       writeAnthropicError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
+      clock?.finish("error", 400);
       return true;
     }
     // 디스커버리(/v1/models)가 켠 모델만 광고해도 실행 경로가 카탈로그 전체를 받아 주면, raw id를
@@ -557,7 +577,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 선별 파일의 주인과 같은 사람이라 호출자 입력과 같은 신뢰 등급이 아니다.
     if (target && target.provider !== "claude" && modelOverride === undefined && !isModelExposed(target)) {
       writeAnthropicError(res, 403, "permission_error", `AI gateway model is not enabled: ${requested}`);
+      clock?.finish("error", 403);
       return true;
+    }
+    if (target) {
+      clock?.setTarget(target);
     }
 
     const sessionId = claudeSessionId(body.metadata?.user_id);
@@ -583,6 +607,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const cursorToken = await deps.readCursorToken?.();
       if (!cursorToken) {
         writeAnthropicError(res, 401, "authentication_error", "No Cursor subscription token was found. Sign in to Cursor first.");
+        clock?.finish("error", 401);
         return true;
       }
       credential = cursorToken;
@@ -591,6 +616,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const auth = await readAuth();
       if (!auth) {
         writeAnthropicError(res, 401, "authentication_error", "No ChatGPT subscription token was found. Run `codex login` first.");
+        clock?.finish("error", 401);
         return true;
       }
       credential = auth.accessToken;
@@ -599,6 +625,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const opencodeApiKey = await deps.readOpencodeApiKey?.();
       if (!opencodeApiKey) {
         writeAnthropicError(res, 401, "authentication_error", "No OpenCode Go API key was found. Sign in to OpenCode Go first.");
+        clock?.finish("error", 401);
         return true;
       }
       credential = opencodeApiKey;
@@ -606,6 +633,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const xaiToken = await deps.readXaiToken?.();
       if (!xaiToken) {
         writeAnthropicError(res, 401, "authentication_error", "No active Grok CLI sign-in was found. Run `grok login` first.");
+        clock?.finish("error", 401);
         return true;
       }
       credential = xaiToken;
@@ -613,6 +641,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const museKey = museInferenceKey(await deps.readMuseCodeAuth?.());
       if (museKey.apiKey === undefined) {
         writeAnthropicError(res, 401, "authentication_error", museKey.message);
+        clock?.finish("error", 401);
         return true;
       }
       credential = museKey.apiKey;
@@ -620,10 +649,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const antigravityToken = await deps.readAntigravityToken?.();
       if (!antigravityToken) {
         writeAnthropicError(res, 401, "authentication_error", "No active Antigravity sign-in was found. Run `agy` and sign in first.");
+        clock?.finish("error", 401);
         return true;
       }
       credential = antigravityToken;
     }
+    clock?.markCredential();
 
     const controller = new AbortController();
     // A disconnect mid-turn must reach the upstream call: otherwise the provider keeps generating
@@ -631,6 +662,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     const clientDisconnected = new Error("client disconnected");
     const stopWatching = onClientDisconnect(req, res, () => controller.abort(clientDisconnected));
     const startedAt = Date.now();
+    const requestFetch = clock ? clock.wrapFetch(fetchImpl) : fetchImpl;
 
     try {
       if (!target || target.provider === "claude") {
@@ -638,11 +670,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         // alias를 API로 흘리지 않고 여기서 멈춘다. 호출자 인증과 기존 beta는 보존한다.
         if (target && target.upstreamId === undefined) {
           writeAnthropicError(res, 503, "api_error", `Claude Code has not reported which model "${requested}" resolves to yet.`);
+          clock?.finish("error", 503);
           return true;
         }
+        clock?.setRoute("passthrough");
         await proxyToAnthropic(req.headers, res,
           target ? { ...body, model: target.upstreamId ?? body.model } : body,
-          fetchImpl, controller.signal, harness.retryableStatus, target?.contextWindow);
+          requestFetch, controller.signal, harness.retryableStatus, target?.contextWindow);
+        clock?.finish("ok");
         return true;
       }
       // Claude Code meters every custom model on either its unmarked 200k coordinate
@@ -660,6 +695,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         ...(harness.retryableStatus ? { retryableStatus: harness.retryableStatus } : {}),
       };
       if (target.provider === "opencode" && isOpencodeAnthropicPassthrough(target)) {
+        clock?.setRoute("passthrough");
         await proxyToOpencode(
           req.headers,
           res,
@@ -668,16 +704,17 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           claudeContextWindow,
           passthroughRelay,
           credential,
-          fetchImpl,
+          requestFetch,
           controller.signal,
         );
+        clock?.finish("ok");
         return true;
       }
       const codexAdapter = target.provider === "codex"
         ? new CodexResponsesAdapter({
             accountId: chatgptAccountId,
             headers: { originator: deps.originator },
-            fetch: fetchImpl,
+            fetch: requestFetch,
             ...(body.stream === true && harness.asyncToolNames
               ? { asyncToolNames: harness.asyncToolNames }
               : {}),
@@ -689,18 +726,18 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           : target.provider === "opencode"
             ? createOpencodeGateway(
               opencodeGoWire(target) as "responses" | "chat-completions",
-              fetchImpl,
+              requestFetch,
             )
             : target.provider === "xai"
               ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
-                fetch: fetchImpl,
+                fetch: requestFetch,
                 endpoint: xaiEndpoint(),
               }))
               : target.provider === "antigravity"
                 ? antigravityGateway()
                 : target.provider === "muse-code"
                   ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
-                    fetch: fetchImpl,
+                    fetch: requestFetch,
                     ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: deps.observeMuseCodeUsage } : {}),
                     ...(harness.messagingToolNames ? { messagingToolNames: harness.messagingToolNames } : {}),
                   }))
@@ -737,11 +774,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         const binding = compactBinding(target.id, chatgptAccountId);
         const completedRetry = deps.compactionStore?.readReady(sessionId, binding);
         if (completedRetry) {
+          clock?.setRoute("compaction");
           writeClaudeCompactMessage(res, body, completedRetry.summary, {
             id: "msg_fleet_compact_retry",
             model: upstreamModelId(target),
             usage: null,
           });
+          clock?.finish("ok");
           return true;
         }
         const canonical = translateAnthropicRequest(body, {
@@ -783,7 +822,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         // pending until then so a transport retry is still classified as compaction.
         // PreCompact already invalidated any older ready checkpoint, so plaintext
         // fallback cannot accidentally replay stale provider state.
+        clock?.setRoute("compaction");
         writeClaudeCompactMessage(res, body, compacted.summary, compacted.summaryResponse);
+        clock?.finish("ok");
         return true;
       }
 
@@ -806,12 +847,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         }
       }
 
+      clock?.setRoute("translated");
       upstream ??= await gateway.stream(body, callOptions);
       res.writeHead(upstream.status, headerEntries(upstream.headers));
       for await (const chunk of upstream.body) {
         if (!res.write(chunk)) await drain(res, controller.signal);
       }
       res.end();
+      clock?.finish("ok");
     } catch (error) {
       // Whatever surfaced first — the abort reason, an aborted read, a failed write — the cause
       // is the client leaving, and that is what the journal has to say.
@@ -867,6 +910,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       } catch {
         // 기록 실패는 삼킨다 — 기록하지 못한 것이 응답을 바꾸는 이유가 되면 안 된다.
       }
+      clock?.finish(disconnected ? "disconnect" : "error", status);
       if (disconnected) {
         // Nobody is left to read a status or an error frame; ending releases the socket.
         res.end();
@@ -880,6 +924,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       }
     } finally {
       stopWatching();
+      clock?.finish("error");
     }
     return true;
   };
@@ -893,6 +938,15 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       ownedCursorAdapter?.dispose();
     },
   };
+}
+
+function findGateStats(
+  gate: { stats(): readonly UpstreamGateOriginStats[] },
+  origin: string,
+): { inFlight: number; queued: number } | undefined {
+  if (!origin) return undefined;
+  const match = gate.stats().find((s) => s.origin === origin);
+  return match ? { inFlight: match.inFlight, queued: match.queued } : undefined;
 }
 
 /** Anthropic 모델은 번역하지 않는다. 요청 본문과 응답 스트림을 그대로 통과시킨다. */
