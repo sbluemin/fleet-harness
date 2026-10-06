@@ -18,6 +18,13 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
   const push = (event: AgentChatTranscriptEvent, at?: number) => out.push(at !== undefined ? { event, at } : { event });
   const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
   let turnAt: number | null = null;
+  // 읽어 온 기록 창은 아무 줄에서나 시작한다(쪽·보관 상한) — 깨움이 창 밖인 턴의 내용·결말이 먼저 오면 그 자리에서 턴을 연다.
+  // 열지 않으면 결말이 턴을 닫지 못해, 지난 턴이 「작업 중」으로 굳고 답이 가려진다.
+  const resume = (at: number) => {
+    if (turnAt !== null) return;
+    push({ kind: "turn-start", at }, at);
+    turnAt = at;
+  };
   const end = (at: number, outcome: "ok" | "error" | "cancelled") => {
     if (turnAt === null) return;
     push({ kind: "turn-end", ok: outcome !== "error", ...(outcome === "cancelled" ? { stopped: true } : {}), durationMs: Math.max(0, at - turnAt) }, at);
@@ -40,15 +47,18 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
         }
         break;
       case "text":
+        resume(entry.at);
         if (entry.text.trim()) push({ kind: "text", text: entry.text }, entry.at);
         break;
       case "tool": {
+        resume(entry.at);
         const id = `c${entry.seq}`;
         push({ kind: "tool", id, name: entry.name, detail: toolDetail(t, entry) }, entry.at);
         if (entry.ok !== undefined) push({ kind: "tool-result", id, ok: entry.ok, summary: entry.error ? errorWord(t, entry.error) : "" }, entry.at);
         break;
       }
       case "result":
+        resume(entry.at);
         end(entry.at, entry.outcome);
         if (entry.outcome === "error") push({ kind: "note", text: t("objectives.commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("objectives.commodore.meta.error") }), at: entry.at, tone: "warn" }, entry.at);
         break;
