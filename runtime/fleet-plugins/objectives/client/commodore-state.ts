@@ -428,11 +428,6 @@ export function useCommodoreRoster(target: ModelRosterTarget): ModelRoster | nul
   return useModelRoster(installed?.models, target);
 }
 
-/** 실험 기능 「자율 운영」 — 리액트 밖(호스트가 구독으로 읽는 공급원)에서 쓰는 지금 값. */
-export function isCommodoreEnabled(): boolean {
-  return enabledSnapshot;
-}
-
 /** Theater 의 표시 이름을 React 로 — Theater 목록이 늦게 읽혀도 따라온다. */
 export function useCommodoreTheaterLabel(theaterId: string): string {
   return useSyncExternalStore((listener) => installed?.consoleState.subscribe(listener) ?? (() => undefined), () => commodoreTheaterLabel(theaterId), () => commodoreTheaterLabel(theaterId));

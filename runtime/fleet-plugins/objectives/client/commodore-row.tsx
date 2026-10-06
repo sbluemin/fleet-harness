@@ -1,13 +1,12 @@
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 
-import type { TheaterContributionContext, TheaterMenuContext } from "@fleet-console/sdk/plugin";
+import type { TheaterContributionContext } from "@fleet-console/sdk/plugin";
 
 import {
   isRunningObjective,
   isWaitingObjective,
   loadCommodore,
   noteCommodoreLanguage,
-  openCommodoreDrawer,
   setCommodoreAutonomy,
   setCommodorePeek,
   toggleCommodoreDrawer,
@@ -121,22 +120,4 @@ export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView
   const patrol = on && run?.phase === "idle" && run.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null;
   const errorReason = on && (run?.phase === "error" || run?.phase === "retrying") ? run.reason ?? null : null;
   return { on, meta, patrol, errorReason };
-}
-
-/** Theater 「…」 메뉴의 「사령관 지시…」 — 서랍을 지시 탭으로 연다. */
-export function CommodoreMenuItem({ theater, language, onClose }: TheaterMenuContext) {
-  const enabled = useCommodoreEnabled();
-  if (!enabled) return null;
-  const t = getT(language);
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className="theater-menu-item objectives-commodore-menu-item"
-      onClick={() => { onClose(); openCommodoreDrawer(theater.id, "directive"); }}
-    >
-      <span className="theater-menu-check objectives-commodore-menu-glyph" aria-hidden="true"><i /></span>
-      <span className="theater-menu-label">{t("objectives.commodore.menu")}</span>
-    </button>
-  );
 }

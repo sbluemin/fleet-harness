@@ -3,7 +3,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { ComposerInput } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { PaneContext } from "@fleet-console/sdk/pane";
-import type { TheaterContributionMobileRow } from "@fleet-console/sdk/plugin";
 import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
 import { useMobileSettingsHost } from "@fleet-console/sdk/react/browser";
 import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
@@ -18,7 +17,6 @@ import {
   loadTranscript,
   messageCommodore,
   noteCommodoreLanguage,
-  openCommodoreMobile,
   readCommodore,
   removeCommodoreIntel,
   retryCommodore,
@@ -95,17 +93,6 @@ export const commodoreDestinationTrailing: RailEntryDestinationTrailing = {
     return { glyph: "idle", text: t("objectives.commodore.mobile.on") };
   },
 };
-
-/* ── Theater 시트 「지금 Theater › 사령관 지시」(S-55) ─────────────────── */
-
-/** 실험 기능 「자율 운영」이 켜졌을 때만 선다. 누르면(호스트가 시트를 모두 닫은 뒤) 사령관 화면 「지시」 탭 — 입력칸에 포커스하지 않는다. */
-export function commodoreTheaterMobileRow(isEnabled: () => boolean): TheaterContributionMobileRow {
-  return {
-    subscribe: (listener) => subscribeCommodore(listener),
-    get: (_theaterId, language) => isEnabled() ? { label: getT(language)("objectives.commodore.mobile.directiveRow"), icon: <PennantIcon /> } : null,
-    run: () => openCommodoreMobile("directive"),
-  };
-}
 
 /* ── 화면 ─────────────────────────────────────────────────────────────── */
 

@@ -1535,8 +1535,6 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-commodore-row-meta .is-on { color: var(--brass-ink); }
 .objectives-commodore-row-meta .is-warn { color: var(--warn-ink); }
 
-/* 「…」 메뉴의 「사령관 지시…」 — 머리 글리프는 줄의 켬 사각을 작게. */
-.objectives-commodore-menu-glyph i { display: block; width: 9px; height: 9px; border-radius: 2px; background: var(--brass); }
 
 /* 「사령관 기록」 시트 — Fleet 브라우저 시트와 같은 면: 지도 안쪽 틀(좌우 24px, 위·아래 사이드바 카드 선) 가운데의 맞춤 크기, 불투명 패널·카드와 같은
    테두리·그림자. 뒤는 지도만 덮는 투명한 닫기 영역이라 뒤 화면이 원래 밝기로 보이고, 사이드바·레일은 그대로 조작된다. */
