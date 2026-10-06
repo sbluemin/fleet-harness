@@ -1935,6 +1935,13 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark />, state: operationOwnState(objective.id), outcome: objective.commander.outcome },
     ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, state: operationState(member.id), outcome: member.outcome })),
   ].filter((recipient) => recipient.state !== "closed");
+  // 재개 띠의 지휘관 상태 — 받는 이와 같이 실패를 먼저 보되, 실패가 아닐 때는 기존 기술어(stateLabel)를 그대로 쓴다.
+  // memberStateWord를 통째로 쓰면 closed·ended 같은 비실패 문구까지 명단 말로 바뀌므로, 실패 겹침만 덧씌운다.
+  const commanderStateWord = (state: string, outcome?: string) => {
+    const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
+    if (outcome === "failed" && !isWorkingOrAwaiting) return t("objectives.members.failed");
+    return stateLabel(state);
+  };
   const bottom = (
       <div className="objectives-detail-bottom" data-objectives-tour="action">
         {/* 결정 요청 — 띠와 따로 서서 작업 중에도 가려지지 않는다. 보내고 나면 한 줄 흔적만 잠시 남는다. */}
@@ -1949,7 +1956,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           commanderAwaiting={commanderAwaiting}
           memberAwaiting={memberAwaiting}
           launchAvailable={launchAvailable}
-          commanderState={stateLabel(operationState(objective.id))}
+          commanderState={commanderStateWord(operationState(objective.id), objective.commander.outcome)}
           commanderExists={operationState(objective.id) !== "closed"}
           recipients={recipients}
           stateWord={memberStateWord}
