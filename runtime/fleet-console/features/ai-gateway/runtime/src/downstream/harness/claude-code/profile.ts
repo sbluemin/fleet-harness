@@ -73,6 +73,8 @@ export const claudeCodeHarnessProfile: GatewayHarnessProfile = {
     { name: "Monitor" },
     { name: "Bash", whenArgumentTrue: "run_in_background" },
     { name: "Agent", whenArgumentTrue: "run_in_background" },
+    // 백그라운드로 돌다가 끝나면 세션을 다시 깨운다.
+    { name: "Workflow" },
   ],
 };
 

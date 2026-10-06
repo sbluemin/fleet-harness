@@ -51,11 +51,12 @@ const MIN_RESAMPLE_MAX_OUTPUT_TOKENS = 1024;
 
 /**
  * 첫 응답 마지막 단계 텍스트의 추정 토큰 상한. 넘으면 정상 최종 답으로 보고 다시 받지 않는다.
- * 관측된 예고는 13–64(임무 1 실사용 14–28, 2026-10-07 재현 13–64)였고, 정상 최종 답은 122–287이었다
- * (같은 추정기, 한국어 2.5자/토큰). 예고 최대값의 약 1.5배에 둔다. 재는 대상은 응답 전체가 아니라
- * 마지막 단계다: 거절된 native read 뒤에 재시도 문장이 쌓여도(측정 151) 끝나는 예고는 짧다.
+ * 관측된 예고는 13–64(실사용 14–28, 2026-10-07 재현 13–64)였고, 정상 최종 답은 98–862였다(같은
+ * 추정기, 한국어 2.5자/토큰). 짧은 정상 답(98–100)이 100 경계에 걸려 다시 받았다가 첫 답으로
+ * 돌아가며 10–13초를 잃었으므로, 예고 최대값 위·정상 답 최소값 아래인 80에 둔다. 재는 대상은 응답
+ * 전체가 아니라 마지막 단계다: 거절된 native read 뒤에 재시도 문장이 쌓여도(측정 151) 끝나는 예고는 짧다.
  */
-const MAX_RESAMPLE_FINAL_STEP_TOKENS = 100;
+const MAX_RESAMPLE_FINAL_STEP_TOKENS = 80;
 
 /** 턴을 넘기는 클라이언트 도구 호출. `whenArgumentTrue`가 있으면 그 인자가 `true`일 때만 해당한다. */
 export interface CursorYieldToolCall {
@@ -312,6 +313,7 @@ async function* resample(
   let sawReasoning = false;
   let secondText = "";
   let droppedTextChars = 0;
+  let openError: string | undefined;
   let secondCompleted: CompletedEvent | undefined;
 
   const report = (outcome: Outcome): void => {
@@ -329,6 +331,7 @@ async function* resample(
       // 문구는 기록하지 않는다(본문은 wire 이벤트에 있다).
       secondTextChars: secondText.length,
       droppedTextChars,
+      ...(openError === undefined ? {} : { openError }),
     });
   };
   const aborted = (): never => {
@@ -346,8 +349,10 @@ async function* resample(
   let second: AdapterResponse;
   try {
     second = await context.reopen(announcement);
-  } catch {
+  } catch (error) {
     if (context.signal?.aborted) aborted();
+    // 사유만 남긴다(메시지는 남기지 않는다): 컨텍스트 창 거절, adapter 종료, dial 실패를 가른다.
+    openError = errorLabel(error);
     yield* fallback("fallback_open_error");
     return;
   }
@@ -425,8 +430,9 @@ async function* resample(
       }
       if (event.type === "response.completed") {
         secondCompleted = event;
-        // 커밋은 도구 호출에서만 일어나므로 끝까지 온 두 번째는 회복이다.
-        terminal = "tool_recovered";
+        // 커밋은 도구 호출에서만 일어나므로 끝까지 온 두 번째는 회복이다. Cursor는 오류 뒤에도
+        // completed를 보내므로, 이미 정한 오류는 덮어쓰지 않는다.
+        terminal ??= "tool_recovered";
       } else if (event.type === "response.failed" || event.type === "error") {
         terminal = "error_after_commit";
       }
@@ -435,6 +441,12 @@ async function* resample(
   } finally {
     await iterator.return?.();
   }
+}
+
+function errorLabel(error: unknown): string {
+  if (isRecord(error) && typeof error.code === "string" && error.code.length > 0) return error.code;
+  if (error instanceof Error) return error.name;
+  return typeof error;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

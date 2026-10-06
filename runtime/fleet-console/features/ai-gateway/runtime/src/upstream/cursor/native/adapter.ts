@@ -1291,6 +1291,26 @@ function isCursorClientContextMessage(item: CanonicalInputItem | undefined): boo
     : text.trimStart().startsWith("<system-reminder>");
 }
 
+/**
+ * The trailing result batch as the announce-only resample reads it: past any client context the
+ * caller appended after the results — Claude Code puts a background-job notice or a queued message
+ * into the same user turn as `<system-reminder>` text, which arrives as its own user item. The turn
+ * is still a tool-result turn. The bridge keeps its own stricter reading; this one only arms.
+ */
+function trailingCursorToolResultsPastClientContext(
+  input: readonly CanonicalInputItem[],
+): readonly CursorCanonicalToolResult[] | undefined {
+  let end = input.length;
+  while (end > 1) {
+    const tail = input[end - 1];
+    const context = tail?.type === "message"
+      && (tail.role === "developer" || isCursorClientContextMessage(tail));
+    if (!context) break;
+    end -= 1;
+  }
+  return trailingCursorToolResults(input.slice(0, end));
+}
+
 function cursorSupersedeOutcome(input: readonly CanonicalInputItem[]): string {
   const actionable = lastCursorActionableInput(input);
   if (actionable?.type === "message") {
@@ -1494,7 +1514,12 @@ export class CursorAdapter implements AiGatewayAdapter {
       ...(request.reasoning?.effort === undefined ? {} : { effort: request.reasoning.effort }),
       toolCatalogFingerprint: cursorToolCatalogFingerprint(request.tools ?? [], preflight.tools),
     };
-    const arming = cursorResampleArming(request, results, preflight.wireModelId, scope);
+    const arming = cursorResampleArming(
+      request,
+      trailingCursorToolResultsPastClientContext(request.input),
+      preflight.wireModelId,
+      scope,
+    );
     wireLog("cursor.resample.armed", {
       armed: arming.armed,
       wireModel: preflight.wireModelId,
@@ -1585,7 +1610,9 @@ export class CursorAdapter implements AiGatewayAdapter {
       wireModelId,
       firstSignals: () => run.segmentSignals(),
       reopen: async (announcement) => {
-        if (this.disposed) throw new Error("Cursor adapter is disposed");
+        if (this.disposed) {
+          throw Object.assign(new Error("Cursor adapter is disposed"), { code: "CURSOR_ADAPTER_DISPOSED" });
+        }
         const nudged: CanonicalResponseRequest = {
           ...request,
           input: [...request.input, ...cursorResampleNudgeItems(announcement)],

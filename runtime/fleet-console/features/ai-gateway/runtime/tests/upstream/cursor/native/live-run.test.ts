@@ -310,11 +310,10 @@ describe("Cursor live client-tool Run bridge", () => {
     const recovered = cursorCall("call-resample-2", 2);
     const waiting = cursorCall("call-resample-4", 4);
     const announcement = "Now I'll run the tests.";
-    const announcedRun = new BridgeCursorStream(
-      cursorToolFrames([first]),
-      cursorCompletionFrames(announcement),
-      1,
-    );
+    const firstRun = new BridgeCursorStream(cursorToolFrames([first]));
+    // Claude Code appends a background-job notice to the result turn as its own user text, so the
+    // bridge cold-resumes; the turn is still a tool-result turn and must stay armed.
+    const announcedRun = new BridgeCursorStream(cursorCompletionFrames(announcement));
     const recoveredRun = new BridgeCursorStream(
       [
         { conversationCheckpointUpdate: { tokenDetails: { usedTokens: 5_000, maxTokens: 256_000 } } },
@@ -333,7 +332,14 @@ describe("Cursor live client-tool Run bridge", () => {
     );
     // Would recover with a call if the gateway asked again after the yielding call.
     const unwantedRun = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-5", 5)]));
-    const harness = cursorHarness([announcedRun, recoveredRun, textAgainRun, yieldingRun, unwantedRun]);
+    const harness = cursorHarness([
+      firstRun,
+      announcedRun,
+      recoveredRun,
+      textAgainRun,
+      yieldingRun,
+      unwantedRun,
+    ]);
     const adapter = harness.adapter.forHarness({
       yieldToolCalls: [{ name: "probe_tool", whenArgumentTrue: "background" }],
     });
@@ -347,7 +353,16 @@ describe("Cursor live client-tool Run bridge", () => {
       arguments: JSON.stringify(args),
     });
     const initial = cursorRequest("session-resample", "grok-4.7");
-    const afterFirst = [...initial.input, call(first), cursorResult(first, "ok")];
+    const afterFirst = [
+      ...initial.input,
+      call(first),
+      cursorResult(first, "ok"),
+      {
+        type: "message" as const,
+        role: "user" as const,
+        content: "<system-reminder>A background task finished.</system-reminder>",
+      },
+    ];
     const afterRecovered = [
       ...afterFirst,
       { type: "message" as const, role: "assistant" as const, content: announcement },
@@ -377,7 +392,7 @@ describe("Cursor live client-tool Run bridge", () => {
       // The recovered Run stays warm for the client's next request even though that request is
       // smaller than the nudged one Cursor measured.
       const second = await turn({ ...initial, input: afterRecovered });
-      expect(harness.openedStreams).toBe(3);
+      expect(harness.openedStreams).toBe(4);
       expect(cursorMcpResultWrites(recoveredRun)).toHaveLength(1);
       // That continuation only announced too; a second ask that announces again is dropped, the
       // client gets the first answer, and there is no third ask.
@@ -392,7 +407,7 @@ describe("Cursor live client-tool Run bridge", () => {
       });
       expect(canonicalText(waited)).toBe("Waiting for the background job.");
       expect(addedFunctionCallIds(waited)).toEqual([]);
-      expect(harness.openedStreams).toBe(4);
+      expect(harness.openedStreams).toBe(5);
     } finally {
       harness.adapter.dispose();
     }
