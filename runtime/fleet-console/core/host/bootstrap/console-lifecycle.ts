@@ -13,6 +13,7 @@ import {
   createConsoleHealthClient,
   createOwnedProcessRegistry,
   createProcessTableSnapshot,
+  deliverConsoleStop,
   killSameGroupDescendants,
   startConsoleReaper,
   type ConsoleReaperLink,
@@ -37,6 +38,7 @@ import {
   CONSOLE_START_TIMEOUT_MS,
   CONSOLE_STOP_DEADLINE_MS,
   EXTERNAL_ESCALATION_MS,
+  HEALTH_PROBE_TIMEOUT_MS,
   OWNED_GROUP_TERM_GRACE_MS,
   PRELOCK_CHILD_GRACE_MS,
   describeConsoleLockSlotQuiescenceCheck,
@@ -47,6 +49,7 @@ import {
   describeUnprovenConsoleLockOwner,
   type ConsoleExitOutcome,
   type ConsoleLockOwnerRecovery,
+  type ConsoleStopReason,
   type UnprovenConsoleLockOwnerState,
 } from "@fleet-console/protocol/lifecycle";
 
@@ -324,6 +327,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       onRemoved: (pgid) => reaper?.removed(pgid),
     });
     let exitOutcome: { readonly outcome: ConsoleExitOutcome; readonly killed: number } | null = null;
+    // Why this instance's shutdown runs: the first accepted stop request names it, and the exit record keeps it, so a
+    // token-authenticated stop request reads apart from an OS signal.
+    let stopReason: ConsoleStopReason | null = null;
     const lifecycle = createConsoleServeLifecycle({
       // Only the lock owner starts a reaper, before any owned child exists (a lock loser starts nothing).
       onLockAcquired: (instance) => {
@@ -338,7 +344,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       // From the first stop request until the process exits, whatever is still running: a stalled start, a cleanup stuck
       // with the lock, or a child that outlives the released lock. The owned process groups are ended first (SIGKILL on
       // POSIX, TerminateJobObject on Windows); a lock left behind is reclaimed by the next Console once this pid is ESRCH.
-      onStopRequested: () => {
+      onStopRequested: (reason) => {
+        stopReason ??= reason;
         // 먼저 잔여 종료 관찰만 켠다. 살아 있는 리더와 플러그인 자체 cleanup 순서는 바꾸지 않는다.
         ownedProcesses.beginStop(() => false, OWNED_GROUP_TERM_GRACE_MS, {
           onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error),
@@ -406,7 +413,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (!instance) return;
       const ended = exitOutcome ?? { outcome: code === 0 ? "clean" : "failed", killed: 0 };
       try {
-        writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now() });
+        writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now(), ...(stopReason === null ? {} : { stopReason }) });
       } catch (error) { recordFailure("exit_record_failed", error); }
     });
     const server = createConsoleServer({ lifecycle, ownedProcesses });
@@ -457,8 +464,20 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     const requester = observed.state === "ready";
     if (requester) assertCliCanControlDaemon(payload);
     const provenStart = requester ? await captureProvenProcessStart(payload.pid, identityProbedAt, env) : null;
+    // On Windows a Console that advertises the stop request route is asked through it, so its cleanup runs and its
+    // exit record says clean; anywhere else this stop signals as before. The ladder starts after the POST ends, so its
+    // clock never includes the request.
+    const request = requester
+      ? await deliverConsoleStop({
+        lock: payload,
+        health: observed.probe?.health,
+        timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
+        platform: process.platform,
+        observe: () => observe(payload).then((observation) => observation.state),
+      })
+      : "none";
     const ended = await runStopLadder({
-      request: requester ? "signal" : "none",
+      request,
       isAlive: () => isPidAlive(payload.pid),
       isReleased: () => isLockReleasedBy(payload),
       reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart, observe, env }),
@@ -477,9 +496,10 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // SIGKILL이 Console 자신의 종료 기록(예: deadline)과 겹치면 그 기록이 실제 결말이다. 우선순위상 forced-external이
     // 그것을 덮지 않으므로, 쓰지 못했을 때는 남아 있는 기록으로 보고한다.
     if (ended === "forced" && recordForcedExit(instance)) return { outcome: "forced-external", killed: 0 };
-    // 기록이 없으면 계약을 아는 Console은 밖에서 끝난 것이고, 계약 이전 Console이나 Windows에서 이 stop이 끝낸 Console은
-    // 탓할 근거가 없어 지금까지처럼 정지로 본다(readConsoleEnding).
-    return readConsoleEnding(paths.lockFile, instance, { lifecycleWire: observed.probe?.health?.lifecycleWire, terminatedByReader: requester });
+    // 기록이 없으면 계약을 아는 Console은 밖에서 끝난 것이고, 계약 이전 Console이나 Windows에서 이 stop이 신호로 끝낸
+    // Console은 탓할 근거가 없어 지금까지처럼 정지로 본다(readConsoleEnding). 요청으로 정지한 Console은 신호를 보내지
+    // 않았으므로 terminatedByReader가 아니다.
+    return readConsoleEnding(paths.lockFile, instance, { lifecycleWire: observed.probe?.health?.lifecycleWire, terminatedByReader: request === "signal" });
   }
 
   function observe(payload: ConsoleLockPayload): Promise<ConsoleInstanceObservation<ConsoleLockPayload>> {

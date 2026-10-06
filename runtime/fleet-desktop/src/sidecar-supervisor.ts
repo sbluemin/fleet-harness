@@ -7,6 +7,7 @@ import {
   captureProvenProcessStart,
   consoleLockInstanceState,
   createConsoleHealthClient,
+  deliverConsoleStop,
   isPidAlive,
   observeConsoleInstance,
   observeConsoleLockFile,
@@ -92,9 +93,10 @@ type LockRead =
 type SlotDecision = { readonly kind: "adopt"; readonly url: string } | { readonly kind: "ready" } | { readonly kind: "changed" };
 /**
  * What a stop requested by this Desktop targets: the pid, the lock instance it published when known (an own child that
- * gave up before its lock was read has none), and the `lifecycleWire` its health reported, for reading how it ended.
+ * gave up before its lock was read has none), and the `lifecycleWire` and `stopRequest` its health reported, for
+ * reading how it ended and for choosing the Windows stop path.
  */
-interface StopTarget { readonly pid: number; readonly lock?: LockPayload; readonly lifecycleWire?: unknown; }
+interface StopTarget { readonly pid: number; readonly lock?: LockPayload; readonly lifecycleWire?: unknown; readonly stopRequest?: unknown; }
 
 // Each pass either adopts, finds the slot ready, or ends a Console this Desktop owns; more passes mean the slot keeps changing.
 const SLOT_PASSES = 4;
@@ -127,9 +129,10 @@ export function isPreReclaimConsoleVersion(version: string): boolean {
  */
 export class SidecarSupervisor {
   private child: ChildProcess | null = null;
-  /** The lock the current child published and the `lifecycleWire` it answered with, once seen. */
+  /** The lock the current child published and the `lifecycleWire` and `stopRequest` it answered with, once seen. */
   private childLock: LockPayload | null = null;
   private childLifecycleWire: unknown = undefined;
+  private childStopRequest: unknown = undefined;
   /** The own child this Desktop is stopping: its ending is reported once, by the stop that ends it, not by its exit handler. */
   private stoppingChild: ChildProcess | null = null;
   private serviceVersion: string;
@@ -172,7 +175,7 @@ export class SidecarSupervisor {
       // This Desktop's unreaped child: its handle proves identity (E1), so it is adopted when it answers and ended otherwise.
       const own = await this.observe(stored.lock);
       if (owned && this.answersFor(own.probe, pid)) return { kind: "adopt", url: consoleUrl(stored.lock) };
-      await this.stopRequested({ pid, lock: stored.lock, lifecycleWire: own.probe?.health?.lifecycleWire ?? this.childLifecycleWire }, null);
+      await this.stopRequested({ pid, lock: stored.lock, lifecycleWire: own.probe?.health?.lifecycleWire ?? this.childLifecycleWire, stopRequest: own.probe?.health?.stopRequest ?? this.childStopRequest }, null);
       return { kind: "changed" };
     }
     let observed = await this.observe(stored.lock);
@@ -231,6 +234,7 @@ export class SidecarSupervisor {
     let stderrTail = "";
     this.childLock = null;
     this.childLifecycleWire = undefined;
+    this.childStopRequest = undefined;
     try {
       this.child = spawn(runtime.nodePath, [runtime.cliPath, "serve"], { cwd: path.dirname(path.dirname(runtime.cliPath)), env: this.options.env, stdio: ["ignore", "pipe", "pipe"], detached: false, windowsHide: true });
     } catch (error) {
@@ -287,6 +291,7 @@ export class SidecarSupervisor {
         const answer = await this.probe(lock);
         if (!this.answersFor(answer, lock.pid)) continue;
         if (own) this.childLifecycleWire = answer.health?.lifecycleWire;
+        if (own) this.childStopRequest = answer.health?.stopRequest;
         if (!this.isOwned(lock)) throw this.conflict("cli_daemon_requires_confirmation", lock.pid, "ready", "another owner's Console took the lock and answered as healthy");
         sidecarReady = true;
         return consoleUrl(lock);
@@ -309,7 +314,7 @@ export class SidecarSupervisor {
       if (consoleLockInstanceState(this.options.lockFile, { pid }) === "held") {
         const read = this.readLock();
         const lock = read.kind === "trusted" && read.stored.lock.pid === pid ? read.stored.lock : this.childLock;
-        await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: this.childLifecycleWire }, null);
+        await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: this.childLifecycleWire, stopRequest: this.childStopRequest }, null);
       } else {
         this.stoppingChild = child;
         signalPid(pid, "SIGTERM");
@@ -339,7 +344,7 @@ export class SidecarSupervisor {
     // 재증명 실패나 강제 종료 실패는 기록하되 Quit 자체는 막지 않는다. lock 해제 뒤 잔존 구간에는 신호를 보내지 않는다.
     try {
       if (this.isOwnLiveChild(pid)) {
-        await this.stopRequested({ pid, lock, lifecycleWire: this.childLifecycleWire }, null);
+        await this.stopRequested({ pid, lock, lifecycleWire: this.childLifecycleWire, stopRequest: this.childStopRequest }, null);
         return;
       }
       // The wall-clock moment identity is about to be proven: only a process that started before it can be that Console.
@@ -351,7 +356,7 @@ export class SidecarSupervisor {
         this.options.log.error(`console_lock_process_${observed.state}: pid ${pid} holds ${this.options.lockFile}; left running without a signal`);
         return;
       }
-      await this.stopRequested({ pid, lock, lifecycleWire: observed.probe?.health?.lifecycleWire }, await captureProvenProcessStart(pid, provenAt));
+      await this.stopRequested({ pid, lock, lifecycleWire: observed.probe?.health?.lifecycleWire, stopRequest: observed.probe?.health?.stopRequest }, await captureProvenProcessStart(pid, provenAt));
     } catch (error) {
       this.options.log.error(`console_lock_process_unhealthy: pid ${pid} could not be stopped; continuing Quit: ${this.describeError(error)}`);
     }
@@ -374,8 +379,20 @@ export class SidecarSupervisor {
   private async runRequestedStop(target: StopTarget, provenStart: number | null): Promise<ConsoleStopLadderResult> {
     const { pid, lock } = target;
     const instance = { pid, ...(lock ? { token: lock.token } : {}) };
+    // On Windows a Console that advertises the stop request route is asked through it, so its cleanup runs and its
+    // exit record says clean; anywhere else this stop signals as before. The ladder starts after the POST ends, so
+    // its clock never includes the request. Without a lock there is no token to ask with.
+    const request = lock
+      ? await deliverConsoleStop({
+        lock: { pid, endpoint: lock.endpoint, token: lock.token },
+        health: target.stopRequest === undefined ? null : { stopRequest: target.stopRequest },
+        timeoutMs: INTERACTIVE_PROBE_TIMEOUT_MS,
+        platform: process.platform,
+        observe: () => this.observe(lock).then((observation) => observation.state),
+      })
+      : "signal";
     const ended = await runStopLadder({
-      request: "signal",
+      request,
       isAlive: () => isPidAlive(pid),
       isReleased: () => consoleLockInstanceState(this.options.lockFile, instance) === "released",
       // An own child that gave up before its lock was read is proven only by its unreaped handle (E1).
@@ -398,8 +415,8 @@ export class SidecarSupervisor {
     }
     const outcome = forcedRecorded
       ? "forced-external"
-      : ended !== "exited" && ended !== "forced" ? null : key ? readConsoleEnding(this.options.lockFile, key, { lifecycleWire: target.lifecycleWire, terminatedByReader: true }).outcome : "unrecorded";
-    const line = `console_stop: pid ${pid} ${ended}${outcome === null ? "" : ` outcome=${outcome}`}`;
+      : ended !== "exited" && ended !== "forced" ? null : key ? readConsoleEnding(this.options.lockFile, key, { lifecycleWire: target.lifecycleWire, terminatedByReader: request === "signal" }).outcome : "unrecorded";
+    const line = `console_stop: pid ${pid} ${request} ${ended}${outcome === null ? "" : ` outcome=${outcome}`}`;
     // Only a recorded clean shutdown is reported as one; no record, an unknown one, or an external ending is not.
     if (outcome === "clean") this.options.log.info(line);
     else this.options.log.error(line);

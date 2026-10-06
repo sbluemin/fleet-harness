@@ -41,7 +41,7 @@ import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
-import { CONSOLE_LIFECYCLE_WIRE, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_LIFECYCLE_WIRE, CONSOLE_STOP_REQUEST_PATH, CONSOLE_STOP_REQUEST_REVISION, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
 import { createBrowserRouter } from "../../../features/browser/host/routes.js";
@@ -471,6 +471,14 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "GET",
     path: "/api/v1/health",
     summary: "Check console status with the lock token.",
+    category: "Health",
+    gate: "lock-token",
+    transport: "http",
+  },
+  {
+    method: "POST",
+    path: CONSOLE_STOP_REQUEST_PATH,
+    summary: "Ask the Console to stop itself with the lock token.",
     category: "Health",
     gate: "lock-token",
     transport: "http",
@@ -1630,12 +1638,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     // bind는 lock의 실제 endpoint를 정할 뿐이다. 소유권·복원·활성화가 끝나기 전에는 요청을 실행하지 않는다.
+    // 정지 요청만 health와 함께 pre-ready에서도 받는다: startup 중 lock을 쥔 자식을 거두는 경로의 탈출구다.
     if (!isReady()) {
       if (pathname === "/api/v1/health") handleHealth(req, res);
+      else if (pathname === CONSOLE_STOP_REQUEST_PATH) handleStopRequest(req, res);
       else writeJson(res, 503, { error: "console_starting" });
       return;
     }
-    if (archiveStorage.blocked() && (pathname.startsWith("/api/") || pathname.startsWith("/mcp/")) && pathname !== "/api/v1/health") {
+    if (archiveStorage.blocked() && (pathname.startsWith("/api/") || pathname.startsWith("/mcp/")) && pathname !== "/api/v1/health" && pathname !== CONSOLE_STOP_REQUEST_PATH) {
       writeJson(res, 503, { error: "archive_recovery_required" });
       return;
     }
@@ -1664,6 +1674,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (tryServeStaticConsole(req, res, pathname)) return;
     if (pathname === "/api/v1/health") {
       handleHealth(req, res);
+      return;
+    }
+    if (pathname === CONSOLE_STOP_REQUEST_PATH) {
+      handleStopRequest(req, res);
       return;
     }
     if (pathname === "/api/v1/access-grants") {
@@ -1811,7 +1825,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (handle && token && req.headers.authorization === `Bearer ${token}`) {
       const payload = handle.payload;
       if (!isReady()) {
-        writeJson(res, 503, { error: "console_starting", pid: payload.pid });
+        writeJson(res, 503, { error: "console_starting", pid: payload.pid, stopRequest: CONSOLE_STOP_REQUEST_REVISION });
         return;
       }
       const body: ConsoleHealth = {
@@ -1829,11 +1843,47 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         ...(payload.owner ? { owner: payload.owner } : {}),
         workspaceCount: operations.list().length,
         lifecycleWire: CONSOLE_LIFECYCLE_WIRE,
+        stopRequest: CONSOLE_STOP_REQUEST_REVISION,
       };
       writeJson(res, 200, body);
       return;
     }
     writeJson(res, 401, { error: "Unauthorized" });
+  }
+
+  /**
+   * A token-authenticated stop request (docs/console-lifecycle-contract.md, "Stop ladder"): the Windows stop path that
+   * runs cleanup instead of TerminateProcess. The gates mirror the read/update precedents — a remote listener never
+   * sees this route (404), only POST stops (405), a browser Origin never stops (403), and only the lock token stops
+   * (401). Like an accepted update's self-stop, the shutdown starts only after the 202 response is finished: a
+   * connection lost before then stops nothing. Every accepted request joins the one shutdown.
+   */
+  function handleStopRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (listenerForRequest(req)?.audience !== "local") {
+      writeJson(res, 404, { error: "not_found" });
+      return;
+    }
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (req.headers.origin !== undefined) {
+      writeJson(res, 403, { error: "forbidden" });
+      return;
+    }
+    const handle = lockHandle;
+    const token = handle?.payload.token;
+    if (!handle || !token || req.headers.authorization !== `Bearer ${token}`) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const pid = handle.payload.pid;
+    writeJson(res, 202, { accepted: true, pid });
+    res.once("finish", () => {
+      void lifecycle.requestStop("request").catch((error) => {
+        console.warn(`[fleet-console] Stop request shutdown failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    });
   }
 
   // 조인 자격 발급. 로컬 자격이라도 링크와 같은 grant 문법을 거치게 해서, 세션을 여는

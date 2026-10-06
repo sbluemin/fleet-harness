@@ -198,7 +198,7 @@ describe("console terminal observability", () => {
       const healthHeaders = { Authorization: `Bearer ${owner.token}` };
       const health = await fetch(healthUrl, { headers: healthHeaders });
       expect(health.status).toBe(503);
-      await expect(health.json()).resolves.toEqual({ error: "console_starting", pid: owner.pid });
+      await expect(health.json()).resolves.toEqual({ error: "console_starting", pid: owner.pid, stopRequest: 1 });
       expect((await fetch(healthUrl)).status).toBe(401);
       expect((await fetch(new URL("api/v1/theaters", owner.endpoint), { method: "POST", body: "{}" })).status).toBe(503);
 
@@ -306,6 +306,100 @@ describe("console terminal observability", () => {
       delete hooks.__fleetSlowCleanup;
     }
   });
+
+  // N9-W2: the token-authenticated stop request. Rejections never touch the shutdown, an accepted request runs the one
+  // shutdown once, and a repeat joins it instead of starting another.
+  it("accepts one token-authenticated stop request and joins later stops into the same shutdown", async () => {
+    const stopRequests: string[] = [];
+    const fixture = await startFixture({
+      lifecycle: createConsoleServeLifecycle({ onStopRequested: (reason) => stopRequests.push(reason) }),
+    });
+    const stopUrl = new URL("api/v1/lifecycle/stop", fixture.endpoint);
+    const auth = { Authorization: `Bearer ${fixture.lock.token}` };
+    const origin = new URL(fixture.endpoint).origin;
+
+    const health = await (await fetch(new URL("api/v1/health", fixture.endpoint), { headers: auth })).json() as Record<string, unknown>;
+    expect(health).toMatchObject({ ok: true, pid: fixture.lock.pid, lifecycleWire: 1, stopRequest: 1 });
+
+    // The gates reject without touching the shutdown: no token, a wrong token, a browser Origin, a non-POST.
+    expect((await fetch(stopUrl, { method: "POST" })).status).toBe(401);
+    expect((await fetch(stopUrl, { method: "POST", headers: { Authorization: "Bearer wrong-token" } })).status).toBe(401);
+    expect((await fetch(stopUrl, { method: "POST", headers: { ...auth, Origin: origin } })).status).toBe(403);
+    expect((await fetch(stopUrl, { headers: auth })).status).toBe(405);
+    expect(stopRequests).toEqual([]);
+    expect((await fetch(new URL("api/v1/health", fixture.endpoint), { headers: auth })).status).toBe(200);
+
+    // The token-authenticated request is accepted once and runs the one shutdown.
+    const accepted = await fetch(stopUrl, { method: "POST", headers: auth });
+    expect(accepted.status).toBe(202);
+    await expect(accepted.json()).resolves.toEqual({ accepted: true, pid: fixture.lock.pid });
+    await vi.waitFor(() => expect(stopRequests).toEqual(["request"]), { timeout: 10_000 });
+    // Duplicates while the shutdown runs never start another: the closing listener refuses them or answers 401
+    // without a lock to authorize against, and the shutdown stays one.
+    const duplicates = await Promise.all(
+      [0, 1].map(() => fetch(stopUrl, { method: "POST", headers: auth }).then(
+        (response) => response.status,
+        () => "connection-closed",
+      )),
+    );
+    for (const status of duplicates) expect([401, "connection-closed"]).toContain(status);
+    await fixture.server.stop();
+    lifecycleCheck("L7", stopRequests.join() === "request", "a later stop request joins the stop request's shutdown instead of starting another");
+    lifecycleCheck("L7", !fs.existsSync(fixture.lockFile), "a stop requested during the stop request's shutdown returns only after the lock is released");
+  }, 20_000);
+
+  // N9-W2 DR-5: the same gates hold while starting, and an accepted request shuts down after startup settles.
+  it("holds the stop request gates while starting and shuts down after startup settles", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-stop-starting-"));
+    tempDirs.push(dir);
+    const fleetDataDir = path.join(dir, "fleet-home");
+    const lockFile = path.join(dir, "console.lock");
+    const entered = createDeferred<void>();
+    const release = createDeferred<void>();
+    const hooks = globalThis as typeof globalThis & { __fleetStartupGate?: () => Promise<void> };
+    hooks.__fleetStartupGate = async () => { entered.resolve(); await release.promise; };
+    const plugin = createPluginPackageRoot({ demoRoutes: "export async function register() { await globalThis.__fleetStartupGate(); }" });
+    const stopRequests: string[] = [];
+    const server = createConsoleServer({
+      port: 0,
+      dataDir: fleetDataDir,
+      pluginHomeDir: dir,
+      release: plugin.release,
+      lifecycle: createConsoleServeLifecycle({ onStopRequested: (reason) => stopRequests.push(reason) }),
+    });
+    servers.push(server);
+    const starting = server.start({ dir, lockFile });
+    void starting.catch(() => {});
+    try {
+      await entered.promise;
+      const owner = readConsoleLockFile(lockFile)!;
+      const stopUrl = new URL("api/v1/lifecycle/stop", owner.endpoint);
+      const auth = { Authorization: `Bearer ${owner.token}` };
+      const origin = new URL(owner.endpoint).origin;
+
+      expect((await fetch(stopUrl, { method: "POST" })).status).toBe(401);
+      expect((await fetch(stopUrl, { method: "POST", headers: { Authorization: "Bearer wrong-token" } })).status).toBe(401);
+      expect((await fetch(stopUrl, { method: "POST", headers: { ...auth, Origin: origin } })).status).toBe(403);
+      expect((await fetch(stopUrl, { headers: auth })).status).toBe(405);
+      expect(stopRequests).toEqual([]);
+
+      const accepted = await fetch(stopUrl, { method: "POST", headers: auth });
+      expect(accepted.status).toBe(202);
+      await expect(accepted.json()).resolves.toEqual({ accepted: true, pid: owner.pid });
+      await vi.waitFor(() => expect(stopRequests).toEqual(["request"]), { timeout: 10_000 });
+      // The shutdown waits for startup to settle: the lock stays until the cleanup ends.
+      expect(fs.existsSync(lockFile)).toBe(true);
+      release.resolve();
+      await starting;
+      await vi.waitFor(() => expect(fs.existsSync(lockFile)).toBe(false), { timeout: 10_000 });
+      await server.stop();
+      lifecycleCheck("L7", stopRequests.join() === "request", "a stop requested while starting joins the same shutdown instead of starting another");
+    } finally {
+      release.resolve();
+      await starting.catch(() => {});
+      delete hooks.__fleetStartupGate;
+    }
+  }, 30_000);
 
 });
 

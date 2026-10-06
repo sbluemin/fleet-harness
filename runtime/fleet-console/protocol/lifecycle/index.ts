@@ -21,7 +21,18 @@ import { EXTERNAL_ESCALATION_MS } from "./budgets.js";
 export type ConsoleLifecycleState = "binding" | "starting" | "ready" | "stopping" | "releasing" | "exited";
 
 /** Why a stop was requested. Every reason enters the same single shutdown and arms the same deadline. */
-export type ConsoleStopReason = "signal" | "update" | "api";
+export type ConsoleStopReason = "signal" | "update" | "api" | "request";
+
+/**
+ * The token-authenticated stop request route. A Console that serves it answers 202 and stops itself after the
+ * response, through the same single shutdown a signal starts.
+ */
+export const CONSOLE_STOP_REQUEST_PATH = "/api/v1/lifecycle/stop";
+/**
+ * The revision of the token-authenticated stop request a Console advertises as `stopRequest` in its authenticated
+ * health answer (both the ready 200 and the starting 503). Additive: a Console that omits it predates the route.
+ */
+export const CONSOLE_STOP_REQUEST_REVISION = 1;
 
 /**
  * The lifecycle wire revision a Console reports as `lifecycleWire` in its authenticated health answer. A Console that
@@ -144,6 +155,71 @@ export function classifyConsolePublic(input: ConsolePublicEvidence): ConsolePubl
   return input.status === "answered" ? "ready" : "unresponsive";
 }
 
+// ---------- Token-authenticated stop request route ----------
+
+/**
+ * What one token-authenticated stop request attempt showed.
+ * - accepted: the Console answered 202 with `accepted: true` and its own pid.
+ * - rejected: the Console definitely did not take the request (401/403/404/405, or a 202 body that did not confirm).
+ * - uncertain: the attempt never got an answer (timeout, reset, refused) — the request may or may not have landed,
+ *   so `observed` carries a fresh observation of the same lock instance to decide on.
+ */
+export type ConsoleStopAttemptResult =
+  | { readonly kind: "accepted" }
+  | { readonly kind: "rejected" }
+  | { readonly kind: "uncertain"; readonly observed: ConsoleObservedState };
+
+/**
+ * Where a stop request goes: `signal` sends SIGTERM now (on Windows that is TerminateProcess), `delivered` sends
+ * nothing — the request already reached the Console another way — and the stop ladder still escalates past B_ext only
+ * with identity proven again.
+ */
+export type ConsoleStopClientRoute = "signal" | "delivered";
+
+/**
+ * The one rule every actor uses to choose its stop path (docs/console-lifecycle-contract.md, "Stop ladder"): from the
+ * Console's advertisement, the actor's platform, and the request attempt's result. POSIX always signals; so does an
+ * unadvertised Console and a definite rejection. An inconclusive attempt signals only a Console that still serves under
+ * the same lock (the request never landed); a Console that is gone, going, or unprovable is waited on without a
+ * signal. Fail closed: anything unrecognized waits.
+ */
+export function decideConsoleStopRoute(input: {
+  readonly platform: string;
+  readonly advertised: boolean;
+  readonly result: ConsoleStopAttemptResult;
+}): ConsoleStopClientRoute {
+  if (input.platform !== "win32") return "signal";
+  if (!input.advertised) return "signal";
+  switch (input.result.kind) {
+    case "accepted":
+      return "delivered";
+    case "rejected":
+      return "signal";
+    case "uncertain":
+      switch (input.result.observed) {
+        case "ready":
+          return "signal";
+        case "stopping":
+        case "releasing":
+        case "exited":
+        case "unverified":
+        case "replaced":
+        case "starting":
+          return "delivered";
+        default: {
+          const exhaustive: never = input.result.observed;
+          void exhaustive;
+          return "delivered";
+        }
+      }
+    default: {
+      const exhaustive: never = input.result;
+      void exhaustive;
+      return "delivered";
+    }
+  }
+}
+
 // ---------- Exit record ----------
 
 /**
@@ -176,6 +252,11 @@ export interface ConsoleExitRecord extends ConsoleInstanceKey {
   /** Leftover child processes the instance killed on its way out (deadline). */
   readonly killed: number;
   readonly at: number;
+  /**
+   * Why the shutdown ran. Optional and additive: a previous reader ignores it, and the wire revision stays. It tells
+   * a token-authenticated stop request apart from an OS signal in the record.
+   */
+  readonly stopReason?: ConsoleStopReason;
 }
 
 /** How many of the newest exit records a lock owner keeps when it prunes the slot right after taking the lock. */
@@ -183,6 +264,12 @@ export const CONSOLE_EXIT_RECORD_RETAIN = 16;
 
 const EXIT_RECORD_NAME = /^console\.exit\.([1-9]\d*)-(\d+)\.json$/;
 const EXIT_OUTCOMES: readonly ConsoleExitOutcome[] = ["clean", "deadline", "crash", "failed", "external", "forced-external"];
+const STOP_REASONS: readonly ConsoleStopReason[] = ["signal", "update", "api", "request"];
+
+/** A recorded stop reason as a reader sees it: the reason when it names one this contract knows, else absent. */
+export function parseConsoleStopReason(value: unknown): ConsoleStopReason | undefined {
+  return STOP_REASONS.includes(value as ConsoleStopReason) ? (value as ConsoleStopReason) : undefined;
+}
 
 /**
  * A record as a reader sees it. A newer Console may write an outcome this reader does not know; that reads as `unknown`,
@@ -220,7 +307,8 @@ export function parseConsoleExitRecord(text: string): ConsoleExitRecordRead | nu
   if (typeof outcome !== "string" || outcome.length === 0) return null;
   if (typeof killed !== "number" || !Number.isSafeInteger(killed) || killed < 0) return null;
   const known = EXIT_OUTCOMES.includes(outcome as ConsoleExitOutcome) ? outcome as ConsoleExitOutcome : "unknown";
-  return { v: CONSOLE_EXIT_RECORD_VERSION, pid, lockStartedAt, outcome: known, killed, at };
+  const stopReason = parseConsoleStopReason(parsed.stopReason);
+  return { v: CONSOLE_EXIT_RECORD_VERSION, pid, lockStartedAt, outcome: known, killed, at, ...(stopReason === undefined ? {} : { stopReason }) };
 }
 
 // ---------- Lock slot ----------
