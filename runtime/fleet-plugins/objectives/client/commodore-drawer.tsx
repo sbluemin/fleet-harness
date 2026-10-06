@@ -10,6 +10,7 @@ import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
+import { CommodoreTrail } from "./commodore-trail.js";
 import { clockTime } from "./commodore-row.js";
 import {
   addCommodoreIntel,
@@ -150,6 +151,8 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
   const dialogRef = useRef<HTMLElement | null>(null);
   const tabRefs = useRef<Record<CommodoreTab, HTMLButtonElement | null>>({ log: null, directive: null, intel: null, settings: null });
   const [failure, setFailure] = useState<string | null>(null);
+  // 곁 칸에서 고른 시각 — 기록 칸이 그 시각의 턴을 드러낸다. 같은 줄을 다시 눌러도 다시 드러나게 nonce 가 오른다.
+  const [reveal, setReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
   const label = commodoreTheaterLabel(theaterId);
   const on = view?.state.autonomy === true;
   const run = view?.run;
@@ -253,7 +256,12 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
             </div>
           ) : null}
           <div className={`objectives-commodore-body is-${tab}`} role="tabpanel" id={`objectives-commodore-panel-${tab}`} aria-labelledby={`objectives-commodore-tab-${tab}`}>
-            {tab === "log" ? <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} /> : null}
+            {tab === "log" ? (
+              <>
+                <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} />
+                <CommodoreTrail t={t} theaterId={theaterId} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
+              </>
+            ) : null}
             {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onFail={fail} onClear={() => setFailure(null)} /> : null}
             {tab === "intel" && view ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} /> : null}
             {tab === "settings" && view ? <CommodoreSettings t={t} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
@@ -519,7 +527,7 @@ const FOLLOW_SLACK_PX = 48;
  * 사령관 기록 — Operation 채팅과 같은 턴 렌더러(호스트 `ctx.chat.Transcript`)로 그린다. 오래된 것이 위, 새 턴이 아래에 쌓이고,
  * 바닥을 보고 있으면 따라 내려간다. 더 오래된 쪽은 맨 위에서 읽어 붙이고 보던 자리를 지킨다.
  */
-function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean }) {
+function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
   const Transcript = commodoreTranscriptRenderer();
   const chat = useMemo(() => commodoreChatEntries(t, entries, live), [t, entries, live]);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -538,7 +546,7 @@ function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded }
     setLoadingOlder(true);
     void loadTranscript(theaterId, { older: true }).finally(() => setLoadingOlder(false));
   };
-  if (loaded && chat.length === 0) return <p className="objectives-commodore-empty">{t("objectives.commodore.log.empty")}</p>;
+  if (loaded && chat.length === 0) return <div className="objectives-commodore-log"><p className="objectives-commodore-empty">{t("objectives.commodore.log.empty")}</p></div>;
   return (
     <div ref={scrollRef} className="objectives-commodore-log" onScroll={(event) => { const node = event.currentTarget; follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < FOLLOW_SLACK_PX; }}>
       {hasMore ? (
@@ -546,7 +554,7 @@ function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded }
           {t("objectives.commodore.log.older")}
         </button>
       ) : null}
-      {Transcript ? <Transcript entries={chat} language={language} /> : null}
+      {Transcript ? <Transcript entries={chat} language={language} reveal={reveal} /> : null}
     </div>
   );
 }

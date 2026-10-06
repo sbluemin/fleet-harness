@@ -9,6 +9,7 @@ import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
+import { CommodoreTrail } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-drawer.js";
 import { clockTime, commodoreSummary } from "./commodore-row.js";
 import {
@@ -35,7 +36,7 @@ import {
   useCommodoreMobileTab,
   useCommodoreOnline,
   useCommodoreTheaterLabel,
-  type CommodoreTab,
+  type CommodoreMobileTab,
 } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { DEFAULT_LAUNCH } from "./launch-control.js";
@@ -146,8 +147,9 @@ function CommodoreScreen({ t, theaterId, enabled }: { readonly t: T; readonly th
   const clear = useCallback(() => setFailure(null), []);
   const on = view?.state.autonomy === true;
   const run = view?.run;
-  const tabs: readonly { readonly id: CommodoreTab; readonly label: string }[] = [
+  const tabs: readonly { readonly id: CommodoreMobileTab; readonly label: string }[] = [
     { id: "log", label: t("objectives.commodore.tabs.log") },
+    { id: "goals", label: t("objectives.commodore.trail.title") },
     { id: "directive", label: t("objectives.commodore.tabs.directive") },
     { id: "intel", label: t("objectives.commodore.tabs.intel") },
     { id: "settings", label: t("objectives.commodore.tabs.settings") },
@@ -172,6 +174,7 @@ function CommodoreScreen({ t, theaterId, enabled }: { readonly t: T; readonly th
         ))}
       </div>
       {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
+      {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} theaterId={theaterId} /></div> : null}
       {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
       {tab === "intel" && view ? <CommodoreMobileIntel t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
       {tab === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}

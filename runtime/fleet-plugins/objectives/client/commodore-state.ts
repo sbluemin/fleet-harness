@@ -20,6 +20,8 @@ import { post } from "./objectives-state.js";
 export const COMMODORE_CHANNEL = "objectives:commodore";
 
 export type CommodoreTab = "log" | "directive" | "intel" | "settings";
+/** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. */
+export type CommodoreMobileTab = CommodoreTab | "goals";
 
 interface TheaterCommodore {
   readonly view: CommodoreStateView | null;
@@ -337,20 +339,20 @@ export function openCommodoreDrawer(theaterId: string, tab: CommodoreTab = "log"
 export const COMMODORE_ENTRY_ID = "commodore";
 
 /** 폰 사령관 화면의 고른 구역 — 다시 들어와도 유지한다(S-54 CM-2a). 서랍을 열려던 길·Theater 시트 행도 여기에 구역을 남긴다. */
-let mobileTab: CommodoreTab = "log";
+let mobileTab: CommodoreMobileTab = "log";
 
-export function setCommodoreMobileTab(tab: CommodoreTab): void {
+export function setCommodoreMobileTab(tab: CommodoreMobileTab): void {
   if (mobileTab === tab) return;
   mobileTab = tab;
   notify();
 }
 
-export function useCommodoreMobileTab(): CommodoreTab {
+export function useCommodoreMobileTab(): CommodoreMobileTab {
   return useSyncExternalStore(subscribeCommodore, () => mobileTab, () => mobileTab);
 }
 
 /** 폰 사령관 화면을 고른 구역으로 연다 — 모바일 호스트는 목적지로 선언된 엔트리의 `rail.open`을 화면으로 연다. */
-export function openCommodoreMobile(tab: CommodoreTab): void {
+export function openCommodoreMobile(tab: CommodoreMobileTab): void {
   setCommodoreMobileTab(tab);
   installed?.rail.open(COMMODORE_ENTRY_ID);
 }
