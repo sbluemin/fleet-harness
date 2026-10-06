@@ -10,7 +10,7 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
    2. Otherwise, even when non-review Codex comments exist, post `@codex Please review this PR.` as a PR comment and record its comment ID, URL, and creation time. Do not start the 40-minute poll yet.
    3. For `<review_activation_timeout>` (default 60 seconds), check every ~10 seconds for an activation signal. Step 1.1 found none, so any one now present is activation, even if it predates the request; continue to step 2. An `eyes` reaction means active, not approved. A usage-limit notice answering the request ends the window: route it through [the step 4 classification](#classify-what-codex-actually-reviewed).
    4. If the bounded window expires, refresh all four surfaces once to avoid a boundary race. If no activation signal exists, set `REVIEW_BYPASS_REASON=codex_activation_timeout` and go directly to Phase 6. This fallback is not approval and never bypasses branch protection or required checks.
-2. **Freeze the wait baseline.** On a resume or after any gap, first read the full state and [classify it](#classify-what-codex-actually-reviewed) as in step 4: a run, review, or limit notice that arrived while nobody was waiting must be handled now, not absorbed into the baseline and waited past. On the re-review path, freeze it **before the request exists**: after the Phase 5 push is visible, freeze the baseline, then post the Phase 5 `@codex` request, then launch step 3 at once. Codex can answer a request within seconds, and a baseline frozen after that answer counts it as old, so no count-based signal ever fires. Then record what is *already* on the PR so the poll only fires on something new: the latest pushed head commit timestamp `HEAD_TS` (`gh api repos/<repo>/commits/<head_sha> -q .commit.committer.date`, or the time of the Phase 2 / Phase 5 push), the current **Codex** review count `BASE_REVIEWS` (`gh pr view <pr_number> --repo <repo> --json reviews -q '[.reviews[]|select(.author.login=="chatgpt-codex-connector")]|length'`), the count `BASE_TOP` of Codex top-level comments already newer than `HEAD_TS`, and `BASE_SUMMARY_TS`, the `updated_at` of Codex's summary comment (the one whose body carries the `codex-pull-request-review-summary` marker; empty if none yet — it does not always exist when the PR opens). Count only Codex-authored items: your own inline replies are reviews too, and the summary comment Codex posts when a PR opens is newer than `HEAD_TS`, so counting everything wakes the poll on your own activity. Codex **edits that one summary comment in place** as a review progresses and completes, so its `created_at` stays old; only `updated_at` and its body show progress. Once any request is posted, record `REQ_TS`, the `created_at` of the latest `@codex` request (from the Phase 5 or step 1 post; `HEAD_TS` when none exists).
+2. **Freeze the wait baseline.** On a resume or after any gap, first read the full state and [classify it](#classify-what-codex-actually-reviewed) as in step 4: a run, review, or limit notice that arrived while nobody was waiting must be handled now, not absorbed into the baseline and waited past. On the re-review path, freeze it **before the request exists**: after the Phase 5 push is visible, freeze the baseline, then post the Phase 5 `@codex` request, then launch step 3 at once. Codex can answer a request within seconds, and a baseline frozen after that answer counts it as old, so no count-based signal ever fires. Then record what is *already* on the PR so the poll only fires on something new, filling each placeholder only from a command that exited 0 (a failed `gh api` prints its error body to stdout, and an empty `HEAD_TS` makes a stale `+1` count as approval): the latest pushed head commit timestamp `HEAD_TS` (`gh api repos/<repo>/commits/<head_sha> -q .commit.committer.date`, or the time of the Phase 2 / Phase 5 push), the current **Codex** review count `BASE_REVIEWS` (`gh pr view <pr_number> --repo <repo> --json reviews -q '[.reviews[]|select(.author.login=="chatgpt-codex-connector")]|length'`), the count `BASE_TOP` of Codex top-level comments already newer than `HEAD_TS`, and `BASE_SUMMARY_TS`, the `updated_at` of Codex's summary comment (the one whose body carries the `codex-pull-request-review-summary` marker; empty if none yet — it does not always exist when the PR opens). Count only Codex-authored items: your own inline replies are reviews too, and the summary comment Codex posts when a PR opens is newer than `HEAD_TS`, so counting everything wakes the poll on your own activity. Codex **edits that one summary comment in place** as a review progresses and completes, so its `created_at` stays old; only `updated_at` and its body show progress. Once any request is posted, record `REQ_TS`, the `created_at` of the latest `@codex` request (from the Phase 5 or step 1 post; `HEAD_TS` when none exists).
 3. **Launch the background poll (signal-driven, not interval-driven).** Start one `run_in_background` Bash loop that polls with `gh` every ~30s (or `<review_poll_interval>`), capped at ~40 min, and **exits — re-invoking you — only on a genuine signal**, printing which:
    - **approval** — a `chatgpt-codex-connector[bot]` `+1` reaction on the PR body with `created_at > HEAD_TS` (fresh, not a stale carry-over);
    - **new review** — the Codex review count exceeds `BASE_REVIEWS` (a new review pass carries its inline comments);
@@ -22,28 +22,37 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
    - Reference loop (run it as the loop itself with `run_in_background: true`; its completion notification re-invokes you):
      ```bash
      REPO=<repo>; PR=<pr_number>; HEAD_TS="<iso8601 of latest push>"; BASE=<BASE_REVIEWS>; BASE_TOP=<BASE_TOP>; BASE_SUMMARY_TS="<BASE_SUMMARY_TS>"; REQ_TS="<REQ_TS>"
+     FAILS=0
      for i in $(seq 1 80); do
-       PLUS=$(gh api repos/$REPO/issues/$PR/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json" \
-         -q "[.[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and .content==\"+1\" and (.created_at > \"$HEAD_TS\"))]|length")
-       RC=$(gh pr view $PR --repo $REPO --json reviews \
-         -q "[.reviews[]|select(.author.login==\"chatgpt-codex-connector\")]|length")
+       # Capture each gh call by plain assignment: a pipe or a ${X:-default} turns a failed call into "nothing new" or a false signal.
        # --paginate runs the filter per page, so emit one line per match and count or pick across pages.
-       TOP=$(gh api --paginate repos/$REPO/issues/$PR/comments \
-         -q ".[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.created_at > \"$HEAD_TS\"))|.id" | wc -l | tr -d ' ')
-       SUMMARY_TS=$(gh api --paginate repos/$REPO/issues/$PR/comments \
-         -q ".[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.body|contains(\"codex-pull-request-review-summary\")))|.updated_at" | head -n 1)
-       LIMIT=$(gh api --paginate repos/$REPO/issues/$PR/comments \
-         -q ".[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.created_at > \"$REQ_TS\") and (.body|contains(\"reached your Codex usage limits\")))|.id" | wc -l | tr -d ' ')
-       [ "${PLUS:-0}" -gt 0 ] && { echo "SIGNAL=APPROVED"; exit 0; }
-       [ "${RC:-$BASE}" -gt "$BASE" ] && { echo "SIGNAL=NEW_REVIEW"; exit 0; }
-       [ "${LIMIT:-0}" -gt 0 ] && { echo "SIGNAL=USAGE_LIMIT"; exit 0; }
-       [ "${TOP:-$BASE_TOP}" -gt "$BASE_TOP" ] && { echo "SIGNAL=NEW_TOPLEVEL"; exit 0; }
+       if PLUS=$(gh api repos/$REPO/issues/$PR/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json" \
+            -q "[.[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and .content==\"+1\" and (.created_at > \"$HEAD_TS\"))]|length") &&
+          RC=$(gh pr view $PR --repo $REPO --json reviews \
+            -q "[.reviews[]|select(.author.login==\"chatgpt-codex-connector\")]|length") &&
+          TOP=$(gh api --paginate repos/$REPO/issues/$PR/comments \
+            -q ".[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.created_at > \"$HEAD_TS\"))|.id") &&
+          SUMMARY_TS=$(gh api --paginate repos/$REPO/issues/$PR/comments \
+            -q ".[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.body|contains(\"codex-pull-request-review-summary\")))|.updated_at") &&
+          LIMIT=$(gh api --paginate repos/$REPO/issues/$PR/comments \
+            -q ".[]|select(.user.login==\"chatgpt-codex-connector[bot]\" and (.created_at > \"$REQ_TS\") and (.body|contains(\"reached your Codex usage limits\")))|.id"); then
+         FAILS=0
+       else
+         FAILS=$((FAILS+1)); [ "$FAILS" -ge 5 ] && { echo "SIGNAL=GH_ERROR"; exit 1; }
+         sleep 30; continue   # skip this round's judgment; one failure is usually transient
+       fi
+       TOP=$(printf '%s' "$TOP" | grep -c .); LIMIT=$(printf '%s' "$LIMIT" | grep -c .); SUMMARY_TS=${SUMMARY_TS%%$'\n'*}
+       [ "$PLUS" -gt 0 ] && { echo "SIGNAL=APPROVED"; exit 0; }
+       [ "$RC" -gt "$BASE" ] && { echo "SIGNAL=NEW_REVIEW"; exit 0; }
+       [ "$LIMIT" -gt 0 ] && { echo "SIGNAL=USAGE_LIMIT"; exit 0; }
+       [ "$TOP" -gt "$BASE_TOP" ] && { echo "SIGNAL=NEW_TOPLEVEL"; exit 0; }
        [ -n "$SUMMARY_TS" ] && [ "$SUMMARY_TS" != "$BASE_SUMMARY_TS" ] && { echo "SIGNAL=SUMMARY_EDITED"; exit 0; }
        sleep 30
      done
      echo "SIGNAL=TIMEOUT"; exit 0
      ```
      Do **not** wrap the loop in `nohup … &` — that detaches it from the harness, so its exit never re-invokes you. The `run_in_background` call itself is the only backgrounding needed.
+     `SIGNAL=GH_ERROR` means five rounds in a row had a failed `gh` call, whose error lines precede it in the output; find the cause with `gh api rate_limit` and `gh auth status`, and if it was transient relaunch with the same baseline.
 4. **On wake, read the full state and route.** When the poll exits, read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api --paginate repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api --paginate repos/<repo>/issues/<pr_number>/comments`; PR-body reactions `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`. Then:
    - **Approval = final-audit trigger.** A fresh `chatgpt-codex-connector[bot]` `+1` on the PR body (`created_at` newer than both the latest pushed head commit and the most recent `@codex` re-review comment) **and** no new actionable comments → go to Phase 6. Treat the signal as code-review completion, not product-correctness proof, and record head coverage from the summary's reviewed SHA as the [classification](#classify-what-codex-actually-reviewed) requires; report it as unconfirmed when that SHA differs from the head. A `+1` predating the latest push is stale (GitHub keeps the old reaction) — ignore it. A bare `eyes` reaction means the review is still in progress (pending), not approval.
    - **New actionable feedback** → Phase 4.
