@@ -5,6 +5,23 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.216.0] - 2026-10-06
+
+### fleet-console
+
+#### Added
+- See what the Commodore did and decided on each objective, with a short reason for each step, beside its log.
+
+#### Changed
+- The Commodore log now reads like Operation chat, with the Commodore's reply streaming in as it writes, and the Commodore row in the sidebar shimmers while it is working.
+
+#### Fixed
+- Grok 4.7 turns through Cursor that announce their next step and then stop now carry on with that step instead of waiting for you to say "continue".
+- Cursor code search that runs through a shell tool now shows the ripgrep command and the matching lines in the chat, instead of an unreadable encoded blob. A search that is cut off is marked incomplete rather than reported as the whole result.
+
+#### Removed
+- The Theater menu no longer has a separate Commodore directive item; open the Commodore from its sidebar row.
+
 ## [1.215.0] - 2026-10-06
 
 ### fleet-cli
