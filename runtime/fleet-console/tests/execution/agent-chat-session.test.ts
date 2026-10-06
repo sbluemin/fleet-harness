@@ -345,6 +345,79 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       else process.env.FLEET_CONSOLE_SESSION_ID = previous;
     }
   });
+
+  it("opens an autonomous turn on stream_event message_start and closes a failed turn on orphan error result", async () => {
+    const home = tempDir("chat-home-");
+    const reports: boolean[] = [];
+    const reportActivity = vi.fn((working: boolean) => { reports.push(working); return true; });
+    const { factory, liveSession } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 1 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-auto", () => ({
+      ...freshSeedFor(home),
+      reportActivity,
+    }));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("boot");
+    await drainTurn(registry, "op-auto");
+    reports.length = 0;
+    const startTurnsCount = events.filter(({ event }) => event.kind === "turn-start").length;
+
+    // 1) Idle session receives autonomous message_start on the main thread
+    liveSession()!.emit({
+      type: "stream_event",
+      event: {
+        type: "message_start",
+        message: { id: "msg_auto_1", type: "message", role: "assistant", content: [], usage: { input_tokens: 0, output_tokens: 0 } },
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(events.filter(({ event }) => event.kind === "turn-start")).toHaveLength(startTurnsCount + 1);
+      expect(reports).toContain(true);
+      expect(session.readConsoleOutput().outcome).toBe("running");
+    });
+
+    // 2) Emits text and ok result -> closes the turn without second turn-start
+    liveSession()!.emit({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "autonomous reply" }] },
+    });
+    liveSession()!.emit({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      duration_ms: 10,
+    });
+
+    await vi.waitFor(() => {
+      expect(events.filter(({ event }) => event.kind === "turn-start")).toHaveLength(startTurnsCount + 1);
+      const ends = events.filter(({ event }) => event.kind === "turn-end");
+      expect((ends[ends.length - 1]?.event as any).ok).toBe(true);
+      expect(session.readConsoleOutput().outcome).toBe("succeeded");
+    });
+
+    // 3) While idle, emit orphan error_during_execution result
+    liveSession()!.emit({
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      errors: ["failure before model request"],
+      duration_ms: 5,
+    });
+
+    await vi.waitFor(() => {
+      expect(events.filter(({ event }) => event.kind === "turn-start")).toHaveLength(startTurnsCount + 2);
+      const ends = events.filter(({ event }) => event.kind === "turn-end");
+      expect((ends[ends.length - 1]?.event as any).ok).toBe(false);
+      expect(session.readConsoleOutput().outcome).toBe("failed");
+    });
+
+    await registry.disposeAll();
+  });
 });
 
 describe("AgentChatRegistry", () => {

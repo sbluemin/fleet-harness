@@ -2806,6 +2806,15 @@ class AgentChatSession {
         this.closeTurn({ ok: event.ok, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }), ...(event.answer === undefined ? {} : { answer: event.answer }) });
       } else if (settling) {
         this.releaseTurnCloseWaiters();
+      } else if (event.ok === false) {
+        this.openTurn({ dispatched: false });
+        this.closeTurn({ ok: false, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }) });
+      }
+      return;
+    }
+    if (event.kind === "request-start") {
+      if (!this.turnOpen && !this.settlingStoppedTurn) {
+        this.openTurn({ dispatched: false });
       }
       return;
     }

@@ -713,7 +713,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
       const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
-      const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
+      const failed = (member as { outcome?: string }).outcome === "failed";
+      const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
       const allowed = memberSubagents(member);
       return (
         <div key={member.id} className="objectives-member-slot">
@@ -751,7 +752,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
               subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
               onChange={(next) => { const model = next.model ?? (member.launch.mode === "model" ? member.launch.model : undefined); if (model) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "model", model, effort: next.effort } } }); }} />
             )}
-            <span className={`objectives-member-status is-${state}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}{allowed ? <span className="objectives-member-subagents">{t("objectives.members.subagentsMark")}</span> : null}</span>
+            <span className={`objectives-member-status is-${state}${failed ? " is-failed" : ""}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}{allowed ? <span className="objectives-member-subagents">{t("objectives.members.subagentsMark")}</span> : null}</span>
           </div>
           {/* 모델 변경의 경과는 칩 아래(설명 줄의 오른쪽 칸)에 서서 칩을 가리키는 한 줄 말풍선이다 — 행의 칸이라 다른 행이나 조작을 덮지
               않고 레일 밖으로 넘치지 않는다. 실패의 사유는 길어서 말풍선의 title(과 읽기 도구용 문장)로 싣고, 다른 모델은 칩에서 고른다. */}
@@ -1921,10 +1922,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       ) : null}
   </>);
   // 「메시지」의 받는 이 — 지휘관(자기 활동)과 세션이 떠 있는 구성원. 상태 낱말은 명단 줄과 같은 말을 쓴다.
-  const memberStateWord = (state: string) => state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
+  const memberStateWord = (state: string, outcome?: string) => outcome === "failed" ? t("objectives.members.failed") : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
   const recipients: MessageRecipient[] = [
-    { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark />, state: operationOwnState(objective.id) },
-    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, state: operationState(member.id) })),
+    { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark />, state: operationOwnState(objective.id), outcome: (objective.commander as { outcome?: string }).outcome },
+    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, state: operationState(member.id), outcome: (member as { outcome?: string }).outcome })),
   ].filter((recipient) => recipient.state !== "closed");
   const bottom = (
       <div className="objectives-detail-bottom" data-objectives-tour="action">

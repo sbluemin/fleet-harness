@@ -87,6 +87,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const deleted: string[] = [];
   const sent: { operationId: string; text: string }[] = [];
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
+  const outcomes = new Map<string, "running" | "succeeded" | "failed" | "interrupted" | "unknown">();
   const interrupted: string[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string }[] = [];
   const resumed: string[] = [];
@@ -191,7 +192,14 @@ function harness(routingOrigin: () => string | null = () => null) {
         transcript: async (operationId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${operationId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
         observe: (id: string) => {
           const state = activity.get(id);
-          return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"), supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
+          const outcome = outcomes.get(id);
+          return state ? {
+            lifecycle: state === "dormant" ? "dormant" : "live",
+            activity: state === "dormant" ? "idle" : state,
+            surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"),
+            supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])],
+            ...(outcome ? { output: { outcome } } : {}),
+          } : null;
         },
         // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
         sleep: async (operationId: string) => {
@@ -248,7 +256,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups };
+  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -1700,7 +1708,7 @@ describe("Objectives contract", () => {
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    const { ctx, store, launch, call, consoleTool, workspace, launches, activity, operations, operationsHost, objectivesDir } = harness(() => "http://console.invalid");
+    const { ctx, store, launch, call, consoleTool, workspace, launches, activity, outcomes, operations, operationsHost, objectivesDir } = harness(() => "http://console.invalid");
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet", label: "Sonnet", launch: { model: "sonnet" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
@@ -1763,7 +1771,10 @@ describe("Objectives contract", () => {
     const commodoreRow = (board: { enabled: boolean; autonomy: boolean }) => clustersOf([store.find(id)!], new Map(), () => false, () => ({ active: board.enabled && board.autonomy, stalled: [], ...board }))[0]!.row!;
     expect(commodoreRow({ enabled: true, autonomy: false }).mark?.square).toBe("hollow");
     expect(commodoreRow({ enabled: false, autonomy: false }).mark).toBeUndefined();
-    expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.objectContaining({ state: "idle" })] }) }));
+    outcomes.set(workerId, "failed");
+    expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.objectContaining({ state: "idle", outcome: "failed" })] }) }));
+    outcomes.delete(workerId);
+    expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.not.objectContaining({ outcome: "failed" })] }) }));
     expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
     // 일하는 구성원은 이번 턴 뒤로 예약된다 — 세션 좌표는 그대로다. 라우팅으로 되돌리면 예약을 거두고 실행값은 남는다.
     activity.set(workerId, "running");

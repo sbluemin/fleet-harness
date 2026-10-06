@@ -64,6 +64,7 @@ export interface MessageRecipient {
   readonly role: string;
   readonly mark: ReactNode;
   readonly state: string;
+  readonly outcome?: string;
 }
 
 export interface ActionBandProps {
@@ -83,7 +84,7 @@ export interface ActionBandProps {
   /** 「메시지」의 받는 이 — 첫 칸이 지휘관이다. 비어 있으면 「메시지」를 두지 않는다. */
   readonly recipients: readonly MessageRecipient[];
   /** 받는 이 상태 낱말 — 명단 줄과 같은 말(쉬는 중·작업 중·허용 대기·휴면). */
-  readonly stateWord: (state: string) => string;
+  readonly stateWord: (state: string, outcome?: string) => string;
   /** 실패하면 코드를 message 로 던진다. */
   readonly request: (path: string, body: Record<string, unknown>) => Promise<unknown>;
   readonly onFocusOperation: (operationId: string) => void;
@@ -914,7 +915,7 @@ export function ActionBand(props: ActionBandProps) {
                   onKeyDown={(event) => onRecipientKey(event, candidate.id)}>
                   {candidate.mark}
                   <span className="objectives-recip-role">{candidate.role}</span>
-                  <span className={`objectives-recip-state is-${candidate.state}`}>{props.stateWord(candidate.state)}</span>
+                  <span className={`objectives-recip-state is-${candidate.state}${candidate.outcome === "failed" ? " is-failed" : ""}`}>{props.stateWord(candidate.state, candidate.outcome)}</span>
                 </button>
               );
             })}

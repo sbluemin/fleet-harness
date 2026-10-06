@@ -8,6 +8,7 @@
 //   ctx              optional context-token count reported to chat (default 1000)
 //   fail_set_model   if present, set_model answers with an error
 //   release          a chat message containing "SLOW" keeps its turn open until this file appears (max 120 s)
+//   wake             optional JSON with wake options (kind: "peer"|"task", taskId, silenceMs, thinking, first, retry, error: "synthetic"|"result-only")
 // FAKE_CLAUDE_VERSION (optional): the --version answer (default "2.1.999 (Claude Code)").
 //
 // Modes: `--version`; chat/SDK when `--input-format stream-json`; otherwise an interactive terminal
@@ -129,6 +130,96 @@ if (!sdk) {
     if (next !== undefined) void runTurn(next);
     else if (stdinEnded) exit("stdin-end");
   };
+
+  const runWakeTurn = async (wake) => {
+    turnOpen = true;
+    const turnModel = model;
+    log({ event: "turn-start", model: turnModel, wakeKind: wake.kind ?? "peer", wake });
+    if (!inited) {
+      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: [], mcp_servers: mcpServers.map(({ name }) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
+      inited = true;
+    }
+    const tokens = ctx();
+    const usage = { input_tokens: tokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 8 };
+
+    if (wake.kind === "task") {
+      log({ event: "wake-emit", phase: "task_notification", at: new Date().toISOString() });
+      out({ type: "system", subtype: "task_notification", task_id: wake.taskId ?? randomUUID(), status: "completed", ...envelope() });
+    }
+
+    if (wake.retry === true) {
+      log({ event: "wake-emit", phase: "api_retry", at: new Date().toISOString() });
+      out({ type: "system", subtype: "api_retry", attempt: 1, max_retries: 3, delay_ms: 500, ...envelope() });
+    }
+
+    log({ event: "wake-emit", phase: "message_start", at: new Date().toISOString() });
+    out({ type: "stream_event", event: { type: "message_start", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [], usage: { input_tokens: 0, output_tokens: 0 } } }, ...envelope() });
+    out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: null }, usage }, ...envelope() });
+
+    if (wake.error === "synthetic") {
+      const errorText = 'API Error: 402 {"error":"Credit balance too low"}';
+      log({ event: "wake-emit", phase: "synthetic_assistant_402", at: new Date().toISOString() });
+      out({ type: "assistant", message: { id: randomUUID(), type: "message", role: "assistant", model: "<synthetic>", content: [{ type: "text", text: errorText }], stop_reason: "stop_sequence", stop_sequence: "", usage }, error: "unknown", isApiErrorMessage: true, apiErrorStatus: 402, ...envelope() });
+      out({ type: "result", subtype: "success", is_error: true, duration_ms: 1, duration_api_ms: 1, num_turns: 1, result: errorText, stop_reason: "stop_sequence", session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
+      log({ event: "turn-end", model: turnModel, error: "402-synthetic" });
+      turnOpen = false;
+      return;
+    }
+
+    if (wake.error === "result-only") {
+      const errorText = 'API Error: 402 {"error":"Credit balance too low"}';
+      log({ event: "wake-emit", phase: "result_only_402", at: new Date().toISOString() });
+      out({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 1, duration_api_ms: 1, num_turns: 1, stop_reason: null, errors: [errorText], session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
+      log({ event: "turn-end", model: turnModel, error: "402-result-only" });
+      turnOpen = false;
+      return;
+    }
+
+    if (wake.thinking === true) {
+      log({ event: "wake-emit", phase: "thinking_start", at: new Date().toISOString() });
+      out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } }, ...envelope() });
+      out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "wake reasoning..." } }, ...envelope() });
+      out({ type: "stream_event", event: { type: "content_block_stop", index: 0 }, ...envelope() });
+    }
+
+    if (typeof wake.silenceMs === "number" && wake.silenceMs > 0) {
+      log({ event: "wake-emit", phase: "silence_start", ms: wake.silenceMs, at: new Date().toISOString() });
+      await new Promise((r) => setTimeout(r, wake.silenceMs));
+    }
+
+    if (wake.first === "tool") {
+      log({ event: "wake-emit", phase: "tool_use", at: new Date().toISOString() });
+      const toolContent = [{ type: "tool_use", id: `call_${randomUUID()}`, name: "Bash", input: { command: "echo wake" } }];
+      out({ type: "assistant", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: toolContent, stop_reason: "tool_use", stop_sequence: null, usage }, ...envelope() });
+    } else {
+      log({ event: "wake-emit", phase: "text", at: new Date().toISOString() });
+      const textContent = [{ type: "text", text: `fake wake reply from model=${turnModel}` }];
+      out({ type: "assistant", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: textContent, stop_reason: "end_turn", stop_sequence: null, usage }, ...envelope() });
+    }
+
+    out({ type: "result", subtype: "success", is_error: false, duration_ms: 200, duration_api_ms: 100, num_turns: 1, result: "wake finished", stop_reason: "end_turn", session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
+    log({ event: "turn-end", model: turnModel, contextTokens: tokens });
+    turnOpen = false;
+
+    const next = queue.shift();
+    if (next !== undefined) void runTurn(next);
+    else if (stdinEnded) exit("stdin-end");
+  };
+
+  const wakePollingTimer = setInterval(() => {
+    if (turnOpen) return;
+    const wakeFile = join(dir, "wake");
+    if (existsSync(wakeFile)) {
+      try {
+        const raw = readFileSync(wakeFile, "utf8");
+        unlinkSync(wakeFile);
+        const wake = JSON.parse(raw);
+        void runWakeTurn(wake);
+      } catch (err) {
+        log({ event: "wake-parse-error", error: String(err?.message ?? err) });
+      }
+    }
+  }, 200);
 
   let buffer = "";
   process.stdin.on("data", (chunk) => {
