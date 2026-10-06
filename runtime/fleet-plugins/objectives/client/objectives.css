@@ -1691,9 +1691,9 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-trail-entry.is-edit { color: var(--brass-ink); }
 .objectives-commodore-trail-entry.is-added { color: var(--crest-ink); }
 .objectives-commodore-trail-entry.is-decision { color: var(--apex-ink); }
-.objectives-commodore-trail-word { flex: none; font-weight: var(--weight-medium); white-space: nowrap; }
+.objectives-commodore-trail-word { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: var(--weight-medium); white-space: nowrap; }
 .objectives-commodore-trail-dot { flex: none; color: var(--text-tertiary); }
-.objectives-commodore-trail-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-weight: var(--weight-regular); }
+.objectives-commodore-trail-label { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-weight: var(--weight-regular); }
 .objectives-commodore-trail-time { flex: none; margin-left: auto; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .objectives-commodore-trail-fresh {
   position: absolute; right: 12px; bottom: 10px; z-index: 2; padding: 3px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill);
