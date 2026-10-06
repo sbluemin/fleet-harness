@@ -68,7 +68,7 @@ function cursorWirePlanCount(filePath: string): number {
 
 describe("Cursor live client-tool Run bridge", () => {
 
-  it("redirects native Grep through a readable shell search and fails closed on a broken receipt", async () => {
+  it("redirects native Grep through a readable shell search, native Glob to the caller Glob, and fails closed on a broken receipt", async () => {
     const nativeCall = cursorCall("native-grep-shell-failure", 29);
     const stream = new BridgeCursorStream(
       [{
@@ -251,6 +251,92 @@ describe("Cursor live client-tool Run bridge", () => {
         }],
         "cursor",
       )).toBeNull();
+
+      // Cursor's own file-name search arrives as a pattern-less grep that carries only a glob.
+      const globSchema = {
+        type: "object",
+        properties: { pattern: { type: "string" }, path: { type: "string" } },
+      };
+      const globRedirect = cursorNativeExecRedirect(
+        {
+          id: 2,
+          execId: "native-glob",
+          grepArgs: {
+            path: "/repo",
+            glob: "**/runtime/*/CLAUDE.md",
+            outputMode: "files_with_matches",
+          },
+        },
+        [
+          { clientName: "Grep", wireName: "grep", inputSchemaValue: { type: "object", properties: { pattern: { type: "string" } } } },
+          { clientName: "Glob", wireName: "glob", inputSchemaValue: globSchema },
+        ],
+        "cursor",
+      );
+      expect(globRedirect).toMatchObject({ adapter: "glob-direct", nativeResultType: "grepResult" });
+      expect(globRedirect?.call.name).toBe("Glob");
+      expect(JSON.parse(globRedirect?.call.arguments ?? "{}")).toEqual({
+        pattern: "**/runtime/*/CLAUDE.md",
+        path: "/repo",
+      });
+      // Cursor prefixes an absolute glob_pattern with `**` too; the caller gets it relative to the path.
+      const absoluteGlob = cursorNativeExecRedirect(
+        {
+          id: 3,
+          execId: "native-glob-absolute",
+          grepArgs: {
+            path: "/repo",
+            glob: "**/repo/runtime/*/CLAUDE.md",
+            outputMode: "files_with_matches",
+          },
+        },
+        [{ clientName: "Glob", wireName: "glob", inputSchemaValue: globSchema }],
+        "cursor",
+      );
+      expect(JSON.parse(absoluteGlob?.call.arguments ?? "{}")).toEqual({
+        pattern: "runtime/*/CLAUDE.md",
+        path: "/repo",
+      });
+      const globCorrelation = {
+        messageId: 2,
+        execId: "native-glob",
+        nativeResultType: "grepResult" as const,
+        nativeArgs: globRedirect?.nativeArgs,
+      };
+      const globFiles = (output: string) => cursorNativeRedirectResultReplies(globCorrelation, output, false);
+      expect(globFiles(
+        "runtime/a/CLAUDE.md\nruntime/b/CLAUDE.md\n(Results are truncated. Consider using a more specific path or pattern.)",
+      )).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          grepResult: {
+            success: expect.objectContaining({
+              workspaceResults: {
+                "/repo": {
+                  files: {
+                    files: ["runtime/a/CLAUDE.md", "runtime/b/CLAUDE.md"],
+                    totalFiles: 2,
+                    clientTruncated: true,
+                    ripgrepTruncated: false,
+                  },
+                },
+              },
+            }),
+          },
+        }),
+      }));
+      expect(globFiles("No files found")).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          grepResult: {
+            success: expect.objectContaining({
+              workspaceResults: {
+                "/repo": {
+                  files: expect.objectContaining({ files: [], totalFiles: 0 }),
+                },
+              },
+            }),
+          },
+        }),
+      }));
     } finally {
       harness.adapter.dispose();
     }

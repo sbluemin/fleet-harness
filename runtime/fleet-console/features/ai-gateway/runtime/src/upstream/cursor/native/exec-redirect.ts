@@ -26,7 +26,7 @@ export interface CursorNativeExecRedirect {
   readonly nativeResultType: CursorNativeRedirectResultType;
   readonly nativeArgs: Readonly<Record<string, string>>;
   readonly execCase: string;
-  readonly adapter: "read-direct" | "grep-direct" | "grep-shell" | "shell-direct";
+  readonly adapter: "read-direct" | "grep-direct" | "glob-direct" | "grep-shell" | "shell-direct";
 }
 
 interface CursorGrepInput {
@@ -48,6 +48,7 @@ interface CursorGrepInput {
 
 const READ_CANDIDATES = ["Read"] as const;
 const GREP_CANDIDATES = ["Grep"] as const;
+const GLOB_CANDIDATES = ["Glob"] as const;
 const SHELL_CANDIDATES = ["Bash", "shell_command", "exec_command"] as const;
 
 /** Caller tools kept eager because Cursor uses them directly or through a native redirect. */
@@ -55,6 +56,7 @@ const CURSOR_HOT_PATH_TOOL_LEAVES = [
   "read",
   "bash",
   "grep",
+  "glob",
   "shellcommand",
   "execcommand",
   "toolsearch",
@@ -68,7 +70,7 @@ export function isCursorHotPathToolName(name: string): boolean {
 /** Caller tools a Cursor-native exec can be translated into. */
 export function isCursorNativeRedirectToolName(name: string): boolean {
   const leaf = toolLeafName(name).replace(/[_-]/g, "").toLowerCase();
-  return ["grep", "bash", "shellcommand", "execcommand"].includes(leaf);
+  return ["grep", "glob", "bash", "shellcommand", "execcommand"].includes(leaf);
 }
 
 /**
@@ -130,7 +132,10 @@ export function cursorNativeExecRedirect(
   if (isRecord(exec.grepArgs)) {
     const grepArgs = exec.grepArgs;
     const pattern = stringValue(grepArgs.pattern);
-    if (!pattern.trim()) return null;
+    // Cursor's own file-name search has no exec of its own: it arrives as a grep with no pattern,
+    // only a glob, in files_with_matches mode. Rejecting it as a malformed grep left the model
+    // with a native Glob that never ran and a retry list that did not name the caller's Glob.
+    if (!pattern.trim()) return globRedirect(exec, grepArgs, tools, providerIdentifier, messageId, execId);
     const path = stringValue(grepArgs.path) || ".";
     const glob = stringValue(grepArgs.glob);
     const outputMode = normalizedGrepOutputMode(stringValue(grepArgs.outputMode));
@@ -242,6 +247,74 @@ export function cursorNativeExecRedirect(
   }
 
   return null;
+}
+
+/**
+ * Map a pattern-less, glob-only native grep onto the caller's Glob. A relative glob is passed
+ * verbatim: Cursor has already prefixed the model's `glob_pattern` with a recursive `**` segment,
+ * and a caller Glob rooted at the same path matches that pattern the same way. Any other grep option
+ * means the request is not a plain file-name search, so it stays on the fail-closed policy path.
+ */
+function globRedirect(
+  exec: ExecMessage,
+  grepArgs: ExecMessage,
+  tools: readonly CursorRedirectToolReference[],
+  providerIdentifier: string,
+  messageId: number,
+  execId: string,
+): CursorNativeExecRedirect | null {
+  const glob = stringValue(grepArgs.glob);
+  if (!glob.trim()) return null;
+  if (normalizedGrepOutputMode(stringValue(grepArgs.outputMode)) !== "files_with_matches") return null;
+  if (
+    stringValue(grepArgs.type)
+    || stringValue(grepArgs.sort)
+    || grepArgs.caseInsensitive === true
+    || grepArgs.multiline === true
+    || [
+      grepArgs.contextBefore,
+      grepArgs.contextAfter,
+      grepArgs.context,
+      grepArgs.headLimit,
+      grepArgs.offset,
+    ].some((value) => typeof value === "number" && value !== 0)
+  ) {
+    return null;
+  }
+  const path = stringValue(grepArgs.path) || ".";
+  const tool = tools.find((candidate) => (
+    matchesLeaf(candidate, GLOB_CANDIDATES)
+    && schemaHasProperty(candidate.inputSchemaValue, "pattern")
+    && (path === "." || schemaHasProperty(candidate.inputSchemaValue, "path"))
+  ));
+  if (!tool) return null;
+  return redirect(
+    exec,
+    tool,
+    providerIdentifier,
+    messageId,
+    execId,
+    "grepArgs",
+    "grepResult",
+    "glob-direct",
+    { pattern: callerGlobPattern(glob, path), ...(path === "." ? {} : { path }) },
+    { pattern: "", path, outputMode: "files_with_matches", glob },
+  );
+}
+
+/**
+ * Cursor prefixes even an absolute `glob_pattern` with its recursive segment, turning
+ * `/repo/src/*.ts` searched under `/repo` into `**` + `/repo/src/*.ts`, which matches nothing
+ * there, so an existing file came back as an empty result. When the absolute part lies inside
+ * the absolute search path, hand the caller the pattern relative to that path instead.
+ */
+function callerGlobPattern(glob: string, path: string): string {
+  if (!glob.startsWith("**/") || !path.startsWith("/")) return glob;
+  const absolute = glob.slice(2);
+  const root = path.endsWith("/") ? path : `${path}/`;
+  return absolute.startsWith(root) && absolute.length > root.length
+    ? absolute.slice(root.length)
+    : glob;
 }
 
 export function cursorNativeRedirectResultReplies(
@@ -677,10 +750,22 @@ function buildGrepSuccess(
   output: string,
 ): Record<string, unknown> {
   const outputMode = normalizedGrepOutputMode(args.outputMode) ?? "content";
+  const globOnly = !args.pattern && Boolean(args.glob);
+  let globTruncated = false;
   const lines = output
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
-    .filter((line) => line.length > 0 && !line.startsWith("[") && !/^no matches/i.test(line));
+    .filter((line) => line.length > 0 && !line.startsWith("[") && !/^no matches/i.test(line))
+    .filter((line) => {
+      if (!globOnly) return true;
+      // The caller's Glob reports an empty search and a cut-off list in prose, not as paths.
+      if (/^no files found\b/i.test(line)) return false;
+      if (/^\(results are truncated\b/i.test(line)) {
+        globTruncated = true;
+        return false;
+      }
+      return true;
+    });
   const path = args.path || ".";
   let result: Record<string, unknown>;
   if (outputMode === "files_with_matches") {
@@ -688,7 +773,7 @@ function buildGrepSuccess(
       files: {
         files: lines,
         totalFiles: lines.length,
-        clientTruncated: false,
+        clientTruncated: globTruncated,
         ripgrepTruncated: false,
         ...(args.offset === undefined ? {} : { offsetApplied: Number(args.offset) }),
       },
