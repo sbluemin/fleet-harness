@@ -543,7 +543,7 @@ async function boot(): Promise<void> {
       onFirstRunFailure: async () => showFirstRunFailure(),
       onWindowReady: (push) => { pushRuntimeProgress = push; },
       pushEntry: pushEntrySnapshot,
-      startOrAdopt: () => supervisor.startOrAdopt(),
+      startOrAdopt: (report) => supervisor.startOrAdopt(report),
     });
     return launch.start() as Promise<DesktopShellWindow>;
   }, () => farewell.run(async () => { bridge.dispose(); await supervisor.stop(); }));
@@ -619,6 +619,7 @@ async function boot(): Promise<void> {
 
 async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, releases: ReturnType<typeof createReleaseChecker>, progress: RuntimeProgress, logger: DesktopLogger): Promise<SidecarRuntime> {
   try {
+    await progress("checking");
     const manifest = JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest;
     const engine = readConsoleNodeEngine(runtimePaths.latest);
     if (!satisfiesNodeEngine(manifest.version, engine)) throw new Error("managed_node_engine_unsupported");

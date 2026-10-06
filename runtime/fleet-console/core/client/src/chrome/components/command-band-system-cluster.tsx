@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { ApiError, ConsoleUpdateApplyFailure, applyConsoleUpdate, checkConsoleUpdate } from "../../integration/api.js";
-import { beginUpdateWatch, markUpdateDelegated, reportUpdateApplyFailure, useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
+import { ApiError, checkConsoleUpdate } from "../../integration/api.js";
+import { requestConsoleUpdate, useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
@@ -23,7 +23,7 @@ import { carriesZenMode, carryZenMode, isZenMode } from "../../integration/zen-m
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 
-type UpdateApplyState = "idle" | "applying" | "armed" | "blocked" | "error";
+type UpdateApplyState = "idle" | "armed" | "blocked" | "error";
 
 interface UpdateApplyCopy {
   readonly label: string;
@@ -743,8 +743,9 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
 
 /**
  * 지금 서빙 중인 Console. 이름·버전은 늘 서고, 오른쪽 칩은 "더 새로운 버전"이 있을 때만 선다.
- * 칩이 서면 행 자체가 업데이트 버튼이다 — 상태 머신(idle → armed → applying / blocked / error)은
+ * 칩이 서면 행 자체가 업데이트 버튼이다 — 상태 머신(idle → armed / blocked / error)은
  * 예전 업데이트 행의 것을 그대로 가져왔고, 두 번째 누름이 곧 호스트 재시작 동의라는 문법도 같다.
+ * 요청 중인 표시는 이 행의 상태가 아니라 업데이트 store의 preparing이다.
  * 칩이 없으면(최신, 또는 확인 불가) 행은 정보만 말하는 정적 행이다.
  */
 function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdateRequired, onStarted }: {
@@ -758,6 +759,8 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdat
   const t = useT();
   const [applyState, setApplyState] = useState<UpdateApplyState>("idle");
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  // 훅은 조건부 반환 앞에서 부른다. 새로고침으로 latestVersion이 생겨도 훅 개수가 달라지지 않는다.
+  const preparing = useUpdateProgress().preparing !== null;
   const body = <><TerminalGlyph /><span className="command-band-version-row-name">Console</span><span className="command-band-version-row-version">v{version}</span></>;
   if (latestVersion !== null && foldedIntoShell) {
     return (
@@ -784,28 +787,21 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdat
     );
   }
   const copy = resolveUpdateApplyCopyFor(applyState, errorCode, latestVersion, t);
+  const label = preparing ? t("chrome.system.update.requesting") : copy.label;
+  const title = preparing ? t("chrome.system.update.requestingTitle") : copy.title;
 
   const handleApply = async () => {
-    if (copy.disabled) return;
+    if (copy.disabled || preparing) return;
     const acknowledgeHostRestart = applyState === "armed";
-    setApplyState("applying");
     setErrorCode(null);
     try {
-      const result = await applyConsoleUpdate(acknowledgeHostRestart ? { acknowledgeHostRestart: true } : {});
-      // 여기서 "완료"라고 말하지 않는다. 202는 시작됐다는 뜻일 뿐이고, 결과를 아는 것은
-      // 재기동을 겪고 돌아온 콘솔이다. 그때까지의 화면은 커튼이 소유한다.
-      if (result.status === "delegated") markUpdateDelegated(latestVersion);
-      else beginUpdateWatch(latestVersion);
+      const result = await requestConsoleUpdate(latestVersion, acknowledgeHostRestart ? { acknowledgeHostRestart: true } : {});
+      if (result === "busy") return;
+      // 수락이든 거절이든 행은 다시 누를 수 있게 돌아간다. 거절의 사유는 상단 배너가 host 문구 그대로 말하고,
+      // 메뉴는 닫아 그 배너를 가리지 않는다. 수락 뒤의 화면은 커튼이 소유한다.
+      setApplyState("idle");
       onStarted();
     } catch (error) {
-      if (error instanceof ConsoleUpdateApplyFailure) {
-        // Console은 멈추지 않고 거절했다. 사유는 상단 실패 배너가 host 문구 그대로 말한다 — 행은 다시 누를 수 있게
-        // 돌아가고, 메뉴는 닫아 배너를 가리지 않는다.
-        reportUpdateApplyFailure(error.progress);
-        setApplyState("idle");
-        onStarted();
-        return;
-      }
       const code = error instanceof ApiError ? error.message : "network_error";
       setErrorCode(code);
       if (code === "host_restart_confirmation_required") {
@@ -816,7 +812,7 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdat
     }
   };
 
-  if (copy.tone === "warn") {
+  if (!preparing && copy.tone === "warn") {
     // 묻는 문장은 한 줄 칩에 들어가지 않는다 — 이 상태만 이름·버전 대신 질문이 서고, 답 문장이 아래로 내려선다.
     return (
       <button type="button" role="menuitem" className="command-band-version-row command-band-version-row--warn" onClick={handleApply} title={copy.title} aria-live="polite">
@@ -827,9 +823,9 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdat
     );
   }
   return (
-    <button type="button" role="menuitem" className={`command-band-version-row command-band-version-row--${copy.tone}`} onClick={handleApply} disabled={copy.disabled} title={copy.title} aria-label={t("chrome.system.version.consoleUpdate", { version, latest: latestVersion })} aria-live="polite">
+    <button type="button" role="menuitem" className={`command-band-version-row command-band-version-row--${preparing ? "live" : copy.tone}`} onClick={handleApply} disabled={copy.disabled || preparing} aria-busy={preparing || undefined} title={title} aria-label={t("chrome.system.version.consoleUpdate", { version, latest: latestVersion })} aria-live="polite">
       {body}
-      <span className="command-band-version-row-chip">{copy.label}</span>
+      <span className="command-band-version-row-chip">{label}</span>
     </button>
   );
 }
@@ -995,7 +991,6 @@ export function resolveUpdateApplyCopyFor(
   const latest = latestVersion
     ? t("chrome.system.update.latestVersion", { version: latestVersion })
     : t("chrome.system.update.available");
-  if (applyState === "applying") return { label: t("chrome.system.update.requesting"), title: t("chrome.system.update.requestingTitle"), tone: "live", disabled: true };
   if (applyState === "armed") {
     return {
       label: t("chrome.system.update.confirmHostRestart"),

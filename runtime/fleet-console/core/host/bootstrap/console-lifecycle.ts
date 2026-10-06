@@ -39,8 +39,10 @@ import {
   CONSOLE_STOP_DEADLINE_MS,
   EXTERNAL_ESCALATION_MS,
   HEALTH_PROBE_TIMEOUT_MS,
+  LIFECYCLE_WAIT_NOTICE_MS,
   OWNED_GROUP_TERM_GRACE_MS,
   PRELOCK_CHILD_GRACE_MS,
+  describeConsoleLifecycleWait,
   describeConsoleLockSlotQuiescenceCheck,
   describeConsoleOwnerOutlivedKill,
   describeOwnerlessConsoleLock,
@@ -493,7 +495,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         isReleased: () => isLockReleasedBy(payload),
         reprove: () => reproveConsoleInstance({ lockFile: paths.lockFile, lock: payload, provenStart: capture?.provenStart ?? null, observe, env }),
         signal: (signal) => signalLockProcess(payload.pid, signal),
-        onWaiting: () => report("Waiting for Fleet Console to finish shutting down..."),
+        onWaiting: () => report(describeConsoleLifecycleWait("stop-ladder")),
         now,
         sleep,
       });
@@ -601,8 +603,14 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     let current = await readLockForStart();
     let probeResult = await health.probe(current);
     const startingDeadline = now() + startupTimeoutMs;
+    const startingWaitFrom = now();
+    let reportedOwnerStarting = false;
     // 다른 호스트가 이미 lock을 얻고 복원 중이면 건드리지 않는다. lock 교체도 대기 예산을 늘리지 않는다.
     while (current && probeResult.starting && isPidAlive(current.pid)) {
+      if (!reportedOwnerStarting && now() - startingWaitFrom >= LIFECYCLE_WAIT_NOTICE_MS) {
+        reportedOwnerStarting = true;
+        report(describeConsoleLifecycleWait("owner-starting"));
+      }
       const remaining = startingDeadline - now();
       if (remaining <= 0) throw lockOwnerUnprovenError(current, "unverified");
       await sleep(Math.min(pollIntervalMs, remaining));

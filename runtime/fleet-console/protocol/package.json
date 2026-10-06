@@ -24,6 +24,11 @@
       "import": "./lifecycle/update.ts",
       "default": "./lifecycle/update.ts"
     },
+    "./lifecycle/wait": {
+      "types": "./lifecycle/wait.ts",
+      "import": "./lifecycle/wait.ts",
+      "default": "./lifecycle/wait.ts"
+    },
     "./release": {
       "types": "./release/index.ts",
       "import": "./release/index.ts",

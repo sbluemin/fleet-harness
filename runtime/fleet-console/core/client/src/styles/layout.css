@@ -212,6 +212,11 @@
 
 .update-outcome--failed .update-outcome-signal { background: var(--coral); }
 
+/* 수락 전 대기. 커튼처럼 화면을 가리지 않고, 실패의 색도 쓰지 않는다. */
+.update-outcome--live { align-items: flex-start; padding-top: var(--space-2); padding-bottom: var(--space-2); }
+.update-outcome--live .update-outcome-signal { margin-top: 6px; background: var(--brass); }
+.update-outcome--live .update-outcome-headline { color: var(--text-primary); }
+
 /* 실패는 줄을 늘린다 — 제목, 계약이 말하는 무슨 일이 있었나·옛 Console의 결말, 지금 버전. 색은 제목 한 줄만 싣는다. */
 .update-outcome--failed { align-items: flex-start; padding-top: var(--space-2); padding-bottom: var(--space-2); }
 .update-outcome--failed .update-outcome-signal { margin-top: 6px; }

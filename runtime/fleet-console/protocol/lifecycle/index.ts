@@ -52,6 +52,7 @@ export const CONSOLE_LIFECYCLE_CONTRACT_VERSION = 2;
 // import-free so a browser can read them too). Never restate a value.
 export * from "./budgets.js";
 export * from "./update.js";
+export * from "./wait.js";
 
 // ---------- Identity ----------
 

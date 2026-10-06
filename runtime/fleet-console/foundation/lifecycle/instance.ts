@@ -4,6 +4,7 @@ import {
   EXTERNAL_ESCALATION_MS,
   HEALTH_PROBE_TIMEOUT_MS,
   KILL_CONFIRM_MS,
+  LIFECYCLE_WAIT_NOTICE_MS,
   STOP_POLL_MS,
   classifyConsoleInstance,
   type ConsoleIdentity,
@@ -127,8 +128,6 @@ export interface ConsoleStopLadderInput {
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
-const WAITING_NOTICE_MS = 1_000;
-
 /**
  * The stop ladder (docs/console-lifecycle-contract.md, "Stop ladder"): one SIGTERM, a wait of EXTERNAL_ESCALATION_MS on a
  * monotonic deadline for the pid to exit or the lock to be released, and — only for an actor whose request was sent or
@@ -147,7 +146,7 @@ export async function runStopLadder(input: ConsoleStopLadderInput): Promise<Cons
     for (;;) {
       if (until()) return true;
       if (now() >= deadline) return false;
-      if (!noticed && now() - requestedAt >= WAITING_NOTICE_MS) {
+      if (!noticed && now() - requestedAt >= LIFECYCLE_WAIT_NOTICE_MS) {
         noticed = true;
         input.onWaiting?.();
       }

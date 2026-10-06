@@ -2,7 +2,7 @@
 
 One Console `serve` process has one lifecycle, and every actor that deals with it — the serve process itself, CLI `start`/`stop`/`restart`, the Fleet Desktop sidecar supervisor, the Console update worker and its recovery, and the local Console list — follows this contract instead of its own judgment. This page is the contract and its rationale. The code lives in two places:
 
-- `@fleet-console/protocol/lifecycle` (`runtime/fleet-console/protocol/lifecycle/`): the pure contract — states, time budgets, the instance classifier (`classifyConsoleInstance`), the exit record schema, and lock-slot classification.
+- `@fleet-console/protocol/lifecycle` (`runtime/fleet-console/protocol/lifecycle/`): the pure contract — states, time budgets, the instance classifier (`classifyConsoleInstance`), the exit record schema, lock-slot classification, and the waits a person can see (`describeConsoleLifecycleWait`).
 - `@fleet-console/lifecycle` (`runtime/fleet-console/foundation/lifecycle/`): observation and IO — pid liveness and process start times, the token-authenticated health probe, instance observation (`observeConsoleInstance`), the stop ladder (`runStopLadder`), exit records, the owned-process registry, and Console-owned temporary namespaces.
 
 The serve state owner is `runtime/fleet-console/core/host/bootstrap/serve-lifecycle.ts`. Lock publication and the reclaim of another instance's lock are a separate, referenced contract: [Console Lock Reclaim Across Hosts](console-lock-reclaim.md).
@@ -61,8 +61,25 @@ All waits derive from the constants in `@fleet-console/protocol/lifecycle`. No a
 | `LOCK_OBSERVE_BUDGET_MS` | 2 s | How long a lock without a readable owner is read again (every `LOCK_REREAD_INTERVAL_MS`, 50 ms) before it is reported, and how long a lock acquirer waits on another reclaimer. Elapsed time is never evidence that the owner is dead. |
 | `OWNED_GROUP_TERM_GRACE_MS` | 2 s | From SIGTERM to SIGKILL for an owned process group: the Console's stop path for its plugins' groups and the reaper after a crash use this one value, the same gap as the agent SDK's. On Windows it is the wait before `TerminateJobObject` for those same plugin jobs, and that path reads no process table. With the one process-table read the POSIX stop path may take when that grace ends, it must hold `OWNED_GROUP_TERM_GRACE_MS + PROCESS_TABLE_TIMEOUT_MS + ε < B_int − ESCALATION_MARGIN_MS` (3 s ≪ 9 s). |
 | `INTERACTIVE_PROBE_TIMEOUT_MS` | 2 s | One health probe on a path a person waits on, such as quitting Desktop. A probe that times out proves nothing, so nothing is signalled. The CLI's identity probe keeps `HEALTH_PROBE_TIMEOUT_MS` (5 s). |
+| `LIFECYCLE_WAIT_NOTICE_MS` | 1 s | How long a person may sit in a wait before the actor says which wait it is. The stop ladder's `onWaiting` and a start waiting on another Console's `starting` use this one threshold. |
 
 Why B_ext is derived: an external SIGKILL that lands at the same moment as the Console's own deadline races the Console's cleanup of its children. Polling phase only ever delays an external escalation, so the margin needed is the Console's own worst-case delay: its process-table read plus event-loop lag. With B_ext = B_int + that delay, a Console within its own budget always finishes first (I4). A Console whose loop is blocked for more than a second at signal time can still lose that race; containment must then still leave no children (I2).
+
+## Waits a person watches
+
+A person waiting through one of these is told with `describeConsoleLifecycleWait` (`protocol/lifecycle/wait.ts`, also exported for the browser as `@fleet-console/protocol/lifecycle/wait`). The actor that is in the wait names it with `ConsoleLifecycleWait`. It does not write a sentence of its own, and a screen's own words are only the frame (a title or a label). `parseConsoleLifecycleWait` reads a value and returns null when it is absent or not one of these. It does not guess.
+
+| Wait | What it is waiting on | Budget | Surfaces |
+|---|---|---|---|
+| `update-preflight` | the update worker's checks, before the Console is asked to stop | `UPDATE_WORKER_PREFLIGHT_MS` | Console web |
+| `owner-starting` | a lock owner still `starting`; it is not signalled | `CONSOLE_START_TIMEOUT_MS` | Desktop entry, `fleet console start` |
+| `owner-stopping` | a listener already closed, the lock not yet released | `EXTERNAL_ESCALATION_MS` | Desktop entry |
+| `stop-ladder` | the stop ladder | `EXTERNAL_ESCALATION_MS` | `fleet console stop`, Desktop entry when its own child is stopped on the way up |
+| `spawned-starting` | a Console this actor just spawned | `CONSOLE_START_TIMEOUT_MS` | Desktop entry |
+
+The first sentence waits `LIFECYCLE_WAIT_NOTICE_MS`. A wait shorter than that stays quiet, as the stop ladder already did.
+
+The update progress answer (`GET /api/v1/updates/progress`) may carry `wait` while a running record's phase is still `starting`. That phase is written before the worker sends `ready`, and the Console is not asked to stop until after the handshake, so reading it as "stopping" would tell the person something that is not happening. `wait: "update-preflight"` is that fact. The field is additive: a reader that does not know it ignores it, and it does not raise `CONSOLE_LIFECYCLE_WIRE`. A screen reads `wait` through `parseConsoleLifecycleWait`, not the phase string. Once the phase has moved on, the answer has no `wait`, and the curtain for an accepted update is unchanged. The local Console list still hides `starting`; that list is not one of the surfaces above.
 
 ## Exit record
 

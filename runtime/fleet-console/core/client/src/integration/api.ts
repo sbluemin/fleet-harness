@@ -1,4 +1,5 @@
 import { parseConsoleUpdateFailureReason, parseConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
+import { parseConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
 import type { ConsoleUpdateApplyFailureProgress, ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
@@ -529,7 +530,13 @@ function assertConsoleUpdateProgress(value: unknown, status: number): ConsoleUpd
     ...(payload.endpointChanged === true ? { endpointChanged: true } : {}),
     ...(typeof payload.error === "string" ? { error: payload.error } : {}),
     ...readUpdateFailureFields(payload),
+    ...readUpdateWait(payload.wait),
   };
+}
+
+function readUpdateWait(value: unknown): { readonly wait: NonNullable<ReturnType<typeof parseConsoleLifecycleWait>> } | Record<string, never> {
+  const wait = parseConsoleLifecycleWait(value);
+  return wait ? { wait } : {};
 }
 
 /** The contract's own parsers read what the Console sent; anything they do not name reads as `unknown`. */

@@ -1,6 +1,11 @@
+import { LIFECYCLE_WAIT_NOTICE_MS } from "@fleet-console/protocol/lifecycle";
+import { describeConsoleLifecycleWait, parseConsoleLifecycleWait, type ConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
+
 import type { EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryTone } from "./entry-page.js";
 
-export type RuntimeEntryState = "checking" | "node" | "installing" | "offline" | "firstfail" | "starting" | "dev";
+export type RuntimeEntryState = "checking" | "node" | "installing" | "offline" | "firstfail" | "starting" | "waiting" | "dev";
+
+type EntryWait = Exclude<ConsoleLifecycleWait, "update-preflight">;
 
 /** 오프라인 진입의 이유. 업데이트 설치가 실패했는지, 조회 자체가 닿지 않았는지를 가른다. */
 export type OfflineReason = "install-failed" | "unreachable";
@@ -21,7 +26,7 @@ export interface LaunchControllerDependencies {
   readonly synchronizeFullscreen?: (origin: string) => void | Promise<void>;
   readonly onConsoleLoaded?: () => void;
   readonly pushEntry: (contents: EntryPageWebContents, snapshot: EntryPageSnapshot) => Promise<void>;
-  readonly startOrAdopt: () => Promise<string>;
+  readonly startOrAdopt: (report: { wait(wait: EntryWait): void }) => Promise<string>;
   readonly dev?: boolean;
   readonly lang?: EntryLanguage;
   readonly desktopVersion?: string;
@@ -74,13 +79,16 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       window.show();
       let consoleUrl: string;
       while (true) {
+        const notice = createWaitNotice(push);
         try {
-          consoleUrl = await dependencies.startOrAdopt();
+          consoleUrl = await dependencies.startOrAdopt({ wait: notice.wait });
           break;
         } catch (error) {
           if (!isFirstRunProcurementFailure(error)) throw error;
           await push("firstfail");
           if (!dependencies.onFirstRunFailure || !await dependencies.onFirstRunFailure()) throw error;
+        } finally {
+          notice.cancel();
         }
       }
       if (window.isDestroyed?.()) return window;
@@ -96,6 +104,33 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       if (!window.isDestroyed?.()) await dependencies.synchronizeFullscreen?.(origin);
       if (!window.isDestroyed?.()) dependencies.onConsoleLoaded?.();
       return window;
+    },
+  };
+}
+
+/**
+ * 대기 문장은 계약의 LIFECYCLE_WAIT_NOTICE_MS가 지난 뒤에만 진입 화면에 올린다. 그보다 짧게 끝나는 대기는
+ * 조용하다. 한 번 올린 뒤에 이어지는 대기는 바로 올리고, 아직 올리기 전이면 마지막 대기 이름으로 바꿔 올린다.
+ */
+function createWaitNotice(push: (state: RuntimeEntryState, detail?: string) => Promise<void>): { readonly wait: (wait: EntryWait) => void; readonly cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let shown = false;
+  let current: EntryWait | null = null;
+  return {
+    wait: (wait) => {
+      current = wait;
+      if (shown) {
+        void push("waiting", wait);
+        return;
+      }
+      timer ??= setTimeout(() => {
+        shown = true;
+        if (current !== null) void push("waiting", current);
+      }, LIFECYCLE_WAIT_NOTICE_MS);
+    },
+    cancel: () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
     },
   };
 }
@@ -136,6 +171,12 @@ const COPY = {
     starting: "Console 시작 중",
     ready: "준비됐습니다",
     devDetail: "개발 빌드 · 업데이트 건너뜀",
+    wait: {
+      "owner-starting": "Console 시작 중",
+      "spawned-starting": "Console 시작 중",
+      "owner-stopping": "Console 종료를 기다리는 중",
+      "stop-ladder": "Console 종료를 기다리는 중",
+    },
   },
   en: {
     tagline: "Agent work, on one screen",
@@ -152,6 +193,12 @@ const COPY = {
     starting: "Starting Console",
     ready: "Ready",
     devDetail: "Development build · updates skipped",
+    wait: {
+      "owner-starting": "Starting Console",
+      "spawned-starting": "Starting Console",
+      "owner-stopping": "Waiting for Console to shut down",
+      "stop-ladder": "Waiting for Console to shut down",
+    },
   },
 } as const;
 
@@ -180,8 +227,15 @@ function lineFor(copy: (typeof COPY)[EntryLanguage], state: RuntimeEntryState, d
     case "offline": return { tone: "warning", title: detail === "install-failed" ? copy.offlineInstallFailed : copy.offlineUnreachable, detail: copy.offlineDetail };
     case "firstfail": return { tone: "failed", title: copy.firstfail, detail: copy.firstfailDetail };
     case "starting": return detail === "ready" ? { tone: "done", title: copy.ready, handoff: true } : { tone: "busy", title: copy.starting };
+    case "waiting": return waitingLine(copy, detail);
     default: return { tone: "busy", title: copy.checking };
   }
+}
+
+function waitingLine(copy: (typeof COPY)[EntryLanguage], detail: string | undefined): EntryLine {
+  const wait = parseConsoleLifecycleWait(detail);
+  if (wait === null || wait === "update-preflight") return { tone: "busy", title: copy.checking };
+  return { tone: "busy", title: copy.wait[wait], detail: describeConsoleLifecycleWait(wait) };
 }
 
 function versionLine(context: EntryContext): string {
