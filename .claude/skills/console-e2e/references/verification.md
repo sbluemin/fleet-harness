@@ -96,7 +96,7 @@ In the mobile layout there are no bottom tabs. The top bar's menu button opens a
 
 ## Lifecycle, network, and storage changes
 
-Use this only when the change touches state lifetime, a connection or retry path, or durable storage. Choose the representative inputs that exercise the changed mechanism, not a matrix of every state:
+Use this only when the change touches state lifetime, a connection or retry path, durable storage, or the component that renders a record or log. Choose the representative inputs that exercise the changed mechanism, not a matrix of every state:
 
 - **State lifetime:** trace one instance through creation, change, restore after reload or restart, and teardown (close, delete, archive, process exit). For each step, name the event the code actually waits on; a delay or `await` may also be covering a process exit or a late callback, so find what it resolves on before removing or relying on it.
 - **Connections:** inject the failure the path claims to handle — a silent hang (no bytes, no close), an early close, and two failures at once — and note that independent timers or backoffs run out of phase. CDP offline emulation does not drop an already-open EventSource or WebSocket; fail the stream at its source or through the page hook and confirm in the instrumentation that it actually closed.
