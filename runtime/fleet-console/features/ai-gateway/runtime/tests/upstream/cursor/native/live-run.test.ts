@@ -115,8 +115,10 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(command.slice(0, 160)).toContain("Fleet");
       expect(command).toContain("--regexp 'Fleet'");
       expect(command).toContain("-- 'packages'");
+      expect(command).toContain("head -c 12288");
       expect(command).not.toContain("base64url");
       expect(command).not.toContain("node -e");
+      expect(command).not.toContain("awk");
 
       const events = await collectCursorResponse(
         harness.adapter,
@@ -143,11 +145,16 @@ describe("Cursor live client-tool Run bridge", () => {
         nativeResultType: "grepShellResult" as const,
         nativeArgs: { pattern: "Fleet", path: "packages", outputMode: "content" },
       };
-      const success = cursorNativeRedirectResultReplies(correlation, [
-        "=== sub/12:odd.ts",
+      const successBody = [
+        "sub/12:odd.ts",
         "2:parseGrepShellReceipt here",
         "3-nearby",
-        "fleet-grep status=ok files=1 lines=2 matches=1 truncated=0",
+        "",
+      ].join("\n");
+      const success = cursorNativeRedirectResultReplies(correlation, [
+        successBody,
+        `fleet-grep status=ok rc=0 bytes=${Buffer.byteLength(successBody)}`,
+        "",
       ].join("\n"), false);
       expect(success).toContainEqual(expect.objectContaining({
         execClientMessage: expect.objectContaining({
@@ -187,10 +194,13 @@ describe("Cursor live client-tool Run bridge", () => {
           },
         }),
       }));
+      const kept = "sub/plain.ts\n4:function cursor\n";
+      const limit = 12 * 1024;
+      const transmitted = kept + "x".repeat(limit - Buffer.byteLength(kept));
       const truncated = cursorNativeRedirectResultReplies(correlation, [
-        "=== sub/plain.ts",
-        "4:function cursor",
-        "fleet-grep status=ok files=1 lines=1 matches=1 truncated=1",
+        transmitted,
+        `fleet-grep status=ok rc=0 bytes=${limit + 50}`,
+        "",
       ].join("\n"), false);
       expect(truncated).toContainEqual(expect.objectContaining({
         execClientMessage: expect.objectContaining({
@@ -209,16 +219,18 @@ describe("Cursor live client-tool Run bridge", () => {
           },
         }),
       }));
+      const ambiguousBody = "sub/12:odd.ts\nnot a numbered line\n";
+      const shortBody = "sub/plain.ts\n4:function cursor\n";
       for (const broken of [
         [
-          "=== sub/12:odd.ts",
-          "not a numbered line",
-          "fleet-grep status=ok files=1 lines=0 matches=0 truncated=0",
+          ambiguousBody,
+          `fleet-grep status=ok rc=0 bytes=${Buffer.byteLength(ambiguousBody)}`,
+          "",
         ].join("\n"),
         [
-          "=== sub/plain.ts",
-          "4:function cursor",
-          "fleet-grep status=ok files=1 lines=0 matches=0 truncated=0",
+          shortBody,
+          "fleet-grep status=ok rc=0 bytes=0",
+          "",
         ].join("\n"),
       ]) {
         expect(cursorNativeRedirectResultReplies(correlation, broken, false)).toContainEqual(

@@ -1,6 +1,5 @@
 import { EventEmitter } from "node:events";
 import http2 from "node:http2";
-import { deflateRawSync, inflateRawSync } from "node:zlib";
 
 import { fromBinary, fromJson, toBinary, toJson, type JsonValue } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";

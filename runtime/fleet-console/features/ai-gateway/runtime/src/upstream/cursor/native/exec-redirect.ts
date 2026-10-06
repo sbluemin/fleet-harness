@@ -398,11 +398,9 @@ function grepArguments(
 
 const GREP_SHELL_BYTE_LIMIT = 12 * 1024;
 const GREP_SHELL_MAX_COLUMNS = 2000;
-const GREP_SHELL_FILE_PREFIX = "=== ";
 const GREP_SHELL_COLUMN_SUFFIX = " [... omitted end of long line]";
-// rg --heading is rewritten here. `=== ` keeps a file named `12:notes` from being read as
-// line 12. `N:` is a match and `N-` is context; `--` is only ripgrep's gap between groups.
-const GREP_SHELL_AWK = String.raw`BEGIN{files=0;lines=0;matches=0;state="file";bad=0} /^$/{if(state=="match"){state="file";next} bad=1; exit} state=="match" && $0=="--"{next} {if(state=="file"){printf "=== %s\n",$0; files++; state="match"; next} if($0 ~ /^[0-9]+:/){lines++; matches++; print; next} if($0 ~ /^[0-9]+-/){lines++; print; next} bad=1; exit} END{if(bad){printf "fleet-grep status=error rc=2 message=unreadable search output\n"; exit} printf "fleet-grep status=ok files=%d lines=%d matches=%d truncated=%s\n",files,lines,matches,trunc}`;
+// A repaired UTF-8 sequence at a hard byte cut can change the decoded length by a few bytes.
+const GREP_SHELL_BYTE_SLACK = 3;
 
 function grepShellArguments(
   schema: Record<string, unknown>,
@@ -433,8 +431,8 @@ function grepShellArguments(
   // The chat summary is the first 160 characters, so rg and the pattern stay in front.
   // Bash, shell_command, and exec_command do not identify their shell. This text is POSIX
   // sh. A PowerShell host cannot be distinguished from those schemas; it fails closed
-  // because this trailer never arrives.
-  // --regexp stays ahead of the longer flags so the 160-character chat summary shows the pattern.
+  // because this trailer never arrives. rg's own heading is passed through: a file name is
+  // the first line or the line after a blank line, and the gateway counts the lines.
   const search = [
     "rg -n -H --heading --color=never",
     `--regexp ${pattern}`,
@@ -444,7 +442,7 @@ function grepShellArguments(
     ...flags,
     `-- ${path}`,
   ].join(" ");
-  const command = `${search} >"\${TMPDIR:-/tmp}/fleet-grep-$$.out" 2>"\${TMPDIR:-/tmp}/fleet-grep-$$.err"; rc=$?; out="\${TMPDIR:-/tmp}/fleet-grep-$$.out"; err="\${TMPDIR:-/tmp}/fleet-grep-$$.err"; limit=${GREP_SHELL_BYTE_LIMIT}; trunc=0; if [ "$rc" -gt 1 ]; then msg=$(awk 'NR>1{printf " "} {printf "%s",$0}' "$err" | cut -c1-300); printf 'fleet-grep status=error rc=%s message=%s\\n' "$rc" "$msg"; rm -f "$out" "$err"; else bytes=$(wc -c <"$out" | tr -d '[:space:]'); body="$out"; if [ "$bytes" -gt "$limit" ]; then trunc=1; dd if="$out" of="$out.cut" bs="$limit" count=1 2>/dev/null; last=$(dd if="$out.cut" bs=1 skip="$((limit - 1))" count=1 2>/dev/null); if [ -n "$last" ]; then sed '$d' "$out.cut" >"$out.body"; else cp "$out.cut" "$out.body"; fi; body="$out.body"; fi; awk -v trunc="$trunc" '${GREP_SHELL_AWK}' "$body"; rm -f "$out" "$err" "$out.cut" "$out.body"; fi`;
+  const command = `${search} >"\${TMPDIR:-/tmp}/g$$.o" 2>"\${TMPDIR:-/tmp}/g$$.e"; rc=$?; o="\${TMPDIR:-/tmp}/g$$.o"; e="\${TMPDIR:-/tmp}/g$$.e"; if [ "$rc" -gt 1 ]; then m=$(tr '\\n' ' ' <"$e" | cut -c1-300); printf 'fleet-grep status=error rc=%s message=%s\\n' "$rc" "$m"; else b=$(wc -c <"$o" | tr -d '[:space:]'); head -c ${GREP_SHELL_BYTE_LIMIT} "$o"; printf '\\nfleet-grep status=ok rc=%s bytes=%s\\n' "$rc" "$b"; fi; rm -f "$o" "$e"`;
   return shellArguments(schema, command, undefined, undefined);
 }
 
@@ -499,41 +497,37 @@ function parseGrepShellReceipt(
   if (expectedOutputMode !== "content") {
     return { ok: false, error: "The caller Bash result did not contain a complete Fleet Grep receipt." };
   }
-  const normalized = output.replace(/\r\n/g, "\n").replace(/\n$/, "");
-  const lines = normalized.split("\n");
-  const trailer = lines.at(-1) ?? "";
-  const body = lines.slice(0, -1);
-  if (!trailer.startsWith("fleet-grep ")) {
+  const split = splitGrepShellTrailer(output);
+  if (!split?.trailer.startsWith("fleet-grep ")) {
     return { ok: false, error: "The caller Bash result did not contain a complete Fleet Grep receipt." };
   }
-  const errorTrailer = /^fleet-grep status=error rc=(\d+) message=(.*)$/.exec(trailer);
+  const errorTrailer = /^fleet-grep status=error rc=(\d+) message=(.*)$/.exec(split.trailer);
   if (errorTrailer) {
     const message = errorTrailer[2]?.trim() || `rg failed with exit ${errorTrailer[1]}`;
     return { ok: false, error: message };
   }
-  const okTrailer = /^fleet-grep status=ok files=(\d+) lines=(\d+) matches=(\d+) truncated=([01])$/.exec(trailer);
-  if (!okTrailer?.[1] || !okTrailer[2] || !okTrailer[3] || !okTrailer[4]) {
+  const okTrailer = /^fleet-grep status=ok rc=(\d+) bytes=(\d+)$/.exec(split.trailer);
+  const exitCode = Number(okTrailer?.[1]);
+  const originalBytes = Number(okTrailer?.[2]);
+  if (
+    !okTrailer
+    || (exitCode !== 0 && exitCode !== 1)
+    || !Number.isSafeInteger(originalBytes)
+    || originalBytes < 0
+  ) {
     return { ok: false, error: "The caller Bash result did not contain a complete Fleet Grep receipt." };
   }
+  const clientTruncated = originalBytes > GREP_SHELL_BYTE_LIMIT;
   try {
-    const parsed = parseGrepShellBody(body);
-    const totalFiles = Number(okTrailer[1]);
-    const totalLines = Number(okTrailer[2]);
-    const totalMatchedLines = Number(okTrailer[3]);
-    if (
-      totalFiles !== parsed.totalFiles
-      || totalLines !== parsed.totalLines
-      || totalMatchedLines !== parsed.totalMatchedLines
-    ) {
-      throw new Error("receipt counts do not match the search output");
-    }
+    assertGrepShellByteCap(split.transmitted, originalBytes, clientTruncated);
+    const parsed = parseGrepShellBody(grepShellBodyLines(split.transmitted, clientTruncated));
     return {
       ok: true,
       matches: parsed.matches,
-      totalFiles,
-      totalLines,
-      totalMatchedLines,
-      clientTruncated: okTrailer[4] === "1",
+      totalFiles: parsed.totalFiles,
+      totalLines: parsed.totalLines,
+      totalMatchedLines: parsed.totalMatchedLines,
+      clientTruncated,
     };
   } catch (error) {
     return {
@@ -541,6 +535,45 @@ function parseGrepShellReceipt(
       error: `The caller Bash result contained an invalid Fleet Grep receipt: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+}
+
+function splitGrepShellTrailer(
+  output: string,
+): { readonly transmitted: string; readonly trailer: string } | null {
+  const normalized = output.replace(/\r\n/g, "\n");
+  if (!normalized.endsWith("\n")) return null;
+  const withoutFinal = normalized.slice(0, -1);
+  const splitAt = withoutFinal.lastIndexOf("\n");
+  if (splitAt < 0) return null;
+  return {
+    transmitted: withoutFinal.slice(0, splitAt),
+    trailer: withoutFinal.slice(splitAt + 1),
+  };
+}
+
+function assertGrepShellByteCap(
+  transmitted: string,
+  originalBytes: number,
+  clientTruncated: boolean,
+): void {
+  const actual = Buffer.byteLength(transmitted, "utf8");
+  if (!clientTruncated) {
+    if (actual !== originalBytes) throw new Error("receipt bytes do not match the search output");
+    return;
+  }
+  if (actual > GREP_SHELL_BYTE_LIMIT || GREP_SHELL_BYTE_LIMIT - actual > GREP_SHELL_BYTE_SLACK) {
+    throw new Error("search output was cut before the trailer");
+  }
+}
+
+function grepShellBodyLines(transmitted: string, clientTruncated: boolean): readonly string[] {
+  const endsWithNewline = transmitted.endsWith("\n");
+  const text = endsWithNewline ? transmitted.slice(0, -1) : transmitted;
+  if (text.length === 0) return [];
+  const lines = text.split("\n");
+  // head -c can end inside a line. That partial line is not a result.
+  if (clientTruncated && !endsWithNewline) lines.pop();
+  return lines;
 }
 
 function parseGrepShellBody(lines: readonly string[]): {
@@ -551,18 +584,25 @@ function parseGrepShellBody(lines: readonly string[]): {
 } {
   const matches: Array<GrepShellReceipt["matches"][number]> = [];
   let currentFile: string | undefined;
+  let expectingFile = true;
   let totalFiles = 0;
   let totalLines = 0;
   let totalMatchedLines = 0;
   for (const raw of lines) {
     const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
-    if (line.startsWith(GREP_SHELL_FILE_PREFIX)) {
-      const file = line.slice(GREP_SHELL_FILE_PREFIX.length);
-      if (!file) throw new Error("search file name is empty");
-      currentFile = file;
-      totalFiles += 1;
+    if (line.length === 0) {
+      if (expectingFile) throw new Error("ambiguous search line");
+      expectingFile = true;
+      currentFile = undefined;
       continue;
     }
+    if (expectingFile) {
+      currentFile = line;
+      totalFiles += 1;
+      expectingFile = false;
+      continue;
+    }
+    if (line === "--") continue;
     if (currentFile === undefined) throw new Error("search line has no file");
     const numbered = parseGrepShellNumberedLine(line);
     if (!numbered) throw new Error("ambiguous search line");
