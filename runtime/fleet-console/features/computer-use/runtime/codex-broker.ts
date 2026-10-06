@@ -259,7 +259,7 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
         delete env.FLEET_CONSOLE_SESSION_ID;
         env.CODEX_HOME = this.deps.installation.clientHome;
         await new Promise<void>((resolve) => {
-          execFile(client, ["turn-ended", JSON.stringify({ type: "agent-turn-complete", "thread-id": threadId, cwd: cwd ?? "", "input-messages": [], "last-assistant-message": "" })], { env, timeout: 5_000, killSignal: "SIGKILL", maxBuffer: 64 * 1024 }, (error) => {
+          execFile(client, ["turn-ended", JSON.stringify({ type: "agent-turn-complete", "thread-id": threadId, cwd: cwd ?? "", "input-messages": [], "last-assistant-message": "" })], { env, timeout: 5_000, killSignal: "SIGKILL", maxBuffer: 64 * 1024, windowsHide: true }, (error) => {
             this.cleanupStatus = error ? "failed" : "notified";
             this.cleanupFailure = !error ? null : error.killed ? "timeout" : error.code === "ENOENT" || error.code === "EACCES" ? "client_unavailable" : "client_exit";
             resolve();

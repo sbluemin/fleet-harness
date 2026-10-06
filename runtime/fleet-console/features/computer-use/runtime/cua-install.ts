@@ -86,7 +86,7 @@ export class CuaDriverInstaller {
       const binary = path.join(payload, process.platform === "darwin" ? "CuaDriver.app/Contents/MacOS/cua-driver" : process.platform === "win32" ? "cua-driver.exe" : "cua-driver");
       await fs.access(binary);
       if (process.platform !== "win32") await fs.chmod(binary, 0o755);
-      if (process.platform === "darwin") await exec("/usr/bin/codesign", ["--verify", "--deep", "--strict", path.join(payload, "CuaDriver.app")], { timeout: 30_000 });
+      if (process.platform === "darwin") await exec("/usr/bin/codesign", ["--verify", "--deep", "--strict", path.join(payload, "CuaDriver.app")], { timeout: 30_000, windowsHide: true });
       const version = await exec(binary, ["--version"], { timeout: 5000, windowsHide: true });
       if (version.stdout.trim() !== `cua-driver ${CUA_VERSION}`) throw new Error("version_mismatch");
       this.phase = "installing";

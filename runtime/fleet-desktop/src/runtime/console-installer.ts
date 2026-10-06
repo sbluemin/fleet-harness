@@ -109,7 +109,7 @@ export function createConsoleInstallerDependencies(): ConsoleInstallerDependenci
       writeFile: async (target, content) => { await writeFile(target, content); },
     },
     randomSuffix: () => Math.random().toString(36).slice(2),
-    run: async (command, arguments_, options) => { await promisify(execFile)(command, [...arguments_], options); },
+    run: async (command, arguments_, options) => { await promisify(execFile)(command, [...arguments_], { ...options, windowsHide: true }); },
   };
 }
 

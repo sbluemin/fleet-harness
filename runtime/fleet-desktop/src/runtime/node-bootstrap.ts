@@ -178,11 +178,11 @@ async function download(url: string, destination: string): Promise<void> {
 async function extract(archive: string, destination: string, platform: NodeJS.Platform): Promise<void> {
   const execute = promisify(execFile);
   if (archive.endsWith(".zip")) {
-    if (platform === "win32") await execute("powershell", ["-NoProfile", "-NonInteractive", "-Command", createPowerShellExtractionCommand(archive, destination)]);
-    else await execute("unzip", ["-q", archive, "-d", destination]);
+    if (platform === "win32") await execute("powershell", ["-NoProfile", "-NonInteractive", "-Command", createPowerShellExtractionCommand(archive, destination)], { windowsHide: true });
+    else await execute("unzip", ["-q", archive, "-d", destination], { windowsHide: true });
     return;
   }
-  await execute("tar", ["-xf", archive, "-C", destination, "--strip-components=1"]);
+  await execute("tar", ["-xf", archive, "-C", destination, "--strip-components=1"], { windowsHide: true });
 }
 
 function escapePowerShellLiteral(value: string): string {

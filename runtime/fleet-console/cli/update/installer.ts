@@ -105,7 +105,7 @@ function createFleetPackageUpdater(io: UpdateCommandIo, siblingCliPath?: string)
     resolveCurrentPackageRoot: getCurrentPackageRoot,
     report: (message) => reportUpdaterMessage(io, message),
     resolveBinary: (command, env, options) => resolvePathBinary(command, env, options),
-    execFile: (file, args) => execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }),
+    execFile: (file, args) => execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], windowsHide: true }),
     spawnInstall: (file, args, context) => spawnInstallProcess(file, args, context, io),
     realpath: (targetPath) => realpathSync(targetPath),
     canWrite,
@@ -154,6 +154,7 @@ function removeFileBestEffort(filePath: string): void {
 }
 
 function spawnInstallProcess(file: string, args: readonly string[], context: GlobalPackageSpawnContext, io: UpdateCommandIo): ReturnType<typeof spawn> {
+  // fleet-allow-visible-spawn: foreground install shares the user's terminal and Ctrl+C; libuv ignores windowsHide with inherited stdio.
   const child = spawn(file, args, { stdio: "inherit" });
   child.on("error", (error) => {
     io.stderr.write(`Failed to run ${context.manager.command} installer: ${formatError(error)}\n`);

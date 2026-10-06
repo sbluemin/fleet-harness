@@ -52,7 +52,7 @@ const INVALID_PATH_OUTPUT = /[\u0000-\u001f\u007f]/;
 const execFileAsync = promisify(execFile);
 const defaultLoginShellPathProbe: LoginShellPathProbe = {
   run: async (file, arguments_, options) => {
-    const result = await execFileAsync(file, arguments_, options);
+    const result = await execFileAsync(file, arguments_, { ...options, windowsHide: true });
     return { stdout: result.stdout };
   },
 };

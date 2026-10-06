@@ -26,7 +26,7 @@ export type MacInteractionReadiness = "ready" | "not_running" | "ambiguous" | "h
 
 export function readMacInteractionReadiness(app: string): Promise<MacInteractionReadiness> {
   return new Promise((resolve) => {
-    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", INTERACTION_READINESS, app], { timeout: 3000, maxBuffer: 4096 }, (error, stdout) => {
+    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", INTERACTION_READINESS, app], { timeout: 3000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => {
       const state = stdout.trim();
       resolve(!error && ["ready", "not_running", "ambiguous", "hidden", "not_frontmost", "window_unavailable", "minimized"].includes(state) ? state as MacInteractionReadiness : "unavailable");
     });
@@ -69,7 +69,7 @@ function run(args) {
 export function inspectMacWindows(apps: readonly string[], signal?: AbortSignal): Promise<ComputerUseWindowState[]> {
   if (!apps.length) return Promise.resolve([]);
   return new Promise((resolve) => {
-    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_STATE, ...apps], { timeout: 5000, maxBuffer: 128 * 1024, signal }, (error, stdout) => {
+    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_STATE, ...apps], { timeout: 5000, maxBuffer: 128 * 1024, signal, windowsHide: true }, (error, stdout) => {
       if (!error) {
         try {
           const states = JSON.parse(stdout) as ComputerUseWindowState[];
@@ -86,7 +86,7 @@ export async function openMacApp(app: string, signal: AbortSignal, activate: boo
   // 정확한 설치 경로에 한 번만 재열기를 요청한다. 새 인스턴스나 대체 설치본은 실행하지 않는다.
   const request = await new Promise<{ requestDispatched: boolean; error?: string }>((resolve) => {
     let dispatched = false;
-    const child = execFile("/usr/bin/open", [...(activate ? [] : ["-g"]), "-a", app], { timeout: 5000, maxBuffer: 4096, signal }, (error) => {
+    const child = execFile("/usr/bin/open", [...(activate ? [] : ["-g"]), "-a", app], { timeout: 5000, maxBuffer: 4096, signal, windowsHide: true }, (error) => {
       resolve({ requestDispatched: dispatched, ...(error ? { error: signal.aborted ? "computer_use_stopped" : "computer_use_open_failed" } : {}) });
     });
     child.once("spawn", () => { dispatched = true; });
@@ -147,13 +147,13 @@ function run(args) {
 
 export function verifyMacWindowIdentity(target: ComputerUseWindowIdentity): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_IDENTITY, "verify", String(target.pid), String(target.windowId), String(target.processStartedAt)], { timeout: 3000, maxBuffer: 4096 }, (error, stdout) => resolve(!error && stdout.trim() === "true"));
+    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_IDENTITY, "verify", String(target.pid), String(target.windowId), String(target.processStartedAt)], { timeout: 3000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => resolve(!error && stdout.trim() === "true"));
   });
 }
 
 export function readMacWindowIdentity(app: string): Promise<ComputerUseWindowIdentity | null> {
   return new Promise((resolve) => {
-    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_IDENTITY, app], { timeout: 3000, maxBuffer: 64 * 1024 }, (error, stdout) => {
+    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_IDENTITY, app], { timeout: 3000, maxBuffer: 64 * 1024, windowsHide: true }, (error, stdout) => {
       if (error) { process.stderr.write(`[fleet-computer-use] window identity unavailable: ${/window_accessibility_-25211/.test(error.message) ? "accessibility_permission_required" : "window_lookup_failed"}\n`); resolve(null); return; }
       try {
         const value = JSON.parse(stdout) as ComputerUseWindowIdentity | null;

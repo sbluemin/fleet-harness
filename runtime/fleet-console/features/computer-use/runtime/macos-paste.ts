@@ -68,7 +68,7 @@ export async function prepareMacPaste(app: string, text: string, format: "text" 
   // NSPasteboard HTML otherwise defaults to a legacy encoding in some Mac apps.
   const html = markup === undefined ? undefined : `<meta charset="utf-8">${markup}`;
   const payload = Buffer.from(JSON.stringify({ app, allowActivation, text, ...(html === undefined ? {} : { html }) }));
-  const child = spawn("/usr/bin/osascript", ["-l", "JavaScript", "-e", PASTEBOARD], { stdio: ["pipe", "pipe", "pipe"] });
+  const child = spawn("/usr/bin/osascript", ["-l", "JavaScript", "-e", PASTEBOARD], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
   child.stderr.resume(); // Never forward errors that might contain clipboard content.
   let restoration: ClipboardRestoration = "failed";
   let ready = false;
