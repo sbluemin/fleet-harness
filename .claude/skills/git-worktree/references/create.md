@@ -15,5 +15,5 @@ cd <repo-root>/.fleet/worktrees/<worktree-name> && pnpm install --frozen-lockfil
 Change both fetch and `origin/canary` only for a user-confirmed nonstandard base. Install dependencies inside the new worktree; never borrow main-checkout files through symlinks.
 
 4. Stop immediately if installation fails. Distinguish an existing new checkout from a ready environment, report the failed command, and do not proceed to edits.
-5. On success, report absolute worktree path, branch/base, successful installation, and the fixed command context. Use `cd <absolute-worktree> && …` or `git -C <absolute-worktree> …` in every independent Bash call.
+5. On success, report absolute worktree path, branch/base, successful installation, and the fixed command context. Use `cd <absolute-worktree> && …` or `git -C <absolute-worktree> …` in every independent Bash call. `worktree add` leaves the new branch tracking `origin/canary`, so its first push names the target explicitly, `git push -u origin HEAD:<new-branch>`, which also moves the upstream to that branch.
 6. After edits, check `git -C <repo-root> status --short` for leaked main-checkout changes. Preserve any user changes that existed initially.
