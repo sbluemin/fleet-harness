@@ -51,6 +51,13 @@ import {
 } from "./generated/cursor-agent-protobuf.js";
 import { resolveCursorModelSelection } from "../../../models.js";
 import { estimateTokens } from "../../../transport/token-estimate.js";
+import {
+  cursorResampleArming,
+  cursorResampleNudgeItems,
+  withCursorResample,
+  type CursorClientToolScope,
+  type CursorSegmentSignals,
+} from "./resample.js";
 
 const CURSOR_API_ORIGIN = "https://api2.cursor.sh";
 const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";
@@ -208,7 +215,8 @@ export interface CursorDiagnosticEvent {
   /** Previous Cursor wire model for mid-session switches. Never a raw user/session id. */
   readonly previousWireModel?: string;
   readonly requestedEffort?: ReasoningEffort;
-  readonly turn?: "prompt" | "tool-continuation";
+  /** `resample` is the one extra Run opened after an announce-only tool-result turn. */
+  readonly turn?: "prompt" | "tool-continuation" | "resample";
   /** Cursor's HTTP response status for this Run. Never a body, header value, or identifier. */
   readonly status?: number;
   readonly frame?: string;
@@ -1206,6 +1214,8 @@ interface CursorLiveRun {
     signal: AbortSignal | undefined,
     estimatedInputTokens: number,
   ): AsyncIterable<CanonicalResponseEvent>;
+  /** What the active segment did that its canonical events cannot show. */
+  segmentSignals(): CursorSegmentSignals;
   dispose(outcome: string, error?: Error): void;
 }
 
@@ -1279,6 +1289,26 @@ function isCursorClientContextMessage(item: CanonicalInputItem | undefined): boo
   return item.role === "developer"
     ? text.includes("<system-reminder>")
     : text.trimStart().startsWith("<system-reminder>");
+}
+
+/**
+ * The trailing result batch as the announce-only resample reads it: past any client context the
+ * caller appended after the results — Claude Code puts a background-job notice or a queued message
+ * into the same user turn as `<system-reminder>` text, which arrives as its own user item. The turn
+ * is still a tool-result turn. The bridge keeps its own stricter reading; this one only arms.
+ */
+function trailingCursorToolResultsPastClientContext(
+  input: readonly CanonicalInputItem[],
+): readonly CursorCanonicalToolResult[] | undefined {
+  let end = input.length;
+  while (end > 1) {
+    const tail = input[end - 1];
+    const context = tail?.type === "message"
+      && (tail.role === "developer" || isCursorClientContextMessage(tail));
+    if (!context) break;
+    end -= 1;
+  }
+  return trailingCursorToolResults(input.slice(0, end));
 }
 
 function cursorSupersedeOutcome(input: readonly CanonicalInputItem[]): string {
@@ -1396,7 +1426,29 @@ export class CursorAdapter implements AiGatewayAdapter {
     request: CanonicalResponseRequest,
     options: AdapterCallOptions,
   ): Promise<AdapterResponse> {
+    return this.streamFor(request, options, {});
+  }
+
+  /**
+   * This adapter seen through one client's tool vocabulary. Which tool sends a report or yields the
+   * turn is a harness fact, while the adapter — and the parked Runs it owns — is one per router; the
+   * view shares that state and only binds the vocabulary the announce-only resample reads.
+   */
+  forHarness(scope: CursorClientToolScope): AiGatewayAdapter {
+    return {
+      capabilities: this.capabilities,
+      wireTools: (request) => this.wireTools(request),
+      stream: (request, options) => this.streamFor(request, options, scope),
+    };
+  }
+
+  private async streamFor(
+    request: CanonicalResponseRequest,
+    options: AdapterCallOptions,
+    scope: CursorClientToolScope,
+  ): Promise<AdapterResponse> {
     if (this.disposed) throw new Error("Cursor adapter is disposed");
+    const startedAt = Date.now();
     const identity = resolveCursorSessionIdentity(request, {
       conversationId: this.conversationIdOverride,
       sessionId: this.sessionIdOverride,
@@ -1462,6 +1514,23 @@ export class CursorAdapter implements AiGatewayAdapter {
       ...(request.reasoning?.effort === undefined ? {} : { effort: request.reasoning.effort }),
       toolCatalogFingerprint: cursorToolCatalogFingerprint(request.tools ?? [], preflight.tools),
     };
+    const arming = cursorResampleArming(
+      request,
+      trailingCursorToolResultsPastClientContext(request.input),
+      preflight.wireModelId,
+      scope,
+    );
+    wireLog("cursor.resample.armed", {
+      armed: arming.armed,
+      wireModel: preflight.wireModelId,
+      ...(arming.skip === undefined ? {} : { skip: arming.skip }),
+      ...(arming.lastToolNames === undefined ? {} : { lastTools: arming.lastToolNames }),
+    });
+    const resampled = (run: CursorLiveRun, events: AsyncIterable<CanonicalResponseEvent>): AdapterResponse => (
+      cursorSuccessfulResponse(arming.armed
+        ? this.withResample(events, run, request, options, identity, descriptor, preparation, startedAt)
+        : events)
+    );
     const pending = this.pendingLiveRuns.get(conversationStateKey);
     if (pending) {
       const descriptorMismatch = cursorLiveRunDescriptorMismatch(pending, descriptor);
@@ -1485,7 +1554,7 @@ export class CursorAdapter implements AiGatewayAdapter {
           outcome: "exact_match",
           count: results.length,
         });
-        return cursorSuccessfulResponse(pending.run.attach(
+        return resampled(pending.run, pending.run.attach(
           results,
           options.signal,
           preflight.estimatedInputTokens,
@@ -1497,7 +1566,8 @@ export class CursorAdapter implements AiGatewayAdapter {
       if (!results && descriptorMismatch) {
         const plan = buildPreparedCursorRunPlan(request, identity.conversationId, preparation);
         wireLog("cursor.wire.plan", plan);
-        return this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
+        return (await this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint))
+          .response;
       }
       if (this.claimPendingLiveRun(pending)) {
         pending.run.report("bridge.mismatch", {
@@ -1513,7 +1583,61 @@ export class CursorAdapter implements AiGatewayAdapter {
     // post-rewrite tool set plus the resolved model coordinate. Exact bridge attaches never send
     // this payload, so build and log it only after that path is ruled out.
     wireLog("cursor.wire.plan", plan);
-    return this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
+    const opened = await this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
+    return opened.run === undefined ? opened.response : resampled(opened.run, opened.response.events);
+  }
+
+  /**
+   * Hold an armed tool-result turn and, when it only announced its next step, ask once more on a new
+   * Run (see `resample.ts`). The same Run cannot be continued: Cursor ends the stream within a
+   * millisecond of `turnEnded`. The nudged request goes through the ordinary cold path, so the
+   * announcement replays as an assistant step and the nudge as the active user message.
+   */
+  private withResample(
+    events: AsyncIterable<CanonicalResponseEvent>,
+    run: CursorLiveRun,
+    request: CanonicalResponseRequest,
+    options: AdapterCallOptions,
+    identity: CursorSessionIdentity,
+    descriptor: CursorLiveRunDescriptor,
+    preparation: CursorRunPreparation,
+    startedAt: number,
+  ): AsyncIterable<CanonicalResponseEvent> {
+    const { wireModelId, estimatedInputTokens } = preparation.preflight;
+    return withCursorResample(events, {
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      startedAt,
+      wireModelId,
+      firstSignals: () => run.segmentSignals(),
+      reopen: async (announcement) => {
+        if (this.disposed) {
+          throw Object.assign(new Error("Cursor adapter is disposed"), { code: "CURSOR_ADAPTER_DISPOSED" });
+        }
+        const nudged: CanonicalResponseRequest = {
+          ...request,
+          input: [...request.input, ...cursorResampleNudgeItems(announcement)],
+        };
+        const nudgedPreparation = prepareCursorRun(nudged);
+        const recall = recallCursorContextCheckpoint(
+          identity.conversationId,
+          `${request.model}:${wireModelId}`,
+          descriptor.credentialFingerprint,
+          estimatedInputTokens,
+        );
+        const refusal = cursorContextWindowRefusal(recall.checkpoint, options.modelContextWindow);
+        if (refusal) throw refusal;
+        const plan = buildPreparedCursorRunPlan(nudged, identity.conversationId, nudgedPreparation);
+        wireLog("cursor.wire.plan", { resample: true, ...plan });
+        const opened = await this.openRun(nudged, options, identity, plan, descriptor, recall.checkpoint, {
+          resample: true,
+          // The client's next request carries the announcement and the recovered call but never the
+          // nudge. Measured against a baseline that includes it, a short tool result reads as a
+          // shrunk conversation, and the compaction guard discards the very Run that recovered.
+          checkpointBaselineTokens: estimatedInputTokens,
+        });
+        return opened.response;
+      },
+    });
   }
 
   /** Close every adapter-owned parked Run. Safe to call more than once. */
@@ -1607,7 +1731,8 @@ export class CursorAdapter implements AiGatewayAdapter {
     plan: CursorRunPlan,
     descriptor: CursorLiveRunDescriptor,
     previousContextCheckpoint: CursorContextCheckpoint | undefined,
-  ): Promise<AdapterResponse> {
+    extras: CursorOpenRunExtras = {},
+  ): Promise<CursorOpenedRun> {
     if (options.signal?.aborted) throw new Error("cancelled by caller");
     // Cursor Run을 열 때 기록 정책을 고정한다. tool continuation은 이 Run에 붙어 reporter를
     // 재사용하므로 설정을 바꿔도 trace가 중간부터 잘려 기록되지 않는다.
@@ -1625,9 +1750,11 @@ export class CursorAdapter implements AiGatewayAdapter {
       model,
       wireModel,
       requestedEffort: request.reasoning?.effort,
-      turn: request.input.at(-1)?.type === "function_call_output"
-        ? "tool-continuation"
-        : "prompt",
+      turn: extras.resample
+        ? "resample"
+        : request.input.at(-1)?.type === "function_call_output"
+          ? "tool-continuation"
+          : "prompt",
       toolCount: plan.tools.length,
       estimatedInputTokens: plan.estimatedInputTokens,
     });
@@ -1757,7 +1884,7 @@ export class CursorAdapter implements AiGatewayAdapter {
           lastFrame: "none",
         });
         closeCursorTransport(stream, session, false);
-        return { ok: false, status: head.status, headers: head.headers, body };
+        return { response: { ok: false, status: head.status, headers: head.headers, body } };
       }
     } finally {
       this.openingTransports.delete(opening);
@@ -1784,7 +1911,7 @@ export class CursorAdapter implements AiGatewayAdapter {
         identity.conversationId,
         `${request.model}:${plan.wireModelId}`,
         descriptor.credentialFingerprint,
-        plan.estimatedInputTokens,
+        extras.checkpointBaselineTokens ?? plan.estimatedInputTokens,
         checkpoint,
       ),
       toolFinalizeGraceMs: this.toolFinalizeGraceMs,
@@ -1826,9 +1953,20 @@ export class CursorAdapter implements AiGatewayAdapter {
     stream.once("end", stopHeartbeat);
     stream.once("error", stopHeartbeat);
 
-    return cursorSuccessfulResponse(liveRun.initialEvents);
+    return { response: cursorSuccessfulResponse(liveRun.initialEvents), run: liveRun };
   }
 }
+
+interface CursorOpenRunExtras {
+  /** This Run is the announce-only resample; diagnostics label its turn as such. */
+  readonly resample?: true;
+  /** Checkpoint baseline when the Run's own request is not what the client will send next. */
+  readonly checkpointBaselineTokens?: number;
+}
+
+type CursorOpenedRun =
+  | { readonly response: Extract<AdapterResponse, { ok: true }>; readonly run: CursorLiveRun }
+  | { readonly response: Extract<AdapterResponse, { ok: false }>; readonly run?: undefined };
 
 interface CursorResponseHead {
   readonly status: number;
@@ -1993,7 +2131,7 @@ function cursorPositiveIntegerOption(
 
 function cursorSuccessfulResponse(
   events: AsyncIterable<CanonicalResponseEvent>,
-): AdapterResponse {
+): Extract<AdapterResponse, { ok: true }> {
   return {
     ok: true,
     status: 200,
@@ -2285,6 +2423,10 @@ interface CursorResponseSegment {
    */
   ingestingToolResult: boolean;
   outputText: string;
+  /** The server ran work of its own for this segment (an approved web search), not a rejected exec. */
+  serverWork: boolean;
+  /** Text since the last native exec this segment answered: the model's final step. */
+  stepText: string;
   /** Text or thinking: the content kind that last streamed, and how often the kind switched. */
   lastContentKind?: "text" | "reasoning";
   contentPhase: number;
@@ -2529,6 +2671,8 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       contextOutputTokens: 0,
       ingestingToolResult: false,
       outputText: "",
+      serverWork: false,
+      stepText: "",
       contentPhase: 0,
       estimatedInputTokens: segmentEstimatedInputTokens,
       checkpointVersionAtStart: checkpointVersion,
@@ -2821,8 +2965,10 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       const reply = cursorInteractionQueryReply(frame.interactionQuery);
       stream.write(encodeCursorClientMessage(reply.message));
       report("client.reply", { model: diagnosticModel, reply: reply.replyKind });
+      if (reply.serverWork && state === "attached") activeSegment.serverWork = true;
       if (reply.planText && state === "attached") {
         activeSegment.outputText += reply.planText;
+        activeSegment.stepText += reply.planText;
         emit({
           type: "response.output_text.delta",
           item_id: cursorContentItemId(activeSegment, "text"),
@@ -2945,6 +3091,9 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
         rescheduleToolTurnFinish();
         return;
       }
+      // A native exec answered here (a policy rejection or an unknown-call fallback) ends one model
+      // step; the model writes its next step from scratch. Only the last step says how the turn ends.
+      activeSegment.stepText = "";
       const policyReplies = cursorNativeExecPolicyReplies(
         frame.execServerMessage,
         tools.map((tool) => ({ clientName: tool.clientName, wireName: tool.toolName })),
@@ -2992,6 +3141,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     }
     if (isRecord(update.textDelta) && typeof update.textDelta.text === "string") {
       activeSegment.outputText += update.textDelta.text;
+      activeSegment.stepText += update.textDelta.text;
       emit({
         type: "response.output_text.delta",
         item_id: cursorContentItemId(activeSegment, "text"),
@@ -3238,6 +3388,10 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     initialEvents: eventsFor(initialSegment),
     report,
     attach,
+    segmentSignals: () => ({
+      serverWork: activeSegment.serverWork,
+      finalStepText: activeSegment.stepText,
+    }),
     dispose,
   };
   return run;
@@ -3339,6 +3493,8 @@ interface CursorInteractionReply {
   readonly message: unknown;
   readonly replyKind: string;
   readonly planText?: string;
+  /** The approval lets Cursor's server run the work itself (search or fetch). */
+  readonly serverWork?: true;
 }
 
 const CURSOR_NON_INTERACTIVE_REASON =
@@ -3397,18 +3553,21 @@ function cursorInteractionQueryReply(query: Record<string, unknown>): CursorInte
     return {
       message: response({ webSearchRequestResponse: { approved: {} } }),
       replyKind: "interaction.webSearch.approved",
+      serverWork: true,
     };
   }
   if (isRecord(query.exaSearchRequestQuery)) {
     return {
       message: response({ exaSearchRequestResponse: { approved: {} } }),
       replyKind: "interaction.exaSearch.approved",
+      serverWork: true,
     };
   }
   if (isRecord(query.exaFetchRequestQuery)) {
     return {
       message: response({ exaFetchRequestResponse: { approved: {} } }),
       replyKind: "interaction.exaFetch.approved",
+      serverWork: true,
     };
   }
 

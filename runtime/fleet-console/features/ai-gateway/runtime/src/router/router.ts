@@ -311,8 +311,16 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   const ownedCursorAdapter = deps.gateway
     ? undefined
     : new CursorAdapter({ diagnostics: deps.cursorDiagnostics });
-  const ownedCursorGateway = ownedCursorAdapter
-    ? new AnthropicMessagesGateway(ownedCursorAdapter)
+  // One gateway per served harness over the one adapter: the parked Runs stay shared, and each view
+  // carries the client's own tool vocabulary (reporting and turn-yielding calls).
+  const ownedCursorGateways = ownedCursorAdapter
+    ? new Map(servedHarnesses.map((harness) => [
+      harness,
+      new AnthropicMessagesGateway(ownedCursorAdapter.forHarness({
+        ...(harness.messagingToolNames ? { messagingToolNames: harness.messagingToolNames } : {}),
+        ...(harness.yieldToolCalls ? { yieldToolCalls: harness.yieldToolCalls } : {}),
+      })),
+    ]))
     : undefined;
   // Antigravity's adapter is built once and kept: it carries the reasoning-blob
   // ledger that lets a turn recover a `thoughtSignature` the client did not
@@ -677,7 +685,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         : undefined;
       const gateway = deps.gateway
         ?? (target.provider === "cursor"
-          ? ownedCursorGateway!
+          ? ownedCursorGateways!.get(harness)!
           : target.provider === "opencode"
             ? createOpencodeGateway(
               opencodeGoWire(target) as "responses" | "chat-completions",

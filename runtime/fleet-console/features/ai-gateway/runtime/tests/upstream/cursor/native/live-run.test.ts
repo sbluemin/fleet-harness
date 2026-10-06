@@ -302,6 +302,117 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
+  it("asks once more on a new Run when grok-4.7 only announces its next step after a tool result", async () => {
+    // grok-4.7 sometimes ends a tool-result turn on an announcement with no reasoning and no call;
+    // the same input with the announcement replayed and a short nudge appended reasons and calls
+    // the tool (22/22, 2026-10-07). Cursor closes the stream at turnEnded, so the ask is a new Run.
+    const first = cursorCall("call-resample-1", 1);
+    const recovered = cursorCall("call-resample-2", 2);
+    const waiting = cursorCall("call-resample-4", 4);
+    const announcement = "Now I'll run the tests.";
+    const firstRun = new BridgeCursorStream(cursorToolFrames([first]));
+    // Claude Code appends a background-job notice to the result turn as its own user text, so the
+    // bridge cold-resumes; the turn is still a tool-result turn and must stay armed.
+    const announcedRun = new BridgeCursorStream(cursorCompletionFrames(announcement));
+    const recoveredRun = new BridgeCursorStream(
+      [
+        { conversationCheckpointUpdate: { tokenDetails: { usedTokens: 5_000, maxTokens: 256_000 } } },
+        { interactionUpdate: { thinkingDelta: { text: "Run them." } } },
+        { interactionUpdate: { textDelta: { text: "Running the tests." } } },
+        ...cursorToolFrames([recovered]),
+      ],
+      cursorCompletionFrames("Still checking."),
+      1,
+    );
+    const textAgainRun = new BridgeCursorStream(cursorCompletionFrames("Checking again."));
+    const yieldingRun = new BridgeCursorStream(
+      cursorToolFrames([waiting]),
+      cursorCompletionFrames("Waiting for the background job."),
+      1,
+    );
+    // Would recover with a call if the gateway asked again after the yielding call.
+    const unwantedRun = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-5", 5)]));
+    const harness = cursorHarness([
+      firstRun,
+      announcedRun,
+      recoveredRun,
+      textAgainRun,
+      yieldingRun,
+      unwantedRun,
+    ]);
+    const adapter = harness.adapter.forHarness({
+      yieldToolCalls: [{ name: "probe_tool", whenArgumentTrue: "background" }],
+    });
+    const turn = async (request: CanonicalResponseRequest) => (
+      collectAdapterEvents(await adapter.stream(request, { apiKey: "cursor-test-token" }))
+    );
+    const call = (spec: CursorCallSpec, args: Record<string, unknown> = { path: "README.md" }) => ({
+      type: "function_call" as const,
+      call_id: spec.callId,
+      name: spec.name,
+      arguments: JSON.stringify(args),
+    });
+    const initial = cursorRequest("session-resample", "grok-4.7");
+    const afterFirst = [
+      ...initial.input,
+      call(first),
+      cursorResult(first, "ok"),
+      {
+        type: "message" as const,
+        role: "user" as const,
+        content: "<system-reminder>A background task finished.</system-reminder>",
+      },
+    ];
+    const afterRecovered = [
+      ...afterFirst,
+      { type: "message" as const, role: "assistant" as const, content: announcement },
+      call(recovered),
+      cursorResult(recovered, "ok"),
+    ];
+    const prompted = [
+      ...afterRecovered,
+      { type: "message" as const, role: "assistant" as const, content: "Still checking." },
+      { type: "message" as const, role: "user" as const, content: "Wait for the job." },
+    ];
+
+    try {
+      await turn(initial);
+      const recovery = await turn({ ...initial, input: afterFirst });
+
+      // One message: the announcement once, then the recovered call. The second Run's own
+      // re-announcement is dropped so the user does not read the same step twice.
+      expect(recovery.filter((event) => event.type === "response.created")).toHaveLength(1);
+      expect(canonicalText(recovery)).toBe(announcement);
+      expect(addedFunctionCallIds(recovery)).toEqual([recovered.callId]);
+      expect(announcedRun.closed).toBe(true);
+      expect(cursorClientWrites(recoveredRun)[0]).toMatchObject({
+        runRequest: { action: { userMessageAction: { userMessage: { text: expect.any(String) } } } },
+      });
+
+      // The recovered Run stays warm for the client's next request even though that request is
+      // smaller than the nudged one Cursor measured.
+      const second = await turn({ ...initial, input: afterRecovered });
+      expect(harness.openedStreams).toBe(4);
+      expect(cursorMcpResultWrites(recoveredRun)).toHaveLength(1);
+      // That continuation only announced too; a second ask that announces again is dropped, the
+      // client gets the first answer, and there is no third ask.
+      expect(canonicalText(second)).toBe("Still checking.");
+      expect(addedFunctionCallIds(second)).toEqual([]);
+
+      // After a call that yields the turn to wait, a short text ending is the wait itself.
+      await turn({ ...initial, input: prompted });
+      const waited = await turn({
+        ...initial,
+        input: [...prompted, call(waiting, { path: "README.md", background: true }), cursorResult(waiting, "started")],
+      });
+      expect(canonicalText(waited)).toBe("Waiting for the background job.");
+      expect(addedFunctionCallIds(waited)).toEqual([]);
+      expect(harness.openedStreams).toBe(5);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it("keeps credential A parked while credential B cold-resumes the same conversation", async () => {
     const credentialA = "cursor-credential-a";
     const credentialB = "cursor-credential-b";

@@ -66,6 +66,16 @@ export const claudeCodeHarnessProfile: GatewayHarnessProfile = {
   asyncToolNames: [],
   // 다른 세션(구성원·지휘관)에게 보고를 보내는 도구. 중복 전송이 사용자에게 보이는 부작용이다.
   messagingToolNames: ["SendMessage"],
+  // 턴을 넘기는 호출. 백그라운드 작업을 띄우거나 예약 깨우기·감시 알림을 기다리며 턴을 끝내는 것이 정상이고,
+  // 그 자리에서 "도구를 지금 부르라"고 다시 받으면 대기 대신 폴링이나 작업 중복 실행이 난다.
+  yieldToolCalls: [
+    { name: "ScheduleWakeup" },
+    { name: "Monitor" },
+    { name: "Bash", whenArgumentTrue: "run_in_background" },
+    { name: "Agent", whenArgumentTrue: "run_in_background" },
+    // 백그라운드로 돌다가 끝나면 세션을 다시 깨운다.
+    { name: "Workflow" },
+  ],
 };
 
 export { ANTHROPIC_CREDENTIAL_PREFIX };
