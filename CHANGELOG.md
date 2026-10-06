@@ -5,6 +5,37 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.217.0] - 2026-10-06
+
+### fleet-cli
+
+#### Fixed
+- `fleet console start` says when it is waiting for another Console to finish starting, and `fleet console stop` uses the same shutdown wait wording as the rest of Fleet.
+
+### fleet-console
+
+#### Added
+- Chat now marks where the agent compacted its context, including automatic compaction and in sessions you reopen, so you can see that the conversation above it continues only as a summary.
+- Objectives shows when an assigned mission has had no report, and tells the Commander once if that silence continues.
+
+#### Changed
+- The Commodore log's objective column shows actions as single lines, newest at the bottom like the log, and its width can be dragged.
+- Rename an objective while it is running, from the Objectives panel or through the Commodore, instead of waiting for it to finish.
+- Missions, criteria and decisions that agents write on an objective can end with an ASCII tag such as [MUST NOT ...], so a directive whose Korean wording came out reversed no longer reads as its opposite, and members ask the Commander before acting on a directive that contradicts its tag or reads as reversed.
+
+#### Fixed
+- Cursor models now get real results from their own file-name search instead of an empty answer and a request to retry, and run shell commands on the first try instead of first looking up a shell tool, so replies arrive sooner and use less of your allowance.
+- While Console is still checking an update, it says it is preparing and keeps running, including after a refresh, instead of looking stopped or leaving the update button stuck.
+- In War Room, every card's chat now keeps its live progress animations running, not only the card under the pointer.
+- On Windows, checking usage limits and other background work no longer flashes a command prompt window.
+- Agents that wake up on their own for a message or a finished background job now show as working while the model is compacting or still thinking, and the objectives board shows a member whose turn failed as failed instead of idle.
+
+### fleet-desktop
+
+#### Fixed
+- While Desktop waits for a Console to start or shut down, the startup screen says what it is waiting for instead of saying it is checking for updates.
+- On Windows, Desktop no longer flashes command prompt windows while it sets up Fleet Console.
+
 ## [1.216.0] - 2026-10-06
 
 ### fleet-console
