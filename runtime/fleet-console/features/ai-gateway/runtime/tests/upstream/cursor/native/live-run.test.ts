@@ -319,6 +319,16 @@ describe("Cursor live client-tool Run bridge", () => {
         pattern: "**/runtime/*/CLAUDE.md",
         path: "/repo",
       });
+      // 공백만 있는 내용 검색은 파일 이름 검색이 아니므로 내용 조건을 버린 채 Glob으로 가지 않는다.
+      expect(cursorNativeExecRedirect(
+        {
+          id: 4,
+          execId: "native-grep-whitespace",
+          grepArgs: { pattern: " ", path: "/repo", glob: "**/*.ts", outputMode: "files_with_matches" },
+        },
+        [{ clientName: "Glob", wireName: "glob", inputSchemaValue: globSchema }],
+        "cursor",
+      )).toBeNull();
       // Cursor prefixes an absolute glob_pattern with `**` too; the caller gets it relative to the path.
       const absoluteGlob = cursorNativeExecRedirect(
         {

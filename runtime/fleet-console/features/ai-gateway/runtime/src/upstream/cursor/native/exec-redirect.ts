@@ -135,7 +135,9 @@ export function cursorNativeExecRedirect(
     // Cursor's own file-name search has no exec of its own: it arrives as a grep with no pattern,
     // only a glob, in files_with_matches mode. Rejecting it as a malformed grep left the model
     // with a native Glob that never ran and a retry list that did not name the caller's Glob.
-    if (!pattern.trim()) return globRedirect(exec, grepArgs, tools, providerIdentifier, messageId, execId);
+    if (!pattern) return globRedirect(exec, grepArgs, tools, providerIdentifier, messageId, execId);
+    // 공백만 있는 패턴은 유효한 내용 조건이라 Glob으로 넘기면 조건이 사라진다. 이전처럼 정책 응답으로 막는다.
+    if (!pattern.trim()) return null;
     const path = stringValue(grepArgs.path) || ".";
     const glob = stringValue(grepArgs.glob);
     const outputMode = normalizedGrepOutputMode(stringValue(grepArgs.outputMode));
