@@ -60,6 +60,7 @@ The gateway is a local Claude Code endpoint, not an API proxy. Claude Code keeps
 | **Codex** | ChatGPT subscription | GPT-6.1 Sol, GPT-6 Astra · Sol · Luna, GPT-5.6 Terra, each at 272K, 524K or 1M context, with a Fast twin |
 | **Antigravity** | Google subscription | Gemini 3.8 Flash · Gemini 3.1 Pro |
 | **xAI** | Grok subscription | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
+| **Cursor** | Cursor subscription | Grok 4.7 · Grok 4.7 Fast, each at 256K or 500K context · Muse Spark 1.3 (1M) |
 | **Muse Code** | Muse Code subscription | Muse Spark 1.3 · Muse Spark 1.3 Contributor |
 | **OpenCode Go** | API key | GLM-5.3 · GLM-5.3 Flash · DeepSeek V4 Pro · V4.1 Flash · V4 Flash Vision |
 

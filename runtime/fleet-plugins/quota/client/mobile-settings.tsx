@@ -42,7 +42,7 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
             <div className="quota-m-group">
               {isConnectable(id) && provider.status === "not_connected" ? (
                 <button type="button" className="quota-m-row quota-m-action" onClick={() => connect(id, true)}>
-                  <span className="quota-m-copy">{t("mobile.usage.connect")}<small>{t("quota.connect.body")}</small></span>
+                  <span className="quota-m-copy">{t("mobile.usage.connect")}<small>{t(id === "claude" ? "quota.connect.body" : "quota.connect.body.cursor")}</small></span>
                 </button>
               ) : null}
               {windows.map((window, index) => {

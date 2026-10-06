@@ -43,7 +43,7 @@ function breakdown(
 }
 
 describe("Claude Code provider attribution", () => {
-  it("uses every in-scope Claude Code model-ledger row as the single source of every total", () => {
+  it("uses every Claude Code model-ledger row as the single source of every total", () => {
     const at = localTime(2026, 8, 14);
     const dto = buildSummary(
       [session(sessionA, at)],
@@ -55,8 +55,6 @@ describe("Claude Code provider attribution", () => {
         entry(),
         entry({ modelId: "claude-gateway--codex--claude-opus-5", input: 1_000, costUsd: 99 }),
         entry({ modelId: "gpt-5", input: 2_000, costUsd: 88 }),
-        // Removed Cursor provider: historical rows stay out of every total without touching skipped metrics.
-        entry({ modelId: "claude-gateway--cursor--claude-opus-5", input: 9_999, costUsd: 777 }),
       ]),
     );
 

@@ -30,6 +30,8 @@ export interface AiGatewaySettingsStore {
   readonly read: () => AiGatewayStoredSettings;
   /** 모델 선별만 교체하고 나머지 설정은 보존한다. */
   readonly write: (value: AiGatewayUpdateValue | undefined) => AiGatewayStoredSettings;
+  /** 모델 선별은 보존하고 진단 opt-in만 갱신한다. */
+  readonly writeCursorDiagnosticsEnabled: (enabled: boolean) => AiGatewayStoredSettings;
   /** `undefined`는 wireLogEnabled 키를 제거해 env 폴백으로 돌아간다. */
   readonly writeWireLogEnabled: (enabled: boolean | undefined) => AiGatewayStoredSettings;
   readonly writeDelegationRoutingModel: (model: string | undefined) => AiGatewayStoredSettings;
@@ -146,6 +148,7 @@ export function createAiGatewaySettingsStore(
     write: (value) => update((current) => normalizeAiGatewaySettings({
       version: 1,
       ...(current.delegationRoutingModel ? { delegationRoutingModel: current.delegationRoutingModel } : {}),
+      ...(current.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
       ...(typeof current.wireLogEnabled === "boolean" ? { wireLogEnabled: current.wireLogEnabled } : {}),
       ...(current.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
       ...((current.delegationRoutingMode === "jev" || current.delegationRoutingMode === "model") ? { delegationRoutingMode: current.delegationRoutingMode } : {}),
@@ -197,6 +200,10 @@ export function createAiGatewaySettingsStore(
     writeDelegationRoutingMode: (mode) => update(current => normalizeAiGatewaySettings({
       ...current, delegationRoutingMode: mode,
     })),
+    writeCursorDiagnosticsEnabled: (enabled) => update((current) => normalizeAiGatewaySettings({
+      ...current,
+      cursorDiagnosticsEnabled: enabled,
+    })),
     writeWireLogEnabled: (enabled) => update((current) => {
       const next = normalizeAiGatewaySettings({
         ...current,
@@ -232,6 +239,7 @@ export function createAiGatewaySettingsStore(
 
 function hasStoredValue(settings: AiGatewayStoredSettings): boolean {
   return settings.models !== undefined
+    || settings.cursorDiagnosticsEnabled !== undefined
     || settings.wireLogEnabled !== undefined
     || settings.providerPriority !== undefined
     || settings.delegationRoutingEnabled !== undefined

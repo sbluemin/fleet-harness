@@ -4,12 +4,13 @@
  * Where a provider CLI leaves its login is provider knowledge, not Fleet
  * knowledge, so every consumer that needs a token — the Console AI gateway route
  * and the quota plugin — resolves it through this package. Keeping a second
- * copy once left the gateway blind to `CODEX_HOME` while quota already respected it.
+ * copy is what let the gateway stay macOS-only for Cursor while quota already
+ * worked everywhere, and what left the gateway blind to `CODEX_HOME`.
  *
  * This file holds only provider-unaware mechanics: bounded file I/O, platform
  * resolver deps, and the shared credential shapes. Each provider's login path,
  * auth-file parsing, and keychain handling lives in its own provider folder
- * (for example, `src/upstream/codex/credentials.ts`).
+ * (`src/upstream/cursor/credentials.ts`, `src/upstream/codex/credentials.ts`).
  */
 
 import { execFile as nodeExecFile } from "node:child_process";
@@ -28,7 +29,7 @@ export interface CredentialResolverDeps {
   readonly execFile: (file: string, args: readonly string[], options: { readonly timeout: number }) => Promise<string>;
 }
 
-// Provider credential *result* types (such as CodexCredentials) live in each
+// Provider credential *result* types (CursorCredentials, CodexCredentials) live in each
 // provider folder next to the resolver that returns them; transport stays provider-unaware.
 
 const execFileAsync = promisify(nodeExecFile);

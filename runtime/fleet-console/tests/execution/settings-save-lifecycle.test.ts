@@ -6,6 +6,7 @@ const BASE: SystemPromptSettingsState = {
   agentIdleDormantMinutes: 60,
   aiGateway: null,
   aiGatewayCatalog: { providers: [] },
+  cursorDiagnosticsEnabled: false,
   wireLogEnabled: false,
   delegationRoutingEnabled: true,
   delegationRoutingModel: null,

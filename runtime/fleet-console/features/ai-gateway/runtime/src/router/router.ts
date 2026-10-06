@@ -23,6 +23,14 @@ import { CodexResponsesAdapter } from "../upstream/codex/responses/adapter.js";
 import { compactCodexConversation } from "../upstream/codex/compaction.js";
 import type { ClaudeCodexCompactionStore } from "../upstream/codex/compaction-store.js";
 import { resolveCodexCredentials } from "../upstream/codex/credentials.js";
+import {
+  CursorAdapter,
+  CursorRequestBudgetError,
+  CursorSessionIdentityError,
+  CursorUpstreamRefusalError,
+} from "../upstream/cursor/native/adapter.js";
+import type { CursorDiagnosticSink } from "../upstream/cursor/native/adapter.js";
+import { resolveCursorCredentials } from "../upstream/cursor/credentials.js";
 import { resolveXaiCliCredentials } from "../upstream/xai/credentials.js";
 import { museInferenceKey, resolveMuseAuth, type MuseAuthResult } from "../upstream/muse-code/credentials.js";
 import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
@@ -115,6 +123,18 @@ export interface CodexSubscriptionAuth {
 
 
 /**
+ * Cursor CLI/IDE 로그인이 남긴 구독 토큰.
+ *
+ * 조달 경로는 core-ai-gateway가 단일 출처다. macOS는 keychain을 먼저 보고, Linux/Windows는
+ * 각 플랫폼의 auth.json을 읽는다. 여기서 keychain만 보면 `security`가 없는 Linux/WSL에서
+ * 항상 토큰 없음으로 떨어져 Cursor 모델 호출이 401이 된다.
+ */
+export async function readCursorSubscriptionToken(): Promise<string | null> {
+  const credentials = await resolveCursorCredentials(defaultCredentialDeps);
+  return credentials?.accessToken ?? null;
+}
+
+/**
  * Codex CLI 로그인이 남긴 ChatGPT 구독 토큰.
  *
  * 조달 경로는 core-ai-gateway가 단일 출처다. 여기서 직접 `~/.codex/auth.json`을 읽으면
@@ -183,6 +203,7 @@ export interface AiGatewayRouteDeps {
   // 자격증명 조달은 호스트 관심사다. 이 패키지는 기본 조회를 갖지 않으며(환경·홈·키체인
   // 접근 금지), 각 호스트가 export된 reader를 명시 주입한다.
   readonly readAuth: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
+  readonly readCursorToken?: () => string | null | Promise<string | null>;
   readonly readXaiToken?: () => string | null | Promise<string | null>;
   readonly readAntigravityToken?: () => string | null | Promise<string | null>;
   /**
@@ -223,12 +244,15 @@ export interface AiGatewayRouteDeps {
     request: unknown,
     options?: { readonly signal?: AbortSignal },
   ) => Promise<unknown> | unknown;
+  readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
   /**
    * Concurrent upstream calls allowed per provider origin, for every provider reached over `fetch`.
    *
    * Those turns hold their socket for the whole stream, so the bound is a real ceiling on
-   * simultaneous connections to one origin. Absent is the transport default.
+   * simultaneous connections to one origin. Cursor is **not** covered: it dials `http2.connect`
+   * per Run rather than `fetch`, so it offers no seam this bound can wrap and keeps its own
+   * separate limits. Absent is the transport default.
    */
   readonly maxUpstreamInFlight?: number;
   /**
@@ -284,6 +308,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     deps.maxUpstreamInFlight === undefined ? {} : { maxInFlight: deps.maxUpstreamInFlight },
   );
   const fetchImpl = upstreamGate.fetch as typeof fetch;
+  const ownedCursorAdapter = deps.gateway
+    ? undefined
+    : new CursorAdapter({ diagnostics: deps.cursorDiagnostics });
+  const ownedCursorGateway = ownedCursorAdapter
+    ? new AnthropicMessagesGateway(ownedCursorAdapter)
+    : undefined;
   // Antigravity's adapter is built once and kept: it carries the reasoning-blob
   // ledger that lets a turn recover a `thoughtSignature` the client did not
   // replay, and a per-request adapter would forget it between the two halves of
@@ -324,12 +354,22 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     try {
       settings = gatewaySettings();
     } catch {
-      // 설정 판독 실패는 기능을 낮출 뿐 요청을 막지 않는다.
+      // 설정 판독 실패는 기능을 낮출 뿐 요청을 막지 않는다 — cursorDiagnosticsEnabled가 이미
+      // 택한 규율이고, 그 계약은 "설정을 못 읽어도 Cursor를 막지 않는다"로 테스트에 박혀 있다.
       // 파일 하나가 깨졌다고 모든 실행이 죽는 편이 끈 모델 한 번보다 나쁘다.
       return true;
     }
     if (!settings) return true;
     return resolveAiGatewaySelection(settings).models.some((entry) => entry.id === model.id);
+  };
+  const cursorDiagnosticsEnabled = (): boolean | undefined => {
+    if (!deps.readAiGatewaySettings) return undefined;
+    try {
+      return deps.readAiGatewaySettings().cursorDiagnosticsEnabled === true;
+    } catch {
+      // 진단 설정 판독 실패는 모델 요청을 막지 않고 안전한 기본값 Off로 단락한다.
+      return false;
+    }
   };
   const xaiEndpoint = (): XaiEndpointPreference => {
     if (!deps.readAiGatewaySettings) return DEFAULT_XAI_ENDPOINT_PREFERENCE;
@@ -531,7 +571,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
     let credential = "";
     let chatgptAccountId = "";
-    if (target?.provider === "codex") {
+    if (target?.provider === "cursor") {
+      const cursorToken = await deps.readCursorToken?.();
+      if (!cursorToken) {
+        writeAnthropicError(res, 401, "authentication_error", "No Cursor subscription token was found. Sign in to Cursor first.");
+        return true;
+      }
+      credential = cursorToken;
+    } else if (target?.provider === "codex") {
       // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
       const auth = await readAuth();
       if (!auth) {
@@ -629,25 +676,32 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           })
         : undefined;
       const gateway = deps.gateway
-        ?? (target.provider === "opencode"
-          ? createOpencodeGateway(
-            opencodeGoWire(target) as "responses" | "chat-completions",
-            fetchImpl,
-          )
-          : target.provider === "xai"
-            ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
-              fetch: fetchImpl,
-              endpoint: xaiEndpoint(),
-            }))
-            : target.provider === "antigravity"
-              ? antigravityGateway()
-              : target.provider === "muse-code"
-                ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
-                  fetch: fetchImpl,
-                  ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: deps.observeMuseCodeUsage } : {}),
-                  ...(harness.messagingToolNames ? { messagingToolNames: harness.messagingToolNames } : {}),
-                }))
-                : new AnthropicMessagesGateway(codexAdapter!));
+        ?? (target.provider === "cursor"
+          ? ownedCursorGateway!
+          : target.provider === "opencode"
+            ? createOpencodeGateway(
+              opencodeGoWire(target) as "responses" | "chat-completions",
+              fetchImpl,
+            )
+            : target.provider === "xai"
+              ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
+                fetch: fetchImpl,
+                endpoint: xaiEndpoint(),
+              }))
+              : target.provider === "antigravity"
+                ? antigravityGateway()
+                : target.provider === "muse-code"
+                  ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
+                    fetch: fetchImpl,
+                    ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: deps.observeMuseCodeUsage } : {}),
+                    ...(harness.messagingToolNames ? { messagingToolNames: harness.messagingToolNames } : {}),
+                  }))
+                  : new AnthropicMessagesGateway(codexAdapter!));
+      const diagnosticsEnabled = target.provider === "cursor"
+        ? cursorDiagnosticsEnabled()
+        : undefined;
+      // The guard runs regardless of the `[1m]` coordinate: a 200000-window Cursor
+      // model carries no marker but still needs to be refused before it overflows.
       const modelContextWindow = typeof target.contextWindow === "number"
         && Number.isFinite(target.contextWindow)
         && target.contextWindow > 0
@@ -659,10 +713,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         ...(projection === undefined ? {} : { projectInputTokens: projection }),
         ...(harness.retryableStatus ? { retryableStatus: harness.retryableStatus } : {}),
         ...(modelContextWindow === undefined ? {} : { modelContextWindow }),
+        ...(diagnosticsEnabled === undefined ? {} : { diagnosticsEnabled }),
         signal: controller.signal,
         model: upstreamModelId(target),
         ...(target.serviceTier ? { serviceTier: target.serviceTier } : {}),
-        ...(target.effort.supported
+        // Cursor encodes effort in its wire model id and owns its model-specific
+        // strict downward clamp in the adapter. Preserve Claude Code's raw effort
+        // until that boundary instead of clamping it twice.
+        ...(target.provider !== "cursor" && target.effort.supported
           ? { reasoningEfforts: target.effort.levels }
           : {}),
       };
@@ -750,7 +808,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // Whatever surfaced first — the abort reason, an aborted read, a failed write — the cause
       // is the client leaving, and that is what the journal has to say.
       const disconnected = controller.signal.aborted && controller.signal.reason === clientDisconnected;
-      const invalidRequest = error instanceof UnsupportedReasoningEffortError
+      const invalidRequest = error instanceof CursorRequestBudgetError
+        || error instanceof CursorSessionIdentityError
+        // Cursor said the same request will be refused again (plan or usage limit). A transient
+        // status would only spend Claude Code's whole retry budget on identical refusals.
+        || (error instanceof CursorUpstreamRefusalError && error.retryable === false)
+        || error instanceof UnsupportedReasoningEffortError
         || error instanceof ContextWindowExceededError
         // A content block this wire cannot translate is the client's malformed body, not a
         // gateway fault: on a 400 naming the block Claude Code falls back to another shape,
@@ -759,7 +822,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const type = invalidRequest ? "invalid_request_error" : "api_error";
       // Claude Code arms reactive compaction only from a 413 whose message names the
       // context window; a 400 carrying the same text ends the turn instead. Everything
-      // else keeps 400.
+      // else keeps 400 — a Cursor transport-budget refusal is not an overflow, and
+      // reporting it as one would send the client compacting after the wrong thing.
       // A transient gateway-side fault must arrive as a status Claude Code's retry budget acts
       // on. `502` is not one of them, so every dropped socket and stalled stream used to end the
       // turn at the client on the first try.
@@ -818,6 +882,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     dispose: () => {
       upstreamGate.dispose();
       codexCompactionFlights.clear();
+      ownedCursorAdapter?.dispose();
     },
   };
 }
@@ -856,8 +921,8 @@ async function proxyToAnthropic(
 /**
  * 하네스가 헤더에서만 읽을 수 있는 대화 정체성을 요청 본문의 자리로 옮겨 적는다.
  *
- * 업스트림은 캐논 요청의 `metadata.user_id` 하나만 본다 — Codex는 그것으로
- * sticky routing용 `session_id`를 만든다. 클라이언트가 그 값을
+ * 업스트림은 캐논 요청의 `metadata.user_id` 하나만 본다 — Cursor는 그것으로 conversation과
+ * x-session-id를 만들고, Codex는 sticky routing용 `session_id`를 만든다. 클라이언트가 그 값을
  * 어디에 싣는지는 클라이언트마다 다르므로 판독은 프로필이 하고, 이 함수는 옮겨 적기만 한다.
  *
  * 이미 값이 있으면 덮지 않는다. 본문에 직접 싣는 클라이언트(Claude Code)의 값이 언제나

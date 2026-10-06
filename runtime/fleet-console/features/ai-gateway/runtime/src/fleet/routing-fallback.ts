@@ -162,7 +162,7 @@ export function pickSeat(
 ): Seat {
   const scored = reachable.map((candidate) => ({
     candidate,
-    pressure: modelPressure(exposure.quota?.[candidate.provider]),
+    pressure: modelPressure(exposure.quota?.[candidate.provider], candidate),
   }));
   const usable = scored.filter((entry) => entry.pressure !== "critical");
   const pool = usable.length > 0 ? usable : scored;

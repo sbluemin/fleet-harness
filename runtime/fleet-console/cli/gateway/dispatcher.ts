@@ -2,6 +2,7 @@ import {
   createAiGatewaySettingsStore,
   createProviderAuthService,
   readCodexSubscriptionAuth,
+  readCursorSubscriptionToken,
   readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
   type AuthService,
@@ -54,6 +55,7 @@ export interface GatewayCommandDeps {
 
 export interface GatewaySubscriptionReaders {
   readonly codex: () => Promise<unknown>;
+  readonly cursor: () => Promise<unknown>;
   readonly xai: () => Promise<unknown>;
 }
 
@@ -154,12 +156,14 @@ export async function dispatchGatewayCommand(
 async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly GatewayCredentialReport[]> {
   const readers = deps.readSubscriptions ?? {
     codex: () => readCodexSubscriptionAuth(),
+    cursor: () => readCursorSubscriptionToken(),
     xai: () => readXaiSubscriptionToken(),
   };
   const signedIn = await listSignedInProviders(deps);
   return [
     { provider: "codex", source: "subscription", state: await probe(readers.codex) },
     { provider: "xai", source: "subscription", state: await probe(readers.xai) },
+    { provider: "cursor", source: "subscription", state: await probe(readers.cursor) },
     {
       provider: "opencode",
       source: "api-key",

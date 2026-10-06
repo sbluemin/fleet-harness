@@ -300,7 +300,7 @@ describe("ai-gateway settings store", () => {
     const legacyDir = seedLegacySettings(dataDir, { version: 1, cursorDiagnosticsEnabled: true, xaiEndpoint: "direct" });
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
     store.writeWireLogEnabled(true);
-    expect(store.read()).toEqual({ version: 1, xaiEndpoint: "direct", wireLogEnabled: true });
+    expect(store.read()).toEqual({ version: 1, cursorDiagnosticsEnabled: true, xaiEndpoint: "direct", wireLogEnabled: true });
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual(store.read());
     expect(existsSync(path.join(legacyDir, "ai-gateway.json"))).toBe(false);
   });

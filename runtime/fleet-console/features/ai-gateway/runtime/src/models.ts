@@ -1,7 +1,9 @@
 import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
-export const GATEWAY_PROVIDERS = ["codex", "xai", "opencode", "antigravity", "muse-code", "claude"] as const;
+import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
+
+export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "antigravity", "muse-code", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -47,12 +49,16 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   z.object({
     supported: z.literal(true),
     levels: z.array(z.enum(GATEWAY_REASONING_EFFORTS)).min(1),
+    upstreamModelIdTemplate: z.string().min(1).optional(),
     upstreamModelIds: GatewayEffortUpstreamModelIdsSchema.optional(),
   }).strict(),
   z.object({
     supported: z.literal(false),
   }).strict(),
 ]);
+
+const GATEWAY_QUOTA_SCOPES = ["auto", "api"] as const;
+export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
 
 /**
  * The provider's own positioning of a model within its current lineup, read
@@ -99,9 +105,11 @@ const GatewayModelEntrySchema = z.object({
   /** A serving sibling with its own wire id names the catalog base separately. */
   variantOf: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
+  quotaScope: z.enum(GATEWAY_QUOTA_SCOPES).optional(),
   wire: z.enum(GATEWAY_MODEL_WIRES).optional(),
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
+  cursorMaxMode: z.literal(true).optional(),
   effort: GatewayModelEffortSchema.optional(),
 }).strict();
 
@@ -117,6 +125,7 @@ const GatewayModelsRegistrySchema = z.object({
   updatedAt: z.iso.datetime(),
   providers: z.object({
     codex: GatewayProviderSchema,
+    cursor: GatewayProviderSchema,
     opencode: GatewayProviderSchema,
     xai: GatewayProviderSchema,
     antigravity: GatewayProviderSchema,
@@ -141,7 +150,9 @@ export type GatewayModelEffort =
   | {
       readonly supported: true;
       readonly levels: readonly GatewayReasoningEffort[];
-      /** Exact upstream wire ids for effort tiers (Antigravity). */
+      /** Cursor wire id with one `{effort}` placeholder, resolved immediately before transport. */
+      readonly upstreamModelIdTemplate?: string;
+      /** Exact upstream wire ids for effort tiers (Antigravity; Cursor tiers off its template). */
       readonly upstreamModelIds?: Readonly<Partial<Record<GatewayReasoningEffort, string>>>;
     };
 
@@ -156,6 +167,15 @@ export interface GatewayModel {
   /** Model id sent to the selected upstream provider. */
   readonly upstreamId?: string;
   readonly serviceTier?: "priority";
+  /** Cursor Run에서 확장 컨텍스트를 활성화하는 명시적 공급자 옵션. */
+  readonly cursorMaxMode?: true;
+  /**
+   * Sub-allowance this model is billed against, when its provider splits one
+   * subscription across pools. Cursor spends Auto-tier models from a separate
+   * budget than its API-tier pool, so the provider's combined usage figure
+   * cannot tell a caller whether this particular model still has room.
+   */
+  readonly quotaScope?: GatewayQuotaScope;
   /** 공급자가 선언한 업스트림 와이어 프로토콜. 생략하면 `anthropic`이다. */
   readonly wire?: GatewayModelWire;
   /** Provider-stated lineup positioning; absent only on routing aliases. */
@@ -361,6 +381,7 @@ function compareVersions(left: readonly number[], right: readonly number[]): num
 }
 
 export const CODEX_SUBSCRIPTION_MODELS = providerModels("codex");
+export const CURSOR_SUBSCRIPTION_MODELS = providerModels("cursor");
 export const OPENCODE_SUBSCRIPTION_MODELS = providerModels("opencode");
 
 /**
@@ -419,6 +440,7 @@ export interface GatewayModelConstraints {
    * implies it. Absent on routing aliases.
    */
   readonly capabilityClass?: GatewayCapabilityClass;
+  readonly quotaScope?: GatewayQuotaScope;
 }
 
 export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelConstraints {
@@ -431,7 +453,58 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     effortLadder: Object.freeze([...ladder]),
     effortSupported: ladder.length > 0,
     ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
+    ...(model.quotaScope ? { quotaScope: model.quotaScope } : {}),
   };
+}
+
+export interface CursorModelSelection {
+  readonly upstreamModelId: string;
+  readonly maxMode?: true;
+}
+
+/** Resolve one picker-visible Cursor model to its exact wire id. */
+export function resolveCursorModelSelection(
+  modelId: string,
+  requestedEffort?: ReasoningEffort,
+  catalog: readonly GatewayModel[] = CURSOR_SUBSCRIPTION_MODELS,
+): CursorModelSelection {
+  const model = findGatewayModel(modelId, catalog)
+    ?? catalog.find((candidate) => candidate.provider === "cursor" && (
+      candidate.id === scopedModelId("cursor", modelId)
+      || upstreamModelId(candidate) === modelId
+    ));
+  if (!model || model.provider !== "cursor") {
+    return { upstreamModelId: modelId };
+  }
+
+  const upstreamId = upstreamModelId(model);
+  if (!model.effort.supported) {
+    return { upstreamModelId: upstreamId, ...(model.cursorMaxMode ? { maxMode: true } : {}) };
+  }
+  // 카탈로그는 모델별 기본 effort를 정의하지 않는다. Claude Code는 effort 미설정 세션에도
+  // 항상 자기 세션 기본값 "high"를 명시해 보내므로(2026-08-02 실측), effort를 생략하는
+  // 드문 호출자에게도 같은 기준을 적용해 사다리 안으로 하향 클램프한다.
+  const effort = clampReasoningEffort(
+    requestedEffort ?? "high",
+    model.effort.levels,
+    upstreamId,
+  ) as GatewayReasoningEffort;
+  const exactModelId = model.effort.upstreamModelIds?.[effort];
+  return {
+    ...(model.cursorMaxMode ? { maxMode: true } : {}),
+    upstreamModelId: exactModelId
+      ?? model.effort.upstreamModelIdTemplate?.replace("{effort}", effort)
+      ?? upstreamId,
+  };
+}
+
+/** Backwards-compatible wire-id-only view of {@link resolveCursorModelSelection}. */
+export function resolveCursorUpstreamModelId(
+  modelId: string,
+  requestedEffort?: ReasoningEffort,
+  catalog: readonly GatewayModel[] = CURSOR_SUBSCRIPTION_MODELS,
+): string {
+  return resolveCursorModelSelection(modelId, requestedEffort, catalog).upstreamModelId;
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {
@@ -527,10 +600,12 @@ function toGatewayModel(
     provider,
     upstreamId: entry.providerModelId ?? entry.modelId,
     ...(entry.serviceTier ? { serviceTier: entry.serviceTier } : {}),
+    ...(entry.quotaScope ? { quotaScope: entry.quotaScope } : {}),
     ...(entry.wire ? { wire: entry.wire } : {}),
     ...(entry.capabilityClass ? { capabilityClass: entry.capabilityClass } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
+    ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
     ...(entry.aliases ? { aliases: Object.freeze([...entry.aliases]) } : {}),
   };
@@ -605,6 +680,12 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       if (model.serviceTier && provider !== "codex") {
         throw new Error(`Gateway service tier is only supported by Codex: ${provider}/${model.modelId}`);
       }
+      // Cursor is the only provider observed to split one subscription across
+      // pools. Declaring a scope elsewhere would invite a caller to look for a
+      // per-pool window that provider's usage response never reports.
+      if (model.quotaScope && provider !== "cursor") {
+        throw new Error(`Gateway quota scope is only supported by Cursor: ${provider}/${model.modelId}`);
+      }
       // OpenCode Go는 모델마다 와이어를 고른다. xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만
       // 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
       if (model.wire && provider !== "opencode" && provider !== "xai" && provider !== "muse-code") {
@@ -614,17 +695,36 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         if (new Set(model.effort.levels).size !== model.effort.levels.length) {
           throw new Error(`Gateway effort levels contain duplicates: ${provider}/${model.modelId}`);
         }
+        const template = model.effort.upstreamModelIdTemplate;
         const exactModelIds = model.effort.upstreamModelIds;
+        if (provider === "cursor" && !template && !exactModelIds) {
+          throw new Error(`Cursor effort model requires an upstream model id template or overrides: ${provider}/${model.modelId}`);
+        }
+        if (template) {
+          if (provider !== "cursor") {
+            throw new Error(`Gateway effort model id templates are only supported by Cursor: ${provider}/${model.modelId}`);
+          }
+          if (template.split("{effort}").length !== 2) {
+            throw new Error(`Gateway effort model id template must contain one {effort}: ${provider}/${model.modelId}`);
+          }
+        }
         if (exactModelIds) {
-          // Antigravity spells some effort rungs in the upstream model id. Other
-          // providers carry effort in a request field instead.
-          if (provider !== "antigravity") {
-            throw new Error(`Gateway effort model id overrides are only supported by Antigravity: ${provider}/${model.modelId}`);
+          // Cursor and Antigravity both spell a rung inside the wire model id, so
+          // both need per-level overrides. Every other provider carries effort as a
+          // request field, where an id override would silently never be read.
+          if (provider !== "cursor" && provider !== "antigravity") {
+            throw new Error(`Gateway effort model id overrides are only supported by Cursor and Antigravity: ${provider}/${model.modelId}`);
           }
           for (const effort of Object.keys(exactModelIds) as GatewayReasoningEffort[]) {
             if (!model.effort.levels.includes(effort)) {
               throw new Error(`Gateway effort model id override is not an advertised level: ${provider}/${model.modelId}/${effort}`);
             }
+          }
+        }
+        if (provider === "cursor" && !template) {
+          const missing = model.effort.levels.find((effort) => !exactModelIds?.[effort]);
+          if (missing) {
+            throw new Error(`Cursor effort model has no upstream model id for level: ${provider}/${model.modelId}/${missing}`);
           }
         }
       }
@@ -667,6 +767,9 @@ function freezeGatewayModelEffort(
   return Object.freeze({
     supported: true as const,
     levels: Object.freeze([...effort.levels]),
+    ...(effort.upstreamModelIdTemplate
+      ? { upstreamModelIdTemplate: effort.upstreamModelIdTemplate }
+      : {}),
     ...(effort.upstreamModelIds
       ? { upstreamModelIds: Object.freeze({ ...effort.upstreamModelIds }) }
       : {}),
@@ -708,7 +811,7 @@ export function anthropicModelCapabilities(effort: GatewayModelEffort): Anthropi
     },
     effort: anthropicEffortCapability(effort),
     // Claude Code still attaches images even when this is false; advertise support
-    // once the gateway forwards Anthropic image blocks to Codex.
+    // once the gateway forwards Anthropic image blocks to Codex/Cursor.
     image_input: capability(true),
     pdf_input: capability(false),
     structured_outputs: capability(false),

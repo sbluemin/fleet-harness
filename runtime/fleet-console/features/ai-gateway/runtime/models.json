@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-30T00:00:00Z",
+  "updatedAt": "2026-10-06T00:00:00Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
@@ -661,6 +661,103 @@
           "aliases": [
             "gpt-5.6-terra-1m-fast"
           ]
+        }
+      ]
+    },
+    "cursor": {
+      "name": "Cursor",
+      "defaultModel": "grok-4.7",
+      "source": "Restored 2026-10-06 with the lineup limited by owner request to Grok 4.7 and Muse Spark 1.3. Wire ids from cursor-agent 2026.10.01-e373342 `models`: grok-4.7-{low,medium,high,xhigh}[-fast] and muse-spark-1.3-{minimal,low,medium,high,xhigh,max}, all Muse Spark rungs labelled 1M. Grok 4.7 context windows (256000; 500000 with modelDetails.maxMode) and its Auto-pool membership come from the 2026-09-22 Run checkpoint measurement and owner confirmation; GetCurrentPeriodUsage autoBucketModels still omits both lines on 2026-10-06, so Muse Spark carries no quotaScope until a billed turn shows which pool it draws. Muse Spark minimal stays outside Fleet's effort ladder. The Muse Spark context window and both lines' live inference were not re-measured on 2026-10-06: the only local Cursor sign-in was a Free plan, which refuses named models.",
+      "models": [
+        {
+          "modelId": "grok-4.7",
+          "name": "Grok-4.7",
+          "capabilityClass": "flagship",
+          "quotaScope": "auto",
+          "contextWindow": 256000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "upstreamModelIdTemplate": "grok-4.7-{effort}"
+          }
+        },
+        {
+          "modelId": "grok-4.7-fast",
+          "name": "Grok-4.7-Fast",
+          "capabilityClass": "flagship",
+          "quotaScope": "auto",
+          "contextWindow": 256000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "upstreamModelIdTemplate": "grok-4.7-{effort}-fast"
+          },
+          "variantOf": "grok-4.7"
+        },
+        {
+          "modelId": "grok-4.7-500k",
+          "name": "Grok-4.7-500k",
+          "capabilityClass": "flagship",
+          "quotaScope": "auto",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "upstreamModelIdTemplate": "grok-4.7-{effort}"
+          },
+          "variantOf": "grok-4.7",
+          "cursorMaxMode": true
+        },
+        {
+          "modelId": "grok-4.7-500k-fast",
+          "name": "Grok-4.7-500k-Fast",
+          "capabilityClass": "flagship",
+          "quotaScope": "auto",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "upstreamModelIdTemplate": "grok-4.7-{effort}-fast"
+          },
+          "variantOf": "grok-4.7",
+          "cursorMaxMode": true
+        },
+        {
+          "modelId": "muse-spark-1.3",
+          "name": "Muse-Spark-1.3",
+          "capabilityClass": "flagship",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "muse-spark-1.3-{effort}"
+          }
         }
       ]
     },

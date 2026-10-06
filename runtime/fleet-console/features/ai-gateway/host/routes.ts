@@ -15,10 +15,12 @@ import {
   AI_GATEWAY_MODEL_ENV,
   AI_GATEWAY_ROUTE_SEGMENT,
   createAiGatewayRouter,
+  createCursorDiagnosticLog,
   createFailureJournal,
   createClaudeCodexCompactionStore,
   readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
+  readCursorSubscriptionToken,
   readMuseCodeSubscriptionAuth,
   readXaiSubscriptionToken,
 } from "@fleet-console/ai-gateway";
@@ -28,13 +30,19 @@ export { AI_GATEWAY_ROUTE_SEGMENT } from "@fleet-console/ai-gateway";
 
 export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,
-  "originator" | "readModelOverride" | "readAuth" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth"
-> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth" | "assignRouting">>;
+  "originator" | "readModelOverride" | "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth"
+> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth" | "assignRouting">>;
 
 export function registerAiGatewayRoutes(
   ctx: GatewayHostContext,
   deps: ConsoleAiGatewayRouteDeps = {},
 ): { readonly compactHookToken: string; readonly modHookToken: string } {
+  const ownedDiagnostics = deps.cursorDiagnostics
+    ? undefined
+    : createCursorDiagnosticLog(path.join(
+        ctx.dataDir,
+        "ai-gateway",
+      ));
   // Always on, unlike the wire log: a failed turn is the one event that otherwise leaves no
   // trace, and a post-commit failure reaches the user as a single SSE frame nobody can retrieve.
   const ownedFailureJournal = deps.failureJournal
@@ -62,15 +70,18 @@ export function registerAiGatewayRoutes(
     failureJournal: deps.failureJournal ?? ownedFailureJournal?.write,
     // 자격증명 조달은 호스트 결정이다 — Console은 core-ai-gateway가 export한 기본 reader를 주입한다.
     readAuth: deps.readAuth ?? (() => readCodexSubscriptionAuth()),
+    readCursorToken: deps.readCursorToken ?? (() => readCursorSubscriptionToken()),
     readXaiToken: deps.readXaiToken ?? (() => readXaiSubscriptionToken()),
     readAntigravityToken: deps.readAntigravityToken ?? (() => readAntigravitySubscriptionToken()),
     renewAntigravityToken: deps.renewAntigravityToken
       ?? (() => readAntigravitySubscriptionToken({ forceRenew: true })),
     readMuseCodeAuth: deps.readMuseCodeAuth ?? (() => readMuseCodeSubscriptionAuth()),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
+    cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
   });
   ctx.host.lifecycle.registerCleanup(async () => {
     router.dispose();
+    await ownedDiagnostics?.flush();
     await ownedFailureJournal?.flush();
   });
   ctx.registerRouter(AI_GATEWAY_ROUTE_SEGMENT, router.handle, [
