@@ -1,5 +1,7 @@
 import path from "node:path";
 
+import { EXTERNAL_ESCALATION_MS } from "./budgets.js";
+
 /**
  * The single Console process lifecycle contract (docs/console-lifecycle-contract.md): the states one Console instance
  * passes through, the time budgets every actor derives its waits from, and how an instance reports the way it ended.
@@ -286,6 +288,50 @@ export function describeReplacedLockAuthor(lockFile: string, pid: number): strin
 
 export function describeRefusedConsoleLock(lockFile: string, reason: string): string {
   return `Refusing Fleet Console lock ${lockFile}: ${reason}. It was not removed; inspect it (ls -l ${lockFile}) before starting Fleet Console.`;
+}
+
+/**
+ * How a live process holding the Console lock was observed when no actor could prove it is that Console, so it was
+ * neither signalled nor had its lock removed: `untrusted` (the lock failed the trust checks), `unverified` (no
+ * authenticated health answer named the pid), `starting` (it was still starting), `stopping` (it closed its listener and
+ * kept the lock past the stop budget).
+ */
+export type UnprovenConsoleLockOwnerState = "untrusted" | "unverified" | "starting" | "stopping";
+
+/** The caller's own next step, so the CLI and Desktop share one explanation with their own commands. */
+export interface ConsoleLockOwnerRecovery {
+  /** What starts a Console once the lock owner is gone, as a clause: "run fleet console start". */
+  readonly restart: string;
+  /** For a Console still starting: the full sentence that tries the interrupted action again once it is ready. */
+  readonly retryWhenStarted: string;
+}
+
+/**
+ * Why a live lock pid was left alone, and how a person frees the slot by hand. It takes no lock payload: a lock token
+ * must never reach text a person reads or copies.
+ */
+export function describeUnprovenConsoleLockOwner(lockFile: string, pid: number, observed: UnprovenConsoleLockOwnerState, recovery: ConsoleLockOwnerRecovery): string {
+  const headline = {
+    untrusted: `Fleet Console lock ${lockFile} names running pid ${pid}, but the lock cannot be trusted, so that process was not signalled.`,
+    unverified: `Fleet Console lock pid ${pid} is alive but did not prove it owns ${lockFile}, so it was not signalled.`,
+    starting: `Fleet Console pid ${pid} holds ${lockFile} and is still starting, so it was not signalled. ${recovery.retryWhenStarted}`,
+    stopping: `Fleet Console lock pid ${pid} no longer answers at the lock's address but still held ${lockFile} ${Math.round(EXTERNAL_ESCALATION_MS / 1_000)}s later (a Console still shutting down, or another process), so it was not signalled.`,
+  }[observed];
+  return [
+    headline,
+    `${observed === "starting" ? "If it never finishes starting and is a stuck Fleet Console" : "If that process is a stuck Fleet Console"}, stop it (kill -TERM ${pid}; Windows: Stop-Process -Id ${pid}), then ${recovery.restart}. A suspended process (state T in ps) ignores TERM until resumed: kill -CONT ${pid} lets it finish shutting down, or kill -KILL ${pid} ends it.`,
+    `If it is not a Fleet Console, follow the check below and then delete ${lockFile}.`,
+    describeConsoleLockSlotQuiescenceCheck(lockFile),
+  ].join("\n");
+}
+
+/** A proven Console that outlived SIGKILL. Its lock stays: only the pid's exit lets the next Console reclaim it. */
+export function describeConsoleOwnerOutlivedKill(lockFile: string, pid: number, restart: string): string {
+  return [
+    `Fleet Console pid ${pid} did not exit after SIGKILL; ${lockFile} was left in place.`,
+    `A process that survives SIGKILL is usually waiting on the operating system (for example a disk or network drive that stopped responding) and ends when that wait does. Check it with: ps -o pid,stat,command -p ${pid}   (Windows: Get-Process -Id ${pid})`,
+    `Once pid ${pid} is gone, ${restart}; the next Console reclaims the lock itself. If it never exits, restart the computer. Do not delete ${lockFile} while pid ${pid} is running.`,
+  ].join("\n");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

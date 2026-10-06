@@ -75,7 +75,7 @@ export interface SidecarLockDiagnostic {
   readonly observed: string;
   readonly reason: string;
 }
-type SidecarLockConflictCode = "console_lock_process_unverified" | "console_lock_foreign_process_unhealthy" | "console_lock_process_unhealthy";
+export type SidecarLockConflictCode = "cli_daemon_requires_confirmation" | "console_lock_process_unverified" | "console_lock_foreign_process_unhealthy" | "console_lock_process_unhealthy";
 /** The message stays the bare code the boot dialogs match on; the diagnostic carries the data behind it. */
 export class SidecarLockConflictError extends Error {
   constructor(code: SidecarLockConflictCode, readonly diagnostic: SidecarLockDiagnostic) { super(code); }
@@ -203,7 +203,7 @@ export class SidecarSupervisor {
       if (owned) return { kind: "adopt", url: consoleUrl(stored.lock) };
       // 시작 경로는 같은 Desktop 소유 sidecar만 채택한다. 외부 런타임 페어링은
       // Console handoff 이후 사용자가 네이티브 메뉴에서 명시적으로 요청할 때만 수행한다.
-      throw new Error("cli_daemon_requires_confirmation");
+      throw this.conflict("cli_daemon_requires_confirmation", pid, observed.state, "another owner's Console answered as healthy");
     }
     // 타 소유의 살아 있는 잠금은 신호를 보내지 않고 별도 충돌로 종료한다.
     if (!owned) throw this.conflict("console_lock_foreign_process_unhealthy", pid, observed.state, "another owner's Console did not answer as healthy");
@@ -287,7 +287,7 @@ export class SidecarSupervisor {
         const answer = await this.probe(lock);
         if (!this.answersFor(answer, lock.pid)) continue;
         if (own) this.childLifecycleWire = answer.health?.lifecycleWire;
-        if (!this.isOwned(lock)) throw new Error("cli_daemon_requires_confirmation");
+        if (!this.isOwned(lock)) throw this.conflict("cli_daemon_requires_confirmation", lock.pid, "ready", "another owner's Console took the lock and answered as healthy");
         sidecarReady = true;
         return consoleUrl(lock);
       }
@@ -403,7 +403,7 @@ export class SidecarSupervisor {
     // Only a recorded clean shutdown is reported as one; no record, an unknown one, or an external ending is not.
     if (outcome === "clean") this.options.log.info(line);
     else this.options.log.error(line);
-    if (ended === "unproven") throw this.conflict("console_lock_process_unverified", pid, "stopping", "its identity could not be proven again before SIGKILL; no further signal sent");
+    if (ended === "unproven") throw this.conflict("console_lock_process_unverified", pid, "unverified", "its identity could not be proven again before SIGKILL; no further signal sent");
     if (ended === "kill-failed") throw this.conflict("console_lock_process_unhealthy", pid, "stopping", "it outlived SIGKILL");
     return ended;
   }
