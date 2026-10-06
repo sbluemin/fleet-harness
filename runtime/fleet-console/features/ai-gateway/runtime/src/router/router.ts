@@ -559,7 +559,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 요청이 지목한 모델이 어느 구독으로 가는지 정한다. env 오버라이드가 있으면 그쪽이 이긴다.
     const modelOverride = deps.readModelOverride?.();
     const requested = modelOverride ?? body.model;
-    clock?.setRequestBody(body, requested);
     let target = harness.findModel(requested, GATEWAY_MODELS);
     // Claude alias의 버전은 설치된 CLI가 정한다. 표를 갱신하면 카탈로그가 새로 지어지므로 다시 찾는다.
     if (target?.provider === "claude" && deps.ensureClaudeNativeModels) {
@@ -585,6 +584,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     }
 
     const sessionId = claudeSessionId(body.metadata?.user_id);
+    clock?.setRequestBody(body, requested, sessionId);
     const compactSummary = target?.provider === "codex"
       && sessionId !== undefined
       && isClaudeCompactSummaryRequest(body.messages)

@@ -1121,9 +1121,9 @@ describe("Muse Code routing", () => {
       expect(timing.status).toBe(200);
       expect(timing.ms.upstreamStart).toBeDefined();
       expect(timing.ms.upstreamHeaders).toBeDefined();
-      expect(timing.ms.firstThinking).toBeDefined();
-      expect(timing.ms.firstContent).toBeDefined();
-      expect(timing.firstContentKind).toBe("tool_use");
+      expect(timing.ms.thinkingBlockStart).toBeDefined();
+      expect(timing.ms.contentBlockStart).toBeDefined();
+      expect(timing.contentBlockKind).toBe("tool_use");
 
       // Verify no sensitive prompts, completions, reasoning, tool arguments, or credentials leaked into the journal
       const timingJson = JSON.stringify(timingRecords);

@@ -6,7 +6,12 @@ export const DEFAULT_REQUEST_TIMING_JOURNAL_MAX_BYTES = 16 * 1024 * 1024;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function canCarryBody(status: number): boolean {
+  return status !== 204 && status !== 205 && status !== 304;
+}
+
 export interface GatewayRequestTimingRecord {
+  /** t0: 메서드·호출자 자격 판정 뒤, body 읽기 전(router.ts). 소켓 도착 시각이 아니다. */
   readonly ts: string;
   readonly sessionId?: string;
   readonly model?: string;
@@ -29,15 +34,18 @@ export interface GatewayRequestTimingRecord {
     readonly upstreamStart?: number;
     readonly upstreamRestart?: number;
     readonly upstreamHeaders?: number;
+    /** 응답 body 첫 chunk(제어 프레임일 수 있음)가 도착한 시각. */
     readonly upstreamFirstByte?: number;
     readonly downstreamHeaders?: number;
     readonly messageStart?: number;
-    readonly firstThinking?: number;
-    readonly firstContent?: number;
-    readonly firstContentDone?: number;
+    readonly thinkingBlockStart?: number;
+    readonly contentBlockStart?: number;
+    readonly contentBlockStop?: number;
+    readonly firstDelta?: number;
     readonly end?: number;
   };
-  readonly firstContentKind?: "text" | "tool_use";
+  readonly contentBlockKind?: "text" | "tool_use";
+  readonly firstDeltaKind?: "thinking" | "text" | "tool_input";
   readonly upstreamChunksBeforeContent?: number;
   readonly keepalivesBeforeContent?: number;
 }
@@ -68,20 +76,10 @@ export function createRequestTimingJournal(
   };
 }
 
-export function extractClaudeSessionId(rawUserId: unknown): string | undefined {
-  if (typeof rawUserId !== "string" || rawUserId.trim().length === 0) return undefined;
-  try {
-    const parsed = JSON.parse(rawUserId) as { readonly session_id?: unknown };
-    if (typeof parsed.session_id === "string") {
-      const candidate = parsed.session_id.trim();
-      if (UUID_PATTERN.test(candidate)) return candidate;
-    }
-  } catch {
-    // Non-JSON string
-  }
-  const candidate = rawUserId.trim();
-  if (UUID_PATTERN.test(candidate)) return candidate;
-  return undefined;
+export function ensureUuidSessionId(id: unknown): string | undefined {
+  if (typeof id !== "string") return undefined;
+  const candidate = id.trim();
+  return UUID_PATTERN.test(candidate) ? candidate : undefined;
 }
 
 function extractOrigin(input: string | URL | Request): string {
@@ -97,8 +95,10 @@ function extractOrigin(input: string | URL | Request): string {
 
 /**
  * Tracks request lifecycle milestones relative to t0 and serializes a timing record.
+ * Internal to the ai-gateway router; not exported through public facade.
  */
 export class RequestClock {
+  /** t0: 메서드·호출자 자격 판정 뒤, body 읽기 전. 소켓 도착 시각이 아니다. */
   private readonly t0: number = Date.now();
   private readonly sink: GatewayRequestTimingSink;
   private readonly getGateStats?: (origin: string) => { inFlight: number; queued: number } | undefined;
@@ -117,7 +117,8 @@ export class RequestClock {
   private upstreamCalls = 0;
   private upstreamChunksBeforeContent = 0;
   private keepalivesBeforeContent = 0;
-  private firstContentKind?: "text" | "tool_use";
+  private contentBlockKind?: "text" | "tool_use";
+  private firstDeltaKind?: "thinking" | "text" | "tool_input";
 
   private bodyReadMs?: number;
   private credentialMs?: number;
@@ -127,9 +128,10 @@ export class RequestClock {
   private upstreamFirstByteMs?: number;
   private downstreamHeadersMs?: number;
   private messageStartMs?: number;
-  private firstThinkingMs?: number;
-  private firstContentMs?: number;
-  private firstContentDoneMs?: number;
+  private thinkingBlockStartMs?: number;
+  private contentBlockStartMs?: number;
+  private contentBlockStopMs?: number;
+  private firstDeltaMs?: number;
   private endMs?: number;
 
   private sseBuffer = "";
@@ -167,11 +169,11 @@ export class RequestClock {
       stream?: boolean;
       tools?: unknown;
       max_tokens?: unknown;
-      metadata?: { user_id?: unknown };
     },
     requestedModel?: string,
+    sessionIdCandidate?: string,
   ): void {
-    const sid = extractClaudeSessionId(body.metadata?.user_id);
+    const sid = ensureUuidSessionId(sessionIdCandidate);
     if (sid) this.sessionId = sid;
     if (requestedModel) {
       this.model = requestedModel;
@@ -215,7 +217,7 @@ export class RequestClock {
         this.upstreamHeadersMs = this.elapsedMs();
       }
 
-      if (res.body !== null && typeof res.body.getReader === "function") {
+      if (res.body !== null && canCarryBody(res.status) && typeof res.body.getReader === "function") {
         let firstChunk = true;
         const reader = res.body.getReader();
         const wrappedStream = new ReadableStream<Uint8Array>({
@@ -232,7 +234,7 @@ export class RequestClock {
                   this.upstreamFirstByteMs = this.elapsedMs();
                 }
               }
-              if (this.firstContentMs === undefined) {
+              if (this.contentBlockStartMs === undefined) {
                 this.upstreamChunksBeforeContent += 1;
               }
               controller.enqueue(value);
@@ -244,11 +246,10 @@ export class RequestClock {
           cancel: (reason) => reader.cancel(reason),
         });
 
-        return new Proxy(res, {
-          get(target, prop, receiver) {
-            if (prop === "body") return wrappedStream;
-            return Reflect.get(target, prop, receiver);
-          },
+        return new Response(wrappedStream, {
+          status: res.status,
+          statusText: res.statusText,
+          headers: res.headers,
         });
       }
 
@@ -312,7 +313,7 @@ export class RequestClock {
     const lines = frame.split(/\r\n|\n|\r/);
     const isComment = lines.some((line) => line.trimStart().startsWith(":"));
     if (isComment) {
-      if (this.firstContentMs === undefined) {
+      if (this.contentBlockStartMs === undefined) {
         this.keepalivesBeforeContent += 1;
       }
       return;
@@ -341,11 +342,11 @@ export class RequestClock {
         try {
           const parsed = JSON.parse(fields.data);
           const type = parsed?.content_block?.type;
-          if ((type === "thinking" || type === "redacted_thinking") && this.firstThinkingMs === undefined) {
-            this.firstThinkingMs = this.elapsedMs();
-          } else if ((type === "text" || type === "tool_use") && this.firstContentMs === undefined) {
-            this.firstContentMs = this.elapsedMs();
-            this.firstContentKind = type;
+          if ((type === "thinking" || type === "redacted_thinking") && this.thinkingBlockStartMs === undefined) {
+            this.thinkingBlockStartMs = this.elapsedMs();
+          } else if ((type === "text" || type === "tool_use") && this.contentBlockStartMs === undefined) {
+            this.contentBlockStartMs = this.elapsedMs();
+            this.contentBlockKind = type;
             if (typeof parsed?.index === "number") {
               this.targetContentBlockIndex = parsed.index;
             }
@@ -355,8 +356,29 @@ export class RequestClock {
       return;
     }
 
+    if (fields.event === "content_block_delta") {
+      if (this.firstDeltaMs === undefined && fields.data) {
+        try {
+          const parsed = JSON.parse(fields.data);
+          const delta = parsed?.delta;
+          if (delta?.type === "thinking_delta" && typeof delta.thinking === "string" && delta.thinking.length > 0) {
+            this.firstDeltaMs = this.elapsedMs();
+            this.firstDeltaKind = "thinking";
+          } else if (delta?.type === "text_delta" && typeof delta.text === "string" && delta.text.length > 0) {
+            this.firstDeltaMs = this.elapsedMs();
+            this.firstDeltaKind = "text";
+          } else if ((delta?.type === "input_json_delta" && typeof delta.partial_json === "string" && delta.partial_json.length > 0) ||
+                     (typeof delta?.partial_json === "string" && delta.partial_json.length > 0)) {
+            this.firstDeltaMs = this.elapsedMs();
+            this.firstDeltaKind = "tool_input";
+          }
+        } catch {}
+      }
+      return;
+    }
+
     if (fields.event === "content_block_stop") {
-      if (this.firstContentMs !== undefined && this.firstContentDoneMs === undefined) {
+      if (this.contentBlockStartMs !== undefined && this.contentBlockStopMs === undefined) {
         let isTarget = true;
         if (fields.data) {
           try {
@@ -367,9 +389,11 @@ export class RequestClock {
           } catch {}
         }
         if (isTarget) {
-          this.firstContentDoneMs = this.elapsedMs();
-          this.parsingDone = true;
+          this.contentBlockStopMs = this.elapsedMs();
         }
+      }
+      if (this.firstDeltaMs !== undefined && this.contentBlockStopMs !== undefined) {
+        this.parsingDone = true;
       }
     }
   }
@@ -406,12 +430,14 @@ export class RequestClock {
         ...(this.upstreamFirstByteMs !== undefined ? { upstreamFirstByte: this.upstreamFirstByteMs } : {}),
         ...(this.downstreamHeadersMs !== undefined ? { downstreamHeaders: this.downstreamHeadersMs } : {}),
         ...(this.messageStartMs !== undefined ? { messageStart: this.messageStartMs } : {}),
-        ...(this.firstThinkingMs !== undefined ? { firstThinking: this.firstThinkingMs } : {}),
-        ...(this.firstContentMs !== undefined ? { firstContent: this.firstContentMs } : {}),
-        ...(this.firstContentDoneMs !== undefined ? { firstContentDone: this.firstContentDoneMs } : {}),
+        ...(this.thinkingBlockStartMs !== undefined ? { thinkingBlockStart: this.thinkingBlockStartMs } : {}),
+        ...(this.contentBlockStartMs !== undefined ? { contentBlockStart: this.contentBlockStartMs } : {}),
+        ...(this.contentBlockStopMs !== undefined ? { contentBlockStop: this.contentBlockStopMs } : {}),
+        ...(this.firstDeltaMs !== undefined ? { firstDelta: this.firstDeltaMs } : {}),
         ...(this.endMs !== undefined ? { end: this.endMs } : {}),
       },
-      ...(this.firstContentKind ? { firstContentKind: this.firstContentKind } : {}),
+      ...(this.contentBlockKind ? { contentBlockKind: this.contentBlockKind } : {}),
+      ...(this.firstDeltaKind ? { firstDeltaKind: this.firstDeltaKind } : {}),
       ...(this.upstreamChunksBeforeContent > 0
         ? { upstreamChunksBeforeContent: this.upstreamChunksBeforeContent }
         : {}),

@@ -107,7 +107,6 @@ export type {
 export {
   DEFAULT_REQUEST_TIMING_JOURNAL_MAX_BYTES,
   createRequestTimingJournal,
-  RequestClock,
 } from "./transport/request-timing.js";
 export type {
   GatewayRequestTimingRecord,

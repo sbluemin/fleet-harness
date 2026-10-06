@@ -50,6 +50,7 @@ export function createBoundedJsonlWriter(options: BoundedJsonlWriterOptions): Bo
   const initialize = async (): Promise<void> => {
     if (initialized) return;
     await mkdir(dir, { recursive: true, mode: 0o700 });
+    await chmod(dir, 0o700).catch(() => undefined);
     try {
       const file = await stat(filePath);
       currentBytes = file.size;
@@ -87,10 +88,14 @@ export function createBoundedJsonlWriter(options: BoundedJsonlWriterOptions): Bo
   return {
     write: (record: unknown) => {
       let line: string;
-      try {
-        line = `${JSON.stringify(record)}\n`;
-      } catch {
-        return;
+      if (typeof record === "string") {
+        line = record.endsWith("\n") ? record : `${record}\n`;
+      } else {
+        try {
+          line = `${JSON.stringify(record)}\n`;
+        } catch {
+          return;
+        }
       }
       pending = pending.then(() => append(line)).catch(() => undefined);
     },

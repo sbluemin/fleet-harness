@@ -15,6 +15,8 @@
  * argument, a header, or a credential.
  */
 
+import { createBoundedJsonlWriter } from "./bounded-jsonl.js";
+
 export const DEFAULT_FAILURE_JOURNAL_MAX_BYTES = 2 * 1024 * 1024;
 /** Upper bound on the transport message. Long enough to carry a cause chain, short enough to stay a line. */
 const MAX_DETAIL_LENGTH = 512;
@@ -82,24 +84,13 @@ export function failureDetail(message: string): string {
  */
 export function createFailureJournal(options: FailureJournalOptions): FailureJournal {
   const maxBytes = options.maxBytes ?? DEFAULT_FAILURE_JOURNAL_MAX_BYTES;
-  let chain: Promise<void> = Promise.resolve();
-
-  const append = async (line: string): Promise<void> => {
-    const { appendFile, mkdir, rename, stat } = await import("node:fs/promises");
-    const { dirname } = await import("node:path");
-    await mkdir(dirname(options.filePath), { recursive: true });
-    const size = await stat(options.filePath).then((s) => s.size).catch(() => 0);
-    if (size + line.length > maxBytes && size > 0) {
-      await rename(options.filePath, `${options.filePath}.1`).catch(() => undefined);
-    }
-    await appendFile(options.filePath, line, { mode: 0o600 });
-  };
+  const writer = createBoundedJsonlWriter({
+    filePath: options.filePath,
+    maxBytes,
+  });
 
   return {
-    write: (record) => {
-      const line = `${JSON.stringify(record)}\n`;
-      chain = chain.then(() => append(line)).catch(() => undefined);
-    },
-    flush: () => chain,
+    write: (record) => writer.write(record),
+    flush: () => writer.flush(),
   };
 }
