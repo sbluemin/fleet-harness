@@ -949,7 +949,7 @@ export const pinSchema = z.string().max(MAX_PIN).regex(new RegExp(`^(?:MUST NOT|
 export const pinned = (value: string, pin: string | undefined, max: number): string | null => {
   if (!pin) return value;
   const joined = value ? `${value} [${pin}]` : `[${pin}]`;
-  return Array.from(joined).length <= max ? joined : null;
+  return joined.length <= max ? joined : null;
 };
 
 export const criterionAddSchema = z.object({ text: criterionText }).strict();

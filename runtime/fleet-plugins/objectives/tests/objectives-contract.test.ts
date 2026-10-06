@@ -1262,6 +1262,7 @@ describe("Objectives contract", () => {
     expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ missions: [{ text: "p1" }, { text: "ship [MUST NOT edit CHANGELOG.md]" }] });
     expect((await call("add_mission", { objectiveId: objective.id, text: "x", pin: "do not edit" }, commander)).structuredContent.error).toBe("invalid_arguments");
     expect((await call("add_mission", { objectiveId: objective.id, text: "y".repeat(190), pin: "MUST NOT edit CHANGELOG.md" }, commander)).structuredContent.error).toBe("text_with_pin_too_long");
+    expect((await call("add_mission", { objectiveId: objective.id, text: "\u{1F600}".repeat(95), pin: "MUST NOT x" }, commander)).structuredContent.error).toBe("text_with_pin_too_long");
     expect((await call("read", { objectiveId: objective.id }, member.id)).isError).toBe(false);
     // 같은 접두어의 다른 목표는 해석 후보가 아니다 — 자기 목표만 읽고, 외부 목표의 접두어는 없는 목표와 같은 답이다.
     const shortId = objective.id.slice(0, 8);
