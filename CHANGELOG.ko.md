@@ -5,6 +5,38 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.215.0] - 2026-10-06
+
+### fleet-cli
+
+#### Added
+- `fleet gateway`가 Grok 4.7과 Muse Spark 1.3 모델, `cursor-diagnostics` 설정을 포함해 Cursor를 다시 지원합니다.
+
+### fleet-console
+
+#### Added
+- AI Gateway가 Cursor 로그인으로 Cursor를 다시 지원합니다. Grok 4.7과 Grok 4.7 Fast를 256K 또는 500K 컨텍스트로, Muse Spark 1.3을 300K 또는 1M 컨텍스트로 쓸 수 있습니다. 연결하면 사용 한도에서 Cursor 사용량을 볼 수 있고, Ledger도 Cursor 지출을 다시 집계합니다.
+
+#### Changed
+- 콘솔 전환 목록이 이 컴퓨터의 다른 콘솔 중 응답이 늦거나 종료 중인 콘솔을 표시하며, 종료 중인 콘솔은 더 이상 고를 수 없습니다. 고를 수 없는 항목의 사유도 키보드와 스크린 리더 사용자에게 읽힙니다.
+- Console 제자리 업데이트가 실패하면 업데이트 화면이 오류 코드만 보여 주는 대신 실패 원인과 이전 Console이 어떻게 종료됐는지 알려 줍니다.
+- 업데이트 뒤 Console이 돌아와야 할 시간이 한참 지나도 응답이 없으면, 10분을 기다렸다가 말없이 사라지는 대신 직접 복구할 수 있도록 `fleet console start`를 안내합니다.
+
+#### Fixed
+- Windows에서 Console을 멈추거나 끝내면 Console이 시작한 프로그램과 그 자식 프로그램도 함께 종료돼, 프로세스가 남거나 종료가 제한 시간까지 끌리는 일을 막습니다. macOS와 Linux에서도 이미 끝난 에이전트가 남긴 백그라운드 보조 프로세스를 Console 종료 시 함께 정리합니다.
+- macOS와 Linux에서 Console이 비정상 종료되거나 강제로 종료되어도 에이전트 CLI, 그 MCP 서버, 그리고 Ledger 사용량 집계·Skills 명령·Repository fetch 같은 플러그인 작업이 더 이상 백그라운드에 남지 않습니다.
+- macOS와 Linux에서 Repository fetch나 Skills 설치 같은 플러그인 작업이 진행 중일 때 Console을 종료해도, 10초를 기다린 뒤 깨끗하게 종료되지 않았다고 보고하는 대신 몇 초 안에 정상 종료됩니다.
+- 업데이트 준비를 마치지 못하면 Console을 종료하지 않고 재시작을 기다리는 대신 실패 원인을 바로 보여 줍니다.
+- Windows에서 Console을 멈추면 진행 중인 에이전트 작업을 macOS 및 Linux와 마찬가지로 정리하며 정상 종료됩니다.
+
+### fleet-desktop
+
+#### Changed
+- 다른 Fleet Console 때문에 Desktop을 시작할 수 없을 때, 항상 "이미 실행 중"이라고만 하던 대화상자가 이제 무엇이 막고 있는지(시작 중, 종료 중, 응답 없음, 확인되지 않은 프로세스)를 프로세스 ID·lock 파일과 함께 알려 주고 해결 방법을 안내합니다.
+
+#### Fixed
+- Windows에서 앱을 종료하면 Console이 먼저 종료를 마치도록 기다리므로 진행 중인 에이전트 작업이 중단되지 않고 정리됩니다.
+
 ## [1.214.0] - 2026-10-05
 
 ### fleet-cli

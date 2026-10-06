@@ -5,6 +5,38 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.215.0] - 2026-10-06
+
+### fleet-cli
+
+#### Added
+- `fleet gateway` supports Cursor again, including Grok 4.7 and Muse Spark 1.3 models and the `cursor-diagnostics` setting.
+
+### fleet-console
+
+#### Added
+- AI Gateway supports Cursor again with your Cursor sign-in, offering Grok 4.7 and Grok 4.7 Fast at 256K or 500K context and Muse Spark 1.3 at 300K or 1M context. Usage limits can show your Cursor allowance after you connect it, and Ledger counts Cursor spending again.
+
+#### Changed
+- The console switcher now marks other consoles on this computer that are slow to answer or shutting down, and a shutting-down console can no longer be picked; the reason for an unavailable entry is also read out to keyboard and screen reader users.
+- When an in-place Console update fails, the update screen now says why and how the previous Console ended, instead of only an error code.
+- If no Console answers well after an update should have brought one back, the update screen shows `fleet console start` to recover by hand, rather than waiting ten minutes and then clearing without a word.
+
+#### Fixed
+- On Windows, stopping or killing Console also ends the programs it started and their children, instead of leaving them behind or waiting out a stuck stop. On macOS and Linux, stopping Console now also ends background helpers left by an agent that has already exited.
+- On macOS and Linux, a Console that crashes or is force-killed no longer leaves its agent CLIs, their MCP servers, or plugin work such as Ledger's usage scan, Skills commands, and Repository fetches running in the background.
+- On macOS and Linux, stopping Console while a plugin task is still running, such as a Repository fetch or a Skills install, now finishes cleanly within seconds instead of waiting 10 seconds and reporting that Console did not shut down cleanly.
+- Keep Console running when an update cannot finish its preparation, and show the failure without waiting for a restart.
+- On Windows, stopping Console now shuts it down cleanly, closing out agent work in progress the same way as on macOS and Linux instead of cutting it off.
+
+### fleet-desktop
+
+#### Changed
+- When another Fleet Console blocks Desktop from starting, the dialog now says what is holding it (still starting, shutting down, not responding, or unidentified) with its process ID and lock file, and how to clear it, instead of always saying Fleet Console is already running.
+
+#### Fixed
+- On Windows, quitting the app now lets the Console finish shutting down first, so agent work in progress is closed out instead of being cut off.
+
 ## [1.214.0] - 2026-10-05
 
 ### fleet-cli
