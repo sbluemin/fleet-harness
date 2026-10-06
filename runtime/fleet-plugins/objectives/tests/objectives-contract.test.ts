@@ -26,7 +26,12 @@ import { createGhPrLookup, createPrStatusService } from "../server/pr-status.js"
  */
 
 const dirs: string[] = [];
-afterEach(() => { vi.unstubAllGlobals(); for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+const launchServices: ReturnType<typeof createLaunchService>[] = [];
+afterEach(() => {
+  for (const launch of launchServices.splice(0)) launch.dispose();
+  vi.unstubAllGlobals();
+  for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 type Node = { -readonly [K in keyof OperationNode]: OperationNode[K] };
 
@@ -231,6 +236,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
     },
   } as unknown as FleetPluginServerContext;
   const launch = createLaunchService(ctx, store, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
+  launchServices.push(launch);
   watchQuiet = () => launch.watchReportQuiet();
   grouped.push((event) => launch.operationGrouped(event));
   // 결정 요청은 기본으로 기다리지 않는다 — 기다림은 그 계약을 다루는 테스트가 따로 켠다.
@@ -285,6 +291,7 @@ describe("Objectives contract", () => {
     expect(h.savedObjective("completion-recovery").operationIntent?.action).toBe("archive");
     const reloaded = createObjectiveStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], operations: h.operationsHost, emit: () => {} });
     const launch = createLaunchService(h.ctx, reloaded);
+    launchServices.push(launch);
     await launch.resumeOperationIntents();
     expect(h.operations.has("completion-recovery")).toBe(false);
     expect(reloaded.find("completion-recovery")).toMatchObject({ done: expect.any(Object), note: "retain this record", commander: { sessionName: "existing-session" } });
@@ -321,6 +328,7 @@ describe("Objectives contract", () => {
     // 복원 의도만 기록된 중단도 재시작에서 같은 회차로 끝낸다.
     const store = createObjectiveStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], operations: h.operationsHost, emit: () => {} });
     const launch = createLaunchService(h.ctx, store);
+    launchServices.push(launch);
     await launch.resumeOperationIntents();
     expect(store.find(id)).toMatchObject({ done: null, planning: true, criteriaOpen: true, awaitingHandoff: false,
       extensions: [{ n: 1, context: "add first scope", previousHandoff: { by: "commander", retrospective } }] });
