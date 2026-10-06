@@ -161,7 +161,7 @@ export class AnalystTools {
 
   private async diff() {
     try {
-      const { stdout } = await exec("git", ["diff", "--stat", "--", "."], { cwd: this.options.cwd, timeout: 10_000, maxBuffer: 64 * 1024 });
+      const { stdout } = await exec("git", ["diff", "--stat", "--", "."], { cwd: this.options.cwd, timeout: 10_000, maxBuffer: 64 * 1024, windowsHide: true });
       return { summary: stdout.trim().slice(0, 60_000) };
     } catch { return { summary: "Diff unavailable" }; }
   }

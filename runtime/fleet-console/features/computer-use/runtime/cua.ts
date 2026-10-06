@@ -214,7 +214,7 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
   private async processStart(pid: number): Promise<number> {
     let value: number;
     if (process.platform === "darwin") {
-      const { stdout } = await execute("/usr/bin/osascript", ["-l", "JavaScript", "-e", "ObjC.import('AppKit');function run(a){return String(Number($.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(a[0])).launchDate.timeIntervalSince1970));}", String(pid)], { timeout: 3000 });
+      const { stdout } = await execute("/usr/bin/osascript", ["-l", "JavaScript", "-e", "ObjC.import('AppKit');function run(a){return String(Number($.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(a[0])).launchDate.timeIntervalSince1970));}", String(pid)], { timeout: 3000, windowsHide: true });
       value = Number(stdout.trim());
     } else if (process.platform === "linux") {
       const stat = await fs.readFile(`/proc/${pid}/stat`, "utf8");

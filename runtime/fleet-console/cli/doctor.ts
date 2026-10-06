@@ -107,7 +107,7 @@ function displayBinaryPath(resolved: ResolvedBinary): string {
 
 function execFileVersion(bin: string, args: readonly string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(bin, [...args], { timeout: VERSION_PROBE_TIMEOUT_MS }, (error, stdout, stderr) => {
+    execFile(bin, [...args], { timeout: VERSION_PROBE_TIMEOUT_MS, windowsHide: true }, (error, stdout, stderr) => {
       if (error) {
         reject(error);
         return;

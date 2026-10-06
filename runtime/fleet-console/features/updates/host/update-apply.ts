@@ -948,7 +948,7 @@ function defaultSpawnWorker(
   args: readonly string[],
   options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: ["ignore", "ignore", "ignore", "ipc"]; readonly windowsHide: true },
 ): ConsoleUpdateWorkerProcess {
-  const child = spawn(execPath, [...args], options);
+  const child = spawn(execPath, [...args], { ...options, windowsHide: true });
   child.once("error", () => {});
   return child;
 }

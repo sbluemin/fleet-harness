@@ -36,6 +36,7 @@ export async function stopRunningConsoleBeforeUpdate(
   const siblingCliPath = deps.siblingCliPath ?? resolveSiblingConsoleCliPath();
   if (siblingCliPath) {
     io.stdout.write("Stopping the running Fleet Console to release file locks before update...\n");
+    // fleet-allow-visible-spawn: injected launcher; runNodeStop passes windowsHide: true on its only call.
     await runNodeStop(siblingCliPath, io, deps.spawn ?? spawn);
     return;
   }
@@ -53,6 +54,7 @@ export async function stopRunningConsoleBeforeUpdate(
     return;
   }
   io.stdout.write("Stopping the running Fleet Console to release file locks before update...\n");
+  // fleet-allow-visible-spawn: injected launcher; runConsoleStop passes windowsHide: true on its only call.
   await runConsoleStop(consoleBin, io, deps.spawn ?? spawn);
 }
 
@@ -97,7 +99,7 @@ function runNodeStop(
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     let settled = false;
-    const child = spawnImpl(process.execPath, [cliPath, "stop"], { stdio: "ignore" });
+    const child = spawnImpl(process.execPath, [cliPath, "stop"], { stdio: "ignore", windowsHide: true });
     const timer = setTimeout(() => {
       io.stderr.write("Fleet Console did not stop within the timeout; continuing with the update.\n");
       child.kill();
@@ -124,7 +126,7 @@ function runConsoleStop(
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     let settled = false;
-    const child = spawnImpl(consoleBin.bin, [...consoleBin.prefixArgs, "stop"], { stdio: "ignore" });
+    const child = spawnImpl(consoleBin.bin, [...consoleBin.prefixArgs, "stop"], { stdio: "ignore", windowsHide: true });
     const timer = setTimeout(() => {
       // 데몬이 응답하지 않아도 update를 막지 않는다 — 정지 자식을 종료하고 진행.
       io.stderr.write("Fleet Console did not stop within the timeout; continuing with the update.\n");

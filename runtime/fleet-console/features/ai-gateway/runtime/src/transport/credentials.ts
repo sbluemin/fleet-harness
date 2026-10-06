@@ -73,7 +73,8 @@ export const defaultCredentialDeps: CredentialResolverDeps = {
   env: process.env,
   readBounded: readBoundedFile,
   execFile: async (file, args, options) => {
-    const result = await execFileAsync(file, [...args], options);
+    // Console runs detached without a console; a hidden child keeps Windows from opening a window per lookup.
+    const result = await execFileAsync(file, [...args], { ...options, windowsHide: true });
     return result.stdout;
   },
 };

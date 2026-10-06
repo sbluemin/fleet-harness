@@ -342,7 +342,7 @@ function spawnVendorRefresh(deps: CredentialResolverDeps): Promise<void> {
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(binary, [...ANTIGRAVITY_CLI_REFRESH_ARGS], { stdio: "ignore" });
+      child = spawn(binary, [...ANTIGRAVITY_CLI_REFRESH_ARGS], { stdio: "ignore", windowsHide: true });
     } catch {
       // An absent CLI is indistinguishable from one that cannot renew.
       resolve();

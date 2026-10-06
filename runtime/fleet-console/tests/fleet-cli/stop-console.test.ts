@@ -52,7 +52,7 @@ describe("stopRunningConsoleBeforeUpdate", () => {
     expect(mockedSpawn).toHaveBeenCalledWith(
       process.execPath,
       ["/pkg/dist/cli.mjs", "stop"],
-      { stdio: "ignore" },
+      { stdio: "ignore", windowsHide: true },
     );
     expect(io.stdout.toString()).toContain("Stopping the running Fleet Console");
   });

@@ -280,10 +280,11 @@ function joinPathForPlatform(platform: NodeJS.Platform, ...parts: readonly strin
 }
 
 function defaultExecFile(file: string, args: readonly string[]): string {
-  return execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 }
 
 function defaultSpawnInstall(file: string, args: readonly string[]): GlobalPackageInstallProcess {
+  // fleet-allow-visible-spawn: foreground npm install shares the user's terminal and Ctrl+C; libuv ignores windowsHide with inherited stdio.
   return spawn(file, args, { stdio: "inherit" });
 }
 

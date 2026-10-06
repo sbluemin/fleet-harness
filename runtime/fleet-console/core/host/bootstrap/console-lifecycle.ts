@@ -298,7 +298,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const childEnv = env.FLEET_CONSOLE_NO_SYSTEM_CA === "1" ? env : withNodeSystemCa(env);
   const execPath = deps.execPath ?? process.execPath;
   const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
-  const spawnDaemon = deps.spawnDaemon ?? ((bin, args, options) => spawn(bin, [...args], options));
+  const spawnDaemon = deps.spawnDaemon ?? ((bin, args, options) => spawn(bin, [...args], { ...options, windowsHide: true }));
   const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const now = deps.now ?? (() => performance.now());
   const startupTimeoutMs = Math.max(0, deps.startupTimeoutMs ?? CONSOLE_START_TIMEOUT_MS);

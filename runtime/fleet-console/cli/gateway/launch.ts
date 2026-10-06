@@ -40,6 +40,7 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
       selection,
       compactHookToken: options.gatewayServer.compactHookToken,
     });
+    // fleet-allow-visible-spawn: foreground Agent CLI shares the user's terminal and Ctrl+C; libuv ignores windowsHide with inherited stdio.
     const child = spawn(launchProfile.bin, launchProfile.args, {
       cwd: launchProfile.cwd,
       env: launchProfile.env,

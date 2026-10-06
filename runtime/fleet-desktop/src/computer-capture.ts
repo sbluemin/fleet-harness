@@ -14,7 +14,7 @@ function run(args) {
 
 async function verifyWindow(target: DesktopComputerCaptureTarget): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", VERIFY_WINDOW, String(target.pid), String(target.windowId), String(target.processStartedAt)], { timeout: 3000, maxBuffer: 4096 }, (error, stdout) => resolve(!error && stdout.trim() === "true"));
+    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", VERIFY_WINDOW, String(target.pid), String(target.windowId), String(target.processStartedAt)], { timeout: 3000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => resolve(!error && stdout.trim() === "true"));
   });
 }
 
