@@ -1657,16 +1657,19 @@ html[data-view-mode="mobile"] .objectives-commodore-scrim { display: none; }
 .objectives-commodore-log { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 16px 28px 24px; display: flex; flex-direction: column; gap: 14px; }
 .objectives-commodore-sheet.is-compact .objectives-commodore-log { padding-inline: 20px; }
 
-/* 기록 곁 칸 「목표」 — 사령관이 목표에서 한 일(보드 파생). 색 신호 없이 명도와 모양(점 = 행위, 마름모 = 결정)으로만 가른다.
-   누르는 줄은 기록 칸의 그 시각 턴을 드러낸다. 좁은 시트에서는 기록 아래로 내려간다. */
-.objectives-commodore-trail { flex: none; width: 236px; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 12px 12px 20px; border-left: 1px solid var(--hairline); background: transparent; display: flex; flex-direction: column; gap: 10px; }
+/* 기록 곁 칸 「목표」 — 글리프·낱말·시각만. 묶음마다 기존 신호 토큰의 -ink. 최신이 아래이고, 너비는 이음매가 가른다.
+   좁은 시트에서는 기록 아래로 내려가 세로 선은 없다. */
+.objectives-commodore-trail { position: relative; flex: none; width: 260px; min-width: 0; min-height: 0; overflow: hidden; padding: 12px 12px 14px; background: transparent; display: flex; flex-direction: column; gap: 6px; }
 .objectives-commodore-sheet.is-compact .objectives-commodore-body.is-log { flex-direction: column; }
-.objectives-commodore-sheet.is-compact .objectives-commodore-trail { width: auto; max-height: 38%; border-left: 0; border-top: 1px solid var(--hairline); }
+.objectives-commodore-sheet.is-compact .objectives-commodore-trail { width: auto; max-height: 38%; border-top: 1px solid var(--hairline); }
+.objectives-commodore-sheet.is-compact .objectives-commodore-trail-seam { display: none; }
 .objectives-commodore-trail-title { margin: 0; padding: 0 6px; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-bold); letter-spacing: 0.06em; text-transform: uppercase; }
 .objectives-commodore-trail-empty { margin: 0; padding: 0 6px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
+.objectives-commodore-trail-scroll { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
+.objectives-commodore-trail-spacer { flex: 1 1 auto; }
 .objectives-commodore-trail-list, .objectives-commodore-trail-entries { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
 .objectives-commodore-trail-list { gap: 14px; }
-.objectives-commodore-trail-entries { gap: 1px; }
+.objectives-commodore-trail-entries { gap: 1px; margin-top: 2px; }
 .objectives-commodore-trail-objective {
   display: block; width: 100%; padding: 2px 6px; border: 0; border-radius: var(--radius-xs); background: transparent; text-align: left; cursor: pointer;
   color: var(--text-primary); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-medium); line-height: 1.4;
@@ -1674,19 +1677,57 @@ html[data-view-mode="mobile"] .objectives-commodore-scrim { display: none; }
 }
 .objectives-commodore-trail-group.is-done .objectives-commodore-trail-objective { color: var(--text-secondary); }
 .objectives-commodore-trail-entry {
-  display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 4px 6px; border: 0; border-radius: var(--radius-xs); background: transparent; text-align: left;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 4px 6px; border: 0; border-radius: var(--radius-xs); background: transparent; text-align: left;
   color: var(--text-secondary); font: inherit; font-size: var(--t-xs); line-height: 1.45;
 }
 button.objectives-commodore-trail-entry { cursor: pointer; }
-.objectives-commodore-trail-objective:hover, button.objectives-commodore-trail-entry:hover { background: color-mix(in oklch, var(--ink-spectral) 7%, transparent); }
+.objectives-commodore-trail-objective:hover, button.objectives-commodore-trail-entry:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); }
 .objectives-commodore-trail-objective:focus-visible, .objectives-commodore-trail-entry:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
-.objectives-commodore-trail-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.objectives-commodore-trail-mark { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--text-tertiary); transform: translateY(-1px); }
-.objectives-commodore-trail-mark.is-decision { border-radius: 1px; background: var(--text-secondary); transform: translateY(-1px) rotate(45deg); }
-.objectives-commodore-trail-word { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-commodore-trail-time { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
-.objectives-commodore-trail-detail { padding-left: 11px; color: var(--text-primary); overflow-wrap: anywhere; }
-.objectives-commodore-trail-why { padding-left: 11px; color: var(--text-tertiary); font-size: var(--t-2xs); line-height: 1.45; overflow-wrap: anywhere; }
+.objectives-commodore-trail-glyph { flex: none; width: 12px; height: 12px; display: grid; place-items: center; }
+.objectives-commodore-trail-glyph svg { width: 10px; height: 10px; overflow: visible; }
+.objectives-commodore-trail-entry.is-progress { color: var(--aurora-ink); }
+.objectives-commodore-trail-entry.is-done { color: var(--positive-ink); }
+.objectives-commodore-trail-entry.is-back { color: var(--coral-ink); }
+.objectives-commodore-trail-entry.is-edit { color: var(--brass-ink); }
+.objectives-commodore-trail-entry.is-added { color: var(--crest-ink); }
+.objectives-commodore-trail-entry.is-decision { color: var(--apex-ink); }
+.objectives-commodore-trail-word { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: var(--weight-medium); white-space: nowrap; }
+.objectives-commodore-trail-dot { flex: none; color: var(--text-tertiary); }
+.objectives-commodore-trail-label { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-weight: var(--weight-regular); }
+.objectives-commodore-trail-time { flex: none; margin-left: auto; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-trail-fresh {
+  position: absolute; right: 12px; bottom: 10px; z-index: 2; padding: 3px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill);
+  background: var(--ink-mid); color: var(--text-primary); font: inherit; font-size: var(--t-2xs); cursor: pointer;
+}
+.objectives-commodore-trail-fresh:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+/* 목표 칸 이음매 — Repository 분할선과 같은 문법. 선은 1px, 손잡이가 끌 수 있음을 말하고, 잡는 영역은 양쪽 5px. */
+.objectives-commodore-trail-seam {
+  position: relative; z-index: 1; flex: none; width: 1px; height: auto; align-self: stretch; background: var(--hairline);
+  cursor: col-resize; touch-action: none; outline: none;
+}
+.objectives-commodore-trail-seam::before { content: ""; position: absolute; inset: 0 -5px; }
+.objectives-commodore-trail-seam-pill {
+  position: absolute; top: 50%; left: 50%; width: 4px; height: 28px; border-radius: 3px; background: var(--hairline-strong);
+  transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
+}
+.objectives-commodore-trail-seam:hover > .objectives-commodore-trail-seam-pill,
+.objectives-commodore-trail-seam:focus-visible > .objectives-commodore-trail-seam-pill,
+.objectives-commodore-trail-seam.is-dragging > .objectives-commodore-trail-seam-pill { opacity: 1; background: var(--brass); }
+.objectives-commodore-trail-seam:hover,
+.objectives-commodore-trail-seam:focus-visible,
+.objectives-commodore-trail-seam.is-dragging { background: var(--brass); }
+.objectives-commodore-trail-seam-readout {
+  position: absolute; top: 8px; left: 8px; z-index: 2; padding: 1px 6px; border: 1px solid var(--hairline); border-radius: var(--radius-xs);
+  background: var(--ink-mid); color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums;
+  white-space: nowrap; opacity: 0; pointer-events: none;
+}
+.objectives-commodore-trail-seam.is-dragging > .objectives-commodore-trail-seam-readout,
+.objectives-commodore-trail-seam:focus-visible > .objectives-commodore-trail-seam-readout { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .objectives-commodore-trail-seam, .objectives-commodore-trail-seam-pill { transition-duration: .01ms; }
+}
 /* 사령관의 Markdown — 공용 렌더러의 코드·표는 가로로 흐르는 상자다. 서랍 안에서는 줄을 바꾼다. */
 /* 공용 본문의 읽기 폭(78ch) 대신 기록 칸 폭을 따른다 — 구분선·도구 줄과 같은 오른쪽 끝에서 줄을 바꾼다. */
 .objectives-commodore-sheet .markdown-body { max-inline-size: none; margin-inline: 0; }

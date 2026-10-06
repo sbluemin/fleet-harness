@@ -11,6 +11,7 @@ import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreTrail } from "./commodore-trail.js";
+import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime } from "./commodore-row.js";
 import {
   addCommodoreIntel,
@@ -153,6 +154,31 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
   const [failure, setFailure] = useState<string | null>(null);
   // 곁 칸에서 고른 시각 — 기록 칸이 그 시각의 턴을 드러낸다. 같은 줄을 다시 눌러도 다시 드러나게 nonce 가 오른다.
   const [reveal, setReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [trailPreferred, setTrailPreferred] = useState(readTrailWidth);
+  const [logBodyWidth, setLogBodyWidth] = useState(0);
+  useLayoutEffect(() => {
+    const node = bodyRef.current;
+    if (!node) return;
+    const measure = () => setLogBodyWidth(node.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const measured = logBodyWidth > 0;
+  const trailWidth = measured ? clampTrailWidth(trailPreferred, logBodyWidth) : trailPreferred;
+  const setTrailWidth = (next: number) => {
+    const clamped = clampTrailWidth(next, logBodyWidth);
+    setTrailPreferred(clamped);
+    writeTrailWidth(clamped);
+  };
+  // 더블클릭·Enter는 기본 260을 기억한다. 지금 본문이 좁으면 화면에는 절반까지만 그리고, 본문이 넓어지면 기본으로 돌아온다.
+  const resetTrailWidth = () => {
+    setTrailPreferred(TRAIL_WIDTH_DEFAULT);
+    writeTrailWidth(TRAIL_WIDTH_DEFAULT);
+  };
   const label = commodoreTheaterLabel(theaterId);
   const on = view?.state.autonomy === true;
   const run = view?.run;
@@ -255,11 +281,20 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
               <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("objectives.commodore.drawer.retryNow")}</button>
             </div>
           ) : null}
-          <div className={`objectives-commodore-body is-${tab}`} role="tabpanel" id={`objectives-commodore-panel-${tab}`} aria-labelledby={`objectives-commodore-tab-${tab}`}>
+          <div ref={bodyRef} className={`objectives-commodore-body is-${tab}`} role="tabpanel" id={`objectives-commodore-panel-${tab}`} aria-labelledby={`objectives-commodore-tab-${tab}`}>
             {tab === "log" ? (
               <>
                 <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} />
-                <CommodoreTrail t={t} language={language} theaterId={theaterId} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
+                {geometry.compact ? null : (
+                  <CommodoreTrailSeam
+                    label={t("objectives.commodore.trail.resize")}
+                    value={trailWidth}
+                    bodyWidth={logBodyWidth}
+                    onChange={setTrailWidth}
+                    onReset={resetTrailWidth}
+                  />
+                )}
+                <CommodoreTrail t={t} language={language} theaterId={theaterId} width={geometry.compact || !measured ? undefined : trailWidth} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
               </>
             ) : null}
             {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onFail={fail} onClear={() => setFailure(null)} /> : null}
