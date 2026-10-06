@@ -1,3 +1,4 @@
+import { LIFECYCLE_WAIT_NOTICE_MS } from "@fleet-console/protocol/lifecycle";
 import { describeConsoleLifecycleWait, parseConsoleLifecycleWait, type ConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
 
 import type { EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryTone } from "./entry-page.js";
@@ -78,13 +79,16 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       window.show();
       let consoleUrl: string;
       while (true) {
+        const notice = createWaitNotice(push);
         try {
-          consoleUrl = await dependencies.startOrAdopt({ wait: (wait) => { void push("waiting", wait); } });
+          consoleUrl = await dependencies.startOrAdopt({ wait: notice.wait });
           break;
         } catch (error) {
           if (!isFirstRunProcurementFailure(error)) throw error;
           await push("firstfail");
           if (!dependencies.onFirstRunFailure || !await dependencies.onFirstRunFailure()) throw error;
+        } finally {
+          notice.cancel();
         }
       }
       if (window.isDestroyed?.()) return window;
@@ -100,6 +104,33 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       if (!window.isDestroyed?.()) await dependencies.synchronizeFullscreen?.(origin);
       if (!window.isDestroyed?.()) dependencies.onConsoleLoaded?.();
       return window;
+    },
+  };
+}
+
+/**
+ * 대기 문장은 계약의 LIFECYCLE_WAIT_NOTICE_MS가 지난 뒤에만 진입 화면에 올린다. 그보다 짧게 끝나는 대기는
+ * 조용하다. 한 번 올린 뒤에 이어지는 대기는 바로 올리고, 아직 올리기 전이면 마지막 대기 이름으로 바꿔 올린다.
+ */
+function createWaitNotice(push: (state: RuntimeEntryState, detail?: string) => Promise<void>): { readonly wait: (wait: EntryWait) => void; readonly cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let shown = false;
+  let current: EntryWait | null = null;
+  return {
+    wait: (wait) => {
+      current = wait;
+      if (shown) {
+        void push("waiting", wait);
+        return;
+      }
+      timer ??= setTimeout(() => {
+        shown = true;
+        if (current !== null) void push("waiting", current);
+      }, LIFECYCLE_WAIT_NOTICE_MS);
+    },
+    cancel: () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
     },
   };
 }
