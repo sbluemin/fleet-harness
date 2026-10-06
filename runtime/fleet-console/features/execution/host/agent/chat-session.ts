@@ -813,12 +813,15 @@ class AgentChatSession {
     // 시각 차이다. 이것이 없으면 접힘 줄이 과거 턴에서만 시간을 잃는다.
     let turnAt: number | null = null;
     let lastAt: number | null = null;
+    // 재생이 지금 턴 안에 있는가. `turnAt`은 시각이 없는 줄에서 null이라 그것만으로는 가를 수 없다.
+    let inReplayedTurn = false;
     const closeReplayedTurn = (): void => {
       if (turnAt !== null && lastAt !== null && lastAt > turnAt) {
         this.push({ kind: "turn-end", ok: true, durationMs: lastAt - turnAt }, lastAt);
       }
       turnAt = null;
       lastAt = null;
+      inReplayedTurn = false;
     };
     // 사람 발화로는 서지 않지만 모델을 깨우는 주입 운반체는 말풍선 없는 여는 이벤트로 온다.
     // 그것을 곧바로 발행하지 않고 붙잡아 두는 이유는 두 가지다.
@@ -836,13 +839,41 @@ class AgentChatSession {
       closeReplayedTurn();
       turns += 1;
       turnAt = at;
+      inReplayedTurn = true;
       this.push(at === null ? { kind: "turn-start" } : { kind: "turn-start", at }, at ?? Date.now());
+    };
+    // 압축 경계는 붙잡아 두었다가 다음 줄을 보고 자리를 정한다. 같은 턴의 내용이 뒤따르면 그 턴 안에서
+    // 일어난 압축이고(라이브의 `inTurn: true`와 같다), 새 턴이 열리거나 파일이 끝나면 턴 사이의 독립 줄이다.
+    // 경계는 턴을 열지 않고 턴의 끝 시각도 늘리지 않는다 — 그러면 재생 턴 수와 소요 시간이 경계 하나로 바뀐다.
+    // `/compact`는 운반체 줄에 둘러싸여 오므로 늘 독립 줄로 선다.
+    let heldCompaction: { readonly event: Extract<AgentChatStreamEvent, { kind: "command-end" }>; readonly at: number } | null = null;
+    const flushCompaction = (inTurn: boolean): void => {
+      const held = heldCompaction;
+      if (!held) return;
+      heldCompaction = null;
+      if (inTurn) {
+        openPendingTurn();
+      } else {
+        // 앞 턴을 먼저 닫는다. 결말이 독립 줄 뒤에 오면 화면은 그것을 그 줄의 결말로 읽는다.
+        closeReplayedTurn();
+      }
+      this.push({ ...held.event, inTurn: inTurn && inReplayedTurn }, held.at);
     };
     try {
       const raw = await fs.readFile(transcriptPath, "utf8");
       for (const line of raw.split("\n")) {
         if (line.trim().length === 0) continue;
         const mapped = chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames, ...(this.seed.resolveAttachmentId ? { resolveAttachmentId: this.seed.resolveAttachmentId } : {}) });
+        const boundary = mapped.events.length === 1 && mapped.events[0]!.kind === "command-end" ? mapped.events[0]! : null;
+        if (boundary?.kind === "command-end") {
+          flushCompaction(false);
+          heldCompaction = { event: boundary, at: mapped.at ?? Date.now() };
+          continue;
+        }
+        if (heldCompaction && mapped.events.length > 0) {
+          const opens = mapped.events[0]!.kind === "dispatch" || mapped.events[0]!.kind === "turn-start";
+          flushCompaction(!opens);
+        }
         for (const event of mapped.events) {
           if (event.kind === "turn-start") {
             // 묶음의 첫 줄만 시작 시각으로 남긴다.
@@ -855,6 +886,7 @@ class AgentChatSession {
             closeReplayedTurn();
             turns += 1;
             turnAt = mapped.at ?? null;
+            inReplayedTurn = true;
           } else {
             openPendingTurn();
           }
@@ -866,6 +898,7 @@ class AgentChatSession {
         // 붙잡아 둔 운반체는 아직 턴이 아니다 — 그 줄의 시각으로 앞 턴의 끝을 늘리지 않는다.
         if (mapped.events.length > 0 && mapped.at !== undefined && pendingOpenAt === undefined) lastAt = mapped.at;
       }
+      flushCompaction(false);
       closeReplayedTurn();
     } catch {
       // 트랜스크립트를 읽지 못해도 세션은 계속된다 — 로그가 비어 보일 뿐 새 턴은 돌 수 있다.
