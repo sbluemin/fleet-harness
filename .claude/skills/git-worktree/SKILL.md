@@ -23,6 +23,7 @@ Trim names and replace internal spaces with `-`, preserving deliberate capitaliz
 - Never remove the main checkout. Stop **before removal commands** for protected-branch worktrees too.
 - Never create or preserve a new-worktree symlink targeting main-checkout content. pnpm links within the new worktree or to an external package store are allowed.
 - Never replace colliding paths/branches automatically. Do not use `reset --hard`, forced file restoration, or hook bypasses to clean up.
+- Stop a daemon only through the target worktree's own path (`git -C <path> fsmonitor--daemon stop`). Never stop other daemons or processes by name or in bulk (`pkill`, `killall`, all-daemon shutdown).
 - Removal requires a request targeting the owned dedicated worktree, authorized post-merge cleanup, or an explicitly disposable baseline created for the current task. Inspect and disclose dirty/unpushed/unmerged state first; branch force cleanup stays within that authority. A general task request or reading this skill as a reference does not authorize deletion.
 
 ## Execution routes
