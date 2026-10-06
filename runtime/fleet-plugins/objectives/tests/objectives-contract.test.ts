@@ -1794,11 +1794,18 @@ describe("Objectives contract", () => {
     const executing = (await board({ objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;
+    activity.set(id, "running");
+    expect(await board({ objectiveId: id, edit: { title: "Renamed while running" } })).toMatchObject({ ok: true });
+    expect(store.find(id)!.title).toBe("Renamed while running");
     // 지휘관·구성원은 자기 목표를 외부 행위자로 승인할 수 없다. 요청을 지우거나 기록하지 않는 거절이다.
     for (const operationId of [id, memberId]) {
-      const result = await consoleTool.execute({ objectiveId: id, complete: true }, { cwd: workspace, caller: { kind: "operation", operationId } }) as { structuredContent: Record<string, unknown> };
-      expect(result.structuredContent.error).toBe("own_objective");
+      for (const write of [{ complete: true }, { edit: { title: "Self-chosen" } }]) {
+        const result = await consoleTool.execute({ objectiveId: id, ...write }, { cwd: workspace, caller: { kind: "operation", operationId } }) as { structuredContent: Record<string, unknown> };
+        expect(result.structuredContent.error).toBe("own_objective");
+      }
     }
+    expect(store.find(id)!.title).toBe("Renamed while running");
+    activity.set(id, "idle");
     // 세션 전사 — 사령관은 지휘관·구성원 세션을 마지막 줄부터 읽는다. Operation 호출자는 console_operation 의 읽기 허가를 지나야 하므로 보드로는 읽지 못한다.
     expect(await board({ view: "transcript", objectiveId: id })).toMatchObject({ session: { kind: "commander" }, latest: true, entries: [{ text: `from ${id}` }] });
     expect(await board({ view: "transcript", objectiveId: id, memberId, cursor: "0" })).toMatchObject({ session: { kind: "member", memberId }, latest: false, nextCursor: "7", entries: [{ text: `from ${memberId}` }] });
