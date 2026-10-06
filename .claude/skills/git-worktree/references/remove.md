@@ -11,7 +11,7 @@
 
 ## Execution
 
-Leave the worktree first. Stop the target's fsmonitor daemon after its last inspection, because any later Git command in `<path>` restarts it. `not running` and `not supported on this platform` (Git without a built-in daemon, such as on Linux) are a pass.
+Leave the worktree first, and stop only this session's own processes, such as a leftover background or timed-out `rg`, whose cwd is under `<path>`: `lsof -a -u "$(id -u)" -d cwd -Fpcn` lists every process of this user, so keep only entries whose `n` line is `<path>` or below it, and leave another session's process running. Stop the target's fsmonitor daemon after its last inspection, because any later Git command in `<path>` restarts it. `not running` and `not supported on this platform` (Git without a built-in daemon, such as on Linux) are a pass.
 
 ```bash
 cd <parent-repo-root>
