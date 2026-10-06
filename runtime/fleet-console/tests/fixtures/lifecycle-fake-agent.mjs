@@ -29,6 +29,40 @@ const role = chat ? "chat" : "terminal";
 const mcp = spawn(process.execPath, ["-e", "process.stdin.resume(); process.stdin.on('end', () => process.exit(0)); setInterval(() => {}, 1 << 30);"], { stdio: ["pipe", "ignore", "ignore"] });
 record({ role, pid: process.pid, ppid: process.ppid });
 record({ role: `${role}-mcp`, pid: mcp.pid, ppid: process.pid });
+// 정상 stop 대표 사례: SDK가 리더만 종료한 뒤에도 같은 그룹의 helper가 출력 파이프를 잡고 남는다.
+if (chat && process.env.FAKE_AGENT_SHUTDOWN_RESIDUAL === "1") {
+  const residual = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);"], { stdio: "inherit", windowsHide: true });
+  record({ role: "chat-residual", pid: residual.pid, ppid: process.pid });
+}
+if (process.env.FAKE_AGENT_BREAKAWAY_RESULT && process.env.FAKE_AGENT_KOFFI) {
+  // This process is already inside the group job: the launcher waits until the Console has assigned the leader.
+  try {
+    const { createRequire } = await import("node:module");
+    const koffi = createRequire(import.meta.url)(process.env.FAKE_AGENT_KOFFI);
+    const kernel32 = koffi.load("kernel32.dll");
+    const u16ptr = koffi.pointer("uint16");
+    const u8ptr = koffi.pointer("uint8");
+    const CreateProcessW = kernel32.func("__stdcall", "CreateProcessW", "int", ["void *", u16ptr, "void *", "void *", "int", "uint32", "void *", "void *", u8ptr, u8ptr]);
+    const GetLastError = kernel32.func("__stdcall", "GetLastError", "uint32", []);
+    const command = `"${process.execPath}" -e "setInterval(()=>{},1<<30)"`;
+    const cmd = Buffer.from(`${command}\0`, "utf16le");
+    const si = Buffer.alloc(104);
+    si.writeUInt32LE(104, 0);
+    const pi = Buffer.alloc(24);
+    const ok = CreateProcessW(null, cmd, null, null, 0, 0x01000000, null, null, si, pi);
+    const err = ok ? 0 : Number(typeof koffi.errno === "function" ? koffi.errno() : 0) || Number(GetLastError());
+    const pid = ok ? pi.readUInt32LE(16) : 0;
+    appendFileSync(process.env.FAKE_AGENT_BREAKAWAY_RESULT, JSON.stringify({ ok: Boolean(ok), err, pid }));
+  } catch (error) {
+    appendFileSync(process.env.FAKE_AGENT_BREAKAWAY_RESULT, JSON.stringify({ ok: false, err: -1, message: String(error && error.message || error) }));
+  }
+}
+// A detached grandchild the libuv job would not keep. Only the Windows cases opt in; POSIX containment is the process group.
+if (chat && process.env.FAKE_AGENT_DETACHED_GRANDCHILD === "1") {
+  const detached = spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30);"], { detached: true, stdio: "ignore", windowsHide: true });
+  detached.unref();
+  record({ role: "chat-detached", pid: detached.pid, ppid: process.pid });
+}
 
 if (!chat) {
   // A terminal session ends the way a PTY ends it: hangup or the default SIGTERM disposition.

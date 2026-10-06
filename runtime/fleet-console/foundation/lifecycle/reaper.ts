@@ -50,7 +50,7 @@ export interface ReaperIo {
  * groups and does nothing until the Console is gone — its pipe ends, or the Console's pid stops running. Then it records
  * `external` when the Console left no exit record, ends every group it can prove is still that group (SIGTERM, a grace,
  * a fresh proof, SIGKILL), and exits within REAPER_DRAIN_MAX_MS. It signals nothing it cannot prove, never its own group,
- * and nothing on Windows, where libuv's job object ends the Console's direct children.
+ * and nothing on Windows: the Console's job handles close with the process, and KILL_ON_JOB_CLOSE ends those groups.
  */
 export function runReaper(io: ReaperIo): void {
   const now = io.now ?? Date.now;

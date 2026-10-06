@@ -40,7 +40,7 @@ import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
-import { createOwnedProcessRegistry, pruneConsoleExitRecords, signalChildGroup, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
+import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { CONSOLE_LIFECYCLE_WIRE, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
@@ -1163,7 +1163,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         stdin: request.stdin ?? "pipe",
         owner: `plugin:${pluginId}`,
       });
-      return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => signalChildGroup(child, signal) });
+      return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
     },
     // Console 제어 — `console_launch`·`console_send` 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
     consoleControlFor: (pluginId) => ({
@@ -2102,10 +2102,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         console.warn(`[fleet-console] Plugin cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
       }
     }
-    // Plugins' own registered children (a CLI or git still waiting on the network) have no one else to end them on this
-    // path: give them SIGTERM and, after the grace, SIGKILL, without holding the lock for it. Agent CLIs are left to the
-    // SDK's own close, which lets them flush, and the stop deadline still covers everything.
-    ownedProcesses.endGroups((group) => group.owner?.startsWith("plugin:") === true, OWNED_GROUP_TERM_GRACE_MS, {
+    // 플러그인 cleanup 이후 살아 있는 플러그인 그룹을 정리한다. 같은 정지 단계는 owner와 무관하게
+    // 종료된 리더의 잔여도 grace 뒤 거둔다. 살아 있는 에이전트는 flush를 위해 계속 SDK close에 맡긴다.
+    ownedProcesses.beginStop((group) => group.owner?.startsWith("plugin:") === true, OWNED_GROUP_TERM_GRACE_MS, {
       onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error),
     });
     for (const cleanup of [...executionCleanupCallbacks].reverse()) {

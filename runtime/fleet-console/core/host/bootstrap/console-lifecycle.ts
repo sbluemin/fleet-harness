@@ -37,6 +37,7 @@ import {
   CONSOLE_START_TIMEOUT_MS,
   CONSOLE_STOP_DEADLINE_MS,
   EXTERNAL_ESCALATION_MS,
+  OWNED_GROUP_TERM_GRACE_MS,
   PRELOCK_CHILD_GRACE_MS,
   describeConsoleLockSlotQuiescenceCheck,
   describeConsoleOwnerOutlivedKill,
@@ -52,6 +53,7 @@ import {
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import { describeDaemonStartFailure } from "../transport/failure-notice.js";
 import { createConsoleFailureLog } from "./failure-log.js";
+import { createWindowsJobContainment, loadWindowsJobBindings } from "./windows-job-containment.js";
 import { createConsoleStalePolicy } from "./stale.js";
 import {
   command,
@@ -267,6 +269,21 @@ function formatConsoleHelpRelease(): string {
   return `${release.version} · ${release.channel}`;
 }
 
+/**
+ * The Windows job port, or null everywhere else and when koffi or the kernel calls will not load. A failure is one
+ * `containment_degraded` line in the Console failure log (the same channel as `reaper_degraded`) and never a crash.
+ */
+function openWindowsProcessContainment(recordFailure: (kind: string, error: unknown) => void) {
+  if (process.platform !== "win32") return null;
+  const record = (error: unknown) => recordFailure("containment_degraded", error instanceof Error ? error : new Error(String(error)));
+  try {
+    return createWindowsJobContainment(loadWindowsJobBindings(), (detail) => record(detail.error));
+  } catch (error) {
+    record(error);
+    return null;
+  }
+}
+
 export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = {}) {
   const env = deps.env ?? process.env;
   // TLS 검사 프록시 환경 대응(issue #531): OS 신뢰 저장소를 기본 신뢰한다. opt-out은 FLEET_CONSOLE_NO_SYSTEM_CA=1.
@@ -297,7 +314,11 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // Every long-lived child this instance starts on purpose leads a registered process group. The deadline ends those
     // while the Console runs; the reaper, told about each group as it happens, ends them once the Console is gone.
     let reaper: ConsoleReaperLink | null = null;
+    // The only place a Windows job port is built. CLI stop, Desktop, and the update worker never reach this function.
+    // A load failure records containment_degraded once and leaves the registry on libuv's job; it must not block boot.
+    const windowsContainment = openWindowsProcessContainment(recordFailure);
     const ownedProcesses = createOwnedProcessRegistry({
+      ...(windowsContainment ? { containment: windowsContainment } : {}),
       onRegistered: (group) => reaper?.registered(group),
       onLeaderExited: (group) => reaper?.leaderExited(group),
       onRemoved: (pgid) => reaper?.removed(pgid),
@@ -315,9 +336,13 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         });
       },
       // From the first stop request until the process exits, whatever is still running: a stalled start, a cleanup stuck
-      // with the lock, or a child that outlives the released lock. The owned process groups are SIGKILLed first; a lock
-      // left behind is reclaimed by the next Console once this pid is ESRCH.
+      // with the lock, or a child that outlives the released lock. The owned process groups are ended first (SIGKILL on
+      // POSIX, TerminateJobObject on Windows); a lock left behind is reclaimed by the next Console once this pid is ESRCH.
       onStopRequested: () => {
+        // 먼저 잔여 종료 관찰만 켠다. 살아 있는 리더와 플러그인 자체 cleanup 순서는 바꾸지 않는다.
+        ownedProcesses.beginStop(() => false, OWNED_GROUP_TERM_GRACE_MS, {
+          onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error),
+        });
         deadline = setTimeout(() => {
           // One process-table read at most, shared by both steps: the external escalation leaves room for one.
           const table = createProcessTableSnapshot(env);
@@ -339,7 +364,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
           catch (error) { recordFailure("shutdown_process_table_unavailable", error); }
           const killed = groups + strays;
           const settled = lifecycle.isStartupSettled();
-          recordFailure(settled ? "shutdown_timeout" : "startup_shutdown_timeout", new Error(`Console ${settled ? "shutdown" : "startup shutdown"} did not finish within ${CONSOLE_STOP_DEADLINE_MS}ms; SIGKILL sent to ${groups} owned process group(s) and ${strays} other leftover child process(es)`));
+          recordFailure(settled ? "shutdown_timeout" : "startup_shutdown_timeout", new Error(`Console ${settled ? "shutdown" : "startup shutdown"} did not finish within ${CONSOLE_STOP_DEADLINE_MS}ms; ended ${groups} owned process group(s) and ${strays} other leftover child process(es)`));
           exitOutcome = { outcome: "deadline", killed };
           process.exit(1);
         }, CONSOLE_STOP_DEADLINE_MS);
