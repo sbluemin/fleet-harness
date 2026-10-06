@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http2 from "node:http2";
@@ -68,7 +69,7 @@ function cursorWirePlanCount(filePath: string): number {
 
 describe("Cursor live client-tool Run bridge", () => {
 
-  it("redirects native Grep through a readable shell search and fails closed on a broken receipt", async () => {
+  it("redirects native Grep through a readable shell search, native Glob to the caller Glob, and fails closed on a broken receipt", async () => {
     const nativeCall = cursorCall("native-grep-shell-failure", 29);
     const stream = new BridgeCursorStream(
       [{
@@ -251,6 +252,141 @@ describe("Cursor live client-tool Run bridge", () => {
         }],
         "cursor",
       )).toBeNull();
+
+      // Cursor's shell always names a working directory; Claude Code's Bash has no field for it.
+      const bashTool = {
+        clientName: "Bash",
+        wireName: "bash",
+        inputSchemaValue: {
+          type: "object",
+          properties: { command: { type: "string" }, timeout: { type: "number" } },
+        },
+      };
+      const shellDirectory = mkdtempSync(path.join(tmpdir(), "fleet-cursor-shell-cwd-"));
+      temporaryWireLogDirectories.push(shellDirectory);
+      const nativeShell = (workingDirectory: string) => cursorNativeExecRedirect(
+        {
+          id: 4,
+          execId: "native-shell",
+          shellStreamArgs: {
+            command: "basename \"$PWD\"\nfalse || echo fallback # trailing comment",
+            workingDirectory,
+            timeout: 30000,
+          },
+        },
+        [bashTool],
+        "cursor",
+      );
+      const runRedirected = (workingDirectory: string) => {
+        const shellRedirect = nativeShell(workingDirectory);
+        expect(shellRedirect).toMatchObject({ adapter: "shell-direct", nativeResultType: "shellStreamResult" });
+        const args = JSON.parse(shellRedirect?.call.arguments ?? "{}") as { command: string; timeout: number };
+        expect(args.timeout).toBe(30000);
+        return spawnSync("/bin/sh", ["-c", args.command], { cwd: tmpdir(), encoding: "utf8" });
+      };
+      const inDirectory = runRedirected(shellDirectory);
+      expect(inDirectory.stdout).toBe(`${path.basename(shellDirectory)}\nfallback\n`);
+      expect(inDirectory.status).toBe(0);
+      // A directory that cannot be entered runs no part of the command anywhere else.
+      const missingDirectory = runRedirected(path.join(shellDirectory, "missing"));
+      expect(missingDirectory.stdout).toBe("");
+      expect(missingDirectory.status).not.toBe(0);
+
+      // Cursor's own file-name search arrives as a pattern-less grep that carries only a glob.
+      const globSchema = {
+        type: "object",
+        properties: { pattern: { type: "string" }, path: { type: "string" } },
+      };
+      const globRedirect = cursorNativeExecRedirect(
+        {
+          id: 2,
+          execId: "native-glob",
+          grepArgs: {
+            path: "/repo",
+            glob: "**/runtime/*/CLAUDE.md",
+            outputMode: "files_with_matches",
+          },
+        },
+        [
+          { clientName: "Grep", wireName: "grep", inputSchemaValue: { type: "object", properties: { pattern: { type: "string" } } } },
+          { clientName: "Glob", wireName: "glob", inputSchemaValue: globSchema },
+        ],
+        "cursor",
+      );
+      expect(globRedirect).toMatchObject({ adapter: "glob-direct", nativeResultType: "grepResult" });
+      expect(globRedirect?.call.name).toBe("Glob");
+      expect(JSON.parse(globRedirect?.call.arguments ?? "{}")).toEqual({
+        pattern: "**/runtime/*/CLAUDE.md",
+        path: "/repo",
+      });
+      // 공백만 있는 내용 검색은 파일 이름 검색이 아니므로 내용 조건을 버린 채 Glob으로 가지 않는다.
+      expect(cursorNativeExecRedirect(
+        {
+          id: 4,
+          execId: "native-grep-whitespace",
+          grepArgs: { pattern: " ", path: "/repo", glob: "**/*.ts", outputMode: "files_with_matches" },
+        },
+        [{ clientName: "Glob", wireName: "glob", inputSchemaValue: globSchema }],
+        "cursor",
+      )).toBeNull();
+      // Cursor prefixes an absolute glob_pattern with `**` too; the caller gets it relative to the path.
+      const absoluteGlob = cursorNativeExecRedirect(
+        {
+          id: 3,
+          execId: "native-glob-absolute",
+          grepArgs: {
+            path: "/repo",
+            glob: "**/repo/runtime/*/CLAUDE.md",
+            outputMode: "files_with_matches",
+          },
+        },
+        [{ clientName: "Glob", wireName: "glob", inputSchemaValue: globSchema }],
+        "cursor",
+      );
+      expect(JSON.parse(absoluteGlob?.call.arguments ?? "{}")).toEqual({
+        pattern: "runtime/*/CLAUDE.md",
+        path: "/repo",
+      });
+      const globCorrelation = {
+        messageId: 2,
+        execId: "native-glob",
+        nativeResultType: "grepResult" as const,
+        nativeArgs: globRedirect?.nativeArgs,
+      };
+      const globFiles = (output: string) => cursorNativeRedirectResultReplies(globCorrelation, output, false);
+      expect(globFiles(
+        "runtime/a/CLAUDE.md\nruntime/b/CLAUDE.md\n(Results are truncated. Consider using a more specific path or pattern.)",
+      )).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          grepResult: {
+            success: expect.objectContaining({
+              workspaceResults: {
+                "/repo": {
+                  files: {
+                    files: ["runtime/a/CLAUDE.md", "runtime/b/CLAUDE.md"],
+                    totalFiles: 2,
+                    clientTruncated: true,
+                    ripgrepTruncated: false,
+                  },
+                },
+              },
+            }),
+          },
+        }),
+      }));
+      expect(globFiles("No files found")).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          grepResult: {
+            success: expect.objectContaining({
+              workspaceResults: {
+                "/repo": {
+                  files: expect.objectContaining({ files: [], totalFiles: 0 }),
+                },
+              },
+            }),
+          },
+        }),
+      }));
     } finally {
       harness.adapter.dispose();
     }

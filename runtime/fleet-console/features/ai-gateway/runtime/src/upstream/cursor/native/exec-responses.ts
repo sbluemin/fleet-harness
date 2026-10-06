@@ -37,7 +37,10 @@ export function cursorNativeExecPolicyReplies(
     "shell_command",
     "exec_command",
   ]);
+  // A grep with no pattern is Cursor's file-name search; name the caller's Glob first for it.
+  const globOnlyGrep = isRecord(exec.grepArgs) && !stringValue(exec.grepArgs.pattern);
   const grepMessage = retryMessage(clientTools, [
+    ...(globOnlyGrep ? ["Glob"] : []),
     "Grep",
     "Bash",
     "shell_command",

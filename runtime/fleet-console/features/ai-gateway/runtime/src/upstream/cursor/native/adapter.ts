@@ -236,7 +236,7 @@ export interface CursorDiagnosticEvent {
   readonly outcome?: string;
   /** Run-local sequence only; never a caller or provider identifier. */
   readonly operationSequence?: number;
-  readonly adapter?: "read-direct" | "grep-direct" | "grep-shell" | "shell-direct";
+  readonly adapter?: "read-direct" | "grep-direct" | "glob-direct" | "grep-shell" | "shell-direct";
   readonly error?: string;
 }
 
@@ -1141,7 +1141,12 @@ function cursorClientToolDiscipline(
   );
   const routed: string[] = [];
   const hasShell = ["bash", "shellcommand", "execcommand"].some((leaf) => redirectLeaves.has(leaf));
-  if (redirectLeaves.has("grep") || hasShell) routed.push("search");
+  // Cursor's file-name search reaches only the caller's Glob; content search reaches Grep or a shell.
+  const routesContentSearch = redirectLeaves.has("grep") || hasShell;
+  const routesFileSearch = redirectLeaves.has("glob");
+  if (routesContentSearch && routesFileSearch) routed.push("search");
+  else if (routesContentSearch) routed.push("content search");
+  else if (routesFileSearch) routed.push("file-name search");
   if (hasShell) routed.push("shell");
   // Cursor's own prompt describes a native file read, and the model opened with one in 9 of 10
   // measured baseline trials even with the caller's read tool advertised. That native read
@@ -1200,7 +1205,7 @@ interface CursorPendingToolCorrelation {
   readonly nativeResultType?: CursorNativeRedirectResultType;
   readonly nativeArgs?: Readonly<Record<string, string>>;
   readonly operationSequence?: number;
-  readonly redirectAdapter?: "read-direct" | "grep-direct" | "grep-shell" | "shell-direct";
+  readonly redirectAdapter?: "read-direct" | "grep-direct" | "glob-direct" | "grep-shell" | "shell-direct";
 }
 
 type CursorCanonicalToolResult = Extract<CanonicalInputItem, { type: "function_call_output" }>;
