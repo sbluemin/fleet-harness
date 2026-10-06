@@ -97,6 +97,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
   const outcomes = new Map<string, "running" | "succeeded" | "failed" | "interrupted" | "unknown">();
   const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure }>();
+  const turnEndListeners = new Set<(event: import("@fleet-console/sdk/mcp").ConsoleTurnEnd) => void>();
   const interrupted: string[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string }[] = [];
   const resumed: string[] = [];
@@ -212,6 +213,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
         // 전사 — 호스트가 소유를 따진 뒤 돌려주는 한 쪽. 어느 세션을 읽었는지만 남긴다.
         transcript: async (operationId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${operationId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
         observe: observeSession,
+        subscribeTurnEnds: (listener: (event: import("@fleet-console/sdk/mcp").ConsoleTurnEnd) => void) => { turnEndListeners.add(listener); return () => { turnEndListeners.delete(listener); }; },
         // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
         sleep: async (operationId: string) => {
           const state = activity.get(operationId);
@@ -269,7 +271,10 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, advanceClock: (ms: number) => { clock += ms; } };
+  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
+    const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
+    for (const listener of turnEndListeners) listener({ operationId: id, output });
+  }, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, advanceClock: (ms: number) => { clock += ms; } };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -1967,11 +1972,18 @@ describe("Objectives contract", () => {
       // 정상 종료 없이 바로 다음 실패가 온다. Chat도 같은 실패 전달 계약이며 revision으로 같은 턴 재관측을 구별한다.
       surfaces.set(memberId, "chat");
       outputDetails.set(memberId, { revision: 2, failure: overload });
+      h.emitTurnEnd(memberId);
+      // c137처럼 다음 턴이 즉시 시작해 polling에서는 이미 running만 보인다.
+      activity.set(memberId, "running");
+      outcomes.set(memberId, "running");
       await vi.advanceTimersByTimeAsync(1_000);
       expect.soft(notifications()).toHaveLength(2);
       for (const value of Object.values(overload)) expect.soft(notifications()[1]?.text ?? "").toContain(value);
       expect.soft(await memberView()).toMatchObject({ failure: { ...overload, consecutiveFailures: 2 } });
       expect.soft(await failureRows()).toHaveLength(1);
+      activity.set(memberId, "idle");
+      outcomes.set(memberId, "failed");
+      h.emitTurnEnd(memberId);
       await vi.advanceTimersByTimeAsync(5_000);
       expect.soft(notifications()).toHaveLength(2);
       expect(memberSends()).toHaveLength(memberSendsBefore);
@@ -2013,7 +2025,9 @@ describe("Objectives contract", () => {
       expect(upserts()).toHaveLength(removed);
       launch.dispose();
       const afterDispose = upserts().length;
+      expect(h.turnEndListeners.size).toBe(0);
       outcomes.set(id, "failed");
+      h.emitTurnEnd(id);
       await vi.advanceTimersByTimeAsync(5_000);
       expect(upserts()).toHaveLength(afterDispose);
     } finally {

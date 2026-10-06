@@ -285,7 +285,7 @@ export type AgentChatStreamEvent =
    * `stopped`는 사용자가 끊은 턴이다 — 실패와 같은 자리에 두지 않는 이유는 결말이 다르기 때문이다.
    * 실패는 "하려던 일이 안 됐다"이고 중지는 "하려던 일을 그만두게 했다"이며, 후자에는 고칠 것이 없다.
    */
-  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string; readonly stopped?: boolean }
+  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string; readonly stopped?: boolean; readonly failure?: import("@fleet-console/sdk/mcp").ConsoleTurnFailure }
   /**
    * 턴보다 오래 사는 작업 하나가 등록됐다. 이 축이 원장의 턴 시계와 별개로 존재해야 하는
    * 이유는 단순하다 — 백그라운드 작업은 정의상 턴을 넘겨서 살고, 턴 시계 하나로는 그것을
@@ -790,9 +790,19 @@ export function chatEventsFromSdkMessage(message: {
     const durationMs = (message as { readonly duration_ms?: unknown }).duration_ms;
     const ok = (message as { readonly is_error?: unknown }).is_error !== true;
     const result = (message as { readonly result?: unknown }).result;
+    const raw = message as { readonly error?: unknown; readonly subtype?: unknown; readonly errors?: unknown; readonly error_details?: unknown; readonly last_assistant_message?: unknown };
+    const details = typeof raw.error_details === "string" ? raw.error_details
+      : Array.isArray(raw.errors) ? raw.errors.filter((value): value is string => typeof value === "string").join("\n") : undefined;
+    const failure = ok ? undefined : {
+      error: typeof raw.error === "string" ? raw.error : typeof raw.subtype === "string" ? raw.subtype : "unknown",
+      ...(details !== undefined ? { error_details: details } : {}),
+      ...(typeof raw.last_assistant_message === "string" ? { last_assistant_message: raw.last_assistant_message }
+        : typeof result === "string" ? { last_assistant_message: result } : {}),
+    };
     return [{
       kind: "turn-end",
       ok,
+      ...(failure ? { failure } : {}),
       ...(typeof durationMs === "number" && Number.isFinite(durationMs) ? { durationMs } : {}),
       ...(ok && typeof result === "string" && result.trim().length > 0 ? { answer: capText(result) } : {}),
     }];

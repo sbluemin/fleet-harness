@@ -48,6 +48,20 @@ export interface ConsoleActionInput {
   readonly newOperationId?: string;
 }
 
+/** 턴 실패의 원문 데이터 — 문자열을 요약하거나 지시로 실행하지 않는다. */
+export interface ConsoleTurnFailure {
+  readonly error: string;
+  readonly error_details?: string;
+  readonly last_assistant_message?: string;
+}
+
+/** 다음 턴이 관측을 덮기 전에 전달하는 종료 snapshot. 브라우저 알림 채널이 아니다. */
+export interface ConsoleTurnEnd {
+  readonly operationId: string;
+  readonly generation?: string;
+  readonly output: ConsoleOperationObservation["output"];
+}
+
 export interface ConsoleOperationObservation {
   readonly activity: ConsoleActivity;
   readonly lifecycle: "live" | "dormant" | "unknown";
@@ -68,6 +82,7 @@ export interface ConsoleOperationObservation {
     readonly truncated?: boolean;
     readonly revision?: number;
     readonly outcome: "unknown" | "running" | "completed" | "succeeded" | "failed" | "interrupted";
+    readonly failure?: ConsoleTurnFailure;
   };
 }
 

@@ -1,4 +1,11 @@
 import { z } from "zod";
+import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
+
+/** 살아 있는 구성원의 직전 실패와 표시 횟수. acknowledge는 inbox만 해소한다. */
+export interface ObjectiveMemberFailure extends ConsoleTurnFailure {
+  readonly consecutiveFailures: number;
+  readonly acknowledged?: true;
+}
 import type { ObjectiveResult, StoredEvidence } from "./results.js";
 export type { ObjectiveResult, PrObservation } from "./results.js";
 
@@ -178,6 +185,7 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagent
   readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null } | null;
   /** 공개 세션 관측의 실패 결말. */
   readonly outcome?: "failed";
+  readonly failure?: ObjectiveMemberFailure;
 }
 
 /** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */

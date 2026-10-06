@@ -614,6 +614,10 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities, 
   return {
     host: {
       ...host,
+      ...(host.consoleControl?.subscribeTurnEnds ? { consoleControl: {
+        ...host.consoleControl,
+        subscribeTurnEnds: (listener: (event: import("@fleet-console/sdk/mcp").ConsoleTurnEnd) => void) => track(host.consoleControl!.subscribeTurnEnds!(listener)),
+      } } : {}),
       ...(host.mcpTransport ? { mcpTransport: {
         mount: (handler: Parameters<NonNullable<FleetPluginHostCapabilities["mcpTransport"]>["mount"]>[0]) => {
           const binding = host.mcpTransport!.mount(handler);
