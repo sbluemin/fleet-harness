@@ -280,6 +280,9 @@ export const agentExecution: ClientExecutionProvider = {
   },
 };
 
+/** 플러그인 소유 에이전트 기록의 채팅 렌더러 — 코어가 플러그인 install 컨텍스트의 `chat.Transcript` 로 넘긴다. */
+export { AgentChatTranscript } from "./chat/chat-transcript.js";
+
 export const operationKinds = [agentOperationKind] as const;
 
 // resumeOperation 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.

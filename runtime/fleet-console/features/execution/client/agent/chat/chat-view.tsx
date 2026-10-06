@@ -1224,7 +1224,7 @@ function ChatCommandRow({
 }
 
 // 턴은 props가 모두 안정적이다 — 패널 틀이 다시 그려질 때(모드 전환·정렬·줌) 수십 턴이 함께 다시 그려지지 않게 비교한다.
-const ChatTurn = React.memo(function ChatTurn({
+export const ChatTurn = React.memo(function ChatTurn({
   operationId,
   turn,
   nextContextBefore,
@@ -1332,6 +1332,7 @@ const ChatTurn = React.memo(function ChatTurn({
                 더는 특기 사항이 아니고, 경로를 가르는 origin 와이어는 배지 하나 값이 아니다. */}
             {turn.dispatch.by ? <span className="chat-by-agent">{chatOriginLabel(turn.dispatch.by)}</span> : null}
             {turn.dispatch.at !== undefined ? <span>{timeFormat.format(new Date(turn.dispatch.at))}</span> : null}
+            {turn.dispatch.undelivered ? <span className="agent-chat-undelivered" title={t("terminal.chat.undeliveredHint")}>{t("terminal.chat.undelivered")}</span> : null}
           </div>
           <div className={`agent-chat-dispatch-bubble${turn.dispatch.format === "markdown" ? " is-markdown" : ""}`}>
             {turn.dispatch.attachments && turn.dispatch.attachments.length > 0

@@ -168,8 +168,17 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   z.object({ ...transcriptBase, kind: z.literal("error"), code: z.string().max(64), retryAt: z.number().int().nonnegative().optional() }).strict(),
 ]);
 
+/**
+ * 저장하지 않는 라이브 사건 — 턴 중 글자 흐름과 진행 중 도구 이름. 기록 줄이 정정 앵커라 놓쳐도 화면은 다음 확정 줄로 수렴한다.
+ * 도구는 이름만 싣는다(입력은 기록과 같이 싣지 않는다). 사고 내용은 싣지 않는다.
+ */
+export type CommodoreLiveEvent =
+  | { readonly kind: "text-delta"; readonly text: string }
+  | { readonly kind: "tool-start"; readonly name: string };
+
 /** 브라우저·감독자 양쪽으로 나가는 사건 — `objectives:commodore` 채널. */
 export type CommodoreEvent =
+  | { readonly op: "live"; readonly theaterId: string; readonly live: CommodoreLiveEvent }
   | { readonly op: "state"; readonly theaterId: string; readonly state: CommodoreState; readonly change: CommodoreStateChange }
   | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
   | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus };

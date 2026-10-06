@@ -30,7 +30,7 @@ export type AgentChatAskForm = "question" | "plan";
 export type AgentChatAskOutcome = "answered" | "dismissed" | "approved" | "revised";
 
 /** 사람이 아닌 발화자 — Console Use 로 보낸·답한 다른 Operation. 제목만 온다. */
-export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
+export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly label?: string };
 export function readChatOrigin(value: unknown): AgentChatOrigin | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
@@ -122,7 +122,8 @@ export type AgentChatStreamEvent =
   /** 라이브 전용 총량 — 저널에 실리지 않는다. 내역은 없다(control 채널만 그것을 안다). */
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
-  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
+  /** `undelivered`는 플러그인 기록(SDK 채팅 기록)만 싣는다 — 세션에 닿지 못한 사람의 말. 서버 스트림은 싣지 않는다. */
+  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin; readonly undelivered?: true }
   /** 도는 턴이 사용자의 말 하나를 집어갔다 — 새 턴을 열지 않고 그 턴 안에 선다. */
   | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
   /**
@@ -691,7 +692,7 @@ export interface AgentChatTurnItem {
 }
 
 export interface AgentChatTurn {
-  readonly dispatch: { readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin } | null;
+  readonly dispatch: { readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin; readonly undelivered?: true } | null;
   readonly items: readonly AgentChatTurnItem[];
   /**
    * `stopped`가 `error`와 따로 있는 이유는 결말이 다르기 때문이다. 실패는 하려던 일이 안 된
@@ -1039,7 +1040,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
     }
     case "dispatch": {
       const turn: AgentChatTurn = {
-        dispatch: { text: event.text, ...(event.format ? { format: event.format } : {}), ...(event.attachments && event.attachments.length > 0 ? { attachments: event.attachments } : {}), ...(event.at !== undefined ? { at: event.at } : {}), ...(event.by ? { by: event.by } : {}) },
+        dispatch: { text: event.text, ...(event.format ? { format: event.format } : {}), ...(event.attachments && event.attachments.length > 0 ? { attachments: event.attachments } : {}), ...(event.at !== undefined ? { at: event.at } : {}), ...(event.by ? { by: event.by } : {}), ...(event.undelivered ? { undelivered: true as const } : {}) },
         items: [],
         // synthetic replay에서는 저널의 live dispatch 뒤에 같은 턴의 turn-start가 따라온다. 여기서
         // 미리 done으로 닫으면 그 start가 별도 턴을 만들므로, replay-end나 다음 dispatch가 닫게 둔다.

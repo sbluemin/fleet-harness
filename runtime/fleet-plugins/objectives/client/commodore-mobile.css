@@ -44,33 +44,11 @@
 .objectives-cm-head { display: flex; align-items: baseline; gap: 8px; margin: 0; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .objectives-cm-head b { color: var(--m-text-nav); font-weight: var(--weight-bold); }
 .objectives-cm-time { font-variant-numeric: tabular-nums; }
-.objectives-cm-wake { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.objectives-cm-wake .markdown-body { align-self: stretch; margin: 0; background: none; color: var(--m-text); font-family: var(--m-reading); font-size: var(--m-fs-body); line-height: 26px; }
-.objectives-cm-wake .markdown-body > * + * { margin-top: 0; }
-.objectives-cm-wake .markdown-body p { margin: 0 0 10px; }
-.objectives-cm-wake .markdown-body > :last-child { margin-bottom: 0; }
-.objectives-cm-wake .markdown-body strong { font-weight: var(--weight-bold); }
-.objectives-cm-wake .markdown-body :not(pre) > code { padding: 1px 5px; border-radius: 5px; background: var(--m-chip); font-family: var(--m-mono); font-size: .86em; }
-.objectives-cm-wake .markdown-body pre { margin: 0 0 10px; padding: 0; border: 1px solid var(--m-hairline-strong); border-radius: 12px; background: var(--m-surface); box-shadow: none; }
-.objectives-cm-wake .markdown-body pre code { display: block; padding: 10px 12px; overflow-x: auto; font-family: var(--m-mono); font-size: var(--m-fs-mono); line-height: 20px; scrollbar-width: none; }
-.objectives-cm-wake .markdown-body .code-block-toolbar { display: none; }
-.objectives-cm-acts { display: flex; flex-wrap: wrap; gap: 6px; }
-.objectives-cm-act { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 16px; background: var(--m-chip); color: var(--m-text-muted); font-size: var(--m-fs-caption); white-space: pre; }
-.objectives-cm-act b { color: var(--m-text); font-weight: var(--weight-bold); }
 .objectives-cm-note { margin: 0; color: var(--m-danger); font-size: var(--m-fs-caption); line-height: 18px; }
 .objectives-cm-note.is-dim { color: var(--m-text-faint); }
-.objectives-cm .objectives-cm-tools { display: inline-flex; align-items: center; gap: 4px; margin-left: -10px; color: var(--m-text-faint); font-weight: var(--weight-regular); font-size: var(--m-fs-caption); }
-.objectives-cm-tool-list { display: flex; flex-direction: column; gap: 2px; color: var(--m-text-faint); font-family: var(--m-mono); font-size: var(--m-fs-small); line-height: 18px; }
-.objectives-cm-tool-list p { margin: 0; overflow-wrap: anywhere; }
-.objectives-cm-tool-list span { color: var(--m-text-muted); }
-.objectives-cm-tool-list .is-failed { color: var(--m-danger); }
-.objectives-cm-mark { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--m-text-faint); font-size: var(--m-fs-small); font-variant-numeric: tabular-nums; }
-.objectives-cm-mark::before,
-.objectives-cm-mark::after { content: ""; flex: 1; height: 1px; background: var(--m-hairline-strong); opacity: .6; }
 .objectives-cm-msg { display: flex; flex-direction: column; align-items: flex-end; align-self: flex-end; gap: 4px; max-width: 82%; }
 .objectives-cm-bubble { max-width: 100%; margin: 0; padding: 10px 16px; border: 1px solid transparent; border-radius: 20px; background: var(--m-surface); font-size: var(--m-fs-list); line-height: 23px; white-space: pre-wrap; overflow-wrap: anywhere; }
 :root[data-mobile-scheme="light"] .objectives-cm-bubble { border-color: var(--m-hairline); }
-.objectives-cm-thinking { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--m-text-muted); font-size: var(--m-fs-meta); }
 .objectives-cm .objectives-cm-tbtn.is-center { align-self: center; }
 
 /* 입력 독(S-27) — 첨부·모델 알약 없이 보내기 원만. */

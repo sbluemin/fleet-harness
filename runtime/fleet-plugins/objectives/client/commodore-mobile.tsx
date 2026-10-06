@@ -7,12 +7,14 @@ import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } 
 import { useMobileSettingsHost } from "@fleet-console/sdk/react/browser";
 import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
 
-import type { CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
-import { actionWord, commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, CommodoreMarkdown, commodoreValue, DEFAULT_PATROL, errorWord, groupTranscript, PATROL_STEPS, patrolWord, reasonWord, toolSummary } from "./commodore-drawer.js";
+import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
+import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-drawer.js";
 import { clockTime, commodoreSummary } from "./commodore-row.js";
 import {
   addCommodoreIntel,
   commodoreLanguage,
+  commodoreTranscriptRenderer,
   loadCommodore,
   loadTranscript,
   messageCommodore,
@@ -35,7 +37,7 @@ import {
   useCommodoreTheaterLabel,
   type CommodoreTab,
 } from "./commodore-state.js";
-import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
+import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { DEFAULT_LAUNCH } from "./launch-control.js";
 import { useObjectiveTheater } from "./objectives-state.js";
 import "./commodore-mobile.css";
@@ -62,7 +64,6 @@ const ClockIcon = () => <Icon><circle cx="12" cy="13" r="7.5" /><path d="M12 9.5
 const TargetIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></Icon>;
 const ChartIcon = () => <Icon><path d="M4 4v16h16" /><path d="M8 15l3-4 3 2 5-6" /></Icon>;
 const SendIcon = () => <Icon size={20} strokeWidth={2.2}><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
-const Chevron = ({ open }: { readonly open: boolean }) => <Icon size={14}><path d={open ? "M6 9l6 6 6-6" : "M9 6l6 6-6 6"} /></Icon>;
 
 type Glyph = "idle" | "running" | "background";
 const StatusMark = ({ state }: { readonly state: Glyph }) => <span className={`objectives-m-sg is-${state}`} aria-hidden="true" />;
@@ -129,7 +130,7 @@ function CommodoreDisabled({ t }: { readonly t: T }) {
 }
 
 function CommodoreScreen({ t, theaterId, enabled }: { readonly t: T; readonly theaterId: string; readonly enabled: boolean }) {
-  const { view, entries, hasMore, transcriptLoaded } = useCommodore(theaterId);
+  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
   const tab = useCommodoreMobileTab();
   const online = useCommodoreOnline();
   const [failure, setFailure] = useState<string | null>(null);
@@ -170,7 +171,7 @@ function CommodoreScreen({ t, theaterId, enabled }: { readonly t: T; readonly th
           <button key={item.id} type="button" role="tab" data-press="r1" aria-selected={tab === item.id} className={tab === item.id ? "is-on" : undefined} onClick={() => setCommodoreMobileTab(item.id)}>{item.label}</button>
         ))}
       </div>
-      {tab === "log" ? <CommodoreMobileLog t={t} theaterId={theaterId} view={view} entries={entries} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
+      {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
       {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
       {tab === "intel" && view ? <CommodoreMobileIntel t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
       {tab === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
@@ -229,11 +230,13 @@ function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly
 
 interface Pending { readonly key: number; readonly text: string; readonly at: number }
 
-function CommodoreMobileLog({ t, theaterId, view, entries, hasMore, loaded, online, failure, onFail, onClear }: {
+function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMore, loaded, online, failure, onFail, onClear }: {
   readonly t: T;
+  readonly language: "en" | "ko";
   readonly theaterId: string;
   readonly view: CommodoreView | null;
   readonly entries: readonly CommodoreTranscriptEntry[];
+  readonly live: readonly CommodoreLiveEvent[];
   readonly hasMore: boolean;
   readonly loaded: boolean;
   readonly online: boolean;
@@ -241,10 +244,10 @@ function CommodoreMobileLog({ t, theaterId, view, entries, hasMore, loaded, onli
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
 }) {
-  // 모바일은 채팅과 같은 방향 — 오래된 것 위, 새 것 아래(입력창 바로 위가 최신). 데스크톱 시트는 새 것이 위다.
-  const items = useMemo(() => groupTranscript(t, entries), [t, entries]);
+  // 데스크톱 시트와 같은 채팅 턴 렌더러 — 오래된 것 위, 새 것 아래(입력창 바로 위가 최신).
+  const Transcript = commodoreTranscriptRenderer();
+  const chat = useMemo(() => commodoreChatEntries(t, entries, live), [t, entries, live]);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState<ReadonlySet<string>>(() => new Set());
   const [pending, setPending] = useState<Pending | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pinned = useRef(true);
@@ -259,7 +262,7 @@ function CommodoreMobileLog({ t, theaterId, view, entries, hasMore, loaded, onli
     if (!node) return;
     if (olderAnchor.current !== null) { node.scrollTop = node.scrollHeight - olderAnchor.current; olderAnchor.current = null; return; }
     if (pinned.current) node.scrollTop = node.scrollHeight;
-  }, [items, pending, turn, loaded]);
+  }, [chat, pending, turn, loaded]);
 
   const onScroll = () => {
     const node = scrollRef.current;
@@ -275,7 +278,7 @@ function CommodoreMobileLog({ t, theaterId, view, entries, hasMore, loaded, onli
   let body: ReactNode;
   if (!loaded) {
     body = <div className="objectives-cm-center"><p className="objectives-cm-center-text is-row"><StatusMark state="running" />{t("objectives.commodore.mobile.loading")}</p></div>;
-  } else if (items.length === 0 && !turn && !pending) {
+  } else if (chat.length === 0 && !turn && !pending) {
     body = (
       <div className="objectives-cm-center">
         <span className="objectives-cm-bigmono"><PennantIcon /></span>
@@ -286,56 +289,20 @@ function CommodoreMobileLog({ t, theaterId, view, entries, hasMore, loaded, onli
     body = (
       <>
         {hasMore ? <button type="button" data-press="r1" className="objectives-cm-tbtn is-center" disabled={loadingOlder} onClick={older}>{t("objectives.commodore.log.older")}</button> : null}
-        {items.map((item) => {
-          if (item.kind === "marker") return <p key={item.key} className="objectives-cm-mark"><span>{clockTime(item.at)} · {item.text}</span></p>;
-          if (item.kind === "message") {
-            return (
-              <div key={item.key} className="objectives-cm-msg">
-                <p className="objectives-cm-head"><b>{t("objectives.commodore.log.you")}</b><span className="objectives-cm-time">{clockTime(item.at)}</span>{item.undelivered ? <span className="is-danger" title={t("objectives.commodore.log.undeliveredHint")}>{t("objectives.commodore.log.undelivered")}</span> : null}</p>
-                <p className="objectives-cm-bubble">{item.text}</p>
-              </div>
-            );
-          }
-          const open = toolsOpen.has(item.key);
-          return (
-            <div key={item.key} className="objectives-cm-wake">
-              <p className="objectives-cm-head"><span className="objectives-cm-time">{clockTime(item.at)}</span><b>{item.reasons.length > 0 ? item.reasons.map((reason) => reasonWord(t, reason)).join(" · ") : t("objectives.commodore.log.woke")}</b></p>
-              {item.texts.map((text, index) => <CommodoreMarkdown key={index} t={t} text={text} />)}
-              {item.actions.length > 0 ? (
-                <div className="objectives-cm-acts">
-                  {item.actions.map((act) => <span key={act.key} className="objectives-cm-act"><b>{actionWord(t, act.action)}</b>{act.title ? ` · ${act.title}` : ""}</span>)}
-                </div>
-              ) : null}
-              {item.notes.map((note) => <p key={note.key} className={`objectives-cm-note${note.tone === "dim" ? " is-dim" : ""}`}>{note.text}</p>)}
-              {item.tools.length > 0 ? (
-                <>
-                  <button type="button" data-press="r1" className="objectives-cm-tbtn objectives-cm-tools" aria-expanded={open} onClick={() => setToolsOpen((current) => { const next = new Set(current); if (next.has(item.key)) next.delete(item.key); else next.add(item.key); return next; })}>
-                    {t("objectives.commodore.log.tools", { summary: toolSummary(item.tools) })}<Chevron open={open} />
-                  </button>
-                  {open ? (
-                    <div className="objectives-cm-tool-list">
-                      {item.tools.map((tool) => <p key={tool.seq} className={tool.ok === false ? "is-failed" : undefined}><span>{tool.action ? `${tool.name} ${tool.action}` : tool.name}</span>{tool.summary ? ` ${tool.summary}` : ""}</p>)}
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-          );
-        })}
+        {Transcript ? <Transcript entries={chat} language={language} mobile /> : null}
         {pending ? (
           <div className="objectives-cm-msg">
             <p className="objectives-cm-head"><b>{t("objectives.commodore.log.you")}</b><span className="objectives-cm-time">{clockTime(pending.at)}</span><span>{t("objectives.commodore.mobile.sending")}</span></p>
             <p className="objectives-cm-bubble">{pending.text}</p>
           </div>
         ) : null}
-        {turn ? <p className="objectives-cm-thinking"><StatusMark state="running" />{t("objectives.commodore.mobile.thinking")}</p> : null}
       </>
     );
   }
 
   return (
     <div className="objectives-cm-fill">
-      <div ref={scrollRef} className={`objectives-cm-chat${loaded && (items.length > 0 || turn || pending) ? "" : " is-center"}`} onScroll={onScroll}>{body}</div>
+      <div ref={scrollRef} className={`objectives-cm-chat${loaded && (chat.length > 0 || turn || pending) ? "" : " is-center"}`} onScroll={onScroll}>{body}</div>
       <CommodoreMobileComposer t={t} theaterId={theaterId} active={view ? view.active : false} online={online} failure={failure} onFail={onFail} onClear={onClear} onPending={setPending} />
     </div>
   );

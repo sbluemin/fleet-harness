@@ -45,6 +45,8 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
   const peek = (inside: boolean) => () => setCommodorePeek(inside ? theaterId : null);
 
   const on = view?.state.autonomy === true;
+  // 사령관이 턴을 도는 동안 — 제목에 채팅 라이브 줄과 같은 물결이 흐른다. 턴이 끝나면 바로 멈춘다.
+  const turn = on && view?.run.phase === "turn";
   const open = drawer?.theaterId === theaterId;
   const { meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
 
@@ -57,7 +59,7 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
   const switchTitle = [on ? t("objectives.commodore.switchOnTitle") : t("objectives.commodore.switchOffTitle"), errorReason].filter(Boolean).join("\n");
 
   return (
-    <div className={`objectives-commodore-row${open ? " is-open" : ""}${on ? " is-on" : ""}`} data-theater-id={theaterId}
+    <div className={`objectives-commodore-row${open ? " is-open" : ""}${on ? " is-on" : ""}${turn ? " is-turn" : ""}`} data-theater-id={theaterId}
       onMouseEnter={peek(true)} onMouseLeave={peek(false)} onFocus={peek(true)} onBlur={peek(false)}>
       <button
         type="button"

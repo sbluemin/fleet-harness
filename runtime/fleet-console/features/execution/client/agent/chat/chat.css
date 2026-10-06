@@ -5035,3 +5035,47 @@
     box-shadow: 0 0 0 3px transparent;
   }
 }
+
+/* 플러그인 기록(SDK `ctx.chat.Transcript`) — 같은 턴 렌더러를 담는 쪽의 스크롤 안 흐름에 세운다. 패널 본문이 아니므로
+   절대 배치·면 칠을 거두고, 컬럼 폭은 담는 쪽이 정한다. 턴마다 감싼 줄은 시각 좌표(reveal)의 자리다. */
+.agent-chat.agent-chat-transcript {
+  --agent-chat-measure: 100%;
+  position: relative;
+  inset: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: transparent;
+}
+
+.agent-chat-transcript-turn {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+}
+
+.agent-chat-transcript-turn > * + * {
+  margin-top: var(--space-4);
+}
+
+/* 다른 표면에서 가리킨 턴 — 위치를 말하는 brass 가 잠깐 둘레에 섰다 물러난다. */
+.agent-chat-transcript-turn.is-revealed {
+  animation: agent-chat-transcript-reveal 1.4s ease-out;
+}
+
+@keyframes agent-chat-transcript-reveal {
+  0% { box-shadow: 0 0 0 6px color-mix(in oklch, var(--brass) 22%, transparent); background: color-mix(in oklch, var(--brass) 7%, transparent); }
+  100% { box-shadow: 0 0 0 6px transparent; background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat-transcript-turn.is-revealed { animation: none; box-shadow: 0 0 0 2px color-mix(in oklch, var(--brass) 40%, transparent); }
+}
+
+.agent-chat-undelivered {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent);
+  color: var(--warn-ink);
+  font-size: var(--t-xs);
+}

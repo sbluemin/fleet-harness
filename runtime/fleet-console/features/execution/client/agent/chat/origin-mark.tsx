@@ -19,7 +19,7 @@ export function OriginMark({ by, language, className }: {
   return (
     <span className={className}>
       <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={objectives ? "plan" : "other"} /></span>
-      <span>{objectives ? getT(language)("terminal.chat.originObjectives") : by.pluginId}</span>
+      <span>{by.label ?? (objectives ? getT(language)("terminal.chat.originObjectives") : by.pluginId)}</span>
     </span>
   );
 }

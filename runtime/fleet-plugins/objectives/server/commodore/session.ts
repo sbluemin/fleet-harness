@@ -4,7 +4,7 @@ import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
-import { MAX_TRANSCRIPT_TEXT, type CommodoreTranscriptInput } from "./types.js";
+import { MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptInput } from "./types.js";
 
 /**
  * 사령관 세션 — `ctx.host.agent.createSession` 으로 연 플러그인 소유 세션 하나. Operation 이 아니다.
@@ -33,6 +33,8 @@ export interface CommodoreSessionOptions {
   /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 `console_objectives`. */
   readonly boardTools: readonly PluginMcpTool[];
   readonly onNextWake: (at: number, reason: string) => void;
+  /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
+  readonly onLive?: (event: CommodoreLiveEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
 }
@@ -123,12 +125,13 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   };
   const onEvent = (event: AgentEvent) => {
     switch (event.kind) {
-      case "text": textBuffer += event.text; return;
+      case "text": textBuffer += event.text; if (event.text) options.onLive?.({ kind: "text-delta", text: event.text }); return;
       case "thinking": thinkingBuffer += event.text; return;
       case "tool-start":
         flushText();
         if (event.id) pendingTools.set(event.id, { name: event.name, input: event.input });
         else recordTool(event.name, event.input, undefined);
+        options.onLive?.({ kind: "tool-start", name: event.name.replace(MCP_PREFIX, "") });
         return;
       case "tool-end": {
         flushText();

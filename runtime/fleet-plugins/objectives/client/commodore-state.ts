@@ -1,11 +1,12 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, type ComponentType } from "react";
 
+import type { AgentChatTranscriptProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
 import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
 import type { CommodoreStateView } from "../server/commodore/routes.js";
-import type { CommodoreEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import type { Objective } from "../server/types.js";
 import { post } from "./objectives-state.js";
 
@@ -26,9 +27,31 @@ interface TheaterCommodore {
   readonly hasMore: boolean;
   /** 기록을 한 번이라도 읽었는가 — 서랍이 처음 열릴 때만 읽는다. */
   readonly transcriptLoaded: boolean;
+  /** 마지막 확정 줄 뒤의 라이브 사건(글자 흐름·진행 중 도구) — 저장되지 않고, 확정 줄이 오면 그 몫을 걷는다. */
+  readonly live: readonly CommodoreLiveEvent[];
 }
 
-const EMPTY: TheaterCommodore = { view: null, entries: [], hasMore: false, transcriptLoaded: false };
+const EMPTY: TheaterCommodore = { view: null, entries: [], hasMore: false, transcriptLoaded: false, live: [] };
+/** 라이브 글자는 한 덩어리로 잇는다 — 확정 줄이 늦어도 사건 배열이 델타 수만큼 자라지 않게. */
+const MAX_LIVE_TEXT = 60_000;
+
+/** 확정 줄이 도착하면 그 줄이 대신하는 라이브 몫을 걷는다 — 글은 글자 흐름을, 도구는 같은 이름의 첫 진행 줄을, 그 밖의 줄은 전부. */
+function settleLive(live: readonly CommodoreLiveEvent[], entry: CommodoreTranscriptEntry): readonly CommodoreLiveEvent[] {
+  if (live.length === 0) return live;
+  if (entry.kind === "text" || entry.kind === "thinking") return live.filter((event) => event.kind !== "text-delta");
+  if (entry.kind === "tool") {
+    const index = live.findIndex((event) => event.kind === "tool-start" && event.name === entry.name);
+    return index < 0 ? live : [...live.slice(0, index), ...live.slice(index + 1)];
+  }
+  if (entry.kind === "message") return live;
+  return [];
+}
+
+function appendLive(live: readonly CommodoreLiveEvent[], event: CommodoreLiveEvent): readonly CommodoreLiveEvent[] {
+  const last = live.at(-1);
+  if (event.kind === "text-delta" && last?.kind === "text-delta") return [...live.slice(0, -1), { kind: "text-delta", text: (last.text + event.text).slice(0, MAX_LIVE_TEXT) }];
+  return [...live, event];
+}
 const TRANSCRIPT_PAGE = 200;
 /** 기록은 화면에 보이는 만큼만 붙들고 있다 — 오래 켜 둔 서랍이 끝없이 자라지 않게. */
 const MAX_HELD_ENTRIES = 2_000;
@@ -178,7 +201,13 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
       // 아직 서랍을 연 적 없는 Theater 의 기록은 붙들지 않는다 — 열 때 한 쪽을 읽는다.
       if (!current?.transcriptLoaded) return;
       if (current.entries.some((entry) => entry.seq === event.entry.seq)) return;
-      setTheater(event.theaterId, { entries: [...current.entries, event.entry].slice(-MAX_HELD_ENTRIES) });
+      setTheater(event.theaterId, { entries: [...current.entries, event.entry].slice(-MAX_HELD_ENTRIES), live: settleLive(current.live, event.entry) });
+      return;
+    }
+    if (event.op === "live") {
+      // 기록을 열지 않은 Theater 의 흐름은 버린다 — 그릴 화면이 없고, 열 때는 확정 줄을 읽는다.
+      if (!current?.transcriptLoaded) return;
+      setTheater(event.theaterId, { live: appendLive(current.live, event.live) });
       return;
     }
     if (!current?.view) {
@@ -258,7 +287,12 @@ export async function loadTranscript(theaterId: string, options: { readonly olde
   }
   // 읽는 사이에 사건으로 들어온 줄은 쪽의 뒤에 이어 붙인다.
   const tail = latest.transcriptLoaded ? latest.entries.filter((entry) => entry.seq > (page.entries.at(-1)?.seq ?? -1)) : [];
-  setTheater(theaterId, { entries: [...page.entries, ...tail], hasMore: page.hasMore, transcriptLoaded: true });
+  setTheater(theaterId, { entries: [...page.entries, ...tail], hasMore: page.hasMore, transcriptLoaded: true, ...(options.reset ? { live: [] } : {}) });
+}
+
+/** 호스트의 채팅 턴 렌더러 — Operation 채팅과 같은 컴포넌트다. 설치 전이면 null. */
+export function commodoreTranscriptRenderer(): ComponentType<AgentChatTranscriptProps> | null {
+  return installed?.chat.Transcript ?? null;
 }
 
 const EMPTY_VIEW_SNAPSHOT: TheaterCommodore = EMPTY;
