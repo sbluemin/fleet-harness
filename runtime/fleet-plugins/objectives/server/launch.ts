@@ -603,6 +603,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (linked) rememberSubagentSpawn(linked.id, linked.subagents === true);
       members.push({ id: member.id, role: member.role, session, operationId: launchedId, state: "launched" });
     }
+    const broughtUp = members.flatMap((member) => member.state === "live" || member.state === "launched" || member.state === "resumed" ? [member.id] : []);
+    if (broughtUp.length) store.noteAssignments(objectiveId, broughtUp);
     store.refresh(objectiveId);
     return members;
   });

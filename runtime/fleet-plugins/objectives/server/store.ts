@@ -212,6 +212,8 @@ export interface ObjectiveStore {
   /** `unplaced` — 사람이 선행 없이 더한 임무는 미분류로 들어간다(지휘관이 자리를 잡는다). */
   missionAdd(objectiveId: string, input: MissionAddInput, options?: { readonly unplaced?: boolean; readonly by?: ObjectiveActor }): Objective;
   missionPatch(objectiveId: string, missionId: string, input: MissionPatchInput, options?: { readonly by?: ObjectiveActor }): Objective;
+  /** 기동으로 처음 선 담당의 임무에 배정 시각이 없으면 지금으로 남긴다. 이미 있으면 그대로 둔다. */
+  noteAssignments(objectiveId: string, memberIds: readonly string[]): void;
   /** 지휘관의 완료 — 기록·완료·선택 결과물을 한 번에 저장한다. 결과물은 임무의 현재 연결로 남는다. */
   missionDone(objectiveId: string, missionId: string, lines: readonly string[], results?: readonly CompletionResultInput[]): Objective;
   /** 사람이 이 임무의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
@@ -387,6 +389,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
       if (parsed.boardUpdatedAt !== undefined && (!Number.isFinite(parsed.boardUpdatedAt) || parsed.boardUpdatedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
+      if (Array.isArray(parsed.missions) && parsed.missions.some((mission) => { const at = (mission as { assignmentTs?: unknown }).assignmentTs; return at !== undefined && (typeof at !== "number" || !Number.isFinite(at) || at < 0); })) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (parsed.addedBy !== undefined && typeof parsed.addedBy !== "string" && (parsed.addedBy?.kind !== "commodore" || !objectiveActorSchema.safeParse(parsed.addedBy).success)) throw new ObjectiveStoreError("invalid_stored_actor");
       const intent = parsed.operationIntent;
       if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_operation_intent");
@@ -705,6 +708,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           why: Object.fromEntries(mission.prerequisites.flatMap((edge) => (edge.why ? [[edge.id, edge.why]] : []))),
           member: member?.id ?? null,
           ...(mission.memberBy ? { memberBy: mission.memberBy } : {}),
+          ...(mission.assignmentTs !== undefined ? { assignmentTs: mission.assignmentTs } : {}),
           ...(mission.unplaced ? { unplaced: true as const } : {}),
           ...(mission.by ? { by: mission.by } : {}),
           operationId: member && options.operations.get(member.id) ? member.id : null,
@@ -910,6 +914,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   };
   /** 자리가 정해졌다 — 미분류 표시를 뗀다. */
   const placed = (mission: StoredMission): StoredMission => (mission.unplaced ? (({ unplaced: _unplaced, ...rest }) => ({ ...rest, by: mission.by ?? "human" }))(mission) : mission);
+  const withoutAssignment = (mission: StoredMission): StoredMission => {
+    if (mission.assignmentTs === undefined) return mission;
+    const { assignmentTs: _assignmentTs, ...rest } = mission;
+    return rest;
+  };
   const withoutEdge = (mission: StoredMission, id: string): StoredMission => ({ ...mission, prerequisites: mission.prerequisites.filter((edge) => edge.id !== id) });
   const proposalsOf = (stored: StoredObjective, input: readonly CriterionProposalInput[]): readonly ObjectiveCriterionProposal[] => {
     const criteria = stored.criteria ?? [];
@@ -1251,7 +1260,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 임무뿐이다.
       const unplaced = addOptions?.unplaced === true && input.prerequisites === undefined;
       if (input.member && !(stored.members ?? []).some((member) => member.id === input.member)) throw new ObjectiveStoreError("unknown_member");
-      const mission: StoredMission = { id: randomUUID(), text: input.text, prerequisites, ...(input.member ? { member: input.member } : {}), ...(addOptions?.by && input.member !== undefined ? { memberBy: addOptions.by } : {}), ...(unplaced ? { unplaced: true as const } : {}), ...(addOptions?.by ? { by: addOptions.by } : {}) };
+      const mission: StoredMission = { id: randomUUID(), text: input.text, prerequisites, ...(input.member ? { member: input.member, assignmentTs: now() } : {}), ...(addOptions?.by && input.member !== undefined ? { memberBy: addOptions.by } : {}), ...(unplaced ? { unplaced: true as const } : {}), ...(addOptions?.by ? { by: addOptions.by } : {}) };
       // 새 일이 생겼다 — 앞선 충족 판단은 옛 보드에 대한 것이다.
       return withoutMet({ ...stored, missions: [...stored.missions, mission] });
     }),
@@ -1266,17 +1275,33 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ? input.prerequisites.filter((id) => known.has(id) && id !== missionId).map((id) => ({ id, ...(why(id) ? { why: why(id)! } : {}) }))
         : input.why ? mission.prerequisites.map((edge) => ({ id: edge.id, ...(why(edge.id) ? { why: why(edge.id)! } : {}) })) : mission.prerequisites;
       if (input.member && !(stored.members ?? []).some((member) => member.id === input.member)) throw new ObjectiveStoreError("unknown_member");
-      const next: StoredMission = {
+      const memberChanged = input.member !== undefined && (input.member ?? undefined) !== mission.member;
+      const drafted: StoredMission = {
         ...base,
         prerequisites,
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.done !== undefined ? { done: input.done ? true as const : undefined } : {}),
         ...(input.member !== undefined ? { member: input.member ?? undefined, memberBy: patchOptions?.by } : {}),
       };
+      const next: StoredMission = !memberChanged ? drafted : input.member ? { ...withoutAssignment(drafted), assignmentTs: now() } : withoutAssignment(drafted);
       const replaced = replaceMission(stored, at, next);
       // 끝난 임무를 되돌리면 새 일이다 — 충족 판단을 거둔다.
       return input.done === false && mission.done ? withoutMet(action(replaced, patchOptions?.by ?? "commander", "mission-reopened", { targetId: missionId })) : replaced;
     }),
+
+    noteAssignments(objectiveId, memberIds) {
+      const ids = new Set(memberIds);
+      update(objectiveId, (stored) => {
+        const at = now();
+        let changed = false;
+        const missions = stored.missions.map((mission) => {
+          if (!mission.member || !ids.has(mission.member) || mission.assignmentTs !== undefined) return mission;
+          changed = true;
+          return { ...mission, assignmentTs: at };
+        });
+        return changed ? { ...stored, missions } : stored;
+      }, false);
+    },
 
     missionDone: (objectiveId, missionId, lines, rawResults = []) => update(objectiveId, (stored) => {
       if (stored.done) throw new ObjectiveStoreError("objective_done");
@@ -1372,7 +1397,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const removed = (found.members ?? []).find((member) => member.id === memberId);
       if (!removed) throw new ObjectiveStoreError("unknown_member");
       const missionIds = found.missions.filter((mission) => mission.member === memberId).map((mission) => mission.id);
-      const objective = update(objectiveId, (stored) => ({ ...stored, members: stored.members?.filter((member) => member.id !== memberId), missions: stored.missions.map((mission) => mission.member === memberId ? { ...mission, member: undefined, memberBy: undefined } : mission) }));
+      const objective = update(objectiveId, (stored) => ({ ...stored, members: stored.members?.filter((member) => member.id !== memberId), missions: stored.missions.map((mission) => mission.member === memberId ? { ...withoutAssignment(mission), member: undefined, memberBy: undefined } : mission) }));
       return { objective, removed, missionIds };
     },
 
@@ -1428,7 +1453,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           prerequisites.push({ id: targetId, ...(edge.why ? { why: edge.why } : {}) });
         }
         const member = resolve(mission.member);
-        return { id: freshIds[ix]!, text: mission.text, prerequisites, ...(member ? { member } : {}) };
+        return { id: freshIds[ix]!, text: mission.text, prerequisites, ...(member ? { member, assignmentTs: now() } : {}) };
       });
       return withoutMet({ ...stored, members, criteriaProposals: proposals, missions: [...kept.map((mission) => ({ ...mission, prerequisites: mission.prerequisites.filter((edge) => keptIds.has(edge.id)) })), ...fresh] });
     }),

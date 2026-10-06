@@ -238,6 +238,8 @@ export interface StoredMission {
   readonly member?: string;
   /** 사람이 담당을 직접 정했다(지휘관 직접 지정도 포함) — 도구가 덮지 않는다. */
   readonly memberBy?: ObjectiveActor;
+  /** 담당이 정해진 시각. 무보고 간격은 이 시각과 마지막 보드 변경 중 늦은 쪽부터 센다. */
+  readonly assignmentTs?: number;
   /**
    * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 임무. 준비되지 않으며, 지휘관이 선행을 정하거나
    * 사람이 편성에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다.
@@ -595,6 +597,8 @@ export interface ObjectiveMission {
   readonly why: Readonly<Record<string, string>>;
   readonly member: string | null;
   readonly memberBy?: ObjectiveActor;
+  /** 담당이 정해진 시각. 무보고 간격은 이 시각과 마지막 보드 변경 중 늦은 쪽부터 센다. */
+  readonly assignmentTs?: number;
   readonly unplaced?: true;
   readonly by?: ObjectiveActor;
   /** 담당 Operation — 위임했을 때만. */
