@@ -759,6 +759,8 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdat
   const t = useT();
   const [applyState, setApplyState] = useState<UpdateApplyState>("idle");
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  // 훅은 조건부 반환 앞에서 부른다. 새로고침으로 latestVersion이 생겨도 훅 개수가 달라지지 않는다.
+  const preparing = useUpdateProgress().preparing !== null;
   const body = <><TerminalGlyph /><span className="command-band-version-row-name">Console</span><span className="command-band-version-row-version">v{version}</span></>;
   if (latestVersion !== null && foldedIntoShell) {
     return (
@@ -784,7 +786,6 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdat
       </div>
     );
   }
-  const preparing = useUpdateProgress().preparing !== null;
   const copy = resolveUpdateApplyCopyFor(applyState, errorCode, latestVersion, t);
   const label = preparing ? t("chrome.system.update.requesting") : copy.label;
   const title = preparing ? t("chrome.system.update.requestingTitle") : copy.title;
