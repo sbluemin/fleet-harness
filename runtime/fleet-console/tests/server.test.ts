@@ -8,7 +8,8 @@ import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
-import { readConsoleLockFile } from "@fleet-console/lifecycle";
+import { deliverConsoleStop, readConsoleLockFile } from "@fleet-console/lifecycle";
+import { CONSOLE_STOP_REQUEST_REVISION } from "@fleet-console/protocol/lifecycle";
 import type { ConsoleLockPayload } from "../core/host/transport/console-contract-types.js";
 import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/shell/desktop-contract.js";
 import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/shell/desktop-contract.js";
@@ -400,6 +401,22 @@ describe("console terminal observability", () => {
       delete hooks.__fleetStartupGate;
     }
   }, 30_000);
+
+  // P1 (Codex review): another actor may start the shutdown first — the server nulls the lock before it closes the
+  // listener, so the same request then answers 401. The client re-observes instead of signalling the Console that is
+  // already cleaning up: only a Console still serving under the same lock falls back to a signal.
+  it("waits instead of signalling when a stop request meets a Console already shutting down", async () => {
+    const unauthorized = async (): Promise<Response> =>
+      new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+    const route = await deliverConsoleStop({
+      lock: { pid: 4242, endpoint: "http://127.0.0.1:1/", token: "rejected-token" },
+      stopRequest: CONSOLE_STOP_REQUEST_REVISION,
+      platform: "win32",
+      fetch: unauthorized as typeof fetch,
+      observe: async () => "stopping" as const,
+    });
+    expect(route).toBe("delivered");
+  });
 
 });
 

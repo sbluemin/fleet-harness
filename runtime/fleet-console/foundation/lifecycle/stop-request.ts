@@ -105,9 +105,9 @@ export interface DeliverConsoleStopInput {
 
 /**
  * Chooses how this actor's stop reaches the Console, through the contract's single rule: POSIX always signals, and so
- * does a Console that does not advertise the stop request route or definitely rejects it. A 202-confirmed request is
- * delivered; an inconclusive attempt re-observes before deciding. The stop ladder starts after this returns, so its
- * clock never includes the POST.
+ * does a Console that does not advertise the stop request route. A 202-confirmed request is delivered; a rejected or
+ * inconclusive attempt re-observes the same lock instance before deciding, so a Console already cleaning up is never
+ * signalled. The stop ladder starts after this returns, so its clock never includes the POST.
  */
 export async function deliverConsoleStop(input: DeliverConsoleStopInput): Promise<ConsoleStopClientRoute> {
   const platform = input.platform ?? process.platform;
@@ -130,17 +130,20 @@ export async function deliverConsoleStop(input: DeliverConsoleStopInput): Promis
   if (!advertised) {
     return decideConsoleStopRoute({ platform, advertised, result: { kind: "rejected" } });
   }
+  // 같은 lock 인스턴스를 다시 관측한다. 다른 행위자가 먼저 정지를 시작하면 lock이 풀려 401을 받는데, 그 Console은 이미
+  // cleanup 중이므로 신호를 보내면 안 된다. 관측이 없거나 실패하면 대기 쪽으로 닫는다.
+  const reobserve = async (): Promise<ConsoleObservedState> =>
+    (await input.observe?.().catch(() => undefined)) ?? "unverified";
   const attempt = await requestConsoleStop(lock, { timeoutMs: input.timeoutMs, fetch: input.fetch, signal: input.signal });
   let result: ConsoleStopAttemptResult;
   if (attempt.kind === "accepted") {
     result = { kind: "accepted" };
   } else if (attempt.kind === "rejected") {
-    result = { kind: "rejected" };
+    result = { kind: "rejected", observed: await reobserve() };
   } else {
     // No answer is no proof either way: wait unless the Console still serves under the same lock. Without a fresh
     // observation there is nothing to prove a signal safe, so the route waits and escalation stays gated on re-proof.
-    const observed = await input.observe?.().catch(() => undefined);
-    result = { kind: "uncertain", observed: observed ?? "unverified" };
+    result = { kind: "uncertain", observed: await reobserve() };
   }
   return decideConsoleStopRoute({ platform, advertised, result });
 }

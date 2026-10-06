@@ -160,13 +160,15 @@ export function classifyConsolePublic(input: ConsolePublicEvidence): ConsolePubl
 /**
  * What one token-authenticated stop request attempt showed.
  * - accepted: the Console answered 202 with `accepted: true` and its own pid.
- * - rejected: the Console definitely did not take the request (401/403/404/405, or a 202 body that did not confirm).
+ * - rejected: the Console answered but did not take the request (401/403/404/405, or a 202 body that did not
+ *   confirm). 거절 뒤에도 같은 lock 인스턴스를 다시 관측한다: 이미 cleanup 중인 Console에 신호를 보내지 않기 위해,
+ *   ready일 때만 signal이고 그 밖에는 delivered다. 관측이 없으면 ready가 아닌 것으로 보고 대기한다.
  * - uncertain: the attempt never got an answer (timeout, reset, refused) — the request may or may not have landed,
  *   so `observed` carries a fresh observation of the same lock instance to decide on.
  */
 export type ConsoleStopAttemptResult =
   | { readonly kind: "accepted" }
-  | { readonly kind: "rejected" }
+  | { readonly kind: "rejected"; readonly observed?: ConsoleObservedState }
   | { readonly kind: "uncertain"; readonly observed: ConsoleObservedState };
 
 /**
@@ -179,9 +181,9 @@ export type ConsoleStopClientRoute = "signal" | "delivered";
 /**
  * The one rule every actor uses to choose its stop path (docs/console-lifecycle-contract.md, "Stop ladder"): from the
  * Console's advertisement, the actor's platform, and the request attempt's result. POSIX always signals; so does an
- * unadvertised Console and a definite rejection. An inconclusive attempt signals only a Console that still serves under
- * the same lock (the request never landed); a Console that is gone, going, or unprovable is waited on without a
- * signal. Fail closed: anything unrecognized waits.
+ * unadvertised Console. A rejected or inconclusive attempt re-observes the same lock instance and signals only a
+ * Console that still serves under it (the request never landed); a Console that is gone, going, or unprovable is
+ * waited on without a signal — cleanup 중인 Console을 강제 종료하지 않는다. Fail closed: anything unrecognized waits.
  */
 export function decideConsoleStopRoute(input: {
   readonly platform: string;
@@ -194,9 +196,10 @@ export function decideConsoleStopRoute(input: {
     case "accepted":
       return "delivered";
     case "rejected":
-      return "signal";
-    case "uncertain":
-      switch (input.result.observed) {
+    case "uncertain": {
+      // 관측 없는 rejected는 POST 이전 경로(위 게이트에서 처리)이므로, 여기서는 재관측 값으로 판정한다.
+      const observed = input.result.observed ?? "unverified";
+      switch (observed) {
         case "ready":
           return "signal";
         case "stopping":
@@ -207,11 +210,12 @@ export function decideConsoleStopRoute(input: {
         case "starting":
           return "delivered";
         default: {
-          const exhaustive: never = input.result.observed;
+          const exhaustive: never = observed;
           void exhaustive;
           return "delivered";
         }
       }
+    }
     default: {
       const exhaustive: never = input.result;
       void exhaustive;
