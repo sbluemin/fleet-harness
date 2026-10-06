@@ -3,8 +3,6 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http2 from "node:http2";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { deflateRawSync } from "node:zlib";
-
 import { fromBinary, fromJson, toBinary, toJson, type JsonValue } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";
 import { BinaryWriter, WireType } from "@bufbuild/protobuf/wire";
@@ -32,6 +30,10 @@ import {
   AgentClientMessageSchema,
   AgentServerMessageSchema,
 } from "../../../../src/upstream/cursor/native/generated/cursor-agent-protobuf.js";
+import {
+  cursorNativeExecRedirect,
+  cursorNativeRedirectResultReplies,
+} from "../../../../src/upstream/cursor/native/exec-redirect.js";
 
 const temporaryWireLogDirectories: string[] = [];
 
@@ -66,7 +68,7 @@ function cursorWirePlanCount(filePath: string): number {
 
 describe("Cursor live client-tool Run bridge", () => {
 
-  it("fails closed on the same Run when the caller Bash Grep receipt is incomplete", async () => {
+  it("redirects native Grep through a readable shell search and fails closed on a broken receipt", async () => {
     const nativeCall = cursorCall("native-grep-shell-failure", 29);
     const stream = new BridgeCursorStream(
       [{
@@ -103,6 +105,21 @@ describe("Cursor live client-tool Run bridge", () => {
       const initialEvents = await collectCursorResponse(harness.adapter, initial);
       const callId = addedFunctionCallIds(initialEvents)[0];
       if (!callId) throw new Error("Missing redirected Bash call");
+      const command = initialEvents.flatMap((event) => (
+        event.type === "response.output_item.done" && event.item.type === "function_call"
+          ? [JSON.parse(event.item.arguments).command as string]
+          : []
+      ))[0];
+      if (!command) throw new Error("Missing redirected shell command");
+      expect(command.startsWith("rg -n -H --heading --color=never ")).toBe(true);
+      expect(command.slice(0, 160)).toContain("Fleet");
+      expect(command).toContain("--regexp 'Fleet'");
+      expect(command).toContain("-- 'packages'");
+      expect(command).toContain("head -c 12288");
+      expect(command).not.toContain("base64url");
+      expect(command).not.toContain("node -e");
+      expect(command).not.toContain("awk");
+
       const events = await collectCursorResponse(
         harness.adapter,
         cursorContinuation(
@@ -121,6 +138,119 @@ describe("Cursor live client-tool Run bridge", () => {
           },
         }),
       }));
+
+      const correlation = {
+        messageId: nativeCall.messageId,
+        execId: nativeCall.execId,
+        nativeResultType: "grepShellResult" as const,
+        nativeArgs: { pattern: "Fleet", path: "packages", outputMode: "content" },
+      };
+      const successBody = [
+        "sub/12:odd.ts",
+        "2:parseGrepShellReceipt here",
+        "3-nearby",
+        "",
+      ].join("\n");
+      // The caller may trim the newline after the trailer.
+      const success = cursorNativeRedirectResultReplies(correlation, [
+        successBody,
+        `fleet-grep status=ok rc=0 bytes=${Buffer.byteLength(successBody)}`,
+      ].join("\n"), false);
+      expect(success).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          grepResult: {
+            success: {
+              pattern: "Fleet",
+              path: "packages",
+              outputMode: "content",
+              workspaceResults: {
+                packages: {
+                  content: {
+                    matches: [{
+                      file: "sub/12:odd.ts",
+                      matches: [
+                        {
+                          lineNumber: 2,
+                          content: "parseGrepShellReceipt here",
+                          contentTruncated: false,
+                          isContextLine: false,
+                        },
+                        {
+                          lineNumber: 3,
+                          content: "nearby",
+                          contentTruncated: false,
+                          isContextLine: true,
+                        },
+                      ],
+                    }],
+                    totalLines: 2,
+                    totalMatchedLines: 1,
+                    clientTruncated: false,
+                    ripgrepTruncated: false,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      }));
+      const kept = "sub/plain.ts\n4:function cursor\n";
+      const limit = 12 * 1024;
+      // The byte cap cut a multibyte character, which the caller decoded to U+FFFD (3 bytes).
+      const transmitted = kept + "x".repeat(limit - Buffer.byteLength(kept) - 2) + "\uFFFD";
+      const truncated = cursorNativeRedirectResultReplies(correlation, [
+        transmitted,
+        `fleet-grep status=ok rc=0 bytes=${limit + 50}`,
+        "",
+      ].join("\n"), false);
+      expect(truncated).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          grepResult: {
+            success: expect.objectContaining({
+              workspaceResults: {
+                packages: {
+                  content: expect.objectContaining({
+                    totalLines: 1,
+                    totalMatchedLines: 1,
+                    clientTruncated: true,
+                  }),
+                },
+              },
+            }),
+          },
+        }),
+      }));
+      const ambiguousBody = "sub/12:odd.ts\nnot a numbered line\n";
+      const shortBody = "sub/plain.ts\n4:function cursor\n";
+      for (const broken of [
+        [
+          ambiguousBody,
+          `fleet-grep status=ok rc=0 bytes=${Buffer.byteLength(ambiguousBody)}`,
+          "",
+        ].join("\n"),
+        [
+          shortBody,
+          "fleet-grep status=ok rc=0 bytes=0",
+          "",
+        ].join("\n"),
+      ]) {
+        expect(cursorNativeRedirectResultReplies(correlation, broken, false)).toContainEqual(
+          expect.objectContaining({
+            execClientMessage: expect.objectContaining({
+              grepResult: { error: { error: expect.stringContaining("invalid Fleet Grep receipt") } },
+            }),
+          }),
+        );
+      }
+      expect(cursorNativeExecRedirect(
+        { id: 1, execId: "newline", grepArgs: { pattern: "a\nb", path: "packages" } },
+        [{
+          clientName: "Bash",
+          wireName: "bash",
+          inputSchemaValue: { type: "object", properties: { command: { type: "string" } } },
+        }],
+        "cursor",
+      )).toBeNull();
     } finally {
       harness.adapter.dispose();
     }
@@ -315,10 +445,6 @@ function cursorCall(callId: string, messageId: number): CursorCallSpec {
     execId: `exec-${messageId}`,
     name: "probe_tool",
   };
-}
-
-function cursorGrepReceipt(value: unknown): string {
-  return `FLEET_CURSOR_GREP_V2:${deflateRawSync(Buffer.from(JSON.stringify(value), "utf8")).toString("base64url")}`;
 }
 
 function cursorResult(

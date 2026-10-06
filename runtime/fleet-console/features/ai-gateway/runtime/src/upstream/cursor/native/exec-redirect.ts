@@ -1,5 +1,3 @@
-import { deflateRawSync, inflateRawSync } from "node:zlib";
-
 type ExecMessage = Record<string, unknown>;
 
 export type CursorNativeRedirectResultType =
@@ -398,6 +396,12 @@ function grepArguments(
   return null;
 }
 
+const GREP_SHELL_BYTE_LIMIT = 12 * 1024;
+const GREP_SHELL_MAX_COLUMNS = 2000;
+const GREP_SHELL_COLUMN_SUFFIX = " [... omitted end of long line]";
+// A UTF-8 sequence cut by the byte cap decodes to U+FFFD, which shifts the received size by a few bytes.
+const GREP_SHELL_BYTE_SLACK = 3;
+
 function grepShellArguments(
   schema: Record<string, unknown>,
   input: CursorGrepInput,
@@ -411,105 +415,41 @@ function grepShellArguments(
   ) {
     return null;
   }
-  const payload = Buffer.from(JSON.stringify(input), "utf8").toString("base64url");
-  const bootstrap = `eval(require('node:zlib').inflateRawSync(Buffer.from(process.argv.splice(1,1)[0],'base64url')).toString('utf8'))`;
-  const command = `node -e "${bootstrap}" ${CURSOR_GREP_RECEIPT_SCRIPT_BASE64} ${payload}`;
+  const pattern = posixSingleQuote(input.pattern);
+  const path = posixSingleQuote(input.path);
+  const glob = input.glob ? posixSingleQuote(input.glob) : undefined;
+  const type = input.type ? posixSingleQuote(input.type) : undefined;
+  if (!pattern || !path || (input.glob && !glob) || (input.type && !type)) return null;
+  const flags = [
+    input.caseInsensitive ? "--ignore-case" : undefined,
+    glob ? `--glob ${glob}` : undefined,
+    type ? `--type ${type}` : undefined,
+    input.contextBefore !== undefined ? `-B ${input.contextBefore}` : undefined,
+    input.contextAfter !== undefined ? `-A ${input.contextAfter}` : undefined,
+    input.context !== undefined ? `-C ${input.context}` : undefined,
+  ].filter((flag): flag is string => flag !== undefined);
+  // The chat summary is the first 160 characters, so rg and the pattern stay in front.
+  // Bash, shell_command, and exec_command do not identify their shell. This text is POSIX
+  // sh. A PowerShell host cannot be distinguished from those schemas; it fails closed
+  // because this trailer never arrives. rg's own heading is passed through: a file name is
+  // the first line or the line after a blank line, and the gateway counts the lines.
+  const search = [
+    "rg -n -H --heading --color=never",
+    `--regexp ${pattern}`,
+    "--sort=path",
+    `--max-columns=${GREP_SHELL_MAX_COLUMNS}`,
+    "--max-columns-preview",
+    ...flags,
+    `-- ${path}`,
+  ].join(" ");
+  const command = `${search} >"\${TMPDIR:-/tmp}/g$$.o" 2>"\${TMPDIR:-/tmp}/g$$.e"; rc=$?; o="\${TMPDIR:-/tmp}/g$$.o"; e="\${TMPDIR:-/tmp}/g$$.e"; if [ "$rc" -gt 1 ]; then m=$(tr '\\n' ' ' <"$e" | cut -c1-300); printf 'fleet-grep status=error rc=%s message=%s\\n' "$rc" "$m"; else b=$(wc -c <"$o" | tr -d '[:space:]'); head -c ${GREP_SHELL_BYTE_LIMIT} "$o"; printf '\\nfleet-grep status=ok rc=%s bytes=%s\\n' "$rc" "$b"; fi; rm -f "$o" "$e"`;
   return shellArguments(schema, command, undefined, undefined);
 }
 
-const CURSOR_GREP_RECEIPT_PREFIX = "FLEET_CURSOR_GREP_V2:";
-const CURSOR_GREP_RECEIPT_MAX_BYTES = 128 * 1024;
-const CURSOR_GREP_RECEIPT_SCRIPT = String.raw`
-const {spawn}=require("node:child_process");
-const {TextDecoder}=require("node:util");
-const {deflateRawSync}=require("node:zlib");
-const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+deflateRawSync(Buffer.from(JSON.stringify(value))).toString("base64url"));
-(async()=>{try {
-  const input=JSON.parse(Buffer.from(process.argv[1],"base64url").toString("utf8"));
-  const matchSeparator=30;
-  const contextSeparator=31;
-  const maxContentBytes=2000;
-  const args=["--color=never","--line-number","--with-filename","--null","--sort","path","--max-columns",String(maxContentBytes),"--max-columns-preview","--field-match-separator",String.fromCharCode(matchSeparator),"--field-context-separator",String.fromCharCode(contextSeparator),"--no-context-separator"];
-  if(input.caseInsensitive)args.push("--ignore-case");
-  if(input.glob)args.push("--glob",input.glob);
-  if(input.type)args.push("--type",input.type);
-  if(input.contextBefore)args.push("--before-context",String(input.contextBefore));
-  if(input.contextAfter)args.push("--after-context",String(input.contextAfter));
-  if(input.context)args.push("--context",String(input.context));
-  args.push("--regexp",input.pattern,"--",input.path);
-  const child=spawn("rg",args,{stdio:["ignore","pipe","pipe"]});
-  let stderr="";
-  child.stderr.setEncoding("utf8");
-  child.stderr.on("data",(chunk)=>{if(stderr.length<16384)stderr+=chunk.slice(0,16384-stderr.length);});
-  const completion=new Promise((resolve,reject)=>{
-    child.once("error",reject);
-    child.once("close",(code,signal)=>signal?reject(new Error("rg terminated by signal "+signal)):resolve(code));
-  });
-  const byteBudget=12*1024;
-  const maxRecordBytes=64*1024;
-  const truncatedSuffix=" [... omitted end of long line]";
-  const decoder=new TextDecoder("utf-8",{fatal:true});
-  let retainedBytes=0;
-  let clientTruncated=false;
-  let totalFiles=0;
-  let totalLines=0;
-  let totalMatchedLines=0;
-  let previousFile;
-  const files=[];
-  const counts=[];
-  const matches=[];
-  const retain=(target,value)=>{
-    const bytes=Buffer.byteLength(JSON.stringify(value));
-    if(retainedBytes+bytes>byteBudget){clientTruncated=true;return;}
-    retainedBytes+=bytes;target.push(value);
-  };
-  let buffered=Buffer.alloc(0);
-  const consume=(record,nul)=>{
-    const fields=record.subarray(nul+1);
-    const matchIndex=fields.indexOf(matchSeparator);
-    const contextIndex=fields.indexOf(contextSeparator);
-    const separator=matchIndex>=0&&contextIndex>=0?Math.min(matchIndex,contextIndex):Math.max(matchIndex,contextIndex);
-    if(separator<1)throw new Error("rg returned an invalid bounded search record");
-    const lineText=fields.subarray(0,separator).toString("ascii");
-    if(!/^\d+$/.test(lineText))throw new Error("rg returned an invalid search line number");
-    const lineNumber=Number(lineText);
-    if(!Number.isSafeInteger(lineNumber)||lineNumber<1)throw new Error("rg returned an invalid search line number");
-    const file=decoder.decode(record.subarray(0,nul));
-    let content=decoder.decode(fields.subarray(separator+1));
-    if(content.endsWith("\r"))content=content.slice(0,-1);
-    const contentTruncated=Buffer.byteLength(content)>maxContentBytes&&content.endsWith(truncatedSuffix);
-    if(contentTruncated)content=content.slice(0,-truncatedSuffix.length);
-    const isContextLine=fields[separator]===contextSeparator;
-    if(file!==previousFile){
-      totalFiles+=1;
-      previousFile=file;
-    }
-    totalLines+=1;
-    if(!isContextLine)totalMatchedLines+=1;
-    retain(matches,{file,lineNumber,content,contentTruncated,isContextLine});
-  };
-  try {
-    for await(const chunk of child.stdout){
-      buffered=buffered.length===0?chunk:Buffer.concat([buffered,chunk]);
-      while(true){
-        const nul=buffered.indexOf(0);
-        if(nul<0)break;
-        const newline=buffered.indexOf(10,nul+1);
-        if(newline<0)break;
-        if(newline>maxRecordBytes)throw new Error("rg exceeded the bounded search record limit");
-        consume(buffered.subarray(0,newline),nul);
-        buffered=buffered.subarray(newline+1);
-      }
-      if(buffered.length>maxRecordBytes)throw new Error("rg exceeded the bounded search record limit");
-    }
-    if(buffered.length!==0)throw new Error("rg returned an incomplete bounded search record");
-  }catch(error){child.kill();await completion.catch(()=>undefined);throw error;}
-  const code=await completion;
-  if(code!==0&&code!==1)throw new Error((stderr||"rg failed with exit "+code).trim());
-  emit({ok:true,outputMode:input.outputMode,files,counts,matches,totalFiles,totalLines,totalMatchedLines,clientTruncated});
-}catch(error){emit({ok:false,error:error instanceof Error?error.message:String(error)});}})();
-`.trim();
-const CURSOR_GREP_RECEIPT_SCRIPT_BASE64 = deflateRawSync(CURSOR_GREP_RECEIPT_SCRIPT).toString("base64url");
+function posixSingleQuote(value: string): string | null {
+  if (/[\0\r\n]/.test(value)) return null;
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
 
 function shellArguments(
   schema: Record<string, unknown>,
@@ -537,9 +477,6 @@ function shellArguments(
 
 interface GrepShellReceipt {
   readonly ok: true;
-  readonly outputMode: "content" | "files_with_matches" | "count";
-  readonly files: readonly string[];
-  readonly counts: readonly (readonly [string, number])[];
   readonly matches: readonly {
     readonly file: string;
     readonly lineNumber: number;
@@ -557,56 +494,41 @@ function parseGrepShellReceipt(
   output: string,
   expectedOutputMode: string,
 ): GrepShellReceipt | { readonly ok: false; readonly error: string } {
-  if (!output.startsWith(CURSOR_GREP_RECEIPT_PREFIX)) {
+  if (expectedOutputMode !== "content") {
     return { ok: false, error: "The caller Bash result did not contain a complete Fleet Grep receipt." };
   }
+  const split = splitGrepShellTrailer(output);
+  if (!split?.trailer.startsWith("fleet-grep ")) {
+    return { ok: false, error: "The caller Bash result did not contain a complete Fleet Grep receipt." };
+  }
+  const errorTrailer = /^fleet-grep status=error rc=(\d+) message=(.*)$/.exec(split.trailer);
+  if (errorTrailer) {
+    const message = errorTrailer[2]?.trim() || `rg failed with exit ${errorTrailer[1]}`;
+    return { ok: false, error: message };
+  }
+  const okTrailer = /^fleet-grep status=ok rc=(\d+) bytes=(\d+)$/.exec(split.trailer);
+  const exitCode = Number(okTrailer?.[1]);
+  const originalBytes = Number(okTrailer?.[2]);
+  if (
+    !okTrailer
+    || (exitCode !== 0 && exitCode !== 1)
+    || !Number.isSafeInteger(originalBytes)
+    || originalBytes < 0
+  ) {
+    return { ok: false, error: "The caller Bash result did not contain a complete Fleet Grep receipt." };
+  }
+  const clientTruncated = originalBytes > GREP_SHELL_BYTE_LIMIT;
   try {
-    const compressed = Buffer.from(
-      output.slice(CURSOR_GREP_RECEIPT_PREFIX.length).trim(),
-      "base64url",
-    );
-    const decoded = JSON.parse(inflateRawSync(compressed, {
-      maxOutputLength: CURSOR_GREP_RECEIPT_MAX_BYTES,
-    }).toString("utf8")) as unknown;
-    if (!isRecord(decoded)) throw new Error("receipt is not an object");
-    if (decoded.ok === false && typeof decoded.error === "string") {
-      return { ok: false, error: decoded.error };
-    }
-    if (decoded.ok !== true || decoded.outputMode !== expectedOutputMode) {
-      throw new Error("receipt mode does not match the native search");
-    }
-    if (!Array.isArray(decoded.files) || !decoded.files.every((file) => typeof file === "string")) {
-      throw new Error("receipt files are invalid");
-    }
-    if (!Array.isArray(decoded.counts) || !decoded.counts.every((entry) => (
-      Array.isArray(entry)
-      && entry.length === 2
-      && typeof entry[0] === "string"
-      && typeof entry[1] === "number"
-      && Number.isSafeInteger(entry[1])
-      && entry[1] >= 0
-    ))) {
-      throw new Error("receipt counts are invalid");
-    }
-    if (!Array.isArray(decoded.matches) || !decoded.matches.every((entry) => (
-      isRecord(entry)
-      && typeof entry.file === "string"
-      && typeof entry.lineNumber === "number"
-      && Number.isSafeInteger(entry.lineNumber)
-      && entry.lineNumber > 0
-      && typeof entry.content === "string"
-      && typeof entry.contentTruncated === "boolean"
-      && typeof entry.isContextLine === "boolean"
-    ))) {
-      throw new Error("receipt matches are invalid");
-    }
-    for (const key of ["totalFiles", "totalLines", "totalMatchedLines"] as const) {
-      if (typeof decoded[key] !== "number" || !Number.isSafeInteger(decoded[key]) || decoded[key] < 0) {
-        throw new Error(`receipt ${key} is invalid`);
-      }
-    }
-    if (typeof decoded.clientTruncated !== "boolean") throw new Error("receipt truncation flag is invalid");
-    return decoded as unknown as GrepShellReceipt;
+    assertGrepShellByteCap(split.transmitted, originalBytes, clientTruncated);
+    const parsed = parseGrepShellBody(grepShellBodyLines(split.transmitted, clientTruncated));
+    return {
+      ok: true,
+      matches: parsed.matches,
+      totalFiles: parsed.totalFiles,
+      totalLines: parsed.totalLines,
+      totalMatchedLines: parsed.totalMatchedLines,
+      clientTruncated,
+    };
   } catch (error) {
     return {
       ok: false,
@@ -615,59 +537,138 @@ function parseGrepShellReceipt(
   }
 }
 
+function splitGrepShellTrailer(
+  output: string,
+): { readonly transmitted: string; readonly trailer: string } | null {
+  // A caller may trim what follows the trailer. Nothing after it belongs to the search, and the
+  // body is left byte-for-byte as received so its size can be compared with the shell's count.
+  const trimmed = output.replace(/\s+$/, "");
+  const splitAt = trimmed.lastIndexOf("\n");
+  return splitAt < 0
+    ? { transmitted: "", trailer: trimmed }
+    : { transmitted: trimmed.slice(0, splitAt), trailer: trimmed.slice(splitAt + 1) };
+}
+
+function assertGrepShellByteCap(
+  transmitted: string,
+  originalBytes: number,
+  clientTruncated: boolean,
+): void {
+  const actual = Buffer.byteLength(transmitted, "utf8");
+  if (!clientTruncated) {
+    if (actual !== originalBytes) throw new Error("receipt bytes do not match the search output");
+    return;
+  }
+  // head -c can cut a UTF-8 character; the caller then decodes the stub to U+FFFD, so the
+  // received size may sit a few bytes either side of the limit.
+  if (Math.abs(actual - GREP_SHELL_BYTE_LIMIT) > GREP_SHELL_BYTE_SLACK) {
+    throw new Error("search output was cut before the trailer");
+  }
+}
+
+function grepShellBodyLines(transmitted: string, clientTruncated: boolean): readonly string[] {
+  const endsWithNewline = transmitted.endsWith("\n");
+  const text = endsWithNewline ? transmitted.slice(0, -1) : transmitted;
+  if (text.length === 0) return [];
+  const lines = text.split("\n");
+  // head -c can end inside a line. That partial line is not a result.
+  if (clientTruncated && !endsWithNewline) lines.pop();
+  return lines;
+}
+
+function parseGrepShellBody(lines: readonly string[]): {
+  readonly matches: GrepShellReceipt["matches"];
+  readonly totalFiles: number;
+  readonly totalLines: number;
+  readonly totalMatchedLines: number;
+} {
+  const matches: Array<GrepShellReceipt["matches"][number]> = [];
+  let currentFile: string | undefined;
+  let expectingFile = true;
+  let totalFiles = 0;
+  let totalLines = 0;
+  let totalMatchedLines = 0;
+  for (const raw of lines) {
+    const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    if (line.length === 0) {
+      if (expectingFile) throw new Error("ambiguous search line");
+      expectingFile = true;
+      currentFile = undefined;
+      continue;
+    }
+    if (expectingFile) {
+      currentFile = line;
+      totalFiles += 1;
+      expectingFile = false;
+      continue;
+    }
+    if (line === "--") continue;
+    if (currentFile === undefined) throw new Error("search line has no file");
+    const numbered = parseGrepShellNumberedLine(line);
+    if (!numbered) throw new Error("ambiguous search line");
+    matches.push({ file: currentFile, ...numbered });
+    totalLines += 1;
+    if (!numbered.isContextLine) totalMatchedLines += 1;
+  }
+  return { matches, totalFiles, totalLines, totalMatchedLines };
+}
+
+function parseGrepShellNumberedLine(line: string): {
+  readonly lineNumber: number;
+  readonly content: string;
+  readonly contentTruncated: boolean;
+  readonly isContextLine: boolean;
+} | null {
+  const match = /^(\d+):(.*)$/.exec(line);
+  const context = match ? null : /^(\d+)-(.*)$/.exec(line);
+  const parsed = match ?? context;
+  if (!parsed?.[1]) return null;
+  const lineNumber = Number(parsed[1]);
+  if (!Number.isSafeInteger(lineNumber) || lineNumber < 1) return null;
+  let content = parsed[2] ?? "";
+  const contentTruncated = content.endsWith(GREP_SHELL_COLUMN_SUFFIX);
+  if (contentTruncated) content = content.slice(0, -GREP_SHELL_COLUMN_SUFFIX.length);
+  return {
+    lineNumber,
+    content,
+    contentTruncated,
+    isContextLine: context !== null,
+  };
+}
+
 function buildGrepReceiptSuccess(
   args: Readonly<Record<string, string>>,
   receipt: GrepShellReceipt,
 ): Record<string, unknown> {
   const path = args.path || ".";
-  let result: Record<string, unknown>;
-  if (receipt.outputMode === "files_with_matches") {
-    result = {
-      files: {
-        files: receipt.files,
-        totalFiles: receipt.totalFiles,
-        clientTruncated: receipt.clientTruncated,
-        ripgrepTruncated: false,
-      },
-    };
-  } else if (receipt.outputMode === "count") {
-    result = {
-      count: {
-        counts: receipt.counts.map(([file, count]) => ({ file, count })),
-        totalFiles: receipt.totalFiles,
-        totalMatches: receipt.counts.reduce((sum, [, count]) => sum + count, 0),
-        clientTruncated: receipt.clientTruncated,
-        ripgrepTruncated: false,
-      },
-    };
-  } else {
-    const byFile = new Map<string, Array<Record<string, unknown>>>();
-    for (const match of receipt.matches) {
-      const entries = byFile.get(match.file) ?? [];
-      entries.push({
-        lineNumber: match.lineNumber,
-        content: match.content,
-        contentTruncated: match.contentTruncated,
-        isContextLine: match.isContextLine,
-      });
-      byFile.set(match.file, entries);
-    }
-    const matches = [...byFile].map(([file, fileMatches]) => ({ file, matches: fileMatches }));
-    result = {
-      content: {
-        matches,
-        totalLines: receipt.totalLines,
-        totalMatchedLines: receipt.totalMatchedLines,
-        clientTruncated: receipt.clientTruncated,
-        ripgrepTruncated: false,
-      },
-    };
+  const byFile = new Map<string, Array<Record<string, unknown>>>();
+  for (const match of receipt.matches) {
+    const entries = byFile.get(match.file) ?? [];
+    entries.push({
+      lineNumber: match.lineNumber,
+      content: match.content,
+      contentTruncated: match.contentTruncated,
+      isContextLine: match.isContextLine,
+    });
+    byFile.set(match.file, entries);
   }
+  // Retained lines only. clientTruncated means the byte cap hid the rest, so these
+  // totals are a lower bound and must not be read as the whole search.
   return {
     pattern: args.pattern ?? "",
     path,
-    outputMode: receipt.outputMode,
-    workspaceResults: { [path]: result },
+    outputMode: "content",
+    workspaceResults: {
+      [path]: {
+        content: {
+          matches: [...byFile].map(([file, fileMatches]) => ({ file, matches: fileMatches })),
+          totalLines: receipt.totalLines,
+          totalMatchedLines: receipt.totalMatchedLines,
+          clientTruncated: receipt.clientTruncated,
+          ripgrepTruncated: false,
+        },
+      },
+    },
   };
 }
 
