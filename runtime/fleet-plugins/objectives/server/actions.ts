@@ -53,7 +53,7 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
   return {
     // 첨부 등 바이트를 받는 경계도 같은 실행 중 편집 규칙과 귀속을 쓴다.
     unlessBusy, steerable, edited, markEdited,
-    patch: steerable(({ patch }: Ref & { patch: PatchObjectiveInput }) => only(patch, ["note", "routingConfirm"]), ({ objectiveId, patch }) => edited(objectiveId, [
+    patch: steerable(({ patch }: Ref & { patch: PatchObjectiveInput }) => only(patch, ["title", "note", "routingConfirm"]), ({ objectiveId, patch }) => edited(objectiveId, [
       ...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : []),
     ], async () => {
       const { title, groupId, launch: preset, ...own } = patch;

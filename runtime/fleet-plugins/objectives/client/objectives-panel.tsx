@@ -1582,7 +1582,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           }}><CheckGlyph /></button>
             );
           })()}
-          <DetailTitle objective={objective} t={t} editable={editable} call={call} />
+          <DetailTitle objective={objective} t={t} editable={touchable} call={call} />
           {switcher}
           {otherRequests > 0 ? <button type="button" className="objectives-detail-requests" title={t("objectives.requests.othersTip")} onClick={onNextRequest}>{t("objectives.requests.others", { count: otherRequests })}</button> : null}
           {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.objective.delete")} title={t("objectives.objective.delete")} onClick={async () => { if (removing.current) return; removing.current = true; const removed = await call<{ objective: Objective }>("/objective/remove", { objectiveId: objective.id }).finally(() => { removing.current = false; }); if (removed) { if (removed.objective.removed) upsertObjectiveLocally(removed.objective); else removeObjectiveLocally(objective.id); toast(t("objectives.toast.deleted")); } }}><TrashGlyph /></button> : null}

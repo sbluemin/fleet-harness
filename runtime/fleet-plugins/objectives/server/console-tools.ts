@@ -41,6 +41,7 @@ const commenceSchema = contextSchema.extend({ routing: z.literal("preview").opti
 const memberModelSchema = z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().trim().min(1).max(32).optional() }).strict();
 const editSchema = z.union([
   z.object({ brief: z.string().max(20_000) }).strict(),
+  z.object({ title: z.string().trim().min(1).max(MAX_TITLE) }).strict(),
   z.object({ mission: z.union([
     z.object({ add: missionAddSchema }).strict(),
     z.object({ patch: z.object({ missionId: ids, changes: missionPatchSchema }).strict() }).strict(),
@@ -80,7 +81,7 @@ const argsSchema = z.object({
   stop: z.literal(true).optional(),
   compact: z.literal(true).optional(),
   extend: z.object({ context: z.string().trim().min(1).max(MAX_CONTEXT) }).strict().optional(),
-  edit: editSchema.optional().describe("Change the brief, a mission or a criterion under the screen's running-session rules."),
+  edit: editSchema.optional().describe("Change the title, the brief, a mission or a criterion under the screen's running-session rules."),
   followup: z.union([z.object({ retry: followupTarget }).strict(), z.object({ abandon: followupTarget }).strict(), z.object({ discard: ids }).strict()]).optional().describe("Retry or abandon a follow-up creation, or discard a candidate."),
   why: z.string().trim().min(1).max(MAX_COMMODORE_WHY).optional().describe("Commodore only. One line on why this board write; the person reads it beside the action in the Commodore log."),
   member: z.object({ memberId: ids, launch: memberModelSchema.nullable() }).strict().optional().describe("Commodore only. Set a member's model and effort from view models; null returns it to routing. Outcome set: not launched yet, Commence launches it with this value (routing skips it). applied: the session now runs it. pending: the member is working and switches after its turn (next). A launched member that returns to routing keeps its running model. Refused: a model outside the catalog (model_not_in_catalog), a disabled kind (model_unavailable), an effort the model does not offer (invalid_effort), an unreadable catalog (catalog_unavailable), or the host's code."),
@@ -203,6 +204,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             }
             const edit = args.edit!;
             if ("brief" in edit) return actions.patch({ ...ref, patch: { note: edit.brief } });
+            if ("title" in edit) return actions.patch({ ...ref, patch: { title: edit.title } });
             if ("mission" in edit) {
               if ("add" in edit.mission) return actions.missionAdd({ ...ref, mission: edit.mission.add });
               if ("patch" in edit.mission) return actions.missionPatch({ ...ref, missionId: edit.mission.patch.missionId, patch: edit.mission.patch.changes });
