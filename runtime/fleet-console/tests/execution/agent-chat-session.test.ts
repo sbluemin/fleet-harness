@@ -1247,17 +1247,22 @@ describe("AgentChatRegistry — stopping a turn", () => {
    */
   it("draws each compaction boundary once — live, after resubscribe, and replayed from the transcript", async () => {
     const stamp = (second: number) => new Date(Date.UTC(2026, 9, 6, 0, 0, second)).toISOString();
+    // 실제 CLI 트랜스크립트의 줄 순서다(키만 읽어 확인). 자동 압축은 그것이 끊은 프롬프트 뒤에 경계를 적고
+    // 첨부·요약을 거쳐 응답으로 이어지며, `/compact`는 경계·요약이 운반체 줄보다 먼저 적힌다.
     const transcriptPath = writeTranscript("sess-compact-auto", [
       { type: "user", message: { role: "user", content: "replayed ask" }, timestamp: stamp(0) },
-      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "replayed before" }] }, timestamp: stamp(1) },
-      { type: "system", subtype: "compact_boundary", compactMetadata: { trigger: "auto", preTokens: 150_000, postTokens: 9_000, durationMs: 2_000 }, timestamp: stamp(2) },
+      { type: "system", subtype: "compact_boundary", compactMetadata: { trigger: "auto", preTokens: 150_000, postTokens: 9_000, durationMs: 2_000 }, timestamp: stamp(1) },
+      { type: "attachment", attachment: { type: "todo_reminder" }, timestamp: stamp(2) },
       { type: "user", isCompactSummary: true, message: { role: "user", content: "summary" }, timestamp: stamp(3) },
-      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "replayed answer" }] }, timestamp: stamp(4) },
-      { type: "user", message: { role: "user", content: "<command-name>/compact</command-name>" }, timestamp: stamp(10) },
-      { type: "system", subtype: "compact_boundary", compactMetadata: { trigger: "manual", preTokens: 60_000, postTokens: 5_000 }, timestamp: stamp(11) },
-      { type: "user", isCompactSummary: true, message: { role: "user", content: "summary" }, timestamp: stamp(12) },
-      { type: "user", message: { role: "user", content: "<local-command-stdout>Compacted</local-command-stdout>" }, timestamp: stamp(13) },
-      { type: "system", subtype: "compact_boundary", isSidechain: true, compactMetadata: { trigger: "auto", preTokens: 40_000 }, timestamp: stamp(14) },
+      { type: "attachment", attachment: { type: "todo_reminder" }, timestamp: stamp(4) },
+      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "replayed working" }] }, timestamp: stamp(5) },
+      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "replayed answer" }] }, timestamp: stamp(6) },
+      { type: "system", subtype: "compact_boundary", compactMetadata: { trigger: "manual", preTokens: 60_000, postTokens: 5_000 }, timestamp: stamp(10) },
+      { type: "user", isCompactSummary: true, message: { role: "user", content: "summary" }, timestamp: stamp(11) },
+      { type: "user", isMeta: true, message: { role: "user", content: "<local-command-caveat>Caveat</local-command-caveat>" }, timestamp: stamp(12) },
+      { type: "user", message: { role: "user", content: "<command-name>/compact</command-name>" }, timestamp: stamp(13) },
+      { type: "user", message: { role: "user", content: "<local-command-stdout>Compacted</local-command-stdout>" }, timestamp: stamp(14) },
+      { type: "system", subtype: "compact_boundary", isSidechain: true, compactMetadata: { trigger: "auto", preTokens: 40_000 }, timestamp: stamp(15) },
     ]);
     const configDir = tempDir("chat-compact-auto-");
     let child: ReturnType<typeof fakeSession> | null = null;
@@ -1290,7 +1295,7 @@ describe("AgentChatRegistry — stopping a turn", () => {
     session.subscribe((entry) => late.push(entry))();
     // 재생 턴 수와 시간은 경계가 없던 때와 같다 — 경계 줄은 턴을 열지 않고 첫 턴의 끝을 늘리지 않는다.
     expect(live.find(({ event }) => event.kind === "replay-end")?.event).toMatchObject({ turns: 1 });
-    expect(live.find(({ event }) => event.kind === "turn-end")?.event).toMatchObject({ durationMs: 4_000 });
+    expect(live.find(({ event }) => event.kind === "turn-end")?.event).toMatchObject({ durationMs: 6_000 });
     for (const entries of [live, late]) {
       const turns = fold(entries).turns;
       const inTurn = turns.flatMap((turn) => turn.items.filter((item) => item.type === "compact"));
