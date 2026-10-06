@@ -44,6 +44,7 @@ import {
   tagChatOrigin,
   type AgentChatCatalog,
   type AgentChatCatalogEntry,
+  type AgentChatCompactResult,
   type AgentChatJobDetail,
   type AgentChatJobIdentity,
   type AgentChatJobKind,
@@ -642,7 +643,7 @@ class AgentChatSession {
     pendingEnd?: {
       readonly ok: boolean;
       readonly summary?: string;
-      readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+      readonly compact?: AgentChatCompactResult;
     };
   } | null = null;
   /** 이 세션이 연 누적 턴 수. 저널이 앞을 버려도 재접속 receipt가 비교할 단조 좌표다. */
@@ -2832,6 +2833,9 @@ class AgentChatSession {
     // tool-start는 완성 tool 이벤트가 같은 스텝을 다시 세우므로 저널에 남기지 않는다 —
     // 남기면 재접속 리플레이에서 좌표 없는 빈 스텝이 한 줄 더 선다.
     if (event.kind === "text-delta" || event.kind === "tool-start") this.pushEphemeral(event);
+    // 정비 줄 밖의 압축은 자식이 스스로 한 것이다. 그 순간 턴이 열려 있었는지를 함께 남긴다 —
+    // 재접속한 화면은 모든 턴을 닫힌 것으로 다시 세우므로, 그 사실 없이는 경계를 둘 자리를 모른다.
+    else if (event.kind === "command-progress" || event.kind === "command-end") this.push({ ...event, inTurn: this.turnOpen });
     else this.push(event);
   }
 
@@ -3163,7 +3167,7 @@ class AgentChatSession {
   private endCommandLane(end: {
     readonly ok: boolean;
     readonly summary?: string;
-    readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+    readonly compact?: AgentChatCompactResult;
   }): void {
     if (!this.commandLane) return;
     this.commandLane = null;

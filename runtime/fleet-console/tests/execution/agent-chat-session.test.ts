@@ -1238,6 +1238,51 @@ describe("AgentChatRegistry — stopping a turn", () => {
     expect(fold(watching).turns.at(-1)).toMatchObject({ state: "done", command: { name: "compact", compact: { before: 342_000, after: 6_000 } } });
     await registry.disposeAll();
   });
+
+  /**
+   * 정비 줄 밖에서 자식이 스스로 한 압축(auto)도 화면에 경계로 남아야 한다. 라이브에서는 명령 턴이
+   * 없다는 이유로 버려졌고, 재접속한 화면은 모든 턴을 닫힌 것으로 다시 세우므로 경계를 둘 턴을
+   * 상태로 추측하면 엉뚱한 줄에 붙는다 — 두 화면 모두 그 턴 안에 정확히 하나가 서야 한다.
+   */
+  it("draws a child-initiated auto compaction once, live and after resubscribe", async () => {
+    const transcriptPath = writeTranscript("sess-compact-auto", []);
+    const configDir = tempDir("chat-compact-auto-");
+    let child: ReturnType<typeof fakeSession> | null = null;
+    const openSession = vi.fn(async () => {
+      child = fakeSession([], {});
+      return child;
+    });
+    const factory = vi.fn(async ({ models }: { readonly baseUrl: string; readonly models: readonly string[] }) => ({
+      configDir,
+      models,
+      openSession,
+      dispose: vi.fn(async () => {}),
+    }));
+    const registry = new AgentChatRegistry(factory as never);
+    const session = await registry.ensure("op-compact-auto", () => seedFor(transcriptPath));
+    const live: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => live.push(entry));
+
+    session.send("keep going");
+    await vi.waitFor(() => { expect(child).not.toBeNull(); });
+    child!.emit({ type: "assistant", message: { content: [{ type: "text", text: "before" }] } });
+    child!.emit({ type: "system", subtype: "status", status: "compacting" });
+    child!.emit({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 120_000, post_tokens: 8_000, duration_ms: 1_500 } });
+    child!.emit({ type: "assistant", message: { content: [{ type: "text", text: "after" }] } });
+    child!.emit({ type: "result", subtype: "success", is_error: false, result: "after", num_turns: 1, duration_ms: 1 });
+    await drainTurn(registry, "op-compact-auto");
+
+    const fold = (entries: readonly AgentChatJournalEvent[]) => entries.reduce((log, entry) => reduceAgentChatLog(log, { ...entry.event, receivedAt: entry.at }), initialAgentChatLogState);
+    const late: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => late.push(entry))();
+    for (const entries of [live, late]) {
+      const turns = fold(entries).turns;
+      const boundaries = turns.flatMap((turn) => turn.items.filter((item) => item.type === "compact"));
+      expect(boundaries).toEqual([expect.objectContaining({ compact: expect.objectContaining({ trigger: "auto", before: 120_000, after: 8_000 }) })]);
+      expect(turns.at(-1)).toMatchObject({ state: "done", answer: "after" });
+    }
+    await registry.disposeAll();
+  });
 });
 
 /**

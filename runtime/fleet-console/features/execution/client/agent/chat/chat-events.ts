@@ -137,12 +137,14 @@ export type AgentChatStreamEvent =
   | { readonly kind: "cleared"; readonly at?: number }
   /** 정비 명령 하나가 시작했다. 턴이 아니므로 사고를 그리지 않는다. */
   | { readonly kind: "command"; readonly name: string; readonly at?: number }
-  | { readonly kind: "command-progress"; readonly phase: "compacting" }
+  /** `inTurn`은 정비 줄 밖에서 자식이 스스로 압축할 때만 실린다 — 그 순간 대화 턴이 열려 있었는가. */
+  | { readonly kind: "command-progress"; readonly phase: "compacting"; readonly inTurn?: boolean }
   | {
       readonly kind: "command-end";
       readonly ok: boolean;
       readonly summary?: string;
-      readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+      readonly compact?: AgentChatCompact;
+      readonly inTurn?: boolean;
     }
   | { readonly kind: "turn-start"; readonly at?: number }
   /** 모델 요청 시작 신호 (message_start, api_retry). 라이브 전용이며 저널에 실리지 않는다. */
@@ -313,10 +315,10 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       return { ...journal, event: { kind: "command", name: event.name, ...atField(event.at) } };
     case "command-progress":
       if (event.phase !== "compacting") return null;
-      return { ...journal, event: { kind: "command-progress", phase: "compacting" } };
+      return { ...journal, event: { kind: "command-progress", phase: "compacting", ...(typeof event.inTurn === "boolean" ? { inTurn: event.inTurn } : {}) } };
     case "command-end": {
       const compact = event.compact;
-      const readCompact = (): { before: number; after?: number; durationMs?: number } | null => {
+      const readCompact = (): AgentChatCompact | null => {
         if (!compact || typeof compact !== "object") return null;
         const row = compact as Record<string, unknown>;
         if (typeof row.before !== "number") return null;
@@ -324,6 +326,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           before: row.before,
           ...(typeof row.after === "number" ? { after: row.after } : {}),
           ...(typeof row.durationMs === "number" ? { durationMs: row.durationMs } : {}),
+          ...(row.trigger === "auto" || row.trigger === "manual" ? { trigger: row.trigger } : {}),
         };
       };
       const numbers = readCompact();
@@ -332,6 +335,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
         event: {
           kind: "command-end",
           ok: event.ok !== false,
+          ...(typeof event.inTurn === "boolean" ? { inTurn: event.inTurn } : {}),
           ...(typeof event.summary === "string" && event.summary.length > 0 ? { summary: event.summary } : {}),
           ...(numbers ? { compact: numbers } : {}),
         },
@@ -663,7 +667,15 @@ export interface AgentChatTurnItem {
    * `received`는 다른 세션이 보낸 메시지다. 도구 줄과 같은 한 줄로 서고 펼치면 본문이 보인다.
    * 도는 턴에 도착하면 그 턴의 스텝이고, 닫힌 뒤에 도착하면 다음 턴의 머리에 선다.
    */
-  readonly type: "text" | "tool" | "ask" | "thought" | "inject" | "received";
+  /**
+   * `compact`는 도는 턴 안에서 자식이 스스로 문맥을 압축한 자리다. 일어난 순서 그대로 원장에
+   * 서며, `compact`가 없으면 아직 압축 중이고 `failed`면 압축이 실패했다.
+   */
+  readonly type: "text" | "tool" | "ask" | "thought" | "inject" | "received" | "compact";
+  /** type="compact"의 경계 숫자. */
+  readonly compact?: AgentChatCompact;
+  /** type="compact"가 실패로 끝났다. 요약된 것이 없으므로 경계가 아니다. */
+  readonly failed?: true;
   /** type="thought"의 길이. */
   readonly durationMs?: number;
   /** type="ask"일 때의 카드. 대기 중이면 누를 수 있고, 결말이 붙으면 한 줄로 접힌다. */
@@ -691,6 +703,14 @@ export interface AgentChatTurnItem {
   readonly from?: string;
   /** type="inject"·"received"의 수신 시각. */
   readonly at?: number;
+}
+
+/** 압축이 실제로 그은 경계의 숫자 — 자식이 말한 값 그대로다. */
+export interface AgentChatCompact {
+  readonly before: number;
+  readonly after?: number;
+  readonly durationMs?: number;
+  readonly trigger?: "auto" | "manual";
 }
 
 export interface AgentChatTurn {
@@ -737,7 +757,12 @@ export interface AgentChatTurn {
     /** 자식이 돌려준 한 줄. */
     readonly summary?: string;
     /** 압축이 실제로 되찾은 문맥. */
-    readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+    readonly compact?: AgentChatCompact;
+    /**
+     * 사람이 낸 명령이 아니라 자식이 스스로 한 압축의 결말이다 — 턴이 닫혀 있던 사이에 일어나
+     * 어느 턴에도 담을 수 없었던 경우. 라벨이 `/compact`가 아니라 이 값을 말한다.
+     */
+    readonly trigger?: "auto" | "manual";
     /** 채팅 중 모델·강도를 바꾼 기록. 이 줄은 자식에게 간 명령이 아니라 Console이 적용한 결말이다. */
     readonly coordinates?: { readonly from: AgentChatCoordinatePair; readonly to: AgentChatCoordinatePair };
   };
@@ -1103,6 +1128,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       return { ...state, turns: [...settleLastTurn(state), turn] };
     }
     case "command-progress": {
+      if (event.inTurn !== undefined) return beginChildCompaction(state, event.inTurn);
       const at = commandTurnIndex(state.turns);
       const last = state.turns[at];
       const command = last?.command;
@@ -1113,6 +1139,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       };
     }
     case "command-end": {
+      if (event.inTurn !== undefined) return endChildCompaction(state, event, event.inTurn);
       const at = commandTurnIndex(state.turns);
       const last = state.turns[at];
       const command = last?.command;
@@ -1431,7 +1458,9 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
   let headCount = 0;
   while (turn.items[headCount]?.type === "received") headCount += 1;
   const received = turn.items.slice(0, headCount);
-  const items = headCount > 0 ? turn.items.slice(headCount) : turn.items;
+  const body = headCount > 0 ? turn.items.slice(headCount) : turn.items;
+  // 결말 없이 닫힌 압축 자리는 그리지 않는다 — 일어났다고 말할 근거가 없다.
+  const items = turn.state === "working" ? body : body.filter((item) => !isPendingCompaction(item));
   const last = items.at(-1);
   const trailingText = last?.type === "text" ? last.text ?? "" : null;
   const changes = collectChanges(items);
@@ -1805,6 +1834,60 @@ function restTurn(turn: AgentChatTurn, now: number | undefined): AgentChatTurn {
 
 function restLastTurn(state: AgentChatLogState, now: number | undefined): AgentChatLogState {
   return withLastTurn(state, (turn) => restTurn(turn, now));
+}
+
+/**
+ * 자식이 스스로 시작한 압축 — 정비 줄이 아니다(`inTurn`이 실린 것이 그 표식이다).
+ *
+ * 도는 턴 안이면 그 턴의 원장에 일어난 순서대로 선다. 턴이 닫혀 있던 사이라면 진행은 세우지
+ * 않는다: 결말이 오지 않으면 아무 턴도 아닌 "작업 중" 줄이 원장 끝에 남아, 뒤따르는 턴의 글을
+ * 그 줄이 받아 버린다. 그 경우는 결말만 독립 줄로 선다.
+ */
+function beginChildCompaction(state: AgentChatLogState, inTurn: boolean): AgentChatLogState {
+  const last = state.turns.at(-1);
+  if (!inTurn || !last || last.command) return state;
+  if (last.items.some(isPendingCompaction)) return state;
+  return appendItem(state, { type: "compact" });
+}
+
+function endChildCompaction(
+  state: AgentChatLogState,
+  event: Extract<AgentChatStreamEvent, { kind: "command-end" }>,
+  inTurn: boolean,
+): AgentChatLogState {
+  // 실패는 숫자가 없다. 성공인데 숫자가 없는 결말은 경계라고 말할 근거가 없으므로 세우지 않는다.
+  if (event.ok && event.compact === undefined) return state;
+  const settled: AgentChatTurnItem = event.ok
+    ? { type: "compact", compact: event.compact! }
+    : { type: "compact", failed: true, ...(event.summary === undefined ? {} : { text: event.summary }) };
+  const last = state.turns.at(-1);
+  if (inTurn && last && !last.command) {
+    let pending = -1;
+    for (let index = last.items.length - 1; index >= 0; index -= 1) {
+      if (isPendingCompaction(last.items[index]!)) { pending = index; break; }
+    }
+    if (pending < 0) return appendItem(state, settled);
+    return withLastTurn(state, (turn) => ({ ...turn, items: turn.items.map((item, index) => (index === pending ? settled : item)) }));
+  }
+  const row: AgentChatTurn = {
+    dispatch: null,
+    items: [],
+    state: event.ok ? "done" : "error",
+    toolCount: 0,
+    draft: "",
+    command: {
+      name: "compact",
+      trigger: event.compact?.trigger ?? "auto",
+      ...(event.compact === undefined ? {} : { compact: event.compact }),
+      ...(event.summary === undefined ? {} : { summary: event.summary }),
+    },
+  };
+  return { ...state, turns: [...settleLastTurn(state), row] };
+}
+
+/** 아직 결말을 받지 못한 압축 자리. */
+export function isPendingCompaction(item: AgentChatTurnItem): boolean {
+  return item.type === "compact" && item.compact === undefined && item.failed !== true;
 }
 
 /** 명령 뒤에 수신 머리가 붙어도 명령의 진행·결말은 원래 명령에 돌려준다. */

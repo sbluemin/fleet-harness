@@ -91,6 +91,17 @@ export interface AgentChatContextSlice {
   readonly tokens: number;
 }
 
+/**
+ * 압축이 실제로 그은 경계의 숫자. `trigger`는 자식이 말한 그대로다 — 자동(문맥이 차서 자식이
+ * 스스로)과 수동(`/compact`)을 우리가 경로로 추측하지 않는다. 옛 자식은 싣지 않을 수 있다.
+ */
+export interface AgentChatCompactResult {
+  readonly before: number;
+  readonly after?: number;
+  readonly durationMs?: number;
+  readonly trigger?: "auto" | "manual";
+}
+
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
   /** 접속 시점의 snapshot이 모두 도착했다. 이 앞의 live opener는 복원이지 새 도착이 아니다. */
@@ -169,16 +180,23 @@ export type AgentChatStreamEvent =
    * 화면이 없는 사고를 그린다.
    */
   | { readonly kind: "command"; readonly name: string; readonly at?: number }
-  /** 그 명령이 지나는 단계. 지금은 압축 하나뿐이며, 자식의 `status` 메시지가 실어 온다. */
-  | { readonly kind: "command-progress"; readonly phase: "compacting" }
-  /** 그 명령의 결말. `compact`는 실제로 되찾은 문맥을 함께 싣는다. */
+  /**
+   * 그 명령이 지나는 단계. 지금은 압축 하나뿐이며, 자식의 `status` 메시지가 실어 온다.
+   *
+   * `inTurn`은 정비 줄 **밖에서** 자식이 스스로 압축할 때만 실린다(자동 압축). 그 순간 대화 턴이
+   * 열려 있었는지를 원장에 남겨, 재접속한 화면이 경계를 그 턴 안에 둘지 독립 줄로 세울지를
+   * 재생 경계로 추측하지 않게 한다 — `received.inTurn`과 같은 이유다. 정비 줄의 진행에는 없다.
+   */
+  | { readonly kind: "command-progress"; readonly phase: "compacting"; readonly inTurn?: boolean }
+  /** 그 명령의 결말. `compact`는 실제로 되찾은 문맥을 함께 싣는다. `inTurn`은 위와 같다. */
   | {
       readonly kind: "command-end";
       readonly ok: boolean;
       /** 자식이 돌려준 한 줄. 압축처럼 숫자가 있는 결말에서는 생략된다. */
       readonly summary?: string;
       /** 압축 전후의 토큰과 소요 시간 — 자식의 `compact_boundary`가 말한 값이다. */
-      readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+      readonly compact?: AgentChatCompactResult;
+      readonly inTurn?: boolean;
     }
   | { readonly kind: "turn-start"; readonly at?: number }
   /**
@@ -706,7 +724,7 @@ export function chatEventsFromSdkMessage(message: {
       case "compact_boundary": {
         const meta = (message as { readonly compact_metadata?: unknown }).compact_metadata;
         if (!meta || typeof meta !== "object") return [];
-        const row = meta as { readonly pre_tokens?: unknown; readonly post_tokens?: unknown; readonly duration_ms?: unknown };
+        const row = meta as { readonly pre_tokens?: unknown; readonly post_tokens?: unknown; readonly duration_ms?: unknown; readonly trigger?: unknown };
         if (typeof row.pre_tokens !== "number") return [];
         return [{
           kind: "command-end",
@@ -715,6 +733,7 @@ export function chatEventsFromSdkMessage(message: {
             before: row.pre_tokens,
             ...(typeof row.post_tokens === "number" ? { after: row.post_tokens } : {}),
             ...(typeof row.duration_ms === "number" ? { durationMs: row.duration_ms } : {}),
+            ...(row.trigger === "auto" || row.trigger === "manual" ? { trigger: row.trigger } : {}),
           },
         }];
       }
