@@ -399,7 +399,7 @@ function grepArguments(
 const GREP_SHELL_BYTE_LIMIT = 12 * 1024;
 const GREP_SHELL_MAX_COLUMNS = 2000;
 const GREP_SHELL_COLUMN_SUFFIX = " [... omitted end of long line]";
-// A repaired UTF-8 sequence at a hard byte cut can change the decoded length by a few bytes.
+// A UTF-8 sequence cut by the byte cap decodes to U+FFFD, which shifts the received size by a few bytes.
 const GREP_SHELL_BYTE_SLACK = 3;
 
 function grepShellArguments(
@@ -540,15 +540,13 @@ function parseGrepShellReceipt(
 function splitGrepShellTrailer(
   output: string,
 ): { readonly transmitted: string; readonly trailer: string } | null {
-  const normalized = output.replace(/\r\n/g, "\n");
-  if (!normalized.endsWith("\n")) return null;
-  const withoutFinal = normalized.slice(0, -1);
-  const splitAt = withoutFinal.lastIndexOf("\n");
-  if (splitAt < 0) return null;
-  return {
-    transmitted: withoutFinal.slice(0, splitAt),
-    trailer: withoutFinal.slice(splitAt + 1),
-  };
+  // A caller may trim what follows the trailer. Nothing after it belongs to the search, and the
+  // body is left byte-for-byte as received so its size can be compared with the shell's count.
+  const trimmed = output.replace(/\s+$/, "");
+  const splitAt = trimmed.lastIndexOf("\n");
+  return splitAt < 0
+    ? { transmitted: "", trailer: trimmed }
+    : { transmitted: trimmed.slice(0, splitAt), trailer: trimmed.slice(splitAt + 1) };
 }
 
 function assertGrepShellByteCap(
@@ -561,7 +559,9 @@ function assertGrepShellByteCap(
     if (actual !== originalBytes) throw new Error("receipt bytes do not match the search output");
     return;
   }
-  if (actual > GREP_SHELL_BYTE_LIMIT || GREP_SHELL_BYTE_LIMIT - actual > GREP_SHELL_BYTE_SLACK) {
+  // head -c can cut a UTF-8 character; the caller then decodes the stub to U+FFFD, so the
+  // received size may sit a few bytes either side of the limit.
+  if (Math.abs(actual - GREP_SHELL_BYTE_LIMIT) > GREP_SHELL_BYTE_SLACK) {
     throw new Error("search output was cut before the trailer");
   }
 }

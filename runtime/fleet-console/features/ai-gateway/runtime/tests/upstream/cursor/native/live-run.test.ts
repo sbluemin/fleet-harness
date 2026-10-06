@@ -151,10 +151,10 @@ describe("Cursor live client-tool Run bridge", () => {
         "3-nearby",
         "",
       ].join("\n");
+      // The caller may trim the newline after the trailer.
       const success = cursorNativeRedirectResultReplies(correlation, [
         successBody,
         `fleet-grep status=ok rc=0 bytes=${Buffer.byteLength(successBody)}`,
-        "",
       ].join("\n"), false);
       expect(success).toContainEqual(expect.objectContaining({
         execClientMessage: expect.objectContaining({
@@ -196,7 +196,8 @@ describe("Cursor live client-tool Run bridge", () => {
       }));
       const kept = "sub/plain.ts\n4:function cursor\n";
       const limit = 12 * 1024;
-      const transmitted = kept + "x".repeat(limit - Buffer.byteLength(kept));
+      // The byte cap cut a multibyte character, which the caller decoded to U+FFFD (3 bytes).
+      const transmitted = kept + "x".repeat(limit - Buffer.byteLength(kept) - 2) + "\uFFFD";
       const truncated = cursorNativeRedirectResultReplies(correlation, [
         transmitted,
         `fleet-grep status=ok rc=0 bytes=${limit + 50}`,
