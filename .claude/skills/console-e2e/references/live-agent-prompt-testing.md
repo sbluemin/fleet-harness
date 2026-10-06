@@ -67,7 +67,7 @@ sign-in display nor `claude auth status` is evidence here: the former is not rea
 and the latter can query the macOS Keychain, so do not run it for this check. A
 turn that needs the user's own Claude login, home, or keychain uses a real store: get the
 user's authorization for that store under the wrapper's exceptions and the preflight's
-credential rules. Never copy a login into the owned directory.
+credential rules, and launch it by [the real-login route](setup.md#when-the-claim-needs-a-real-login). Never copy a login into the owned directory.
 - `FLEET_GATEWAY_WIRE_LOG` — the request body and the argument JSON a model actually
   produced. **It is a fallback, not an override.** The Settings wire-log toggle wins
   whenever the Console has a stored value: on writes to
