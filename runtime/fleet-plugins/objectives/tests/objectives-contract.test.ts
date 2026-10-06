@@ -16,7 +16,7 @@ import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
 import { createObjectiveRoutes } from "../server/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../server/store.js";
-import { extensionOf, MAX_FOLLOWUPS, type ObjectiveEvent } from "../server/types.js";
+import { extensionOf, MAX_FOLLOWUPS, type Objective, type ObjectiveEvent } from "../server/types.js";
 import { RESULT_LIMITS, type ObjectiveResult } from "../server/results.js";
 import { createGhPrLookup, createPrStatusService } from "../server/pr-status.js";
 
@@ -147,7 +147,18 @@ function harness(routingOrigin: () => string | null = () => null) {
     deleteChild: (id: string) => { if (!operations.get(id)?.parentOperationId) return false; deleted.push(id); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
-  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => hostChat.get(id) ?? null });
+  const observeSession = (id: string) => {
+    const state = activity.get(id);
+    const outcome = outcomes.get(id);
+    return state ? {
+      lifecycle: state === "dormant" ? "dormant" : "live",
+      activity: state === "dormant" ? "idle" : state,
+      surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"),
+      supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])],
+      ...(outcome ? { output: { outcome } } : {}),
+    } : null;
+  };
+  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => hostChat.get(id) ?? null, observe: observeSession });
   let routeBody: unknown;
   let authorized = true;
   let routeResult: { status: number; value: unknown } = { status: 0, value: null };
@@ -190,17 +201,7 @@ function harness(routingOrigin: () => string | null = () => null) {
         },
         // 전사 — 호스트가 소유를 따진 뒤 돌려주는 한 쪽. 어느 세션을 읽었는지만 남긴다.
         transcript: async (operationId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${operationId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
-        observe: (id: string) => {
-          const state = activity.get(id);
-          const outcome = outcomes.get(id);
-          return state ? {
-            lifecycle: state === "dormant" ? "dormant" : "live",
-            activity: state === "dormant" ? "idle" : state,
-            surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"),
-            supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])],
-            ...(outcome ? { output: { outcome } } : {}),
-          } : null;
-        },
+        observe: observeSession,
         // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
         sleep: async (operationId: string) => {
           const state = activity.get(operationId);
@@ -1708,7 +1709,7 @@ describe("Objectives contract", () => {
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    const { ctx, store, launch, call, consoleTool, workspace, launches, activity, outcomes, operations, operationsHost, objectivesDir } = harness(() => "http://console.invalid");
+    const { ctx, store, launch, call, consoleTool, route, workspace, launches, activity, outcomes, operations, operationsHost, objectivesDir } = harness(() => "http://console.invalid");
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet", label: "Sonnet", launch: { model: "sonnet" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
@@ -1773,8 +1774,16 @@ describe("Objectives contract", () => {
     expect(commodoreRow({ enabled: false, autonomy: false }).mark).toBeUndefined();
     outcomes.set(workerId, "failed");
     expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.objectContaining({ state: "idle", outcome: "failed" })] }) }));
+    const personView = (await route("objective/get", { objectiveId: id })).value as { objective: Objective };
+    expect(personView.objective.members.find((m) => m.id === workerId)).toMatchObject({ outcome: "failed" });
+    const personState = (await route("state", { theaterId: "t1" })).value as { objectives: readonly Objective[] };
+    expect(personState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)).toMatchObject({ outcome: "failed" });
     outcomes.delete(workerId);
     expect((await board({ view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.not.objectContaining({ outcome: "failed" })] }) }));
+    const recoveredView = (await route("objective/get", { objectiveId: id })).value as { objective: Objective };
+    expect(recoveredView.objective.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
+    const recoveredState = (await route("state", { theaterId: "t1" })).value as { objectives: readonly Objective[] };
+    expect(recoveredState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
     expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
     // 일하는 구성원은 이번 턴 뒤로 예약된다 — 세션 좌표는 그대로다. 라우팅으로 되돌리면 예약을 거두고 실행값은 남는다.
     activity.set(workerId, "running");

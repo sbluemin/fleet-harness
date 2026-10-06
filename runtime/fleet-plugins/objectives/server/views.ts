@@ -46,6 +46,14 @@ export function roleIn(objective: Objective, caller: ConsoleCaller | undefined):
   return member ? { role: "member", memberId: member.id } : null;
 }
 
+export function deriveFailedOutcome(
+  observation: { readonly lifecycle: string; readonly activity: string; readonly output?: { readonly outcome?: string } } | null | undefined,
+): "failed" | undefined {
+  return observation && observation.lifecycle === "live" && observation.activity === "idle" && observation.output?.outcome === "failed"
+    ? "failed"
+    : undefined;
+}
+
 export function createBoardViews(ctx: FleetPluginServerContext, store: ObjectiveStore) {
   const observe = (operationId: string): { readonly operationId: string; readonly title: string | null; readonly state: string; readonly outcome?: "failed" } => {
     const reference = ctx.host.operations.describe?.(operationId);
@@ -54,9 +62,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     if (reference?.location === "archived") return { operationId, title: node.title, state: "dormant" };
     const observation = ctx.host.consoleControl?.observe(operationId) ?? null;
     const state = observation ? (observation.lifecycle === "dormant" ? "dormant" : observation.activity) : "unknown";
-    const outcome = observation && observation.lifecycle === "live" && observation.activity === "idle" && observation.output?.outcome === "failed"
-      ? ("failed" as const)
-      : undefined;
+    const outcome = deriveFailedOutcome(observation);
     return {
       operationId,
       title: node.title,

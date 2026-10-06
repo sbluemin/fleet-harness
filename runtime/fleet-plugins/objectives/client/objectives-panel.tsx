@@ -713,7 +713,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
       const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
-      const failed = (member as { outcome?: string }).outcome === "failed";
+      const failed = member.outcome === "failed";
       const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
       const allowed = memberSubagents(member);
       return (
@@ -1924,8 +1924,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   // 「메시지」의 받는 이 — 지휘관(자기 활동)과 세션이 떠 있는 구성원. 상태 낱말은 명단 줄과 같은 말을 쓴다.
   const memberStateWord = (state: string, outcome?: string) => outcome === "failed" ? t("objectives.members.failed") : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
   const recipients: MessageRecipient[] = [
-    { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark />, state: operationOwnState(objective.id), outcome: (objective.commander as { outcome?: string }).outcome },
-    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, state: operationState(member.id), outcome: (member as { outcome?: string }).outcome })),
+    { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark />, state: operationOwnState(objective.id), outcome: objective.commander.outcome },
+    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, state: operationState(member.id), outcome: member.outcome })),
   ].filter((recipient) => recipient.state !== "closed");
   const bottom = (
       <div className="objectives-detail-bottom" data-objectives-tour="action">

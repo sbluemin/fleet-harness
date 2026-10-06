@@ -7,6 +7,7 @@ import { readOperationLaunch, type OperationNode, type OperationDescription } fr
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
+import { deriveFailedOutcome } from "./views.js";
 import {
   MAX_CRITERIA,
   MAX_OBJECTIVE_ACTIONS, objectiveActorSchema, objectiveActionSchema,
@@ -110,6 +111,8 @@ export interface ObjectiveStoreOptions {
   readonly coordinates?: (operationId: string) => HostCoordinates | null;
   /** 호스트가 떠 있는 구성원의 모델을 바꿀 수 있다 — 메뉴가 「지금·이번 턴 뒤」를 말한다. */
   readonly liveSwitch?: boolean;
+  /** 공개 콘솔 제어 관측 — 실패 outcome 및 상태 투영에 쓴다. */
+  readonly observe?: (operationId: string) => { readonly lifecycle: string; readonly activity: string; readonly output?: { readonly outcome?: string } } | null;
 }
 
 /** 새 목표의 목표 고유값 — Operation 은 부르는 쪽이 먼저 만든다. */
@@ -617,24 +620,27 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const held = host ? heldNextOutcome(stored!, host) : null;
       const applied = legacy || held === "applied";
       const next = applied ? null : held === "not_applied" ? { ...stored!, failed: COORDINATES_NOT_APPLIED } : stored;
+      const memberOutcome = options.observe ? deriveFailedOutcome(options.observe(member.id)) : undefined;
       return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}),
         subagents: member.subagents === true, launch: member.launch ?? { mode: "route" as const },
         sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: preset.model } : {}), ...(preset?.effort ? { effort: preset.effort } : {}),
         routed: memberNode && !applied ? storedRouted(member.routed) : null,
         switchesLive: options.liveSwitch === true,
-        next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null } : null };
+        next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null } : null,
+        ...(memberOutcome ? { outcome: memberOutcome } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);
     // 단계 기록이 생기기 전의 옛 레코드 — 개시 여부는 기동 흔적으로 읽는다. 에이전트 Operation 은 레코드가 있든 없든 모두 목표다.
     const legacy = recorded && !pending && typeof stored.enlisted !== "boolean";
+    const commanderOutcome = options.observe ? deriveFailedOutcome(options.observe(stored.operationId)) : undefined;
     return {
       id: stored.operationId,
       theaterId: node?.theaterId ?? pending!.theaterId,
       groupId: node ? node.groupId ?? null : liveGroup(pending!.theaterId, pending!.groupId),
       title: node?.title ?? pending!.title,
       createdAt: node?.ts.createdAt ?? pending!.createdAt,
-      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: launch.model } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started },
+      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: launch.model } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started, ...(commanderOutcome ? { outcome: commanderOutcome } : {}) },
       note: stored.note,
       attachments: stored.attachments ?? [],
       results: stored.results ?? [],
