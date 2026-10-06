@@ -42,7 +42,7 @@ type Saved = {
   readonly results?: readonly ObjectiveResult[];
 };
 
-function harness(routingOrigin: () => string | null = () => null) {
+function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-"));
   dirs.push(dir);
   const theaterPath = path.join(dir, "project");
@@ -229,7 +229,7 @@ function harness(routingOrigin: () => string | null = () => null) {
       paths: { resolveTheaterPath: () => theaterPath },
     },
   } as unknown as FleetPluginServerContext;
-  const launch = createLaunchService(ctx, store);
+  const launch = createLaunchService(ctx, store, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
   grouped.push((event) => launch.operationGrouped(event));
   // 결정 요청은 기본으로 기다리지 않는다 — 기다림은 그 계약을 다루는 테스트가 따로 켠다.
   const tools = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 0 });
@@ -257,7 +257,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups };
+  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, advanceClock: (ms: number) => { clock += ms; } };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -1970,5 +1970,50 @@ describe("Objectives contract", () => {
       },
     } as unknown as FleetPluginServerContext;
     expect(() => objectivesPlugin.register!(ctx)).not.toThrow();
+  });
+
+  it("wakes the commander once when an assigned ready mission stays unreported and never steers", async () => {
+    const reportQuietMs = 25 * 60_000;
+    const { store, launch, call, sent, activity, advanceClock } = harness(() => null, { reportQuietMs });
+    const objective = await launch.create({ theaterId: "t1", title: "Quiet", groupId: null, missions: [{ text: "report back" }] });
+    await launch.requestPlan(objective.id);
+    const commander = objective.id;
+    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "worker" }] }, commander)).isError).toBe(false);
+    const before = new Set(store.find(objective.id)!.missions.map((mission) => mission.id));
+    expect((await call("add_mission", { objectiveId: objective.id, text: "stay quiet", member: "worker" }, commander)).isError).toBe(false);
+    const mission = store.find(objective.id)!.missions.find((entry) => !before.has(entry.id));
+    expect(mission?.assignmentTs).toEqual(expect.any(Number));
+    expect(mission?.member).toEqual(expect.any(String));
+    activity.set(commander, "idle");
+    const quietSends = () => sent.filter((entry) => entry.text.includes("No report for") || entry.text.includes("배정 후 보고 없이"));
+    const steerSends = () => sent.filter((entry) => entry.text.includes("read the board again") || entry.text.includes("보드를 다시 읽고"));
+    vi.useFakeTimers();
+    try {
+      launch.watchReportQuiet();
+      advanceClock(reportQuietMs + 5_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(quietSends()).toHaveLength(0);
+      store.setPlanning(objective.id, false);
+      store.recordStage(objective.id, "commenced");
+      const mustering = call("muster", { objectiveId: objective.id }, commander);
+      await vi.advanceTimersByTimeAsync(50);
+      const mustered = await mustering;
+      expect(mustered.isError).toBe(false);
+      const memberId = (mustered.structuredContent.members as { id: string }[])[0]!.id;
+      activity.set(memberId, "idle");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(quietSends()).toHaveLength(0);
+      advanceClock(reportQuietMs + 5_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(quietSends()).toEqual([expect.objectContaining({ operationId: commander, text: expect.stringContaining("No report for 25 min since assignment") })]);
+      expect(sent.some((entry) => entry.operationId === memberId && (entry.text.includes("No report for") || entry.text.includes("배정 후 보고 없이")))).toBe(false);
+      expect(steerSends()).toHaveLength(0);
+      advanceClock(reportQuietMs);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(quietSends()).toHaveLength(1);
+    } finally {
+      launch.dispose();
+      vi.useRealTimers();
+    }
   });
 });

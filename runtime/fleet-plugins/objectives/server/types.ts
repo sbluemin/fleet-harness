@@ -240,6 +240,8 @@ export interface StoredMission {
   readonly memberBy?: ObjectiveActor;
   /** 담당이 정해진 시각. 무보고 간격은 이 시각과 마지막 보드 변경 중 늦은 쪽부터 센다. */
   readonly assignmentTs?: number;
+  /** 이 침묵 시작 시각으로 지휘관에게 이미 알렸으면 그 시각. 보드에는 보이지 않는다. */
+  readonly quietWokenFor?: number;
   /**
    * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 임무. 준비되지 않으며, 지휘관이 선행을 정하거나
    * 사람이 편성에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다.

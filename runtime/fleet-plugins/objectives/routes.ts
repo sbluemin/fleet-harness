@@ -58,7 +58,8 @@ export default definePlugin({
     const releaseChannel = ctx.host.events.registerSseChannel(OBJECTIVE_CHANNEL);
     ctx.host.lifecycle.registerCleanup(releaseChannel);
     let prStatus: PrStatusService | undefined;
-    const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, coordinates: (operationId) => ctx.host.consoleControl?.coordinates?.(operationId) ?? null, liveSwitch: !!ctx.host.consoleControl?.sleep, observe: (operationId) => ctx.host.consoleControl?.observe(operationId) ?? null, emit: (event) => {
+    let watchQuiet: () => void = () => {};
+    const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, coordinates: (operationId) => ctx.host.consoleControl?.coordinates?.(operationId) ?? null, liveSwitch: !!ctx.host.consoleControl?.sleep, observe: (operationId) => ctx.host.consoleControl?.observe(operationId) ?? null, onAssignment: () => watchQuiet(), emit: (event) => {
       ctx.host.events.publish(OBJECTIVE_CHANNEL, event);
       prStatus?.refresh(event.objectiveId);
     } });
@@ -73,6 +74,7 @@ export default definePlugin({
     const launch = createLaunchService(ctx, store, {
       commodoreCommander: (theaterId) => { const state = commodore.read(theaterId); return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : null; },
     });
+    watchQuiet = () => launch.watchReportQuiet();
     ctx.host.lifecycle.registerCleanup(() => launch.dispose());
     // 보관 기간이 지난 지운 목표 — 증거 정리와 같은 주기로 영구 삭제하고, 후속 원본의 배치 표시도 다시 방송한다.
     const purgeRemoved = () => { try { for (const id of store.purgeRemoved()) launch.followupTargetChanged(id); } catch { console.warn("[objectives] removed_purge_failed"); } };
@@ -126,6 +128,9 @@ export default definePlugin({
     // 이미 live 인 지휘관·구성원 — 이 다음에 실패 판정이 바뀌면 열린 보드가 upsert 로 받는다. 활동 사건 채널은 없다.
     try { launch.watchLiveOutcomes(); }
     catch (error) { console.warn(`[objectives] outcome watch skipped: ${error instanceof Error ? error.message : String(error)}`); }
+    // 배정된 준비 임무의 무보고 — 대상이 없으면 타이머를 걸지 않는다. 이후 배정이 다시 건다.
+    try { launch.watchReportQuiet(); }
+    catch (error) { console.warn(`[objectives] report quiet watch skipped: ${error instanceof Error ? error.message : String(error)}`); }
 
     const routes = createObjectiveRoutes(ctx, store, launch, prStatus);
     for (const route of routes) {

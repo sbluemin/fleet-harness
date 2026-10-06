@@ -113,6 +113,8 @@ export interface ObjectiveStoreOptions {
   readonly liveSwitch?: boolean;
   /** 공개 콘솔 제어 관측 — 실패 outcome 및 상태 투영에 쓴다. */
   readonly observe?: (operationId: string) => { readonly lifecycle: string; readonly activity: string; readonly output?: { readonly outcome?: string } } | null;
+  /** 임무에 담당 시각이 새로 남으면 — 무보고 감시를 걸 때 쓴다. */
+  readonly onAssignment?: (objectiveId: string) => void;
 }
 
 /** 새 목표의 목표 고유값 — Operation 은 부르는 쪽이 먼저 만든다. */
@@ -214,6 +216,10 @@ export interface ObjectiveStore {
   missionPatch(objectiveId: string, missionId: string, input: MissionPatchInput, options?: { readonly by?: ObjectiveActor }): Objective;
   /** 기동으로 처음 선 담당의 임무에 배정 시각이 없으면 지금으로 남긴다. 이미 있으면 그대로 둔다. */
   noteAssignments(objectiveId: string, memberIds: readonly string[]): void;
+  /** 이 침묵 시작 시각으로 이미 지휘관에게 알렸으면 그 시각. */
+  reportWokenFor(objectiveId: string, missionId: string): number | undefined;
+  /** 깨움을 보낸 침묵 시작 시각을 남긴다. 보드 변경 시각은 움직이지 않는다. */
+  markReportWake(objectiveId: string, missionId: string, since: number): void;
   /** 지휘관의 완료 — 기록·완료·선택 결과물을 한 번에 저장한다. 결과물은 임무의 현재 연결로 남는다. */
   missionDone(objectiveId: string, missionId: string, lines: readonly string[], results?: readonly CompletionResultInput[]): Objective;
   /** 사람이 이 임무의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
@@ -389,7 +395,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
       if (parsed.boardUpdatedAt !== undefined && (!Number.isFinite(parsed.boardUpdatedAt) || parsed.boardUpdatedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
-      if (Array.isArray(parsed.missions) && parsed.missions.some((mission) => { const at = (mission as { assignmentTs?: unknown }).assignmentTs; return at !== undefined && (typeof at !== "number" || !Number.isFinite(at) || at < 0); })) throw new ObjectiveStoreError("invalid_stored_board_time");
+      if (Array.isArray(parsed.missions) && parsed.missions.some((mission) => { const row = mission as { assignmentTs?: unknown; quietWokenFor?: unknown }; const bad = (at: unknown) => at !== undefined && (typeof at !== "number" || !Number.isFinite(at) || at < 0); return bad(row.assignmentTs) || bad(row.quietWokenFor); })) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (parsed.addedBy !== undefined && typeof parsed.addedBy !== "string" && (parsed.addedBy?.kind !== "commodore" || !objectiveActorSchema.safeParse(parsed.addedBy).success)) throw new ObjectiveStoreError("invalid_stored_actor");
       const intent = parsed.operationIntent;
       if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_operation_intent");
@@ -915,10 +921,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   /** 자리가 정해졌다 — 미분류 표시를 뗀다. */
   const placed = (mission: StoredMission): StoredMission => (mission.unplaced ? (({ unplaced: _unplaced, ...rest }) => ({ ...rest, by: mission.by ?? "human" }))(mission) : mission);
   const withoutAssignment = (mission: StoredMission): StoredMission => {
-    if (mission.assignmentTs === undefined) return mission;
-    const { assignmentTs: _assignmentTs, ...rest } = mission;
+    if (mission.assignmentTs === undefined && mission.quietWokenFor === undefined) return mission;
+    const { assignmentTs: _assignmentTs, quietWokenFor: _quietWokenFor, ...rest } = mission;
     return rest;
   };
+  const assignmentNoted = (objectiveId: string) => { options.onAssignment?.(objectiveId); };
   const withoutEdge = (mission: StoredMission, id: string): StoredMission => ({ ...mission, prerequisites: mission.prerequisites.filter((edge) => edge.id !== id) });
   const proposalsOf = (stored: StoredObjective, input: readonly CriterionProposalInput[]): readonly ObjectiveCriterionProposal[] => {
     const criteria = stored.criteria ?? [];
@@ -1254,7 +1261,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { ...action(stored, input.by, "hand-off", { handoff }), extensionActive: undefined, handoff };
     }),
 
-    missionAdd: (objectiveId, input, addOptions) => update(objectiveId, (stored) => {
+    missionAdd: (objectiveId, input, addOptions) => {
+      const added = update(objectiveId, (stored) => {
       const known = new Set(stored.missions.map((mission) => mission.id));
       const prerequisites = (input.prerequisites ?? []).filter((id) => known.has(id)).map((id): StoredEdge => ({ id, ...(input.why?.[id] ? { why: input.why[id] } : {}) }));
       // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 임무뿐이다.
@@ -1263,9 +1271,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const mission: StoredMission = { id: randomUUID(), text: input.text, prerequisites, ...(input.member ? { member: input.member, assignmentTs: now() } : {}), ...(addOptions?.by && input.member !== undefined ? { memberBy: addOptions.by } : {}), ...(unplaced ? { unplaced: true as const } : {}), ...(addOptions?.by ? { by: addOptions.by } : {}) };
       // 새 일이 생겼다 — 앞선 충족 판단은 옛 보드에 대한 것이다.
       return withoutMet({ ...stored, missions: [...stored.missions, mission] });
-    }),
+      });
+      if (input.member) assignmentNoted(objectiveId);
+      return added;
+    },
 
-    missionPatch: (objectiveId, missionId, input, patchOptions) => update(objectiveId, (stored) => {
+    missionPatch: (objectiveId, missionId, input, patchOptions) => {
+      let assigned = false;
+      const patched = update(objectiveId, (stored) => {
       const { at, mission } = missionOf(stored, missionId);
       const known = new Set(stored.missions.map((candidate) => candidate.id));
       const why = (id: string) => input.why?.[id] ?? mission.prerequisites.find((edge) => edge.id === id)?.why;
@@ -1283,13 +1296,18 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(input.done !== undefined ? { done: input.done ? true as const : undefined } : {}),
         ...(input.member !== undefined ? { member: input.member ?? undefined, memberBy: patchOptions?.by } : {}),
       };
+      if (memberChanged && input.member) assigned = true;
       const next: StoredMission = !memberChanged ? drafted : input.member ? { ...withoutAssignment(drafted), assignmentTs: now() } : withoutAssignment(drafted);
       const replaced = replaceMission(stored, at, next);
       // 끝난 임무를 되돌리면 새 일이다 — 충족 판단을 거둔다.
       return input.done === false && mission.done ? withoutMet(action(replaced, patchOptions?.by ?? "commander", "mission-reopened", { targetId: missionId })) : replaced;
-    }),
+      });
+      if (assigned) assignmentNoted(objectiveId);
+      return patched;
+    },
 
     noteAssignments(objectiveId, memberIds) {
+      let stamped = false;
       const ids = new Set(memberIds);
       update(objectiveId, (stored) => {
         const at = now();
@@ -1297,9 +1315,24 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const missions = stored.missions.map((mission) => {
           if (!mission.member || !ids.has(mission.member) || mission.assignmentTs !== undefined) return mission;
           changed = true;
+          stamped = true;
           return { ...mission, assignmentTs: at };
         });
         return changed ? { ...stored, missions } : stored;
+      }, false);
+      if (stamped) assignmentNoted(objectiveId);
+    },
+
+    reportWokenFor(objectiveId, missionId) {
+      try { return locate(objectiveId).stored.missions.find((mission) => mission.id === missionId)?.quietWokenFor; }
+      catch { return undefined; }
+    },
+    markReportWake(objectiveId, missionId, since) {
+      update(objectiveId, (stored) => {
+        const at = stored.missions.findIndex((mission) => mission.id === missionId);
+        const mission = at < 0 ? undefined : stored.missions[at];
+        if (!mission || mission.quietWokenFor === since) return stored;
+        return replaceMission(stored, at, { ...mission, quietWokenFor: since });
       }, false);
     },
 
@@ -1420,7 +1453,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { objective, linked, changed };
     },
 
-    plan: (objectiveId, input) => update(objectiveId, (stored) => {
+    plan: (objectiveId, input) => {
+      const planned = update(objectiveId, (stored) => {
       if (input.criteria !== undefined && !stored.criteriaOpen) throw new ObjectiveStoreError("criteria_not_planning");
       // 검증과 편성 변경은 한 번의 update 안에서 끝난다 — 실패하면 기준 제안도 임무도 바뀌지 않는다.
       const proposals = input.criteria === undefined ? stored.criteriaProposals : proposalsOf(stored, input.criteria);
@@ -1456,7 +1490,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         return { id: freshIds[ix]!, text: mission.text, prerequisites, ...(member ? { member, assignmentTs: now() } : {}) };
       });
       return withoutMet({ ...stored, members, criteriaProposals: proposals, missions: [...kept.map((mission) => ({ ...mission, prerequisites: mission.prerequisites.filter((edge) => keptIds.has(edge.id)) })), ...fresh] });
-    }),
+      });
+      if (input.missions.some((mission) => mission.member)) assignmentNoted(objectiveId);
+      return planned;
+    },
 
     setPlanning: (objectiveId, planning) => update(objectiveId, (stored) => (!!stored.planning === planning ? stored : { ...stored, planning: planning ? true as const : undefined })),
     recordStage: (objectiveId, stage, by) => update(objectiveId, (stored) => {
