@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
+import { createOwnedProcessRegistry, proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
 import { createWindowsJobContainment, type WindowsJobBindings } from "../core/host/bootstrap/windows-job-containment.js";
 import { describeReplacedLockAuthor } from "@fleet-console/protocol/lifecycle";
 
@@ -291,7 +291,7 @@ describe("Console daemon lifecycle integration", () => {
   // The deadline signals a registered group whose leader already exited only when the process table proves the members are
   // that group's: a number now held by a live process (the leader's pid reused) or members that started before the group
   // was spawned mean the number names someone else's group, which is never signalled (I1).
-  it("signals an exited-leader group only when its members prove to be that group's", () => {
+  it("signals an exited-leader group only when its members prove to be that group's", async () => {
     const spawnedAt = Date.UTC(2026, 9, 5, 12, 0, 0);
     const group = { pgid: 700, spawnedAt };
     const member = { pid: 701, pgid: 700, startedAt: spawnedAt + 1_000 };
@@ -300,6 +300,30 @@ describe("Console daemon lifecycle integration", () => {
     expect(proveExitedLeaderGroup([member, { pid: 702, pgid: 700, startedAt: spawnedAt - 600_000 }], group, spawnedAt + 60_000)).toBe(false);
     expect(proveExitedLeaderGroup([], group, spawnedAt + 60_000)).toBe(false);
     expect(proveExitedLeaderGroup([{ pid: 2, pgid: 1, startedAt: spawnedAt }], { pgid: 1, spawnedAt }, spawnedAt + 60_000)).toBe(false);
+
+    // 기존 exited-leader 증명 사례를 실제 등록부 정지 경계로 확장한다. stop 전 종료된 세션의 잔여는
+    // 평상시에는 그대로 두지만, beginStop의 최초 훑기에서는 놓치지 않아야 한다. Windows는 built W1이 검증한다.
+    if (process.platform !== "win32") {
+      const registry = createOwnedProcessRegistry();
+      const child = registry.spawn({
+        command: process.execPath,
+        args: ["-e", "const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1<<30)'],{stdio:'inherit'});console.log(c.pid);setTimeout(()=>process.exit(0),100);"],
+        env: process.env,
+      });
+      CHILD_PIDS.add(child.pid!);
+      const memberPid = Number(await readFirstLine(child as ChildProcessByStdio<null, Readable, null>));
+      CHILD_PIDS.add(memberPid);
+      await new Promise<void>((resolve) => {
+        if (child.exitCode !== null || child.signalCode !== null) resolve();
+        else child.once("exit", () => resolve());
+      });
+      await delay(200);
+      expect(isRunning(memberPid), "평상시에는 종료된 리더의 잔여를 정지시키지 않는다").toBe(true);
+      registry.beginStop(() => false, 200);
+      await delay(50);
+      expect(isRunning(memberPid), "기존 잔여에도 정지 grace를 준다").toBe(true);
+      await vi.waitFor(() => expect(isRunning(memberPid), "활성화 때 이미 종료된 리더의 잔여도 정리한다").toBe(false), { timeout: 3_000 });
+    }
   });
 });
 

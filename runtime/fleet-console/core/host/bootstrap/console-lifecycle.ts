@@ -37,6 +37,7 @@ import {
   CONSOLE_START_TIMEOUT_MS,
   CONSOLE_STOP_DEADLINE_MS,
   EXTERNAL_ESCALATION_MS,
+  OWNED_GROUP_TERM_GRACE_MS,
   PRELOCK_CHILD_GRACE_MS,
   describeConsoleLockSlotQuiescenceCheck,
   describeConsoleOwnerOutlivedKill,
@@ -338,6 +339,10 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       // with the lock, or a child that outlives the released lock. The owned process groups are ended first (SIGKILL on
       // POSIX, TerminateJobObject on Windows); a lock left behind is reclaimed by the next Console once this pid is ESRCH.
       onStopRequested: () => {
+        // 먼저 잔여 종료 관찰만 켠다. 살아 있는 리더와 플러그인 자체 cleanup 순서는 바꾸지 않는다.
+        ownedProcesses.beginStop(() => false, OWNED_GROUP_TERM_GRACE_MS, {
+          onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error),
+        });
         deadline = setTimeout(() => {
           // One process-table read at most, shared by both steps: the external escalation leaves room for one.
           const table = createProcessTableSnapshot(env);

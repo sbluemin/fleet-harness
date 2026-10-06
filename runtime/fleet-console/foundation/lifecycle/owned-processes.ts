@@ -117,6 +117,12 @@ export interface OwnedProcessRegistry {
    * there is no process-table read, and the return is how many jobs still had members. Without the port this returns 0.
    */
   endGroups(select: (group: OwnedProcessGroup) => boolean, graceMs: number, input?: OwnedProcessKillInput): number;
+  /**
+   * 정지 단계만 활성화한다. selectNow가 고른 그룹은 기존 endGroups로 정리하고, 이미 리더가 종료된 그룹과
+   * 이후 리더가 종료되는 모든 등록 그룹의 잔여도 grace 뒤 같은 증명으로 종료한다. 살아 있는 비선택 리더에는
+   * 신호를 보내지 않는다. 반복 호출은 정지 단계를 초기화하지 않으며 타이머는 프로세스를 붙잡지 않는다.
+   */
+  beginStop(selectNow: (group: OwnedProcessGroup) => boolean, graceMs: number, input?: OwnedProcessKillInput): number;
 }
 
 interface Entry {
@@ -132,6 +138,8 @@ interface Entry {
 export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions = {}): OwnedProcessRegistry {
   const entries = new Map<number, Entry>();
   const containment = process.platform === "win32" ? options.containment : undefined;
+  let stopping: { readonly graceMs: number; readonly input: OwnedProcessKillInput } | null = null;
+  const retiring = new WeakSet<Entry>();
   const snapshot = (entry: Entry): OwnedProcessGroup => ({ pgid: entry.pgid, spawnedAt: entry.spawnedAt, leaderExitedAt: entry.leaderExitedAt, ...(entry.owner === undefined ? {} : { owner: entry.owner }) });
   const remove = (pgid: number): void => {
     if (entries.delete(pgid)) options.onRemoved?.(pgid);
@@ -158,12 +166,25 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
     }
   }
 
+  function retireExitedGroup(entry: Entry): void {
+    const stop = stopping;
+    if (!stop || entry.leaderExitedAt === null || retiring.has(entry) || !entryHasMembers(entry)) return;
+    retiring.add(entry);
+    const timer = setTimeout(() => {
+      // 키가 같아도 새 등록은 다른 그룹이다. 재사용된 pid나 살아 있는 새 리더에는 신호를 보내지 않는다.
+      if (entries.get(entry.pgid) !== entry || entry.leaderExitedAt === null) return;
+      registry.endGroups((group) => group.pgid === entry.pgid, 0, stop.input);
+    }, stop.graceMs);
+    timer.unref?.();
+  }
+
   function watchLeader(entry: Entry): void {
     options.onRegistered?.(snapshot(entry));
     entry.child.once("exit", () => {
       entry.leaderExitedAt = Date.now();
       options.onLeaderExited?.(snapshot(entry));
       if (!entryHasMembers(entry)) releaseEntry(entry);
+      else retireExitedGroup(entry);
     });
   }
 
@@ -183,7 +204,16 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
     catch { return null; }
   }
 
-  return {
+  const registry: OwnedProcessRegistry = {
+    beginStop(selectNow, graceMs, input = {}) {
+      if (!stopping) {
+        stopping = { graceMs, input };
+        prune();
+        // 활성화 전 종료된 리더의 잔여도 등록된 그룹이다. 평상시에는 이 단계가 전혀 실행되지 않는다.
+        for (const entry of entries.values()) retireExitedGroup(entry);
+      }
+      return registry.endGroups(selectNow, graceMs, input);
+    },
     spawn(request) {
       prune();
       const spawnedAt = Date.now();
@@ -255,6 +285,7 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
         const escalate = setTimeout(() => {
           const leaderless: Entry[] = [];
           for (const entry of chosen) {
+            if (entries.get(entry.pgid) !== entry) continue;
             if (unreaped(entry)) signalGroup(entry.pgid, "SIGKILL");
             else if (groupHasMembers(entry.pgid)) leaderless.push(entry);
           }
@@ -267,7 +298,9 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
               return;
             }
             const now = Date.now();
-            for (const entry of leaderless) if (proveExitedLeaderGroup(table.rows, entry, now)) signalGroup(entry.pgid, "SIGKILL");
+            for (const entry of leaderless) {
+              if (entries.get(entry.pgid) === entry && proveExitedLeaderGroup(table.rows, entry, now)) signalGroup(entry.pgid, "SIGKILL");
+            }
           });
         }, graceMs);
         escalate.unref?.();
@@ -318,6 +351,7 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
       return killed;
     },
   };
+  return registry;
 }
 
 /** One row of `ps -A -o pid=,pgid=,lstart=`. */
