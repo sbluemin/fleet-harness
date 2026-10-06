@@ -1,7 +1,14 @@
+import {
+  appendFile,
+  chmod,
+  mkdir,
+  rename,
+  stat,
+  unlink,
+} from "node:fs/promises";
 import path from "node:path";
 
 import { REASONING_EFFORTS } from "../../canonical/index.js";
-import { createBoundedJsonlWriter } from "../../transport/bounded-jsonl.js";
 import type {
   CursorDiagnosticEvent,
   CursorDiagnosticEventName,
@@ -61,7 +68,45 @@ export function createCursorDiagnosticLog(
   const logPath = path.join(dir, CURSOR_DIAGNOSTIC_FILE);
   const backupPath = `${logPath}.1`;
   const maxBytes = positiveInteger(options.maxBytes) ?? DEFAULT_CURSOR_DIAGNOSTIC_MAX_BYTES;
-  const writer = createBoundedJsonlWriter({ filePath: logPath, maxBytes });
+  let initialized = false;
+  let currentBytes = 0;
+  let pending = Promise.resolve();
+
+  const initialize = async (): Promise<void> => {
+    if (initialized) return;
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await chmod(dir, 0o700);
+    try {
+      const file = await stat(logPath);
+      currentBytes = file.size;
+      await chmod(logPath, 0o600);
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+      currentBytes = 0;
+    }
+    initialized = true;
+  };
+
+  const rotate = async (): Promise<void> => {
+    await ignoreMissing(unlink(backupPath));
+    try {
+      await rename(logPath, backupPath);
+      await chmod(backupPath, 0o600);
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+    }
+    currentBytes = 0;
+  };
+
+  const append = async (line: string): Promise<void> => {
+    await initialize();
+    const bytes = Buffer.byteLength(line);
+    if (bytes > maxBytes) return;
+    if (currentBytes > 0 && currentBytes + bytes > maxBytes) await rotate();
+    await appendFile(logPath, line, { encoding: "utf8", flag: "a", mode: 0o600 });
+    await chmod(logPath, 0o600);
+    currentBytes += bytes;
+  };
 
   const write: CursorDiagnosticSink = (event) => {
     let line: string | null;
@@ -71,14 +116,14 @@ export function createCursorDiagnosticLog(
       return;
     }
     if (!line) return;
-    writer.write(line);
+    pending = pending.then(() => append(line)).catch(() => undefined);
   };
 
   return {
     path: logPath,
     backupPath,
     write,
-    flush: () => writer.flush(),
+    flush: async () => pending,
   };
 }
 
