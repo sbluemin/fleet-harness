@@ -51,3 +51,8 @@ export const CONSOLE_START_POLL_MS = 100;
  * has written nothing yet. A child that holds the lock gets the full stop ladder instead.
  */
 export const PRELOCK_CHILD_GRACE_MS = 500;
+/**
+ * How long a person may sit in a wait before the actor says which wait it is. The stop ladder's onWaiting and a start that
+ * is waiting on another Console's `starting` use this one threshold.
+ */
+export const LIFECYCLE_WAIT_NOTICE_MS = 1_000;
