@@ -822,11 +822,7 @@ function createRun(name: string): LifecycleRun {
   const relative = path.relative(fs.realpathSync(repoRoot), fs.realpathSync(tmp));
   if (!relative.startsWith("..") && !path.isAbsolute(relative)) throw new Error("TMPDIR must stay outside the checkout");
   for (const target of [root, home, agentDir, theater, pathbin]) fs.mkdirSync(target, { recursive: true, mode: 0o700 });
-  if (process.platform === "win32") {
-    // Chat refuses a .cmd CLAUDE_BIN (`chat_cli_wrapper_unsupported`): resolveBinary wraps .cmd/.bat as
-    // cmd.exe /c call, and the SDK spawns `bin` with no shell. A real claude.exe is what that path accepts.
-    compileWindowsFakeAgent(path.join(pathbin, "claude-fake.exe"), process.execPath, FAKE_AGENT, agentDir);
-  } else {
+  if (process.platform !== "win32") {
     // The agent stand-in is a `#!/usr/bin/env node` script: only this Node goes on PATH, never a directory of real CLIs.
     fs.symlinkSync(process.execPath, path.join(pathbin, "node"));
   }
@@ -834,13 +830,17 @@ function createRun(name: string): LifecycleRun {
 }
 
 /**
- * An .exe the SDK can CreateProcess. It waits briefly so the Console can assign the leader to its job, then runs the
- * fake agent under node with the SDK's own arguments and proxies the pipes. .NET Framework csc ships on windows-2022.
+ * One .exe for every Windows case in this worker. Compiling again made csc die with 0xC0000142 on later tests.
+ * Paths come from the environment, so the same binary serves every run. It waits briefly so the Console can assign
+ * the leader, then runs the fake agent under node and proxies the pipes. .NET Framework csc ships on windows-2022.
  */
-function compileWindowsFakeAgent(exePath: string, nodePath: string, scriptPath: string, agentDir: string): void {
-  const source = path.join(path.dirname(exePath), "claude-fake.cs");
-  const logPath = path.join(path.dirname(exePath), "claude-fake.log");
-  const csQuote = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+let windowsFakeAgentExePath: string | undefined;
+
+function windowsFakeAgentExe(): string {
+  if (windowsFakeAgentExePath && fs.existsSync(windowsFakeAgentExePath)) return windowsFakeAgentExePath;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-lifecycle-fake-agent-"));
+  const exePath = path.join(dir, "claude-fake.exe");
+  const source = path.join(dir, "claude-fake.cs");
   const winDir = process.env.WINDIR ?? process.env.SystemRoot ?? "C:\\Windows";
   const compilers = [
     path.join(winDir, "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe"),
@@ -854,11 +854,16 @@ function compileWindowsFakeAgent(exePath: string, nodePath: string, scriptPath: 
     "using System.Threading;",
     "class Program {",
     "  static int Main(string[] args) {",
-    `    string node = ${csQuote(nodePath)};`,
-    `    string script = ${csQuote(scriptPath)};`,
-    `    string dir = ${csQuote(agentDir)};`,
-    `    string logPath = ${csQuote(logPath)};`,
-    "    System.IO.File.AppendAllText(logPath, \"start\\r\\n\");",
+    "    string node = Environment.GetEnvironmentVariable(\"FAKE_AGENT_NODE\");",
+    "    string script = Environment.GetEnvironmentVariable(\"FAKE_AGENT_SCRIPT\");",
+    "    string dir = Environment.GetEnvironmentVariable(\"FAKE_AGENT_DIR\");",
+    "    string logPath = Environment.GetEnvironmentVariable(\"FAKE_AGENT_LOG\");",
+    "    if (string.IsNullOrEmpty(logPath)) logPath = \"claude-fake.log\";",
+    "    try { System.IO.File.AppendAllText(logPath, \"start\\r\\n\"); } catch (System.Exception ignored) {}",
+    "    if (string.IsNullOrEmpty(node) || string.IsNullOrEmpty(script) || string.IsNullOrEmpty(dir)) {",
+    "      try { System.IO.File.AppendAllText(logPath, \"missing-env\\r\\n\"); } catch (System.Exception ignored) {}",
+    "      return 2;",
+    "    }",
     "    Thread.Sleep(300);",
     "    var psi = new ProcessStartInfo();",
     "    psi.FileName = node;",
@@ -869,15 +874,21 @@ function compileWindowsFakeAgent(exePath: string, nodePath: string, scriptPath: 
     "    psi.Arguments = Quote(script);",
     "    foreach (string arg in args) psi.Arguments += \" \" + Quote(arg);",
     "    psi.EnvironmentVariables[\"FAKE_AGENT_DIR\"] = dir;",
+    "    string breakaway = Environment.GetEnvironmentVariable(\"FAKE_AGENT_BREAKAWAY_RESULT\");",
+    "    if (!string.IsNullOrEmpty(breakaway)) psi.EnvironmentVariables[\"FAKE_AGENT_BREAKAWAY_RESULT\"] = breakaway;",
+    "    string koffi = Environment.GetEnvironmentVariable(\"FAKE_AGENT_KOFFI\");",
+    "    if (!string.IsNullOrEmpty(koffi)) psi.EnvironmentVariables[\"FAKE_AGENT_KOFFI\"] = koffi;",
+    "    string detached = Environment.GetEnvironmentVariable(\"FAKE_AGENT_DETACHED_GRANDCHILD\");",
+    "    if (!string.IsNullOrEmpty(detached)) psi.EnvironmentVariables[\"FAKE_AGENT_DETACHED_GRANDCHILD\"] = detached;",
     "    var child = Process.Start(psi);",
-    "    if (child == null) { System.IO.File.AppendAllText(logPath, \"start-failed\\r\\n\"); return 3; }",
+    "    if (child == null) { try { System.IO.File.AppendAllText(logPath, \"start-failed\\r\\n\"); } catch (System.Exception ignored) {} return 3; }",
     "    var input = new Thread(() => Pump(Console.OpenStandardInput(), child.StandardInput.BaseStream, true));",
     "    var output = new Thread(() => Pump(child.StandardOutput.BaseStream, Console.OpenStandardOutput(), false));",
     "    var error = new Thread(() => Pump(child.StandardError.BaseStream, Console.OpenStandardError(), false));",
     "    input.IsBackground = true; output.IsBackground = true; error.IsBackground = true;",
     "    input.Start(); output.Start(); error.Start();",
     "    child.WaitForExit();",
-    "    System.IO.File.AppendAllText(logPath, \"exit \" + child.ExitCode + \"\\r\\n\");",
+    "    try { System.IO.File.AppendAllText(logPath, \"exit \" + child.ExitCode + \"\\r\\n\"); } catch (System.Exception ignored) {}",
     "    return child.ExitCode;",
     "  }",
     "  static void Pump(System.IO.Stream from, System.IO.Stream to, bool closeTo) {",
@@ -898,6 +909,8 @@ function compileWindowsFakeAgent(exePath: string, nodePath: string, scriptPath: 
   if (compiled.status !== 0 || !fs.existsSync(exePath)) {
     throw new Error(`csc.exe failed to build the fake agent (${compiled.status}): ${compiled.stdout}\n${compiled.stderr}`);
   }
+  windowsFakeAgentExePath = exePath;
+  return exePath;
 }
 
 /**
@@ -965,10 +978,12 @@ function windowsRunEnv(home: string, tmp: string, pathbin: string, root: string,
     FLEET_DESKTOP_DATA_DIR: path.join(dir, "desktop"),
     CLAUDE_CONFIG_DIR: path.join(dir, "claude"),
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    CLAUDE_BIN: path.join(pathbin, "claude-fake.exe"),
+    // Chat refuses a .cmd CLAUDE_BIN (`chat_cli_wrapper_unsupported`). The SDK spawns this exe with no shell.
+    CLAUDE_BIN: windowsFakeAgentExe(),
     FAKE_AGENT_NODE: process.execPath,
     FAKE_AGENT_SCRIPT: FAKE_AGENT,
     FAKE_AGENT_DIR: agentDir,
+    FAKE_AGENT_LOG: path.join(pathbin, "claude-fake.log"),
   };
 }
 
@@ -1400,9 +1415,12 @@ function descendantsOf(pid: number): Array<{ readonly pid: number; readonly star
         }
       }
     }
+    const rootStarted = table.get(pid)?.startedAt;
     return found.flatMap((child) => {
       const row = table.get(child);
-      if (!row) return [];
+      // A process that started before this one cannot be a child we created. This drops system processes whose
+      // parent id collides with something in the walk.
+      if (!row || (rootStarted !== undefined && row.startedAt < rootStarted)) return [];
       own(child);
       return [{ pid: child, startedAt: row.startedAt, command: row.name }];
     });

@@ -137,9 +137,14 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
     if (entries.delete(pgid)) options.onRemoved?.(pgid);
   };
 
-  /** A failed job query counts as members remaining: an uncertain job is never closed or dropped. */
+  /**
+   * A failed job query counts as members remaining: an uncertain job is never closed or dropped.
+   * An unreaped leader counts too. Its pid cannot be reused yet (E1), and a query that reports nobody is not
+   * proof the job is empty while that process is alive. Closing then would wait for this process to exit.
+   */
   function entryHasMembers(entry: Entry): boolean {
     if (!entry.containment) return groupHasMembers(entry.pgid);
+    if (entry.child.exitCode === null && entry.child.signalCode === null) return true;
     try { return entry.containment.hasMembers(); }
     catch { return true; }
   }
