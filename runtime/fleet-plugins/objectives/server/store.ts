@@ -226,6 +226,7 @@ export interface ObjectiveStore {
   memberLaunchState(objectiveId: string, memberId: string, patch: { readonly routed?: MemberRouted | null; readonly next?: MemberNext | null; readonly launch?: MemberLaunch | null }): Objective;
   /** 저장된 구성원 그대로 — 예약의 실행값·이전 선택처럼 화면 모양에 싣지 않는 값을 기동 경로가 읽는다. 없으면 null. */
   storedMember(objectiveId: string, memberId: string): StoredMember | null;
+  storedAnswers(objectiveId: string, requestId: string): readonly { readonly questionId: string; readonly selectedOptionIds: readonly string[]; readonly text: string }[] | null;
   /** 직접 고른 모델(model)과 이미 그 선택인 구성원은 그대로 둔다. changed 는 실제로 바뀐 구성원 수다. */
   memberBatchLaunch(objectiveId: string, mode: "same" | "route", skip?: ReadonlySet<string>): { readonly objective: Objective; readonly changed: number };
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
@@ -1334,6 +1335,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (JSON.stringify(changed) === JSON.stringify(target)) return stored;
       return { ...stored, members: stored.members!.map((member) => (member.id === memberId ? changed : member)) };
     }),
+    storedAnswers(objectiveId, requestId) {
+      try {
+        const { stored } = locate(objectiveId);
+        if (stored.decisionDelivery?.requestId === requestId) return stored.decisionDelivery.answers;
+        const decided = (stored.decisions ?? []).filter((decision) => decision.requestId === requestId);
+        return decided.length ? decided.map((decision) => ({ questionId: decision.questionId, ...decision.answer })) : null;
+      } catch { return null; }
+    },
     storedMember(objectiveId, memberId) {
       try {
         const member = (locate(objectiveId).stored.members ?? []).find((candidate) => candidate.id === memberId);

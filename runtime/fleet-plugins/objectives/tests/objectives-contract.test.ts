@@ -1235,7 +1235,9 @@ describe("Objectives contract", () => {
     // 구상 중에는 편성만 — 명단이 비었을 때만 지휘관이 구성원을 제안하고(모델은 고르지 않아 라우팅), 임무에 구성원을 표시한다.
     // 임무 수행 쓰기와 구성원 기동은 거절된다.
     store.setPlanning(objective.id, true);
-    expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "p1", member: "build" }, { text: "p2", prerequisites: [{ n: 1 }] }], members: [{ role: "build", brief: "implements" }] }, commander)).isError).toBe(false);
+    const planned = await call("plan", { objectiveId: objective.id, missions: [{ text: "p1", member: "build" }, { text: "p2", prerequisites: [{ n: 1 }] }], members: [{ role: "build", brief: "implements" }] }, commander);
+    expect(planned.isError).toBe(false);
+    expect(planned.structuredContent).toMatchObject({ stored: { members: [{ role: "build", brief: "implements" }] } });
     expect(store.find(objective.id)!.members).toMatchObject([{ role: "build", by: "commander", launch: { mode: "route" } }]);
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["early"] }, commander)).structuredContent.error).toBe("planning_only");
     expect((await call("muster", { objectiveId: objective.id }, commander)).structuredContent.error).toBe("planning_only");
@@ -1248,10 +1250,19 @@ describe("Objectives contract", () => {
     const mustered = await call("muster", { objectiveId: objective.id }, commander);
     const member = (mustered.structuredContent.members as { id: string; state: string }[])[0]!;
     expect(member.state).toBe("launched");
+    const addedMission = await call("add_mission", { objectiveId: objective.id, text: "  padded  " }, commander);
+    expect(addedMission.structuredContent).toMatchObject({ stored: { text: store.find(objective.id)!.missions.find((entry) => entry.id === addedMission.structuredContent.missionId)!.text } });
+    expect((addedMission.structuredContent.stored as { text: string }).text).toBe("padded");
     // 구성원은 제 역할과 맡은 임무를 읽지만 쓰지 못한다.
     // 구성원은 보고·판단 요청을 보낼 지휘관의 세션 주소를 함께 받는다.
     expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, commander: { session: store.find(objective.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
     expect(store.find(objective.id)!.commander.sessionName).toMatch(/-cmdr$/);
+    const pinnedMission = await call("add_mission", { objectiveId: objective.id, text: "ship", pin: "MUST NOT edit CHANGELOG.md", member: "build" }, commander);
+    expect(pinnedMission.structuredContent).toMatchObject({ stored: { text: "ship [MUST NOT edit CHANGELOG.md]" } });
+    expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ missions: [{ text: "p1" }, { text: "ship [MUST NOT edit CHANGELOG.md]" }] });
+    expect((await call("add_mission", { objectiveId: objective.id, text: "x", pin: "do not edit" }, commander)).structuredContent.error).toBe("invalid_arguments");
+    expect((await call("add_mission", { objectiveId: objective.id, text: "y".repeat(190), pin: "MUST NOT edit CHANGELOG.md" }, commander)).structuredContent.error).toBe("text_with_pin_too_long");
+    expect((await call("add_mission", { objectiveId: objective.id, text: "\u{1F600}".repeat(95), pin: "MUST NOT x" }, commander)).structuredContent.error).toBe("text_with_pin_too_long");
     expect((await call("read", { objectiveId: objective.id }, member.id)).isError).toBe(false);
     // 같은 접두어의 다른 목표는 해석 후보가 아니다 — 자기 목표만 읽고, 외부 목표의 접두어는 없는 목표와 같은 답이다.
     const shortId = objective.id.slice(0, 8);
@@ -1749,6 +1760,9 @@ describe("Objectives contract", () => {
     const beforeStart = (await board({ objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
     expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
     await board({ objectiveId: id, criteria: { approve: beforeStart.criteriaProposals[0]!.id } });
+    const priorNote = store.find(id)!.note;
+    expect(await board({ objectiveId: id, edit: { brief: "b".repeat(700) } })).toMatchObject({ stored: { brief: `${"b".repeat(300)}…(700 chars)…${"b".repeat(300)}` } });
+    await board({ objectiveId: id, edit: { brief: priorNote } });
     // 구성원 모델 — 사령관만, 자기 Theater 목표만, 카탈로그 안의 모델과 그 모델의 강도만 고른다. 띄우기 전의 선택은 개시가 그 값으로 띄운다.
     const workerId = (beforeStart as unknown as { members: readonly { id: string }[] }).members[0]!.id;
     const pick = (launch: unknown) => ({ objectiveId: id, member: { memberId: workerId, launch } });
@@ -1795,7 +1809,7 @@ describe("Objectives contract", () => {
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;
     activity.set(id, "running");
-    expect(await board({ objectiveId: id, edit: { title: "Renamed while running" } })).toMatchObject({ ok: true });
+    expect(await board({ objectiveId: id, edit: { title: "Renamed while running" } })).toMatchObject({ ok: true, stored: { title: "Renamed while running" } });
     expect(store.find(id)!.title).toBe("Renamed while running");
     // 지휘관·구성원은 자기 목표를 외부 행위자로 승인할 수 없다. 요청을 지우거나 기록하지 않는 거절이다.
     for (const operationId of [id, memberId]) {
@@ -1816,8 +1830,10 @@ describe("Objectives contract", () => {
     await command("request_decision", { expectedRevision: revision, questions: [{ text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }] }, id);
     const inbox = await board({ view: "inbox" });
     const request = (inbox.objectives as readonly { id: string; decisionRequest: { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] } }[]).find((row) => row.id === id)!.decisionRequest;
-    await board({ objectiveId: id, answer: { requestId: request.id, answers: [{ questionId: request.questions[0]!.id, selectedOptionIds: [request.questions[0]!.options[0]!.id], text: "Preserve the output" }] } });
-    expect((await board({ objectiveId: id })).objective).toMatchObject({ decisionRequest: null, decisions: [{ by: actor, text: "Preserve the output" }] });
+    const answerOf = (extra: Record<string, unknown>) => ({ requestId: request.id, answers: [{ questionId: request.questions[0]!.id, selectedOptionIds: [request.questions[0]!.options[0]!.id], text: "Preserve the output", ...extra }] });
+    expect(await refusal(commodore, { objectiveId: id, answer: answerOf({ pin: "do not stop" }) })).toBe("invalid_arguments");
+    expect(await board({ objectiveId: id, answer: answerOf({ pin: "MUST NOT stop early" }) })).toMatchObject({ stored: { answers: [{ text: "Preserve the output [MUST NOT stop early]" }] } });
+    expect((await board({ objectiveId: id })).objective).toMatchObject({ decisionRequest: null, decisions: [{ by: actor, text: "Preserve the output [MUST NOT stop early]" }] });
     const evidenceRoot = (await command("evidence_dir", {}, id)).root as string;
     fs.writeFileSync(path.join(evidenceRoot, "proof.txt"), "Verified output\n");
     const sealed = await command("seal_evidence_from_path", { path: "proof.txt" }, id);

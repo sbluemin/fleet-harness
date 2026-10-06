@@ -3,8 +3,8 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import type { PromptLanguage } from "./prompts.js";
 import type { ObjectiveResult } from "./results.js";
-import type { ObjectiveStore } from "./store.js";
-import { commanderMode, extensionOf, latestRecord, missionReady, ownAnswer, type Objective } from "./types.js";
+import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
+import { commanderMode, extensionOf, latestRecord, missionReady, ownAnswer, pinned, type Objective } from "./types.js";
 
 /** 목록 한 줄에 싣는 브리핑의 앞부분 길이 — 목표 여럿을 한 번에 견주는 데 쓰고, 전문은 목표 하나를 읽는다. */
 const ROW_BRIEF = 600;
@@ -30,6 +30,18 @@ const resultView = (result: ObjectiveResult) => {
  * 보드 보기 — `fleet-objectives`(지휘관·담당의 작업 도구)와 `console_objectives`(Console Use)가 같은 모양으로 목표를 읽는다.
  * 도구 응답은 JSON 한 덩이: 텍스트와 structuredContent 가 같은 값이다.
  */
+
+const STORED_WHOLE = 600;
+const STORED_EDGE = 300;
+export const withPin = (value: string, pin: string | undefined, max: number): string => {
+  const joined = pinned(value, pin, max);
+  if (joined === null) throw new ObjectiveStoreError("text_with_pin_too_long", undefined, { limit: max });
+  return joined;
+};
+export const storedText = (value: string): string => {
+  const points = Array.from(value);
+  return points.length <= STORED_WHOLE ? value : `${points.slice(0, STORED_EDGE).join("")}…(${points.length} chars)…${points.slice(-STORED_EDGE).join("")}`;
+};
 
 export function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: (value && typeof value === "object" && !Array.isArray(value) ? value : { value }) as Record<string, unknown>, isError: false };
