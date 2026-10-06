@@ -789,6 +789,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           ...(target.effort.supported ? { reasoningEfforts: target.effort.levels } : {}),
           nativeTools: codexAdapter.capabilities.nativeTools,
         });
+        // 압축을 시도한 기록은 실패해도 압축이다 — flight가 거절하면 아래 setRoute에 닿기 전에 catch로 가서 refused로 남는다.
+        clock?.setRoute("compaction");
         let compactFlight = codexCompactionFlights.get(sessionId);
         if (!compactFlight) {
           compactFlight = compactCodexConversation({
