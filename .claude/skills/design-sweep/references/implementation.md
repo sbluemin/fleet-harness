@@ -11,5 +11,5 @@
 ### Verify and ship
 
 - Build (tsc — vitest alone does not typecheck) + fleet-console tests + **each touched plugin's own test runner** (fleet-console green ≠ plugin green).
-- **Headed visual verification gate before delivery**: compare the result against the approved mock in all three themes with screenshot evidence; if token cohesion falls short or default form styles survive, polish before handing over.
+- **Headed visual verification gate before delivery**: compare the result against the approved mock in all three themes with screenshot evidence, region by region per [Compare against an approved mock](../../console-e2e/references/verification.md#compare-against-an-approved-mock); if token cohesion falls short or default form styles survive, polish before handing over.
 - Ship via the `pr-workflow` skill only when PR publication belongs to the user-authorized delivery scope; diagnosis or implementation approval does not authorize external publication. A plugin-visible change is a Fleet Console change for changelog purposes.

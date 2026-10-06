@@ -7,6 +7,7 @@
 3. Probe the smallest DOM/state fingerprint that distinguishes success from failure.
 4. Reproduce both directions for switch or persistence bugs.
 5. Capture a screenshot only when spatial evidence matters.
+6. After submitting input, compare each value you entered with what the screen then shows (the field, the list row, the detail view). A missing or altered value is a finding even when the action reported success.
 
 For terminal failures, probe the render chain. On Fleet Browser run the inner read-only expression through `javascript_tool`. `window.__fleetE2E` exists only when init instrumentation was installed; its absence is not a clean diagnostics result:
 
@@ -73,6 +74,10 @@ For example, Chromium fires `lostpointercapture` at the **document**, not at the
 
 Drive input the interaction actually uses. When the browser driver cannot produce it — multiple simultaneous pointers, for example — send it over the page's CDP session (`Input.dispatchTouchEvent`, `Input.dispatchMouseEvent`) rather than dispatching synthetic DOM events, which reproduce neither pointer capture nor gesture arbitration. A touch-device claim (`pointer: coarse`, `hover: none`, touch detection) also needs that emulation held for the whole scenario and confirmed after every reload and resize: use the [coarse pointer and touch holder](cdp-input.md#coarse-pointer-and-touch-holder). A key-specific claim uses the [single-key helper](cdp-input.md#one-key-press).
 
+## Compare against an approved mock
+
+When the work implements an adopted proposal or mock, capture the mock and the built screen at the same viewport and theme and compare them region by region: header and footer, dividers and borders, and the colors of neighboring columns. A single full-page glance misses these edges. Report each region's result, not one overall verdict.
+
 ## Plan activation paths by starting state
 
 Before measuring an activation flow, including non-modal surfaces, list its starting states and target control. For each state, check whether another surface covers the target or blocks pointer input; record the covering surface and starting focus. Use a screenshot and [Pointer target preflight](#pointer-target-preflight) to plan and verify each pointer route.
@@ -91,10 +96,11 @@ In the mobile layout there are no bottom tabs. The top bar's menu button opens a
 
 ## Lifecycle, network, and storage changes
 
-Use this only when the change touches state lifetime, a connection or retry path, or durable storage. Choose the representative inputs that exercise the changed mechanism, not a matrix of every state:
+Use this only when the change touches state lifetime, a connection or retry path, durable storage, or the component that renders a record or log. Choose the representative inputs that exercise the changed mechanism, not a matrix of every state:
 
 - **State lifetime:** trace one instance through creation, change, restore after reload or restart, and teardown (close, delete, archive, process exit). For each step, name the event the code actually waits on; a delay or `await` may also be covering a process exit or a late callback, so find what it resolves on before removing or relying on it.
 - **Connections:** inject the failure the path claims to handle — a silent hang (no bytes, no close), an early close, and two failures at once — and note that independent timers or backoffs run out of phase. CDP offline emulation does not drop an already-open EventSource or WebSocket; fail the stream at its source or through the page hook and confirm in the instrumentation that it actually closed.
+- **Moved records:** when a record or log is rendered by a different component than before, exercise the first page edge, a page boundary, and an entry cut off by it (a turn still in progress, a truncated input), not only a complete history. Compare the same entry before and after.
 - **Durable state:** build fixtures through the current reader and writer, or from a fresh owned runtime, so files that must agree (for example state and its archive or revision) are written together. A guard that refuses an inconsistent pair is product behavior to report, not something to bypass with a fresh directory, a deleted archive, or a relaxed check. When restart or restore is the claim, a new slot is not an equivalent verification.
 
 Report which of these inputs ran and which remain unverified. Promote one into the permanent suite only through the root test admission policy.
