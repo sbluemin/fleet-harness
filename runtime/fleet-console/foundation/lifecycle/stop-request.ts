@@ -130,8 +130,8 @@ export async function deliverConsoleStop(input: DeliverConsoleStopInput): Promis
   if (!advertised) {
     return decideConsoleStopRoute({ platform, advertised, result: { kind: "rejected" } });
   }
-  // 같은 lock 인스턴스를 다시 관측한다. 다른 행위자가 먼저 정지를 시작하면 lock이 풀려 401을 받는데, 그 Console은 이미
-  // cleanup 중이므로 신호를 보내면 안 된다. 관측이 없거나 실패하면 대기 쪽으로 닫는다.
+  // 같은 lock 인스턴스를 다시 관측한다. 거절은 그 인스턴스가 아직 ready라는 증거가 아니다(예: 이미 끝난 Console의
+  // 낡은 lock에 같은 포트의 후속 Console이 401로 답한다). ready일 때만 신호를 보내고, 관측이 없거나 실패하면 대기 쪽으로 닫는다.
   const reobserve = async (): Promise<ConsoleObservedState> =>
     (await input.observe?.().catch(() => undefined)) ?? "unverified";
   const attempt = await requestConsoleStop(lock, { timeoutMs: input.timeoutMs, fetch: input.fetch, signal: input.signal });
