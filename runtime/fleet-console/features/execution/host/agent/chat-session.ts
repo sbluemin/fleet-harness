@@ -2818,6 +2818,11 @@ class AgentChatSession {
       }
       return;
     }
+    // 자발 압축은 정비 줄 밖에서 온다. 이미 열린 턴 안의 자동 압축은 그 턴이 가지고, 유휴일 때만 여기서 연다.
+    // 종점은 다음 result이고, result 없이 자식이 끝나면 retireSession이 닫는다. 수동 /compact는 위에서 정비 줄이 가져간다.
+    if (event.kind === "command-progress" && event.phase === "compacting" && !this.turnOpen && !this.settlingStoppedTurn) {
+      this.openTurn({ dispatched: false });
+    }
     if (!this.turnOpen && opensChatTurn(event)) this.openTurn({ dispatched: false });
     this.rememberTool(event);
     this.trackJob(event);

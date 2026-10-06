@@ -1854,6 +1854,7 @@ describe("Objectives contract", () => {
     const memberOutcome = () => upserts().at(-1)?.objective?.members.find((member) => member.id === memberId)?.outcome;
     const commanderOutcome = () => upserts().at(-1)?.objective?.commander.outcome;
     vi.useFakeTimers();
+    const timersBefore = vi.getTimerCount();
     try {
       const enrolled = upserts().length;
       launch.watchLiveOutcomes();
@@ -1894,10 +1895,14 @@ describe("Objectives contract", () => {
       activity.set(memberId, "idle");
       await vi.advanceTimersByTimeAsync(1_000);
       expect(upserts()).toHaveLength(removed);
-      expect(vi.getTimerCount()).toBeGreaterThan(0);
-    } finally {
+      expect(vi.getTimerCount()).toBeGreaterThan(timersBefore);
       launch.dispose();
-      expect(vi.getTimerCount()).toBe(0);
+      const afterDispose = upserts().length;
+      outcomes.set("live-outcome", "failed");
+      activity.set("live-outcome", "idle");
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(upserts()).toHaveLength(afterDispose);
+    } finally {
       vi.useRealTimers();
     }
   });

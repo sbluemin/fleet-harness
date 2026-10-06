@@ -416,6 +416,31 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       expect(session.readConsoleOutput().outcome).toBe("failed");
     });
 
+    // 4) Idle auto-compaction opens one turn. The following message_start does not open another, and result closes it once.
+    const compactStarts = events.filter(({ event }) => event.kind === "turn-start").length;
+    const compactEnds = events.filter(({ event }) => event.kind === "turn-end").length;
+    reports.length = 0;
+    liveSession()!.emit({ type: "system", subtype: "status", status: "compacting" });
+    await vi.waitFor(() => {
+      expect(events.filter(({ event }) => event.kind === "turn-start")).toHaveLength(compactStarts + 1);
+      expect(reports).toContain(true);
+      expect(session.readConsoleOutput().outcome).toBe("running");
+    });
+    liveSession()!.emit({
+      type: "stream_event",
+      event: {
+        type: "message_start",
+        message: { id: "msg_compact_1", type: "message", role: "assistant", content: [], usage: { input_tokens: 0, output_tokens: 0 } },
+      },
+    });
+    liveSession()!.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 8 });
+    await vi.waitFor(() => {
+      expect(events.filter(({ event }) => event.kind === "turn-start")).toHaveLength(compactStarts + 1);
+      expect(events.filter(({ event }) => event.kind === "turn-end")).toHaveLength(compactEnds + 1);
+      expect((events.filter(({ event }) => event.kind === "turn-end").at(-1)?.event as { ok?: boolean }).ok).toBe(true);
+      expect(session.readConsoleOutput().outcome).toBe("succeeded");
+    });
+
     await registry.disposeAll();
   });
 });
