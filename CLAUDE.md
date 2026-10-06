@@ -21,7 +21,7 @@ This file defines repository-wide boundaries. Apply child `CLAUDE.md` files alon
 
 - Modify the repository in a dedicated `canary`-based worktree created through the `git-worktree` skill, unless the user explicitly directs otherwise. Read-only work needs no worktree.
 - Route Console browser and Electron Desktop verification to `console-e2e`, and a Console for the user to try to `console-handoff`. Load a skill's body only for its task.
-- For local execution, consult **Isolated Development Data** in `docs/fleet-development-reference.md`. Development and verification must not touch real user data or another session's processes. An ad-hoc measurement or reproduction script creates its temporary trees under the session scratchpad and, right after `T=$(mktemp -d …)`, registers `trap 'rm -rf -- "$T"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP`, because zsh skips an EXIT-only trap on signals.
+- For local execution, consult **Isolated Development Data** in `docs/fleet-development-reference.md`. Development and verification must not touch real user data or another session's processes. An ad-hoc measurement or reproduction script makes every temporary tree inside one root `T=$(mktemp -d …)` under the session scratchpad and, right after creating it, registers `trap 'rm -rf -- "$T"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP`, because zsh skips an EXIT-only trap on signals.
 
 ## Architecture boundaries
 
