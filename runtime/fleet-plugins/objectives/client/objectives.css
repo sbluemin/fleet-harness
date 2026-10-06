@@ -384,6 +384,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 /* 선행 대기는 「2·3 뒤」, 시작할 수 있으면 「준비됨」 */
 .objectives-mission .objectives-wait { flex: none; margin-top: 6px; line-height: 18px; white-space: nowrap; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
 .objectives-mission .objectives-wait.is-ready { color: var(--aurora); }
+.objectives-mission-quiet { flex: none; margin-top: 6px; line-height: 18px; padding: 0 6px; border-radius: var(--radius-pill); white-space: nowrap; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--brass-ink); background: color-mix(in oklab, var(--brass) 18%, transparent); }
 /* 짚은 임무와 그 선행 — 편성 노드와 함께 켜진다 */
 .objectives-mission.is-focus { background: var(--control-rest); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 55%, transparent); }
 .objectives-mission.is-pre { background: color-mix(in oklch, var(--aurora) 7%, transparent); }

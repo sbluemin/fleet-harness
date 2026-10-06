@@ -7,7 +7,8 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { decisionTurn, humanWords, memberMessageTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import { COMMANDER_PRESET, COORDINATES_NOT_APPLIED, heldNextOutcome, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
+import { describeQuietMission, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "./signals.js";
+import { COMMANDER_PRESET, COORDINATES_NOT_APPLIED, heldNextOutcome, missionReady, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
 import { deriveFailedOutcome } from "./views.js";
 
 /**
@@ -134,6 +135,8 @@ export interface LaunchService {
    * 대상이 없으면 타이머를 걸지 않는다.
    */
   watchLiveOutcomes(): void;
+  /** 배정된 준비 임무가 무보고로 남아 있으면 지휘관에게 한 번 알린다. 대상이 없으면 타이머를 걸지 않는다. */
+  watchReportQuiet(): void;
   dispose(): void;
 }
 
@@ -182,6 +185,9 @@ const memberSession = (objectiveId: string, commander: string | null, index: num
 export interface LaunchServiceOptions {
   /** 사령관이 만드는 목표의 지휘관 모델·강도 — Theater 의 사령관 설정. 없으면 보드 기본값(COMMANDER_PRESET)이다. */
   readonly commodoreCommander?: (theaterId: string) => { readonly model: string; readonly effort?: string } | null;
+  /** 무보고 깨움까지 기다리는 시간. 기본은 25분. 테스트가 짧은 값을 넣는다. */
+  readonly reportQuietMs?: number;
+  readonly now?: () => number;
 }
 
 export function createLaunchService(ctx: FleetPluginServerContext, store: ObjectiveStore, serviceOptions: LaunchServiceOptions = {}): LaunchService {
@@ -603,6 +609,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (linked) rememberSubagentSpawn(linked.id, linked.subagents === true);
       members.push({ id: member.id, role: member.role, session, operationId: launchedId, state: "launched" });
     }
+    const broughtUp = members.flatMap((member) => member.state === "live" || member.state === "launched" || member.state === "resumed" ? [member.id] : []);
+    if (broughtUp.length) store.noteAssignments(objectiveId, broughtUp);
     store.refresh(objectiveId);
     return members;
   });
@@ -942,6 +950,49 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     }
     for (const objectiveId of changed) store.refresh(objectiveId);
     armOutcomeWatch();
+  };
+
+  /**
+   * 무보고 깨움 — 배정된 준비 임무가 있으면 WATCH_MS 마다 같은 quietSince 로 살핀다.
+   * 지휘관이 일하는 중이면 이번 틱은 건너뛰고, 보낸 뒤에만 그 침묵을 끝난 것으로 남긴다. 구성원에게는 보내지 않는다.
+   * 대상이 없으면 타이머를 걸지 않는다.
+   */
+  const reportQuietMs = serviceOptions.reportQuietMs ?? REPORT_QUIET_MS;
+  const quietNow = serviceOptions.now ?? (() => Date.now());
+  let quietTimer: ReturnType<typeof setTimeout> | null = null;
+  const quietTargets = (): boolean => store.all().some((current) => !current.done && !current.removed && current.missions.some((mission) => !mission.done && mission.member !== null && mission.assignmentTs != null));
+  const sweepQuiet = async () => {
+    if (disposed) return;
+    const now = quietNow();
+    for (const current of store.all()) {
+      if (current.done || current.removed) continue;
+      const boardUpdatedAt = current.boardUpdatedAt ?? null;
+      for (const mission of current.missions) {
+        if (mission.done || mission.member === null || mission.assignmentTs == null) continue;
+        const elapsed = quietElapsed({
+          ready: missionReady(current.missions, mission), assigned: true, assignmentTs: mission.assignmentTs,
+          boardUpdatedAt, decisionPending: current.decisionRequest !== null, reviewPending: current.awaitingReview,
+          underway: objectiveUnderway(current),
+        }, now);
+        if (elapsed == null || elapsed < reportQuietMs) continue;
+        const since = quietSince(mission.assignmentTs, boardUpdatedAt ?? mission.assignmentTs);
+        if (store.reportWokenFor(current.id, mission.id) === since) continue;
+        if (ctx.host.consoleControl?.observe(current.id)?.activity === "running") continue;
+        const language: PromptLanguage = ctx.host.operations.get(current.id)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
+        const n = current.missions.findIndex((entry) => entry.id === mission.id) + 1;
+        const fact = describeQuietMission(elapsed / 60_000, language);
+        const notice = language === "ko" ? `목표 \`${current.id}\` 임무 ${n}: ${fact}.` : `Objective \`${current.id}\` mission ${n}: ${fact}.`;
+        if (await send(current.id, notice, notice)) store.markReportWake(current.id, mission.id, since);
+      }
+    }
+  };
+  const armQuietWatch = () => {
+    if (disposed || quietTimer || !quietTargets()) return;
+    quietTimer = setTimeout(() => {
+      quietTimer = null;
+      void sweepQuiet().finally(() => { if (!disposed) armQuietWatch(); });
+    }, WATCH_MS);
+    quietTimer.unref?.();
   };
 
   const service: LaunchService = {
@@ -1392,6 +1443,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     },
 
     watchLiveOutcomes() { scanLiveOutcomes(); },
+    watchReportQuiet() { armQuietWatch(); },
 
     operationChanged(operationId) {
       const current = store.find(operationId) ?? store.findMember(operationId)?.objective;
@@ -1416,6 +1468,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       outcomeTimer = null;
       outcomeWatched.clear();
       lastOutcomes.clear();
+      if (quietTimer) clearTimeout(quietTimer);
+      quietTimer = null;
       for (const waiter of [...decisionWaiters.values()]) waiter(null);
     },
   };

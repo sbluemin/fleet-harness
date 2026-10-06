@@ -7,6 +7,7 @@ import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 
+import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
 import { commanderMode, extensionOf, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting, type MessageRecipient } from "./action-band.js";
 import { DecisionGlyph, DecisionList, DecisionRequestBlock } from "./decisions.js";
@@ -1365,8 +1366,37 @@ function BriefSection({ objective, t, language, touchable, call, onOpenObjective
   </>);
 }
 
+function quietMissionLabel(objective: Objective, mission: ObjectiveMission, ready: boolean, now: number, language: "en" | "ko"): string | null {
+  if (mission.done) return null;
+  const elapsed = quietElapsed({
+    ready, assigned: mission.member !== null, assignmentTs: mission.assignmentTs ?? null,
+    boardUpdatedAt: objective.boardUpdatedAt ?? null, decisionPending: objective.decisionRequest !== null, reviewPending: objective.awaitingReview,
+    underway: objectiveUnderway(objective),
+  }, now);
+  if (elapsed == null || elapsed < DISPLAY_QUIET_MS) return null;
+  return describeQuietMission(elapsed / 60_000, language);
+}
+
 function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, switcher, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
   const launchRows = useLaunchRows();
+  const [quietNow, setQuietNow] = useState(() => Date.now());
+  // 문장은 경과 분이다. 임계에 닿은 뒤에도 1분마다 다시 읽어, 뱃지가 처음 분수에 멈물지 않게 한다.
+  useEffect(() => {
+    if (!objectiveUnderway(objective) || objective.decisionRequest || objective.awaitingReview) return;
+    let next: number | null = null;
+    let showing = false;
+    for (const mission of objective.missions) {
+      if (mission.done || mission.member === null || mission.assignmentTs == null || !missionReady(objective.missions, mission)) continue;
+      const due = quietSince(mission.assignmentTs, objective.boardUpdatedAt ?? mission.assignmentTs) + DISPLAY_QUIET_MS;
+      if (due <= quietNow) { showing = true; continue; }
+      if (next === null || due < next) next = due;
+    }
+    const untilShown = next === null ? null : Math.max(0, next - Date.now());
+    const wait = untilShown === null ? (showing ? 60_000 : null) : showing ? Math.min(untilShown, 60_000) : untilShown;
+    if (wait === null) return;
+    const timer = setTimeout(() => setQuietNow(Date.now()), wait);
+    return () => clearTimeout(timer);
+  }, [objective, quietNow]);
   const mode = commanderMode(objective.missions);
   const mergedFrom = criterionSources(objective);
   // 수동 재개로 초기화된 유휴 세션도 잠근다. 구성원의 활동이 아니라 지휘관 자신의 상태로 판단한다.
@@ -1784,6 +1814,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     <div className="objectives-missions">
       {objective.missions.map((mission, index) => {
         const ready = missionReady(objective.missions, mission);
+        const quiet = quietMissionLabel(objective, mission, ready, quietNow, language);
         const member = objective.members.find((candidate) => candidate.id === mission.member);
         const records = mission.records;
         const recordsOpen = mission.id in openRecords;
@@ -1824,6 +1855,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             {!mission.done && !mission.unplaced ? (ready
               ? <span className="objectives-wait is-ready">{t("objectives.missions.ready")}</span>
               : <span className="objectives-wait" title={t("objectives.missions.waiting")}>{t("objectives.missions.prerequisites", { missions: mission.prerequisites.filter((id) => !objective.missions.find((candidate) => candidate.id === id)?.done).map(numberOf).filter((n) => n > 0).join("·") })}</span>) : null}
+            {quiet ? <span className="objectives-mission-quiet">{quiet}</span> : null}
             <span className="objectives-mission-tools">
               {!mission.done && touchable ? <AssignControl t={t} objective={objective} mission={mission} rows={launchRows} operationState={operationState} onAssign={(member) => void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { member } })} onCreate={async (role) => { const result = await call<{ objective: Objective }>("/member/add", { objectiveId: objective.id, member: { role } }); const member = result?.objective.members.at(-1); return member ? !!(await call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { member: member.id } })) : false; }} label={t("objectives.missions.setMember")} /> : null}
               {notStarted(mission) && touchable ? <button type="button" className="objectives-glyph" title={t("objectives.missions.remove")} aria-label={t("objectives.missions.remove")} onClick={() => void call("/mission/remove", { objectiveId: objective.id, missionId: mission.id })}><TrashGlyph /></button> : null}
