@@ -10,8 +10,6 @@ import {
   type ConsoleStopClientRoute,
 } from "@fleet-console/protocol/lifecycle";
 
-import type { ConsoleHealthAnswer } from "./health.js";
-
 /** The lock fields a stop request needs: where to ask, with which token, and which pid must confirm. */
 export interface ConsoleStopRequestLock {
   readonly pid: number;
@@ -86,8 +84,8 @@ export async function requestConsoleStop(
 export interface DeliverConsoleStopInput {
   /** The lock instance to stop, or null when there is none: without a token there is no request to send. */
   readonly lock: ConsoleStopRequestLock | null;
-  /** The health answer already read for this lock, when it was asked. */
-  readonly health?: ConsoleHealthAnswer | null;
+  /** The `stopRequest` advertisement already read for this lock (a 200 or a 503 `console_starting` answer). */
+  readonly stopRequest?: unknown;
   /** The actor's POST budget (the CLI health probe budget, the Desktop interactive one). */
   readonly timeoutMs?: number;
   /** Injectable for the Windows-only client path. Defaults to the host platform. */
@@ -112,7 +110,7 @@ export async function deliverConsoleStop(input: DeliverConsoleStopInput): Promis
   const advertised = input.lock !== null
     && typeof input.lock.token === "string"
     && input.lock.token.length > 0
-    && input.health?.stopRequest === CONSOLE_STOP_REQUEST_REVISION;
+    && input.stopRequest === CONSOLE_STOP_REQUEST_REVISION;
   if (input.lock === null || platform !== "win32" || !advertised) {
     return decideConsoleStopRoute({ platform, advertised, result: { kind: "rejected" } });
   }

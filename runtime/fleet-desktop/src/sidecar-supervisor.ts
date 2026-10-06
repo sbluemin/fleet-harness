@@ -51,6 +51,11 @@ export interface SidecarSupervisorOptions {
   readonly ownerId: string;
   readonly clock?: SidecarClock;
   /**
+   * Injectable for the Windows-only stop path (a test may prove it on another host). Defaults to the host platform;
+   * the stop decision itself stays in the lifecycle contract's single rule.
+   */
+  readonly platform?: NodeJS.Platform;
+  /**
    * Released runtimes only. A Console release that predates the lock reclaim protocol (see isPreReclaimConsoleVersion)
    * cannot clear the lock an exited Console left, so for that runtime alone this Desktop still clears it itself.
    * Development runtimes carry the repository's version, which says nothing about the code, so they never take this path.
@@ -175,7 +180,7 @@ export class SidecarSupervisor {
       // This Desktop's unreaped child: its handle proves identity (E1), so it is adopted when it answers and ended otherwise.
       const own = await this.observe(stored.lock);
       if (owned && this.answersFor(own.probe, pid)) return { kind: "adopt", url: consoleUrl(stored.lock) };
-      await this.stopRequested({ pid, lock: stored.lock, lifecycleWire: own.probe?.health?.lifecycleWire ?? this.childLifecycleWire, stopRequest: own.probe?.health?.stopRequest ?? this.childStopRequest }, null);
+      await this.stopRequested({ pid, lock: stored.lock, lifecycleWire: own.probe?.health?.lifecycleWire ?? this.childLifecycleWire, stopRequest: own.probe?.stopRequest ?? this.childStopRequest }, null);
       return { kind: "changed" };
     }
     let observed = await this.observe(stored.lock);
@@ -291,7 +296,7 @@ export class SidecarSupervisor {
         const answer = await this.probe(lock);
         if (!this.answersFor(answer, lock.pid)) continue;
         if (own) this.childLifecycleWire = answer.health?.lifecycleWire;
-        if (own) this.childStopRequest = answer.health?.stopRequest;
+        if (own) this.childStopRequest = answer.stopRequest;
         if (!this.isOwned(lock)) throw this.conflict("cli_daemon_requires_confirmation", lock.pid, "ready", "another owner's Console took the lock and answered as healthy");
         sidecarReady = true;
         return consoleUrl(lock);
@@ -314,7 +319,10 @@ export class SidecarSupervisor {
       if (consoleLockInstanceState(this.options.lockFile, { pid }) === "held") {
         const read = this.readLock();
         const lock = read.kind === "trusted" && read.stored.lock.pid === pid ? read.stored.lock : this.childLock;
-        await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: this.childLifecycleWire, stopRequest: this.childStopRequest }, null);
+        // A starting child answers 503, which still carries the stop request advertisement: ask it through the route
+        // when it does, so its cleanup runs instead of a signal ending it.
+        const answer = lock ? await this.probe(lock) : null;
+        await this.stopRequested({ pid, ...(lock ? { lock } : {}), lifecycleWire: answer?.health?.lifecycleWire ?? this.childLifecycleWire, stopRequest: answer?.stopRequest ?? this.childStopRequest }, null);
       } else {
         this.stoppingChild = child;
         signalPid(pid, "SIGTERM");
@@ -356,7 +364,7 @@ export class SidecarSupervisor {
         this.options.log.error(`console_lock_process_${observed.state}: pid ${pid} holds ${this.options.lockFile}; left running without a signal`);
         return;
       }
-      await this.stopRequested({ pid, lock, lifecycleWire: observed.probe?.health?.lifecycleWire, stopRequest: observed.probe?.health?.stopRequest }, await captureProvenProcessStart(pid, provenAt));
+      await this.stopRequested({ pid, lock, lifecycleWire: observed.probe?.health?.lifecycleWire, stopRequest: observed.probe?.stopRequest }, await captureProvenProcessStart(pid, provenAt));
     } catch (error) {
       this.options.log.error(`console_lock_process_unhealthy: pid ${pid} could not be stopped; continuing Quit: ${this.describeError(error)}`);
     }
@@ -385,9 +393,9 @@ export class SidecarSupervisor {
     const request = lock
       ? await deliverConsoleStop({
         lock: { pid, endpoint: lock.endpoint, token: lock.token },
-        health: target.stopRequest === undefined ? null : { stopRequest: target.stopRequest },
+        stopRequest: target.stopRequest,
         timeoutMs: INTERACTIVE_PROBE_TIMEOUT_MS,
-        platform: process.platform,
+        platform: this.options.platform ?? process.platform,
         observe: () => this.observe(lock).then((observation) => observation.state),
       })
       : "signal";

@@ -470,7 +470,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     const request = requester
       ? await deliverConsoleStop({
         lock: payload,
-        health: observed.probe?.health,
+        stopRequest: observed.probe?.stopRequest,
         timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
         platform: process.platform,
         observe: () => observe(payload).then((observation) => observation.state),
@@ -800,8 +800,10 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (childLockState(pid) === "held") {
         // A child that took the lock may be writing durable state: it gets the stop ladder and its own deadline, never a
         // SIGKILL right after SIGTERM. The unreaped child handle proves its identity, so the pid cannot have been reused.
+        // A child that advertises the stop request route — its starting 503 answer advertises too — is asked through
+        // it, so the same single shutdown runs and its exit record says clean.
         const ended = await runStopLadder({
-          request: "signal",
+          request: await ownedChildStopRequest(pid),
           isAlive: () => !observation.exited,
           isReleased: () => childLockState(pid) === "released",
           reprove: async () => !observation.exited,
@@ -844,6 +846,26 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   /** Whether the lock names `pid` (a child's token is not known). A lock that cannot be judged is `unknown`. */
   function childLockState(pid: number): ConsoleLockInstanceState {
     return consoleLockInstanceState(paths.lockFile, { pid });
+  }
+
+  /**
+   * How to stop an owned child that holds the lock: the lock's token lets this parent ask, and the child's 503
+   * answer advertises the route while it is still starting. The decision stays the contract's single rule; without a
+   * readable token or advertisement this stop signals as before.
+   */
+  async function ownedChildStopRequest(pid: number): Promise<"signal" | "delivered"> {
+    const observed = observeConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
+    if (observed.kind !== "owner" || observed.instance.pid !== pid) return "signal";
+    const target = observed.instance.payload;
+    if (typeof target.token !== "string" || target.token.length === 0) return "signal";
+    const probed = await health.probe(target, { timeoutMs: HEALTH_PROBE_TIMEOUT_MS });
+    return deliverConsoleStop({
+      lock: target,
+      stopRequest: probed.stopRequest,
+      timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
+      platform: process.platform,
+      observe: () => observe(target).then((observation) => observation.state),
+    });
   }
 
   /**

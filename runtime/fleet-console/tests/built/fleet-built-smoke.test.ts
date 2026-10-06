@@ -582,7 +582,7 @@ afterEach(async () => {
     const provenStart = await captureProvenProcessStart(lock.pid, Date.now(), run.env);
     const route = await deliverConsoleStop({
       lock: target,
-      health: { stopRequest: health.stopRequest },
+      stopRequest: health.stopRequest,
       timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
       platform: "win32",
       observe: () => observeLock(target).then((observation) => observation.state),
