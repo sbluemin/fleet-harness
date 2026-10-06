@@ -398,14 +398,15 @@ export class RequestClock {
     }
   }
 
-  finish(outcome: "ok" | "error" | "disconnect", statusOverride?: number): void {
+  finish(outcome: "ok" | "error" | "disconnect" = "ok", statusOverride?: number): void {
     if (this.finished) return;
     this.finished = true;
     this.endMs = this.elapsedMs();
-    this.outcome = outcome;
     if (statusOverride !== undefined && this.status === undefined) {
       this.status = statusOverride;
     }
+    const isHttpError = typeof this.status === "number" && this.status >= 400;
+    this.outcome = outcome === "ok" && isHttpError ? "error" : outcome;
 
     const record: GatewayRequestTimingRecord = {
       ts: new Date(this.t0).toISOString(),
