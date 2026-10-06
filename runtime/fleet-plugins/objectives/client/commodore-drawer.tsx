@@ -1,8 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-
-import { renderMarkdown } from "@fleet-console/markdown/core";
-import "@fleet-console/markdown/styles.css";
 
 import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateValue } from "@fleet-console/sdk/components/model-coordinate-picker";
 import { ComposerInput, ComposerSubmitButton } from "@fleet-console/sdk/composer";
@@ -11,12 +8,15 @@ import { isAgentEffort, type ModelRosterTarget } from "@fleet-console/sdk/models
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
-import type { CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
+import { CommodoreTrail } from "./commodore-trail.js";
 import { clockTime } from "./commodore-row.js";
 import {
   addCommodoreIntel,
   closeCommodoreDrawer,
   commodoreMapInsets,
+  commodoreTranscriptRenderer,
   commodoreTheaterLabel,
   loadTranscript,
   messageCommodore,
@@ -37,7 +37,7 @@ import {
   useCommodoreRoster,
   type CommodoreTab,
 } from "./commodore-state.js";
-import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
+import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { DEFAULT_LAUNCH } from "./launch-control.js";
 
 type T = Translate<ObjectiveMessageKey>;
@@ -55,8 +55,6 @@ const SHEET_MAX_WIDTH = 1080;
 const SHEET_MAX_HEIGHT = 780;
 /** 시트가 이보다 좁으면 구역 목록을 글리프만 남긴다. */
 const SHEET_COMPACT_WIDTH = 720;
-/** 보드 읽기는 행위가 아니다 — 기록의 행위 칩에는 보드를 바꾼 호출만 선다. */
-const READ_ACTIONS = new Set(["view", "read", "list", "get", "inbox", "fleet", "history", "evidence", "transcript"]);
 /** 순찰 간격 사다리 — 서버 `COMMODORE_PATROL_MINUTES` 와 같다(서버 모듈은 브라우저 번들에 싣지 않는다). */
 export const PATROL_STEPS: readonly CommodorePatrolMinutes[] = [15, 30, 60, 120, 240, 480];
 export const DEFAULT_PATROL: CommodorePatrolMinutes = 60;
@@ -148,11 +146,13 @@ const NAV_GLYPHS: Record<CommodoreTab, ReactNode> = {
 function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theaterId: string; readonly tab: CommodoreTab; readonly openedAt: number; readonly language: "en" | "ko" }) {
   const t = getT(language);
   noteCommodoreLanguage(language);
-  const { view, entries, hasMore, transcriptLoaded } = useCommodore(theaterId);
+  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
   const geometry = useSheetGeometry(theaterId);
   const dialogRef = useRef<HTMLElement | null>(null);
   const tabRefs = useRef<Record<CommodoreTab, HTMLButtonElement | null>>({ log: null, directive: null, intel: null, settings: null });
   const [failure, setFailure] = useState<string | null>(null);
+  // 곁 칸에서 고른 시각 — 기록 칸이 그 시각의 턴을 드러낸다. 같은 줄을 다시 눌러도 다시 드러나게 nonce 가 오른다.
+  const [reveal, setReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
   const label = commodoreTheaterLabel(theaterId);
   const on = view?.state.autonomy === true;
   const run = view?.run;
@@ -256,7 +256,12 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
             </div>
           ) : null}
           <div className={`objectives-commodore-body is-${tab}`} role="tabpanel" id={`objectives-commodore-panel-${tab}`} aria-labelledby={`objectives-commodore-tab-${tab}`}>
-            {tab === "log" ? <CommodoreLog t={t} theaterId={theaterId} entries={entries} hasMore={hasMore} loaded={transcriptLoaded} /> : null}
+            {tab === "log" ? (
+              <>
+                <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} />
+                <CommodoreTrail t={t} language={language} theaterId={theaterId} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
+              </>
+            ) : null}
             {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onFail={fail} onClear={() => setFailure(null)} /> : null}
             {tab === "intel" && view ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} /> : null}
             {tab === "settings" && view ? <CommodoreSettings t={t} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
@@ -513,188 +518,43 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
   );
 }
 
-export function errorWord(t: T, code: string): string {
-  const key = `objectives.commodore.errorCode.${code}`;
-  return key in objectivesEn ? t(key as ObjectiveMessageKey) : code;
-}
-
-/** 깨움 이유 — `code` 또는 `code:N` 토큰. 모르는 토큰(문장)은 그대로 보인다. */
-export function reasonWord(t: T, reason: string): string {
-  const match = /^([a-z][a-z-]*)(?::(\d+))?$/.exec(reason);
-  if (!match) return reason;
-  const key = `objectives.commodore.reason.${match[1]}`;
-  return key in objectivesEn ? t(key as ObjectiveMessageKey, { n: match[2] ?? "" }).trim() : reason;
-}
-
-/** 세션 기록의 로스터 폴백(`fallback:<reason>:<model>`) — 실제로 도는 모델과 사유. 다른 사유는 표시하지 않는다. */
-function fallbackWord(t: T, reason: string): string {
-  const match = /^fallback:(model_off|roster_empty):(.+)$/u.exec(reason);
-  if (!match) return "";
-  return t(match[1] === "roster_empty" ? "objectives.commodore.log.fallback.rosterEmpty" : "objectives.commodore.log.fallback.modelOff", { model: match[2]! });
-}
-
-export function actionWord(t: T, action: string): string {
-  const key = `objectives.commodore.action.${action}`;
-  return key in objectivesEn ? t(key as ObjectiveMessageKey) : action;
-}
-
 /* ── 기록 ─────────────────────────────────────────────────────────────── */
 
-export type ToolEntry = Extract<CommodoreTranscriptEntry, { kind: "tool" }>;
-
-interface WakeGroup {
-  readonly kind: "wake";
-  readonly key: string;
-  readonly at: number;
-  reasons: readonly string[];
-  readonly texts: string[];
-  readonly actions: { readonly key: string; readonly action: string; readonly title: string }[];
-  readonly tools: ToolEntry[];
-  readonly notes: { readonly key: string; readonly text: string; readonly tone: "warn" | "dim" }[];
-}
-
-type LogItem =
-  | WakeGroup
-  | { readonly kind: "marker"; readonly key: string; readonly at: number; readonly text: string }
-  | { readonly kind: "message"; readonly key: string; readonly at: number; readonly text: string; readonly undelivered: boolean };
-
-/** 서버는 사건마다 한 줄을 쌓는다 — 깨움에서 결과까지를 한 묶음으로 모으고, 세션 구분선과 사람의 말은 따로 선다. */
-export function groupTranscript(t: T, entries: readonly CommodoreTranscriptEntry[]): LogItem[] {
-  const items: LogItem[] = [];
-  let open: WakeGroup | null = null;
-  // 끌 때 싣지 못한 메시지 — 뒤에 오는 줄이 앞의 메시지를 가리킨다. 따로 서지 않고 그 메시지에 표시가 붙는다.
-  const undelivered = new Set(entries.flatMap((entry) => entry.kind === "undelivered" ? entry.seqs : []));
-  const start = (entry: CommodoreTranscriptEntry, reasons: readonly string[]): WakeGroup => {
-    const group: WakeGroup = { kind: "wake", key: `w${entry.seq}`, at: entry.at, reasons, texts: [], actions: [], tools: [], notes: [] };
-    items.push(group);
-    return group;
-  };
-  for (const entry of entries) {
-    switch (entry.kind) {
-      case "wake":
-        open = start(entry, entry.reasons);
-        break;
-      case "session":
-        open = null;
-        items.push({ kind: "marker", key: `s${entry.seq}`, at: entry.at, text: [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ") });
-        break;
-      case "message":
-        items.push({ kind: "message", key: `m${entry.seq}`, at: entry.at, text: entry.text, undelivered: undelivered.has(entry.seq) });
-        break;
-      case "undelivered":
-        break;
-      case "text": {
-        const group: WakeGroup = open ?? (open = start(entry, []));
-        if (entry.text.trim()) group.texts.push(entry.text);
-        break;
-      }
-      case "thinking":
-        break;
-      case "tool": {
-        const group: WakeGroup = open ?? (open = start(entry, []));
-        const tool: ToolEntry = entry;
-        group.tools.push(tool);
-        if (tool.name === "console_objectives" && tool.action && !READ_ACTIONS.has(tool.action)) {
-          group.actions.push({ key: `a${entry.seq}`, action: tool.action, title: tool.title ?? "" });
-        }
-        break;
-      }
-      case "result": {
-        const group: WakeGroup = open ?? (open = start(entry, []));
-        if (entry.outcome === "cancelled") group.notes.push({ key: `r${entry.seq}`, text: t("objectives.commodore.log.cancelled"), tone: "dim" });
-        if (entry.outcome === "error" && !group.notes.some((note) => note.tone === "warn")) group.notes.push({ key: `r${entry.seq}`, text: t("objectives.commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("objectives.commodore.meta.error") }), tone: "warn" });
-        open = null;
-        break;
-      }
-      case "error": {
-        const group: WakeGroup = open ?? (open = start(entry, []));
-        const code = errorWord(t, entry.code);
-        group.notes.push({ key: `e${entry.seq}`, text: entry.retryAt ? t("objectives.commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("objectives.commodore.log.error", { code }), tone: "warn" });
-        break;
-      }
-    }
-  }
-  return items;
-}
+/** 바닥에서 이만큼 안이면 새 줄을 따라 내려간다 — 위를 읽는 중이면 자리를 지킨다. */
+const FOLLOW_SLACK_PX = 48;
 
 /**
- * 사령관이 쓴 글 — Markdown 이다. Console 이 에이전트 글에 쓰는 같은 렌더러(정제된 HTML, 원시 HTML 없음)로 그리고,
- * 코드 블록의 복사 단추는 결과물 보기와 같은 위임으로 받는다.
+ * 사령관 기록 — Operation 채팅과 같은 턴 렌더러(호스트 `ctx.chat.Transcript`)로 그린다. 오래된 것이 위, 새 턴이 아래에 쌓이고,
+ * 바닥을 보고 있으면 따라 내려간다. 더 오래된 쪽은 맨 위에서 읽어 붙이고 보던 자리를 지킨다.
  */
-export function CommodoreMarkdown({ t, text }: { readonly t: T; readonly text: string }) {
-  const html = useMemo(() => renderMarkdown(text, { copyLabel: t("objectives.results.copy"), copyAriaLabel: (language) => t("objectives.results.copyCode", { language }) }).html, [t, text]);
-  const onCopy = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
-    const code = button?.closest("pre")?.getAttribute("data-code");
-    if (!button || !code) return;
-    void navigator.clipboard?.writeText(code).then(() => {
-      const original = button.textContent;
-      button.textContent = t("objectives.results.copied");
-      window.setTimeout(() => { button.textContent = original; }, 1200);
-    }, () => undefined);
-  }, [t]);
-  return <div className="markdown-body objectives-commodore-wake-text" onClick={onCopy} dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-export function toolSummary(tools: readonly ToolEntry[]): string {
-  const counts = new Map<string, number>();
-  for (const tool of tools) counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
-  return [...counts].map(([name, count]) => `${name} × ${count}`).join(" · ");
-}
-
-function CommodoreLog({ t, theaterId, entries, hasMore, loaded }: { readonly t: T; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean; readonly loaded: boolean }) {
-  // 새 묶음이 위에 선다 — 서랍을 열면 방금 일어난 일이 먼저 보인다.
-  const items = useMemo(() => groupTranscript(t, entries).reverse(), [t, entries]);
+function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
+  const Transcript = commodoreTranscriptRenderer();
+  const chat = useMemo(() => commodoreChatEntries(t, entries, live), [t, entries, live]);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  if (loaded && items.length === 0) return <p className="objectives-commodore-empty">{t("objectives.commodore.log.empty")}</p>;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const follow = useRef(true);
+  const anchor = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    if (anchor.current !== null) { node.scrollTop += node.scrollHeight - anchor.current; anchor.current = null; return; }
+    if (follow.current) node.scrollTop = node.scrollHeight;
+  }, [chat]);
+  const older = () => {
+    if (loadingOlder) return;
+    anchor.current = scrollRef.current?.scrollHeight ?? null;
+    setLoadingOlder(true);
+    void loadTranscript(theaterId, { older: true }).finally(() => setLoadingOlder(false));
+  };
+  if (loaded && chat.length === 0) return <div className="objectives-commodore-log"><p className="objectives-commodore-empty">{t("objectives.commodore.log.empty")}</p></div>;
   return (
-    <div className="objectives-commodore-log">
-      {items.map((item) => {
-        if (item.kind === "marker") {
-          return <p key={item.key} className="objectives-commodore-marker"><span>{clockTime(item.at)}</span><span>{item.text}</span></p>;
-        }
-        if (item.kind === "message") {
-          return (
-            <div key={item.key} className="objectives-commodore-wake is-message">
-              <p className="objectives-commodore-wake-head">
-                <span>{clockTime(item.at)}</span><b>{t("objectives.commodore.log.you")}</b>
-                {item.undelivered ? <span className="objectives-commodore-undelivered" title={t("objectives.commodore.log.undeliveredHint")}>{t("objectives.commodore.log.undelivered")}</span> : null}
-              </p>
-              <p className="objectives-commodore-wake-text">{item.text}</p>
-            </div>
-          );
-        }
-        return (
-          <div key={item.key} className="objectives-commodore-wake">
-            <p className="objectives-commodore-wake-head"><span>{clockTime(item.at)}</span><b>{item.reasons.length > 0 ? item.reasons.map((reason) => reasonWord(t, reason)).join(" · ") : t("objectives.commodore.log.woke")}</b></p>
-            {item.texts.map((text, index) => <CommodoreMarkdown key={index} t={t} text={text} />)}
-            {item.actions.length > 0 ? (
-              <div className="objectives-commodore-acts">
-                {item.actions.map((act) => <span key={act.key} className="objectives-commodore-act"><b>{actionWord(t, act.action)}</b>{act.title ? <span>{act.title}</span> : null}</span>)}
-              </div>
-            ) : null}
-            {item.notes.map((note) => <p key={note.key} className={`objectives-commodore-note is-${note.tone}`}>{note.text}</p>)}
-            {item.tools.length > 0 ? (
-              <details className="objectives-commodore-tools">
-                <summary>{t("objectives.commodore.log.tools", { summary: toolSummary(item.tools) })}</summary>
-                <ul>
-                  {item.tools.map((tool) => (
-                    <li key={tool.seq} className={tool.ok === false ? "is-failed" : undefined}>
-                      <span className="objectives-commodore-tool-name">{tool.action ? `${tool.name} ${tool.action}` : tool.name}</span>
-                      {tool.summary ? <span>{tool.summary}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ) : null}
-          </div>
-        );
-      })}
+    <div ref={scrollRef} className="objectives-commodore-log" onScroll={(event) => { const node = event.currentTarget; follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < FOLLOW_SLACK_PX; }}>
       {hasMore ? (
-        <button type="button" className="objectives-commodore-text-button objectives-commodore-older" disabled={loadingOlder} onClick={() => { setLoadingOlder(true); void loadTranscript(theaterId, { older: true }).finally(() => setLoadingOlder(false)); }}>
+        <button type="button" className="objectives-commodore-text-button objectives-commodore-older" disabled={loadingOlder} onClick={older}>
           {t("objectives.commodore.log.older")}
         </button>
       ) : null}
+      {Transcript ? <Transcript entries={chat} language={language} reveal={reveal} /> : null}
     </div>
   );
 }

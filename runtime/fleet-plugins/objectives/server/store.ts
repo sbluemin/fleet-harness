@@ -1436,8 +1436,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const next = withoutDecisionRequest(stored);
         const merged = [...new Set([...(stored.edited?.kinds ?? []), ...kinds])];
         const actors = stored.edited ? stored.edited.actors ?? ["human" as const] : [];
-        const sameActor = actors.some((actor) => JSON.stringify(actor) === JSON.stringify(by));
-        return { ...action(next, by, "edit", { kinds }), edited: { at: now(), kinds: merged, actors: sameActor ? actors : [...actors, by] } };
+        // 편집자 목록은 누가 고쳤는지만 말한다 — 행위마다 다른 근거(why)로 같은 사령관이 여러 번 서지 않게 걷는다.
+        const editor: ObjectiveActor = typeof by === "object" && by.kind === "commodore" ? { kind: "commodore", theaterId: by.theaterId } : by;
+        const sameActor = actors.some((actor) => JSON.stringify(actor) === JSON.stringify(editor));
+        return { ...action(next, by, "edit", { kinds }), edited: { at: now(), kinds: merged, actors: sameActor ? actors : [...actors, editor] } };
       }, kinds !== null);
     },
 

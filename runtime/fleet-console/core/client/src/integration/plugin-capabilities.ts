@@ -14,6 +14,7 @@ import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSett
 import { applySearchParams, navigateConsoleRoute, subscribeConsoleLocation } from "./console-location.js";
 import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
+import { AgentChatTranscript } from "../../../../features/execution/client/agent/index.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
@@ -229,6 +230,7 @@ export function createHostCapabilities(
       subscribe: (channel, onEvent) => subscribeConsoleChannel(channel, onEvent),
       onReconnect: (listener) => subscribeConsoleReconnect(listener),
     },
+    chat: { Transcript: AgentChatTranscript },
     composer: {
       open: (options) => {
         const mentionOperationId = options?.mentionOperationId;

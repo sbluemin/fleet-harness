@@ -204,6 +204,11 @@
       "import": "./components/live-line.tsx",
       "default": "./components/live-line.tsx"
     },
+    "./components/agent-chat-transcript": {
+      "types": "./components/agent-chat-transcript.ts",
+      "import": "./components/agent-chat-transcript.ts",
+      "default": "./components/agent-chat-transcript.ts"
+    },
     "./components/history-band": {
       "types": "./components/history-band.tsx",
       "browser": "./components/history-band.tsx",

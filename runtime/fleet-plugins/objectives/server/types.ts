@@ -59,7 +59,8 @@ export const MAX_DECISION_ANSWER = 2000;
 
 /** 행위 귀속 — 권한은 이 값이 아니라 호스트 호출자와 도메인 경계가 정한다. */
 export type ObjectiveActor = "human" | "commander"
-  | { readonly kind: "commodore"; readonly theaterId: string }
+  /** `why` — 사령관이 그 보드 쓰기에 단 한 줄 근거(사람이 사령관 기록 곁에서 읽는다). 옛 기록과 사람의 행위에는 없다. */
+  | { readonly kind: "commodore"; readonly theaterId: string; readonly why?: string }
   | { readonly kind: "operation"; readonly operationId: string; readonly title: string | null };
 export type ObjectiveReviewer = Exclude<ObjectiveActor, "commander">;
 export const MAX_OBJECTIVE_ACTIONS = 200;
@@ -544,6 +545,8 @@ export interface StoredRemoval {
 /** 지우거나 합친 목표를 보드에 남겨 두는 기간 — 지나면 영구 삭제된다. */
 export const REMOVED_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 export const MAX_REMOVAL_REASON = 300;
+/** 사령관 보드 쓰기의 한 줄 근거 상한 — 곁 칸에서 두 줄 안에 읽히는 길이. */
+export const MAX_COMMODORE_WHY = 100;
 
 export interface StoredMerge {
   readonly sourceId: string;
@@ -887,7 +890,7 @@ export function hasCycle(missions: readonly GraphMission[]): boolean {
 const ids = z.string().min(1).max(128);
 export const objectiveReviewerSchema = z.union([
   z.literal("human"),
-  z.object({ kind: z.literal("commodore"), theaterId: ids }).strict(),
+  z.object({ kind: z.literal("commodore"), theaterId: ids, why: z.string().max(MAX_COMMODORE_WHY).optional() }).strict(),
   z.object({ kind: z.literal("operation"), operationId: ids, title: z.string().nullable() }).strict(),
 ]);
 export const objectiveActorSchema = z.union([objectiveReviewerSchema, z.literal("commander")]);

@@ -264,6 +264,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) },
       boardTools: deps.boardTools(runner.theaterId).map((tool) => selfAttributed(runner, tool)), now,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
+      onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),
       ...(deps.execute ? { execute: deps.execute } : {}),
     });
     await session.start();

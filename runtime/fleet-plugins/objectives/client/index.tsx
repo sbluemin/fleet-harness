@@ -6,11 +6,11 @@ import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 import { objectivesArchiveSections } from "./archive.js";
 import { objectivesClusterSource } from "./clusters.js";
 import { CommodoreDrawerHost } from "./commodore-drawer.js";
-import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, commodoreTheaterMobileRow, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
-import { CommodoreMenuItem, CommodoreRow } from "./commodore-row.js";
+import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
+import { CommodoreRow } from "./commodore-row.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installLaunchRoster } from "./launch-control.js";
-import { COMMODORE_ENTRY_ID, commodoreDestinationShown, installCommodoreState, isCommodoreEnabled, subscribeCommodoreMentions } from "./commodore-state.js";
+import { COMMODORE_ENTRY_ID, commodoreDestinationShown, installCommodoreState, subscribeCommodoreMentions } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
 import { decisionAttentionItems, MobileObjectiveDetail, MobileObjectiveList, OBJECTIVE_MOBILE_DETAIL_PANE, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
@@ -139,9 +139,8 @@ const objectivesPlugin = definePlugin({
   operationClusters: objectivesClusterSource,
   // 끝난 목표와 정리된 목표는 사이드바 트리가 아니라 보관함에 선다.
   archiveSections: objectivesArchiveSections,
-  // 사령관(자율 운영) — Theater 머리 아래 줄과 「…」 메뉴의 「사령관 지시…」. 실험 기능이 꺼져 있으면 둘 다 그리지 않는다.
-  // 폰의 Theater 시트에는 「지금 Theater › 사령관 지시」 행(S-55)으로 선다.
-  theaterContributions: [{ id: "commodore", row: (context) => <CommodoreRow {...context} />, menu: (context) => <CommodoreMenuItem {...context} />, mobileRow: commodoreTheaterMobileRow(isCommodoreEnabled) }],
+  // 사령관(자율 운영) — Theater 머리 아래 줄. 실험 기능이 꺼져 있으면 그리지 않는다.
+  theaterContributions: [{ id: "commodore", row: (context) => <CommodoreRow {...context} /> }],
   // Quick Launch '@' — 지금 Theater 의 사령관(자율 운영이 실제로 돌 때만)에게 사령관 기록 입력과 같은 경로로 보낸다.
   mentionTargets: commodoreMentionTargets,
   subscribeMentionTargets: subscribeCommodoreMentions,

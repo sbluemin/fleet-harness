@@ -6,6 +6,7 @@ import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, Conso
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
+import type { ClientAgentChatCapability } from "../components/agent-chat-transcript.js";
 
 import type { PaneDescriptor } from "../pane/types.js";
 import type { ExpandedSurfaceDescriptor, ExpandedSurfaceOpenRequest } from "../expanded-surface/types.js";
@@ -278,6 +279,8 @@ export interface PluginInstallContext {
   readonly consoleEvents: ClientConsoleEventsCapability;
   readonly experiments: ClientExperimentsCapability;
   readonly models: ClientModelsCapability;
+  /** The Operation chat renderer for a plugin-owned agent transcript. */
+  readonly chat: ClientAgentChatCapability;
 }
 
 /**

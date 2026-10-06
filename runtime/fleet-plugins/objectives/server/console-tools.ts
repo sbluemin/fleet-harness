@@ -7,7 +7,7 @@ import { inboxReasons } from "./board-state.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
+import { MAX_COMMODORE_WHY, MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
 
 /** 바깥 루프의 보드. Console Use와 Theater에 묶인 사령관 세션이 같은 스키마와 도메인 함수를 쓴다. */
@@ -82,6 +82,7 @@ const argsSchema = z.object({
   extend: z.object({ context: z.string().trim().min(1).max(MAX_CONTEXT) }).strict().optional(),
   edit: editSchema.optional().describe("Change the brief, a mission or a criterion under the screen's running-session rules."),
   followup: z.union([z.object({ retry: followupTarget }).strict(), z.object({ abandon: followupTarget }).strict(), z.object({ discard: ids }).strict()]).optional().describe("Retry or abandon a follow-up creation, or discard a candidate."),
+  why: z.string().trim().min(1).max(MAX_COMMODORE_WHY).optional().describe("Commodore only. One line on why this board write; the person reads it beside the action in the Commodore log."),
   member: z.object({ memberId: ids, launch: memberModelSchema.nullable() }).strict().optional().describe("Commodore only. Set a member's model and effort from view models; null returns it to routing. Outcome set: not launched yet, Commence launches it with this value (routing skips it). applied: the session now runs it. pending: the member is working and switches after its turn (next). A launched member that returns to routing keeps its running model. Refused: a model outside the catalog (model_not_in_catalog), a disabled kind (model_unavailable), an effort the model does not offer (invalid_effort), an unreadable catalog (catalog_unavailable), or the host's code."),
 }).strict();
 type Args = z.output<typeof argsSchema>;
@@ -110,7 +111,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
   };
   const theaterOfCaller = (caller: BoardCaller | undefined): string | null => caller?.kind === "commodore" ? caller.theaterId : caller?.kind === "operation" ? ctx.host.operations.get(caller.operationId)?.theaterId ?? null : null;
   const callerKey = (caller: BoardCaller | undefined): string => caller?.kind === "commodore" ? `commodore:${caller.theaterId}` : caller?.kind === "operation" ? `op:${caller.operationId}` : caller?.kind === "plugin" ? `plugin:${caller.pluginId}` : "anonymous";
-  const actorOf = (caller: BoardCaller | undefined): ObjectiveReviewer | null => caller?.kind === "commodore" ? caller : caller?.kind === "operation" ? { kind: "operation", operationId: caller.operationId, title: ctx.host.operations.get(caller.operationId)?.title ?? null } : null;
+  const actorOf = (caller: BoardCaller | undefined, why?: string): ObjectiveReviewer | null => caller?.kind === "commodore" ? { ...caller, ...(why ? { why } : {}) } : caller?.kind === "operation" ? { kind: "operation", operationId: caller.operationId, title: ctx.host.operations.get(caller.operationId)?.title ?? null } : null;
   const language = (caller: BoardCaller | undefined) => languageOf(caller?.kind === "commodore" ? undefined : caller);
   const scoped = (objectiveId: string) => {
     const found = store.find(objectiveId);
@@ -176,7 +177,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           if (args.member && !bound) return refuse("commodore_only", { hint: "The person changes member models in the Objectives panel." });
           if (!args.objectiveId) return refuse("objective_required");
           const current = scoped(args.objectiveId);
-          const actor = actorOf(caller);
+          const actor = actorOf(caller, args.why);
           if (!actor) return refuse("operation_caller_required");
           if (caller?.kind === "operation" && roleIn(current, caller)) return refuse("own_objective");
           const actions = createObjectiveActions(ctx, store, launch, actor);
@@ -273,8 +274,8 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           // 달성 기준 문장은 검증된 순서 그대로 기본 요구사항으로 함께 저장된다 — 한 건이라도 맞지 않으면 위 스키마에서
           // 거절되므로 목표가 기준 없이 먼저 생기지 않는다. AI 생성 표시는 목표의 addedBy 로 남는다.
           ...(add.criteria?.length ? { criteria: [...add.criteria] } : {}),
-          ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
-        }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
+          ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: { ...caller, ...(args.why ? { why: args.why } : {}) } } : {}),
+        }, { language: language(caller), ...(actorOf(caller, args.why) ? { actor: actorOf(caller, args.why)! } : {}) });
         return text({ ok: true, objectiveId: objective.id });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code, error.details ?? {});
