@@ -385,7 +385,7 @@ afterEach(async () => {
     const left = await survivors(run, started);
     lifecycleCheck("L9", left.length === 0, "I2: nothing the Console started outlives it", { detail: { survivors: left, failureLog: failureKinds(run) } });
     const recordedMs = deadlineRecordedAfterSignal(run, stall.signalled);
-    // 정지 grace의 조회와 deadline 조회를 구분한다. deadline의 1회 예산은 완화하지 않는다.
+    // 정지 grace 조회는 퇴역 등록 그룹당 1회이며, deadline 조회와 구분한다. deadline의 1회 예산은 완화하지 않는다.
     lifecycleCheck("L9", deadlineReads === 1, "I4: the stop deadline reads the process table once", { detail: { reads, deadlineReads } });
     lifecycleCheck("L9", recordedMs !== null && recordedMs <= CONSOLE_STOP_DEADLINE_MS + PROCESS_TABLE_TIMEOUT_MS + 100, "I4: the deadline spends one process-table budget at most", { detail: { recordedMs } });
     lifecycleCheck("L9", stop.status !== 0, "stop does not report a deadline-ended Console as cleanly stopped", { detail: { status: stop.status, stdout: stop.stdout.trim() } });
@@ -978,10 +978,10 @@ function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefi
     "      const GetLastError = kernel32.func('__stdcall', 'GetLastError', 'uint32', []);",
     "      const GetCurrentProcess = kernel32.func('__stdcall', 'GetCurrentProcess', 'void *', []);",
     "      const IsProcessInJob = kernel32.func('__stdcall', 'IsProcessInJob', 'int', ['void *', 'void *', koffi.out(koffi.pointer('int32'))]);",
-    "      const inJob = [0];",
+    "      const inJob = Buffer.alloc(4);",
     "      const queryOk = Boolean(IsProcessInJob(GetCurrentProcess(), null, inJob));",
     "      // NULL(any-job)은 G 소속을 증명하지 못한다. 보조 진단이며 게이트는 아래 breakaway 거부이다.",
-    "      const inAnyJob = queryOk ? Number(inJob[0]) !== 0 : null;",
+    "      const inAnyJob = queryOk ? inJob.readInt32LE(0) !== 0 : null;",
     "      const cmd = Buffer.from('cmd.exe /c exit 0' + String.fromCharCode(0), 'utf16le');",
     "      const si = Buffer.alloc(104);",
     "      si.writeUInt32LE(104, 0);",

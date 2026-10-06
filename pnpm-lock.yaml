@@ -23,7 +23,7 @@ importers:
   runtime/fleet-console:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.3.269
+        specifier: 0.3.269
         version: 0.3.269(@anthropic-ai/sdk@0.112.1(zod@4.4.1))(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)
       '@clack/prompts':
         specifier: 1.4.0
@@ -275,7 +275,7 @@ importers:
   runtime/fleet-console/foundation/agent-runtime:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.3.269
+        specifier: 0.3.269
         version: 0.3.269(@anthropic-ai/sdk@0.112.1(zod@4.4.1))(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)
       '@fleet-console/infra':
         specifier: workspace:*
