@@ -7,8 +7,8 @@ import { inboxReasons } from "./board-state.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { MAX_COMMODORE_WHY, MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
-import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
+import { MAX_COMMODORE_WHY, MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, MAX_MISSION_TEXT, MAX_DECISION_ANSWER, MAX_DECISION_QUESTIONS, pinSchema, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
+import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
 
 /** 바깥 루프의 보드. Console Use와 Theater에 묶인 사령관 세션이 같은 스키마와 도메인 함수를 쓴다. */
 
@@ -33,8 +33,12 @@ const QUOTA_TIMEOUT_MS = 5_000;
 const QUOTA_MAX_BYTES = 65_536;
 const WRITE_KEYS = ["add", "remove", "merge", "restore", ...TARGET_WRITES] as const;
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
+const PIN_FACT = "Appended to the stored text as ` [pin]`: MUST NOT, MUST or MAY, then ASCII detail without brackets; at most 60 characters, and the text with its pin stays within the field limit (text_with_pin_too_long).";
+const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
+const pin = pinSchema.optional().describe(PIN_FACT);
+const answerSchema = decisionAnswersSchema.extend({ answers: z.array(decisionAnswersSchema.shape.answers.element.extend({ pin })).min(1).max(MAX_DECISION_QUESTIONS) });
 const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON);
-const addSchema = z.object({ title: z.string().trim().min(1).max(MAX_TITLE), note: z.string().max(20_000).optional(), criteria: z.array(criterionText).max(MAX_CRITERIA).optional() }).strict();
+const addSchema = z.object({ title: z.string().trim().min(1).max(MAX_TITLE), note: z.string().max(20_000).optional(), criteria: z.array(z.union([criterionText, z.object({ text: criterionText, pin }).strict()])).max(MAX_CRITERIA).optional() }).strict();
 
 const contextSchema = z.object({ context: z.string().max(MAX_CONTEXT).optional() }).strict();
 const commenceSchema = contextSchema.extend({ routing: z.literal("preview").optional() }).strict();
@@ -43,13 +47,13 @@ const editSchema = z.union([
   z.object({ brief: z.string().max(20_000) }).strict(),
   z.object({ title: z.string().trim().min(1).max(MAX_TITLE) }).strict(),
   z.object({ mission: z.union([
-    z.object({ add: missionAddSchema }).strict(),
-    z.object({ patch: z.object({ missionId: ids, changes: missionPatchSchema }).strict() }).strict(),
+    z.object({ add: missionAddSchema.extend({ pin }) }).strict(),
+    z.object({ patch: z.object({ missionId: ids, changes: missionPatchSchema.extend({ pin }) }).strict() }).strict(),
     z.object({ remove: ids }).strict(),
   ]) }).strict(),
   z.object({ criterion: z.union([
-    z.object({ add: criterionAddSchema }).strict(),
-    z.object({ patch: z.object({ criterionId: ids, text: criterionAddSchema.shape.text }).strict() }).strict(),
+    z.object({ add: criterionAddSchema.extend({ pin }) }).strict(),
+    z.object({ patch: z.object({ criterionId: ids, text: criterionAddSchema.shape.text, pin }).strict() }).strict(),
     z.object({ remove: ids }).strict(),
   ]) }).strict(),
 ]);
@@ -73,7 +77,7 @@ const argsSchema = z.object({
   plan: z.union([z.literal(true), contextSchema]).optional().describe("Ask the Commander for a lineup."),
   commence: z.union([z.literal(true), commenceSchema]).optional().describe("Launch or resume the lineup. routing \"preview\" launches routed members with the judgment view routing returned, without judging again; it is refused with routing_preview_stale when a role or brief changed or the judgment expired."),
   criteria: z.union([z.object({ approve: ids }).strict(), z.object({ reject: ids }).strict()]).optional().describe("Approve or reject one criteria proposal; approve: \"all\" approves every one."),
-  answer: decisionAnswersSchema.optional().describe("Answer every question of the open decision request."),
+  answer: answerSchema.optional().describe("Answer every question of the open decision request."),
   complete: z.union([z.literal(true), followupSelectionSchema.strict()]).optional().describe("Complete, optionally selecting follow-ups."),
   reopen: z.literal(true).optional(),
   steer: z.union([z.literal(true), contextSchema]).optional(),
@@ -123,7 +127,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
 
   const tool: PluginMcpTool = {
     name: "console_objectives",
-    description: "A Theater's Objectives board: read it and take the person's outer-loop actions (add, plan, commence, criteria, answer, complete, steer and the rest). One write per call, attributed to the caller. An Operation cannot write to an objective it commands or belongs to (own_objective); missions stay with fleet-objectives. A Commodore connection is confined to its Theater; only it reads routing judgments and transcripts and sets a member's model and effort (member). Routing itself is unchanged: a member set to a model is launched with it instead of being routed.",
+    description: "A Theater's Objectives board: read it and take the person's outer-loop actions (add, plan, commence, criteria, answer, complete, steer and the rest). One write per call, attributed to the caller. An Operation cannot write to an objective it commands or belongs to (own_objective); missions stay with fleet-objectives. A Commodore connection is confined to its Theater; only it reads routing judgments and transcripts and sets a member's model and effort (member). Routing itself is unchanged: a member set to a model is launched with it instead of being routed. " + BOARD_REFERENCES,
     // 모르는 키는 호스트 선검사에서 그대로 막는다 — 실행할 수 없는 호출에 사람의 권한 요청을 띄우지 않는다.
     inputSchema: z.toJSONSchema(argsSchema),
     surface: {
@@ -189,7 +193,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             if (args.plan) return actions.plan(withContext(args.plan));
             if (args.commence) return actions.commence({ ...withContext(args.commence), ...(args.commence !== true && args.commence.routing ? { routing: args.commence.routing } : {}) });
             if (args.criteria) return "approve" in args.criteria ? (args.criteria.approve === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: args.criteria.approve })) : actions.reject({ ...ref, proposalId: args.criteria.reject });
-            if (args.answer) return actions.answer({ ...ref, ...args.answer });
+            if (args.answer) return actions.answer({ ...ref, requestId: args.answer.requestId, answers: args.answer.answers.map(({ pin: answerPin, ...answer }) => ({ ...answer, text: withPin(answer.text, answerPin, MAX_DECISION_ANSWER) })) });
             if (args.complete) return actions.complete({ ...ref, ...(args.complete === true ? {} : args.complete) });
             if (args.reopen) return actions.complete({ ...ref, undone: true });
             if (args.steer) return actions.steer(withContext(args.steer));
@@ -206,12 +210,16 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             if ("brief" in edit) return actions.patch({ ...ref, patch: { note: edit.brief } });
             if ("title" in edit) return actions.patch({ ...ref, patch: { title: edit.title } });
             if ("mission" in edit) {
-              if ("add" in edit.mission) return actions.missionAdd({ ...ref, mission: edit.mission.add });
-              if ("patch" in edit.mission) return actions.missionPatch({ ...ref, missionId: edit.mission.patch.missionId, patch: edit.mission.patch.changes });
+              if ("add" in edit.mission) { const { pin: missionPin, ...mission } = edit.mission.add; return actions.missionAdd({ ...ref, mission: { ...mission, text: withPin(mission.text, missionPin, MAX_MISSION_TEXT) } }); }
+              if ("patch" in edit.mission) {
+                const { pin: missionPin, ...changes } = edit.mission.patch.changes;
+                if (missionPin !== undefined && changes.text === undefined) throw new ObjectiveStoreError("pin_needs_text");
+                return actions.missionPatch({ ...ref, missionId: edit.mission.patch.missionId, patch: changes.text === undefined ? changes : { ...changes, text: withPin(changes.text, missionPin, MAX_MISSION_TEXT) } });
+              }
               return actions.missionRemove({ ...ref, missionId: edit.mission.remove });
             }
-            if ("add" in edit.criterion) return actions.criterionAdd({ ...ref, criterion: edit.criterion.add });
-            if ("patch" in edit.criterion) return actions.criterionPatch({ ...ref, criterionId: edit.criterion.patch.criterionId, patch: { text: edit.criterion.patch.text } });
+            if ("add" in edit.criterion) return actions.criterionAdd({ ...ref, criterion: { text: withPin(edit.criterion.add.text, edit.criterion.add.pin, MAX_CRITERION_TEXT) } });
+            if ("patch" in edit.criterion) return actions.criterionPatch({ ...ref, criterionId: edit.criterion.patch.criterionId, patch: { text: withPin(edit.criterion.patch.text, edit.criterion.patch.pin, MAX_CRITERION_TEXT) } });
             return actions.criterionRemove({ ...ref, criterionId: edit.criterion.remove });
           })();
           const { objective: updated, ...details } = result;
@@ -223,7 +231,9 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             : "brief" in edit ? { brief: storedText(kept.note) }
             : "mission" in edit ? ((mission) => mission && { mission: { id: mission.id, text: storedText(mission.text) } })(kept.missions.find((entry) => entry.id === ("add" in edit.mission ? fresh(kept.missions, current.missions)?.id : "patch" in edit.mission ? edit.mission.patch.missionId : undefined)))
             : ((criterion) => criterion && { criterion: { id: criterion.id, text: storedText(criterion.text) } })(kept.criteria.find((entry) => entry.id === ("add" in edit.criterion ? fresh(kept.criteria, current.criteria)?.id : "patch" in edit.criterion ? edit.criterion.patch.criterionId : undefined)));
-          return text({ ok: true, objectiveId: updated.id, ...details, ...(stored ? { stored } : {}) });
+          const answers = args.answer ? store.storedAnswers(current.id, args.answer.requestId) : null;
+          const echo = answers ? { answers: answers.map(({ questionId, selectedOptionIds, text: answered }) => ({ questionId, ...(selectedOptionIds.length ? { selectedOptionIds } : {}), ...(answered ? { text: storedText(answered) } : {}) })) } : stored;
+          return text({ ok: true, objectiveId: updated.id, ...details, ...(echo ? { stored: echo } : {}) });
         }
         if (args.remove || args.merge || args.restore) {
           // 정리는 에이전트 Operation 이 한다 — 누가 지웠는지가 사람의 보드에 남아야 한다.
@@ -283,7 +293,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           theaterId, groupId, title: add.title, ...(add.note ? { note: add.note } : {}),
           // 달성 기준 문장은 검증된 순서 그대로 기본 요구사항으로 함께 저장된다 — 한 건이라도 맞지 않으면 위 스키마에서
           // 거절되므로 목표가 기준 없이 먼저 생기지 않는다. AI 생성 표시는 목표의 addedBy 로 남는다.
-          ...(add.criteria?.length ? { criteria: [...add.criteria] } : {}),
+          ...(add.criteria?.length ? { criteria: add.criteria.map((criterion) => typeof criterion === "string" ? criterion : withPin(criterion.text, criterion.pin, MAX_CRITERION_TEXT)) } : {}),
           ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: { ...caller, ...(args.why ? { why: args.why } : {}) } } : {}),
         }, { language: language(caller), ...(actorOf(caller, args.why) ? { actor: actorOf(caller, args.why)! } : {}) });
         const kept = store.find(objective.id) ?? objective;

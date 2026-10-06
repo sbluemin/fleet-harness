@@ -943,6 +943,15 @@ export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.opt
 export const memberBatchLaunchSchema = z.object({ mode: z.enum(["same", "route"]) }).strict();
 export type MemberBatchLaunchInput = z.infer<typeof memberBatchLaunchSchema>;
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
+const PIN_TOKEN = "[\\x21-\\x5a\\x5c\\x5e-\\x7e]+";
+export const MAX_PIN = 60;
+export const pinSchema = z.string().max(MAX_PIN).regex(new RegExp(`^(?:MUST NOT|MUST|MAY)(?: ${PIN_TOKEN})*$`));
+export const pinned = (value: string, pin: string | undefined, max: number): string | null => {
+  if (!pin) return value;
+  const joined = value ? `${value} [${pin}]` : `[${pin}]`;
+  return Array.from(joined).length <= max ? joined : null;
+};
+
 export const criterionAddSchema = z.object({ text: criterionText }).strict();
 export const criterionPatchSchema = z.object({ text: criterionText }).strict();
 export const criterionProposalSchema = z.union([
