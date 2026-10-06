@@ -1696,7 +1696,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-trail-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-weight: var(--weight-regular); }
 .objectives-commodore-trail-time { flex: none; margin-left: auto; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .objectives-commodore-trail-fresh {
-  position: absolute; right: 12px; bottom: 10px; z-index: 2; padding: 3px 10px; border: 1px solid var(--hairline-strong); border-radius: 999px;
+  position: absolute; right: 12px; bottom: 10px; z-index: 2; padding: 3px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill);
   background: var(--ink-mid); color: var(--text-primary); font: inherit; font-size: var(--t-2xs); cursor: pointer;
 }
 .objectives-commodore-trail-fresh:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
