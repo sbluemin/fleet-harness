@@ -443,6 +443,10 @@ interface TranscriptContentBlock {
 
 interface TranscriptLine {
   readonly type?: unknown;
+  /** `system` 줄의 종류. 압축 경계(`compact_boundary`)만 읽는다. */
+  readonly subtype?: unknown;
+  /** 압축 경계의 숫자. 라이브 스트림과 같은 값을 CLI가 camelCase로 적는다. */
+  readonly compactMetadata?: unknown;
   readonly isMeta?: unknown;
   readonly isSidechain?: unknown;
   readonly isCompactSummary?: unknown;
@@ -583,6 +587,23 @@ export function tagChatOrigin(text: string, by: ChatOrigin | undefined, display:
   return `<fleet-origin plugin="${by.pluginId}"${shown}${format === "markdown" ? ' format="markdown"' : ""}/>\n${body}`;
 }
 
+/** 트랜스크립트의 압축 경계를 라이브 `compact_boundary`와 같은 결말로 옮긴다. 압축 전 크기가 없으면 경계라고 말할 근거가 없다. */
+function compactEndFromTranscript(meta: unknown): readonly AgentChatStreamEvent[] {
+  if (!meta || typeof meta !== "object") return [];
+  const row = meta as { readonly preTokens?: unknown; readonly postTokens?: unknown; readonly durationMs?: unknown; readonly trigger?: unknown };
+  if (typeof row.preTokens !== "number") return [];
+  return [{
+    kind: "command-end",
+    ok: true,
+    compact: {
+      before: row.preTokens,
+      ...(typeof row.postTokens === "number" ? { after: row.postTokens } : {}),
+      ...(typeof row.durationMs === "number" ? { durationMs: row.durationMs } : {}),
+      ...(row.trigger === "auto" || row.trigger === "manual" ? { trigger: row.trigger } : {}),
+    },
+  }];
+}
+
 /** 재생 문면이 호스트 표식으로 시작하면 출처와 원장 문면을 되찾는다. */
 function readChatOriginTag(text: string): { readonly by: ChatOrigin; readonly text: string; readonly format?: "markdown" } | null {
   const match = CHAT_ORIGIN_TAG.exec(text);
@@ -629,6 +650,11 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
   }
   if (line.type === "assistant") {
     return eventsFromAssistantContent(line.message?.content, options);
+  }
+  // 압축 경계. 세션을 다시 열어도 "어디서부터 요약된 기억인가"는 라이브에서 본 것과 같은 사실이다.
+  // 턴 안에 둘지 독립 줄로 세울지는 이 줄만 보고는 알 수 없어 재생 루프가 정한다(`inTurn`을 싣지 않는다).
+  if (line.type === "system" && line.subtype === "compact_boundary") {
+    return compactEndFromTranscript(line.compactMetadata);
   }
   // 도는 턴이 도중에 집어간 말. 표식 없는 것은 전처럼 재생하지 않는다 — 사람의 말과 다른 세션의
   // 전언이 같은 모양으로 오고, 이 자리에서 둘을 가를 근거가 없다.

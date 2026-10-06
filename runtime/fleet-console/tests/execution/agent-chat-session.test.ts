@@ -8,7 +8,7 @@ import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
 import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
-import { initialAgentChatLogState, reduceAgentChatLog } from "../../features/execution/client/agent/chat/chat-events.js";
+import { initialAgentChatLogState, reduceAgentChatLog, splitAgentChatTurn } from "../../features/execution/client/agent/chat/chat-events.js";
 import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
 
 const temporaryDirectories: string[] = [];
@@ -1240,12 +1240,30 @@ describe("AgentChatRegistry — stopping a turn", () => {
   });
 
   /**
-   * 정비 줄 밖에서 자식이 스스로 한 압축(auto)도 화면에 경계로 남아야 한다. 라이브에서는 명령 턴이
-   * 없다는 이유로 버려졌고, 재접속한 화면은 모든 턴을 닫힌 것으로 다시 세우므로 경계를 둘 턴을
-   * 상태로 추측하면 엉뚱한 줄에 붙는다 — 두 화면 모두 그 턴 안에 정확히 하나가 서야 한다.
+   * 압축 경계는 라이브에서도, 재접속에서도, 세션을 다시 열어 트랜스크립트를 재생할 때도 한 번씩 선다.
+   * 라이브에서는 명령 턴이 없다는 이유로 버려졌고, 재접속한 화면은 모든 턴을 닫힌 것으로 다시 세우므로
+   * 경계를 둘 턴을 상태로 추측하면 엉뚱한 줄에 붙는다. 재생은 system 줄을 통째로 버렸다. 재생된 경계는
+   * 턴을 열거나 턴의 시간을 늘리지 않고, 부관의 압축은 메인 대화가 아니므로 서지 않는다.
    */
-  it("draws a child-initiated auto compaction once, live and after resubscribe", async () => {
-    const transcriptPath = writeTranscript("sess-compact-auto", []);
+  it("draws each compaction boundary once — live, after resubscribe, and replayed from the transcript", async () => {
+    const stamp = (second: number) => new Date(Date.UTC(2026, 9, 6, 0, 0, second)).toISOString();
+    // 실제 CLI 트랜스크립트의 줄 순서다(키만 읽어 확인). 자동 압축은 그것이 끊은 프롬프트 뒤에 경계를 적고
+    // 첨부·요약을 거쳐 응답으로 이어지며, `/compact`는 경계·요약이 운반체 줄보다 먼저 적힌다.
+    const transcriptPath = writeTranscript("sess-compact-auto", [
+      { type: "user", message: { role: "user", content: "replayed ask" }, timestamp: stamp(0) },
+      { type: "system", subtype: "compact_boundary", compactMetadata: { trigger: "auto", preTokens: 150_000, postTokens: 9_000, durationMs: 2_000 }, timestamp: stamp(1) },
+      { type: "attachment", attachment: { type: "todo_reminder" }, timestamp: stamp(2) },
+      { type: "user", isCompactSummary: true, message: { role: "user", content: "summary" }, timestamp: stamp(3) },
+      { type: "attachment", attachment: { type: "todo_reminder" }, timestamp: stamp(4) },
+      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "replayed working" }] }, timestamp: stamp(5) },
+      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "replayed answer" }] }, timestamp: stamp(6) },
+      { type: "system", subtype: "compact_boundary", compactMetadata: { trigger: "manual", preTokens: 60_000, postTokens: 5_000 }, timestamp: stamp(10) },
+      { type: "user", isCompactSummary: true, message: { role: "user", content: "summary" }, timestamp: stamp(11) },
+      { type: "user", isMeta: true, message: { role: "user", content: "<local-command-caveat>Caveat</local-command-caveat>" }, timestamp: stamp(12) },
+      { type: "user", message: { role: "user", content: "<command-name>/compact</command-name>" }, timestamp: stamp(13) },
+      { type: "user", message: { role: "user", content: "<local-command-stdout>Compacted</local-command-stdout>" }, timestamp: stamp(14) },
+      { type: "system", subtype: "compact_boundary", isSidechain: true, compactMetadata: { trigger: "auto", preTokens: 40_000 }, timestamp: stamp(15) },
+    ]);
     const configDir = tempDir("chat-compact-auto-");
     let child: ReturnType<typeof fakeSession> | null = null;
     const openSession = vi.fn(async () => {
@@ -1275,10 +1293,21 @@ describe("AgentChatRegistry — stopping a turn", () => {
     const fold = (entries: readonly AgentChatJournalEvent[]) => entries.reduce((log, entry) => reduceAgentChatLog(log, { ...entry.event, receivedAt: entry.at }), initialAgentChatLogState);
     const late: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => late.push(entry))();
+    // 재생 턴 수와 시간은 경계가 없던 때와 같다 — 경계 줄은 턴을 열지 않고 첫 턴의 끝을 늘리지 않는다.
+    expect(live.find(({ event }) => event.kind === "replay-end")?.event).toMatchObject({ turns: 1 });
+    expect(live.find(({ event }) => event.kind === "turn-end")?.event).toMatchObject({ durationMs: 6_000 });
     for (const entries of [live, late]) {
       const turns = fold(entries).turns;
-      const boundaries = turns.flatMap((turn) => turn.items.filter((item) => item.type === "compact"));
-      expect(boundaries).toEqual([expect.objectContaining({ compact: expect.objectContaining({ trigger: "auto", before: 120_000, after: 8_000 }) })]);
+      const inTurn = turns.flatMap((turn) => turn.items.filter((item) => item.type === "compact"));
+      expect(inTurn).toEqual([
+        expect.objectContaining({ compact: expect.objectContaining({ trigger: "auto", before: 150_000, after: 9_000 }) }),
+        expect.objectContaining({ compact: expect.objectContaining({ trigger: "auto", before: 120_000, after: 8_000 }) }),
+      ]);
+      expect(turns.filter((turn) => turn.command)).toEqual([
+        expect.objectContaining({ command: expect.objectContaining({ trigger: "manual", compact: expect.objectContaining({ before: 60_000 }) }) }),
+      ]);
+      expect(turns[0]?.state).toBe("done");
+      expect(splitAgentChatTurn(turns[0]!).answer).toBe("replayed answer");
       expect(turns.at(-1)).toMatchObject({ state: "done", answer: "after" });
     }
     await registry.disposeAll();
