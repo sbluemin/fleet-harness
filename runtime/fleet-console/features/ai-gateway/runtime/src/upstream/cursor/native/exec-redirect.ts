@@ -535,8 +535,19 @@ function shellArguments(
   const args: Record<string, unknown> = { [commandKey]: command };
   if (cwd) {
     const cwdKey = firstSchemaProperty(schema, ["working_directory", "workdir", "cwd"]);
-    if (!cwdKey) return null;
-    args[cwdKey] = cwd;
+    if (cwdKey) {
+      args[cwdKey] = cwd;
+    } else {
+      // Cursor's shell always names a working directory and Claude Code's Bash has no field for
+      // it. Failing closed here sent every first shell command through a rejected native call
+      // and a ToolSearch for Bash, which then advertised a second shell for the rest of the
+      // session. State the directory in the command instead. `|| exit` rather than `&&` keeps a
+      // failed `cd` from running any part of a multi-line, `||`, or `&` command elsewhere, and
+      // the subshell keeps the caller's own working directory unchanged.
+      const directory = posixSingleQuote(cwd);
+      if (!directory) return null;
+      args[commandKey] = `( cd -- ${directory} || exit\n${command}\n)`;
+    }
   }
   if (timeout !== undefined) {
     if (!schemaHasProperty(schema, "timeout")) return null;

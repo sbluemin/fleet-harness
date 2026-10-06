@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http2 from "node:http2";
@@ -251,6 +252,45 @@ describe("Cursor live client-tool Run bridge", () => {
         }],
         "cursor",
       )).toBeNull();
+
+      // Cursor's shell always names a working directory; Claude Code's Bash has no field for it.
+      const bashTool = {
+        clientName: "Bash",
+        wireName: "bash",
+        inputSchemaValue: {
+          type: "object",
+          properties: { command: { type: "string" }, timeout: { type: "number" } },
+        },
+      };
+      const shellDirectory = mkdtempSync(path.join(tmpdir(), "fleet-cursor-shell-cwd-"));
+      temporaryWireLogDirectories.push(shellDirectory);
+      const nativeShell = (workingDirectory: string) => cursorNativeExecRedirect(
+        {
+          id: 4,
+          execId: "native-shell",
+          shellStreamArgs: {
+            command: "basename \"$PWD\"\nfalse || echo fallback # trailing comment",
+            workingDirectory,
+            timeout: 30000,
+          },
+        },
+        [bashTool],
+        "cursor",
+      );
+      const runRedirected = (workingDirectory: string) => {
+        const shellRedirect = nativeShell(workingDirectory);
+        expect(shellRedirect).toMatchObject({ adapter: "shell-direct", nativeResultType: "shellStreamResult" });
+        const args = JSON.parse(shellRedirect?.call.arguments ?? "{}") as { command: string; timeout: number };
+        expect(args.timeout).toBe(30000);
+        return spawnSync("/bin/sh", ["-c", args.command], { cwd: tmpdir(), encoding: "utf8" });
+      };
+      const inDirectory = runRedirected(shellDirectory);
+      expect(inDirectory.stdout).toBe(`${path.basename(shellDirectory)}\nfallback\n`);
+      expect(inDirectory.status).toBe(0);
+      // A directory that cannot be entered runs no part of the command anywhere else.
+      const missingDirectory = runRedirected(path.join(shellDirectory, "missing"));
+      expect(missingDirectory.stdout).toBe("");
+      expect(missingDirectory.status).not.toBe(0);
 
       // Cursor's own file-name search arrives as a pattern-less grep that carries only a glob.
       const globSchema = {
