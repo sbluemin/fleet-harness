@@ -259,7 +259,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
             {tab === "log" ? (
               <>
                 <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} />
-                <CommodoreTrail t={t} theaterId={theaterId} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
+                <CommodoreTrail t={t} language={language} theaterId={theaterId} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
               </>
             ) : null}
             {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onFail={fail} onClear={() => setFailure(null)} /> : null}

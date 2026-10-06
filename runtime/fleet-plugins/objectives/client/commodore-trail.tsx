@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { Objective, ObjectiveActor } from "../server/types.js";
-import { clockTime } from "./commodore-row.js";
 import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { revealObjective, useObjectiveTheater } from "./objectives-state.js";
 
@@ -68,15 +67,18 @@ export function commodoreTrail(t: T, theaterId: string, objectives: readonly Obj
   return groups.sort((a, b) => b.latest - a.latest);
 }
 
-/** 오늘이면 시각만, 아니면 월-일과 시각. */
-function when(at: number): string {
-  const date = new Date(at);
-  const today = new Date();
-  if (date.toDateString() === today.toDateString()) return clockTime(at);
-  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${clockTime(at)}`;
+const TIME_FORMATS = {
+  en: { time: new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }), day: new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) },
+  ko: { time: new Intl.DateTimeFormat("ko", { hour: "2-digit", minute: "2-digit" }), day: new Intl.DateTimeFormat("ko", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) },
+};
+
+/** 기록 칸(채팅 턴)과 같은 시각 표기 — 오늘이면 시각만, 아니면 날짜와 시각. */
+function when(at: number, language: "en" | "ko"): string {
+  const formats = TIME_FORMATS[language];
+  return new Date(at).toDateString() === new Date().toDateString() ? formats.time.format(at) : formats.day.format(at);
 }
 
-export function CommodoreTrail({ t, theaterId, onReveal }: { readonly t: T; readonly theaterId: string; readonly onReveal?: (at: number) => void }) {
+export function CommodoreTrail({ t, language, theaterId, onReveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly onReveal?: (at: number) => void }) {
   const { objectives } = useObjectiveTheater(theaterId);
   const groups = useMemo(() => commodoreTrail(t, theaterId, objectives), [t, theaterId, objectives]);
   return (
@@ -94,7 +96,7 @@ export function CommodoreTrail({ t, theaterId, onReveal }: { readonly t: T; read
                       <span className="objectives-commodore-trail-line">
                         <span className={`objectives-commodore-trail-mark is-${entry.kind}`} aria-hidden="true" />
                         <span className="objectives-commodore-trail-word">{entry.word}</span>
-                        <span className="objectives-commodore-trail-time">{when(entry.at)}</span>
+                        <span className="objectives-commodore-trail-time">{when(entry.at, language)}</span>
                       </span>
                       {entry.detail ? <span className="objectives-commodore-trail-detail">{entry.detail}</span> : null}
                       {entry.why ? <span className="objectives-commodore-trail-why">{entry.why}</span> : null}
