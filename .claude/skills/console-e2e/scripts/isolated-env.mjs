@@ -18,9 +18,9 @@
  * --set value because nothing expands it. It refuses --set for managed names and credential-like names; the one
  * exception is a known local placeholder (ANTHROPIC_API_KEY=sk-ant-fleet-local), which is not a credential. On macOS
  * and Linux it also refuses a run dir whose <run-dir>/tmp is too long for a Unix socket path (tsx's IPC socket). It
- * refuses a run dir that <run-dir>/owner assigns to another caller, unless its console/console.lock names a dead PID
- * (judged from the lock's port and pid only, with a signal-0 probe), which lets the caller take it over. A run dir
- * with no owner is claimed by exclusive create unless its lock names a live PID. The caller is the Fleet Operation id
+ * refuses a run dir that <run-dir>/owner assigns to another caller. A run dir with no owner is claimed by exclusive
+ * create unless its console/console.lock names a live or unreadable PID (judged from the lock's port and pid only,
+ * with a signal-0 probe). The caller is the Fleet Operation id
  * (kept when Console restarts the session), else the Claude Code session id, else none, and owner keeps only its hash.
  * The remedy is another run dir name, never stopping or deleting the other run. --check passes the same checks, then
  * prints the plan and runs nothing. Otherwise it records the caller in owner, forwards SIGINT/SIGTERM/SIGHUP, exits
@@ -213,7 +213,7 @@ function main() {
   }
 
   // A run dir belongs to the caller recorded in owner. Another caller may claim it only when it has no owner and no
-  // live lock, or take it over when its owner's Console left a dead PID's lock; anything else is another session's run.
+  // live lock; anything else is another session's run, even after that session's Console exited.
   const ownerPath = path.join(runDir, 'owner');
   const lockPath = path.join(owned.console, 'console.lock');
   const caller = callerHash();
@@ -225,7 +225,6 @@ function main() {
     if (owner === caller) return 'own';
     const lock = lockState(lockPath);
     if (owner === null && (lock.state === 'none' || lock.state === 'dead')) return 'claim';
-    if (owner !== null && lock.state === 'dead') return 'take';
     return fail(`this --run-dir belongs to another session${lock.state === 'live' ? ` whose Console is running (pid ${lock.pid})` : ''}. Choose a different run directory name, e.g. <repo-root>/.fleet/e2e-<role>-<short-id>; do not stop that Console or delete its directory (references/setup.md#isolate-the-console)`);
   };
   let verdict = judge();
@@ -245,21 +244,16 @@ function main() {
   }
 
   for (const dir of Object.values(owned)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-  // Claim exclusively, so of two sessions entering a fresh run dir together exactly one owns it; the loser re-judges.
-  // A takeover re-judges right before writing, so an owner that restarted in between keeps its run dir.
-  while (verdict !== 'own') {
-    if (verdict === 'claim') {
-      try {
-        writeFileSync(ownerPath, `${caller}\n`, { flag: 'wx', mode: 0o600 });
-        break;
-      } catch (error) {
-        if (error.code !== 'EEXIST') throw error;
-      }
-    } else if (judge() === 'take') {
-      writeFileSync(ownerPath, `${caller}\n`, { mode: 0o600 });
-      break;
+  // Claim exclusively, so of two sessions entering an ownerless run dir together exactly one owns it; the loser
+  // re-judges and is refused.
+  if (verdict === 'claim') {
+    try {
+      writeFileSync(ownerPath, `${caller}\n`, { flag: 'wx', mode: 0o600 });
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      // judge() refuses the winner's run dir; only an owner record removed in between gets here.
+      if (judge() !== 'own') fail('this --run-dir lost its owner record while being claimed; choose a different run directory name (references/setup.md#isolate-the-console)');
     }
-    verdict = judge();
   }
   // Per call: a shared pathbin would let one call's --bin claude reach a fake-only host started earlier on this run.
   const callBin = mkdtempSync(path.join(owned.pathbin, 'call-'));
