@@ -256,10 +256,12 @@ type Outcome =
   | `fallback_http_${number}`;
 
 /**
- * 예고와 지시를 붙여 한 번 다시 받는다(재재요청은 없다). 두 번째 응답은 도구 호출이 보일 때까지
- * 보류한다. 보이면 회복이다: 첫 예고를 먼저 내보내고 두 번째 응답을 잇는다. 그러면 Muse가 추론할 때
- * 스스로 내는 `[예고, 추론, 도구 호출]` 순서가 되고, 클라이언트 기록은 모델이 본 문맥(자기가 한 예고)과
- * 어긋나지 않는다. 다운스트림은 항목 id로 블록을 가르므로 두 응답의 항목이 한 메시지에 섞여도 된다.
+ * 예고와 지시를 붙여 한 번 다시 받는다(재재요청은 없다). 첫 예고는 재요청 진입 즉시 먼저
+ * 내보낸다 — 두 번째 응답이 오래 침묵해도 클라이언트는 예고를 바로 본다. 그래도 회복 판정은
+ * 그대로다: 두 번째 응답에서 도구 호출이 보여야 회복이고, 그때 두 번째 응답을 잇는다.
+ * 그러면 Muse가 추론할 때 스스로 내는 `[예고, 추론, 도구 호출]` 순서가 되고, 클라이언트 기록은
+ * 모델이 본 문맥(자기가 한 예고)과 어긋나지 않는다. 다운스트림은 항목 id로 블록을 가르므로
+ * 두 응답의 항목이 한 메시지에 섞여도 된다.
  *
  * 추론만으로는 회복이 아니다. 첫 응답이 실제 최종 보고였던 턴에서 두 번째는 추론한 뒤 같은 보고를
  * 짧게 되풀이했다(2026-10-05 실측) — 그 답을 붙이면 보고가 두 번 보인다. 그래서 두 번째가 도구 없이
@@ -303,14 +305,27 @@ async function* resample(
     report("aborted");
     throw context.signal?.reason;
   };
+  let previewEmitted = false;
+  /**
+   * 첫 예고(held)를 최대 한 번만 내놓는다. 재요청 진입 직후 즉시 방출하고, fallback과 commit은
+   * 이 가드를 거쳐 이미 나간 예고를 다시 내보내지 않는다. 방출 시각이 addedLatencyMs다.
+   */
+  function takePreview(): readonly CanonicalResponseEvent[] {
+    if (previewEmitted) return [];
+    previewEmitted = true;
+    resumedAt ??= Date.now();
+    return held;
+  }
   function* fallback(outcome: Outcome): Generator<CanonicalResponseEvent> {
-    resumedAt = Date.now();
     report(outcome);
-    yield* held;
+    yield* takePreview();
     yield firstCompleted;
   }
 
   if (context.signal?.aborted) aborted();
+  // 재요청 fetch를 기다리기 전에 첫 예고를 즉시 내보낸다. 커밋 조건·둘째 파기·usage 귀속은
+  // 그대로이므로 전달 시각만 앞당겨진다.
+  yield* takePreview();
   let second: AdapterResponse;
   try {
     second = await context.reopen(announcement);
@@ -386,8 +401,7 @@ async function* resample(
           continue;
         }
         committed = true;
-        resumedAt = Date.now();
-        yield* held;
+        yield* takePreview();
         yield* secondHeld.splice(0);
       }
       if (event.type === "response.completed") {
