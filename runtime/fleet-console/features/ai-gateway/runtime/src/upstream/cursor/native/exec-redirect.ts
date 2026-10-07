@@ -884,9 +884,15 @@ function renderCursorGrepReceiptV2(decoded: unknown): string | null {
     }
   }
   if (typeof decoded.clientTruncated !== "boolean") return null;
-  if (decoded.outputMode === "files_with_matches") return decoded.files.join("\n");
+  // Attach hands Cursor `clientTruncated` and each line's `contentTruncated`; a replayed search
+  // says the same in text, or a capped search reads as complete.
+  const clientTruncated = decoded.clientTruncated;
+  const withCap = (text: string): string => (
+    clientTruncated ? `${text}${text.length > 0 ? "\n" : ""}${CALLER_RESULTS_TRUNCATED_NOTICE}` : text
+  );
+  if (decoded.outputMode === "files_with_matches") return withCap(decoded.files.join("\n"));
   if (decoded.outputMode === "count") {
-    return decoded.counts.map((entry) => `${entry[0]}:${entry[1]}`).join("\n");
+    return withCap(decoded.counts.map((entry) => `${entry[0]}:${entry[1]}`).join("\n"));
   }
   const groups: string[] = [];
   let file: string | undefined;
@@ -901,10 +907,12 @@ function renderCursorGrepReceiptV2(decoded: unknown): string | null {
       file = match.file;
       lines = [];
     }
-    lines.push(`${match.lineNumber}${match.isContextLine ? "-" : ":"}${match.content}`);
+    lines.push(`${match.lineNumber}${match.isContextLine ? "-" : ":"}${match.content}${
+      match.contentTruncated ? GREP_SHELL_COLUMN_SUFFIX : ""
+    }`);
   }
   flush();
-  return groups.join("\n\n");
+  return withCap(groups.join("\n\n"));
 }
 
 function parseGrepShellReceipt(
@@ -1272,8 +1280,10 @@ interface CallerFileListing {
 const GREP_FILES_HEADER = /^Found \d+ files?(?: (?:limit: \d+(?:, offset: \d+)?|offset: \d+))?$/;
 const GREP_OFFSET_PAST_END = /^No entries at this offset\. \[Showing results with pagination = [^\]\n]*\]$/;
 const NO_FILES_FOUND = "No files found";
+/** Claude Code's own note under a capped search or glob. */
+const CALLER_RESULTS_TRUNCATED_NOTICE = "(Results are truncated. Consider using a more specific path or pattern.)";
 const GLOB_TRUNCATION_NOTICES = [
-  /^\(Results are truncated\. Consider using a more specific path or pattern\.\)$/,
+  new RegExp(`^${CALLER_RESULTS_TRUNCATED_NOTICE.replace(/[.()]/g, "\\$&")}$`),
   /^\(Showing \d+ of \d+ matching files; \d+ more are not listed\. Narrow the pattern or path to see the rest\.\)$/,
   /^\(Showing the first \d+ files; there are more than \d+ matches\. Narrow the pattern or path to see the rest\.\)$/,
 ];

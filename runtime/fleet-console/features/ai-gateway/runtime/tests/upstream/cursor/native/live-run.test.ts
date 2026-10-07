@@ -1084,8 +1084,9 @@ describe("Cursor live client-tool Run bridge", () => {
   it("restores a grep receipt when a cold resume replays the search", () => {
     // A cold resume replays earlier tool results through historyRoot and the conversation turns.
     // FLEET_CURSOR_GREP_V2 is the compressed receipt an older shell search stored. Attach inflated
-    // that receipt into these search lines; the replay must carry the same lines. A broken receipt
-    // or another version stays as it is, and the resume still builds.
+    // that receipt into these search lines; the replay must carry the same lines, and the same
+    // truncation attach reports: a cut line and a search the byte cap stopped short. A broken
+    // receipt or another version stays as it is, and the resume still builds.
     const receipt = (value: unknown) => (
       `FLEET_CURSOR_GREP_V2:${deflateRawSync(Buffer.from(JSON.stringify(value), "utf8")).toString("base64url")}`
     );
@@ -1109,11 +1110,18 @@ describe("Cursor live client-tool Run bridge", () => {
           contentTruncated: false,
           isContextLine: true,
         },
+        {
+          file: "sub/12:odd.ts",
+          lineNumber: 9,
+          content: "very long line cut",
+          contentTruncated: true,
+          isContextLine: false,
+        },
       ],
       totalFiles: 1,
-      totalLines: 2,
-      totalMatchedLines: 1,
-      clientTruncated: false,
+      totalLines: 3,
+      totalMatchedLines: 2,
+      clientTruncated: true,
     });
     const corrupt = "FLEET_CURSOR_GREP_V2:not-a-receipt";
     const otherVersion = "FLEET_CURSOR_GREP_V1:abc";
@@ -1160,6 +1168,8 @@ describe("Cursor live client-tool Run bridge", () => {
     expect(replayed).toContain("sub/12:odd.ts");
     expect(replayed).toContain("2:parseGrepShellReceipt here");
     expect(replayed).toContain("3-nearby");
+    expect(replayed).toContain("9:very long line cut [... omitted end of long line]");
+    expect(replayed).toContain("(Results are truncated. Consider using a more specific path or pattern.)");
     expect(replayed).not.toContain(valid);
     expect(replayed).toContain(corrupt);
     expect(replayed).toContain(otherVersion);
