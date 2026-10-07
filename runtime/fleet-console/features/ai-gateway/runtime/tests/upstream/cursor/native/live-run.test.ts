@@ -1161,6 +1161,13 @@ describe("Cursor live client-tool Run bridge", () => {
         ...(request.tools ?? []),
         { type: "function", name: "Bash", description: "Run a shell command", parameters: { type: "object", properties: { command: { type: "string" } } } },
         { type: "function", name: "Read", description: "Read a file", parameters: { type: "object", properties: { file_path: { type: "string" } } } },
+        // An MCP-heavy session renames more tools than the rule lists; the shell must stay listed.
+        ...Array.from({ length: 40 }, (_, index) => ({
+          type: "function" as const,
+          name: `ProbeTool${index}`,
+          description: "Probe",
+          parameters: { type: "object", properties: {} },
+        })),
       ],
       input: [
         request.input[0]!,

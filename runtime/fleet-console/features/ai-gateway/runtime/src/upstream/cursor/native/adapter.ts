@@ -1222,14 +1222,15 @@ function cursorClientToolDiscipline(
   // client names. A call by that name never reaches the gateway: Cursor answers `Tool not
   // available` itself, and the model retried until it ended the turn claiming every tool was
   // refused (2026-10-07, three Grok members). Spell out the callable name for each renamed tool.
+  // The withheld shell goes first: it has no wire name at all, so the cap must never drop it.
   const renamed = [
-    ...tools
-      .filter((tool) => tool.clientName !== tool.toolName)
-      .map((tool) => `${tool.clientName} → \`${tool.toolName}\``),
     ...redirectTools
       .filter((tool) => isCursorWithheldToolName(tool.clientName)
         && !tools.some((advertised) => advertised.clientName === tool.clientName))
       .map((tool) => `${tool.clientName} → the native ${CURSOR_NATIVE_SHELL_HISTORY_NAME}`),
+    ...tools
+      .filter((tool) => tool.clientName !== tool.toolName)
+      .map((tool) => `${tool.clientName} → \`${tool.toolName}\``),
   ].slice(0, CURSOR_TOOL_NAME_MAP_LIMIT);
   if (renamed.length > 0) {
     guidance.push(`Instructions and earlier turns name tools by client names; call them by these names: ${
