@@ -862,6 +862,13 @@ describe("Cursor live client-tool Run bridge", () => {
       const approvalRun = new BridgeCursorStream(cursorCompletionFrames(approval));
       const approvalUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-approval-again", 71)]));
       const approvalHarness = cursorHarness([approvalRun, approvalUnwanted]);
+      // A past form inside the sentence modifies the next step; only the final predicate settles it.
+      const pastModifier = "아까 실패했던 테스트를 다시 돌립니다.";
+      const pastModifierCall = cursorCall("call-resample-past-modifier", 80);
+      const pastModifierRecovered = cursorCall("call-resample-past-modifier-recovered", 81);
+      const pastModifierRun = new BridgeCursorStream(cursorCompletionFrames(pastModifier));
+      const pastModifierRecoveredRun = new BridgeCursorStream(cursorToolFrames([pastModifierRecovered]));
+      const pastModifierHarness = cursorHarness([pastModifierRun, pastModifierRecoveredRun]);
       const gateTurn = async (gateHarness: { adapter: typeof harness.adapter }, userId: string, spec: CursorCallSpec) => {
         const gateAdapter = gateHarness.adapter.forHarness({});
         const gateInitial = cursorRequest(userId, "grok-4.7");
@@ -877,6 +884,7 @@ describe("Cursor live client-tool Run bridge", () => {
       try {
         const reported = await gateTurn(reportHarness, "session-resample-report", reportCall);
         const held = await gateTurn(approvalHarness, "session-resample-approval", approvalCall);
+        const retried = await gateTurn(pastModifierHarness, "session-resample-past-modifier", pastModifierCall);
         expect({
           reportStreams: reportHarness.openedStreams,
           reportCalls: addedFunctionCallIds(reported),
@@ -884,6 +892,8 @@ describe("Cursor live client-tool Run bridge", () => {
           approvalStreams: approvalHarness.openedStreams,
           approvalCalls: addedFunctionCallIds(held),
           approvalText: canonicalText(held),
+          pastModifierStreams: pastModifierHarness.openedStreams,
+          pastModifierCalls: addedFunctionCallIds(retried),
         }).toEqual({
           reportStreams: 1,
           reportCalls: [],
@@ -891,10 +901,13 @@ describe("Cursor live client-tool Run bridge", () => {
           approvalStreams: 1,
           approvalCalls: [],
           approvalText: approval,
+          pastModifierStreams: 2,
+          pastModifierCalls: [pastModifierRecovered.callId],
         });
       } finally {
         reportHarness.adapter.dispose();
         approvalHarness.adapter.dispose();
+        pastModifierHarness.adapter.dispose();
       }
     } finally {
       harness.adapter.dispose();

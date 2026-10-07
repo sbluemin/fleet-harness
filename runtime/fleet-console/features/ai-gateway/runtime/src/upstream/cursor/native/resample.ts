@@ -107,6 +107,9 @@ function isPureConditional(sentence: string): boolean {
   return hasKoreanFuture(sentence.slice(mark + 1));
 }
 
+/** 고로 끝나는 명사. 뒤가 띄어 써져도 연결어미가 아니다(`회고 도착하면`). */
+const KOREAN_NOUNS_ENDING_IN_GO = new Set(["회고", "경고", "참고", "광고", "신고", "원고", "창고", "공고", "예고"]);
+
 function hasPositiveConnective(before: string): boolean {
   for (let index = 1; index < before.length; index += 1) {
     const mark = before[index];
@@ -116,6 +119,8 @@ function hasPositiveConnective(before: string): boolean {
     const next = before[index + 1] ?? "";
     // `보고`처럼 단어 안의 고는 연결어미가 아니다. 어미는 뒤에서 문장이 갈라진다.
     if (next !== "" && next !== " " && next !== "," && next !== "\n") continue;
+    const wordStart = index < 2 || !/^[가-힣]$/u.test(before[index - 2] ?? "");
+    if (mark === "고" && wordStart && KOREAN_NOUNS_ENDING_IN_GO.has(`${prev}${mark}`)) continue;
     return true;
   }
   return false;
@@ -130,20 +135,76 @@ function hasKoreanFuture(text: string): boolean {
   return false;
 }
 
-/** 미래 표지 없이 과거·결과만 있으면 완료 보고다. 애매하면 완료로 치지 않는다. */
+/**
+ * 미래 표지 없이 문장 끝 서술어가 과거·완료면 완료 보고다. 애매하면 완료로 치지 않는다.
+ * 문장 중간의 과거 표지(`실패했던 테스트`, `the updated tests`)는 수식어라 보지 않는다.
+ */
 function isCompletionReport(sentence: string): boolean {
   if (hasKoreanFuture(sentence) || /\b(?:I['’]ll|I will|I['’]m going to|I am going to)\b/iu.test(sentence)) {
     return false;
   }
-  if (/(?:았|었|였)/u.test(sentence)) return true;
-  for (const char of sentence) {
+  // 끝에 붙은 괄호 보충(`확정됐습니다(… 보고서에 기재).`)과 코드 조각은 서술어가 아니다.
+  const body = sentence.replace(/(?:\s*(?:\([^()]*\)|`[^`]*`)[\s.!?。？…:;,]*)+$/u, "");
+  const words = body.replace(/[\s.!?。？…:;,)\]}"'`」』>*_~]+$/u, "").split(/\s+/u).filter((word) => word.length > 0);
+  if (!/[가-힣]/u.test(body)) return isEnglishCompletion(words);
+  for (let index = words.length - 1; index >= 0; index -= 1) {
+    const word = words[index] ?? "";
+    if (!/[가-힣]/u.test(word)) continue;
+    if (hasKoreanPast(word)) return true;
+    // `촬영은 끝났으므로 다시 띄우지 않습니다`: 끝난 일 뒤에 하지 않겠다고 맺는다. 과거 없는 부정만으로는
+    // 맺음이 아니다(`… 이어가겠습니다. 다른 폴더는 건드리지 않습니다.`의 마지막 문장).
+    return isKoreanNegation(word) && words.slice(0, index).some(hasKoreanPast);
+  }
+  return false;
+}
+
+/** 종결 서술어 한 어절에 과거 시제(`했`·`됐`·`끝났`·`었`)가 있는가. 겠은 미래, 있·없은 존재다. */
+function hasKoreanPast(predicate: string): boolean {
+  if (/(?:았|었|였)/u.test(predicate)) return true;
+  for (const char of predicate) {
     if (jongseongIndex(char) !== SSANG_SIOT_INDEX) continue;
     if (char === "겠" || char === "있" || char === "없") continue;
     return true;
   }
-  if (/\b(?:ran|found|made|left|did|done|went|came|got|was|were|built|sent)\b/iu.test(sentence)) return true;
-  const notPast = new Set(["speed", "hundred"]);
-  return (sentence.match(/\b[A-Za-z]{3,}ed\b/giu) ?? []).some((word) => !notPast.has(word.toLowerCase()));
+  return false;
+}
+
+/** 하지 않겠다·없다로 끝나는 서술어. 상태 서술(`그대로 두고 있습니다`)은 넣지 않는다. */
+function isKoreanNegation(predicate: string): boolean {
+  return /^(?:않|없)/u.test(predicate) || /(?:지않|없)(?:습니다|어요|음)$/u.test(predicate);
+}
+
+/** 다음 행동으로 여는 영어 문장. 그 뒤의 과거형은 앞으로 할 일의 수식어다(`Next, the updated tests run`). */
+const ENGLISH_FORWARD_LEAD = /^(?:now|next|then|first|second|finally|afterwards?|next step)\b/iu;
+/** 바로 뒤의 과거분사를 수식어로 만드는 한정사·전치사·부정사 표지. */
+const ENGLISH_ATTRIBUTIVE_BEFORE = new Set([
+  "the", "a", "an", "this", "that", "these", "those", "its", "their", "our", "my", "your", "his", "her",
+  "some", "any", "each", "every", "no", "with", "against", "for", "of", "on", "in", "to", "from", "by",
+  "at", "into", "as", "be", "being",
+]);
+const ENGLISH_IRREGULAR_PAST = new Set([
+  "ran", "found", "made", "left", "did", "done", "went", "came", "got", "was", "were", "built", "sent",
+  "wrote", "saw", "took", "gave", "kept", "held", "broke", "finished", "completed",
+]);
+
+/**
+ * 주절 서술어가 과거·완료인 영어 문장. 문장 아무 데나 있는 `-ed`를 세지 않는다. 한정사·전치사 뒤의 과거분사
+ * (`the related tests`)는 수식어로 빼고, 나머지 자리(`Tests passed.`, `Fixed the import.`)만 서술어로 본다.
+ */
+function isEnglishCompletion(words: readonly string[]): boolean {
+  if (ENGLISH_FORWARD_LEAD.test(words.join(" "))) return false;
+  const tokens = words
+    .map((word) => word.replace(/^[^A-Za-z]+|[^A-Za-z']+$/gu, "").toLowerCase())
+    .filter((word) => /^[a-z][a-z']*$/u.test(word));
+  for (let index = 0; index < tokens.length; index += 1) {
+    const word = tokens[index] ?? "";
+    const past = ENGLISH_IRREGULAR_PAST.has(word) || (/^[a-z]{3,}ed$/u.test(word) && !/eed$/u.test(word));
+    if (!past) continue;
+    const before = tokens[index - 1];
+    if (before !== undefined && ENGLISH_ATTRIBUTIVE_BEFORE.has(before)) continue;
+    return true;
+  }
+  return false;
 }
 
 function jongseongIndex(char: string): number | undefined {
