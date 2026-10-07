@@ -1,3 +1,4 @@
+import { inputIssues } from "@fleet-console/sdk/mcp";
 import fs from "node:fs";
 import type http from "node:http";
 
@@ -40,7 +41,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
     const body = await ctx.host.http.readJsonBody<unknown>(req);
     const parsed = schema.safeParse(body ?? {});
-    if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request", issues: inputIssues(parsed.error.issues) }); return true; }
     try {
       const value = await run(parsed.data, req);
       ctx.host.http.writeJson(res, 200, value ?? { ok: true });

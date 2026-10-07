@@ -1,4 +1,4 @@
-import type { ConsoleCaller, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, type ConsoleCaller, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { inboxReasons } from "./board-state.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { MAX_COMMODORE_WHY, MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, MAX_MISSION_TEXT, MAX_DECISION_ANSWER, MAX_DECISION_QUESTIONS, pinSchema, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
+import { MAX_SHORT_INPUT, MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, MAX_MISSION_TEXT, MAX_DECISION_QUESTIONS, pinSchema, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
 
 /** 바깥 루프의 보드. Console Use와 Theater에 묶인 사령관 세션이 같은 스키마와 도메인 함수를 쓴다. */
@@ -47,8 +47,8 @@ const editSchema = z.union([
   z.object({ brief: z.string().max(20_000) }).strict(),
   z.object({ title: z.string().trim().min(1).max(MAX_TITLE) }).strict(),
   z.object({ mission: z.union([
-    z.object({ add: missionAddSchema.extend({ pin }) }).strict(),
-    z.object({ patch: z.object({ missionId: ids, changes: missionPatchSchema.extend({ pin }) }).strict() }).strict(),
+    z.object({ add: missionAddSchema.extend({ pin, why: z.record(ids, z.string().max(MAX_SHORT_INPUT)).optional() }) }).strict(),
+    z.object({ patch: z.object({ missionId: ids, changes: missionPatchSchema.extend({ pin, why: z.record(ids, z.string().max(MAX_SHORT_INPUT)).optional() }) }).strict() }).strict(),
     z.object({ remove: ids }).strict(),
   ]) }).strict(),
   z.object({ criterion: z.union([
@@ -87,7 +87,7 @@ const argsSchema = z.object({
   extend: z.object({ context: z.string().trim().min(1).max(MAX_CONTEXT) }).strict().optional(),
   edit: editSchema.optional().describe("Change the title, the brief, a mission or a criterion under the screen's running-session rules."),
   followup: z.union([z.object({ retry: followupTarget }).strict(), z.object({ abandon: followupTarget }).strict(), z.object({ discard: ids }).strict()]).optional().describe("Retry or abandon a follow-up creation, or discard a candidate."),
-  why: z.string().trim().min(1).max(MAX_COMMODORE_WHY).optional().describe("Commodore only. One line on why this board write; the person reads it beside the action in the Commodore log."),
+  why: z.string().trim().min(1).max(MAX_SHORT_INPUT).optional().describe("Commodore only. One line on why this board write; the person reads it beside the action in the Commodore log."),
   member: z.object({ memberId: ids, launch: memberModelSchema.nullable() }).strict().optional().describe("Commodore only. Set a member's model and effort from view models; null returns it to routing. Outcome set: not launched yet, Commence launches it with this value (routing skips it). applied: the session now runs it. pending: the member is working and switches after its turn (next). A launched member that returns to routing keeps its running model. Refused: a model outside the catalog (model_not_in_catalog), a disabled kind (model_unavailable), an effort the model does not offer (invalid_effort), an unreadable catalog (catalog_unavailable), or the host's code."),
 }).strict();
 type Args = z.output<typeof argsSchema>;
@@ -167,7 +167,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         if (writes.length > 1 || (writes.length === 1 && writes[0] !== "add" && readKeys.length > 0)) return refuse("one_write_per_call", { rejected: writes.length > 1 ? writes : readKeys });
       }
       const parsed = argsSchema.safeParse(raw ?? {});
-      if (!parsed.success) return refuse("invalid_arguments");
+      if (!parsed.success) return refuse("invalid_arguments", { issues: inputIssues(parsed.error.issues) });
       const args: Args = parsed.data;
       const caller: BoardCaller | undefined = bound ?? context.caller;
       try {
@@ -193,7 +193,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             if (args.plan) return actions.plan(withContext(args.plan));
             if (args.commence) return actions.commence({ ...withContext(args.commence), ...(args.commence !== true && args.commence.routing ? { routing: args.commence.routing } : {}) });
             if (args.criteria) return "approve" in args.criteria ? (args.criteria.approve === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: args.criteria.approve })) : actions.reject({ ...ref, proposalId: args.criteria.reject });
-            if (args.answer) return actions.answer({ ...ref, requestId: args.answer.requestId, answers: args.answer.answers.map(({ pin: answerPin, ...answer }) => ({ ...answer, text: withPin(answer.text, answerPin, MAX_DECISION_ANSWER) })) });
+            if (args.answer) return actions.answer({ ...ref, requestId: args.answer.requestId, answers: args.answer.answers.map(({ pin: answerPin, ...answer }, index) => ({ ...answer, text: withPin(answer.text, answerPin, MAX_SHORT_INPUT, `answer.answers[${index}].text`) })) });
             if (args.complete) return actions.complete({ ...ref, ...(args.complete === true ? {} : args.complete) });
             if (args.reopen) return actions.complete({ ...ref, undone: true });
             if (args.steer) return actions.steer(withContext(args.steer));

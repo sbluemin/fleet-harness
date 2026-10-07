@@ -101,7 +101,7 @@ describe("plugin host", () => {
       registerAdmiralMcp: (id, tools) => mcp.register(id, tools),
       host: { ...noopHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { cleanups.push(cleanup); return () => {}; } } },
       importModule: async () => ({ register: (ctx) => {
-        ctx.host.admiralMcp.register([{ name: "project", description: "Read session project", inputSchema: { type: "object", properties: {} },
+        ctx.host.admiralMcp.register([{ name: "project", description: "Read session project", inputSchema: { type: "object", properties: { text: { type: "string", maxLength: 50 } } },
           execute: async (_args, context) => ({ content: [{ type: "text", text: `${context.cwd}|${context.caller?.kind === "operation" ? context.caller.operationId : "-"}` }], isError: false }),
         }]);
       } }),
@@ -116,15 +116,20 @@ describe("plugin host", () => {
       const one = first.issueSessionToken({ label: "op-1", cwd: "/first" })[0]!;
       const two = second.issueSessionToken({ label: "op-1", cwd: "/second" })[0]!;
       const ghost = first.issueSessionToken({ label: "ghost", cwd: "/ghost" })[0]!;
-      const call = async (token: string) => {
+      const call = async (token: string, args: Record<string, unknown> = {}) => {
         const response = await fetch(endpoint.servers[0]!.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "project", arguments: {} } }),
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "project", arguments: args } }),
         });
         return { status: response.status, body: await response.json() };
       };
       expect((await call(one.token)).body).toMatchObject({ result: { content: [{ text: "/first|op-1" }] } });
       expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });
       expect((await call(ghost.token)).body).toMatchObject({ result: { content: [{ text: "/ghost|-" }] } });
+      // 플러그인에 닿기 전 선검사도 필드·한도를 알려야 한다. 입력 원문과 검증기 메시지는 싣지 않는다.
+      const oversized = "private-answer-".repeat(4);
+      const rejected = (await call(one.token, { text: oversized })).body.result;
+      expect(rejected).toEqual({ content: [{ type: "text", text: JSON.stringify({ error: "Invalid MCP arguments", issues: [{ path: ["text"], code: "too_big", maximum: 50 }] }) }], isError: true });
+      expect(JSON.stringify(rejected)).not.toContain(oversized);
       first.cleanup();
       expect((await call(one.token)).body).toMatchObject({ error: { code: -32602 } });
       expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });

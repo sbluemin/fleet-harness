@@ -181,7 +181,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
               <SyncedTextarea
                 className="objectives-decision-free"
                 rows={1}
-                maxLength={2000}
+                maxLength={50}
                 disabled={sending}
                 value={draft.text}
                 data-question-id={question.id}

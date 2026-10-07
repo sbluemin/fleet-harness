@@ -1,4 +1,4 @@
-import type { ConsoleCaller, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, type ConsoleCaller, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import path from "node:path";
 
@@ -9,7 +9,7 @@ import type { PrStatusService } from "./pr-status.js";
 import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, memberAddSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTION, pinSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
+import { criterionProposalSchema, memberAddSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTION_INPUT, MAX_SHORT_INPUT, pinSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
 
 /**
@@ -26,7 +26,7 @@ const ids = z.string().min(1).max(128);
 /** 임무를 가리키는 두 길 — 변하지 않는 missionId, 또는 지휘관 번호표의 1-based 번호 n. */
 const missionRef = { objectiveId: ids, missionId: ids.optional(), n: z.number().int().min(1).optional() };
 /** 선행 한 칸 — 번호 n 이나 missionId, 그리고 이유. */
-const prerequisiteRef = z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() }).strict();
+const prerequisiteRef = z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() }).strict();
 const memberReference = z.string().trim().min(1).max(128);
 const PIN_FACT = "Appended to the stored text as ` [pin]`: MUST NOT, MUST or MAY, then ASCII detail without brackets; at most 60 characters, and the text with its pin stays within the field limit (text_with_pin_too_long).";
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
@@ -115,7 +115,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     name, description, inputSchema: z.toJSONSchema(schema),
     execute: async (raw, context) => {
       const parsed = schema.safeParse(raw ?? {});
-      if (!parsed.success) return refuse("invalid_arguments");
+      if (!parsed.success) return refuse("invalid_arguments", { issues: inputIssues(parsed.error.issues) });
       try {
         const args = parsed.data;
         return await run(typeof args.objectiveId === "string" ? { ...args, objectiveId: resolveObjectiveId(args.objectiveId, context.caller) } : args, context.caller, context);
@@ -183,7 +183,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       z.object({ objectiveId: ids, resultId: ids }).strict(),
       ({ resultId }, objective) => { store.resultRemove(objective.id, resultId); return text({ ok: true }); }),
     commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added missions (including after placement) stay and are referenced by missionId; restating one is refused as mission_kept. A mission's prerequisites are numbers n counting from 1 over this plan's own missions, or the missionId of a mission that stays. A mission may name a roster member by id or role; none means the Commander. By default, a lineup that changes repository files ends with merging them into the base branch via PR, review and checks; one that changes none needs no merge. Roster members are accepted only while empty (members_exist); enlist adds them later. Only a person's explicit Plan request opens success-criterion proposals: criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Use {text} to propose adding, {revise: criterion number or id, text} to revise, or {retire: criterion number or id, reason} to retire. A criterion that depends on an earlier verdict or an A/B branch states that premise and the evidence that stands when it fails: put both in a {text} proposal, and propose a revise for one on the board lacking them; an unconditional criterion needs neither. In an extension round, existing met criteria are preserved; {recheck: criterion number or id, reason} proposes rechecking one old met criterion, and only the person's approval clears it. extensions holds the numbered rounds, the person's scope request, starting mission/criterion ids and previous hand-off retrospectives. Proposals require the person's approval and block commencement and steering until resolved (criteria_not_planning, criteria_pending). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed. " + BOARD_REFERENCES,
-      z.object({ objectiveId: ids, missions: z.array(z.object({ text: z.string().trim().min(1).max(MAX_MISSION_TEXT), pin, prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional() }).strict()).max(40).optional(), criteria: z.array(criterionProposalInput).max(MAX_CRITERIA).optional() }).strict(),
+      z.object({ objectiveId: ids, missions: z.array(z.object({ text: z.string().trim().min(1).max(MAX_MISSION_TEXT), pin, prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(MAX_SHORT_INPUT).optional() }).strict()).max(40).optional(), criteria: z.array(criterionProposalInput).max(MAX_CRITERIA).optional() }).strict(),
       (args, objective) => {
         if (args.criteria !== undefined && !objective.criteriaOpen) return refuse("criteria_not_planning");
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
@@ -228,7 +228,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       z.object({ objectiveId: ids, expectedRevision: z.number().int().min(0), questions: z.array(decisionQuestionSchema.extend({ pin })).min(1).max(MAX_DECISION_QUESTIONS) }).strict(),
       async ({ expectedRevision, questions }, objective, _caller, context) => {
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
-        const placed = store.decisionRequest(objective.id, { expectedRevision, questions: questions.map(({ pin: questionPin, ...question }) => ({ ...question, text: withPin(question.text, questionPin, MAX_DECISION_QUESTION) })) });
+        const placed = store.decisionRequest(objective.id, { expectedRevision, questions: questions.map(({ pin: questionPin, ...question }, index) => ({ ...question, text: withPin(question.text, questionPin, MAX_DECISION_QUESTION_INPUT, `questions[${index}].text`) })) });
         const kept = store.find(objective.id)?.decisionRequest;
         const head = { ok: true, requestId: placed.request.id, replacedRequestId: placed.replacedRequestId,
           ...(kept?.id === placed.request.id ? { stored: { questions: kept.questions.map((question) => ({ id: question.id, text: storedText(question.text), ...(question.options.length ? { options: question.options.map((option) => storedText(option.label)) } : {}) })) } } : {}) };
@@ -253,7 +253,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequestRevision: withdrawn.objective.decisionRequestRevision });
       }),
     commanderTool("enlist", "Add members to the roster, each a role and an optional brief; plan accepts members only while the roster is empty. A new member has no session until muster brings it up.",
-      z.object({ objectiveId: ids, members: z.array(memberAddSchema.pick({ role: true, brief: true })).min(1).max(MAX_MISSIONS) }).strict(),
+      z.object({ objectiveId: ids, members: z.array(memberAddSchema.pick({ role: true, brief: true }).extend({ brief: z.string().max(MAX_SHORT_INPUT).optional() })).min(1).max(MAX_MISSIONS) }).strict(),
       ({ members }, objective) => {
         // 한 명씩 저장하므로 상한을 넘길 요청은 아무도 더하기 전에 거절한다 — 일부만 남은 채 실패로 답하지 않는다.
         if (objective.members.length + members.length > MAX_MISSIONS) return refuse("too_many_members");
@@ -309,7 +309,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         return text({ ok: true });
       }), inputSchema: z.toJSONSchema(z.object({ objectiveId: ids, retrospective: retrospectiveSchema }).strict()) },
     commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. The evidence line is text only: it neither resolves evidenceIds nor attaches results. PRs, sealed files and Artifact links are optional results of complete_mission; attaching them does not mark a criterion met. Once every mission is done and every criterion is met, the objective awaits hand-off; it reaches the person's review only when handed off, and the person completes it. New or reopened missions clear the earlier marks and any hand-off; in an active extension round, old criterion marks stay until its hand-off: withdrawing one is refused as recheck_approval_required, and only a planning recheck the person approves clears it. The previous hand-off stays in the extension history. A mark made on a board the person has since edited is refused as board_changed.",
-      z.object({ objectiveId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_EVIDENCE).optional() }).strict(),
+      z.object({ objectiveId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_SHORT_INPUT).optional() }).strict(),
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });

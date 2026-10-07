@@ -7,6 +7,19 @@ export interface PluginMcpTransport {
 
 export const FLEET_CONSOLE_USE_MCP_SERVER = "fleet-console-use";
 
+/** 검증기의 원문·메시지가 아닌 필드·코드·상한만 받는 구조적 계약. */
+interface ArgumentIssue {
+  readonly path: readonly PropertyKey[];
+  readonly code: string;
+  readonly maximum?: number | bigint;
+  readonly errors?: readonly (readonly ArgumentIssue[])[];
+}
+
+/** 입력 원문 없이 거부된 필드와 한도를 돌려준다. union 안쪽의 한도도 보존한다. */
+export function inputIssues(issues: readonly ArgumentIssue[]): { path: readonly PropertyKey[]; code: string; maximum?: number | bigint }[] {
+  return issues.flatMap((issue) => issue.code === "invalid_union" && issue.errors ? issue.errors.flatMap(inputIssues) : [{ path: issue.path, code: issue.code, ...(issue.code === "too_big" ? { maximum: issue.maximum } : {}) }]);
+}
+
 export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleTurnFailure, ConsoleTurnEnd } from "./control.js";
 
 /**

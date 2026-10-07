@@ -5,7 +5,7 @@ import { ConsoleControlError, readConsoleUseFlag, type ConsoleControl } from "./
 import type { UseHoldOutcome, UseRequestBroker } from "./use-requests.js";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore, type AgentToolSpec, type AgentToolCtx } from "@fleet-console/agent-runtime/tools";
-import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import type { OperationNode, OperationArchiveReceipt } from "@fleet-console/sdk/operations";
 import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
 import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
@@ -686,7 +686,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
             deps.requests?.touch(label.startsWith("chat:") ? label.slice(5) : label, "console");
           }
           const parsed = schemas.get(spec.id)!.safeParse(args);
-          if (!parsed.success) return Promise.resolve({ ...text({ error: "invalid_arguments" }), isError: true });
+          if (!parsed.success) return Promise.resolve({ ...text({ error: "invalid_arguments", issues: inputIssues(parsed.error.issues) }), isError: true });
           const label = ctx.sessionLabel ?? "embedded";
           if (ctx.signal?.aborted) return { ...text({ error: "console_use_stopped" }), isError: true };
           let use = uses.get(label);
