@@ -986,6 +986,55 @@ describe("Cursor live client-tool Run bridge", () => {
     expect(pair.delivered).toEqual([...pairTails]);
   });
 
+  it("does not let a multiplied first checkpoint refuse a conversation the estimate still fits", async () => {
+    // The first checkpoint of a Run can be an integer multiple of the occupancy Cursor measured
+    // last time. Trusting it refuses the next turn and reports that multiple as input tokens.
+    // A later count that is not a multiple is the real occupancy and still refuses at the window.
+    const window = 1_000;
+    const steady = 400;
+    const spike = steady * 3;
+    const overflow = window;
+    const freshSpike = 150_000;
+    const checkpoint = (usedTokens: number, maxTokens = window) => ({
+      conversationCheckpointUpdate: { tokenDetails: { usedTokens, maxTokens } },
+    });
+    const turn = (frames: readonly unknown[]) => new BridgeCursorStream([
+      ...frames,
+      ...cursorCompletionFrames("ok"),
+    ]);
+    const harness = cursorHarness([
+      turn([checkpoint(freshSpike, 500_000)]),
+      turn([]),
+      turn([checkpoint(steady)]),
+      turn([checkpoint(spike)]),
+      turn([checkpoint(overflow)]),
+    ]);
+    const send = async (userId: string) => collectAdapterEvents(await harness.adapter.stream(
+      cursorRequest(userId, "grok-4.5"),
+      { apiKey: "cursor-test-token", modelContextWindow: window },
+    ));
+
+    try {
+      const fresh = await send("session-fresh-spike");
+      const followed = await send("session-fresh-spike");
+      expect(cursorCompletedUsage(fresh)?.input_tokens).not.toBe(freshSpike);
+      expect(cursorCompletedUsage(fresh)?.input_tokens).toBeLessThan(window);
+      expect(canonicalText(followed)).toBe("ok");
+
+      await send("session-occupancy");
+      const spiked = await send("session-occupancy");
+      expect(cursorCompletedUsage(spiked)?.input_tokens).not.toBe(spike);
+      expect(cursorCompletedUsage(spiked)?.input_tokens).toBeLessThan(window);
+      const filled = await send("session-occupancy");
+      expect(cursorCompletedUsage(filled)?.input_tokens).toBeGreaterThan(steady);
+
+      await expect(send("session-occupancy")).rejects.toBeInstanceOf(ContextWindowExceededError);
+      expect(harness.openedStreams).toBe(5);
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it("keeps credential A parked while credential B cold-resumes the same conversation", async () => {
     const credentialA = "cursor-credential-a";
     const credentialB = "cursor-credential-b";

@@ -2473,6 +2473,52 @@ function recallCursorContextCheckpoint(
 }
 
 /**
+ * A checkpoint counts the conversation again when it is an integer multiple of the last real
+ * occupancy, or at least twice this request's own estimate by a wide margin.
+ *
+ * Measured steady checkpoints sit about 1.2 to 1.7 times the gateway estimate. The false
+ * readings are 2 to 6 times the previous steady value, within 0.4%, and the smallest of those
+ * that crossed a 500k window was 2.46 times the estimate. A request whose estimate already
+ * reaches the new count has grown for real, so it is kept. The additive ~10k overhead on a
+ * small conversation is also kept: the estimate test requires a 100k gap.
+ */
+const CURSOR_CONTEXT_SPIKE_MIN_MULTIPLE = 2;
+const CURSOR_CONTEXT_SPIKE_MAX_MULTIPLE = 6;
+const CURSOR_CONTEXT_SPIKE_TOLERANCE = 0.004;
+const CURSOR_CONTEXT_MEASURED_FACTOR = 1.7;
+const CURSOR_CONTEXT_SPIKE_MIN_EXCESS = 100_000;
+
+function isCursorUsedTokensSpike(
+  used: number,
+  estimate: number,
+  trusted: number | undefined,
+): boolean {
+  if (trusted !== undefined && trusted > 0) {
+    const multiple = cursorIntegerMultiple(used, trusted);
+    if (multiple !== undefined) {
+      return !(estimate > 0 && used <= estimate * CURSOR_CONTEXT_MEASURED_FACTOR);
+    }
+  }
+  return estimate > 0
+    && used >= estimate * CURSOR_CONTEXT_SPIKE_MIN_MULTIPLE
+    && used - estimate >= CURSOR_CONTEXT_SPIKE_MIN_EXCESS;
+}
+
+function cursorIntegerMultiple(used: number, baseline: number): number | undefined {
+  const ratio = used / baseline;
+  const nearest = Math.round(ratio);
+  if (
+    nearest < CURSOR_CONTEXT_SPIKE_MIN_MULTIPLE
+    || nearest > CURSOR_CONTEXT_SPIKE_MAX_MULTIPLE
+  ) {
+    return undefined;
+  }
+  return Math.abs(ratio - nearest) / nearest <= CURSOR_CONTEXT_SPIKE_TOLERANCE
+    ? nearest
+    : undefined;
+}
+
+/**
  * Refuse a new turn once Cursor's own measurement says the conversation already fills
  * the model's window.
  *
@@ -3118,12 +3164,19 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
         contextWindowVersion += 1;
       }
       if (checkpointContextTokens !== undefined) {
-        latestContextCheckpoint = {
-          contextTokens: checkpointContextTokens,
-          ...(contextWindow === undefined ? {} : { contextWindow }),
-        };
-        checkpointVersion += 1;
-        options.onContextCheckpoint(latestContextCheckpoint);
+        const estimate = activeSegment?.estimatedInputTokens ?? estimatedInputTokens;
+        const trusted = latestContextCheckpoint?.contextTokens;
+        // A new Run's first checkpoint can count the same conversation several times. That
+        // multiple is not occupancy: remembering it refuses the next turn and reports it as
+        // input tokens. A count the estimate already accounts for is real growth and stays.
+        if (!isCursorUsedTokensSpike(checkpointContextTokens, estimate, trusted)) {
+          latestContextCheckpoint = {
+            contextTokens: checkpointContextTokens,
+            ...(contextWindow === undefined ? {} : { contextWindow }),
+          };
+          checkpointVersion += 1;
+          options.onContextCheckpoint(latestContextCheckpoint);
+        }
       }
       return;
     }
