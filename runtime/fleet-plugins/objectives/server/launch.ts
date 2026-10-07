@@ -226,13 +226,20 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (node && node.payload.objectiveLanguage !== language) ctx.host.operations.patch(operationId, { payload: { ...node.payload, objectiveLanguage: language } });
   };
 
+  // 오류를 보존해야 하는 통지는 이 경로를 직접 쓴다. 전송 상한도 호스트가 판단하며 원문은 그대로 둔다.
+  const requestSend = async (operationId: string, text: string, display: string): Promise<void> => {
+    if (!ctx.host.consoleControl) throw new ObjectiveStoreError("launch_unavailable");
+    if (!ctx.host.operations.get(operationId)) throw new ObjectiveStoreError("unknown_operation");
+    await ctx.host.consoleControl.request({ kind: "send", operationId, text, display, displayFormat: "markdown" });
+    touchLive(operationId);
+  };
   /**
    * 전달됐는지를 돌려준다 — 못 닿은 알림에 기대 상태를 지우면 다음 시작이 같은 변경을 말하지 못한다.
    * `display`는 채팅 원장에 설 사람의 말이다. 프롬프트는 모델의 것이라 원장에 서지 않는다.
    */
   const send = async (operationId: string, text: string, display: string, reportFailure = false): Promise<boolean> => {
     if (!ctx.host.consoleControl || !ctx.host.operations.get(operationId)) return false;
-    try { await ctx.host.consoleControl.request({ kind: "send", operationId, text, display, displayFormat: "markdown" }); touchLive(operationId); return true; }
+    try { await requestSend(operationId, text, display); return true; }
     catch (error) {
       // 개시·구상은 사람이 재시도해야 할 실패다. 알림의 best-effort 전달과 달리 원인을 보존한다.
       if (reportFailure) asStoreError(error);
@@ -911,12 +918,21 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const generation = observation.generation;
       if (!previous || previous.generation !== generation || revision > previous.revision) {
         // 시도 전에 좌표를 소비한다. polling·종료 이벤트 중복이나 전송 거절에 자동 재시도하지 않는다.
-        lastTurns.set(operationId, { generation, revision });
+        const turn = { generation, revision };
+        lastTurns.set(operationId, turn);
         if (outcome === "failed") {
           const failure = store.settleMemberFailure(operationId, observation.output.failure ?? { error: "unknown" })!;
           const language: PromptLanguage = ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
           const notice = memberFailureTurn(current, member, failure, language);
-          void send(objectiveId, notice, notice);
+          void requestSend(objectiveId, notice, notice).catch((error: unknown) => {
+            // 늦은 거절이 다음 턴·회복·제거 이후의 실패 상태를 덮지 않는다. 좌표는 되돌리지 않는다.
+            if (disposed || lastTurns.get(operationId) !== turn) return;
+            const message = error instanceof Error ? error.message : String(error);
+            const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+              ? error.code : /^[a-z_]{1,64}$/.test(message) ? message : "notification_delivery_failed";
+            store.recordMemberNotificationFailure(operationId, { code, message });
+            store.refresh(objectiveId);
+          });
           changed = true;
         } else if (store.memberFailure(operationId)) {
           store.settleMemberFailure(operationId, null);

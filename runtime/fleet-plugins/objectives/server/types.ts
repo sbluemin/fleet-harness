@@ -5,6 +5,8 @@ import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 export interface ObjectiveMemberFailure extends ConsoleTurnFailure {
   readonly consecutiveFailures: number;
   readonly acknowledged?: true;
+  /** 지휘관 통지가 전달되지 않았다. 호스트의 오류 코드와 메시지는 자르거나 요약하지 않는다. */
+  readonly notificationFailure?: { readonly code: string; readonly message: string };
 }
 import type { ObjectiveResult, StoredEvidence } from "./results.js";
 export type { ObjectiveResult, PrObservation } from "./results.js";

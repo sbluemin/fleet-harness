@@ -1973,21 +1973,35 @@ describe("Objectives contract", () => {
 
       // 정상 종료 없이 바로 다음 실패가 온다. Chat도 같은 실패 전달 계약이며 revision으로 같은 턴 재관측을 구별한다.
       surfaces.set(memberId, "chat");
-      outputDetails.set(memberId, { revision: 2, failure: overload });
+      const oversized = { ...overload, error_details: `${overload.error_details}\n${"원문".repeat(16_001)}\nEND` };
+      const deliveryError = Object.assign(new Error("text/display exceed 32000 characters\n호스트 거절 원문 — 가공 금지"), { code: "invalid_request" });
+      const requests = vi.spyOn(ctx.host.consoleControl!, "request").mockRejectedValueOnce(deliveryError);
+      outputDetails.set(memberId, { revision: 2, failure: oversized });
       h.emitTurnEnd(memberId);
       // c137처럼 다음 턴이 즉시 시작해 polling에서는 이미 running만 보인다.
       activity.set(memberId, "running");
       outcomes.set(memberId, "running");
       await vi.advanceTimersByTimeAsync(1_000);
-      expect.soft(notifications()).toHaveLength(2);
-      for (const value of Object.values(overload)) expect.soft(notifications()[1]?.text ?? "").toContain(value);
-      expect.soft(await memberView()).toMatchObject({ failure: { ...overload, consecutiveFailures: 2 } });
-      expect.soft(await failureRows()).toHaveLength(1);
+      expect.soft(notifications()).toHaveLength(1);
+      expect(requests).toHaveBeenCalledTimes(1);
+      const rejected = requests.mock.calls[0]![0];
+      expect(rejected.text!.length).toBeGreaterThan(32_000);
+      for (const value of Object.values(oversized)) expect(rejected.text).toContain(value);
+      const notificationFailure = { code: deliveryError.code, message: deliveryError.message };
+      expect.soft((await memberView())?.failure).toHaveProperty("notificationFailure", notificationFailure);
+      expect.soft(await memberView()).toMatchObject({ failure: { ...oversized, consecutiveFailures: 2 } });
+      expect.soft(await failureRows()).toContainEqual(expect.objectContaining({ sessions: expect.objectContaining({
+        members: expect.arrayContaining([expect.objectContaining({ operationId: memberId,
+          failure: { ...oversized, consecutiveFailures: 2, notificationFailure },
+        })]),
+      }) }));
       activity.set(memberId, "idle");
       outcomes.set(memberId, "failed");
       h.emitTurnEnd(memberId);
       await vi.advanceTimersByTimeAsync(5_000);
-      expect.soft(notifications()).toHaveLength(2);
+      expect.soft(notifications()).toHaveLength(1);
+      expect(requests).toHaveBeenCalledTimes(1);
+      requests.mockRestore();
       expect(memberSends()).toHaveLength(memberSendsBefore);
       expect(launches).toHaveLength(launchesBefore);
       expect(resumed).toHaveLength(resumesBefore);
