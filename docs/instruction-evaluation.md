@@ -53,27 +53,32 @@ printf '%s\n' "$OUT" > "$E/tree-diff.out"; printf '%s\n' "$rc" > "$E/tree-diff.r
 
 자동 탐색은 유지한다. `--bare`나 별도 시스템 프롬프트에 지침을 주입하는 방식으로 바꾸면 실제 세션과 지침의 위치·포장이 달라지므로 이 경로와 동등한 평가가 아니다. 도구를 끈 상태에서 참조 문서가 필요한 과제는 선택한 참조의 **각 버전 원문**을 입력 문맥으로 함께 제공한다. 선택 목록과 순서는 고정하고 요청 본문에서 차이를 확인한다. 이것은 고정 검색 조건의 응답 평가이지 모델이 실제로 참조를 열었다는 증거가 아니다.
 
-사용자 상태를 직접 사용하는 대신 필요한 메모리만 읽기 전용 스냅샷으로 고정한다. 사용자 홈·자격증명·설정 전체를 복사하지 않는다. 다음은 같은 사용자 `MEMORY.md`를 양쪽 임시 프로젝트 경로에 놓는 명령이다. 실제 로드 여부와 경로 키는 3단계 요청에서 확인한다. 하위 메모리 파일까지 과제에 필요하면 그 목록도 고정한다. 메모리가 없는 과제는 양쪽 모두 없는 것을 기록한다.
+사용자 상태를 직접 사용하는 대신 필요한 메모리만 읽기 전용 스냅샷으로 고정한다. 사용자 홈·자격증명·설정 전체를 복사하지 않는다. 다음은 같은 사용자 `MEMORY.md`를 양쪽 임시 프로젝트 경로에 놓는 명령이다. 실제 로드 여부와 경로 키는 3단계 요청에서 확인한다. 하위 메모리 파일까지 과제에 필요하면 그 목록도 고정한다. 메모리가 없는 과제는 `MEMORY_SOURCE`를 비워 두고, 양쪽에 메모리를 두지 않은 부재 표식을 `common-memory.md`로 봉인한다.
 
 ```bash
-cp "$MEMORY_SOURCE" "$E/common-memory.md"
-for side in before after; do
-  key=$(printf '%s' "$T/$side" | tr '/.' '--')
-  mkdir -p "$T/config/projects/$key/memory"
-  cp "$E/common-memory.md" "$T/config/projects/$key/memory/MEMORY.md"
-done
+if [ -n "${MEMORY_SOURCE:-}" ]; then
+  cp "$MEMORY_SOURCE" "$E/common-memory.md" || exit 1
+  for side in before after; do
+    key=$(printf '%s' "$T/$side" | tr '/.' '--')
+    mkdir -p "$T/config/projects/$key/memory"
+    cp "$E/common-memory.md" "$T/config/projects/$key/memory/MEMORY.md" || exit 1
+  done
+else
+  printf 'no-user-memory\n' > "$E/common-memory.md"
+fi
 OUT=$(shasum -a 256 "$E/common-memory.md" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/memory.sha256"; printf '%s\n' "$rc" > "$E/memory.sha256.rc"
 ```
 
 ## 3. 유료 호출 전 무료 요청 fixture
 
-`CLAUDE_BIN`은 확인한 CLI 실행 파일의 절대 경로다. `PROMPT`는 공통 작업 프롬프트다. 다음 함수를 fixture와 실제 회차에서 **그대로** 사용한다. 도구·스킬·훅·MCP·Chrome·세션 저장을 끄고 모델과 effort를 고정한다. `--setting-sources project`로 프로젝트 CLAUDE.md 자동 탐색을 유지하고 사용자·로컬 설정을 제외한다. 실행 전에 양쪽 프로젝트 설정의 존재와 내용을 확인한다. provider·환경·plugin·별도 agent 등을 활성화하는 설정이 있거나 조건을 설명할 수 없으면 이 명령으로 시작하지 않는다. 설정을 임의로 편집해 맞추지도 않는다. `--setting-sources ''`와 `--restricted`는 이 버전의 fixture에서 필요한 자동 지침 문맥을 제외했으므로 쓰지 않는다. 관리 정책 우회가 아니며, 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
+`CLAUDE_BIN`은 확인한 CLI 실행 파일의 절대 경로다. fixture 전에 4단계에서 봉인할 `task.txt`와 `context-paths.txt`(선택 참조가 없으면 빈 파일) 초안을 증거 디렉터리에 먼저 쓰고, `PROMPT`는 그 `task.txt`에서 읽는다. 그래야 fixture가 유료 회차와 같은 입력을 확인한다. 다음 함수를 fixture와 실제 회차에서 **그대로** 사용한다. 도구·스킬·훅·MCP·Chrome·세션 저장을 끄고 모델과 effort를 고정한다. `--setting-sources project`로 프로젝트 CLAUDE.md 자동 탐색을 유지하고 사용자·로컬 설정을 제외한다. 실행 전에 양쪽 프로젝트 설정의 존재와 내용을 확인한다. provider·환경·plugin·별도 agent 등을 활성화하는 설정이 있거나 조건을 설명할 수 없으면 이 명령으로 시작하지 않는다. 설정을 임의로 편집해 맞추지도 않는다. `--setting-sources ''`와 `--restricted`는 이 버전의 fixture에서 필요한 자동 지침 문맥을 제외했으므로 쓰지 않는다. 관리 정책 우회가 아니며, 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
 
 ```bash
 CLAUDE_BIN=$(command -v claude)
 claude_call() {
   (cd "$T/$1" || exit
+    [ -n "$PROMPT" ] && [ -f "$E/context-paths.txt" ] || exit 1
     INPUT=$PROMPT
     while IFS= read -r path; do
       [ -n "$path" ] || continue
@@ -148,6 +153,7 @@ done
 [ -s "$E/fixture/port" ] || exit 1
 ENDPOINT="http://127.0.0.1:$(< "$E/fixture/port")"
 API_KEY=fixture-not-a-real-key
+PROMPT=$(< "$E/task.txt") || exit 1
 for side in before after; do
   OUT=$(claude_call "$side" 2> "$E/fixture-$side.stderr"); rc=$?
   printf '%s\n' "$OUT" > "$E/fixture-$side.json"; printf '%s\n' "$rc" > "$E/fixture-$side.rc"
@@ -246,19 +252,25 @@ unset API_KEY
 
 ## 6. 번호만 보는 판독과 결과
 
-실행 전 판독자는 과제·기준과 출력 번호만 보도록 정한다. 실행 모델과 다른 계열의 모델을 사용하고, 그 판독 호출도 유료면 별도 승인을 받는다. 각 `run-번호.json`의 `result`만 `번호.txt`로 추출한다. 버전·모델·경로·시간·비용을 드러내는 CLI 메타데이터와 전·후 대응표는 판독자에게 주지 않는다. 출력 자체가 버전을 드러내면 마스킹 여부를 사전에 정하고 눈가림의 한계를 보고한다.
+실행 전 판독자는 과제·기준과 출력 번호만 보도록 정한다. 실행 모델과 다른 계열의 모델을 사용하고, 그 판독 호출도 유료면 별도 승인을 받는다. 각 `run-번호.json`의 `result`만 무작위 판독 번호의 `번호.txt`로 추출한다. 실행 순서는 전·후 교대라 이 문서를 읽은 판독자가 실행 번호의 홀짝으로 버전을 알아낼 수 있으므로, 판독 번호는 실행 번호와 다른 무작위 순열로 붙이고 그 대응표는 `unblind/`에 둔다. 버전·모델·경로·시간·비용을 드러내는 CLI 메타데이터와 대응표는 판독자에게 주지 않는다. 출력 자체가 버전을 드러내면 마스킹 여부를 사전에 정하고 눈가림의 한계를 보고한다.
 
 ```bash
-mkdir -p "$E/blind"
+mkdir -p "$E/blind" "$E/unblind"
+OUT=$(awk -v n="$N" 'BEGIN { srand(); for (i = 1; i <= n; i++) a[i] = i
+  for (i = n; i > 1; i--) { j = int(rand() * i) + 1; t = a[i]; a[i] = a[j]; a[j] = t }
+  for (i = 1; i <= n; i++) print i "\t" a[i] }' 2>&1); rc=$?
+printf '%s\n' "$OUT" > "$E/unblind/blind-map.tsv"; printf '%s\n' "$rc" > "$E/unblind/blind-map.rc"
+[ "$rc" -eq 0 ] || exit "$rc"
 i=1
 while [ "$i" -le "$N" ]; do
+  label=$(awk -F '\t' -v i="$i" '$1 == i { print $2 }' "$E/unblind/blind-map.tsv")
   OUT=$(jq -er '.result' "$E/run-$i.json" 2>&1); rc=$?
-  printf '%s\n' "$OUT" > "$E/blind/$i.txt"; printf '%s\n' "$rc" > "$E/blind-$i.rc"
+  printf '%s\n' "$OUT" > "$E/blind/$label.txt"; printf '%s\n' "$rc" > "$E/unblind/blind-$i.rc"
   [ "$rc" -eq 0 ] || exit "$rc"
   i=$((i + 1))
 done
 ```
 
-판독자에게는 `blind/`의 번호별 출력과 과제·기준만 전달한다. 실패 원문·종료 부호는 실행 장부에 남기되 판독 입력과 섞지 않는다. 전·후 순서를 아는 지휘관이 판독까지 대신하지 않는다. 판독 중에는 버전 대응 파일과 `ledger.tsv`·commit 파일·fixture 원문을 판독 세션이 접근하지 않는 위치에 치운다. 권한이 제한된 판독 세션에는 과제·기준과 번호별 출력만 전달하며, 그 세션이 못 여는 원래 보드를 읽으라고 시키지 않는다. 판독 결과를 확정한 뒤에만 대응표를 다시 열어 전·후로 합친다.
+판독자에게는 `blind/`의 번호별 출력과 과제·기준만 전달한다. 실패 원문·종료 부호는 실행 장부에 남기되 판독 입력과 섞지 않는다. 전·후 순서를 아는 지휘관이 판독까지 대신하지 않는다. 판독 중에는 `unblind/`·`run-*`·`ledger.tsv`·commit 파일·fixture 원문을 판독 세션이 접근하지 않는 위치에 치운다. 권한이 제한된 판독 세션에는 과제·기준과 번호별 출력만 전달하며, 그 세션이 못 여는 원래 보드를 읽으라고 시키지 않는다. 판독 결과를 확정한 뒤에만 대응표를 다시 열어 전·후로 합친다.
 
 결과에는 경계별 실패, 보존한 안전 항목, 표본 수·실제 관찰 기간, 유료 실행·판독 턴과 비용·시간, 무료 fixture와 문서상 판독, 미실행 영역을 구분한다. 양쪽 만점이면 차이를 입증하지 못했다고 보고한다. 최소 기간·표본을 채우지 못한 부분을 효과 없음으로 단정하지 않는다. 문맥 감소나 한 번의 녹색 결과만으로 개편 완료를 주장하지 않는다.
