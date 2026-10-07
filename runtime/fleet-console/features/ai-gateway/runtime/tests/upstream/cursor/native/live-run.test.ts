@@ -385,24 +385,26 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(grepFiles("No files found")).toMatchObject({ files: [], totalFiles: 0 });
       expect(grepFiles("No entries at this offset. [Showing results with pagination = offset: 500]", "500"))
         .toMatchObject({ files: [], totalFiles: 0, offsetApplied: 500 });
-      // An oversized result arrives as a saved-file notice; only its preview's whole lines are kept.
-      expect(grepFiles([
+      // An oversized result arrives as a saved-file notice whose preview lists only whole lines.
+      const persisted = (preview: string) => [
         "<persisted-output>",
         "Output too large (31.3KB). Full output saved to: /tmp/session/tool-results/toolu_1.txt",
         "",
         "Preview (first 2KB):",
-        "Found 250 files limit: 250",
-        "long/file-260.txt",
-        "long/file-259.txt",
-        "long/fi",
+        preview,
         "...",
         "</persisted-output>",
-      ].join("\n"))).toEqual({
+      ].join("\n");
+      // Short of the 2000-unit limit, the preview ended at a newline: its last path is whole.
+      expect(grepFiles(persisted("Found 250 files limit: 250\nlong/file-260.txt\nlong/file-259.txt"))).toEqual({
         files: ["long/file-260.txt", "long/file-259.txt"],
         totalFiles: 2,
         clientTruncated: true,
         ripgrepTruncated: false,
       });
+      // A preview filling the limit was cut inside a name too long to back off to its newline.
+      const cutPreview = `Found 250 files limit: 250\nlong/file-260.txt\ndeep/${"d".repeat(2000)}`.slice(0, 2000);
+      expect(grepFiles(persisted(cutPreview))).toMatchObject({ files: ["long/file-260.txt"], totalFiles: 1 });
     } finally {
       harness.adapter.dispose();
     }

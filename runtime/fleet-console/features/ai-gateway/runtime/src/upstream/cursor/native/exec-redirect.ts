@@ -861,11 +861,14 @@ const GLOB_TRUNCATION_NOTICES = [
   /^\(Showing the first \d+ files; there are more than \d+ matches\. Narrow the pattern or path to see the rest\.\)$/,
 ];
 // An oversized result is replaced by one of these wrappers; a persisted one carries a preview
-// of the original output, cut near 2KB.
+// of the original output.
 const OVERSIZE_WRAPPERS: ReadonlyMap<string, string> = new Map([
   ["<persisted-output>", "</persisted-output>"],
   ["<truncated-output>", "</truncated-output>"],
 ]);
+// Claude Code 2.1.292 cuts that preview at 2000 UTF-16 units, backing off to the last newline
+// when it lies past unit 1000: shorter previews end on a whole line, full-length ones may not.
+const OVERSIZE_PREVIEW_LIMIT = 2000;
 
 /**
  * Non-blank lines of a caller's file list. A name keeps every character but a CRLF's carriage
@@ -885,19 +888,32 @@ function callerGrepFiles(output: string): CallerFileListing {
   if (whole === NO_FILES_FOUND || GREP_OFFSET_PAST_END.test(whole)) return { files: [], truncated: false };
   const closing = OVERSIZE_WRAPPERS.get(lines[0]?.trimEnd() ?? "");
   if (closing !== undefined && lines.at(-1)?.trimEnd() === closing) {
-    // Only the preview's own list is usable. Its last line can be cut mid-name, so it goes
-    // with the `...` marker; what remains is a partial list.
-    const body = lines.slice(1, -1);
-    const header = body.findIndex((line) => GREP_FILES_HEADER.test(line.trimEnd()));
-    if (header < 0) return { files: [], truncated: true };
-    const listed = body.slice(header + 1);
-    if (listed.at(-1)?.trimEnd() === "...") listed.pop();
-    return { files: listed.slice(0, -1), truncated: true };
+    // Only the preview's own list is usable, and it is a partial list.
+    const preview = oversizePreview(output) ?? "";
+    const previewLines = callerListingLines(preview);
+    if (!GREP_FILES_HEADER.test(previewLines[0]?.trimEnd() ?? "")) return { files: [], truncated: true };
+    const listed = previewLines.slice(1);
+    // A preview shorter than the limit ended at a newline; one that fills it may end mid-name.
+    return { files: preview.length < OVERSIZE_PREVIEW_LIMIT ? listed : listed.slice(0, -1), truncated: true };
   }
   const header = lines[0]?.trimEnd() ?? "";
   if (!GREP_FILES_HEADER.test(header)) return { files: lines, truncated: false };
   // Claude Code prints `limit: N` only when more results remain past the page.
   return { files: lines.slice(1), truncated: / limit: \d+/.test(header) };
+}
+
+/**
+ * The preview text inside an oversize wrapper, exactly as the caller cut it: between the
+ * `Preview (first …):` line and the closing tag, minus the `...` marker. Measured on the
+ * LF-normalised output, because its length is what tells a newline cut from a hard cut.
+ */
+function oversizePreview(output: string): string | undefined {
+  const text = output.replace(/\r\n/g, "\n");
+  const start = /^Preview \(first [^\n]*\):[ \t]*\n/m.exec(text);
+  if (!start) return undefined;
+  const rest = text.slice(start.index + start[0].length);
+  const end = /\n(?:\.\.\.[ \t]*\n)?[ \t]*<\/(?:persisted|truncated)-output>\s*$/.exec(rest);
+  return end ? rest.slice(0, end.index) : undefined;
 }
 
 /** Glob: a bare list, with a truncation notice as its last line when it was cut. */
