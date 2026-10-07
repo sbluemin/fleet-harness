@@ -1,3 +1,5 @@
+import { inflateRawSync } from "node:zlib";
+
 type ExecMessage = Record<string, unknown>;
 
 export type CursorNativeRedirectResultType =
@@ -820,6 +822,99 @@ interface GrepShellReceipt {
   readonly clientTruncated: boolean;
 }
 
+const CURSOR_GREP_RECEIPT_V2_PREFIX = "FLEET_CURSOR_GREP_V2:";
+const CURSOR_GREP_RECEIPT_MAX_BYTES = 128 * 1024;
+
+/**
+ * The search text behind an older `FLEET_CURSOR_GREP_V2` shell receipt.
+ *
+ * Attach used to inflate this receipt into the native grep result. A cold resume only has the
+ * stored string, so it asks here. Another version, or a receipt that does not inflate, comes
+ * back unchanged and never fails the resume.
+ */
+export function cursorGrepReceiptHistoryText(output: string): string {
+  if (!output.startsWith(CURSOR_GREP_RECEIPT_V2_PREFIX)) return output;
+  try {
+    const compressed = Buffer.from(
+      output.slice(CURSOR_GREP_RECEIPT_V2_PREFIX.length).trim(),
+      "base64url",
+    );
+    const decoded = JSON.parse(inflateRawSync(compressed, {
+      maxOutputLength: CURSOR_GREP_RECEIPT_MAX_BYTES,
+    }).toString("utf8")) as unknown;
+    return renderCursorGrepReceiptV2(decoded) ?? output;
+  } catch {
+    return output;
+  }
+}
+
+function renderCursorGrepReceiptV2(decoded: unknown): string | null {
+  if (!isRecord(decoded)) return null;
+  if (decoded.ok === false) {
+    return typeof decoded.error === "string" && decoded.error.length > 0 ? decoded.error : null;
+  }
+  if (decoded.ok !== true) return null;
+  if (
+    decoded.outputMode !== "content"
+    && decoded.outputMode !== "files_with_matches"
+    && decoded.outputMode !== "count"
+  ) return null;
+  if (!Array.isArray(decoded.files) || !decoded.files.every((file) => typeof file === "string")) return null;
+  if (!Array.isArray(decoded.counts) || !decoded.counts.every((entry) => (
+    Array.isArray(entry)
+    && entry.length === 2
+    && typeof entry[0] === "string"
+    && typeof entry[1] === "number"
+    && Number.isSafeInteger(entry[1])
+    && entry[1] >= 0
+  ))) return null;
+  if (!Array.isArray(decoded.matches) || !decoded.matches.every((entry) => (
+    isRecord(entry)
+    && typeof entry.file === "string"
+    && typeof entry.lineNumber === "number"
+    && Number.isSafeInteger(entry.lineNumber)
+    && entry.lineNumber > 0
+    && typeof entry.content === "string"
+    && typeof entry.contentTruncated === "boolean"
+    && typeof entry.isContextLine === "boolean"
+  ))) return null;
+  for (const key of ["totalFiles", "totalLines", "totalMatchedLines"] as const) {
+    if (typeof decoded[key] !== "number" || !Number.isSafeInteger(decoded[key]) || decoded[key] < 0) {
+      return null;
+    }
+  }
+  if (typeof decoded.clientTruncated !== "boolean") return null;
+  // Attach hands Cursor `clientTruncated` and each line's `contentTruncated`; a replayed search
+  // says the same in text, or a capped search reads as complete.
+  const clientTruncated = decoded.clientTruncated;
+  const withCap = (text: string): string => (
+    clientTruncated ? `${text}${text.length > 0 ? "\n" : ""}${CALLER_RESULTS_TRUNCATED_NOTICE}` : text
+  );
+  if (decoded.outputMode === "files_with_matches") return withCap(decoded.files.join("\n"));
+  if (decoded.outputMode === "count") {
+    return withCap(decoded.counts.map((entry) => `${entry[0]}:${entry[1]}`).join("\n"));
+  }
+  const groups: string[] = [];
+  let file: string | undefined;
+  let lines: string[] = [];
+  const flush = (): void => {
+    if (file === undefined) return;
+    groups.push([file, ...lines].join("\n"));
+  };
+  for (const match of decoded.matches) {
+    if (match.file !== file) {
+      flush();
+      file = match.file;
+      lines = [];
+    }
+    lines.push(`${match.lineNumber}${match.isContextLine ? "-" : ":"}${match.content}${
+      match.contentTruncated ? GREP_SHELL_COLUMN_SUFFIX : ""
+    }`);
+  }
+  flush();
+  return withCap(groups.join("\n\n"));
+}
+
 function parseGrepShellReceipt(
   output: string,
   expectedOutputMode: string,
@@ -1185,8 +1280,10 @@ interface CallerFileListing {
 const GREP_FILES_HEADER = /^Found \d+ files?(?: (?:limit: \d+(?:, offset: \d+)?|offset: \d+))?$/;
 const GREP_OFFSET_PAST_END = /^No entries at this offset\. \[Showing results with pagination = [^\]\n]*\]$/;
 const NO_FILES_FOUND = "No files found";
+/** Claude Code's own note under a capped search or glob. */
+const CALLER_RESULTS_TRUNCATED_NOTICE = "(Results are truncated. Consider using a more specific path or pattern.)";
 const GLOB_TRUNCATION_NOTICES = [
-  /^\(Results are truncated\. Consider using a more specific path or pattern\.\)$/,
+  new RegExp(`^${CALLER_RESULTS_TRUNCATED_NOTICE.replace(/[.()]/g, "\\$&")}$`),
   /^\(Showing \d+ of \d+ matching files; \d+ more are not listed\. Narrow the pattern or path to see the rest\.\)$/,
   /^\(Showing the first \d+ files; there are more than \d+ matches\. Narrow the pattern or path to see the rest\.\)$/,
 ];
