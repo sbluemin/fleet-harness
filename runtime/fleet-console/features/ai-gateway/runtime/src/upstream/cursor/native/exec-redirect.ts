@@ -779,41 +779,37 @@ function buildGrepSuccess(
       },
     };
   } else if (outputMode === "count") {
-    const counts = proseFilteredLines(output).flatMap((line) => {
-      const separator = line.lastIndexOf(":");
-      if (separator < 1) return [];
-      const count = Number.parseInt(line.slice(separator + 1), 10);
-      return Number.isNaN(count) ? [] : [{ file: line.slice(0, separator), count }];
+    const noticed = splitCallerTailNotice(callerRawLines(output), COUNT_TOTAL_NOTICE);
+    const counts = noticed.body.flatMap((line) => {
+      const parsed = parseCallerCountLine(line);
+      return parsed ? [parsed] : [];
     });
     result = {
       count: {
         counts,
         totalFiles: counts.length,
         totalMatches: counts.reduce((sum, entry) => sum + entry.count, 0),
-        clientTruncated: false,
+        clientTruncated: noticed.limited && counts.length > 0,
         ripgrepTruncated: false,
         ...(args.offset === undefined ? {} : { offsetApplied: Number(args.offset) }),
       },
     };
   } else {
+    const noticed = splitCallerTailNotice(callerRawLines(output), CONTENT_PAGINATION_NOTICE);
     const byFile = new Map<string, Array<Record<string, unknown>>>();
     let totalMatchedLines = 0;
-    for (const line of proseFilteredLines(output)) {
-      const matched = line.match(/^(.+?):(\d+):\s?(.*)$/);
-      const context = line.match(/^(.+?)-(\d+)-\s?(.*)$/);
-      const parsed = matched ?? context;
+    for (const line of noticed.body) {
+      const parsed = parseCallerContentLine(line);
       if (!parsed) continue;
-      const [, file, lineNumber, content] = parsed;
-      if (!file || !lineNumber || content === undefined) continue;
-      const entries = byFile.get(file) ?? [];
+      const entries = byFile.get(parsed.file) ?? [];
       entries.push({
-        lineNumber: Number(lineNumber),
-        content,
+        lineNumber: parsed.lineNumber,
+        content: parsed.content,
         contentTruncated: false,
-        isContextLine: context !== null,
+        isContextLine: parsed.isContextLine,
       });
-      byFile.set(file, entries);
-      if (!context) totalMatchedLines += 1;
+      byFile.set(parsed.file, entries);
+      if (!parsed.isContextLine) totalMatchedLines += 1;
     }
     const matches = [...byFile].map(([file, fileMatches]) => ({ file, matches: fileMatches }));
     result = {
@@ -821,7 +817,7 @@ function buildGrepSuccess(
         matches,
         totalLines: matches.reduce((sum, entry) => sum + entry.matches.length, 0),
         totalMatchedLines,
-        clientTruncated: false,
+        clientTruncated: noticed.limited && matches.length > 0,
         ripgrepTruncated: false,
         ...(args.offset === undefined ? {} : { offsetApplied: Number(args.offset) }),
       },
@@ -835,12 +831,76 @@ function buildGrepSuccess(
   };
 }
 
-/** Content and count output: drops blank lines and lines that open with caller prose markers. */
-function proseFilteredLines(output: string): string[] {
+/** Caller content and count lines. Only a leftover carriage return is removed. */
+function callerRawLines(output: string): string[] {
   return output
     .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter((line) => line.length > 0 && !line.startsWith("[") && !/^no matches/i.test(line));
+    .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
+}
+
+function isCallerBlankLine(line: string): boolean {
+  return line.trim().length === 0;
+}
+
+// Claude Code 2.1.292 appends these after a blank line, and only as the tail of the tool result.
+// Content: `\n\n[Showing results with pagination = …]`. Count: `\n\nFound N total …` with
+// ` with pagination = …` on that same line when the page was cut. A real row can carry the same
+// words; they count as a notice only in this tail position.
+const CONTENT_PAGINATION_NOTICE = /^\[Showing results with pagination = [^\]\n]*\]$/;
+const COUNT_TOTAL_NOTICE = /^Found \d+ total occurrences? across \d+ files?\.(?: with pagination = .+)?$/;
+
+interface CallerTail {
+  readonly body: readonly string[];
+  readonly limited: boolean;
+}
+
+/** Drops a tail notice separated from the body by a blank line. Anywhere else, the line stays. */
+function splitCallerTailNotice(lines: readonly string[], notice: RegExp): CallerTail {
+  let end = lines.length;
+  while (end > 0 && isCallerBlankLine(lines[end - 1] ?? "")) end -= 1;
+  if (end === 0) return { body: [], limited: false };
+  const tail = (lines[end - 1] ?? "").trimEnd();
+  let bodyEnd = end - 1;
+  while (bodyEnd > 0 && isCallerBlankLine(lines[bodyEnd - 1] ?? "")) bodyEnd -= 1;
+  if (bodyEnd === end - 1 || !notice.test(tail)) return { body: lines.slice(0, end), limited: false };
+  // Claude Code prints `limit: N` only when more results remain past the page. An offset-only
+  // tail (`pagination = offset: N`) still has rows, and those rows are the whole returned page.
+  return { body: lines.slice(0, bodyEnd), limited: / limit: \d+/.test(tail) };
+}
+
+function parseCallerCountLine(line: string): { file: string; count: number } | null {
+  if (isCallerBlankLine(line)) return null;
+  const separator = line.lastIndexOf(":");
+  if (separator < 1) return null;
+  const countText = line.slice(separator + 1).trimEnd();
+  if (!/^\d+$/.test(countText)) return null;
+  return { file: line.slice(0, separator), count: Number(countText) };
+}
+
+/**
+ * One content row: `path:line:text`, or a context row `path-line-text`. Claude Code 2.1.292
+ * numbers Grep lines by default and this redirect does not forward `-n`, so an unnumbered
+ * `path:text` row is not produced here. Names and text keep trailing spaces and Unicode form.
+ */
+function parseCallerContentLine(line: string): {
+  readonly file: string;
+  readonly lineNumber: number;
+  readonly content: string;
+  readonly isContextLine: boolean;
+} | null {
+  if (isCallerBlankLine(line)) return null;
+  const matched = /^(.+?):(\d+):\s?(.*)$/.exec(line);
+  const context = matched ? null : /^(.+?)-(\d+)-\s?(.*)$/.exec(line);
+  const parsed = matched ?? context;
+  if (!parsed?.[1] || !parsed[2] || parsed[3] === undefined) return null;
+  const lineNumber = Number(parsed[2]);
+  if (!Number.isSafeInteger(lineNumber) || lineNumber < 1) return null;
+  return {
+    file: parsed[1],
+    lineNumber,
+    content: parsed[3],
+    isContextLine: context !== null,
+  };
 }
 
 interface CallerFileListing {

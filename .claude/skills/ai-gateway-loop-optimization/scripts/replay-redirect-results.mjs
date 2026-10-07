@@ -9,10 +9,13 @@
 //
 // A baseline is usually `git show origin/canary:<path> > <scratch>/baseline.ts`.
 // cases.json: [{ label, nativeResultType, nativeArgs, output, isError?, variants?, expect? }]
+//   nativeResultType `grep-direct` is the captured adapter id and is replayed as `grepResult`.
 //   expect.identical: true       — every variant must equal the baseline's result (needs --baseline)
 //   expect.files: [names]        — files list, compared exactly with no trimming or Unicode normalization
 //   expect.variantFiles: { nfd: [names], ... } — exact files list for that variant; others use expect.files
 //   expect.truncated: boolean    — files.clientTruncated
+//   expect.content / expect.count — exact content or count object (no trim, no Unicode normalization)
+//   expect.variantContent / expect.variantCount — per-variant override of those objects
 // Exit code 1 when any expectation fails.
 import fs from "node:fs";
 import path from "node:path";
@@ -42,15 +45,19 @@ const candidate = await load(candidatePath);
 const baseline = option("--baseline") ? await load(option("--baseline")) : undefined;
 const cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
 
+// Captured Grep redirects are labeled with the adapter id `grep-direct`. The result builder
+// switches on `grepResult` (the caller's Grep/Glob output, not the shell receipt).
+const resultType = (entry) => entry.nativeResultType === "grep-direct" ? "grepResult" : entry.nativeResultType;
 const replay = (build, entry, output) => build(
-  { messageId: 1, execId: "replay", nativeResultType: entry.nativeResultType, nativeArgs: entry.nativeArgs },
+  { messageId: 1, execId: "replay", nativeResultType: resultType(entry), nativeArgs: entry.nativeArgs },
   output,
   entry.isError === true,
 );
-const filesOf = (replies) => {
+const workspaceOf = (replies) => {
   const success = replies[0]?.execClientMessage?.grepResult?.success;
-  return success ? Object.values(success.workspaceResults ?? {})[0]?.files : undefined;
+  return success ? Object.values(success.workspaceResults ?? {})[0] : undefined;
 };
+const filesOf = (replies) => workspaceOf(replies)?.files;
 
 const rows = [];
 let failures = 0;
@@ -70,6 +77,16 @@ for (const entry of cases) {
     }
     if (entry.expect?.truncated !== undefined && files?.clientTruncated !== entry.expect.truncated) {
       row.problems.push(`clientTruncated ${files?.clientTruncated} != ${entry.expect.truncated}`);
+    }
+    const workspace = workspaceOf(result);
+    for (const branch of ["content", "count"]) {
+      const variantKey = branch === "content" ? "variantContent" : "variantCount";
+      const want = entry.expect?.[variantKey]?.[variant] ?? entry.expect?.[branch];
+      if (!want) continue;
+      const got = workspace?.[branch];
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        row.problems.push(`${branch} ${JSON.stringify(got)} != ${JSON.stringify(want)}`);
+      }
     }
     if (files) row.files = { count: files.files.length, totalFiles: files.totalFiles, clientTruncated: files.clientTruncated };
     failures += row.problems.length > 0 ? 1 : 0;
