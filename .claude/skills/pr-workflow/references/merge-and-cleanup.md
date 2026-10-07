@@ -18,8 +18,8 @@ The local verification of the unreviewed delta that `codex_usage_limit` requires
   CI_LIST=$(mktemp "$SCRATCHPAD/canary-ci.XXXXXX") || exit
   (
     set -- .github/workflows/*
-    [ -f "$1" ] || exit 1
     for f; do
+      [ -f "$f" ] || exit 1
       awk -v f="$f" '
         /^"?on"?:/ { on = 1; next }
         on && /^[^ #]/ { on = 0 }
