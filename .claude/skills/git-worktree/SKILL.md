@@ -1,6 +1,6 @@
 ---
 name: git-worktree
-description: Create a canary-based worktree for Fleet changes, create a detached baseline for revision comparison or bisect, or remove an owned dedicated checkout. Use rebase-on-canary to refresh an existing branch; ordinary read-only investigation needs no new worktree.
+description: Create a canary-based worktree for Fleet changes, a detached read-only baseline for revision comparison or bisect, or remove an owned dedicated checkout. Temporary source edits, such as a measurement string, go in a disposable branch worktree, not a baseline. Use rebase-on-canary to refresh an existing branch; ordinary read-only investigation needs no new worktree.
 ---
 
 # Git Worktree
