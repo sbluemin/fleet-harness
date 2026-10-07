@@ -10,7 +10,8 @@
 // A baseline is usually `git show origin/canary:<path> > <scratch>/baseline.ts`.
 // cases.json: [{ label, nativeResultType, nativeArgs, output, isError?, variants?, expect? }]
 //   expect.identical: true       — every variant must equal the baseline's result (needs --baseline)
-//   expect.files: [names]        — files list (names compared after trimEnd + NFC)
+//   expect.files: [names]        — 파일명 배열을 정규화 없이 원문 그대로 비교
+//   expect.variantFiles: { nfd: [names], ... } — 해당 variant의 명시적 기대 배열; 없으면 expect.files 사용
 //   expect.truncated: boolean    — files.clientTruncated
 // Exit code 1 when any expectation fails.
 import fs from "node:fs";
@@ -50,7 +51,6 @@ const filesOf = (replies) => {
   const success = replies[0]?.execClientMessage?.grepResult?.success;
   return success ? Object.values(success.workspaceResults ?? {})[0]?.files : undefined;
 };
-const name = (value) => value.trimEnd().normalize("NFC");
 
 const rows = [];
 let failures = 0;
@@ -62,9 +62,9 @@ for (const entry of cases) {
     if (baseline) row.identical = JSON.stringify(replay(baseline, entry, output)) === JSON.stringify(result);
     if (baseline && entry.expect?.identical && !row.identical) row.problems.push("differs from baseline");
     const files = filesOf(result);
-    if (entry.expect?.files) {
-      const got = (files?.files ?? []).map(name);
-      const want = entry.expect.files.map(name);
+    const want = entry.expect?.variantFiles?.[variant] ?? entry.expect?.files;
+    if (want) {
+      const got = files?.files ?? [];
       if (JSON.stringify(got) !== JSON.stringify(want)) row.problems.push(`files ${JSON.stringify(got)} != ${JSON.stringify(want)}`);
       if (files?.totalFiles !== want.length) row.problems.push(`totalFiles ${files?.totalFiles} != ${want.length}`);
     }
