@@ -37,6 +37,17 @@ Spell every `<placeholder>` out on each call, including the literal session id
 `<worktree>` / `<port>`; shell state does not carry between tool calls.
 Here `<e2e-dir>` means the **Console slot**, `<owned-run>/console`, not the parent run directory.
 
+## Serve bundle freshness
+
+For a host-side change exercised by an Operation, apply the [paid-run content gate](setup.md#before-a-paid-or-long-run) to the `serve` bundle, not just the client asset name or the package build. Use the [launcher check's](#headless-claude-code-through-the-built-launcher) change-specific identifier/literal selection and return-code rules, but count in the host artifact from the target worktree root:
+
+```bash
+OUT=$(grep -cF -- '<string the change adds>' runtime/fleet-console/dist/cli.mjs); rc=$?
+printf '%s\nrc=%s\n' "$OUT" "$rc"
+```
+
+On failure, run `pnpm --filter @dotobokuri/fleet-console build` in that worktree and check again; if it still fails, stop before the paid call. Restart the owned server after the build and [confirm its absolute process path](#absolute-paths-or-you-test-the-wrong-build): checking the file does not update a running host. This check covers code included in `cli.mjs`, not a client asset or a separately emitted plugin bundle; check the artifact that actually contains the change instead.
+
 ## Serve with the capture and model levers already set
 
 Both env vars are read by the **Console server process**, because the AI Gateway runs
@@ -245,7 +256,8 @@ its own thinking blocks and signatures, real tool results, multi-turn `--resume`
 Console UI. It needs no Console process: the launcher starts its own gateway on a temporary
 loopback port.
 
-Before the `fleet.mjs -p` command below, confirm that this worktree's
+For paid runs, apply the [runtime-content preflight](setup.md#before-a-paid-or-long-run):
+before the `fleet.mjs -p` command below, confirm that this worktree's
 `runtime/fleet-console/dist/fleet.mjs` contains the change under test; a green package
 build elsewhere does not show it. From the worktree root, count a string the change adds
 and the bundle keeps, an identifier or literal rather than a comment:

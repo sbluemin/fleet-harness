@@ -10,14 +10,26 @@ When the question is only whether a backend accepts a request variant, take a re
 
 ### Standalone provider-loop runner
 
-The runner starts no Console, PTY, Theater, or Operation. It uses the production `@fleet-console/ai-gateway` router and production credential readers. From the absolute worktree path, run:
+The runner starts no Console, PTY, Theater, or Operation. It uses the production `@fleet-console/ai-gateway` router and production credential readers. From the absolute worktree root, build:
 
 ```sh
 pnpm --filter @fleet-console/ai-gateway build
+```
+
+Before the live command, apply the [paid-run content gate](../../console-e2e/references/setup.md#before-a-paid-or-long-run) to the ESM artifact that `scripts/provider-loop-e2e.mjs` imports as `../dist/index.js`. Use the [launcher check's](../../console-e2e/references/live-agent-prompt-testing.md#headless-claude-code-through-the-built-launcher) change-specific identifier/literal selection and return-code rules, with this package path:
+
+```sh
+OUT=$(grep -cF -- '<string the change adds>' runtime/fleet-console/features/ai-gateway/runtime/dist/index.js); rc=$?
+printf '%s\nrc=%s\n' "$OUT" "$rc"
+```
+
+On failure, rebuild the package above and check again; if it still fails, stop before the paid call. No Console build or process is needed for this runner. Once it passes, run:
+
+```sh
 pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--opencode--deepseek-v4-flash[1m]' --operations 3 --trials 5 --confirm-live-provider
 ```
 
-`--effort` accepts `low|medium|high|xhigh|max|ultra`; `--timeout-ms` controls the whole logical trial. Confirmation spends real quota. `FLEET_GATEWAY_WIRE_LOG=<isolated-scratch>/wire.jsonl` is explicit opt-in for raw prompt/tool payloads; credentials are not recorded, but this remains sensitive. Verify a fresh package `dist/`; isolated runtime/PID/Console-build requirements apply only to real Operations. Default test and CI paths never invoke the live runner.
+`--effort` accepts `low|medium|high|xhigh|max|ultra`; `--timeout-ms` controls the whole logical trial. Confirmation spends real quota. `FLEET_GATEWAY_WIRE_LOG=<isolated-scratch>/wire.jsonl` is explicit opt-in for raw prompt/tool payloads; credentials are not recorded, but this remains sensitive. Isolated runtime/PID/Console-build requirements apply only to real Operations. Default test and CI paths never invoke the live runner.
 
 ### Caller tool output capture
 
