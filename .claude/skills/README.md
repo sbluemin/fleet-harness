@@ -21,7 +21,7 @@ pnpm --filter @fleet-plugins/skills test
 
 The validator checks the real Console description parser, names, file links, and reachability of every `references/` file, including nested folders. The Scripts Tests workflow runs it on every pull request. Relative Markdown links must target real files within the skill tree. It does not enforce arbitrary body lengths or section wording. It is not evidence of LLM routing accuracy or successful lifecycle execution.
 
-Review semantic changes by assembling an entrypoint with **only references selected by the case** below. For comparisons with an earlier revision, hold prompt, model/effort, tools, and retrieval conditions constant; record initial route, loaded references, stopping point, and authority violations. Label a document dry-run as such rather than claiming live execution.
+Review semantic changes by assembling an entrypoint with **only references selected by the case** below. For comparisons with an earlier revision, hold prompt, model/effort, tools, and retrieval conditions constant; record initial route, loaded references, stopping point, and authority violations. Label a document dry-run as such rather than claiming live execution. When a change requires the second-stage representative task evaluation, follow [instruction-maintenance.md](../../docs/instruction-maintenance.md#개편-검증) to [instruction-evaluation.md](../../docs/instruction-evaluation.md) for its single execution procedure.
 
 | Representative request/condition | Expected route and contract |
 |---|---|
