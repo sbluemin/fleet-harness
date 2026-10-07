@@ -475,7 +475,7 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
               {!hasOptions || draft.own ? (
                 <textarea
                   className={`objectives-m-field${hasOptions ? " is-unfold" : ""}`}
-                  maxLength={2000}
+                  maxLength={50}
                   disabled={sending}
                   value={draft.text}
                   aria-label={t("objectives.decision.writeAria", { n: index + 1 })}
