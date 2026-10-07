@@ -68,7 +68,7 @@ printf '%s\n' "$OUT" > "$E/memory.sha256"; printf '%s\n' "$rc" > "$E/memory.sha2
 
 ## 3. 유료 호출 전 무료 요청 fixture
 
-`CLAUDE_BIN`은 확인한 CLI 실행 파일의 절대 경로다. `PROMPT`는 공통 작업 프롬프트다. 다음 함수를 fixture와 실제 회차에서 **그대로** 사용한다. 도구·스킬·훅·MCP·Chrome·세션 저장을 끄고 모델과 effort를 고정한다. `--setting-sources project`로 프로젝트 CLAUDE.md 자동 탐색을 유지하고, `--restricted`로 사용자·프로젝트·로컬 설정 파일의 개입을 막는다. `--setting-sources ''`는 이 버전에서 프로젝트 CLAUDE.md도 제외하므로 쓰지 않는다. 이는 관리 정책 우회가 아니며, 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
+`CLAUDE_BIN`은 확인한 CLI 실행 파일의 절대 경로다. `PROMPT`는 공통 작업 프롬프트다. 다음 함수를 fixture와 실제 회차에서 **그대로** 사용한다. 도구·스킬·훅·MCP·Chrome·세션 저장을 끄고 모델과 effort를 고정한다. `--setting-sources project`로 프로젝트 CLAUDE.md 자동 탐색을 유지하고 사용자·로컬 설정을 제외한다. 실행 전에 양쪽 프로젝트 설정의 존재와 내용을 확인한다. provider·환경·plugin·별도 agent 등을 활성화하는 설정이 있거나 조건을 설명할 수 없으면 이 명령으로 시작하지 않는다. 설정을 임의로 편집해 맞추지도 않는다. `--setting-sources ''`와 `--restricted`는 이 버전의 fixture에서 필요한 자동 지침 문맥을 제외했으므로 쓰지 않는다. 관리 정책 우회가 아니며, 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
 
 ```bash
 CLAUDE_BIN=$(command -v claude)
@@ -87,7 +87,7 @@ $(< "$T/$1/$path")"
     ANTHROPIC_BASE_URL="$ENDPOINT" ANTHROPIC_API_KEY="$API_KEY" \
     "$CLAUDE_BIN" -p "$INPUT" --model "$MODEL" --effort "$EFFORT" \
     --tools '' --disable-slash-commands --settings '{"disableAllHooks":true}' \
-    --setting-sources project --restricted --permission-mode dontAsk \
+    --setting-sources project --permission-mode dontAsk \
     --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
     --no-chrome --prompt-suggestions false --no-session-persistence --output-format json)
 }
