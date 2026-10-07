@@ -422,6 +422,79 @@ describe("Cursor live client-tool Run bridge", () => {
       // A preview filling the limit was cut inside a name too long to back off to its newline.
       const cutPreview = `Found 250 files limit: 250\nlong/file-260.txt\ndeep/${"d".repeat(2000)}`.slice(0, 2000);
       expect(grepFiles(persisted(cutPreview))).toMatchObject({ files: ["long/file-260.txt"], totalFiles: 1 });
+
+      // Content and count notices sit after a blank line. A row whose name starts with `[` or
+      // "No matches" is a file, and the caller's summary is not.
+      const grepBranch = (outputMode: "content" | "count", output: string) => {
+        const replies = cursorNativeRedirectResultReplies({
+          messageId: 6,
+          execId: "native-grep-body",
+          nativeResultType: "grepResult",
+          nativeArgs: { pattern: "NEEDLE", path: "/repo", outputMode },
+        }, output, false);
+        const reply = replies[0] as {
+          execClientMessage?: {
+            grepResult?: { success?: { workspaceResults?: Record<string, { content?: unknown; count?: unknown }> } };
+          };
+        };
+        return Object.values(reply.execClientMessage?.grepResult?.success?.workspaceResults ?? {})[0];
+      };
+      expect(grepBranch("content", [
+        "[top]/first.txt:1:[needle first]",
+        "No matches.txt:2:needle",
+        "",
+        "[Showing results with pagination = limit: 2]",
+      ].join("\n"))?.content).toEqual({
+        matches: [
+          {
+            file: "[top]/first.txt",
+            matches: [{
+              lineNumber: 1,
+              content: "[needle first]",
+              contentTruncated: false,
+              isContextLine: false,
+            }],
+          },
+          {
+            file: "No matches.txt",
+            matches: [{
+              lineNumber: 2,
+              content: "needle",
+              contentTruncated: false,
+              isContextLine: false,
+            }],
+          },
+        ],
+        totalLines: 2,
+        totalMatchedLines: 2,
+        clientTruncated: true,
+        ripgrepTruncated: false,
+      });
+      expect(grepBranch("count", [
+        "[top]/first.txt:2",
+        "no matches here.md:1",
+        "",
+        "Found 12 total occurrences across 6 files. with pagination = limit: 2",
+      ].join("\n"))?.count).toEqual({
+        counts: [
+          { file: "[top]/first.txt", count: 2 },
+          { file: "no matches here.md", count: 1 },
+        ],
+        totalFiles: 2,
+        totalMatches: 3,
+        clientTruncated: true,
+        ripgrepTruncated: false,
+      });
+      expect(grepBranch("content", "No matches found")?.content).toMatchObject({
+        matches: [],
+        totalLines: 0,
+        clientTruncated: false,
+      });
+      // A single-file body has no path prefix. It must not be read as a file name.
+      expect(grepBranch("content", "[needle first]\nneedle second")?.content).toMatchObject({
+        matches: [],
+        totalLines: 0,
+      });
     } finally {
       harness.adapter.dispose();
     }
