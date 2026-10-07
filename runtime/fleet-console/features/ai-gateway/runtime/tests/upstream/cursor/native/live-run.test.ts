@@ -848,6 +848,118 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(canonicalText(waited)).toBe("Waiting for the background job.");
       expect(addedFunctionCallIds(waited)).toEqual([]);
       expect(harness.openedStreams).toBe(4);
+
+      // A short finished report used to be asked again, and the second answer could start another
+      // tool. Asking for approval is the user waiting, not a next step. Own Runs, so the stream
+      // counts above stay the yield script. "Still checking." above stays a short announcement.
+      const finishedReport = "The ranged read returned 12 lines.";
+      const reportCall = cursorCall("call-resample-report", 60);
+      const reportRun = new BridgeCursorStream(cursorCompletionFrames(finishedReport));
+      const reportUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-report-again", 61)]));
+      const reportHarness = cursorHarness([reportRun, reportUnwanted]);
+      const approval = "승인해 주시면 그대로 진행하겠습니다.";
+      const approvalCall = cursorCall("call-resample-approval", 70);
+      const approvalRun = new BridgeCursorStream(cursorCompletionFrames(approval));
+      const approvalUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-approval-again", 71)]));
+      const approvalHarness = cursorHarness([approvalRun, approvalUnwanted]);
+      // A past form inside the sentence modifies the next step; only the final predicate settles it.
+      const pastModifier = "아까 실패했던 테스트를 다시 돌립니다.";
+      const pastModifierCall = cursorCall("call-resample-past-modifier", 80);
+      const pastModifierRecovered = cursorCall("call-resample-past-modifier-recovered", 81);
+      const pastModifierRun = new BridgeCursorStream(cursorCompletionFrames(pastModifier));
+      const pastModifierRecoveredRun = new BridgeCursorStream(cursorToolFrames([pastModifierRecovered]));
+      const pastModifierHarness = cursorHarness([pastModifierRun, pastModifierRecoveredRun]);
+      // An English sentence with any action still ahead is not settled, and a condition settles it only
+      // when it governs the one action the sentence promises.
+      const englishSteps = [
+        "The read failed, so I need to try another path.",
+        "I'll run the tests, and if they pass, I'll update the docs.",
+        "I updated the code and will run the tests.",
+        "If needed, I'll update the docs, but I'll run the tests first.",
+        "The read failed so I need to try another path.",
+        "Running the tests now, and if they pass, I'll update the docs.",
+      ].map((text, index) => {
+        const recoveredCall = cursorCall(`call-resample-english-recovered-${index}`, 101 + index * 2);
+        return {
+          call: cursorCall(`call-resample-english-${index}`, 100 + index * 2),
+          recoveredCall,
+          harness: cursorHarness([
+            new BridgeCursorStream(cursorCompletionFrames(text)),
+            new BridgeCursorStream(cursorToolFrames([recoveredCall])),
+          ]),
+        };
+      });
+      // A Skill body after the result is client context the bridge recognizes; the turn stays armed.
+      const skillCall = cursorCall("call-resample-skill-body", 90);
+      const skillRecovered = cursorCall("call-resample-skill-body-recovered", 91);
+      const skillRun = new BridgeCursorStream(cursorCompletionFrames(announcement));
+      const skillRecoveredRun = new BridgeCursorStream(cursorToolFrames([skillRecovered]));
+      const skillHarness = cursorHarness([skillRun, skillRecoveredRun]);
+      const gateTurn = async (
+        gateHarness: { adapter: typeof harness.adapter },
+        userId: string,
+        spec: CursorCallSpec,
+        tail: CanonicalResponseRequest["input"] = [],
+      ) => {
+        const gateAdapter = gateHarness.adapter.forHarness({});
+        const gateInitial = cursorRequest(userId, "grok-4.7");
+        return collectAdapterEvents(await gateAdapter.stream({
+          ...gateInitial,
+          input: [
+            ...gateInitial.input,
+            call(spec),
+            cursorResult(spec, "ok"),
+            ...tail,
+          ],
+        }, { apiKey: "cursor-test-token" }));
+      };
+      try {
+        const reported = await gateTurn(reportHarness, "session-resample-report", reportCall);
+        const held = await gateTurn(approvalHarness, "session-resample-approval", approvalCall);
+        const retried = await gateTurn(pastModifierHarness, "session-resample-past-modifier", pastModifierCall);
+        const englishRetried = [];
+        for (const [index, step] of englishSteps.entries()) {
+          englishRetried.push(await gateTurn(step.harness, `session-resample-english-${index}`, step.call));
+        }
+        const skillRecovery = await gateTurn(skillHarness, "session-resample-skill-body", skillCall, [{
+          type: "message",
+          role: "user",
+          content: "Base directory for this skill: /repo/.claude/skills/probe\n\n# Probe\n\nRun the probe.",
+        }]);
+        expect({
+          reportStreams: reportHarness.openedStreams,
+          reportCalls: addedFunctionCallIds(reported),
+          reportText: canonicalText(reported),
+          approvalStreams: approvalHarness.openedStreams,
+          approvalCalls: addedFunctionCallIds(held),
+          approvalText: canonicalText(held),
+          pastModifierStreams: pastModifierHarness.openedStreams,
+          pastModifierCalls: addedFunctionCallIds(retried),
+          englishStreams: englishSteps.map((step) => step.harness.openedStreams),
+          englishCalls: englishRetried.map((events) => addedFunctionCallIds(events)),
+          skillStreams: skillHarness.openedStreams,
+          skillCalls: addedFunctionCallIds(skillRecovery),
+        }).toEqual({
+          reportStreams: 1,
+          reportCalls: [],
+          reportText: finishedReport,
+          approvalStreams: 1,
+          approvalCalls: [],
+          approvalText: approval,
+          pastModifierStreams: 2,
+          pastModifierCalls: [pastModifierRecovered.callId],
+          englishStreams: englishSteps.map(() => 2),
+          englishCalls: englishSteps.map((step) => [step.recoveredCall.callId]),
+          skillStreams: 2,
+          skillCalls: [skillRecovered.callId],
+        });
+      } finally {
+        reportHarness.adapter.dispose();
+        approvalHarness.adapter.dispose();
+        pastModifierHarness.adapter.dispose();
+        skillHarness.adapter.dispose();
+        for (const step of englishSteps) step.harness.adapter.dispose();
+      }
     } finally {
       harness.adapter.dispose();
     }

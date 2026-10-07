@@ -17,8 +17,8 @@ import { wireLog } from "../../../transport/wire-log.js";
  * 새 Run을 한 번 연다. 같은 Run에 이어 쓰는 길은 없다: 서버가 `turnEnded` 뒤 0–1ms 안에 스트림을 닫는다.
  *
  * Muse 어댑터에도 같은 회복이 있지만 공유하지 않는다. 재요청 수단(새 HTTP/2 Run)·해제 신호(서버 수행 작업,
- * 마지막 단계 길이)·체크포인트 기준선이 Cursor 의미론이고, 이벤트 모양도 다르다. 이 동작은 canonical 이벤트
- * 수준에서 일어나므로 스트리밍·비스트리밍이 같은 결과를 받는다.
+ * 마지막 단계의 길이, 마지막 문장이 이미 끝난 맺음인지)·체크포인트 기준선이 Cursor 의미론이고, 이벤트 모양도
+ * 다르다. 이 동작은 canonical 이벤트 수준에서 일어나므로 스트리밍·비스트리밍이 같은 결과를 받는다.
  */
 
 const LABEL = "cursor.resample";
@@ -50,13 +50,191 @@ const CURSOR_RESAMPLE_WIRE_MODEL = /^grok-4\.7(?:-|$)/;
 const MIN_RESAMPLE_MAX_OUTPUT_TOKENS = 1024;
 
 /**
- * 첫 응답 마지막 단계 텍스트의 추정 토큰 상한. 넘으면 정상 최종 답으로 보고 다시 받지 않는다.
- * 관측된 예고는 13–64(실사용 14–28, 2026-10-07 재현 13–64)였고, 정상 최종 답은 98–862였다(같은
- * 추정기, 한국어 2.5자/토큰). 짧은 정상 답(98–100)이 100 경계에 걸려 다시 받았다가 첫 답으로
- * 돌아가며 10–13초를 잃었으므로, 예고 최대값 위·정상 답 최소값 아래인 80에 둔다. 재는 대상은 응답
- * 전체가 아니라 마지막 단계다: 거절된 native read 뒤에 재시도 문장이 쌓여도(측정 151) 끝나는 예고는 짧다.
+ * 마지막 단계의 추정 토큰 상한. 넘으면 다시 받지 않는다. 길이를 예고 판정으로 바꾸면 표본 밖 정상 답이
+ * 다시 받혔으므로(2026-10-08) 이 상한을 기본으로 둔다. 354토큰 예고를 놓치는 것은 이 상한의 동작이다.
+ * 재는 대상은 응답 전체가 아니라 마지막 단계다.
  */
 const MAX_RESAMPLE_FINAL_STEP_TOKENS = 80;
+
+/** ㅆ 받침. 겠은 미래·의도이고 있·없은 존재라 과거로 세지 않는다. */
+const SSANG_SIOT_INDEX = 20;
+/** ㄹ 받침. 다음 글자가 게이면 `할게`다. */
+const RIEUL_INDEX = 8;
+
+/**
+ * 마지막 문장만 보고, 이미 끝난 맺음이면 참이다. 짧아도 다시 받지 않는다.
+ * 완료 보고(과거·결과), 물음표, 승인·대기·조건 대기다. 조건은 동사 목록이 아니라
+ * `-면`/`-으면` 뒤의 미래형, 또는 영어 `if`/`when`/`once`와 `I'll`이다.
+ * 그 문장에 조건에 걸리지 않은 행동(`돌리고, 통과하면 …`)이 있으면 맺음이 아니다.
+ * 어느 쪽인지 모르면 길이 상한만 따른다.
+ */
+function isSettledEnding(text: string): boolean {
+  const sentence = lastSentence(text);
+  if (sentence.length === 0) return false;
+  if (/[?？]\s*$/u.test(sentence)) return true;
+  if (isWaitOrApproval(sentence)) return true;
+  return isCompletionReport(sentence);
+}
+
+function lastSentence(text: string): string {
+  const parts = text
+    .trim()
+    .split(/(?<=[.!?。？])\s+/u)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+  return parts[parts.length - 1] ?? "";
+}
+
+/** 승인 요청, 대기 선언, 나중에 하겠다는 미루기, 조건이 와야 이어가는 문장. */
+function isWaitOrApproval(sentence: string): boolean {
+  if (/\blet me know\b/iu.test(sentence)) return true;
+  if (/대기(?:하겠습니다|할게요|합니다|하겠어요)|기다리겠/u.test(sentence)) return true;
+  if (/\b(?:I['’]ll|I will)\s+(?:be\s+)?wait/iu.test(sentence)) return true;
+  if (/^다음에(?:\s|$)/u.test(sentence)) return true;
+  return isPureConditional(sentence);
+}
+
+/**
+ * 문장 전체가 조건에 걸린 미래일 때만 참이다. `까지`는 조건이 아니고,
+ * 조건 앞에 이어진 행동(`돌리고`)이 있으면 그 행동은 아직 하지 않은 예고다.
+ */
+function isPureConditional(sentence: string): boolean {
+  const englishFuture = /\b(?:I['’]ll|I will)\b/iu.test(sentence);
+  // One action, hung on the condition. A second one (`I'll update the docs, but I'll run the tests
+  // first`, `Running the tests now, and if they pass, I'll …`) is a step that does not wait.
+  if (
+    englishFuture
+    && /\b(?:if|when|once|unless)\b/iu.test(sentence)
+    && englishActionMarkerCount(sentence) === 1
+  ) {
+    return true;
+  }
+  // `화면`의 면은 명사다. 조건 어미 면은 뒤에서 절이 갈라진다.
+  const mark = sentence.search(/면(?!서)(?=\s|[,.!?？]|$)/u);
+  if (mark < 0 || hasPositiveConnective(sentence.slice(0, mark))) return false;
+  return hasKoreanFuture(sentence.slice(mark + 1));
+}
+
+/** Words that put an English action still ahead: future, obligation, `let me`, or a leading step. */
+const ENGLISH_ACTION_MARKER = /\bwill\b|['’]ll\b|\bgoing to\b|\bneed to\b|\bhave to\b|\blet me\b(?!\s+know)/giu;
+/** A leading `-ing` that is not a step: `Nothing is running now.` */
+const ENGLISH_NON_STEP_ING = new Set(["nothing", "something", "anything", "everything", "during", "string"]);
+
+function englishActionMarkerCount(sentence: string): number {
+  const text = sentence.trim();
+  const first = /^[A-Za-z]+/u.exec(text)?.[0].toLowerCase() ?? "";
+  const leadingStep = ENGLISH_FORWARD_LEAD.test(text)
+    || (/^[a-z]{3,}ing$/u.test(first) && !ENGLISH_NON_STEP_ING.has(first));
+  return (text.match(ENGLISH_ACTION_MARKER)?.length ?? 0) + (leadingStep ? 1 : 0);
+}
+
+/** 고로 끝나는 명사. 뒤가 띄어 써져도 연결어미가 아니다(`회고 도착하면`). */
+const KOREAN_NOUNS_ENDING_IN_GO = new Set(["회고", "경고", "참고", "광고", "신고", "원고", "창고", "공고", "예고"]);
+
+function hasPositiveConnective(before: string): boolean {
+  for (let index = 1; index < before.length; index += 1) {
+    const mark = before[index];
+    if (mark !== "고" && mark !== "며") continue;
+    const prev = before[index - 1] ?? "";
+    if (prev === "않" || !/^[가-힣]$/u.test(prev)) continue;
+    const next = before[index + 1] ?? "";
+    // `보고`처럼 단어 안의 고는 연결어미가 아니다. 어미는 뒤에서 문장이 갈라진다.
+    if (next !== "" && next !== " " && next !== "," && next !== "\n") continue;
+    const wordStart = index < 2 || !/^[가-힣]$/u.test(before[index - 2] ?? "");
+    if (mark === "고" && wordStart && KOREAN_NOUNS_ENDING_IN_GO.has(`${prev}${mark}`)) continue;
+    return true;
+  }
+  return false;
+}
+
+function hasKoreanFuture(text: string): boolean {
+  if (/겠|게요/u.test(text)) return true;
+  for (let index = 0; index < text.length - 1; index += 1) {
+    if (jongseongIndex(text[index] ?? "") !== RIEUL_INDEX) continue;
+    if (text[index + 1] === "게") return true;
+  }
+  return false;
+}
+
+/**
+ * 미래 표지 없이 문장 끝 서술어가 과거·완료면 완료 보고다. 애매하면 완료로 치지 않는다.
+ * 문장 중간의 과거 표지(`실패했던 테스트`, `the updated tests`)는 수식어라 보지 않는다.
+ */
+function isCompletionReport(sentence: string): boolean {
+  if (hasKoreanFuture(sentence) || /\b(?:I['’]ll|I will|I['’]m going to|I am going to)\b/iu.test(sentence)) {
+    return false;
+  }
+  // 끝에 붙은 괄호 보충(`확정됐습니다(… 보고서에 기재).`)과 코드 조각은 서술어가 아니다.
+  const body = sentence.replace(/(?:\s*(?:\([^()]*\)|`[^`]*`)[\s.!?。？…:;,]*)+$/u, "");
+  const words = body.replace(/[\s.!?。？…:;,)\]}"'`」』>*_~]+$/u, "").split(/\s+/u).filter((word) => word.length > 0);
+  if (!/[가-힣]/u.test(body)) return isEnglishCompletion(words);
+  for (let index = words.length - 1; index >= 0; index -= 1) {
+    const word = words[index] ?? "";
+    if (!/[가-힣]/u.test(word)) continue;
+    if (hasKoreanPast(word)) return true;
+    // `촬영은 끝났으므로 다시 띄우지 않습니다`: 끝난 일 뒤에 하지 않겠다고 맺는다. 과거 없는 부정만으로는
+    // 맺음이 아니다(`… 이어가겠습니다. 다른 폴더는 건드리지 않습니다.`의 마지막 문장).
+    return isKoreanNegation(word) && words.slice(0, index).some(hasKoreanPast);
+  }
+  return false;
+}
+
+/** 종결 서술어 한 어절에 과거 시제(`했`·`됐`·`끝났`·`었`)가 있는가. 겠은 미래, 있·없은 존재다. */
+function hasKoreanPast(predicate: string): boolean {
+  if (/(?:았|었|였)/u.test(predicate)) return true;
+  for (const char of predicate) {
+    if (jongseongIndex(char) !== SSANG_SIOT_INDEX) continue;
+    if (char === "겠" || char === "있" || char === "없") continue;
+    return true;
+  }
+  return false;
+}
+
+/** 하지 않겠다·없다로 끝나는 서술어. 상태 서술(`그대로 두고 있습니다`)은 넣지 않는다. */
+function isKoreanNegation(predicate: string): boolean {
+  return /^(?:않|없)/u.test(predicate) || /(?:지않|없)(?:습니다|어요|음)$/u.test(predicate);
+}
+
+/** 다음 행동으로 여는 영어 문장. 그 뒤의 과거형은 앞으로 할 일의 수식어다(`Next, the updated tests run`). */
+const ENGLISH_FORWARD_LEAD = /^(?:now|next|then|first|second|finally|afterwards?|next step)\b/iu;
+/** 바로 뒤의 과거분사를 수식어로 만드는 한정사·전치사·부정사 표지. */
+const ENGLISH_ATTRIBUTIVE_BEFORE = new Set([
+  "the", "a", "an", "this", "that", "these", "those", "its", "their", "our", "my", "your", "his", "her",
+  "some", "any", "each", "every", "no", "with", "against", "for", "of", "on", "in", "to", "from", "by",
+  "at", "into", "as", "be", "being",
+]);
+const ENGLISH_IRREGULAR_PAST = new Set([
+  "ran", "found", "made", "left", "did", "done", "went", "came", "got", "was", "were", "built", "sent",
+  "wrote", "saw", "took", "gave", "kept", "held", "broke", "finished", "completed",
+]);
+
+/**
+ * 주절 서술어가 과거·완료인 영어 문장. 문장 아무 데나 있는 `-ed`를 세지 않는다. 한정사·전치사 뒤의 과거분사
+ * (`the related tests`)는 수식어로 빼고, 나머지 자리(`Tests passed.`, `Fixed the import.`)만 서술어로 본다.
+ */
+function isEnglishCompletion(words: readonly string[]): boolean {
+  // Any action still ahead (`I updated the code and will run the tests.`, `The read failed so I need
+  // to try another path.`) leaves it to the length gate, as canary does.
+  if (englishActionMarkerCount(words.join(" ")) > 0) return false;
+  const tokens = words
+    .map((word) => word.replace(/^[^A-Za-z]+|[^A-Za-z']+$/gu, "").toLowerCase())
+    .filter((word) => /^[a-z][a-z']*$/u.test(word));
+  for (let index = 0; index < tokens.length; index += 1) {
+    const word = tokens[index] ?? "";
+    const past = ENGLISH_IRREGULAR_PAST.has(word) || (/^[a-z]{3,}ed$/u.test(word) && !/eed$/u.test(word));
+    if (!past) continue;
+    const before = tokens[index - 1];
+    if (before !== undefined && ENGLISH_ATTRIBUTIVE_BEFORE.has(before)) continue;
+    return true;
+  }
+  return false;
+}
+
+function jongseongIndex(char: string): number | undefined {
+  const code = char.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return undefined;
+  return (code - 0xac00) % 28;
+}
 
 /** 턴을 넘기는 클라이언트 도구 호출. `whenArgumentTrue`가 있으면 그 인자가 `true`일 때만 해당한다. */
 export interface CursorYieldToolCall {
@@ -257,13 +435,15 @@ function resampleVerdict(
   text: string,
   signals: CursorSegmentSignals,
   finalStepTokens: number,
-): "incomplete" | "empty_text" | "server_work" | "long_final_step" | undefined {
+): "incomplete" | "empty_text" | "server_work" | "settled_ending" | "long_final_step" | undefined {
   if (event.response.incomplete !== undefined) return "incomplete";
   // 빈 응답은 다른 결함이다. Claude Code가 스스로 재개 넛지를 붙인다.
   if (text.trim().length === 0) return "empty_text";
   // 서버가 이 응답 안에서 웹 검색 등을 실제로 했다면 그 뒤의 텍스트는 결과 보고다.
   if (signals.serverWork) return "server_work";
   if (finalStepTokens > MAX_RESAMPLE_FINAL_STEP_TOKENS) return "long_final_step";
+  // 짧아도 마지막 문장이 완료·질문·승인 대기면 다시 받지 않는다. 애매하면 그대로 다시 받는다.
+  if (isSettledEnding(signals.finalStepText)) return "settled_ending";
   return undefined;
 }
 

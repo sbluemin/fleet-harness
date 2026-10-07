@@ -1361,31 +1361,28 @@ function lastCursorActionableInput(
   return results?.at(-1) ?? input.at(-1);
 }
 
-function isCursorClientContextMessage(item: CanonicalInputItem | undefined): boolean {
-  if (item?.type !== "message" || (item.role !== "user" && item.role !== "developer")) return false;
-  const text = canonicalMessageText(item.content);
-  return item.role === "developer"
-    ? text.includes("<system-reminder>")
-    : text.trimStart().startsWith("<system-reminder>");
+/**
+ * A trailing item the caller appended after a tool-result batch: a developer attachment, or user text
+ * the bridge reads as client context ({@link cursorBridgeClientContextText}). Anything else is the
+ * user's own prompt.
+ */
+function isCursorTrailingClientContext(item: CanonicalInputItem | undefined): boolean {
+  if (item?.type !== "message") return false;
+  return item.role === "developer" || cursorBridgeClientContextText(item) !== undefined;
 }
 
 /**
  * The trailing result batch as the announce-only resample reads it: past any client context the
- * caller appended after the results — Claude Code puts a background-job notice or a queued message
- * into the same user turn as `<system-reminder>` text, which arrives as its own user item. The turn
- * is still a tool-result turn. The bridge keeps its own stricter reading; this one only arms.
+ * caller appended after the results — a reminder, `Tool loaded.`, a Skill body, nested `CLAUDE.md`,
+ * or a queued task or peer notice, judged exactly as the bridge judges it. The turn is still a
+ * tool-result turn. A tail the bridge leaves cold, such as a reminder followed by the user's own
+ * words, is a prompt here too and does not arm.
  */
 function trailingCursorToolResultsPastClientContext(
   input: readonly CanonicalInputItem[],
 ): readonly CursorCanonicalToolResult[] | undefined {
   let end = input.length;
-  while (end > 1) {
-    const tail = input[end - 1];
-    const context = tail?.type === "message"
-      && (tail.role === "developer" || isCursorClientContextMessage(tail));
-    if (!context) break;
-    end -= 1;
-  }
+  while (end > 1 && isCursorTrailingClientContext(input[end - 1])) end -= 1;
   return trailingCursorToolResults(input.slice(0, end));
 }
 
@@ -1396,7 +1393,7 @@ function cursorSupersedeOutcome(input: readonly CanonicalInputItem[]): string {
       ? "superseded_by_model_continuation"
       : "superseded_by_user_prompt";
   }
-  return input.some((item) => isCursorClientContextMessage(item))
+  return input.some((item) => isCursorTrailingClientContext(item))
     ? "result_batch_unrecognized_after_client_context"
     : "result_batch_unrecognized";
 }
