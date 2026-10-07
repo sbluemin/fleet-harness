@@ -1036,6 +1036,26 @@ describe("Muse Code routing", () => {
   const signedIn = () => ({ status: "ok" as const, credentials: { apiKey: MUSE_KEY, accountToken: "acct", method: "keychain" as const } });
   // Muse가 실제로 보내는 reasoning id 형태(콜론 포함)를 쓴다.
   const REASONING_ID = "rs_n1:rs_n2";
+  const museCreated = (id: string) => ({
+    type: "response.created" as const,
+    response: { id, model: "muse-spark-1.3-contributor", usage: null },
+  });
+  const museCompleted = (id: string, outputTokens: number, reasoningTokens: number) => ({
+    type: "response.completed" as const,
+    response: {
+      id,
+      model: "muse-spark-1.3-contributor",
+      status: "completed",
+      usage: { input_tokens: 10, output_tokens: outputTokens, output_tokens_details: { reasoning_tokens: reasoningTokens } },
+    },
+  });
+  /** 추론 없이 텍스트 한 줄로 끝나는 Muse SSE. 재요청 판정이 보는 첫 응답이다. */
+  const museAnnouncement = (id: string, messageId: string, text: string) => [
+    museCreated(id),
+    { type: "response.output_item.added", output_index: 0, item: { type: "message", id: messageId, role: "assistant" } },
+    { type: "response.output_text.delta", item_id: messageId, output_index: 0, content_index: 0, delta: text },
+    museCompleted(id, 8, 0),
+  ];
   const museFrames = [
     { type: "response.created", response: { id: "r1", model: "muse-spark-1.3-contributor", usage: null } },
     { type: "response.reasoning_text.delta", item_id: REASONING_ID, output_index: 0, delta: "check a.ts" },
@@ -1223,22 +1243,9 @@ describe("Muse Code routing", () => {
     // call, and the same request drawn again repeats it. The gateway asks once more with that
     // announcement and a short nudge appended. The client must see one message — the announcement
     // followed by the recovered call — and the gateway must ask at most once more.
-    const created = { type: "response.created", response: { id: "r4", model: "muse-spark-1.3-contributor", usage: null } };
-    const completed = (outputTokens: number, reasoningTokens: number) => ({
-      type: "response.completed",
-      response: {
-        id: "r4",
-        model: "muse-spark-1.3-contributor",
-        status: "completed",
-        usage: { input_tokens: 10, output_tokens: outputTokens, output_tokens_details: { reasoning_tokens: reasoningTokens } },
-      },
-    });
-    const announced = [
-      created,
-      { type: "response.output_item.added", output_index: 0, item: { type: "message", id: "msg_a", role: "assistant" } },
-      { type: "response.output_text.delta", item_id: "msg_a", output_index: 0, content_index: 0, delta: "Now I'll run the tests." },
-      completed(8, 0),
-    ];
+    const created = museCreated("r4");
+    const completed = (outputTokens: number, reasoningTokens: number) => museCompleted("r4", outputTokens, reasoningTokens);
+    const announced = museAnnouncement("r4", "msg_a", "Now I'll run the tests.");
     const recovered = [
       created,
       { type: "response.reasoning_text.delta", item_id: REASONING_ID, output_index: 0, delta: "run them" },
@@ -1360,35 +1367,20 @@ describe("Muse Code routing", () => {
 
   it("does not ask again after a turn-yielding tool result, and still recovers a foreground Bash", async () => {
     // ScheduleWakeup, and Bash only when run_in_background is true, end the turn on purpose.
-    // Asking again would poll or start the job twice. A foreground Bash is not a yield and still recovers.
-    const created = { type: "response.created", response: { id: "r6", model: "muse-spark-1.3-contributor", usage: null } };
-    const completed = (outputTokens: number, reasoningTokens: number) => ({
-      type: "response.completed",
-      response: {
-        id: "r6",
-        model: "muse-spark-1.3-contributor",
-        status: "completed",
-        usage: { input_tokens: 10, output_tokens: outputTokens, output_tokens_details: { reasoning_tokens: reasoningTokens } },
-      },
-    });
-    const announced = (text: string) => [
-      created,
-      { type: "response.output_item.added", output_index: 0, item: { type: "message", id: "msg_y", role: "assistant" } },
-      { type: "response.output_text.delta", item_id: "msg_y", output_index: 0, content_index: 0, delta: text },
-      completed(8, 0),
-    ];
+    // A yield anywhere in the trailing result batch disarms the redraw, so a later Read must not
+    // re-arm it. Asking again would poll or start the job twice. A foreground Bash still recovers.
     const recovered = [
-      created,
+      museCreated("r6"),
       { type: "response.output_item.added", output_index: 0, item: { type: "function_call", id: "fc_y", call_id: "call_y", name: "Bash", arguments: "" } },
       { type: "response.function_call_arguments.done", item_id: "fc_y", output_index: 0, arguments: '{"command":"pnpm test"}' },
       { type: "response.output_item.done", output_index: 0, item: { type: "function_call", id: "fc_y", call_id: "call_y", name: "Bash", arguments: '{"command":"pnpm test"}' } },
-      completed(12, 0),
+      museCompleted("r6", 12, 0),
     ];
     // Yield turns consume only their announcement. The foreground Bash consumes the recovery too.
     const scripts = [
-      announced("Waiting for the wakeup."),
-      announced("Waiting for the background job."),
-      announced("Now I'll run the tests."),
+      museAnnouncement("r6", "msg_y", "Waiting for the wakeup."),
+      museAnnouncement("r6", "msg_y", "Waiting for the background job."),
+      museAnnouncement("r6", "msg_y", "Now I'll run the tests."),
       recovered,
     ];
     let served = 0;
@@ -1400,6 +1392,7 @@ describe("Muse Code routing", () => {
     const tools = [
       { name: "ScheduleWakeup", input_schema: { type: "object", properties: {} } },
       { name: "Bash", input_schema: { type: "object", properties: { command: { type: "string" }, run_in_background: { type: "boolean" } } } },
+      { name: "Read", input_schema: { type: "object", properties: { file_path: { type: "string" } } } },
     ];
     const turn = (name: string, input: Record<string, unknown>, id: string) => ({
       model: MUSE_MODEL,
@@ -1412,6 +1405,30 @@ describe("Muse Code routing", () => {
         { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] },
       ],
     });
+    // Read is last on purpose. Disarming only the last result would redraw this turn.
+    const backgroundBatch = {
+      model: MUSE_MODEL,
+      max_tokens: 32_000,
+      stream: true,
+      tools,
+      messages: [
+        { role: "user", content: "continue" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "call_b", name: "Bash", input: { command: "pnpm test", run_in_background: true } },
+            { type: "tool_use", id: "call_r", name: "Read", input: { file_path: "a.ts" } },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "call_b", content: "started" },
+            { type: "tool_result", tool_use_id: "call_r", content: "file" },
+          ],
+        },
+      ],
+    };
     try {
       const wakeup = response();
       await router.handle(ctx({
@@ -1428,7 +1445,7 @@ describe("Muse Code routing", () => {
       await router.handle(ctx({
         res: background,
         token: ANTHROPIC_CRED,
-        rawBody: turn("Bash", { command: "pnpm test", run_in_background: true }, "call_b"),
+        rawBody: backgroundBatch,
       }));
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(background.body).toContain("Waiting for the background job.");

@@ -4,5 +4,5 @@ branch: fix/muse-yield-resample
 
 ### fleet-console
 #### Fixed
-- Muse no longer calls another tool right after it starts waiting on a background job or a scheduled wakeup, so that wait does not turn into a second run.
-  ko: Muse가 백그라운드 작업이나 예약 깨우기를 기다리기 시작한 직후에 다른 도구를 다시 부르지 않아, 그 대기가 한 번 더 실행으로 이어지지 않습니다.
+- Muse turns that start a background job or a scheduled wakeup and stop to wait now actually wait, instead of being pushed to continue and poll or start the same job again.
+  ko: Muse가 백그라운드 작업이나 예약 깨우기를 걸고 기다리며 턴을 끝내면, 이제 계속하라는 재촉을 받지 않아 폴링하거나 같은 작업을 한 번 더 실행하지 않고 그대로 기다립니다.
