@@ -60,29 +60,72 @@ const MAX_RESAMPLE_FINAL_STEP_TOKENS = 800;
 const ENGLISH_FUTURE_ACTION =
   /\b(?:I['’]ll|I will|Let me|I['’]m going to|I am going to)\b/iu;
 
+/** "Running the tests now.", "Still checking." 처럼 지금 하려는 영어 현재진행. */
+const ENGLISH_PROGRESS =
+  /(?:^(?:Still|Now)\s+\p{L}+ing\b|\b\p{L}+ing\b[^.!?]{0,48}\bnow\b)/iu;
+
+/**
+ * 한글 행동의 합니다체. 설명문(이 함수는 …) 안에서도 같은 끝이 나오므로 주어는 따로 걸러 낸다.
+ * 결과 보고( 보고합니다, 없습니다) 는 여기에 둘 수 없다.
+ */
+const KOREAN_ACTION =
+  /(?:읽습니다|찾습니다|확인합니다|봅니다|돌립니다|씁니다|진행합니다|이어갑니다|시작합니다|살펴봅니다|가립니다|정리합니다|남깁니다|보강합니다|실행합니다)/u;
+
+const KOREAN_FUTURE = /겠(?:습니다|어요|다)|게요|려고(?:\s*합니다)?/u;
+
+/** 사용자를 기다리거나 그대로 두겠다는 맺음. 예고가 아니다. */
+const WAITING_CLOSE =
+  /대기하|답하겠|답할게요|까지|끝나는 대로|이대로 두겠|Let me know|I['’]ll leave|I will leave/iu;
+
+/** 외부 조건이 와야 이어가는 맺음. 통과하면 같은 일 조건은 여기에 들지 않는다. */
+const CONDITIONAL_WAIT = /오면|되면|열리면|까지|끝나는 대로|때는/u;
+
+/** 설명하는 3인칭 주어. 행동 예고와 같은 동사를 쓸 수 있다. */
+const THIRD_PERSON_SUBJECT =
+  /(?:이|그|저)\s*(?:함수|스크립트|코드|모듈|클래스|메서드|문제|값|설정)(?:는|은|이|가)/u;
+
 /** ㅆ 받침. 겠은 미래·의도이고 있·없은 존재라 과거로 세지 않는다. ㄹ 받침 뒤의 게는 `할게`다. */
 const SSANG_SIOT_INDEX = 20;
 const RIEUL_INDEX = 8;
 const NOT_PAST_SSANG = new Set(["겠", "있", "없"]);
 
 /**
- * 마지막 단계가 아직 하지 않은 행동의 예고일 때만 참이다. 완료·보고(과거, 결과 동사)가 같이 있으면
- * 애매하므로 예고가 아니다. 어느 쪽인지 모르면 다시 받지 않는다.
+ * 마지막 문장이 아직 하지 않은 행동의 예고일 때만 참이다. 앞 문장의 완료 보고는 뭉지 않는다.
+ * 마지막이 조건부 이어이거나 하지 않겠다는 단서여도, 그 앞에 조건 없는 예고가 있으면 예고다.
+ * 대기·묻음·설명문이면 아니다. 어느 쪽인지 모르면 다시 받지 않는다.
  */
 function isFutureActionAnnouncement(text: string): boolean {
-  const step = text.trim();
-  if (step.length === 0) return false;
-  return hasFutureAction(step) && !hasFinishedReport(step);
+  const parts = sentences(text);
+  const last = parts[parts.length - 1];
+  if (last === undefined || isWaitingClose(last) || THIRD_PERSON_SUBJECT.test(last)) return false;
+  if (hasFutureAction(last) && !isConditionalWait(last)) return true;
+  const promised = parts.slice(0, -1).some((sentence) => (
+    hasFutureAction(sentence) && !isConditionalWait(sentence) && !isWaitingClose(sentence)
+  ));
+  if (!promised) return false;
+  return (isConditionalWait(last) && hasFutureAction(last)) || /지\s*않습니다/u.test(last);
+}
+
+function sentences(text: string): string[] {
+  return text.trim().split(/(?<=[.!?。])\s*/u).map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 0);
 }
 
 function hasFutureAction(text: string): boolean {
-  if (ENGLISH_FUTURE_ACTION.test(text)) return true;
-  if (/확인합니다|실행합니다|겠(?:습니다|어요|다)|려고(?:\s*합니다)?/u.test(text)) return true;
+  if (ENGLISH_FUTURE_ACTION.test(text) || ENGLISH_PROGRESS.test(text)) return true;
+  if (KOREAN_ACTION.test(text) || KOREAN_FUTURE.test(text)) return true;
   for (let index = 0; index < text.length - 1; index += 1) {
     if (jongseongIndex(text[index] ?? "") !== RIEUL_INDEX) continue;
     if (text[index + 1] === "게") return true;
   }
   return false;
+}
+
+function isWaitingClose(text: string): boolean {
+  return WAITING_CLOSE.test(text);
+}
+
+function isConditionalWait(text: string): boolean {
+  return CONDITIONAL_WAIT.test(text);
 }
 
 function hasFinishedReport(text: string): boolean {

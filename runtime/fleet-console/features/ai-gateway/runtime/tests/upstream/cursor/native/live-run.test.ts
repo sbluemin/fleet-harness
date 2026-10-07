@@ -759,7 +759,7 @@ describe("Cursor live client-tool Run bridge", () => {
         { interactionUpdate: { textDelta: { text: "Running the tests." } } },
         ...cursorToolFrames([recovered]),
       ],
-      cursorCompletionFrames("I'll check the rest."),
+      cursorCompletionFrames("Still checking."),
       1,
     );
     const textAgainRun = new BridgeCursorStream(cursorCompletionFrames("Checking again."));
@@ -808,7 +808,7 @@ describe("Cursor live client-tool Run bridge", () => {
     ];
     const prompted = [
       ...afterRecovered,
-      { type: "message" as const, role: "assistant" as const, content: "I'll check the rest." },
+      { type: "message" as const, role: "assistant" as const, content: "Still checking." },
       { type: "message" as const, role: "user" as const, content: "Wait for the job." },
     ];
 
@@ -836,7 +836,7 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(cursorMcpResultWrites(recoveredRun)).toHaveLength(1);
       // That continuation only announced too; a second ask that announces again is dropped, the
       // client gets the first answer, and there is no third ask.
-      expect(canonicalText(second)).toBe("I'll check the rest.");
+      expect(canonicalText(second)).toBe("Still checking.");
       expect(addedFunctionCallIds(second)).toEqual([]);
 
       // After a call that yields the turn to wait, a short text ending is the wait itself.
@@ -849,19 +849,18 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(addedFunctionCallIds(waited)).toEqual([]);
       expect(harness.openedStreams).toBe(4);
 
-      // A finished report under 80 tokens used to be asked again, and the second answer could
-      // start a different tool. A future-tense announcement over that gate used to be dropped
-      // as a long final step. Own Runs, so the stream counts above stay the yield script.
-      const finishedReport = "The ranged read returned 12 lines.";
-      const reportCall = cursorCall("call-resample-report", 60);
-      const reportRun = new BridgeCursorStream(cursorCompletionFrames(finishedReport));
-      const reportUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-report-again", 61)]));
-      const reportHarness = cursorHarness([reportRun, reportUnwanted]);
-      const longAnnouncement = "이제 남은 이미지를 확인합니다. 삭제를 실행합니다. ".repeat(20);
-      const longCall = cursorCall("call-resample-long", 70);
-      const longRun = new BridgeCursorStream(cursorCompletionFrames(longAnnouncement));
-      const longRecovered = new BridgeCursorStream(cursorToolFrames([longCall]));
-      const longHarness = cursorHarness([longRun, longRecovered]);
+      // A finished sentence followed by the next step is still an announcement. A turn that only
+      // asks the user whether to continue is not. Own Runs, so the stream counts above stay the yield script.
+      const mixedAnnouncement = "화면 확인은 끝났습니다. 이제 검사와 새 커밋을 남기겠습니다.";
+      const mixedCall = cursorCall("call-resample-mixed", 60);
+      const mixedRun = new BridgeCursorStream(cursorCompletionFrames(mixedAnnouncement));
+      const mixedRecovered = new BridgeCursorStream(cursorToolFrames([mixedCall]));
+      const mixedHarness = cursorHarness([mixedRun, mixedRecovered]);
+      const waitingForYou = "Let me know if you want any other changes.";
+      const waitCall = cursorCall("call-resample-wait", 70);
+      const waitRun = new BridgeCursorStream(cursorCompletionFrames(waitingForYou));
+      const waitUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-wait-again", 71)]));
+      const waitHarness = cursorHarness([waitRun, waitUnwanted]);
       const gateTurn = async (gateHarness: { adapter: typeof harness.adapter }, userId: string, spec: CursorCallSpec) => {
         const gateAdapter = gateHarness.adapter.forHarness({});
         const gateInitial = cursorRequest(userId, "grok-4.7");
@@ -875,26 +874,26 @@ describe("Cursor live client-tool Run bridge", () => {
         }, { apiKey: "cursor-test-token" }));
       };
       try {
-        const reported = await gateTurn(reportHarness, "session-resample-report", reportCall);
-        const continued = await gateTurn(longHarness, "session-resample-long", longCall);
+        const continued = await gateTurn(mixedHarness, "session-resample-mixed", mixedCall);
+        const held = await gateTurn(waitHarness, "session-resample-wait", waitCall);
         expect({
-          reportStreams: reportHarness.openedStreams,
-          reportCalls: addedFunctionCallIds(reported),
-          reportText: canonicalText(reported),
-          longStreams: longHarness.openedStreams,
-          longCalls: addedFunctionCallIds(continued),
-          longText: canonicalText(continued),
+          mixedStreams: mixedHarness.openedStreams,
+          mixedCalls: addedFunctionCallIds(continued),
+          mixedText: canonicalText(continued),
+          waitStreams: waitHarness.openedStreams,
+          waitCalls: addedFunctionCallIds(held),
+          waitText: canonicalText(held),
         }).toEqual({
-          reportStreams: 1,
-          reportCalls: [],
-          reportText: finishedReport,
-          longStreams: 2,
-          longCalls: [longCall.callId],
-          longText: longAnnouncement,
+          mixedStreams: 2,
+          mixedCalls: [mixedCall.callId],
+          mixedText: mixedAnnouncement,
+          waitStreams: 1,
+          waitCalls: [],
+          waitText: waitingForYou,
         });
       } finally {
-        reportHarness.adapter.dispose();
-        longHarness.adapter.dispose();
+        mixedHarness.adapter.dispose();
+        waitHarness.adapter.dispose();
       }
     } finally {
       harness.adapter.dispose();
