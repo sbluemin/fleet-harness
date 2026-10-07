@@ -1,4 +1,4 @@
-import { buildGatewayModelConstraints } from "../models.js";
+import { buildGatewayModelConstraints, buildGatewayModelQuota } from "../models.js";
 import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import { exposedEffortLadder } from "./gateway-agents.js";
 import type { GatewayAssignmentExposure } from "./routing-assignment.js";
@@ -14,7 +14,7 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
     .map(model => {
       const constraints = buildGatewayModelConstraints(model);
       const efforts = exposedEffortLadder(model.id, constraints.effortLadder, exposure.effortExposure);
-      const pool = `${model.provider}:${constraints.quotaScope ?? "shared"}`;
+      const { quotaPool: pool } = buildGatewayModelQuota(model);
       quotaPools[pool] ??= normalizeRoutingQuota(exposure.quota?.[model.provider], constraints.quotaScope, now);
       const rank = preference.indexOf(model.provider);
       // Claude 200k 항목은 카탈로그에 창이 없다 — 다른 모델과 같은 정보를 싣도록 Claude Code 기본 좌표로 채운다.

@@ -457,6 +457,15 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
   };
 }
 
+/** The catalog and routing loadout share the model's allowance-pool identity. */
+export function buildGatewayModelQuota(model: GatewayModel) {
+  const { quotaScope } = buildGatewayModelConstraints(model);
+  return {
+    quotaPool: `${model.provider}:${quotaScope ?? "shared"}`,
+    ...(quotaScope === undefined ? {} : { quotaScope }),
+  };
+}
+
 export interface CursorModelSelection {
   readonly upstreamModelId: string;
   readonly maxMode?: true;

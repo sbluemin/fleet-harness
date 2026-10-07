@@ -1744,8 +1744,14 @@ describe("Objectives contract", () => {
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet", label: "Sonnet", launch: { model: "sonnet" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
       { id: "opus", label: "Opus", launch: { model: "opus[1m]" }, chips: [{ id: "high", label: "HIGH", launch: { effort: "high" } }] },
+    ] }, { id: "gateway:cursor", label: "Cursor", rows: [
+      { id: "cursor--grok-4.7-500k", label: "Grok", launch: { model: "cursor--grok-4.7-500k" }, quotaScope: "auto", quotaPool: "cursor:auto" },
     ] }] }] }] };
-    vi.stubGlobal("fetch", async (url: string) => (url.endsWith("/api/v1/operations/catalog") ? Response.json(catalog) : new Response(null, { status: 409 })));
+    const quota = { providers: { cursor: { status: "ok", windows: [
+      { id: "auto", scope: "auto", isAggregate: false, usedPercent: 20 },
+      { id: "total", isAggregate: true, usedPercent: 50 },
+    ] } } };
+    vi.stubGlobal("fetch", async (url: string) => (url.endsWith("/api/v1/operations/catalog") ? Response.json(catalog) : Response.json(quota)));
     const commodore = createCommodoreBoardTools(ctx, store, launch, "t1")[0]!;
     const schema = z.fromJSONSchema(commodore.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
     const board = async (args: Record<string, unknown>) => {
@@ -1761,6 +1767,14 @@ describe("Objectives contract", () => {
       expect(result.isError).toBe(false);
       return result.structuredContent;
     };
+    // 모델 선택의 공개 경계가 호스트의 풀 판정과 한도 창의 범위를 잃지 않는다. 네이티브 행에는 추측한 풀을 넣지 않는다.
+    const loadout = await board({ view: "models" });
+    expect(loadout.models).toEqual([
+      { model: "sonnet", label: "Sonnet", provider: "claude", efforts: ["low"], available: true },
+      { model: "opus[1m]", label: "Opus", provider: "claude", efforts: ["high"], available: true },
+      { model: "cursor--grok-4.7-500k", label: "Grok", provider: "cursor", efforts: [], available: true, quotaScope: "auto", quotaPool: "cursor:auto" },
+    ]);
+    expect(loadout.quota).toEqual(quota.providers);
     const actor = { kind: "commodore", theaterId: "t1" };
     const created = await board({ add: { title: "Sealed loop", note: "Verify and hand off", criteria: ["Output preserved"] } });
     const id = created.objectiveId as string;

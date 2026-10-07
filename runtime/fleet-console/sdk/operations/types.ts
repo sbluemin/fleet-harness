@@ -228,6 +228,9 @@ export interface OperationLaunchVariantRow {
   readonly gatedEfforts?: readonly string[];
   /** 이 모델이 담을 수 있는 문맥 토큰 수. 모르면 생략한다. */
   readonly contextWindow?: number;
+  /** Gateway가 판정한 한도 풀과 그 범위. Gateway 모델이 아니거나 모르면 생략한다. */
+  readonly quotaPool?: string;
+  readonly quotaScope?: string;
 }
 
 export interface OperationLaunchVariantGroup {
