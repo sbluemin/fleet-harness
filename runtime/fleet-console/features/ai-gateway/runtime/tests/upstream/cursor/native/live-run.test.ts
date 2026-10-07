@@ -990,7 +990,8 @@ describe("Cursor live client-tool Run bridge", () => {
     // The first checkpoint of a Run can be an integer multiple of the occupancy Cursor measured
     // last time. Trusting it refuses the next turn and reports that multiple as input tokens.
     // A later count that is not a multiple is the real occupancy and still refuses at the window.
-    // The estimate counts text only, so a request with images trusts a count far above it.
+    // The estimate counts text only; each image adds room, so an image-heavy request keeps a real
+    // count far above the text estimate while a spike on a request with a few images is still dropped.
     const window = 1_000;
     const steady = 400;
     const spike = steady * 3;
@@ -1010,11 +1011,13 @@ describe("Cursor live client-tool Run bridge", () => {
       turn([checkpoint(spike)]),
       turn([checkpoint(overflow)]),
       turn([checkpoint(freshSpike, 500_000)]),
+      turn([checkpoint(freshSpike, 500_000)]),
+      turn([]),
     ]);
-    const send = async (userId: string, withImage = false) => {
+    const send = async (userId: string, images = 0) => {
       const request = cursorRequest(userId, "grok-4.5");
       return collectAdapterEvents(await harness.adapter.stream(
-        withImage
+        images > 0
           ? {
             ...request,
             input: [{
@@ -1022,7 +1025,10 @@ describe("Cursor live client-tool Run bridge", () => {
               role: "user",
               content: [
                 { type: "input_text", text: "Read README.md." },
-                { type: "input_image", image_url: "data:image/png;base64,iVBORw0KGgo=" },
+                ...Array.from({ length: images }, () => ({
+                  type: "input_image" as const,
+                  image_url: "data:image/png;base64,iVBORw0KGgo=",
+                })),
               ],
             }],
           }
@@ -1048,10 +1054,15 @@ describe("Cursor live client-tool Run bridge", () => {
       await expect(send("session-occupancy")).rejects.toBeInstanceOf(ContextWindowExceededError);
       expect(harness.openedStreams).toBe(5);
 
-      const imaged = await send("session-image-occupancy", true);
+      const imaged = await send("session-image-occupancy", 60);
       expect(cursorCompletedUsage(imaged)?.input_tokens).toBeGreaterThan(window);
-      await expect(send("session-image-occupancy", true)).rejects.toBeInstanceOf(ContextWindowExceededError);
+      await expect(send("session-image-occupancy", 60)).rejects.toBeInstanceOf(ContextWindowExceededError);
       expect(harness.openedStreams).toBe(6);
+
+      const fewImages = await send("session-image-spike", 2);
+      expect(cursorCompletedUsage(fewImages)?.input_tokens).toBeLessThan(window);
+      expect(canonicalText(await send("session-image-spike", 2))).toBe("ok");
+      expect(harness.openedStreams).toBe(8);
     } finally {
       harness.adapter.dispose();
     }

@@ -426,8 +426,8 @@ export interface CursorRunPlan {
   readonly wireModelId: string;
   /** Request-local estimate from the exact root/action text sent to Cursor. */
   readonly estimatedInputTokens: number;
-  /** The request carries images, which the text estimate does not count. */
-  readonly carriesImages: boolean;
+  /** Images the request carries, which the text estimate does not count. */
+  readonly imageCount: number;
   /**
    * Size of the replay this turn re-uploads. Cursor caches nothing between turns —
    * every root is pulled back in full on each request — so this grows with the whole
@@ -470,7 +470,7 @@ interface CursorRunPreflight {
   readonly wireModelId: string;
   readonly maxMode?: true;
   readonly estimatedInputTokens: number;
-  readonly carriesImages: boolean;
+  readonly imageCount: number;
 }
 
 interface CursorRunRequestContext {
@@ -549,9 +549,9 @@ function prepareCursorRun(
       wireModelId,
       ...(modelSelection.maxMode ? { maxMode: modelSelection.maxMode } : {}),
       estimatedInputTokens,
-      carriesImages: request.input.some((item) => (
-        item.type === "message" && canonicalMessageImages(item.content).length > 0
-      )),
+      imageCount: request.input.reduce((count, item) => (
+        item.type === "message" ? count + canonicalMessageImages(item.content).length : count
+      ), 0),
     },
     context: {
       toolBudget,
@@ -1290,7 +1290,7 @@ interface CursorLiveRun {
     signal: AbortSignal | undefined,
     estimatedInputTokens: number,
     clientContext: readonly string[],
-    carriesImages: boolean,
+    imageCount: number,
   ): AsyncIterable<CanonicalResponseEvent>;
   /** What the active segment did that its canonical events cannot show. */
   segmentSignals(): CursorSegmentSignals;
@@ -1776,7 +1776,7 @@ export class CursorAdapter implements AiGatewayAdapter {
           options.signal,
           preflight.estimatedInputTokens,
           bridgeBatch.clientContext,
-          preflight.carriesImages,
+          preflight.imageCount,
         ));
       }
       // Claude Code can issue auxiliary requests (for example title generation) under the same
@@ -2125,7 +2125,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       tools: plan.tools,
       redirectTools: plan.redirectTools,
       estimatedInputTokens: plan.estimatedInputTokens,
-      carriesImages: plan.carriesImages,
+      imageCount: plan.imageCount,
       previousContextCheckpoint,
       onContextCheckpoint: (checkpoint) => rememberCursorContextCheckpoint(
         identity.conversationId,
@@ -2540,23 +2540,29 @@ const CURSOR_CONTEXT_SPIKE_MAX_MULTIPLE = 6;
 const CURSOR_CONTEXT_SPIKE_TOLERANCE = 0.004;
 const CURSOR_CONTEXT_MEASURED_FACTOR = 1.7;
 const CURSOR_CONTEXT_SPIKE_MIN_EXCESS = 100_000;
+/**
+ * Room per image the text estimate leaves out (images ride in selectedContext). How Cursor counts
+ * an image is not observable, and m4 A1's steady checkpoints, images included, sat at the same 1.36
+ * times the estimate as conversations without any. So this is an upper bound, above Anthropic's
+ * ~1.6k tokens for an image at its 1568px long-edge limit: a few images still leave a 4-6 times
+ * spike far outside it, while an image-heavy conversation keeps its real count.
+ */
+const CURSOR_CONTEXT_IMAGE_ALLOWANCE_TOKENS = 5_000;
 
 function isCursorUsedTokensSpike(
   used: number,
-  estimate: number,
+  textEstimate: number,
   trusted: number | undefined,
-  imagesUncounted: boolean,
+  uncountedImages: number,
 ): boolean {
+  const estimate = textEstimate + uncountedImages * CURSOR_CONTEXT_IMAGE_ALLOWANCE_TOKENS;
   if (trusted !== undefined && trusted > 0) {
     const multiple = cursorIntegerMultiple(used, trusted);
     if (multiple !== undefined) {
       return !(estimate > 0 && used <= estimate * CURSOR_CONTEXT_MEASURED_FACTOR);
     }
   }
-  // The estimate counts text only; images ride in selectedContext. Against an estimate that
-  // misses them, a real count looks like a multiple, so an image request trusts the checkpoint.
-  return !imagesUncounted
-    && estimate > 0
+  return estimate > 0
     && used >= estimate * CURSOR_CONTEXT_SPIKE_MIN_MULTIPLE
     && used - estimate >= CURSOR_CONTEXT_SPIKE_MIN_EXCESS;
 }
@@ -2657,7 +2663,7 @@ interface CursorLiveRunOptions {
   readonly tools: readonly CursorWireTool[];
   readonly redirectTools: readonly CursorWireTool[];
   readonly estimatedInputTokens: number;
-  readonly carriesImages: boolean;
+  readonly imageCount: number;
   readonly previousContextCheckpoint: CursorContextCheckpoint | undefined;
   readonly onContextCheckpoint: (checkpoint: CursorContextCheckpoint) => void;
   readonly toolFinalizeGraceMs: number;
@@ -2704,7 +2710,7 @@ interface CursorResponseSegment {
   lastContentKind?: "text" | "reasoning";
   contentPhase: number;
   estimatedInputTokens: number;
-  carriesImages: boolean;
+  imageCount: number;
   checkpointVersionAtStart: number;
   contextWindowVersionAtStart: number;
   toolFinalizeTimer?: ReturnType<typeof setTimeout>;
@@ -2753,7 +2759,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     tools,
     redirectTools,
     estimatedInputTokens,
-    carriesImages,
+    imageCount,
     previousContextCheckpoint,
     toolFinalizeGraceMs,
     grepPathKind,
@@ -2946,7 +2952,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
   const createSegment = (
     signal: AbortSignal | undefined,
     segmentEstimatedInputTokens: number,
-    segmentCarriesImages: boolean,
+    segmentImageCount: number,
   ): CursorResponseSegment => {
     const segment: CursorResponseSegment = {
       responseId: `cursor_${randomUUID()}`,
@@ -2971,7 +2977,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       stepText: "",
       contentPhase: 0,
       estimatedInputTokens: segmentEstimatedInputTokens,
-      carriesImages: segmentCarriesImages,
+      imageCount: segmentImageCount,
       checkpointVersionAtStart: checkpointVersion,
       contextWindowVersionAtStart: contextWindowVersion,
     };
@@ -3227,12 +3233,12 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       }
       if (checkpointContextTokens !== undefined) {
         const estimate = activeSegment?.estimatedInputTokens ?? estimatedInputTokens;
-        const imagesUncounted = activeSegment?.carriesImages ?? carriesImages;
+        const uncountedImages = activeSegment?.imageCount ?? imageCount;
         const trusted = latestContextCheckpoint?.contextTokens;
         // A new Run's first checkpoint can count the same conversation several times. That
         // multiple is not occupancy: remembering it refuses the next turn and reports it as
         // input tokens. A count the estimate already accounts for is real growth and stays.
-        if (!isCursorUsedTokensSpike(checkpointContextTokens, estimate, trusted, imagesUncounted)) {
+        if (!isCursorUsedTokensSpike(checkpointContextTokens, estimate, trusted, uncountedImages)) {
           latestContextCheckpoint = {
             contextTokens: checkpointContextTokens,
             ...(contextWindow === undefined ? {} : { contextWindow }),
@@ -3559,7 +3565,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     signal: AbortSignal | undefined,
     continuationEstimatedInputTokens: number,
     clientContext: readonly string[],
-    continuationCarriesImages: boolean,
+    continuationImageCount: number,
   ): AsyncIterable<CanonicalResponseEvent> => {
     if (state !== "parked" || !parkedCalls) {
       throw new Error("Cursor live Run is not parked");
@@ -3579,7 +3585,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       if (call.upstreamCallId !== undefined) settledToolIdentifiers.add(call.upstreamCallId);
       settledToolIdentifiers.add(call.toolCallId);
     }
-    const segment = createSegment(signal, continuationEstimatedInputTokens, continuationCarriesImages);
+    const segment = createSegment(signal, continuationEstimatedInputTokens, continuationImageCount);
     const contextWrite = cursorBridgeClientContextWrite(
       clientContext,
       calls.some((call) => call.nativeResultType === undefined),
@@ -3746,7 +3752,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     closeTransport(false);
   });
 
-  const initialSegment = createSegment(options.initialSignal, estimatedInputTokens, carriesImages);
+  const initialSegment = createSegment(options.initialSignal, estimatedInputTokens, imageCount);
   const run: CursorLiveRun = {
     descriptor,
     initialEvents: eventsFor(initialSegment),
