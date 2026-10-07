@@ -15,6 +15,7 @@ import {
 } from "@fleet-console/sdk/models";
 import {
   bareModelName,
+  buildGatewayModelQuota,
   CLAUDE_COMPAT_CONTEXT_WINDOW,
   CLAUDE_DEFAULT_CONTEXT_WINDOW,
   exposableEffortLadder,
@@ -125,6 +126,7 @@ function toRosterRow(
     id,
     label: rosterLabel(model, siblings),
     launch: { model: id },
+    ...buildGatewayModelQuota(model),
     ...(contextWindow ? { contextWindow } : {}),
     // 모델 정보 — Claude도 다른 모델과 같다. 호스트 전용은 위임 후보에서만 빠지고 선택기에는 그대로 선다.
     ...(selection.delegationModels.includes(model) ? {} : { hostOnly: true as const }),

@@ -366,7 +366,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
   async function loadCatalog(signal: AbortSignal | undefined) {
     const body = await loopback(CATALOG_PATH, CATALOG_TIMEOUT_MS, signal);
     if (!isRecord(body) || !Array.isArray(body.plugins)) return null;
-    const rows: { model: string; label: string; provider: string | null; efforts: string[]; available: boolean; reason?: string }[] = [];
+    const rows: { model: string; label: string; provider: string | null; efforts: string[]; available: boolean; reason?: string; quotaScope?: string; quotaPool?: string }[] = [];
     const seen = new Set<string>();
     for (const plugin of body.plugins) {
       if (!isRecord(plugin) || !Array.isArray(plugin.kinds)) continue;
@@ -380,7 +380,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             if (!model || seen.has(model)) continue;
             seen.add(model);
             const efforts = (row.chips ?? []).flatMap((chip) => (chip.launch.effort ? [chip.launch.effort] : []));
-            rows.push({ model, label: row.label, provider: providerOf(group.id, model), efforts, available, ...(reason ? { reason } : {}) });
+            rows.push({ model, label: row.label, provider: providerOf(group.id, model), efforts, available, ...(reason ? { reason } : {}), ...(row.quotaScope ? { quotaScope: row.quotaScope } : {}), ...(row.quotaPool ? { quotaPool: row.quotaPool } : {}) });
           }
         }
       }
@@ -393,11 +393,11 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     const body = await loopback(`${QUOTA_PATH}?stale=1`, QUOTA_TIMEOUT_MS, signal);
     const providers = isRecord(body) && isRecord(body.providers) ? body.providers : null;
     if (!providers || JSON.stringify(providers).length > QUOTA_MAX_BYTES) return null;
-    const quota: Record<string, { status: string; windows?: { id: string; label?: string; usedPercent: number; resetsAt?: number }[] }> = {};
+    const quota: Record<string, { status: string; windows?: { id: string; label?: string; usedPercent: number; resetsAt?: number; scope?: string; isAggregate?: boolean }[] }> = {};
     for (const [provider, entry] of Object.entries(providers)) {
       if (!isRecord(entry) || typeof entry.status !== "string") continue;
       const windows = Array.isArray(entry.windows) ? entry.windows.flatMap((window) => isRecord(window) && typeof window.id === "string" && typeof window.usedPercent === "number" && Number.isFinite(window.usedPercent)
-        ? [{ id: window.id, ...(typeof window.label === "string" ? { label: window.label.slice(0, 80) } : {}), usedPercent: window.usedPercent, ...(typeof window.resetsAt === "number" ? { resetsAt: window.resetsAt } : {}) }]
+        ? [{ id: window.id, ...(typeof window.label === "string" ? { label: window.label.slice(0, 80) } : {}), usedPercent: window.usedPercent, ...(typeof window.resetsAt === "number" ? { resetsAt: window.resetsAt } : {}), ...(typeof window.scope === "string" ? { scope: window.scope } : {}), ...(typeof window.isAggregate === "boolean" ? { isAggregate: window.isAggregate } : {}) }]
         : []) : [];
       quota[provider] = { status: entry.status, ...(windows.length ? { windows } : {}) };
     }

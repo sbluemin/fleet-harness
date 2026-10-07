@@ -42,6 +42,7 @@ describe("buildAgentCliLaunchKinds", () => {
             id: "sonnet[1m]",
             label: expect.any(String),
             launch: { model: "sonnet[1m]" },
+            quotaPool: "claude:shared",
             contextWindow: 1_000_000,
             capabilityClass: expect.any(String),
             effortAxis: EFFORT_AXIS,
@@ -58,6 +59,7 @@ describe("buildAgentCliLaunchKinds", () => {
             id: "codex--gpt-6-sol-fast",
             label: "GPT-6-Sol-Fast",
             launch: { model: "codex--gpt-6-sol-fast" },
+            quotaPool: "codex:shared",
             contextWindow: expect.any(Number),
             capabilityClass: expect.any(String),
             effortAxis: EFFORT_AXIS,
@@ -81,6 +83,7 @@ describe("buildAgentCliLaunchKinds", () => {
             id: "opencode--muse-spark-1.3-contributor",
             label: "Muse-Spark-1.3-Contributor",
             launch: { model: "opencode--muse-spark-1.3-contributor" },
+            quotaPool: "opencode:shared",
             contextWindow: expect.any(Number),
             capabilityClass: expect.any(String),
             effortAxis: MAX_LESS_AXIS,
@@ -110,6 +113,9 @@ describe("buildAgentCliLaunchKinds", () => {
       ["gateway:codex", [["codex--gpt-6-sol-fast", ["low", "high"]]]],
     ]);
     expect(agent.flatMap((group) => group.rows).some((row) => row.gatedEfforts !== undefined)).toBe(false);
+    // 공급자 안에서도 별도 풀인 모델은 카탈로그 원자료의 scope를 유지한다. HTTP/웹 파서도 같은 메타데이터를 보존한다.
+    const scoped = buildModelRoster(resolveAiGatewaySelection({ version: 1, models: [{ id: "cursor--grok-4.7-500k" }] }), "launch");
+    expect(parseModelRoster(JSON.parse(JSON.stringify(scoped)))[0]?.rows[0]).toMatchObject({ launch: { model: "cursor--grok-4.7-500k" }, quotaScope: "auto", quotaPool: "cursor:auto" });
     // launch 대상은 같은 행에 하네스 능력 ultra를 끝에 붙인다.
     expect(buildModelRoster(selection, "launch")[0]?.rows[0]?.chips?.map((chip) => chip.id)).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
 
