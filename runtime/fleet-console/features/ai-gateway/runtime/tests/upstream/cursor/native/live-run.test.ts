@@ -869,6 +869,21 @@ describe("Cursor live client-tool Run bridge", () => {
       const pastModifierRun = new BridgeCursorStream(cursorCompletionFrames(pastModifier));
       const pastModifierRecoveredRun = new BridgeCursorStream(cursorToolFrames([pastModifierRecovered]));
       const pastModifierHarness = cursorHarness([pastModifierRun, pastModifierRecoveredRun]);
+      // English settles on the last clause, and an action clause ahead of a condition is still to come.
+      const englishSteps = [
+        "The read failed, so I need to try another path.",
+        "I'll run the tests, and if they pass, I'll update the docs.",
+      ].map((text, index) => {
+        const recoveredCall = cursorCall(`call-resample-english-recovered-${index}`, 101 + index * 2);
+        return {
+          call: cursorCall(`call-resample-english-${index}`, 100 + index * 2),
+          recoveredCall,
+          harness: cursorHarness([
+            new BridgeCursorStream(cursorCompletionFrames(text)),
+            new BridgeCursorStream(cursorToolFrames([recoveredCall])),
+          ]),
+        };
+      });
       // A Skill body after the result is client context the bridge recognizes; the turn stays armed.
       const skillCall = cursorCall("call-resample-skill-body", 90);
       const skillRecovered = cursorCall("call-resample-skill-body-recovered", 91);
@@ -897,6 +912,10 @@ describe("Cursor live client-tool Run bridge", () => {
         const reported = await gateTurn(reportHarness, "session-resample-report", reportCall);
         const held = await gateTurn(approvalHarness, "session-resample-approval", approvalCall);
         const retried = await gateTurn(pastModifierHarness, "session-resample-past-modifier", pastModifierCall);
+        const englishRetried = [];
+        for (const [index, step] of englishSteps.entries()) {
+          englishRetried.push(await gateTurn(step.harness, `session-resample-english-${index}`, step.call));
+        }
         const skillRecovery = await gateTurn(skillHarness, "session-resample-skill-body", skillCall, [{
           type: "message",
           role: "user",
@@ -911,6 +930,8 @@ describe("Cursor live client-tool Run bridge", () => {
           approvalText: canonicalText(held),
           pastModifierStreams: pastModifierHarness.openedStreams,
           pastModifierCalls: addedFunctionCallIds(retried),
+          englishStreams: englishSteps.map((step) => step.harness.openedStreams),
+          englishCalls: englishRetried.map((events) => addedFunctionCallIds(events)),
           skillStreams: skillHarness.openedStreams,
           skillCalls: addedFunctionCallIds(skillRecovery),
         }).toEqual({
@@ -922,6 +943,8 @@ describe("Cursor live client-tool Run bridge", () => {
           approvalText: approval,
           pastModifierStreams: 2,
           pastModifierCalls: [pastModifierRecovered.callId],
+          englishStreams: [2, 2],
+          englishCalls: englishSteps.map((step) => [step.recoveredCall.callId]),
           skillStreams: 2,
           skillCalls: [skillRecovered.callId],
         });
@@ -930,6 +953,7 @@ describe("Cursor live client-tool Run bridge", () => {
         approvalHarness.adapter.dispose();
         pastModifierHarness.adapter.dispose();
         skillHarness.adapter.dispose();
+        for (const step of englishSteps) step.harness.adapter.dispose();
       }
     } finally {
       harness.adapter.dispose();

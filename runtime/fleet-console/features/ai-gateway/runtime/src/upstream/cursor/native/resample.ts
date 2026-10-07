@@ -100,11 +100,18 @@ function isWaitOrApproval(sentence: string): boolean {
  */
 function isPureConditional(sentence: string): boolean {
   const englishFuture = /\b(?:I['’]ll|I will)\b/iu.test(sentence);
-  if (englishFuture && /\b(?:if|when|once|unless)\b/iu.test(sentence)) return true;
+  const condition = englishFuture ? /\b(?:if|when|once|unless)\b/iu.exec(sentence) : null;
+  // `I'll run the tests, and if they pass, …`: the first clause is an unconditional action that is
+  // still to come. `I'll update the docs if the tests pass` hangs its action on the condition.
+  if (condition && !hasEnglishActionBeforeCondition(sentence.slice(0, condition.index))) return true;
   // `화면`의 면은 명사다. 조건 어미 면은 뒤에서 절이 갈라진다.
   const mark = sentence.search(/면(?!서)(?=\s|[,.!?？]|$)/u);
   if (mark < 0 || hasPositiveConnective(sentence.slice(0, mark))) return false;
   return hasKoreanFuture(sentence.slice(mark + 1));
+}
+
+function hasEnglishActionBeforeCondition(before: string): boolean {
+  return /\b(?:I['’]ll|I will)\b/iu.test(before) && /(?:\b(?:and|then|so|but)|;)\s*$/iu.test(before);
 }
 
 /** 고로 끝나는 명사. 뒤가 띄어 써져도 연결어미가 아니다(`회고 도착하면`). */
@@ -193,7 +200,10 @@ const ENGLISH_IRREGULAR_PAST = new Set([
  */
 function isEnglishCompletion(words: readonly string[]): boolean {
   if (ENGLISH_FORWARD_LEAD.test(words.join(" "))) return false;
-  const tokens = words
+  // Only the last clause's predicate settles the sentence: `The read failed, so I need to try
+  // another path.` still has its step ahead.
+  const clauses = words.join(" ").split(/;|,\s*(?=(?:so|and|but|then)\b)/iu);
+  const tokens = (clauses[clauses.length - 1] ?? "").split(/\s+/u)
     .map((word) => word.replace(/^[^A-Za-z]+|[^A-Za-z']+$/gu, "").toLowerCase())
     .filter((word) => /^[a-z][a-z']*$/u.test(word));
   for (let index = 0; index < tokens.length; index += 1) {
