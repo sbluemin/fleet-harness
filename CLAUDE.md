@@ -52,7 +52,7 @@ The permanent suite is a **minimal product-acceptance suite**, not a catalog of 
 
 ## Change records
 
-- Commits use English Conventional Commits. When editing an existing file, write its comments and generated text in that file's language rather than the session language; new code and new files keep current practice.
+- Commits use English Conventional Commits. When editing an existing file, write its comments and generated text in that file's language rather than the session language.
 - `CHANGELOG.md` and `CHANGELOG.ko.md` are compiler-owned outputs; never edit them directly.
 - Author a `.changelog.d/` fragment autonomously only for a product change users perceive as a feature-level delta. Omit otherwise, without a mandatory `no-changelog` declaration. That directory's instructions and the compiler own inclusion details, identity, and bilingual syntax.
 
