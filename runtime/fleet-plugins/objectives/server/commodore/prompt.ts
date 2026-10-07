@@ -81,11 +81,11 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
 - The person reads the log in ${LANGUAGE_NAME[language]}.`;
 }
 
-/** 깨움 턴 — 이유만. 내용(지시·정보·보드)은 사령관이 도구로 읽는다. */
+/** 깨움 턴 — 시각·실린 프롬프트 버전·이유만. 내용(지시·정보·보드)은 사령관이 도구로 읽는다. */
 export function wakeNote(at: Date, reasons: readonly string[]): string {
   const hh = String(at.getHours()).padStart(2, "0");
   const mm = String(at.getMinutes()).padStart(2, "0");
-  return `[wake ${hh}:${mm}] ${reasons.join("; ")}.`;
+  return `[wake ${hh}:${mm} · prompt v${COMMODORE_PROMPT_VERSION}] ${reasons.join("; ")}.`;
 }
 
 /** 교대·재시작으로 새로 연 세션의 첫 턴 머리 — 최근 행위 요약만. */
