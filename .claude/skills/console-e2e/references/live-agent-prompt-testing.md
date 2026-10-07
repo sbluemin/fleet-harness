@@ -114,8 +114,9 @@ Do not rely on the former `~/.fleet/auth.json` location or silently reconnect th
 root. Use only the credential path authorized in the preflight. Live turns spend real
 provider quota; keep prompts short and say so when reporting.
 
-Before a paid call uses a gateway model, confirm that the slot the run talks to lists it.
-The command prints only the listed model ids, never other settings:
+Before a paid call uses a non-Claude gateway model that the client selects, confirm that the
+slot the run talks to lists it; a model pinned with `FLEET_AI_GATEWAY_MODEL` skips that
+list. The command prints only the listed model ids, never other settings:
 
 ```bash
 node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const ids=s.version===1&&Array.isArray(s.models)?s.models.map((m)=>m.id):[]; console.log(ids.join("\n")||"(no models)"); process.exit(ids.includes(process.argv[2])?0:1)' '<console-slot>/ai-gateway.json' '<model id>'; echo "rc=$?"
