@@ -1290,6 +1290,65 @@ describe("Muse Code routing", () => {
       expect(againRes.body.match(/event: message_start/g)).toHaveLength(1);
       expect(againRes.body.match(/Now I'll run the tests\./g)).toHaveLength(1);
       expect(againRes.body).toContain('"stop_reason":"end_turn"');
+
+      // Early-preview contract (red): the first announcement must reach the client before the
+      // upstream function_call arrives. The second turn opens with a blob-less reasoning add
+      // (dropped by the adapter, as in run3:419/879), stays silent, then reports reasoning done
+      // before the call. The gate holds the call frames until the test has inspected what the
+      // client already received, so this asserts order, not timing.
+      const created2 = { type: "response.created", response: { id: "r5", model: "muse-spark-1.3-contributor", usage: null } };
+      const reasoningAddedNoBlob = { type: "response.output_item.added", output_index: 0, item: { type: "reasoning", id: REASONING_ID, summary: [] } };
+      const reasoningDoneWithBlob = { type: "response.output_item.done", output_index: 0, item: { type: "reasoning", id: REASONING_ID, encrypted_content: "muse-blob-early", summary: [] } };
+      const callFrames = [
+        { type: "response.output_item.added", output_index: 1, item: { type: "function_call", id: "fc_3", call_id: "call_3", name: "Bash", arguments: "" } },
+        { type: "response.function_call_arguments.done", item_id: "fc_3", output_index: 1, arguments: '{"command":"pnpm test"}' },
+        { type: "response.output_item.done", output_index: 1, item: { type: "function_call", id: "fc_3", call_id: "call_3", name: "Bash", arguments: '{"command":"pnpm test"}' } },
+        completed(30, 12),
+      ];
+      let holdReachedResolve!: () => void;
+      const holdReached = new Promise<void>((resolve) => { holdReachedResolve = resolve; });
+      let releaseSecond!: () => void;
+      const releaseGate = new Promise<void>((resolve) => { releaseSecond = resolve; });
+      const sseEncode = (frame: unknown) => new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`);
+      let earlyCalls = 0;
+      const earlyFetchMock = vi.fn<typeof fetch>(async () => {
+        earlyCalls += 1;
+        if (earlyCalls === 1) {
+          return new Response(announced.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""), {
+            headers: { "content-type": "text/event-stream" },
+          });
+        }
+        return new Response(new ReadableStream<Uint8Array>({
+          async start(controller) {
+            controller.enqueue(sseEncode(created2));
+            controller.enqueue(sseEncode(reasoningAddedNoBlob));
+            controller.enqueue(sseEncode(reasoningDoneWithBlob));
+            holdReachedResolve();
+            await releaseGate;
+            for (const frame of callFrames) controller.enqueue(sseEncode(frame));
+            controller.close();
+          },
+        }), { headers: { "content-type": "text/event-stream" } });
+      });
+      const earlyRouter = createAiGatewayRouter({ fetch: earlyFetchMock, readMuseCodeAuth: signedIn });
+      const earlyRes = response();
+      const earlyHandle = earlyRouter.handle(ctx({ res: earlyRes, token: ANTHROPIC_CRED, rawBody: mainTurn }));
+      try {
+        await vi.waitFor(() => expect(earlyCalls).toBe(2), { timeout: 5_000 });
+        await holdReached;
+        // Let the reasoning-done frame travel adapter → resample → downstream. A fix that emits
+        // the first announcement before the tool call lands here.
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const interim = earlyRes.body;
+        expect(interim).toContain("Now I'll run the tests.");
+      } finally {
+        releaseSecond();
+        await earlyHandle;
+        earlyRouter.dispose();
+      }
+      expect(earlyFetchMock).toHaveBeenCalledTimes(2);
+      expect(earlyRes.body.match(/Now I'll run the tests\./g)).toHaveLength(1);
+      expect(earlyRes.body.indexOf("Now I'll run the tests.")).toBeLessThan(earlyRes.body.indexOf('"name":"Bash"'));
     } finally {
       router.dispose();
     }
