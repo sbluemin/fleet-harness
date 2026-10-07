@@ -1237,6 +1237,7 @@ interface CursorLiveRun {
     results: readonly CursorCanonicalToolResult[],
     signal: AbortSignal | undefined,
     estimatedInputTokens: number,
+    clientContext: readonly string[],
   ): AsyncIterable<CanonicalResponseEvent>;
   /** What the active segment did that its canonical events cannot show. */
   segmentSignals(): CursorSegmentSignals;
@@ -1346,6 +1347,101 @@ function cursorSupersedeOutcome(input: readonly CanonicalInputItem[]): string {
     ? "result_batch_unrecognized_after_client_context"
     : "result_batch_unrecognized";
 }
+
+/**
+ * Where client context that followed a tool-result batch is written on the parked Run.
+ * `user-message` sends it after the results, as its own user message. `result-suffix`
+ * appends it to the last mcpResult body instead, for when that mid-run message is not
+ * read. Switching this constant is the whole fallback; the batch decision stays.
+ */
+const CURSOR_BRIDGE_CLIENT_CONTEXT_DELIVERY: "user-message" | "result-suffix" = "user-message";
+const CURSOR_TOOL_LOADED_CONTEXT = "Tool loaded.";
+const CURSOR_SKILL_BODY_PREFIX = "Base directory for this skill:";
+
+interface CursorBridgeToolBatch {
+  readonly results: readonly CursorCanonicalToolResult[];
+  readonly clientContext: readonly string[];
+}
+
+interface CursorBridgeContextWrite {
+  readonly userMessage: string | undefined;
+  readonly resultSuffix: string | undefined;
+}
+
+/**
+ * The bridge's own reading of a tool-result turn. Resample arming keeps
+ * {@link trailingCursorToolResultsPastClientContext}. A trailing user item counts only when every
+ * one of them is client context; anything else, including a reminder that also carries the user's
+ * words, leaves the batch unrecognized so the prompt takes the cold path.
+ */
+function cursorBridgeToolBatch(
+  input: readonly CanonicalInputItem[],
+): CursorBridgeToolBatch | undefined {
+  let end = input.length;
+  const clientContext: string[] = [];
+  while (end > 0) {
+    const text = cursorBridgeClientContextText(input[end - 1]);
+    if (text === undefined) break;
+    clientContext.unshift(text);
+    end -= 1;
+  }
+  const results = trailingCursorToolResults(input.slice(0, end));
+  if (!results) return undefined;
+  return { results, clientContext };
+}
+
+function cursorBridgeClientContextText(item: CanonicalInputItem | undefined): string | undefined {
+  if (item?.type !== "message" || item.role !== "user") return undefined;
+  if (canonicalMessageImages(item.content).length > 0) return undefined;
+  const text = canonicalMessageText(item.content);
+  return isCursorBridgeClientContext(text) ? text : undefined;
+}
+
+function isCursorBridgeClientContext(text: string): boolean {
+  return isCursorSystemReminderContext(text)
+    || text.trim() === CURSOR_TOOL_LOADED_CONTEXT
+    || isCursorNestedClaudeMemoryContext(text)
+    || isCursorSkillBodyContext(text);
+}
+
+/** A reminder with nothing outside its tags. Text after the tag is the user's own prompt. */
+function isCursorSystemReminderContext(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("<system-reminder>") || !trimmed.includes("</system-reminder>")) return false;
+  const outside = trimmed.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+  return outside.length === 0;
+}
+
+/**
+ * Claude Code's nested-memory rendering. The first line is `Contents of <path>:` and may name the
+ * instruction kind before the colon. Only a path that is `CLAUDE.md` is context.
+ */
+function isCursorNestedClaudeMemoryContext(text: string): boolean {
+  const firstLine = text.trimStart().split("\n", 1)[0]?.trim() ?? "";
+  const match = /^Contents of (.+):$/.exec(firstLine);
+  if (!match?.[1]) return false;
+  const suffixAt = match[1].lastIndexOf(" (");
+  const path = suffixAt >= 0 && match[1].endsWith(")") ? match[1].slice(0, suffixAt) : match[1];
+  return path === "CLAUDE.md" || path.endsWith("/CLAUDE.md") || path.endsWith("\\CLAUDE.md");
+}
+
+function isCursorSkillBodyContext(text: string): boolean {
+  const firstLine = text.trimStart().split("\n", 1)[0] ?? "";
+  return firstLine.startsWith(CURSOR_SKILL_BODY_PREFIX);
+}
+
+function cursorBridgeClientContextWrite(
+  texts: readonly string[],
+  hasMcpResult: boolean,
+): CursorBridgeContextWrite {
+  if (texts.length === 0) return { userMessage: undefined, resultSuffix: undefined };
+  const joined = texts.join("\n\n");
+  if (CURSOR_BRIDGE_CLIENT_CONTEXT_DELIVERY === "result-suffix" && hasMcpResult) {
+    return { userMessage: undefined, resultSuffix: `\n\n${joined}` };
+  }
+  return { userMessage: joined, resultSuffix: undefined };
+}
+
 
 function cursorLiveRunDescriptorMismatch(
   pending: CursorPendingLiveRun,
@@ -1484,7 +1580,8 @@ export class CursorAdapter implements AiGatewayAdapter {
       credentialFingerprint,
       identity.conversationId,
     );
-    const results = trailingCursorToolResults(request.input);
+    const bridgeBatch = cursorBridgeToolBatch(request.input);
+    const results = bridgeBatch?.results;
     let preparation: CursorRunPreparation;
     try {
       preparation = prepareCursorRun(request);
@@ -1561,7 +1658,7 @@ export class CursorAdapter implements AiGatewayAdapter {
     if (pending) {
       const descriptorMismatch = cursorLiveRunDescriptorMismatch(pending, descriptor);
       const mismatch = cursorLiveRunMismatch(pending, descriptor, results, request.input);
-      if (mismatch === undefined && results && this.claimPendingLiveRun(pending)) {
+      if (mismatch === undefined && bridgeBatch && this.claimPendingLiveRun(pending)) {
         rememberCursorWireModel(
           identity.conversationId,
           descriptor.credentialFingerprint,
@@ -1578,12 +1675,13 @@ export class CursorAdapter implements AiGatewayAdapter {
         pending.run.report("bridge.attach", {
           model: cursorDiagnosticLabel(request.model),
           outcome: "exact_match",
-          count: results.length,
+          count: bridgeBatch.results.length,
         });
         return resampled(pending.run, pending.run.attach(
-          results,
+          bridgeBatch.results,
           options.signal,
           preflight.estimatedInputTokens,
+          bridgeBatch.clientContext,
         ));
       }
       // Claude Code can issue auxiliary requests (for example title generation) under the same
@@ -3301,6 +3399,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     results: readonly CursorCanonicalToolResult[],
     signal: AbortSignal | undefined,
     continuationEstimatedInputTokens: number,
+    clientContext: readonly string[],
   ): AsyncIterable<CanonicalResponseEvent> => {
     if (state !== "parked" || !parkedCalls) {
       throw new Error("Cursor live Run is not parked");
@@ -3321,6 +3420,11 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       settledToolIdentifiers.add(call.toolCallId);
     }
     const segment = createSegment(signal, continuationEstimatedInputTokens);
+    const contextWrite = cursorBridgeClientContextWrite(
+      clientContext,
+      calls.some((call) => call.nativeResultType === undefined),
+    );
+    let mcpResultsRemaining = calls.filter((call) => call.nativeResultType === undefined).length;
     try {
       let mcpResultCount = 0;
       let nativeResultCount = 0;
@@ -3365,13 +3469,17 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
           nativeResultCount += 1;
           continue;
         }
+        const suffix = contextWrite.resultSuffix !== undefined && mcpResultsRemaining === 1
+          ? contextWrite.resultSuffix
+          : "";
+        mcpResultsRemaining -= 1;
         stream.write(encodeCursorClientMessage({
           execClientMessage: {
             id: call.messageId,
             execId: call.execId,
             mcpResult: {
               success: {
-                content: [{ text: { text: result.output } }],
+                content: [{ text: { text: `${result.output}${suffix}` } }],
                 isError: result.is_error === true,
               },
             },
@@ -3396,6 +3504,20 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
       dispose("mcp_result_write_error", failure);
+    }
+    if (contextWrite.userMessage !== undefined) {
+      try {
+        stream.write(encodeCursorClientMessage({
+          conversationAction: {
+            userMessageAction: {
+              userMessage: cursorUserMessagePayload(contextWrite.userMessage, []),
+            },
+          },
+        }));
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        dispose("mcp_result_write_error", failure);
+      }
     }
     // Now that a segment exists again, hand it the calls Cursor raced past the seal. The upstream
     // is still waiting on them, so they belong to this continuation rather than to nothing.

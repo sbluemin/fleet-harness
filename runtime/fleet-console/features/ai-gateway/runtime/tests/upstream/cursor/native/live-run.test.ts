@@ -744,10 +744,13 @@ describe("Cursor live client-tool Run bridge", () => {
     const recovered = cursorCall("call-resample-2", 2);
     const waiting = cursorCall("call-resample-4", 4);
     const announcement = "Now I'll run the tests.";
-    const firstRun = new BridgeCursorStream(cursorToolFrames([first]));
-    // Claude Code appends a background-job notice to the result turn as its own user text, so the
-    // bridge cold-resumes; the turn is still a tool-result turn and must stay armed.
-    const announcedRun = new BridgeCursorStream(cursorCompletionFrames(announcement));
+    // The notice is client context, so the continuation attaches and the parked Run completes with
+    // the announcement. The turn stays armed, and the one extra ask is still a new Run.
+    const firstRun = new BridgeCursorStream(
+      cursorToolFrames([first]),
+      cursorCompletionFrames(announcement),
+      1,
+    );
     const recoveredRun = new BridgeCursorStream(
       [
         { conversationCheckpointUpdate: { tokenDetails: { usedTokens: 5_000, maxTokens: 256_000 } } },
@@ -768,7 +771,6 @@ describe("Cursor live client-tool Run bridge", () => {
     const unwantedRun = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-5", 5)]));
     const harness = cursorHarness([
       firstRun,
-      announcedRun,
       recoveredRun,
       textAgainRun,
       yieldingRun,
@@ -818,7 +820,10 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(recovery.filter((event) => event.type === "response.created")).toHaveLength(1);
       expect(canonicalText(recovery)).toBe(announcement);
       expect(addedFunctionCallIds(recovery)).toEqual([recovered.callId]);
-      expect(announcedRun.closed).toBe(true);
+      expect(firstRun.closed).toBe(true);
+      expect(cursorClientWrites(firstRun).some((message) => (
+        JSON.stringify(message).includes("<system-reminder>A background task finished.</system-reminder>")
+      ))).toBe(true);
       expect(cursorClientWrites(recoveredRun)[0]).toMatchObject({
         runRequest: { action: { userMessageAction: { userMessage: { text: expect.any(String) } } } },
       });
@@ -826,7 +831,7 @@ describe("Cursor live client-tool Run bridge", () => {
       // The recovered Run stays warm for the client's next request even though that request is
       // smaller than the nudged one Cursor measured.
       const second = await turn({ ...initial, input: afterRecovered });
-      expect(harness.openedStreams).toBe(4);
+      expect(harness.openedStreams).toBe(3);
       expect(cursorMcpResultWrites(recoveredRun)).toHaveLength(1);
       // That continuation only announced too; a second ask that announces again is dropped, the
       // client gets the first answer, and there is no third ask.
@@ -841,10 +846,98 @@ describe("Cursor live client-tool Run bridge", () => {
       });
       expect(canonicalText(waited)).toBe("Waiting for the background job.");
       expect(addedFunctionCallIds(waited)).toEqual([]);
-      expect(harness.openedStreams).toBe(5);
+      expect(harness.openedStreams).toBe(4);
     } finally {
       harness.adapter.dispose();
     }
+  });
+
+  it("attaches a tool-result turn when client context follows the results and keeps that text", async () => {
+    // Claude Code appends client context as its own user item after tool results. Each shape below
+    // is one accepted tail, and all of them stay on the parked Run. A real question in that slot
+    // is the next prompt and must miss, including a reminder that also carries the user's words.
+    const clientTails = [
+      "<system-reminder>A background task finished.</system-reminder>",
+      "Tool loaded.",
+      "Contents of /tmp/fleet/CLAUDE.md:\n# Fleet\nUse the theater boundary.\n",
+      "Contents of /tmp/fleet/CLAUDE.md (project instructions, checked into the codebase):\n\n# Fleet\n",
+      "Base directory for this skill: /tmp/fleet/.claude/skills/git-worktree\n\n# Git Worktree\n",
+    ] as const;
+    const userPrompt = "What is the status of the deploy?";
+    // A reminder that also carries the user's words is still their next prompt. Attaching it
+    // would leave those words off the cold upload and out of the parked Run's tool result.
+    const reminderPlusPrompt = "<system-reminder>A background task finished.</system-reminder>\n\nWhat is the status of the deploy?";
+    const coldTails = [
+      userPrompt,
+      reminderPlusPrompt,
+      "Tool loaded. extra",
+      "Contents of /tmp/fleet/NOTES.md:\n# Notes\n",
+    ];
+
+    const observe = async (label: string, tail: string) => {
+      const call = cursorCall("call-client-context", 70);
+      const parked = new BridgeCursorStream(
+        cursorToolFrames([call]),
+        cursorCompletionFrames("continued"),
+        1,
+      );
+      const cold = new BridgeCursorStream(cursorCompletionFrames("cold"));
+      const diagnostics: CursorDiagnosticEvent[] = [];
+      const harness = cursorHarness([parked, cold], {
+        diagnostics: (event) => diagnostics.push(event),
+      });
+      const initial = cursorRequest(`session-client-context-${label}`, "grok-4.5");
+      const continuation = cursorContinuation(initial, [call], [cursorResult(call, "ok")]);
+      try {
+        await collectCursorResponse(harness.adapter, initial);
+        await collectCursorResponse(harness.adapter, {
+          ...continuation,
+          input: [
+            ...continuation.input,
+            { type: "message", role: "user", content: tail },
+          ],
+        });
+        const mismatch = diagnostics.find((event) => event.event === "bridge.mismatch");
+        return {
+          streams: harness.openedStreams,
+          attached: diagnostics.some((event) => (
+            event.event === "bridge.attach" && event.outcome === "exact_match"
+          )),
+          mismatch: mismatch?.outcome,
+          preserved: cursorClientWrites(parked).some((message) => (
+            JSON.stringify(message).includes(JSON.stringify(tail).slice(1, -1))
+          )),
+          mcpResults: cursorMcpResultWrites(parked).length,
+        };
+      } finally {
+        harness.adapter.dispose();
+      }
+    };
+
+    const attached = [];
+    for (const [index, tail] of clientTails.entries()) {
+      attached.push({ tail, ...(await observe(String(index), tail)) });
+    }
+    const missed = [];
+    for (const [index, tail] of coldTails.entries()) {
+      missed.push(await observe(`cold-${index}`, tail));
+    }
+
+    expect(attached).toEqual(clientTails.map((tail) => ({
+      tail,
+      streams: 1,
+      attached: true,
+      mismatch: undefined,
+      preserved: true,
+      mcpResults: 1,
+    })));
+    expect(missed).toEqual(coldTails.map(() => ({
+      streams: 2,
+      attached: false,
+      mismatch: "superseded_by_user_prompt",
+      preserved: false,
+      mcpResults: 0,
+    })));
   });
 
   it("keeps credential A parked while credential B cold-resumes the same conversation", async () => {
