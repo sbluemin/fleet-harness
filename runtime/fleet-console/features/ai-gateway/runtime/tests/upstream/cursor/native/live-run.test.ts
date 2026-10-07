@@ -518,11 +518,18 @@ describe("Cursor live client-tool Run bridge", () => {
         totalLines: 0,
         clientTruncated: false,
       });
-      // A single-file body has no path prefix. It must not be read as a file name.
-      expect(grepBranch("content", "[needle first]\nneedle second")?.content).toMatchObject({
-        matches: [],
-        totalLines: 0,
-      });
+      // A single-file Grep prints `N:text` / `N-text` rows with no path; the file is the searched path.
+      const singleFile = cursorNativeRedirectResultReplies({
+        messageId: 7,
+        execId: "native-grep-file",
+        nativeResultType: "grepResult",
+        nativeArgs: { pattern: "MATCH", path: "/repo/main.txt", outputMode: "content", pathKind: "file" },
+      }, "1-first context\n2:MATCH alpha\n3-following context\n--\n6-separator three\n7:MATCH beta\n8-last context", false);
+      const fileContent = Object.values((singleFile[0] as {
+        execClientMessage?: { grepResult?: { success?: { workspaceResults?: Record<string, { content?: unknown }> } } };
+      }).execClientMessage?.grepResult?.success?.workspaceResults ?? {})[0]?.content;
+      expect(fileContent).toMatchObject({ matches: [{ file: "/repo/main.txt" }], totalMatchedLines: 2 });
+      expect((fileContent as { matches: Array<{ matches: unknown[] }> }).matches[0]?.matches).toHaveLength(6);
     } finally {
       harness.adapter.dispose();
     }

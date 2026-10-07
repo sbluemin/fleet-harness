@@ -1043,7 +1043,9 @@ function buildGrepSuccess(
     const byFile = new Map<string, Array<Record<string, unknown>>>();
     let totalMatchedLines = 0;
     for (const line of noticed.body) {
-      const parsed = parseCallerContentLine(line);
+      const parsed = args.pathKind === "file"
+        ? parseCallerFileContentLine(args.path ?? "", line)
+        : parseCallerContentLine(line);
       if (!parsed) continue;
       const entries = byFile.get(parsed.file) ?? [];
       entries.push({
@@ -1144,6 +1146,30 @@ function parseCallerContentLine(line: string): {
     lineNumber,
     content: parsed[3],
     isContextLine: context !== null,
+  };
+}
+
+/**
+ * One row of a single-file Grep: `N:text`, or a context row `N-text`, with no path prefix. The
+ * text keeps its leading whitespace, trailing spaces and Unicode form. The `--` separator, the
+ * "No matches found" notice and a `<system-reminder>` line do not match and are skipped.
+ */
+function parseCallerFileContentLine(file: string, line: string): {
+  readonly file: string;
+  readonly lineNumber: number;
+  readonly content: string;
+  readonly isContextLine: boolean;
+} | null {
+  if (isCallerBlankLine(line)) return null;
+  const parsed = /^(\d+)([:-])(.*)$/.exec(line);
+  if (!parsed?.[1] || !parsed[2] || parsed[3] === undefined) return null;
+  const lineNumber = Number(parsed[1]);
+  if (!Number.isSafeInteger(lineNumber) || lineNumber < 1) return null;
+  return {
+    file,
+    lineNumber,
+    content: parsed[3],
+    isContextLine: parsed[2] === "-",
   };
 }
 
