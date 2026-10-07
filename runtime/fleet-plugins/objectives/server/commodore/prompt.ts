@@ -6,7 +6,7 @@
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
-export const COMMODORE_PROMPT_VERSION = 5;
+export const COMMODORE_PROMPT_VERSION = 6;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -60,6 +60,11 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
 - Before you write a success criterion, name the tool or command through which
   the objective's Commander or a member would obtain the evidence it asks for.
   If you cannot name one, rewrite the criterion.
+- A criterion that exists only because of an earlier verdict or an A/B branch
+  must state that premise in its own text, and what evidence stands when the
+  premise fails. An unconditional criterion needs no premise, and a data
+  condition inside product behavior ("shows X when it has a quotaScope") is
+  not a prior verdict.
 
 # Continuity
 - Each turn opens with a wake note naming what changed: an objective's status
