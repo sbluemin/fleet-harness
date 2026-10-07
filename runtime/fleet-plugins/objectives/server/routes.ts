@@ -10,7 +10,7 @@ import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.j
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type Objective } from "./types.js";
+import { inputIssues, createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type Objective } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -40,7 +40,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
     const body = await ctx.host.http.readJsonBody<unknown>(req);
     const parsed = schema.safeParse(body ?? {});
-    if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request", issues: inputIssues(parsed.error.issues) }); return true; }
     try {
       const value = await run(parsed.data, req);
       ctx.host.http.writeJson(res, 200, value ?? { ok: true });

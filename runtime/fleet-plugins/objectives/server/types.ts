@@ -1052,10 +1052,19 @@ export const followupSelectionSchema = z.object({
   followups: z.array(z.object({ id: ids, rev: z.number().int().min(1) }).strict()).min(1).max(MAX_FOLLOWUPS),
 });
 
+/** 새 입력에만 쓰는 상한 — 저장된 기록의 이전 상한은 유지한다. */
+export const MAX_SHORT_INPUT = 50;
+export const MAX_DECISION_QUESTION_INPUT = 100;
+
+/** 입력 원문 없이 거부된 필드와 한도만 돌려준다. union 안쪽의 한도도 보존한다. */
+export function inputIssues(issues: readonly z.core.$ZodIssue[]): { path: readonly PropertyKey[]; code: string; maximum?: number | bigint }[] {
+  return issues.flatMap((issue) => issue.code === "invalid_union" ? issue.errors.flatMap(inputIssues) : [{ path: issue.path, code: issue.code, ...(issue.code === "too_big" ? { maximum: issue.maximum } : {}) }]);
+}
+
 /** 지휘관이 올리는 질문 — 선택지는 0개(직접 쓰기만) 또는 2개 이상. 임무·구성원은 같은 목표의 id 다. */
 export const decisionQuestionSchema = z.object({
-  text: z.string().trim().min(1).max(MAX_DECISION_QUESTION),
-  options: z.array(z.object({ label: z.string().trim().min(1).max(MAX_DECISION_LABEL), description: z.string().trim().max(MAX_DECISION_DESCRIPTION).optional() }).strict()).max(MAX_DECISION_OPTIONS).refine((options) => options.length !== 1, { message: "one_option" }),
+  text: z.string().trim().min(1).max(MAX_DECISION_QUESTION_INPUT),
+  options: z.array(z.object({ label: z.string().trim().min(1).max(MAX_SHORT_INPUT), description: z.string().trim().max(MAX_SHORT_INPUT).optional() }).strict()).max(MAX_DECISION_OPTIONS).refine((options) => options.length !== 1, { message: "one_option" }),
   multiSelect: z.boolean().optional(),
   missionId: ids.optional(),
   memberId: ids.optional(),
@@ -1064,7 +1073,7 @@ export type DecisionQuestionInput = z.output<typeof decisionQuestionSchema>;
 /** 사람이 보드에서 보내는 답 — 요청의 모든 질문에 한 번에. 직접 쓴 말은 다듬지 않고 그대로 싣는다. */
 export const decisionAnswersSchema = z.object({
   requestId: ids,
-  answers: z.array(z.object({ questionId: ids, selectedOptionIds: z.array(ids).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_DECISION_ANSWER) }).strict()).min(1).max(MAX_DECISION_QUESTIONS),
+  answers: z.array(z.object({ questionId: ids, selectedOptionIds: z.array(ids).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_SHORT_INPUT) }).strict()).min(1).max(MAX_DECISION_QUESTIONS),
 }).strict();
 export type DecisionAnswersInput = z.output<typeof decisionAnswersSchema>;
 const storedDecisionOption = z.object({ id: ids, label: z.string().min(1).max(MAX_DECISION_LABEL), description: z.string().max(MAX_DECISION_DESCRIPTION).optional() }).strict();

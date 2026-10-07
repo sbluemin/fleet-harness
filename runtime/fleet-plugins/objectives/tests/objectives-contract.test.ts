@@ -1522,6 +1522,21 @@ describe("Objectives contract", () => {
     expect(sent.length).toBe(beforeAnswer);
     expect(store.find(commander)).toMatchObject({ decisionRequest: null });
     expect(store.find(commander)!.decisions.at(-1)).toMatchObject({ requestId: live.id });
+    // 입력 한도를 줄여도 이전 버전이 저장한 긴 요청·답·사령관 이유 때문에 목표 전체가 사라지지 않는다.
+    const file = path.join(objectivesDir, commander, "objective.json");
+    const legacy = JSON.parse(fs.readFileSync(file, "utf8"));
+    const legacyQuestion = { ...placed.questions[0], text: "q".repeat(1000), options: placed.questions[0]!.options.map((option) => ({ ...option, label: "l".repeat(120), description: "d".repeat(300) })) };
+    legacy.decisionRequest = { ...placed, questions: [legacyQuestion] };
+    legacy.decisionDelivery = { requestId: placed.id, at: 1, answers: [{ questionId: legacyQuestion.id, selectedOptionIds: [], text: "a".repeat(2000) }], by: { ...actor, why: "w".repeat(100) } };
+    legacy.decisions[0].question = { text: legacyQuestion.text, options: legacyQuestion.options, multiSelect: legacyQuestion.multiSelect };
+    legacy.decisions[0].answer.text = "a".repeat(2000);
+    fs.writeFileSync(file, JSON.stringify(legacy));
+    const legacyStore = createObjectiveStore({ dirOf: () => objectivesDir, operations: operationsHost, emit: () => {} });
+    const legacyReload = legacyStore.find(commander)!;
+    expect(legacyReload.decisionRequest).toEqual(legacy.decisionRequest);
+    expect(legacyReload.decisionDelivery).toEqual({ requestId: placed.id, at: 1, by: legacy.decisionDelivery.by });
+    expect(legacyStore.storedAnswers(commander, placed.id)).toEqual(legacy.decisionDelivery.answers);
+    expect(legacyReload.decisions).toEqual(legacy.decisions);
   });
 
   it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
@@ -1546,7 +1561,7 @@ describe("Objectives contract", () => {
     hostFault.sendError = "session_awaiting_input";
     expect((await route("commander/message", { objectiveId: commander, memberId: member, text: "again" })).value).toEqual({ error: "session_awaiting_input" });
     expect((await route("commander/message", { objectiveId: commander, memberId: "stranger", text: "hi" })).value).toEqual({ error: "unknown_member" });
-    expect((await route("commander/message", { objectiveId: commander, text: "   " })).value).toEqual({ error: "invalid_request" });
+    expect((await route("commander/message", { objectiveId: commander, text: "   " })).value).toEqual({ error: "invalid_request", issues: [{ path: ["text"], code: "too_small" }] });
     expect(sent.length).toBe(sends);
   });
 

@@ -667,6 +667,9 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
         }
       }, 250);
       authorizationTimer.unref?.();
+      // 원문을 돌려주지 않고 필드와 한도를 알린다. union 안쪽의 실패도 펼친다.
+      const inputIssues = (issues: readonly z.core.$ZodIssue[]): { path: readonly PropertyKey[]; code: string; maximum?: number | bigint }[] =>
+        issues.flatMap((issue) => issue.code === "invalid_union" ? issue.errors.flatMap(inputIssues) : [{ path: issue.path, code: issue.code, ...(issue.code === "too_big" ? { maximum: issue.maximum } : {}) }]);
       const schemas = new Map(specs.map((spec) => [spec.id, z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject]));
       const registerSpec = (spec: AgentToolSpec) => registry.registerAgentTool({
         ...spec,
@@ -686,7 +689,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
             deps.requests?.touch(label.startsWith("chat:") ? label.slice(5) : label, "console");
           }
           const parsed = schemas.get(spec.id)!.safeParse(args);
-          if (!parsed.success) return Promise.resolve({ ...text({ error: "invalid_arguments" }), isError: true });
+          if (!parsed.success) return Promise.resolve({ ...text({ error: "invalid_arguments", issues: inputIssues(parsed.error.issues) }), isError: true });
           const label = ctx.sessionLabel ?? "embedded";
           if (ctx.signal?.aborted) return { ...text({ error: "console_use_stopped" }), isError: true };
           let use = uses.get(label);

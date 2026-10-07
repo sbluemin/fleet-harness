@@ -33,9 +33,9 @@ const resultView = (result: ObjectiveResult) => {
 
 const STORED_WHOLE = 600;
 const STORED_EDGE = 300;
-export const withPin = (value: string, pin: string | undefined, max: number): string => {
+export const withPin = (value: string, pin: string | undefined, max: number, field?: string): string => {
   const joined = pinned(value, pin, max);
-  if (joined === null) throw new ObjectiveStoreError("text_with_pin_too_long", undefined, { limit: max });
+  if (joined === null) throw new ObjectiveStoreError("text_with_pin_too_long", undefined, { limit: max, ...(field ? { field } : {}) });
   return joined;
 };
 export const storedText = (value: string): string => {
