@@ -518,11 +518,65 @@ describe("Cursor live client-tool Run bridge", () => {
         totalLines: 0,
         clientTruncated: false,
       });
-      // A single-file body has no path prefix. It must not be read as a file name.
-      expect(grepBranch("content", "[needle first]\nneedle second")?.content).toMatchObject({
-        matches: [],
-        totalLines: 0,
-      });
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("reads a single-file native Grep result against the searched file once the path probe names it a file", async () => {
+    const path = "/repo/main.txt";
+    const call = cursorCall("native-grep-file", 31);
+    const stream = new BridgeCursorStream(
+      [{
+        execServerMessage: {
+          id: call.messageId,
+          execId: call.execId,
+          grepArgs: { pattern: "MATCH", path, outputMode: "content", toolCallId: call.callId },
+        },
+      }],
+      cursorCompletionFrames("grep file handled"),
+      1,
+    );
+    // The probe is injected; the default one stats the real filesystem.
+    const harness = cursorHarness([stream], { grepPathKind: async () => "file" });
+    const initial: CanonicalResponseRequest = {
+      ...cursorRequest("session-native-grep-file", "composer-2.5"),
+      tools: [{
+        type: "function",
+        name: "Grep",
+        description: "Search file contents",
+        parameters: {
+          type: "object",
+          properties: { pattern: { type: "string" }, path: { type: "string" }, output_mode: { type: "string" } },
+          required: ["pattern"],
+        },
+      }],
+    };
+
+    try {
+      const initialEvents = await collectCursorResponse(harness.adapter, initial);
+      const callId = addedFunctionCallIds(initialEvents)[0];
+      if (!callId) throw new Error("Missing redirected Grep call");
+      // Claude Code's `-C 1` output for one file: numbered rows with no path prefix.
+      const events = await collectCursorResponse(harness.adapter, cursorContinuation(
+        initial,
+        [{ ...call, name: "Grep" }],
+        [{
+          call_id: callId,
+          output: "1-first context\n2:MATCH alpha\n3-following context\n--\n6-separator three\n7:MATCH beta\n8-last context",
+        }],
+      ));
+      expect(canonicalText(events)).toBe("grep file handled");
+      const reply = cursorClientWrites(stream).find((write) => (
+        (write.execClientMessage as { grepResult?: unknown } | undefined)?.grepResult !== undefined
+      )) as {
+        execClientMessage: { grepResult: { success: { workspaceResults: Record<string, { content?: { matches: Array<{ file: string; matches: unknown[] }>; totalMatchedLines: number } }> } } };
+      } | undefined;
+      const content = Object.values(reply?.execClientMessage.grepResult.success.workspaceResults ?? {})[0]?.content;
+      expect(content?.matches).toHaveLength(1);
+      expect(content?.matches[0]?.file).toBe(path);
+      expect(content?.matches[0]?.matches).toHaveLength(6);
+      expect(content?.totalMatchedLines).toBe(2);
     } finally {
       harness.adapter.dispose();
     }

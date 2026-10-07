@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import http2 from "node:http2";
 
 import {
@@ -151,6 +153,11 @@ export interface CursorAdapterOptions {
    * callback failures so observability can never affect a model turn.
    */
   readonly diagnostics?: CursorDiagnosticSink;
+  /**
+   * 단일 파일 Grep 판별 seam. 절대 경로가 파일이면 "file", 그 밖에는 undefined를 돌려준다.
+   * 게이트웨이는 caller cwd를 모르므로 상대 경로는 기본 구현에서 판정하지 않는다.
+   */
+  readonly grepPathKind?: (path: string) => Promise<"file" | undefined>;
 }
 
 export type CursorDiagnosticEventName =
@@ -1213,6 +1220,11 @@ interface CursorPendingToolCorrelation {
   readonly nativeArgs?: Readonly<Record<string, string>>;
   readonly operationSequence?: number;
   readonly redirectAdapter?: "read-direct" | "grep-direct" | "glob-direct" | "grep-shell" | "shell-direct";
+  /**
+   * Filled by a path probe that runs while the caller executes the Grep. An unfinished probe leaves
+   * `kind` unset and the result is read as a directory listing.
+   */
+  readonly grepPathProbe?: { kind?: "file" };
 }
 
 type CursorCanonicalToolResult = Extract<CanonicalInputItem, { type: "function_call_output" }>;
@@ -1385,6 +1397,7 @@ export class CursorAdapter implements AiGatewayAdapter {
   private readonly pendingLiveRunTtlMs: number;
   private readonly pendingLiveRunCapacity: number;
   private readonly diagnostics: CursorDiagnosticSink | undefined;
+  private readonly grepPathKind: (path: string) => Promise<"file" | undefined>;
   private readonly conversationIdOverride: string | undefined;
   private readonly sessionIdOverride: string | undefined;
   private readonly pendingLiveRuns = new Map<string, CursorPendingLiveRun>();
@@ -1411,6 +1424,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       "pendingLiveRunCapacity",
     );
     this.diagnostics = options.diagnostics;
+    this.grepPathKind = options.grepPathKind ?? defaultCursorGrepPathKind;
     this.conversationIdOverride = options.conversationId;
     this.sessionIdOverride = options.sessionId;
   }
@@ -1927,6 +1941,7 @@ export class CursorAdapter implements AiGatewayAdapter {
         checkpoint,
       ),
       toolFinalizeGraceMs: this.toolFinalizeGraceMs,
+      grepPathKind: this.grepPathKind,
       semanticStallTimeoutMs: this.idleTimeoutMs,
       // Every Cursor model hands its client tool calls to this client, Auto and Composer included,
       // so every one of them is eligible for the live bridge.
@@ -2401,6 +2416,7 @@ interface CursorLiveRunOptions {
   readonly previousContextCheckpoint: CursorContextCheckpoint | undefined;
   readonly onContextCheckpoint: (checkpoint: CursorContextCheckpoint) => void;
   readonly toolFinalizeGraceMs: number;
+  readonly grepPathKind: (path: string) => Promise<"file" | undefined>;
   readonly semanticStallTimeoutMs: number;
   readonly bridgeEnabled: boolean;
   readonly initialSignal: AbortSignal | undefined;
@@ -2468,6 +2484,19 @@ function cursorContentItemId(segment: CursorResponseSegment, kind: "text" | "rea
   return kind === "text" ? `${segment.itemId}${suffix}` : `${segment.itemId}_reasoning${suffix}`;
 }
 
+/**
+ * An absolute path only: the gateway does not know the caller's cwd. A symlink is followed. The
+ * stat is asynchronous because a synchronous one blocks the event loop on a slow filesystem.
+ */
+async function defaultCursorGrepPathKind(path: string): Promise<"file" | undefined> {
+  if (!isAbsolute(path)) return undefined;
+  try {
+    return (await stat(path)).isFile() ? "file" : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
   const {
     stream,
@@ -2480,6 +2509,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     estimatedInputTokens,
     previousContextCheckpoint,
     toolFinalizeGraceMs,
+    grepPathKind,
     semanticStallTimeoutMs,
     report,
   } = options;
@@ -3093,6 +3123,18 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
         const entry = ensureToolItem(redirect.call);
         if (entry.suspended) invalidateToolCorrelation([entry]);
         entry.suspended = true;
+        // The probe starts here and is not awaited: the caller's own Grep round trip outlasts it.
+        const grepPathProbe: { kind?: "file" } | undefined = redirect.adapter === "grep-direct"
+          ? {}
+          : undefined;
+        if (grepPathProbe) {
+          void Promise.resolve()
+            .then(() => grepPathKind(redirect.nativeArgs.path ?? ""))
+            .then((kind) => {
+              if (kind === "file") grepPathProbe.kind = "file";
+            })
+            .catch(() => undefined);
+        }
         entry.correlation = activeSegment.correlationInvalid || entry.correlationInvalid
           ? undefined
           : {
@@ -3105,6 +3147,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
             nativeArgs: redirect.nativeArgs,
             operationSequence,
             redirectAdapter: redirect.adapter,
+            ...(grepPathProbe ? { grepPathProbe } : {}),
           };
         completeToolItem(entry, redirect.call);
         report("client.reply", {
@@ -3290,12 +3333,15 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
             operationSequence: call.operationSequence,
             adapter: call.redirectAdapter,
           });
+          const nativeArgs = call.nativeArgs && call.grepPathProbe?.kind === "file"
+            ? { ...call.nativeArgs, pathKind: "file" }
+            : call.nativeArgs;
           const replies = cursorNativeRedirectResultReplies(
             {
               messageId: call.messageId,
               execId: call.execId,
               nativeResultType: call.nativeResultType,
-              ...(call.nativeArgs ? { nativeArgs: call.nativeArgs } : {}),
+              ...(nativeArgs ? { nativeArgs } : {}),
             },
             result.output,
             result.is_error === true,
