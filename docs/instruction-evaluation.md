@@ -49,7 +49,7 @@ OUT=$(diff -rq "$T/before" "$T/after" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/tree-diff.out"; printf '%s\n' "$rc" > "$E/tree-diff.rc"
 ```
 
-`diff`의 0은 동일, 1은 차이 발견, 2 이상은 실패다. 파일 수만 세지 말고 모든 차이가 선언한 변경 경계에 속하는지 원문으로 확인한다. archive에는 `.git`·설치된 의존성·미커밋 변경이 없다. 추출 트리는 기존 체크아웃 아래에 두지 않는다. 추출 디렉터리와 그 상위 경로의 `CLAUDE.md`·`CLAUDE.local.md`가 의도치 않게 섞이지 않는지 확인하고, **각 회차는 해당 추출 트리 안에서 실행**한다. `--add-dir`로 다른 체크아웃을 추가하지 않는다. 과제의 하위 경로가 지침 로드를 결정하면 양쪽에서 같은 상대 경로로 이동한다.
+`diff`의 0은 동일, 1은 차이 발견, 2 이상은 실패다. 파일 수만 세지 말고 모든 차이가 선언한 변경 경계에 속하는지 원문으로 확인한다. archive에는 `.git`·설치된 의존성·미커밋 변경이 없다. 추출 트리는 기존 체크아웃 아래에 두지 않는다. 추출 디렉터리와 그 상위 경로의 `CLAUDE.md`·`CLAUDE.local.md`가 의도치 않게 섞이지 않는지 확인하고, **각 회차는 해당 추출 트리 안에서 실행**한다. `--add-dir`로 다른 체크아웃을 추가하지 않는다. 과제의 하위 경로가 지침 로드를 결정하면(하위 `CLAUDE.md` 변경 등) 그 저장소 상대 경로를 `TASK_DIR`로 봉인하고, 3단계의 `claude_call`이 양쪽에서 같은 하위 경로로 이동해 실행한다. 기본값은 루트(`.`)다.
 
 자동 탐색은 유지한다. `--bare`나 별도 시스템 프롬프트에 지침을 주입하는 방식으로 바꾸면 실제 세션과 지침의 위치·포장이 달라지므로 이 경로와 동등한 평가가 아니다. 도구를 끈 상태에서 참조 문서가 필요한 과제는 선택한 참조의 **각 버전 원문**을 입력 문맥으로 함께 제공한다. 선택 목록과 순서는 고정하고 요청 본문에서 차이를 확인한다. 이것은 고정 검색 조건의 응답 평가이지 모델이 실제로 참조를 열었다는 증거가 아니다.
 
@@ -77,7 +77,7 @@ printf '%s\n' "$OUT" > "$E/memory.sha256"; printf '%s\n' "$rc" > "$E/memory.sha2
 ```bash
 CLAUDE_BIN=$(command -v claude)
 claude_call() {
-  (cd "$T/$1" || exit
+  (cd "$T/$1/${TASK_DIR:-.}" || exit
     [ -n "$PROMPT" ] && [ -f "$E/context-paths.txt" ] || exit 1
     INPUT=$PROMPT
     while IFS= read -r path; do
@@ -216,6 +216,7 @@ printf '%s\n' "$OUT" > "$E/fixture-wrapper.out"; printf '%s\n' "$rc" > "$E/fixtu
 ```bash
 OUT=$(shasum -a 256 "$E/task.txt" "$E/context-paths.txt" "$E/rubric.md" "$E/conditions.md" "$E/before.commit" "$E/after.commit" "$E/common-memory.md" "$E/input-before.txt" "$E/input-after.txt" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/sealed.sha256"; printf '%s\n' "$rc" > "$E/sealed.sha256.rc"
+[ "$rc" -eq 0 ] || exit "$rc"
 OUT=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/sealed-at.out"; printf '%s\n' "$rc" > "$E/sealed-at.rc"
 ```
@@ -252,7 +253,7 @@ unset API_KEY
 
 ## 6. 번호만 보는 판독과 결과
 
-실행 전 판독자는 과제·기준과 출력 번호만 보도록 정한다. 실행 모델과 다른 계열의 모델을 사용하고, 그 판독 호출도 유료면 별도 승인을 받는다. 각 `run-번호.json`의 `result`만 무작위 판독 번호의 `번호.txt`로 추출한다. 실행 순서는 전·후 교대라 이 문서를 읽은 판독자가 실행 번호의 홀짝으로 버전을 알아낼 수 있으므로, 판독 번호는 실행 번호와 다른 무작위 순열로 붙이고 그 대응표는 `unblind/`에 둔다. 버전·모델·경로·시간·비용을 드러내는 CLI 메타데이터와 대응표는 판독자에게 주지 않는다. 출력 자체가 버전을 드러내면 마스킹 여부를 사전에 정하고 눈가림의 한계를 보고한다.
+실행 전 판독자는 과제·기준과 출력 번호만 보도록 정한다. 실행 모델과 다른 계열의 모델을 사용하고, 그 판독 호출도 유료면 별도 승인을 받는다. 각 `run-번호.json`의 `result`만 무작위 판독 번호의 `번호.txt`로 추출한다. 실행 순서는 전·후 교대라 이 문서를 읽은 판독자가 실행 번호의 홀짝으로 버전을 알아낼 수 있으므로, 판독 번호는 실행 번호와 다른 무작위 순열로 붙이고 그 대응표는 `unblind/`에 둔다. 파일은 판독 번호 순서로 만들어 생성 시각이 실행 순서를 드러내지 않게 한다. 버전·모델·경로·시간·비용을 드러내는 CLI 메타데이터와 대응표는 판독자에게 주지 않는다. 출력 자체가 버전을 드러내면 마스킹 여부를 사전에 정하고 눈가림의 한계를 보고한다.
 
 ```bash
 mkdir -p "$E/blind" "$E/unblind"
@@ -261,13 +262,13 @@ OUT=$(awk -v n="$N" 'BEGIN { srand(); for (i = 1; i <= n; i++) a[i] = i
   for (i = 1; i <= n; i++) print i "\t" a[i] }' 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/unblind/blind-map.tsv"; printf '%s\n' "$rc" > "$E/unblind/blind-map.rc"
 [ "$rc" -eq 0 ] || exit "$rc"
-i=1
-while [ "$i" -le "$N" ]; do
-  label=$(awk -F '\t' -v i="$i" '$1 == i { print $2 }' "$E/unblind/blind-map.tsv")
+label=1
+while [ "$label" -le "$N" ]; do
+  i=$(awk -F '\t' -v l="$label" '$2 == l { print $1 }' "$E/unblind/blind-map.tsv")
   OUT=$(jq -er '.result' "$E/run-$i.json" 2>&1); rc=$?
   printf '%s\n' "$OUT" > "$E/blind/$label.txt"; printf '%s\n' "$rc" > "$E/unblind/blind-$i.rc"
   [ "$rc" -eq 0 ] || exit "$rc"
-  i=$((i + 1))
+  label=$((label + 1))
 done
 ```
 
