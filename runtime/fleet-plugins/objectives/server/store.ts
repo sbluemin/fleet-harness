@@ -205,6 +205,7 @@ export interface ObjectiveStore {
   memberFailure(memberId: string): ObjectiveMemberFailure | undefined;
   settleMemberFailure(memberId: string, failure: ConsoleTurnFailure | null): ObjectiveMemberFailure | undefined;
   acknowledgeMemberFailure(memberId: string): void;
+  recordMemberNotificationFailure(memberId: string, failure: NonNullable<ObjectiveMemberFailure["notificationFailure"]>): void;
   /** 지휘관 Operation 이 복원 불가로 사라졌다 — 레코드와 첨부를 지운다. 담당이었다면 그 임무의 연결을 푼다. */
   forget(operationId: string): void;
   /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. */
@@ -1186,6 +1187,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     acknowledgeMemberFailure(memberId) {
       const failure = memberFailures.get(memberId);
       if (failure) memberFailures.set(memberId, { ...failure, acknowledged: true });
+    },
+    recordMemberNotificationFailure(memberId, notificationFailure) {
+      const failure = memberFailures.get(memberId);
+      if (failure) memberFailures.set(memberId, { ...failure, notificationFailure });
     },
     refresh(operationId) {
       const node = operationNode(operationId);
