@@ -116,10 +116,11 @@ provider quota; keep prompts short and say so when reporting.
 
 Before a paid call uses a non-Claude gateway model that the client selects, confirm that the
 slot the run talks to lists it; a model pinned with `FLEET_AI_GATEWAY_MODEL` skips that
-list. The command prints only the listed model ids, never other settings:
+list. The slot stores catalog ids, so the command drops the client's `claude-gateway--` prefix
+and `[1m]` marker before comparing; it prints only the listed model ids, never other settings:
 
 ```bash
-node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const ids=s.version===1&&Array.isArray(s.models)?s.models.map((m)=>m.id):[]; console.log(ids.join("\n")||"(no models)"); process.exit(ids.includes(process.argv[2])?0:1)' '<console-slot>/ai-gateway.json' '<model id>'; echo "rc=$?"
+node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const ids=s.version===1&&Array.isArray(s.models)?s.models.map((m)=>m.id):[]; console.log(ids.join("\n")||"(no models)"); process.exit(ids.includes(process.argv[2].replace(/^claude-gateway--/,"").replace(/\[1m\]$/i,""))?0:1)' '<console-slot>/ai-gateway.json' '<model id>'; echo "rc=$?"
 ```
 
 `rc=0` means the slot lists it. Any other code (no file, no `models`, or the id absent)
