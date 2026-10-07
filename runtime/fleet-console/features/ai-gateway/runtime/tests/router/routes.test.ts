@@ -1358,6 +1358,97 @@ describe("Muse Code routing", () => {
     }
   });
 
+  it("does not ask again after a turn-yielding tool result, and still recovers a foreground Bash", async () => {
+    // ScheduleWakeup, and Bash only when run_in_background is true, end the turn on purpose.
+    // Asking again would poll or start the job twice. A foreground Bash is not a yield and still recovers.
+    const created = { type: "response.created", response: { id: "r6", model: "muse-spark-1.3-contributor", usage: null } };
+    const completed = (outputTokens: number, reasoningTokens: number) => ({
+      type: "response.completed",
+      response: {
+        id: "r6",
+        model: "muse-spark-1.3-contributor",
+        status: "completed",
+        usage: { input_tokens: 10, output_tokens: outputTokens, output_tokens_details: { reasoning_tokens: reasoningTokens } },
+      },
+    });
+    const announced = (text: string) => [
+      created,
+      { type: "response.output_item.added", output_index: 0, item: { type: "message", id: "msg_y", role: "assistant" } },
+      { type: "response.output_text.delta", item_id: "msg_y", output_index: 0, content_index: 0, delta: text },
+      completed(8, 0),
+    ];
+    const recovered = [
+      created,
+      { type: "response.output_item.added", output_index: 0, item: { type: "function_call", id: "fc_y", call_id: "call_y", name: "Bash", arguments: "" } },
+      { type: "response.function_call_arguments.done", item_id: "fc_y", output_index: 0, arguments: '{"command":"pnpm test"}' },
+      { type: "response.output_item.done", output_index: 0, item: { type: "function_call", id: "fc_y", call_id: "call_y", name: "Bash", arguments: '{"command":"pnpm test"}' } },
+      completed(12, 0),
+    ];
+    // Yield turns consume only their announcement. The foreground Bash consumes the recovery too.
+    const scripts = [
+      announced("Waiting for the wakeup."),
+      announced("Waiting for the background job."),
+      announced("Now I'll run the tests."),
+      recovered,
+    ];
+    let served = 0;
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      scripts[served++]!.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
+      { headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
+    const tools = [
+      { name: "ScheduleWakeup", input_schema: { type: "object", properties: {} } },
+      { name: "Bash", input_schema: { type: "object", properties: { command: { type: "string" }, run_in_background: { type: "boolean" } } } },
+    ];
+    const turn = (name: string, input: Record<string, unknown>, id: string) => ({
+      model: MUSE_MODEL,
+      max_tokens: 32_000,
+      stream: true,
+      tools,
+      messages: [
+        { role: "user", content: "continue" },
+        { role: "assistant", content: [{ type: "tool_use", id, name, input }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] },
+      ],
+    });
+    try {
+      const wakeup = response();
+      await router.handle(ctx({
+        res: wakeup,
+        token: ANTHROPIC_CRED,
+        rawBody: turn("ScheduleWakeup", { delaySeconds: 30 }, "call_w"),
+      }));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(wakeup.body).toContain("Waiting for the wakeup.");
+      expect(wakeup.body).toContain('"stop_reason":"end_turn"');
+      expect(wakeup.body).not.toContain('"name":"Bash"');
+
+      const background = response();
+      await router.handle(ctx({
+        res: background,
+        token: ANTHROPIC_CRED,
+        rawBody: turn("Bash", { command: "pnpm test", run_in_background: true }, "call_b"),
+      }));
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(background.body).toContain("Waiting for the background job.");
+      expect(background.body).toContain('"stop_reason":"end_turn"');
+      expect(background.body).not.toContain('"name":"Bash"');
+
+      const foreground = response();
+      await router.handle(ctx({
+        res: foreground,
+        token: ANTHROPIC_CRED,
+        rawBody: turn("Bash", { command: "pnpm test" }, "call_f"),
+      }));
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(foreground.body).toContain("Now I'll run the tests.");
+      expect(foreground.body).toContain('"stop_reason":"tool_use"');
+    } finally {
+      router.dispose();
+    }
+  });
+
   it("stops the upstream turn and frees its slot when the client hangs up mid-stream", async () => {
     // Node emits the request's `close` once the body is read, so a disconnect after that went
     // unheard: the provider generated to the end, the handler waited forever on a `drain` the dead
