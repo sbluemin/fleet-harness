@@ -17,7 +17,7 @@ import { wireLog } from "../../../transport/wire-log.js";
  * 새 Run을 한 번 연다. 같은 Run에 이어 쓰는 길은 없다: 서버가 `turnEnded` 뒤 0–1ms 안에 스트림을 닫는다.
  *
  * Muse 어댑터에도 같은 회복이 있지만 공유하지 않는다. 재요청 수단(새 HTTP/2 Run)·해제 신호(서버 수행 작업,
- * 마지막 단계 길이)·체크포인트 기준선이 Cursor 의미론이고, 이벤트 모양도 다르다. 이 동작은 canonical 이벤트
+ * 마지막 단계가 미래 행동 예고인지)·체크포인트 기준선이 Cursor 의미론이고, 이벤트 모양도 다르다. 이 동작은 canonical 이벤트
  * 수준에서 일어나므로 스트리밍·비스트리밍이 같은 결과를 받는다.
  */
 
@@ -50,13 +50,58 @@ const CURSOR_RESAMPLE_WIRE_MODEL = /^grok-4\.7(?:-|$)/;
 const MIN_RESAMPLE_MAX_OUTPUT_TOKENS = 1024;
 
 /**
- * 첫 응답 마지막 단계 텍스트의 추정 토큰 상한. 넘으면 정상 최종 답으로 보고 다시 받지 않는다.
- * 관측된 예고는 13–64(실사용 14–28, 2026-10-07 재현 13–64)였고, 정상 최종 답은 98–862였다(같은
- * 추정기, 한국어 2.5자/토큰). 짧은 정상 답(98–100)이 100 경계에 걸려 다시 받았다가 첫 답으로
- * 돌아가며 10–13초를 잃었으므로, 예고 최대값 위·정상 답 최소값 아래인 80에 둔다. 재는 대상은 응답
- * 전체가 아니라 마지막 단계다: 거절된 native read 뒤에 재시도 문장이 쌓여도(측정 151) 끝나는 예고는 짧다.
+ * 예고인 마지막 단계만 걸러 내는 보조 상한. 길이는 재요청 신호가 아니다. 80은 폐기했다: 2026-10-08 실측에서
+ * 36–62토큰의 완료 보고가 다시 받히고, 354토큰 예고는 길이 때문에 놓쳤다. 800은 그 예고보다 넓고
+ * 비정상적으로 긴 본문만 걸러 낸다. 재는 대상은 응답 전체가 아니라 마지막 단계다.
  */
-const MAX_RESAMPLE_FINAL_STEP_TOKENS = 80;
+const MAX_RESAMPLE_FINAL_STEP_TOKENS = 800;
+
+/** 영어 1인칭 미래·의도. 아포스트로피는 ASCII와 굽은 따옴표 둘 다. */
+const ENGLISH_FUTURE_ACTION =
+  /\b(?:I['’]ll|I will|Let me|I['’]m going to|I am going to)\b/iu;
+
+/** ㅆ 받침. 겠은 미래·의도이고 있·없은 존재라 과거로 세지 않는다. ㄹ 받침 뒤의 게는 `할게`다. */
+const SSANG_SIOT_INDEX = 20;
+const RIEUL_INDEX = 8;
+const NOT_PAST_SSANG = new Set(["겠", "있", "없"]);
+
+/**
+ * 마지막 단계가 아직 하지 않은 행동의 예고일 때만 참이다. 완료·보고(과거, 결과 동사)가 같이 있으면
+ * 애매하므로 예고가 아니다. 어느 쪽인지 모르면 다시 받지 않는다.
+ */
+function isFutureActionAnnouncement(text: string): boolean {
+  const step = text.trim();
+  if (step.length === 0) return false;
+  return hasFutureAction(step) && !hasFinishedReport(step);
+}
+
+function hasFutureAction(text: string): boolean {
+  if (ENGLISH_FUTURE_ACTION.test(text)) return true;
+  if (/확인합니다|실행합니다|겠(?:습니다|어요|다)|려고(?:\s*합니다)?/u.test(text)) return true;
+  for (let index = 0; index < text.length - 1; index += 1) {
+    if (jongseongIndex(text[index] ?? "") !== RIEUL_INDEX) continue;
+    if (text[index + 1] === "게") return true;
+  }
+  return false;
+}
+
+function hasFinishedReport(text: string): boolean {
+  if (/\b(?:checked|completed|finished|found|fixed|removed|updated|passed|failed|returned|confirmed|ran)\b/iu.test(text)) {
+    return true;
+  }
+  if (/(?:았|었|였)(?:습니다|다|어요|죠)/u.test(text)) return true;
+  for (const char of text) {
+    if (jongseongIndex(char) !== SSANG_SIOT_INDEX || NOT_PAST_SSANG.has(char)) continue;
+    return true;
+  }
+  return false;
+}
+
+function jongseongIndex(char: string): number | undefined {
+  const code = char.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return undefined;
+  return (code - 0xac00) % 28;
+}
 
 /** 턴을 넘기는 클라이언트 도구 호출. `whenArgumentTrue`가 있으면 그 인자가 `true`일 때만 해당한다. */
 export interface CursorYieldToolCall {
@@ -257,12 +302,13 @@ function resampleVerdict(
   text: string,
   signals: CursorSegmentSignals,
   finalStepTokens: number,
-): "incomplete" | "empty_text" | "server_work" | "long_final_step" | undefined {
+): "incomplete" | "empty_text" | "server_work" | "not_announcement" | "long_final_step" | undefined {
   if (event.response.incomplete !== undefined) return "incomplete";
   // 빈 응답은 다른 결함이다. Claude Code가 스스로 재개 넛지를 붙인다.
   if (text.trim().length === 0) return "empty_text";
   // 서버가 이 응답 안에서 웹 검색 등을 실제로 했다면 그 뒤의 텍스트는 결과 보고다.
   if (signals.serverWork) return "server_work";
+  if (!isFutureActionAnnouncement(signals.finalStepText)) return "not_announcement";
   if (finalStepTokens > MAX_RESAMPLE_FINAL_STEP_TOKENS) return "long_final_step";
   return undefined;
 }

@@ -759,7 +759,7 @@ describe("Cursor live client-tool Run bridge", () => {
         { interactionUpdate: { textDelta: { text: "Running the tests." } } },
         ...cursorToolFrames([recovered]),
       ],
-      cursorCompletionFrames("Still checking."),
+      cursorCompletionFrames("I'll check the rest."),
       1,
     );
     const textAgainRun = new BridgeCursorStream(cursorCompletionFrames("Checking again."));
@@ -808,7 +808,7 @@ describe("Cursor live client-tool Run bridge", () => {
     ];
     const prompted = [
       ...afterRecovered,
-      { type: "message" as const, role: "assistant" as const, content: "Still checking." },
+      { type: "message" as const, role: "assistant" as const, content: "I'll check the rest." },
       { type: "message" as const, role: "user" as const, content: "Wait for the job." },
     ];
 
@@ -836,7 +836,7 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(cursorMcpResultWrites(recoveredRun)).toHaveLength(1);
       // That continuation only announced too; a second ask that announces again is dropped, the
       // client gets the first answer, and there is no third ask.
-      expect(canonicalText(second)).toBe("Still checking.");
+      expect(canonicalText(second)).toBe("I'll check the rest.");
       expect(addedFunctionCallIds(second)).toEqual([]);
 
       // After a call that yields the turn to wait, a short text ending is the wait itself.
@@ -848,6 +848,54 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(canonicalText(waited)).toBe("Waiting for the background job.");
       expect(addedFunctionCallIds(waited)).toEqual([]);
       expect(harness.openedStreams).toBe(4);
+
+      // A finished report under 80 tokens used to be asked again, and the second answer could
+      // start a different tool. A future-tense announcement over that gate used to be dropped
+      // as a long final step. Own Runs, so the stream counts above stay the yield script.
+      const finishedReport = "The ranged read returned 12 lines.";
+      const reportCall = cursorCall("call-resample-report", 60);
+      const reportRun = new BridgeCursorStream(cursorCompletionFrames(finishedReport));
+      const reportUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-report-again", 61)]));
+      const reportHarness = cursorHarness([reportRun, reportUnwanted]);
+      const longAnnouncement = "이제 남은 이미지를 확인합니다. 삭제를 실행합니다. ".repeat(20);
+      const longCall = cursorCall("call-resample-long", 70);
+      const longRun = new BridgeCursorStream(cursorCompletionFrames(longAnnouncement));
+      const longRecovered = new BridgeCursorStream(cursorToolFrames([longCall]));
+      const longHarness = cursorHarness([longRun, longRecovered]);
+      const gateTurn = async (gateHarness: { adapter: typeof harness.adapter }, userId: string, spec: CursorCallSpec) => {
+        const gateAdapter = gateHarness.adapter.forHarness({});
+        const gateInitial = cursorRequest(userId, "grok-4.7");
+        return collectAdapterEvents(await gateAdapter.stream({
+          ...gateInitial,
+          input: [
+            ...gateInitial.input,
+            call(spec),
+            cursorResult(spec, "ok"),
+          ],
+        }, { apiKey: "cursor-test-token" }));
+      };
+      try {
+        const reported = await gateTurn(reportHarness, "session-resample-report", reportCall);
+        const continued = await gateTurn(longHarness, "session-resample-long", longCall);
+        expect({
+          reportStreams: reportHarness.openedStreams,
+          reportCalls: addedFunctionCallIds(reported),
+          reportText: canonicalText(reported),
+          longStreams: longHarness.openedStreams,
+          longCalls: addedFunctionCallIds(continued),
+          longText: canonicalText(continued),
+        }).toEqual({
+          reportStreams: 1,
+          reportCalls: [],
+          reportText: finishedReport,
+          longStreams: 2,
+          longCalls: [longCall.callId],
+          longText: longAnnouncement,
+        });
+      } finally {
+        reportHarness.adapter.dispose();
+        longHarness.adapter.dispose();
+      }
     } finally {
       harness.adapter.dispose();
     }
