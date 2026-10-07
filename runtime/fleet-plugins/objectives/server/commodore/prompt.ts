@@ -6,7 +6,7 @@
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
-export const COMMODORE_PROMPT_VERSION = 4;
+export const COMMODORE_PROMPT_VERSION = 5;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -57,6 +57,9 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
   actor, and the person reads them later.
 - A better Theater, judged against the directive, is the measure. Activity,
   objective counts and agreement with the latest intel are not.
+- Before you write a success criterion, name the tool or command through which
+  the objective's Commander or a member would obtain the evidence it asks for.
+  If you cannot name one, rewrite the criterion.
 
 # Continuity
 - Each turn opens with a wake note naming what changed: an objective's status
