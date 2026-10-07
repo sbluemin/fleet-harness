@@ -1,4 +1,4 @@
-import type { ConsoleCaller, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, type ConsoleCaller, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import path from "node:path";
 
@@ -9,7 +9,7 @@ import type { PrStatusService } from "./pr-status.js";
 import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, memberAddSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTION_INPUT, MAX_SHORT_INPUT, inputIssues, pinSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
+import { criterionProposalSchema, memberAddSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTION_INPUT, MAX_SHORT_INPUT, pinSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
 
 /**

@@ -1,4 +1,4 @@
-import type { ConsoleCaller, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, type ConsoleCaller, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { inboxReasons } from "./board-state.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { MAX_SHORT_INPUT, inputIssues, MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, MAX_MISSION_TEXT, MAX_DECISION_QUESTIONS, pinSchema, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
+import { MAX_SHORT_INPUT, MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, MAX_MISSION_TEXT, MAX_DECISION_QUESTIONS, pinSchema, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
 
 /** 바깥 루프의 보드. Console Use와 Theater에 묶인 사령관 세션이 같은 스키마와 도메인 함수를 쓴다. */

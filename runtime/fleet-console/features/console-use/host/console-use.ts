@@ -5,7 +5,7 @@ import { ConsoleControlError, readConsoleUseFlag, type ConsoleControl } from "./
 import type { UseHoldOutcome, UseRequestBroker } from "./use-requests.js";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore, type AgentToolSpec, type AgentToolCtx } from "@fleet-console/agent-runtime/tools";
-import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import type { OperationNode, OperationArchiveReceipt } from "@fleet-console/sdk/operations";
 import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
 import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
@@ -667,9 +667,6 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
         }
       }, 250);
       authorizationTimer.unref?.();
-      // 원문을 돌려주지 않고 필드와 한도를 알린다. union 안쪽의 실패도 펼친다.
-      const inputIssues = (issues: readonly z.core.$ZodIssue[]): { path: readonly PropertyKey[]; code: string; maximum?: number | bigint }[] =>
-        issues.flatMap((issue) => issue.code === "invalid_union" ? issue.errors.flatMap(inputIssues) : [{ path: issue.path, code: issue.code, ...(issue.code === "too_big" ? { maximum: issue.maximum } : {}) }]);
       const schemas = new Map(specs.map((spec) => [spec.id, z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject]));
       const registerSpec = (spec: AgentToolSpec) => registry.registerAgentTool({
         ...spec,

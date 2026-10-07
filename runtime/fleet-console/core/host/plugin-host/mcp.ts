@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
-import type { AdmiralMcpSession, ConsoleCaller, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, type AdmiralMcpSession, type ConsoleCaller, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
 export interface PluginAdmiralMcpHostOptions {
@@ -45,7 +45,7 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
           execute: async (args, context) => {
             if (controller.signal.aborted) return { content: [{ type: "text", text: "Plugin MCP is unavailable" }], isError: true };
             const parsed = schema.safeParse(args);
-            if (!parsed.success) return { content: [{ type: "text", text: "Invalid MCP arguments" }], isError: true };
+            if (!parsed.success) return { content: [{ type: "text", text: JSON.stringify({ error: "Invalid MCP arguments", issues: inputIssues(parsed.error.issues) }) }], isError: true };
             const label = unscopedLabel(context.sessionLabel);
             const caller = label && options.resolveCaller ? options.resolveCaller(label) : null;
             return tool.execute(parsed.data, { ...context, ...(caller ? { caller } : {}), signal: context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal });

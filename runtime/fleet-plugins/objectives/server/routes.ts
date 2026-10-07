@@ -1,3 +1,4 @@
+import { inputIssues } from "@fleet-console/sdk/mcp";
 import fs from "node:fs";
 import type http from "node:http";
 
@@ -10,7 +11,7 @@ import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.j
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { inputIssues, createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type Objective } from "./types.js";
+import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type Objective } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).

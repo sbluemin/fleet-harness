@@ -1056,11 +1056,6 @@ export const followupSelectionSchema = z.object({
 export const MAX_SHORT_INPUT = 50;
 export const MAX_DECISION_QUESTION_INPUT = 100;
 
-/** 입력 원문 없이 거부된 필드와 한도만 돌려준다. union 안쪽의 한도도 보존한다. */
-export function inputIssues(issues: readonly z.core.$ZodIssue[]): { path: readonly PropertyKey[]; code: string; maximum?: number | bigint }[] {
-  return issues.flatMap((issue) => issue.code === "invalid_union" ? issue.errors.flatMap(inputIssues) : [{ path: issue.path, code: issue.code, ...(issue.code === "too_big" ? { maximum: issue.maximum } : {}) }]);
-}
-
 /** 지휘관이 올리는 질문 — 선택지는 0개(직접 쓰기만) 또는 2개 이상. 임무·구성원은 같은 목표의 id 다. */
 export const decisionQuestionSchema = z.object({
   text: z.string().trim().min(1).max(MAX_DECISION_QUESTION_INPUT),
