@@ -1291,11 +1291,14 @@ describe("Muse Code routing", () => {
       expect(againRes.body.match(/Now I'll run the tests\./g)).toHaveLength(1);
       expect(againRes.body).toContain('"stop_reason":"end_turn"');
 
-      // Early-preview contract (red): the first announcement must reach the client before the
-      // upstream function_call arrives. The second turn opens with a blob-less reasoning add
-      // (dropped by the adapter, as in run3:419/879), stays silent, then reports reasoning done
-      // before the call. The gate holds the call frames until the test has inspected what the
-      // client already received, so this asserts order, not timing.
+      // Early-preview contract (red): the first announcement must reach the client while the
+      // upstream second turn has supplied nothing but a blob-less reasoning add (dropped by the
+      // adapter, as in run3:419/879) — i.e. long before reasoning completes. The gate holds
+      // reasoning done and every call frame back, so a fix gated on a visible reasoning signal
+      // alone (A) still fails here; only emitting the preview up front (C1) passes.
+      // Order is asserted with events only: the mock signals when it reaches the gate, and the
+      // test reads the downstream body until the preview arrives (releasing the gate on success).
+      // No sleep acts as a correctness condition; the waitFor bounds are failure timeouts.
       const created2 = { type: "response.created", response: { id: "r5", model: "muse-spark-1.3-contributor", usage: null } };
       const reasoningAddedNoBlob = { type: "response.output_item.added", output_index: 0, item: { type: "reasoning", id: REASONING_ID, summary: [] } };
       const reasoningDoneWithBlob = { type: "response.output_item.done", output_index: 0, item: { type: "reasoning", id: REASONING_ID, encrypted_content: "muse-blob-early", summary: [] } };
@@ -1305,10 +1308,9 @@ describe("Muse Code routing", () => {
         { type: "response.output_item.done", output_index: 1, item: { type: "function_call", id: "fc_3", call_id: "call_3", name: "Bash", arguments: '{"command":"pnpm test"}' } },
         completed(30, 12),
       ];
-      let holdReachedResolve!: () => void;
-      const holdReached = new Promise<void>((resolve) => { holdReachedResolve = resolve; });
-      let releaseSecond!: () => void;
+      let releaseSecond: () => void = () => {};
       const releaseGate = new Promise<void>((resolve) => { releaseSecond = resolve; });
+      let reachedGate = false;
       const sseEncode = (frame: unknown) => new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`);
       let earlyCalls = 0;
       const earlyFetchMock = vi.fn<typeof fetch>(async () => {
@@ -1322,9 +1324,9 @@ describe("Muse Code routing", () => {
           async start(controller) {
             controller.enqueue(sseEncode(created2));
             controller.enqueue(sseEncode(reasoningAddedNoBlob));
-            controller.enqueue(sseEncode(reasoningDoneWithBlob));
-            holdReachedResolve();
+            reachedGate = true;
             await releaseGate;
+            controller.enqueue(sseEncode(reasoningDoneWithBlob));
             for (const frame of callFrames) controller.enqueue(sseEncode(frame));
             controller.close();
           },
@@ -1335,12 +1337,10 @@ describe("Muse Code routing", () => {
       const earlyHandle = earlyRouter.handle(ctx({ res: earlyRes, token: ANTHROPIC_CRED, rawBody: mainTurn }));
       try {
         await vi.waitFor(() => expect(earlyCalls).toBe(2), { timeout: 5_000 });
-        await holdReached;
-        // Let the reasoning-done frame travel adapter → resample → downstream. A fix that emits
-        // the first announcement before the tool call lands here.
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        const interim = earlyRes.body;
-        expect(interim).toContain("Now I'll run the tests.");
+        await vi.waitFor(() => expect(reachedGate).toBe(true), { timeout: 5_000 });
+        // Reasoning done and the function call are still behind the gate. The first announcement
+        // must already be downstream — before the long reasoning completes.
+        await vi.waitFor(() => expect(earlyRes.body).toContain("Now I'll run the tests."), { timeout: 3_000 });
       } finally {
         releaseSecond();
         await earlyHandle;
