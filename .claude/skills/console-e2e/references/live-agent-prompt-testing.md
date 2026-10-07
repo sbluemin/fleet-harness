@@ -114,18 +114,36 @@ Do not rely on the former `~/.fleet/auth.json` location or silently reconnect th
 root. Use only the credential path authorized in the preflight. Live turns spend real
 provider quota; keep prompts short and say so when reporting.
 
-Before a paid call uses a non-Claude gateway model that the client selects, confirm that the
-slot the run talks to lists it; a model pinned with `FLEET_AI_GATEWAY_MODEL` skips that
-list. The slot stores catalog ids, so the command drops the client's `claude-gateway--` prefix
-and `[1m]` marker before comparing; it prints only the listed model ids, never other settings:
+During [paid-run planning](setup.md#before-a-paid-or-long-run), before boot or agent launch,
+confirm that the planned slot lists the non-Claude gateway model the client will select.
+If no-cost UI setup adds it after boot, repeat this check before the Operation launch and
+first paid call. A model pinned with `FLEET_AI_GATEWAY_MODEL` skips this exposure gate,
+not credential requirements. The slot stores catalog ids, so the command drops the client's
+`claude-gateway--` prefix and `[1m]` marker before comparing; it prints only a boolean:
 
 ```bash
-node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const ids=s.version===1&&Array.isArray(s.models)?s.models.map((m)=>m.id):[]; console.log(ids.join("\n")||"(no models)"); process.exit(ids.includes(process.argv[2].replace(/^claude-gateway--/,"").replace(/\[1m\]$/i,""))?0:1)' '<console-slot>/ai-gateway.json' '<model id>'; echo "rc=$?"
+jq -e --arg model '<model id>' '.version == 1 and (.models | type) == "array" and any(.models[]?; .id == ($model | sub("^claude-gateway--"; "") | sub("\\[1m\\]$"; ""; "i")))' '<console-slot>/ai-gateway.json'
+rc=$?; printf 'rc=%s\n' "$rc"
 ```
 
-`rc=0` means the slot lists it. Any other code (no file, no `models`, or the id absent)
-means the call would fail: add the model as above, or stop with no paid call and report an
-environment block.
+`rc=0` means the slot lists it. Any other code (no file, wrong version, no `models`, or
+the id absent) blocks the paid call: add the model as above and check again, or stop with no
+paid call and report an environment block. If `jq` is unavailable, retain the equivalent
+plain-Node check:
+
+```bash
+node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const ids=s.version===1&&Array.isArray(s.models)?s.models.map((m)=>m.id):[]; console.log(ids.join("\n")||"(no models)"); process.exit(ids.includes(process.argv[2].replace(/^claude-gateway--/,"").replace(/\[1m\]$/i,""))?0:1)' '<console-slot>/ai-gateway.json' '<model id>'
+rc=$?; printf 'rc=%s\n' "$rc"
+```
+
+The exposure gate is `isModelExposed` and the non-Claude 403 check in
+`runtime/fleet-console/features/ai-gateway/runtime/src/router/router.ts`:
+it compares the catalog id against `resolveAiGatewaySelection(settings).models` in
+`src/settings/index.ts` under that runtime. Adding a model to `models` enables it;
+there is no separate model `enabled` flag. `hostOnly` excludes delegation, not direct
+requests. Client-id normalization belongs to `findClaudeGatewayModel` in
+`src/downstream/harness/claude-code/discovery.ts`. This check covers exposure, not provider
+authentication or whether an arbitrary id exists in the current catalog.
 
 ## Clear the dialogs before the first click
 

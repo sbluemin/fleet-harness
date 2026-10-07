@@ -2,6 +2,13 @@
 
 Build and boot the owned Console before connecting with the selected browser driver. Consult **Isolated Development Data** in `docs/fleet-development-reference.md`. If the run may start Claude (terminal or SDK/chat), complete [Claude state and trust preflight](claude-state.md) first, leaving only its folder-dialog Theater trust step for after boot; Fleet slot isolation alone does not isolate agent state.
 
+## Before a paid or long run
+
+During planning, before boot or agent launch, check only the prerequisites the run needs. This additional preflight applies to paid provider calls and runs that may exceed the runner's default background lifetime, not short no-provider screen checks.
+
+- **Runtime lifetime (long runs):** record the expected time from `serve` launch through setup, scenarios, retries, capture, and cleanup, with a margin. Check the chosen runner's current timeout limits and explicitly set the managed `serve` timeout to cover that whole window; a quick successful boot does not prove that the runtime will survive it. If the window cannot fit, split the run into separately booted, verified segments and keep their evidence separate. Record the selected lifetime with the launch command.
+- **Authentication and model exposure (paid runs):** choose a no-provider fixture when it proves the claim; otherwise identify the authorized credential route before boot. If the claim needs the user's own login, read [When the claim needs a real login](#when-the-claim-needs-a-real-login) now and prepare its authorization and launch allowlist, rather than discovering the owned-home limitation after a turn. For a client-selected non-Claude gateway model, run the existing [slot model check](live-agent-prompt-testing.md#a-fresh-runtime-directory-exposes-no-gateway-models) against the planned slot now. A fresh slot may need the documented add-model UI after boot: plan that no-cost setup, then repeat the check before launching the Operation or sending a paid call. A failing check blocks paid execution, not the no-cost configuration needed to fix it. Reconfirm the actual launch against real-login step 5 before the first paid call. This preflight checks the launch route and model exposure, not whether the Keychain login is present or valid; leave credential access to the product and keep its existing stop-on-authentication-failure rule.
+
 ## Isolate the Console
 
 Never restart or reuse an unknown Console daemon. Build the requested source, choose a unique runtime directory, and start `serve` through [the isolated-environment wrapper](#keep-the-real-home-out) so that no unrelated browser tab opens and no real home is inherited:
@@ -43,7 +50,7 @@ The wrapper is an environment boundary for macOS and Linux, not an OS sandbox. I
 
 A fresh slot has no provider credentials. Do not copy real credentials, trigger login/token refresh, or silently reuse a user's root to make a test pass. Prefer a no-provider fixture when it proves the claim. A real-provider scenario needs an explicitly authorized credential path and quota use, with any non-isolated stores disclosed before launch.
 
-Run the server as a background/managed process, wait for `$E2E_DIR/console/console.lock`, read its port with the fixed read below, and confirm the route returns `200`. Seed a real Theater through the Console folder UI or authorized API only when the scenario needs it; do not copy the user's durable state. An API-registered Theater stays untrusted for Claude, so a terminal Operation that must receive a Console prompt needs the folder-UI route in [the trust preflight](claude-state.md#prepare-folder-trust-through-the-normal-gate).
+Run the server as a background/managed process with the lifetime selected in [long-run preflight](#before-a-paid-or-long-run) when applicable, wait for `$E2E_DIR/console/console.lock`, read its port with the fixed read below, and confirm the route returns `200`. Seed a real Theater through the Console folder UI or authorized API only when the scenario needs it; do not copy the user's durable state. An API-registered Theater stays untrusted for Claude, so a terminal Operation that must receive a Console prompt needs the folder-UI route in [the trust preflight](claude-state.md#prepare-folder-trust-through-the-normal-gate).
 
 Client changes require build plus reload. Host changes require build plus isolated server restart. Compare the asset name in `dist/client/index.html` with the served `/console/` HTML before blaming stale behavior.
 

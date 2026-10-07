@@ -43,6 +43,8 @@ A standalone browser cannot establish Desktop behavior, so SPA checks requested 
 
 ## Execution and completion
 
+Before starting a run that includes paid provider calls or may outlast the runner's default background lifetime, complete [Paid or long-run preflight](references/setup.md#before-a-paid-or-long-run) during planning, before boot or agent launch. Short, no-provider screen checks need no additional preflight; the existing isolation and diagnostics still apply.
+
 1. Build changed packages and the selected host in dependency order. Client changes require reload; host changes require an owned-server/app restart.
 2. Establish diagnostics before the scenario. First-load errors, rejections, and WebSocket lifecycle need pre-navigation instrumentation; post-load inspection misses them.
 3. Follow the user's exact action sequence and refresh snapshots after rerenders. Record the smallest DOM/state/network fingerprint distinguishing the defect. Before real pointer input, follow [Pointer target preflight](references/verification.md#pointer-target-preflight). Screenshots are required for visual claims; geometry and synthetic clicks do not prove real hit testing, focus, or transitions. Check relevant modal, keyboard, and inverse paths.
