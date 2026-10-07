@@ -10,8 +10,8 @@
 // A baseline is usually `git show origin/canary:<path> > <scratch>/baseline.ts`.
 // cases.json: [{ label, nativeResultType, nativeArgs, output, isError?, variants?, expect? }]
 //   expect.identical: true       — every variant must equal the baseline's result (needs --baseline)
-//   expect.files: [names]        — 파일명 배열을 정규화 없이 원문 그대로 비교
-//   expect.variantFiles: { nfd: [names], ... } — 해당 variant의 명시적 기대 배열; 없으면 expect.files 사용
+//   expect.files: [names]        — files list, compared exactly with no trimming or Unicode normalization
+//   expect.variantFiles: { nfd: [names], ... } — exact files list for that variant; others use expect.files
 //   expect.truncated: boolean    — files.clientTruncated
 // Exit code 1 when any expectation fails.
 import fs from "node:fs";
