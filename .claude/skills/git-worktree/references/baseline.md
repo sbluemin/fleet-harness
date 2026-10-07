@@ -2,7 +2,7 @@
 
 Use this route only for read-only source comparison, regression diagnosis, or bisect at the task's chosen revision. Builds and isolated execution are allowed; source edits and new commits belong in a separate branch worktree. The lifecycle below does not authorize removing pre-existing baselines.
 
-In local session records, a session started inside a nested checkout loaded that checkout's `CLAUDE.md` and not the main checkout's, while a session started in a separate git repository under it, such as a Theater created with `git init`, also loaded the main checkout's; the cause is not established. Do not place a comparison Theater or an Agent session's cwd in a separate repository inside the baseline; follow [Isolate the Console](../../console-e2e/references/setup.md#isolate-the-console). Before comparison commands, read this session's `instructions` attachment and confirm the main checkout's `CLAUDE.md` is absent from its `files` paths.
+A Claude Code session started anywhere in a linked worktree, including its non-repository subdirectories, loads that worktree's `CLAUDE.md` and not the main checkout's. A session started in a separate git repository nested under it, such as a Theater created with `git init`, also loads the main checkout's `CLAUDE.md`. Do not place a comparison Theater or an Agent session's cwd in a separate repository inside the baseline; follow [Isolate the Console](../../console-e2e/references/setup.md#isolate-the-console). Before comparison commands, read this session's `instructions` attachment and confirm the main checkout's `CLAUDE.md` is absent from its `files` paths.
 
 ## Create
 
