@@ -41,6 +41,7 @@ function mentionTargets(): readonly MentionTargetDescriptor[] {
       renderMark: () => <QuakerFigure morph={admiral} viewBox={QUAKER_HEAD_VIEW_BOX} />,
       quickLaunch: {
         identityColorToken: `--scuttlebutt-qk-id-${{ tori: "moss", bori: "crimson", dori: "cerulean" }[admiral]}`,
+        placeholder: t(`chat.greeting.${admiral}`),
         renderConversation: () => <QuickLaunchConversation admiral={admiral} />,
         renderCapabilities: () => <QuickLaunchGrants admiral={admiral} />,
       },

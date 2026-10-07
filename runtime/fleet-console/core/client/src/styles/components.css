@@ -16669,6 +16669,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   .quick-launch-lane-hint { display: none; }
 }
 .quick-launch-conversation { min-height: 0; border-bottom: 1px solid var(--surface-rim); }
+.quick-launch-conversation:has([aria-live="polite"][hidden]) { border-bottom: 0; }
 .quick-launch-card.has-conversation { display: flex; flex-direction: column; max-height: calc(100dvh - var(--space-5) * 2); }
 .quick-launch-card.has-conversation > .quick-launch-field,
 .quick-launch-card.has-conversation > .quick-launch-bar,
@@ -18032,6 +18033,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   /* 한 줄 계약을 푼다 — 이 폭에서는 말줄임으로도 예산이 안 나와, 선택 줄이 한 줄을 통째로 갖고
      전송이 아래 줄로 내려가는 것이 설계다. */
   .quick-launch-bar,
+  .quick-launch-bar.is-conversation,
   .quick-launch-launch-sel {
     flex-wrap: wrap;
   }

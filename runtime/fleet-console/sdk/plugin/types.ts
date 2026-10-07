@@ -85,6 +85,8 @@ export interface PluginMentionTargetAddress {
 export interface QuickLaunchConversationDescriptor {
   /** 기존 테마 정체색 토큰 이름(--로 시작). 호스트가 선택 밑줄에만 쓴다. */
   readonly identityColorToken?: string;
+  /** 대화 레인의 입력 안내문. 생략하면 호스트의 행선지 안내문을 쓴다. */
+  readonly placeholder?: string;
   readonly renderConversation: () => ReactNode;
   /** 실행 좌표 대신 표시할 권한 표면. */
   readonly renderCapabilities?: () => ReactNode;
