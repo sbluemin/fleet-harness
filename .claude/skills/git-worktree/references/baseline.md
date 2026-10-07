@@ -2,6 +2,8 @@
 
 Use this route only for read-only source comparison, regression diagnosis, or bisect at the task's chosen revision. Builds and isolated execution are allowed; source edits and new commits belong in a separate branch worktree. The lifecycle below does not authorize removing pre-existing baselines.
 
+A Claude Code session started anywhere in a linked worktree, including its non-repository subdirectories, loads that worktree's `CLAUDE.md` and not the main checkout's. A session started in a separate git repository nested under it, such as a Theater created with `git init`, also loads the main checkout's `CLAUDE.md`. Do not place a comparison Theater or an Agent session's cwd in a separate repository inside the baseline; follow [Isolate the Console](../../console-e2e/references/setup.md#isolate-the-console). Before comparison commands, read this session's `instructions` attachment and confirm the main checkout's `CLAUDE.md` is absent from its `files` paths.
+
 ## Create
 
 1. Identify the repository and main checkout with `git rev-parse --show-toplevel` and `git worktree list --porcelain`. Apply the entrypoint's name/path rules and relevant `CLAUDE.md` instructions. Use a new absolute `<path>` at `<repo-root>/.fleet/worktrees/<worktree-name>`; reject an existing path (including a dangling symlink) or worktree registration. Before creating directories or a checkout, resolve the canonical repository root and the target's existing ancestors (including `.fleet` and `.fleet/worktrees`): stop if symlink traversal places the target outside that root. Confirm the created checkout's canonical path remains within it. Do not create a branch.
