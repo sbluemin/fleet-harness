@@ -1349,6 +1349,10 @@ describe("Muse Code routing", () => {
       expect(earlyFetchMock).toHaveBeenCalledTimes(2);
       expect(earlyRes.body.match(/Now I'll run the tests\./g)).toHaveLength(1);
       expect(earlyRes.body.indexOf("Now I'll run the tests.")).toBeLessThan(earlyRes.body.indexOf('"name":"Bash"'));
+      // The early preview must not open a second message: one message, closed as tool_use.
+      expect(earlyRes.body.match(/event: message_start/g)).toHaveLength(1);
+      expect(earlyRes.body.match(/event: message_stop/g)).toHaveLength(1);
+      expect(earlyRes.body).toContain('"stop_reason":"tool_use"');
     } finally {
       router.dispose();
     }
