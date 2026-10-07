@@ -425,12 +425,17 @@ describe("Cursor live client-tool Run bridge", () => {
 
       // Content and count notices sit after a blank line. A row whose name starts with `[` or
       // "No matches" is a file, and the caller's summary is not.
-      const grepBranch = (outputMode: "content" | "count", output: string) => {
+      const grepBranch = (outputMode: "content" | "count", output: string, offset?: string) => {
         const replies = cursorNativeRedirectResultReplies({
           messageId: 6,
           execId: "native-grep-body",
           nativeResultType: "grepResult",
-          nativeArgs: { pattern: "NEEDLE", path: "/repo", outputMode },
+          nativeArgs: {
+            pattern: "NEEDLE",
+            path: "/repo",
+            outputMode,
+            ...(offset === undefined ? {} : { offset }),
+          },
         }, output, false);
         const reply = replies[0] as {
           execClientMessage?: {
@@ -484,6 +489,27 @@ describe("Cursor live client-tool Run bridge", () => {
         totalMatches: 3,
         clientTruncated: true,
         ripgrepTruncated: false,
+      });
+      // An offset-only page still has its rows. `limit: N` is what marks a cut.
+      expect(grepBranch("content", [
+        "[top]/first.txt:1:needle",
+        "",
+        "[Showing results with pagination = offset: 100]",
+      ].join("\n"), "100")?.content).toMatchObject({
+        totalLines: 1,
+        totalMatchedLines: 1,
+        clientTruncated: false,
+        offsetApplied: 100,
+      });
+      expect(grepBranch("count", [
+        "[top]/first.txt:2",
+        "",
+        "Found 12 total occurrences across 6 files. with pagination = offset: 100",
+      ].join("\n"), "100")?.count).toMatchObject({
+        totalFiles: 1,
+        totalMatches: 2,
+        clientTruncated: false,
+        offsetApplied: 100,
       });
       expect(grepBranch("content", "No matches found")?.content).toMatchObject({
         matches: [],
