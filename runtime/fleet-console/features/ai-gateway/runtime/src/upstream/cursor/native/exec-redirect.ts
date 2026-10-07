@@ -866,6 +866,9 @@ const OVERSIZE_WRAPPERS: ReadonlyMap<string, string> = new Map([
   ["<persisted-output>", "</persisted-output>"],
   ["<truncated-output>", "</truncated-output>"],
 ]);
+// The notice line 2.1.292 puts under the opening tag: "Output too large (…). Full output saved
+// to: …", "Output exceeded the … persist limit; …", or "Output too large (…). It could not be saved, …".
+const OVERSIZE_NOTICE = /^Output (?:too large \(|exceeded the )/;
 // Claude Code 2.1.292 cuts that preview at 2000 UTF-16 units, backing off to the last newline
 // when it lies past unit 1000: shorter previews end on a whole line, full-length ones may not.
 const OVERSIZE_PREVIEW_LIMIT = 2000;
@@ -904,6 +907,8 @@ function callerGrepFiles(output: string): CallerFileListing {
 function oversizePreviewLines(output: string, lines: readonly string[]): string[] | undefined {
   const closing = OVERSIZE_WRAPPERS.get(lines[0]?.trimEnd() ?? "");
   if (closing === undefined || lines.at(-1)?.trimEnd() !== closing) return undefined;
+  // Real files can carry the tag names; the caller's notice line under the tag cannot be a path.
+  if (!OVERSIZE_NOTICE.test(lines[1]?.trimEnd() ?? "")) return undefined;
   const preview = oversizePreview(output) ?? "";
   const previewLines = callerListingLines(preview);
   // A preview shorter than the limit ended at a newline; one that fills it may end mid-name.
