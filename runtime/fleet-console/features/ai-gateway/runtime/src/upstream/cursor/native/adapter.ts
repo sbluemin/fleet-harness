@@ -2541,13 +2541,15 @@ const CURSOR_CONTEXT_SPIKE_TOLERANCE = 0.004;
 const CURSOR_CONTEXT_MEASURED_FACTOR = 1.7;
 const CURSOR_CONTEXT_SPIKE_MIN_EXCESS = 100_000;
 /**
- * Room per image the text estimate leaves out (images ride in selectedContext). How Cursor counts
- * an image is not observable, and m4 A1's steady checkpoints, images included, sat at the same 1.36
- * times the estimate as conversations without any. So this is an upper bound, above Anthropic's
- * ~1.6k tokens for an image at its 1568px long-edge limit: a few images still leave a 4-6 times
- * spike far outside it, while an image-heavy conversation keeps its real count.
+ * Room per image the text estimate leaves out: an image in a user message rides in selectedContext,
+ * outside the replayed text. How Cursor counts it could not be measured. m4's image variants put
+ * their screenshots in tool results, which reach Cursor only as "[image]" text (the A1 pair differed
+ * by 1.24MB of request body but 108 bytes of replay), and Cursor contexts from 2026-10-05 on carried
+ * no message-level image at all. So this sits just above Anthropic's ~1.6k tokens for an image at its
+ * 1568px long-edge limit instead of a guessed Cursor cost: a 2-6 times spike stays outside the
+ * allowance until a conversation carries dozens of such images.
  */
-const CURSOR_CONTEXT_IMAGE_ALLOWANCE_TOKENS = 5_000;
+const CURSOR_CONTEXT_IMAGE_ALLOWANCE_TOKENS = 2_000;
 
 function isCursorUsedTokensSpike(
   used: number,
