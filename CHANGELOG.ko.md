@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.218.0] - 2026-10-07
+
+### fleet-console
+
+#### Added
+- 목표 구성원의 턴이 실패하면 지휘관이 단순 idle 알림 대신 오류 원문과 연속 실패 횟수를 받고, 구성원이 회복하거나 다시 배정될 때까지 구성원 명단에 실패가 표시됩니다.
+
+#### Fixed
+- Cursor 모델이 파일 내용이나 일치 수를 검색할 때 이름이 `[`나 「No matches」로 시작하는 파일을 잃지 않고, Claude Code의 요약 줄을 검색 결과로 받지 않습니다.
+- Cursor 모델이 파일을 검색할 때 「Found 3 files」나 「No files found」 같은 Claude Code 요약 문구를 파일 이름으로 받지 않고, 이름이 `[`나 「No matches」로 시작하는 실제 파일을 잃지 않습니다.
+- Muse 턴이 예고만 하고 멈춘 작업을 이어서 진행할 때, 최대 2분간 빈 화면으로 기다리지 않고 그 예고가 바로 표시됩니다.
+
 ## [1.217.0] - 2026-10-06
 
 ### fleet-cli

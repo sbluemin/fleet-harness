@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.218.0] - 2026-10-07
+
+### fleet-console
+
+#### Added
+- When an objective member's turn fails, the Commander now receives the original error and consecutive failure count instead of a plain idle notice, and the member roster shows the failure until the member recovers or is re-assigned.
+
+#### Fixed
+- Cursor models searching file contents or match counts no longer lose files whose names start with `[` or "No matches", and no longer receive Claude Code's summary line as a hit.
+- Cursor models searching files no longer receive Claude Code's summary lines, such as "Found 3 files" or "No files found", as file names, and no longer lose real files whose names start with `[` or "No matches".
+- When a Muse turn resumes a step it only announced, the announcement now appears right away instead of after a blank wait of up to two minutes.
+
 ## [1.217.0] - 2026-10-06
 
 ### fleet-cli
