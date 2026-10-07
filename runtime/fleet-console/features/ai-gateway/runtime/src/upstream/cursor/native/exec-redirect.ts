@@ -763,36 +763,23 @@ function buildGrepSuccess(
   output: string,
 ): Record<string, unknown> {
   const outputMode = normalizedGrepOutputMode(args.outputMode) ?? "content";
-  const globOnly = !args.pattern && Boolean(args.glob);
-  let globTruncated = false;
-  const lines = output
-    .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter((line) => line.length > 0 && !line.startsWith("[") && !/^no matches/i.test(line))
-    .filter((line) => {
-      if (!globOnly) return true;
-      // The caller's Glob reports an empty search and a cut-off list in prose, not as paths.
-      if (/^no files found\b/i.test(line)) return false;
-      if (/^\(results are truncated\b/i.test(line)) {
-        globTruncated = true;
-        return false;
-      }
-      return true;
-    });
   const path = args.path || ".";
   let result: Record<string, unknown>;
   if (outputMode === "files_with_matches") {
+    const listing = !args.pattern && Boolean(args.glob)
+      ? callerGlobFiles(output)
+      : callerGrepFiles(output);
     result = {
       files: {
-        files: lines,
-        totalFiles: lines.length,
-        clientTruncated: globTruncated,
+        files: listing.files,
+        totalFiles: listing.files.length,
+        clientTruncated: listing.truncated,
         ripgrepTruncated: false,
         ...(args.offset === undefined ? {} : { offsetApplied: Number(args.offset) }),
       },
     };
   } else if (outputMode === "count") {
-    const counts = lines.flatMap((line) => {
+    const counts = proseFilteredLines(output).flatMap((line) => {
       const separator = line.lastIndexOf(":");
       if (separator < 1) return [];
       const count = Number.parseInt(line.slice(separator + 1), 10);
@@ -811,7 +798,7 @@ function buildGrepSuccess(
   } else {
     const byFile = new Map<string, Array<Record<string, unknown>>>();
     let totalMatchedLines = 0;
-    for (const line of lines) {
+    for (const line of proseFilteredLines(output)) {
       const matched = line.match(/^(.+?):(\d+):\s?(.*)$/);
       const context = line.match(/^(.+?)-(\d+)-\s?(.*)$/);
       const parsed = matched ?? context;
@@ -846,6 +833,113 @@ function buildGrepSuccess(
     outputMode,
     workspaceResults: { [path]: result },
   };
+}
+
+/** Content and count output: drops blank lines and lines that open with caller prose markers. */
+function proseFilteredLines(output: string): string[] {
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0 && !line.startsWith("[") && !/^no matches/i.test(line));
+}
+
+interface CallerFileListing {
+  readonly files: readonly string[];
+  readonly truncated: boolean;
+}
+
+// Shapes Claude Code's Grep and Glob emit around a file list, measured on 2.1.292. A caller
+// path is printed relative to its cwd, so a real file can be named exactly like any of these
+// lines ("Found 3 files", "No files found"); they are recognised only by where they sit in the
+// output or by matching the whole output, never by a line's leading text.
+const GREP_FILES_HEADER = /^Found \d+ files?(?: (?:limit: \d+(?:, offset: \d+)?|offset: \d+))?$/;
+const GREP_OFFSET_PAST_END = /^No entries at this offset\. \[Showing results with pagination = [^\]\n]*\]$/;
+const NO_FILES_FOUND = "No files found";
+const GLOB_TRUNCATION_NOTICES = [
+  /^\(Results are truncated\. Consider using a more specific path or pattern\.\)$/,
+  /^\(Showing \d+ of \d+ matching files; \d+ more are not listed\. Narrow the pattern or path to see the rest\.\)$/,
+  /^\(Showing the first \d+ files; there are more than \d+ matches\. Narrow the pattern or path to see the rest\.\)$/,
+];
+// An oversized result is replaced by one of these wrappers; a persisted one carries a preview
+// of the original output.
+const OVERSIZE_WRAPPERS: ReadonlyMap<string, string> = new Map([
+  ["<persisted-output>", "</persisted-output>"],
+  ["<truncated-output>", "</truncated-output>"],
+]);
+// The notice line 2.1.292 puts under the opening tag: "Output too large (…). Full output saved
+// to: …", "Output exceeded the … persist limit; …", or "Output too large (…). It could not be saved, …".
+const OVERSIZE_NOTICE = /^Output (?:too large \(|exceeded the )/;
+// Claude Code 2.1.292 cuts that preview at 2000 UTF-16 units, backing off to the last newline
+// when it lies past unit 1000: shorter previews end on a whole line, full-length ones may not.
+const OVERSIZE_PREVIEW_LIMIT = 2000;
+
+/**
+ * Non-blank lines of a caller's file list. A name keeps every character but a CRLF's carriage
+ * return, trailing whitespace included; only the shape tests trim.
+ */
+function callerListingLines(output: string): string[] {
+  return output
+    .split(/\r?\n/)
+    .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
+    .filter((line) => line.trim().length > 0);
+}
+
+/** Grep `files_with_matches`: `Found N files[ limit/offset]` heads a non-empty list. */
+function callerGrepFiles(output: string): CallerFileListing {
+  const lines = callerListingLines(output);
+  const whole = lines.map((line) => line.trimEnd()).join("\n");
+  if (whole === NO_FILES_FOUND || GREP_OFFSET_PAST_END.test(whole)) return { files: [], truncated: false };
+  const preview = oversizePreviewLines(output, lines);
+  if (preview !== undefined) {
+    if (!GREP_FILES_HEADER.test(preview[0]?.trimEnd() ?? "")) return { files: [], truncated: true };
+    return { files: preview.slice(1), truncated: true };
+  }
+  const header = lines[0]?.trimEnd() ?? "";
+  if (!GREP_FILES_HEADER.test(header)) return { files: lines, truncated: false };
+  // Claude Code prints `limit: N` only when more results remain past the page.
+  return { files: lines.slice(1), truncated: / limit: \d+/.test(header) };
+}
+
+/**
+ * The whole lines of the preview an oversize wrapper carries — the only usable part of it, and
+ * a partial list — or undefined when the output is not wrapped.
+ */
+function oversizePreviewLines(output: string, lines: readonly string[]): string[] | undefined {
+  const closing = OVERSIZE_WRAPPERS.get(lines[0]?.trimEnd() ?? "");
+  if (closing === undefined || lines.at(-1)?.trimEnd() !== closing) return undefined;
+  // Real files can carry the tag names; the caller's notice line under the tag cannot be a path.
+  if (!OVERSIZE_NOTICE.test(lines[1]?.trimEnd() ?? "")) return undefined;
+  const preview = oversizePreview(output) ?? "";
+  const previewLines = callerListingLines(preview);
+  // A preview shorter than the limit ended at a newline; one that fills it may end mid-name.
+  return preview.length < OVERSIZE_PREVIEW_LIMIT ? previewLines : previewLines.slice(0, -1);
+}
+
+/**
+ * The preview text inside an oversize wrapper, exactly as the caller cut it: between the
+ * `Preview (first …):` line and the closing tag, minus the `...` marker. Measured on the
+ * LF-normalised output, because its length is what tells a newline cut from a hard cut.
+ */
+function oversizePreview(output: string): string | undefined {
+  const text = output.replace(/\r\n/g, "\n");
+  const start = /^Preview \(first [^\n]*\):[ \t]*\n/m.exec(text);
+  if (!start) return undefined;
+  const rest = text.slice(start.index + start[0].length);
+  const end = /\n(?:\.\.\.[ \t]*\n)?[ \t]*<\/(?:persisted|truncated)-output>\s*$/.exec(rest);
+  return end ? rest.slice(0, end.index) : undefined;
+}
+
+/** Glob: a bare list, with a truncation notice as its last line when it was cut. */
+function callerGlobFiles(output: string): CallerFileListing {
+  const lines = callerListingLines(output);
+  if (lines.map((line) => line.trimEnd()).join("\n") === NO_FILES_FOUND) return { files: [], truncated: false };
+  const preview = oversizePreviewLines(output, lines);
+  const listed = preview ?? lines;
+  const last = listed.at(-1)?.trimEnd() ?? "";
+  if (GLOB_TRUNCATION_NOTICES.some((notice) => notice.test(last))) {
+    return { files: listed.slice(0, -1), truncated: true };
+  }
+  return { files: listed, truncated: preview !== undefined };
 }
 
 interface CallerShellOutput {

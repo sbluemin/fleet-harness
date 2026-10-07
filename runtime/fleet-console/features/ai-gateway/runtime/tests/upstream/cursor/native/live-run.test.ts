@@ -354,39 +354,74 @@ describe("Cursor live client-tool Run bridge", () => {
         nativeArgs: globRedirect?.nativeArgs,
       };
       const globFiles = (output: string) => cursorNativeRedirectResultReplies(globCorrelation, output, false);
-      expect(globFiles(
-        "runtime/a/CLAUDE.md\nruntime/b/CLAUDE.md\n(Results are truncated. Consider using a more specific path or pattern.)",
-      )).toContainEqual(expect.objectContaining({
-        execClientMessage: expect.objectContaining({
-          grepResult: {
-            success: expect.objectContaining({
-              workspaceResults: {
-                "/repo": {
-                  files: {
-                    files: ["runtime/a/CLAUDE.md", "runtime/b/CLAUDE.md"],
-                    totalFiles: 2,
-                    clientTruncated: true,
-                    ripgrepTruncated: false,
-                  },
-                },
-              },
-            }),
-          },
-        }),
-      }));
-      expect(globFiles("No files found")).toContainEqual(expect.objectContaining({
-        execClientMessage: expect.objectContaining({
-          grepResult: {
-            success: expect.objectContaining({
-              workspaceResults: {
-                "/repo": {
-                  files: expect.objectContaining({ files: [], totalFiles: 0 }),
-                },
-              },
-            }),
-          },
-        }),
-      }));
+      // Claude Code 2.1.292 Glob: a bare cwd-relative list, cut with a counted notice.
+      expect(redirectedFiles(globFiles(
+        "runtime/a/CLAUDE.md\n[slug]/CLAUDE.md\n(Showing 2 of 120 matching files; 118 more are not listed. Narrow the pattern or path to see the rest.)",
+      ))).toEqual({
+        files: ["runtime/a/CLAUDE.md", "[slug]/CLAUDE.md"],
+        totalFiles: 2,
+        clientTruncated: true,
+        ripgrepTruncated: false,
+      });
+      expect(redirectedFiles(globFiles("No files found"))).toMatchObject({ files: [], totalFiles: 0 });
+      // An oversized Glob result keeps only its preview's whole paths.
+      const longPath = (n: number) => `gl2/${"a".repeat(840)}/path-${n}.ts`;
+      expect(redirectedFiles(globFiles([
+        "<persisted-output>",
+        "Output too large (84KB). Full output saved to: /tmp/session/tool-results/toolu_2.txt",
+        "",
+        "Preview (first 2KB):",
+        longPath(1),
+        longPath(2),
+        "...",
+        "</persisted-output>",
+      ].join("\n")))).toEqual({
+        files: [longPath(1), longPath(2)],
+        totalFiles: 2,
+        clientTruncated: true,
+        ripgrepTruncated: false,
+      });
+
+      // A content search on the caller's Grep lists files under a count header. Names are
+      // cwd-relative, so a real file can carry that header's or a notice's exact wording.
+      const grepFiles = (output: string, offset?: string) => redirectedFiles(cursorNativeRedirectResultReplies({
+        messageId: 5,
+        execId: "native-grep-files",
+        nativeResultType: "grepResult",
+        nativeArgs: {
+          pattern: "NEEDLE",
+          path: "/repo",
+          outputMode: "files_with_matches",
+          ...(offset === undefined ? {} : { offset }),
+        },
+      }, output, false));
+      const names = ["No matches found.txt", "Found 3 files", "No files found", "한글/파일.ts", "[slug]/page.tsx"];
+      const listing = { files: names, totalFiles: 5, clientTruncated: false, ripgrepTruncated: false };
+      expect(grepFiles(["Found 5 files", ...names].join("\n"))).toEqual(listing);
+      expect(grepFiles(`${["Found 5 files", ...names].join("\r\n")}\r\n`)).toEqual(listing);
+      expect(grepFiles("No files found")).toMatchObject({ files: [], totalFiles: 0 });
+      expect(grepFiles("No entries at this offset. [Showing results with pagination = offset: 500]", "500"))
+        .toMatchObject({ files: [], totalFiles: 0, offsetApplied: 500 });
+      // An oversized result arrives as a saved-file notice whose preview lists only whole lines.
+      const persisted = (preview: string) => [
+        "<persisted-output>",
+        "Output too large (31.3KB). Full output saved to: /tmp/session/tool-results/toolu_1.txt",
+        "",
+        "Preview (first 2KB):",
+        preview,
+        "...",
+        "</persisted-output>",
+      ].join("\n");
+      // Short of the 2000-unit limit, the preview ended at a newline: its last path is whole.
+      expect(grepFiles(persisted("Found 250 files limit: 250\nlong/file-260.txt\nlong/file-259.txt"))).toEqual({
+        files: ["long/file-260.txt", "long/file-259.txt"],
+        totalFiles: 2,
+        clientTruncated: true,
+        ripgrepTruncated: false,
+      });
+      // A preview filling the limit was cut inside a name too long to back off to its newline.
+      const cutPreview = `Found 250 files limit: 250\nlong/file-260.txt\ndeep/${"d".repeat(2000)}`.slice(0, 2000);
+      expect(grepFiles(persisted(cutPreview))).toMatchObject({ files: ["long/file-260.txt"], totalFiles: 1 });
     } finally {
       harness.adapter.dispose();
     }
@@ -1120,6 +1155,13 @@ async function waitFor(predicate: () => boolean, timeoutMs = 500): Promise<void>
     if (Date.now() >= deadline) throw new Error("Timed out waiting for Cursor test state");
     await new Promise<void>((resolve) => setTimeout(resolve, 1));
   }
+}
+
+function redirectedFiles(replies: readonly unknown[]): unknown {
+  const reply = replies[0] as {
+    execClientMessage?: { grepResult?: { success?: { workspaceResults?: Record<string, { files?: unknown }> } } };
+  };
+  return Object.values(reply.execClientMessage?.grepResult?.success?.workspaceResults ?? {})[0]?.files;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
