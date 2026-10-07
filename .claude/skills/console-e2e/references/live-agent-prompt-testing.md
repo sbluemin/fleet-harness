@@ -256,7 +256,8 @@ its own thinking blocks and signatures, real tool results, multi-turn `--resume`
 Console UI. It needs no Console process: the launcher starts its own gateway on a temporary
 loopback port.
 
-Before the `fleet.mjs -p` command below, confirm that this worktree's
+For paid runs, apply the [runtime-content preflight](setup.md#before-a-paid-or-long-run):
+before the `fleet.mjs -p` command below, confirm that this worktree's
 `runtime/fleet-console/dist/fleet.mjs` contains the change under test; a green package
 build elsewhere does not show it. From the worktree root, count a string the change adds
 and the bundle keeps, an identifier or literal rather than a comment:
