@@ -114,6 +114,17 @@ Do not rely on the former `~/.fleet/auth.json` location or silently reconnect th
 root. Use only the credential path authorized in the preflight. Live turns spend real
 provider quota; keep prompts short and say so when reporting.
 
+Before a paid call uses a gateway model, confirm that the slot the run talks to lists it.
+The command prints only the listed model ids, never other settings:
+
+```bash
+node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const ids=s.version===1&&Array.isArray(s.models)?s.models.map((m)=>m.id):[]; console.log(ids.join("\n")||"(no models)"); process.exit(ids.includes(process.argv[2])?0:1)' '<console-slot>/ai-gateway.json' '<model id>'; echo "rc=$?"
+```
+
+`rc=0` means the slot lists it. Any other code (no file, no `models`, or the id absent)
+means the call would fail: add the model as above, or stop with no paid call and report an
+environment block.
+
 ## Clear the dialogs before the first click
 
 A fresh `FLEET_CONSOLE_DATA_DIR` opens commissioning, What's New, and onboarding tours, and
@@ -213,6 +224,19 @@ own `fleet` launcher. Use it when the behavior depends on what the real client s
 its own thinking blocks and signatures, real tool results, multi-turn `--resume` — but not on
 Console UI. It needs no Console process: the launcher starts its own gateway on a temporary
 loopback port.
+
+Before the `fleet.mjs -p` command below, confirm that this worktree's
+`runtime/fleet-console/dist/fleet.mjs` contains the change under test; a green package
+build elsewhere does not show it. From the worktree root, count a string the change adds
+and the bundle keeps, an identifier or literal rather than a comment:
+
+```bash
+grep -cF -- '<string the change adds>' runtime/fleet-console/dist/fleet.mjs; echo "rc=$?"
+```
+
+`rc=0` means the bundle has it. `rc=1` (count 0) or `rc=2` (no bundle) means it does not:
+run `pnpm --filter @dotobokuri/fleet-console build` in this worktree and count again. If it
+is still absent, stop before the paid turn and report that.
 
 Start it from a clean environment, because an agent session inherits its parent Console's
 slot variables and pnpm's `INIT_CWD` (see **Isolated Development Data** in
