@@ -18,3 +18,9 @@ pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gat
 ```
 
 `--effort` accepts `low|medium|high|xhigh|max|ultra`; `--timeout-ms` controls the whole logical trial. Confirmation spends real quota. `FLEET_GATEWAY_WIRE_LOG=<isolated-scratch>/wire.jsonl` is explicit opt-in for raw prompt/tool payloads; credentials are not recorded, but this remains sensitive. Verify a fresh package `dist/`; isolated runtime/PID/Console-build requirements apply only to real Operations. Default test and CI paths never invoke the live runner.
+
+### Caller tool output capture
+
+When a redirect parses a caller tool's output back into a provider result, take that output from the real CLI instead of writing it by hand. [`scripts/caller-tool-fixture.mjs`](../scripts/caller-tool-fixture.mjs) is a local Messages endpoint that answers each main-loop turn with the next `tool_use` in a steps file, so Claude Code runs its own tools with no model, credential, or quota. Run `claude -p` through the console-e2e isolated wrapper with the flags Fleet's launcher passes — the native build hides Grep and Glob unless `--allowedTools Grep,Glob` names them — and point it at the fixture with `env.ANTHROPIC_BASE_URL` in the owned `CLAUDE_CONFIG_DIR/settings.json`, since the wrapper refuses `--set ANTHROPIC_*`. Read each `tool_result` from that directory's transcript, then delete the settings file so a later run in the same run directory reaches the gateway.
+
+[`scripts/replay-redirect-results.mjs`](../scripts/replay-redirect-results.mjs) replays captured outputs through `cursorNativeRedirectResultReplies` under CRLF, trailing-whitespace, blank-line, and NFD variants, checks each case's expected files, and compares a candidate source with a baseline such as `git show origin/canary:<path>`. Keep captured cases with the task's evidence, not in the repository.

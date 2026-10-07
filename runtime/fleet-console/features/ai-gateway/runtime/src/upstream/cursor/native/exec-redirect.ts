@@ -763,36 +763,23 @@ function buildGrepSuccess(
   output: string,
 ): Record<string, unknown> {
   const outputMode = normalizedGrepOutputMode(args.outputMode) ?? "content";
-  const globOnly = !args.pattern && Boolean(args.glob);
-  let globTruncated = false;
-  const lines = output
-    .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter((line) => line.length > 0 && !line.startsWith("[") && !/^no matches/i.test(line))
-    .filter((line) => {
-      if (!globOnly) return true;
-      // The caller's Glob reports an empty search and a cut-off list in prose, not as paths.
-      if (/^no files found\b/i.test(line)) return false;
-      if (/^\(results are truncated\b/i.test(line)) {
-        globTruncated = true;
-        return false;
-      }
-      return true;
-    });
   const path = args.path || ".";
   let result: Record<string, unknown>;
   if (outputMode === "files_with_matches") {
+    const listing = !args.pattern && Boolean(args.glob)
+      ? callerGlobFiles(output)
+      : callerGrepFiles(output);
     result = {
       files: {
-        files: lines,
-        totalFiles: lines.length,
-        clientTruncated: globTruncated,
+        files: listing.files,
+        totalFiles: listing.files.length,
+        clientTruncated: listing.truncated,
         ripgrepTruncated: false,
         ...(args.offset === undefined ? {} : { offsetApplied: Number(args.offset) }),
       },
     };
   } else if (outputMode === "count") {
-    const counts = lines.flatMap((line) => {
+    const counts = proseFilteredLines(output).flatMap((line) => {
       const separator = line.lastIndexOf(":");
       if (separator < 1) return [];
       const count = Number.parseInt(line.slice(separator + 1), 10);
@@ -811,7 +798,7 @@ function buildGrepSuccess(
   } else {
     const byFile = new Map<string, Array<Record<string, unknown>>>();
     let totalMatchedLines = 0;
-    for (const line of lines) {
+    for (const line of proseFilteredLines(output)) {
       const matched = line.match(/^(.+?):(\d+):\s?(.*)$/);
       const context = line.match(/^(.+?)-(\d+)-\s?(.*)$/);
       const parsed = matched ?? context;
@@ -846,6 +833,82 @@ function buildGrepSuccess(
     outputMode,
     workspaceResults: { [path]: result },
   };
+}
+
+/** Content and count output: drops blank lines and lines that open with caller prose markers. */
+function proseFilteredLines(output: string): string[] {
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0 && !line.startsWith("[") && !/^no matches/i.test(line));
+}
+
+interface CallerFileListing {
+  readonly files: readonly string[];
+  readonly truncated: boolean;
+}
+
+// Shapes Claude Code's Grep and Glob emit around a file list, measured on 2.1.292. A caller
+// path is printed relative to its cwd, so a real file can be named exactly like any of these
+// lines ("Found 3 files", "No files found"); they are recognised only by where they sit in the
+// output or by matching the whole output, never by a line's leading text.
+const GREP_FILES_HEADER = /^Found \d+ files?(?: (?:limit: \d+(?:, offset: \d+)?|offset: \d+))?$/;
+const GREP_OFFSET_PAST_END = /^No entries at this offset\. \[Showing results with pagination = [^\]\n]*\]$/;
+const NO_FILES_FOUND = "No files found";
+const GLOB_TRUNCATION_NOTICES = [
+  /^\(Results are truncated\. Consider using a more specific path or pattern\.\)$/,
+  /^\(Showing \d+ of \d+ matching files; \d+ more are not listed\. Narrow the pattern or path to see the rest\.\)$/,
+  /^\(Showing the first \d+ files; there are more than \d+ matches\. Narrow the pattern or path to see the rest\.\)$/,
+];
+// An oversized result is replaced by one of these wrappers; a persisted one carries a preview
+// of the original output, cut near 2KB.
+const OVERSIZE_WRAPPERS: ReadonlyMap<string, string> = new Map([
+  ["<persisted-output>", "</persisted-output>"],
+  ["<truncated-output>", "</truncated-output>"],
+]);
+
+/**
+ * Non-blank lines of a caller's file list. A name keeps every character but a CRLF's carriage
+ * return, trailing whitespace included; only the shape tests trim.
+ */
+function callerListingLines(output: string): string[] {
+  return output
+    .split(/\r?\n/)
+    .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
+    .filter((line) => line.trim().length > 0);
+}
+
+/** Grep `files_with_matches`: `Found N files[ limit/offset]` heads a non-empty list. */
+function callerGrepFiles(output: string): CallerFileListing {
+  const lines = callerListingLines(output);
+  const whole = lines.map((line) => line.trimEnd()).join("\n");
+  if (whole === NO_FILES_FOUND || GREP_OFFSET_PAST_END.test(whole)) return { files: [], truncated: false };
+  const closing = OVERSIZE_WRAPPERS.get(lines[0]?.trimEnd() ?? "");
+  if (closing !== undefined && lines.at(-1)?.trimEnd() === closing) {
+    // Only the preview's own list is usable. Its last line can be cut mid-name, so it goes
+    // with the `...` marker; what remains is a partial list.
+    const body = lines.slice(1, -1);
+    const header = body.findIndex((line) => GREP_FILES_HEADER.test(line.trimEnd()));
+    if (header < 0) return { files: [], truncated: true };
+    const listed = body.slice(header + 1);
+    if (listed.at(-1)?.trimEnd() === "...") listed.pop();
+    return { files: listed.slice(0, -1), truncated: true };
+  }
+  const header = lines[0]?.trimEnd() ?? "";
+  if (!GREP_FILES_HEADER.test(header)) return { files: lines, truncated: false };
+  // Claude Code prints `limit: N` only when more results remain past the page.
+  return { files: lines.slice(1), truncated: / limit: \d+/.test(header) };
+}
+
+/** Glob: a bare list, with a truncation notice as its last line when it was cut. */
+function callerGlobFiles(output: string): CallerFileListing {
+  const lines = callerListingLines(output);
+  if (lines.map((line) => line.trimEnd()).join("\n") === NO_FILES_FOUND) return { files: [], truncated: false };
+  const last = lines.at(-1)?.trimEnd() ?? "";
+  if (GLOB_TRUNCATION_NOTICES.some((notice) => notice.test(last))) {
+    return { files: lines.slice(0, -1), truncated: true };
+  }
+  return { files: lines, truncated: false };
 }
 
 interface CallerShellOutput {
