@@ -849,18 +849,19 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(addedFunctionCallIds(waited)).toEqual([]);
       expect(harness.openedStreams).toBe(4);
 
-      // A finished sentence followed by the next step is still an announcement. A turn that only
-      // asks the user whether to continue is not. Own Runs, so the stream counts above stay the yield script.
-      const mixedAnnouncement = "화면 확인은 끝났습니다. 이제 검사와 새 커밋을 남기겠습니다.";
-      const mixedCall = cursorCall("call-resample-mixed", 60);
-      const mixedRun = new BridgeCursorStream(cursorCompletionFrames(mixedAnnouncement));
-      const mixedRecovered = new BridgeCursorStream(cursorToolFrames([mixedCall]));
-      const mixedHarness = cursorHarness([mixedRun, mixedRecovered]);
-      const waitingForYou = "Let me know if you want any other changes.";
-      const waitCall = cursorCall("call-resample-wait", 70);
-      const waitRun = new BridgeCursorStream(cursorCompletionFrames(waitingForYou));
-      const waitUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-wait-again", 71)]));
-      const waitHarness = cursorHarness([waitRun, waitUnwanted]);
+      // A short finished report used to be asked again, and the second answer could start another
+      // tool. Asking for approval is the user waiting, not a next step. Own Runs, so the stream
+      // counts above stay the yield script. "Still checking." above stays a short announcement.
+      const finishedReport = "The ranged read returned 12 lines.";
+      const reportCall = cursorCall("call-resample-report", 60);
+      const reportRun = new BridgeCursorStream(cursorCompletionFrames(finishedReport));
+      const reportUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-report-again", 61)]));
+      const reportHarness = cursorHarness([reportRun, reportUnwanted]);
+      const approval = "승인해 주시면 그대로 진행하겠습니다.";
+      const approvalCall = cursorCall("call-resample-approval", 70);
+      const approvalRun = new BridgeCursorStream(cursorCompletionFrames(approval));
+      const approvalUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-approval-again", 71)]));
+      const approvalHarness = cursorHarness([approvalRun, approvalUnwanted]);
       const gateTurn = async (gateHarness: { adapter: typeof harness.adapter }, userId: string, spec: CursorCallSpec) => {
         const gateAdapter = gateHarness.adapter.forHarness({});
         const gateInitial = cursorRequest(userId, "grok-4.7");
@@ -874,26 +875,26 @@ describe("Cursor live client-tool Run bridge", () => {
         }, { apiKey: "cursor-test-token" }));
       };
       try {
-        const continued = await gateTurn(mixedHarness, "session-resample-mixed", mixedCall);
-        const held = await gateTurn(waitHarness, "session-resample-wait", waitCall);
+        const reported = await gateTurn(reportHarness, "session-resample-report", reportCall);
+        const held = await gateTurn(approvalHarness, "session-resample-approval", approvalCall);
         expect({
-          mixedStreams: mixedHarness.openedStreams,
-          mixedCalls: addedFunctionCallIds(continued),
-          mixedText: canonicalText(continued),
-          waitStreams: waitHarness.openedStreams,
-          waitCalls: addedFunctionCallIds(held),
-          waitText: canonicalText(held),
+          reportStreams: reportHarness.openedStreams,
+          reportCalls: addedFunctionCallIds(reported),
+          reportText: canonicalText(reported),
+          approvalStreams: approvalHarness.openedStreams,
+          approvalCalls: addedFunctionCallIds(held),
+          approvalText: canonicalText(held),
         }).toEqual({
-          mixedStreams: 2,
-          mixedCalls: [mixedCall.callId],
-          mixedText: mixedAnnouncement,
-          waitStreams: 1,
-          waitCalls: [],
-          waitText: waitingForYou,
+          reportStreams: 1,
+          reportCalls: [],
+          reportText: finishedReport,
+          approvalStreams: 1,
+          approvalCalls: [],
+          approvalText: approval,
         });
       } finally {
-        mixedHarness.adapter.dispose();
-        waitHarness.adapter.dispose();
+        reportHarness.adapter.dispose();
+        approvalHarness.adapter.dispose();
       }
     } finally {
       harness.adapter.dispose();

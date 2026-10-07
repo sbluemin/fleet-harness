@@ -17,8 +17,8 @@ import { wireLog } from "../../../transport/wire-log.js";
  * 새 Run을 한 번 연다. 같은 Run에 이어 쓰는 길은 없다: 서버가 `turnEnded` 뒤 0–1ms 안에 스트림을 닫는다.
  *
  * Muse 어댑터에도 같은 회복이 있지만 공유하지 않는다. 재요청 수단(새 HTTP/2 Run)·해제 신호(서버 수행 작업,
- * 마지막 단계가 미래 행동 예고인지)·체크포인트 기준선이 Cursor 의미론이고, 이벤트 모양도 다르다. 이 동작은 canonical 이벤트
- * 수준에서 일어나므로 스트리밍·비스트리밍이 같은 결과를 받는다.
+ * 마지막 단계의 길이, 마지막 문장이 이미 끝난 맺음인지)·체크포인트 기준선이 Cursor 의미론이고, 이벤트 모양도
+ * 다르다. 이 동작은 canonical 이벤트 수준에서 일어나므로 스트리밍·비스트리밍이 같은 결과를 받는다.
  */
 
 const LABEL = "cursor.resample";
@@ -50,69 +50,79 @@ const CURSOR_RESAMPLE_WIRE_MODEL = /^grok-4\.7(?:-|$)/;
 const MIN_RESAMPLE_MAX_OUTPUT_TOKENS = 1024;
 
 /**
- * 예고인 마지막 단계만 걸러 내는 보조 상한. 길이는 재요청 신호가 아니다. 80은 폐기했다: 2026-10-08 실측에서
- * 36–62토큰의 완료 보고가 다시 받히고, 354토큰 예고는 길이 때문에 놓쳤다. 800은 그 예고보다 넓고
- * 비정상적으로 긴 본문만 걸러 낸다. 재는 대상은 응답 전체가 아니라 마지막 단계다.
+ * 마지막 단계의 추정 토큰 상한. 넘으면 다시 받지 않는다. 길이를 예고 판정으로 바꾸면 표본 밖 정상 답이
+ * 다시 받혔으므로(2026-10-08) 이 상한을 기본으로 둔다. 354토큰 예고를 놓치는 것은 이 상한의 동작이다.
+ * 재는 대상은 응답 전체가 아니라 마지막 단계다.
  */
-const MAX_RESAMPLE_FINAL_STEP_TOKENS = 800;
+const MAX_RESAMPLE_FINAL_STEP_TOKENS = 80;
 
-/** 영어 1인칭 미래·의도. 아포스트로피는 ASCII와 굽은 따옴표 둘 다. */
-const ENGLISH_FUTURE_ACTION =
-  /\b(?:I['’]ll|I will|Let me|I['’]m going to|I am going to)\b/iu;
-
-/** "Running the tests now.", "Still checking." 처럼 지금 하려는 영어 현재진행. */
-const ENGLISH_PROGRESS =
-  /(?:^(?:Still|Now)\s+\p{L}+ing\b|\b\p{L}+ing\b[^.!?]{0,48}\bnow\b)/iu;
-
-/**
- * 한글 행동의 합니다체. 설명문(이 함수는 …) 안에서도 같은 끝이 나오므로 주어는 따로 걸러 낸다.
- * 결과 보고( 보고합니다, 없습니다) 는 여기에 둘 수 없다.
- */
-const KOREAN_ACTION =
-  /(?:읽습니다|찾습니다|확인합니다|봅니다|돌립니다|씁니다|진행합니다|이어갑니다|시작합니다|살펴봅니다|가립니다|정리합니다|남깁니다|보강합니다|실행합니다)/u;
-
-const KOREAN_FUTURE = /겠(?:습니다|어요|다)|게요|려고(?:\s*합니다)?/u;
-
-/** 사용자를 기다리거나 그대로 두겠다는 맺음. 예고가 아니다. */
-const WAITING_CLOSE =
-  /대기하|답하겠|답할게요|까지|끝나는 대로|이대로 두겠|Let me know|I['’]ll leave|I will leave/iu;
-
-/** 외부 조건이 와야 이어가는 맺음. 통과하면 같은 일 조건은 여기에 들지 않는다. */
-const CONDITIONAL_WAIT = /오면|되면|열리면|까지|끝나는 대로|때는/u;
-
-/** 설명하는 3인칭 주어. 행동 예고와 같은 동사를 쓸 수 있다. */
-const THIRD_PERSON_SUBJECT =
-  /(?:이|그|저)\s*(?:함수|스크립트|코드|모듈|클래스|메서드|문제|값|설정)(?:는|은|이|가)/u;
-
-/** ㅆ 받침. 겠은 미래·의도이고 있·없은 존재라 과거로 세지 않는다. ㄹ 받침 뒤의 게는 `할게`다. */
+/** ㅆ 받침. 겠은 미래·의도이고 있·없은 존재라 과거로 세지 않는다. */
 const SSANG_SIOT_INDEX = 20;
+/** ㄹ 받침. 다음 글자가 게이면 `할게`다. */
 const RIEUL_INDEX = 8;
-const NOT_PAST_SSANG = new Set(["겠", "있", "없"]);
 
 /**
- * 마지막 문장이 아직 하지 않은 행동의 예고일 때만 참이다. 앞 문장의 완료 보고는 뭉지 않는다.
- * 마지막이 조건부 이어이거나 하지 않겠다는 단서여도, 그 앞에 조건 없는 예고가 있으면 예고다.
- * 대기·묻음·설명문이면 아니다. 어느 쪽인지 모르면 다시 받지 않는다.
+ * 마지막 문장만 보고, 이미 끝난 맺음이면 참이다. 짧아도 다시 받지 않는다.
+ * 완료 보고(과거·결과), 물음표, 승인·대기·조건 대기다. 조건은 동사 목록이 아니라
+ * `-면`/`-으면` 뒤의 미래형, 또는 영어 `if`/`when`/`once`와 `I'll`이다.
+ * 그 문장에 조건에 걸리지 않은 행동(`돌리고, 통과하면 …`)이 있으면 맺음이 아니다.
+ * 어느 쪽인지 모르면 길이 상한만 따른다.
  */
-function isFutureActionAnnouncement(text: string): boolean {
-  const parts = sentences(text);
-  const last = parts[parts.length - 1];
-  if (last === undefined || isWaitingClose(last) || THIRD_PERSON_SUBJECT.test(last)) return false;
-  if (hasFutureAction(last) && !isConditionalWait(last)) return true;
-  const promised = parts.slice(0, -1).some((sentence) => (
-    hasFutureAction(sentence) && !isConditionalWait(sentence) && !isWaitingClose(sentence)
-  ));
-  if (!promised) return false;
-  return (isConditionalWait(last) && hasFutureAction(last)) || /지\s*않습니다/u.test(last);
+function isSettledEnding(text: string): boolean {
+  const sentence = lastSentence(text);
+  if (sentence.length === 0) return false;
+  if (/[?？]\s*$/u.test(sentence)) return true;
+  if (isWaitOrApproval(sentence)) return true;
+  return isCompletionReport(sentence);
 }
 
-function sentences(text: string): string[] {
-  return text.trim().split(/(?<=[.!?。])\s*/u).map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 0);
+function lastSentence(text: string): string {
+  const parts = text
+    .trim()
+    .split(/(?<=[.!?。？])\s+/u)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+  return parts[parts.length - 1] ?? "";
 }
 
-function hasFutureAction(text: string): boolean {
-  if (ENGLISH_FUTURE_ACTION.test(text) || ENGLISH_PROGRESS.test(text)) return true;
-  if (KOREAN_ACTION.test(text) || KOREAN_FUTURE.test(text)) return true;
+/** 승인 요청, 대기 선언, 나중에 하겠다는 미루기, 조건이 와야 이어가는 문장. */
+function isWaitOrApproval(sentence: string): boolean {
+  if (/\blet me know\b/iu.test(sentence)) return true;
+  if (/대기(?:하겠습니다|할게요|합니다|하겠어요)|기다리겠/u.test(sentence)) return true;
+  if (/\b(?:I['’]ll|I will)\s+(?:be\s+)?wait/iu.test(sentence)) return true;
+  if (/^다음에(?:\s|$)/u.test(sentence)) return true;
+  return isPureConditional(sentence);
+}
+
+/**
+ * 문장 전체가 조건에 걸린 미래일 때만 참이다. `까지`는 조건이 아니고,
+ * 조건 앞에 이어진 행동(`돌리고`)이 있으면 그 행동은 아직 하지 않은 예고다.
+ */
+function isPureConditional(sentence: string): boolean {
+  const englishFuture = /\b(?:I['’]ll|I will)\b/iu.test(sentence);
+  if (englishFuture && /\b(?:if|when|once|unless)\b/iu.test(sentence)) return true;
+  // `화면`의 면은 명사다. 조건 어미 면은 뒤에서 절이 갈라진다.
+  const mark = sentence.search(/면(?!서)(?=\s|[,.!?？]|$)/u);
+  if (mark < 0 || hasPositiveConnective(sentence.slice(0, mark))) return false;
+  return hasKoreanFuture(sentence.slice(mark + 1));
+}
+
+function hasPositiveConnective(before: string): boolean {
+  for (let index = 1; index < before.length; index += 1) {
+    const mark = before[index];
+    if (mark !== "고" && mark !== "며") continue;
+    const prev = before[index - 1] ?? "";
+    if (prev === "않" || !/^[가-힣]$/u.test(prev)) continue;
+    const next = before[index + 1] ?? "";
+    // `보고`처럼 단어 안의 고는 연결어미가 아니다. 어미는 뒤에서 문장이 갈라진다.
+    if (next !== "" && next !== " " && next !== "," && next !== "\n") continue;
+    return true;
+  }
+  return false;
+}
+
+function hasKoreanFuture(text: string): boolean {
+  if (/겠|게요/u.test(text)) return true;
   for (let index = 0; index < text.length - 1; index += 1) {
     if (jongseongIndex(text[index] ?? "") !== RIEUL_INDEX) continue;
     if (text[index + 1] === "게") return true;
@@ -120,24 +130,20 @@ function hasFutureAction(text: string): boolean {
   return false;
 }
 
-function isWaitingClose(text: string): boolean {
-  return WAITING_CLOSE.test(text);
-}
-
-function isConditionalWait(text: string): boolean {
-  return CONDITIONAL_WAIT.test(text);
-}
-
-function hasFinishedReport(text: string): boolean {
-  if (/\b(?:checked|completed|finished|found|fixed|removed|updated|passed|failed|returned|confirmed|ran)\b/iu.test(text)) {
+/** 미래 표지 없이 과거·결과만 있으면 완료 보고다. 애매하면 완료로 치지 않는다. */
+function isCompletionReport(sentence: string): boolean {
+  if (hasKoreanFuture(sentence) || /\b(?:I['’]ll|I will|I['’]m going to|I am going to)\b/iu.test(sentence)) {
+    return false;
+  }
+  if (/(?:았|었|였)/u.test(sentence)) return true;
+  for (const char of sentence) {
+    if (jongseongIndex(char) !== SSANG_SIOT_INDEX) continue;
+    if (char === "겠" || char === "있" || char === "없") continue;
     return true;
   }
-  if (/(?:았|었|였)(?:습니다|다|어요|죠)/u.test(text)) return true;
-  for (const char of text) {
-    if (jongseongIndex(char) !== SSANG_SIOT_INDEX || NOT_PAST_SSANG.has(char)) continue;
-    return true;
-  }
-  return false;
+  if (/\b(?:ran|found|made|left|did|done|went|came|got|was|were|built|sent)\b/iu.test(sentence)) return true;
+  const notPast = new Set(["speed", "hundred"]);
+  return (sentence.match(/\b[A-Za-z]{3,}ed\b/giu) ?? []).some((word) => !notPast.has(word.toLowerCase()));
 }
 
 function jongseongIndex(char: string): number | undefined {
@@ -345,14 +351,15 @@ function resampleVerdict(
   text: string,
   signals: CursorSegmentSignals,
   finalStepTokens: number,
-): "incomplete" | "empty_text" | "server_work" | "not_announcement" | "long_final_step" | undefined {
+): "incomplete" | "empty_text" | "server_work" | "settled_ending" | "long_final_step" | undefined {
   if (event.response.incomplete !== undefined) return "incomplete";
   // 빈 응답은 다른 결함이다. Claude Code가 스스로 재개 넛지를 붙인다.
   if (text.trim().length === 0) return "empty_text";
   // 서버가 이 응답 안에서 웹 검색 등을 실제로 했다면 그 뒤의 텍스트는 결과 보고다.
   if (signals.serverWork) return "server_work";
-  if (!isFutureActionAnnouncement(signals.finalStepText)) return "not_announcement";
   if (finalStepTokens > MAX_RESAMPLE_FINAL_STEP_TOKENS) return "long_final_step";
+  // 짧아도 마지막 문장이 완료·질문·승인 대기면 다시 받지 않는다. 애매하면 그대로 다시 받는다.
+  if (isSettledEnding(signals.finalStepText)) return "settled_ending";
   return undefined;
 }
 
