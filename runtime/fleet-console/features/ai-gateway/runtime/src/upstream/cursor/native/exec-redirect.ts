@@ -93,6 +93,14 @@ export function hasCursorNativeReadCandidate(tools: readonly CursorRedirectToolR
   ));
 }
 
+/**
+ * How many lines the caller Read is asked for at least. Cursor's ReadSuccess needs the file's total
+ * line count, which only the end of the file can prove, and the caller never reports it. A read that
+ * fills the window proves nothing, so the window is asked for on every redirected read: when the
+ * caller returns fewer lines than it was asked for, its last line number is the file's line count.
+ */
+export const CURSOR_NATIVE_READ_EOF_WINDOW = 500;
+
 /** Where a redirected native read took its line range from. */
 export type CursorNativeReadRangeSource = "exec" | "toolCallStarted";
 
@@ -120,7 +128,7 @@ export interface CursorNativeReadRangeDecision {
  * that cannot be shown complete sent it back to re-read (#1141); Claude Code may also cut such a
  * read and report the cut only outside the tool result. A ranged read is the exception because the
  * caller numbers every line it returns, so the answer can prove the range and say so with
- * `range_applied`.
+ * `range_applied`, and its last number is the file's line count once it stops short of the window.
  *
  * cursor-agent applies a range only from the exec ReadArgs `offset` (#4, 1-based, 0 counting as 1,
  * negative meaning a tail) and `limit` (#5, 0 meaning no lines), so those win. The model's own
@@ -230,9 +238,10 @@ export function cursorNativeExecRedirect(
     if (!path) return null;
     const range = cursorNativeReadRange(exec.readArgs, readToolStarted).range;
     if (!range) return null;
+    const callerLimit = Math.max(CURSOR_NATIVE_READ_EOF_WINDOW, range.limit ?? 0);
     const mapped = tools
       .filter((tool) => matchesLeaf(tool, READ_CANDIDATES))
-      .map((tool) => ({ tool, args: readArguments(tool.inputSchemaValue, path, range) }))
+      .map((tool) => ({ tool, args: readArguments(tool.inputSchemaValue, path, range.offset, callerLimit) }))
       .find((candidate) => candidate.args !== null);
     if (!mapped?.args) return null;
     return redirect(
@@ -249,6 +258,7 @@ export function cursorNativeExecRedirect(
         path,
         startLine: String(range.startLine),
         ...(range.limit === undefined ? {} : { limit: String(range.limit) }),
+        callerLimit: String(callerLimit),
       },
     );
   }
@@ -462,24 +472,25 @@ export function cursorNativeRedirectResultReplies(
 
   switch (correlation.nativeResultType) {
     case "readResult": {
-      // Only ranged reads are redirected. Claude Code 2.1.292 answers one with exactly the
-      // requested lines or with an error; it cuts only an unranged read, and reports that cut in a
-      // separate system message rather than in this tool result. The numbered lines therefore prove
-      // a range, while the whole-file line count and size never reach the gateway: they are left
-      // unset rather than invented. Anything that does not prove the range keeps the caller's
-      // output and claims no success.
-      const startLine = Number(args.startLine);
-      const parsed = Number.isSafeInteger(startLine) && startLine >= 1
-        ? callerReadRange(output, startLine, args.limit === undefined ? undefined : Number(args.limit))
-        : { ok: false as const, reason: "no line range was requested" };
-      return [execReply(exec, "readResult", parsed.ok
-        ? { success: { path: args.path ?? "", content: parsed.content, truncated: false, rangeApplied: true } }
-        : {
-          error: {
+      // Only ranged reads are redirected, and the caller is asked for a window past the request.
+      // Claude Code 2.1.292 answers a ranged read with exactly the lines asked for or with an
+      // error; it cuts only an unranged read. When the numbered lines stop short of the window
+      // the caller has reached the end of the file, and its last number is the file's line count,
+      // the one thing Cursor's ReadSuccess needs and the caller never reports. The file size never
+      // reaches the gateway and is left unset rather than invented. Anything that does not prove
+      // the end keeps the caller's output and claims no success.
+      const verdict = judgeCallerRead(args, output);
+      return [execReply(exec, "readResult", verdict.outcome === "proven"
+        ? {
+          success: {
             path: args.path ?? "",
-            error: `The caller Read tool completed, but Fleet cannot show that its output is the requested line range because ${parsed.reason}. Use the caller Read tool for authoritative paging. Caller output:\n${output}`,
+            content: verdict.content,
+            totalLines: verdict.totalLines,
+            truncated: false,
+            rangeApplied: true,
           },
-        })];
+        }
+        : { error: { path: args.path ?? "", error: verdict.error } })];
     }
     case "grepShellResult": {
       const receipt = parseGrepShellReceipt(output, args.outputMode ?? "content");
@@ -554,32 +565,34 @@ function cursorNativeRedirectErrorReplies(
 function readArguments(
   schema: Record<string, unknown>,
   path: string,
-  range: { readonly offset?: number; readonly limit?: number },
+  offset: number | undefined,
+  limit: number,
 ): Record<string, unknown> | null {
   const pathKey = firstSchemaProperty(schema, ["file_path", "path"]);
   if (!pathKey) return null;
   const args: Record<string, unknown> = { [pathKey]: path };
-  for (const key of ["offset", "limit"] as const) {
-    if (range[key] === undefined) continue;
-    if (!schemaHasProperty(schema, key)) return null;
-    args[key] = range[key];
+  if (offset !== undefined) {
+    if (!schemaHasProperty(schema, "offset")) return null;
+    args.offset = offset;
   }
+  if (!schemaHasProperty(schema, "limit")) return null;
+  args.limit = limit;
   return args;
 }
 
 /**
- * The text of a caller Read that returned exactly the lines asked for, or why it cannot be shown
- * to be that. Claude Code numbers every line `N<TAB>` (`N:` when its tab-aware separator is on),
- * shows the empty line after a final newline as a bare `N<TAB>`, and answers an offset past the
- * end, an empty file, or a cap with a notice instead of numbered lines. A ranged read is never cut
- * short silently, so consecutive numbers from the requested start, no more lines than the limit,
- * and nothing else prove the range.
+ * The numbered lines of a caller Read, or why its output is not one listing. Claude Code numbers
+ * every line `N<TAB>` (`N:` when its tab-aware separator is on), shows the empty line after a final
+ * newline as a bare `N<TAB>`, and answers an offset past the end, an empty file, or a cap with a
+ * notice instead of numbered lines. A ranged read is never cut short silently, so consecutive
+ * numbers from the requested start, no more lines than were asked for, and nothing else make it a
+ * listing whose last number is trustworthy.
  */
 function callerReadRange(
   output: string,
   startLine: number,
-  limit: number | undefined,
-): { readonly ok: true; readonly content: string } | { readonly ok: false; readonly reason: string } {
+  limit: number,
+): { readonly ok: true; readonly lines: readonly string[] } | { readonly ok: false; readonly reason: string } {
   const lines = output.replace(/\r\n/g, "\n").split("\n");
   // Every listed line starts with its number, so a blank line around the listing is the caller's.
   while (lines.length > 0 && lines[0]!.trim() === "") lines.shift();
@@ -597,10 +610,58 @@ function callerReadRange(
     }
     content.push(numbered[2] ?? "");
   }
-  if (limit !== undefined && content.length > limit) {
+  if (content.length > limit) {
     return { ok: false, reason: `it has more than ${limit} lines` };
   }
-  return { ok: true, content: content.join("\n") };
+  return { ok: true, lines: content };
+}
+
+export type CursorNativeReadEofOutcome = "proven" | "window" | "not-listing" | "caller-error";
+
+type CursorNativeReadVerdict =
+  | { readonly outcome: "proven"; readonly content: string; readonly totalLines: number }
+  | { readonly outcome: "window" | "not-listing"; readonly error: string };
+
+/**
+ * Judge the caller Read of a redirected native read. Cursor needs the file's total line count, and
+ * the caller reports none, so success is claimed only when the caller returned fewer lines than it
+ * was asked for: it then reached the end of the file, and its last line number is the count. Nothing
+ * is estimated and the file is never opened here.
+ */
+function judgeCallerRead(args: Readonly<Record<string, string>>, output: string): CursorNativeReadVerdict {
+  const startLine = Number(args.startLine);
+  const callerLimit = Number(args.callerLimit);
+  const limit = args.limit === undefined ? undefined : Number(args.limit);
+  const notListing = (reason: string): CursorNativeReadVerdict => ({
+    outcome: "not-listing",
+    error: `The caller Read tool completed, but Fleet cannot show that its output is the requested line range because ${reason}. Use the caller Read tool for authoritative paging. Caller output:\n${output}`,
+  });
+  if (!Number.isSafeInteger(startLine) || startLine < 1 || !Number.isSafeInteger(callerLimit) || callerLimit < 1) {
+    return notListing("no line range was requested");
+  }
+  const parsed = callerReadRange(output, startLine, callerLimit);
+  if (!parsed.ok) return notListing(parsed.reason);
+  if (parsed.lines.length >= callerLimit) {
+    return {
+      outcome: "window",
+      error: `The caller Read tool completed, but Fleet cannot confirm the end of the file within ${callerLimit} lines from line ${startLine}, so it cannot report the file's total line count. Use the caller Read tool for authoritative paging. Caller output:\n${output}`,
+    };
+  }
+  const requested = limit === undefined || !Number.isSafeInteger(limit) ? parsed.lines : parsed.lines.slice(0, limit);
+  return {
+    outcome: "proven",
+    content: requested.join("\n"),
+    totalLines: startLine + parsed.lines.length - 1,
+  };
+}
+
+/** What the caller Read of a redirected native read proved. Payload-free, for diagnostics. */
+export function cursorNativeReadEofOutcome(
+  correlation: { readonly nativeArgs?: Readonly<Record<string, string>> },
+  output: string,
+  isError: boolean,
+): CursorNativeReadEofOutcome {
+  return isError ? "caller-error" : judgeCallerRead(correlation.nativeArgs ?? {}, output).outcome;
 }
 
 function grepArguments(

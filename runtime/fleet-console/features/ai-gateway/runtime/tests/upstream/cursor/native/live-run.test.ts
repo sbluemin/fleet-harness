@@ -32,7 +32,9 @@ import {
   AgentServerMessageSchema,
 } from "../../../../src/upstream/cursor/native/generated/cursor-agent-protobuf.js";
 import {
+  CURSOR_NATIVE_READ_EOF_WINDOW,
   cursorNativeExecRedirect,
+  cursorNativeReadEofOutcome,
   cursorNativeRedirectResultReplies,
 } from "../../../../src/upstream/cursor/native/exec-redirect.js";
 
@@ -558,24 +560,29 @@ describe("Cursor live client-tool Run bridge", () => {
       ))[0];
       if (!redirected) throw new Error("Missing redirected Read call");
       expect(redirected.name).toBe("Read");
-      expect(JSON.parse(redirected.arguments)).toEqual({ file_path: path, limit: 3 });
+      // The caller is asked for the whole end-of-file window, not just the three lines requested.
+      expect(JSON.parse(redirected.arguments)).toEqual({ file_path: path, limit: CURSOR_NATIVE_READ_EOF_WINDOW });
       expect(diagnostics).toContainEqual(expect.objectContaining({
         event: "exec.read.range",
         outcome: "exec exec:limit started:limit",
       }));
 
-      // Claude Code 2.1.292's own Read output for those lines.
+      // Claude Code 2.1.292's own Read output for a three-line file with a final newline: the
+      // empty line after it is shown as a bare `4<TAB>`, which is Cursor's count of that file.
       const events = await collectCursorResponse(harness.adapter, cursorContinuation(
         initial,
         [{ callId: redirected.call_id, toolCallId: callId, messageId: 41, execId: "exec-41", name: "Read" }],
-        [{ call_id: redirected.call_id, output: "1\tline 1\n2\tline 2\n3\tline 3" }],
+        [{ call_id: redirected.call_id, output: "1\tline 1\n2\tline 2\n3\tline 3\n4\t" }],
       ));
       expect(canonicalText(events)).toBe("read handled");
+      // The caller stopped short of the window, so its last number is the line count. The
+      // content is cut to the requested limit and no file size is claimed.
       expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
         execClientMessage: expect.objectContaining({
-          readResult: { success: { path, content: "line 1\nline 2\nline 3", rangeApplied: true } },
+          readResult: { success: { path, content: "line 1\nline 2\nline 3", totalLines: 4, rangeApplied: true } },
         }),
       }));
+      expect(diagnostics).toContainEqual(expect.objectContaining({ event: "exec.read.eof", outcome: "proven" }));
     } finally {
       harness.adapter.dispose();
     }
@@ -585,7 +592,10 @@ describe("Cursor live client-tool Run bridge", () => {
       cursorNativeExecRedirect({ id: 7, execId: "exec-7", readArgs: { path, toolCallId: "t", ...readArgs } }, readTool, "cursor", started)
     );
     // A limit announced only on toolCallStarted is enough; the offset base does not matter for it.
-    expect(JSON.parse(nativeRead({}, { path, limit: 30 })?.call.arguments ?? "{}")).toEqual({ file_path: path, limit: 30 });
+    expect(JSON.parse(nativeRead({}, { path, limit: 30 })?.call.arguments ?? "{}")).toEqual({ file_path: path, limit: 500 });
+    // The caller's limit is the window or the request, whichever is larger; an offset rides along.
+    expect(JSON.parse(nativeRead({ offset: 40, limit: 700 })?.call.arguments ?? "{}")).toEqual({ file_path: path, offset: 40, limit: 700 });
+    expect(JSON.parse(nativeRead({ offset: 40 })?.call.arguments ?? "{}")).toEqual({ file_path: path, offset: 40, limit: 500 });
     // No range, or one the caller's Read cannot state exactly, never becomes a whole-file read.
     for (const [readArgs, started] of [
       [{}, undefined],
@@ -600,25 +610,28 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(nativeRead(readArgs, started)).toBeNull();
     }
 
-    // Output that does not prove the range keeps the caller's text and claims no success.
+    // Output that does not prove the range keeps the caller's text and claims no success; one
+    // that fills the window without reaching the end of the file says where the check began.
     const correlation = {
       messageId: 7,
       execId: "exec-7",
       nativeResultType: "readResult" as const,
-      nativeArgs: { path, startLine: "50" },
+      nativeArgs: { path, startLine: "50", limit: "30", callerLimit: "500" },
     };
-    for (const output of [
-      "<system-reminder>Warning: the file exists but is shorter than the provided offset (50). The file has 41 lines.</system-reminder>",
-      "1\tline 1\n2\tline 2",
-    ]) {
-      expect(cursorNativeRedirectResultReplies(correlation, output, false)).toEqual([{
-        execClientMessage: {
-          id: 7,
-          execId: "exec-7",
-          readResult: { error: { path, error: expect.stringContaining(`Caller output:\n${output}`) } },
-        },
+    const windowFull = Array.from({ length: 500 }, (_, index) => `${50 + index}\tline`).join("\n");
+    for (const [output, outcome, message] of [
+      ["<system-reminder>Warning: the file exists but is shorter than the provided offset (50). The file has 41 lines.</system-reminder>", "not-listing", "not a numbered line listing"],
+      ["50\tline 50\n52\tline 52", "not-listing", "not numbered from line 50"],
+      [windowFull, "window", "end of the file within 500 lines from line 50"],
+    ] as const) {
+      expect(cursorNativeReadEofOutcome(correlation, output, false)).toBe(outcome);
+      const reply = cursorNativeRedirectResultReplies(correlation, output, false);
+      expect(reply).toEqual([{
+        execClientMessage: { id: 7, execId: "exec-7", readResult: { error: { path, error: expect.stringContaining(message) } } },
       }]);
+      expect(JSON.stringify((reply[0] as { execClientMessage: unknown }).execClientMessage)).toContain(JSON.stringify(`Caller output:\n${output}`).slice(1, -1));
     }
+    expect(cursorNativeReadEofOutcome(correlation, "Error: file too large", true)).toBe("caller-error");
   });
 
   it("parks a call whose exec message is the first of the Run and keeps it across an unknown update", async () => {

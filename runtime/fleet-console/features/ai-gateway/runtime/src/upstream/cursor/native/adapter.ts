@@ -35,6 +35,7 @@ import {
 } from "./exec-responses.js";
 import {
   cursorNativeExecRedirect,
+  cursorNativeReadEofOutcome,
   cursorNativeReadRange,
   cursorNativeRedirectResultReplies,
   cursorNativeRedirectToolReferences,
@@ -175,6 +176,7 @@ export type CursorDiagnosticEventName =
   | "bridge.expire"
   | "bridge.mismatch"
   | "exec.read.range"
+  | "exec.read.eof"
   | "exec.redirect.selected"
   | "exec.redirect.attached"
   | "exec.redirect.result_written"
@@ -1155,7 +1157,8 @@ function cursorClientToolDiscipline(
   // Unlike search and shell, a read without a line range has no redirect to fall back on: the
   // native success shape cannot state whether the caller returned a complete file, and answering
   // with an unverifiable body measurably sent the model back to re-read instead. Only a read with
-  // a line range is redirected, because the caller's numbered lines prove that range. Naming the
+  // a line range is redirected, because the caller's numbered lines prove that range and, once
+  // they stop short of the window it was asked for, the file's line count. Naming the
   // advertised tool in the rule is the lever that reaches the model before it chooses.
   const readTool = tools.find((tool) => (
     cursorToolLeafName(tool.clientName).replace(/[_-]/g, "").toLowerCase() === "read"
@@ -3298,6 +3301,16 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
             result.is_error === true,
           );
           for (const reply of replies) stream.write(encodeCursorClientMessage(reply));
+          if (call.nativeResultType === "readResult") {
+            report("exec.read.eof", {
+              model: diagnosticModel,
+              outcome: cursorNativeReadEofOutcome(
+                { ...(call.nativeArgs ? { nativeArgs: call.nativeArgs } : {}) },
+                result.output,
+                result.is_error === true,
+              ),
+            });
+          }
           report("exec.redirect.result_written", {
             model: diagnosticModel,
             operationSequence: call.operationSequence,
