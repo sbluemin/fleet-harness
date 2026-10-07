@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
+import type { ConsoleCaller, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { decisionTurn, humanWords, memberMessageTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "./signals.js";
@@ -870,18 +870,27 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
    * 대상이 없으면 타이머를 걸지 않는다.
    */
   const lastOutcomes = new Map<string, "failed" | undefined>();
+  const lastTurns = new Map<string, { generation: string | undefined; revision: number }>();
+  let unsubscribeTurnEnds: (() => void) | null = null;
   const outcomeWatched = new Map<string, string>();
   let outcomeTimer: ReturnType<typeof setTimeout> | null = null;
   const dropOutcome = (operationId: string) => {
     lastOutcomes.delete(operationId);
     outcomeWatched.delete(operationId);
+    if (outcomeWatched.size === 0) { unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null; }
   };
   const forgetOutcome = (operationId: string) => {
+    lastTurns.delete(operationId);
+    store.settleMemberFailure(operationId, null);
     dropOutcome(operationId);
-    for (const [id, objectiveId] of [...outcomeWatched]) if (objectiveId === operationId) dropOutcome(id);
+    for (const [id, objectiveId] of [...outcomeWatched]) if (objectiveId === operationId) {
+      lastTurns.delete(id);
+      store.settleMemberFailure(id, null);
+      dropOutcome(id);
+    }
   };
-  const syncOutcome = (objectiveId: string, operationId: string): boolean => {
-    const observation = ctx.host.consoleControl?.observe(operationId) ?? null;
+  const syncOutcome = (objectiveId: string, operationId: string, snapshot?: ConsoleOperationObservation): boolean => {
+    const observation = snapshot ?? ctx.host.consoleControl?.observe(operationId) ?? null;
     const live = !!observation && observation.lifecycle === "live";
     if (!live) {
       const removeFailed = lastOutcomes.has(operationId) && lastOutcomes.get(operationId) === "failed";
@@ -891,13 +900,31 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     outcomeWatched.set(operationId, objectiveId);
     const next = deriveFailedOutcome(observation);
     const seen = lastOutcomes.has(operationId);
-    if (!seen && next === undefined) {
-      lastOutcomes.set(operationId, undefined);
-      return false;
-    }
-    if (seen && lastOutcomes.get(operationId) === next) return false;
+    let changed = (seen || next !== undefined) && lastOutcomes.get(operationId) !== next;
     lastOutcomes.set(operationId, next);
-    return true;
+    const current = store.find(objectiveId);
+    const member = operationId === objectiveId ? undefined : current?.members.find((entry) => entry.id === operationId);
+    const outcome = observation.output?.outcome;
+    if (member && current && !current.done && (outcome === "failed" || outcome === "succeeded" || outcome === "completed")) {
+      const previous = lastTurns.get(operationId);
+      const revision = observation.output.revision ?? 0;
+      const generation = observation.generation;
+      if (!previous || previous.generation !== generation || revision > previous.revision) {
+        // 시도 전에 좌표를 소비한다. polling·종료 이벤트 중복이나 전송 거절에 자동 재시도하지 않는다.
+        lastTurns.set(operationId, { generation, revision });
+        if (outcome === "failed") {
+          const failure = store.settleMemberFailure(operationId, observation.output.failure ?? { error: "unknown" })!;
+          const language: PromptLanguage = ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
+          const notice = memberFailureTurn(current, member, failure, language);
+          void send(objectiveId, notice, notice);
+          changed = true;
+        } else if (store.memberFailure(operationId)) {
+          store.settleMemberFailure(operationId, null);
+          changed = true;
+        }
+      }
+    }
+    return changed;
   };
   const sweepOutcomes = () => {
     if (disposed) return;
@@ -914,7 +941,16 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     for (const objectiveId of changed) store.refresh(objectiveId);
   };
   const armOutcomeWatch = () => {
-    if (disposed || outcomeTimer || outcomeWatched.size === 0) return;
+    if (disposed || outcomeWatched.size === 0) return;
+    if (!unsubscribeTurnEnds) unsubscribeTurnEnds = ctx.host.consoleControl?.subscribeTurnEnds?.((event) => {
+      if (disposed) return;
+      const current = outcomeOwner(event.operationId);
+      const observed = ctx.host.consoleControl?.observe(event.operationId);
+      if (!current || !observed) return;
+      const snapshot: ConsoleOperationObservation = { ...observed, activity: "idle", lifecycle: "live", generation: event.generation ?? observed.generation, output: event.output };
+      if (syncOutcome(current.id, event.operationId, snapshot)) store.refresh(current.id);
+    }) ?? null;
+    if (outcomeTimer) return;
     outcomeTimer = setTimeout(() => {
       outcomeTimer = null;
       try { sweepOutcomes(); }
@@ -1060,6 +1096,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     complete: (objectiveId, options) => orderedOperationRequest(objectiveId, async () => {
       const current = objective(objectiveId);
       store.complete(objectiveId, current.done ? undefined : operationIntent(objectiveId, "archive"), options?.actor);
+      forgetOutcome(objectiveId);
       await applyOperationIntent(objectiveId);
       return objective(objectiveId);
     }),
@@ -1371,6 +1408,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       editableObjective(objectiveId);
       // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
       await control().request({ kind: "send", operationId: target, text, display: text.trim(), displayFormat: "markdown" }).catch(asStoreError);
+      if (member) { store.acknowledgeMemberFailure(member.id); store.refresh(objectiveId); }
       touchLive(target);
       if (!member) return { objective: objective(objectiveId), notified: null };
       const notified = await accessOperation(current.id).then(() => send(current.id, memberMessageTurn(current, member.role, text, languageOf(options), options?.actor), humanWords(text)), () => false);
@@ -1468,6 +1506,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       outcomeTimer = null;
       outcomeWatched.clear();
       lastOutcomes.clear();
+      unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null;
+      for (const operationId of lastTurns.keys()) store.settleMemberFailure(operationId, null);
+      lastTurns.clear();
       if (quietTimer) clearTimeout(quietTimer);
       quietTimer = null;
       for (const waiter of [...decisionWaiters.values()]) waiter(null);

@@ -178,13 +178,20 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const entries = unzipSync(archive);
     expect(Object.keys(entries)).toContain(".claude-plugin/plugin.json");
     const hooks = JSON.parse(strFromU8(entries["hooks/hooks.json"]!)) as {
-      hooks: { UserPromptSubmit: { hooks: { command: string; args: string[] }[] }[] };
+      hooks: { UserPromptSubmit: { hooks: { command: string; args: string[] }[] }[]; StopFailure?: { hooks: { command: string; args: string[] }[] }[] };
     };
     expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]).toEqual({
       type: "command",
       command: "/node",
       args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "capture-session", "claude"],
     });
+    // 실패 hook의 등록 누락은 route 주입으로 잡히지 않는다. 소스가 아니라 자식이 받은 archive의 계약을 확인한다.
+    // Claude Code 2.1.289 P$e(byte 189450669)는 API 오류를 정상 Stop 대신 StopFailure로 보낸다.
+    expect(hooks.hooks.StopFailure?.flatMap((entry) => entry.hooks)).toEqual([{
+      type: "command",
+      command: "/node",
+      args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "turn-end"],
+    }]);
   });
 
   it("rejects a scoped gateway model that became stale before spawn", async () => {

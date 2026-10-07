@@ -13,12 +13,13 @@ interface PendingTurn {
   started: boolean;
   interrupt?: (confirmed: boolean) => void;
 }
-interface OutputState { generation: number; output: PublicOutput; transcriptOffset?: number }
+interface OutputState { generation: number; output: PublicOutput; transcriptOffset?: number; ended?: boolean }
 
 /** PTY 화면 바이트가 아니라 CLI가 남긴 공개 답변과 턴 경계를 읽는다. */
 export function createConsoleTerminalObserver(deps: {
   readonly transcript: (operationId: string) => string | undefined;
   readonly cwd: (operationId: string) => string | undefined;
+  readonly onTurnEnd?: (operationId: string, output: PublicOutput) => void;
 }) {
   const pending = new Map<string, PendingTurn>();
   const outputs = new Map<string, OutputState>();
@@ -60,15 +61,31 @@ export function createConsoleTerminalObserver(deps: {
   }
   async function end(id: string, input: unknown) {
     const hook = parse(input);
-    const state: OutputState = outputs.get(id) ?? { generation: 0, output: unavailable() };
-    if (!outputs.has(id)) outputs.set(id, state);
+    const previous = outputs.get(id);
+    // 내부 메시지·queued 턴에는 UserPromptSubmit이 없을 수 있다. 종료 hook마다 별도 종료 revision을 보장한다.
+    const state: OutputState = previous?.ended ? { generation: previous.generation + 1, output: unavailable(), transcriptOffset: previous.transcriptOffset }
+      : previous ?? { generation: 0, output: unavailable() };
+    state.ended = true;
+    outputs.set(id, state);
     const turn = pending.get(id);
     const interrupted = !!turn?.interrupt;
-    const outcome = interrupted ? "interrupted" : "completed";
+    const failed = hook.hook_event_name === "StopFailure";
+    const outcome = failed ? "failed" : interrupted ? "interrupted" : "completed";
+    const failure = failed ? {
+      error: typeof hook.error === "string" ? hook.error : "unknown",
+      ...(typeof hook.error_details === "string" ? { error_details: hook.error_details } : {}),
+      ...(typeof hook.last_assistant_message === "string" ? { last_assistant_message: hook.last_assistant_message } : {}),
+    } : undefined;
     let raw = typeof hook.last_assistant_message === "string" ? hook.last_assistant_message : undefined;
     let truncated = false;
     let source: "terminal_hook" | "terminal_transcript" = "terminal_hook";
-    if (!raw) {
+    // 텍스트 보충을 기다리다가 다음 start가 와도 종료 사실 자체는 잃지 않는다.
+    const reported = !raw;
+    if (reported) {
+      state.output = { ...unavailable(), outcome, revision: state.generation, ...(failure ? { failure } : {}) };
+      deps.onTurnEnd?.(id, state.output);
+    }
+    if (!raw && !failed) {
       // 캡처된 정확한 파일만 읽는다. 주변 파일을 찾아 다른 세션의 답변을 섞지 않는다.
       const file = deps.transcript(id);
       if (file && state.transcriptOffset !== undefined) {
@@ -102,7 +119,8 @@ export function createConsoleTerminalObserver(deps: {
     }
     if (disposed || outputs.get(id) !== state) return;
     const safe = raw ? chatShellTailFromOutput(raw, { cwd: deps.cwd(id) }) : null;
-    state.output = { status: safe?.tail ? "available" : "unavailable", ...(safe?.tail ? { text: safe.tail, truncated: truncated || safe.truncated } : {}), outcome, source, revision: state.generation };
+    state.output = { status: safe?.tail ? "available" : "unavailable", ...(safe?.tail ? { text: safe.tail, truncated: truncated || safe.truncated } : {}), outcome, source, revision: state.generation, ...(failure ? { failure } : {}) };
+    if (!reported) deps.onTurnEnd?.(id, state.output);
     // Stop은 목표 성공이 아니라 CLI 턴 종료의 증거다. 매칭한 요청에만 완료를 귀속한다.
     if (pending.get(id) === turn && turn?.started) complete(id, outcome);
   }

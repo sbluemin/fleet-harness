@@ -132,6 +132,10 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
         Stop: [{
           hooks: stopExecs.map(claudeCommandHook),
         }],
+        // StopFailure는 별도 이벤트다. 같은 종료 이벤트에 병렬 hook을 늘리지 않고 같은 payload 경계를 쓴다.
+        StopFailure: [{
+          hooks: stopExecs.map(claudeCommandHook),
+        }],
       } : {}),
       ...(preToolUse.length > 0 ? { PreToolUse: preToolUse } : {}),
       ...(inputWaitingExec ? {

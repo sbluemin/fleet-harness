@@ -202,6 +202,7 @@ export interface AgentChatSessionSeed {
   readonly reportActivity: (working: boolean) => boolean;
   /** 자식에 닿았던 턴이 어떤 결말로든 닫힐 때 — 중단을 포함한다. 에이전트 사용 표식(브라우저·Console Use·Computer Use)이 여기서 내려간다. */
   readonly onTurnSettled?: () => void;
+  readonly onTurnEnd?: (output: import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"]) => void;
   /**
    * 턴이 닫힐 때 transcript의 마지막 cwd로 위치 보고를 보정한다. 실행별 hook 바인딩이
    * 있으면 그 바인딩을 통해 보고하고, 없는 호출자는 이 콜백을 쓴다.
@@ -1061,12 +1062,14 @@ class AgentChatSession {
     const start = this.journal.findLastIndex(({ event }) => event.kind === "dispatch" || event.kind === "turn-start");
     const entries = this.journal.slice(Math.max(0, start));
     const text = entries.flatMap(({ event }) => event.kind === "text" ? [event.text] : []).join("\n\n");
-    const ending = entries.findLast(({ event }) => event.kind === "turn-end")?.event;
+    const endEntry = entries.findLast(({ event }) => event.kind === "turn-end");
+    const ending = endEntry?.event;
     const safe = chatShellTailFromOutput(text, { cwd: this.seed.cwd });
     const value: import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] = {
       status: text ? "available" : "unavailable", ...(text ? { text: safe.tail, truncated: safe.truncated || start < 0 } : {}),
-      revision: this.seq,
+      revision: endEntry?.seq ?? this.seq,
       outcome: busy ? "running" : ending?.kind === "turn-end" ? (ending.stopped ? "interrupted" : ending.ok ? "succeeded" : "failed") : "unknown",
+      ...(!busy && ending?.kind === "turn-end" && ending.failure ? { failure: ending.failure } : {}),
     };
     this.consoleOutputCache = { seq: this.seq, busy, value };
     return value;
@@ -2837,12 +2840,12 @@ class AgentChatSession {
       const settling = this.settlingStoppedTurn;
       this.settlingStoppedTurn = false;
       if (this.turnOpen) {
-        this.closeTurn({ ok: event.ok, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }), ...(event.answer === undefined ? {} : { answer: event.answer }) });
+        this.closeTurn({ ok: event.ok, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }), ...(event.answer === undefined ? {} : { answer: event.answer }), ...(event.failure ? { failure: event.failure } : {}) });
       } else if (settling) {
         this.releaseTurnCloseWaiters();
       } else if (event.ok === false) {
         this.openTurn({ dispatched: false });
-        this.closeTurn({ ok: false, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }) });
+        this.closeTurn({ ok: false, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }), ...(event.failure ? { failure: event.failure } : {}) });
       }
       return;
     }
@@ -2950,7 +2953,7 @@ class AgentChatSession {
    * 대기 중인 디스패치를 여기서 푼다. 그것이 풀려야 큐에 있던 다음 메시지가 시작하고, 풀리지
    * 않으면 세션은 조용히 멈춘 채 사용자의 다음 문장을 영영 받지 않는다.
    */
-  private closeTurn(end: { readonly ok?: boolean; readonly stopped?: boolean; readonly durationMs?: number; readonly answer?: string }): void {
+  private closeTurn(end: { readonly ok?: boolean; readonly stopped?: boolean; readonly durationMs?: number; readonly answer?: string; readonly failure?: import("@fleet-console/sdk/mcp").ConsoleTurnFailure }): void {
     if (!this.turnOpen) return;
     this.turnOpen = false;
     // SDK 대화 세션이 살아 있어도 기기 제어는 이 턴과 함께 끝난다.
@@ -2963,6 +2966,13 @@ class AgentChatSession {
       ...(end.stopped === true ? { stopped: true } : {}),
       ...(end.durationMs === undefined ? {} : { durationMs: end.durationMs }),
       ...(end.answer === undefined ? {} : { answer: end.answer }),
+      ...(end.failure ? { failure: end.failure } : {}),
+    });
+    // 다음 queued 턴이 output을 덮기 전, 이 종료 좌표를 구독자에게 보낸다.
+    this.seed.onTurnEnd?.({
+      status: "unavailable", revision: this.seq,
+      outcome: end.stopped ? "interrupted" : end.ok === false ? "failed" : "succeeded",
+      ...(end.failure ? { failure: end.failure } : {}),
     });
     // 답이 풀리지 않은 채 턴이 닫히면 자식은 그 도구 호출에서 멈춘 채 남는다.
     this.abandonAsks("The turn ended before the question was answered.");

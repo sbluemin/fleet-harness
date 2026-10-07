@@ -715,7 +715,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
       const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
       const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
-      const failed = member.outcome === "failed" && !isWorkingOrAwaiting;
+      const failed = (member.outcome === "failed" || !!member.failure) && !isWorkingOrAwaiting;
       const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : isWorkingOrAwaiting ? (state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.working")) : t("objectives.members.idle");
       const allowed = memberSubagents(member);
       return (
@@ -776,6 +776,11 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           ) : null}
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
         </div>
+        {member.failure ? <details className="objectives-member-note is-error objectives-member-failure">
+          <summary>{t("objectives.members.failureCount", { count: member.failure.consecutiveFailures })}</summary>
+          <p>{t("objectives.members.failureData")}</p>
+          <pre>{[member.failure.error, member.failure.error_details, member.failure.last_assistant_message].filter((value) => value !== undefined).join("\n")}</pre>
+        </details> : null}
         {routed?.via === "fallback" ? <p className="objectives-member-reason" title={routed.detail}>{routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) })}</p> : null}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
         {fault?.id === member.id && !picked ? <p className="objectives-member-note is-error" role="alert">{hasRoutingReason(fault.code) ? routingReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}

@@ -2,7 +2,7 @@ import type { ClientNavigateCapability, ClientShellCapability } from "../navigat
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
-import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage } from "../mcp/control.js";
+import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
@@ -1142,6 +1142,8 @@ export interface FleetPluginConsoleControlHost {
   request(input: ConsoleActionInput): Promise<ConsoleActionResult>;
   /** 한 Operation 의 지금 관측 — 활동·생명주기·표면·마지막 산출. 모르면 null. */
   observe(operationId: string): ConsoleOperationObservation | null;
+  /** 소유한 세션의 종료 snapshot. 다음 턴이 곧 시작해도 polling이 실패를 놓치지 않는다. */
+  subscribeTurnEnds?(listener: (event: ConsoleTurnEnd) => void): () => void;
   /**
    * 유휴 Agent Operation을 휴면으로 보낸다. 진행 중이면 not_idle. `dormant` 는 옛 프로세스가 끝난 것까지 확인했다는 뜻이고,
    * `ending` 은 휴면으로 전이했지만 그 종료를 아직 확인하지 못했다는 뜻이다. 어느 쪽이든 곧바로 재개를 보내도 된다 — 호스트는 옛 프로세스가

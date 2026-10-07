@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@fleet-console/infra";
 import { sanitizeLaunchPrompt } from "@fleet-console/agent-runtime/fleet";
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage } from "@fleet-console/sdk/mcp";
+import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleTurnEnd } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
 import { LaunchKeyError, type LaunchKeyLedger, type LaunchKeyState } from "./launch-keys.js";
@@ -106,6 +106,7 @@ interface InFlight {
 
 export function createConsoleControl(deps: ConsoleControlDeps) {
   const now = deps.now ?? Date.now;
+  const turnEndListeners = new Set<{ caller: ConsoleCaller; listener: (event: ConsoleTurnEnd) => void }>();
   const stamp = () => new Date(now()).toISOString();
   const file = path.join(deps.directory, "state.json");
   let state: SavedState = { version: 3, automations: [] };
@@ -423,6 +424,22 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   return {
     attach(value: ConsoleExecutionAdapter) { if (adapter) throw new Error("Console execution already attached"); adapter = value; return () => { if (adapter === value) adapter = null; }; },
     observe, request, automation, readEvents, briefing, tick,
+    subscribeTurnEnds(caller: ConsoleCaller, listener: (event: ConsoleTurnEnd) => void) {
+      const entry = { caller, listener };
+      turnEndListeners.add(entry);
+      return () => { turnEndListeners.delete(entry); };
+    },
+    reportTurnEnd(operationId: string, output: ConsoleOperationObservation["output"]) {
+      if (disposed) return;
+      const op = node(operationId);
+      if (!op) return;
+      const generation = observe(operationId)?.generation;
+      const event: ConsoleTurnEnd = { operationId, ...(generation ? { generation } : {}), output };
+      for (const entry of turnEndListeners) {
+        if (!launchedByPlugin(entry.caller, op)) continue;
+        try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 턴 정산을 막지 않는다. */ }
+      }
+    },
     launchKeyState, coordinates, transcript,
     readCoordinates(operationId: string): ConsoleCoordinates | null { return adapter?.readCoordinates?.(operationId) ?? null; },
     reserveLaunchKeys(caller: ConsoleCaller, theaterId: string, keys: readonly string[]) {
@@ -449,7 +466,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       }
       return updateAutomation(id, { status: "active", ...(item.input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + item.input.trigger.minutes * 60_000).toISOString() } : {}) });
     },
-    dispose() { disposed = true; clearInterval(timer); for (const wake of waiters) wake(); adapter = null; },
+    dispose() { disposed = true; clearInterval(timer); for (const wake of waiters) wake(); turnEndListeners.clear(); adapter = null; },
   };
 }
 export type ConsoleControl = ReturnType<typeof createConsoleControl>;

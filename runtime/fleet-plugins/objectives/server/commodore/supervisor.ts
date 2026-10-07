@@ -82,7 +82,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 만 누적이다.
  */
-export type WakeCode = "patrol" | "directive" | "intel" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated";
+export type WakeCode = "patrol" | "directive" | "intel" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated";
 
 /** 사령관 자신의 보드 쓰기가 끝난 뒤에도 그 목표의 상태 변화를 제 것으로 보는 시간 — 기동처럼 쓰기 뒤에 이어지는 사건까지. */
 const SELF_WRITE_GRACE_MS = 5_000;
@@ -99,7 +99,7 @@ interface PendingReason {
 }
 
 /** 보드 대기 상태의 코드 — 수는 턴 직전의 보드에서 다시 센다. */
-const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "pending", "planned"]);
+const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
 
 export function wakeToken(code: WakeCode, count?: number): string {
   return count === undefined ? code : `${code}:${count}`;
@@ -126,6 +126,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "planned": return `inbox: ${plural("objective")} ${n === 1 ? "has" : "have"} a lineup ready to commence`;
     case "followup": return `inbox: ${plural("open follow-up candidate")}`;
     case "followup-failed": return `inbox: ${plural("failed or unconfirmed follow-up creation")}`;
+    case "member-failed": return `inbox: ${plural("objective with a failed member turn")}`;
     case "stalled": return `${plural("stalled objective")}${tail}`;
     case "empty": return "the board is empty";
     case "restart": return "Console restarted";
@@ -556,7 +557,7 @@ function inboxDigest(objectives: readonly Objective[]): readonly [WakeCode, numb
   // 보드가 아는 이유 코드는 깨움 코드와 이름이 같다 — 보드가 새 이유를 더하면 여기 순서에 넣는다.
   const counts = new Map<string, number>();
   for (const objective of objectives) for (const reason of inboxReasons(objective) as readonly string[]) counts.set(reason, (counts.get(reason) ?? 0) + 1);
-  return (["decision", "criteria", "review", "followup", "followup-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
+  return (["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
 }
 
 /** 모델 문맥 — `[1m]` 별칭은 1M, 그 밖은 200k 로 본다(교대 판단에만 쓴다). */

@@ -261,6 +261,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   });
   const consoleTerminal = createConsoleTerminalObserver({
     transcript: (id) => readProviderSession(ctx.host.operations.get(id)?.payload)?.transcriptPath,
+    onTurnEnd: (id, output) => ctx.consoleControl?.reportTurnEnd(id, output),
     cwd: (id) => { const op = ctx.host.operations.get(id); return op ? readPayloadString(op.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(op.theaterId) ?? undefined : undefined; },
   });
   ctx.host.lifecycle.registerCleanup(() => consoleTerminal.dispose());
@@ -2290,6 +2291,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         },
         canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
         onTurnSettled: () => deps.onTurnSettled?.(node.id),
+        onTurnEnd: (output) => ctx.consoleControl?.reportTurnEnd(node.id, output),
         // 채팅 자식의 cwd도 같은 이유로 세션이 직접 알린다 — "지금 어디" 축이 두 얼굴에서 같이 따라간다.
         onCwdChanged: (nextCwd) => workspaceContext.observe(node.id, node.theaterId, nextCwd),
         bindWorkspaceHook: (providerSessionId) => workspaceHooks.bind(node.id, providerSessionId,

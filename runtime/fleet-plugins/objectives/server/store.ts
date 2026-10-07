@@ -3,6 +3,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
 import { readOperationLaunch, type OperationNode, type OperationDescription } from "@fleet-console/sdk/operations";
+import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
@@ -36,6 +37,7 @@ import {
   type ObjectiveAttachment,
   type ObjectiveEditKind,
   type Objective,
+  type ObjectiveMemberFailure,
   type ObjectiveEvent,
   OBJECTIVE_FILE,
   type MemberLaunch,
@@ -199,6 +201,10 @@ export interface ObjectiveStore {
   patch(objectiveId: string, input: ObjectivePatch): Objective;
   /** Operation 쪽 값(제목·그룹·모델)이 바뀌었다 — 저장은 그대로, 합친 화면 모양만 다시 방송한다. */
   refresh(operationId: string): void;
+  /** 현재 세션의 실패 ledger — 모델 턴이나 영속 목표 기록과 별개다. */
+  memberFailure(memberId: string): ObjectiveMemberFailure | undefined;
+  settleMemberFailure(memberId: string, failure: ConsoleTurnFailure | null): ObjectiveMemberFailure | undefined;
+  acknowledgeMemberFailure(memberId: string): void;
   /** 지휘관 Operation 이 복원 불가로 사라졌다 — 레코드와 첨부를 지운다. 담당이었다면 그 임무의 연결을 푼다. */
   forget(operationId: string): void;
   /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. */
@@ -516,6 +522,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
    * 대체·철회·정리를 막는 것은 실제로 보내는 동안뿐이다. 남은 표시는 사람의 재전송이나 요청의 정리와 함께 거둔다.
    */
   const delivering = new Set<string>();
+  const memberFailures = new Map<string, ObjectiveMemberFailure>();
   /**
    * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 아직 읽지 않은 사람 편집이 남아 있으면 지휘관 도구의
    * board_changed 가 새 요청을 거절한다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
@@ -637,7 +644,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         routed: memberNode && !applied ? storedRouted(member.routed) : null,
         switchesLive: options.liveSwitch === true,
         next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null } : null,
-        ...(memberOutcome ? { outcome: memberOutcome } : {}) };
+        ...(memberOutcome ? { outcome: memberOutcome } : {}),
+        ...(memberFailures.has(member.id) ? { failure: memberFailures.get(member.id)! } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);
@@ -1168,6 +1176,17 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       ...(input.routingConfirm !== undefined ? { routingConfirm: input.routingConfirm ? undefined : false as const } : {}),
     })),
 
+    memberFailure: (memberId) => memberFailures.get(memberId),
+    settleMemberFailure(memberId, failure) {
+      if (!failure) { memberFailures.delete(memberId); return undefined; }
+      const state: ObjectiveMemberFailure = { ...failure, consecutiveFailures: (memberFailures.get(memberId)?.consecutiveFailures ?? 0) + 1 };
+      memberFailures.set(memberId, state);
+      return state;
+    },
+    acknowledgeMemberFailure(memberId) {
+      const failure = memberFailures.get(memberId);
+      if (failure) memberFailures.set(memberId, { ...failure, acknowledged: true });
+    },
     refresh(operationId) {
       const node = operationNode(operationId);
       if (!node) {

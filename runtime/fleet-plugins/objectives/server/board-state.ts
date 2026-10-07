@@ -4,7 +4,7 @@ import type { Objective } from "./types.js";
 export const STALL_MS = 30 * 60_000;
 export type BoardObservation = Pick<ConsoleOperationObservation, "activity" | "lifecycle">;
 export type BoardObserver = (operationId: string) => BoardObservation | null | undefined;
-export type InboxReason = "decision" | "criteria" | "review" | "followup" | "followup-failed" | "pending" | "planned" | "stalled";
+export type InboxReason = "decision" | "criteria" | "review" | "followup" | "followup-failed" | "pending" | "planned" | "stalled" | "member-failed";
 
 /**
  * 목표의 상태 — 목록의 구역보다 잘게, 사람이 「목표가 어디까지 왔나」로 읽는 단계. 대기 이유(inbox)와 달리 지금 서 있는 한 자리다.
@@ -49,6 +49,7 @@ export function inboxReasons(objective: Objective, options: { readonly observe?:
     if (objective.criteriaProposals.length) reasons.push("criteria");
     if (objective.decisionRequest) reasons.push("decision");
     if (objective.awaitingReview) reasons.push("review");
+    if (objective.members.some((member) => member.failure && !member.failure.acknowledged)) reasons.push("member-failed");
     if (options.observe && stalledObjectives([objective], options.observe, options.now).length) reasons.push("stalled");
   }
   if (objective.followups.some((candidate) => candidate.state === "open")) reasons.push("followup");
