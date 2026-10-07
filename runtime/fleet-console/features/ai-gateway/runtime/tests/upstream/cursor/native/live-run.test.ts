@@ -629,7 +629,9 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(reply).toEqual([{
         execClientMessage: { id: 7, execId: "exec-7", readResult: { error: { path, error: expect.stringContaining(message) } } },
       }]);
-      expect(JSON.stringify((reply[0] as { execClientMessage: unknown }).execClientMessage)).toContain(JSON.stringify(`Caller output:\n${output}`).slice(1, -1));
+      // A window that fills without reaching the end carries only the requested 30 lines.
+      const shown = outcome === "window" ? `${output.split("\n").slice(0, 30).join("\n")}\n[… 470 more caller lines omitted]` : output;
+      expect(JSON.stringify((reply[0] as { execClientMessage: unknown }).execClientMessage)).toContain(JSON.stringify(`Caller output:\n${shown}`).slice(1, -1));
     }
     expect(cursorNativeReadEofOutcome(correlation, "Error: file too large", true)).toBe("caller-error");
   });

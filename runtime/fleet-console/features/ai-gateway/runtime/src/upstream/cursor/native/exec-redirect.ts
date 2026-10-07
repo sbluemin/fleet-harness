@@ -592,7 +592,7 @@ function callerReadRange(
   output: string,
   startLine: number,
   limit: number,
-): { readonly ok: true; readonly lines: readonly string[] } | { readonly ok: false; readonly reason: string } {
+): { readonly ok: true; readonly lines: readonly string[]; readonly listing: readonly string[] } | { readonly ok: false; readonly reason: string } {
   const lines = output.replace(/\r\n/g, "\n").split("\n");
   // Every listed line starts with its number, so a blank line around the listing is the caller's.
   while (lines.length > 0 && lines[0]!.trim() === "") lines.shift();
@@ -613,7 +613,7 @@ function callerReadRange(
   if (content.length > limit) {
     return { ok: false, reason: `it has more than ${limit} lines` };
   }
-  return { ok: true, lines: content };
+  return { ok: true, lines: content, listing: lines };
 }
 
 export type CursorNativeReadEofOutcome = "proven" | "window" | "not-listing" | "caller-error";
@@ -642,9 +642,15 @@ function judgeCallerRead(args: Readonly<Record<string, string>>, output: string)
   const parsed = callerReadRange(output, startLine, callerLimit);
   if (!parsed.ok) return notListing(parsed.reason);
   if (parsed.lines.length >= callerLimit) {
+    // The window is read for the end of the file, not for the model: send back the lines it asked
+    // for, exactly as the caller numbered them, and say how many more the caller returned.
+    const shown = limit === undefined || !Number.isSafeInteger(limit) ? parsed.listing.length : Math.min(limit, parsed.listing.length);
+    const omitted = parsed.listing.length - shown;
     return {
       outcome: "window",
-      error: `The caller Read tool completed, but Fleet cannot confirm the end of the file within ${callerLimit} lines from line ${startLine}, so it cannot report the file's total line count. Use the caller Read tool for authoritative paging. Caller output:\n${output}`,
+      error: `The caller Read tool completed, but Fleet cannot confirm the end of the file within ${callerLimit} lines from line ${startLine}, so it cannot report the file's total line count. Use the caller Read tool for authoritative paging. Caller output:\n${
+        omitted === 0 ? output : `${parsed.listing.slice(0, shown).join("\n")}\n[… ${omitted} more caller lines omitted]`
+      }`,
     };
   }
   const requested = limit === undefined || !Number.isSafeInteger(limit) ? parsed.lines : parsed.lines.slice(0, limit);
