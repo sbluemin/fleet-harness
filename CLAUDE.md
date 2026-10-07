@@ -60,4 +60,4 @@ The permanent suite is a **minimal product-acceptance suite**, not a catalog of 
 
 - Keep all `CLAUDE.md` files in English. Retain stable ownership, security, and operational boundaries that must be known before work begins; do not accumulate implementation walkthroughs, one-off lessons, or inventories discoverable through normal exploration.
 - State each fact once at the nearest scope. Put procedures in task-specific skills, detailed rationale in on-demand references, and mechanically decidable constraints in checks. Never delete a still-required constraint without a reliable replacement.
-- When revising instructions or skills, consult `docs/instruction-maintenance.md`. Do not relax safety boundaries based on presumed model capability. Fleet Wiki-governed instructions retain their own approval and generation contracts.
+- When revising instructions or skills, or writing a delegation that asks for a judgment about them, consult `docs/instruction-maintenance.md`. Do not relax safety boundaries based on presumed model capability. Fleet Wiki-governed instructions retain their own approval and generation contracts.
