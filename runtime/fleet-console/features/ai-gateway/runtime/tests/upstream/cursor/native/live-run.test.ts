@@ -869,7 +869,18 @@ describe("Cursor live client-tool Run bridge", () => {
       const pastModifierRun = new BridgeCursorStream(cursorCompletionFrames(pastModifier));
       const pastModifierRecoveredRun = new BridgeCursorStream(cursorToolFrames([pastModifierRecovered]));
       const pastModifierHarness = cursorHarness([pastModifierRun, pastModifierRecoveredRun]);
-      const gateTurn = async (gateHarness: { adapter: typeof harness.adapter }, userId: string, spec: CursorCallSpec) => {
+      // A Skill body after the result is client context the bridge recognizes; the turn stays armed.
+      const skillCall = cursorCall("call-resample-skill-body", 90);
+      const skillRecovered = cursorCall("call-resample-skill-body-recovered", 91);
+      const skillRun = new BridgeCursorStream(cursorCompletionFrames(announcement));
+      const skillRecoveredRun = new BridgeCursorStream(cursorToolFrames([skillRecovered]));
+      const skillHarness = cursorHarness([skillRun, skillRecoveredRun]);
+      const gateTurn = async (
+        gateHarness: { adapter: typeof harness.adapter },
+        userId: string,
+        spec: CursorCallSpec,
+        tail: CanonicalResponseRequest["input"] = [],
+      ) => {
         const gateAdapter = gateHarness.adapter.forHarness({});
         const gateInitial = cursorRequest(userId, "grok-4.7");
         return collectAdapterEvents(await gateAdapter.stream({
@@ -878,6 +889,7 @@ describe("Cursor live client-tool Run bridge", () => {
             ...gateInitial.input,
             call(spec),
             cursorResult(spec, "ok"),
+            ...tail,
           ],
         }, { apiKey: "cursor-test-token" }));
       };
@@ -885,6 +897,11 @@ describe("Cursor live client-tool Run bridge", () => {
         const reported = await gateTurn(reportHarness, "session-resample-report", reportCall);
         const held = await gateTurn(approvalHarness, "session-resample-approval", approvalCall);
         const retried = await gateTurn(pastModifierHarness, "session-resample-past-modifier", pastModifierCall);
+        const skillRecovery = await gateTurn(skillHarness, "session-resample-skill-body", skillCall, [{
+          type: "message",
+          role: "user",
+          content: "Base directory for this skill: /repo/.claude/skills/probe\n\n# Probe\n\nRun the probe.",
+        }]);
         expect({
           reportStreams: reportHarness.openedStreams,
           reportCalls: addedFunctionCallIds(reported),
@@ -894,6 +911,8 @@ describe("Cursor live client-tool Run bridge", () => {
           approvalText: canonicalText(held),
           pastModifierStreams: pastModifierHarness.openedStreams,
           pastModifierCalls: addedFunctionCallIds(retried),
+          skillStreams: skillHarness.openedStreams,
+          skillCalls: addedFunctionCallIds(skillRecovery),
         }).toEqual({
           reportStreams: 1,
           reportCalls: [],
@@ -903,11 +922,14 @@ describe("Cursor live client-tool Run bridge", () => {
           approvalText: approval,
           pastModifierStreams: 2,
           pastModifierCalls: [pastModifierRecovered.callId],
+          skillStreams: 2,
+          skillCalls: [skillRecovered.callId],
         });
       } finally {
         reportHarness.adapter.dispose();
         approvalHarness.adapter.dispose();
         pastModifierHarness.adapter.dispose();
+        skillHarness.adapter.dispose();
       }
     } finally {
       harness.adapter.dispose();
