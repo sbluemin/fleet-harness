@@ -1920,7 +1920,7 @@ export function QuickLaunch() {
         {/* 접힌 동안 입력과 컨트롤은 inert다 — max-height:0만으로는 Tab이 보이지 않는 컨트롤에 닿는다
             (멘션 접힘이 쓰는 계약과 같다). */}
         <ComposerField className="quick-launch-field" inert={showStrip || undefined}>
-          {mentionTarget ? (
+          {mentionTarget && !conversationRow ? (
             <span className="quick-launch-mention" title={mentionTargetName(mentionTarget)}>
               {/* Operation은 선택 뒤에도 공급자 출처를 되살리지 않는다 — 이름과 하단 행선지 태그가
                   대상을 말한다. 플러그인 대상의 mark는 공급자가 아니라 그 대상 자체의 정체성이다. */}
@@ -1947,14 +1947,14 @@ export function QuickLaunch() {
             onKeyDown={handleInputKeyDown}
             onPaste={handlePaste}
             onScroll={syncUltracodeHighlight}
-            placeholder={mentionTarget
+            placeholder={conversationRow?.quickLaunch?.placeholder ?? (mentionTarget
               ? t(mentionTarget.kind === "operation"
                 ? "chrome.quickLaunch.mentionPlaceholder"
                 : "chrome.quickLaunch.mentionPlaceholderOther", { name: mentionTargetName(mentionTarget) })
               : chatStart
                 ? t("chrome.quickLaunch.startViewChatPlaceholder")
-                : t("chrome.quickLaunch.placeholder")}
-            aria-label={t("chrome.quickLaunch.promptLabel")}
+                : t("chrome.quickLaunch.placeholder"))}
+            aria-label={conversationRow ? t("chrome.quickLaunch.mentionPlaceholderOther", { name: conversationRow.label }) : t("chrome.quickLaunch.promptLabel")}
             aria-controls={mentionDeckOpen ? "quick-launch-mention-deck" : commandDeckOpen ? "quick-launch-command-deck" : undefined}
             aria-activedescendant={activeMentionOptionId ?? activeCommandOptionId}
             spellCheck={false}

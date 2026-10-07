@@ -255,6 +255,11 @@ export function ChatCard({
   const submit = () => {
     if (canSend) onAsk(draft);
   };
+  const clearConversation = () => {
+    onClear();
+    (embedded ? cardRef.current : inputRef.current)?.focus();
+  };
+  const clearAction = embedded && state.entries.length > 0 ? <button type="button" className="scuttlebutt-answer-action" disabled={busy} onClick={clearConversation}>{t("action.clear")}</button> : null;
   const summary = grantSummary(grants, locale);
   const greeting = `${t(`chat.greeting.${admiral}`)} ${summary ? t("greeting.grantsOn", { grants: summary }) : t("greeting.grantsOff")}`;
   const menuRows = [
@@ -283,7 +288,7 @@ export function ChatCard({
         onClose(true);
       }}
     >
-      <div className="scuttlebutt-chat-head">
+      {embedded ? null : <div className="scuttlebutt-chat-head">
         <span className={`scuttlebutt-chat-sigil${embedded ? " is-persona" : ""}`} aria-hidden="true">
           {embedded ? <QuakerFigure morph={admiral} viewBox={QUAKER_HEAD_VIEW_BOX} /> : "⚓"}
         </span>
@@ -390,9 +395,9 @@ export function ChatCard({
           icon={<CloseIcon />}
           onClick={onTuck}
         />}
-      </div>
-      <div ref={logRef} className="scuttlebutt-chat-log" aria-live="polite" onScroll={onLogScroll} onClick={(event) => copyCodeBlock(event, t("action.copied"))}>
-        {state.entries.length === 0 ? (
+      </div>}
+      <div ref={logRef} hidden={embedded && state.entries.length === 0} className="scuttlebutt-chat-log" aria-live="polite" onScroll={onLogScroll} onClick={(event) => copyCodeBlock(event, t("action.copied"))}>
+        {!embedded && state.entries.length === 0 ? (
           <div className="scuttlebutt-greeting">
             <div className="scuttlebutt-message-sam">{greeting}</div>
             {embedded ? null : <GrantLine grants={grants} locale={locale} />}
@@ -427,13 +432,16 @@ export function ChatCard({
               <button type="button" className="scuttlebutt-answer-action" onClick={() => onHandoff(answer.text)}>
                 {t(embedded ? "action.startOperation" : "action.handoff")}
               </button>
+              {state.phase !== "error" ? clearAction : null}
               {answer.usage ? <span className="scuttlebutt-usage">{usageLine(answer.usage, t)}</span> : null}
             </div>
           </div>
         ) : null}
-        {state.phase === "error" && lastError(state)?.retryable ? (
+        {embedded && state.entries.length > 0 && (!answer || busy) && state.phase !== "error" ? <div className="scuttlebutt-answer-toolbar">{clearAction}</div> : null}
+        {state.phase === "error" && (embedded || lastError(state)?.retryable) ? (
           <div className="scuttlebutt-answer-toolbar">
-            <button type="button" className="scuttlebutt-answer-action" onClick={onRetry}>{t("action.retry")}</button>
+            {lastError(state)?.retryable ? <button type="button" className="scuttlebutt-answer-action" onClick={onRetry}>{t("action.retry")}</button> : null}
+            {clearAction}
           </div>
         ) : null}
       </div>
@@ -477,7 +485,7 @@ export function ChatCard({
  * 메뉴의 한 줄 체크 행. 상태 문구는 행 아래에 쌓지 않고, 마우스를 올리거나 포커스했을 때 한 줄
  * 말풍선으로 선다 — 헤더 아이콘의 도움말과 같은 계약·같은 포털(role="tooltip").
  */
-function MenuRow({ id, item, name, hint, glyph, checked, onToggle }: {
+export function MenuRow({ id, item, name, hint, glyph, checked, onToggle }: {
   readonly id: string;
   readonly item: string;
   readonly name: string;

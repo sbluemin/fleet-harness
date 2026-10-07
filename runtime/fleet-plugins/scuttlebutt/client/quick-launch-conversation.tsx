@@ -1,7 +1,9 @@
 import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 
-import { ChatSurfaceContext } from "./head-action.js";
-import { ChatCard } from "./chat-card.js";
+import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { ChatSurfaceContext, HeadAction, MoreIcon } from "./head-action.js";
+import { ChatCard, MenuRow } from "./chat-card.js";
+import { getT } from "./scuttlebutt-catalog.js";
 import type { AdmiralId, ChatSession } from "./chat-session.js";
 import { isComputerUseExperimentEnabled, isConsoleReadEnabled, subscribeConsoleRead } from "./console-read.js";
 import { GrantLine } from "./grant-chips.js";
@@ -55,5 +57,39 @@ function Conversation({ admiral, session }: { readonly admiral: AdmiralId; reado
 export function QuickLaunchGrants({ admiral }: { readonly admiral: AdmiralId }) {
   const settings = useStoreSnapshot(subscribeScuttlebuttSettings, getScuttlebuttSettings);
   const bridge = useStoreSnapshot(subscribeScuttlebuttMentions, readScuttlebuttMentionBridge);
-  return <ChatSurfaceContext.Provider value="composer"><GrantLine responsive grants={settings.grants[admiral]} locale={bridge?.locale()} /></ChatSurfaceContext.Provider>;
+  const t = getT(bridge?.locale());
+  const grants = settings.grants[admiral];
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef<HTMLSpanElement>(null);
+  const [extensions, setExtensions] = React.useState(() => ({ consoleUse: isConsoleReadEnabled(), computerUse: isComputerUseExperimentEnabled() }));
+  React.useEffect(() => subscribeConsoleRead(() => setExtensions({ consoleUse: isConsoleReadEnabled(), computerUse: isComputerUseExperimentEnabled() })), []);
+  React.useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [open]);
+  const rows = [
+    extensions.consoleUse ? { id: "console", key: "consoleUse" as const, glyph: <CaptionConsoleUseGlyph />, name: t("menu.consoleUse"), hint: t(grants.consoleUse ? "menu.consoleUseOn" : "menu.consoleUseOff") } : null,
+    extensions.computerUse ? { id: "computer", key: "computerUse" as const, glyph: <CaptionComputerUseGlyph />, name: t("menu.computerUse"), hint: t(grants.computerUse ? "menu.computerUseOn" : "menu.computerUseOff") } : null,
+  ].filter((row) => row !== null);
+  return <ChatSurfaceContext.Provider value="composer">
+    <span ref={rootRef} className="scuttlebutt-quick-launch-grants" onKeyDown={(event) => {
+      if (event.key !== "Escape" || !open) return;
+      event.stopPropagation();
+      setOpen(false);
+      rootRef.current?.querySelector<HTMLButtonElement>(".scuttlebutt-head-action")?.focus();
+    }}>
+      <GrantLine responsive grants={grants} locale={bridge?.locale()} onOpenMenu={() => setOpen(true)} />
+      <span className="scuttlebutt-head-slot">
+        <HeadAction id={`scuttlebutt-more-${admiral}`} label={t("menu.more")} hint={t("menu.more.hint")} icon={<MoreIcon />} pressed={open} quiet={open} onClick={() => setOpen((value) => !value)} />
+        {open ? <div className="scuttlebutt-menu is-upward" data-scuttlebutt-surface="composer" role="menu" aria-label={t("menu.aiExtensions")}>
+          <div className="scuttlebutt-menu-label">{t("menu.aiExtensions")}</div>
+          {rows.length === 0 ? <div className="scuttlebutt-menu-hint">{t("menu.experimentOff")}</div> : rows.map((row) => <MenuRow key={row.id} id={`scuttlebutt-menu-${admiral}-${row.id}`} item={row.id} name={row.name} hint={row.hint} glyph={row.glyph} checked={grants[row.key]} onToggle={() => { void writeAideGrants(admiral, { [row.key]: !grants[row.key] }).catch(noop); }} />)}
+        </div> : null}
+      </span>
+    </span>
+  </ChatSurfaceContext.Provider>;
 }

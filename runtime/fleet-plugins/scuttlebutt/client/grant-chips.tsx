@@ -16,9 +16,10 @@ import type { AideGrants } from "./settings-store.js";
  * 실제 동사와 조건이 한 줄 말풍선으로 선다(헤더 아이콘의 도움말과 같은 계약·같은 포털).
  * 글리프는 Operation 메뉴·사이드바 칩의 ~Use 글리프 그대로다.
  */
-export function GrantLine({ grants, locale, compact = false, responsive = false }: {
+export function GrantLine({ grants, locale, compact = false, responsive = false, onOpenMenu }: {
   /** 호스트 컴포저의 한 줄 권한 표면. 좁은 화면에서는 글리프와 접근 이름으로 접는다. */
   readonly responsive?: boolean;
+  readonly onOpenMenu?: () => void;
   readonly grants: AideGrants;
   readonly locale: ConsoleLocale | undefined;
   /** 말풍선 머리처럼 좁은 자리 — 「권한」 라벨과 「파일·셸 없음」을 접고 허용된 것만 세운다. */
@@ -29,7 +30,7 @@ export function GrantLine({ grants, locale, compact = false, responsive = false 
     <span className={`scuttlebutt-grants${compact ? " is-compact" : ""}${responsive ? " is-responsive" : ""}`} role="group" aria-label={t("grant.label")}>
       {!compact ? <span className="scuttlebutt-grants-label">{t("grant.label")}</span> : null}
       <GrantChip label={t("grant.web")} tip={t("grant.web.tip")} icon={<WebGlyph />} />
-      {grants.consoleUse ? <GrantChip granted consoleUse label={t("grant.console")} tip={t("grant.console.tip")} icon={<CaptionConsoleUseGlyph />} /> : null}
+      {grants.consoleUse ? <GrantChip granted consoleUse label={t("grant.console")} tip={t("grant.console.tip")} icon={<CaptionConsoleUseGlyph />} /> : onOpenMenu ? <button type="button" className="scuttlebutt-grant is-off is-console-use" onClick={onOpenMenu} aria-label={t("grant.consoleOff")}><span className="scuttlebutt-grant-glyph" aria-hidden="true"><CaptionConsoleUseGlyph /></span><span className="scuttlebutt-grant-text">{t("grant.consoleOff")}</span></button> : null}
       {grants.computerUse ? <GrantChip granted label={t("grant.computer")} tip={t("grant.computer.tip")} icon={<CaptionComputerUseGlyph />} /> : null}
       {!compact ? <GrantChip label={t("grant.noFs")} tip={t("grant.noFs.tip")} icon={<NoFsGlyph />} /> : null}
     </span>

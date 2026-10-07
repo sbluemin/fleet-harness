@@ -1776,3 +1776,10 @@
     animation: none;
   }
 }
+
+/* 레인 정체성은 탭이 말한다. 빈 로그는 높이도 경계도 남기지 않는다. */
+.scuttlebutt-chat-log[hidden] { display: none; }
+.scuttlebutt-quick-launch-grants { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.scuttlebutt-quick-launch-grants .scuttlebutt-menu.is-upward { position: absolute; top: auto; bottom: calc(100% + var(--space-2)); right: 0; }
+.scuttlebutt-grant.is-off { border-style: dashed; background: transparent; color: var(--text-tertiary); cursor: pointer; font-family: inherit; }
+.scuttlebutt-grant.is-off:hover { color: var(--text-primary); }
