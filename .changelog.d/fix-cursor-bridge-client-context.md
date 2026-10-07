@@ -10,5 +10,5 @@ branch: fix/cursor-bridge-client-context
   ko: Cursor가 이전 대화를 다시 올릴 때 압축되어 있던 검색 결과를 다시 읽을 수 있어, 같은 검색을 한 번 더 돌리지 않고 이어서 답합니다.
 - Cursor no longer treats a doubled first reading of a conversation as a full window, so the chat is not summarized early and the usage meter does not jump to its ceiling.
   ko: Cursor가 대화의 첫 측정을 두 배로 읽어 창이 가득 찼다고 보지 않아, 대화가 일찍 요약되지 않고 사용량 표시가 한도까지 뛰지 않습니다.
-- After Cursor rebuilds a conversation or summarizes it, the model calls tools by names it can actually use, so it no longer stops mid-task saying every tool was refused.
-  ko: Cursor가 대화를 다시 올리거나 요약한 뒤에도 모델이 실제로 부를 수 있는 이름으로 도구를 호출해, 모든 도구가 거부됐다며 작업 중간에 멈추지 않습니다.
+- When Cursor sends a conversation again, earlier tool calls are labeled with names Cursor can actually call, so the model is less likely to call a tool that does not exist and have it refused.
+  ko: Cursor에 대화를 다시 올릴 때 이전 도구 호출을 Cursor가 실제로 부를 수 있는 이름으로 표기해, 존재하지 않는 도구를 부르다 거절되는 일을 줄입니다.
