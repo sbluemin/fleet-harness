@@ -72,6 +72,8 @@ const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";
 export const CURSOR_CLIENT_VERSION = "cli-2026.07.08-0c04a8a";
 export const CURSOR_TOOL_COUNT_LIMIT = 330;
 export const CURSOR_TOOL_BYTES_LIMIT = 120_000;
+/** Renamed tools spelled out in the always-applied rule; Claude Code's built-ins fit well inside. */
+const CURSOR_TOOL_NAME_MAP_LIMIT = 40;
 export const CURSOR_TOOL_PROVIDER_IDENTIFIER = "fleet-gateway";
 /** `CursorRuleSource.CURSOR_RULE_SOURCE_USER`, carried as the int32 the field declares. */
 const CURSOR_RULE_SOURCE_USER = 2;
@@ -508,10 +510,13 @@ function prepareCursorRun(
   const last = lastCursorActionableInput(request.input);
   const isToolContinuation = last?.type === "function_call_output";
   const activeIndex = isToolContinuation ? -1 : lastUserIndex(request.input);
+  // 결과 root도 turns와 같이 모델이 부를 수 있는 이름으로 적는다(`cursorHistoryToolName`). 클라이언트
+  // 이름(`Bash`)을 본 모델은 그 이름으로 부르고, Cursor는 게이트웨이에 닿기 전에 `Tool not available`로
+  // 거절한다.
   const toolNames = new Map(
     request.input
       .filter((item): item is Extract<CanonicalInputItem, { type: "function_call" }> => item.type === "function_call")
-      .map((item) => [item.call_id, item.name]),
+      .map((item) => [item.call_id, cursorHistoryToolName(item.name, toolBudget.tools)]),
   );
 
   for (let i = 0; i < request.input.length; i += 1) {
@@ -803,7 +808,17 @@ function storeCursorToolCallStep(
   output?: string,
   isError = false,
 ): string {
-  const wireName = cursorWireNameForClient(call.name, tools);
+  const wireName = cursorHistoryToolName(call.name, tools);
+  if (wireName === CURSOR_NATIVE_SHELL_HISTORY_NAME) {
+    // The shell is withheld from the MCP catalog and runs through Cursor's native shell. An MCP
+    // call step under an alias would teach the model a tool name Cursor refuses on its own.
+    return storeCursorAssistantStep(blobs, [
+      output === undefined ? "[Tool Call]" : "[Tool Result]",
+      `name: ${wireName}`,
+      `arguments: ${call.arguments}`,
+      ...(output === undefined ? [] : [`is_error: ${isError}`, "output:", output]),
+    ].join("\n"));
+  }
   const step = fromJson(ConversationStepSchema, {
     toolCall: {
       mcpToolCall: {
@@ -1058,12 +1073,22 @@ function cursorWireToolDefinition(
   };
 }
 
-function cursorWireNameForClient(
+/** Cursor's own name for its native shell, which the caller's withheld shell tools run behind. */
+const CURSOR_NATIVE_SHELL_HISTORY_NAME = "Shell";
+
+/**
+ * The name a replayed call or result carries: the advertised wire name, Cursor's native shell for
+ * a withheld shell tool, otherwise the stable alias a deferred tool gets once ToolSearch loads it.
+ */
+function cursorHistoryToolName(
   clientName: string,
   tools: readonly CursorWireTool[],
 ): string {
-  return tools.find((tool) => tool.clientName === clientName)?.toolName
-    ?? cursorWireToolName(clientName);
+  const advertised = tools.find((tool) => tool.clientName === clientName)?.toolName;
+  if (advertised !== undefined) return advertised;
+  return isCursorWithheldToolName(clientName)
+    ? CURSOR_NATIVE_SHELL_HISTORY_NAME
+    : cursorWireToolName(clientName);
 }
 
 function cursorToolPayloadBytes(tools: readonly CursorWireTool[]): number {
@@ -1187,6 +1212,24 @@ function cursorClientToolDiscipline(
   ].filter((entry): entry is string => entry !== undefined);
   const toolSearch = tools.find((tool) => isCursorToolSearchName(tool.clientName))?.toolName;
   if (toolSearch) guidance.push(`Use \`${toolSearch}\` for deferred tools.`);
+  // The caller's instructions, tool descriptions, and compaction summaries name tools by their
+  // client names. A call by that name never reaches the gateway: Cursor answers `Tool not
+  // available` itself, and the model retried until it ended the turn claiming every tool was
+  // refused (2026-10-07, three Grok members). Spell out the callable name for each renamed tool.
+  const renamed = [
+    ...tools
+      .filter((tool) => tool.clientName !== tool.toolName)
+      .map((tool) => `${tool.clientName} → \`${tool.toolName}\``),
+    ...redirectTools
+      .filter((tool) => isCursorWithheldToolName(tool.clientName)
+        && !tools.some((advertised) => advertised.clientName === tool.clientName))
+      .map((tool) => `${tool.clientName} → the native ${CURSOR_NATIVE_SHELL_HISTORY_NAME}`),
+  ].slice(0, CURSOR_TOOL_NAME_MAP_LIMIT);
+  if (renamed.length > 0) {
+    guidance.push(`Instructions and earlier turns name tools by client names; call them by these names: ${
+      renamed.join(", ")
+    }.`);
+  }
   if (tools.length === 0 && routed.length === 0 && !nativeWebSearch) {
     guidance.push("No tool is available on this turn; answer in plain text.");
   }

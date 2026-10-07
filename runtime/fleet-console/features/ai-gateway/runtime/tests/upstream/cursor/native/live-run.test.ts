@@ -1127,18 +1127,30 @@ describe("Cursor live client-tool Run bridge", () => {
     const request = cursorRequest("session-cold-grep-receipt", "grok-4.5");
     const plan = buildCursorRunPlan({
       ...request,
+      tools: [
+        ...(request.tools ?? []),
+        { type: "function", name: "Bash", description: "Run a shell command", parameters: { type: "object", properties: { command: { type: "string" } } } },
+        { type: "function", name: "Read", description: "Read a file", parameters: { type: "object", properties: { file_path: { type: "string" } } } },
+      ],
       input: [
         request.input[0]!,
         ...call("call-valid", valid),
         ...call("call-plain", "plain result"),
         ...call("call-corrupt", corrupt),
         ...call("call-v1", otherVersion),
+        { type: "function_call", call_id: "call-read", name: "Read", arguments: JSON.stringify({ file_path: "a.ts" }) },
+        { type: "function_call_output", call_id: "call-read", output: "1\tconst a = 1;" },
         { type: "message", role: "user", content: "What did the search find?" },
       ],
     }, "conversation-cold-grep-receipt");
-    const state = (plan.payload as {
-      runRequest?: { conversationState?: { rootPromptMessagesJson?: string[]; turns?: string[] } };
-    }).runRequest?.conversationState;
+    const runRequest = (plan.payload as {
+      runRequest?: {
+        conversationState?: { rootPromptMessagesJson?: string[]; turns?: string[] };
+        mcpTools?: { mcpTools?: Array<{ name?: string }> };
+        action?: { userMessageAction?: { requestContext?: { rules?: Array<{ content?: string }> } } };
+      };
+    }).runRequest;
+    const state = runRequest?.conversationState;
     const replayed = [...(state?.rootPromptMessagesJson ?? []), ...(state?.turns ?? [])].map((id) => {
       const encoded = plan.blobs.get(id);
       if (encoded === undefined) throw new Error(`Missing cold replay blob ${id}`);
@@ -1152,6 +1164,23 @@ describe("Cursor live client-tool Run bridge", () => {
     expect(replayed).toContain(corrupt);
     expect(replayed).toContain(otherVersion);
     expect(replayed).toContain("plain result");
+
+    // The replay names each tool as the model can call it. Cursor refuses a client name such as
+    // `Read`, or an alias of the withheld shell, on its own before the call reaches the gateway;
+    // the always-applied rule maps the client names the caller's instructions use.
+    const readWireName = runRequest?.mcpTools?.mcpTools?.map((tool) => tool.name)
+      .find((name) => name?.startsWith("cc_read_"));
+    const roots = (state?.rootPromptMessagesJson ?? []).map((id) => (
+      Buffer.from(plan.blobs.get(id) ?? "", "base64").toString("utf8")
+    )).join("\n");
+    const rule = runRequest?.action?.userMessageAction?.requestContext?.rules?.[0]?.content;
+    expect(readWireName).toBeDefined();
+    expect(roots).toContain(`name: ${readWireName}`);
+    expect(roots).toContain("name: Shell");
+    expect(roots).not.toMatch(/name: (?:Bash|Read)\b/u);
+    expect(replayed).not.toContain("cc_bash_");
+    expect(rule).toContain(`Read → \`${readWireName}\``);
+    expect(rule).toContain("Bash → the native Shell");
   });
 
   it("atomically claims a pending Run so concurrent attaches cannot double-write", async () => {
