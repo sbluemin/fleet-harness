@@ -886,20 +886,28 @@ function callerGrepFiles(output: string): CallerFileListing {
   const lines = callerListingLines(output);
   const whole = lines.map((line) => line.trimEnd()).join("\n");
   if (whole === NO_FILES_FOUND || GREP_OFFSET_PAST_END.test(whole)) return { files: [], truncated: false };
-  const closing = OVERSIZE_WRAPPERS.get(lines[0]?.trimEnd() ?? "");
-  if (closing !== undefined && lines.at(-1)?.trimEnd() === closing) {
-    // Only the preview's own list is usable, and it is a partial list.
-    const preview = oversizePreview(output) ?? "";
-    const previewLines = callerListingLines(preview);
-    if (!GREP_FILES_HEADER.test(previewLines[0]?.trimEnd() ?? "")) return { files: [], truncated: true };
-    const listed = previewLines.slice(1);
-    // A preview shorter than the limit ended at a newline; one that fills it may end mid-name.
-    return { files: preview.length < OVERSIZE_PREVIEW_LIMIT ? listed : listed.slice(0, -1), truncated: true };
+  const preview = oversizePreviewLines(output, lines);
+  if (preview !== undefined) {
+    if (!GREP_FILES_HEADER.test(preview[0]?.trimEnd() ?? "")) return { files: [], truncated: true };
+    return { files: preview.slice(1), truncated: true };
   }
   const header = lines[0]?.trimEnd() ?? "";
   if (!GREP_FILES_HEADER.test(header)) return { files: lines, truncated: false };
   // Claude Code prints `limit: N` only when more results remain past the page.
   return { files: lines.slice(1), truncated: / limit: \d+/.test(header) };
+}
+
+/**
+ * The whole lines of the preview an oversize wrapper carries — the only usable part of it, and
+ * a partial list — or undefined when the output is not wrapped.
+ */
+function oversizePreviewLines(output: string, lines: readonly string[]): string[] | undefined {
+  const closing = OVERSIZE_WRAPPERS.get(lines[0]?.trimEnd() ?? "");
+  if (closing === undefined || lines.at(-1)?.trimEnd() !== closing) return undefined;
+  const preview = oversizePreview(output) ?? "";
+  const previewLines = callerListingLines(preview);
+  // A preview shorter than the limit ended at a newline; one that fills it may end mid-name.
+  return preview.length < OVERSIZE_PREVIEW_LIMIT ? previewLines : previewLines.slice(0, -1);
 }
 
 /**
@@ -920,11 +928,13 @@ function oversizePreview(output: string): string | undefined {
 function callerGlobFiles(output: string): CallerFileListing {
   const lines = callerListingLines(output);
   if (lines.map((line) => line.trimEnd()).join("\n") === NO_FILES_FOUND) return { files: [], truncated: false };
-  const last = lines.at(-1)?.trimEnd() ?? "";
+  const preview = oversizePreviewLines(output, lines);
+  const listed = preview ?? lines;
+  const last = listed.at(-1)?.trimEnd() ?? "";
   if (GLOB_TRUNCATION_NOTICES.some((notice) => notice.test(last))) {
-    return { files: lines.slice(0, -1), truncated: true };
+    return { files: listed.slice(0, -1), truncated: true };
   }
-  return { files: lines, truncated: false };
+  return { files: listed, truncated: preview !== undefined };
 }
 
 interface CallerShellOutput {

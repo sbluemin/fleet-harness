@@ -364,6 +364,23 @@ describe("Cursor live client-tool Run bridge", () => {
         ripgrepTruncated: false,
       });
       expect(redirectedFiles(globFiles("No files found"))).toMatchObject({ files: [], totalFiles: 0 });
+      // An oversized Glob result keeps only its preview's whole paths.
+      const longPath = (n: number) => `gl2/${"a".repeat(840)}/path-${n}.ts`;
+      expect(redirectedFiles(globFiles([
+        "<persisted-output>",
+        "Output too large (84KB). Full output saved to: /tmp/session/tool-results/toolu_2.txt",
+        "",
+        "Preview (first 2KB):",
+        longPath(1),
+        longPath(2),
+        "...",
+        "</persisted-output>",
+      ].join("\n")))).toEqual({
+        files: [longPath(1), longPath(2)],
+        totalFiles: 2,
+        clientTruncated: true,
+        ripgrepTruncated: false,
+      });
 
       // A content search on the caller's Grep lists files under a count header. Names are
       // cwd-relative, so a real file can carry that header's or a notice's exact wording.
