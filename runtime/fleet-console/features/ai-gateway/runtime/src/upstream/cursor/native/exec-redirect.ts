@@ -70,7 +70,129 @@ export function isCursorHotPathToolName(name: string): boolean {
 /** Caller tools a Cursor-native exec can be translated into. */
 export function isCursorNativeRedirectToolName(name: string): boolean {
   const leaf = toolLeafName(name).replace(/[_-]/g, "").toLowerCase();
-  return ["grep", "glob", "bash", "shellcommand", "execcommand"].includes(leaf);
+  return ["read", "grep", "glob", "bash", "shellcommand", "execcommand"].includes(leaf);
+}
+
+/** The redirect candidates of one request, in the shape every redirect decision reads. */
+export function cursorNativeRedirectToolReferences(
+  tools: readonly { readonly clientName: string; readonly toolName: string; readonly inputSchemaValue: Record<string, unknown> }[],
+): CursorRedirectToolReference[] {
+  return tools
+    .filter((tool) => isCursorNativeRedirectToolName(tool.clientName))
+    .map((tool) => ({
+      clientName: tool.clientName,
+      wireName: tool.toolName,
+      inputSchemaValue: tool.inputSchemaValue,
+    }));
+}
+
+/** Whether a native read has a caller Read it could be translated into. */
+export function hasCursorNativeReadCandidate(tools: readonly CursorRedirectToolReference[]): boolean {
+  return tools.some((tool) => (
+    matchesLeaf(tool, READ_CANDIDATES) && firstSchemaProperty(tool.inputSchemaValue, ["file_path", "path"]) !== undefined
+  ));
+}
+
+/** Where a redirected native read took its line range from. */
+export type CursorNativeReadRangeSource = "exec" | "toolCallStarted";
+
+export interface CursorNativeReadRangeDecision {
+  /**
+   * `exec` or `toolCallStarted` when a line range was established, otherwise why the read stays
+   * on the fail-closed policy path. Payload-free: no path, offset, or limit value.
+   */
+  readonly outcome: CursorNativeReadRangeSource | "unranged" | "mismatch" | "started-offset" | "encoding-hint" | "invalid";
+  /** Which range fields each source carried, e.g. `exec:none started:limit`. Payload-free. */
+  readonly fields: string;
+  readonly range?: {
+    readonly source: CursorNativeReadRangeSource;
+    /** First line the caller must return, counted from 1 like Cursor's own read executor. */
+    readonly startLine: number;
+    /** Caller `offset`, omitted when the read starts at the first line. */
+    readonly offset?: number;
+    readonly limit?: number;
+  };
+}
+
+/**
+ * Decide the line range of a Cursor-native read. A read with no range is never redirected:
+ * redirecting path-only reads made the model re-send whole files over and over (#696), and a body
+ * that cannot be shown complete sent it back to re-read (#1141); Claude Code may also cut such a
+ * read and report the cut only outside the tool result. A ranged read is the exception because the
+ * caller numbers every line it returns, so the answer can prove the range and say so with
+ * `range_applied`.
+ *
+ * cursor-agent applies a range only from the exec ReadArgs `offset` (#4, 1-based, 0 counting as 1,
+ * negative meaning a tail) and `limit` (#5, 0 meaning no lines), so those win. The model's own
+ * `readToolCall.args` on the matching `toolCallStarted` is used only for a limit with no offset:
+ * cursor-agent's own UIs disagree on whether that offset counts from 0 or 1, and a limit alone does
+ * not depend on it. A tail, a zero limit, or two sources that disagree stay fail-closed, since the
+ * caller's Read cannot state them.
+ */
+export function cursorNativeReadRange(
+  readArgs: Record<string, unknown>,
+  started: Record<string, unknown> | undefined,
+): CursorNativeReadRangeDecision {
+  const execOffset = readRangeNumber(readArgs.offset);
+  const execLimit = readRangeNumber(readArgs.limit);
+  const startedOffset = started === undefined ? undefined : readRangeNumber(started.offset);
+  const startedLimit = started === undefined ? undefined : readRangeNumber(started.limit);
+  const fields = `exec:${readRangeShape(execOffset, execLimit)} started:${
+    started === undefined ? "absent" : readRangeShape(startedOffset, startedLimit)
+  }`;
+  if ([execOffset, execLimit, startedOffset, startedLimit].some((value) => value === null)) {
+    return { outcome: "invalid", fields };
+  }
+  // cursor-agent decodes the file with this encoding; the caller's Read has no way to ask for one.
+  if (readArgs.encodingHint !== undefined && readArgs.encodingHint !== "") {
+    return { outcome: "encoding-hint", fields };
+  }
+  let source: CursorNativeReadRangeSource;
+  let offset: number | undefined;
+  let limit: number | undefined;
+  if (execOffset !== undefined || execLimit !== undefined) {
+    if (started !== undefined && (startedOffset !== execOffset || startedLimit !== execLimit)) {
+      return { outcome: "mismatch", fields };
+    }
+    source = "exec";
+    offset = execOffset ?? undefined;
+    limit = execLimit ?? undefined;
+  } else if (startedOffset !== undefined) {
+    return { outcome: "started-offset", fields };
+  } else if (startedLimit !== undefined) {
+    source = "toolCallStarted";
+    limit = startedLimit ?? undefined;
+  } else {
+    return { outcome: "unranged", fields };
+  }
+  if ((offset !== undefined && offset < 0) || (limit !== undefined && limit <= 0)) {
+    return { outcome: "invalid", fields };
+  }
+  const callerOffset = offset !== undefined && offset > 1 ? offset : undefined;
+  if (callerOffset === undefined && limit === undefined) return { outcome: "unranged", fields };
+  return {
+    outcome: source,
+    fields,
+    range: {
+      source,
+      startLine: callerOffset ?? 1,
+      ...(callerOffset === undefined ? {} : { offset: callerOffset }),
+      ...(limit === undefined ? {} : { limit }),
+    },
+  };
+}
+
+/** A whole number, `undefined` when absent, or `null` when present but not a usable line count. */
+function readRangeNumber(value: unknown): number | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+}
+
+function readRangeShape(offset: number | undefined | null, limit: number | undefined | null): string {
+  if (offset !== undefined && limit !== undefined) return "offset+limit";
+  if (offset !== undefined) return "offset";
+  if (limit !== undefined) return "limit";
+  return "none";
 }
 
 /**
@@ -97,6 +219,8 @@ export function cursorNativeExecRedirect(
   exec: ExecMessage,
   tools: readonly CursorRedirectToolReference[],
   providerIdentifier: string,
+  /** `readToolCall.args` of the `toolCallStarted` whose call id matches this read, if seen. */
+  readToolStarted?: Record<string, unknown>,
 ): CursorNativeExecRedirect | null {
   const messageId = numberValue(exec.id ?? 0);
   const execId = stringValue(exec.execId) || `redirect-${messageId}`;
@@ -104,15 +228,11 @@ export function cursorNativeExecRedirect(
   if (isRecord(exec.readArgs)) {
     const path = stringValue(exec.readArgs.path);
     if (!path) return null;
-    if ([exec.readArgs.offset, exec.readArgs.limit].some((value) => (
-      typeof value === "number" && value < 0
-    ))) return null;
-    const offset = positiveNumber(exec.readArgs.offset);
-    const limit = positiveNumber(exec.readArgs.limit);
-    if (offset !== undefined || limit !== undefined) return null;
+    const range = cursorNativeReadRange(exec.readArgs, readToolStarted).range;
+    if (!range) return null;
     const mapped = tools
       .filter((tool) => matchesLeaf(tool, READ_CANDIDATES))
-      .map((tool) => ({ tool, args: readArguments(tool.inputSchemaValue, path) }))
+      .map((tool) => ({ tool, args: readArguments(tool.inputSchemaValue, path, range) }))
       .find((candidate) => candidate.args !== null);
     if (!mapped?.args) return null;
     return redirect(
@@ -125,7 +245,11 @@ export function cursorNativeExecRedirect(
       "readResult",
       "read-direct",
       mapped.args,
-      { path },
+      {
+        path,
+        startLine: String(range.startLine),
+        ...(range.limit === undefined ? {} : { limit: String(range.limit) }),
+      },
     );
   }
 
@@ -338,15 +462,24 @@ export function cursorNativeRedirectResultReplies(
 
   switch (correlation.nativeResultType) {
     case "readResult": {
-      // Claude Code keeps truncation metadata in a transcript-only attachment that is absent from
-      // the Anthropic request. Preserve caller execution and same-Run continuation, but never claim
-      // partial text is a complete Cursor ReadSuccess with invented whole-file metadata.
-      return [execReply(exec, "readResult", {
-        error: {
-          path: args.path ?? "",
-          error: `The caller Read tool completed, but Fleet cannot verify whether this text is the complete file. Use the caller Read tool for authoritative paging. Caller output:\n${output}`,
-        },
-      })];
+      // Only ranged reads are redirected. Claude Code 2.1.292 answers one with exactly the
+      // requested lines or with an error; it cuts only an unranged read, and reports that cut in a
+      // separate system message rather than in this tool result. The numbered lines therefore prove
+      // a range, while the whole-file line count and size never reach the gateway: they are left
+      // unset rather than invented. Anything that does not prove the range keeps the caller's
+      // output and claims no success.
+      const startLine = Number(args.startLine);
+      const parsed = Number.isSafeInteger(startLine) && startLine >= 1
+        ? callerReadRange(output, startLine, args.limit === undefined ? undefined : Number(args.limit))
+        : { ok: false as const, reason: "no line range was requested" };
+      return [execReply(exec, "readResult", parsed.ok
+        ? { success: { path: args.path ?? "", content: parsed.content, truncated: false, rangeApplied: true } }
+        : {
+          error: {
+            path: args.path ?? "",
+            error: `The caller Read tool completed, but Fleet cannot show that its output is the requested line range because ${parsed.reason}. Use the caller Read tool for authoritative paging. Caller output:\n${output}`,
+          },
+        })];
     }
     case "grepShellResult": {
       const receipt = parseGrepShellReceipt(output, args.outputMode ?? "content");
@@ -421,9 +554,53 @@ function cursorNativeRedirectErrorReplies(
 function readArguments(
   schema: Record<string, unknown>,
   path: string,
+  range: { readonly offset?: number; readonly limit?: number },
 ): Record<string, unknown> | null {
   const pathKey = firstSchemaProperty(schema, ["file_path", "path"]);
-  return pathKey ? { [pathKey]: path } : null;
+  if (!pathKey) return null;
+  const args: Record<string, unknown> = { [pathKey]: path };
+  for (const key of ["offset", "limit"] as const) {
+    if (range[key] === undefined) continue;
+    if (!schemaHasProperty(schema, key)) return null;
+    args[key] = range[key];
+  }
+  return args;
+}
+
+/**
+ * The text of a caller Read that returned exactly the lines asked for, or why it cannot be shown
+ * to be that. Claude Code numbers every line `N<TAB>` (`N:` when its tab-aware separator is on),
+ * shows the empty line after a final newline as a bare `N<TAB>`, and answers an offset past the
+ * end, an empty file, or a cap with a notice instead of numbered lines. A ranged read is never cut
+ * short silently, so consecutive numbers from the requested start, no more lines than the limit,
+ * and nothing else prove the range.
+ */
+function callerReadRange(
+  output: string,
+  startLine: number,
+  limit: number | undefined,
+): { readonly ok: true; readonly content: string } | { readonly ok: false; readonly reason: string } {
+  const lines = output.replace(/\r\n/g, "\n").split("\n");
+  // Every listed line starts with its number, so a blank line around the listing is the caller's.
+  while (lines.length > 0 && lines[0]!.trim() === "") lines.shift();
+  while (lines.length > 0 && lines.at(-1)!.trim() === "") lines.pop();
+  if (lines.length === 0) return { ok: false, reason: "it is not a numbered line listing" };
+  const content: string[] = [];
+  for (const [index, line] of lines.entries()) {
+    const numbered = /^(\d+)(?:[\t:]([\s\S]*))?$/.exec(line);
+    // Only the last line may lose its separator: a caller that trims its tail turns `41<TAB>` into `41`.
+    if (!numbered || (numbered[2] === undefined && index !== lines.length - 1)) {
+      return { ok: false, reason: "it is not a numbered line listing" };
+    }
+    if (Number(numbered[1]) !== startLine + index) {
+      return { ok: false, reason: `its lines are not numbered from line ${startLine}` };
+    }
+    content.push(numbered[2] ?? "");
+  }
+  if (limit !== undefined && content.length > limit) {
+    return { ok: false, reason: `it has more than ${limit} lines` };
+  }
+  return { ok: true, content: content.join("\n") };
 }
 
 function grepArguments(

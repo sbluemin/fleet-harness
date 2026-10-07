@@ -40,6 +40,7 @@ const CURSOR_DIAGNOSTIC_EVENTS = new Set<CursorDiagnosticEventName>([
   "bridge.defer",
   "bridge.expire",
   "bridge.mismatch",
+  "exec.read.range",
   "exec.redirect.selected",
   "exec.redirect.attached",
   "exec.redirect.result_written",

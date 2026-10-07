@@ -526,6 +526,101 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
+  it("redirects a ranged native read to the caller Read and claims success only for a proven range", async () => {
+    // Cursor announces the model's read, then runs it; its call id carries a newline.
+    const callId = "call-read-0\nfc_read_0";
+    const path = "/repo/runtime/fleet-console/CLAUDE.md";
+    const stream = new BridgeCursorStream(
+      [
+        { interactionUpdate: { toolCallStarted: { callId, toolCall: { readToolCall: { args: { path, limit: 3 } } } } } },
+        { execServerMessage: { id: 41, execId: "exec-41", readArgs: { path, toolCallId: callId, limit: 3 } } },
+      ],
+      cursorCompletionFrames("read handled"),
+      1,
+    );
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const harness = cursorHarness([stream], { diagnostics: (event) => diagnostics.push(event) });
+    const readSchema = {
+      type: "object",
+      properties: { file_path: { type: "string" }, offset: { type: "number" }, limit: { type: "number" } },
+      required: ["file_path"],
+      additionalProperties: false,
+    };
+    const initial: CanonicalResponseRequest = {
+      ...cursorRequest("session-native-ranged-read", "composer-2.5"),
+      tools: [{ type: "function", name: "Read", description: "Read a file", parameters: readSchema }],
+    };
+
+    try {
+      const initialEvents = await collectCursorResponse(harness.adapter, initial);
+      const redirected = initialEvents.flatMap((event) => (
+        event.type === "response.output_item.done" && event.item.type === "function_call" ? [event.item] : []
+      ))[0];
+      if (!redirected) throw new Error("Missing redirected Read call");
+      expect(redirected.name).toBe("Read");
+      expect(JSON.parse(redirected.arguments)).toEqual({ file_path: path, limit: 3 });
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "exec.read.range",
+        outcome: "exec exec:limit started:limit",
+      }));
+
+      // Claude Code 2.1.292's own Read output for those lines.
+      const events = await collectCursorResponse(harness.adapter, cursorContinuation(
+        initial,
+        [{ callId: redirected.call_id, toolCallId: callId, messageId: 41, execId: "exec-41", name: "Read" }],
+        [{ call_id: redirected.call_id, output: "1\tline 1\n2\tline 2\n3\tline 3" }],
+      ));
+      expect(canonicalText(events)).toBe("read handled");
+      expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          readResult: { success: { path, content: "line 1\nline 2\nline 3", rangeApplied: true } },
+        }),
+      }));
+    } finally {
+      harness.adapter.dispose();
+    }
+
+    const readTool = [{ clientName: "Read", wireName: "read", inputSchemaValue: readSchema }];
+    const nativeRead = (readArgs: Record<string, unknown>, started?: Record<string, unknown>) => (
+      cursorNativeExecRedirect({ id: 7, execId: "exec-7", readArgs: { path, toolCallId: "t", ...readArgs } }, readTool, "cursor", started)
+    );
+    // A limit announced only on toolCallStarted is enough; the offset base does not matter for it.
+    expect(JSON.parse(nativeRead({}, { path, limit: 30 })?.call.arguments ?? "{}")).toEqual({ file_path: path, limit: 30 });
+    // No range, or one the caller's Read cannot state exactly, never becomes a whole-file read.
+    for (const [readArgs, started] of [
+      [{}, undefined],
+      [{}, { path }],
+      [{ offset: 1 }, undefined],
+      [{}, { path, offset: 5, limit: 3 }],
+      [{ offset: 5, limit: 3 }, { path, offset: 4, limit: 3 }],
+      [{ limit: 0 }, undefined],
+      [{ offset: -3 }, undefined],
+      [{ limit: 3, encodingHint: "utf-16le" }, undefined],
+    ] as const) {
+      expect(nativeRead(readArgs, started)).toBeNull();
+    }
+
+    // Output that does not prove the range keeps the caller's text and claims no success.
+    const correlation = {
+      messageId: 7,
+      execId: "exec-7",
+      nativeResultType: "readResult" as const,
+      nativeArgs: { path, startLine: "50" },
+    };
+    for (const output of [
+      "<system-reminder>Warning: the file exists but is shorter than the provided offset (50). The file has 41 lines.</system-reminder>",
+      "1\tline 1\n2\tline 2",
+    ]) {
+      expect(cursorNativeRedirectResultReplies(correlation, output, false)).toEqual([{
+        execClientMessage: {
+          id: 7,
+          execId: "exec-7",
+          readResult: { error: { path, error: expect.stringContaining(`Caller output:\n${output}`) } },
+        },
+      }]);
+    }
+  });
+
   it("parks a call whose exec message is the first of the Run and keeps it across an unknown update", async () => {
     // Cursor numbers exec messages from zero and `id` has implicit presence, so the first client
     // tool of a Run arrives with no `id` field at all. Every other call here carries a nonzero id.

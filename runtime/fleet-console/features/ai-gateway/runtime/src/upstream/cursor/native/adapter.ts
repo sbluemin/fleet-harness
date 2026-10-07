@@ -35,9 +35,11 @@ import {
 } from "./exec-responses.js";
 import {
   cursorNativeExecRedirect,
+  cursorNativeReadRange,
   cursorNativeRedirectResultReplies,
+  cursorNativeRedirectToolReferences,
+  hasCursorNativeReadCandidate,
   isCursorHotPathToolName,
-  isCursorNativeRedirectToolName,
   isCursorWithheldToolName,
   type CursorNativeRedirectResultType,
 } from "./exec-redirect.js";
@@ -172,6 +174,7 @@ export type CursorDiagnosticEventName =
   | "bridge.defer"
   | "bridge.expire"
   | "bridge.mismatch"
+  | "exec.read.range"
   | "exec.redirect.selected"
   | "exec.redirect.attached"
   | "exec.redirect.result_written"
@@ -1131,13 +1134,11 @@ function cursorClientToolDiscipline(
 ): string {
   const nativeWebSearch = nativeTools.some((tool) => tool.type === "web_search");
   const redirectLeaves = new Set(
-    redirectTools
-      .filter((tool) => isCursorNativeRedirectToolName(tool.clientName))
-      .map((tool) =>
-        cursorToolLeafName(tool.clientName)
-          .replace(/[_-]/g, "")
-          .toLowerCase()
-      ),
+    cursorNativeRedirectToolReferences(redirectTools).map((tool) =>
+      cursorToolLeafName(tool.clientName)
+        .replace(/[_-]/g, "")
+        .toLowerCase()
+    ),
   );
   const routed: string[] = [];
   const hasShell = ["bash", "shellcommand", "execcommand"].some((leaf) => redirectLeaves.has(leaf));
@@ -1151,10 +1152,11 @@ function cursorClientToolDiscipline(
   // Cursor's own prompt describes a native file read, and the model opened with one in 9 of 10
   // measured baseline trials even with the caller's read tool advertised. That native read
   // fail-closes and the model has to reissue, so each one costs a whole discarded generation.
-  // Unlike search and shell it has no redirect to fall back on: the native success shape cannot
-  // state whether the caller returned a complete file, and answering with an unverifiable body
-  // measurably sent the model back to re-read instead. Naming the advertised tool in the rule is
-  // the lever that reaches the model before it chooses.
+  // Unlike search and shell, a read without a line range has no redirect to fall back on: the
+  // native success shape cannot state whether the caller returned a complete file, and answering
+  // with an unverifiable body measurably sent the model back to re-read instead. Only a read with
+  // a line range is redirected, because the caller's numbered lines prove that range. Naming the
+  // advertised tool in the rule is the lever that reaches the model before it chooses.
   const readTool = tools.find((tool) => (
     cursorToolLeafName(tool.clientName).replace(/[_-]/g, "").toLowerCase() === "read"
   ))?.toolName;
@@ -1163,7 +1165,9 @@ function cursorClientToolDiscipline(
       ? `Native ${routed.join(", ")} requests are routed through the caller's tools and permissions.`
       : undefined,
     readTool
-      ? `Read files with \`${readTool}\`; the native file read is unavailable.`
+      ? redirectLeaves.has("read")
+        ? `Read files with \`${readTool}\`; the native file read runs only for a line range.`
+        : `Read files with \`${readTool}\`; the native file read is unavailable.`
       : undefined,
     nativeWebSearch
       ? "Native web search is available; native mutation and fetch remain unavailable."
@@ -2487,6 +2491,12 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
    */
   const settledToolIdentifiers = new Set<string>();
   /**
+   * `readToolCall.args` of native reads Cursor announced, by the call id its exec `ReadArgs` repeats
+   * as `toolCallId`. The announcement arrives before the exec and is the only range a limit-only read
+   * shows when the exec carries none; each entry is taken by its exec and the map stays bounded.
+   */
+  const nativeReadStarts = new Map<string, Record<string, unknown>>();
+  /**
    * Tool-call frames Cursor emitted after this Run was sealed. The model keeps writing a parallel
    * batch for a few hundred milliseconds past the finalize grace, and the segment those calls
    * belonged to is already closed, so they cannot be added to it. Discarding them cost a whole
@@ -3053,16 +3063,21 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
         rescheduleToolTurnFinish();
         return;
       }
+      const readArgs = isRecord(frame.execServerMessage.readArgs)
+        ? frame.execServerMessage.readArgs
+        : undefined;
+      const readToolStarted = readArgs === undefined
+        ? undefined
+        : takeNativeReadStart(nativeReadStarts, readArgs);
+      if (readArgs !== undefined) {
+        const decision = cursorNativeReadRange(readArgs, readToolStarted);
+        report("exec.read.range", { model: diagnosticModel, outcome: `${decision.outcome} ${decision.fields}` });
+      }
       const redirect = cursorNativeExecRedirect(
         frame.execServerMessage,
-        redirectTools
-          .filter((tool) => isCursorNativeRedirectToolName(tool.clientName))
-          .map((tool) => ({
-            clientName: tool.clientName,
-            wireName: tool.toolName,
-            inputSchemaValue: tool.inputSchemaValue,
-          })),
+        cursorNativeRedirectToolReferences(redirectTools),
         CURSOR_TOOL_PROVIDER_IDENTIFIER,
+        readToolStarted,
       );
       if (redirect) {
         const operationSequence = ++redirectOperationSequence;
@@ -3174,6 +3189,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       return;
     }
     if (isRecord(update.toolCallStarted)) {
+      recordNativeReadStart(nativeReadStarts, update.toolCallStarted);
       const wireCall = mcpCallFromToolUpdate(update.toolCallStarted);
       const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
       if (call) {
@@ -3851,16 +3867,48 @@ function isCursorClientToolFrame(
   const wireCall = mcpCallFromExecMessage(exec);
   const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
   if (call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) return true;
-  return cursorNativeExecRedirect(
-    exec,
-    redirectTools.map((tool) => ({
-      clientName: tool.clientName,
-      wireName: tool.toolName,
-      inputSchemaValue: tool.inputSchemaValue,
-    })),
-    CURSOR_TOOL_PROVIDER_IDENTIFIER,
-  ) !== null;
+  const references = cursorNativeRedirectToolReferences(redirectTools);
+  // A native read is held whatever its range, as it was before ranges were decoded. Its range may
+  // depend on a toolCallStarted frame that is itself still held here, and the replayed read gets a
+  // redirect or its policy reply in order, so judging it now would discard a warm Run for a call
+  // that still has an answer.
+  if (isRecord(exec.readArgs)) {
+    return stringValue(exec.readArgs.path) !== undefined && hasCursorNativeReadCandidate(references);
+  }
+  return cursorNativeExecRedirect(exec, references, CURSOR_TOOL_PROVIDER_IDENTIFIER) !== null;
 }
+
+/** Keep the model's own read arguments from a `toolCallStarted` announcing a native read. */
+function recordNativeReadStart(
+  starts: Map<string, Record<string, unknown>>,
+  started: Record<string, unknown>,
+): void {
+  const toolCall = isRecord(started.toolCall) ? started.toolCall : undefined;
+  const readToolCall = toolCall && isRecord(toolCall.readToolCall) ? toolCall.readToolCall : undefined;
+  const callId = stringValue(started.callId);
+  if (!readToolCall || !callId) return;
+  starts.delete(callId);
+  starts.set(callId, isRecord(readToolCall.args) ? readToolCall.args : {});
+  while (starts.size > CURSOR_NATIVE_READ_START_LIMIT) {
+    const oldest = starts.keys().next().value;
+    if (oldest === undefined) break;
+    starts.delete(oldest);
+  }
+}
+
+/** The announced arguments of the read this exec runs, matched by its exact `toolCallId`. */
+function takeNativeReadStart(
+  starts: Map<string, Record<string, unknown>>,
+  readArgs: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const toolCallId = stringValue(readArgs.toolCallId);
+  if (!toolCallId) return undefined;
+  const started = starts.get(toolCallId);
+  starts.delete(toolCallId);
+  return started;
+}
+
+const CURSOR_NATIVE_READ_START_LIMIT = 64;
 
 /**
  * Cursor keeps writing the suspended turn's own tail after we seal it: token accounting, and the
