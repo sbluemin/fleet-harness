@@ -869,10 +869,15 @@ describe("Cursor live client-tool Run bridge", () => {
       const pastModifierRun = new BridgeCursorStream(cursorCompletionFrames(pastModifier));
       const pastModifierRecoveredRun = new BridgeCursorStream(cursorToolFrames([pastModifierRecovered]));
       const pastModifierHarness = cursorHarness([pastModifierRun, pastModifierRecoveredRun]);
-      // English settles on the last clause, and an action clause ahead of a condition is still to come.
+      // An English sentence with any action still ahead is not settled, and a condition settles it only
+      // when it governs the one action the sentence promises.
       const englishSteps = [
         "The read failed, so I need to try another path.",
         "I'll run the tests, and if they pass, I'll update the docs.",
+        "I updated the code and will run the tests.",
+        "If needed, I'll update the docs, but I'll run the tests first.",
+        "The read failed so I need to try another path.",
+        "Running the tests now, and if they pass, I'll update the docs.",
       ].map((text, index) => {
         const recoveredCall = cursorCall(`call-resample-english-recovered-${index}`, 101 + index * 2);
         return {
@@ -943,7 +948,7 @@ describe("Cursor live client-tool Run bridge", () => {
           approvalText: approval,
           pastModifierStreams: 2,
           pastModifierCalls: [pastModifierRecovered.callId],
-          englishStreams: [2, 2],
+          englishStreams: englishSteps.map(() => 2),
           englishCalls: englishSteps.map((step) => [step.recoveredCall.callId]),
           skillStreams: 2,
           skillCalls: [skillRecovered.callId],

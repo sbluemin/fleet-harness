@@ -100,18 +100,32 @@ function isWaitOrApproval(sentence: string): boolean {
  */
 function isPureConditional(sentence: string): boolean {
   const englishFuture = /\b(?:I['’]ll|I will)\b/iu.test(sentence);
-  const condition = englishFuture ? /\b(?:if|when|once|unless)\b/iu.exec(sentence) : null;
-  // `I'll run the tests, and if they pass, …`: the first clause is an unconditional action that is
-  // still to come. `I'll update the docs if the tests pass` hangs its action on the condition.
-  if (condition && !hasEnglishActionBeforeCondition(sentence.slice(0, condition.index))) return true;
+  // One action, hung on the condition. A second one (`I'll update the docs, but I'll run the tests
+  // first`, `Running the tests now, and if they pass, I'll …`) is a step that does not wait.
+  if (
+    englishFuture
+    && /\b(?:if|when|once|unless)\b/iu.test(sentence)
+    && englishActionMarkerCount(sentence) === 1
+  ) {
+    return true;
+  }
   // `화면`의 면은 명사다. 조건 어미 면은 뒤에서 절이 갈라진다.
   const mark = sentence.search(/면(?!서)(?=\s|[,.!?？]|$)/u);
   if (mark < 0 || hasPositiveConnective(sentence.slice(0, mark))) return false;
   return hasKoreanFuture(sentence.slice(mark + 1));
 }
 
-function hasEnglishActionBeforeCondition(before: string): boolean {
-  return /\b(?:I['’]ll|I will)\b/iu.test(before) && /(?:\b(?:and|then|so|but)|;)\s*$/iu.test(before);
+/** Words that put an English action still ahead: future, obligation, `let me`, or a leading step. */
+const ENGLISH_ACTION_MARKER = /\bwill\b|['’]ll\b|\bgoing to\b|\bneed to\b|\bhave to\b|\blet me\b(?!\s+know)/giu;
+/** A leading `-ing` that is not a step: `Nothing is running now.` */
+const ENGLISH_NON_STEP_ING = new Set(["nothing", "something", "anything", "everything", "during", "string"]);
+
+function englishActionMarkerCount(sentence: string): number {
+  const text = sentence.trim();
+  const first = /^[A-Za-z]+/u.exec(text)?.[0].toLowerCase() ?? "";
+  const leadingStep = ENGLISH_FORWARD_LEAD.test(text)
+    || (/^[a-z]{3,}ing$/u.test(first) && !ENGLISH_NON_STEP_ING.has(first));
+  return (text.match(ENGLISH_ACTION_MARKER)?.length ?? 0) + (leadingStep ? 1 : 0);
 }
 
 /** 고로 끝나는 명사. 뒤가 띄어 써져도 연결어미가 아니다(`회고 도착하면`). */
@@ -199,11 +213,10 @@ const ENGLISH_IRREGULAR_PAST = new Set([
  * (`the related tests`)는 수식어로 빼고, 나머지 자리(`Tests passed.`, `Fixed the import.`)만 서술어로 본다.
  */
 function isEnglishCompletion(words: readonly string[]): boolean {
-  if (ENGLISH_FORWARD_LEAD.test(words.join(" "))) return false;
-  // Only the last clause's predicate settles the sentence: `The read failed, so I need to try
-  // another path.` still has its step ahead.
-  const clauses = words.join(" ").split(/;|,\s*(?=(?:so|and|but|then)\b)/iu);
-  const tokens = (clauses[clauses.length - 1] ?? "").split(/\s+/u)
+  // Any action still ahead (`I updated the code and will run the tests.`, `The read failed so I need
+  // to try another path.`) leaves it to the length gate, as canary does.
+  if (englishActionMarkerCount(words.join(" ")) > 0) return false;
+  const tokens = words
     .map((word) => word.replace(/^[^A-Za-z]+|[^A-Za-z']+$/gu, "").toLowerCase())
     .filter((word) => /^[a-z][a-z']*$/u.test(word));
   for (let index = 0; index < tokens.length; index += 1) {
