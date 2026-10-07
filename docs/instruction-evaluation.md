@@ -82,6 +82,7 @@ claude_call() {
 문맥: $path
 $(< "$T/$1/$path")"
     done < "$E/context-paths.txt"
+    printf '%s\n' "$INPUT" > "$E/input-$1.txt"
     env -i PATH="$PATH" HOME="$T/home" TMPDIR="$T/tmp" \
     CLAUDE_CONFIG_DIR="$T/config" CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
     ANTHROPIC_BASE_URL="$ENDPOINT" ANTHROPIC_API_KEY="$API_KEY" \
@@ -167,11 +168,17 @@ OUT=$(grep -Fc -- "$TARGET_SENTENCE" "$E/request-1.text" "$E/request-2.text" 2>&
 printf '%s\n' "$OUT" > "$E/target-count.out"; printf '%s\n' "$rc" > "$E/target-count.rc"
 OUT=$(jq '{model, tools, system, messages}' "$E/fixture/request-1.json" "$E/fixture/request-2.json" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/request-context.json"; printf '%s\n' "$rc" > "$E/request-context.rc"
+for n in 1 2; do
+  OUT=$(jq -r '.. | objects | select(.type? == "text") | .text | select(contains("# Memory Index")) | split("# Memory Index")[1]' "$E/fixture/request-$n.json" 2>&1); rc=$?
+  printf '%s\n' "$OUT" > "$E/request-$n.memory"; printf '%s\n' "$rc" > "$E/request-$n.memory.rc"
+done
+OUT=$(cmp "$E/request-1.memory" "$E/request-2.memory" 2>&1); rc=$?
+printf '%s\n' "$OUT" > "$E/memory-compare.out"; printf '%s\n' "$rc" > "$E/memory-compare.rc"
 OUT=$(jq '{num_turns, total_cost_usd, duration_ms, usage, is_error, result}' "$E/fixture-before.json" "$E/fixture-after.json" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/fixture-metrics.json"; printf '%s\n' "$rc" > "$E/fixture-metrics.rc"
 ```
 
-`# Fleet`는 이 저장소 루트의 고유 제목이다. 다른 대상이면 그 대상의 고유 제목으로 바꾼다. 제목 횟수만으로 전문 일치나 출처를 증명하지는 못하므로 `request-context.json`에서 위치와 본문도 읽는다. 루트만 적용되는 과제에서는 CLAUDE.md가 한 부만, 평가 대상 문장은 기대한 횟수만 실렸는지 확인한다. 하위 지침도 필요하면 의도한 파일 목록·횟수에 맞춘다. `tools`가 비어 있거나 생략되었는지, 사용자 메모리 본문이 같은지, 경로·시각 외에 예정하지 않은 문맥 차이가 없는지 확인한다. `grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다.
+`# Memory Index`는 고정한 메모리의 제목에 맞추며, 양쪽 추출 파일이 비어 있지 않은지도 본문으로 확인한다. 양쪽 모두 빈 파일이라는 사실만으로 메모리 로드를 입증하지 않는다. `# Fleet`는 이 저장소 루트의 고유 제목이다. 다른 대상이면 그 대상의 고유 제목으로 바꾼다. 제목 횟수만으로 전문 일치나 출처를 증명하지는 못하므로 `request-context.json`에서 위치와 본문도 읽는다. 루트만 적용되는 과제에서는 CLAUDE.md가 한 부만, 평가 대상 문장은 기대한 횟수만 실렸는지 확인한다. 하위 지침도 필요하면 의도한 파일 목록·횟수에 맞춘다. `tools`가 비어 있거나 생략되었는지, 사용자 메모리 본문이 같은지, 경로·시각 외에 예정하지 않은 문맥 차이가 없는지 확인한다. `grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다.
 
 수신한 host·path·fixture_key와 허용한 환경을 기록하고 실제 키·provider URL을 상속하지 않았는지 확인한다. loopback 도착만으로 OS 전체 네트워크 차단을 주장하지 않는다. 실 API 도착 가능성을 배제할 수 없는 환경은 네트워크 제한을 추가하거나 시작 전에 멈춘다. 실패한 JSON 출력, 없는 계측 값, 다른 메모리는 고치고 다시 확인한 뒤 봉인한다.
 
@@ -180,7 +187,7 @@ printf '%s\n' "$OUT" > "$E/fixture-metrics.json"; printf '%s\n' "$rc" > "$E/fixt
 공통 작업 프롬프트 `task.txt`, 선택 참조 목록 `context-paths.txt`, 판독 기준 `rubric.md`, 시범 판독 결론·표본 수·최소 관찰 기간·모델·CLI·비용/턴 상한을 적은 `conditions.md`를 증거 디렉터리에 저장한다. 선택 참조가 있으면 양쪽에서 조립한 입력 문맥도 보관한다. 3단계의 요청·원문·종료 부호를 확인한 뒤, 본 평가 유료 호출이 아직 0인 상태에서 해시와 시각을 기록한다.
 
 ```bash
-OUT=$(shasum -a 256 "$E/task.txt" "$E/context-paths.txt" "$E/rubric.md" "$E/conditions.md" "$E/before.commit" "$E/after.commit" "$E/common-memory.md" 2>&1); rc=$?
+OUT=$(shasum -a 256 "$E/task.txt" "$E/context-paths.txt" "$E/rubric.md" "$E/conditions.md" "$E/before.commit" "$E/after.commit" "$E/common-memory.md" "$E/input-before.txt" "$E/input-after.txt" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/sealed.sha256"; printf '%s\n' "$rc" > "$E/sealed.sha256.rc"
 OUT=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/sealed-at.out"; printf '%s\n' "$rc" > "$E/sealed-at.rc"
@@ -190,9 +197,9 @@ printf '%s\n' "$OUT" > "$E/sealed-at.out"; printf '%s\n' "$rc" > "$E/sealed-at.r
 
 ## 5. 승인된 반복 실행과 장부
 
-**여기부터는 유료 실행 승인 이후에만 진행한다.** 무료 검증만 맡은 세션은 3·4단계까지만 실행하고 멈춘다. 사람이 승인한 API-key 경로의 엔드포인트와 자격증명을 `ENDPOINT`·`API_KEY`에 제공한다. 키를 문서·증거 파일·커밋·셸 이력에 넣지 말고, 예를 들어 비밀 입력으로 읽어 셸 변수에만 둔다. 임시 HOME에서 로그인하거나 실제 사용자 설정으로 되돌아가지 않는다. fixture와 실제 회차의 차이는 이 두 값뿐이며, `claude_call`의 플래그·나머지 환경·메모리·검색 조건·모델·effort를 바꾸지 않는다. provider나 인증 방식 변경이 필요하면 fixture부터 새로 확인한다.
+**실제 모델의 반복 실행은 유료 실행 승인 이후에만 진행한다.** 무료 검증만 맡은 세션은 실제 평가를 시작하지 않는다. 장부·상한 조회·번호별 출력 분리 명령 자체는 `ENDPOINT`를 loopback 스텁, `API_KEY`를 fixture 값으로 유지하여 무료로 확인할 수 있다. 이때 회차와 비용은 합성 fixture 장부라고 표시하고 실제 모델 표본과 섞지 않는다. 사람이 승인한 API-key 경로의 엔드포인트와 자격증명을 `ENDPOINT`·`API_KEY`에 제공한다. 키를 문서·증거 파일·커밋·셸 이력에 넣지 말고, 예를 들어 비밀 입력으로 읽어 셸 변수에만 둔다. 임시 HOME에서 로그인하거나 실제 사용자 설정으로 되돌아가지 않는다. fixture와 실제 회차의 차이는 이 두 값뿐이며, `claude_call`의 플래그·나머지 환경·메모리·검색 조건·모델·effort를 바꾸지 않는다. provider나 인증 방식 변경이 필요하면 fixture부터 새로 확인한다.
 
-전·후를 번갈아 `N`회 실행한다. `task.txt`는 공통 작업 프롬프트이며, `claude_call`이 `context-paths.txt`의 같은 상대 경로 목록·순서로 각 버전 참조 원문을 덧붙인다. 참조 원문의 차이를 봉인하고 이를 공통 작업 프롬프트 변경과 혼동하지 않는다.
+전·후를 번갈아 `N`회 실행한다. `task.txt`는 공통 작업 프롬프트이며, `claude_call`이 `context-paths.txt`의 같은 상대 경로 목록·순서로 각 버전 참조 원문을 덧붙인다. 참조 원문의 차이를 봉인하고 이를 공통 작업 프롬프트 변경과 혼동하지 않는다. 실행 전에 `N`, `TURN_LIMIT`, `COST_LIMIT`을 승인된 합계 회차 수·턴 상한·달러 상한으로 지정한다.
 
 ```bash
 PROMPT=$(< "$E/task.txt")
@@ -202,21 +209,35 @@ while [ "$i" -le "$N" ]; do
   if [ $((i % 2)) -eq 1 ]; then side=before; else side=after; fi
   OUT=$(claude_call "$side" 2> "$E/run-$i.stderr"); rc=$?
   printf '%s\n' "$OUT" > "$E/run-$i.json"; printf '%s\n' "$rc" > "$E/run-$i.rc"
-  METRICS=$(jq -r '[.num_turns, .total_cost_usd, .duration_ms] | @tsv' "$E/run-$i.json" 2>&1); metrics_rc=$?
+  METRICS=$(jq -er 'select(.num_turns != null and .total_cost_usd != null and .duration_ms != null) | [.num_turns, .total_cost_usd, .duration_ms] | @tsv' "$E/run-$i.json" 2>&1); metrics_rc=$?
   printf '%s\n' "$metrics_rc" > "$E/run-$i.metrics.rc"
   printf '%s\t%s\t%s\t%s\n' "$i" "$side" "$rc" "$METRICS" >> "$E/ledger.tsv"
   [ "$rc" -eq 0 ] && [ "$metrics_rc" -eq 0 ] || break
+  LIMIT_OK=$(jq -e -s --argjson turns "$TURN_LIMIT" --argjson cost "$COST_LIMIT" '([.[].num_turns] | add) < $turns and ([.[].total_cost_usd] | add) < $cost' "$E"/run-*.json 2>&1); limit_rc=$?
+  printf '%s\n' "$LIMIT_OK" > "$E/run-$i.limit.out"; printf '%s\n' "$limit_rc" > "$E/run-$i.limit.rc"
+  [ "$limit_rc" -eq 0 ] || break
   i=$((i + 1))
 done
 unset API_KEY
 ```
 
-각 회차 뒤 사람이 승인한 턴·비용 상한과 최소 관찰 기간을 대조한다. 상한에 닿으면 다음 회차를 시작하지 않는다. 실패·재시도·시범·판독 호출도 장부에 따로 기록한다. CLI의 `total_cost_usd`는 제공자의 실제 청구 확정값이 아니다. fixture의 토큰·비용은 합성 응답에서 계산한 숫자이므로 실제 사용량으로 합산하지 않는다. `num_turns`가 없거나 조회가 실패하면 1턴으로 추정하지 않고 원문·실패 이유를 남긴다.
+루프는 회차 사이에 상한을 대조한다. 상한을 초과하는 한 회차 자체를 사후 계산으로 막을 수는 없으므로, 남은 예산이 다음 회차를 감당하지 못하면 시작하지 않는다. 최소 관찰 기간도 별도로 확인한다. 상한에 닿으면 다음 회차를 시작하지 않는다. 실패·재시도·시범·판독 호출도 장부에 따로 기록한다. CLI의 `total_cost_usd`는 제공자의 실제 청구 확정값이 아니다. fixture의 토큰·비용은 합성 응답에서 계산한 숫자이므로 실제 사용량으로 합산하지 않는다. `num_turns`가 없거나 조회가 실패하면 1턴으로 추정하지 않고 원문·실패 이유를 남긴다.
 
 ## 6. 번호만 보는 판독과 결과
 
 실행 전 판독자는 과제·기준과 출력 번호만 보도록 정한다. 실행 모델과 다른 계열의 모델을 사용하고, 그 판독 호출도 유료면 별도 승인을 받는다. 각 `run-번호.json`의 `result`만 `번호.txt`로 추출한다. 버전·모델·경로·시간·비용을 드러내는 CLI 메타데이터와 전·후 대응표는 판독자에게 주지 않는다. 출력 자체가 버전을 드러내면 마스킹 여부를 사전에 정하고 눈가림의 한계를 보고한다.
 
-전·후 순서를 아는 지휘관이 판독까지 대신하지 않는다. 판독 중에는 버전 대응 파일과 `ledger.tsv`·commit 파일·fixture 원문을 판독 세션이 접근하지 않는 위치에 치운다. 권한이 제한된 판독 세션에는 과제·기준과 번호별 출력만 전달하며, 그 세션이 못 여는 원래 보드를 읽으라고 시키지 않는다. 판독 결과를 확정한 뒤에만 대응표를 다시 열어 전·후로 합친다.
+```bash
+mkdir -p "$E/blind"
+i=1
+while [ "$i" -le "$N" ]; do
+  OUT=$(jq -er '.result' "$E/run-$i.json" 2>&1); rc=$?
+  printf '%s\n' "$OUT" > "$E/blind/$i.txt"; printf '%s\n' "$rc" > "$E/blind-$i.rc"
+  [ "$rc" -eq 0 ] || exit "$rc"
+  i=$((i + 1))
+done
+```
+
+판독자에게는 `blind/`의 번호별 출력과 과제·기준만 전달한다. 실패 원문·종료 부호는 실행 장부에 남기되 판독 입력과 섞지 않는다. 전·후 순서를 아는 지휘관이 판독까지 대신하지 않는다. 판독 중에는 버전 대응 파일과 `ledger.tsv`·commit 파일·fixture 원문을 판독 세션이 접근하지 않는 위치에 치운다. 권한이 제한된 판독 세션에는 과제·기준과 번호별 출력만 전달하며, 그 세션이 못 여는 원래 보드를 읽으라고 시키지 않는다. 판독 결과를 확정한 뒤에만 대응표를 다시 열어 전·후로 합친다.
 
 결과에는 경계별 실패, 보존한 안전 항목, 표본 수·실제 관찰 기간, 유료 실행·판독 턴과 비용·시간, 무료 fixture와 문서상 판독, 미실행 영역을 구분한다. 양쪽 만점이면 차이를 입증하지 못했다고 보고한다. 최소 기간·표본을 채우지 못한 부분을 효과 없음으로 단정하지 않는다. 문맥 감소나 한 번의 녹색 결과만으로 개편 완료를 주장하지 않는다.
