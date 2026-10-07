@@ -23,7 +23,12 @@ import {
 import { logRawWireEvent, wireLog } from "../../../transport/wire-log.js";
 import type { QuotaWindow } from "../../../quota/types.js";
 import { parseMuseCodeSubscriptionUsage } from "../quota.js";
-import { resampleArming, resampleNudgeItems, withMuseCodeResample } from "./resample.js";
+import {
+  resampleArming,
+  resampleNudgeItems,
+  withMuseCodeResample,
+  type MuseYieldToolCall,
+} from "./resample.js";
 
 /**
  * Muse Code 구독 키가 쓰는 Meta Model API Responses 엔드포인트.
@@ -98,6 +103,11 @@ export interface MuseCodeResponsesAdapterOptions {
    * 하네스 프로필이 넘긴다. 직후 보고 중복 방지: 이 도구의 결과 직후 응답은 다시 받지 않는다.
    */
   messagingToolNames?: readonly string[];
+  /**
+   * 턴을 넘기는 클라이언트 도구 호출. 도구 이름과 인자 조건은 하네스 어휘라 하네스 프로필이 넘긴다.
+   * 백그라운드 작업·예약 깨우기 직후의 짧은 종료는 정당한 대기이므로 다시 받지 않는다.
+   */
+  yieldToolCalls?: readonly MuseYieldToolCall[];
 }
 
 export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
@@ -107,11 +117,13 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
   private readonly idleTimeoutMs: number;
   private readonly onSubscriptionUsage: ((windows: readonly QuotaWindow[]) => void) | undefined;
   private readonly messagingToolNames: ReadonlySet<string>;
+  private readonly yieldToolCalls: readonly MuseYieldToolCall[];
 
   constructor(options: MuseCodeResponsesAdapterOptions = {}) {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.onSubscriptionUsage = options.onSubscriptionUsage;
     this.messagingToolNames = new Set(options.messagingToolNames ?? []);
+    this.yieldToolCalls = options.yieldToolCalls ?? [];
     this.maxBodyBytes = positiveInteger(
       options.maxBodyBytes ?? DEFAULT_MUSE_CODE_MAX_UPSTREAM_BODY_BYTES,
       "maxBodyBytes",
@@ -138,7 +150,7 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
 
     const startedAt = Date.now();
     const payload = forMuseCodeResponsesBackend(request);
-    const arming = resampleArming(payload, this.messagingToolNames);
+    const arming = resampleArming(payload, this.messagingToolNames, this.yieldToolCalls);
     wireLog("muse-code-responses.resample.armed", {
       armed: arming.armed,
       ...(arming.skip === undefined ? {} : { skip: arming.skip }),

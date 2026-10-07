@@ -36,7 +36,18 @@ export function resampleNudgeItems(announcement: string): Record<string, unknown
 /** 이보다 작은 출력 상한은 짧은 판정형 부속 호출이다(보안 모니터: 64). */
 const MIN_RESAMPLE_MAX_OUTPUT_TOKENS = 1024;
 
-export type ResampleSkip = "no_tools" | "small_max" | "not_after_tool_output" | "after_messaging_tool";
+/** 턴을 넘기는 클라이언트 도구 호출. `whenArgumentTrue`가 있으면 그 인자가 `true`일 때만 해당한다. */
+export interface MuseYieldToolCall {
+  readonly name: string;
+  readonly whenArgumentTrue?: string;
+}
+
+export type ResampleSkip =
+  | "no_tools"
+  | "small_max"
+  | "not_after_tool_output"
+  | "after_messaging_tool"
+  | "after_yield_tool";
 
 export interface ResampleArming {
   readonly armed: boolean;
@@ -54,43 +65,79 @@ interface WireRequestShape {
 /**
  * 요청을 보내기 전에 정해지는 조건. 도구가 없으면 회복할 대상이 없고(`tool_choice: none`은 이 어댑터가
  * 도구를 싣지 않는 것으로 표현한다), 작은 출력 상한은 부속 호출이며, H15는 거의 전부(99.6%) 도구 결과
- * 직후에 난다. 사용자 텍스트 직후의 빠른 단답은 정상이므로 다시 만들지 않는다. 범위 밖이면 응답을
- * 보류하지 않으므로 지연도 없다.
+ * 직후에 난다. 사용자 텍스트 직후의 빠른 단답은 정상이므로 다시 만들지 않는다. 마지막 결과가 보고(메시징)이거나
+ * 묶음 안에 턴을 넘기는 호출이 있으면 다시 받지 않는다. 범위 밖이면 응답을 보류하지 않으므로
+ * 지연도 없다.
  */
 export function resampleArming(
   payload: WireRequestShape,
   messagingToolNames: ReadonlySet<string>,
+  yieldToolCalls: readonly MuseYieldToolCall[] = [],
 ): ResampleArming {
   if (payload.tools === undefined || payload.tools.length === 0) return { armed: false, skip: "no_tools" };
   if (payload.max_output_tokens !== undefined && payload.max_output_tokens < MIN_RESAMPLE_MAX_OUTPUT_TOKENS) {
     return { armed: false, skip: "small_max" };
   }
-  const last = lastNonDeveloperItem(payload.input);
-  if (!isRecord(last) || last.type !== "function_call_output") return { armed: false, skip: "not_after_tool_output" };
-  const lastToolName = toolNameForCall(payload.input, last.call_id);
-  const named = lastToolName === undefined ? {} : { lastToolName };
-  if (!resampleInScope(lastToolName, messagingToolNames)) return { armed: false, skip: "after_messaging_tool", ...named };
+  const outputs = trailingFunctionCallOutputs(payload.input);
+  const last = outputs[outputs.length - 1];
+  if (last === undefined) return { armed: false, skip: "not_after_tool_output" };
+  const lastCall = functionCallFor(payload.input, last.call_id);
+  const named = lastCall === undefined ? {} : { lastToolName: lastCall.name };
+  if (!resampleInScope(lastCall?.name, messagingToolNames)) return { armed: false, skip: "after_messaging_tool", ...named };
+  // 묶음 안에 턴을 넘기는 호출이 하나라도 있으면 짧은 텍스트 종료는 정당한 대기다.
+  if (outputs.some((output) => {
+    const call = functionCallFor(payload.input, output.call_id);
+    return call !== undefined && isYieldCall(call, yieldToolCalls);
+  })) {
+    return { armed: false, skip: "after_yield_tool", ...named };
+  }
   return { armed: true, ...named };
 }
 
-/** 끝에 붙는 developer 알림(`<total_tokens>` 등)은 건너뛰고 본다. */
-function lastNonDeveloperItem(input: readonly unknown[]): unknown {
+/** 끝에 붙는 developer 알림(`<total_tokens>` 등)은 건너뛰고, 그 앞의 연속된 도구 결과 묶음을 본다. */
+function trailingFunctionCallOutputs(input: readonly unknown[]): Array<Record<string, unknown>> {
+  const outputs: Array<Record<string, unknown>> = [];
   for (let index = input.length - 1; index >= 0; index -= 1) {
     const item = input[index];
     if (isRecord(item) && item.type === "message" && item.role === "developer") continue;
-    return item;
+    if (isRecord(item) && item.type === "function_call_output") {
+      outputs.push(item);
+      continue;
+    }
+    break;
+  }
+  outputs.reverse();
+  return outputs;
+}
+
+interface WireFunctionCall {
+  readonly name: string;
+  readonly arguments: string;
+}
+
+function functionCallFor(input: readonly unknown[], callId: unknown): WireFunctionCall | undefined {
+  for (let index = input.length - 1; index >= 0; index -= 1) {
+    const item = input[index];
+    if (!isRecord(item) || item.type !== "function_call" || item.call_id !== callId || typeof item.name !== "string") {
+      continue;
+    }
+    return { name: item.name, arguments: typeof item.arguments === "string" ? item.arguments : "" };
   }
   return undefined;
 }
 
-function toolNameForCall(input: readonly unknown[], callId: unknown): string | undefined {
-  for (let index = input.length - 1; index >= 0; index -= 1) {
-    const item = input[index];
-    if (isRecord(item) && item.type === "function_call" && item.call_id === callId && typeof item.name === "string") {
-      return item.name;
+/** Cursor 재요청과 같은 판정. 인자 JSON을 읽지 못하면 턴을 넘기는 호출이 아니다. */
+function isYieldCall(call: WireFunctionCall, rules: readonly MuseYieldToolCall[]): boolean {
+  return rules.some((rule) => {
+    if (rule.name !== call.name) return false;
+    if (rule.whenArgumentTrue === undefined) return true;
+    try {
+      const parsed: unknown = JSON.parse(call.arguments);
+      return isRecord(parsed) && parsed[rule.whenArgumentTrue] === true;
+    } catch {
+      return false;
     }
-  }
-  return undefined;
+  });
 }
 
 /**

@@ -740,6 +740,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
                     fetch: requestFetch,
                     ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: deps.observeMuseCodeUsage } : {}),
                     ...(harness.messagingToolNames ? { messagingToolNames: harness.messagingToolNames } : {}),
+                    ...(harness.yieldToolCalls ? { yieldToolCalls: harness.yieldToolCalls } : {}),
                   }))
                   : new AnthropicMessagesGateway(codexAdapter!));
       const diagnosticsEnabled = target.provider === "cursor"
