@@ -36,6 +36,7 @@ import {
   cursorUnknownExecReply,
 } from "./exec-responses.js";
 import {
+  cursorGrepReceiptHistoryText,
   cursorNativeExecRedirect,
   cursorNativeReadEofOutcome,
   cursorNativeReadRange,
@@ -772,17 +773,18 @@ function buildCursorConversationTurns(
     }
 
     const call = pendingCalls.get(item.call_id);
+    const output = cursorGrepReceiptHistoryText(item.output);
     if (call) {
       current.steps.push(storeCursorToolCallStep(
         blobs,
         call,
         tools,
-        item.output,
+        output,
         item.is_error === true,
       ));
       pendingCalls.delete(item.call_id);
     } else {
-      current.steps.push(storeCursorAssistantStep(blobs, `[Tool Result]\n${item.output}`));
+      current.steps.push(storeCursorAssistantStep(blobs, `[Tool Result]\n${output}`));
     }
   }
   flush();
@@ -873,7 +875,7 @@ function historyRoot(
       ...(toolName ? [`name: ${toolName}`] : []),
       `is_error: ${item.is_error === true}`,
       "output:",
-      item.output,
+      cursorGrepReceiptHistoryText(item.output),
     ].join("\n");
     return rootEntry({ role: "user", content: [{ type: "text", text }] }, "toolResult", text);
   }

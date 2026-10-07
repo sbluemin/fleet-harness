@@ -1,3 +1,5 @@
+import { inflateRawSync } from "node:zlib";
+
 type ExecMessage = Record<string, unknown>;
 
 export type CursorNativeRedirectResultType =
@@ -818,6 +820,91 @@ interface GrepShellReceipt {
   readonly totalLines: number;
   readonly totalMatchedLines: number;
   readonly clientTruncated: boolean;
+}
+
+const CURSOR_GREP_RECEIPT_V2_PREFIX = "FLEET_CURSOR_GREP_V2:";
+const CURSOR_GREP_RECEIPT_MAX_BYTES = 128 * 1024;
+
+/**
+ * The search text behind an older `FLEET_CURSOR_GREP_V2` shell receipt.
+ *
+ * Attach used to inflate this receipt into the native grep result. A cold resume only has the
+ * stored string, so it asks here. Another version, or a receipt that does not inflate, comes
+ * back unchanged and never fails the resume.
+ */
+export function cursorGrepReceiptHistoryText(output: string): string {
+  if (!output.startsWith(CURSOR_GREP_RECEIPT_V2_PREFIX)) return output;
+  try {
+    const compressed = Buffer.from(
+      output.slice(CURSOR_GREP_RECEIPT_V2_PREFIX.length).trim(),
+      "base64url",
+    );
+    const decoded = JSON.parse(inflateRawSync(compressed, {
+      maxOutputLength: CURSOR_GREP_RECEIPT_MAX_BYTES,
+    }).toString("utf8")) as unknown;
+    return renderCursorGrepReceiptV2(decoded) ?? output;
+  } catch {
+    return output;
+  }
+}
+
+function renderCursorGrepReceiptV2(decoded: unknown): string | null {
+  if (!isRecord(decoded)) return null;
+  if (decoded.ok === false) {
+    return typeof decoded.error === "string" && decoded.error.length > 0 ? decoded.error : null;
+  }
+  if (decoded.ok !== true) return null;
+  if (
+    decoded.outputMode !== "content"
+    && decoded.outputMode !== "files_with_matches"
+    && decoded.outputMode !== "count"
+  ) return null;
+  if (!Array.isArray(decoded.files) || !decoded.files.every((file) => typeof file === "string")) return null;
+  if (!Array.isArray(decoded.counts) || !decoded.counts.every((entry) => (
+    Array.isArray(entry)
+    && entry.length === 2
+    && typeof entry[0] === "string"
+    && typeof entry[1] === "number"
+    && Number.isSafeInteger(entry[1])
+    && entry[1] >= 0
+  ))) return null;
+  if (!Array.isArray(decoded.matches) || !decoded.matches.every((entry) => (
+    isRecord(entry)
+    && typeof entry.file === "string"
+    && typeof entry.lineNumber === "number"
+    && Number.isSafeInteger(entry.lineNumber)
+    && entry.lineNumber > 0
+    && typeof entry.content === "string"
+    && typeof entry.contentTruncated === "boolean"
+    && typeof entry.isContextLine === "boolean"
+  ))) return null;
+  for (const key of ["totalFiles", "totalLines", "totalMatchedLines"] as const) {
+    if (typeof decoded[key] !== "number" || !Number.isSafeInteger(decoded[key]) || decoded[key] < 0) {
+      return null;
+    }
+  }
+  if (typeof decoded.clientTruncated !== "boolean") return null;
+  if (decoded.outputMode === "files_with_matches") return decoded.files.join("\n");
+  if (decoded.outputMode === "count") {
+    return decoded.counts.map((entry) => `${entry[0]}:${entry[1]}`).join("\n");
+  }
+  const groups: string[] = [];
+  let file: string | undefined;
+  let lines: string[] = [];
+  const flush = (): void => {
+    if (file === undefined) return;
+    groups.push([file, ...lines].join("\n"));
+  };
+  for (const match of decoded.matches) {
+    if (match.file !== file) {
+      flush();
+      file = match.file;
+      lines = [];
+    }
+    lines.push(`${match.lineNumber}${match.isContextLine ? "-" : ":"}${match.content}`);
+  }
+  flush();
+  return groups.join("\n\n");
 }
 
 function parseGrepShellReceipt(

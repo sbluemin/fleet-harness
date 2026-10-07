@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { deflateRawSync } from "node:zlib";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http2 from "node:http2";
@@ -1029,6 +1030,79 @@ describe("Cursor live client-tool Run bridge", () => {
     } finally {
       harness.adapter.dispose();
     }
+  });
+
+  it("restores a grep receipt when a cold resume replays the search", () => {
+    // A cold resume replays earlier tool results through historyRoot and the conversation turns.
+    // FLEET_CURSOR_GREP_V2 is the compressed receipt an older shell search stored. Attach inflated
+    // that receipt into these search lines; the replay must carry the same lines. A broken receipt
+    // or another version stays as it is, and the resume still builds.
+    const receipt = (value: unknown) => (
+      `FLEET_CURSOR_GREP_V2:${deflateRawSync(Buffer.from(JSON.stringify(value), "utf8")).toString("base64url")}`
+    );
+    const valid = receipt({
+      ok: true,
+      outputMode: "content",
+      files: [],
+      counts: [],
+      matches: [
+        {
+          file: "sub/12:odd.ts",
+          lineNumber: 2,
+          content: "parseGrepShellReceipt here",
+          contentTruncated: false,
+          isContextLine: false,
+        },
+        {
+          file: "sub/12:odd.ts",
+          lineNumber: 3,
+          content: "nearby",
+          contentTruncated: false,
+          isContextLine: true,
+        },
+      ],
+      totalFiles: 1,
+      totalLines: 2,
+      totalMatchedLines: 1,
+      clientTruncated: false,
+    });
+    const corrupt = "FLEET_CURSOR_GREP_V2:not-a-receipt";
+    const otherVersion = "FLEET_CURSOR_GREP_V1:abc";
+    const call = (
+      callId: string,
+      output: string,
+    ): CanonicalResponseRequest["input"] => [
+      { type: "function_call", call_id: callId, name: "Bash", arguments: JSON.stringify({ command: "rg" }) },
+      { type: "function_call_output", call_id: callId, output },
+    ];
+    const request = cursorRequest("session-cold-grep-receipt", "grok-4.5");
+    const plan = buildCursorRunPlan({
+      ...request,
+      input: [
+        request.input[0]!,
+        ...call("call-valid", valid),
+        ...call("call-plain", "plain result"),
+        ...call("call-corrupt", corrupt),
+        ...call("call-v1", otherVersion),
+        { type: "message", role: "user", content: "What did the search find?" },
+      ],
+    }, "conversation-cold-grep-receipt");
+    const state = (plan.payload as {
+      runRequest?: { conversationState?: { rootPromptMessagesJson?: string[]; turns?: string[] } };
+    }).runRequest?.conversationState;
+    const replayed = [...(state?.rootPromptMessagesJson ?? []), ...(state?.turns ?? [])].map((id) => {
+      const encoded = plan.blobs.get(id);
+      if (encoded === undefined) throw new Error(`Missing cold replay blob ${id}`);
+      return Buffer.from(encoded, "base64").toString("utf8");
+    }).join("\n");
+
+    expect(replayed).toContain("sub/12:odd.ts");
+    expect(replayed).toContain("2:parseGrepShellReceipt here");
+    expect(replayed).toContain("3-nearby");
+    expect(replayed).not.toContain(valid);
+    expect(replayed).toContain(corrupt);
+    expect(replayed).toContain(otherVersion);
+    expect(replayed).toContain("plain result");
   });
 
   it("atomically claims a pending Run so concurrent attaches cannot double-write", async () => {
