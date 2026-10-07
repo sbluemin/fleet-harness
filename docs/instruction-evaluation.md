@@ -68,7 +68,7 @@ printf '%s\n' "$OUT" > "$E/memory.sha256"; printf '%s\n' "$rc" > "$E/memory.sha2
 
 ## 3. 유료 호출 전 무료 요청 fixture
 
-`CLAUDE_BIN`은 확인한 CLI 실행 파일의 절대 경로다. `PROMPT`는 공통 작업 프롬프트다. 다음 함수를 fixture와 실제 회차에서 **그대로** 사용한다. 도구·스킬·훅·MCP·Chrome·세션 저장을 끄고 모델과 effort를 고정한다. `--setting-sources ''`는 사용자·프로젝트·로컬 설정의 개입을 막지만 관리 정책 우회가 아니다. 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
+`CLAUDE_BIN`은 확인한 CLI 실행 파일의 절대 경로다. `PROMPT`는 공통 작업 프롬프트다. 다음 함수를 fixture와 실제 회차에서 **그대로** 사용한다. 도구·스킬·훅·MCP·Chrome·세션 저장을 끄고 모델과 effort를 고정한다. `--setting-sources project`로 프로젝트 CLAUDE.md 자동 탐색을 유지하고, `--restricted`로 사용자·프로젝트·로컬 설정 파일의 개입을 막는다. `--setting-sources ''`는 이 버전에서 프로젝트 CLAUDE.md도 제외하므로 쓰지 않는다. 이는 관리 정책 우회가 아니며, 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
 
 ```bash
 CLAUDE_BIN=$(command -v claude)
@@ -87,7 +87,8 @@ $(< "$T/$1/$path")"
     ANTHROPIC_BASE_URL="$ENDPOINT" ANTHROPIC_API_KEY="$API_KEY" \
     "$CLAUDE_BIN" -p "$INPUT" --model "$MODEL" --effort "$EFFORT" \
     --tools '' --disable-slash-commands --settings '{"disableAllHooks":true}' \
-    --setting-sources '' --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
+    --setting-sources project --restricted --permission-mode dontAsk \
+    --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
     --no-chrome --prompt-suggestions false --no-session-persistence --output-format json)
 }
 ```
@@ -147,7 +148,7 @@ done
 ENDPOINT="http://127.0.0.1:$(< "$E/fixture/port")"
 API_KEY=fixture-not-a-real-key
 for side in before after; do
-  OUT=$(claude_call "$side" 2>&1); rc=$?
+  OUT=$(claude_call "$side" 2> "$E/fixture-$side.stderr"); rc=$?
   printf '%s\n' "$OUT" > "$E/fixture-$side.json"; printf '%s\n' "$rc" > "$E/fixture-$side.rc"
   [ "$rc" -eq 0 ] || exit "$rc"
 done
@@ -160,7 +161,7 @@ for n in 1 2; do
   OUT=$(jq -r '.. | objects | select(.type? == "text") | .text' "$E/fixture/request-$n.json" 2>&1); rc=$?
   printf '%s\n' "$OUT" > "$E/request-$n.text"; printf '%s\n' "$rc" > "$E/request-$n.text.rc"
 done
-OUT=$(grep -Fc '# Fleet' "$E/request-1.text" "$E/request-2.text" 2>&1); rc=$?
+OUT=$(grep -Fxc '# Fleet' "$E/request-1.text" "$E/request-2.text" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/claude-count.out"; printf '%s\n' "$rc" > "$E/claude-count.rc"
 OUT=$(grep -Fc -- "$TARGET_SENTENCE" "$E/request-1.text" "$E/request-2.text" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/target-count.out"; printf '%s\n' "$rc" > "$E/target-count.rc"
@@ -199,7 +200,7 @@ printf 'number\tside\trc\tturns\tcost_usd\tduration_ms\n' > "$E/ledger.tsv"
 i=1
 while [ "$i" -le "$N" ]; do
   if [ $((i % 2)) -eq 1 ]; then side=before; else side=after; fi
-  OUT=$(claude_call "$side" 2>&1); rc=$?
+  OUT=$(claude_call "$side" 2> "$E/run-$i.stderr"); rc=$?
   printf '%s\n' "$OUT" > "$E/run-$i.json"; printf '%s\n' "$rc" > "$E/run-$i.rc"
   METRICS=$(jq -r '[.num_turns, .total_cost_usd, .duration_ms] | @tsv' "$E/run-$i.json" 2>&1); metrics_rc=$?
   printf '%s\n' "$metrics_rc" > "$E/run-$i.metrics.rc"
