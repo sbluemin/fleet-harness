@@ -94,7 +94,7 @@ $(< "$T/$1/$path")"
 }
 ```
 
-`env -i`는 부모 세션의 실제 키·OAuth·provider·프록시 환경을 전달하지 않는다. 임시 `HOME`·`CLAUDE_CONFIG_DIR`을 함께 쓰며, macOS에서 secure-storage 경로를 빈 값으로 바꿔 실제 Keychain을 재사용하지 않는다. `--no-session-persistence`만으로 사용자 상태가 격리되는 것은 아니다. 실행 파일이나 정책이 자격증명·상태 경계를 바꾸면 진행하지 않는다. 이 예시는 API-key 경로이며 OAuth 로그인·토큰 갱신이나 다른 provider 경로는 검증하지 않는다.
+`env -i`는 부모 세션의 실제 키·OAuth·provider·프록시·secure-storage 환경을 전달하지 않는다. 임시 `HOME`·`CLAUDE_CONFIG_DIR`도 함께 쓰지만, 이 명령만으로 실제 Keychain 접근이나 외부 네트워크가 차단되는 것은 아니다. macOS의 무료 fixture는 아래 실행 보호 래퍼까지 읽고 적용한 뒤 시작한다. `--no-session-persistence`만으로 사용자 상태가 격리되는 것도 아니다. 실행 파일이나 정책이 자격증명·상태 경계를 바꾸면 진행하지 않는다. 이 예시는 API-key 경로이며 OAuth 로그인·토큰 갱신이나 다른 provider 경로는 검증하지 않는다.
 
 무료 스텁은 loopback에만 바인딩하고 요청 본문을 증거 디렉터리에 저장한다. HTTP 요청 수신과 SSE 응답은 `jq`만으로 만들 수 없어 아래 임시 Python 서버를 사용한다. 저장한 응답은 모델 출력이 아니라 고정 fixture다. 스크립트는 추출 트리와 별도 디렉터리에 두고, Python은 `-I`로 실행한다.
 
@@ -180,7 +180,28 @@ printf '%s\n' "$OUT" > "$E/fixture-metrics.json"; printf '%s\n' "$rc" > "$E/fixt
 
 `# Memory Index`는 고정한 메모리의 제목에 맞추며, 양쪽 추출 파일이 비어 있지 않은지도 본문으로 확인한다. 양쪽 모두 빈 파일이라는 사실만으로 메모리 로드를 입증하지 않는다. `# Fleet`는 이 저장소 루트의 고유 제목이다. 다른 대상이면 그 대상의 고유 제목으로 바꾼다. 제목 횟수만으로 전문 일치나 출처를 증명하지는 못하므로 `request-context.json`에서 위치와 본문도 읽는다. 루트만 적용되는 과제에서는 CLAUDE.md가 한 부만, 평가 대상 문장은 기대한 횟수만 실렸는지 확인한다. 하위 지침도 필요하면 의도한 파일 목록·횟수에 맞춘다. `tools`가 비어 있거나 생략되었는지, 사용자 메모리 본문이 같은지, 경로·시각 외에 예정하지 않은 문맥 차이가 없는지 확인한다. `grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다.
 
-수신한 host·path·fixture_key와 허용한 환경을 기록하고 실제 키·provider URL을 상속하지 않았는지 확인한다. loopback 도착만으로 OS 전체 네트워크 차단을 주장하지 않는다. 실 API 도착 가능성을 배제할 수 없는 환경은 네트워크 제한을 추가하거나 시작 전에 멈춘다. 실패한 JSON 출력, 없는 계측 값, 다른 메모리는 고치고 다시 확인한 뒤 봉인한다.
+수신한 host·path·fixture_key와 허용한 환경을 기록하고 실제 키·provider URL을 상속하지 않았는지 확인한다. loopback 도착만으로 OS 전체 네트워크 차단을 주장하지 않는다. 다음은 macOS 무료 fixture 전용 실행 보호 래퍼다. 위의 준비·fixture 명령을 세션 scratchpad의 스크립트에 두고 `FIXTURE_SCRIPT`를 그 절대 경로로 지정한 뒤 이 래퍼로 실행한다. 스크립트는 loopback 엔드포인트와 fixture 키만 사용해야 하며, 실제 평가나 인증 단계는 포함하지 않는다. `REAL_HOME`은 임시 HOME으로 바꾸기 전 실제 사용자 홈이다.
+
+```bash
+REAL_HOME=$HOME
+mkdir -p "$E"
+FIXTURE_PROFILE="(version 1) (allow default) (deny network*)
+(allow network-outbound (remote ip \"localhost:*\"))
+(allow network-inbound (local ip \"localhost:*\"))
+(deny file-write* (subpath \"$REAL_HOME/.claude\") (literal \"$REAL_HOME/.claude.json\"))
+(deny file-read* file-write* (subpath \"$REAL_HOME/Library/Keychains\"))"
+printf '%s\n' "$FIXTURE_PROFILE" > "$E/fixture-sandbox-profile.txt"
+OUT=$(sandbox-exec -p "$FIXTURE_PROFILE" python3 -I -c 'import socket; s=socket.socket(); s.settimeout(1); r=s.connect_ex(("192.0.2.1",443)); print("connect_ex_errno="+str(r)); assert r==1' 2>&1); rc=$?
+printf '%s\n' "$OUT" > "$E/network-denial-probe.out"; printf '%s\n' "$rc" > "$E/network-denial-probe.rc"
+[ "$rc" -eq 0 ] || exit "$rc"
+OUT=$(sandbox-exec -p "$FIXTURE_PROFILE" /bin/bash "$FIXTURE_SCRIPT" 2>&1); rc=$?
+printf '%s\n' "$OUT" > "$E/fixture-wrapper.out"; printf '%s\n' "$rc" > "$E/fixture-wrapper.rc"
+[ "$rc" -eq 0 ] || exit "$rc"
+```
+
+외부 주소 연결 프로브의 `connect_ex_errno=1`은 이 래퍼 안에서 연결이 거절되었음을 뜻한다. 프로브나 loopback 스텁 도착 확인이 실패하면 CLI 호출을 계속하지 않는다. 파일 보호는 실제 `.claude` 쓰기와 Keychains 읽기·쓰기를 거절하며, 실제 파일에 쓰거나 Keychain 자격증명을 읽어 시험하지 않는다. 프로파일은 OS 전체가 아니라 감싼 프로세스와 자식에게 적용된다. `sandbox-exec`가 없거나 정책을 적용할 수 없는 플랫폼에서는 동등한 격리를 확보하거나 실행 전에 멈춘다.
+
+이 래퍼는 `claude_call` 밖에 있으며 **무료 fixture에만** 씌운다. 요청을 만드는 `claude_call`의 플래그·환경·문맥은 바꾸지 않는다. 실제 회차와 비교할 때 요청 구성의 차이는 앞서 정한 엔드포인트·키 두 값뿐이고, 이 무료 실행 보호 정책을 유료 실행의 네트워크 조건이나 모델 행동 효과로 해석하지 않는다. 실패한 JSON 출력, 없는 계측 값, 다른 메모리는 고치고 다시 확인한 뒤 봉인한다.
 
 ## 4. 과제·판독 기준 봉인
 
