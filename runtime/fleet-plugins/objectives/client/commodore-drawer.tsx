@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateValue } from "@fleet-console/sdk/components/model-coordinate-picker";
@@ -48,8 +48,13 @@ type T = Translate<ObjectiveMessageKey>;
 const SHEET_MARGIN = 24;
 const SHEET_DEFAULT_WIDTH = 1080;
 const SHEET_DEFAULT_HEIGHT = 780;
+const SHEET_MIN_WIDTH = 720;
+const SHEET_MIN_HEIGHT = 480;
 /** 시트가 이보다 좁으면 구역 목록을 글리프만 남긴다. */
 const SHEET_COMPACT_WIDTH = 720;
+const SHEET_SIZE_KEY = "fleet.objectives.commodore.sheetSize";
+const SHEET_RESIZE_DIRS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const;
+type SheetResizeDir = (typeof SHEET_RESIZE_DIRS)[number];
 const SHEET_FOCUSABLE = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
 /** 순찰 간격 사다리 — 서버 `COMMODORE_PATROL_MINUTES` 와 같다(서버 모듈은 브라우저 번들에 싣지 않는다). */
 export const PATROL_STEPS: readonly CommodorePatrolMinutes[] = [15, 30, 60, 120, 240, 480];
@@ -82,24 +87,119 @@ interface SheetFrame {
   readonly compact: boolean;
 }
 
-/** 창 안에 넣는 맞춤 크기. 사이드바 폭은 보지 않는다. */
-function sheetFrame(width: number, height: number): SheetFrame {
-  const maxWidth = Math.max(320, window.innerWidth - SHEET_MARGIN * 2);
-  const maxHeight = Math.max(240, window.innerHeight - SHEET_MARGIN * 2);
-  const nextWidth = Math.round(Math.min(width, maxWidth));
-  const nextHeight = Math.round(Math.min(height, maxHeight));
+interface SheetPreferred { readonly width: number; readonly height: number }
+
+/** 창 안에 넣는 크기. 최소 720×480, 최대는 사방 24px. 창이 최소보다 작으면 창 안을 따른다. */
+function clampSheetSize(width: number, height: number): SheetFrame {
+  const maxWidth = Math.max(1, window.innerWidth - SHEET_MARGIN * 2);
+  const maxHeight = Math.max(1, window.innerHeight - SHEET_MARGIN * 2);
+  const minWidth = Math.min(SHEET_MIN_WIDTH, maxWidth);
+  const minHeight = Math.min(SHEET_MIN_HEIGHT, maxHeight);
+  const nextWidth = Math.round(Math.max(minWidth, Math.min(width, maxWidth)));
+  const nextHeight = Math.round(Math.max(minHeight, Math.min(height, maxHeight)));
   return { width: nextWidth, height: nextHeight, compact: nextWidth < SHEET_COMPACT_WIDTH };
 }
 
-function useSheetFrame(): SheetFrame {
-  const [frame, setFrame] = useState<SheetFrame>(() => sheetFrame(SHEET_DEFAULT_WIDTH, SHEET_DEFAULT_HEIGHT));
+function readSheetSize(): SheetPreferred {
+  const fallback = { width: SHEET_DEFAULT_WIDTH, height: SHEET_DEFAULT_HEIGHT };
+  try {
+    const raw = localStorage.getItem(SHEET_SIZE_KEY);
+    if (raw === null) return fallback;
+    const parsed = JSON.parse(raw) as { width?: unknown; height?: unknown };
+    if (typeof parsed.width !== "number" || typeof parsed.height !== "number") return fallback;
+    if (!Number.isFinite(parsed.width) || !Number.isFinite(parsed.height)) return fallback;
+    if (parsed.width < SHEET_MIN_WIDTH || parsed.height < SHEET_MIN_HEIGHT || parsed.width > 8000 || parsed.height > 8000) return fallback;
+    return { width: parsed.width, height: parsed.height };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSheetSize(size: SheetPreferred): void {
+  try {
+    localStorage.setItem(SHEET_SIZE_KEY, JSON.stringify({ width: Math.round(size.width), height: Math.round(size.height) }));
+  } catch {
+    // 저장이 막혀도 지금 크기로 그린다.
+  }
+}
+
+function useCommodoreSheetSize(): { readonly frame: SheetFrame; readonly resize: (width: number, height: number) => void; readonly commit: () => void; readonly reset: () => void } {
+  const preferred = useRef<SheetPreferred>(readSheetSize());
+  const [frame, setFrame] = useState<SheetFrame>(() => clampSheetSize(preferred.current.width, preferred.current.height));
   useLayoutEffect(() => {
-    const place = () => setFrame(sheetFrame(SHEET_DEFAULT_WIDTH, SHEET_DEFAULT_HEIGHT));
+    const place = () => setFrame(clampSheetSize(preferred.current.width, preferred.current.height));
     place();
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
   }, []);
-  return frame;
+  const resize = (width: number, height: number) => {
+    const next = clampSheetSize(width, height);
+    preferred.current = { width: next.width, height: next.height };
+    setFrame(next);
+  };
+  const commit = () => writeSheetSize(preferred.current);
+  const reset = () => {
+    preferred.current = { width: SHEET_DEFAULT_WIDTH, height: SHEET_DEFAULT_HEIGHT };
+    writeSheetSize(preferred.current);
+    setFrame(clampSheetSize(SHEET_DEFAULT_WIDTH, SHEET_DEFAULT_HEIGHT));
+  };
+  return { frame, resize, commit, reset };
+}
+
+/** 네 변과 네 모서리. 시트는 가운데에 고정되므로 한 변을 끌면 반대 변도 같이 움직인다. 더블클릭은 기본 크기. */
+function SheetResize({ label, width, height, onResize, onCommit, onReset }: {
+  readonly label: string;
+  readonly width: number;
+  readonly height: number;
+  readonly onResize: (width: number, height: number) => void;
+  readonly onCommit: () => void;
+  readonly onReset: () => void;
+}) {
+  const drag = useRef<{ pointerId: number; dir: SheetResizeDir; x: number; y: number; w: number; h: number } | null>(null);
+  const [readout, setReadout] = useState<string | null>(null);
+  const move = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = drag.current;
+    if (!current || event.pointerId !== current.pointerId) return;
+    const dx = event.clientX - current.x;
+    const dy = event.clientY - current.y;
+    const dir = current.dir;
+    const nextWidth = dir.includes("e") ? current.w + 2 * dx : dir.includes("w") ? current.w - 2 * dx : current.w;
+    const nextHeight = dir.includes("s") ? current.h + 2 * dy : dir.includes("n") ? current.h - 2 * dy : current.h;
+    onResize(nextWidth, nextHeight);
+    setReadout(`${Math.round(nextWidth)} × ${Math.round(nextHeight)}`);
+  };
+  const end = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!drag.current || event.pointerId !== drag.current.pointerId) return;
+    drag.current = null;
+    setReadout(null);
+    onCommit();
+  };
+  return (
+    <>
+      {SHEET_RESIZE_DIRS.map((dir) => (
+        <div
+          key={dir}
+          className={`objectives-commodore-resize is-${dir}`}
+          role="separator"
+          aria-label={label}
+          title={label}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            drag.current = { pointerId: event.pointerId, dir, x: event.clientX, y: event.clientY, w: width, h: height };
+          }}
+          onPointerMove={move}
+          onPointerUp={end}
+          onPointerCancel={end}
+          onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onReset(); }}
+          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); onReset(); } }}
+        />
+      ))}
+      {readout ? <div className="objectives-commodore-size" aria-hidden="true">{readout}</div> : null}
+    </>
+  );
 }
 
 /** 시트와, 시트에서 연 메뉴(body 포털) 안에서 Tab을 가둔다. */
@@ -137,7 +237,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
   const t = getT(language);
   noteCommodoreLanguage(language);
   const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
-  const frame = useSheetFrame();
+  const { frame, resize, commit, reset } = useCommodoreSheetSize();
   const dialogRef = useRef<HTMLElement | null>(null);
   const tabRefs = useRef<Record<CommodoreTab, HTMLButtonElement | null>>({ log: null, directive: null, intel: null, settings: null });
   const [failure, setFailure] = useState<string | null>(null);
@@ -229,6 +329,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
         style={{ width: frame.width, height: frame.height }}
         onKeyDown={onKeyDown}
       >
+        <SheetResize label={t("objectives.commodore.sheet.resize")} width={frame.width} height={frame.height} onResize={resize} onCommit={commit} onReset={reset} />
         <nav className="objectives-commodore-nav" aria-label={t("objectives.commodore.tabs.aria")}>
           <div className="objectives-commodore-nav-id">
             <p className="objectives-commodore-nav-kicker">{t("objectives.commodore.sheet.kicker")}</p>

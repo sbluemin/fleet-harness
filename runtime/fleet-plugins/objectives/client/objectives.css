@@ -1592,6 +1592,40 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 }
 .objectives-commodore-patrol-menu,
 .fc-coord-menu.objectives-commodore-coord-menu { z-index: 91; }
+
+/* 크기 조절 — 시트 안쪽 가장자리. overflow가 밖을 자르므로 손잡이는 안으로 둔다. */
+.objectives-commodore-resize { position: absolute; z-index: 5; touch-action: none; }
+.objectives-commodore-resize.is-e,
+.objectives-commodore-resize.is-w { top: 14px; bottom: 14px; width: 8px; cursor: ew-resize; }
+.objectives-commodore-resize.is-e { right: 0; }
+.objectives-commodore-resize.is-w { left: 0; }
+.objectives-commodore-resize.is-n,
+.objectives-commodore-resize.is-s { left: 14px; right: 14px; height: 8px; cursor: ns-resize; }
+.objectives-commodore-resize.is-n { top: 0; }
+.objectives-commodore-resize.is-s { bottom: 0; }
+.objectives-commodore-resize.is-ne,
+.objectives-commodore-resize.is-nw,
+.objectives-commodore-resize.is-se,
+.objectives-commodore-resize.is-sw { width: 14px; height: 14px; }
+.objectives-commodore-resize.is-ne { top: 0; right: 0; cursor: nesw-resize; }
+.objectives-commodore-resize.is-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.objectives-commodore-resize.is-nw { top: 0; left: 0; cursor: nwse-resize; }
+.objectives-commodore-resize.is-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.objectives-commodore-size {
+  position: absolute;
+  z-index: 6;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--ink-mid);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
 html[data-view-mode="mobile"] .objectives-commodore-sheet,
 html[data-view-mode="mobile"] .objectives-commodore-overlay { display: none; }
 @media (prefers-reduced-motion: reduce) {
