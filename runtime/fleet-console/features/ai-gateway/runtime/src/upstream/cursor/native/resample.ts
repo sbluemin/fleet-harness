@@ -134,15 +134,6 @@ const ENGLISH_NON_STEP_ING = new Set(["nothing", "something", "anything", "every
 /** `-ing` words that report holding or waiting rather than doing. */
 const ENGLISH_HOLD_ING = new Set(["waiting", "holding", "keeping", "leaving", "staying", "remaining", "standing"]);
 
-/** Drops a short label such as `Looking good:` or `Let me summarize:`. A label that opens on a forward lead is a step and stays. */
-function stripPrefaceLabel(text: string): string {
-  if (ENGLISH_FORWARD_LEAD.test(text)) return text;
-  const label = /^(?:[^\s:]+\s+){0,2}[^\s:]+:\s+/u.exec(text);
-  // A label that is itself the speaker's step (`Let me check: the logs.`) is the announcement, not a preface.
-  if (label === null || label[0].match(ENGLISH_FIRST_PERSON_STEP) !== null) return text;
-  return text.slice(label[0].length);
-}
-
 /** Clauses of one sentence, each starting where a subject would: after `,` `;` a dash, or before `so`/`and`/`but`/`then`. */
 function englishClauses(text: string): string[] {
   return text
@@ -153,7 +144,7 @@ function englishClauses(text: string): string[] {
 
 /** Steps the speaker states with a subject, or with none (a clause that opens on a progressive: `…, retrying the query`). */
 function englishStrongStepCount(sentence: string): number {
-  const text = stripPrefaceLabel(sentence.trim());
+  const text = sentence.trim();
   let count = text.match(ENGLISH_FIRST_PERSON_STEP)?.length ?? 0;
   for (const match of text.matchAll(ENGLISH_FIRST_PERSON_PROGRESSIVE)) {
     if (!ENGLISH_HOLD_ING.has((match[1] ?? "").toLowerCase())) count += 1;
@@ -170,7 +161,7 @@ function englishStrongStepCount(sentence: string): number {
 }
 
 function hasEnglishForwardLead(sentence: string): boolean {
-  const clauses = englishClauses(stripPrefaceLabel(sentence.trim()));
+  const clauses = englishClauses(sentence.trim());
   // `If CI passes, then I'll deploy`: this `then` opens the consequent of the condition before it, not a step of its own.
   return clauses.some((clause, index) => (
     ENGLISH_FORWARD_LEAD.test(clause)
@@ -196,7 +187,9 @@ const KOREAN_HOLD = /기다립|기다리는|대기|지켜보|유지합니다|유
 function koreanOwnStep(sentence: string): boolean {
   if (KOREAN_USER_ADDRESSED.test(sentence)) return false;
   if (hasKoreanFuture(sentence)) return true;
-  if (KOREAN_HOLD.test(sentence)) return false;
+  // `빌드를 기다리는 동안 로그를 확인합니다`: a wait that only times the action is not the state; judge the clause after it.
+  const mainClause = sentence.split(/(?:동안|면서)\s+/u).pop() ?? sentence;
+  if (KOREAN_HOLD.test(mainClause)) return false;
   if (/중(?:입니다|이에요|이다)/u.test(sentence)) return true;
   const clause = sentence.split(/[,，]\s*/u).pop() ?? sentence;
   const topic = /^(?:\S+\s+){0,2}?(\S+?)(?:은|는)\s/u.exec(clause);

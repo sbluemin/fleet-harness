@@ -973,7 +973,10 @@ describe("Cursor live client-tool Run bridge", () => {
         "Running the tests now, and if they pass, I'll update the docs.",
         "The socket dropped; opening a fresh connection now.",
         "Let me check: the deployment logs.",
+        "I'm checking: the deployment logs.",
         "We checked the config and will inspect the logs.",
+        // A wait that only sets the time of the action (`while waiting for …`) is not the state being reported.
+        "빌드를 기다리는 동안 로그를 확인합니다.",
       ].map((text, index) => {
         const recoveredCall = cursorCall(`call-resample-english-recovered-${index}`, 101 + index * 2);
         return {
