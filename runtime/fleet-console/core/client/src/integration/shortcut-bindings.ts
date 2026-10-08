@@ -29,7 +29,6 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "console.quick-launch", group: "console", descriptionKey: "shortcuts.console.quickLaunch", defaults: ["Mod+KeyJ", "Ctrl+Space"] },
   { id: "console.plugin-quick-launch", group: "console", descriptionKey: "shortcuts.console.pluginQuickLaunch", defaults: ["Mod+Shift+Space"] },
   { id: "console.toggle-sidebar", group: "console", descriptionKey: "shortcuts.console.toggleSidebar", defaults: ["Mod+KeyB"] },
-  { id: "console.toggle-zen", group: "console", descriptionKey: "zen.toggle", defaults: ["Mod+Alt+KeyZ"] },
   { id: "console.toggle-global-shell", group: "console", descriptionKey: "shortcuts.console.toggleGlobalShell", defaults: ["Ctrl+Backquote"], railEntryId: "global-shell" },
   { id: "console.toggle-repository", group: "console", descriptionKey: "shortcuts.console.toggleRepository", defaults: ["Mod+Shift+KeyE"], railEntryId: "repository" },
   { id: "console.toggle-objectives", group: "console", descriptionKey: "shortcuts.console.toggleObjectives", defaults: ["Mod+Shift+KeyY"], railEntryId: "objectives" },

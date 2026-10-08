@@ -172,11 +172,11 @@ body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-a
 .is-veiled body { background-color: transparent; }
 .is-farewell .tagline, .is-farewell .dev-tag { display: none; }
 .is-farewell .brand-mark, .is-farewell .wordmark { transition-delay: 60ms; }
-/* Zen에서 종료하면 앰블럼은 Band가 아니라 작업 표시줄 오른쪽 끝 트레이에 앉아 있다 — 인사도 그 자리에서
+/* War Room에서 종료하면 앰블럼은 Band가 아니라 작업 표시줄 오른쪽 끝 트레이에 앉아 있다 — 인사도 그 자리에서
    출발한다. 세로 자리는 Console 트레이 앰블럼(18px 마크 · 13px 워드마크)의 실측이다. Band가 없으므로 넘겨주기 밑줄도 긋지 않는다. */
 .is-handoff.is-from-tray .drag-strip { border-bottom-color: transparent; }
-/* 가로 자리는 Console layout.css의 식이다: 워드마크 오른쪽 끝 = 100% − .zen-bar 오른쪽 패딩(--space-2 8px),
-   워드마크 left = 그 끝 − 워드마크 폭(13px 「Fleet」 31.7px), 마크 left = 워드마크 left − .zen-bar-brand gap 7px − 마크 18px. */
+/* 가로 자리는 Console layout.css의 식이다: 워드마크 오른쪽 끝 = 100% − .war-room-bar 오른쪽 패딩(--space-2 8px),
+   워드마크 left = 그 끝 − 워드마크 폭(13px 「Fleet」 31.7px), 마크 left = 워드마크 left − .war-room-bar-brand gap 7px − 마크 18px. */
 .is-handoff.is-from-tray .brand-mark { top: calc(100% - 27px); left: calc(100% - 8px - 31.7px - 7px - 18px); width: 18px; height: 18px; }
 .is-handoff.is-from-tray .wordmark { top: calc(100% - 24.5px); left: calc(100% - 8px - 31.7px); }
 /* 개발 빌드는 워드마크 폭만 「Fleet·DEV」 61.23px(JetBrains Mono DEV 포함)로 바뀐다. */

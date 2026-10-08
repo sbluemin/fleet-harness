@@ -151,7 +151,7 @@ interface PopoverPlacement {
 }
 
 /**
- * 버튼 바로 아래, 버튼 가운데에 맞춰 놓고 뷰포트 안으로 민다. 도구모음이 화면 아래쪽에 붙어(Zen의 부유 섬)
+ * 버튼 바로 아래, 버튼 가운데에 맞춰 놓고 뷰포트 안으로 민다. 도구모음이 화면 아래쪽에 붙어(War Room의 부유 섬)
  * 아래 공간이 모자라면 위로 연다. 높이는 남은 공간까지만 — 넘치면 팝업 안의 카드 목록이 스크롤한다.
  */
 export function placePopover(anchor: { readonly left: number; readonly width: number; readonly top: number; readonly bottom: number }, viewport: { readonly width: number; readonly height: number }): PopoverPlacement {
@@ -168,7 +168,7 @@ export function placePopover(anchor: { readonly left: number; readonly width: nu
 
 /**
  * 사용 한도 팝업 — document.body로 포털한다. 도구모음은 서랍을 접고 펼 때 가로를 잘라 내므로(overflow)
- * 그 안에 두면 팝업이 잘린다. 자리는 버튼의 화면 좌표로 잡고, 창 크기나 버튼 상자가 바뀌면(Zen 전환으로 옮겨 가도) 다시 잡는다.
+ * 그 안에 두면 팝업이 잘린다. 자리는 버튼의 화면 좌표로 잡고, 창 크기나 버튼 상자가 바뀌면(War Room 전환으로 옮겨 가도) 다시 잡는다.
  * Console 어디든(팝업과 버튼 자신은 빼고) 누르면 닫히고, Esc로 닫으면 포커스가 버튼으로 돌아간다.
  */
 function QuotaPopover({ id, anchorRef, locale, onClose }: {
@@ -191,7 +191,7 @@ function QuotaPopover({ id, anchorRef, locale, onClose }: {
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
     if (!anchor) return;
-    // 버튼은 크기가 그대로인 채 자리만 옮겨 갈 수 있다(Zen을 켜고 끄면 도구모음 노드가 상단 밴드와 Zen 바
+    // 버튼은 크기가 그대로인 채 자리만 옮겨 갈 수 있다(War Room을 켜고 끄면 도구모음 노드가 상단 밴드와 War Room 바
     // 사이를 통째로 옮겨 간다). 창 크기·버튼 크기 신호로는 그 이동을 듣지 못하므로, 열려 있는 동안만 프레임마다
     // 버튼 상자와 뷰포트를 비교해 달라졌을 때만 다시 잡는다.
     let last = "";

@@ -1,0 +1,159 @@
+/* 캔버스 확인 대화상자 — War Room 진입과 모두 정렬 진입이 같은 카드 재질을 쓴다. 유리 채널을 그대로 입는다
+   (.whatsnew-card 와 같은 팝업 판독성 계약: 유리 믹스 아래 불투명 언더레이). */
+
+.canvas-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 44px);
+  /* 끝난 opacity 애니메이션을 붙잡으면 backdrop root가 되어 카드의 뒤 배경 흐림을 막는다. */
+  animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) backwards;
+}
+
+.canvas-confirm-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
+  cursor: default;
+}
+
+.canvas-confirm-deck {
+  position: relative;
+  z-index: 1;
+  width: min(460px, 100%);
+  /* 뒤에 쌓인 카드가 아래로 비쳐 나올 자리 */
+  padding-bottom: 20px;
+  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) backwards;
+}
+
+.canvas-confirm-card {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--float-underlay);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
+}
+
+.canvas-confirm-slide {
+  display: grid;
+  gap: var(--space-4);
+  text-align: center;
+}
+
+.canvas-confirm-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-xs);
+}
+
+.canvas-confirm-copy {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.canvas-confirm-copy h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-xl);
+  font-weight: var(--weight-bold);
+  text-wrap: balance;
+}
+
+.canvas-confirm-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+.canvas-confirm-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.canvas-confirm-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.canvas-confirm-actions button {
+  padding: 8px 18px;
+  border-radius: var(--radius-xs);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+.canvas-confirm-secondary {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.canvas-confirm-secondary:hover { color: var(--text-primary); }
+
+.canvas-confirm-primary {
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  background: color-mix(in oklch, var(--brass) 18%, transparent);
+  color: var(--brass-ink);
+}
+
+.canvas-confirm-primary:hover { background: color-mix(in oklch, var(--brass) 26%, transparent); }
+
+.canvas-confirm-primary:disabled { opacity: 0.5; cursor: default; }
+
+/* 모두 정렬 진입 확인의 남길 패널 목록 */
+.align-fit-list {
+  display: grid;
+  gap: 2px;
+  max-height: min(34vh, 280px);
+  margin: 0;
+  padding: var(--space-1);
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+}
+
+.align-fit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  cursor: pointer;
+}
+
+.align-fit-row:hover { background: var(--hairline); }
+.align-fit-row.is-disabled { color: var(--text-tertiary); cursor: default; }
+.align-fit-row input { accent-color: var(--brass); }
+.align-fit-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.align-fit-meta {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-confirm-overlay,
+  .canvas-confirm-deck { animation: none !important; }
+}

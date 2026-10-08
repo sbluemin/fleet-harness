@@ -4,7 +4,6 @@ import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { CORE_SHORTCUT_COMMANDS } from "./shortcut-bindings.js";
-import { isZenMode } from "./zen-mode.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
 import { getT, type CoreMessageKey } from "../i18n/index.js";
 import { fuzzyMatchPaletteLabel, searchTokens, type PaletteCommandMatch } from "./palette-match.js";
@@ -58,7 +57,6 @@ export type PaletteCommandAction =
   | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
   | { readonly kind: "toggle-sidebar" }
-  | { readonly kind: "toggle-zen" }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
   | { readonly kind: "open-keyboard-shortcuts" }
@@ -179,7 +177,7 @@ export function buildPaletteCommands(
       push({ commandId: "minimize-all-operations", label: t("palette.minimizeAll"), aliasLabel: alias("palette.minimizeAll"), action: { kind: "minimize-all-operations" }, group: "view", glyph: "view-minimize-all" });
       push({ commandId: "fit-all-panels", label: t("palette.fitAllPanels"), aliasLabel: alias("palette.fitAllPanels"), action: { kind: "fit-all-panels" }, group: "view", glyph: "view-fit", shortcut: "operations.fit-all" });
     }
-    // 팔레트에는 비활성·사유 행 문법이 없으므로 Zen 불가 환경에서는 진입 명령을 싣지 않는다.
+    // 팔레트에는 비활성·사유 행 문법이 없으므로 War Room 불가 환경에서는 진입 명령을 싣지 않는다.
     if (options?.warRoomAvailable !== false) push({ commandId: "toggle-triage-mode", label: t("palette.toggleTriage"), aliasLabel: alias("palette.toggleTriage"), action: { kind: "toggle-triage-mode" }, group: "view", glyph: "view-war-room", shortcut: "operations.toggle-triage" });
     push({ commandId: "toggle-formation", label: t("palette.toggleFormation"), aliasLabel: alias("palette.toggleFormation"), extraAliases: ["tactical"], action: { kind: "toggle-formation" }, group: "view", glyph: "view-align-all", shortcut: "operations.toggle-formation" });
     push({ commandId: "toggle-station-keeping", label: t("palette.toggleStationKeeping"), aliasLabel: alias("palette.toggleStationKeeping"), action: { kind: "toggle-station-keeping" }, group: "view", glyph: "view-station-keeping" });
@@ -209,12 +207,6 @@ export function buildPaletteCommands(
     });
   }
   push({ commandId: "toggle-sidebar", label: t("palette.toggleSidebar"), aliasLabel: alias("palette.toggleSidebar"), action: { kind: "toggle-sidebar" }, group: "console", glyph: "console-sidebar", shortcut: "console.toggle-sidebar" });
-  // 전체화면에서 밴드가 숨은 동안 그 안의 토글은 inert라 닿지 않는다 — 팔레트가 표면 밖 경로다.
-  // 라벨은 저장된 선호를 따른다: 이 항목은 전환이므로 한 방향으로만 읽히면 이미 켜 둔 사용자가
-  // 켜는 줄 알고 골랐다가 밴드를 끄게 된다. current는 false로 둔다 — 전환 항목은 배지 대상이 아니고,
-  // true면 팔레트가 이미 적용된 선택으로 보아 실행을 건너뛴다.
-  const zenKey = isZenMode() ? "zen.exit" : "zen.enter";
-  push({ commandId: "toggle-zen", label: t(zenKey), aliasLabel: `${alias(zenKey)} 집중 크롬`, action: { kind: "toggle-zen" }, group: "view", glyph: "console-band", shortcut: "console.toggle-zen" });
   for (const theme of buildPaletteThemes(t)) {
     push({ commandId: `switch-theme:${theme.id}`, label: t("palette.switchTheme", { label: theme.label }), aliasLabel: alias("palette.switchTheme", { label: theme.label }), current: theme.id === current.activeTheme, action: { kind: "switch-theme", theme: theme.id }, group: "console", glyph: "console-theme" });
   }

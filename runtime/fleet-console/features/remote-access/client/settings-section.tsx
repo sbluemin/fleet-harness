@@ -7,7 +7,6 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { renderMessage, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
-import { carryZenMode } from "../../../core/client/src/integration/zen-mode.js";
 import { AddHostDialog } from "../../remote-access/client/add-host-dialog.js";
 import { REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, buildRemoteEndpointPresentation, generateRemoteAutoPort, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type RemoteAccessLink, type RemoteAccessPort, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule } from "../../remote-access/client/contracts.js";
 import { PairDeviceDialog } from "../../remote-access/client/pair-device-dialog.js";
@@ -325,7 +324,7 @@ function RemoteHostRow({ host, reach }: { readonly host: RemoteHost; readonly re
         className="remote-host-open"
         title={canOpen ? undefined : t("settings.remote.hosts.desktopOnly")}
         disabled={busy || !answered || !canOpen}
-        onClick={() => location.assign(carryZenMode(new URL("/console/", `${host.origin}/`)).toString())}
+        onClick={() => location.assign(new URL("/console/", `${host.origin}/`).toString())}
       >
         {t("settings.remote.hosts.open")}
       </button>

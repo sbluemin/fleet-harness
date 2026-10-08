@@ -46,7 +46,6 @@ import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugi
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredGlassOpacity } from "../integration/glass-opacity-store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
-import { consumeInitialZenModeParam } from "../integration/zen-mode.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -133,7 +132,6 @@ if (app && hostPicker) {
   installModelRosterSync();
   connectOperationsSse();
   installOperationsSseWake();
-  consumeInitialZenModeParam();
   createRoot(app).render(
     <StrictMode>
       <BrowserRouter basename="/console">

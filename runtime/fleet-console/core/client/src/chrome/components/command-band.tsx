@@ -12,7 +12,7 @@ import { useViewMode } from "../../integration/view-mode-store.js";
 import { isDesktopShell } from "../../integration/desktop-shell.js";
 import { useDesktopFullscreenSnapshot } from "../../integration/desktop-fullscreen.js";
 import { setBandToolbarHost } from "../../integration/toolbar-slots.js";
-import { useZenMode } from "../../integration/zen-mode.js";
+import { useTriageActive } from "../../../../../features/workspace/client/canvas/triage-store.js";
 
 interface CommandBandProps {
   readonly operationsViewVisible: boolean;
@@ -20,7 +20,7 @@ interface CommandBandProps {
 
 export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
   const t = useT();
-  const zenMode = useZenMode();
+  const warRoom = useTriageActive();
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
   const viewMode = useViewMode();
@@ -66,15 +66,15 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   };
   const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
   // 전체화면에서 밴드는 창 모드와 똑같은 흐름 요소다 — 자동 은닉·엣지 스트립·도킹 핀은
-  // 퇴역했다. 크롬을 치우는 결정은 Zen 하나가 소유한다(중복 제스처 정리).
+  // 퇴역했다. 크롬을 치우는 결정은 War Room 하나가 소유한다(중복 제스처 정리).
   // 이 스냅숏이 남은 이유는 단 하나: darwin 전체화면에서 신호등이 물러난 자리로 좌측
   // 클러스터를 활주시키기 위해서다. 브라우저 전체화면에는 신호등이 없으므로 대상이 아니다.
   const nativeFullscreen = useDesktopFullscreenSnapshot();
   useEffect(() => {
-    if (!zenMode) return;
+    if (!warRoom) return;
     setEnvironmentOpen(false);
     discardEnvironmentState();
-  }, [zenMode]);
+  }, [warRoom]);
 
   useEffect(() => {
     if (!environmentOpen) return;
@@ -152,7 +152,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     if (bandLeft) for (const child of bandLeft.children) observer.observe(child);
     const bandRight = bandRightRef.current;
     if (bandRight) for (const child of bandRight.children) observer.observe(child);
-    // 도구모음은 deps 밖에서 옮겨 들어오고(Zen 종료) 그 안의 항목도 나타나고 사라진다(부관을 두면
+    // 도구모음은 deps 밖에서 옮겨 들어오고(War Room 종료) 그 안의 항목도 나타나고 사라진다(부관을 두면
     // null → 글리프). 자식 목록의 변화를 직접 보고 다시 재며, 새 자식도 관찰 대상에 넣는다.
     const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
       for (const record of records) {
@@ -196,9 +196,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       .catch(() => { setCopyFailedValue(value); setCopiedValue(null); });
   };
 
-  // Zen만이 밴드를 내린다. 밴드는 마운트된 채 inert로 물러나므로, 그 안에 자리를 빌린
-  // 도구모음(과 그 안의 플러그인 항목)은 Zen 트레이로 옮겨 간다(console-toolbar.tsx).
-  const commandBandHidden = zenMode;
+  // War Room만이 밴드를 내린다. 밴드는 마운트된 채 inert로 물러나므로, 그 안에 자리를 빌린
+  // 도구모음(과 그 안의 플러그인 항목)은 War Room 트레이로 옮겨 간다(console-toolbar.tsx).
+  const commandBandHidden = warRoom;
 
   return (
     <>
@@ -248,8 +248,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           </span>
         ) : null}
       </div>
-      {/* 도구모음의 자리 — 상단 바 가운데. 모드 스위치·도구·찾기·원격·도움말·플러그인 항목(부관)·Zen 켜기가
-          한 줄로 선다(console-toolbar.tsx). Zen에서는 같은 줄이 작업 표시줄 트레이로 옮겨 간다. */}
+      {/* 도구모음의 자리 — 상단 바 가운데. 모드 스위치·도구·찾기·원격·도움말·플러그인 항목(부관)이
+          한 줄로 선다(console-toolbar.tsx). War Room에서는 같은 줄이 작업 표시줄 트레이로 옮겨 간다. */}
       <div className="command-band-center">
         <span ref={setToolbarHost} className="command-band-toolbar" />
       </div>
@@ -305,7 +305,7 @@ function BrandHome() {
 }
 
 /**
- * 브랜드 워드마크 — Band·Zen 트레이·Zen 전환 장면이 같은 글자를 쓴다(서체는 이 클래스 하나가 진다).
+ * 브랜드 워드마크 — Band·War Room 트레이·War Room 전환 장면이 같은 글자를 쓴다(서체는 이 클래스 하나가 진다).
  * 개발 채널은 승인된 개발 잉크에 황동 가운데 점과 작은 모노 대문자 DEV를 잇는다 — 「Fleet·DEV」.
  * 점과 DEV는 em으로 서므로 워드마크의 크기(트레이 13px, 전환 장면 40px)를 그대로 따라간다.
  */
@@ -324,7 +324,7 @@ export function BrandWordmark({ className, local = false, ref }: { readonly clas
 }
 
 // 일반 채널은 favicon과 같은 조형이다. 개발 채널만 바깥 링을 열고 신호점을 빼 구분한다.
-// Zen 작업 표시줄의 앰블럼과 전환 장면의 날아가는 마크도 이 조형 하나를 쓴다.
+// War Room 작업 표시줄의 앰블럼과 전환 장면의 날아가는 마크도 이 조형 하나를 쓴다.
 export function BrandMarkIcon({ className = "command-band-brand-glyph", local = false }: { readonly className?: string; readonly local?: boolean } = {}) {
   return (
     <svg className={className} viewBox="0 0 64 64" aria-hidden="true">

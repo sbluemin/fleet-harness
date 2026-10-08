@@ -131,7 +131,7 @@ export interface ClientExecutionProvider {
   /** 우측 레일의 아이콘 진입점. 무엇을 여는지는 `panes` 또는 `activate`가 말한다. */
   readonly railEntries?: readonly RailEntryDescriptor[];
   /**
-   * 이 플러그인의 온보딩(웰컴 슬라이드·레일 진입점 힌트·투어). 호스트는 Console 코어 기능의 온보딩을
+   * 이 플러그인의 온보딩(레일 진입점 힌트·투어). 호스트는 Console 코어 기능의 온보딩을
    * 먼저 마친 뒤 같은 단계 순서로 이어서 보인다. 문구와 앵커는 플러그인이 소유한다.
    */
   readonly onboarding?: OnboardingContribution;

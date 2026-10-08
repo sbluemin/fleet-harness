@@ -385,7 +385,7 @@ export function OperationsCanvas({
     y: canvas.viewport.y + arena.y,
     zoom: canvas.viewport.zoom,
   };
-  // 아레나 인셋이 바뀐 커밋(레일 개폐·Zen·사이드바 추종)에서는 패널의 geometry 글라이드를 끊는다.
+  // 아레나 인셋이 바뀐 커밋(레일 개폐·War Room·사이드바 추종)에서는 패널의 geometry 글라이드를 끊는다.
   // 정렬된 패널은 인셋에서 곧바로 칸을 다시 잡으므로, 글라이드가 살아 있으면 패널 수만큼의 상자가
   // left/top/width/height 레이아웃 전환을 360ms 동안 탄다(패널 32개 실측: 레일 왕복 525→223ms).
   // layout effect는 브라우저가 새 스타일을 계산하기 전에 돌아 전환이 아예 시작되지 않고, 표식은

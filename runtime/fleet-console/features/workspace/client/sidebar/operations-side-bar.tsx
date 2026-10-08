@@ -8,7 +8,7 @@ import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../set
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { consoleUseWrapClassName, gestureCallerLabel, getAnyClusterListWrap, getClusterListWrap, getFirstClusterWrap, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
-import { useZenMode } from "../../../../core/client/src/integration/zen-mode.js";
+import { useTriageActive } from "../canvas/triage-store.js";
 import { publishConsoleOverlay } from "../../../../core/client/src/overlay/overlay-registry.js";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -43,7 +43,7 @@ import { clusterChipPropsFor } from "./cluster-rows.js";
 import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, zoneNoteOf, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
-import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu, SideBarZenToggle } from "./side-bar-collapse-control.js";
+import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu } from "./side-bar-collapse-control.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import {
@@ -65,7 +65,7 @@ import {
   type SideBarStatus,
 } from "./operations-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
-import { AttentionSection } from "../zen/attention-section.js";
+import { AttentionSection } from "../war-room/attention-section.js";
 
 interface OperationsSideBarProps {
   /** War Room 무대 최소 폭을 지키려는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
@@ -409,10 +409,10 @@ export function OperationsSideBar({
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
-  const zenMode = useZenMode();
+  const warRoom = useTriageActive();
   const peekOverlayOpenRef = useRef(false);
   useLayoutEffect(() => {
-    if (collapsed && sideBar.peeking && !zenMode) {
+    if (collapsed && sideBar.peeking && !warRoom) {
       peekOverlayOpenRef.current = true;
       publishConsoleOverlay("sidebar-peek", true);
       return;
@@ -423,8 +423,8 @@ export function OperationsSideBar({
       publishConsoleOverlay("sidebar-peek", false);
     };
     const element = rootRef.current;
-    // 고정·Zen 전환은 픽 카드의 닫힘이 아니다. 이탈·언마운트도 등록을 남기지 않는다.
-    if (!collapsed || zenMode || !element) { release(); return; }
+    // 고정·War Room 전환은 픽 카드의 닫힘이 아니다. 이탈·언마운트도 등록을 남기지 않는다.
+    if (!collapsed || warRoom || !element) { release(); return; }
     // 실제 CSS 닫힘 전이의 완료를 기다린다. visibility의 지연도 포함하므로
     // 열리던 도중 떠난 역전 전이와 reduced-motion도 별도 하드코딩 없이 따른다.
     const transitions = (element.getAnimations?.() ?? []).filter((animation) => {
@@ -438,19 +438,19 @@ export function OperationsSideBar({
     });
     // 닫히는 중 다시 픽하면 이전 완료 콜백이 뷰를 되살리지 못하게 취소한다.
     return () => { cancelled = true; };
-  }, [collapsed, sideBar.peeking, zenMode, width]);
+  }, [collapsed, sideBar.peeking, warRoom, width]);
   useLayoutEffect(() => () => {
     peekOverlayOpenRef.current = false;
     publishConsoleOverlay("sidebar-peek", false);
   }, []);
   // body 포털은 숨긴 사이드바의 inert 밖에 있다. 진입 때만 걷어 이후 명시적 메뉴 요청은 보존한다.
   useLayoutEffect(() => {
-    if (!zenMode) return;
+    if (!warRoom) return;
     setNewMenu(null);
     setActiveContextMenu(null);
     if (newMenu || activeContextMenu) document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zenMode]);
+  }, [warRoom]);
   // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
   // 목록이 비워져도 그대로 남으므로, 그 전환에서 걷는다.
   useEffect(() => {
@@ -486,10 +486,10 @@ export function OperationsSideBar({
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
-    // Zen·War Room 에는 엣지 독이 없다 — 부유 섬의 사이드바 토글이 포커스를 받는다. 접기를 누른 사람이 그 칸을
+    // War Room 에는 엣지 독이 없다 — 부유 섬의 사이드바 토글이 포커스를 받는다. 접기를 누른 사람이 그 칸을
     // 겨눈 것은 아니므로 말풍선은 띄우지 않는다(띄우면 Fleet 브라우저 뷰와 겹쳐 뷰가 물러선 채 남는다).
     if (!previousCollapsedRef.current && collapsed && !document.querySelector(".side-bar-edge-dock")) {
-      if (document.querySelector(".zen-bar [data-zen-sidebar-anchor]")) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".zen-bar [data-zen-sidebar-anchor]", focusToolbarItemQuietly);
+      if (document.querySelector(".war-room-bar [data-war-room-sidebar-anchor]")) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".war-room-bar [data-war-room-sidebar-anchor]", focusToolbarItemQuietly);
       else focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".operations-center-stage");
     }
     // 대칭 — 엣지 독에 포커스를 둔 채 단축키로 펼치면 독이 사라지며 포커스가 BODY 로 빠진다. 접기 셰브런이 받는다.
@@ -1027,11 +1027,11 @@ export function OperationsSideBar({
   };
 
   // "Theater 추가" 요청 소비(팔레트) — 접힘을 풀고 Theater 브라우저를 연다.
-  // Zen에서는 사이드바를 숨긴 채 상자만 연다 — Cruise의 접힘 선호는 Zen 밖의 것이다.
+  // War Room에서는 사이드바를 숨긴 채 상자만 연다 — Cruise의 접힘 선호는 War Room 밖의 것이다.
   useEffect(() => {
     if (!pendingSideBarAddTheater) return;
     consumeSideBarAddTheater();
-    if (collapsed && !zenMode) setSideBarCollapsed(false);
+    if (collapsed && !warRoom) setSideBarCollapsed(false);
     openTheaterBrowser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSideBarAddTheater]);
@@ -1095,13 +1095,12 @@ export function OperationsSideBar({
     >
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
-      {/* 상태별 보기는 목록 전체의 세션 스위치다. 그 왼쪽에 캔버스 모드(Cruise / War Room)가, 다시 그 왼쪽에
-          Zen 켜고 끄기가 서고, 우단은 두 모드가 공유하는 접기 컨트롤이다. */}
+      {/* 상태별 보기는 목록 전체의 세션 스위치다. 그 왼쪽에 캔버스 모드(Cruise / War Room)가 서고,
+          우단은 두 모드가 공유하는 접기 컨트롤이다. */}
       <div className="side-bar-top-strip">
         {theaters.length > 0 ? (
           <>
             <span className="side-bar-top-strip-eyebrow">{t(statusAxis ? "sidebar.view.byStatusEyebrow" : "sidebar.view.theaters")}</span>
-            <SideBarZenToggle />
             <CanvasModeSwitch />
             <SideBarStatusViewToggle active={statusAxis} />
             <SideBarViewMenu />
@@ -1112,7 +1111,7 @@ export function OperationsSideBar({
 
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
-        {zenMode ? <AttentionSection onFocus={onFocus} onOpenOperationMenu={(operationId, anchor, returnFocus) => {
+        {warRoom ? <AttentionSection onFocus={onFocus} onOpenOperationMenu={(operationId, anchor, returnFocus) => {
           setNewMenu(null);
           setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus });
         }} /> : null}

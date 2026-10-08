@@ -70,7 +70,7 @@ export function triageStageGeometryFor(
   slotIndex = 0,
   slotCount = 1,
 ): OperationGeometry {
-  // War Room은 Zen 아레나(작업 표시줄 높이를 뺀 유효 뷰포트)를 쓴다. 틀의 위·좌·우는
+  // War Room은 War Room 아레나(작업 표시줄 높이를 뺀 유효 뷰포트)를 쓴다. 틀의 위·좌·우는
   // 아레나에서 10px 안쪽, 바닥은 수평선(아레나 끝)이므로 무대는 위·좌·우 18px, 아래 8px로
   // 네 변 모두 틀과 8px을 띄운다. 단일 칸·동반 칸과 FLIP 목적 좌표가 같은 기하를 쓴다.
   return modeSlotGeometryFor({

@@ -14,7 +14,7 @@ import { openOtherSurfaceLink } from "../../../../../features/browser/client/glo
 import { useT } from "../../i18n/index.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
-import { useHostSideBarVisible } from "../../integration/zen-chrome-toggles.js";
+import { useHostSideBarVisible } from "../../integration/war-room-chrome-toggles.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
 import { getState, subscribe } from "../../integration/store.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";

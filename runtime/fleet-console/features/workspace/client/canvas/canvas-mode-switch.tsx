@@ -4,7 +4,7 @@ import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { animateViewportTo, fitAllOperations, releaseAlignAll, setAlignAllLayout, setStationKeeping, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "./canvas-store.js";
 import { requestAlignAll } from "./align-fit-store.js";
-import { enterTriage, focusedTriageOperationId, getTriageMapHeldQueueIds, setTriageActive, setTriageSpotlightEnabled, toggleTriageMap, useTriageActive, useTriageDeckOverflowing, useTriageDeckZoomLive, useTriageMapOpen, useTriageSpotlightEnabled } from "./triage-store.js";
+import { enterTriage, exitTriage, focusedTriageOperationId, getTriageMapHeldQueueIds, setTriageSpotlightEnabled, toggleTriageMap, useTriageActive, useTriageDeckOverflowing, useTriageDeckZoomLive, useTriageMapOpen, useTriageSpotlightEnabled } from "./triage-store.js";
 import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { cycleTriageDeckZoomPreset } from "./triage-watch-deck.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
@@ -13,7 +13,7 @@ import { useT, type CoreMessageKey } from "../../../../core/client/src/i18n/inde
 
 /**
  * 캔버스 모드 스위치(Cruise / War Room). 목록을 어떻게 보느냐(상태별 보기)와 무대를 어떻게 쓰느냐(모드)는
- * 한 쌍이라, 좌측 사이드바 머리의 상태 전환 버튼 바로 왼쪽에 선다. Zen 토글은 그 바로 왼쪽이다(Zen 안에서도 같은 자리). 부유 섬에는
+ * 한 쌍이라, 좌측 사이드바 머리의 상태 전환 버튼 바로 왼쪽에 선다. 부유 섬에는
  * 두지 않는다 — 섬의 사이드바 토글이 이 자리를 연다. 캡슐은 아래로 뜬다. 모드 전환 단축키는 사이드바가 숨어도
  * 늘 닿는다.
  */
@@ -71,7 +71,7 @@ export function CanvasModeSwitch() {
       return;
     }
     // Cruise 세그먼트는 War Room에서만 나온다 — 모두 정렬은 Cruise 위의 유지라 그대로 둔다.
-    if (triageActive) setTriageActive(false);
+    if (triageActive) exitTriage();
   };
   // 모두 정렬 나누기 선택 — 꺼져 있으면 그 나누기로 켜고, 켜져 있으면 나누기를 바꾼다.
   // 눌린 나누기를 다시 누르면 끈다. 별도 토글은 두지 않는다 — 세 버튼이 곧 토글이다.
@@ -177,8 +177,8 @@ export function CanvasModeSwitch() {
           data-tool-echo={modeToolEcho(mode.id) || undefined}
           disabled={state.theaters.length === 0 || (mode.id === "warRoom" && warRoomUnavailable)}
           aria-pressed={canvasMode === mode.id}
-          aria-label={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.zenUnavailable" : mode.titleKey)}
-          title={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.zenUnavailable" : mode.titleKey)}
+          aria-label={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.unavailable" : mode.titleKey)}
+          title={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.unavailable" : mode.titleKey)}
           onMouseDown={(event) => event.preventDefault()}
           // hover는 마우스만의 것이다 — 터치·펜은 접촉과 함께 pointerenter를 내므로 여기서 열면
           // 뒤따르는 click 토글이 곧바로 닫아 버린다. 터치는 click 경로만 쓴다.

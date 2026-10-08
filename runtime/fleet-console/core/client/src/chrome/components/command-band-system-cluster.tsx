@@ -19,7 +19,6 @@ import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integratio
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
 import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
 import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/workspace/client/canvas/canvas-context-menu.js";
-import { carriesZenMode, carryZenMode, isZenMode } from "../../integration/zen-mode.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 
@@ -67,8 +66,6 @@ export interface HostPickerContext {
   readonly at: string | null;
   /** 판을 매달 칩의 자리. 없거나 말이 안 되면 null이고, 판은 창 모서리에 선다. */
   readonly anchor: HostPickerAnchor | null;
-  /** 이 목록을 부른 콘솔이 Zen이었는지 — 고른 콘솔로 그 모드를 이어 보낸다. */
-  readonly zen: boolean;
 }
 
 /**
@@ -83,7 +80,6 @@ export function readHostPickerSurface(search: string): HostPickerContext | null 
   return {
     at: at !== null && isConsoleOriginShape(at) ? at : null,
     anchor: parsePickerAnchor(params.get(PICKER_ANCHOR_PARAM)),
-    zen: carriesZenMode(search),
   };
 }
 
@@ -115,7 +111,7 @@ function isConsoleOriginShape(origin: string): boolean {
   }
 }
 
-/** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, Zen 트레이에서는 위로 열린다(CSS가 자리로 판단). */
+/** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, War Room 트레이에서는 위로 열린다(CSS가 자리로 판단). */
 export function ConsoleHelpMenu() {
   const state = useConsoleState();
   return (
@@ -400,7 +396,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   };
   const go = (origin: string) => {
     setOpen(false);
-    if (origin !== currentOrigin) location.assign(carryZenMode(new URL("/console/", `${origin}/`), picker?.zen ?? isZenMode()).toString());
+    if (origin !== currentOrigin) location.assign(new URL("/console/", `${origin}/`).toString());
   };
 
   return (
@@ -644,7 +640,6 @@ function SlidersGlyph() {
 
 // "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다. 엔진이 마운트한 모든 기여의
 // 엔트리 힌트·투어 시청 기록과 최초 설정 가이드·강도 확인 팁 기록을 함께 지워, 어느 화면에 있든 처음부터 다시 보게 한다.
-// 웰컴은 되돌리지 않는다 — "이번 업데이트로 새로 생긴 것"은 다시 일어나지 않는 사건이다.
 function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
   const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY]);
   const afterOnboarding = forgetReplayableOnboarding(seen);

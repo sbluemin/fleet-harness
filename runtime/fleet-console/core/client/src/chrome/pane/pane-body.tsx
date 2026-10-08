@@ -14,7 +14,7 @@ import type {
 } from "@fleet-console/sdk/plugin";
 
 import type { HostPaneContext } from "./pane-registry.js";
-import { useHostSideBarVisible } from "../../integration/zen-chrome-toggles.js";
+import { useHostSideBarVisible } from "../../integration/war-room-chrome-toggles.js";
 import { useMobileBarCapabilityValue } from "../mobile/mobile-bar-context.js";
 
 /**

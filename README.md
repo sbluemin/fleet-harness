@@ -89,7 +89,6 @@ Operations live on an infinite canvas. You choose how much of the arranging you 
 | **Align all** | Lays every panel out as a grid, columns, or rows. Toggle it off and each panel returns to where it was. | <kbd>Alt</kbd><kbd>F</kbd> |
 | **Snap layouts** | Drag a panel to the top edge for halves, thirds, 2×2 and more. Snap Assist offers panels for the empty slots. | <kbd>⌘</kbd><kbd>Alt</kbd><kbd>←</kbd> <kbd>→</kbd> |
 | **War Room** | Puts one waiting Operation on stage at a time, across every Theater. | <kbd>Alt</kbd><kbd>T</kbd> |
-| **Zen** | Hides the chrome and leaves a slim taskbar of Theaters and Operations. | <kbd>⌘</kbd><kbd>Alt</kbd><kbd>Z</kbd> |
 
 <kbd>⌘</kbd><kbd>K</kbd> jumps to any Operation, file, or wiki page. <kbd>⌘</kbd><kbd>P</kbd> opens the command palette, <kbd>⌘</kbd><kbd>J</kbd> opens Quick Launch, and <kbd>Alt</kbd><kbd>S</kbd> sorts the sidebar by status. Every shortcut can be rebound. On Windows and Linux, <kbd>⌘</kbd> is <kbd>Ctrl</kbd>.
 

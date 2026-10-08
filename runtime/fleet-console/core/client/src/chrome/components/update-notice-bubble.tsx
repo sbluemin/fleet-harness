@@ -77,7 +77,7 @@ export function UpdateNoticeBubble({ kind, shellUpdate, latestVersion, consoleFo
     // 버블 단계에서 듣는다 — 섬 안에 열린 메뉴(호스트 스위처 등)가 먼저 Escape를 소비하면 말풍선은 남는다.
     const keydown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || !(event.target instanceof Node)) return;
-      const boundary = rootRef.current?.closest(".zen-bar") ?? rootRef.current?.closest(".command-band-system-anchor");
+      const boundary = rootRef.current?.closest(".war-room-bar") ?? rootRef.current?.closest(".command-band-system-anchor");
       if (!boundary?.contains(event.target)) return;
       event.preventDefault();
       event.stopPropagation();

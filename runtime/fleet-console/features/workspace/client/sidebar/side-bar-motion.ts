@@ -262,7 +262,7 @@ interface FollowDriver {
 /**
  * 인셋을 무엇에 실어 움직일지 고른다.
  *
- * 카드가 움직이는 축은 둘이다 — 일반 접기·펼치기·픽은 width, Zen의 숨김·드러냄은 translate(layout.css,
+ * 카드가 움직이는 축은 둘이다 — 일반 접기·펼치기·픽은 width, War Room의 숨김·드러냄은 translate(layout.css,
  * 숨김 240ms·드러냄 340ms spring)다. 인셋은 지금 카드를 실제로 옮기는 쪽을 따라야 카드와 틈·겹침이 없다.
  *
  * - 이 커밋이 막 연 width·translate·transform 전환(진행 0)이면 그 전환을 탄다 — 인셋이 카드와 같은 길이·

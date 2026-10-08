@@ -17,7 +17,7 @@ import { ToolbarTipLayer } from "./toolbar-tip.js";
 
 /**
  * 도구모음 — 콘솔에 하나뿐인 도구 줄. 모드는 이 줄의 **자리**만 바꾼다: 평소에는 상단 바 가운데,
- * Zen에서는 부유 섬. 내용과 순서는 같다.
+ * War Room에서는 부유 섬. 내용과 순서는 같다.
  *
  *   › 접기 | 플러그인(레일 도구) | 시스템 도구(찾기 · 원격 · 도움말 · 설정) | Bridge(Quota 요약 → 부관)
  *
@@ -25,27 +25,19 @@ import { ToolbarTipLayer } from "./toolbar-tip.js";
  * 노드에 계속 포털하므로 안의 항목이 다시 마운트되지 않는다 — 플러그인은 자리가 사라졌다고 보지
  * 않고(부관이 캔버스로 돌아가지 않는다), 열린 메뉴·도구 칸의 포털도 끊기지 않는다.
  *
- * 접으면 플러그인·시스템 칸만 말려 들어가고 Bridge는 남는다. Zen 켜고 끄기는 도구모음이 아니라 좌측
- * 사이드바(모드 스위치 왼쪽)의 일이다 — 도구모음은 모드와 무관하게 같은 내용으로 선다.
+ * 접으면 플러그인·시스템 칸만 말려 들어가고 Bridge는 남는다. War Room 켜고 끄기는 도구모음이 아니라 좌측
+ * 사이드바(모드 스위치)의 일이다 — 도구모음은 모드와 무관하게 같은 내용으로 선다.
  *
  * 칸의 이름은 한 장의 말풍선이 말한다(toolbar-tip.tsx) — 칸은 네이티브 title 대신 data-tip을 든다.
  */
 
 const FOLD_STORAGE_KEY = "fleet-console.toolbar.folded";
-/** 1차 Zen 트레이의 접힘 기억 — 한 번 읽어 옮기고 걷는다. */
-const LEGACY_FOLD_STORAGE_KEY = "fleet-console.zen.tools-folded";
 /** 서랍 전이(layout.css .console-toolbar-drawer의 360ms)보다 조금 길게 — 전이가 끝난 뒤에 자름을 푼다. */
 const FOLD_TRANSITION_MS = 420;
 
 function readFolded(): boolean {
   try {
-    const stored = window.localStorage.getItem(FOLD_STORAGE_KEY);
-    if (stored !== null) return stored === "true";
-    const legacy = window.localStorage.getItem(LEGACY_FOLD_STORAGE_KEY);
-    if (legacy === null) return false;
-    window.localStorage.setItem(FOLD_STORAGE_KEY, legacy);
-    window.localStorage.removeItem(LEGACY_FOLD_STORAGE_KEY);
-    return legacy === "true";
+    return window.localStorage.getItem(FOLD_STORAGE_KEY) === "true";
   } catch {
     return false;
   }
@@ -60,17 +52,17 @@ function writeFolded(folded: boolean): void {
 }
 
 interface ConsoleToolbarProps {
-  /** Zen이 이 창에서 실제로 켜져 있는가 — 켜져 있으면 줄이 Zen 트레이에 선다. */
-  readonly zen: boolean;
+  /** War Room이 이 창에서 실제로 켜져 있는가 — 켜져 있으면 줄이 War Room 트레이에 선다. */
+  readonly warRoomActive: boolean;
   /** 캔버스 화면인가(/operations 데스크톱). 아니면 설정 톱니가 캔버스로 먼저 돌아간 뒤 설정을 연다. */
   readonly canvas: boolean;
 }
 
-export function ConsoleToolbar({ zen, canvas }: ConsoleToolbarProps) {
+export function ConsoleToolbar({ warRoomActive, canvas }: ConsoleToolbarProps) {
   const t = useT();
   const bandHost = useToolbarHost("band");
-  const zenHost = useToolbarHost("zen");
-  const host = zen ? zenHost : bandHost;
+  const warRoomHost = useToolbarHost("warRoom");
+  const host = warRoomActive ? warRoomHost : bandHost;
   // 줄의 몸 — 한 번 만들어 끝까지 쓴다. 자리만 바꿔 끼운다.
   const [mount] = useState(() => {
     const element = document.createElement("div");
@@ -83,7 +75,7 @@ export function ConsoleToolbar({ zen, canvas }: ConsoleToolbarProps) {
       return;
     }
     if (mount.parentNode === host) return;
-    // 노드를 옮기면 브라우저가 그 안의 포커스를 놓는다 — 키보드로 Zen을 켜고 끈 사람은 같은 버튼에 남아야 한다.
+    // 노드를 옮기면 브라우저가 그 안의 포커스를 놓는다 — 키보드로 War Room을 켜고 끈 사람은 같은 버튼에 남아야 한다.
     const focused = document.activeElement;
     const keepFocus = focused instanceof HTMLElement && mount.contains(focused) ? focused : null;
     host.appendChild(mount);

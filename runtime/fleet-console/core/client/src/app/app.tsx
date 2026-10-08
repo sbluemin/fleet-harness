@@ -45,10 +45,9 @@ import { Operations } from "../../../../features/workspace/client/operations.js"
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
-import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
+import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
-import { useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { subscribeDormantAutoMinimize } from "../../../../features/workspace/client/canvas/dormant-auto-minimize.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
@@ -59,11 +58,12 @@ import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
-import { isZenMode, setZenMode, toggleZenMode, useZenModeState, useZenTransitionActive } from "../integration/zen-mode.js";
-import { useZenDesktopFullscreen } from "../integration/desktop-fullscreen.js";
-import { ZenBar } from "../chrome/zen/zen-bar.js";
-import { ZenTransition } from "../chrome/zen/zen-transition.js";
-import { toggleZenSideBar } from "../integration/zen-chrome-toggles.js";
+import { useWarRoomTransitionActive } from "../integration/war-room-chrome.js";
+import { useWarRoomDesktopFullscreen } from "../integration/desktop-fullscreen.js";
+import { WarRoomBar } from "../chrome/war-room/war-room-bar.js";
+import { WarRoomTransition } from "../chrome/war-room/war-room-transition.js";
+import { toggleWarRoomSideBar } from "../integration/war-room-chrome-toggles.js";
+import { isTriageActive, setTriageActive, useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { ConsoleToolbar } from "../chrome/toolbar/console-toolbar.js";
 import { observeStateMotion } from "../integration/state-motion.js";
 
@@ -77,13 +77,13 @@ const THEME_NOTICE_AUTO_DISMISS_MS = 8_000;
 const ONBOARDING_PORTS = {
   railEntryElement: (railEntryId: string) => document.getElementById(`rail-tab-${railEntryId}`),
   railEntryHintAnchor: (element: HTMLElement) => {
-    const island = element.closest<HTMLElement>(".zen-bar");
+    const island = element.closest<HTMLElement>(".war-room-bar");
     if (!island) return null;
     // 섬은 늘 아레나 아래 가운데에 선다 — 힌트는 섬 위에 선다.
     return { below: false, edge: island.getBoundingClientRect().top };
   },
   railEntryHintDoor: (element: HTMLElement) => {
-    const drawer = element.closest(".zen-bar .console-toolbar-drawer[inert]");
+    const drawer = element.closest(".war-room-bar .console-toolbar-drawer[inert]");
     return drawer?.closest(".console-toolbar")?.querySelector<HTMLElement>(".console-toolbar-fold") ?? element;
   },
   shortcutLabel: (commandId: string) => shortcutCommandLabel(commandId),
@@ -181,19 +181,18 @@ function ConnectedApp() {
   const operationsViewVisible = pathname.startsWith("/operations");
   const isTransitionalRoute = pathname === "/";
   const mobileLayout = useViewMode().effective === "mobile";
-  const zenState = useZenModeState();
-  const zenTransitionActive = useZenTransitionActive();
-  const zenMode = zenState.active;
-  const zenActive = zenMode && operationsViewVisible && !mobileLayout;
+  const warRoomMode = useTriageActive();
+  const warRoomTransitionActive = useWarRoomTransitionActive();
+  const warRoomActive = warRoomMode && operationsViewVisible && !mobileLayout;
   const workFocusRef = useRef<HTMLElement | null>(null);
-  // Zen은 /operations 데스크톱 화면에만 선다. Theater를 바꿔도 Zen은 유지한다 — 작업 표시줄의
-  // Theater 메뉴와 다른 Theater의 Operation이 바로 그 전환을 Zen 안에서 하는 길이다.
+  // War Room은 /operations 데스크톱 화면에만 선다. Theater를 바꿔도 War Room은 유지한다 — 작업 표시줄의
+  // Theater 메뉴와 다른 Theater의 Operation이 바로 그 전환을 War Room 안에서 하는 길이다.
   // 부팅·호스트 전환 직후 루트('/')에서 '/operations'로 리다이렉트되는 과도기에는 성급히 끄지 않고,
-  // 모바일이거나 다른 경로(/settings 등)로 완전히 이탈했을 때만 Zen을 거둔다.
+  // 모바일이거나 다른 경로(/settings 등)로 완전히 이탈했을 때만 War Room을 거둔다.
   useLayoutEffect(() => {
-    if (zenMode && (mobileLayout || (!operationsViewVisible && !isTransitionalRoute))) setZenMode(false);
-  }, [zenMode, operationsViewVisible, mobileLayout, isTransitionalRoute]);
-  useZenDesktopFullscreen(zenActive);
+    if (warRoomMode && (mobileLayout || (!operationsViewVisible && !isTransitionalRoute))) setTriageActive(false);
+  }, [warRoomMode, operationsViewVisible, mobileLayout, isTransitionalRoute]);
+  useWarRoomDesktopFullscreen(warRoomActive);
   useEffect(() => {
     const remember = (event: FocusEvent) => {
       const target = event.target;
@@ -202,24 +201,24 @@ function ConnectedApp() {
     document.addEventListener("focusin", remember);
     return () => document.removeEventListener("focusin", remember);
   }, []);
-  // Zen이 바뀌는 순간 포커스가 걷힌 크롬(inert 영역·숨은 Zen 바·작업 표시줄) 안에 있었다면 작업면으로
+  // War Room이 바뀌는 순간 포커스가 걷힌 크롬(inert 영역·숨은 War Room 바·작업 표시줄) 안에 있었다면 작업면으로
   // 돌려준다. 숨은 요소의 포커스는 브라우저가 body로 떨구기도 하므로 전환 직후의 body도 같은 경우로 본다.
-  const previousZenActiveRef = useRef(zenActive);
+  const previousWarRoomActiveRef = useRef(warRoomActive);
   useLayoutEffect(() => {
-    const changed = previousZenActiveRef.current !== zenActive;
-    previousZenActiveRef.current = zenActive;
+    const changed = previousWarRoomActiveRef.current !== warRoomActive;
+    previousWarRoomActiveRef.current = warRoomActive;
     if (!changed) return;
     const focused = document.activeElement;
     const stranded = focused === document.body
-      || (focused instanceof HTMLElement && focused.closest("[inert], .zen-bar[hidden]") !== null);
+      || (focused instanceof HTMLElement && focused.closest("[inert], .war-room-bar[hidden]") !== null);
     if (!stranded) return;
     const target = workFocusRef.current;
     if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
     else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
-  }, [zenActive]);
-  // Zen 단축키로 한쪽 크롬을 숨길 때, 포커스가 그 안에 있었다면 반대쪽 컨트롤(War Room 막대의 사이드바
-  // 토글)이 있으면 거기로, 없으면 위 Zen 진입과 같은 복귀 규칙을 따른다. 숨길 영역 밖의 포커스는 건드리지 않는다.
-  const hideZenChromeRestoringFocus = useCallback((regionSelector: string, hide: () => boolean, oppositeSelector?: string) => {
+  }, [warRoomActive]);
+  // War Room 단축키로 한쪽 크롬을 숨길 때, 포커스가 그 안에 있었다면 반대쪽 컨트롤(War Room 막대의 사이드바
+  // 토글)이 있으면 거기로, 없으면 위 War Room 진입과 같은 복귀 규칙을 따른다. 숨길 영역 밖의 포커스는 건드리지 않는다.
+  const hideWarRoomChromeRestoringFocus = useCallback((regionSelector: string, hide: () => boolean, oppositeSelector?: string) => {
     const focused = document.activeElement;
     const focusInside = focused instanceof HTMLElement && focused.closest(regionSelector) !== null;
     if (hide() || !focusInside) return;
@@ -516,12 +515,12 @@ function ConnectedApp() {
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed: (collapsed) => {
-        // Zen은 /operations 데스크톱에서만 켜진다(War Room도 Zen 안이다). 그 안의 토글은 Zen을 유지한 채 좌측만 드러낸다.
-        if (isZenMode() && resolvePanelShortcut() === "apply") {
-          hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar, ".zen-bar [data-zen-sidebar-anchor]");
+        // War Room은 /operations 데스크톱에서만 켜진다. 그 안의 토글은 War Room을 유지한 채 좌측만 드러낸다.
+        if (isTriageActive() && resolvePanelShortcut() === "apply") {
+          hideWarRoomChromeRestoringFocus(".war-room-sidebar-chrome", toggleWarRoomSideBar, ".war-room-bar [data-war-room-sidebar-anchor]");
           return;
         }
-        setZenMode(false);
+        setTriageActive(false);
         const outcome = resolvePanelShortcut();
         if (outcome === "suppress") return;
         if (outcome === "reveal") {
@@ -543,9 +542,6 @@ function ConnectedApp() {
         if (!available) return false;
         openQuickLaunchForPluginTarget();
         return true;
-      },
-      toggleZenMode: () => {
-        if (resolvePanelShortcut() === "apply") toggleZenMode();
       },
       toggleRailSurface: (entryId) => {
         const outcome = resolvePanelShortcut();
@@ -660,12 +656,12 @@ function ConnectedApp() {
   return (
     <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
-      <div className={`console-shell${zenActive ? " is-zen" : ""}`}>
-        {/* Zen 트레이 — 작업 표시줄 오른쪽 끝. 막대(작업 표시줄)는 Operations 페이지가 세우고, 이 트레이는
-            콘솔 크롬이라 여기 둔다. 도구모음이 Zen 동안 여기에 선다 — 자리는 Zen이 꺼져 있어도 DOM에 남고,
+      <div className={`console-shell${warRoomActive ? " is-war-room" : ""}`}>
+        {/* War Room 트레이 — 작업 표시줄 오른쪽 끝. 막대(작업 표시줄)는 Operations 페이지가 세우고, 이 트레이는
+            콘솔 크롬이라 여기 둔다. 도구모음이 War Room 동안 여기에 선다 — 자리는 War Room이 꺼져 있어도 DOM에 남고,
             바 전체가 hidden이라 그려지지는 않는다. */}
-        <ZenBar active={zenActive} local={state.channel === "local"} />
-        <span className="zen-mode-announcement" role="status" aria-live="polite">{zenActive ? t("zen.active") : ""}</span>
+        <WarRoomBar active={warRoomActive} local={state.channel === "local"} />
+        <span className="war-room-announcement" role="status" aria-live="polite">{warRoomActive ? t("warRoomChrome.active") : ""}</span>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
             taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
             mobile header and its settings entry becomes a tab, so nothing is stranded. */}
@@ -674,8 +670,8 @@ function ConnectedApp() {
             지키는 화이트리스트라, 그리지 않는 것이라도 끼면 계약이 헐거워진다. */}
         <PersistentPluginComponents />
         {mobileLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
-        {/* 도구모음은 하나다 — 모드는 자리만 바꾼다(상단 바 오른쪽 ↔ Zen 트레이). 모바일 셸은 자기 탭 막대를 쓴다. */}
-        {mobileLayout ? null : <ConsoleToolbar zen={zenActive} canvas={operationsViewVisible} />}
+        {/* 도구모음은 하나다 — 모드는 자리만 바꾼다(상단 바 오른쪽 ↔ War Room 트레이). 모바일 셸은 자기 탭 막대를 쓴다. */}
+        {mobileLayout ? null : <ConsoleToolbar warRoomActive={warRoomActive} canvas={operationsViewVisible} />}
         <FloatingWidgetLayer />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는
             레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만 성립하는데, 그 조건을
@@ -715,15 +711,13 @@ function ConnectedApp() {
         <WhatsNewModal state={state} automaticSuspended={terminalFocused} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}
         <OnboardingHost
-          toursSuspended={zenTransitionActive || terminalFocused || mobileLayout}
+          toursSuspended={warRoomTransitionActive || terminalFocused || mobileLayout}
           core={CORE_ONBOARDING}
           plugins={registry.onboarding}
           language={consoleLocale}
-          welcomeReady={state.bootstrapped && state.version !== "" && !state.releaseNotesLoading && (state.releaseNotesFetchedAt !== null || state.releaseNotesError !== null || state.releaseNotes.length > 0) && !state.whatsNewOpen}
-          firstRun={state.bootstrapped && state.theaters.length === 0 && globalSettings.state !== null && !globalSettings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)}
           ports={ONBOARDING_PORTS}
         />
-        <ZenTransition local={state.channel === "local"} />
+        <WarRoomTransition local={state.channel === "local"} />
         <ControlCurtain />
         <ToastHost>
           <Toast open={shellTheaterNotice} title={t("chrome.toast.shellNeedsTheater")} onDismiss={() => setShellTheaterNotice(false)} />

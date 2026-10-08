@@ -92,7 +92,7 @@ Before reproducing a user-reported defect, record the user's installed Fleet ver
 
 ### First-load onboarding state
 
-A fresh slot and a new origin show commissioning, What's New, welcome slides, entry hints, and feature tours, and they can race the scenario's first input. Prepare that state **before the first navigation** instead of dismissing layers mid-scenario. Once the lock exists, run [`scripts/seed-onboarding.mts`](../scripts/seed-onboarding.mts) with the Console package's `tsx`:
+A fresh slot and a new origin show commissioning, What's New, entry hints, and feature tours, and they can race the scenario's first input. Prepare that state **before the first navigation** instead of dismissing layers mid-scenario. Once the lock exists, run [`scripts/seed-onboarding.mts`](../scripts/seed-onboarding.mts) with the Console package's `tsx`:
 
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$E2E_DIR" --bin pnpm \

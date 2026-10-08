@@ -52,7 +52,7 @@ register(`data:text/javascript,${encodeURIComponent(`export async function resol
 (globalThis as { React?: unknown }).React ??= (await load(createRequire(join(consoleSrc, "package.json")).resolve("react"))).default;
 
 const { CORE_ONBOARDING } = await load(join(consoleSrc, "core/client/src/integration/onboarding.ts"));
-const { welcomeSeenKey, hintSeenKey, tourSeenKey } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
+const { hintSeenKey, tourSeenKey } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
 const { COMMISSIONING_SEEN_KEY } = await load(join(consoleSrc, "core/client/src/integration/store.ts"));
 const { EFFORT_CONFIRM_TIP_SEEN_KEY } = await load(join(consoleSrc, "features/workspace/client/canvas/canvas-context-menu.tsx"));
 const { WHATS_NEW_SEEN_VERSION_STORAGE_KEY } = await load(join(consoleSrc, "features/updates/client/release-state.ts"));
@@ -73,7 +73,8 @@ for (const plugin of readdirSync(pluginsDir)) {
 // needs adding here; --dry-run shows what is covered.
 const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY as string];
 for (const contribution of contributions) {
-  for (const key of [welcomeSeenKey(contribution), hintSeenKey(contribution)]) if (key) derived.push(key);
+  const hint = hintSeenKey(contribution);
+  if (hint) derived.push(hint);
   for (const tour of contribution.tours ?? []) derived.push(tourSeenKey(tour.id, "spotlight"), tourSeenKey(tour.id, "walkthrough"));
 }
 const kept = (key: string) => keep.some((entry) => key === entry || (entry.endsWith(".") && key.startsWith(entry)));

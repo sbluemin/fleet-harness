@@ -63,6 +63,7 @@ const FILE_EXPLORER_CSS_PATH = new URL("../../fleet-plugins/file-explorer/client
 const REPOSITORY_CSS_PATH = new URL("../../fleet-plugins/repository/client/repository.css", import.meta.url);
 const FONT_PICKER_CSS_PATH = new URL("../foundation/font-picker/styles.css", import.meta.url);
 const ONBOARDING_CSS_PATH = new URL("../features/onboarding/client/onboarding.css", import.meta.url);
+const CANVAS_CONFIRM_CSS_PATH = new URL("../features/workspace/client/canvas/canvas-confirm-dialog.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
 const SDK_CAPTION_ACTIONS_PATH = new URL("../sdk/components/caption-actions.tsx", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
@@ -2015,11 +2016,12 @@ describe("Instrument core design contract", () => {
       const scoped = selector.replace(/\./g, "\\.");
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--float-underlay\\);`));
     }
-    // 온보딩 엔진의 세 표면(웰컴 카드·엔트리 힌트·투어 카드)은 엔진 시트가 소유하고 같은 채널 계약을 진다.
+    // 온보딩 엔진의 두 표면(엔트리 힌트·투어 카드)은 엔진 시트가, 캔버스 확인 카드는 대화상자 시트가 소유하고 같은 채널 계약을 진다.
     const onboardingCss = externalSource(ONBOARDING_CSS_PATH);
-    for (const selector of [".onboarding-welcome-card", ".onboarding-hint", ".feature-tour-card"]) {
+    const canvasConfirmCss = externalSource(CANVAS_CONFIRM_CSS_PATH);
+    for (const [sheet, selector] of [[canvasConfirmCss, ".canvas-confirm-card"], [onboardingCss, ".onboarding-hint"], [onboardingCss, ".feature-tour-card"]] as const) {
       const scoped = selector.replace(/\./g, "\\.");
-      expect(onboardingCss).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--float-underlay\\);`));
+      expect(sheet).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--float-underlay\\);`));
     }
     // 브레드크럼 스위처 메뉴는 브레드크럼과 함께 퇴역했다 — 밴드 앵커 메뉴는 시스템 메뉴와
     // 환경 팝오버만 남는다.
@@ -2066,14 +2068,13 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("<BrandHome />");
     expect(commandBand).not.toContain("CommandBandSystemCluster");
     expect(commandBand).toContain('className="command-band-button command-band-viewmode"');
-    // 도구모음은 콘솔에 하나다 — 찾기·도움말·Zen은 밴드가 따로 세우지 않고, 밴드는 도구모음이 설 자리만 둔다.
+    // 도구모음은 콘솔에 하나다 — 찾기·도움말은 밴드가 따로 세우지 않고, 밴드는 도구모음이 설 자리만 둔다.
     const toolbar = source("chrome/toolbar/console-toolbar.tsx");
     expect(commandBand).toContain('<span ref={setToolbarHost} className="command-band-toolbar" />');
     expect(commandBand).not.toContain("command-band-search");
-    expect(commandBand).not.toContain("command-band-zen");
     expect(toolbar).toContain("onClick={toggleOperationSearch}");
     expect(toolbar).toContain("<HostSwitcher />\n          <ConsoleHelpMenu />");
-    expect(app).toContain("<ConsoleToolbar zen={zenActive} canvas={operationsViewVisible} />");
+    expect(app).toContain("<ConsoleToolbar warRoomActive={warRoomActive} canvas={operationsViewVisible} />");
     // Periscope: 패널 접기 토글은 밴드에서 퇴역했다 — 좌측 사이드바의 접기는 패널 자신의 컨트롤이,
     // 접힌 뒤의 문은 엣지 독(brass 필라멘트 + 호버 픽 + 클릭 고정)이 진다. 오른쪽 사이드바는 퇴역해
     // 도구모음이 되었고, 그 쪽의 접기·엣지 독·⌘⌥B도 함께 퇴역했다.
@@ -2096,7 +2097,7 @@ describe("Instrument core design contract", () => {
     // 엣지 독은 캔버스 위 부유 크롬이다 — 캔버스 제스처가 삼키지 않도록 blocker 마크를 단다.
     expect(edgeDocks).toContain("data-canvas-blocker");
     // 도구모음이 중앙 트랙의 단독 승객이다. 캔버스 모드 스위치는 좌측 사이드바 머리의 상태별 보기 토글
-    // 왼쪽 한 자리에만 선다 — Zen 작업 표시줄에 두 번째 스위치를 두지 않고, 섬의 사이드바 토글이 그 자리를 연다.
+    // 왼쪽 한 자리에만 선다 — War Room 작업 표시줄에 두 번째 스위치를 두지 않고, 섬의 사이드바 토글이 그 자리를 연다.
     expect(commandBand).toContain(`      <div className="command-band-center">
         <span ref={setToolbarHost} className="command-band-toolbar" />`);
     expect(toolbar).not.toContain("CanvasModeSwitch");
@@ -2117,7 +2118,7 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).toContain('{ id: "cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseModeIcon },');
     expect(modeSwitch).toContain('{ id: "warRoom", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomModeIcon },');
     expect(modeSwitch).toContain("<mode.Icon />");
-    expect(modeSwitch).toContain('aria-label={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.zenUnavailable" : mode.titleKey)}');
+    expect(modeSwitch).toContain('aria-label={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.unavailable" : mode.titleKey)}');
     expect(modeSwitch).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : "cruise";');
     expect(modeSwitch).toContain('aria-pressed={canvasMode === mode.id}');
     // 모드 도구는 활성 세그먼트 아래 캡슐 하나에 활성 모드의 것만 마운트한다 — 비활성 모드 도구는
@@ -2136,7 +2137,7 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).toContain("<DensityIcon />{!compact ? <span>{triageDeckZoomLive.toFixed(1)}×</span> : null}");
     // 안내 앵커(.command-band-mode-tray, data-war-room-tool)가 닫힌 캡슐 안에 있을 때는 CSS가 강제로 펼친다.
     expect(layout).toContain(".command-band-mode-tray:has(.is-feature-tour-anchor)");
-    // 중앙 트랙에는 모드 스위치만 남는다 — 찾기·Zen은 도구모음으로 옮겨 가 구분선도 함께 퇴역했다.
+    // 중앙 트랙에는 모드 스위치만 남는다 — 찾기는 도구모음으로 옮겨 가 구분선도 함께 퇴역했다.
     expect(commandBand).not.toContain("command-band-center-divider");
     // 세 버튼이 곧 토글이다 — 꺼져 있으면 켜고, 다른 나누기면 바꾸고, 눌린 것을 다시 누르면 끈다.
     // 눌림 표시는 켜져 있을 때만 보인다. 별도 토글 버튼은 두지 않는다.
@@ -2150,7 +2151,7 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).not.toContain("setModeTrayOpen");
     // 정렬이 켜지면 Cruise 세그먼트에 brass 점이 켜진다 — 캡슐 안 나누기와 같은 채널이다.
     expect(modeSwitch).toContain("stationKeeping || alignOn");
-    // War Room은 Zen 적격성도 따른다 — 정렬 토글은 활성 Theater로 게이트한다.
+    // War Room은 데스크톱 적격성도 따른다 — 정렬 토글은 활성 Theater로 게이트한다.
     expect(modeSwitch).toContain('disabled={state.theaters.length === 0 || (mode.id === "warRoom" && warRoomUnavailable)}');
     // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
     expect(modeSwitch).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
@@ -2329,20 +2330,20 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain(".command-band.is-fullscreen");
     expect(layout).not.toContain(".command-band-edge-reveal");
     expect(commandBand).toContain("inert={commandBandHidden || undefined}");
-    // 크롬을 치우는 결정은 Zen 하나가 소유한다.
-    expect(commandBand).toContain("const commandBandHidden = zenMode;");
-    // 도구모음은 하나이고 Zen은 그 자리만 바꾼다 — 도구모음은 자기 노드를 새 자리로 옮겨 끼우므로
+    // 크롬을 치우는 결정은 War Room 하나가 소유한다.
+    expect(commandBand).toContain("const commandBandHidden = warRoom;");
+    // 도구모음은 하나이고 War Room은 그 자리만 바꾼다 — 도구모음은 자기 노드를 새 자리로 옮겨 끼우므로
     // 안의 플러그인 항목은 언마운트되지 않는다. 언마운트하면 플러그인은 자리가 없다고 보고 자기 표면을
-    // 캔버스로 되돌린다(부관은 새로 돌아간다). 그것이 바로 Zen이 치우려던 것이다.
+    // 캔버스로 되돌린다(부관은 새로 돌아간다). 그것이 바로 War Room이 치우려던 것이다.
     const appShell = source("app/app.tsx");
-    const zenBar = source("chrome/zen/zen-bar.tsx");
+    const warRoomBar = source("chrome/war-room/war-room-bar.tsx");
     const consoleToolbar = source("chrome/toolbar/console-toolbar.tsx");
     expect(consoleToolbar).toContain("host.appendChild(mount);");
     expect(consoleToolbar).toContain("<ToolbarBridge />");
-    // 트레이 자리는 Zen이 꺼져 있어도 DOM에 남는다. Zen 바 전체가 hidden이라 그려지지는 않는다.
-    expect(zenBar).toContain('<span className="zen-bar-toolbar" ref={setZenToolbarHost} />');
-    expect(zenBar).toContain("hidden={!active}");
-    expect(appShell).toContain("<ZenBar active={zenActive}");
+    // 트레이 자리는 War Room이 꺼져 있어도 DOM에 남는다. War Room 바 전체가 hidden이라 그려지지는 않는다.
+    expect(warRoomBar).toContain('<span className="war-room-bar-toolbar" ref={setWarRoomToolbarHost} />');
+    expect(warRoomBar).toContain("hidden={!active}");
+    expect(appShell).toContain("<WarRoomBar active={warRoomActive}");
     // darwin 전체화면에서 신호등이 물러난 자리로 좌측 클러스터가 활주한다. transform이 아니라
     // 패딩을 움직여야 중앙 여백 하한의 실측(offsetLeft)이 새 자리를 읽는다.
     const darwinBandLeftBlock = layout.match(/html\[data-desktop-shell="true"\]\[data-desktop-platform="darwin"\] \.command-band-left \{[^}]*\}/)?.[0] ?? "";
