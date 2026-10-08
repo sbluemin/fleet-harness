@@ -482,7 +482,11 @@ describe("commodore supervisor", () => {
       h.setExperiments({ commodore: true });
       h.store.setCoordinates("t1", { model: "codex--gpt-6-luna", effort: "medium" });
       const sonnetRow = { id: "sonnet", label: "Sonnet", launch: { model: "sonnet" }, chips: ["low", "medium", "high", "xhigh", "max"].map((effort) => ({ id: effort, label: effort, launch: { model: "sonnet", effort } })) };
-      const models = { resolve: (stored: ModelCoordinate, _target: unknown, fallback?: ModelCoordinate) => ({ ...resolveRosterCoordinate([{ id: "gateway:claude", label: "Claude", rows: [sonnetRow] }], stored, fallback ?? { model: "sonnet" }), wireModel: "sonnet" }) };
+      // 설치된 Claude Code가 별칭을 푸는 정식 id — 사령관은 그 id로 열고, 회전은 별칭 좌표로 판정한다.
+      const models = {
+        resolve: (stored: ModelCoordinate, _target: unknown, fallback?: ModelCoordinate) => ({ ...resolveRosterCoordinate([{ id: "gateway:claude", label: "Claude", rows: [sonnetRow] }], stored, fallback ?? { model: "sonnet" }), wireModel: "sonnet" }),
+        pinClaudeVersion: async (model: string) => model === "sonnet" ? "claude-sonnet-installed" : model,
+      };
       h.store.setAutonomy("t1", true);
       h.store.setLanguage("t1", "ko");
       const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
@@ -538,7 +542,7 @@ describe("commodore supervisor", () => {
       expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
-      expect(sessions[0]!.options).toMatchObject({ model: "sonnet", effort: "medium" });
+      expect(sessions[0]!.options).toMatchObject({ model: "claude-sonnet-installed", effort: "medium" });
       expect(sessions[0]!.options.systemPrompt).toContain("The person reads the log in Korean.");
       expect(tokens()).toEqual([["restart", "empty"]]);
       expect(sessionEvents()).toEqual(["restarted"]);

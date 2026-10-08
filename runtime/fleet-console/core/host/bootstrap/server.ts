@@ -606,6 +606,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginOperationTypes = new Set<string>(["agent"]);
   const executionApiCatalog: ApiCatalogEntry[] = [];
   let coreLaunchKinds: OperationLaunchCatalogProvider = () => [];
+  // 실행 기능이 서야 생긴다. 그 전의 별칭 고정은 받은 값을 돌려준다.
+  let ensureClaudeNativeModels: (() => Promise<void>) | undefined;
   const executionCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
@@ -1115,7 +1117,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
     },
     // 플러그인의 모델 좌표 해석. Gateway 설정 파일을 플러그인이 직접 열지 않도록 같은 파일의 로스터 투영만 내준다.
-    models: createModelRosterHost({ readSettings: gatewaySettings.read }),
+    models: createModelRosterHost({ readSettings: gatewaySettings.read, ensureClaudeNativeModels: async () => { await ensureClaudeNativeModels?.(); } }),
     experiments: {
       read: () => readExperimentSettings(consoleSettingsStore),
       subscribe: (listener) => {
@@ -2749,6 +2751,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
       }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
       coreLaunchKinds = execution.launchKinds;
+      ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
       sleepOperation = execution.actions.sleep;
       resumeArchivedOperation = execution.actions.resume;
       stopForArchive = execution.stopForArchive;
