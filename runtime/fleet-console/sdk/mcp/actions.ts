@@ -191,16 +191,22 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
 
 /** action 한 개의 필드 JSON 스키마와 필수 목록. `$schema` 같은 머리말은 버린다. */
 function fieldSchemas(input: z.ZodObject): { readonly properties: Readonly<Record<string, JsonSchema>>; readonly required: readonly string[] } {
-  const json = withoutSafeIntegerBounds(z.toJSONSchema(input, { io: "input" })) as JsonSchema;
+  const json = advertisedBounds(z.toJSONSchema(input, { io: "input" })) as JsonSchema;
   const properties = (json.properties ?? {}) as Record<string, JsonSchema>;
   return { properties, required: Array.isArray(json.required) ? json.required as string[] : [] };
 }
 
-/** zod 의 `int()` 는 안전 정수 한계를 minimum/maximum 으로 적는다 — 모델에게는 잡음뿐이라 걷어 낸다. 검증은 zod 가 그대로 한다. */
-function withoutSafeIntegerBounds(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutSafeIntegerBounds);
+/**
+ * 광고 스키마에서 검증 전용 한계를 걷어 낸다 — 문자열·배열 길이와 zod `int()` 의 안전 정수 한계는 모델에게 잡음이고
+ * 도구 목록의 무게만 늘린다. 수의 범위(limit·waitMs 같은)와 enum 은 남긴다. 정확한 제약은 서버가 action별 strict 로 본다.
+ */
+const LENGTH_BOUNDS = new Set(["minLength", "maxLength", "minItems", "maxItems"]);
+function advertisedBounds(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(advertisedBounds);
   if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).filter(([key, entry]) => !((key === "minimum" && entry === Number.MIN_SAFE_INTEGER) || (key === "maximum" && entry === Number.MAX_SAFE_INTEGER))).map(([key, entry]) => [key, withoutSafeIntegerBounds(entry)]));
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key, entry]) => !LENGTH_BOUNDS.has(key) && !((key === "minimum" && entry === Number.MIN_SAFE_INTEGER) || (key === "maximum" && entry === Number.MAX_SAFE_INTEGER)))
+    .map(([key, entry]) => [key, key === "properties" ? Object.fromEntries(Object.entries(entry as Record<string, unknown>).map(([field, schema]) => [field, advertisedBounds(schema)])) : advertisedBounds(entry)]));
 }
 
 function stripFields(schema: { readonly properties: Readonly<Record<string, JsonSchema>>; readonly required: readonly string[] }, omit: ReadonlySet<string>) {
@@ -244,8 +250,6 @@ function mergeField(tool: string, key: string, variants: readonly JsonSchema[]):
     };
     widest("minimum", (values) => Math.min(...values));
     widest("maximum", (values) => Math.max(...values));
-    widest("minLength", (values) => Math.min(...values));
-    widest("maxLength", (values) => Math.max(...values));
     if (branches.every((branch) => Array.isArray(branch.enum))) loose.enum = [...new Set(branches.flatMap((branch) => branch.enum as unknown[]))];
   } else {
     loose = types.length === 1 ? { type: types[0] } : { anyOf: types.map((type) => ({ type })) };
