@@ -128,12 +128,12 @@ function hasCopyableSelection(): boolean {
 export function AgentChatView({
   context,
   tourAnchors,
-  fileLinkError,
+  fileLinkError = null,
 }: {
   readonly context: OperationRenderContext;
   /** 사용자가 이 마운트에서 직접 채팅 뷰를 연 경우에만 true — 투어 앵커 렌더 여부를 결정한다. */
   readonly tourAnchors: boolean;
-  readonly fileLinkError: string | null;
+  readonly fileLinkError?: string | null;
 }) {
   const t = getT(context.language ?? "en");
   const live = context.bodyLive !== false;
