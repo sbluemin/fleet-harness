@@ -616,7 +616,8 @@ describe("commodore supervisor", () => {
       await expect(supervisor.retry("t1")).rejects.toThrow("commodore_not_retrying");
 
       // 교대 — 문맥이 길어지면 다음 깨움에서 새 세션 + 최근 행위 요약. 기록은 끊기지 않는다.
-      inputTokens = 160_000;
+      // 폴백 Sonnet도 1M 좌표라, 75%를 넘는 사용량이어야 교대한다.
+      inputTokens = 760_000;
       h.store.addIntel("t1", { text: "d" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);

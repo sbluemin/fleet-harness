@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
+import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readOperationLaunch, type OperationNode, type OperationDescription } from "@fleet-console/sdk/operations";
 import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 
@@ -468,7 +469,20 @@ function storedNext(value: StoredMember["next"]): MemberNext | null {
   if (!value || typeof value !== "object" || !shortText(value.model, 128) || !value.from || typeof value.from !== "object") return null;
   // 「다음 재개」 시절의 표식(reservedWhile·reservedGeneration)은 더 뜻이 없다 — 읽을 때 버린다.
   const { reservedWhile: _while, reservedGeneration: _generation, ...rest } = value as MemberNext & { reservedWhile?: unknown; reservedGeneration?: unknown };
-  return { ...rest, ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), ...(value.held === "host" || value.held === "plugin" ? {} : { held: undefined }) };
+  // 예약 모델만 접는다. from은 예약 당시의 실행값이라 원문을 둔다.
+  return { ...rest, model: canonicalModelId(rest.model), ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), ...(value.held === "host" || value.held === "plugin" ? {} : { held: undefined }) };
+}
+
+function canonicalStoredLaunch(launch: MemberLaunch | null | undefined): MemberLaunch | undefined {
+  if (!launch || launch.mode !== "model") return launch ?? undefined;
+  const model = canonicalModelId(launch.model);
+  return model === launch.model ? launch : { ...launch, model };
+}
+
+function canonicalStoredNext(next: MemberNext | null | undefined): MemberNext | null | undefined {
+  if (!next) return next;
+  const model = canonicalModelId(next.model);
+  return model === next.model ? next : { ...next, model };
 }
 
 /** 기본값·빈 값은 쓰지 않는다 — 저장 모양에는 뜻이 있는 값만 남는다. */
@@ -640,8 +654,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const next = applied ? null : held === "not_applied" ? { ...stored!, failed: COORDINATES_NOT_APPLIED } : stored;
       const memberOutcome = options.observe ? deriveFailedOutcome(options.observe(member.id)) : undefined;
       return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}),
-        subagents: member.subagents === true, launch: member.launch ?? { mode: "route" as const },
-        sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: preset.model } : {}), ...(preset?.effort ? { effort: preset.effort } : {}),
+        subagents: member.subagents === true, launch: canonicalStoredLaunch(member.launch) ?? { mode: "route" as const },
+        sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: canonicalModelId(preset.model) } : {}), ...(preset?.effort ? { effort: preset.effort } : {}),
         routed: memberNode && !applied ? storedRouted(member.routed) : null,
         switchesLive: options.liveSwitch === true,
         next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null } : null,
@@ -659,7 +673,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       groupId: node ? node.groupId ?? null : liveGroup(pending!.theaterId, pending!.groupId),
       title: node?.title ?? pending!.title,
       createdAt: node?.ts.createdAt ?? pending!.createdAt,
-      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: launch.model } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started, ...(commanderOutcome ? { outcome: commanderOutcome } : {}) },
+      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: canonicalModelId(launch.model) } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started, ...(commanderOutcome ? { outcome: commanderOutcome } : {}) },
       note: stored.note,
       attachments: stored.attachments ?? [],
       results: stored.results ?? [],
@@ -728,7 +742,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           ...(mission.by ? { by: mission.by } : {}),
           operationId: member && options.operations.get(member.id) ? member.id : null,
           sessionName: member?.sessionName ?? null,
-          ...(member?.launch.mode === "model" && member.model ? { model: member.model } : {}),
+          ...(member?.launch.mode === "model" && member.model ? { model: canonicalModelId(member.model) } : {}),
           ...(member?.launch.mode === "model" && member.effort ? { effort: member.effort } : {}),
           records: (mission.records ?? []).map((record, index) => ({ ...record, kind: index === 0 ? "done" as const : "redone" as const })),
           seen: mission.seen ?? 0,
@@ -1399,14 +1413,15 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
     memberAdd: (objectiveId, input, by) => update(objectiveId, (stored) => {
       if ((stored.members?.length ?? 0) >= MAX_MISSIONS) throw new ObjectiveStoreError("too_many_members");
-      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(input.launch ? { launch: input.launch } : {}), ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
+      const launch = canonicalStoredLaunch(input.launch);
+      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(launch ? { launch } : {}), ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
     }),
     memberPatch: (objectiveId, memberId, patch) => update(objectiveId, (stored) => {
       if (!(stored.members ?? []).some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
       return { ...stored, members: stored.members!.map((member) => member.id === memberId ? {
         ...member, ...(patch.role !== undefined ? { role: patch.role.trim() } : {}),
         ...(patch.brief !== undefined ? { brief: patch.brief || undefined } : {}),
-        ...(patch.launch !== undefined ? { launch: patch.launch ?? undefined } : {}),
+        ...(patch.launch !== undefined ? { launch: canonicalStoredLaunch(patch.launch ?? undefined) } : {}),
         ...(patch.subagents !== undefined ? { subagents: patch.subagents ? true as const : undefined } : {}),
       } : member) };
     }),
@@ -1415,7 +1430,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (!target) throw new ObjectiveStoreError("unknown_member");
       const { routed: _routed, next: _next, launch: _launch, ...rest } = target;
       const value = <K extends "launch" | "routed" | "next">(key: K) => (patch[key] !== undefined ? patch[key] : target[key]) ?? undefined;
-      const launch = value("launch"), routed = value("routed"), next = value("next");
+      const launch = canonicalStoredLaunch(value("launch")), routed = value("routed"), next = canonicalStoredNext(value("next"));
       const changed: StoredMember = { ...rest, ...(launch ? { launch } : {}), ...(routed ? { routed } : {}), ...(next ? { next } : {}) };
       if (JSON.stringify(changed) === JSON.stringify(target)) return stored;
       return { ...stored, members: stored.members!.map((member) => (member.id === memberId ? changed : member)) };

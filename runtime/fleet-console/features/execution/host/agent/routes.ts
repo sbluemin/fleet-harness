@@ -1364,7 +1364,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 이번 기동의 강제 차단은 진입 시점의 다음 기동 정책이다. 세션 스냅샷의 옛 true는 명시 정책이 있으면 지지 못한다.
     const blockSubagents = subagentSpawnBlocked(node.payload);
     const blockUserQuestions = userQuestionsBlocked(node.payload);
-    const launchModel = launchSession?.model
+    // 저장된 bare 네이티브 별칭은 이 기동의 실행 id만 `[1m]`로 접는다. 다른 모델 문자열은 그대로다.
+    const canonicalStoredModel = launchSession?.model
+      ? resolveNativeClaudeModelAlias(launchSession.model) ?? launchSession.model
+      : undefined;
+    const launchModel = canonicalStoredModel
       || (cliId === "claude" ? "opus[1m]" : undefined);
     const launchEffort = launchSession?.effort || undefined;
     // cwd 해석은 상태 전이 전에 끝낸다 — 'starting'으로 올린 뒤 404로 빠지면 catch의 dormant
@@ -1389,7 +1393,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const payloadWithoutProvider = { ...node.payload };
         payloadWithoutProvider.session = {
           harness: "claude-code",
-          ...(launchSession?.model ? { model: launchSession.model } : {}),
+          ...(canonicalStoredModel ? { model: canonicalStoredModel } : {}),
           ...(launchSession?.effort ? { effort: launchSession.effort } : {}),
           ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
           ...(blockSubagents ? { disableSubagents: true } : {}),
@@ -1949,13 +1953,16 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 런치 메뉴와 같은 행을 세우되 CLI 설치 탐지는 건너뛴다 — 채팅이 이미 돌고 있으니 CLI는 있고,
     // 탐지는 바꿀 때마다 자식 프로세스를 띄워 응답을 초 단위로 늦춘다.
     const selection = deps.readAiGatewaySettings ? resolveAiGatewaySelection(deps.readAiGatewaySettings()) : undefined;
+    const requested = resolveNativeClaudeModelAlias(model) ?? model;
+    const sameLaunchModel = (candidate: string) => (resolveNativeClaudeModelAlias(candidate) ?? candidate) === requested;
     const row = buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], AGENT_OPERATION_TYPE, selection)
       .find((kind) => kind.id === "claude")
       ?.variants?.flatMap((group) => group.rows)
-      .find((candidate) => candidate.launch.model === model);
+      .find((candidate) => candidate.launch.model === model || (candidate.launch.model !== undefined && sameLaunchModel(candidate.launch.model)));
     if (!row) return { ok: false, error: "invalid_model" };
     if (effort !== null && !(row.chips ?? []).some((chip) => chip.launch.effort === effort)) return { ok: false, error: "invalid_effort" };
-    return chat.changeCoordinates(model, effort);
+    const nextModel = row.launch.model ? resolveNativeClaudeModelAlias(row.launch.model) ?? requested : requested;
+    return chat.changeCoordinates(nextModel, effort);
   }
 
   /**
@@ -2151,7 +2158,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
     if (!cwd) return { ok: false, status: 404, error: "theater_not_found" };
     // resume core와 같은 좌표 정책: launchModel이 없던 구세대 Operation은 native Opus 1M로 계속된다.
-    const model = readAgentSession(node.payload)?.model || "opus[1m]";
+    // 저장된 bare 네이티브 별칭은 시드부터 `[1m]`라서 첫 라이브 미터가 200k로 열리지 않는다.
+    const storedModel = readAgentSession(node.payload)?.model;
+    const model = (storedModel ? resolveNativeClaudeModelAlias(storedModel) ?? storedModel : undefined) || "opus[1m]";
     const launchEffort = resolveChatLaunchEffort(readAgentSession(node.payload)?.effort ?? "");
     // 터미널 런치가 `-n`으로 싣는 것과 같은 이름 — 다른 세션이 이 세션을 부르는 주소다.
     const sessionName = readAgentSession(node.payload)?.sessionName;

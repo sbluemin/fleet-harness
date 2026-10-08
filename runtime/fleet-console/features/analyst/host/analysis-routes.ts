@@ -92,7 +92,7 @@ type AnalysisRouteDeps = {
 };
 
 /** 분석가 기본 좌표 — 저장 모델이 로스터 밖일 때 서는 자리. */
-const ANALYST_FALLBACK_COORDINATE = { model: "sonnet", effort: "low" } as const;
+const ANALYST_FALLBACK_COORDINATE = { model: "sonnet[1m]", effort: "low" } as const;
 
 /**
  * 저장 좌표를 그대로 쓰지 못하고 폴백으로 연 세션은 서버 로그에 남긴다 — 패널은 카탈로그 선택의 `fallback`으로

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ModelCoordinatePicker } from "@fleet-console/sdk/components/model-coordinate-picker";
-import type { ModelRoster } from "@fleet-console/sdk/models";
+import { canonicalModelId as sdkCanonicalModelId, type ModelRoster } from "@fleet-console/sdk/models";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -102,16 +102,15 @@ export function launchWords(rows: readonly OperationLaunchVariantRow[], model: s
 }
 
 const GATEWAY_PREFIX = "claude-gateway--";
-/** 게이트웨이 접두를 벗기고 "codex/gpt-…" 를 카탈로그 표기 "codex--gpt-…" 로 맞춘 id. */
+/** SDK 정준 id에, 라우팅의 "codex/gpt-…" 와 카탈로그의 "codex--gpt-…" 만 맞춘다. */
 function canonicalModelId(model: string): string {
-  const stripped = model.startsWith(GATEWAY_PREFIX) ? model.slice(GATEWAY_PREFIX.length) : model;
-  return stripped.includes("--") ? stripped : stripped.replace("/", "--");
+  const canonical = sdkCanonicalModelId(model);
+  return canonical.includes("--") || !canonical.includes("/") ? canonical : canonical.replace(/\//g, "--");
 }
-/** 라우팅이 준 "claude-gateway--codex--gpt-…" 와 카탈로그의 "codex--gpt-…" 는 같은 모델 — 어느 표기로든 행을 찾는다. */
+/** 라우팅·스코프·bare 표기가 달라도 같은 모델의 행을 찾는다. */
 function findLaunchRow(rows: readonly OperationLaunchVariantRow[], model: string): OperationLaunchVariantRow | undefined {
-  const stripped = model.startsWith(GATEWAY_PREFIX) ? model.slice(GATEWAY_PREFIX.length) : model;
   const id = canonicalModelId(model);
-  return rows.find((candidate) => candidate.launch.model === model || candidate.launch.model === id || candidate.launch.model === stripped || candidate.launch.model === `${GATEWAY_PREFIX}${id}`);
+  return rows.find((candidate) => canonicalModelId(candidate.launch.model ?? candidate.id) === id);
 }
 /** 카탈로그에 없는 모델의 읽을 수 있는 이름 — 접두와 공급자 칸을 벗긴 뒤 다듬는다. */
 function bareModelId(model: string): string {
@@ -131,7 +130,7 @@ export function modelFullName(rows: readonly OperationLaunchVariantRow[], model:
   return caption && !name.toLowerCase().startsWith(caption.toLowerCase()) ? `${caption} ${name}` : name;
 }
 function prettyModelId(id: string): string {
-  return id.replace(/\[1m\]$/, "-1M").split(/[-_]+/).filter(Boolean)
+  return id.replace(/\[1m\]$/i, "").split(/[-_]+/).filter(Boolean)
     .map((token) => (/^(gpt|o\d|glm|qwen)/i.test(token) ? token.toUpperCase() : token.charAt(0).toUpperCase() + token.slice(1))).join(" ");
 }
 

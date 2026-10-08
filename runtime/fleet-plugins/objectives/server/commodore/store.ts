@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { canonicalModelId } from "@fleet-console/sdk/models";
+
 import { ObjectiveStoreError } from "../store.js";
 import {
   commodoreStateSchema,
@@ -262,6 +264,13 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
 }
 
 /** 없는 파일은 빈 상태, 깨진 파일은 옆으로 치우고 빈 상태 — 한 Theater 의 깨진 파일이 플러그인 전체를 세우지 않는다. */
+function foldCommodoreModels(state: CommodoreState): CommodoreState {
+  const model = state.model ? canonicalModelId(state.model) : state.model;
+  const commanderModel = state.commanderModel ? canonicalModelId(state.commanderModel) : state.commanderModel;
+  if (model === state.model && commanderModel === state.commanderModel) return state;
+  return { ...state, ...(model ? { model } : {}), ...(commanderModel ? { commanderModel } : {}) };
+}
+
 function readStateFile(file: string): CommodoreState {
   let raw: string;
   try { raw = fs.readFileSync(file, "utf8"); }
@@ -271,7 +280,7 @@ function readStateFile(file: string): CommodoreState {
   }
   try {
     const parsed = commodoreStateSchema.safeParse(JSON.parse(raw));
-    if (parsed.success) return parsed.data;
+    if (parsed.success) return foldCommodoreModels(parsed.data);
   } catch { /* 아래에서 치운다 */ }
   console.warn(`[objectives] commodore state unreadable, set aside: ${file}`);
   try { fs.renameSync(file, `${file}.broken-${Date.now()}-${randomUUID()}`); } catch { /* 치우지 못해도 빈 상태로 간다 */ }

@@ -1178,17 +1178,17 @@ describe("AgentChatRegistry — stopping a turn", () => {
 
     // 턴이 닫히는 경계에서 적용이 시작된다. 자식이 답하기 전에 다음 말이 도착한다.
     child!.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 5 });
-    await vi.waitFor(() => { expect(wire).toContain("model:sonnet"); });
+    await vi.waitFor(() => { expect(wire).toContain("model:sonnet[1m]"); });
     session.send("second");
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(wire).toEqual(["send:first", "model:sonnet"]);
+    expect(wire).toEqual(["send:first", "model:sonnet[1m]"]);
 
     releaseModel();
     await vi.waitFor(() => { expect(wire).toContain("send:second"); });
-    expect(wire).toEqual(["send:first", "model:sonnet", "settings:medium:plain", "send:second"]);
-    expect(applied).toEqual([{ model: "sonnet", effort: "medium" }]);
+    expect(wire).toEqual(["send:first", "model:sonnet[1m]", "settings:medium:plain", "send:second"]);
+    expect(applied).toEqual([{ model: "sonnet[1m]", effort: "medium" }]);
     const change = seen.map((entry) => entry.event).find((event) => event.kind === "coordinates");
-    expect(change).toMatchObject({ model: "sonnet", effort: "medium", from: { model: "opus[1m]", effort: "high" } });
+    expect(change).toMatchObject({ model: "sonnet[1m]", effort: "medium", from: { model: "opus[1m]", effort: "high" } });
     const pending = seen.map((entry) => entry.event).filter((event) => event.kind === "coordinates-pending");
     expect(pending.at(-1)).toEqual({ kind: "coordinates-pending", pending: null });
 

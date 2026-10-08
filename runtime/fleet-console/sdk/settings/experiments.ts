@@ -11,7 +11,7 @@
  * 유일한 좌표이고, 서버가 요청마다 여기서 읽어 세션에 싣는다.
  */
 
-import { AGENT_EFFORTS, isAgentEffort, type AgentEffort } from "../models/index.js";
+import { AGENT_EFFORTS, canonicalModelId, isAgentEffort, type AgentEffort } from "../models/index.js";
 
 export type ComputerUseBackendId = "sky-computer-use" | "cua-driver";
 export function isComputerUseBackendId(value: unknown): value is ComputerUseBackendId {
@@ -58,10 +58,10 @@ export interface ConsoleExperimentSettings {
 }
 
 /**
- * 보조 AI의 기본 좌표 — 판단이 드는 일이라 sonnet, 강도는 일상 단인 medium. 모델은 Claude 네이티브
- * 별칭이다. 별칭은 CLI가 스스로 풀므로 세대를 고정하지 않는다.
+ * 보조 AI의 기본 좌표 — 판단이 드는 일이라 Sonnet, 강도는 일상 단인 medium. 모델은 Claude 네이티브
+ * 1M 별칭이다. 별칭은 CLI가 스스로 풀므로 세대를 고정하지 않는다.
  */
-export const DEFAULT_EXPERIMENT_AIDE_SELECTION: ExperimentAideSelection = { model: "sonnet", effort: "medium" };
+export const DEFAULT_EXPERIMENT_AIDE_SELECTION: ExperimentAideSelection = { model: "sonnet[1m]", effort: "medium" };
 
 /** 사령관의 기본 좌표는 고정이다. Theater 별 좌표만 이 값을 덮는다. */
 const COMMODORE_DEFAULT_SELECTION: ExperimentAideSelection = Object.freeze({ model: "opus[1m]", effort: "high" });
@@ -99,8 +99,8 @@ export interface ExperimentModelOption {
 export const CLAUDE_EXPERIMENT_MODEL_OPTIONS: readonly ExperimentModelOption[] = [
   { id: "fable[1m]", label: "Fable" },
   { id: "opus[1m]", label: "Opus" },
-  { id: "sonnet", label: "Sonnet" },
-  { id: "haiku", label: "Haiku" },
+  { id: "sonnet[1m]", label: "Sonnet" },
+  { id: "haiku[1m]", label: "Haiku" },
 ];
 
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._\-\[\]:]{0,127}$/u;
@@ -123,7 +123,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
   const record = value as Record<string, unknown>;
   const aideModel = (aide: ExperimentAideId): string => {
     const raw = record[`${aide}Model`];
-    return isExperimentModelId(raw) ? raw : DEFAULT_EXPERIMENT_AIDE_SELECTION.model;
+    return isExperimentModelId(raw) ? canonicalModelId(raw) : DEFAULT_EXPERIMENT_AIDE_SELECTION.model;
   };
   const aideEffort = (aide: ExperimentAideId): ExperimentEffort => {
     const raw = record[`${aide}Effort`];

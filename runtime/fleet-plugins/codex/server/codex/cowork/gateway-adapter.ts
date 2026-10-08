@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 
 import type { AgentHost, AgentEvent, AgentSession } from "@fleet-console/sdk/agent";
-import { isAgentEffort } from "@fleet-console/sdk/models";
+import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import type { CoworkAgentClient, CoworkConnectOptions, CoworkConnector } from "./index.js";
 
@@ -30,7 +30,7 @@ export function createCoworkGatewayConnector(deps: CoworkGatewayAdapterDeps): Co
         // 실행 기록에는 좌표만 남긴다 — 프롬프트·문서 내용은 싣지 않는다.
         console.warn(`[codex] cowork model ${options.model || "(default)"} unavailable (${coordinate.reason ?? "fallback"}); running ${coordinate.model}`);
       }
-      const model = coordinate?.wireModel ?? (options.model || "sonnet");
+      const model = coordinate?.wireModel ?? (options.model ? canonicalModelId(options.model) : "sonnet[1m]");
       // 강도는 Agent SDK 사다리에 있는 값만 싣는다 — 사용자가 고르지 않은 강도로 도는 것보다 낫다.
       const effort = coordinate ? coordinate.effort : options.effort;
       const session = await deps.agent.createSession({

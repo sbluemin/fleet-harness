@@ -3,13 +3,12 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { AgentEffort } from "@fleet-console/sdk/models";
 
 /**
- * 기본 모델·강도. 사용자가 설정에서 고르지 않았을 때의 값이다. 구체 id가 아니라 별칭인 것이
- * 의도이고, 별칭은 자식이 보내기 전에 스스로 푼다 — 실측하면 `sonnet`이 와이어에서
- * `claude-sonnet-5`가 되므로 세대를 고정하지 않는다. 게이트웨이 카탈로그에 없는 별칭은 라우터가
- * 호출자 자격증명으로 Anthropic에 원문 중계한다. 즉 경로만 게이트웨이로 가고 과금처는 그대로다.
+ * 기본 모델·강도. 사용자가 설정에서 고르지 않았을 때의 값이다. 구체 세대가 아니라
+ * 가족 별칭 `sonnet[1m]`인 것이 의도다 — 별칭은 자식이 보내기 전에 스스로 푼다.
+ * 게이트웨이 카탈로그에 없는 별칭은 라우터가 호출자 자격증명으로 Anthropic에 원문 중계한다.
  */
 export const SCUTTLEBUTT_AGENT = {
-  model: "sonnet",
+  model: "sonnet[1m]",
   effort: "low",
 } as const;
 

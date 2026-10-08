@@ -66,8 +66,8 @@ export function claudeGatewayLaunchEnv(
   env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = "1";
   // Gateway가 tool_reference 계약을 보존한다.
   env.ENABLE_TOOL_SEARCH = "true";
-  // 1M ceiling은 `[1m]` 모델의 선제 압축을 켜고, unmarked custom model에서는
-  // Claude Code의 200k 좌표로 clamp된다. 명시적 운영자 override는 보존한다.
+  // 네이티브 Claude 실행 id는 네 가족 모두 `[1m]`이다. 이 ceiling은 그 마커의 선제 압축을 켜고,
+  // unmarked custom model에서는 Claude Code의 200k 좌표로 clamp된다. 명시적 운영자 override는 보존한다.
   env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ??= "1000000";
   // 위임은 한 단으로 끝난다. 1이면 세션 자신(depth 0)만 Agent를 부를 수 있고, 그 아래
   // 서브에이전트에게는 Agent 도구가 실리지 않는다 — 호출 후 거절이 아니라 목록에서 사라진다.

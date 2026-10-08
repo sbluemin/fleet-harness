@@ -68,7 +68,7 @@ describe("session controls", () => {
       pathname: "/plugins/scuttlebutt/chat/start",
     });
     expect(harness.writeJson.mock.calls.at(-1)?.[1]).toBe(200);
-    expect(resolve).toHaveBeenCalledWith({ model: "codex--gpt-6-luna", effort: "xhigh" }, "agent", { model: "sonnet", effort: "low" });
+    expect(resolve).toHaveBeenCalledWith({ model: "codex--gpt-6-luna", effort: "xhigh" }, "agent", { model: "sonnet[1m]", effort: "low" });
     expect(created[0]).toMatchObject({ admiral: "tori", model: "claude-gateway--codex--gpt-6-luna[1m]", effort: "xhigh", locale: "ko" });
     expect(created[0]).toHaveProperty("agent", harness.ctx.host.agent);
     const injected = (created[0] as { consoleUse: { consoleUse: { enabled: () => boolean; tools: string[] } } }).consoleUse.consoleUse;

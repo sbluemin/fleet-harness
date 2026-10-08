@@ -273,18 +273,30 @@ async function createAgentCliLaunchSpec(options: {
     let resolvedModel = options.model;
     let effort = options.effort;
     // 모델 로스터 — 새로 띄우는 Claude 네이티브 별칭도 로스터(Settings › AI Gateway) 소속을 본다. 로스터 밖(끈 Claude
-    // 항목)이거나 모델 없이 빈 로스터로 띄우면 요청을 고쳐 쓰지 않고 실행만 폴백(sonnet, 없으면 첫 행)하며 기록을 남긴다.
-    // 강도는 그 행의 노출 사다리로 클램프한다. 재개는 막지 않는다 — 이어 붙이는 세션은 원래 좌표 그대로다.
+    // 항목)이거나 모델 없이 빈 로스터로 띄우면 요청을 고쳐 쓰지 않고 실행만 폴백하며 기록을 남긴다.
+    // 강도는 그 행의 노출 사다리로 클램프한다. 로스터에 맞은 bare 입력도 실행 id는 정준 `[1m]`다.
+    // 재개는 이 블록을 타지 않는다 — 이어 붙이는 세션은 아래 별칭 접기만 받고 프로세스를 조사만으로 재시작하지 않는다.
     if (cliId === "claude" && gatewaySelection && !options.resumeSessionId) {
       const nativeAlias = resolvedModel ? resolveNativeClaudeModelAlias(resolvedModel) : undefined;
       if (resolvedModel ? nativeAlias !== undefined : gatewaySelection.models.length === 0) {
-        const coordinate = resolveRosterCoordinate(buildModelRoster(gatewaySelection, "launch"), { model: nativeAlias ?? null, effort: effort ?? null }, { model: ROSTER_FALLBACK_MODEL });
+        const roster = buildModelRoster(gatewaySelection, "launch");
+        const wantedEffort = effort ?? null;
+        let coordinate = resolveRosterCoordinate(roster, { model: resolvedModel ?? null, effort: wantedEffort }, { model: ROSTER_FALLBACK_MODEL });
+        // 정준 `[1m]` 입력이 아직 bare 행만 있는 가족(Haiku)에 막히지 않게, 같은 가족의 bare 행으로 한 번 더 본다.
+        if (coordinate.fallback && nativeAlias) {
+          const bare = nativeAlias.slice(0, -"[1m]".length);
+          if (resolvedModel !== bare) {
+            const viaBare = resolveRosterCoordinate(roster, { model: bare, effort: wantedEffort }, { model: ROSTER_FALLBACK_MODEL });
+            if (!viaBare.fallback) coordinate = viaBare;
+          }
+        }
         if (coordinate.fallback) {
           process.stderr.write(`[fleet-launch] ${JSON.stringify({ ts: new Date().toISOString(), event: "model_fallback", requested: nativeAlias ?? null, model: coordinate.model, effort: coordinate.effort ?? null, reason: coordinate.reason ?? null })}\n`);
           resolvedModel = coordinate.model;
           effort = coordinate.effort;
-        } else if (effort !== undefined) {
-          effort = coordinate.effort;
+        } else {
+          resolvedModel = nativeAlias ?? coordinate.model;
+          if (effort !== undefined) effort = coordinate.effort;
         }
       }
     }

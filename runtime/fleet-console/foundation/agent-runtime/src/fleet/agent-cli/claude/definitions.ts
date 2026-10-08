@@ -1,27 +1,37 @@
 import { createClaudeFamilyCliDefinition } from "./factory.js";
 
-// Claude Code's bare `fable` and `opus` aliases use their default context windows.
-// Console launches their 1M coordinates while keeping the plain menu labels.
-export const NATIVE_CLAUDE_MODEL_ALIASES = ["fable[1m]", "opus[1m]", "sonnet"] as const;
+// The installed Claude Code resolves Fable, Opus, Sonnet, and Haiku as native 1M.
+// Console's execution id is one `<family>[1m]` coordinate per family. Bare aliases
+// are accepted and folded; menu labels stay the plain family name.
+const NATIVE_CANONICAL_ALIAS = {
+  fable: "fable[1m]",
+  "fable[1m]": "fable[1m]",
+  opus: "opus[1m]",
+  "opus[1m]": "opus[1m]",
+  sonnet: "sonnet[1m]",
+  "sonnet[1m]": "sonnet[1m]",
+  haiku: "haiku[1m]",
+  "haiku[1m]": "haiku[1m]",
+} as const;
+
+export const NATIVE_CLAUDE_MODEL_ALIASES = ["fable[1m]", "opus[1m]", "sonnet[1m]", "haiku[1m]"] as const;
 export const ALL_NATIVE_CLAUDE_MODEL_ALIASES = [
   "fable[1m]",
   "opus[1m]",
+  "sonnet[1m]",
+  "haiku[1m]",
+  "fable",
+  "opus",
   "sonnet",
   "haiku",
-  "opus",
-  "fable",
-  "sonnet[1m]",
 ] as const;
 export const NATIVE_CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
-/** 네이티브 alias의 컨텍스트 선택은 바꾸지 않고 Claude Code에 전달한다. */
+/** bare·`[1m]` 입력을 실행 정준 id(`<family>[1m]`)로 접는다. 네 가족 밖이면 undefined. */
 export function resolveNativeClaudeModelAlias(
   model: string,
-): (typeof ALL_NATIVE_CLAUDE_MODEL_ALIASES)[number] | undefined {
-  if (ALL_NATIVE_CLAUDE_MODEL_ALIASES.includes(model as (typeof ALL_NATIVE_CLAUDE_MODEL_ALIASES)[number])) {
-    return model as (typeof ALL_NATIVE_CLAUDE_MODEL_ALIASES)[number];
-  }
-  return undefined;
+): (typeof NATIVE_CLAUDE_MODEL_ALIASES)[number] | undefined {
+  return NATIVE_CANONICAL_ALIAS[model as keyof typeof NATIVE_CANONICAL_ALIAS];
 }
 
 

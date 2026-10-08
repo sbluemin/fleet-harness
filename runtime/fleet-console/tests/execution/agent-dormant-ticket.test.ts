@@ -50,7 +50,7 @@ describe("agent dormant ticket guards", () => {
     expect(control.observe(id)?.surface).toBe("terminal");
     expect(await control.request(caller, { kind: "send", operationId: id, text: "Begin" })).toEqual({ operationId: id, delivery: "queued" });
     expect(harness.attach).toHaveBeenCalledTimes(1);
-    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId: id, model: "sonnet", effort: "low", sessionName: "commander", disableSubagents: true }));
+    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId: id, model: "sonnet[1m]", effort: "low", sessionName: "commander", disableSubagents: true }));
     expect(harness.attach.mock.calls[0]![0]).not.toHaveProperty("resumeSessionId");
   });
 

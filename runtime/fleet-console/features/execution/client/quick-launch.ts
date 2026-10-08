@@ -3,6 +3,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVarian
 import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 import type { OperationActivityVisual } from "./operation-activity.js";
 
+import { canonicalQuickLaunchModel } from "./quick-launch-preferences.js";
 import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, searchTokens, type OperationSearchEntry, type OperationSearchGroup } from "../../../core/client/src/integration/operation-search.js";
 import type { ConsoleState } from "../../../core/client/src/integration/types.js";
 
@@ -81,29 +82,17 @@ export function findVariantLaunchKind(catalog: readonly OperationCatalogPlugin[]
 }
 
 /**
- * Canvas/Quick Launch 메뉴의 Opus/Fable 행은 Claude Code의 1M 좌표를 쓴다. 업그레이드 전
- * 저장된 bare native selection은 같은 행으로 이어 붙인다 — 브라우저 코드는 fleet-admiral를 끌어올 수
- * 없어 서버의 resolveNativeClaudeModelAlias와 같은 작은 정규화만 복제한다.
- */
-function normalizeRememberedNativeModel(model: string): string {
-  if (model === "opus") return "opus[1m]";
-  if (model === "fable") return "fable[1m]";
-  return model;
-}
-
-/**
  * 기억해 둔 조합을 현재 카탈로그에 비추어 되살린다. 처음 열었거나 기억이 낡았으면 native Opus를
  * 기본으로 삼고, 그 행조차 없을 때만 ★행과 첫 행 순서로 물러난다 — 사용자가 Gateway 기본 모델을
  * 바꿔도 Quick Launch의 첫 모델이 함께 흔들리지 않으며, 낡은 조합을 보내 생기는 409도 막는다.
+ * 기억한 native 좌표는 가족당 `[1m]` 한 행으로 찾는다.
  */
 export function resolveSelection(
   groups: readonly OperationLaunchVariantGroup[],
   remembered: { readonly model: string | null; readonly effort: string | null },
 ): ResolvedSelection {
   const rows = groups.flatMap((group) => group.rows);
-  const rememberedModel = remembered.model === null
-    ? null
-    : normalizeRememberedNativeModel(remembered.model);
+  const rememberedModel = canonicalQuickLaunchModel(remembered.model);
   const rememberedRow = rememberedModel === null
     ? undefined
     : rows.find((row) => row.launch.model === rememberedModel);

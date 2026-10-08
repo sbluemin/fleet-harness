@@ -14,6 +14,7 @@ import {
   launchProviderFromModelId,
   type LaunchProviderGlyphId,
 } from "@fleet-console/sdk/components/launch-provider-glyphs";
+import { canonicalModelId } from "@fleet-console/sdk/models";
 
 /** 게이트웨이 모델 id의 Console 접두. 표시에서는 벗긴다. */
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
@@ -25,7 +26,12 @@ const GATEWAY_MODEL_PREFIX = "claude-gateway--";
 const NATIVE_MODEL_LABELS: Readonly<Record<string, string>> = {
   "fable[1m]": "Fable",
   "opus[1m]": "Opus",
+  "sonnet[1m]": "Sonnet",
+  "haiku[1m]": "Haiku",
+  fable: "Fable",
+  opus: "Opus",
   sonnet: "Sonnet",
+  haiku: "Haiku",
 };
 
 const EFFORT_LABELS: Readonly<Record<string, string>> = {
@@ -58,7 +64,7 @@ export interface AgentChatSessionCoordinates {
 
 /** payload의 `launchModel`을 표시 이름으로 옮긴다. 알 수 없는 게이트웨이 id는 접두만 벗긴다. */
 function modelLabel(model: string): string {
-  const named = NATIVE_MODEL_LABELS[model];
+  const named = NATIVE_MODEL_LABELS[canonicalModelId(model)] ?? NATIVE_MODEL_LABELS[model];
   if (named) return named;
   const bare = model.startsWith(GATEWAY_MODEL_PREFIX) ? model.slice(GATEWAY_MODEL_PREFIX.length) : model;
   // 게이트웨이 id는 `<provider>--<model>` 범위형이다. 각인은 한 줄이므로 모델 쪽만 남긴다.
