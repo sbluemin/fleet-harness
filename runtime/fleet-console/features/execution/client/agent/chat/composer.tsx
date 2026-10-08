@@ -15,12 +15,12 @@ import {
   syncComposerHighlight,
 } from "@fleet-console/sdk/composer";
 
-import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { CaptionHistoryFoldGlyph, CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
 
 import { getT } from "../i18n/index.js";
 import { MobileGlyph, useMobileSurface } from "../mobile-surface.js";
 import type { TerminalMessageKey } from "../i18n/index.js";
-import { CHAT_READING_WIDTHS, nextChatReadingWidth, setChatReadingWidth, useChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
+import { CHAT_READING_WIDTHS, nextChatReadingWidth, setChatHistoryAutoFold, setChatReadingWidth, useChatHistoryAutoFold, useChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import type { ChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import type { AgentChatCatalog, AgentChatQueueEntry } from "./chat-events.js";
 import { ChatComposerDeck, renderComposerSpans } from "./composer-deck-view.js";
@@ -42,6 +42,31 @@ export const READING_WIDTH_LABEL_KEY = {
    (reading-measure)로 두 폭을 모두 얻으려고 둔다 — 프리셋을 바꾸면 이 비율도 함께 바꾼다.
    ch가 아니라 UI 글자 크기에 자릿수를 곱한 값이라 굵기·서체·테마가 폭을 흔들지 않는다. */
 const WIDE_OVER_READING = 1.4;
+
+/**
+ * 이전 대화 자동 접기 글리프 — 폭 글리프 왼쪽에 서는 켬/끔 문이다. 값은 콘솔 단위 설정이라
+ * 누르는 즉시 열린 모든 채팅 패널이 따른다(끄면 펼치고, 켜면 접는다). 폭 글리프와 같은 30px
+ * 과녁·같은 잉크 문법을 쓰고, 켜짐은 brass 잉크와 brass-glow 면으로 선다.
+ *
+ * 구성원 바닥 줄(MemberChatFooter)이 같은 문을 쓰므로 공유한다.
+ */
+export function HistoryFoldButton({ language }: { readonly language: "en" | "ko" }) {
+  const t = getT(language);
+  const autoFold = useChatHistoryAutoFold();
+  const label = t(autoFold ? "terminal.chat.historyAutoFoldOn" : "terminal.chat.historyAutoFoldOff");
+  return (
+    <button
+      type="button"
+      className="agent-chat-composer-fold"
+      onClick={() => setChatHistoryAutoFold(!autoFold)}
+      aria-pressed={autoFold}
+      aria-label={label}
+      title={label}
+    >
+      <CaptionHistoryFoldGlyph autoFold={autoFold} />
+    </button>
+  );
+}
 
 /**
  * 지금 이 판면에서 **서로 다른 폭으로 그려지는** 프리셋만 추린다.
@@ -580,7 +605,7 @@ export function AgentChatComposer({
       <>
       {/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용 표식)와 채팅 폭 글리프가 여기 선다; 오류 알림은
           좌표 자리를 잠시 빌린다(Cowork·Analyst의 「모델 · 강도 · Settings에서 변경」 줄과 같은 자리). */}
-      {/* 표시줄은 세 칸이다: 좌표(또는 알림) · 선반 · 폭 글리프. 양 끝은 자기 크기만큼만 쓰고
+      {/* 표시줄은 세 칸이다: 좌표(또는 알림) · 선반 · 글리프 묶음(자동 접기·폭). 양 끝은 자기 크기만큼만 쓰고
           가운데가 남는 폭을 전부 가져간다 — 그래서 선반의 제목은 이 줄에서 가장 먼저 줄어드는
           글자이고, 좌표와 글리프의 과녁은 폭이 어떻든 움직이지 않는다. */}
       <div className="agent-chat-composer-meta">
@@ -588,27 +613,32 @@ export function AgentChatComposer({
           <span className="agent-chat-composer-error" role="alert">{notice}</span>
         ) : coordinate}
         {ledgeNode ?? <span className="agent-chat-composer-gap" aria-hidden="true" />}
-        {/* 채팅 폭 글리프 — 읽는 폭과 쓰는 폭을 함께 지는 하나의 문이다. 캡션에 있던 같은 순환을
-            이 자리로 내렸다: 폭이 바뀌는 판면 바로 옆이라 결과가 같은 시야에 들어오고, 캡션이
-            물러나는 좁은 패널에서도 남는 쪽이 여기다. 이 폭에서 세 단이 전부 같은 폭이면
-            문을 지우는 대신 물러나 세운다 — 왜 아무 일도 없는지를 말풍선이 말한다. */}
-        <button
-          type="button"
-          className="agent-chat-composer-width"
-          onClick={() => {
-            if (widthCollapsed) return;
-            setChatReadingWidth(nextChatReadingWidth(readingWidth, widthChoices));
-          }}
-          aria-disabled={widthCollapsed || undefined}
-          aria-label={widthCollapsed
-            ? t("terminal.chat.widthSame")
-            : t("terminal.chat.widthCycleAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
-          title={widthCollapsed
-            ? t("terminal.chat.widthSame")
-            : t("terminal.chat.widthCycleAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
-        >
-          <CaptionReadingWidthGlyph preset={readingWidth} />
-        </button>
+        {/* 오른쪽 칸은 글리프 묶음 하나다 — [자동 접기][폭]. 구성원 바닥 줄의 도구 묶음과 같은
+            방식이라 표시줄은 두 표면 모두 세 칸 그리드를 그대로 지킨다. */}
+        <span className="agent-chat-composer-glyphs">
+          <HistoryFoldButton language={language} />
+          {/* 채팅 폭 글리프 — 읽는 폭과 쓰는 폭을 함께 지는 하나의 문이다. 캡션에 있던 같은 순환을
+              이 자리로 내렸다: 폭이 바뀌는 판면 바로 옆이라 결과가 같은 시야에 들어오고, 캡션이
+              물러나는 좁은 패널에서도 남는 쪽이 여기다. 이 폭에서 세 단이 전부 같은 폭이면
+              문을 지우는 대신 물러나 세운다 — 왜 아무 일도 없는지를 말풍선이 말한다. */}
+          <button
+            type="button"
+            className="agent-chat-composer-width"
+            onClick={() => {
+              if (widthCollapsed) return;
+              setChatReadingWidth(nextChatReadingWidth(readingWidth, widthChoices));
+            }}
+            aria-disabled={widthCollapsed || undefined}
+            aria-label={widthCollapsed
+              ? t("terminal.chat.widthSame")
+              : t("terminal.chat.widthCycleAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
+            title={widthCollapsed
+              ? t("terminal.chat.widthSame")
+              : t("terminal.chat.widthCycleAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
+          >
+            <CaptionReadingWidthGlyph preset={readingWidth} />
+          </button>
+        </span>
       </div>
       </>
       )}

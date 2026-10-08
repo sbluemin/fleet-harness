@@ -63,6 +63,11 @@ export function nextChatReadingWidth(
   return list[(index + 1) % list.length] ?? DEFAULT_CHAT_READING_WIDTH;
 }
 
+// 이전 대화 자동 접기. 켜 두면(기본) 새 턴이 설 때마다 앞선 문답을 밴드 뒤로 접는다 — 이 설정이
+// 생기기 전의 동작 그대로다. 끄면 앞선 문답을 펼친 채 둔다. 채팅 폭처럼 서버 영속이라 모든 채팅
+// 패널과 창이 같은 값을 따르고, 밴드를 손으로 펼치고 접는 것은 그 패널에서만 유효하다.
+export const DEFAULT_CHAT_HISTORY_AUTO_FOLD = true;
+
 export type TerminalFontId = "cascadia" | "jetbrains" | "fira-code" | "source-code-pro";
 
 export type TerminalFontSource = "curated" | "custom";
@@ -264,6 +269,8 @@ interface TerminalPrefsState {
   readonly inactiveFlush: TerminalInactiveFlush;
   readonly font: TerminalFontSettings;
   readonly chatReadingWidth: ChatReadingWidth;
+  /** 새 턴이 설 때 앞선 문답을 밴드 뒤로 접는가. 끄면 펼친 채 둔다. */
+  readonly chatHistoryAutoFold: boolean;
   readonly scrollback: TerminalScrollback;
   /** 드래그로 고른 글을 곧바로 클립보드에 넣는가. 끄면 선택만 하고, 복사는 ⌘C/Ctrl+Shift+C로 한다. */
   readonly copyOnSelect: boolean;
@@ -279,6 +286,7 @@ const listeners = new Set<Listener>();
 let state: TerminalPrefsState = initState();
 let settingsCapability: ClientSettingsCapability | null = null;
 let chatReadingWidthWriteEpoch = 0;
+let chatHistoryAutoFoldWriteEpoch = 0;
 let behaviorWriteEpoch = 0;
 let terminalSettingsWriteFlight: Promise<void> | null = null;
 
@@ -310,6 +318,7 @@ export function connectTerminalFontSettings(port: TerminalFontSettingsPort): voi
 export function connectTerminalSettings(settings: ClientSettingsCapability): void {
   // 재연결 시 진행 중인 채팅 폭 하이드레이션을 폐기한다.
   chatReadingWidthWriteEpoch += 1;
+  chatHistoryAutoFoldWriteEpoch += 1;
   behaviorWriteEpoch += 1;
   settingsCapability = settings;
   void hydrateTerminalSettingsFromServer();
@@ -325,6 +334,10 @@ export function useTerminalPrefs(): TerminalPrefsState {
 
 export function useChatReadingWidth(): ChatReadingWidth {
   return useSyncExternalStore(subscribe, () => state.chatReadingWidth, () => state.chatReadingWidth);
+}
+
+export function useChatHistoryAutoFold(): boolean {
+  return useSyncExternalStore(subscribe, () => state.chatHistoryAutoFold, () => state.chatHistoryAutoFold);
 }
 
 
@@ -366,9 +379,16 @@ export function setChatReadingWidth(width: ChatReadingWidth): void {
   void pushChatReadingWidthToServer(width);
 }
 
+export function setChatHistoryAutoFold(autoFold: boolean): void {
+  chatHistoryAutoFoldWriteEpoch += 1;
+  patchState({ chatHistoryAutoFold: autoFold });
+  void pushBehaviorToServer({ chatHistoryAutoFold: autoFold });
+}
+
 async function hydrateTerminalSettingsFromServer(): Promise<void> {
   if (!settingsCapability) return;
   const widthEpoch = chatReadingWidthWriteEpoch;
+  const autoFoldEpoch = chatHistoryAutoFoldWriteEpoch;
   const behaviorEpoch = behaviorWriteEpoch;
   try {
     const value = await settingsCapability.read(null);
@@ -386,6 +406,11 @@ async function hydrateTerminalSettingsFromServer(): Promise<void> {
       const storedWidth = value["chatReadingWidth"];
       if (isChatReadingWidth(storedWidth) && widthEpoch === chatReadingWidthWriteEpoch) {
         patchState({ chatReadingWidth: storedWidth });
+      }
+      // 값이 없으면 기본(켜짐)이 그대로 선다 — 이 설정이 생기기 전 콘솔의 동작이다.
+      const storedAutoFold = value["chatHistoryAutoFold"];
+      if (typeof storedAutoFold === "boolean" && autoFoldEpoch === chatHistoryAutoFoldWriteEpoch) {
+        patchState({ chatHistoryAutoFold: storedAutoFold });
       }
     }
 
@@ -477,7 +502,7 @@ function getSnapshot(): TerminalPrefsState {
 
 function initState(): TerminalPrefsState {
   if (typeof window === "undefined") {
-    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
+    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, chatHistoryAutoFold: DEFAULT_CHAT_HISTORY_AUTO_FOLD, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
   }
-  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
+  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, chatHistoryAutoFold: DEFAULT_CHAT_HISTORY_AUTO_FOLD, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
 }
