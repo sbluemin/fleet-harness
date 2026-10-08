@@ -2207,4 +2207,3 @@ describe("Objectives contract", () => {
     }
   });
 });
-
