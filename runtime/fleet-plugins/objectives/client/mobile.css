@@ -31,6 +31,8 @@
 .objectives-m-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .objectives-m-tx small { display: block; margin-top: 1px; font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
 .objectives-m-tx small.is-awaiting { color: var(--m-awaiting); }
+/* 목록 줄의 구성원 실패 — 확인하지 않은 실패가 남은 동안만(데스크톱 사이드바 줄 메모와 같은 판정). */
+.objectives-m-tx small .objectives-m-failed { color: var(--m-danger); }
 .objectives-m-ri { display: flex; align-items: center; color: var(--m-text-muted); }
 .objectives-m-ri svg { width: 22px; height: 22px; }
 

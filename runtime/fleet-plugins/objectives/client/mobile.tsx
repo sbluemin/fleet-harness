@@ -9,6 +9,7 @@ import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/se
 
 import type { Decision, DecisionQuestion, Objective, ObjectiveMember } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
+import { memberFailureOpen } from "./clusters.js";
 import { commodoreBoardOf, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
@@ -167,6 +168,8 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
     // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
     const members = objective.members.length;
     const total = objective.criteria.length;
+    // 데스크톱 사이드바 줄 메모와 같은 판정 — 확인하지 않은 구성원 실패가 남은 동안만 선다.
+    const failed = memberFailureOpen(objective);
     return (
       <button key={objective.id} type="button" data-press="r2" className="objectives-m-row is-two" onClick={() => open(objective)}>
         <StatusMark state={objectiveGlyph(objective, operations)} />
@@ -175,6 +178,7 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
           <small className={pending ? "is-awaiting" : undefined}>
             {pending ? t("objectives.mobile.row.decision", { count: requestCount(objective) }) : ""}
             {pending && commodore.active && objective.operator !== "human" ? `${t("objectives.commodore.note.answering")} · ` : ""}
+            {failed ? <><span className="objectives-m-failed">{t("objectives.note.memberFailed")}</span>{" · "}</> : null}
             {total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members })}
           </small>
         </span>
