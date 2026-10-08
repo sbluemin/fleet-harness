@@ -22,5 +22,5 @@ it("keeps a removed routing model stored but runs the roster fallback instead of
     instructions: [], state: {}, criteria: { seat: "x" }, difficulty: { instructions: [], criteria: {} },
     spawnProcess: () => { throw new Error("unexpected spawn"); },
   }).catch(() => undefined);
-  expect(turns).toEqual([{ model: "sonnet", effort: "low" }]);
+  expect(turns).toEqual([{ model: "sonnet[1m]", effort: "low" }]);
 });

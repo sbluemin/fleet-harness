@@ -85,9 +85,9 @@ const EFFORT_ORDER: readonly string[] = [...AGENT_EFFORTS, "ultra"];
 
 /**
  * 로스터가 비었을 때 실행이 서는 최후 좌표. 라우터가 Claude 네이티브 별칭을 호출자 자격증명으로
- * Anthropic에 원문 중계하므로, Gateway에서 아무것도 켜지 않아도 이 모델은 돈다.
+ * Anthropic에 원문 중계하므로, Gateway에서 아무것도 켜지 않아도 이 모델은 돈다. Claude 가족은 모두 1M이다.
  */
-export const ROSTER_FALLBACK_MODEL = "sonnet";
+export const ROSTER_FALLBACK_MODEL = "sonnet[1m]";
 
 /**
  * 로스터가 비었을 때 실행 카탈로그가 세우는 유일한 띠의 id. 그 띠의 한 행은 최후 폴백 좌표다 — 실행 표면은 이 띠를
@@ -109,13 +109,15 @@ const LEGACY_GATEWAY_PREFIX = "claude-gateway--";
 const ONE_MILLION_MARKER = "[1m]";
 const CLAUDE_SCOPE = "claude--";
 const CLAUDE_ONE_MILLION_SUFFIX = "-1m";
+/** Claude Code 네이티브 가족. 모두 1M 창 하나로만 서므로 bare·200k 표기는 하위 호환 입력일 뿐이다. */
+const CLAUDE_NATIVE_FAMILIES: ReadonlySet<string> = new Set(["fable", "opus", "sonnet", "haiku"]);
 
 /**
  * 저장값에 남은 옛 문법을 정준 id(실행 id)로 접는다. 읽을 때만 쓰고, 다음 저장이 정준 id로 바꾼다.
  *
  * - `claude-gateway--codex--gpt-6-luna[1m]` → `codex--gpt-6-luna` (Claude Code 디스커버리 표기)
- * - `claude--opus-1m` → `opus[1m]`, `claude--sonnet` → `sonnet` (Gateway scoped Claude 항목)
- * - 그 밖(`opus[1m]`, `codex--gpt-6-luna`)은 이미 정준 id다.
+ * - Claude 네이티브 가족은 `sonnet`·`claude--sonnet`·`claude--sonnet-1m` 모두 `sonnet[1m]` (가족당 1M 한 좌표)
+ * - 그 밖(`opus[1m]`, `codex--gpt-6-luna`, 명시적 `claude-<버전>` 원문)은 이미 정준 id다.
  */
 export function canonicalModelId(id: string): string {
   let value = id.trim();
@@ -125,11 +127,12 @@ export function canonicalModelId(id: string): string {
   }
   if (value.startsWith(CLAUDE_SCOPE)) {
     const alias = value.slice(CLAUDE_SCOPE.length);
-    return alias.endsWith(CLAUDE_ONE_MILLION_SUFFIX)
-      ? `${alias.slice(0, -CLAUDE_ONE_MILLION_SUFFIX.length)}${ONE_MILLION_MARKER}`
+    const family = alias.endsWith(CLAUDE_ONE_MILLION_SUFFIX) ? alias.slice(0, -CLAUDE_ONE_MILLION_SUFFIX.length) : alias;
+    return alias.endsWith(CLAUDE_ONE_MILLION_SUFFIX) || CLAUDE_NATIVE_FAMILIES.has(family)
+      ? `${family}${ONE_MILLION_MARKER}`
       : alias;
   }
-  return value;
+  return CLAUDE_NATIVE_FAMILIES.has(value) ? `${value}${ONE_MILLION_MARKER}` : value;
 }
 
 export function rosterRows(roster: ModelRoster | null | undefined): readonly OperationLaunchVariantRow[] {
@@ -192,7 +195,7 @@ export interface ResolvedModelCoordinate {
 
 /**
  * 저장 좌표를 로스터에 대조한다. 저장 모델이 비어 있으면 `fallback` 좌표(기본값)를 쓰고, 그것은 폴백이
- * 아니다. 저장 모델이 로스터 밖이면 `fallback` 좌표 → `sonnet` → 첫 행 순으로 서고 `fallback:true`다.
+ * 아니다. 저장 모델이 로스터 밖이면 `fallback` 좌표 → `sonnet[1m]` → 첫 행 순으로 서고 `fallback:true`다.
  */
 export function resolveRosterCoordinate(
   roster: ModelRoster | null | undefined,

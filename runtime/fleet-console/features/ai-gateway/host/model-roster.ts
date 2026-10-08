@@ -72,7 +72,7 @@ const ROSTER_PROVIDER_ORDER: readonly GatewayProvider[] = [
 ];
 
 /**
- * 빈 로스터의 launch 카탈로그 — 최후 폴백 좌표(sonnet) 한 행만 둔 띠. 실행 표면이 모델 행 없이 멈추지 않게 하고,
+ * 빈 로스터의 launch 카탈로그 — 최후 폴백 좌표(Sonnet 1M) 한 행만 둔 띠. 실행 표면이 모델 행 없이 멈추지 않게 하고,
  * 그 띠 id로 「폴백」임을 드러낸다. 강도 축은 launch 대상의 전체 축이다(서버가 실행 시 그대로 싣는다).
  */
 export function buildRosterFallbackGroup(): OperationLaunchVariantGroup {
@@ -85,7 +85,7 @@ export function buildRosterFallbackGroup(): OperationLaunchVariantGroup {
       id: model,
       label: "Sonnet",
       launch: { model },
-      contextWindow: CLAUDE_DEFAULT_CONTEXT_WINDOW,
+      contextWindow: CLAUDE_COMPAT_CONTEXT_WINDOW,
       effortAxis: [...ordinary, ULTRACODE_LAUNCH_EFFORT],
       gatedEfforts: ["max", ULTRACODE_LAUNCH_EFFORT],
       chips: [...ordinary, ULTRACODE_LAUNCH_EFFORT].map((effort) => effortChip(model, effort)),
@@ -106,7 +106,7 @@ export function buildModelRoster(selection: AiGatewaySelection, target: ModelRos
     groups.push({
       id: modelRosterGroupId(provider),
       label: GATEWAY_PROVIDER_NAMES[provider],
-      rows: models.map((model) => toRosterRow(model, selection, target, models)),
+      rows: models.map((model) => toRosterRow(model, selection, target)),
     });
   }
   return groups;
@@ -116,7 +116,6 @@ function toRosterRow(
   model: GatewayModel,
   selection: AiGatewaySelection,
   target: ModelRosterTarget,
-  siblings: readonly GatewayModel[],
 ): OperationLaunchVariantRow {
   const id = canonicalGatewayModelId(model);
   // 일상 단은 노출/카탈로그 사다리만 따른다 — ultra는 이 어휘에 없으니 여기서는 절대 나오지 않는다.
@@ -124,7 +123,8 @@ function toRosterRow(
   const contextWindow = rosterContextWindow(model, id);
   const base: ModelRosterRow = {
     id,
-    label: rosterLabel(model, siblings),
+    // Claude 가족은 1M 한 좌표뿐이므로 이름이 곧 그 좌표다.
+    label: bareModelName(model),
     launch: { model: id },
     ...buildGatewayModelQuota(model),
     ...(contextWindow ? { contextWindow } : {}),
@@ -161,17 +161,9 @@ function effortChip(model: string, effort: string) {
 }
 
 function rosterContextWindow(model: GatewayModel, id: string): number | undefined {
-  // Claude Code는 두 좌표만 안다 — `[1m]` 표기가 1M 창을 켠다.
+  // Claude Code는 두 좌표만 안다 — `[1m]` 표기가 1M 창을 켠다. Claude 가족의 실행 id는 늘 `[1m]`이다.
   if (model.provider === "claude") return id.endsWith("[1m]") ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
   return gatewayModelContextWindow(model) ?? undefined;
-}
-
-/** 같은 Claude 가족의 200k·1M 좌표를 둘 다 켰을 때만 1M 행에 표식을 붙인다 — 하나뿐이면 이름이 곧 그 좌표다. */
-function rosterLabel(model: GatewayModel, siblings: readonly GatewayModel[]): string {
-  const label = bareModelName(model);
-  if (model.provider !== "claude" || !model.id.endsWith("-1m")) return label;
-  const plain = model.id.slice(0, -"-1m".length);
-  return siblings.some((sibling) => sibling.id === plain) ? `${label} 1M` : label;
 }
 
 /** 정준 id의 Agent SDK wire id. Claude는 별칭, 나머지는 Claude Code 디스커버리 표기(`claude-gateway--…`). */
@@ -193,7 +185,7 @@ export function createModelRosterHost(deps: {
     try {
       settings = deps.readSettings();
     } catch {
-      // 손상·잠금 경합은 빈 로스터로 답한다 — 실행은 최후 폴백(sonnet)으로 계속 선다.
+      // 손상·잠금 경합은 빈 로스터로 답한다 — 실행은 최후 폴백(Sonnet 1M)으로 계속 선다.
       settings = undefined;
     }
     return buildModelRoster(resolveAiGatewaySelection(settings), target);

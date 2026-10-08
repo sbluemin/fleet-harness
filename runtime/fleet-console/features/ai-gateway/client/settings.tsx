@@ -7,7 +7,7 @@ import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemP
 import { getModelAuthStoreState, loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 import { ModelCoordinatePicker, type ModelCoordinatePickerLabels } from "@fleet-console/sdk/components/model-coordinate-picker";
-import { findRosterRow, rosterRows } from "@fleet-console/sdk/models";
+import { ROSTER_FALLBACK_MODEL, findRosterRow, rosterRows } from "@fleet-console/sdk/models";
 import { useModelRoster } from "./model-roster-store.js";
 
 /** 이 화면의 모델 선택기 문구 — 접근 이름은 그 행의 제목이다. */
@@ -405,7 +405,7 @@ function AiGatewayRoutingCard() {
               <ModelCoordinatePicker
                 roster={routingRoster}
                 value={state.delegationRoutingModel ? { model: state.delegationRoutingModel } : {}}
-                fallback={{ model: "sonnet" }}
+                fallback={{ model: ROSTER_FALLBACK_MODEL }}
                 effort="none"
                 disabled={saving.has("delegationRoutingModel")}
                 onChange={(next) => { if (next.model) void setSystemPromptSettingsField("delegationRoutingModel", next.model); }}
@@ -416,7 +416,7 @@ function AiGatewayRoutingCard() {
           ) : null}
           {mode === "model" ? <p className="global-settings-help">{t("terminal.settings.aiGatewayRoutingModelNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p> : null}
           {delegable === 0 ? <p className="global-settings-help" role="status">{t("terminal.settings.aiGatewayRoutingNoCandidates")}</p> : null}
-          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? "sonnet"}`} mode={mode} disabled={modeSaving || delegable === 0 || (mode === "jev" && !typesafeSignedIn)} />
+          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? ROSTER_FALLBACK_MODEL}`} mode={mode} disabled={modeSaving || delegable === 0 || (mode === "jev" && !typesafeSignedIn)} />
         </>
       ) : null}
     </SettingsGroup>
