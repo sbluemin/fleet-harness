@@ -225,6 +225,8 @@ const ANALYST_TOOL = defineConsoleTool({
 interface ConsoleUseToolEntry {
   readonly id: string;
   readonly schema: ConsoleActionSchema;
+  /** 읽기 action 까지 control 연결에만 싣는다 — 읽기 전용 연결에는 도구 자체가 없다. */
+  readonly controlOnly?: boolean;
   execute(call: Readonly<Record<string, unknown>>, ctx: AgentToolCtx): Promise<unknown>;
 }
 
@@ -365,8 +367,8 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     });
     return { snapshotAt: current?.takenAt ?? null, values: represented };
   };
-  const define = <C extends Readonly<Record<string, unknown>>>(tool: ConsoleTool<C>, run: (call: C, ctx: AgentToolCtx) => unknown | Promise<unknown>): ConsoleUseToolEntry => ({
-    id: tool.name, schema: tool,
+  const define = <C extends Readonly<Record<string, unknown>>>(tool: ConsoleTool<C>, run: (call: C, ctx: AgentToolCtx) => unknown | Promise<unknown>, options: { readonly controlOnly?: boolean } = {}): ConsoleUseToolEntry => ({
+    id: tool.name, schema: tool, ...(options.controlOnly ? { controlOnly: true } : {}),
     execute: async (call, ctx) => {
       try { return text(await run(call as C, ctx)); }
       catch (error) {
@@ -624,7 +626,9 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       }
     }
   }));
+  // 분석가 패널은 읽기도 호출자가 풀린 control 연결에서만 연다(예전 경계 그대로).
   entries.push(define(ANALYST_TOOL, async (call, ctx) => {
+    const me = requireCaller(ctx);
     const op = node(call.operationId);
     if (call.action === "artifact") {
       const result = need("analystArtifacts")(op.id, call.artifactId);
@@ -633,7 +637,6 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       return { operationId: op.id, artifacts: result.artifacts, html: result.html };
     }
     if (call.action === "ask") {
-      const me = requireCaller(ctx);
       if (!budget(ctx, "analyst", 5)) throw new ConsoleControlError("analyst_budget_exhausted");
       gesture(ctx, "console_operation_analyst", `${op.title} 분석가에게 물음`, "input", opTarget(op.id));
       const result = await need("analystAsk")(op.id, call.question, me, ctx.signal);
@@ -644,7 +647,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     const state = need("analystState")(op.id);
     if ("error" in state) throw new ConsoleControlError(state.error);
     return { operationId: op.id, ...state };
-  }));
+  }, { controlOnly: true }));
 
   // ---------------------------------------------------------------------------------------------
   // Quick Launch
@@ -744,7 +747,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       const parsers = new Map<string, (args: unknown) => ConsoleToolParse<Readonly<Record<string, unknown>>>>();
       const inputSchemas = new Map<string, Readonly<Record<string, unknown>>>();
       const registerEntry = (entry: ConsoleUseToolEntry) => {
-        const advertised = entry.schema.advertise(filter);
+        const advertised = entry.controlOnly && options.allowControl !== true ? null : entry.schema.advertise(filter);
         if (!advertised) return;
         const parse = (args: unknown) => entry.schema.parse(args, filter);
         parsers.set(entry.id, parse);

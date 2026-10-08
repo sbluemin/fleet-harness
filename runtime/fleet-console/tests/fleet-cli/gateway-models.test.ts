@@ -221,9 +221,9 @@ describe("fleet-console-use host", () => {
     try {
       expect(await call(aide, "console_context")).toMatchObject({ caller: { kind: "plugin", pluginId: "scuttlebutt" }, capabilities: { control: true } });
       const args = { theaterId: "theater-a", text: "Run the requested check" };
-      // 읽기 전용은 action 필터다 — 쓰기만 있는 도구는 싣지 않고, 남은 도구에는 read action 만 광고하며, 서버도 쓰기를 거절한다.
+      // 읽기 전용은 action 필터다 — 쓰기만 있는 도구와 분석가 패널은 싣지 않고, 남은 도구에는 read action 만 광고하며, 서버도 쓰기를 거절한다.
       const listed = (await rpc(readOnly, "tools/list", {})).tools as { name: string; inputSchema: { properties: { action?: { enum: string[] } } } }[];
-      expect(listed.map((tool) => tool.name)).not.toContain("console_launcher");
+      expect(listed.map((tool) => tool.name)).toEqual(["console_context", "console_sidebar", "console_operation"]);
       expect(listed.find((tool) => tool.name === "console_operation")!.inputSchema.properties.action!.enum).toEqual(["summary", "transcript", "jobs", "catalog"]);
       expect((await call(readOnly, "console_operation", { action: "send", operationId: "op-x", text: "hi" })).error).toBe("permission_required");
       expect((await call(unbound, "console_launcher", args)).error).toBe("permission_required");
