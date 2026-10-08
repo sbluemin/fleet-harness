@@ -114,7 +114,8 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const deletedKeys = new Set<string>();
   const reservedKeys = new Set<string>();
   // rejectModel — 호스트가 그 모델의 기동·재개를 거절한다(그새 Gateway 노출이 꺼진 모델). 재개는 세션 좌표의 모델을 읽는다.
-  const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null };
+  // coordinates — 떠 있는 채팅의 자식이 다음 좌표 변경 하나를 거절한다(호스트가 돌려주는 결과 그대로).
+  const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null, coordinates: null as import("@fleet-console/sdk/mcp").ConsoleCoordinatesResult | null };
   // 사람이 지운 사이드바 그룹 — 호스트의 groups.get 이 더는 돌려주지 않는다.
   const removedGroups = new Set<string>();
   const operationsHost = {
@@ -227,6 +228,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
         setUserQuestions: (operationId: string, policy: "blocked" | "default") => { userQuestions.push({ operationId, policy }); },
         coordinates: (operationId: string) => hostChat.get(operationId) ?? null,
         setCoordinates: async (operationId: string, input: { model: string; effort: string | null }) => {
+          if (hostFault.coordinates) { const result = hostFault.coordinates; hostFault.coordinates = null; return result; }
           const chat = hostChat.get(operationId);
           if (!chat) return { ok: false, error: "chat_not_active" };
           if (input.effort && hostEfforts[input.model] && !hostEfforts[input.model]!.includes(input.effort)) return { ok: false, error: "invalid_effort" };
@@ -1749,7 +1751,7 @@ describe("Objectives contract", () => {
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, operations, operationsHost, objectivesDir } = harness(() => "http://console.invalid");
+    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, operations, operationsHost, objectivesDir, hostChat, hostFault } = harness(() => "http://console.invalid");
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
@@ -1857,6 +1859,14 @@ describe("Objectives contract", () => {
     expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
     expect(await board(pick(null))).toMatchObject({ outcome: "applied", launch: { mode: "route" }, model: "sonnet[1m]", next: null });
     activity.set(workerId, "idle");
+    // 떠 있는 채팅의 자식이 변경을 거절하면 같은 실패 코드 뒤에 원 예외가 자르지 않은 채 실린다 — 원인을 가르는 유일한 근거다.
+    hostChat.set(workerId, { model: "sonnet[1m]", effort: "low", pending: null });
+    const cause = { message: `Provider refused the session: ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit" };
+    hostFault.coordinates = { ok: false, error: "coordinates_apply_failed", cause };
+    const refused = await commodore.execute(pick({ mode: "model", model: "opus[1m]", effort: "high" }), { cwd: workspace }) as { isError: boolean; structuredContent: Record<string, unknown> };
+    expect(refused.isError).toBe(true);
+    expect(refused.structuredContent).toEqual({ error: "coordinates_apply_failed", cause });
+    hostChat.delete(workerId);
     const executing = (await board({ action: "read", objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;

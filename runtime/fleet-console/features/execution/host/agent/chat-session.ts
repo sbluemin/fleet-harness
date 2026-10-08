@@ -101,7 +101,8 @@ interface ChatCoordinates {
  */
 export type AgentChatCoordinatesResult =
   | { readonly ok: true; readonly applied: "now" | "scheduled" | "unchanged" }
-  | { readonly ok: false; readonly error: "invalid_effort" | "context_exceeds_window" | "coordinates_apply_failed" };
+  | { readonly ok: false; readonly error: "invalid_effort" | "context_exceeds_window" }
+  | { readonly ok: false; readonly error: "coordinates_apply_failed"; readonly cause?: import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause };
 
 export interface AgentChatSessionSeed {
   /** Console의 CLI 경로 우선순위로 고른 실행기. 새 SDK 인스턴스를 만들 때 다시 해석한다. */
@@ -513,6 +514,13 @@ function sentMessageFailed(content: unknown): boolean {
   return false;
 }
 
+/** 모델·강도 변경을 거절한 원 예외를 그대로 옮긴다 — 문자열을 자르지 않고 스택(호스트 경로)은 싣지 않는다. */
+function coordinatesFailureCause(error: unknown): import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause {
+  if (!(error instanceof Error)) return { message: String(error) };
+  const code = (error as { readonly code?: unknown }).code;
+  return { message: error.message, ...(error.name ? { name: error.name } : {}), ...(typeof code === "string" || typeof code === "number" ? { code: String(code) } : {}) };
+}
+
 function opensChatTurn(event: AgentChatStreamEvent): boolean {
   return event.kind === "text" || event.kind === "text-delta" || event.kind === "tool" || event.kind === "tool-start";
 }
@@ -767,6 +775,8 @@ class AgentChatSession {
   private coordinateFlight: Promise<boolean> | null = null;
   /** 지금 자식에 적용 중인 좌표. 이미 자식에게 건넨 예약은 거둘 수 없다. */
   private applyingCoordinates: ChatCoordinates | null = null;
+  /** 자식이 마지막으로 거절한 좌표와 그 원 예외. 그 좌표를 곧바로 적용하려던 호출자가 실패 사유로 돌려준다. */
+  private coordinatesRefusal: { readonly target: ChatCoordinates; readonly cause: import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause } | null = null;
 
   constructor(operationId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
     this.operationId = operationId;
@@ -1267,7 +1277,9 @@ class AgentChatSession {
     }
     this.setPendingCoordinates(target);
     const applied = await this.applyPendingCoordinates();
-    return applied === false ? { ok: false, error: "coordinates_apply_failed" } : { ok: true, applied: "now" };
+    if (applied !== false) return { ok: true, applied: "now" };
+    const refusal = this.coordinatesRefusal?.target === target ? this.coordinatesRefusal : null;
+    return { ok: false, error: "coordinates_apply_failed", ...(refusal ? { cause: refusal.cause } : {}) };
   }
 
   /**
@@ -1351,9 +1363,11 @@ class AgentChatSession {
             await session.applySessionSettings({ effort: target.effort ?? null, ultracode: target.ultracode });
           }
         }
-      } catch {
+      } catch (error) {
         // 적용하지 못한 좌표를 적용한 척하지 않는다. 예약을 거두고 화면에 실패를 말한다 — 그 사이
         // 새로 접수된 예약은 이 실패의 것이 아니므로 남겨, 뒤이은 적용이 가져가게 한다.
+        // 원 예외는 버리지 않는다 — 같은 실패 코드 뒤의 서로 다른 원인(공급자 한도·세션 생성 실패 등)을 가르는 유일한 근거다.
+        this.coordinatesRefusal = { target, cause: coordinatesFailureCause(error) };
         if (this.pendingCoordinates === target) this.setPendingCoordinates(null);
         this.push({ kind: "error", code: "chat_coordinates_failed" });
         return false;

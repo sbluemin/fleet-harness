@@ -1192,6 +1192,17 @@ describe("AgentChatRegistry — stopping a turn", () => {
     const pending = seen.map((entry) => entry.event).filter((event) => event.kind === "coordinates-pending");
     expect(pending.at(-1)).toEqual({ kind: "coordinates-pending", pending: null });
 
+    // 유휴에서 곧바로 바꾸다 자식이 거절하면 실패 코드와 함께 원 예외를 자르지 않고 돌려준다 — 같은 코드 뒤의 원인을 가르는 근거다.
+    child!.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 5 });
+    await vi.waitFor(() => { expect(session.readConsoleOutput().outcome).toBe("succeeded"); });
+    const refusal = Object.assign(new Error(`Provider refused the session: ${"원문 ".repeat(2_000)}END`), { code: "seat_limit" });
+    const onControl = vi.spyOn(child!, "setModel").mockRejectedValueOnce(refusal);
+    await expect(session.changeCoordinates("muse-code--muse-spark-1.3-contributor", null)).resolves.toEqual({
+      ok: false, error: "coordinates_apply_failed", cause: { message: refusal.message, name: "Error", code: "seat_limit" },
+    });
+    expect(onControl).toHaveBeenCalledTimes(1);
+    expect(session.readCoordinates()).toMatchObject({ model: "sonnet[1m]", pending: null });
+
     await registry.disposeAll();
   });
 
