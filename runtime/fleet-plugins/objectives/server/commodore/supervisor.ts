@@ -69,6 +69,8 @@ export interface CommodoreSupervisor {
   status(theaterId: string): Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying`. */
   retry(theaterId: string): Promise<void>;
+  /** 진행 턴·대기 메시지를 거두고 요약 없이 새 문맥으로 시작한다. 기록 파일도 지운다. */
+  clear(theaterId: string): Promise<void>;
   /** 실험 기능·자율 운영을 다시 읽어 돌아야 할 Theater 를 세우고 아닌 것을 멈춘다. */
   sync(reason?: string): void;
   dispose(): Promise<void>;
@@ -180,6 +182,7 @@ interface Runner {
 export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): CommodoreSupervisor {
   const now = deps.now ?? Date.now;
   const runners = new Map<string, Runner>();
+  const clears = new Map<string, Promise<void>>();
   const cleanups: (() => void)[] = [];
   let disposed = false;
 
@@ -424,13 +427,16 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return runner.lastInputTokens >= COMMODORE_CONTEXT_ROTATE_RATIO * coordinates.contextWindow;
   };
 
-  const start = (theaterId: string, reason: WakeCode) => {
+  const start = (theaterId: string, reason: WakeCode, wakeImmediately = true) => {
+    if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
     runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);
+    // Clear 직후는 빈 기록을 유지한다. 다음 메시지·사건·순찰에서 새 세션을 연다.
+    if (!wakeImmediately) { schedulePatrol(runner, now() + patrolInterval(theaterId), ""); return; }
     wake(runner, reason);
     if (!deps.objectives(theaterId).some((objective) => !objective.done && !objective.removed)) { runner.emptyReported = true; wake(runner, "empty"); }
   };
@@ -582,11 +588,25 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       clearTimer(runner, "coalesce");
       await runTurn(runner);
     },
+    clear(theaterId) {
+      const pending = clears.get(theaterId);
+      if (pending) return pending;
+      if (disposed) return Promise.reject(new Error("commodore_inactive"));
+      const work = (async () => {
+        await stop(theaterId, "cleared");
+        deps.store.transcriptClear(theaterId);
+      })().finally(() => {
+        clears.delete(theaterId);
+        if (!disposed && shouldRun(theaterId)) start(theaterId, "autonomy", false);
+      });
+      clears.set(theaterId, work);
+      return work;
+    },
     sync,
     async dispose() {
       disposed = true;
       for (const cleanup of cleanups.splice(0)) cleanup();
-      await Promise.all([...runners.keys()].map((theaterId) => stop(theaterId, "Console stopping")));
+      await Promise.all([...clears.values(), ...[...runners.keys()].map((theaterId) => stop(theaterId, "Console stopping"))]);
     },
   };
 

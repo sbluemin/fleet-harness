@@ -255,6 +255,68 @@ describe("commodore session", () => {
 });
 
 describe("commodore supervisor", () => {
+  it("clears the active session and transcript without losing standing state or reviving deleted history", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
+    const h = harness(Date.now);
+    const sessions: { options: AgentSessionOptions; sent: string[]; disposed: boolean }[] = [];
+    let hold = true;
+    let cancel: (() => void) | undefined;
+    const agent: AgentHost = { createSession: async (options) => {
+      const entry = { options, sent: [] as string[], disposed: false }; sessions.push(entry);
+      return {
+        send: async (text) => { entry.sent.push(text); if (hold) await new Promise<void>((resolve) => { cancel = () => { options.onEvent?.({ kind: "cancelled" }); resolve(); }; }); else options.onEvent?.({ kind: "result", isError: false, source: "message" }); },
+        cancel: () => cancel?.(), dispose: async () => { entry.disposed = true; },
+      };
+    } };
+    const supervisor = createCommodoreSupervisor({ store: h.store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+    const hooks = { clear: (id: string) => supervisor.clear(id), run: (id: string) => supervisor.status(id) };
+    try {
+      h.setExperiments({ commodore: true });
+      h.store.setDirective("t1", "Keep the directive.");
+      h.store.addIntel("t1", { text: "Keep the intel." });
+      h.store.setSources("t1", [{ kind: "url", label: "Reference", locator: "https://example.com" }]);
+      h.store.setCoordinates("t1", { model: "sonnet", effort: "high" });
+      h.store.setCommander("t1", { model: "opus[1m]", effort: "high" });
+      h.store.setPatrol("t1", 120);
+      h.store.setAutonomy("t1", true);
+      h.store.setStopAt("t1", Date.now() + 3 * 60 * 60_000);
+      h.store.transcriptAppend("t1", { kind: "message", text: "Old active instruction." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      h.store.transcriptAppend("t1", { kind: "message", text: "Old queued instruction." });
+      const before = h.store.read("t1")!;
+      const file = path.join(h.objectivesDir, "commodore", "transcript.jsonl");
+      const oldRaw = fs.readFileSync(file, "utf8");
+      expect((await h.route("commodore/clear", { theaterId: "t1" }, hooks)).status).toBe(400);
+      h.setAuthorized(false);
+      expect((await h.route("commodore/clear", { theaterId: "t1", confirm: true }, hooks)).status).toBe(401);
+      h.setAuthorized(true);
+      expect((await h.route("commodore/clear", { theaterId: "t1", confirm: true }, hooks)).status).toBe(200);
+      expect(sessions[0]!.disposed).toBe(true);
+      expect(h.store.read("t1")).toEqual({ ...before, transcriptClearedThrough: expect.any(Number) });
+      expect(fs.existsSync(file)).toBe(false);
+      expect(h.store.transcriptRead("t1").entries).toEqual([]);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      expect(supervisor.status("t1")?.context).toBeUndefined();
+      // 폐기된 SDK의 늦은 스트림 콜백도 기록 파일을 되살릴 수 없다.
+      sessions[0]!.options.onEvent?.({ kind: "text", text: "Late old response" });
+      sessions[0]!.options.onEvent?.({ kind: "result", isError: false, source: "message" });
+      expect(fs.existsSync(file)).toBe(false);
+      // 경계 영속 뒤 파일 삭제 전에 내려간 경우도 새 저장소는 옛 줄을 감춘다.
+      fs.writeFileSync(file, oldRaw);
+      const reopened = createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined });
+      expect(reopened.transcriptRead("t1").entries).toEqual([]);
+      fs.rmSync(file);
+      hold = false;
+      h.store.transcriptAppend("t1", { kind: "message", text: "A fresh instruction." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions).toHaveLength(2);
+      expect(sessions[1]!.sent[0]).toContain("A fresh instruction.");
+      expect(sessions[1]!.sent[0]).not.toMatch(/Old active|Old queued|replacement session|recent actions/);
+      expect(h.store.transcriptRead("t1").entries.every((entry) => entry.seq > h.store.read("t1")!.transcriptClearedThrough!)).toBe(true);
+      expect(h.events.some((event) => event.op === "state" && event.change === "clear")).toBe(true);
+    } finally { await supervisor.dispose(); vi.useRealTimers(); }
+  });
   it("persists a cancellable stop deadline, cancels pending work, notifies once and restores overdue stops without another patrol", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));

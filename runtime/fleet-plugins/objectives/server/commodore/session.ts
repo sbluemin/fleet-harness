@@ -124,6 +124,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     pendingTools.clear();
   };
   const onEvent = (event: AgentEvent) => {
+    if (disposed) return;
     switch (event.kind) {
       case "text": textBuffer += event.text; if (event.text) options.onLive?.({ kind: "text-delta", text: event.text }); return;
       case "thinking": thinkingBuffer += event.text; return;

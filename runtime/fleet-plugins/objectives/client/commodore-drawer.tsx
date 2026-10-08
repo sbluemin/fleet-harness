@@ -17,6 +17,7 @@ import { DatePicker, localDateTime } from "./date-picker.js";
 import {
   addCommodoreIntel,
   closeCommodoreDrawer,
+  clearCommodore,
   commodoreTranscriptRenderer,
   commodoreTheaterLabel,
   loadTranscript,
@@ -282,7 +283,8 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
   useEffect(() => {
     const root = dialogRef.current;
     if (!root) return;
-    const field = root.querySelector<HTMLElement>(tab === "directive" ? "#objectives-commodore-directive" : tab === "log" ? ".objectives-commodore-composer-input" : "");
+    const selector = tab === "directive" ? "#objectives-commodore-directive" : tab === "log" ? ".objectives-commodore-composer-input" : null;
+    const field = selector ? root.querySelector<HTMLElement>(selector) : null;
     if (field && !field.hasAttribute("disabled")) { field.focus({ preventScroll: true }); return; }
     root.focus({ preventScroll: true });
   }, [openedAt]); // eslint-disable-line react-hooks/exhaustive-deps -- 여는 순간만.
@@ -373,6 +375,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
         <div className="objectives-commodore-main">
           <header className="objectives-commodore-main-head">
             <h2 className="objectives-commodore-main-title">{current.label}</h2>
+            {tab === "log" ? <CommodoreClearButton t={t} theaterId={theaterId} onFail={fail} onClear={() => setFailure(null)} /> : null}
             <button type="button" className="objectives-commodore-close" aria-label={t("objectives.commodore.drawer.close")} title={t("objectives.commodore.drawer.close")} onClick={close}>
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
             </button>
@@ -908,18 +911,67 @@ function formatContextTokens(tokens: number): string {
 
 /**
  * 사령관에게 말하기 — 채팅 화면의 입력과 같은 문법: 한 상자 안에 자라는 입력과 원형 전송, 초점이면 상자가 brass 로 선다.
- * 자율 운영이 꺼져 있으면 닿지 않을 메시지이므로 입력을 잠그고 사유를 말한다. 쓰던 초안은 그대로 두어 다시 켜면 보낼 수 있다.
+ * 자율 운영이 꺼져 있으면 메시지 전송은 막지만 /clear는 받는다. 쓰던 초안은 그대로 두어 다시 켜면 보낼 수 있다.
  * 다른 창에서 막 끈 경합은 서버가 거절하고(`commodore_inactive`) 초안은 지우지 않는다.
  */
+function useClearConfirmation(theaterId: string, onFail: (error: unknown) => void, onClear: () => void) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const working = useRef(false);
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), 5_000);
+    return () => clearTimeout(timer);
+  }, [armed]);
+  const request = async () => {
+    if (working.current) return false;
+    if (!armed) { setArmed(true); return false; }
+    working.current = true; setBusy(true); setArmed(false); onClear();
+    try { await clearCommodore(theaterId); return true; }
+    catch (error) { onFail(error); return false; }
+    finally { working.current = false; setBusy(false); }
+  };
+  return { armed, busy, request, disarm: () => setArmed(false) };
+}
+
+/** 글리프와 /clear 모두 키를 뗀 뒤의 두 번째 입력만 확정으로 받는다. */
+function useReleasedKey() {
+  const held = useRef<string | null>(null);
+  return {
+    down: (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return true;
+      if (event.repeat || held.current === event.key) { event.preventDefault(); return false; }
+      held.current = event.key;
+      return true;
+    },
+    up: () => { held.current = null; },
+  };
+}
+
+function CommodoreClearButton({ t, theaterId, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+  const clear = useClearConfirmation(theaterId, onFail, onClear);
+  const key = useReleasedKey();
+  return <div className="objectives-commodore-clear-wrap">
+    {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.confirm")}</span> : null}
+    <button type="button" className={`objectives-commodore-clear${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "objectives.commodore.clear.confirm" : "objectives.commodore.clear.title")} title={t("objectives.commodore.clear.hint")} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 6-7 6 5-6 7H6zM9 15h6M6 7l6 5" /></svg>
+    </button>
+  </div>;
+}
+
 function CommodoreComposer({ t, theaterId, active, context, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly context?: CommodoreRunStatus["context"]; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const [text, setText] = useState(() => sheetDraft(theaterId).composer);
   useEffect(() => { rememberSheetDraft(theaterId, { composer: text }); }, [theaterId, text]);
   const [sending, setSending] = useState(false);
   const composing = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const armed = active && !!text.trim() && !sending;
+  const clear = useClearConfirmation(theaterId, onFail, onClear);
+  const clearKey = useReleasedKey();
+  const isClear = text.trim() === "/clear";
+  const armed = (active || isClear) && !!text.trim() && !sending && !clear.busy;
   const send = () => {
     const value = text.trim();
+    if (isClear) { void clear.request().then((cleared) => { if (cleared) setText(""); }); return; }
     if (!active || !value || sending) return;
     onClear();
     setSending(true);
@@ -932,15 +984,17 @@ function CommodoreComposer({ t, theaterId, active, context, onFail, onClear }: {
         ref={inputRef}
         className="objectives-commodore-composer-input"
         value={text}
-        disabled={!active}
+        disabled={clear.busy}
         aria-describedby={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
         rows={1}
         placeholder={t("objectives.commodore.composer.placeholder")}
         aria-label={t("objectives.commodore.composer.aria")}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => { setText(event.target.value); clear.disarm(); }}
         onCompositionStart={() => { composing.current = true; }}
         onCompositionEnd={() => { composing.current = false; }}
-        onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }}
+        onKeyDown={(event) => { if (isClear && !clearKey.down(event)) return; if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }}
+        onKeyUp={clearKey.up}
+        onBlur={() => { clearKey.up(); clear.disarm(); }}
       />
       {context ? <CommodoreContextMeter t={t} context={context} /> : null}
       <ComposerSubmitButton
@@ -948,9 +1002,12 @@ function CommodoreComposer({ t, theaterId, active, context, onFail, onClear }: {
         aria-label={t("objectives.commodore.composer.send")}
         title={t("objectives.commodore.composer.send")}
         disabled={!armed}
+        onKeyDown={(event) => { if (isClear) clearKey.down(event); }}
+        onKeyUp={clearKey.up}
         onClick={send}
       />
     </div>
+    {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.enterConfirm")}</p> : null}
     {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("objectives.commodore.composer.idle")}</p>}
     </>
   );

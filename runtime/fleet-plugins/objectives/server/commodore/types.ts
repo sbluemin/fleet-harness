@@ -84,6 +84,8 @@ export const commodoreStateSchema = z.object({
   patrolMinutes: commodorePatrolSchema.optional(),
   /** 자율 운영 종료 예정 시각(epoch ms). Console 재시작 뒤에도 적용하고, 자율 운영을 끄면 함께 지운다. */
   stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).optional(),
+  /** Clear가 지운 마지막 seq. 파일 삭제와 재시작·재연결 사이에도 옛 기록을 되살리지 않는 영속 경계. */
+  transcriptClearedThrough: z.number().int().nonnegative().optional(),
   /** 사람이 이 Theater 를 보는 언어 — 서랍의 요청이 남긴다. 사령관 기록의 언어이고, 없으면 목표의 언어·영어 순이다. */
   language: z.enum(["en", "ko"]).optional(),
   /** 누적 운영 셈 — 세션 번호(교대·재시작마다 1 씩), 누적 비용, 보드에 쓴 행위 수. 감독자가 올린다. */
@@ -190,7 +192,7 @@ export type CommodoreEvent =
   | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
   | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus };
 
-export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run";
+export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear";
 
 /** Theater 의 순찰 간격(ms) — 저장값, 없으면 기본. */
 export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number {

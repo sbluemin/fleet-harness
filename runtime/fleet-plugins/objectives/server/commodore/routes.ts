@@ -44,6 +44,7 @@ export interface CommodoreRouteHooks {
   readonly run?: (theaterId: string) => Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기(`retrying`·`error`)를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying` 을 던진다. */
   readonly retry?: (theaterId: string) => Promise<void> | void;
+  readonly clear?: (theaterId: string) => Promise<void>;
 }
 
 const ids = z.string().min(1).max(128);
@@ -130,6 +131,12 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       read(theaterId);
       if (!hooks.retry) throw new ObjectiveStoreError("commodore_not_retrying");
       await hooks.retry(theaterId);
+      return view(theaterId, read(theaterId));
+    }) },
+    { name: "commodore/clear", method: "POST", summary: "Cancel the current turn, discard the session context and delete the transcript. Keep directives, intel, settings, the board and the stop schedule.", handler: json(theaterRef.extend({ confirm: z.literal(true) }).strict(), async ({ theaterId }) => {
+      read(theaterId);
+      if (!hooks.clear) throw new ObjectiveStoreError("commodore_inactive");
+      await hooks.clear(theaterId);
       return view(theaterId, read(theaterId));
     }) },
     { name: "commodore/transcript", method: "POST", summary: "Read a page of the Commodore log, newest last; pass the first entry's seq as before to read older entries.", handler: json(theaterRef.extend({ limit: z.number().int().min(1).max(MAX_TRANSCRIPT_PAGE).optional(), before: z.number().int().nonnegative().optional() }).strict(), ({ theaterId, limit, before }) => { read(theaterId); return { theaterId, ...store.transcriptRead(theaterId, { limit, before }) }; }) },

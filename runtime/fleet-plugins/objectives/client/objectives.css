@@ -1566,6 +1566,13 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-commodore-row-meta .is-warn { color: var(--warn-ink); }
 
 
+.objectives-commodore-clear-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.objectives-commodore-clear { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 5px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; }
+.objectives-commodore-clear svg { width: 16px; height: 16px; }
+.objectives-commodore-clear:hover { color: var(--text-primary); background: var(--brass-glow); }
+.objectives-commodore-clear.is-armed { color: var(--coral-ink); background: color-mix(in oklch, var(--coral) 10%, transparent); }
+.objectives-commodore-clear-confirm { margin: 0; color: var(--coral-ink); font-size: var(--t-xs); line-height: 1.5; }
+
 /* 「사령관 기록」 시트 — 퀵런치와 같은 전체 화면 스크림(ink-abyss 66%, z-index 90)과 fleet-pop.
    박스는 창 정중앙. 메뉴는 스크림 위에 선다. */
 .objectives-commodore-overlay {
@@ -1765,7 +1772,7 @@ html[data-view-mode="mobile"] .objectives-commodore-overlay { display: none; }
   width: 16px;
   height: 16px;
   color: var(--text-tertiary);
-  font-size: 9px;
+  font-size: var(--t-2xs);
   line-height: 1;
   transition: transform var(--duration-fast);
 }

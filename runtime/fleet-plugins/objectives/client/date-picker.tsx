@@ -47,11 +47,11 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose, withTi
     const card = cardRef.current;
     if (!card) return;
     const rect = card.getBoundingClientRect();
-    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - rect.width - 8));
+    const left = Math.max(8, Math.min(withTime ? anchor.right - rect.width : anchor.left, window.innerWidth - rect.width - 8));
     const below = anchor.bottom + 6;
     const top = below + rect.height > window.innerHeight - 8 ? Math.max(8, anchor.top - rect.height - 6) : below;
     setPos({ left, top });
-  }, [anchor, month, validTime]);
+  }, [anchor, month, validTime, withTime]);
   useEffect(() => {
     const onDown = (event: PointerEvent) => { if (cardRef.current && !cardRef.current.contains(event.target as Node)) onClose(); };
     window.addEventListener("pointerdown", onDown, true);
