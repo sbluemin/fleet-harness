@@ -975,6 +975,8 @@ describe("Cursor live client-tool Run bridge", () => {
         "Let me check: the deployment logs.",
         "I'm checking: the deployment logs.",
         "We checked the config and will inspect the logs.",
+        "I'm using the debugger now.",
+        "I checked the config and probably will inspect the logs.",
         // A wait that only sets the time of the action (`while waiting for …`) is not the state being reported.
         "빌드를 기다리는 동안 로그를 확인합니다.",
       ].map((text, index) => {

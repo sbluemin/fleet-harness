@@ -124,13 +124,13 @@ function isPureConditional(sentence: string): boolean {
  */
 const ENGLISH_FIRST_PERSON_STEP =
   /\b(?:I|we)(?:['’]ll|\s+will|['’]m\s+going\s+to|\s+am\s+going\s+to|\s+need\s+to|\s+have\s+to|\s+must|\s+should)(?:\s+(?:also|then|first|probably))?(?:\s+(?:need|have)\s+to)?\b|\blet\s+me\b(?!\s+know)/giu;
-const ENGLISH_FIRST_PERSON_PROGRESSIVE = /\b(?:I|we)(?:['’]m|\s+am|['’]re|\s+are)\s+(?:(?:now|just|currently|also)\s+)?([a-z]{3,}ing)\b/giu;
+const ENGLISH_FIRST_PERSON_PROGRESSIVE = /\b(?:I|we)(?:['’]m|\s+am|['’]re|\s+are)\s+(?:(?:now|just|currently|also)\s+)?([a-z]{2,}ing)\b/giu;
 /** Adverbs that may sit in front of a progressive without changing what it is: `Still checking.` */
 const ENGLISH_LEADING_ADVERB = /^(?:(?:still|just|also|again|already|currently|now|then)|[a-z]{3,}ly)\s+/iu;
 /** A clause that opens on a modal and borrows the subject of the clause before it. */
 const ENGLISH_ELIDED_SUBJECT_STEP = /^(?:will|['’]ll|need\s+to|have\s+to|must|should|am\s+going\s+to)\b/iu;
 /** A leading `-ing` that is not a step: `Nothing is running now.` */
-const ENGLISH_NON_STEP_ING = new Set(["nothing", "something", "anything", "everything", "during", "string"]);
+const ENGLISH_NON_STEP_ING = new Set(["nothing", "something", "anything", "everything", "during", "string", "thing"]);
 /** `-ing` words that report holding or waiting rather than doing. */
 const ENGLISH_HOLD_ING = new Set(["waiting", "holding", "keeping", "leaving", "staying", "remaining", "standing"]);
 
@@ -152,9 +152,9 @@ function englishStrongStepCount(sentence: string): number {
   let subjectSeen = false;
   for (const clause of englishClauses(text)) {
     const first = /^[a-z]+/iu.exec(clause.replace(ENGLISH_LEADING_ADVERB, ""))?.[0].toLowerCase() ?? "";
-    if (/^[a-z]{3,}ing$/u.test(first) && !ENGLISH_NON_STEP_ING.has(first) && !ENGLISH_HOLD_ING.has(first)) count += 1;
+    if (/^[a-z]{2,}ing$/u.test(first) && !ENGLISH_NON_STEP_ING.has(first) && !ENGLISH_HOLD_ING.has(first)) count += 1;
     // `I updated the code and will run the tests`: the subject carries over to a clause that opens on the modal.
-    if (subjectSeen && ENGLISH_ELIDED_SUBJECT_STEP.test(clause)) count += 1;
+    if (subjectSeen && ENGLISH_ELIDED_SUBJECT_STEP.test(clause.replace(ENGLISH_LEADING_ADVERB, ""))) count += 1;
     if (/\b(?:I|[Ww]e)\b/u.test(clause)) subjectSeen = true;
   }
   return count;
