@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { ConsoleCaller } from "./control.js";
+import type { ConsoleActionSchema } from "./actions.js";
 
 export interface PluginMcpTransport {
   mount(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void): { url(): Promise<string>; dispose(): void };
@@ -23,15 +24,13 @@ export function inputIssues(issues: readonly ArgumentIssue[]): { path: readonly 
 export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleTurnFailure, ConsoleTurnEnd } from "./control.js";
 
 /**
- * Console Use 도구는 Console 화면의 자리 이름을 갖는다 — 사이드바(operations·organize), Operation 패널
- * (operation·send·panel·analyst), Quick Launch(launch). 자리가 없는 동사(자동화·사건 대기·영수증 조회)는
- * 도구가 아니다. 호출 하나는 사용자 화면 위의 제스처 하나이며, 호스트가 `console-use:call` 사건으로 알린다.
+ * Console Use 호스트 코어 도구. 이름은 `console_<화면>[_<하위 화면>]` — 사이드바, Quick Launch(launcher),
+ * Operation 패널과 그 분석가. 화면 하나의 여러 동사는 도구 하나의 `action` 이다(`./actions` 의 `defineConsoleTool`).
+ * 읽기 전용 연결은 도구 목록이 아니라 action 필터다 — `allowControl` 이 없는 연결에는 read action 만 실린다.
+ * 호출 하나는 사용자 화면 위의 제스처 하나이며, 호스트가 `console-use:call` 사건으로 알린다.
  */
-export const CONSOLE_READ_TOOLS = ["console_context", "console_operations", "console_operation"] as const;
-export const CONSOLE_CONTROL_TOOLS = [
-  ...CONSOLE_READ_TOOLS, "console_organize", "console_send", "console_panel", "console_analyst", "console_launch",
-] as const;
-export type ConsoleUseToolId = (typeof CONSOLE_CONTROL_TOOLS)[number];
+export const CONSOLE_USE_TOOLS = ["console_context", "console_sidebar", "console_launcher", "console_operation", "console_operation_analyst"] as const;
+export type ConsoleUseToolId = (typeof CONSOLE_USE_TOOLS)[number];
 
 /** 어느 화면 자리에 제스처가 닿는가. 내용(전사·diff·파일 본문)은 싣지 않는다 — 원격 세션도 받는 채널이다. */
 export type ConsoleUseCallTarget =
@@ -97,6 +96,12 @@ export interface PluginMcpTool {
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
   /**
+   * Console Use 기여 도구의 action 선언 — `defineConsoleTool(...).plugin(...)` 이 채운다. 호스트는 이것으로 연결마다
+   * 설명·inputSchema 를 거르고(읽기 전용 연결은 read action 만, 호출자 종류별 허용 action 만) 호출을 action별 strict 로
+   * 검증한다. 기여(`contribute`)에는 필수이고, `fleet-{pluginId}` 서버 도구에는 쓰지 않는다.
+   */
+  readonly actionSchema?: ConsoleActionSchema;
+  /**
    * Console Use 기여 도구의 화면 자리. 호스트는 호출마다 그 Activity Rail 패널 버튼을 감싸는 표식을
    * 그린다 — 자리를 선언하지 않은 도구는 Console Use 에 실리지 않는다. `describe` 는 인자에서 표식 이름표
    * 한 줄과 보기(view)·경로를 뽑는다; 경로는 Theater 상대여야 한다.
@@ -143,8 +148,9 @@ export interface PluginAdmiralMcpHost {
 
 export interface ConsoleUseMcpHost {
   /**
-   * 플러그인이 자기 영역의 도구를 `fleet-console-use`에 싣는다. 이름은 `console_` 접두사여야 하고
-   * 호스트 기본 도구와 겹칠 수 없다. 기여한 도구는 모든 Console Use 연결에 실리며 호스트 기본 도구와
+   * 플러그인이 자기 영역의 도구를 `fleet-console-use`에 싣는다. 이름은 `console_<화면>[_<하위 화면>]`
+   * (`^console_[a-z]+(_[a-z]+)?$`)이고, `defineConsoleTool` 로 만든 action 판별 도구(`actionSchema`)여야 하며,
+   * 호스트 기본 도구·이미 기여된 이름과 겹칠 수 없다 — 어긋나면 등록 자체가 실패한다. 기여한 도구는 모든 Console Use 연결에 실리며 호스트 기본 도구와
    * **같은 게이트**(호출자 Operation의 콘솔 사용 토글, 또는 부관 grant)를 지난다 — 플러그인이 자기
    * 게이트를 따로 두지 않는다. 파일시스템·git 쓰기(커밋·파일 변경)는 여기로 열지 않는다: 그것은 그
    * Theater의 Operation에 시키는 일이다. 플러그인 **자기 제품 상태**의 쓰기(목표 추가·완료 같은)는
@@ -152,12 +158,15 @@ export interface ConsoleUseMcpHost {
    * 쓰기는 Console Use 가 아니다. 반환값은 등록 해제다.
    */
   contribute?(tools: readonly PluginMcpTool[]): () => void;
-  /** 도구 등록 API가 아니다. 호스트 기본 도구 중 이 연결에 필요한 것만 요청한다. */
+  /** 도구 등록 API가 아니다. 호스트 기본 도구 중 이 연결에 필요한 것만 요청한다(생략하면 전부). */
   connect(options: {
-    readonly tools: readonly ConsoleUseToolId[];
+    readonly tools?: readonly ConsoleUseToolId[];
     readonly snapshot?: () => ConsoleUseSnapshot | null;
     readonly enabled?: () => boolean;
-    /** 제어 도구는 명시적으로 요청하며 호스트가 호출자와 Operation 토글·부관 grant를 검증한다. */
+    /**
+     * write action 은 명시적으로 요청하며 호스트가 호출자와 Operation 토글·부관 grant를 검증한다. 없으면 이 연결의
+     * 도구 설명·inputSchema 에는 read action 만 실리고, write action 호출은 `permission_required` 로 거절된다.
+     */
     readonly allowControl?: boolean;
     /**
      * 이 연결의 호출자는 Operation이다. 호출마다 호출자 Operation을 풀어 그 Operation의

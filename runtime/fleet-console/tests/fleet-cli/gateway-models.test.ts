@@ -3,7 +3,6 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createConsoleControl } from "../../features/console-use/host/console-control.js";
-import { CONSOLE_CONTROL_TOOLS } from "@fleet-console/sdk/mcp";
 
 import { createConsoleUseMcpHost } from "../../features/console-use/host/console-use.js";
 import { createUseRequestBroker } from "../../features/console-use/host/use-requests.js";
@@ -37,7 +36,7 @@ describe("fleet-console-use host", () => {
     control.attach(adapter);
     const onOperationUse = vi.fn();
     const host = createConsoleUseMcpHost({ ...deps, control, onOperationUse, language: () => "ko" });
-    const connection = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, operationCallers: true });
+    const connection = host.connect({ allowControl: true, operationCallers: true });
     try {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
       const token = connection.issueSessionToken({ label: "op-a", cwd: directory })[0]!;
@@ -48,8 +47,8 @@ describe("fleet-console-use host", () => {
       };
       // 도구가 실려 있다는 것이 허용이 아니다. 기본은 거부이고, 그 Operation의 토글이
       // 참일 때만 통과한다 — 거부는 어디를 켜야 하는지를 싣는다.
-      const args = { operationId: "op-a", text: "Check build" };
-      for (const [name, body] of [["console_context", {}], ["console_operations", {}], ["console_send", args]] as const) {
+      const args = { action: "send", operationId: "op-a", text: "Check build" };
+      for (const [name, body] of [["console_context", {}], ["console_sidebar", { action: "list" }], ["console_operation", args]] as const) {
         expect(await call(name, body)).toMatchObject({ error: "console_use_not_authorized", reason: "operation_not_authorized", retryable: true, remedy: { surface: "operation_panel", operationId: "op-a" } });
       }
       expect(executions).toBe(0);
@@ -57,14 +56,16 @@ describe("fleet-console-use host", () => {
       allow(true);
       expect(onOperationUse).not.toHaveBeenCalled();
       expect((await call("console_context", {})).caller.operationId).toBe("op-a");
-      await call("console_operations", {});
+      await call("console_sidebar", { action: "list" });
       expect(onOperationUse.mock.calls).toEqual([["op-a", true]]);
-      expect((await call("console_launch", { theaterId: "theater-a", text: "   " })).error).toBe("invalid_arguments");
-      expect((await call("console_launch", { theaterId: "theater-a", text: "Check build", scratchpad: "/outside" })).error).toBe("invalid_arguments");
+      expect((await call("console_launcher", { theaterId: "theater-a", text: "   " })).error).toBe("invalid_arguments");
+      expect((await call("console_launcher", { theaterId: "theater-a", text: "Check build", scratchpad: "/outside" })).error).toBe("invalid_arguments");
+      // 한 action 은 자기 필드만 받는다 — 다른 action 의 필드가 섞이면 실행 전에 거절한다.
+      expect(await call("console_operation", { action: "stop", operationId: "op-a", text: "Check build" })).toMatchObject({ error: "invalid_arguments", issues: [expect.objectContaining({ code: "unrecognized_keys" })] });
       expect(executions).toBe(0);
       // 호출은 전달이 끝난 뒤 결과로 답하고, 남는 영수증이 없어 같은 호출은 다시 실행된다.
-      expect(await call("console_send", args)).toEqual({ action: "send", operationId: "op-a", delivery: "confirmed" });
-      expect(await call("console_send", args)).toEqual({ action: "send", operationId: "op-a", delivery: "confirmed" });
+      expect(await call("console_operation", args)).toEqual({ action: "send", operationId: "op-a", delivery: "confirmed" });
+      expect(await call("console_operation", args)).toEqual({ action: "send", operationId: "op-a", delivery: "confirmed" });
       expect(executions).toBe(2);
       control.automation({ kind: "operation", operationId: "op-a" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
       time += 300_001;
@@ -207,35 +208,40 @@ describe("fleet-console-use host", () => {
     const control = createConsoleControl(deps);
     control.attach({ observe: () => null, execute: async (_input, assertCurrent, settled) => { assertCurrent(); executions++; settled("succeeded"); return { operationId: "new-op", delivery: "confirmed" }; } });
     const host = createConsoleUseMcpHost({ ...deps, control });
-    const aide = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, enabled: () => granted });
-    const readOnly = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS });
-    const unbound = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true });
-    const call = async (connection: ConsoleUseMcpConnection, name: string, args: unknown = {}) => {
+    const aide = host.forPlugin("scuttlebutt").connect({ allowControl: true, enabled: () => granted });
+    const readOnly = host.forPlugin("scuttlebutt").connect({});
+    const unbound = host.connect({ allowControl: true });
+    const rpc = async (connection: ConsoleUseMcpConnection, method: string, params: unknown) => {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
       const token = connection.issueSessionToken({ label: "scuttlebutt", cwd: directory })[0]!;
-      const response = await fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token.token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) });
-      const json = await response.json(); return JSON.parse(json.result.content[0].text);
+      const response = await fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token.token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+      return (await response.json()).result;
     };
+    const call = async (connection: ConsoleUseMcpConnection, name: string, args: unknown = {}) => JSON.parse((await rpc(connection, "tools/call", { name, arguments: args })).content[0].text);
     try {
       expect(await call(aide, "console_context")).toMatchObject({ caller: { kind: "plugin", pluginId: "scuttlebutt" }, capabilities: { control: true } });
       const args = { theaterId: "theater-a", text: "Run the requested check" };
-      expect((await call(readOnly, "console_launch", args)).error).toBe("permission_required");
-      expect((await call(unbound, "console_launch", args)).error).toBe("permission_required");
-      expect((await call(aide, "console_launch", { ...args, caller: { kind: "operation", operationId: "forged" } })).error).toBe("invalid_arguments");
-      expect(await call(aide, "console_launch", args)).toEqual({ action: "launch", operationId: "new-op", delivery: "confirmed" });
+      // 읽기 전용은 action 필터다 — 쓰기만 있는 도구는 싣지 않고, 남은 도구에는 read action 만 광고하며, 서버도 쓰기를 거절한다.
+      const listed = (await rpc(readOnly, "tools/list", {})).tools as { name: string; inputSchema: { properties: { action?: { enum: string[] } } } }[];
+      expect(listed.map((tool) => tool.name)).not.toContain("console_launcher");
+      expect(listed.find((tool) => tool.name === "console_operation")!.inputSchema.properties.action!.enum).toEqual(["summary", "transcript", "jobs", "catalog"]);
+      expect((await call(readOnly, "console_operation", { action: "send", operationId: "op-x", text: "hi" })).error).toBe("permission_required");
+      expect((await call(unbound, "console_launcher", args)).error).toBe("permission_required");
+      expect((await call(aide, "console_launcher", { ...args, caller: { kind: "operation", operationId: "forged" } })).error).toBe("invalid_arguments");
+      expect(await call(aide, "console_launcher", args)).toEqual({ action: "launch", operationId: "new-op", delivery: "confirmed" });
       expect(executions).toBe(1);
       // 자동화는 Console 에 자리가 없어 도구에서 빠졌다 — 남아 있는 정책은 제어층이 그대로 돌리되 연결이 닫혀도 산다.
       const policy = control.automation({ kind: "plugin", pluginId: "scuttlebutt" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
       await aide.dispose();
       time += 300_001; await control.tick();
       expect(control.state().automations[0]).toMatchObject({ id: policy.id, runs: 1 });
-      const nextChat = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, enabled: () => granted });
+      const nextChat = host.forPlugin("scuttlebutt").connect({ allowControl: true, enabled: () => granted });
       expect((await call(nextChat, "console_context")).caller).toMatchObject({ kind: "plugin", pluginId: "scuttlebutt" });
       granted = false;
-      expect((await call(nextChat, "console_launch", args)).error).toBe("console_read_disabled");
+      expect((await call(nextChat, "console_launcher", args)).error).toBe("console_read_disabled");
       expect(executions).toBe(1);
       granted = true; available = false;
-      expect((await call(nextChat, "console_launch", args)).error).toBe("caller_unavailable");
+      expect((await call(nextChat, "console_launcher", args)).error).toBe("caller_unavailable");
       time += 300_001; await control.tick();
       expect(control.state().automations[0]).toMatchObject({ status: "paused", runs: 1, lastError: "scope_unavailable" });
       control.dispose();
@@ -250,8 +256,8 @@ describe("fleet-console-use host", () => {
       theaters: () => [{ id: "theater-a", name: "Project A" }],
       operations: () => [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: "terminal", payload: { secret: "/private/transcript" }, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }],
     });
-    const a = host.connect({ tools: ["console_operations"], enabled: () => enabled, snapshot: () => ({ takenAt: new Date().toISOString(), theaters: [], operations: [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
-    const b = host.connect({ tools: ["console_context", "console_operations"] });
+    const a = host.connect({ tools: ["console_sidebar"], enabled: () => enabled, snapshot: () => ({ takenAt: new Date().toISOString(), theaters: [], operations: [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
+    const b = host.connect({ tools: ["console_context", "console_sidebar"] });
     try {
       const endpointA = (await a.getEndpoint()).servers[0]!;
       const endpointB = (await b.getEndpoint()).servers[0]!;
@@ -260,19 +266,19 @@ describe("fleet-console-use host", () => {
       async function call(url: string, token: string, name: string, args: unknown = {}) {
         return (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) })).json();
       }
-      const first = await call(endpointA.url, tokenA.token, "console_operations");
+      const first = await call(endpointA.url, tokenA.token, "console_sidebar", { action: "list" });
       expect(JSON.parse(first.result.content[0].text)).toMatchObject({ snapshotAt: expect.any(String), operations: [{ activity: "running" }] });
       expect(JSON.stringify(first)).not.toContain("/private/transcript");
-      const second = await call(endpointB.url, tokenB.token, "console_operations");
+      const second = await call(endpointB.url, tokenB.token, "console_sidebar", { action: "list" });
       expect(JSON.parse(second.result.content[0].text)).toMatchObject({ snapshotAt: null, operations: [{ activity: "unknown" }] });
-      const filtered = await call(endpointB.url, tokenB.token, "console_operations", { activity: "awaiting" });
+      const filtered = await call(endpointB.url, tokenB.token, "console_sidebar", { action: "list", activity: "awaiting" });
       expect(JSON.parse(filtered.result.content[0].text)).toMatchObject({ operations: [], coverage: { unknown: 1, complete: false } });
       expect((await call(endpointA.url, tokenA.token, "console_context")).error).toBeDefined();
-      expect((await call(endpointB.url, tokenA.token, "console_operations")).error).toBeDefined();
+      expect((await call(endpointB.url, tokenA.token, "console_sidebar", { action: "list" })).error).toBeDefined();
       enabled = false;
-      expect((await call(endpointA.url, tokenA.token, "console_operations")).result.isError).toBe(true);
+      expect((await call(endpointA.url, tokenA.token, "console_sidebar", { action: "list" })).result.isError).toBe(true);
       a.releaseSessionToken("same-label");
-      expect((await call(endpointA.url, tokenA.token, "console_operations")).error).toBeDefined();
+      expect((await call(endpointA.url, tokenA.token, "console_sidebar", { action: "list" })).error).toBeDefined();
       expect((await call(endpointB.url, tokenB.token, "console_context")).result).toBeDefined();
       await a.dispose();
       await expect(a.getEndpoint()).rejects.toThrow("disposed");

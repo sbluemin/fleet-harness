@@ -4,7 +4,7 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { AgentHost, AgentSession, AgentSessionOptions } from "@fleet-console/sdk/agent";
-import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "@fleet-console/sdk/mcp";
+import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
 import { FLEET_COMPUTER_USE_MCP_SERVER, type ComputerUsePluginConnection, type ComputerUsePluginOptions } from "../../../computer-use/host/mcp.js";
@@ -162,7 +162,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         consoleConnection = deps.consoleUse.connect({ ...consoleOptions, enabled: () => !closed && active && !cancelled && !turnController?.signal.aborted && consoleOptions.enabled?.() !== false });
         servers[FLEET_CONSOLE_USE_MCP_SERVER] = consoleConnection.embeddedServer as ClaudeGatewayMcpServer;
         // 요청한 호스트 도구뿐 아니라 플러그인이 기여한 도구도 허용한다 — 실려 있는데 allowlist 에 없으면 dontAsk 가 거절한다.
-        allowed.push(...(consoleConnection.toolNames?.() ?? options.tools.consoleUse.tools).map((name) => `mcp__${FLEET_CONSOLE_USE_MCP_SERVER}__${name}`));
+        allowed.push(...(consoleConnection.toolNames?.() ?? consoleOptions.tools ?? CONSOLE_USE_TOOLS).map((name) => `mcp__${FLEET_CONSOLE_USE_MCP_SERVER}__${name}`));
       }
       if (options.tools?.computerUse && deps.computerUseMcp) {
         const computerOptions = options.tools.computerUse;
