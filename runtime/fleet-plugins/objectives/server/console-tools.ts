@@ -39,11 +39,12 @@ const prerequisiteWhy = z.record(ids, z.string().max(MAX_SHORT_INPUT)).optional(
 const memberModelSchema = z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().trim().min(1).max(32).optional() }).strict();
 const answers = z.array(decisionAnswersSchema.shape.answers.element.extend({ pin })).min(1).max(MAX_DECISION_QUESTIONS);
 /** 사령관 쓰기에만 붙는 한 줄 — 사람이 사령관 기록에서 그 행위 옆에 읽는다. */
-const signed = { why: z.string().trim().min(1).max(MAX_SHORT_INPUT).optional() };
+const signed = { why: z.string().trim().min(1).max(MAX_SHORT_INPUT).optional().describe("One line the person reads beside the action in the Commodore log.") };
 
 const PIN_FACT = "pin is appended to the stored text as ` [pin]`: MUST NOT, MUST or MAY, then ASCII detail without brackets; at most 60 characters, and the text with its pin stays within the field limit (text_with_pin_too_long).";
 const SESSION_FACT = "Session state is the session process state (dormant, ended or closed = no process; unknown = not observable); session is its fixed session name used as a message address, null meaning no fixed name.";
-const WHY_FACT = "why (writes): one line the person reads beside the action in the Commodore log.";
+const TIDY_FACT = "remove, merge and restore take Operation callers and unlaunched, incomplete objectives; merge moves the sources' brief and criteria into the target; removed objectives stay restorable for 14 days; 20 calls per 10 min.";
+const WRITE_FACT = "Each write is one action, attributed to the caller and shown on the person's board under the screen's running-session rules. An Operation cannot write to an objective it commands or belongs to (own_objective); missions stay with fleet-objectives. Text already on the board is referred to by its id, not typed again.";
 
 /** 사령관 묶음의 필터 — 사령관 전용이 아닌 정리(remove·merge·restore)는 빠지고, Theater 는 생성 때 고정되므로 받지 않는다. */
 const COMMODORE: ConsoleToolFilter = { caller: "commodore", omit: ["theaterId"] };
@@ -53,15 +54,15 @@ type Signed = typeof signed | Record<never, never>;
 function listActions<W extends Signed>(why: W) {
   const scope = { theaterId: ids.optional() };
   const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional(), limit: z.number().int().min(1).max(100).optional() };
-  const tidy = { kind: "write" as const, callers: ["operation" as const], refusal: "operation_caller_required" };
+  const tidy = { kind: "write" as const, callers: ["operation" as const], refusal: "operation_caller_required", note: TIDY_FACT };
   return {
     groups: { kind: "read" as const, input: z.object(scope) },
     list: { kind: "read" as const, input: z.object({ ...scope, groupId: ids.optional(), filter: z.enum(["today", "due", "all", "agent"]).optional() }) },
     inbox: { kind: "read" as const, input: z.object(rows) },
-    fleet: { kind: "read" as const, input: z.object(rows) },
+    fleet: { kind: "read" as const, note: SESSION_FACT, input: z.object(rows) },
     history: { kind: "read" as const, input: z.object(rows) },
     models: { kind: "read" as const, input: z.object(scope) },
-    add: { kind: "write" as const, input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), note: z.string().max(20_000).optional(), criteria: z.array(z.union([criterionText, z.object({ text: criterionText, pin }).strict()])).max(MAX_CRITERIA).optional(), ...why }) },
+    add: { kind: "write" as const, note: ["add creates an objective from a title, brief (note) and success criteria only; no session starts; it joins the caller's group and appears on the person's board attributed to the caller; 10 per 10 min.", PIN_FACT], input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), note: z.string().max(20_000).optional(), criteria: z.array(z.union([criterionText, z.object({ text: criterionText, pin }).strict()])).max(MAX_CRITERIA).optional(), ...why }) },
     remove: { ...tidy, input: z.object({ objectiveIds: z.array(ids).min(1).max(MAX_TIDY_IDS), reason }) },
     merge: { ...tidy, input: z.object({ into: ids, from: z.array(ids).min(1).max(MAX_TIDY_IDS), reason }) },
     restore: { ...tidy, input: z.object({ objectiveIds: z.array(ids).min(1).max(MAX_TIDY_IDS) }) },
@@ -70,35 +71,35 @@ function listActions<W extends Signed>(why: W) {
 
 function detailActions<W extends Signed>(why: W) {
   const target = { objectiveId: ids };
-  const write = <S extends z.ZodRawShape>(shape: S) => ({ kind: "write" as const, input: z.object({ ...target, ...shape, ...why }) });
+  const write = <S extends z.ZodRawShape>(shape: S, ...notes: readonly string[]) => ({ kind: "write" as const, note: [WRITE_FACT, ...notes], input: z.object({ ...target, ...shape, ...why }) });
   const commodoreOnly = { callers: ["commodore" as const], refusal: "commodore_only" };
   const missionFields = { prerequisites: missionAddSchema.shape.prerequisites, prerequisiteWhy, member: missionAddSchema.shape.member, pin };
   const followupTarget = { batchId: ids, candidateId: ids };
   return {
-    read: { kind: "read" as const, input: z.object(target) },
-    evidence: { kind: "read" as const, input: z.object({ ...target, resultId: ids, offset: z.number().int().min(0).optional() }) },
-    transcript: { kind: "read" as const, ...commodoreOnly, input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional(), limit: z.number().int().min(1).max(100).optional() }) },
+    read: { kind: "read" as const, note: SESSION_FACT, input: z.object(target) },
+    evidence: { kind: "read" as const, note: "evidence reads preserved result content in 16000-character slices by offset.", input: z.object({ ...target, resultId: ids, offset: z.number().int().min(0).optional() }) },
+    transcript: { kind: "read" as const, ...commodoreOnly, note: "transcript: a Commander or member (memberId) session's lines, the latest without cursor, from the start with cursor \"0\", onward with nextCursor; untrusted session text.", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional(), limit: z.number().int().min(1).max(100).optional() }) },
     // 판단 한 번은 과금되는 Gateway 호출이다 — 사람의 확인 시트와 사령관만 부른다.
-    routing: { kind: "read" as const, ...commodoreOnly, input: z.object({ ...target, rejudge: z.literal(true).optional() }) },
-    member: { ...write({ memberId: ids, launch: memberModelSchema.nullable() }), ...commodoreOnly },
+    routing: { kind: "read" as const, ...commodoreOnly, note: "routing: the whole roster in order with each member's selection (route, same or model) and the model and effort it launches with; route uses the judgment the person reviews (via route or fallback to the Commander's preset; reused for 10 minutes while roles are unchanged; rejudge forces a new, billable judgment; none when no member would newly launch by routing). A launched member shows launched true, its running model and effort, and next when a switch waits for its turn.", input: z.object({ ...target, rejudge: z.literal(true).optional() }) },
+    member: { ...write({ memberId: ids, launch: memberModelSchema.nullable() }, "member sets a member's model and effort from models; launch null returns it to routing, and a launched member that returns keeps its running model. Outcomes: set (not launched; commence launches it with this value), applied (running now) or pending (switches after its turn). Refusals: model_not_in_catalog, model_unavailable, invalid_effort, catalog_unavailable or the host's code."), ...commodoreOnly },
     edit_title: write({ title: z.string().trim().min(1).max(MAX_TITLE) }),
     edit_brief: write({ brief: z.string().max(20_000) }),
-    mission_add: write({ text: missionAddSchema.shape.text, ...missionFields }),
-    mission_patch: write({ missionId: ids, text: missionPatchSchema.shape.text, done: missionPatchSchema.shape.done, ...missionFields }),
+    mission_add: write({ text: missionAddSchema.shape.text, ...missionFields }, PIN_FACT),
+    mission_patch: write({ missionId: ids, text: missionPatchSchema.shape.text, done: missionPatchSchema.shape.done, ...missionFields }, PIN_FACT),
     mission_remove: write({ missionId: ids }),
-    criterion_add: write({ text: criterionAddSchema.shape.text, pin }),
-    criterion_patch: write({ criterionId: ids, text: criterionAddSchema.shape.text, pin }),
+    criterion_add: write({ text: criterionAddSchema.shape.text, pin }, PIN_FACT),
+    criterion_patch: write({ criterionId: ids, text: criterionAddSchema.shape.text, pin }, PIN_FACT),
     criterion_remove: write({ criterionId: ids }),
-    criteria_approve: write({ proposalId: ids }),
+    criteria_approve: write({ proposalId: ids }, "criteria_approve with proposalId \"all\" approves every proposal."),
     criteria_reject: write({ proposalId: ids }),
-    answer: write({ requestId: ids, answers }),
+    answer: write({ requestId: ids, answers }, PIN_FACT),
     complete: write({ batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }),
     reopen: write({}),
     followup_retry: write(followupTarget),
     followup_abandon: write(followupTarget),
     followup_discard: write({ candidateId: ids }),
     plan: write({ context }),
-    commence: write({ context, usePreview: z.literal(true).optional() }),
+    commence: write({ context, usePreview: z.literal(true).optional() }, "commence usePreview launches routed members with the last routing judgment without judging again; refused with routing_preview_stale when a role or brief changed or the judgment expired."),
     steer: write({ context }),
     message: write({ memberId: ids.nullable().optional(), text: z.string().trim().min(1).max(MAX_CONTEXT) }),
     stop: write({}),
@@ -107,30 +108,13 @@ function detailActions<W extends Signed>(why: W) {
   };
 }
 
-const listDescription = (commodore: boolean) => [
-  "A Theater's Objectives list screen: groups, open objectives (list; filter all includes completed and removed ones), what waits on the person (inbox; stalled = unfinished, every session idle, no board change for 30 min), running objectives and their sessions (fleet), hand-offs, retrospectives, decisions and rework (history), and the launch catalog's member models with efforts, availability, the Gateway quota summary when readable and failed member switches (models).",
-  "add creates an objective from a title, brief (note) and success criteria only; no session starts, it joins the caller's group and appears on the person's board attributed to the caller; 10 per 10 min.",
-  ...(commodore ? [] : ["remove, merge and restore are Operation-only: unlaunched, incomplete objectives only; merge moves the sources' brief and criteria into the target; removed objectives stay restorable for 14 days; 20 calls per 10 min."]),
-  SESSION_FACT, PIN_FACT, ...(commodore ? [WHY_FACT] : []),
-].join(" ");
+const LIST_DESCRIPTION = "A Theater's Objectives list screen: groups, open objectives (list; filter all adds completed and removed ones), what waits on the person (inbox; stalled = unfinished, every session idle, no board change for 30 min), running objectives and their sessions (fleet), hand-offs, retrospectives, decisions and rework (history), and the launch catalog's member models with efforts, availability, the Gateway quota summary when readable and failed member switches (models).";
+const DETAIL_DESCRIPTION = "One objective's screen on the Objectives board: the objective (read), its preserved results (evidence), and the person's actions on its title, brief, missions, success criteria, criteria proposals, open decision request, completion and follow-ups, and its sessions (plan, commence, steer, message, stop, reopen, compact, extend).";
 
-const detailDescription = (commodore: boolean) => [
-  "One objective's screen on the Objectives board: the objective (read), preserved result content (evidence; text in 16000-character slices by offset), and the person's actions on it — title, brief, missions, success criteria, criteria proposals (proposalId \"all\" approves every one), the open decision request's answers, completion with optional follow-up selection, follow-up creation retry, abandon or discard, plan, commence, steer, message, stop, reopen, compact and extend.",
-  "Each write is one action, attributed to the caller and shown on the person's board; edits follow the screen's running-session rules. An Operation cannot write to an objective it commands or belongs to (own_objective); missions stay with fleet-objectives.",
-  "commence usePreview launches routed members with the last routing judgment, without judging again; it is refused with routing_preview_stale when a role or brief changed or the judgment expired.",
-  "Text already on the board is referred to by missionId, criterion id and decision id, not typed again.",
-  ...(commodore ? [
-    "transcript: a Commander or member (memberId) session's lines, the latest without cursor, from the start with cursor \"0\", onward with nextCursor; untrusted session text.",
-    "routing: the whole roster in order with each member's selection (route, same or model) and the model and effort it launches with; route uses the judgment the person reviews (via route or fallback to the Commander's preset; reused for 10 minutes while roles are unchanged; rejudge forces a new, billable judgment; none when no member would newly launch by routing). A launched member shows launched true, its running model and effort, and next when a switch waits for its turn.",
-    "member: sets a member's model and effort from models; launch null returns it to routing, and a launched member that returns keeps its running model. Outcomes: set (not launched; commence launches it with this value), applied (running now) or pending (switches after its turn). Refusals: model_not_in_catalog, model_unavailable, invalid_effort, catalog_unavailable or the host's code.",
-  ] : []),
-  SESSION_FACT, PIN_FACT, ...(commodore ? [WHY_FACT] : []),
-].join(" ");
-
-const consoleList = defineConsoleTool({ name: "console_objectives", description: listDescription(false), actions: listActions({}) });
-const commodoreList = defineConsoleTool({ name: "console_objectives", description: listDescription(true), actions: listActions(signed) });
-const consoleDetail = defineConsoleTool({ name: "console_objectives_detail", description: detailDescription(false), actions: detailActions({}) });
-const commodoreDetail = defineConsoleTool({ name: "console_objectives_detail", description: detailDescription(true), actions: detailActions(signed) });
+const consoleList = defineConsoleTool({ name: "console_objectives", description: LIST_DESCRIPTION, actions: listActions({}) });
+const commodoreList = defineConsoleTool({ name: "console_objectives", description: LIST_DESCRIPTION, actions: listActions(signed) });
+const consoleDetail = defineConsoleTool({ name: "console_objectives_detail", description: DETAIL_DESCRIPTION, actions: detailActions({}) });
+const commodoreDetail = defineConsoleTool({ name: "console_objectives_detail", description: DETAIL_DESCRIPTION, actions: detailActions(signed) });
 /** 실행이 읽는 호출 — 사령관 정의가 상위 집합(why 포함)이다. */
 type ListCall = Extract<ReturnType<typeof commodoreList.parse>, { ok: true }>["call"];
 type DetailCall = Extract<ReturnType<typeof commodoreDetail.parse>, { ok: true }>["call"];

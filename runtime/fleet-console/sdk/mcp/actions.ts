@@ -29,6 +29,11 @@ export interface ConsoleToolAction<S extends z.ZodObject = z.ZodObject> {
   readonly callers?: readonly ConsoleToolCaller[];
   /** `callers` 밖의 호출자가 이 action 을 부를 때의 거부 코드. 기본은 `permission_required`. */
   readonly refusal?: string;
+  /**
+   * 이 action 에만 해당하는 사실 문장. 이 action 이 남는 연결의 설명에만 실린다 — 읽기 전용 연결이나 다른 호출자에게
+   * 없는 action 의 사실이 설명에 남지 않는다. 여러 action 이 같은 문장을 가지면 한 번만 싣는다.
+   */
+  readonly note?: string | readonly string[];
 }
 
 export interface ConsoleToolActionInfo {
@@ -98,7 +103,7 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
   const SINGLE = "";
   const actions: Readonly<Record<string, ConsoleToolAction>> = discriminated
     ? spec.actions!
-    : { [SINGLE]: { kind: spec.kind!, input: spec.input!, ...(spec.callers ? { callers: spec.callers } : {}), ...(spec.refusal ? { refusal: spec.refusal } : {}) } };
+    : { [SINGLE]: { kind: spec.kind!, input: spec.input!, ...(spec.callers ? { callers: spec.callers } : {}), ...(spec.refusal ? { refusal: spec.refusal } : {}), ...(spec.note ? { note: spec.note } : {}) } };
   const names = Object.keys(actions);
   if (!names.length) throw new Error(`Console Use tool needs an action: ${spec.name}`);
   for (const name of names) {
@@ -126,9 +131,11 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
     const omit = omitted(filter);
     const perAction = kept.map((name) => ({ name, ...stripFields(fields.get(name)!, omit) }));
     const merged = mergeFields(spec.name, perAction);
+    const notes = [...new Set(kept.flatMap((name) => { const note = actions[name]!.note; return note === undefined ? [] : typeof note === "string" ? [note] : [...note]; }))];
+    const description = notes.length ? `${spec.description} ${notes.join(" ")}` : spec.description;
     if (!discriminated) {
       const only = perAction[0]!;
-      return { description: spec.description, inputSchema: objectSchema(merged, only.required) };
+      return { description, inputSchema: objectSchema(merged, only.required) };
     }
     // 모든 action 이 같은 필수 필드를 받으면(Operation 패널의 operationId) 줄 머리에 한 번만 적는다.
     const shared = perAction.length > 1 ? perAction[0]!.required.filter((key) => perAction.every(({ required }) => required.includes(key))) : [];
@@ -137,7 +144,7 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
       return keys.length ? `${name}{${keys.map((key) => required.includes(key) ? key : `${key}?`).join(", ")}}` : name;
     }).join(" · ");
     return {
-      description: `${spec.description}\nActions${shared.length ? ` (each takes ${shared.join(", ")})` : ""}: ${signature}`,
+      description: `${description}\nActions${shared.length ? ` (each takes ${shared.join(", ")})` : ""}: ${signature}`,
       inputSchema: objectSchema({ action: { type: "string", enum: kept }, ...merged }, ["action", ...shared]),
     };
   };
