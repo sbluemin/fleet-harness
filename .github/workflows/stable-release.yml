@@ -71,6 +71,11 @@ jobs:
   verify:
     needs: resolve
     if: needs.resolve.outputs.verified != 'true'
+    # workspace-verify는 dist·tsbuildinfo 캐시 저장에 actions: write를 쓴다. 호출된
+    # 워크플로는 이 잡이 넘긴 토큰을 넓힐 수 없어서, 여기서 같은 권한을 준다.
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/workspace-verify.yml
     with:
       ref: ${{ needs.resolve.outputs.sha }}
