@@ -90,15 +90,43 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
     rootRef.current?.querySelector<HTMLElement>(`#${CSS.escape(target.anchor)}`)?.scrollIntoView({ block: "start" });
   }, [html, relativePath, target?.anchor, target?.relativePath, target?.requestId]);
 
+  const copyStates = useRef(new Map<HTMLElement, { timer: number | null; seq: number }>());
+  useEffect(() => {
+    const held = copyStates.current;
+    return () => {
+      for (const entry of held.values()) if (entry.timer !== null) window.clearTimeout(entry.timer);
+      held.clear();
+    };
+  }, []);
+
   const handleCopyClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
     if (!button) return;
     const code = button.closest("pre")?.getAttribute("data-code");
-    if (!code) return;
-    void navigator.clipboard?.writeText(code);
-    const original = button.textContent;
-    button.textContent = t("fileExplorer.markdown.copied");
-    window.setTimeout(() => { button.textContent = original; }, 1200);
+    // 빈 문자열은 복사할 코드다. 속성 자체가 없을 때만 대상이 아니다.
+    if (code === null || code === undefined) return;
+    const entry = copyStates.current.get(button) ?? { timer: null, seq: 0 };
+    copyStates.current.set(button, entry);
+    entry.seq += 1;
+    const seq = entry.seq;
+    if (entry.timer !== null) window.clearTimeout(entry.timer);
+    entry.timer = null;
+    const settle = (state: "copied" | "failed") => {
+      // 다시 눌렸거나 재렌더로 버튼이 빠졌다면 이 결과는 낡았다.
+      if (entry.seq !== seq || !button.isConnected) return;
+      button.textContent = t(state === "copied" ? "fileExplorer.markdown.copied" : "fileExplorer.markdown.copyFailed");
+      entry.timer = window.setTimeout(() => {
+        entry.timer = null;
+        if (entry.seq !== seq || !button.isConnected) return;
+        button.textContent = t("fileExplorer.markdown.copy");
+      }, state === "copied" ? 1200 : 3000);
+    };
+    // 성공 글자는 writeText가 이행된 뒤에만 낸다. 클립보드가 없거나 던지거나 거절되면 모두 실패다.
+    const clipboard = navigator.clipboard as Clipboard | undefined;
+    if (!clipboard || typeof clipboard.writeText !== "function") { settle("failed"); return; }
+    let write: Promise<void>;
+    try { write = clipboard.writeText(code); } catch { settle("failed"); return; }
+    void write.then(() => settle("copied"), () => settle("failed"));
   }, [t]);
 
   return (
