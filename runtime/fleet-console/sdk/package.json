@@ -266,7 +266,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit --incremental -p tsconfig.json"
   },
   "dependencies": {
     "@fleet-console/link": "workspace:*",

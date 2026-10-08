@@ -168,7 +168,12 @@ describe("console update apply worker", () => {
   }, 30_000);
 
   // host의 검사가 통과한 뒤 실제 worker에서만 실패하는 public apply 경계다.
+  it("keeps the production worker preflight budget at 15s", () => {
+    expect(UPDATE_WORKER_PREFLIGHT_MS).toBe(15_000);
+  });
+
   it.each(["failure", "hung"] as const)("keeps the Console serving when worker preflight is %s", async (mode) => {
+    const startedAt = Date.now();
     const fixture = workerFixture(mode);
     const stop = vi.fn(async () => undefined);
     const routes = applyRoutes(fixture, stop);
@@ -190,6 +195,7 @@ describe("console update apply worker", () => {
       expect(response.result.status).toBe(503);
       expect(response.result.body.progress.startedAt).not.toBe(progress.startedAt);
     }
+    if (mode === "hung") expect(Date.now() - startedAt).toBeLessThan(8_000);
   }, UPDATE_WORKER_PREFLIGHT_MS + 10_000);
 
   // root는 쓸 수 있지만 전역 bin만 막힌 경우: 같은 preflight-failed로 거절하고 Console을 정지하지 않는다.
@@ -359,6 +365,7 @@ if (arg === "root") {
     downloadTarball: async () => ({ ok: true, tarballPath: path.join(root, "release.tgz") }),
     serverModulePath: serve,
     workerRuntimePath: fileURLToPath(new URL("../dist/lifecycle-worker-runtime.mjs", import.meta.url)),
+    ...(mode === "hung" ? { preflightTimeoutMs: 400 } : {}),
   });
   const request = {
     currentEndpoint: "http://127.0.0.1:1/", currentLockToken: "fixture", currentLockStartedAt: Date.now(),

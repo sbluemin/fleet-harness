@@ -48,6 +48,6 @@
     "vitest": "^4.0.13"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit --incremental -p tsconfig.json"
   }
 }

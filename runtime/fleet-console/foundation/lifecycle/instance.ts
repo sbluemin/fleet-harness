@@ -126,6 +126,10 @@ export interface ConsoleStopLadderInput {
   readonly onWaiting?: () => void;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * Test-only budget. Production callers omit it and the ladder waits EXTERNAL_ESCALATION_MS.
+   */
+  readonly escalationMs?: number;
 }
 
 /**
@@ -139,7 +143,7 @@ export async function runStopLadder(input: ConsoleStopLadderInput): Promise<Cons
   const now = input.now ?? (() => performance.now());
   const sleep = input.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const requestedAt = now();
-  const deadline = requestedAt + EXTERNAL_ESCALATION_MS;
+  const deadline = requestedAt + Math.max(0, input.escalationMs ?? EXTERNAL_ESCALATION_MS);
   let noticed = false;
   if (input.request === "signal") input.signal("SIGTERM");
   const wait = async (until: () => boolean): Promise<boolean> => {

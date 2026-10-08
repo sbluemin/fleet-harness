@@ -22,6 +22,7 @@ export function prepareUpdateWorker(
   runId: string,
   initialize: () => void,
   failure: (reason: ConsoleUpdateFailureReason | "unknown", stage: ConsoleUpdateFailureStage) => Error,
+  preflightMs = UPDATE_WORKER_PREFLIGHT_MS,
 ): Promise<PreparedUpdateWorker> {
   let state: "preflight" | "ready" | "committing" | "committed" | "aborted" = "preflight";
   let exited = false;
@@ -35,7 +36,7 @@ export function prepareUpdateWorker(
   let resolveCommit: (() => void) | undefined;
   let rejectCommit: ((error: Error) => void) | undefined;
   let aborted: Promise<void> | null = null;
-  let timer = setTimeout(() => { void abort("preflight-timeout"); }, UPDATE_WORKER_PREFLIGHT_MS);
+  let timer = setTimeout(() => { void abort("preflight-timeout"); }, preflightMs);
 
   const stage = (): ConsoleUpdateFailureStage => state === "preflight" ? "preflight" : "handoff";
   const send = (kind: ConsoleUpdateWorkerMessage["kind"]): Promise<void> => new Promise((resolve, reject) => {

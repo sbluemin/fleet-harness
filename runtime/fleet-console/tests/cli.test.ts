@@ -23,7 +23,8 @@ import {
   runConsoleStop,
 } from "../core/host/bootstrap/cli.js";
 import { describeDaemonStartFailure } from "../core/host/transport/failure-notice.js";
-import { readConsoleLockFile } from "@fleet-console/lifecycle";
+import { runStopLadder, readConsoleLockFile } from "@fleet-console/lifecycle";
+import { CONSOLE_START_TIMEOUT_MS, EXTERNAL_ESCALATION_MS } from "@fleet-console/protocol/lifecycle";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 
@@ -133,6 +134,93 @@ describe("fleet console CLI", () => {
       expect(clock).toBeLessThan(60_000);
       expect(fake.kill).not.toHaveBeenCalled();
       expect(fake.unref).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses the 60s production start budget when no budget is injected", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-production-budget-"));
+      TEMP_DIRS.push(dir);
+      const fake = createFakeDaemonProcess(4313, (signal, child) => {
+        if (signal === "SIGTERM" || signal === "SIGKILL") child.emit("exit", 1, null);
+      });
+      let clock = 0;
+      const lifecycle = createConsoleDaemonLifecycle({
+        env: { FLEET_CONSOLE_DATA_DIR: dir },
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => { clock += ms; },
+        now: () => clock,
+        health: { probe: async () => ({ healthy: false, lock: null, error: "lock missing" }) },
+      });
+
+      await expect(lifecycle.ensureDaemon()).rejects.toThrow("within 60 seconds");
+
+      expect(CONSOLE_START_TIMEOUT_MS).toBe(60_000);
+      expect(clock).toBe(CONSOLE_START_TIMEOUT_MS);
+    });
+
+    it("accepts a shorter test start budget without replacing an explicit one", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-injected-budget-"));
+      TEMP_DIRS.push(dir);
+      const fake = createFakeDaemonProcess(4314, (signal, child) => {
+        if (signal === "SIGTERM" || signal === "SIGKILL") child.emit("exit", 1, null);
+      });
+      let clock = 0;
+      const env = { FLEET_CONSOLE_DATA_DIR: dir, FLEET_TEST_CONSOLE_START_TIMEOUT_MS: "250" };
+      const injected = createConsoleDaemonLifecycle({
+        env,
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => { clock += ms; },
+        now: () => clock,
+        health: { probe: async () => ({ healthy: false, lock: null, error: "lock missing" }) },
+      });
+      await expect(injected.ensureDaemon()).rejects.toThrow("within 250 ms");
+      expect(clock).toBe(250);
+
+      clock = 0;
+      const explicit = createConsoleDaemonLifecycle({
+        env,
+        serverModulePath: "/pkg/dist/cli.mjs",
+        spawnDaemon: () => fake.child,
+        sleep: async (ms) => { clock += ms; },
+        now: () => clock,
+        startupTimeoutMs: 400,
+        health: { probe: async () => ({ healthy: false, lock: null, error: "lock missing" }) },
+      });
+      await expect(explicit.ensureDaemon()).rejects.toThrow("within 400 ms");
+      expect(clock).toBe(400);
+    });
+
+    it("uses the production escalation budget unless a test budget is injected", async () => {
+      const run = async (escalationMs?: number) => {
+        let clock = 0;
+        let alive = true;
+        const signals: string[] = [];
+        const ended = await runStopLadder({
+          request: "signal",
+          isAlive: () => alive,
+          isReleased: () => false,
+          reprove: async () => true,
+          signal: (signal) => {
+            signals.push(signal);
+            if (signal === "SIGKILL") alive = false;
+          },
+          now: () => clock,
+          sleep: async (ms) => { clock += ms; },
+          ...(escalationMs === undefined ? {} : { escalationMs }),
+        });
+        return { ended, signals, clock };
+      };
+
+      const production = await run();
+      expect(production.ended).toBe("forced");
+      expect(production.signals).toEqual(["SIGTERM", "SIGKILL"]);
+      expect(EXTERNAL_ESCALATION_MS).toBe(12_000);
+      expect(production.clock).toBe(EXTERNAL_ESCALATION_MS);
+
+      const injected = await run(200);
+      expect(injected.ended).toBe("forced");
+      expect(injected.clock).toBe(200);
     });
 
     it("adopts a concurrent healthy winner after cleaning only its own child", async () => {

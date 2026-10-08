@@ -36,7 +36,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit --incremental -p tsconfig.json"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

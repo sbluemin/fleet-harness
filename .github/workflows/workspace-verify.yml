@@ -1,8 +1,9 @@
 name: Workspace Verify
 
-# 워크스페이스 전체의 타입체크와 테스트를 한 잡에서 돌린다. canary push에서 발화하고,
-# stable-release가 릴리스 커밋을 만들기 전에 workflow_call로 같은 잡을 재사용한다 —
-# 배포 파이프라인이 검증하는 기준과 개발 중 보는 기준을 하나로 묶기 위한 것이다.
+# verify(타입체크·테스트)와 POSIX built smoke는 나란히 돈다. smoke를 verify 안에 두면
+# 그 잡이 Windows 형제보다 길어져 워크플로 벽시계가 smoke에 묶인다.
+# canary push에서 발화하고, stable-release가 릴리스 커밋을 만들기 전에 workflow_call로
+# 같은 워크플로를 재사용한다 — 배포 파이프라인이 검증하는 기준과 개발 중 보는 기준을 하나로 묶기 위한 것이다.
 # PR에서는 돌리지 않는다: 워크스페이스 전체 스위트는 머지 후 canary에서, 배포 직전
 # 릴리스 파이프라인에서만 게이트로 쓴다.
 # 문서·마크다운 변경만 있는 push는 검증이 필요 없으므로 건너뛴다. 단 Console이
@@ -27,6 +28,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   verify:
@@ -42,19 +44,114 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      # postinstall이 워크스페이스 빌드를 수행하므로 --ignore-scripts를 쓰지 않는다.
-      # 타입체크와 테스트 모두 dist를 참조하는 경로가 있어 빌드가 선행되어야 한다.
+      # 이전 런의 dist와 스탬프. 스탬프는 lockfile과 소스 해시라서 안 바뀐 패키지는 postinstall이
+      # 다시 빌드하지 않는다. server.test.ts가 읽는 Console Vite client dist도 이 경로에 있다.
+      # 테스트가 dist/client/index.html을 잠시 바꾸므로, 저장은 테스트 전에 한다.
+      - name: Restore workspace build outputs
+        id: workspace-dist
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/build-stamps
+            runtime/fleet-console/dist
+            runtime/fleet-console/foundation/agent-runtime/dist
+            runtime/fleet-console/foundation/process/dist
+            runtime/fleet-console/foundation/infra/dist
+            runtime/fleet-console/features/ai-gateway/runtime/dist
+            runtime/fleet-console/features/analyst/runtime/dist
+            runtime/fleet-mobile/dist
+          key: workspace-dist-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
+          restore-keys: |
+            workspace-dist-${{ runner.os }}-node22-
       - run: pnpm install --frozen-lockfile
+      - name: Save workspace build outputs
+        if: steps.workspace-dist.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/build-stamps
+            runtime/fleet-console/dist
+            runtime/fleet-console/foundation/agent-runtime/dist
+            runtime/fleet-console/foundation/process/dist
+            runtime/fleet-console/foundation/infra/dist
+            runtime/fleet-console/features/ai-gateway/runtime/dist
+            runtime/fleet-console/features/analyst/runtime/dist
+            runtime/fleet-mobile/dist
+          key: workspace-dist-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
       # 게이트는 검증 안에서 돌아야 게이트다 — 정의만 해 두면 새 위반이 그대로 통과한다.
       - name: Check localized user-facing attributes
         run: pnpm check:localized-attributes
+      - name: Restore TypeScript incremental state
+        id: tsc-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: "**/*.tsbuildinfo"
+          key: tsc-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
+          restore-keys: |
+            tsc-${{ runner.os }}-node22-
       - name: Typecheck every workspace package
         run: pnpm typecheck
+      - name: Save TypeScript incremental state
+        if: steps.tsc-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: "**/*.tsbuildinfo"
+          key: tsc-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
       - name: Test every workspace package
         run: pnpm test
-      # built smoke는 FLEET_BUILT_SMOKE 없이는 스스로 skip한다. POSIX 신호 계약은 Windows job에서
-      # 돌 수 없으므로 여기서 postinstall이 만든 dist로 돈다. -t 필터는 이름이 바뀌면 0건으로 통과하므로
-      # 파일 단위로만 고른다.
+
+  posix-built-smoke:
+    runs-on: ubuntu-latest
+    # A hung Console must not hold the runner. No secrets: the cases use the fake agent only.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Restore workspace build outputs
+        id: workspace-dist
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/build-stamps
+            runtime/fleet-console/dist
+            runtime/fleet-console/foundation/agent-runtime/dist
+            runtime/fleet-console/foundation/process/dist
+            runtime/fleet-console/foundation/infra/dist
+            runtime/fleet-console/features/ai-gateway/runtime/dist
+            runtime/fleet-console/features/analyst/runtime/dist
+            runtime/fleet-mobile/dist
+          key: workspace-dist-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
+          restore-keys: |
+            workspace-dist-${{ runner.os }}-node22-
+      - run: pnpm install --frozen-lockfile
+      - name: Save workspace build outputs
+        if: steps.workspace-dist.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/build-stamps
+            runtime/fleet-console/dist
+            runtime/fleet-console/foundation/agent-runtime/dist
+            runtime/fleet-console/foundation/process/dist
+            runtime/fleet-console/foundation/infra/dist
+            runtime/fleet-console/features/ai-gateway/runtime/dist
+            runtime/fleet-console/features/analyst/runtime/dist
+            runtime/fleet-mobile/dist
+          key: workspace-dist-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
+      # POSIX 신호 계약은 Windows job에서 돌 수 없다. 파일 안의 케이스는 한 러너에서 직렬이다 —
+      # ps 프로세스 테이블 조회가 형제 케이스와 겹치면 안전하지 않다. -t 필터는 이름이 바뀌면 0건으로
+      # 통과하므로 파일 단위로만 고른다. FLEET_BUILT_SMOKE 없이는 이 파일이 스스로 skip한다.
       - name: Test POSIX Console signal lifecycle on built artifacts
         env:
           FLEET_BUILT_SMOKE: "1"

@@ -392,8 +392,9 @@ afterEach(async () => {
   }, 90_000);
 
   // L8, N1 (storage integrity). `fleet console start` gives up on a Console that holds the lock but is still starting (its
-  // durable restore can outlast start's 60s). That Console may be mid-write; it must get its own deadline to stop instead of
-  // a SIGKILL right after SIGTERM.
+  // durable restore can outlast start's budget). That Console may be mid-write; it must get its own deadline to stop
+  // instead of a SIGKILL right after SIGTERM. Production start waits CONSOLE_START_TIMEOUT_MS (60s); this case injects a
+  // shorter budget through FLEET_TEST_CONSOLE_START_TIMEOUT_MS. The unset default is asserted in cli.test.ts.
   it.skipIf(process.platform === "win32")("lets a starting Console that holds the lock stop by itself when start gives up on it", async () => {
     const run = createRun("starting");
     const marker = path.join(run.dir, "starting-stalled");
@@ -415,7 +416,7 @@ afterEach(async () => {
       "  syncBuiltinESMExports();",
       "}",
     ]);
-    const start = await runCli(["start"], { ...run.env, NODE_OPTIONS: `--import ${pathToFileURL(preload).href}` }, 120_000);
+    const start = await runCli(["start"], { ...run.env, NODE_OPTIONS: `--import ${pathToFileURL(preload).href}`, FLEET_TEST_CONSOLE_START_TIMEOUT_MS: "5000" }, 30_000);
     const lockPid = readRunLock(run)?.pid;
     // start가 detached로 띄운 Console이다. 기다리기 전에 등록해야 start보다 오래 사는 Console도 afterEach가 거둔다.
     if (lockPid !== undefined) own(lockPid);
@@ -424,7 +425,7 @@ afterEach(async () => {
     expect(fs.existsSync(marker), "the Console must hold the lock and still be starting when start gives up").toBe(true);
     expect(start.status).not.toBe(0);
     lifecycleCheck("L8", fs.existsSync(exited), "start does not SIGKILL a lock-holding starting Console before it can stop by itself");
-  }, 150_000);
+  }, 40_000);
 
   // L5, d48e62ac (I2; L3 and I1 as guards). An uncaught exception while serving ends the Console at once; the next Console
   // must find the slot usable, nothing the crashed one started may still run, and whatever reaps it stays inside its tree.
