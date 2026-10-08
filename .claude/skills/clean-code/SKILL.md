@@ -46,6 +46,6 @@ Run each package script explicitly per wave:
 cd <absolute-worktree> && pnpm --filter <pkg> typecheck && pnpm --filter <pkg> test && pnpm --filter <pkg> build
 ```
 
-Check affected consumer builds, residual imports/dead references to removed paths (searched with `git grep`, since rg's defaults skip hidden and ignored paths such as `.claude`), public exports, and module-state ownership. Disclose missing scripts or blocked checks. Repair task-induced regressions and repeat verification.
+Check affected consumer builds, residual imports/dead references to removed paths (searched with `git grep --untracked`, since rg's defaults skip hidden and ignored paths such as `.claude` and plain `git grep` skips new unstaged files), public exports, and module-state ownership. Disclose missing scripts or blocked checks. Repair task-induced regressions and repeat verification.
 
 Finish when approved consolidation/deduplication and relevant checks are complete. Do not expand into general refactoring. Report before/after, API preservation, changed files, checks/results (every count taken from output re-run after the last edit), and unverified scope. Commits/PRs require a separately requested or authorized lifecycle.
