@@ -8,7 +8,8 @@ import { inputIssues, type PluginMcpTool } from "./types.js";
  * 광고하는 inputSchema 는 최상위 `type: "object"` 하나다 — 프로바이더 tool schema 는 최상위 anyOf/oneOf 를 받지 않는다.
  * 그래서 `action` enum(필수)과 action들의 필드를 합친 optional properties 로 평탄화하고, 어느 필드가 어느 action 의 것인지는
  * 설명 끝의 시그니처 한 줄(`send{text} · answer{askId, answers?} · stop`)로 싣는다. 같은 이름의 필드는 가장 넓은 타입·한도로
- * 느슨하게 합치고, 정확한 제약은 서버가 action별 strict 검증으로 다시 본다.
+ * 느슨하게 합치고, 정확한 제약은 서버가 action별 strict 검증으로 다시 본다. 다른 action 의 필드를 보내 거절되면 issue 의
+ * keys 가 그 이름을, acceptedBy 가 그 필드를 받는 action 을 말한다.
  *
  * 결과 객체는 순수 데이터와 함수뿐이다 — 호스트와 플러그인 번들이 서로 다른 zod 사본을 실어도 `instanceof` 없이 오간다.
  */
@@ -52,7 +53,8 @@ export interface ConsoleToolFilter {
   readonly omit?: readonly string[];
 }
 
-export type ConsoleToolIssue = ReturnType<typeof inputIssues>[number];
+/** acceptedBy — 받지 않은 키마다, 이 연결에서 그 키를 받는 다른 action 들. 어느 action 도 받지 않는 키는 빠진다. */
+export type ConsoleToolIssue = ReturnType<typeof inputIssues>[number] & { readonly acceptedBy?: Readonly<Record<string, readonly string[]>> };
 
 export type ConsoleToolParse<C> =
   | { readonly ok: true; readonly call: C }
@@ -173,8 +175,17 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
     }
     const refusal = allowed(name, filter);
     if (refusal) return { ok: false, error: refusal };
-    const parsed = strictInput(name, omitted(filter)).safeParse(rest);
-    if (!parsed.success) return { ok: false, error: "invalid_arguments", issues: inputIssues(parsed.error.issues) };
+    const omit = omitted(filter);
+    const parsed = strictInput(name, omit).safeParse(rest);
+    if (!parsed.success) {
+      // 다른 action 의 필드를 보냈다면 그 필드를 받는 action 을 함께 말한다 — 호출자가 스키마를 다시 추측하지 않게.
+      const owners = (key: string) => discriminated ? available(filter).filter((other) => other !== name && !omit.has(key) && Object.hasOwn(fields.get(other)!.properties, key)) : [];
+      const issues: ConsoleToolIssue[] = inputIssues(parsed.error.issues).map((issue) => {
+        const acceptedBy = Object.fromEntries((issue.keys ?? []).map((key) => [key, owners(key)] as const).filter(([, actions]) => actions.length > 0));
+        return Object.keys(acceptedBy).length ? { ...issue, acceptedBy } : issue;
+      });
+      return { ok: false, error: "invalid_arguments", issues };
+    }
     return { ok: true, call: discriminated ? { action: name, ...(parsed.data as Record<string, unknown>) } : parsed.data as Record<string, unknown> };
   };
   const unfiltered = advertise()!;

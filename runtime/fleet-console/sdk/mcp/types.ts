@@ -13,12 +13,24 @@ interface ArgumentIssue {
   readonly path: readonly PropertyKey[];
   readonly code: string;
   readonly maximum?: number | bigint;
+  readonly keys?: readonly string[];
   readonly errors?: readonly (readonly ArgumentIssue[])[];
 }
 
-/** 입력 원문 없이 거부된 필드와 한도를 돌려준다. union 안쪽의 한도도 보존한다. */
-export function inputIssues(issues: readonly ArgumentIssue[]): { path: readonly PropertyKey[]; code: string; maximum?: number | bigint }[] {
-  return issues.flatMap((issue) => issue.code === "invalid_union" && issue.errors ? issue.errors.flatMap(inputIssues) : [{ path: issue.path, code: issue.code, ...(issue.code === "too_big" ? { maximum: issue.maximum } : {}) }]);
+/** 받지 않는 키 이름은 호출자가 고른 문자열이다 — 돌려주는 개수와 길이를 묶는다. */
+const MAX_ISSUE_KEYS = 10;
+const MAX_ISSUE_KEY_LENGTH = 64;
+
+/**
+ * 입력 원문 없이 거부된 필드와 한도를 돌려준다. union 안쪽의 한도도 보존한다. 받지 않는 키(unrecognized_keys)는
+ * 값이 아니라 그 키 이름을 keys 로 싣는다 — 이름이 없으면 호출자는 어느 필드를 고쳐야 할지 추측해야 한다.
+ */
+export function inputIssues(issues: readonly ArgumentIssue[]): { path: readonly PropertyKey[]; code: string; maximum?: number | bigint; keys?: string[] }[] {
+  return issues.flatMap((issue) => issue.code === "invalid_union" && issue.errors ? issue.errors.flatMap(inputIssues) : [{
+    path: issue.path, code: issue.code,
+    ...(issue.code === "too_big" ? { maximum: issue.maximum } : {}),
+    ...(issue.code === "unrecognized_keys" && issue.keys ? { keys: issue.keys.slice(0, MAX_ISSUE_KEYS).map((key) => key.slice(0, MAX_ISSUE_KEY_LENGTH)) } : {}),
+  }]);
 }
 
 export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesFailureCause, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleTurnFailure, ConsoleTurnEnd } from "./control.js";
