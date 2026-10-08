@@ -100,7 +100,7 @@ function detailActions<W extends Signed>(why: W) {
     // 후보는 보드의 후보 객체 그대로({id, rev}) 가리킨다 — complete 와 같은 모양이고, 그새 고쳐진 후보는 버리지 않는다.
     followup_discard: write({ followups: followupSelectionSchema.shape.followups }, "followup_discard discards open candidates named as the board lists them ({id, rev}); a candidate revised since is refused as followup_changed."),
     plan: write({ context }),
-    commence: write({ context, usePreview: z.literal(true).optional() }, "commence usePreview launches routed members with the last routing judgment without judging again; refused with routing_preview_stale when a role or brief changed or the judgment expired."),
+    commence: write({ context, usePreview: z.literal(true).optional() }, "commence usePreview launches routed members with the last routing judgment without judging again; refused with routing_preview_stale when a role or brief changed or the judgment expired.", "While the Commander's turn runs, commence is refused as objective_busy with retryWhen commander_turn_end and the Commander's state; it is not queued."),
     steer: write({ context }),
     message: write({ memberId: ids.nullable().optional(), text: z.string().trim().min(1).max(MAX_CONTEXT) }),
     stop: write({}),

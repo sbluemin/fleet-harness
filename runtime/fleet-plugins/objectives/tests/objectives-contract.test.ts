@@ -1829,8 +1829,11 @@ describe("Objectives contract", () => {
     expect((await board({ action: "routing", objectiveId: id })).members).toEqual([{ id: workerId, role: "worker", selection: "model", launched: false, model: "sonnet[1m]", effort: "low" }]);
     // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 순찰까지 멈추지 않는다.
     expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);
+    // 지시를 넣은 steer 는 지휘관 턴을 연다 — 그 턴 동안 개시는 예약되지 않고, 언제 다시 부르면 되는지와 지휘관 상태로 거절된다.
+    await board({ action: "steer", objectiveId: id, context: "Adjust before commence" });
     activity.set(id, "running");
     expect((await board({ action: "inbox" })).objectives).not.toContainEqual(expect.objectContaining({ id, reasons: expect.arrayContaining(["planned"]) }));
+    expect((await commodore.execute({ action: "commence", objectiveId: id }, { cwd: workspace }) as { structuredContent: Record<string, unknown> }).structuredContent).toEqual({ error: "objective_busy", retryWhen: "commander_turn_end", commander: { state: "running" } });
     activity.set(id, "idle");
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
     expect(await board({ action: "commence", objectiveId: id })).toMatchObject({ objectiveId: id, failed: [] });
@@ -1889,9 +1892,13 @@ describe("Objectives contract", () => {
     expect(outsider.structuredContent.error).toBe("commodore_only");
     const mine = await command("read", {}, id);
     const revision = (mine.objective as { decisionRequestRevision: number }).decisionRequestRevision;
-    await command("request_decision", { expectedRevision: revision, questions: [{ text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }] }, id);
+    const continueQuestion = [{ text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }];
+    const asked = await command("request_decision", { expectedRevision: revision, questions: continueQuestion }, id);
+    // 답이 오지 않아 같은 질문을 다시 묻는다 — 요청은 지워지지도 새 id 로 바뀌지도 않고(reused), 그 id 로 낸 사람의 답이 그대로 받아들여진다.
+    expect(await command("request_decision", { expectedRevision: asked.decisionRequestRevision, questions: continueQuestion }, id)).toMatchObject({ requestId: asked.requestId, reused: true, replacedRequestId: null, decisionRequestRevision: asked.decisionRequestRevision });
     const inbox = await board({ action: "inbox" });
     const request = (inbox.objectives as readonly { id: string; decisionRequest: { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] } }[]).find((row) => row.id === id)!.decisionRequest;
+    expect(request.id).toBe(asked.requestId);
     const answerOf = (extra: Record<string, unknown>) => ({ action: "answer", objectiveId: id, requestId: request.id, answers: [{ questionId: request.questions[0]!.id, selectedOptionIds: [request.questions[0]!.options[0]!.id], text: "Preserve the output", ...extra }] });
     expect(await refusal(commodore, answerOf({ pin: "do not stop" }))).toBe("invalid_arguments");
     expect(await board(answerOf({ pin: "MUST NOT stop early" }))).toMatchObject({ stored: { answers: [{ text: "Preserve the output [MUST NOT stop early]" }] } });

@@ -79,7 +79,13 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     }),
     commence: (body: ContextRef & { routing?: "preview" }) => {
       if (store.find(body.objectiveId)?.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
-      return unlessBusy((value: typeof body) => launch.startCommander(value.objectiveId, { ...options(value), ...(value.routing ? { routing: value.routing } : {}) }))(body);
+      // 지휘관 턴 중에는 개시하지 않는다(쓰고 있는 계획·기준과 겹친다). 대신 언제 다시 부르면 되는지와 지금 상태를 말한다 —
+      // 다시 부를지는 호출자가 정하고, 여기서 예약하거나 다시 부르지 않는다.
+      if (launch.busy(body.objectiveId)) {
+        const state = ctx.host.consoleControl?.observe(body.objectiveId)?.activity;
+        throw new ObjectiveStoreError("objective_busy", undefined, { retryWhen: "commander_turn_end", ...(state ? { commander: { state } } : {}) });
+      }
+      return launch.startCommander(body.objectiveId, { ...options(body), ...(body.routing ? { routing: body.routing } : {}) });
     },
     answer: (body: Ref & DecisionAnswersInput) => launch.answerDecision(body.objectiveId, { requestId: body.requestId, answers: body.answers }, options(body)).then(objective),
     steer: (body: ContextRef) => launch.steer(body.objectiveId, options(body)).then(objective),
