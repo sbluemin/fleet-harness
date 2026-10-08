@@ -424,6 +424,9 @@ importers:
       react:
         specifier: ^19.0.0
         version: 19.2.7
+      zod:
+        specifier: ^4.4.1
+        version: 4.4.1
     devDependencies:
       '@types/node':
         specifier: ^24.10.0

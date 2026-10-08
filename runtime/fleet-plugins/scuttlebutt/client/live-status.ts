@@ -10,7 +10,8 @@ import { getT } from "./scuttlebutt-catalog.js";
  */
 export type ToolFamily = "search" | "read" | "console" | "direct" | "computer" | "wiki" | "tool";
 
-const CONSOLE_DIRECT = new Set(["console_launch", "console_send", "console_interrupt", "console_action", "console_automation"]);
+// 제목에는 action 이 없다 — 이름만으로 실행이 확실한 도구는 Quick Launch 뿐이다(Operation 패널의 send·stop 은 같은 도구의 읽기와 이름을 나눈다).
+const CONSOLE_DIRECT = new Set(["console_launcher"]);
 
 export function toolFamily(title: string): ToolFamily {
   const [name] = title.split(":", 1);

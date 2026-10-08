@@ -8,7 +8,7 @@ import { ALL_SUBAGENTS, buildDisabledSkillOverrides, createDelayedPtyWriter, cre
 import { writeGatewayModelCacheForHome } from "@fleet-console/ai-gateway";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { ensureWorkspaceDirectory, withDirectoryLock, type AgentOptionsService } from "@fleet-console/infra";
-import { CONSOLE_CONTROL_TOOLS, type ConsoleCaller } from "@fleet-console/sdk/mcp";
+import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
 import { createConsoleTerminalObserver } from "./console-terminal.js";
 import { ConsoleControlError } from "../../../console-use/host/console-control.js";
@@ -165,7 +165,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   // 이 연결 하나를 모든 Operation이 공유한다 — 그래서 허용은 연결이 아니라 호출자 Operation 단위로
   // 판정해야 하고, 그 판정은 호스트가 도구 호출마다 직접 한다.
-  const consoleUse = ctx.host.consoleUse.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, operationCallers: true });
+  const consoleUse = ctx.host.consoleUse.connect({ allowControl: true, operationCallers: true });
   ctx.host.lifecycle.registerCleanup(() => consoleUse.dispose());
   const computerUseMcp = ctx.host.computerUseMcp?.connect();
   if (computerUseMcp) ctx.host.lifecycle.registerCleanup(() => computerUseMcp.dispose());

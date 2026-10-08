@@ -1149,7 +1149,7 @@ export interface FleetPluginOperationGroupsHost {
 /**
  * Console Use 와 같은 제어 경로로 Operation 을 시작하거나 그 입력창에 메시지를 넣는 능력. 호출자는 이 플러그인
  * 자신이며(`{ kind: "plugin", pluginId }`), 시작한 Operation 의 `payload.launchedBy` 에 그렇게 남는다. 시트를 거치지
- * 않는다 — `console_launch` 가 쓰는 서버 경로 그대로다. 없는 호스트에서는 없다.
+ * 않는다 — `console_launcher` 가 쓰는 서버 경로 그대로다. 없는 호스트에서는 없다.
  */
 export interface FleetPluginConsoleControlHost {
   /** 전달이 끝날 때까지(operationId 또는 실패) 기다린다. 실패는 코드 문자열을 message 로 던진다. 결과는 남지 않고, 같은 입력을 다시 보내면 다시 실행된다. */

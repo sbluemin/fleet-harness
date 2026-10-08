@@ -4,7 +4,6 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { describe, expect, it, vi } from "vitest";
 
-import { CONSOLE_CONTROL_TOOLS } from "@fleet-console/sdk/mcp";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { registerChatRoutes } from "../server/chat-routes.js";
 import type { ChatEvent, ChatSessionLike } from "../server/chat-session.js";
@@ -71,8 +70,7 @@ describe("session controls", () => {
     expect(resolve).toHaveBeenCalledWith({ model: "codex--gpt-6-luna", effort: "xhigh" }, "agent", { model: "sonnet[1m]", effort: "low" });
     expect(created[0]).toMatchObject({ admiral: "tori", model: "claude-gateway--codex--gpt-6-luna[1m]", effort: "xhigh", locale: "ko" });
     expect(created[0]).toHaveProperty("agent", harness.ctx.host.agent);
-    const injected = (created[0] as { consoleUse: { consoleUse: { enabled: () => boolean; tools: string[] } } }).consoleUse.consoleUse;
-    expect(injected.tools).toEqual(CONSOLE_CONTROL_TOOLS);
+    const injected = (created[0] as { consoleUse: { consoleUse: { enabled: () => boolean } } }).consoleUse.consoleUse;
     expect(injected).toHaveProperty("allowControl", true);
     expect(injected.enabled()).toBe(true);
     const computer = (created[0] as { computerUse: { computerUse: { enabled: () => boolean } } }).computerUse.computerUse;

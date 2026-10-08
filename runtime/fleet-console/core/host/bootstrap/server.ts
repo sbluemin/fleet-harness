@@ -1173,7 +1173,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       });
       return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
     },
-    // Console 제어 — `console_launch`·`console_send` 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
+    // Console 제어 — `console_launcher`·`console_operation` send 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
     consoleControlFor: (pluginId) => ({
       request: async (input) => {
         consoleAgentOwners.add(pluginId);

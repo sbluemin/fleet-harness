@@ -5,7 +5,7 @@ import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 import { createWikiWorkspaceResolver, buildBriefingToolConfig, buildReadToolConfig } from "@fleet-plugins/codex/wiki-read";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import { CONSOLE_CONTROL_TOOLS, type ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
+import type { ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
 
 /** 콘솔 사용: 호스트 관측·실행 도구와 Theater Wiki 읽기를 부관 세션에 연결한다. 실제 허용은 부관 grant다. */
 
@@ -141,7 +141,7 @@ export async function createConsoleUseTools(ctx: FleetPluginServerContext, snaps
 
   return {
     custom: [{ name: CONSOLE_MCP_SERVER, tools }],
-    consoleUse: { tools: CONSOLE_CONTROL_TOOLS, allowControl: true, snapshot, enabled },
+    consoleUse: { allowControl: true, snapshot, enabled },
     promptAddendum: PROMPT_ADDENDUM,
   };
 }

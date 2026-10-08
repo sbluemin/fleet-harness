@@ -2,7 +2,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CONSOLE_CONTROL_TOOLS, type ConsoleUseMcpConnection } from "@fleet-console/sdk/mcp";
+import type { ConsoleUseMcpConnection } from "@fleet-console/sdk/mcp";
+import { defineConsoleTool } from "@fleet-console/sdk/mcp/actions";
+import { z } from "zod";
 import { createConsoleControl } from "../features/console-use/host/console-control.js";
 import { createConsoleUseMcpHost, type ConsoleUseActions } from "../features/console-use/host/console-use.js";
 
@@ -42,12 +44,17 @@ describe("Console Use surface boundaries", () => {
     let contributedCalls = 0;
     const calls: unknown[] = [];
     const hostWithCalls = createConsoleUseMcpHost({ ...deps, control, surface, language: () => "en", onCall: (event) => calls.push(event) });
-    const repoSurface = { panelId: "repository", describe: (args: Record<string, unknown>) => ({ theaterId: String(args.theaterId), summary: "저장소 상태 봄", view: "status" }) };
-    const releaseContribution = hostWithCalls.forPlugin("repository").contribute!([{ name: "console_repo", description: "status", inputSchema: { type: "object", properties: { theaterId: { type: "string" }, view: { type: "string" } }, required: ["theaterId"], additionalProperties: false }, surface: repoSurface, execute: async () => { contributedCalls += 1; return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] }; } }]);
-    // 자리(레일 패널)를 선언하지 않은 기여는 Console Use 가 아니다. 기본 도구 이름은 차지할 수 없다.
-    expect(() => hostWithCalls.forPlugin("other").contribute!([{ name: "console_x", description: "x", inputSchema: { type: "object" }, execute: async () => ({}) }])).toThrow(/declare its panel/);
-    expect(() => hostWithCalls.forPlugin("other").contribute!([{ name: "console_launch", description: "x", inputSchema: { type: "object" }, surface: repoSurface, execute: async () => ({}) }])).toThrow(/already registered/);
-    connection = hostWithCalls.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, operationCallers: true });
+    const repoSurface = { panelId: "repository", describe: (args: Record<string, unknown>) => ({ theaterId: String(args.theaterId), summary: "저장소 상태 봄", view: String(args.action) }) };
+    const repository = (name: string) => defineConsoleTool({ name, description: "Repository panel.", actions: { status: { kind: "read", input: z.object({ theaterId: z.string() }) }, log: { kind: "read", input: z.object({ theaterId: z.string(), limit: z.number().int().max(100).optional() }) } } });
+    const releaseContribution = hostWithCalls.forPlugin("repository").contribute!([repository("console_repository").plugin({ surface: repoSurface, execute: async () => { contributedCalls += 1; return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] }; } })]);
+    // 자리(레일 패널)·action 선언이 없거나, 화면 이름 규칙을 어기거나, 기본 도구·이미 기여된 이름과 겹치는 기여는 등록 자체가 실패한다.
+    const noop = async () => ({});
+    expect(() => hostWithCalls.forPlugin("other").contribute!([{ name: "console_x", description: "x", inputSchema: { type: "object" }, execute: noop }])).toThrow(/declare its panel/);
+    expect(() => hostWithCalls.forPlugin("other").contribute!([{ name: "console_x", description: "x", inputSchema: { type: "object", properties: { view: { type: "string" } } }, surface: repoSurface, execute: noop }])).toThrow(/declare its actions/);
+    expect(() => hostWithCalls.forPlugin("other").contribute!([{ ...repository("console_repository").plugin({ surface: repoSurface, execute: noop }), name: "console_repo_view_x" }])).toThrow(/Invalid Console Use tool name/);
+    expect(() => hostWithCalls.forPlugin("other").contribute!([repository("console_launcher").plugin({ surface: repoSurface, execute: noop })])).toThrow(/already registered/);
+    expect(() => hostWithCalls.forPlugin("other").contribute!([repository("console_repository").plugin({ surface: repoSurface, execute: noop })])).toThrow(/already registered/);
+    connection = hostWithCalls.connect({ allowControl: true, operationCallers: true });
     const endpoint = (await connection.getEndpoint()).servers[0]!;
     const call = async (label: string, name: string, args: unknown) => {
       const token = connection!.issueSessionToken({ label, cwd: directory })[0]!;
@@ -57,42 +64,44 @@ describe("Console Use surface boundaries", () => {
       return JSON.parse(json.result.content[0].text);
     };
     // 남의 Operation 은 답하지 못하고, 자식이라도 계획 승인은 거부되며, 자식의 입력 질문만 통과한다.
-    expect((await call("op-parent", "console_send", { operationId: "op-human", askId: "ask-h", answers: ["yes"] })).error).toBe("not_launched_by_caller");
-    expect((await call("op-parent", "console_send", { operationId: "op-child", askId: "ask-plan", answers: ["yes"] })).error).toBe("unsupported_ask");
-    expect(await call("op-parent", "console_send", { operationId: "op-child", askId: "ask-q", answers: ["internal links only"] })).toMatchObject({ outcome: "answered" });
+    expect((await call("op-parent", "console_operation", { action: "answer", operationId: "op-human", askId: "ask-h", answers: ["yes"] })).error).toBe("not_launched_by_caller");
+    expect((await call("op-parent", "console_operation", { action: "answer", operationId: "op-child", askId: "ask-plan", answers: ["yes"] })).error).toBe("unsupported_ask");
+    expect(await call("op-parent", "console_operation", { action: "answer", operationId: "op-child", askId: "ask-q", answers: ["internal links only"] })).toMatchObject({ outcome: "answered" });
     expect(answered).toEqual(["op-child:ask-q"]);
-    // 한 호출은 한 제스처다 — text·askId·interrupt 는 함께 못 쓴다.
-    expect((await call("op-parent", "console_send", { operationId: "op-child", askId: "ask-q", text: "and this" })).error).toBe("invalid_arguments");
+    // 한 호출은 한 제스처다 — 답(answer)에 보낼 말(text)을 함께 싣지 못한다.
+    expect((await call("op-parent", "console_operation", { action: "answer", operationId: "op-child", askId: "ask-q", answers: ["yes"], text: "and this" })).error).toBe("invalid_arguments");
     // 자기 자신은 닫지 못한다. 닫기 어댑터가 없으면 capability_unavailable 로 답한다.
-    expect((await call("op-parent", "console_panel", { operationId: "op-parent", action: "close" })).error).toBe("cannot_close_self");
-    expect((await call("op-parent", "console_panel", { operationId: "op-child", action: "close" })).error).toBe("capability_unavailable");
+    expect((await call("op-parent", "console_operation", { action: "close", operationId: "op-parent" })).error).toBe("cannot_close_self");
+    expect((await call("op-parent", "console_operation", { action: "close", operationId: "op-child" })).error).toBe("capability_unavailable");
     // 휴면은 프로세스를 끝내는 일이다 — 자기 자신과 도는 중인 Operation 은 거절하고, 유휴 터미널만 재개 가능한 휴면으로 보낸다.
-    expect((await call("op-parent", "console_panel", { operationId: "op-parent", action: "sleep" })).error).toBe("cannot_sleep_self");
-    expect((await call("op-parent", "console_panel", { operationId: "op-child", action: "sleep" })).error).toBe("not_idle");
-    expect(await call("op-parent", "console_panel", { operationId: "op-human", action: "sleep" })).toMatchObject({ action: "sleep", lifecycle: "dormant" });
+    expect((await call("op-parent", "console_operation", { action: "sleep", operationId: "op-parent" })).error).toBe("cannot_sleep_self");
+    expect((await call("op-parent", "console_operation", { action: "sleep", operationId: "op-child" })).error).toBe("not_idle");
+    expect(await call("op-parent", "console_operation", { action: "sleep", operationId: "op-human" })).toMatchObject({ action: "sleep", lifecycle: "dormant" });
     expect(slept).toEqual(["op-human"]);
     // 플러그인이 실은 도구는 같은 게이트를 지난다: 허용된 호출자는 통과, 토글이 없는 호출자는 거부.
-    expect(await call("op-parent", "console_repo", { theaterId: "theater-a", view: "status" })).toMatchObject({ ok: true });
-    expect((await call("op-human", "console_repo", { theaterId: "theater-a", view: "status" })).error).toBe("console_use_not_authorized");
+    expect(await call("op-parent", "console_repository", { action: "status", theaterId: "theater-a" })).toMatchObject({ ok: true });
+    expect((await call("op-human", "console_repository", { action: "status", theaterId: "theater-a" })).error).toBe("console_use_not_authorized");
+    // 기여 도구도 action 별 strict — 다른 action 의 필드는 플러그인에 닿기 전에 거절된다.
+    expect((await call("op-parent", "console_repository", { action: "status", theaterId: "theater-a", limit: 5 })).error).toBe("invalid_arguments");
     expect(contributedCalls).toBe(1);
     // 호출은 제스처 사건을 남긴다 — 답한 것(press, 대상 Operation)과 기여 도구(gaze, 레일 패널). 내용은 싣지 않는다.
     expect(calls).toEqual(expect.arrayContaining([
-      expect.objectContaining({ tool: "console_send", gesture: "press", caller: me, target: { kind: "operation", operationId: "op-child" } }),
-      expect.objectContaining({ tool: "console_repo", gesture: "gaze", caller: me, target: { kind: "panel", panelId: "repository", theaterId: "theater-a", view: "status" } }),
+      expect.objectContaining({ tool: "console_operation", gesture: "press", caller: me, target: { kind: "operation", operationId: "op-child" } }),
+      expect.objectContaining({ tool: "console_repository", gesture: "gaze", caller: me, target: { kind: "panel", panelId: "repository", theaterId: "theater-a", view: "status" } }),
     ]));
     expect(JSON.stringify(calls)).not.toContain("internal links only");
     // 등록 해제(플러그인 롤백)된 기여는 이미 실린 레지스트리에서도 답하지 않는다.
     releaseContribution();
-    expect((await call("op-parent", "console_repo", { theaterId: "theater-a", view: "status" })).error).toBe("plugin_tool_unavailable");
+    expect((await call("op-parent", "console_repository", { action: "status", theaterId: "theater-a" })).error).toBe("plugin_tool_unavailable");
     expect(contributedCalls).toBe(1);
     // 구성원은 스캔의 기본 목록에서 빠지고(부관·Admiral 이 평범한 행으로 보지 않는다) nested 로 물을 때만 부모와 함께 선다.
-    expect((await call("op-parent", "console_operations", {})).operations.map((row: { id: string }) => row.id)).toEqual(["op-child", "op-human", "op-parent"]);
-    expect((await call("op-parent", "console_operations", { nested: true })).operations).toEqual(expect.arrayContaining([expect.objectContaining({ id: "op-member", title: "objective-member-1", parentOperationId: "op-parent", activity: "awaiting" })]));
-    expect(await call("op-parent", "console_operation", { operationId: "op-member" })).toMatchObject({ id: "op-member", parentOperationId: "op-parent", activity: "awaiting" });
+    expect((await call("op-parent", "console_sidebar", { action: "list" })).operations.map((row: { id: string }) => row.id)).toEqual(["op-child", "op-human", "op-parent"]);
+    expect((await call("op-parent", "console_sidebar", { action: "list", nested: true })).operations).toEqual(expect.arrayContaining([expect.objectContaining({ id: "op-member", title: "objective-member-1", parentOperationId: "op-parent", activity: "awaiting" })]));
+    expect(await call("op-parent", "console_operation", { action: "summary", operationId: "op-member" })).toMatchObject({ id: "op-member", parentOperationId: "op-parent", activity: "awaiting" });
     // 기본 스캔의 부모 행은 구성원의 대기를 대표한다 — 사이드바처럼 「누가 기다리나」 스캔이 비지 않는다.
-    expect((await call("op-parent", "console_operations", { activity: "awaiting" })).operations).toEqual([expect.objectContaining({ id: "op-parent", activity: "awaiting", attention: { kind: "input" } })]);
+    expect((await call("op-parent", "console_sidebar", { action: "list", activity: "awaiting" })).operations).toEqual([expect.objectContaining({ id: "op-parent", activity: "awaiting", attention: { kind: "input" } })]);
     // console_operation 은 자식의 열린 질문과 계보를 함께 싣는다.
-    expect(await call("op-parent", "console_operation", { operationId: "op-child" })).toMatchObject({ launchedBy: me, asks: [{ id: "ask-q", form: "question" }, { id: "ask-plan", form: "plan" }] });
+    expect(await call("op-parent", "console_operation", { action: "summary", operationId: "op-child" })).toMatchObject({ launchedBy: me, asks: [{ id: "ask-q", form: "question" }, { id: "ask-plan", form: "plan" }] });
     control.dispose();
   });
 });

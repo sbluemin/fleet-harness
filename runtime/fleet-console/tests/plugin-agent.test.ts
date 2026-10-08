@@ -23,11 +23,11 @@ describe("Console-owned plugin Agent", () => {
     const connection = { embeddedServer: { type: "sdk", name: "fleet-console-use", instance: {} }, dispose: vi.fn(async () => undefined) };
     const connect = vi.fn(() => connection as never);
     const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", consoleUse: { connect }, createSdk: async ({ tempRoot }) => { root = tempRoot!; roots.push(root); return engine; } });
-    const session = await host.createSession({ ...options, tools: { consoleUse: { tools: ["console_launch"], allowControl: true }, builtins: ["WebFetch"], custom: [{ name: "draft", tools: [{ name: "read", description: "Read only this draft", inputSchema: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "draft" }] }) }] }] }, onEvent: event => events.push(event) });
+    const session = await host.createSession({ ...options, tools: { consoleUse: { tools: ["console_launcher"], allowControl: true }, builtins: ["WebFetch"], custom: [{ name: "draft", tools: [{ name: "read", description: "Read only this draft", inputSchema: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "draft" }] }) }] }] }, onEvent: event => events.push(event) });
     await session.send("one"); await session.send("two");
-    expect(turns[0]).toMatchObject({ tools: ["WebFetch"], allowedTools: ["WebFetch", "mcp__draft__read", "mcp__fleet-console-use__console_launch"], permissionMode: "dontAsk" });
+    expect(turns[0]).toMatchObject({ tools: ["WebFetch"], allowedTools: ["WebFetch", "mcp__draft__read", "mcp__fleet-console-use__console_launcher"], permissionMode: "dontAsk" });
     expect(Object.keys(turns[0]!.mcpServers!)).toEqual(["draft", "fleet-console-use"]);
-    expect(connect).toHaveBeenCalledWith({ tools: ["console_launch"], allowControl: true, enabled: expect.any(Function) });
+    expect(connect).toHaveBeenCalledWith({ tools: ["console_launcher"], allowControl: true, enabled: expect.any(Function) });
     expect(turns[1]!.resume).toBe("private-child");
     expect(turns[0]!.cwd).toBe(root);
     expect(turns[1]!.cwd).toBe(root);

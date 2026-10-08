@@ -9,6 +9,11 @@
       "import": "./mcp/types.ts",
       "default": "./mcp/types.ts"
     },
+    "./mcp/actions": {
+      "types": "./mcp/actions.ts",
+      "import": "./mcp/actions.ts",
+      "default": "./mcp/actions.ts"
+    },
     "./operations": {
       "types": "./operations/types.ts",
       "import": "./operations/types.ts",
@@ -264,7 +269,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@fleet-console/link": "workspace:*"
+    "@fleet-console/link": "workspace:*",
+    "zod": "^4.4.1"
   },
   "peerDependencies": {
     "react": "^19.0.0"

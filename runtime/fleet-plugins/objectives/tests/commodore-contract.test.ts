@@ -5,8 +5,10 @@ import path from "node:path";
 import type { AgentEvent, AgentHost, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { resolveRosterCoordinate, type ModelCoordinate } from "@fleet-console/sdk/models";
+import { defineConsoleTool } from "@fleet-console/sdk/mcp/actions";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../server/commodore/routes.js";
 import { createCommodoreSession } from "../server/commodore/session.js";
@@ -171,22 +173,26 @@ describe("commodore session", () => {
     const commands: { file: string; args: readonly string[] }[] = [];
     const session = createCommodoreSession({
       theaterId: "t1", theaterLabel: "fleet-harness", theaterRoot, agent: stub.agent, store: h.store,
-      coordinates: { model: "opus[1m]", effort: "high" }, boardTools: [{ name: "console_objectives", description: "board", inputSchema: { type: "object", properties: {}, additionalProperties: true }, execute: async (args) => (args as { complete?: unknown }).complete ? { content: [{ type: "text", text: JSON.stringify({ error: "not_awaiting_review", hint: "secret hint" }) }], isError: true } : { content: [] } }], onNextWake: (at, reason) => wakes.push({ at, reason }), now: () => 10_000,
+      coordinates: { model: "opus[1m]", effort: "high" }, boardTools: [
+        defineConsoleTool({ name: "console_objectives", description: "list", actions: { inbox: { kind: "read", input: z.object({}) } } }).plugin({ execute: async () => ({ content: [] }) }),
+        defineConsoleTool({ name: "console_objectives_detail", description: "objective", actions: { complete: { kind: "write", input: z.object({ objectiveId: z.string() }) } } })
+          .plugin({ execute: async (args) => (args as { action?: unknown }).action === "complete" ? { content: [{ type: "text", text: JSON.stringify({ error: "not_awaiting_review", hint: "secret hint" }) }], isError: true } : { content: [] } }),
+      ], onNextWake: (at, reason) => wakes.push({ at, reason }), now: () => 10_000,
       execute: async (file, args) => { commands.push({ file, args }); return file === "git" ? { stdout: "abc1234\x1f2026-10-03\x1fme\x1ffix: thing\n", stderr: "" } : { stdout: JSON.stringify([{ number: 7, title: "Pairing drops", state: "OPEN", updatedAt: "2026-10-01T00:00:00Z", labels: [{ name: "bug" }], url: "https://example.test/7" }]), stderr: "" }; },
     });
 
     stub.setScript(async () => {
       // 호스트처럼 도구를 먼저 실행하고(결과는 세션 이벤트에 실리지 않는다) tool-end 로 끝만 알린다.
-      await stub.created[0]!.tools!.custom![1]!.tools[0]!.execute({ complete: true, objectiveId: "o2" }, { cwd: theaterRoot, toolCallId: "u0" });
-      stub.emit({ kind: "tool-start", id: "u0", name: "mcp__console__console_objectives", input: { complete: true, objectiveId: "o2" } });
+      await stub.created[0]!.tools!.custom![1]!.tools[1]!.execute({ action: "complete", objectiveId: "o2" }, { cwd: theaterRoot, toolCallId: "u0" });
+      stub.emit({ kind: "tool-start", id: "u0", name: "mcp__console__console_objectives_detail", input: { action: "complete", objectiveId: "o2" } });
       stub.emit({ kind: "tool-end", id: "u0", isError: true });
       stub.emit({ kind: "thinking", text: "The directive " }); stub.emit({ kind: "thinking", text: "changed." });
       stub.emit({ kind: "tool-start", id: "u1", name: "mcp__commodore__directive", input: {} });
       stub.emit({ kind: "tool-end", id: "u1", isError: false });
       stub.emit({ kind: "text", text: "Completing " }); stub.emit({ kind: "text", text: "the pairing objective." });
-      stub.emit({ kind: "tool-start", id: "u2", name: "mcp__console__console_objectives", input: { complete: { note: "secret detail that must not be logged" }, objectiveId: "o1", title: "Remote pairing" } });
+      stub.emit({ kind: "tool-start", id: "u2", name: "mcp__console__console_objectives_detail", input: { action: "complete", batchId: "secret detail that must not be logged", objectiveId: "o1", title: "Remote pairing" } });
       stub.emit({ kind: "tool-end", id: "u2", isError: false });
-      stub.emit({ kind: "tool-start", id: "u3", name: "mcp__console__console_objectives", input: { view: "inbox" } });
+      stub.emit({ kind: "tool-start", id: "u3", name: "mcp__console__console_objectives", input: { action: "inbox" } });
       stub.emit({ kind: "tool-end", id: "u3", isError: false });
       stub.emit({ kind: "result", isError: false, source: "message", usage: { inputTokens: 1200, outputTokens: 300, costUsd: 0.25 } });
     });
@@ -201,7 +207,7 @@ describe("commodore session", () => {
     expect(options.systemPrompt).not.toContain("Fix remote first.");
     expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"] });
     expect(options.tools!.consoleUse).toBeUndefined();
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives"]]]);
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.$/);
     expect(stub.sent[0]).not.toContain("newest");
@@ -210,10 +216,10 @@ describe("commodore session", () => {
     const log = h.store.transcriptRead("t1").entries;
     expect(log.map((entry) => entry.kind)).toEqual(["wake", "tool", "thinking", "tool", "text", "tool", "tool", "result"]);
     // 거절된 보드 행위는 코드 한 낱말로 남고 행위로 세지 않는다 — 결과의 힌트는 싣지 않는다.
-    expect(log[1]).toMatchObject({ kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o2", ok: false, error: "not_awaiting_review" });
+    expect(log[1]).toMatchObject({ kind: "tool", name: "console_objectives_detail", action: "complete", objectiveId: "o2", ok: false, error: "not_awaiting_review" });
     expect(log[2]).toMatchObject({ kind: "thinking", text: "The directive changed." });
     expect(log[3]).toMatchObject({ kind: "tool", name: "directive", ok: true });
-    expect(log[5]).toMatchObject({ kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o1", title: "Remote pairing", ok: true });
+    expect(log[5]).toMatchObject({ kind: "tool", name: "console_objectives_detail", action: "complete", objectiveId: "o1", title: "Remote pairing", ok: true });
     expect(JSON.stringify(log)).not.toContain("secret");
     expect(log[7]).toMatchObject({ kind: "result", outcome: "ok", costUsd: 0.25, inputTokens: 1200 });
     expect(h.store.read("t1")!.run).toEqual({ session: 0, costUsd: 0.25, actions: 1 });
@@ -353,7 +359,7 @@ describe("commodore supervisor", () => {
     const makeSupervisor = (store = h.store) => createCommodoreSupervisor({
       store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }),
       objectives: () => [], subscribeObjectives: () => () => undefined,
-      boardTools: () => [{ name: "console_objectives", description: "", inputSchema: {}, execute: boardWrite }], emit: () => undefined,
+      boardTools: () => [{ name: "console_objectives_detail", description: "", inputSchema: {}, execute: boardWrite }], emit: () => undefined,
     });
     let supervisor = makeSupervisor();
     const hooks = { run: (id: string) => supervisor.status(id) };
@@ -389,8 +395,8 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent.at(-1)).not.toContain("Return me to the person.");
       expect((await h.route("commodore/message", { theaterId: "t1", text: "Too late." }, hooks)).value.error).toBe("commodore_stopping");
       expect((await schedule(null)).value.error).toBe("commodore_stopping");
-      const tool = sessions[0]!.options.tools!.custom!.flatMap((group) => group.tools).find((tool) => tool.name === "console_objectives")!;
-      expect(await tool.execute({ complete: true }, { cwd: h.objectivesDir })).toMatchObject({ isError: true });
+      const tool = sessions[0]!.options.tools!.custom!.flatMap((group) => group.tools).find((tool) => tool.name === "console_objectives_detail")!;
+      expect(await tool.execute({ action: "complete" }, { cwd: h.objectivesDir })).toMatchObject({ isError: true });
       expect(boardWrite).not.toHaveBeenCalled();
       h.store.addIntel("t1", { text: "No new wake." });
       await vi.advanceTimersByTimeAsync(30_001);
@@ -514,7 +520,7 @@ describe("commodore supervisor", () => {
         store: h.store, agent, experiments: () => h.experiments(), models, theater: () => ({ label: "fleet-harness", root: theaterRoot }),
         objectives: () => objectives, subscribeObjectives: (listener) => { boardListeners.push(listener); return () => undefined; },
         // 사령관의 보드 쓰기 — 개시하면 그 목표가 진행 중이 되고 사건이 난다(실제 도구처럼 쓰는 동안).
-        boardTools: () => [{ name: "console_objectives", description: "", inputSchema: {}, execute: async (args) => {
+        boardTools: () => [{ name: "console_objectives_detail", description: "", inputSchema: {}, execute: async (args) => {
           const target = objectives.find((objective) => objective.id === (args as { objectiveId?: string }).objectiveId);
           if (target) { (target as unknown as { commenced: boolean }).commenced = true; for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: target.id }); }
           return { content: [] };
@@ -580,8 +586,8 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent.at(-1)).toContain('"Remote pairing" in progress → awaiting review');
       expect(sessions[0]!.sent).toHaveLength(5);
       // 사령관 자신의 쓰기(개시)로 바뀐 상태는 깨우지 않는다 — 제가 한 일을 다시 듣는 빈 턴을 만들지 않게.
-      const board = sessions[0]!.options.tools!.custom!.find((group) => group.tools.some((tool) => tool.name === "console_objectives"))!.tools.find((tool) => tool.name === "console_objectives")!;
-      await board.execute({ objectiveId: "o2", commence: true }, { cwd: theaterRoot });
+      const board = sessions[0]!.options.tools!.custom!.find((group) => group.tools.some((tool) => tool.name === "console_objectives_detail"))!.tools.find((tool) => tool.name === "console_objectives_detail")!;
+      await board.execute({ action: "commence", objectiveId: "o2" }, { cwd: theaterRoot });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions[0]!.sent).toHaveLength(5);
       // 사람이 운영하는 목표 — 생기고 옮겨 가도 깨우지 않는다(다음 턴의 범위 줄에만 남는다). 사람이 맡기면 한 번 깨우고,

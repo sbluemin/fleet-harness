@@ -9,8 +9,8 @@ import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type Com
 /**
  * 사령관 세션 — `ctx.host.agent.createSession` 으로 연 플러그인 소유 세션 하나. Operation 이 아니다.
  *
- * 시스템 프롬프트는 베이스뿐이고(replace), 도구는 사령관 전용 `commodore` + 이 Theater 에 묶인 보드 도구(`console_objectives`,
- * 행위자는 `{ kind: "commodore", theaterId }` 로 고정) + WebSearch·WebFetch 다. Console Use 연결은 쓰지 않는다 — 플러그인
+ * 시스템 프롬프트는 베이스뿐이고(replace), 도구는 사령관 전용 `commodore` + 이 Theater 에 묶인 보드 도구(`console_objectives`·
+ * `console_objectives_detail`, 행위자는 `{ kind: "commodore", theaterId }` 로 고정) + WebSearch·WebFetch 다. Console Use 연결은 쓰지 않는다 — 플러그인
  * 호출자는 Theater 를 모르므로 다른 Theater 의 보드에 손이 닿는다. 턴은 깨움 이유만 싣는다. 세션의 onEvent 는 여기서 정제돼 Theater 의 기록
  * (`transcript.jsonl`)에 쌓이고 같은 길로 방송된다 — 도구 입력 전체·원시 오류·경로는 기록에 들어가지 않는다.
  */
@@ -30,7 +30,7 @@ export interface CommodoreSessionOptions {
   readonly agent: AgentHost;
   readonly store: CommodoreStore;
   readonly coordinates: CommodoreSessionCoordinates;
-  /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 `console_objectives`. */
+  /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 목록·목표 화면 도구. action 선언(actionSchema)으로 쓰기를 가른다. */
   readonly boardTools: readonly PluginMcpTool[];
   readonly onNextWake: (at: number, reason: string) => void;
   /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
@@ -72,13 +72,13 @@ export interface CommodoreSession {
 
 export const BOARD_TOOL_GROUP = "console";
 const MCP_PREFIX = /^mcp__[^_]+(?:_[^_]+)*__/;
-/** console_objectives 의 쓰기 키 — 입력 최상위에 이 중 하나가 있으면 보드 행위다(동작 판별자는 따로 없다). 나머지는 읽기(view). */
-const WRITE_KEYS = ["add", "plan", "commence", "criteria", "answer", "complete", "extend", "steer", "message", "stop", "compact", "discard", "followup", "edit", "remove", "merge", "restore"] as const;
 const MAX_SUMMARY = 200;
 const MAX_ERROR = 200;
 
 export function createCommodoreSession(options: CommodoreSessionOptions): CommodoreSession {
   const now = options.now ?? Date.now;
+  // 보드 도구마다 쓰기 action — 호출의 action 이 이 중 하나면 보드 행위로 기록하고 센다. 나머지는 읽기다.
+  const boardWrites = new Map(options.boardTools.map((tool) => [tool.name, new Set(Object.entries(tool.actionSchema?.actions ?? {}).flatMap(([action, info]) => (info.kind === "write" ? [action] : [])))]));
   let session: AgentSession | null = null;
   let starting: Promise<void> | null = null;
   let disposed = false;
@@ -104,7 +104,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     thinkingBuffer = "";
   };
   const recordTool = (name: string, input: unknown, ok: boolean | undefined, id?: string) => {
-    const described = describeTool(name, input);
+    const described = describeTool(name, input, boardWrites);
     if (described.counts && ok !== false) turnActions += 1;
     const error = ok === false ? (id && toolErrors.get(id)) || toolErrors.get(`name:${described.name}`) : undefined;
     if (id) toolErrors.delete(id);
@@ -234,15 +234,15 @@ interface ToolDescription {
 }
 
 /** 도구 호출을 기록 한 줄로 — 이름과 사람이 읽을 한 조각만. 입력 전체는 싣지 않는다. */
-function describeTool(rawName: string, input: unknown): ToolDescription {
+function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<string, ReadonlySet<string>>): ToolDescription {
   const name = rawName.replace(MCP_PREFIX, "");
   const args = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
   const str = (key: string) => (typeof args[key] === "string" ? clip(args[key] as string, MAX_SUMMARY) : undefined);
-  if (name === "console_objectives") {
-    const action = WRITE_KEYS.find((key) => args[key] !== undefined);
-    const add = args.add && typeof args.add === "object" ? args.add as Record<string, unknown> : undefined;
-    const title = typeof add?.title === "string" ? clip(add.title, MAX_SUMMARY) : str("title");
-    return { name, action, objectiveId: str("objectiveId"), title, ...(str("view") ? { summary: `view ${str("view")}` } : {}), counts: !!action };
+  const writes = boardWrites.get(name);
+  if (writes) {
+    const called = str("action");
+    const action = called && writes.has(called) ? called : undefined;
+    return { name, action, objectiveId: str("objectiveId"), title: str("title"), ...(called && !action ? { summary: called } : {}), counts: !!action };
   }
   switch (name) {
     case "intel": return { name, summary: str("since") ? `since ${str("since")}` : undefined, counts: false };
