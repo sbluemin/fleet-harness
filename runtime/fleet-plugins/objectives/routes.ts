@@ -156,7 +156,6 @@ export default definePlugin({
       subscribeObjectives: (listener) => ctx.host.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
       boardTools: (theaterId) => createCommodoreBoardTools(ctx, store, launch, theaterId),
       ...(ctx.host.consoleControl ? { observe: (operationId) => ctx.host.consoleControl!.observe(operationId) } : {}),
-      ...(ctx.host.consoleControl?.subscribeTurnEnds ? { subscribeTurnEnds: (listener) => ctx.host.consoleControl!.subscribeTurnEnds!(listener) } : {}),
       emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event),
     });
     ctx.host.lifecycle.registerCleanup(() => supervisor.dispose());

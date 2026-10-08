@@ -13,7 +13,7 @@ import { z } from "zod";
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../server/commodore/routes.js";
 import { createCommodoreSession } from "../server/commodore/session.js";
 import { createCommodoreStore } from "../server/commodore/store.js";
-import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, RETRY_DELAYS_MS, STALL_CHECK_MS, STALL_MS } from "../server/commodore/supervisor.js";
+import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, PLANNED_CHECK_MS, RETRY_DELAYS_MS, STALL_CHECK_MS, STALL_MS } from "../server/commodore/supervisor.js";
 import type { CommodoreEvent } from "../server/commodore/types.js";
 import type { Objective, ObjectiveEvent } from "../server/types.js";
 
@@ -515,19 +515,19 @@ describe("commodore supervisor", () => {
       };
       const objectives: Objective[] = [];
       const boardListeners: ((event: ObjectiveEvent) => void)[] = [];
-      const turnEndListeners: ((event: { operationId: string }) => void)[] = [];
-      const commanderActivity = new Map<string, "running" | "idle">();
+      const commanderActivity = new Map<string, "running" | "background">();
       const runs: CommodoreEvent[] = [];
       const supervisor = createCommodoreSupervisor({
         store: h.store, agent, experiments: () => h.experiments(), models, theater: () => ({ label: "fleet-harness", root: theaterRoot }),
         objectives: () => objectives, subscribeObjectives: (listener) => { boardListeners.push(listener); return () => undefined; },
         // 사령관의 보드 쓰기 — 개시하면 그 목표가 진행 중이 되고 사건이 난다(실제 도구처럼 쓰는 동안).
+        // 지휘관이 일하는 동안의 개시는 실제 도구처럼 objective_busy 로 거절된다.
         boardTools: () => [{ name: "console_objectives_detail", description: "", inputSchema: {}, execute: async (args) => {
           const target = objectives.find((objective) => objective.id === (args as { objectiveId?: string }).objectiveId);
+          if (target && commanderActivity.has(target.id)) return { content: [], structuredContent: { error: "objective_busy", retryWhen: "commander_turn_end" }, isError: true };
           if (target) { (target as unknown as { commenced: boolean }).commenced = true; for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: target.id }); }
           return { content: [] };
         } }], observe: (id) => ({ lifecycle: "live", activity: commanderActivity.get(id) ?? "idle", surface: "chat", supportedActions: [], attention: { kind: "none" }, output: { revision: 0, outcome: "none" } } as never),
-        subscribeTurnEnds: (listener) => { turnEndListeners.push(listener); return () => undefined; },
         emit: (event) => { if (event.op === "run") runs.push(event); },
       });
       const tokens = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "wake" ? [entry.reasons] : []);
@@ -581,25 +581,36 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["planned:1", "status:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain("1 objective has a lineup ready to commence");
-      // 그 뒤 지휘관 턴이 열리면(steer 등) 개시는 objective_busy·retryWhen commander_turn_end 로 거절된다 — 그 턴이 끝날 때 다시
-      // 깨운다. 턴의 시작은 보드 사건이 아니고, 호스트 관측은 끝 신호 직후에도 아직 도는 중일 수 있다.
-      commanderActivity.set("o2", "running");
-      for (const listener of turnEndListeners) listener({ operationId: "o2" });
+      // 그 뒤 지휘관이 일하면(steer 로 연 턴, 턴 뒤 남은 백그라운드 작업) 개시는 objective_busy·retryWhen commander_turn_end 로
+      // 거절된다 — 그 일이 끝나 쉬게 될 때 다시 깨운다. 일의 시작과 끝은 보드 사건이 아니고, 턴 끝 신호는 플러그인이 띄우지 않은
+      // 지휘관에게는 오지 않으므로 관측으로 본다.
+      const turnsBefore = sessions[0]!.sent.length;
+      for (const state of ["running", "background"] as const) {
+        commanderActivity.set("o2", state);
+        await vi.advanceTimersByTimeAsync(PLANNED_CHECK_MS + COALESCE_MS + 10);
+        expect(sessions[0]!.sent).toHaveLength(turnsBefore);
+      }
       commanderActivity.delete("o2");
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(PLANNED_CHECK_MS + COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["planned:1"]);
+      // 점검 주기보다 짧은 턴 — 사령관의 개시가 그 턴 중에 거절된 것만으로도 끝난 뒤 다시 깨운다.
+      const board = sessions[0]!.options.tools!.custom!.find((group) => group.tools.some((tool) => tool.name === "console_objectives_detail"))!.tools.find((tool) => tool.name === "console_objectives_detail")!;
+      commanderActivity.set("o2", "running");
+      expect(await board.execute({ action: "commence", objectiveId: "o2" }, { cwd: theaterRoot })).toMatchObject({ isError: true });
+      commanderActivity.delete("o2");
+      await vi.advanceTimersByTimeAsync(PLANNED_CHECK_MS + COALESCE_MS + 10);
+      expect(tokens().slice(-2)).toEqual([["planned:1"], ["planned:1"]]);
       // 지휘관이 옮긴 상태 — 진행 중에서 검토 대기로.
       (objectives[0] as { awaitingReview: boolean }).awaitingReview = true;
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["review:1", "status:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain('"Remote pairing" in progress → awaiting review');
-      expect(sessions[0]!.sent).toHaveLength(6);
+      expect(sessions[0]!.sent).toHaveLength(7);
       // 사령관 자신의 쓰기(개시)로 바뀐 상태는 깨우지 않는다 — 제가 한 일을 다시 듣는 빈 턴을 만들지 않게.
-      const board = sessions[0]!.options.tools!.custom!.find((group) => group.tools.some((tool) => tool.name === "console_objectives_detail"))!.tools.find((tool) => tool.name === "console_objectives_detail")!;
       await board.execute({ action: "commence", objectiveId: "o2" }, { cwd: theaterRoot });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(6);
+      expect(sessions[0]!.sent).toHaveLength(7);
       // 사람이 운영하는 목표 — 생기고 옮겨 가도 깨우지 않는다(다음 턴의 범위 줄에만 남는다). 사람이 맡기면 한 번 깨우고,
       // 그 턴의 범위 줄에 목표 id·운영 판정·코드가 남는다. 돌려받은 뒤의 변화는 다시 깨우지 않는다.
       const human = { id: "o3", theaterId: "t1", title: "Person's own", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], missions: [] as { id: string; text: string; done: boolean }[] } as unknown as Objective & { commodoreOperated?: boolean; planning: boolean; missions: { id: string; text: string; done: boolean }[] };
@@ -608,7 +619,7 @@ describe("commodore supervisor", () => {
       human.planning = true;
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(6);
+      expect(sessions[0]!.sent).toHaveLength(7);
       human.planning = false;
       human.commodoreOperated = true;
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o3" });
@@ -623,7 +634,7 @@ describe("commodore supervisor", () => {
       human.missions.push({ id: "m1", text: "x", done: false });
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(7);
+      expect(sessions[0]!.sent).toHaveLength(8);
       (objectives[0] as { awaitingReview: boolean }).awaitingReview = false;
       (objectives[1] as unknown as { missions: { done: boolean }[] }).missions[0]!.done = true;
 

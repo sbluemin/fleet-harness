@@ -31,6 +31,11 @@ export const COALESCE_MS = 3_000;
 /** 정체 기준은 보드와 같다(`board-state.ts`) — inbox 보기와 감독자가 같은 목표를 정체라 부른다. */
 export { STALL_MS };
 export const STALL_CHECK_MS = 5 * 60_000;
+/**
+ * 개시 대기 점검 주기 — 사령관이 운영하는 개시 전 목표의 지휘관이 일을 마쳐 개시할 수 있게 되는 순간(턴 끝, 백그라운드 작업의 끝)은
+ * 보드 사건이 아니고, 턴 끝 신호는 이 플러그인이 띄운 세션에만 오므로 관측으로 본다. 그런 목표가 있을 때만 다시 센다.
+ */
+export const PLANNED_CHECK_MS = 2_000;
 const RECENT_ACTIONS = 12;
 
 export interface CommodoreSupervisorDeps {
@@ -52,11 +57,6 @@ export interface CommodoreSupervisorDeps {
   /** 이 Theater 에 묶인 보드 도구 — 없으면 사령관은 보드 없이 선다. */
   readonly boardTools: (theaterId: string) => readonly PluginMcpTool[];
   readonly observe?: (operationId: string) => ConsoleOperationObservation | null;
-  /**
-   * 세션 턴이 끝났다는 호스트 신호. 지휘관 턴이 도는 동안 개시 대기(planned)는 대기 상태가 아니므로, 턴이 끝나 다시 대기가 되는
-   * 순간은 보드 사건이 아니라 이 신호로만 안다. 없는 호스트에서는 다음 보드 사건이나 순찰이 그 상태를 본다.
-   */
-  readonly subscribeTurnEnds?: (listener: (event: { readonly operationId: string }) => void) => () => void;
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
@@ -572,8 +572,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   // 것은 깨울 일이 아니다(빈 inbox 를 읽으러 깨어나는 비용). 줄어든 항목은 조용히 잊어 같은 상태가 돌아오면 다시 깨운다.
   // 사람이 운영하는 목표의 사건은 깨우지 않고 다음 턴의 범위 줄(held)에만 남는다 — 조회에는 그대로 보인다.
   /** 대기 상태를 다시 보고 아직 듣지 못한 항목으로 깨운다. 사라진 항목은 잊어 같은 상태가 돌아오면 다시 깨운다. */
-  const waitingChanged = (runner: Runner, objectives: readonly Objective[], observe = deps.observe) => {
-    const current = waitingKeys(objectives, observe);
+  const waitingChanged = (runner: Runner, objectives: readonly Objective[]) => {
+    const current = waitingKeys(objectives, deps.observe);
     const fresh = [...current].filter((key) => !runner.seen.has(key));
     runner.seen = current;
     const freshCodes = new Set<WakeCode>();
@@ -583,7 +583,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       else freshCodes.add(head as WakeCode);
     }
     if (freshCodes.size) {
-      const digest = new Map(inboxDigest(objectives, observe));
+      const digest = new Map(inboxDigest(objectives, deps.observe));
       for (const code of freshCodes) wake(runner, code, { count: digest.get(code) ?? 1 });
     }
   };
@@ -600,23 +600,19 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     for (const change of statusChanges(runner, objectives)) { wake(runner, "status", { bump: true, detail: change.text }); noteIds(runner, "status", change.id, change.text); }
   }));
 
-  // 지휘관 턴의 끝 — 턴 중에는 개시 대기가 아니던 목표가 이제 개시할 수 있다(거절된 commence 의 retryWhen 이 가리키는 때).
-  // 턴이 시작될 때는 보드 사건이 없어 턴 전의 개시 대기가 들은 항목으로 남아 있으므로, 그 목표의 개시 대기는 턴과 함께 잊은 것으로
-  // 하고 다시 본다. 호스트의 관측은 이 신호 직후에도 아직 도는 중일 수 있어, 끝난 그 지휘관은 쉬는 것으로 본다.
-  // 깨우기까지만 한다 — 다시 개시할지는 사령관이 정한다.
-  if (deps.subscribeTurnEnds) cleanups.push(deps.subscribeTurnEnds((event) => {
-    if (disposed) return;
+  // 개시 대기 — 지휘관이 일하는 동안의 개시 전 목표는 대기가 아니다(commence 가 objective_busy·retryWhen commander_turn_end 로
+  // 거절된다). 그 일이 끝나 개시할 수 있게 되면 새 항목으로 한 번 깨운다. 일이 시작될 때도 보드 사건이 없으므로 같은 점검이 그 목표의
+  // 개시 대기를 들은 항목에서 내린다. 깨우기까지만 한다 — 다시 개시할지는 사령관이 정한다.
+  const plannedTimer = setInterval(() => {
+    if (disposed || !deps.observe) return;
     for (const runner of runners.values()) {
       const objectives = deps.objectives(runner.theaterId);
-      if (!objectives.some((objective) => objective.id === event.operationId)) continue;
-      runner.seen.delete(`planned:${event.operationId}`);
-      const observe = (operationId: string): ConsoleOperationObservation | null => {
-        const observed = deps.observe?.(operationId) ?? null;
-        return operationId === event.operationId && observed ? { ...observed, activity: "idle", lifecycle: "live" } : observed;
-      };
-      waitingChanged(runner, objectives, observe);
+      const operators = operatorsOf(objectives);
+      if (objectives.some((objective) => operators.get(objective.id) === "commodore" && inboxReasons(objective).includes("planned"))) waitingChanged(runner, objectives);
     }
-  }));
+  }, PLANNED_CHECK_MS);
+  plannedTimer.unref?.();
+  cleanups.push(() => clearInterval(plannedTimer));
 
   /** 보드 도구를 감싸 사령관이 쓰는 목표를 표시한다 — 쓰는 동안과 끝난 뒤 잠깐, 그 목표의 상태 변화는 사령관 자신의 것이다. */
   const selfAttributed = (runner: Runner, tool: PluginMcpTool): PluginMcpTool => ({
@@ -626,8 +622,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (runner.stopping || runner.ending || deadlineReached(runner)) return { content: [{ type: "text", text: JSON.stringify({ error: "commodore_stopping" }) }], isError: true };
       const targets = writeTargets(args);
       for (const id of targets) runner.selfWrites.set(id, Number.POSITIVE_INFINITY);
-      try { return await tool.execute(args, context); }
-      finally { const until = now() + SELF_WRITE_GRACE_MS; for (const id of targets) runner.selfWrites.set(id, until); }
+      try {
+        const result = await tool.execute(args, context);
+        // 지휘관이 일하는 중이라 개시가 거절됐다 — 그 목표의 개시 대기는 들은 항목에서 내려, 일이 끝나 쉬게 되면 다시 깨운다.
+        // 점검 주기보다 짧은 턴이어도 이 거절이 일하던 때를 증언한다.
+        const call = (args ?? {}) as { action?: unknown; objectiveId?: unknown };
+        if (call.action === "commence" && typeof call.objectiveId === "string" && (result as { structuredContent?: { error?: unknown } }).structuredContent?.error === "objective_busy") runner.seen.delete(`planned:${call.objectiveId}`);
+        return result;
+      } finally { const until = now() + SELF_WRITE_GRACE_MS; for (const id of targets) runner.selfWrites.set(id, until); }
     },
   });
 
