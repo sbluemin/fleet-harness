@@ -57,7 +57,12 @@ export * from "./router/passthrough.js";
 export * from "./router/opencode-dispatch.js";
 export * from "./transport/credentials.js";
 // wireLog/logCanonicalEvents 는 진단 구현 세부사항이므로 런타임 제어 표면만 좁게 공개한다.
-export { DEFAULT_WIRE_LOG_MAX_BYTES, setWireLogTarget, wireLogEnabled } from "./transport/wire-log.js";
+export {
+  DEFAULT_WIRE_LOG_MAX_BYTES,
+  DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
+  setWireLogTarget,
+  wireLogEnabled,
+} from "./transport/wire-log.js";
 export type { WireLogTarget } from "./transport/wire-log.js";
 // token-estimate.js 는 의도적으로 배럴 밖이다 — estimateTokens 는 이 패키지가 요청을
 // 내보내기 전에 쓰는 내부 휴리스틱이고, 올리면 공개 계약이 넓어진다.

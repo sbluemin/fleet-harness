@@ -4,6 +4,7 @@ import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
 import { chooseRoutingModel, chooseRoutingModels } from "./routing-model.js";
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
+  DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
   createClaudeNativeModelSync,
   createQuotaService,
   createAiGatewayQuotaCollectors,
@@ -60,6 +61,10 @@ function applyWireLog(ctx: GatewayStartContext, stored: boolean | undefined): vo
       ? {
         path: path.join(ctx.dataDir, "ai-gateway", "wire-log.jsonl"),
         maxBytes: DEFAULT_WIRE_LOG_MAX_BYTES,
+        toolInputs: {
+          path: path.join(ctx.dataDir, "ai-gateway", "wire-tool-inputs.jsonl"),
+          maxBytes: DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
+        },
       }
       : null);
 }

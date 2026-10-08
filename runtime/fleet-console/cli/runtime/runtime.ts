@@ -2,6 +2,7 @@ import path from "node:path";
 
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
+  DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
   createAiGatewayQuotaCollectors,
   createAiGatewaySettingsStore,
   createProviderAuthService,
@@ -103,6 +104,10 @@ function applyWireLog(stored: boolean | undefined, dataDir: string): void {
       ? {
         path: path.join(dataDir, "logs", "fleet-cli-gateway-wire.jsonl"),
         maxBytes: DEFAULT_WIRE_LOG_MAX_BYTES,
+        toolInputs: {
+          path: path.join(dataDir, "logs", "fleet-cli-gateway-wire-tool-inputs.jsonl"),
+          maxBytes: DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
+        },
       }
       : null);
 }
