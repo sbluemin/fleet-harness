@@ -4,7 +4,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 
 import type { Objective } from "../server/types.js";
-import { originTitleOf } from "./clusters.js";
+import { memberFailureOpen, originTitleOf } from "./clusters.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import type { ObjectiveGroup } from "./objectives-state.js";
 
@@ -115,6 +115,8 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
     const glyph = glyphOf(objective);
     const meta: { readonly key: string; readonly text: string; readonly tone?: string }[] = [];
     if (objective.decisionRequest) meta.push({ key: "req", text: t("objectives.switch.decisionCount", { count: objective.decisionRequest.questions.length || 1 }), tone: "req" });
+    // 사이드바 줄 메모와 같은 판정·같은 낱말 — 확인하지 않은 구성원 실패가 남은 동안만 선다.
+    if (memberFailureOpen(objective)) meta.push({ key: "failed", text: t("objectives.note.memberFailed"), tone: "warn" });
     if (objective.missions.length) meta.push({ key: "progress", text: `✓ ${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}` });
     if (objective.dueDate) meta.push({ key: "due", text: day.format(new Date(`${objective.dueDate}T00:00:00`)), ...(overdueOf(objective) ? { tone: "late" } : {}) });
     const originTitle = from ? originTitleOf(objective, byId) : undefined;

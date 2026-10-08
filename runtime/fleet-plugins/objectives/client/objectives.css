@@ -91,6 +91,8 @@
 .objectives-pop-meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-pop-meta .is-req { color: var(--aurora); }
 .objectives-pop-meta .is-late { color: var(--coral); }
+/* 사이드바 줄 메모의 warn 과 같은 신호 잉크 — 확인하지 않은 구성원 실패. */
+.objectives-pop-meta .is-warn { color: var(--warn-ink); }
 .objectives-pop-meta .is-from { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 「시작 전 N ›」 — 글자형 한 줄. 상자·채움·왼쪽 띠 없이, 머무를 때만 줄 배경이 옅게 선다. */
 .objectives-pop-fold { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
