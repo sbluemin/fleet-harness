@@ -5,6 +5,21 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.221.0] - 2026-10-08
+
+### fleet-console
+
+#### Removed
+- Settings의 '하네스' 섹션을 없앴습니다. Agent CLI 실행 파일 경로 설정도 함께 사라지며, Theater의 시스템 프롬프트는 계속 해당 Theater에서 편집합니다.
+- 유휴 에이전트 세션을 자동으로 휴면시키지 않으며, '유휴 에이전트 세션' 설정도 없앴습니다.
+- Zen 모드와 사이드바의 Zen 버튼, ⌘⌥Z 단축키를 없앴습니다. War Room은 지금처럼 집중 레이아웃을 그대로 쓰고, 나가면 일반 Cruise 레이아웃으로 돌아옵니다.
+- 업데이트 뒤에 뜨던 "새로 생긴 기능" 환영 카드를 없앴습니다. What's New, 첫 실행 안내, 기능 투어는 그대로입니다.
+
+### fleet-desktop
+
+#### Changed
+- 데스크톱 창은 이제 Zen 모드가 아니라 War Room을 여는 동안에만 전체 화면이 됩니다.
+
 ## [1.220.0] - 2026-10-08
 
 ### fleet-console

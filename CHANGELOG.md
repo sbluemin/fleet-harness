@@ -5,6 +5,21 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.221.0] - 2026-10-08
+
+### fleet-console
+
+#### Removed
+- Remove the Harness section from Settings, including its Agent CLI executable path setting; a Theater's system prompt is still edited from the Theater itself.
+- Stop moving idle agent sessions to dormant automatically; the Idle agent sessions setting is gone.
+- Removed Zen mode, its sidebar button, and its keyboard shortcut. War Room keeps its own focused layout and now returns to the regular Cruise layout when you leave it.
+- Removed the "New in Fleet" welcome card that appeared after updates; What's New, the first-run setup, and feature tours are unchanged.
+
+### fleet-desktop
+
+#### Changed
+- The desktop window now goes full screen only while War Room is open, instead of with Zen mode.
+
 ## [1.220.0] - 2026-10-08
 
 ### fleet-console
