@@ -545,7 +545,9 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
           if (hovering) container.title = fileLinkHint;
           else container.removeAttribute("title");
         },
-        onOutcome: (outcome) => setLinkNotice(describeFileLinkOutcome(outcome, localeRef.current)),
+        onOutcome: (outcome) => setLinkNotice(!outcome.ok && outcome.reason === "activation_required"
+          ? fileLinkHint
+          : describeFileLinkOutcome(outcome, localeRef.current)),
       }));
       const searchAddon = new SearchAddon();
       terminal.loadAddon(searchAddon);

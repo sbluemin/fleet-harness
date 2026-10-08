@@ -63,8 +63,10 @@ const marked = new Marked({
 // 경로 쪽에 `.`이나 `/`가 있고 콜론 뒤가 숫자 좌표뿐인 형태만 통과시킨다 — 실제 스킴 이름(javascript 등)은
 // 점·슬래시가 없으므로 이 갈래로 들어오지 못한다. 호스트가 분류하지 않으면 decorateLinks가 href를 거둔다.
 const FILE_COORDINATE_HREF = /^(?=[^:]*[./])[^:]+:\d+(?::\d+)?$/;
+// marked가 역슬래시를 %5C로 바꾼 경우도 드라이브 경로다. 다른 스킴의 허용 범위는 늘리지 않는다.
+const WINDOWS_DRIVE_HREF = /^[a-z]:(?:[/\\]|%2f|%5c)/i;
 const sanitizeConfig = {
-  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[#/]|\.{0,2}\/|[^:]+$|(?=[^:]*[./])[^:]+:\d+(?::\d+)?$)/i,
+  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[a-z]:(?:[/\\]|%2f|%5c)|[#/]|\.{0,2}\/|[^:]+$|(?=[^:]*[./])[^:]+:\d+(?::\d+)?$)/i,
   ADD_ATTR: ["target", "rel", "data-entry-id"],
 };
 const highlighter = configureHighlighter();
@@ -247,8 +249,8 @@ function decorateLinks(document: Document, resolveLink?: RenderMarkdownOptions["
       link.dataset.mdLinkData = JSON.stringify(target.data);
       continue;
     }
-    if (FILE_COORDINATE_HREF.test(href)) {
-      // 분류되지 않은 좌표 참조는 브라우저가 낯선 스킴으로 열려 든다 — 예전처럼 이동하지 않는 앵커로 둔다.
+    if (FILE_COORDINATE_HREF.test(href) || WINDOWS_DRIVE_HREF.test(href)) {
+      // 호스트가 분류하지 않은 파일 주소는 브라우저의 낯선 스킴으로 열지 않는다.
       link.removeAttribute("href");
       continue;
     }
