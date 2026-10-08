@@ -73,7 +73,7 @@ export interface EntryPageSnapshot {
   /** true면 마크와 워드마크가 Console 상단 브랜드 자리로 줄어들고 나머지는 사라진다. */
   readonly handoff?: boolean;
   readonly farewell?: EntryFarewell;
-  /** 종료 인사가 출발하는 자리 — Console 상단 Band(기본) 또는 Zen 작업 표시줄 트레이. */
+  /** 종료 인사가 출발하는 자리 — Console 상단 Band(기본) 또는 War Room 작업 표시줄 트레이. */
   readonly farewellFrom?: EntryFarewellOrigin;
   readonly palette?: EntryPalette;
 }

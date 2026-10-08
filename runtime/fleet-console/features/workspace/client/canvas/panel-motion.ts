@@ -1,6 +1,6 @@
 import { prefersReducedMotion } from "./canvas-store.js";
 
-// 존재 전환 안무 — 최소화/복원 시 패널과 사이드바 칩(접힌 Zen에서는 섬 입구) 사이를 잇는 고스트 flight.
+// 존재 전환 안무 — 최소화/복원 시 패널과 사이드바 칩(접힌 War Room에서는 섬 입구) 사이를 잇는 고스트 flight.
 // 상태 커밋을 지연·블로킹하지 않는 fire-and-forget 연출 레이어다.
 
 const ARRIVAL_PULSE_DURATION_MS = 600;
@@ -50,14 +50,14 @@ function panelElement(operationId: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(operationId)}"]`);
 }
 
-// Zen의 사이드바가 보이지 않으면 섬의 사이드바 입구가 비행의 끝점이다.
-// 사이드바를 잠깐 드러낸 Zen에서는 보이는 사이드바 칩이 그대로 끝점이다.
+// War Room의 사이드바가 보이지 않으면 섬의 사이드바 입구가 비행의 끝점이다.
+// 사이드바를 잠깐 드러낸 War Room에서는 보이는 사이드바 칩이 그대로 끝점이다.
 function chipElement(operationId: string): HTMLElement | null {
   const id = escapeSelectorValue(operationId);
   const sideBarChip = document.querySelector<HTMLElement>(`[data-side-bar-chip-id="${id}"]`);
   const candidates = [
     sideBarChip,
-    document.querySelector<HTMLElement>(".zen-bar [data-zen-sidebar-anchor]"),
+    document.querySelector<HTMLElement>(".war-room-bar [data-war-room-sidebar-anchor]"),
   ];
   return candidates.find(isVisiblyRendered) ?? sideBarChip;
 }

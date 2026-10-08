@@ -89,7 +89,6 @@ Operation은 무한 캔버스 위에 놓입니다. 배치를 어디까지 직접
 | **모두 정렬** | 모든 패널을 격자·열·행으로 한 번에 늘어놓습니다. 끄면 각자 원래 자리로 돌아갑니다. | <kbd>Alt</kbd><kbd>F</kbd> |
 | **스냅 레이아웃** | 패널을 위쪽 가장자리로 끌면 반·삼분할·2×2 같은 자리에 붙습니다. 빈 칸에는 Snap Assist가 다른 패널을 제안합니다. | <kbd>⌘</kbd><kbd>Alt</kbd><kbd>←</kbd> <kbd>→</kbd> |
 | **War Room** | 모든 Theater에서 응답을 기다리는 Operation을 하나씩 무대에 올립니다. | <kbd>Alt</kbd><kbd>T</kbd> |
-| **Zen** | 크롬을 걷어 내고 Theater와 Operation만 담은 얇은 작업 표시줄을 남깁니다. | <kbd>⌘</kbd><kbd>Alt</kbd><kbd>Z</kbd> |
 
 <kbd>⌘</kbd><kbd>K</kbd>로 어떤 Operation·파일·위키 문서로든 이동합니다. <kbd>⌘</kbd><kbd>P</kbd>는 명령 팔레트, <kbd>⌘</kbd><kbd>J</kbd>는 Quick Launch를 열고, <kbd>Alt</kbd><kbd>S</kbd>는 사이드바를 상태별로 묶습니다. 모든 단축키는 다시 지정할 수 있습니다. Windows와 Linux에서는 <kbd>⌘</kbd> 대신 <kbd>Ctrl</kbd>입니다.
 

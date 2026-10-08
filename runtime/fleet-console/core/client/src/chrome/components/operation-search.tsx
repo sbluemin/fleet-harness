@@ -51,7 +51,7 @@ import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { requestAlignAll } from "../../../../../features/workspace/client/canvas/align-fit-store.js";
-import { enterTriage, focusedTriageOperationId, isTriageActive, setTriageActive, toggleTriageMap, useTriageActive, useTriageMapOpen, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
+import { enterTriage, exitTriage, focusedTriageOperationId, isTriageActive, setTriageActive, toggleTriageMap, useTriageActive, useTriageMapOpen, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
@@ -74,8 +74,7 @@ import {
 } from "../../integration/store.js";
 import { useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
-import { isZenMode, setZenMode, toggleZenMode, useZenMode } from "../../integration/zen-mode.js";
-import { toggleZenSideBar } from "../../integration/zen-chrome-toggles.js";
+import { toggleWarRoomSideBar } from "../../integration/war-room-chrome-toggles.js";
 
 interface OperationSearchProps {
   readonly state: ConsoleState;
@@ -104,7 +103,6 @@ export function OperationSearch({
   onUndoLastClose,
 }: OperationSearchProps) {
   const t = useT();
-  const zenMode = useZenMode();
   const triageActive = useTriageActive();
   const triageMapOpen = useTriageMapOpen();
   const warRoomAvailable = useViewMode().effective !== "mobile";
@@ -176,7 +174,7 @@ export function OperationSearch({
   const undoKind = useMemo(() => lastUndoKind?.() ?? null, [state.operationSearchOpen, lastUndoKind]);
   const commands = useMemo(
     () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, undoKind, warRoomAvailable, triageActive, triageMapOpen }),
-    [state, railPanels, t, undoAvailable, zenMode, warRoomAvailable, triageActive, triageMapOpen, undoKind],
+    [state, railPanels, t, undoAvailable, warRoomAvailable, triageActive, triageMapOpen, undoKind],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
@@ -362,9 +360,8 @@ export function OperationSearch({
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // 생성 요청의 소비자(Map 사이드바)는 선별 중 언마운트다 — 먼저 선별을 끝내야
         // 요청이 폐기되지 않고 즉시 소비된다(종료의 대기 요청 폐기보다 뒤에 요청).
-        // Zen은 유지한다 — War Room Zen이면 Zen Cruise로 돌아와 숨은 사이드바가 상자만 연다.
         if (isTriageActive()) setTriageActive(false);
-        if (!isZenMode() && getSideBarState().collapsed) setSideBarCollapsed(false);
+        if (getSideBarState().collapsed) setSideBarCollapsed(false);
         requestSideBarAddTheater();
         break;
       }
@@ -421,7 +418,7 @@ export function OperationSearch({
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         ensurePaletteCanvasTheater(state);
         if (isTriageActive()) {
-          setTriageActive(false);
+          exitTriage();
         } else if (state.theaters.length > 0) {
           // 팔레트 진입 시점의 activeElement는 입력창이므로 캔버스 포커스는 previousFocusRef에서 읽는다.
           // 그 뒤 복원을 끊지 않으면 팔레트가 닫히며 이전 패널을 다시 포커스해 빈 대기열 진입의 해제가 무효화된다.
@@ -478,26 +475,14 @@ export function OperationSearch({
         else openRailPanel(action.panelId);
             break;
       }
-      case "toggle-zen": {
-        if (getViewModeSnapshot().effective === "mobile") break;
-        if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        const target = previousFocusRef.current;
-        previousFocusRef.current = null;
-        toggleZenMode();
-        requestAnimationFrame(() => {
-          if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
-          else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
-        });
-        break;
-      }
       case "toggle-sidebar": {
-        if (isZenMode() && location.pathname.startsWith("/operations")) {
+        if (isTriageActive() && location.pathname.startsWith("/operations")) {
           previousFocusRef.current = null;
-          const shown = toggleZenSideBar();
+          const shown = toggleWarRoomSideBar();
           requestAnimationFrame(() => {
             // 숨기면 섬의 사이드바 토글로, 펼치면 카드의 접기 컨트롤로 간다. 섬의 토글은 도구모음 칸이라
             // 되돌려 놓은 포커스로 말풍선을 띄우지 않는다(⌘B와 같은 계약).
-            const anchor = shown ? null : document.querySelector<HTMLElement>(".zen-bar [data-zen-sidebar-anchor]");
+            const anchor = shown ? null : document.querySelector<HTMLElement>(".war-room-bar [data-war-room-sidebar-anchor]");
             if (anchor) { focusToolbarItemQuietly(anchor); return; }
             (shown
               ? document.querySelector<HTMLElement>(".side-bar-collapse")
@@ -505,7 +490,7 @@ export function OperationSearch({
           });
           break;
         }
-        setZenMode(false);
+        setTriageActive(false);
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // 도착지 포커스 계약 — 접히면 엣지 독, 펼치면 사이드바의 접기 컨트롤.
         previousFocusRef.current = null;
@@ -526,7 +511,7 @@ export function OperationSearch({
         break;
       }
       case "open-settings": {
-        // Zen은 그대로 둔다 — 설정은 Zen 탭의 도구처럼 레일 표면으로 열리고, 모바일 경로에서는 Zen이 애초에 서지 않는다.
+        // War Room은 그대로 둔다 — 설정은 레일 표면으로 열리고, 모바일 경로에서는 War Room이 애초에 서지 않는다.
         // 폰에는 레일이 없다 — 설정의 모바일 표현은 여전히 /settings 페이지다. 레일 스토어를
         // 열면 보이지 않는 표면만 켜지고 화면은 아무 일도 없던 것처럼 남는다.
         if (getViewModeSnapshot().effective === "mobile") {
@@ -560,7 +545,7 @@ export function OperationSearch({
       case "assign-operation-group":
       case "set-operation-accent":
       case "minimize-operation": {
-        setZenMode(false);
+        setTriageActive(false);
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         if (getSideBarState().collapsed) setSideBarCollapsed(false);

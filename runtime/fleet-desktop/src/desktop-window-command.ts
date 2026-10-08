@@ -30,7 +30,7 @@ export function createDesktopWindowCommandSynchronizer(deps: DesktopWindowComman
   });
 }
 
-export interface ZenFullscreenWindow {
+export interface FullscreenWindow {
   isDestroyed(): boolean;
   isFullScreen(): boolean;
   setFullScreen(flag: boolean): void;
@@ -38,7 +38,7 @@ export interface ZenFullscreenWindow {
   removeListener(event: "enter-full-screen" | "leave-full-screen", listener: () => void): unknown;
 }
 
-export interface ZenFullscreenController {
+export interface FullscreenController {
   perform(command: DesktopWindowCommand): void;
   stop(): void;
 }
@@ -49,20 +49,20 @@ const FULLSCREEN_SETTLE_TIMEOUT_MS = 1_500;
 const FULLSCREEN_MAX_ATTEMPTS = 3;
 
 /**
- * Zen이 켜고 끄는 네이티브 전체화면의 소유자. 판단은 화면이 아니라 여기서 한다 — 화면이 보는 전체화면
+ * Console 화면이 켜고 끄는 네이티브 전체화면의 소유자. 판단은 화면이 아니라 여기서 한다 — 화면이 보는 전체화면
  * 여부는 셸 → Console → SSE를 거쳐 늦게 도착하므로, 그 값으로 "이미 전체화면인가"를 가리면 빠르게 켰다
- * 끈 뒤에 전체화면이 남고, 그다음부터는 Zen이 연 것이 아니라며 영영 끄지 않는다(Windows 실사용 신고).
+ * 끈 뒤에 전체화면이 남고, 그다음부터는 화면이 연 것이 아니라며 영영 끄지 않는다(Windows 실사용 신고).
  *
- * - 켜기: 창이 이미(사용자가) 전체화면이면 손대지 않는다. 아니면 Zen 몫으로 잡고 켠다.
- * - 끄기: Zen이 잡은 전체화면만 끈다.
+ * - 켜기: 창이 이미(사용자가) 전체화면이면 손대지 않는다. 아니면 화면 몫으로 잡고 켠다.
+ * - 끄기: 화면이 잡은 전체화면만 끈다.
  * - 전환 중에 들어온 명령은 버리지 않고 마지막 뜻만 남겨 전환이 끝난 뒤 실제 상태와 맞춘다 — 전환 도중의
  *   setFullScreen은 OS가 무시하거나(macOS 애니메이션) 상태를 어긋나게 한다.
- * - Zen 몫의 전체화면을 사용자가 스스로 빠져나오면 몫을 놓는다(Zen 종료는 화면이 스냅숏으로 한다).
+ * - 화면 몫의 전체화면을 사용자가 스스로 빠져나오면 몫을 놓는다(화면 종료는 화면이 스냅숏으로 한다).
  */
-export function createZenFullscreenController(
-  window: ZenFullscreenWindow,
+export function createFullscreenController(
+  window: FullscreenWindow,
   deps: { readonly setTimeout?: typeof setTimeout; readonly clearTimeout?: typeof clearTimeout } = {},
-): ZenFullscreenController {
+): FullscreenController {
   const schedule = deps.setTimeout ?? globalThis.setTimeout;
   const cancel = deps.clearTimeout ?? globalThis.clearTimeout;
   let owned = false;
@@ -102,7 +102,7 @@ export function createZenFullscreenController(
   const onSettled = (entered: boolean) => {
     const requested = inflight;
     clearSettling();
-    // Zen 몫의 전체화면에서 사용자가 나왔다(우리가 끄라고 한 것이 아니다) — 몫을 놓고 다시 켜지 않는다.
+    // 화면 몫의 전체화면에서 사용자가 나왔다(우리가 끄라고 한 것이 아니다) — 몫을 놓고 다시 켜지 않는다.
     if (!entered && owned && requested !== false) {
       owned = false;
       desired = null;
@@ -111,7 +111,7 @@ export function createZenFullscreenController(
     }
     // 다음 틱에 맞춘다. Windows의 Electron은 이 이벤트를 setFullScreen 안에서, 창 상태를 바꾸기 **전에** 동기로
     // 내보낸다 — 여기서 곧바로 isFullScreen()을 읽으면 아직 옛 값이라 켠 전체화면을 "안 켜졌다"로 보고 되풀이하다
-    // 몫을 놓아 버렸고, 그 뒤 Zen을 꺼도 전체화면이 풀리지 않았다(Windows 신고). 이벤트 안에서 다시
+    // 몫을 놓아 버렸고, 그 뒤 화면을 꺼도 전체화면이 풀리지 않았다(Windows 신고). 이벤트 안에서 다시
     // setFullScreen을 부르는 재진입도 함께 피한다.
     if (deferred !== null) cancel(deferred);
     deferred = schedule(() => {

@@ -3,13 +3,13 @@ import { createPortal } from "react-dom";
 
 /**
  * 도구모음 말풍선 — 도구모음의 모든 칸이 쓰는 한 장. 칸마다 말풍선을 들지 않고 도구모음 루트가 겨눔·포커스를
- * 위임받아, 겨눈 칸의 이름을 한 장의 말풍선에 싣는다. 그래서 접기·레일 도구·설정·찾기·원격·도움말·Zen과
+ * 위임받아, 겨눈 칸의 이름을 한 장의 말풍선에 싣는다. 그래서 접기·레일 도구·설정·찾기·원격·도움말·War Room과
  * 플러그인이 둔 항목(부관 글리프)이 같은 모양·같은 지연·같은 모션으로 말한다.
  *
  * - 이름은 `data-tip` → (칸이 든 네이티브 title) → aria-label 순으로 읽는다. 네이티브 title은 도구모음이
  *   보는 즉시 걷어 보관한다 — 남겨 두면 브라우저 말풍선이 한 번 더 뜬다. 플러그인은 코드를 고치지 않아도
  *   title이나 aria-label만으로 이 말풍선을 입는다.
- * - 상단 바에서는 아래로, Zen 트레이(화면 아래 끝)에서는 위로 뜬다. 칸 가운데에 서되 뷰포트 끝에서는
+ * - 상단 바에서는 아래로, War Room 트레이(화면 아래 끝)에서는 위로 뜬다. 칸 가운데에 서되 뷰포트 끝에서는
  *   안으로 밀려 들어오고, 꼬리는 칸을 계속 가리킨다.
  * - 메뉴가 열린 칸(aria-expanded="true")과 누른 직후의 칸은 말하지 않는다 — 누른 칸은 포인터가 떠날 때까지.
  * - 칸 안의 메뉴·대화상자(도움말 메뉴, 원격 패널)는 대상이 아니다.
@@ -22,7 +22,7 @@ const TIP_GAP = 10;
 const VIEWPORT_MARGIN = 8;
 const ARROW_INSET = 12;
 
-const ITEM_SELECTOR = ".console-toolbar-fold, .right-rail-ico, .command-band-button, .console-toolbar-bridge button, .zen-island-sidebar, .zen-island-next, .war-room-tool";
+const ITEM_SELECTOR = ".console-toolbar-fold, .right-rail-ico, .command-band-button, .console-toolbar-bridge button, .war-room-island-sidebar, .war-room-island-next, .war-room-tool";
 const POPUP_SELECTOR = '[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]';
 const STASHED_TITLE = "data-toolbar-tip-title";
 
@@ -143,7 +143,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
         setTip((current) => current?.target === item ? { ...current, text: tipTextOf(item) } : current);
       });
       targetObserver.observe(item, { attributes: true, attributeFilter: ["data-tip", STASHED_TITLE, "aria-label", "aria-expanded"] });
-      setTip({ target: item, text, placement: item.closest(".zen-bar") !== null ? "above" : "below" });
+      setTip({ target: item, text, placement: item.closest(".war-room-bar") !== null ? "above" : "below" });
       setVisible(true);
     };
     const request = (item: HTMLElement) => {
@@ -171,7 +171,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
       suppressed = null;
       hide();
     };
-    // 도구모음이 자리를 옮기면(Zen 켜기·끄기) 포인터 밑의 칸이 통째로 사라져 pointerout이 오지 않는다 —
+    // 도구모음이 자리를 옮기면(War Room 켜기·끄기) 포인터 밑의 칸이 통째로 사라져 pointerout이 오지 않는다 —
     // 도구모음 밖을 겨누는 순간 기억한 칸과 누른 칸을 잊는다. 잊지 않으면 새 자리의 같은 칸이 말하지 않는다.
     const onWindowPointerOver = (event: PointerEvent) => {
       if (event.target instanceof Node && root.contains(event.target)) return;
@@ -251,7 +251,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
       id={tipId}
       className={`console-toolbar-tip${visible ? " is-visible" : ""}`}
       data-placement={tip?.placement ?? "below"}
-      data-zen-island-tip={tip?.target.closest(".zen-bar") ? "" : undefined}
+      data-war-room-island-tip={tip?.target.closest(".war-room-bar") ? "" : undefined}
       role="tooltip"
       aria-hidden={!visible || undefined}
     >

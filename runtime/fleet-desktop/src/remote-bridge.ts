@@ -73,9 +73,6 @@ const JOIN_PATH = "/api/v1/join";
 const PICKER_SURFACE_PARAM = "desktop-surface";
 const PICKER_SURFACE_OPEN = "host-picker";
 const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
-/** 전환 직전 화면 모드. Console이 새 문서에서 읽고 지운다(zen-mode.ts). */
-const MODE_PARAM = "fleet-zen";
-const MODE_ZEN = "1";
 
 export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   const localFetch = deps.localFetch ?? globalThis.fetch;
@@ -101,8 +98,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
 
   /**
    * `url`은 루프백 콘솔로 갈 때만 그대로 쓰인다 — 그 콘솔 안의 어느 화면을 열지까지 정해져 온 경우다
-   * (덮개의 "호스트 관리"가 그렇다). 원격은 핸드오프가 돌려준 origin의 `/console/`로만 가고,
-   * 전환 직전 화면 모드(`fleet-zen=1`)만 옮겨 싣는다.
+   * (덮개의 "호스트 관리"가 그렇다). 원격은 핸드오프가 돌려준 origin의 `/console/`로만 간다.
    */
   async function open(origin: string, url?: string): Promise<void> {
     // 집으로 돌아가는 길에는 핀도 자격도 필요 없다 — 루프백은 언제나 허용된 origin이다.
@@ -138,7 +134,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
        */
       await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
       await verifyConsoleReachable(handoff.origin);
-      await deps.loadConsole(remoteConsoleEntry(handoff.origin, url));
+      await deps.loadConsole(remoteConsoleEntry(handoff.origin));
       if (attempt === opening) policy.commitConsoleOrigin();
     } catch (error) {
       if (attempt === opening) policy.cancelPendingConsoleOrigin();
@@ -351,15 +347,9 @@ export function consoleTarget(url: string, localOrigin: string | null): string |
   }
 }
 
-/** 원격 콘솔의 입구. 요청 URL에서는 화면 모드만 읽는다 — 경로와 다른 쿼리는 원격 페이지가 정하게 두지 않는다. */
-export function remoteConsoleEntry(origin: string, requestedUrl?: string): string {
-  const entry = new URL(CONSOLE_PATH, `${origin}/`);
-  try {
-    if (requestedUrl !== undefined && new URL(requestedUrl).searchParams.get(MODE_PARAM) === MODE_ZEN) entry.searchParams.set(MODE_PARAM, MODE_ZEN);
-  } catch {
-    // 읽을 수 없는 URL은 기본 입구로 연다.
-  }
-  return entry.toString();
+/** 원격 콘솔의 입구. 요청 URL의 경로와 쿼리는 싣지 않는다 — 원격 페이지가 정하게 두지 않는다. */
+export function remoteConsoleEntry(origin: string): string {
+  return new URL(CONSOLE_PATH, `${origin}/`).toString();
 }
 
 async function readErrorCode(response: Response): Promise<string> {

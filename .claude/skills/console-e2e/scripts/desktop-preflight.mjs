@@ -173,7 +173,7 @@ function occlusionProbe(targetPid) {
           || owned.sort((a, b) => (b.bounds.Width * b.bounds.Height) - (a.bounds.Width * a.bounds.Height))[0];
 
         if (!target.onScreen) {
-          return JSON.stringify({ target, occluders: [], occluded: true, offScreen: true, error: 'target window is off-screen (in a separate macOS Space, such as native fullscreen Zen, or minimized)' });
+          return JSON.stringify({ target, occluders: [], occluded: true, offScreen: true, error: 'target window is off-screen (in a separate macOS Space, such as native fullscreen War Room, or minimized)' });
         }
 
         const t = target.bounds;

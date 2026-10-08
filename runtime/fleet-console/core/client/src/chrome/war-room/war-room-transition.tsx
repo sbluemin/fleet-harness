@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
 
 import { BrandMarkIcon, BrandWordmark } from "../components/command-band.js";
-import { runZenWindowStage, setZenMode, setZenTransitionRunner, setZenTransitionActive, type ZenTransitionActions } from "../../integration/zen-mode.js";
+import { runWarRoomWindowStage, setWarRoomTransitionRunner, setWarRoomTransitionActive, type WarRoomTransitionActions } from "../../integration/war-room-chrome.js";
 
 /**
- * Zen 전환 장면. 켤 때:
+ * War Room 전환 장면. 켤 때:
  *
- *   1. 테마 바탕색의 **불투명한** 커튼이 다 쳐진다 — 그 뒤에서 레이아웃이 Zen으로 바뀐다.
+ *   1. 테마 바탕색의 **불투명한** 커튼이 다 쳐진다 — 그 뒤에서 레이아웃이 War Room으로 바뀐다.
  *   2. Band 왼쪽의 앰블럼(마크+워드마크)이 화면 가운데로 옮겨 와 멈춘다. 가운데에서는 아무것도 하지 않는다.
  *   3. 창 단계 — Desktop은 네이티브 전체화면을 켜고 셸의 완료 알림까지 기다린다(브라우저는 곧바로 끝).
  *   4. 가운데에서 세로축으로 한 바퀴 뒤집히며 커졌다 작아진 뒤, 부유 섬의 모서리 앰블럼으로
@@ -21,7 +21,7 @@ import { runZenWindowStage, setZenMode, setZenTransitionRunner, setZenTransition
  * (fleet-desktop/assets/entry)의 넘겨주기를 그대로 쓴다 — 72px 마크와 40px 워드마크, 스프링
  * cubic-bezier(0.16, 1, 0.3, 1). 끌 때 애니메이션을 통째로 역재생하면 곡선까지 뒤집혀 도착이 가속하므로,
  * 경로만 뒤집고 곡선은 그대로 둔다. 도착 자리는 레이아웃·창 전환 뒤에야 서므로 그 구간을 시작할 때 잰다.
- * 측정할 자리가 없거나 동작 줄이기를 켠 환경이면 장면을 맡지 않고, Zen은 곧바로 바뀐다.
+ * 측정할 자리가 없거나 동작 줄이기를 켠 환경이면 장면을 맡지 않고, War Room은 곧바로 바뀐다.
  */
 
 /** 커튼이 다 쳐지거나 걷히는 시간(Band 쪽 끝). */
@@ -42,7 +42,7 @@ const MARK_SIZE = 72;
 const WORD_SIZE = 40;
 const SPIN_SCALE_PEAK = 0.28;
 const SPIN_FRAMES = 12;
-const FLIGHT_ATTRIBUTE = "zenFlight";
+const FLIGHT_ATTRIBUTE = "warRoomFlight";
 
 /**
  * 배우의 좌표는 화면 **중심**을 원점으로 한다(배우는 CSS로 화면 한가운데에 서 있다). 창이 전체화면으로
@@ -52,13 +52,13 @@ const FLIGHT_ATTRIBUTE = "zenFlight";
 interface Rect { readonly x: number; readonly y: number; readonly size: number }
 interface BrandRects { readonly mark: Rect; readonly word: Rect }
 
-export function ZenTransition({ local = false }: { readonly local?: boolean } = {}) {
+export function WarRoomTransition({ local = false }: { readonly local?: boolean } = {}) {
   const veilRef = useRef<HTMLDivElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
   const wordRef = useRef<HTMLSpanElement>(null);
   const busyRef = useRef(false);
 
-  useEffect(() => setZenTransitionRunner((next, actions) => {
+  useEffect(() => setWarRoomTransitionRunner((next, actions) => {
     // 장면이 도는 동안의 요청은 삼킨다 — 반쯤 걸린 커튼 위에서 방향을 바꾸면 어느 쪽도 끝나지 않는다.
     if (busyRef.current) return true;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
@@ -68,21 +68,21 @@ export function ZenTransition({ local = false }: { readonly local?: boolean } = 
     const from = next ? measureBandBrand() : measureIslandBrand();
     if (veil === null || mark === null || word === null || (from === null && next)) return false;
     busyRef.current = true;
-    setZenTransitionActive(true);
-    void play(next, from, { veil, mark, word }, actions).finally(() => { busyRef.current = false; setZenTransitionActive(false); });
+    setWarRoomTransitionActive(true);
+    void play(next, from, { veil, mark, word }, actions).finally(() => { busyRef.current = false; setWarRoomTransitionActive(false); });
     return true;
   }), []);
 
   return (
-    <div className="zen-transition" aria-hidden="true">
-      <div className="zen-transition-veil" ref={veilRef} />
-      <div className="zen-transition-mark" ref={markRef}><BrandMarkIcon className="zen-transition-mark-glyph" local={local} /></div>
-      <BrandWordmark className="zen-transition-wordmark" local={local} ref={wordRef} />
+    <div className="war-room-transition" aria-hidden="true">
+      <div className="war-room-transition-veil" ref={veilRef} />
+      <div className="war-room-transition-mark" ref={markRef}><BrandMarkIcon className="war-room-transition-mark-glyph" local={local} /></div>
+      <BrandWordmark className="war-room-transition-wordmark" local={local} ref={wordRef} />
     </div>
   );
 }
 
-async function play(next: boolean, from: BrandRects | null, actors: { readonly veil: HTMLElement; readonly mark: HTMLElement; readonly word: HTMLElement }, actions?: ZenTransitionActions): Promise<void> {
+async function play(next: boolean, from: BrandRects | null, actors: { readonly veil: HTMLElement; readonly mark: HTMLElement; readonly word: HTMLElement }, actions?: WarRoomTransitionActions): Promise<void> {
   const { veil, mark, word } = actors;
   const root = document.documentElement;
   const center = centerRects(word);
@@ -143,23 +143,22 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
   let switched = false;
   const switchLayout = () => {
     switched = true;
-    setZenMode(next);
     actions?.onLayout?.();
   };
   try {
     if (next) {
-      // 1 — 앰블럼은 Band 자리에 선 채 불투명한 커튼이 다 쳐지고, 그 뒤에서 레이아웃이 Zen으로 바뀐다.
+      // 1 — 앰블럼은 Band 자리에 선 채 불투명한 커튼이 다 쳐지고, 그 뒤에서 레이아웃이 War Room으로 바뀐다.
       if (from !== null) place(from.mark, from.word);
       await veilTo(1, VEIL_MS, "ease-out");
       switchLayout();
       // 2 — 가운데로 옮겨 와 멈춘다.
       if (from !== null) await moveBetween(from, center);
       // 3 — 창 단계(Desktop 전체화면). 앰블럼은 가운데에 멈춰 있다.
-      await runZenWindowStage(true);
+      await runWarRoomWindowStage(true);
       // 4 — 가운데에서 한 바퀴, 트레이로 내려앉으며 커튼이 걷힌다.
       await spin();
       const tray = measureIslandBrand();
-      root.dataset.zenLanding = "true";
+      root.dataset.warRoomLanding = "true";
       await Promise.all([land(tray, true), veilTo(0, LAND_MS * 0.9, "ease-in")]);
     } else {
       // 4′ — 트레이에서 가운데로 오는 동안 커튼이 쳐진다(자리가 없으면 가운데에서 나타난다).
@@ -170,7 +169,7 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
       await spin();
       switchLayout();
       // 3′ — 창 단계(Desktop 전체화면 해제). 앰블럼은 가운데에 멈춰 있다. Band가 제자리에 설 시간도 함께 기다린다.
-      await Promise.all([runZenWindowStage(false), delay(BAND_SETTLE_MS)]);
+      await Promise.all([runWarRoomWindowStage(false), delay(BAND_SETTLE_MS)]);
       // 2′·1′ — 창이 돌아온 뒤의 Band 자리로 옮겨 가고, 커튼이 걷힌다.
       const band = measureBandBrand();
       if (band !== null) await moveBetween(center, band);
@@ -180,13 +179,13 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
     // 취소(언마운트·탭 숨김)는 장면만 거둔다.
   } finally {
     // 전환이 아직 걸리지 않았을 때만 요청을 마저 반영한다. 이미 걸린 뒤 경로 이탈 같은 강제 종료가
-    // Zen을 걷었다면 그 결정을 되돌리지 않는다.
+    // War Room을 걷었다면 그 결정을 되돌리지 않는다.
     if (!switched) switchLayout();
     for (const animation of running) animation.cancel();
     mark.style.visibility = "";
     word.style.visibility = "";
     delete root.dataset[FLIGHT_ATTRIBUTE];
-    delete root.dataset.zenLanding;
+    delete root.dataset.warRoomLanding;
     actions?.onComplete?.();
   }
 }
@@ -196,7 +195,7 @@ function measureBandBrand(): BrandRects | null {
 }
 
 function measureIslandBrand(): BrandRects | null {
-  return measureBrand(".zen-bar-brand-glyph", ".zen-bar-brand-wordmark");
+  return measureBrand(".war-room-bar-brand-glyph", ".war-room-bar-brand-wordmark");
 }
 
 function measureBrand(glyphSelector: string, wordSelector: string): BrandRects | null {

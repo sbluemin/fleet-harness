@@ -144,7 +144,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     dori: dockHost && settings.docked.dori,
   }), [dockHost, settings.docked]);
 
-  // 슬롯이 사라지면(모바일·Zen) 고정 부관은 새로 돌아간다 — 그때 밴드 아래 서 있던 답 말풍선은 거둔다.
+  // 슬롯이 사라지면(모바일·War Room) 고정 부관은 새로 돌아간다 — 그때 밴드 아래 서 있던 답 말풍선은 거둔다.
   // 고정 답은 정박을 세우지 않았으므로 두면 나는 새를 따라다닌다. 글리프의 점은 시트가 이어받지 못하니
   // 답이 정착한 것은 다음 열림에서 카드로 읽는다.
   const dockHostRef = React.useRef(dockHost);

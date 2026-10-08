@@ -317,7 +317,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
   if (!theaterId) return <div className="objectives-container"><div className="objectives-root"><div className="objectives-pick-pane"><div className="objectives-pick"><p>{t("objectives.objectives.emptyTheater")}</p></div></div></div></div>;
 
-  // 사이드바가 보이면 트리는 거기 있다. 접혀 있거나(Zen·War Room·Cruise 접힘) 사이드바가 없는 자리(모바일)에서만 ⌄ 가 선다.
+  // 사이드바가 보이면 트리는 거기 있다. 접혀 있거나(War Room·Cruise 접힘) 사이드바가 없는 자리(모바일)에서만 ⌄ 가 선다.
   const switcher = ctx.sideBarVisible === true ? null : (
     <ObjectiveSwitcher
       t={t}

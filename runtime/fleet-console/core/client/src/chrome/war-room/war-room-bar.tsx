@@ -1,13 +1,13 @@
 import { useLayoutEffect, useEffect, useRef, useState } from "react";
 
-import { ZenIslandControls } from "../../../../../features/workspace/client/zen/zen-island-controls.js";
-import { useAttentionQueue } from "../../../../../features/workspace/client/zen/use-attention-queue.js";
+import { WarRoomIslandControls } from "../../../../../features/workspace/client/war-room/war-room-island-controls.js";
+import { useAttentionQueue } from "../../../../../features/workspace/client/war-room/use-attention-queue.js";
 import { useHasBottomSnappedOperation, useSnapFullOperationId } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { useTriageActive, useTriageMapOpen, useTriageStage } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { useT } from "../../i18n/index.js";
-import { setZenToolbarHost } from "../../integration/toolbar-slots.js";
-import { useZenModeState, useZenTransitionActive } from "../../integration/zen-mode.js";
+import { setWarRoomToolbarHost } from "../../integration/toolbar-slots.js";
+import { useWarRoomChromeState, useWarRoomTransitionActive } from "../../integration/war-room-chrome.js";
 import { BrandMarkIcon, BrandWordmark } from "../components/command-band.js";
 import { useRailDragDeltaPx, useRailSettledPx } from "../rail/rail-store.js";
 
@@ -35,7 +35,7 @@ function measureIntrinsicWidth(root: HTMLElement): number {
   return width;
 }
 
-export function ZenBar({ active, local = false }: { readonly active: boolean; readonly local?: boolean }) {
+export function WarRoomBar({ active, local = false }: { readonly active: boolean; readonly local?: boolean }) {
   const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
@@ -52,13 +52,13 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
   const mapOpen = useTriageMapOpen();
   const snapFull = useSnapFullOperationId();
   const snapBottomTouching = useHasBottomSnappedOperation();
-  const transitionActive = useZenTransitionActive();
+  const transitionActive = useWarRoomTransitionActive();
   const { queue } = useAttentionQueue();
   const watching = warRoom ? staged !== null && !mapOpen : snapFull !== null || snapBottomTouching;
   const receded = watching && !expanded && !held && !transitionActive;
-  const zenState = useZenModeState();
+  const chromeState = useWarRoomChromeState();
   const sidebar = useSideBarState();
-  const sidebarShown = zenState.sideBarRevealed && !sidebar.collapsed;
+  const sidebarShown = chromeState.sideBarRevealed && !sidebar.collapsed;
 
   // receded 변화 시 동기적으로 receding 활성화 (전이 시작 첫 프레임부터 자연 폭 측정 보호)
   const prevRecededRef = useRef(receded);
@@ -150,8 +150,8 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
     // 투어는 접힌 DOM에도 앵커 표식을 붙인다. 섬 안 앵커만 펼침을 지키고, 바깥 투어는 가리지 않는다.
     // 말풍선은 portal에 있으므로 섬 도구에서 열린 표식을 따로 읽는다.
     const measure = () => {
-      const tooltip = document.querySelector(".console-toolbar-tip.is-visible[data-zen-island-tip]");
-      const content = root.querySelector(".zen-bar-content");
+      const tooltip = document.querySelector(".console-toolbar-tip.is-visible[data-war-room-island-tip]");
+      const content = root.querySelector(".war-room-bar-content");
       setHeld(Boolean(content?.querySelector(OPEN_SURFACE) || tooltip));
       setUpdateReady(Boolean(content?.querySelector(".command-band-update-dot")));
     };
@@ -210,16 +210,16 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
   return (
     <div
       ref={rootRef}
-      className={`zen-bar${warRoom ? " is-war-room" : ""}${watching && !transitionActive ? " is-watching" : ""}${receded ? " is-receded" : ""}${receding ? " is-receding" : ""}`}
+      className={`war-room-bar${warRoom ? " is-war-room" : ""}${watching && !transitionActive ? " is-watching" : ""}${receded ? " is-receded" : ""}${receding ? " is-receding" : ""}`}
       data-keep-operation-active=""
       data-cause={cause}
       hidden={!active}
       role="group"
-      aria-label={t("zen.bar.aria")}
+      aria-label={t("warRoomChrome.bar.aria")}
       style={{ left: targetLeft, bottom: EDGE }}
     >
       <span
-        className="zen-bar-track"
+        className="war-room-bar-track"
         inert={receded || undefined}
         aria-hidden={receded || undefined}
         onTransitionEnd={(event) => {
@@ -228,25 +228,25 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
           }
         }}
       >
-        <span className="zen-bar-content">
-          {active ? <ZenIslandControls /> : null}
-          <span className="zen-bar-toolbar" ref={setZenToolbarHost} />
+        <span className="war-room-bar-content">
+          {active ? <WarRoomIslandControls /> : null}
+          <span className="war-room-bar-toolbar" ref={setWarRoomToolbarHost} />
         </span>
       </span>
       <button
         ref={handleRef}
         type="button"
-        className="zen-bar-brand"
-        aria-label={t("zen.bar.aria")}
+        className="war-room-bar-brand"
+        aria-label={t("warRoomChrome.bar.aria")}
         aria-expanded={!receded}
-        title={t("zen.bar.brand")}
+        title={t("warRoomChrome.bar.brand")}
         onClick={() => { setCause("hover"); setExpanded(true); }}
       >
-        <BrandMarkIcon className="zen-bar-brand-glyph" local={local} />
-        <span className="zen-bar-wordmark-track">
-          <BrandWordmark className="zen-bar-brand-wordmark" local={local} />
+        <BrandMarkIcon className="war-room-bar-brand-glyph" local={local} />
+        <span className="war-room-bar-wordmark-track">
+          <BrandWordmark className="war-room-bar-brand-wordmark" local={local} />
         </span>
-        {queue.length ? <span className="zen-island-count zen-bar-handle-count">{queue.length}</span> : null}
+        {queue.length ? <span className="war-room-island-count war-room-bar-handle-count">{queue.length}</span> : null}
         {updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
       </button>
     </div>

@@ -22,7 +22,7 @@ import { playRestoreFlight } from "./canvas/panel-motion.js";
 import { OperationsCanvas } from "./canvas/canvas.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./canvas/group-context-menu.js";
 import { operationAccentFromNode } from "./canvas/operation-accent.js";
-import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, isTriageMapOpen, pickTriageOperation, recordTriageActivity, toggleTriageMap, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "./canvas/triage-store.js";
+import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, exitTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, isTriageMapOpen, pickTriageOperation, recordTriageActivity, toggleTriageMap, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, useTriageActive } from "./canvas/triage-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
 import { SideBarEdgeDock } from "../../../core/client/src/chrome/components/panel-edge-docks.js";
@@ -47,7 +47,7 @@ import { AlignFitDialog } from "./canvas/align-fit-dialog.js";
 import { registerAlignAdmissionProvider, requestAlignAll } from "./canvas/align-fit-store.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
-import { useZenMode, useZenModeState } from "../../../core/client/src/integration/zen-mode.js";
+import { useWarRoomChromeState } from "../../../core/client/src/integration/war-room-chrome.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
 const DEFAULT_SHELL_WIDTH = 560;
@@ -104,19 +104,18 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 전면 캔버스 위 부유 크롬(사이드바·레일 카드)의 점유 폭. 크롬 구성의 소유자인 이 페이지가
   // 단일 원천으로 계산해 캔버스(prop)와 스토어(fit-all)에 같은 값을 심는다 — 주입구가 갈리면
   // 한쪽만 인셋을 아는 감사 실패 양식이 재발한다.
-  const zenMode = useZenMode();
   useEffect(() => {
-    // Zen 진입 때 사이드바가 숨으면 그곳의 메뉴도 걷는다. 작업면 공용 메뉴는 보존한다.
-    if (!zenMode || !operationMenu?.fromSidebar) return;
+    // War Room 진입 때 사이드바가 숨으면 그곳의 메뉴도 걷는다. 작업면 공용 메뉴는 보존한다.
+    if (!triageActive || !operationMenu?.fromSidebar) return;
     setOperationMenu(null);
     bodyRef.current?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zenMode]);
+  }, [triageActive]);
   const sideBar = useSideBarState();
   // 끄는 동안의 폭은 캔버스가 직접 따라간다 — 페이지는 확정 폭으로만 다시 그린다.
   const railOccupiedPx = useRailSettledPx();
-  const zenState = useZenModeState();
-  const zenSideBarHidden = zenMode && !zenState.sideBarRevealed;
+  const chromeState = useWarRoomChromeState();
+  const warRoomSideBarHidden = triageActive && !chromeState.sideBarRevealed;
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === "undefined" ? 0 : window.innerWidth));
   useEffect(() => {
     const onResize = () => setViewportWidth(window.innerWidth);
@@ -127,7 +126,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const warRoomSideBarCap = triageActive
     ? Math.max(0, viewportWidth - WAR_ROOM_ARENA_MIN_PX - CHROME_FLOAT_GUTTER - (railOccupiedPx > 0 ? railOccupiedPx + CHROME_FLOAT_GUTTER : 0))
     : null;
-  const sideBarOccupiedPx = zenSideBarHidden ? 0 : Math.min(sideBarOccupiedWidth(sideBar), warRoomSideBarCap ?? Number.POSITIVE_INFINITY);
+  const sideBarOccupiedPx = warRoomSideBarHidden ? 0 : Math.min(sideBarOccupiedWidth(sideBar), warRoomSideBarCap ?? Number.POSITIVE_INFINITY);
   // 부유 섬은 아레나 인셋에 불참한다 — 맵 전 영역 위에 도구가 뜬다.
   const sideBarInset = sideBarOccupiedPx > 0 ? sideBarOccupiedPx + CHROME_FLOAT_GUTTER : 0;
   const arenaInsets: CanvasArenaInsets = useMemo(() => ({
@@ -312,7 +311,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         event.preventDefault();
         event.stopImmediatePropagation();
         if (isTriageActive()) {
-          setTriageActive(false);
+          exitTriage();
         } else if (stateRef.current.theaters.length > 0) {
           enterTriage(focusedTriageOperationId(document.activeElement));
         }
@@ -910,7 +909,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           </button>
         </p>
       ) : null}
-      <div className="zen-sidebar-chrome" inert={zenSideBarHidden} data-zen-hidden={zenSideBarHidden || undefined}>
+      <div className="war-room-sidebar-chrome" inert={warRoomSideBarHidden} data-war-room-hidden={warRoomSideBarHidden || undefined}>
       <OperationsSideBar
         theaters={state.theaters}
         activeTheaterId={state.activeTheaterId}
@@ -969,14 +968,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         <div className="app-toast-host">
           {deletionToast}
           {alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}
-          {/* Theater 등록 오류는 사이드바가 그린다 — Zen은 사이드바를 숨기므로 같은 오류를 여기서 알린다. */}
-          {zenMode && state.theaterError ? <Toast open tone="error" title={t("operations.addTheaterFailed")} message={state.theaterError} onDismiss={cancelAddTheater} /> : null}
+          {/* Theater 등록 오류는 사이드바가 그린다 — War Room은 사이드바를 숨기므로 같은 오류를 여기서 알린다. */}
+          {triageActive && state.theaterError ? <Toast open tone="error" title={t("operations.addTheaterFailed")} message={state.theaterError} onDismiss={cancelAddTheater} /> : null}
         </div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
       {toolbarToolsSlot !== null ? createPortal(<RailToolIcons context={toolsContext} />, toolbarToolsSlot) : null}
       {/* 접힌 Cruise 사이드바의 문 — War Room에는 사이드바도 엣지 드러냄도 없다. */}
-      {triageActive || zenMode ? null : <SideBarEdgeDock />}
+      {triageActive ? null : <SideBarEdgeDock />}
       {/* Operation 메뉴는 War Room 전용이 아니다 — 사이드바 우클릭·War Room 카드·패널 캡션의
           More 버튼이 모두 같은 메뉴를 연다. */}
       {operationMenu && menuOperation ? (

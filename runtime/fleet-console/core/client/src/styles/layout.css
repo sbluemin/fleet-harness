@@ -440,43 +440,43 @@
 
 /* 전체화면은 창 크기의 문제일 뿐이다 — 밴드는 창 모드와 같은 흐름 요소로 남는다. 구
    오버레이 고정(position:fixed + translateY(-100%))과 그것을 되부르던 엣지 스트립·상승 의도
-   레인·도킹 핀은 원자적으로 퇴역했다. 크롬을 치우는 결정은 Zen 하나가 소유한다 — 숨김
+   레인·도킹 핀은 원자적으로 퇴역했다. 크롬을 치우는 결정은 War Room 하나가 소유한다 — 숨김
    제스처가 둘이면 서로의 예외(모달 예외·도킹 쌓임 되돌림)를 계속 만들어 낸다. */
 
 .command-band.is-utility {
   grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(0, 1fr);
 }
 
-/* Zen의 밴드 높이를 Map에 돌려준다. 대체 바나 상단 placeholder는 남기지 않는다. */
+/* War Room의 밴드 높이를 Map에 돌려준다. 대체 바나 상단 placeholder는 남기지 않는다. */
 .command-band {
   transition: margin-top var(--duration-base) var(--ease-glide), opacity var(--duration-base) var(--ease-glide), transform var(--duration-base) var(--ease-glide);
 }
-.console-shell.is-zen .command-band {
+.console-shell.is-war-room .command-band {
   margin-top: calc(-1 * var(--chrome-band-height));
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
 }
-.zen-sidebar-chrome { display: contents; }
-/* Map은 Zen에서도 접힌 버튼으로 남는다(펼침은 Zen 한 회짜리 — canvas-minimap.tsx). 코너 독은 오른쪽 아래 섬 위로 쌓인다. */
-.console-shell.is-zen .canvas-shortcuts { display: none; }
-/* Zen에서도 크롬 카드는 화면 가장자리 12px까지 쓴다. */
-.console-shell.is-zen .right-rail,
-.console-shell.is-zen .operations-side-bar { bottom: var(--space-3); }
-/* Zen의 좌측 사이드바(⌘B) — 숨길 때는 왼쪽 가장자리 밖으로 미끄러져 나가며 흐려지고, 드러낼 때는 같은 길로
+.war-room-sidebar-chrome { display: contents; }
+/* Map은 War Room에서도 접힌 버튼으로 남는다(펼침은 War Room 한 회짜리 — canvas-minimap.tsx). 코너 독은 오른쪽 아래 섬 위로 쌓인다. */
+.console-shell.is-war-room .canvas-shortcuts { display: none; }
+/* War Room에서도 크롬 카드는 화면 가장자리 12px까지 쓴다. */
+.console-shell.is-war-room .right-rail,
+.console-shell.is-war-room .operations-side-bar { bottom: var(--space-3); }
+/* War Room의 좌측 사이드바(⌘B) — 숨길 때는 왼쪽 가장자리 밖으로 미끄러져 나가며 흐려지고, 드러낼 때는 같은 길로
    돌아온다. 폭·테두리 전이(접기)는 평소 그대로 두고 이동과 흐림만 더한다. visibility는 나갈 때 이동이
    끝난 뒤에 내려 전이가 보이게 하고, 돌아올 때는 곧바로 올린다. */
-.console-shell.is-zen .operations-side-bar {
+.console-shell.is-war-room .operations-side-bar {
   transition:
     width 200ms ease, border-color 200ms ease, visibility 0s linear 0s,
     translate 340ms var(--ease-spring), opacity 200ms var(--ease-glide);
 }
-.console-shell.is-zen .operations-side-bar.is-closed {
+.console-shell.is-war-room .operations-side-bar.is-closed {
   transition:
     width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms,
     translate 340ms var(--ease-spring), opacity 200ms var(--ease-glide);
 }
-.console-shell.is-zen .zen-sidebar-chrome[data-zen-hidden] .operations-side-bar {
+.console-shell.is-war-room .war-room-sidebar-chrome[data-war-room-hidden] .operations-side-bar {
   translate: calc(-100% - var(--space-3) - 16px) 0;
   opacity: 0;
   visibility: hidden;
@@ -484,14 +484,14 @@
     width 200ms ease, border-color 200ms ease, visibility 0s linear 240ms,
     translate 240ms var(--ease-glide), opacity 200ms var(--ease-glide);
 }
-.console-shell.is-zen .operations-side-bar[data-resizing="true"] { transition: none; }
+.console-shell.is-war-room .operations-side-bar[data-resizing="true"] { transition: none; }
 @media (prefers-reduced-motion: reduce) {
-  .console-shell.is-zen .operations-side-bar,
-  .console-shell.is-zen .operations-side-bar.is-closed,
-  .console-shell.is-zen .zen-sidebar-chrome[data-zen-hidden] .operations-side-bar { transition-duration: 0.01ms; transition-delay: 0s; }
+  .console-shell.is-war-room .operations-side-bar,
+  .console-shell.is-war-room .operations-side-bar.is-closed,
+  .console-shell.is-war-room .war-room-sidebar-chrome[data-war-room-hidden] .operations-side-bar { transition-duration: 0.01ms; transition-delay: 0s; }
 }
-.zen-bar[hidden] { display: none; }
-.zen-mode-announcement {
+.war-room-bar[hidden] { display: none; }
+.war-room-announcement {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -502,7 +502,7 @@
 /* 부유 섬 — 사이드바 카드와 같은 유리. 별도 배경 층이라 안쪽 메뉴를 가두지 않는다.
    자리 계산은 오른쪽 끝 기준(translate -100% 0 고정).
    모션 B(스냅과 한 호흡): 정렬은 360ms glide, 호버는 220ms spring / 240ms glide. */
-.zen-bar {
+.war-room-bar {
   --pos-dur: var(--duration-slow);
   --pos-delay: 0ms;
   --pos-ease: var(--ease-glide);
@@ -515,7 +515,7 @@
   --badge-dur: 160ms;
   --badge-delay: 300ms;
   --badge-ease: var(--ease-glide);
-  --zen-drift: 6px;
+  --war-room-drift: 6px;
 
   position: fixed;
   z-index: calc(var(--z-rail, 10) + 1);
@@ -539,7 +539,7 @@
 
 /* 4가지 전이 원인·방향별 타이밍 (모션 B)
    1. 물러남(정렬 snap): 위치 0+360 glide, 폭 0+360 glide, 도구 0+140 glide(6px drift), 배지 300+160 glide */
-.zen-bar.is-receded[data-cause="snap"] {
+.war-room-bar.is-receded[data-cause="snap"] {
   --pos-dur: var(--duration-slow);
   --pos-delay: 0ms;
   --pos-ease: var(--ease-glide);
@@ -552,11 +552,11 @@
   --badge-dur: 160ms;
   --badge-delay: 300ms;
   --badge-ease: var(--ease-glide);
-  --zen-drift: 6px;
+  --war-room-drift: 6px;
 }
 
 /* 2. 귀환(정렬 해제 snap): 위치 0+360 glide, 폭 0+360 glide, 도구 120+220 glide, 배지 0+100 glide */
-.zen-bar:not(.is-watching)[data-cause="snap"] {
+.war-room-bar:not(.is-watching)[data-cause="snap"] {
   --pos-dur: var(--duration-slow);
   --pos-delay: 0ms;
   --pos-ease: var(--ease-glide);
@@ -569,11 +569,11 @@
   --badge-dur: 100ms;
   --badge-delay: 0ms;
   --badge-ease: var(--ease-glide);
-  --zen-drift: 0px;
+  --war-room-drift: 0px;
 }
 
 /* 3. 펼침(손잡이 호버·포커스 hover): 폭 0+220 spring, 도구 60+160 glide, 배지 0+100 glide */
-.zen-bar.is-watching:not(.is-receded)[data-cause="hover"] {
+.war-room-bar.is-watching:not(.is-receded)[data-cause="hover"] {
   --width-dur: var(--duration-base);
   --width-delay: 0ms;
   --width-ease: var(--ease-spring);
@@ -583,11 +583,11 @@
   --badge-dur: 100ms;
   --badge-delay: 0ms;
   --badge-ease: var(--ease-glide);
-  --zen-drift: 0px;
+  --war-room-drift: 0px;
 }
 
 /* 4. 접힘(벗어남·Esc hover): 폭 0+240 glide, 도구 0+120 glide, 배지 200+140 glide */
-.zen-bar.is-receded[data-cause="hover"] {
+.war-room-bar.is-receded[data-cause="hover"] {
   --width-dur: 240ms;
   --width-delay: 0ms;
   --width-ease: var(--ease-glide);
@@ -597,13 +597,13 @@
   --badge-dur: 140ms;
   --badge-delay: 200ms;
   --badge-ease: var(--ease-glide);
-  --zen-drift: 6px;
+  --war-room-drift: 6px;
 }
 
-.zen-bar.is-watching { max-width: calc(100vw - 24px); }
+.war-room-bar.is-watching { max-width: calc(100vw - 24px); }
 
 /* 도구 트랙: grid 1fr ↔ 0fr로 max-content 폭을 측정 없이 자연스럽게 보간 */
-.zen-bar-track {
+.war-room-bar-track {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   /* 감상 중 max-width보다 넓으면 트랙이 줄어 손잡이가 화면 안에 남는다(canary의 수축 동작 보존). */
@@ -611,7 +611,7 @@
   min-width: 0;
   transition: grid-template-columns var(--width-dur) var(--width-ease) var(--width-delay);
 }
-.zen-bar-content {
+.war-room-bar-content {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -622,14 +622,14 @@
 }
 
 /* 워드마크 트랙 */
-.zen-bar-wordmark-track {
+.war-room-bar-wordmark-track {
   display: grid;
   grid-template-columns: 1fr;
   flex: none;
   min-width: 0;
   transition: grid-template-columns var(--width-dur) var(--width-ease) var(--width-delay);
 }
-.zen-bar-brand-wordmark {
+.war-room-bar-brand-wordmark {
   min-width: 0;
   color: var(--text-primary);
   line-height: 1;
@@ -637,31 +637,31 @@
 }
 
 /* 접혀 있거나 전이(접힘·펼침) 중일 때만 overflow-x: clip을 걸어 열린 메뉴·말풍선이 잘리지 않게 보호 */
-.zen-bar:is(.is-receded, .is-receding) .zen-bar-content,
-.zen-bar:is(.is-receded, .is-receding) .zen-bar-brand-wordmark {
+.war-room-bar:is(.is-receded, .is-receding) .war-room-bar-content,
+.war-room-bar:is(.is-receded, .is-receding) .war-room-bar-brand-wordmark {
   overflow-x: clip;
   overflow-y: visible;
 }
 
 /* 물러난 상태(is-receded): 40px 손잡이로 수축 */
-.zen-bar.is-receded {
+.war-room-bar.is-receded {
   padding: 0;
   gap: 0;
 }
-.zen-bar.is-receded .zen-bar-track {
+.war-room-bar.is-receded .war-room-bar-track {
   grid-template-columns: minmax(0, 0fr);
 }
-.zen-bar.is-receded .zen-bar-content {
+.war-room-bar.is-receded .war-room-bar-content {
   opacity: 0;
-  transform: translateX(var(--zen-drift));
+  transform: translateX(var(--war-room-drift));
 }
-.zen-bar.is-receded .zen-bar-wordmark-track {
+.war-room-bar.is-receded .war-room-bar-wordmark-track {
   grid-template-columns: 0fr;
 }
-.zen-bar.is-receded .zen-bar-brand-wordmark {
+.war-room-bar.is-receded .war-room-bar-brand-wordmark {
   opacity: 0;
 }
-.zen-bar.is-receded .zen-bar-brand {
+.war-room-bar.is-receded .war-room-bar-brand {
   width: 38px;
   height: 38px;
   margin: 0;
@@ -670,12 +670,12 @@
   justify-content: center;
   background: none;
 }
-.zen-bar.is-receded .zen-bar-brand::before {
+.war-room-bar.is-receded .war-room-bar-brand::before {
   opacity: 0;
 }
 
 /* 대기 수 배지 및 업데이트 점: 평상시 숨김(scale 0.6 + opacity 0), 물러나면 부드럽게 등장 */
-.zen-bar-handle-count {
+.war-room-bar-handle-count {
   position: absolute;
   top: -5px;
   right: -5px;
@@ -686,12 +686,12 @@
     opacity var(--badge-dur) var(--badge-ease) var(--badge-delay),
     transform var(--badge-dur) var(--badge-ease) var(--badge-delay);
 }
-.zen-bar.is-receded .zen-bar-handle-count {
+.war-room-bar.is-receded .war-room-bar-handle-count {
   opacity: 1;
   transform: scale(1);
 }
 
-.zen-bar .command-band-update-dot {
+.war-room-bar .command-band-update-dot {
   position: absolute;
   top: -2px;
   right: -2px;
@@ -702,13 +702,13 @@
     opacity var(--badge-dur) var(--badge-ease) var(--badge-delay),
     transform var(--badge-dur) var(--badge-ease) var(--badge-delay);
 }
-.zen-bar.is-receded .command-band-update-dot {
+.war-room-bar.is-receded .command-band-update-dot {
   opacity: 1;
   transform: scale(1);
 }
 
-.zen-bar-brand:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
-.zen-bar::before {
+.war-room-bar-brand:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.war-room-bar::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -717,8 +717,8 @@
   background: linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)), var(--float-underlay);
   pointer-events: none;
 }
-.zen-bar.is-war-room { border-top-color: color-mix(in oklch, var(--brass) 70%, transparent); }
-.zen-bar.is-war-room:has(.has-attention)::after {
+.war-room-bar.is-war-room { border-top-color: color-mix(in oklch, var(--brass) 70%, transparent); }
+.war-room-bar.is-war-room:has(.has-attention)::after {
   content: "";
   position: absolute;
   top: -1px;
@@ -729,11 +729,11 @@
   box-shadow: 0 -4px 14px color-mix(in oklch, var(--aurora) 25%, transparent);
   pointer-events: none;
 }
-.zen-island-controls,
-.zen-island-war-tools { display: flex; align-items: center; gap: 2px; flex: none; }
-.zen-island-sidebar,
-.zen-island-next,
-.zen-island-war-tools .war-room-tool {
+.war-room-island-controls,
+.war-room-island-war-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+.war-room-island-sidebar,
+.war-room-island-next,
+.war-room-island-war-tools .war-room-tool {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -747,10 +747,10 @@
   font-size: var(--t-xs);
   white-space: nowrap;
 }
-.zen-island-sidebar:not(.has-attention) { opacity: .55; }
-.zen-island-sidebar svg,
-.zen-island-war-tools .war-room-tool svg { width: 16px; height: 16px; }
-.zen-island-count {
+.war-room-island-sidebar:not(.has-attention) { opacity: .55; }
+.war-room-island-sidebar svg,
+.war-room-island-war-tools .war-room-tool svg { width: 16px; height: 16px; }
+.war-room-island-count {
   min-width: 14px;
   padding: 0 3px;
   border-radius: var(--radius-pill);
@@ -758,14 +758,14 @@
   color: var(--ink-abyss);
   font: var(--weight-bold) calc(var(--t-2xs) * .9)/14px var(--font-ui);
 }
-.zen-island-next { color: var(--aurora); background: color-mix(in oklch, var(--aurora) 9%, transparent); }
-.zen-island-next:disabled { color: var(--text-tertiary); background: none; opacity: .6; }
-.zen-island-war-tools .war-room-tool[aria-pressed="true"] { color: var(--brass-ink); }
-.zen-island-war-tools .war-room-tool.is-suggested { color: var(--aurora); }
-.zen-island-sidebar:hover,
-.zen-island-war-tools .war-room-tool:hover { background: var(--control-hover-fill); color: var(--text-primary); }
+.war-room-island-next { color: var(--aurora); background: color-mix(in oklch, var(--aurora) 9%, transparent); }
+.war-room-island-next:disabled { color: var(--text-tertiary); background: none; opacity: .6; }
+.war-room-island-war-tools .war-room-tool[aria-pressed="true"] { color: var(--brass-ink); }
+.war-room-island-war-tools .war-room-tool.is-suggested { color: var(--aurora); }
+.war-room-island-sidebar:hover,
+.war-room-island-war-tools .war-room-tool:hover { background: var(--control-hover-fill); color: var(--text-primary); }
 @media (prefers-reduced-motion: reduce) {
-  .zen-bar {
+  .war-room-bar {
     --pos-dur: 0ms !important;
     --pos-delay: 0ms !important;
     --width-dur: 0ms !important;
@@ -776,14 +776,14 @@
     --badge-dur: 120ms !important;
     --badge-delay: 0ms !important;
     --badge-ease: linear !important;
-    --zen-drift: 0px !important;
+    --war-room-drift: 0px !important;
     transition: none !important;
   }
   /* 사람 결정 예외: 위치·폭은 즉시 바꾸되, 도구와 배지만 은은하게 120ms linear 페이드한다(drift/scale 없이 opacity만). */
-  .zen-bar .zen-bar-content,
-  .zen-bar .zen-bar-brand-wordmark,
-  .zen-bar .zen-bar-handle-count,
-  .zen-bar .command-band-update-dot {
+  .war-room-bar .war-room-bar-content,
+  .war-room-bar .war-room-bar-brand-wordmark,
+  .war-room-bar .war-room-bar-handle-count,
+  .war-room-bar .command-band-update-dot {
     transition-property: opacity !important;
     transition-duration: 120ms !important;
     transition-delay: 0ms !important;
@@ -792,11 +792,11 @@
 }
 
 /* ── 도구모음 ─────────────────────────────────────────────────────
-   콘솔에 하나뿐인 도구 줄(console-toolbar.tsx). 상단 바 가운데와 Zen 트레이, 두 자리에 같은 줄이
+   콘솔에 하나뿐인 도구 줄(console-toolbar.tsx). 상단 바 가운데와 War Room 트레이, 두 자리에 같은 줄이
    같은 순서·같은 문법으로 선다 — 여기 규칙은 자리를 묻지 않는다. 자리에 따라 갈리는 것은 떠오르는
-   말풍선·메뉴·캡슐의 방향뿐이다(아래 Zen 트레이 단락). */
+   말풍선·메뉴·캡슐의 방향뿐이다(아래 War Room 트레이 단락). */
 .command-band-toolbar,
-.zen-bar-toolbar { display: flex; align-items: center; min-width: 0; }
+.war-room-bar-toolbar { display: flex; align-items: center; min-width: 0; }
 .console-toolbar-mount { display: contents; }
 .console-toolbar {
   display: flex;
@@ -903,7 +903,7 @@
 .console-toolbar-fold:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 
 /* 도구모음 말풍선 — 도구모음의 모든 칸이 쓰는 한 장(toolbar-tip.tsx). 겨누면 잠깐(180ms, JS) 뒤에 떠오른다.
-   상단 바에서는 아래로, Zen 트레이(화면 아래 끝)에서는 위로 뜬다(data-placement). 자리는 칸 가운데를 실측해
+   상단 바에서는 아래로, War Room 트레이(화면 아래 끝)에서는 위로 뜬다(data-placement). 자리는 칸 가운데를 실측해
    정하고 뷰포트 끝에서는 안으로 밀려 들어오므로, 꼬리는 --toolbar-tip-arrow-x로 칸을 계속 가리킨다.
    body 포털이라 층은 전면 오버레이 사다리 바로 아래다 — 떠 있는 위젯·메뉴 위, 모달·커튼 아래. */
 .console-toolbar-tip {
@@ -958,12 +958,12 @@
 }
 
 /* 섬 바깥으로 10px 띄운다. 팝업 기준인 26px 버튼과 40px 섬 가장자리 사이의 7px도 더한다. */
-.zen-bar .command-band-system-menu,
-.zen-bar .command-band-update-bubble,
-.zen-bar .host-switcher-panel { top: auto; bottom: calc(100% + 10px + (40px - 26px) / 2); }
+.war-room-bar .command-band-system-menu,
+.war-room-bar .command-band-update-bubble,
+.war-room-bar .host-switcher-panel { top: auto; bottom: calc(100% + 10px + (40px - 26px) / 2); }
 
 /* 앰블럼 — 트레이의 끝. 도구모음과는 가는 선 하나로 나뉜다. */
-.zen-bar-brand {
+.war-room-bar-brand {
   position: relative;
   border: 0;
   padding-block: 0;
@@ -987,7 +987,7 @@
     width var(--width-dur) var(--width-ease) var(--width-delay),
     height var(--width-dur) var(--width-ease) var(--width-delay);
 }
-.zen-bar-brand::before {
+.war-room-bar-brand::before {
   content: "";
   position: absolute;
   left: 0;
@@ -998,30 +998,30 @@
   transition: opacity var(--content-dur) var(--content-ease) var(--content-delay);
   pointer-events: none;
 }
-.zen-bar-brand-glyph { width: 18px; height: 18px; flex: none; }
+.war-room-bar-brand-glyph { width: 18px; height: 18px; flex: none; }
 /* 워드마크의 서체·크기는 밴드 워드마크(.command-band-brand-wordmark)를 함께 입어 받는다 — 같은 브랜드, 같은 글자. */
-.zen-bar-brand-wordmark { color: var(--text-primary); line-height: 1; }
+.war-room-bar-brand-wordmark { color: var(--text-primary); line-height: 1; }
 
-/* 모달이 열리면 Zen 트레이의 **접기·서랍**만 물러난다 — 모달 뒤에서 누를 수 있는 조작면이 남지 않게.
-   트레이째 걷으면 그 안의 플러그인 항목까지 사라지는데, 상단 바에 둔 부관은 Zen에서 여기 말고
+/* 모달이 열리면 War Room 트레이의 **접기·서랍**만 물러난다 — 모달 뒤에서 누를 수 있는 조작면이 남지 않게.
+   트레이째 걷으면 그 안의 플러그인 항목까지 사라지는데, 상단 바에 둔 부관은 War Room에서 여기 말고
    닿을 자리가 없고 그 답 말풍선이 글리프를 닻으로 삼는다 — Quick Launch로 부관을 부르는 동안
    정작 그 부관이 사라졌다(인도 검수). visibility가 아니라 display로 내린다: 자리를 남기면 빈 칸이 선다.
    상단 바는 모달이 뜨면 aria-modal 경계 밖이라 따로 물러나지 않아도 닿지 않는다. */
-:root[data-modal-open] .zen-bar .console-toolbar-drawer,
-:root[data-modal-open] .zen-bar .console-toolbar-fold { display: none; }
-:root[data-modal-open] .zen-bar .console-toolbar-bridge { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
+:root[data-modal-open] .war-room-bar .console-toolbar-drawer,
+:root[data-modal-open] .war-room-bar .console-toolbar-fold { display: none; }
+:root[data-modal-open] .war-room-bar .console-toolbar-bridge { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
 
-/* Zen 전환 장면 — 불투명한 커튼 한 겹과 그 위를 나는 앰블럼(zen-transition.tsx).
+/* War Room 전환 장면 — 불투명한 커튼 한 겹과 그 위를 나는 앰블럼(war-room-transition.tsx).
    앰블럼이 나는 동안 제자리의 브랜드(밴드·부유 섬)는 비워 둔다 — 둘이 겹쳐 보이면 한 마크가
    두 개로 읽힌다. */
-.zen-transition {
+.war-room-transition {
   position: fixed;
   inset: 0;
   z-index: var(--z-mode-title);
   pointer-events: none;
   perspective: 1100px;
 }
-.zen-transition-veil {
+.war-room-transition-veil {
   position: absolute;
   inset: 0;
   opacity: 0;
@@ -1029,9 +1029,9 @@
      않아야 한다. 색은 테마마다 가장 깊은 캔버스 바탕(--canvas-abyss)이라 라이트 테마에서는 밝은 커튼이다. */
   background: var(--canvas-abyss);
 }
-/* 배우는 화면 한가운데를 원점으로 선다 — 좌표는 중심에서의 거리다(zen-transition.tsx). 창이 전체화면으로
+/* 배우는 화면 한가운데를 원점으로 선다 — 좌표는 중심에서의 거리다(war-room-transition.tsx). 창이 전체화면으로
    바뀌어도 가운데에 멈춘 앰블럼이 가운데에 남는다. */
-.zen-transition-mark {
+.war-room-transition-mark {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -1041,13 +1041,13 @@
   transform-origin: 50% 50%;
   will-change: transform;
 }
-.zen-transition-mark-glyph {
+.war-room-transition-mark-glyph {
   width: 100%;
   height: 100%;
   border-radius: var(--radius-md);
   box-shadow: var(--glass-lift);
 }
-.zen-transition .zen-transition-wordmark {
+.war-room-transition .war-room-transition-wordmark {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -1060,12 +1060,12 @@
   transform-origin: 0 0;
   will-change: transform;
 }
-html[data-zen-flight] .command-band .command-band-brand-glyph,
-html[data-zen-flight] .command-band .command-band-brand-wordmark,
-html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
+html[data-war-room-flight] .command-band .command-band-brand-glyph,
+html[data-war-room-flight] .command-band .command-band-brand-wordmark,
+html[data-war-room-flight] .war-room-bar-brand { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .console-shell .command-band,
-  .zen-bar { animation: none; }
+  .war-room-bar { animation: none; }
   .console-toolbar-drawer,
   .console-toolbar-drawer-inner,
   .console-toolbar-fold svg,

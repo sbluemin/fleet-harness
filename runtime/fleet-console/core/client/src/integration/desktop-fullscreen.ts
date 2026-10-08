@@ -1,7 +1,8 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { isDesktopShell } from "./desktop-shell.js";
-import { getZenModeState, setZenMode, setZenWindowStage } from "./zen-mode.js";
+import { isTriageActive, setTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
+import { setWarRoomWindowStage } from "./war-room-chrome.js";
 
 type Listener = () => void;
 
@@ -18,7 +19,7 @@ export function getDesktopFullscreenSnapshot(): boolean {
 
 /**
  * 셸이 마지막으로 보고한 값. 스트림 단절의 초기화(false)는 보고가 아니다 — 그것을 "전체화면에서
- * 나왔다"로 읽으면 Console이 잠깐 끊길 때마다 Zen이 걷힌다.
+ * 나왔다"로 읽으면 Console이 잠깐 끊길 때마다 War Room이 걷힌다.
  */
 let lastReported: boolean | null = null;
 const leaveListeners = new Set<Listener>();
@@ -61,7 +62,7 @@ const OWN_LEAVE_GRACE_MS = 3_000;
 const WINDOW_SETTLE_TIMEOUT_MS = 1_400;
 /** 전환 완료 보고 뒤 한 박자 — 창이 새 크기로 첫 프레임을 그린 뒤에 장면을 잇는다. */
 const WINDOW_SETTLE_PAUSE_MS = 80;
-const FLIGHT_ATTRIBUTE = "data-zen-flight";
+const FLIGHT_ATTRIBUTE = "data-war-room-flight";
 
 /** 셸에게 창 조작을 시킨다. 응답은 전달 여부일 뿐이고, 실제 전체화면 여부는 셸이 게시하는 스냅샷이 말한다. */
 async function requestDesktopWindowCommand(command: DesktopWindowCommand): Promise<boolean> {
@@ -78,32 +79,32 @@ async function requestDesktopWindowCommand(command: DesktopWindowCommand): Promi
 }
 
 /**
- * Desktop 창의 Zen은 네이티브 전체화면과 한 몸이다 — Command Band가 물러나면 그 위에 얹혀 있던
+ * Desktop 창의 War Room은 네이티브 전체화면과 한 몸이다 — Command Band가 물러나면 그 위에 얹혀 있던
  * 신호등·캡션 버튼만 캔버스 위에 떠 남는데, 두 OS 모두 그 버튼을 거두는 확실한 길은 전체화면뿐이다.
  *
- * 창은 전환 장면의 한가운데에서 바뀐다(zen-transition.tsx): 불투명한 커튼이 다 쳐지고 앰블럼이 가운데에
+ * 창은 전환 장면의 한가운데에서 바뀐다(war-room-transition.tsx): 불투명한 커튼이 다 쳐지고 앰블럼이 가운데에
  * 멈춰 선 뒤 여기 창 단계가 셸에게 전체화면을 켜고 끄라고 하고, 셸의 완료 알림(전체화면 스냅숏)이 오면
  * 장면이 이어진다. macOS 전체화면 애니메이션은 그동안 창 내용을 얼리는데, 그때 보이는 것은 커튼과 멈춘
  * 앰블럼뿐이라 끊겨 보일 것이 없다. 주고받는 것은 방향마다 한 번씩이다: 화면 → 셸 명령, 셸 → 화면 완료.
  *
- * 화면은 뜻만 알린다: 켜기·끄기. "이미 전체화면인가"·"Zen이 켠 것인가"는 창을 든 셸이 실제 창 상태로
+ * 화면은 뜻만 알린다: 켜기·끄기. "이미 전체화면인가"·"War Room이 켠 것인가"는 창을 든 셸이 실제 창 상태로
  * 가린다(fleet-desktop desktop-window-command.ts) — 스냅숏은 늦게 오므로 이 값으로 가리면 빠르게 켰다 끈 뒤
- * 전체화면이 남았다. 그래서 이미 전체화면이던 창에서 Zen을 켰다 끄면 창은 전체화면에 머문다.
+ * 전체화면이 남았다. 그래서 이미 전체화면이던 창에서 War Room을 켰다 끄면 창은 전체화면에 머문다.
  *
- * 장면 없이 바뀌는 Zen(동작 줄이기·경로 이탈 같은 강제 종료)은 기다리지 않고 명령만 보낸다.
- * Zen이 켜 둔 동안 사용자가 OS 제스처(초록 단추·⌃⌘F·메뉴)로 전체화면을 빠져나오면 Zen도 함께 걷힌다 —
- * 버튼이 되돌아온 Zen은 바로 이 기능이 없애려던 어색한 상태다.
+ * 장면 없이 바뀌는 War Room(동작 줄이기·경로 이탈 같은 강제 종료)은 기다리지 않고 명령만 보낸다.
+ * War Room이 켜 둔 동안 사용자가 OS 제스처(초록 단추·⌃⌘F·메뉴)로 전체화면을 빠져나오면 War Room도 함께 걷힌다 —
+ * 버튼이 되돌아온 War Room은 바로 이 기능이 없애려던 어색한 상태다.
  * 브라우저 창은 이 결합의 대상이 아니다 — 창 단계가 곧바로 끝나고, 장면은 가운데에서 쉬지 않고 이어진다.
  */
-export function useZenDesktopFullscreen(zenActive: boolean): void {
-  /** 이 Zen 회차가 셸에게 전체화면을 켜 달라고 했는가. */
+export function useWarRoomDesktopFullscreen(warRoomActive: boolean): void {
+  /** 이 War Room 회차가 셸에게 전체화면을 켜 달라고 했는가. */
   const requestedRef = useRef(false);
   /**
-   * 스스로 끄라고 한 전체화면 이탈이 도착할 때까지의 기한. 끄고 곧바로 다시 켜면 그 이탈 보고가 새 Zen 회차
-   * 안에 늦게 도착하는데, 그것을 사용자의 이탈로 읽으면 방금 켠 Zen이 걷힌다.
+   * 스스로 끄라고 한 전체화면 이탈이 도착할 때까지의 기한. 끄고 곧바로 다시 켜면 그 이탈 보고가 새 War Room 회차
+   * 안에 늦게 도착하는데, 그것을 사용자의 이탈로 읽으면 방금 켠 War Room이 걷힌다.
    */
   const ownLeaveUntilRef = useRef(0);
-  /** 이 Zen 회차를 켤 때 창이 이미 전체화면이었는가 — 그렇다면 끌 때 창은 그대로라 기다릴 것이 없다. */
+  /** 이 War Room 회차를 켤 때 창이 이미 전체화면이었는가 — 그렇다면 끌 때 창은 그대로라 기다릴 것이 없다. */
   const fromFullscreenRef = useRef(false);
 
   // 두 동작은 ref만 읽고 쓰므로 어느 렌더의 것을 불러도 같다. 반환값은 창이 실제로 바뀌는가다.
@@ -121,7 +122,7 @@ export function useZenDesktopFullscreen(zenActive: boolean): void {
     void requestDesktopWindowCommand("leave-fullscreen");
     return !fromFullscreenRef.current && getDesktopFullscreenSnapshot();
   };
-  /** 창이 Zen과 어긋나 있으면 기다리지 않고 맞춘다 — 장면 밖의 전환, 도중에 거둔 장면의 뒷정리. */
+  /** 창이 War Room과 어긋나 있으면 기다리지 않고 맞춘다 — 장면 밖의 전환, 도중에 거둔 장면의 뒷정리. */
   const settle = (active: boolean) => {
     if (active) enter();
     else leave();
@@ -130,9 +131,9 @@ export function useZenDesktopFullscreen(zenActive: boolean): void {
   // 전환 장면의 창 단계 — 셸에게 시키고 완료 알림(또는 한도)까지 기다린다.
   useEffect(() => {
     if (!isDesktopShell()) return;
-    // 새로 뜬 화면이 Zen 모드가 아닐 때만 셸에 남아 있을 수 있는 전체화면을 풀어 달라고 한다.
-    // 호스트 전환 등으로 Zen 모드를 유지하며 시작한 화면은 전체화면을 풀지 않는다.
-    if (!getZenModeState().active) {
+    // 새로 뜬 화면이 War Room 모드가 아닐 때만 셸에 남아 있을 수 있는 전체화면을 풀어 달라고 한다.
+    // 호스트 전환 등으로 War Room 모드를 유지하며 시작한 화면은 전체화면을 풀지 않는다.
+    if (!isTriageActive()) {
       void requestDesktopWindowCommand("leave-fullscreen");
     }
     let cancelWait: (() => void) | null = null;
@@ -158,7 +159,7 @@ export function useZenDesktopFullscreen(zenActive: boolean): void {
         resolve();
       };
     });
-    const disposeStage = setZenWindowStage(async (next) => {
+    const disposeStage = setWarRoomWindowStage(async (next) => {
       if (next ? enter() : leave()) await waitForWindow(next);
     });
     return () => {
@@ -173,14 +174,14 @@ export function useZenDesktopFullscreen(zenActive: boolean): void {
   useEffect(() => {
     if (!isDesktopShell()) return;
     if (document.documentElement.hasAttribute(FLIGHT_ATTRIBUTE)) return;
-    settle(zenActive);
+    settle(warRoomActive);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zenActive]);
+  }, [warRoomActive]);
   useEffect(() => {
     if (!isDesktopShell() || typeof MutationObserver === "undefined") return;
     const root = document.documentElement;
     const observer = new MutationObserver(() => {
-      if (!root.hasAttribute(FLIGHT_ATTRIBUTE)) settle(getZenModeState().active);
+      if (!root.hasAttribute(FLIGHT_ATTRIBUTE)) settle(isTriageActive());
     });
     observer.observe(root, { attributes: true, attributeFilter: [FLIGHT_ATTRIBUTE] });
     return () => observer.disconnect();
@@ -197,7 +198,7 @@ export function useZenDesktopFullscreen(zenActive: boolean): void {
       // 사용자가 전체화면을 빠져나왔다 — 셸은 이미 몫을 놓았으니 다시 끄라고 시키지 않도록 요청부터 거둔다.
       // 창이 OS 전환 장면을 돌고 있으므로 경로 이탈처럼 강제 종료로 걷는다.
       requestedRef.current = false;
-      setZenMode(false);
+      setTriageActive(false);
     };
     leaveListeners.add(onLeave);
     return () => { leaveListeners.delete(onLeave); };

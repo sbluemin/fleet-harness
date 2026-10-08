@@ -12,7 +12,7 @@ import { getSideBarState, setSideBarCollapsed } from "../sidebar/operations-side
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import { readCanvasModeSession, rememberWarRoomActive } from "./canvas-mode-session.js";
 import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
-import { getZenModeState, isZenMode, requestZenMode, setZenMode, setZenSideBarRevealed, subscribeZenMode } from "../../../../core/client/src/integration/zen-mode.js";
+import { requestWarRoomTransition, setWarRoomSideBarRevealed } from "../../../../core/client/src/integration/war-room-chrome.js";
 import {
   forceDropCompanionOperationId,
   getLoadedTheaterId,
@@ -62,7 +62,7 @@ const SET_ASIDE_ARM_DURATION_MS = 1500;
 
 // 선별 처리는 전역 모드다 — 활성/지목/무장/카운트는 Theater와 무관하게 하나만 존재한다.
 let triageActive = false;
-let sideBarBeforeTriage = { revealed: false, collapsed: false };
+let sideBarBeforeTriage = { collapsed: false };
 let pickedOperationId: string | null = null;
 let setAsideArmed: {
   readonly operationId: string;
@@ -353,23 +353,17 @@ export function isTriageActive(): boolean {
   return triageActive;
 }
 
-// Zen을 끄는 모든 경로(장면·강제 종료·네이티브 전체화면)를 한 곳에서 따른다.
-subscribeZenMode(() => {
-  if (!isZenMode()) setTriageActive(false);
-});
-
 export function setTriageActive(active: boolean, animate = true): void {
   if (active) {
     if (getViewModeSnapshot().effective === "mobile") return;
-    setZenMode(true);
     const { activeTheaterId } = getState();
     // 모두 정렬은 스냅 유지라 War Room 왕복에 남는다 — 진입이 걷지 않는다.
     if (!triageActive) {
       triageActive = true;
       // 큐는 사이드바에만 선다. 펼침 시작은 일반 크롬 선호에 쓰지 않고 Cruise 상태를 보관한다.
-      sideBarBeforeTriage = { revealed: getZenModeState().sideBarRevealed, collapsed: getSideBarState().collapsed };
+      sideBarBeforeTriage = { collapsed: getSideBarState().collapsed };
       setSideBarCollapsed(false, false);
-      setZenSideBarRevealed(true);
+      setWarRoomSideBarRevealed(true);
       rememberWarRoomActive(true);
       enteredAt = animate ? Date.now() : 0;
       lastStagedTheaterId = null;
@@ -388,7 +382,7 @@ export function setTriageActive(active: boolean, animate = true): void {
   }
   triageActive = false;
   setSideBarCollapsed(sideBarBeforeTriage.collapsed, false);
-  setZenSideBarRevealed(sideBarBeforeTriage.revealed);
+  setWarRoomSideBarRevealed(false);
   stagedOperationId = null;
   triageMapOpen = false;
   triageMapResumeAfterStage = false;
@@ -493,21 +487,28 @@ export function confirmTriageEntry(): void {
     if (getViewModeSnapshot().effective === "mobile" || epoch !== entryEpoch) return;
     activateTriage(request.focusedOperationId, false);
   };
-  // 진입은 Zen 사이드바를 드러내므로 포커스는 그 머리의 War Room 세그먼트에 선다. 사이드바가 아직 inert라
+  // 진입은 War Room 사이드바를 드러내므로 포커스는 그 머리의 War Room 세그먼트에 선다. 사이드바가 아직 inert라
   // 받지 못하면 부유 섬의 사이드바 토글이 받는다.
   const focus = () => requestAnimationFrame(() => {
     if (!isTriageActive()) return;
-    const segment = document.querySelector<HTMLButtonElement>('.zen-sidebar-chrome:not([data-zen-hidden]) [data-canvas-mode="warRoom"]');
+    const segment = document.querySelector<HTMLButtonElement>('.war-room-sidebar-chrome:not([data-war-room-hidden]) [data-canvas-mode="warRoom"]');
     segment?.focus({ preventScroll: true });
-    if (!segment || document.activeElement !== segment) document.querySelector<HTMLButtonElement>(".zen-bar [data-zen-sidebar-anchor]")?.focus({ preventScroll: true });
+    if (!segment || document.activeElement !== segment) document.querySelector<HTMLButtonElement>(".war-room-bar [data-war-room-sidebar-anchor]")?.focus({ preventScroll: true });
   });
-  if (isZenMode()) { enter(); focus(); }
-  else requestZenMode(true, { onLayout: enter, onComplete: focus });
+  if (triageActive) { enter(); focus(); }
+  else requestWarRoomTransition(true, { onLayout: enter, onComplete: focus });
+}
+
+// 사용자가 War Room을 끄는 길 — 켤 때와 같은 전환 장면을 거쳐 일반 Cruise 크롬으로 돌아온다. 경로 이탈·모바일·
+// 설정 열기 같은 강제 종료는 이 길을 타지 않고 setTriageActive(false)로 즉시 걷는다.
+export function exitTriage(): void {
+  if (!triageActive) return;
+  requestWarRoomTransition(false, { onLayout: () => setTriageActive(false) });
 }
 
 export function enterTriage(focusedOperationId: string | null, returnFocus: HTMLElement | null = globalThis.document?.activeElement as HTMLElement | null): void {
   if (getViewModeSnapshot().effective === "mobile" || entryRequest !== null) return;
-  if (!isZenMode()) {
+  if (!triageActive) {
     // 지목과 복귀 대상을 대화상자의 포커스 이동 전에 포착한다.
     entryRequest = { focusedOperationId, returnFocus };
     emitTriage();

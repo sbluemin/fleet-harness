@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { TriageEntryDialog } from "../features/workspace/client/canvas/triage-entry-dialog.js";
-import { isZenMode, setZenMode, setZenTransitionRunner, type ZenTransitionActions } from "../core/client/src/integration/zen-mode.js";
+import { setWarRoomTransitionRunner, type WarRoomTransitionActions } from "../core/client/src/integration/war-room-chrome.js";
 import { operationRuntimeVisual, runtimeStateVisual } from "../features/execution/client/operation-activity.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -51,6 +51,7 @@ import {
   disarmTriageSetAside,
   dismissTriageOperation,
   enterTriage,
+  exitTriage,
   focusedTriageOperationId,
   forgetTriageOperation,
   getActiveAwaitingClaimId,
@@ -150,9 +151,9 @@ afterEach(() => {
 });
 
 describe("triage store", () => {
-  it("confirms normal entry under the Zen curtain and preserves War Room implies Zen across exit and reload", () => {
+  it("confirms normal entry under the War Room curtain, leaves under it, and restores across reload", () => {
     window.history.replaceState(null, "", "/console/operations");
-    setZenMode(false);
+    setTriageActive(false);
     const opener = document.createElement("button");
     const host = document.createElement("div");
     document.body.append(opener, host);
@@ -166,32 +167,28 @@ describe("triage store", () => {
     act(() => dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(opener);
-    expect(isZenMode()).toBe(false);
 
-    let actions: ZenTransitionActions | undefined;
-    const off = setZenTransitionRunner((_next, nextActions) => { actions = nextActions; return true; });
+    let actions: WarRoomTransitionActions | undefined;
+    const off = setWarRoomTransitionRunner((_next, nextActions) => { actions = nextActions; return true; });
     try {
       act(() => enterTriage(null, opener));
       act(() => (document.querySelector(".onboarding-welcome-primary") as HTMLButtonElement).click());
       expect(isTriageActive()).toBe(false);
       // 연출기가 커튼을 덮기 전에는 두 상태 모두 이전 화면이다.
-      act(() => { setZenMode(true); actions?.onLayout?.(); });
+      act(() => { actions?.onLayout?.(); });
       expect(isTriageActive()).toBe(true);
       expect(getTriageEnteredAt()).toBe(0);
-      act(() => setTriageActive(false));
-      expect(isZenMode()).toBe(true);
-      act(() => enterTriage(null));
-      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      // 사용자가 끄는 길도 같은 장면을 거친다 — 연출기가 커튼을 덮기 전에는 War Room이 그대로다.
+      act(() => exitTriage());
       expect(isTriageActive()).toBe(true);
-      act(() => setZenMode(false));
+      act(() => { actions?.onLayout?.(); });
       expect(isTriageActive()).toBe(false);
-      // 새로고침의 저장 표식 복원은 확인·연출 없이 Zen도 함께 되살린다.
+      // 새로고침의 저장 표식 복원은 확인·연출 없이 War Room을 되살린다.
       window.sessionStorage.setItem("fleet.console.canvas-mode", JSON.stringify({ warRoom: true }));
       act(() => { expect(restoreTriageSession()).toBe(true); });
-      expect(isZenMode()).toBe(true);
       expect(isTriageActive()).toBe(true);
       expect(getTriageEnteredAt()).toBe(0);
-    } finally { off(); act(() => setZenMode(false)); }
+    } finally { off(); act(() => setTriageActive(false)); }
   });
   it("keeps a member under its Commander: off every list, on the Commander's activity, and reachable by id", async () => {
     const member = operation("member", 2);

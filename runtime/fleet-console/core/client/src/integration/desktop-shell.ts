@@ -1,5 +1,4 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { carryZenMode } from "./zen-mode.js";
 
 /** Desktop 셸이 가로채는 목록 항해. 셸은 Console 내부를 import하지 않아 같은 리터럴을 갖는다. */
 export const PICKER_SURFACE_PARAM = "desktop-surface";
@@ -30,7 +29,7 @@ export function desktopPickerUrl(homeOrigin: string, surface: string = PICKER_SU
   url.searchParams.set(PICKER_SURFACE_PARAM, surface);
   if (at !== undefined) url.searchParams.set(PICKER_AT_PARAM, at);
   if (anchor !== undefined) url.searchParams.set(PICKER_ANCHOR_PARAM, anchor);
-  return carryZenMode(url).toString();
+  return url.toString();
 }
 
 /**

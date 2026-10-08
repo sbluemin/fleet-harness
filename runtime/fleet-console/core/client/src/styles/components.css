@@ -5127,7 +5127,7 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 /* 우하단 계기 열 — MAP(또는 접힌 Map 버튼)과 그 위의 허용 요청 더미가 함께 선다.
-   아레나 안 도킹이다: 레일 카드가 점유한 폭(--arena-right)을 피한다. Zen 섬은 아래 가운데라 겹치지 않는다.
+   아레나 안 도킹이다: 레일 카드가 점유한 폭(--arena-right)을 피한다. War Room 섬은 아래 가운데라 겹치지 않는다.
    열은 z-index 를 두지 않아 쌓임 맥락을 만들지 않는다 — MAP(14)과 더미(81)가 캔버스 층에서 각자 겨룬다.
    빈 곳은 클릭을 통과시키고, 계기와 카드만 포인터를 쥔다. */
 .canvas-corner-dock {
@@ -5354,7 +5354,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   transition: none;
 }
 
-/* 아레나 인셋이 바뀌는 순간(레일 개폐·Zen)도 같다 — 칸을 다시 잡은 패널 전부가 레이아웃 속성으로
+/* 아레나 인셋이 바뀌는 순간(레일 개폐·War Room)도 같다 — 칸을 다시 잡은 패널 전부가 레이아웃 속성으로
    글라이드하면 패널 수에 비례해 프레임마다 레이아웃·페인트가 돈다. 표식은 canvas.tsx가 인셋이 바뀐
    커밋에만 세우고 두 프레임 뒤 걷는다. */
 .operations-canvas[data-arena-shifting="true"] .canvas-operation {
@@ -6956,7 +6956,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 /* 결정 요청 표식 — 묶음 뿌리에 사람의 답을 청한 결정 요청이 섰다. 이름 옆(생략 부호 밖)에 서고, 비콘·상태 칸은 활동 그대로다.
-   사이드바 행·Zen 칩·War Room 칩이 같은 부품을 쓴다. */
+   사이드바 행·War Room 칩·War Room 칩이 같은 부품을 쓴다. */
 .operation-decision-mark { flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px; color: var(--brass-ink); }
 .operation-decision-mark svg { width: 13px; height: 13px; }
 

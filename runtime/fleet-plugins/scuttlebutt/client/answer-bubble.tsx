@@ -47,7 +47,7 @@ export function AnswerBubble({
   readonly locale?: ConsoleLocale;
   readonly positionRevision: number;
   /**
-   * 도구모음에 둔 부관의 답. 닻이 글리프라 새 위아래가 아니라 도구모음 아래(Zen 트레이면 위)에 서고, 여럿이 함께 답하면
+   * 도구모음에 둔 부관의 답. 닻이 글리프라 새 위아래가 아니라 도구모음 아래(War Room 트레이면 위)에 서고, 여럿이 함께 답하면
    * 오른쪽부터 나란히 선다(가장 늦게 물은 답이 글리프에 가장 가깝다). 세로로 쌓으면 두 번째 답이
    * 첫 답 아래 화면 밖으로 밀린다.
    */
@@ -81,7 +81,7 @@ export function AnswerBubble({
       const slot = Math.max(0, row.length - 1 - row.indexOf(bubble));
       const width = bubble.offsetWidth;
       const top = mascotRect.bottom + gap;
-      // 도구모음이 화면 아래(Zen 작업 표시줄 트레이)에 서면 답은 글리프 위로 선다 — 아래에는 자리가 없다.
+      // 도구모음이 화면 아래(War Room 작업 표시줄 트레이)에 서면 답은 글리프 위로 선다 — 아래에는 자리가 없다.
       const roomBelow = window.innerHeight - top - margin;
       const roomAbove = mascotRect.top - gap - margin;
       const dockAbove = roomAbove > roomBelow;
@@ -95,7 +95,7 @@ export function AnswerBubble({
         text.setAttribute("tabindex", clipped ? "0" : "-1");
       }
       // 행의 오른쪽 끝은 창 가장자리가 아니라 **글리프 무리**의 오른쪽이다. 무리는 도구모음 안에 서고
-      // 그 오른쪽에는 Zen 버튼·보기 모드·호스트(또는 Zen 트레이의 앰블럼)가 더 있다 — 창 끝에 붙이면
+      // 그 오른쪽에는 보기 모드·호스트(또는 War Room 트레이의 앰블럼)가 더 있다 — 창 끝에 붙이면
       // 답이 자기 부관에게서 떨어진다(인도 검수).
       // 슬롯 계단은 무리 하나를 기준으로 유지한다: 말풍선마다 자기 글리프에 붙이면 동시 답이
       // 같은 자리를 놓고 겹친다.

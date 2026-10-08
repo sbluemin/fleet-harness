@@ -2,11 +2,8 @@ import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
 import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
 
-// 이 기능의 온보딩 문구 — 투어·웰컴의 내용은 기능이 소유하고, 엔진은 순서만 정한다.
+// 이 기능의 온보딩 문구 — 투어의 내용은 기능이 소유하고, 엔진은 순서만 정한다.
 const messagesEn = {
-  "zenTaskbar.welcomeTitle": "Zen tools float at the bottom of the map",
-  "zenTaskbar.welcomeBody": "Zen gives the whole canvas to your work. Open the sidebar from the floating tools to switch Theaters or handle anything needing attention.",
-  "zenTaskbar.welcomeNext": "Try it from the Zen button at the top of the sidebar.",
   "canvasModes.step1Title": "Two ways to work the canvas",
   "canvasModes.step1Body": "Cruise keeps panels where you drop them. Align all (Alt+F) lines every panel up at once, and drops them back where they were when you toggle it off. War Room brings up one waiting panel at a time, across every Theater.",
   "canvasModes.step2Title": "Each mode has its own tools",
@@ -26,9 +23,6 @@ const messagesEn = {
 } as const;
 
 const messagesKo: Record<keyof typeof messagesEn, string> = {
-  "zenTaskbar.welcomeTitle": "Zen 도구가 맵 아래에 떠 있습니다",
-  "zenTaskbar.welcomeBody": "Zen에서는 캔버스 전체를 작업에 씁니다. 부유 도구에서 사이드바를 열어 Theater를 오가고 「확인 필요」를 처리하세요.",
-  "zenTaskbar.welcomeNext": "사이드바 머리의 Zen 버튼으로 켜 보세요.",
   "canvasModes.step1Title": "화면을 쓰는 두 가지 방식입니다",
   "canvasModes.step1Body": "Cruise는 패널을 놓은 자리에 그대로 둡니다. 모두 정렬(Alt+F)은 열린 패널을 한 번에 정렬했다가 끄면 원래 자리로 돌려놓습니다. War Room은 답을 기다리는 패널을 Theater 구분 없이 한 건씩 올립니다.",
   "canvasModes.step2Title": "모드마다 도구가 다릅니다",
@@ -51,24 +45,16 @@ function T(key: keyof typeof messagesEn): LocalizedText {
   return (locale: ConsoleLocale) => createTranslator<keyof typeof messagesEn>({ en: messagesEn, ko: messagesKo }, locale)(key);
 }
 
-/** Zen 부유 도구를 알리는 웰컴과 캔버스(Cruise·War Room)의 투어. */
-const CANVAS_MODE_SWITCH_ANCHOR = ".zen-sidebar-chrome:not([data-zen-hidden]) .operations-side-bar:not(.is-closed) .command-band-mode-switch";
+/** 캔버스(Cruise·War Room)의 투어. */
+const CANVAS_MODE_SWITCH_ANCHOR = ".war-room-sidebar-chrome:not([data-war-room-hidden]) .operations-side-bar:not(.is-closed) .command-band-mode-switch";
 
 export const workspaceOnboarding: OnboardingContribution = {
   id: "workspace",
-  // 업데이트한 사용자에게 Zen 부유 도구를 알린다. Zen은 켜기 전에는 보이지 않는 화면이라 투어가 짚을
-  // 자리가 없으므로, 켜는 곳(사이드바 머리의 Zen 버튼)을 알리는 데서 그친다.
-  welcome: {
-    title: T("zenTaskbar.welcomeTitle"),
-    body: T("zenTaskbar.welcomeBody"),
-    next: T("zenTaskbar.welcomeNext"),
-    art: () => <ZenIslandWelcomeIllustration />,
-  },
   tours: [
     {
       id: "canvas-modes",
       // 모드 스위치는 사이드바 머리에만 서므로 첫 방문에 바로 뜬다. 모드 이름의 뜻은 지금 세그먼트 툴팁에만 있어
-      // hover하지 않으면 닿지 않는다. 접히거나 Zen에서 숨은 사이드바의 스위치는 DOM에 남아도 보이지 않으니 앵커로
+      // hover하지 않으면 닿지 않는다. 접히거나 War Room에서 숨은 사이드바의 스위치는 DOM에 남아도 보이지 않으니 앵커로
       // 잡지 않는다 — 사이드바가 다시 보일 때 투어가 선다.
       spotlight: null,
       walkthrough: [
@@ -104,47 +90,3 @@ export const workspaceOnboarding: OnboardingContribution = {
     },
   ],
 };
-
-/** Zen 부유 도구 소개 — 아레나는 섬 뒤에서도 화면 가장자리까지 이어진다. */
-export function ZenIslandWelcomeIllustration() {
-  return (
-    <svg viewBox="0 0 360 176" role="img" aria-hidden="true" focusable="false">
-      <defs>
-        <pattern id="zen-island-welcome-dots" width="18" height="18" patternUnits="userSpaceOnUse">
-          <circle cx="1.5" cy="1.5" r="1.2" fill="var(--text-tertiary)" opacity="0.35" />
-        </pattern>
-      </defs>
-      {/* 캔버스(Map) — 사이드바 없이 가장자리까지 */}
-      <rect x="8" y="8" width="344" height="160" rx="10" fill="var(--canvas-sea-mid)" stroke="var(--hairline)" />
-      <rect x="8" y="8" width="344" height="160" rx="10" fill="url(#zen-island-welcome-dots)" />
-      {/* 열린 Operation 두 장 */}
-      <rect x="30" y="24" width="140" height="98" rx="8" fill="var(--surface-panel)" stroke="var(--hairline-strong)" />
-      <rect x="30" y="24" width="140" height="20" rx="8" fill="none" stroke="var(--hairline-strong)" />
-      <circle cx="42" cy="34" r="3" fill="var(--positive)" />
-      <rect x="51" y="31.5" width="56" height="5" rx="2.5" fill="var(--text-secondary)" opacity="0.6" />
-      <rect x="42" y="56" width="96" height="5" rx="2.5" fill="var(--text-tertiary)" opacity="0.55" />
-      <rect x="42" y="70" width="116" height="5" rx="2.5" fill="var(--text-tertiary)" opacity="0.4" />
-      <rect x="42" y="84" width="74" height="5" rx="2.5" fill="var(--text-tertiary)" opacity="0.5" />
-      <rect x="42" y="102" width="58" height="6" rx="3" fill="var(--brass)" opacity="0.75" />
-      <rect x="186" y="36" width="144" height="86" rx="8" fill="var(--surface-panel)" stroke="var(--hairline)" />
-      <rect x="186" y="36" width="144" height="20" rx="8" fill="none" stroke="var(--hairline)" />
-      <circle cx="198" cy="46" r="3" fill="var(--aurora)" />
-      <rect x="207" y="43.5" width="48" height="5" rx="2.5" fill="var(--text-secondary)" opacity="0.6" />
-      <rect x="198" y="68" width="108" height="5" rx="2.5" fill="var(--text-tertiary)" opacity="0.45" />
-      <rect x="198" y="82" width="84" height="5" rx="2.5" fill="var(--text-tertiary)" opacity="0.4" />
-      {/* 맵 아래 가운데에 뜬 도구 섬 — 맵은 그 뒤로 이어진다. */}
-      <rect x="172" y="134" width="168" height="24" rx="7" fill="var(--surface-chrome)" stroke="var(--surface-rim-strong)" />
-      <g fill="none" stroke="var(--text-secondary)" strokeWidth="1.2" strokeLinecap="round">
-        <rect x="180" y="140" width="11" height="11" rx="2" /><path d="M184 140v11" />
-        <rect x="202" y="141" width="9" height="8" rx="1.5" />
-        <path d="m220 142 3 4-3 4M234 142h8M234 146h8M234 150h5" />
-      </g>
-      <circle cx="193" cy="140" r="3" fill="var(--aurora)" />
-      <path d="M259 142l7 7m0-7-7 7" stroke="var(--coral)" strokeWidth="1.3" />
-      <path d="M275 138v16" stroke="var(--surface-rim-strong)" />
-      <circle cx="289" cy="146" r="6" fill="none" stroke="var(--brass)" strokeWidth="1.2" />
-      <circle cx="289" cy="146" r="1.5" fill="var(--brass)" />
-      <rect x="301" y="143" width="29" height="5" rx="2.5" fill="var(--text-primary)" opacity="0.75" />
-    </svg>
-  );
-}
