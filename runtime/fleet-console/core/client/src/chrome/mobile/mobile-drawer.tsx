@@ -96,17 +96,43 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
   useEffect(() => {
     if (open) return;
     let suppressClickUntil = 0;
+    let downTarget: EventTarget | null = null;
+    let handedOff = false;
     const onDown = (event: globalThis.PointerEvent) => {
       if (mountedRef.current || gestureRef.current || !event.isPrimary || event.button !== 0) return;
       if (!startsOnEdge(event)) return;
       gestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, mode: "edge", armed: false, width: drawerWidth() };
+      downTarget = event.target;
+      handedOff = false;
     };
-    const onMove = (event: globalThis.PointerEvent) => { if (gestureRef.current?.mode === "edge") onGestureMove(event); };
+    // 판정(armed)된 가장자리 끌기는 드로어 것이다 — 그 뒤의 이동·뗌은 아래 요소로 넘기지 않는다. 자기 끌기를 가진 요소
+    // (화면 공유 카드 등)가 가장자리에 있으면 그것과 판이 함께 움직이기 때문이다. 아래 요소에는 브라우저가 팬을 가져갈 때처럼
+    // pointercancel을 한 번 보내, 받은 누름을 시작점 좌표로 정리하게 한다(뗌 좌표로 확정하지 않게).
+    const handOff = (event: globalThis.PointerEvent | TouchEvent) => {
+      event.stopPropagation();
+      const gesture = gestureRef.current;
+      if (handedOff || !gesture || !(event instanceof globalThis.PointerEvent)) return;
+      handedOff = true;
+      downTarget?.dispatchEvent(new globalThis.PointerEvent("pointercancel", {
+        bubbles: true, pointerId: gesture.pointerId, pointerType: event.pointerType, isPrimary: true, clientX: gesture.startX, clientY: gesture.startY,
+      }));
+    };
+    const onMove = (event: globalThis.PointerEvent) => {
+      if (gestureRef.current?.mode !== "edge") return;
+      onGestureMove(event);
+      const gesture = gestureRef.current;
+      if (gesture?.mode === "edge" && gesture.armed && gesture.pointerId === event.pointerId) handOff(event);
+    };
     const onUp = (event: globalThis.PointerEvent) => {
       const gesture = gestureRef.current;
-      if (gesture?.mode !== "edge" || gesture.pointerId !== event.pointerId) return;
-      // 끌기를 마친 마우스는 떼자마자 click을 낸다 — 그 click은 버린다. 터치는 끌면 click이 나지 않는다.
-      if (gesture.armed) suppressClickUntil = event.timeStamp + 100;
+      // 위에서 아래 요소에 보낸 pointercancel은 이 제스처의 끝이 아니다.
+      if (!event.isTrusted || gesture?.mode !== "edge" || gesture.pointerId !== event.pointerId) return;
+      if (gesture.armed) {
+        handOff(event);
+        // 끌기를 마친 마우스는 떼자마자 click을 낸다 — 그 click은 버린다. 터치는 끌면 click이 나지 않는다.
+        suppressClickUntil = event.timeStamp + 100;
+      }
+      downTarget = null;
       onGestureUp(event);
     };
     const onClick = (event: MouseEvent) => {
@@ -120,7 +146,10 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
     const onTouchMove = (event: TouchEvent) => {
       const gesture = gestureRef.current;
       const touch = event.touches[0];
-      if (gesture?.mode !== "edge" || !event.cancelable || !touch) return;
+      if (gesture?.mode !== "edge" || !touch) return;
+      // 판정 뒤 touchmove도 아래 요소(터미널 터치 스크롤 등)로 넘기지 않는다. touchend는 정리용으로 그대로 둔다.
+      if (gesture.armed) handOff(event);
+      if (!event.cancelable) return;
       const dx = touch.clientX - gesture.startX;
       const dy = touch.clientY - gesture.startY;
       if (gesture.armed || (dx > 0 && dx >= Math.abs(dy))) event.preventDefault();
