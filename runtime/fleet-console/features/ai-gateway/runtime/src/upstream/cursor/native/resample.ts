@@ -24,12 +24,14 @@ import { wireLog } from "../../../transport/wire-log.js";
 const LABEL = "cursor.resample";
 
 /**
- * 재요청에만 붙는 지시. 클라이언트 기록에는 남지 않는다. Muse 문구와 같은 글자다 — 22/22 회복이 이 문구로
- * 측정됐으므로 바꾸려면 다시 잰다. Cursor에는 developer 역할이 없어 user 메시지로 실린다.
+ * 재요청에만 붙는 지시. 클라이언트 기록에는 남지 않는다. Cursor에는 developer 역할이 없어 user 메시지로 실린다.
+ * 앞 문장은 Muse 문구와 같은 글자이고 22/22 회복(2026-10-07)은 그 문구로 측정됐다. 뒤 문장은 대기 중이거나 이미 끝난
+ * 응답이 도구를 새로 시작하지 않고 그대로 끝나게 하려고 더한 것이다(회복률 영향은 따로 잰다).
  */
 export const CURSOR_RESAMPLE_NUDGE =
-  "You announced the next step but ended without calling a tool. Make that tool call now, without writing "
-  + "anything first. If the task is actually complete, end without adding anything.";
+  "You announced the next step but ended without calling a tool. If that step is still to do, make that "
+  + "tool call now, without writing anything first. If you are waiting on something, or the task is already "
+  + "complete, end exactly as you did before, without adding anything.";
 
 /** 재요청 입력 끝에 붙는 항목: 첫 응답의 예고와 지시. */
 export function cursorResampleNudgeItems(announcement: string): CanonicalInputItem[] {

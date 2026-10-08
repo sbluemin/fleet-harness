@@ -909,8 +909,15 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(cursorClientWrites(firstRun).some((message) => (
         JSON.stringify(message).includes("<system-reminder>A background task finished.</system-reminder>")
       ))).toBe(true);
+      // The nudge tells a model that is waiting, or already done, to end as it did instead of starting a tool.
       expect(cursorClientWrites(recoveredRun)[0]).toMatchObject({
-        runRequest: { action: { userMessageAction: { userMessage: { text: expect.any(String) } } } },
+        runRequest: {
+          action: {
+            userMessageAction: {
+              userMessage: { text: expect.stringMatching(/waiting on something[\s\S]*already\s+complete[\s\S]*end exactly as you did before/u) },
+            },
+          },
+        },
       });
 
       // The recovered Run stays warm for the client's next request even though that request is
