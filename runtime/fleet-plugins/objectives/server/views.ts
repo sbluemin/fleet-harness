@@ -144,6 +144,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
           state: obs ? obs.state : ("missing" as const),
           ...(obs?.outcome ? { outcome: obs.outcome } : {}),
           ...(member.failure ? { failure: member.failure } : {}),
+          ...(member.unreported ? { unreported: member.unreported } : {}),
         };
       }),
       done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
@@ -210,10 +211,11 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     const commander = observe(objective.id);
     return {
       commander: { ...commander, state: store.pending(objective.id) ? "not_started" : commander.state, session: objective.commander.sessionName, model: objective.commander.model, effort: objective.commander.effort },
-      members: objective.members.map((member) => ({ ...observe(member.id), role: member.role, session: member.sessionName, model: member.model, effort: member.effort, next: member.next, ...(member.failure ? {
-        failure: member.failure,
-        missions: objective.missions.flatMap((mission, index) => mission.member === member.id && !mission.done ? [{ n: index + 1, missionId: mission.id, text: mission.text }] : []),
-      } : {}) })),
+      members: objective.members.map((member) => ({ ...observe(member.id), role: member.role, session: member.sessionName, model: member.model, effort: member.effort, next: member.next,
+        ...(member.failure ? { failure: member.failure } : {}), ...(member.unreported ? { unreported: member.unreported } : {}),
+        ...(member.failure || member.unreported ? {
+          missions: objective.missions.flatMap((mission, index) => mission.member === member.id && !mission.done ? [{ n: index + 1, missionId: mission.id, text: mission.text }] : []),
+        } : {}) })),
     };
   };
   const historyView = (objective: Objective) => {

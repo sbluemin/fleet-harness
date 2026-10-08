@@ -9,6 +9,25 @@ export interface ObjectiveMemberFailure extends ConsoleTurnFailure {
   /** 지휘관 통지가 전달되지 않았다. 호스트의 오류 코드와 메시지는 자르거나 요약하지 않는다. */
   readonly notificationFailure?: { readonly code: string; readonly message: string };
 }
+
+/**
+ * 배정된 열린 임무가 있는 구성원의 턴이 실패 결말 없이 닫혔는데, 그 턴에서 결과까지 닿은 세션 간 메시지가 하나도 없다.
+ * 실패 턴이 아니므로 실패 통지가 울리지 않는 자리다. 다음 턴이 메시지를 남기거나 지휘관이 그 구성원에게 다시 말하면 거둔다.
+ */
+export interface ObjectiveMemberUnreported {
+  /** 그 턴이 닫힌 것을 본 시각(ms). */
+  readonly at: number;
+  /** 그 턴의 최종 응답 원문(SDK result). 자르거나 요약하지 않는다. 모델이 글을 남기지 않았으면 없다. */
+  readonly lastMessage?: string;
+  /**
+   * 왜 끝내지 못했는지 — 사유를 판정한 출처가 채우는 칸이다(예: Gateway 의 한도 소진 판정). `code` 는 `[a-z_]` 어휘,
+   * `detail` 은 그 출처의 원문이다. 판정한 출처가 없으면 null 이고, 화면과 통지는 사유 없이 사실만 말한다.
+   */
+  readonly reason: { readonly code: string; readonly detail?: string } | null;
+  readonly acknowledged?: true;
+  /** 지휘관 통지가 전달되지 않았다. 호스트의 오류 코드와 메시지는 자르거나 요약하지 않는다. */
+  readonly notificationFailure?: { readonly code: string; readonly message: string };
+}
 import type { ObjectiveResult, StoredEvidence } from "./results.js";
 export type { ObjectiveResult, PrObservation } from "./results.js";
 
@@ -197,6 +216,8 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagent
   /** 공개 세션 관측의 실패 결말. */
   readonly outcome?: "failed";
   readonly failure?: ObjectiveMemberFailure;
+  /** 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다. */
+  readonly unreported?: ObjectiveMemberUnreported;
 }
 
 /** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */

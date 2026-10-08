@@ -595,6 +595,12 @@ class AgentChatSession {
   private readonly pendingSentMessages = new Map<string, { readonly to: string; readonly text: string }>();
   /** 이미 원장에 세운 수신 줄의 좌표. 같은 호출이 두 번 관측돼도 줄은 하나다. */
   private readonly receivedMessageIds = new Set<string>();
+  /** 열린 턴에서 결과까지 성공한 세션 간 메시지의 받는 이름 — 턴이 열릴 때 비운다. */
+  private turnSentTo: string[] = [];
+  /** 열린 턴이 사람이 입력창에서 보낸 말로 열렸다. */
+  private turnByPerson = false;
+  /** 마지막으로 닫힌 턴의 보고와 그 `turn-end` 줄의 seq — 관측(`readConsoleOutput`)이 종료 이벤트와 같은 값을 말하게 한다. */
+  private endedTurnReport: { readonly seq: number; readonly report: import("@fleet-console/sdk/mcp").ConsoleTurnReport } | undefined;
   private disposed = false;
   /**
    * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Operation이 열려 있는 동안**
@@ -1080,6 +1086,7 @@ class AgentChatSession {
       revision: endEntry?.seq ?? this.seq,
       outcome: busy ? "running" : ending?.kind === "turn-end" ? (ending.stopped ? "interrupted" : ending.ok ? "succeeded" : "failed") : "unknown",
       ...(!busy && ending?.kind === "turn-end" && ending.failure ? { failure: ending.failure } : {}),
+      ...(!busy && endEntry && this.endedTurnReport?.seq === endEntry.seq ? { report: this.endedTurnReport.report } : {}),
     };
     this.consoleOutputCache = { seq: this.seq, busy, value };
     return value;
@@ -2728,6 +2735,7 @@ class AgentChatSession {
       if (sent === undefined) continue;
       this.pendingSentMessages.delete(record.tool_use_id);
       if (record.is_error === true || sentMessageFailed(record.content)) continue;
+      if (this.turnOpen) this.turnSentTo.push(sent.to);
       try {
         this.seed.onSessionMessageSent({ to: sent.to, text: sent.text, toolUseId: record.tool_use_id });
       } catch {
@@ -2955,6 +2963,10 @@ class AgentChatSession {
     this.observedTurns += 1;
     // 자식이 스스로 연 턴은 자식이 이미 알고 있다. 디스패치가 연 턴은 `send()`가 닿아야 그렇다.
     this.turnReachedChild = !options.dispatched;
+    this.turnSentTo = [];
+    // 이 턴을 연 지시 — 지난 턴의 끝 뒤에 선 마지막 dispatch 다. 없으면 자식이 스스로 연 턴이다.
+    const opener = this.journal.findLast(({ event }) => event.kind === "dispatch" || event.kind === "turn-end")?.event;
+    this.turnByPerson = options.dispatched && opener?.kind === "dispatch" && opener.by === undefined;
     this.push({ kind: "turn-start", at: Date.now() });
     // 디스패치 경로는 이미 축을 켜고 들어온다 — 실패하면 턴을 시작하지 않기 때문이다.
     if (!options.dispatched) this.seed.reportActivity(true);
@@ -2981,11 +2993,18 @@ class AgentChatSession {
       ...(end.answer === undefined ? {} : { answer: end.answer }),
       ...(end.failure ? { failure: end.failure } : {}),
     });
+    // 세션 간 메시지를 관측하는 세션만 보고를 싣는다 — 관측하지 않으면 빈 sentTo 는 "보내지 않았다"가 아니라 "모른다"다.
+    const report: import("@fleet-console/sdk/mcp").ConsoleTurnReport | undefined = this.seed.onSessionMessageSent === undefined ? undefined : {
+      sentTo: this.turnSentTo, byPerson: this.turnByPerson, ...(end.answer === undefined ? {} : { answer: end.answer }),
+    };
+    this.endedTurnReport = report ? { seq: this.seq, report } : undefined;
+    this.consoleOutputCache = undefined;
     // 다음 queued 턴이 output을 덮기 전, 이 종료 좌표를 구독자에게 보낸다.
     this.seed.onTurnEnd?.({
       status: "unavailable", revision: this.seq,
       outcome: end.stopped ? "interrupted" : end.ok === false ? "failed" : "succeeded",
       ...(end.failure ? { failure: end.failure } : {}),
+      ...(report ? { report } : {}),
     });
     // 답이 풀리지 않은 채 턴이 닫히면 자식은 그 도구 호출에서 멈춘 채 남는다.
     this.abandonAsks("The turn ended before the question was answered.");

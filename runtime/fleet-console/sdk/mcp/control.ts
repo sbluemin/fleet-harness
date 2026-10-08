@@ -55,6 +55,19 @@ export interface ConsoleTurnFailure {
   readonly last_assistant_message?: string;
 }
 
+/**
+ * 닫힌 턴이 세션 밖으로 남긴 것. 관측하는 표면(채팅)만 싣는다 — 없으면 "모른다"이고, 빈 `sentTo` 와 다르다.
+ * 성공으로 닫힌 턴이 아무에게도 말을 남기지 못했는지를 실패 결말 없이 가를 수 있게 한다.
+ */
+export interface ConsoleTurnReport {
+  /** 이 턴의 최상위 SendMessage 중 결과까지 성공한 호출의 받는 이름. 거절·오류로 끝난 호출과 서브에이전트의 호출은 없다. */
+  readonly sentTo: readonly string[];
+  /** 사람이 입력창에서 보낸 말로 열린 턴이다. 플러그인·다른 Operation 이 보낸 말과 자식이 스스로 연 턴은 false. */
+  readonly byPerson: boolean;
+  /** SDK result 가 말한 최종 응답 원문. `output.text` 의 꼬리 자르기·정리를 지나지 않는다. 성공한 턴에만 있다. */
+  readonly answer?: string;
+}
+
 /** 다음 턴이 관측을 덮기 전에 전달하는 종료 snapshot. 브라우저 알림 채널이 아니다. */
 export interface ConsoleTurnEnd {
   readonly operationId: string;
@@ -83,6 +96,8 @@ export interface ConsoleOperationObservation {
     readonly revision?: number;
     readonly outcome: "unknown" | "running" | "completed" | "succeeded" | "failed" | "interrupted";
     readonly failure?: ConsoleTurnFailure;
+    /** 닫힌 턴의 보고 — 관측하는 표면만 싣는다. */
+    readonly report?: ConsoleTurnReport;
   };
 }
 

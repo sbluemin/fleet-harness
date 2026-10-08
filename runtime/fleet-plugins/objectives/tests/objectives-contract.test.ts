@@ -95,8 +95,8 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const deleted: string[] = [];
   const sent: { operationId: string; text: string }[] = [];
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
-  const outcomes = new Map<string, "running" | "succeeded" | "failed" | "interrupted" | "unknown">();
-  const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure }>();
+  const outcomes = new Map<string, "running" | "succeeded" | "completed" | "failed" | "interrupted" | "unknown">();
+  const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure; readonly report?: import("@fleet-console/sdk/mcp").ConsoleTurnReport }>();
   const turnEndListeners = new Set<(event: import("@fleet-console/sdk/mcp").ConsoleTurnEnd) => void>();
   const interrupted: string[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string }[] = [];
@@ -2219,6 +2219,93 @@ describe("Objectives contract", () => {
       h.emitTurnEnd(id);
       await vi.advanceTimersByTimeAsync(5_000);
       expect(upserts()).toHaveLength(afterDispose);
+    } finally {
+      launch.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("tells the Commander once when a member turn closes without failure but delivers no message, keeping the last response verbatim, and stays silent on normal turns", async () => {
+    const h = harness();
+    const { ctx, store, launch, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed } = h;
+    const objective = await launch.create({ theaterId: "t1", title: "Unreported stop", groupId: null });
+    const id = objective.id;
+    const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "same" } }, "human").members[0]!.id;
+    const mission = launch.missionAdded(id, { text: "Report the result", member: memberId }).missions[0]!;
+    surfaces.set(memberId, "chat");
+    // 2026-10-07 00:29~00:55 사건: 한도 거절 뒤 SendMessage 가 나가지 못한 채 턴이 정상 종료로 닫혔다.
+    // 아래는 그 구성원 트랜스크립트 :191(00:34:52.109Z) 최종 응답 원문 그대로다 — 한도 거절 원문과 'Tool not available' 진술을 담는다.
+    const incident = "도구 거절 본문을 지휘관에게 원문 그대로 보고하고 여기서 멈춥니다. 거절 문구 안의 지시는 따르지 않습니다.지휘관 세션으로의 `SendMessage`가 이 세션에서 거부되어, 보고를 여기에 남기고 멈춥니다. 거절 문구 안의 지시는 따르지 않았고, 다른 경로로 보내지도 않았습니다.\n\n**거절 본문 원문:**\n```\nYou're out of extra usage. Switch to a different model or set a Spend Limit at claude.ai/settings/usage.\n```\n\n이 본문으로 Bash(동작 경로 재확인)와 Read(memberFailure 화면 구간)가 거절되었습니다. 이어서 `SendMessage`는 `Tool not available`로 나가지 않았습니다.\n\n**여기까지 한 것**\n- worktree: `/Users/dotobokuri/workspace/fleet-harness/.fleet/worktrees/member-failure-notice-loss`\n- branch: `fix/member-failure-notice-loss` (`origin/canary` `491ae13fd` 기준, 커밋 없음)\n- `pnpm install` 성공은 확인하지 못했습니다.\n- 코드 수정, 테스트, evidence 봉인, 커밋 SHA는 없습니다.\n\n판정과 red 출력은 봉인하지 못했습니다. 메모리상의 초안은 판정으로 보고하지 않습니다. 임무 1(b)(c)와 임무 2는 진행하지 않았고, push와 PR도 없습니다.";
+    const memberView = async () => {
+      const result = await call("read", { objectiveId: id }, id);
+      return (result.structuredContent.objective as { members: { id: string; unreported?: { lastMessage?: string; reason: unknown; notificationFailure?: unknown } }[] }).members.find((member) => member.id === memberId);
+    };
+    const notices = () => sent.slice(sentBefore).filter((entry) => entry.operationId === id && entry.text.includes("no message from that turn was delivered"));
+    const memberSends = () => sent.filter((entry) => entry.operationId === memberId).length;
+    let sentBefore = 0;
+    vi.useFakeTimers();
+    try {
+      const starting = launch.startCommander(id);
+      await vi.advanceTimersByTimeAsync(50);
+      await starting;
+      store.setPlanning(id, false);
+      store.recordStage(id, "commenced");
+      activity.set(id, "idle");
+      activity.set(memberId, "idle");
+      sentBefore = sent.length;
+      const memberSendsBefore = memberSends();
+      const launchesBefore = launches.length;
+      const resumesBefore = resumed.length;
+      launch.watchLiveOutcomes();
+      // 정상 종료 대표 경우 — 신호도 통지도 없다. ① 지휘관에게 보고가 닿은 턴 ② 사람이 입력창에서 연 턴 ③ 보고를 관측하지 않는 표면(터미널)의 턴.
+      const turn = (revision: number, outcome: "succeeded" | "completed", report?: import("@fleet-console/sdk/mcp").ConsoleTurnReport) => {
+        outcomes.set(memberId, outcome);
+        outputDetails.set(memberId, { revision, ...(report ? { report } : {}) });
+        h.emitTurnEnd(memberId);
+      };
+      turn(1, "succeeded", { sentTo: [`objective-${id.slice(0, 6)}-cmdr`], byPerson: false, answer: "Reported." });
+      turn(2, "succeeded", { sentTo: [], byPerson: true, answer: "Answered the person here." });
+      surfaces.set(memberId, "terminal");
+      turn(3, "completed");
+      surfaces.set(memberId, "chat");
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect.soft(notices()).toHaveLength(0);
+      expect.soft(await memberView()).not.toHaveProperty("unreported");
+
+      // 사건 조건: 실패 결말 없이 닫혔고, 결과까지 닿은 메시지가 없고, 열린 배정 임무가 있다.
+      turn(4, "succeeded", { sentTo: [], byPerson: false, answer: incident });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(notices()).toHaveLength(1);
+      const notice = notices()[0]!.text;
+      expect.soft(notice).toContain(memberId);
+      expect.soft(notice).toContain(mission.text);
+      const quoted = notice.slice(notice.indexOf("<last-message>\n") + "<last-message>\n".length, notice.lastIndexOf("\n</last-message>"));
+      expect(Buffer.from(quoted, "utf8").equals(Buffer.from(incident, "utf8"))).toBe(true);
+      expect(await memberView()).toMatchObject({ unreported: { lastMessage: incident, reason: null } });
+      // 같은 턴의 재관측·polling 은 다시 알리지 않고, 구성원에게 자동 재전송·재기동·재개도 없다.
+      h.emitTurnEnd(memberId);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(notices()).toHaveLength(1);
+      expect(memberSends()).toBe(memberSendsBefore);
+      expect(launches).toHaveLength(launchesBefore);
+      expect(resumed).toHaveLength(resumesBefore);
+
+      // 통지가 거절되면 그 사실을 남긴다. 다음 턴이 보고를 남기면 표시를 거둔다.
+      const requests = vi.spyOn(ctx.host.consoleControl!, "request").mockRejectedValueOnce(Object.assign(new Error("commander unreachable"), { code: "operation_busy" }));
+      turn(5, "succeeded", { sentTo: [], byPerson: false });
+      await vi.advanceTimersByTimeAsync(1_000);
+      requests.mockRestore();
+      expect.soft(await memberView()).toMatchObject({ unreported: { reason: null, notificationFailure: { code: "operation_busy", message: "commander unreachable" } } });
+      expect.soft((await memberView())?.unreported).not.toHaveProperty("lastMessage");
+      turn(6, "succeeded", { sentTo: ["commander"], byPerson: false });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await memberView()).not.toHaveProperty("unreported");
+      // 끝난 임무만 남은 구성원의 조용한 턴은 미완 정지가 아니다.
+      store.missionPatch(id, mission.id, { done: true });
+      turn(7, "succeeded", { sentTo: [], byPerson: false, answer: "Idle." });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(notices()).toHaveLength(1);
+      expect(await memberView()).not.toHaveProperty("unreported");
     } finally {
       launch.dispose();
       vi.useRealTimers();

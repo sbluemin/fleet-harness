@@ -5,11 +5,11 @@ import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "./signals.js";
-import { COMMANDER_PRESET, COORDINATES_NOT_APPLIED, heldNextOutcome, missionReady, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
+import { COMMANDER_PRESET, COORDINATES_NOT_APPLIED, heldNextOutcome, missionReady, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
 import { deriveFailedOutcome } from "./views.js";
 
 /**
@@ -875,6 +875,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return { objective: current, operationId: objectiveId };
   };
 
+  /** 지휘관 통지의 거절 — 호스트의 오류 코드와 메시지를 자르거나 요약하지 않는다. */
+  const notificationFailureOf = (error: unknown): { code: string; message: string } => {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+      ? error.code : /^[a-z_]{1,64}$/.test(message) ? message : "notification_delivery_failed";
+    return { code, message };
+  };
   /**
    * 사람 화면의 실패 표시. 플러그인 서버는 활동 사건을 받지 않으므로 — 예약 감시와 같은 이유 — live 인 지휘관·구성원만
    * 모아 WATCH_MS 마다 observe 를 다시 읽는다. 방송은 deriveFailedOutcome 이 실패 ↔ 실패 아님으로 바뀔 때만 하고, 그 목표 하나만 한다.
@@ -893,10 +900,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const forgetOutcome = (operationId: string) => {
     lastTurns.delete(operationId);
     store.settleMemberFailure(operationId, null);
+    store.settleMemberUnreported(operationId, null);
     dropOutcome(operationId);
     for (const [id, objectiveId] of [...outcomeWatched]) if (objectiveId === operationId) {
       lastTurns.delete(id);
       store.settleMemberFailure(id, null);
+      store.settleMemberUnreported(id, null);
       dropOutcome(id);
     }
   };
@@ -924,17 +933,33 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         // 시도 전에 좌표를 소비한다. polling·종료 이벤트 중복이나 전송 거절에 자동 재시도하지 않는다.
         const turn = { generation, revision };
         lastTurns.set(operationId, turn);
+        const language: PromptLanguage = ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
+        // 실패 없이 닫힌 턴이 아무에게도 말을 남기지 못했다 — 보고를 관측하는 표면이고, 사람이 입력창에서 연 턴이 아니며, 열린 배정 임무가 있을 때만.
+        // 표면이 보고를 싣지 않으면(터미널) 모른다는 뜻이라 신호를 세우지 않는다.
+        const report = outcome === "failed" ? undefined : observation.output.report;
+        const silent = !!report && !report.byPerson && report.sentTo.length === 0 && objectiveUnderway(current)
+          && current.missions.some((mission) => mission.member === member.id && !mission.done);
+        if (silent) {
+          const unreported: ObjectiveMemberUnreported = { at: quietNow(), ...(report.answer !== undefined ? { lastMessage: report.answer } : {}), reason: null };
+          store.settleMemberUnreported(operationId, unreported);
+          const notice = memberUnreportedTurn(current, member, unreported, language);
+          void requestSend(objectiveId, notice, notice).catch((error: unknown) => {
+            if (disposed || lastTurns.get(operationId) !== turn) return;
+            store.recordMemberNotificationFailure(operationId, notificationFailureOf(error), "unreported");
+            store.refresh(objectiveId);
+          });
+          changed = true;
+        } else if (member.unreported) {
+          store.settleMemberUnreported(operationId, null);
+          changed = true;
+        }
         if (outcome === "failed") {
           const failure = store.settleMemberFailure(operationId, observation.output.failure ?? { error: "unknown" })!;
-          const language: PromptLanguage = ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
           const notice = memberFailureTurn(current, member, failure, language);
           void requestSend(objectiveId, notice, notice).catch((error: unknown) => {
             // 늦은 거절이 다음 턴·회복·제거 이후의 실패 상태를 덮지 않는다. 좌표는 되돌리지 않는다.
             if (disposed || lastTurns.get(operationId) !== turn) return;
-            const message = error instanceof Error ? error.message : String(error);
-            const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
-              ? error.code : /^[a-z_]{1,64}$/.test(message) ? message : "notification_delivery_failed";
-            store.recordMemberNotificationFailure(operationId, { code, message });
+            store.recordMemberNotificationFailure(operationId, notificationFailureOf(error));
             store.refresh(objectiveId);
           });
           changed = true;
@@ -1529,7 +1554,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       outcomeWatched.clear();
       lastOutcomes.clear();
       unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null;
-      for (const operationId of lastTurns.keys()) store.settleMemberFailure(operationId, null);
+      for (const operationId of lastTurns.keys()) { store.settleMemberFailure(operationId, null); store.settleMemberUnreported(operationId, null); }
       lastTurns.clear();
       if (quietTimer) clearTimeout(quietTimer);
       quietTimer = null;

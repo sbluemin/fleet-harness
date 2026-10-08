@@ -742,6 +742,12 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           <p>{t("objectives.members.failureData")}</p>
           <pre>{[member.failure.error, member.failure.error_details, member.failure.last_assistant_message].filter((value) => value !== undefined).join("\n")}</pre>
         </details> : null}
+        {/* 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다 — 사유 칸은 판정한 출처가 있을 때만 붙는다. 마지막 응답은 원문 그대로다. */}
+        {member.unreported ? <details className="objectives-member-note is-warn objectives-member-failure">
+          <summary>{member.unreported.reason ? t("objectives.members.unreportedReason", { reason: member.unreported.reason.code }) : t("objectives.members.unreported")}</summary>
+          {member.unreported.reason?.detail !== undefined ? <pre>{member.unreported.reason.detail}</pre> : null}
+          {member.unreported.lastMessage !== undefined ? <><p>{t("objectives.members.unreportedData")}</p><pre>{member.unreported.lastMessage}</pre></> : <p>{t("objectives.members.unreportedEmpty")}</p>}
+        </details> : null}
         {routed?.via === "fallback" ? <p className="objectives-member-reason" title={routed.detail}>{routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) })}</p> : null}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
         {fault?.id === member.id && !picked ? <p className="objectives-member-note is-error" role="alert">{hasRoutingReason(fault.code) ? routingReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}

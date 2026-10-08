@@ -42,6 +42,7 @@ import {
   type ObjectiveEditKind,
   type Objective,
   type ObjectiveMemberFailure,
+  type ObjectiveMemberUnreported,
   type ObjectiveEvent,
   OBJECTIVE_FILE,
   type MemberLaunch,
@@ -209,8 +210,11 @@ export interface ObjectiveStore {
   /** 현재 세션의 실패 ledger — 모델 턴이나 영속 목표 기록과 별개다. */
   memberFailure(memberId: string): ObjectiveMemberFailure | undefined;
   settleMemberFailure(memberId: string, failure: ConsoleTurnFailure | null): ObjectiveMemberFailure | undefined;
+  /** 실패 없이 닫힌 턴의 무보고 — 실패 ledger 와 같은 수명이다. null 이면 거둔다. */
+  settleMemberUnreported(memberId: string, unreported: ObjectiveMemberUnreported | null): void;
+  /** 지휘관의 명시적 재발주 — 실패와 무보고의 inbox 표시만 해소한다. */
   acknowledgeMemberFailure(memberId: string): void;
-  recordMemberNotificationFailure(memberId: string, failure: NonNullable<ObjectiveMemberFailure["notificationFailure"]>): void;
+  recordMemberNotificationFailure(memberId: string, failure: NonNullable<ObjectiveMemberFailure["notificationFailure"]>, signal?: "failure" | "unreported"): void;
   /** 지휘관 Operation 이 복원 불가로 사라졌다 — 레코드와 첨부를 지운다. 담당이었다면 그 임무의 연결을 푼다. */
   forget(operationId: string): void;
   /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. */
@@ -552,6 +556,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
    */
   const delivering = new Set<string>();
   const memberFailures = new Map<string, ObjectiveMemberFailure>();
+  const memberUnreported = new Map<string, ObjectiveMemberUnreported>();
   /**
    * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 아직 읽지 않은 사람 편집이 남아 있으면 지휘관 도구의
    * board_changed 가 새 요청을 거절한다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
@@ -674,7 +679,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         switchesLive: options.liveSwitch === true,
         next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null } : null,
         ...(memberOutcome ? { outcome: memberOutcome } : {}),
-        ...(memberFailures.has(member.id) ? { failure: memberFailures.get(member.id)! } : {}) };
+        ...(memberFailures.has(member.id) ? { failure: memberFailures.get(member.id)! } : {}),
+        ...(memberUnreported.has(member.id) ? { unreported: memberUnreported.get(member.id)! } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);
@@ -1218,11 +1224,22 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       memberFailures.set(memberId, state);
       return state;
     },
+    settleMemberUnreported(memberId, unreported) {
+      if (unreported) memberUnreported.set(memberId, unreported);
+      else memberUnreported.delete(memberId);
+    },
     acknowledgeMemberFailure(memberId) {
       const failure = memberFailures.get(memberId);
       if (failure) memberFailures.set(memberId, { ...failure, acknowledged: true });
+      const unreported = memberUnreported.get(memberId);
+      if (unreported) memberUnreported.set(memberId, { ...unreported, acknowledged: true });
     },
-    recordMemberNotificationFailure(memberId, notificationFailure) {
+    recordMemberNotificationFailure(memberId, notificationFailure, signal = "failure") {
+      if (signal === "unreported") {
+        const unreported = memberUnreported.get(memberId);
+        if (unreported) memberUnreported.set(memberId, { ...unreported, notificationFailure });
+        return;
+      }
       const failure = memberFailures.get(memberId);
       if (failure) memberFailures.set(memberId, { ...failure, notificationFailure });
     },
