@@ -279,7 +279,7 @@ export function AnswerBubble({
                 ref={textRef}
                 tabIndex={-1}
                 className={`scuttlebutt-answer-text markdown-body${working ? " is-streaming" : ""}`}
-                onClick={(event) => copyCodeBlock(event, t("action.copied"))}
+                onClick={(event) => copyCodeBlock(event, { copy: t("markdown.copy"), copied: t("action.copied"), failed: t("markdown.copyFailed") })}
                 dangerouslySetInnerHTML={{ __html: answerHtml }}
               />
             )}

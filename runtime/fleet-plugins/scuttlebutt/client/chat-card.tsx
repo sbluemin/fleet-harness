@@ -396,7 +396,7 @@ export function ChatCard({
           onClick={onTuck}
         />}
       </div>}
-      <div ref={logRef} hidden={embedded && state.entries.length === 0} className="scuttlebutt-chat-log" aria-live="polite" onScroll={onLogScroll} onClick={(event) => copyCodeBlock(event, t("action.copied"))}>
+      <div ref={logRef} hidden={embedded && state.entries.length === 0} className="scuttlebutt-chat-log" aria-live="polite" onScroll={onLogScroll} onClick={(event) => copyCodeBlock(event, { copy: t("markdown.copy"), copied: t("action.copied"), failed: t("markdown.copyFailed") })}>
         {!embedded && state.entries.length === 0 ? (
           <div className="scuttlebutt-greeting">
             <div className="scuttlebutt-message-sam">{greeting}</div>
