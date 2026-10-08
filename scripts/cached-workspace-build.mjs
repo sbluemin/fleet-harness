@@ -151,7 +151,18 @@ function writeStamp(name, hash) {
 
 function buildPackage(pkg) {
   const started = Date.now();
-  const result = spawnSync("pnpm", ["--filter", pkg.name, "run", "build"], { cwd: root, stdio: "inherit", env: process.env });
+  // pnpm/action-setup puts pnpm.cmd on PATH on Windows. Node refuses to spawn a
+  // .cmd shim unless the shell runs it, and the Windows verify install uses this path.
+  const result = spawnSync("pnpm", ["--filter", pkg.name, "run", "build"], {
+    cwd: root,
+    stdio: "inherit",
+    env: process.env,
+    shell: process.platform === "win32",
+  });
+  if (result.error) {
+    console.error(result.error);
+    process.exit(1);
+  }
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
