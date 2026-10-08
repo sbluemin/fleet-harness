@@ -103,17 +103,69 @@ describe("Cursor client tool suspension", () => {
     })).rejects.toBeInstanceOf(CursorSessionIdentityError);
   });
 
-  it("rejects future unknown native exec variants instead of leaving the turn open", async () => {
+  it("reports native exec refusals without concealment or execution and closes unknown variants", async () => {
     const diagnostics: CursorDiagnosticEvent[] = [];
+    const canonicalRequest: CanonicalResponseRequest = {
+      ...readRequest(),
+      tools: [...readRequest().tools!, {
+        type: "function",
+        name: "Write",
+        parameters: { type: "object", properties: { file_path: { type: "string" }, content: { type: "string" } } },
+      }],
+    };
+    const readName = firstCursorWireToolName(canonicalRequest);
     const { events, stream } = await runSyntheticCursorTurn([
+      { execServerMessage: { id: 29, readArgs: { path: "/fixture/read.txt" } } },
+      { execServerMessage: { id: 30, writeArgs: { path: "/fixture/write.txt", fileText: "not written" } } },
       rawCursorServerFrame(31, new Uint8Array(), 31, "future-31"),
       { interactionUpdate: { textDelta: { text: "recovered from unsupported exec" } } },
       { interactionUpdate: { turnEnded: {} } },
-    ], request("claude-session-unknown-exec"), {
+    ], canonicalRequest, {
       diagnostics: (event) => diagnostics.push(event),
     });
 
     const replies = stream.writes.slice(1).map(decodeCursorClientFrame);
+    const execReplies = replies as { execClientMessage?: {
+      readResult?: { error: { error: string } };
+      writeResult?: { rejected: { reason: string } };
+    } }[];
+    const readRefusal = execReplies.find((reply) => reply.execClientMessage?.readResult)!.execClientMessage!.readResult!.error.error;
+    const writeRefusal = execReplies.find((reply) => reply.execClientMessage?.writeResult)!.execClientMessage!.writeResult!.rejected.reason;
+    console.info("Read refusal:", readRefusal);
+    console.info("Write refusal:", writeRefusal);
+    expect(`${readRefusal}\n${writeRefusal}`).not.toMatch(/Do not tell the user|Silently retry/);
+    expect(readRefusal).toContain("Cursor native readArgs was rejected.");
+    expect(readRefusal).toContain(`\`${readName}\``);
+    expect(writeRefusal).toContain("Cursor native writeArgs was rejected.");
+    expect(writeRefusal).toContain("`cc_write_");
+    expect(writeRefusal).not.toContain(`\`${readName}\``);
+    expect(events.some((event) => event.type === "response.output_item.added" && event.item.type === "function_call")).toBe(false);
+    // A write refusal must not invent a writing capability from a read-only catalog, whether
+    // deferred discovery is available or this turn carries no client tools at all.
+    for (const tools of [[], [...readRequest().tools!, {
+      type: "function" as const,
+      name: "ToolSearch",
+      parameters: { type: "object", properties: { query: { type: "string" } } },
+    }]]) {
+      const fallback = await runSyntheticCursorTurn([
+        { execServerMessage: { id: 32, writeArgs: { path: "/fixture/write.txt", fileText: "not written" } } },
+        { interactionUpdate: { textDelta: { text: "Write was rejected." } } },
+        { interactionUpdate: { turnEnded: {} } },
+      ], { ...canonicalRequest, tools });
+      const reply = fallback.stream.writes.slice(1).map(decodeCursorClientFrame) as typeof execReplies;
+      const refusal = reply.find((value) => value.execClientMessage?.writeResult)!.execClientMessage!.writeResult!.rejected.reason;
+      console.info("Write without a matching tool:", refusal);
+      expect(refusal).toContain("Cursor native writeArgs was rejected.");
+      expect(refusal).not.toContain(`\`${readName}\``);
+      expect(refusal).not.toMatch(/Do not tell the user|Silently retry/);
+      expect(refusal).toContain(tools.length === 0
+        ? "This turn advertises no client tools."
+        : "If a matching client tool is deferred, load it with `cc_tool_search_");
+      if (tools.length > 0) {
+        expect(refusal).toContain("then call the tool name that search returns.");
+      }
+      expect(fallback.events.some((event) => event.type === "response.output_item.added" && event.item.type === "function_call")).toBe(false);
+    }
     expect(replies).toContainEqual({
       execClientControlMessage: {
         throw: {
