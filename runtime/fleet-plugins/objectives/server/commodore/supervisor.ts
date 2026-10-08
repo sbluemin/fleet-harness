@@ -47,7 +47,7 @@ export interface CommodoreSupervisorDeps {
    * Console의 모델 로스터 해석 — 저장 좌표를 Agent SDK wire id로 풀고, Gateway에서 끈 모델은 저장값을 고쳐 쓰지 않은 채
    * 폴백 좌표로 연다. 없는 호스트에서는 저장 좌표를 그대로 쓴다.
    */
-  readonly models?: Pick<FleetPluginModelsHost, "resolve">;
+  readonly models?: Pick<FleetPluginModelsHost, "resolve" | "pinClaudeVersion">;
   /** Theater 의 이름과 루트 실경로 — 모르면 null(잊힌·떨어진 Theater). */
   readonly theater: (theaterId: string) => { readonly label: string; readonly root: string } | null;
   readonly objectives: (theaterId: string) => readonly Objective[];
@@ -286,8 +286,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!theater) throw new Error("theater_unavailable");
     const coordinates = resolveCoordinates(runner.theaterId);
     const language = resolveLanguage(runner.theaterId);
+    // Agent SDK의 내장 CLI는 Claude 별칭을 자기 버전의 표로 푼다 — 설치된 Claude Code가 띄우는 지휘관과 다른 모델로
+    // 서지 않게, 사령관은 설치 CLI가 푸는 정식 id로 연다. 회전 판정은 별칭 좌표로 한다(고정 id는 이 세션의 것이다).
+    const model = await deps.models?.pinClaudeVersion?.(coordinates.model).catch(() => coordinates.model) ?? coordinates.model;
     const session = createCommodoreSession({
-      theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) },
+      theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) },
       boardTools: deps.boardTools(runner.theaterId).map((tool) => selfAttributed(runner, tool)), now,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),

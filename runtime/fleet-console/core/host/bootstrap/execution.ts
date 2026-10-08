@@ -92,6 +92,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   });
   return {
     launchKinds: agent.launchKinds,
+    /** 설치된 Claude Code가 별칭을 푸는 버전 조회. 플러그인 로스터 포트의 별칭 고정이 쓴다. */
+    ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */
     reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
     actions: { ...agent.actions, analystAsk: analysis.ask, analystArtifacts: analysis.artifacts, analystState: analysis.state },

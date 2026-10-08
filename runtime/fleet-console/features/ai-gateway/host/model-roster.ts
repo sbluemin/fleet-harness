@@ -160,6 +160,8 @@ function effortChip(model: string, effort: string) {
   return { id: effort, label: EFFORT_LABELS[effort] ?? effort.toUpperCase(), launch: { model, effort } };
 }
 
+const CLAUDE_ONE_MILLION_MARKER = "[1m]";
+
 function rosterContextWindow(model: GatewayModel, id: string): number | undefined {
   // Claude Code는 두 좌표만 안다 — `[1m]` 표기가 1M 창을 켠다. Claude 가족의 실행 id는 늘 `[1m]`이다.
   if (model.provider === "claude") return id.endsWith("[1m]") ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
@@ -179,6 +181,8 @@ export function rosterWireModelId(canonical: string): string {
 export function createModelRosterHost(deps: {
   readonly readSettings: () => AiGatewayStoredSettings;
   readonly subscribe?: (listener: () => void) => () => void;
+  /** 설치된 Claude Code에게 별칭이 가리키는 버전을 묻는다. 없으면 별칭 고정은 받은 값을 돌려준다. */
+  readonly ensureClaudeNativeModels?: () => Promise<void>;
 }): FleetPluginModelsHost {
   const roster = (target: ModelRosterTarget): ModelRoster => {
     let settings: AiGatewayStoredSettings | undefined;
@@ -195,6 +199,16 @@ export function createModelRosterHost(deps: {
     resolve: (stored: ModelCoordinate, target: ModelRosterTarget, fallback?: ModelCoordinate): ResolvedWireCoordinate => {
       const resolved = resolveRosterCoordinate(roster(target), stored, fallback ?? { model: ROSTER_FALLBACK_MODEL });
       return { ...resolved, wireModel: rosterWireModelId(resolved.model) };
+    },
+    pinClaudeVersion: async (wireModel: string): Promise<string> => {
+      try {
+        await deps.ensureClaudeNativeModels?.();
+      } catch {
+        // 조회 실패는 알던 표로 답한다 — 표가 없으면 별칭 그대로다.
+      }
+      const model = findClaudeGatewayModel(wireModel);
+      if (model?.provider !== "claude" || model.upstreamId === undefined) return wireModel;
+      return wireModel.endsWith(CLAUDE_ONE_MILLION_MARKER) ? `${model.upstreamId}${CLAUDE_ONE_MILLION_MARKER}` : model.upstreamId;
     },
     ...(deps.subscribe ? { subscribe: deps.subscribe } : {}),
   };
