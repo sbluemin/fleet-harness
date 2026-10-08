@@ -1,18 +1,23 @@
 # 지침의 대표 작업 평가
 
-[instruction-maintenance.md의 개편 검증](instruction-maintenance.md#개편-검증)에서 2단계 대상으로 판정한 변경을 준비·실행할 때 읽는다. 일반 구현이나 의미를 유지하는 문서 정리에 유료 평가를 요구하는 문서가 아니다. 무료 fixture는 요청 구성과 CLI 계측을 확인할 뿐, 실제 모델의 행동이나 개선 효과를 입증하지 않는다.
+[instruction-maintenance.md의 개편 검증](instruction-maintenance.md#개편-검증)에서 2단계 대상으로 판정한 변경을 준비·실행할 때 읽는다. 일반 구현이나 의미를 유지하는 문서 정리에 유료 평가를 요구하는 문서가 아니다. 무료 fixture는 요청 구성·도구 호출 경로·CLI 계측을 확인할 뿐, 실제 모델의 행동이나 개선 효과를 입증하지 않는다.
 
-아래는 도구 없는 `claude -p` 응답으로 선택·권한 판단·완료 조건을 비교하는 6단계 경로다. 실제 파일 수정, 스킬 자동 선택·참조 읽기, 브라우저 조작의 성공은 입증하지 않는다. 그런 주장은 해당 작업의 실제 실행 증거가 별도로 필요하다. Wiki 승인·생성 계약이나 외부 게시 권한을 대체하지 않는다.
+아래는 추출 트리 cwd에서 **도구를 켠** `claude -p`를 기존 claude.ai OAuth 구독으로 돌리고, 도구 호출 기록으로 선택·권한 판단·종료 행동을 비교하는 6단계 경로다. 스킬 자동 선택·참조 읽기, 브라우저 조작, 여러 세션 사이의 실제 메시징의 성공은 입증하지 않는다. 그런 주장은 별도의 실제 실행 증거가 필요하다. Wiki 승인·생성 계약이나 외부 게시 권한을 대체하지 않는다.
+
+성립하지 않거나 이 Theater에서 실행할 수 없는 경로:
+- **구성원 세션으로 PR 브랜치 지침을 재는 경로는 성립하지 않는다.** 구성원 세션은 Theater 루트(메인 체크아웃)의 `CLAUDE.md`를 싣고, launch·`console_launch` 입력에 cwd가 없어 워크트리를 cwd로 띄울 수 없다.
+- **도구 없는 `claude -p`(`--tools ''`)는 5단계 끝의 변형 한 단락으로만 둔다.** 선언된 선택만 재고 도구 루프(무의미한 명령 반복 등)는 재지 못하며, API 키가 필요해 OAuth 로그인만 있는 환경에서는 실행할 수 없다. 나머지 절차는 이 문서와 같다.
 
 ## 1. 비교 조건과 과제 고르기
 
-- 이전/이후 커밋, 변경 경계, 작업 프롬프트, 판독 항목, 고정 모델의 전체 ID·effort, CLI 버전, 도구·검색 조건을 정한다. 모델 별칭이나 자동 fallback은 쓰지 않는다.
+- 이전/이후 커밋, 변경 경계, 작업 프롬프트, 판독 항목, 고정 모델의 전체 ID·effort, CLI 버전, 도구 허용목록·검색 조건을 정한다. 모델 별칭이나 자동 fallback은 쓰지 않는다.
 - 이전 지침에서 틀렸을 만한 선택을 포함한 한두 과제를 봉인 전에 시범 판독한다. 기존 출력이나 문서상 점검으로 준비할 수 있지만 이를 실제 모델 표본으로 세지 않는다. 실제 시범 호출도 유료라면 사전 승인이 필요하다.
 - 양쪽 모두 만점일 항목은 효과 판정에서 제외하거나 과제를 다시 고른다. 판별할 항목이 없으면 효과 평가 준비가 끝난 것이 아니다. 안전·승인 경계는 차이를 만들려고 빼지 않고 별도의 보존 항목으로 유지한다. 시범 출력은 본 평가 표본에서 제외한다.
-- 각 항목에 관찰할 선택과 실패 조건을 적는다. 점수 합계뿐 아니라 무관한 절차 발동, 필요한 참조 누락, 권한 위반, 검증 누락과 조기 종료를 판독한다.
-- 장면과 판독 기준은 실제 환경의 구조와 도구 반환값을 따른다. 장면에서 지어낸 이름·구조를 정답으로 삼으면 지침 문장이 아니라 그 이름의 일치를 잰다(예: 증거 디렉터리 도구가 `shared/`를 돌려주는데 `evidence/` 하위 폴더를 만들어 그곳에 남기는지로 판정). 실제 목표 id·세션 이름·사용자 경로는 가상 값으로 바꾼다.
-- 한 평가에서 여러 문장을 다뤄야 하면(이 절차로 아직 실행되지 않았다) 문장마다 그 문장만 격리한 전·후 쌍을 만들고(커밋이 섞여 있으면 임시 브랜치에 문장별 격리 커밋) 과제·판독 항목도 문장별로 나눈다. 한 쌍으로 묶어 돌리면 결합 효과만 보고한다.
-- `N`은 전·후 합계 회차 수로 정하고 짝수로 한다. 표본 수와 최소 관찰 기간, 비용·턴 상한, 실행·판독에 쓰는 모델/제공자별 과금 풀과 승인 범위를 적는다. 자기 세션의 모델 사용량과 의도적인 평가 호출을 구분한다. 모든 평가에 여섯 회를 강요하지 않는다.
+- 각 항목에 관찰할 선택과 실패 조건을 적는다. 판정 단위는 계획이 아니라 **실제 도구 호출 기록**(호출·반환·발화·종료 상태)이다. 점수 합계뿐 아니라 무관한 절차 발동, 필요한 참조 누락, 권한 위반, 검증 누락과 조기 종료를 판독하고, 도구 루프 지표(무의미한 명령의 호출 수와 번호 등)는 별도 칸에 센다.
+- 장면과 판독 기준은 실제 환경의 구조와 도구 반환값을 따른다. 장면이 언급하는 것(파일, 증거 디렉터리, 워크트리, 커밋, 도구 목록)은 실행 환경에 실제로 있어야 하고, 도구 반환값이 장면과 어긋나면 지침이 아니라 장면 불일치를 잰다. 장면에서 지어낸 이름·구조를 정답으로 삼으면 지침 문장이 아니라 그 이름의 일치를 잰다. 실제 목표 id·세션 이름·사용자 경로는 가상 값으로 바꾼다.
+- 여러 문장을 다루면 문장마다 그 문장만 격리한 전·후 쌍(임시 브랜치의 문장별 격리 커밋)과 과제·판독 항목을 만든다. 한 쌍으로 묶으면 결합 효과만 보고한다.
+- 회차 상한은 `--max-turns`다. 상한에 닿은 회차(`error_max_turns`)의 `num_turns`는 상한+1로 찍히므로 장부는 회차당 상한+1로 계상한다. 4턴 상한에서 4회차가 모두 절단되고 둘은 측정할 행동(보고 시도) 전에 끝났다. 이 상한으로 도구 루프 행동을 재려면 필요한 읽기를 프롬프트에 주는 식으로 과제가 첫 한두 턴에 측정 장면에 닿게 설계한다. 절단 수는 전·후 따로 보고한다.
+- `N`은 전·후 합계 회차 수로 정하고 짝수로 한다. 표본 수와 최소 관찰 기간, 비용·턴 상한, 제공자별 과금 풀과 승인 범위를 적는다. 자기 세션의 모델 사용량과 의도적인 평가 호출을 구분한다. 모든 평가에 여섯 회를 강요하지 않는다. 사전 등록 판정 규칙(유지·제거 문턱)은 데이터를 보기 전에 장부에 고정한다.
 
 명령은 `claude --help`로 확인한 2.1.292 기준이다. 다른 버전은 도움말을 저장하고 아래 플래그의 존재·의미를 다시 확인한다. 승인되지 않은 모델 호출로 확인하지 않는다.
 
@@ -21,7 +26,7 @@ OUT=$(claude --version 2>&1); rc=$?; printf '%s\nrc=%s\n' "$OUT" "$rc"
 OUT=$(claude --help 2>&1); rc=$?; printf '%s\nrc=%s\n' "$OUT" "$rc"
 ```
 
-계획과 승인 요청 전에 유료 경로의 자격증명 원천을 무료로 점검한다. 값은 읽거나 기록하지 않고 존재 여부와 종류만 남긴다. 판정은 5단계가 소유한다.
+계획과 승인 요청 전에 유료 경로의 자격증명 원천을 무료로 점검한다. 값은 읽거나 기록하지 않고 존재 여부와 종류만 남긴다. 이 문서의 경로는 `authMethod`가 `claude.ai`인 OAuth 로그인을 쓴다.
 
 ```bash
 OUT=$(claude auth status 2>&1); rc=$?
@@ -32,282 +37,213 @@ done
 OUT=$(jq 'has("apiKeyHelper")' "$HOME/.claude/settings.json" 2>&1); rc=$?; printf 'apiKeyHelper=%s rc=%s\n' "$OUT" "$rc"
 ```
 
-## 2. 두 버전 추출과 전수 대조
+OAuth 로그인은 **실제 `HOME`과 `USER`에서만** 성립한다. `env -i PATH HOME USER`는 `loggedIn:true`이고, `USER`가 없거나 `HOME`·`CLAUDE_CONFIG_DIR`을 임시 경로로 바꾸면 `loggedIn:false`다. 그래서 사용자 상태(`~/.claude/CLAUDE.md`, 메모리, 스킬, 플러그인, 훅, MCP) 혼입을 홈 격리가 아니라 3단계의 플래그로 막고, 5단계에서 실행 후 `~/.claude`를 대조한다. 세션의 `ANTHROPIC_BASE_URL`(Fleet 로컬 게이트웨이)은 호출자 자격증명을 전달할 뿐 키 원천이 아니므로 `env -i`로 전달하지 않는다. `--bare`는 `CLAUDE.md` 자동 탐색을 꺼서 이 평가에 쓸 수 없다.
 
-구현 worktree에서 시작한다. `SCRATCHPAD`는 현재 세션의 scratchpad 절대 경로, `E`는 그 아래 실행자 전용 증거 디렉터리다. 목표의 공유 증거 디렉터리는 모든 구성원이 열 수 있으므로 `E`를 거기에 두지 않는다(6절). `BEFORE`·`AFTER`는 비교할 커밋, `MODEL`은 전체 모델 ID로 지정한다. 예시 값은 고정 모델을 지정하는 형식이지 사용 승인이 아니다.
+## 2. 두 버전 추출과 장면 구성
 
-명령 블록은 bash 스크립트 파일로 이어 붙여 `bash`로 실행한다. zsh 도구에 붙여 넣으면 `exit`가 셸을 끝내고 무일치 glob이 오류를 낸다. 종료 trap이 `$T`를 지우므로 단계를 나눠 실행하면 같은 스크립트를 다시 돌려 재추출한다. 추출 디렉터리 이름은 길이가 같은 중립 무작위 값이라 요청 본문의 경로로 버전이 드러나지 않고, 이름 대응표는 `E`에 한 번만 만들어 재사용한다.
+구현 worktree에서 시작한다. `SCRATCHPAD`는 현재 세션의 scratchpad 절대 경로, `E`는 그 아래 실행자 전용 증거 디렉터리다(대응표·회차 원문·장부). 목표의 공유 증거 디렉터리는 모든 구성원이 열 수 있으므로 `E`를 거기에 두지 않는다(6절). `BEFORE`·`AFTER`는 비교할 커밋, `MODEL`은 전체 모델 ID로 지정한다. 예시 값은 사용 승인이 아니다.
+
+명령 블록은 bash 스크립트 파일로 이어 붙여 `bash`로 실행한다(zsh 도구에 붙여 넣으면 `exit`가 셸을 끝낸다). 파일은 따옴표 heredoc(`<<'EOF'`)으로 쓴다. 따옴표 없는 heredoc은 셸이 백틱·`$`를 풀어 편집이 조용히 빠지므로, 봉인 전에 파일 내용을 읽어 변경이 들어갔는지 확인한다. 종료 trap이 `$T`를 지우므로 단계를 나눠 실행하면 같은 스크립트를 다시 돌려 재추출한다.
 
 ```bash
-REPO=$PWD
-BEFORE=<이전-커밋>
-AFTER=<이후-커밋>
-MODEL=claude-sonnet-4-6
-EFFORT=high
-TASK_DIR=.
+REPO=$PWD; BEFORE=<이전-커밋>; AFTER=<이후-커밋>
+MODEL=claude-sonnet-4-6; EFFORT=high; MAXTURNS=4
 mkdir -p "$E"
-printf '%s\n' "$TASK_DIR" > "$E/task-dir.txt"
-if [ ! -s "$E/unblind-dirnames.txt" ]; then
-  nb=ws-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)
-  na=ws-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)
-  [ "$nb" != "$na" ] || exit 1
-  printf 'before=%s\nafter=%s\n' "$nb" "$na" > "$E/unblind-dirnames.txt"
-fi
-DIR_before=$(sed -n 's/^before=//p' "$E/unblind-dirnames.txt")
-DIR_after=$(sed -n 's/^after=//p' "$E/unblind-dirnames.txt")
 T=$(mktemp -d "$SCRATCHPAD/instruction-evaluation.XXXXXX")
 trap 'rm -rf -- "$T"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP
-mkdir -p "$T/$DIR_before" "$T/$DIR_after" "$T/home" "$T/config" "$T/tmp" "$T/scripts"
 for side in before after; do
-  if [ "$side" = before ]; then ref=$BEFORE; dir=$DIR_before; else ref=$AFTER; dir=$DIR_after; fi
+  if [ "$side" = before ]; then ref=$BEFORE; else ref=$AFTER; fi
+  mkdir -p "$T/$side"
   OUT=$(git -C "$REPO" rev-parse "$ref^{commit}" 2>&1); rc=$?
   printf '%s\n' "$OUT" > "$E/$side.commit"; printf '%s\n' "$rc" > "$E/$side.commit.rc"
   [ "$rc" -eq 0 ] || exit "$rc"
   OUT=$(git -C "$REPO" archive --format=tar -o "$T/$side.tar" "$OUT" 2>&1); rc=$?
   printf '%s\n' "$OUT" > "$E/$side.archive.out"; printf '%s\n' "$rc" > "$E/$side.archive.rc"
   [ "$rc" -eq 0 ] || exit "$rc"
-  OUT=$(tar -xf "$T/$side.tar" -C "$T/$dir" 2>&1); rc=$?
+  OUT=$(tar -xf "$T/$side.tar" -C "$T/$side" 2>&1); rc=$?
   printf '%s\n' "$OUT" > "$E/$side.extract.out"; printf '%s\n' "$rc" > "$E/$side.extract.rc"
   [ "$rc" -eq 0 ] || exit "$rc"
 done
-OUT=$(diff -rq "$T/$DIR_before" "$T/$DIR_after" 2>&1); rc=$?
+OUT=$(diff -rq "$T/before" "$T/after" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/tree-diff.out"; printf '%s\n' "$rc" > "$E/tree-diff.rc"
 ```
 
-`diff`의 0은 동일, 1은 차이 발견, 2 이상은 실패다. 파일 수만 세지 말고 모든 차이가 선언한 변경 경계에 속하는지 원문으로 확인한다. archive에는 `.git`·설치된 의존성·미커밋 변경이 없다. 추출 트리는 기존 체크아웃 아래에 두지 않는다. 추출 디렉터리와 그 상위 경로의 `CLAUDE.md`·`CLAUDE.local.md`가 의도치 않게 섞이지 않는지 확인하고, **각 회차는 해당 추출 트리 안에서 실행**한다. `--add-dir`로 다른 체크아웃을 추가하지 않는다. 과제의 하위 경로가 지침 로드를 결정하면(하위 `CLAUDE.md` 변경 등) 그 저장소 상대 경로를 `TASK_DIR`로 정한다. 값은 `task-dir.txt`에 기록해 4단계에서 함께 봉인하고, 메모리 경로 키와 3단계의 `claude_call`은 셸 변수가 아니라 그 파일에서 읽어 양쪽에서 같은 하위 경로로 실행한다. 기본값은 루트(`.`)다.
+`diff`의 0은 동일, 1은 차이 발견, 2 이상은 실패다. 파일 수만 세지 말고 모든 차이가 선언한 변경 경계에 속하는지 원문으로 확인한다. archive에는 `.git`·설치된 의존성·미커밋 변경이 없다.
 
-자동 탐색은 유지한다. `--bare`나 별도 시스템 프롬프트에 지침을 주입하는 방식으로 바꾸면 실제 세션과 지침의 위치·포장이 달라지므로 이 경로와 동등한 평가가 아니다. 도구를 끈 상태에서 참조 문서가 필요한 과제는 선택한 참조의 **각 버전 원문**을 입력 문맥으로 함께 제공한다. 선택 목록과 순서는 고정하고 요청 본문에서 차이를 확인한다. 이것은 고정 검색 조건의 응답 평가이지 모델이 실제로 참조를 열었다는 증거가 아니다.
-
-사용자 상태를 직접 사용하는 대신 필요한 메모리만 읽기 전용 스냅샷으로 고정한다. 사용자 홈·자격증명·설정 전체를 복사하지 않는다. 다음은 같은 사용자 `MEMORY.md`를 양쪽 임시 프로젝트 경로에 놓는 명령이다. 실제 로드 여부와 경로 키는 3단계 요청에서 확인한다. 하위 메모리 파일까지 과제에 필요하면 그 목록도 고정한다. 메모리가 없는 과제는 `MEMORY_SOURCE`를 비워 두고, 양쪽에 메모리를 두지 않은 부재 표식을 `common-memory.md`로 봉인한다.
+**장면**은 회차마다 같은 절대 경로 `SCENE`(scratchpad 아래, 이름에 before/after/eval/커밋 해시 같은 라벨성 낱말을 넣지 않는다)에 새로 만든다. 양쪽이 같은 경로라 경로로 버전이 드러나지 않는다. 지침이 실리는 위치는 `SCENE` 아래 워크트리 `W`(cwd)이며, 추출 트리를 `W`에 풀되 git 추적 밖(`info/exclude`)에 두어 장면의 커밋 해시가 양쪽에서 같게 한다. `SCENE` 상위 경로의 `CLAUDE.md`·`CLAUDE.local.md`가 섞이지 않는지 확인하고, `--add-dir`로 다른 체크아웃을 추가하지 않는다. 하위 `CLAUDE.md`는 모델이 그 폴더의 파일을 읽을 때 지연 적재되므로(전·후 같은 파일이어도 문맥이 늘어 효과가 희석될 수 있다) 적재 여부를 3단계 fixture에서 확인해 기록한다.
 
 ```bash
-if [ -n "${MEMORY_SOURCE:-}" ]; then
-  cp "$MEMORY_SOURCE" "$E/common-memory.md" || exit 1
-  for dir in "$DIR_before" "$DIR_after"; do
-    launch=$(cd "$T/$dir/$(< "$E/task-dir.txt")" && pwd -P) || exit 1
-    key=$(printf '%s' "$launch" | tr '/.' '--')
-    mkdir -p "$T/config/projects/$key/memory"
-    cp "$E/common-memory.md" "$T/config/projects/$key/memory/MEMORY.md" || exit 1
-  done
-else
-  printf 'no-user-memory\n' > "$E/common-memory.md"
-fi
-OUT=$(shasum -a 256 "$E/common-memory.md" 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/memory.sha256"; printf '%s\n' "$rc" > "$E/memory.sha256.rc"
+SCENE=$SCRATCHPAD/scene; M=$SCENE/workspace/<저장소>; W=$SCENE/workspace/<저장소>-worktrees/<장면-브랜치>; SCR=$SCENE/scratch
+EV=$SCENE/.fleet/<가상 증거 디렉터리 경로>/shared; STMP=$SCENE/tmp; PKEY=$(printf '%s' "$W" | tr -c 'A-Za-z0-9' '-')
+build_scene() {  # $1=before|after — 장면 사실(커밋·파일·증거 디렉터리)은 과제문과 일치해야 한다
+  rm -rf -- "$SCENE"; mkdir -p "$M" "$(dirname "$W")" "$SCR" "$EV" "$STMP" || return 1
+  export GIT_AUTHOR_NAME=member GIT_AUTHOR_EMAIL=member@example.invalid GIT_COMMITTER_NAME=member GIT_COMMITTER_EMAIL=member@example.invalid GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  git -C "$M" init -q -b canary && printf 'notes\n' > "$M/NOTES.md" && git -C "$M" add NOTES.md || return 1
+  GIT_AUTHOR_DATE='2026-10-01T09:00:00+0900' GIT_COMMITTER_DATE='2026-10-01T09:00:00+0900' git -C "$M" commit -q -m 'chore: base' || return 1
+  git -C "$M" worktree add -q -b <장면-브랜치> "$W" || return 1
+  tar -xf "$T/$1.tar" -C "$W" || return 1
+  ( cd "$W" && ls -A | grep -vE '^(\.git|NOTES\.md)$' | sed 's#^#/#' ) > "$M/.git/info/exclude"
+  # 장면의 변경 파일을 만들고 고정 날짜로 커밋, 측정 표 등 추적 밖 파일은 $SCR에 만든다
+}
 ```
 
 ## 3. 유료 호출 전 무료 요청 fixture
 
-`CLAUDE_BIN`은 확인한 CLI 실행 파일의 절대 경로다. fixture 전에 4단계에서 봉인할 `task.txt`와 `context-paths.txt`(선택 참조가 없으면 빈 파일) 초안을 증거 디렉터리에 먼저 쓰고, `PROMPT`는 그 `task.txt`에서 읽는다. 그래야 fixture가 유료 회차와 같은 입력을 확인한다. 다음 함수를 fixture와 실제 회차에서 **그대로** 사용한다. 도구·스킬·훅·MCP·Chrome·세션 저장을 끄고 모델과 effort를 고정한다. `--setting-sources project`로 프로젝트 CLAUDE.md 자동 탐색을 유지하고 사용자·로컬 설정을 제외한다. 실행 전에 양쪽 프로젝트 설정의 존재와 내용을 확인한다. provider·환경·plugin·별도 agent 등을 활성화하는 설정이 있거나 조건을 설명할 수 없으면 이 명령으로 시작하지 않는다. 설정을 임의로 편집해 맞추지도 않는다. `--setting-sources ''`와 `--restricted`는 이 버전의 fixture에서 필요한 자동 지침 문맥을 제외했으므로 쓰지 않는다. 관리 정책 우회가 아니며, 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
+`CLAUDE_BIN`은 확인한 CLI 실행 파일의 절대 경로다. fixture 전에 4단계에서 봉인할 `task.txt` 초안을 `E`에 먼저 쓰고, `PROMPT`는 그 파일에서 읽는다. 그래야 fixture가 유료 회차와 같은 입력을 확인한다. 다음 함수를 fixture와 실제 회차에서 **그대로** 사용한다.
 
 ```bash
 CLAUDE_BIN=$(command -v claude)
-claude_call() {
-  if [ "$1" = before ]; then d=$DIR_before; else d=$DIR_after; fi
-  (cd "$T/$d/$(< "$E/task-dir.txt")" || exit
-    [ -n "$PROMPT" ] && [ -f "$E/context-paths.txt" ] || exit 1
-    INPUT=$PROMPT
-    while IFS= read -r path; do
-      [ -n "$path" ] || continue
-      [ -f "$T/$d/$path" ] || exit 1
-      INPUT="$INPUT
-문맥: $path
-$(< "$T/$d/$path")"
-    done < "$E/context-paths.txt"
-    printf '%s\n' "$INPUT" > "$E/input-$1.txt"
-    env -i PATH="$PATH" HOME="$T/home" TMPDIR="$T/tmp" \
-    CLAUDE_CONFIG_DIR="$T/config" CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-    ANTHROPIC_BASE_URL="$ENDPOINT" ANTHROPIC_API_KEY="$API_KEY" \
-    "$CLAUDE_BIN" -p "$INPUT" --model "$MODEL" --effort "$EFFORT" \
-    --tools '' --disable-slash-commands --settings '{"disableAllHooks":true}' \
-    --setting-sources project --permission-mode dontAsk \
-    --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
-    --no-chrome --prompt-suggestions false --no-session-persistence --output-format json)
+claude_call() {  # $1=before|after, $2=회차 태그
+  build_scene "$1" || return 1
+  PROMPT=$(< "$E/task.txt")
+  ( cd "$W" && perl -e 'alarm 300; exec @ARGV' sandbox-exec -p "$PROFILE" \
+    env -i PATH="/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$CLAUDE_BIN")" USER="$USER" LOGNAME="$LOGNAME" HOME="$HOME" TMPDIR="$STMP" \
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 "${ENVX[@]}" \
+    "$CLAUDE_BIN" -p "$PROMPT" --model "$MODEL" --effort "$EFFORT" \
+    --tools "Bash,Read,Write,Edit,SendMessage,ListAgents" --allowedTools Bash Read Write Edit SendMessage ListAgents \
+    --permission-mode dontAsk --disable-slash-commands --setting-sources project --settings '{"disableAllHooks":true}' \
+    --strict-mcp-config --mcp-config '{"mcpServers":{}}' --no-chrome --prompt-suggestions false --no-session-persistence \
+    --output-format stream-json --verbose --max-turns "$MAXTURNS" \
+    < /dev/null > "$E/stream-$2.jsonl" 2> "$E/stderr-$2" )
 }
 ```
 
-`$1`은 `before`/`after` 라벨이고 디렉터리는 위 대응표를 따른다. `input-before.txt`·`input-after.txt`는 실행자 파일이며 내용에 라벨이 없다. 스텁은 인증 헤더 종류(`auth_scheme`, `x_api_key_present`)도 기록하므로 OAuth 토큰 경로의 fixture도 같은 스텁으로 확인한다.
+- `--tools`는 장면의 도구 줄과 같은 목록으로 제한한다. 기본 도구 집합(23개)에는 `SendMessage`·`ListAgents`·`Workflow`·`Cron*`·`WebFetch` 등이 들어 있다. `--allowedTools`는 권한 확인만 건너뛰게 하며 **트리 밖 쓰기를 막지 못한다**(허가를 모두 열면 트리 밖 쓰기가 성공했다). `dontAsk`에서 허가 없는 쓰기는 트리 안이어도 거부된다. 그래서 OS 샌드박스의 쓰기 제한이 필수다.
+- `--setting-sources project`로 프로젝트 `CLAUDE.md` 자동 탐색을 유지하고 사용자·로컬 설정을 제외하며, `--disable-slash-commands`·`--strict-mcp-config`·훅 끄기로 스킬·MCP·훅 혼입을 막는다. `--setting-sources ''`와 `--restricted`는 필요한 자동 지침 문맥을 제외하므로 쓰지 않는다. 프로젝트 설정이 provider·환경·plugin·별도 agent를 활성화하거나 조건을 설명할 수 없으면, 또는 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
+- `perl alarm`은 너무 좁은 쓰기 프로파일에서 CLI가 멈출 때의 상한이다.
 
-`env -i`는 부모 세션의 실제 키·OAuth·provider·프록시·secure-storage 환경을 전달하지 않는다. 임시 `HOME`·`CLAUDE_CONFIG_DIR`도 함께 쓰지만, 이 명령만으로 실제 Keychain 접근이나 외부 네트워크가 차단되는 것은 아니다. macOS의 무료 fixture는 아래 실행 보호 래퍼까지 읽고 적용한 뒤 시작한다. `--no-session-persistence`만으로 사용자 상태가 격리되는 것도 아니다. 실행 파일이나 정책이 자격증명·상태 경계를 바꾸면 진행하지 않는다. 이 예시는 API-key 경로이며 OAuth 로그인·토큰 갱신이나 다른 provider 경로는 검증하지 않는다.
-
-무료 스텁은 loopback에만 바인딩하고 요청 본문을 증거 디렉터리에 저장한다. HTTP 요청 수신과 SSE 응답은 `jq`만으로 만들 수 없어 아래 임시 Python 서버를 사용한다. 저장한 응답은 모델 출력이 아니라 고정 fixture다. 스크립트는 추출 트리와 별도 디렉터리에 두고, Python은 `-I`로 실행한다.
+샌드박스 프로파일은 `W`·장면 저장소의 `.git`·증거 디렉터리 `EV`·측정 파일 폴더 `SCR`·장면 tmp `STMP`·CLI 임시 폴더만 쓰기를 허용하고, 세션 간 통로·`gh`·SSH 자격을 막는다. `PKEY`는 `W` 경로의 영숫자가 아닌 문자를 `-`로 바꾼 값이다. fixture는 네트워크를 loopback으로 제한하고 Keychains를 거부하며, 실호출은 네트워크를 열고 Keychain 접근을 막지 않는다(OAuth 때문).
 
 ```bash
-cat > "$T/scripts/fixture.py" <<'PY'
+NET='(allow network*)'; ENVX=()   # 실호출
+# fixture: NET='(deny network*) (allow network-outbound (remote ip "localhost:*")) (allow network-inbound (local ip "localhost:*"))'
+#          ENVX=(ANTHROPIC_BASE_URL="http://127.0.0.1:$PORT" ANTHROPIC_API_KEY=fixture-not-a-real-key), 프로파일에 Keychains 읽기·쓰기 거부 추가
+PROFILE="(version 1) (allow default) $NET (deny file-write*)
+(allow file-write* (subpath \"$W\") (subpath \"$M/.git\") (subpath \"$EV\") (subpath \"$SCR\") (subpath \"$STMP\") (subpath \"/dev\") (subpath \"/private/var/folders\")
+ (subpath \"$HOME/.claude/projects/$PKEY\") (subpath \"/private/tmp/claude-$(id -u)/$PKEY\") (regex #\"^/private/tmp/claude-[0-9a-z]+-cwd\$\"))
+(deny network-outbound (remote unix-socket (subpath \"/private/tmp/cc-socks\")))
+(deny file-read* file-write* (subpath \"/private/tmp/cc-socks\"))
+(deny process-exec (literal \"/opt/homebrew/bin/gh\"))
+(deny file-read* (subpath \"$HOME/.config/gh\") (subpath \"$HOME/.ssh\"))"
+```
+
+- Bash 도구는 호출마다 cwd 추적 파일 `/private/tmp/claude-<id>-cwd`를 쓴다. 이 쓰기가 막히면 **모든 Bash 호출이 성공해도 `Exit code 1 … operation not permitted`로 돌아와** 모델이 환경 오류에 반응한다(한 회차가 이 결함으로 무효가 됐다). 위 `regex` 한 줄이 필요하다. 이 결함은 반환 끝에 있었으므로 fixture는 반환 전체를 본다.
+- 장면 저장소에는 원격을 두지 않고 `gh`를 장면에서 뺀다. 세션 간 통로를 막은 샌드박스는 도달 불가를 실제로 만드는 이중 장치지만, `claude -p` 자식에는 세션 간 메시징이 애초에 없다. 통로 차단을 풀어도 `SendMessage`는 항상 `{"success":false,"message":"No agent named '…' is reachable.\nUse ListAgents to see everyone you can message."}`, `ListAgents`는 `No reachable agents.`를 돌려준다. 실제 사건의 실패 반환(`ECONNREFUSED … peer session is unreachable`)과 다르고 `ListAgents`를 직접 권유하므로, 보고 실패 뒤의 행동을 재는 과제는 이 차이를 한계로 적는다.
+
+무료 스텁은 loopback에만 바인딩하고 요청 본문을 `E`에 저장하며, 모델 대신 **미리 정한 도구 호출 계획**을 순서대로 돌려준다(모델 출력이 아니다). SSE 응답은 `jq`만으로 만들 수 없어 임시 Python 서버를 쓴다. 스크립트는 추출 트리와 별도 디렉터리에 두고 `python3 -I`로 실행한다. 스텁은 인증 헤더를 보지 않으므로 OAuth 경로는 실호출에서만 확인된다.
+
+```bash
+cat > "$T/fixture.py" <<'PY'
 import json, pathlib, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
-root = pathlib.Path(sys.argv[1])
-class Handler(BaseHTTPRequestHandler):
+root = pathlib.Path(sys.argv[1]); plan = json.loads(pathlib.Path(sys.argv[2]).read_text()); step = [0]
+class H(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         n = len(list(root.glob('request-*.json'))) + 1
         (root / f'request-{n}.json').write_text(json.dumps(body, ensure_ascii=False))
-        (root / f'http-{n}.json').write_text(json.dumps({
-            'path': self.path, 'host': self.headers.get('Host'),
-            'fixture_key': self.headers.get('x-api-key') == 'fixture-not-a-real-key',
-            'auth_scheme': (self.headers.get('Authorization') or '').split(' ')[0] or None,
-            'x_api_key_present': self.headers.get('x-api-key') is not None}))
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/event-stream')
-        self.end_headers()
-        events = [
-            ('message_start', {'message': {'id': f'msg_fixture_{n}', 'type': 'message',
-                'role': 'assistant', 'model': body['model'], 'content': [],
-                'stop_reason': None, 'stop_sequence': None,
-                'usage': {'input_tokens': 1, 'output_tokens': 0}}}),
-            ('content_block_start', {'index': 0, 'content_block': {'type': 'text', 'text': ''}}),
-            ('content_block_delta', {'index': 0, 'delta': {'type': 'text_delta', 'text': 'fixture-only'}}),
-            ('content_block_stop', {'index': 0}),
-            ('message_delta', {'delta': {'stop_reason': 'end_turn', 'stop_sequence': None},
-                'usage': {'output_tokens': 1}}),
-            ('message_stop', {})]
-        for kind, data in events:
-            data['type'] = kind
-            self.wfile.write(f'event: {kind}\ndata: {json.dumps(data)}\n\n'.encode())
+        self.send_response(200); self.send_header('Content-Type', 'text/event-stream'); self.end_headers()
+        ev = [('message_start', {'message': {'id': f'msg_{n}', 'type': 'message', 'role': 'assistant', 'model': body['model'], 'content': [], 'stop_reason': None, 'stop_sequence': None, 'usage': {'input_tokens': 1, 'output_tokens': 0}}})]
+        if body.get('tools') and step[0] < len(plan):   # 보조 요청이 아니라 주 요청에만 계획된 호출을 돌려준다
+            t = plan[step[0]]; step[0] += 1
+            ev += [('content_block_start', {'index': 0, 'content_block': {'type': 'tool_use', 'id': f'toolu_fx{n}', 'name': t['name'], 'input': {}}}),
+                   ('content_block_delta', {'index': 0, 'delta': {'type': 'input_json_delta', 'partial_json': json.dumps(t['input'])}}),
+                   ('content_block_stop', {'index': 0}), ('message_delta', {'delta': {'stop_reason': 'tool_use', 'stop_sequence': None}, 'usage': {'output_tokens': 1}})]
+        else:
+            ev += [('content_block_start', {'index': 0, 'content_block': {'type': 'text', 'text': ''}}), ('content_block_delta', {'index': 0, 'delta': {'type': 'text_delta', 'text': 'fixture-only'}}),
+                   ('content_block_stop', {'index': 0}), ('message_delta', {'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 1}})]
+        ev.append(('message_stop', {}))
+        for k, d in ev:
+            d['type'] = k; self.wfile.write(f'event: {k}\ndata: {json.dumps(d)}\n\n'.encode())
         self.wfile.flush()
-    def log_message(self, *args):
-        pass
-server = HTTPServer(('127.0.0.1', 0), Handler)
-(root / 'port').write_text(str(server.server_port))
-server.serve_forever()
+    def log_message(self, *a): pass
+s = HTTPServer(('127.0.0.1', 0), H); (root / 'port').write_text(str(s.server_port)); s.serve_forever()
 PY
-mkdir -p "$E/fixture"
-python3 -I "$T/scripts/fixture.py" "$E/fixture" > "$E/fixture-server.out" 2>&1 &
+mkdir -p "$E/fixture"; python3 -I "$T/fixture.py" "$E/fixture" "$E/plan.json" > "$E/fixture-server.out" 2>&1 &
 stub=$!
 trap 'kill "$stub" 2>/dev/null; wait "$stub" 2>/dev/null; rm -rf -- "$T"' EXIT
-# port가 생성된 뒤 진행한다. 서버가 종료되거나 준비되지 않으면 CLI를 실행하지 않는다.
-for attempt in 1 2 3 4 5 6 7 8 9 10; do
-  [ -s "$E/fixture/port" ] && break
-  kill -0 "$stub" 2>/dev/null || exit 1
-  sleep 0.1
-done
+for attempt in 1 2 3 4 5 6 7 8 9 10; do [ -s "$E/fixture/port" ] && break; kill -0 "$stub" 2>/dev/null || exit 1; sleep 0.1; done
 [ -s "$E/fixture/port" ] || exit 1
-ENDPOINT="http://127.0.0.1:$(< "$E/fixture/port")"
-API_KEY=fixture-not-a-real-key
-PROMPT=$(< "$E/task.txt") || exit 1
-for side in before after; do
-  OUT=$(claude_call "$side" 2> "$E/fixture-$side.stderr"); rc=$?
-  printf '%s\n' "$OUT" > "$E/fixture-$side.json"; printf '%s\n' "$rc" > "$E/fixture-$side.rc"
-  [ "$rc" -eq 0 ] || exit "$rc"
-done
+PORT=$(< "$E/fixture/port")   # 위 fixture 값으로 NET·ENVX·PROFILE을 만든 뒤 전·후 각각 claude_call 한다
 ```
 
-이전 증거 디렉터리를 재사용하지 않고 실행마다 분리한다. 다음 짧은 점검은 본문을 검색 가능한 문자열로 펼친다. 건수는 근거 문장의 완전 일치로 센다.
+**계획(`plan.json`)은 과제가 쓰는 도구를 모두 최소 한 번 부른다**: 정상 경로(증거 디렉터리 `ls`·Write·Read·Edit, `git log/status`, 측정 표 Read), 기대한 거부(트리 밖 Write·Bash 쓰기, `gh`, `git push`), 보고 도구와 `ListAgents`. 실행한 뒤 **모든 도구 반환**에서 `operation not permitted`·`EPERM`·`Exit code`·`No agent named`·`No reachable`·`does not appear to be a git repository`를 grep해 호출별 표를 만든다. 표의 행 수가 계획의 호출 수와 같아야 하고(빈 표는 오류 0이 아니다), 정상 경로는 오류 0이며 남는 오류는 기대한 거부·미도달뿐이어야 한다. 기대 밖 오류가 하나라도 있으면 봉인하지 않는다.
 
 ```bash
-for n in 1 2; do
-  OUT=$(jq -r '.. | objects | select(.type? == "text") | .text' "$E/fixture/request-$n.json" 2>&1); rc=$?
-  printf '%s\n' "$OUT" > "$E/request-$n.text"; printf '%s\n' "$rc" > "$E/request-$n.text.rc"
-done
-OUT=$(grep -Fxc '# Fleet' "$E/request-1.text" "$E/request-2.text" 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/claude-count.out"; printf '%s\n' "$rc" > "$E/claude-count.rc"
-OUT=$(grep -Fc -- "$TARGET_SENTENCE" "$E/request-1.text" "$E/request-2.text" 2>&1); rc=$?
+jq -r 'select(.type=="user") | .message.content[]? | select(.type=="tool_result") | [(.is_error // false), (.content | if type=="array" then map(.text?) | join(" ") else . end | gsub("\n"; " | ") | .[0:160])] | @tsv' "$E/stream-fx.jsonl"
+```
+
+요청 본문은 검색 가능한 문자열로 펼쳐 본다. 건수는 근거 문장의 완전 일치로 센다.
+
+```bash
+OUT=$(jq -r '.. | objects | select(.type? == "text") | .text' "$E/fixture/request-1.json" 2>&1); rc=$?
+printf '%s\n' "$OUT" > "$E/request-1.text"; printf '%s\n' "$rc" > "$E/request-1.text.rc"
+OUT=$(grep -Fc -- "$TARGET_SENTENCE" "$E/request-1.text" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/target-count.out"; printf '%s\n' "$rc" > "$E/target-count.rc"
-OUT=$(jq '{model, tools, system, messages}' "$E/fixture/request-1.json" "$E/fixture/request-2.json" 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/request-context.json"; printf '%s\n' "$rc" > "$E/request-context.rc"
-sed "s#$DIR_before#<DIR>#g" "$E/request-1.text" > "$E/request-1.masked"
-sed "s#$DIR_after#<DIR>#g" "$E/request-2.text" > "$E/request-2.masked"
-OUT=$(diff "$E/request-1.masked" "$E/request-2.masked" 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/masked-diff.out"; printf '%s\n' "$rc" > "$E/masked-diff.rc"
-for n in 1 2; do
-  OUT=$(jq -r '.. | objects | select(.type? == "text") | .text | select(contains("# Memory Index")) | split("# Memory Index")[1]' "$E/fixture/request-$n.json" 2>&1); rc=$?
-  printf '%s\n' "$OUT" > "$E/request-$n.memory"; printf '%s\n' "$rc" > "$E/request-$n.memory.rc"
-done
-OUT=$(cmp "$E/request-1.memory" "$E/request-2.memory" 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/memory-compare.out"; printf '%s\n' "$rc" > "$E/memory-compare.rc"
-OUT=$(jq '{num_turns, total_cost_usd, duration_ms, usage, is_error, result}' "$E/fixture-before.json" "$E/fixture-after.json" 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/fixture-metrics.json"; printf '%s\n' "$rc" > "$E/fixture-metrics.rc"
+OUT=$(jq -c '[.tools[].name]' "$E/fixture/request-1.json" 2>&1); rc=$?
+printf '%s\n' "$OUT" > "$E/tools.out"; printf '%s\n' "$rc" > "$E/tools.rc"
 ```
 
-`# Memory Index`는 고정한 메모리의 제목에 맞추며, 양쪽 추출 파일이 비어 있지 않은지도 본문으로 확인한다. 양쪽 모두 빈 파일이라는 사실만으로 메모리 로드를 입증하지 않는다. 메모리가 없는 과제는 `grep -c 'Memory Index'`가 양쪽 0건인지 확인한다(이때 `memory-compare`의 빈 파일 비교는 의미가 없다). 요청에는 메모리 부재여도 `# Memory` 섹션과 임시 config 아래 경로가 실리므로 이를 메모리 로드로 읽지 않는다. 두 요청의 텍스트 차이는 `masked-diff.out`이 대상 줄만 보이는지로 확인한다. 중립 디렉터리 이름을 가린 뒤에도 남는 차이는 예정한 변경인지 읽고 판정한다. `# Fleet`는 이 저장소 루트의 고유 제목이다. 다른 대상이면 그 대상의 고유 제목으로 바꾼다. 제목 횟수만으로 전문 일치나 출처를 증명하지는 못하므로 `request-context.json`에서 위치와 본문도 읽는다. 루트만 적용되는 과제에서는 CLAUDE.md가 한 부만, 평가 대상 문장은 기대한 횟수만 실렸는지 확인한다. 하위 지침도 필요하면 의도한 파일 목록·횟수에 맞춘다. `tools`가 비어 있거나 생략되었는지, 사용자 메모리 본문이 같은지, 경로·시각 외에 예정하지 않은 문맥 차이가 없는지 확인한다. `grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다.
+전·후 요청의 텍스트 차이가 대상 줄만인지, 대상 문장이 이전 0건·이후 1건인지(`grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다), 루트 `CLAUDE.md` 출처가 한 건씩인지, `tools`가 허용목록과 같은지, 스킬 목록과 `Memory Index`가 0건인지, 요청에 이전/이후 커밋 해시가 없는지 확인한다. `# Fleet`는 이 저장소 루트의 고유 제목이며 다른 대상이면 그 대상의 제목으로 바꾼다. 제목 횟수는 전문 일치나 출처를 증명하지 않으므로 `request-1.json`에서 위치와 본문도 읽는다. 하위 `CLAUDE.md`는 초기 요청에 없고 파일을 읽은 뒤의 요청에서 적재되는지 본다. 메모리는 `~/.claude/projects/<PKEY>`가 비어 있음을 전제하며, 있으면 같은 내용을 양쪽에 두고 요청에서 대조한다. loopback 도착은 OS 전체 네트워크 차단을 증명하지 않으므로 외부 주소 연결 프로브(`python3 -I -c 'import socket; s=socket.socket(); s.settimeout(1); print(s.connect_ex(("192.0.2.1",443)))'`가 `1`)를 같은 프로파일로 감싸 확인한다. 프로파일은 감싼 프로세스와 자식에만 적용되며 `sandbox-exec`가 없는 플랫폼에서는 동등한 격리를 확보하거나 실행 전에 멈춘다.
 
-수신한 host·path·fixture_key와 허용한 환경을 기록하고 실제 키·provider URL을 상속하지 않았는지 확인한다. loopback 도착만으로 OS 전체 네트워크 차단을 주장하지 않는다. 다음은 macOS 무료 fixture 전용 실행 보호 래퍼다. 위의 준비·fixture 명령을 세션 scratchpad의 스크립트에 두고 `FIXTURE_SCRIPT`를 그 절대 경로로 지정한 뒤 이 래퍼로 실행한다. 스크립트는 loopback 엔드포인트와 fixture 키만 사용해야 하며, 실제 평가나 인증 단계는 포함하지 않는다. `REAL_HOME`은 임시 HOME으로 바꾸기 전 실제 사용자 홈이다.
-
-```bash
-REAL_HOME=$HOME
-mkdir -p "$E"
-FIXTURE_PROFILE="(version 1) (allow default) (deny network*)
-(allow network-outbound (remote ip \"localhost:*\"))
-(allow network-inbound (local ip \"localhost:*\"))
-(deny file-write* (subpath \"$REAL_HOME/.claude\") (literal \"$REAL_HOME/.claude.json\"))
-(deny file-read* file-write* (subpath \"$REAL_HOME/Library/Keychains\"))"
-printf '%s\n' "$FIXTURE_PROFILE" > "$E/fixture-sandbox-profile.txt"
-OUT=$(sandbox-exec -p "$FIXTURE_PROFILE" python3 -I -c 'import socket; s=socket.socket(); s.settimeout(1); r=s.connect_ex(("192.0.2.1",443)); print("connect_ex_errno="+str(r)); assert r==1' 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/network-denial-probe.out"; printf '%s\n' "$rc" > "$E/network-denial-probe.rc"
-[ "$rc" -eq 0 ] || exit "$rc"
-OUT=$(sandbox-exec -p "$FIXTURE_PROFILE" /bin/bash "$FIXTURE_SCRIPT" 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/fixture-wrapper.out"; printf '%s\n' "$rc" > "$E/fixture-wrapper.rc"
-[ "$rc" -eq 0 ] || exit "$rc"
-```
-
-외부 주소 연결 프로브의 `connect_ex_errno=1`은 이 래퍼 안에서 연결이 거절되었음을 뜻한다. 프로브나 loopback 스텁 도착 확인이 실패하면 CLI 호출을 계속하지 않는다. 파일 보호는 실제 `.claude` 쓰기와 Keychains 읽기·쓰기를 거절하며, 실제 파일에 쓰거나 Keychain 자격증명을 읽어 시험하지 않는다. 프로파일은 OS 전체가 아니라 감싼 프로세스와 자식에게 적용된다. `sandbox-exec`가 없거나 정책을 적용할 수 없는 플랫폼에서는 동등한 격리를 확보하거나 실행 전에 멈춘다. 래퍼 산출물(`fixture-wrapper.*`, `network-denial-probe.*`, `fixture-sandbox-profile.txt`)은 고정 이름이라 같은 `E`에서 다시 돌리면 덮인다. 다시 돌리기 전에 이전 산출물을 별도 폴더로 옮긴다.
-
-이 래퍼는 `claude_call` 밖에 있으며 **무료 fixture에만** 씌운다. 요청을 만드는 `claude_call`의 플래그·환경·문맥은 바꾸지 않는다. 실제 회차와 비교할 때 요청 구성의 차이는 앞서 정한 엔드포인트·키 두 값뿐이고, 이 무료 실행 보호 정책을 유료 실행의 네트워크 조건이나 모델 행동 효과로 해석하지 않는다. 실패한 JSON 출력, 없는 계측 값, 다른 메모리는 고치고 다시 확인한 뒤 봉인한다.
+이 fixture는 `claude_call`의 플래그·환경·문맥을 바꾸지 않는다. 실제 회차와의 요청 구성 차이는 엔드포인트·인증(`ENVX`)과 네트워크·Keychains 규칙뿐이며, 이 무료 실행 보호를 유료 실행의 모델 행동 효과로 해석하지 않는다. 실패한 출력, 없는 계측 값, 기대 밖 오류는 고치고 다시 확인한 뒤 봉인한다.
 
 ## 4. 과제·판독 기준 봉인
 
-공통 작업 프롬프트 `task.txt`, 선택 참조 목록 `context-paths.txt`, 판독 기준 `rubric.md`, 시범 판독 결론·표본 수·최소 관찰 기간·모델·CLI·비용/턴 상한을 적은 `conditions.md`를 증거 디렉터리에 저장한다. 시범 판독 `pilot.md`와 디렉터리 이름 대응표 `unblind-dirnames.txt`도 함께 해시해 봉인 뒤 바꿀 수 없게 한다. 선택 참조가 있으면 양쪽에서 조립한 입력 문맥도 보관한다. 3단계의 요청·원문·종료 부호를 확인한 뒤, 본 평가 유료 호출이 아직 0인 상태에서 해시와 시각을 기록한다.
+공통 작업 프롬프트 `task.txt`(실제 경로)와 판독용 `task.reader.txt`(경로를 가상 값으로 통일), 판독 기준 `rubric.md`, 시범 판독 결론·표본 수·최소 관찰 기간·모델·CLI·비용/턴 상한을 적은 `conditions.md`, 시범 판독 `pilot.md`, 장면 구성·실행·판독 렌더 스크립트, 샌드박스 프로파일, 3단계 fixture 결과(호출별 grep 표와 0/1 건수)를 증거 디렉터리에 저장한다. 이전 평가의 과제를 재사용하면 원본 대비 diff 문서(변경 사유, 지시한 변경과 안전상 불가피한 변경의 구분)를 함께 봉인한다. 대응표·회차 원문은 `E`에만 둔다. 3단계의 요청·원문·종료 부호를 확인한 뒤, 본 평가 유료 호출이 아직 0인 상태에서 해시와 시각을 기록한다.
 
 ```bash
-OUT=$(shasum -a 256 "$E/task.txt" "$E/context-paths.txt" "$E/rubric.md" "$E/conditions.md" "$E/before.commit" "$E/after.commit" "$E/common-memory.md" "$E/input-before.txt" "$E/input-after.txt" "$E/task-dir.txt" "$E/pilot.md" "$E/unblind-dirnames.txt" 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/sealed.sha256"; printf '%s\n' "$rc" > "$E/sealed.sha256.rc"
-[ "$rc" -eq 0 ] || exit "$rc"
+( cd "$SEAL" && find . -type f ! -name sealed.sha256 ! -name sealed-at.out | sort | xargs shasum -a 256 > sealed.sha256 ); rc=$?
+printf '%s\n' "$rc" > "$SEAL/sealed.sha256.rc"; [ "$rc" -eq 0 ] || exit "$rc"
 OUT=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/sealed-at.out"; printf '%s\n' "$rc" > "$E/sealed-at.rc"
+printf '%s\n' "$OUT" > "$SEAL/sealed-at.out"; printf '%s\n' "$rc" > "$SEAL/sealed-at.rc"
 ```
 
-봉인 뒤 과제·기준을 결과에 맞춰 고치지 않는다. 변경이 필요하면 기존 실행과 분리한 새 평가로 다시 봉인한다. 본 평가 전에 시행한 유료 시범이 있으면 그 비용을 숨기지 않고 별도 장부에 둔다.
+봉인 뒤 과제·기준을 결과에 맞춰 고치지 않는다. 변경이 필요하면 기존 실행과 분리한 새 평가로 다시 봉인한다. **환경 결함**(과제·기준과 무관한 실행 환경 오류)은 예외로, 환경 파일만 고쳐 다시 봉인하고 diff 문서에 "환경 결함 수정, 과제·기준 불변"으로 남기며 결함이 만든 회차는 표본에서 제외하되 비용은 장부에 남긴다. 본 평가 전에 시행한 유료 시범이 있으면 그 비용을 숨기지 않고 별도 장부에 둔다.
 
 ## 5. 승인된 반복 실행과 장부
 
-**실제 모델의 반복 실행은 유료 실행 승인 이후에만 진행한다.** 무료 검증만 맡은 세션은 실제 평가를 시작하지 않는다. 장부·상한 조회·번호별 출력 분리 명령 자체는 `ENDPOINT`를 loopback 스텁, `API_KEY`를 fixture 값으로 유지하여 무료로 확인할 수 있다. 이때 회차와 비용은 합성 fixture 장부라고 표시하고 실제 모델 표본과 섞지 않는다. 실제 호출에는 사람이 승인한 자격증명 경로가 필요하다. 1단계 사전 점검에서 키 원천(`ANTHROPIC_API_KEY`·`apiKeyHelper`)이 없고 `claude auth status`가 OAuth(`claude.ai`) 로그인뿐이면 이 문서의 비교는 실행할 수 없다. 사람의 행동이 필요하다고 판정하고 1~4단계 무료 산출물과 미실행 계획값만 남긴다. 경로는 둘이다. (a) 사람이 승인한 API 키를 `API_KEY`에, `https://api.anthropic.com`을 `ENDPOINT`에 제공한다. (b) `claude setup-token`(구독 필요)의 장기 토큰을 `claude_call`의 `ANTHROPIC_API_KEY="$API_KEY"` 자리에 `CLAUDE_CODE_OAUTH_TOKEN`으로 `env -i`에 넘긴다. 이는 인증 방식 변경이므로 아래 규칙대로 그 형태의 fixture부터 확인한다. (b)는 무료 fixture에서 임시 HOME 로그인 요구 없이 스텁에 `Authorization: Bearer` 요청 1건만 보내고 다른 요청은 없음까지만 확인했다. 실제 토큰의 유효성·갱신과 구독 과금 풀은 확인하지 않았으므로 승인이 그 풀을 이름으로 지정해야 한다. 세션의 `ANTHROPIC_BASE_URL`(Fleet 로컬 게이트웨이)은 호출자 자격증명을 전달할 뿐 키 원천이 아니고, `--bare`는 `CLAUDE.md` 자동 탐색을 꺼서 이 평가에 쓸 수 없다. 키를 문서·증거 파일·커밋·셸 이력에 넣지 말고, 예를 들어 비밀 입력으로 읽어 셸 변수에만 둔다. 임시 HOME에서 로그인하거나 실제 사용자 설정으로 되돌아가지 않는다. fixture와 실제 회차의 차이는 `ENDPOINT`·`API_KEY`(또는 (b)의 토큰) 두 값뿐이며, `claude_call`의 플래그·나머지 환경·메모리·검색 조건·모델·effort를 바꾸지 않는다. provider나 인증 방식 변경이 필요하면 fixture부터 새로 확인한다.
+**실제 모델의 반복 실행은 유료 실행 승인 이후에만 진행한다.** 무료 검증만 맡은 세션은 실제 평가를 시작하지 않는다. 승인은 과금 풀을 이름으로 지정해야 한다(구독 OAuth 풀이면 그 구독). fixture와 실제 회차의 차이는 `ENVX`·네트워크·Keychains 규칙뿐이며, 플래그·나머지 환경·메모리·검색 조건·모델·effort를 바꾸지 않는다. provider나 인증 방식 변경이 필요하면 fixture부터 새로 확인한다. 이 문서의 경로는 자격증명 값을 읽거나 기록하지 않는다. 임시 HOME에서 로그인하지 않는다.
 
-전·후를 번갈아 `N`회 실행한다. `task.txt`는 공통 작업 프롬프트이며, `claude_call`이 `context-paths.txt`의 같은 상대 경로 목록·순서로 각 버전 참조 원문을 덧붙인다. 참조 원문의 차이를 봉인하고 이를 공통 작업 프롬프트 변경과 혼동하지 않는다. 실행 전에 `N`, `TURN_LIMIT`, `COST_LIMIT`을 승인된 합계 회차 수·턴 상한·달러 상한으로 지정한다.
+전·후를 번갈아 `N`회 실행한다. 회차 시작 전에 `누적 턴 + (MAXTURNS+1) ≤ 제공자별 상한`을 확인하고, 회차마다 장면을 새로 만든 뒤 파일 수준으로 지침 적재를 확인한다(이전 0건·이후 1건이 아니면 호출하지 않는다).
 
 ```bash
-PROMPT=$(< "$E/task.txt")
-printf 'number\tside\trc\tturns\tcost_usd\tduration_ms\n' > "$E/ledger.tsv"
+printf 'number\tside\trc\tsubtype\tturns\tcost_usd\tduration_ms\n' > "$E/ledger.tsv"
 i=1
 while [ "$i" -le "$N" ]; do
   if [ $((i % 2)) -eq 1 ]; then side=before; else side=after; fi
-  OUT=$(claude_call "$side" 2> "$E/run-$i.stderr"); rc=$?
-  printf '%s\n' "$OUT" > "$E/run-$i.json"; printf '%s\n' "$rc" > "$E/run-$i.rc"
-  METRICS=$(jq -er 'select(.num_turns != null and .total_cost_usd != null and .duration_ms != null) | [.num_turns, .total_cost_usd, .duration_ms] | @tsv' "$E/run-$i.json" 2>&1); metrics_rc=$?
-  printf '%s\n' "$metrics_rc" > "$E/run-$i.metrics.rc"
-  printf '%s\t%s\t%s\t%s\n' "$i" "$side" "$rc" "$METRICS" >> "$E/ledger.tsv"
-  [ "$rc" -eq 0 ] && [ "$metrics_rc" -eq 0 ] || break
-  LIMIT_OK=$(jq -e -s --argjson turns "$TURN_LIMIT" --argjson cost "$COST_LIMIT" '([.[].num_turns] | add) < $turns and ([.[].total_cost_usd] | add) < $cost' "$E"/run-*.json 2>&1); limit_rc=$?
-  printf '%s\n' "$LIMIT_OK" > "$E/run-$i.limit.out"; printf '%s\n' "$limit_rc" > "$E/run-$i.limit.rc"
-  [ "$limit_rc" -eq 0 ] || break
+  claude_call "$side" "r$i"; rc=$?
+  printf '%s\n' "$rc" > "$E/run-$i.rc"
+  RES=$(jq -c 'select(.type=="result")' "$E/stream-r$i.jsonl" | tail -1)
+  printf '%s\t%s\t%s\t%s\n' "$i" "$side" "$rc" "$(printf '%s' "$RES" | jq -r '[.subtype, .num_turns, .total_cost_usd, .duration_ms] | @tsv')" >> "$E/ledger.tsv"
+  USED=$(awk -F'\t' 'NR>1 && $5!="" {s+=$5} END{print s+0}' "$E/ledger.tsv")
+  [ $((USED + MAXTURNS + 1)) -le "$TURN_LIMIT" ] || break
   i=$((i + 1))
 done
-unset API_KEY
 ```
 
-루프는 회차 사이에 상한을 대조한다. 상한을 초과하는 한 회차 자체를 사후 계산으로 막을 수는 없으므로, 남은 예산이 다음 회차를 감당하지 못하면 시작하지 않는다. 최소 관찰 기간도 별도로 확인한다. 상한에 닿으면 다음 회차를 시작하지 않는다. 실패·재시도·시범·판독 호출도 장부에 따로 기록한다. CLI의 `total_cost_usd`는 제공자의 실제 청구 확정값이 아니다. fixture의 토큰·비용은 합성 응답에서 계산한 숫자이므로 실제 사용량으로 합산하지 않는다. `num_turns`가 없거나 조회가 실패하면 1턴으로 추정하지 않고 원문·실패 이유를 남긴다.
+- 시작 금지 조건: 누적 + 상한+1이 제공자별 상한 초과 / 요청·출력에 상대 쪽 경로·`before`/`after` 라벨·커밋 해시 노출 / 지침 적재가 기대(이전 0·이후 1)와 다름 / 인프라 실패 2회 연속(인증 실패, `rc≠0`이면서 `error_max_turns`가 아닌 것, 환경 오류) / 안전(실제 세션에 메시지가 전달되거나 트리·지정 경로 밖에 쓰기). `error_max_turns`(`rc=1`, `is_error:true`)는 상한 절단이지 인프라 실패가 아니다. 인프라 실패 회차는 같은 쪽으로 한 번만 대체하며 예비 턴을 장부에 미리 둔다.
+- `total_cost_usd`는 제공자의 실제 청구 확정값이 아니다. fixture의 토큰·비용은 합성 응답에서 계산한 숫자이므로 실제 사용량으로 합산하지 않는다. `num_turns`가 없거나 조회가 실패하면 1턴으로 추정하지 않고 상한+1로 계상하며 원문·실패 이유를 남긴다. 실패·재시도·시범·판독 호출도 장부에 따로 기록한다.
+- 매 회차 뒤 `~/.claude.json` 해시, `~/.claude` 아래 변경 파일 목록, 임시 프로젝트 키(`~/.claude/projects/<PKEY>`)를 대조해 `E`에 남긴다. 다른 살아 있는 세션도 이 파일들을 쓰므로 변경 자체는 위반이 아니다. 자식이 쓸 수 있는 곳은 프로파일의 쓰기 허용 경로뿐이므로 그 근거(거부된 쓰기 반환 수, 허용 경로 안의 변경)를 함께 적는다. 키 디렉터리는 비어 있을 때만 지운다. 샌드박스 없이 실호출하면 `~/.claude/projects`에 임시 키가 생긴다.
+- 최소 관찰 기간도 별도로 확인한다.
+
+**도구 없는 변형**(선언된 선택만 비교): `claude_call`에서 `--tools ''`로 바꾸고 `--allowedTools`·`--max-turns`·샌드박스는 빼며 `--output-format json`으로 받는다. 과제는 "실행하지 말고 계획을 번호 목록으로 설명하라" 형태이고 판정 단위는 계획이다. 인증은 (a) 사람이 승인한 API 키를 `ANTHROPIC_API_KEY`에, `https://api.anthropic.com`을 엔드포인트에 두거나 (b) `claude setup-token`(구독 필요)의 장기 토큰을 `CLAUDE_CODE_OAUTH_TOKEN`으로 `env -i`에 넘긴다. 키는 문서·증거 파일·커밋·셸 이력에 넣지 않고 비밀 입력으로 읽어 셸 변수에만 둔다.
 
 ## 6. 번호만 보는 판독과 결과
 
-실행 전 판독자는 과제·기준과 출력 번호만 보도록 정한다. 실행 모델과 다른 계열의 모델을 사용하고, 그 판독 호출도 유료면 별도 승인을 받는다. 각 `run-번호.json`의 `result`만 무작위 판독 번호의 `번호.txt`로 추출한다. 실행 순서는 전·후 교대라 이 문서를 읽은 판독자가 실행 번호의 홀짝으로 버전을 알아낼 수 있으므로, 판독 번호는 실행 번호와 다른 무작위 순열로 붙이고 그 대응표는 `unblind/`에 둔다. 파일은 판독 번호 순서로 만들어 생성 시각이 실행 순서를 드러내지 않게 하고, 순열의 seed는 시각이 아니라 `/dev/urandom`에서 읽어 판독자에게 넘긴 파일의 시각으로 재현할 수 없게 한다. 버전·모델·경로·시간·비용을 드러내는 CLI 메타데이터와 대응표는 판독자에게 주지 않는다. 출력 자체가 버전을 드러내면 마스킹 여부를 사전에 정하고 눈가림의 한계를 보고한다.
+실행 전 판독자는 과제·기준과 출력 번호만 보도록 정한다. 실행 모델과 다른 계열의 모델을 사용하고, 그 판독 호출도 유료면 별도 승인을 받는다. 각 회차의 `stream-r번호.jsonl`을 판독용 기록으로 렌더하고(호출·반환·발화·종료 상태), 판독 번호는 실행 번호와 다른 무작위 순열로 붙여 대응표를 `E`에 둔다. 실행 순서는 전·후 교대라 실행 번호의 홀짝으로 버전이 드러나므로 순열은 고정점이 없게 하고, seed는 시각이 아니라 `/dev/urandom`에서 읽고, 파일은 판독 번호 순서로 만들어 생성 시각이 실행 순서를 드러내지 않게 한다.
 
 ```bash
-mkdir -p "$E/blind" "$E/unblind"
-SEED=$(od -An -N4 -tu4 /dev/urandom) || exit 1
-OUT=$(awk -v n="$N" -v seed="$SEED" 'BEGIN { srand(seed + 0); for (i = 1; i <= n; i++) a[i] = i
-  for (i = n; i > 1; i--) { j = int(rand() * i) + 1; t = a[i]; a[i] = a[j]; a[j] = t }
-  for (i = 1; i <= n; i++) print i "\t" a[i] }' 2>&1); rc=$?
-printf '%s\n' "$OUT" > "$E/unblind/blind-map.tsv"; printf '%s\n' "$rc" > "$E/unblind/blind-map.rc"
-[ "$rc" -eq 0 ] || exit "$rc"
-label=1
-while [ "$label" -le "$N" ]; do
-  i=$(awk -F '\t' -v l="$label" '$2 == l { print $1 }' "$E/unblind/blind-map.tsv")
-  OUT=$(jq -er '.result' "$E/run-$i.json" 2>&1); rc=$?
-  printf '%s\n' "$OUT" > "$E/blind/$label.txt"; printf '%s\n' "$rc" > "$E/unblind/blind-$i.rc"
-  [ "$rc" -eq 0 ] || exit "$rc"
-  label=$((label + 1))
-done
+jq -r 'if .type=="assistant" then (.message.content[]? | if .type=="tool_use" then "CALL \(.name) \(.input|tojson)" elif .type=="text" then "SAY: \(.text)" else empty end)
+  elif .type=="user" then (.message.content[]? | select(.type=="tool_result") | "    RESULT\(if .is_error then " (error)" else "" end): \(.content | if type=="array" then map(.text?) | join(" ") else . end)")
+  elif .type=="result" then "END: \(if .subtype=="success" then "ended by itself" elif .subtype=="error_max_turns" then "cut off by the turn limit" else .subtype end)" else empty end' "$E/stream-r$i.jsonl"
 ```
 
-판독자에게는 `blind/`의 번호별 출력과 과제·기준만 전달한다. 실패 원문·종료 부호는 실행 장부에 남기되 판독 입력과 섞지 않는다. 전·후 순서를 아는 지휘관이 판독까지 대신하지 않는다. 판독 중에는 `unblind/`·`run-*`·`ledger.tsv`·commit 파일·fixture 원문·`unblind-dirnames.txt`를 판독 세션이 접근하지 않는 위치에 치운다. 목표의 공유 증거 디렉터리에는 `blind/` 묶음과 상태 파일만 두고, 공유 문서에 옮기는 해시·로그에서는 `E`의 절대 경로 접두를 지운다. 권한이 제한된 판독 세션에는 과제·기준과 번호별 출력만 전달하며, 그 세션이 못 여는 원래 보드를 읽으라고 시키지 않는다. 판독 결과를 확정한 뒤에만 대응표를 다시 열어 전·후로 합친다.
+렌더 기록에서 마스킹한다(판독용 묶음에서만; 원문은 `E`에 둔다). 8단어 창 비교는 `sed` 한 줄로 판정할 수 없어 짧은 `python3 -I` 스크립트를 쓴다.
+- 경로: 장면 루트를 가상 루트로 통일한다(`/Users/dev` 등). 판독용 과제문도 같은 값으로 쓴다.
+- 대상 문장을 **8단어 이상 연속** 그대로 인용한 구절은 `[quoted instruction masked]`로 바꾼다(한 줄·코드블록·도구 입력/반환 모두). 의역·요약·짧은 구절은 그대로 둔다. 도구 반환에 지침 파일의 해당 줄이 통째로 나오면 그 줄도 가린다. 마스킹 수와 위치는 실행자 장부에만 둔다.
+- 반환의 `ls -la` 소유자·시각처럼 **실행 순서를 드러내는 값**(사용자명, 실행 시각)은 렌더 뒤 훑어 찾아 가린다. 가린 곳은 장부에 적는다.
 
-결과에는 경계별 실패, 보존한 안전 항목, 표본 수·실제 관찰 기간, 유료 실행·판독 턴과 비용·시간, 무료 fixture와 문서상 판독, 미실행 영역을 구분한다. 양쪽 만점이면 차이를 입증하지 못했다고 보고한다. 최소 기간·표본을 채우지 못한 부분을 효과 없음으로 단정하지 않는다. 문맥 감소나 한 번의 녹색 결과만으로 개편 완료를 주장하지 않는다.
+판독자에게는 `blind/`의 번호별 기록과 과제·기준만 전달한다. 실패 원문·종료 부호는 실행 장부에 남기되 판독 입력과 섞지 않는다. 전·후 순서를 아는 지휘관이나 실행자가 판독까지 대신하지 않는다. 판독 중에는 대응표·`run-*`·`ledger.tsv`·커밋 파일·fixture 원문을 판독 세션이 접근하지 않는 위치에 치운다. 목표의 공유 증거 디렉터리에는 `blind/` 묶음과 상태 파일만 두고, 공유 문서에 옮기는 해시·로그에서는 `E`의 절대 경로 접두를 지운다. 판독 세션은 같은 사용자의 파일을 OS로 막을 수 없으므로 열어 본 파일 목록을 판독 기록에 적게 한다. 네이티브 Read가 도구 브리지로 거부될 수 있어(판독 6라운드 중 3라운드가 브리지 도구 탐색에 쓰였다) 지시에 브리지 도구와 라운드 상한을 미리 적는다. 판독 결과를 확정한 뒤에만 대응표를 다시 열어 전·후로 합친다.
+
+결과에는 경계별 실패, 보존한 안전 항목, 표본 수·실제 관찰 기간, **전·후별 절단(`error_max_turns`) 수와 측정할 행동 전에 끝난 회차 수**, 유료 실행·판독 턴과 비용·시간, 무료 fixture와 문서상 판독, 미실행 영역을 구분한다. 양쪽 만점이거나 사전 등록 문턱 아래의 차이면 차이를 입증하지 못했다고 보고한다. 이 결과는 효과 없음의 입증이 아니다: 작은 `N`과 상한은 문장의 효과와 상한의 영향을 구분하지 못한다. 최소 기간·표본을 채우지 못한 부분을 효과 없음으로 단정하지 않는다. 문맥 감소나 한 번의 녹색 결과만으로 개편 완료를 주장하지 않는다.
