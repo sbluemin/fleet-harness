@@ -2147,7 +2147,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     boundPort = null;
     access.revokeAllSessions();
     await closeHttpServer(closingRemote);
-    const cleanupResults = await Promise.allSettled([...pluginCleanupCallbacks].map((cleanup) => cleanup()));
+    // SDK는 동기 cleanup도 허용한다 — async 래퍼가 동기 throw를 그 cleanup 하나의 reject로 바꿔, 나머지 정리와 lock 해제를 막지 않는다.
+    const cleanupResults = await Promise.allSettled([...pluginCleanupCallbacks].map(async (cleanup) => cleanup()));
     for (const result of cleanupResults) {
       if (result.status === "rejected") {
         console.warn(`[fleet-console] Plugin cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
