@@ -529,16 +529,18 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const ids = (reason.ids ??= new Map());
     ids.set(id, [...(ids.get(id) ?? []), detail]);
   };
-  /** 사람이 돌려받은 목표 — 아직 턴에 실리지 않은 그 목표의 상태 사유(맡김 포함)를 걷는다. 남은 것이 없으면 사유째 내린다. */
+  /** 사람이 돌려받은 목표 — 아직 턴에 실리지 않은 그 목표의 상태·정체 사유(맡김 포함)를 걷는다. 남은 것이 없으면 사유째 내린다. */
   const forgetStatus = (runner: Runner, objectiveId: string) => {
-    const reason = runner.pending.get("status");
-    const mine = reason?.ids?.get(objectiveId);
-    if (!reason || !mine) return;
-    reason.ids!.delete(objectiveId);
-    const others = new Set([...reason.ids!.values()].flat());
-    for (const text of new Set(mine)) { const at = reason.details.indexOf(text); if (at >= 0 && !others.has(text)) reason.details.splice(at, 1); }
-    reason.count = (reason.count ?? 0) - mine.length;
-    if (reason.count <= 0 || !reason.details.length) runner.pending.delete("status");
+    for (const code of ["status", "stalled"] as const) {
+      const reason = runner.pending.get(code);
+      const mine = reason?.ids?.get(objectiveId);
+      if (!reason || !mine) continue;
+      reason.ids!.delete(objectiveId);
+      const others = new Set([...reason.ids!.values()].flat());
+      for (const text of new Set(mine)) { const at = reason.details.indexOf(text); if (at >= 0 && !others.has(text)) reason.details.splice(at, 1); }
+      reason.count = (reason.count ?? 0) - mine.length;
+      if (reason.count <= 0 || !reason.details.length) runner.pending.delete(code);
+    }
   };
 
   /** 이번 턴의 보드 범위(기록 전용) — 보드 대기 코드는 지금 그 이유를 가진 운영 목표, 상태·정체는 모인 목표, 그리고 held. */
@@ -615,7 +617,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.statuses.set(objective.id, next);
       // 사람이 맡김 — 사령관은 운영값을 바꿀 수 없으므로 이 전환은 늘 사람의 것이다. 사령관의 쓰기 유예 안이어도 한 번 깨운다.
       if (previous?.operator === "human" && next.operator === "commodore") { changes.push({ id: objective.id, text: `"${objective.title}" handed to you by the person (${STATUS_WORDS[next.status]})` }); continue; }
-      // 사람이 돌려받음 — 깨우지 않고, 모으는 동안 쌓인 이 목표의 상태 사유(방금 맡김 포함)도 걷는다.
+      // 사람이 돌려받음 — 깨우지 않고, 모으는 동안 쌓인 이 목표의 상태·정체 사유(방금 맡김 포함)도 걷는다.
       if (previous?.operator === "commodore" && next.operator === "human") { forgetStatus(runner, objective.id); continue; }
       if (runner.selfWrites.has(objective.id)) continue;
       // 사람이 운영하는 목표는 깨우지 않고 기록에만 남긴다.
