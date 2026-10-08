@@ -19569,11 +19569,13 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   --state-motion: none;
 }
 
-/* War Room 덱 카드 본문의 inert는 입력 격리(PR 737·1387)이지 숨김이 아니다 — 보이는 덱 칸에서는 본문
-   자신의 [inert]가 놓은 none만 걷는다. inherit이라 부모가 이미 none이면(창 비활성·reduced-motion·최소화·
-   상위 inert/hidden) 그대로 내려온다. 무대 밑·지도 층 아래의 덱 칸은 선택자에서 빠져 그대로 멈춘다. */
+/* War Room 덱 카드와 Snap Assist 후보 칸에 선 패널 본문의 inert는 입력 격리(PR 737·1387)이지 숨김이 아니다 —
+   보이는 칸에서는 본문 자신의 [inert]가 놓은 none만 걷는다. inherit이라 부모가 이미 none이면(창 비활성·
+   reduced-motion·최소화·상위 inert/hidden) 그대로 내려온다. 무대 밑·지도 층 아래의 덱 칸은 선택자에서 빠져
+   그대로 멈춘다. Snap Assist 판은 빈 칸이 떠 있는 동안만 서므로 그 칸은 늘 보이는 자리다. */
 .canvas-triage-deck:not(.is-under-stage, .is-map-open) .canvas-triage-deck-mount > .canvas-operation.is-deck-tile > .canvas-operation-terminal[inert],
-.canvas-triage-deck.is-map-open .canvas-triage-deck-cell.is-quick-look > .canvas-triage-deck-mount > .canvas-operation.is-deck-tile > .canvas-operation-terminal[inert] {
+.canvas-triage-deck.is-map-open .canvas-triage-deck-cell.is-quick-look > .canvas-triage-deck-mount > .canvas-operation.is-deck-tile > .canvas-operation-terminal[inert],
+.canvas-snap-assist-mount > .canvas-operation.is-deck-tile > .canvas-operation-terminal[inert] {
   --state-motion: inherit;
 }
 
