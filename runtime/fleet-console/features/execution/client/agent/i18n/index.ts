@@ -208,6 +208,7 @@ export const terminalEn = {
   "terminal.markdown.copy": "Copy",
   // 링크를 누르면 어디서 열지 묻는 카드 — 같은 낱말이 CLI와 채팅 양쪽에 선다.
   "terminal.markdown.copyCodeAria": "Copy {language} code",
+  "terminal.markdown.copyFailed": "Copy failed",
   "terminal.markdown.diagram.renderFailed": "Diagram render failed: {message}",
   "terminal.markdown.diagram.openExpandedAria": "Open diagram in expanded view",
   "terminal.markdown.diagram.lightboxTitle": "MANIFEST · DIAGRAM",
@@ -1007,6 +1008,7 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.notifications.resumeLaunchOptionFailedMessage": "재개 실패 — 저장된 모델 또는 강도를 사용할 수 없습니다.",
   "terminal.markdown.copy": "복사",
   "terminal.markdown.copyCodeAria": "{language} 코드 복사",
+  "terminal.markdown.copyFailed": "복사 실패",
   "terminal.markdown.diagram.renderFailed": "다이어그램 렌더 실패: {message}",
   "terminal.markdown.diagram.openExpandedAria": "다이어그램을 확대 보기로 열기",
   "terminal.markdown.diagram.lightboxTitle": "MANIFEST · DIAGRAM",

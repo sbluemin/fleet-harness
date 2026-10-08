@@ -171,6 +171,7 @@ export function AgentChatView({
   // 사용자 지시와 그 응답을 함께 담는 턴의 탄생만 센다.
   const [unseenTurns, setUnseenTurns] = React.useState(0);
   const [answerAnnouncement, setAnswerAnnouncement] = React.useState("");
+  const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(t);
   // 두 번째 목적지는 대화 **위로** 떠오른다. 탭 교체는 대화를 통째로 숨겼고, 나란히 선 스플릿은
   // 열 때마다 로그의 절반을 가져갔다 — 시트는 대화의 아래쪽을 잠시 덮을 뿐 밀어내지 않고,
   // 접으면 로그와 컴포저는 처음 그 자리다. 여는 것이 레이아웃 사건이 아니어야 닫는 것도 가볍다.
@@ -698,8 +699,10 @@ export function AgentChatView({
       style={{ "--agent-chat-font": "var(--font-code)" } as React.CSSProperties}
       aria-label={t("terminal.chat.aria")}
       onKeyDown={onPanelKeyDown}
+      onClick={onCodeCopyClick}
     >
       <span className="agent-chat-sr-only" role="status" aria-atomic="true">{answerAnnouncement}</span>
+      <span className="agent-chat-sr-only" aria-live="polite" aria-atomic="true">{codeCopyAnnouncement}</span>
       {/* 대화 면 하나다. 백그라운드 작업은 옆 컬럼도 아래 서랍도 아니라, 컴포저 위 선반에서
           대화 위로 떠오르는 시트다 — 열어도 로그와 컴포저는 한 픽셀도 움직이지 않는다. */}
       <div className="agent-chat-pane">
@@ -1527,6 +1530,67 @@ export const ChatTurn = React.memo(function ChatTurn({
     </>
   );
 });
+
+const CODE_COPY_COPIED_MS = 1_200;
+const CODE_COPY_FAILED_MS = 3_000;
+
+/**
+ * 코드 블록 복사 버튼 위임 — 마크다운이 심은 `[data-action="copy-code"]`를 이 패널 한 곳에서 받는다.
+ * StreamedMarkdown 안에 두지 않는 까닭은 analyst가 같은 컴포넌트를 쓰면서 바깥에서 이미 처리하기 때문이다.
+ *
+ * 성공 글자는 writeText가 이행된 뒤에만 나온다. 클립보드가 없거나 동기로 던지거나 거절되면 모두 실패이고,
+ * 실패는 성공 글자 없이 「복사 실패」로 알린다. 원래 글자는 클릭 때의 textContent가 아니라 키에서 얻는다 —
+ * 표시 중에 다시 누르면 표시 글자가 원래 글자로 굳기 때문이다.
+ */
+function useCodeBlockCopy(t: ReturnType<typeof getT>) {
+  const [announcement, setAnnouncement] = React.useState("");
+  const buttons = React.useRef(new Map<HTMLElement, { timer: number | null; seq: number }>());
+  React.useEffect(() => {
+    const held = buttons.current;
+    return () => {
+      for (const entry of held.values()) if (entry.timer !== null) window.clearTimeout(entry.timer);
+      held.clear();
+    };
+  }, []);
+  const onClick = React.useCallback((event: React.MouseEvent<HTMLElement>) => {
+    const button = (event.target as Element | null)?.closest<HTMLElement>('[data-action="copy-code"]') ?? null;
+    if (!button) return;
+    // 빈 문자열은 복사할 코드다. 속성 자체가 없을 때만 대상이 아니다.
+    const code = button.closest("pre")?.getAttribute("data-code");
+    if (code === null || code === undefined) return;
+    const entry = buttons.current.get(button) ?? { timer: null, seq: 0 };
+    buttons.current.set(button, entry);
+    entry.seq += 1;
+    const seq = entry.seq;
+    if (entry.timer !== null) window.clearTimeout(entry.timer);
+    entry.timer = null;
+    const settle = (state: "copied" | "failed") => {
+      // 스트리밍 재렌더가 버튼을 갈아끼웠거나 그 사이 다시 눌렸다면 이 결과는 낡았다.
+      if (entry.seq !== seq || !button.isConnected) return;
+      const message = t(state === "copied" ? "terminal.analyst.copied" : "terminal.markdown.copyFailed");
+      button.textContent = message;
+      button.dataset.copyState = state;
+      setAnnouncement("");
+      requestAnimationFrame(() => setAnnouncement(message));
+      entry.timer = window.setTimeout(() => {
+        entry.timer = null;
+        if (entry.seq !== seq || !button.isConnected) return;
+        button.textContent = t("terminal.markdown.copy");
+        delete button.dataset.copyState;
+        setAnnouncement("");
+      }, state === "copied" ? CODE_COPY_COPIED_MS : CODE_COPY_FAILED_MS);
+    };
+    const clipboard = navigator.clipboard as Clipboard | undefined;
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      settle("failed");
+      return;
+    }
+    let write: Promise<void>;
+    try { write = clipboard.writeText(code); } catch { settle("failed"); return; }
+    void write.then(() => settle("copied"), () => settle("failed"));
+  }, [t]);
+  return { onClick, announcement };
+}
 
 /**
  * 모바일 응답 동작 줄(impl-spec S-26) — AI 응답 바로 아래 [복사] [다시 시도] 아이콘 두 개. 복사는 응답 원문
