@@ -8,7 +8,7 @@ import { isAgentEffort, type ModelRosterTarget } from "@fleet-console/sdk/models
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
-import { COMMODORE_CONTEXT_ROTATE_RATIO, type CommodoreLiveEvent, type CommodorePatrolMinutes, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
@@ -55,6 +55,8 @@ const SHEET_COMPACT_WIDTH = 720;
 const SHEET_SIZE_KEY = "fleet.objectives.commodore.sheetSize";
 const SHEET_RESIZE_DIRS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const;
 type SheetResizeDir = (typeof SHEET_RESIZE_DIRS)[number];
+/** 서버 `COMMODORE_CONTEXT_ROTATE_RATIO` 와 같다. 그 파일은 서버 모듈이라 브라우저가 값으로 가져오지 않는다. */
+const CONTEXT_ROTATE_RATIO = 0.75;
 const SHEET_FOCUSABLE = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
 /** 순찰 간격 사다리 — 서버 `COMMODORE_PATROL_MINUTES` 와 같다(서버 모듈은 브라우저 번들에 싣지 않는다). */
 export const PATROL_STEPS: readonly CommodorePatrolMinutes[] = [15, 30, 60, 120, 240, 480];
@@ -813,7 +815,7 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
     };
   }, [open]);
   const occupied = context.inputTokens;
-  const limit = COMMODORE_CONTEXT_ROTATE_RATIO;
+  const limit = CONTEXT_ROTATE_RATIO;
   const ratio = context.window > 0 ? occupied / context.window : 0;
   const tone = ratio >= limit * 0.97 ? " is-critical" : ratio >= limit * 0.75 ? " is-warn" : "";
   const percent = Math.round(ratio * 100);
