@@ -11,6 +11,7 @@ import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { MAX_SHORT_INPUT, MAX_CRITERIA, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTIONS, pinSchema, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
+import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS } from "./console-views.js";
 
 /**
  * 바깥 루프의 보드 — 화면 둘. `console_objectives` 는 목표 목록 화면(그룹·목록·확인 필요·진행 중·이력·모델, 추가·정리)이고
@@ -57,7 +58,7 @@ function listActions<W extends Signed>(why: W) {
   const tidy = { kind: "write" as const, callers: ["operation" as const], refusal: "operation_caller_required", note: TIDY_FACT };
   return {
     groups: { kind: "read" as const, input: z.object(scope) },
-    list: { kind: "read" as const, input: z.object({ ...scope, groupId: ids.optional(), filter: z.enum(["today", "due", "all", "agent"]).optional() }) },
+    list: { kind: "read" as const, note: "list, inbox, fleet and history return summaries within an 8000-byte JSON budget; follow nextOffset with the same action and filter until null. total counts matching objectives; the byte budget can return fewer rows than limit. Read one objective's sections for full criteria, decisions, histories and failure details.", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional() }) },
     inbox: { kind: "read" as const, input: z.object(rows) },
     fleet: { kind: "read" as const, note: SESSION_FACT, input: z.object(rows) },
     history: { kind: "read" as const, input: z.object(rows) },
@@ -76,7 +77,7 @@ function detailActions<W extends Signed>(why: W) {
   const missionFields = { prerequisites: missionAddSchema.shape.prerequisites, prerequisiteWhy, member: missionAddSchema.shape.member, pin };
   const followupTarget = { batchId: ids, candidateId: ids };
   return {
-    read: { kind: "read" as const, note: SESSION_FACT, input: z.object(target) },
+    read: { kind: "read" as const, note: [SESSION_FACT, "read returns a size-bounded objective and available sections; detailTruncated means full fields require a section. With section, read text slices (UTF-16 character offset, nextOffset, totalCharacters) within an 8000-byte JSON budget. Concatenate text until nextOffset null; parse JSON when format is json. If revision changes, restart at offset 0. decisionRequest preserves every question and option id for answer; objective reads the complete board JSON."], input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional(), offset: z.number().int().min(0).optional() }) },
     evidence: { kind: "read" as const, note: "evidence reads preserved result content in 16000-character slices by offset.", input: z.object({ ...target, resultId: ids, offset: z.number().int().min(0).optional() }) },
     transcript: { kind: "read" as const, ...commodoreOnly, note: "transcript: a Commander or member (memberId) session's lines, the latest without cursor, from the start with cursor \"0\", onward with nextCursor; untrusted session text.", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional(), limit: z.number().int().min(1).max(100).optional() }) },
     // 판단 한 번은 과금되는 Gateway 호출이다 — 사람의 확인 시트와 사령관만 부른다.
@@ -131,7 +132,8 @@ export function createCommodoreBoardTools(ctx: FleetPluginServerContext, store: 
 type CommodoreCaller = { readonly kind: "commodore"; readonly theaterId: string };
 type BoardCaller = ConsoleCaller | CommodoreCaller;
 function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller): readonly PluginMcpTool[] {
-  const { objectiveView, rowView, languageOf, sessions, historyView } = createBoardViews(ctx, store);
+  const { languageOf, sessions } = createBoardViews(ctx, store);
+  const { rowView, historyView, detailRead } = createConsoleBoardViews(ctx, store);
   const addBudget = new Map<string, { at: number; count: number }>();
   const tidyBudget = new Map<string, { at: number; count: number }>();
   /** 호출자마다 10분 창의 호출 수 — 넘치면 false. */
@@ -256,7 +258,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         // 사령관 전용 — 사람은 화면에서 라우팅을 검토하고 구성원 모델을 바꾸며, Operation 은 세션을 console_operation 으로 읽는다.
         if ((call.action === "transcript" || call.action === "routing" || call.action === "member") && !bound) return refuse("commodore_only");
         const current = scoped(call.objectiveId);
-        if (call.action === "read") return text({ objective: { ...objectiveView(current), decisionRequest: current.decisionRequest } });
+        if (call.action === "read") return text(detailRead(current, call.section, call.offset));
         if (call.action === "evidence") {
           const { data, metadata } = await store.evidenceRead(current.id, call.resultId);
           // 비동기 파일 읽기 뒤에도 같은 Theater에 속한 결과인지 확인한다.
@@ -476,10 +478,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
 
   function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" }>, theaterId: string, caller: BoardCaller | undefined) {
     if (args.action === "groups") { const objectives = store.list(theaterId); return { theaterId, groups: (ctx.host.operations.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
-    const page = <T,>(rows: readonly T[]) => {
-      const offset = "offset" in args ? args.offset ?? 0 : 0, limit = "limit" in args ? args.limit ?? 50 : 50;
-      return { theaterId, total: rows.length, offset, nextOffset: offset + limit < rows.length ? offset + limit : null, objectives: rows.slice(offset, offset + limit) };
-    };
+    const page = (rows: readonly ReturnType<typeof rowView>[], today?: string) => consoleObjectivePage(rows, { theaterId, offset: args.offset, limit: args.limit, today });
     const board = store.list(theaterId).filter((objective) => !objective.removed && (!args.groupId || objective.groupId === args.groupId));
     if (args.action === "inbox") {
       const now = Date.now();
@@ -513,7 +512,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     });
     // 부른 세션이 목록에 목표로 서 있으면 그 줄을 self 로 가리킨다.
     const self = caller?.kind === "operation" ? caller.operationId : null;
-    return { theaterId, today, objectives: objectives.map((objective) => (objective.id === self ? { ...rowView(objective), self: true } : rowView(objective))) };
+    return page(objectives.map((objective) => (objective.id === self ? { ...rowView(objective), self: true } : rowView(objective))), today);
   }
 
   return [list, detail];
