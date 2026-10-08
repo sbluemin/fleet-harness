@@ -1606,8 +1606,15 @@ function AnswerActions({ text, language, onRetry }: { readonly text: string; rea
     const timer = window.setTimeout(() => setCopy((current) => ({ state: "idle", seq: current.seq })), copy.state === "copied" ? 1600 : 3000);
     return () => window.clearTimeout(timer);
   }, [copy]);
+  // 탭마다 올리는 요청 번호 — 앞선 탭의 쓰기가 늦게 끝나도 최신 탭의 결과를 덮지 못하게 한다.
+  const requestRef = React.useRef(0);
   const doCopy = () => {
-    const settle = (state: "copied" | "failed") => setCopy((current) => ({ state, seq: current.seq + 1 }));
+    requestRef.current += 1;
+    const request = requestRef.current;
+    const settle = (state: "copied" | "failed") => {
+      if (request !== requestRef.current) return;
+      setCopy((current) => ({ state, seq: current.seq + 1 }));
+    };
     const clipboard = navigator.clipboard as Clipboard | undefined;
     if (!clipboard || typeof clipboard.writeText !== "function") { settle("failed"); return; }
     let write: Promise<void>;
