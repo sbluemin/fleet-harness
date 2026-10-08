@@ -87,15 +87,16 @@ function ageOf(at: number, now: number): { readonly unit: "now" } | { readonly u
 
 /**
  * 줄 둘째 줄의 출처 — 사람이 아닌 손이 더한 목표면 그 손(사람은 기본 주인이라 적지 않고, 후속은 `followup` 이 원천을 말한다),
- * 그리고 마지막으로 손댄 이와 그 행위·때. 실험 기능이 켜져 있으면 줄 끝 사령관 표식(운영 주체)이 사령관의 몫을 말하므로, 사령관이
- * 더한 목표는 표식이 서지 않을 때만 글로 적는다. 사령관의 손은 brass 글자로만 선다.
+ * 그리고 마지막으로 손댄 이와 그 행위·때. 사령관이 더한 목표는 줄 끝 표식이 사령관 운영으로 서 있는 동안 그 표식이 말하므로 숨기고,
+ * 실험 기능이 꺼졌거나 사람이 돌려받았으면 글로 적는다(돌려받은 줄에서 사령관이 만들었다는 단서가 사라지지 않게). 사령관의 손은
+ * brass 글자로만 선다.
  */
 function provenanceOf(objective: Objective, board: CommodoreBoard, now: number): OperationClusterRowProvenance[] {
   const out: OperationClusterRowProvenance[] = [];
   const added = objective.addedBy;
   if (added && !objective.origin) {
     if (!("kind" in added)) out.push({ text: (locale) => { const t = getT(locale); return t("objectives.prov.addedBy", { who: added.title ?? t("objectives.actor.agent") }); } });
-    else if (!board.enabled) out.push({ text: (locale) => getT(locale)("objectives.prov.addedByCommodore"), tone: "accent" });
+    else if (!board.enabled || objective.operator !== "commodore") out.push({ text: (locale) => getT(locale)("objectives.prov.addedByCommodore"), tone: "accent" });
   }
   const last = lastAct(objective);
   if (last) {

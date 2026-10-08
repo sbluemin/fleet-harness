@@ -357,7 +357,8 @@ export function ClusterRowMark({ mark, decorative = true }: { readonly mark: Ope
   const label = resolveLocalizedText(mark.label, locale);
   const glyph = mark.renderGlyph?.();
   const className = ["side-bar-cluster-row-mark", glyph ? "has-glyph" : "", `is-${mark.square}`, mark.emphasized ? "is-emphasized" : ""].filter(Boolean).join(" ");
-  return <i className={className} title={label} {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label })}>{glyph}</i>;
+  // 누르는 표식의 라벨은 그 누름을 안내한다 — 누를 수 없는 장식으로 설 때는 제목을 달지 않는다.
+  return <i className={className} {...(mark.toggle ? {} : { title: label })} {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label })}>{glyph}</i>;
 }
 
 /**
