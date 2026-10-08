@@ -41,6 +41,8 @@
 .objectives-cm-tabs { flex: none; display: flex; gap: 20px; padding: 0 24px; border-bottom: 1px solid var(--m-hairline); }
 .objectives-cm .objectives-cm-tabs button { padding: 10px 0; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); --pr-inset: 4px -10px; --pr-r: 10px; }
 .objectives-cm .objectives-cm-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: var(--weight-bold); }
+/* 두 글자 탭은 폭이 26이라 손가락 칸을 투명 ::after 로 좌우 9·위 1 넓힌다(≥ 44×44). 밑줄은 글자 폭 그대로, 탭 사이 20 안이라 겹치지 않는다. */
+.objectives-cm .objectives-cm-tabs button::after { position: absolute; inset: -1px -9px 0; content: ""; }
 
 /* 기록 탭 — 채팅 문법(S-26·S-27). */
 .objectives-cm-fill { display: flex; flex: 1; flex-direction: column; min-height: 0; }
