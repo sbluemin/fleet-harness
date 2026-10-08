@@ -323,7 +323,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         className="side-bar-cluster-row-main"
         aria-current={active ? "true" : undefined}
         aria-description={wrap ? t("sidebar.chip.gaze", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : undefined}
-        aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), row.mark ? resolveLocalizedText(row.mark.label, locale) : "", groupDot ? groupDot.name : "", selected ? t("sidebar.row.selected") : ""].filter(Boolean).join(", ")}
+        aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : "", groupDot ? groupDot.name : "", selected ? t("sidebar.row.selected") : ""].filter(Boolean).join(", ")}
         onClick={activate}
         onDoubleClick={selectMode ? () => { if (pointerTypeRef.current !== "touch" && !dragging) open(); } : undefined}
         onKeyDown={selectMode ? handleKeyDown : undefined}
@@ -338,9 +338,10 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
           </span>
         ) : null}
       </button>
-      <span className="side-bar-cluster-row-aside" aria-hidden="true">
-        {row.mark ? <ClusterRowMark mark={row.mark} /> : null}
-        {groupDot ? <span className="side-bar-cluster-row-dot" style={{ "--grp-color": groupDot.color } as CSSProperties} title={groupDot.name} /> : null}
+      {/* 표식이 토글이면 칸 안에 버튼이 서므로 칸 전체를 숨기지 않는다 — 장식인 표식과 그룹 점만 숨긴다. */}
+      <span className="side-bar-cluster-row-aside" {...(row.mark?.toggle ? {} : { "aria-hidden": true })}>
+        {row.mark ? (row.mark.toggle ? <ClusterRowMarkToggle mark={row.mark} toggle={row.mark.toggle} /> : <ClusterRowMark mark={row.mark} />) : null}
+        {groupDot ? <span className="side-bar-cluster-row-dot" style={{ "--grp-color": groupDot.color } as CSSProperties} title={groupDot.name} aria-hidden="true" /> : null}
       </span>
     </li>
   );
@@ -356,7 +357,41 @@ export function ClusterRowMark({ mark, decorative = true }: { readonly mark: Ope
   const label = resolveLocalizedText(mark.label, locale);
   const glyph = mark.renderGlyph?.();
   const className = ["side-bar-cluster-row-mark", glyph ? "has-glyph" : "", `is-${mark.square}`, mark.emphasized ? "is-emphasized" : ""].filter(Boolean).join(" ");
-  return <i className={className} title={label} {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label })}>{glyph}</i>;
+  // 누르는 표식의 라벨은 그 누름을 안내한다 — 누를 수 없는 장식으로 설 때는 제목을 달지 않는다.
+  return <i className={className} {...(mark.toggle ? {} : { title: label })} {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label })}>{glyph}</i>;
+}
+
+/**
+ * 누르는 표식 — 표식 자체가 맡김 스위치다(줄 본문 다음의 초점 자리). 켬·끔은 `aria-pressed` 가 말하고 접근 이름은 바뀌지 않는다.
+ * 꺼진 표식은 줄에 올리거나 초점이 올 때만 보인다(터치는 흐리게 늘). 줄은 누르는 순간 끌기를 시작하므로 여기서 막고, 누르고 있는
+ * Enter·Space 의 반복 입력과 더블클릭의 둘째 클릭은 받지 않는다 — 한 번 누름이 한 번 바꿈이다.
+ */
+function ClusterRowMarkToggle({ mark, toggle }: { readonly mark: OperationClusterRowMark; readonly toggle: NonNullable<OperationClusterRowMark["toggle"]> }) {
+  const locale = useConsoleLocale();
+  const glyph = mark.renderGlyph?.();
+  const className = ["side-bar-cluster-row-mark", glyph ? "has-glyph" : "", toggle.pressed ? `is-${mark.square}` : "is-off", toggle.pressed && mark.emphasized ? "is-emphasized" : ""].filter(Boolean).join(" ");
+  return (
+    <button
+      type="button"
+      className={`side-bar-cluster-row-mark-toggle${toggle.pressed ? " is-pressed" : ""}`}
+      aria-pressed={toggle.pressed}
+      aria-label={resolveLocalizedText(toggle.label, locale)}
+      title={resolveLocalizedText(mark.label, locale)}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (event.detail > 1) return;
+        toggle.onToggle(locale);
+      }}
+      onKeyDown={(event) => {
+        // 캔버스의 Space-pan 이 버튼의 기본 활성화를 취소하지 않게 한다(시작 전 묶음 버튼과 같은 규칙).
+        if (event.code === "Space") event.stopPropagation();
+        if ((event.key === "Enter" || event.key === " ") && event.repeat) event.preventDefault();
+      }}
+    >
+      <i className={className} aria-hidden="true">{glyph}</i>
+    </button>
+  );
 }
 
 /** 구역의 줄들이 낸 구역 머리 말 — 처음 나온 말 하나만, 같은 말은 한 번. */

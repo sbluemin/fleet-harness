@@ -105,7 +105,8 @@ export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView
   const on = view?.state.autonomy === true;
   const run = view?.run;
   const running = objectives.filter(isRunningObjective).length;
-  const waiting = objectives.filter(isWaitingObjective).length;
+  // 대기는 사령관이 운영하는 목표만 센다 — 사람의 목표는 사령관을 깨우지 않는다(서버 판정 `operator`).
+  const waiting = objectives.filter((objective) => objective.operator === "commodore" && isWaitingObjective(objective)).length;
   const meta: CommodoreMetaPart[] = on
     ? [
       { key: "mode", text: t("objectives.commodore.meta.autonomous"), tone: "on" },

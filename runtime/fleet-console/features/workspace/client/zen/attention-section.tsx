@@ -62,7 +62,10 @@ export function AttentionSection({ onFocus, onOpenOperationMenu }: {
           const decision = hasDecisionRequest(clusters, operation.id);
           // 줄만 선 묶음(구성원·결정 요청 없는 목표)은 rootOf 에 없으므로 줄 색인에서 읽되, 그 줄의 뿌리일 때만 표식을 단다.
           const rowLayout = clusters.rowOf.get(operation.id);
-          const mark = rowLayout?.cluster.root === operation.id ? rowLayout.cluster.row?.mark : undefined;
+          // 누르는 표식(맡김 스위치)은 사이드바 줄의 손잡이다 — 이 목록은 줄 전체가 버튼이라 켠 표식만 장식으로 단다(그 라벨은
+          // 이 자리에서 할 수 없는 누름을 안내하므로 접근 이름에 싣지 않는다).
+          const rowMark = rowLayout?.cluster.root === operation.id ? rowLayout.cluster.row?.mark : undefined;
+          const mark = rowMark && (!rowMark.toggle || rowMark.toggle.pressed) ? rowMark : undefined;
           const active = warRoom ? operation.id === stagedId : operation.id === state.activeOperationId;
           return <button key={operation.id} type="button" className={`side-bar-attention-row${active ? " is-active" : ""}${minimizedIds.has(operation.id) ? " is-minimized" : ""}`} data-attention-operation={operation.id}
             data-keep-operation-active="" aria-current={active ? "true" : undefined} title={`${operation.title} · ${theater}`}
@@ -80,7 +83,7 @@ export function AttentionSection({ onFocus, onOpenOperationMenu }: {
             <OperationNameMark operation={operation} status={visual} decorative className="side-bar-attention-mark" />
             <span className="side-bar-attention-title">{operation.title}</span>
             {decision ? <DecisionRequestMark /> : null}
-            {mark ? <ClusterRowMark mark={mark} decorative={false} /> : null}
+            {mark ? <ClusterRowMark mark={mark} /> : null}
             <TheaterMonogram>{theaterInitials(theater)}</TheaterMonogram>
           </button>;
         })}

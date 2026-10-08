@@ -260,6 +260,7 @@ export interface ObjectiveStore {
   /**
    * 운영 주체를 사람이 정한다 — true 는 사령관에게 맡김, false 는 사람이 운영. 바뀔 때만 쓰고 행위 기록에 `edit` 한 줄을 남긴다.
    * 새 행위 종류를 만들지 않는 것은 옛 빌드가 모르는 종류가 든 레코드를 통째로 격리하기 때문이다(`invalid_stored_actions`).
+   * 편집 종류(`kinds`) 없는 `edit` 는 이 기록뿐이다 — 화면의 출처가 그것을 맡기기·돌려받기로 읽는다(client/actors.ts `lastAct`).
    */
   setCommodoreOperated(objectiveId: string, operated: boolean, by: ObjectiveActor): Objective;
   /** 새 작업(스티어링)이 생겼다 — 앞선 충족 판단을 모두 거둔다. */
