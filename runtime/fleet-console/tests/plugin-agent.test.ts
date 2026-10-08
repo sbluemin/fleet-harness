@@ -14,7 +14,7 @@ const options = { model: "sonnet", systemPrompt: "test", continuation: "conversa
 
 describe("Console-owned plugin Agent", () => {
   it("owns isolated execution, tool scope, continuation, redaction and cleanup", async () => {
-    let root!: string; const events: AgentEvent[] = []; const turns: ClaudeGatewayTurn[] = [];
+    let root!: string; let executable: string | undefined; const events: AgentEvent[] = []; const turns: ClaudeGatewayTurn[] = [];
     const engine = sdk(async turn => { turns.push(turn); return run([
       { type: "system", subtype: "init", session_id: "private-child" },
       { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: `Read ${turn.cwd}/file` } } },
@@ -22,7 +22,7 @@ describe("Console-owned plugin Agent", () => {
     ]); });
     const connection = { embeddedServer: { type: "sdk", name: "fleet-console-use", instance: {} }, dispose: vi.fn(async () => undefined) };
     const connect = vi.fn(() => connection as never);
-    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", consoleUse: { connect }, createSdk: async ({ tempRoot }) => { root = tempRoot!; roots.push(root); return engine; } });
+    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", consoleUse: { connect }, resolveExecutablePath: async () => "/installed/claude", createSdk: async ({ tempRoot, executablePath }) => { root = tempRoot!; executable = executablePath; roots.push(root); return engine; } });
     const session = await host.createSession({ ...options, tools: { consoleUse: { tools: ["console_launcher"], allowControl: true }, builtins: ["WebFetch"], custom: [{ name: "draft", tools: [{ name: "read", description: "Read only this draft", inputSchema: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "draft" }] }) }] }] }, onEvent: event => events.push(event) });
     await session.send("one"); await session.send("two");
     expect(turns[0]).toMatchObject({ tools: ["WebFetch"], allowedTools: ["WebFetch", "mcp__draft__read", "mcp__fleet-console-use__console_launcher"], permissionMode: "dontAsk" });
@@ -31,6 +31,8 @@ describe("Console-owned plugin Agent", () => {
     expect(turns[1]!.resume).toBe("private-child");
     expect(turns[0]!.cwd).toBe(root);
     expect(turns[1]!.cwd).toBe(root);
+    // SDK 동봉 바이너리가 아니라 설치된 Claude Code로 뜬다 — 새 모델은 동봉본이 모르는 버전에서 400이 난다.
+    expect(executable).toBe("/installed/claude");
     expect((await fs.stat(root)).isDirectory()).toBe(true);
     expect(JSON.stringify(events)).not.toContain(root);
     expect(JSON.stringify(events)).not.toContain("private-child");

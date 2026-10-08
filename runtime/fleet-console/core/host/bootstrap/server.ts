@@ -608,6 +608,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let coreLaunchKinds: OperationLaunchCatalogProvider = () => [];
   // 실행 기능이 서야 생긴다. 그 전의 별칭 고정은 받은 값을 돌려준다.
   let ensureClaudeNativeModels: (() => Promise<void>) | undefined;
+  let resolveClaudeExecutable: (() => Promise<string | undefined>) | undefined;
   const executionCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
@@ -1231,7 +1232,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       transcript: (operationId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, operationId, input, signal),
     }),
     createAgentHost: (pluginId) => {
-      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp });
+      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp, resolveExecutablePath: async () => {
+        // 채팅과 같은 정책이다 — 설치된 Claude Code를 못 풀면 SDK 동봉본으로 폴백하지 않고 실패한다.
+        const executable = await resolveClaudeExecutable?.();
+        if (!executable) throw new Error("agent_cli_unavailable");
+        return executable;
+      } });
       consoleAgentOwners.add(pluginId);
       return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
     },
@@ -2752,6 +2758,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
       coreLaunchKinds = execution.launchKinds;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
+      resolveClaudeExecutable = execution.resolveClaudeExecutable;
       sleepOperation = execution.actions.sleep;
       resumeArchivedOperation = execution.actions.resume;
       stopForArchive = execution.stopForArchive;

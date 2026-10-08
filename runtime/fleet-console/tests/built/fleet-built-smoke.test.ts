@@ -486,7 +486,7 @@ afterEach(async () => {
   // nothing it started outlives it.
   // 에이전트 helper도 리더가 SDK 종료로 사라진 뒤 파이프를 잡는다. 플러그인만의 stop으로 이 방어를 대체할 수 없다.
   it.skipIf(process.platform === "win32")("ends an agent residual and hung plugin children on a normal stop and reports clean", async () => {
-    // claude-agent-sdk 0.3.269 close(): EOF grace 2000ms + 최종 SIGKILL까지 5000ms. 벤더 갱신 시 재측정한다.
+    // claude-agent-sdk 0.3.293 close(): EOF grace 2000ms + 최종 SIGKILL까지 5000ms. 벤더 갱신 시 재측정한다.
     const sdkCloseMaxMs = 2_000 + 5_000;
     expect(Math.max(sdkCloseMaxMs, OWNED_GROUP_TERM_GRACE_MS) + PROCESS_TABLE_TIMEOUT_MS + ESCALATION_MARGIN_MS,
       "정지 grace는 SDK 종료와 겹쳐야 하고, 증명 조회와 스케줄링 여유까지 B_int 안에 들어야 한다").toBeLessThan(CONSOLE_STOP_DEADLINE_MS);

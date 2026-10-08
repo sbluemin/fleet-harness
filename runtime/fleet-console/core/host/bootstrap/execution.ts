@@ -24,14 +24,16 @@ const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
 export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("@fleet-console/sdk/plugin").FleetPluginHostCapabilities["storage"], theaterSystemPrompts: TheaterSystemPromptService) {
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir, ctx.legacyDataDir);
+  // 런치·채팅·플러그인 에이전트가 같은 실행 파일을 쓰도록 한 자리에서 푼다. Windows cmd shim은 SDK가 직접 못 띄운다.
+  const resolveClaudeExecutable = async (): Promise<string | undefined> => {
+    const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: (await agentCliPaths.read()).paths });
+    return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
+  };
   const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels } = startAiGateway({
     ...ctx,
     host: { ...ctx.host, storage: quotaStorage },
-    // Claude alias의 버전은 런치가 쓰는 바로 그 실행 파일에게 묻는다. Windows cmd shim은 SDK가 직접 못 띄운다.
-    resolveClaudeExecutable: async () => {
-      const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: (await agentCliPaths.read()).paths });
-      return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
-    },
+    // Claude alias의 버전은 런치가 쓰는 바로 그 실행 파일에게 묻는다.
+    resolveClaudeExecutable,
   });
   // 모든 모델 선택지가 읽는 로스터 — 같은 Gateway 설정 파일의 투영이다. 저장 직후 열린 화면 전부에 다시 읽으라고 알린다.
   const models = createModelRosterHost({ readSettings: aiGatewayStore.read });
@@ -92,6 +94,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   });
   return {
     launchKinds: agent.launchKinds,
+    /** 설치된 Claude Code 실행 파일. 풀 수 없으면 `undefined`다. 플러그인 에이전트가 SDK 동봉본 대신 이것을 쓴다. */
+    resolveClaudeExecutable,
     /** 설치된 Claude Code가 별칭을 푸는 버전 조회. 플러그인 로스터 포트의 별칭 고정이 쓴다. */
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */

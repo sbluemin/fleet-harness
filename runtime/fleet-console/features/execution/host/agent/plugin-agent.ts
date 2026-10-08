@@ -15,6 +15,8 @@ export interface PluginAgentDeps {
   /** 컴퓨터 사용 서버. 없는 호스트(테스트·실험 없는 구성)나 실험이 꺼진 동안에는 `tools.computerUse` 요청이 조용히 빠진다. */
   readonly computerUseMcp?: { connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection | null };
   readonly createSdk?: typeof createClaudeGatewaySdk;
+  /** 설치된 Claude Code 실행 파일. 없으면 SDK 동봉본이 떠서 새 모델을 모르는 옛 버전이 될 수 있다. */
+  readonly resolveExecutablePath?: () => Promise<string>;
 }
 
 /** 플러그인 등록 단위로 생성한다. 시작 중인 세션도 이 소유자가 끝날 때 함께 회수한다. */
@@ -66,7 +68,8 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
       createSdk: async () => {
         const env = stripConsoleInternalEnv(process.env);
         delete env.FLEET_CONSOLE_SESSION_ID;
-        return (deps.createSdk ?? createClaudeGatewaySdk)({ baseUrl, models: [options.model], tempRoot: cwd, env, modelPolicy: claudeGatewayModelPolicy });
+        const executablePath = await deps.resolveExecutablePath?.();
+        return (deps.createSdk ?? createClaudeGatewaySdk)({ baseUrl, models: [options.model], tempRoot: cwd, env, modelPolicy: claudeGatewayModelPolicy, ...(executablePath === undefined ? {} : { executablePath }) });
       },
       buildTurn: () => {
         turnController = new AbortController();
