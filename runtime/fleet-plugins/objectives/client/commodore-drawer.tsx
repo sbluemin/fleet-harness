@@ -274,10 +274,15 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
   const on = view?.state.autonomy === true;
   const run = view?.run;
 
-  // 열릴 때 — 지시 탭으로 열었으면 입력란에, 아니면 고른 구역에 초점을 둔다. 초점은 열 때 한 번만 옮긴다.
+  // 열릴 때 초점은 입력란이다 — 퀵런치처럼 바로 말할 수 있고, 상자 테두리만 밝아진다.
+  // 고른 탭에 focus()를 주면 클릭 뒤의 효과에서도 :focus-visible이 맞아, 마우스로 연 「기록」에 링이 선다.
+  // 입력란이 없는 구역은 시트만 받아 링을 그리지 않는다. 키보드로 탭에 가면 그때 링이 선다.
   useEffect(() => {
-    const target = dialogRef.current?.querySelector<HTMLElement>(tab === "directive" ? "textarea" : "[role='tab'][aria-selected='true']");
-    target?.focus({ preventScroll: true });
+    const root = dialogRef.current;
+    if (!root) return;
+    const field = root.querySelector<HTMLElement>(tab === "directive" ? "#objectives-commodore-directive" : tab === "log" ? ".objectives-commodore-composer-input" : "");
+    if (field && !field.hasAttribute("disabled")) { field.focus({ preventScroll: true }); return; }
+    root.focus({ preventScroll: true });
   }, [openedAt]); // eslint-disable-line react-hooks/exhaustive-deps -- 여는 순간만.
 
   const close = () => {
@@ -327,6 +332,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
         className={`objectives-commodore-sheet${frame.compact ? " is-compact" : ""}`}
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         aria-label={t("objectives.commodore.drawer.aria", { theater: label })}
         style={{ width: frame.width, height: frame.height }}
         onKeyDown={onKeyDown}
