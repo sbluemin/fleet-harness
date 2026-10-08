@@ -162,7 +162,7 @@ describe("Cursor client tool suspension", () => {
         ? "This turn advertises no client tools."
         : "If a matching client tool is deferred, load it with `cc_tool_search_");
       if (tools.length > 0) {
-        expect(refusal).toContain("then call the tool name that search returns.");
+        expect(refusal).toContain("then call it by the callable name the search result lists.");
       }
       expect(fallback.events.some((event) => event.type === "response.output_item.added" && event.item.type === "function_call")).toBe(false);
     }
