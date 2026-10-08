@@ -2399,7 +2399,8 @@ describe("Objectives contract", () => {
       expect(await memberView()).not.toHaveProperty("noReportTool");
       advertised.delete(memberId);
       expect(await memberView()).not.toHaveProperty("noReportTool");
-      // ④ 보고가 닿은 턴은 표시를 거둔다.
+      // ④ 보고가 닿은 턴은 표시를 거둔다 — 보드를 거친 사람의 말이 연 턴이라도 빚을 갚았다.
+      await launch.message(id, memberId, "Please report to the commander.");
       turn(10, "succeeded", { sentTo: [`objective-${id.slice(0, 6)}-cmdr`], byPerson: false, answer: "Reported." });
       await vi.advanceTimersByTimeAsync(1_000);
       expect(await memberView()).not.toHaveProperty("unreported");

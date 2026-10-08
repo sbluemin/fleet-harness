@@ -983,8 +983,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
             store.refresh(objectiveId);
           });
           changed = true;
-        } else if (member.unreported && !personTurn) {
-          // 사람에게 답한 턴은 그 빚을 갚지 않는다 — 표시는 보고·외부 대기·빚 해소 때만 거둔다.
+        } else if (member.unreported && (!personTurn || (report?.sentTo.length ?? 0) > 0)) {
+          // 사람에게 답만 한 턴은 그 빚을 갚지 않는다 — 표시는 보고·외부 대기·빚 해소 때만 거둔다. 사람이 연 턴이라도 보고가 닿았으면 빚을 갚았으니 거둔다.
           store.settleMemberUnreported(operationId, null);
           changed = true;
         }
