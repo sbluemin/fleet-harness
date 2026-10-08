@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.222.1] - 2026-10-08
+
+### fleet-console
+
+#### Fixed
+- The Commodore no longer fails with an "API Error: 400 ... does not support this model" error when it runs on a newer Claude model; it now starts on the Claude Code installed on your machine, like Chat.
+
 ## [1.222.0] - 2026-10-08
 
 ### fleet-console
