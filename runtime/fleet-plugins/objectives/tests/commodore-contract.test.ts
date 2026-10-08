@@ -315,6 +315,15 @@ describe("commodore supervisor", () => {
       expect(sessions[1]!.sent[0]).not.toMatch(/Old active|Old queued|replacement session|recent actions/);
       expect(h.store.transcriptRead("t1").entries.every((entry) => entry.seq > h.store.read("t1")!.transcriptClearedThrough!)).toBe(true);
       expect(h.events.some((event) => event.op === "state" && event.change === "clear")).toBe(true);
+      // 다른 창의 끄기가 runner를 목록에서 내린 직후에도, Clear는 그 세션의 마지막 기록까지 기다린다.
+      hold = true;
+      h.store.transcriptAppend("t1", { kind: "message", text: "Stopping while clearing." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      h.store.setAutonomy("t1", false);
+      await supervisor.clear("t1");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fs.existsSync(file)).toBe(false);
+      expect(h.store.transcriptRead("t1").entries).toEqual([]);
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
   it("persists a cancellable stop deadline, cancels pending work, notifies once and restores overdue stops without another patrol", async () => {

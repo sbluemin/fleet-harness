@@ -183,6 +183,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const now = deps.now ?? Date.now;
   const runners = new Map<string, Runner>();
   const clears = new Map<string, Promise<void>>();
+  const stops = new Map<string, Promise<void>>();
   const cleanups: (() => void)[] = [];
   let disposed = false;
 
@@ -441,9 +442,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!deps.objectives(theaterId).some((objective) => !objective.done && !objective.removed)) { runner.emptyReported = true; wake(runner, "empty"); }
   };
 
-  const stop = async (theaterId: string, reason: string) => {
+  const stop = (theaterId: string, reason: string): Promise<void> => {
+    const previous = stops.get(theaterId);
     const runner = runners.get(theaterId);
-    if (!runner) return;
+    if (!runner) return previous ?? Promise.resolve();
     runner.stopping = true;
     runners.delete(theaterId);
     clearTimer(runner, "stopTimer");
@@ -456,16 +458,20 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     setPhase(runner, "off", reason);
     const session = runner.session;
     runner.session = null;
-    try { await runner.inflight; } catch { /* 턴 결말은 세션이 삼킨다 */ }
-    // 끄는 동안 열리고 있던 세션 — 진행 중이던 일이 끝난 뒤 붙어 있으면 그것도 닫는다.
-    // TS 는 위에서 비운 값으로 좁히지만, 기다리는 동안 runTurn 의 openSession 이 다시 붙일 수 있다.
-    const opened = runner.session as CommodoreSession | null;
-    runner.session = null;
-    const undelivered = runner.messages.splice(0).map((message) => message.seq);
-    for (let index = 0; index < undelivered.length; index += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "undelivered", seqs: undelivered.slice(index, index + MAX_TRANSCRIPT_PAGE) });
-    record(runner, { kind: "session", event: "stopped", reason });
-    await session?.dispose();
-    if (opened && opened !== session) await opened.dispose();
+    const work = (async () => {
+      // runner를 목록에서 내린 뒤에도 마지막 기록·폐기가 끝날 때까지 Clear가 합류할 수 있게 남긴다.
+      await previous;
+      try { await runner.inflight; } catch { /* 턴 결말은 세션이 삼킨다 */ }
+      const opened = runner.session as CommodoreSession | null;
+      runner.session = null;
+      const undelivered = runner.messages.splice(0).map((message) => message.seq);
+      for (let index = 0; index < undelivered.length; index += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "undelivered", seqs: undelivered.slice(index, index + MAX_TRANSCRIPT_PAGE) });
+      record(runner, { kind: "session", event: "stopped", reason });
+      await session?.dispose();
+      if (opened && opened !== session) await opened.dispose();
+    })().finally(() => { if (stops.get(theaterId) === work) stops.delete(theaterId); });
+    stops.set(theaterId, work);
+    return work;
   };
 
   const sync = (reason: WakeCode = "autonomy") => {
@@ -606,7 +612,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     async dispose() {
       disposed = true;
       for (const cleanup of cleanups.splice(0)) cleanup();
-      await Promise.all([...clears.values(), ...[...runners.keys()].map((theaterId) => stop(theaterId, "Console stopping"))]);
+      await Promise.all([...clears.values(), ...stops.values(), ...[...runners.keys()].map((theaterId) => stop(theaterId, "Console stopping"))]);
     },
   };
 
