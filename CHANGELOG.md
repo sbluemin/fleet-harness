@@ -5,6 +5,29 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.220.0] - 2026-10-08
+
+### fleet-console
+
+#### Added
+- Turn off the automatic folding of earlier turns in Chat with one button beside the chat width control; the choice applies to every chat and is remembered.
+- Hand an objective to the Commodore or take it back by pressing the Commodore glyph at the end of its sidebar row.
+- Schedule when the Commodore's autonomous operation ends: pick a date and time, and at that moment it stops patrolling, tells the Commodore, and hands pending work back to you.
+- Clear the Commodore's conversation when you want a fresh start; its directive, intel and settings stay.
+- See how much of the Commodore's context window is in use beside its message field, as in Operation chat.
+- Objective rows and their group headers in the sidebar now light up while Console Use works on Objectives, as Operations do.
+
+#### Changed
+- Every Claude model (Fable, Opus, Sonnet, and Haiku) now appears once in AI Gateway and every model picker, always with its 1M context window. Claude models you already enabled, including 200k ones, move to their 1M version automatically and keep their effort and host-only settings.
+- The Commodore log opens as a centered popup over a dimmed backdrop, can be resized from any edge, and folds earlier turns into one line each.
+- The Commodore no longer wakes up for changes to objectives you run yourself; it still sees them on the board and keeps waking for the objectives it runs.
+
+#### Fixed
+- File links in agent output preserve spaces in absolute paths and explain how to open them or why they cannot be opened, without allowing access outside the Theater.
+
+#### Removed
+- Settings no longer offers a default Commodore model; the Commodore runs on Opus with high effort unless you pick another model for a Theater in the Commodore log.
+
 ## [1.219.0] - 2026-10-08
 
 ### fleet-console
