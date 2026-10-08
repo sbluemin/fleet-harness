@@ -308,6 +308,36 @@ describe("console terminal observability", () => {
     }
   });
 
+  // The public SDK lets a plugin register a synchronous cleanup. One that throws is one failed cleanup: the shutdown still
+  // runs every other plugin cleanup, logs that failure, and releases the runtime lock.
+  it("runs every plugin cleanup and releases the lock when one cleanup throws synchronously", async () => {
+    const hooks = globalThis as typeof globalThis & { __fleetCleanupRuns?: string[] };
+    const runs: string[] = [];
+    hooks.__fleetCleanupRuns = runs;
+    const plugin = createPluginPackageRoot({ demoRoutes: [
+      "export function register(ctx) {",
+      "  const runs = globalThis.__fleetCleanupRuns;",
+      "  ctx.host.lifecycle.registerCleanup(async () => { runs.push('before'); });",
+      "  ctx.host.lifecycle.registerCleanup(() => { runs.push('throws'); throw new Error('sync cleanup failure'); });",
+      "  ctx.host.lifecycle.registerCleanup(() => { runs.push('after-sync'); });",
+      "  ctx.host.lifecycle.registerCleanup(async () => { runs.push('after-async'); });",
+      "}",
+    ].join("\n") });
+    const warn = vi.spyOn(console, "warn");
+    try {
+      const fixture = await startFixture({ release: plugin.release });
+      const stopError = await fixture.server.stop().then(() => null, (error: unknown) => error);
+      const failureLogs = warn.mock.calls.filter(([message]) => typeof message === "string" && message.startsWith("[fleet-console] Plugin cleanup failed:"));
+      expect.soft(stopError).toBeNull();
+      expect.soft([...runs].sort()).toEqual(["after-async", "after-sync", "before", "throws"]);
+      expect.soft(fs.existsSync(fixture.lockFile)).toBe(false);
+      expect.soft(failureLogs).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+      delete hooks.__fleetCleanupRuns;
+    }
+  });
+
   // N9-W2: the token-authenticated stop request. Rejections never touch the shutdown, an accepted request runs the one
   // shutdown once, and a repeat joins it instead of starting another.
   it("accepts one token-authenticated stop request and joins later stops into the same shutdown", async () => {
