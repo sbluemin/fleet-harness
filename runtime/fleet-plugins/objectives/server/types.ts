@@ -500,6 +500,11 @@ export interface StoredObjective {
   /** 마지막으로 개시한 손 — 행위 기록이 접혀도 남는다. 개시 출처를 기록하기 전의 옛 레코드에는 없다(누가 개시했는지 모른다). */
   readonly commencedBy?: ObjectiveActor;
   /**
+   * 사람이 정한 운영 주체 — true 면 Theater 의 사령관이 운영하고, false 면 사람이 운영한다. 사람만 바꾼다(`objective/operator`).
+   * 없으면 사령관이 만든 목표만 사령관이 운영한다(`board-state.ts` `objectiveOperator`). 옛 레코드는 고쳐 쓰지 않는다.
+   */
+  readonly commodoreOperated?: boolean;
+  /**
    * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것 — 「시작」·「스티어링」이 지휘관에게 한 줄로 알리고 다시 읽게 한다.
    * 지휘관이 이 항목을 읽거나 알림이 나가면 지워진다.
    */
@@ -686,6 +691,8 @@ export interface Objective {
   readonly commenced: boolean;
   /** 마지막으로 개시한 손. 개시 출처를 기록하기 전에 개시한 목표에는 없다 — 「모름」이지 사람이 아니다. */
   readonly commencedBy?: ObjectiveActor;
+  /** 사람이 정한 운영 주체(저장값 그대로). 없으면 기본 판정이다 — 판정은 `objectiveOperator` 하나가 한다. */
+  readonly commodoreOperated?: boolean;
   /** 사람의 개시가 라우팅으로 새로 띄울 구성원의 판단 결과를 먼저 보여 준다. 지휘관 도구·후속 목표의 기동은 묻지 않는다. */
   readonly routingConfirm: boolean;
   /** 에이전트가 지웠거나 다른 목표로 합쳤다 — 보드의 보통 구역에서 빠지고, 사람이 되돌릴 수 있다. */

@@ -158,6 +158,8 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       return objective(store.find(moved.id) ?? moved);
     }) },
     // 목표를 지우면 지휘관 Operation 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
+    // 운영 주체 — 사람만 바꾼다. 사령관 보드 도구에는 이 쓰기가 없고, 사령관은 조회의 operator 로 읽기만 한다.
+    { name: "objective/operator", method: "POST", summary: "Hand an objective to the Theater's Commodore (commodore true) or take it back (false). Only the person sets it; the change is kept in the objective's actions. The Commodore is woken by an objective's board changes only while it operates it.", handler: json(objectiveRef.extend({ commodore: z.boolean() }), ({ objectiveId, commodore }) => objective(store.setCommodoreOperated(objectiveId, commodore, "human"))) },
     { name: "objective/restore", method: "POST", summary: "Restore an objective an agent removed or merged through Console Use; a merged one also leaves the objective it joined.", handler: json(objectiveRef, ({ objectiveId }) => { const restored = store.tidyRestore(objectiveId); launch.followupTargetChanged(objectiveId); return objective(restored); }) },
     { name: "objective/remove", method: "POST", summary: "Delete an objective by closing its Commander Operation (restorable during the undo window).", handler: json(objectiveRef, unlessBusy(({ objectiveId }) => objective(launch.remove(objectiveId)))) },
     // 후속 후보를 고른 완료는 새 경계다 — 검토 대기·스티어링 우선·제안 대기를 서버가 원자적으로 다시 따진다. 고른 것이 없으면 지금 완료 그대로.

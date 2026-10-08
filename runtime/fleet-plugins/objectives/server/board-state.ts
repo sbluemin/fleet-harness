@@ -20,6 +20,25 @@ export function objectiveStatus(objective: Objective): ObjectiveStatus {
   return "running";
 }
 
+/**
+ * 목표를 운영하는 쪽 — 사령관 깨움(보드 사건·inbox 집계)과 조회의 `operator` 가 이 하나를 쓴다. 사람이 정한 값이 있으면 그것,
+ * 없으면 사령관이 만든 목표(직접 추가했거나 사령관이 고른 후속)만 사령관이다. 개시한 손(`commencedBy`)은 기준이 아니다.
+ * `find` 는 후속의 원본을 찾는 데만 쓴다.
+ */
+export type ObjectiveOperator = "commodore" | "human";
+export function objectiveOperator(objective: Objective, find: (objectiveId: string) => Objective | null | undefined): ObjectiveOperator {
+  if (typeof objective.commodoreOperated === "boolean") return objective.commodoreOperated ? "commodore" : "human";
+  return createdByCommodore(objective, find) ? "commodore" : "human";
+}
+
+/** 사령관이 만든 목표 — 직접 추가했거나, 사령관이 고른 후속 후보에서 생겼다. */
+export function createdByCommodore(objective: Objective, find: (objectiveId: string) => Objective | null | undefined): boolean {
+  if (objective.addedBy && "kind" in objective.addedBy && objective.addedBy.kind === "commodore") return true;
+  const origin = objective.origin;
+  if (!origin) return false;
+  return !!find(origin.objectiveId)?.followupBatches.some((batch) => typeof batch.by === "object" && batch.by.kind === "commodore" && batch.items.some((item) => item.candidateId === origin.candidateId));
+}
+
 /** 임무가 남고 보드가 오래 그대로인 목표. 관측할 수 없는 세션을 유휴라고 추측하지 않는다. */
 export function stalledObjectives(objectives: readonly Objective[], observe: BoardObserver, now = Date.now()): readonly string[] {
   return objectives.filter((objective) => {
