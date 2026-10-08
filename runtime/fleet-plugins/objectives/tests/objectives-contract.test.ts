@@ -2257,22 +2257,23 @@ describe("Objectives contract", () => {
       const launchesBefore = launches.length;
       const resumesBefore = resumed.length;
       launch.watchLiveOutcomes();
-      // 정상 종료 대표 경우 — 신호도 통지도 없다. ① 지휘관에게 보고가 닿은 턴 ② 사람이 입력창에서 연 턴 ③ 보고를 관측하지 않는 표면(터미널)의 턴.
-      const turn = (revision: number, outcome: "succeeded" | "completed", report?: import("@fleet-console/sdk/mcp").ConsoleTurnReport) => {
+      // 정상 종료 대표 경우 — 신호도 통지도 없다. 배정 뒤 아직 보고하지 않은 구성원이라도 ① 사람이 입력창에서 연 턴 ② 보고를 관측하지 않는
+      // 표면(터미널)의 턴 ③ 외부 대기(백그라운드 셸·모니터·깨움 예약)를 걸고 닫은 턴은 멈춘 턴이 아니다.
+      const turn = (revision: number, outcome: "succeeded" | "completed", report?: Omit<import("@fleet-console/sdk/mcp").ConsoleTurnReport, "pendingWork"> & { pendingWork?: boolean }) => {
         outcomes.set(memberId, outcome);
-        outputDetails.set(memberId, { revision, ...(report ? { report } : {}) });
+        outputDetails.set(memberId, { revision, ...(report ? { report: { pendingWork: false, ...report } } : {}) });
         h.emitTurnEnd(memberId);
       };
-      turn(1, "succeeded", { sentTo: [`objective-${id.slice(0, 6)}-cmdr`], byPerson: false, answer: "Reported." });
-      turn(2, "succeeded", { sentTo: [], byPerson: true, answer: "Answered the person here." });
+      turn(1, "succeeded", { sentTo: [], byPerson: true, answer: "Answered the person here." });
       surfaces.set(memberId, "terminal");
-      turn(3, "completed");
+      turn(2, "completed");
       surfaces.set(memberId, "chat");
+      turn(3, "succeeded", { sentTo: [], byPerson: false, answer: "Waiting for CI.", pendingWork: true });
       await vi.advanceTimersByTimeAsync(5_000);
       expect.soft(notices()).toHaveLength(0);
       expect.soft(await memberView()).not.toHaveProperty("unreported");
 
-      // 사건 조건: 실패 결말 없이 닫혔고, 결과까지 닿은 메시지가 없고, 열린 배정 임무가 있다.
+      // 사건 조건: 실패 결말 없이 닫혔고, 결과까지 닿은 메시지도 남은 대기도 없고, 열린 배정 임무가 있는데 배정 뒤 보고한 적이 없다.
       turn(4, "succeeded", { sentTo: [], byPerson: false, answer: incident });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(1);
@@ -2290,21 +2291,32 @@ describe("Objectives contract", () => {
       expect(launches).toHaveLength(launchesBefore);
       expect(resumed).toHaveLength(resumesBefore);
 
-      // 통지가 거절되면 그 사실을 남긴다. 다음 턴이 보고를 남기면 표시를 거둔다.
+      // 통지가 거절되면 그 사실을 남긴다. 다음 턴이 보고를 남기면(④ 보고가 닿은 턴) 표시를 거둔다.
       const requests = vi.spyOn(ctx.host.consoleControl!, "request").mockRejectedValueOnce(Object.assign(new Error("commander unreachable"), { code: "operation_busy" }));
       turn(5, "succeeded", { sentTo: [], byPerson: false });
       await vi.advanceTimersByTimeAsync(1_000);
       requests.mockRestore();
       expect.soft(await memberView()).toMatchObject({ unreported: { reason: null, notificationFailure: { code: "operation_busy", message: "commander unreachable" } } });
       expect.soft((await memberView())?.unreported).not.toHaveProperty("lastMessage");
-      turn(6, "succeeded", { sentTo: ["commander"], byPerson: false });
+      turn(6, "succeeded", { sentTo: [`objective-${id.slice(0, 6)}-cmdr`], byPerson: false, answer: "Reported." });
       await vi.advanceTimersByTimeAsync(1_000);
       expect(await memberView()).not.toHaveProperty("unreported");
-      // 끝난 임무만 남은 구성원의 조용한 턴은 미완 정지가 아니다.
-      store.missionPatch(id, mission.id, { done: true });
-      turn(7, "succeeded", { sentTo: [], byPerson: false, answer: "Idle." });
+      // ⑤ 배정 뒤 이미 보고한 구성원이 지휘관의 참고 메시지에 답 없이 닫은 턴은 보고 빚이 없다.
+      turn(7, "succeeded", { sentTo: [], byPerson: false, answer: "Noted." });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(1);
+      expect(await memberView()).not.toHaveProperty("unreported");
+      // 새 배정은 보고 빚을 되살린다 — 그 뒤 조용히 멈춘 턴은 다시 알린다.
+      h.advanceClock(1_000);
+      launch.missionAdded(id, { text: "Next step", member: memberId });
+      turn(8, "succeeded", { sentTo: [], byPerson: false, answer: "Stopped." });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(notices()).toHaveLength(2);
+      // ⑥ 끝난 임무만 남은 구성원의 조용한 턴은 미완 정지가 아니다.
+      for (const entry of store.find(id)!.missions) store.missionPatch(id, entry.id, { done: true });
+      turn(9, "succeeded", { sentTo: [], byPerson: false, answer: "Idle." });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(notices()).toHaveLength(2);
       expect(await memberView()).not.toHaveProperty("unreported");
     } finally {
       launch.dispose();

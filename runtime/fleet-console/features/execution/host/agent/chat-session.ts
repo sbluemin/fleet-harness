@@ -296,6 +296,8 @@ const JOURNAL_PAGE_KINDS: ReadonlySet<string> = new Set(["dispatch", "text", "to
  * 말이 부모 이름으로 남는다.
  */
 const SESSION_MESSAGE_TOOL = "SendMessage";
+/** 이 세션을 나중에 다시 깨우도록 예약하는 도구 — 성공한 호출이 있으면 그 턴은 외부 대기를 건 채 닫힌 것이다. */
+const WAKE_SCHEDULING_TOOLS: ReadonlySet<string> = new Set(["ScheduleWakeup", "CronCreate"]);
 /** 결말을 기다리는 발신 호출의 상한. 도구 결과는 보통 곧바로 오므로 넉넉한 창이다. */
 const PENDING_SENT_MESSAGE_CAP = 64;
 /**
@@ -599,6 +601,10 @@ class AgentChatSession {
   private turnSentTo: string[] = [];
   /** 열린 턴이 사람이 입력창에서 보낸 말로 열렸다. */
   private turnByPerson = false;
+  /** 열린 턴에서 결과를 기다리는 깨움 예약 호출(tool_use id). */
+  private readonly pendingWakeCalls = new Set<string>();
+  /** 열린 턴에서 깨움 예약이 성공했다. */
+  private turnScheduledWake = false;
   /** 마지막으로 닫힌 턴의 보고와 그 `turn-end` 줄의 seq — 관측(`readConsoleOutput`)이 종료 이벤트와 같은 값을 말하게 한다. */
   private endedTurnReport: { readonly seq: number; readonly report: import("@fleet-console/sdk/mcp").ConsoleTurnReport } | undefined;
   private disposed = false;
@@ -2708,6 +2714,7 @@ class AgentChatSession {
       for (const block of content) {
         if (!block || typeof block !== "object") continue;
         const record = block as { readonly type?: unknown; readonly name?: unknown; readonly id?: unknown; readonly input?: unknown };
+        if (record.type === "tool_use" && typeof record.name === "string" && WAKE_SCHEDULING_TOOLS.has(record.name) && typeof record.id === "string" && this.turnOpen) this.pendingWakeCalls.add(record.id);
         if (record.type !== "tool_use" || record.name !== SESSION_MESSAGE_TOOL) continue;
         if (typeof record.id !== "string" || record.id.length === 0) continue;
         const input = record.input;
@@ -2724,13 +2731,14 @@ class AgentChatSession {
       }
       return;
     }
-    if (message.type !== "user" || this.pendingSentMessages.size === 0) return;
+    if (message.type !== "user" || (this.pendingSentMessages.size === 0 && this.pendingWakeCalls.size === 0)) return;
     const content = (message as { readonly message?: { readonly content?: unknown } }).message?.content;
     if (!Array.isArray(content)) return;
     for (const block of content) {
       if (!block || typeof block !== "object") continue;
       const record = block as { readonly type?: unknown; readonly tool_use_id?: unknown; readonly is_error?: unknown; readonly content?: unknown };
       if (record.type !== "tool_result" || typeof record.tool_use_id !== "string") continue;
+      if (this.pendingWakeCalls.delete(record.tool_use_id) && record.is_error !== true && this.turnOpen) this.turnScheduledWake = true;
       const sent = this.pendingSentMessages.get(record.tool_use_id);
       if (sent === undefined) continue;
       this.pendingSentMessages.delete(record.tool_use_id);
@@ -2964,6 +2972,8 @@ class AgentChatSession {
     // 자식이 스스로 연 턴은 자식이 이미 알고 있다. 디스패치가 연 턴은 `send()`가 닿아야 그렇다.
     this.turnReachedChild = !options.dispatched;
     this.turnSentTo = [];
+    this.turnScheduledWake = false;
+    this.pendingWakeCalls.clear();
     // 이 턴을 연 지시 — 지난 턴의 끝 뒤에 선 마지막 dispatch 다. 없으면 자식이 스스로 연 턴이다.
     const opener = this.journal.findLast(({ event }) => event.kind === "dispatch" || event.kind === "turn-end")?.event;
     this.turnByPerson = options.dispatched && opener?.kind === "dispatch" && opener.by === undefined;
@@ -2996,6 +3006,7 @@ class AgentChatSession {
     // 세션 간 메시지를 관측하는 세션만 보고를 싣는다 — 관측하지 않으면 빈 sentTo 는 "보내지 않았다"가 아니라 "모른다"다.
     const report: import("@fleet-console/sdk/mcp").ConsoleTurnReport | undefined = this.seed.onSessionMessageSent === undefined ? undefined : {
       sentTo: this.turnSentTo, byPerson: this.turnByPerson, ...(end.answer === undefined ? {} : { answer: end.answer }),
+      pendingWork: this.liveJobs.size > 0 || this.turnScheduledWake,
     };
     this.endedTurnReport = report ? { seq: this.seq, report } : undefined;
     this.consoleOutputCache = undefined;

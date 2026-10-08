@@ -66,6 +66,11 @@ export interface ConsoleTurnReport {
   readonly byPerson: boolean;
   /** SDK result 가 말한 최종 응답 원문. `output.text` 의 꼬리 자르기·정리를 지나지 않는다. 성공한 턴에만 있다. */
   readonly answer?: string;
+  /**
+   * 턴이 닫힐 때 이 세션을 다시 깨울 일이 남았다 — 살아 있는 백그라운드 작업(셸·모니터·서브에이전트 등)이 있거나, 이 턴에서
+   * 깨움 예약(`ScheduleWakeup`·`CronCreate`)이 성공했다. 외부 대기를 걸고 닫은 턴은 멈춘 턴이 아니다.
+   */
+  readonly pendingWork: boolean;
 }
 
 /** 다음 턴이 관측을 덮기 전에 전달하는 종료 snapshot. 브라우저 알림 채널이 아니다. */

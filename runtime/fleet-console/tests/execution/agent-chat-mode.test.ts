@@ -202,7 +202,14 @@ describe("agent chat mode routes", () => {
     const answer = "Reported to the commander.\n  verbatim  \n\n\nEND";
     harness.emitToLatest({ type: "result", subtype: "success", is_error: false, duration_ms: 1, result: answer });
     await vi.waitFor(() => expect(harness.consoleControl.observe(member)?.output).toMatchObject({
-      outcome: "succeeded", report: { sentTo: ["commander", "nobody-here", "commander"], byPerson: false, answer },
+      outcome: "succeeded", report: { sentTo: ["commander", "nobody-here", "commander"], byPerson: false, answer, pendingWork: false },
+    }));
+    // 외부 대기(백그라운드 셸)를 걸고 말없이 닫은 턴은 다시 깨어날 일이 남은 턴이다 — 보낸 말이 없어도 멈춘 턴과 가른다.
+    harness.emitToLatest({ type: "assistant", message: { content: [{ type: "text", text: "Waiting for CI." }] } });
+    harness.emitToLatest({ type: "system", subtype: "task_started", task_id: "ci-wait", task_type: "local_bash", description: "gh run watch" });
+    harness.emitToLatest({ type: "result", subtype: "success", is_error: false, duration_ms: 1, result: "Waiting for CI." });
+    await vi.waitFor(() => expect(harness.consoleControl.observe(member)?.output).toMatchObject({
+      outcome: "succeeded", report: { sentTo: [], byPerson: false, answer: "Waiting for CI.", pendingWork: true },
     }));
     // Console Use 발신은 그대로 Operation 출처의 지시로 선다 — 수신 줄로 두 번 서지 않는다.
     expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Begin the objective", by: expect.objectContaining({ kind: "operation", operationId: sessionId }) }));

@@ -889,6 +889,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
    */
   const lastOutcomes = new Map<string, "failed" | undefined>();
   const lastTurns = new Map<string, { generation: string | undefined; revision: number }>();
+  /** 구성원이 마지막으로 메시지를 전달한 턴을 본 시각 — 배정 뒤에 이미 보고한 구성원의 조용한 턴은 보고 빚이 없다. */
+  const lastDelivered = new Map<string, number>();
   let unsubscribeTurnEnds: (() => void) | null = null;
   const outcomeWatched = new Map<string, string>();
   let outcomeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -899,11 +901,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   };
   const forgetOutcome = (operationId: string) => {
     lastTurns.delete(operationId);
+    lastDelivered.delete(operationId);
     store.settleMemberFailure(operationId, null);
     store.settleMemberUnreported(operationId, null);
     dropOutcome(operationId);
     for (const [id, objectiveId] of [...outcomeWatched]) if (objectiveId === operationId) {
       lastTurns.delete(id);
+      lastDelivered.delete(id);
       store.settleMemberFailure(id, null);
       store.settleMemberUnreported(id, null);
       dropOutcome(id);
@@ -934,11 +938,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         const turn = { generation, revision };
         lastTurns.set(operationId, turn);
         const language: PromptLanguage = ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
-        // 실패 없이 닫힌 턴이 아무에게도 말을 남기지 못했다 — 보고를 관측하는 표면이고, 사람이 입력창에서 연 턴이 아니며, 열린 배정 임무가 있을 때만.
-        // 표면이 보고를 싣지 않으면(터미널) 모른다는 뜻이라 신호를 세우지 않는다.
+        // 실패 없이 닫힌 턴이 아무에게도 말을 남기지 못했다 — 보고를 관측하는 표면이고, 사람이 입력창에서 연 턴이 아니며, 다시 깨어날 일(백그라운드
+        // 작업·깨움 예약)을 남기지 않았고, 열린 배정 임무가 있는데 그 배정 뒤로 한 번도 메시지를 전달하지 않았을 때만. 배정 뒤 이미 보고한 구성원이
+        // 참고 메시지에 답 없이 닫은 턴은 이 턴 하나로 멈춘 턴과 가를 수 없으므로 세우지 않는다. 표면이 보고를 싣지 않으면(터미널) 모른다는 뜻이다.
         const report = outcome === "failed" ? undefined : observation.output.report;
-        const silent = !!report && !report.byPerson && report.sentTo.length === 0 && objectiveUnderway(current)
-          && current.missions.some((mission) => mission.member === member.id && !mission.done);
+        if (report && report.sentTo.length > 0) lastDelivered.set(operationId, quietNow());
+        const assignedAt = Math.max(-1, ...current.missions.flatMap((mission) => mission.member === member.id && !mission.done ? [mission.assignmentTs ?? 0] : []));
+        const silent = !!report && !report.byPerson && !report.pendingWork && report.sentTo.length === 0 && objectiveUnderway(current)
+          && assignedAt >= 0 && (lastDelivered.get(operationId) ?? -1) < assignedAt;
         if (silent) {
           const unreported: ObjectiveMemberUnreported = { at: quietNow(), ...(report.answer !== undefined ? { lastMessage: report.answer } : {}), reason: null };
           store.settleMemberUnreported(operationId, unreported);
@@ -1555,6 +1562,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       lastOutcomes.clear();
       unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null;
       for (const operationId of lastTurns.keys()) { store.settleMemberFailure(operationId, null); store.settleMemberUnreported(operationId, null); }
+      lastDelivered.clear();
       lastTurns.clear();
       if (quietTimer) clearTimeout(quietTimer);
       quietTimer = null;
