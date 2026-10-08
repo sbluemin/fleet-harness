@@ -63,7 +63,8 @@ export interface MobileModelGroup {
   readonly key: string;
   readonly label: string;
   readonly icon?: React.ReactNode;
-  readonly options: readonly { readonly value: string; readonly label: string; readonly meta?: string }[];
+  /** `meta`는 오른쪽 끝의 짧은 표식(「1M」), `description`은 이름 아래 설명 줄이다(선택 방식의 풀이처럼 긴 글). */
+  readonly options: readonly { readonly value: string; readonly label: string; readonly meta?: string; readonly description?: string }[];
 }
 
 /**

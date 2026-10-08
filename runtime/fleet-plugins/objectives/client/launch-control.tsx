@@ -8,6 +8,7 @@ import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import type { ClientModelsCapability } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
+import type { Objective, ObjectiveMember } from "../server/types.js";
 import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
@@ -230,5 +231,81 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
       {...(footer ? { footer } : {})}
       {...(subagents ? { menuWidth: 232 } : {})}
     />
+  );
+}
+
+/**
+ * 구성원 트리거의 표시 — 실행과 설정을 가른다. 띄운 Operation 이 있으면 어떤 방식이든 그 Operation 의 모델이 실제 실행값이다(연결 뒤
+ * 설정을 바꿔도 기존 Operation 은 옛 모델로 재개된다). 띄우기 전에는 라우팅·지휘관과 같게는 선택 낱말, 모델 지정은 선택값 그대로.
+ * 메뉴의 선택 표시(model·effort·active)는 이 값이 아니라 member.launch 만 따른다.
+ */
+export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, rows: readonly OperationLaunchVariantRow[]): { text?: ReactNode; title: string; label: string } {
+  const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
+  if (launched) {
+    const running = launchedWords(rows, member.model, member.effort, labels);
+    // 라우팅으로 떴으면 그 근거, 폴백이면 사유가 풀네임 뒤에 붙는다 — 같은 「모델 · 강도」 줄이 어떻게 정해졌는지 말한다.
+    const title = member.routed?.via === "route" ? t("objectives.members.routedBecause", { model: running.title, because: member.routed.because })
+      : member.routed?.via === "fallback" ? t("objectives.members.fallbackBecause", { model: running.title, reason: routingReason(t, member.routed.reason) }) : running.title;
+    return { text: <LaunchedText model={running.model} words={running.words} />, title, label: `${running.words.model} · ${running.words.effort}` };
+  }
+  if (member.launch.mode === "route") return { text: <span className="objectives-launch-model">{t("objectives.memberSelection.route")}</span>, title: t("objectives.members.routeHint"), label: t("objectives.memberSelection.route") };
+  if (member.launch.mode === "same") return { text: <span className="objectives-launch-model">{t("objectives.memberSelection.inherit")}</span>, title: t("objectives.memberSelection.inherit"), label: t("objectives.memberSelection.inherit") };
+  const chosen = launchedWords(rows, member.launch.model, member.launch.effort, labels);
+  return { title: chosen.title, label: `${chosen.words.model} · ${chosen.words.effort}` };
+}
+/** 사라진 Operation 은 실행값을 읽을 곳이 없다 — 띄우기 전처럼 설정 선택을 보인다(다음 개시가 연결을 새로 세운다). */
+export const memberLaunched = (member: ObjectiveMember, operationState: (operationId: string) => string): boolean => member.sessionName !== null && operationState(member.id) !== "closed";
+/** 저장값만. false와 키 없음은 꺼짐. 실행 중 세션에 적용됐는지는 여기서 말하지 않는다. */
+export const memberSubagents = (member: ObjectiveMember): boolean => member.subagents === true;
+/** 세션이 살아 있는 활동 — 서브에이전트 허용은 이런 세션에 곧바로 실리지 않고 다음 기동부터 적용된다. */
+export const MEMBER_LIVE: ReadonlySet<string> = new Set(["running", "background", "idle", "awaiting"]);
+
+export type MemberLaunchChoice = { readonly mode: "same" } | { readonly mode: "model"; readonly model: string; readonly effort?: string | undefined };
+
+interface MemberLaunchControlProps {
+  readonly t: Translate<ObjectiveMessageKey>;
+  readonly objective: Objective;
+  readonly member: ObjectiveMember;
+  /** 구성원 세션의 활동 — 세션이 없으면 "closed". */
+  readonly state: string;
+  readonly rows: readonly OperationLaunchVariantRow[];
+  readonly touchable: boolean;
+  /** 띄운 구성원의 선택 — 휴면·유휴면 곧바로, 일하는 중이면 이번 턴 뒤 바뀐다. 한 번의 선택에 한 번 불린다. */
+  readonly onPickLaunched: (choice: MemberLaunchChoice) => void;
+  /** 띄우기 전 선택 — 저장값만 바꾼다. null 은 라우팅. */
+  readonly onPatchLaunch: (choice: MemberLaunchChoice | null) => void;
+  readonly onToggleSubagents: () => void;
+}
+
+/**
+ * 구성원 한 명의 기동 선택 — 데스크톱 명단과 모바일 보드가 같은 이 컨트롤을 쓴다. 띄운 구성원은 실행값을 보이고 「지휘관과 같게」만
+ * 선택 방식으로 서며(라우팅은 새로 띄울 때만 판단한다), 띄우기 전에는 「라우팅」·「지휘관과 같게」가 선다. 폰에서는 공유 선택기가 호스트의
+ * 좌표 시트로 서고, 머리·사유 줄·서브에이전트 footer 는 메뉴 밖(보드의 행·묶음)이 맡는다.
+ */
+export function MemberLaunchControl({ t, objective, member, state, rows, touchable, onPickLaunched, onPatchLaunch, onToggleSubagents }: MemberLaunchControlProps) {
+  const launched = member.sessionName !== null && state !== "closed";
+  const display = memberLaunchDisplay(member, launched, t, rows);
+  const subagents = touchable ? { allowed: memberSubagents(member), onToggle: onToggleSubagents } : undefined;
+  const triggerLabel = t("objectives.members.modelAria", { role: member.role });
+  if (launched) {
+    // 띄운 구성원 — 행은 실행값이다. 고른 값은 곧바로 또는 이번 턴 뒤 바뀌고, 그 경과는 칩 곁 말풍선(폰은 행의 설명 줄)이 말한다.
+    const reserved = member.next && !member.next.failed ? member.next : null;
+    const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") });
+    return (
+      <LaunchControl t={t} model={reserved ? reserved.model : member.model} effort={reserved ? reserved.effort : member.effort} locked={!touchable} startAtList triggerLabel={triggerLabel}
+        triggerText={display.text} triggerTitle={display.title}
+        head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : state === "idle" ? "objectives.members.menuHead.idle" : "objectives.members.menuHead.working")}</span></>}
+        extras={[{ id: "same", label: t("objectives.memberSelection.inherit"), hint: `${commanderWords.words.model} · ${commanderWords.words.effort}`, active: member.launch.mode === "same", onPick: () => onPickLaunched({ mode: "same" }) }]}
+        extrasCaption={t("objectives.members.routeAtLaunch")}
+        {...(subagents ? { subagents } : {})}
+        onChange={(choice) => { const model = choice.model ?? reserved?.model ?? member.model; if (model) onPickLaunched({ mode: "model", model, effort: choice.effort }); }} />
+    );
+  }
+  return (
+    <LaunchControl t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} triggerLabel={triggerLabel}
+      triggerText={display.text} triggerTitle={display.title}
+      extras={[{ id: "route", label: t("objectives.memberSelection.route"), hint: t("objectives.members.routeHint"), active: member.launch.mode === "route", onPick: () => onPatchLaunch(null) }, { id: "same", label: t("objectives.memberSelection.inherit"), active: member.launch.mode === "same", onPick: () => onPatchLaunch({ mode: "same" }) }]}
+      {...(subagents ? { subagents } : {})}
+      onChange={(next) => { const model = next.model ?? (member.launch.mode === "model" ? member.launch.model : undefined); if (model) onPatchLaunch({ mode: "model", model, effort: next.effort }); }} />
   );
 }

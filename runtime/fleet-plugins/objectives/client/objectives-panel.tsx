@@ -20,7 +20,7 @@ import { DatePicker } from "./date-picker.js";
 import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { hasRoutingReason, LaunchControl, LaunchedText, launchedWords, routingReason, useLaunchRows } from "./launch-control.js";
+import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunchDisplay, memberLaunched, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
@@ -438,30 +438,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   );
 }
 
-/**
- * 구성원 트리거의 표시 — 실행과 설정을 가른다. 띄운 Operation 이 있으면 어떤 방식이든 그 Operation 의 모델이 실제 실행값이다(연결 뒤
- * 설정을 바꿔도 기존 Operation 은 옛 모델로 재개된다). 띄우기 전에는 라우팅·지휘관과 같게는 선택 낱말, 모델 지정은 선택값 그대로.
- * 메뉴의 선택 표시(model·effort·active)는 이 값이 아니라 member.launch 만 따른다.
- */
-function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, t: T, rows: ReturnType<typeof useLaunchRows>): { text?: ReactNode; title: string; label: string } {
-  const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
-  if (launched) {
-    const running = launchedWords(rows, member.model, member.effort, labels);
-    // 라우팅으로 떴으면 그 근거, 폴백이면 사유가 풀네임 뒤에 붙는다 — 같은 「모델 · 강도」 줄이 어떻게 정해졌는지 말한다.
-    const title = member.routed?.via === "route" ? t("objectives.members.routedBecause", { model: running.title, because: member.routed.because })
-      : member.routed?.via === "fallback" ? t("objectives.members.fallbackBecause", { model: running.title, reason: routingReason(t, member.routed.reason) }) : running.title;
-    return { text: <LaunchedText model={running.model} words={running.words} />, title, label: `${running.words.model} · ${running.words.effort}` };
-  }
-  if (member.launch.mode === "route") return { text: <span className="objectives-launch-model">{t("objectives.memberSelection.route")}</span>, title: t("objectives.members.routeHint"), label: t("objectives.memberSelection.route") };
-  if (member.launch.mode === "same") return { text: <span className="objectives-launch-model">{t("objectives.memberSelection.inherit")}</span>, title: t("objectives.memberSelection.inherit"), label: t("objectives.memberSelection.inherit") };
-  const chosen = launchedWords(rows, member.launch.model, member.launch.effort, labels);
-  return { title: chosen.title, label: `${chosen.words.model} · ${chosen.words.effort}` };
-}
-/** 사라진 Operation 은 실행값을 읽을 곳이 없다 — 띄우기 전처럼 설정 선택을 보인다(다음 개시가 연결을 새로 세운다). */
-const memberLaunched = (member: ObjectiveMember, operationState: (operationId: string) => string): boolean => member.sessionName !== null && operationState(member.id) !== "closed";
-/** 저장값만. false와 키 없음은 꺼짐. 실행 중 세션에 적용됐는지는 여기서 말하지 않는다. */
-const memberSubagents = (member: ObjectiveMember): boolean => member.subagents === true;
-const MEMBER_LIVE = new Set(["running", "background", "idle", "awaiting"]);
 /** 라우팅이 꺼졌거나 후보가 없는 것은 실패가 아니라 설정 상태다 — 폴백 줄도 시트처럼 중립으로 말한다. */
 const ROUTING_OFF_REASONS = new Set(["routing_disabled", "routing_off", "no_candidate"]);
 
@@ -564,7 +540,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   }, [batchOpen]);
 
   // 띄운 구성원의 모델 — 휴면·유휴면 곧바로, 일하는 중이면 이번 턴 뒤 바뀐다. 바꾸지 못하면(문맥이 새 모델의 창보다 큼 등) 그 칩에 사유가 선다.
-  const pickLaunched = (member: ObjectiveMember, launch: { readonly mode: "same" } | { readonly mode: "model"; readonly model: string; readonly effort?: string }) => {
+  const pickLaunched = (member: ObjectiveMember, launch: MemberLaunchChoice) => {
     const picked = launch.mode === "same" ? { model: objective.commander.model, effort: objective.commander.effort } : { model: launch.model, effort: launch.effort };
     void request("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } }).then(
       (payload) => {
@@ -703,7 +679,6 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const count = objective.missions.filter((mission) => mission.member === member.id).length;
       const state = member.sessionName !== null ? operationState(member.id) : "closed";
       const launched = memberLaunched(member, operationState);
-      const display = memberLaunchDisplay(member, launched, t, rows);
       const routed = launched ? member.routed : null;
       const next = launched ? member.next : null;
       const reserved = next && !next.failed ? next : null;
@@ -713,7 +688,6 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const failure = picked && fault ? { model: picked.model, effort: picked.effort, code: fault.code, dismiss: () => setFault(null) }
         : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
-      const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
       const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
       const failed = (member.outcome === "failed" || !!member.failure) && !isWorkingOrAwaiting;
       const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : isWorkingOrAwaiting ? (state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.working")) : t("objectives.members.idle");
@@ -737,23 +711,10 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           </div>
           <div className="objectives-member-meta">
             {routed ? <span className={`objectives-member-via is-${routed.via}`} title={t(routed.via === "route" ? "objectives.members.routedTitle" : ROUTING_OFF_REASONS.has(routed.reason) ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle")}>{t(routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback")}</span> : null}
-            {launched ? (
-              // 띄운 구성원 — 행은 실행값이다. 고른 값은 곧바로 또는 이번 턴 뒤 바뀌고, 그 경과는 칩 곁 말풍선이 말한다.
-              // 라우팅은 새로 띄울 때만 판단하므로 고를 수 없다.
-              <LaunchControl key={member.id} t={t} model={reserved ? reserved.model : member.model} effort={reserved ? reserved.effort : member.effort} locked={!touchable} startAtList triggerLabel={t("objectives.members.modelAria", { role: member.role })}
-                triggerText={display.text} triggerTitle={display.title}
-                head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : state === "idle" ? "objectives.members.menuHead.idle" : "objectives.members.menuHead.working")}</span></>}
-                extras={[{ id: "same", label: t("objectives.memberSelection.inherit"), hint: `${commanderWords.words.model} · ${commanderWords.words.effort}`, active: member.launch.mode === "same", onPick: () => pickLaunched(member, { mode: "same" }) }]}
-                extrasCaption={t("objectives.members.routeAtLaunch")}
-                subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
-                onChange={(choice) => { const model = choice.model ?? reserved?.model ?? member.model; if (model) pickLaunched(member, { mode: "model", model, effort: choice.effort }); }} />
-            ) : (
-            <LaunchControl key={member.id} t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} triggerLabel={t("objectives.members.modelAria", { role: member.role })}
-              triggerText={display.text} triggerTitle={display.title}
-              extras={[{ id: "route", label: t("objectives.memberSelection.route"), hint: t("objectives.members.routeHint"), active: member.launch.mode === "route", onPick: () => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: null } }) }, { id: "same", label: t("objectives.memberSelection.inherit"), active: member.launch.mode === "same", onPick: () => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "same" } } }) }]}
-              subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
-              onChange={(next) => { const model = next.model ?? (member.launch.mode === "model" ? member.launch.model : undefined); if (model) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "model", model, effort: next.effort } } }); }} />
-            )}
+            <MemberLaunchControl key={member.id} t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
+              onPickLaunched={(launch) => pickLaunched(member, launch)}
+              onPatchLaunch={(launch) => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } })}
+              onToggleSubagents={() => toggleSubagents(member, MEMBER_LIVE.has(state))} />
             <span className={`objectives-member-status is-${state}${failed ? " is-failed" : ""}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}{allowed ? <span className="objectives-member-subagents">{t("objectives.members.subagentsMark")}</span> : null}</span>
           </div>
           {/* 모델 변경의 경과는 칩 아래(설명 줄의 오른쪽 칸)에 서서 칩을 가리키는 한 줄 말풍선이다 — 행의 칸이라 다른 행이나 조작을 덮지

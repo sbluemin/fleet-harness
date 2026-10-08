@@ -503,7 +503,8 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
           effort={props.effort ?? "track"}
           effortLabel={labels.effort}
           {...(labels.off ? { offLabel: labels.off } : {})}
-          {...(extras ? { extras: extras.map((extra) => ({ ...extra, onPick: () => { keepDraft(null); extra.onPick(); } })) } : {})}
+          // 모델을 고른 초안이 있으면 선택 방식은 선택으로 서지 않는다 — 데스크톱 메뉴처럼 고른 모델과 그 강도 탭이 선다.
+          {...(extras ? { extras: extras.map((extra) => ({ ...extra, active: draft ? false : extra.active, onPick: () => { keepDraft(null); extra.onPick(); } })) } : {})}
           {...(reset ? { reset: { ...reset, onSelect: () => { keepDraft(null); reset.onSelect(); } } } : {})}
           onClose={closeSheet}
         />

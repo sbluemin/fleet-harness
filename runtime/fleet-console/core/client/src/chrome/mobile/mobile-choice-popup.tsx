@@ -174,8 +174,8 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, rese
                 {group.options.map((option) => {
                   const selected = option.value === value;
                   return (
-                    <button type="button" role="radio" key={option.value} aria-checked={selected} className={`mobile-choice-row${selected ? " is-selected" : ""}`} onClick={() => { onSelect(option.value); if (closeAfterSelect?.(option.value)) window.setTimeout(requestClose, CLOSE_AFTER_PICK_MS); }}>
-                      <span className="mobile-choice-copy"><span className="mobile-choice-label">{withoutGroupPrefix(option.label, group.label)}</span></span>
+                    <button type="button" role="radio" key={option.value} aria-checked={selected} className={`mobile-choice-row${selected ? " is-selected" : ""}${option.description ? " has-description" : ""}`} onClick={() => { onSelect(option.value); if (closeAfterSelect?.(option.value)) window.setTimeout(requestClose, CLOSE_AFTER_PICK_MS); }}>
+                      <span className="mobile-choice-copy"><span className="mobile-choice-label">{withoutGroupPrefix(option.label, group.label)}</span>{option.description ? <small>{option.description}</small> : null}</span>
                       {option.meta ? <span className="mobile-choice-meta">{option.meta}</span> : null}
                       {selected ? <MobileIcon name="check" size={22} className="mobile-choice-check" /> : <span className="mobile-choice-check-slot" aria-hidden="true" />}
                     </button>
@@ -236,7 +236,7 @@ export function MobileCoordinateChoice({ title, roster, value, onSelect, effort,
   const row = findRosterRow(roster, value.model);
   const groups: MobileModelGroup[] = [];
   if (extras?.length) {
-    groups.push({ key: "extras", label: "", options: extras.filter((extra) => !extra.disabled).map((extra) => ({ value: `${EXTRA_VALUE_PREFIX}${extra.id}`, label: extra.label, ...(extra.hint ? { meta: extra.hint } : {}) })) });
+    groups.push({ key: "extras", label: "", options: extras.filter((extra) => !extra.disabled).map((extra) => ({ value: `${EXTRA_VALUE_PREFIX}${extra.id}`, label: extra.label, ...(extra.hint ? { description: extra.hint } : {}) })) });
   }
   for (const group of roster) {
     const provider = launchProviderFromGroupId(group.id);
