@@ -2,6 +2,7 @@ import type { LocalizedText } from "@fleet-console/sdk/i18n";
 import type { ConsoleOperationSummary, OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowMark, OperationClusterRowNote, OperationClusterRowProvenance, OperationClusterSource } from "@fleet-console/sdk/plugin";
 
 import { inboxReasons, stalledObjectives, type BoardObservation, type BoardObserver } from "../server/board-state.js";
+import { memberFailureReason } from "../server/signals.js";
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { actorKind, actorName, lastAct } from "./actors.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
@@ -66,15 +67,21 @@ export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Ob
 const NOTE_ANSWERING: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.answering"), tone: "accent" };
 const NOTE_REVIEWING: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.reviewing"), tone: "accent" };
 const NOTE_STALLED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.stalled"), tone: "warn" };
-/** 구성원 실패 — 확인하지 않은 실패가 남은 동안만. 자율 운영과 상관없이 사람의 줄에 선다. */
+/** 구성원 실패 — 확인하지 않은 실패가 남은 동안만. 자율 운영과 상관없이 사람의 줄에 선다. 한도 소진이면 그 사유로 말한다. */
 const NOTE_MEMBER_FAILED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberFailed"), tone: "warn" };
-const NOTE_KEYS = new Map<OperationClusterRowNote, string>([[NOTE_ANSWERING, "answering"], [NOTE_REVIEWING, "reviewing"], [NOTE_STALLED, "stalled"], [NOTE_MEMBER_FAILED, "member-failed"]]);
+const NOTE_MEMBER_LIMITED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberLimited"), tone: "warn" };
+const NOTE_KEYS = new Map<OperationClusterRowNote, string>([[NOTE_ANSWERING, "answering"], [NOTE_REVIEWING, "reviewing"], [NOTE_STALLED, "stalled"], [NOTE_MEMBER_FAILED, "member-failed"], [NOTE_MEMBER_LIMITED, "member-limited"]]);
 
 /**
  * 목록 줄의 구성원 실패 표식 — 에이전트 inbox 의 `member-failed` 사유와 같은 판정(`inboxReasons`)을 그대로 쓴다. 실패가 풀리거나
- * 확인되면(acknowledged) 사유가 빠지고 표식도 내려간다. 사이드바 줄·전환 목록·모바일 목록이 이 하나를 읽는다.
+ * 확인되면(acknowledged) 사유가 빠지고 표식도 내려간다. 확인하지 않은 실패 중 하나라도 공급자 한도 소진이면 표식이 그 사유를 말한다
+ * (`memberFailureReason`). 사이드바 줄·전환 목록·모바일 목록이 이 하나를 읽는다.
  */
-export const memberFailureOpen = (objective: Objective): boolean => inboxReasons(objective).includes("member-failed");
+export const memberFailureNote = (objective: Objective): "objectives.note.memberFailed" | "objectives.note.memberLimited" | null => {
+  if (!inboxReasons(objective).includes("member-failed")) return null;
+  const limited = objective.members.some((member) => member.failure && !member.failure.acknowledged && memberFailureReason(member.failure) === "limit_exhausted");
+  return limited ? "objectives.note.memberLimited" : "objectives.note.memberFailed";
+};
 const ZONE_HANDLING = (locale: "en" | "ko") => getT(locale)("objectives.commodore.zone.handling");
 
 /**
@@ -153,7 +160,8 @@ function setOperator(objective: Objective, commodore: boolean, language: "en" | 
  * 있으면 보드가 같은 판정(`stalledObjectives`)으로 직접 센 값을 쓴다 — 한 줄에 정체 메모는 언제나 한 출처에서 하나다.
  */
 function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean): Pick<OperationClusterRow, "notes" | "zoneNote"> {
-  const failed = memberFailureOpen(objective) ? [NOTE_MEMBER_FAILED] : [];
+  const failureNote = memberFailureNote(objective);
+  const failed = failureNote === null ? [] : [failureNote === "objectives.note.memberLimited" ? NOTE_MEMBER_LIMITED : NOTE_MEMBER_FAILED];
   if (!board.active) return stalled || failed.length ? { notes: [...failed, ...(stalled ? [NOTE_STALLED] : [])] } : {};
   // 답하는 중·검토하는 중은 사령관이 운영하는 목표에만 — 사람의 목표의 결정·검토로는 사령관이 깨어나지 않는다(서버 판정 `operator`).
   const handles = objective.operator !== "human";

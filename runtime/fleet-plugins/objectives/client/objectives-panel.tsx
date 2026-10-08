@@ -7,7 +7,7 @@ import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 
-import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
+import { DISPLAY_QUIET_MS, describeQuietMission, memberFailureReason, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
 import { commanderMode, extensionOf, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting, type MessageRecipient } from "./action-band.js";
 import { DecisionGlyph, DecisionList, DecisionRequestBlock } from "./decisions.js";
@@ -739,7 +739,9 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
         </div>
         {member.failure ? <details className="objectives-member-note is-error objectives-member-failure">
-          <summary>{t("objectives.members.failureCount", { count: member.failure.consecutiveFailures })}</summary>
+          <summary>{((reason) => reason
+            ? t("objectives.members.failureReason", { reason: t(`objectives.members.reason.${reason}`), count: member.failure.consecutiveFailures })
+            : t("objectives.members.failureCount", { count: member.failure.consecutiveFailures }))(memberFailureReason(member.failure))}</summary>
           <p>{t("objectives.members.failureData")}</p>
           <pre>{[member.failure.error, member.failure.error_details, member.failure.last_assistant_message].filter((value) => value !== undefined).join("\n")}</pre>
         </details> : null}

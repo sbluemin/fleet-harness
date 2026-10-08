@@ -22,6 +22,19 @@ export function missionDispatch(assignmentTs: number | undefined, member: { read
   return { at, receivedAt: typeof received === "number" && Number.isFinite(received) && received >= at ? received : null };
 }
 
+/** 실패 턴의 사유 — 지금은 공급자 한도 소진 하나다. */
+export type MemberFailureReason = "limit_exhausted";
+
+/**
+ * 실패로 닫힌 구성원 턴의 사유. 그 턴을 닫은 에이전트 CLI 가 스스로 붙인 오류 코드만 읽는다 — Claude Code 는 공급자의 한도 거절을
+ * `rate_limit` 으로 표시한다(Chat 은 assistant 의 `error`, PTY 는 StopFailure 의 `error`, 같은 어휘). 원문 문장과 Gateway 한도 창은
+ * 판정에 쓰지 않는다: 문장은 한도를 말한 정상 응답과 섞이고, 한도 창 100% 는 그 구성원이 정상으로 도는 동안에도 선다.
+ * 화면 표시·목록 표식·지휘관 통지가 이 판정 하나를 쓴다.
+ */
+export function memberFailureReason(failure: { readonly error: string }): MemberFailureReason | null {
+  return failure.error === "rate_limit" ? "limit_exhausted" : null;
+}
+
 /** 무보고 사실 한 줄. 화면 뱃지와 지휘관 깨움이 이 문장만 쓴다. */
 export function describeQuietMission(minutes: number, language: "en" | "ko"): string {
   const n = Math.max(0, Math.floor(minutes));
