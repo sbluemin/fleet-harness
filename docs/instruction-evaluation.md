@@ -49,7 +49,7 @@ OAuth 로그인은 **실제 `HOME`과 `USER`에서만** 성립한다. `env -i PA
 
 ```bash
 REPO=$PWD; BEFORE=<이전-커밋>; AFTER=<이후-커밋>
-MODEL=claude-sonnet-4-6; EFFORT=high; MAXTURNS=4
+MODEL=claude-sonnet-4-6; EFFORT=high; MAXTURNS=<conditions.md의 산정값>   # 1절 산정 근거로 정한 값. 4턴은 첫 실행에서 판별력을 잃었다
 mkdir -p "$E"
 T=$(mktemp -d "$SCRATCHPAD/instruction-evaluation.XXXXXX")
 trap 'rm -rf -- "$T"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP
@@ -192,7 +192,7 @@ OUT=$(jq -c '[.tools[].name]' "$E/fixture-$side/request-1.json" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/tools.out"; printf '%s\n' "$rc" > "$E/tools.rc"
 ```
 
-전·후 요청의 텍스트 차이가 대상 줄만인지, 대상 문장이 이전 0건·이후 1건인지(`grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다), 루트 `CLAUDE.md` 출처가 한 건씩인지, `tools`가 허용목록과 같은지, 스킬 목록과 `Memory Index`가 0건인지, 요청에 이전/이후 커밋 해시가 없는지 확인한다. `# Fleet`는 이 저장소 루트의 고유 제목이며 다른 대상이면 그 대상의 제목으로 바꾼다. 제목 횟수는 전문 일치나 출처를 증명하지 않으므로 `request-1.json`에서 위치와 본문도 읽는다. 하위 `CLAUDE.md`는 초기 요청에 없고 파일을 읽은 뒤의 요청에서 적재되는지 본다. 메모리는 `~/.claude/projects/<PKEY>`가 비어 있음을 전제하며, 있으면 같은 내용을 양쪽에 두고 요청에서 대조한다. loopback 도착은 OS 전체 네트워크 차단을 증명하지 않으므로 외부 주소 연결 프로브(`python3 -I -c 'import socket; s=socket.socket(); s.settimeout(1); print(s.connect_ex(("192.0.2.1",443)))'`가 `1`)를 같은 프로파일로 감싸 확인한다. 프로파일은 감싼 프로세스와 자식에만 적용되며 `sandbox-exec`가 없는 플랫폼에서는 동등한 격리를 확보하거나 실행 전에 멈춘다.
+전·후 요청의 텍스트 차이가 대상 줄만인지, 대상 문장이 문장이 없는 쪽 0건·있는 쪽 1건인지(추가하는 변경이면 이전 0·이후 1, 제거하는 변경이면 이전 1·이후 0; `grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다), 루트 `CLAUDE.md` 출처가 한 건씩인지, `tools`가 허용목록과 같은지, 스킬 목록과 `Memory Index`가 0건인지, 요청에 이전/이후 커밋 해시가 없는지 확인한다. `# Fleet`는 이 저장소 루트의 고유 제목이며 다른 대상이면 그 대상의 제목으로 바꾼다. 제목 횟수는 전문 일치나 출처를 증명하지 않으므로 `request-1.json`에서 위치와 본문도 읽는다. 하위 `CLAUDE.md`는 초기 요청에 없고 파일을 읽은 뒤의 요청에서 적재되는지 본다. 메모리는 `~/.claude/projects/<PKEY>`가 비어 있음을 전제하며, 있으면 같은 내용을 양쪽에 두고 요청에서 대조한다. loopback 도착은 OS 전체 네트워크 차단을 증명하지 않으므로 외부 주소 연결 프로브(`python3 -I -c 'import socket; s=socket.socket(); s.settimeout(1); print(s.connect_ex(("192.0.2.1",443)))'`가 `1`)를 같은 프로파일로 감싸 확인한다. 프로파일은 감싼 프로세스와 자식에만 적용되며 `sandbox-exec`가 없는 플랫폼에서는 동등한 격리를 확보하거나 실행 전에 멈춘다.
 
 이 fixture는 `--max-turns` 값 외에 `claude_call`의 플래그·환경·문맥을 바꾸지 않는다. 실제 회차와의 요청 구성 차이는 엔드포인트·인증(`ENVX`)과 네트워크·Keychains 규칙뿐이며, 이 무료 실행 보호를 유료 실행의 모델 행동 효과로 해석하지 않는다. 실패한 출력, 없는 계측 값, 기대 밖 오류는 고치고 다시 확인한 뒤 봉인한다.
 
@@ -216,7 +216,7 @@ printf '%s\n' "$OUT" > "$SEAL/sealed-at.out"; printf '%s\n' "$rc" > "$SEAL/seale
 
 **실제 모델의 반복 실행은 유료 실행 승인 이후에만 진행한다.** 무료 검증만 맡은 세션은 실제 평가를 시작하지 않는다. 승인은 과금 풀을 이름으로 지정해야 한다(구독 OAuth 풀이면 그 구독). fixture와 실제 회차의 차이는 `ENVX`·네트워크·Keychains 규칙뿐이며, 플래그·나머지 환경·메모리·검색 조건·모델·effort를 바꾸지 않는다. provider나 인증 방식 변경이 필요하면 fixture부터 새로 확인한다. 이 문서의 경로는 자격증명 값을 읽거나 기록하지 않는다. 임시 HOME에서 로그인하지 않는다.
 
-전·후를 번갈아 `N`회 실행한다. 실행 전에 `N`, `TURN_LIMIT`, `COST_LIMIT`을 승인된 합계 회차 수·이 루프에 남은 제공자별 턴·달러 상한(승인 상한에서 탐침·시범·무효 회차 소모를 뺀 값)으로, `RUN_COST_BOUND`를 회차 하나의 보수적 비용 상한(탐침 실호출의 `total_cost_usd`에서 턴 수 비례로 늘린 값 등)으로 지정한다. 루프는 회차가 `rc=0`도 `error_max_turns`도 아니거나 지표를 읽지 못하면 다음 회차로 넘어가지 않고 멈춘다. 같은 쪽 대체는 자동으로 하지 않고 실행자가 중단 조건을 보고 한 번만 수동으로 정한다. 장부 열은 위 머리글 순서(턴 5열, 비용 6열)를 그대로 지킨다. 회차 시작 전에 `누적 턴 + (MAXTURNS+1) ≤ 제공자별 상한`을 확인하고, 회차마다 장면을 새로 만든 뒤 파일 수준으로 지침 적재를 확인한다(이전 0건·이후 1건이 아니면 호출하지 않는다).
+전·후를 번갈아 `N`회 실행한다. 실행 전에 `N`, `TURN_LIMIT`, `COST_LIMIT`을 승인된 합계 회차 수·이 루프에 남은 제공자별 턴·달러 상한(승인 상한에서 탐침·시범·무효 회차 소모를 뺀 값)으로, `RUN_COST_BOUND`를 회차 하나의 보수적 비용 상한(탐침 실호출의 `total_cost_usd`에서 턴 수 비례로 늘린 값 등)으로 지정한다. 루프는 회차가 `rc=0`도 `error_max_turns`도 아니거나 지표를 읽지 못하면 다음 회차로 넘어가지 않고 멈춘다. 같은 쪽 대체는 자동으로 하지 않고 실행자가 중단 조건을 보고 한 번만 수동으로 정한다. 장부 열은 위 머리글 순서(턴 5열, 비용 6열)를 그대로 지킨다. 회차 시작 전에 `누적 턴 + (MAXTURNS+1) ≤ 제공자별 상한`을 확인하고, 회차마다 장면을 새로 만든 뒤 파일 수준으로 지침 적재를 확인한다(문장이 없는 쪽 0건·있는 쪽 1건이 아니면 호출하지 않는다).
 
 ```bash
 printf 'number\tside\trc\tsubtype\tturns\tcost_usd\tduration_ms\n' > "$E/ledger.tsv"
@@ -234,13 +234,14 @@ while [ "$i" -le "$N" ]; do
   RES=$(jq -c 'select(.type=="result")' "$E/stream-r$i.jsonl" | tail -1)
   printf '%s\t%s\t%s\t%s\n' "$i" "$side" "$rc" "$(printf '%s' "$RES" | jq -r '[.subtype, .num_turns, .total_cost_usd, .duration_ms] | @tsv')" >> "$E/ledger.tsv"
   SUB=$(printf '%s' "$RES" | jq -r '.subtype // empty'); NT=$(printf '%s' "$RES" | jq -r '.num_turns // empty')
-  # 인프라 실패(정상 종료도 상한 절단도 아님, 지표 없음)면 넘어가지 않고 멈춘다
-  { [ "$rc" -eq 0 ] || [ "$SUB" = error_max_turns ]; } && [ -n "$NT" ] || break
+  CO=$(printf '%s' "$RES" | jq -r '.total_cost_usd | numbers')
+  # 인프라 실패(정상 종료도 상한 절단도 아님) 또는 턴·비용 지표가 없으면 넘어가지 않고 멈춘다
+  { [ "$rc" -eq 0 ] || [ "$SUB" = error_max_turns ]; } && [ -n "$NT" ] && [ -n "$CO" ] || break
   i=$((i + 1))
 done
 ```
 
-- 시작 금지 조건: 누적 + 상한+1이 제공자별 상한 초과 / 요청·출력에 상대 쪽 경로·`before`/`after` 라벨·커밋 해시 노출 / 지침 적재가 기대(이전 0·이후 1)와 다름 / 인프라 실패 2회 연속(인증 실패, `rc≠0`이면서 `error_max_turns`가 아닌 것, 환경 오류) / 안전(실제 세션에 메시지가 전달되거나, 트리·지정 경로 밖에 쓰거나, 장면 밖 사용자 파일을 읽음). `error_max_turns`(`rc=1`, `is_error:true`)는 상한 절단이지 인프라 실패가 아니다. 인프라 실패 회차는 같은 쪽으로 한 번만 대체하며 예비 턴을 장부에 미리 둔다.
+- 시작 금지 조건: 누적 + 상한+1이 제공자별 상한 초과 / 요청·출력에 상대 쪽 경로·`before`/`after` 라벨·커밋 해시 노출 / 지침 적재가 기대(문장이 없는 쪽 0·있는 쪽 1)와 다름 / 인프라 실패 2회 연속(인증 실패, `rc≠0`이면서 `error_max_turns`가 아닌 것, 환경 오류) / 안전(실제 세션에 메시지가 전달되거나, 트리·지정 경로 밖에 쓰거나, 장면 밖 사용자 파일을 읽음). `error_max_turns`(`rc=1`, `is_error:true`)는 상한 절단이지 인프라 실패가 아니다. 인프라 실패 회차는 같은 쪽으로 한 번만 대체하며 예비 턴을 장부에 미리 둔다.
 - `total_cost_usd`는 제공자의 실제 청구 확정값이 아니다. fixture의 토큰·비용은 합성 응답에서 계산한 숫자이므로 실제 사용량으로 합산하지 않는다. `num_turns`가 없거나 조회가 실패하면 1턴으로 추정하지 않고 상한+1로 계상하며 원문·실패 이유를 남긴다. 실패·재시도·시범·판독 호출도 장부에 따로 기록한다.
 - 매 회차 뒤 `~/.claude.json` 해시, `~/.claude` 아래 변경 파일 목록, 임시 프로젝트 키(`~/.claude/projects/<PKEY>`)를 대조해 `E`에 남긴다. 다른 살아 있는 세션도 이 파일들을 쓰므로 변경 자체는 위반이 아니다. 자식이 쓸 수 있는 곳은 프로파일의 쓰기 허용 경로뿐이므로 그 근거(거부된 쓰기 반환 수, 허용 경로 안의 변경)를 함께 적는다. 키 디렉터리는 비어 있을 때만 지운다. 샌드박스 없이 실호출하면 `~/.claude/projects`에 임시 키가 생긴다.
 - 최소 관찰 기간도 별도로 확인한다.
