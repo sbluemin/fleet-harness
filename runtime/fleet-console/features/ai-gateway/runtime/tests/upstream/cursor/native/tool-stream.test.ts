@@ -160,7 +160,10 @@ describe("Cursor client tool suspension", () => {
       expect(refusal).not.toMatch(/Do not tell the user|Silently retry/);
       expect(refusal).toContain(tools.length === 0
         ? "This turn advertises no client tools."
-        : "Deferred tools can be loaded with `cc_tool_search_");
+        : "If a matching client tool is deferred, load it with `cc_tool_search_");
+      if (tools.length > 0) {
+        expect(refusal).toContain("then call the tool name that search returns.");
+      }
       expect(fallback.events.some((event) => event.type === "response.output_item.added" && event.item.type === "function_call")).toBe(false);
     }
     expect(replies).toContainEqual({

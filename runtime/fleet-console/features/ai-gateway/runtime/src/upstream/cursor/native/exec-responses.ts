@@ -213,14 +213,18 @@ function alternativeToolFacts(
       matches.map((name) => `\`${name}\``).join(", ")
     }. Use an advertised matching client tool instead.`;
   }
-  // Naming the alternative avoids leaving a native refusal at a dead end. An absent match
-  // does not prove a deferred replacement exists, so report only the advertised search tool
-  // and its loading capability, without asking the model to conceal the refusal.
+  // Naming nothing turned a refusal into a dead end: Claude Code defers most of its catalog,
+  // and without an alternative name the model concluded none existed or retried the native.
+  // An absent match does not prove a deferred replacement exists, so make discovery conditional
+  // and preserve the instruction to call the actual name returned by search.
   const toolSearch = toolSearchWireName(clientTools);
   if (toolSearch) {
-    return `No matching client bridge tool is advertised for this turn. Deferred tools can be loaded with \`${toolSearch}\`.`;
+    return `No matching client bridge tool is advertised for this turn. If a matching client tool is deferred, load it with \`${toolSearch}\`, then call the tool name that search returns.`;
   }
   if (clientTools.length === 0) {
+    // Measured on Claude Code title-generation turns: tools:[] still carries the user prompt,
+    // so Cursor reaches for natives. Telling it to continue with advertised client tools when
+    // there were none made it keep retrying natives; this turn must stay plain text instead.
     return "This turn advertises no client tools. Do not call any tool — answer in plain text only. This Cursor-native tool will be rejected again.";
   }
   return "No matching client bridge tool is advertised for this turn, and this Cursor-native tool will be rejected again — do not call it. Continue with the advertised client tools.";
