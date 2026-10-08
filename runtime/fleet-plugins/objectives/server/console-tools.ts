@@ -97,7 +97,8 @@ function detailActions<W extends Signed>(why: W) {
     reopen: write({}),
     followup_retry: write(followupTarget),
     followup_abandon: write(followupTarget),
-    followup_discard: write({ candidateId: ids }),
+    // 후보는 보드의 후보 객체 그대로({id, rev}) 가리킨다 — complete 와 같은 모양이고, 그새 고쳐진 후보는 버리지 않는다.
+    followup_discard: write({ followups: followupSelectionSchema.shape.followups }, "followup_discard discards open candidates named as the board lists them ({id, rev}); a candidate revised since is refused as followup_changed."),
     plan: write({ context }),
     commence: write({ context, usePreview: z.literal(true).optional() }, "commence usePreview launches routed members with the last routing judgment without judging again; refused with routing_preview_stale when a role or brief changed or the judgment expired."),
     steer: write({ context }),
@@ -298,7 +299,18 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             case "extend": return actions.extend({ ...ref, context: call.context });
             case "followup_retry": return actions.followupRetry({ ...ref, batchId: call.batchId, candidateId: call.candidateId });
             case "followup_abandon": return actions.followupAbandon({ ...ref, batchId: call.batchId, candidateId: call.candidateId });
-            case "followup_discard": return actions.followupDiscard({ ...ref, candidateId: call.candidateId });
+            case "followup_discard": {
+              // 전부 버릴 수 있을 때만 버린다 — 일부만 버린 채 오류로 끝나지 않게, 저장소의 거절 사유를 먼저 본다.
+              for (const { id: candidateId, rev } of call.followups) {
+                const candidate = current.followups.find((entry) => entry.id === candidateId);
+                if (!candidate) throw new ObjectiveStoreError("unknown_followup");
+                if (candidate.state === "selected") throw new ObjectiveStoreError("followup_locked");
+                if (candidate.state === "open" && candidate.rev !== rev) throw new ObjectiveStoreError("followup_changed");
+              }
+              let discarded = { objective: current };
+              for (const { id: candidateId } of call.followups) discarded = actions.followupDiscard({ ...ref, candidateId });
+              return discarded;
+            }
             case "edit_title": return actions.patch({ ...ref, patch: { title: call.title } });
             case "edit_brief": return actions.patch({ ...ref, patch: { note: call.brief } });
             case "mission_add": return actions.missionAdd({ ...ref, mission: { text: missionText(call.text, call.pin), ...(call.prerequisites ? { prerequisites: call.prerequisites } : {}), ...(call.prerequisiteWhy ? { why: call.prerequisiteWhy } : {}), ...(call.member !== undefined ? { member: call.member } : {}) } });
