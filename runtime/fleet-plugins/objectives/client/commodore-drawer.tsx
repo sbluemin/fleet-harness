@@ -8,7 +8,7 @@ import { isAgentEffort, type ModelRosterTarget } from "@fleet-console/sdk/models
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
-import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import { COMMODORE_CONTEXT_ROTATE_RATIO, type CommodoreLiveEvent, type CommodorePatrolMinutes, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
@@ -393,7 +393,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
             {tab === "settings" && view ? <CommodoreSettings t={t} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
           </div>
           {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
-          {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+          {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
         </div>
       </section>
     </div>,
@@ -789,12 +789,94 @@ function rememberSheetDraft(theaterId: string, patch: Partial<SheetDraft>): void
   sheetDrafts.set(theaterId, { ...sheetDraft(theaterId), ...patch });
 }
 
+
+/** 전송 왼쪽의 문맥 원호. 채팅과 같은 16px 글리프이고, 내역은 총량과 교대 기준선만 말한다. */
+function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context: NonNullable<CommodoreRunStatus["context"]> }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [open]);
+  const occupied = context.inputTokens;
+  const limit = COMMODORE_CONTEXT_ROTATE_RATIO;
+  const ratio = context.window > 0 ? occupied / context.window : 0;
+  const tone = ratio >= limit * 0.97 ? " is-critical" : ratio >= limit * 0.75 ? " is-warn" : "";
+  const percent = Math.round(ratio * 100);
+  const summary = `${formatContextTokens(occupied)} / ${formatContextTokens(context.window)}`;
+  const radius = 6;
+  const circumference = 2 * Math.PI * radius;
+  const filled = Math.max(0, Math.min(1, ratio)) * circumference;
+  const untilRotate = Math.max(0, context.window * limit - occupied);
+  const free = Math.max(0, context.window - occupied);
+  return (
+    <span className={`objectives-commodore-ctx${tone}`} ref={wrapRef}>
+      <button
+        type="button"
+        className="objectives-commodore-ctx-chip"
+        aria-expanded={open}
+        aria-label={t("objectives.commodore.context.aria", { percent, summary })}
+        title={t("objectives.commodore.context.title", { summary })}
+        onClick={() => setOpen((was) => !was)}
+      >
+        <svg className="objectives-commodore-ctx-arc" viewBox="0 0 16 16" aria-hidden="true">
+          <circle className="objectives-commodore-ctx-track" cx="8" cy="8" r={radius} />
+          <circle className="objectives-commodore-ctx-fill" cx="8" cy="8" r={radius} strokeDasharray={`${filled.toFixed(2)} ${circumference.toFixed(2)}`} />
+        </svg>
+      </button>
+      {open ? (
+        <div className="objectives-commodore-ctx-pop" role="dialog" aria-label={t("objectives.commodore.context.label")}>
+          <div className="objectives-commodore-ctx-head">
+            <span>{t("objectives.commodore.context.label")}</span>
+            <span>{summary} · {percent}%</span>
+          </div>
+          <div className="objectives-commodore-ctx-bar">
+            <i style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+            <span className="objectives-commodore-ctx-line" style={{ left: `${limit * 100}%` }} />
+          </div>
+          <ul className="objectives-commodore-ctx-rows">
+            <li><span className="objectives-commodore-ctx-swatch" /><span>{t("objectives.commodore.context.used")}</span><span>{formatContextTokens(occupied)}</span><span>{(ratio * 100).toFixed(1)}%</span></li>
+            <li><span className="objectives-commodore-ctx-swatch is-line" /><span>{t("objectives.commodore.context.untilRotate")}</span><span>{formatContextTokens(untilRotate)}</span><span>{Math.round(limit * 100)}%</span></li>
+            <li><span className="objectives-commodore-ctx-swatch is-free" /><span>{t("objectives.commodore.context.free")}</span><span>{formatContextTokens(free)}</span><span>{((free / context.window) * 100).toFixed(1)}%</span></li>
+          </ul>
+          <p className="objectives-commodore-ctx-foot">{t("objectives.commodore.context.foot")}</p>
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+function formatContextTokens(tokens: number): string {
+  if (tokens < 1_000) return String(Math.round(tokens));
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000;
+    const text = millions < 10 ? millions.toFixed(1) : String(Math.round(millions));
+    return `${text.endsWith(".0") ? text.slice(0, -2) : text}M`;
+  }
+  const thousands = tokens / 1_000;
+  return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
+}
+
 /**
  * 사령관에게 말하기 — 채팅 화면의 입력과 같은 문법: 한 상자 안에 자라는 입력과 원형 전송, 초점이면 상자가 brass 로 선다.
  * 자율 운영이 꺼져 있으면 닿지 않을 메시지이므로 입력을 잠그고 사유를 말한다. 쓰던 초안은 그대로 두어 다시 켜면 보낼 수 있다.
  * 다른 창에서 막 끈 경합은 서버가 거절하고(`commodore_inactive`) 초안은 지우지 않는다.
  */
-function CommodoreComposer({ t, theaterId, active, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+function CommodoreComposer({ t, theaterId, active, context, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly context?: CommodoreRunStatus["context"]; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const [text, setText] = useState(() => sheetDraft(theaterId).composer);
   useEffect(() => { rememberSheetDraft(theaterId, { composer: text }); }, [theaterId, text]);
   const [sending, setSending] = useState(false);
@@ -825,6 +907,7 @@ function CommodoreComposer({ t, theaterId, active, onFail, onClear }: { readonly
         onCompositionEnd={() => { composing.current = false; }}
         onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }}
       />
+      {context ? <CommodoreContextMeter t={t} context={context} /> : null}
       <ComposerSubmitButton
         className={`objectives-commodore-composer-send${armed ? " is-armed" : ""}`}
         aria-label={t("objectives.commodore.composer.send")}

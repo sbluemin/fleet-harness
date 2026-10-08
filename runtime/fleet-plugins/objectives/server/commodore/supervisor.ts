@@ -9,7 +9,7 @@ import type { Objective, ObjectiveEvent } from "../types.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
-import { DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
+import { COMMODORE_CONTEXT_ROTATE_RATIO, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
 
 /**
  * 감독자 — Theater 마다 하나. 사령관 세션은 턴이 끝나면 쉬고, 끝없이 도는 것은 이 감독자가 보장한다.
@@ -31,8 +31,6 @@ export const COALESCE_MS = 3_000;
 /** 정체 기준은 보드와 같다(`board-state.ts`) — inbox 보기와 감독자가 같은 목표를 정체라 부른다. */
 export { STALL_MS };
 export const STALL_CHECK_MS = 5 * 60_000;
-/** 마지막 턴의 입력 토큰이 모델 문맥의 이 비율을 넘으면 다음 깨움에서 교대한다. */
-const CONTEXT_ROTATE_RATIO = 0.75;
 const RECENT_ACTIONS = 12;
 
 export interface CommodoreSupervisorDeps {
@@ -160,6 +158,8 @@ interface Runner {
   /** 마지막 턴이 끝난 시각 — 기본 순찰은 여기서 한 간격 뒤다. */
   lastTurnAt: number;
   lastInputTokens: number;
+  /** 지금 세션의 모델 창. 마지막 입력 토큰과 짝이다. */
+  contextWindow: number;
   coordinates: CommodoreSessionCoordinates | null;
   language: "en" | "ko";
   rotateNext: "replaced" | "restarted" | null;
@@ -198,7 +198,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
-  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}) });
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens } } : {}) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.theaterId)?.run ?? EMPTY_RUN_TOTALS;
     deps.emit({ op: "run", theaterId: runner.theaterId, run: { ...statusOf(runner), totals } });
@@ -272,6 +272,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.session = session;
     runner.coordinates = coordinates;
     runner.language = language;
+    runner.contextWindow = coordinates.contextWindow;
     runner.lastInputTokens = 0;
     deps.store.addRunTotals(runner.theaterId, { session: 1 });
     record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}) });
@@ -358,13 +359,13 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const needsRotation = (runner: Runner) => {
     const coordinates = resolveCoordinates(runner.theaterId);
     if (!runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.theaterId)) return true;
-    return runner.lastInputTokens >= CONTEXT_ROTATE_RATIO * coordinates.contextWindow;
+    return runner.lastInputTokens >= COMMODORE_CONTEXT_ROTATE_RATIO * coordinates.contextWindow;
   };
 
   const start = (theaterId: string, reason: WakeCode) => {
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId)), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     wake(runner, reason);

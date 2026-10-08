@@ -436,6 +436,7 @@ describe("commodore supervisor", () => {
       h.store.addIntel("t1", { text: "d" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
+      expect(supervisor.status("t1")).toMatchObject({ context: { window: 200_000, inputTokens: 160_000 } });
       inputTokens = 1_000;
       h.store.addIntel("t1", { text: "e" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);

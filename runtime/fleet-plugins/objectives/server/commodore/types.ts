@@ -104,6 +104,9 @@ export const EMPTY_RUN_TOTALS: CommodoreRunTotals = Object.freeze({ session: 0, 
  * 감독자가 말하는 지금 상태 — 저장되지 않는다. `off` 는 실험 기능이나 자율 운영이 꺼진 것, `idle` 은 다음 깨움을 기다리는 것,
  * `turn` 은 사령관이 일하는 중, `retrying` 은 턴 오류 뒤 재시도 대기(`reason`·`retryAt`), `error` 는 재시도로도 못 푼 상태.
  */
+/** 마지막 턴의 입력 토큰이 모델 창의 이 비율에 닿으면 다음 깨움에서 세션을 교대한다. */
+export const COMMODORE_CONTEXT_ROTATE_RATIO = 0.75;
+
 export interface CommodoreRunStatus {
   readonly phase: "off" | "idle" | "turn" | "retrying" | "error";
   readonly reason?: string;
@@ -111,6 +114,8 @@ export interface CommodoreRunStatus {
   readonly nextWakeAt?: number;
   /** 감독자가 지금 정체로 보는 목표 id — 지휘관이 임무를 남긴 채 오래 쉰다. 목표가 다시 움직이면 빠진다. */
   readonly stalled?: readonly string[];
+  /** 마지막 턴이 실제로 쓴 입력 토큰과 그 세션의 창. 한 턴도 끝나기 전에는 없다. */
+  readonly context?: { readonly window: number; readonly inputTokens: number };
   readonly totals: CommodoreRunTotals;
 }
 

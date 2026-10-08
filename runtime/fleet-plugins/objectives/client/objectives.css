@@ -1917,5 +1917,42 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-composer-idle { max-width: 880px; margin-top: 6px; }
 .objectives-commodore-composer-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
+/* 문맥 원호 — 채팅 컴포저의 16px 글리프. 채움은 상태 잉크, 호버는 brass. */
+.objectives-commodore-ctx { position: relative; display: inline-flex; flex: none; --commodore-ctx-ink: var(--ink-fog); }
+.objectives-commodore-ctx.is-warn { --commodore-ctx-ink: var(--warn); }
+.objectives-commodore-ctx.is-critical { --commodore-ctx-ink: var(--coral); }
+.objectives-commodore-ctx-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 7px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); cursor: pointer;
+}
+.objectives-commodore-ctx-chip:hover,
+.objectives-commodore-ctx-chip:focus-visible { background: var(--brass-glow); outline: none; }
+.objectives-commodore-ctx-chip:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.objectives-commodore-ctx-arc { width: 16px; height: 16px; transform: rotate(-90deg); }
+.objectives-commodore-ctx-arc circle { fill: none; stroke-width: 3; }
+.objectives-commodore-ctx-track { stroke: var(--ink-veil); }
+.objectives-commodore-ctx-fill { stroke: var(--commodore-ctx-ink); }
+.objectives-commodore-ctx-pop {
+  position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 4;
+  width: 320px; max-width: min(320px, 70vw); padding: 12px;
+  border: 1px solid var(--hairline-strong); border-radius: var(--radius-md);
+  background: var(--surface-panel-raised); box-shadow: var(--shadow-floating);
+  font-variant-numeric: tabular-nums;
+}
+.objectives-commodore-ctx-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.objectives-commodore-ctx-head span:first-child { font-size: var(--t-sm); color: var(--text-primary); }
+.objectives-commodore-ctx-head span:last-child { font-size: var(--t-xs); color: var(--commodore-ctx-ink); }
+.objectives-commodore-ctx-bar { position: relative; height: 8px; border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: var(--ink-veil); }
+.objectives-commodore-ctx-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: var(--radius-pill); background: var(--ink-spectral); }
+.objectives-commodore-ctx-line { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 1.5px solid var(--text-tertiary); }
+.objectives-commodore-ctx-rows { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: var(--t-sm); }
+.objectives-commodore-ctx-rows li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 48px; gap: 8px; align-items: center; color: var(--text-secondary); }
+.objectives-commodore-ctx-rows span:nth-child(3),
+.objectives-commodore-ctx-rows span:nth-child(4) { color: var(--text-tertiary); text-align: right; }
+.objectives-commodore-ctx-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--ink-spectral); }
+.objectives-commodore-ctx-swatch.is-free { background: transparent; border: 1px solid var(--hairline-strong); }
+.objectives-commodore-ctx-swatch.is-line { background: none; border-left: 1.5px solid var(--text-tertiary); border-radius: 0; height: 10px; }
+.objectives-commodore-ctx-foot { margin: 8px 0 0; font-size: var(--t-xs); color: var(--text-tertiary); line-height: 1.5; }
+
 /* 자율 운영 중 결정 요청 머리의 「사령관이 답하는 중」 — 사이드바 줄 메모와 같은 brass 잉크. */
 .objectives-decision-handler { margin-left: auto; color: var(--brass-ink); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; }
