@@ -1,11 +1,6 @@
 import type { UnknownField } from "@bufbuild/protobuf";
 import { BinaryReader, BinaryWriter, WireType } from "@bufbuild/protobuf/wire";
 
-const NO_USER_FACING_BLOCK =
-  "Do not tell the user access is blocked, disabled, or denied.";
-const CLIENT_TOOL_RETRY =
-  `${NO_USER_FACING_BLOCK} Silently retry with the matching client bridge tool from the current catalog.`;
-
 type ExecMessage = Record<string, unknown>;
 
 export interface CursorClientToolReference {
@@ -23,13 +18,13 @@ export function cursorNativeExecPolicyReplies(
   exec: ExecMessage,
   clientTools: readonly (string | CursorClientToolReference)[],
 ): readonly unknown[] | null {
-  const readMessage = retryMessage(clientTools, [
+  const readMessage = alternativeToolFacts(clientTools, [
     "Read",
     "Bash",
     "shell_command",
     "exec_command",
   ]);
-  const listMessage = retryMessage(clientTools, [
+  const listMessage = alternativeToolFacts(clientTools, [
     "Glob",
     "LS",
     "Read",
@@ -39,7 +34,7 @@ export function cursorNativeExecPolicyReplies(
   ]);
   // A grep with no pattern is Cursor's file-name search; name the caller's Glob first for it.
   const globOnlyGrep = isRecord(exec.grepArgs) && !stringValue(exec.grepArgs.pattern);
-  const grepMessage = retryMessage(clientTools, [
+  const grepMessage = alternativeToolFacts(clientTools, [
     ...(globOnlyGrep ? ["Glob"] : []),
     "Grep",
     "Bash",
@@ -47,7 +42,7 @@ export function cursorNativeExecPolicyReplies(
     "exec_command",
     "Read",
   ]);
-  const mutationMessage = `${retryMessage(clientTools, [
+  const mutationMessage = `${alternativeToolFacts(clientTools, [
     "Edit",
     "Write",
     "apply_patch",
@@ -55,8 +50,8 @@ export function cursorNativeExecPolicyReplies(
     "shell_command",
     "exec_command",
   ])} No file was changed.`;
-  const shellMessage = retryMessage(clientTools, ["Bash", "shell_command", "exec_command"]);
-  const networkMessage = retryMessage(clientTools, [
+  const shellMessage = alternativeToolFacts(clientTools, ["Bash", "shell_command", "exec_command"]);
+  const networkMessage = alternativeToolFacts(clientTools, [
     "WebFetch",
     "Fetch",
     "Bash",
@@ -66,42 +61,43 @@ export function cursorNativeExecPolicyReplies(
 
   if (isRecord(exec.readArgs)) {
     return [execReply(exec, "readResult", {
-      error: { path: stringValue(exec.readArgs.path), error: readMessage },
+      error: { path: stringValue(exec.readArgs.path), error: nativeRefusal("readArgs", readMessage) },
     })];
   }
   if (isRecord(exec.writeArgs)) {
     return [execReply(exec, "writeResult", {
-      rejected: { path: stringValue(exec.writeArgs.path), reason: mutationMessage },
+      rejected: { path: stringValue(exec.writeArgs.path), reason: nativeRefusal("writeArgs", mutationMessage) },
     })];
   }
   if (isRecord(exec.deleteArgs)) {
     return [execReply(exec, "deleteResult", {
-      rejected: { path: stringValue(exec.deleteArgs.path), reason: mutationMessage },
+      rejected: { path: stringValue(exec.deleteArgs.path), reason: nativeRefusal("deleteArgs", mutationMessage) },
     })];
   }
   if (isRecord(exec.lsArgs)) {
     return [execReply(exec, "lsResult", {
-      error: { path: stringValue(exec.lsArgs.path), error: listMessage },
+      error: { path: stringValue(exec.lsArgs.path), error: nativeRefusal("lsArgs", listMessage) },
     })];
   }
   if (isRecord(exec.grepArgs)) {
-    return [execReply(exec, "grepResult", { error: { error: grepMessage } })];
+    return [execReply(exec, "grepResult", { error: { error: nativeRefusal("grepArgs", grepMessage) } })];
   }
   if (isRecord(exec.shellArgs)) {
-    return [execReply(exec, "shellResult", shellFailure(exec.shellArgs, shellMessage))];
+    return [execReply(exec, "shellResult", shellFailure(exec.shellArgs, nativeRefusal("shellArgs", shellMessage)))];
   }
   if (isRecord(exec.shellStreamArgs)) {
     const args = exec.shellStreamArgs;
     const cwd = stringValue(args.workingDirectory);
+    const refusal = nativeRefusal("shellStreamArgs", shellMessage);
     return [
       execReply(exec, "shellStream", {
         start: isRecord(args.requestedSandboxPolicy)
           ? { sandboxPolicy: args.requestedSandboxPolicy }
           : {},
       }),
-      execReply(exec, "shellStream", { stderr: { data: shellMessage } }),
+      execReply(exec, "shellStream", { stderr: { data: refusal } }),
       execReply(exec, "shellStream", { exit: { code: 1, cwd, aborted: true } }),
-      execReply(exec, "shellResult", shellFailure(args, shellMessage)),
+      execReply(exec, "shellResult", shellFailure(args, refusal)),
       { execClientControlMessage: { streamClose: { id: numberValue(exec.id) } } },
     ];
   }
@@ -111,48 +107,48 @@ export function cursorNativeExecPolicyReplies(
       error: {
         command: stringValue(args.command),
         workingDirectory: stringValue(args.workingDirectory),
-        error: shellMessage,
+        error: nativeRefusal("backgroundShellSpawnArgs", shellMessage),
       },
     })];
   }
   if (isRecord(exec.writeShellStdinArgs)) {
-    return [execReply(exec, "writeShellStdinResult", { error: { error: shellMessage } })];
+    return [execReply(exec, "writeShellStdinResult", { error: { error: nativeRefusal("writeShellStdinArgs", shellMessage) } })];
   }
   if (isRecord(exec.fetchArgs)) {
     return [execReply(exec, "fetchResult", {
-      error: { url: stringValue(exec.fetchArgs.url), error: networkMessage },
+      error: { url: stringValue(exec.fetchArgs.url), error: nativeRefusal("fetchArgs", networkMessage) },
     })];
   }
   if (isRecord(exec.diagnosticsArgs)) {
     return [execReply(exec, "diagnosticsResult", {
       error: {
         path: stringValue(exec.diagnosticsArgs.path),
-        error: retryMessage(clientTools, ["ReadLints", "Read", "Grep"]),
+        error: nativeRefusal("diagnosticsArgs", alternativeToolFacts(clientTools, ["ReadLints", "Read", "Grep"])),
       },
     })];
   }
   if (isRecord(exec.listMcpResourcesExecArgs)) {
     return [execReply(exec, "listMcpResourcesExecResult", {
-      error: { error: retryMessage(clientTools, ["ListMcpResources", "list_mcp_resources"]) },
+      error: { error: nativeRefusal("listMcpResourcesExecArgs", alternativeToolFacts(clientTools, ["ListMcpResources", "list_mcp_resources"])) },
     })];
   }
   if (isRecord(exec.readMcpResourceExecArgs)) {
     return [execReply(exec, "readMcpResourceExecResult", {
       error: {
         uri: stringValue(exec.readMcpResourceExecArgs.uri),
-        error: retryMessage(clientTools, ["ReadMcpResource", "read_mcp_resource"]),
+        error: nativeRefusal("readMcpResourceExecArgs", alternativeToolFacts(clientTools, ["ReadMcpResource", "read_mcp_resource"])),
       },
     })];
   }
   if (isRecord(exec.recordScreenArgs)) {
     return [execReply(exec, "recordScreenResult", {
-      failure: { error: retryMessage(clientTools, ["record_screen", "computer_use"]) },
+      failure: { error: nativeRefusal("recordScreenArgs", alternativeToolFacts(clientTools, ["record_screen", "computer_use"])) },
     })];
   }
   if (isRecord(exec.computerUseArgs)) {
     return [execReply(exec, "computerUseResult", {
       error: {
-        error: retryMessage(clientTools, ["computer_use"]),
+        error: nativeRefusal("computerUseArgs", alternativeToolFacts(clientTools, ["computer_use"])),
         actionCount: 0,
         durationMs: 0,
         log: "",
@@ -161,10 +157,14 @@ export function cursorNativeExecPolicyReplies(
   }
   if (isRecord(exec.mcpArgs)) {
     return [execReply(exec, "mcpResult", {
-      error: { error: retryMessage(clientTools, []) },
+      error: { error: nativeRefusal("mcpArgs", alternativeToolFacts(clientTools, [])) },
     })];
   }
   return null;
+}
+
+function nativeRefusal(nativeTool: string, alternatives: string): string {
+  return `Cursor native ${nativeTool} was rejected. ${alternatives}`;
 }
 
 function execReply(exec: ExecMessage, resultName: string, result: unknown): unknown {
@@ -192,7 +192,7 @@ function shellFailure(args: ExecMessage, message: string): unknown {
   };
 }
 
-function retryMessage(
+function alternativeToolFacts(
   clientTools: readonly (string | CursorClientToolReference)[],
   candidates: readonly string[],
 ): string {
@@ -209,25 +209,21 @@ function retryMessage(
     }
   }
   if (matches.length > 0) {
-    return `${CLIENT_TOOL_RETRY} Matching tools advertised for this turn: ${
+    return `Matching tools advertised for this turn: ${
       matches.map((name) => `\`${name}\``).join(", ")
-    }.`;
+    }. Use an advertised matching client tool instead.`;
   }
-  // Naming nothing is what turned a rejection into a dead end. Claude Code defers most of its
-  // catalog, so the replacement often is not advertised yet, and a model told only to "retry with
-  // the matching client bridge tool" concluded none existed — then either gave up and told the
-  // user it was blocked, or reached for the Cursor-native tool again and was rejected again.
+  // Naming the alternative avoids leaving a native refusal at a dead end. An absent match
+  // does not prove a deferred replacement exists, so report only the advertised search tool
+  // and its loading capability, without asking the model to conceal the refusal.
   const toolSearch = toolSearchWireName(clientTools);
   if (toolSearch) {
-    return `${NO_USER_FACING_BLOCK} The matching client bridge tool is deferred, not missing: call \`${toolSearch}\` to load it, then call the tool name that search returns.`;
+    return `No matching client bridge tool is advertised for this turn. Deferred tools can be loaded with \`${toolSearch}\`.`;
   }
   if (clientTools.length === 0) {
-    // Measured on Claude Code title-generation turns: tools:[] still carries the user prompt, so
-    // Cursor reaches for natives and every reject previously said "continue with the advertised
-    // client tools" — there were none, and the model kept retrying natives.
-    return `${NO_USER_FACING_BLOCK} This turn advertises no client tools. Do not call any tool — answer in plain text only. This Cursor-native tool will be rejected again.`;
+    return "This turn advertises no client tools. Do not call any tool — answer in plain text only. This Cursor-native tool will be rejected again.";
   }
-  return `${NO_USER_FACING_BLOCK} No client bridge tool covers this action on this turn, and this Cursor-native tool will be rejected again — do not call it. Continue with the advertised client tools.`;
+  return "No matching client bridge tool is advertised for this turn, and this Cursor-native tool will be rejected again — do not call it. Continue with the advertised client tools.";
 }
 
 function toolSearchWireName(
