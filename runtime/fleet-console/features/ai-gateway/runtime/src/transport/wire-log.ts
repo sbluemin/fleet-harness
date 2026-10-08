@@ -342,7 +342,7 @@ class ToolInputRecorder {
   }
 
   observe(data: unknown): void {
-    if (this.file === undefined || !isRecord(data)) return;
+    if (this.activeFile() === undefined || !isRecord(data)) return;
     try {
       this.observeEvent(data);
     } catch {
@@ -352,6 +352,13 @@ class ToolInputRecorder {
 
   flushOpen(): void {
     for (const index of [...this.open.keys()]) this.finish(index, false);
+  }
+
+  /** 스트림 도중 wire 로그가 꺼지거나 대상이 바뀌면 붙든 원문을 버리고 더는 쓰지 않는다. */
+  private activeFile(): WireLogTarget["toolInputs"] {
+    if (this.file !== undefined && target()?.toolInputs?.path === this.file.path) return this.file;
+    this.open.clear();
+    return undefined;
   }
 
   private observeEvent(data: Record<string, unknown>): void {
@@ -392,9 +399,10 @@ class ToolInputRecorder {
   private finish(index: number, complete: boolean): void {
     const open = this.open.get(index);
     this.open.delete(index);
-    if (open === undefined || this.file === undefined) return;
+    const file = this.activeFile();
+    if (open === undefined || file === undefined) return;
     const { correlation, label } = this.options;
-    writeEntry(this.file, "tool_input", {
+    writeEntry(file, "tool_input", {
       stream: this.stream,
       label,
       ...(correlation?.sessionId === undefined ? {} : { sessionId: correlation.sessionId }),
@@ -408,7 +416,7 @@ class ToolInputRecorder {
       complete,
       deltas: open.deltas,
       inputBytes: open.bytes,
-      ...(open.bytes > this.file.maxBytes ? { inputOmitted: true } : { input: open.parts.join("") }),
+      ...(open.bytes > file.maxBytes ? { inputOmitted: true } : { input: open.parts.join("") }),
     });
   }
 }

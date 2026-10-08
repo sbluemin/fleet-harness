@@ -189,5 +189,14 @@ describe("passthrough tool input records", () => {
       .filter((line) => /msg_cut|toolu_cut/.test(JSON.stringify(line)));
     expect(cutEntries).toHaveLength(2);
     expect(cutEntries.every((line) => (line.payload as { stream?: unknown }).stream === cutStream)).toBe(true);
+
+    // Turning the wire log off mid-stream also stops the plaintext tool input record.
+    const disabledMidStream = logRawPassthroughBody((async function* () {
+      yield sseBytes(toolUseEvents("msg_off", "toolu_off", ['{"text":"\uD55C']));
+      setWireLogTarget(null);
+      yield sseBytes([{ type: "content_block_stop", index: 1 }]);
+    })(), { label: "anthropic.wire.event", contentType: "text/event-stream" });
+    for await (const chunk of disabledMidStream) expect(chunk.byteLength).toBeGreaterThan(0);
+    expect(readLines(toolInputPath)).toHaveLength(2);
   });
 });
