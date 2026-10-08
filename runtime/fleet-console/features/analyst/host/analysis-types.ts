@@ -50,7 +50,7 @@ const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude";
  * 분석가의 기본 선택 — 소유자가 정한 sonnet/low. 강도는 모델 로스터 행의 사다리 전체를 쓰고, 사다리에 low가 없으면
  * 실행 시점 클램프(그 이하의 가장 높은 단, 없으면 첫 단)가 정한다.
  */
-const ANALYST_DEFAULT_MODEL = "sonnet";
+const ANALYST_DEFAULT_MODEL = "sonnet[1m]";
 const ANALYST_DEFAULT_EFFORT = "low";
 const ANALYST_DEFAULT_COORDINATE: ModelCoordinate = { model: ANALYST_DEFAULT_MODEL, effort: ANALYST_DEFAULT_EFFORT };
 export type AnalysisSession = AnalystSessionInstance;

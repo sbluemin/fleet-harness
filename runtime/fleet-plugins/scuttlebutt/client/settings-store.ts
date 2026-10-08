@@ -1,4 +1,4 @@
-import { isAgentEffort, type AgentEffort } from "@fleet-console/sdk/models";
+import { canonicalModelId, isAgentEffort, type AgentEffort } from "@fleet-console/sdk/models";
 import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
 
 import { DEFAULT_BIRD_WIDTH, clampBirdWidth } from "./roaming.js";
@@ -27,7 +27,7 @@ export interface AideGrants {
 }
 export type GrantMap = Record<ScuttlebuttAideId, AideGrants>;
 
-export const DEFAULT_AIDE_MODEL = "sonnet";
+export const DEFAULT_AIDE_MODEL = "sonnet[1m]";
 export const DEFAULT_AIDE_EFFORT: AgentEffort = "low";
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._\-\[\]:]{0,127}$/u;
 
@@ -190,7 +190,7 @@ function parseSettings(value: Record<string, unknown> | null): ScuttlebuttSettin
     docked: parseDockedMap(value.docked),
     sizes: parseSizeMap(value.sizes),
     grants: parseGrantMap(value.grants),
-    model: typeof value.model === "string" && MODEL_ID.test(value.model) ? value.model : DEFAULT_AIDE_MODEL,
+    model: typeof value.model === "string" && MODEL_ID.test(value.model) ? canonicalModelId(value.model) : DEFAULT_AIDE_MODEL,
     effort: isAgentEffort(value.effort) ? value.effort : DEFAULT_AIDE_EFFORT,
     introduced: value.introduced === true,
   };

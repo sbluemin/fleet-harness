@@ -281,7 +281,7 @@ function isMessageBody(value: unknown): value is { readonly text: string; readon
 
 /**
  * 고른 좌표를 Console의 모델 로스터(`agent` 대상)에 대조해 실행 좌표로 푼다. Gateway에서 끈 모델은 저장값을 고쳐 쓰지
- * 않고 폴백 좌표(기본 sonnet)로 실행하며, 그 사실을 서버 로그에 모델 id와 사유만으로 남긴다. 로스터를 모르는 호스트에서는
+ * 않고 폴백 좌표(기본 sonnet[1m])로 실행하며, 그 사실을 서버 로그에 모델 id와 사유만으로 남긴다. 로스터를 모르는 호스트에서는
  * 고른 좌표를 그대로 싣는다.
  */
 function resolveAideCoordinate(ctx: FleetPluginServerContext, body: StartBody): { readonly model?: string; readonly effort?: AgentEffort | null } {

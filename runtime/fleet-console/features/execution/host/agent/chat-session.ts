@@ -1,4 +1,5 @@
 import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
+import { resolveNativeClaudeModelAlias } from "@fleet-console/agent-runtime/fleet";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -1251,13 +1252,14 @@ class AgentChatSession {
    * `launchEffort`는 런치 어휘다 — `null`은 모델 기본, `ultra`는 xhigh에 ultracode를 얹는다.
    */
   async changeCoordinates(model: string, launchEffort: string | null): Promise<AgentChatCoordinatesResult> {
+    const canonical = resolveNativeClaudeModelAlias(model) ?? model;
     let target: ChatCoordinates;
     if (launchEffort === null) {
-      target = this.makeCoordinates(model, null, undefined, false);
+      target = this.makeCoordinates(canonical, null, undefined, false);
     } else {
       const resolved = resolveChatLaunchEffort(launchEffort);
       if (!resolved) return { ok: false, error: "invalid_effort" };
-      target = this.makeCoordinates(model, launchEffort, resolved.effort, resolved.ultracode === true);
+      target = this.makeCoordinates(canonical, launchEffort, resolved.effort, resolved.ultracode === true);
     }
     // 창이 작은 모델로 내려가면 지금 문맥이 새 창을 넘을 수 있다. 그 변경은 다음 턴을 넘치게 하므로
     // 받지 않는다 — 먼저 요약해 문맥을 줄이는 것이 사용자의 길이다.
@@ -2223,7 +2225,7 @@ class AgentChatSession {
     const window = this.coordinates.contextWindow;
     const oneMillion = typeof window === "number" && Number.isFinite(window) && window > 0
       ? window >= CLAUDE_COMPAT_CONTEXT_WINDOW
-      : hasClaudeOneMillionMarker(this.coordinates.model);
+      : hasClaudeOneMillionMarker(this.coordinates.model) || resolveNativeClaudeModelAlias(this.coordinates.model) !== undefined;
     return oneMillion ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
   }
 
@@ -3406,7 +3408,9 @@ function sameCoordinates(a: ChatCoordinates, b: ChatCoordinates): boolean {
 function modelCapacity(coordinates: ChatCoordinates): number {
   const window = coordinates.contextWindow;
   if (typeof window === "number" && Number.isFinite(window) && window > 0) return window;
-  return hasClaudeOneMillionMarker(coordinates.model) ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
+  return hasClaudeOneMillionMarker(coordinates.model) || resolveNativeClaudeModelAlias(coordinates.model) !== undefined
+    ? CLAUDE_COMPAT_CONTEXT_WINDOW
+    : CLAUDE_DEFAULT_CONTEXT_WINDOW;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

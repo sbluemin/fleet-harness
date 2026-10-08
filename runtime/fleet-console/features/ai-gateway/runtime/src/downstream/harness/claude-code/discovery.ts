@@ -52,13 +52,15 @@ export function toGatewayModelAlias(modelId: string): string {
 /**
  * Claude Code understands only its default 200k coordinate and the `[1m]` 1M
  * coordinate. Keep that marker truthful: only a provider model whose real window
- * reaches 1M is advertised as such. The response compatibility seam maps every
+ * reaches 1M is advertised as such. Every native Claude family entry is 1M, so it
+ * always carries the marker; the unmarked 200k coordinate is left to custom models. The response compatibility seam maps every
  * other real window onto the unmarked 200k coordinate while preserving Claude's
  * absolute compaction reserve.
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
   if (model.provider === "claude") {
     // 버전은 자식 CLI가 푼다 — alias를 넘겨야 CLI가 갱신돼도 최신 버전으로 뜬다.
+    // 네이티브 가족 항목은 모두 1M 창이므로 정준 실행 alias는 늘 `<family>[1m]`이다.
     const id = model.claudeAlias ?? model.upstreamId ?? model.id;
     return isClaudeOneMillionContextWindow(model.contextWindow)
       ? `${id}${CLAUDE_ONE_MILLION_MARKER}`

@@ -69,11 +69,11 @@ describe("Cowork options", () => {
       expect(enabledResponse.rows).toContainEqual({ id: "codex--gpt-6-luna", label: "GPT-6-Luna", provider: "codex" });
       // Settings › AI Gateway에서 그 모델을 끄면 목록에서 빠지고 Sonnet으로 실행하되, 저장된 강도는 유지된다.
       enabled = [sonnet];
-      expect(await (await fetch(url)).json()).toMatchObject({ defaultModel: "sonnet", defaultEffort: "xhigh", fallback: true });
+      expect(await (await fetch(url)).json()).toMatchObject({ defaultModel: "sonnet[1m]", defaultEffort: "xhigh", fallback: true });
       // 로스터가 비어도 실행은 최후 폴백(sonnet)으로 서고 폴백 표식이 붙는다.
       enabled = [];
       experiments = { ...experiments, coworkModel: "sonnet", coworkEffort: "low" };
-      expect(await (await fetch(url)).json()).toMatchObject({ models: ["sonnet"], defaultModel: "sonnet", defaultEffort: "low", fallback: true });
+      expect(await (await fetch(url)).json()).toMatchObject({ models: ["sonnet[1m]"], defaultModel: "sonnet[1m]", defaultEffort: "low", fallback: true });
     } finally {
       server.close();
       await once(server, "close");

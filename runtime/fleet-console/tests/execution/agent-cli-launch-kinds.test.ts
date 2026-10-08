@@ -99,8 +99,8 @@ describe("buildAgentCliLaunchKinds", () => {
   });
 
   it("projects the Gateway roster once for every target and resolves stored coordinates without rewriting them", () => {
-    // 빈 로스터에는 공급자 띠가 없다 — 최후 폴백(sonnet) 한 행의 폴백 띠만 서서 표면이 폴백 표식으로 그린다.
-    expect(buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], "agent", resolveAiGatewaySelection({ version: 1, models: [] }))[0]?.variants?.map((group) => [group.id, group.rows.map((row) => row.launch.model)])).toEqual([["roster-fallback", ["sonnet"]]]);
+    // 빈 로스터에는 공급자 띠가 없다 — 최후 폴백(Sonnet 1M) 한 행의 폴백 띠만 서서 표면이 폴백 표식으로 그린다.
+    expect(buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], "agent", resolveAiGatewaySelection({ version: 1, models: [] }))[0]?.variants?.map((group) => [group.id, group.rows.map((row) => row.launch.model)])).toEqual([["roster-fallback", ["sonnet[1m]"]]]);
     const settings = {
       version: 1 as const,
       models: [{ id: "claude--sonnet" }, { id: "codex--gpt-6-sol-fast", efforts: ["low", "high"] }],
@@ -108,8 +108,9 @@ describe("buildAgentCliLaunchKinds", () => {
     const selection = resolveAiGatewaySelection(settings);
     const agent = buildModelRoster(selection, "agent");
     // 정준 id(실행 id)로 서고, Agent SDK 대상에는 ultra도 게이트도 없다. 노출 사다리(effortExposure)가 곧 전체다.
+    // 구 200k 좌표(`claude--sonnet`)로 저장된 Claude도 가족의 단일 1M 좌표로 선다.
     expect(agent.map((group) => [group.id, group.rows.map((row) => [row.launch.model, row.chips?.map((chip) => chip.id)])])).toEqual([
-      ["gateway:claude", [["sonnet", ["low", "medium", "high", "xhigh", "max"]]]],
+      ["gateway:claude", [["sonnet[1m]", ["low", "medium", "high", "xhigh", "max"]]]],
       ["gateway:codex", [["codex--gpt-6-sol-fast", ["low", "high"]]]],
     ]);
     expect(agent.flatMap((group) => group.rows).some((row) => row.gatedEfforts !== undefined)).toBe(false);
@@ -121,19 +122,21 @@ describe("buildAgentCliLaunchKinds", () => {
 
     // 레거시 저장 문법은 읽을 때 정준 id로 접힌다. 사다리 밖 강도는 그 이하의 가장 높은 단으로 내려간다.
     expect(resolveRosterCoordinate(agent, { model: "claude-gateway--codex--gpt-6-sol-fast", effort: "xhigh" })).toMatchObject({ model: "codex--gpt-6-sol-fast", effort: "high", fallback: false });
-    expect(resolveRosterCoordinate(agent, { model: "claude--sonnet", effort: "max" })).toMatchObject({ model: "sonnet", effort: "max", fallback: false });
-    // 로스터 밖(꺼진 모델)은 sonnet으로 돌고 폴백을 드러낸다. 빈 로스터는 최후 폴백 sonnet이다.
-    expect(resolveRosterCoordinate(agent, { model: "opus[1m]", effort: "high" })).toMatchObject({ model: "sonnet", effort: "high", fallback: true, reason: "model_off" });
-    expect(resolveRosterCoordinate([], { model: "opus[1m]", effort: "high" })).toMatchObject({ model: "sonnet", row: null, fallback: true, reason: "roster_empty" });
+    // Claude 가족의 bare·200k scoped 표기는 1M 정준 좌표와 같은 행이다(폴백 아님).
+    expect(resolveRosterCoordinate(agent, { model: "claude--sonnet", effort: "max" })).toMatchObject({ model: "sonnet[1m]", effort: "max", fallback: false });
+    expect(resolveRosterCoordinate(agent, { model: "sonnet" })).toMatchObject({ model: "sonnet[1m]", fallback: false });
+    // 로스터 밖(꺼진 모델)은 Sonnet 1M으로 돌고 폴백을 드러낸다. 빈 로스터는 최후 폴백 Sonnet 1M이다.
+    expect(resolveRosterCoordinate(agent, { model: "opus", effort: "high" })).toMatchObject({ model: "sonnet[1m]", effort: "high", fallback: true, reason: "model_off" });
+    expect(resolveRosterCoordinate([], { model: "opus[1m]", effort: "high" })).toMatchObject({ model: "sonnet[1m]", row: null, fallback: true, reason: "roster_empty" });
 
     // 플러그인 포트는 같은 해석에 Agent SDK wire id를 붙인다.
     const host = createModelRosterHost({ readSettings: () => settings });
     expect(host.resolve({ model: "codex--gpt-6-sol-fast" }, "agent")).toMatchObject({ model: "codex--gpt-6-sol-fast", wireModel: expect.stringMatching(/^claude-gateway--codex--gpt-6-sol-fast/) });
-    expect(host.resolve({ model: "sonnet" }, "agent").wireModel).toBe("sonnet");
+    expect(host.resolve({ model: "sonnet" }, "agent").wireModel).toBe("sonnet[1m]");
 
-    // 호스트 전용 Claude도 다른 모델처럼 로스터에 그대로 서고, 행이 그 사실과 200k 창을 싣는다(브라우저 파서도 보존한다).
-    const reserved = buildModelRoster(resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--sonnet", hostOnly: true }] }), "agent");
-    expect(parseModelRoster(JSON.parse(JSON.stringify(reserved)))[0]?.rows[0]).toMatchObject({ launch: { model: "sonnet" }, contextWindow: 200_000, hostOnly: true });
+    // 호스트 전용 Claude도 다른 모델처럼 로스터에 그대로 서고, 행이 그 사실과 1M 창을 싣는다(브라우저 파서도 보존한다).
+    const reserved = buildModelRoster(resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--sonnet-1m", hostOnly: true }] }), "agent");
+    expect(parseModelRoster(JSON.parse(JSON.stringify(reserved)))[0]?.rows[0]).toMatchObject({ launch: { model: "sonnet[1m]" }, contextWindow: 1_000_000, hostOnly: true });
   });
 
   it("keeps disabled reasons and does not attach variants to a disabled gateway kind", () => {

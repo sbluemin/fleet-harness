@@ -108,7 +108,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const surfaces = new Map<string, "chat" | "terminal">();
   // 떠 있는 채팅의 호스트 좌표 — 호스트처럼 턴이 돌면 예약만, 유휴면 곧바로 적용하고 세션 좌표를 고친다. 강도는 모델의 칩만 받는다.
   const hostChat = new Map<string, { model: string; effort: string | null; pending: { model: string; effort: string | null } | null }>();
-  const hostEfforts: Record<string, readonly string[]> = { fable: ["high"] };
+  const hostEfforts: Record<string, readonly string[]> = { "fable[1m]": ["high"] };
   // 호스트의 멱등 기동 키 — 키 하나에 Operation 하나, 지운 키는 다시 만들지 않는다. hostFault 는 생성 뒤 응답을 잃는 장애다.
   const keyed = new Map<string, string>();
   const deletedKeys = new Set<string>();
@@ -496,7 +496,7 @@ describe("Objectives contract", () => {
     // 그새 노출이 꺼졌다 — 새로 띄울 구성원 하나가 거절돼도 나머지와 지휘관 알림은 이어진다.
     const late = store.memberAdd(objective.id, { role: "late", launch: { mode: "model", model: "fable" } }, "human").members.at(-1)!;
     const routed = store.memberAdd(objective.id, { role: "routed" }, "human").members.at(-1)!;
-    hostFault.rejectModel = "fable";
+    hostFault.rejectModel = "fable[1m]";
     const started = await launch.startCommander(objective.id);
     expect(started.failed).toEqual([{ id: late.id, role: "late", error: "gateway_model_not_enabled" }]);
     expect(resumed).toEqual([reviewer.id]);
@@ -512,18 +512,18 @@ describe("Objectives contract", () => {
       await switched("sonnet", "low");
       expect(slept).toEqual([reviewer.id]);
       expect(resumed).toEqual([reviewer.id, reviewer.id]);
-      expect(shown()).toMatchObject({ model: "sonnet", effort: "low", next: null });
+      expect(shown()).toMatchObject({ model: "sonnet[1m]", effort: "low", next: null });
       // 새 좌표로 깨우기를 거절하면 실행값으로 되돌려 다시 깨우고 그 코드로 거절한다 — 선택도 고르기 전으로 돌아간다.
       expect((await switched("fable", "high")).value).toEqual({ error: "gateway_model_not_enabled" });
       expect(activity.get(reviewer.id)).toBe("idle");
-      expect(shown()).toMatchObject({ model: "sonnet", effort: "low", launch: { mode: "model", model: "sonnet", effort: "low" }, next: null });
+      expect(shown()).toMatchObject({ model: "sonnet[1m]", effort: "low", launch: { mode: "model", model: "sonnet[1m]", effort: "low" }, next: null });
       hostFault.rejectModel = null;
 
       // 일하는 터미널은 이번 턴 뒤 — 세션 좌표를 미리 고치지 않고, 화면 없이도 서버 감시자가 잇달아 유휴를 보면 같은 길로 바꾼다.
       activity.set(reviewer.id, "running");
       await pick("opus[1m]", "high");
-      expect(session()).toMatchObject({ model: "sonnet", effort: "low" });
-      expect(shown()).toMatchObject({ model: "sonnet", next: { model: "opus[1m]", effort: "high", failed: null } });
+      expect(session()).toMatchObject({ model: "sonnet[1m]", effort: "low" });
+      expect(shown()).toMatchObject({ model: "sonnet[1m]", next: { model: "opus[1m]", effort: "high", failed: null } });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(shown().next).toMatchObject({ model: "opus[1m]", failed: null });
       activity.set(reviewer.id, "idle");
@@ -537,19 +537,19 @@ describe("Objectives contract", () => {
       activity.set(reviewer.id, "running");
       await pick("sonnet", "low");
       expect(session()).toMatchObject({ model: "opus[1m]", effort: "high" });
-      expect(shown()).toMatchObject({ model: "opus[1m]", next: { model: "sonnet", effort: "low", failed: null } });
+      expect(shown()).toMatchObject({ model: "opus[1m]", next: { model: "sonnet[1m]", effort: "low", failed: null } });
       // 턴이 닫히는 경계에서 호스트가 적용했다 — 감시자가 예약을 거두고, 행의 실행값과 선택이 같은 값을 말한다.
       Object.assign(hostChat.get(reviewer.id)!, { model: "sonnet", effort: "low", pending: null });
       Object.assign(session(), { model: "sonnet", effort: "low" });
       activity.set(reviewer.id, "idle");
       await vi.advanceTimersByTimeAsync(1_000);
-      expect(shown()).toMatchObject({ model: "sonnet", effort: "low", launch: { mode: "model", model: "sonnet", effort: "low" }, next: null });
+      expect(shown()).toMatchObject({ model: "sonnet[1m]", effort: "low", launch: { mode: "model", model: "sonnet[1m]", effort: "low" }, next: null });
       expect(store.storedMember(objective.id, reviewer.id)?.next).toBeUndefined();
       // 경계에서 버려진 예약(그사이 문맥이 커짐)은 예약 없이 옛 값으로 남는다 — 「적용되지 않음」으로 드러난다.
       activity.set(reviewer.id, "running");
       await pick("opus[1m]", "high");
       hostChat.get(reviewer.id)!.pending = null;
-      expect(shown()).toMatchObject({ model: "sonnet", next: { model: "opus[1m]", failed: "coordinates_not_applied" } });
+      expect(shown()).toMatchObject({ model: "sonnet[1m]", next: { model: "opus[1m]", failed: "coordinates_not_applied" } });
       await route("member/next-cancel", { objectiveId: objective.id, memberId: reviewer.id });
       // 감시자가 저장한 실패 줄 — 실행값이 예약과 다르면 남고, 사람이 채팅에서 그 모델로 바꾸면(launch-changed) 저장 기록째 거둔다.
       await pick("opus[1m]", "high");
@@ -566,7 +566,7 @@ describe("Objectives contract", () => {
       Object.assign(hostChat.get(reviewer.id)!, { model: "sonnet", effort: "low" });
       Object.assign(session(), { model: "sonnet", effort: "low" });
       launch.operationChanged(reviewer.id);
-      expect(shown()).toMatchObject({ model: "sonnet", next: null });
+      expect(shown()).toMatchObject({ model: "sonnet[1m]", next: null });
       expect(store.storedMember(objective.id, reviewer.id)?.next).toBeUndefined();
     } finally { vi.useRealTimers(); }
     // 유휴 채팅은 곧바로 바뀐다 — 실행값은 호스트가 고친 세션 좌표에만 있어도, 방송된 행이 새 실행값을 말한다.
@@ -575,7 +575,7 @@ describe("Objectives contract", () => {
     expect(events.filter((event) => event.objectiveId === objective.id).at(-1)?.objective?.members.find((member) => member.id === reviewer.id)).toMatchObject({ model: "opus[1m]", effort: "high", next: null });
     // 행만 고르면 메뉴가 지금 강도를 이어 싣는다 — 새 모델에 없는 강도면 모델 기본으로 바꾼다(사람이 고르지 않은 값으로 거절하지 않는다).
     expect((await pick("fable", "low")).status).toBe(200);
-    expect(shown()).toMatchObject({ model: "fable", launch: { mode: "model", model: "fable" }, next: null });
+    expect(shown()).toMatchObject({ model: "fable[1m]", launch: { mode: "model", model: "fable[1m]" }, next: null });
     expect(shown().effort).toBeUndefined();
 
     // 「다음 재개」 시절의 옛 예약은 세션 좌표가 이미 그 값이다 — 기동 때 적용으로 거둔다.
@@ -1757,7 +1757,7 @@ describe("Objectives contract", () => {
     const { ctx, store, launch, call, consoleTool, route, workspace, launches, activity, outcomes, operations, operationsHost, objectivesDir } = harness(() => "http://console.invalid");
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
-      { id: "sonnet", label: "Sonnet", launch: { model: "sonnet" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
+      { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
       { id: "opus", label: "Opus", launch: { model: "opus[1m]" }, chips: [{ id: "high", label: "HIGH", launch: { effort: "high" } }] },
     ] }, { id: "gateway:cursor", label: "Cursor", rows: [
       { id: "cursor--grok-4.7-500k", label: "Grok", launch: { model: "cursor--grok-4.7-500k" }, quotaScope: "auto", quotaPool: "cursor:auto" },
@@ -1785,7 +1785,7 @@ describe("Objectives contract", () => {
     // 모델 선택의 공개 경계가 호스트의 풀 판정과 한도 창의 범위를 잃지 않는다. 네이티브 행에는 추측한 풀을 넣지 않는다.
     const loadout = await board({ view: "models" });
     expect(loadout.models).toEqual([
-      { model: "sonnet", label: "Sonnet", provider: "claude", efforts: ["low"], available: true },
+      { model: "sonnet[1m]", label: "Sonnet", provider: "claude", efforts: ["low"], available: true },
       { model: "opus[1m]", label: "Opus", provider: "claude", efforts: ["high"], available: true },
       { model: "cursor--grok-4.7-500k", label: "Grok", provider: "cursor", efforts: [], available: true, quotaScope: "auto", quotaPool: "cursor:auto" },
     ]);
@@ -1819,8 +1819,8 @@ describe("Objectives contract", () => {
     expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[0]!, pick({ mode: "model", model: "sonnet" }))).toBe("other_theater");
     expect(await refusal(commodore, pick({ mode: "model", model: "unlisted" }))).toBe("model_not_in_catalog");
     expect(await refusal(commodore, pick({ mode: "model", model: "sonnet", effort: "high" }))).toBe("invalid_effort");
-    expect(await board(pick({ mode: "model", model: "sonnet", effort: "low" }))).toMatchObject({ outcome: "set", launch: { mode: "model", model: "sonnet", effort: "low" } });
-    expect((await board({ objectiveId: id, view: "routing" })).members).toEqual([{ id: workerId, role: "worker", selection: "model", launched: false, model: "sonnet", effort: "low" }]);
+    expect(await board(pick({ mode: "model", model: "sonnet", effort: "low" }))).toMatchObject({ outcome: "set", launch: { mode: "model", model: "sonnet[1m]", effort: "low" } });
+    expect((await board({ objectiveId: id, view: "routing" })).members).toEqual([{ id: workerId, role: "worker", selection: "model", launched: false, model: "sonnet[1m]", effort: "low" }]);
     // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 순찰까지 멈추지 않는다.
     expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);
     activity.set(id, "running");
@@ -1846,12 +1846,12 @@ describe("Objectives contract", () => {
     expect(recoveredView.objective.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
     const recoveredState = (await route("state", { theaterId: "t1" })).value as { objectives: readonly Objective[] };
     expect(recoveredState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
-    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
     // 일하는 구성원은 이번 턴 뒤로 예약된다 — 세션 좌표는 그대로다. 라우팅으로 되돌리면 예약을 거두고 실행값은 남는다.
     activity.set(workerId, "running");
-    expect(await board(pick({ mode: "model", model: "opus[1m]", effort: "high" }))).toMatchObject({ outcome: "pending", model: "sonnet", next: { model: "opus[1m]", effort: "high", failed: null } });
-    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
-    expect(await board(pick(null))).toMatchObject({ outcome: "applied", launch: { mode: "route" }, model: "sonnet", next: null });
+    expect(await board(pick({ mode: "model", model: "opus[1m]", effort: "high" }))).toMatchObject({ outcome: "pending", model: "sonnet[1m]", next: { model: "opus[1m]", effort: "high", failed: null } });
+    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
+    expect(await board(pick(null))).toMatchObject({ outcome: "applied", launch: { mode: "route" }, model: "sonnet[1m]", next: null });
     activity.set(workerId, "idle");
     const executing = (await board({ objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };
     const memberId = executing.members[0]!.id;

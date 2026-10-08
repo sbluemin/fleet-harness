@@ -116,8 +116,8 @@ export async function chooseRoutingModels(input: {
 }
 
 async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
-  // 라우팅 모델도 모델 로스터 하나에서 고른다. 저장값이 로스터 밖(끈 모델)이면 저장값은 두고 sonnet(로스터에
-  // 없으면 첫 행, 로스터가 비면 최후 폴백 sonnet)으로 돈다 — 다시 켜면 사용자의 선택이 그대로 돌아온다.
+  // 라우팅 모델도 모델 로스터 하나에서 고른다. 저장값이 로스터 밖(끈 모델)이면 저장값은 두고 Sonnet 1M(로스터에
+  // 없으면 첫 행, 로스터가 비면 최후 폴백 Sonnet 1M)으로 돈다 — 다시 켜면 사용자의 선택이 그대로 돌아온다.
   const roster = buildModelRoster(resolveAiGatewaySelection(input.settings), "agent");
   const resolved = resolveRosterCoordinate(roster, { model: input.settings.delegationRoutingModel ?? ROSTER_FALLBACK_MODEL }, { model: ROSTER_FALLBACK_MODEL });
   if (resolved.fallback) {

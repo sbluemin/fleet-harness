@@ -6,7 +6,7 @@ Console 플러그인은 `@fleet-console/sdk/agent`의 서버 계약과 `ctx.host
 import type { AgentEvent } from "@fleet-console/sdk/agent";
 
 const session = await ctx.host.agent.createSession({
-  model: "sonnet",
+  model: "sonnet[1m]",
   effort: "low",
   systemPrompt: "Answer using only the supplied draft tools.",
   continuation: "oneshot",

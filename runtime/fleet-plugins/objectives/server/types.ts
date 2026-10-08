@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
+import { canonicalModelId } from "@fleet-console/sdk/models";
 
 /** 살아 있는 구성원의 직전 실패와 표시 횟수. acknowledge는 inbox만 해소한다. */
 export interface ObjectiveMemberFailure extends ConsoleTurnFailure {
@@ -145,7 +146,7 @@ export interface HostCoordinates {
   readonly pending: { readonly model: string; readonly effort: string | null } | null;
 }
 
-const samePair = (a: MemberPreset, b: MemberPreset) => (a.model ?? "") === (b.model ?? "") && (a.effort ?? "") === (b.effort ?? "");
+const samePair = (a: MemberPreset, b: MemberPreset) => canonicalModelId(a.model ?? "") === canonicalModelId(b.model ?? "") && (a.effort ?? "") === (b.effort ?? "");
 
 /**
  * 호스트가 든 예약의 지금 결말 — 떠 있는 채팅의 호스트 좌표로 가른다. 호스트 좌표가 없으면(그새 잠들었거나 터미널로 바뀜) 메모리의

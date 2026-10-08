@@ -9,6 +9,7 @@
  * 어디에 서 있느냐, 열릴 때 보고 있는 패널을 행선지로 삼느냐는 배치·습관 상태다.
  */
 
+import { canonicalModelId } from "@fleet-console/sdk/models";
 import type { PluginMentionTargetAddress } from "@fleet-console/sdk/plugin";
 
 const STORAGE_KEY = "fleet-console.quickLaunch.selection";
@@ -47,7 +48,7 @@ export function readQuickLaunchSelection(): QuickLaunchSelection {
     const selection = {
       recentPluginTarget: readPluginTarget(parsed.recentPluginTarget),
       theaterId: readNonEmptyString(parsed.theaterId),
-      model: migrateRememberedModel(readNonEmptyString(parsed.model)),
+      model: canonicalQuickLaunchModel(readNonEmptyString(parsed.model)),
       effort: readNonEmptyString(parsed.effort),
       pinned: parsed.pinned === true,
       mentionFocused: parsed.mentionFocused === true,
@@ -66,11 +67,19 @@ export function readQuickLaunchSelection(): QuickLaunchSelection {
   }
 }
 
-/** Bare native model ids were the pre-1M menu ids; keep their rows under the 1M coordinates. */
-function migrateRememberedModel(model: string | null): string | null {
-  if (model === "opus") return "opus[1m]";
-  if (model === "fable") return "fable[1m]";
-  return model;
+/**
+ * 기억한 모델만 정준 실행 id로 접는다. scoped·게이트웨이 표기는 SDK `canonicalModelId`가 맡고,
+ * 네 가족 bare는 메뉴 좌표(`[1m]`)로 잇는다. 브라우저 번들은 agent-runtime을 끌어오지 못한다.
+ * `canonicalModelId`가 bare를 이미 `[1m]`로 돌려주면 이 표는 그대로 통과한다.
+ */
+export function canonicalQuickLaunchModel(model: string | null): string | null {
+  if (model === null) return null;
+  const canonical = canonicalModelId(model);
+  if (canonical === "opus") return "opus[1m]";
+  if (canonical === "fable") return "fable[1m]";
+  if (canonical === "sonnet") return "sonnet[1m]";
+  if (canonical === "haiku") return "haiku[1m]";
+  return canonical;
 }
 
 export function writeQuickLaunchSelection(selection: QuickLaunchSelection): void {

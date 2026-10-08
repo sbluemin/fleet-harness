@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { ConsoleCaller, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
+import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
@@ -1293,7 +1294,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       }
       if (patch.launch !== undefined && ctx.host.operations.get(memberId)) {
         // 호스트가 바꾸지 못한 선택은 남기지 않는다 — 고른 값과 실행값이 갈린 채 행이 서면 사람은 바뀐 줄 안다.
-        try { await reserve(latest, memberId, patch.launch, before); }
+        // 저장값과 같은 정준 좌표로 세션을 바꾼다 — bare 별칭이 그대로 세션에 실리면 200k 좌표로 실행된다.
+        const selection = patch.launch && patch.launch.mode === "model" ? { ...patch.launch, model: canonicalModelId(patch.launch.model) } : patch.launch;
+        try { await reserve(latest, memberId, selection, before); }
         catch (error) { store.memberLaunchState(objectiveId, memberId, { launch: before.launch ?? null }); throw error; }
         next = objective(objectiveId);
       }

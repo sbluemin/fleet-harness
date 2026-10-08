@@ -293,11 +293,11 @@ describe("delegation assignment", () => {
     expect(decision.model).not.toBe(reserved);
     expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
     // Claude도 같다 — 저장 설정에서 호스트 전용으로 둔 Claude는 위임 후보(gateway_models)에 서지 않고, 켜 둔 Claude는 다른
-    // 모델과 같은 정보(창·강도·등급)로 선다.
+    // 모델과 같은 정보(창·강도·등급)로 선다. 구 200k 좌표(`claude--sonnet`)로 남은 저장값도 가족의 단일 1M 항목으로 선다.
     const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] });
-    expect(claude.models.map((model) => model.id)).toEqual(["claude--opus-1m", "claude--sonnet"]);
+    expect(claude.models.map((model) => model.id)).toEqual(["claude--opus-1m", "claude--sonnet-1m"]);
     expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: claude.delegationModels }).models).toEqual([
-      expect.objectContaining({ modelId: "sonnet", provider: "claude", contextWindow: 200_000, capabilityClass: expect.any(String) }),
+      expect.objectContaining({ modelId: "sonnet[1m]", provider: "claude", contextWindow: 1_000_000, capabilityClass: expect.any(String) }),
     ]);
   });
 
@@ -344,6 +344,8 @@ describe("delegation assignment", () => {
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
       expect(JSON.parse(String(init?.body)).model).toBe("claude-sonnet-5-5");
+      // bare alias는 하위 호환 입력이다 — 가족의 단일 1M 항목으로 풀려 1M beta를 싣는다.
+      expect(headers.get("anthropic-beta")).toContain("context-1m-2025-08-07");
       return new Response(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", content: [] }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -386,7 +388,7 @@ describe("delegation assignment", () => {
   });
 
   it("routes delegation to Claude native models without gateway prefix", () => {
-    const sonnet = requireGatewayModel("claude--sonnet");
+    const sonnet = requireGatewayModel("claude--sonnet-1m");
     const exposure = {
       delegationRoutingEnabled: true,
       delegationModels: [sonnet],
@@ -394,13 +396,13 @@ describe("delegation assignment", () => {
     } satisfies GatewayAssignmentExposure;
 
     const loadout = buildGatewayLoadout(exposure);
-    expect(loadout.models.filter((m) => m.provider === "claude").map((m) => m.modelId)).toEqual(["sonnet"]);
+    expect(loadout.models.filter((m) => m.provider === "claude").map((m) => m.modelId)).toEqual(["sonnet[1m]"]);
 
     const decision = decideGatewayRoutingAssignment(
       { surface: "agent", requestedModel: "sonnet" },
       exposure,
     );
-    expect(decision.model).toBe("sonnet");
+    expect(decision.model).toBe("sonnet[1m]");
     expect(decision.effort).toBe("medium");
   });
 

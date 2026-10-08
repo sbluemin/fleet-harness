@@ -197,7 +197,8 @@ function resolveInitialSelection(catalog: AnalysisCatalog): Pick<AnalysisState, 
   const cli = catalog.clis.find((item) => item.cliId === "claude" && item.available)
     ?? catalog.clis.find((item) => item.available)
     ?? catalog.clis[0];
-  const model = cli?.models.find((item) => cli.cliId === "claude" && item.id === "sonnet")
+  const model = cli?.models.find((item) => cli.cliId === "claude" && item.id === "sonnet[1m]")
+    ?? cli?.models.find((item) => cli.cliId === "claude" && item.id === "sonnet")
     ?? cli?.models.find((item) => item.id === cli.defaultModel)
     ?? cli?.models[0];
   const effort = model?.effortLevels.includes("medium")

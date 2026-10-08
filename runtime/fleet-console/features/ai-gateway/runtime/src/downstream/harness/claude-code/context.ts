@@ -173,7 +173,8 @@ function messageTextIncludes(content: unknown, marker: string): boolean {
 
 /**
  * Map a provider model's occupied input onto the fixed coordinate Claude Code assigns
- * from its model id: 200k without `[1m]`, 1M with it.
+ * from its model id: 200k without `[1m]`, 1M with it. Native Claude families always
+ * launch on `[1m]`; the unmarked 200k coordinate applies to custom models only.
  *
  * Claude Code 2.1.227 compacted between 166k/168k on 200k and 966k/968k on 1M,
  * leaving roughly 32k on either coordinate. Scale usage so that observed compact

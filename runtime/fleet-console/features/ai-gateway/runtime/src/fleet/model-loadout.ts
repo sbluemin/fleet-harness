@@ -17,7 +17,7 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
       const { quotaPool: pool } = buildGatewayModelQuota(model);
       quotaPools[pool] ??= normalizeRoutingQuota(exposure.quota?.[model.provider], constraints.quotaScope, now);
       const rank = preference.indexOf(model.provider);
-      // Claude 200k 항목은 카탈로그에 창이 없다 — 다른 모델과 같은 정보를 싣도록 Claude Code 기본 좌표로 채운다.
+      // 카탈로그 창을 그대로 싣는다 — Claude 가족 항목은 모두 1M이다.
       const contextWindow = gatewayModelContextWindow(model);
       return {
         modelId: toClaudeGatewayModelId(model), provider: model.provider, quotaPool: pool, efforts,

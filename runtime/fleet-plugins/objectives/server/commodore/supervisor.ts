@@ -1,6 +1,6 @@
 import type { AgentHost } from "@fleet-console/sdk/agent";
 import type { ConsoleOperationObservation, PluginMcpTool } from "@fleet-console/sdk/mcp";
-import { isAgentEffort } from "@fleet-console/sdk/models";
+import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
@@ -654,9 +654,11 @@ function inboxDigest(objectives: readonly Objective[]): readonly [WakeCode, numb
   return (["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
 }
 
-/** 모델 문맥 — `[1m]` 별칭은 1M, 그 밖은 200k 로 본다(교대 판단에만 쓴다). */
+/** 모델 문맥 — 네 Claude 가족(정준·bare)은 1M, 그 밖 bare 모델은 200k(교대 판단에만 쓴다). */
 function contextWindow(model: string): number {
-  return /\[1m\]/i.test(model) ? 1_000_000 : 200_000;
+  const id = canonicalModelId(model);
+  if (/\[1m\]/i.test(id) || id === "fable" || id === "opus" || id === "sonnet" || id === "haiku") return 1_000_000;
+  return 200_000;
 }
 
 function failureCode(error: unknown, fallback: string): string {

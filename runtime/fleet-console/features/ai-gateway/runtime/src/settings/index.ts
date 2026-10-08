@@ -41,7 +41,7 @@ export interface AiGatewayStoredModel {
  * 이 로스터 하나를 읽으므로, 이행이 없으면 기존 설치의 선택지가 하루아침에 빈다. 써 넣은 항목은 AI Gateway
  * 화면에 그대로 보이고 사용자가 끌 수 있다.
  */
-export const DEFAULT_ROSTER_SEED_MODEL_IDS: readonly string[] = ["claude--fable-1m", "claude--opus-1m", "claude--sonnet"];
+export const DEFAULT_ROSTER_SEED_MODEL_IDS: readonly string[] = ["claude--fable-1m", "claude--opus-1m", "claude--sonnet-1m"];
 
 /**
  * 모델 로스터 이행 판(版). 저장 파일의 `rosterSeedVersion`이 이 값에 닿으면 이행은 끝났다 — 다시 기동해도, 사용자가 그 뒤
@@ -50,12 +50,14 @@ export const DEFAULT_ROSTER_SEED_MODEL_IDS: readonly string[] = ["claude--fable-
  * - 1: 로스터를 고른 적 없는 설치에 Claude 항목을 써 넣는다.
  * - 2: Claude 호스트 전용이 무시되던 시기(2026-09-22~)의 저장값 `hostOnly:true`를 한 번 해제한다 — 그 시기 화면은 그 값을
  *   꺼진 것으로 보였으므로, 되살리면 사용자가 모르는 사이 Claude가 위임에서 빠진다.
+ * - 3: Claude 가족이 모두 1M 단일 항목이 된 뒤, 저장값에 남은 bare/200k scoped id(`claude--sonnet`)를 가족의 1M id로 접어
+ *   영속한다. 같은 가족의 두 좌표는 한 행으로 합친다({@link normalizeAiGatewaySettings}). 끈 Claude·빈 로스터는 되살리지 않는다.
  */
-export const ROSTER_SEED_VERSION = 2;
+export const ROSTER_SEED_VERSION = 3;
 
 /**
- * 카탈로그 모델의 컨텍스트 창. Claude는 Claude Code가 아는 두 좌표뿐이다 — 1M 항목은 카탈로그에 창이 있고, 나머지는 기본
- * 200k다. 다른 공급자는 카탈로그 값을 그대로 쓴다. Models 응답(설정 카탈로그·`fleet gateway models`·Console 로스터)이 Claude를
+ * 카탈로그 모델의 컨텍스트 창. Claude 가족 항목은 모두 카탈로그에 1M 창이 있다 — 창 없는 Claude 항목이 생기면 Claude Code의
+ * 기본 200k 좌표로 읽는다. 다른 공급자는 카탈로그 값을 그대로 쓴다. Models 응답(설정 카탈로그·`fleet gateway models`·Console 로스터)이 Claude를
  * 다른 모델과 같은 정보로 내리도록 이 한 곳에서 정한다.
  */
 export function gatewayModelContextWindow(model: GatewayModel): number | null {
@@ -150,7 +152,7 @@ export interface AiGatewayUpdateValue {
 export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSettings {
   if (!isRecord(value) || value.version !== 1) return { version: 1 };
   const models = Array.isArray(value.models)
-    ? value.models
+    ? mergeStoredModels(value.models
       .filter((entry): entry is AiGatewayStoredModel =>
         isRecord(entry) && typeof entry.id === "string" && entry.id.length > 0)
       .flatMap((entry) => {
@@ -168,11 +170,12 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
         // 부재와 같은 뜻(사다리 전체)으로 접는다.
         const exposed = efforts.length > 0 ? narrowEffortLadder(model, efforts) : undefined;
         return [{
-          id: entry.id,
+          // Claude의 bare/200k scoped id는 가족의 단일 1M id로 접는다. 다른 공급자의 저장 id는 그대로다.
+          id: storedModelId(model, entry.id),
           ...(exposed ? { efforts: [...exposed] } : {}),
           ...(entry.hostOnly === true ? { hostOnly: true } : {}),
         }];
-      })
+      }))
     : [];
   // 레거시 defaultModel 키는 조용히 버린다 — 저장하지도, 보존하지도 않는다.
   const providerPriority = sanitizeProviderPriority(value.providerPriority);
@@ -190,13 +193,53 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
     // 라우팅 모델은 카탈로그가 아는 id(정준 실행 id·scoped·레거시 `claude-gateway--` 표기)만 남긴다. 켰는지는
     // 실행 시점에 로스터가 정한다 — 끈 모델의 저장값을 지우면 다시 켰을 때 사용자의 선택이 돌아오지 않는다.
-    ...(typeof value.delegationRoutingModel === "string" && findClaudeGatewayModel(value.delegationRoutingModel) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
+    ...(typeof value.delegationRoutingModel === "string" && findClaudeGatewayModel(value.delegationRoutingModel)
+      ? { delegationRoutingModel: canonicalRoutingModel(value.delegationRoutingModel) }
+      : {}),
     ...(value.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
     ...((value.delegationRoutingMode === "jev" || value.delegationRoutingMode === "model") ? { delegationRoutingMode: value.delegationRoutingMode } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
     ...(compactCeiling !== undefined ? { compactCeiling } : {}),
     ...(xaiEndpoint !== undefined ? { xaiEndpoint } : {}),
   };
+}
+
+/** 저장할 모델 id. Claude 가족은 bare·200k scoped·1M 어느 표기든 가족의 단일 1M id(`claude--sonnet-1m`)다. */
+function storedModelId(model: GatewayModel, id: string): string {
+  return model.provider === "claude" ? model.id : id;
+}
+
+/** 라우팅 판정 모델의 저장값. Claude 가족은 실행 정준 alias(`sonnet[1m]`)로 접고, 다른 공급자의 표기는 그대로 둔다. */
+function canonicalRoutingModel(id: string): string {
+  const model = findClaudeGatewayModel(id);
+  return model?.provider === "claude" ? toClaudeGatewayModelId(model) : id;
+}
+
+/**
+ * 같은 모델을 가리키는 저장 항목을 먼저 나온 자리 한 행으로 합친다 — 구 Claude 200k·1M 두 좌표가 한 가족 항목으로 접힐 때다.
+ * 노출 강도는 어느 한쪽이 전체면 전체, 둘 다 좁혔으면 합집합을 사다리 순으로 남긴다. 호스트 전용은 어느 한쪽이라도 켰으면
+ * 유지한다 — 한 행이 두 좌표의 다른 위임 권한을 모두 담을 수는 없으니, 위임 범위를 몰래 넓히지 않는 쪽을 택한다.
+ */
+function mergeStoredModels(entries: readonly AiGatewayStoredModel[]): AiGatewayStoredModel[] {
+  const merged: AiGatewayStoredModel[] = [];
+  for (const entry of entries) {
+    const index = merged.findIndex((existing) => existing.id === entry.id);
+    if (index < 0) {
+      merged.push(entry);
+      continue;
+    }
+    const existing = merged[index]!;
+    const model = findGatewayModel(entry.id);
+    const efforts = existing.efforts && entry.efforts && model
+      ? narrowEffortLadder(model, [...existing.efforts, ...entry.efforts])
+      : undefined;
+    merged[index] = {
+      id: existing.id,
+      ...(efforts ? { efforts: [...efforts] } : {}),
+      ...(existing.hostOnly === true || entry.hostOnly === true ? { hostOnly: true } : {}),
+    };
+  }
+  return merged;
 }
 
 function sanitizeProviderPriority(value: unknown): readonly GatewayProvider[] | undefined {
@@ -250,7 +293,12 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   const enabled: GatewayModel[] = [];
   const hostOnlyIds = new Set<string>();
   const effortExposure: Record<string, readonly GatewayReasoningEffort[]> = {};
-  for (const entry of settings?.models ?? []) {
+  // 정규화를 거치지 않은 저장값도 같은 규칙으로 읽는다 — 구 Claude 두 좌표는 한 가족 항목으로 합친다.
+  const entries = mergeStoredModels((settings?.models ?? []).flatMap((entry) => {
+    const model = findGatewayModel(entry.id);
+    return model ? [{ ...entry, id: storedModelId(model, entry.id) }] : [];
+  }));
+  for (const entry of entries) {
     const model = findGatewayModel(entry.id);
     if (!model) continue;
     if (entry.hostOnly === true) hostOnlyIds.add(model.id);
@@ -322,6 +370,7 @@ export function parseAiGatewayUpdate(value: unknown):
   if (extraKeys.length > 0) return { ok: false };
 
   const models: AiGatewayStoredModel[] = [];
+  const rawIds = new Set<string>();
   if (record.models !== undefined) {
     if (!Array.isArray(record.models)) return { ok: false };
     for (const raw of record.models) {
@@ -334,7 +383,12 @@ export function parseAiGatewayUpdate(value: unknown):
       if (entry.hostOnly !== undefined && typeof entry.hostOnly !== "boolean") return { ok: false };
       const model = findGatewayModel(entry.id);
       if (!model) return { ok: false };
-      if (models.some((existing) => existing.id === model.id)) return { ok: false };
+      // 같은 모델을 두 번 보내는 것은 거부한다. 다만 구 Claude 좌표(`claude--sonnet`)와 1M id처럼 표기만 다른 같은 가족은
+      // 옛 화면이 보낸 값이므로 아래에서 한 행으로 합친다.
+      if (models.some((existing) => existing.id === model.id) && (model.provider !== "claude" || rawIds.has(entry.id))) {
+        return { ok: false };
+      }
+      rawIds.add(entry.id);
       const efforts = parseExposedEfforts(model, entry.efforts);
       if (efforts === null) return { ok: false };
       models.push({
@@ -344,6 +398,7 @@ export function parseAiGatewayUpdate(value: unknown):
       });
     }
   }
+  const mergedModels = mergeStoredModels(models);
 
   // 레거시 defaultModel 키는 허용하되 무시한다 — 저장하지도, extra key로 거부하지도 않는다.
 
@@ -368,7 +423,7 @@ export function parseAiGatewayUpdate(value: unknown):
     ok: true,
     value: {
       // 명시한 빈 배열은 「모두 끔」이라는 선택이다. 부재로 접으면 다음 기동의 기본 로스터 이행이 되살린다.
-      ...(record.models !== undefined ? { models } : {}),
+      ...(record.models !== undefined ? { models: mergedModels } : {}),
       ...(providerPriority !== undefined ? { providerPriority } : {}),
     },
   };

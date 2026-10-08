@@ -40,10 +40,8 @@ export function collectGatewayModels(settings: AiGatewayStoredSettings): readonl
   for (const provider of catalog.providers) {
     for (const model of provider.models) catalogModels.set(model.id, { model, provider: provider.id });
   }
+  // 호스트 전용은 선택 해석이 정한다 — 구 Claude 좌표(`claude--sonnet`)에 남은 표식도 가족 항목에 그대로 이어진다.
   const selection = resolveAiGatewaySelection(settings);
-  const hostOnlyIds = new Set(
-    (settings.models ?? []).filter((entry) => entry.hostOnly === true).map((entry) => entry.id),
-  );
   return selection.models.flatMap((model: GatewayModel) => {
     const entry = catalogModels.get(model.id);
     if (!entry) return [];
@@ -53,7 +51,7 @@ export function collectGatewayModels(settings: AiGatewayStoredSettings): readonl
       name: entry.model.name,
       contextWindow: entry.model.contextWindow,
       efforts: selection.effortExposure[model.id] ?? entry.model.effort?.levels ?? [],
-      hostOnly: hostOnlyIds.has(model.id),
+      hostOnly: !selection.delegationModels.includes(model),
     }];
   });
 }
