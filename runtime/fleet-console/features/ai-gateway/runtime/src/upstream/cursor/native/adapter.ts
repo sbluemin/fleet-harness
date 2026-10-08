@@ -495,11 +495,12 @@ interface CursorRunPreparation {
 
 function prepareCursorRun(
   request: CanonicalResponseRequest,
+  reportingToolNames: readonly string[] = [],
 ): CursorRunPreparation {
   const modelSelection = resolveCursorModelSelection(request.model, request.reasoning?.effort);
   const wireModelId = modelSelection.upstreamModelId;
   const redirectTools = cursorRedirectTools(request);
-  const toolBudget = applyCursorToolBudget(request);
+  const toolBudget = applyCursorToolBudget(request, reportingToolNames);
   const nativeTools = request.native_tools ?? [];
   const instructions = [
     request.instructions?.trim(),
@@ -936,14 +937,26 @@ function cursorRedirectTools(request: CanonicalResponseRequest): readonly Cursor
     .map(toCursorWireTool);
 }
 
-function applyCursorToolBudget(request: CanonicalResponseRequest): CursorToolBudget {
+/**
+ * `reportingToolNames` is the harness's own vocabulary for the call that sends a report (see
+ * `CursorClientToolScope`). A member that cannot report is invisible to whoever is waiting on it, and
+ * a lookup before the report is a step that has failed in practice, so that tool is advertised from the
+ * first request even when the client defers it. It is only the names the harness declared: every other
+ * deferred tool stays behind ToolSearch.
+ */
+function applyCursorToolBudget(
+  request: CanonicalResponseRequest,
+  reportingToolNames: readonly string[] = [],
+): CursorToolBudget {
   const declaredTools = request.tools ?? [];
   const selectedName = typeof request.tool_choice === "object" ? request.tool_choice.name : undefined;
+  const reporting = new Set(reportingToolNames);
   const referencedNames = cursorReferencedToolNames(request.input);
   const supportsDeferredLoading = declaredTools.some((tool) => isCursorToolSearchName(tool.name));
   // Preserve legacy callers that attach defer_loading metadata without exposing ToolSearch.
   const sourceTools = declaredTools.filter((tool) => {
     const explicitlySelected = referencedNames.has(tool.name)
+      || reporting.has(tool.name)
       || cursorToolMatches(tool.name, selectedName);
     if (isCursorWithheldToolName(tool.name) && !explicitlySelected) return false;
     return !supportsDeferredLoading
@@ -962,7 +975,11 @@ function applyCursorToolBudget(request: CanonicalResponseRequest): CursorToolBud
   const candidates = sourceTools
     .map((tool, index) => ({
       index,
-      priority: cursorToolPriority(tool.name, selectedName, referencedNames.has(tool.name)),
+      priority: cursorToolPriority(
+        tool.name,
+        selectedName,
+        referencedNames.has(tool.name) || reporting.has(tool.name),
+      ),
       wire: wireTools[index]!,
     }))
     .sort((left, right) => left.priority - right.priority || left.index - right.index);
@@ -1652,11 +1669,20 @@ export class CursorAdapter implements AiGatewayAdapter {
    * never leave the gateway would refuse turns the provider would have accepted.
    */
   wireTools(request: CanonicalResponseRequest): readonly CanonicalFunctionTool[] {
+    return this.wireToolsFor(request, []);
+  }
+
+  private wireToolsFor(
+    request: CanonicalResponseRequest,
+    reportingToolNames: readonly string[],
+  ): readonly CanonicalFunctionTool[] {
     const declared = request.tools ?? [];
     if (declared.length === 0) return [];
     let keptNames: ReadonlySet<string>;
     try {
-      keptNames = new Set(applyCursorToolBudget(request).tools.map((tool) => tool.clientName));
+      keptNames = new Set(
+        applyCursorToolBudget(request, reportingToolNames).tools.map((tool) => tool.clientName),
+      );
     } catch {
       // A budget rejection belongs to `stream`, which raises it with the real diagnosis.
       return [];
@@ -1679,7 +1705,7 @@ export class CursorAdapter implements AiGatewayAdapter {
   forHarness(scope: CursorClientToolScope): AiGatewayAdapter {
     return {
       capabilities: this.capabilities,
-      wireTools: (request) => this.wireTools(request),
+      wireTools: (request) => this.wireToolsFor(request, scope.messagingToolNames ?? []),
       stream: (request, options) => this.streamFor(request, options, scope),
     };
   }
@@ -1704,7 +1730,7 @@ export class CursorAdapter implements AiGatewayAdapter {
     const results = bridgeBatch?.results;
     let preparation: CursorRunPreparation;
     try {
-      preparation = prepareCursorRun(request);
+      preparation = prepareCursorRun(request, scope.messagingToolNames);
     } catch (error) {
       const pending = this.pendingLiveRuns.get(conversationStateKey);
       if (pending && this.claimPendingLiveRun(pending)) {
@@ -1771,7 +1797,10 @@ export class CursorAdapter implements AiGatewayAdapter {
     });
     const resampled = (run: CursorLiveRun, events: AsyncIterable<CanonicalResponseEvent>): AdapterResponse => (
       cursorSuccessfulResponse(arming.armed
-        ? this.withResample(events, run, request, options, identity, descriptor, preparation, startedAt)
+        ? this.withResample(
+          events, run, request, options, identity, descriptor, preparation, startedAt,
+          scope.messagingToolNames ?? [],
+        )
         : events)
     );
     const pending = this.pendingLiveRuns.get(conversationStateKey);
@@ -1847,6 +1876,7 @@ export class CursorAdapter implements AiGatewayAdapter {
     descriptor: CursorLiveRunDescriptor,
     preparation: CursorRunPreparation,
     startedAt: number,
+    reportingToolNames: readonly string[],
   ): AsyncIterable<CanonicalResponseEvent> {
     const { wireModelId, estimatedInputTokens } = preparation.preflight;
     return withCursorResample(events, {
@@ -1862,7 +1892,7 @@ export class CursorAdapter implements AiGatewayAdapter {
           ...request,
           input: [...request.input, ...cursorResampleNudgeItems(announcement)],
         };
-        const nudgedPreparation = prepareCursorRun(nudged);
+        const nudgedPreparation = prepareCursorRun(nudged, reportingToolNames);
         const recall = recallCursorContextCheckpoint(
           identity.conversationId,
           `${request.model}:${wireModelId}`,

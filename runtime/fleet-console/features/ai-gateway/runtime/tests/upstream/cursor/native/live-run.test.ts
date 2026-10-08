@@ -1318,7 +1318,7 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
-  it("restores a grep receipt when a cold resume replays the search", () => {
+  it("restores a grep receipt when a cold resume replays the search", async () => {
     // A cold resume replays earlier tool results through historyRoot and the conversation turns.
     // FLEET_CURSOR_GREP_V2 is the compressed receipt an older shell search stored. Attach inflated
     // that receipt into these search lines; the replay must carry the same lines, and the same
@@ -1453,6 +1453,47 @@ describe("Cursor live client-tool Run bridge", () => {
     expect(sendMessageWireName).toBeDefined();
     expect(replayed).toMatch(new RegExp(`tool_name\\\\*"\\s*:\\s*\\\\*"${sendMessageWireName}`, "u"));
     expect(replayed).not.toMatch(/tool_name\\*"\s*:\s*\\*"SendMessage/u);
+
+    // The report is the one call a member must be able to make without a lookup. The harness names
+    // that tool, so the first request advertises it even though the client defers it; only a view
+    // bound to that vocabulary does, and every other deferred tool stays deferred.
+    const deferredTool = (name: string): CanonicalFunctionTool => ({
+      type: "function", name, description: name, defer_loading: true, parameters: { type: "object", properties: {} },
+    });
+    const firstTurn: CanonicalResponseRequest = {
+      ...cursorRequest("session-reporting-tool", "grok-4.5"),
+      tools: [
+        { type: "function", name: "Read", description: "Read a file", parameters: { type: "object", properties: { file_path: { type: "string" } } } },
+        { type: "function", name: "ToolSearch", description: "Load deferred tools", parameters: { type: "object", properties: { query: { type: "string" } } } },
+        deferredTool("SendMessage"),
+        deferredTool("TaskStop"),
+      ],
+    };
+    const advertisedFirst = async (scope?: Parameters<CursorAdapter["forHarness"]>[0]) => {
+      const stream = new BridgeCursorStream(cursorCompletionFrames("ok"));
+      const view = cursorHarness([stream]);
+      try {
+        const adapter = scope ? view.adapter.forHarness(scope) : view.adapter;
+        await collectAdapterEvents(await adapter.stream(firstTurn, { apiKey: "cursor-test-token" }));
+        const run = cursorClientWrites(stream)[0]!.runRequest as { mcpTools?: { mcpTools?: { name?: string }[] } };
+        return {
+          wire: (run.mcpTools?.mcpTools ?? []).map((tool) => tool.name ?? ""),
+          counted: (adapter.wireTools?.(firstTurn) ?? []).map((tool) => tool.name),
+        };
+      } finally {
+        view.adapter.dispose();
+      }
+    };
+    const reporting = await advertisedFirst({ messagingToolNames: ["SendMessage"] });
+    expect(reporting.wire.filter((name) => name.startsWith("cc_send_message_"))).toHaveLength(1);
+    expect(reporting.wire.some((name) => name.startsWith("cc_task_stop_"))).toBe(false);
+    expect(reporting.counted).toContain("SendMessage");
+    expect(reporting.counted).not.toContain("TaskStop");
+    for (const unbound of [undefined, {}, { messagingToolNames: ["NotThisTool"] }]) {
+      const view = await advertisedFirst(unbound);
+      expect(view.wire.some((name) => name.startsWith("cc_send_message_"))).toBe(false);
+      expect(view.counted).not.toContain("SendMessage");
+    }
   });
 
   it("keeps caller execution single-shot across concurrent attaches and repeated native execs", async () => {
