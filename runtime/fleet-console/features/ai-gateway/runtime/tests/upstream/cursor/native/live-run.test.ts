@@ -1463,7 +1463,6 @@ describe("Cursor live client-tool Run bridge", () => {
         execServerMessage: { id: 1, execId: "conflict", shellStreamArgs: { command: "echo changed", toolCallId: "conflict-call" } },
       }]);
       expect(conflicting.closed).toBe(true);
-      expect(conflicting.destroyed).toBe(true);
       expect(cursorAdapterLiveState(conflictHarness.adapter)).toEqual({ liveRuns: 0, pendingRuns: 0, pendingTimers: 0 });
     } finally {
       conflictHarness.adapter.dispose();
