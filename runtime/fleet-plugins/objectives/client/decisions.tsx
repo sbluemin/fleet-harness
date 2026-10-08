@@ -109,7 +109,8 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
       setFault(code === "decision_request_changed" ? t("objectives.decision.changed") : code === "decision_delivering" ? t("objectives.decision.delivering") : t("objectives.decision.failed"));
     } finally { setSending(false); }
   };
-  // 자율 운영 중이면 사령관이 이 요청을 맡는다 — 사람도 그대로 답할 수 있고, 먼저 보낸 답이 이긴다.
+  // 자율 운영 중이면 사령관이 운영하는 목표의 요청을 맡는다 — 사람도 그대로 답할 수 있고, 먼저 보낸 답이 이긴다.
+  // 사람이 운영하는 목표의 요청으로는 사령관이 깨어나지 않으므로 「답하는 중」을 달지 않는다(서버 판정 `operator`).
   const commodore = useCommodoreBoard(objective.theaterId);
   return (
     <section ref={sectionRef} className="objectives-decision-request" aria-label={t("objectives.decision.request")}>
@@ -119,7 +120,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
         <span>{t("objectives.decision.request")}</span>
         <time dateTime={new Date(request.createdAt).toISOString()}>{clock(request.createdAt, language)}</time>
         {many ? <span className="objectives-decision-n">{t("objectives.decision.questions", { count: total })}</span> : null}
-        {commodore.active ? <span className="objectives-decision-handler" title={t("objectives.commodore.decisionHint")}>{t("objectives.commodore.note.answering")}</span> : null}
+        {commodore.active && objective.operator !== "human" ? <span className="objectives-decision-handler" title={t("objectives.commodore.decisionHint")}>{t("objectives.commodore.note.answering")}</span> : null}
       </div>
       <div className="objectives-decision-body">
         {request.questions.map((question, index) => {

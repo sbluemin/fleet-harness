@@ -1,7 +1,6 @@
 import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { objectiveOperator } from "./board-state.js";
 import type { PromptLanguage } from "./prompts.js";
 import type { ObjectiveResult } from "./results.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
@@ -117,7 +116,6 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       }),
     };
   };
-  const operatorOf = (objective: Objective) => objectiveOperator(objective, (objectiveId) => store.find(objectiveId));
   const objectiveView = (objective: Objective) => ({
     id: objective.id, theaterId: objective.theaterId, title: objective.title,
     ...withoutEmpty({
@@ -154,7 +152,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
         previousHandoff: round.previousHandoff ? { ...round.previousHandoff, at: new Date(round.previousHandoff.at).toISOString() } : null })),
       addedBy: objective.addedBy,
       // 운영 주체 — 사령관 깨움과 같은 판정. 원값(addedBy·commencedBy)은 출처로 그대로 둔다.
-      operator: operatorOf(objective),
+      operator: objective.operator,
       // 구상을 청한 손(구상 문구가 있을 때)과 마지막으로 개시한 손 — 개시 출처 기록 전에 개시한 목표에는 없다.
       planRequestBy: objective.planRequest ? objective.planRequestBy : null, commencedBy: objective.commencedBy,
       edited: objective.edited, actions: objective.actions, actionCounts: objective.actionCounts,
@@ -192,7 +190,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     id: objective.id, groupId: objective.groupId, title: objective.title,
     operation: !store.pending(objective.id),
     done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy && "operationId" in objective.addedBy ? objective.addedBy.operationId : objective.addedBy,
-    operator: operatorOf(objective),
+    operator: objective.operator,
     ...withoutEmpty({
       commenced: objective.commenced, commencedBy: objective.commencedBy,
       // 에이전트가 지웠거나 합친 목표 — 목록에는 filter all 에서만 선다.

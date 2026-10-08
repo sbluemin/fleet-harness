@@ -127,11 +127,13 @@ function commodoreMarkOf(objective: Objective, board: CommodoreBoard): Operation
  */
 function commodoreNotes(objective: Objective, board: CommodoreBoard, stalled: boolean): Pick<OperationClusterRow, "notes" | "zoneNote"> {
   if (!board.active) return stalled ? { notes: [NOTE_STALLED] } : {};
+  // 답하는 중·검토하는 중은 사령관이 운영하는 목표에만 — 사람의 목표의 결정·검토로는 사령관이 깨어나지 않는다(서버 판정 `operator`).
+  const handles = objective.operator !== "human";
   const notes: OperationClusterRowNote[] = [];
-  if (objective.decisionRequest) notes.push(NOTE_ANSWERING);
-  if (objective.awaitingReview) notes.push(NOTE_REVIEWING);
+  if (handles && objective.decisionRequest) notes.push(NOTE_ANSWERING);
+  if (handles && objective.awaitingReview) notes.push(NOTE_REVIEWING);
   if (board.stalled.includes(objective.id)) notes.push(NOTE_STALLED);
-  return { ...(notes.length ? { notes } : {}), ...(objective.decisionRequest ? { zoneNote: ZONE_HANDLING } : {}) };
+  return { ...(notes.length ? { notes } : {}), ...(handles && objective.decisionRequest ? { zoneNote: ZONE_HANDLING } : {}) };
 }
 
 /** 사이드바 줄 — 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */

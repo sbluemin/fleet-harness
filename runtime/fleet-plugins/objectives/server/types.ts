@@ -67,6 +67,9 @@ export const MAX_DECISION_LABEL = 120;
 export const MAX_DECISION_DESCRIPTION = 300;
 export const MAX_DECISION_ANSWER = 2000;
 
+/** 목표를 운영하는 쪽 — 사령관이 깨어나 맡는 목표인가, 사람이 직접 진행하는 목표인가. */
+export type ObjectiveOperator = "commodore" | "human";
+
 /** 행위 귀속 — 권한은 이 값이 아니라 호스트 호출자와 도메인 경계가 정한다. */
 export type ObjectiveActor = "human" | "commander"
   /** `why` — 사령관이 그 보드 쓰기에 단 한 줄 근거(사람이 사령관 기록 곁에서 읽는다). 옛 기록과 사람의 행위에는 없다. */
@@ -694,6 +697,8 @@ export interface Objective {
   readonly commencedBy?: ObjectiveActor;
   /** 사람이 정한 운영 주체(저장값 그대로). 없으면 기본 판정이다 — 판정은 `objectiveOperator` 하나가 한다. */
   readonly commodoreOperated?: boolean;
+  /** 지금 이 목표를 운영하는 쪽 — 서버가 `objectiveOperator` 로 낸 값. 화면은 판정을 다시 하지 않고 이 값을 읽는다. */
+  readonly operator: ObjectiveOperator;
   /** 사람의 개시가 라우팅으로 새로 띄울 구성원의 판단 결과를 먼저 보여 준다. 지휘관 도구·후속 목표의 기동은 묻지 않는다. */
   readonly routingConfirm: boolean;
   /** 에이전트가 지웠거나 다른 목표로 합쳤다 — 보드의 보통 구역에서 빠지고, 사람이 되돌릴 수 있다. */

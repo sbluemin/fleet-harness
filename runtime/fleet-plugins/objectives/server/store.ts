@@ -7,6 +7,7 @@ import { readOperationLaunch, type OperationNode, type OperationDescription } fr
 import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
+import { objectiveOperator } from "./board-state.js";
 import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import { deriveFailedOutcome } from "./views.js";
@@ -733,6 +734,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       ...(stored.commencedBy ? { commencedBy: stored.commencedBy } : {}),
       // 불린이 아닌 저장값은 손상이 아니라 「정하지 않음」으로 읽는다 — 이 값 하나로 목표를 격리하지 않는다.
       ...(typeof stored.commodoreOperated === "boolean" ? { commodoreOperated: stored.commodoreOperated } : {}),
+      operator: objectiveOperator(stored, (id) => load(node?.theaterId ?? pending!.theaterId).get(id)),
       routingConfirm: stored.routingConfirm !== false,
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
