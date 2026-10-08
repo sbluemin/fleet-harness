@@ -54,12 +54,6 @@ export function createAgentCliPathStore(dataDir: string, legacyDataDir: string) 
   }
   return {
     read: async (): Promise<AgentCliPathsData> => store.load(),
-    writePath: async (cliCommand: string, executablePath: string | null): Promise<AgentCliPathsData> => store.update((current) => {
-      const paths = { ...current.paths };
-      if (!executablePath) delete paths[cliCommand];
-      else paths[cliCommand] = executablePath;
-      return { version: 1, paths };
-    }),
   };
 }
 
