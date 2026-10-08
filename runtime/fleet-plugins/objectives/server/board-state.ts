@@ -1,5 +1,5 @@
 import type { ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
-import type { Objective } from "./types.js";
+import type { Objective, ObjectiveOperator } from "./types.js";
 
 export const STALL_MS = 30 * 60_000;
 export type BoardObservation = Pick<ConsoleOperationObservation, "activity" | "lifecycle">;
@@ -18,6 +18,38 @@ export function objectiveStatus(objective: Objective): ObjectiveStatus {
   if (!objective.commenced) return objective.planning ? "planning" : objective.missions.length ? "planned" : "pending";
   if (objective.awaitingHandoff) return "missions-done";
   return "running";
+}
+
+export type { ObjectiveOperator };
+
+/** 운영 판정이 읽는 목표의 사실 — 저장 레코드와 목표 보기가 같은 모양으로 넘긴다. */
+interface OperatorFacts {
+  readonly commodoreOperated?: boolean;
+  readonly addedBy?: unknown;
+  readonly origin?: { readonly objectiveId: string; readonly candidateId: string } | null;
+}
+/** 후속의 원본에서 읽는 것 — 누가 어떤 후보를 골랐나. */
+interface OperatorSource {
+  readonly followupBatches?: readonly { readonly by?: unknown; readonly items: readonly { readonly candidateId: string }[] }[];
+}
+const isCommodore = (actor: unknown): boolean => typeof actor === "object" && actor !== null && "kind" in actor && actor.kind === "commodore";
+
+/**
+ * 목표를 운영하는 쪽 — 사령관 깨움(보드 사건·inbox 집계), 조회의 `operator`, 목표 보기의 `operator`(화면)가 이 하나를 쓴다.
+ * 정해 둔 값이 있으면 그것, 없으면 사령관이 만든 목표(직접 추가했거나 사령관이 고른 후속)만 사령관이다. 개시한 손(`commencedBy`)은
+ * 기준이 아니다. `find` 는 후속의 원본을 찾는 데만 쓴다.
+ */
+export function objectiveOperator(objective: OperatorFacts, find: (objectiveId: string) => OperatorSource | null | undefined): ObjectiveOperator {
+  if (typeof objective.commodoreOperated === "boolean") return objective.commodoreOperated ? "commodore" : "human";
+  return createdByCommodore(objective, find) ? "commodore" : "human";
+}
+
+/** 사령관이 만든 목표 — 직접 추가했거나, 사령관이 고른 후속 후보에서 생겼다. */
+export function createdByCommodore(objective: OperatorFacts, find: (objectiveId: string) => OperatorSource | null | undefined): boolean {
+  if (isCommodore(objective.addedBy)) return true;
+  const origin = objective.origin;
+  if (!origin) return false;
+  return !!find(origin.objectiveId)?.followupBatches?.some((batch) => isCommodore(batch.by) && batch.items.some((item) => item.candidateId === origin.candidateId));
 }
 
 /** 임무가 남고 보드가 오래 그대로인 목표. 관측할 수 없는 세션을 유휴라고 추측하지 않는다. */

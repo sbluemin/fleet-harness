@@ -1797,6 +1797,14 @@ describe("Objectives contract", () => {
     expect((await board({ view: "objectives", filter: "agent" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor }));
     const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
     expect(reloaded.find(id)?.addedBy).toEqual(actor);
+    // 운영 주체 — 사람이 만든 목표도 사령관 조회에 그대로 서고 operator 로 구분된다. 맡기는 것은 사람의 라우트뿐이고,
+    // 맡긴 값은 다시 읽어도 남으며 행위 기록에 사람의 손으로 남는다.
+    const personal = (await launch.create({ theaterId: "t1", title: "Person's own", groupId: null, note: "brief" })).id;
+    expect((await board({ objectiveId: id })).objective).toMatchObject({ operator: "commodore" });
+    expect((await board({ view: "objectives" })).objectives).toContainEqual(expect.objectContaining({ id: personal, operator: "human" }));
+    expect((await route("objective/operator", { objectiveId: personal, commodore: true })).status).toBe(200);
+    expect((await board({ objectiveId: personal })).objective).toMatchObject({ operator: "commodore", actions: [expect.objectContaining({ kind: "edit", by: "human" })] });
+    expect(createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined }).find(personal)?.commodoreOperated).toBe(true);
     expect(launches).toHaveLength(0);
     // 사령관이 만든 목표의 지휘관은 채팅 뷰로 준비된다. 개시 전 사람이 터미널로 바꾸는 것은 막지 않는다.
     expect(store.find(id)!.commander.viewMode).toBe("chat");
@@ -1904,7 +1912,8 @@ describe("Objectives contract", () => {
       nextId = completed.followupBatches[0]!.items[0]!.operationId;
     });
     expect((await board({ view: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ retrospective })] }));
-    expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"] }));
+    // 사령관이 고른 후속은 따로 정하지 않아도 사령관이 운영한다(깨움과 같은 판정).
+    expect((await board({ view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"], operator: "commodore" }));
     // 사령관이 고른 후속은 터미널 원본의 뷰를 이어받지 않고 채팅 뷰 지휘관으로 시작한다.
     expect(store.find(nextId)!.commander.viewMode).toBe("chat");
     await board({ objectiveId: nextId, commence: true });

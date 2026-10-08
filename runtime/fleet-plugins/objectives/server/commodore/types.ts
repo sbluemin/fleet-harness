@@ -142,6 +142,12 @@ export interface CommodoreCoordinates {
  */
 export type CommodoreTranscriptEntry =
   | CommodoreTranscriptBase & { readonly kind: "wake"; readonly reasons: readonly string[] }
+  /**
+   * 바로 앞 wake 줄의 보드 범위 — 그 턴을 깨운 목표(woke)와, 지난 턴 뒤 사람이 운영하는 목표에 나서 깨우지 않은 보드 사건(held).
+   * `codes` 는 wake 토큰의 코드 낱말이다. 잘린 수는 `wokeMore`·`heldMore`. wake 줄은 그대로 두고 따로 남긴다 —
+   * 이 낱말을 모르는 옛 판은 이 줄만 깨진 줄처럼 건너뛰고 wake 줄은 읽는다.
+   */
+  | CommodoreTranscriptBase & { readonly kind: "wake-scope"; readonly woke: readonly CommodoreScopeItem[]; readonly held: readonly CommodoreScopeItem[]; readonly wokeMore?: number; readonly heldMore?: number }
   | CommodoreTranscriptBase & { readonly kind: "text"; readonly text: string }
   | CommodoreTranscriptBase & { readonly kind: "thinking"; readonly text: string }
   | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string; readonly error?: string }
@@ -151,6 +157,15 @@ export type CommodoreTranscriptEntry =
   /** 자율 운영이 꺼질 때 아직 턴에 싣지 못한 사람의 메시지 — 기록의 그 `message` 줄 seq. 서랍이 그 메시지에 「전달되지 않음」을 단다. */
   | CommodoreTranscriptBase & { readonly kind: "undelivered"; readonly seqs: readonly number[] }
   | CommodoreTranscriptBase & { readonly kind: "error"; readonly code: string; readonly retryAt?: number };
+
+/** 깨움 범위의 목표 한 줄 — id, 그때의 운영 판정, 이 목표에 해당한 깨움 코드. */
+export interface CommodoreScopeItem {
+  readonly id: string;
+  readonly operator: "commodore" | "human";
+  readonly codes: readonly string[];
+}
+/** 깨움 범위 한 쪽에 싣는 목표 수 상한 — 넘는 수는 세기만 한다. */
+export const MAX_SCOPE_ITEMS = 64;
 
 export interface CommodoreTranscriptBase {
   readonly seq: number;
@@ -162,8 +177,10 @@ export type CommodoreTranscriptInput = CommodoreTranscriptEntry extends infer E 
 
 const transcriptBase = { seq: z.number().int().nonnegative(), at: z.number().int().nonnegative() };
 const text = z.string().max(MAX_TRANSCRIPT_TEXT);
+const scopeItem = z.object({ id: z.string().min(1).max(128), operator: z.enum(["commodore", "human"]), codes: z.array(z.string().max(32)).max(32) }).strict();
 export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   z.object({ ...transcriptBase, kind: z.literal("wake"), reasons: z.array(z.string().max(200)).max(32) }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("wake-scope"), woke: z.array(scopeItem).max(MAX_SCOPE_ITEMS), held: z.array(scopeItem).max(MAX_SCOPE_ITEMS), wokeMore: z.number().int().positive().optional(), heldMore: z.number().int().positive().optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("text"), text }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("thinking"), text }).strict(),
   // 보드 행위는 action·objectiveId·title 로 서랍이 「목표 X 를 완료」 한 줄로 그린다 — 도구 인자 전체는 싣지 않는다.

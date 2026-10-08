@@ -7,6 +7,7 @@ import { readOperationLaunch, type OperationNode, type OperationDescription } fr
 import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
+import { objectiveOperator } from "./board-state.js";
 import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import { deriveFailedOutcome } from "./views.js";
@@ -256,6 +257,11 @@ export interface ObjectiveStore {
    */
   recordStage(objectiveId: string, stage: "planned" | "commenced", by?: ObjectiveActor): Objective;
   setCriteriaOpen(objectiveId: string, open: boolean): Objective;
+  /**
+   * 운영 주체를 사람이 정한다 — true 는 사령관에게 맡김, false 는 사람이 운영. 바뀔 때만 쓰고 행위 기록에 `edit` 한 줄을 남긴다.
+   * 새 행위 종류를 만들지 않는 것은 옛 빌드가 모르는 종류가 든 레코드를 통째로 격리하기 때문이다(`invalid_stored_actions`).
+   */
+  setCommodoreOperated(objectiveId: string, operated: boolean, by: ObjectiveActor): Objective;
   /** 새 작업(스티어링)이 생겼다 — 앞선 충족 판단을 모두 거둔다. */
   clearMet(objectiveId: string, by?: ObjectiveActor): Objective;
   criterionAdd(objectiveId: string, text: string, by: ObjectiveActor): Objective;
@@ -726,6 +732,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         restorable: load(node?.theaterId ?? pending!.theaterId).get(entry.sourceId)?.removed?.mergedInto === stored.operationId })),
       commenced: stored.commenced === true || (legacy && launch.started && stored.planning !== true),
       ...(stored.commencedBy ? { commencedBy: stored.commencedBy } : {}),
+      // 불린이 아닌 저장값은 손상이 아니라 「정하지 않음」으로 읽는다 — 이 값 하나로 목표를 격리하지 않는다.
+      ...(typeof stored.commodoreOperated === "boolean" ? { commodoreOperated: stored.commodoreOperated } : {}),
+      operator: objectiveOperator(stored, (id) => load(node?.theaterId ?? pending!.theaterId).get(id)),
       routingConfirm: stored.routingConfirm !== false,
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
@@ -1041,6 +1050,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(init.today ? { today: true as const } : {}),
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
         ...(init.origin ? { origin: init.origin } : {}),
+        // 사령관이 고른 후속은 태어날 때 사령관 운영으로 적는다 — 원본이 영구 삭제되면 대체 판정(원본의 배치)을 더는 읽을 수 없다.
+        ...(init.origin && typeof init.by === "object" && init.by.kind === "commodore" ? { commodoreOperated: true } : {}),
         ...(criteriaTexts.length ? { criteria: criteriaTexts.map((text) => ({ id: randomUUID(), text, by: init.by ?? "human" })) } : {}),
         enlisted: true,
         missions: [...lineupOrder(missions)],
@@ -1544,6 +1555,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (!by) return staged;
       return stage === "commenced" ? { ...action(staged, by, "commence"), commencedBy: by } : action(staged, by, "plan");
     }),
+    setCommodoreOperated: (objectiveId, operated, by) => update(objectiveId, (stored) => (stored.commodoreOperated === operated ? stored : action({ ...stored, commodoreOperated: operated }, by, "edit"))),
     setCriteriaOpen: (objectiveId, open) => update(objectiveId, (stored) => (!!stored.criteriaOpen === open ? stored : { ...stored, criteriaOpen: open ? true as const : undefined })),
     clearMet: (objectiveId, by) => update(objectiveId, (stored) => withoutMet(by ? action(stored, by, "steer") : stored)),
 

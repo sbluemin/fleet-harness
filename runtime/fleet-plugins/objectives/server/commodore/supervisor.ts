@@ -4,7 +4,7 @@ import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
-import { inboxReasons, objectiveStatus, STALL_MS, stalledObjectives, type ObjectiveStatus } from "../board-state.js";
+import { createdByCommodore, inboxReasons, objectiveOperator, objectiveStatus, STALL_MS, stalledObjectives, type ObjectiveOperator, type ObjectiveStatus } from "../board-state.js";
 import type { Objective, ObjectiveEvent } from "../types.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
@@ -96,7 +96,18 @@ const STATUS_WORDS: Record<ObjectiveStatus | "new", string> = {
 interface PendingReason {
   count?: number;
   readonly details: string[];
+  /** 이 이유를 낸 목표(상태·정체)와 그 목표가 보탠 상세 — 범위 줄과, 돌려받은 목표의 사유를 걷는 데 쓴다. 보드 대기 코드는 턴 직전 보드에서 다시 찾는다. */
+  ids?: Map<string, string[]>;
 }
+
+/** 감독자가 아는 목표 한 자리 — 상태와 운영 주체. 운영 주체가 사람에서 사령관으로 바뀌면 「맡겨짐」으로 깨운다. */
+interface TrackedStatus {
+  readonly status: ObjectiveStatus;
+  readonly operator: ObjectiveOperator;
+}
+
+/** 사람이 운영하는 목표의 대기 키 머리 — 깨우지 않고 기록에만 남긴다. */
+const HUMAN_KEY = "human";
 
 /** 보드 대기 상태의 코드 — 수는 턴 직전의 보드에서 다시 센다. */
 const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
@@ -128,7 +139,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "followup-failed": return `inbox: ${plural("failed or unconfirmed follow-up creation")}`;
     case "member-failed": return `inbox: ${plural("objective with a failed member turn")}`;
     case "stalled": return `${plural("stalled objective")}${tail}`;
-    case "empty": return "the board is empty";
+    case "empty": return "the board has no open objective you operate";
     case "restart": return "Console restarted";
     case "autonomy": return "autonomy turned on";
     case "retry": return "retry requested by the person";
@@ -173,8 +184,8 @@ interface Runner {
   seen: Set<string>;
   stalledReported: Set<string>;
   emptyReported: boolean;
-  /** 사령관이 아는 목표 상태 — 바뀌면 깨운다. */
-  statuses: Map<string, ObjectiveStatus>;
+  /** 사령관이 아는 목표 상태와 운영 주체 — 사령관이 운영하는 목표의 상태가 바뀌거나 사람이 맡기면 깨운다. */
+  statuses: Map<string, TrackedStatus>;
   /** 사령관 자신이 쓰는 중(또는 막 쓴) 목표 — 그 상태 변화는 깨울 일이 아니다. 값은 유효 시각(쓰는 중이면 Infinity). */
   selfWrites: Map<string, number>;
 }
@@ -382,9 +393,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const messages = runner.messages.splice(0);
       const reasons = pending.map(([code, reason]) => wakeToken(code, reason.count));
       const sentences = pending.map(([code, reason]) => wakeSentence(code, reason));
+      const scope = scopeOf(runner, pending);
       setPhase(runner, "turn");
       runner.patrolSet = false;
-      const outcome = await session.turn({ reasons, sentences, ...(replacementSummary ? { replacementSummary } : {}), ...(messages.length ? { messages: messages.map((message) => message.text) } : {}) });
+      const outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(replacementSummary ? { replacementSummary } : {}), ...(messages.length ? { messages: messages.map((message) => message.text) } : {}) });
       noteOutcome(runner, outcome);
       if (runner.stopping || runner.ending) {
         // 끄기로 끝나지 못한 턴의 메시지도 stop()이 표시한다. 성공한 턴은 이미 전달됐으므로 제외한다.
@@ -439,7 +451,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // Clear 직후는 빈 기록을 유지한다. 다음 메시지·사건·순찰에서 새 세션을 연다.
     if (!wakeImmediately) { schedulePatrol(runner, now() + patrolInterval(theaterId), ""); return; }
     wake(runner, reason);
-    if (!deps.objectives(theaterId).some((objective) => !objective.done && !objective.removed)) { runner.emptyReported = true; wake(runner, "empty"); }
+    if (!hasOpenOperated(deps.objectives(theaterId))) { runner.emptyReported = true; wake(runner, "empty"); }
   };
 
   const stop = (theaterId: string, reason: string): Promise<void> => {
@@ -502,8 +514,58 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (event.op === "transcript" && event.entry.kind === "message" && runner) { runner.messages.push({ seq: event.entry.seq, text: event.entry.text }); wake(runner, "message"); }
   }));
 
-  // 보드 사건 — 사령관이 아직 듣지 못한 대기 상태가 생길 때만 깨운다. 사령관 자신의 개시·완료로 대기가 줄어드는 것은 깨울 일이
-  // 아니다(빈 inbox 를 읽으러 깨어나는 비용). 줄어든 항목은 조용히 잊어 같은 상태가 돌아오면 다시 깨운다.
+  /** 사람이 운영하는 목표에 나서 깨우지 않은 사건 — 다음 턴의 범위 줄에 한 번 실리고 비워진다. */
+  const held = new WeakMap<Runner, Map<string, Set<string>>>();
+  const hold = (runner: Runner, objectiveId: string, code: string) => {
+    let byObjective = held.get(runner);
+    if (!byObjective) held.set(runner, byObjective = new Map());
+    let codes = byObjective.get(objectiveId);
+    if (!codes) byObjective.set(objectiveId, codes = new Set());
+    codes.add(code);
+  };
+  const noteIds = (runner: Runner, code: WakeCode, id: string, detail: string) => {
+    const reason = runner.pending.get(code);
+    if (!reason) return;
+    const ids = (reason.ids ??= new Map());
+    ids.set(id, [...(ids.get(id) ?? []), detail]);
+  };
+  /** 사람이 돌려받은 목표 — 아직 턴에 실리지 않은 그 목표의 상태·정체 사유(맡김 포함)를 걷는다. 남은 것이 없으면 사유째 내린다. */
+  const forgetStatus = (runner: Runner, objectiveId: string) => {
+    for (const code of ["status", "stalled"] as const) {
+      const reason = runner.pending.get(code);
+      const mine = reason?.ids?.get(objectiveId);
+      if (!reason || !mine) continue;
+      reason.ids!.delete(objectiveId);
+      const others = new Set([...reason.ids!.values()].flat());
+      for (const text of new Set(mine)) { const at = reason.details.indexOf(text); if (at >= 0 && !others.has(text)) reason.details.splice(at, 1); }
+      reason.count = (reason.count ?? 0) - mine.length;
+      if (reason.count <= 0 || !reason.details.length) runner.pending.delete(code);
+    }
+  };
+
+  /** 이번 턴의 보드 범위(기록 전용) — 보드 대기 코드는 지금 그 이유를 가진 운영 목표, 상태·정체는 모인 목표, 그리고 held. */
+  const scopeOf = (runner: Runner, pending: readonly (readonly [WakeCode, PendingReason])[]) => {
+    const objectives = deps.objectives(runner.theaterId);
+    const operators = operatorsOf(objectives);
+    const woke = new Map<string, Set<string>>();
+    const add = (id: string, code: string) => { let codes = woke.get(id); if (!codes) woke.set(id, codes = new Set()); codes.add(code); };
+    for (const [code, reason] of pending) {
+      if (BOARD_CODES.has(code)) { for (const objective of objectives) if (operators.get(objective.id) === "commodore" && (inboxReasons(objective) as readonly string[]).includes(code)) add(objective.id, code); }
+      else for (const id of reason.ids?.keys() ?? []) add(id, code);
+    }
+    const quiet = held.get(runner);
+    held.delete(runner);
+    if (!woke.size && !quiet?.size) return null;
+    // 보드에서 사라진 목표는 사령관이 운영하던 것만 상태 변화로 실린다.
+    return {
+      woke: [...woke].map(([id, codes]) => ({ id, operator: operators.get(id) ?? "commodore", codes: [...codes] })),
+      held: [...(quiet ?? [])].map(([id, codes]) => ({ id, operator: "human" as const, codes: [...codes] })),
+    };
+  };
+
+  // 보드 사건 — 사령관이 운영하는 목표에 아직 듣지 못한 대기 상태가 생길 때만 깨운다. 사령관 자신의 개시·완료로 대기가 줄어드는
+  // 것은 깨울 일이 아니다(빈 inbox 를 읽으러 깨어나는 비용). 줄어든 항목은 조용히 잊어 같은 상태가 돌아오면 다시 깨운다.
+  // 사람이 운영하는 목표의 사건은 깨우지 않고 다음 턴의 범위 줄(held)에만 남는다 — 조회에는 그대로 보인다.
   cleanups.push(deps.subscribeObjectives((event) => {
     const runner = runners.get(event.theaterId);
     if (!runner) return;
@@ -511,15 +573,22 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const current = waitingKeys(objectives);
     const fresh = [...current].filter((key) => !runner.seen.has(key));
     runner.seen = current;
-    if (fresh.length) {
-      const digest = new Map(inboxDigest(objectives));
-      for (const code of new Set(fresh.map((key) => key.split(":")[0] as WakeCode))) wake(runner, code, { count: digest.get(code) ?? 1 });
+    const freshCodes = new Set<WakeCode>();
+    for (const key of fresh) {
+      const [head, ...rest] = key.split(":");
+      if (head === HUMAN_KEY) hold(runner, rest[1]!, rest[0]!);
+      else freshCodes.add(head as WakeCode);
     }
-    const empty = !objectives.some((objective) => !objective.done && !objective.removed);
+    if (freshCodes.size) {
+      const digest = new Map(inboxDigest(objectives));
+      for (const code of freshCodes) wake(runner, code, { count: digest.get(code) ?? 1 });
+    }
+    const empty = !hasOpenOperated(objectives);
     if (empty && !runner.emptyReported) wake(runner, "empty");
     runner.emptyReported = empty;
-    // 상태 변화 — 목표가 한 단계 옮겨 갈 때마다(새 목표·지워짐 포함). 사령관 자신의 쓰기와 그 쓰기로 생긴 목표는 뺀다.
-    for (const change of statusChanges(runner, objectives)) wake(runner, "status", { bump: true, detail: change });
+    // 상태 변화 — 사령관이 운영하는 목표가 한 단계 옮겨 갈 때마다(새 목표·지워짐·사람이 맡김 포함). 사령관 자신의 쓰기와 그 쓰기로
+    // 생긴 목표는 뺀다.
+    for (const change of statusChanges(runner, objectives)) { wake(runner, "status", { bump: true, detail: change.text }); noteIds(runner, "status", change.id, change.text); }
   }));
 
   /** 보드 도구를 감싸 사령관이 쓰는 목표를 표시한다 — 쓰는 동안과 끝난 뒤 잠깐, 그 목표의 상태 변화는 사령관 자신의 것이다. */
@@ -535,25 +604,34 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     },
   });
 
-  const statusChanges = (runner: Runner, objectives: readonly Objective[]): string[] => {
+  const statusChanges = (runner: Runner, objectives: readonly Objective[]): { readonly id: string; readonly text: string }[] => {
     const at = now();
     for (const [id, until] of runner.selfWrites) if (until < at) runner.selfWrites.delete(id);
-    const changes: string[] = [];
-    const seen = new Set<string>();
+    const tracked = statusMap(objectives);
+    const byId = new Map(objectives.map((objective) => [objective.id, objective]));
+    const changes: { id: string; text: string }[] = [];
     for (const objective of objectives) {
-      seen.add(objective.id);
-      const next = objectiveStatus(objective);
+      const next = tracked.get(objective.id)!;
       const previous = runner.statuses.get(objective.id);
-      if (previous === next) continue;
+      if (previous?.status === next.status && previous.operator === next.operator) continue;
       runner.statuses.set(objective.id, next);
-      if (runner.selfWrites.has(objective.id) || (previous === undefined && createdByCommodore(objective, objectives))) continue;
-      changes.push(`"${objective.title}" ${STATUS_WORDS[previous ?? "new"]} → ${STATUS_WORDS[next]}`);
+      // 사람이 맡김 — 사령관은 운영값을 바꿀 수 없으므로 이 전환은 늘 사람의 것이다. 사령관의 쓰기 유예 안이어도 한 번 깨운다.
+      if (previous?.operator === "human" && next.operator === "commodore") { changes.push({ id: objective.id, text: `"${objective.title}" handed to you by the person (${STATUS_WORDS[next.status]})` }); continue; }
+      // 사람이 돌려받음 — 깨우지 않고, 모으는 동안 쌓인 이 목표의 상태·정체 사유(방금 맡김 포함)도 걷는다.
+      if (previous?.operator === "commodore" && next.operator === "human") { forgetStatus(runner, objective.id); continue; }
+      if (runner.selfWrites.has(objective.id)) continue;
+      // 사람이 운영하는 목표는 깨우지 않고 기록에만 남긴다.
+      if (next.operator === "human") { hold(runner, objective.id, "status"); continue; }
+      if (previous === undefined && createdByCommodore(objective, (id) => byId.get(id))) continue;
+      changes.push({ id: objective.id, text: `"${objective.title}" ${STATUS_WORDS[previous?.status ?? "new"]} → ${STATUS_WORDS[next.status]}` });
     }
     // 보드에서 영영 사라진 목표(영구 삭제)도 지워짐이다.
     for (const [id, previous] of [...runner.statuses]) {
-      if (seen.has(id)) continue;
+      if (byId.has(id)) continue;
       runner.statuses.delete(id);
-      if (previous !== "removed" && !runner.selfWrites.has(id)) changes.push(`${id} ${STATUS_WORDS[previous]} → ${STATUS_WORDS.removed}`);
+      if (previous.status === "removed" || runner.selfWrites.has(id)) continue;
+      if (previous.operator === "human") hold(runner, id, "status");
+      else changes.push({ id, text: `${id} ${STATUS_WORDS[previous.status]} → ${STATUS_WORDS.removed}` });
     }
     return changes;
   };
@@ -566,13 +644,18 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || !deps.observe) return;
     for (const runner of runners.values()) {
       const objectives = deps.objectives(runner.theaterId);
+      const operators = operatorsOf(objectives);
       const stalled = new Set(stalledObjectives(objectives, deps.observe, now()));
       let changed = false;
       for (const id of [...runner.stalledReported]) if (!stalled.has(id)) { runner.stalledReported.delete(id); changed = true; }
       for (const id of stalled) {
         if (runner.stalledReported.has(id)) continue;
         runner.stalledReported.add(id); changed = true;
-        wake(runner, "stalled", { bump: true, detail: objectives.find((objective) => objective.id === id)?.title ?? id });
+        // 정체 표시는 사람의 줄에도 서야 하므로 모두 적고, 깨우는 것은 사령관이 운영하는 목표만이다.
+        if (operators.get(id) === "human") { hold(runner, id, "stalled"); continue; }
+        const title = objectives.find((objective) => objective.id === id)?.title ?? id;
+        wake(runner, "stalled", { bump: true, detail: title });
+        noteIds(runner, "stalled", id, title);
       }
       if (changed) publish(runner);
     }
@@ -618,17 +701,21 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
 }
 
-function statusMap(objectives: readonly Objective[]): Map<string, ObjectiveStatus> {
-  return new Map(objectives.map((objective) => [objective.id, objectiveStatus(objective)]));
+function statusMap(objectives: readonly Objective[]): Map<string, TrackedStatus> {
+  const operators = operatorsOf(objectives);
+  return new Map(objectives.map((objective) => [objective.id, { status: objectiveStatus(objective), operator: operators.get(objective.id)! }]));
 }
 
-/** 사령관이 만든 목표 — 직접 추가했거나, 사령관이 고른 후속 후보에서 생겼다. */
-function createdByCommodore(objective: Objective, objectives: readonly Objective[]): boolean {
-  if (objective.addedBy && "kind" in objective.addedBy && objective.addedBy.kind === "commodore") return true;
-  const origin = objective.origin;
-  if (!origin) return false;
-  const source = objectives.find((candidate) => candidate.id === origin.objectiveId);
-  return !!source?.followupBatches.some((batch) => typeof batch.by === "object" && batch.by.kind === "commodore" && batch.items.some((item) => item.candidateId === origin.candidateId));
+/** 목표마다 운영 주체 — 깨움·집계·기록이 같은 판정(`objectiveOperator`)을 쓴다. */
+function operatorsOf(objectives: readonly Objective[]): Map<string, ObjectiveOperator> {
+  const byId = new Map(objectives.map((objective) => [objective.id, objective]));
+  return new Map(objectives.map((objective) => [objective.id, objectiveOperator(objective, (id) => byId.get(id))]));
+}
+
+/** 사령관이 운영하는 열린 목표가 하나라도 있다 — 없으면 「빈 보드」로 한 번 깨운다. */
+function hasOpenOperated(objectives: readonly Objective[]): boolean {
+  const operators = operatorsOf(objectives);
+  return objectives.some((objective) => operators.get(objective.id) === "commodore" && !objective.done && !objective.removed);
 }
 
 /** 보드 도구 입력이 가리키는 목표 — 읽기는 상태를 바꾸지 않으니 함께 표시돼도 해가 없다. */
@@ -639,18 +726,26 @@ function writeTargets(args: unknown): readonly string[] {
   return ids.filter((id): id is string => typeof id === "string");
 }
 
-/** 보드의 대기 상태 항목 — `code:objectiveId`, 결정 요청은 개정까지(같은 목표의 새 요청도 새 항목). 이유는 inbox 보기와 같다. */
+/**
+ * 보드의 대기 상태 항목 — `code:objectiveId`, 결정 요청은 개정까지(같은 목표의 새 요청도 새 항목). 이유는 inbox 보기와 같다.
+ * 사람이 운영하는 목표의 항목은 `human:` 머리를 단다 — 깨우지 않고, 사람이 맡기면 머리 없는 새 항목이 되어 그때 깨운다.
+ */
 function waitingKeys(objectives: readonly Objective[]): Set<string> {
+  const operators = operatorsOf(objectives);
   const keys = new Set<string>();
-  for (const objective of objectives) for (const reason of inboxReasons(objective)) keys.add(reason === "decision" ? `${reason}:${objective.id}:${objective.decisionRequestRevision}` : `${reason}:${objective.id}`);
+  for (const objective of objectives) {
+    const head = operators.get(objective.id) === "human" ? `${HUMAN_KEY}:` : "";
+    for (const reason of inboxReasons(objective)) keys.add(head + (reason === "decision" ? `${reason}:${objective.id}:${objective.decisionRequestRevision}` : `${reason}:${objective.id}`));
+  }
   return keys;
 }
 
-/** 사람 전용으로 남은 대기 상태의 수 — 지금 그 이유를 가진 목표 수(절대값). 없으면 빈 목록이다. */
+/** 사령관이 운영하는 목표에 남은 대기 상태의 수 — 지금 그 이유를 가진 목표 수(절대값). 없으면 빈 목록이다. */
 function inboxDigest(objectives: readonly Objective[]): readonly [WakeCode, number][] {
   // 보드가 아는 이유 코드는 깨움 코드와 이름이 같다 — 보드가 새 이유를 더하면 여기 순서에 넣는다.
+  const operators = operatorsOf(objectives);
   const counts = new Map<string, number>();
-  for (const objective of objectives) for (const reason of inboxReasons(objective) as readonly string[]) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  for (const objective of objectives) if (operators.get(objective.id) === "commodore") for (const reason of inboxReasons(objective) as readonly string[]) counts.set(reason, (counts.get(reason) ?? 0) + 1);
   return (["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
 }
 

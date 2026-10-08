@@ -4,7 +4,7 @@ import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
-import { MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptInput } from "./types.js";
+import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "./types.js";
 
 /**
  * 사령관 세션 — `ctx.host.agent.createSession` 으로 연 플러그인 소유 세션 하나. Operation 이 아니다.
@@ -44,6 +44,8 @@ export interface CommodoreTurnInput {
   readonly reasons: readonly string[];
   /** 모델에게 가는 깨움 문장 — 토큰과 같은 순서의 영어 문장. 없으면 토큰 그대로. */
   readonly sentences?: readonly string[];
+  /** wake 줄 바로 뒤에 남는 보드 범위(목표 id·운영 판정·코드) — 기록에만 남고 모델에게는 가지 않는다. */
+  readonly scope?: Pick<Extract<CommodoreTranscriptEntry, { kind: "wake-scope" }>, "woke" | "held">;
   /** 교대·재시작 세션의 첫 턴 — 최근 행위 요약. 깨움 문장 앞에 선다. */
   readonly replacementSummary?: readonly string[];
   /** 사람이 사령관에게 보낸 메시지 — 도구가 없는 유일한 입력이라 깨움 문장 뒤에 그대로 선다. */
@@ -187,6 +189,12 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
       turnActions = 0; turnResult = null; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear();
       record({ kind: "wake", reasons: input.reasons });
+      if (input.scope) {
+        // 한 쪽이 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.
+        const { woke, held } = input.scope;
+        record({ kind: "wake-scope", woke: woke.slice(0, MAX_SCOPE_ITEMS), held: held.slice(0, MAX_SCOPE_ITEMS),
+          ...(woke.length > MAX_SCOPE_ITEMS ? { wokeMore: woke.length - MAX_SCOPE_ITEMS } : {}), ...(held.length > MAX_SCOPE_ITEMS ? { heldMore: held.length - MAX_SCOPE_ITEMS } : {}) });
+      }
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
         wakeNote(new Date(now()), input.sentences ?? input.reasons),

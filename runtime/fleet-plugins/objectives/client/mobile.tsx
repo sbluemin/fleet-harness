@@ -124,7 +124,8 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
   const items = pending.length === 0 ? NO_ITEMS : pending.map((objective) => ({
     id: objective.id,
     title: objective.title,
-    reason: answering ? `${t("objectives.mobile.attention", { count: requestCount(objective) })} · ${t("objectives.commodore.note.answering")}` : t("objectives.mobile.attention", { count: requestCount(objective) }),
+    // 사람이 운영하는 목표의 요청으로는 사령관이 깨어나지 않는다 — 「답하는 중」은 사령관의 목표에만(서버 판정 `operator`).
+    reason: answering && objective.operator !== "human" ? `${t("objectives.mobile.attention", { count: requestCount(objective) })} · ${t("objectives.commodore.note.answering")}` : t("objectives.mobile.attention", { count: requestCount(objective) }),
     open: () => revealObjective({ objectiveId: objective.id }),
   }));
   attentionMemo.set(key, { source, locale, answering, items });
@@ -170,7 +171,7 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
           {objective.title}
           <small className={pending ? "is-awaiting" : undefined}>
             {pending ? t("objectives.mobile.row.decision", { count: requestCount(objective) }) : ""}
-            {pending && commodore.active ? `${t("objectives.commodore.note.answering")} · ` : ""}
+            {pending && commodore.active && objective.operator !== "human" ? `${t("objectives.commodore.note.answering")} · ` : ""}
             {total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members })}
           </small>
         </span>
@@ -379,6 +380,8 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
   const [, setSentTick] = useState(0);
   // 자율 운영이 실제로 돌면 사령관이 이 요청에 답한다 — 데스크톱 결정 카드 머리 메모와 같은 판정(S-53 CM-1d). 폰에는 툴팁이 없어 설명을 줄로 보인다.
   const commodore = useCommodoreBoard(objective.theaterId);
+  // 사람이 운영하는 목표의 요청으로는 사령관이 깨어나지 않는다(서버 판정 `operator`).
+  const answering = commodore.active && objective.operator !== "human";
   useEffect(() => { setDraftMap(storedDrafts(objective.id, request?.id)); setFault(null); }, [objective.id, request?.id]);
 
   if (!request) {
@@ -451,8 +454,8 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
           const indicator = `objectives-m-ind${question.multiSelect ? " is-check" : ""}`;
           return (
             <section key={question.id} className="objectives-m-ucard" aria-label={head}>
-              <div className="objectives-m-ucard-hd"><StatusMark state="review" />{head}{index === 0 && commodore.active ? <span className="objectives-m-ucard-handler">{t("objectives.commodore.note.answering")}</span> : null}</div>
-              {index === 0 && commodore.active ? <p className="objectives-m-fine">{t("objectives.commodore.decisionHint")}</p> : null}
+              <div className="objectives-m-ucard-hd"><StatusMark state="review" />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.commodore.note.answering")}</span> : null}</div>
+              {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.commodore.decisionHint")}</p> : null}
               <p className="objectives-m-ucard-p is-question"><LinkText text={question.text} /></p>
               {hasOptions && question.multiSelect ? <p className="objectives-m-hint">{t("objectives.decision.multiHint")}</p> : null}
               {hasOptions ? (
