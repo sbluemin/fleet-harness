@@ -53,6 +53,12 @@ export interface ConsoleTurnFailure {
   readonly error: string;
   readonly error_details?: string;
   readonly last_assistant_message?: string;
+  /**
+   * 에이전트 CLI 가 API 오류에 붙인 원인 종류(Claude Code 의 `api_error`, 예: `usage_limit_reached`). 같은 `error`(`rate_limit`) 아래의
+   * 사용 한도 소진과 일시적 요청 제한을 가른다. CLI 가 싣지 않으면 없다 — Chat 의 SDK result 만 싣고, PTY StopFailure 훅에는 없다.
+   * 모르는 값은 없는 것으로 읽는다.
+   */
+  readonly api_error?: string;
 }
 
 /**

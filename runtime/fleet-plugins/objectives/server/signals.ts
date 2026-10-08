@@ -22,17 +22,19 @@ export function missionDispatch(assignmentTs: number | undefined, member: { read
   return { at, receivedAt: typeof received === "number" && Number.isFinite(received) && received >= at ? received : null };
 }
 
-/** 실패 턴의 사유 — 지금은 공급자 한도 소진 하나다. */
-export type MemberFailureReason = "limit_exhausted";
+/** 실패 턴의 사유 — 사용 한도 소진, 또는 그 밖의 공급자 요청 제한. */
+export type MemberFailureReason = "limit_exhausted" | "rate_limited";
 
 /**
- * 실패로 닫힌 구성원 턴의 사유. 그 턴을 닫은 에이전트 CLI 가 스스로 붙인 오류 코드만 읽는다 — Claude Code 는 공급자의 한도 거절을
- * `rate_limit` 으로 표시한다(Chat 은 assistant 의 `error`, PTY 는 StopFailure 의 `error`, 같은 어휘). 원문 문장과 Gateway 한도 창은
- * 판정에 쓰지 않는다: 문장은 한도를 말한 정상 응답과 섞이고, 한도 창 100% 는 그 구성원이 정상으로 도는 동안에도 선다.
- * 화면 표시·목록 표식·지휘관 통지가 이 판정 하나를 쓴다.
+ * 실패로 닫힌 구성원 턴의 사유. 그 턴을 닫은 에이전트 CLI 가 스스로 붙인 코드만 읽는다. Claude Code 는 턴을 닫는 429 를 모두 `error`
+ * `rate_limit` 으로 표시하므로(Chat 은 assistant 의 `error`, PTY 는 StopFailure 의 `error`) 그것만으로는 「요청 제한」까지만 말한다. 사용 한도
+ * 소진은 CLI 가 원인 종류로 `api_error: usage_limit_reached` 를 붙였을 때만이다 — 일시적 용량 제한(「not your usage limit」)·1M 크레딧 부족도
+ * 같은 `rate_limit` 으로 오기 때문이다. 원문 문장과 Gateway 한도 창은 판정에 쓰지 않는다: 문장은 한도를 말한 정상 응답과 섞이고, 한도 창
+ * 100% 는 그 구성원이 정상으로 도는 동안에도 선다. 화면 표시·목록 표식·지휘관 통지가 이 판정 하나를 쓴다.
  */
-export function memberFailureReason(failure: { readonly error: string }): MemberFailureReason | null {
-  return failure.error === "rate_limit" ? "limit_exhausted" : null;
+export function memberFailureReason(failure: { readonly error: string; readonly api_error?: string }): MemberFailureReason | null {
+  if (failure.api_error === "usage_limit_reached") return "limit_exhausted";
+  return failure.error === "rate_limit" ? "rate_limited" : null;
 }
 
 /** 무보고 사실 한 줄. 화면 뱃지와 지휘관 깨움이 이 문장만 쓴다. */

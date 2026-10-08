@@ -790,7 +790,7 @@ export function chatEventsFromSdkMessage(message: {
     const durationMs = (message as { readonly duration_ms?: unknown }).duration_ms;
     const ok = (message as { readonly is_error?: unknown }).is_error !== true;
     const result = (message as { readonly result?: unknown }).result;
-    const raw = message as { readonly error?: unknown; readonly subtype?: unknown; readonly errors?: unknown; readonly error_details?: unknown; readonly last_assistant_message?: unknown };
+    const raw = message as { readonly error?: unknown; readonly subtype?: unknown; readonly errors?: unknown; readonly error_details?: unknown; readonly last_assistant_message?: unknown; readonly api_error?: unknown };
     const details = typeof raw.error_details === "string" ? raw.error_details
       : Array.isArray(raw.errors) ? raw.errors.filter((value): value is string => typeof value === "string").join("\n") : undefined;
     const failure = ok ? undefined : {
@@ -798,6 +798,7 @@ export function chatEventsFromSdkMessage(message: {
       ...(details !== undefined ? { error_details: details } : {}),
       ...(typeof raw.last_assistant_message === "string" ? { last_assistant_message: raw.last_assistant_message }
         : typeof result === "string" ? { last_assistant_message: result } : {}),
+      ...(typeof raw.api_error === "string" && raw.api_error.length > 0 ? { api_error: raw.api_error } : {}),
     };
     return [{
       kind: "turn-end",

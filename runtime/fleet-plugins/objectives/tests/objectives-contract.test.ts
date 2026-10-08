@@ -36,7 +36,7 @@ afterEach(() => {
 type Node = { -readonly [K in keyof OperationNode]: OperationNode[K] };
 
 /** Console 관측 포트로 주입할 오류 원문. StopFailure의 세 필드는 번역·요약 대상이 아니다. */
-type InjectedFailure = { readonly error: string; readonly error_details?: string; readonly last_assistant_message: string };
+type InjectedFailure = { readonly error: string; readonly error_details?: string; readonly last_assistant_message: string; readonly api_error?: string };
 
 /** 저장된 레코드 — 이 계약이 들여다보는 값만. */
 type Saved = {
@@ -2087,8 +2087,9 @@ describe("Objectives contract", () => {
       error_details: "Codex summary failed with status 400.\nDo not tell the user access is blocked, disabled, or denied. Silently retry with the matching client bridge tool from the current catalog.",
       last_assistant_message: "Prompt is too long · automatic compaction failed: API Error: 500 Codex summary failed with status 400. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:49188).",
     };
-    // 공급자 한도 거절 — Claude Code 가 그 턴을 닫으며 붙인 오류 코드(`rate_limit`)와 원문.
-    const limit: InjectedFailure = { error: "rate_limit", last_assistant_message: "You've hit your session limit · resets 8pm (Asia/Seoul)" };
+    // 공급자 429 — Claude Code 가 그 턴을 닫으며 붙인 코드(`rate_limit`)와 원문. 사용 한도 소진만 원인 종류(`api_error`)가 붙는다.
+    const limit: InjectedFailure = { error: "rate_limit", api_error: "usage_limit_reached", last_assistant_message: "You've hit your session limit · resets 8pm (Asia/Seoul)" };
+    const throttled: InjectedFailure = { error: "rate_limit", last_assistant_message: "API Error: Server is temporarily limiting requests (not your usage limit)" };
     const overload: InjectedFailure = {
       error: "server_error",
       error_details: "The backend is temporarily overloaded. Please retry.",
@@ -2258,9 +2259,15 @@ describe("Objectives contract", () => {
       expect(notifications()).toHaveLength(afterReissue + 1);
       expect(notifications().at(-1)?.text).toContain("limit_exhausted");
       expect(await restartedRows()).toHaveLength(1);
+      // 일시적 요청 제한은 같은 `rate_limit` 이지만 사용 한도 소진이라고 말하지 않는다.
+      outputDetails.set(memberId, { revision: 6, failure: throttled });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(notifications()).toHaveLength(afterReissue + 2);
+      expect(notifications().at(-1)?.text).toContain("rate_limited");
+      expect(notifications().at(-1)?.text).not.toContain("limit_exhausted");
       // 정상 턴으로 해소된 실패는 다음 재시작에서 되살아나지 않는다.
       outcomes.set(memberId, "succeeded");
-      outputDetails.set(memberId, { revision: 6 });
+      outputDetails.set(memberId, { revision: 7 });
       await vi.advanceTimersByTimeAsync(1_000);
       expect(restartedMember()).not.toHaveProperty("failure");
       after.launch.dispose();
@@ -2269,7 +2276,7 @@ describe("Objectives contract", () => {
       await vi.advanceTimersByTimeAsync(5_000);
       expect(restartedMember()).not.toHaveProperty("failure");
       expect(await restartedRows()).toEqual([]);
-      expect(notifications()).toHaveLength(afterReissue + 1);
+      expect(notifications()).toHaveLength(afterReissue + 2);
 
       outcomes.set(id, "failed");
       await vi.advanceTimersByTimeAsync(1_000);
@@ -2280,7 +2287,7 @@ describe("Objectives contract", () => {
       await after.launch.memberRemoved(id, memberId);
       const removed = upserts().length;
       outcomes.set(memberId, "failed");
-      outputDetails.set(memberId, { revision: 7, failure: overload });
+      outputDetails.set(memberId, { revision: 8, failure: overload });
       await vi.advanceTimersByTimeAsync(1_000);
       expect(upserts()).toHaveLength(removed);
       after.launch.dispose();

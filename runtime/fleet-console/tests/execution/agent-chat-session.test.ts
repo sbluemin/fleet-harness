@@ -424,9 +424,20 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       error: "rate_limit",
       message: { model: "<synthetic>", content: [{ type: "text", text: "You've hit your session limit" }] },
     });
-    liveSession()!.emit({ type: "result", subtype: "success", is_error: true, result: "You've hit your session limit", duration_ms: 5 });
+    liveSession()!.emit({ type: "result", subtype: "success", is_error: true, api_error: "usage_limit_reached", result: "You've hit your session limit", duration_ms: 5 });
     await vi.waitFor(() => {
-      expect(session.readConsoleOutput().failure).toMatchObject({ error: "rate_limit", last_assistant_message: "You've hit your session limit" });
+      expect(session.readConsoleOutput().failure).toMatchObject({ error: "rate_limit", api_error: "usage_limit_reached", last_assistant_message: "You've hit your session limit" });
+    });
+    // A transient 429 shares the code but the CLI names no usage-limit cause.
+    liveSession()!.emit({
+      type: "assistant",
+      error: "rate_limit",
+      message: { model: "<synthetic>", content: [{ type: "text", text: "API Error: Server is temporarily limiting requests (not your usage limit)" }] },
+    });
+    liveSession()!.emit({ type: "result", subtype: "success", is_error: true, result: "API Error: Server is temporarily limiting requests (not your usage limit)", duration_ms: 5 });
+    await vi.waitFor(() => {
+      expect(session.readConsoleOutput().failure).toMatchObject({ error: "rate_limit", last_assistant_message: expect.stringContaining("not your usage limit") });
+      expect(session.readConsoleOutput().failure).not.toHaveProperty("api_error");
     });
     liveSession()!.emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["failure before model request"], duration_ms: 5 });
     await vi.waitFor(() => {
