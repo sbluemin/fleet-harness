@@ -24,6 +24,10 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
   const ownerRef = useRef<symbol>(Symbol("mobile-plugin-bar"));
   const specRef = useRef<MobileBarSpec | null>(null);
   const pushedRef = useRef(0);
+  // 이 막대가 쌓은 항목의 표식(맨 위가 끝) — 다시 읽기 전에 쌓인 항목도 같은 깊이 숫자를 지니므로, 지금 막대의 항목인지는 이 표식으로 가린다.
+  const entriesRef = useRef<string[]>([]);
+  const instanceRef = useRef(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+  const entrySeqRef = useRef(0);
   const fromPopRef = useRef(false);
   const swallowRef = useRef(0);
   const layerRef = useRef<(() => void) | null>(null);
@@ -54,7 +58,12 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       if (swallowRef.current > 0) { swallowRef.current -= 1; return; }
       const spec = specRef.current;
       if (!spec || spec.depth <= 0 || pushedRef.current <= 0) return;
+      // 이 막대의 맨 위 항목에 내려앉았다 — 그 위에 쌓인 다른 항목(좌표 시트 같은 오버레이)이 걷힌 것이지 상세를 떠난 뒤로가 아니다.
+      // 그 오버레이는 자기 popstate를 스스로 닫거나 삼킨다(mobile-overlay-history). 여기서 onBack까지 부르면 상세가 함께 닫힌다.
+      const landed = ((window.history.state as { fleetMobileBarEntry?: string } | null) ?? {}).fleetMobileBarEntry;
+      if (landed !== undefined && landed === entriesRef.current.at(-1)) return;
       pushedRef.current -= 1;
+      entriesRef.current.pop();
       setMobilePluginDepth(pushedRef.current);
       fromPopRef.current = true;
       spec.onBack?.();
@@ -76,11 +85,18 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       const previous = specRef.current?.depth ?? 0;
       specRef.current = { ...next, depth };
       if (depth > previous) {
-        for (let level = previous; level < depth; level += 1) { window.history.pushState({ ...(window.history.state ?? {}), fleetMobileBarDepth: level + 1 }, ""); pushedRef.current += 1; }
+        for (let level = previous; level < depth; level += 1) {
+          entrySeqRef.current += 1;
+          const entry = `${instanceRef.current}:${entrySeqRef.current}`;
+          window.history.pushState({ ...(window.history.state ?? {}), fleetMobileBarDepth: level + 1, fleetMobileBarEntry: entry }, "");
+          pushedRef.current += 1;
+          entriesRef.current.push(entry);
+        }
       } else if (depth < previous && !fromPopRef.current && pushedRef.current > 0) {
         // 뒤로를 거치지 않고 플러그인이 스스로 올라왔다 — 쌓아 둔 항목을 걷는다. 그 popstate는 삼킨다.
         const surplus = Math.min(pushedRef.current, previous - depth);
         pushedRef.current -= surplus;
+        entriesRef.current.splice(-surplus);
         swallowRef.current += 1;
         window.history.go(-surplus);
       }

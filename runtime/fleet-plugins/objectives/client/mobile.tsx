@@ -5,11 +5,13 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ConsoleOperationSummary } from "@fleet-console/sdk/plugin";
 import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
 import type { RailEntryAttentionItem } from "@fleet-console/sdk/rail";
+import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
-import type { Decision, DecisionQuestion, Objective } from "../server/types.js";
+import type { Decision, DecisionQuestion, Objective, ObjectiveMember } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
 import { commodoreBoardOf, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
+import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { LinkText } from "./link-text.js";
 import { focusOperation, hasDecisionRequest, post, readAllTheaters, readTheater, revealObjective, subscribeObjective, takeReveal, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
@@ -18,7 +20,8 @@ import "./mobile.css";
  * 모바일 목적지 「목표」 — 목록(결정 필요·진행 중·끝남)과 상세(브리핑·달성 기준·결정 요청·세션·임무).
  * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 상단 막대는 호스트가 그리고 여기서는 제목·깊이·뒤로·⋮ 항목만 선언한다.
  * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단 모두 보드와 같은 경로이고, ⋮ 의 노출 판정도
- * 보드 하단 띠의 판정(`bandChoices`)을 그대로 쓴다.
+ * 보드 하단 띠의 판정(`bandChoices`)을 그대로 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
+ * 호스트의 모바일 설정 문법 안에서 공유 선택기가 좌표 시트로 선다.
  */
 
 type T = Translate<ObjectiveMessageKey>;
@@ -290,6 +293,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
             </div>
           </>
         ) : null}
+        <CrewSection objective={objective} operations={operations} t={t} api={api} language={language} say={say} />
         {objective.missions.length > 0 ? (
           <>
             <h2 className="objectives-m-glab">{t("objectives.missions.title")}</h2>
@@ -311,6 +315,92 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
       {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
       {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
     </div>
+  );
+}
+
+// ── 지휘관·구성원 ──
+
+const COMMANDER_LIVE = new Set(["idle", "running", "background", "awaiting"]);
+
+/** 거절 코드 → 토스트 한 줄. 라우팅·전환 사유는 사람의 말로, 지휘관이 일하는 중이면 그 사정으로. */
+const launchFailure = (t: T, error: unknown): string => {
+  const code = error instanceof Error ? error.message : "unknown";
+  return code === "objective_busy" ? t("objectives.toast.busy") : hasRoutingReason(code) ? routingReason(t, code) : t("objectives.toast.failed", { code });
+};
+
+/** 구성원 행의 설명 줄 — 이번 턴 뒤 예약·바꾸지 못한 예약이 먼저, 아니면 데스크톱 명단과 같은 상태 낱말. */
+function memberLine(member: ObjectiveMember, state: string, objective: Objective, rows: ReturnType<typeof useLaunchRows>, t: T): string {
+  const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
+  const next = member.sessionName !== null && state !== "closed" ? member.next : null;
+  if (next && !next.failed) {
+    const words = launchedWords(rows, next.model, next.effort, labels).words;
+    return `${t("objectives.members.next.whenTurn")} → ${words.model} · ${words.effort}`;
+  }
+  if (next?.failed) return t("objectives.members.next.failedBody", { model: launchedWords(rows, next.model, next.effort, labels).title, reason: routingReason(t, next.failed) });
+  const working = state === "running" || state === "background" || state === "awaiting";
+  if ((member.outcome === "failed" || !!member.failure) && !working) return t("objectives.members.failed");
+  if (state === "closed") return t("objectives.members.missions", { count: objective.missions.filter((mission) => mission.member === member.id).length });
+  if (state === "ended") return t("objectives.members.dormant");
+  return working ? (state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.working")) : t("objectives.members.idle");
+}
+
+/**
+ * 지휘관·구성원의 모델·강도 — 호스트의 모바일 설정 묶음(행 = 상태 글리프 · 이름 · 값 줄 · 설명 줄)이다. 값 줄을 누르면(행 어디든) 공유
+ * 선택기가 좌표 시트로 서고, 모델과 강도를 차례로 골라도 시트가 닫힐 때 한 번만 저장한다(데스크톱 메뉴와 같은 확정 규칙). 구성원 전용
+ * 「라우팅」·「지휘관과 같게」는 시트 맨 위 묶음이다. 데스크톱 메뉴 바닥의 서브에이전트 허용은 시트를 닫지 않는 켬/끔이라, 폰에서는
+ * 시트 밖의 따로 선 묶음(구성원마다 스위치 하나)으로 둔다. 지휘관은 데스크톱과 같이 개시 전에만 바꾼다.
+ */
+function CrewSection({ objective, operations, t, api, language, say }: { readonly objective: Objective; readonly operations: OperationIndex; readonly t: T; readonly api: PaneContext["api"]; readonly language: ConsoleLocale; readonly say: (text: string) => void }) {
+  const rows = useLaunchRows();
+  const [saving, setSaving] = useState<ReadonlySet<string>>(new Set());
+  const touchable = !objective.done;
+  const commanderOperation = operations.get(objective.id);
+  const commanderLocked = !touchable || objective.commander.started || COMMANDER_LIVE.has(ownActivityOf(operations, objective.id)) || WORKING.has(activityOf(operations, objective.id));
+  const send = (path: string, body: Record<string, unknown>) => post<{ objective?: Objective }>(api, path, { objectiveId: objective.id, ...body, language });
+  const patchMember = (member: ObjectiveMember, launch: MemberLaunchChoice | null) => { send("/member/patch", { memberId: member.id, patch: { launch } }).catch((error: unknown) => say(launchFailure(t, error))); };
+  const toggleSubagents = (member: ObjectiveMember, live: boolean) => {
+    if (saving.has(member.id)) return;
+    const next = !memberSubagents(member);
+    setSaving((current) => new Set(current).add(member.id));
+    const done = () => setSaving((current) => { const updated = new Set(current); updated.delete(member.id); return updated; });
+    send("/member/patch", { memberId: member.id, patch: { subagents: next } }).then((payload) => {
+      done();
+      const echoed = payload?.objective?.members.find((entry) => entry.id === member.id);
+      if (!echoed || memberSubagents(echoed) !== next) { say(t("objectives.toast.failed", { code: "not_stored" })); return; }
+      say(`${t(next ? "objectives.members.subagentsSaved" : "objectives.members.subagentsCleared", { role: member.role })}${live ? ` ${t("objectives.members.subagentsLive")}` : ""}`);
+    }, (error: unknown) => { done(); say(launchFailure(t, error)); });
+  };
+  const memberState = (member: ObjectiveMember) => (member.sessionName !== null ? activityOf(operations, member.id) : "closed");
+  return (
+    <>
+      <SettingsCard title={t("objectives.mobile.crew")}>
+        <SettingsRow label={t("objectives.commander.title")} icon={<StatusMark state={activityGlyph(commanderOperation ? commanderOperation.ownActivity ?? commanderOperation.activity : undefined)} />}
+          {...(commanderLocked && touchable ? { hint: t("objectives.commander.locked") } : {})}>
+          <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={commanderLocked}
+            onChange={(next) => { send("/objective/patch", { patch: { launch: next } }).catch((error: unknown) => say(launchFailure(t, error))); }} />
+        </SettingsRow>
+        {objective.members.map((member) => {
+          const state = memberState(member);
+          return (
+            <SettingsRow key={member.id} label={member.role} icon={<StatusMark state={member.sessionName !== null ? activityGlyph(operations.get(member.id)?.activity) : "fresh"} />} hint={memberLine(member, state, objective, rows, t)}>
+              <MemberLaunchControl t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
+                onPickLaunched={(launch) => patchMember(member, launch)}
+                onPatchLaunch={(launch) => patchMember(member, launch)}
+                onToggleSubagents={() => toggleSubagents(member, MEMBER_LIVE.has(state))} />
+            </SettingsRow>
+          );
+        })}
+      </SettingsCard>
+      {touchable && objective.members.length > 0 ? (
+        <SettingsCard title={t("objectives.members.subagents")} description={t("objectives.members.subagentsHint")}>
+          {objective.members.map((member) => (
+            <SettingsRow key={member.id} label={member.role}>
+              <SettingsToggle checked={memberSubagents(member)} busy={saving.has(member.id)} ariaLabel={`${member.role} · ${t("objectives.members.subagents")}`} onChange={() => toggleSubagents(member, MEMBER_LIVE.has(memberState(member)))} />
+            </SettingsRow>
+          ))}
+        </SettingsCard>
+      ) : null}
+    </>
   );
 }
 

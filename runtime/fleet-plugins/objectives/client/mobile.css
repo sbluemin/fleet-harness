@@ -6,7 +6,9 @@
 .objectives-m { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
 .objectives-m::-webkit-scrollbar { display: none; }
 .objectives-m-pad { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
-.objectives-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: left; cursor: pointer; }
+/* 단추 초기화는 보드의 것만 — 지휘관·구성원 행의 공유 좌표 시트(.mobile-choice-scrim)는 행 안에 그려지지만 호스트의 모양을 그대로 쓴다.
+   :where()로 감싸 특이도(0,1,1)는 그대로 둔다 — 보드의 행·단추 규칙이 계속 이 초기화를 이긴다. */
+.objectives-m button:where(:not(.mobile-choice-scrim *)) { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: left; cursor: pointer; }
 /* 누름 문법(data-press)이 붙은 조작부의 포커스 고리는 코어 누름 층이 모양대로 그린다(S-52 PR-1). */
 .objectives-m :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
 
@@ -31,6 +33,12 @@
 .objectives-m-tx small.is-awaiting { color: var(--m-awaiting); }
 .objectives-m-ri { display: flex; align-items: center; color: var(--m-text-muted); }
 .objectives-m-ri svg { width: 22px; height: 22px; }
+
+/* 지휘관·구성원 값 줄 — 공유 선택기의 모바일 값 줄(.fc-select--mobile) 안에 데스크톱 어댑터의 낱말(실행값·「라우팅」)이 선다.
+   데스크톱의 낱말 색(text-primary·brass)은 여기서 쓰지 않고 값 줄의 한 색을 따른다. */
+.objectives-m .fc-select--mobile :is(.objectives-launch-model, .objectives-launch-dot, .objectives-launch-effort) { color: inherit; }
+.objectives-m .fc-select--mobile .objectives-launch-dot { margin: 0 .3em; }
+.objectives-m .fc-select--mobile .objectives-launch-provider { margin-right: 6px; vertical-align: -2px; }
 
 /* 브리핑 카드 */
 .objectives-m-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--m-hairline-strong); border-radius: 16px; background: var(--m-surface); }
