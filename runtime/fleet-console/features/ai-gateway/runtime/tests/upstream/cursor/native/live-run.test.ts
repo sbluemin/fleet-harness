@@ -964,6 +964,7 @@ describe("Cursor live client-tool Run bridge", () => {
         "If needed, I'll update the docs, but I'll run the tests first.",
         "The read failed so I need to try another path.",
         "Running the tests now, and if they pass, I'll update the docs.",
+        "The socket dropped; opening a fresh connection now.",
       ].map((text, index) => {
         const recoveredCall = cursorCall(`call-resample-english-recovered-${index}`, 101 + index * 2);
         return {
@@ -975,6 +976,20 @@ describe("Cursor live client-tool Run bridge", () => {
           ]),
         };
       });
+      // Short endings that are not the speaker's own next step: somebody else's future, a state, or something
+      // for the user to do. None of them is asked again, and the second Run is never opened.
+      const notOwnSteps = [
+        "The reviewer will get back to us later.",
+        "Codex 리뷰 waiter는 계속 돌고 있습니다.",
+        "Fixed the import; you'll need to restart the server.",
+      ].map((text, index) => ({
+        text,
+        call: cursorCall(`call-resample-not-own-${index}`, 120 + index * 2),
+        harness: cursorHarness([
+          new BridgeCursorStream(cursorCompletionFrames(text)),
+          new BridgeCursorStream(cursorToolFrames([cursorCall(`call-resample-not-own-again-${index}`, 121 + index * 2)])),
+        ]),
+      }));
       // A Skill body after the result is client context the bridge recognizes; the turn stays armed.
       const skillCall = cursorCall("call-resample-skill-body", 90);
       const skillRecovered = cursorCall("call-resample-skill-body-recovered", 91);
@@ -1012,6 +1027,10 @@ describe("Cursor live client-tool Run bridge", () => {
         for (const [index, step] of englishSteps.entries()) {
           englishRetried.push(await gateTurn(step.harness, `session-resample-english-${index}`, step.call));
         }
+        const notOwnHeld = [];
+        for (const [index, step] of notOwnSteps.entries()) {
+          notOwnHeld.push(await gateTurn(step.harness, `session-resample-not-own-${index}`, step.call));
+        }
         const skillRecovery = await gateTurn(skillHarness, "session-resample-skill-body", skillCall, [{
           type: "message",
           role: "user",
@@ -1028,6 +1047,9 @@ describe("Cursor live client-tool Run bridge", () => {
           pastModifierCalls: addedFunctionCallIds(retried),
           englishStreams: englishSteps.map((step) => step.harness.openedStreams),
           englishCalls: englishRetried.map((events) => addedFunctionCallIds(events)),
+          notOwnStreams: notOwnSteps.map((step) => step.harness.openedStreams),
+          notOwnCalls: notOwnHeld.map((events) => addedFunctionCallIds(events)),
+          notOwnTexts: notOwnHeld.map((events) => canonicalText(events)),
           skillStreams: skillHarness.openedStreams,
           skillCalls: addedFunctionCallIds(skillRecovery),
         }).toEqual({
@@ -1041,6 +1063,9 @@ describe("Cursor live client-tool Run bridge", () => {
           pastModifierCalls: [pastModifierRecovered.callId],
           englishStreams: englishSteps.map(() => 2),
           englishCalls: englishSteps.map((step) => [step.recoveredCall.callId]),
+          notOwnStreams: notOwnSteps.map(() => 1),
+          notOwnCalls: notOwnSteps.map(() => []),
+          notOwnTexts: notOwnSteps.map((step) => step.text),
           skillStreams: 2,
           skillCalls: [skillRecovered.callId],
         });
@@ -1051,6 +1076,7 @@ describe("Cursor live client-tool Run bridge", () => {
         pastModifierHarness.adapter.dispose();
         skillHarness.adapter.dispose();
         for (const step of englishSteps) step.harness.adapter.dispose();
+        for (const step of notOwnSteps) step.harness.adapter.dispose();
       }
     } finally {
       harness.adapter.dispose();

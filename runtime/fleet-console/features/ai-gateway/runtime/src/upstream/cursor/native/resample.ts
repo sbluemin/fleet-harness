@@ -115,17 +115,89 @@ function isPureConditional(sentence: string): boolean {
   return hasKoreanFuture(sentence.slice(mark + 1));
 }
 
-/** Words that put an English action still ahead: future, obligation, `let me`, or a leading step. */
-const ENGLISH_ACTION_MARKER = /\bwill\b|['’]ll\b|\bgoing to\b|\bneed to\b|\bhave to\b|\blet me\b(?!\s+know)/giu;
+/**
+ * An English step the speaker still owes: a first-person future or obligation (`I'll`, `we need to`,
+ * `I'm going to`, `let me`), or a first-person progressive (`I'm running`). Somebody else's future (`you'll
+ * need to`, `CI will run`, `it'll take`) is not the speaker's step, and `I'll need to` is one step, not two.
+ */
+const ENGLISH_FIRST_PERSON_STEP =
+  /\b(?:I|we)(?:['’]ll|\s+will|['’]m\s+going\s+to|\s+am\s+going\s+to|\s+need\s+to|\s+have\s+to|\s+must|\s+should)(?:\s+(?:also|then|first|probably))?(?:\s+(?:need|have)\s+to)?\b|\blet\s+me\b(?!\s+know)/giu;
+const ENGLISH_FIRST_PERSON_PROGRESSIVE = /\b(?:I|we)(?:['’]m|\s+am|['’]re|\s+are)\s+(?:(?:now|just|currently|also)\s+)?([a-z]{3,}ing)\b/giu;
+/** Adverbs that may sit in front of a progressive without changing what it is: `Still checking.` */
+const ENGLISH_LEADING_ADVERB = /^(?:(?:still|just|also|again|already|currently|now|then)|[a-z]{3,}ly)\s+/iu;
+/** A clause that opens on a modal and borrows the subject of the clause before it. */
+const ENGLISH_ELIDED_SUBJECT_STEP = /^(?:will|['’]ll|need\s+to|have\s+to|must|should|am\s+going\s+to)\b/iu;
 /** A leading `-ing` that is not a step: `Nothing is running now.` */
 const ENGLISH_NON_STEP_ING = new Set(["nothing", "something", "anything", "everything", "during", "string"]);
+/** `-ing` words that report holding or waiting rather than doing. */
+const ENGLISH_HOLD_ING = new Set(["waiting", "holding", "keeping", "leaving", "staying", "remaining", "standing"]);
 
+/** Drops a short label such as `Looking good:` or `Let me summarize:`. A label that opens on a forward lead is a step and stays. */
+function stripPrefaceLabel(text: string): string {
+  if (ENGLISH_FORWARD_LEAD.test(text)) return text;
+  return text.replace(/^(?:[^\s:]+\s+){0,2}[^\s:]+:\s+/u, "");
+}
+
+/** Clauses of one sentence, each starting where a subject would: after `,` `;` a dash, or before `so`/`and`/`but`/`then`. */
+function englishClauses(text: string): string[] {
+  return text
+    .split(/\s*[;,—–]\s*|\s+(?=(?:so|and|but|then)\b)/iu)
+    .map((clause) => clause.replace(/^(?:so|and|but)\s+/iu, "").trim())
+    .filter((clause) => clause.length > 0);
+}
+
+/** Steps the speaker states with a subject, or with none (a clause that opens on a progressive: `…, retrying the query`). */
+function englishStrongStepCount(sentence: string): number {
+  const text = stripPrefaceLabel(sentence.trim());
+  let count = text.match(ENGLISH_FIRST_PERSON_STEP)?.length ?? 0;
+  for (const match of text.matchAll(ENGLISH_FIRST_PERSON_PROGRESSIVE)) {
+    if (!ENGLISH_HOLD_ING.has((match[1] ?? "").toLowerCase())) count += 1;
+  }
+  let subjectSeen = false;
+  for (const clause of englishClauses(text)) {
+    const first = /^[a-z]+/iu.exec(clause.replace(ENGLISH_LEADING_ADVERB, ""))?.[0].toLowerCase() ?? "";
+    if (/^[a-z]{3,}ing$/u.test(first) && !ENGLISH_NON_STEP_ING.has(first) && !ENGLISH_HOLD_ING.has(first)) count += 1;
+    // `I updated the code and will run the tests`: the subject carries over to a clause that opens on the modal.
+    if (subjectSeen && ENGLISH_ELIDED_SUBJECT_STEP.test(clause)) count += 1;
+    if (/\b(?:I|we)\b/u.test(clause)) subjectSeen = true;
+  }
+  return count;
+}
+
+function hasEnglishForwardLead(sentence: string): boolean {
+  return englishClauses(stripPrefaceLabel(sentence.trim())).some((clause) => ENGLISH_FORWARD_LEAD.test(clause));
+}
+
+/** Strong steps plus a forward lead, for the one-action test of a conditional sentence. */
 function englishActionMarkerCount(sentence: string): number {
-  const text = sentence.trim();
-  const first = /^[A-Za-z]+/u.exec(text)?.[0].toLowerCase() ?? "";
-  const leadingStep = ENGLISH_FORWARD_LEAD.test(text)
-    || (/^[a-z]{3,}ing$/u.test(first) && !ENGLISH_NON_STEP_ING.has(first));
-  return (text.match(ENGLISH_ACTION_MARKER)?.length ?? 0) + (leadingStep ? 1 : 0);
+  return englishStrongStepCount(sentence) + (hasEnglishForwardLead(sentence) ? 1 : 0);
+}
+
+/** A request that is addressed to the user, not a step the speaker takes. */
+const KOREAN_USER_ADDRESSED = /(?:주세요|주십시오|주시기\s*바랍니다|바랍니다|부탁\s*드립니다)[\s.!?]*$/u;
+/** Holding or waiting statements, which report a state instead of a next step. */
+const KOREAN_HOLD = /기다립|기다리는|대기|지켜보|유지합니다|유지하고|두고\s*있|그대로\s*(?:둡니다|두고)|멈춥니다|멈춰\s*있/u;
+
+/**
+ * Whether the speaker says it is doing or about to do something. A Korean sentence has no explicit subject
+ * to read, so a volitional ending (`-겠`, `-ㄹ게`) or a progressive (`-는 중입니다`) is the speaker's, an
+ * address to the user is not, and a topic that is not the speaker (`waiter는 …`, `추가 조치는 …`) reports a state.
+ */
+function koreanOwnStep(sentence: string): boolean {
+  if (KOREAN_USER_ADDRESSED.test(sentence)) return false;
+  if (hasKoreanFuture(sentence)) return true;
+  if (KOREAN_HOLD.test(sentence)) return false;
+  if (/중(?:입니다|이에요|이다)/u.test(sentence)) return true;
+  const clause = sentence.split(/[,，]\s*/u).pop() ?? sentence;
+  const topic = /^(?:\S+\s+){0,2}?(\S+?)(?:은|는)\s/u.exec(clause);
+  if (topic !== null && !/^(?:저|제|나|내|우리)$/u.test(topic[1] ?? "") && !/[을를]\s/u.test(clause)) return false;
+  return true;
+}
+
+/** The final sentence names a step of the speaker's own that has not happened yet. */
+function announcesOwnStep(sentence: string): boolean {
+  if (/[가-힣]/u.test(sentence)) return koreanOwnStep(sentence);
+  return englishStrongStepCount(sentence) > 0 || hasEnglishForwardLead(sentence);
 }
 
 /** 고로 끝나는 명사. 뒤가 띄어 써져도 연결어미가 아니다(`회고 도착하면`). */
@@ -215,7 +287,7 @@ const ENGLISH_IRREGULAR_PAST = new Set([
 function isEnglishCompletion(words: readonly string[]): boolean {
   // Any action still ahead (`I updated the code and will run the tests.`, `The read failed so I need
   // to try another path.`) leaves it to the length gate, as canary does.
-  if (englishActionMarkerCount(words.join(" ")) > 0) return false;
+  if (englishStrongStepCount(words.join(" ")) > 0) return false;
   const tokens = words
     .map((word) => word.replace(/^[^A-Za-z]+|[^A-Za-z']+$/gu, "").toLowerCase())
     .filter((word) => /^[a-z][a-z']*$/u.test(word));
@@ -435,7 +507,7 @@ function resampleVerdict(
   text: string,
   signals: CursorSegmentSignals,
   finalStepTokens: number,
-): "incomplete" | "empty_text" | "server_work" | "settled_ending" | "long_final_step" | undefined {
+): "incomplete" | "empty_text" | "server_work" | "settled_ending" | "not_own_step" | "long_final_step" | undefined {
   if (event.response.incomplete !== undefined) return "incomplete";
   // 빈 응답은 다른 결함이다. Claude Code가 스스로 재개 넛지를 붙인다.
   if (text.trim().length === 0) return "empty_text";
@@ -444,6 +516,8 @@ function resampleVerdict(
   if (finalStepTokens > MAX_RESAMPLE_FINAL_STEP_TOKENS) return "long_final_step";
   // 짧아도 마지막 문장이 완료·질문·승인 대기면 다시 받지 않는다. 애매하면 그대로 다시 받는다.
   if (isSettledEnding(signals.finalStepText)) return "settled_ending";
+  // Nothing in the last sentence says the speaker still owes a step: a state, a request to the user, or somebody else's future.
+  if (!announcesOwnStep(lastSentence(signals.finalStepText))) return "not_own_step";
   return undefined;
 }
 
