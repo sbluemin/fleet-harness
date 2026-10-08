@@ -180,6 +180,7 @@ export type CursorDiagnosticEventName =
   | "client.heartbeat"
   | "client.reply"
   | "server.frame"
+  | "tool.mcp.dropped"
   | "bridge.park"
   | "bridge.attach"
   | "bridge.defer"
@@ -218,7 +219,7 @@ const CURSOR_CONVERSATION_MEMORY_LIMIT = 512;
 
 /**
  * Safe-by-construction Cursor diagnostic shape. It intentionally has no prompt, output, tool
- * payload, credential, or upstream/session/call identifier fields.
+ * payload, credential, or raw session/call identity fields.
  */
 export interface CursorDiagnosticEvent {
   readonly timestamp: string;
@@ -241,6 +242,9 @@ export interface CursorDiagnosticEvent {
   readonly frameCount?: number;
   readonly lastFrame?: string;
   readonly toolCount?: number;
+  readonly toolName?: string;
+  readonly providerIdentifier?: string;
+  readonly reason?: "foreign_provider" | "catalog_miss";
   /** Count of schema-guided scalar repairs; never includes argument names or values. */
   readonly argumentRepairCount?: number;
   readonly estimatedInputTokens?: number;
@@ -2798,6 +2802,21 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
    * tool map, so without this set the echo registers as a brand-new unsuspended tool item.
    */
   const settledToolIdentifiers = new Set<string>();
+  const droppedMcpIdentifiers = new Set<string>();
+  const reportDroppedMcpCall: CursorMcpDropReporter = (call, reason) => {
+    const identifiers = [call.publicCallId, call.toolCallId, call.callId]
+      .filter((identifier): identifier is string => identifier !== undefined);
+    // Count the first rejection per Run across shared call identifiers, all stages, and replay.
+    const counted = identifiers.some((identifier) => droppedMcpIdentifiers.has(identifier));
+    for (const identifier of identifiers) droppedMcpIdentifiers.add(identifier);
+    if (counted) return;
+    report("tool.mcp.dropped", {
+      toolName: cursorDiagnosticLabel(call.name),
+      providerIdentifier: cursorDiagnosticLabel(call.providerIdentifier ?? ""),
+      reason,
+      count: 1,
+    });
+  };
   /**
    * `readToolCall.args` of native reads Cursor announced, by the call id its exec `ReadArgs` repeats
    * as `toolCallId`. The announcement arrives before the exec and is the only range a limit-only read
@@ -2887,7 +2906,14 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     clearSemanticStall();
     detachAbort(segment);
     if (error) segment.failure = error;
-    else if (segment.started) {
+    else if (segment.started || CURSOR_CLEAN_TURN_OUTCOMES.has(outcome)) {
+      if (!segment.started) {
+        segment.started = true;
+        segment.queue.push({
+          type: "response.created",
+          response: { id: segment.responseId, model, usage: usage(segment) },
+        });
+      }
       segment.queue.push({
         type: "response.completed",
         response: { id: segment.responseId, model, usage: usage(segment) },
@@ -2930,6 +2956,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     options.stopHeartbeat();
     nativeExecReceipts.clear();
     nativeExecReceiptBytes = 0;
+    droppedMcpIdentifiers.clear();
     closeCursorTransport(stream, session, cancel, error);
     notifyTerminal();
   };
@@ -3342,7 +3369,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     if (state === "parked") {
       if (isCursorHeartbeatFrame(frame)) return;
       if (isCursorParkedResidueFrame(frame, parkedCalls)) return;
-      if (isCursorClientToolFrame(frame, tools, redirectTools)) {
+      if (isCursorClientToolFrame(frame, tools, redirectTools, reportDroppedMcpCall)) {
         if (deferredToolFrames.length >= CURSOR_DEFERRED_TOOL_FRAME_LIMIT) {
           dispose("deferred_tool_overflow", new Error("Cursor queued too many calls while parked"));
           return;
@@ -3366,7 +3393,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
         return;
       }
       const wireCall = mcpCallFromExecMessage(frame.execServerMessage);
-      const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
+      const call = wireCall ? cursorClientMcpCall(wireCall, tools, reportDroppedMcpCall) : null;
       if (call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) {
         clearToolFinalize(activeSegment);
         const entry = ensureToolItem(call);
@@ -3552,7 +3579,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     if (isRecord(update.toolCallStarted)) {
       recordNativeReadStart(nativeReadStarts, update.toolCallStarted);
       const wireCall = mcpCallFromToolUpdate(update.toolCallStarted);
-      const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
+      const call = wireCall ? cursorClientMcpCall(wireCall, tools, reportDroppedMcpCall) : null;
       if (call) {
         clearToolFinalize(activeSegment);
         ensureToolItem(call);
@@ -3562,7 +3589,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     }
     if (isRecord(update.partialToolCall)) {
       const wireCall = mcpCallFromToolUpdate(update.partialToolCall);
-      const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
+      const call = wireCall ? cursorClientMcpCall(wireCall, tools, reportDroppedMcpCall) : null;
       if (!call) return;
       clearToolFinalize(activeSegment);
       const entry = ensureToolItem(call);
@@ -3575,7 +3602,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     }
     if (isRecord(update.toolCallCompleted)) {
       const wireCall = mcpCallFromToolUpdate(update.toolCallCompleted);
-      const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
+      const call = wireCall ? cursorClientMcpCall(wireCall, tools, reportDroppedMcpCall) : null;
       if (!call) return;
       clearToolFinalize(activeSegment);
       const entry = ensureToolItem(call);
@@ -4083,12 +4110,30 @@ interface CursorMcpCall {
   readonly argumentRepairCount?: number;
 }
 
+/**
+ * Successful endings that still owe the client a message when every call of the turn was dropped.
+ * A frameless transport end never gets here: `finishAttachedTransport` fails it first.
+ */
+const CURSOR_CLEAN_TURN_OUTCOMES: ReadonlySet<string> = new Set([
+  "turn_ended",
+  "connect_end_stream",
+  "stream_end",
+  "stream_close",
+]);
+
 const CURSOR_MCP_DISPLAY_PREFIX = `mcp_${CURSOR_TOOL_PROVIDER_IDENTIFIER}_`;
+
+type CursorMcpDropReporter = (call: CursorMcpCall, reason: NonNullable<CursorDiagnosticEvent["reason"]>) => void;
 
 function cursorClientMcpCall(
   call: CursorMcpCall,
   tools: readonly CursorWireTool[],
-): CursorMcpCall {
+  reportDroppedMcpCall: CursorMcpDropReporter,
+): CursorMcpCall | null {
+  if (call.providerIdentifier !== CURSOR_TOOL_PROVIDER_IDENTIFIER) {
+    reportDroppedMcpCall(call, "foreign_provider");
+    return null;
+  }
   const wireName = call.name.startsWith(CURSOR_MCP_DISPLAY_PREFIX)
     ? call.name.slice(CURSOR_MCP_DISPLAY_PREFIX.length)
     : call.name;
@@ -4097,7 +4142,10 @@ function cursorClientMcpCall(
     || candidate.toolName === wireName
     || candidate.clientName === call.name
   ));
-  if (!tool) return call;
+  if (!tool) {
+    reportDroppedMcpCall(call, "catalog_miss");
+    return null;
+  }
   const repaired = call.arguments === undefined
     ? undefined
     : repairCursorToolArguments(call.arguments, tool.inputSchemaValue);
@@ -4271,14 +4319,25 @@ function isCursorClientToolFrame(
   frame: CursorServerFrame,
   tools: readonly CursorWireTool[],
   redirectTools: readonly CursorWireTool[],
+  reportDroppedMcpCall: CursorMcpDropReporter,
 ): boolean {
   const update = isRecord(frame.interactionUpdate) ? frame.interactionUpdate : undefined;
-  if (update !== undefined) return cursorToolUpdateIdentifiers(update) !== undefined;
+  if (update !== undefined) {
+    const identifiers = cursorToolUpdateIdentifiers(update);
+    // Count a rejected call when it is held: the parked Run may expire or abort before replay.
+    const value = CURSOR_TOOL_UPDATE_CASES.map((key) => update[key]).find(isRecord);
+    const updateCall = value ? mcpCallFromToolUpdate(value) : null;
+    if (updateCall) cursorClientMcpCall(updateCall, tools, reportDroppedMcpCall);
+    return identifiers !== undefined;
+  }
   const exec = isRecord(frame.execServerMessage) ? frame.execServerMessage : undefined;
   if (exec === undefined) return false;
   const wireCall = mcpCallFromExecMessage(exec);
-  const call = wireCall ? cursorClientMcpCall(wireCall, tools) : null;
+  const call = wireCall ? cursorClientMcpCall(wireCall, tools, reportDroppedMcpCall) : null;
   if (call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) return true;
+  // An unadvertised call of our provider is held too; replayed after attach it gets its policy
+  // reply in order instead of discarding the warm Run for the valid calls parked with it.
+  if (wireCall?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) return true;
   const references = cursorNativeRedirectToolReferences(redirectTools);
   // A native read is held whatever its range, as it was before ranges were decoded. Its range may
   // depend on a toolCallStarted frame that is itself still held here, and the replayed read gets a
