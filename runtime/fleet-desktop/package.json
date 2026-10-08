@@ -13,7 +13,7 @@
     "dev": "pnpm --filter @dotobokuri/fleet-console build && pnpm build && node scripts/launch-dev-desktop.mjs",
     "build:dev": "pnpm --filter @dotobokuri/fleet-console build && pnpm build && node scripts/launch-dev-desktop.mjs --build-only",
     "build": "tsup && node scripts/copy-entry-assets.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit --incremental -p tsconfig.json",
     "test": "vitest run",
     "package:dir": "pnpm build && electron-builder --dir --publish never",
     "package:unsigned": "pnpm build && electron-builder --publish never",

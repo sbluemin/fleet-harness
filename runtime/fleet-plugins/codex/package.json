@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit --incremental -p tsconfig.json"
   },
   "dependencies": {
     "@fleet-console/infra": "workspace:*",

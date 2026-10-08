@@ -18,7 +18,7 @@
     "build": "expo export --platform android --output-dir dist/bundle",
     "generate:android": "expo prebuild --platform android --clean --no-install",
     "generate:ios": "expo prebuild --platform ios --clean --no-install",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit --incremental -p tsconfig.json",
     "test": "vitest run",
     "test:android": "expo prebuild --platform android --clean --no-install && cd android && ./gradlew :fleet-console-view:testDebugUnitTest"
   },

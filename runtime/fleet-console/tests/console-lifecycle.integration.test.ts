@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createOwnedProcessRegistry, proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
 import { createWindowsJobContainment, type WindowsJobBindings } from "../core/host/bootstrap/windows-job-containment.js";
-import { describeReplacedLockAuthor } from "@fleet-console/protocol/lifecycle";
+import { describeReplacedLockAuthor, PROCESS_START_MARGIN_MS } from "@fleet-console/protocol/lifecycle";
 
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
@@ -45,6 +45,7 @@ describe("Console daemon lifecycle integration", () => {
       env: { ...fixture.env, FLEET_TEST_CONSOLE_BIND_BEFORE_READY: "1" },
       serverModulePath: FIXTURE_PATH,
       startupTimeoutMs: 8_000,
+      escalationMs: 400,
       pollIntervalMs: 20,
       report: () => {},
     });
@@ -63,20 +64,24 @@ describe("Console daemon lifecycle integration", () => {
     expect(() => process.kill(pid, 0)).not.toThrow();
     const concurrentEnsure = lifecycle.ensureDaemon();
     void concurrentEnsure.catch(() => {});
-    await delay(3_100);
+    // 시작 시각 재증명은 프로세스가 PROCESS_START_MARGIN_MS보다 오래 살아야 한다. 3초 경계는 가짜 시계 케이스가 증명하고,
+    // 강제 종료 사다리만 테스트 예산으로 줄인다.
+    await delay(PROCESS_START_MARGIN_MS + 500);
     fs.writeFileSync(fixture.releaseFile, "ready\n", "utf8");
 
     const endpoint = await ensure;
     expect(await concurrentEnsure).toBe(endpoint);
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(3_000);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(PROCESS_START_MARGIN_MS);
     expect(endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
     expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(pid);
 
-    // SIGTERM을 받은 Console이 listener만 닫고 lock을 쥔 채 멈춘다. EXTERNAL_ESCALATION_MS가 지나도록 lock을 놓지 않으면, SIGTERM
-    // 전에 증명한 그 프로세스임을 다시 증명한 뒤 강제 종료한다. Windows의 SIGTERM은 TerminateProcess라 정리가 아예 돌지 않는다 —
+    // SIGTERM을 받은 Console이 listener만 닫고 lock을 쥔 채 멈춘다. 테스트 예산(escalationMs)이 지나도록 lock을 놓지 않으면, SIGTERM
+    // 전에 증명한 그 프로세스임을 다시 증명한 뒤 강제 종료한다. 생산 사다리는 EXTERNAL_ESCALATION_MS다. Windows의 SIGTERM은 TerminateProcess라 정리가 아예 돌지 않는다 —
     // 멈출 정리가 없으니 강제 종료도 아니며, 남은 lock은 끝난 pid의 것이라 stop이 치운다. 정체를 SIGKILL로 끝내는 계약은 POSIX에서만 성립한다.
     fs.writeFileSync(fixture.stallFile, "stall\n", "utf8");
+    const stoppedAt = Date.now();
     expect(await lifecycle.stop()).toEqual(process.platform === "win32" ? { outcome: "unrecorded", killed: 0 } : { outcome: "forced-external", killed: 0 });
+    expect(Date.now() - stoppedAt).toBeLessThan(5_000);
     await expectProcessGone(pid);
     CHILD_PIDS.delete(pid);
     expect(readConsoleLockFile(fixture.lockFile)).toBeNull();
@@ -88,7 +93,7 @@ describe("Console daemon lifecycle integration", () => {
     const lifecycle = createConsoleDaemonLifecycle({
       env: fixture.env,
       serverModulePath: FIXTURE_PATH,
-      startupTimeoutMs: 4_000,
+      startupTimeoutMs: 2_000,
       pollIntervalMs: 20,
     });
 
@@ -97,7 +102,7 @@ describe("Console daemon lifecycle integration", () => {
     const pid = await readPidWhenReady(fixture.pidFile);
     CHILD_PIDS.add(pid);
 
-    await expect(ensure).rejects.toThrow("did not become healthy within 4 seconds");
+    await expect(ensure).rejects.toThrow("did not become healthy within 2 seconds");
     await expectProcessGone(pid);
     CHILD_PIDS.delete(pid);
     expect(readConsoleLockFile(fixture.lockFile)).toBeNull();
@@ -118,7 +123,7 @@ describe("Console daemon lifecycle integration", () => {
     const lockInput = { dir: fixture.dir, lockFile: fixture.lockFile, pid: bystanderPid, port, endpoint: `http://127.0.0.1:${port}/`, version: "crashed" };
     const consoleLock = createConsoleLock();
     await consoleLock.acquireLock(lockInput);
-    const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH, pollIntervalMs: 20 });
+    const lifecycle = createConsoleDaemonLifecycle({ env: fixture.env, serverModulePath: FIXTURE_PATH, pollIntervalMs: 20, escalationMs: 400 });
 
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} is alive but did not prove it owns`);
     expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(bystanderPid);
@@ -127,7 +132,9 @@ describe("Console daemon lifecycle integration", () => {
     // 않는다(계약의 stopping). 정지 예산만큼 기다릴 뿐 신호도 lock 삭제도 하지 않는다 — 지우면 다음 start가 살아 있는 Console
     // 옆에 두 번째 Console을 띄운다.
     await new Promise<void>((resolve) => impostor.close(() => resolve()));
+    const stoppingAt = Date.now();
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} no longer answers at the lock's address`);
+    expect(Date.now() - stoppingAt).toBeLessThan(5_000);
     expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(bystanderPid);
 
     // A pid that started after the lock was written cannot be its author, but while that pid lives the lock stays: only

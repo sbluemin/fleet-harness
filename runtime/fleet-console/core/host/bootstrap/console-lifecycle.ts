@@ -113,6 +113,10 @@ export interface ConsoleDaemonLifecycleDeps {
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => number;
   readonly startupTimeoutMs?: number;
+  /**
+   * Test-only stop-ladder budget. Production callers omit it, so the ladder waits EXTERNAL_ESCALATION_MS.
+   */
+  readonly escalationMs?: number;
   readonly pollIntervalMs?: number;
   readonly health?: ConsoleLockHealthProbe;
   /** 사용자에게 알릴 한 줄(대기 안내, 강제 종료 경고). 기본은 stderr다. */
@@ -294,6 +298,20 @@ function openWindowsProcessContainment(recordFailure: (kind: string, error: unkn
   }
 }
 
+/**
+ * Production start waits CONSOLE_START_TIMEOUT_MS. An explicit startupTimeoutMs wins. The test env is how the built
+ * CLI (which has no deps object) injects a shorter budget; unset, it leaves the constant in place.
+ */
+function resolveStartupTimeoutMs(deps: ConsoleDaemonLifecycleDeps, env: NodeJS.ProcessEnv): number {
+  if (deps.startupTimeoutMs !== undefined) return Math.max(0, deps.startupTimeoutMs);
+  const raw = env.FLEET_TEST_CONSOLE_START_TIMEOUT_MS;
+  if (typeof raw === "string" && /^[0-9]+$/.test(raw)) {
+    const parsed = Number(raw);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
+  return CONSOLE_START_TIMEOUT_MS;
+}
+
 export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = {}) {
   const env = deps.env ?? process.env;
   // TLS 검사 프록시 환경 대응(issue #531): OS 신뢰 저장소를 기본 신뢰한다. opt-out은 FLEET_CONSOLE_NO_SYSTEM_CA=1.
@@ -303,7 +321,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const spawnDaemon = deps.spawnDaemon ?? ((bin, args, options) => spawn(bin, [...args], { ...options, windowsHide: true }));
   const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const now = deps.now ?? (() => performance.now());
-  const startupTimeoutMs = Math.max(0, deps.startupTimeoutMs ?? CONSOLE_START_TIMEOUT_MS);
+  const startupTimeoutMs = resolveStartupTimeoutMs(deps, env);
+  const escalation = deps.escalationMs === undefined ? {} : { escalationMs: Math.max(0, deps.escalationMs) };
   const pollIntervalMs = Math.max(1, deps.pollIntervalMs ?? CONSOLE_START_POLL_MS);
   const report = deps.report ?? reportToStderr;
   const platform = deps.platform ?? process.platform;
@@ -498,6 +517,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         onWaiting: () => report(describeConsoleLifecycleWait("stop-ladder")),
         now,
         sleep,
+        ...escalation,
       });
       const instance = { pid: payload.pid, lockStartedAt: payload.startedAt };
       if (ended === "held") throw lockOwnerUnprovenError(payload, "stopping");
@@ -832,6 +852,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
           signal: (signal) => killOwnedChild(child, signal, errors),
           now,
           sleep,
+          ...escalation,
         });
         if (ended === "released-alive") errors.push("the spawned Console released its lock but did not exit");
       } else {

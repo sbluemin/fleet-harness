@@ -68,6 +68,10 @@ export interface CreateConsoleUpdateApplyServiceDeps {
   readonly now?: () => number;
   readonly processPid?: number;
   readonly preflightInstall?: (currentPackageRoot: string) => Promise<ConsoleUpdatePackageManagerSpec> | ConsoleUpdatePackageManagerSpec;
+  /**
+   * Test-only worker preflight budget. Production callers omit it and the handoff waits UPDATE_WORKER_PREFLIGHT_MS.
+   */
+  readonly preflightTimeoutMs?: number;
   readonly serverModulePath?: string;
   readonly spawnWorker?: ConsoleUpdateWorkerSpawner;
   readonly tmpDir?: string;
@@ -280,7 +284,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
         try { removeFile(file); } catch { /* 자신의 실행 파일만 최선 노력으로 정리한다. */ }
       }
       return recordFailure(request, startedAt, reason, stage);
-    });
+    }, deps.preflightTimeoutMs);
   }
 
   return { start, getFailure: () => now() - failedAt <= CONSOLE_UPDATE_OUTCOME_TTL_MS ? lastFailure : null };

@@ -1,5 +1,6 @@
 node_modules
 dist/
+.cache/
 *.tsbuildinfo
 selected-models.json
 keybindings.json
