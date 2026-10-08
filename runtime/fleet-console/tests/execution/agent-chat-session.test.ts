@@ -414,6 +414,34 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       const ends = events.filter(({ event }) => event.kind === "turn-end");
       expect((ends[ends.length - 1]?.event as any).ok).toBe(false);
       expect(session.readConsoleOutput().outcome).toBe("failed");
+      expect(session.readConsoleOutput().failure).toMatchObject({ error: "error_during_execution" });
+    });
+
+    // 3b) A provider limit rejection: the CLI's synthetic assistant message carries the API error code, the result does not.
+    // The turn's failure speaks that code, as a PTY StopFailure would; the next failure without one does not inherit it.
+    liveSession()!.emit({
+      type: "assistant",
+      error: "rate_limit",
+      message: { model: "<synthetic>", content: [{ type: "text", text: "You've hit your session limit" }] },
+    });
+    liveSession()!.emit({ type: "result", subtype: "success", is_error: true, api_error: "usage_limit_reached", result: "You've hit your session limit", duration_ms: 5 });
+    await vi.waitFor(() => {
+      expect(session.readConsoleOutput().failure).toMatchObject({ error: "rate_limit", api_error: "usage_limit_reached", last_assistant_message: "You've hit your session limit" });
+    });
+    // A transient 429 shares the code but the CLI names no usage-limit cause.
+    liveSession()!.emit({
+      type: "assistant",
+      error: "rate_limit",
+      message: { model: "<synthetic>", content: [{ type: "text", text: "API Error: Server is temporarily limiting requests (not your usage limit)" }] },
+    });
+    liveSession()!.emit({ type: "result", subtype: "success", is_error: true, result: "API Error: Server is temporarily limiting requests (not your usage limit)", duration_ms: 5 });
+    await vi.waitFor(() => {
+      expect(session.readConsoleOutput().failure).toMatchObject({ error: "rate_limit", last_assistant_message: expect.stringContaining("not your usage limit") });
+      expect(session.readConsoleOutput().failure).not.toHaveProperty("api_error");
+    });
+    liveSession()!.emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["failure before model request"], duration_ms: 5 });
+    await vi.waitFor(() => {
+      expect(session.readConsoleOutput().failure).toMatchObject({ error: "error_during_execution" });
     });
 
     // 4) Idle auto-compaction opens one turn. The following message_start does not open another, and result closes it once.

@@ -617,6 +617,11 @@ class AgentChatSession {
   private turnScheduledWake = false;
   /** 이번 턴을 닫는 SDK result 의 원문 그대로 — 원장의 표시 상한을 지나지 않는다. */
   private turnRawAnswer: string | undefined;
+  /**
+   * 이번 턴에서 자식이 API 오류로 낸 assistant 메시지의 `error` 코드(`rate_limit`·`authentication_failed` 따위). SDK result 는 이 코드를
+   * 싣지 않으므로(한도 거절도 `subtype: "success"`·`is_error: true`) 실패 결말의 `error` 로 옮겨, PTY StopFailure 의 `error` 와 같은 어휘를 말하게 한다.
+   */
+  private turnApiError: string | undefined;
   /** 마지막으로 닫힌 턴의 보고와 그 `turn-end` 줄의 seq — 관측(`readConsoleOutput`)이 종료 이벤트와 같은 값을 말하게 한다. */
   private endedTurnReport: { readonly seq: number; readonly report: import("@fleet-console/sdk/mcp").ConsoleTurnReport } | undefined;
   private disposed = false;
@@ -2696,6 +2701,14 @@ class AgentChatSession {
           const result = (message as { readonly result?: unknown }).result;
           this.turnRawAnswer = typeof result === "string" && result.trim().length > 0 ? result : undefined;
         }
+        if (message.type === "assistant" && message["parent_tool_use_id"] == null) {
+          const apiError = (message as { readonly error?: unknown }).error;
+          if (typeof apiError === "string" && apiError.length > 0) this.turnApiError = apiError;
+        }
+        // result 가 자기 `error` 를 싣지 않으면 그 턴의 API 오류 코드가 실패 결말의 코드다. 성공 결말에는 붙이지 않는다.
+        const apiError = message.type === "result" && message["parent_tool_use_id"] == null && (message as { readonly error?: unknown }).error === undefined
+          ? this.turnApiError : undefined;
+        if (message.type === "result" && message["parent_tool_use_id"] == null) this.turnApiError = undefined;
         this.rememberSkillNames(message);
         this.verifyFleetPluginLoaded(message);
         this.invalidateCatalog(message);
@@ -2713,13 +2726,15 @@ class AgentChatSession {
             this.ingestWorkflowProgress(event, message, mapOptions);
             continue;
           }
-          this.ingest(event);
+          this.ingest(apiError !== undefined && event.kind === "turn-end" && event.failure ? { ...event, failure: { ...event.failure, error: apiError } } : event);
         }
       }
     } catch {
       // 자식이 끊겼다. 다음 디스패치가 새 자식을 세우고 마지막 좌표로 이어붙인다.
       if (!this.disposed) this.push({ kind: "error", code: "chat_session_lost" });
     } finally {
+      // 끊긴 자식의 오류 코드가 다음 자식의 턴 결말로 넘어가지 않게 한다.
+      this.turnApiError = undefined;
       this.retireSession(session);
     }
   }
