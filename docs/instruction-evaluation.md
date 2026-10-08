@@ -16,7 +16,7 @@
 - 각 항목에 관찰할 선택과 실패 조건을 적는다. 판정 단위는 계획이 아니라 **실제 도구 호출 기록**(호출·반환·발화·종료 상태)이다. 점수 합계뿐 아니라 무관한 절차 발동, 필요한 참조 누락, 권한 위반, 검증 누락과 조기 종료를 판독하고, 도구 루프 지표(무의미한 명령의 호출 수와 번호 등)는 별도 칸에 센다.
 - 장면과 판독 기준은 실제 환경의 구조와 도구 반환값을 따른다. 장면이 언급하는 것(파일, 증거 디렉터리, 워크트리, 커밋, 도구 목록)은 실행 환경에 실제로 있어야 하고, 도구 반환값이 장면과 어긋나면 지침이 아니라 장면 불일치를 잰다. 장면에서 지어낸 이름·구조를 정답으로 삼으면 지침 문장이 아니라 그 이름의 일치를 잰다. 실제 목표 id·세션 이름·사용자 경로는 가상 값으로 바꾼다.
 - 여러 문장을 다루면(이 절차로 아직 실행되지 않았다) 문장마다 그 문장만 격리한 전·후 쌍(임시 브랜치의 문장별 격리 커밋)과 과제·판독 항목을 만든다. 한 쌍으로 묶으면 결합 효과만 보고한다.
-- 회차 상한은 `--max-turns`다. 봉인 전에 그 값의 **산정 근거**를 `conditions.md`에 적는다: 관찰할 행동의 순서(예: 보고 시도 → 실패 반환 → 그다음 선택 → 종료)를 턴 단위로 세고, 그 앞에 모델이 합리적으로 쓸 확인 턴(파일 읽기·`git log` 등, 시범 판독에서 센 수)을 더하고, 루프 행동을 셀 여유 턴을 더한 값 이상으로 정한다. 4턴 상한으로 돌린 첫 실행에서는 4회차가 모두 절단되고 둘은 보고 시도 전에 끝나 판별에 쓸 행동이 거의 나오지 않았다. 필요한 읽기를 프롬프트에 주어 측정 장면에 일찍 닿게 하는 것은 턴을 줄이는 보조 수단이지 산정을 대신하지 않는다.
+- 회차 상한은 `--max-turns`다. 봉인 전에 그 값의 **산정 근거**를 `conditions.md`에 적는다: 판정 항목마다 관찰할 행동을 정의하고 그 순서(예: 보고 시도 → 실패 반환 → 그다음 선택 → 종료)를 턴 단위로 세고, 그 앞에 모델이 합리적으로 쓸 확인 턴(파일 읽기·`git log` 등, 시범 판독에서 센 수)을 더하고, 루프 행동을 셀 여유 턴을 더한 값 이상으로 정한다. 4턴 상한으로 돌린 첫 실행에서는 4회차가 모두 절단되고 둘은 보고 시도 전에 끝나 판별에 쓸 행동이 거의 나오지 않았다. 필요한 읽기를 프롬프트에 주어 측정 장면에 일찍 닿게 하는 것은 턴을 줄이는 보조 수단이지 산정을 대신하지 않는다.
 - **사전 조건(판정 사용):** 관찰할 행동에 닿기 전에 절단된 회차는 그 행동의 판정에 쓰지 않고 `판정 불가`로 따로 센다. 판정에 쓸 회차가 전·후 어느 쪽이든 사전 등록한 최소 수에 못 미치면 결과는 「판별력 없음」이고 효과 있음·없음 어느 쪽도 주장하지 않는다. 이 조건과 최소 수는 데이터를 보기 전에 장부에 고정한다.
 - 장부는 **모든 회차가 절단된다고 가정**하고 짠다: 상한에 닿은 회차(`error_max_turns`)의 `num_turns`는 상한+1로 찍히므로 회차당 상한+1로 계상하고, `N × (MAXTURNS+1)`에 시범·대체 예비분을 더한 값이 제공자별 상한 안에 들어야 한다. 들어가지 않으면 `N`이나 `MAXTURNS`를 줄이기 전에 산정 근거로 돌아가 과제를 줄인다(상한을 낮춰 맞추면 이번처럼 행동이 관찰되지 않는다). 절단 수와 판정 불가 수는 전·후 따로 보고한다.
 - `N`은 전·후 합계 회차 수로 정하고 짝수로 한다. 표본 수와 최소 관찰 기간, 비용·턴 상한, 제공자별 과금 풀과 승인 범위를 적는다. 자기 세션의 모델 사용량과 의도적인 평가 호출을 구분한다. 모든 평가에 여섯 회를 강요하지 않는다. 사전 등록 판정 규칙(유지·제거 문턱)은 데이터를 보기 전에 장부에 고정한다.
@@ -72,11 +72,13 @@ printf '%s\n' "$OUT" > "$E/tree-diff.out"; printf '%s\n' "$rc" > "$E/tree-diff.r
 
 `diff`의 0은 동일, 1은 차이 발견, 2 이상은 실패다. 파일 수만 세지 말고 모든 차이가 선언한 변경 경계에 속하는지 원문으로 확인한다. archive에는 `.git`·설치된 의존성·미커밋 변경이 없다.
 
-**장면**은 회차마다 같은 절대 경로 `SCENE`(scratchpad 아래, 이름에 before/after/eval/커밋 해시 같은 라벨성 낱말을 넣지 않는다)에 새로 만든다. 양쪽이 같은 경로라 경로로 버전이 드러나지 않는다. 지침이 실리는 위치는 `SCENE` 아래 워크트리 `W`(cwd)이며, 추출 트리를 `W`에 풀되 git 추적 밖(`info/exclude`)에 두어 장면의 커밋 해시가 양쪽에서 같게 한다. `SCENE` 상위 경로의 `CLAUDE.md`·`CLAUDE.local.md`가 섞이지 않는지 확인하고, `--add-dir`로 다른 체크아웃을 추가하지 않는다. 하위 `CLAUDE.md`는 모델이 그 폴더의 파일을 읽을 때 지연 적재되므로(전·후 같은 파일이어도 문맥이 늘어 효과가 희석될 수 있다) 적재 여부를 3단계 fixture에서 확인해 기록한다. 과제의 하위 경로가 지침 적재를 결정하면(하위 `CLAUDE.md` 변경 등) 양쪽 모두 `W` 아래 같은 상대 경로를 cwd로 쓰고 그 경로를 봉인 조건에 적는다. 자동 탐색은 유지한다. `--bare`나 별도 시스템 프롬프트에 지침을 주입하면 실제 세션과 지침의 위치·포장이 달라지므로 이 경로와 동등한 평가가 아니다.
+**장면**은 회차마다 같은 절대 경로 `SCENE`(scratchpad 아래, 이름에 before/after/eval/커밋 해시 같은 라벨성 낱말을 넣지 않는다)에 새로 만든다. 양쪽이 같은 경로라 경로로 버전이 드러나지 않는다. 지침이 실리는 위치는 `SCENE` 아래 워크트리 `W`(cwd)이며, 추출 트리를 `W`에 풀되 git 추적 밖(`info/exclude`)에 두어 장면의 커밋 해시가 양쪽에서 같게 한다. `SCENE` 상위 경로의 `CLAUDE.md`·`CLAUDE.local.md`가 섞이지 않는지 확인하고, `--add-dir`로 다른 체크아웃을 추가하지 않는다. 하위 `CLAUDE.md`는 모델이 그 폴더의 파일을 읽을 때 지연 적재되므로(전·후 같은 파일이어도 문맥이 늘어 효과가 희석될 수 있다) 적재 여부를 3단계 fixture에서 확인해 기록한다. 과제의 하위 경로가 지침 적재를 결정하면(하위 `CLAUDE.md` 변경 등) 양쪽 모두 `W` 아래 같은 상대 경로(`SUB`)를 cwd `C`로 쓰고 그 경로를 봉인 조건에 적는다. CLI 임시 폴더 키 `PKEY`는 `W`가 아니라 실제 cwd `C`에서 만든다(어긋나면 Bash가 `EPERM … mkdir '/private/tmp/claude-<uid>/<key>'`로 실패한다). 자동 탐색은 유지한다. `--bare`나 별도 시스템 프롬프트에 지침을 주입하면 실제 세션과 지침의 위치·포장이 달라지므로 이 경로와 동등한 평가가 아니다.
 
 ```bash
 SCENE=$SCRATCHPAD/scene; M=$SCENE/workspace/<저장소>; W=$SCENE/workspace/<저장소>-worktrees/<장면-브랜치>; SCR=$SCENE/scratch
-EV=$SCENE/.fleet/<가상 증거 디렉터리 경로>/shared; STMP=$SCENE/tmp; PKEY=$(printf '%s' "$W" | tr -c 'A-Za-z0-9' '-')
+EV=$SCENE/.fleet/<가상 증거 디렉터리 경로>/shared; STMP=$SCENE/tmp
+SUB=''   # 하위 경로가 지침 적재를 결정하는 과제면 저장소 상대 경로(예: runtime/fleet-console)
+C=$W${SUB:+/$SUB}; PKEY=$(printf '%s' "$C" | tr -c 'A-Za-z0-9' '-')   # 실행 cwd에서 CLI 임시 폴더 키를 만든다
 build_scene() {  # $1=before|after — 장면 사실(커밋·파일·증거 디렉터리)은 과제문과 일치해야 한다
   rm -rf -- "$SCENE"; mkdir -p "$M" "$(dirname "$W")" "$SCR" "$EV" "$STMP" || return 1
   export GIT_AUTHOR_NAME=member GIT_AUTHOR_EMAIL=member@example.invalid GIT_COMMITTER_NAME=member GIT_COMMITTER_EMAIL=member@example.invalid GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
@@ -98,7 +100,7 @@ CLAUDE_BIN=$(command -v claude)
 claude_call() {  # $1=before|after, $2=회차 태그
   build_scene "$1" || return 1
   PROMPT=$(< "$E/task.txt")
-  ( cd "$W" && perl -e 'alarm 300; exec @ARGV' sandbox-exec -p "$PROFILE" \
+  ( cd "$C" && perl -e 'alarm 300; exec @ARGV' sandbox-exec -p "$PROFILE" \
     env -i PATH="/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$CLAUDE_BIN")" USER="$USER" LOGNAME="$LOGNAME" HOME="$HOME" TMPDIR="$STMP" \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 "${ENVX[@]}" \
     "$CLAUDE_BIN" -p "$PROMPT" --model "$MODEL" --effort "$EFFORT" \
@@ -114,7 +116,7 @@ claude_call() {  # $1=before|after, $2=회차 태그
 - `--setting-sources project`로 프로젝트 `CLAUDE.md` 자동 탐색을 유지하고 사용자·로컬 설정을 제외하며, `--disable-slash-commands`·`--strict-mcp-config`·훅 끄기로 스킬·MCP·훅 혼입을 막는다. `--setting-sources ''`와 `--restricted`는 필요한 자동 지침 문맥을 제외하므로 쓰지 않는다. 프로젝트 설정이 provider·환경·plugin·별도 agent를 활성화하거나 조건을 설명할 수 없으면, 또는 적용된 관리 정책이 조건을 바꾸면 중단하고 기록한다.
 - `perl alarm`은 너무 좁은 쓰기 프로파일에서 CLI가 멈출 때의 상한이다.
 
-샌드박스 프로파일은 `W`·장면 저장소의 `.git`·증거 디렉터리 `EV`·측정 파일 폴더 `SCR`·장면 tmp `STMP`·CLI 임시 폴더만 쓰기를 허용하고, 세션 간 통로·`gh`·SSH 자격을 막는다. `PKEY`는 `W` 경로의 영숫자가 아닌 문자를 `-`로 바꾼 값이다. fixture는 네트워크를 loopback으로 제한하고 Keychains를 거부하며, 실호출은 네트워크를 열고 Keychain 접근을 막지 않는다(OAuth 때문).
+샌드박스 프로파일은 `W`·장면 저장소의 `.git`·증거 디렉터리 `EV`·측정 파일 폴더 `SCR`·장면 tmp `STMP`·CLI 임시 폴더만 쓰기를 허용하고, 세션 간 통로·`gh`·SSH 자격을 막는다. `PKEY`는 실행 cwd `C` 경로의 영숫자가 아닌 문자를 `-`로 바꾼 값이다. fixture는 네트워크를 loopback으로 제한하고 Keychains를 거부하며, 실호출은 네트워크를 열고 Keychain 접근을 막지 않는다(OAuth 때문).
 
 ```bash
 NET='(allow network*)'; ENVX=()   # 실호출
@@ -129,7 +131,7 @@ PROFILE="(version 1) (allow default) $NET (deny file-write*)
 (deny file-read* (subpath \"$HOME/.config/gh\") (subpath \"$HOME/.ssh\"))"
 ```
 
-- 이 프로파일은 쓰기만 좁히고 읽기는 막지 않는다(`allow default`). 실호출은 네트워크도 열려 있어 모델이 장면 밖 사용자 파일(다른 저장소, 다른 세션의 증거, 자격 파일)을 읽고 내보낼 수 있다. 과제가 장면 밖을 가리키지 않게 하고, 매 회차 기록에서 장면 밖 경로를 읽은 호출을 찾아 있으면 안전 중단 조건으로 처리한다. 읽기를 장면으로 좁힌 프로파일은 CLI 실행 파일·라이브러리·OAuth 상태 경로를 fixture로 확인하기 전에는 쓰지 않는다(너무 좁은 프로파일은 CLI를 멈추게 했다).
+- 이 프로파일은 쓰기만 좁히고 읽기는 막지 않는다(`allow default`). 실호출은 네트워크도 열려 있어 모델이 장면 밖 사용자 파일(다른 저장소, 다른 세션의 증거, 자격 파일)을 읽고 내보낼 수 있다. 과제가 장면 밖을 가리키지 않게 하고, 매 회차 기록에서 장면 밖 경로를 읽은 호출을 찾아 있으면 안전 중단 조건으로 처리한다. 읽기를 장면으로 좁힌 프로파일은 CLI 실행 파일·라이브러리·OAuth 상태 경로를 fixture로 확인하기 전에는 쓰지 않는다(쓰기 허용을 너무 좁힌 프로파일이 CLI를 멈추게 한 적이 있다. 읽기를 좁힌 프로파일은 시험한 적이 없다).
 - Bash 도구는 호출마다 cwd 추적 파일 `/private/tmp/claude-<id>-cwd`를 쓴다. 이 쓰기가 막히면 **모든 Bash 호출이 성공해도 `Exit code 1 … operation not permitted`로 돌아와** 모델이 환경 오류에 반응한다(한 회차가 이 결함으로 무효가 됐다). 위 `regex` 한 줄이 필요하다. 이 결함은 반환 끝에 있었으므로 fixture는 반환 전체를 본다.
 - 장면 저장소에는 원격을 두지 않고 `gh`를 장면에서 뺀다. 세션 간 통로를 막은 샌드박스는 도달 불가를 실제로 만드는 이중 장치지만, `claude -p` 자식에는 세션 간 메시징이 애초에 없다. 통로 차단을 풀어도 `SendMessage`는 항상 `{"success":false,"message":"No agent named '…' is reachable.\nUse ListAgents to see everyone you can message."}`, `ListAgents`는 `No reachable agents.`를 돌려준다. 실제 사건의 실패 반환(`ECONNREFUSED … peer session is unreachable`)과 다르고 `ListAgents`를 직접 권유하므로, 보고 실패 뒤의 행동을 재는 과제는 이 차이를 한계로 적는다.
 
@@ -162,28 +164,31 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 s = HTTPServer(('127.0.0.1', 0), H); (root / 'port').write_text(str(s.server_port)); s.serve_forever()
 PY
-mkdir -p "$E/fixture"; python3 -I "$T/fixture.py" "$E/fixture" "$E/plan.json" > "$E/fixture-server.out" 2>&1 &
-stub=$!
+start_stub() {  # $1=before|after — 쪽마다 새 스텁·새 디렉터리로 계획 전체를 처음부터 재생한다
+  FX=$E/fixture-$1; mkdir -p "$FX"
+  python3 -I "$T/fixture.py" "$FX" "$E/plan.json" > "$FX/server.out" 2>&1 &
+  stub=$!
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do [ -s "$FX/port" ] && break; kill -0 "$stub" 2>/dev/null || return 1; sleep 0.1; done
+  [ -s "$FX/port" ] || return 1; PORT=$(< "$FX/port")
+}
 trap 'kill "$stub" 2>/dev/null; wait "$stub" 2>/dev/null; rm -rf -- "$T"' EXIT
-for attempt in 1 2 3 4 5 6 7 8 9 10; do [ -s "$E/fixture/port" ] && break; kill -0 "$stub" 2>/dev/null || exit 1; sleep 0.1; done
-[ -s "$E/fixture/port" ] || exit 1
-PORT=$(< "$E/fixture/port")   # 위 fixture 값으로 NET·ENVX·PROFILE을 만든 뒤 전·후 각각 claude_call 한다
+# 쪽마다: start_stub <side> → 위 fixture 값으로 NET·ENVX·PROFILE 구성 → claude_call <side> fx-<side> → kill "$stub"; wait "$stub"
 ```
 
 **계획(`plan.json`)은 과제가 쓰는 도구를 모두 최소 한 번 부른다**: 정상 경로(증거 디렉터리 `ls`·Write·Read·Edit, `git log/status`, 측정 표 Read), 기대한 거부(트리 밖 Write·Bash 쓰기, `gh`, `git push`), 보고 도구와 `ListAgents`. 실행한 뒤 **모든 도구 반환**에서 `operation not permitted`·`EPERM`·`Exit code`·`No agent named`·`No reachable`·`does not appear to be a git repository`를 grep해 호출별 표를 만든다. 스텁은 전·후마다 새로 띄워 양쪽이 계획 전체를 처음부터 받게 하고, fixture에 한해 `MAXTURNS`를 계획 호출 수+1로 둔다(실제 회차와 다른 플래그는 이것뿐이다). 표의 행 수가 계획의 호출 수와 같아야 하고(빈 표는 오류 0이 아니다), 정상 경로는 오류 0이며 남는 오류는 기대한 거부·미도달뿐이어야 한다. 기대 밖 오류가 하나라도 있으면 봉인하지 않는다.
 
 ```bash
-jq -r 'select(.type=="user") | .message.content[]? | select(.type=="tool_result") | [(.is_error // false), (.content | if type=="array" then map(.text?) | join(" ") else . end | gsub("\n"; " | ") | .[0:160])] | @tsv' "$E/stream-fx.jsonl"
+jq -r 'select(.type=="user") | .message.content[]? | select(.type=="tool_result") | [(.is_error // false), (.content | if type=="array" then map(.text?) | join(" ") else . end | gsub("\n"; " | ") | .[0:160])] | @tsv' "$E/stream-fx-$side.jsonl"
 ```
 
 요청 본문은 검색 가능한 문자열로 펼쳐 본다. 건수는 근거 문장의 완전 일치로 센다.
 
 ```bash
-OUT=$(jq -r '.. | objects | select(.type? == "text") | .text' "$E/fixture/request-1.json" 2>&1); rc=$?
+OUT=$(jq -r '.. | objects | select(.type? == "text") | .text' "$E/fixture-$side/request-1.json" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/request-1.text"; printf '%s\n' "$rc" > "$E/request-1.text.rc"
 OUT=$(grep -Fc -- "$TARGET_SENTENCE" "$E/request-1.text" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/target-count.out"; printf '%s\n' "$rc" > "$E/target-count.rc"
-OUT=$(jq -c '[.tools[].name]' "$E/fixture/request-1.json" 2>&1); rc=$?
+OUT=$(jq -c '[.tools[].name]' "$E/fixture-$side/request-1.json" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/tools.out"; printf '%s\n' "$rc" > "$E/tools.rc"
 ```
 
@@ -195,10 +200,10 @@ printf '%s\n' "$OUT" > "$E/tools.out"; printf '%s\n' "$rc" > "$E/tools.rc"
 
 공통 작업 프롬프트 `task.txt`(실제 경로)와 판독용 `task.reader.txt`(경로를 가상 값으로 통일), 판독 기준 `rubric.md`, 시범 판독 결론·표본 수·최소 관찰 기간·모델·CLI·비용/턴 상한을 적은 `conditions.md`, 시범 판독 `pilot.md`, 장면 구성·실행·판독 렌더 스크립트, 샌드박스 프로파일, 3단계 fixture 결과(호출별 grep 표와 0/1 건수)를 증거 디렉터리에 저장한다. 이전 평가의 과제를 재사용하면 원본 대비 diff 문서(변경 사유, 지시한 변경과 안전상 불가피한 변경의 구분)를 함께 봉인한다. 대응표·회차 원문은 `E`에만 둔다. 3단계의 요청·원문·종료 부호를 확인한 뒤, 본 평가 유료 호출이 아직 0인 상태에서 해시와 시각을 기록한다.
 
-`SEAL`은 위 봉인 대상만 모은 디렉터리다. 판독자가 열 수 있는 곳에 둘 수 있으므로 대응표·회차 원문·장부는 넣지 않는다.
+`SEAL`은 위 봉인 대상만 모은 디렉터리다. 봉인 기록은 지휘관·판독자가 열 수 있는 목표 증거 디렉터리에 두므로 `E` 밖에 만들고, 대응표·회차 원문·장부는 넣지 않는다.
 
 ```bash
-SEAL=$E/seal; mkdir -p "$SEAL"   # 봉인 대상 파일을 이 아래로 복사한 뒤 해시한다
+SEAL=<목표 증거 디렉터리>/seal; mkdir -p "$SEAL"   # E 밖. 봉인 대상 파일을 이 아래로 복사한 뒤 해시한다
 ( cd "$SEAL" && find . -type f ! -name sealed.sha256 ! -name sealed-at.out | sort | xargs shasum -a 256 > sealed.sha256 ); rc=$?
 printf '%s\n' "$rc" > "$SEAL/sealed.sha256.rc"; [ "$rc" -eq 0 ] || exit "$rc"
 OUT=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>&1); rc=$?
@@ -211,7 +216,7 @@ printf '%s\n' "$OUT" > "$SEAL/sealed-at.out"; printf '%s\n' "$rc" > "$SEAL/seale
 
 **실제 모델의 반복 실행은 유료 실행 승인 이후에만 진행한다.** 무료 검증만 맡은 세션은 실제 평가를 시작하지 않는다. 승인은 과금 풀을 이름으로 지정해야 한다(구독 OAuth 풀이면 그 구독). fixture와 실제 회차의 차이는 `ENVX`·네트워크·Keychains 규칙뿐이며, 플래그·나머지 환경·메모리·검색 조건·모델·effort를 바꾸지 않는다. provider나 인증 방식 변경이 필요하면 fixture부터 새로 확인한다. 이 문서의 경로는 자격증명 값을 읽거나 기록하지 않는다. 임시 HOME에서 로그인하지 않는다.
 
-전·후를 번갈아 `N`회 실행한다. 실행 전에 `N`, `TURN_LIMIT`, `COST_LIMIT`을 승인된 합계 회차 수·제공자별 턴 상한·달러 상한으로, `RUN_COST_BOUND`를 회차 하나의 보수적 비용 상한(탐침 실호출의 `total_cost_usd`에서 턴 수 비례로 늘린 값 등)으로 지정한다. 루프는 회차가 `rc=0`도 `error_max_turns`도 아니거나 지표를 읽지 못하면 다음 회차로 넘어가지 않고 멈춘다. 같은 쪽 대체 여부는 실행자가 중단 조건을 보고 정한다. 회차 시작 전에 `누적 턴 + (MAXTURNS+1) ≤ 제공자별 상한`을 확인하고, 회차마다 장면을 새로 만든 뒤 파일 수준으로 지침 적재를 확인한다(이전 0건·이후 1건이 아니면 호출하지 않는다).
+전·후를 번갈아 `N`회 실행한다. 실행 전에 `N`, `TURN_LIMIT`, `COST_LIMIT`을 승인된 합계 회차 수·이 루프에 남은 제공자별 턴·달러 상한(승인 상한에서 탐침·시범·무효 회차 소모를 뺀 값)으로, `RUN_COST_BOUND`를 회차 하나의 보수적 비용 상한(탐침 실호출의 `total_cost_usd`에서 턴 수 비례로 늘린 값 등)으로 지정한다. 루프는 회차가 `rc=0`도 `error_max_turns`도 아니거나 지표를 읽지 못하면 다음 회차로 넘어가지 않고 멈춘다. 같은 쪽 대체는 자동으로 하지 않고 실행자가 중단 조건을 보고 한 번만 수동으로 정한다. 장부 열은 위 머리글 순서(턴 5열, 비용 6열)를 그대로 지킨다. 회차 시작 전에 `누적 턴 + (MAXTURNS+1) ≤ 제공자별 상한`을 확인하고, 회차마다 장면을 새로 만든 뒤 파일 수준으로 지침 적재를 확인한다(이전 0건·이후 1건이 아니면 호출하지 않는다).
 
 ```bash
 printf 'number\tside\trc\tsubtype\tturns\tcost_usd\tduration_ms\n' > "$E/ledger.tsv"
@@ -219,6 +224,7 @@ i=1
 while [ "$i" -le "$N" ]; do
   if [ $((i % 2)) -eq 1 ]; then side=before; else side=after; fi
   # 회차 시작 전에 승인된 턴(빈 값은 상한+1로 계상)·비용 상한을 확인한다
+  [ -n "$RUN_COST_BOUND" ] && [ -n "$COST_LIMIT" ] && [ -n "$TURN_LIMIT" ] || exit 1   # 빈 값은 awk에서 0이 된다
   USED=$(awk -F'\t' -v m="$MAXTURNS" 'NR>1 {s+=($5=="" ? m+1 : $5)} END{print s+0}' "$E/ledger.tsv")
   SPENT=$(awk -F'\t' 'NR>1 {s+=$6} END{print s+0}' "$E/ledger.tsv")
   [ $((USED + MAXTURNS + 1)) -le "$TURN_LIMIT" ] || break
