@@ -640,7 +640,6 @@ function SlidersGlyph() {
 
 // "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다. 엔진이 마운트한 모든 기여의
 // 엔트리 힌트·투어 시청 기록과 최초 설정 가이드·강도 확인 팁 기록을 함께 지워, 어느 화면에 있든 처음부터 다시 보게 한다.
-// 웰컴은 되돌리지 않는다 — "이번 업데이트로 새로 생긴 것"은 다시 일어나지 않는 사건이다.
 function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
   const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY]);
   const afterOnboarding = forgetReplayableOnboarding(seen);

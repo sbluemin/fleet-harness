@@ -11,11 +11,6 @@ export type TourPhase = "spotlight" | "walkthrough";
 
 const SEEN_LIMIT = 64;
 
-export function welcomeSeenKey(contribution: OnboardingContribution): string | null {
-  if (!contribution.welcome) return null;
-  return contribution.welcome.seenKey ?? `${contribution.id}.welcome`;
-}
-
 export function hintSeenKey(contribution: OnboardingContribution): string | null {
   if (!contribution.entryHint) return null;
   return contribution.entryHint.seenKey ?? `${contribution.id}.rail-hint`;
@@ -34,7 +29,7 @@ export function appendSeenAll(seen: readonly string[], keys: readonly string[]):
 }
 
 /**
- * 투어 밖의 1회성 안내(웰컴·힌트)가 본 기록을 남긴다. 닫는 즉시 뒤따르는 투어가 같은 필드를 저장할 수 있으므로,
+ * 투어 밖의 1회성 안내(힌트)가 본 기록을 남긴다. 닫는 즉시 뒤따르는 투어가 같은 필드를 저장할 수 있으므로,
  * 인플라이트 저장이 끝난 틱에만 최신 값 위에 덧붙인다 — 같은 필드의 동시 저장은 뒤쪽이 밀려 기록이 유실된다.
  */
 export function rememberSeen(keys: readonly string[]): void {
@@ -70,8 +65,7 @@ export function setMountedOnboardingContributions(contributions: readonly Onboar
 }
 
 /**
- * 다시 보기 — 힌트와 투어의 본 기록을 지운다. 웰컴은 되돌리지 않는다: 웰컴은 "이번 업데이트로 새로 생긴 것"이라는
- * 한 번의 사건이고, 그 사건은 다시 일어나지 않는다.
+ * 다시 보기 — 힌트와 투어의 본 기록을 지운다.
  */
 export function forgetReplayableOnboarding(seen: readonly string[]): readonly string[] {
   const drop = new Set<string>();

@@ -45,7 +45,7 @@ import { Operations } from "../../../../features/workspace/client/operations.js"
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
-import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
+import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { subscribeDormantAutoMinimize } from "../../../../features/workspace/client/canvas/dormant-auto-minimize.js";
@@ -715,8 +715,6 @@ function ConnectedApp() {
           core={CORE_ONBOARDING}
           plugins={registry.onboarding}
           language={consoleLocale}
-          welcomeReady={state.bootstrapped && state.version !== "" && !state.releaseNotesLoading && (state.releaseNotesFetchedAt !== null || state.releaseNotesError !== null || state.releaseNotes.length > 0) && !state.whatsNewOpen}
-          firstRun={state.bootstrapped && state.theaters.length === 0 && globalSettings.state !== null && !globalSettings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)}
           ports={ONBOARDING_PORTS}
         />
         <WarRoomTransition local={state.channel === "local"} />

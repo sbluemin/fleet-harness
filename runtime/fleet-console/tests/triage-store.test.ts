@@ -162,7 +162,7 @@ describe("triage store", () => {
     opener.focus();
     act(() => enterTriage(null, opener));
     const dialog = document.querySelector('[role="dialog"]')!;
-    expect(document.activeElement).toBe(dialog.querySelector(".onboarding-welcome-primary"));
+    expect(document.activeElement).toBe(dialog.querySelector(".canvas-confirm-primary"));
     expect(isTriageActive()).toBe(false);
     act(() => dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -172,7 +172,7 @@ describe("triage store", () => {
     const off = setWarRoomTransitionRunner((_next, nextActions) => { actions = nextActions; return true; });
     try {
       act(() => enterTriage(null, opener));
-      act(() => (document.querySelector(".onboarding-welcome-primary") as HTMLButtonElement).click());
+      act(() => (document.querySelector(".canvas-confirm-primary") as HTMLButtonElement).click());
       expect(isTriageActive()).toBe(false);
       // 연출기가 커튼을 덮기 전에는 두 상태 모두 이전 화면이다.
       act(() => { actions?.onLayout?.(); });

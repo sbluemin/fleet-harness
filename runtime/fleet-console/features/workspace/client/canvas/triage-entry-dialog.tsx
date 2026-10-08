@@ -3,8 +3,9 @@ import { createPortal } from "react-dom";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { cancelTriageEntry, confirmTriageEntry, useTriageEntryRequest } from "./triage-store.js";
+import "./canvas-confirm-dialog.css";
 
-/** 웰컴 카드의 그림·표면·버튼 문법을 쓰는 진입 확인. 지목은 store가 열기 전에 보관한다. */
+/** 캔버스 확인 카드의 그림·표면·버튼 문법을 쓰는 진입 확인. 지목은 store가 열기 전에 보관한다. */
 export function TriageEntryDialog() {
   const request = useTriageEntryRequest();
   const t = useT();
@@ -14,14 +15,14 @@ export function TriageEntryDialog() {
   useEffect(() => () => cancelTriageEntry(), []);
   if (!request) return null;
   return createPortal(
-    <div className="onboarding-welcome-overlay" role="presentation">
-      <button type="button" className="onboarding-welcome-scrim" tabIndex={-1} aria-label={t("common.cancel")} onClick={cancelTriageEntry} />
-      <div className="onboarding-welcome-deck">
-        <section ref={cardRef} className="onboarding-welcome-card" role="dialog" aria-modal="true" aria-labelledby="triage-entry-title"
+    <div className="canvas-confirm-overlay" role="presentation">
+      <button type="button" className="canvas-confirm-scrim" tabIndex={-1} aria-label={t("common.cancel")} onClick={cancelTriageEntry} />
+      <div className="canvas-confirm-deck">
+        <section ref={cardRef} className="canvas-confirm-card" role="dialog" aria-modal="true" aria-labelledby="triage-entry-title"
           onKeyDown={(event) => {
             if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelTriageEntry(); }
             if (event.key === "Tab") {
-              // 웰컴 대화상자와 같은 버튼 순환으로 포커스를 가둔다.
+              // 모두 정렬 확인과 같은 버튼 순환으로 포커스를 가둔다.
               const buttons = [...(cardRef.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? [])];
               if (!buttons.length) return;
               event.preventDefault();
@@ -29,16 +30,16 @@ export function TriageEntryDialog() {
               buttons[(at + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
             }
           }}>
-          <div className="onboarding-welcome-slide">
-            <div className="onboarding-welcome-copy"><h2 id="triage-entry-title">{t("canvas.triage.entryTitle")}</h2></div>
-            <div className="onboarding-welcome-art"><WarRoomEntryIllustration /></div>
-            <div className="onboarding-welcome-copy"><p>{t("canvas.triage.entryBody")}</p></div>
+          <div className="canvas-confirm-slide">
+            <div className="canvas-confirm-copy"><h2 id="triage-entry-title">{t("canvas.triage.entryTitle")}</h2></div>
+            <div className="canvas-confirm-art"><WarRoomEntryIllustration /></div>
+            <div className="canvas-confirm-copy"><p>{t("canvas.triage.entryBody")}</p></div>
           </div>
-          <div className="onboarding-welcome-foot">
+          <div className="canvas-confirm-foot">
             <span />
-            <div className="onboarding-welcome-actions">
-              <button type="button" className="onboarding-welcome-secondary" onClick={cancelTriageEntry}>{t("common.cancel")}</button>
-              <button ref={primaryRef} type="button" className="onboarding-welcome-primary" onClick={confirmTriageEntry}>{t("canvas.triage.entryConfirm")}</button>
+            <div className="canvas-confirm-actions">
+              <button type="button" className="canvas-confirm-secondary" onClick={cancelTriageEntry}>{t("common.cancel")}</button>
+              <button ref={primaryRef} type="button" className="canvas-confirm-primary" onClick={confirmTriageEntry}>{t("canvas.triage.entryConfirm")}</button>
             </div>
           </div>
         </section>

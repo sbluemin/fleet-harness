@@ -63,6 +63,7 @@ const FILE_EXPLORER_CSS_PATH = new URL("../../fleet-plugins/file-explorer/client
 const REPOSITORY_CSS_PATH = new URL("../../fleet-plugins/repository/client/repository.css", import.meta.url);
 const FONT_PICKER_CSS_PATH = new URL("../foundation/font-picker/styles.css", import.meta.url);
 const ONBOARDING_CSS_PATH = new URL("../features/onboarding/client/onboarding.css", import.meta.url);
+const CANVAS_CONFIRM_CSS_PATH = new URL("../features/workspace/client/canvas/canvas-confirm-dialog.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
 const SDK_CAPTION_ACTIONS_PATH = new URL("../sdk/components/caption-actions.tsx", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
@@ -2015,11 +2016,12 @@ describe("Instrument core design contract", () => {
       const scoped = selector.replace(/\./g, "\\.");
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--float-underlay\\);`));
     }
-    // 온보딩 엔진의 세 표면(웰컴 카드·엔트리 힌트·투어 카드)은 엔진 시트가 소유하고 같은 채널 계약을 진다.
+    // 온보딩 엔진의 두 표면(엔트리 힌트·투어 카드)은 엔진 시트가, 캔버스 확인 카드는 대화상자 시트가 소유하고 같은 채널 계약을 진다.
     const onboardingCss = externalSource(ONBOARDING_CSS_PATH);
-    for (const selector of [".onboarding-welcome-card", ".onboarding-hint", ".feature-tour-card"]) {
+    const canvasConfirmCss = externalSource(CANVAS_CONFIRM_CSS_PATH);
+    for (const [sheet, selector] of [[canvasConfirmCss, ".canvas-confirm-card"], [onboardingCss, ".onboarding-hint"], [onboardingCss, ".feature-tour-card"]] as const) {
       const scoped = selector.replace(/\./g, "\\.");
-      expect(onboardingCss).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--float-underlay\\);`));
+      expect(sheet).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--float-underlay\\);`));
     }
     // 브레드크럼 스위처 메뉴는 브레드크럼과 함께 퇴역했다 — 밴드 앵커 메뉴는 시스템 메뉴와
     // 환경 팝오버만 남는다.

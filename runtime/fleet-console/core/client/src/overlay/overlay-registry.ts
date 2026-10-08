@@ -48,8 +48,8 @@ function hasPublished(): boolean {
  * - `.operation-search-overlay`(⌘K·⌘P), `.quick-launch-overlay`(Quick Launch).
  * - `.app-toast-host`의 자식: 떠 있는 토스트. 시트 바깥으로 비켜도 뜨는 동안은 겹친 것으로 본다.
  * - `.console-toolbar-tip.is-visible`: 도구모음 말풍선.
- * - `[data-feature-tour-id]`, `.onboarding-welcome-overlay`: 기능 소개 투어·온보딩
- *   웰컴. 투어 카드(z 120)는 뷰보다 위에 서므로 뜨면 뷰를 물린다.
+ * - `[data-feature-tour-id]`, `.canvas-confirm-overlay`: 기능 소개 투어·캔버스 확인
+ *   대화상자. 투어 카드(z 120)는 뷰보다 위에 서므로 뜨면 뷰를 물린다.
  *
  * 토스트와 도구모음 말풍선은 예외다. 시트 밖으로 비켜 실제로 겹치지 않는데도
  * 존재만으로 물리면 멈춰 보인다는 오해가 생긴다. 둘은 뷰 사각형과 겹칠 때만
@@ -62,7 +62,7 @@ const OVERLAY_SELECTOR = [
   ".operation-search-overlay",
   ".quick-launch-overlay",
   "[data-feature-tour-id]",
-  ".onboarding-welcome-overlay",
+  ".canvas-confirm-overlay",
 ].join(",");
 
 function readMarkers(): boolean {

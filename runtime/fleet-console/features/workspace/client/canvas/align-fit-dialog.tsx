@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { ALIGN_MIN_BODY_HEIGHT, ALIGN_MIN_BODY_WIDTH } from "./canvas-store.js";
 import { cancelAlignFit, confirmAlignFit, confirmAlignFitCollapsed, useAlignFitRequest, type AlignFitRequest } from "./align-fit-store.js";
+import "./canvas-confirm-dialog.css";
 
 /** 모두 정렬 진입 확인 — 본문 하한을 넘으면 남길 패널을 고르게 한다. 세션은 종료·보관하지 않는다. */
 export function AlignFitDialog() {
@@ -27,10 +28,10 @@ function AlignFitCard({ request }: { readonly request: AlignFitRequest }) {
   const keptIds = request.panels.map((panel) => panel.id).filter((id) => kept.has(id));
   const full = kept.size >= request.capacity;
   return createPortal(
-    <div className="onboarding-welcome-overlay" role="presentation">
-      <button type="button" className="onboarding-welcome-scrim" tabIndex={-1} aria-label={t("common.cancel")} onClick={cancelAlignFit} />
-      <div className="onboarding-welcome-deck">
-        <section ref={cardRef} className="onboarding-welcome-card" role="dialog" aria-modal="true" aria-labelledby="align-fit-title"
+    <div className="canvas-confirm-overlay" role="presentation">
+      <button type="button" className="canvas-confirm-scrim" tabIndex={-1} aria-label={t("common.cancel")} onClick={cancelAlignFit} />
+      <div className="canvas-confirm-deck">
+        <section ref={cardRef} className="canvas-confirm-card" role="dialog" aria-modal="true" aria-labelledby="align-fit-title"
           onKeyDown={(event) => {
             if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelAlignFit(); }
             if (event.key === "Tab") {
@@ -42,7 +43,7 @@ function AlignFitCard({ request }: { readonly request: AlignFitRequest }) {
               items[(at + (event.shiftKey ? -1 : 1) + items.length) % items.length]?.focus();
             }
           }}>
-          <div className="onboarding-welcome-copy">
+          <div className="canvas-confirm-copy">
             <h2 id="align-fit-title">{t("canvas.alignFit.title", { count: kept.size })}</h2>
             <p>{t("canvas.alignFit.body", {
               width: Math.floor(request.smallest.width),
@@ -52,7 +53,7 @@ function AlignFitCard({ request }: { readonly request: AlignFitRequest }) {
               minHeight: ALIGN_MIN_BODY_HEIGHT,
             })}</p>
           </div>
-          <div className="onboarding-welcome-copy">
+          <div className="canvas-confirm-copy">
             <div className="align-fit-meta">
               <span id="align-fit-keep">{t("canvas.alignFit.keep")}</span>
               <span aria-live="polite">{t("canvas.alignFit.limit", { selected: kept.size, capacity: request.capacity })}</span>
@@ -73,16 +74,16 @@ function AlignFitCard({ request }: { readonly request: AlignFitRequest }) {
             </ul>
             <p>{t("canvas.alignFit.note")}</p>
           </div>
-          <div className="onboarding-welcome-foot">
+          <div className="canvas-confirm-foot">
             <span />
-            <div className="onboarding-welcome-actions">
-              <button type="button" className="onboarding-welcome-secondary" onClick={cancelAlignFit}>{t("common.cancel")}</button>
+            <div className="canvas-confirm-actions">
+              <button type="button" className="canvas-confirm-secondary" onClick={cancelAlignFit}>{t("common.cancel")}</button>
               {request.collapsedCapacity !== null ? (
-                <button type="button" className="onboarding-welcome-secondary" onClick={confirmAlignFitCollapsed}>
+                <button type="button" className="canvas-confirm-secondary" onClick={confirmAlignFitCollapsed}>
                   {t("canvas.alignFit.collapse", { count: Math.min(request.collapsedCapacity, request.panels.length) })}
                 </button>
               ) : null}
-              <button ref={primaryRef} type="button" className="onboarding-welcome-primary" disabled={kept.size === 0}
+              <button ref={primaryRef} type="button" className="canvas-confirm-primary" disabled={kept.size === 0}
                 onClick={() => confirmAlignFit(keptIds)}>
                 {t("canvas.alignFit.confirm", { shown: kept.size, hidden: request.panels.length - kept.size })}
               </button>
