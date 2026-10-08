@@ -1310,12 +1310,14 @@ class AgentChatSession {
    * 지금 좌표와 턴 경계를 기다리는 예약. 예약은 적용하는 비행 내내 남고, 성공하면 같은 동기 블록에서 좌표가 바뀐 뒤에야 비워진다 —
    * 그래서 "예약 없음 + 옛 좌표"는 적용 중이 아니라 적용되지 않았다는 뜻이다(버림·실패·취소).
    */
-  readCoordinates(): { readonly model: string; readonly effort: string | null; readonly pending: { readonly model: string; readonly effort: string | null } | null } {
+  readCoordinates(): import("@fleet-console/sdk/mcp").ConsoleCoordinates {
     const pending = this.pendingCoordinates;
+    const refused = this.coordinatesRefusal;
     return {
       model: this.coordinates.model,
       effort: this.coordinates.launchEffort,
       pending: pending === null ? null : { model: pending.model, effort: pending.launchEffort },
+      ...(refused ? { refused: { model: refused.target.model, effort: refused.target.launchEffort, cause: refused.cause } } : {}),
     };
   }
 
@@ -1397,6 +1399,7 @@ class AgentChatSession {
         return false;
       }
       this.coordinates = target;
+      this.coordinatesRefusal = null;
       // 자식이 이전 모델에서 말한 좌표는 새 모델의 것이 아니다. 다음 스냅숏까지는 모델 id에서 유도한다.
       if (target.model !== previous.model) this.observedClaudeCoordinate = null;
       if (this.pendingCoordinates === target) this.setPendingCoordinates(null);

@@ -1203,7 +1203,9 @@ describe("AgentChatRegistry — stopping a turn", () => {
       cause: { message: `Provider refused the session: key=sk-… ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit", errorClass: "process_exited_nonzero", exitCode: 1 },
     });
     expect(onControl).toHaveBeenCalledTimes(1);
-    expect(session.readCoordinates()).toMatchObject({ model: "sonnet[1m]", pending: null });
+    // 좌표 조회도 그 거절을 사유째 들고 있다 — 턴 경계에서 거절된 예약의 사유를 플러그인이 읽는 자리다.
+    expect(session.readCoordinates()).toEqual({ model: "sonnet[1m]", effort: "medium", pending: null,
+      refused: { model: "muse-code--muse-spark-1.3-contributor", effort: null, cause: { message: `Provider refused the session: key=sk-… ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit", errorClass: "process_exited_nonzero", exitCode: 1 } } });
 
     await registry.disposeAll();
   });

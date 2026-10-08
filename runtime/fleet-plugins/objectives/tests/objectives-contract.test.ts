@@ -561,6 +561,11 @@ describe("Objectives contract", () => {
       await pick("opus[1m]", "high");
       hostChat.get(reviewer.id)!.pending = null;
       expect(shown()).toMatchObject({ model: "sonnet[1m]", next: { model: "opus[1m]", failed: "coordinates_not_applied" } });
+      // 경계에서 자식이 바로 그 예약을 거절했으면 같은 자리에 그 원 예외가 사유로 선다.
+      const boundaryCause = { message: `Couldn't confirm model "opus[1m]" with the API. Try again.`, name: "Error" };
+      Object.assign(hostChat.get(reviewer.id)!, { refused: { model: "opus[1m]", effort: "high", cause: boundaryCause } });
+      expect(shown().next).toEqual({ model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause: boundaryCause });
+      delete (hostChat.get(reviewer.id) as { refused?: unknown }).refused;
       await route("member/next-cancel", { objectiveId: objective.id, memberId: reviewer.id });
       // 감시자가 저장한 실패 줄 — 실행값이 예약과 다르면 남고, 사람이 채팅에서 그 모델로 바꾸면(launch-changed) 저장 기록째 거둔다.
       await pick("opus[1m]", "high");
@@ -1891,6 +1896,18 @@ describe("Objectives contract", () => {
     // 뜬 모델은 판단이 보여 준 값이다(이 하네스에서는 판단이 실패해 지휘관 프리셋) — 제안으로 뜨지 않는다.
     expect(operations.get(workerId)!.payload.session).toMatchObject({ model: (routed.members as readonly { model: string }[])[0]!.model });
     expect((routed.members as readonly { via: string }[])[0]!.via).toBe("fallback");
+    // 떠 있는 채팅의 자식이 모델 변경을 거절하면 — 사람의 모델 칩(member/patch)은 코드만 답하고, 자식이 던진 원 예외는 사령관의 failedSwitches 와
+    // 사람의 행에 같은 사유로 남는다. 곧바로 거절된 전환도 턴 뒤 실패와 같은 자리다. 자동 재시도는 없다.
+    const running = operations.get(workerId)!.payload.session as { model: string; effort?: string };
+    hostChat.set(workerId, { model: running.model, effort: running.effort ?? null, pending: null });
+    const cause = { message: `Provider refused the session: ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit" };
+    hostFault.coordinates = { ok: false, error: "coordinates_apply_failed", cause };
+    expect(await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } })).toMatchObject({ value: { error: "coordinates_apply_failed" } });
+    expect(hostFault.coordinates).toBeNull();
+    expect((await board({ action: "models" })).failedSwitches).toEqual([{ objectiveId: id, memberId: workerId, role: "worker", model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause }]);
+    expect(((await route("objective/get", { objectiveId: id })).value as { objective: Objective }).objective.members.find((m) => m.id === workerId)?.next).toEqual({ model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause });
+    await route("member/next-cancel", { objectiveId: id, memberId: workerId });
+    hostChat.delete(workerId);
     const executing = (await board({ action: "read", objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;

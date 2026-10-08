@@ -48,7 +48,7 @@ import {
   type MemberLaunch,
   type MemberProposal,
   type MemberNext,
-  COORDINATES_NOT_APPLIED,
+  notAppliedFailure,
   heldNextOutcome,
   type HostCoordinates,
   type MemberRouted,
@@ -491,7 +491,10 @@ function storedNext(value: StoredMember["next"]): MemberNext | null {
   // 「다음 재개」 시절의 표식(reservedWhile·reservedGeneration)은 더 뜻이 없다 — 읽을 때 버린다.
   const { reservedWhile: _while, reservedGeneration: _generation, ...rest } = value as MemberNext & { reservedWhile?: unknown; reservedGeneration?: unknown };
   // 예약 모델만 접는다. from은 예약 당시의 실행값이라 원문을 둔다.
-  return { ...rest, model: canonicalModelId(rest.model), ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), ...(value.held === "host" || value.held === "plugin" ? {} : { held: undefined }) };
+  const cause = value.cause && typeof value.cause === "object" && typeof value.cause.message === "string"
+    ? { message: value.cause.message, ...(typeof value.cause.name === "string" ? { name: value.cause.name } : {}), ...(typeof value.cause.code === "string" ? { code: value.cause.code } : {}),
+      ...(typeof value.cause.errorClass === "string" ? { errorClass: value.cause.errorClass } : {}), ...(typeof value.cause.exitCode === "number" ? { exitCode: value.cause.exitCode } : {}), ...(typeof value.cause.signal === "string" ? { signal: value.cause.signal } : {}) } : undefined;
+  return { ...rest, model: canonicalModelId(rest.model), ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), cause: shortText(value.failed, 64) ? cause : undefined, ...(value.held === "host" || value.held === "plugin" ? {} : { held: undefined }) };
 }
 
 function canonicalStoredLaunch(launch: MemberLaunch | null | undefined): MemberLaunch | undefined {
@@ -673,14 +676,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const host = stored && !stored.failed && stored.held === "host" ? options.coordinates?.(member.id) ?? null : null;
       const held = host ? heldNextOutcome(stored!, host) : null;
       const applied = legacy || held === "applied";
-      const next = applied ? null : held === "not_applied" ? { ...stored!, failed: COORDINATES_NOT_APPLIED } : stored;
+      const next = applied ? null : held === "not_applied" ? { ...stored!, ...notAppliedFailure(stored!, host!) } : stored;
       const memberOutcome = options.observe ? deriveFailedOutcome(options.observe(member.id)) : undefined;
       return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}), ...(member.proposal ? { proposal: member.proposal } : {}),
         subagents: member.subagents === true, launch: canonicalStoredLaunch(member.launch) ?? { mode: "route" as const },
         sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: canonicalModelId(preset.model) } : {}), ...(preset?.effort ? { effort: preset.effort } : {}),
         routed: memberNode && !applied ? storedRouted(member.routed) : null,
         switchesLive: options.liveSwitch === true,
-        next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null } : null,
+        next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null, ...(next.failed && next.cause ? { cause: next.cause } : {}) } : null,
         ...(memberOutcome ? { outcome: memberOutcome } : {}),
         ...(memberFailures.has(member.id) ? { failure: memberFailures.get(member.id)! } : {}),
         ...(memberUnreported.has(member.id) ? { unreported: memberUnreported.get(member.id)! } : {}) };

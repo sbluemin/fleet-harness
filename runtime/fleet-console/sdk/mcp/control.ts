@@ -154,6 +154,11 @@ export interface ConsoleCoordinates {
   readonly model: string;
   readonly effort: string | null;
   readonly pending: { readonly model: string; readonly effort: string | null } | null;
+  /**
+   * 자식이 마지막으로 거절한 좌표와 그 원 예외 — 턴 경계에서 적용하다 거절된 예약도 사유가 남게 한다. 다음 적용이 성공하면 사라진다.
+   * 거절된 적이 없으면 없다.
+   */
+  readonly refused?: { readonly model: string; readonly effort: string | null; readonly cause: ConsoleCoordinatesFailureCause };
 }
 
 export interface ConsoleAutomationInput {

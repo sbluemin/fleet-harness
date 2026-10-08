@@ -9,7 +9,7 @@ import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberU
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "./signals.js";
-import { COMMANDER_PRESET, COORDINATES_NOT_APPLIED, heldNextOutcome, missionReady, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
+import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
 import { deriveFailedOutcome } from "./views.js";
 
 /**
@@ -727,7 +727,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         return;
       }
       // 그새 잠들었거나 채팅이 아직 서지 않았다 — 지금 상태에 맞는 길로 바꾼다.
-      if (result.error !== "chat_not_active") throw coordinatesError(result);
+      // 그 밖의 거절은 턴 뒤 실패와 같은 자리(next.failed)에 사유와 원 예외를 남긴다 — 사람의 행과 사령관의 failedSwitches 가 같은 기록을 읽는다.
+      // 자동으로 다시 시도하거나 다른 모델로 바꾸지 않는다.
+      if (result.error !== "chat_not_active") {
+        store.memberLaunchState(current.id, memberId, { next: { ...goal, from: live, ...(was ? { was } : {}), failed: result.error, ...(result.error === "coordinates_apply_failed" && result.cause ? { cause: result.cause } : {}) } });
+        throw coordinatesError(result);
+      }
     }
     if (!target?.model || samePreset(target, running)) { store.memberLaunchState(current.id, memberId, { next: null }); return; }
     const goal = { ...target, model: target.model };
@@ -792,12 +797,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (!next || next.failed || !next.held || !node) { watched.delete(memberId); return; }
     const goal = goalOf(next);
     const done = (patch: { readonly next: MemberNext | null; readonly routed?: null }) => { store.memberLaunchState(objectiveId, memberId, patch); store.refresh(objectiveId); watched.delete(memberId); };
-    const failed = (code: string) => done({ next: { ...next, failed: code } });
+    const failed = (code: string, cause?: MemberNext["cause"]) => done({ next: { ...next, failed: code, ...(cause ? { cause } : {}) } });
     const host = hostCoordinates(memberId);
     if (next.held === "host" && host) {
       const outcome = heldNextOutcome(next, host);
       if (outcome === "applied") done({ next: null, routed: null });
-      else if (outcome === "not_applied") failed(COORDINATES_NOT_APPLIED);
+      // 경계에서 자식이 이 예약을 거절했으면 그 원 예외를 사유로 남긴다. 다른 까닭으로 사라진 예약은 지금처럼 not_applied 다.
+      else if (outcome === "not_applied") { const reason = notAppliedFailure(next, host); failed(reason.failed, reason.cause); }
       return;
     }
     const observation = ctx.host.consoleControl?.observe(memberId);
@@ -805,7 +811,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (observation?.lifecycle !== "live") return;
     if (host) {
       const result = await setCoordinates(memberId, goal);
-      if (!result.ok) { if (result.error !== "chat_not_active") failed(result.error); return; }
+      if (!result.ok) { if (result.error !== "chat_not_active") failed(result.error, result.error === "coordinates_apply_failed" ? result.cause : undefined); return; }
       if (result.applied === "scheduled") store.memberLaunchState(objectiveId, memberId, { next: { ...next, from: { model: host.model, ...(host.effort ? { effort: host.effort } : {}) }, held: "host" } });
       else done({ next: null, routed: null });
       return;

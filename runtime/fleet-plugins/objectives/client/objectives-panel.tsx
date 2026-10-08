@@ -686,7 +686,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       // 바꾸지 못한 변경 — 방금 고른 값을 호스트가 거절했거나(닫으면 표시만 지운다), 이번 턴 뒤 예약이 적용되지 못했다(닫으면 예약 전 선택으로 돌아간다).
       const picked = launched && fault?.id === member.id ? fault.picked ?? null : null;
       const failure = picked && fault ? { model: picked.model, effort: picked.effort, code: fault.code, dismiss: () => setFault(null) }
-        : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, dismiss: () => cancelNext(member) } : null;
+        : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, cause: next.cause?.message, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
       const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
       const failed = (member.outcome === "failed" || !!member.failure) && !isWorkingOrAwaiting;
@@ -732,7 +732,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
               <span className="objectives-sr">{sentence}</span>
               {touchable ? <button type="button" className="objectives-glyph objectives-member-bubble-x" aria-label={t("objectives.members.next.dismiss")} title={t("objectives.members.next.dismiss")} onClick={failure.dismiss}><CloseGlyph /></button> : null}
             </span>
-          ))(t("objectives.members.next.failedBody", { model: launchedWords(rows, failure.model, failure.effort, labels).title, reason: routingReason(t, failure.code) })) : appliedTo ? (
+          // 자식이 던진 원문이 있으면 사유 문장 뒤에 그대로 붙인다 — 같은 코드 뒤의 서로 다른 원인을 사람이 읽는 자리다.
+          ))(`${t("objectives.members.next.failedBody", { model: launchedWords(rows, failure.model, failure.effort, labels).title, reason: routingReason(t, failure.code) })}${"cause" in failure && failure.cause ? `\n${failure.cause}` : ""}`) : appliedTo ? (
             <span className="objectives-member-bubble is-applied" role="status"><span className="objectives-member-bubble-when">{t("objectives.members.next.applied")}</span></span>
           ) : null}
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}

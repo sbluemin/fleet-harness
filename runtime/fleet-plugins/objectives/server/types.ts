@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
+import type { ConsoleCoordinatesFailureCause, ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 import { canonicalModelId } from "@fleet-console/sdk/models";
 
 /** 살아 있는 구성원의 직전 실패와 표시 횟수. acknowledge는 inbox만 해소한다. */
@@ -149,6 +149,8 @@ export interface MemberNext {
   readonly from: MemberPreset;
   readonly was?: MemberLaunch;
   readonly failed?: string;
+  /** 실패의 원 예외 — 자식이 좌표 변경을 거절하며 던진 것 그대로다. 자르거나 요약하지 않는다. 원 예외가 없는 실패에는 없다. */
+  readonly cause?: ConsoleCoordinatesFailureCause;
   /**
    * 누가 그 턴 뒤를 기다리는가. host 는 떠 있는 채팅 — 호스트가 메모리에 들고 그 턴이 닫히는 경계에서 자식에 적용하며, 세션 좌표도 그때
    * 호스트가 고친다. 정산은 호스트 좌표를 다시 읽어서 한다: 예약이 남았으면 아직, 비었고 실행값이 이 값이면 적용됨, 비었는데 실행값이
@@ -166,6 +168,8 @@ export interface HostCoordinates {
   readonly model: string;
   readonly effort: string | null;
   readonly pending: { readonly model: string; readonly effort: string | null } | null;
+  /** 자식이 마지막으로 거절한 좌표와 원 예외. */
+  readonly refused?: { readonly model: string; readonly effort: string | null; readonly cause: ConsoleCoordinatesFailureCause };
 }
 
 const samePair = (a: MemberPreset, b: MemberPreset) => canonicalModelId(a.model ?? "") === canonicalModelId(b.model ?? "") && (a.effort ?? "") === (b.effort ?? "");
@@ -178,6 +182,16 @@ export function heldNextOutcome(next: Pick<MemberNext, "model" | "effort">, host
   const target = { model: next.model, ...(next.effort ? { effort: next.effort } : {}) };
   if (host.pending && samePair({ model: host.pending.model, ...(host.pending.effort ? { effort: host.pending.effort } : {}) }, target)) return "pending";
   return samePair({ model: host.model, ...(host.effort ? { effort: host.effort } : {}) }, target) ? "applied" : "not_applied";
+}
+
+/**
+ * 적용되지 않은 호스트 예약의 사유 — 자식이 바로 이 좌표를 거절했으면 그 원 예외와 함께 coordinates_apply_failed, 다른 까닭(버림·문맥 초과·
+ * 사람의 취소)으로 사라졌으면 coordinates_not_applied. 행과 감시자가 같은 판정을 쓴다.
+ */
+export function notAppliedFailure(next: Pick<MemberNext, "model" | "effort">, host: HostCoordinates): { readonly failed: string; readonly cause?: ConsoleCoordinatesFailureCause } {
+  const refused = host.refused;
+  if (refused && heldNextOutcome(next, { model: refused.model, effort: refused.effort, pending: null }) === "applied") return { failed: "coordinates_apply_failed", cause: refused.cause };
+  return { failed: COORDINATES_NOT_APPLIED };
 }
 
 export interface StoredMember {
@@ -212,7 +226,7 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagent
    */
   readonly switchesLive: boolean;
   /** 이번 턴 뒤에 바뀔 값 — 실패했으면 failed 에 사유 코드이고 실행값은 그대로다. */
-  readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null } | null;
+  readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null; readonly cause?: ConsoleCoordinatesFailureCause } | null;
   /** 공개 세션 관측의 실패 결말. */
   readonly outcome?: "failed";
   readonly failure?: ObjectiveMemberFailure;
