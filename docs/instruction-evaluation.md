@@ -72,7 +72,7 @@ printf '%s\n' "$OUT" > "$E/tree-diff.out"; printf '%s\n' "$rc" > "$E/tree-diff.r
 
 `diff`의 0은 동일, 1은 차이 발견, 2 이상은 실패다. 파일 수만 세지 말고 모든 차이가 선언한 변경 경계에 속하는지 원문으로 확인한다. archive에는 `.git`·설치된 의존성·미커밋 변경이 없다.
 
-**장면**은 회차마다 같은 절대 경로 `SCENE`(scratchpad 아래, 이름에 before/after/eval/커밋 해시 같은 라벨성 낱말을 넣지 않는다)에 새로 만든다. 양쪽이 같은 경로라 경로로 버전이 드러나지 않는다. 지침이 실리는 위치는 `SCENE` 아래 워크트리 `W`(cwd)이며, 추출 트리를 `W`에 풀되 git 추적 밖(`info/exclude`)에 두어 장면의 커밋 해시가 양쪽에서 같게 한다. `SCENE` 상위 경로의 `CLAUDE.md`·`CLAUDE.local.md`가 섞이지 않는지 확인하고, `--add-dir`로 다른 체크아웃을 추가하지 않는다. 하위 `CLAUDE.md`는 모델이 그 폴더의 파일을 읽을 때 지연 적재되므로(전·후 같은 파일이어도 문맥이 늘어 효과가 희석될 수 있다) 적재 여부를 3단계 fixture에서 확인해 기록한다. 과제의 하위 경로가 지침 적재를 결정하면(하위 `CLAUDE.md` 변경 등) 양쪽 모두 `W` 아래 같은 상대 경로(`SUB`)를 cwd `C`로 쓰고 그 경로를 봉인 조건에 적는다. CLI 임시 폴더 키 `PKEY`는 `W`가 아니라 실제 cwd `C`에서 만든다(어긋나면 Bash가 `EPERM … mkdir '/private/tmp/claude-<uid>/<key>'`로 실패한다). 자동 탐색은 유지한다. `--bare`나 별도 시스템 프롬프트에 지침을 주입하면 실제 세션과 지침의 위치·포장이 달라지므로 이 경로와 동등한 평가가 아니다.
+**장면**은 회차마다 같은 절대 경로 `SCENE`(scratchpad 아래, 이름에 before/after/eval/커밋 해시 같은 라벨성 낱말을 넣지 않는다)에 새로 만든다. 양쪽이 같은 경로라 경로로 버전이 드러나지 않는다. 지침이 실리는 위치는 `SCENE` 아래 워크트리 `W`(cwd)이며, 추출 트리를 `W`에 풀되 git 추적 밖(`info/exclude`)에 두어 장면의 커밋 해시가 양쪽에서 같게 한다. `SCENE` 상위 경로의 `CLAUDE.md`·`CLAUDE.local.md`가 섞이지 않는지 확인하고, `--add-dir`로 다른 체크아웃을 추가하지 않는다. cwd 위쪽이 아닌 하위 `CLAUDE.md`는 모델이 그 폴더의 파일을 읽을 때 지연 적재되므로(전·후 같은 파일이어도 문맥이 늘어 효과가 희석될 수 있다) 적재 여부를 3단계 fixture에서 확인해 기록한다. 과제의 하위 경로가 지침 적재를 결정하면(하위 `CLAUDE.md` 변경 등) 양쪽 모두 `W` 아래 같은 상대 경로(`SUB`)를 cwd `C`로 쓰고 그 경로를 봉인 조건에 적는다. 이때 cwd까지의 `CLAUDE.md`(루트와 `SUB`)는 첫 요청에 함께 실린다. CLI 임시 폴더 키 `PKEY`는 `W`가 아니라 실제 cwd `C`에서 만든다(어긋나면 Bash가 `EPERM … mkdir '/private/tmp/claude-<uid>/<key>'`로 실패한다). 자동 탐색은 유지한다. `--bare`나 별도 시스템 프롬프트에 지침을 주입하면 실제 세션과 지침의 위치·포장이 달라지므로 이 경로와 동등한 평가가 아니다.
 
 ```bash
 SCENE=$SCRATCHPAD/scene; M=$SCENE/workspace/<저장소>; W=$SCENE/workspace/<저장소>-worktrees/<장면-브랜치>; SCR=$SCENE/scratch
@@ -192,7 +192,7 @@ OUT=$(jq -c '[.tools[].name]' "$E/fixture-$side/request-1.json" 2>&1); rc=$?
 printf '%s\n' "$OUT" > "$E/tools.out"; printf '%s\n' "$rc" > "$E/tools.rc"
 ```
 
-전·후 요청의 텍스트 차이가 대상 줄만인지, 대상 문장이 문장이 없는 쪽 0건·있는 쪽 1건인지(추가하는 변경이면 이전 0·이후 1, 제거하는 변경이면 이전 1·이후 0; `grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다), 루트 `CLAUDE.md` 출처가 한 건씩인지, `tools`가 허용목록과 같은지, 스킬 목록과 `Memory Index`가 0건인지, 요청에 이전/이후 커밋 해시가 없는지 확인한다. `# Fleet`는 이 저장소 루트의 고유 제목이며 다른 대상이면 그 대상의 제목으로 바꾼다. 제목 횟수는 전문 일치나 출처를 증명하지 않으므로 `request-1.json`에서 위치와 본문도 읽는다. 하위 `CLAUDE.md`는 초기 요청에 없고 파일을 읽은 뒤의 요청에서 적재되는지 본다. 메모리는 `~/.claude/projects/<PKEY>`가 비어 있음을 전제하며, 있으면 같은 내용을 양쪽에 두고 요청에서 대조한다. loopback 도착은 OS 전체 네트워크 차단을 증명하지 않으므로 외부 주소 연결 프로브(`python3 -I -c 'import socket; s=socket.socket(); s.settimeout(1); print(s.connect_ex(("192.0.2.1",443)))'`가 `1`)를 같은 프로파일로 감싸 확인한다. 프로파일은 감싼 프로세스와 자식에만 적용되며 `sandbox-exec`가 없는 플랫폼에서는 동등한 격리를 확보하거나 실행 전에 멈춘다.
+전·후 요청의 텍스트 차이가 대상 줄만인지, 대상 문장이 그 문장이 없는 쪽 0건·있는 쪽 1건인지(추가하는 변경이면 이전 0·이후 1, 제거하는 변경이면 이전 1·이후 0; `grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다), 루트 `CLAUDE.md` 출처가 한 건씩인지, `tools`가 허용목록과 같은지, 스킬 목록과 `Memory Index`가 0건인지, 요청에 이전/이후 커밋 해시가 없는지 확인한다. `# Fleet`는 이 저장소 루트의 고유 제목이며 다른 대상이면 그 대상의 제목으로 바꾼다. 제목 횟수는 전문 일치나 출처를 증명하지 않으므로 `request-1.json`에서 위치와 본문도 읽는다. 하위 `CLAUDE.md`는 초기 요청에 없고 파일을 읽은 뒤의 요청에서 적재되는지 본다. 메모리는 `~/.claude/projects/<PKEY>`가 비어 있음을 전제하며, 있으면 같은 내용을 양쪽에 두고 요청에서 대조한다. loopback 도착은 OS 전체 네트워크 차단을 증명하지 않으므로 외부 주소 연결 프로브(`python3 -I -c 'import socket; s=socket.socket(); s.settimeout(1); print(s.connect_ex(("192.0.2.1",443)))'`가 `1`)를 같은 프로파일로 감싸 확인한다. 프로파일은 감싼 프로세스와 자식에만 적용되며 `sandbox-exec`가 없는 플랫폼에서는 동등한 격리를 확보하거나 실행 전에 멈춘다.
 
 이 fixture는 `--max-turns` 값 외에 `claude_call`의 플래그·환경·문맥을 바꾸지 않는다. 실제 회차와의 요청 구성 차이는 엔드포인트·인증(`ENVX`)과 네트워크·Keychains 규칙뿐이며, 이 무료 실행 보호를 유료 실행의 모델 행동 효과로 해석하지 않는다. 실패한 출력, 없는 계측 값, 기대 밖 오류는 고치고 다시 확인한 뒤 봉인한다.
 
@@ -224,7 +224,7 @@ i=1
 while [ "$i" -le "$N" ]; do
   if [ $((i % 2)) -eq 1 ]; then side=before; else side=after; fi
   # 회차 시작 전에 승인된 턴(빈 값은 상한+1로 계상)·비용 상한을 확인한다
-  [ -n "$RUN_COST_BOUND" ] && [ -n "$COST_LIMIT" ] && [ -n "$TURN_LIMIT" ] || exit 1   # 빈 값은 awk에서 0이 된다
+  [ -n "$N" ] && [ -n "$MAXTURNS" ] && [ -n "$RUN_COST_BOUND" ] && [ -n "$COST_LIMIT" ] && [ -n "$TURN_LIMIT" ] || exit 1   # 빈 값은 awk·산술에서 0이 되고, 빈 --max-turns는 봉인한 상한과 다른 실행이 된다
   USED=$(awk -F'\t' -v m="$MAXTURNS" 'NR>1 {s+=($5=="" ? m+1 : $5)} END{print s+0}' "$E/ledger.tsv")
   SPENT=$(awk -F'\t' 'NR>1 {s+=$6} END{print s+0}' "$E/ledger.tsv")
   [ $((USED + MAXTURNS + 1)) -le "$TURN_LIMIT" ] || break
