@@ -803,6 +803,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
 }
 
 function AgentOperationBody({ context }: { readonly context: OperationRenderContext }) {
+  const t = getT(context.language ?? "en");
   const mobileSurface = useMobileSurface();
   // CLI 확인 줄은 입력 대기 신호(훅이 지는 축)가 선 동안만 — 터미널 출력을 해석해 추정하지 않는다.
   const awaitingInput = context.runtimeState?.lifecycle === "live" && context.runtimeState.activity === "awaiting";
@@ -847,7 +848,8 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
     return linkOpen.choose(url, at);
   }, [linkAvailability, linkOpen.choose]);
   const onChatLinkClick = React.useMemo(() => createChatLinkInterceptor(chooseLinkWithSharedFallback, openChatLinkDirect), [chooseLinkWithSharedFallback, openChatLinkDirect]);
-  const fileLinks = React.useMemo(() => createChatFileLinkPorts(context.operation.theaterId, context.navigate), [context.operation.theaterId, context.navigate]);
+  const [fileLinkFailure, setFileLinkFailure] = React.useState<"unsupported" | "failed" | null>(null);
+  const fileLinks = React.useMemo(() => createChatFileLinkPorts(context.operation.theaterId, context.navigate, setFileLinkFailure), [context.operation.theaterId, context.navigate]);
   const terminalFileLinks = useAgentTerminalFileLinks(context.operationId, context.operation.theaterId, context.navigate);
 
   if (chatMode) {
@@ -863,7 +865,8 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
     }
     return (
       <MarkdownLinkBoundary className="agent-stream-host" onClick={onChatLinkClick} onAuxClick={onChatLinkClick} fleetLink="self" {...fileLinks}>
-        <AgentChatView context={context} tourAnchors={chatOpenedHere} />
+        <AgentChatView context={context} tourAnchors={chatOpenedHere} fileLinkError={fileLinkFailure === null ? null
+          : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} />
         <ComputerScreenShare operationId={context.operationId} />
         {linkOpen.card}
       </MarkdownLinkBoundary>

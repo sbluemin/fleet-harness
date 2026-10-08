@@ -128,10 +128,12 @@ function hasCopyableSelection(): boolean {
 export function AgentChatView({
   context,
   tourAnchors,
+  fileLinkError = null,
 }: {
   readonly context: OperationRenderContext;
   /** 사용자가 이 마운트에서 직접 채팅 뷰를 연 경우에만 true — 투어 앵커 렌더 여부를 결정한다. */
   readonly tourAnchors: boolean;
+  readonly fileLinkError?: string | null;
 }) {
   const t = getT(context.language ?? "en");
   const live = context.bodyLive !== false;
@@ -809,6 +811,9 @@ export function AgentChatView({
       {mobileSurface && turns.length > 0 ? <p className="agent-chat-end-note">{t("terminal.mobile.endNote")}</p> : null}
       {state.errorCode === "chat_turn_failed"
         ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
+        : null}
+      {fileLinkError !== null
+        ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div>
         : null}
       {stopFailed
         ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.stopFailed")}</div>

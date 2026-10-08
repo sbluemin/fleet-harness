@@ -60,7 +60,11 @@ export function createFileLinkProvider(terminal: Terminal, deps: {
           hover: () => deps.onHover(true),
           leave: () => deps.onHover(false),
           activate: (event) => {
-            if (!(deps.isMac ? event.metaKey : event.ctrlKey)) return;
+            if (!(deps.isMac ? event.metaKey : event.ctrlKey)) {
+              // 링크 안에서 끝난 드래그도 activate가 온다 — 선택을 안내로 덮지 않고 맨 클릭만 알려 준다.
+              if (!terminal.hasSelection() && event.detail <= 1) deps.onOutcome({ ok: false, reason: "activation_required" });
+              return;
+            }
             event.preventDefault();
             void source.open(target).then(
               (outcome) => deps.onOutcome(outcome),
@@ -107,28 +111,57 @@ interface FileRefCandidate {
 }
 
 const COORDINATE_SUFFIX = /^(?:#L\d+(?:C\d+)?|\(\d+(?:,\s*\d+)?\)|:\d+(?::\d+)?)/i;
+// 맨 출력에는 경로와 산문의 경계가 없다. 절대경로의 각 세그먼트는 두 낱말까지만 이어
+// `99. Cowork`·`자기계발 노트.md`를 살리되, 확장자 없는 경로 뒤 긴 산문은 삼키지 않는다.
+const PATH_WORD = /[^\s/\\:"'`<>|?*]+?/.source;
+const PATH_SEGMENT = `${PATH_WORD}(?: +${PATH_WORD})?`;
+const ABSOLUTE_START = /(?<![\p{L}\p{N}_./\\:])(?:[a-z]:[/\\]|\/(?![/\s]))/u.source;
+const FILE_END = /(?=(?:#L\d|\(\d|:\d|[\s),;!?"'`\]}]|\.(?:\s|$)|$))/.source;
+const ABSOLUTE_FILE_REF = new RegExp(
+  String.raw`${ABSOLUTE_START}(?:${PATH_SEGMENT}[/\\])*${PATH_SEGMENT}\.[\p{L}\d]{1,10}${FILE_END}`,
+  "giu",
+);
 
 export function findFileRefs(cells: LineCells): FileRefCandidate[] {
   const found: FileRefCandidate[] = [];
-  for (const match of cells.text.matchAll(/\S+/g)) {
-    // tsc의 `path(10,9):`처럼 좌표 뒤에 붙는 콜론은 경로의 일부가 아니다.
-    const token = match[0].replace(/:+$/, "");
-    if (token.includes("://")) continue;
-    const ref = parseFileRef(token);
-    if (!ref || !looksLikeFilePath(ref)) continue;
-    // parseFileRef는 구분자를 '/'로 정규화한다 — Windows 출력(`src\\a.ts:10`)도 같은 길이로 맞춰 위치를 찾는다.
-    const pathAt = token.replace(/\\/g, "/").indexOf(ref.path);
-    if (pathAt < 0) continue;
-    const suffix = COORDINATE_SUFFIX.exec(token.slice(pathAt + ref.path.length))?.[0] ?? "";
-    const start = (match.index ?? 0) + pathAt;
-    const end = start + ref.path.length + suffix.length;
-    const startCell = cells.cellAt[start];
-    const lastCell = cells.cellAt[end - 1];
-    if (startCell === undefined || lastCell === undefined) continue;
-    const nextCell = cells.cellAt[end] ?? cells.cellEnd;
-    found.push({ ref, text: cells.text.slice(start, end), startCell, endCell: Math.max(lastCell + 1, nextCell) });
+  const tokens = [...cells.text.matchAll(/\S+/g)];
+  const spans: { readonly start: number; readonly end: number }[] = [];
+  for (const match of cells.text.matchAll(ABSOLUTE_FILE_REF)) {
+    const start = match.index;
+    const pathEnd = start + match[0].length;
+    const suffix = COORDINATE_SUFFIX.exec(cells.text.slice(pathEnd))?.[0] ?? "";
+    const end = pathEnd + suffix.length;
+    const token = cells.text.slice(start, end);
+    // URL query의 `/path`는 URL 공급자가 맡는다. 정규식이 잘라 낸 suffix뿐 아니라 원래 토큰을 본다.
+    const embeddedUrl = tokens.some((part) => part.index <= start && start < part.index + part[0].length && part[0].includes("://"));
+    if (embeddedUrl || appendFileRef(found, cells, token, start)) spans.push({ start, end });
   }
-  return found;
+  for (const match of tokens) {
+    const start = match.index;
+    const end = start + match[0].length;
+    // 긴 절대경로와 겹치는 조각을 또 링크로 만들면 뒤쪽 상대경로가 먼저 선택될 수 있다.
+    if (spans.some((span) => start < span.end && end > span.start)) continue;
+    appendFileRef(found, cells, match[0].replace(/:+$/, ""), start);
+  }
+  return found.sort((a, b) => a.startCell - b.startCell);
+}
+
+function appendFileRef(found: FileRefCandidate[], cells: LineCells, token: string, tokenStart: number): boolean {
+  if (token.includes("://")) return false;
+  const ref = parseFileRef(token);
+  if (!ref || !looksLikeFilePath(ref)) return false;
+  // parseFileRef는 구분자를 '/'로 정규화한다 — Windows 출력도 원래 셀 좌표로 돌린다.
+  const pathAt = token.replace(/\\/g, "/").indexOf(ref.path);
+  if (pathAt < 0) return false;
+  const suffix = COORDINATE_SUFFIX.exec(token.slice(pathAt + ref.path.length))?.[0] ?? "";
+  const start = tokenStart + pathAt;
+  const end = start + ref.path.length + suffix.length;
+  const startCell = cells.cellAt[start];
+  const lastCell = cells.cellAt[end - 1];
+  if (startCell === undefined || lastCell === undefined) return false;
+  const nextCell = cells.cellAt[end] ?? cells.cellEnd;
+  found.push({ ref, text: cells.text.slice(start, end), startCell, endCell: Math.max(lastCell + 1, nextCell) });
+  return true;
 }
 
 /**
