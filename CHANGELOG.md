@@ -5,6 +5,24 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.222.0] - 2026-10-08
+
+### fleet-console
+
+#### Added
+- Commanders can note a proposed model for each member they plan, and AI Gateway routing takes it into account when it assigns the member's model.
+
+#### Changed
+- The Commodore now leaves an objective's plan to its Commander: it creates objectives from a title and brief, edits only those, and steers with short remarks while missions, success criteria and members come from the Commander's plan.
+- Console Use agents and the Commodore now share one set of Objectives tools: neither edits missions or success criteria directly, both can tidy objectives and read session transcripts while an objective waits or has no session working, and commencing first reviews the AI Gateway routing it will launch members with.
+- Console Use tool descriptions are much shorter, so every session that loads them spends less context.
+
+#### Fixed
+- Fix the Copy button on code blocks in Operation chat that did nothing, and show "Copy failed" instead of "Copied" in chat, Skills, Files and Scuttlebutt when the clipboard refuses.
+- The Commodore now runs on the same Opus version the Console lists and Commanders use, instead of an older Opus.
+- The Commodore can commence an objective as soon as the Commander's current turn ends, instead of being turned away and waiting for later patrols.
+- When the Commander asks the same unanswered decision question again, the request stays the same, so an answer you were writing is no longer cleared.
+
 ## [1.221.0] - 2026-10-08
 
 ### fleet-console
