@@ -1598,26 +1598,34 @@ function useCodeBlockCopy(t: ReturnType<typeof getT>) {
  */
 function AnswerActions({ text, language, onRetry }: { readonly text: string; readonly language: "en" | "ko"; readonly onRetry?: () => void }) {
   const t = getT(language);
-  const [copied, setCopied] = React.useState(false);
+  // 복사 결과 — 성공은 writeText가 이행된 뒤에만, 클립보드가 없거나 던지거나 거절되면 모두 실패다.
+  // 같은 값이 다시 와도 유지 시간을 다시 재도록 번호를 함께 둔다.
+  const [copy, setCopy] = React.useState<{ readonly state: "idle" | "copied" | "failed"; readonly seq: number }>({ state: "idle", seq: 0 });
   React.useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1600);
+    if (copy.state === "idle") return;
+    const timer = window.setTimeout(() => setCopy((current) => ({ state: "idle", seq: current.seq })), copy.state === "copied" ? 1600 : 3000);
     return () => window.clearTimeout(timer);
-  }, [copied]);
-  const copy = () => {
-    void navigator.clipboard?.writeText(text).then(() => setCopied(true)).catch(() => undefined);
+  }, [copy]);
+  const doCopy = () => {
+    const settle = (state: "copied" | "failed") => setCopy((current) => ({ state, seq: current.seq + 1 }));
+    const clipboard = navigator.clipboard as Clipboard | undefined;
+    if (!clipboard || typeof clipboard.writeText !== "function") { settle("failed"); return; }
+    let write: Promise<void>;
+    try { write = clipboard.writeText(text); } catch { settle("failed"); return; }
+    void write.then(() => settle("copied"), () => settle("failed"));
   };
+  const label = copy.state === "copied" ? t("terminal.mobile.copied") : copy.state === "failed" ? t("terminal.mobile.copyFailed") : t("terminal.mobile.copy");
   return (
     <div className="agent-chat-answer-actions">
-      <button type="button" className="agent-chat-answer-action" aria-label={t(copied ? "terminal.mobile.copied" : "terminal.mobile.copy")} onClick={copy}>
-        <MobileGlyph name={copied ? "check" : "copy"} size={18} />
+      <button type="button" className="agent-chat-answer-action" aria-label={label} onClick={doCopy}>
+        <MobileGlyph name={copy.state === "copied" ? "check" : copy.state === "failed" ? "info" : "copy"} size={18} />
       </button>
       {onRetry ? (
         <button type="button" className="agent-chat-answer-action" aria-label={t("terminal.mobile.retry")} onClick={onRetry}>
           <MobileGlyph name="retry" size={18} />
         </button>
       ) : null}
-      <span className="agent-chat-sr-only" aria-live="polite">{copied ? t("terminal.mobile.copied") : ""}</span>
+      <span className="agent-chat-sr-only" aria-live="polite">{copy.state === "idle" ? "" : label}</span>
     </div>
   );
 }
