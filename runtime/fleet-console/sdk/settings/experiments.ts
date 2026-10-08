@@ -63,6 +63,9 @@ export interface ConsoleExperimentSettings {
  */
 export const DEFAULT_EXPERIMENT_AIDE_SELECTION: ExperimentAideSelection = { model: "sonnet", effort: "medium" };
 
+/** 사령관의 기본 좌표는 고정이다. Theater 별 좌표만 이 값을 덮는다. */
+const COMMODORE_DEFAULT_SELECTION: ExperimentAideSelection = Object.freeze({ model: "opus[1m]", effort: "high" });
+
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   computerUse: false,
   computerUseBackend: "sky-computer-use",
@@ -71,8 +74,8 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
   analystEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
   commodore: false,
-  commodoreModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
-  commodoreEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
+  commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
+  commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
 };
 
 /**
@@ -134,12 +137,14 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     analystModel: aideModel("analyst"),
     analystEffort: aideEffort("analyst"),
     commodore: record.commodore === true,
-    commodoreModel: aideModel("commodore"),
-    commodoreEffort: aideEffort("commodore"),
+    // 옛 설정과 응답의 필드 모양은 유지하되, 저장된 기본 좌표는 더 이상 읽지 않는다.
+    commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
+    commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
   };
 }
 
 /** 한 보조 AI에 배정된 모델·강도. */
 export function experimentAideSelection(settings: ConsoleExperimentSettings, aide: ExperimentAideId): ExperimentAideSelection {
+  if (aide === "commodore") return COMMODORE_DEFAULT_SELECTION;
   return { model: settings[`${aide}Model`], effort: settings[`${aide}Effort`] };
 }

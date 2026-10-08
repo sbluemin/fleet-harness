@@ -61,7 +61,8 @@ describe("commodore theater state", () => {
     expect((await h.route("commodore/autonomy", { theaterId: "t1", autonomy: true }))).toMatchObject({ status: 409, value: { error: "commodore_disabled" } });
     expect(fs.existsSync(stateFile)).toBe(false);
 
-    h.setExperiments({ commodore: true, commodoreModel: "opus[1m]", commodoreEffort: "high" });
+    // 옛 Settings 좌표는 무시하지만 Theater 별 선택은 아래 경로에서 유지된다.
+    h.setExperiments({ commodore: true, commodoreModel: "haiku", commodoreEffort: "low" });
     expect((await h.route("commodore/autonomy", { theaterId: "t1", autonomy: true })).value).toMatchObject({ active: true, defaults: { model: "opus[1m]", effort: "high" }, run: { phase: "idle" } });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
     // 서랍의 요청이 사람의 언어를 남긴다 — 사령관 기록의 언어가 된다.
@@ -289,8 +290,9 @@ describe("commodore supervisor", () => {
     vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
     try {
       const h = harness();
-      // 저장된 기본 모델은 Gateway에서 꺼져 있다 — 저장값은 그대로 두고 로스터 폴백(sonnet)으로 열며 그 사실을 기록에 남긴다.
-      h.setExperiments({ commodore: true, commodoreModel: "codex--gpt-6-luna", commodoreEffort: "medium" });
+      // Theater 모델은 Gateway에서 꺼져 있다 — 저장값은 그대로 두고 로스터 폴백(sonnet)으로 열며 그 사실을 기록에 남긴다.
+      h.setExperiments({ commodore: true });
+      h.store.setCoordinates("t1", { model: "codex--gpt-6-luna", effort: "medium" });
       const sonnetRow = { id: "sonnet", label: "Sonnet", launch: { model: "sonnet" }, chips: ["low", "medium", "high", "xhigh", "max"].map((effort) => ({ id: effort, label: effort, launch: { model: "sonnet", effort } })) };
       const models = { resolve: (stored: ModelCoordinate, _target: unknown, fallback?: ModelCoordinate) => ({ ...resolveRosterCoordinate([{ id: "gateway:claude", label: "Claude", rows: [sonnetRow] }], stored, fallback ?? { model: "sonnet" }), wireModel: "sonnet" }) };
       h.store.setAutonomy("t1", true);
@@ -350,7 +352,7 @@ describe("commodore supervisor", () => {
       expect(tokens()).toEqual([["restart", "empty"]]);
       expect(sessionEvents()).toEqual(["restarted"]);
       expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "session")).toMatchObject({ reason: "fallback:model_off:sonnet" });
-      expect(h.experiments().commodoreModel).toBe("codex--gpt-6-luna");
+      expect(h.store.read("t1")?.model).toBe("codex--gpt-6-luna");
       expect(sessions[0]!.sent[0]).toContain("Console restarted; the board is empty");
       const patrolAt = supervisor.status("t1")!.nextWakeAt!;
       expect(supervisor.status("t1")!.phase).toBe("idle");

@@ -100,7 +100,7 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
           </div>
         </div>
       ))}
-      {/* 자율 운영 — 켬/끔. 사령관의 모델·강도는 Theater 마다 사령관 시트에서 고르고, 그 값이 없을 때 쓰는 기본 좌표는 아래 행이다. */}
+      {/* 자율 운영 — 켬/끔. 기본 좌표는 Opus/High이고, Theater 마다 사령관 시트에서 바꿀 수 있다. */}
       <div className="global-settings-row experiments-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
@@ -115,17 +115,6 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
             ariaLabel={t("settings.experiments.commodore.title")}
             onChange={(next) => save({ ...experiments, commodore: next })}
           />
-        </div>
-      </div>
-      <div className="global-settings-row experiments-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("settings.experiments.commodoreCoordinate.title")}
-            <SettingsHelp title={t("settings.experiments.commodoreCoordinate.title")}>{t("settings.experiments.commodoreCoordinate.help")}</SettingsHelp>
-          </p>
-        </div>
-        <div className="experiments-row-controls">
-          <AideCoordinate aide="commodore" experiments={experiments} saving={saving} title={t("settings.experiments.commodoreCoordinate.title")} onSave={save} />
         </div>
       </div>
       <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
@@ -190,9 +179,6 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
           ariaLabel={t("settings.experiments.commodore.title")}
           onChange={(next) => saveExperiments({ ...experiments, commodore: next })}
         />
-      </SettingsRow>
-      <SettingsRow label={t("settings.experiments.commodoreCoordinate.title")} hint={t("settings.experiments.commodoreCoordinate.help")} icon={<PennantGlyph />}>
-        <AideCoordinate aide="commodore" experiments={experiments} saving={saving} title={t("settings.experiments.commodoreCoordinate.title")} onSave={saveExperiments} />
       </SettingsRow>
       <SettingsRow label={t("settings.computerUse.title")} hint={computerUseHint} icon={<MobileIcon name="layout" />} disabled={computerUseLocked}>
         <SettingsToggle
