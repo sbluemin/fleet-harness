@@ -24,9 +24,9 @@
 .fexp-m-tabs { display: flex; flex: none; gap: 20px; padding: 0 24px; border-bottom: 1px solid var(--m-hairline); }
 .fexp-m .fexp-m-tabs button { padding: 10px 0; border-bottom: 2px solid transparent; font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
 .fexp-m .fexp-m-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: var(--weight-bold); }
-/* 「소스」처럼 두 글자 탭은 폭이 26이라 손가락 칸을 투명 ::after 로 좌우 9·위 1 넓힌다(≥ 44×44). 밑줄은 글자 폭 그대로, 탭 사이 20 안이라 겹치지 않는다. */
+/* 「소스」처럼 두 글자 탭은 폭이 26이라 손가락 칸을 투명 ::after 로 좌우 9·위아래 1 넓힌다(높이 42.5 → 44.5, ≥ 44×44). 아래 1은 탭 줄의 hairline 위에서 그치고 본문에 닿지 않는다. 밑줄은 글자 폭 그대로, 탭 사이 20 안이라 겹치지 않는다. */
 .fexp-m .fexp-m-tabs button { position: relative; }
-.fexp-m .fexp-m-tabs button::after { position: absolute; inset: -1px -9px 0; content: ""; }
+.fexp-m .fexp-m-tabs button::after { position: absolute; inset: -1px -9px; content: ""; }
 .fexp-m-doc-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 16px 24px 24px; scrollbar-width: none; }
 .fexp-m-doc-body::-webkit-scrollbar { display: none; }
 .fexp-m-doc-body .fexp-m-note { width: auto; margin: 0; padding: 0; }
