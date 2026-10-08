@@ -77,10 +77,10 @@ import {
 import { proxyAnthropicMessages, type AnthropicProxyOptions } from "./passthrough.js";
 import type { GatewayHttpHandler } from "./types.js";
 
-/** 패스스루 한 번에 하네스가 얹는 것: 본문 재작성과 상태 승격. */
+/** 패스스루 한 번에 하네스가 얹는 것: 본문 재작성과 상태 승격, 진단 상관용 세션 id. */
 export type PassthroughRelay = Pick<
   AnthropicProxyOptions,
-  "projectResponseBody" | "retryableStatus"
+  "projectResponseBody" | "retryableStatus" | "wireSessionId"
 >;
 
 export { OPENCODE_GO_MESSAGES_URL as OPENCODE_MESSAGES_URL } from "../upstream/opencode-go/index.js";
@@ -676,7 +676,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         clock?.setRoute("passthrough");
         await proxyToAnthropic(req.headers, res,
           target ? { ...body, model: target.upstreamId ?? body.model } : body,
-          requestFetch, controller.signal, harness.retryableStatus, target?.contextWindow);
+          requestFetch, controller.signal, harness.retryableStatus, target?.contextWindow, sessionId);
         clock?.finish("ok");
         return true;
       }
@@ -693,6 +693,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const passthroughRelay: PassthroughRelay = {
         ...(passthroughProjection ? { projectResponseBody: passthroughProjection } : {}),
         ...(harness.retryableStatus ? { retryableStatus: harness.retryableStatus } : {}),
+        ...(sessionId === undefined ? {} : { wireSessionId: sessionId }),
       };
       if (target.provider === "opencode" && isOpencodeAnthropicPassthrough(target)) {
         clock?.setRoute("passthrough");
@@ -961,6 +962,7 @@ async function proxyToAnthropic(
   signal: AbortSignal,
   retryableStatus: ((status: number) => number) | undefined,
   contextWindow?: number,
+  sessionId?: string,
 ): Promise<void> {
   // 헤더·URL 정책은 core-ai-gateway가 소유한다. 여기는 요청을 실어 보낼 뿐이다.
   const headers = anthropicNativeHeaders(requestHeaders, contextWindow);
@@ -972,6 +974,7 @@ async function proxyToAnthropic(
     signal,
     url: ANTHROPIC_MESSAGES_URL,
     wireEventLabel: "anthropic.wire.event",
+    ...(sessionId === undefined ? {} : { wireSessionId: sessionId }),
   });
 }
 

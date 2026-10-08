@@ -86,7 +86,9 @@ credential rules, and launch it by [the real-login route](setup.md#when-the-clai
   writes nothing at all, and only an *unset* toggle falls through to the path you named
   (`applyWireLog` in `runtime/fleet-console/features/ai-gateway/host/start.ts`). The toggle
   path rotates at 16 MB and keeps a single `.1` backup, so copy the lines you need right after
-  each run. A fresh `FLEET_CONSOLE_DATA_DIR` has no stored value, which is why the variable
+  each run. Anthropic passthrough tool inputs also land, one assembled record per block keyed by
+  `sessionId`, `requestId`, and `messageId`, in the sibling `wire-tool-inputs.jsonl` (32 MB, one
+  `.1`), which outlives the main log by hours. A fresh `FLEET_CONSOLE_DATA_DIR` has no stored value, which is why the variable
   works there — until someone touches the toggle. The file appears on the first gateway call,
   not at boot.
 - `FLEET_AI_GATEWAY_MODEL` — pins every request to one model whatever the client asked for

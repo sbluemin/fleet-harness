@@ -37,6 +37,8 @@ export interface AnthropicProxyOptions {
   readonly keepAlive?: boolean;
   /** Raw response event label. Caller-owned so this shared proxy stays provider-neutral. */
   readonly wireEventLabel?: string;
+  /** Client session the router read from the request; ties wire log entries to its transcript. */
+  readonly wireSessionId?: string;
   readonly fetchImpl: typeof fetch;
   readonly headers: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
@@ -80,6 +82,7 @@ export async function proxyAnthropicMessages(
   }
   const rawBody = readResponseBody(upstream.body);
   const contentType = upstream.headers.get("content-type");
+  const upstreamRequestId = upstream.headers.get("request-id");
   // Observation tap: records provider response payloads before projection while passing the
   // upstream bytes through unchanged. The label is caller-owned so this proxy stays neutral.
   const observedBody = options.wireEventLabel === undefined
@@ -87,6 +90,11 @@ export async function proxyAnthropicMessages(
     : logRawPassthroughBody(rawBody, {
         label: options.wireEventLabel,
         contentType,
+        correlation: {
+          ...(options.wireSessionId === undefined ? {} : { sessionId: options.wireSessionId }),
+          // Anthropic 와이어의 요청 id. Claude Code transcript가 같은 값을 requestId로 남긴다.
+          ...(upstreamRequestId === null ? {} : { requestId: upstreamRequestId }),
+        },
       });
   // contextWindow이 없어도 responseModel이 있으면 재작성이 필요하므로 변환기를 탄다.
   const projectedBody = options.projectResponseBody === undefined
