@@ -1,4 +1,4 @@
-import { inputIssues, type ConsoleCaller, type PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, type ConsoleCaller, type ConsoleUseCallTarget, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
@@ -139,16 +139,22 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         const found = args.objectiveId ? store.find(args.objectiveId) : null;
         const theaterId = bound?.theaterId ?? args.theaterId ?? found?.theaterId ?? "";
         const short = (value: string) => (value.length > 32 ? `${value.slice(0, 31)}…` : value);
-        if (args.add) return { theaterId, summary: `목표 추가 「${short(args.add.title)}」`, view: "objectives", gesture: "create" };
+        // 사이드바 자리 — 목표 하나면 그 목표 줄, 줄 하나로 좁혀지지 않는 목록·생성·지움은 그 Theater(groupId 가 있으면 그 그룹)의 묶음 머리.
+        // 레일 아이콘은 호스트가 따로 감싼다. 인자로 Theater 를 모르면 비워 두고, 호스트가 호출자 Operation 의 Theater 로 채운다.
+        const rowAt = (id: string | undefined, rowTheaterId: string): { readonly target?: ConsoleUseCallTarget } => (id ? { target: { kind: "cluster", clusterId: id, theaterId: rowTheaterId } } : {});
+        const listAt = (listTheaterId: string): { readonly target?: ConsoleUseCallTarget } => ({ target: { kind: "clusters", theaterId: listTheaterId, ...(args.groupId ? { groupId: args.groupId } : {}) } });
+        if (args.add) return { theaterId, summary: `목표 추가 「${short(args.add.title)}」`, view: "objectives", gesture: "create", ...listAt(theaterId) };
         const titleOf = (id: string) => short(store.find(id)?.title ?? "");
         const theaterOf = (id: string | undefined) => args.theaterId ?? (id ? store.find(id)?.theaterId : undefined) ?? "";
-        if (args.remove) { const removeIds = args.remove.objectiveIds; return { theaterId: theaterOf(removeIds[0]), summary: removeIds.length === 1 ? `목표 지움 「${titleOf(removeIds[0]!)}」` : `목표 ${removeIds.length}개 지움`, view: "objectives", gesture: "press" }; }
-        if (args.merge) return { theaterId: theaterOf(args.merge.into), summary: `목표 ${args.merge.from.length}개를 「${titleOf(args.merge.into)}」에 합침`, view: "objective", path: args.merge.into, gesture: "press" };
-        if (args.restore) return { theaterId: theaterOf(args.restore[0]), summary: args.restore.length === 1 ? `목표 되돌림 「${titleOf(args.restore[0]!)}」` : `목표 ${args.restore.length}개 되돌림`, view: "objectives", gesture: "press" };
-        if (args.member) return { theaterId, summary: `구성원 모델 바꿈 「${short(found?.title ?? "")}」`, view: "objective", ...(found ? { path: found.id } : {}), gesture: "press" };
+        if (args.remove) { const removeIds = args.remove.objectiveIds; const removeTheaterId = theaterOf(removeIds[0]); return { theaterId: removeTheaterId, summary: removeIds.length === 1 ? `목표 지움 「${titleOf(removeIds[0]!)}」` : `목표 ${removeIds.length}개 지움`, view: "objectives", gesture: "press", ...listAt(removeTheaterId) }; }
+        if (args.merge) { const mergeTheaterId = theaterOf(args.merge.into); return { theaterId: mergeTheaterId, summary: `목표 ${args.merge.from.length}개를 「${titleOf(args.merge.into)}」에 합침`, view: "objective", path: args.merge.into, gesture: "press", ...rowAt(args.merge.into, mergeTheaterId) }; }
+        if (args.restore) { const restoreTheaterId = theaterOf(args.restore[0]); return { theaterId: restoreTheaterId, summary: args.restore.length === 1 ? `목표 되돌림 「${titleOf(args.restore[0]!)}」` : `목표 ${args.restore.length}개 되돌림`, view: "objectives", gesture: "press", ...(args.restore.length === 1 ? rowAt(args.restore[0], restoreTheaterId) : listAt(restoreTheaterId)) }; }
+        if (args.member) return { theaterId, summary: `구성원 모델 바꿈 「${short(found?.title ?? "")}」`, view: "objective", ...(found ? { path: found.id } : {}), gesture: "press", ...rowAt(found?.id, theaterId) };
         const write = TARGET_WRITES.find((key) => args[key] !== undefined);
-        if (write) return { theaterId, summary: `목표 ${write} 「${short(found?.title ?? "")}」`, view: "objective", ...(found ? { path: found.id } : {}), gesture: "press" };
-        return { theaterId, summary: args.view === "transcript" ? `세션 기록 봄 「${short(found?.title ?? "")}」` : args.view === "routing" ? `라우팅 검토 「${short(found?.title ?? "")}」` : args.view === "models" ? "모델 목록 봄" : args.view === "objective" || (args.objectiveId && !args.view) ? `목표 봄 「${short(found?.title ?? "")}」` : args.view === "groups" ? "그룹 봄" : "목표 목록 봄", view: args.view === "evidence" || args.view === "transcript" || args.view === "routing" ? "objective" : args.view && ["inbox", "fleet", "history", "models"].includes(args.view) ? "objectives" : args.view ?? (args.objectiveId ? "objective" : "objectives"), ...(found ? { path: found.id } : {}) };
+        if (write) return { theaterId, summary: `목표 ${write} 「${short(found?.title ?? "")}」`, view: "objective", ...(found ? { path: found.id } : {}), gesture: "press", ...rowAt(found?.id, theaterId) };
+        // 읽기 — 목표를 짚었으면 그 줄, 목표 목록류(목록·그룹·확인 필요·진행 중·이력)면 묶음 머리. 모델 목록은 목표와 무관해 레일에만 선다.
+        const readAt = found ? rowAt(found.id, theaterId) : args.view === "models" ? {} : listAt(theaterId);
+        return { theaterId, summary: args.view === "transcript" ? `세션 기록 봄 「${short(found?.title ?? "")}」` : args.view === "routing" ? `라우팅 검토 「${short(found?.title ?? "")}」` : args.view === "models" ? "모델 목록 봄" : args.view === "objective" || (args.objectiveId && !args.view) ? `목표 봄 「${short(found?.title ?? "")}」` : args.view === "groups" ? "그룹 봄" : "목표 목록 봄", view: args.view === "evidence" || args.view === "transcript" || args.view === "routing" ? "objective" : args.view && ["inbox", "fleet", "history", "models"].includes(args.view) ? "objectives" : args.view ?? (args.objectiveId ? "objective" : "objectives"), ...(found ? { path: found.id } : {}), ...readAt };
       },
     },
     execute: async (raw, context) => {

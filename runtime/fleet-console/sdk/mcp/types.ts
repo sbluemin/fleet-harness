@@ -38,7 +38,14 @@ export type ConsoleUseCallTarget =
   | { readonly kind: "theater"; readonly theaterId: string }
   | { readonly kind: "operation"; readonly operationId: string }
   | { readonly kind: "group"; readonly groupId: string; readonly theaterId: string }
-  | { readonly kind: "panel"; readonly panelId: string; readonly theaterId: string; readonly view?: string; readonly path?: string };
+  | { readonly kind: "panel"; readonly panelId: string; readonly theaterId: string; readonly view?: string; readonly path?: string }
+  /** 플러그인이 `operationClusters` 로 낸 사이드바 묶음 줄 하나. 도구는 자기 묶음 id(Objectives 는 목표 id)를 주고, 호스트가 `<pluginId>:` 를 붙여 낸다. */
+  | { readonly kind: "cluster"; readonly clusterId: string; readonly theaterId: string }
+  /**
+   * 한 Theater(또는 그 그룹 하나)의 묶음 줄 목록 — 목록 읽기처럼 줄 하나로 좁혀지지 않는 호출. 줄들이 모인 머리가 감싸인다.
+   * 묶음 자리의 theaterId 를 비워 두면 호스트가 호출자 Operation 의 Theater 로 채운다.
+   */
+  | { readonly kind: "clusters"; readonly theaterId: string; readonly groupId?: string };
 
 export interface ConsoleUseCallEvent {
   readonly caller: ConsoleCaller;
@@ -47,6 +54,8 @@ export interface ConsoleUseCallEvent {
   readonly summary: string;
   readonly gesture: "gaze" | "input" | "press" | "create" | "wait";
   readonly target?: ConsoleUseCallTarget;
+  /** 기여 도구가 선언한 레일 패널 — 대상이 패널이 아니어도 그 레일 아이콘이 함께 감싸인다. */
+  readonly panelId?: string;
   readonly at: number;
 }
 
@@ -96,8 +105,8 @@ export interface PluginMcpTool {
     readonly panelId: string;
     /**
      * 인자에서 표식 한 줄과 자리를 뽑는다. 기본은 레일 패널을 8초 감싸는 시선(gaze)이다. 자기 제품 상태를 쓰는
-     * 도구는 `gesture` 로 create·press·input 을, `target` 으로 Operation·그룹 자리를 대신 말할 수 있다 —
-     * 그래야 사람이 본 Console 에서 "무엇이 바뀌었는지" 가 그 자리에 보인다.
+     * 도구는 `gesture` 로 create·press·input 을, `target` 으로 Operation·그룹·묶음 줄 자리를 대신 말할 수 있다 —
+     * 그래야 사람이 본 Console 에서 "무엇이 바뀌었는지" 가 그 자리에 보인다. 레일 패널 버튼은 그때도 함께 감싸인다.
      */
     describe(args: Record<string, unknown>): {
       readonly theaterId: string;

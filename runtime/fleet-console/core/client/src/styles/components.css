@@ -7941,12 +7941,15 @@ body[data-companion-resizing="true"] .canvas-operation {
   }
 }
 
-/* 결정 요청·오늘 구역 — 접지 않는 머리. 뒤따르는 가는 선이 구역의 끝을 긋지 않고 자리만 잡는다. */
+/* 결정 요청·오늘 구역 — 접지 않는 머리. 뒤따르는 가는 선이 구역의 끝을 긋지 않고 자리만 잡는다.
+   줄과 같은 바깥 여백·모서리를 둬 Console Use 펄스(목록 읽기)가 줄과 같은 윤곽으로 감싼다 — 글자·선 자리는 그대로다. */
 .side-bar-row-zone-pin {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px var(--space-2) 3px calc(var(--space-2) + var(--space-1));
+  margin: 0 var(--space-1);
+  padding: 8px calc(var(--space-2) - var(--space-1)) 3px var(--space-2);
+  border-radius: 7px;
   font-size: var(--t-xs);
   letter-spacing: 0.03em;
   color: var(--text-tertiary);
