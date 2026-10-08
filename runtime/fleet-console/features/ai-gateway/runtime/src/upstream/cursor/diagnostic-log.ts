@@ -35,6 +35,7 @@ const CURSOR_DIAGNOSTIC_EVENTS = new Set<CursorDiagnosticEventName>([
   "client.heartbeat",
   "client.reply",
   "server.frame",
+  "tool.mcp.dropped",
   "bridge.park",
   "bridge.attach",
   "bridge.defer",
@@ -153,6 +154,11 @@ function serializeCursorDiagnosticEvent(event: CursorDiagnosticEvent): string | 
   addNumber(record, "frameCount", event.frameCount);
   addString(record, "lastFrame", event.lastFrame, 128);
   addNumber(record, "toolCount", event.toolCount);
+  if (event.event === "tool.mcp.dropped") {
+    addString(record, "toolName", event.toolName, 128);
+    addString(record, "providerIdentifier", event.providerIdentifier, 128);
+    if (event.reason === "foreign_provider" || event.reason === "catalog_miss") record.reason = event.reason;
+  }
   addNumber(record, "argumentRepairCount", event.argumentRepairCount);
   addNumber(record, "estimatedInputTokens", event.estimatedInputTokens);
   addNumber(record, "contextTokens", event.contextTokens);

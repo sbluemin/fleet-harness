@@ -18,6 +18,7 @@ import {
   decodeConnectFrames,
   encodeConnectFrame,
   encodeAnthropicSse,
+  createCursorDiagnosticLog,
   resetCursorWireModelMemory,
   setWireLogTarget,
 } from "../../../../src/index.js";
@@ -701,7 +702,9 @@ describe("Cursor live client-tool Run bridge", () => {
     await expectCursorMcpOwnership([
       ...cursorToolFrames([foreignRead]),
       { interactionUpdate: { turnEnded: {} } },
-    ], []);
+    ], [], [
+      { toolName: "read", providerIdentifier: "external-provider", reason: "foreign_provider", count: 1 },
+    ]);
     await expectCursorMcpOwnership([
       cursorToolPartialFrame(foreignSearch),
       ...cursorToolFrames([foreignSearch]),
@@ -711,10 +714,24 @@ describe("Cursor live client-tool Run bridge", () => {
       cursorToolCompletedFrame(foreignOwnedName),
       cursorToolCompletedFrame(unadvertised),
       { interactionUpdate: { turnEnded: {} } },
-    ], []);
+    ], [], [
+      { toolName: "tool_search", providerIdentifier: "external-provider", reason: "foreign_provider", count: 1 },
+      { toolName: "probe_tool", providerIdentifier: "external-provider", reason: "foreign_provider", count: 1 },
+      { toolName: "not_probe_tool", providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER, reason: "catalog_miss", count: 1 },
+    ]);
     await expectCursorMcpOwnership([
       ...cursorToolFrames([foreignRead, valid]),
-    ], [valid.name]);
+    ], [valid.name], [
+      { toolName: "read", providerIdentifier: "external-provider", reason: "foreign_provider", count: 1 },
+    ]);
+    await expectCursorMcpOwnership(cursorToolFrames([valid]), [valid.name], []);
+    const originalNameRequest: CanonicalResponseRequest = {
+      ...cursorRequest("mcp-original-name", "grok-4.7"),
+      tools: [{ ...PROBE_TOOLS[0]!, name: "Read" }],
+    };
+    await expectCursorMcpOwnership(
+      cursorToolFrames([{ ...valid, name: "Read" }]), ["Read"], [], originalNameRequest,
+    );
 
     // Cursor numbers exec messages from zero and `id` has implicit presence, so the first client
     // tool of a Run arrives with no `id` field at all. Every other call here carries a nonzero id.
@@ -732,9 +749,15 @@ describe("Cursor live client-tool Run bridge", () => {
 
     try {
       await collectCursorResponseWithDiagnostics(harness.adapter, initial, true);
+      expect(diagnostics.filter((event) => event.event === "tool.mcp.dropped")).toEqual([]);
       // Measured 2026-10-06 (cursor-agent 2026.10.01): an update carrying only fields this
       // descriptor does not know can land right after a park. It must not cost the warm Run.
-      await stream.emitFrames([unknownOnlyInteractionUpdate(25)]);
+      await stream.emitFrames([
+        unknownOnlyInteractionUpdate(25),
+        cursorToolPartialFrame(foreignRead),
+        cursorToolStartedFrame(foreignRead),
+        cursorToolCompletedFrame(foreignRead),
+      ]);
       const secondEvents = await collectCursorResponseWithDiagnostics(
         harness.adapter,
         cursorContinuation(initial, [call], [cursorResult(call, "README contents")]),
@@ -742,6 +765,11 @@ describe("Cursor live client-tool Run bridge", () => {
       );
 
       expect(canonicalText(secondEvents)).toBe("first exec completed");
+      const dropped = diagnostics.filter((event) => event.event === "tool.mcp.dropped");
+      expect(dropped).toEqual([expect.objectContaining({
+        toolName: "read", providerIdentifier: "external-provider", reason: "foreign_provider", count: 1,
+        runId: diagnostics.find((event) => event.event === "turn.start")?.runId,
+      })]);
       expect(diagnostics).toContainEqual(expect.objectContaining({
         event: "server.frame",
         frame: "interactionUpdate.unknownField25",
@@ -1552,15 +1580,23 @@ async function expectCorrelationBatchColdFallback(
   }
 }
 
-async function expectCursorMcpOwnership(frames: readonly unknown[], expectedNames: readonly string[]): Promise<void> {
+async function expectCursorMcpOwnership(
+  frames: readonly unknown[],
+  expectedNames: readonly string[],
+  expectedDrops: readonly Record<string, unknown>[],
+  request = cursorRequest("mcp-ownership", "grok-4.7"),
+): Promise<void> {
   const stream = new BridgeCursorStream(frames);
   const diagnostics: CursorDiagnosticEvent[] = [];
+  const directory = mkdtempSync(path.join(tmpdir(), "fleet-cursor-mcp-ownership-"));
+  temporaryWireLogDirectories.push(directory);
+  const log = createCursorDiagnosticLog(directory);
   const harness = cursorHarness([stream], {
     idleTimeoutMs: 75,
-    diagnostics: (event) => diagnostics.push(event),
+    diagnostics: (event) => { diagnostics.push(event); log.write(event); },
   });
   try {
-    const response = await harness.adapter.stream(cursorRequest("mcp-ownership", "grok-4.7"), {
+    const response = await harness.adapter.stream(request, {
       apiKey: "cursor-test-token",
     });
     if (!response.ok) throw new Error("Synthetic Cursor response unexpectedly failed");
@@ -1581,8 +1617,19 @@ async function expectCursorMcpOwnership(frames: readonly unknown[], expectedName
     expect(events.some((event) => event.type === "error")).toBe(false);
     expect(diagnostics.filter((event) => event.event === "bridge.park")).toHaveLength(expectedNames.length === 0 ? 0 : 1);
     expect(diagnostics.some((event) => event.event === "transport.semantic_timeout")).toBe(false);
+    await log.flush();
+    const persisted = readFileSync(log.path, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const dropped = persisted.filter((event) => event.event === "tool.mcp.dropped");
+    expect(dropped.map(({ toolName, providerIdentifier, reason, count }) => ({ toolName, providerIdentifier, reason, count })))
+      .toEqual(expectedDrops);
+    const runId = diagnostics.find((event) => event.event === "turn.start")?.runId;
+    expect(dropped.every((event) => event.runId === runId)).toBe(true);
+    expect(dropped.map((event) => Object.keys(event).sort()))
+      .toEqual(expectedDrops.map(() => ["count", "elapsedMs", "event", "providerIdentifier", "reason", "runId", "timestamp", "toolName"].sort()));
+    expect(harness.openedStreams).toBe(1);
   } finally {
     harness.adapter.dispose();
+    await log.flush();
   }
   expect(cursorAdapterLiveState(harness.adapter)).toEqual({ liveRuns: 0, pendingRuns: 0, pendingTimers: 0 });
 }
