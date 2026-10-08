@@ -17,6 +17,7 @@ import {
   buildCursorRunPlan,
   decodeConnectFrames,
   encodeConnectFrame,
+  encodeAnthropicSse,
   resetCursorWireModelMemory,
   setWireLogTarget,
 } from "../../../../src/index.js";
@@ -691,7 +692,30 @@ describe("Cursor live client-tool Run bridge", () => {
     expect(cursorNativeReadEofOutcome(correlation, "Error: file too large", true)).toBe("caller-error");
   });
 
-  it("parks a call whose exec message is the first of the Run and keeps it across an unknown update", async () => {
+  it("parks only advertised fleet-gateway MCP calls and keeps the first exec across an unknown update", async () => {
+    const foreignRead = { ...cursorCall("foreign-read", 1), name: "read", providerIdentifier: "external-provider" };
+    const foreignSearch = { ...cursorCall("foreign-search", 1), name: "tool_search", providerIdentifier: "external-provider" };
+    const foreignOwnedName = { ...cursorCall("foreign-owned-name", 3), providerIdentifier: "external-provider" };
+    const unadvertised = { ...cursorCall("unadvertised", 4), name: "not_probe_tool" };
+    const valid = cursorCall("valid-after-foreign", 2);
+    await expectCursorMcpOwnership([
+      ...cursorToolFrames([foreignRead]),
+      { interactionUpdate: { turnEnded: {} } },
+    ], []);
+    await expectCursorMcpOwnership([
+      cursorToolPartialFrame(foreignSearch),
+      ...cursorToolFrames([foreignSearch]),
+      cursorToolCompletedFrame(foreignSearch),
+      // Neither a foreign provider using our exact name nor our provider using an unknown name owns a caller tool.
+      ...cursorToolFrames([foreignOwnedName, unadvertised]),
+      cursorToolCompletedFrame(foreignOwnedName),
+      cursorToolCompletedFrame(unadvertised),
+      { interactionUpdate: { turnEnded: {} } },
+    ], []);
+    await expectCursorMcpOwnership([
+      ...cursorToolFrames([foreignRead, valid]),
+    ], [valid.name]);
+
     // Cursor numbers exec messages from zero and `id` has implicit presence, so the first client
     // tool of a Run arrives with no `id` field at all. Every other call here carries a nonzero id.
     const call = cursorCall("call-first-exec-of-run", 0);
@@ -857,6 +881,8 @@ describe("Cursor live client-tool Run bridge", () => {
       const reportRun = new BridgeCursorStream(cursorCompletionFrames(finishedReport));
       const reportUnwanted = new BridgeCursorStream(cursorToolFrames([cursorCall("call-resample-report-again", 61)]));
       const reportHarness = cursorHarness([reportRun, reportUnwanted]);
+      const emptyCall = cursorCall("call-resample-empty", 65);
+      const emptyHarness = cursorHarness([new BridgeCursorStream([{ interactionUpdate: { turnEnded: {} } }])]);
       const approval = "승인해 주시면 그대로 진행하겠습니다.";
       const approvalCall = cursorCall("call-resample-approval", 70);
       const approvalRun = new BridgeCursorStream(cursorCompletionFrames(approval));
@@ -915,6 +941,11 @@ describe("Cursor live client-tool Run bridge", () => {
       };
       try {
         const reported = await gateTurn(reportHarness, "session-resample-report", reportCall);
+        const empty = await gateTurn(emptyHarness, "session-resample-empty", emptyCall);
+        expect(empty.filter((event) => event.type === "response.completed")).toHaveLength(1);
+        expect(canonicalText(empty)).toBe("");
+        expect(addedFunctionCallIds(empty)).toEqual([]);
+        expect(emptyHarness.openedStreams).toBe(1);
         const held = await gateTurn(approvalHarness, "session-resample-approval", approvalCall);
         const retried = await gateTurn(pastModifierHarness, "session-resample-past-modifier", pastModifierCall);
         const englishRetried = [];
@@ -955,6 +986,7 @@ describe("Cursor live client-tool Run bridge", () => {
         });
       } finally {
         reportHarness.adapter.dispose();
+        emptyHarness.adapter.dispose();
         approvalHarness.adapter.dispose();
         pastModifierHarness.adapter.dispose();
         skillHarness.adapter.dispose();
@@ -1520,12 +1552,48 @@ async function expectCorrelationBatchColdFallback(
   }
 }
 
+async function expectCursorMcpOwnership(frames: readonly unknown[], expectedNames: readonly string[]): Promise<void> {
+  const stream = new BridgeCursorStream(frames);
+  const diagnostics: CursorDiagnosticEvent[] = [];
+  const harness = cursorHarness([stream], {
+    idleTimeoutMs: 75,
+    diagnostics: (event) => diagnostics.push(event),
+  });
+  try {
+    const response = await harness.adapter.stream(cursorRequest("mcp-ownership", "grok-4.7"), {
+      apiKey: "cursor-test-token",
+    });
+    if (!response.ok) throw new Error("Synthetic Cursor response unexpectedly failed");
+    const chunks: string[] = [];
+    for await (const chunk of encodeAnthropicSse(response.events)) {
+      chunks.push(new TextDecoder().decode(chunk));
+    }
+    const events = chunks.join("").split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)));
+    const toolUses = events.filter((event) => (
+      event.type === "content_block_start" && event.content_block?.type === "tool_use"
+    ));
+    expect(toolUses.map((event) => event.content_block.name)).toEqual(expectedNames);
+    expect(events.find((event) => event.type === "message_delta")?.delta?.stop_reason)
+      .toBe(expectedNames.length === 0 ? "end_turn" : "tool_use");
+    expect(events.some((event) => event.type === "message_stop")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    expect(diagnostics.filter((event) => event.event === "bridge.park")).toHaveLength(expectedNames.length === 0 ? 0 : 1);
+    expect(diagnostics.some((event) => event.event === "transport.semantic_timeout")).toBe(false);
+  } finally {
+    harness.adapter.dispose();
+  }
+  expect(cursorAdapterLiveState(harness.adapter)).toEqual({ liveRuns: 0, pendingRuns: 0, pendingTimers: 0 });
+}
+
 interface CursorCallSpec {
   readonly callId: string;
   readonly toolCallId: string;
   readonly messageId: number;
   readonly execId: string;
   readonly name: string;
+  readonly providerIdentifier?: string;
 }
 
 function cursorCall(callId: string, messageId: number): CursorCallSpec {
@@ -1638,7 +1706,7 @@ function cursorToolUpdateFrame(
               name: call.name,
               toolName: call.name,
               toolCallId: call.toolCallId,
-              providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
+              providerIdentifier: call.providerIdentifier ?? CURSOR_TOOL_PROVIDER_IDENTIFIER,
             },
           },
         },
@@ -1657,7 +1725,7 @@ function cursorExecFrame(call: CursorCallSpec): unknown {
         name: call.name,
         toolName: call.name,
         toolCallId: call.toolCallId,
-        providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
+        providerIdentifier: call.providerIdentifier ?? CURSOR_TOOL_PROVIDER_IDENTIFIER,
         args: { path: cursorValue("README.md") },
       },
     },

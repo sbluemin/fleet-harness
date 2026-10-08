@@ -2887,7 +2887,14 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     clearSemanticStall();
     detachAbort(segment);
     if (error) segment.failure = error;
-    else if (segment.started) {
+    else if (segment.started || outcome === "turn_ended") {
+      if (!segment.started) {
+        segment.started = true;
+        segment.queue.push({
+          type: "response.created",
+          response: { id: segment.responseId, model, usage: usage(segment) },
+        });
+      }
       segment.queue.push({
         type: "response.completed",
         response: { id: segment.responseId, model, usage: usage(segment) },
@@ -4088,16 +4095,16 @@ const CURSOR_MCP_DISPLAY_PREFIX = `mcp_${CURSOR_TOOL_PROVIDER_IDENTIFIER}_`;
 function cursorClientMcpCall(
   call: CursorMcpCall,
   tools: readonly CursorWireTool[],
-): CursorMcpCall {
+): CursorMcpCall | null {
+  if (call.providerIdentifier !== CURSOR_TOOL_PROVIDER_IDENTIFIER) return null;
   const wireName = call.name.startsWith(CURSOR_MCP_DISPLAY_PREFIX)
     ? call.name.slice(CURSOR_MCP_DISPLAY_PREFIX.length)
     : call.name;
   const tool = tools.find((candidate) => (
     candidate.name === wireName
     || candidate.toolName === wireName
-    || candidate.clientName === call.name
   ));
-  if (!tool) return call;
+  if (!tool) return null;
   const repaired = call.arguments === undefined
     ? undefined
     : repairCursorToolArguments(call.arguments, tool.inputSchemaValue);
