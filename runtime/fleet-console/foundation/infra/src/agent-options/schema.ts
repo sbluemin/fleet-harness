@@ -34,8 +34,6 @@ export interface ClaudeCodeTheaterSystemPrompt {
 }
 
 export interface AgentOptionsData {
-  /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
-  readonly agentIdleDormantMinutes?: number | null;
   /** Registered Theater IDs are validated by the Console host, not this storage schema. */
   readonly claudeCodeTheaterSystemPrompts?: Readonly<Record<string, ClaudeCodeTheaterSystemPrompt>>;
   /**
@@ -63,33 +61,23 @@ export interface AgentOptionsValidationResult {
 export function sanitizeAgentOptionsData(value: unknown): AgentOptionsValidationResult {
   if (!isRecord(value)) return { data: {}, changed: true };
 
-  const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
   const claudeCodeTheaterSystemPrompts = sanitizeTheaterSystemPrompts(value.claudeCodeTheaterSystemPrompts);
   const claudeCodeTheaterSubagents = sanitizeTheaterSubagents(value.claudeCodeTheaterSubagents);
   const data: AgentOptionsData = {
-    ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
     ...(claudeCodeTheaterSystemPrompts !== undefined ? { claudeCodeTheaterSystemPrompts } : {}),
     ...(claudeCodeTheaterSubagents !== undefined ? { claudeCodeTheaterSubagents } : {}),
   };
   // A retired key (the global built-in subagent opt-out list) is unknown here, so it is dropped
   // and reported as a change: the next write leaves it behind.
   const allowedKeys = new Set([
-    "agentIdleDormantMinutes",
     "claudeCodeTheaterSystemPrompts",
     "claudeCodeTheaterSubagents",
   ]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
-    ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
     ("claudeCodeTheaterSystemPrompts" in value && JSON.stringify(value.claudeCodeTheaterSystemPrompts) !== JSON.stringify(claudeCodeTheaterSystemPrompts)) ||
     ("claudeCodeTheaterSubagents" in value && JSON.stringify(value.claudeCodeTheaterSubagents) !== JSON.stringify(claudeCodeTheaterSubagents));
 
   return { data, changed };
-}
-
-function sanitizeAgentIdleDormantMinutes(value: unknown): number | null | undefined {
-  if (value === null) return null;
-  if (typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0) return value;
-  return undefined;
 }
 
 function sanitizeClaudeCodeSystemPrompt(value: unknown): ClaudeCodeSystemPromptMode | undefined {

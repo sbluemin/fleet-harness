@@ -37,7 +37,6 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   const models = createModelRosterHost({ readSettings: aiGatewayStore.read });
   const modelRoster = registerModelRosterRoutes(ctx, models);
   registerTerminalSettingsRoutes(ctx, {
-    agentOptionsService: ctx.agentOptions,
     theaterSystemPrompts,
     aiGatewayStore,
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),

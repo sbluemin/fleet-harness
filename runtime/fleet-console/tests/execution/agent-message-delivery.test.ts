@@ -196,7 +196,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error; read
     bindChatAttach: () => () => {},
     stop: async () => {},
   };
-  const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null }), update: (mutate) => mutate({}) };
+  const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };
   const ctx = {
     dataDir: fleetDataDir,
     legacyDataDir: fleetDataDir,

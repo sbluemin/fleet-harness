@@ -18,11 +18,10 @@ import type { ConsoleRuntimeContext } from "../context.js";
 import { PRIOR_WRITER_EXIT_WAIT_MS, readSocketRole, readTicketChannel, TERMINAL_PRIOR_WRITER_ALIVE } from "../terminal/index.js";
 import type { TerminalRuntime } from "../terminal/index.js";
 
-import { createDefaultAgentCliDetector, validateAgentCliPathForSave, type AgentCliDetector } from "./agent-cli-detect.js";
+import { createDefaultAgentCliDetector, type AgentCliDetector } from "./agent-cli-detect.js";
 import { buildAgentCliLaunchKinds } from "./agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
-import { AGENT_CLI_COMMANDS, createAgentCliPathStore, resolveAgentCliBinary } from "./agent-cli-paths.js";
-import type { AgentCliDiagnostics } from "./agent-cli-types.js";
+import { createAgentCliPathStore, resolveAgentCliBinary } from "./agent-cli-paths.js";
 import { findGatewayModel, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { AiGatewayLaunchBinding } from "./launch.js";
@@ -46,7 +45,6 @@ import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
 import type { TheaterSystemPromptService } from "../../../settings/host/agent-options.js";
-import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
@@ -130,9 +128,6 @@ export async function registerAgentRoutes(
   ctx.host.lifecycle.registerCleanup(api.cleanup);
   registerRouter(ctx, "agent", api.handle, [
     { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "GET", path: "/agent-cli/state", summary: "Read installed Agent CLI status.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "GET", path: "/agent-cli/diagnostics", summary: "Read Agent CLI diagnostics.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "PUT", path: "/agent-cli/path", summary: "Save an Agent CLI executable path.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Console Execution", gate: "loopback", transport: "sse" },
     { method: "GET", path: "/sessions", summary: "List Agent sessions.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions", summary: "Create an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -652,58 +647,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   if (detachControl) ctx.host.lifecycle.registerCleanup(detachControl);
 
   rehydrateDormantAgentOperations();
-  startIdleAgentDormantSweeper({
-    loadGlobalOptions: () => deps.agentOptionsService.load(),
-    listTerminalSessions: () => observability.listTerminalSessions(),
-    getSessionLastActivityAt: (sessionId) => terminalRuntime.getSessionLastActivityAt(sessionId),
-    hasProviderSessionCapture: (sessionId) => readProviderSession(ctx.host.operations.get(sessionId)?.payload) !== undefined,
-    terminate: (sessionId) => terminalRuntime.terminate(sessionId),
-    getChatLastActivityAt: (sessionId) => chatRegistry.get(sessionId)?.lastActivityAt ?? null,
-    sleepChat: (sessionId) => { void sleepChatOperation(sessionId).catch(() => undefined); },
-    registerCleanup: (cleanup) => ctx.host.lifecycle.registerCleanup(cleanup),
-  });
 
   async function handle({ req, res, pathname }: Parameters<ConsoleRuntimeContext["registerRouter"]>[1] extends (arg: infer T) => unknown ? T : never): Promise<boolean> {
     const path = pathname.slice(`${ctx.basePath}/agent`.length) || "/";
     if (path === "/state") {
       if (req.method !== "GET") return methodNotAllowed(res);
       ctx.host.http.writeJson(res, 200, { agentClis: await buildAgentCliLaunchMetadata() });
-      return true;
-    }
-    if (path === "/agent-cli/state") {
-      if (req.method !== "GET") return methodNotAllowed(res);
-      ctx.host.http.writeJson(res, 200, { clis: await detector.detect() });
-      return true;
-    }
-    if (path === "/agent-cli/diagnostics") {
-      if (req.method !== "GET") return methodNotAllowed(res);
-      if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-      ctx.host.http.writeJson(res, 200, await buildAgentCliDiagnostics());
-      return true;
-    }
-    if (path === "/agent-cli/path") {
-      if (req.method !== "PUT") return methodNotAllowed(res);
-      if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-      const body = await ctx.host.http.readJsonBody<{ readonly cliCommand?: unknown; readonly path?: unknown }>(req);
-      if (
-        !body
-        || typeof body.cliCommand !== "string"
-        || !AGENT_CLI_COMMANDS.includes(body.cliCommand as (typeof AGENT_CLI_COMMANDS)[number])
-        || (body.path !== null && typeof body.path !== "string")
-      ) {
-        ctx.host.http.writeJson(res, 400, { error: "path_not_absolute" });
-        return true;
-      }
-      const executablePath = body.path ?? "";
-      if (executablePath.length > 0) {
-        const validation = await validateAgentCliPathForSave(executablePath, process.env);
-        if (validation.error) {
-          ctx.host.http.writeJson(res, 400, { error: validation.error });
-          return true;
-        }
-      }
-      await agentCliPathStore.writePath(body.cliCommand, executablePath);
-      ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
     }
     if (path === "/events") {
@@ -2488,21 +2437,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     const detected = await detector.detect();
     return combineAgentCliLaunchMetadata(metadata, detected);
-  }
-
-  async function buildAgentCliDiagnostics(): Promise<AgentCliDiagnostics> {
-    const userPaths = await readAgentCliPaths();
-    return {
-      entries: AGENT_CLI_COMMANDS.map((cliCommand) => {
-        const resolution = resolveAgentCliBinary({ cliCommand, env: process.env, userPaths });
-        return {
-          cliCommand,
-          configuredPath: userPaths[cliCommand] ?? null,
-          resolutionSource: resolution.source,
-          searchedPathEntries: resolution.searchedPathEntries,
-        };
-      }),
-    };
   }
 
   async function buildLaunchKinds(): Promise<readonly OperationLaunchKind[]> {

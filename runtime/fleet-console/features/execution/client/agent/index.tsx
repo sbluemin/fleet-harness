@@ -1,5 +1,4 @@
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
-import { harnessSummary, subscribeHarnessSummary } from "./mobile-harness-summary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
@@ -20,13 +19,10 @@ import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser
 import type { ClientExecutionProvider, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { React, defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
-import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
+import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
-import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
-import { openTheaterSystemPrompt } from "../../../settings/client/theater-system-prompt-sheet.js";
 import { fetchAnalysisReady } from "../../../analyst/client/analysis-api.js";
 import { AnalystChatPanel } from "../../../analyst/client/analysis-chat-panel.js";
 import { disposeAnalysisStore, useAnalysisStore } from "../../../analyst/client/analysis-store.js";
@@ -57,16 +53,11 @@ import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitch
 
 
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
-import {
-  loadSystemPromptSettings,
-  setSystemPromptSettingsField,
-  useSystemPromptSettingsStore,
-} from "../../../settings/client/execution-settings.js";
-import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
+import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { startAgentConnection } from "./connection.js";
 import { applySessionUpdate, getAgentState, removeSession, selectSession, useAgentState } from "./store.js";
-import type { AgentCliDiagnosticsEntry, AgentCliStatus, SessionInfo } from "./types.js";
+import type { SessionInfo } from "./types.js";
 
 interface SettingToggleRowProps {
   readonly title: string;
@@ -161,31 +152,6 @@ export const generalSettingsSection = defineSettingsSection({
   },
 });
 
-/**
- * 에이전트를 **어떻게 실행하는가**의 방. 터미널 섹션이 화면을 그리는 법을 말하는 것과 같은
- * 층에서, 이 섹션은 자식 프로세스의 정책을 말한다 — 시스템 프롬프트, 서브에이전트, 휴면,
- * 실행 파일. 하네스가 하나뿐인 지금도 카드를 하네스별로 세워 두는 이유는, 둘째 하네스가
- * 왔을 때 옮길 것이 없어야 하기 때문이다.
- */
-export const harnessSettingsSection = defineSettingsSection({
-  id: "harness",
-  // 폰의 설정 목록 보조 줄 — 쓸 수 있는 CLI 이름.
-  mobile: { summary: () => harnessSummary(), subscribe: subscribeHarnessSummary },
-  title: (locale) => getT(locale)("terminal.settings.harness"),
-  group: "work",
-  keywords: [
-    (locale) => [
-      getT(locale)("terminal.settings.harnessClaudeCode"),
-      getT(locale)("terminal.settings.claudeSystemPromptTitle"),
-      getT(locale)("terminal.settings.idleAgent"),
-      getT(locale)("terminal.settings.agentCliAvailable"),
-    ].join(" "),
-    "harness permission permissions approval prompt bypass dangerously skip system prompt claude code dormant idle session timeout cli path executable subagent subagents agent",
-    "하네스 권한 승인 프롬프트 바이패스 건너뛰기 시스템 프롬프트 휴면 유휴 세션 시간 실행 파일 경로 서브에이전트 에이전트",
-  ],
-  render: () => <HarnessSection />,
-});
-
 export { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
 
 export const agentAttentionNotification = defineNotificationKind({
@@ -221,7 +187,7 @@ function resumeFailureMessage(error: unknown, locale?: ConsoleLocale): string {
 export const agentExecution: ClientExecutionProvider = {
   id: null,
   operationKinds: [agentOperationKind],
-  settingsSections: [generalSettingsSection, harnessSettingsSection, agentSettingsSection],
+  settingsSections: [generalSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
   install: (ctx) => installAgentExecution(ctx),
   closeOperation: async (operationId) => {
@@ -1095,13 +1061,6 @@ function GeneralSection() {
   );
 }
 
-/**
- * 하네스 방의 차례: 하네스별 정책 → 하네스 공통 → 설치.
- *
- * 정책이 먼저 서는 이유는 이 방을 여는 이유가 대개 그것이기 때문이고, 실행 파일 목록이
- * 마지막인 이유는 한 번 맞춰 놓으면 다시 볼 일이 거의 없기 때문이다. 휴면은 자식이 아니라
- * Console이 하는 일이라 하네스별 카드가 아니라 공통 카드에 눕는다.
- */
 /** 이 플러그인 설정 표면의 '?' — 접근성 이름("{제목} 도움말")을 터미널 카탈로그에서 조립한다. */
 function SettingsHelp({ title, id, children }: {
   readonly title: string;
@@ -1113,70 +1072,6 @@ function SettingsHelp({ title, id, children }: {
     <SettingsHelpTip ariaLabel={t("terminal.settings.helpTipAria", { title })} id={id}>
       {children}
     </SettingsHelpTip>
-  );
-}
-
-function useLoadSystemPromptSettings() {
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadSystemPromptSettings(controller.signal);
-    return () => controller.abort();
-  }, []);
-}
-
-function HarnessSection() {
-  useLoadSystemPromptSettings();
-  // 카드를 Fragment로 직접 반환한다 — 간격은 호스트의 .global-settings-detail이 진다.
-  return (
-    <>
-      <ClaudeCodeHarnessCard />
-      <AgentSessionsSettingsCard />
-      <AgentCliAvailabilityCard />
-    </>
-  );
-}
-
-/**
- * Claude Code 설정은 Theater마다 다르다 — 시스템 프롬프트와 서브에이전트는 그 Theater의 시트에서 정하고, 이 카드는 그 자리를 안내한다.
- */
-function ClaudeCodeHarnessCard() {
-  const locale = useTerminalLocale();
-  const t = getT(locale);
-  const consoleState = useConsoleState();
-  const mobile = useViewMode().effective === "mobile";
-  const mobileHost = useMobileSettingsHost() !== null;
-  const theater = consoleState.theaters.find((item) => item.id === consoleState.activeTheaterId);
-
-  const promptButton = theater
-    ? <button type="button" onClick={(event) => openTheaterSystemPrompt(theater, event.currentTarget, event.currentTarget.getBoundingClientRect())}>{t("terminal.settings.theaterPromptOpen", { theater: theater.label })}</button>
-    : null;
-  if (mobileHost) {
-    // 폰: 정보 행 — 설명 줄에 안내 + 글자 버튼(S-16 시스템 프롬프트 시트로).
-    return (
-      <SettingsGroup
-        ariaLabel={t("terminal.settings.harnessClaudeCode")}
-        title={t("terminal.settings.harnessClaudeCode")}
-        titleHelp={<SettingsHelp title={t("terminal.settings.harnessClaudeCode")}>{t("terminal.settings.harnessFoot")}</SettingsHelp>}
-      >
-        <SettingsItem label={t("terminal.settings.claudeSystemPromptTitle")} hint={<>{t("terminal.settings.theaterPromptNoticeMobile")}{promptButton ? <> {promptButton}</> : null}</>}>
-          {null}
-        </SettingsItem>
-      </SettingsGroup>
-    );
-  }
-
-  return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.harnessClaudeCode")}>
-      {/* 카드 각주(실행 중인 세션의 정책 유지)는 카드 전체의 이야기라 카드 제목 팁이 진다. */}
-      <h3 className="global-settings-card-title">
-        {t("terminal.settings.harnessClaudeCode")}
-        <SettingsHelp title={t("terminal.settings.harnessClaudeCode")}>{t("terminal.settings.harnessFoot")}</SettingsHelp>
-      </h3>
-      <div className="theater-prompt-settings-note">
-        <span>{t(mobile ? "terminal.settings.theaterPromptNoticeMobile" : "terminal.settings.theaterPromptNotice")}</span>
-        {promptButton}
-      </div>
-    </section>
   );
 }
 
@@ -1206,147 +1101,6 @@ function ChatReadingWidthSettingsCard() {
   );
 }
 
-const IDLE_AGENT_DORMANT_OPTIONS = [
-  { value: "off", labelKey: "terminal.settings.idleAgentOff" },
-  { value: "30", labelKey: "terminal.settings.idleAgent30m" },
-  { value: "60", labelKey: "terminal.settings.idleAgent1h" },
-  { value: "120", labelKey: "terminal.settings.idleAgent2h" },
-  { value: "240", labelKey: "terminal.settings.idleAgent4h" },
-] as const;
-
-/**
- * 하네스 공통 카드. 휴면은 자식이 아니라 Console이 하는 일이라 어떤 하네스로 연 Operation
- * 이든 같은 규칙을 받는다 — 그래서 하네스별 카드가 아니라 이 자리에 눕는다.
- */
-function AgentSessionsSettingsCard() {
-  const t = getT(useTerminalLocale());
-  const settings = useSystemPromptSettingsStore();
-  const state = settings.state;
-  const saving = settings.savingFields;
-
-  const selectValue = state?.agentIdleDormantMinutes === null
-    ? "off"
-    : state?.agentIdleDormantMinutes !== undefined
-      ? String(state.agentIdleDormantMinutes)
-      : "60";
-  const idleOptions = (() => {
-    const options: Array<{ value: string; label: string }> = IDLE_AGENT_DORMANT_OPTIONS.map((option) => ({
-      value: option.value,
-      label: t(option.labelKey),
-    }));
-    const minutes = state?.agentIdleDormantMinutes;
-    if (minutes === null || minutes === undefined) return options;
-    const value = String(minutes);
-    if (options.some((option) => option.value === value)) return options;
-    options.push({
-      value,
-      label: t(
-        minutes === 1
-          ? "terminal.settings.idleAgentMinutes_one"
-          : "terminal.settings.idleAgentMinutes_other",
-        { count: minutes },
-      ),
-    });
-    return options;
-  })();
-
-  return (
-    <SettingsGroup ariaLabel={t("terminal.settings.harnessAgentSessions")} title={t("terminal.settings.harnessAgentSessions")}>
-      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-      {state ? (
-        <SettingsItem
-          label={t("terminal.settings.idleAgent")}
-          labelId="idle-agent-sessions-label"
-          helpTip={(
-            <SettingsHelp title={t("terminal.settings.idleAgent")} id="idle-agent-sessions-help">
-              {t("terminal.settings.idleAgentHelp")}
-            </SettingsHelp>
-          )}
-        >
-          <Select
-            aria-labelledby="idle-agent-sessions-label"
-            value={selectValue}
-            disabled={saving.has("agentIdleDormantMinutes")}
-            options={idleOptions}
-            onChange={(raw) => {
-              const next = raw === "off" ? null : Number(raw);
-              void setSystemPromptSettingsField("agentIdleDormantMinutes", next);
-            }}
-          />
-        </SettingsItem>
-      ) : (
-        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
-      )}
-    </SettingsGroup>
-  );
-}
-
-function AgentCliAvailabilityCard() {
-  const t = getT(useTerminalLocale());
-  const [clis, setClis] = React.useState<readonly AgentCliStatus[]>([]);
-  const [diagnostics, setDiagnostics] = React.useState<readonly AgentCliDiagnosticsEntry[]>([]);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const refresh = React.useCallback(async (signal?: AbortSignal) => {
-    const [nextState, nextDiagnostics] = await Promise.all([
-      fetchAgentCliState(signal),
-      fetchAgentCliDiagnostics(signal),
-    ]);
-    setClis(nextState.clis);
-    setDiagnostics(nextDiagnostics.entries);
-    setError(null);
-  }, []);
-
-  React.useEffect(() => {
-    const abort = new AbortController();
-    void refresh(abort.signal)
-      .catch((err) => {
-        if (!abort.signal.aborted) setError(err instanceof Error ? err.message : String(err));
-      });
-    return () => abort.abort();
-  }, [refresh]);
-
-  const mobileHost = useMobileSettingsHost() !== null;
-  if (mobileHost) {
-    return (
-      <SettingsGroup
-        ariaLabel={t("terminal.settings.agentCliAvailable")}
-        title={t("terminal.settings.agentCliAvailable")}
-        titleHelp={<SettingsHelp title={t("terminal.settings.agentCliAvailable")}><p>{t("terminal.settings.agentCliHelp")}</p></SettingsHelp>}
-      >
-        {error ? <p className="settings-error">{error}</p> : null}
-        {clis.map((cli) => (
-          <AgentCliMobileRow key={cli.id} cli={cli} diagnostics={diagnostics.find((entry) => entry.cliCommand === cli.id)} onChanged={refresh} />
-        ))}
-      </SettingsGroup>
-    );
-  }
-
-  return (
-    <section className="global-settings-card" aria-label={t("terminal.settings.agentCliAvailable")}>
-      <div className="agent-cli-head">
-        <p className="global-settings-resp-title">
-          {t("terminal.settings.agentCliAvailable")}
-          <SettingsHelp title={t("terminal.settings.agentCliAvailable")}>
-            <p>{t("terminal.settings.agentCliHelp")}</p>
-          </SettingsHelp>
-        </p>
-      </div>
-      {error ? <p className="settings-error">{error}</p> : null}
-      <div className="agent-cli-list">
-        {clis.map((cli) => (
-          <AgentCliRow
-            key={cli.id}
-            cli={cli}
-            diagnostics={diagnostics.find((entry) => entry.cliCommand === cli.id)}
-            onChanged={refresh}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function SettingToggleRow({ title, help, value, disabled, onToggle }: SettingToggleRowProps) {
   return (
     <div className="global-settings-row">
@@ -1365,171 +1119,6 @@ function SettingToggleRow({ title, help, value, disabled, onToggle }: SettingTog
         ariaLabel={title}
         onChange={onToggle}
       />
-    </div>
-  );
-}
-
-const AGENT_CLI_PATH_ERROR_KEYS = {
-  path_not_absolute: "terminal.settings.agentCliErrorNotAbsolute",
-  path_not_found: "terminal.settings.agentCliErrorNotFound",
-  path_not_executable: "terminal.settings.agentCliErrorNotExecutable",
-  path_not_file: "terminal.settings.agentCliErrorNotFile",
-  probe_failed: "terminal.settings.agentCliErrorProbeFailed",
-} as const satisfies Record<string, TerminalMessageKey>;
-
-/**
- * 폰의 Agent CLI 행(P-4): `[이름 / 사용 가능 · {버전} · {경로}]`을 누르면 경로 입력 시트가 열린다. 사용자가 정한 경로가 있으면 「지우기」가 있고,
- * 환경 변수가 정한 경로는 읽기 전용 정보 행이다. 오류는 시트 오류 줄에 현지화한 문장으로 선다.
- */
-function AgentCliMobileRow({ cli, diagnostics, onChanged }: {
-  readonly cli: AgentCliStatus;
-  readonly diagnostics?: AgentCliDiagnosticsEntry;
-  readonly onChanged: (signal?: AbortSignal) => Promise<void>;
-}) {
-  const t = getT(useTerminalLocale());
-  const envManaged = diagnostics?.resolutionSource === "env";
-  const configured = diagnostics?.configuredPath ?? null;
-  const save = async (next: string | null) => {
-    try {
-      await setAgentCliPath(cli.id, next);
-    } catch (error) {
-      const key = error instanceof Error ? AGENT_CLI_PATH_ERROR_KEYS[error.message as keyof typeof AGENT_CLI_PATH_ERROR_KEYS] : undefined;
-      throw new Error(t(key ?? "terminal.settings.agentCliErrorProbeFailed"));
-    }
-    await onChanged();
-  };
-  const status = [cli.available ? t("terminal.settings.available") : t("terminal.settings.missing"), cli.available ? cli.version : null, envManaged ? t("terminal.settings.agentCliSourceEnv") : configured].filter(Boolean).join(" · ");
-  return (
-    <SettingsInputRow
-      label={cli.displayName}
-      valueText={status}
-      readOnly={envManaged}
-      input={{
-        value: configured ?? "",
-        placeholder: t("terminal.settings.agentCliPathPlaceholder"),
-        description: t("terminal.settings.agentCliPathLabel"),
-        onSave: (value) => save(value),
-        ...(configured !== null && !envManaged ? { onClear: () => save(null) } : {}),
-      }}
-    />
-  );
-}
-
-function AgentCliRow({
-  cli,
-  diagnostics,
-  onChanged,
-}: {
-  readonly cli: AgentCliStatus;
-  readonly diagnostics?: AgentCliDiagnosticsEntry;
-  readonly onChanged: (signal?: AbortSignal) => Promise<void>;
-}) {
-  const t = getT(useTerminalLocale());
-  const inputId = React.useId();
-  const [editing, setEditing] = React.useState(false);
-  const [pathValue, setPathValue] = React.useState(diagnostics?.configuredPath ?? "");
-  const [busy, setBusy] = React.useState(false);
-  const [pathError, setPathError] = React.useState<TerminalMessageKey | null>(null);
-  const envManaged = diagnostics?.resolutionSource === "env";
-  const userConfigured = diagnostics?.configuredPath !== null && diagnostics?.configuredPath !== undefined;
-  const userInvalid = userConfigured && !envManaged && (!cli.available || diagnostics?.resolutionSource !== "user");
-
-  React.useEffect(() => {
-    if (!editing) setPathValue(diagnostics?.configuredPath ?? "");
-  }, [diagnostics?.configuredPath, editing]);
-
-  const savePath = async (nextPath: string | null) => {
-    setBusy(true);
-    setPathError(null);
-    try {
-      await setAgentCliPath(cli.id, nextPath);
-      await onChanged();
-      setEditing(false);
-    } catch (error) {
-      const key = error instanceof Error ? AGENT_CLI_PATH_ERROR_KEYS[error.message as keyof typeof AGENT_CLI_PATH_ERROR_KEYS] : undefined;
-      setPathError(key ?? "terminal.settings.agentCliErrorProbeFailed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="agent-cli-row">
-      <div className="agent-cli-summary">
-        <span className="agent-cli-name">{cli.displayName}</span>
-        <span className="agent-cli-meta">
-          {cli.available && cli.version ? <span className="agent-cli-version">{cli.version}</span> : null}
-          <span className={`agent-cli-status ${cli.available ? "is-on" : ""}`}>{cli.available ? t("terminal.settings.available") : t("terminal.settings.missing")}</span>
-        </span>
-      </div>
-      {envManaged ? (
-        <div className="agent-cli-path-form">
-          <span>{t("terminal.settings.agentCliSourceEnv")}</span>
-          <label htmlFor={inputId}>{t("terminal.settings.agentCliPathLabel")}</label>
-          <input
-            id={inputId}
-            className="agent-cli-path-input"
-            value={diagnostics?.configuredPath ?? ""}
-            placeholder={t("terminal.settings.agentCliPathPlaceholder")}
-            disabled
-            readOnly
-          />
-        </div>
-      ) : null}
-      {userConfigured && !envManaged ? (
-        <div className="agent-cli-path-status">
-          <span className="agent-cli-configured-path">{diagnostics.configuredPath}</span>
-          <span className={userInvalid ? "agent-cli-path-invalid" : "agent-cli-path-source"}>
-            {t(userInvalid ? "terminal.settings.agentCliPathInvalid" : "terminal.settings.agentCliSourceUser")}
-          </span>
-          <button type="button" className="agent-cli-path-button" disabled={busy} onClick={() => { void savePath(null); }}>
-            {t("terminal.settings.agentCliPathClear")}
-          </button>
-        </div>
-      ) : null}
-      {!envManaged && editing ? (
-        <form
-          className="agent-cli-path-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void savePath(pathValue);
-          }}
-        >
-          <label htmlFor={inputId}>{t("terminal.settings.agentCliPathLabel")}</label>
-          <input
-            id={inputId}
-            className="agent-cli-path-input"
-            value={pathValue}
-            placeholder={t("terminal.settings.agentCliPathPlaceholder")}
-            disabled={busy}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => setPathValue(event.target.value)}
-          />
-          <div className="agent-cli-path-actions">
-            <button type="submit" className="agent-cli-path-button is-primary" disabled={busy || pathValue.trim().length === 0}>
-              {t("terminal.settings.agentCliPathConfirm")}
-            </button>
-            <button type="button" className="agent-cli-path-button" disabled={busy} onClick={() => { setEditing(false); setPathError(null); }}>
-              {t("terminal.settings.agentCliPathCancel")}
-            </button>
-          </div>
-        </form>
-      ) : null}
-      {!envManaged && !editing && !userConfigured && !cli.available ? (
-        <button type="button" className="agent-cli-path-button" onClick={() => setEditing(true)}>
-          {t("terminal.settings.agentCliSetPath")}
-        </button>
-      ) : null}
-      {pathError ? <p className="agent-cli-path-error" role="alert">{t(pathError)}</p> : null}
-      {diagnostics && diagnostics.searchedPathEntries.length > 0 ? (
-        <details className="agent-cli-searched-paths">
-          <summary>{t("terminal.settings.agentCliSearchedPaths")}</summary>
-          <ul>
-            {diagnostics.searchedPathEntries.map((entry, index) => <li key={`${index}:${entry}`}>{entry}</li>)}
-          </ul>
-        </details>
-      ) : null}
     </div>
   );
 }

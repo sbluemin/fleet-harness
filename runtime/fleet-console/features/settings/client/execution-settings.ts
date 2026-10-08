@@ -63,7 +63,6 @@ export type XaiEndpointPreference = "direct" | "cli-proxy";
 export type DelegationRoutingMode = "jev" | "model";
 
 export interface SystemPromptSettingsState {
-  readonly agentIdleDormantMinutes: number | null;
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -77,7 +76,6 @@ export interface SystemPromptSettingsState {
 }
 
 export type SystemPromptSettingsUpdate =
-  | { readonly agentIdleDormantMinutes: number | null }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
@@ -183,7 +181,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   const payload = value as Partial<SystemPromptSettingsState>;
   if (
     !payload
-    || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
@@ -195,7 +192,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
   return {
-    agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
@@ -227,11 +223,6 @@ function isAiGatewayCatalog(value: unknown): value is AiGatewayCatalog {
     provider && typeof provider.id === "string" && Array.isArray(provider.models));
 }
 
-function isAgentIdleDormantMinutes(value: unknown): value is number | null {
-  if (value === null) return true;
-  return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0;
-}
-
 function isCompactCeiling(value: unknown): value is CompactCeiling | null {
   if (value === null) return true;
   if (value === "early" || value === "late") return true;
@@ -242,7 +233,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -373,10 +364,10 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   if (field === "xaiEndpoint") {
     return { xaiEndpoint: state.xaiEndpoint };
   }
-  // 후미 폴백이라 분기를 빠뜨린 새 필드는 조용히 **다른 설정**을 저장한다(실측: 승인
-  // 게이트를 켜면 휴면 시간이 저장됐다). 필드를 더할 때는 분기도 함께 더할 것 —
-  // 그 대칭은 아래 테스트가 필드 목록 전체를 돌며 지킨다.
-  return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
+  // 후미에 아무 필드나 저장하는 폴백을 두면, 분기를 빠뜨린 새 필드가 조용히 **다른 설정**을
+  // 저장한다. 필드를 더하고 분기를 빠뜨리면 이 줄이 컴파일에서 막는다.
+  const unhandled: never = field;
+  throw new Error(`Unsupported settings field: ${String(unhandled)}`);
 }
 
 function currentError(): string | null {

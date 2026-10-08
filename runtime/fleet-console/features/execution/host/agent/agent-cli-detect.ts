@@ -12,7 +12,7 @@ import type { ResolvedBinary } from "@fleet-console/process";
 import { withHidden } from "@fleet-console/process";
 
 import type { AgentCliStatus } from "./agent-cli-types.js";
-import { AGENT_CLI_COMMANDS, resolveAgentCliBinary, validateUserAgentCliPath, type AgentCliBinaryResolution, type AgentCliPathError } from "./agent-cli-paths.js";
+import { AGENT_CLI_COMMANDS, resolveAgentCliBinary, type AgentCliBinaryResolution } from "./agent-cli-paths.js";
 
 export interface AgentCliDetectorDeps {
   readonly env?: NodeJS.ProcessEnv;
@@ -111,19 +111,6 @@ async function probeAgentCliVersion(
   } catch {
     return null;
   }
-}
-
-export async function validateAgentCliPathForSave(
-  executablePath: string,
-  env: NodeJS.ProcessEnv = process.env,
-  runVersion: AgentCliDetectorDeps["runVersion"] = execFileVersion,
-): Promise<{ readonly error: AgentCliPathError | null; readonly version: string | null }> {
-  const resolution = validateUserAgentCliPath(executablePath, env);
-  if (resolution.error || !resolution.resolved) {
-    return { error: resolution.error ?? "path_not_found", version: null };
-  }
-  const version = await probeAgentCliVersion(resolution.resolved, runVersion);
-  return version ? { error: null, version } : { error: "probe_failed", version: null };
 }
 
 function execFileVersion(bin: string, args: readonly string[]): Promise<string> {

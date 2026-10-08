@@ -31,7 +31,6 @@ describe("terminal settings routes", () => {
     await harness.handle({ req: req("GET"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({
-      agentIdleDormantMinutes: 60,
       aiGateway: null,
       wireLogEnabled: false,
       delegationRoutingEnabled: false,
@@ -43,16 +42,16 @@ describe("terminal settings routes", () => {
 
   it("keeps Theater prompts scoped, validates writes, and clears the pair together", async () => {
     const theaterUrl = "/api/v1/agent/theater-system-prompt?theaterId=theater-1";
-    const harness = createRouteHarness({ body: { prompt: { mode: "append", body: "  My rules\r\n" } }, data: { agentIdleDormantMinutes: 30 } });
+    const harness = createRouteHarness({ body: { prompt: { mode: "append", body: "  My rules\r\n" } } });
     await harness.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
     expect(harness.writes.pop()).toEqual({ status: 200, body: { theaterId: "theater-1", prompt: { mode: "append", body: "  My rules\n" } } });
-    expect(harness.currentData()).toEqual({ agentIdleDormantMinutes: 30, claudeCodeTheaterSystemPrompts: { "theater-1": { mode: "append", body: "  My rules\n" } } });
+    expect(harness.currentData()).toEqual({ claudeCodeTheaterSystemPrompts: { "theater-1": { mode: "append", body: "  My rules\n" } } });
     await harness.handleTheaterPrompt({ req: req("GET", undefined, theaterUrl), res: res(), pathname: theaterUrl });
     expect(harness.writes.pop()?.body).toMatchObject({ prompt: { mode: "append" } });
     const cleared = createRouteHarness({ body: { prompt: null }, data: harness.currentData() });
     await cleared.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
     expect(cleared.writes.pop()?.body).toEqual({ theaterId: "theater-1", prompt: null });
-    expect(cleared.currentData()).toEqual({ agentIdleDormantMinutes: 30 });
+    expect(cleared.currentData()).toEqual({});
     expect(cleared.theaterSystemPrompts.save("theater-1", { mode: "on", body: "" })).toBeNull();
     expect(cleared.theaterSystemPrompts.save("theater-1", { mode: "on", body: "saved for later" })).toEqual({ mode: "on", body: "saved for later" });
     // 서브에이전트는 Theater마다 켜 둘 수 있고(기본은 대체), 잊힌 Theater를 지울 때 프롬프트와 함께 사라진다.
@@ -62,7 +61,7 @@ describe("terminal settings routes", () => {
     expect(kept.writes.pop()?.body).toEqual({ theaterId: "theater-1", subagentsKept: true });
     expect(kept.theaterSystemPrompts.subagentsKept("theater-1")).toBe(true);
     kept.theaterSystemPrompts.purge("theater-1");
-    expect(kept.currentData()).toEqual({ agentIdleDormantMinutes: 30 });
+    expect(kept.currentData()).toEqual({});
 
     const unknown = createRouteHarness({ body: { prompt: { mode: "off", body: "secret" } } });
     await unknown.handleTheaterPrompt({ req: req("PUT", "application/json", "/api/v1/agent/theater-system-prompt?theaterId=unknown"), res: res(), pathname: "" });
@@ -80,7 +79,7 @@ describe("terminal settings routes", () => {
     expect(sanitizeAgentOptionsData({
       claudeCodeSystemPrompt: "off", claudeCodeCustomSystemPrompt: "old instructions",
       agentIdleDormantMinutes: 30, claudeCodeDisabledAgents: ["Explore"],
-    })).toEqual({ data: { agentIdleDormantMinutes: 30 }, changed: true });
+    })).toEqual({ data: {}, changed: true });
   });
 
   it("GET /api/v1/agent/settings resolves stored Jev routing mode", async () => {
@@ -171,7 +170,6 @@ function createRouteHarness(options: HarnessOptions = {}) {
   const isRegisteredTheater = (id: string) => id === "theater-1";
   const theaterSystemPrompts = createTheaterSystemPromptService(agentOptionsService, isRegisteredTheater);
   registerTerminalSettingsRoutes(ctx, {
-    agentOptionsService,
     theaterSystemPrompts,
     aiGatewayStore: {
       path: "/test/ai-gateway.json",

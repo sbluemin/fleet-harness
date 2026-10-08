@@ -2,7 +2,7 @@ import { DEFAULT_FONTS } from "@fleet-console/sdk/settings/fonts";
 import { getGlobalSettingsStoreState, subscribe } from "../../../../features/settings/client/global-settings-store.js";
 import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
-import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection, harnessSettingsSection } from "../../../../features/execution/client/agent/index.js";
+import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection } from "../../../../features/execution/client/agent/index.js";
 import { globalShellEntry } from "../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { globalBrowserEntry } from "../../../../features/browser/client/global-browser-entry.js";
 import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";

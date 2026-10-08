@@ -5,7 +5,7 @@ import {
   type AgentChatCatalog,
   type AgentChatJobDetail,
 } from "./chat/chat-events.js";
-import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, OperationWorkspace, SessionInfo } from "./types.js";
+import type { AgentCliMetadata, OperationWorkspace, SessionInfo } from "./types.js";
 
 export interface OperationsSnapshot {
   readonly operations: readonly OperationNode[];
@@ -41,35 +41,6 @@ export async function fetchAgentState(signal?: AbortSignal): Promise<readonly Ag
   const payload = await response.json() as { readonly agentClis?: unknown };
   if (!Array.isArray(payload.agentClis)) throw new AgentApiError(response.status, "Invalid agent state response");
   return payload.agentClis.map((cli) => assertAgentCliMetadata(cli, response.status));
-}
-
-export async function fetchAgentCliState(signal?: AbortSignal): Promise<AgentCliState> {
-  const response = await fetch("/api/v1/agent/agent-cli/state", { signal });
-  await assertOk(response);
-  const payload = await response.json() as AgentCliState;
-  if (!Array.isArray(payload.clis)) throw new AgentApiError(response.status, "Invalid Agent CLI state response");
-  return payload;
-}
-
-export async function fetchAgentCliDiagnostics(signal?: AbortSignal): Promise<AgentCliDiagnostics> {
-  const response = await fetch("/api/v1/agent/agent-cli/diagnostics", { signal });
-  await assertOk(response);
-  const payload = await response.json() as AgentCliDiagnostics;
-  if (!Array.isArray(payload.entries)) throw new AgentApiError(response.status, "Invalid Agent CLI diagnostics response");
-  return payload;
-}
-
-export async function setAgentCliPath(cliCommand: string, path: string | null, signal?: AbortSignal): Promise<void> {
-  const response = await fetch("/api/v1/agent/agent-cli/path", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cliCommand, path }),
-    signal,
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
-    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
-  }
 }
 
 export async function fetchSessions(signal?: AbortSignal): Promise<readonly SessionInfo[]> {
@@ -115,7 +86,7 @@ export async function createAgentSession(
     signal,
   });
   // 거절 사유 코드를 그대로 실어 던진다 — Quick Launch가 초안을 되살리면서 무엇을 고쳐야 하는지
-  // 말해 주려면, 상태 코드만으로는 부족하고 서버가 붙인 error 코드가 필요하다(setAgentCliPath와 같은 형태).
+  // 말해 주려면, 상태 코드만으로는 부족하고 서버가 붙인 error 코드가 필요하다.
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as {
       readonly error?: unknown;

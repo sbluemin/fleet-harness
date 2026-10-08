@@ -202,7 +202,7 @@ async function createHarness(options: {
     bindChatAttach: () => () => {},
     stop: async () => {},
   };
-  const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null }), update: (mutate) => mutate({}) };
+  const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };
   const ctx = {
     consoleControl: control,
     dataDir: fleetDataDir,

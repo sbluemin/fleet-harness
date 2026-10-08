@@ -66,9 +66,9 @@
    176px에서 141px로 줄어 같은 카드 안에서 트랙 길이가 행마다 달라진다. 다른 행의 꺼진 버튼은 위 규칙대로 빠진다. */
 .settings-pane .fc-settings-slider .fc-settings-reset:disabled { display: inline-block; visibility: hidden; }
 .settings-pane :is(input, textarea, select) { min-width: 0; max-width: 100%; box-sizing: border-box; }
-.settings-pane :is(.ai-gateway-model-controls, .ai-gateway-roster-head, .ai-gateway-endpoint, .agent-cli-path-actions) { flex-wrap: wrap; min-width: 0; max-width: 100%; }
-.settings-pane :is(.ai-gateway-model-row, .ai-gateway-model-text, .agent-cli-row, .agent-cli-path-form) { min-width: 0; max-width: 100%; }
-.settings-pane :is(.ai-gateway-model-name, .agent-cli-name, .ai-gateway-provider-name) { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.settings-pane :is(.ai-gateway-model-controls, .ai-gateway-roster-head, .ai-gateway-endpoint) { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.settings-pane :is(.ai-gateway-model-row, .ai-gateway-model-text) { min-width: 0; max-width: 100%; }
+.settings-pane :is(.ai-gateway-model-name, .ai-gateway-provider-name) { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 .settings-pane .ai-gateway-roster-head { gap: 8px; }
 .settings-pane .backend-api-section-heading { letter-spacing: 0; text-transform: none; }
 .settings-pane .console-port-effective-label { font-size: var(--t-sm); font-weight: var(--weight-regular); letter-spacing: 0; text-transform: none; }

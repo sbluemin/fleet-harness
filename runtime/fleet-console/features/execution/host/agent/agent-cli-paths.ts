@@ -54,12 +54,6 @@ export function createAgentCliPathStore(dataDir: string, legacyDataDir: string) 
   }
   return {
     read: async (): Promise<AgentCliPathsData> => store.load(),
-    writePath: async (cliCommand: string, executablePath: string | null): Promise<AgentCliPathsData> => store.update((current) => {
-      const paths = { ...current.paths };
-      if (!executablePath) delete paths[cliCommand];
-      else paths[cliCommand] = executablePath;
-      return { version: 1, paths };
-    }),
   };
 }
 
@@ -113,15 +107,6 @@ export function resolveAgentCliBinary(options: {
     launchPath: undefined,
     searchedPathEntries,
   };
-}
-
-export function validateUserAgentCliPath(
-  executablePath: string,
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform = process.platform,
-): AgentCliBinaryResolution {
-  const checked = resolveConfiguredPath(executablePath, env, platform);
-  return { ...checked, source: "user", launchPath: executablePath, searchedPathEntries: [] };
 }
 
 export function agentCliCommandForId(cliId: string | undefined): string | null {

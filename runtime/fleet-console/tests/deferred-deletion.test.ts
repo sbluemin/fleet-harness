@@ -59,7 +59,7 @@ describe("deferred deletion coordinator", () => {
 
   it("hides a forgotten Theater prompt, restores it during grace, and purges it after expiry", async () => {
     const harness = createHarness();
-    let data: AgentOptionsData = { agentIdleDormantMinutes: 30 };
+    let data: AgentOptionsData = {};
     const options = { load: () => data, update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => (data = mutate(data)) };
     const prompts = createTheaterSystemPromptService(options, (id) => harness.theaters.get(id) !== null);
     prompts.save(THEATER.id, { mode: "off", body: "private instructions" });
@@ -72,7 +72,7 @@ describe("deferred deletion coordinator", () => {
     const again = harness.coordinator.deleteTheater(THEATER.id)!;
     harness.clock.value = again.expiresAt;
     harness.coordinator.sweepExpired();
-    expect(data).toEqual({ agentIdleDormantMinutes: 30 });
+    expect(data).toEqual({});
   });
 
   it("rolls memory back when the durable save fails", () => {

@@ -11,29 +11,6 @@ export type AttentionReason =
   | "elicitation_complete"
   | "elicitation_response";
 
-export interface AgentCliStatus {
-  readonly id: string;
-  readonly displayName: string;
-  readonly available: boolean;
-  readonly version: string | null;
-}
-
-export interface AgentCliState {
-  readonly clis: readonly AgentCliStatus[];
-}
-
-/** 설치된 Claude Code가 보고한 내장 서브에이전트 로스터. 서버가 CLI를 격리 실행해 읽는다. */
-export interface AgentCliDiagnosticsEntry {
-  readonly cliCommand: string;
-  readonly configuredPath: string | null;
-  readonly resolutionSource: "env" | "user" | "path" | null;
-  readonly searchedPathEntries: readonly string[];
-}
-
-export interface AgentCliDiagnostics {
-  readonly entries: readonly AgentCliDiagnosticsEntry[];
-}
-
 export interface AgentCliMetadata {
   readonly id: string;
   readonly label: string;
