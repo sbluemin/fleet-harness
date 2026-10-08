@@ -1195,10 +1195,12 @@ describe("AgentChatRegistry — stopping a turn", () => {
     // 유휴에서 곧바로 바꾸다 자식이 거절하면 실패 코드와 함께 원 예외를 자르지 않고 돌려준다 — 같은 코드 뒤의 원인을 가르는 근거다.
     child!.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 5 });
     await vi.waitFor(() => { expect(session.readConsoleOutput().outcome).toBe("succeeded"); });
-    const refusal = Object.assign(new Error(`Provider refused the session: ${"원문 ".repeat(2_000)}END`), { code: "seat_limit" });
+    // SDK 가 붙이는 분류·종료 좌표도 함께 싣고, 공급자 본문이 되울린 자격 증명 모양만 치환한다 — 나머지 원문은 바이트 그대로다.
+    const refusal = Object.assign(new Error(`Provider refused the session: key=sk-ant-api03-${"A".repeat(32)} ${"원문 ".repeat(2_000)}END`), { code: "seat_limit", errorClass: "process_exited_nonzero", exitCode: 1 });
     const onControl = vi.spyOn(child!, "setModel").mockRejectedValueOnce(refusal);
     await expect(session.changeCoordinates("muse-code--muse-spark-1.3-contributor", null)).resolves.toEqual({
-      ok: false, error: "coordinates_apply_failed", cause: { message: refusal.message, name: "Error", code: "seat_limit" },
+      ok: false, error: "coordinates_apply_failed",
+      cause: { message: `Provider refused the session: key=sk-… ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit", errorClass: "process_exited_nonzero", exitCode: 1 },
     });
     expect(onControl).toHaveBeenCalledTimes(1);
     expect(session.readCoordinates()).toMatchObject({ model: "sonnet[1m]", pending: null });

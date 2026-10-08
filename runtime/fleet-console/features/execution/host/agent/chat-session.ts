@@ -39,6 +39,7 @@ import {
   chatSubagentTrailFromTranscript,
   chatWorkflowAgentSlots,
   maskChatText,
+  maskSecrets,
   overlayWorkflowActualModels,
   readChatCommandLaneName,
   readJobKind,
@@ -514,11 +515,21 @@ function sentMessageFailed(content: unknown): boolean {
   return false;
 }
 
-/** 모델·강도 변경을 거절한 원 예외를 그대로 옮긴다 — 문자열을 자르지 않고 스택(호스트 경로)은 싣지 않는다. */
+/**
+ * 모델·강도 변경을 거절한 원 예외를 옮긴다 — 문자열을 자르지 않고 스택(호스트 경로)은 싣지 않는다. SDK 가 붙이는 분류·종료 좌표를 함께 싣고,
+ * 문장에서는 자격 증명 모양만 치환한다(SDK 는 control 응답 오류를 마스킹 없이 넘기고, Gateway 는 공급자 본문을 그대로 중계한다).
+ */
 function coordinatesFailureCause(error: unknown): import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause {
-  if (!(error instanceof Error)) return { message: String(error) };
-  const code = (error as { readonly code?: unknown }).code;
-  return { message: error.message, ...(error.name ? { name: error.name } : {}), ...(typeof code === "string" || typeof code === "number" ? { code: String(code) } : {}) };
+  if (!(error instanceof Error)) return { message: maskSecrets(String(error)) };
+  const tagged = error as { readonly code?: unknown; readonly errorClass?: unknown; readonly exitCode?: unknown; readonly signal?: unknown };
+  const code = tagged.code;
+  return {
+    message: maskSecrets(error.message), ...(error.name ? { name: error.name } : {}),
+    ...(typeof code === "string" || typeof code === "number" ? { code: String(code) } : {}),
+    ...(typeof tagged.errorClass === "string" ? { errorClass: tagged.errorClass } : {}),
+    ...(typeof tagged.exitCode === "number" ? { exitCode: tagged.exitCode } : {}),
+    ...(typeof tagged.signal === "string" ? { signal: tagged.signal } : {}),
+  };
 }
 
 function opensChatTurn(event: AgentChatStreamEvent): boolean {

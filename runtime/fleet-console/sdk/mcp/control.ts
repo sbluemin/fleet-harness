@@ -110,9 +110,15 @@ export type ConsoleCoordinatesResult =
  * 예외가 아닌 값이 던져지면 `message` 는 그 값의 문자열이다. 원 예외가 없는 실패(적용 직전 문맥 초과 등)에는 없다.
  */
 export interface ConsoleCoordinatesFailureCause {
+  /** 원 예외의 문장. 자격 증명 모양(키·토큰)만 치환하고 나머지는 그대로다 — 공급자 본문이 비밀을 되울려도 문맥·전사·보드에 남지 않게. */
   readonly message: string;
   readonly name?: string;
   readonly code?: string;
+  /** SDK 가 붙인 실패 분류(control_request_failed·process_exited_nonzero·spawn_failed·error_result 등). */
+  readonly errorClass?: string;
+  /** 자식 프로세스가 끝났을 때의 종료 코드와 신호. */
+  readonly exitCode?: number;
+  readonly signal?: string;
 }
 
 /** 떠 있는 채팅 세션의 지금 좌표와 턴 경계를 기다리는 예약. 예약은 적용이 끝나는 순간에야 비워진다. `effort` 는 런치 어휘다. */
