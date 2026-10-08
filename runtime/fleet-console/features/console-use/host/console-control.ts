@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@fleet-console/infra";
 import { sanitizeLaunchPrompt } from "@fleet-console/agent-runtime/fleet";
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleTurnEnd } from "@fleet-console/sdk/mcp";
+import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnEnd } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
 import { LaunchKeyError, type LaunchKeyLedger, type LaunchKeyState } from "./launch-keys.js";
@@ -75,6 +75,8 @@ export interface ConsoleExecutionAdapter {
   /** 떠 있는 채팅의 모델·강도 변경 — 채팅 화면의 라우트와 같은 검증·같은 세션 메서드를 지난다. 소유는 여기서 이미 따졌다. */
   coordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
   readCoordinates?(operationId: string): ConsoleCoordinates | null;
+  /** 떠 있는 채팅 세션이 init 에서 광고한 도구 이름. 모르면 null. */
+  advertisedTools?(operationId: string): readonly string[] | null;
   /** 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 함수다. 소유는 여기서 이미 따졌다. */
   transcript?(operationId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
 }
@@ -107,6 +109,7 @@ interface InFlight {
 export function createConsoleControl(deps: ConsoleControlDeps) {
   const now = deps.now ?? Date.now;
   const turnEndListeners = new Set<{ caller: ConsoleCaller; listener: (event: ConsoleTurnEnd) => void }>();
+  const sessionMessageListeners = new Set<{ caller: ConsoleCaller; listener: (event: ConsoleSessionMessage) => void }>();
   const stamp = () => new Date(now()).toISOString();
   const file = path.join(deps.directory, "state.json");
   let state: SavedState = { version: 3, automations: [] };
@@ -440,8 +443,30 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 턴 정산을 막지 않는다. */ }
       }
     },
+    /** 세션 간 메시지 도착 — 보낸 쪽과 받는 쪽이 모두 그 플러그인이 띄운 Operation(또는 그 자식)일 때만 건넨다. 본문은 없다. */
+    subscribeSessionMessages(caller: ConsoleCaller, listener: (event: ConsoleSessionMessage) => void) {
+      const entry = { caller, listener };
+      sessionMessageListeners.add(entry);
+      return () => { sessionMessageListeners.delete(entry); };
+    },
+    reportSessionMessage(fromOperationId: string, toOperationId: string, at: number) {
+      if (disposed) return;
+      const from = node(fromOperationId), to = node(toOperationId);
+      if (!from || !to) return;
+      const event: ConsoleSessionMessage = { fromOperationId, toOperationId, at };
+      for (const entry of sessionMessageListeners) {
+        if (!launchedByPlugin(entry.caller, from) || !launchedByPlugin(entry.caller, to)) continue;
+        try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 전달을 막지 않는다. */ }
+      }
+    },
     launchKeyState, coordinates, transcript,
     readCoordinates(operationId: string): ConsoleCoordinates | null { return adapter?.readCoordinates?.(operationId) ?? null; },
+    /** 광고한 도구 목록 — 그 플러그인이 띄운 Operation(또는 그 자식)만. 남의 세션이거나 모르면 null. */
+    advertisedTools(caller: ConsoleCaller, operationId: string): readonly string[] | null {
+      const op = node(operationId);
+      if (!op || !launchedByPlugin(caller, op)) return null;
+      return adapter?.advertisedTools?.(operationId) ?? null;
+    },
     reserveLaunchKeys(caller: ConsoleCaller, theaterId: string, keys: readonly string[]) {
       if (caller.kind !== "plugin") return fail("invalid_launch_option");
       if (!deps.launchKeys) return fail("capability_unavailable");
@@ -466,7 +491,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       }
       return updateAutomation(id, { status: "active", ...(item.input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + item.input.trigger.minutes * 60_000).toISOString() } : {}) });
     },
-    dispose() { disposed = true; clearInterval(timer); for (const wake of waiters) wake(); turnEndListeners.clear(); adapter = null; },
+    dispose() { disposed = true; clearInterval(timer); for (const wake of waiters) wake(); turnEndListeners.clear(); sessionMessageListeners.clear(); adapter = null; },
   };
 }
 export type ConsoleControl = ReturnType<typeof createConsoleControl>;

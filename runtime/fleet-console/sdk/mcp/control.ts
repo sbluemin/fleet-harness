@@ -55,6 +55,38 @@ export interface ConsoleTurnFailure {
   readonly last_assistant_message?: string;
 }
 
+/**
+ * 닫힌 턴이 세션 밖으로 남긴 것. 관측하는 표면(채팅)만 싣는다 — 없으면 "모른다"이고, 빈 `sentTo` 와 다르다.
+ * 성공으로 닫힌 턴이 아무에게도 말을 남기지 못했는지를 실패 결말 없이 가를 수 있게 한다.
+ */
+export interface ConsoleTurnReport {
+  /** 이 턴의 최상위 SendMessage 중 결과까지 성공한 호출의 받는 이름. 거절·오류로 끝난 호출과 서브에이전트의 호출은 없다. */
+  readonly sentTo: readonly string[];
+  /** 사람이 입력창에서 보낸 말로 열린 턴이다. 플러그인·다른 Operation 이 보낸 말과 자식이 스스로 연 턴은 false. */
+  readonly byPerson: boolean;
+  /**
+   * 그 턴을 닫은 SDK result 의 `result` 문자열 전체 — 자르지 않는다. 원장의 답(표시용 상한 60,000자)과 `output.text`(꼬리 24,000자)는
+   * 이것과 다를 수 있다. 자격 증명 마스킹도 하지 않은 원문이다(구성원 실패 원문 `ConsoleTurnFailure` 와 같은 취급). 성공으로 닫힌 턴에만 있다.
+   */
+  readonly answer?: string;
+  /**
+   * 턴이 닫힐 때 이 세션을 다시 깨울 일이 남았다 — 살아 있는 백그라운드 작업(셸·모니터·서브에이전트 등)이 있거나, 이 턴에서
+   * 깨움 예약(`ScheduleWakeup`·`CronCreate`)이 성공했다. 외부 대기를 걸고 닫은 턴은 멈춘 턴이 아니다.
+   */
+  readonly pendingWork: boolean;
+}
+
+/**
+ * 세션 간 메시지 한 통이 받는 쪽 Operation 에 닿았다 — 보낸 쪽 채팅 세션의 SendMessage 가 결과까지 성공했고, 받는 이름이 이 Console 의
+ * Operation 하나로 풀렸다. 누가 누구에게 언제만 싣고 본문은 싣지 않는다.
+ */
+export interface ConsoleSessionMessage {
+  readonly fromOperationId: string;
+  readonly toOperationId: string;
+  /** 성공을 관측한 시각(ms). */
+  readonly at: number;
+}
+
 /** 다음 턴이 관측을 덮기 전에 전달하는 종료 snapshot. 브라우저 알림 채널이 아니다. */
 export interface ConsoleTurnEnd {
   readonly operationId: string;
@@ -83,6 +115,8 @@ export interface ConsoleOperationObservation {
     readonly revision?: number;
     readonly outcome: "unknown" | "running" | "completed" | "succeeded" | "failed" | "interrupted";
     readonly failure?: ConsoleTurnFailure;
+    /** 닫힌 턴의 보고 — 관측하는 표면만 싣는다. */
+    readonly report?: ConsoleTurnReport;
   };
 }
 
@@ -134,6 +168,11 @@ export interface ConsoleCoordinates {
   readonly model: string;
   readonly effort: string | null;
   readonly pending: { readonly model: string; readonly effort: string | null } | null;
+  /**
+   * 자식이 마지막으로 거절한 좌표와 그 원 예외 — 턴 경계에서 적용하다 거절된 예약도 사유가 남게 한다. 다음 적용이 성공하면 사라진다.
+   * 거절된 적이 없으면 없다.
+   */
+  readonly refused?: { readonly model: string; readonly effort: string | null; readonly cause: ConsoleCoordinatesFailureCause };
 }
 
 export interface ConsoleAutomationInput {

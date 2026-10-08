@@ -190,6 +190,11 @@ export interface AgentChatSessionSeed {
    * 라우트)이 한다 — 세션은 레지스트리를 모른다.
    */
   readonly onSessionMessageSent?: (sent: { readonly to: string; readonly text: string; readonly toolUseId: string }) => void;
+  /**
+   * 다른 세션의 세션 간 메시지가 이 세션에 닿았다 — 자식의 트랜스크립트가 `origin.kind:"peer"` 로 적은 user 레코드에서 보낸 이름과
+   * 시각만 읽는다(본문은 읽지 않는다). 보낸 쪽이 터미널이라 발신 관측이 없어도 도착은 여기서 보인다.
+   */
+  readonly onPeerMessageReceived?: (peer: { readonly fromName: string; readonly at: number }) => void;
   readonly cancelComputerUse?: () => void;
   /**
    * 이 Operation이 사람에게 묻지 않는가. 새 세션은 도구 목록에서 이미 빠지지만, 정책이 막히기 전에 연 세션은 도구를
@@ -296,6 +301,8 @@ const JOURNAL_PAGE_KINDS: ReadonlySet<string> = new Set(["dispatch", "text", "to
  * 말이 부모 이름으로 남는다.
  */
 const SESSION_MESSAGE_TOOL = "SendMessage";
+/** 이 세션을 나중에 다시 깨우도록 예약하는 도구 — 성공한 호출이 있으면 그 턴은 외부 대기를 건 채 닫힌 것이다. */
+const WAKE_SCHEDULING_TOOLS: ReadonlySet<string> = new Set(["ScheduleWakeup", "CronCreate"]);
 /** 결말을 기다리는 발신 호출의 상한. 도구 결과는 보통 곧바로 오므로 넉넉한 창이다. */
 const PENDING_SENT_MESSAGE_CAP = 64;
 /**
@@ -303,6 +310,8 @@ const PENDING_SENT_MESSAGE_CAP = 64;
  * 창이면 충분하다 — 저널 상한과는 별개의 값이고, 오래 산 세션에서 이 집합만 무한히 자라지 않게 한다.
  */
 const RECEIVED_MESSAGE_ID_CAP = 512;
+/** peer 도착을 찾는 트랜스크립트 꼬리 창 — 한 턴 사이에 쌓이는 레코드를 덮을 만큼. 창 밖으로 밀린 도착은 놓친다(관측의 근사). */
+const PEER_SCAN_WINDOW_BYTES = 512 * 1024;
 /**
  * 예약 칩이 화면에 세우는 문면의 상한. 전문은 서버가 그대로 들고 있다가 자기 차례에 보내고,
  * 브라우저로는 한 줄에 들어갈 만큼만 나간다 — 6만 자짜리 초안이 큐 스냅숏마다 소켓을 지나면
@@ -595,6 +604,21 @@ class AgentChatSession {
   private readonly pendingSentMessages = new Map<string, { readonly to: string; readonly text: string }>();
   /** 이미 원장에 세운 수신 줄의 좌표. 같은 호출이 두 번 관측돼도 줄은 하나다. */
   private readonly receivedMessageIds = new Set<string>();
+  /** 트랜스크립트에서 이미 알린 peer 메시지(msg_id). 이 세션 객체가 선 뒤에 닿은 것만 알린다. */
+  private readonly reportedPeerMessages = new Set<string>();
+  private readonly peerScanSince = Date.now();
+  /** 열린 턴에서 결과까지 성공한 세션 간 메시지의 받는 이름 — 턴이 열릴 때 비운다. */
+  private turnSentTo: string[] = [];
+  /** 열린 턴이 사람이 입력창에서 보낸 말로 열렸다. */
+  private turnByPerson = false;
+  /** 열린 턴에서 결과를 기다리는 깨움 예약 호출(tool_use id). */
+  private readonly pendingWakeCalls = new Set<string>();
+  /** 열린 턴에서 깨움 예약이 성공했다. */
+  private turnScheduledWake = false;
+  /** 이번 턴을 닫는 SDK result 의 원문 그대로 — 원장의 표시 상한을 지나지 않는다. */
+  private turnRawAnswer: string | undefined;
+  /** 마지막으로 닫힌 턴의 보고와 그 `turn-end` 줄의 seq — 관측(`readConsoleOutput`)이 종료 이벤트와 같은 값을 말하게 한다. */
+  private endedTurnReport: { readonly seq: number; readonly report: import("@fleet-console/sdk/mcp").ConsoleTurnReport } | undefined;
   private disposed = false;
   /**
    * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Operation이 열려 있는 동안**
@@ -786,6 +810,9 @@ class AgentChatSession {
   private coordinateFlight: Promise<boolean> | null = null;
   /** 지금 자식에 적용 중인 좌표. 이미 자식에게 건넨 예약은 거둘 수 없다. */
   private applyingCoordinates: ChatCoordinates | null = null;
+  private forgetCoordinatesRefusal(): void {
+    this.coordinatesRefusal = null;
+  }
   /** 자식이 마지막으로 거절한 좌표와 그 원 예외. 그 좌표를 곧바로 적용하려던 호출자가 실패 사유로 돌려준다. */
   private coordinatesRefusal: { readonly target: ChatCoordinates; readonly cause: import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause } | null = null;
 
@@ -1080,6 +1107,7 @@ class AgentChatSession {
       revision: endEntry?.seq ?? this.seq,
       outcome: busy ? "running" : ending?.kind === "turn-end" ? (ending.stopped ? "interrupted" : ending.ok ? "succeeded" : "failed") : "unknown",
       ...(!busy && ending?.kind === "turn-end" && ending.failure ? { failure: ending.failure } : {}),
+      ...(!busy && endEntry && this.endedTurnReport?.seq === endEntry.seq ? { report: this.endedTurnReport.report } : {}),
     };
     this.consoleOutputCache = { seq: this.seq, busy, value };
     return value;
@@ -1276,6 +1304,8 @@ class AgentChatSession {
     if (target.model !== this.coordinates.model && occupied !== null && occupied > modelCapacity(target)) {
       return { ok: false, error: "context_exceeds_window" };
     }
+    // 새 시도는 지난 거절을 거둔다 — 같은 좌표를 다시 고른 예약이 다른 까닭(문맥 초과·다른 곳의 변경)으로 사라져도 옛 원 예외를 그 예약의 거절로 읽지 않게.
+    this.forgetCoordinatesRefusal();
     if (sameCoordinates(target, this.coordinates) && this.coordinateFlight === null) {
       // 적용된 값으로 되돌리는 것은 예약을 거두는 것과 같다.
       if (this.pendingCoordinates !== null) this.setPendingCoordinates(null);
@@ -1297,12 +1327,14 @@ class AgentChatSession {
    * 지금 좌표와 턴 경계를 기다리는 예약. 예약은 적용하는 비행 내내 남고, 성공하면 같은 동기 블록에서 좌표가 바뀐 뒤에야 비워진다 —
    * 그래서 "예약 없음 + 옛 좌표"는 적용 중이 아니라 적용되지 않았다는 뜻이다(버림·실패·취소).
    */
-  readCoordinates(): { readonly model: string; readonly effort: string | null; readonly pending: { readonly model: string; readonly effort: string | null } | null } {
+  readCoordinates(): import("@fleet-console/sdk/mcp").ConsoleCoordinates {
     const pending = this.pendingCoordinates;
+    const refused = this.coordinatesRefusal;
     return {
       model: this.coordinates.model,
       effort: this.coordinates.launchEffort,
       pending: pending === null ? null : { model: pending.model, effort: pending.launchEffort },
+      ...(refused ? { refused: { model: refused.target.model, effort: refused.target.launchEffort, cause: refused.cause } } : {}),
     };
   }
 
@@ -1384,6 +1416,7 @@ class AgentChatSession {
         return false;
       }
       this.coordinates = target;
+      this.coordinatesRefusal = null;
       // 자식이 이전 모델에서 말한 좌표는 새 모델의 것이 아니다. 다음 스냅숏까지는 모델 id에서 유도한다.
       if (target.model !== previous.model) this.observedClaudeCoordinate = null;
       if (this.pendingCoordinates === target) this.setPendingCoordinates(null);
@@ -1711,8 +1744,17 @@ class AgentChatSession {
    * 이 이름 집합이 둘을 가르는 유일한 근거다. init은 세션당 한 번 오고, 못 받으면 집합은 비어
    * 있다 — 그때 덱은 전부 명령으로 세운다(틀린 카테고리보다 한 카테고리가 낫다).
    */
+  /** 자식이 init 에서 광고한 도구 이름 — 이 프로세스가 모델에게 내놓은 실제 목록이다. init 을 아직 못 봤으면 null. */
+  private advertisedToolNames: readonly string[] | null = null;
+  /** 자식이 init 에서 광고한 도구 이름. 모르면 null — 없는 목록은 누락의 증거가 아니다. */
+  readAdvertisedTools(): readonly string[] | null {
+    return this.advertisedToolNames;
+  }
+
   private rememberSkillNames(message: ClaudeGatewayMessage): void {
     if (message.type !== "system" || message.subtype !== "init") return;
+    const tools = (message as { tools?: unknown }).tools;
+    if (Array.isArray(tools)) this.advertisedToolNames = tools.filter((name): name is string => typeof name === "string");
     const skills = (message as { skills?: unknown }).skills;
     if (!Array.isArray(skills)) return;
     // 더한다 — reloadSkills가 이미 채워 둔 이름을 지우면 그쪽만 아는 스킬이 명령으로 되돌아간다.
@@ -2649,6 +2691,11 @@ class AgentChatSession {
         }
         this.trackSentMessages(message);
         this.trackHandover(message);
+        // 원장의 답(answer)은 표시용 상한(capText)을 지난다 — 턴 보고에는 SDK result 원문 전체를 싣는다(자르지 않는다).
+        if (message.type === "result" && message["parent_tool_use_id"] == null) {
+          const result = (message as { readonly result?: unknown }).result;
+          this.turnRawAnswer = typeof result === "string" && result.trim().length > 0 ? result : undefined;
+        }
         this.rememberSkillNames(message);
         this.verifyFleetPluginLoaded(message);
         this.invalidateCatalog(message);
@@ -2701,6 +2748,7 @@ class AgentChatSession {
       for (const block of content) {
         if (!block || typeof block !== "object") continue;
         const record = block as { readonly type?: unknown; readonly name?: unknown; readonly id?: unknown; readonly input?: unknown };
+        if (record.type === "tool_use" && typeof record.name === "string" && WAKE_SCHEDULING_TOOLS.has(record.name) && typeof record.id === "string" && this.turnOpen) this.pendingWakeCalls.add(record.id);
         if (record.type !== "tool_use" || record.name !== SESSION_MESSAGE_TOOL) continue;
         if (typeof record.id !== "string" || record.id.length === 0) continue;
         const input = record.input;
@@ -2717,17 +2765,19 @@ class AgentChatSession {
       }
       return;
     }
-    if (message.type !== "user" || this.pendingSentMessages.size === 0) return;
+    if (message.type !== "user" || (this.pendingSentMessages.size === 0 && this.pendingWakeCalls.size === 0)) return;
     const content = (message as { readonly message?: { readonly content?: unknown } }).message?.content;
     if (!Array.isArray(content)) return;
     for (const block of content) {
       if (!block || typeof block !== "object") continue;
       const record = block as { readonly type?: unknown; readonly tool_use_id?: unknown; readonly is_error?: unknown; readonly content?: unknown };
       if (record.type !== "tool_result" || typeof record.tool_use_id !== "string") continue;
+      if (this.pendingWakeCalls.delete(record.tool_use_id) && record.is_error !== true && this.turnOpen) this.turnScheduledWake = true;
       const sent = this.pendingSentMessages.get(record.tool_use_id);
       if (sent === undefined) continue;
       this.pendingSentMessages.delete(record.tool_use_id);
       if (record.is_error === true || sentMessageFailed(record.content)) continue;
+      if (this.turnOpen) this.turnSentTo.push(sent.to);
       try {
         this.seed.onSessionMessageSent({ to: sent.to, text: sent.text, toolUseId: record.tool_use_id });
       } catch {
@@ -2955,6 +3005,14 @@ class AgentChatSession {
     this.observedTurns += 1;
     // 자식이 스스로 연 턴은 자식이 이미 알고 있다. 디스패치가 연 턴은 `send()`가 닿아야 그렇다.
     this.turnReachedChild = !options.dispatched;
+    this.turnSentTo = [];
+    this.turnScheduledWake = false;
+    // 자식이 스스로 연 턴은 대개 다른 세션의 말이 연 것이다 — 그 도착을 트랜스크립트에서 읽어 알린다.
+    if (!options.dispatched && this.seed.onPeerMessageReceived) void this.reportTranscriptPeers();
+    this.pendingWakeCalls.clear();
+    // 이 턴을 연 지시 — 지난 턴의 끝 뒤에 선 마지막 dispatch 다. 없으면 자식이 스스로 연 턴이다.
+    const opener = this.journal.findLast(({ event }) => event.kind === "dispatch" || event.kind === "turn-end")?.event;
+    this.turnByPerson = options.dispatched && opener?.kind === "dispatch" && opener.by === undefined;
     this.push({ kind: "turn-start", at: Date.now() });
     // 디스패치 경로는 이미 축을 켜고 들어온다 — 실패하면 턴을 시작하지 않기 때문이다.
     if (!options.dispatched) this.seed.reportActivity(true);
@@ -2981,11 +3039,21 @@ class AgentChatSession {
       ...(end.answer === undefined ? {} : { answer: end.answer }),
       ...(end.failure ? { failure: end.failure } : {}),
     });
+    // 세션 간 메시지를 관측하는 세션만 보고를 싣는다 — 관측하지 않으면 빈 sentTo 는 "보내지 않았다"가 아니라 "모른다"다.
+    const answer = end.ok !== false && end.stopped !== true ? this.turnRawAnswer ?? end.answer : undefined;
+    this.turnRawAnswer = undefined;
+    const report: import("@fleet-console/sdk/mcp").ConsoleTurnReport | undefined = this.seed.onSessionMessageSent === undefined ? undefined : {
+      sentTo: this.turnSentTo, byPerson: this.turnByPerson, ...(answer === undefined ? {} : { answer }),
+      pendingWork: this.liveJobs.size > 0 || this.turnScheduledWake,
+    };
+    this.endedTurnReport = report ? { seq: this.seq, report } : undefined;
+    this.consoleOutputCache = undefined;
     // 다음 queued 턴이 output을 덮기 전, 이 종료 좌표를 구독자에게 보낸다.
     this.seed.onTurnEnd?.({
       status: "unavailable", revision: this.seq,
       outcome: end.stopped ? "interrupted" : end.ok === false ? "failed" : "succeeded",
       ...(end.failure ? { failure: end.failure } : {}),
+      ...(report ? { report } : {}),
     });
     // 답이 풀리지 않은 채 턴이 닫히면 자식은 그 도구 호출에서 멈춘 채 남는다.
     this.abandonAsks("The turn ended before the question was answered.");
@@ -3013,6 +3081,8 @@ class AgentChatSession {
     // 자식에 닿은 턴은 중단됐어도 cwd를 옮겼을 수 있다 — 자식과 그 작업은 중단을 넘어 살아 있으므로
     // 위치 동기화는 턴의 결말과 무관하게 한다.
     if (reachedChild && this.seed.onCwdChanged) void this.reportTranscriptCwd();
+    // 도는 턴에 흡수된 말도 그 턴이 닫히면 트랜스크립트에 남아 있다.
+    if (this.seed.onPeerMessageReceived) void this.reportTranscriptPeers();
   }
 
   /**
@@ -3040,6 +3110,37 @@ class AgentChatSession {
     this.reportedCwd = cwd;
     if (binding) binding.observe(cwd, revision);
     else this.seed.onCwdChanged?.(cwd);
+  }
+
+  /**
+   * 트랜스크립트 꼬리에서 다른 세션이 보낸 말의 도착을 읽는다 — `origin.kind:"peer"` 인 user 레코드의 보낸 이름(`origin.name`)과
+   * 시각만. 본문과 envelope 은 읽지 않는다. 이 세션 객체가 서기 전에 닿은 말(재생된 과거)은 알리지 않고, msg_id 로 한 번만 알린다.
+   */
+  private async reportTranscriptPeers(): Promise<void> {
+    const sessionId = this.latestSessionId;
+    if (!sessionId || this.disposed || !this.seed.onPeerMessageReceived) return;
+    const transcriptPath = await this.locateTranscript(sessionId);
+    if (!transcriptPath) return;
+    const window = await readFileTail(transcriptPath, PEER_SCAN_WINDOW_BYTES);
+    if (window === null || this.disposed) return;
+    for (const line of window.text.split("\n")) {
+      if (!line.includes('"peer"')) continue;
+      let record: { readonly type?: unknown; readonly timestamp?: unknown; readonly origin?: { readonly kind?: unknown; readonly name?: unknown; readonly msg_id?: unknown } };
+      try { record = JSON.parse(line); } catch { continue; }
+      const origin = record.origin;
+      if (record.type !== "user" || origin?.kind !== "peer" || typeof origin.name !== "string" || origin.name.length === 0) continue;
+      const at = typeof record.timestamp === "string" ? Date.parse(record.timestamp) : NaN;
+      if (!Number.isFinite(at) || at < this.peerScanSince) continue;
+      const key = typeof origin.msg_id === "string" && origin.msg_id.length > 0 ? origin.msg_id : `${record.timestamp}:${origin.name}`;
+      if (this.reportedPeerMessages.has(key)) continue;
+      this.reportedPeerMessages.add(key);
+      if (this.reportedPeerMessages.size > RECEIVED_MESSAGE_ID_CAP) {
+        const oldest = this.reportedPeerMessages.values().next();
+        if (!oldest.done) this.reportedPeerMessages.delete(oldest.value);
+      }
+      try { this.seed.onPeerMessageReceived({ fromName: origin.name, at }); }
+      catch { /* 관측 배선이 넘어져도 세션은 계속 산다. */ }
+    }
   }
 
   /** 자리가 비었음을 줄 서 있던 디스패치들에게 알린다. 결말 하나가 전부를 깨운다. */

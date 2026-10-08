@@ -2,7 +2,7 @@ import type { ClientNavigateCapability, ClientShellCapability } from "../navigat
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
-import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
+import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
@@ -1164,6 +1164,8 @@ export interface FleetPluginConsoleControlHost {
   observe(operationId: string): ConsoleOperationObservation | null;
   /** 소유한 세션의 종료 snapshot. 다음 턴이 곧 시작해도 polling이 실패를 놓치지 않는다. */
   subscribeTurnEnds?(listener: (event: ConsoleTurnEnd) => void): () => void;
+  /** 소유한 세션 사이에 닿은 세션 간 메시지 — 보낸·받은 Operation 과 시각만(본문 없음). 보낸 쪽이 채팅 세션일 때만 관측된다. */
+  subscribeSessionMessages?(listener: (event: ConsoleSessionMessage) => void): () => void;
   /**
    * 유휴 Agent Operation을 휴면으로 보낸다. 진행 중이면 not_idle. `dormant` 는 옛 프로세스가 끝난 것까지 확인했다는 뜻이고,
    * `ending` 은 휴면으로 전이했지만 그 종료를 아직 확인하지 못했다는 뜻이다. 어느 쪽이든 곧바로 재개를 보내도 된다 — 호스트는 옛 프로세스가
@@ -1198,6 +1200,11 @@ export interface FleetPluginConsoleControlHost {
   setCoordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
   /** 떠 있는 채팅 세션의 지금 좌표와 예약. 떠 있는 채팅이 아니면 null. */
   coordinates?(operationId: string): ConsoleCoordinates | null;
+  /**
+   * 이 플러그인이 띄운 떠 있는 채팅 세션이 init 에서 모델에게 광고한 도구 이름. 아직 모르거나(미기동·init 전·터미널) 남의 세션이면 null —
+   * null 은 「도구가 없다」가 아니다.
+   */
+  advertisedTools?(operationId: string): readonly string[] | null;
   /**
    * Agent Operation 의 전사 한 쪽 — Console Use `console_operation` 의 transcript 읽기와 같은 줄(사람의 말·답·도구·질문·턴 결말)이고
    * 본문은 자격증명 마스킹을 지난 신뢰할 수 없는 데이터다. 이 플러그인이 띄운 Operation(또는 그 자식)만 받는다 — 아니면 `forbidden`.

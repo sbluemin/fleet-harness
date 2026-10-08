@@ -1,3 +1,4 @@
+import { missionDispatch } from "./signals.js";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -42,12 +43,14 @@ import {
   type ObjectiveEditKind,
   type Objective,
   type ObjectiveMemberFailure,
+  type ObjectiveMemberUnreported,
+  type SettledTurn,
   type ObjectiveEvent,
   OBJECTIVE_FILE,
   type MemberLaunch,
   type MemberProposal,
   type MemberNext,
-  COORDINATES_NOT_APPLIED,
+  notAppliedFailure,
   heldNextOutcome,
   type HostCoordinates,
   type MemberRouted,
@@ -116,6 +119,8 @@ export interface ObjectiveStoreOptions {
   readonly now?: () => number;
   /** 떠 있는 채팅의 호스트 좌표 — 턴 뒤 예약이 적용됐는지 투영이 가른다. 떠 있는 채팅이 아니거나 모르면 null. */
   readonly coordinates?: (operationId: string) => HostCoordinates | null;
+  /** 떠 있는 세션이 광고한 도구 이름 — 모르면 null(표시하지 않는다). */
+  readonly advertisedTools?: (operationId: string) => readonly string[] | null;
   /** 호스트가 떠 있는 구성원의 모델을 바꿀 수 있다 — 메뉴가 「지금·이번 턴 뒤」를 말한다. */
   readonly liveSwitch?: boolean;
   /** 공개 콘솔 제어 관측 — 실패 outcome 및 상태 투영에 쓴다. */
@@ -209,8 +214,25 @@ export interface ObjectiveStore {
   /** 현재 세션의 실패 ledger — 모델 턴이나 영속 목표 기록과 별개다. */
   memberFailure(memberId: string): ObjectiveMemberFailure | undefined;
   settleMemberFailure(memberId: string, failure: ConsoleTurnFailure | null): ObjectiveMemberFailure | undefined;
+  /** 마지막으로 정산한 구성원 턴 — 재시작 뒤에도 남아 같은 턴을 다시 알리지 않는다. */
+  memberTurn(memberId: string): SettledTurn | undefined;
+  setMemberTurn(memberId: string, turn: SettledTurn): void;
+  /** 구성원이 마지막으로 메시지를 전달한 턴을 본 시각. */
+  memberDelivered(memberId: string): number | undefined;
+  setMemberDelivered(memberId: string, at: number): void;
+  /** 지휘관의 세션 간 메시지가 이 구성원에게 닿았다(본문 없음). */
+  recordDispatch(memberId: string, at: number): void;
+  /** 그 구성원의 마지막 발주와 수신 — 발주가 없으면 null. */
+  memberDispatch(memberId: string): { readonly at: number; readonly receivedAt: number | null } | null;
+  recordReceipt(memberId: string, at: number): void;
+  /** 무보고 통지를 이미 보낸 보고 기대 시각. */
+  unreportedNoticeFor(memberId: string): number | undefined;
+  setUnreportedNoticeFor(memberId: string, at: number): void;
+  /** 실패 없이 닫힌 턴의 무보고 — 실패 ledger 와 같은 수명이다. null 이면 거둔다. */
+  settleMemberUnreported(memberId: string, unreported: ObjectiveMemberUnreported | null): void;
+  /** 지휘관의 명시적 재발주 — 실패와 무보고의 inbox 표시만 해소한다. */
   acknowledgeMemberFailure(memberId: string): void;
-  recordMemberNotificationFailure(memberId: string, failure: NonNullable<ObjectiveMemberFailure["notificationFailure"]>): void;
+  recordMemberNotificationFailure(memberId: string, failure: NonNullable<ObjectiveMemberFailure["notificationFailure"]>, signal?: "failure" | "unreported"): void;
   /** 지휘관 Operation 이 복원 불가로 사라졌다 — 레코드와 첨부를 지운다. 담당이었다면 그 임무의 연결을 푼다. */
   forget(operationId: string): void;
   /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. */
@@ -232,6 +254,8 @@ export interface ObjectiveStore {
   reportWokenFor(objectiveId: string, missionId: string): number | undefined;
   /** 깨움을 보낸 침묵 시작 시각을 남긴다. 보드 변경 시각은 움직이지 않는다. */
   markReportWake(objectiveId: string, missionId: string, since: number): void;
+  /** stop 을 보드 사실로 남기거나(true, 지금 시각) 지시가 다시 닿아 거둔다(false). 보드 변경 시각은 미루지 않는다. */
+  setStopped(objectiveId: string, stopped: boolean): Objective;
   /** 지휘관의 완료 — 기록·완료·선택 결과물을 한 번에 저장한다. 결과물은 임무의 현재 연결로 남는다. */
   missionDone(objectiveId: string, missionId: string, lines: readonly string[], results?: readonly CompletionResultInput[]): Objective;
   /** 사람이 이 임무의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
@@ -417,6 +441,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
       if (parsed.boardUpdatedAt !== undefined && (!Number.isFinite(parsed.boardUpdatedAt) || parsed.boardUpdatedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
+      if (parsed.stoppedAt !== undefined && (typeof parsed.stoppedAt !== "number" || !Number.isFinite(parsed.stoppedAt) || parsed.stoppedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (Array.isArray(parsed.missions) && parsed.missions.some((mission) => { const row = mission as { assignmentTs?: unknown; quietWokenFor?: unknown }; const bad = (at: unknown) => at !== undefined && (typeof at !== "number" || !Number.isFinite(at) || at < 0); return bad(row.assignmentTs) || bad(row.quietWokenFor); })) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (parsed.addedBy !== undefined && typeof parsed.addedBy !== "string" && (parsed.addedBy?.kind !== "commodore" || !objectiveActorSchema.safeParse(parsed.addedBy).success)) throw new ObjectiveStoreError("invalid_stored_actor");
       const intent = parsed.operationIntent;
@@ -479,12 +504,31 @@ function storedRouted(value: StoredMember["routed"]): MemberRouted | null {
   if (value.via === "fallback" && shortText(value.reason, 64)) return { via: "fallback", reason: value.reason, ...(shortText(value.detail, 300) ? { detail: value.detail } : {}) };
   return null;
 }
+/** 저장된 구성원 실패 — 모양이 어긋난 옛 값은 없는 것으로 읽는다. */
+function storedFailure(value: StoredMember["failure"]): ObjectiveMemberFailure | undefined {
+  return value && typeof value === "object" && typeof value.error === "string" && Number.isInteger(value.consecutiveFailures) && value.consecutiveFailures > 0 ? value : undefined;
+}
+function storedUnreported(value: StoredMember["unreported"]): ObjectiveMemberUnreported | undefined {
+  return value && typeof value === "object" && Number.isFinite(value.at) && (value.reason === null || typeof value.reason === "object") ? value : undefined;
+}
+/** 보고 경로 없음 — 광고 목록을 알고, 그 목록에 보고 도구(SendMessage)가 없을 때만. 목록을 모르면(미기동·init 전) 판정하지 않는다. */
+export function lacksReportTool(tools: readonly string[] | null): boolean {
+  return tools !== null && !tools.includes(REPORT_TOOL);
+}
+/** 구성원이 지휘관에게 보고하는 도구 — 하네스가 광고하는 이름(Cursor 의 광고명 치환은 Gateway 안쪽이라 init 목록은 이 이름을 말한다). */
+export const REPORT_TOOL = "SendMessage";
+function storedTurn(value: StoredMember["settledTurn"]): SettledTurn | undefined {
+  return value && typeof value === "object" && Number.isFinite(value.revision) && (value.generation === undefined || typeof value.generation === "string") ? value : undefined;
+}
 function storedNext(value: StoredMember["next"]): MemberNext | null {
   if (!value || typeof value !== "object" || !shortText(value.model, 128) || !value.from || typeof value.from !== "object") return null;
   // 「다음 재개」 시절의 표식(reservedWhile·reservedGeneration)은 더 뜻이 없다 — 읽을 때 버린다.
   const { reservedWhile: _while, reservedGeneration: _generation, ...rest } = value as MemberNext & { reservedWhile?: unknown; reservedGeneration?: unknown };
   // 예약 모델만 접는다. from은 예약 당시의 실행값이라 원문을 둔다.
-  return { ...rest, model: canonicalModelId(rest.model), ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), ...(value.held === "host" || value.held === "plugin" ? {} : { held: undefined }) };
+  const cause = value.cause && typeof value.cause === "object" && typeof value.cause.message === "string"
+    ? { message: value.cause.message, ...(typeof value.cause.name === "string" ? { name: value.cause.name } : {}), ...(typeof value.cause.code === "string" ? { code: value.cause.code } : {}),
+      ...(typeof value.cause.errorClass === "string" ? { errorClass: value.cause.errorClass } : {}), ...(typeof value.cause.exitCode === "number" ? { exitCode: value.cause.exitCode } : {}), ...(typeof value.cause.signal === "string" ? { signal: value.cause.signal } : {}) } : undefined;
+  return { ...rest, model: canonicalModelId(rest.model), ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), cause: shortText(value.failed, 64) ? cause : undefined, ...(value.held === "host" || value.held === "plugin" ? {} : { held: undefined }) };
 }
 
 function canonicalStoredLaunch(launch: MemberLaunch | null | undefined): MemberLaunch | undefined {
@@ -519,7 +563,12 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.members?.length) delete out.members;
   else out.members = objective.members.map((member) => ({ id: member.id, role: member.role, by: member.by,
     ...(member.brief ? { brief: member.brief } : {}), ...(member.launch ? { launch: member.launch } : {}), ...(member.subagents === true ? { subagents: true } : {}),
-    ...(member.routed ? { routed: member.routed } : {}), ...(member.next ? { next: member.next } : {}) }));
+    ...(member.routed ? { routed: member.routed } : {}), ...(member.next ? { next: member.next } : {}),
+    // 구성원 수명 상태 — 재시작 뒤에도 실패·무보고 표시와 통지 중복 방지가 이어지도록 남긴다(메시지 본문은 싣지 않는다).
+    ...(member.failure ? { failure: member.failure } : {}), ...(member.unreported ? { unreported: member.unreported } : {}),
+    ...(member.settledTurn ? { settledTurn: member.settledTurn } : {}), ...(member.deliveredAt !== undefined ? { deliveredAt: member.deliveredAt } : {}),
+    ...(member.dispatchedAt !== undefined ? { dispatchedAt: member.dispatchedAt } : {}), ...(member.receivedAt !== undefined ? { receivedAt: member.receivedAt } : {}),
+    ...(member.unreportedNoticeFor !== undefined ? { unreportedNoticeFor: member.unreportedNoticeFor } : {}) }));
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
   if (!objective.handoff) delete out.handoff;
@@ -551,7 +600,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
    * 대체·철회·정리를 막는 것은 실제로 보내는 동안뿐이다. 남은 표시는 사람의 재전송이나 요청의 정리와 함께 거둔다.
    */
   const delivering = new Set<string>();
-  const memberFailures = new Map<string, ObjectiveMemberFailure>();
   /**
    * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 아직 읽지 않은 사람 편집이 남아 있으면 지휘관 도구의
    * board_changed 가 새 요청을 거절한다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
@@ -665,16 +713,18 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const host = stored && !stored.failed && stored.held === "host" ? options.coordinates?.(member.id) ?? null : null;
       const held = host ? heldNextOutcome(stored!, host) : null;
       const applied = legacy || held === "applied";
-      const next = applied ? null : held === "not_applied" ? { ...stored!, failed: COORDINATES_NOT_APPLIED } : stored;
+      const next = applied ? null : held === "not_applied" ? { ...stored!, ...notAppliedFailure(stored!, host!) } : stored;
       const memberOutcome = options.observe ? deriveFailedOutcome(options.observe(member.id)) : undefined;
       return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}), ...(member.proposal ? { proposal: member.proposal } : {}),
         subagents: member.subagents === true, launch: canonicalStoredLaunch(member.launch) ?? { mode: "route" as const },
         sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: canonicalModelId(preset.model) } : {}), ...(preset?.effort ? { effort: preset.effort } : {}),
         routed: memberNode && !applied ? storedRouted(member.routed) : null,
         switchesLive: options.liveSwitch === true,
-        next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null } : null,
+        next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null, ...(next.failed && next.cause ? { cause: next.cause } : {}) } : null,
         ...(memberOutcome ? { outcome: memberOutcome } : {}),
-        ...(memberFailures.has(member.id) ? { failure: memberFailures.get(member.id)! } : {}) };
+        ...(storedFailure(member.failure) ? { failure: member.failure! } : {}),
+        ...(storedUnreported(member.unreported) ? { unreported: member.unreported! } : {}),
+        ...(memberNode && lacksReportTool(options.advertisedTools?.(member.id) ?? null) ? { noReportTool: true as const } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);
@@ -702,6 +752,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       actions: stored.actions ?? [],
       actionCounts: stored.actionCounts ?? {},
       boardUpdatedAt: stored.boardUpdatedAt ?? node?.ts.createdAt ?? pending!.createdAt,
+      stoppedAt: stored.stoppedAt ?? null,
       awaitingHandoff: awaitingHandoff(stored),
       awaitingReview: awaitingReview(stored),
       handoff: stored.handoff ? { by: stored.handoff.by, at: stored.handoff.at, retrospective: stored.handoff.by === "commander" ? stored.handoff.retrospective : null } : null,
@@ -763,6 +814,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           ...(member?.launch.mode === "model" && member.effort ? { effort: member.effort } : {}),
           records: (mission.records ?? []).map((record, index) => ({ ...record, kind: index === 0 ? "done" as const : "redone" as const })),
           seen: mission.seen ?? 0,
+          ...((dispatch) => (dispatch ? { dispatch } : {}))(missionDispatch(mission.assignmentTs, member ? stored.members?.find((entry) => entry.id === member.id) : undefined)),
         };
       }),
     };
@@ -853,6 +905,28 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     actionCounts: { ...stored.actionCounts, [kind]: (stored.actionCounts?.[kind] ?? 0) + 1 },
   });
 
+  /** 구성원을 담은 저장 목표 — 실패·턴 좌표 같은 구성원 상태를 그 목표 파일에 둔다. 없으면(제거됨) null. */
+  const memberOwner = (memberId: string): StoredObjective | null => {
+    for (const theaterId of theaterIds()) for (const stored of load(theaterId).values()) if ((stored.members ?? []).some((member) => member.id === memberId)) return stored;
+    return null;
+  };
+  const locateStored = (objectiveId: string) => locate(objectiveId);
+  const storedMemberOf = (memberId: string): StoredMember | undefined => memberOwner(memberId)?.members?.find((member) => member.id === memberId);
+  /** 구성원 상태 쓰기 — 보드 변경 시각을 미루지 않는다(무보고 계산은 도메인 변경만 센다). 제거된 구성원이면 아무것도 쓰지 않는다. */
+  const updateMember = (memberId: string, mutate: (member: StoredMember) => StoredMember) => {
+    const owner = memberOwner(memberId);
+    if (!owner) return;
+    // 지휘관 Operation 이 이미 지워진 목표(정리 중)는 쓸 화면이 없다 — 구성원 상태를 거두는 호출이 정리를 막지 않게 건너뛴다.
+    try { locateStored(owner.operationId); } catch (error) { if (error instanceof ObjectiveStoreError && error.code === "unknown_objective") return; throw error; }
+    update(owner.operationId, (stored) => {
+      const members = stored.members ?? [];
+      const at = members.findIndex((member) => member.id === memberId);
+      if (at < 0) return stored;
+      const changed = mutate(members[at]!);
+      if (changed === members[at] || JSON.stringify(changed) === JSON.stringify(members[at])) return stored;
+      return { ...stored, members: members.map((member, ix) => (ix === at ? changed : member)) };
+    }, false);
+  };
   const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective, touch = true): Objective => {
     const { theaterId, recorded, stored, node } = locate(objectiveId);
     // 인계 기록은 할 일이 끝난 동안에만 산다 — 기준 표시를 거두는 변경이 곧 인계를 거두고 목표를 진행 중으로 돌린다.
@@ -1211,20 +1285,57 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       ...(input.routingConfirm !== undefined ? { routingConfirm: input.routingConfirm ? undefined : false as const } : {}),
     })),
 
-    memberFailure: (memberId) => memberFailures.get(memberId),
+    memberFailure: (memberId) => storedFailure(storedMemberOf(memberId)?.failure),
     settleMemberFailure(memberId, failure) {
-      if (!failure) { memberFailures.delete(memberId); return undefined; }
-      const state: ObjectiveMemberFailure = { ...failure, consecutiveFailures: (memberFailures.get(memberId)?.consecutiveFailures ?? 0) + 1 };
-      memberFailures.set(memberId, state);
+      let state: ObjectiveMemberFailure | undefined;
+      updateMember(memberId, (member) => {
+        const { failure: previous, ...rest } = member;
+        if (!failure) return previous === undefined ? member : rest;
+        state = { ...failure, consecutiveFailures: (storedFailure(previous)?.consecutiveFailures ?? 0) + 1 };
+        return { ...rest, failure: state };
+      });
       return state;
     },
-    acknowledgeMemberFailure(memberId) {
-      const failure = memberFailures.get(memberId);
-      if (failure) memberFailures.set(memberId, { ...failure, acknowledged: true });
+    settleMemberUnreported(memberId, unreported) {
+      updateMember(memberId, (member) => {
+        const { unreported: previous, ...rest } = member;
+        if (!unreported) return previous === undefined ? member : rest;
+        return { ...rest, unreported };
+      });
     },
-    recordMemberNotificationFailure(memberId, notificationFailure) {
-      const failure = memberFailures.get(memberId);
-      if (failure) memberFailures.set(memberId, { ...failure, notificationFailure });
+    acknowledgeMemberFailure(memberId) {
+      updateMember(memberId, (member) => ({
+        ...member,
+        ...(member.failure ? { failure: { ...member.failure, acknowledged: true as const } } : {}),
+        ...(member.unreported ? { unreported: { ...member.unreported, acknowledged: true as const } } : {}),
+      }));
+    },
+    recordMemberNotificationFailure(memberId, notificationFailure, signal = "failure") {
+      updateMember(memberId, (member) => signal === "unreported"
+        ? (member.unreported ? { ...member, unreported: { ...member.unreported, notificationFailure } } : member)
+        : (member.failure ? { ...member, failure: { ...member.failure, notificationFailure } } : member));
+    },
+    memberTurn: (memberId) => storedTurn(storedMemberOf(memberId)?.settledTurn),
+    setMemberTurn(memberId, turn) {
+      updateMember(memberId, (member) => ({ ...member, settledTurn: { ...(turn.generation !== undefined ? { generation: turn.generation } : {}), revision: turn.revision } }));
+    },
+    memberDelivered: (memberId) => { const at = storedMemberOf(memberId)?.deliveredAt; return typeof at === "number" && Number.isFinite(at) ? at : undefined; },
+    setMemberDelivered(memberId, at) {
+      updateMember(memberId, (member) => ({ ...member, deliveredAt: at }));
+    },
+    recordDispatch(memberId, at) {
+      updateMember(memberId, (member) => ({ ...member, dispatchedAt: at }));
+    },
+    memberDispatch(memberId) {
+      const member = storedMemberOf(memberId);
+      return member ? missionDispatch(undefined, member) : null;
+    },
+    unreportedNoticeFor: (memberId) => { const at = storedMemberOf(memberId)?.unreportedNoticeFor; return typeof at === "number" && Number.isFinite(at) ? at : undefined; },
+    setUnreportedNoticeFor(memberId, at) {
+      updateMember(memberId, (member) => ({ ...member, unreportedNoticeFor: at }));
+    },
+    recordReceipt(memberId, at) {
+      updateMember(memberId, (member) => ({ ...member, receivedAt: at }));
     },
     refresh(operationId) {
       const node = operationNode(operationId);
@@ -1388,6 +1499,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       try { return locate(objectiveId).stored.missions.find((mission) => mission.id === missionId)?.quietWokenFor; }
       catch { return undefined; }
     },
+    setStopped: (objectiveId, stopped) => update(objectiveId, (stored) => {
+      if (!stopped) return stored.stoppedAt === undefined ? stored : { ...stored, stoppedAt: undefined };
+      return { ...stored, stoppedAt: now() };
+    }, false),
     markReportWake(objectiveId, missionId, since) {
       update(objectiveId, (stored) => {
         const at = stored.missions.findIndex((mission) => mission.id === missionId);

@@ -1,10 +1,29 @@
 import { z } from "zod";
-import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
+import type { ConsoleCoordinatesFailureCause, ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 import { canonicalModelId } from "@fleet-console/sdk/models";
 
 /** 살아 있는 구성원의 직전 실패와 표시 횟수. acknowledge는 inbox만 해소한다. */
 export interface ObjectiveMemberFailure extends ConsoleTurnFailure {
   readonly consecutiveFailures: number;
+  readonly acknowledged?: true;
+  /** 지휘관 통지가 전달되지 않았다. 호스트의 오류 코드와 메시지는 자르거나 요약하지 않는다. */
+  readonly notificationFailure?: { readonly code: string; readonly message: string };
+}
+
+/**
+ * 배정된 열린 임무가 있는 구성원의 턴이 실패 결말 없이 닫혔는데, 그 턴에서 결과까지 닿은 세션 간 메시지가 하나도 없다.
+ * 실패 턴이 아니므로 실패 통지가 울리지 않는 자리다. 다음 턴이 메시지를 남기거나 지휘관이 그 구성원에게 다시 말하면 거둔다.
+ */
+export interface ObjectiveMemberUnreported {
+  /** 그 턴이 닫힌 것을 본 시각(ms). */
+  readonly at: number;
+  /** 그 턴의 최종 응답 원문(SDK result). 자르거나 요약하지 않는다. 모델이 글을 남기지 않았으면 없다. */
+  readonly lastMessage?: string;
+  /**
+   * 왜 끝내지 못했는지 — 사유를 판정한 출처가 채우는 칸이다(예: Gateway 의 한도 소진 판정). `code` 는 `[a-z_]` 어휘,
+   * `detail` 은 그 출처의 원문이다. 판정한 출처가 없으면 null 이고, 화면과 통지는 사유 없이 사실만 말한다.
+   */
+  readonly reason: { readonly code: string; readonly detail?: string } | null;
   readonly acknowledged?: true;
   /** 지휘관 통지가 전달되지 않았다. 호스트의 오류 코드와 메시지는 자르거나 요약하지 않는다. */
   readonly notificationFailure?: { readonly code: string; readonly message: string };
@@ -130,6 +149,8 @@ export interface MemberNext {
   readonly from: MemberPreset;
   readonly was?: MemberLaunch;
   readonly failed?: string;
+  /** 실패의 원 예외 — 자식이 좌표 변경을 거절하며 던진 것 그대로다. 자르거나 요약하지 않는다. 원 예외가 없는 실패에는 없다. */
+  readonly cause?: ConsoleCoordinatesFailureCause;
   /**
    * 누가 그 턴 뒤를 기다리는가. host 는 떠 있는 채팅 — 호스트가 메모리에 들고 그 턴이 닫히는 경계에서 자식에 적용하며, 세션 좌표도 그때
    * 호스트가 고친다. 정산은 호스트 좌표를 다시 읽어서 한다: 예약이 남았으면 아직, 비었고 실행값이 이 값이면 적용됨, 비었는데 실행값이
@@ -147,6 +168,8 @@ export interface HostCoordinates {
   readonly model: string;
   readonly effort: string | null;
   readonly pending: { readonly model: string; readonly effort: string | null } | null;
+  /** 자식이 마지막으로 거절한 좌표와 원 예외. */
+  readonly refused?: { readonly model: string; readonly effort: string | null; readonly cause: ConsoleCoordinatesFailureCause };
 }
 
 const samePair = (a: MemberPreset, b: MemberPreset) => canonicalModelId(a.model ?? "") === canonicalModelId(b.model ?? "") && (a.effort ?? "") === (b.effort ?? "");
@@ -159,6 +182,16 @@ export function heldNextOutcome(next: Pick<MemberNext, "model" | "effort">, host
   const target = { model: next.model, ...(next.effort ? { effort: next.effort } : {}) };
   if (host.pending && samePair({ model: host.pending.model, ...(host.pending.effort ? { effort: host.pending.effort } : {}) }, target)) return "pending";
   return samePair({ model: host.model, ...(host.effort ? { effort: host.effort } : {}) }, target) ? "applied" : "not_applied";
+}
+
+/**
+ * 적용되지 않은 호스트 예약의 사유 — 자식이 바로 이 좌표를 거절했으면 그 원 예외와 함께 coordinates_apply_failed, 다른 까닭(버림·문맥 초과·
+ * 사람의 취소)으로 사라졌으면 coordinates_not_applied. 행과 감시자가 같은 판정을 쓴다.
+ */
+export function notAppliedFailure(next: Pick<MemberNext, "model" | "effort">, host: HostCoordinates): { readonly failed: string; readonly cause?: ConsoleCoordinatesFailureCause } {
+  const refused = host.refused;
+  if (refused && heldNextOutcome(next, { model: refused.model, effort: refused.effort, pending: null }) === "applied") return { failed: "coordinates_apply_failed", cause: refused.cause };
+  return { failed: COORDINATES_NOT_APPLIED };
 }
 
 export interface StoredMember {
@@ -176,9 +209,29 @@ export interface StoredMember {
   readonly by: ObjectiveActor;
   readonly routed?: MemberRouted;
   readonly next?: MemberNext;
+  /** 공개 관측의 직전 실패와 연속 횟수 — 재시작 뒤에도 명단·inbox 에 남는다. 정상 턴이 거두고, 재발주는 inbox 만 해소한다. */
+  readonly failure?: ObjectiveMemberFailure;
+  /** 실패 없이 닫힌 무보고 턴 — 다음 보고나 재발주가 거둔다. */
+  readonly unreported?: ObjectiveMemberUnreported;
+  /** 마지막으로 정산한 턴의 좌표 — 재시작 뒤 같은 턴을 다시 알리지 않는다. 화면에 싣지 않는다. */
+  readonly settledTurn?: SettledTurn;
+  /** 구성원이 마지막으로 메시지를 전달한 턴을 본 시각(ms) — 배정 뒤 보고 빚을 가른다. 화면에 싣지 않는다. */
+  readonly deliveredAt?: number;
+  /** 지휘관의 세션 간 메시지가 이 구성원에게 마지막으로 닿은 시각(ms). 본문은 남기지 않는다. 화면에는 임무 행의 발주 흔적으로만 선다. */
+  readonly dispatchedAt?: number;
+  /** 그 발주 뒤 구성원이 일을 집어 든(턴을 연) 것을 처음 본 시각(ms). */
+  readonly receivedAt?: number;
+  /** 무보고 통지를 이미 보낸 보고 기대(배정·발주 시각) — 같은 기대에는 한 번만 알린다. 화면에 싣지 않는다. */
+  readonly unreportedNoticeFor?: number;
 }
 
-export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents" | "routed" | "next"> {
+/** 정산한 턴의 좌표 — 프로세스 세대와 그 세대 안의 턴 revision. */
+export interface SettledTurn {
+  readonly generation?: string;
+  readonly revision: number;
+}
+
+export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents" | "routed" | "next" | "settledTurn" | "deliveredAt" | "dispatchedAt" | "receivedAt" | "unreportedNoticeFor"> {
   readonly launch: MemberSelection;
   /** 저장된 허용. 키 없음은 false. */
   readonly subagents: boolean;
@@ -193,10 +246,14 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagent
    */
   readonly switchesLive: boolean;
   /** 이번 턴 뒤에 바뀔 값 — 실패했으면 failed 에 사유 코드이고 실행값은 그대로다. */
-  readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null } | null;
+  readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null; readonly cause?: ConsoleCoordinatesFailureCause } | null;
   /** 공개 세션 관측의 실패 결말. */
   readonly outcome?: "failed";
   readonly failure?: ObjectiveMemberFailure;
+  /** 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다. */
+  readonly unreported?: ObjectiveMemberUnreported;
+  /** 떠 있는 세션이 init 에서 광고한 도구에 보고 도구(SendMessage)가 없다 — 표시만 하고 발주·기동은 막지 않는다. 목록을 모르면 없다. */
+  readonly noReportTool?: true;
 }
 
 /** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */
@@ -522,6 +579,8 @@ export interface StoredObjective {
   readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
   /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
   readonly boardUpdatedAt?: number;
+  /** 마지막 stop 시각 — 그 뒤로는 보고를 기대하지 않는다. 지시를 다시 보내는 행위가 거둔다(signals.ts expectsReport). 보드 변경 시각을 미루지 않는다. */
+  readonly stoppedAt?: number;
   /** 목표 완료 — 옛 레코드에서 by 생략은 사람의 완료다. */
   readonly done?: ObjectiveCompletion;
   /** Core 요청 접수 전 중단을 복구하는 내부 의도. UI 상태나 구성원별 세대가 아니다. */
@@ -638,6 +697,14 @@ export interface ObjectiveMission {
   readonly effort?: string;
   readonly records: readonly MissionRecord[];
   readonly seen: number;
+  /** 발주·수신 흔적 — 배정 뒤 지휘관의 말이 담당에게 닿았을 때만(signals.ts missionDispatch). 본문은 없다. */
+  readonly dispatch?: MissionDispatch;
+}
+
+/** 발주가 담당에게 닿은 시각과, 그 뒤 담당이 일을 집어 든 시각(아직이면 null). */
+export interface MissionDispatch {
+  readonly at: number;
+  readonly receivedAt: number | null;
 }
 
 export interface ObjectiveCriterion {
@@ -669,6 +736,8 @@ export interface Objective {
   readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
   /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
   readonly boardUpdatedAt?: number;
+  /** 마지막 stop 시각 — 지시를 다시 보내면 null 로 돌아간다. 멈춘 사실은 보드에 그대로 보인다. */
+  readonly stoppedAt: number | null;
   readonly dueDate: string | null;
   readonly today: boolean;
   readonly addedBy: { readonly operationId: string; readonly title: string | null } | Extract<ObjectiveActor, { kind: "commodore" }> | null;

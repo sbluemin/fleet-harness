@@ -109,6 +109,8 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
           member: mission.member ? ((member) => member ? { id: member.id, role: member.role } : null)(objective.members.find((candidate) => candidate.id === mission.member)) : null,
           ...(mission.unplaced ? { unplaced: true } : {}),
           ...(mission.done ? {} : { ready: missionReady(objective.missions, mission) }),
+          // 발주·수신 흔적 — 배정 뒤 지휘관의 말이 담당에게 닿은 시각과 담당이 그 일을 집어 든 시각(본문 없음). 「미발주」 오판을 막는다.
+          ...(!mission.done && mission.dispatch ? { dispatch: { sentAt: new Date(mission.dispatch.at).toISOString(), receivedAt: mission.dispatch.receivedAt === null ? null : new Date(mission.dispatch.receivedAt).toISOString() } } : {}),
           // 다음 임무가 받는 것 — 가장 최근 기록과 기록 수. 앞선 기록은 사람이 화면에서 읽는다.
           ...(latest ? { record: { lines: latest.lines, kind: latest.kind, ...(latest.at ? { at: new Date(latest.at).toISOString() } : {}) }, records: mission.records.length } : {}),
           // 구성원 세션 상태는 명단에서 읽는다. 한 구성원은 여러 임무를 맡는다.
@@ -144,6 +146,8 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
           state: obs ? obs.state : ("missing" as const),
           ...(obs?.outcome ? { outcome: obs.outcome } : {}),
           ...(member.failure ? { failure: member.failure } : {}),
+          ...(member.unreported ? { unreported: member.unreported } : {}),
+          ...(member.noReportTool ? { noReportTool: true } : {}),
         };
       }),
       done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
@@ -210,10 +214,11 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     const commander = observe(objective.id);
     return {
       commander: { ...commander, state: store.pending(objective.id) ? "not_started" : commander.state, session: objective.commander.sessionName, model: objective.commander.model, effort: objective.commander.effort },
-      members: objective.members.map((member) => ({ ...observe(member.id), role: member.role, session: member.sessionName, model: member.model, effort: member.effort, next: member.next, ...(member.failure ? {
-        failure: member.failure,
-        missions: objective.missions.flatMap((mission, index) => mission.member === member.id && !mission.done ? [{ n: index + 1, missionId: mission.id, text: mission.text }] : []),
-      } : {}) })),
+      members: objective.members.map((member) => ({ ...observe(member.id), role: member.role, session: member.sessionName, model: member.model, effort: member.effort, next: member.next,
+        ...(member.failure ? { failure: member.failure } : {}), ...(member.unreported ? { unreported: member.unreported } : {}),
+        ...(member.failure || member.unreported ? {
+          missions: objective.missions.flatMap((mission, index) => mission.member === member.id && !mission.done ? [{ n: index + 1, missionId: mission.id, text: mission.text }] : []),
+        } : {}) })),
     };
   };
   const historyView = (objective: Objective) => {

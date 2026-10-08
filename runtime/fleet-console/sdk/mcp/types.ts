@@ -33,7 +33,7 @@ export function inputIssues(issues: readonly ArgumentIssue[]): { path: readonly 
   }]);
 }
 
-export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesFailureCause, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleTurnFailure, ConsoleTurnEnd } from "./control.js";
+export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesFailureCause, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnFailure, ConsoleTurnEnd, ConsoleTurnReport } from "./control.js";
 
 /**
  * Console Use 호스트 코어 도구. 이름은 `console_<화면>[_<하위 화면>]` — 사이드바, Quick Launch(launcher),

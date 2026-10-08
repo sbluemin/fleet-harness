@@ -321,9 +321,9 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
   async function models(theaterId: string | null, signal: AbortSignal | undefined) {
     const [catalog, quota] = await Promise.all([modelCatalog.load(signal), modelCatalog.quota(signal)]);
     if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
-    // 바꾸지 못한 턴 뒤 전환 — 그 모델로 다시 고르기 전에 볼 사유다.
+    // 바꾸지 못한 전환(곧바로든 턴 뒤든) — 그 모델로 다시 고르기 전에 볼 사유다. cause 는 자식이 거절하며 던진 원문이다.
     const failedSwitches = theaterId ? store.list(theaterId).filter((objective) => !objective.done && !objective.removed).flatMap((objective) => objective.members.flatMap((member) => member.next?.failed
-      ? [{ objectiveId: objective.id, memberId: member.id, role: member.role, model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}), failed: member.next.failed }]
+      ? [{ objectiveId: objective.id, memberId: member.id, role: member.role, model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}), failed: member.next.failed, ...(member.next.cause ? { cause: member.next.cause } : {}) }]
       : [])) : [];
     return { models: catalog, quota, failedSwitches };
   }

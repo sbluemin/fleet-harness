@@ -686,7 +686,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       // 바꾸지 못한 변경 — 방금 고른 값을 호스트가 거절했거나(닫으면 표시만 지운다), 이번 턴 뒤 예약이 적용되지 못했다(닫으면 예약 전 선택으로 돌아간다).
       const picked = launched && fault?.id === member.id ? fault.picked ?? null : null;
       const failure = picked && fault ? { model: picked.model, effort: picked.effort, code: fault.code, dismiss: () => setFault(null) }
-        : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, dismiss: () => cancelNext(member) } : null;
+        : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, cause: next.cause?.message, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
       const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
       const failed = (member.outcome === "failed" || !!member.failure) && !isWorkingOrAwaiting;
@@ -732,7 +732,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
               <span className="objectives-sr">{sentence}</span>
               {touchable ? <button type="button" className="objectives-glyph objectives-member-bubble-x" aria-label={t("objectives.members.next.dismiss")} title={t("objectives.members.next.dismiss")} onClick={failure.dismiss}><CloseGlyph /></button> : null}
             </span>
-          ))(t("objectives.members.next.failedBody", { model: launchedWords(rows, failure.model, failure.effort, labels).title, reason: routingReason(t, failure.code) })) : appliedTo ? (
+          // 자식이 던진 원문이 있으면 사유 문장 뒤에 그대로 붙인다 — 같은 코드 뒤의 서로 다른 원인을 사람이 읽는 자리다.
+          ))(`${t("objectives.members.next.failedBody", { model: launchedWords(rows, failure.model, failure.effort, labels).title, reason: routingReason(t, failure.code) })}${"cause" in failure && failure.cause ? `\n${failure.cause}` : ""}`) : appliedTo ? (
             <span className="objectives-member-bubble is-applied" role="status"><span className="objectives-member-bubble-when">{t("objectives.members.next.applied")}</span></span>
           ) : null}
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
@@ -741,6 +742,20 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           <summary>{t("objectives.members.failureCount", { count: member.failure.consecutiveFailures })}</summary>
           <p>{t("objectives.members.failureData")}</p>
           <pre>{[member.failure.error, member.failure.error_details, member.failure.last_assistant_message].filter((value) => value !== undefined).join("\n")}</pre>
+        </details> : null}
+        {/* 바뀌지 않은 모델 전환의 사유 — 세션이 거절하며 남긴 원문을 자르지 않고 펼쳐 보인다(말풍선 title 만으로는 마우스를 올려야 읽힌다). */}
+        {launched && member.next?.failed && member.next.cause ? <details className="objectives-member-note is-error objectives-member-failure">
+          <summary>{t("objectives.members.next.causeSummary")}</summary>
+          <pre>{member.next.cause.message}</pre>
+          {member.next.cause.errorClass || member.next.cause.code || member.next.cause.exitCode !== undefined || member.next.cause.signal
+            ? <p>{[member.next.cause.errorClass, member.next.cause.code, member.next.cause.exitCode !== undefined ? `exit ${member.next.cause.exitCode}` : undefined, member.next.cause.signal].filter((value) => value !== undefined && value !== "").join(" · ")}</p> : null}
+        </details> : null}
+        {member.noReportTool ? <p className="objectives-member-note is-warn" role="status">{t("objectives.members.noReportTool")}</p> : null}
+        {/* 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다 — 사유 칸은 판정한 출처가 있을 때만 붙는다. 마지막 응답은 원문 그대로다. */}
+        {member.unreported ? <details className="objectives-member-note is-warn objectives-member-failure">
+          <summary>{member.unreported.reason ? t("objectives.members.unreportedReason", { reason: member.unreported.reason.code }) : t("objectives.members.unreported")}</summary>
+          {member.unreported.reason?.detail !== undefined ? <pre>{member.unreported.reason.detail}</pre> : null}
+          {member.unreported.lastMessage !== undefined ? <><p>{t("objectives.members.unreportedData")}</p><pre>{member.unreported.lastMessage}</pre></> : <p>{t("objectives.members.unreportedEmpty")}</p>}
         </details> : null}
         {routed?.via === "fallback" ? <p className="objectives-member-reason" title={routed.detail}>{routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) })}</p> : null}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
@@ -1589,6 +1604,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           <p className="objectives-extension-request"><b>{t("objectives.extend.request")}</b><LinkText text={extension.context} /></p>
         </div> : null}
         {busy ? <div className="objectives-busy-line" role="status"><i aria-hidden="true" /><span>{t(objective.planning ? "objectives.planning" : "objectives.busy")}</span></div> : null}
+        {/* 멈춘 목표 — 조용해진 것이지 안 보이게 된 것이 아니다. 지시를 다시 보내면 서버가 stoppedAt 을 거두고 이 줄도 사라진다. */}
+        {!busy && !objective.done && objective.stoppedAt !== null ? <div className="objectives-busy-line is-stopped" role="status"><i aria-hidden="true" /><span>{t("objectives.stopped", { time: recordTime(objective.stoppedAt, language, "") })}</span></div> : null}
       </div>
   </>);
   const sFollowupResults = (<>
@@ -1822,6 +1839,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
               ? <span className="objectives-wait is-ready">{t("objectives.missions.ready")}</span>
               : <span className="objectives-wait" title={t("objectives.missions.waiting")}>{t("objectives.missions.prerequisites", { missions: mission.prerequisites.filter((id) => !objective.missions.find((candidate) => candidate.id === id)?.done).map(numberOf).filter((n) => n > 0).join("·") })}</span>) : null}
             {quiet ? <span className="objectives-mission-quiet">{quiet}</span> : null}
+            {/* 발주·수신 흔적 — 지휘관의 말이 담당에게 닿은 시각과 담당이 집어 든 시각. 본문은 보드에 없다. */}
+            {!mission.done && mission.dispatch ? <span className="objectives-mission-dispatch">{mission.dispatch.receivedAt !== null
+              ? t("objectives.missions.dispatchReceived", { sent: recordTime(mission.dispatch.at, language, ""), received: recordTime(mission.dispatch.receivedAt, language, "") })
+              : t("objectives.missions.dispatchSent", { sent: recordTime(mission.dispatch.at, language, "") })}</span> : null}
             <span className="objectives-mission-tools">
               {!mission.done && touchable ? <AssignControl t={t} objective={objective} mission={mission} rows={launchRows} operationState={operationState} onAssign={(member) => void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { member } })} onCreate={async (role) => { const result = await call<{ objective: Objective }>("/member/add", { objectiveId: objective.id, member: { role } }); const member = result?.objective.members.at(-1); return member ? !!(await call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { member: member.id } })) : false; }} label={t("objectives.missions.setMember")} /> : null}
               {notStarted(mission) && touchable ? <button type="button" className="objectives-glyph" title={t("objectives.missions.remove")} aria-label={t("objectives.missions.remove")} onClick={() => void call("/mission/remove", { objectiveId: objective.id, missionId: mission.id })}><TrashGlyph /></button> : null}

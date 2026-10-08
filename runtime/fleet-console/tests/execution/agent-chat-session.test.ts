@@ -1160,10 +1160,12 @@ describe("AgentChatRegistry — stopping a turn", () => {
       dispose: vi.fn(async () => {}),
     }));
     const applied: { readonly model: string; readonly effort: string | null }[] = [];
+    const peers: { readonly fromName: string; readonly at: number }[] = [];
     const registry = new AgentChatRegistry(factory as never);
     const session = await registry.ensure("op-coord-1", () => ({
       ...seedFor(transcriptPath),
       onCoordinatesApplied: (coordinates) => { applied.push(coordinates); },
+      onPeerMessageReceived: (peer) => { peers.push(peer); },
     }));
     const seen: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => seen.push(entry));
@@ -1203,7 +1205,28 @@ describe("AgentChatRegistry — stopping a turn", () => {
       cause: { message: `Provider refused the session: key=sk-… ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit", errorClass: "process_exited_nonzero", exitCode: 1 },
     });
     expect(onControl).toHaveBeenCalledTimes(1);
-    expect(session.readCoordinates()).toMatchObject({ model: "sonnet[1m]", pending: null });
+
+    // 받는 쪽 관측 — 보낸 쪽이 터미널이라 발신이 보이지 않아도, 자식이 트랜스크립트에 남긴 peer 도착에서 보낸 이름과 시각만 알린다.
+    // 이 세션이 서기 전의 과거 도착은 알리지 않고, 같은 msg_id 는 턴이 닫힐 때 다시 훑어도 한 번이다. 본문은 읽지 않는다.
+    const peerRecord = (msgId: string, at: string) => JSON.stringify({ type: "user", timestamp: at, isMeta: true,
+      origin: { kind: "peer", from: "uds:/tmp/cc-socks/9.sock", name: "objective-abc-cmdr", msg_id: msgId, body: "Mission 2 is yours." },
+      message: { role: "user", content: "<cross-session-message from-name=\"objective-abc-cmdr\">Mission 2 is yours.</cross-session-message>" } });
+    const arrivedAt = new Date(Date.now() + 1_000).toISOString();
+    appendFileSync(transcriptPath, `\n${peerRecord("m-old", "2020-01-01T00:00:00.000Z")}\n${peerRecord("m-1", arrivedAt)}\n`);
+    child!.emit({ type: "assistant", message: { content: [{ type: "text", text: "Starting mission 2." }] } });
+    await vi.waitFor(() => { expect(peers).toEqual([{ fromName: "objective-abc-cmdr", at: Date.parse(arrivedAt) }]); });
+    child!.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 5 });
+    await vi.waitFor(() => { expect(session.readConsoleOutput().outcome).toBe("succeeded"); });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(peers).toHaveLength(1);
+    // 좌표 조회도 그 거절을 사유째 들고 있다 — 턴 경계에서 거절된 예약의 사유를 플러그인이 읽는 자리다.
+    expect(session.readCoordinates()).toEqual({ model: "sonnet[1m]", effort: "medium", pending: null,
+      refused: { model: "muse-code--muse-spark-1.3-contributor", effort: null, cause: { message: `Provider refused the session: key=sk-… ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit", errorClass: "process_exited_nonzero", exitCode: 1 } } });
+    // 새 시도는 지난 거절을 거둔다 — 같은 좌표를 다시 고른 예약이 다른 까닭으로 사라져도 옛 원 예외를 그 예약의 거절로 읽지 않게.
+    session.send("third");
+    await vi.waitFor(() => { expect(wire).toContain("send:third"); });
+    await expect(session.changeCoordinates("muse-code--muse-spark-1.3-contributor", null)).resolves.toEqual({ ok: true, applied: "scheduled" });
+    expect(session.readCoordinates()).not.toHaveProperty("refused");
 
     await registry.disposeAll();
   });

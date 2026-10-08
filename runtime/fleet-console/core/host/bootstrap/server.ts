@@ -1188,6 +1188,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
       observe: (operationId) => consoleControl.observe(operationId),
       subscribeTurnEnds: (listener) => consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId }, listener),
+      subscribeSessionMessages: (listener) => consoleControl.subscribeSessionMessages({ kind: "plugin", pluginId }, listener),
       launchState: (input) => { consoleAgentOwners.add(pluginId); return consoleControl.launchKeyState({ kind: "plugin", pluginId }, input.theaterId, input.key); },
       reserveLaunchKeys: (input) => { consoleAgentOwners.add(pluginId); consoleControl.reserveLaunchKeys({ kind: "plugin", pluginId }, input.theaterId, input.keys); },
       launchKeyUsage: () => consoleControl.launchKeyUsage({ kind: "plugin", pluginId }),
@@ -1228,6 +1229,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
       setCoordinates: (operationId, input) => consoleControl.coordinates({ kind: "plugin", pluginId }, operationId, input),
       coordinates: (operationId) => consoleControl.readCoordinates(operationId),
+      advertisedTools: (operationId) => consoleControl.advertisedTools({ kind: "plugin", pluginId }, operationId),
       // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Operation 이나 그 자식)을 Console 제어가 따진다.
       transcript: (operationId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, operationId, input, signal),
     }),

@@ -197,6 +197,21 @@ describe("agent chat mode routes", () => {
     // 발신자 이름은 본문의 주장이 아니라 서버가 들고 있는 런치 이름이고, 좌표는 발신 Operation과 호출 id다.
     expect(received()[0]).toMatchObject({ id: `${member}:call-1`, from: "member", text: "Check the mobile layout." });
     expect(received()[1]).toMatchObject({ text: "Last word." });
+    // 그 턴이 닫히면 관측은 결과까지 성공한 최상위 발신의 받는 이름과 최종 응답 원문을 싣는다 — 거절·서브에이전트 발신은 없다.
+    // 자식이 스스로 연 턴이라 사람의 턴이 아니다. 플러그인은 이 값으로 "실패 없이 닫혔지만 아무 말도 남기지 못한 턴"을 가른다.
+    // 원장의 답은 표시 상한(60,000자)을 지나지만, 턴 보고에는 SDK result 원문 전체가 그대로 실린다.
+    const answer = `Reported to the commander.\n  verbatim  \n\n\n${"원문 ".repeat(31_000)}END`;
+    harness.emitToLatest({ type: "result", subtype: "success", is_error: false, duration_ms: 1, result: answer });
+    await vi.waitFor(() => expect(harness.consoleControl.observe(member)?.output).toMatchObject({
+      outcome: "succeeded", report: { sentTo: ["commander", "nobody-here", "commander"], byPerson: false, answer, pendingWork: false },
+    }));
+    // 외부 대기(백그라운드 셸)를 걸고 말없이 닫은 턴은 다시 깨어날 일이 남은 턴이다 — 보낸 말이 없어도 멈춘 턴과 가른다.
+    harness.emitToLatest({ type: "assistant", message: { content: [{ type: "text", text: "Waiting for CI." }] } });
+    harness.emitToLatest({ type: "system", subtype: "task_started", task_id: "ci-wait", task_type: "local_bash", description: "gh run watch" });
+    harness.emitToLatest({ type: "result", subtype: "success", is_error: false, duration_ms: 1, result: "Waiting for CI." });
+    await vi.waitFor(() => expect(harness.consoleControl.observe(member)?.output).toMatchObject({
+      outcome: "succeeded", report: { sentTo: [], byPerson: false, answer: "Waiting for CI.", pendingWork: true },
+    }));
     // Console Use 발신은 그대로 Operation 출처의 지시로 선다 — 수신 줄로 두 번 서지 않는다.
     expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Begin the objective", by: expect.objectContaining({ kind: "operation", operationId: sessionId }) }));
     // 플러그인 발신도 같은 자리에서 제 출처를 지킨다. 서버가 실은 값에서 끝내지 않고 브라우저가 읽는
@@ -234,6 +249,19 @@ describe("agent chat mode routes", () => {
     expect(tail).toMatchObject({ source: "chat", nextCursor: null });
     expect("entries" in tail && tail.entries.some((entry) => entry.kind === "user" && String(entry.text).includes("Own work"))).toBe(true);
     await expect(harness.consoleControl.transcript(plugin, commander, { limit: 5, tail: true })).resolves.toEqual({ error: "forbidden" });
+    // 세션 간 메시지 도착은 보낸·받은 Operation 과 시각만 그 둘을 띄운 플러그인에 건넨다 — 본문은 없고, 남이 띄운 세션 사이의 말은 건네지 않는다.
+    const peer = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "peer" })).operationId;
+    const arrivals: import("@fleet-console/sdk/mcp").ConsoleSessionMessage[] = [];
+    cleanups.push(harness.consoleControl.subscribeSessionMessages(plugin, (event) => arrivals.push(event)));
+    harness.emitToLatest(sent("call-peer", "peer", "Mission 2 is yours."));
+    harness.emitToLatest(settled("call-peer", true));
+    await vi.waitFor(() => expect(arrivals).toEqual([{ fromOperationId: owned, toOperationId: peer, at: expect.any(Number) }]));
+    // 광고 도구 — 자식이 init 에서 모델에게 내놓은 목록을 그 세션을 띄운 플러그인만 읽는다. init 전·남의 세션은 null(「없다」가 아니다).
+    expect(harness.consoleControl.advertisedTools(plugin, owned)).toBeNull();
+    harness.emitToLatest({ type: "system", subtype: "init", tools: ["Bash", "Read", "SendMessage"] });
+    await vi.waitFor(() => expect(harness.consoleControl.advertisedTools(plugin, owned)).toEqual(["Bash", "Read", "SendMessage"]));
+    expect(harness.consoleControl.advertisedTools(plugin, commander)).toBeNull();
+    expect(received()).toHaveLength(2);
 
     // SDK 원시 오류 result만 도착해도 실패 구조와 종료 포트가 만들어진다. 모델 텍스트·도구 호출은 주입하지 않는다.
     const apiError = "API Error: 529 The backend is temporarily overloaded. Please retry.";
