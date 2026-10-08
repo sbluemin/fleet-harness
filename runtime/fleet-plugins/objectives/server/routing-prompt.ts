@@ -29,6 +29,8 @@ export function memberRoutingPrompt(objective: Objective, member: ObjectiveMembe
   const sections = [`Objective: ${oneLine(objective.title)}`, `Role: ${oneLine(member.role)}`];
   const brief = member.brief ? oneLine(member.brief) : "";
   if (brief) sections.push(`Brief: ${brief}`);
+  // 지휘관의 모델 제안은 참고 정보다 — 모델은 판단이 정한다.
+  if (member.proposal) sections.push(`Commander's proposed model: ${oneLine(member.proposal.model)}${member.proposal.effort ? ` (effort ${oneLine(member.proposal.effort)})` : ""}`);
   const missions = objective.missions
     .filter((mission) => !mission.done && mission.member === member.id)
     .map((mission) => oneLine(mission.text))

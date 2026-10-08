@@ -166,6 +166,11 @@ export interface StoredMember {
   readonly role: string;
   readonly brief?: string;
   readonly launch?: MemberLaunch;
+  /**
+   * 지휘관의 모델 제안 — 구성원 정보에 붙는 참고일 뿐 배정이 아니다. 선택(launch)을 바꾸지 않고, 라우팅 구성원이면 AI Gateway
+   * 판단 프롬프트에 「제안 모델」로 실린다. 모델을 정하는 것은 판단(폴백이면 지휘관 프리셋)이다.
+   */
+  readonly proposal?: MemberProposal;
   /** 서브에이전트 허용. 없거나 false면 강제 차단이다. true만 저장한다. */
   readonly subagents?: true;
   readonly by: ObjectiveActor;
@@ -570,6 +575,8 @@ export interface StoredRemoval {
 
 /** 지우거나 합친 목표를 보드에 남겨 두는 기간 — 지나면 영구 삭제된다. */
 export const REMOVED_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+/** 사령관이 정리한 기록의 행위자 id 머리 — `commodore:<theaterId>`. 보기에서 commodore: true 로 풀린다. */
+export const COMMODORE_TIDY_PREFIX = "commodore:";
 export const MAX_REMOVAL_REASON = 300;
 /** 사령관 보드 쓰기의 한 줄 근거 상한 — 곁 칸에서 두 줄 안에 읽히는 길이. */
 export const MAX_COMMODORE_WHY = 100;
@@ -707,13 +714,16 @@ export interface Objective {
     /** 영구 삭제되는 때. */
     readonly expiresAt: number;
     /** 지운 에이전트 — null 이면 사람이 지웠다. */
-    readonly by: { readonly operationId: string; readonly title: string | null } | null;
+    readonly by: TidiedBy | null;
     readonly reason: string | null;
     readonly mergedInto: { readonly id: string; readonly title: string | null } | null;
   } | null;
   /** 이 목표로 합쳐 온 목표 — criteriaIds 는 옮겨 온 기준이다. 원본이 영구 삭제됐으면 restorable 이 false. */
-  readonly merged: readonly { readonly sourceId: string; readonly title: string; readonly at: number; readonly by: { readonly operationId: string; readonly title: string | null }; readonly criteriaIds: readonly string[]; readonly restorable: boolean }[];
+  readonly merged: readonly { readonly sourceId: string; readonly title: string; readonly at: number; readonly by: TidiedBy; readonly criteriaIds: readonly string[]; readonly restorable: boolean }[];
 }
+
+/** 정리한 손 — 에이전트 Operation 또는 사령관(commodore: true). */
+export interface TidiedBy { readonly operationId: string; readonly title: string | null; readonly commodore?: true }
 
 /** 보드에서 만든 목표의 지휘관 기본 설정 — 목록은 이와 다를 때만 시작 전 목표의 예정 설정을 보인다. */
 export const COMMANDER_PRESET = { model: "opus[1m]", effort: "high" } as const;
@@ -968,6 +978,8 @@ export const memberLaunchSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("same") }).strict(),
   z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().max(32).optional() }).strict(),
 ]);
+export interface MemberProposal { readonly model: string; readonly effort?: string }
+export const memberProposalSchema = z.object({ model: z.string().trim().min(1).max(128), effort: z.string().trim().min(1).max(32).optional() }).strict();
 export const memberAddSchema = z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional(), launch: memberLaunchSchema.optional(), subagents: z.boolean().optional() }).strict();
 export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.optional(), brief: z.string().max(300).nullable().optional(), launch: memberLaunchSchema.nullable().optional(), subagents: z.boolean().optional() }).strict();
 export const memberBatchLaunchSchema = z.object({ mode: z.enum(["same", "route"]) }).strict();
@@ -1010,7 +1022,8 @@ export const planSchema = z.object({
     /** 구성원 id 또는 역할 이름. 없으면 지휘관 직접. */
     member: ids.optional(),
   })).min(1).max(MAX_MISSIONS),
-  members: z.array(memberAddSchema.pick({ role: true, brief: true })).max(MAX_MISSIONS).optional(),
+  /** 지휘관이 짠 구성원 — proposal 은 판단에 참고로 실리는 제안 모델(gateway_models 로 확인한 값)이고, 선택은 라우팅 그대로다. */
+  members: z.array(memberAddSchema.pick({ role: true, brief: true }).extend({ proposal: memberProposalSchema.optional() })).max(MAX_MISSIONS).optional(),
   criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
 }).strict();
 

@@ -25,6 +25,7 @@ import {
   MAX_NOTE,
   MAX_REMOVAL_REASON,
   REMOVED_RETENTION_MS,
+  COMMODORE_TIDY_PREFIX,
   awaitingHandoff,
   awaitingReview,
   evidenceView,
@@ -44,6 +45,7 @@ import {
   type ObjectiveEvent,
   OBJECTIVE_FILE,
   type MemberLaunch,
+  type MemberProposal,
   type MemberNext,
   COORDINATES_NOT_APPLIED,
   heldNextOutcome,
@@ -235,7 +237,7 @@ export interface ObjectiveStore {
   /** 사람이 이 임무의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
   missionSeen(objectiveId: string, missionId: string): Objective;
   missionRemove(objectiveId: string, missionId: string): Objective;
-  memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: ObjectiveActor): Objective;
+  memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly proposal?: MemberProposal; readonly subagents?: boolean }, by: ObjectiveActor): Objective;
   memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): Objective;
   /**
    * 띄운 구성원의 기동 기록 — 기동 근거(routed)·이번 턴 뒤 예약(next)·예약을 취소할 때 돌아갈 선택(launch). 사람의 편집이 아니라
@@ -665,7 +667,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const applied = legacy || held === "applied";
       const next = applied ? null : held === "not_applied" ? { ...stored!, failed: COORDINATES_NOT_APPLIED } : stored;
       const memberOutcome = options.observe ? deriveFailedOutcome(options.observe(member.id)) : undefined;
-      return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}),
+      return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}), ...(member.proposal ? { proposal: member.proposal } : {}),
         subagents: member.subagents === true, launch: canonicalStoredLaunch(member.launch) ?? { mode: "route" as const },
         sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: canonicalModelId(preset.model) } : {}), ...(preset?.effort ? { effort: preset.effort } : {}),
         routed: memberNode && !applied ? storedRouted(member.routed) : null,
@@ -731,10 +733,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       decisions: (stored.decisions ?? []).map((decision) => ({ ...decision, by: decision.by ?? "human" })),
       recorded,
       removed: stored.removed ? { at: stored.removed.at, expiresAt: stored.removed.at + REMOVED_RETENTION_MS,
-        by: stored.removed.by ? { operationId: stored.removed.by, title: operationNode(stored.removed.by)?.title ?? stored.removed.byTitle ?? null } : null,
+        by: stored.removed.by ? tidiedBy(stored.removed.by, stored.removed.byTitle) : null,
         reason: stored.removed.reason ?? null,
         mergedInto: stored.removed.mergedInto ? { id: stored.removed.mergedInto, title: operationNode(stored.removed.mergedInto)?.title ?? load(node?.theaterId ?? pending!.theaterId).get(stored.removed.mergedInto)?.pending?.title ?? null } : null } : null,
-      merged: (stored.merged ?? []).map((entry) => ({ sourceId: entry.sourceId, title: entry.title, at: entry.at, by: { operationId: entry.by, title: operationNode(entry.by)?.title ?? entry.byTitle ?? null }, criteriaIds: [...entry.criteriaIds],
+      merged: (stored.merged ?? []).map((entry) => ({ sourceId: entry.sourceId, title: entry.title, at: entry.at, by: tidiedBy(entry.by, entry.byTitle), criteriaIds: [...entry.criteriaIds],
         restorable: load(node?.theaterId ?? pending!.theaterId).get(entry.sourceId)?.removed?.mergedInto === stored.operationId })),
       commenced: stored.commenced === true || (legacy && launch.started && stored.planning !== true),
       ...(stored.commencedBy ? { commencedBy: stored.commencedBy } : {}),
@@ -777,6 +779,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     if (found.stored.removed) return "objective_removed";
     return null;
   };
+  const tidiedBy = (id: string, byTitle: string | undefined) => ({ operationId: id, title: operationNode(id)?.title ?? byTitle ?? null, ...(id.startsWith(COMMODORE_TIDY_PREFIX) ? { commodore: true as const } : {}) });
   const removal = (at: number, by: TidyActor): StoredRemoval => ({ at, by: by.operationId, ...(by.title ? { byTitle: by.title } : {}), ...(by.reason ? { reason: by.reason.slice(0, MAX_REMOVAL_REASON) } : {}) });
   /** 담당 Operation — 목표가 아니라 목표의 임무를 맡은 세션이다. */
   const memberIds = (objectives: Iterable<StoredObjective>): ReadonlySet<string> => new Set([...objectives].flatMap((entry) => (entry.members ?? []).map((member) => member.id)));
@@ -1431,7 +1434,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     memberAdd: (objectiveId, input, by) => update(objectiveId, (stored) => {
       if ((stored.members?.length ?? 0) >= MAX_MISSIONS) throw new ObjectiveStoreError("too_many_members");
       const launch = canonicalStoredLaunch(input.launch);
-      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(launch ? { launch } : {}), ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
+      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(launch ? { launch } : {}), ...(input.proposal ? { proposal: input.proposal } : {}), ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
     }),
     memberPatch: (objectiveId, memberId, patch) => update(objectiveId, (stored) => {
       if (!(stored.members ?? []).some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
@@ -1518,7 +1521,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 검증과 편성 변경은 한 번의 update 안에서 끝난다 — 실패하면 기준 제안도 임무도 바뀌지 않는다.
       const proposals = input.criteria === undefined ? stored.criteriaProposals : proposalsOf(stored, input.criteria);
       if (input.members !== undefined && stored.members?.length) throw new ObjectiveStoreError("members_exist");
-      const members = input.members?.length ? input.members.map((member): StoredMember => ({ id: randomUUID(), role: member.role, ...(member.brief ? { brief: member.brief } : {}), by: "commander" })) : stored.members ?? [];
+      const members = input.members?.length ? input.members.map((member): StoredMember => ({ id: randomUUID(), role: member.role, ...(member.brief ? { brief: member.brief } : {}), ...(member.proposal ? { proposal: member.proposal } : {}), by: "commander" })) : stored.members ?? [];
       const resolve = (reference: string | undefined): string | undefined => {
         if (!reference) return undefined;
         const byId = members.find((entry) => entry.id === reference);

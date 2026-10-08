@@ -12,7 +12,16 @@ import { inputIssues, type PluginMcpTool } from "./types.js";
  * keys 가 그 이름을, acceptedBy 가 그 필드를 받는 action 을 말한다.
  *
  * 결과 객체는 순수 데이터와 함수뿐이다 — 호스트와 플러그인 번들이 서로 다른 zod 사본을 실어도 `instanceof` 없이 오간다.
+ *
+ * 설명은 매 요청 모든 연결에 실리는 비용이다. 도구 설명은 화면이 무엇인지 한두 문장(`MAX_TOOL_DESCRIPTION`)이고, action 하나에만
+ * 해당하는 사실은 설명에 붙이지 않는다 — 파라미터 사실은 그 필드의 describe(`MAX_FIELD_DESCRIPTION`)에, 거절의 뜻은 거절
+ * 응답의 안내(hint)에 둔다. 연결 공통 사실(수명·표시·대기)은 MCP server instructions 에 한 번만 있다. 한도는 정의 단계에서 막는다.
  */
+
+/** 도구 설명 본문(시그니처 줄 제외)의 상한. */
+export const MAX_TOOL_DESCRIPTION = 200;
+/** 필드 describe 한 개의 상한. */
+export const MAX_FIELD_DESCRIPTION = 120;
 
 /** read 는 화면을 보기만 하고, write 는 사람의 화면이나 제품 상태를 바꾼다. 읽기 전용 연결에는 read 만 실린다. */
 export type ConsoleToolActionKind = "read" | "write";
@@ -30,11 +39,6 @@ export interface ConsoleToolAction<S extends z.ZodObject = z.ZodObject> {
   readonly callers?: readonly ConsoleToolCaller[];
   /** `callers` 밖의 호출자가 이 action 을 부를 때의 거부 코드. 기본은 `permission_required`. */
   readonly refusal?: string;
-  /**
-   * 이 action 에만 해당하는 사실 문장. 이 action 이 남는 연결의 설명에만 실린다 — 읽기 전용 연결이나 다른 호출자에게
-   * 없는 action 의 사실이 설명에 남지 않는다. 여러 action 이 같은 문장을 가지면 한 번만 싣는다.
-   */
-  readonly note?: string | readonly string[];
 }
 
 export interface ConsoleToolActionInfo {
@@ -101,11 +105,12 @@ export function defineConsoleTool<const A extends Readonly<Record<string, Consol
 export function defineConsoleTool<S extends z.ZodObject>(spec: { readonly name: string; readonly description: string } & ConsoleToolAction<S>): ConsoleTool<z.output<S>>;
 export function defineConsoleTool(spec: { readonly name: string; readonly description: string; readonly actions?: Readonly<Record<string, ConsoleToolAction>> } & Partial<ConsoleToolAction>): ConsoleTool<Readonly<Record<string, unknown>>> {
   if (!TOOL_NAME.test(spec.name)) throw new Error(`Invalid Console Use tool name: ${spec.name}`);
+  if (spec.description.length > MAX_TOOL_DESCRIPTION) throw new Error(`Console Use tool description exceeds ${MAX_TOOL_DESCRIPTION} characters: ${spec.name}`);
   const discriminated = spec.actions !== undefined;
   const SINGLE = "";
   const actions: Readonly<Record<string, ConsoleToolAction>> = discriminated
     ? spec.actions!
-    : { [SINGLE]: { kind: spec.kind!, input: spec.input!, ...(spec.callers ? { callers: spec.callers } : {}), ...(spec.refusal ? { refusal: spec.refusal } : {}), ...(spec.note ? { note: spec.note } : {}) } };
+    : { [SINGLE]: { kind: spec.kind!, input: spec.input!, ...(spec.callers ? { callers: spec.callers } : {}), ...(spec.refusal ? { refusal: spec.refusal } : {}) } };
   const names = Object.keys(actions);
   if (!names.length) throw new Error(`Console Use tool needs an action: ${spec.name}`);
   for (const name of names) {
@@ -113,6 +118,10 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
     if (Object.hasOwn(actions[name]!.input.shape, "action")) throw new Error(`Console Use action input must not declare action: ${spec.name}.${name}`);
   }
   const fields = new Map(names.map((name) => [name, fieldSchemas(actions[name]!.input)]));
+  for (const [name, schema] of fields) {
+    const long = longDescription(schema.properties);
+    if (long) throw new Error(`Console Use field description exceeds ${MAX_FIELD_DESCRIPTION} characters: ${spec.name}${name ? `.${name}` : ""}.${long}`);
+  }
   // 정의 단계에서 한 번 합쳐 본다 — 같은 이름에 타입이 다른 필드는 광고 스키마를 거짓으로 만들므로 등록 전에 막는다.
   mergeFields(spec.name, names.map((name) => fields.get(name)!));
   const info: Record<string, ConsoleToolActionInfo> = discriminated ? Object.fromEntries(names.map((name) => {
@@ -133,8 +142,7 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
     const omit = omitted(filter);
     const perAction = kept.map((name) => ({ name, ...stripFields(fields.get(name)!, omit) }));
     const merged = mergeFields(spec.name, perAction);
-    const notes = [...new Set(kept.flatMap((name) => { const note = actions[name]!.note; return note === undefined ? [] : typeof note === "string" ? [note] : [...note]; }))];
-    const description = notes.length ? `${spec.description} ${notes.join(" ")}` : spec.description;
+    const description = spec.description;
     if (!discriminated) {
       const only = perAction[0]!;
       return { description, inputSchema: objectSchema(merged, only.required) };
@@ -205,6 +213,13 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
     },
   };
   return tool;
+}
+
+/** 한도를 넘는 describe 를 (중첩까지) 가진 첫 필드 이름 — 없으면 null. */
+function longDescription(properties: Readonly<Record<string, JsonSchema>>): string | null {
+  const long = (value: unknown): boolean => Array.isArray(value) ? value.some(long)
+    : !!value && typeof value === "object" && Object.entries(value).some(([key, entry]) => key === "description" && typeof entry === "string" ? entry.length > MAX_FIELD_DESCRIPTION : long(entry));
+  return Object.keys(properties).find((field) => long(properties[field])) ?? null;
 }
 
 /** action 한 개의 필드 JSON 스키마와 필수 목록. `$schema` 같은 머리말은 버린다. */

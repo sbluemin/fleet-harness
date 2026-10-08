@@ -191,6 +191,7 @@ export {
   type GatewayAssignmentSurface,
   type GatewayDelegationRoutingMode,
 } from "./fleet/routing-assignment.js";
+export { buildGatewayLoadout } from "./fleet/model-loadout.js";
 export {
   JEV_ROUTING_TIMEOUT_MS,
   JEV_ROUTING_BATCH_TIMEOUT_MS,

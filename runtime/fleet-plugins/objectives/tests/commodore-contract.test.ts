@@ -604,12 +604,21 @@ describe("commodore supervisor", () => {
       commanderActivity.delete("o2");
       await vi.advanceTimersByTimeAsync(PLANNED_CHECK_MS + COALESCE_MS + 10);
       expect(tokens().slice(-2)).toEqual([["planned:1"], ["planned:1"]]);
-      // 지휘관이 옮긴 상태 — 진행 중에서 검토 대기로.
-      (objectives[0] as { awaitingReview: boolean }).awaitingReview = true;
+      // 임무가 끝나 인계를 기다리는 단계는 지휘관의 몫이다 — 깨우지 않는다.
+      (objectives[0] as { awaitingHandoff: boolean }).awaitingHandoff = true;
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(6);
+      // 인계는 지휘관 턴 도중에 기록된다 — 그 턴이 끝난 뒤에 검토 대기로 깨운다(그 전의 완료는 objective_busy 다).
+      commanderActivity.set("o1", "running");
+      Object.assign(objectives[0]!, { awaitingHandoff: false, awaitingReview: true });
+      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
+      await vi.advanceTimersByTimeAsync(PLANNED_CHECK_MS + COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(6);
+      commanderActivity.delete("o1");
+      await vi.advanceTimersByTimeAsync(PLANNED_CHECK_MS + COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["review:1", "status:1"]);
-      expect(sessions[0]!.sent.at(-1)).toContain('"Remote pairing" in progress → awaiting review');
+      expect(sessions[0]!.sent.at(-1)).toContain('"Remote pairing" missions done, awaiting hand-off → awaiting review');
       expect(sessions[0]!.sent).toHaveLength(7);
       // 사령관 자신의 쓰기(개시)로 바뀐 상태는 깨우지 않는다 — 제가 한 일을 다시 듣는 빈 턴을 만들지 않게.
       await board.execute({ action: "commence", objectiveId: "o2" }, { cwd: theaterRoot });

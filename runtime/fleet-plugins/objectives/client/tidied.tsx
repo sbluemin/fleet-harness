@@ -23,7 +23,8 @@ const ARM_MS = 4000;
 
 /** 정리한 주체 — 에이전트 Operation 이거나 사람 자신. */
 const actorKey = (objective: Objective): string => objective.removed?.by?.operationId ?? "person";
-const actorName = (objective: Objective, t: T): string => objective.removed?.by ? objective.removed.by.title ?? t("objectives.tidied.byAgent") : t("objectives.tidied.byYou");
+const byName = (by: { readonly title: string | null; readonly commodore?: true }, t: T): string => by.commodore ? t("objectives.actor.commodore") : by.title ?? t("objectives.tidied.byAgent");
+const actorName = (objective: Objective, t: T): string => objective.removed?.by ? byName(objective.removed.by, t) : t("objectives.tidied.byYou");
 const daysLeft = (expiresAt: number, now: number): number => Math.max(0, Math.ceil((expiresAt - now) / DAY));
 
 function ago(at: number, now: number, language: Language): string {
@@ -173,7 +174,7 @@ export function MergedTrail({ objective, t, language, call, onOpenObjective }: {
           <span className="objectives-merged-src"><MergeGlyph />{entry.restorable
             ? <button type="button" className="objectives-tidied-link" onClick={() => onOpenObjective(entry.sourceId)}>{t("objectives.tidied.mergedFrom", { title: entry.title })}</button>
             : <span>{t("objectives.tidied.mergedFrom", { title: entry.title })}</span>}</span>
-          <span>{entry.by.title ?? t("objectives.tidied.byAgent")} · {ago(entry.at, now, language)}</span>
+          <span>{byName(entry.by, t)} · {ago(entry.at, now, language)}</span>
           {entry.restorable
             ? <button type="button" className="objectives-tidied-link is-undo" aria-label={t("objectives.tidied.restoreAria", { title: entry.title })} onClick={() => void call("/objective/restore", { objectiveId: entry.sourceId })}>{t("objectives.tidied.restore")}</button>
             : <span>{t("objectives.tidied.sourceGone")}</span>}

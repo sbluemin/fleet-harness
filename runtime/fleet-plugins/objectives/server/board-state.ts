@@ -71,7 +71,8 @@ export function inboxReasons(objective: Objective, options: { readonly observe?:
   const reasons: InboxReason[] = [];
   if (!objective.done) {
     if (!objective.commenced) {
-      if (!objective.missions.length) reasons.push("pending");
+      // 구상을 청해 지휘관이 짜는 중인 목표는 아무도 기다리지 않는다 — 구상이 내려앉으면 planned·criteria 로 다시 선다.
+      if (!objective.missions.length) { if (!objective.planning) reasons.push("pending"); }
       else if (!objective.criteriaProposals.length) {
         const commander = options.observe?.(objective.id);
         // 관측 없는 보드 서명도 구상 전과 개시 대기를 구별한다. 관측이 있으면 진행 중인 구상을 개시 대기로 부르지 않는다.
