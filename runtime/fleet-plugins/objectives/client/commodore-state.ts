@@ -29,11 +29,12 @@ interface TheaterCommodore {
   readonly hasMore: boolean;
   /** 기록을 한 번이라도 읽었는가 — 서랍이 처음 열릴 때만 읽는다. */
   readonly transcriptLoaded: boolean;
+  readonly clearedThrough: number;
   /** 마지막 확정 줄 뒤의 라이브 사건(글자 흐름·진행 중 도구) — 저장되지 않고, 확정 줄이 오면 그 몫을 걷는다. */
   readonly live: readonly CommodoreLiveEvent[];
 }
 
-const EMPTY: TheaterCommodore = { view: null, entries: [], hasMore: false, transcriptLoaded: false, live: [] };
+const EMPTY: TheaterCommodore = { view: null, entries: [], hasMore: false, transcriptLoaded: false, clearedThrough: 0, live: [] };
 /** 라이브 글자는 한 덩어리로 잇는다 — 확정 줄이 늦어도 사건 배열이 델타 수만큼 자라지 않게. */
 const MAX_LIVE_TEXT = 60_000;
 
@@ -139,7 +140,14 @@ function boardSnapshot(theaterId: string): { readonly active: boolean; readonly 
 }
 
 function setTheater(theaterId: string, patch: Partial<TheaterCommodore>): void {
-  theaters.set(theaterId, { ...(theaters.get(theaterId) ?? EMPTY), ...patch });
+  const current = theaters.get(theaterId) ?? EMPTY;
+  if (patch.view && (patch.view.state.transcriptClearedThrough ?? 0) < current.clearedThrough) return;
+  const clearedThrough = Math.max(current.clearedThrough, patch.clearedThrough ?? 0, patch.view?.state.transcriptClearedThrough ?? 0);
+  const cleared = clearedThrough > current.clearedThrough;
+  const next = { ...current, ...patch, clearedThrough };
+  if (cleared) { next.entries = []; next.live = []; next.hasMore = false; }
+  next.entries = (patch.entries ?? next.entries).filter((entry) => entry.seq > clearedThrough);
+  theaters.set(theaterId, next);
   notify();
 }
 
@@ -198,6 +206,7 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
   const offEvents = ctx.consoleEvents.subscribe(COMMODORE_CHANNEL, (payload) => {
     const event = payload as CommodoreEvent | null;
     if (!event || typeof event.theaterId !== "string") return;
+    if (event.op === "state" && event.change === "clear") setTheater(event.theaterId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 });
     const current = theaters.get(event.theaterId);
     if (event.op === "transcript") {
       // 아직 서랍을 연 적 없는 Theater 의 기록은 붙들지 않는다 — 열 때 한 쪽을 읽는다.
@@ -279,8 +288,10 @@ export async function loadTranscript(theaterId: string, options: { readonly olde
   if (!client) return;
   const current = theaters.get(theaterId) ?? EMPTY;
   const before = options.older && !options.reset ? current.entries[0]?.seq : undefined;
-  const page = await post<{ readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean }>(client, "/commodore/transcript", withLanguage({ theaterId, limit: TRANSCRIPT_PAGE, ...(before !== undefined ? { before } : {}) })).catch(() => null);
+  const page = await post<{ readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean; readonly clearedThrough: number }>(client, "/commodore/transcript", withLanguage({ theaterId, limit: TRANSCRIPT_PAGE, ...(before !== undefined ? { before } : {}) })).catch(() => null);
   if (!page) return;
+  if (page.clearedThrough < (theaters.get(theaterId)?.clearedThrough ?? 0)) return;
+  setTheater(theaterId, { clearedThrough: page.clearedThrough });
   const latest = theaters.get(theaterId) ?? EMPTY;
   if (options.older && !options.reset) {
     const known = new Set(latest.entries.map((entry) => entry.seq));
@@ -409,7 +420,9 @@ export const setCommodoreCommander = (theaterId: string, commander: { readonly m
   write(theaterId, "/commodore/commander", commander ? { model: commander.model, effort: commander.effort ?? null } : { model: null });
 /** 순찰 간격(분) — null 은 기본으로 되돌린다. */
 export const setCommodorePatrol = (theaterId: string, minutes: number | null) => write(theaterId, "/commodore/patrol", { minutes });
+export const setCommodoreStopAt = (theaterId: string, stopAt: number | null) => write(theaterId, "/commodore/stop-at", { stopAt });
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
+export const clearCommodore = (theaterId: string) => write(theaterId, "/commodore/clear", { confirm: true });
 
 export async function messageCommodore(theaterId: string, text: string): Promise<void> {
   const client = api();

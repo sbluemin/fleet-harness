@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -7,6 +7,7 @@ import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/component
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getClusterWrap, getFirstClusterWrap, getOperationWrap, subscribeConsoleUseGestures, type ConsoleUseWrap } from "../../../console-use/client/gestures.js";
 import { operationMarkLabel, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
@@ -18,6 +19,53 @@ import { setSideBarFreshFoldExpanded } from "./operations-side-bar-store.js";
  * 뿌리·구성원 칩은 이 줄로 접히고, 줄의 글리프는 그중 가장 급한 상태다. 무엇이 오늘이고 무엇이 검토 대기인지는
  * 플러그인이 판정해 넘기고, 여기서는 자리(그룹·구역·순서)와 그리기만 진다.
  */
+
+const NO_IDS: readonly string[] = [];
+
+/**
+ * 그룹 헤더가 묶음 머리로서 감싸일 자리 — 펼친 그룹은 칸에 선 목표 줄이 있을 때 목록 읽기에, 접은 그룹은 「시작 전」까지 포함한
+ * 안의 줄 표식도 대신 두른다. 목표 줄이 없는 그룹은 묶음 머리가 아니다(undefined).
+ */
+export function groupClusterHead(theaterId: string, sectionItems: readonly SideBarSectionItem[], foldItems: readonly SideBarRowItem[], collapsed: boolean): { readonly theaterId: string; readonly hiddenClusterIds: readonly string[] } | undefined {
+  const rowIds = sectionItems.flatMap((sectionItem) => (sectionItem.kind === "row" ? [sectionItem.item.layout.cluster.id] : []));
+  if (!collapsed) return rowIds.length > 0 ? { theaterId, hiddenClusterIds: NO_IDS } : undefined;
+  const hidden = [...rowIds, ...foldItems.map((item) => item.layout.cluster.id)];
+  return hidden.length > 0 ? { theaterId, hiddenClusterIds: hidden } : undefined;
+}
+
+/**
+ * Theater 머리가 묶음 머리로서 감싸일 자리 — 그룹 없이 Theater 바로 아래 선 목표 줄의 머리는 Theater 줄이다. Theater 가 접혔거나
+ * 상태 축이라 줄이 하나도 안 보이면, 그룹으로 좁힌 목록 읽기와 안의 줄 표식도 Theater 머리가 대신 두른다.
+ */
+export function theaterClusterHead(plan: SideBarRowPlan, rowsHidden: boolean): { readonly hiddenClusterIds: readonly string[]; readonly anyList: boolean } | undefined {
+  if (!rowsHidden) {
+    const ungrouped = (plan.sections.get(null) ?? []).some((sectionItem) => sectionItem.kind === "row");
+    return ungrouped ? { hiddenClusterIds: NO_IDS, anyList: false } : undefined;
+  }
+  const items = [...plan.decisions, ...plan.today, ...[...plan.sections.values()].flatMap((list) => list.flatMap((sectionItem) => (sectionItem.kind === "row" ? [sectionItem.item] : []))), ...[...plan.folds.values()].flat()];
+  return items.length > 0 ? { hiddenClusterIds: items.map((item) => item.layout.cluster.id), anyList: true } : undefined;
+}
+
+/** 줄 하나가 감싸이는 표식 — 목표 자체, 그다음 접혀 든 뿌리·구성원 Operation. 목록 읽기는 줄이 아니라 머리가 받는다. 저장된 객체를 그대로 돌린다. */
+function rowWrapOf(item: SideBarRowItem): ConsoleUseWrap | null {
+  const { layout, anchor, fold } = item;
+  const direct = getClusterWrap(layout.cluster.id) ?? (anchor ? getOperationWrap(anchor.operation.id) : null);
+  if (direct) return direct;
+  for (const entry of fold) {
+    const wrap = getOperationWrap(entry.operation.id);
+    if (wrap) return wrap;
+  }
+  return null;
+}
+
+/** 묶음 머리의 표식 — 목록 읽기, 그리고 접혀 줄이 안 보일 때는 그 안의 줄 하나를 대신한다. */
+export function useClusterHeadWrap(theaterId: string, groupId: string | null | undefined, hiddenClusterIds: readonly string[]): ConsoleUseWrap | null {
+  return useSyncExternalStore(
+    subscribeConsoleUseGestures,
+    () => getFirstClusterWrap(hiddenClusterIds) ?? getClusterListWrap(theaterId, groupId),
+    () => null,
+  );
+}
 
 export interface SideBarRowItem {
   readonly layout: ClusterLayout;
@@ -158,6 +206,8 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const locale = useConsoleLocale();
   const registry = usePluginRegistry();
   const { layout, row, anchor } = item;
+  // Console Use — 에이전트가 이 목표를 읽거나 고치면 Operation 칩과 같은 펄스로 줄 전체가 감싸인다.
+  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);
   const state = rowGlyphState(item);
   const label = state === "fresh"
     ? t("sidebar.row.glyph.fresh")
@@ -240,6 +290,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
     <li
       className={[
         "side-bar-cluster-row",
+        consoleUseWrapClassName(wrap),
         active ? "side-bar-cluster-row--active" : "",
         selected ? "side-bar-cluster-row--selected" : "",
         minimized ? "side-bar-cluster-row--minimized" : "",
@@ -271,6 +322,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         type="button"
         className="side-bar-cluster-row-main"
         aria-current={active ? "true" : undefined}
+        aria-description={wrap ? t("sidebar.chip.gaze", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : undefined}
         aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), row.mark ? resolveLocalizedText(row.mark.label, locale) : "", groupDot ? groupDot.name : "", selected ? t("sidebar.row.selected") : ""].filter(Boolean).join(", ")}
         onClick={activate}
         onDoubleClick={selectMode ? () => { if (pointerTypeRef.current !== "touch" && !dragging) open(); } : undefined}
@@ -313,14 +365,16 @@ export function zoneNoteOf(items: readonly SideBarRowItem[]): LocalizedText | nu
 }
 
 /** 구역 머리 — 「결정 요청 N」 「오늘 N」. 접지 않는다. 줄이 낸 말(`zoneNote`)이 있으면 개수 옆에 선다. */
-export function SideBarRowZone({ zone, count, note = null, children }: { readonly zone: "decisions" | "today"; readonly count: number; readonly note?: LocalizedText | null; readonly children: ReactNode }) {
+export function SideBarRowZone({ theaterId, zone, count, note = null, children }: { readonly theaterId: string; readonly zone: "decisions" | "today"; readonly count: number; readonly note?: LocalizedText | null; readonly children: ReactNode }) {
   const t = useT();
   const locale = useConsoleLocale();
   const title = zone === "decisions" ? t("sidebar.zone.decisions") : t("sidebar.zone.today");
   const noteText = note === null ? "" : resolveLocalizedText(note, locale);
+  // 구역은 여러 그룹의 줄을 모으므로 Theater 전체 목록 읽기에만 감싸인다. 접지 않는 머리라 줄 하나를 대신하지 않는다.
+  const wrap = useClusterHeadWrap(theaterId, undefined, NO_IDS);
   return (
     <li className={`side-bar-row-zone is-${zone}`} data-row-zone={zone}>
-      <div className="side-bar-row-zone-pin pin">
+      <div className={["side-bar-row-zone-pin pin", consoleUseWrapClassName(wrap)].filter(Boolean).join(" ")} title={wrap ? `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}` : undefined}>
         <span>{title}</span>
         <span className="side-bar-row-zone-count">{count}</span>
         {noteText ? <span className="side-bar-row-zone-note">{noteText}</span> : null}
@@ -342,11 +396,14 @@ export function SideBarFreshFold({ theaterId, groupId, items, expanded, renderRo
   readonly renderRow: (item: SideBarRowItem) => ReactNode;
 }) {
   const t = useT();
+  // 접혀 있으면 안의 목표 줄이 받은 표식을 머리가 대신 두른다. 목록 읽기는 펼침과 상관없이 머리가 감싸인다.
+  const wrap = useClusterHeadWrap(theaterId, groupId, expanded ? NO_IDS : items.map((item) => item.layout.cluster.id));
   return (
     <li className="side-bar-fresh-fold" data-fresh-fold={groupId ?? "__ungrouped__"}>
       <button
         type="button"
-        className="side-bar-fresh-fold-toggle"
+        className={["side-bar-fresh-fold-toggle", consoleUseWrapClassName(wrap)].filter(Boolean).join(" ")}
+        title={wrap ? `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}` : undefined}
         aria-expanded={expanded}
         aria-label={t("sidebar.fold.freshAria", { n: items.length })}
         // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.

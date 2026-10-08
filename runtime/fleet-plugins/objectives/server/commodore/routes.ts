@@ -44,6 +44,7 @@ export interface CommodoreRouteHooks {
   readonly run?: (theaterId: string) => Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기(`retrying`·`error`)를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying` 을 던진다. */
   readonly retry?: (theaterId: string) => Promise<void> | void;
+  readonly clear?: (theaterId: string) => Promise<void>;
 }
 
 const ids = z.string().min(1).max(128);
@@ -111,18 +112,31 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       return view(theaterId, store.setCommander(theaterId, model === null ? null : { model: canonicalModelId(model), ...(effort ? { effort } : {}) }));
     }) },
     { name: "commodore/patrol", method: "POST", summary: "Set or clear a Theater's Commodore patrol interval in minutes; cleared falls back to 60. The Commodore can patrol sooner but not later; board events, the directive, intel and messages still wake it at once.", handler: json(theaterRef.extend({ minutes: commodorePatrolSchema.nullable() }).strict(), ({ theaterId, minutes }) => { read(theaterId); return view(theaterId, store.setPatrol(theaterId, minutes)); }) },
+    { name: "commodore/stop-at", method: "POST", summary: "Schedule the end of autonomous operation at an epoch-millisecond timestamp, or pass null to cancel it. Requires running autonomy and a future timestamp.", handler: json(theaterRef.extend({ stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).nullable() }).strict(), ({ theaterId, stopAt }) => {
+      read(theaterId);
+      if (!experiments().commodore) throw new ObjectiveStoreError("commodore_disabled");
+      if (!hooks.run?.(theaterId)) throw new ObjectiveStoreError("commodore_inactive");
+      return view(theaterId, store.setStopAt(theaterId, stopAt));
+    }) },
     { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT) }).strict(), ({ theaterId, text }) => {
       const state = read(theaterId);
       // 서버가 권위다 — 다른 창에서 막 끈 경합도 여기서 거절되고 기록에 남지 않는다. 실험 기능이 꺼졌으면 `commodore_disabled`
       // (자율 운영 켜기와 같은 낱말), 자율 운영이 꺼졌거나 설정 변경 알림 전에 runner가 아직 없으면 `commodore_inactive`.
       if (!experiments().commodore) throw new ObjectiveStoreError("commodore_disabled");
       if (!state.autonomy || !hooks.run?.(theaterId)) throw new ObjectiveStoreError("commodore_inactive");
+      if (state.stopAt !== undefined && state.stopAt <= Date.now()) throw new ObjectiveStoreError("commodore_stopping");
       return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text }) };
     }) },
     { name: "commodore/retry", method: "POST", summary: "Retry now instead of waiting for the next scheduled retry after a failed Commodore turn.", handler: json(theaterRef, async ({ theaterId }) => {
       read(theaterId);
       if (!hooks.retry) throw new ObjectiveStoreError("commodore_not_retrying");
       await hooks.retry(theaterId);
+      return view(theaterId, read(theaterId));
+    }) },
+    { name: "commodore/clear", method: "POST", summary: "Cancel the current turn, discard the session context and delete the transcript. Keep directives, intel, settings, the board and the stop schedule.", handler: json(theaterRef.extend({ confirm: z.literal(true) }).strict(), async ({ theaterId }) => {
+      read(theaterId);
+      if (!hooks.clear) throw new ObjectiveStoreError("commodore_inactive");
+      await hooks.clear(theaterId);
       return view(theaterId, read(theaterId));
     }) },
     { name: "commodore/transcript", method: "POST", summary: "Read a page of the Commodore log, newest last; pass the first entry's seq as before to read older entries.", handler: json(theaterRef.extend({ limit: z.number().int().min(1).max(MAX_TRANSCRIPT_PAGE).optional(), before: z.number().int().nonnegative().optional() }).strict(), ({ theaterId, limit, before }) => { read(theaterId); return { theaterId, ...store.transcriptRead(theaterId, { limit, before }) }; }) },

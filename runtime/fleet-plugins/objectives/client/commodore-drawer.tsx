@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateValue } from "@fleet-console/sdk/components/model-coordinate-picker";
@@ -8,15 +8,16 @@ import { isAgentEffort, type ModelRosterTarget } from "@fleet-console/sdk/models
 import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
-import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
-import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
+import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime } from "./commodore-row.js";
+import { DatePicker, localDateTime } from "./date-picker.js";
 import {
   addCommodoreIntel,
   closeCommodoreDrawer,
-  commodoreMapInsets,
+  clearCommodore,
   commodoreTranscriptRenderer,
   commodoreTheaterLabel,
   loadTranscript,
@@ -30,8 +31,8 @@ import {
   setCommodoreCommander,
   setCommodoreCoordinates,
   setCommodorePatrol,
+  setCommodoreStopAt,
   setCommodoreTab,
-  subscribeCommodoreMapInsets,
   useCommodore,
   useCommodoreDrawer,
   useCommodoreEnabled,
@@ -44,18 +45,22 @@ import { DEFAULT_LAUNCH } from "./launch-control.js";
 type T = Translate<ObjectiveMessageKey>;
 
 /**
- * 시트 기하 — 바깥 틀은 Fleet 브라우저 시트와 같다(지도 안쪽 좌우 24px, 위·아래 사이드바 카드 선). 그 틀보다 크게 펴지지 않고,
- * 내용에 맞는 크기(최대 폭·높이)로 틀 가운데에 선다 — 넓은 화면에서 글이 한쪽에 몰린 빈 면이 되지 않게.
+ * 시트 크기 — 퀵런치처럼 창 정중앙. 기본은 1080×780이고, 창이 그보다 좁으면 사방 24px 안으로 줄어든다.
+ * 사이드바를 열고 닫아도 자리는 바뀌지 않는다.
  */
-const SHEET_INSET = 24;
-const SHEET_MARGIN = 12;
-/** 지도가 이보다 좁으면 사이드바·레일을 무시하고 창 전체를 쓴다 — 「열림」인데 안 보이는 상태는 두지 않는다. */
-const SHEET_MIN_WIDTH = 560;
-/** 맞춤 크기 — 구역 목록(220) + 읽는 폭(880) 언저리, 높이는 설정 줄과 기록 몇 묶음이 한눈에 드는 만큼. */
-const SHEET_MAX_WIDTH = 1080;
-const SHEET_MAX_HEIGHT = 780;
+const SHEET_MARGIN = 24;
+const SHEET_DEFAULT_WIDTH = 1080;
+const SHEET_DEFAULT_HEIGHT = 780;
+const SHEET_MIN_WIDTH = 720;
+const SHEET_MIN_HEIGHT = 480;
 /** 시트가 이보다 좁으면 구역 목록을 글리프만 남긴다. */
 const SHEET_COMPACT_WIDTH = 720;
+const SHEET_SIZE_KEY = "fleet.objectives.commodore.sheetSize";
+const SHEET_RESIZE_DIRS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const;
+type SheetResizeDir = (typeof SHEET_RESIZE_DIRS)[number];
+/** 서버 `COMMODORE_CONTEXT_ROTATE_RATIO` 와 같다. 그 파일은 서버 모듈이라 브라우저가 값으로 가져오지 않는다. */
+const CONTEXT_ROTATE_RATIO = 0.75;
+const SHEET_FOCUSABLE = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
 /** 순찰 간격 사다리 — 서버 `COMMODORE_PATROL_MINUTES` 와 같다(서버 모듈은 브라우저 번들에 싣지 않는다). */
 export const PATROL_STEPS: readonly CommodorePatrolMinutes[] = [15, 30, 60, 120, 240, 480];
 export const DEFAULT_PATROL: CommodorePatrolMinutes = 60;
@@ -80,57 +85,146 @@ function rowElement(theaterId: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`.objectives-commodore-row[data-theater-id="${CSS.escape(theaterId)}"]`);
 }
 
-interface SheetGeometry {
-  readonly sheet: CSSProperties;
-  /** 뒤의 투명한 닫기 영역 — 지도만 덮는다. 사이드바·레일·도구모음은 그대로 조작된다. */
-  readonly scrim: CSSProperties;
+interface SheetFrame {
+  readonly width: number;
+  readonly height: number;
   /** 좁은 시트 — 구역 목록이 글리프만 남는다. */
   readonly compact: boolean;
 }
 
-/**
- * 시트 자리 — 좌우는 지도 안쪽 24px, 위·아래는 사령관 줄이 선 사이드바 카드의 선. 사이드바가 접혀 줄이 없으면 마지막 선을 쓰고,
- * 처음부터 없으면 창 가장자리에서 카드 여백만큼. 사이드바·레일이 넓어지면 따라 줄어든다.
- */
-function useSheetGeometry(theaterId: string): SheetGeometry {
-  const lastCard = useRef<DOMRect | null>(null);
-  const [geometry, setGeometry] = useState<SheetGeometry>({ sheet: { left: 300, top: 60, right: 24, bottom: 12 }, scrim: { left: 0, top: 0, right: 0, bottom: 0 }, compact: false });
+interface SheetPreferred { readonly width: number; readonly height: number }
+
+/** 창 안에 넣는 크기. 최소 720×480, 최대는 사방 24px. 창이 최소보다 작으면 창 안을 따른다. */
+function clampSheetSize(width: number, height: number): SheetFrame {
+  const maxWidth = Math.max(1, window.innerWidth - SHEET_MARGIN * 2);
+  const maxHeight = Math.max(1, window.innerHeight - SHEET_MARGIN * 2);
+  const minWidth = Math.min(SHEET_MIN_WIDTH, maxWidth);
+  const minHeight = Math.min(SHEET_MIN_HEIGHT, maxHeight);
+  const nextWidth = Math.round(Math.max(minWidth, Math.min(width, maxWidth)));
+  const nextHeight = Math.round(Math.max(minHeight, Math.min(height, maxHeight)));
+  return { width: nextWidth, height: nextHeight, compact: nextWidth < SHEET_COMPACT_WIDTH };
+}
+
+function readSheetSize(): SheetPreferred {
+  const fallback = { width: SHEET_DEFAULT_WIDTH, height: SHEET_DEFAULT_HEIGHT };
+  try {
+    const raw = localStorage.getItem(SHEET_SIZE_KEY);
+    if (raw === null) return fallback;
+    const parsed = JSON.parse(raw) as { width?: unknown; height?: unknown };
+    if (typeof parsed.width !== "number" || typeof parsed.height !== "number") return fallback;
+    if (!Number.isFinite(parsed.width) || !Number.isFinite(parsed.height)) return fallback;
+    if (parsed.width < SHEET_MIN_WIDTH || parsed.height < SHEET_MIN_HEIGHT || parsed.width > 8000 || parsed.height > 8000) return fallback;
+    return { width: parsed.width, height: parsed.height };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSheetSize(size: SheetPreferred): void {
+  try {
+    localStorage.setItem(SHEET_SIZE_KEY, JSON.stringify({ width: Math.round(size.width), height: Math.round(size.height) }));
+  } catch {
+    // 저장이 막혀도 지금 크기로 그린다.
+  }
+}
+
+function useCommodoreSheetSize(): { readonly frame: SheetFrame; readonly resize: (width: number, height: number) => void; readonly commit: () => void; readonly reset: () => void } {
+  const preferred = useRef<SheetPreferred>(readSheetSize());
+  const [frame, setFrame] = useState<SheetFrame>(() => clampSheetSize(preferred.current.width, preferred.current.height));
   useLayoutEffect(() => {
-    const place = () => {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const card = rowElement(theaterId)?.closest("aside")?.getBoundingClientRect() ?? null;
-      if (card && card.width > 4) lastCard.current = card;
-      const known = lastCard.current;
-      const insets = commodoreMapInsets();
-      const mapLeft = known ? known.right : insets.left;
-      const mapRight = insets.right;
-      let left = Math.round(mapLeft + SHEET_INSET);
-      let right = Math.round(mapRight > 0 ? mapRight + SHEET_INSET - SHEET_MARGIN : SHEET_INSET);
-      if (vw - left - right < SHEET_MIN_WIDTH) { left = SHEET_MARGIN; right = SHEET_MARGIN; }
-      const frameTop = Math.round(known ? known.top : 48 + SHEET_MARGIN);
-      const frameBottom = Math.round(known ? Math.max(SHEET_MARGIN, vh - known.bottom) : SHEET_MARGIN);
-      const top = frameTop;
-      const bottom = frameBottom;
-      // 틀 안에서 맞춤 크기로 줄이고 남는 만큼을 양쪽에 나눠 가운데에 둔다.
-      const spareX = Math.max(0, vw - left - right - SHEET_MAX_WIDTH);
-      const spareY = Math.max(0, vh - frameTop - frameBottom - SHEET_MAX_HEIGHT);
-      setGeometry({
-        sheet: { left: left + Math.floor(spareX / 2), right: right + Math.ceil(spareX / 2), top: frameTop + Math.floor(spareY / 2), bottom: frameBottom + Math.ceil(spareY / 2) },
-        scrim: { left: Math.round(mapLeft), right: Math.round(mapRight), top, bottom },
-        compact: Math.min(vw - left - right, SHEET_MAX_WIDTH) < SHEET_COMPACT_WIDTH,
-      });
-    };
+    const place = () => setFrame(clampSheetSize(preferred.current.width, preferred.current.height));
     place();
     window.addEventListener("resize", place);
-    const offMap = subscribeCommodoreMapInsets(place);
-    // 사이드바 카드는 창 크기 사건 뒤에 제 높이를 다시 잡는다 — 카드 자체의 크기 변화도 따라간다.
-    const card = rowElement(theaterId)?.closest("aside");
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => place());
-    if (card) observer?.observe(card);
-    return () => { window.removeEventListener("resize", place); offMap(); observer?.disconnect(); };
-  }, [theaterId]);
-  return geometry;
+    return () => window.removeEventListener("resize", place);
+  }, []);
+  const resize = (width: number, height: number) => {
+    const next = clampSheetSize(width, height);
+    preferred.current = { width: next.width, height: next.height };
+    setFrame(next);
+  };
+  const commit = () => writeSheetSize(preferred.current);
+  const reset = () => {
+    preferred.current = { width: SHEET_DEFAULT_WIDTH, height: SHEET_DEFAULT_HEIGHT };
+    writeSheetSize(preferred.current);
+    setFrame(clampSheetSize(SHEET_DEFAULT_WIDTH, SHEET_DEFAULT_HEIGHT));
+  };
+  return { frame, resize, commit, reset };
+}
+
+/** 네 변과 네 모서리. 시트는 가운데에 고정되므로 한 변을 끌면 반대 변도 같이 움직인다. 더블클릭은 기본 크기. */
+function SheetResize({ label, width, height, onResize, onCommit, onReset }: {
+  readonly label: string;
+  readonly width: number;
+  readonly height: number;
+  readonly onResize: (width: number, height: number) => void;
+  readonly onCommit: () => void;
+  readonly onReset: () => void;
+}) {
+  const drag = useRef<{ pointerId: number; dir: SheetResizeDir; x: number; y: number; w: number; h: number } | null>(null);
+  const [readout, setReadout] = useState<string | null>(null);
+  const move = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = drag.current;
+    if (!current || event.pointerId !== current.pointerId) return;
+    const dx = event.clientX - current.x;
+    const dy = event.clientY - current.y;
+    const dir = current.dir;
+    const nextWidth = dir.includes("e") ? current.w + 2 * dx : dir.includes("w") ? current.w - 2 * dx : current.w;
+    const nextHeight = dir.includes("s") ? current.h + 2 * dy : dir.includes("n") ? current.h - 2 * dy : current.h;
+    onResize(nextWidth, nextHeight);
+    setReadout(`${Math.round(nextWidth)} × ${Math.round(nextHeight)}`);
+  };
+  const end = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!drag.current || event.pointerId !== drag.current.pointerId) return;
+    drag.current = null;
+    setReadout(null);
+    onCommit();
+  };
+  return (
+    <>
+      {SHEET_RESIZE_DIRS.map((dir) => (
+        <div
+          key={dir}
+          className={`objectives-commodore-resize is-${dir}`}
+          role="separator"
+          aria-label={label}
+          title={label}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            drag.current = { pointerId: event.pointerId, dir, x: event.clientX, y: event.clientY, w: width, h: height };
+          }}
+          onPointerMove={move}
+          onPointerUp={end}
+          onPointerCancel={end}
+          onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onReset(); }}
+          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); onReset(); } }}
+        />
+      ))}
+      {readout ? <div className="objectives-commodore-size" aria-hidden="true">{readout}</div> : null}
+    </>
+  );
+}
+
+/** 시트와, 시트에서 연 메뉴(body 포털) 안에서 Tab을 가둔다. */
+function trapSheetFocus(event: KeyboardEvent, dialog: HTMLElement | null): void {
+  if (!dialog) return;
+  const scopes = [dialog, ...document.querySelectorAll<HTMLElement>('[role="menu"], .fc-coord-menu, .objectives-cal')];
+  const focusable = scopes.flatMap((scope) => [...scope.querySelectorAll<HTMLElement>(SHEET_FOCUSABLE)])
+    .filter((element) => element.tabIndex >= 0 && element.offsetParent !== null && getComputedStyle(element).visibility !== "hidden");
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last?.focus();
+    return;
+  }
+  if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first?.focus();
+  }
 }
 
 const NAV_GLYPHS: Record<CommodoreTab, ReactNode> = {
@@ -141,14 +235,14 @@ const NAV_GLYPHS: Record<CommodoreTab, ReactNode> = {
 };
 
 /**
- * 「사령관 기록」 시트 — Fleet 브라우저처럼 지도 위 가운데 뜨는 면. 왼쪽은 구역 목록(기록·지시·정보·설정)과 사령관의 지금,
- * 오른쪽은 고른 구역. 설정은 Console 설정과 같은 줄 문법(제목·설명·오른쪽 컨트롤)이다. 뒤의 투명한 영역을 누르거나 Esc 로 닫힌다.
+ * 「사령관 기록」 시트 — 퀵런치와 같이 창 전체를 덮고 정중앙에 선다. 왼쪽은 구역 목록(기록·지시·정보·설정)과 사령관의 지금,
+ * 오른쪽은 고른 구역. 배경을 누르거나 Esc 로 닫힌다.
  */
 function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theaterId: string; readonly tab: CommodoreTab; readonly openedAt: number; readonly language: "en" | "ko" }) {
   const t = getT(language);
   noteCommodoreLanguage(language);
   const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
-  const geometry = useSheetGeometry(theaterId);
+  const { frame, resize, commit, reset } = useCommodoreSheetSize();
   const dialogRef = useRef<HTMLElement | null>(null);
   const tabRefs = useRef<Record<CommodoreTab, HTMLButtonElement | null>>({ log: null, directive: null, intel: null, settings: null });
   const [failure, setFailure] = useState<string | null>(null);
@@ -183,10 +277,16 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
   const on = view?.state.autonomy === true;
   const run = view?.run;
 
-  // 열릴 때 — 지시 탭으로 열었으면 입력란에, 아니면 고른 구역에 초점을 둔다. 초점은 열 때 한 번만 옮긴다.
+  // 열릴 때 초점은 입력란이다 — 퀵런치처럼 바로 말할 수 있고, 상자 테두리만 밝아진다.
+  // 고른 탭에 focus()를 주면 클릭 뒤의 효과에서도 :focus-visible이 맞아, 마우스로 연 「기록」에 링이 선다.
+  // 입력란이 없는 구역은 시트만 받아 링을 그리지 않는다. 키보드로 탭에 가면 그때 링이 선다.
   useEffect(() => {
-    const target = dialogRef.current?.querySelector<HTMLElement>(tab === "directive" ? "textarea" : "[role='tab'][aria-selected='true']");
-    target?.focus({ preventScroll: true });
+    const root = dialogRef.current;
+    if (!root) return;
+    const selector = tab === "directive" ? "#objectives-commodore-directive" : tab === "log" ? ".objectives-commodore-composer-input" : null;
+    const field = selector ? root.querySelector<HTMLElement>(selector) : null;
+    if (field && !field.hasAttribute("disabled")) { field.focus({ preventScroll: true }); return; }
+    root.focus({ preventScroll: true });
   }, [openedAt]); // eslint-disable-line react-hooks/exhaustive-deps -- 여는 순간만.
 
   const close = () => {
@@ -194,6 +294,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
     rowElement(theaterId)?.querySelector<HTMLElement>(".objectives-commodore-row-main")?.focus({ preventScroll: true });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Tab") { trapSheetFocus(event, dialogRef.current); return; }
     if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); close(); }
   };
   const fail = (error: unknown) => {
@@ -217,6 +318,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
 
   const status = !view ? "" : [
     on ? t("objectives.commodore.meta.autonomous") : t("objectives.commodore.meta.manual"),
+    on && view.state.stopAt ? t("objectives.commodore.stop.at", { time: stopTime(view.state.stopAt, language) }) : null,
     on && run?.phase === "idle" && run.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null,
     on && run?.phase === "turn" ? t("objectives.commodore.meta.turn") : null,
     on && run?.phase === "retrying" && run.nextWakeAt ? t("objectives.commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null,
@@ -229,16 +331,18 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
   const current = tabs.find((item) => item.id === tab) ?? tabs[0]!;
 
   return createPortal(
-    <>
-      <div className="objectives-commodore-scrim" aria-hidden="true" style={geometry.scrim} onClick={close} />
+    <div className="objectives-commodore-overlay" onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
       <section
         ref={dialogRef}
-        className={`objectives-commodore-sheet${geometry.compact ? " is-compact" : ""}`}
+        className={`objectives-commodore-sheet${frame.compact ? " is-compact" : ""}`}
         role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
         aria-label={t("objectives.commodore.drawer.aria", { theater: label })}
-        style={geometry.sheet}
+        style={{ width: frame.width, height: frame.height }}
         onKeyDown={onKeyDown}
       >
+        <SheetResize label={t("objectives.commodore.sheet.resize")} width={frame.width} height={frame.height} onResize={resize} onCommit={commit} onReset={reset} />
         <nav className="objectives-commodore-nav" aria-label={t("objectives.commodore.tabs.aria")}>
           <div className="objectives-commodore-nav-id">
             <p className="objectives-commodore-nav-kicker">{t("objectives.commodore.sheet.kicker")}</p>
@@ -271,6 +375,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
         <div className="objectives-commodore-main">
           <header className="objectives-commodore-main-head">
             <h2 className="objectives-commodore-main-title">{current.label}</h2>
+            {tab === "log" ? <CommodoreClearButton t={t} theaterId={theaterId} onFail={fail} onClear={() => setFailure(null)} /> : null}
             <button type="button" className="objectives-commodore-close" aria-label={t("objectives.commodore.drawer.close")} title={t("objectives.commodore.drawer.close")} onClick={close}>
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
             </button>
@@ -285,7 +390,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
             {tab === "log" ? (
               <>
                 <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} />
-                {geometry.compact ? null : (
+                {frame.compact ? null : (
                   <CommodoreTrailSeam
                     label={t("objectives.commodore.trail.resize")}
                     value={trailWidth}
@@ -294,18 +399,18 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
                     onReset={resetTrailWidth}
                   />
                 )}
-                <CommodoreTrail t={t} language={language} theaterId={theaterId} width={geometry.compact || !measured ? undefined : trailWidth} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
+                <CommodoreTrail t={t} language={language} theaterId={theaterId} width={frame.compact || !measured ? undefined : trailWidth} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
               </>
             ) : null}
             {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onFail={fail} onClear={() => setFailure(null)} /> : null}
             {tab === "intel" && view ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} /> : null}
-            {tab === "settings" && view ? <CommodoreSettings t={t} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
+            {tab === "settings" && view ? <CommodoreSettings t={t} language={language} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
           </div>
           {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
-          {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+          {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
         </div>
       </section>
-    </>,
+    </div>,
     document.body,
   );
 }
@@ -356,6 +461,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
         off: t("objectives.launch.off"),
         fallback: t("objectives.launch.fallback"),
       }}
+      menuClassName="objectives-commodore-coord-menu"
       trigger={{ variant: "field" }}
     />
   );
@@ -365,7 +471,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
  * 설정 — Console 설정과 같은 줄(제목·설명·오른쪽 컨트롤). 모델·강도는 Console 공유 선택기 하나로 고른다(사령관은 Agent SDK
  * 로스터, 지휘관은 Agent CLI 로스터).
  */
-function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+function CommodoreSettings({ t, language, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const { state, defaults, run } = view;
   const on = state.autonomy === true;
   const modelOverridden = state.model !== undefined;
@@ -401,6 +507,9 @@ function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t
           onPick={(minutes) => act(() => setCommodorePatrol(theaterId, minutes === DEFAULT_PATROL ? null : minutes))}
         />
       </SettingsRow>
+      <SettingsRow label={t("objectives.commodore.stop.title")} hint={t("objectives.commodore.stop.hint")}>
+        <StopAtControl t={t} language={language} stopAt={state.stopAt} disabled={!on || run.reason === "scheduled_stop"} onPick={(stopAt) => act(() => setCommodoreStopAt(theaterId, stopAt))} />
+      </SettingsRow>
       <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow
         label={t("objectives.commodore.settings.commander")}
@@ -417,6 +526,27 @@ function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t
       </SettingsRow>
     </div>
   );
+}
+
+function stopTime(at: number, language: "en" | "ko"): string {
+  const date = new Date(at);
+  const today = new Date();
+  const sameDay = date.toDateString() === today.toDateString();
+  return new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { ...(sameDay ? {} : { month: "short", day: "numeric" }), hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+}
+
+function StopAtControl({ t, language, stopAt, disabled, onPick }: { readonly t: T; readonly language: "en" | "ko"; readonly stopAt?: number; readonly disabled: boolean; readonly onPick: (at: number | null) => void }) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const close = () => { setAnchor(null); trigger.current?.focus({ preventScroll: true }); };
+  useEffect(() => { if (disabled) setAnchor(null); }, [disabled]);
+  return <>
+    <button ref={trigger} type="button" className="fc-row-value objectives-commodore-patrol" disabled={disabled} aria-haspopup="dialog" aria-expanded={!!anchor} aria-label={t("objectives.commodore.stop.title")} onClick={() => setAnchor(trigger.current?.getBoundingClientRect() ?? null)}>
+      <span className="objectives-commodore-patrol-glyph"><PatrolGlyph /></span>
+      <span className="fc-row-value-text">{stopAt ? stopTime(stopAt, language) : t("objectives.commodore.stop.none")}</span>
+    </button>
+    {anchor && !disabled ? <DatePicker withTime anchor={anchor} value={stopAt ? localDateTime(new Date(stopAt)) : null} language={language} t={t} onClose={close} onPick={(value) => onPick(value === null ? null : new Date(value).getTime())} /> : null}
+  </>;
 }
 
 type CommodoreStateFields = CommodoreView["state"];
@@ -559,12 +689,49 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
 const FOLLOW_SLACK_PX = 48;
 
 /**
- * 사령관 기록 — Operation 채팅과 같은 턴 렌더러(호스트 `ctx.chat.Transcript`)로 그린다. 오래된 것이 위, 새 턴이 아래에 쌓이고,
- * 바닥을 보고 있으면 따라 내려간다. 더 오래된 쪽은 맨 위에서 읽어 붙이고 보던 자리를 지킨다.
+ * 사령관 기록 — Operation 채팅과 같은 턴 렌더러로 그린다. 진행 중인 턴과 마지막으로 끝난 턴만 펼치고,
+ * 그 전 턴은 「출처 · 답 첫 줄 · 걸린 시간 · 시각」 한 줄로 접는다. 줄 자체가 버튼이고, 곁 칸에서 시각을 누르면 그 턴이 펼쳐진다.
  */
 function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
   const Transcript = commodoreTranscriptRenderer();
-  const chat = useMemo(() => commodoreChatEntries(t, entries, live), [t, entries, live]);
+  const blocks = useMemo(() => commodoreLogBlocks(t, entries, live), [t, entries, live]);
+  const lastFinishedId = useMemo(() => {
+    for (let index = blocks.length - 1; index >= 0; index -= 1) {
+      const block = blocks[index];
+      if (block?.kind === "turn" && !block.turn.working) return block.turn.id;
+    }
+    return null;
+  }, [blocks]);
+  const [pinnedOpen, setPinnedOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const [pinnedClosed, setPinnedClosed] = useState<ReadonlySet<string>>(() => new Set());
+  const revealedId = reveal ? commodoreTurnCovering(blocks, reveal.at)?.id ?? null : null;
+  useEffect(() => {
+    if (!revealedId) return;
+    setPinnedOpen((current) => (current.has(revealedId) ? current : new Set(current).add(revealedId)));
+    setPinnedClosed((current) => {
+      if (!current.has(revealedId)) return current;
+      const next = new Set(current);
+      next.delete(revealedId);
+      return next;
+    });
+  }, [reveal?.nonce, revealedId]);
+  const openTurn = (turn: CommodoreLogTurn) => turn.working || pinnedOpen.has(turn.id) || (!pinnedClosed.has(turn.id) && turn.id === lastFinishedId);
+  const toggleTurn = (turn: CommodoreLogTurn) => {
+    if (turn.working) return;
+    const open = openTurn(turn);
+    setPinnedOpen((current) => {
+      const next = new Set(current);
+      if (open) next.delete(turn.id);
+      else next.add(turn.id);
+      return next;
+    });
+    setPinnedClosed((current) => {
+      const next = new Set(current);
+      if (open) next.add(turn.id);
+      else next.delete(turn.id);
+      return next;
+    });
+  };
   const [loadingOlder, setLoadingOlder] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const follow = useRef(true);
@@ -574,39 +741,237 @@ function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, 
     if (!node) return;
     if (anchor.current !== null) { node.scrollTop += node.scrollHeight - anchor.current; anchor.current = null; return; }
     if (follow.current) node.scrollTop = node.scrollHeight;
-  }, [chat]);
+  }, [blocks]);
   const older = () => {
     if (loadingOlder) return;
     anchor.current = scrollRef.current?.scrollHeight ?? null;
     setLoadingOlder(true);
     void loadTranscript(theaterId, { older: true }).finally(() => setLoadingOlder(false));
   };
-  if (loaded && chat.length === 0) return <div className="objectives-commodore-log"><p className="objectives-commodore-empty">{t("objectives.commodore.log.empty")}</p></div>;
+  const empty = loaded && blocks.length === 0;
   return (
     <div ref={scrollRef} className="objectives-commodore-log" onScroll={(event) => { const node = event.currentTarget; follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < FOLLOW_SLACK_PX; }}>
+      {empty ? <p className="objectives-commodore-empty">{t("objectives.commodore.log.empty")}</p> : null}
       {hasMore ? (
         <button type="button" className="objectives-commodore-text-button objectives-commodore-older" disabled={loadingOlder} onClick={older}>
           {t("objectives.commodore.log.older")}
         </button>
       ) : null}
-      {Transcript ? <Transcript entries={chat} language={language} reveal={reveal} /> : null}
+      {Transcript ? blocks.map((block) => {
+        if (block.kind === "note") {
+          const note = { kind: "note" as const, text: block.text, ...(block.at !== undefined ? { at: block.at } : {}), ...(block.tone ? { tone: block.tone } : {}) };
+          return <Transcript key={`note-${block.at ?? block.text}`} entries={[{ event: note, ...(block.at !== undefined ? { at: block.at } : {}) }]} language={language} />;
+        }
+        const turn = block.turn;
+        const open = openTurn(turn);
+        const line = turn.working ? null : (
+          <CommodoreTurnLine t={t} turn={turn} open={open} onToggle={() => toggleTurn(turn)} />
+        );
+        if (!open) return <div key={turn.id}>{line}</div>;
+        const shown = turn.message || turn.working ? turn.entries : turn.entries.filter((entry) => entry.event.kind !== "dispatch");
+        return (
+          <div key={turn.id} className="objectives-commodore-turn-open" data-commodore-turn={turn.id}>
+            {line}
+            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} />
+          </div>
+        );
+      }) : null}
     </div>
   );
 }
 
+/** 접힌 턴 한 줄. 채팅 작업 접힘과 같이 줄 끝의 ⌄가 열림을 말하고, 줄 자체가 버튼이다. */
+function CommodoreTurnLine({ t, turn, open, onToggle }: { readonly t: T; readonly turn: CommodoreLogTurn; readonly open: boolean; readonly onToggle: () => void }) {
+  const duration = turnDuration(t, turn.durationMs);
+  const meta = [duration, clockTime(turn.at)].filter(Boolean).join(" · ");
+  const tone = turn.failed ? " is-error" : turn.stopped ? " is-stopped" : turn.message ? " is-message" : "";
+  return (
+    <button
+      type="button"
+      className={`objectives-commodore-turn${tone}${open ? " is-open" : ""}`}
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      <span className="objectives-commodore-turn-dot" aria-hidden="true" />
+      <span className="objectives-commodore-turn-label">{turn.label}</span>
+      <span className="objectives-commodore-turn-summary">{turn.summary}</span>
+      <span className="objectives-commodore-turn-meta">{meta}</span>
+      <span className="objectives-commodore-turn-chev" aria-hidden="true">⌄</span>
+    </button>
+  );
+}
+
+function turnDuration(t: T, durationMs: number | undefined): string | null {
+  if (durationMs === undefined) return null;
+  const seconds = Math.round(durationMs / 1000);
+  if (seconds < 60) return t("objectives.commodore.log.seconds", { n: seconds });
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest === 0
+    ? t("objectives.commodore.log.minutes", { n: minutes })
+    : t("objectives.commodore.log.minutesSeconds", { m: minutes, s: rest });
+}
+
+
+/** 시트를 닫아도 남기는 입력. Theater마다 하나고, 전송·저장으로 비운 값은 지운다. */
+interface SheetDraft {
+  readonly composer: string;
+  readonly directive: string | null;
+  readonly intel: string;
+}
+const sheetDrafts = new Map<string, SheetDraft>();
+function sheetDraft(theaterId: string): SheetDraft {
+  return sheetDrafts.get(theaterId) ?? { composer: "", directive: null, intel: "" };
+}
+function rememberSheetDraft(theaterId: string, patch: Partial<SheetDraft>): void {
+  sheetDrafts.set(theaterId, { ...sheetDraft(theaterId), ...patch });
+}
+
+
+/** 전송 왼쪽의 문맥 원호. 채팅과 같은 16px 글리프이고, 내역은 총량과 교대 기준선만 말한다. */
+function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context: NonNullable<CommodoreRunStatus["context"]> }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [open]);
+  const occupied = context.inputTokens;
+  const limit = CONTEXT_ROTATE_RATIO;
+  const ratio = context.window > 0 ? occupied / context.window : 0;
+  const tone = ratio >= limit * 0.97 ? " is-critical" : ratio >= limit * 0.75 ? " is-warn" : "";
+  const percent = Math.round(ratio * 100);
+  const summary = `${formatContextTokens(occupied)} / ${formatContextTokens(context.window)}`;
+  const radius = 6;
+  const circumference = 2 * Math.PI * radius;
+  const filled = Math.max(0, Math.min(1, ratio)) * circumference;
+  const untilRotate = Math.max(0, context.window * limit - occupied);
+  const free = Math.max(0, context.window - occupied);
+  return (
+    <span className={`objectives-commodore-ctx${tone}`} ref={wrapRef}>
+      <button
+        type="button"
+        className="objectives-commodore-ctx-chip"
+        aria-expanded={open}
+        aria-label={t("objectives.commodore.context.aria", { percent, summary })}
+        title={t("objectives.commodore.context.title", { summary })}
+        onClick={() => setOpen((was) => !was)}
+      >
+        <svg className="objectives-commodore-ctx-arc" viewBox="0 0 16 16" aria-hidden="true">
+          <circle className="objectives-commodore-ctx-track" cx="8" cy="8" r={radius} />
+          <circle className="objectives-commodore-ctx-fill" cx="8" cy="8" r={radius} strokeDasharray={`${filled.toFixed(2)} ${circumference.toFixed(2)}`} />
+        </svg>
+      </button>
+      {open ? (
+        <div className="objectives-commodore-ctx-pop" role="dialog" aria-label={t("objectives.commodore.context.label")}>
+          <div className="objectives-commodore-ctx-head">
+            <span>{t("objectives.commodore.context.label")}</span>
+            <span>{summary} · {percent}%</span>
+          </div>
+          <div className="objectives-commodore-ctx-bar">
+            <i style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+            <span className="objectives-commodore-ctx-line" style={{ left: `${limit * 100}%` }} />
+          </div>
+          <ul className="objectives-commodore-ctx-rows">
+            <li><span className="objectives-commodore-ctx-swatch" /><span>{t("objectives.commodore.context.used")}</span><span>{formatContextTokens(occupied)}</span><span>{(ratio * 100).toFixed(1)}%</span></li>
+            <li><span className="objectives-commodore-ctx-swatch is-line" /><span>{t("objectives.commodore.context.untilRotate")}</span><span>{formatContextTokens(untilRotate)}</span><span>{Math.round(limit * 100)}%</span></li>
+            <li><span className="objectives-commodore-ctx-swatch is-free" /><span>{t("objectives.commodore.context.free")}</span><span>{formatContextTokens(free)}</span><span>{((free / context.window) * 100).toFixed(1)}%</span></li>
+          </ul>
+          <p className="objectives-commodore-ctx-foot">{t("objectives.commodore.context.foot")}</p>
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+function formatContextTokens(tokens: number): string {
+  if (tokens < 1_000) return String(Math.round(tokens));
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000;
+    const text = millions < 10 ? millions.toFixed(1) : String(Math.round(millions));
+    return `${text.endsWith(".0") ? text.slice(0, -2) : text}M`;
+  }
+  const thousands = tokens / 1_000;
+  return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
+}
+
 /**
  * 사령관에게 말하기 — 채팅 화면의 입력과 같은 문법: 한 상자 안에 자라는 입력과 원형 전송, 초점이면 상자가 brass 로 선다.
- * 자율 운영이 꺼져 있으면 닿지 않을 메시지이므로 입력을 잠그고 사유를 말한다. 쓰던 초안은 그대로 두어 다시 켜면 보낼 수 있다.
+ * 자율 운영이 꺼져 있으면 메시지 전송은 막지만 /clear는 받는다. 쓰던 초안은 그대로 두어 다시 켜면 보낼 수 있다.
  * 다른 창에서 막 끈 경합은 서버가 거절하고(`commodore_inactive`) 초안은 지우지 않는다.
  */
-function CommodoreComposer({ t, theaterId, active, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
-  const [text, setText] = useState("");
+function useClearConfirmation(theaterId: string, onFail: (error: unknown) => void, onClear: () => void) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const working = useRef(false);
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), 5_000);
+    return () => clearTimeout(timer);
+  }, [armed]);
+  const request = async () => {
+    if (working.current) return false;
+    if (!armed) { setArmed(true); return false; }
+    working.current = true; setBusy(true); setArmed(false); onClear();
+    try { await clearCommodore(theaterId); return true; }
+    catch (error) { onFail(error); return false; }
+    finally { working.current = false; setBusy(false); }
+  };
+  return { armed, busy, request, disarm: () => setArmed(false) };
+}
+
+/** 글리프와 /clear 모두 키를 뗀 뒤의 두 번째 입력만 확정으로 받는다. */
+function useReleasedKey() {
+  const held = useRef<string | null>(null);
+  return {
+    down: (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return true;
+      if (event.repeat || held.current === event.key) { event.preventDefault(); return false; }
+      held.current = event.key;
+      return true;
+    },
+    up: () => { held.current = null; },
+  };
+}
+
+function CommodoreClearButton({ t, theaterId, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+  const clear = useClearConfirmation(theaterId, onFail, onClear);
+  const key = useReleasedKey();
+  return <div className="objectives-commodore-clear-wrap">
+    {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.confirm")}</span> : null}
+    <button type="button" className={`objectives-commodore-clear${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "objectives.commodore.clear.confirm" : "objectives.commodore.clear.title")} title={t("objectives.commodore.clear.hint")} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 6-7 6 5-6 7H6zM9 15h6M6 7l6 5" /></svg>
+    </button>
+  </div>;
+}
+
+function CommodoreComposer({ t, theaterId, active, context, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly context?: CommodoreRunStatus["context"]; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+  const [text, setText] = useState(() => sheetDraft(theaterId).composer);
+  useEffect(() => { rememberSheetDraft(theaterId, { composer: text }); }, [theaterId, text]);
   const [sending, setSending] = useState(false);
   const composing = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const armed = active && !!text.trim() && !sending;
+  const clear = useClearConfirmation(theaterId, onFail, onClear);
+  const clearKey = useReleasedKey();
+  const isClear = text.trim() === "/clear";
+  const armed = (active || isClear) && !!text.trim() && !sending && !clear.busy;
   const send = () => {
     const value = text.trim();
+    if (isClear) { void clear.request().then((cleared) => { if (cleared) setText(""); }); return; }
     if (!active || !value || sending) return;
     onClear();
     setSending(true);
@@ -619,24 +984,30 @@ function CommodoreComposer({ t, theaterId, active, onFail, onClear }: { readonly
         ref={inputRef}
         className="objectives-commodore-composer-input"
         value={text}
-        disabled={!active}
+        disabled={clear.busy}
         aria-describedby={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
         rows={1}
         placeholder={t("objectives.commodore.composer.placeholder")}
         aria-label={t("objectives.commodore.composer.aria")}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => { setText(event.target.value); clear.disarm(); }}
         onCompositionStart={() => { composing.current = true; }}
         onCompositionEnd={() => { composing.current = false; }}
-        onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }}
+        onKeyDown={(event) => { if (isClear && !clearKey.down(event)) return; if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }}
+        onKeyUp={clearKey.up}
+        onBlur={() => { clearKey.up(); clear.disarm(); }}
       />
+      {context ? <CommodoreContextMeter t={t} context={context} /> : null}
       <ComposerSubmitButton
         className={`objectives-commodore-composer-send${armed ? " is-armed" : ""}`}
         aria-label={t("objectives.commodore.composer.send")}
         title={t("objectives.commodore.composer.send")}
         disabled={!armed}
+        onKeyDown={(event) => { if (isClear) clearKey.down(event); }}
+        onKeyUp={clearKey.up}
         onClick={send}
       />
     </div>
+    {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.enterConfirm")}</p> : null}
     {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("objectives.commodore.composer.idle")}</p>}
     </>
   );
@@ -645,15 +1016,16 @@ function CommodoreComposer({ t, theaterId, active, onFail, onClear }: { readonly
 /* ── 지시 ─────────────────────────────────────────────────────────────── */
 
 function CommodoreDirective({ t, theaterId, directive, active, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly directive: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly active: boolean; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
-  const [draft, setDraft] = useState(directive.text);
+  const [draft, setDraft] = useState(() => sheetDraft(theaterId).directive ?? directive.text);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  // 다른 곳(다른 창)에서 고친 지시는 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다.
+  // 다른 곳(다른 창)에서 고친 지시는 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다. 시트를 닫아도 더러운 초안은 남는다.
   const base = useRef(directive.text);
   useEffect(() => {
     if (draft === base.current) setDraft(directive.text);
     base.current = directive.text;
   }, [directive.text]); // eslint-disable-line react-hooks/exhaustive-deps -- 서버 값이 바뀔 때만.
+  useEffect(() => { rememberSheetDraft(theaterId, { directive: draft === directive.text ? null : draft }); }, [theaterId, draft, directive.text]);
   const dirty = draft !== directive.text;
   const save = () => {
     if (saving || !dirty) return;
@@ -693,7 +1065,8 @@ function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }: {
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
 }) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() => sheetDraft(theaterId).intel);
+  useEffect(() => { rememberSheetDraft(theaterId, { intel: draft }); }, [theaterId, draft]);
   const [adding, setAdding] = useState(false);
   const sourceLabel = (source: string) => source === "person" ? t("objectives.commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
   const add = () => {

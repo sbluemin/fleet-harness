@@ -49,12 +49,15 @@ export interface CommodoreTranscriptPage {
   readonly entries: readonly CommodoreTranscriptEntry[];
   /** 더 오래된 항목이 남아 있다 — 첫 항목의 seq 를 `before` 로 넘겨 이어 읽는다. */
   readonly hasMore: boolean;
+  readonly clearedThrough: number;
 }
 
 export interface CommodoreStore {
   /** Theater 를 모르거나 폴더를 읽을 수 없으면 null. 없는 파일은 빈 상태다. */
   read(theaterId: string): CommodoreState | null;
   setAutonomy(theaterId: string, autonomy: boolean): CommodoreState;
+  /** 종료 예약 — null은 해제. 자율 운영 중에만 받고, 지난 시각은 거절한다. */
+  setStopAt(theaterId: string, stopAt: number | null): CommodoreState;
   /** 본문이 그대로면 rev 도 그대로다 — 같은 지시를 다시 저장해 사령관을 깨우지 않는다. */
   setDirective(theaterId: string, text: string): CommodoreState;
   addIntel(theaterId: string, input: { readonly text: string; readonly source?: string }): { readonly state: CommodoreState; readonly item: CommodoreIntel };
@@ -69,6 +72,8 @@ export interface CommodoreStore {
   setLanguage(theaterId: string, language: "en" | "ko"): CommodoreState;
   /** 누적 셈을 더한다(세션 +1, 비용 +, 행위 +). 감독자가 턴 결과마다 부른다. */
   addRunTotals(theaterId: string, delta: Partial<CommodoreRunTotals>): CommodoreState;
+  /** 감독자가 세션을 거둔 뒤 부른다. 기록 파일을 지우되 지시·인텔·설정은 보존한다. */
+  transcriptClear(theaterId: string): CommodoreState;
   transcriptAppend(theaterId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
   transcriptRead(theaterId: string, options?: { readonly limit?: number; readonly before?: number }): CommodoreTranscriptPage;
   /** 저장된 상태가 자율 운영을 켠 Theater — 재시작 복원이 읽는다. 폴더를 읽을 수 없는 Theater 는 빠진다. */
@@ -128,7 +133,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     const known = lastSeq.get(theaterId);
     if (known !== undefined) return known;
     const entries = readTranscriptFile(transcriptFile(theaterId));
-    const seq = entries.length ? entries[entries.length - 1]!.seq : 0;
+    const seq = Math.max(load(theaterId).transcriptClearedThrough ?? 0, entries.length ? entries[entries.length - 1]!.seq : 0);
     lastSeq.set(theaterId, seq);
     return seq;
   };
@@ -143,8 +148,19 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     setAutonomy(theaterId, autonomy) {
       const current = load(theaterId);
-      if (current.autonomy === autonomy) return current;
-      return commit(theaterId, { ...current, autonomy }, "autonomy");
+      if (current.autonomy === autonomy && (autonomy || current.stopAt === undefined)) return current;
+      const { stopAt: _stopAt, ...withoutSchedule } = current;
+      return commit(theaterId, { ...(autonomy ? current : withoutSchedule), autonomy }, "autonomy");
+    },
+    setStopAt(theaterId, stopAt) {
+      const current = load(theaterId);
+      if (!current.autonomy) throw new ObjectiveStoreError("commodore_inactive");
+      const at = now();
+      if (current.stopAt !== undefined && current.stopAt <= at) throw new ObjectiveStoreError("commodore_stopping");
+      if (stopAt !== null && (!Number.isSafeInteger(stopAt) || stopAt <= at || stopAt > 8_640_000_000_000_000)) throw new ObjectiveStoreError("invalid_request");
+      if ((current.stopAt ?? null) === stopAt) return current;
+      const { stopAt: _stopAt, ...rest } = current;
+      return commit(theaterId, stopAt === null ? rest : { ...rest, stopAt }, "stopAt");
     },
     setDirective(theaterId, text) {
       if (text.length > MAX_DIRECTIVE) throw new ObjectiveStoreError("invalid_request");
@@ -200,6 +216,15 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const run = current.run ?? EMPTY_RUN_TOTALS;
       return commit(theaterId, { ...current, run: { session: run.session + (delta.session ?? 0), costUsd: run.costUsd + (delta.costUsd ?? 0), actions: run.actions + (delta.actions ?? 0) } }, "run");
     },
+    transcriptClear(theaterId) {
+      const current = load(theaterId);
+      const clearedThrough = seqOf(theaterId) + 1;
+      // 삭제 도중 프로세스가 내려가도 남은 파일의 옛 줄을 읽지 않게 경계를 먼저 영속한다.
+      const state = commit(theaterId, { ...current, transcriptClearedThrough: clearedThrough }, "clear");
+      lastSeq.set(theaterId, clearedThrough);
+      fs.rmSync(transcriptFile(theaterId), { force: true });
+      return state;
+    },
     transcriptAppend(theaterId, input) {
       const entry = { ...input, seq: seqOf(theaterId) + 1, at: now() } as CommodoreTranscriptEntry;
       const parsed = commodoreTranscriptEntrySchema.safeParse(entry);
@@ -214,10 +239,11 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     transcriptRead(theaterId, pageOptions) {
       const limit = Math.max(1, Math.min(MAX_TRANSCRIPT_PAGE, pageOptions?.limit ?? DEFAULT_PAGE));
-      const entries = readTranscriptFile(transcriptFile(theaterId));
+      const clearedThrough = load(theaterId).transcriptClearedThrough ?? 0;
+      const entries = readTranscriptFile(transcriptFile(theaterId)).filter((entry) => entry.seq > clearedThrough);
       const before = pageOptions?.before;
       const scoped = before === undefined ? entries : entries.filter((entry) => entry.seq < before);
-      return { entries: scoped.slice(Math.max(0, scoped.length - limit)), hasMore: scoped.length > limit };
+      return { entries: scoped.slice(Math.max(0, scoped.length - limit)), hasMore: scoped.length > limit, clearedThrough };
     },
     autonomousTheaters() {
       const ids = new Set<string>([...states.keys(), ...(options.theaterIds?.() ?? [])]);

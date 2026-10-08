@@ -3,7 +3,7 @@
  * Console Use 제스처 — 에이전트가 이 Console 을 쓴 호출 하나하나가 화면 어디에 닿았는지.
  *
  * 서버의 `console-use:call` 채널(caller·tool·summary·gesture·target·at)을 받아 두 곳이 읽는다:
- * 대상(사이드바 행·Theater 행·그룹 헤더·패널·레일 버튼)을 **감싸는 펄스**, 그룹 헤더의 **저자**(툴팁).
+ * 대상(사이드바 행·Theater 행·그룹 헤더·묶음 줄·묶음 머리·패널·레일 버튼)을 **감싸는 펄스**, 그룹 헤더의 **저자**(툴팁).
  * 내용은 오지 않는다 — 읽은 전사·diff·파일은 이 채널에 실리지 않는다. 호출자 쪽에는 아무것도
  * 적지 않는다: 캡션 배지와 레일이 이미 「쓰는 중」을 말하고, 무엇을 했는지는 대상이 말한다.
  * 표식은 잠깐이고(GAZE_MS / MARK_MS), 걷히기 직전 잠깐 `leaving` 이 되어 페이드할 틈을 준다.
@@ -26,7 +26,9 @@ export type GestureTarget =
   | { readonly kind: "theater"; readonly theaterId: string }
   | { readonly kind: "operation"; readonly operationId: string }
   | { readonly kind: "group"; readonly groupId: string; readonly theaterId: string }
-  | { readonly kind: "panel"; readonly panelId: string; readonly theaterId: string; readonly view?: string; readonly path?: string };
+  | { readonly kind: "panel"; readonly panelId: string; readonly theaterId: string; readonly view?: string; readonly path?: string }
+  | { readonly kind: "cluster"; readonly clusterId: string; readonly theaterId: string }
+  | { readonly kind: "clusters"; readonly theaterId: string; readonly groupId?: string };
 
 export interface ConsoleUseGesture {
   readonly caller: GestureCaller;
@@ -34,6 +36,8 @@ export interface ConsoleUseGesture {
   readonly summary: string;
   readonly gesture: GestureKind;
   readonly target?: GestureTarget;
+  /** 기여 도구의 레일 패널 — 대상이 패널이 아니어도 그 레일 아이콘이 함께 감싸인다. */
+  readonly panelId?: string;
   readonly at: number;
 }
 
@@ -66,6 +70,10 @@ const operationWrap = new Map<string, ConsoleUseWrap>();
 const theaterWrap = new Map<string, ConsoleUseWrap>();
 const groupWrap = new Map<string, ConsoleUseWrap>();
 const panelWrap = new Map<string, ConsoleUseWrap>();
+/** 묶음 줄(cluster id) 하나, 그리고 Theater 별 묶음 목록(목록 읽기 — 줄들이 모인 머리가 감싸인다). */
+const clusterWrap = new Map<string, ConsoleUseWrap>();
+const clusterListWrap = new Map<string, ConsoleUseWrap>();
+const WRAP_MAPS = [operationWrap, theaterWrap, groupWrap, panelWrap, clusterWrap, clusterListWrap] as const;
 const groupCreator = new Map<string, ConsoleUseGesture>();
 const closingListeners = new Set<(closing: ClosingByAgent) => void>();
 let version = 0;
@@ -89,7 +97,7 @@ function scheduleSweep(): void {
   if (sweeper !== null) { clearTimeout(sweeper); sweeper = null; }
   const now = Date.now();
   let next = Number.POSITIVE_INFINITY;
-  for (const map of [operationWrap, theaterWrap, groupWrap, panelWrap]) {
+  for (const map of WRAP_MAPS) {
     for (const wrap of map.values()) {
       const expiresAt = wrap.gesture.at + wrapTtl(wrap.gesture);
       const boundary = wrap.leaving ? expiresAt : expiresAt - LEAVE_MS;
@@ -101,7 +109,7 @@ function scheduleSweep(): void {
     sweeper = null;
     const at = Date.now();
     let changed = false;
-    for (const map of [operationWrap, theaterWrap, groupWrap, panelWrap]) {
+    for (const map of WRAP_MAPS) {
       for (const [key, wrap] of map) {
         const expiresAt = wrap.gesture.at + wrapTtl(wrap.gesture);
         if (at >= expiresAt) { map.delete(key); changed = true; }
@@ -133,6 +141,10 @@ export function recordConsoleUseGesture(gesture: ConsoleUseGesture): void {
   } else if (target?.kind === "theater") theaterWrap.set(target.theaterId, wrap);
   else if (target?.kind === "panel") panelWrap.set(target.panelId, wrap);
   else if (target?.kind === "group") { if (gesture.gesture === "create") groupCreator.set(target.groupId, gesture); groupWrap.set(target.groupId, wrap); }
+  else if (target?.kind === "cluster") clusterWrap.set(target.clusterId, wrap);
+  else if (target?.kind === "clusters") clusterListWrap.set(target.theaterId, wrap);
+  // 자리를 대신 말한 기여 도구도 레일 아이콘 표식은 그대로 둔다.
+  if (typeof gesture.panelId === "string" && target?.kind !== "panel") panelWrap.set(gesture.panelId, wrap);
   notify();
   scheduleSweep();
 }
@@ -153,6 +165,27 @@ export function getOperationWrap(operationId: string): ConsoleUseWrap | null { r
 export function getTheaterWrap(theaterId: string): ConsoleUseWrap | null { return theaterWrap.get(theaterId) ?? null; }
 export function getGroupWrap(groupId: string): ConsoleUseWrap | null { return groupWrap.get(groupId) ?? null; }
 export function getPanelWrap(panelId: string): ConsoleUseWrap | null { return panelWrap.get(panelId) ?? null; }
+export function getClusterWrap(clusterId: string): ConsoleUseWrap | null { return clusterWrap.get(clusterId) ?? null; }
+/** 여러 줄 중 먼저 감싸인 하나 — 접힌 머리가 그 안의 줄 대신 감싸일 때 쓴다. 저장된 객체를 그대로 돌려 스냅샷이 흔들리지 않는다. */
+export function getFirstClusterWrap(clusterIds: readonly string[]): ConsoleUseWrap | null {
+  for (const id of clusterIds) {
+    const wrap = clusterWrap.get(id);
+    if (wrap) return wrap;
+  }
+  return null;
+}
+/**
+ * Theater 의 묶음 목록 표식. 그룹 하나로 좁힌 목록이면 그 그룹(`groupId`)에서만 답한다 — 그룹을 모르는 머리(구역)는 `undefined` 로 묻고,
+ * Theater 전체 목록에만 감싸인다.
+ */
+export function getClusterListWrap(theaterId: string, groupId?: string | null): ConsoleUseWrap | null {
+  const wrap = clusterListWrap.get(theaterId);
+  if (!wrap) return null;
+  const scoped = wrap.gesture.target?.kind === "clusters" ? wrap.gesture.target.groupId : undefined;
+  return scoped === undefined || scoped === groupId ? wrap : null;
+}
+/** 그룹으로 좁혔든 아니든 그 Theater 의 묶음 목록 표식 — 줄과 머리가 모두 접혀 Theater 머리만 보일 때. */
+export function getAnyClusterListWrap(theaterId: string): ConsoleUseWrap | null { return clusterListWrap.get(theaterId) ?? null; }
 export function getGroupCreator(groupId: string): ConsoleUseGesture | null {
   return groupCreator.get(groupId) ?? null;
 }

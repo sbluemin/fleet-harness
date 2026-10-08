@@ -6,7 +6,7 @@ import { TheaterMonogram } from "./theater-monogram.js";
 export { theaterInitials } from "./theater-initials.js";
 import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../settings/client/execution-settings.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { consoleUseWrapClassName, gestureCallerLabel, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
+import { consoleUseWrapClassName, gestureCallerLabel, getAnyClusterListWrap, getClusterListWrap, getFirstClusterWrap, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
 import { useZenMode } from "../../../../core/client/src/integration/zen-mode.js";
 import { publishConsoleOverlay } from "../../../../core/client/src/overlay/overlay-registry.js";
@@ -40,7 +40,7 @@ import {
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
-import { planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, zoneNoteOf, type SideBarRowItem } from "./side-bar-cluster-row.js";
+import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, zoneNoteOf, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu, SideBarZenToggle } from "./side-bar-collapse-control.js";
@@ -187,6 +187,8 @@ interface TheaterSectionHeaderProps {
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
+  /** 이 Theater 가 목표 줄의 묶음 머리일 때 — `theaterClusterHead`. */
+  readonly clusterHead?: { readonly hiddenClusterIds: readonly string[]; readonly anyList: boolean } | undefined;
 }
 
 interface TheaterInactiveSectionProps {
@@ -1193,6 +1195,7 @@ export function OperationsSideBar({
                 theater={theater}
                 active
                 collapsed={theaterCollapsed}
+                clusterHead={theaterClusterHead(rowPlan, theaterCollapsed || statusAxis)}
                 statusActionsOpen={statusActionsOpen}
                 showStatusLiveTick={showStatusLiveTick}
                 dragging={isTheaterDragging}
@@ -1232,12 +1235,12 @@ export function OperationsSideBar({
                   />,
                 ]) : [
                   ...(rowPlan.decisions.length > 0 ? [
-                    <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length} note={zoneNoteOf(rowPlan.decisions)}>
+                    <SideBarRowZone key="__decisions__" theaterId={theater.id} zone="decisions" count={rowPlan.decisions.length} note={zoneNoteOf(rowPlan.decisions)}>
                       {rowPlan.decisions.map((item) => renderRow(item, true))}
                     </SideBarRowZone>,
                   ] : []),
                   ...(rowPlan.today.length > 0 ? [
-                    <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length} note={zoneNoteOf(rowPlan.today)}>
+                    <SideBarRowZone key="__today__" theaterId={theater.id} zone="today" count={rowPlan.today.length} note={zoneNoteOf(rowPlan.today)}>
                       {rowPlan.today.map((item) => renderRow(item, true))}
                     </SideBarRowZone>,
                   ] : []),
@@ -1280,6 +1283,7 @@ export function OperationsSideBar({
                   onContextMenu={(groupId, anchor) => setActiveContextMenu({ kind: "group", groupId, anchor })}
                   onPointerDragStart={beginGroupPointerDrag}
                   onOpenLaunch={(groupId, anchor) => { if (activeTheaterId) openTheaterLaunchMenuAt(anchor, activeTheaterId, groupId); }}
+                  clusterHead={groupClusterHead(theater.id, sectionItems, foldItems, isCollapsed)}
                 />
               ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
                 <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
@@ -1639,11 +1643,18 @@ function TheaterSectionHeader({
   onOpenLaunch,
   onContextMenu,
   onPointerDragStart,
+  clusterHead,
 }: TheaterSectionHeaderProps) {
   const t = useT();
   const suppressClickRef = useRef(false);
-  // Console Use — 에이전트가 이 Theater 의 목록·그룹을 읽으면 헤더 행 전체가 감싸인다.
-  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => getTheaterWrap(theater.id), () => null);
+  // Console Use — 에이전트가 이 Theater 의 목록·그룹을 읽으면 헤더 행 전체가 감싸인다. Theater 바로 아래 선 목표 줄의 묶음 머리이기도 하다.
+  const wrap = useSyncExternalStore(
+    subscribeConsoleUseGestures,
+    () => getTheaterWrap(theater.id) ?? (clusterHead
+      ? getFirstClusterWrap(clusterHead.hiddenClusterIds) ?? (clusterHead.anyList ? getAnyClusterListWrap(theater.id) : getClusterListWrap(theater.id, null))
+      : null),
+    () => null,
+  );
   const headerClassName = [
     "side-bar-theater-header",
     consoleUseWrapClassName(wrap),
@@ -1868,6 +1879,7 @@ function TheaterInactiveSection({
         theater={theater}
         active={false}
         collapsed={collapsed}
+        clusterHead={theaterClusterHead(rowPlan, collapsed || statusAxis)}
         statusActionsOpen={statusActionsOpen}
         showStatusLiveTick={showStatusLiveTick}
         dragging={dragging}
@@ -1901,12 +1913,12 @@ function TheaterInactiveSection({
             />,
           ]) : [
             ...(rowPlan.decisions.length > 0 ? [
-              <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length} note={zoneNoteOf(rowPlan.decisions)}>
+              <SideBarRowZone key="__decisions__" theaterId={theater.id} zone="decisions" count={rowPlan.decisions.length} note={zoneNoteOf(rowPlan.decisions)}>
                 {rowPlan.decisions.map((item) => renderRow(item, true))}
               </SideBarRowZone>,
             ] : []),
             ...(rowPlan.today.length > 0 ? [
-              <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length} note={zoneNoteOf(rowPlan.today)}>
+              <SideBarRowZone key="__today__" theaterId={theater.id} zone="today" count={rowPlan.today.length} note={zoneNoteOf(rowPlan.today)}>
                 {rowPlan.today.map((item) => renderRow(item, true))}
               </SideBarRowZone>,
             ] : []),
@@ -1933,6 +1945,7 @@ function TheaterInactiveSection({
                     onToggle={(groupId) => toggleTheaterGroupCollapsed(theater.id, groupId)}
                     onContextMenu={() => {}}
                     onPointerDragStart={() => {}}
+                    clusterHead={groupClusterHead(theater.id, sectionItems, foldItems, isCollapsed)}
                   />
                 ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
                   <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>

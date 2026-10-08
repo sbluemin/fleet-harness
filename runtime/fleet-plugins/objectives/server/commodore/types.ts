@@ -82,6 +82,10 @@ export const commodoreStateSchema = z.object({
   commanderEffort: z.string().trim().min(1).max(32).optional(),
   /** 순찰 간격(분). 없으면 기본 60분이다. */
   patrolMinutes: commodorePatrolSchema.optional(),
+  /** 자율 운영 종료 예정 시각(epoch ms). Console 재시작 뒤에도 적용하고, 자율 운영을 끄면 함께 지운다. */
+  stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).optional(),
+  /** Clear가 지운 마지막 seq. 파일 삭제와 재시작·재연결 사이에도 옛 기록을 되살리지 않는 영속 경계. */
+  transcriptClearedThrough: z.number().int().nonnegative().optional(),
   /** 사람이 이 Theater 를 보는 언어 — 서랍의 요청이 남긴다. 사령관 기록의 언어이고, 없으면 목표의 언어·영어 순이다. */
   language: z.enum(["en", "ko"]).optional(),
   /** 누적 운영 셈 — 세션 번호(교대·재시작마다 1 씩), 누적 비용, 보드에 쓴 행위 수. 감독자가 올린다. */
@@ -104,6 +108,9 @@ export const EMPTY_RUN_TOTALS: CommodoreRunTotals = Object.freeze({ session: 0, 
  * 감독자가 말하는 지금 상태 — 저장되지 않는다. `off` 는 실험 기능이나 자율 운영이 꺼진 것, `idle` 은 다음 깨움을 기다리는 것,
  * `turn` 은 사령관이 일하는 중, `retrying` 은 턴 오류 뒤 재시도 대기(`reason`·`retryAt`), `error` 는 재시도로도 못 푼 상태.
  */
+/** 마지막 턴의 입력 토큰이 모델 창의 이 비율에 닿으면 다음 깨움에서 세션을 교대한다. */
+export const COMMODORE_CONTEXT_ROTATE_RATIO = 0.75;
+
 export interface CommodoreRunStatus {
   readonly phase: "off" | "idle" | "turn" | "retrying" | "error";
   readonly reason?: string;
@@ -111,6 +118,8 @@ export interface CommodoreRunStatus {
   readonly nextWakeAt?: number;
   /** 감독자가 지금 정체로 보는 목표 id — 지휘관이 임무를 남긴 채 오래 쉰다. 목표가 다시 움직이면 빠진다. */
   readonly stalled?: readonly string[];
+  /** 마지막 턴이 실제로 쓴 입력 토큰과 그 세션의 창. 한 턴도 끝나기 전에는 없다. */
+  readonly context?: { readonly window: number; readonly inputTokens: number };
   readonly totals: CommodoreRunTotals;
 }
 
@@ -183,7 +192,7 @@ export type CommodoreEvent =
   | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
   | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus };
 
-export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "commander" | "patrol" | "language" | "run";
+export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear";
 
 /** Theater 의 순찰 간격(ms) — 저장값, 없으면 기본. */
 export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number {

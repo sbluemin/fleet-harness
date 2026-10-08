@@ -1,5 +1,5 @@
 import { useRef, useSyncExternalStore, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { consoleUseWrapClassName, gestureCallerLabel, getGroupCreator, getGroupWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
+import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getFirstClusterWrap, getGroupCreator, getGroupWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { OperationGroup } from "../../../../core/client/src/integration/types.js";
@@ -17,6 +17,8 @@ interface GroupHeaderProps {
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, groupId: string) => void;
   /** 그룹 「+」 — 이 그룹에 서는 새 목표·Operation 메뉴. 없으면 버튼을 세우지 않는다. */
   readonly onOpenLaunch?: (groupId: string, anchor: DOMRect) => void;
+  /** 이 그룹이 목표 줄을 모은 묶음 머리일 때 — 목록 읽기와, 접혀 안 보이는 줄의 표식을 헤더가 대신 두른다(`groupClusterHead`). */
+  readonly clusterHead?: { readonly theaterId: string; readonly hiddenClusterIds: readonly string[] } | undefined;
 }
 
 export function OperationsSideBarGroupHeader({
@@ -30,12 +32,17 @@ export function OperationsSideBarGroupHeader({
   onContextMenu,
   onPointerDragStart,
   onOpenLaunch,
+  clusterHead,
 }: GroupHeaderProps) {
   const t = useT();
   const suppressClickRef = useRef(false);
   const grpColor = resolveAccentColor(group.color);
   // Console Use — 에이전트가 이 그룹을 만들거나 고치면 헤더 전체가 감싸인다. 만든 이는 툴팁에만 남는다(사실이지 사건이 아니다).
-  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => getGroupWrap(group.id), () => null);
+  const wrap = useSyncExternalStore(
+    subscribeConsoleUseGestures,
+    () => getGroupWrap(group.id) ?? (clusterHead ? getFirstClusterWrap(clusterHead.hiddenClusterIds) ?? getClusterListWrap(clusterHead.theaterId, group.id) : null),
+    () => null,
+  );
   const creator = useSyncExternalStore(subscribeConsoleUseGestures, () => getGroupCreator(group.id), () => null);
   const headerClassName = [
     "side-bar-group-header",

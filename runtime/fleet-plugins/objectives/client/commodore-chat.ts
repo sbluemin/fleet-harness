@@ -86,6 +86,107 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
   return out;
 }
 
+/**
+ * 시트 기록의 한 턴. 진행 중인 턴과 마지막으로 끝난 턴만 펼치고, 그 전 턴은 이 요약 한 줄로 접는다.
+ * `entries`는 그 턴만의 채팅 어휘다. `id`는 시각과 그 시각 안에서의 순번이라, 앞쪽에 이전 기록을 붙여도 바뀌지 않는다.
+ */
+export interface CommodoreLogTurn {
+  readonly id: string;
+  readonly at: number;
+  /** 사람의 말풍선이면 참. 깨어남이면 출처 줄이 이미 라벨이라 펼친 본문에서는 출처 줄을 다시 그리지 않는다. */
+  readonly message: boolean;
+  readonly label: string;
+  /** 답의 첫 줄. 답이 없으면 첫 도구 줄. */
+  readonly summary: string;
+  readonly durationMs?: number;
+  readonly failed: boolean;
+  readonly stopped: boolean;
+  readonly working: boolean;
+  readonly entries: readonly AgentChatTranscriptEntry[];
+}
+
+export type CommodoreLogBlock =
+  | { readonly kind: "turn"; readonly turn: CommodoreLogTurn }
+  | { readonly kind: "note"; readonly text: string; readonly at?: number; readonly tone?: "warn" };
+
+/** 채팅 어휘를 턴과 구분선으로 가른다. 접힘은 그리는 쪽이 정하고, 여기서는 줄을 만들기 위한 사실만 뽑는다. */
+export function commodoreLogBlocks(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[]): readonly CommodoreLogBlock[] {
+  const chat = commodoreChatEntries(t, entries, live);
+  const blocks: CommodoreLogBlock[] = [];
+  const ordinal = new Map<number, number>();
+  let bucket: AgentChatTranscriptEntry[] = [];
+  const flush = () => {
+    if (bucket.length === 0) return;
+    const turn = describeTurn(t, bucket, ordinal);
+    if (turn) blocks.push({ kind: "turn", turn });
+    bucket = [];
+  };
+  for (const entry of chat) {
+    const event = entry.event;
+    if (event.kind === "note") {
+      flush();
+      blocks.push({ kind: "note", text: event.text, ...(entry.at !== undefined ? { at: entry.at } : event.at !== undefined ? { at: event.at } : {}), ...(event.tone ? { tone: event.tone } : {}) });
+      continue;
+    }
+    if (event.kind === "dispatch" && bucket.length > 0) flush();
+    bucket.push(entry);
+    if (event.kind === "turn-end") flush();
+  }
+  flush();
+  return blocks;
+}
+
+/** 그 시각에 이미 시작돼 있던 마지막 턴. 곁 칸의 「드러내기」가 접힌 턴을 다시 펼칠 때 쓴다. */
+export function commodoreTurnCovering(blocks: readonly CommodoreLogBlock[], at: number): CommodoreLogTurn | null {
+  let found: CommodoreLogTurn | null = null;
+  for (const block of blocks) {
+    if (block.kind !== "turn") continue;
+    if (block.turn.at <= at) found = block.turn;
+    else break;
+  }
+  return found;
+}
+
+function describeTurn(t: T, bucket: readonly AgentChatTranscriptEntry[], ordinal: Map<number, number>): CommodoreLogTurn | null {
+  const dispatch = bucket.find((entry) => entry.event.kind === "dispatch");
+  const end = bucket.find((entry) => entry.event.kind === "turn-end");
+  const at = dispatch?.at ?? bucket.find((entry) => entry.at !== undefined)?.at;
+  if (at === undefined) return null;
+  const seen = ordinal.get(at) ?? 0;
+  ordinal.set(at, seen + 1);
+  const message = dispatch?.event.kind === "dispatch" && dispatch.event.by === undefined;
+  const dispatchText = dispatch?.event.kind === "dispatch" ? dispatch.event.text : "";
+  const answer = [...bucket].reverse().find((entry) => entry.event.kind === "text");
+  const answerText = answer?.event.kind === "text" ? answer.event.text : "";
+  const tool = bucket.find((entry) => entry.event.kind === "tool" && entry.event.detail.trim().length > 0);
+  const toolText = tool?.event.kind === "tool" ? tool.event.detail : "";
+  const summary = message ? plainFirstLine(dispatchText) : plainFirstLine(answerText) || plainFirstLine(toolText);
+  const durationMs = end?.event.kind === "turn-end" ? end.event.durationMs : undefined;
+  return {
+    id: `${at}:${seen}`,
+    at,
+    message,
+    label: message ? t("objectives.commodore.log.message") : dispatchText,
+    summary,
+    ...(durationMs !== undefined && durationMs >= 1000 ? { durationMs } : {}),
+    failed: end?.event.kind === "turn-end" && end.event.ok === false,
+    stopped: end?.event.kind === "turn-end" && end.event.stopped === true,
+    working: end === undefined && bucket.some((entry) => entry.event.kind === "turn-start"),
+    entries: bucket,
+  };
+}
+
+/** 답의 첫 줄. 접힌 줄은 이 한 줄만 보여주고, 마크다운 기호는 읽기에 방해되므로 걷는다. */
+function plainFirstLine(text: string): string {
+  const line = text.split(/\r?\n/).map((part) => part.trim()).find((part) => part.length > 0) ?? "";
+  return line
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^\s*[-*]\s+/, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/`([^`]*)`/g, "$1")
+    .trim();
+}
+
 /** 도구 줄의 한 줄 — 보드 행위면 「행위 · 목표 제목」, 아니면 기록이 남긴 요약. */
 function toolDetail(t: T, tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): string {
   if (tool.action) return [actionWord(t, tool.action), tool.title].filter(Boolean).join(" · ");

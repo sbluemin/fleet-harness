@@ -159,7 +159,7 @@ export default definePlugin({
       emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event),
     });
     ctx.host.lifecycle.registerCleanup(() => supervisor.dispose());
-    for (const route of createCommodoreRoutes(ctx, commodore, { run: (theaterId) => supervisor.status(theaterId), retry: (theaterId) => supervisor.retry(theaterId) })) {
+    for (const route of createCommodoreRoutes(ctx, commodore, { run: (theaterId) => supervisor.status(theaterId), retry: (theaterId) => supervisor.retry(theaterId), clear: (theaterId) => supervisor.clear(theaterId) })) {
       registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
     }
     // 재시작 복원 — 실험 기능과 자율 운영이 켜진 Theater 의 사령관을 다시 열고 「Console 재시작」 턴을 보낸다.
