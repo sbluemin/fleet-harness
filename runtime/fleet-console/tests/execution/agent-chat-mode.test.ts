@@ -199,7 +199,8 @@ describe("agent chat mode routes", () => {
     expect(received()[1]).toMatchObject({ text: "Last word." });
     // 그 턴이 닫히면 관측은 결과까지 성공한 최상위 발신의 받는 이름과 최종 응답 원문을 싣는다 — 거절·서브에이전트 발신은 없다.
     // 자식이 스스로 연 턴이라 사람의 턴이 아니다. 플러그인은 이 값으로 "실패 없이 닫혔지만 아무 말도 남기지 못한 턴"을 가른다.
-    const answer = "Reported to the commander.\n  verbatim  \n\n\nEND";
+    // 원장의 답은 표시 상한(60,000자)을 지나지만, 턴 보고에는 SDK result 원문 전체가 그대로 실린다.
+    const answer = `Reported to the commander.\n  verbatim  \n\n\n${"원문 ".repeat(31_000)}END`;
     harness.emitToLatest({ type: "result", subtype: "success", is_error: false, duration_ms: 1, result: answer });
     await vi.waitFor(() => expect(harness.consoleControl.observe(member)?.output).toMatchObject({
       outcome: "succeeded", report: { sentTo: ["commander", "nobody-here", "commander"], byPerson: false, answer, pendingWork: false },
@@ -255,6 +256,11 @@ describe("agent chat mode routes", () => {
     harness.emitToLatest(sent("call-peer", "peer", "Mission 2 is yours."));
     harness.emitToLatest(settled("call-peer", true));
     await vi.waitFor(() => expect(arrivals).toEqual([{ fromOperationId: owned, toOperationId: peer, at: expect.any(Number) }]));
+    // 광고 도구 — 자식이 init 에서 모델에게 내놓은 목록을 그 세션을 띄운 플러그인만 읽는다. init 전·남의 세션은 null(「없다」가 아니다).
+    expect(harness.consoleControl.advertisedTools(plugin, owned)).toBeNull();
+    harness.emitToLatest({ type: "system", subtype: "init", tools: ["Bash", "Read", "SendMessage"] });
+    await vi.waitFor(() => expect(harness.consoleControl.advertisedTools(plugin, owned)).toEqual(["Bash", "Read", "SendMessage"]));
+    expect(harness.consoleControl.advertisedTools(plugin, commander)).toBeNull();
     expect(received()).toHaveLength(2);
 
     // SDK 원시 오류 result만 도착해도 실패 구조와 종료 포트가 만들어진다. 모델 텍스트·도구 호출은 주입하지 않는다.

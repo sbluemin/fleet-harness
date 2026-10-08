@@ -119,6 +119,8 @@ export interface ObjectiveStoreOptions {
   readonly now?: () => number;
   /** 떠 있는 채팅의 호스트 좌표 — 턴 뒤 예약이 적용됐는지 투영이 가른다. 떠 있는 채팅이 아니거나 모르면 null. */
   readonly coordinates?: (operationId: string) => HostCoordinates | null;
+  /** 떠 있는 세션이 광고한 도구 이름 — 모르면 null(표시하지 않는다). */
+  readonly advertisedTools?: (operationId: string) => readonly string[] | null;
   /** 호스트가 떠 있는 구성원의 모델을 바꿀 수 있다 — 메뉴가 「지금·이번 턴 뒤」를 말한다. */
   readonly liveSwitch?: boolean;
   /** 공개 콘솔 제어 관측 — 실패 outcome 및 상태 투영에 쓴다. */
@@ -223,6 +225,9 @@ export interface ObjectiveStore {
   /** 그 구성원의 마지막 발주와 수신 — 발주가 없으면 null. */
   memberDispatch(memberId: string): { readonly at: number; readonly receivedAt: number | null } | null;
   recordReceipt(memberId: string, at: number): void;
+  /** 무보고 통지를 이미 보낸 보고 기대 시각. */
+  unreportedNoticeFor(memberId: string): number | undefined;
+  setUnreportedNoticeFor(memberId: string, at: number): void;
   /** 실패 없이 닫힌 턴의 무보고 — 실패 ledger 와 같은 수명이다. null 이면 거둔다. */
   settleMemberUnreported(memberId: string, unreported: ObjectiveMemberUnreported | null): void;
   /** 지휘관의 명시적 재발주 — 실패와 무보고의 inbox 표시만 해소한다. */
@@ -506,6 +511,12 @@ function storedFailure(value: StoredMember["failure"]): ObjectiveMemberFailure |
 function storedUnreported(value: StoredMember["unreported"]): ObjectiveMemberUnreported | undefined {
   return value && typeof value === "object" && Number.isFinite(value.at) && (value.reason === null || typeof value.reason === "object") ? value : undefined;
 }
+/** 보고 경로 없음 — 광고 목록을 알고, 그 목록에 보고 도구(SendMessage)가 없을 때만. 목록을 모르면(미기동·init 전) 판정하지 않는다. */
+export function lacksReportTool(tools: readonly string[] | null): boolean {
+  return tools !== null && !tools.includes(REPORT_TOOL);
+}
+/** 구성원이 지휘관에게 보고하는 도구 — 하네스가 광고하는 이름(Cursor 의 광고명 치환은 Gateway 안쪽이라 init 목록은 이 이름을 말한다). */
+export const REPORT_TOOL = "SendMessage";
 function storedTurn(value: StoredMember["settledTurn"]): SettledTurn | undefined {
   return value && typeof value === "object" && Number.isFinite(value.revision) && (value.generation === undefined || typeof value.generation === "string") ? value : undefined;
 }
@@ -556,7 +567,8 @@ function compact(objective: StoredObjective): StoredObjective {
     // 구성원 수명 상태 — 재시작 뒤에도 실패·무보고 표시와 통지 중복 방지가 이어지도록 남긴다(메시지 본문은 싣지 않는다).
     ...(member.failure ? { failure: member.failure } : {}), ...(member.unreported ? { unreported: member.unreported } : {}),
     ...(member.settledTurn ? { settledTurn: member.settledTurn } : {}), ...(member.deliveredAt !== undefined ? { deliveredAt: member.deliveredAt } : {}),
-    ...(member.dispatchedAt !== undefined ? { dispatchedAt: member.dispatchedAt } : {}), ...(member.receivedAt !== undefined ? { receivedAt: member.receivedAt } : {}) }));
+    ...(member.dispatchedAt !== undefined ? { dispatchedAt: member.dispatchedAt } : {}), ...(member.receivedAt !== undefined ? { receivedAt: member.receivedAt } : {}),
+    ...(member.unreportedNoticeFor !== undefined ? { unreportedNoticeFor: member.unreportedNoticeFor } : {}) }));
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
   if (!objective.handoff) delete out.handoff;
@@ -711,7 +723,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null, ...(next.failed && next.cause ? { cause: next.cause } : {}) } : null,
         ...(memberOutcome ? { outcome: memberOutcome } : {}),
         ...(storedFailure(member.failure) ? { failure: member.failure! } : {}),
-        ...(storedUnreported(member.unreported) ? { unreported: member.unreported! } : {}) };
+        ...(storedUnreported(member.unreported) ? { unreported: member.unreported! } : {}),
+        ...(memberNode && lacksReportTool(options.advertisedTools?.(member.id) ?? null) ? { noReportTool: true as const } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);
@@ -1316,6 +1329,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     memberDispatch(memberId) {
       const member = storedMemberOf(memberId);
       return member ? missionDispatch(undefined, member) : null;
+    },
+    unreportedNoticeFor: (memberId) => { const at = storedMemberOf(memberId)?.unreportedNoticeFor; return typeof at === "number" && Number.isFinite(at) ? at : undefined; },
+    setUnreportedNoticeFor(memberId, at) {
+      updateMember(memberId, (member) => ({ ...member, unreportedNoticeFor: at }));
     },
     recordReceipt(memberId, at) {
       updateMember(memberId, (member) => ({ ...member, receivedAt: at }));

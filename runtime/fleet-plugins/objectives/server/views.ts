@@ -147,6 +147,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
           ...(obs?.outcome ? { outcome: obs.outcome } : {}),
           ...(member.failure ? { failure: member.failure } : {}),
           ...(member.unreported ? { unreported: member.unreported } : {}),
+          ...(member.noReportTool ? { noReportTool: true } : {}),
         };
       }),
       done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,

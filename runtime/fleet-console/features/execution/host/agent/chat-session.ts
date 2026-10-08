@@ -615,6 +615,8 @@ class AgentChatSession {
   private readonly pendingWakeCalls = new Set<string>();
   /** 열린 턴에서 깨움 예약이 성공했다. */
   private turnScheduledWake = false;
+  /** 이번 턴을 닫는 SDK result 의 원문 그대로 — 원장의 표시 상한을 지나지 않는다. */
+  private turnRawAnswer: string | undefined;
   /** 마지막으로 닫힌 턴의 보고와 그 `turn-end` 줄의 seq — 관측(`readConsoleOutput`)이 종료 이벤트와 같은 값을 말하게 한다. */
   private endedTurnReport: { readonly seq: number; readonly report: import("@fleet-console/sdk/mcp").ConsoleTurnReport } | undefined;
   private disposed = false;
@@ -1737,8 +1739,17 @@ class AgentChatSession {
    * 이 이름 집합이 둘을 가르는 유일한 근거다. init은 세션당 한 번 오고, 못 받으면 집합은 비어
    * 있다 — 그때 덱은 전부 명령으로 세운다(틀린 카테고리보다 한 카테고리가 낫다).
    */
+  /** 자식이 init 에서 광고한 도구 이름 — 이 프로세스가 모델에게 내놓은 실제 목록이다. init 을 아직 못 봤으면 null. */
+  private advertisedToolNames: readonly string[] | null = null;
+  /** 자식이 init 에서 광고한 도구 이름. 모르면 null — 없는 목록은 누락의 증거가 아니다. */
+  readAdvertisedTools(): readonly string[] | null {
+    return this.advertisedToolNames;
+  }
+
   private rememberSkillNames(message: ClaudeGatewayMessage): void {
     if (message.type !== "system" || message.subtype !== "init") return;
+    const tools = (message as { tools?: unknown }).tools;
+    if (Array.isArray(tools)) this.advertisedToolNames = tools.filter((name): name is string => typeof name === "string");
     const skills = (message as { skills?: unknown }).skills;
     if (!Array.isArray(skills)) return;
     // 더한다 — reloadSkills가 이미 채워 둔 이름을 지우면 그쪽만 아는 스킬이 명령으로 되돌아간다.
@@ -2675,6 +2686,11 @@ class AgentChatSession {
         }
         this.trackSentMessages(message);
         this.trackHandover(message);
+        // 원장의 답(answer)은 표시용 상한(capText)을 지난다 — 턴 보고에는 SDK result 원문 전체를 싣는다(자르지 않는다).
+        if (message.type === "result" && message["parent_tool_use_id"] == null) {
+          const result = (message as { readonly result?: unknown }).result;
+          this.turnRawAnswer = typeof result === "string" && result.trim().length > 0 ? result : undefined;
+        }
         this.rememberSkillNames(message);
         this.verifyFleetPluginLoaded(message);
         this.invalidateCatalog(message);
@@ -3019,8 +3035,10 @@ class AgentChatSession {
       ...(end.failure ? { failure: end.failure } : {}),
     });
     // 세션 간 메시지를 관측하는 세션만 보고를 싣는다 — 관측하지 않으면 빈 sentTo 는 "보내지 않았다"가 아니라 "모른다"다.
+    const answer = end.ok !== false && end.stopped !== true ? this.turnRawAnswer ?? end.answer : undefined;
+    this.turnRawAnswer = undefined;
     const report: import("@fleet-console/sdk/mcp").ConsoleTurnReport | undefined = this.seed.onSessionMessageSent === undefined ? undefined : {
-      sentTo: this.turnSentTo, byPerson: this.turnByPerson, ...(end.answer === undefined ? {} : { answer: end.answer }),
+      sentTo: this.turnSentTo, byPerson: this.turnByPerson, ...(answer === undefined ? {} : { answer }),
       pendingWork: this.liveJobs.size > 0 || this.turnScheduledWake,
     };
     this.endedTurnReport = report ? { seq: this.seq, report } : undefined;

@@ -642,6 +642,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return applyChatCoordinates(chat, input.model, input.effort);
     },
     readCoordinates: (operationId) => chatRegistry.get(operationId)?.readCoordinates() ?? null,
+    advertisedTools: (operationId) => chatRegistry.get(operationId)?.readAdvertisedTools() ?? null,
     transcript: (operationId, input, signal) => actions.transcript!(operationId, input.cursor, input.limit, signal, input.tail ? { tail: true } : undefined),
   });
   if (detachControl) ctx.host.lifecycle.registerCleanup(detachControl);

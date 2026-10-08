@@ -743,6 +743,14 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           <p>{t("objectives.members.failureData")}</p>
           <pre>{[member.failure.error, member.failure.error_details, member.failure.last_assistant_message].filter((value) => value !== undefined).join("\n")}</pre>
         </details> : null}
+        {/* 바뀌지 않은 모델 전환의 사유 — 세션이 거절하며 남긴 원문을 자르지 않고 펼쳐 보인다(말풍선 title 만으로는 마우스를 올려야 읽힌다). */}
+        {launched && member.next?.failed && member.next.cause ? <details className="objectives-member-note is-error objectives-member-failure">
+          <summary>{t("objectives.members.next.causeSummary")}</summary>
+          <pre>{member.next.cause.message}</pre>
+          {member.next.cause.errorClass || member.next.cause.code || member.next.cause.exitCode !== undefined || member.next.cause.signal
+            ? <p>{[member.next.cause.errorClass, member.next.cause.code, member.next.cause.exitCode !== undefined ? `exit ${member.next.cause.exitCode}` : undefined, member.next.cause.signal].filter((value) => value !== undefined && value !== "").join(" · ")}</p> : null}
+        </details> : null}
+        {member.noReportTool ? <p className="objectives-member-note is-warn" role="status">{t("objectives.members.noReportTool")}</p> : null}
         {/* 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다 — 사유 칸은 판정한 출처가 있을 때만 붙는다. 마지막 응답은 원문 그대로다. */}
         {member.unreported ? <details className="objectives-member-note is-warn objectives-member-failure">
           <summary>{member.unreported.reason ? t("objectives.members.unreportedReason", { reason: member.unreported.reason.code }) : t("objectives.members.unreported")}</summary>

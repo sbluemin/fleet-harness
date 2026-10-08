@@ -64,7 +64,10 @@ export interface ConsoleTurnReport {
   readonly sentTo: readonly string[];
   /** 사람이 입력창에서 보낸 말로 열린 턴이다. 플러그인·다른 Operation 이 보낸 말과 자식이 스스로 연 턴은 false. */
   readonly byPerson: boolean;
-  /** SDK result 가 말한 최종 응답 원문. `output.text` 의 꼬리 자르기·정리를 지나지 않는다. 성공한 턴에만 있다. */
+  /**
+   * 그 턴을 닫은 SDK result 의 `result` 문자열 전체 — 자르지 않는다. 원장의 답(표시용 상한 60,000자)과 `output.text`(꼬리 24,000자)는
+   * 이것과 다를 수 있다. 자격 증명 마스킹도 하지 않은 원문이다(구성원 실패 원문 `ConsoleTurnFailure` 와 같은 취급). 성공으로 닫힌 턴에만 있다.
+   */
   readonly answer?: string;
   /**
    * 턴이 닫힐 때 이 세션을 다시 깨울 일이 남았다 — 살아 있는 백그라운드 작업(셸·모니터·서브에이전트 등)이 있거나, 이 턴에서

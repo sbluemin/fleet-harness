@@ -7,7 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
-import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
+import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "./signals.js";
 import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
 import { deriveFailedOutcome } from "./views.js";
@@ -896,6 +896,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
    */
   const lastOutcomes = new Map<string, "failed" | undefined>();
   // 정산한 턴 좌표·보고 시각·실패·무보고는 구성원 레코드(objective.json)에 둔다 — 재시작 뒤에도 같은 턴을 다시 알리지 않고 표시가 남는다.
+  /** 보드를 거쳐 사람이 그 구성원에게 말했다 — 그 말로 열린 다음 턴은 사람에게 답하는 턴이다(한 번 쓰고 지운다). */
+  const personPrompts = new Set<string>();
   const sameTurn = (a: { readonly generation?: string; readonly revision: number } | undefined, b: { readonly generation?: string; readonly revision: number }) =>
     !!a && a.generation === b.generation && a.revision === b.revision;
   let unsubscribeTurnEnds: (() => void) | null = null;
@@ -953,17 +955,25 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         const turn = { ...(generation !== undefined ? { generation } : {}), revision };
         store.setMemberTurn(operationId, turn);
         const language: PromptLanguage = ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
-        // 실패 없이 닫힌 턴이 아무에게도 말을 남기지 못했다 — 보고를 관측하는 표면이고, 사람이 입력창에서 연 턴이 아니며, 다시 깨어날 일(백그라운드
-        // 작업·깨움 예약)을 남기지 않았고, 열린 배정 임무가 있는데 그 배정 뒤로 한 번도 메시지를 전달하지 않았을 때만. 배정 뒤 이미 보고한 구성원이
-        // 참고 메시지에 답 없이 닫은 턴은 이 턴 하나로 멈춘 턴과 가를 수 없으므로 세우지 않는다. 표면이 보고를 싣지 않으면(터미널) 모른다는 뜻이다.
+        // 실패 없이 닫힌 턴이 아무에게도 말을 남기지 못했다 — 보고 기대(빚)가 있을 때만 경보한다(기준 13과 같은 「기대 없으면 경보 없음」).
+        // 기대 = 열린 배정 임무의 배정 시각과 지휘관의 마지막 발주 중 늦은 쪽. 빚 = 그 기대 뒤로 구성원이 아직 메시지를 전달하지 않았다.
+        // 사람의 턴(입력창, 또는 보드를 거친 사람의 말)은 사람에게 답하는 턴이라 지휘관 보고 기대를 만들지 않는다. 다시 깨어날 일(백그라운드
+        // 작업·깨움 예약)을 남긴 턴도 아니다. 표면이 보고를 싣지 않으면(터미널) 모른다는 뜻이다. 같은 빚에는 통지를 한 번만 보낸다.
         const report = outcome === "failed" ? undefined : observation.output.report;
+        const personTurn = !!report && (report.byPerson || personPrompts.delete(operationId));
         if (report && report.sentTo.length > 0) store.setMemberDelivered(operationId, quietNow());
         const assignedAt = Math.max(-1, ...current.missions.flatMap((mission) => mission.member === member.id && !mission.done ? [mission.assignmentTs ?? 0] : []));
-        const silent = !!report && !report.byPerson && !report.pendingWork && report.sentTo.length === 0 && objectiveUnderway(current)
-          && assignedAt >= 0 && (store.memberDelivered(operationId) ?? -1) < assignedAt && expectsReport(current.stoppedAt, assignedAt);
-        if (silent) {
-          const unreported: ObjectiveMemberUnreported = { at: quietNow(), ...(report.answer !== undefined ? { lastMessage: report.answer } : {}), reason: null };
+        const expectedAt = assignedAt < 0 ? -1 : Math.max(assignedAt, store.memberDispatch(operationId)?.at ?? -1);
+        const silent = !!report && !personTurn && !report.pendingWork && report.sentTo.length === 0 && objectiveUnderway(current)
+          && expectedAt >= 0 && (store.memberDelivered(operationId) ?? -1) < expectedAt && expectsReport(current.stoppedAt, expectedAt);
+        if (silent && store.unreportedNoticeFor(operationId) === expectedAt && member.unreported) {
+          // 이미 알린 같은 빚의 다음 조용한 턴 — 표시는 두고 다시 알리지 않는다. 새 발주·새 배정이 기대를 옮기면 다시 울린다.
+        } else if (silent) {
+          // 사유 칸 — 판정한 출처가 있을 때만 채운다. 광고 도구에 보고 도구가 없는 세션이면 그것이 사유다(55965e0d 의 한도 판정도 같은 칸).
+          const reason = lacksReportTool(ctx.host.consoleControl?.advertisedTools?.(operationId) ?? null) ? { code: "no_report_tool" } : null;
+          const unreported: ObjectiveMemberUnreported = { at: quietNow(), ...(report.answer !== undefined ? { lastMessage: report.answer } : {}), reason };
           store.settleMemberUnreported(operationId, unreported);
+          store.setUnreportedNoticeFor(operationId, expectedAt);
           const notice = memberUnreportedTurn(current, member, unreported, language);
           void requestSend(objectiveId, notice, notice).catch((error: unknown) => {
             if (disposed || !sameTurn(store.memberTurn(operationId), turn)) return;
@@ -971,7 +981,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
             store.refresh(objectiveId);
           });
           changed = true;
-        } else if (member.unreported) {
+        } else if (member.unreported && !personTurn) {
+          // 사람에게 답한 턴은 그 빚을 갚지 않는다 — 표시는 보고·외부 대기·빚 해소 때만 거둔다.
           store.settleMemberUnreported(operationId, null);
           changed = true;
         }
@@ -1494,6 +1505,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
       await control().request({ kind: "send", operationId: target, text, display: text.trim(), displayFormat: "markdown" }).catch(asStoreError);
       if (member) { store.acknowledgeMemberFailure(member.id); store.refresh(objectiveId); }
+      // 보드를 거친 말 — 사람이면 그 구성원의 다음 턴은 사람에게 답하는 턴이고, 지휘관·사령관이면 그 구성원에게 일을 맡긴 발주다(본문은 남기지 않는다).
+      if (member) {
+        const actor = options?.actor ?? "human";
+        if (actor === "human") personPrompts.add(member.id);
+        else if ((store.memberDispatch(member.id)?.at ?? -1) < quietNow()) store.recordDispatch(member.id, quietNow());
+      }
       store.setStopped(objectiveId, false);
       touchLive(target);
       if (!member) return { objective: objective(objectiveId), notified: null };

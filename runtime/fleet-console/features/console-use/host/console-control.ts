@@ -75,6 +75,8 @@ export interface ConsoleExecutionAdapter {
   /** 떠 있는 채팅의 모델·강도 변경 — 채팅 화면의 라우트와 같은 검증·같은 세션 메서드를 지난다. 소유는 여기서 이미 따졌다. */
   coordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
   readCoordinates?(operationId: string): ConsoleCoordinates | null;
+  /** 떠 있는 채팅 세션이 init 에서 광고한 도구 이름. 모르면 null. */
+  advertisedTools?(operationId: string): readonly string[] | null;
   /** 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 함수다. 소유는 여기서 이미 따졌다. */
   transcript?(operationId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
 }
@@ -459,6 +461,12 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     },
     launchKeyState, coordinates, transcript,
     readCoordinates(operationId: string): ConsoleCoordinates | null { return adapter?.readCoordinates?.(operationId) ?? null; },
+    /** 광고한 도구 목록 — 그 플러그인이 띄운 Operation(또는 그 자식)만. 남의 세션이거나 모르면 null. */
+    advertisedTools(caller: ConsoleCaller, operationId: string): readonly string[] | null {
+      const op = node(operationId);
+      if (!op || !launchedByPlugin(caller, op)) return null;
+      return adapter?.advertisedTools?.(operationId) ?? null;
+    },
     reserveLaunchKeys(caller: ConsoleCaller, theaterId: string, keys: readonly string[]) {
       if (caller.kind !== "plugin") return fail("invalid_launch_option");
       if (!deps.launchKeys) return fail("capability_unavailable");

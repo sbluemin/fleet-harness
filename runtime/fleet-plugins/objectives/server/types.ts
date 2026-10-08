@@ -221,6 +221,8 @@ export interface StoredMember {
   readonly dispatchedAt?: number;
   /** 그 발주 뒤 구성원이 일을 집어 든(턴을 연) 것을 처음 본 시각(ms). */
   readonly receivedAt?: number;
+  /** 무보고 통지를 이미 보낸 보고 기대(배정·발주 시각) — 같은 기대에는 한 번만 알린다. 화면에 싣지 않는다. */
+  readonly unreportedNoticeFor?: number;
 }
 
 /** 정산한 턴의 좌표 — 프로세스 세대와 그 세대 안의 턴 revision. */
@@ -229,7 +231,7 @@ export interface SettledTurn {
   readonly revision: number;
 }
 
-export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents" | "routed" | "next" | "settledTurn" | "deliveredAt" | "dispatchedAt" | "receivedAt"> {
+export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents" | "routed" | "next" | "settledTurn" | "deliveredAt" | "dispatchedAt" | "receivedAt" | "unreportedNoticeFor"> {
   readonly launch: MemberSelection;
   /** 저장된 허용. 키 없음은 false. */
   readonly subagents: boolean;
@@ -250,6 +252,8 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagent
   readonly failure?: ObjectiveMemberFailure;
   /** 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다. */
   readonly unreported?: ObjectiveMemberUnreported;
+  /** 떠 있는 세션이 init 에서 광고한 도구에 보고 도구(SendMessage)가 없다 — 표시만 하고 발주·기동은 막지 않는다. 목록을 모르면 없다. */
+  readonly noReportTool?: true;
 }
 
 /** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */
