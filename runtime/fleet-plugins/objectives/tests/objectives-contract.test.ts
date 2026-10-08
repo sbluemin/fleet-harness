@@ -1109,7 +1109,9 @@ describe("Objectives contract", () => {
     const byId = (list: Row[]) => new Map(list.map((row) => [row.id, row]));
     // 한 번 읽은 목록만으로 Operation 유무·자기 세션·브리핑과 기준을 가른다.
     const open = byId(await rows());
-    expect(open.get(waiting.id)).toMatchObject({ operation: false, briefTruncated: true, criteria: ["one", "two"] });
+    expect(open.get(waiting.id)).toMatchObject({ operation: false, briefTruncated: true, criteriaCount: 2, criteriaMet: 0 });
+    const criteria = (await use({ action: "read", objectiveId: waiting.id, section: "criteria" }, consoleDetail)).structuredContent;
+    expect(JSON.parse(criteria.text as string).map((criterion: { text: string }) => criterion.text)).toEqual(["one", "two"]);
     expect(open.get(waiting.id)!.brief!.length).toBeLessThan(waiting.note.length);
     expect(open.get(started.id)).toMatchObject({ operation: true });
     expect(open.get(caller.id)).toMatchObject({ operation: true, self: true });
@@ -1897,7 +1899,8 @@ describe("Objectives contract", () => {
     // 답이 오지 않아 같은 질문을 다시 묻는다 — 요청은 지워지지도 새 id 로 바뀌지도 않고(reused), 그 id 로 낸 사람의 답이 그대로 받아들여진다.
     expect(await command("request_decision", { expectedRevision: asked.decisionRequestRevision, questions: continueQuestion }, id)).toMatchObject({ requestId: asked.requestId, reused: true, replacedRequestId: null, decisionRequestRevision: asked.decisionRequestRevision });
     const inbox = await board({ action: "inbox" });
-    const request = (inbox.objectives as readonly { id: string; decisionRequest: { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] } }[]).find((row) => row.id === id)!.decisionRequest;
+    expect((inbox.objectives as readonly { id: string; decisionRequested: boolean }[]).find((row) => row.id === id)?.decisionRequested).toBe(true);
+    const request = JSON.parse((await board({ action: "read", objectiveId: id, section: "decisionRequest" })).text as string) as { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] };
     expect(request.id).toBe(asked.requestId);
     const answerOf = (extra: Record<string, unknown>) => ({ action: "answer", objectiveId: id, requestId: request.id, answers: [{ questionId: request.questions[0]!.id, selectedOptionIds: [request.questions[0]!.options[0]!.id], text: "Preserve the output", ...extra }] });
     expect(await refusal(commodore, answerOf({ pin: "do not stop" }))).toBe("invalid_arguments");
@@ -1933,7 +1936,8 @@ describe("Objectives contract", () => {
       expect(completed.followupBatches[0]!.items[0]!.state).toBe("created");
       nextId = completed.followupBatches[0]!.items[0]!.operationId;
     });
-    expect((await board({ action: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ retrospective })] }));
+    expect((await board({ action: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ hasRetrospective: true })] }));
+    expect(JSON.parse((await board({ action: "read", objectiveId: id, section: "handoffs" })).text as string)).toContainEqual(expect.objectContaining({ retrospective }));
     // 사령관이 고른 후속은 따로 정하지 않아도 사령관이 운영한다(깨움과 같은 판정).
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"], operator: "commodore" }));
     // 사령관이 고른 후속은 터미널 원본의 뷰를 이어받지 않고 채팅 뷰 지휘관으로 시작한다.
@@ -1942,6 +1946,80 @@ describe("Objectives contract", () => {
     expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, commenced: true }));
     expect(store.find(id)!.done?.by).toEqual(actor);
     expect(store.find(nextId)!.commenced).toBe(true);
+    // 목표가 많아져도 도구 결과 안에서 전량을 읽고, 긴 본문은 원본 그대로 이어 읽는다.
+    // 기존 outer-loop는 작은 보드만 읽어 크기 제한에서 보드를 잃는 실패를 잡지 못했다.
+    const largeBrief = '한글🙂\\"\n'.repeat(1_500);
+    let largeId = "";
+    for (let index = 0; index < 123; index += 1) {
+      const objective = await launch.create({ theaterId: "t1", title: `Backlog ${index}`, groupId: null,
+        note: largeBrief, today: true, dueDate: "2026-10-09", addedBy: id,
+        criteria: Array.from({ length: 20 }, (_, n) => `Criterion ${n}: ${"필수 계약 ".repeat(35)}`),
+        missions: Array.from({ length: 32 }, (_, n) => ({ text: `Mission ${n}` })) });
+      largeId ||= objective.id;
+      store.recordStage(objective.id, "commenced");
+      for (const mission of objective.missions) store.missionPatch(objective.id, mission.id, { done: true });
+      for (const criterion of objective.criteria) store.criterionMet(objective.id, criterion.id, "Verified");
+      store.handOff(objective.id, { by: "commander", retrospective });
+      store.missionPatch(objective.id, objective.missions[0]!.id, { done: false });
+      store.decisionRequest(objective.id, { expectedRevision: store.find(objective.id)!.decisionRequestRevision,
+        questions: [{ text: "Continue the backlog?", options: [{ label: "Continue" }, { label: "Pause" }] }] });
+    }
+    type Page = { total: number; offset: number; nextOffset: number | null; objectives: { id: string; criteriaCount: number }[] };
+    for (const args of [...[undefined, "all", "today", "due", "agent"].map((filter) => ({ action: "list", ...(filter ? { filter } : {}) })),
+      ...["inbox", "fleet", "history"].map((action) => ({ action }))]) {
+      const seen: string[] = [];
+      let offset = 0;
+      let total = 0;
+      do {
+        const result = await commodoreList.execute({ ...args, ...(offset ? { offset } : {}) }, { cwd: workspace }) as { isError: boolean; content: { text: string }[]; structuredContent: Page };
+        expect(result.isError).toBe(false);
+        expect(Buffer.byteLength(result.content[0]!.text, "utf8")).toBeLessThanOrEqual(8_000);
+        const page = result.structuredContent;
+        expect(page.offset).toBe(offset);
+        expect(page.total).toBeGreaterThanOrEqual(123);
+        total = page.total;
+        seen.push(...page.objectives.map((row) => row.id));
+        if (page.nextOffset === null) break;
+        expect(page.nextOffset).toBe(offset + page.objectives.length);
+        expect(page.nextOffset).toBeGreaterThan(offset);
+        offset = page.nextOffset;
+      } while (offset < total);
+      expect(new Set(seen).size).toBe(total);
+      expect(seen).toHaveLength(total);
+    }
+    const summary = await board({ action: "read", objectiveId: largeId });
+    expect(Buffer.byteLength(JSON.stringify(summary), "utf8")).toBeLessThanOrEqual(8_000);
+    expect(summary.objective).toMatchObject({ id: largeId, criteriaCount: 20, criteriaMet: 0, decisionRequested: true, failedMembers: 0 });
+    const readSection = async (section: string) => {
+      let joined = "";
+      let offset = 0;
+      let revision: unknown;
+      do {
+        const result = await board({ action: "read", objectiveId: largeId, section, offset });
+        expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThanOrEqual(8_000);
+        expect(result.offset).toBe(offset);
+        expect(result.revision).toBe(revision ?? result.revision);
+        revision = result.revision;
+        const part = result.text as string;
+        expect(Buffer.from(part, "utf8").toString("utf8")).toBe(part);
+        joined += part;
+        if (result.nextOffset === null) {
+          expect(joined.length).toBe(result.totalCharacters);
+          return joined;
+        }
+        expect(result.nextOffset).toBe(offset + part.length);
+        expect(result.nextOffset).toBeGreaterThan(offset);
+        offset = result.nextOffset as number;
+      } while (true);
+    };
+    expect(await readSection("brief")).toBe(largeBrief);
+    expect(JSON.parse(await readSection("criteria"))).toMatchObject(store.find(largeId)!.criteria.map((criterion) => ({ id: criterion.id, text: criterion.text })));
+    const original = (await command("read", {}, largeId)).objective as Record<string, unknown>;
+    expect(await readSection("objective")).toBe(JSON.stringify({ ...original, decisionRequest: store.find(largeId)!.decisionRequest }));
+    expect(JSON.parse(await readSection("decisionRequest"))).toEqual(store.find(largeId)!.decisionRequest);
+    const personLarge = (await route("objective/get", { objectiveId: largeId })).value as { objective: Objective };
+    expect(personLarge.objective.note).toBe(largeBrief);
+    expect(personLarge.objective.criteria).toEqual(store.find(largeId)!.criteria);
     launch.dispose();
   });
 
@@ -2050,11 +2128,30 @@ describe("Objectives contract", () => {
       const notificationFailure = { code: deliveryError.code, message: deliveryError.message };
       expect.soft((await memberView())?.failure).toHaveProperty("notificationFailure", notificationFailure);
       expect.soft(await memberView()).toMatchObject({ failure: { ...oversized, consecutiveFailures: 2 } });
-      expect.soft(await failureRows()).toContainEqual(expect.objectContaining({ sessions: expect.objectContaining({
-        members: expect.arrayContaining([expect.objectContaining({ operationId: memberId,
-          failure: { ...oversized, consecutiveFailures: 2, notificationFailure },
-        })]),
-      }) }));
+      // 한 행의 오류 원문만으로 예산을 넘겨도 식별자·상태·상세 입구를 잃지 않고 다음 페이지로 간다.
+      h.add("inbox-after");
+      store.adopt("inbox-after", {});
+      const compactInbox = await board.execute({ action: "inbox", limit: 1 }, { cwd: workspace }) as { content: { text: string }[]; structuredContent: { total: number; nextOffset: number | null; objectives: unknown[] } };
+      expect(compactInbox.structuredContent.total).toBe(2);
+      expect(compactInbox.structuredContent.nextOffset).toBe(1);
+      const following = await board.execute({ action: "inbox", offset: 1 }, { cwd: workspace }) as { structuredContent: { nextOffset: number | null; objectives: { id: string }[] } };
+      expect(following.structuredContent.objectives.map((row) => row.id)).toEqual(["inbox-after"]);
+      expect(following.structuredContent.nextOffset).toBeNull();
+      expect(Buffer.byteLength(compactInbox.content[0]!.text, "utf8")).toBeLessThanOrEqual(8_000);
+      expect.soft(compactInbox.structuredContent.objectives).toContainEqual(expect.objectContaining({ id, rowTruncated: true, failedMembers: 1, reasons: ["member-failed"] }));
+      const detail = createCommodoreBoardTools(ctx, store, launch, "t1")[1]!;
+      let joined = "";
+      let offset = 0;
+      do {
+        const result = await detail.execute({ action: "read", objectiveId: id, section: "sessions", offset }, { cwd: workspace }) as { isError: boolean; content: { text: string }[]; structuredContent: { text: string; nextOffset: number | null } };
+        expect(result.isError).toBe(false);
+        expect(Buffer.byteLength(result.content[0]!.text, "utf8")).toBeLessThanOrEqual(8_000);
+        joined += result.structuredContent.text;
+        if (result.structuredContent.nextOffset === null) break;
+        expect(result.structuredContent.nextOffset).toBeGreaterThan(offset);
+        offset = result.structuredContent.nextOffset;
+      } while (true);
+      expect(JSON.parse(joined).members).toContainEqual(expect.objectContaining({ operationId: memberId, failure: { ...oversized, consecutiveFailures: 2, notificationFailure } }));
       activity.set(memberId, "idle");
       outcomes.set(memberId, "failed");
       h.emitTurnEnd(memberId);
