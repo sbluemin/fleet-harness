@@ -1188,6 +1188,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
       observe: (operationId) => consoleControl.observe(operationId),
       subscribeTurnEnds: (listener) => consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId }, listener),
+      subscribeSessionMessages: (listener) => consoleControl.subscribeSessionMessages({ kind: "plugin", pluginId }, listener),
       launchState: (input) => { consoleAgentOwners.add(pluginId); return consoleControl.launchKeyState({ kind: "plugin", pluginId }, input.theaterId, input.key); },
       reserveLaunchKeys: (input) => { consoleAgentOwners.add(pluginId); consoleControl.reserveLaunchKeys({ kind: "plugin", pluginId }, input.theaterId, input.keys); },
       launchKeyUsage: () => consoleControl.launchKeyUsage({ kind: "plugin", pluginId }),

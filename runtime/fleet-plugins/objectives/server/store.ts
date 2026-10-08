@@ -1,3 +1,4 @@
+import { missionDispatch } from "./signals.js";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -217,6 +218,11 @@ export interface ObjectiveStore {
   /** 구성원이 마지막으로 메시지를 전달한 턴을 본 시각. */
   memberDelivered(memberId: string): number | undefined;
   setMemberDelivered(memberId: string, at: number): void;
+  /** 지휘관의 세션 간 메시지가 이 구성원에게 닿았다(본문 없음). */
+  recordDispatch(memberId: string, at: number): void;
+  /** 그 구성원의 마지막 발주와 수신 — 발주가 없으면 null. */
+  memberDispatch(memberId: string): { readonly at: number; readonly receivedAt: number | null } | null;
+  recordReceipt(memberId: string, at: number): void;
   /** 실패 없이 닫힌 턴의 무보고 — 실패 ledger 와 같은 수명이다. null 이면 거둔다. */
   settleMemberUnreported(memberId: string, unreported: ObjectiveMemberUnreported | null): void;
   /** 지휘관의 명시적 재발주 — 실패와 무보고의 inbox 표시만 해소한다. */
@@ -549,7 +555,8 @@ function compact(objective: StoredObjective): StoredObjective {
     ...(member.routed ? { routed: member.routed } : {}), ...(member.next ? { next: member.next } : {}),
     // 구성원 수명 상태 — 재시작 뒤에도 실패·무보고 표시와 통지 중복 방지가 이어지도록 남긴다(메시지 본문은 싣지 않는다).
     ...(member.failure ? { failure: member.failure } : {}), ...(member.unreported ? { unreported: member.unreported } : {}),
-    ...(member.settledTurn ? { settledTurn: member.settledTurn } : {}), ...(member.deliveredAt !== undefined ? { deliveredAt: member.deliveredAt } : {}) }));
+    ...(member.settledTurn ? { settledTurn: member.settledTurn } : {}), ...(member.deliveredAt !== undefined ? { deliveredAt: member.deliveredAt } : {}),
+    ...(member.dispatchedAt !== undefined ? { dispatchedAt: member.dispatchedAt } : {}), ...(member.receivedAt !== undefined ? { receivedAt: member.receivedAt } : {}) }));
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
   if (!objective.handoff) delete out.handoff;
@@ -794,6 +801,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           ...(member?.launch.mode === "model" && member.effort ? { effort: member.effort } : {}),
           records: (mission.records ?? []).map((record, index) => ({ ...record, kind: index === 0 ? "done" as const : "redone" as const })),
           seen: mission.seen ?? 0,
+          ...((dispatch) => (dispatch ? { dispatch } : {}))(missionDispatch(mission.assignmentTs, member ? stored.members?.find((entry) => entry.id === member.id) : undefined)),
         };
       }),
     };
@@ -1301,6 +1309,16 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     memberDelivered: (memberId) => { const at = storedMemberOf(memberId)?.deliveredAt; return typeof at === "number" && Number.isFinite(at) ? at : undefined; },
     setMemberDelivered(memberId, at) {
       updateMember(memberId, (member) => ({ ...member, deliveredAt: at }));
+    },
+    recordDispatch(memberId, at) {
+      updateMember(memberId, (member) => ({ ...member, dispatchedAt: at }));
+    },
+    memberDispatch(memberId) {
+      const member = storedMemberOf(memberId);
+      return member ? missionDispatch(undefined, member) : null;
+    },
+    recordReceipt(memberId, at) {
+      updateMember(memberId, (member) => ({ ...member, receivedAt: at }));
     },
     refresh(operationId) {
       const node = operationNode(operationId);

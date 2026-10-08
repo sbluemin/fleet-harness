@@ -98,6 +98,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const outcomes = new Map<string, "running" | "succeeded" | "completed" | "failed" | "interrupted" | "unknown">();
   const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure; readonly report?: import("@fleet-console/sdk/mcp").ConsoleTurnReport }>();
   const turnEndListeners = new Set<(event: import("@fleet-console/sdk/mcp").ConsoleTurnEnd) => void>();
+  const sessionMessageListeners = new Set<(event: import("@fleet-console/sdk/mcp").ConsoleSessionMessage) => void>();
   const interrupted: string[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string }[] = [];
   const resumed: string[] = [];
@@ -215,6 +216,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
         transcript: async (operationId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${operationId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
         observe: observeSession,
         subscribeTurnEnds: (listener: (event: import("@fleet-console/sdk/mcp").ConsoleTurnEnd) => void) => { turnEndListeners.add(listener); return () => { turnEndListeners.delete(listener); }; },
+        subscribeSessionMessages: (listener: (event: import("@fleet-console/sdk/mcp").ConsoleSessionMessage) => void) => { sessionMessageListeners.add(listener); return () => { sessionMessageListeners.delete(listener); }; },
         // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
         sleep: async (operationId: string) => {
           const state = activity.get(operationId);
@@ -285,7 +287,9 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ operationId: id, output });
-  }, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, restart, advanceClock: (ms: number) => { clock += ms; } };
+  }, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, restart, advanceClock: (ms: number) => { clock += ms; },
+    // 호스트처럼 본문 없이 보낸·받은 Operation 과 시각만 건넨다.
+    emitSessionMessage: (fromOperationId: string, toOperationId: string) => { for (const listener of sessionMessageListeners) listener({ fromOperationId, toOperationId, at: clock }); } };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -2454,7 +2458,7 @@ describe("Objectives contract", () => {
 
   it("wakes the commander once when an assigned ready mission stays unreported and never steers", async () => {
     const reportQuietMs = 25 * 60_000;
-    const { store, launch, call, sent, activity, advanceClock, restart } = harness(() => null, { reportQuietMs });
+    const { store, launch, call, sent, activity, advanceClock, restart, emitSessionMessage } = harness(() => null, { reportQuietMs });
     const objective = await launch.create({ theaterId: "t1", title: "Quiet", groupId: null, missions: [{ text: "report back" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -2483,6 +2487,27 @@ describe("Objectives contract", () => {
       activity.set(memberId, "idle");
       await vi.advanceTimersByTimeAsync(1_000);
       expect(quietSends()).toHaveLength(0);
+      // 발주·수신 흔적 — 지휘관이 배정 구성원에게 보낸 말이 닿은 시각과, 그 뒤 구성원이 일을 집어 든 시각이 임무 행에 선다. 본문은 싣지 않는다.
+      launch.watchLiveOutcomes();
+      const dispatchOf = (from = store) => from.find(objective.id)!.missions.find((entry) => entry.id === mission!.id)?.dispatch;
+      expect(dispatchOf()).toBeUndefined();
+      emitSessionMessage(commander, memberId);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(dispatchOf()).toEqual({ at: expect.any(Number), receivedAt: null });
+      const dispatchedAt = dispatchOf()!.at;
+      activity.set(memberId, "running");
+      // 이 목표의 감시 타이머는 가짜 시계 전에 걸렸다 — 관측을 다시 훑는 공개 경로로 같은 정산을 부른다.
+      launch.watchLiveOutcomes();
+      expect(dispatchOf()).toEqual({ at: dispatchedAt, receivedAt: expect.any(Number) });
+      expect(dispatchOf()!.receivedAt!).toBeGreaterThanOrEqual(dispatchedAt);
+      // 지휘관·사령관이 읽는 보드에도 같은 흔적이 시각만으로 선다.
+      const board = (await call("read", { objectiveId: objective.id }, commander)).structuredContent.objective as { graph: { missions: { missionId: string; dispatch?: unknown }[] } };
+      expect(board.graph.missions.find((entry) => entry.missionId === mission!.id)?.dispatch).toEqual({ sentAt: new Date(dispatchedAt).toISOString(), receivedAt: new Date(dispatchOf()!.receivedAt!).toISOString() });
+      // 구성원이 지휘관에게 보낸 말은 발주가 아니다.
+      emitSessionMessage(memberId, commander);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(dispatchOf()!.at).toBe(dispatchedAt);
+      activity.set(memberId, "idle");
       advanceClock(reportQuietMs + 5_000);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(quietSends()).toEqual([expect.objectContaining({ operationId: commander, text: expect.stringContaining("No report for 25 min since assignment") })]);
@@ -2512,6 +2537,8 @@ describe("Objectives contract", () => {
       launch.dispose();
       const after = restart();
       after.launch.watchReportQuiet();
+      // 발주·수신 흔적은 재시작 뒤에도 그 임무 행에 남는다.
+      expect(dispatchOf(after.store)).toEqual({ at: dispatchedAt, receivedAt: expect.any(Number) });
       expect(after.store.find(objective.id)).toMatchObject({ stoppedAt, missions: expect.arrayContaining([expect.objectContaining({ id: mission!.id, member: expect.any(String), done: false })]) });
       advanceClock(reportQuietMs + 5_000);
       await vi.advanceTimersByTimeAsync(1_000);

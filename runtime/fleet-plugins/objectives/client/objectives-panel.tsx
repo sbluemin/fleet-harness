@@ -1831,6 +1831,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
               ? <span className="objectives-wait is-ready">{t("objectives.missions.ready")}</span>
               : <span className="objectives-wait" title={t("objectives.missions.waiting")}>{t("objectives.missions.prerequisites", { missions: mission.prerequisites.filter((id) => !objective.missions.find((candidate) => candidate.id === id)?.done).map(numberOf).filter((n) => n > 0).join("·") })}</span>) : null}
             {quiet ? <span className="objectives-mission-quiet">{quiet}</span> : null}
+            {/* 발주·수신 흔적 — 지휘관의 말이 담당에게 닿은 시각과 담당이 집어 든 시각. 본문은 보드에 없다. */}
+            {!mission.done && mission.dispatch ? <span className="objectives-mission-dispatch">{mission.dispatch.receivedAt !== null
+              ? t("objectives.missions.dispatchReceived", { sent: recordTime(mission.dispatch.at, language, ""), received: recordTime(mission.dispatch.receivedAt, language, "") })
+              : t("objectives.missions.dispatchSent", { sent: recordTime(mission.dispatch.at, language, "") })}</span> : null}
             <span className="objectives-mission-tools">
               {!mission.done && touchable ? <AssignControl t={t} objective={objective} mission={mission} rows={launchRows} operationState={operationState} onAssign={(member) => void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { member } })} onCreate={async (role) => { const result = await call<{ objective: Objective }>("/member/add", { objectiveId: objective.id, member: { role } }); const member = result?.objective.members.at(-1); return member ? !!(await call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { member: member.id } })) : false; }} label={t("objectives.missions.setMember")} /> : null}
               {notStarted(mission) && touchable ? <button type="button" className="objectives-glyph" title={t("objectives.missions.remove")} aria-label={t("objectives.missions.remove")} onClick={() => void call("/mission/remove", { objectiveId: objective.id, missionId: mission.id })}><TrashGlyph /></button> : null}

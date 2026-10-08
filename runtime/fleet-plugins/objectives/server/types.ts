@@ -217,6 +217,10 @@ export interface StoredMember {
   readonly settledTurn?: SettledTurn;
   /** 구성원이 마지막으로 메시지를 전달한 턴을 본 시각(ms) — 배정 뒤 보고 빚을 가른다. 화면에 싣지 않는다. */
   readonly deliveredAt?: number;
+  /** 지휘관의 세션 간 메시지가 이 구성원에게 마지막으로 닿은 시각(ms). 본문은 남기지 않는다. 화면에는 임무 행의 발주 흔적으로만 선다. */
+  readonly dispatchedAt?: number;
+  /** 그 발주 뒤 구성원이 일을 집어 든(턴을 연) 것을 처음 본 시각(ms). */
+  readonly receivedAt?: number;
 }
 
 /** 정산한 턴의 좌표 — 프로세스 세대와 그 세대 안의 턴 revision. */
@@ -225,7 +229,7 @@ export interface SettledTurn {
   readonly revision: number;
 }
 
-export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents" | "routed" | "next" | "settledTurn" | "deliveredAt"> {
+export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents" | "routed" | "next" | "settledTurn" | "deliveredAt" | "dispatchedAt" | "receivedAt"> {
   readonly launch: MemberSelection;
   /** 저장된 허용. 키 없음은 false. */
   readonly subagents: boolean;
@@ -689,6 +693,14 @@ export interface ObjectiveMission {
   readonly effort?: string;
   readonly records: readonly MissionRecord[];
   readonly seen: number;
+  /** 발주·수신 흔적 — 배정 뒤 지휘관의 말이 담당에게 닿았을 때만(signals.ts missionDispatch). 본문은 없다. */
+  readonly dispatch?: MissionDispatch;
+}
+
+/** 발주가 담당에게 닿은 시각과, 그 뒤 담당이 일을 집어 든 시각(아직이면 null). */
+export interface MissionDispatch {
+  readonly at: number;
+  readonly receivedAt: number | null;
 }
 
 export interface ObjectiveCriterion {

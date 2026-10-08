@@ -899,12 +899,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const sameTurn = (a: { readonly generation?: string; readonly revision: number } | undefined, b: { readonly generation?: string; readonly revision: number }) =>
     !!a && a.generation === b.generation && a.revision === b.revision;
   let unsubscribeTurnEnds: (() => void) | null = null;
+  let unsubscribeSessionMessages: (() => void) | null = null;
   const outcomeWatched = new Map<string, string>();
   let outcomeTimer: ReturnType<typeof setTimeout> | null = null;
   const dropOutcome = (operationId: string) => {
     lastOutcomes.delete(operationId);
     outcomeWatched.delete(operationId);
-    if (outcomeWatched.size === 0) { unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null; }
+    if (outcomeWatched.size === 0) { unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null; unsubscribeSessionMessages?.(); unsubscribeSessionMessages = null; }
   };
   const forgetOutcome = (operationId: string) => {
     store.settleMemberFailure(operationId, null);
@@ -932,6 +933,17 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const current = store.find(objectiveId);
     const member = operationId === objectiveId ? undefined : current?.members.find((entry) => entry.id === operationId);
     const outcome = observation.output?.outcome;
+    // 수신 — 발주 뒤 구성원이 일을 집어 든 것을 처음 본 시각. 턴이 돌거나(작업·대기·백그라운드) 발주 뒤 새 턴이 닫히면 그 말을 받은 것이다.
+    const dispatch = member ? store.memberDispatch(operationId) : null;
+    if (member && dispatch && dispatch.receivedAt === null) {
+      const settled = store.memberTurn(operationId);
+      const newTurn = (outcome === "failed" || outcome === "succeeded" || outcome === "completed")
+        && (!settled || settled.generation !== observation.generation || (observation.output.revision ?? 0) > settled.revision);
+      if (observation.activity === "running" || observation.activity === "background" || observation.activity === "awaiting" || newTurn) {
+        store.recordReceipt(operationId, Math.max(quietNow(), dispatch.at));
+        changed = true;
+      }
+    }
     if (member && current && !current.done && (outcome === "failed" || outcome === "succeeded" || outcome === "completed")) {
       const previous = store.memberTurn(operationId);
       const revision = observation.output.revision ?? 0;
@@ -997,6 +1009,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   };
   const armOutcomeWatch = () => {
     if (disposed || outcomeWatched.size === 0) return;
+    // 발주 — 지휘관의 세션 간 메시지가 그 목표의 구성원에게 닿았다(호스트가 보낸·받은 Operation 과 시각만 건넨다).
+    if (!unsubscribeSessionMessages) unsubscribeSessionMessages = ctx.host.consoleControl?.subscribeSessionMessages?.((event) => {
+      if (disposed) return;
+      const owner = store.findMember(event.toOperationId)?.objective;
+      if (!owner || owner.done || owner.id !== event.fromOperationId) return;
+      store.recordDispatch(event.toOperationId, event.at);
+    }) ?? null;
     if (!unsubscribeTurnEnds) unsubscribeTurnEnds = ctx.host.consoleControl?.subscribeTurnEnds?.((event) => {
       if (disposed) return;
       const current = outcomeOwner(event.operationId);
@@ -1573,6 +1592,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       outcomeWatched.clear();
       lastOutcomes.clear();
       unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null;
+      unsubscribeSessionMessages?.(); unsubscribeSessionMessages = null;
       // 구성원 실패·무보고·정산 좌표는 보드 사실이다 — 플러그인이 내려가도 지우지 않는다(다음 기동이 그대로 이어 읽는다).
       if (quietTimer) clearTimeout(quietTimer);
       quietTimer = null;

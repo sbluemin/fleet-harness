@@ -2,7 +2,7 @@ import type { ClientNavigateCapability, ClientShellCapability } from "../navigat
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
-import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
+import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
@@ -1164,6 +1164,8 @@ export interface FleetPluginConsoleControlHost {
   observe(operationId: string): ConsoleOperationObservation | null;
   /** 소유한 세션의 종료 snapshot. 다음 턴이 곧 시작해도 polling이 실패를 놓치지 않는다. */
   subscribeTurnEnds?(listener: (event: ConsoleTurnEnd) => void): () => void;
+  /** 소유한 세션 사이에 닿은 세션 간 메시지 — 보낸·받은 Operation 과 시각만(본문 없음). 보낸 쪽이 채팅 세션일 때만 관측된다. */
+  subscribeSessionMessages?(listener: (event: ConsoleSessionMessage) => void): () => void;
   /**
    * 유휴 Agent Operation을 휴면으로 보낸다. 진행 중이면 not_idle. `dormant` 는 옛 프로세스가 끝난 것까지 확인했다는 뜻이고,
    * `ending` 은 휴면으로 전이했지만 그 종료를 아직 확인하지 못했다는 뜻이다. 어느 쪽이든 곧바로 재개를 보내도 된다 — 호스트는 옛 프로세스가

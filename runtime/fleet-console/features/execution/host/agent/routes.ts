@@ -2213,13 +2213,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
          * 여기서 `ensure`를 부르면 말 한 통이 잠든 Operation의 자식을 깨우게 된다.
          */
         onSessionMessageSent: ({ to, text, toolUseId }) => {
-          const from = readAgentSession(ctx.host.operations.get(node.id)?.payload)?.sessionName;
-          if (!from) return;
           // 받는 쪽은 구성원(부모 안의 자식 세션)일 수 있다 — 부모와 그 자식의 합성 뷰를 함께 본다.
           const sessions = ctx.host.operations.list().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])]);
           const matches = sessions.filter((candidate) => candidate.type === AGENT_OPERATION_TYPE
             && readAgentSession(candidate.payload)?.sessionName === to);
           if (matches.length !== 1) return;
+          // 본문 없이 도착 사실만 Console 제어에 알린다 — 목표 보드의 발주 흔적이 이 좌표를 읽는다. 받는 쪽이 터미널·휴면이어도 전달은 성공했다.
+          ctx.consoleControl?.reportSessionMessage(node.id, matches[0]!.id, Date.now());
+          const from = readAgentSession(ctx.host.operations.get(node.id)?.payload)?.sessionName;
+          if (!from) return;
           chatRegistry.get(matches[0]!.id)?.noteReceived({ id: `${node.id}:${toolUseId}`, from, text });
         },
         cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },

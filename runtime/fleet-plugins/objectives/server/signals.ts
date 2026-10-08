@@ -11,6 +11,17 @@ export function quietSince(assignmentTs: number, lastBoardChange: number): numbe
   return Math.max(assignmentTs, lastBoardChange);
 }
 
+/**
+ * 임무 행의 발주·수신 흔적 — 담당 구성원에게 지휘관의 세션 간 메시지가 닿은 시각과 그 뒤 구성원이 일을 집어 든 시각. 배정 뒤에 닿은 발주만
+ * 그 임무의 것이다(무보고 계산과 같은 배정 시각 기준). 본문은 어디에도 남기지 않는다. 발주가 없거나 배정 전이면 null.
+ */
+export function missionDispatch(assignmentTs: number | undefined, member: { readonly dispatchedAt?: number; readonly receivedAt?: number } | undefined): { readonly at: number; readonly receivedAt: number | null } | null {
+  const at = member?.dispatchedAt;
+  if (typeof at !== "number" || !Number.isFinite(at) || at < (assignmentTs ?? 0)) return null;
+  const received = member?.receivedAt;
+  return { at, receivedAt: typeof received === "number" && Number.isFinite(received) && received >= at ? received : null };
+}
+
 /** 무보고 사실 한 줄. 화면 뱃지와 지휘관 깨움이 이 문장만 쓴다. */
 export function describeQuietMission(minutes: number, language: "en" | "ko"): string {
   const n = Math.max(0, Math.floor(minutes));

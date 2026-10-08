@@ -248,6 +248,14 @@ describe("agent chat mode routes", () => {
     expect(tail).toMatchObject({ source: "chat", nextCursor: null });
     expect("entries" in tail && tail.entries.some((entry) => entry.kind === "user" && String(entry.text).includes("Own work"))).toBe(true);
     await expect(harness.consoleControl.transcript(plugin, commander, { limit: 5, tail: true })).resolves.toEqual({ error: "forbidden" });
+    // 세션 간 메시지 도착은 보낸·받은 Operation 과 시각만 그 둘을 띄운 플러그인에 건넨다 — 본문은 없고, 남이 띄운 세션 사이의 말은 건네지 않는다.
+    const peer = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "peer" })).operationId;
+    const arrivals: import("@fleet-console/sdk/mcp").ConsoleSessionMessage[] = [];
+    cleanups.push(harness.consoleControl.subscribeSessionMessages(plugin, (event) => arrivals.push(event)));
+    harness.emitToLatest(sent("call-peer", "peer", "Mission 2 is yours."));
+    harness.emitToLatest(settled("call-peer", true));
+    await vi.waitFor(() => expect(arrivals).toEqual([{ fromOperationId: owned, toOperationId: peer, at: expect.any(Number) }]));
+    expect(received()).toHaveLength(2);
 
     // SDK 원시 오류 result만 도착해도 실패 구조와 종료 포트가 만들어진다. 모델 텍스트·도구 호출은 주입하지 않는다.
     const apiError = "API Error: 529 The backend is temporarily overloaded. Please retry.";
