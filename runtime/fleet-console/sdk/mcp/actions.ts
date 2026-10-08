@@ -197,15 +197,22 @@ function fieldSchemas(input: z.ZodObject): { readonly properties: Readonly<Recor
 }
 
 /**
- * 광고 스키마에서 검증 전용 한계를 걷어 낸다 — 문자열·배열 길이와 zod `int()` 의 안전 정수 한계는 모델에게 잡음이고
- * 도구 목록의 무게만 늘린다. 수의 범위(limit·waitMs 같은)와 enum 은 남긴다. 정확한 제약은 서버가 action별 strict 로 본다.
+ * 광고 스키마의 한계는 모델이 평범한 호출에서도 넘길 수 있는 짧은 것만 남긴다 — 넘겨서 invalid_arguments 로 되돌아오는
+ * 왕복을 막는 한도(제목·사유·한 줄 입력)다. 긴 본문 한도·최소 길이·최소 개수와 zod `int()` 의 안전 정수 한계는 잡음이라
+ * 걷어 낸다. 수의 범위와 enum 은 남긴다. 정확한 제약은 서버가 action별 strict 로 본다.
  */
-const LENGTH_BOUNDS = new Set(["minLength", "maxLength", "minItems", "maxItems"]);
+const SHORT_MAX_LENGTH = 1000;
+const SHORT_MAX_ITEMS = 20;
+const dropBound = (key: string, entry: unknown) =>
+  key === "minLength" || key === "minItems"
+  || (key === "maxLength" && typeof entry === "number" && entry >= SHORT_MAX_LENGTH)
+  || (key === "maxItems" && typeof entry === "number" && entry > SHORT_MAX_ITEMS)
+  || (key === "minimum" && entry === Number.MIN_SAFE_INTEGER) || (key === "maximum" && entry === Number.MAX_SAFE_INTEGER);
 function advertisedBounds(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(advertisedBounds);
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(Object.entries(value)
-    .filter(([key, entry]) => !LENGTH_BOUNDS.has(key) && !((key === "minimum" && entry === Number.MIN_SAFE_INTEGER) || (key === "maximum" && entry === Number.MAX_SAFE_INTEGER)))
+    .filter(([key, entry]) => !dropBound(key, entry))
     .map(([key, entry]) => [key, key === "properties" ? Object.fromEntries(Object.entries(entry as Record<string, unknown>).map(([field, schema]) => [field, advertisedBounds(schema)])) : advertisedBounds(entry)]));
 }
 
@@ -250,6 +257,8 @@ function mergeField(tool: string, key: string, variants: readonly JsonSchema[]):
     };
     widest("minimum", (values) => Math.min(...values));
     widest("maximum", (values) => Math.max(...values));
+    // 남은 maxLength 는 가장 넓은 값으로 — 어느 action 이든 한도 없이 광고된 필드면 합친 필드에도 한도가 없다.
+    widest("maxLength", (values) => Math.max(...values));
     if (branches.every((branch) => Array.isArray(branch.enum))) loose.enum = [...new Set(branches.flatMap((branch) => branch.enum as unknown[]))];
   } else {
     loose = types.length === 1 ? { type: types[0] } : { anyOf: types.map((type) => ({ type })) };
