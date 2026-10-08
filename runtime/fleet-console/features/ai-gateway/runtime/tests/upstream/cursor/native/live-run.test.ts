@@ -757,6 +757,8 @@ describe("Cursor live client-tool Run bridge", () => {
         cursorToolPartialFrame(foreignRead),
         cursorToolStartedFrame(foreignRead),
         cursorToolCompletedFrame(foreignRead),
+        // A late unadvertised call of our provider is held with the batch, not a reason to drop the Run.
+        ...cursorToolFrames([unadvertised]),
       ]);
       const secondEvents = await collectCursorResponseWithDiagnostics(
         harness.adapter,
@@ -766,10 +768,15 @@ describe("Cursor live client-tool Run bridge", () => {
 
       expect(canonicalText(secondEvents)).toBe("first exec completed");
       const dropped = diagnostics.filter((event) => event.event === "tool.mcp.dropped");
-      expect(dropped).toEqual([expect.objectContaining({
-        toolName: "read", providerIdentifier: "external-provider", reason: "foreign_provider", count: 1,
-        runId: diagnostics.find((event) => event.event === "turn.start")?.runId,
-      })]);
+      const runId = diagnostics.find((event) => event.event === "turn.start")?.runId;
+      expect(dropped).toEqual([
+        expect.objectContaining({
+          toolName: "read", providerIdentifier: "external-provider", reason: "foreign_provider", count: 1, runId,
+        }),
+        expect.objectContaining({
+          toolName: "not_probe_tool", providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER, reason: "catalog_miss", count: 1, runId,
+        }),
+      ]);
       expect(diagnostics).toContainEqual(expect.objectContaining({
         event: "server.frame",
         frame: "interactionUpdate.unknownField25",

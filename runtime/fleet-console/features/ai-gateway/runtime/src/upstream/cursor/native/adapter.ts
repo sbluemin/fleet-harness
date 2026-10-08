@@ -4311,12 +4311,22 @@ function isCursorClientToolFrame(
   reportDroppedMcpCall: CursorMcpDropReporter,
 ): boolean {
   const update = isRecord(frame.interactionUpdate) ? frame.interactionUpdate : undefined;
-  if (update !== undefined) return cursorToolUpdateIdentifiers(update) !== undefined;
+  if (update !== undefined) {
+    const identifiers = cursorToolUpdateIdentifiers(update);
+    // Count a rejected call when it is held: the parked Run may expire or abort before replay.
+    const value = CURSOR_TOOL_UPDATE_CASES.map((key) => update[key]).find(isRecord);
+    const updateCall = value ? mcpCallFromToolUpdate(value) : null;
+    if (updateCall) cursorClientMcpCall(updateCall, tools, reportDroppedMcpCall);
+    return identifiers !== undefined;
+  }
   const exec = isRecord(frame.execServerMessage) ? frame.execServerMessage : undefined;
   if (exec === undefined) return false;
   const wireCall = mcpCallFromExecMessage(exec);
   const call = wireCall ? cursorClientMcpCall(wireCall, tools, reportDroppedMcpCall) : null;
   if (call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) return true;
+  // An unadvertised call of our provider is held too; replayed after attach it gets its policy
+  // reply in order instead of discarding the warm Run for the valid calls parked with it.
+  if (wireCall?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) return true;
   const references = cursorNativeRedirectToolReferences(redirectTools);
   // A native read is held whatever its range, as it was before ranges were decoded. Its range may
   // depend on a toolCallStarted frame that is itself still held here, and the replayed read gets a
