@@ -34,7 +34,7 @@ Check the consolidated result against actual consumer paths:
 - Does repeated logic have identical semantics, literal-only differences, or necessary caller-specific exceptions?
 - Does a reshape/forward wrapper own an API, permission, or lifecycle contract?
 - Can parallel types/builders share a discriminant without erasing domain meaning?
-- Is an apparently dead export public API or dynamically referenced? Before calling an export, CSS class, or symbol unused, list every consumer, including CSS classes another component borrows, objects passed whole (such as a `deps` object), and type-only paths; a name search alone does not settle it, and typecheck is the evidence for pass-through paths.
+- Is an apparently dead export public API or dynamically referenced?
 
 Present the diagnosis, estimated savings, and preserved contracts; deduplicate only within approval. Place shared helpers at an allowed common dependency owner, never reaching back into hosts. Do not merge semantically different functions just to reduce lines.
 
@@ -46,6 +46,6 @@ Run each package script explicitly per wave:
 cd <absolute-worktree> && pnpm --filter <pkg> typecheck && pnpm --filter <pkg> test && pnpm --filter <pkg> build
 ```
 
-Check affected consumer builds, residual imports/dead references to removed paths (searched with `git grep --untracked`, since rg's defaults skip hidden and ignored paths such as `.claude` and plain `git grep` skips new unstaged files), public exports, and module-state ownership. Disclose missing scripts or blocked checks. Repair task-induced regressions and repeat verification.
+Disclose missing scripts or blocked checks. Repair task-induced regressions and repeat verification.
 
 Finish when approved consolidation/deduplication and relevant checks are complete. Do not expand into general refactoring. Report before/after, API preservation, changed files, checks/results (every count taken from output re-run after the last edit), and unverified scope. Commits/PRs require a separately requested or authorized lifecycle.
