@@ -6,7 +6,7 @@ import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/his
 
 import { getT } from "../i18n/index.js";
 import { MobileGlyph, useMobileSurface } from "../mobile-surface.js";
-import { useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
+import { getTerminalPrefsSnapshot, useChatHistoryAutoFold, useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
 import { agentChatAttachmentPreviewUrl, messageAgentSession, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
@@ -42,7 +42,7 @@ import {
 } from "./chat-events.js";
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
-import { AgentChatComposer, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
+import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
@@ -185,7 +185,13 @@ export function AgentChatView({
   React.useEffect(() => setOpenedToolIds(new Set()), [context.operationId]);
   // 로그는 마지막 문답만 보여 준다. 앞선 턴은 상단 밴드 뒤에 접혀 있고, 누르거나 맨 위에서
   // 위로 한 번 더 굴리면 펼쳐진다. 새 턴이 서면(팔로우 중일 때) 다시 접힌다.
-  const [historyOpen, setHistoryOpen] = React.useState(false);
+  //
+  // 자동 접기 설정(콘솔 단위)을 끄면 앞선 턴을 처음부터 펼친 채 두고, 새 턴과 패널 재활성에서도
+  // 접지 않는다. 밴드를 손으로 펼치고 접는 것은 이 패널의 지역 상태라 다른 패널에 번지지 않는다.
+  const autoFold = useChatHistoryAutoFold();
+  const autoFoldRef = React.useRef(autoFold);
+  autoFoldRef.current = autoFold;
+  const [historyOpen, setHistoryOpen] = React.useState(() => !getTerminalPrefsSnapshot().chatHistoryAutoFold);
   const [openJobId, setOpenJobId] = React.useState<string | null>(null);
   /** 시트가 대화를 얼마나 덮는가. 이 패널이 사는 동안만 기억한다 — 영속 선호가 아니다. */
   const [workTall, setWorkTall] = React.useState(false);
@@ -311,6 +317,10 @@ export function AgentChatView({
       setUnseenTurns((current) => current + arrived);
       return;
     }
+    // 자동 접기를 끈 패널은 접지도, 맨 위로 되돌리지도 않는다 — 앞선 문답이 펼친 채 위에 서 있어
+    // scrollTop 0은 새 질문이 아니라 세션의 첫 질문을 가리킨다. 그 대신 바닥 추적이 새 문답을
+    // 따라간다(위 성장 효과가 턴 수 변화에 바닥으로 보낸다).
+    if (!autoFoldRef.current) return;
     // 새 문답이 서면 앞선 문답은 밴드 뒤로 물러나고 그 질문이 로그 상단에 앉는다 — 답은 그
     // 아래에서 자라고, 화면을 넘길 때만 팔로우가 바닥을 따른다.
     setHistoryOpen(false);
@@ -334,7 +344,9 @@ export function AgentChatView({
       nearBottomRef.current = true;
       bottomDistanceRef.current = null;
       setFollowing(true);
-      setHistoryOpen(false);
+      // 자동 접기를 끈 패널은 접지 않고 펼친 채로 돌려 둔다 — 손으로 접어 둔 것도 여기서 풀린다(켜짐의
+      // 패널이 손으로 펼친 것을 여기서 접는 것과 같은 짝이다).
+      setHistoryOpen(!autoFoldRef.current);
     } else if (!wasLiveRef.current) {
       reactivatedRef.current = true;
     }
@@ -354,6 +366,17 @@ export function AgentChatView({
     setHistoryOpen(true);
   }, [markHistoryAnchor]);
   useHistoryReveal({ ref: logRef, armed: !historyOpen && state.turns.length > 1, onReveal: revealHistory });
+  // 설정을 바꾸는 순간 열린 모든 패널이 따른다 — 끄면 펼치고, 켜면 접는다. 손으로 펼치는 것과
+  // 같은 앵커(바닥까지의 거리)를 남겨 읽던 자리를 지킨다. 이미 그 상태인 패널은 앵커를 남기지
+  // 않는다 — 남은 앵커가 다음 새 턴의 접힘 경로를 덮지 않게.
+  const appliedAutoFoldRef = React.useRef(autoFold);
+  React.useLayoutEffect(() => {
+    if (appliedAutoFoldRef.current === autoFold) return;
+    appliedAutoFoldRef.current = autoFold;
+    if (historyOpen === !autoFold) return;
+    markHistoryAnchor();
+    setHistoryOpen(!autoFold);
+  }, [autoFold, historyOpen, markHistoryAnchor]);
 
   // 스냅숏이 끝나 화면이 바뀌는 순간 — 턴 수가 그대로여도 목록이 통째로 바뀌므로 바닥 추적을 한 번 다시 한다.
   React.useLayoutEffect(() => {
@@ -943,7 +966,7 @@ function SessionCoordinate({
 
 /**
  * 구성원 바닥 줄 — 입력 틀이 빠진 자리에 남는 한 줄이다. 순서는 좌표 · 선반 ·
- * [문맥 계기][중지][채팅 폭 글리프]. 컴포저 표시줄과 같은 세 칸 그리드와 같은 글리프
+ * [문맥 계기][중지][자동 접기 글리프][채팅 폭 글리프]. 컴포저 표시줄과 같은 세 칸 그리드와 같은 글리프
  * 규격을 쓰므로(CSS 클래스 공유), 두 표면이 같은 과녁과 같은 리듬을 지킨다.
  *
  * 함께 빠지는 것: 입력 틀, 예약 목록(예약할 입력이 없다), 이미지 투입구. 허용 요청 카드와
@@ -990,6 +1013,7 @@ function MemberChatFooter({
               <span className="agent-chat-composer-stop-mark" aria-hidden="true" />
             </button>
           ) : null}
+          <HistoryFoldButton language={language} />
           <MemberWidthButton hostRef={footRef} language={language} />
         </span>
       </div>

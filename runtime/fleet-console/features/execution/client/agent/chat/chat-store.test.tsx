@@ -4,8 +4,10 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { connectTerminalSettings } from "../../terminal/shared/terminal-preferences.js";
 import { useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } from "./chat-store.js";
 import { splitAgentChatTurn, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";
+import { AgentChatView } from "./chat-view.js";
 
 class FakeWebSocket implements ChatWebSocketLike {
   static instances: FakeWebSocket[] = [];
@@ -207,5 +209,67 @@ describe("useAgentChatStream", () => {
     }));
     expect(durableTurns(latest?.turns)).toEqual(durableTurns(liveTurns));
     expect(latest?.connection).toBe("open");
+  });
+});
+
+describe("AgentChatView history auto-fold", () => {
+  it("folds earlier turns on a new turn by default and keeps them open once the persisted setting is off", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const context = { operationId: "op-fold", language: "en", bodyLive: true, operation: { id: "op-fold", payload: {} }, runtimeState: null } as never;
+    act(() => {
+      root!.render(createElement(AgentChatView, { context, tourAnchors: false }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const socket = FakeWebSocket.instances[0]!;
+    let seq = 0;
+    const emit = (...events: AgentChatStreamEvent[]) => act(() => {
+      for (const event of events) socket.onmessage?.({ data: JSON.stringify({ seq: ++seq, event }) });
+    });
+    const newTurn = (text: string) => emit({ kind: "dispatch", text }, { kind: "turn-start" });
+    const history = () => container!.querySelector<HTMLElement>(".agent-chat-history")!;
+    act(() => socket.open());
+    emit(
+      { kind: "replay-start" },
+      { kind: "dispatch", text: "first" },
+      { kind: "turn-start" },
+      { kind: "turn-end", ok: true, answer: "done" },
+      { kind: "replay-end", turns: 1 },
+      { kind: "snapshot-end", turns: 1 },
+    );
+    newTurn("second");
+
+    // 기본(켜짐)은 현행 그대로다 — 손으로 펼친 이전 대화도 새 턴이 서면 다시 접힌다.
+    expect(history().hidden).toBe(true);
+    act(() => container!.querySelector<HTMLElement>(".fc-history-band")!.click());
+    expect(history().hidden).toBe(false);
+    newTurn("third");
+    expect(history().hidden).toBe(true);
+
+    // 서버 설정에 저장된 꺼짐이 하이드레이트로 돌아오면 열린 패널이 곧바로 펼치고, 새 턴에도 접지 않는다.
+    let stored: Record<string, unknown> = { chatReadingWidth: "wide", chatHistoryAutoFold: false };
+    connectTerminalSettings({
+      read: async () => stored,
+      write: async (_pluginId, value) => { stored = value; },
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(history().hidden).toBe(false);
+    newTurn("fourth");
+    expect(history().hidden).toBe(false);
+
+    // 글리프로 다시 켜면 접히고, 값은 같은 설정 레코드에 다른 키를 지우지 않고 병합된다.
+    const toggle = container!.querySelector<HTMLButtonElement>("button[aria-pressed]")!;
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => {
+      toggle.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(history().hidden).toBe(true);
+    expect(stored).toEqual({ chatReadingWidth: "wide", chatHistoryAutoFold: true });
   });
 });

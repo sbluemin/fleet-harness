@@ -146,6 +146,28 @@ export function CaptionReadingWidthGlyph({ preset }: { readonly preset: CaptionR
   );
 }
 
+/**
+ * 이전 대화 자동 접기 — 켬/끔을 글리프가 그린다. 켜짐은 접힌 앞선 문답(두 줄) 아래 마지막 문답
+ * 한 칸이고, 꺼짐은 두 칸이 나란히 펼친 채 선다. 눌림 여부는 `aria-pressed`가 함께 말한다.
+ */
+export function CaptionHistoryFoldGlyph({ autoFold }: { readonly autoFold: boolean }) {
+  if (autoFold) {
+    return (
+      <CaptionGlyph>
+        <path d="M3 3.2h10" {...STROKE} />
+        <path d="M3 5.9h10" {...STROKE} />
+        <rect x="3" y="8.6" width="10" height="4.8" rx="1.3" {...STROKE} />
+      </CaptionGlyph>
+    );
+  }
+  return (
+    <CaptionGlyph>
+      <rect x="3" y="2.6" width="10" height="4.6" rx="1.3" {...STROKE} />
+      <rect x="3" y="8.8" width="10" height="4.6" rx="1.3" {...STROKE} />
+    </CaptionGlyph>
+  );
+}
+
 export interface CaptionTipHostProps {
   /** 말풍선에 적히는 문장. 버튼의 접근 이름과 같은 문자열이어야 한다. */
   readonly label: string;
