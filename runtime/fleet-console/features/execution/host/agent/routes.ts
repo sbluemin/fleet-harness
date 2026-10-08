@@ -2212,6 +2212,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
          * 보낸 이름도 본문이 아니라 서버가 들고 있는 값을 쓰고, 이미 열려 있는 채팅 세션에만 건넨다.
          * 여기서 `ensure`를 부르면 말 한 통이 잠든 Operation의 자식을 깨우게 된다.
          */
+        // 받는 쪽 관측 — 보낸 쪽이 터미널이어도 이 세션의 트랜스크립트가 말한 보낸 이름을 등록으로 풀어 같은 도착 사실을 알린다.
+        onPeerMessageReceived: ({ fromName, at }) => {
+          const sessions = ctx.host.operations.list().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])]);
+          const senders = sessions.filter((candidate) => candidate.type === AGENT_OPERATION_TYPE && readAgentSession(candidate.payload)?.sessionName === fromName);
+          if (senders.length !== 1) return;
+          ctx.consoleControl?.reportSessionMessage(senders[0]!.id, node.id, at);
+        },
         onSessionMessageSent: ({ to, text, toolUseId }) => {
           // 받는 쪽은 구성원(부모 안의 자식 세션)일 수 있다 — 부모와 그 자식의 합성 뷰를 함께 본다.
           const sessions = ctx.host.operations.list().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])]);

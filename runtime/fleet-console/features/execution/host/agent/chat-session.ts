@@ -190,6 +190,11 @@ export interface AgentChatSessionSeed {
    * 라우트)이 한다 — 세션은 레지스트리를 모른다.
    */
   readonly onSessionMessageSent?: (sent: { readonly to: string; readonly text: string; readonly toolUseId: string }) => void;
+  /**
+   * 다른 세션의 세션 간 메시지가 이 세션에 닿았다 — 자식의 트랜스크립트가 `origin.kind:"peer"` 로 적은 user 레코드에서 보낸 이름과
+   * 시각만 읽는다(본문은 읽지 않는다). 보낸 쪽이 터미널이라 발신 관측이 없어도 도착은 여기서 보인다.
+   */
+  readonly onPeerMessageReceived?: (peer: { readonly fromName: string; readonly at: number }) => void;
   readonly cancelComputerUse?: () => void;
   /**
    * 이 Operation이 사람에게 묻지 않는가. 새 세션은 도구 목록에서 이미 빠지지만, 정책이 막히기 전에 연 세션은 도구를
@@ -305,6 +310,8 @@ const PENDING_SENT_MESSAGE_CAP = 64;
  * 창이면 충분하다 — 저널 상한과는 별개의 값이고, 오래 산 세션에서 이 집합만 무한히 자라지 않게 한다.
  */
 const RECEIVED_MESSAGE_ID_CAP = 512;
+/** peer 도착을 찾는 트랜스크립트 꼬리 창 — 한 턴 사이에 쌓이는 레코드를 덮을 만큼. 창 밖으로 밀린 도착은 놓친다(관측의 근사). */
+const PEER_SCAN_WINDOW_BYTES = 512 * 1024;
 /**
  * 예약 칩이 화면에 세우는 문면의 상한. 전문은 서버가 그대로 들고 있다가 자기 차례에 보내고,
  * 브라우저로는 한 줄에 들어갈 만큼만 나간다 — 6만 자짜리 초안이 큐 스냅숏마다 소켓을 지나면
@@ -597,6 +604,9 @@ class AgentChatSession {
   private readonly pendingSentMessages = new Map<string, { readonly to: string; readonly text: string }>();
   /** 이미 원장에 세운 수신 줄의 좌표. 같은 호출이 두 번 관측돼도 줄은 하나다. */
   private readonly receivedMessageIds = new Set<string>();
+  /** 트랜스크립트에서 이미 알린 peer 메시지(msg_id). 이 세션 객체가 선 뒤에 닿은 것만 알린다. */
+  private readonly reportedPeerMessages = new Set<string>();
+  private readonly peerScanSince = Date.now();
   /** 열린 턴에서 결과까지 성공한 세션 간 메시지의 받는 이름 — 턴이 열릴 때 비운다. */
   private turnSentTo: string[] = [];
   /** 열린 턴이 사람이 입력창에서 보낸 말로 열렸다. */
@@ -2976,6 +2986,8 @@ class AgentChatSession {
     this.turnReachedChild = !options.dispatched;
     this.turnSentTo = [];
     this.turnScheduledWake = false;
+    // 자식이 스스로 연 턴은 대개 다른 세션의 말이 연 것이다 — 그 도착을 트랜스크립트에서 읽어 알린다.
+    if (!options.dispatched && this.seed.onPeerMessageReceived) void this.reportTranscriptPeers();
     this.pendingWakeCalls.clear();
     // 이 턴을 연 지시 — 지난 턴의 끝 뒤에 선 마지막 dispatch 다. 없으면 자식이 스스로 연 턴이다.
     const opener = this.journal.findLast(({ event }) => event.kind === "dispatch" || event.kind === "turn-end")?.event;
@@ -3046,6 +3058,8 @@ class AgentChatSession {
     // 자식에 닿은 턴은 중단됐어도 cwd를 옮겼을 수 있다 — 자식과 그 작업은 중단을 넘어 살아 있으므로
     // 위치 동기화는 턴의 결말과 무관하게 한다.
     if (reachedChild && this.seed.onCwdChanged) void this.reportTranscriptCwd();
+    // 도는 턴에 흡수된 말도 그 턴이 닫히면 트랜스크립트에 남아 있다.
+    if (this.seed.onPeerMessageReceived) void this.reportTranscriptPeers();
   }
 
   /**
@@ -3073,6 +3087,37 @@ class AgentChatSession {
     this.reportedCwd = cwd;
     if (binding) binding.observe(cwd, revision);
     else this.seed.onCwdChanged?.(cwd);
+  }
+
+  /**
+   * 트랜스크립트 꼬리에서 다른 세션이 보낸 말의 도착을 읽는다 — `origin.kind:"peer"` 인 user 레코드의 보낸 이름(`origin.name`)과
+   * 시각만. 본문과 envelope 은 읽지 않는다. 이 세션 객체가 서기 전에 닿은 말(재생된 과거)은 알리지 않고, msg_id 로 한 번만 알린다.
+   */
+  private async reportTranscriptPeers(): Promise<void> {
+    const sessionId = this.latestSessionId;
+    if (!sessionId || this.disposed || !this.seed.onPeerMessageReceived) return;
+    const transcriptPath = await this.locateTranscript(sessionId);
+    if (!transcriptPath) return;
+    const window = await readFileTail(transcriptPath, PEER_SCAN_WINDOW_BYTES);
+    if (window === null || this.disposed) return;
+    for (const line of window.text.split("\n")) {
+      if (!line.includes('"peer"')) continue;
+      let record: { readonly type?: unknown; readonly timestamp?: unknown; readonly origin?: { readonly kind?: unknown; readonly name?: unknown; readonly msg_id?: unknown } };
+      try { record = JSON.parse(line); } catch { continue; }
+      const origin = record.origin;
+      if (record.type !== "user" || origin?.kind !== "peer" || typeof origin.name !== "string" || origin.name.length === 0) continue;
+      const at = typeof record.timestamp === "string" ? Date.parse(record.timestamp) : NaN;
+      if (!Number.isFinite(at) || at < this.peerScanSince) continue;
+      const key = typeof origin.msg_id === "string" && origin.msg_id.length > 0 ? origin.msg_id : `${record.timestamp}:${origin.name}`;
+      if (this.reportedPeerMessages.has(key)) continue;
+      this.reportedPeerMessages.add(key);
+      if (this.reportedPeerMessages.size > RECEIVED_MESSAGE_ID_CAP) {
+        const oldest = this.reportedPeerMessages.values().next();
+        if (!oldest.done) this.reportedPeerMessages.delete(oldest.value);
+      }
+      try { this.seed.onPeerMessageReceived({ fromName: origin.name, at }); }
+      catch { /* 관측 배선이 넘어져도 세션은 계속 산다. */ }
+    }
   }
 
   /** 자리가 비었음을 줄 서 있던 디스패치들에게 알린다. 결말 하나가 전부를 깨운다. */

@@ -1014,6 +1014,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (disposed) return;
       const owner = store.findMember(event.toOperationId)?.objective;
       if (!owner || owner.done || owner.id !== event.fromOperationId) return;
+      // 한 통은 보낸 쪽(채팅 지휘관의 SendMessage 성공)과 받는 쪽(구성원 트랜스크립트의 peer 도착)에서 두 번 보일 수 있다. 둘 다 「받는 세션에
+      // 닿음」이므로 발주 시각은 앞으로만 옮긴다 — 같은 말의 늦은 관측은 겹쳐 쓰지 않고, 터미널 지휘관은 받는 쪽 관측만으로 선다.
+      const previous = store.memberDispatch(event.toOperationId);
+      if (previous && event.at <= previous.at) return;
       store.recordDispatch(event.toOperationId, event.at);
     }) ?? null;
     if (!unsubscribeTurnEnds) unsubscribeTurnEnds = ctx.host.consoleControl?.subscribeTurnEnds?.((event) => {

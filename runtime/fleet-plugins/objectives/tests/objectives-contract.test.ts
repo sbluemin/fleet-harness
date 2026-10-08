@@ -289,7 +289,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
     for (const listener of turnEndListeners) listener({ operationId: id, output });
   }, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, restart, advanceClock: (ms: number) => { clock += ms; },
     // 호스트처럼 본문 없이 보낸·받은 Operation 과 시각만 건넨다.
-    emitSessionMessage: (fromOperationId: string, toOperationId: string) => { for (const listener of sessionMessageListeners) listener({ fromOperationId, toOperationId, at: clock }); } };
+    emitSessionMessage: (fromOperationId: string, toOperationId: string, at = clock) => { for (const listener of sessionMessageListeners) listener({ fromOperationId, toOperationId, at }); } };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -2503,6 +2503,9 @@ describe("Objectives contract", () => {
       // 지휘관·사령관이 읽는 보드에도 같은 흔적이 시각만으로 선다.
       const board = (await call("read", { objectiveId: objective.id }, commander)).structuredContent.objective as { graph: { missions: { missionId: string; dispatch?: unknown }[] } };
       expect(board.graph.missions.find((entry) => entry.missionId === mission!.id)?.dispatch).toEqual({ sentAt: new Date(dispatchedAt).toISOString(), receivedAt: new Date(dispatchOf()!.receivedAt!).toISOString() });
+      // 한 통은 보낸 쪽과 받는 쪽에서 두 번 보일 수 있다 — 같은 말의 이른 관측은 발주 시각을 되돌리지 않는다.
+      emitSessionMessage(commander, memberId, dispatchedAt - 1);
+      expect(dispatchOf()!.at).toBe(dispatchedAt);
       // 구성원이 지휘관에게 보낸 말은 발주가 아니다.
       emitSessionMessage(memberId, commander);
       await vi.advanceTimersByTimeAsync(1_000);
