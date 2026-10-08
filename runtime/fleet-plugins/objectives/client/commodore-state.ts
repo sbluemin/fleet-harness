@@ -409,6 +409,7 @@ export const setCommodoreCommander = (theaterId: string, commander: { readonly m
   write(theaterId, "/commodore/commander", commander ? { model: commander.model, effort: commander.effort ?? null } : { model: null });
 /** 순찰 간격(분) — null 은 기본으로 되돌린다. */
 export const setCommodorePatrol = (theaterId: string, minutes: number | null) => write(theaterId, "/commodore/patrol", { minutes });
+export const setCommodoreStopAt = (theaterId: string, stopAt: number | null) => write(theaterId, "/commodore/stop-at", { stopAt });
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
 
 export async function messageCommodore(theaterId: string, text: string): Promise<void> {

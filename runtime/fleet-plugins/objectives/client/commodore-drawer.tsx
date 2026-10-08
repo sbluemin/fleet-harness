@@ -13,6 +13,7 @@ import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLog
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime } from "./commodore-row.js";
+import { DatePicker, localDateTime } from "./date-picker.js";
 import {
   addCommodoreIntel,
   closeCommodoreDrawer,
@@ -29,6 +30,7 @@ import {
   setCommodoreCommander,
   setCommodoreCoordinates,
   setCommodorePatrol,
+  setCommodoreStopAt,
   setCommodoreTab,
   useCommodore,
   useCommodoreDrawer,
@@ -207,7 +209,7 @@ function SheetResize({ label, width, height, onResize, onCommit, onReset }: {
 /** 시트와, 시트에서 연 메뉴(body 포털) 안에서 Tab을 가둔다. */
 function trapSheetFocus(event: KeyboardEvent, dialog: HTMLElement | null): void {
   if (!dialog) return;
-  const scopes = [dialog, ...document.querySelectorAll<HTMLElement>('[role="menu"], .fc-coord-menu')];
+  const scopes = [dialog, ...document.querySelectorAll<HTMLElement>('[role="menu"], .fc-coord-menu, .objectives-cal')];
   const focusable = scopes.flatMap((scope) => [...scope.querySelectorAll<HTMLElement>(SHEET_FOCUSABLE)])
     .filter((element) => element.tabIndex >= 0 && element.offsetParent !== null && getComputedStyle(element).visibility !== "hidden");
   if (focusable.length === 0) return;
@@ -314,6 +316,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
 
   const status = !view ? "" : [
     on ? t("objectives.commodore.meta.autonomous") : t("objectives.commodore.meta.manual"),
+    on && view.state.stopAt ? t("objectives.commodore.stop.at", { time: stopTime(view.state.stopAt, language) }) : null,
     on && run?.phase === "idle" && run.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null,
     on && run?.phase === "turn" ? t("objectives.commodore.meta.turn") : null,
     on && run?.phase === "retrying" && run.nextWakeAt ? t("objectives.commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null,
@@ -398,7 +401,7 @@ function CommodoreSheet({ theaterId, tab, openedAt, language }: { readonly theat
             ) : null}
             {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onFail={fail} onClear={() => setFailure(null)} /> : null}
             {tab === "intel" && view ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} /> : null}
-            {tab === "settings" && view ? <CommodoreSettings t={t} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
+            {tab === "settings" && view ? <CommodoreSettings t={t} language={language} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
           </div>
           {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
           {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
@@ -465,7 +468,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
  * 설정 — Console 설정과 같은 줄(제목·설명·오른쪽 컨트롤). 모델·강도는 Console 공유 선택기 하나로 고른다(사령관은 Agent SDK
  * 로스터, 지휘관은 Agent CLI 로스터).
  */
-function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+function CommodoreSettings({ t, language, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const { state, defaults, run } = view;
   const on = state.autonomy === true;
   const modelOverridden = state.model !== undefined;
@@ -501,6 +504,9 @@ function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t
           onPick={(minutes) => act(() => setCommodorePatrol(theaterId, minutes === DEFAULT_PATROL ? null : minutes))}
         />
       </SettingsRow>
+      <SettingsRow label={t("objectives.commodore.stop.title")} hint={t("objectives.commodore.stop.hint")}>
+        <StopAtControl t={t} language={language} stopAt={state.stopAt} disabled={!on || run.reason === "scheduled_stop"} onPick={(stopAt) => act(() => setCommodoreStopAt(theaterId, stopAt))} />
+      </SettingsRow>
       <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow
         label={t("objectives.commodore.settings.commander")}
@@ -517,6 +523,27 @@ function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t
       </SettingsRow>
     </div>
   );
+}
+
+function stopTime(at: number, language: "en" | "ko"): string {
+  const date = new Date(at);
+  const today = new Date();
+  const sameDay = date.toDateString() === today.toDateString();
+  return new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { ...(sameDay ? {} : { month: "short", day: "numeric" }), hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+}
+
+function StopAtControl({ t, language, stopAt, disabled, onPick }: { readonly t: T; readonly language: "en" | "ko"; readonly stopAt?: number; readonly disabled: boolean; readonly onPick: (at: number | null) => void }) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const close = () => { setAnchor(null); trigger.current?.focus({ preventScroll: true }); };
+  useEffect(() => { if (disabled) setAnchor(null); }, [disabled]);
+  return <>
+    <button ref={trigger} type="button" className="fc-row-value objectives-commodore-patrol" disabled={disabled} aria-haspopup="dialog" aria-expanded={!!anchor} aria-label={t("objectives.commodore.stop.title")} onClick={() => setAnchor(trigger.current?.getBoundingClientRect() ?? null)}>
+      <span className="objectives-commodore-patrol-glyph"><PatrolGlyph /></span>
+      <span className="fc-row-value-text">{stopAt ? stopTime(stopAt, language) : t("objectives.commodore.stop.none")}</span>
+    </button>
+    {anchor && !disabled ? <DatePicker withTime anchor={anchor} value={stopAt ? localDateTime(new Date(stopAt)) : null} language={language} t={t} onClose={close} onPick={(value) => onPick(value === null ? null : new Date(value).getTime())} /> : null}
+  </>;
 }
 
 type CommodoreStateFields = CommodoreView["state"];

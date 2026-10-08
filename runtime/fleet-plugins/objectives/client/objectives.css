@@ -785,6 +785,14 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--brass); }
 .objectives-cal-day.is-cursor { border-color: var(--hairline-strong); }
 .objectives-cal-day.is-selected { background: var(--brass); color: var(--text-on-brass); box-shadow: none; }
+/* 종료 예약은 사령관 모달 위에 서는 같은 달력이다. 날짜 전용 기한은 기존 단을 유지한다. */
+.objectives-cal.is-time { z-index: calc(var(--z-overlay) + 2); }
+.objectives-cal-time { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 2px 2px; border-top: 1px solid var(--hairline); color: var(--text-secondary); font-size: var(--t-sm); }
+.objectives-cal-time label { display: flex; align-items: center; gap: 8px; }
+.objectives-cal-time input { min-width: 0; width: 100px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); padding: 3px 4px; background: var(--surface-panel); color: var(--text-primary); font: inherit; font-variant-numeric: tabular-nums; }
+.objectives-cal-time button { margin-left: auto; padding: 4px 10px; border: 1px solid var(--brass); border-radius: var(--radius-xs); background: var(--brass-glow); color: var(--text-primary); font: inherit; cursor: pointer; }
+.objectives-cal.is-time :disabled { opacity: .45; cursor: default; }
+.objectives-cal-error { margin: 4px 2px 0; color: var(--coral-ink); font-size: var(--t-xs); }
 
 /* 카드의 동그라미 — 지휘관이 연결되면 완료 버튼이 아니라 상태 고리가 된다. 대기: 가운데 점 · 진행: 도는 호 · 결정 대기: 숨 쉬는 aurora 고리 ·
    배경: 점선 · 끝남: dim 고리와 작은 정사각. 색은 신호 토큰만. 누를 수 없고, 겨누면 말풍선이 이유를 말한다. */
