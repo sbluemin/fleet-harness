@@ -2036,7 +2036,8 @@ describe("Objectives contract", () => {
     expect(personLarge.objective.note).toBe(largeBrief);
     expect(personLarge.objective.criteria).toEqual(store.find(largeId)!.criteria);
     launch.dispose();
-  });
+  // 123개 대형 목표를 만들어 페이지 경계를 검증하므로 느린 CI 러너에서는 기본 5초를 넘는다.
+  }, 60_000);
 
   it("delivers each failed member turn once without retrying and resolves one failure inbox row on recovery or explicit reissue", async () => {
     const h = harness();
