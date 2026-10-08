@@ -127,6 +127,7 @@ PROFILE="(version 1) (allow default) $NET (deny file-write*)
 (deny file-read* (subpath \"$HOME/.config/gh\") (subpath \"$HOME/.ssh\"))"
 ```
 
+- 이 프로파일은 쓰기만 좁히고 읽기는 막지 않는다(`allow default`). 실호출은 네트워크도 열려 있어 모델이 장면 밖 사용자 파일(다른 저장소, 다른 세션의 증거, 자격 파일)을 읽고 내보낼 수 있다. 과제가 장면 밖을 가리키지 않게 하고, 매 회차 기록에서 장면 밖 경로를 읽은 호출을 찾아 있으면 안전 중단 조건으로 처리한다. 읽기를 장면으로 좁힌 프로파일은 CLI 실행 파일·라이브러리·OAuth 상태 경로를 fixture로 확인하기 전에는 쓰지 않는다(너무 좁은 프로파일은 CLI를 멈추게 했다).
 - Bash 도구는 호출마다 cwd 추적 파일 `/private/tmp/claude-<id>-cwd`를 쓴다. 이 쓰기가 막히면 **모든 Bash 호출이 성공해도 `Exit code 1 … operation not permitted`로 돌아와** 모델이 환경 오류에 반응한다(한 회차가 이 결함으로 무효가 됐다). 위 `regex` 한 줄이 필요하다. 이 결함은 반환 끝에 있었으므로 fixture는 반환 전체를 본다.
 - 장면 저장소에는 원격을 두지 않고 `gh`를 장면에서 뺀다. 세션 간 통로를 막은 샌드박스는 도달 불가를 실제로 만드는 이중 장치지만, `claude -p` 자식에는 세션 간 메시징이 애초에 없다. 통로 차단을 풀어도 `SendMessage`는 항상 `{"success":false,"message":"No agent named '…' is reachable.\nUse ListAgents to see everyone you can message."}`, `ListAgents`는 `No reachable agents.`를 돌려준다. 실제 사건의 실패 반환(`ECONNREFUSED … peer session is unreachable`)과 다르고 `ListAgents`를 직접 권유하므로, 보고 실패 뒤의 행동을 재는 과제는 이 차이를 한계로 적는다.
 
@@ -167,7 +168,7 @@ for attempt in 1 2 3 4 5 6 7 8 9 10; do [ -s "$E/fixture/port" ] && break; kill 
 PORT=$(< "$E/fixture/port")   # 위 fixture 값으로 NET·ENVX·PROFILE을 만든 뒤 전·후 각각 claude_call 한다
 ```
 
-**계획(`plan.json`)은 과제가 쓰는 도구를 모두 최소 한 번 부른다**: 정상 경로(증거 디렉터리 `ls`·Write·Read·Edit, `git log/status`, 측정 표 Read), 기대한 거부(트리 밖 Write·Bash 쓰기, `gh`, `git push`), 보고 도구와 `ListAgents`. 실행한 뒤 **모든 도구 반환**에서 `operation not permitted`·`EPERM`·`Exit code`·`No agent named`·`No reachable`·`does not appear to be a git repository`를 grep해 호출별 표를 만든다. 표의 행 수가 계획의 호출 수와 같아야 하고(빈 표는 오류 0이 아니다), 정상 경로는 오류 0이며 남는 오류는 기대한 거부·미도달뿐이어야 한다. 기대 밖 오류가 하나라도 있으면 봉인하지 않는다.
+**계획(`plan.json`)은 과제가 쓰는 도구를 모두 최소 한 번 부른다**: 정상 경로(증거 디렉터리 `ls`·Write·Read·Edit, `git log/status`, 측정 표 Read), 기대한 거부(트리 밖 Write·Bash 쓰기, `gh`, `git push`), 보고 도구와 `ListAgents`. 실행한 뒤 **모든 도구 반환**에서 `operation not permitted`·`EPERM`·`Exit code`·`No agent named`·`No reachable`·`does not appear to be a git repository`를 grep해 호출별 표를 만든다. 스텁은 전·후마다 새로 띄워 양쪽이 계획 전체를 처음부터 받게 하고, fixture에 한해 `MAXTURNS`를 계획 호출 수+1로 둔다(실제 회차와 다른 플래그는 이것뿐이다). 표의 행 수가 계획의 호출 수와 같아야 하고(빈 표는 오류 0이 아니다), 정상 경로는 오류 0이며 남는 오류는 기대한 거부·미도달뿐이어야 한다. 기대 밖 오류가 하나라도 있으면 봉인하지 않는다.
 
 ```bash
 jq -r 'select(.type=="user") | .message.content[]? | select(.type=="tool_result") | [(.is_error // false), (.content | if type=="array" then map(.text?) | join(" ") else . end | gsub("\n"; " | ") | .[0:160])] | @tsv' "$E/stream-fx.jsonl"
@@ -186,13 +187,16 @@ printf '%s\n' "$OUT" > "$E/tools.out"; printf '%s\n' "$rc" > "$E/tools.rc"
 
 전·후 요청의 텍스트 차이가 대상 줄만인지, 대상 문장이 이전 0건·이후 1건인지(`grep`의 1은 일치 없음이므로 기대한 0건과 실행 실패를 구별해 기록한다), 루트 `CLAUDE.md` 출처가 한 건씩인지, `tools`가 허용목록과 같은지, 스킬 목록과 `Memory Index`가 0건인지, 요청에 이전/이후 커밋 해시가 없는지 확인한다. `# Fleet`는 이 저장소 루트의 고유 제목이며 다른 대상이면 그 대상의 제목으로 바꾼다. 제목 횟수는 전문 일치나 출처를 증명하지 않으므로 `request-1.json`에서 위치와 본문도 읽는다. 하위 `CLAUDE.md`는 초기 요청에 없고 파일을 읽은 뒤의 요청에서 적재되는지 본다. 메모리는 `~/.claude/projects/<PKEY>`가 비어 있음을 전제하며, 있으면 같은 내용을 양쪽에 두고 요청에서 대조한다. loopback 도착은 OS 전체 네트워크 차단을 증명하지 않으므로 외부 주소 연결 프로브(`python3 -I -c 'import socket; s=socket.socket(); s.settimeout(1); print(s.connect_ex(("192.0.2.1",443)))'`가 `1`)를 같은 프로파일로 감싸 확인한다. 프로파일은 감싼 프로세스와 자식에만 적용되며 `sandbox-exec`가 없는 플랫폼에서는 동등한 격리를 확보하거나 실행 전에 멈춘다.
 
-이 fixture는 `claude_call`의 플래그·환경·문맥을 바꾸지 않는다. 실제 회차와의 요청 구성 차이는 엔드포인트·인증(`ENVX`)과 네트워크·Keychains 규칙뿐이며, 이 무료 실행 보호를 유료 실행의 모델 행동 효과로 해석하지 않는다. 실패한 출력, 없는 계측 값, 기대 밖 오류는 고치고 다시 확인한 뒤 봉인한다.
+이 fixture는 `--max-turns` 값 외에 `claude_call`의 플래그·환경·문맥을 바꾸지 않는다. 실제 회차와의 요청 구성 차이는 엔드포인트·인증(`ENVX`)과 네트워크·Keychains 규칙뿐이며, 이 무료 실행 보호를 유료 실행의 모델 행동 효과로 해석하지 않는다. 실패한 출력, 없는 계측 값, 기대 밖 오류는 고치고 다시 확인한 뒤 봉인한다.
 
 ## 4. 과제·판독 기준 봉인
 
 공통 작업 프롬프트 `task.txt`(실제 경로)와 판독용 `task.reader.txt`(경로를 가상 값으로 통일), 판독 기준 `rubric.md`, 시범 판독 결론·표본 수·최소 관찰 기간·모델·CLI·비용/턴 상한을 적은 `conditions.md`, 시범 판독 `pilot.md`, 장면 구성·실행·판독 렌더 스크립트, 샌드박스 프로파일, 3단계 fixture 결과(호출별 grep 표와 0/1 건수)를 증거 디렉터리에 저장한다. 이전 평가의 과제를 재사용하면 원본 대비 diff 문서(변경 사유, 지시한 변경과 안전상 불가피한 변경의 구분)를 함께 봉인한다. 대응표·회차 원문은 `E`에만 둔다. 3단계의 요청·원문·종료 부호를 확인한 뒤, 본 평가 유료 호출이 아직 0인 상태에서 해시와 시각을 기록한다.
 
+`SEAL`은 위 봉인 대상만 모은 디렉터리다. 판독자가 열 수 있는 곳에 둘 수 있으므로 대응표·회차 원문·장부는 넣지 않는다.
+
 ```bash
+SEAL=$E/seal; mkdir -p "$SEAL"   # 봉인 대상 파일을 이 아래로 복사한 뒤 해시한다
 ( cd "$SEAL" && find . -type f ! -name sealed.sha256 ! -name sealed-at.out | sort | xargs shasum -a 256 > sealed.sha256 ); rc=$?
 printf '%s\n' "$rc" > "$SEAL/sealed.sha256.rc"; [ "$rc" -eq 0 ] || exit "$rc"
 OUT=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>&1); rc=$?
@@ -205,24 +209,27 @@ printf '%s\n' "$OUT" > "$SEAL/sealed-at.out"; printf '%s\n' "$rc" > "$SEAL/seale
 
 **실제 모델의 반복 실행은 유료 실행 승인 이후에만 진행한다.** 무료 검증만 맡은 세션은 실제 평가를 시작하지 않는다. 승인은 과금 풀을 이름으로 지정해야 한다(구독 OAuth 풀이면 그 구독). fixture와 실제 회차의 차이는 `ENVX`·네트워크·Keychains 규칙뿐이며, 플래그·나머지 환경·메모리·검색 조건·모델·effort를 바꾸지 않는다. provider나 인증 방식 변경이 필요하면 fixture부터 새로 확인한다. 이 문서의 경로는 자격증명 값을 읽거나 기록하지 않는다. 임시 HOME에서 로그인하지 않는다.
 
-전·후를 번갈아 `N`회 실행한다. 회차 시작 전에 `누적 턴 + (MAXTURNS+1) ≤ 제공자별 상한`을 확인하고, 회차마다 장면을 새로 만든 뒤 파일 수준으로 지침 적재를 확인한다(이전 0건·이후 1건이 아니면 호출하지 않는다).
+전·후를 번갈아 `N`회 실행한다. 실행 전에 `N`, `TURN_LIMIT`, `COST_LIMIT`을 승인된 합계 회차 수·제공자별 턴 상한·달러 상한으로 지정한다. 회차 시작 전에 `누적 턴 + (MAXTURNS+1) ≤ 제공자별 상한`을 확인하고, 회차마다 장면을 새로 만든 뒤 파일 수준으로 지침 적재를 확인한다(이전 0건·이후 1건이 아니면 호출하지 않는다).
 
 ```bash
 printf 'number\tside\trc\tsubtype\tturns\tcost_usd\tduration_ms\n' > "$E/ledger.tsv"
 i=1
 while [ "$i" -le "$N" ]; do
   if [ $((i % 2)) -eq 1 ]; then side=before; else side=after; fi
+  # 회차 시작 전에 승인된 턴(빈 값은 상한+1로 계상)·비용 상한을 확인한다
+  USED=$(awk -F'\t' -v m="$MAXTURNS" 'NR>1 {s+=($5=="" ? m+1 : $5)} END{print s+0}' "$E/ledger.tsv")
+  SPENT=$(awk -F'\t' 'NR>1 {s+=$6} END{print s+0}' "$E/ledger.tsv")
+  [ $((USED + MAXTURNS + 1)) -le "$TURN_LIMIT" ] || break
+  awk -v s="$SPENT" -v c="$COST_LIMIT" 'BEGIN{exit !(s < c)}' || break
   claude_call "$side" "r$i"; rc=$?
   printf '%s\n' "$rc" > "$E/run-$i.rc"
   RES=$(jq -c 'select(.type=="result")' "$E/stream-r$i.jsonl" | tail -1)
   printf '%s\t%s\t%s\t%s\n' "$i" "$side" "$rc" "$(printf '%s' "$RES" | jq -r '[.subtype, .num_turns, .total_cost_usd, .duration_ms] | @tsv')" >> "$E/ledger.tsv"
-  USED=$(awk -F'\t' 'NR>1 && $5!="" {s+=$5} END{print s+0}' "$E/ledger.tsv")
-  [ $((USED + MAXTURNS + 1)) -le "$TURN_LIMIT" ] || break
   i=$((i + 1))
 done
 ```
 
-- 시작 금지 조건: 누적 + 상한+1이 제공자별 상한 초과 / 요청·출력에 상대 쪽 경로·`before`/`after` 라벨·커밋 해시 노출 / 지침 적재가 기대(이전 0·이후 1)와 다름 / 인프라 실패 2회 연속(인증 실패, `rc≠0`이면서 `error_max_turns`가 아닌 것, 환경 오류) / 안전(실제 세션에 메시지가 전달되거나 트리·지정 경로 밖에 쓰기). `error_max_turns`(`rc=1`, `is_error:true`)는 상한 절단이지 인프라 실패가 아니다. 인프라 실패 회차는 같은 쪽으로 한 번만 대체하며 예비 턴을 장부에 미리 둔다.
+- 시작 금지 조건: 누적 + 상한+1이 제공자별 상한 초과 / 요청·출력에 상대 쪽 경로·`before`/`after` 라벨·커밋 해시 노출 / 지침 적재가 기대(이전 0·이후 1)와 다름 / 인프라 실패 2회 연속(인증 실패, `rc≠0`이면서 `error_max_turns`가 아닌 것, 환경 오류) / 안전(실제 세션에 메시지가 전달되거나, 트리·지정 경로 밖에 쓰거나, 장면 밖 사용자 파일을 읽음). `error_max_turns`(`rc=1`, `is_error:true`)는 상한 절단이지 인프라 실패가 아니다. 인프라 실패 회차는 같은 쪽으로 한 번만 대체하며 예비 턴을 장부에 미리 둔다.
 - `total_cost_usd`는 제공자의 실제 청구 확정값이 아니다. fixture의 토큰·비용은 합성 응답에서 계산한 숫자이므로 실제 사용량으로 합산하지 않는다. `num_turns`가 없거나 조회가 실패하면 1턴으로 추정하지 않고 상한+1로 계상하며 원문·실패 이유를 남긴다. 실패·재시도·시범·판독 호출도 장부에 따로 기록한다.
 - 매 회차 뒤 `~/.claude.json` 해시, `~/.claude` 아래 변경 파일 목록, 임시 프로젝트 키(`~/.claude/projects/<PKEY>`)를 대조해 `E`에 남긴다. 다른 살아 있는 세션도 이 파일들을 쓰므로 변경 자체는 위반이 아니다. 자식이 쓸 수 있는 곳은 프로파일의 쓰기 허용 경로뿐이므로 그 근거(거부된 쓰기 반환 수, 허용 경로 안의 변경)를 함께 적는다. 키 디렉터리는 비어 있을 때만 지운다. 샌드박스 없이 실호출하면 `~/.claude/projects`에 임시 키가 생긴다.
 - 최소 관찰 기간도 별도로 확인한다.
@@ -231,7 +238,7 @@ done
 
 ## 6. 번호만 보는 판독과 결과
 
-실행 전 판독자는 과제·기준과 출력 번호만 보도록 정한다. 실행 모델과 다른 계열의 모델을 사용하고, 그 판독 호출도 유료면 별도 승인을 받는다. 각 회차의 `stream-r번호.jsonl`을 판독용 기록으로 렌더하고(호출·반환·발화·종료 상태), 판독 번호는 실행 번호와 다른 무작위 순열로 붙여 대응표를 `E`에 둔다. 실행 순서는 전·후 교대라 실행 번호의 홀짝으로 버전이 드러나므로 순열은 고정점이 없게 하고, seed는 시각이 아니라 `/dev/urandom`에서 읽고, 파일은 판독 번호 순서로 만들어 생성 시각이 실행 순서를 드러내지 않게 한다.
+실행 전 판독자는 과제·기준과 출력 번호만 보도록 정한다. 실행 모델과 다른 계열의 모델을 사용하고, 그 판독 호출도 유료면 별도 승인을 받는다. 각 회차의 `stream-r번호.jsonl`을 판독용 기록으로 렌더하고(호출·반환·발화·종료 상태), 판독 번호는 실행 번호에 제약 없는 균등 무작위 순열로 붙여 대응표를 `E`에 둔다. 실행 순서는 전·후 교대라 실행 번호를 그대로 쓰면 홀짝으로 버전이 드러난다. 순열에 고정점 금지 같은 제약을 걸면 판독 번호마다 전·후일 확률이 달라져 오히려 버전이 새므로(`N=2`면 전부 드러난다) 제약을 걸지 않는다. seed는 시각이 아니라 `/dev/urandom`에서 읽고, 파일은 판독 번호 순서로 만들어 생성 시각이 실행 순서를 드러내지 않게 한다.
 
 ```bash
 jq -r 'if .type=="assistant" then (.message.content[]? | if .type=="tool_use" then "CALL \(.name) \(.input|tojson)" elif .type=="text" then "SAY: \(.text)" else empty end)
