@@ -500,8 +500,9 @@ export interface StoredObjective {
   /** 마지막으로 개시한 손 — 행위 기록이 접혀도 남는다. 개시 출처를 기록하기 전의 옛 레코드에는 없다(누가 개시했는지 모른다). */
   readonly commencedBy?: ObjectiveActor;
   /**
-   * 사람이 정한 운영 주체 — true 면 Theater 의 사령관이 운영하고, false 면 사람이 운영한다. 사람만 바꾼다(`objective/operator`).
-   * 없으면 사령관이 만든 목표만 사령관이 운영한다(`board-state.ts` `objectiveOperator`). 옛 레코드는 고쳐 쓰지 않는다.
+   * 정해 둔 운영 주체 — true 면 Theater 의 사령관이 운영하고, false 면 사람이 운영한다. 바꾸는 것은 사람뿐이고(`objective/operator`),
+   * 사령관이 고른 후속은 태어날 때 true 로 적힌다. 없으면 사령관이 만든 목표만 사령관이 운영한다(`board-state.ts` `objectiveOperator`).
+   * 옛 레코드는 고쳐 쓰지 않는다.
    */
   readonly commodoreOperated?: boolean;
   /**

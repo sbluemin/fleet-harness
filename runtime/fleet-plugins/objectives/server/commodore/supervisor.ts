@@ -600,13 +600,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const previous = runner.statuses.get(objective.id);
       if (previous?.status === next.status && previous.operator === next.operator) continue;
       runner.statuses.set(objective.id, next);
+      // 사람이 맡김 — 사령관은 운영값을 바꿀 수 없으므로 이 전환은 늘 사람의 것이다. 사령관의 쓰기 유예 안이어도 한 번 깨운다.
+      if (previous?.operator === "human" && next.operator === "commodore") { changes.push({ id: objective.id, text: `"${objective.title}" handed to you by the person (${STATUS_WORDS[next.status]})` }); continue; }
       if (runner.selfWrites.has(objective.id)) continue;
       if (next.operator === "human") {
         // 사람이 운영하는 목표는 깨우지 않는다. 사람이 돌려받은 것은 사건이 아니라 기록에도 싣지 않는다.
         if (previous?.operator !== "commodore") hold(runner, objective.id, "status");
         continue;
       }
-      if (previous?.operator === "human") { changes.push({ id: objective.id, text: `"${objective.title}" handed to you by the person (${STATUS_WORDS[next.status]})` }); continue; }
       if (previous === undefined && createdByCommodore(objective, (id) => byId.get(id))) continue;
       changes.push({ id: objective.id, text: `"${objective.title}" ${STATUS_WORDS[previous?.status ?? "new"]} → ${STATUS_WORDS[next.status]}` });
     }

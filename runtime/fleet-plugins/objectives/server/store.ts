@@ -1048,6 +1048,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(init.today ? { today: true as const } : {}),
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
         ...(init.origin ? { origin: init.origin } : {}),
+        // 사령관이 고른 후속은 태어날 때 사령관 운영으로 적는다 — 원본이 영구 삭제되면 대체 판정(원본의 배치)을 더는 읽을 수 없다.
+        ...(init.origin && typeof init.by === "object" && init.by.kind === "commodore" ? { commodoreOperated: true } : {}),
         ...(criteriaTexts.length ? { criteria: criteriaTexts.map((text) => ({ id: randomUUID(), text, by: init.by ?? "human" })) } : {}),
         enlisted: true,
         missions: [...lineupOrder(missions)],
