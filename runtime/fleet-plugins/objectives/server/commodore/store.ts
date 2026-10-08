@@ -55,6 +55,8 @@ export interface CommodoreStore {
   /** Theater 를 모르거나 폴더를 읽을 수 없으면 null. 없는 파일은 빈 상태다. */
   read(theaterId: string): CommodoreState | null;
   setAutonomy(theaterId: string, autonomy: boolean): CommodoreState;
+  /** 종료 예약 — null은 해제. 자율 운영 중에만 받고, 지난 시각은 거절한다. */
+  setStopAt(theaterId: string, stopAt: number | null): CommodoreState;
   /** 본문이 그대로면 rev 도 그대로다 — 같은 지시를 다시 저장해 사령관을 깨우지 않는다. */
   setDirective(theaterId: string, text: string): CommodoreState;
   addIntel(theaterId: string, input: { readonly text: string; readonly source?: string }): { readonly state: CommodoreState; readonly item: CommodoreIntel };
@@ -143,8 +145,19 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     setAutonomy(theaterId, autonomy) {
       const current = load(theaterId);
-      if (current.autonomy === autonomy) return current;
-      return commit(theaterId, { ...current, autonomy }, "autonomy");
+      if (current.autonomy === autonomy && (autonomy || current.stopAt === undefined)) return current;
+      const { stopAt: _stopAt, ...withoutSchedule } = current;
+      return commit(theaterId, { ...(autonomy ? current : withoutSchedule), autonomy }, "autonomy");
+    },
+    setStopAt(theaterId, stopAt) {
+      const current = load(theaterId);
+      if (!current.autonomy) throw new ObjectiveStoreError("commodore_inactive");
+      const at = now();
+      if (current.stopAt !== undefined && current.stopAt <= at) throw new ObjectiveStoreError("commodore_stopping");
+      if (stopAt !== null && (!Number.isSafeInteger(stopAt) || stopAt <= at || stopAt > 8_640_000_000_000_000)) throw new ObjectiveStoreError("invalid_request");
+      if ((current.stopAt ?? null) === stopAt) return current;
+      const { stopAt: _stopAt, ...rest } = current;
+      return commit(theaterId, stopAt === null ? rest : { ...rest, stopAt }, "stopAt");
     },
     setDirective(theaterId, text) {
       if (text.length > MAX_DIRECTIVE) throw new ObjectiveStoreError("invalid_request");

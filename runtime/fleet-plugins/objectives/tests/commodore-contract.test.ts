@@ -23,7 +23,7 @@ import type { Objective, ObjectiveEvent } from "../server/types.js";
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
-function harness() {
+function harness(now?: () => number) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-"));
   dirs.push(dir);
   const objectivesDir = path.join(dir, "workspaces", "project", "objectives");
@@ -41,7 +41,7 @@ function harness() {
     },
   } as unknown as FleetPluginServerContext;
   let clock = 1_000;
-  const store = createCommodoreStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), emit: (event) => events.push(event), now: () => clock++ });
+  const store = createCommodoreStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), emit: (event) => events.push(event), now: now ?? (() => clock++) });
   const route = async (name: string, body: Record<string, unknown>, hooks: CommodoreRouteHooks = {}) => {
     routeBody = body;
     routeResult = { status: 0, value: null };
@@ -255,6 +255,117 @@ describe("commodore session", () => {
 });
 
 describe("commodore supervisor", () => {
+  it("persists a cancellable stop deadline, cancels pending work, notifies once and restores overdue stops without another patrol", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
+    const h = harness(Date.now);
+    const sessions: { options: AgentSessionOptions; sent: string[]; disposed: boolean }[] = [];
+    let hold = false;
+    let failNotice = false;
+    let cancel: (() => void) | undefined;
+    const boardWrite = vi.fn(async () => ({ content: [] }));
+    const agent: AgentHost = { createSession: async (options) => {
+      const entry = { options, sent: [] as string[], disposed: false };
+      sessions.push(entry);
+      return {
+        send: async (text) => {
+          entry.sent.push(text);
+          if (failNotice) throw new Error("rate limit exceeded");
+          if (hold) {
+            await new Promise<void>((resolve) => { cancel = () => { options.onEvent?.({ kind: "cancelled" }); cancel = undefined; resolve(); }; });
+          } else options.onEvent?.({ kind: "result", isError: false, source: "message" });
+        },
+        cancel: () => cancel?.(),
+        dispose: async () => { entry.disposed = true; },
+      };
+    } };
+    const makeSupervisor = (store = h.store) => createCommodoreSupervisor({
+      store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }),
+      objectives: () => [], subscribeObjectives: () => () => undefined,
+      boardTools: () => [{ name: "console_objectives", description: "", inputSchema: {}, execute: boardWrite }], emit: () => undefined,
+    });
+    let supervisor = makeSupervisor();
+    const hooks = { run: (id: string) => supervisor.status(id) };
+    const schedule = (stopAt: number | null) => h.route("commodore/stop-at", { theaterId: "t1", stopAt }, hooks);
+    try {
+      expect((await schedule(Date.now() + 60_000)).status).toBe(409);
+      h.setExperiments({ commodore: true, commodoreModel: "haiku", commodoreEffort: "low" });
+      h.store.setAutonomy("t1", true);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions[0]!.options).toMatchObject({ model: "opus[1m]", effort: "high" });
+      expect((await schedule(Date.now() - 1)).status).toBe(400);
+      expect((await schedule(Date.now() + 31 * 86_400_000)).status).toBe(200);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.store.read("t1")!.autonomy).toBe(true);
+      const cancelledAt = Date.now() + 1_000;
+      await schedule(cancelledAt);
+      expect((await schedule(null)).value.state?.stopAt).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1_001);
+      expect(sessions[0]!.sent).toHaveLength(1);
+      h.store.setDirective("t1", "Keep the board intact.");
+      h.store.addIntel("t1", { text: "Keep this intel." });
+      hold = true;
+      const active = h.store.transcriptAppend("t1", { kind: "message", text: "Interrupt me." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      const pending = h.store.transcriptAppend("t1", { kind: "message", text: "Return me to the person." });
+      const stopAt = Date.now() + 1_000;
+      expect((await schedule(stopAt)).value.state?.stopAt).toBe(stopAt);
+      expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")!.stopAt).toBe(stopAt);
+      // 종료 알림도 진행 중으로 붙들어 둔다. 그 동안 메시지·보드 쓰기는 받아서는 안 된다.
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(sessions[0]!.sent).toHaveLength(3);
+      expect(sessions[0]!.sent.at(-1)).toContain("The scheduled end time has arrived");
+      expect(sessions[0]!.sent.at(-1)).not.toContain("Return me to the person.");
+      expect((await h.route("commodore/message", { theaterId: "t1", text: "Too late." }, hooks)).value.error).toBe("commodore_stopping");
+      expect((await schedule(null)).value.error).toBe("commodore_stopping");
+      const tool = sessions[0]!.options.tools!.custom!.flatMap((group) => group.tools).find((tool) => tool.name === "console_objectives")!;
+      expect(await tool.execute({ complete: true }, { cwd: h.objectivesDir })).toMatchObject({ isError: true });
+      expect(boardWrite).not.toHaveBeenCalled();
+      h.store.addIntel("t1", { text: "No new wake." });
+      await vi.advanceTimersByTimeAsync(30_001);
+      expect(h.store.read("t1")).toMatchObject({ autonomy: false, directive: { text: "Keep the board intact." } });
+      expect(h.store.read("t1")!.stopAt).toBeUndefined();
+      expect(h.store.read("t1")!.intel).toHaveLength(2);
+      expect(sessions[0]!.disposed).toBe(true);
+      expect(supervisor.status("t1")).toBeNull();
+      const entries = h.store.transcriptRead("t1").entries;
+      expect(entries.filter((entry) => entry.kind === "undelivered")).toMatchObject([{ seqs: [active.seq, pending.seq] }]);
+      expect(entries.filter((entry) => entry.kind === "wake" && entry.reasons.includes("scheduled-stop"))).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(DEFAULT_PATROL_MS);
+      expect(sessions[0]!.sent).toHaveLength(3);
+
+      // 정상 알림 결말에서도 끄기와 같은 상태가 된다. 껐다 켜면 지난 예약은 되살아나지 않는다.
+      hold = false;
+      h.store.setAutonomy("t1", true);
+      await schedule(Date.now() + COALESCE_MS + 1_000);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1_001);
+      expect(sessions.at(-1)!.sent).toHaveLength(2);
+      expect(sessions.at(-1)!.sent.at(-1)).toContain("The scheduled end time has arrived");
+      expect(h.store.transcriptRead("t1").entries.slice(-2)).toMatchObject([{ kind: "result", outcome: "ok" }, { kind: "session", event: "stopped" }]);
+      expect(h.store.read("t1")!.autonomy).toBe(false);
+      expect(sessions.at(-1)!.disposed).toBe(true);
+
+      // 예약을 남긴 채 Console이 종료되고 기한 뒤 재기동하면, 재시작 순찰 대신 종료 알림만 한 번 간다.
+      h.store.setAutonomy("t1", true);
+      await schedule(Date.now() + 60_000);
+      await supervisor.dispose();
+      await vi.advanceTimersByTimeAsync(60_001);
+      const restored = createCommodoreStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], emit: () => undefined });
+      failNotice = true;
+      supervisor = makeSupervisor(restored);
+      supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sessions.at(-1)!.sent).toHaveLength(1);
+      expect(sessions.at(-1)!.sent[0]).toContain("The scheduled end time has arrived");
+      expect(sessions.at(-1)!.sent[0]).not.toContain("Console restarted;");
+      expect(restored.read("t1")!.autonomy).toBe(false);
+      expect(restored.read("t1")!.stopAt).toBeUndefined();
+      expect(sessions.at(-1)!.disposed).toBe(true);
+      expect(supervisor.status("t1")).toBeNull();
+      await vi.advanceTimersByTimeAsync(DEFAULT_PATROL_MS);
+      expect(sessions.at(-1)!.sent).toHaveLength(1);
+    } finally { await supervisor.dispose(); vi.useRealTimers(); }
+  });
   it("disposes a session that finishes opening after autonomy is turned off", async () => {
     const h = harness();
     h.setExperiments({ commodore: true });
