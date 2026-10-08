@@ -1,6 +1,6 @@
 ---
 name: clean-code
-description: Diagnose excessive file splitting, proxies, and duplicate logic in a named package, then perform approved structural consolidation and deduplication. Also use its consumer and residual-reference checks when removing code or a feature. Not for general bug fixes, feature development, or cosmetic formatting.
+description: Diagnose excessive file splitting, proxies, and duplicate logic in a named package, then perform approved structural consolidation and deduplication. Not for general bug fixes, feature development, or cosmetic formatting.
 ---
 
 # Clean Code
