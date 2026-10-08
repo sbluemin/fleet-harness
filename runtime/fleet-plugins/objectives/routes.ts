@@ -23,7 +23,7 @@ import { RESULT_LIMITS } from "./server/results.js";
  *
  * 목표 고유값은 프로젝트의 워크스페이스 디렉터리(`workspaces/<프로젝트>/objectives/<목표>/objective.json`)에, 제목·그룹·세션은
  * Operation 에 산다. 목록의 그룹은 Operation 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
- * 목표를 수행하는 세션은 `fleet-objectives` 로, Console Use 는 `console_objectives` 로 보드를 쓴다.
+ * 목표를 수행하는 세션은 `fleet-objectives` 로, Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로 보드를 쓴다.
  */
 const operationIdOf = (payload: unknown): string | null => {
   const operationId = (payload as { operationId?: unknown } | null)?.operationId;
@@ -172,7 +172,7 @@ export default definePlugin({
     const releaseAgentCalls = ctx.host.consoleControl?.redirectAgentCalls?.((operationId) => agentCallRedirect(store.find(operationId), store.findMember(operationId) !== null));
     if (releaseAgentCalls) ctx.host.lifecycle.registerCleanup(releaseAgentCalls);
 
-    // 두 표면 — Console Use 의 보드(`console_objectives`, 사람처럼 보고 더한다)와 목표 수행 세션의 작업 도구(`fleet-objectives`).
+    // 두 표면 — Console Use 의 보드(`console_objectives`·`console_objectives_detail`, 사람처럼 보고 더한다)와 목표 수행 세션의 작업 도구(`fleet-objectives`).
     const releaseConsoleTools = ctx.host.consoleUse.contribute?.(createObjectiveConsoleTools(ctx, store, launch));
     if (releaseConsoleTools) ctx.host.lifecycle.registerCleanup(releaseConsoleTools);
     ctx.host.lifecycle.registerCleanup(ctx.host.admiralMcp.register(createObjectiveMcpTools(ctx, store, launch, prStatus)));

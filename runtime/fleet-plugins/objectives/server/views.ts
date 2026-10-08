@@ -27,7 +27,7 @@ const resultView = (result: ObjectiveResult) => {
 };
 
 /**
- * 보드 보기 — `fleet-objectives`(지휘관·담당의 작업 도구)와 `console_objectives`(Console Use)가 같은 모양으로 목표를 읽는다.
+ * 보드 보기 — `fleet-objectives`(지휘관·담당의 작업 도구)와 `console_objectives`·`console_objectives_detail`(Console Use)이 같은 모양으로 목표를 읽는다.
  * 도구 응답은 JSON 한 덩이: 텍스트와 structuredContent 가 같은 값이다.
  */
 

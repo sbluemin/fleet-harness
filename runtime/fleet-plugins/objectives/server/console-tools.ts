@@ -1,4 +1,5 @@
-import { inputIssues, type ConsoleCaller, type ConsoleUseCallTarget, type PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { type ConsoleCaller, type ConsoleUseCallTarget, type PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { defineConsoleTool, type ConsoleToolFilter } from "@fleet-console/sdk/mcp/actions";
 import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -8,90 +9,131 @@ import { inboxReasons } from "./board-state.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { MAX_SHORT_INPUT, MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, MAX_MISSION_TEXT, MAX_DECISION_QUESTIONS, pinSchema, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
+import { MAX_SHORT_INPUT, MAX_CRITERIA, MAX_REMOVAL_REASON, MAX_TITLE, MAX_CONTEXT, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTIONS, pinSchema, decisionAnswersSchema, followupSelectionSchema, missionAddSchema, missionPatchSchema, criterionAddSchema, type Objective, type ObjectiveReviewer } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
 
-/** 바깥 루프의 보드. Console Use와 Theater에 묶인 사령관 세션이 같은 스키마와 도메인 함수를 쓴다. */
+/**
+ * 바깥 루프의 보드 — 화면 둘. `console_objectives` 는 목표 목록 화면(그룹·목록·확인 필요·진행 중·이력·모델, 추가·정리)이고
+ * `console_objectives_detail` 은 목표 하나의 화면(읽기·증거, 사람의 행위)이다. Console Use 와 Theater 에 묶인 사령관 세션이
+ * 같은 도메인 함수를 쓰고, 사령관 묶음은 호출자 필터(commodore)와 사령관 전용 필드(why)를 얹은 정의를 쓴다.
+ */
 
 const ids = z.string().min(1).max(128);
 const MAX_ADD_PER_TURN = 10;
-/**
- * add 와 함께 오면 조용히 버려지는 읽기 전용 키 — 생성 전에 이유 있게 거절한다.
- * 읽기로 쓸 때(view·objective·groups + groupId·objectiveId·filter)는 그대로 두므로 읽기 계약은 바뀌지 않는다.
- */
-const ADD_READ_KEYS = ["groupId", "objectiveId", "view", "filter", "resultId", "offset", "limit", "memberId", "cursor", "rejudge"] as const;
 /** 세션 전사 한 번에 읽는 줄 수의 기본값 — 꼬리 읽기의 크기이기도 하다. */
 const TRANSCRIPT_DEFAULT_LIMIT = 30;
 /** 정리(지우기·합치기·되돌리기) 한 번에 받는 목표 수, 그리고 호출자마다 10분에 받는 정리 호출 수. */
 const MAX_TIDY_IDS = 20;
 const MAX_TIDY_PER_TURN = 20;
-const TARGET_WRITES = ["plan", "commence", "criteria", "answer", "complete", "reopen", "steer", "message", "stop", "compact", "extend", "edit", "followup", "member"] as const;
 /** 구성원 모델 목록의 출처 — Console 이 내놓는 실행 카탈로그와 Gateway 한도 요약. 둘 다 루프백 HTTP 로만 읽는다. */
 const CATALOG_PATH = "/api/v1/operations/catalog";
 const QUOTA_PATH = "/api/v1/ai-gateway/quota";
 const CATALOG_TIMEOUT_MS = 5_000;
 const QUOTA_TIMEOUT_MS = 5_000;
 const QUOTA_MAX_BYTES = 65_536;
-const WRITE_KEYS = ["add", "remove", "merge", "restore", ...TARGET_WRITES] as const;
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
-const PIN_FACT = "Appended to the stored text as ` [pin]`: MUST NOT, MUST or MAY, then ASCII detail without brackets; at most 60 characters, and the text with its pin stays within the field limit (text_with_pin_too_long).";
-const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
-const pin = pinSchema.optional().describe(PIN_FACT);
-const answerSchema = decisionAnswersSchema.extend({ answers: z.array(decisionAnswersSchema.shape.answers.element.extend({ pin })).min(1).max(MAX_DECISION_QUESTIONS) });
-const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON);
-const addSchema = z.object({ title: z.string().trim().min(1).max(MAX_TITLE), note: z.string().max(20_000).optional(), criteria: z.array(z.union([criterionText, z.object({ text: criterionText, pin }).strict()])).max(MAX_CRITERIA).optional() }).strict();
-
-const contextSchema = z.object({ context: z.string().max(MAX_CONTEXT).optional() }).strict();
-const commenceSchema = contextSchema.extend({ routing: z.literal("preview").optional() }).strict();
+const pin = pinSchema.optional();
+const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON).optional();
+const context = z.string().max(MAX_CONTEXT).optional();
+const prerequisiteWhy = z.record(ids, z.string().max(MAX_SHORT_INPUT)).optional();
 const memberModelSchema = z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().trim().min(1).max(32).optional() }).strict();
-const editSchema = z.union([
-  z.object({ brief: z.string().max(20_000) }).strict(),
-  z.object({ title: z.string().trim().min(1).max(MAX_TITLE) }).strict(),
-  z.object({ mission: z.union([
-    z.object({ add: missionAddSchema.extend({ pin, why: z.record(ids, z.string().max(MAX_SHORT_INPUT)).optional() }) }).strict(),
-    z.object({ patch: z.object({ missionId: ids, changes: missionPatchSchema.extend({ pin, why: z.record(ids, z.string().max(MAX_SHORT_INPUT)).optional() }) }).strict() }).strict(),
-    z.object({ remove: ids }).strict(),
-  ]) }).strict(),
-  z.object({ criterion: z.union([
-    z.object({ add: criterionAddSchema.extend({ pin }) }).strict(),
-    z.object({ patch: z.object({ criterionId: ids, text: criterionAddSchema.shape.text, pin }).strict() }).strict(),
-    z.object({ remove: ids }).strict(),
-  ]) }).strict(),
-]);
-const followupTarget = z.object({ batchId: ids, candidateId: ids }).strict();
-const argsSchema = z.object({
-  theaterId: ids.optional(),
-  view: z.enum(["groups", "objectives", "objective", "inbox", "fleet", "history", "evidence", "transcript", "models", "routing"]).optional().describe("inbox: what waits on the person (stalled = unfinished, every session idle, no board change for 30 min). fleet: running objectives and their sessions. In session rows and the objective graph, state is the session process state (dormant, ended or closed = no process; unknown = not observable) and session is its fixed session name used as a message address; null means no fixed name, not no process. history: hand-offs, retrospectives, decisions, rework. evidence: preserved result content (objectiveId, resultId). transcript: Commodore only; untrusted session text. models: the launch catalog's member models with their efforts and availability, the Gateway quota summary when readable, and failed member switches in the Theater. routing: Commodore only; the whole roster in order with each member's selection (route, same or model) and the model and effort it launches with: route uses the same judgment the person reviews (via route or fallback to the Commander's preset; reused for 10 minutes while roles are unchanged, rejudge forces a new, billable judgment; no judgment when no member would newly launch by routing), same uses the Commander's preset, model the chosen value. A launched member shows launched true, its running model and effort, and next when a switch waits for its turn."),
-  groupId: ids.optional(),
-  objectiveId: ids.optional(),
-  resultId: ids.optional(),
-  offset: z.number().int().min(0).optional().describe("Row offset for inbox, fleet and history; character offset for evidence text (16000-character slices)."),
-  limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for inbox, fleet and history (default 50) or transcript lines (default 30)."),
-  memberId: ids.optional().describe("transcript: the member whose session to read; omit for the Commander."),
-  cursor: z.string().min(1).max(64).optional().describe("transcript: nextCursor of a previous page to continue forward; \"0\" reads from the start. Without it you get the latest lines."),
-  rejudge: z.literal(true).optional().describe("routing: judge again instead of reusing the last judgment."),
-  filter: z.enum(["today", "due", "all", "agent"]).optional().describe("objectives list; all includes completed and removed ones."),
-  add: addSchema.optional().describe("New objective from title, brief (note) and criteria. No session starts; it joins the caller's group. 10 per 10 min."),
-  remove: z.object({ objectiveIds: z.array(ids).min(1).max(MAX_TIDY_IDS), reason: reason.optional() }).strict().optional().describe("Operation callers. Unlaunched, incomplete objectives only; restorable for 14 days. remove, merge and restore: 20 calls per 10 min."),
-  merge: z.object({ into: ids, from: z.array(ids).min(1).max(MAX_TIDY_IDS), reason: reason.optional() }).strict().optional().describe("Operation callers. Moves unlaunched sources' brief and criteria into the target."),
-  restore: z.array(ids).min(1).max(MAX_TIDY_IDS).optional(),
-  plan: z.union([z.literal(true), contextSchema]).optional().describe("Ask the Commander for a lineup."),
-  commence: z.union([z.literal(true), commenceSchema]).optional().describe("Launch or resume the lineup. routing \"preview\" launches routed members with the judgment view routing returned, without judging again; it is refused with routing_preview_stale when a role or brief changed or the judgment expired."),
-  criteria: z.union([z.object({ approve: ids }).strict(), z.object({ reject: ids }).strict()]).optional().describe("Approve or reject one criteria proposal; approve: \"all\" approves every one."),
-  answer: answerSchema.optional().describe("Answer every question of the open decision request."),
-  complete: z.union([z.literal(true), followupSelectionSchema.strict()]).optional().describe("Complete, optionally selecting follow-ups."),
-  reopen: z.literal(true).optional(),
-  steer: z.union([z.literal(true), contextSchema]).optional(),
-  message: z.object({ memberId: ids.nullable().optional(), text: z.string().trim().min(1).max(MAX_CONTEXT) }).strict().optional(),
-  stop: z.literal(true).optional(),
-  compact: z.literal(true).optional(),
-  extend: z.object({ context: z.string().trim().min(1).max(MAX_CONTEXT) }).strict().optional(),
-  edit: editSchema.optional().describe("Change the title, the brief, a mission or a criterion under the screen's running-session rules."),
-  followup: z.union([z.object({ retry: followupTarget }).strict(), z.object({ abandon: followupTarget }).strict(), z.object({ discard: ids }).strict()]).optional().describe("Retry or abandon a follow-up creation, or discard a candidate."),
-  why: z.string().trim().min(1).max(MAX_SHORT_INPUT).optional().describe("Commodore only. One line on why this board write; the person reads it beside the action in the Commodore log."),
-  member: z.object({ memberId: ids, launch: memberModelSchema.nullable() }).strict().optional().describe("Commodore only. Set a member's model and effort from view models; null returns it to routing. Outcome set: not launched yet, Commence launches it with this value (routing skips it). applied: the session now runs it. pending: the member is working and switches after its turn (next). A launched member that returns to routing keeps its running model. Refused: a model outside the catalog (model_not_in_catalog), a disabled kind (model_unavailable), an effort the model does not offer (invalid_effort), an unreadable catalog (catalog_unavailable), or the host's code."),
-}).strict();
-type Args = z.output<typeof argsSchema>;
+const answers = z.array(decisionAnswersSchema.shape.answers.element.extend({ pin })).min(1).max(MAX_DECISION_QUESTIONS);
+/** 사령관 쓰기에만 붙는 한 줄 — 사람이 사령관 기록에서 그 행위 옆에 읽는다. */
+const signed = { why: z.string().trim().min(1).max(MAX_SHORT_INPUT).optional() };
+
+const PIN_FACT = "pin is appended to the stored text as ` [pin]`: MUST NOT, MUST or MAY, then ASCII detail without brackets; at most 60 characters, and the text with its pin stays within the field limit (text_with_pin_too_long).";
+const SESSION_FACT = "Session state is the session process state (dormant, ended or closed = no process; unknown = not observable); session is its fixed session name used as a message address, null meaning no fixed name.";
+const WHY_FACT = "why (writes): one line the person reads beside the action in the Commodore log.";
+
+/** 사령관 묶음의 필터 — 사령관 전용이 아닌 정리(remove·merge·restore)는 빠지고, Theater 는 생성 때 고정되므로 받지 않는다. */
+const COMMODORE: ConsoleToolFilter = { caller: "commodore", omit: ["theaterId"] };
+
+type Signed = typeof signed | Record<never, never>;
+
+function listActions<W extends Signed>(why: W) {
+  const scope = { theaterId: ids.optional() };
+  const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional(), limit: z.number().int().min(1).max(100).optional() };
+  const tidy = { kind: "write" as const, callers: ["operation" as const], refusal: "operation_caller_required" };
+  return {
+    groups: { kind: "read" as const, input: z.object(scope) },
+    list: { kind: "read" as const, input: z.object({ ...scope, groupId: ids.optional(), filter: z.enum(["today", "due", "all", "agent"]).optional() }) },
+    inbox: { kind: "read" as const, input: z.object(rows) },
+    fleet: { kind: "read" as const, input: z.object(rows) },
+    history: { kind: "read" as const, input: z.object(rows) },
+    models: { kind: "read" as const, input: z.object(scope) },
+    add: { kind: "write" as const, input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), note: z.string().max(20_000).optional(), criteria: z.array(z.union([criterionText, z.object({ text: criterionText, pin }).strict()])).max(MAX_CRITERIA).optional(), ...why }) },
+    remove: { ...tidy, input: z.object({ objectiveIds: z.array(ids).min(1).max(MAX_TIDY_IDS), reason }) },
+    merge: { ...tidy, input: z.object({ into: ids, from: z.array(ids).min(1).max(MAX_TIDY_IDS), reason }) },
+    restore: { ...tidy, input: z.object({ objectiveIds: z.array(ids).min(1).max(MAX_TIDY_IDS) }) },
+  };
+}
+
+function detailActions<W extends Signed>(why: W) {
+  const target = { objectiveId: ids };
+  const write = <S extends z.ZodRawShape>(shape: S) => ({ kind: "write" as const, input: z.object({ ...target, ...shape, ...why }) });
+  const commodoreOnly = { callers: ["commodore" as const], refusal: "commodore_only" };
+  const missionFields = { prerequisites: missionAddSchema.shape.prerequisites, prerequisiteWhy, member: missionAddSchema.shape.member, pin };
+  const followupTarget = { batchId: ids, candidateId: ids };
+  return {
+    read: { kind: "read" as const, input: z.object(target) },
+    evidence: { kind: "read" as const, input: z.object({ ...target, resultId: ids, offset: z.number().int().min(0).optional() }) },
+    transcript: { kind: "read" as const, ...commodoreOnly, input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional(), limit: z.number().int().min(1).max(100).optional() }) },
+    // 판단 한 번은 과금되는 Gateway 호출이다 — 사람의 확인 시트와 사령관만 부른다.
+    routing: { kind: "read" as const, ...commodoreOnly, input: z.object({ ...target, rejudge: z.literal(true).optional() }) },
+    member: { ...write({ memberId: ids, launch: memberModelSchema.nullable() }), ...commodoreOnly },
+    edit_title: write({ title: z.string().trim().min(1).max(MAX_TITLE) }),
+    edit_brief: write({ brief: z.string().max(20_000) }),
+    mission_add: write({ text: missionAddSchema.shape.text, ...missionFields }),
+    mission_patch: write({ missionId: ids, text: missionPatchSchema.shape.text, done: missionPatchSchema.shape.done, ...missionFields }),
+    mission_remove: write({ missionId: ids }),
+    criterion_add: write({ text: criterionAddSchema.shape.text, pin }),
+    criterion_patch: write({ criterionId: ids, text: criterionAddSchema.shape.text, pin }),
+    criterion_remove: write({ criterionId: ids }),
+    criteria_approve: write({ proposalId: ids }),
+    criteria_reject: write({ proposalId: ids }),
+    answer: write({ requestId: ids, answers }),
+    complete: write({ batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }),
+    reopen: write({}),
+    followup_retry: write(followupTarget),
+    followup_abandon: write(followupTarget),
+    followup_discard: write({ candidateId: ids }),
+    plan: write({ context }),
+    commence: write({ context, usePreview: z.literal(true).optional() }),
+    steer: write({ context }),
+    message: write({ memberId: ids.nullable().optional(), text: z.string().trim().min(1).max(MAX_CONTEXT) }),
+    stop: write({}),
+    compact: write({}),
+    extend: write({ context: z.string().trim().min(1).max(MAX_CONTEXT) }),
+  };
+}
+
+const listDescription = (commodore: boolean) => [
+  "A Theater's Objectives list screen: groups, open objectives (list; filter all includes completed and removed ones), what waits on the person (inbox; stalled = unfinished, every session idle, no board change for 30 min), running objectives and their sessions (fleet), hand-offs, retrospectives, decisions and rework (history), and the launch catalog's member models with efforts, availability, the Gateway quota summary when readable and failed member switches (models).",
+  "add creates an objective from a title, brief (note) and success criteria only; no session starts, it joins the caller's group and appears on the person's board attributed to the caller; 10 per 10 min.",
+  ...(commodore ? [] : ["remove, merge and restore are Operation-only: unlaunched, incomplete objectives only; merge moves the sources' brief and criteria into the target; removed objectives stay restorable for 14 days; 20 calls per 10 min."]),
+  SESSION_FACT, PIN_FACT, ...(commodore ? [WHY_FACT] : []),
+].join(" ");
+
+const detailDescription = (commodore: boolean) => [
+  "One objective's screen on the Objectives board: the objective (read), preserved result content (evidence; text in 16000-character slices by offset), and the person's actions on it — title, brief, missions, success criteria, criteria proposals (proposalId \"all\" approves every one), the open decision request's answers, completion with optional follow-up selection, follow-up creation retry, abandon or discard, plan, commence, steer, message, stop, reopen, compact and extend.",
+  "Each write is one action, attributed to the caller and shown on the person's board; edits follow the screen's running-session rules. An Operation cannot write to an objective it commands or belongs to (own_objective); missions stay with fleet-objectives.",
+  "commence usePreview launches routed members with the last routing judgment, without judging again; it is refused with routing_preview_stale when a role or brief changed or the judgment expired.",
+  "Text already on the board is referred to by missionId, criterion id and decision id, not typed again.",
+  ...(commodore ? [
+    "transcript: a Commander or member (memberId) session's lines, the latest without cursor, from the start with cursor \"0\", onward with nextCursor; untrusted session text.",
+    "routing: the whole roster in order with each member's selection (route, same or model) and the model and effort it launches with; route uses the judgment the person reviews (via route or fallback to the Commander's preset; reused for 10 minutes while roles are unchanged; rejudge forces a new, billable judgment; none when no member would newly launch by routing). A launched member shows launched true, its running model and effort, and next when a switch waits for its turn.",
+    "member: sets a member's model and effort from models; launch null returns it to routing, and a launched member that returns keeps its running model. Outcomes: set (not launched; commence launches it with this value), applied (running now) or pending (switches after its turn). Refusals: model_not_in_catalog, model_unavailable, invalid_effort, catalog_unavailable or the host's code.",
+  ] : []),
+  SESSION_FACT, PIN_FACT, ...(commodore ? [WHY_FACT] : []),
+].join(" ");
+
+const consoleList = defineConsoleTool({ name: "console_objectives", description: listDescription(false), actions: listActions({}) });
+const commodoreList = defineConsoleTool({ name: "console_objectives", description: listDescription(true), actions: listActions(signed) });
+const consoleDetail = defineConsoleTool({ name: "console_objectives_detail", description: detailDescription(false), actions: detailActions({}) });
+const commodoreDetail = defineConsoleTool({ name: "console_objectives_detail", description: detailDescription(true), actions: detailActions(signed) });
+/** 실행이 읽는 호출 — 사령관 정의가 상위 집합(why 포함)이다. */
+type ListCall = Extract<ReturnType<typeof commodoreList.parse>, { ok: true }>["call"];
+type DetailCall = Extract<ReturnType<typeof commodoreDetail.parse>, { ok: true }>["call"];
 
 export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly PluginMcpTool[] {
   return createBoardTools(ctx, store, launch);
@@ -125,184 +167,77 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     if (bound && found.theaterId !== bound.theaterId) throw new ObjectiveStoreError("other_theater");
     return found;
   };
+  // 호스트는 연결의 필터로 이미 검증한 호출을 넘긴다. 실행은 호출자 종류로 한 번 더 같은 검증을 지난다 — 직접 부른 호출과 사령관 묶음도 같은 길이다.
+  const filterOf = (caller: BoardCaller | undefined): ConsoleToolFilter | undefined => bound ? COMMODORE : caller ? { caller: caller.kind } : undefined;
+  const listTool = bound ? commodoreList : consoleList;
+  const detailTool = bound ? commodoreDetail : consoleDetail;
+  const short = (value: string) => (value.length > 32 ? `${value.slice(0, 31)}…` : value);
+  // 사이드바 자리 — 목표 하나면 그 목표 줄, 줄 하나로 좁혀지지 않는 목록·생성·지움은 그 Theater(groupId 가 있으면 그 그룹)의 묶음 머리.
+  // 레일 아이콘은 호스트가 따로 감싼다. 인자로 Theater 를 모르면 비워 두고, 호스트가 호출자 Operation 의 Theater 로 채운다.
+  const rowAt = (id: string | undefined, rowTheaterId: string): { readonly target?: ConsoleUseCallTarget } => (id ? { target: { kind: "cluster", clusterId: id, theaterId: rowTheaterId } } : {});
+  const listAt = (listTheaterId: string, groupId: unknown): { readonly target?: ConsoleUseCallTarget } => ({ target: { kind: "clusters", theaterId: listTheaterId, ...(typeof groupId === "string" ? { groupId } : {}) } });
+  const titleOf = (id: string) => short(store.find(id)?.title ?? "");
+  const stringIds = (value: unknown): string[] => Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+  const refusal = (parsed: { readonly error: string; readonly issues?: readonly unknown[] }) => refuse(parsed.error, parsed.issues ? { issues: parsed.issues } : {});
 
-  const tool: PluginMcpTool = {
-    name: "console_objectives",
-    description: "A Theater's Objectives board: read it and take the person's outer-loop actions (add, plan, commence, criteria, answer, complete, steer and the rest). One write per call, attributed to the caller. An Operation cannot write to an objective it commands or belongs to (own_objective); missions stay with fleet-objectives. A Commodore connection is confined to its Theater; only it reads routing judgments and transcripts and sets a member's model and effort (member). Routing itself is unchanged: a member set to a model is launched with it instead of being routed. " + BOARD_REFERENCES,
-    // 모르는 키는 호스트 선검사에서 그대로 막는다 — 실행할 수 없는 호출에 사람의 권한 요청을 띄우지 않는다.
-    inputSchema: z.toJSONSchema(argsSchema),
+  const list: PluginMcpTool = listTool.plugin({
     surface: {
       panelId: "objectives",
-      describe: (raw) => {
-        const parsed = argsSchema.safeParse(raw);
-        if (!parsed.success) return null;
-        const args = parsed.data;
-        const found = args.objectiveId ? store.find(args.objectiveId) : null;
-        const theaterId = bound?.theaterId ?? args.theaterId ?? found?.theaterId ?? "";
-        const short = (value: string) => (value.length > 32 ? `${value.slice(0, 31)}…` : value);
-        // 사이드바 자리 — 목표 하나면 그 목표 줄, 줄 하나로 좁혀지지 않는 목록·생성·지움은 그 Theater(groupId 가 있으면 그 그룹)의 묶음 머리.
-        // 레일 아이콘은 호스트가 따로 감싼다. 인자로 Theater 를 모르면 비워 두고, 호스트가 호출자 Operation 의 Theater 로 채운다.
-        const rowAt = (id: string | undefined, rowTheaterId: string): { readonly target?: ConsoleUseCallTarget } => (id ? { target: { kind: "cluster", clusterId: id, theaterId: rowTheaterId } } : {});
-        const listAt = (listTheaterId: string): { readonly target?: ConsoleUseCallTarget } => ({ target: { kind: "clusters", theaterId: listTheaterId, ...(args.groupId ? { groupId: args.groupId } : {}) } });
-        if (args.add) return { theaterId, summary: `목표 추가 「${short(args.add.title)}」`, view: "objectives", gesture: "create", ...listAt(theaterId) };
-        const titleOf = (id: string) => short(store.find(id)?.title ?? "");
-        const theaterOf = (id: string | undefined) => args.theaterId ?? (id ? store.find(id)?.theaterId : undefined) ?? "";
-        if (args.remove) { const removeIds = args.remove.objectiveIds; const removeTheaterId = theaterOf(removeIds[0]); return { theaterId: removeTheaterId, summary: removeIds.length === 1 ? `목표 지움 「${titleOf(removeIds[0]!)}」` : `목표 ${removeIds.length}개 지움`, view: "objectives", gesture: "press", ...listAt(removeTheaterId) }; }
-        if (args.merge) { const mergeTheaterId = theaterOf(args.merge.into); return { theaterId: mergeTheaterId, summary: `목표 ${args.merge.from.length}개를 「${titleOf(args.merge.into)}」에 합침`, view: "objective", path: args.merge.into, gesture: "press", ...rowAt(args.merge.into, mergeTheaterId) }; }
-        if (args.restore) { const restoreTheaterId = theaterOf(args.restore[0]); return { theaterId: restoreTheaterId, summary: args.restore.length === 1 ? `목표 되돌림 「${titleOf(args.restore[0]!)}」` : `목표 ${args.restore.length}개 되돌림`, view: "objectives", gesture: "press", ...(args.restore.length === 1 ? rowAt(args.restore[0], restoreTheaterId) : listAt(restoreTheaterId)) }; }
-        if (args.member) return { theaterId, summary: `구성원 모델 바꿈 「${short(found?.title ?? "")}」`, view: "objective", ...(found ? { path: found.id } : {}), gesture: "press", ...rowAt(found?.id, theaterId) };
-        const write = TARGET_WRITES.find((key) => args[key] !== undefined);
-        if (write) return { theaterId, summary: `목표 ${write} 「${short(found?.title ?? "")}」`, view: "objective", ...(found ? { path: found.id } : {}), gesture: "press", ...rowAt(found?.id, theaterId) };
-        // 읽기 — 목표를 짚었으면 그 줄, 목표 목록류(목록·그룹·확인 필요·진행 중·이력)면 묶음 머리. 모델 목록은 목표와 무관해 레일에만 선다.
-        const readAt = found ? rowAt(found.id, theaterId) : args.view === "models" ? {} : listAt(theaterId);
-        return { theaterId, summary: args.view === "transcript" ? `세션 기록 봄 「${short(found?.title ?? "")}」` : args.view === "routing" ? `라우팅 검토 「${short(found?.title ?? "")}」` : args.view === "models" ? "모델 목록 봄" : args.view === "objective" || (args.objectiveId && !args.view) ? `목표 봄 「${short(found?.title ?? "")}」` : args.view === "groups" ? "그룹 봄" : "목표 목록 봄", view: args.view === "evidence" || args.view === "transcript" || args.view === "routing" ? "objective" : args.view && ["inbox", "fleet", "history", "models"].includes(args.view) ? "objectives" : args.view ?? (args.objectiveId ? "objective" : "objectives"), ...(found ? { path: found.id } : {}), ...readAt };
+      describe: (args) => {
+        const action = typeof args.action === "string" ? args.action : null;
+        if (!action || !(action in listTool.actions)) return null;
+        const argTheater = typeof args.theaterId === "string" ? args.theaterId : undefined;
+        const theaterId = bound?.theaterId ?? argTheater ?? "";
+        const theaterOf = (id: string | undefined) => bound?.theaterId ?? argTheater ?? (id ? store.find(id)?.theaterId : undefined) ?? "";
+        if (action === "add") return { theaterId, summary: `목표 추가 「${short(typeof args.title === "string" ? args.title : "")}」`, view: "objectives", gesture: "create", ...listAt(theaterId, args.groupId) };
+        if (action === "remove") { const removeIds = stringIds(args.objectiveIds); const removeTheaterId = theaterOf(removeIds[0]); return { theaterId: removeTheaterId, summary: removeIds.length === 1 ? `목표 지움 「${titleOf(removeIds[0]!)}」` : `목표 ${removeIds.length}개 지움`, view: "objectives", gesture: "press", ...listAt(removeTheaterId, undefined) }; }
+        if (action === "merge") { const into = typeof args.into === "string" ? args.into : ""; const mergeTheaterId = theaterOf(into); return { theaterId: mergeTheaterId, summary: `목표 ${stringIds(args.from).length}개를 「${titleOf(into)}」에 합침`, view: "objective", path: into, gesture: "press", ...rowAt(into || undefined, mergeTheaterId) }; }
+        if (action === "restore") { const restoreIds = stringIds(args.objectiveIds); const restoreTheaterId = theaterOf(restoreIds[0]); return { theaterId: restoreTheaterId, summary: restoreIds.length === 1 ? `목표 되돌림 「${titleOf(restoreIds[0]!)}」` : `목표 ${restoreIds.length}개 되돌림`, view: "objectives", gesture: "press", ...(restoreIds.length === 1 ? rowAt(restoreIds[0], restoreTheaterId) : listAt(restoreTheaterId, undefined)) }; }
+        // 읽기 — 목표 목록류(목록·그룹·확인 필요·진행 중·이력)면 묶음 머리. 모델 목록은 목표와 무관해 레일에만 선다.
+        return { theaterId, summary: action === "models" ? "모델 목록 봄" : action === "groups" ? "그룹 봄" : "목표 목록 봄", view: "objectives", ...(action === "models" ? {} : listAt(theaterId, args.groupId)) };
       },
     },
     execute: async (raw, context) => {
-      const rawAdd = raw && typeof raw === "object" ? (raw as { add?: unknown }).add : null;
-      // 생성 요청에 낀 읽기 전용 키는 조용히 버리는 대신 생성 전에 거절한다 — groupId 를 함께 줘도 호출 Operation 의
-      // 그룹으로 생기므로, 착각한 채 만들지 않게 한다. 읽기(view·objective + groupId·objectiveId·filter)에는 닿지 않는다.
-      if (rawAdd && typeof rawAdd === "object") {
-        const readKeys = ADD_READ_KEYS.filter((key) => key in (raw as Record<string, unknown>));
-        if (readKeys.length > 0) return refuse("add_brief_criteria_only", { rejected: readKeys, hint: "groupId, objectiveId, view and filter only shape reads; with add they would be silently ignored. The new objective always follows the calling Operation's group — add carries the brief and success criteria, so pass only add (and theaterId when the theater is ambiguous)." });
-      }
-      // 쓰기는 한 호출에 하나 — 같이 온 읽기 키도 조용히 버리지 않는다.
-      if (raw && typeof raw === "object") {
-        const writes = WRITE_KEYS.filter((key) => key in (raw as Record<string, unknown>));
-        const targeted = writes.some((key) => (TARGET_WRITES as readonly string[]).includes(key));
-        const readKeys = ADD_READ_KEYS.filter((key) => (key !== "objectiveId" || !targeted) && key in (raw as Record<string, unknown>));
-        if (writes.length > 1 || (writes.length === 1 && writes[0] !== "add" && readKeys.length > 0)) return refuse("one_write_per_call", { rejected: writes.length > 1 ? writes : readKeys });
-      }
-      const parsed = argsSchema.safeParse(raw ?? {});
-      if (!parsed.success) return refuse("invalid_arguments", { issues: inputIssues(parsed.error.issues) });
-      const args: Args = parsed.data;
       const caller: BoardCaller | undefined = bound ?? context.caller;
+      const parsed = listTool.parse(raw, filterOf(caller));
+      if (!parsed.ok) return refusal(parsed);
+      const call = parsed.call as ListCall;
       try {
-        if (bound && args.theaterId !== undefined && args.theaterId !== bound.theaterId) return refuse("other_theater");
-        if (bound) {
-          const targets = [args.objectiveId, ...(args.remove?.objectiveIds ?? []), args.merge?.into, ...(args.merge?.from ?? []), ...(args.restore ?? [])].filter((id): id is string => id !== undefined);
-          for (const id of targets) scoped(id);
-        }
-        const write = TARGET_WRITES.find((key) => args[key] !== undefined);
-        if (write) {
-          // 구성원 모델은 사령관만 바꾼다 — 사람은 화면에서, 지휘관은 구성원 설명에 필요한 모델을 적는다.
-          if (args.member && !bound) return refuse("commodore_only", { hint: "The person changes member models in the Objectives panel." });
-          if (!args.objectiveId) return refuse("objective_required");
-          const current = scoped(args.objectiveId);
-          const actor = actorOf(caller, args.why);
-          if (!actor) return refuse("operation_caller_required");
-          if (caller?.kind === "operation" && roleIn(current, caller)) return refuse("own_objective");
-          const actions = createObjectiveActions(ctx, store, launch, actor);
-          const ref = { objectiveId: current.id, language: language(caller) };
-          const withContext = (value: true | { context?: string }) => ({ ...ref, ...(value === true ? {} : value) });
-          if (args.member) return text(await memberLaunch(actions, current, args.member, context.signal));
-          const result = await (async () => {
-            if (args.plan) return actions.plan(withContext(args.plan));
-            if (args.commence) return actions.commence({ ...withContext(args.commence), ...(args.commence !== true && args.commence.routing ? { routing: args.commence.routing } : {}) });
-            if (args.criteria) return "approve" in args.criteria ? (args.criteria.approve === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: args.criteria.approve })) : actions.reject({ ...ref, proposalId: args.criteria.reject });
-            if (args.answer) return actions.answer({ ...ref, requestId: args.answer.requestId, answers: args.answer.answers.map(({ pin: answerPin, ...answer }, index) => ({ ...answer, text: withPin(answer.text, answerPin, MAX_SHORT_INPUT, `answer.answers[${index}].text`) })) });
-            if (args.complete) return actions.complete({ ...ref, ...(args.complete === true ? {} : args.complete) });
-            if (args.reopen) return actions.complete({ ...ref, undone: true });
-            if (args.steer) return actions.steer(withContext(args.steer));
-            if (args.message) return actions.message({ ...ref, ...args.message });
-            if (args.stop) return actions.stop(ref);
-            if (args.compact) return actions.compact(ref);
-            if (args.extend) return actions.extend({ ...ref, ...args.extend });
-            if (args.followup) {
-              if ("retry" in args.followup) return actions.followupRetry({ ...ref, ...args.followup.retry });
-              if ("abandon" in args.followup) return actions.followupAbandon({ ...ref, ...args.followup.abandon });
-              return actions.followupDiscard({ ...ref, candidateId: args.followup.discard });
-            }
-            const edit = args.edit!;
-            if ("brief" in edit) return actions.patch({ ...ref, patch: { note: edit.brief } });
-            if ("title" in edit) return actions.patch({ ...ref, patch: { title: edit.title } });
-            if ("mission" in edit) {
-              if ("add" in edit.mission) { const { pin: missionPin, ...mission } = edit.mission.add; return actions.missionAdd({ ...ref, mission: { ...mission, text: withPin(mission.text, missionPin, MAX_MISSION_TEXT) } }); }
-              if ("patch" in edit.mission) {
-                const { pin: missionPin, ...changes } = edit.mission.patch.changes;
-                if (missionPin !== undefined && changes.text === undefined) throw new ObjectiveStoreError("pin_needs_text");
-                return actions.missionPatch({ ...ref, missionId: edit.mission.patch.missionId, patch: changes.text === undefined ? changes : { ...changes, text: withPin(changes.text, missionPin, MAX_MISSION_TEXT) } });
-              }
-              return actions.missionRemove({ ...ref, missionId: edit.mission.remove });
-            }
-            if ("add" in edit.criterion) return actions.criterionAdd({ ...ref, criterion: { text: withPin(edit.criterion.add.text, edit.criterion.add.pin, MAX_CRITERION_TEXT) } });
-            if ("patch" in edit.criterion) return actions.criterionPatch({ ...ref, criterionId: edit.criterion.patch.criterionId, patch: { text: withPin(edit.criterion.patch.text, edit.criterion.patch.pin, MAX_CRITERION_TEXT) } });
-            return actions.criterionRemove({ ...ref, criterionId: edit.criterion.remove });
-          })();
-          const { objective: updated, ...details } = result;
-          const kept = store.find(updated.id);
-          const fresh = <T extends { readonly id: string }>(now: readonly T[], then: readonly T[]) => now.find((entry) => !then.some((prior) => prior.id === entry.id));
-          const edit = args.edit;
-          const stored = !edit || !kept ? undefined
-            : "title" in edit ? { title: kept.title }
-            : "brief" in edit ? { brief: storedText(kept.note) }
-            : "mission" in edit ? ((mission) => mission && { mission: { id: mission.id, text: storedText(mission.text) } })(kept.missions.find((entry) => entry.id === ("add" in edit.mission ? fresh(kept.missions, current.missions)?.id : "patch" in edit.mission ? edit.mission.patch.missionId : undefined)))
-            : ((criterion) => criterion && { criterion: { id: criterion.id, text: storedText(criterion.text) } })(kept.criteria.find((entry) => entry.id === ("add" in edit.criterion ? fresh(kept.criteria, current.criteria)?.id : "patch" in edit.criterion ? edit.criterion.patch.criterionId : undefined)));
-          const answers = args.answer ? store.storedAnswers(current.id, args.answer.requestId) : null;
-          const echo = answers ? { answers: answers.map(({ questionId, selectedOptionIds, text: answered }) => ({ questionId, ...(selectedOptionIds.length ? { selectedOptionIds } : {}), ...(answered ? { text: storedText(answered) } : {}) })) } : stored;
-          return text({ ok: true, objectiveId: updated.id, ...details, ...(echo ? { stored: echo } : {}) });
-        }
-        if (args.remove || args.merge || args.restore) {
+        if (call.action === "remove" || call.action === "merge" || call.action === "restore") {
           // 정리는 에이전트 Operation 이 한다 — 누가 지웠는지가 사람의 보드에 남아야 한다.
           if (caller?.kind !== "operation") return refuse("operation_caller_required");
           if (!spend(tidyBudget, callerKey(caller), MAX_TIDY_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_TIDY_PER_TURN });
           const actor = (why?: string) => ({ operationId: caller.operationId, title: ctx.host.operations.get(caller.operationId)?.title ?? null, ...(why ? { reason: why } : {}) });
           // 후속으로 태어난 목표면 원본의 배치 표시(생성됨·삭제됨)가 이 목표의 지운 표시에서 나온다 — 바뀐 목표마다 원본을 다시 방송한다.
-          const touched = (ids: readonly string[]) => { for (const id of ids) launch.followupTargetChanged(id); };
-          if (args.remove) { const removed = store.tidyRemove(args.remove.objectiveIds, actor(args.remove.reason)).map((objective) => objective.id); touched(removed); return text({ ok: true, removed }); }
-          if (args.merge) { const target = store.tidyMerge(args.merge.into, args.merge.from, actor(args.merge.reason)); touched(args.merge.from); return text({ ok: true, objectiveId: target.id, merged: args.merge.from, criteria: target.criteria.length }); }
+          const touched = (changed: readonly string[]) => { for (const id of changed) launch.followupTargetChanged(id); };
+          if (call.action === "remove") { const removed = store.tidyRemove(call.objectiveIds, actor(call.reason)).map((objective) => objective.id); touched(removed); return text({ ok: true, removed }); }
+          if (call.action === "merge") { const target = store.tidyMerge(call.into, call.from, actor(call.reason)); touched(call.from); return text({ ok: true, objectiveId: target.id, merged: call.from, criteria: target.criteria.length }); }
           // 되돌리기도 지우기·합치기처럼 전부 받을 수 있을 때만 바꾼다 — 일부만 되돌린 채 오류로 끝나지 않게.
-          const restoreIds = [...new Set(args.restore!)];
+          const restoreIds = [...new Set(call.objectiveIds)];
           const refusals = restoreIds.flatMap((id) => { const found = store.find(id); return !found ? [{ objectiveId: id, reason: "unknown_objective" }] : !found.removed ? [{ objectiveId: id, reason: "not_removed" }] : []; });
           if (refusals.length) return refuse("tidy_refused", { refusals });
           const restored = restoreIds.map((id) => store.tidyRestore(id).id);
           touched(restored);
           return text({ ok: true, restored });
         }
-        if (!args.add) {
-          if (args.view === "evidence") {
-            if (!args.objectiveId || !args.resultId) return refuse("evidence_target_required");
-            scoped(args.objectiveId);
-            const { data, metadata } = await store.evidenceRead(args.objectiveId, args.resultId);
-            // 비동기 파일 읽기 뒤에도 같은 Theater에 속한 결과인지 확인한다.
-            scoped(args.objectiveId);
-            const details = { objectiveId: args.objectiveId, resultId: args.resultId, name: metadata.name, mediaType: metadata.mediaType, bytes: metadata.bytes, sha256: metadata.sha256 };
-            if (metadata.mediaType === "text/plain") {
-              const content = data.toString("utf8"), offset = args.offset ?? 0;
-              const slice = content.slice(offset, offset + 16_000);
-              return text({ ...details, text: slice, offset, totalCharacters: content.length, nextOffset: offset + slice.length < content.length ? offset + slice.length : null });
-            }
-            return { ...text(details), content: [...text(details).content, { type: "image", data: data.toString("base64"), mimeType: metadata.mediaType }] };
-          }
-          if (args.view === "models") return text(await models(args, caller, context.signal));
-          if (args.view === "routing") {
-            // 판단 한 번은 과금되는 Gateway 호출이다 — 사람의 확인 시트와 사령관만 부른다.
-            if (!bound) return refuse("commodore_only", { hint: "The person reviews routing in the Objectives panel." });
-            if (!args.objectiveId) return refuse("objective_required");
-            const current = scoped(args.objectiveId);
-            if (launch.busy(current.id)) return refuse("objective_busy");
-            return text(await lineup(current, args.rejudge === true));
-          }
-          if (args.view === "transcript") {
-            if (!bound) return refuse("commodore_only", { hint: "Operations read sessions with console_operation." });
-            if (!args.objectiveId) return refuse("objective_required");
-            return text(await transcript(scoped(args.objectiveId), args, context.signal));
-          }
-          return text(read(args, caller));
+        const theaterId = bound?.theaterId ?? ("theaterId" in call ? call.theaterId : undefined) ?? theaterOfCaller(caller);
+        if (call.action === "models") return text(await models(theaterId, context.signal));
+        if (call.action !== "add") {
+          if (!theaterId) return refuse("theater_required");
+          return text(read(call, theaterId, caller));
         }
-        const add = args.add;
-        const theaterId = args.theaterId ?? theaterOfCaller(caller);
         if (!theaterId) return refuse("theater_required");
         if (caller?.kind === "operation" && !spend(addBudget, callerKey(caller), MAX_ADD_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_ADD_PER_TURN });
+        const why = "why" in call ? call.why : undefined;
         // 그룹은 입력으로 받지 않는다 — 호출 Operation 의 그룹을 그대로 따른다.
         const groupId = caller?.kind === "operation" ? ctx.host.operations.get(caller.operationId)?.groupId ?? null : null;
         const objective = await launch.create({
-          theaterId, groupId, title: add.title, ...(add.note ? { note: add.note } : {}),
-          // 달성 기준 문장은 검증된 순서 그대로 기본 요구사항으로 함께 저장된다 — 한 건이라도 맞지 않으면 위 스키마에서
+          theaterId, groupId, title: call.title, ...(call.note ? { note: call.note } : {}),
+          // 달성 기준 문장은 검증된 순서 그대로 기본 요구사항으로 함께 저장된다 — 한 건이라도 맞지 않으면 스키마에서
           // 거절되므로 목표가 기준 없이 먼저 생기지 않는다. AI 생성 표시는 목표의 addedBy 로 남는다.
-          ...(add.criteria?.length ? { criteria: add.criteria.map((criterion) => typeof criterion === "string" ? criterion : withPin(criterion.text, criterion.pin, MAX_CRITERION_TEXT)) } : {}),
-          ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: { ...caller, ...(args.why ? { why: args.why } : {}) } } : {}),
-        }, { language: language(caller), ...(actorOf(caller, args.why) ? { actor: actorOf(caller, args.why)! } : {}) });
+          ...(call.criteria?.length ? { criteria: call.criteria.map((criterion) => typeof criterion === "string" ? criterion : withPin(criterion.text, criterion.pin, MAX_CRITERION_TEXT)) } : {}),
+          ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: { ...caller, ...(why ? { why } : {}) } } : {}),
+        }, { language: language(caller), ...(actorOf(caller, why) ? { actor: actorOf(caller, why)! } : {}) });
         const kept = store.find(objective.id) ?? objective;
         return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(kept.criteria.length ? { criteria: kept.criteria.map((criterion) => storedText(criterion.text)) } : {}) } });
       } catch (error) {
@@ -310,13 +245,119 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         return refuse("objectives_failed");
       }
     },
-  };
+  }, bound ? COMMODORE : undefined);
+
+  const detail: PluginMcpTool = detailTool.plugin({
+    surface: {
+      panelId: "objectives",
+      describe: (args) => {
+        const action = typeof args.action === "string" ? args.action : null;
+        if (!action || !(action in detailTool.actions)) return null;
+        const found = typeof args.objectiveId === "string" ? store.find(args.objectiveId) : null;
+        const theaterId = bound?.theaterId ?? found?.theaterId ?? "";
+        const at = { view: "objective", ...(found ? { path: found.id } : {}), ...rowAt(found?.id, theaterId) };
+        const title = short(found?.title ?? "");
+        if (action === "member") return { theaterId, summary: `구성원 모델 바꿈 「${title}」`, gesture: "press", ...at };
+        if (detailTool.actions[action]?.kind === "write") return { theaterId, summary: `목표 ${action} 「${title}」`, gesture: "press", ...at };
+        return { theaterId, summary: action === "transcript" ? `세션 기록 봄 「${title}」` : action === "routing" ? `라우팅 검토 「${title}」` : action === "evidence" ? `증거 봄 「${title}」` : `목표 봄 「${title}」`, ...at };
+      },
+    },
+    execute: async (raw, context) => {
+      const caller: BoardCaller | undefined = bound ?? context.caller;
+      const parsed = detailTool.parse(raw, filterOf(caller));
+      if (!parsed.ok) return refusal(parsed);
+      const call = parsed.call as DetailCall;
+      try {
+        // 사령관 전용 — 사람은 화면에서 라우팅을 검토하고 구성원 모델을 바꾸며, Operation 은 세션을 console_operation 으로 읽는다.
+        if ((call.action === "transcript" || call.action === "routing" || call.action === "member") && !bound) return refuse("commodore_only");
+        const current = scoped(call.objectiveId);
+        if (call.action === "read") return text({ objective: { ...objectiveView(current), decisionRequest: current.decisionRequest } });
+        if (call.action === "evidence") {
+          const { data, metadata } = await store.evidenceRead(current.id, call.resultId);
+          // 비동기 파일 읽기 뒤에도 같은 Theater에 속한 결과인지 확인한다.
+          scoped(current.id);
+          const details = { objectiveId: current.id, resultId: call.resultId, name: metadata.name, mediaType: metadata.mediaType, bytes: metadata.bytes, sha256: metadata.sha256 };
+          if (metadata.mediaType === "text/plain") {
+            const content = data.toString("utf8"), offset = call.offset ?? 0;
+            const slice = content.slice(offset, offset + 16_000);
+            return text({ ...details, text: slice, offset, totalCharacters: content.length, nextOffset: offset + slice.length < content.length ? offset + slice.length : null });
+          }
+          return { ...text(details), content: [...text(details).content, { type: "image", data: data.toString("base64"), mimeType: metadata.mediaType }] };
+        }
+        if (call.action === "routing") {
+          if (launch.busy(current.id)) return refuse("objective_busy");
+          return text(await lineup(current, call.rejudge === true));
+        }
+        if (call.action === "transcript") return text(await transcript(current, call, context.signal));
+        const why = "why" in call ? call.why : undefined;
+        const actor = actorOf(caller, why);
+        if (!actor) return refuse("operation_caller_required");
+        if (caller?.kind === "operation" && roleIn(current, caller)) return refuse("own_objective");
+        const actions = createObjectiveActions(ctx, store, launch, actor);
+        const ref = { objectiveId: current.id, language: language(caller) };
+        if (call.action === "member") return text(await memberLaunch(actions, current, call, context.signal));
+        if (call.action === "complete" && (call.batchId === undefined) !== (call.followups === undefined)) return refuse("invalid_arguments", { issues: [{ path: [call.batchId === undefined ? "batchId" : "followups"], code: "invalid_type" }] });
+        const missionText = (value: string, missionPin: string | undefined) => withPin(value, missionPin, MAX_MISSION_TEXT);
+        const result = await (async () => {
+          switch (call.action) {
+            case "plan": return actions.plan({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
+            case "commence": return actions.commence({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}), ...(call.usePreview ? { routing: "preview" as const } : {}) });
+            case "criteria_approve": return call.proposalId === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: call.proposalId });
+            case "criteria_reject": return actions.reject({ ...ref, proposalId: call.proposalId });
+            case "answer": return actions.answer({ ...ref, requestId: call.requestId, answers: call.answers.map(({ pin: answerPin, ...answer }, index) => ({ ...answer, text: withPin(answer.text, answerPin, MAX_SHORT_INPUT, `answers[${index}].text`) })) });
+            case "complete": return actions.complete({ ...ref, ...(call.batchId !== undefined && call.followups ? { batchId: call.batchId, followups: call.followups } : {}) });
+            case "reopen": return actions.complete({ ...ref, undone: true });
+            case "steer": return actions.steer({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
+            case "message": return actions.message({ ...ref, text: call.text, ...(call.memberId !== undefined ? { memberId: call.memberId } : {}) });
+            case "stop": return actions.stop(ref);
+            case "compact": return actions.compact(ref);
+            case "extend": return actions.extend({ ...ref, context: call.context });
+            case "followup_retry": return actions.followupRetry({ ...ref, batchId: call.batchId, candidateId: call.candidateId });
+            case "followup_abandon": return actions.followupAbandon({ ...ref, batchId: call.batchId, candidateId: call.candidateId });
+            case "followup_discard": return actions.followupDiscard({ ...ref, candidateId: call.candidateId });
+            case "edit_title": return actions.patch({ ...ref, patch: { title: call.title } });
+            case "edit_brief": return actions.patch({ ...ref, patch: { note: call.brief } });
+            case "mission_add": return actions.missionAdd({ ...ref, mission: { text: missionText(call.text, call.pin), ...(call.prerequisites ? { prerequisites: call.prerequisites } : {}), ...(call.prerequisiteWhy ? { why: call.prerequisiteWhy } : {}), ...(call.member !== undefined ? { member: call.member } : {}) } });
+            case "mission_patch": {
+              if (call.pin !== undefined && call.text === undefined) throw new ObjectiveStoreError("pin_needs_text");
+              const patch = { ...(call.text !== undefined ? { text: missionText(call.text, call.pin) } : {}), ...(call.done !== undefined ? { done: call.done } : {}), ...(call.prerequisites ? { prerequisites: call.prerequisites } : {}), ...(call.prerequisiteWhy ? { why: call.prerequisiteWhy } : {}), ...(call.member !== undefined ? { member: call.member } : {}) };
+              return actions.missionPatch({ ...ref, missionId: call.missionId, patch });
+            }
+            case "mission_remove": return actions.missionRemove({ ...ref, missionId: call.missionId });
+            case "criterion_add": return actions.criterionAdd({ ...ref, criterion: { text: withPin(call.text, call.pin, MAX_CRITERION_TEXT) } });
+            case "criterion_patch": return actions.criterionPatch({ ...ref, criterionId: call.criterionId, patch: { text: withPin(call.text, call.pin, MAX_CRITERION_TEXT) } });
+            case "criterion_remove": return actions.criterionRemove({ ...ref, criterionId: call.criterionId });
+          }
+        })();
+        const { objective: updated, ...details } = result;
+        const kept = store.find(updated.id);
+        const fresh = <T extends { readonly id: string }>(now: readonly T[], then: readonly T[]) => now.find((entry) => !then.some((prior) => prior.id === entry.id));
+        const missionEcho = (id: string | undefined) => ((mission) => mission && { mission: { id: mission.id, text: storedText(mission.text) } })(kept?.missions.find((entry) => entry.id === id));
+        const criterionEcho = (id: string | undefined) => ((criterion) => criterion && { criterion: { id: criterion.id, text: storedText(criterion.text) } })(kept?.criteria.find((entry) => entry.id === id));
+        const stored = !kept ? undefined
+          : call.action === "edit_title" ? { title: kept.title }
+          : call.action === "edit_brief" ? { brief: storedText(kept.note) }
+          : call.action === "mission_add" ? missionEcho(fresh(kept.missions, current.missions)?.id)
+          : call.action === "mission_patch" ? missionEcho(call.missionId)
+          : call.action === "criterion_add" ? criterionEcho(fresh(kept.criteria, current.criteria)?.id)
+          : call.action === "criterion_patch" ? criterionEcho(call.criterionId)
+          : undefined;
+        const answered = call.action === "answer" ? store.storedAnswers(current.id, call.requestId) : null;
+        const echo = answered ? { answers: answered.map(({ questionId, selectedOptionIds, text: answer }) => ({ questionId, ...(selectedOptionIds.length ? { selectedOptionIds } : {}), ...(answer ? { text: storedText(answer) } : {}) })) } : stored;
+        return text({ ok: true, objectiveId: updated.id, ...details, ...(echo ? { stored: echo } : {}) });
+      } catch (error) {
+        if (error instanceof ObjectiveStoreError) return refuse(error.code, error.details ?? {});
+        return refuse("objectives_failed");
+      }
+    },
+  }, bound ? COMMODORE : undefined);
+
 
   /**
    * 사령관의 구성원 모델 선택 — 사람의 모델 칩과 같은 memberPatch 경로다(띄우기 전이면 선택만, 띄웠으면 #1417 의 지금·턴 뒤 전환).
    * 고른 값은 카탈로그에 있는 모델과 그 모델의 강도여야 하고, 카탈로그를 읽지 못하면 추측으로 통과시키지 않는다.
    */
-  async function memberLaunch(actions: ReturnType<typeof createObjectiveActions>, objective: Objective, input: NonNullable<Args["member"]>, signal: AbortSignal | undefined) {
+  async function memberLaunch(actions: ReturnType<typeof createObjectiveActions>, objective: Objective, input: { readonly memberId: string; readonly launch: z.output<typeof memberModelSchema> | null }, signal: AbortSignal | undefined) {
     if (!objective.members.some((member) => member.id === input.memberId)) throw new ObjectiveStoreError("unknown_member");
     if (input.launch) {
       const catalog = await loadCatalog(signal);
@@ -413,10 +454,9 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     return Object.keys(quota).length ? quota : null;
   }
 
-  async function models(args: Args, caller: BoardCaller | undefined, signal: AbortSignal | undefined) {
+  async function models(theaterId: string | null, signal: AbortSignal | undefined) {
     const [catalog, quota] = await Promise.all([loadCatalog(signal), loadQuota(signal)]);
     if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
-    const theaterId = args.theaterId ?? theaterOfCaller(caller);
     // 바꾸지 못한 턴 뒤 전환 — 그 모델로 다시 고르기 전에 볼 사유다.
     const failedSwitches = theaterId ? store.list(theaterId).filter((objective) => !objective.done && !objective.removed).flatMap((objective) => objective.members.flatMap((member) => member.next?.failed
       ? [{ objectiveId: objective.id, memberId: member.id, role: member.role, model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}), failed: member.next.failed }]
@@ -425,7 +465,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
   }
 
   /** 목표 세션의 전사 — 지휘관 또는 구성원. Theater 경계는 호출 전에 scoped 가 지켰고, 소유(이 플러그인이 띄운 세션)는 호스트가 지킨다. */
-  async function transcript(objective: Objective, args: Args, signal: AbortSignal | undefined) {
+  async function transcript(objective: Objective, args: { readonly memberId?: string | undefined; readonly cursor?: string | undefined; readonly limit?: number | undefined }, signal: AbortSignal | undefined) {
     const member = args.memberId ? objective.members.find((candidate) => candidate.id === args.memberId) : null;
     if (args.memberId && !member) throw new ObjectiveStoreError("unknown_member");
     if (!member && store.pending(objective.id)) throw new ObjectiveStoreError("not_started");
@@ -438,21 +478,14 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     return { objectiveId: objective.id, session, source: page.source, latest: !args.cursor, entries: page.entries, nextCursor: page.nextCursor, truncated: page.truncated };
   }
 
-  function read(args: Args, caller: BoardCaller | undefined) {
-    if (args.view === "objective" || (args.objectiveId && !args.view)) {
-      const objective = args.objectiveId ? scoped(args.objectiveId) : null;
-      if (!objective) throw new ObjectiveStoreError("unknown_objective");
-      return { objective: { ...objectiveView(objective), decisionRequest: objective.decisionRequest } };
-    }
-    const theaterId = args.theaterId ?? theaterOfCaller(caller);
-    if (!theaterId) throw new ObjectiveStoreError("theater_required");
-    if (args.view === "groups") { const objectives = store.list(theaterId); return { theaterId, groups: (ctx.host.operations.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
+  function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" }>, theaterId: string, caller: BoardCaller | undefined) {
+    if (args.action === "groups") { const objectives = store.list(theaterId); return { theaterId, groups: (ctx.host.operations.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
     const page = <T,>(rows: readonly T[]) => {
-      const offset = args.offset ?? 0, limit = args.limit ?? 50;
+      const offset = "offset" in args ? args.offset ?? 0 : 0, limit = "limit" in args ? args.limit ?? 50 : 50;
       return { theaterId, total: rows.length, offset, nextOffset: offset + limit < rows.length ? offset + limit : null, objectives: rows.slice(offset, offset + limit) };
     };
     const board = store.list(theaterId).filter((objective) => !objective.removed && (!args.groupId || objective.groupId === args.groupId));
-    if (args.view === "inbox") {
+    if (args.action === "inbox") {
       const now = Date.now();
       return page(board.flatMap((objective) => {
         const reasons = inboxReasons(objective, { now, observe: (id) => ctx.host.consoleControl?.observe(id) });
@@ -463,22 +496,23 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         }] : [];
       }));
     }
-    if (args.view === "fleet") return page(board.filter((objective) => !objective.done).flatMap((objective) => {
+    if (args.action === "fleet") return page(board.filter((objective) => !objective.done).flatMap((objective) => {
       const state = sessions(objective);
       const active = [state.commander, ...state.members].some((session) => ["running", "background", "awaiting"].includes(session.state));
       return objective.commenced || active ? [{ ...rowView(objective), planning: objective.planning, boardUpdatedAt: objective.boardUpdatedAt, sessions: state }] : [];
     }));
-    if (args.view === "history") return page(board.filter((objective) => objective.done || objective.handoff || objective.extensions.length || (objective.actionCounts?.["hand-off"] ?? 0) > 0)
+    if (args.action === "history") return page(board.filter((objective) => objective.done || objective.handoff || objective.extensions.length || (objective.actionCounts?.["hand-off"] ?? 0) > 0)
       .sort((a, b) => (b.boardUpdatedAt ?? b.createdAt) - (a.boardUpdatedAt ?? a.createdAt)).map(historyView));
     const today = new Date().toISOString().slice(0, 10);
     const objectives = store.list(theaterId).filter((objective) => {
       if (args.groupId && objective.groupId !== args.groupId) return false;
-      if (args.filter !== "all" && objective.removed) return false;
-      if (args.filter === "today") return objective.today && !objective.done;
-      if (args.filter === "due") return !!objective.dueDate && !objective.done;
-      if (args.filter === "agent") return !!objective.addedBy;
+      const filter = args.action === "list" ? args.filter : undefined;
+      if (filter !== "all" && objective.removed) return false;
+      if (filter === "today") return objective.today && !objective.done;
+      if (filter === "due") return !!objective.dueDate && !objective.done;
+      if (filter === "agent") return !!objective.addedBy;
       // 모두 — 완료한 목표와 지우거나 합친 목표까지. 필터가 없으면 끝나지 않은 목표만이다.
-      if (args.filter === "all") return true;
+      if (filter === "all") return true;
       return !objective.done;
     });
     // 부른 세션이 목록에 목표로 서 있으면 그 줄을 self 로 가리킨다.
@@ -486,7 +520,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     return { theaterId, today, objectives: objectives.map((objective) => (objective.id === self ? { ...rowView(objective), self: true } : rowView(objective))) };
   }
 
-  return [tool];
+  return [list, detail];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);

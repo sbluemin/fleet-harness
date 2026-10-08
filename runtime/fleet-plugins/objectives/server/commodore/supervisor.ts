@@ -721,8 +721,8 @@ function hasOpenOperated(objectives: readonly Objective[]): boolean {
 /** 보드 도구 입력이 가리키는 목표 — 읽기는 상태를 바꾸지 않으니 함께 표시돼도 해가 없다. */
 function writeTargets(args: unknown): readonly string[] {
   if (!args || typeof args !== "object") return [];
-  const input = args as { objectiveId?: unknown; remove?: { objectiveIds?: unknown }; merge?: { into?: unknown; from?: unknown }; restore?: unknown };
-  const ids = [input.objectiveId, ...(Array.isArray(input.remove?.objectiveIds) ? input.remove.objectiveIds : []), input.merge?.into, ...(Array.isArray(input.merge?.from) ? input.merge.from : []), ...(Array.isArray(input.restore) ? input.restore : [])];
+  const input = args as { objectiveId?: unknown; objectiveIds?: unknown; into?: unknown; from?: unknown };
+  const ids = [input.objectiveId, ...(Array.isArray(input.objectiveIds) ? input.objectiveIds : []), input.into, ...(Array.isArray(input.from) ? input.from : [])];
   return ids.filter((id): id is string => typeof id === "string");
 }
 
