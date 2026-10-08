@@ -2906,7 +2906,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     clearSemanticStall();
     detachAbort(segment);
     if (error) segment.failure = error;
-    else if (segment.started || outcome === "turn_ended") {
+    else if (segment.started || CURSOR_CLEAN_TURN_OUTCOMES.has(outcome)) {
       if (!segment.started) {
         segment.started = true;
         segment.queue.push({
@@ -4109,6 +4109,17 @@ interface CursorMcpCall {
   readonly arguments?: string;
   readonly argumentRepairCount?: number;
 }
+
+/**
+ * Successful endings that still owe the client a message when every call of the turn was dropped.
+ * A frameless transport end never gets here: `finishAttachedTransport` fails it first.
+ */
+const CURSOR_CLEAN_TURN_OUTCOMES: ReadonlySet<string> = new Set([
+  "turn_ended",
+  "connect_end_stream",
+  "stream_end",
+  "stream_close",
+]);
 
 const CURSOR_MCP_DISPLAY_PREFIX = `mcp_${CURSOR_TOOL_PROVIDER_IDENTIFIER}_`;
 
