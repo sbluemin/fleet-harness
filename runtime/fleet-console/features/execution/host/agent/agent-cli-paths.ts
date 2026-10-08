@@ -115,15 +115,6 @@ export function resolveAgentCliBinary(options: {
   };
 }
 
-export function validateUserAgentCliPath(
-  executablePath: string,
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform = process.platform,
-): AgentCliBinaryResolution {
-  const checked = resolveConfiguredPath(executablePath, env, platform);
-  return { ...checked, source: "user", launchPath: executablePath, searchedPathEntries: [] };
-}
-
 export function agentCliCommandForId(cliId: string | undefined): string | null {
   if (cliId === "claude" || cliId === "claude-gateway" || cliId === "claude-native") return "claude";
   return null;

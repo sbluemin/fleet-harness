@@ -5,7 +5,6 @@ import path from "node:path";
 import type { FleetPluginStorageHost } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { validateAgentCliPathForSave } from "../../features/execution/host/agent/agent-cli-detect.js";
 import {
   AGENT_CLI_COMMANDS,
   AGENT_CLI_PATHS_STORAGE_KEY,
@@ -22,20 +21,6 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
   }
-});
-
-describe("Agent CLI configured path validation", () => {
-  it("returns path_not_absolute for relative paths, tilde paths, and NUL input", async () => {
-    for (const candidate of ["bin/claude", "~/bin/claude", "/tmp/claude\0suffix"]) {
-      expect((await validateAgentCliPathForSave(candidate)).error).toBe("path_not_absolute");
-    }
-  });
-
-  it("returns path_not_executable", async () => {
-    if (process.platform === "win32") return;
-    const executable = createFile("claude", 0o600);
-    expect((await validateAgentCliPathForSave(executable)).error).toBe("path_not_executable");
-  });
 });
 
 describe("resolveAgentCliBinary", () => {
@@ -66,10 +51,6 @@ function createTemporaryDirectory(): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-cli-path-"));
   temporaryDirectories.push(directory);
   return directory;
-}
-
-function createFile(name: string, mode: number): string {
-  return createFileAt(createTemporaryDirectory(), name, mode);
 }
 
 function createFileAt(directory: string, name: string, mode = 0o700): string {

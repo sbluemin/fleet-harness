@@ -333,14 +333,14 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, 
       ], (next) => setViewModePreference(next as ViewModePreference)),
     },
   ];
-  // 플러그인이 선언한 group은 두 레이아웃에서 같은 뜻이어야 한다 — 하네스·터미널·AI Gateway 같은 작업 섹션이 「에이전트」, 고급이 그 끝이다.
+  // 플러그인이 선언한 group은 두 레이아웃에서 같은 뜻이어야 한다 — 터미널·AI Gateway 같은 작업 섹션이 「에이전트」, 고급이 그 끝이다.
   const agent: MobileSettingsRow[] = [];
   const use: MobileSettingsRow[] = [];
   const iconFor = (title: string): MobileIconName => {
     const lower = title.toLowerCase();
     return lower.includes("gateway") ? "gate" : lower.includes("terminal") || lower.includes("터미널") ? "term" : lower.includes("usage") || lower.includes("한도") || lower.includes("사용량") ? "chart" : "harness";
   };
-  const AGENT_RANK = ["harness", "general", "agent-cli"];
+  const AGENT_RANK = ["general", "agent-cli"];
   const rank = (section: PluginSettingsNavItem) => { const index = AGENT_RANK.findIndex((suffix) => section.id.endsWith(`:${suffix}`)); return index < 0 ? AGENT_RANK.length : index; };
   for (const section of [...pluginSections].sort((a, b) => byOrder(a, b) || rank(a) - rank(b))) {
     const where = placed(section);

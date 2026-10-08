@@ -204,7 +204,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     rmSync(resolveLaunchAttachmentNamespaceRoot(fleetDataDir), { recursive: true, force: true });
     rmSync(fleetDataDir, { recursive: true, force: true });
   });
-  const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null }), update: (mutate) => mutate({}) };
+  const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };
   const ctx = {
     dataDir: fleetDataDir,
     legacyDataDir: fleetDataDir,

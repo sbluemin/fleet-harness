@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SystemPromptSettingsState } from "../../features/settings/client/execution-settings.js";
 
 const BASE: SystemPromptSettingsState = {
-  agentIdleDormantMinutes: 60,
   aiGateway: null,
   aiGatewayCatalog: { providers: [] },
   cursorDiagnosticsEnabled: false,
@@ -36,7 +35,7 @@ describe("terminal settings save lifecycle", () => {
     await store.loadSystemPromptSettings();
 
     const routing = store.setSystemPromptSettingsField("delegationRoutingModel", "sonnet");
-    const idle = store.setSystemPromptSettingsField("agentIdleDormantMinutes", 30);
+    const wireLog = store.setSystemPromptSettingsField("wireLogEnabled", true);
     await expect(store.setSystemPromptSettingsField("delegationRoutingModel", "opus")).resolves.toBe(true);
     await expect(store.setSystemPromptSettingsField("delegationRoutingModel", null)).resolves.toBe(true);
     // 화면은 기다리지 않는다 — 마지막으로 고른 것이 즉시 선다.
@@ -52,14 +51,14 @@ describe("terminal settings save lifecycle", () => {
     routingWrites()[1]!.resolve(response({ ...BASE, delegationRoutingModel: null }));
     await expect(routing).resolves.toBe(true);
 
-    writes.find((write) => write.field === "agentIdleDormantMinutes")!.resolve(
-      new Response(JSON.stringify({ error: "idle write refused" }), { status: 500 }),
+    writes.find((write) => write.field === "wireLogEnabled")!.resolve(
+      new Response(JSON.stringify({ error: "wire log write refused" }), { status: 500 }),
     );
-    await expect(idle).resolves.toBe(false);
+    await expect(wireLog).resolves.toBe(false);
     expect(store.getSystemPromptSettingsStoreState()).toMatchObject({
       // 실패한 필드만 되감고, 합쳐진 저장은 그대로 남는다.
-      state: { agentIdleDormantMinutes: 60, delegationRoutingModel: null },
-      error: "idle write refused",
+      state: { wireLogEnabled: false, delegationRoutingModel: null },
+      error: "wire log write refused",
     });
     expect(store.getSystemPromptSettingsStoreState().savingFields.size).toBe(0);
   });
