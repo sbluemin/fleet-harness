@@ -813,8 +813,6 @@
 @keyframes mobile-choice-card-in { from { opacity: 0; transform: scale(0.94); } }
 
 /* 드로어 */
-.mobile-drawer-edge { position: absolute; top: 0; bottom: 0; left: 0; z-index: 39; width: 22px; touch-action: pan-y; }
-
 .mobile-drawer-scrim {
   position: absolute;
   inset: 0;

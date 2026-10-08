@@ -24,6 +24,8 @@ import { unwindDetailsThen } from "./mobile-unwind.js";
 import { getMobileSheetStack, pushMobileSheet, setMobileDestination, setMobileDrawerOpen, useMobileDestination, useMobileDrawerOpen } from "./mobile-store.js";
 
 const EDGE_ZONE = 22;
+/** 옛 가장자리 띠가 섰던 층 — 셸 판 안에서 이보다 위에 뜬 겹침에서 시작한 누름은 가장자리 끌기가 아니다. */
+const EDGE_LAYER = 39;
 const DRAG_ARM = 12;
 const OPEN_DISTANCE = 120;
 const CLOSE_DISTANCE = 90;
@@ -87,12 +89,61 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
   // 열린 드로어는 하드웨어 뒤로가 닫는 겹침이다(메뉴·시트가 위에 있으면 그것이 먼저).
   useEffect(() => (open ? pushBackLayer(() => close(), "drawer") : undefined), [open, close]);
 
-  // 가장자리 끌기로 열기 — 드로어가 닫혀 있을 때 왼쪽 22dp에서 시작한다.
-  const onEdgeDown = (event: PointerEvent<HTMLDivElement>) => {
-    gestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, mode: "edge", armed: false, width: drawerWidth() };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-  const onGestureMove = (event: PointerEvent<HTMLElement | HTMLDivElement>) => {
+  // 가장자리 끌기로 열기 — 드로어가 닫혀 있을 때 왼쪽 EDGE_ZONE에서 시작한다. 그 자리에 띠를 깔지 않고 창에서 듣는다:
+  // 띠가 hit를 가져가면 가장자리에 걸친 버튼의 누를 자리가 잘린다. 누름·click은 아래 요소가 그대로 받는다.
+  const mountedRef = useRef(mounted);
+  mountedRef.current = mounted;
+  useEffect(() => {
+    if (open) return;
+    let suppressClickUntil = 0;
+    const onDown = (event: globalThis.PointerEvent) => {
+      if (mountedRef.current || gestureRef.current || !event.isPrimary || event.button !== 0) return;
+      if (!startsOnEdge(event)) return;
+      gestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, mode: "edge", armed: false, width: drawerWidth() };
+    };
+    const onMove = (event: globalThis.PointerEvent) => { if (gestureRef.current?.mode === "edge") onGestureMove(event); };
+    const onUp = (event: globalThis.PointerEvent) => {
+      const gesture = gestureRef.current;
+      if (gesture?.mode !== "edge" || gesture.pointerId !== event.pointerId) return;
+      // 끌기를 마친 마우스는 떼자마자 click을 낸다 — 그 click은 버린다. 터치는 끌면 click이 나지 않는다.
+      if (gesture.armed) suppressClickUntil = event.timeStamp + 100;
+      onGestureUp(event);
+    };
+    const onClick = (event: MouseEvent) => {
+      if (event.timeStamp > suppressClickUntil) return;
+      suppressClickUntil = 0;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    // 가로로 끄는 동안 브라우저 팬을 막는다 — 아래 요소의 touch-action이 가로 팬을 허락하면 팬이 시작되며
+    // pointercancel로 제스처가 끊긴다(옛 띠의 touch-action: pan-y 몫). 세로로 더 움직이면 막지 않아 스크롤이 된다.
+    const onTouchMove = (event: TouchEvent) => {
+      const gesture = gestureRef.current;
+      const touch = event.touches[0];
+      if (gesture?.mode !== "edge" || !event.cancelable || !touch) return;
+      const dx = touch.clientX - gesture.startX;
+      const dy = touch.clientY - gesture.startY;
+      if (gesture.armed || (dx > 0 && dx >= Math.abs(dy))) event.preventDefault();
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+    window.addEventListener("click", onClick, true);
+    // 비수동(passive: false)이어야 첫 touchmove를 취소할 수 있다 — 끄는 중이 아니면 바로 돌아간다.
+    window.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+      window.removeEventListener("click", onClick, true);
+      window.removeEventListener("touchmove", onTouchMove, true);
+      if (gestureRef.current?.mode === "edge") { gestureRef.current = null; setDragX(null); }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  const onGestureMove = (event: PointerEvent<HTMLElement> | globalThis.PointerEvent) => {
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const dx = event.clientX - gesture.startX;
@@ -106,21 +157,24 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
     }
     setDragX(gesture.mode === "edge" ? Math.min(0, -gesture.width + dx) : Math.min(0, dx));
   };
-  const onGestureUp = (event: PointerEvent<HTMLElement | HTMLDivElement>) => {
+  const onGestureUp = (event: PointerEvent<HTMLElement> | globalThis.PointerEvent) => {
     const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
     gestureRef.current = null;
-    if (!gesture || gesture.pointerId !== event.pointerId || !gesture.armed) { if (gesture?.mode === "edge") setDragX(null); return; }
+    if (!gesture.armed) { if (gesture.mode === "edge") setDragX(null); return; }
     const dx = event.clientX - gesture.startX;
     setDragX(null);
     if (gesture.mode === "edge") {
-      if (dx > OPEN_DISTANCE) setMobileDrawerOpen(true);
+      // pointercancel은 손가락을 뗀 것이 아니다 — 끌던 판을 도로 닫는다.
+      if (event.type !== "pointercancel" && dx > OPEN_DISTANCE) setMobileDrawerOpen(true);
       else { setShown(false); window.setTimeout(() => setMounted(false), LEAVE_MS); }
     } else if (dx < -CLOSE_DISTANCE) close();
   };
+  // 판 위 끌기는 판이 듣는다 — 가장자리 끌기는 위의 창 리스너가 맡는다.
+  const onPanelMove = (event: PointerEvent<HTMLElement>) => { if (gestureRef.current?.mode === "panel") onGestureMove(event); };
+  const onPanelUp = (event: PointerEvent<HTMLElement>) => { if (gestureRef.current?.mode === "panel") onGestureUp(event); };
 
-  if (!mounted && !open) {
-    return <div className="mobile-drawer-edge" onPointerDown={onEdgeDown} onPointerMove={onGestureMove} onPointerUp={onGestureUp} onPointerCancel={onGestureUp} aria-hidden="true" />;
-  }
+  if (!mounted && !open) return null;
   const dragging = dragX !== null;
   const progress = dragging ? 1 + dragX / Math.max(1, drawerWidth()) : shown ? 1 : 0;
   return (
@@ -132,14 +186,28 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
         style={dragging ? { transform: `translateX(${dragX}px)` } : undefined}
         aria-label={t("mobile.drawer.aria")}
         onPointerDown={(event) => { gestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, mode: "panel", armed: false, width: drawerWidth() }; }}
-        onPointerMove={onGestureMove}
-        onPointerUp={onGestureUp}
-        onPointerCancel={onGestureUp}
+        onPointerMove={onPanelMove}
+        onPointerUp={onPanelUp}
+        onPointerCancel={onPanelUp}
       >
         <DrawerBody state={state} attention={attention} activeOperationId={activeOperationId} close={close} onOpenOperation={onOpenOperation} />
       </nav>
     </>
   );
+}
+
+/**
+ * 가장자리 끌기를 시작해도 되는 누름인가 — 셸 판 왼쪽 EDGE_ZONE 안이고, 옛 띠(z-index 39)보다 위에 뜬 겹침
+ * (시트·알림·선택 팝업·토스트)이 아닌 곳. 판 밖(본문 포털 등)에서 시작한 누름은 잡지 않는다.
+ */
+function startsOnEdge(event: globalThis.PointerEvent): boolean {
+  const target = event.target instanceof Element ? event.target : null;
+  const frame = target?.closest<HTMLElement>(".mobile-frame");
+  if (!target || !frame || event.clientX - frame.getBoundingClientRect().left >= EDGE_ZONE) return false;
+  let layer: Element = target;
+  while (layer.parentElement && layer.parentElement !== frame) layer = layer.parentElement;
+  const z = Number.parseInt(window.getComputedStyle(layer).zIndex, 10);
+  return !(z > EDGE_LAYER);
 }
 
 function drawerWidth(): number {
