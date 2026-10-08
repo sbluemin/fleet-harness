@@ -1,5 +1,6 @@
 /* 폰의 「설정 › 사용량」 — 색은 토큰만 쓴다(모바일에서 토큰이 --m-*로 덮인다). */
-.quota-m { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
+/* 바깥 여백(위 4 · 좌우 14 · 아래 24)은 감싸는 설정 상세(.mobile-settings-detail)가 이미 준다 — 다시 두면 카드가 다른 설정 카드보다 28px 좁아진다. */
+.quota-m { display: flex; flex-direction: column; gap: 14px; }
 .quota-m-note { margin: 0; padding: 18px; color: var(--text-secondary); font-size: var(--t-md); }
 .quota-m-head { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 6px 4px 0; color: var(--text-tertiary); font-size: var(--t-md); font-weight: var(--weight-bold); }
 .quota-m-head small { font-size: var(--t-sm); font-weight: var(--weight-regular); }

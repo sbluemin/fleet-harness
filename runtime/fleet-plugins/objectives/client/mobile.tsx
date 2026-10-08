@@ -297,7 +297,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
             </div>
           </>
         ) : null}
-        <CrewSection objective={objective} operations={operations} t={t} api={api} language={language} say={say} />
+        {/* 임무는 이 화면의 본문이다 — 구성원 모델·서브에이전트 설정 카드보다 먼저 둔다(폰 첫 화면에 임무가 보이게). */}
         {objective.missions.length > 0 ? (
           <>
             <h2 className="objectives-m-glab">{t("objectives.missions.title")}</h2>
@@ -315,6 +315,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
             </div>
           </>
         ) : null}
+        <CrewSection objective={objective} operations={operations} t={t} api={api} language={language} say={say} />
       </div>
       {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
       {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}

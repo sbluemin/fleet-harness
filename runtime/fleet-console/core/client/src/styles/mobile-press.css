@@ -183,3 +183,14 @@
   outline: 2px solid var(--m-text);
   outline-offset: -2px;
 }
+
+/* ── 누를 자리 44 — 보이는 크기는 그대로 두고 손가락이 닿는 칸만 넓힌다 ──
+   응답 동작(복사·다시 시도)은 보이는 원이 32라, 투명 `::after`를 사방 6씩 내밀어 44×44로 잡는다. 이웃 동작과 칸이 겹치면
+   오탭이 나므로 중심 간격은 45로 벌려 칸 사이를 1 띄운다(간격 22 → 27, 바깥 여백 −7 둘을 빼면 상자 사이 13 = 내민 6 + 6 + 1).
+   딱 맞닿게(26) 두면 소수 픽셀 배치에서 두 칸이 0.5 겹쳐 실측됐다. */
+:root[data-view-mode="mobile"] .agent-chat-answer-actions { gap: 27px; }
+:root[data-view-mode="mobile"] .agent-chat-answer-action::after {
+  position: absolute;
+  inset: -6px;
+  content: "";
+}

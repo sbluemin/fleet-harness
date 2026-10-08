@@ -14,13 +14,19 @@
 .objectives-cm-band-text { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .objectives-cm .objectives-cm-band-act { margin-left: auto; margin-right: -10px; padding: 4px 10px; color: var(--m-text); font-weight: var(--weight-bold); white-space: nowrap; --pr-r: 14px; }
 
-/* 자율 운영 행 — 화면 위에 고정된 묶음 카드 한 행(P-2 토글 행). 행 전체가 스위치다. */
-.objectives-cm-top { flex: none; padding: 0 14px 10px; }
-.objectives-cm .objectives-cm-trow { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 14px 16px; border-radius: 22px; background: var(--m-surface); font-size: var(--m-fs-body); }
+/*
+ * 자율 운영 행 — 화면 위에 고정된 묶음 카드 한 행(P-2 토글 행). 행 전체가 스위치다.
+ * 모든 탭 위에 늘 서 있으므로 세로를 아낀다: 블록(행 52 + 아래 여백 8)은 60px 이하, 상태는 늘 한 줄이다.
+ * 상태가 넘치면 줄바꿈 대신 끝을 말줄임한다 — 전문은 스위치의 aria-describedby 로 읽힌다(commodore-mobile.tsx).
+ */
+.objectives-cm-top { flex: none; padding: 0 14px 8px; }
+.objectives-cm .objectives-cm-trow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 7px 14px 7px 16px; border-radius: 22px; background: var(--m-surface); font-size: var(--m-fs-body); }
 .objectives-cm-trow-ic { display: grid; flex: none; place-items: center; width: 22px; }
 .objectives-cm-trow-tx { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.objectives-cm-trow-tx b { font-size: var(--m-fs-body); font-weight: var(--weight-medium); line-height: 23px; }
-.objectives-cm-trow-ds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); line-height: 21px; }
+.objectives-cm-trow-tx b { font-size: var(--m-fs-body); font-weight: var(--weight-medium); line-height: 20px; }
+/* 한 줄 블록 — 상태 점과 글이 서로 다른 줄로 갈라지지 않는다(예전 flex-wrap 은 좁은 폭에서 점만 한 줄을 썼다). */
+.objectives-cm-trow-ds { display: block; overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-caption); line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
+.objectives-cm-trow-ds .objectives-m-sg { margin-right: 6px; vertical-align: -1px; }
 .objectives-cm-trow:disabled .objectives-cm-trow-ic,
 .objectives-cm-trow:disabled .objectives-cm-trow-tx { opacity: .45; }
 .objectives-cm-tog { position: relative; flex: none; width: 44px; height: 26px; margin-left: 2px; border-radius: 13px; background: var(--m-chip); }
@@ -35,6 +41,8 @@
 .objectives-cm-tabs { flex: none; display: flex; gap: 20px; padding: 0 24px; border-bottom: 1px solid var(--m-hairline); }
 .objectives-cm .objectives-cm-tabs button { padding: 10px 0; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); --pr-inset: 4px -10px; --pr-r: 10px; }
 .objectives-cm .objectives-cm-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: var(--weight-bold); }
+/* 두 글자 탭은 폭이 26이라 손가락 칸을 투명 ::after 로 좌우 9·위 1 넓힌다(≥ 44×44). 밑줄은 글자 폭 그대로, 탭 사이 20 안이라 겹치지 않는다. */
+.objectives-cm .objectives-cm-tabs button::after { position: absolute; inset: -1px -9px 0; content: ""; }
 
 /* 기록 탭 — 채팅 문법(S-26·S-27). */
 .objectives-cm-fill { display: flex; flex: 1; flex-direction: column; min-height: 0; }
@@ -59,14 +67,17 @@
 :root[data-mobile-scheme="light"] .objectives-cm-bubble { border-color: var(--m-hairline); }
 .objectives-cm .objectives-cm-tbtn.is-center { align-self: center; }
 
-/* 입력 독(S-27) — 첨부·모델 알약 없이 보내기 원만. */
+/*
+ * 입력 독(S-27) — 첨부·모델 알약 없이 보내기 원만. 원 하나 때문에 둘째 줄을 따로 두지 않고 입력과 같은 줄 오른쪽에 둔다
+ * (독 134 → 82px). 여러 줄이 되면 입력만 위로 자라고 원은 바닥에 붙는다.
+ */
 .objectives-cm-dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px 12px; background: var(--m-bg); }
 .objectives-cm-dock-note { padding: 0 8px; }
-.objectives-cm-comp { display: flex; flex-direction: column; gap: 8px; padding: 12px 8px 8px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
+.objectives-cm-comp { display: flex; align-items: flex-end; gap: 4px; padding: 8px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
 .objectives-cm-comp.is-off { opacity: .55; }
-.objectives-cm-comp-input { min-height: 44px; max-height: 176px; padding: 0 10px; border: 0; outline: none; resize: none; background: none; color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 22px; user-select: text; }
+.objectives-cm-comp-input { flex: 1; box-sizing: border-box; min-width: 0; min-height: 44px; max-height: 176px; padding: 11px 6px 11px 10px; border: 0; outline: none; resize: none; background: none; color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 22px; user-select: text; }
 .objectives-cm-comp-input::placeholder { color: var(--m-text-muted); }
-.objectives-cm-comp-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.objectives-cm-comp-bar { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 8px; padding: 2px 0; }
 .objectives-cm .objectives-cm-circ { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--m-inverse); color: var(--m-on-inverse); }
 /* 보내는 중에만 원이 물러난다(FD-19). 자율 운영이 꺼져 입력창 전체가 .55로 흐릴 때는 한 번만 흐린다 — 겹쳐 곱하지 않는다. */
 .objectives-cm .objectives-cm-comp:not(.is-off) .objectives-cm-circ:disabled { opacity: .45; }
