@@ -19,3 +19,11 @@ export function CommodoreMentionGlyph({ className = "objectives-commodore-mentio
 
 /** 사령관의 목표 줄 끝 표식 — 색(켬·끔)과 크기는 호스트 표식 칸이 정하므로 이 마크의 기본 색 규칙을 싣지 않는다. */
 export const renderCommodoreRowGlyph = () => <CommodoreMentionGlyph className="objectives-commodore-row-mark-glyph" />;
+
+/** 맡기지 않은 목표의 줄 끝 표식 — 같은 판과 별의 외곽선. 누르면 사령관에게 맡긴다(호스트가 줄에 올릴 때만 세운다). */
+export const renderCommodoreRowGlyphOff = () => (
+  <svg className="objectives-commodore-row-mark-glyph" viewBox="0 0 16 16" aria-hidden="true">
+    <path fill="none" stroke="currentColor" strokeWidth="1.3" d="M5 2.2h6A2.8 2.8 0 0 1 13.8 5v6a2.8 2.8 0 0 1-2.8 2.8H5A2.8 2.8 0 0 1 2.2 11V5A2.8 2.8 0 0 1 5 2.2Z" />
+    <path fill="none" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" d="M8 4.25 9.01 6.96 11.9 7.08 9.64 8.88 10.41 11.67 8 10.07 5.59 11.67 6.36 8.88 4.1 7.08 6.99 6.96Z" />
+  </svg>
+);

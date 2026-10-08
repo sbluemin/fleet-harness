@@ -3,8 +3,8 @@ import type { ConsoleOperationSummary, OperationCluster, OperationClusterMember,
 
 import { stalledObjectives, type BoardObservation, type BoardObserver } from "../server/board-state.js";
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
-import { actorKind, actorName, addedByCommodore, commencedByCommodore, lastAct } from "./actors.js";
-import { renderCommodoreRowGlyph } from "./commodore-mention-glyph.js";
+import { actorKind, actorName, lastAct } from "./actors.js";
+import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
@@ -87,8 +87,8 @@ function ageOf(at: number, now: number): { readonly unit: "now" } | { readonly u
 
 /**
  * 줄 둘째 줄의 출처 — 사람이 아닌 손이 더한 목표면 그 손(사람은 기본 주인이라 적지 않고, 후속은 `followup` 이 원천을 말한다),
- * 그리고 마지막으로 손댄 이와 그 행위·때. 사령관이 더한 목표는 줄 끝 사령관 표식이 말하므로, 실험 기능이 꺼져 표식이 서지 않을
- * 때만 글로 적는다. 사령관의 손은 brass 글자로만 선다.
+ * 그리고 마지막으로 손댄 이와 그 행위·때. 실험 기능이 켜져 있으면 줄 끝 사령관 표식(운영 주체)이 사령관의 몫을 말하므로, 사령관이
+ * 더한 목표는 표식이 서지 않을 때만 글로 적는다. 사령관의 손은 brass 글자로만 선다.
  */
 function provenanceOf(objective: Objective, board: CommodoreBoard, now: number): OperationClusterRowProvenance[] {
   const out: OperationClusterRowProvenance[] = [];
@@ -112,13 +112,31 @@ function provenanceOf(objective: Objective, board: CommodoreBoard, now: number):
 }
 
 /**
- * 사령관의 목표(사령관이 더했거나 개시했다)의 줄 끝 표식 — 사령관 스위치와 같은 글리프다. 실험 기능이 꺼져 있으면 서지 않고,
- * 자율 운영 스위치를 따라 켬·끔이 바뀐다.
+ * 줄 끝 사령관 표식 — 그 자체가 맡김 스위치다. 기준은 서버가 판정해 보낸 운영 주체(`operator`) 하나이고(깨움과 같은 값),
+ * 누르면 사람 전용 라우트로 맡기거나 돌려받는다. 켠 표식은 사령관 스위치와 같은 글리프로 자율 운영을 따라 켬·끔 잉크가 바뀌고,
+ * 꺼진 표식은 외곽선이다. 실험 기능이 꺼져 있으면 서지 않는다.
  */
 function commodoreMarkOf(objective: Objective, board: CommodoreBoard): OperationClusterRowMark | undefined {
-  if (!board.enabled || !(addedByCommodore(objective) || commencedByCommodore(objective))) return undefined;
+  if (!board.enabled) return undefined;
+  const operated = objective.operator === "commodore";
   const on = board.autonomy === true;
-  return { square: on ? "filled" : "hollow", renderGlyph: renderCommodoreRowGlyph, ...(board.peek ? { emphasized: true } : {}), label: (locale) => getT(locale)(on ? "objectives.mark.commodore.on" : "objectives.mark.commodore.off") };
+  return {
+    square: on ? "filled" : "hollow",
+    renderGlyph: operated ? renderCommodoreRowGlyph : renderCommodoreRowGlyphOff,
+    ...(board.peek && operated ? { emphasized: true } : {}),
+    label: (locale) => getT(locale)(operated ? (on ? "objectives.mark.commodore.onTip" : "objectives.mark.commodore.onTipOff") : "objectives.mark.commodore.offTip"),
+    toggle: {
+      pressed: operated,
+      label: (locale) => getT(locale)("objectives.mark.commodore.toggle", { title: objective.title }),
+      onToggle: (language) => setOperator(objective, !operated, language),
+    },
+  };
+}
+
+/** 맡기기·돌려받기 — 사람만 바꾸는 라우트. 결과는 목표 보기 갱신으로 돌아와 표식이 따라 바뀐다. */
+function setOperator(objective: Objective, commodore: boolean, language: "en" | "ko"): void {
+  const api = objectivesApi();
+  if (api) void post(api, "/objective/operator", { objectiveId: objective.id, commodore, language }).catch(() => undefined);
 }
 
 /**
@@ -267,7 +285,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
 
 const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.zoneNote ? "zone" : "", row.selected === true,
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
-  row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label)] : null] : null);
+  row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
 const resolveText = (text: LocalizedText): string => (typeof text === "string" ? text : text("en"));
 const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 

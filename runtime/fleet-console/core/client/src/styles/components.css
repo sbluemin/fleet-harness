@@ -7935,8 +7935,56 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 100%;
 }
 
+/* 누르는 표식 — 표식 자체가 맡김 스위치다. 누르는 칸은 22px 이지만 줄 안의 자리는 표식 크기(12px) 그대로다(음수 여백).
+   켠 표식은 위 잉크 규칙 그대로(켬 brass·끔 가라앉음) 늘 서고, 꺼진 표식은 외곽선으로 줄에 올리거나 초점이 올 때만 선다.
+   hover 가 없는 터치 기기는 꺼진 표식을 흐리게 늘 세운다. */
+.side-bar-cluster-row-mark-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin: -5px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-cluster-row-mark-toggle:hover {
+  background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
+}
+
+.side-bar-cluster-row-mark-toggle:focus-visible {
+  outline: none;
+  background: var(--brass-glow);
+}
+
+.side-bar-cluster-row-mark-toggle:not(.is-pressed) {
+  opacity: 0;
+}
+
+.side-bar-cluster-row:hover .side-bar-cluster-row-mark-toggle:not(.is-pressed),
+.side-bar-cluster-row:focus-within .side-bar-cluster-row-mark-toggle:not(.is-pressed) {
+  opacity: 0.8;
+}
+
+@media (hover: none) {
+  .side-bar-cluster-row-mark-toggle:not(.is-pressed) {
+    opacity: 0.45;
+  }
+}
+
+.side-bar-cluster-row-mark.has-glyph.is-off {
+  color: var(--text-tertiary);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .side-bar-cluster-row-mark {
+  .side-bar-cluster-row-mark,
+  .side-bar-cluster-row-mark-toggle {
     transition: none;
   }
 }

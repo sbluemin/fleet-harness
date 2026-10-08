@@ -90,9 +90,3 @@ export function lastAct(objective: Objective): { readonly by: ObjectiveActor; re
   for (const decision of objective.decisions) if (!latest || decision.at > latest.at) latest = { by: decision.by ?? "human", act: "answer", at: decision.at };
   return latest;
 }
-
-/** 사령관이 도구로 더한 목표. */
-export const addedByCommodore = (objective: Objective): boolean => objective.addedBy != null && typeof objective.addedBy === "object" && "kind" in objective.addedBy;
-
-/** 사령관이 (마지막으로) 개시한 목표. 개시 출처를 기록하기 전에 개시한 목표는 누가 개시했는지 모르므로 아니다로 다룬다. */
-export const commencedByCommodore = (objective: Objective): boolean => objective.commencedBy !== undefined && actorKind(objective.commencedBy) === "commodore";

@@ -744,8 +744,20 @@ export interface OperationClusterRowMark {
   readonly renderGlyph?: () => ReactNode;
   /** 맡은 이의 줄에 머무는 동안 — 같은 표식들이 함께 밝아져 어느 줄을 다루는지 한눈에 보인다. */
   readonly emphasized?: boolean;
-  /** 사각만으로는 뜻이 전해지지 않는다 — 줄의 접근 이름과 사각의 제목에 들어간다. */
+  /** 사각만으로는 뜻이 전해지지 않는다 — 줄의 접근 이름과 사각의 제목에 들어간다. 토글이 있으면 토글의 제목(지금 상태)만 된다. */
   readonly label: LocalizedText;
+  /**
+   * 표식 자체를 누르는 스위치로 — 있으면 호스트가 표식을 `aria-pressed` 버튼으로 그린다. 꺼진 표식은 줄에 올리거나 초점이 올
+   * 때만 보이고(터치 기기는 흐리게 늘), 켠 표식만 평소에 선다. 꺼짐의 모양은 `renderGlyph` 가 정한다.
+   */
+  readonly toggle?: OperationClusterRowMarkToggle;
+}
+
+export interface OperationClusterRowMarkToggle {
+  readonly pressed: boolean;
+  /** 버튼의 접근 이름 — 켬·끔과 상관없이 같은 말이다. 켬·끔은 `aria-pressed` 가 말한다. */
+  readonly label: LocalizedText;
+  readonly onToggle: (language: "en" | "ko") => void;
 }
 
 export interface ArchiveSectionContext {
