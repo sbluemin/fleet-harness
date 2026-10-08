@@ -2370,12 +2370,18 @@ describe("Objectives contract", () => {
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(1);
       expect(await memberView()).toMatchObject({ unreported: { lastMessage: incident } });
+      // 사람의 말 뒤 턴이 실패로 닫혀도 그 표식은 그 턴에서 거둔다 — 다음의 조용한 정지를 사람에게 답한 턴으로 잘못 읽지 않게.
+      await launch.message(id, memberId, "Are you there?");
+      outcomes.set(memberId, "failed");
+      outputDetails.set(memberId, { revision: 7, failure: { error: "server_error", error_details: "The backend is temporarily overloaded.", last_assistant_message: "API Error: 529" } });
+      h.emitTurnEnd(memberId);
+      await vi.advanceTimersByTimeAsync(1_000);
       // 새 발주는 기대를 옮긴다 — 보드를 거친 지휘관의 말도 발주다. 그 뒤 조용한 턴은 다시 알리고, 통지가 거절되면 그 사실을 남긴다.
       h.advanceClock(1_000);
       await launch.message(id, memberId, "Retry mission 1.", { actor: "commander" });
       expect(store.find(id)!.missions.find((entry) => entry.id === mission.id)?.dispatch).toMatchObject({ at: expect.any(Number) });
       const requests = vi.spyOn(ctx.host.consoleControl!, "request").mockRejectedValueOnce(Object.assign(new Error("commander unreachable"), { code: "operation_busy" }));
-      turn(7, "succeeded", { sentTo: [], byPerson: false });
+      turn(8, "succeeded", { sentTo: [], byPerson: false });
       await vi.advanceTimersByTimeAsync(1_000);
       requests.mockRestore();
       expect.soft(await memberView()).toMatchObject({ unreported: { reason: null, notificationFailure: { code: "operation_busy", message: "commander unreachable" } } });
@@ -2385,7 +2391,7 @@ describe("Objectives contract", () => {
       expect(await memberView()).toMatchObject({ noReportTool: true });
       h.advanceClock(1_000);
       h.emitSessionMessage(id, memberId);
-      turn(8, "succeeded", { sentTo: [], byPerson: false, answer: "No way to report." });
+      turn(9, "succeeded", { sentTo: [], byPerson: false, answer: "No way to report." });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(2);
       expect(await memberView()).toMatchObject({ unreported: { lastMessage: "No way to report.", reason: { code: "no_report_tool" } } });
@@ -2394,23 +2400,23 @@ describe("Objectives contract", () => {
       advertised.delete(memberId);
       expect(await memberView()).not.toHaveProperty("noReportTool");
       // ④ 보고가 닿은 턴은 표시를 거둔다.
-      turn(9, "succeeded", { sentTo: [`objective-${id.slice(0, 6)}-cmdr`], byPerson: false, answer: "Reported." });
+      turn(10, "succeeded", { sentTo: [`objective-${id.slice(0, 6)}-cmdr`], byPerson: false, answer: "Reported." });
       await vi.advanceTimersByTimeAsync(1_000);
       expect(await memberView()).not.toHaveProperty("unreported");
       // ⑤ 발주 뒤 이미 보고한 구성원이 지휘관의 참고 메시지에 답 없이 닫은 턴은 보고 빚이 없다.
-      turn(10, "succeeded", { sentTo: [], byPerson: false, answer: "Noted." });
+      turn(11, "succeeded", { sentTo: [], byPerson: false, answer: "Noted." });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(2);
       expect(await memberView()).not.toHaveProperty("unreported");
       // 새 배정은 보고 빚을 되살린다 — 그 뒤 조용히 멈춘 턴은 다시 알린다.
       h.advanceClock(1_000);
       launch.missionAdded(id, { text: "Next step", member: memberId });
-      turn(11, "succeeded", { sentTo: [], byPerson: false, answer: "Stopped." });
+      turn(12, "succeeded", { sentTo: [], byPerson: false, answer: "Stopped." });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(3);
       // ⑥ 끝난 임무만 남은 구성원의 조용한 턴은 미완 정지가 아니다.
       for (const entry of store.find(id)!.missions) store.missionPatch(id, entry.id, { done: true });
-      turn(12, "succeeded", { sentTo: [], byPerson: false, answer: "Idle." });
+      turn(13, "succeeded", { sentTo: [], byPerson: false, answer: "Idle." });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(3);
       expect(await memberView()).not.toHaveProperty("unreported");
@@ -2418,7 +2424,7 @@ describe("Objectives contract", () => {
       // 재시작 — 무보고 표시와 그 원문은 남고, 이미 알린 같은 턴을 다시 관측해도 통지하지 않는다.
       h.advanceClock(1_000);
       launch.missionAdded(id, { text: "After restart", member: memberId });
-      turn(13, "succeeded", { sentTo: [], byPerson: false, answer: "Stopped again." });
+      turn(14, "succeeded", { sentTo: [], byPerson: false, answer: "Stopped again." });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(4);
       launch.dispose();
@@ -2429,13 +2435,13 @@ describe("Objectives contract", () => {
       expect(restartedMember()).toMatchObject({ unreported: { lastMessage: "Stopped again.", reason: null } });
       expect(notices()).toHaveLength(4);
       // 배정 뒤 보고한 기록도 남는다 — 재시작 직후의 조용한 턴(참고 메시지에 답 없이 닫음)은 오탐을 내지 않는다.
-      turn(14, "succeeded", { sentTo: ["commander"], byPerson: false, answer: "Reported." });
+      turn(15, "succeeded", { sentTo: ["commander"], byPerson: false, answer: "Reported." });
       await vi.advanceTimersByTimeAsync(1_000);
       expect(restartedMember()).not.toHaveProperty("unreported");
       after.launch.dispose();
       after = restart();
       after.launch.watchLiveOutcomes();
-      turn(15, "succeeded", { sentTo: [], byPerson: false, answer: "Noted." });
+      turn(16, "succeeded", { sentTo: [], byPerson: false, answer: "Noted." });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(4);
       expect(restartedMember()).not.toHaveProperty("unreported");

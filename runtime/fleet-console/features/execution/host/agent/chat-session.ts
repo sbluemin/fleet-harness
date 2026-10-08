@@ -810,6 +810,9 @@ class AgentChatSession {
   private coordinateFlight: Promise<boolean> | null = null;
   /** 지금 자식에 적용 중인 좌표. 이미 자식에게 건넨 예약은 거둘 수 없다. */
   private applyingCoordinates: ChatCoordinates | null = null;
+  private forgetCoordinatesRefusal(): void {
+    this.coordinatesRefusal = null;
+  }
   /** 자식이 마지막으로 거절한 좌표와 그 원 예외. 그 좌표를 곧바로 적용하려던 호출자가 실패 사유로 돌려준다. */
   private coordinatesRefusal: { readonly target: ChatCoordinates; readonly cause: import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause } | null = null;
 
@@ -1301,6 +1304,8 @@ class AgentChatSession {
     if (target.model !== this.coordinates.model && occupied !== null && occupied > modelCapacity(target)) {
       return { ok: false, error: "context_exceeds_window" };
     }
+    // 새 시도는 지난 거절을 거둔다 — 같은 좌표를 다시 고른 예약이 다른 까닭(문맥 초과·다른 곳의 변경)으로 사라져도 옛 원 예외를 그 예약의 거절로 읽지 않게.
+    this.forgetCoordinatesRefusal();
     if (sameCoordinates(target, this.coordinates) && this.coordinateFlight === null) {
       // 적용된 값으로 되돌리는 것은 예약을 거두는 것과 같다.
       if (this.pendingCoordinates !== null) this.setPendingCoordinates(null);

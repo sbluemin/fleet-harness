@@ -1222,6 +1222,11 @@ describe("AgentChatRegistry — stopping a turn", () => {
     // 좌표 조회도 그 거절을 사유째 들고 있다 — 턴 경계에서 거절된 예약의 사유를 플러그인이 읽는 자리다.
     expect(session.readCoordinates()).toEqual({ model: "sonnet[1m]", effort: "medium", pending: null,
       refused: { model: "muse-code--muse-spark-1.3-contributor", effort: null, cause: { message: `Provider refused the session: key=sk-… ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit", errorClass: "process_exited_nonzero", exitCode: 1 } } });
+    // 새 시도는 지난 거절을 거둔다 — 같은 좌표를 다시 고른 예약이 다른 까닭으로 사라져도 옛 원 예외를 그 예약의 거절로 읽지 않게.
+    session.send("third");
+    await vi.waitFor(() => { expect(wire).toContain("send:third"); });
+    await expect(session.changeCoordinates("muse-code--muse-spark-1.3-contributor", null)).resolves.toEqual({ ok: true, applied: "scheduled" });
+    expect(session.readCoordinates()).not.toHaveProperty("refused");
 
     await registry.disposeAll();
   });

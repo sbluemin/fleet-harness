@@ -960,7 +960,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         // 사람의 턴(입력창, 또는 보드를 거친 사람의 말)은 사람에게 답하는 턴이라 지휘관 보고 기대를 만들지 않는다. 다시 깨어날 일(백그라운드
         // 작업·깨움 예약)을 남긴 턴도 아니다. 표면이 보고를 싣지 않으면(터미널) 모른다는 뜻이다. 같은 빚에는 통지를 한 번만 보낸다.
         const report = outcome === "failed" ? undefined : observation.output.report;
-        const personTurn = !!report && (report.byPerson || personPrompts.delete(operationId));
+        // 사람의 말 표식은 결과와 상관없이 그 말이 연 턴이 정산될 때 거둔다 — 실패로 닫힌 턴 뒤의 조용한 정지를 사람에게 답한 턴으로 잘못 읽지 않게.
+        const personPrompted = personPrompts.delete(operationId);
+        const personTurn = !!report && (report.byPerson || personPrompted);
         if (report && report.sentTo.length > 0) store.setMemberDelivered(operationId, quietNow());
         const assignedAt = Math.max(-1, ...current.missions.flatMap((mission) => mission.member === member.id && !mission.done ? [mission.assignmentTs ?? 0] : []));
         const expectedAt = assignedAt < 0 ? -1 : Math.max(assignedAt, store.memberDispatch(operationId)?.at ?? -1);
