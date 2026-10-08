@@ -137,7 +137,10 @@ const ENGLISH_HOLD_ING = new Set(["waiting", "holding", "keeping", "leaving", "s
 /** Drops a short label such as `Looking good:` or `Let me summarize:`. A label that opens on a forward lead is a step and stays. */
 function stripPrefaceLabel(text: string): string {
   if (ENGLISH_FORWARD_LEAD.test(text)) return text;
-  return text.replace(/^(?:[^\s:]+\s+){0,2}[^\s:]+:\s+/u, "");
+  const label = /^(?:[^\s:]+\s+){0,2}[^\s:]+:\s+/u.exec(text);
+  // A label that is itself the speaker's step (`Let me check: the logs.`) is the announcement, not a preface.
+  if (label === null || label[0].match(ENGLISH_FIRST_PERSON_STEP) !== null) return text;
+  return text.slice(label[0].length);
 }
 
 /** Clauses of one sentence, each starting where a subject would: after `,` `;` a dash, or before `so`/`and`/`but`/`then`. */
@@ -161,13 +164,18 @@ function englishStrongStepCount(sentence: string): number {
     if (/^[a-z]{3,}ing$/u.test(first) && !ENGLISH_NON_STEP_ING.has(first) && !ENGLISH_HOLD_ING.has(first)) count += 1;
     // `I updated the code and will run the tests`: the subject carries over to a clause that opens on the modal.
     if (subjectSeen && ENGLISH_ELIDED_SUBJECT_STEP.test(clause)) count += 1;
-    if (/\b(?:I|we)\b/u.test(clause)) subjectSeen = true;
+    if (/\b(?:I|[Ww]e)\b/u.test(clause)) subjectSeen = true;
   }
   return count;
 }
 
 function hasEnglishForwardLead(sentence: string): boolean {
-  return englishClauses(stripPrefaceLabel(sentence.trim())).some((clause) => ENGLISH_FORWARD_LEAD.test(clause));
+  const clauses = englishClauses(stripPrefaceLabel(sentence.trim()));
+  // `If CI passes, then I'll deploy`: this `then` opens the consequent of the condition before it, not a step of its own.
+  return clauses.some((clause, index) => (
+    ENGLISH_FORWARD_LEAD.test(clause)
+    && !(index > 0 && /^then\b/iu.test(clause) && /^(?:if|when|once|unless|after)\b/iu.test(clauses[index - 1] ?? ""))
+  ));
 }
 
 /** Strong steps plus a forward lead, for the one-action test of a conditional sentence. */
