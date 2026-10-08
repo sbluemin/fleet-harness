@@ -13,6 +13,7 @@ import {
   GatewayRoutingDistribution,
   decideGatewayRoutingAssignment,
   decideGatewayRoutingBatch,
+  buildGatewayLoadout,
   JEV_ROUTING_TIMEOUT_MS,
   JEV_ROUTING_BATCH_TIMEOUT_MS,
   parseGatewayAssignmentRequest,
@@ -233,6 +234,15 @@ export function startAiGateway(ctx: GatewayStartContext) {
     } finally { testing = false; res.off("close", abort); }
     return true;
   }, [{ method: "POST", path: "", summary: "Test the configured routing decision with a real provider request.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
+  // 라우팅 판단이 보는 그 목록(gateway_models) — 판단에 모델을 제안하는 세션(지휘관)이 같은 후보·한도·선호를 읽는다. 원시 쿼터는 싣지 않는다.
+  ctx.registerRouter("ai-gateway/gateway-models", async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    void quota.getSummary().catch(() => undefined);
+    const selection = currentExposure();
+    ctx.host.http.writeJson(res, 200, { routing: { enabled: selection.delegationRoutingEnabled, mode: selection.delegationRoutingMode }, ...buildGatewayLoadout(selection) });
+    return true;
+  }, [{ method: "GET", path: "", summary: "Read gateway_models, the candidate models, quota pools and recent assignments the routing decision sees.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
   ctx.registerRouter("ai-gateway/routing-assign", async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }

@@ -39,7 +39,10 @@ append, the `fleet://ai-gateway/*` resources (routing guides and the models rost
 alike), the `fleet-ai-gateway` MCP server, the `assets/ai-gateway/` prose, and the
 `gateway_models` tool are all retired. Their purpose was to persuade a host to choose
 gateway models; assignment is now decided in code per dispatch (section 2.1), so a
-served copy of that doctrine would only publish stale claims at runtime.
+served copy of that doctrine would only publish stale claims at runtime. The routing
+loadout itself remains readable to an Objectives Commander (fleet-objectives `models`),
+which may note a proposed model on a member it plans; the routing decision reads that
+note as input and still assigns the model.
 
 `claudeCodeSystemPrompt` (`on` | `append` | `off`, default `on`) controls the harness's
 own prompt, and `claudeCodeCustomSystemPrompt` carries the user's own instructions:

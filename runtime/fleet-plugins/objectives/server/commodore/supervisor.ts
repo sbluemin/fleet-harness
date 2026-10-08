@@ -32,8 +32,8 @@ export const COALESCE_MS = 3_000;
 export { STALL_MS };
 export const STALL_CHECK_MS = 5 * 60_000;
 /**
- * 개시 대기 점검 주기 — 사령관이 운영하는 개시 전 목표의 지휘관이 일을 마쳐 개시할 수 있게 되는 순간(턴 끝, 백그라운드 작업의 끝)은
- * 보드 사건이 아니고, 턴 끝 신호는 이 플러그인이 띄운 세션에만 오므로 관측으로 본다. 그런 목표가 있을 때만 다시 센다.
+ * 대기 점검 주기 — 사령관이 운영하는 목표의 지휘관이 일을 마쳐 개시·완료할 수 있게 되는 순간(턴 끝, 백그라운드 작업의 끝)은
+ * 보드 사건이 아니고, 턴 끝 신호는 이 플러그인이 띄운 세션에만 오므로 관측으로 본다. 개시 대기·검토 대기 목표가 있을 때만 다시 센다.
  */
 export const PLANNED_CHECK_MS = 2_000;
 const RECENT_ACTIONS = 12;
@@ -571,6 +571,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
+  /** 지난 상태에서 열려 있던 운영 목표 중 지금 닫힌 것이 있고, 그것이 모두 사령관의 (아직 유예 안의) 쓰기 대상인가. */
+  const closedBySelf = (runner: Runner, objectives: readonly Objective[]): boolean => {
+    const at = now();
+    const open = new Set(objectives.filter((objective) => !objective.done && !objective.removed).map((objective) => objective.id));
+    const closed = [...runner.statuses].filter(([id, tracked]) => tracked.operator === "commodore" && tracked.status !== "done" && tracked.status !== "removed" && !open.has(id)).map(([id]) => id);
+    return closed.length > 0 && closed.every((id) => (runner.selfWrites.get(id) ?? 0) >= at);
+  };
+
   // 보드 사건 — 사령관이 운영하는 목표에 아직 듣지 못한 대기 상태가 생길 때만 깨운다. 사령관 자신의 개시·완료로 대기가 줄어드는
   // 것은 깨울 일이 아니다(빈 inbox 를 읽으러 깨어나는 비용). 줄어든 항목은 조용히 잊어 같은 상태가 돌아오면 다시 깨운다.
   // 사람이 운영하는 목표의 사건은 깨우지 않고 다음 턴의 범위 줄(held)에만 남는다 — 조회에는 그대로 보인다.
@@ -590,28 +598,32 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       for (const code of freshCodes) wake(runner, code, { count: digest.get(code) ?? 1 });
     }
   };
-  cleanups.push(deps.subscribeObjectives((event) => {
-    const runner = runners.get(event.theaterId);
-    if (!runner) return;
-    const objectives = deps.objectives(event.theaterId);
+  /** 보드를 다시 본다 — 대기 상태, 빈 보드, 상태 변화. 보드 사건과 대기 점검이 같은 길을 쓴다. */
+  const boardChanged = (runner: Runner) => {
+    const objectives = deps.objectives(runner.theaterId);
     waitingChanged(runner, objectives);
     const empty = !hasOpenOperated(objectives);
-    if (empty && !runner.emptyReported) wake(runner, "empty");
+    // 사령관 자신의 완료·정리로 보드가 비었으면 깨우지 않는다 — 방금 닫힌 운영 목표가 모두 그의 쓰기 대상이면 그것은 제가 한 일이다.
+    if (empty && !runner.emptyReported && !closedBySelf(runner, objectives)) wake(runner, "empty");
     runner.emptyReported = empty;
     // 상태 변화 — 사령관이 운영하는 목표가 한 단계 옮겨 갈 때마다(새 목표·지워짐·사람이 맡김 포함). 사령관 자신의 쓰기와 그 쓰기로
     // 생긴 목표는 뺀다.
     for (const change of statusChanges(runner, objectives)) { wake(runner, "status", { bump: true, detail: change.text }); noteIds(runner, "status", change.id, change.text); }
+  };
+  cleanups.push(deps.subscribeObjectives((event) => {
+    const runner = runners.get(event.theaterId);
+    if (runner) boardChanged(runner);
   }));
 
-  // 개시 대기 — 지휘관이 일하는 동안의 개시 전 목표는 대기가 아니다(commence 가 objective_busy·retryWhen commander_turn_end 로
-  // 거절된다). 그 일이 끝나 개시할 수 있게 되면 새 항목으로 한 번 깨운다. 일이 시작될 때도 보드 사건이 없으므로 같은 점검이 그 목표의
-  // 개시 대기를 들은 항목에서 내린다. 깨우기까지만 한다 — 다시 개시할지는 사령관이 정한다.
+  // 개시·검토 대기 — 지휘관이 일하는 동안의 목표는 대기가 아니다(commence 는 objective_busy·retryWhen commander_turn_end 로, 완료는
+  // objective_busy 로 거절된다; 인계는 지휘관 턴 도중에 기록된다). 그 일이 끝나 쉬게 되면 새 항목으로 한 번 깨운다. 일이 시작될 때도
+  // 보드 사건이 없으므로 같은 점검이 그 항목을 들은 것에서 내린다. 깨우기까지만 한다 — 다음 행위는 사령관이 정한다.
   const plannedTimer = setInterval(() => {
     if (disposed || !deps.observe) return;
     for (const runner of runners.values()) {
       const objectives = deps.objectives(runner.theaterId);
       const operators = operatorsOf(objectives);
-      if (objectives.some((objective) => operators.get(objective.id) === "commodore" && inboxReasons(objective).includes("planned"))) waitingChanged(runner, objectives);
+      if (objectives.some((objective) => operators.get(objective.id) === "commodore" && inboxReasons(objective).some((reason) => reason === "planned" || reason === "review"))) boardChanged(runner);
     }
   }, PLANNED_CHECK_MS);
   plannedTimer.unref?.();
@@ -632,7 +644,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const call = (args ?? {}) as { action?: unknown; objectiveId?: unknown };
         if (call.action === "commence" && typeof call.objectiveId === "string" && (result as { structuredContent?: { error?: unknown } }).structuredContent?.error === "objective_busy") runner.seen.delete(`planned:${call.objectiveId}`);
         return result;
-      } finally { const until = now() + SELF_WRITE_GRACE_MS; for (const id of targets) runner.selfWrites.set(id, until); }
+      } finally {
+        const until = now() + SELF_WRITE_GRACE_MS;
+        // 이 목표에 쓴 손은 그 목표의 지금 상태를 보고 행동했다 — 턴 도중 쌓인 그 목표의 상태·정체 사유는 처리된 것이라 다음 턴을 열지 않는다.
+        for (const id of targets) { runner.selfWrites.set(id, until); forgetStatus(runner, id); }
+      }
     },
   });
 
@@ -646,12 +662,16 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const next = tracked.get(objective.id)!;
       const previous = runner.statuses.get(objective.id);
       if (previous?.status === next.status && previous.operator === next.operator) continue;
+      // 검토 대기로 옮긴 목표도 지휘관이 그 턴을 마칠 때까지 미룬다 — 옛 상태를 남겨 두어 다시 볼 때 이 전환으로 깨운다.
+      if (next.status === "review" && previous?.operator === next.operator && commanderWorking(deps.observe, objective.id)) continue;
       runner.statuses.set(objective.id, next);
       // 사람이 맡김 — 사령관은 운영값을 바꿀 수 없으므로 이 전환은 늘 사람의 것이다. 사령관의 쓰기 유예 안이어도 한 번 깨운다.
       if (previous?.operator === "human" && next.operator === "commodore") { changes.push({ id: objective.id, text: `"${objective.title}" handed to you by the person (${STATUS_WORDS[next.status]})` }); continue; }
       // 사람이 돌려받음 — 깨우지 않고, 모으는 동안 쌓인 이 목표의 상태·정체 사유(방금 맡김 포함)도 걷는다.
       if (previous?.operator === "commodore" && next.operator === "human") { forgetStatus(runner, objective.id); continue; }
       if (runner.selfWrites.has(objective.id)) continue;
+      // 임무가 끝나 인계를 기다리는 단계는 지휘관의 몫이다(회고를 모아 인계한다) — 사령관은 검토 대기나 정체로 깨운다.
+      if (next.status === "missions-done") continue;
       // 사람이 운영하는 목표는 깨우지 않고 기록에만 남긴다.
       if (next.operator === "human") { hold(runner, objective.id, "status"); continue; }
       if (previous === undefined && createdByCommodore(objective, (id) => byId.get(id))) continue;
@@ -763,7 +783,14 @@ function writeTargets(args: unknown): readonly string[] {
  * 따로 깨우므로 뺀다.
  */
 function waitingReasons(objective: Objective, observe: BoardObserver | undefined): readonly InboxReason[] {
-  return inboxReasons(objective, observe ? { observe } : {}).filter((reason) => reason !== "stalled");
+  // 검토 대기도 지휘관이 그 턴을 마친 뒤에 — 인계는 턴 도중에 기록되고, 그 턴이 끝나기 전의 완료는 objective_busy 다.
+  return inboxReasons(objective, observe ? { observe } : {}).filter((reason) => reason !== "stalled" && !(reason === "review" && commanderWorking(observe, objective.id)));
+}
+
+/** 지휘관이 일하는 중인가(턴 또는 백그라운드 작업) — 관측이 없으면 아니다. */
+function commanderWorking(observe: BoardObserver | undefined, objectiveId: string): boolean {
+  const observation = observe?.(objectiveId);
+  return !!observation && observation.lifecycle !== "dormant" && (observation.activity === "running" || observation.activity === "background");
 }
 
 /**

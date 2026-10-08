@@ -11,7 +11,7 @@ import objectivesPlugin from "../routes.js";
 import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../server/attachments.js";
 import { inboxReasons } from "../server/board-state.js";
-import { createCommodoreBoardTools, createObjectiveConsoleTools } from "../server/console-tools.js";
+import { createCommodoreBoardTools, createObjectiveConsoleTools, MAX_REMARK } from "../server/console-tools.js";
 import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
 import { createObjectiveRoutes } from "../server/routes.js";
@@ -1065,7 +1065,7 @@ describe("Objectives contract", () => {
     expect([rankOf("pack-a"), rankOf("pack-b"), rankOf("pack-c")]).toEqual([3 * 2 ** 62, 3 * 2 ** 62, 3 * 2 ** 62]);
   });
 
-  it("adds an objective from Console Use with brief and criteria only, through the same action gate the host checks", async () => {
+  it("adds an objective from Console Use with a title and brief only, through the same action gate the host checks", async () => {
     const { store, operations, add, savedIds, workspace, launches, consoleTool } = harness();
     const caller = add("console-caller", { title: "Console caller", groupId: "g-console" });
     // 호스트와 같은 선검사 — Operation 연결의 action 판별·strict 검증을 먼저 지난 뒤, 호스트처럼 검증된 값(call)으로 execute 가 돈다.
@@ -1077,19 +1077,17 @@ describe("Objectives contract", () => {
       if (!parsed.ok) throw new Error("action gate rejected representative input");
       return await use(parsed.call);
     };
-    const created = await throughGate({ action: "add", title: "From Console Use", note: "brief", criteria: ["ships", "tested"] });
+    const created = await throughGate({ action: "add", title: "From Console Use", note: "brief" });
     expect(created.isError).toBe(false);
     const id = created.structuredContent.objectiveId as string;
-    // 브리핑·기준은 기본 요구사항으로, 임무·구성원 없이, 호출 Operation 의 그룹과 만든 표시를 들고 태어난다.
-    expect(store.find(id)).toMatchObject({ note: "brief", groupId: "g-console", missions: [], members: [], addedBy: { operationId: caller.id } });
-    expect(store.find(id)!.criteria).toMatchObject([{ text: "ships", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }, { text: "tested", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }]);
-    // 저장 무결성 — 파일에서 다시 읽어도 기준이 기본 요구사항으로 남는다.
+    // 브리핑만 들고, 기준·임무·구성원 없이, 호출 Operation 의 그룹과 만든 표시를 들고 태어난다. 저장본을 다시 읽어도 같다.
+    expect(store.find(id)).toMatchObject({ note: "brief", groupId: "g-console", criteria: [], missions: [], members: [], addedBy: { operationId: caller.id } });
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
-    expect(reloaded.find(id)!.criteria).toMatchObject([{ text: "ships", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }, { text: "tested", by: { kind: "operation", operationId: caller.id, title: "Console caller" } }]);
-    // add 는 title·note·criteria 만 받는다 — 오타·편성 키·읽기 전용 키(groupId)는 선검사에서도, 직접 부른 실행에서도
-    // invalid_arguments 로 막혀 기동도 Operation 도 레코드도 늘지 않는다.
+    expect(reloaded.find(id)).toMatchObject({ note: "brief", criteria: [] });
+    // add 는 title·note 만 받는다 — 달성 기준·편성 키·읽기 전용 키(groupId)는 선검사에서도, 직접 부른 실행에서도
+    // invalid_arguments 로 막혀 기동도 Operation 도 레코드도 늘지 않는다. 기준은 지휘관의 제안으로만 생긴다.
     const fenced = { launches: launches.length, operations: operations.size, listed: store.list("t1").length };
-    for (const args of [{ action: "add", title: "Typo", criterai: ["x"] }, { action: "add", title: "Missions inline", missions: ["x"] }, { action: "add", title: "Borrowed group", note: "b", groupId: "g-other" }]) {
+    for (const args of [{ action: "add", title: "Criteria inline", note: "b", criteria: ["x"] }, { action: "add", title: "Missions inline", missions: ["x"] }, { action: "add", title: "Borrowed group", note: "b", groupId: "g-other" }]) {
       expect(gate(args)).toMatchObject({ ok: false, error: "invalid_arguments" });
       expect((await use(args)).structuredContent.error).toBe("invalid_arguments");
     }
@@ -1765,7 +1763,15 @@ describe("Objectives contract", () => {
       { id: "auto", scope: "auto", isAggregate: false, usedPercent: 20 },
       { id: "total", isAggregate: true, usedPercent: 50 },
     ] } } };
-    vi.stubGlobal("fetch", async (url: string) => (url.endsWith("/api/v1/operations/catalog") ? Response.json(catalog) : Response.json(quota)));
+    // gateway_models — 라우팅 판단이 보는 후보. 지휘관의 모델 제안은 이 목록으로 확인되고, 판단 요청(routing-assign)에 입력으로 실린다.
+    const gatewayModels = { routing: { enabled: true, mode: "jev" }, quotaPools: {}, models: [{ modelId: "sonnet[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["low"] }] };
+    const judged: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: { body?: string }) => {
+      if (url.endsWith("/api/v1/operations/catalog")) return Response.json(catalog);
+      if (url.endsWith("/api/v1/ai-gateway/gateway-models")) return Response.json(gatewayModels);
+      if (url.endsWith("/api/v1/ai-gateway/routing-assign")) { judged.push(String(init?.body ?? "")); return new Response("unavailable", { status: 503 }); }
+      return Response.json(quota);
+    });
     const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "t1") as [PluginMcpTool, PluginMcpTool];
     // 사령관 묶음은 두 화면 — action 이 목록 화면의 것이면 목록 도구, 아니면 목표 화면 도구로 간다.
     const toolFor = (args: Record<string, unknown>) => (String(args.action) in commodoreList.actionSchema!.actions ? commodoreList : commodore);
@@ -1788,7 +1794,7 @@ describe("Objectives contract", () => {
     ]);
     expect(loadout.quota).toEqual(quota.providers);
     const actor = { kind: "commodore", theaterId: "t1" };
-    const created = await board({ action: "add", title: "Sealed loop", note: "Verify and hand off", criteria: ["Output preserved"] });
+    const created = await board({ action: "add", title: "Sealed loop", note: "Verify and hand off" });
     const id = created.objectiveId as string;
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor });
     expect((await board({ action: "list", filter: "agent" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor }));
@@ -1809,26 +1815,35 @@ describe("Objectives contract", () => {
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["pending"] }));
     await board({ action: "plan", objectiveId: id });
     expect(launches[0]).toMatchObject({ viewMode: "terminal" });
-    await command("plan", { missions: [{ text: "verify", member: "worker" }], members: [{ role: "worker" }], criteria: [{ text: "Decision applied" }] }, id);
+    // 지휘관이 편성과 기준을 제안한다 — 구성원 모델 제안은 카탈로그 안의 모델·강도만 받고, 거절되면 편성 전체가 남지 않는다.
+    const lineup = { missions: [{ text: "verify", member: "worker" }], criteria: [{ text: "Output preserved" }, { text: "Decision applied" }] };
+    expect((await call("plan", { objectiveId: id, ...lineup, members: [{ role: "worker", model: "unlisted" }] }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
+    expect(store.find(id)!.members).toEqual([]);
+    await command("plan", { ...lineup, members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
     const beforeStart = (await board({ action: "read", objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
-    await board({ action: "criteria_approve", objectiveId: id, proposalId: beforeStart.criteriaProposals[0]!.id });
+    expect(beforeStart.criteriaProposals).toHaveLength(2);
+    await board({ action: "criteria_approve", objectiveId: id, proposalId: "all" });
     const priorNote = store.find(id)!.note;
     expect(await board({ action: "edit_brief", objectiveId: id, brief: "b".repeat(700) })).toMatchObject({ stored: { brief: `${"b".repeat(300)}…(700 chars)…${"b".repeat(300)}` } });
     await board({ action: "edit_brief", objectiveId: id, brief: priorNote });
-    // 구성원 모델 — 사령관만, 자기 Theater 목표만, 카탈로그 안의 모델과 그 모델의 강도만 고른다. 띄우기 전의 선택은 개시가 그 값으로 띄운다.
     const workerId = (beforeStart as unknown as { members: readonly { id: string }[] }).members[0]!.id;
-    const pick = (launch: unknown) => ({ action: "member", objectiveId: id, memberId: workerId, launch });
     const refusal = async (tool: typeof commodore, args: Record<string, unknown>, operationId?: string) => ((await tool.execute(args, { cwd: workspace, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) })) as { structuredContent: Record<string, unknown> }).structuredContent.error;
-    expect(await refusal(consoleDetail, pick({ mode: "model", model: "sonnet" }), "outsider")).toBe("commodore_only");
-    // 호출자별 화면 — 정리는 Operation 몫이라 사령관에게 거절되고, 사령관 한 줄(why)은 Operation 연결의 목표 화면에 없다.
-    expect(await refusal(commodoreList, { action: "remove", objectiveIds: [id] })).toBe("operation_caller_required");
-    expect(await refusal(consoleDetail, { action: "complete", objectiveId: id, why: "done" }, "outsider")).toBe("invalid_arguments");
-    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[1]!, pick({ mode: "model", model: "sonnet" }))).toBe("other_theater");
-    expect(await refusal(commodore, pick({ mode: "model", model: "unlisted" }))).toBe("model_not_in_catalog");
-    expect(await refusal(commodore, pick({ mode: "model", model: "sonnet", effort: "high" }))).toBe("invalid_effort");
-    expect(await board(pick({ mode: "model", model: "sonnet", effort: "low" }))).toMatchObject({ outcome: "set", launch: { mode: "model", model: "sonnet[1m]", effort: "low" } });
-    expect((await board({ action: "routing", objectiveId: id })).members).toEqual([{ id: workerId, role: "worker", selection: "model", launched: false, model: "sonnet[1m]", effort: "low" }]);
+    // 바깥 손은 목표의 행위와 제목·브리핑만 쓴다 — 임무·기준·구성원 모델은 사령관에게도 Operation 에게도 없고, 보드는 그대로다.
+    const lineupBefore = JSON.stringify([store.find(id)!.missions, store.find(id)!.criteria, store.find(id)!.members]);
+    for (const write of [{ action: "mission_add", text: "outer" }, { action: "criterion_add", text: "outer" }, { action: "member", memberId: workerId, launch: { mode: "model", model: "opus[1m]" } }]) {
+      expect(await refusal(commodore, { objectiveId: id, ...write })).toBe("invalid_arguments");
+      expect(await refusal(consoleDetail, { objectiveId: id, ...write }, "outsider")).toBe("invalid_arguments");
+    }
+    expect(JSON.stringify([store.find(id)!.missions, store.find(id)!.criteria, store.find(id)!.members])).toBe(lineupBefore);
+    // 지휘관에게 건네는 말은 짧은 첨언이다.
+    expect(await refusal(commodore, { action: "steer", objectiveId: id, context: "x".repeat(MAX_REMARK + 1) })).toBe("invalid_arguments");
+    // 같은 도구 — 사령관도 정리하고, 지운 손은 사령관으로 남는다. 다른 Theater 의 목표는 건드리지 못한다.
+    expect(await board({ action: "remove", objectiveIds: [personal], reason: "duplicate" })).toMatchObject({ removed: [personal] });
+    expect(store.find(personal)!.removed).toMatchObject({ by: { operationId: "commodore:t1", commodore: true }, reason: "duplicate" });
+    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[0]!, { action: "restore", objectiveIds: [personal] })).toBe("other_theater");
+    await board({ action: "restore", objectiveIds: [personal] });
+    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[1]!, { action: "read", objectiveId: id })).toBe("other_theater");
     // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 순찰까지 멈추지 않는다.
     expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);
     // 지시를 넣은 steer 는 지휘관 턴을 연다 — 그 턴 동안 개시는 예약되지 않고, 언제 다시 부르면 되는지와 지휘관 상태로 거절된다.
@@ -1838,6 +1853,13 @@ describe("Objectives contract", () => {
     expect((await commodore.execute({ action: "commence", objectiveId: id }, { cwd: workspace }) as { structuredContent: Record<string, unknown> }).structuredContent).toEqual({ error: "objective_busy", retryWhen: "commander_turn_end", commander: { state: "running" } });
     activity.set(id, "idle");
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
+    // 라우팅으로 뜰 구성원은 개시 전 routing 판단을 거친다 — 판단 없이는 띄우지 않고, 개시는 보여 준 결과 그대로 띄운다.
+    expect(await refusal(commodore, { action: "commence", objectiveId: id })).toBe("routing_preview_stale");
+    // 지휘관의 제안은 구성원 정보일 뿐 배정이 아니다 — 선택은 라우팅 그대로, 제안은 판단 요청에 참고로 실리고 모델은 판단이 정한다.
+    expect(store.find(id)!.members[0]).toMatchObject({ launch: { mode: "route" }, proposal: { model: "sonnet[1m]", effort: "low" } });
+    const routed = await board({ action: "routing", objectiveId: id });
+    expect(routed.members).toEqual([expect.objectContaining({ role: "worker" }), expect.objectContaining({ role: "reviewer" })]);
+    expect(judged.join("\n")).toContain("Commander's proposed model: sonnet[1m] (effort low)");
     expect(await board({ action: "commence", objectiveId: id })).toMatchObject({ objectiveId: id, failed: [] });
     // 구상 요청과 개시도 부른 손으로 남는다. 개시한 손은 행위 기록이 접혀도 commencedBy 로 남아 사이드바가 읽는다.
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ commencedBy: actor, actions: expect.arrayContaining([expect.objectContaining({ kind: "plan", by: actor }), expect.objectContaining({ kind: "commence", by: actor })]) });
@@ -1846,32 +1868,20 @@ describe("Objectives contract", () => {
     expect(commodoreRow({ enabled: true, autonomy: false }).mark?.square).toBe("hollow");
     expect(commodoreRow({ enabled: false, autonomy: false }).mark).toBeUndefined();
     outcomes.set(workerId, "failed");
-    expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.objectContaining({ state: "idle", outcome: "failed" })] }) }));
+    expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: expect.arrayContaining([expect.objectContaining({ state: "idle", outcome: "failed" })]) }) }));
     const personView = (await route("objective/get", { objectiveId: id })).value as { objective: Objective };
     expect(personView.objective.members.find((m) => m.id === workerId)).toMatchObject({ outcome: "failed" });
     const personState = (await route("state", { theaterId: "t1" })).value as { objectives: readonly Objective[] };
     expect(personState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)).toMatchObject({ outcome: "failed" });
     outcomes.delete(workerId);
-    expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: [expect.not.objectContaining({ outcome: "failed" })] }) }));
+    expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: expect.not.arrayContaining([expect.objectContaining({ outcome: "failed" })]) }) }));
     const recoveredView = (await route("objective/get", { objectiveId: id })).value as { objective: Objective };
     expect(recoveredView.objective.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
     const recoveredState = (await route("state", { theaterId: "t1" })).value as { objectives: readonly Objective[] };
     expect(recoveredState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
-    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
-    // 일하는 구성원은 이번 턴 뒤로 예약된다 — 세션 좌표는 그대로다. 라우팅으로 되돌리면 예약을 거두고 실행값은 남는다.
-    activity.set(workerId, "running");
-    expect(await board(pick({ mode: "model", model: "opus[1m]", effort: "high" }))).toMatchObject({ outcome: "pending", model: "sonnet[1m]", next: { model: "opus[1m]", effort: "high", failed: null } });
-    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
-    expect(await board(pick(null))).toMatchObject({ outcome: "applied", launch: { mode: "route" }, model: "sonnet[1m]", next: null });
-    activity.set(workerId, "idle");
-    // 떠 있는 채팅의 자식이 변경을 거절하면 같은 실패 코드 뒤에 원 예외가 자르지 않은 채 실린다 — 원인을 가르는 유일한 근거다.
-    hostChat.set(workerId, { model: "sonnet[1m]", effort: "low", pending: null });
-    const cause = { message: `Provider refused the session: ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit" };
-    hostFault.coordinates = { ok: false, error: "coordinates_apply_failed", cause };
-    const refused = await commodore.execute(pick({ mode: "model", model: "opus[1m]", effort: "high" }), { cwd: workspace }) as { isError: boolean; structuredContent: Record<string, unknown> };
-    expect(refused.isError).toBe(true);
-    expect(refused.structuredContent).toEqual({ error: "coordinates_apply_failed", cause });
-    hostChat.delete(workerId);
+    // 뜬 모델은 판단이 보여 준 값이다(이 하네스에서는 판단이 실패해 지휘관 프리셋) — 제안으로 뜨지 않는다.
+    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: (routed.members as readonly { model: string }[])[0]!.model });
+    expect((routed.members as readonly { via: string }[])[0]!.via).toBe("fallback");
     const executing = (await board({ action: "read", objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;
@@ -1886,26 +1896,31 @@ describe("Objectives contract", () => {
       }
     }
     expect(store.find(id)!.title).toBe("Renamed while running");
+    // 진행 중인 일은 보드의 결과로 판단한다 — 목표가 아무것도 기다리지 않는 동안 일하는 세션의 전사는 닫혀 있다.
+    expect(await refusal(commodore, { action: "transcript", objectiveId: id })).toBe("objective_working");
     activity.set(id, "idle");
-    // 세션 전사 — 사령관은 지휘관·구성원 세션을 마지막 줄부터 읽는다. Operation 호출자는 console_operation 의 읽기 허가를 지나야 하므로 보드로는 읽지 못한다.
+    // 세션 전사 — 지휘관·구성원 세션을 마지막 줄부터 읽는다. 사령관과 Operation 이 같은 도구로 읽는다.
     expect(await board({ action: "transcript", objectiveId: id })).toMatchObject({ session: { kind: "commander" }, latest: true, entries: [{ text: `from ${id}` }] });
     expect(await board({ action: "transcript", objectiveId: id, memberId, cursor: "0" })).toMatchObject({ session: { kind: "member", memberId }, latest: false, nextCursor: "7", entries: [{ text: `from ${memberId}` }] });
     const outsider = await consoleDetail.execute({ action: "transcript", objectiveId: id }, { cwd: workspace, caller: { kind: "operation", operationId: "outsider" } }) as { structuredContent: Record<string, unknown> };
-    expect(outsider.structuredContent.error).toBe("commodore_only");
+    expect(outsider.structuredContent).toMatchObject({ session: { kind: "commander" } });
     const mine = await command("read", {}, id);
     const revision = (mine.objective as { decisionRequestRevision: number }).decisionRequestRevision;
     const continueQuestion = [{ text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }];
     const asked = await command("request_decision", { expectedRevision: revision, questions: continueQuestion }, id);
     // 답이 오지 않아 같은 질문을 다시 묻는다 — 요청은 지워지지도 새 id 로 바뀌지도 않고(reused), 그 id 로 낸 사람의 답이 그대로 받아들여진다.
     expect(await command("request_decision", { expectedRevision: asked.decisionRequestRevision, questions: continueQuestion }, id)).toMatchObject({ requestId: asked.requestId, reused: true, replacedRequestId: null, decisionRequestRevision: asked.decisionRequestRevision });
+    // 결정 요청이 사령관을 기다리면 지휘관이 일하는 중이어도 그 맥락을 읽는다.
+    activity.set(id, "running");
+    expect(await board({ action: "transcript", objectiveId: id })).toMatchObject({ session: { kind: "commander" } });
+    activity.set(id, "idle");
     const inbox = await board({ action: "inbox" });
     expect((inbox.objectives as readonly { id: string; decisionRequested: boolean }[]).find((row) => row.id === id)?.decisionRequested).toBe(true);
     const request = JSON.parse((await board({ action: "read", objectiveId: id, section: "decisionRequest" })).text as string) as { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] };
     expect(request.id).toBe(asked.requestId);
     const answerOf = (extra: Record<string, unknown>) => ({ action: "answer", objectiveId: id, requestId: request.id, answers: [{ questionId: request.questions[0]!.id, selectedOptionIds: [request.questions[0]!.options[0]!.id], text: "Preserve the output", ...extra }] });
-    expect(await refusal(commodore, answerOf({ pin: "do not stop" }))).toBe("invalid_arguments");
-    expect(await board(answerOf({ pin: "MUST NOT stop early" }))).toMatchObject({ stored: { answers: [{ text: "Preserve the output [MUST NOT stop early]" }] } });
-    expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ decisionRequest: null, decisions: [{ by: actor, text: "Preserve the output [MUST NOT stop early]" }] });
+    expect(await board(answerOf({}))).toMatchObject({ stored: { answers: [{ text: "Preserve the output" }] } });
+    expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ decisionRequest: null, decisions: [{ by: actor, text: "Preserve the output" }] });
     const evidenceRoot = (await command("evidence_dir", {}, id)).root as string;
     fs.writeFileSync(path.join(evidenceRoot, "proof.txt"), "Verified output\n");
     const sealed = await command("seal_evidence_from_path", { path: "proof.txt" }, id);

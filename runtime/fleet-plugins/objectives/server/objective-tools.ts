@@ -4,12 +4,13 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { createModelCatalog } from "./catalog.js";
 import type { LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, memberAddSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTION_INPUT, MAX_SHORT_INPUT, pinSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
+import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTION_INPUT, MAX_SHORT_INPUT, pinSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
 
 /**
@@ -28,6 +29,14 @@ const missionRef = { objectiveId: ids, missionId: ids.optional(), n: z.number().
 /** 선행 한 칸 — 번호 n 이나 missionId, 그리고 이유. */
 const prerequisiteRef = z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() }).strict();
 const memberReference = z.string().trim().min(1).max(128);
+/** 구성원 한 명의 편성 — 역할·짧은 소개, 그리고 지휘관의 모델 제안(models 의 행). 모델이 없으면 라우팅이 고른다. */
+const rosterMember = z.object({
+  role: z.string().trim().min(1).max(40),
+  brief: z.string().max(MAX_SHORT_INPUT).optional(),
+  model: z.string().trim().min(1).max(128).optional(),
+  effort: z.string().trim().min(1).max(32).optional(),
+}).strict();
+const MODEL_FACT = "A member may note a proposed model and effort from models (gateway_models); AI Gateway routing reads it and decides the model.";
 const PIN_FACT = "Appended to the stored text as ` [pin]`: MUST NOT, MUST or MAY, then ASCII detail without brackets; at most 60 characters, and the text with its pin stays within the field limit (text_with_pin_too_long).";
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
 const pin = pinSchema.optional().describe(PIN_FACT);
@@ -129,6 +138,19 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       }
     },
   });
+  const modelCatalog = createModelCatalog(ctx);
+  /**
+   * 지휘관의 구성원 편성 — 모델 제안은 라우팅 판단이 보는 gateway_models 로 확인해 구성원 정보(proposal)로만 남긴다. 배정이 아니다:
+   * 선택은 라우팅 그대로이고 모델은 AI Gateway 판단이 정한다. 목록은 한 번만 읽는다.
+   */
+  const rosterOf = async (members: readonly z.output<typeof rosterMember>[], signal: AbortSignal | undefined) => {
+    if (members.some((member) => member.effort !== undefined && member.model === undefined)) throw new ObjectiveStoreError("effort_needs_model");
+    const loadout = members.some((member) => member.model !== undefined) ? await modelCatalog.gatewayModels(signal) : null;
+    return Promise.all(members.map(async ({ model, effort, ...member }) => {
+      if (model === undefined) return member;
+      return { ...member, proposal: await modelCatalog.checkProposal({ model, effort }, signal, loadout) };
+    }));
+  };
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Operation 에게는 참여자가 아님을 말한다. */
   const commanderTool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, objective: Objective, caller: ConsoleCaller, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> | unknown) =>
     tool(name, `Commander only. ${description}`, schema, (args, caller, context) => {
@@ -182,9 +204,12 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     commanderTool("detach_result", "Remove a result and its mission link from the objective. A detached evidenceId becomes unavailable; the source file, PR and linked Artifact are unchanged. Mission records and completion states are unchanged. Unknown resultIds are refused as unknown_result; changes after the person completes the objective are refused as objective_done.",
       z.object({ objectiveId: ids, resultId: ids }).strict(),
       ({ resultId }, objective) => { store.resultRemove(objective.id, resultId); return text({ ok: true }); }),
-    commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added missions (including after placement) stay and are referenced by missionId; restating one is refused as mission_kept. A mission's prerequisites are numbers n counting from 1 over this plan's own missions, or the missionId of a mission that stays. A mission may name a roster member by id or role; none means the Commander. By default, a lineup that changes repository files ends with merging them into the base branch via PR, review and checks; one that changes none needs no merge. Roster members are accepted only while empty (members_exist); enlist adds them later. Only a person's explicit Plan request opens success-criterion proposals: criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Use {text} to propose adding, {revise: criterion number or id, text} to revise, or {retire: criterion number or id, reason} to retire. A criterion that depends on an earlier verdict or an A/B branch states that premise and the evidence that stands when it fails: put both in a {text} proposal, and propose a revise for one on the board lacking them; an unconditional criterion needs neither. In an extension round, existing met criteria are preserved; {recheck: criterion number or id, reason} proposes rechecking one old met criterion, and only the person's approval clears it. extensions holds the numbered rounds, the person's scope request, starting mission/criterion ids and previous hand-off retrospectives. Proposals require the person's approval and block commencement and steering until resolved (criteria_not_planning, criteria_pending). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed. " + BOARD_REFERENCES,
-      z.object({ objectiveId: ids, missions: z.array(z.object({ text: z.string().trim().min(1).max(MAX_MISSION_TEXT), pin, prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(MAX_SHORT_INPUT).optional() }).strict()).max(40).optional(), criteria: z.array(criterionProposalInput).max(MAX_CRITERIA).optional() }).strict(),
-      (args, objective) => {
+    commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added missions (including after placement) stay and are referenced by missionId; restating one is refused as mission_kept. A mission's prerequisites are numbers n counting from 1 over this plan's own missions, or the missionId of a mission that stays. A mission may name a roster member by id or role; none means the Commander. By default, a lineup that changes repository files ends with merging them into the base branch via PR, review and checks; one that changes none needs no merge. Roster members are accepted only while empty (members_exist); enlist adds them later. Only a person's explicit Plan request opens success-criterion proposals: criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Use {text} to propose adding, {revise: criterion number or id, text} to revise, or {retire: criterion number or id, reason} to retire. A criterion that depends on an earlier verdict or an A/B branch states that premise and the evidence that stands when it fails: put both in a {text} proposal, and propose a revise for one on the board lacking them; an unconditional criterion needs neither. In an extension round, existing met criteria are preserved; {recheck: criterion number or id, reason} proposes rechecking one old met criterion, and only the person's approval clears it. extensions holds the numbered rounds, the person's scope request, starting mission/criterion ids and previous hand-off retrospectives. Proposals require the person's approval and block commencement and steering until resolved (criteria_not_planning, criteria_pending). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed. " + MODEL_FACT + " " + BOARD_REFERENCES,
+      z.object({ objectiveId: ids, missions: z.array(z.object({ text: z.string().trim().min(1).max(MAX_MISSION_TEXT), pin, prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(rosterMember).max(40).optional(), criteria: z.array(criterionProposalInput).max(MAX_CRITERIA).optional() }).strict(),
+      async (args, before, _caller, context) => {
+        // 모델 제안을 먼저 확인한다 — 카탈로그를 읽는 동안 보드가 바뀌었을 수 있으니 판정은 다시 읽은 보드로 한다.
+        const roster = args.members ? await rosterOf(args.members, context.signal) : undefined;
+        const objective = find(before.id);
         if (args.criteria !== undefined && !objective.criteriaOpen) return refuse("criteria_not_planning");
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
         const planMissions = args.missions.map(({ pin: missionPin, ...mission }) => ({ ...mission, text: withPin(mission.text, missionPin, MAX_MISSION_TEXT) }));
@@ -193,13 +218,13 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const same = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
         const repeated = objective.missions.filter((mission) => (mission.done || mission.unplaced || (mission.by !== undefined && mission.by !== "commander") || mission.records.length > 0 || (mission.memberBy !== undefined && mission.memberBy !== "commander")) && planMissions.some((planned) => same(planned.text) === same(mission.text)));
         if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((mission) => ({ missionId: mission.id, text: mission.text, ...(mission.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board and are referenced by missionId." });
-        const planned = launch.planApplied(objective.id, { missions: planMissions, ...(args.members ? { members: args.members } : {}), ...(planCriteria !== undefined ? { criteria: planCriteria } : {}) });
+        const planned = launch.planApplied(objective.id, { missions: planMissions, ...(roster ? { members: roster } : {}), ...(planCriteria !== undefined ? { criteria: planCriteria } : {}) });
         renumber(planned);
         const stored = store.find(objective.id) ?? planned;
         return text({ ok: true, missions: stored.missions.map((mission, index) => ({ n: index + 1, missionId: mission.id, text: storedText(mission.text) })),
           ...(args.criteria !== undefined || args.members ? { stored: {
             ...(args.criteria !== undefined ? { criteria: stored.criteriaProposals.map(({ id, kind, target, text: proposed, reason }) => ({ id, kind, ...(target ? { target } : {}), ...(proposed !== undefined ? { text: storedText(proposed) } : {}), ...(reason ? { reason: storedText(reason) } : {}) })) } : {}),
-            ...(args.members ? { members: stored.members.map(({ id, role, brief }) => ({ id, role, ...(brief ? { brief: storedText(brief) } : {}) })) } : {}),
+            ...(args.members ? { members: stored.members.map(({ id, role, brief, proposal }) => ({ id, role, ...(brief ? { brief: storedText(brief) } : {}), ...(proposal ? { proposal } : {}) })) } : {}),
           } } : {}) });
       }),
     commanderTool("add_mission", "Add a mission with its prerequisites — each the n or missionId of a mission on the board, finished or not, with an optional why — and optionally its member by roster id or role; none means the Commander. A mission added without prerequisites is ready at once and stands in the lineup's first column, ahead of missions that wait on others. The returned n is its number until the Commander's next read. " + BOARD_REFERENCES,
@@ -252,15 +277,25 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const withdrawn = store.decisionWithdraw(objective.id, requestId);
         return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequestRevision: withdrawn.objective.decisionRequestRevision });
       }),
-    commanderTool("enlist", "Add members to the roster, each a role and an optional brief; plan accepts members only while the roster is empty. A new member has no session until muster brings it up.",
-      z.object({ objectiveId: ids, members: z.array(memberAddSchema.pick({ role: true, brief: true }).extend({ brief: z.string().max(MAX_SHORT_INPUT).optional() })).min(1).max(MAX_MISSIONS) }).strict(),
-      ({ members }, objective) => {
+    commanderTool("enlist", `Add members to the roster, each a role and an optional brief; plan accepts members only while the roster is empty. A new member has no session until muster brings it up. ${MODEL_FACT}`,
+      z.object({ objectiveId: ids, members: z.array(rosterMember).min(1).max(MAX_MISSIONS) }).strict(),
+      async ({ members }, before, _caller, context) => {
+        // 모델 제안을 모두 확인한 뒤에 더한다 — 한 명이라도 거절되면 아무도 더하지 않는다.
+        const roster = await rosterOf(members, context.signal);
+        const objective = find(before.id);
         // 한 명씩 저장하므로 상한을 넘길 요청은 아무도 더하기 전에 거절한다 — 일부만 남은 채 실패로 답하지 않는다.
         if (objective.members.length + members.length > MAX_MISSIONS) return refuse("too_many_members");
-        const before = new Set(objective.members.map((member) => member.id));
+        const existing = new Set(objective.members.map((member) => member.id));
         let current = objective;
-        for (const member of members) current = store.memberAdd(objective.id, member, "commander");
-        return text({ ok: true, members: current.members.filter((member) => !before.has(member.id)).map((member) => ({ id: member.id, role: member.role })) });
+        for (const member of roster) current = store.memberAdd(objective.id, member, "commander");
+        return text({ ok: true, members: current.members.filter((member) => !existing.has(member.id)).map((member) => ({ id: member.id, role: member.role, ...(member.proposal ? { proposal: member.proposal } : {}) })) });
+      }),
+    commanderTool("models", "gateway_models: the candidate models, efforts, quota pools, preferences and recent assignments AI Gateway routing judges with.",
+      z.object({ objectiveId: ids }).strict(),
+      async (_args, _objective, _caller, context) => {
+        const loadout = await modelCatalog.gatewayModels(context.signal);
+        if (!loadout) return refuse("gateway_models_unavailable");
+        return text(loadout);
       }),
     commanderTool("muster", "Bring every roster member to a live session: absent members launch waiting for a first message, dormant ones resume their own session, live ones stay as they are. A waiting session costs nothing until it receives a message; a session left idle after working can go dormant, and SendMessage and ListAgents reach only live sessions. A member knows only what it has been sent and what it has read, and keeps that across missions. Its results reach the board only when it reports them to the Commander by SendMessage and the Commander completes the mission, so the first message to each member says so. Replies to the Commander go to commander.session; when that session has no fixed name, the from address on the Commander's latest message is the reply address. A member whose launch or resume the host refuses comes back as state failed with its error code; the others proceed.",
       z.object({ objectiveId: ids }).strict(),

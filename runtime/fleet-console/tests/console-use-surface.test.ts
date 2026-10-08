@@ -53,6 +53,9 @@ describe("Console Use surface boundaries", () => {
     expect(() => hostWithCalls.forPlugin("other").contribute!([{ name: "console_x", description: "x", inputSchema: { type: "object", properties: { view: { type: "string" } } }, surface: repoSurface, execute: noop }])).toThrow(/declare its actions/);
     expect(() => hostWithCalls.forPlugin("other").contribute!([{ ...repository("console_repository").plugin({ surface: repoSurface, execute: noop }), name: "console_repo_view_x" }])).toThrow(/Invalid Console Use tool name/);
     expect(() => hostWithCalls.forPlugin("other").contribute!([repository("console_launcher").plugin({ surface: repoSurface, execute: noop })])).toThrow(/already registered/);
+    // 설명은 매 요청 모든 연결에 실린다 — 한도를 넘는 도구·필드 설명은 정의 단계에서 막는다.
+    expect(() => defineConsoleTool({ name: "console_x", description: "x".repeat(201), kind: "read", input: z.object({}) })).toThrow(/description exceeds/);
+    expect(() => defineConsoleTool({ name: "console_x", description: "x", kind: "read", input: z.object({ field: z.string().describe("x".repeat(121)) }) })).toThrow(/field description exceeds/);
     expect(() => hostWithCalls.forPlugin("other").contribute!([repository("console_repository").plugin({ surface: repoSurface, execute: noop })])).toThrow(/already registered/);
     connection = hostWithCalls.connect({ allowControl: true, operationCallers: true });
     const endpoint = (await connection.getEndpoint()).servers[0]!;
