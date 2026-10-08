@@ -1269,6 +1269,7 @@ interface CursorPendingToolCorrelation {
   readonly execId: string;
   /** Present when this parked call originated as a redirected Cursor-native exec. */
   readonly nativeResultType?: CursorNativeRedirectResultType;
+  readonly nativeExecKey?: string;
   readonly nativeArgs?: Readonly<Record<string, string>>;
   readonly operationSequence?: number;
   readonly redirectAdapter?: "read-direct" | "grep-direct" | "glob-direct" | "grep-shell" | "shell-direct";
@@ -2748,6 +2749,28 @@ async function defaultCursorGrepPathKind(path: string): Promise<"file" | undefin
   }
 }
 
+// Never evict a receipt inside a Run: doing so would make an old exec executable again.
+const CURSOR_NATIVE_EXEC_RECEIPT_LIMIT = 256;
+const CURSOR_NATIVE_EXEC_RECEIPT_BYTES_LIMIT = 8 * 1024 * 1024;
+
+interface CursorNativeExecReceipt {
+  readonly fingerprint: string;
+  replies?: readonly Buffer[];
+}
+
+/** The native identity and operation only, not trace metadata or a command-text dedup key. */
+function cursorNativeExecIdentity(exec: Record<string, unknown>): { key: string; fingerprint: string } | undefined {
+  const execCase = ["readArgs", "grepArgs", "shellArgs", "shellStreamArgs"]
+    .find((name) => isRecord(exec[name]));
+  if (execCase === undefined) return undefined;
+  const args = exec[execCase] as Record<string, unknown>;
+  return {
+    key: JSON.stringify([exec.id ?? 0, exec.execId ?? "", args.toolCallId ?? ""]),
+    // Decoded protobuf JSON has descriptor order, so equivalent wire field orders are identical.
+    fingerprint: createHash("sha256").update(JSON.stringify([execCase, args])).digest("hex"),
+  };
+}
+
 function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
   const {
     stream,
@@ -2781,6 +2804,8 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
    * shows when the exec carries none; each entry is taken by its exec and the map stays bounded.
    */
   const nativeReadStarts = new Map<string, Record<string, unknown>>();
+  const nativeExecReceipts = new Map<string, CursorNativeExecReceipt>();
+  let nativeExecReceiptBytes = 0;
   /**
    * Tool-call frames Cursor emitted after this Run was sealed. The model keeps writing a parallel
    * batch for a few hundred milliseconds past the finalize grace, and the segment those calls
@@ -2903,6 +2928,8 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     clearToolFinalize(activeSegment);
     detachAbort(activeSegment);
     options.stopHeartbeat();
+    nativeExecReceipts.clear();
+    nativeExecReceiptBytes = 0;
     closeCursorTransport(stream, session, cancel, error);
     notifyTerminal();
   };
@@ -3298,6 +3325,20 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       }
       return;
     }
+    if ((state === "attached" || state === "parked") && isRecord(frame.execServerMessage)) {
+      const identity = cursorNativeExecIdentity(frame.execServerMessage);
+      const receipt = identity === undefined ? undefined : nativeExecReceipts.get(identity.key);
+      if (receipt) {
+        if (receipt.fingerprint !== identity!.fingerprint) {
+          dispose("native_exec_conflict", new Error("Cursor native exec identity changed arguments"));
+        } else if (receipt.replies) {
+          for (const reply of receipt.replies) stream.write(reply);
+          report("client.reply", { model: diagnosticModel, reply: "exec.nativeRedirectReplay", count: receipt.replies.length });
+        }
+        // Pending repeats share the original result; settled repeats get its exact native receipt.
+        return;
+      }
+    }
     if (state === "parked") {
       if (isCursorHeartbeatFrame(frame)) return;
       if (isCursorParkedResidueFrame(frame, parkedCalls)) return;
@@ -3375,6 +3416,17 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
         readToolStarted,
       );
       if (redirect) {
+        const identity = cursorNativeExecIdentity(frame.execServerMessage)!;
+        const receiptBytes = Buffer.byteLength(identity.key) + Buffer.byteLength(identity.fingerprint);
+        if (
+          nativeExecReceipts.size >= CURSOR_NATIVE_EXEC_RECEIPT_LIMIT
+          || nativeExecReceiptBytes + receiptBytes > CURSOR_NATIVE_EXEC_RECEIPT_BYTES_LIMIT
+        ) {
+          dispose("native_exec_receipt_overflow", new Error("Cursor native exec receipt limit exceeded"));
+          return;
+        }
+        nativeExecReceipts.set(identity.key, { fingerprint: identity.fingerprint });
+        nativeExecReceiptBytes += receiptBytes;
         const operationSequence = ++redirectOperationSequence;
         report("exec.redirect.selected", {
           model: diagnosticModel,
@@ -3406,6 +3458,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
             execId: redirect.call.execId,
             messageId: redirect.call.messageId,
             nativeResultType: redirect.nativeResultType,
+            nativeExecKey: identity.key,
             nativeArgs: redirect.nativeArgs,
             operationSequence,
             redirectAdapter: redirect.adapter,
@@ -3615,7 +3668,18 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
             result.output,
             result.is_error === true,
           );
-          for (const reply of replies) stream.write(encodeCursorClientMessage(reply));
+          const receipt = call.nativeExecKey === undefined ? undefined : nativeExecReceipts.get(call.nativeExecKey);
+          if (!receipt) throw new Error("Cursor native exec receipt is missing");
+          const encodedReplies = replies.map(encodeCursorClientMessage);
+          const replyBytes = encodedReplies.reduce((bytes, reply) => bytes + reply.byteLength, 0);
+          if (nativeExecReceiptBytes + replyBytes > CURSOR_NATIVE_EXEC_RECEIPT_BYTES_LIMIT) {
+            dispose("native_exec_receipt_overflow", new Error("Cursor native exec receipt limit exceeded"));
+            break;
+          }
+          // Store before writing: an upstream echo may arrive during the first result write.
+          receipt.replies = encodedReplies;
+          nativeExecReceiptBytes += replyBytes;
+          for (const reply of encodedReplies) stream.write(reply);
           if (call.nativeResultType === "readResult") {
             report("exec.read.eof", {
               model: diagnosticModel,
