@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ComposerInput } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -187,6 +187,8 @@ function CommodoreScreen({ t, theaterId, enabled }: { readonly t: T; readonly th
 function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly view: CommodoreView | null; readonly online: boolean; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const board = useObjectiveTheater(theaterId);
   const [busy, setBusy] = useState(false);
+  // 상태 줄은 한 줄 말줄임이다(commodore-mobile.css) — 잘린 끝도 스위치 설명으로 읽히게 이어 둔다.
+  const statusId = useId();
   const on = view?.state.autonomy === true;
   const run = view?.run;
   const { meta } = commodoreSummary(t, view, board.objectives);
@@ -215,13 +217,14 @@ function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly
         aria-checked={on}
         aria-busy={busy || undefined}
         aria-label={t("objectives.commodore.settings.autonomy")}
+        aria-describedby={status !== null ? statusId : undefined}
         disabled={!view || !online}
         onClick={toggle}
       >
         <span className="objectives-cm-trow-ic"><PennantIcon /></span>
         <span className="objectives-cm-trow-tx">
           <b>{t("objectives.commodore.settings.autonomy")}</b>
-          {status !== null ? <span className="objectives-cm-trow-ds">{status}</span> : null}
+          {status !== null ? <span id={statusId} className="objectives-cm-trow-ds">{status}</span> : null}
         </span>
         <span className={`objectives-cm-tog${on ? " is-on" : ""}${busy ? " is-busy" : ""}`} aria-hidden="true" />
       </button>
