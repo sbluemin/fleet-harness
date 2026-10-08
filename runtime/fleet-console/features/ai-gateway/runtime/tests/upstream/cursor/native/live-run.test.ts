@@ -1345,7 +1345,7 @@ describe("Cursor live client-tool Run bridge", () => {
     expect(rule).toContain("Bash → the native Shell");
   });
 
-  it("atomically claims a pending Run so concurrent attaches cannot double-write", async () => {
+  it("keeps caller execution single-shot across concurrent attaches and repeated native execs", async () => {
     const call = cursorCall("call-atomic", 71);
     const parked = new BridgeCursorStream(
       cursorToolFrames([call]),
@@ -1372,6 +1372,101 @@ describe("Cursor live client-tool Run bridge", () => {
       });
     } finally {
       harness.adapter.dispose();
+    }
+
+    // A repeated native exec is the same permission-owned execution, not another caller call.
+    // A different identity with identical command text is a genuine raced call and still runs.
+    for (const timing of ["settled", "parked", "raced"] as const) {
+      const native = (id: number, command = "echo native-once") => ({
+        execServerMessage: {
+          id,
+          execId: `native-exec-${id}`,
+          shellStreamArgs: { command, toolCallId: `native-call-${id}` },
+        },
+      });
+      const repeat = native(timing === "raced" ? 2 : 1);
+      const nativeStream = new BridgeCursorStream(
+        [native(1)],
+        timing === "settled" ? [repeat] : timing === "parked" ? cursorCompletionFrames("answered") : [],
+        1,
+        [{ afterMcpResults: 2, frames: cursorCompletionFrames("answered") }],
+      );
+      const nativeHarness = cursorHarness([nativeStream]);
+      const nativeInitial: CanonicalResponseRequest = {
+        ...cursorRequest(`session-native-once-${timing}`, "grok-4.7"),
+        tools: [{
+          type: "function", name: "Bash", description: "Run under caller permissions",
+          parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] },
+        }],
+      };
+      const doneCalls = (events: readonly CanonicalResponseEvent[]) => events.flatMap((event) => (
+        event.type === "response.output_item.done" && event.item.type === "function_call" ? [event.item] : []
+      ));
+      try {
+        const first = await collectCursorResponse(nativeHarness.adapter, nativeInitial);
+        const items = doneCalls(first);
+        expect(items).toHaveLength(1);
+        if (timing !== "settled") await nativeStream.emitFrames([repeat]);
+        // An error from the caller must be replayed as that error, not turned into native success.
+        const denied = timing === "settled";
+        const continuation: CanonicalResponseRequest = {
+          ...nativeInitial,
+          input: [
+            ...nativeInitial.input,
+            ...items.map((item) => ({ type: "function_call" as const, call_id: item.call_id, name: item.name, arguments: item.arguments })),
+            { type: "function_call_output", call_id: items[0]!.call_id, output: denied ? "caller denied" : "native-once", is_error: denied },
+          ],
+        };
+        const next = await collectCursorResponse(nativeHarness.adapter, continuation);
+        expect([...addedFunctionCallIds(first), ...addedFunctionCallIds(next)])
+          .toHaveLength(timing === "raced" ? 2 : 1);
+        if (timing === "raced") {
+          const racedItems = doneCalls(next);
+          expect(racedItems[0]?.call_id).not.toBe(items[0]!.call_id);
+          const finished = await collectCursorResponse(nativeHarness.adapter, {
+            ...continuation,
+            input: [
+              ...continuation.input,
+              ...racedItems.map((item) => ({ type: "function_call" as const, call_id: item.call_id, name: item.name, arguments: item.arguments })),
+              { type: "function_call_output", call_id: racedItems[0]!.call_id, output: "native-once" },
+            ],
+          });
+          expect(canonicalText(finished)).toBe("answered");
+        } else expect(canonicalText(next)).toBe("answered");
+        const replies = cursorClientWrites(nativeStream).filter((message) => (
+          isRecord(message.execClientMessage) && message.execClientMessage.shellResult !== undefined
+        ));
+        expect(replies).toHaveLength(timing === "parked" ? 1 : 2);
+        if (timing === "settled") {
+          expect(replies[1]).toEqual(replies[0]);
+          expect(replies[0]).toMatchObject({ execClientMessage: { shellResult: { failure: { stderr: "caller denied" } } } });
+        }
+        expect(nativeHarness.openedStreams).toBe(1);
+        expect(nativeStream.closed).toBe(true);
+        expect(cursorAdapterLiveState(nativeHarness.adapter).liveRuns).toBe(0);
+      } finally {
+        nativeHarness.adapter.dispose();
+      }
+    }
+
+    // Reusing an execution identity with changed arguments cannot spend another permission grant.
+    const conflicting = new BridgeCursorStream([{
+      execServerMessage: { id: 1, execId: "conflict", shellStreamArgs: { command: "echo first", toolCallId: "conflict-call" } },
+    }]);
+    const conflictHarness = cursorHarness([conflicting]);
+    try {
+      await collectCursorResponse(conflictHarness.adapter, {
+        ...cursorRequest("session-native-conflict", "grok-4.7"),
+        tools: [{ type: "function", name: "Bash", parameters: { type: "object", properties: { command: { type: "string" } } } }],
+      });
+      await conflicting.emitFrames([{
+        execServerMessage: { id: 1, execId: "conflict", shellStreamArgs: { command: "echo changed", toolCallId: "conflict-call" } },
+      }]);
+      expect(conflicting.closed).toBe(true);
+      expect(conflicting.destroyed).toBe(true);
+      expect(cursorAdapterLiveState(conflictHarness.adapter)).toEqual({ liveRuns: 0, pendingRuns: 0, pendingTimers: 0 });
+    } finally {
+      conflictHarness.adapter.dispose();
     }
   });
 
