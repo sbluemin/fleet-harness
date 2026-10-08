@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ConsoleCaller, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
+import type { ConsoleCaller, ConsoleCoordinatesResult, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -641,6 +641,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (!ctx.host.consoleControl?.setCoordinates || observation?.lifecycle !== "live" || observation.surface !== "chat") return null;
     return ctx.host.consoleControl.coordinates?.(operationId) ?? null;
   };
+  /** 호스트가 거절한 좌표 변경 — 자식이 던진 원 예외가 있으면 자르지 않고 응답의 cause 로 싣는다. */
+  const coordinatesError = (result: Extract<ConsoleCoordinatesResult, { ok: false }>) =>
+    new ObjectiveStoreError(result.error, undefined, result.error === "coordinates_apply_failed" && result.cause ? { cause: result.cause } : undefined);
   const setCoordinates = (operationId: string, preset: { readonly model: string; readonly effort?: string }) =>
     ctx.host.consoleControl!.setCoordinates!(operationId, { model: preset.model, effort: preset.effort ?? null });
   const goalOf = (next: MemberNext) => ({ model: next.model, ...(next.effort ? { effort: next.effort } : {}) });
@@ -724,7 +727,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         return;
       }
       // 그새 잠들었거나 채팅이 아직 서지 않았다 — 지금 상태에 맞는 길로 바꾼다.
-      if (result.error !== "chat_not_active") throw new ObjectiveStoreError(result.error);
+      if (result.error !== "chat_not_active") throw coordinatesError(result);
     }
     if (!target?.model || samePreset(target, running)) { store.memberLaunchState(current.id, memberId, { next: null }); return; }
     const goal = { ...target, model: target.model };
@@ -1268,7 +1271,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         // 그새 경계에서 이미 바뀌었다 — 거둘 예약이 없고, 바뀐 값이 그대로 실행값이다.
         if (heldNextOutcome(record.next, host) === "applied") { unwatch(memberId); store.memberLaunchState(objectiveId, memberId, { next: null, routed: null }); store.refresh(objectiveId); return objective(objectiveId); }
         const result = await setCoordinates(memberId, { model: host.model, ...(host.effort ? { effort: host.effort } : {}) });
-        if (!result.ok && result.error !== "chat_not_active") throw new ObjectiveStoreError(result.error);
+        if (!result.ok && result.error !== "chat_not_active") throw coordinatesError(result);
       }
       unwatch(memberId);
       return store.memberLaunchState(objectiveId, memberId, { next: null, launch: record.next.was ?? null });

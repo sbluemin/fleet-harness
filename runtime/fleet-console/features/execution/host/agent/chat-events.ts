@@ -1751,7 +1751,7 @@ function readResultText(content: unknown): string | null {
  * 눈에 띄는 자격 증명 모양을 가린다. 완전한 비밀 탐지가 아니라, 실행 출력이 그대로 흐르는
  * 경로에서 가장 흔한 토큰 모양이 원문으로 남지 않게 하는 최소 방어다.
  */
-function maskSecrets(value: string): string {
+export function maskSecrets(value: string): string {
   return value
     .replace(/\b(sk|pk|rk)-[A-Za-z0-9_-]{16,}/g, "$1-…")
     .replace(/\b(gh[pousr]|xox[baprs])_[A-Za-z0-9_-]{16,}/g, "$1_…")
