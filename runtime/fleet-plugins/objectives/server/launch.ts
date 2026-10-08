@@ -895,9 +895,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
    * 대상이 없으면 타이머를 걸지 않는다.
    */
   const lastOutcomes = new Map<string, "failed" | undefined>();
-  const lastTurns = new Map<string, { generation: string | undefined; revision: number }>();
-  /** 구성원이 마지막으로 메시지를 전달한 턴을 본 시각 — 배정 뒤에 이미 보고한 구성원의 조용한 턴은 보고 빚이 없다. */
-  const lastDelivered = new Map<string, number>();
+  // 정산한 턴 좌표·보고 시각·실패·무보고는 구성원 레코드(objective.json)에 둔다 — 재시작 뒤에도 같은 턴을 다시 알리지 않고 표시가 남는다.
+  const sameTurn = (a: { readonly generation?: string; readonly revision: number } | undefined, b: { readonly generation?: string; readonly revision: number }) =>
+    !!a && a.generation === b.generation && a.revision === b.revision;
   let unsubscribeTurnEnds: (() => void) | null = null;
   const outcomeWatched = new Map<string, string>();
   let outcomeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -907,14 +907,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (outcomeWatched.size === 0) { unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null; }
   };
   const forgetOutcome = (operationId: string) => {
-    lastTurns.delete(operationId);
-    lastDelivered.delete(operationId);
     store.settleMemberFailure(operationId, null);
     store.settleMemberUnreported(operationId, null);
     dropOutcome(operationId);
     for (const [id, objectiveId] of [...outcomeWatched]) if (objectiveId === operationId) {
-      lastTurns.delete(id);
-      lastDelivered.delete(id);
       store.settleMemberFailure(id, null);
       store.settleMemberUnreported(id, null);
       dropOutcome(id);
@@ -937,28 +933,28 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const member = operationId === objectiveId ? undefined : current?.members.find((entry) => entry.id === operationId);
     const outcome = observation.output?.outcome;
     if (member && current && !current.done && (outcome === "failed" || outcome === "succeeded" || outcome === "completed")) {
-      const previous = lastTurns.get(operationId);
+      const previous = store.memberTurn(operationId);
       const revision = observation.output.revision ?? 0;
       const generation = observation.generation;
       if (!previous || previous.generation !== generation || revision > previous.revision) {
         // 시도 전에 좌표를 소비한다. polling·종료 이벤트 중복이나 전송 거절에 자동 재시도하지 않는다.
-        const turn = { generation, revision };
-        lastTurns.set(operationId, turn);
+        const turn = { ...(generation !== undefined ? { generation } : {}), revision };
+        store.setMemberTurn(operationId, turn);
         const language: PromptLanguage = ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
         // 실패 없이 닫힌 턴이 아무에게도 말을 남기지 못했다 — 보고를 관측하는 표면이고, 사람이 입력창에서 연 턴이 아니며, 다시 깨어날 일(백그라운드
         // 작업·깨움 예약)을 남기지 않았고, 열린 배정 임무가 있는데 그 배정 뒤로 한 번도 메시지를 전달하지 않았을 때만. 배정 뒤 이미 보고한 구성원이
         // 참고 메시지에 답 없이 닫은 턴은 이 턴 하나로 멈춘 턴과 가를 수 없으므로 세우지 않는다. 표면이 보고를 싣지 않으면(터미널) 모른다는 뜻이다.
         const report = outcome === "failed" ? undefined : observation.output.report;
-        if (report && report.sentTo.length > 0) lastDelivered.set(operationId, quietNow());
+        if (report && report.sentTo.length > 0) store.setMemberDelivered(operationId, quietNow());
         const assignedAt = Math.max(-1, ...current.missions.flatMap((mission) => mission.member === member.id && !mission.done ? [mission.assignmentTs ?? 0] : []));
         const silent = !!report && !report.byPerson && !report.pendingWork && report.sentTo.length === 0 && objectiveUnderway(current)
-          && assignedAt >= 0 && (lastDelivered.get(operationId) ?? -1) < assignedAt && expectsReport(current.stoppedAt, assignedAt);
+          && assignedAt >= 0 && (store.memberDelivered(operationId) ?? -1) < assignedAt && expectsReport(current.stoppedAt, assignedAt);
         if (silent) {
           const unreported: ObjectiveMemberUnreported = { at: quietNow(), ...(report.answer !== undefined ? { lastMessage: report.answer } : {}), reason: null };
           store.settleMemberUnreported(operationId, unreported);
           const notice = memberUnreportedTurn(current, member, unreported, language);
           void requestSend(objectiveId, notice, notice).catch((error: unknown) => {
-            if (disposed || lastTurns.get(operationId) !== turn) return;
+            if (disposed || !sameTurn(store.memberTurn(operationId), turn)) return;
             store.recordMemberNotificationFailure(operationId, notificationFailureOf(error), "unreported");
             store.refresh(objectiveId);
           });
@@ -972,7 +968,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
           const notice = memberFailureTurn(current, member, failure, language);
           void requestSend(objectiveId, notice, notice).catch((error: unknown) => {
             // 늦은 거절이 다음 턴·회복·제거 이후의 실패 상태를 덮지 않는다. 좌표는 되돌리지 않는다.
-            if (disposed || lastTurns.get(operationId) !== turn) return;
+            if (disposed || !sameTurn(store.memberTurn(operationId), turn)) return;
             store.recordMemberNotificationFailure(operationId, notificationFailureOf(error));
             store.refresh(objectiveId);
           });
@@ -1577,9 +1573,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       outcomeWatched.clear();
       lastOutcomes.clear();
       unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null;
-      for (const operationId of lastTurns.keys()) { store.settleMemberFailure(operationId, null); store.settleMemberUnreported(operationId, null); }
-      lastDelivered.clear();
-      lastTurns.clear();
+      // 구성원 실패·무보고·정산 좌표는 보드 사실이다 — 플러그인이 내려가도 지우지 않는다(다음 기동이 그대로 이어 읽는다).
       if (quietTimer) clearTimeout(quietTimer);
       quietTimer = null;
       for (const waiter of [...decisionWaiters.values()]) waiter(null);

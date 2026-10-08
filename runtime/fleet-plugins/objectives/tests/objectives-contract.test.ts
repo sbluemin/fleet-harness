@@ -2067,7 +2067,7 @@ describe("Objectives contract", () => {
 
   it("delivers each failed member turn once without retrying and resolves one failure inbox row on recovery or explicit reissue", async () => {
     const h = harness();
-    const { ctx, store, launch, events, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed, workspace } = h;
+    const { ctx, store, launch, events, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed, workspace, restart } = h;
     const objective = await launch.create({ theaterId: "t1", title: "Failure delivery", groupId: null });
     const id = objective.id;
     const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "same" } }, "human").members[0]!.id;
@@ -2227,18 +2227,52 @@ describe("Objectives contract", () => {
       expect(memberSends()).toHaveLength(memberSendsBefore + 1);
       expect.soft(await failureRows()).toEqual([]);
 
+      // 재시작(플러그인 재기동) — 같은 목표 파일·같은 호스트 관측 위에 저장소와 기동 서비스를 새로 세운다. 미해소 실패와 연속 횟수는 명단에
+      // 남고, 재발주로 거둔 inbox 행은 되살아나지 않으며, 이미 알린 같은 턴(revision 4)을 다시 관측해도 지휘관 통지가 다시 가지 않는다.
+      launch.dispose();
+      let after = restart();
+      after.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(5_000);
+      const restartedMember = () => after.store.find(id)!.members.find((member) => member.id === memberId);
+      const restartedRows = async () => {
+        const result = await createCommodoreBoardTools(ctx, after.store, after.launch, "t1")[0]!.execute({ action: "inbox" }, { cwd: workspace }) as { structuredContent: { objectives: { id: string; reasons: string[] }[] } };
+        return result.structuredContent.objectives.filter((row) => row.id === id && row.reasons.includes("member-failed"));
+      };
+      expect(restartedMember()).toMatchObject({ failure: { ...compaction, consecutiveFailures: 1, acknowledged: true } });
+      expect(await restartedRows()).toEqual([]);
+      expect(notifications()).toHaveLength(afterReissue);
+      // 이어지는 실패는 복원한 횟수에서 이어 센다 — 새 턴이라 한 번 알리고, inbox 행도 다시 선다.
+      outputDetails.set(memberId, { revision: 5, failure: overload });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(restartedMember()).toMatchObject({ failure: { ...overload, consecutiveFailures: 2 } });
+      expect(notifications()).toHaveLength(afterReissue + 1);
+      expect(await restartedRows()).toHaveLength(1);
+      // 정상 턴으로 해소된 실패는 다음 재시작에서 되살아나지 않는다.
+      outcomes.set(memberId, "succeeded");
+      outputDetails.set(memberId, { revision: 6 });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(restartedMember()).not.toHaveProperty("failure");
+      after.launch.dispose();
+      after = restart();
+      after.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(restartedMember()).not.toHaveProperty("failure");
+      expect(await restartedRows()).toEqual([]);
+      expect(notifications()).toHaveLength(afterReissue + 1);
+
       outcomes.set(id, "failed");
       await vi.advanceTimersByTimeAsync(1_000);
       expect(commanderOutcome()).toBe("failed");
       outcomes.delete(id);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(commanderOutcome()).toBeUndefined();
-      await launch.memberRemoved(id, memberId);
+      await after.launch.memberRemoved(id, memberId);
       const removed = upserts().length;
-      outputDetails.set(memberId, { revision: 5, failure: overload });
+      outcomes.set(memberId, "failed");
+      outputDetails.set(memberId, { revision: 7, failure: overload });
       await vi.advanceTimersByTimeAsync(1_000);
       expect(upserts()).toHaveLength(removed);
-      launch.dispose();
+      after.launch.dispose();
       const afterDispose = upserts().length;
       expect(h.turnEndListeners.size).toBe(0);
       outcomes.set(id, "failed");
@@ -2253,7 +2287,7 @@ describe("Objectives contract", () => {
 
   it("tells the Commander once when a member turn closes without failure but delivers no message, keeping the last response verbatim, and stays silent on normal turns", async () => {
     const h = harness();
-    const { ctx, store, launch, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed } = h;
+    const { ctx, store, launch, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed, restart } = h;
     const objective = await launch.create({ theaterId: "t1", title: "Unreported stop", groupId: null });
     const id = objective.id;
     const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "same" } }, "human").members[0]!.id;
@@ -2344,6 +2378,32 @@ describe("Objectives contract", () => {
       await vi.advanceTimersByTimeAsync(5_000);
       expect(notices()).toHaveLength(2);
       expect(await memberView()).not.toHaveProperty("unreported");
+
+      // 재시작 — 무보고 표시와 그 원문은 남고, 이미 알린 같은 턴을 다시 관측해도 통지하지 않는다.
+      h.advanceClock(1_000);
+      launch.missionAdded(id, { text: "After restart", member: memberId });
+      turn(10, "succeeded", { sentTo: [], byPerson: false, answer: "Stopped again." });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(notices()).toHaveLength(3);
+      launch.dispose();
+      let after = restart();
+      after.launch.watchLiveOutcomes();
+      await vi.advanceTimersByTimeAsync(5_000);
+      const restartedMember = () => after.store.find(id)!.members.find((member) => member.id === memberId);
+      expect(restartedMember()).toMatchObject({ unreported: { lastMessage: "Stopped again.", reason: null } });
+      expect(notices()).toHaveLength(3);
+      // 배정 뒤 보고한 기록도 남는다 — 재시작 직후의 조용한 턴(참고 메시지에 답 없이 닫음)은 오탐을 내지 않는다.
+      turn(11, "succeeded", { sentTo: ["commander"], byPerson: false, answer: "Reported." });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(restartedMember()).not.toHaveProperty("unreported");
+      after.launch.dispose();
+      after = restart();
+      after.launch.watchLiveOutcomes();
+      turn(12, "succeeded", { sentTo: [], byPerson: false, answer: "Noted." });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(notices()).toHaveLength(3);
+      expect(restartedMember()).not.toHaveProperty("unreported");
+      after.launch.dispose();
     } finally {
       launch.dispose();
       vi.useRealTimers();

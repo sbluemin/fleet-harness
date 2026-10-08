@@ -43,6 +43,7 @@ import {
   type Objective,
   type ObjectiveMemberFailure,
   type ObjectiveMemberUnreported,
+  type SettledTurn,
   type ObjectiveEvent,
   OBJECTIVE_FILE,
   type MemberLaunch,
@@ -210,6 +211,12 @@ export interface ObjectiveStore {
   /** 현재 세션의 실패 ledger — 모델 턴이나 영속 목표 기록과 별개다. */
   memberFailure(memberId: string): ObjectiveMemberFailure | undefined;
   settleMemberFailure(memberId: string, failure: ConsoleTurnFailure | null): ObjectiveMemberFailure | undefined;
+  /** 마지막으로 정산한 구성원 턴 — 재시작 뒤에도 남아 같은 턴을 다시 알리지 않는다. */
+  memberTurn(memberId: string): SettledTurn | undefined;
+  setMemberTurn(memberId: string, turn: SettledTurn): void;
+  /** 구성원이 마지막으로 메시지를 전달한 턴을 본 시각. */
+  memberDelivered(memberId: string): number | undefined;
+  setMemberDelivered(memberId: string, at: number): void;
   /** 실패 없이 닫힌 턴의 무보고 — 실패 ledger 와 같은 수명이다. null 이면 거둔다. */
   settleMemberUnreported(memberId: string, unreported: ObjectiveMemberUnreported | null): void;
   /** 지휘관의 명시적 재발주 — 실패와 무보고의 inbox 표시만 해소한다. */
@@ -486,6 +493,16 @@ function storedRouted(value: StoredMember["routed"]): MemberRouted | null {
   if (value.via === "fallback" && shortText(value.reason, 64)) return { via: "fallback", reason: value.reason, ...(shortText(value.detail, 300) ? { detail: value.detail } : {}) };
   return null;
 }
+/** 저장된 구성원 실패 — 모양이 어긋난 옛 값은 없는 것으로 읽는다. */
+function storedFailure(value: StoredMember["failure"]): ObjectiveMemberFailure | undefined {
+  return value && typeof value === "object" && typeof value.error === "string" && Number.isInteger(value.consecutiveFailures) && value.consecutiveFailures > 0 ? value : undefined;
+}
+function storedUnreported(value: StoredMember["unreported"]): ObjectiveMemberUnreported | undefined {
+  return value && typeof value === "object" && Number.isFinite(value.at) && (value.reason === null || typeof value.reason === "object") ? value : undefined;
+}
+function storedTurn(value: StoredMember["settledTurn"]): SettledTurn | undefined {
+  return value && typeof value === "object" && Number.isFinite(value.revision) && (value.generation === undefined || typeof value.generation === "string") ? value : undefined;
+}
 function storedNext(value: StoredMember["next"]): MemberNext | null {
   if (!value || typeof value !== "object" || !shortText(value.model, 128) || !value.from || typeof value.from !== "object") return null;
   // 「다음 재개」 시절의 표식(reservedWhile·reservedGeneration)은 더 뜻이 없다 — 읽을 때 버린다.
@@ -529,7 +546,10 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.members?.length) delete out.members;
   else out.members = objective.members.map((member) => ({ id: member.id, role: member.role, by: member.by,
     ...(member.brief ? { brief: member.brief } : {}), ...(member.launch ? { launch: member.launch } : {}), ...(member.subagents === true ? { subagents: true } : {}),
-    ...(member.routed ? { routed: member.routed } : {}), ...(member.next ? { next: member.next } : {}) }));
+    ...(member.routed ? { routed: member.routed } : {}), ...(member.next ? { next: member.next } : {}),
+    // 구성원 수명 상태 — 재시작 뒤에도 실패·무보고 표시와 통지 중복 방지가 이어지도록 남긴다(메시지 본문은 싣지 않는다).
+    ...(member.failure ? { failure: member.failure } : {}), ...(member.unreported ? { unreported: member.unreported } : {}),
+    ...(member.settledTurn ? { settledTurn: member.settledTurn } : {}), ...(member.deliveredAt !== undefined ? { deliveredAt: member.deliveredAt } : {}) }));
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
   if (!objective.handoff) delete out.handoff;
@@ -561,8 +581,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
    * 대체·철회·정리를 막는 것은 실제로 보내는 동안뿐이다. 남은 표시는 사람의 재전송이나 요청의 정리와 함께 거둔다.
    */
   const delivering = new Set<string>();
-  const memberFailures = new Map<string, ObjectiveMemberFailure>();
-  const memberUnreported = new Map<string, ObjectiveMemberUnreported>();
   /**
    * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 아직 읽지 않은 사람 편집이 남아 있으면 지휘관 도구의
    * board_changed 가 새 요청을 거절한다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
@@ -685,8 +703,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         switchesLive: options.liveSwitch === true,
         next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null, ...(next.failed && next.cause ? { cause: next.cause } : {}) } : null,
         ...(memberOutcome ? { outcome: memberOutcome } : {}),
-        ...(memberFailures.has(member.id) ? { failure: memberFailures.get(member.id)! } : {}),
-        ...(memberUnreported.has(member.id) ? { unreported: memberUnreported.get(member.id)! } : {}) };
+        ...(storedFailure(member.failure) ? { failure: member.failure! } : {}),
+        ...(storedUnreported(member.unreported) ? { unreported: member.unreported! } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);
@@ -866,6 +884,28 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     actionCounts: { ...stored.actionCounts, [kind]: (stored.actionCounts?.[kind] ?? 0) + 1 },
   });
 
+  /** 구성원을 담은 저장 목표 — 실패·턴 좌표 같은 구성원 상태를 그 목표 파일에 둔다. 없으면(제거됨) null. */
+  const memberOwner = (memberId: string): StoredObjective | null => {
+    for (const theaterId of theaterIds()) for (const stored of load(theaterId).values()) if ((stored.members ?? []).some((member) => member.id === memberId)) return stored;
+    return null;
+  };
+  const locateStored = (objectiveId: string) => locate(objectiveId);
+  const storedMemberOf = (memberId: string): StoredMember | undefined => memberOwner(memberId)?.members?.find((member) => member.id === memberId);
+  /** 구성원 상태 쓰기 — 보드 변경 시각을 미루지 않는다(무보고 계산은 도메인 변경만 센다). 제거된 구성원이면 아무것도 쓰지 않는다. */
+  const updateMember = (memberId: string, mutate: (member: StoredMember) => StoredMember) => {
+    const owner = memberOwner(memberId);
+    if (!owner) return;
+    // 지휘관 Operation 이 이미 지워진 목표(정리 중)는 쓸 화면이 없다 — 구성원 상태를 거두는 호출이 정리를 막지 않게 건너뛴다.
+    try { locateStored(owner.operationId); } catch (error) { if (error instanceof ObjectiveStoreError && error.code === "unknown_objective") return; throw error; }
+    update(owner.operationId, (stored) => {
+      const members = stored.members ?? [];
+      const at = members.findIndex((member) => member.id === memberId);
+      if (at < 0) return stored;
+      const changed = mutate(members[at]!);
+      if (changed === members[at] || JSON.stringify(changed) === JSON.stringify(members[at])) return stored;
+      return { ...stored, members: members.map((member, ix) => (ix === at ? changed : member)) };
+    }, false);
+  };
   const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective, touch = true): Objective => {
     const { theaterId, recorded, stored, node } = locate(objectiveId);
     // 인계 기록은 할 일이 끝난 동안에만 산다 — 기준 표시를 거두는 변경이 곧 인계를 거두고 목표를 진행 중으로 돌린다.
@@ -1224,31 +1264,43 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       ...(input.routingConfirm !== undefined ? { routingConfirm: input.routingConfirm ? undefined : false as const } : {}),
     })),
 
-    memberFailure: (memberId) => memberFailures.get(memberId),
+    memberFailure: (memberId) => storedFailure(storedMemberOf(memberId)?.failure),
     settleMemberFailure(memberId, failure) {
-      if (!failure) { memberFailures.delete(memberId); return undefined; }
-      const state: ObjectiveMemberFailure = { ...failure, consecutiveFailures: (memberFailures.get(memberId)?.consecutiveFailures ?? 0) + 1 };
-      memberFailures.set(memberId, state);
+      let state: ObjectiveMemberFailure | undefined;
+      updateMember(memberId, (member) => {
+        const { failure: previous, ...rest } = member;
+        if (!failure) return previous === undefined ? member : rest;
+        state = { ...failure, consecutiveFailures: (storedFailure(previous)?.consecutiveFailures ?? 0) + 1 };
+        return { ...rest, failure: state };
+      });
       return state;
     },
     settleMemberUnreported(memberId, unreported) {
-      if (unreported) memberUnreported.set(memberId, unreported);
-      else memberUnreported.delete(memberId);
+      updateMember(memberId, (member) => {
+        const { unreported: previous, ...rest } = member;
+        if (!unreported) return previous === undefined ? member : rest;
+        return { ...rest, unreported };
+      });
     },
     acknowledgeMemberFailure(memberId) {
-      const failure = memberFailures.get(memberId);
-      if (failure) memberFailures.set(memberId, { ...failure, acknowledged: true });
-      const unreported = memberUnreported.get(memberId);
-      if (unreported) memberUnreported.set(memberId, { ...unreported, acknowledged: true });
+      updateMember(memberId, (member) => ({
+        ...member,
+        ...(member.failure ? { failure: { ...member.failure, acknowledged: true as const } } : {}),
+        ...(member.unreported ? { unreported: { ...member.unreported, acknowledged: true as const } } : {}),
+      }));
     },
     recordMemberNotificationFailure(memberId, notificationFailure, signal = "failure") {
-      if (signal === "unreported") {
-        const unreported = memberUnreported.get(memberId);
-        if (unreported) memberUnreported.set(memberId, { ...unreported, notificationFailure });
-        return;
-      }
-      const failure = memberFailures.get(memberId);
-      if (failure) memberFailures.set(memberId, { ...failure, notificationFailure });
+      updateMember(memberId, (member) => signal === "unreported"
+        ? (member.unreported ? { ...member, unreported: { ...member.unreported, notificationFailure } } : member)
+        : (member.failure ? { ...member, failure: { ...member.failure, notificationFailure } } : member));
+    },
+    memberTurn: (memberId) => storedTurn(storedMemberOf(memberId)?.settledTurn),
+    setMemberTurn(memberId, turn) {
+      updateMember(memberId, (member) => ({ ...member, settledTurn: { ...(turn.generation !== undefined ? { generation: turn.generation } : {}), revision: turn.revision } }));
+    },
+    memberDelivered: (memberId) => { const at = storedMemberOf(memberId)?.deliveredAt; return typeof at === "number" && Number.isFinite(at) ? at : undefined; },
+    setMemberDelivered(memberId, at) {
+      updateMember(memberId, (member) => ({ ...member, deliveredAt: at }));
     },
     refresh(operationId) {
       const node = operationNode(operationId);

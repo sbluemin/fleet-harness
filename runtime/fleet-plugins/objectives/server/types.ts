@@ -209,9 +209,23 @@ export interface StoredMember {
   readonly by: ObjectiveActor;
   readonly routed?: MemberRouted;
   readonly next?: MemberNext;
+  /** 공개 관측의 직전 실패와 연속 횟수 — 재시작 뒤에도 명단·inbox 에 남는다. 정상 턴이 거두고, 재발주는 inbox 만 해소한다. */
+  readonly failure?: ObjectiveMemberFailure;
+  /** 실패 없이 닫힌 무보고 턴 — 다음 보고나 재발주가 거둔다. */
+  readonly unreported?: ObjectiveMemberUnreported;
+  /** 마지막으로 정산한 턴의 좌표 — 재시작 뒤 같은 턴을 다시 알리지 않는다. 화면에 싣지 않는다. */
+  readonly settledTurn?: SettledTurn;
+  /** 구성원이 마지막으로 메시지를 전달한 턴을 본 시각(ms) — 배정 뒤 보고 빚을 가른다. 화면에 싣지 않는다. */
+  readonly deliveredAt?: number;
 }
 
-export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents" | "routed" | "next"> {
+/** 정산한 턴의 좌표 — 프로세스 세대와 그 세대 안의 턴 revision. */
+export interface SettledTurn {
+  readonly generation?: string;
+  readonly revision: number;
+}
+
+export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents" | "routed" | "next" | "settledTurn" | "deliveredAt"> {
   readonly launch: MemberSelection;
   /** 저장된 허용. 키 없음은 false. */
   readonly subagents: boolean;
