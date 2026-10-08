@@ -215,11 +215,12 @@ function alternativeToolFacts(
   }
   // Naming nothing turned a refusal into a dead end: Claude Code defers most of its catalog,
   // and without an alternative name the model concluded none existed or retried the native.
-  // An absent match does not prove a deferred replacement exists, so make discovery conditional
-  // and preserve the instruction to call the actual name returned by search.
+  // An absent match does not prove a deferred replacement exists, so make discovery conditional.
+  // The search result lists the loaded tool by the name it is advertised under, and only that name
+  // is callable; a client name from the caller's instructions is refused by Cursor itself.
   const toolSearch = toolSearchWireName(clientTools);
   if (toolSearch) {
-    return `No matching client bridge tool is advertised for this turn. If a matching client tool is deferred, load it with \`${toolSearch}\`, then call the tool name that search returns.`;
+    return `No matching client bridge tool is advertised for this turn. If a matching client tool is deferred, load it with \`${toolSearch}\`, then call it by the callable name the search result lists.`;
   }
   if (clientTools.length === 0) {
     // Measured on Claude Code title-generation turns: tools:[] still carries the user prompt,

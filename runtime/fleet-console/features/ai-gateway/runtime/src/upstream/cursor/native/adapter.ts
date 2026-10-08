@@ -530,12 +530,12 @@ function prepareCursorRun(
     if (i === activeIndex) break;
     const item = request.input[i];
     if (!item) continue;
-    const entry = historyRoot(item, toolNames);
+    const entry = historyRoot(item, toolNames, toolBudget.tools);
     if (entry) roots.push(entry);
   }
 
   const activeMessage = activeIndex >= 0 ? request.input[activeIndex] : undefined;
-  const activeReplayRoot = activeMessage ? historyRoot(activeMessage, toolNames) : null;
+  const activeReplayRoot = activeMessage ? historyRoot(activeMessage, toolNames, toolBudget.tools) : null;
   const replayRoots = activeReplayRoot ? [...roots, activeReplayRoot] : roots;
   const activeText = messageText(activeMessage);
   const estimatedInputTokens = estimateTokens(
@@ -788,7 +788,7 @@ function buildCursorConversationTurns(
     }
 
     const call = pendingCalls.get(item.call_id);
-    const output = cursorGrepReceiptHistoryText(item.output);
+    const output = cursorToolOutputForModel(cursorGrepReceiptHistoryText(item.output), item.tool_references, tools);
     if (call) {
       current.steps.push(storeCursorToolCallStep(
         blobs,
@@ -878,6 +878,7 @@ function cursorToolArgumentBytes(argumentsText: string): Record<string, string> 
 function historyRoot(
   item: CanonicalInputItem,
   toolNames: ReadonlyMap<string, string>,
+  tools: readonly CursorWireTool[],
 ): CursorRootEntry | null {
   if (item.type === "message") {
     const text = canonicalMessageText(item.content).trim();
@@ -900,7 +901,7 @@ function historyRoot(
       ...(toolName ? [`name: ${toolName}`] : []),
       `is_error: ${item.is_error === true}`,
       "output:",
-      cursorGrepReceiptHistoryText(item.output),
+      cursorToolOutputForModel(cursorGrepReceiptHistoryText(item.output), item.tool_references, tools),
     ].join("\n");
     return rootEntry({ role: "user", content: [{ type: "text", text }] }, "toolResult", text);
   }
@@ -1099,6 +1100,29 @@ function cursorHistoryToolName(
   return isCursorWithheldToolName(clientName)
     ? CURSOR_NATIVE_SHELL_HISTORY_NAME
     : cursorWireToolName(clientName);
+}
+
+/**
+ * A ToolSearch result names the tools it loaded, and the model reads that text to learn what it may
+ * call. Cursor accepts only the name a tool is advertised under: it answers a client name such as
+ * `SendMessage` itself, as an unknown built-in of its own namespace, before the call reaches the
+ * gateway. So each referenced tool this Run advertises under another name is shown by that name. A
+ * reference to a tool the Run does not advertise stays as the client wrote it — no name is invented.
+ */
+function cursorToolOutputForModel(
+  output: string,
+  references: readonly string[] | undefined,
+  tools: readonly CursorWireTool[],
+): string {
+  let text = output;
+  for (const reference of references ?? []) {
+    const advertised = tools.find((tool) => tool.clientName === reference)?.toolName;
+    if (advertised === undefined || advertised === reference) continue;
+    text = text
+      .split(`"tool_name":${JSON.stringify(reference)}`)
+      .join(`"tool_name":${JSON.stringify(advertised)}`);
+  }
+  return text;
 }
 
 function cursorToolPayloadBytes(tools: readonly CursorWireTool[]): number {
@@ -3735,7 +3759,7 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
             execId: call.execId,
             mcpResult: {
               success: {
-                content: [{ text: { text: `${result.output}${suffix}` } }],
+                content: [{ text: { text: `${cursorToolOutputForModel(result.output, result.tool_references, tools)}${suffix}` } }],
                 isError: result.is_error === true,
               },
             },

@@ -732,6 +732,31 @@ describe("Cursor live client-tool Run bridge", () => {
     await expectCursorMcpOwnership(
       cursorToolFrames([{ ...valid, name: "Read" }]), ["Read"], [], originalNameRequest,
     );
+    // The result a parked Run receives names a tool the model can only call by its advertised name.
+    const referenced = { ...valid, name: "Read" };
+    const referenceStream = new BridgeCursorStream(cursorToolFrames([referenced]), cursorCompletionFrames("loaded"), 1);
+    const referenceHarness = cursorHarness([referenceStream]);
+    try {
+      await collectCursorResponse(referenceHarness.adapter, originalNameRequest);
+      await collectCursorResponse(referenceHarness.adapter, {
+        ...originalNameRequest,
+        input: [
+          originalNameRequest.input[0]!,
+          { type: "function_call", call_id: referenced.callId, name: "Read", arguments: JSON.stringify({ path: "README.md" }) },
+          {
+            type: "function_call_output",
+            call_id: referenced.callId,
+            output: JSON.stringify({ type: "tool_reference", tool_name: "Read" }),
+            tool_references: ["Read"],
+          },
+        ],
+      });
+      const written = JSON.stringify(cursorMcpResultWrites(referenceStream));
+      expect(written).toMatch(/tool_name\\*"\s*:\s*\\*"cc_read_/u);
+      expect(written).not.toMatch(/tool_name\\*"\s*:\s*\\*"Read/u);
+    } finally {
+      referenceHarness.adapter.dispose();
+    }
 
     // Cursor numbers exec messages from zero and `id` has implicit presence, so the first client
     // tool of a Run arrives with no `id` field at all. Every other call here carries a nonzero id.
@@ -1351,6 +1376,8 @@ describe("Cursor live client-tool Run bridge", () => {
         ...(request.tools ?? []),
         { type: "function", name: "Bash", description: "Run a shell command", parameters: { type: "object", properties: { command: { type: "string" } } } },
         { type: "function", name: "Read", description: "Read a file", parameters: { type: "object", properties: { file_path: { type: "string" } } } },
+        { type: "function", name: "ToolSearch", description: "Load deferred tools", parameters: { type: "object", properties: { query: { type: "string" } } } },
+        { type: "function", name: "SendMessage", description: "Send a message", defer_loading: true, parameters: { type: "object", properties: { to: { type: "string" } } } },
         // An MCP-heavy session renames more tools than the rule lists; the shell must stay listed.
         ...Array.from({ length: 40 }, (_, index) => ({
           type: "function" as const,
@@ -1367,6 +1394,13 @@ describe("Cursor live client-tool Run bridge", () => {
         ...call("call-v1", otherVersion),
         { type: "function_call", call_id: "call-read", name: "Read", arguments: JSON.stringify({ file_path: "a.ts" }) },
         { type: "function_call_output", call_id: "call-read", output: "1\tconst a = 1;" },
+        { type: "function_call", call_id: "call-load", name: "ToolSearch", arguments: JSON.stringify({ query: "select:SendMessage" }) },
+        {
+          type: "function_call_output",
+          call_id: "call-load",
+          output: JSON.stringify({ type: "tool_reference", tool_name: "SendMessage" }),
+          tool_references: ["SendMessage"],
+        },
         { type: "message", role: "user", content: "What did the search find?" },
       ],
     }, "conversation-cold-grep-receipt");
@@ -1410,6 +1444,15 @@ describe("Cursor live client-tool Run bridge", () => {
     expect(replayed).not.toContain("cc_bash_");
     expect(rule).toContain(`Read → \`${readWireName}\``);
     expect(rule).toContain("Bash → the native Shell");
+
+    // A ToolSearch result is what the model reads to learn what it may call. Cursor refuses the
+    // client name `SendMessage` as an unknown built-in of its own namespace, so the result must
+    // carry the name this Run advertises, in the roots and in the turn steps alike.
+    const sendMessageWireName = runRequest?.mcpTools?.mcpTools?.map((tool) => tool.name)
+      .find((name) => name?.startsWith("cc_send_message_"));
+    expect(sendMessageWireName).toBeDefined();
+    expect(replayed).toMatch(new RegExp(`tool_name\\\\*"\\s*:\\s*\\\\*"${sendMessageWireName}`, "u"));
+    expect(replayed).not.toMatch(/tool_name\\*"\s*:\s*\\*"SendMessage/u);
   });
 
   it("keeps caller execution single-shot across concurrent attaches and repeated native execs", async () => {
