@@ -65,14 +65,17 @@
 :root[data-mobile-scheme="light"] .objectives-cm-bubble { border-color: var(--m-hairline); }
 .objectives-cm .objectives-cm-tbtn.is-center { align-self: center; }
 
-/* 입력 독(S-27) — 첨부·모델 알약 없이 보내기 원만. */
+/*
+ * 입력 독(S-27) — 첨부·모델 알약 없이 보내기 원만. 원 하나 때문에 둘째 줄을 따로 두지 않고 입력과 같은 줄 오른쪽에 둔다
+ * (독 134 → 82px). 여러 줄이 되면 입력만 위로 자라고 원은 바닥에 붙는다.
+ */
 .objectives-cm-dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px 12px; background: var(--m-bg); }
 .objectives-cm-dock-note { padding: 0 8px; }
-.objectives-cm-comp { display: flex; flex-direction: column; gap: 8px; padding: 12px 8px 8px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
+.objectives-cm-comp { display: flex; align-items: flex-end; gap: 4px; padding: 8px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
 .objectives-cm-comp.is-off { opacity: .55; }
-.objectives-cm-comp-input { min-height: 44px; max-height: 176px; padding: 0 10px; border: 0; outline: none; resize: none; background: none; color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 22px; user-select: text; }
+.objectives-cm-comp-input { flex: 1; box-sizing: border-box; min-width: 0; min-height: 44px; max-height: 176px; padding: 11px 6px 11px 10px; border: 0; outline: none; resize: none; background: none; color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 22px; user-select: text; }
 .objectives-cm-comp-input::placeholder { color: var(--m-text-muted); }
-.objectives-cm-comp-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.objectives-cm-comp-bar { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 8px; padding: 2px 0; }
 .objectives-cm .objectives-cm-circ { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--m-inverse); color: var(--m-on-inverse); }
 /* 보내는 중에만 원이 물러난다(FD-19). 자율 운영이 꺼져 입력창 전체가 .55로 흐릴 때는 한 번만 흐린다 — 겹쳐 곱하지 않는다. */
 .objectives-cm .objectives-cm-comp:not(.is-off) .objectives-cm-circ:disabled { opacity: .45; }
