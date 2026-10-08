@@ -1595,6 +1595,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           <p className="objectives-extension-request"><b>{t("objectives.extend.request")}</b><LinkText text={extension.context} /></p>
         </div> : null}
         {busy ? <div className="objectives-busy-line" role="status"><i aria-hidden="true" /><span>{t(objective.planning ? "objectives.planning" : "objectives.busy")}</span></div> : null}
+        {/* 멈춘 목표 — 조용해진 것이지 안 보이게 된 것이 아니다. 지시를 다시 보내면 서버가 stoppedAt 을 거두고 이 줄도 사라진다. */}
+        {!busy && !objective.done && objective.stoppedAt !== null ? <div className="objectives-busy-line is-stopped" role="status"><i aria-hidden="true" /><span>{t("objectives.stopped", { time: recordTime(objective.stoppedAt, language, "") })}</span></div> : null}
       </div>
   </>);
   const sFollowupResults = (<>

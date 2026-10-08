@@ -170,6 +170,7 @@
 .objectives-stop-btn:hover { border-color: var(--coral); }
 .objectives-busy-line { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px 22px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
 .objectives-busy-line i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); animation: objectives-breathe 1.6s ease-in-out infinite; animation-name: var(--state-motion, objectives-breathe); }
+.objectives-busy-line.is-stopped i { background: var(--warn); animation: none; }
 @keyframes objectives-breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 .objectives-detail.is-busy .objectives-detail-title, .objectives-detail.is-busy .objectives-mission-text:read-only, .objectives-detail.is-busy .objectives-note:read-only { cursor: default; color: var(--text-secondary); }
 .objectives-detail.is-busy .objectives-row-main:disabled { cursor: default; opacity: 0.6; }
