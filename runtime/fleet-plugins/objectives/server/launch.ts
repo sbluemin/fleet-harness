@@ -8,7 +8,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import { describeQuietMission, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "./signals.js";
+import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "./signals.js";
 import { COMMANDER_PRESET, COORDINATES_NOT_APPLIED, heldNextOutcome, missionReady, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
 import { deriveFailedOutcome } from "./views.js";
 
@@ -872,6 +872,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (firstWake) announceStarted(objectiveId);
     // 요청이 지휘관에게 닿은 뒤에만 누가 구상을 청했는지 남긴다. 행위자를 받지 않은 호출은 사람의 것이다(옛 관례와 같다).
     if (recordAs) current = store.recordStage(objectiveId, "planned", options?.actor ?? "human");
+    current = store.setStopped(objectiveId, false);
     return { objective: current, operationId: objectiveId };
   };
 
@@ -945,7 +946,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         if (report && report.sentTo.length > 0) lastDelivered.set(operationId, quietNow());
         const assignedAt = Math.max(-1, ...current.missions.flatMap((mission) => mission.member === member.id && !mission.done ? [mission.assignmentTs ?? 0] : []));
         const silent = !!report && !report.byPerson && !report.pendingWork && report.sentTo.length === 0 && objectiveUnderway(current)
-          && assignedAt >= 0 && (lastDelivered.get(operationId) ?? -1) < assignedAt;
+          && assignedAt >= 0 && (lastDelivered.get(operationId) ?? -1) < assignedAt && expectsReport(current.stoppedAt, assignedAt);
         if (silent) {
           const unreported: ObjectiveMemberUnreported = { at: quietNow(), ...(report.answer !== undefined ? { lastMessage: report.answer } : {}), reason: null };
           store.settleMemberUnreported(operationId, unreported);
@@ -1065,6 +1066,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         if (elapsed == null || elapsed < reportQuietMs) continue;
         const since = quietSince(mission.assignmentTs, boardUpdatedAt ?? mission.assignmentTs);
         if (store.reportWokenFor(current.id, mission.id) === since) continue;
+        if (!expectsReport(current.stoppedAt, since)) continue;
         if (ctx.host.consoleControl?.observe(current.id)?.activity === "running") continue;
         const language: PromptLanguage = ctx.host.operations.get(current.id)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
         const n = current.missions.findIndex((entry) => entry.id === mission.id) + 1;
@@ -1247,6 +1249,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (firstWake) announceStarted(objectiveId);
       // 개시가 닿은 목표는 「진행 중」에 서고, 누가 개시했는지 남는다. 행위자를 받지 않은 호출은 사람의 것이다.
       store.recordStage(objectiveId, "commenced", options?.actor ?? "human");
+      store.setStopped(objectiveId, false);
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
       return { objective: store.setEdited(objectiveId, null), operationId: objectiveId, failed };
     }, "start"),
@@ -1392,12 +1395,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         if (waiter) {
           decisionWaiters.delete(`${objectiveId}:${accepted.request.id}`);
           const settled = store.decisionSettle(objectiveId, accepted.request.id, true);
+          store.setStopped(objectiveId, false);
           waiter(accepted.answers);
           return settled;
         }
         try {
           await accessOperation(objectiveId);
           await control().request({ kind: "send", operationId: objectiveId, text: decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options), options?.actor), display: "", displayFormat: "markdown" });
+          store.setStopped(objectiveId, false);
           touchLive(objectiveId);
         } catch (error) {
           // 닿지 않았다 — 요청과 답은 화면에 그대로 남고 결정은 쌓이지 않는다. 호스트의 거절 사유는 함께 돌려준다.
@@ -1445,8 +1450,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
       await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context, options?.actor), display: humanWords(options?.context), displayFormat: "markdown" }).catch(asStoreError);
       touchLive(objectiveId);
-      // 지휘관에게 닿았다 — 쌓인 편집을 지우고, 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다.
+      // 지휘관에게 닿았다 — 쌓인 편집을 지우고, 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다. 멈춘 뒤라면 보고 기대도 되살아난다.
       store.setEdited(objectiveId, null);
+      store.setStopped(objectiveId, false);
       return store.clearMet(objectiveId, options?.actor ?? "human");
     },
 
@@ -1463,6 +1469,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
       await control().request({ kind: "send", operationId: target, text, display: text.trim(), displayFormat: "markdown" }).catch(asStoreError);
       if (member) { store.acknowledgeMemberFailure(member.id); store.refresh(objectiveId); }
+      store.setStopped(objectiveId, false);
       touchLive(target);
       if (!member) return { objective: objective(objectiveId), notified: null };
       const notified = await accessOperation(current.id).then(() => send(current.id, memberMessageTurn(current, member.role, text, languageOf(options), options?.actor), humanWords(text)), () => false);
@@ -1486,6 +1493,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
           return { operationId, outcome: "failed", reason };
         }
       }));
+      // 멈춘 사실을 보드에 남긴다 — 재시작 뒤에도 그 뒤로는 보고를 기대하지 않는다(signals.ts expectsReport). 보고 경보는 개시된 목표에만
+      // 걸리므로 개시 전 목표에는 남기지 않는다(기록 없는 목표에 레코드를 만들지 않는다).
+      if (current.commenced) current = store.setStopped(objectiveId, true);
       return { objective: current, interrupted: targets.filter((target) => target.outcome === "interrupted").length, targets };
     },
 

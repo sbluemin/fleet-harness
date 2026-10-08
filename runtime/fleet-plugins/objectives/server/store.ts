@@ -236,6 +236,8 @@ export interface ObjectiveStore {
   reportWokenFor(objectiveId: string, missionId: string): number | undefined;
   /** 깨움을 보낸 침묵 시작 시각을 남긴다. 보드 변경 시각은 움직이지 않는다. */
   markReportWake(objectiveId: string, missionId: string, since: number): void;
+  /** stop 을 보드 사실로 남기거나(true, 지금 시각) 지시가 다시 닿아 거둔다(false). 보드 변경 시각은 미루지 않는다. */
+  setStopped(objectiveId: string, stopped: boolean): Objective;
   /** 지휘관의 완료 — 기록·완료·선택 결과물을 한 번에 저장한다. 결과물은 임무의 현재 연결로 남는다. */
   missionDone(objectiveId: string, missionId: string, lines: readonly string[], results?: readonly CompletionResultInput[]): Objective;
   /** 사람이 이 임무의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
@@ -421,6 +423,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
       if (parsed.boardUpdatedAt !== undefined && (!Number.isFinite(parsed.boardUpdatedAt) || parsed.boardUpdatedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
+      if (parsed.stoppedAt !== undefined && (typeof parsed.stoppedAt !== "number" || !Number.isFinite(parsed.stoppedAt) || parsed.stoppedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (Array.isArray(parsed.missions) && parsed.missions.some((mission) => { const row = mission as { assignmentTs?: unknown; quietWokenFor?: unknown }; const bad = (at: unknown) => at !== undefined && (typeof at !== "number" || !Number.isFinite(at) || at < 0); return bad(row.assignmentTs) || bad(row.quietWokenFor); })) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (parsed.addedBy !== undefined && typeof parsed.addedBy !== "string" && (parsed.addedBy?.kind !== "commodore" || !objectiveActorSchema.safeParse(parsed.addedBy).success)) throw new ObjectiveStoreError("invalid_stored_actor");
       const intent = parsed.operationIntent;
@@ -708,6 +711,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       actions: stored.actions ?? [],
       actionCounts: stored.actionCounts ?? {},
       boardUpdatedAt: stored.boardUpdatedAt ?? node?.ts.createdAt ?? pending!.createdAt,
+      stoppedAt: stored.stoppedAt ?? null,
       awaitingHandoff: awaitingHandoff(stored),
       awaitingReview: awaitingReview(stored),
       handoff: stored.handoff ? { by: stored.handoff.by, at: stored.handoff.at, retrospective: stored.handoff.by === "commander" ? stored.handoff.retrospective : null } : null,
@@ -1405,6 +1409,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       try { return locate(objectiveId).stored.missions.find((mission) => mission.id === missionId)?.quietWokenFor; }
       catch { return undefined; }
     },
+    setStopped: (objectiveId, stopped) => update(objectiveId, (stored) => {
+      if (!stopped) return stored.stoppedAt === undefined ? stored : { ...stored, stoppedAt: undefined };
+      return { ...stored, stoppedAt: now() };
+    }, false),
     markReportWake(objectiveId, missionId, since) {
       update(objectiveId, (stored) => {
         const at = stored.missions.findIndex((mission) => mission.id === missionId);

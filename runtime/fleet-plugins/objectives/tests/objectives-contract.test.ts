@@ -246,6 +246,15 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const launch = createLaunchService(ctx, store, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
   launchServices.push(launch);
   watchQuiet = () => launch.watchReportQuiet();
+  // 재시작 — 같은 목표 파일과 같은 호스트 위에 저장소와 기동 서비스를 새로 세운다(메모리 상태는 잃고 보드 파일만 남는다).
+  const restart = () => {
+    let watchAgain: () => void = () => {};
+    const reloaded = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => hostChat.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchAgain() } : {}) });
+    const relaunched = createLaunchService(ctx, reloaded, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
+    launchServices.push(relaunched);
+    watchAgain = () => relaunched.watchReportQuiet();
+    return { store: reloaded, launch: relaunched };
+  };
   grouped.push((event) => launch.operationGrouped(event));
   // 결정 요청은 기본으로 기다리지 않는다 — 기다림은 그 계약을 다루는 테스트가 따로 켠다.
   const tools = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 0 });
@@ -276,7 +285,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ operationId: id, output });
-  }, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, advanceClock: (ms: number) => { clock += ms; } };
+  }, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, restart, advanceClock: (ms: number) => { clock += ms; } };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -2368,7 +2377,7 @@ describe("Objectives contract", () => {
 
   it("wakes the commander once when an assigned ready mission stays unreported and never steers", async () => {
     const reportQuietMs = 25 * 60_000;
-    const { store, launch, call, sent, activity, advanceClock } = harness(() => null, { reportQuietMs });
+    const { store, launch, call, sent, activity, advanceClock, restart } = harness(() => null, { reportQuietMs });
     const objective = await launch.create({ theaterId: "t1", title: "Quiet", groupId: null, missions: [{ text: "report back" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -2413,6 +2422,29 @@ describe("Objectives contract", () => {
       await vi.advanceTimersByTimeAsync(1_000);
       expect(quietSends()).toHaveLength(2);
       expect(steerSends()).toHaveLength(0);
+
+      // ① 멈춘 목표는 그 뒤로 보고를 기대하지 않는다 — 25분이 지나도, 재시작을 끼워도 새 깨움이 없다. 멈춘 사실과 배정은 보드에 그대로다.
+      advanceClock(1_000);
+      store.missionPatch(objective.id, mission!.id, { text: "stay quiet still" });
+      advanceClock(1_000);
+      const stoppedAt = (await launch.stop(objective.id)).objective.stoppedAt;
+      expect(stoppedAt).toEqual(expect.any(Number));
+      advanceClock(reportQuietMs + 5_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(quietSends()).toHaveLength(2);
+      launch.dispose();
+      const after = restart();
+      after.launch.watchReportQuiet();
+      expect(after.store.find(objective.id)).toMatchObject({ stoppedAt, missions: expect.arrayContaining([expect.objectContaining({ id: mission!.id, member: expect.any(String), done: false })]) });
+      advanceClock(reportQuietMs + 5_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(quietSends()).toHaveLength(2);
+      // ② 지시를 다시 보내면 보고 기대가 되살아난다 — 보드를 바꾸지 않는 메시지 하나로도 다음 틱에 깨움이 다시 온다.
+      await after.launch.message(objective.id, null, "Resume the mission.", { actor: { kind: "commodore", theaterId: "t1" } });
+      expect(after.store.find(objective.id)?.stoppedAt).toBeNull();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(quietSends()).toHaveLength(3);
+      after.launch.dispose();
     } finally {
       launch.dispose();
       vi.useRealTimers();

@@ -543,6 +543,8 @@ export interface StoredObjective {
   readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
   /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
   readonly boardUpdatedAt?: number;
+  /** 마지막 stop 시각 — 그 뒤로는 보고를 기대하지 않는다. 지시를 다시 보내는 행위가 거둔다(signals.ts expectsReport). 보드 변경 시각을 미루지 않는다. */
+  readonly stoppedAt?: number;
   /** 목표 완료 — 옛 레코드에서 by 생략은 사람의 완료다. */
   readonly done?: ObjectiveCompletion;
   /** Core 요청 접수 전 중단을 복구하는 내부 의도. UI 상태나 구성원별 세대가 아니다. */
@@ -690,6 +692,8 @@ export interface Objective {
   readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
   /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
   readonly boardUpdatedAt?: number;
+  /** 마지막 stop 시각 — 지시를 다시 보내면 null 로 돌아간다. 멈춘 사실은 보드에 그대로 보인다. */
+  readonly stoppedAt: number | null;
   readonly dueDate: string | null;
   readonly today: boolean;
   readonly addedBy: { readonly operationId: string; readonly title: string | null } | Extract<ObjectiveActor, { kind: "commodore" }> | null;
