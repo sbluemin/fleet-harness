@@ -5,6 +5,24 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.219.0] - 2026-10-08
+
+### fleet-console
+
+#### Changed
+- Make aide conversations in Quick Launch more compact while keeping access controls and conversation actions close at hand.
+
+#### Fixed
+- Cursor models searching inside a single file now get the matching lines instead of being told nothing matched.
+- Cursor no longer resends the whole conversation when a tool result is followed by a reminder, client instructions, a background-task notice, or a message from another session, so those replies come back sooner and use less of your allowance.
+- When Cursor rebuilds an older conversation, a compressed search result is readable again, so the model can use that search without running it a second time.
+- Cursor no longer treats a doubled first reading of a conversation as a full window, so the chat is not summarized early and the usage meter does not jump to its ceiling.
+- When Cursor sends a conversation again, earlier tool calls are labeled with names Cursor can actually call, so the model is less likely to call a tool that does not exist and have it refused.
+- Cursor models reading only part of a file now get the requested lines on the first try instead of a refusal and a retry, so replies arrive sooner and use less of your allowance; very long files still need a second read.
+- A short Cursor turn that ends on a finished report, a question, or a request for approval is no longer pushed to continue.
+- A Cursor turn that only announces its next step after a tool result followed by a skill body, a loaded-tool notice, nested project instructions, a background-task notice or a message from another session is now asked once more to make that call, as it already was after a reminder.
+- Muse turns that start a background job or a scheduled wakeup and stop to wait now actually wait, instead of being pushed to continue and poll or start the same job again.
+
 ## [1.218.0] - 2026-10-07
 
 ### fleet-console
