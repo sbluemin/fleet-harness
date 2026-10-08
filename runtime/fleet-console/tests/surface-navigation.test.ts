@@ -86,6 +86,9 @@ it("opens complete absolute file references without absorbing prose or neighbori
     "A / B test.md and/or",
     "yes / no, see c.md",
     String.raw`C:\notes\자기계발 노트.md 뒤의 설명`,
+    "https://example.com/view?file=/workspace/notes/report.md",
+    "https://example.com/view?file=/workspace/my notes/report.md",
+    `Report: ${posix} then https://example.com/view?file=/workspace/notes/report.md`,
   ];
   const expected = [
     [windows],
@@ -97,6 +100,9 @@ it("opens complete absolute file references without absorbing prose or neighbori
     [],
     [],
     [String.raw`C:\notes\자기계발 노트.md`],
+    [],
+    [],
+    [posix],
   ];
   const open = vi.fn(async () => ({ ok: true as const }));
   const onOutcome = vi.fn();

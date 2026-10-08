@@ -124,6 +124,7 @@ const ABSOLUTE_FILE_REF = new RegExp(
 
 export function findFileRefs(cells: LineCells): FileRefCandidate[] {
   const found: FileRefCandidate[] = [];
+  const tokens = [...cells.text.matchAll(/\S+/g)];
   const spans: { readonly start: number; readonly end: number }[] = [];
   for (const match of cells.text.matchAll(ABSOLUTE_FILE_REF)) {
     const start = match.index;
@@ -131,9 +132,11 @@ export function findFileRefs(cells: LineCells): FileRefCandidate[] {
     const suffix = COORDINATE_SUFFIX.exec(cells.text.slice(pathEnd))?.[0] ?? "";
     const end = pathEnd + suffix.length;
     const token = cells.text.slice(start, end);
-    if (appendFileRef(found, cells, token, start)) spans.push({ start, end });
+    // URL query의 `/path`는 URL 공급자가 맡는다. 정규식이 잘라 낸 suffix뿐 아니라 원래 토큰을 본다.
+    const embeddedUrl = tokens.some((part) => part.index <= start && start < part.index + part[0].length && part[0].includes("://"));
+    if (embeddedUrl || appendFileRef(found, cells, token, start)) spans.push({ start, end });
   }
-  for (const match of cells.text.matchAll(/\S+/g)) {
+  for (const match of tokens) {
     const start = match.index;
     const end = start + match[0].length;
     // 긴 절대경로와 겹치는 조각을 또 링크로 만들면 뒤쪽 상대경로가 먼저 선택될 수 있다.
