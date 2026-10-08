@@ -898,6 +898,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   // 정산한 턴 좌표·보고 시각·실패·무보고는 구성원 레코드(objective.json)에 둔다 — 재시작 뒤에도 같은 턴을 다시 알리지 않고 표시가 남는다.
   /** 보드를 거쳐 사람이 그 구성원에게 말했다 — 그 말로 열린 다음 턴은 사람에게 답하는 턴이다(한 번 쓰고 지운다). */
   const personPrompts = new Set<string>();
+  /**
+   * 구성원이 이번 턴에 보낸 메시지를 호스트가 관측한 가장 늦은 시각과 지난 턴을 정산한 시각. 보고는 턴이 닫힐 때가 아니라 보낸 때로 센다 —
+   * 보고 뒤 같은 턴이 닫히기 전에 들어온 새 발주를 그 보고가 갚은 것으로 읽지 않게. 관측이 없으면(호스트 밖 상대·재시작) 정산 시각으로 센다.
+   */
+  const turnSends = new Map<string, number>();
+  const settledAt = new Map<string, number>();
   const sameTurn = (a: { readonly generation?: string; readonly revision: number } | undefined, b: { readonly generation?: string; readonly revision: number }) =>
     !!a && a.generation === b.generation && a.revision === b.revision;
   let unsubscribeTurnEnds: (() => void) | null = null;
@@ -907,6 +913,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const dropOutcome = (operationId: string) => {
     lastOutcomes.delete(operationId);
     outcomeWatched.delete(operationId);
+    turnSends.delete(operationId);
+    settledAt.delete(operationId);
     if (outcomeWatched.size === 0) { unsubscribeTurnEnds?.(); unsubscribeTurnEnds = null; unsubscribeSessionMessages?.(); unsubscribeSessionMessages = null; }
   };
   const forgetOutcome = (operationId: string) => {
@@ -963,7 +971,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         // 사람의 말 표식은 결과와 상관없이 그 말이 연 턴이 정산될 때 거둔다 — 실패로 닫힌 턴 뒤의 조용한 정지를 사람에게 답한 턴으로 잘못 읽지 않게.
         const personPrompted = personPrompts.delete(operationId);
         const personTurn = !!report && (report.byPerson || personPrompted);
-        if (report && report.sentTo.length > 0) store.setMemberDelivered(operationId, quietNow());
+        const sentAt = turnSends.get(operationId);
+        turnSends.delete(operationId);
+        settledAt.set(operationId, quietNow());
+        if (report && report.sentTo.length > 0) store.setMemberDelivered(operationId, sentAt ?? quietNow());
         const assignedAt = Math.max(-1, ...current.missions.flatMap((mission) => mission.member === member.id && !mission.done ? [mission.assignmentTs ?? 0] : []));
         const expectedAt = assignedAt < 0 ? -1 : Math.max(assignedAt, store.memberDispatch(operationId)?.at ?? -1);
         const silent = !!report && !personTurn && !report.pendingWork && report.sentTo.length === 0 && objectiveUnderway(current)
@@ -983,8 +994,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
             store.refresh(objectiveId);
           });
           changed = true;
-        } else if (member.unreported && (!personTurn || (report?.sentTo.length ?? 0) > 0)) {
+        } else if (member.unreported && report && (!personTurn || report.sentTo.length > 0)) {
           // 사람에게 답만 한 턴은 그 빚을 갚지 않는다 — 표시는 보고·외부 대기·빚 해소 때만 거둔다. 사람이 연 턴이라도 보고가 닿았으면 빚을 갚았으니 거둔다.
+          // 보고를 관측하지 않는 턴(터미널·실패로 닫힌 턴)은 갚았다는 증거가 아니다 — 표시를 두고, 같은 빚을 다시 알리지도 않는다.
           store.settleMemberUnreported(operationId, null);
           changed = true;
         }
@@ -1025,6 +1037,11 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     // 발주 — 지휘관의 세션 간 메시지가 그 목표의 구성원에게 닿았다(호스트가 보낸·받은 Operation 과 시각만 건넨다).
     if (!unsubscribeSessionMessages) unsubscribeSessionMessages = ctx.host.consoleControl?.subscribeSessionMessages?.((event) => {
       if (disposed) return;
+      // 구성원이 보낸 말 — 보낸 시각을 그 턴의 보고 시각 후보로 둔다. 지난 턴의 늦은 관측(받는 쪽 트랜스크립트)은 지난 턴 몫이라 버린다.
+      const sender = store.findMember(event.fromOperationId);
+      if (sender && !sender.objective.done && event.at > (settledAt.get(event.fromOperationId) ?? -1)) {
+        turnSends.set(event.fromOperationId, Math.max(turnSends.get(event.fromOperationId) ?? -1, event.at));
+      }
       const owner = store.findMember(event.toOperationId)?.objective;
       if (!owner || owner.done || owner.id !== event.fromOperationId) return;
       // 한 통은 보낸 쪽(채팅 지휘관의 SendMessage 성공)과 받는 쪽(구성원 트랜스크립트의 peer 도착)에서 두 번 보일 수 있다. 둘 다 「받는 세션에
