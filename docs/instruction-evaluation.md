@@ -211,7 +211,7 @@ printf '%s\n' "$OUT" > "$SEAL/sealed-at.out"; printf '%s\n' "$rc" > "$SEAL/seale
 
 **실제 모델의 반복 실행은 유료 실행 승인 이후에만 진행한다.** 무료 검증만 맡은 세션은 실제 평가를 시작하지 않는다. 승인은 과금 풀을 이름으로 지정해야 한다(구독 OAuth 풀이면 그 구독). fixture와 실제 회차의 차이는 `ENVX`·네트워크·Keychains 규칙뿐이며, 플래그·나머지 환경·메모리·검색 조건·모델·effort를 바꾸지 않는다. provider나 인증 방식 변경이 필요하면 fixture부터 새로 확인한다. 이 문서의 경로는 자격증명 값을 읽거나 기록하지 않는다. 임시 HOME에서 로그인하지 않는다.
 
-전·후를 번갈아 `N`회 실행한다. 실행 전에 `N`, `TURN_LIMIT`, `COST_LIMIT`을 승인된 합계 회차 수·제공자별 턴 상한·달러 상한으로 지정한다. 회차 시작 전에 `누적 턴 + (MAXTURNS+1) ≤ 제공자별 상한`을 확인하고, 회차마다 장면을 새로 만든 뒤 파일 수준으로 지침 적재를 확인한다(이전 0건·이후 1건이 아니면 호출하지 않는다).
+전·후를 번갈아 `N`회 실행한다. 실행 전에 `N`, `TURN_LIMIT`, `COST_LIMIT`을 승인된 합계 회차 수·제공자별 턴 상한·달러 상한으로, `RUN_COST_BOUND`를 회차 하나의 보수적 비용 상한(탐침 실호출의 `total_cost_usd`에서 턴 수 비례로 늘린 값 등)으로 지정한다. 루프는 회차가 `rc=0`도 `error_max_turns`도 아니거나 지표를 읽지 못하면 다음 회차로 넘어가지 않고 멈춘다. 같은 쪽 대체 여부는 실행자가 중단 조건을 보고 정한다. 회차 시작 전에 `누적 턴 + (MAXTURNS+1) ≤ 제공자별 상한`을 확인하고, 회차마다 장면을 새로 만든 뒤 파일 수준으로 지침 적재를 확인한다(이전 0건·이후 1건이 아니면 호출하지 않는다).
 
 ```bash
 printf 'number\tside\trc\tsubtype\tturns\tcost_usd\tduration_ms\n' > "$E/ledger.tsv"
@@ -222,11 +222,14 @@ while [ "$i" -le "$N" ]; do
   USED=$(awk -F'\t' -v m="$MAXTURNS" 'NR>1 {s+=($5=="" ? m+1 : $5)} END{print s+0}' "$E/ledger.tsv")
   SPENT=$(awk -F'\t' 'NR>1 {s+=$6} END{print s+0}' "$E/ledger.tsv")
   [ $((USED + MAXTURNS + 1)) -le "$TURN_LIMIT" ] || break
-  awk -v s="$SPENT" -v c="$COST_LIMIT" 'BEGIN{exit !(s < c)}' || break
+  awk -v s="$SPENT" -v b="$RUN_COST_BOUND" -v c="$COST_LIMIT" 'BEGIN{exit !(s + b <= c)}' || break
   claude_call "$side" "r$i"; rc=$?
   printf '%s\n' "$rc" > "$E/run-$i.rc"
   RES=$(jq -c 'select(.type=="result")' "$E/stream-r$i.jsonl" | tail -1)
   printf '%s\t%s\t%s\t%s\n' "$i" "$side" "$rc" "$(printf '%s' "$RES" | jq -r '[.subtype, .num_turns, .total_cost_usd, .duration_ms] | @tsv')" >> "$E/ledger.tsv"
+  SUB=$(printf '%s' "$RES" | jq -r '.subtype // empty'); NT=$(printf '%s' "$RES" | jq -r '.num_turns // empty')
+  # 인프라 실패(정상 종료도 상한 절단도 아님, 지표 없음)면 넘어가지 않고 멈춘다
+  { [ "$rc" -eq 0 ] || [ "$SUB" = error_max_turns ]; } && [ -n "$NT" ] || break
   i=$((i + 1))
 done
 ```
