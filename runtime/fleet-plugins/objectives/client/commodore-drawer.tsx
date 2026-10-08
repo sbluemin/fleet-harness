@@ -9,7 +9,7 @@ import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
-import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
+import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime } from "./commodore-row.js";
@@ -559,12 +559,49 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
 const FOLLOW_SLACK_PX = 48;
 
 /**
- * 사령관 기록 — Operation 채팅과 같은 턴 렌더러(호스트 `ctx.chat.Transcript`)로 그린다. 오래된 것이 위, 새 턴이 아래에 쌓이고,
- * 바닥을 보고 있으면 따라 내려간다. 더 오래된 쪽은 맨 위에서 읽어 붙이고 보던 자리를 지킨다.
+ * 사령관 기록 — Operation 채팅과 같은 턴 렌더러로 그린다. 진행 중인 턴과 마지막으로 끝난 턴만 펼치고,
+ * 그 전 턴은 「출처 · 답 첫 줄 · 걸린 시간 · 시각」 한 줄로 접는다. 줄 자체가 버튼이고, 곁 칸에서 시각을 누르면 그 턴이 펼쳐진다.
  */
 function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
   const Transcript = commodoreTranscriptRenderer();
-  const chat = useMemo(() => commodoreChatEntries(t, entries, live), [t, entries, live]);
+  const blocks = useMemo(() => commodoreLogBlocks(t, entries, live), [t, entries, live]);
+  const lastFinishedId = useMemo(() => {
+    for (let index = blocks.length - 1; index >= 0; index -= 1) {
+      const block = blocks[index];
+      if (block?.kind === "turn" && !block.turn.working) return block.turn.id;
+    }
+    return null;
+  }, [blocks]);
+  const [pinnedOpen, setPinnedOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const [pinnedClosed, setPinnedClosed] = useState<ReadonlySet<string>>(() => new Set());
+  const revealedId = reveal ? commodoreTurnCovering(blocks, reveal.at)?.id ?? null : null;
+  useEffect(() => {
+    if (!revealedId) return;
+    setPinnedOpen((current) => (current.has(revealedId) ? current : new Set(current).add(revealedId)));
+    setPinnedClosed((current) => {
+      if (!current.has(revealedId)) return current;
+      const next = new Set(current);
+      next.delete(revealedId);
+      return next;
+    });
+  }, [reveal?.nonce, revealedId]);
+  const openTurn = (turn: CommodoreLogTurn) => turn.working || pinnedOpen.has(turn.id) || (!pinnedClosed.has(turn.id) && turn.id === lastFinishedId);
+  const toggleTurn = (turn: CommodoreLogTurn) => {
+    if (turn.working) return;
+    const open = openTurn(turn);
+    setPinnedOpen((current) => {
+      const next = new Set(current);
+      if (open) next.delete(turn.id);
+      else next.add(turn.id);
+      return next;
+    });
+    setPinnedClosed((current) => {
+      const next = new Set(current);
+      if (open) next.add(turn.id);
+      else next.delete(turn.id);
+      return next;
+    });
+  };
   const [loadingOlder, setLoadingOlder] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const follow = useRef(true);
@@ -574,24 +611,75 @@ function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, 
     if (!node) return;
     if (anchor.current !== null) { node.scrollTop += node.scrollHeight - anchor.current; anchor.current = null; return; }
     if (follow.current) node.scrollTop = node.scrollHeight;
-  }, [chat]);
+  }, [blocks]);
   const older = () => {
     if (loadingOlder) return;
     anchor.current = scrollRef.current?.scrollHeight ?? null;
     setLoadingOlder(true);
     void loadTranscript(theaterId, { older: true }).finally(() => setLoadingOlder(false));
   };
-  if (loaded && chat.length === 0) return <div className="objectives-commodore-log"><p className="objectives-commodore-empty">{t("objectives.commodore.log.empty")}</p></div>;
+  const empty = loaded && blocks.length === 0;
   return (
     <div ref={scrollRef} className="objectives-commodore-log" onScroll={(event) => { const node = event.currentTarget; follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < FOLLOW_SLACK_PX; }}>
+      {empty ? <p className="objectives-commodore-empty">{t("objectives.commodore.log.empty")}</p> : null}
       {hasMore ? (
         <button type="button" className="objectives-commodore-text-button objectives-commodore-older" disabled={loadingOlder} onClick={older}>
           {t("objectives.commodore.log.older")}
         </button>
       ) : null}
-      {Transcript ? <Transcript entries={chat} language={language} reveal={reveal} /> : null}
+      {Transcript ? blocks.map((block) => {
+        if (block.kind === "note") {
+          const note = { kind: "note" as const, text: block.text, ...(block.at !== undefined ? { at: block.at } : {}), ...(block.tone ? { tone: block.tone } : {}) };
+          return <Transcript key={`note-${block.at ?? block.text}`} entries={[{ event: note, ...(block.at !== undefined ? { at: block.at } : {}) }]} language={language} />;
+        }
+        const turn = block.turn;
+        const open = openTurn(turn);
+        const line = turn.working ? null : (
+          <CommodoreTurnLine t={t} turn={turn} open={open} onToggle={() => toggleTurn(turn)} />
+        );
+        if (!open) return <div key={turn.id}>{line}</div>;
+        const shown = turn.message || turn.working ? turn.entries : turn.entries.filter((entry) => entry.event.kind !== "dispatch");
+        return (
+          <div key={turn.id} className="objectives-commodore-turn-open" data-commodore-turn={turn.id}>
+            {line}
+            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} />
+          </div>
+        );
+      }) : null}
     </div>
   );
+}
+
+/** 접힌 턴 한 줄. 채팅 작업 접힘과 같이 줄 끝의 ⌄가 열림을 말하고, 줄 자체가 버튼이다. */
+function CommodoreTurnLine({ t, turn, open, onToggle }: { readonly t: T; readonly turn: CommodoreLogTurn; readonly open: boolean; readonly onToggle: () => void }) {
+  const duration = turnDuration(t, turn.durationMs);
+  const meta = [duration, clockTime(turn.at)].filter(Boolean).join(" · ");
+  const tone = turn.failed ? " is-error" : turn.stopped ? " is-stopped" : turn.message ? " is-message" : "";
+  return (
+    <button
+      type="button"
+      className={`objectives-commodore-turn${tone}${open ? " is-open" : ""}`}
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      <span className="objectives-commodore-turn-dot" aria-hidden="true" />
+      <span className="objectives-commodore-turn-label">{turn.label}</span>
+      <span className="objectives-commodore-turn-summary">{turn.summary}</span>
+      <span className="objectives-commodore-turn-meta">{meta}</span>
+      <span className="objectives-commodore-turn-chev" aria-hidden="true">⌄</span>
+    </button>
+  );
+}
+
+function turnDuration(t: T, durationMs: number | undefined): string | null {
+  if (durationMs === undefined) return null;
+  const seconds = Math.round(durationMs / 1000);
+  if (seconds < 60) return t("objectives.commodore.log.seconds", { n: seconds });
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest === 0
+    ? t("objectives.commodore.log.minutes", { n: minutes })
+    : t("objectives.commodore.log.minutesSeconds", { m: minutes, s: rest });
 }
 
 /**

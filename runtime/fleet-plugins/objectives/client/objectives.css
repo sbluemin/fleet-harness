@@ -1658,6 +1658,58 @@ html[data-view-mode="mobile"] .objectives-commodore-scrim { display: none; }
 /* 기록 탭 — 본문이 아니라 기록 칸이 스크롤한다(채팅처럼 바닥을 따라간다). 같은 채팅 턴 렌더러가 칸 폭을 그대로 쓴다. */
 .objectives-commodore-body.is-log { overflow: hidden; padding: 0; display: flex; }
 .objectives-commodore-log { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 16px 28px 24px; display: flex; flex-direction: column; gap: 14px; }
+
+/* 지난 턴 한 줄 — 채팅 작업 접힘과 같은 ⌄. 줄 자체가 버튼이다. */
+.objectives-commodore-turn {
+  display: grid;
+  grid-template-columns: 16px auto minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-md);
+  text-align: left;
+  cursor: pointer;
+}
+.objectives-commodore-turn:hover { background: var(--control-hover-fill); }
+.objectives-commodore-turn:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-turn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--positive);
+  justify-self: center;
+}
+.objectives-commodore-turn.is-error .objectives-commodore-turn-dot { background: var(--coral); }
+.objectives-commodore-turn.is-stopped .objectives-commodore-turn-dot { background: var(--text-tertiary); }
+.objectives-commodore-turn-label { color: var(--brass-ink); font-size: var(--t-sm); white-space: nowrap; }
+.objectives-commodore-turn.is-message .objectives-commodore-turn-label { color: var(--text-secondary); }
+.objectives-commodore-turn-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.objectives-commodore-turn-meta { color: var(--text-tertiary); font-size: var(--t-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.objectives-commodore-turn-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+  font-size: 9px;
+  line-height: 1;
+  transition: transform var(--duration-fast);
+}
+.objectives-commodore-turn.is-open .objectives-commodore-turn-chev { transform: rotate(180deg); }
+.objectives-commodore-turn-open { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.objectives-commodore-sheet.is-compact .objectives-commodore-turn { grid-template-columns: 16px auto minmax(0, 1fr) 16px; }
+.objectives-commodore-sheet.is-compact .objectives-commodore-turn-meta { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .objectives-commodore-turn-chev { transition: none; }
+}
 .objectives-commodore-sheet.is-compact .objectives-commodore-log { padding-inline: 20px; }
 
 /* 기록 곁 칸 「목표」 — 글리프·낱말·시각만. 묶음마다 기존 신호 토큰의 -ink. 최신이 아래이고, 너비는 이음매가 가른다.
