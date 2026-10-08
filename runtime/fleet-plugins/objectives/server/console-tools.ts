@@ -1,4 +1,5 @@
 import { inputIssues, type ConsoleCaller, type ConsoleUseCallTarget, type PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
@@ -320,7 +321,9 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     if (input.launch) {
       const catalog = await loadCatalog(signal);
       if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
-      const row = catalog.find((entry) => entry.model === input.launch!.model);
+      // bare·scoped 표기도 같은 정준 좌표의 카탈로그 행으로 찾는다.
+      const wanted = canonicalModelId(input.launch.model);
+      const row = catalog.find((entry) => canonicalModelId(entry.model) === wanted);
       if (!row) throw new ObjectiveStoreError("model_not_in_catalog");
       if (!row.available) throw new ObjectiveStoreError("model_unavailable", undefined, row.reason ? { reason: row.reason } : {});
       if (input.launch.effort !== undefined && !row.efforts.includes(input.launch.effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { efforts: row.efforts });

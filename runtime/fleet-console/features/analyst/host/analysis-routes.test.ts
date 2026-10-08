@@ -119,7 +119,7 @@ describe("Session Analyst server contract", () => {
     // 설정의 모델이 목록에 없으면(꺼진 Gateway 모델) Sonnet으로 내려가고, 강도는 그 모델의 사다리 안에서 산다.
     experiments = { ...experiments, analystModel: "claude-gateway--off-model" };
     await router.call("GET", "/api/v1/analysis/catalog");
-    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { selection: { model: "sonnet", effort: "high", fallback: true } } });
+    expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { selection: { model: "sonnet[1m]", effort: "high", fallback: true } } });
   });
 
   it("wraps hostile artifact CSS with a validated host-owned canvas for every Console theme", async () => {

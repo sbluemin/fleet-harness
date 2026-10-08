@@ -81,11 +81,11 @@ describe("commodore theater state", () => {
     expect((await h.route("commodore/intel/remove", { theaterId: "t1", intelId: "nope" })).status).toBe(404);
     expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "sonnet", effort: null })).status).toBe(400);
     // Gateway scoped Claude 표기도 받되 정준 id(실행 id)로 접어 저장한다.
-    expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "claude--sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet", effort: "xhigh" });
+    expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "claude--sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet[1m]", effort: "xhigh" });
 
     // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽고, 실험 기능이 꺼지면 플래그만 꺼진다(저장값은 남는다).
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, unknown>;
-    expect(saved).toMatchObject({ autonomy: true, directive: { rev: 1 }, model: "sonnet", effort: "xhigh" });
+    expect(saved).toMatchObject({ autonomy: true, directive: { rev: 1 }, model: "sonnet[1m]", effort: "xhigh" });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")).toEqual(h.store.read("t1"));
     // 재시작 복원은 등록된 Theater 를 훑는다 — 읽을 수 없는 Theater 는 빠지고 던지지 않는다.
     expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), theaterIds: () => ["t1", "gone"], emit: () => undefined }).autonomousTheaters()).toEqual(["t1"]);
@@ -533,7 +533,7 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.options.systemPrompt).toContain("The person reads the log in Korean.");
       expect(tokens()).toEqual([["restart", "empty"]]);
       expect(sessionEvents()).toEqual(["restarted"]);
-      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "session")).toMatchObject({ reason: "fallback:model_off:sonnet" });
+      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "session")).toMatchObject({ reason: "fallback:model_off:sonnet[1m]" });
       expect(h.store.read("t1")?.model).toBe("codex--gpt-6-luna");
       expect(sessions[0]!.sent[0]).toContain("Console restarted; the board is empty");
       const patrolAt = supervisor.status("t1")!.nextWakeAt!;
