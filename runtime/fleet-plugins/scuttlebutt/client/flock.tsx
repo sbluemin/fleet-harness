@@ -61,6 +61,24 @@ const KEYBOARD_STEP_PX = 24;
 const DOCK_DROP_Y = 44;
 const KEYBOARD_STEP_FAST_PX = 96;
 
+/** 폰 배치에서 새가 들어가지 않는 화면 아래 띠의 비율과 하한. */
+const PHONE_THUMB_BAND_RATIO = 0.3;
+const PHONE_THUMB_BAND_MIN_PX = 200;
+
+/**
+ * 편대가 날고 앉는 범위. 데스크톱은 창 전체다. 폰 배치에서는 화면 아래 엄지 띠(입력 독·모델 칩·
+ * 보내기·터미널 키 막대가 서는 곳)를 범위에서 뺀다 — 그 띠를 바닥으로 삼으면 걷거나 자는 새가 입력
+ * 컨트롤 위에 앉아 탭을 가로챈다. 탭을 통과시키는 대신 띠 위 가장자리를 갑판으로 삼아 새를 잡고
+ * 누를 수 있게 남긴다. 경계·갑판·목적지·주차 줄·정박 자리가 모두 이 높이에서 나오므로 한 곳에서 줄인다.
+ */
+function roamViewport(): { readonly width: number; readonly height: number } {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  if (document.documentElement.dataset.viewMode !== "mobile") return { width, height };
+  const band = Math.max(PHONE_THUMB_BAND_MIN_PX, Math.round(height * PHONE_THUMB_BAND_RATIO));
+  return { width, height: Math.max(height / 2, height - band) };
+}
+
 /** 첫 rAF 전에도 제자리에 그려야 세 마리가 좌상단에 겹쳤다가 흩어지는 깜빡임이 없다. */
 function framesFromBodies(bodies: readonly BirdBody[]): readonly BirdFrame[] {
   return bodies.map((body): BirdFrame => ({
@@ -188,10 +206,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     };
   }, [context.keepOut]);
 
-  const viewportRef = React.useRef({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
+  const viewportRef = React.useRef(roamViewport());
   const bodiesRef = React.useRef<readonly BirdBody[] | null>(null);
   if (bodiesRef.current === null) {
     const stored = getScuttlebuttSettings();
@@ -665,12 +680,18 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
 
   React.useEffect(() => {
     const resize = () => {
-      viewportRef.current = { width: window.innerWidth, height: window.innerHeight };
+      viewportRef.current = roamViewport();
       setViewportWidth(window.innerWidth);
       if (fleetSignals.reducedMotion) parkBirds();
     };
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    // 폰·데스크톱 배치는 창 크기와 따로 바뀔 수 있다(보기 전환) — 루트 속성이 바뀌면 활동 범위를 다시 잰다.
+    const layout = new MutationObserver(resize);
+    layout.observe(document.documentElement, { attributes: true, attributeFilter: ["data-view-mode"] });
+    return () => {
+      window.removeEventListener("resize", resize);
+      layout.disconnect();
+    };
   }, [fleetSignals.reducedMotion, parkBirds]);
 
   // 모션을 줄인 화면에서는 편대 루프가 돌지 않으므로 표면이 여닫힐 때 주차 줄을 직접 다시 세운다.
