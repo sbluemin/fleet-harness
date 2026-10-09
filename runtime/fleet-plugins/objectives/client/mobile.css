@@ -178,6 +178,15 @@
 .objectives-m-sheet-layer .objectives-m-field { height: 104px; }
 .objectives-m-sheet-ft { display: flex; justify-content: flex-end; gap: 8px; flex: none; padding: 10px 16px 0; }
 .objectives-m-sheet-layer :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+/* 라우팅 확인 시트 — 라우팅 구성원마다 역할 · 판단된 모델 · 강도, 그 아래 근거 또는 폴백 사유. */
+.objectives-m-route { display: flex; flex-direction: column; }
+.objectives-m-route-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px; padding: 12px 4px; border-top: 1px solid var(--m-hairline); }
+.objectives-m-route-row:first-child { border-top: 0; }
+.objectives-m-route-role { font-size: var(--m-fs-body); font-weight: var(--weight-bold); overflow-wrap: anywhere; }
+.objectives-m-route-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--m-fs-secondary); color: var(--m-text-muted); white-space: nowrap; }
+.objectives-m-route-tag { color: var(--m-awaiting); font-size: var(--m-fs-caption); font-weight: var(--weight-bold); }
+.objectives-m-route-why { grid-column: 1 / -1; font-size: var(--m-fs-caption); line-height: 18px; color: var(--m-text-faint); overflow-wrap: anywhere; }
+.objectives-m-route-why.is-warn { color: var(--m-awaiting); }
 
 /*
  * 결과물 — 데스크톱 장부(results.tsx)의 같은 마크업을 이 범위에서만 모바일 묶음 카드로 다시 입힌다. 데스크톱 규칙은 건드리지 않는다.
