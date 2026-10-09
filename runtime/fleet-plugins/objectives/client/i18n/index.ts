@@ -884,7 +884,8 @@ export const objectivesEn = {
   "objectives.mobile.menuLabel": "Objective menu",
   "objectives.mobile.attention": "{count} decision requests",
   "objectives.mobile.commence.working": "The Commander is already working",
-  "objectives.mobile.commence.routing": "Routing review is on — commence from the desktop board",
+  "objectives.mobile.routing.hint": "Commence launches the {count} routed members with the models above.",
+  "objectives.mobile.routing.stale": "The reviewed routing changed, so it was loaded again — check it and commence again.",
 };
 
 export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
@@ -1770,7 +1771,8 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.mobile.menuLabel": "목표 메뉴",
   "objectives.mobile.attention": "결정 요청 {count}건",
   "objectives.mobile.commence.working": "지휘관이 이미 일하고 있습니다",
-  "objectives.mobile.commence.routing": "개시 전 라우팅 결과 확인이 켜져 있어 데스크톱 보드에서 개시합니다",
+  "objectives.mobile.routing.hint": "개시하면 라우팅 구성원 {count}명을 위 모델로 띄웁니다.",
+  "objectives.mobile.routing.stale": "확인한 라우팅 결과가 바뀌어 다시 받았습니다 — 확인하고 다시 개시하세요.",
 };
 
 const OBJECTIVE_MESSAGES = { en: objectivesEn, ko: objectivesKo } as const;

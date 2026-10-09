@@ -7,7 +7,7 @@ import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
 import type { RailEntryAttentionItem } from "@fleet-console/sdk/rail";
 import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
-import type { Decision, DecisionQuestion, Objective, ObjectiveMember } from "../server/types.js";
+import { ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
 import { memberFailureNote } from "./clusters.js";
 import { commodoreBoardOf, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
@@ -215,14 +215,17 @@ interface ObjectiveActions {
   readonly complete: boolean;
   readonly handOff: boolean;
   readonly stop: boolean;
-  /** 개시 카드 — null 이면 서지 않는다. 띠가 개시·재개를 고를 수 있으면 누를 수 있고, 아니면 reason 이 막힌 사정을 말한다. */
-  readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null } | null;
+  /**
+   * 개시 카드 — null 이면 서지 않는다. 띠가 개시·재개를 고를 수 있으면 누를 수 있고, 아니면 reason 이 막힌 사정을 말한다.
+   * review 는 개시가 라우팅으로 새로 띄울 구성원이다 — 라우팅 확인이 켜져 있을 때만 차고, 차 있으면 개시는 확인 시트를 거친다.
+   */
+  readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null; readonly review: readonly ObjectiveMember[] } | null;
 }
 
 /**
  * ⋮ 의 사람 동작 — 데스크톱 하단 띠와 같은 판정에서, 폰에서 의미 있는 넷(메시지·완료·검토로 넘기기·중단)만 고른다.
- * 개시는 ⋮ 가 아니라 본문 카드로 세운다(누름 한 번). 덧붙일 말 칸·라우팅 확인 시트는 폰에 없으므로 바로 `/commander/start` 를 보내고,
- * 라우팅 확인이 걸리는 개시(확인 켬 + 아직 띄우지 않은 라우팅 구성원)는 사람의 확인을 건너뛰지 않게 막고 사정을 말한다.
+ * 개시는 ⋮ 가 아니라 본문 카드로 세운다(누름 한 번). 덧붙일 말 칸은 폰에 없으므로 바로 `/commander/start` 를 보내고,
+ * 라우팅 확인이 걸리는 개시(확인 켬 + 아직 띄우지 않은 라우팅 구성원)는 데스크톱 띠처럼 확인 시트를 거쳐 본 결과로만 띄운다.
  * 제안 대기(띠가 잠김)·작업 중에는 카드가 막힌 채 서서 이유를 말하고, 그 밖의 다른 할 일이 먼저인 상태에서는 서지 않는다.
  */
 function objectiveActions(objective: Objective, operations: OperationIndex, t: T, launchAvailable: boolean): ObjectiveActions {
@@ -239,12 +242,13 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   const choices = bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: activityOf(operations, objective.id) !== "closed", recipientCount: recipients.length });
   const has = (key: (typeof choices.alts)[number]) => choices.primary === key || choices.alts.includes(key);
   const kind: "start" | "resume" = !has("start") && objective.commander.started ? "resume" : "start";
-  const routingReview = objective.routingConfirm && objective.members.some((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(operations, id)));
+  // 데스크톱 띠의 routingTargets 와 같은 판정 — 아직 띄우지 않은 라우팅 구성원. 확인이 꺼져 있으면 서버가 개시 때 판단한다.
+  const review = objective.routingConfirm ? objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(operations, id))) : [];
   const commence = done ? null
     : has("start") || has("resume")
-      ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : routingReview ? t("objectives.mobile.commence.routing") : null }
-      : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }) }
-        : working ? { kind, reason: t("objectives.mobile.commence.working") } : null;
+      ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, review }
+      : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }), review }
+        : working ? { kind, reason: t("objectives.mobile.commence.working"), review } : null;
   // 후속 후보가 있으면 완료는 후보 고르기를 거쳐야 한다 — 폰에서는 그 고르기가 없으므로 완료를 세우지 않는다.
   return { recipients, message: has("message"), complete: has("complete") && !choices.followupAvailable, handOff: has("handOff"), stop: has("stop"), commence };
 }
@@ -299,6 +303,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const { mobileBar, panes, visible, api } = ctx;
   const title = objective?.title ?? "";
   const [sheet, setSheet] = useState(false);
+  const [routingSheet, setRoutingSheet] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useFocusedFieldInView(rootRef);
   const [toast, setToast] = useState<{ readonly text: string; readonly at: number } | null>(null);
@@ -312,6 +317,10 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const launchAvailable = useSyncExternalStore(subscribeObjective, () => launchAvailableFor(objectiveId), () => launchAvailableFor(objectiveId));
   const actions = objective ? objectiveActions(objective, operations, t, launchAvailable) : null;
   const crew = useCrewActions(objective, operations, t, api, language, say);
+  // 확인 시트는 누를 수 있는 개시 카드가 라우팅 확인을 요구하는 동안만 선다 — 그새 다른 곳에서 개시했거나 막혔으면 닫는다.
+  const reviewing = actions?.commence && !actions.commence.reason && actions.commence.review.length > 0 ? actions.commence.review : null;
+  const canReview = reviewing !== null;
+  useEffect(() => { if (!canReview) setRoutingSheet(false); }, [canReview]);
   // 막대 선언은 내용이 바뀔 때만 다시 한다 — 매 렌더 선언하면 호스트 갱신과 맞물려 돈다. 동작은 ref 로 최신을 부른다.
   const latest = useRef({ actions, objectiveId, say, language, t });
   latest.current = { actions, objectiveId, say, language, t };
@@ -342,7 +351,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
         <BriefCard objective={objective} t={t} />
         <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
         <DecisionSection objective={objective} t={t} language={language} api={api} say={say} />
-        {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} /> : null}
+        {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
         <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
         {/* 세션 진입을 겸하는 지휘관·구성원은 임무 위, 설정 전용 카드(서브에이전트 허용)는 임무·결과물 아래에 둔다(폰 첫 화면에 임무가 보이게). */}
         {objective.missions.length > 0 ? (
@@ -365,6 +374,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
         <ResultsSection objective={objective} t={t} language={language} openLink={ctx.openLink ?? null} />
         <SubagentsSection objective={objective} t={t} crew={crew} />
       </div>
+      {routingSheet && reviewing ? <RoutingSheet objective={objective} targets={reviewing} t={t} api={api} language={language} say={say} onClose={() => setRoutingSheet(false)} /> : null}
       {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
       {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
     </div>
@@ -380,14 +390,17 @@ const launchAvailableFor = (objectiveId: string): boolean =>
 /**
  * 개시 카드 — 누름 한 번으로 데스크톱 띠의 「개시」와 같은 `/commander/start` 를 보낸다(덧붙일 말 없이). 막혔으면 단추를 흐리게 두고
  * 그 아래에 이유를 말한다. 보낸 요청이 돌아올 때까지 단추를 잠가 두 번 보내지 않는다. 실패 문구는 띠와 같은 `bandFailure` 다.
+ * 라우팅 확인이 걸리면(review) 여기서는 보내지 않고 확인 시트를 연다 — 확인 없이 라우팅 구성원을 띄우는 길을 남기지 않는다.
  */
-function CommenceCard({ objective, commence, t, language, api, say }: { readonly objective: Objective; readonly commence: NonNullable<ObjectiveActions["commence"]>; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
+function CommenceCard({ objective, commence, t, language, api, say, onReview }: { readonly objective: Objective; readonly commence: NonNullable<ObjectiveActions["commence"]>; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void; readonly onReview: () => void }) {
   const [busy, setBusy] = useState(false);
   const members = objective.members.length;
-  const desc = commence.reason ?? (commence.kind === "resume" ? t("objectives.start.resume")
-    : members ? t("objectives.start.members", { count: members }) : objective.missions.length ? t("objectives.start.direct") : t("objectives.band.start.bare"));
+  const routed = commence.review.length ? t("objectives.start.routeConfirm", { count: commence.review.length }) : "";
+  const desc = commence.reason ?? (commence.kind === "resume" ? `${t("objectives.start.resume")}${routed}`
+    : members ? `${t("objectives.start.members", { count: members })}${routed}` : objective.missions.length ? t("objectives.start.direct") : t("objectives.band.start.bare"));
   const start = () => {
     if (busy || commence.reason) return;
+    if (commence.review.length > 0) { onReview(); return; }
     setBusy(true);
     void post<{ failed?: readonly { role: string }[] }>(api, "/commander/start", { objectiveId: objective.id, language })
       .then((result) => {
@@ -837,6 +850,204 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
   );
 }
 
+// ── 하단 시트 ──
+
+interface SheetControl {
+  readonly close: () => void;
+  readonly closing: boolean;
+  readonly drag: number;
+  readonly handle: {
+    readonly onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+    readonly onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+    readonly onPointerUp: () => void;
+    readonly onPointerCancel: () => void;
+  };
+}
+
+/** 하단 시트의 닫기 — ×·스크림·Escape·손잡이 끌어내리기가 모두 닫는 몸짓을 거친 뒤 onClose 를 부른다. */
+function useBottomSheet(onClose: () => void): SheetControl {
+  const [closing, setClosing] = useState(false);
+  const [drag, setDrag] = useState(0);
+  const dragStart = useRef<{ readonly y: number; readonly moved: boolean } | null>(null);
+  const close = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    setTimeout(onClose, SHEET_CLOSE_MS);
+  }, [closing, onClose]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); close(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [close]);
+  // 손잡이에서 끌어내리기 — 6 넘게 움직이면 따라오고, 110 넘게 끌고 놓으면 닫는다.
+  const onPointerUp = () => {
+    const moved = dragStart.current?.moved === true;
+    dragStart.current = null;
+    if (moved && drag > SHEET_DISMISS_PX) close();
+    else setDrag(0);
+  };
+  return {
+    close,
+    closing,
+    drag,
+    handle: {
+      onPointerDown: (event) => { event.currentTarget.setPointerCapture(event.pointerId); dragStart.current = { y: event.clientY, moved: false }; },
+      onPointerMove: (event) => {
+        const start = dragStart.current;
+        if (!start) return;
+        const dy = event.clientY - start.y;
+        if (!start.moved && Math.abs(dy) < SHEET_DRAG_SLOP_PX) return;
+        dragStart.current = { ...start, moved: true };
+        setDrag(Math.max(0, dy));
+      },
+      onPointerUp,
+      onPointerCancel: onPointerUp,
+    },
+  };
+}
+
+/**
+ * 하단 시트 틀 — 스크림 + 손잡이 + 제목·× + 본문(스크롤) + 바닥 단추 줄. focusOnOpen 이면 열릴 때 포커스를 대화상자로 옮긴다 —
+ * 키보드·보조기기로 연 사람의 포커스가 배경에 남지 않게. 입력칸에 직접 포커스를 주는 시트(메시지)는 넘기지 않는다.
+ */
+function BottomSheet({ sheet, t, title, busy, focusOnOpen, children, foot }: { readonly sheet: SheetControl; readonly t: T; readonly title: string; readonly busy?: boolean; readonly focusOnOpen?: boolean; readonly children: ReactNode; readonly foot: ReactNode }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (focusOnOpen) dialogRef.current?.focus({ preventScroll: true }); }, [focusOnOpen]);
+  return createPortal(
+    <div className={`objectives-m-sheet-layer${sheet.closing ? " is-closing" : ""}`}>
+      <div className="objectives-m-scrim" onClick={sheet.close} />
+      <div ref={dialogRef} tabIndex={focusOnOpen ? -1 : undefined} className={`objectives-m-sheet${sheet.drag > 0 ? " is-dragging" : ""}`} role="dialog" aria-modal="true" aria-label={title} aria-busy={busy || undefined} style={sheet.drag > 0 ? { transform: `translateY(${sheet.drag}px)` } : undefined}>
+        <div className="objectives-m-sheet-handle" {...sheet.handle}><i /></div>
+        <div className="objectives-m-sheet-head">
+          <h2>{title}</h2>
+          <button type="button" data-press="r1" className="objectives-m-sheet-x" aria-label={t("objectives.detail.close")} onClick={sheet.close}><CloseIcon /></button>
+        </div>
+        <div className="objectives-m-sheet-body">{children}</div>
+        <div className="objectives-m-sheet-ft">{foot}</div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ── 라우팅 확인 시트 ──
+
+/** 판단 중(judging)·결과(ready). preview 가 없는 ready 는 판단을 받지 못했다(error). */
+interface RoutingReview {
+  readonly phase: "judging" | "ready";
+  readonly preview: RoutingPreview | null;
+  readonly error: { readonly stage: "preview" | "start"; readonly code: string } | null;
+}
+
+/**
+ * 라우팅 확인 시트 — 데스크톱 띠의 확인 시트에서 최소 경로만 옮겼다. 열면 `/routing/preview` 로 판단(또는 10분 안의 같은 결과)을
+ * 받아 라우팅 구성원마다 역할·모델·강도를 보이고, 폴백이면 사유를 말한다. 「개시」는 결과를 받은 뒤에만 `routing: "preview"` 로 보낸다 —
+ * 서버는 본 결과가 없거나 낡았으면 `routing_preview_stale` 로 거절하고, 그때 시트는 결과를 다시 받아 사정을 말한다.
+ * 행별 모델 바꾸기·다시 판단(과금)·확인 끄기는 데스크톱에만 둔다.
+ */
+function RoutingSheet({ objective, targets, t, api, language, say, onClose }: {
+  readonly objective: Objective;
+  readonly targets: readonly ObjectiveMember[];
+  readonly t: T;
+  readonly api: PaneContext["api"];
+  readonly language: ConsoleLocale;
+  readonly say: (text: string) => void;
+  readonly onClose: () => void;
+}) {
+  const rows = useLaunchRows();
+  const [review, setReview] = useState<RoutingReview>({ phase: "judging", preview: null, error: null });
+  const [sending, setSending] = useState(false);
+  const token = useRef(0);
+  const objectiveId = objective.id;
+  // 결과를 본 채 닫으면 그 결과가 다음 개시에 그대로 쓰인다고 알린다(데스크톱 시트와 같은 안내).
+  const seen = useRef(false);
+  const sheet = useBottomSheet(useCallback(() => {
+    if (seen.current) say(t("objectives.routing.kept", { minutes: Math.round(ROUTING_PREVIEW_TTL_MS / 60_000) }));
+    onClose();
+  }, [onClose, say, t]));
+
+  /** 결과를 (다시) 받는다 — 받는 동안 앞선 결과를 비워 「개시」가 낡은 결과로 나가지 않게 한다. reason 은 다시 받는 사정이다. */
+  const load = useCallback((reason: RoutingReview["error"]) => {
+    const mine = ++token.current;
+    seen.current = false;
+    setReview({ phase: "judging", preview: null, error: reason });
+    void post<{ preview?: RoutingPreview }>(api, "/routing/preview", { objectiveId, language }).then((result) => {
+      if (mine !== token.current) return;
+      const preview = result?.preview ?? null;
+      seen.current = preview !== null;
+      setReview((current) => ({ phase: "ready", preview, error: preview ? current.error : { stage: "preview", code: "unknown" } }));
+    }, (failure: unknown) => {
+      if (mine !== token.current) return;
+      setReview({ phase: "ready", preview: null, error: { stage: "preview", code: failure instanceof Error ? failure.message : "unknown" } });
+    });
+  }, [api, objectiveId, language]);
+  useEffect(() => {
+    load(null);
+    // 닫힌 뒤 돌아온 응답은 버린다.
+    return () => { token.current += 1; };
+  }, [load]);
+
+  const judging = review.phase === "judging";
+  const ready = review.phase === "ready" && review.preview !== null;
+  const go = async () => {
+    const preview = review.preview;
+    // 만료 판정은 서버에 맡긴다 — 폰 시계는 서버와 어긋날 수 있어, 서버의 routing_preview_stale 거절만 다시 받는 사정으로 삼는다.
+    if (sending || !ready || !preview) return;
+    setSending(true);
+    try {
+      const result = await post<{ failed?: readonly { role: string }[] }>(api, "/commander/start", { objectiveId, routing: "preview", language });
+      const failed = result?.failed ?? [];
+      if (failed.length) say(t("objectives.start.failedMembers", { count: failed.length, roles: failed.map((entry) => entry.role).join(", ") }));
+      seen.current = false;
+      sheet.close();
+    } catch (failure) {
+      const code = failure instanceof Error ? failure.message : "unknown";
+      if (code === "routing_preview_stale") load({ stage: "start", code });
+      else setReview((current) => ({ ...current, error: { stage: "start", code } }));
+    } finally { setSending(false); }
+  };
+
+  const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
+  const words = (model: string | undefined, effort: string | undefined) => { const shown = launchedWords(rows, model, effort, labels).words; return `${shown.model} · ${shown.effort}`; };
+  const minutes = review.preview ? Math.floor((Date.now() - review.preview.at) / 60_000) : 0;
+  const status = judging ? t("objectives.routing.judging") : !review.preview ? "" : review.preview.judged ? t("objectives.routing.judgedNow") : minutes <= 0 ? t("objectives.routing.cachedNow") : t("objectives.routing.cached", { minutes });
+  const error = review.error;
+  const errorText = !error ? null
+    : error.code === "routing_preview_stale" ? t("objectives.mobile.routing.stale")
+      : error.stage === "preview" ? t("objectives.routing.failed", { reason: error.code === "objective_busy" ? t("objectives.toast.busy") : routingReason(t, error.code) })
+        : bandFailure(t, new Error(error.code), { message: false, talk: false });
+
+  return (
+    <BottomSheet sheet={sheet} t={t} title={t("objectives.routing.title")} busy={judging} focusOnOpen
+      foot={(
+        <button type="button" data-press="r3" className="objectives-m-pill2 is-inv" disabled={!ready || sending} aria-busy={sending || undefined} onClick={() => void go()}>
+          {t("objectives.commander.start")}
+        </button>
+      )}>
+      <p className="objectives-m-secnote" aria-live="polite">{judging ? <><StatusMark state="running" />{" "}{status}</> : status}</p>
+      <div className="objectives-m-route">
+        {targets.map((member) => {
+          const entry = review.preview?.members.find((candidate) => candidate.id === member.id);
+          // 폴백은 띄우는 순간의 지휘관 값으로 뜬다 — 데스크톱 시트와 같이 지금의 지휘관 모델을 보인다.
+          const pick = judging ? <><StatusMark state="running" />{t("objectives.routing.judgingRow")}</>
+            : !entry ? "—"
+              : entry.via === "route" ? words(entry.model, entry.effort)
+                : <>{words(objective.commander.model, objective.commander.effort)}<span className="objectives-m-route-tag">{t("objectives.members.fallback")}</span></>;
+          const why = judging || !entry ? null : entry.via === "route" ? (entry.because ? { text: entry.because, warn: false } : null) : { text: t("objectives.routing.fallbackWhy", { reason: routingReason(t, entry.reason) }), warn: true };
+          return (
+            <div key={member.id} className="objectives-m-route-row">
+              <span className="objectives-m-route-role">{member.role}</span>
+              <span className="objectives-m-route-pick">{pick}</span>
+              {why ? <span className={`objectives-m-route-why${why.warn ? " is-warn" : ""}`}>{why.text}</span> : null}
+            </div>
+          );
+        })}
+      </div>
+      {errorText ? <p className="objectives-m-fault" role="alert">{errorText}</p> : ready ? <p className="objectives-m-secnote">{t("objectives.mobile.routing.hint", { count: targets.length })}</p> : null}
+    </BottomSheet>
+  );
+}
+
 // ── 메시지 시트 ──
 
 const HOW_KEYS: Readonly<Record<string, ObjectiveMessageKey>> = {
@@ -863,23 +1074,11 @@ function MessageSheet({ t, objectiveId, recipients, api, language, say, onClose 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [closing, setClosing] = useState(false);
-  const [drag, setDrag] = useState(0);
-  const dragStart = useRef<{ readonly y: number; readonly moved: boolean } | null>(null);
+  const sheet = useBottomSheet(onClose);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const recipient = recipients.find((candidate) => candidate.id === to) ?? recipients[0] ?? null;
   const blocked = recipient?.state === "awaiting";
 
-  const close = useCallback(() => {
-    if (closing) return;
-    setClosing(true);
-    setTimeout(onClose, SHEET_CLOSE_MS);
-  }, [closing, onClose]);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); close(); } };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [close]);
   useEffect(() => { fieldRef.current?.focus({ preventScroll: true }); }, []);
 
   const send = async () => {
@@ -889,64 +1088,36 @@ function MessageSheet({ t, objectiveId, recipients, api, language, say, onClose 
     try {
       await post(api, "/commander/message", { objectiveId, memberId: recipient.id === objectiveId ? null : recipient.id, text: text.trim(), language });
       say(t("objectives.message.sent", { role: recipient.role }));
-      close();
+      sheet.close();
     } catch (failure) {
       setError(bandFailure(t, failure, { message: true, talk: true }));
     } finally { setSending(false); }
   };
 
-  // 손잡이에서 끌어내리기 — 6 넘게 움직이면 따라오고, 110 넘게 끌고 놓으면 닫는다.
-  const onHandleDown = (event: ReactPointerEvent<HTMLDivElement>) => { event.currentTarget.setPointerCapture(event.pointerId); dragStart.current = { y: event.clientY, moved: false }; };
-  const onHandleMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const start = dragStart.current;
-    if (!start) return;
-    const dy = event.clientY - start.y;
-    if (!start.moved && Math.abs(dy) < SHEET_DRAG_SLOP_PX) return;
-    dragStart.current = { ...start, moved: true };
-    setDrag(Math.max(0, dy));
-  };
-  const onHandleUp = () => {
-    const moved = dragStart.current?.moved === true;
-    dragStart.current = null;
-    if (moved && drag > SHEET_DISMISS_PX) close();
-    else setDrag(0);
-  };
-
   const how = recipient ? `${t(HOW_KEYS[recipient.state] ?? "objectives.band.message.how.idle")}${recipient.id !== objectiveId && !blocked ? t("objectives.band.message.alsoCommander") : ""}` : "";
-  return createPortal(
-    <div className={`objectives-m-sheet-layer${closing ? " is-closing" : ""}`}>
-      <div className="objectives-m-scrim" onClick={close} />
-      <div className={`objectives-m-sheet${drag > 0 ? " is-dragging" : ""}`} role="dialog" aria-modal="true" aria-label={t("objectives.message")} style={drag > 0 ? { transform: `translateY(${drag}px)` } : undefined}>
-        <div className="objectives-m-sheet-handle" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}><i /></div>
-        <div className="objectives-m-sheet-head">
-          <h2>{t("objectives.message")}</h2>
-          <button type="button" data-press="r1" className="objectives-m-sheet-x" aria-label={t("objectives.detail.close")} onClick={close}><CloseIcon /></button>
-        </div>
-        <div className="objectives-m-sheet-body">
-          <div className="objectives-m-chips" role="radiogroup" aria-label={t("objectives.message")}>
-            {recipients.map((candidate) => (
-              <button key={candidate.id} type="button" role="radio" aria-checked={candidate.id === recipient?.id} data-press="r3" className={`objectives-m-pill2${candidate.id === recipient?.id ? " is-inv" : ""}`} onClick={() => { setTo(candidate.id); setError(null); }}>{candidate.role}</button>
-            ))}
-          </div>
-          <textarea
-            ref={fieldRef}
-            className="objectives-m-field"
-            maxLength={8000}
-            disabled={sending}
-            value={text}
-            aria-label={t("objectives.band.message.ph", { role: recipient?.role ?? "" })}
-            placeholder={t("objectives.band.message.ph", { role: recipient?.role ?? "" })}
-            onChange={(event) => { setText(event.target.value); setError(null); }}
-          />
-          {error ? <p className="objectives-m-fault" role="status">{error}</p> : how ? <p className="objectives-m-secnote">{how}</p> : null}
-        </div>
-        <div className="objectives-m-sheet-ft">
-          <button type="button" data-press="r3" className="objectives-m-pill2 is-inv" disabled={!recipient || blocked || sending || !text.trim()} onClick={() => void send()}>
-            {t(sending ? "objectives.decision.sending" : "objectives.mobile.message.send")}
-          </button>
-        </div>
+  return (
+    <BottomSheet sheet={sheet} t={t} title={t("objectives.message")}
+      foot={(
+        <button type="button" data-press="r3" className="objectives-m-pill2 is-inv" disabled={!recipient || blocked || sending || !text.trim()} onClick={() => void send()}>
+          {t(sending ? "objectives.decision.sending" : "objectives.mobile.message.send")}
+        </button>
+      )}>
+      <div className="objectives-m-chips" role="radiogroup" aria-label={t("objectives.message")}>
+        {recipients.map((candidate) => (
+          <button key={candidate.id} type="button" role="radio" aria-checked={candidate.id === recipient?.id} data-press="r3" className={`objectives-m-pill2${candidate.id === recipient?.id ? " is-inv" : ""}`} onClick={() => { setTo(candidate.id); setError(null); }}>{candidate.role}</button>
+        ))}
       </div>
-    </div>,
-    document.body,
+      <textarea
+        ref={fieldRef}
+        className="objectives-m-field"
+        maxLength={8000}
+        disabled={sending}
+        value={text}
+        aria-label={t("objectives.band.message.ph", { role: recipient?.role ?? "" })}
+        placeholder={t("objectives.band.message.ph", { role: recipient?.role ?? "" })}
+        onChange={(event) => { setText(event.target.value); setError(null); }}
+      />
+      {error ? <p className="objectives-m-fault" role="status">{error}</p> : how ? <p className="objectives-m-secnote">{how}</p> : null}
+    </BottomSheet>
   );
 }
