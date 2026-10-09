@@ -235,6 +235,47 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   return { recipients, message: has("message"), complete: has("complete") && !choices.followupAvailable, handOff: has("handOff"), stop: has("stop") };
 }
 
+/** 가려진 입력을 끌어올린 뒤 키보드 윗변과 남기는 틈. */
+const FIELD_GAP_PX = 8;
+const TEXT_FIELD = "textarea, input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=number], [type=password])";
+
+/**
+ * 가상 키보드가 뷰포트를 줄여도 포커스한 입력이 화면 안에 남게 한다. WebView(adjustResize)는 높이만 줄이고 이 화면의
+ * 내부 스크롤 칸(.objectives-m) 안의 입력은 끌어올리지 않는다(실기기: 결정 질문 2의 자유 입력이 키보드 아래 214.8px에 숨었다).
+ * 포커스와 뷰포트 resize 때, 이미 보이는 입력은 그대로 두고 가려진 만큼만 이 칸을 스크롤한다(nearest). 셸·문서의 다른 스크롤
+ * 조상은 건드리지 않는다. 시트(포털)의 입력은 이 칸 밖이라 대상이 아니다.
+ */
+function useFocusedFieldInView(rootRef: { readonly current: HTMLDivElement | null }) {
+  useEffect(() => {
+    let frame = 0;
+    const settle = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const root = rootRef.current;
+        const field = document.activeElement;
+        // 키보드를 부르는 글 입력만 — 설정 토글(checkbox)처럼 키보드 없는 입력은 포커스돼도 움직이지 않는다.
+        if (!root || !(field instanceof HTMLElement) || !field.matches(TEXT_FIELD) || !root.contains(field)) return;
+        const viewport = window.visualViewport;
+        const box = root.getBoundingClientRect();
+        const top = Math.max(box.top, viewport?.offsetTop ?? 0);
+        const bottom = Math.min(box.bottom, viewport ? viewport.offsetTop + viewport.height : window.innerHeight);
+        const rect = field.getBoundingClientRect();
+        if (rect.bottom > bottom) root.scrollTop += Math.min(rect.bottom - bottom + FIELD_GAP_PX, rect.top - top);
+        else if (rect.top < top) root.scrollTop -= top - rect.top + FIELD_GAP_PX;
+      });
+    };
+    document.addEventListener("focusin", settle);
+    window.addEventListener("resize", settle);
+    window.visualViewport?.addEventListener("resize", settle);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("focusin", settle);
+      window.removeEventListener("resize", settle);
+      window.visualViewport?.removeEventListener("resize", settle);
+    };
+  }, [rootRef]);
+}
+
 export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const t = getT(ctx.language);
   const language = ctx.language ?? "en";
@@ -244,6 +285,8 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const { mobileBar, panes, visible, api } = ctx;
   const title = objective?.title ?? "";
   const [sheet, setSheet] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFocusedFieldInView(rootRef);
   const [toast, setToast] = useState<{ readonly text: string; readonly at: number } | null>(null);
   const say = useCallback((text: string) => setToast({ text, at: Date.now() }), []);
   useEffect(() => {
@@ -277,9 +320,9 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
     mobileBar.set({ title, depth: 1, onBack: () => panes.close(), ...(items.length > 0 ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
   }, [mobileBar, visible, title, panes, menuKey, t, act]);
 
-  if (!objective || !actions) return <div className="objectives-m" />;
+  if (!objective || !actions) return <div ref={rootRef} className="objectives-m" />;
   return (
-    <div className="objectives-m">
+    <div ref={rootRef} className="objectives-m">
       <div className="objectives-m-pad">
         <BriefCard objective={objective} t={t} />
         <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
