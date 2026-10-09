@@ -13,7 +13,9 @@ import { memberFailureNote } from "./clusters.js";
 import { commodoreBoardOf, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
+import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { LinkText } from "./link-text.js";
+import { ObjectiveResults } from "./results.js";
 import { focusOperation, hasDecisionRequest, post, readAllTheaters, readTheater, revealObjective, subscribeObjective, takeReveal, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
@@ -329,11 +331,39 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
             </div>
           </>
         ) : null}
+        <ResultsSection objective={objective} t={t} language={language} openLink={ctx.openLink ?? null} />
         <CrewSection objective={objective} operations={operations} t={t} api={api} language={language} say={say} />
       </div>
       {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
       {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
     </div>
+  );
+}
+
+// ── 결과물 ──
+
+/**
+ * 결과물 — 데스크톱 장부(`ObjectiveResults`)를 그대로 세운다. 보고서·이미지 보기와 증거 문서의 무력화도 데스크톱과 같은
+ * 구성요소·같은 경로다. 그래프가 없으므로 ↗(그래프에서 보기)는 넘기지 않고, 임무 묶음은 처음부터 모두 펼쳐 둔다(접은 것만 이 화면이 기억한다).
+ * 모양은 mobile.css 의 `.objectives-m-results` 범위와 모바일 배치의 보기 규칙이 맡는다.
+ */
+function ResultsSection({ objective, t, language, openLink }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly openLink: NonNullable<PaneContext["openLink"]> | null }) {
+  const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set());
+  const toggle = useCallback((key: string) => setClosed((current) => {
+    const next = new Set(current);
+    if (!next.delete(key)) next.add(key);
+    return next;
+  }), []);
+  if (objective.results.length === 0) return null;
+  return (
+    <>
+      <h2 className="objectives-m-glab">{t("objectives.results.title")}</h2>
+      <ObjectiveLinkOpenProvider value={openLink}>
+        <div className="objectives-m-results">
+          <ObjectiveResults objective={objective} t={t} language={language} highlightMission={null} groupOpen={(key) => !closed.has(key)} onToggleGroup={toggle} />
+        </div>
+      </ObjectiveLinkOpenProvider>
+    </>
   );
 }
 

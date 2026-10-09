@@ -90,7 +90,8 @@ export const resultGroupKey = (objectiveId: string, missionId: string = "loose")
 
 export function ObjectiveResults({ objective, t, language, onShowMission, highlightMission, groupOpen, onToggleGroup }: {
   readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale;
-  readonly onShowMission: (missionId: string) => void; readonly highlightMission: string | null;
+  /** 그래프로 가는 ↗ — 그래프가 없는 자리(모바일 상세)는 넘기지 않고, 그때는 ↗ 칸도 세우지 않는다. */
+  readonly onShowMission?: (missionId: string) => void; readonly highlightMission: string | null;
   readonly groupOpen: (key: string) => boolean; readonly onToggleGroup: (key: string) => void;
 }) {
   const now = useNow();
@@ -132,7 +133,7 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
           <span className="objectives-result-group-count">{t("objectives.results.count", { count: results.length })}</span>
           <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
         </button>
-        {mission ? <button type="button" className="objectives-glyph objectives-result-goto" aria-label={`${t("objectives.graph.detail", { n })} · ${t("objectives.results.showInGraph")}`} title={t("objectives.results.showInGraph")} onClick={() => onShowMission(mission.id)}>↗</button>
+        {!onShowMission ? null : mission ? <button type="button" className="objectives-glyph objectives-result-goto" aria-label={`${t("objectives.graph.detail", { n })} · ${t("objectives.results.showInGraph")}`} title={t("objectives.results.showInGraph")} onClick={() => onShowMission(mission.id)}>↗</button>
           : <span className="objectives-result-goto-space" aria-hidden="true" />}
       </div>
       <div id={bodyId} className="objectives-result-group-body" hidden={!open}>
