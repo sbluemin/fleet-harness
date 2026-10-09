@@ -3584,3 +3584,41 @@ button.chip:focus-visible {
 .cowork-history:not([hidden]) { display: contents; }
 
 .document { font-family: var(--font-content); --font-size-body: var(--font-content-size); --font-size-code: var(--font-code-size); }
+
+/* ── 폰 배치 — 위키 항목 머리와 코워크 독을 엄지 문법으로 ──
+   데스크톱 규칙은 그대로 두고 `:root[data-view-mode="mobile"]` 아래에서만 바꾼다. 원칙은 두 가지다:
+   글자는 폰 글자 사다리의 small(12px) 아래로 내려가지 않고, 누르는 것은 손가락 칸이 44 이상이다. 보이는 모양은 되도록 유지하고
+   칸만 넓히되(투명 ::after), 칸을 넓힐 자리가 이웃 조작부와 겹치는 곳은 조작부 자체를 키운다. */
+:root[data-view-mode="mobile"] .breadcrumb li,
+:root[data-view-mode="mobile"] .meta-chips .chip,
+:root[data-view-mode="mobile"] .queue-back-btn,
+:root[data-view-mode="mobile"] .cowork-composer-meta { font-size: var(--m-fs-small); }
+
+/* 태그 칩 — 칩 모양은 그대로 두고 높이만 26(위아래 여백 6), 위아래 투명 칸 10씩으로 46. 칸은 머리 격자 간격(12) 안에 머문다.
+   줄이 꺾여도 윗줄 칸과 겹치지 않게 줄 간격을 20으로 벌린다. */
+:root[data-view-mode="mobile"] .meta-chips { row-gap: 20px; }
+:root[data-view-mode="mobile"] .meta-chips .chip { padding-block: 6px; }
+:root[data-view-mode="mobile"] .meta-chips button.chip { position: relative; }
+:root[data-view-mode="mobile"] .meta-chips button.chip::after { position: absolute; inset: -10px 0; content: ""; }
+
+/* 「삭제 제안」·뒤로 — 글자 단추는 단추 자체를 44로 세운다. 아래 여백(16)을 높이가 대신 써서 머리 전체 높이는 거의 그대로다. */
+:root[data-view-mode="mobile"] .queue-back-btn { justify-self: start; min-height: 44px; margin-bottom: 0; padding: 0 var(--space-3); }
+
+/* 모델 표시줄 — 「설정에서 변경」 칸을 위아래로 넓히면 바로 아래 입력 상자나 위 본문을 덮는다. 그래서 줄 자체를 44로 세우고
+   단추가 그 높이를 다 갖는다. 점선 밑줄은 44 상자 바닥이 아니라 글자 밑에 남도록 text-decoration으로 옮긴다. */
+:root[data-view-mode="mobile"] .cowork-composer-meta { min-height: 44px; padding-bottom: 0; }
+:root[data-view-mode="mobile"] .cowork-composer-settings {
+  min-height: 44px;
+  margin-right: -2px;
+  padding: 0 2px 0 var(--space-3);
+  border-bottom: 0;
+  text-decoration: underline dashed var(--hairline-strong);
+  text-underline-offset: 3px;
+}
+
+/* 보내기·중단 — 폰 세션 입력 독의 보내기와 같은 40 원. 투명 칸 3으로 46, 상자 안쪽 여백(6) 안이다. */
+:root[data-view-mode="mobile"] .cowork-send { position: relative; width: 40px; height: 40px; }
+:root[data-view-mode="mobile"] .cowork-send::after { position: absolute; inset: -3px; content: ""; }
+:root[data-view-mode="mobile"] .cowork-send svg { width: 17px; height: 17px; }
+:root[data-view-mode="mobile"] .cowork-composer-field { min-height: 52px; }
+:root[data-view-mode="mobile"] .cowork-composer-lead { margin-bottom: 7px; }

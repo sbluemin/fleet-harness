@@ -87,7 +87,9 @@
 :root[data-view-mode="mobile"] :is(.mobile-choice-tab, .mql-efft button) { --pr-inset: 0 -10px; --pr-r: 10px; }
 :root[data-view-mode="mobile"] :is(.app-toast-action, .app-toast-message .app-toast-link) { --pr-r: 18px; }
 /* 글자 단추(.tbtn) — 패딩 6/10 알약 면. 배치를 바꾸지 않게 면만 바깥으로 넓힌다. */
-:root[data-view-mode="mobile"] :is(.mobile-sheet-clear, .settings-mobile-textlink, .mobile-folder-crumb) { --pr-inset: -6px -6px; --pr-r: 16px; }
+:root[data-view-mode="mobile"] :is(.mobile-sheet-clear, .settings-mobile-textlink) { --pr-inset: -6px -6px; --pr-r: 16px; }
+/* 경로 칩은 상자가 이미 44라(가로 스크롤 띠가 바깥 면을 자른다) 면을 상자 안 높이 36 알약으로 둔다. */
+:root[data-view-mode="mobile"] .mobile-folder-crumb { --pr-inset: 4px 0; --pr-r: 18px; }
 :root[data-view-mode="mobile"] .mobile-input-reveal { --pr-inset: 0 -6px 0 0; --pr-r: 16px; }
 /* 폴더 행의 들어가기(›) 칸 — 칸 가운데 원 44. */
 :root[data-view-mode="mobile"] .mobile-folder-enter { --pr-inset: calc(50% - 22px) 6px; --pr-r: 22px; }
@@ -192,5 +194,14 @@
 :root[data-view-mode="mobile"] .agent-chat-answer-action::after {
   position: absolute;
   inset: -6px;
+  content: "";
+}
+/* 「이전 대화 · 펼치기」 띠는 전폭이지만 높이가 30이라, 배치는 그대로 두고 라벨의 투명 `::after`를 띠 전폭으로 위아래 8씩 내밀어
+   46으로 잡는다(띠의 `::before`·`::after`는 헤어라인이 쓴다). 라벨은 띠의 자손이라 누름은 띠의 펼치기로 간다. 위는 로그 위 여백 8
+   안, 아래는 다음 항목과의 간격 16 안이라 이웃과 겹치지 않는다. */
+:root[data-view-mode="mobile"] .fc-history-band { position: relative; }
+:root[data-view-mode="mobile"] .fc-history-band__label::after {
+  position: absolute;
+  inset: -8px 0;
   content: "";
 }

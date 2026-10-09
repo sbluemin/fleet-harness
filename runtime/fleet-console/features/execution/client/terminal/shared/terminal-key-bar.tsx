@@ -171,7 +171,8 @@ export function MobileTerminalKeyBar({ locale, modifiers, ctrlLocked, disabled, 
 
 /**
  * CLI 확인 줄(impl-spec S-30, D26) — 터미널 프롬프트가 사람의 답을 기다리는 동안 키 줄 위에 선다. 프롬프트의
- * 선택지는 해석하지 않으므로 라벨 없는 고정 키 1 · 2 · 3 · Enter · Esc만 둔다.
+ * 선택지는 해석하지 않으므로 라벨 없는 고정 키 1 · 2 · 3 · ↵만 둔다. 폰 폭에서 한 줄로 서도록 보이는 문구는 짧게
+ * 두고(전체 문장은 묶음 이름), 바로 아래 키 줄 첫 키와 겹치는 Esc는 싣지 않는다 — 거절·취소는 그 Esc가 맡는다.
  */
 export function TerminalConfirmRow({ locale, disabled, onKey, onText }: {
   readonly locale?: ConsoleLocale;
@@ -183,11 +184,10 @@ export function TerminalConfirmRow({ locale, disabled, onKey, onText }: {
   return (
     <div className={`terminal-confirm-row${disabled ? " is-disabled" : ""}`} role="group" aria-label={t("terminal.mobile.cliAwaiting")}>
       <span className="agent-status-glyph is-awaiting" aria-hidden="true" />
-      <span className="terminal-confirm-label">{t("terminal.mobile.cliAwaiting")}</span>
+      <span className="terminal-confirm-label" aria-hidden="true">{t("terminal.mobile.cliAwaitingShort")}</span>
       <span className="terminal-confirm-keys">
         {["1", "2", "3"].map((digit) => <KeyBarButton key={digit} label={digit} disabled={disabled} onActivate={() => onText(digit)} />)}
-        <KeyBarButton label="Enter" disabled={disabled} onActivate={() => onKey("enter")} />
-        <KeyBarButton label="Esc" disabled={disabled} onActivate={() => onKey("escape")} />
+        <KeyBarButton label="↵" name={t("terminal.keyBar.key.enter")} disabled={disabled} onActivate={() => onKey("enter")} />
       </span>
     </div>
   );

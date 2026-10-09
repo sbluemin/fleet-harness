@@ -1277,9 +1277,13 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-sheet-lead { margin: 0; padding: 0 4px; color: var(--m-text-muted); font-size: var(--t-md); line-height: 22px; }
 .mobile-pill-secondary.is-danger { color: var(--m-danger); }
 .mobile-folder-path { margin: 0; padding: 0 4px; color: var(--m-text-faint); font-family: var(--m-mono); font-size: var(--t-sm); word-break: break-all; }
+/* 경로 칩 — 칩 상자가 곧 누를 자리라 44×44 이상으로 둔다. 칩 사이 틈은 두지 않고 좌우 패딩 7씩으로 글자 간격 14를 지켜
+   이웃 칸이 맞닿기만 하고 겹치지 않는다. 짧은 「/」는 너비 44 가운데에 선다. 띠 좌우 2는 끝으로 민 뒤 소수 픽셀 폭의 현재 칩이
+   잘리지 않게 남기는 여유다. */
 .mobile-folder-crumbs { display: flex; flex: none; flex-wrap: nowrap; gap: 6px; padding: 0 2px; overflow-x: auto; scrollbar-width: none; }
+.mobile-folder-crumbs.is-path { gap: 0; }
 .mobile-folder-crumbs::-webkit-scrollbar { display: none; }
-.mobile-folder-crumb { flex: none; padding: 6px 4px; color: var(--m-text-muted); font-size: var(--t-md); background: transparent; border: 0; }
+.mobile-folder-crumb { flex: none; min-width: 44px; min-height: 44px; padding: 0 7px; color: var(--m-text-muted); font-size: var(--t-md); background: transparent; border: 0; }
 .mobile-folder-crumb.is-current { color: var(--m-text); font-weight: var(--weight-bold); }
 .mobile-folder-tools { display: flex; align-items: center; gap: 8px; }
 .mobile-folder-tools .mobile-field { flex: 1; min-width: 0; }
