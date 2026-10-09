@@ -5,6 +5,27 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.223.0] - 2026-10-09
+
+### fleet-console
+
+#### Added
+- Change the Commander's and each member's model and effort from the Objectives board on your phone, including Routing, Same as the Commander, and whether a member may use subagents.
+- When a member's turn fails because its provider refused the request, the objective board and the objective's row in your lists say whether a usage limit was reached or requests were rate-limited, so you no longer need to open the models view to find the cause.
+- Objective rows in the sidebar, the objective switcher, and the phone Objectives list now say when a member's last turn failed, until the member recovers or you message it.
+- Objectives mission rows show when the Commander's message reached the assigned member and when the member picked it up, without keeping the message itself.
+
+#### Changed
+- On phones, the Commodore screen keeps its autonomy switch and message field compact so more of its log fits on screen, objective details show missions before crew settings, and small answer actions and text tabs are easier to tap.
+
+#### Fixed
+- On phones, tapping a button or tab at the very left edge of the screen now presses it instead of being ignored or caught as a drawer swipe; swiping in from the edge still opens the drawer.
+- Objectives now tell the Commander, and show on the member's row, when a member's turn ends normally but no report reached anyone, with that turn's last response kept word for word. A member whose session offers no way to report is marked on the roster.
+- A member model switch that the session refuses now stays on the member's row and in the Commodore's failed-switch list with the session's own reason, instead of disappearing without a trace.
+- A stopped objective shows as stopped and no longer wakes its Commander about missing reports until it is given an instruction again.
+- A member's failed or unreported turn stays on the roster and inbox after a restart, and the Commander is not notified about it again.
+- Chat animations in Snap Assist candidate tiles keep running for sessions that are working, without having to hover the tile.
+
 ## [1.222.1] - 2026-10-08
 
 ### fleet-console
