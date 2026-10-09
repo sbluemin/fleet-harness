@@ -45,9 +45,13 @@ html[data-mobile-scheme="light"] .mql-input { background: var(--m-surface); }
 .mql-toggle.is-on { background: var(--m-inverse); }
 .mql-toggle.is-on::after { background: var(--m-on-inverse); transform: translateX(18px); }
 
-/* 추론 강도 글자 탭 — 간격 16, 패딩 4/8, 15. 고른 칸은 text 600 + 아래 2. */
-.mql-efft { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 8px; font-size: var(--m-fs-secondary); }
-.mql-efft button { padding: 4px 0; color: var(--m-text-muted); font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+/* 추론 강도 글자 탭 — 간격 22, 패딩 4/8, 15. 고른 칸은 text 600 + 아래 2.
+   보이는 글자 탭은 그대로 두고 누를 자리만 넓힌다 — 투명 `::after`를 좌우 10(누름 면 R1과 같은 폭)·상하 6 내밀어 「자동」(27)도
+   47×45가 된다(`::after`는 안쪽 상자 기준이라 아래는 밑줄 2만큼 더 내민다). 이웃 칸과 겹치면 오탭이 나므로 가로 간격은
+   22(내민 10 + 10 + 2), 줄이 꺾일 때 세로 간격 16은 내민 6 + 6 + 4. */
+.mql-efft { display: flex; flex-wrap: wrap; gap: 16px 22px; padding: 4px 8px; font-size: var(--m-fs-secondary); }
+.mql-efft button { position: relative; padding: 4px 0; color: var(--m-text-muted); font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.mql-efft button::after { position: absolute; inset: -6px -10px -8px; content: ""; }
 .mql-efft button.is-on { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-text); }
 
 /* '@' 멘션 — 입력칸 바로 위에 서는 목록(메뉴 문법: surface, 모서리 14, shadow, 행 52). 시트 본문은 스크롤 영역이라

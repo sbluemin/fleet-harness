@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 
@@ -45,6 +45,12 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
     return needle === "" ? all : all.filter((entry) => entry.name.toLowerCase().includes(needle));
   }, [listing, query]);
   const crumbs = useMemo(() => (listing ? breadcrumbs(listing) : []), [listing]);
+  // 경로 칩 띠는 폰 폭보다 길어지기 쉽다 — 지금 폴더(마지막 칩)가 늘 보이게, 경로가 바뀔 때마다(열기·위로·칩·들어가기) 띠를 끝으로 민다.
+  const crumbsRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const strip = crumbsRef.current;
+    if (strip) strip.scrollLeft = strip.scrollWidth;
+  }, [crumbs]);
   const roots = listing?.roots ?? [];
   const path = listing?.path ?? null;
   const windowsPaths = path !== null ? /^[A-Za-z]:\\/.test(path) : roots.some((root) => /^[A-Za-z]:\\$/.test(root));
@@ -66,7 +72,7 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
           {roots.map((root) => <button type="button" key={root} className="mobile-pill-secondary" disabled={loading} onClick={() => void load(root)}>{root.replace(/[\\/]+$/, "") || root}</button>)}
         </div>
       ) : null}
-      <nav className="mobile-folder-crumbs" aria-label={t("chrome.directoryBrowser.path")}>
+      <nav ref={crumbsRef} className="mobile-folder-crumbs is-path" aria-label={t("chrome.directoryBrowser.path")}>
         {crumbs.map((crumb, index) => (
           <button type="button" key={crumb.path} className={`mobile-folder-crumb${index === crumbs.length - 1 ? " is-current" : ""}`} disabled={index === crumbs.length - 1 || loading} onClick={() => void load(crumb.path)}>{crumb.label}</button>
         ))}
