@@ -222,7 +222,11 @@ function PrRow({ result, t, language, now, missionTag }: { readonly result: PrRe
     lines = <span className="objectives-result-sub" title={absolute(observation.checkedAt, language)}>{t("objectives.results.pr.checked", { ago: ago(observation.checkedAt) })}{stale ? <span className="objectives-result-stale"> · {t("objectives.results.pr.stale")}</span> : null}</span>;
   }
   return (
-    <div className="objectives-result-row">
+    // 행 어디를 눌러도 PR 이 열린다 — 행 안의 링크(제목·노트)와 텍스트 선택은 가로채지 않는다.
+    <div className="objectives-result-row is-button" onClick={(event) => {
+      if (event.target instanceof Element && event.target.closest("a") || window.getSelection()?.toString()) return;
+      event.currentTarget.querySelector<HTMLAnchorElement>("a.objectives-result-title")?.click();
+    }}>
       <span className="objectives-row-ic"><PrGlyph /></span>
       <span className="objectives-result-body">
         <a className="objectives-result-title" href={result.url} target="_blank" rel="noreferrer noopener"><span className="objectives-result-num">#{result.number}</span>{title ?? repository}</a>
