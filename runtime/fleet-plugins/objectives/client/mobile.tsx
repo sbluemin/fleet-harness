@@ -18,7 +18,7 @@ import { focusOperation, hasDecisionRequest, post, readAllTheaters, readTheater,
 import "./mobile.css";
 
 /**
- * 모바일 목적지 「목표」 — 목록(결정 필요·진행 중·끝남)과 상세(브리핑·달성 기준·결정 요청·세션·임무).
+ * 모바일 목적지 「목표」 — 목록(결정 필요·진행 중·시작 전·끝남)과 상세(브리핑·달성 기준·결정 요청·세션·임무).
  * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 상단 막대는 호스트가 그리고 여기서는 제목·깊이·뒤로·⋮ 항목만 선언한다.
  * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단 모두 보드와 같은 경로이고, ⋮ 의 노출 판정도
  * 보드 하단 띠의 판정(`bandChoices`)을 그대로 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
@@ -145,6 +145,8 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
   const operations = operationIndex(useOperationSummaries());
   const reveal = useReveal();
   const [doneOpen, setDoneOpen] = useState(false);
+  // 「시작 전」은 펼친 채로 연다 — 접어 두면 시작 전 목표 하나를 여는 데 한 번 더 눌러야 한다.
+  const [freshOpen, setFreshOpen] = useState(true);
   const { mobileBar, panes, visible } = ctx;
   const title = t("objectives.panel.title");
 
@@ -159,7 +161,11 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
 
   const shown = state.objectives.filter(isListedObjective);
   const need = shown.filter((objective) => hasDecisionRequest(objective));
-  const running = shown.filter((objective) => !objective.done && !hasDecisionRequest(objective));
+  // 데스크톱 접기(`switcher.tsx` freshOf)와 같은 판정 — 개시 전이고, 지휘관 Operation 이 없고, 검토 대기가 아니다.
+  const fresh = (objective: Objective) => !objective.awaitingReview && !objective.commander.started && !operations.has(objective.id);
+  const live = shown.filter((objective) => !objective.done && !hasDecisionRequest(objective));
+  const running = live.filter((objective) => !fresh(objective));
+  const notStarted = live.filter(fresh);
   const done = shown.filter((objective) => !!objective.done);
   const open = (objective: Objective) => panes.open({ paneId: OBJECTIVE_MOBILE_DETAIL_PANE, params: { objectiveId: objective.id } });
 
@@ -193,6 +199,14 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
         {shown.length === 0 ? <p className="objectives-m-note">{t("objectives.mobile.empty")}</p> : null}
         {need.length > 0 ? <><h2 className="objectives-m-glab">{t("objectives.mobile.zone.need")}</h2><div className="objectives-m-grp">{need.map(row)}</div></> : null}
         {running.length > 0 ? <><h2 className="objectives-m-glab">{t("objectives.mobile.zone.running")}</h2><div className="objectives-m-grp">{running.map(row)}</div></> : null}
+        {notStarted.length > 0 ? (
+          <>
+            <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={freshOpen} onClick={() => setFreshOpen((value) => !value)}>
+              {t("objectives.mobile.zone.fresh", { count: notStarted.length })}<Chevron open={freshOpen} size={16} />
+            </button>
+            {freshOpen ? <div className="objectives-m-grp">{notStarted.map(row)}</div> : null}
+          </>
+        ) : null}
         {shown.length > 0 ? (
           <>
             <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={doneOpen} onClick={() => setDoneOpen((value) => !value)}>
