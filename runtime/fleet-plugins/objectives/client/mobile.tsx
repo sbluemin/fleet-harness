@@ -20,7 +20,7 @@ import { focusOperation, hasDecisionRequest, post, readAllTheaters, readTheater,
 import "./mobile.css";
 
 /**
- * 모바일 목적지 「목표」 — 목록(결정 필요·진행 중·시작 전·끝남)과 상세(브리핑·달성 기준·결정 요청·세션·임무).
+ * 모바일 목적지 「목표」 — 목록(결정 필요·진행 중·시작 전·끝남)과 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무·결과물).
  * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 상단 막대는 호스트가 그리고 여기서는 제목·깊이·뒤로·⋮ 항목만 선언한다.
  * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단 모두 보드와 같은 경로이고, ⋮ 의 노출 판정도
  * 보드 하단 띠의 판정(`bandChoices`)을 그대로 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
@@ -52,29 +52,13 @@ const CheckIcon = ({ size }: { readonly size?: number }) => <Icon size={size ?? 
 const SendIcon = () => <Icon><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
 const StopIcon = () => <Icon><rect x="7.5" y="7.5" width="9" height="9" rx="1.5" fill="currentColor" stroke="none" /></Icon>;
 const CloseIcon = () => <Icon><path d="M6 6l12 12M18 6L6 18" /></Icon>;
+const LockIcon = () => <Icon size={14}><rect x="5.5" y="10.5" width="13" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" /></Icon>;
 
 const operationIndex = (operations: readonly ConsoleOperationSummary[]) => new Map(operations.map((operation) => [operation.id, operation]));
 type OperationIndex = ReturnType<typeof operationIndex>;
 const activityOf = (operations: OperationIndex, id: string): string => operations.get(id)?.activity ?? "closed";
 /** 지휘관 자신의 활동 — 코어가 구성원 활동을 끌어올리기 전 값. 보드와 같은 셈이다. */
 const ownActivityOf = (operations: OperationIndex, id: string): string => { const operation = operations.get(id); return operation ? operation.ownActivity ?? operation.activity : "closed"; };
-
-interface SessionRow { readonly id: string; readonly role: string; readonly title: string; readonly glyph: Glyph }
-
-/** 목표의 세션 — 지휘관이 먼저, 다음은 세션을 가진 구성원 명단 순서. 목록의 「구성원 N」도 이 수를 쓴다. */
-function sessionsOf(objective: Objective, operations: OperationIndex, t: T): readonly SessionRow[] {
-  const rows: SessionRow[] = [];
-  const commander = operations.get(objective.id);
-  if (commander || objective.commander.started) {
-    rows.push({ id: objective.id, role: t("objectives.commander.title"), title: commander?.title ?? objective.title, glyph: activityGlyph(commander ? commander.ownActivity ?? commander.activity : undefined) });
-  }
-  for (const member of objective.members) {
-    if (member.sessionName === null) continue;
-    const operation = operations.get(member.id);
-    rows.push({ id: member.id, role: member.role, title: operation?.title ?? member.sessionName, glyph: activityGlyph(operation?.activity) });
-  }
-  return rows;
-}
 
 /** 목록 줄의 글리프 — 끝남은 체크, 결정 요청·검토 대기는 검토, 나머지는 지휘관과 담당 가운데 가장 급한 활동. */
 function objectiveGlyph(objective: Objective, operations: OperationIndex): Glyph {
@@ -269,6 +253,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   }, [toast]);
 
   const actions = objective ? objectiveActions(objective, operations, t) : null;
+  const crew = useCrewActions(objective, operations, t, api, language, say);
   // 막대 선언은 내용이 바뀔 때만 다시 한다 — 매 렌더 선언하면 호스트 갱신과 맞물려 돈다. 동작은 ref 로 최신을 부른다.
   const latest = useRef({ actions, objectiveId, say, language, t });
   latest.current = { actions, objectiveId, say, language, t };
@@ -293,27 +278,13 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   }, [mobileBar, visible, title, panes, menuKey, t, act]);
 
   if (!objective || !actions) return <div className="objectives-m" />;
-  const sessions = sessionsOf(objective, operations, t);
   return (
     <div className="objectives-m">
       <div className="objectives-m-pad">
         <BriefCard objective={objective} t={t} />
         <DecisionSection objective={objective} t={t} language={language} api={api} say={say} />
-        {sessions.length > 0 ? (
-          <>
-            <h2 className="objectives-m-glab">{t("objectives.mobile.sessions")}</h2>
-            <div className="objectives-m-grp">
-              {sessions.map((session) => (
-                <button key={session.id} type="button" data-press="r2" className="objectives-m-row" onClick={() => focusOperation(session.id)}>
-                  <StatusMark state={session.glyph} />
-                  <span className="objectives-m-tx">{session.role}<small>{session.title}</small></span>
-                  <span className="objectives-m-ri"><Chevron open={false} /></span>
-                </button>
-              ))}
-            </div>
-          </>
-        ) : null}
-        {/* 임무는 이 화면의 본문이다 — 구성원 모델·서브에이전트 설정 카드보다 먼저 둔다(폰 첫 화면에 임무가 보이게). */}
+        <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
+        {/* 세션 진입을 겸하는 지휘관·구성원은 임무 위, 설정 전용 카드(서브에이전트 허용)는 임무·결과물 아래에 둔다(폰 첫 화면에 임무가 보이게). */}
         {objective.missions.length > 0 ? (
           <>
             <h2 className="objectives-m-glab">{t("objectives.missions.title")}</h2>
@@ -332,7 +303,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
           </>
         ) : null}
         <ResultsSection objective={objective} t={t} language={language} openLink={ctx.openLink ?? null} />
-        <CrewSection objective={objective} operations={operations} t={t} api={api} language={language} say={say} />
+        <SubagentsSection objective={objective} t={t} crew={crew} />
       </div>
       {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
       {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
@@ -377,38 +348,52 @@ const launchFailure = (t: T, error: unknown): string => {
   return code === "objective_busy" ? t("objectives.toast.busy") : hasRoutingReason(code) ? routingReason(t, code) : t("objectives.toast.failed", { code });
 };
 
-/** 구성원 행의 설명 줄 — 이번 턴 뒤 예약·바꾸지 못한 예약이 먼저, 아니면 데스크톱 명단과 같은 상태 낱말. */
-function memberLine(member: ObjectiveMember, state: string, objective: Objective, rows: ReturnType<typeof useLaunchRows>, t: T): string {
-  const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
-  const next = member.sessionName !== null && state !== "closed" ? member.next : null;
-  if (next && !next.failed) {
-    const words = launchedWords(rows, next.model, next.effort, labels).words;
-    return `${t("objectives.members.next.whenTurn")} → ${words.model} · ${words.effort}`;
-  }
-  if (next?.failed) return t("objectives.members.next.failedBody", { model: launchedWords(rows, next.model, next.effort, labels).title, reason: routingReason(t, next.failed) });
-  const working = state === "running" || state === "background" || state === "awaiting";
-  if ((member.outcome === "failed" || !!member.failure) && !working) return t("objectives.members.failed");
-  if (state === "closed") return t("objectives.members.missions", { count: objective.missions.filter((mission) => mission.member === member.id).length });
+/** 활동 → 상태 낱말 — 데스크톱 명단과 같은 낱말. 세션이 없으면(closed) 말하지 않는다. */
+function activityWord(state: string, t: T): string | null {
+  if (state === "closed") return null;
   if (state === "ended") return t("objectives.members.dormant");
-  return working ? (state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.working")) : t("objectives.members.idle");
+  if (state === "awaiting") return t("objectives.awaiting.word");
+  return state === "running" || state === "background" ? t("objectives.members.working") : t("objectives.members.idle");
 }
 
-/**
- * 지휘관·구성원의 모델·강도 — 호스트의 모바일 설정 묶음(행 = 상태 글리프 · 이름 · 값 줄 · 설명 줄)이다. 값 줄을 누르면(행 어디든) 공유
- * 선택기가 좌표 시트로 서고, 모델과 강도를 차례로 골라도 시트가 닫힐 때 한 번만 저장한다(데스크톱 메뉴와 같은 확정 규칙). 구성원 전용
- * 「라우팅」·「지휘관과 같게」는 시트 맨 위 묶음이다. 데스크톱 메뉴 바닥의 서브에이전트 허용은 시트를 닫지 않는 켬/끔이라, 폰에서는
- * 시트 밖의 따로 선 묶음(구성원마다 스위치 하나)으로 둔다. 지휘관은 데스크톱과 같이 개시 전에만 바꾼다.
- */
-function CrewSection({ objective, operations, t, api, language, say }: { readonly objective: Objective; readonly operations: OperationIndex; readonly t: T; readonly api: PaneContext["api"]; readonly language: ConsoleLocale; readonly say: (text: string) => void }) {
-  const rows = useLaunchRows();
+/** 구성원 행 머리의 배지 낱말 — 실패가 먼저, 세션이 없으면 맡은 임무 수, 아니면 상태 낱말. */
+function memberBadge(member: ObjectiveMember, state: string, objective: Objective, t: T): { readonly text: string; readonly failed: boolean } {
+  const working = state === "running" || state === "background" || state === "awaiting";
+  if ((member.outcome === "failed" || !!member.failure) && !working) return { text: t("objectives.members.failed"), failed: true };
+  if (state === "closed") return { text: t("objectives.members.missions", { count: objective.missions.filter((mission) => mission.member === member.id).length }), failed: false };
+  return { text: activityWord(state, t) ?? "", failed: false };
+}
+
+/** 구성원 행의 예외 줄 — 이번 턴 뒤 예약, 바꾸지 못한 예약. 없으면 null. */
+function memberNote(member: ObjectiveMember, state: string, rows: ReturnType<typeof useLaunchRows>, t: T): { readonly text: string; readonly failed: boolean } | null {
+  const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
+  const next = member.sessionName !== null && state !== "closed" ? member.next : null;
+  if (!next) return null;
+  if (!next.failed) {
+    const words = launchedWords(rows, next.model, next.effort, labels).words;
+    return { text: `${t("objectives.members.next.whenTurn")} → ${words.model} · ${words.effort}`, failed: false };
+  }
+  return { text: t("objectives.members.next.failedBody", { model: launchedWords(rows, next.model, next.effort, labels).title, reason: routingReason(t, next.failed) }), failed: true };
+}
+
+interface CrewActions {
+  readonly send: (path: string, body: Record<string, unknown>) => Promise<{ objective?: Objective } | undefined>;
+  readonly fail: (error: unknown) => void;
+  readonly saving: ReadonlySet<string>;
+  readonly memberState: (member: ObjectiveMember) => string;
+  readonly toggleSubagents: (member: ObjectiveMember) => void;
+}
+
+/** 지휘관·구성원 묶음과 서브에이전트 묶음이 함께 쓰는 저장 경로 — 서브에이전트 저장 중 표시는 두 묶음이 같은 것을 본다. */
+function useCrewActions(objective: Objective | null, operations: OperationIndex, t: T, api: PaneContext["api"], language: ConsoleLocale, say: (text: string) => void): CrewActions {
   const [saving, setSaving] = useState<ReadonlySet<string>>(new Set());
-  const touchable = !objective.done;
-  const commanderOperation = operations.get(objective.id);
-  const commanderLocked = !touchable || objective.commander.started || COMMANDER_LIVE.has(ownActivityOf(operations, objective.id)) || WORKING.has(activityOf(operations, objective.id));
-  const send = (path: string, body: Record<string, unknown>) => post<{ objective?: Objective }>(api, path, { objectiveId: objective.id, ...body, language });
-  const patchMember = (member: ObjectiveMember, launch: MemberLaunchChoice | null) => { send("/member/patch", { memberId: member.id, patch: { launch } }).catch((error: unknown) => say(launchFailure(t, error))); };
-  const toggleSubagents = (member: ObjectiveMember, live: boolean) => {
+  const objectiveId = objective?.id ?? "";
+  const send = (path: string, body: Record<string, unknown>) => post<{ objective?: Objective }>(api, path, { objectiveId, ...body, language });
+  const fail = (error: unknown) => say(launchFailure(t, error));
+  const memberState = (member: ObjectiveMember) => (member.sessionName !== null ? activityOf(operations, member.id) : "closed");
+  const toggleSubagents = (member: ObjectiveMember) => {
     if (saving.has(member.id)) return;
+    const live = MEMBER_LIVE.has(memberState(member));
     const next = !memberSubagents(member);
     setSaving((current) => new Set(current).add(member.id));
     const done = () => setSaving((current) => { const updated = new Set(current); updated.delete(member.id); return updated; });
@@ -417,39 +402,99 @@ function CrewSection({ objective, operations, t, api, language, say }: { readonl
       const echoed = payload?.objective?.members.find((entry) => entry.id === member.id);
       if (!echoed || memberSubagents(echoed) !== next) { say(t("objectives.toast.failed", { code: "not_stored" })); return; }
       say(`${t(next ? "objectives.members.subagentsSaved" : "objectives.members.subagentsCleared", { role: member.role })}${live ? ` ${t("objectives.members.subagentsLive")}` : ""}`);
-    }, (error: unknown) => { done(); say(launchFailure(t, error)); });
+    }, (error: unknown) => { done(); fail(error); });
   };
-  const memberState = (member: ObjectiveMember) => (member.sessionName !== null ? activityOf(operations, member.id) : "closed");
+  return { send, fail, saving, memberState, toggleSubagents };
+}
+
+/**
+ * 한 사람의 행 안 조작부 — 세션이 있으면 첫 조작부가 「세션 열기」(›)다. 호스트 모바일 행은 <label>이라 행 어디를 눌러도 첫 조작부가
+ * 대신 눌리므로 행 탭 = 세션 열기이고, 값 칩(단추)을 직접 누르면 칩만 눌려 좌표 시트가 선다. 세션이 없으면 첫 조작부가 칩이라 행 탭 = 시트다.
+ * 잠긴 값은 단추가 아니라 자물쇠 + 값 글자이고, 잠긴 사유는 보이는 문장 대신 보조기술용 설명으로만 둔다.
+ */
+function CrewControls({ open, role, locked, lockedNote, note, t, children }: { readonly open: (() => void) | null; readonly role: string; readonly locked: boolean; readonly lockedNote?: string; readonly note: { readonly text: string; readonly failed: boolean } | null; readonly t: T; readonly children: ReactNode }) {
   return (
     <>
-      <SettingsCard title={t("objectives.mobile.crew")}>
-        <SettingsRow label={t("objectives.commander.title")} icon={<StatusMark state={activityGlyph(commanderOperation ? commanderOperation.ownActivity ?? commanderOperation.activity : undefined)} />}
-          {...(commanderLocked && touchable ? { hint: t("objectives.commander.locked") } : {})}>
+      {open ? (
+        <button type="button" className="objectives-m-open" aria-label={t("objectives.decision.openSession", { role })} onClick={open}>
+          <Chevron open={false} />
+        </button>
+      ) : null}
+      {/* 좌표 시트(스크림)는 DOM 으로도 이 행 <label> 안에 그려진다 — 시트 안·바깥 탭이 label 활성화로 › 를 눌러 세션을 열지 않게 그 기본 동작만 막는다. */}
+      <span className={`objectives-m-val${locked ? " is-locked" : ""}`} onClickCapture={(event) => { if (event.target instanceof Element && event.target.closest(".mobile-choice-scrim")) event.preventDefault(); }}>
+        {locked ? <LockIcon /> : null}
+        {children}
+        {lockedNote ? <span className="objectives-m-sr">{lockedNote}</span> : null}
+      </span>
+      {note ? <span className={`objectives-m-note-line${note.failed ? " is-failed" : ""}`}>{note.text}</span> : null}
+    </>
+  );
+}
+
+/**
+ * 지휘관·구성원 — 호스트의 모바일 설정 묶음 한 장이 세션 진입과 모델·강도를 함께 진다. 행(글리프 · 이름 · 배지 / 세션 제목 / 값 칩 /
+ * 예외 줄 · ›)을 누르면 그 세션이 열리고, 값 칩을 누르면 공유 선택기가 좌표 시트로 선다. 모델과 강도를 차례로 골라도 시트가 닫힐 때 한 번만
+ * 저장한다(데스크톱 메뉴와 같은 확정 규칙). 구성원 전용 「라우팅」·「지휘관과 같게」는 시트 맨 위 묶음이다. 세션 판정은 지휘관 = Operation 이
+ * 있거나 개시함, 구성원 = 세션 이름이 있음이다. 지휘관은 데스크톱과 같이 개시 전에만 바꾼다.
+ */
+function CrewSection({ objective, operations, t, crew }: { readonly objective: Objective; readonly operations: OperationIndex; readonly t: T; readonly crew: CrewActions }) {
+  const rows = useLaunchRows();
+  const touchable = !objective.done;
+  const commanderOperation = operations.get(objective.id);
+  const commanderState = ownActivityOf(operations, objective.id);
+  const commanderLocked = !touchable || objective.commander.started || COMMANDER_LIVE.has(commanderState) || WORKING.has(activityOf(operations, objective.id));
+  const commanderSession = !!commanderOperation || objective.commander.started;
+  // 지휘관 제목이 목표 제목과 같으면 상단 막대가 이미 말한다.
+  const commanderTitle = commanderOperation && commanderOperation.title !== objective.title ? commanderOperation.title : undefined;
+  const commanderWord = activityWord(commanderState, t);
+  const patchMember = (member: ObjectiveMember, launch: MemberLaunchChoice | null) => { crew.send("/member/patch", { memberId: member.id, patch: { launch } }).catch(crew.fail); };
+  return (
+    <SettingsCard title={t("objectives.mobile.crew")}>
+      <SettingsRow label={t("objectives.commander.title")} icon={<StatusMark state={activityGlyph(commanderOperation ? commanderOperation.ownActivity ?? commanderOperation.activity : undefined)} />}
+        {...(commanderWord ? { badge: <span className="objectives-m-badge">{commanderWord}</span> } : {})}
+        {...(commanderTitle ? { hint: commanderTitle } : {})}>
+        <CrewControls open={commanderSession ? () => focusOperation(objective.id) : null} role={t("objectives.commander.title")} locked={commanderLocked} note={null} t={t}
+          {...(commanderLocked && touchable ? { lockedNote: t("objectives.commander.locked") } : {})}>
           <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={commanderLocked}
-            onChange={(next) => { send("/objective/patch", { patch: { launch: next } }).catch((error: unknown) => say(launchFailure(t, error))); }} />
-        </SettingsRow>
-        {objective.members.map((member) => {
-          const state = memberState(member);
-          return (
-            <SettingsRow key={member.id} label={member.role} icon={<StatusMark state={member.sessionName !== null ? activityGlyph(operations.get(member.id)?.activity) : "fresh"} />} hint={memberLine(member, state, objective, rows, t)}>
+            onChange={(next) => { crew.send("/objective/patch", { patch: { launch: next } }).catch(crew.fail); }} />
+        </CrewControls>
+      </SettingsRow>
+      {objective.members.map((member) => {
+        const state = crew.memberState(member);
+        const badge = memberBadge(member, state, objective, t);
+        const session = member.sessionName !== null;
+        const title = session ? operations.get(member.id)?.title ?? member.sessionName ?? undefined : undefined;
+        return (
+          <SettingsRow key={member.id} label={member.role} icon={<StatusMark state={session ? activityGlyph(operations.get(member.id)?.activity) : "fresh"} />}
+            badge={<span className={`objectives-m-badge${badge.failed ? " is-failed" : ""}`}>{badge.text}{memberSubagents(member) ? t("objectives.members.subagentsMark") : ""}</span>}
+            {...(title ? { hint: title } : {})}>
+            <CrewControls open={session ? () => focusOperation(member.id) : null} role={member.role} locked={!touchable} note={memberNote(member, state, rows, t)} t={t}>
               <MemberLaunchControl t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
                 onPickLaunched={(launch) => patchMember(member, launch)}
                 onPatchLaunch={(launch) => patchMember(member, launch)}
-                onToggleSubagents={() => toggleSubagents(member, MEMBER_LIVE.has(state))} />
-            </SettingsRow>
-          );
-        })}
-      </SettingsCard>
-      {touchable && objective.members.length > 0 ? (
-        <SettingsCard title={t("objectives.members.subagents")} description={t("objectives.members.subagentsHint")}>
-          {objective.members.map((member) => (
-            <SettingsRow key={member.id} label={member.role}>
-              <SettingsToggle checked={memberSubagents(member)} busy={saving.has(member.id)} ariaLabel={`${member.role} · ${t("objectives.members.subagents")}`} onChange={() => toggleSubagents(member, MEMBER_LIVE.has(memberState(member)))} />
-            </SettingsRow>
-          ))}
-        </SettingsCard>
-      ) : null}
-    </>
+                onToggleSubagents={() => crew.toggleSubagents(member)} />
+            </CrewControls>
+          </SettingsRow>
+        );
+      })}
+    </SettingsCard>
+  );
+}
+
+/**
+ * 서브에이전트 허용 — 데스크톱 메뉴 바닥의 켬/끔은 시트를 닫지 않는 설정이라, 폰에서는 시트 밖의 따로 선 설정 전용 묶음(구성원마다
+ * 스위치 하나)으로 맨 아래에 둔다. 켠 상태는 위 행의 배지도 말한다. 끝난 목표에서는 서지 않는다.
+ */
+function SubagentsSection({ objective, t, crew }: { readonly objective: Objective; readonly t: T; readonly crew: CrewActions }) {
+  if (objective.done || objective.members.length === 0) return null;
+  return (
+    <SettingsCard title={t("objectives.members.subagents")} description={t("objectives.members.subagentsHint")}>
+      {objective.members.map((member) => (
+        <SettingsRow key={member.id} label={member.role}>
+          <SettingsToggle checked={memberSubagents(member)} busy={crew.saving.has(member.id)} ariaLabel={`${member.role} · ${t("objectives.members.subagents")}`} onChange={() => crew.toggleSubagents(member)} />
+        </SettingsRow>
+      ))}
+    </SettingsCard>
   );
 }
 

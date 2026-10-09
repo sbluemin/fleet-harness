@@ -6,7 +6,7 @@ import type { ConsoleTheme, OperationKindDescriptor, OperationRuntimeHydration, 
 import type { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 
 import { useT } from "../../i18n/index.js";
-import { openQuickLaunch } from "../../integration/store.js";
+import { openQuickLaunch, selectNestedBody } from "../../integration/store.js";
 import type { OperationNode, OperationNotification } from "../../integration/types.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
@@ -45,6 +45,11 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   const consoleState = useConsoleState();
   const [selectedOperationId, setSelectedOperationId] = useState(() => readOperationId());
   const selectedOperation = operations.find((operation) => operation.id === selectedOperationId) ?? null;
+  // 지휘관 화면은 고른 구성원의 본문을 보인다 — 데스크톱 지휘관 패널과 같은 원천(코어의 부모 관계 + 본문 선택)이다.
+  const chosenBody = selectedOperation ? consoleState.nestedBodySelection[selectedOperation.id] : undefined;
+  const bodyNode = chosenBody && selectedOperation
+    ? consoleState.nestedOperations.find((candidate) => candidate.id === chosenBody && candidate.parentOperationId === selectedOperation.id) ?? null
+    : null;
   const restoredRef = useRef(false);
 
   useEffect(() => {
@@ -116,6 +121,7 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
         operationRuntime={operationRuntime}
         onActivate={() => onSelectOperation(selectedOperation.id)}
         onClose={() => closeOperation(selectedOperation.id)}
+        bodyOperation={bodyNode ? { operation: bodyNode, runtimeState: pluginRuntimeState(operationRuntime, operationRuntimeHydration, bodyNode.id), onClose: () => selectNestedBody(selectedOperation.id, null) } : null}
       />
     );
   } else {
