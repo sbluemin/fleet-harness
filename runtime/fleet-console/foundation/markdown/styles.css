@@ -388,20 +388,43 @@ code.hljs {
   text-transform: uppercase;
 }
 
-/* 표는 칸을 최소 내용 폭까지 누른 뒤에야 가로로 흐른다. 좁은 자리에서는 머리칸이 음절 중간에서
-   꺾이므로 한 줄로 두어, 칸을 누르는 대신 표 상자 안에서 가로로 스크롤되게 한다. 넓은 자리의
-   배치는 그대로 둔다. 좁음은 가장 가까운 기존 크기 컨테이너(레일 페인·채팅 등)로 판정한다 —
-   본문에 새 containment를 걸면 shrink-to-fit 부모 안에서 폭이 접힌다. 컨테이너가 없는 자리는
-   뷰포트로 판정한다. */
+/* 표는 칸을 최소 내용 폭까지 누른 뒤에야 가로로 흐른다. 좁은 자리에서 칸은 어절 경계에서만 줄을
+   바꾸고(keep-all — 칸보다 긴 경로·URL은 여전히 칸을 넓혀 표 상자 안에서 스크롤된다), 좌우 여백을
+   한 단계 줄여 keep-all이 늘린 최소 폭을 돌려받는다. 머리칸은 열이 넷 이상이면 한 줄로 둔다 —
+   좁은 칸에서 짧은 머리칸이 조각나 쌓이지 않게 칸을 누르는 대신 표 상자 안에서 가로로 스크롤된다.
+   열이 셋 이하면 칸마다 폭의 1/3 이상이 돌아가 짧은 머리칸은 그대로 한 줄에 들고, 문장형 머리칸만
+   어절 단위로 줄을 바꿔 표가 머리칸 길이만큼 넓어지지 않는다. 표 칸은 내용 기준 min-width를 받지
+   않아(Chromium) "한 줄, 단 상한까지"를 CSS로 줄 수 없으므로 열 수로 나눈다. 넓은 자리의 배치는
+   그대로 둔다. 좁음은 가장 가까운 기존 크기 컨테이너(레일 페인·채팅 등)로 판정한다 — 본문에 새
+   containment를 걸면 shrink-to-fit 부모 안에서 폭이 접힌다. 컨테이너가 없는 자리는 뷰포트로
+   판정한다. */
 @container (max-width: 480px) {
+  .markdown-body table :is(th, td) {
+    padding-inline: var(--space-3);
+    word-break: keep-all;
+  }
+
   .markdown-body table th {
     white-space: nowrap;
+  }
+
+  .markdown-body table:not(:has(th:nth-child(4))) th {
+    white-space: normal;
   }
 }
 
 @media (max-width: 480px) {
+  .markdown-body table :is(th, td) {
+    padding-inline: var(--space-3);
+    word-break: keep-all;
+  }
+
   .markdown-body table th {
     white-space: nowrap;
+  }
+
+  .markdown-body table:not(:has(th:nth-child(4))) th {
+    white-space: normal;
   }
 }
 
