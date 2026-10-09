@@ -813,6 +813,9 @@
 @keyframes mobile-choice-card-in { from { opacity: 0; transform: scale(0.94); } }
 
 /* 드로어 */
+/* 가장자리 끌기의 터치 판정 영역(mobile-drawer.tsx DrawerEdgeRegion) — 콘텐츠 아래에 깔려 hit를 받지 않는다. 폭은 EDGE_ZONE. */
+.mobile-drawer-edge-region { position: absolute; top: 0; bottom: 0; left: 0; z-index: -1; }
+
 .mobile-drawer-scrim {
   position: absolute;
   inset: 0;

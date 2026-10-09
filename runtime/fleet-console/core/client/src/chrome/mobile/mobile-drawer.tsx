@@ -89,7 +89,7 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
   // 열린 드로어는 하드웨어 뒤로가 닫는 겹침이다(메뉴·시트가 위에 있으면 그것이 먼저).
   useEffect(() => (open ? pushBackLayer(() => close(), "drawer") : undefined), [open, close]);
 
-  // 가장자리 끌기로 열기 — 드로어가 닫혀 있을 때 왼쪽 EDGE_ZONE에서 시작한다. 그 자리에 띠를 깔지 않고 창에서 듣는다:
+  // 가장자리 끌기로 열기 — 드로어가 닫혀 있을 때 왼쪽 EDGE_ZONE에서 시작한다. 그 자리에 hit를 받는 띠를 깔지 않고 창에서 듣는다:
   // 띠가 hit를 가져가면 가장자리에 걸친 버튼의 누를 자리가 잘린다. 누름·click은 아래 요소가 그대로 받는다.
   const mountedRef = useRef(mounted);
   mountedRef.current = mounted;
@@ -98,12 +98,14 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
     let suppressClickUntil = 0;
     let downTarget: EventTarget | null = null;
     let handedOff = false;
+    let guarding = false;
     const onDown = (event: globalThis.PointerEvent) => {
       if (mountedRef.current || gestureRef.current || !event.isPrimary || event.button !== 0) return;
       if (!startsOnEdge(event)) return;
       gestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, mode: "edge", armed: false, width: drawerWidth() };
       downTarget = event.target;
       handedOff = false;
+      if (event.pointerType === "touch") guard(true);
     };
     // 판정(armed)된 가장자리 끌기는 드로어 것이다 — 그 뒤의 이동·뗌은 아래 요소로 넘기지 않는다. 자기 끌기를 가진 요소
     // (화면 공유 카드 등)가 가장자리에 있으면 그것과 판이 함께 움직이기 때문이다. 아래 요소에는 브라우저가 팬을 가져갈 때처럼
@@ -126,7 +128,10 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
     const onUp = (event: globalThis.PointerEvent) => {
       const gesture = gestureRef.current;
       // 위에서 아래 요소에 보낸 pointercancel은 이 제스처의 끝이 아니다.
-      if (!event.isTrusted || gesture?.mode !== "edge" || gesture.pointerId !== event.pointerId) return;
+      if (!event.isTrusted) return;
+      // 세로로 풀린(스크롤이 된) 누름도 손가락을 떼면 가드를 거둔다.
+      if (event.isPrimary) guard(false);
+      if (gesture?.mode !== "edge" || gesture.pointerId !== event.pointerId) return;
       if (gesture.armed) {
         handOff(event);
         // 끌기를 마친 마우스는 떼자마자 click을 낸다 — 그 click은 버린다. 터치는 끌면 click이 나지 않는다.
@@ -146,7 +151,8 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
     const onTouchMove = (event: TouchEvent) => {
       const gesture = gestureRef.current;
       const touch = event.touches[0];
-      if (gesture?.mode !== "edge" || !touch) return;
+      if (gesture?.mode !== "edge") { guard(false); return; }
+      if (!touch) return;
       // 판정 뒤 touchmove도 아래 요소(터미널 터치 스크롤 등)로 넘기지 않는다. touchend는 정리용으로 그대로 둔다.
       if (gesture.armed) handOff(event);
       if (!event.cancelable) return;
@@ -154,20 +160,26 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
       const dy = touch.clientY - gesture.startY;
       if (gesture.armed || (dx > 0 && dx >= Math.abs(dy))) event.preventDefault();
     };
+    // 비수동(passive: false) 창 touchmove는 가장자리 터치 누름 동안에만 단다. 상시로 달면 화면 어디서 시작한 터치 스크롤이든
+    // 메인 스레드가 첫 touchmove에 답할 때까지 기다린다. 늦게 달아도 첫 touchmove를 취소할 수 있는 것은 DrawerEdgeRegion 덕이다.
+    const guard = (on: boolean) => {
+      if (on === guarding) return;
+      guarding = on;
+      if (on) window.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+      else window.removeEventListener("touchmove", onTouchMove, true);
+    };
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("pointerup", onUp, true);
     window.addEventListener("pointercancel", onUp, true);
     window.addEventListener("click", onClick, true);
-    // 비수동(passive: false)이어야 첫 touchmove를 취소할 수 있다 — 끄는 중이 아니면 바로 돌아간다.
-    window.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
     return () => {
       window.removeEventListener("pointerdown", onDown, true);
       window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
       window.removeEventListener("pointercancel", onUp, true);
       window.removeEventListener("click", onClick, true);
-      window.removeEventListener("touchmove", onTouchMove, true);
+      guard(false);
       if (gestureRef.current?.mode === "edge") { gestureRef.current = null; setDragX(null); }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -203,11 +215,13 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
   const onPanelMove = (event: PointerEvent<HTMLElement>) => { if (gestureRef.current?.mode === "panel") onGestureMove(event); };
   const onPanelUp = (event: PointerEvent<HTMLElement>) => { if (gestureRef.current?.mode === "panel") onGestureUp(event); };
 
-  if (!mounted && !open) return null;
+  const edgeRegion = open ? null : <DrawerEdgeRegion />;
+  if (!mounted && !open) return <>{edgeRegion}</>;
   const dragging = dragX !== null;
   const progress = dragging ? 1 + dragX / Math.max(1, drawerWidth()) : shown ? 1 : 0;
   return (
     <>
+      {edgeRegion}
       <div className="mobile-drawer-scrim" style={{ opacity: progress }} data-dragging={dragging || undefined} onClick={() => close()} />
       <nav
         ref={panelRef}
@@ -223,6 +237,25 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
       </nav>
     </>
   );
+}
+
+/**
+ * 가장자리 영역 — 콘텐츠 아래(z-index -1)에 깔린 EDGE_ZONE 폭의 빈 요소에 비수동 touchmove를 정적으로 둔다. hit와 click은
+ * 위의 콘텐츠가 받는다. Chromium 합성기와 iOS WebKit은 터치를 메인 스레드에 막아 보낼지(touchmove를 취소할 수 있게 할지)를
+ * 누른 순간의 리스너 영역으로 정한다. 누른 뒤에 단 창 리스너는 그 터치의 판정을 바꾸지 못하므로, 판정은 이 정적 영역이 맡는다.
+ * Chromium 합성기의 터치 처리 영역은 위에 덮인 요소를 빼지 않아(cc FindTouchEventLayerFunctor) 가려져도 영역이 남는다.
+ * 그래서 왼쪽 가장자리에서 시작한 터치만 메인 스레드를 기다리고, 그 밖에서 시작한 스크롤은 기다리지 않는다.
+ */
+function DrawerEdgeRegion() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const edge = ref.current;
+    if (!edge) return;
+    const hold = () => {};
+    edge.addEventListener("touchmove", hold, { passive: false });
+    return () => edge.removeEventListener("touchmove", hold);
+  }, []);
+  return <div ref={ref} className="mobile-drawer-edge-region" style={{ width: EDGE_ZONE }} aria-hidden="true" />;
 }
 
 /**
