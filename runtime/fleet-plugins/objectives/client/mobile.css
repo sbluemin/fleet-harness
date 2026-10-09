@@ -33,8 +33,36 @@
 .objectives-m-tx small.is-awaiting { color: var(--m-awaiting); }
 /* 목록 줄의 구성원 실패 — 확인하지 않은 실패가 남은 동안만(데스크톱 사이드바 줄 메모와 같은 판정). */
 .objectives-m-tx small .objectives-m-failed { color: var(--m-danger); }
-.objectives-m-ri { display: flex; align-items: center; color: var(--m-text-muted); }
-.objectives-m-ri svg { width: 22px; height: 22px; }
+
+/* 지휘관·구성원 행 — 호스트 모바일 설정 행의 팝업 배치(글리프 | 본문)에 › 칸을 더한다: 1행 이름·배지, 2행 세션 제목(hint), 3행 값 칩,
+   4행 예외 줄. ›(세션 열기)는 행의 첫 조작부라 행 어디를 눌러도 그것이 눌린다(호스트 행은 <label>). */
+:root .objectives-m .fc-settings-row.is-mobile:has(.objectives-m-val) { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 0; }
+.objectives-m .fc-settings-row.is-mobile:has(.objectives-m-val) .fc-settings-row__icon { grid-row: 1 / span 4; align-self: start; margin-top: 1px; }
+:root .objectives-m .fc-settings-row.is-mobile:has(.objectives-m-val) .fc-settings-row__hint { grid-column: 2; grid-row: 2; margin-top: 1px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.objectives-m-val { grid-column: 2; grid-row: 3; display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 8px; }
+.objectives-m-note-line { grid-column: 2; grid-row: 4; margin-top: 6px; color: var(--m-awaiting); font-size: var(--m-fs-caption); line-height: 18px; overflow-wrap: anywhere; }
+.objectives-m-note-line.is-failed { color: var(--m-danger); }
+.objectives-m .objectives-m-open { grid-column: 3; grid-row: 1 / span 4; align-self: center; display: grid; place-items: center; width: 28px; height: 44px; margin-right: -6px; color: var(--m-text-muted); }
+.objectives-m-open svg { width: 22px; height: 22px; }
+/* 배지 — 이름 옆 상태 낱말(+ 서브에이전트 표기). 실패만 위험색. */
+.objectives-m-badge { color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-regular); }
+.objectives-m-badge.is-failed { color: var(--m-danger); }
+/* 누를 조작부가 없는 행(끝난 목표의 세션 없는 구성원)은 눌리는 모양을 내지 않는다. */
+:root .objectives-m .fc-settings-row.is-mobile:has(.objectives-m-val):not(:has(button)) { cursor: default; }
+:root .objectives-m .fc-settings-row.is-mobile:has(.objectives-m-val):not(:has(button)):active { background: var(--m-surface); }
+/* 칩을 누르는 동안 행 전체의 누름 면이 번지지 않게 — 칩만 눌린다. */
+:root .objectives-m .fc-settings-row.is-mobile:has(.fc-coord-trigger:active) { background: var(--m-surface); }
+/* 값 칩 — 보이는 높이 32, 누름 칸 44(위아래 6씩 넓힘), 오른쪽 ⌄. */
+:root .objectives-m .objectives-m-val button.fc-select--mobile { position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 32px; padding: 0 12px 0 14px; color: var(--m-text); background: var(--m-chip); border-radius: 16px; white-space: nowrap; }
+.objectives-m .objectives-m-val button.fc-select--mobile .fc-select__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.objectives-m .objectives-m-val button.fc-select--mobile::before { content: ""; position: absolute; inset: -6px 0; }
+.objectives-m .objectives-m-val button.fc-select--mobile::after { content: ""; flex: none; width: 6px; height: 6px; margin: -4px 2px 0 2px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(45deg); opacity: .8; }
+:root .objectives-m .objectives-m-val button.fc-select--mobile:active { background: var(--m-selected); }
+/* 잠긴 값 — 단추가 아니라 자물쇠 + 값 글자. */
+.objectives-m-val.is-locked { color: var(--m-text-muted); }
+.objectives-m-val.is-locked svg { flex: none; }
+:root .objectives-m .objectives-m-val .fc-select--mobile.is-locked { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: default; }
+.objectives-m-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* 지휘관·구성원 값 줄 — 공유 선택기의 모바일 값 줄(.fc-select--mobile) 안에 데스크톱 어댑터의 낱말(실행값·「라우팅」)이 선다.
    데스크톱의 낱말 색(text-primary·brass)은 여기서 쓰지 않고 값 줄의 한 색을 따른다. */
