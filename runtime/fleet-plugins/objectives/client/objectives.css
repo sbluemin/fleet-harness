@@ -1868,6 +1868,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-sheet .markdown-body pre code,
 .objectives-commodore-sheet .markdown-body .code-block code { white-space: pre-wrap; overflow-x: hidden; overflow-wrap: anywhere; }
 .objectives-commodore-sheet .markdown-body table { overflow-x: hidden; overflow-wrap: anywhere; table-layout: fixed; }
+/* 서랍의 표는 가로로 흐르지 않으므로(넘치면 잘린다) 공용 머리칸의 한 줄 고정을 풀어 칸 안에서 줄을 바꾼다. */
+.objectives-commodore-sheet .markdown-body table th { white-space: normal; }
 .objectives-commodore-older { justify-self: center; }
 
 .objectives-commodore-section { display: grid; gap: 8px; }

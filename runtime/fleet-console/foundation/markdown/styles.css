@@ -386,6 +386,9 @@ code.hljs {
   font-size: calc(var(--font-content-size) * 0.857143);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  /* 표는 칸을 최소 내용 폭까지 누른 뒤에야 가로로 흐른다. 머리칸이 음절 중간에서 꺾이지 않게
+     한 줄로 두어, 좁은 폭에서는 칸을 누르는 대신 표 상자 안에서 가로로 스크롤되게 한다. */
+  white-space: nowrap;
 }
 
 .markdown-body table tr:nth-child(even) td {
