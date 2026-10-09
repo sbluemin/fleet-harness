@@ -12,7 +12,7 @@ import { bandChoices, bandFailure } from "./action-band.js";
 import { memberFailureNote } from "./clusters.js";
 import { commodoreBoardOf, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
+import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { LinkText } from "./link-text.js";
 import { ObjectiveResults } from "./results.js";
@@ -22,8 +22,8 @@ import "./mobile.css";
 /**
  * 모바일 목적지 「목표」 — 목록(결정 필요·진행 중·시작 전·끝남)과 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무·결과물).
  * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 상단 막대는 호스트가 그리고 여기서는 제목·깊이·뒤로·⋮ 항목만 선언한다.
- * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단 모두 보드와 같은 경로이고, ⋮ 의 노출 판정도
- * 보드 하단 띠의 판정(`bandChoices`)을 그대로 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
+ * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
+ * 노출 판정도 보드 하단 띠의 판정(`bandChoices`)을 그대로 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
  * 호스트의 모바일 설정 문법 안에서 공유 선택기가 좌표 시트로 선다.
  */
 
@@ -215,10 +215,17 @@ interface ObjectiveActions {
   readonly complete: boolean;
   readonly handOff: boolean;
   readonly stop: boolean;
+  /** 개시 카드 — null 이면 서지 않는다. 띠가 개시·재개를 고를 수 있으면 누를 수 있고, 아니면 reason 이 막힌 사정을 말한다. */
+  readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null } | null;
 }
 
-/** ⋮ 의 사람 동작 — 데스크톱 하단 띠와 같은 판정에서, 폰에서 의미 있는 넷(메시지·완료·검토로 넘기기·중단)만 고른다. */
-function objectiveActions(objective: Objective, operations: OperationIndex, t: T): ObjectiveActions {
+/**
+ * ⋮ 의 사람 동작 — 데스크톱 하단 띠와 같은 판정에서, 폰에서 의미 있는 넷(메시지·완료·검토로 넘기기·중단)만 고른다.
+ * 개시는 ⋮ 가 아니라 본문 카드로 세운다(누름 한 번). 덧붙일 말 칸·라우팅 확인 시트는 폰에 없으므로 바로 `/commander/start` 를 보내고,
+ * 라우팅 확인이 걸리는 개시(확인 켬 + 아직 띄우지 않은 라우팅 구성원)는 사람의 확인을 건너뛰지 않게 막고 사정을 말한다.
+ * 제안 대기(띠가 잠김)·작업 중에는 카드가 막힌 채 서서 이유를 말하고, 그 밖의 다른 할 일이 먼저인 상태에서는 서지 않는다.
+ */
+function objectiveActions(objective: Objective, operations: OperationIndex, t: T, launchAvailable: boolean): ObjectiveActions {
   const done = !!objective.done;
   const working = !done && (WORKING.has(ownActivityOf(operations, objective.id)) || objective.members.some((member) => member.sessionName !== null && WORKING.has(activityOf(operations, member.id))));
   const commanderAwaiting = !done && ownActivityOf(operations, objective.id) === "awaiting";
@@ -231,8 +238,15 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   ].filter((recipient) => recipient.state !== "closed");
   const choices = bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: activityOf(operations, objective.id) !== "closed", recipientCount: recipients.length });
   const has = (key: (typeof choices.alts)[number]) => choices.primary === key || choices.alts.includes(key);
+  const kind: "start" | "resume" = !has("start") && objective.commander.started ? "resume" : "start";
+  const routingReview = objective.routingConfirm && objective.members.some((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(operations, id)));
+  const commence = done ? null
+    : has("start") || has("resume")
+      ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : routingReview ? t("objectives.mobile.commence.routing") : null }
+      : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }) }
+        : working ? { kind, reason: t("objectives.mobile.commence.working") } : null;
   // 후속 후보가 있으면 완료는 후보 고르기를 거쳐야 한다 — 폰에서는 그 고르기가 없으므로 완료를 세우지 않는다.
-  return { recipients, message: has("message"), complete: has("complete") && !choices.followupAvailable, handOff: has("handOff"), stop: has("stop") };
+  return { recipients, message: has("message"), complete: has("complete") && !choices.followupAvailable, handOff: has("handOff"), stop: has("stop"), commence };
 }
 
 /** 가려진 입력을 끌어올린 뒤 키보드 윗변과 남기는 틈. */
@@ -295,7 +309,8 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const actions = objective ? objectiveActions(objective, operations, t) : null;
+  const launchAvailable = useSyncExternalStore(subscribeObjective, () => launchAvailableFor(objectiveId), () => launchAvailableFor(objectiveId));
+  const actions = objective ? objectiveActions(objective, operations, t, launchAvailable) : null;
   const crew = useCrewActions(objective, operations, t, api, language, say);
   // 막대 선언은 내용이 바뀔 때만 다시 한다 — 매 렌더 선언하면 호스트 갱신과 맞물려 돈다. 동작은 ref 로 최신을 부른다.
   const latest = useRef({ actions, objectiveId, say, language, t });
@@ -327,6 +342,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
         <BriefCard objective={objective} t={t} />
         <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
         <DecisionSection objective={objective} t={t} language={language} api={api} say={say} />
+        {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} /> : null}
         <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
         {/* 세션 진입을 겸하는 지휘관·구성원은 임무 위, 설정 전용 카드(서브에이전트 허용)는 임무·결과물 아래에 둔다(폰 첫 화면에 임무가 보이게). */}
         {objective.missions.length > 0 ? (
@@ -352,6 +368,43 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
       {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
       {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
     </div>
+  );
+}
+
+// ── 개시 ──
+
+/** 목표가 속한 Theater 의 호스트가 Operation 을 띄울 수 있는가 — 데스크톱 띠의 launchAvailable 과 같은 값. */
+const launchAvailableFor = (objectiveId: string): boolean =>
+  readAllTheaters().find((state) => state.objectives.some((objective) => objective.id === objectiveId))?.launchAvailable ?? false;
+
+/**
+ * 개시 카드 — 누름 한 번으로 데스크톱 띠의 「개시」와 같은 `/commander/start` 를 보낸다(덧붙일 말 없이). 막혔으면 단추를 흐리게 두고
+ * 그 아래에 이유를 말한다. 보낸 요청이 돌아올 때까지 단추를 잠가 두 번 보내지 않는다. 실패 문구는 띠와 같은 `bandFailure` 다.
+ */
+function CommenceCard({ objective, commence, t, language, api, say }: { readonly objective: Objective; readonly commence: NonNullable<ObjectiveActions["commence"]>; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const members = objective.members.length;
+  const desc = commence.reason ?? (commence.kind === "resume" ? t("objectives.start.resume")
+    : members ? t("objectives.start.members", { count: members }) : objective.missions.length ? t("objectives.start.direct") : t("objectives.band.start.bare"));
+  const start = () => {
+    if (busy || commence.reason) return;
+    setBusy(true);
+    void post<{ failed?: readonly { role: string }[] }>(api, "/commander/start", { objectiveId: objective.id, language })
+      .then((result) => {
+        const failed = result?.failed ?? [];
+        if (failed.length) say(t("objectives.start.failedMembers", { count: failed.length, roles: failed.map((entry) => entry.role).join(", ") }));
+      })
+      .catch((error: unknown) => say(bandFailure(t, error, { message: false, talk: false })))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <section className="objectives-m-card" aria-label={t("objectives.commander.start")}>
+      <h3 className="objectives-m-card-label">{t("objectives.commander.title")}</h3>
+      <p className="objectives-m-prop-sub">{desc}</p>
+      <button type="button" data-press="r3" className="objectives-m-pbtn is-approve objectives-m-approve-all" disabled={busy || !!commence.reason} aria-busy={busy || undefined} onClick={start}>
+        {t("objectives.commander.start")}
+      </button>
+    </section>
   );
 }
 
