@@ -686,7 +686,23 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     };
     window.addEventListener("resize", resize);
     // 폰·데스크톱 배치는 창 크기와 따로 바뀔 수 있다(보기 전환) — 루트 속성이 바뀌면 활동 범위를 다시 잰다.
-    const layout = new MutationObserver(resize);
+    // 창 크기가 그대로라 resize를 듣는 카드·말풍선은 다시 서지 않는다. 그래서 새를 새 범위 안으로 바로
+    // 붙들어 그리고 자리 신호를 올린다 — 프레임 루프에 맡기면 카드가 옛 자리를 재고 끝난다.
+    const syncLayout = () => {
+      const before = viewportRef.current;
+      const next = roamViewport();
+      if (next.width === before.width && next.height === before.height) return;
+      resize();
+      bodiesRef.current?.forEach((body, index) => {
+        clampToViewport(body, viewportRef.current);
+        const element = birdRefs.current[index];
+        if (element) element.style.transform = `translate(${body.x - body.size.halfWidth}px, ${body.y - body.size.halfHeight}px) rotate(0deg)`;
+      });
+      setPositionRevision((revision) => revision + 1);
+    };
+    // 보기 전환이 이 효과를 다시 걸게 하면 속성은 구독 직전에 이미 바뀌어 있다 — 걸 때 한 번 맞춘다.
+    syncLayout();
+    const layout = new MutationObserver(syncLayout);
     layout.observe(document.documentElement, { attributes: true, attributeFilter: ["data-view-mode"] });
     return () => {
       window.removeEventListener("resize", resize);
