@@ -388,6 +388,23 @@ code.hljs {
   text-transform: uppercase;
 }
 
+/* 표는 칸을 최소 내용 폭까지 누른 뒤에야 가로로 흐른다. 좁은 자리에서는 머리칸이 음절 중간에서
+   꺾이므로 한 줄로 두어, 칸을 누르는 대신 표 상자 안에서 가로로 스크롤되게 한다. 넓은 자리의
+   배치는 그대로 둔다. 좁음은 가장 가까운 기존 크기 컨테이너(레일 페인·채팅 등)로 판정한다 —
+   본문에 새 containment를 걸면 shrink-to-fit 부모 안에서 폭이 접힌다. 컨테이너가 없는 자리는
+   뷰포트로 판정한다. */
+@container (max-width: 480px) {
+  .markdown-body table th {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .markdown-body table th {
+    white-space: nowrap;
+  }
+}
+
 .markdown-body table tr:nth-child(even) td {
   background: var(--ink-mid);
 }
