@@ -134,6 +134,94 @@
 .objectives-m-sheet-ft { display: flex; justify-content: flex-end; gap: 8px; flex: none; padding: 10px 16px 0; }
 .objectives-m-sheet-layer :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
 
+/*
+ * 결과물 — 데스크톱 장부(results.tsx)의 같은 마크업을 이 범위에서만 모바일 묶음 카드로 다시 입힌다. 데스크톱 규칙은 건드리지 않는다.
+ * 임무 묶음 하나 = 카드 하나(모서리 22), 머리 행 52, 결과 행 ≥ 56 · 「열기」 알약 40. 색은 모바일 토큰만 — 상태 글리프와 같은 신호색이다.
+ * 행·머리의 hover 면은 터치에서 남으므로 걷고, 누름은 :active 면(--m-selected)으로 대신한다.
+ */
+.objectives-m-results .objectives-results { gap: 10px; padding-bottom: 0; }
+.objectives-m-results .objectives-result-group { overflow: hidden; border-radius: 22px; background: var(--m-surface); transition: none; }
+.objectives-m-results .objectives-result-group-bar { padding-right: 0; }
+.objectives-m .objectives-m-results .objectives-result-group-head { gap: 10px; min-height: 52px; padding: 8px 16px; color: var(--m-text); font-size: var(--m-fs-list); }
+.objectives-m .objectives-m-results .objectives-result-group-head:hover { background: none; }
+.objectives-m .objectives-m-results .objectives-result-group-head:active { background: var(--m-selected); }
+.objectives-m-results .objectives-result-mission-n { min-width: 16px; font-family: var(--m-mono); font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+.objectives-m-results .objectives-result-mission-title { font-size: var(--m-fs-list); font-weight: var(--weight-bold); line-height: 1.4; }
+.objectives-m .objectives-m-results .objectives-result-group-count { font-family: var(--m-sans); font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+.objectives-m-results .objectives-section-chev { width: 18px; height: 18px; color: var(--m-text-muted); }
+.objectives-m-results .objectives-section-chev svg { width: 16px; height: 16px; }
+.objectives-m-results .objectives-result-group-body { padding-bottom: 6px; }
+.objectives-m-results .objectives-result-record { margin: 0 16px 6px 42px; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+.objectives-m-results .objectives-result-record time { color: var(--m-text-faint); }
+/* 이미지 줄 — 썸네일 104×66, 이름 한 줄. */
+.objectives-m-results .objectives-result-strip { gap: 10px; padding: 4px 16px 10px; }
+.objectives-m-results .objectives-result-thumb { width: 104px; gap: 4px; }
+.objectives-m-results .objectives-result-img { width: 104px; height: 66px; border-color: var(--m-hairline-strong); border-radius: 10px; background: var(--m-chip); }
+.objectives-m .objectives-m-results .objectives-result-thumb:hover .objectives-result-img { border-color: var(--m-hairline-strong); }
+.objectives-m-results .objectives-result-thumb-hit:active .objectives-result-img { border-color: var(--m-text-muted); }
+.objectives-m-results .objectives-result-name { font-family: var(--m-sans); font-size: var(--m-fs-small); color: var(--m-text-muted); }
+/* 문서·Artifact·PR 행 — 행 사이 머리선, 아이콘 20. */
+.objectives-m-results .objectives-result-row { align-items: center; gap: 12px; min-height: 56px; box-sizing: border-box; padding: 10px 16px; border-top: 1px solid var(--m-hairline); color: var(--m-text); font-size: var(--m-fs-secondary); }
+.objectives-m .objectives-m-results .objectives-result-row:hover { background: none; }
+.objectives-m .objectives-m-results .objectives-result-row.is-button:active { background: var(--m-selected); }
+.objectives-m-results .objectives-row-ic { width: 20px; height: 20px; color: var(--m-text-muted); }
+.objectives-m-results .objectives-row-ic svg { width: 20px; height: 20px; }
+.objectives-m-results .objectives-result-row > .objectives-row-ic { margin-top: 0; }
+.objectives-m-results .objectives-result-body { gap: 2px; }
+.objectives-m-results .objectives-result-title { color: var(--m-text); line-height: 1.4; }
+/* 데스크톱의 mono 제목은 파일 이름 결이지만, 사람이 붙인 이름표(한글)가 mono 칸 폭으로 벌어지므로 폰에서는 본문 서체로 읽는다. */
+.objectives-m-results .objectives-result-title.is-mono { font-family: var(--m-sans); font-size: var(--m-fs-secondary); }
+.objectives-m-results .objectives-result-title.is-placeholder { color: var(--m-text-muted); }
+.objectives-m-results .objectives-result-num { font-family: var(--m-mono); font-size: var(--m-fs-mono); color: var(--m-text-muted); }
+.objectives-m-results .objectives-result-sub { font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+.objectives-m-results .objectives-result-sub .is-mono { font-family: var(--m-mono); }
+.objectives-m-results .objectives-result-sub.is-error { color: var(--m-danger); }
+.objectives-m-results .objectives-result-stale { color: var(--m-running); }
+.objectives-m-results .objectives-link { color: inherit; }
+/* 「열기」·「새 탭」 — 칩 알약 40. Artifact 의 알약은 행 전체가 누름 칸이라 모양만 같다. */
+.objectives-m .objectives-m-results .objectives-result-open { display: inline-flex; align-items: center; gap: 4px; height: 40px; margin: 0; padding: 0 16px; border-radius: 20px; background: var(--m-chip); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-meta); font-weight: var(--weight-medium); white-space: nowrap; }
+.objectives-m .objectives-m-results .objectives-result-row.is-button:hover .objectives-result-open { color: var(--m-text); }
+.objectives-m-results .objectives-result-state { margin-top: 0; font-family: var(--m-sans); font-size: var(--m-fs-caption); letter-spacing: 0; color: var(--m-text-muted); }
+.objectives-m-results .objectives-result-state.is-merged { color: var(--m-idle); }
+.objectives-m-results .objectives-result-state.is-merged i { background: var(--m-idle); }
+.objectives-m-results .objectives-result-state.is-open { color: var(--m-text); }
+.objectives-m-results .objectives-result-state.is-open i { border-color: var(--m-idle); }
+.objectives-m-results .objectives-result-state.is-closed i { background: var(--m-text-faint); }
+.objectives-m-results .objectives-result-state.is-error { color: var(--m-danger); }
+.objectives-m-results .objectives-result-state.is-error i { background: var(--m-danger); }
+.objectives-m-results .objectives-result-state.is-unchecked i { border-color: var(--m-text-faint); }
+.objectives-m-results .objectives-artifact-notice { margin: 0; padding: 0 4px; font-size: var(--m-fs-caption); color: var(--m-text-faint); }
+
+/*
+ * 결과물 보기(body 포털) — 모바일 배치에서는 전체 화면이다. 데스크톱의 떠 있는 유리 틀·바깥 모서리 닫기 대신 위 머리 줄(설명 · 닫기 44)과
+ * 그 아래 본문 한 칸. 본문만 세로·가로로 스크롤하고, 넓은 표는 마크다운 표 상자 안에서 가로로 흐른다(문서 자체는 넘치지 않는다).
+ * 렌더·무력화는 데스크톱 보기 구성요소 그대로다 — 여기서는 모양만 바꾼다.
+ */
+:root[data-view-mode="mobile"] .objectives-zoom-backdrop { padding: 0; background: var(--m-scrim); font-family: var(--m-sans); }
+:root[data-view-mode="mobile"] .objectives-att-view { box-sizing: border-box; width: 100%; height: 100%; max-width: none; padding: calc(env(safe-area-inset-top, 0px) + 60px) 0 calc(env(safe-area-inset-bottom, 0px) + 12px); align-content: center; border: 0; border-radius: 0; background: var(--m-bg); color: var(--m-text); box-shadow: none; }
+:root[data-view-mode="mobile"] .objectives-att-view-close { top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; width: 44px; height: 44px; border: 0; background: var(--m-chip); color: var(--m-text); }
+:root[data-view-mode="mobile"] .objectives-att-view-close svg { width: 16px; height: 16px; }
+:root[data-view-mode="mobile"] .objectives-att-view img { max-height: calc(100dvh - 90px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - var(--objectives-att-caption, 20px)); border-radius: 0; }
+:root[data-view-mode="mobile"] .objectives-att-view-step { width: 44px; height: 44px; border: 0; background: var(--m-chip); color: var(--m-text); }
+:root[data-view-mode="mobile"] .objectives-att-view figcaption { padding: 0 16px; }
+:root[data-view-mode="mobile"] .objectives-att-view-title { font-size: var(--m-fs-secondary); color: var(--m-text); }
+:root[data-view-mode="mobile"] .objectives-att-view-note { font-size: var(--m-fs-caption); color: var(--m-text-nav); }
+:root[data-view-mode="mobile"] .objectives-att-view-meta { font-family: var(--m-sans); font-size: var(--m-fs-small); color: var(--m-text-muted); }
+:root[data-view-mode="mobile"] .objectives-att-view-meta b { color: var(--m-text-nav); }
+/* 텍스트 보기 — 설명을 머리 줄로 올리고(order) 본문이 남은 높이를 다 쓴다. */
+:root[data-view-mode="mobile"] .objectives-result-textview { grid-template-rows: auto minmax(0, 1fr); gap: 0; align-content: stretch; padding: env(safe-area-inset-top, 0px) 0 0; background: var(--m-bg); color: var(--m-text); }
+:root[data-view-mode="mobile"] .objectives-result-textview figcaption { order: -1; display: flex; align-items: center; justify-content: flex-start; box-sizing: border-box; width: 100%; max-width: none; min-height: 60px; max-height: none; padding: 8px 64px 8px 16px; border-bottom: 1px solid var(--m-hairline); font-size: var(--m-fs-caption); line-height: 1.4; color: var(--m-text-muted); text-align: left; overflow: hidden; }
+:root[data-view-mode="mobile"] .objectives-result-markdown.markdown-body { max-height: none; height: 100%; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 24px); border-radius: 0; background: var(--m-bg); color: var(--m-text); font-size: var(--m-fs-secondary); line-height: 1.6; overscroll-behavior: contain; }
+:root[data-view-mode="mobile"] .objectives-result-markdown :is(h1, h2, h3, h4, h5, h6, p, li, td) { color: var(--m-text); }
+:root[data-view-mode="mobile"] .objectives-result-markdown :is(h1, h2) { font-size: var(--m-fs-heading); }
+:root[data-view-mode="mobile"] .objectives-result-markdown table { font-size: var(--m-fs-caption); border-color: var(--m-hairline-strong); border-radius: 10px; }
+:root[data-view-mode="mobile"] .objectives-result-markdown table :is(th, td) { padding: 8px 12px; border-bottom-color: var(--m-hairline); }
+:root[data-view-mode="mobile"] .objectives-result-markdown table th { background: var(--m-chip); color: var(--m-text-muted); letter-spacing: 0; text-transform: none; }
+:root[data-view-mode="mobile"] .objectives-result-markdown table tr:nth-child(even) td { background: var(--m-surface); }
+:root[data-view-mode="mobile"] .objectives-result-plain { font-family: var(--m-mono); font-size: var(--m-fs-mono); color: var(--m-text); }
+:root[data-view-mode="mobile"] .objectives-result-textstate { font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
+:root[data-view-mode="mobile"] .objectives-result-textstate.is-error { color: var(--m-danger); }
+
 /* 토스트 — 화면 아래 150, 6초 뒤 사라진다. 라이트에서만 테두리. */
 .objectives-m-toast { position: fixed; left: 16px; right: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); z-index: 61; display: flex; align-items: center; min-height: 52px; padding: 0 8px 0 16px; border-radius: 14px; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); font-family: var(--m-sans); font-size: var(--m-fs-secondary); animation: objectives-m-fade .2s ease-out; }
 html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m-hairline); }
