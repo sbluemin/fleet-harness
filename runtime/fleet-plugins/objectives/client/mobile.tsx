@@ -906,12 +906,17 @@ function useBottomSheet(onClose: () => void): SheetControl {
   };
 }
 
-/** 하단 시트 틀 — 스크림 + 손잡이 + 제목·× + 본문(스크롤) + 바닥 단추 줄. */
-function BottomSheet({ sheet, t, title, busy, children, foot }: { readonly sheet: SheetControl; readonly t: T; readonly title: string; readonly busy?: boolean; readonly children: ReactNode; readonly foot: ReactNode }) {
+/**
+ * 하단 시트 틀 — 스크림 + 손잡이 + 제목·× + 본문(스크롤) + 바닥 단추 줄. focusOnOpen 이면 열릴 때 포커스를 대화상자로 옮긴다 —
+ * 키보드·보조기기로 연 사람의 포커스가 배경에 남지 않게. 입력칸에 직접 포커스를 주는 시트(메시지)는 넘기지 않는다.
+ */
+function BottomSheet({ sheet, t, title, busy, focusOnOpen, children, foot }: { readonly sheet: SheetControl; readonly t: T; readonly title: string; readonly busy?: boolean; readonly focusOnOpen?: boolean; readonly children: ReactNode; readonly foot: ReactNode }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (focusOnOpen) dialogRef.current?.focus({ preventScroll: true }); }, [focusOnOpen]);
   return createPortal(
     <div className={`objectives-m-sheet-layer${sheet.closing ? " is-closing" : ""}`}>
       <div className="objectives-m-scrim" onClick={sheet.close} />
-      <div className={`objectives-m-sheet${sheet.drag > 0 ? " is-dragging" : ""}`} role="dialog" aria-modal="true" aria-label={title} aria-busy={busy || undefined} style={sheet.drag > 0 ? { transform: `translateY(${sheet.drag}px)` } : undefined}>
+      <div ref={dialogRef} tabIndex={focusOnOpen ? -1 : undefined} className={`objectives-m-sheet${sheet.drag > 0 ? " is-dragging" : ""}`} role="dialog" aria-modal="true" aria-label={title} aria-busy={busy || undefined} style={sheet.drag > 0 ? { transform: `translateY(${sheet.drag}px)` } : undefined}>
         <div className="objectives-m-sheet-handle" {...sheet.handle}><i /></div>
         <div className="objectives-m-sheet-head">
           <h2>{title}</h2>
@@ -986,9 +991,8 @@ function RoutingSheet({ objective, targets, t, api, language, say, onClose }: {
   const ready = review.phase === "ready" && review.preview !== null;
   const go = async () => {
     const preview = review.preview;
+    // 만료 판정은 서버에 맡긴다 — 폰 시계는 서버와 어긋날 수 있어, 서버의 routing_preview_stale 거절만 다시 받는 사정으로 삼는다.
     if (sending || !ready || !preview) return;
-    // 만료된 결과는 서버가 거절한다 — 보내지 않고 바로 다시 받는다.
-    if (preview.expiresAt <= Date.now()) { load({ stage: "start", code: "routing_preview_stale" }); return; }
     setSending(true);
     try {
       const result = await post<{ failed?: readonly { role: string }[] }>(api, "/commander/start", { objectiveId, routing: "preview", language });
@@ -1014,7 +1018,7 @@ function RoutingSheet({ objective, targets, t, api, language, say, onClose }: {
         : bandFailure(t, new Error(error.code), { message: false, talk: false });
 
   return (
-    <BottomSheet sheet={sheet} t={t} title={t("objectives.routing.title")} busy={judging}
+    <BottomSheet sheet={sheet} t={t} title={t("objectives.routing.title")} busy={judging} focusOnOpen
       foot={(
         <button type="button" data-press="r3" className="objectives-m-pill2 is-inv" disabled={!ready || sending} aria-busy={sending || undefined} onClick={() => void go()}>
           {t("objectives.commander.start")}

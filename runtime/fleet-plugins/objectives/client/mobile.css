@@ -178,6 +178,8 @@
 .objectives-m-sheet-layer .objectives-m-field { height: 104px; }
 .objectives-m-sheet-ft { display: flex; justify-content: flex-end; gap: 8px; flex: none; padding: 10px 16px 0; }
 .objectives-m-sheet-layer :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
+/* 열릴 때 포커스를 받는 시트 판 자체는 고리를 그리지 않는다 — 판 전체가 대화상자다. */
+.objectives-m-sheet-layer .objectives-m-sheet:focus-visible { outline: none; border-radius: 28px 28px 0 0; }
 /* 라우팅 확인 시트 — 라우팅 구성원마다 역할 · 판단된 모델 · 강도, 그 아래 근거 또는 폴백 사유. */
 .objectives-m-route { display: flex; flex-direction: column; }
 .objectives-m-route-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px; padding: 12px 4px; border-top: 1px solid var(--m-hairline); }
