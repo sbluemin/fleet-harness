@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.225.0] - 2026-10-09
+
+### fleet-console
+
+#### Added
+- Open an objective's results on your phone: reports, images, Artifact links, and pull requests now appear in the mobile objective detail, and reports open full screen.
+
 ## [1.224.0] - 2026-10-09
 
 ### fleet-console

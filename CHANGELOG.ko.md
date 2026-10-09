@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.225.0] - 2026-10-09
+
+### fleet-console
+
+#### Added
+- 휴대폰에서도 목표의 결과물을 열 수 있습니다. 모바일 목표 상세에 보고서·이미지·Artifact 링크·PR이 나타나고, 보고서는 전체 화면으로 열립니다.
+
 ## [1.224.0] - 2026-10-09
 
 ### fleet-console
