@@ -235,6 +235,47 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   return { recipients, message: has("message"), complete: has("complete") && !choices.followupAvailable, handOff: has("handOff"), stop: has("stop") };
 }
 
+/** 가려진 입력을 끌어올린 뒤 키보드 윗변과 남기는 틈. */
+const FIELD_GAP_PX = 8;
+const TEXT_FIELD = "textarea, input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=number], [type=password])";
+
+/**
+ * 가상 키보드가 뷰포트를 줄여도 포커스한 입력이 화면 안에 남게 한다. WebView(adjustResize)는 높이만 줄이고 이 화면의
+ * 내부 스크롤 칸(.objectives-m) 안의 입력은 끌어올리지 않는다(실기기: 결정 질문 2의 자유 입력이 키보드 아래 214.8px에 숨었다).
+ * 포커스와 뷰포트 resize 때, 이미 보이는 입력은 그대로 두고 가려진 만큼만 이 칸을 스크롤한다(nearest). 셸·문서의 다른 스크롤
+ * 조상은 건드리지 않는다. 시트(포털)의 입력은 이 칸 밖이라 대상이 아니다.
+ */
+function useFocusedFieldInView(rootRef: { readonly current: HTMLDivElement | null }) {
+  useEffect(() => {
+    let frame = 0;
+    const settle = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const root = rootRef.current;
+        const field = document.activeElement;
+        // 키보드를 부르는 글 입력만 — 설정 토글(checkbox)처럼 키보드 없는 입력은 포커스돼도 움직이지 않는다.
+        if (!root || !(field instanceof HTMLElement) || !field.matches(TEXT_FIELD) || !root.contains(field)) return;
+        const viewport = window.visualViewport;
+        const box = root.getBoundingClientRect();
+        const top = Math.max(box.top, viewport?.offsetTop ?? 0);
+        const bottom = Math.min(box.bottom, viewport ? viewport.offsetTop + viewport.height : window.innerHeight);
+        const rect = field.getBoundingClientRect();
+        if (rect.bottom > bottom) root.scrollTop += Math.min(rect.bottom - bottom + FIELD_GAP_PX, rect.top - top);
+        else if (rect.top < top) root.scrollTop -= top - rect.top + FIELD_GAP_PX;
+      });
+    };
+    document.addEventListener("focusin", settle);
+    window.addEventListener("resize", settle);
+    window.visualViewport?.addEventListener("resize", settle);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("focusin", settle);
+      window.removeEventListener("resize", settle);
+      window.visualViewport?.removeEventListener("resize", settle);
+    };
+  }, [rootRef]);
+}
+
 export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const t = getT(ctx.language);
   const language = ctx.language ?? "en";
@@ -244,6 +285,8 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const { mobileBar, panes, visible, api } = ctx;
   const title = objective?.title ?? "";
   const [sheet, setSheet] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFocusedFieldInView(rootRef);
   const [toast, setToast] = useState<{ readonly text: string; readonly at: number } | null>(null);
   const say = useCallback((text: string) => setToast({ text, at: Date.now() }), []);
   useEffect(() => {
@@ -277,11 +320,12 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
     mobileBar.set({ title, depth: 1, onBack: () => panes.close(), ...(items.length > 0 ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
   }, [mobileBar, visible, title, panes, menuKey, t, act]);
 
-  if (!objective || !actions) return <div className="objectives-m" />;
+  if (!objective || !actions) return <div ref={rootRef} className="objectives-m" />;
   return (
-    <div className="objectives-m">
+    <div ref={rootRef} className="objectives-m">
       <div className="objectives-m-pad">
         <BriefCard objective={objective} t={t} />
+        <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
         <DecisionSection objective={objective} t={t} language={language} api={api} say={say} />
         <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
         {/* 세션 진입을 겸하는 지휘관·구성원은 임무 위, 설정 전용 카드(서브에이전트 허용)는 임무·결과물 아래에 둔다(폰 첫 화면에 임무가 보이게). */}
@@ -526,6 +570,58 @@ function BriefCard({ objective, t }: { readonly objective: Objective; readonly t
           <p className="objectives-m-criteria">{t("objectives.mobile.criteria", { met, total })}</p>
           <div className="objectives-m-meter" role="meter" aria-valuemin={0} aria-valuemax={total} aria-valuenow={met} aria-label={t("objectives.criteria.title")}><i style={{ width: `${(met / total) * 100}%` }} /></div>
         </>
+      ) : null}
+    </section>
+  );
+}
+
+// ── 달성 기준 제안 ──
+
+/**
+ * 지휘관의 달성 기준 제안 — 줄마다 거절·승인, 2건 이상이면 「모두 승인」. 제안이 남아 있으면 서버가 개시·스티어링을
+ * `criteria_pending`으로 거부하므로, 폰에서도 이 카드로 풀 수 있어야 한다. 데스크톱 `ProposalRow`와 같은 경로(/criterion/*)이고
+ * 어노테이션·「다시 구상」·기준 직접 편집은 데스크톱에만 둔다.
+ */
+function ProposalsCard({ objective, t, language, api, say }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
+  // 보낸 요청이 돌아올 때까지 모든 단추를 잠근다 — 두 번 눌러 이미 처리된 제안에 다시 보내지 않게.
+  const [busy, setBusy] = useState(false);
+  const proposals = objective.criteriaProposals;
+  if (proposals.length === 0) return null;
+  const touchable = !objective.done;
+  const send = (path: "/criterion/approve" | "/criterion/reject" | "/criterion/approve-all", proposalId?: string) => {
+    setBusy(true);
+    void post(api, path, { objectiveId: objective.id, ...(proposalId ? { proposalId } : {}), language })
+      .catch((error: unknown) => say(launchFailure(t, error)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <section className="objectives-m-card objectives-m-props" aria-label={t("objectives.criteria.title")}>
+      <h3 className="objectives-m-card-label">{t("objectives.criteria.pending", { count: proposals.length })}</h3>
+      {proposals.map((proposal) => {
+        const index = proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) : -1;
+        const target = index >= 0 ? objective.criteria[index]! : null;
+        const n = index + 1;
+        const label = proposal.kind === "add" ? t("objectives.proposal.add") : t(proposal.kind === "revise" ? "objectives.proposal.revise" : proposal.kind === "recheck" ? "objectives.proposal.recheck" : "objectives.proposal.retire", { n });
+        return (
+          <div key={proposal.id} className="objectives-m-prop" role="group" aria-label={label}>
+            <p className="objectives-m-prop-kind">{label}</p>
+            {proposal.kind === "revise" && target ? <del className="objectives-m-prop-tx is-old"><LinkText text={target.text} /></del> : null}
+            {proposal.kind === "retire" ? <del className="objectives-m-prop-tx"><LinkText text={target?.text ?? ""} /></del>
+              : proposal.kind === "recheck" ? <p className="objectives-m-prop-tx"><LinkText text={target?.text ?? ""} /></p>
+              : <p className="objectives-m-prop-tx"><LinkText text={proposal.text ?? ""} /></p>}
+            {proposal.reason && (proposal.kind === "retire" || proposal.kind === "recheck") ? <p className="objectives-m-prop-sub"><LinkText text={t("objectives.proposal.reason", { reason: proposal.reason })} /></p> : null}
+            {proposal.kind === "recheck" ? <p className="objectives-m-prop-sub">{t("objectives.proposal.recheckHint")}</p> : null}
+            {touchable ? (
+              <div className="objectives-m-prop-acts">
+                <button type="button" data-press="r3" className="objectives-m-pbtn is-reject" disabled={busy} onClick={() => send("/criterion/reject", proposal.id)}>{t("objectives.proposal.reject")}</button>
+                <button type="button" data-press="r3" className="objectives-m-pbtn is-approve" disabled={busy} onClick={() => send("/criterion/approve", proposal.id)}>{t("objectives.proposal.approve")}</button>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+      {touchable && proposals.length > 1 ? (
+        <button type="button" data-press="r3" className="objectives-m-pbtn is-approve objectives-m-approve-all" disabled={busy} onClick={() => send("/criterion/approve-all")}>{t("objectives.criteria.approveAll")}</button>
       ) : null}
     </section>
   );

@@ -76,9 +76,26 @@
 .objectives-m-brief { margin: 0; font-size: var(--m-fs-secondary); line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .objectives-m-brief.is-clamped { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .objectives-m .objectives-m-more { font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+/* 「더 보기」 누름 칸 44 — 글자(18)는 제자리에 두고 상자만 넓힌다. 위는 본문과의 틈(6)까지만 넓혀 본문 링크를 덮지 않고,
+   나머지(20)는 아래(누를 것 없는 기준 줄·카드 여백)로 넓힌다. 바깥 여백을 같은 만큼 빼 카드 높이는 그대로다.
+   누름 면은 글자 둘레에 그대로 선다(아래 --pr-inset). */
+.objectives-m .objectives-m-more { z-index: 1; display: flex; align-items: flex-start; min-height: 44px; margin: -6px 0 -20px; padding-top: 6px; box-sizing: border-box; }
 .objectives-m-criteria { margin: 4px 0 0; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
 .objectives-m-meter { height: 6px; margin-top: 8px; overflow: hidden; border-radius: 3px; background: var(--m-chip); }
 .objectives-m-meter i { display: block; height: 100%; background: var(--m-text-nav); }
+
+/* 달성 기준 제안 카드 — 줄마다 종류·문구, 오른쪽 아래 거절·승인 알약(누름 칸 44). 2건 이상이면 맨 아래 「모두 승인」. */
+.objectives-m-prop { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px solid var(--m-hairline); }
+.objectives-m-props > .objectives-m-card-label + .objectives-m-prop { padding-top: 2px; border-top: 0; }
+.objectives-m-prop-kind { margin: 0; font-size: var(--m-fs-caption); font-weight: var(--weight-bold); color: var(--m-text-muted); }
+.objectives-m-prop-tx { display: block; margin: 0; font-size: var(--m-fs-secondary); line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-m-prop-tx.is-old, del.objectives-m-prop-tx { color: var(--m-text-muted); }
+.objectives-m-prop-sub { margin: 0; font-size: var(--m-fs-caption); color: var(--m-text-muted); overflow-wrap: anywhere; }
+.objectives-m-prop-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.objectives-m .objectives-m-pbtn { display: inline-flex; align-items: center; justify-content: center; min-width: 72px; height: 44px; padding: 0 18px; border-radius: 22px; background: var(--m-chip); color: var(--m-text); font-size: var(--m-fs-meta); font-weight: var(--weight-bold); }
+.objectives-m .objectives-m-pbtn.is-approve { background: var(--m-inverse); color: var(--m-on-inverse); }
+.objectives-m .objectives-m-pbtn:disabled { opacity: .4; cursor: default; }
+.objectives-m .objectives-m-approve-all { width: 100%; margin-top: 6px; }
 
 /* 질문 카드를 쌓는 칸 — 카드 사이 10. */
 .objectives-m-stack { display: flex; flex-direction: column; gap: 10px; }
@@ -155,7 +172,7 @@
 /* 누름 모양(S-52 PR-2): 시트 ×는 원, 선택지 줄은 좌우 −8, 「더 보기」 글자 단추는 알약. */
 .objectives-m-sheet-layer .objectives-m-sheet-x { --pr-r: 50%; }
 .objectives-m .objectives-m-opt { --pr-inset: 0 -8px; }
-.objectives-m .objectives-m-more { --pr-inset: -6px -6px; --pr-r: 16px; }
+.objectives-m .objectives-m-more { --pr-inset: 0 -6px 14px; --pr-r: 16px; }
 .objectives-m-sheet-body { display: flex; flex-direction: column; gap: 10px; min-height: 0; padding: 0 16px; overflow-y: auto; scrollbar-width: none; }
 .objectives-m-sheet-body::-webkit-scrollbar { display: none; }
 .objectives-m-sheet-layer .objectives-m-field { height: 104px; }
