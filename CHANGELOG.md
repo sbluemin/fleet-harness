@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.224.0] - 2026-10-09
+
+### fleet-console
+
+#### Changed
+- On phones, the Objectives list now shows objectives that have not started yet in their own Not started section instead of mixing them into In progress.
+
+#### Fixed
+- On phones, answering a terminal confirmation takes one line and leaves more of the output visible, reasoning effort tabs, the wiki composer, and the earlier-conversation band are easier to tap, and the folder picker shows the folder you are in.
+- On phones, the deputy birds no longer land on the message field and swallow your taps.
+- On phones, lists and chats start scrolling right away again while a response is streaming, instead of lagging behind your finger.
+
 ## [1.223.0] - 2026-10-09
 
 ### fleet-console
