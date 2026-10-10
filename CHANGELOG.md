@@ -5,6 +5,21 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.226.0] - 2026-10-10
+
+### fleet-console
+
+#### Added
+- On a phone, you can approve or reject the Commander's proposed success criteria in the objective detail, so an objective no longer waits for you to reach a desktop before it can start.
+- On a phone, you can commence an objective with one tap from its detail; while proposed success criteria await you or the Commander is already working, the button stays dimmed and says why. When an objective asks you to review member routing first, the phone shows the routing results in a sheet and commences once you confirm them.
+
+#### Changed
+- On a phone, an objective's Commander and member rows now open their sessions directly, with the model and effort picker on each row's value chip, so the separate Sessions list is gone.
+
+#### Fixed
+- On a phone, opening a member's session from an objective now shows that member's conversation instead of the Commander's terminal.
+- On a phone, tapping a decision answer field lower on the objective screen now brings it above the keyboard, and the brief's More button is easier to tap.
+
 ## [1.225.0] - 2026-10-09
 
 ### fleet-console
