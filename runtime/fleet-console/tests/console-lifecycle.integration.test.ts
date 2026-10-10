@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createOwnedProcessRegistry, proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
 import { createWindowsJobContainment, type WindowsJobBindings } from "../core/host/bootstrap/windows-job-containment.js";
-import { describeReplacedLockAuthor, PROCESS_START_MARGIN_MS } from "@fleet-console/protocol/lifecycle";
+import { describeReplacedLockAuthor, HEALTH_PROBE_TIMEOUT_MS, PROCESS_START_MARGIN_MS } from "@fleet-console/protocol/lifecycle";
 
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
@@ -134,7 +134,9 @@ describe("Console daemon lifecycle integration", () => {
     await new Promise<void>((resolve) => impostor.close(() => resolve()));
     const stoppingAt = Date.now();
     await expect(lifecycle.stop()).rejects.toThrow(`lock pid ${bystanderPid} no longer answers at the lock's address`);
-    expect(Date.now() - stoppingAt).toBeLessThan(5_000);
+    // 닫힌 포트가 바로 거절되지 않으면 probe가 HEALTH_PROBE_TIMEOUT_MS를 다 쓰고, Windows에서는 그 중단이
+    // 예산보다 늦게 돌아온다. 관측된 초과는 2초 안이고, 생산 사다리 EXTERNAL_ESCALATION_MS와는 여전히 구분된다.
+    expect(Date.now() - stoppingAt).toBeLessThan(HEALTH_PROBE_TIMEOUT_MS + 3_000);
     expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(bystanderPid);
 
     // A pid that started after the lock was written cannot be its author, but while that pid lives the lock stays: only
