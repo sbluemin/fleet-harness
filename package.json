@@ -30,7 +30,7 @@
     "fleet": "./runtime/fleet-console/dist/fleet.mjs"
   },
   "pnpm": {
-    "//supportedArchitectures": "배포 타깃(macOS arm64, Windows x64)의 optional 네이티브 패키지(@esbuild/*)를 호스트 arch와 무관하게 설치한다. arm64 Windows에서도 x64 desktop 패키징이 가능하도록.",
+    "//supportedArchitectures": "\ubc30\ud3ec \ud0c0\uae43(macOS arm64, Windows x64)\uc758 optional \ub124\uc774\ud2f0\ube0c \ud328\ud0a4\uc9c0(@esbuild/*)\ub97c \ud638\uc2a4\ud2b8 arch\uc640 \ubb34\uad00\ud558\uac8c \uc124\uce58\ud55c\ub2e4. arm64 Windows\uc5d0\uc11c\ub3c4 x64 desktop \ud328\ud0a4\uc9d5\uc774 \uac00\ub2a5\ud558\ub3c4\ub85d.",
     "supportedArchitectures": {
       "os": [
         "current",
@@ -45,6 +45,9 @@
     },
     "patchedDependencies": {
       "expo-modules-jsi@57.0.4": "patches/expo-modules-jsi@57.0.4.patch"
+    },
+    "overrides": {
+      "@xmldom/xmldom": "0.9.12"
     }
   },
   "devDependencies": {
