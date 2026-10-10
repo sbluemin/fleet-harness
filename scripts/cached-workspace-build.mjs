@@ -7,7 +7,10 @@
  * source hashes of its workspace dependencies. Console also hashes plugin sources and
  * the scripts its bundle runs, because those change dist without living in the package.
  * CI restores dist and .cache/build-stamps from an earlier run; a miss still builds
- * only the packages whose hashes moved. Set FLEET_WORKSPACE_BUILD_CACHE=0 to build all.
+ * only the packages whose hashes moved. A skipped Console build still writes the
+ * gitignored shim-key module that cache does not store: later jobs import it from
+ * source, and a matching stamp means the generator inputs are unchanged.
+ * Set FLEET_WORKSPACE_BUILD_CACHE=0 to build all.
  */
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -33,6 +36,19 @@ const OUTPUT_MARKERS = {
 
 const EXTRA_INPUTS = {
   "@dotobokuri/fleet-console": ["runtime/fleet-plugins", "scripts"],
+};
+
+/**
+ * Gitignored sources a skipped build must still leave on disk. Dist markers and the
+ * workflow cache do not include them, and vitest resolves the `.js` import to the `.ts`.
+ */
+const GENERATED_WHEN_SKIPPED = {
+  "@dotobokuri/fleet-console": [
+    {
+      marker: "core/host/plugin-host/shim-keys.generated.ts",
+      script: "scripts/generate-fleet-console-shim-keys.mjs",
+    },
+  ],
 };
 
 function readWorkspaceDirs() {
@@ -149,6 +165,28 @@ function writeStamp(name, hash) {
   fs.writeFileSync(path.join(stampDir, `${encodeURIComponent(name)}.json`), `${JSON.stringify({ name, hash })}\n`);
 }
 
+function ensureGeneratedSources(pkg) {
+  for (const generated of GENERATED_WHEN_SKIPPED[pkg.name] ?? []) {
+    const marker = path.join(pkg.dir, generated.marker);
+    if (fs.existsSync(marker)) continue;
+    const started = Date.now();
+    const result = spawnSync(process.execPath, [path.join(root, generated.script)], {
+      cwd: root,
+      stdio: "inherit",
+      env: process.env,
+    });
+    if (result.error) {
+      console.error(result.error);
+      process.exit(1);
+    }
+    if (result.status !== 0) process.exit(result.status ?? 1);
+    if (!fs.existsSync(marker)) {
+      throw new Error(`${pkg.name} skipped its build but ${generated.script} did not write ${generated.marker}`);
+    }
+    console.log(`cached-workspace-build: generated ${generated.marker} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  }
+}
+
 function buildPackage(pkg) {
   const started = Date.now();
   // pnpm/action-setup puts pnpm.cmd on PATH on Windows. Node refuses to spawn a
@@ -197,6 +235,7 @@ function main() {
     if (!pkg.build || SKIP_BUILD.has(pkg.name)) continue;
     const hash = inputHash.get(pkg.name);
     if (!force && readStamp(pkg.name) === hash && outputsReady(pkg)) {
+      ensureGeneratedSources(pkg);
       skipped.push(pkg.name);
       continue;
     }
