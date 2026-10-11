@@ -47,7 +47,10 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   useEffect(() => {
     if (destination.kind !== "plugin") return;
     const entryId = destination.entryId;
-    const declared = bindings.find((binding) => binding.entry.id === entryId)?.entry.mobile?.destination?.shown;
+    const binding = bindings.find((candidate) => candidate.entry.id === entryId);
+    // 레지스트리에 없는 id(옛 주소·지워진 플러그인)는 빈 화면이 아니라 홈이다 — 레지스트리는 앱이 마운트되기 전에 만들어져 있다.
+    if (bindings.length > 0 && binding === undefined) { setMobileDestination({ kind: "home" }); return; }
+    const declared = binding?.entry.mobile?.destination?.shown;
     if (declared !== undefined && !destinationIds.has(entryId)) setMobileDestination({ kind: "home" });
   }, [bindings, destination, destinationIds]);
 
@@ -69,7 +72,8 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
     if (readMobileOperationId() !== null) { closeMobileOperation(); return true; }
     return false;
   };
-  useEffect(() => installMobileHistory(() => { if (!backRef.current()) window.history.go(-2); }), []);
+  // 이전 항목이 없는 새 탭은 [가드][루트] 두 칸뿐이라 go(-2)가 범위를 벗어난다 — 나갈 곳이 없으면 닫기만 시도하고 페이지에 남는다.
+  useEffect(() => installMobileHistory(() => { if (backRef.current()) return; if (window.history.length > 2) window.history.go(-2); else window.close(); }), []);
   // 앱의 하드웨어 뒤로: 같은 우선순위를 함수 호출로 받는다(history.back을 따로 쓰지 않는다).
   useEffect(() => installMobileBackBridge(() => backRef.current()), []);
 

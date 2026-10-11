@@ -1326,8 +1326,8 @@ html[data-view-mode="mobile"] .app-toast-action {
 
 /* 아바타: 지휘관 얼굴 하나와, 일하는 구성원이 있으면 오른쪽 아래에 겹친 미니 아바타. */
 .mobile-conv-avatar { position: relative; display: grid; place-items: center; flex: none; }
-.mobile-conv-avatar-stack { position: absolute; right: -4px; bottom: -3px; display: flex; }
-.mobile-conv-avatar-mini { display: grid; place-items: center; width: 20px; height: 20px; margin-left: -7px; background: var(--m-bg); border-radius: 50%; }
+.mobile-conv-avatar-stack { position: absolute; right: calc(var(--conv-mini-offset, 4px) * -1); bottom: calc(var(--conv-mini-offset, 4px) * -1); display: flex; }
+.mobile-conv-avatar-mini { display: grid; place-items: center; width: var(--conv-mini, 20px); height: var(--conv-mini, 20px); margin-left: calc(var(--conv-mini-overlap, 7px) * -1); background: var(--m-bg); border-radius: 50%; }
 .mobile-conv-attention .mobile-conv-avatar-mini { background: var(--m-surface); }
 
 .mobile-conv-empty { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 28px 36px; color: var(--m-text-muted); text-align: center; }

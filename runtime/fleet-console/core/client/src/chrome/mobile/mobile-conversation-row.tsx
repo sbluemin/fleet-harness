@@ -60,7 +60,8 @@ export function ConversationAvatar({ conversation, size = 52 }: { readonly conve
   const { operation, face, minis } = conversation;
   const main = minis.length > 0 ? Math.round(size * 0.86) : size;
   return (
-    <span className="mobile-conv-avatar" style={{ width: size, height: size }}>
+    // 미니 아바타 상자와 겹침 간격은 아바타 크기에 비례한다 — 목록 행(52)·머리 pill(36)·정보 화면(110)이 같은 모양이다.
+    <span className="mobile-conv-avatar" style={{ width: size, height: size, ["--conv-mini" as string]: `${Math.round(size * 0.38)}px`, ["--conv-mini-overlap" as string]: `${Math.round(size * 0.13)}px`, ["--conv-mini-offset" as string]: `${Math.round(size * 0.07)}px` }}>
       <OperationAvatar operation={operation} state={face} size={main} label="" decorative />
       {minis.length > 0 ? (
         <span className="mobile-conv-avatar-stack" aria-hidden="true">
