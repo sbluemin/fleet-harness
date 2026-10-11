@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConversationSurfaceContext, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
+import type { ConversationSurfaceContext, ConversationSurfaceDescriptor, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
@@ -20,7 +20,7 @@ import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js"
 import { useTheaterInboxState } from "../theater-inbox/store.js";
 import { useDesktopRailEntries } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { operationAvatarKey, theaterAvatarKey } from "@fleet-console/sdk/avatars";
+import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
@@ -299,6 +299,13 @@ function isConversationTab(entry: RailEntryDescriptor): boolean {
   return entry.conversationTab === true;
 }
 
+/** 플러그인 대화의 머리 값(아바타 얼굴 등)은 플러그인 저장소에 산다 — 그 대화가 알리면 머리를 다시 그린다. */
+function useConversationSurfaceHead(descriptor: Pick<ConversationSurfaceDescriptor, "subscribe"> | null): void {
+  const [, refresh] = useReducer((count: number) => count + 1, 0);
+  const subscribe = descriptor?.subscribe;
+  useEffect(() => (subscribe ? subscribe(refresh) : undefined), [subscribe]);
+}
+
 /** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름(Grok 세부 정보의 아바타·이름 자리). 대상이 없으면 서지 않는다. */
 function ConversationPanelIdentity() {
   const inbox = useTheaterInboxState();
@@ -311,21 +318,23 @@ function ConversationPanelIdentity() {
   const centerSurface = surface === null ? null : conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null;
   const descriptor = subject === null ? centerSurface : null;
   const clusterIndex = useClusterIndex();
+  useConversationSurfaceHead(centerSurface);
   // Theater 를 연 동안 패널은 그 Theater 의 것이다 — Theater 의 몽글 아바타는 그 사령관이다(사이드바 Theater 머리 표식과 같은 얼굴).
   // 가운데 칸에 그 Theater 를 대신하는 대화(사령관)가 서 있으면 이름은 그 대화의 이름이다 — 패널을 어느 길로 열든 머리가 같다.
   if (inbox !== null && theaterLabel !== null) {
     const context = centerSurface !== null && surface !== null
       ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
       : null;
-    let owner: { readonly title: string; readonly label: string } | null = null;
+    let owner: { readonly title: string; readonly label: string; readonly state: MongleState } | null = null;
     try {
       if (centerSurface !== null && context !== null && centerSurface.theater?.(context)?.theaterId === inbox.theaterId) {
-        owner = { title: centerSurface.title(context), label: centerSurface.avatar?.(context)?.label ?? centerSurface.title(context) };
+        const avatar = centerSurface.avatar?.(context) ?? null;
+        owner = { title: centerSurface.title(context), label: avatar?.label ?? centerSurface.title(context), state: avatar?.state ?? "idle" };
       }
     } catch { owner = null; }
     return (
       <div className="conversation-panel-identity">
-        <AvatarEditor avatarKey={theaterAvatarKey(inbox.theaterId)} role="commodore" state="idle" size={64} label={owner?.label ?? theaterLabel} />
+        <AvatarEditor avatarKey={theaterAvatarKey(inbox.theaterId)} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
         <strong className="conversation-panel-identity-name">{owner?.title ?? theaterLabel}</strong>
       </div>
     );
@@ -345,7 +354,7 @@ function ConversationPanelIdentity() {
     return (
       <div className="conversation-panel-identity">
         {avatar
-          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state="idle" size={64} label={avatar.label} />
+          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
           : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
         <strong className="conversation-panel-identity-name">{descriptor.title(context)}</strong>
       </div>
@@ -615,6 +624,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   readonly onToggleDetails: () => void;
 }) {
   const t = useT();
+  useConversationSurfaceHead(descriptor);
   const context = useMemo<ConversationSurfaceContext>(() => ({
     params: selection.params,
     language,
@@ -666,7 +676,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       <div className="conversation-pill-row">
         <button type="button" className="conversation-pill" onClick={onToggleDetails} aria-label={t("conversation.pill.detailsAria", { title })}>
           {avatar
-            ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state="idle" size={20} label={avatar.label} decorative className="conversation-pill-mark" />
+            ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
             : descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
           <span className="conversation-pill-title">{title}</span>
           {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}

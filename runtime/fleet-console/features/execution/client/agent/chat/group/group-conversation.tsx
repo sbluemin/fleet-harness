@@ -4,7 +4,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import { getGroupT } from "./group-chat-i18n.js";
-import { SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
+import { LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
 import "./group-chat.css";
@@ -62,6 +62,9 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
     if (log && nearBottomRef.current) log.scrollTop = log.scrollHeight;
   }, [growth]);
 
+  // 발화자마다 가장 최근 말풍선 묶음의 머리 — 그 표식만 발화자의 지금 상태를 보인다(지난 묶음은 쉼).
+  const liveHeads = React.useMemo(() => latestBubbleHeads(entries), [entries]);
+
   const unavailableNames = snapshot.unavailableOperationIds
     .map((id) => findSpeaker(snapshot, id)?.name)
     .filter((name): name is string => typeof name === "string");
@@ -93,6 +96,8 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
               key={entry.id}
               entry={entry}
               previous={entries[index - 1]}
+              live={liveHeads.has(entry.id)}
+              participants={snapshot.participants}
               language={language}
               onOpenLedger={onOpenLedger}
               onOpenCommodoreRecord={onOpenCommodoreRecord}
@@ -142,6 +147,25 @@ function sameSpeaker(entry: GroupTimelineEntry | undefined, speaker: Conversatio
   return entry?.kind === "message" && speakerKey(entry.speaker) === speakerKey(speaker);
 }
 
+/** 말풍선이 서는 말인가 — 문면이 없는 말은 흐르는 중일 때만 「쓰는 중」으로 선다(`MessageBubble` 과 같은 규칙). */
+const bubbleShown = (entry: Extract<GroupTimelineEntry, { kind: "message" }>): boolean => entry.streaming || entry.text.trim().length > 0;
+
+/**
+ * 사람이 아닌 발화자마다 가장 최근 말풍선 묶음의 머리 말 id. 묶음은 같은 발화자의 이어진 말이고 머리는 그 첫 말(표식이 서는
+ * 자리)이다. 흐르는 중인 응답이 있으면 그 묶음이 최신이다. 서는 말이 하나도 없는 묶음은 최신으로 치지 않는다.
+ */
+function latestBubbleHeads(entries: readonly GroupTimelineEntry[]): ReadonlySet<string> {
+  const latest = new Map<string, string>();
+  let head: string | null = null;
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]!;
+    if (entry.kind !== "message" || entry.speaker.kind === "human") { head = null; continue; }
+    if (head === null || !sameSpeaker(entries[index - 1], entry.speaker)) head = entry.id;
+    if (bubbleShown(entry)) latest.set(speakerKey(entry.speaker), head);
+  }
+  return new Set(latest.values());
+}
+
 const TIME_FORMATS = {
   en: new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }),
   ko: new Intl.DateTimeFormat("ko", { hour: "2-digit", minute: "2-digit" }),
@@ -155,15 +179,17 @@ function excerpt(text: string, max = 120): string {
   return first.length > max ? `${first.slice(0, max)}…` : first;
 }
 
-function TimelineEntry({ entry, previous, language, onOpenLedger, onOpenCommodoreRecord }: {
+function TimelineEntry({ entry, previous, live, participants, language, onOpenLedger, onOpenCommodoreRecord }: {
   readonly entry: GroupTimelineEntry;
   readonly previous: GroupTimelineEntry | undefined;
+  readonly live: boolean;
+  readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
   readonly onOpenCommodoreRecord: GroupConversationProps["onOpenCommodoreRecord"];
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker)} language={language} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker)} live={live} participants={participants} language={language} />;
     case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -171,9 +197,11 @@ function TimelineEntry({ entry, previous, language, onOpenLedger, onOpenCommodor
   }
 }
 
-function MessageBubble({ entry, continued, language }: {
+function MessageBubble({ entry, continued, live, participants, language }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "message" }>;
   readonly continued: boolean;
+  readonly live: boolean;
+  readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
 }) {
   const t = getGroupT(language);
@@ -201,7 +229,7 @@ function MessageBubble({ entry, continued, language }: {
   // 지휘관·구성원의 응답은 채팅과 같이 마크다운이다. 흐르는 동안에는 글자 단위로 자란다.
   return (
     <div className={`group-chat-agent${continued ? " is-continued" : ""}`} {...(time ? { title: time } : {})}>
-      <span className="group-chat-agent-mark">{continued ? null : <SpeakerMark speaker={entry.speaker} />}</span>
+      <span className="group-chat-agent-mark">{continued ? null : live ? <LiveSpeakerMark speaker={entry.speaker} participants={participants} /> : <SpeakerMark speaker={entry.speaker} />}</span>
       <div className="group-chat-agent-box">
         {continued ? null : <SpeakerName speaker={entry.speaker} className="group-chat-agent-name" />}
         <div className="group-chat-bubble is-agent is-markdown">

@@ -1,12 +1,12 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
-import { mongleStateOf, operationAvatarKey, theaterAvatarKey } from "@fleet-console/sdk/avatars";
+import { operationAvatarKey, theaterAvatarKey } from "@fleet-console/sdk/avatars";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import { activityKey, memberActivityVisual } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
-import { AvatarEditor, operationMongleState } from "../../../../../workspace/client/avatars.js";
+import { participantMongleState, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
+import { AvatarEditor } from "../../../../../workspace/client/avatars.js";
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import { useConversationClusters, useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import "./group-chat.css";
@@ -74,8 +74,7 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
         : speaker.kind === "human" ? t("group.you") : t("group.operation");
   // Operation 이 있는 참여자(사령관 포함)의 아바타는 이 탭에서 고친다 — 대화 중심 화면에만 서는 탭이다. 사람은 첫 글자 칩 그대로다.
   const subject = useConversationSubject();
-  // 얼굴은 다른 표면과 같은 기준이다 — Operation 이 있는 참여자는 Console 의 공개 활동 축(지휘관은 구성원을 끌어올린 값)과
-  // 묶음의 검토 대기·결정 요청·임무 완료로, 사령관은 이 줄의 활동으로 고른다.
+  // 얼굴은 다른 표면과 같은 기준이다 — 말풍선의 최신 표식과 같은 `participantMongleState` 를 지난다.
   const consoleState = useConsoleState();
   const clusters = useConversationClusters();
   const avatar = speaker.kind === "commodore"
@@ -107,9 +106,7 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
   return (
     <li className={`group-members-row${onLedger ? " is-openable" : ""}${showing ? " is-showing" : ""}`}>
       {avatar ? (
-        <AvatarEditor layout="inline" avatarKey={avatar.key} role={avatar.role} state={speaker.kind !== "commodore" && speaker.operationId
-          ? operationMongleState(speaker.operationId, consoleState, clusters)
-          : mongleStateOf({ activity: activity === "unknown" ? null : activity })} size={26} label={speaker.name}>
+        <AvatarEditor layout="inline" avatarKey={avatar.key} role={avatar.role} state={participantMongleState(speaker, participant.activity, consoleState, clusters)} size={26} label={speaker.name}>
           {main}
         </AvatarEditor>
       ) : main}
