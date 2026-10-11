@@ -1,13 +1,23 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineSnapshot, OperationClusterConversation } from "@fleet-console/sdk/conversation";
-import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { OperationClusterSource, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { getState, ownOperationRuntime, subscribe as subscribeConsole } from "../../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../../core/client/src/hooks/use-store.js";
-import { useOperationClusters } from "../../../../workspace/client/operation-clusters.js";
+import { useT } from "../../../../../core/client/src/i18n/index.js";
 import { getAgentState, subscribe as subscribeAgent } from "../store.js";
 import { readChatJournalEvent } from "./chat-events.js";
 import { createChatSocketSession } from "./chat-store.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationJournal } from "./group-timeline.js";
+
+const EMPTY_CLUSTERS: ReturnType<OperationClusterSource["get"]> = [];
+const emptyClusterSource: OperationClusterSource = { get: () => EMPTY_CLUSTERS, subscribe: () => () => {} };
+const GroupClusterContext = createContext<OperationClusterSource>(emptyClusterSource);
+/** 조합 루트가 기존 SDK 원천을 주입한다. 실행 기능은 플러그인 레지스트리를 읽지 않는다. */
+export const GroupClusterProvider = GroupClusterContext.Provider;
+export function useGroupClusters() {
+  const source = useContext(GroupClusterContext);
+  return useSyncExternalStore(source.subscribe, source.get, source.get);
+}
 
 type Held = { root: string; generation: string | undefined; journal: ConversationJournal; staging: ConversationJournal; loading: boolean; available: boolean; socket?: ReturnType<typeof createChatSocketSession> };
 const held = new Map<string, Held>();
@@ -84,7 +94,7 @@ export function installGroupTimeline(ctx: { readonly experiments: Pick<PluginIns
   };
 }
 
-function snapshot(rootOperationId: string | null, board?: OperationClusterConversation): GroupTimelineSnapshot {
+function snapshot(rootOperationId: string | null, board: OperationClusterConversation | undefined, commanderName: string): GroupTimelineSnapshot {
   const state = getState();
   const operations = [...state.operations, ...state.nestedOperations];
   const root = operations.find((operation) => operation.id === rootOperationId);
@@ -92,7 +102,7 @@ function snapshot(rootOperationId: string | null, board?: OperationClusterConver
   const byMember = new Map(board?.members.flatMap((member) => member.operationId ? [[member.operationId, member] as const] : []) ?? []);
   const current = operations.filter((operation) => operation.id === rootOperationId || operation.parentOperationId === rootOperationId);
   const participants: ConversationParticipant[] = current.map((operation) => {
-    const speaker: ConversationSpeaker = byMember.get(operation.id) ?? { kind: operation.id === rootOperationId ? (board ? "commander" : "operation") : "member", name: operation.title, operationId: operation.id };
+    const speaker: ConversationSpeaker = byMember.get(operation.id) ?? { kind: operation.id === rootOperationId ? (board ? "commander" : "operation") : "member", name: operation.id === rootOperationId && board ? commanderName : operation.title, operationId: operation.id };
     const observed = runtime[operation.id];
     return { speaker, activity: observed?.lifecycle === "live" ? observed.activity : observed?.lifecycle === "dormant" ? "ended" : "unknown" };
   });
@@ -120,21 +130,23 @@ function snapshot(rootOperationId: string | null, board?: OperationClusterConver
 }
 
 export function useGroupTimeline(rootOperationId: string | null): GroupTimelineSnapshot {
+  const t = useT();
   const tick = useSyncExternalStore(subscribe, getRevision, getRevision);
   const state = useConsoleState();
-  const clusters = useOperationClusters();
-  return useMemo(() => snapshot(rootOperationId, clusters.find((cluster) => cluster.conversation?.operationId === rootOperationId)?.conversation), [rootOperationId, clusters, state, tick]);
+  const clusters = useGroupClusters();
+  return useMemo(() => snapshot(rootOperationId, clusters.find((cluster) => cluster.conversation?.operationId === rootOperationId)?.conversation, t("cluster.picker.coordinator")), [rootOperationId, clusters, state, tick, t]);
 }
 
 export function useConversationPreviews(): Readonly<Record<string, ConversationPreview>> {
+  const t = useT();
   const tick = useSyncExternalStore(subscribe, getRevision, getRevision);
   const state = useConsoleState();
-  const clusters = useOperationClusters();
+  const clusters = useGroupClusters();
   return useMemo(() => {
     const boards = new Map(clusters.flatMap((cluster) => cluster.conversation ? [[cluster.conversation.operationId, cluster.conversation] as const] : []));
     const ids = new Set([...state.operations.filter((operation) => operation.type === "agent").map((operation) => operation.id), ...boards.keys()]);
     const previews: Record<string, ConversationPreview> = {};
-    for (const id of ids) { const preview = snapshot(id, boards.get(id)).preview; if (preview) previews[id] = preview; }
+    for (const id of ids) { const preview = snapshot(id, boards.get(id), t("cluster.picker.coordinator")).preview; if (preview) previews[id] = preview; }
     return previews;
-  }, [state, clusters, tick]);
+  }, [state, clusters, tick, t]);
 }

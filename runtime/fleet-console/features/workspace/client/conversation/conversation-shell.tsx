@@ -436,7 +436,7 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
         >
           <OperationNameMark operation={operation} status={activity} className="conversation-pill-mark" />
           <span className="conversation-pill-title">{operation.title}</span>
-          {bodyOwner !== operation ? <span className="conversation-pill-sub">› {bodyOwner.title}</span> : null}
+          {bodyOwner !== operation ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.operationId === bodyOwner.id)?.name ?? clusterRoot?.formation.byOperationId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
           {memberCount > 0 ? (
             <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
           ) : null}

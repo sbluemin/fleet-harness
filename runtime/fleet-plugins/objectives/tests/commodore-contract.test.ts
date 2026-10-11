@@ -114,8 +114,13 @@ describe("commodore theater state", () => {
     // 설정은 켜졌지만 감독자 알림이 아직 오지 않은 경계 — 받을 runner가 없으면 기록도 남기지 않는다.
     expect(await h.route("commodore/message", { theaterId: "t1", text: "Before the runner." }, { run: () => null })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
-    const sent = await h.route("commodore/message", { theaterId: "t1", text: "Prefer small objectives." }, { run: () => ({ phase: "idle" }) });
-    expect(sent.value.entry).toMatchObject({ seq: 4, kind: "message", text: "Prefer small objectives." });
+    const hooks: CommodoreRouteHooks = { run: () => ({ phase: "idle" }), objective: (id) => id === "missing" ? null : { id, theaterId: id === "foreign" ? "t2" : "t1", title: "Small scope" } };
+    expect((await h.route("commodore/message", { theaterId: "t1", objectiveId: "foreign", text: "wrong scope" }, hooks)).value).toMatchObject({ error: "objective_theater_mismatch" });
+    expect((await h.route("commodore/message", { theaterId: "t1", objectiveId: "missing", text: "missing scope" }, hooks)).value).toMatchObject({ error: "unknown_objective" });
+    expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
+    const sent = await h.route("commodore/message", { theaterId: "t1", objectiveId: "o1", text: "Prefer small objectives." }, hooks);
+    expect(sent.value.entry).toMatchObject({ seq: 4, kind: "message", text: "Prefer small objectives.", objective: { id: "o1", title: "Small scope" } });
+    expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).transcriptRead("t1").entries.at(-1)).toMatchObject({ objective: { id: "o1", title: "Small scope" } });
     expect(h.events.filter((event) => event.op === "transcript")).toHaveLength(4);
     h.setExperiments({ commodore: false });
     expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_disabled" } });

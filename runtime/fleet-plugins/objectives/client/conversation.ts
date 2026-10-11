@@ -1,8 +1,8 @@
-import type { ConversationSpeaker, GroupTimelineEntry, OperationClusterConversation } from "@fleet-console/sdk/conversation";
+import type { ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, OperationClusterConversation } from "@fleet-console/sdk/conversation";
 import { MAX_OBJECTIVE_ACTIONS, type Objective } from "../server/types.js";
 
 /** Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. */
-export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void): OperationClusterConversation {
+export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void, actions?: GroupConversationActions): OperationClusterConversation {
   const members: ConversationSpeaker[] = objective.members.map((member, index) => ({ kind: "member", operationId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) } }));
   const events: GroupTimelineEntry[] = (objective.memberHistory ?? []).map((entry) => ({
     kind: entry.kind === "joined" ? "member-joined" : "member-left", id: `membership:${objective.id}:${entry.id}`, at: entry.at,
@@ -26,8 +26,9 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
     if (entry && entry.at !== null) openRecord(entry.at);
   } : undefined;
-  return { operationId: objective.id, members, events, truncated, ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
+  return { operationId: objective.id, members, events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
     id: request.id, title: request.questions[0]?.text ?? objective.title, createdAt: request.createdAt,
     questions: request.questions.map((question) => ({ id: question.id, text: question.text, multiSelect: question.multiSelect, options: question.options })), open,
+    ...(actions ? { answer: (answers) => actions.answerDecision(request.id, answers) } : {}),
   } : null };
 }

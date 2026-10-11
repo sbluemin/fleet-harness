@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import type { ConsoleActionInput } from "@fleet-console/sdk/mcp";
 
 import { isChatCommandLane, type ChatCommandConsoleTarget } from "./chat-command-policy.js";
 import { splitLaunchAttachmentInstructions } from "./launch-attachments.js";
@@ -15,7 +16,7 @@ import { splitLaunchAttachmentInstructions } from "./launch-attachments.js";
 
 /** 쓰기 계열 도구가 남긴 파일 변경 — 도구 입력에서 접는다(원문 본문은 싣지 않는다). */
 /** 사람이 아닌 발화자 — 브라우저 DTO 에 실리며 제목만 싣고 경로·세션 신원은 없다. */
-export type ChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
+export type ChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
 
 /**
  * 사용자가 함께 보낸 이미지 하나. 브라우저에 가는 것은 미리보기 라우트의 좌표(id)뿐이고 호스트
@@ -565,7 +566,7 @@ export function readChatCommandLaneName(text: string): string | null {
  * 사람·다른 Operation이 보낸 표식은 앞에 보이지 않는 글자가 붙어 읽히지 않고, 플러그인이 본문에
  * 심은 표식은 호스트 표식 뒤에 서므로 읽히지 않는다.
  */
-const CHAT_ORIGIN_TAG = /^<fleet-origin plugin="([A-Za-z0-9._-]{1,128})"(?: shown="(\d{1,6})-(\d{1,6})")?( format="markdown")?\/>\n/;
+const CHAT_ORIGIN_TAG = /^<fleet-origin plugin="([A-Za-z0-9._-]{1,128})"(?: shown="(\d{1,6})-(\d{1,6})")?( format="markdown")?(?: human="([A-Za-z0-9_-]{1,1024})")?\/>\n/;
 const CHAT_ORIGIN_PLUGIN_ID = /^[A-Za-z0-9._-]{1,128}$/;
 // `\s`는 BOM(U+FEFF)을 포함하고 U+200B는 포함하지 않는다 — 무력화한 문면은 다시 걸리지 않는다.
 const CHAT_ORIGIN_TAG_LEAD = /^\s*<fleet-origin\b/i;
@@ -584,7 +585,8 @@ export function tagChatOrigin(text: string, by: ChatOrigin | undefined, display:
   if (by?.kind !== "plugin" || !CHAT_ORIGIN_PLUGIN_ID.test(by.pluginId) || body.startsWith("/")) return body;
   const start = display.length > 0 ? body.lastIndexOf(display) : -1;
   const shown = start >= 0 ? ` shown="${start}-${start + display.length}"` : "";
-  return `<fleet-origin plugin="${by.pluginId}"${shown}${format === "markdown" ? ' format="markdown"' : ""}/>\n${body}`;
+  const human = by.humanInput ? ` human="${Buffer.from(JSON.stringify(by.humanInput)).toString("base64url")}"` : "";
+  return `<fleet-origin plugin="${by.pluginId}"${shown}${format === "markdown" ? ' format="markdown"' : ""}${human}/>\n${body}`;
 }
 
 /** 트랜스크립트의 압축 경계를 라이브 `compact_boundary`와 같은 결말로 옮긴다. 압축 전 크기가 없으면 경계라고 말할 근거가 없다. */
@@ -604,6 +606,15 @@ function compactEndFromTranscript(meta: unknown): readonly AgentChatStreamEvent[
   }];
 }
 
+function readHumanInputTag(encoded: string): ConsoleActionInput["humanInput"] {
+  try {
+    const value = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    if (!value || typeof value.id !== "string" || !/^[0-9a-f-]{36}$/i.test(value.id)) return undefined;
+    if (value.targetOperationId !== undefined && (typeof value.targetOperationId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.targetOperationId))) return undefined;
+    return { id: value.id, ...(value.targetOperationId ? { targetOperationId: value.targetOperationId } : {}), ...(value.copy === true ? { copy: true } : {}) };
+  } catch { return undefined; }
+}
+
 /** 재생 문면이 호스트 표식으로 시작하면 출처와 원장 문면을 되찾는다. */
 function readChatOriginTag(text: string): { readonly by: ChatOrigin; readonly text: string; readonly format?: "markdown" } | null {
   const match = CHAT_ORIGIN_TAG.exec(text);
@@ -612,7 +623,7 @@ function readChatOriginTag(text: string): { readonly by: ChatOrigin; readonly te
   const start = match[2] === undefined ? 0 : Number(match[2]);
   const end = match[3] === undefined ? 0 : Number(match[3]);
   return {
-    by: { kind: "plugin", pluginId: match[1]! },
+    by: { kind: "plugin", pluginId: match[1]!, ...(match[5] ? { humanInput: readHumanInputTag(match[5]) } : {}) },
     text: start <= end ? body.slice(start, end).trim() : "",
     ...(match[4] ? { format: "markdown" as const } : {}),
   };

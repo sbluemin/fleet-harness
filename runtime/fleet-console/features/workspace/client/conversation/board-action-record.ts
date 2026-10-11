@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 
-import { useOperationClusters } from "../operation-clusters.js";
+import type { OperationCluster } from "@fleet-console/sdk/plugin";
 
 /** 그룹 대화의 `board-action` 줄 하나 — 줄의 목표(묶음 conversation.operationId)·줄 id·시각. */
 export interface BoardActionRecordRequest {
@@ -14,8 +14,7 @@ export interface BoardActionRecordRequest {
  * 선다). 기록을 찾는 일은 묶음을 공급한 플러그인의 `conversation.openBoardAction` 이 한다 — 호스트는 줄을 그 플러그인에게
  * 건네기만 한다. 기록이 없는 줄이면 아무 일도 하지 않는다.
  */
-export function useOpenBoardActionRecord(): (request: BoardActionRecordRequest) => void {
-  const clusters = useOperationClusters();
+export function useOpenBoardActionRecord(clusters: readonly OperationCluster[]): (request: BoardActionRecordRequest) => void {
   return useCallback((request: BoardActionRecordRequest) => {
     const owner = clusters.find((cluster) => cluster.conversation?.operationId === request.objectiveId);
     owner?.conversation?.openBoardAction?.(request.entryId);

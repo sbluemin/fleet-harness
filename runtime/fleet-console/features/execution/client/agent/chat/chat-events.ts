@@ -6,6 +6,8 @@
  * tests/agent-chat-events.test.ts가 못 박는다.
  */
 
+import type { ConsoleActionInput } from "@fleet-console/sdk/mcp";
+
 /** 쓰기 계열 도구가 남긴 파일 변경 — 서버가 도구 입력에서 접어 보낸다. */
 export interface AgentChatChange {
   readonly file: string;
@@ -30,12 +32,17 @@ export type AgentChatAskForm = "question" | "plan";
 export type AgentChatAskOutcome = "answered" | "dismissed" | "approved" | "revised";
 
 /** 사람이 아닌 발화자 — Console Use 로 보낸·답한 다른 Operation. 제목만 온다. */
-export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly label?: string };
+export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly label?: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
 export function readChatOrigin(value: unknown): AgentChatOrigin | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   if (record.kind === "operation" && typeof record.operationId === "string") return { kind: "operation", operationId: record.operationId, title: typeof record.title === "string" ? record.title : record.operationId };
-  if (record.kind === "plugin" && typeof record.pluginId === "string") return { kind: "plugin", pluginId: record.pluginId };
+  if (record.kind === "plugin" && typeof record.pluginId === "string") {
+    const input = record.humanInput as ConsoleActionInput["humanInput"];
+    const valid = input && typeof input.id === "string" && /^[0-9a-f-]{36}$/i.test(input.id)
+      && (input.targetOperationId === undefined || (typeof input.targetOperationId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(input.targetOperationId)));
+    return { kind: "plugin", pluginId: record.pluginId, ...(valid ? { humanInput: { id: input.id, ...(input.targetOperationId ? { targetOperationId: input.targetOperationId } : {}), ...(input.copy === true ? { copy: true } : {}) } } : {}) };
+  }
   return undefined;
 }
 export function chatOriginLabel(origin: AgentChatOrigin): string { return origin.kind === "operation" ? origin.title : origin.pluginId; }

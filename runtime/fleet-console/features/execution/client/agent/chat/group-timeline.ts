@@ -27,10 +27,13 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
   switch (event.kind) {
     case "dispatch":
     case "turn-inject": {
-      const by: ConversationSpeaker = event.by?.kind === "operation"
-        ? { kind: "operation", operationId: event.by.operationId, name: event.by.title }
-        : event.by ? { kind: "operation", name: event.by.pluginId } : { kind: "human", name: "Human" };
-      entries.push({ kind: "message", id, at, operationId, speaker: by, text: event.text, ...(event.by ? { format: "markdown" as const } : {}), streaming: false });
+      const human = event.by?.kind === "plugin" ? event.by.humanInput : undefined;
+      const by: ConversationSpeaker = human || !event.by ? { kind: "human", name: "Human" }
+        : event.by.kind === "operation" ? { kind: "operation", operationId: event.by.operationId, name: event.by.title }
+          : { kind: "operation", name: event.by.pluginId };
+      entries.push({ kind: "message", id: human ? `human:${human.id}` : id, at, operationId, speaker: by, text: event.text,
+        ...(by.kind !== "human" ? { format: "markdown" as const } : {}), streaming: false,
+        ...(human?.targetOperationId ? { recipient: operationSpeaker(human.targetOperationId) } : {}), ...(human?.copy ? { copied: true } : {}) });
       break;
     }
     case "text-delta": {
@@ -98,7 +101,12 @@ export function composeGroupTimeline(input: {
     if (!speakers.has(operationId)) continue;
     truncated ||= journal.truncated;
     for (const item of journal.entries) {
-      if (item.kind === "message") { entries.set(item.id, { ...item, speaker: resolve(item.speaker) }); continue; }
+      if (item.kind === "message") {
+        const previous = entries.get(item.id);
+        // 서버가 부여한 사람 발송 ID가 같을 때만 원본을 지휘관 사본보다 우선한다. 본문/시간으로 추측하지 않는다.
+        if (previous?.kind !== "message" || previous.copied || !item.copied) entries.set(item.id, { ...item, speaker: resolve(item.speaker), ...(item.recipient ? { recipient: resolve(item.recipient) } : {}) });
+        continue;
+      }
       if (item.kind !== "delegation") continue;
       const senderId = [...speakers.keys()].sort((a, b) => b.length - a.length).find((id) => item.id.startsWith(`delegation:${id}:`));
       const sender = senderId ? speakers.get(senderId)! : resolve(item.sender);

@@ -27,6 +27,8 @@ export interface ConversationDecision {
   }[];
   /** 결정 쓰기는 플러그인의 승인 표면을 통해서만 한다. */
   readonly open: () => void;
+  /** 기존 보드 결정 제출 경로. 오래된 요청/전달 실패는 reject한다. */
+  readonly answer?: (answers: readonly GroupDecisionAnswer[]) => Promise<void>;
 }
 
 export interface ConversationParticipant {
@@ -36,7 +38,7 @@ export interface ConversationParticipant {
 
 type EntryCoordinate = { readonly id: string; readonly at: number | null };
 export type GroupTimelineEntry = EntryCoordinate & (
-  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly streaming: boolean }
+  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean }
   | { readonly kind: "delegation"; readonly sender: ConversationSpeaker; readonly recipients: readonly ConversationSpeaker[]; readonly text: string; readonly result: string; readonly ok?: boolean; readonly received: boolean }
   | { readonly kind: "member-joined" | "member-left"; readonly speaker: ConversationSpeaker }
   | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: string; readonly text: string }
@@ -54,6 +56,27 @@ export interface OperationClusterConversation {
    * 플러그인이 줄 id 로 자기 기록을 찾는다. 없으면 그 줄은 펼침만 있다.
    */
   readonly openBoardAction?: (entryId: string) => void;
+  readonly actions?: GroupConversationActions;
+}
+
+export type GroupMessageTarget =
+  | { readonly kind: "commander" }
+  | { readonly kind: "member"; readonly operationId: string }
+  | { readonly kind: "all" }
+  | { readonly kind: "commodore" };
+export interface GroupDecisionAnswer {
+  readonly questionId: string;
+  readonly selectedOptionIds: readonly string[];
+  readonly text: string;
+}
+export interface GroupWriteResult {
+  readonly targets: readonly { readonly targetId: string; readonly outcome: "sent" | "stopped" | "skipped" | "failed"; readonly reason?: string }[];
+  readonly commanderNotified?: boolean;
+}
+export interface GroupConversationActions {
+  readonly send: (target: GroupMessageTarget, text: string) => Promise<GroupWriteResult>;
+  readonly stopAll: () => Promise<GroupWriteResult>;
+  readonly answerDecision: (requestId: string, answers: readonly GroupDecisionAnswer[]) => Promise<void>;
 }
 
 export interface GroupTimelineSnapshot {

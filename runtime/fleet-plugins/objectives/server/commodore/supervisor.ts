@@ -519,7 +519,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       }
       return;
     }
-    if (event.op === "transcript" && event.entry.kind === "message" && runner) { runner.messages.push({ seq: event.entry.seq, text: event.entry.text }); wake(runner, "message"); }
+    if (event.op === "transcript" && event.entry.kind === "message" && runner) {
+      const { entry } = event;
+      const text = entry.objective ? `Objective context: ${JSON.stringify(entry.objective)}\n${entry.text}` : entry.text;
+      runner.messages.push({ seq: entry.seq, text }); wake(runner, "message");
+    }
   }));
 
   /** 사람이 운영하는 목표에 나서 깨우지 않은 사건 — 다음 턴의 범위 줄에 한 번 실리고 비워진다. */

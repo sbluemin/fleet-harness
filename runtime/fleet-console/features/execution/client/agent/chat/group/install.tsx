@@ -12,7 +12,7 @@ import {
   type ConversationBodyContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
-import { useGroupTimeline } from "../group-timeline-store.js";
+import { useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
@@ -69,7 +69,7 @@ function RootConversation({ root, language }: { readonly root: OperationNode; re
   const snapshot = useGroupTimeline(root.id);
   const openLedger = React.useCallback((operationId: string) => selectNestedBody(root.id, operationId), [root.id]);
   // 사령관 행위 줄 → 읽기 전용 사령관 기록(그 턴 위치). 기록을 찾는 일은 묶음을 공급한 플러그인이 한다(임무 14 계약).
-  const openRecord = useOpenBoardActionRecord();
+  const openRecord = useOpenBoardActionRecord(useGroupClusters());
   // 정지(onStopParticipant)는 아직 연결하지 않는다 — 단추도 서지 않는다.
   return <GroupConversation snapshot={snapshot} language={language} onOpenLedger={openLedger} onOpenCommodoreRecord={openRecord} />;
 }

@@ -43,6 +43,7 @@ import { installModelRosterSync } from "../../../../features/ai-gateway/client/m
 import { installModalOpenMarker } from "../integration/modal-open-marker.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
+import { GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredGlassOpacity } from "../integration/glass-opacity-store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
@@ -136,7 +137,7 @@ if (app && hostPicker) {
     <StrictMode>
       <BrowserRouter basename="/console">
         <PluginRegistryProvider value={registry}>
-          <App />
+          <GroupClusterProvider value={registry.operationClusters}><App /></GroupClusterProvider>
         </PluginRegistryProvider>
       </BrowserRouter>
     </StrictMode>,
