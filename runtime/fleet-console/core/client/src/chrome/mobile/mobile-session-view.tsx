@@ -2,28 +2,27 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ClientMobileOperationCapability, ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
-import { getIdleArrivalIds } from "../../../../../features/execution/client/operation-marks.js";
-import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { useT } from "../../i18n/index.js";
 import type { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import type { OperationGeometry, OperationNode } from "../../integration/types.js";
-import { openQuickLaunch } from "../../integration/store.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
 import { operationHarnessLabel } from "./mobile-operation-label.js";
+import { mobileOperationMenuItems } from "./mobile-operation-menu.js";
+import { ConversationAvatar, conversationStateWord, useMobileConversationOf } from "./mobile-conversation-row.js";
+import { useConsoleState } from "../../hooks/use-store.js";
 import { closeMobileOperation } from "./mobile-operation-url.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
-import { MobileIcon } from "./mobile-icons.js";
-import { pushMobileSheet, setMobileOperationMenu, useMobileOperationMenu } from "./mobile-store.js";
+import { pushMobileSheet, setMobileDestination, setMobileOperationMenu, useMobileOperationMenu } from "./mobile-store.js";
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
 
 /**
- * An open operation is its body under the top bar the shell draws: the Operation's avatar, the title, a new-Operation
- * button and a ⋮ menu: rename, whatever the body adds through `mobileOperation.setMenuItems` (the chat/terminal switch,
- * keep-allowing computer use), then archive.
+ * An open operation is its body under the top bar the shell draws: ‹ back to the conversation list, a pill with the
+ * avatar, title and status line (it opens the conversation info screen) and a ⋮ menu: rename, whatever the body adds through
+ * `mobileOperation.setMenuItems` (the chat/terminal switch, keep-allowing computer use), then archive.
  * When a commander has a member selected (`bodyOperation`), the body, title and avatar are that member's while rename and
  * archive stay with the screen's owner — the same split as the desktop commander panel, whose frame stays its own.
  */
-export function MobileSessionView({ operation, theme, language, active, runtimeState, operationRuntime, operationKinds, capabilities, onActivate, onClose, bodyOperation = null }: {
+export function MobileSessionView({ operation, theme, language, active, runtimeState, operationRuntime, operationKinds, capabilities, onActivate, onClose, bodyOperation = null, covered = false }: {
   readonly operation: OperationNode;
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
@@ -36,10 +35,11 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
   readonly onClose: () => void;
   /** 이 화면이 보일 본문의 주인 — 없으면 자기 자신. 본문의 닫기는 지휘관 본문으로 돌아가는 것이다. */
   readonly bodyOperation?: { readonly operation: OperationNode; readonly runtimeState: OperationRuntimeState | null; readonly onClose: () => void } | null;
+  /** 대화 정보 화면이 위를 덮고 있다 — 본문은 그대로 살려 두고(PTY·소켓·⋮ 항목) 막대와 눌림만 양보한다. */
+  readonly covered?: boolean;
 }) {
   const t = useT();
   const bodyOwner = bodyOperation?.operation ?? operation;
-  const idleArrivalIds = getIdleArrivalIds();
   const [geometry, setGeometry] = useState<OperationGeometry>({ x: 0, y: 0, width: 390, height: 640, zIndex: 0 });
   const measure = useCallback((element: HTMLDivElement | null) => {
     if (!element) return;
@@ -91,36 +91,37 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
   const title = bodyOwner.title;
 
   const harnessLabel = operationHarnessLabel(bodyOwner, t);
-  const mark = resolveOperationMarkVisual({
-    activity: resolveOperationActivity(bodyOwner, operationRuntime),
-    operationId: bodyOwner.id,
-    idleArrivalIds,
-  });
-  // 막대의 ⋮ — 이름 변경은 시트로, 보관은 일반 색(되돌리기는 토스트가 맡는다).
-  useClaimMobileBar({
-    variant: "operation",
-    title,
-    ...(harnessLabel ? { subtitle: harnessLabel } : {}),
-    glyph: mark,
-    // 홈이 대화 목록이라 막대 왼쪽은 ‹ — 목록으로 돌아간다.
+  const conversation = useMobileConversationOf(useConsoleState())(bodyOwner);
+  // 머리: ‹(대화 목록) · 아바타와 제목·상태 한 줄이 든 pill(누르면 대화 정보) · ⋮. 이름 변경·보관은 화면 주인의 것이다.
+  useClaimMobileBar(covered ? null : {
+    variant: "conversation",
+    title: bodyOwner.title,
     leading: "back",
     onBack: closeMobileOperation,
-    actions: [{ id: "new", icon: <MobileIcon name="newop" />, label: t("mobile.operations.new"), run: openQuickLaunch }],
+    pill: {
+      key: `${bodyOwner.id}\u0001${bodyOwner.title}\u0001${conversation.face}\u0001${conversation.minis.map((entry) => `${entry.operation.id}:${entry.mark}`).join(",")}\u0001${harnessLabel ?? ""}`,
+      label: t("mobile.conv.infoAria", { title: bodyOwner.title }),
+      onPress: () => setMobileDestination({ kind: "info" }),
+      node: (
+        <>
+          <span className="mobile-conv-pill-av"><ConversationAvatar conversation={conversation} size={36} /></span>
+          <span className="mobile-conv-pill-copy">
+            <strong>{bodyOwner.title}</strong>
+            <small><span className={`mobile-conv-state is-${conversation.face}`}>{conversationStateWord(conversation.face, t)}</span>{harnessLabel ? ` · ${harnessLabel}` : ""}</small>
+          </span>
+        </>
+      ),
+    },
     menu: {
       label: t("mobile.bar.operationMenu"),
       // 이름 변경·보관은 화면 주인의 것이다 — 구성원 본문을 보는 동안에도 메뉴 머리는 그 주인을 말한다.
       caption: operation.title,
-      // 순서: 이름 변경, 본문이 끼운 항목들, 보관.
-      items: [
-        { id: "rename", icon: <MobileIcon name="pencil" size={20} />, label: t("mobile.menu.rename"), run: () => pushMobileSheet({ kind: "rename", operationId: operation.id }) },
-        ...bodyItems,
-        { id: "archive", icon: <MobileIcon name="archive" size={20} />, label: t("mobile.menu.archive"), run: archive },
-      ],
+      items: mobileOperationMenuItems({ operation, bodyItems, t, onArchive: archive }),
     },
   });
 
   return (
-    <section className="mobile-session-view">
+    <section className={`mobile-session-view${covered ? " is-covered" : ""}`} aria-hidden={covered || undefined}>
       <div className="mobile-session-body" ref={setMeasureTarget}>
         <OperationBodySlot key={bodyOwner.id} operationId={bodyOwner.id} config={config} className="mobile-operation-body-slot" />
       </div>

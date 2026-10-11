@@ -1,4 +1,6 @@
 import { pluginRuntimeState } from "../../../../../features/execution/client/operation-activity.js";
+import { publishConversationClusters, publishConversationSubject } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
+import { useOperationClusters } from "../../../../../features/workspace/client/operation-clusters.js";
 import { useEffect, useState } from "react";
 
 import type { ConsoleTheme, OperationKindDescriptor, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
@@ -18,7 +20,9 @@ import { useConsoleState } from "../../hooks/use-store.js";
 import { MobileArchiveScreen } from "./mobile-archive-screen.js";
 import { MobileSearchScreen } from "./mobile-search-screen.js";
 import { MobileAttentionScreen } from "./mobile-attention-screen.js";
+import { MobileConversationInfo } from "./mobile-conversation-info.js";
 import { MobileConversationList } from "./mobile-conversation-list.js";
+import { rememberArchivedTitle } from "./mobile-toast.js";
 import { readMobileOperationId, replaceMobileOperationId } from "./mobile-operation-url.js";
 import "../../styles/mobile.css";
 
@@ -74,10 +78,19 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
     onSelectOperation(selectedOperation.id);
   }, [onSelectOperation, selectedOperation]);
 
+  // 열린 Operation은 데스크톱 대화 칸의 주인과 같은 자리(`conversation-slots`)에 선다 — 구성원 탭 같은 대화 탭(대화 정보 화면이 읽는다)이
+  // 이 주인과 묶음을 읽는다.
+  const clusters = useOperationClusters();
+  useEffect(() => { publishConversationClusters(clusters); }, [clusters]);
+  useEffect(() => { publishConversationSubject(selectedOperation); }, [selectedOperation]);
+  useEffect(() => () => publishConversationSubject(null), []);
+
   const closeOperation = (operationId: string) => {
     // Leave the session immediately so Close is not stuck on a disposing terminal, then
     // dispose through the same host path the canvas and palette already use.
     // 보관 뒤에는 대화 목록으로 돌아간다 — 홈이 목록이라 다음 Operation을 대신 열지 않는다.
+    // 정보 화면에서 보관해도 대화 목록(홈)으로 돌아간다.
+    if (destination.kind === "info") setMobileDestination({ kind: "home" });
     replaceMobileOperationId(null);
     setSelectedOperationId(null);
     onSelectOperation(null);
@@ -96,20 +109,26 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   } else if (destination.kind === "plugin") {
     content = <MobilePluginScreen entryId={destination.entryId} theme={theme} language={language} />;
   } else if (selectedOperation) {
+    const infoOpen = destination.kind === "info";
     content = (
-      <MobileSessionView
-        operation={selectedOperation}
-        theme={theme}
-        language={language}
-        operationKinds={operationKinds}
-        capabilities={capabilities}
-        active={activeOperationId === selectedOperation.id}
-        runtimeState={pluginRuntimeState(operationRuntime, operationRuntimeHydration, selectedOperation.id)}
-        operationRuntime={operationRuntime}
-        onActivate={() => onSelectOperation(selectedOperation.id)}
-        onClose={() => closeOperation(selectedOperation.id)}
-        bodyOperation={bodyNode ? { operation: bodyNode, runtimeState: pluginRuntimeState(operationRuntime, operationRuntimeHydration, bodyNode.id), onClose: () => selectNestedBody(selectedOperation.id, null) } : null}
-      />
+      <>
+        <MobileSessionView
+          operation={selectedOperation}
+          theme={theme}
+          language={language}
+          operationKinds={operationKinds}
+          capabilities={capabilities}
+          active={activeOperationId === selectedOperation.id}
+          runtimeState={pluginRuntimeState(operationRuntime, operationRuntimeHydration, selectedOperation.id)}
+          operationRuntime={operationRuntime}
+          onActivate={() => onSelectOperation(selectedOperation.id)}
+          onClose={() => closeOperation(selectedOperation.id)}
+          bodyOperation={bodyNode ? { operation: bodyNode, runtimeState: pluginRuntimeState(operationRuntime, operationRuntimeHydration, bodyNode.id), onClose: () => selectNestedBody(selectedOperation.id, null) } : null}
+          covered={infoOpen}
+        />
+        {/* 대화 정보는 대화 화면 위에 선다 — 아래 본문은 내려가지 않아 PTY 크기와 ⋮ 항목이 그대로다. */}
+        {infoOpen ? <MobileConversationInfo operation={selectedOperation} bodyOwner={bodyNode ?? selectedOperation} onArchive={() => { rememberArchivedTitle(selectedOperation.id, selectedOperation.title); closeOperation(selectedOperation.id); }} /> : null}
+      </>
     );
   } else {
     content = consoleState.theaters.length > 0 ? <MobileConversationList state={consoleState} /> : <MobileEmptyHome />;

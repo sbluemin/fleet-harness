@@ -56,8 +56,10 @@ export function installGroupConversationSurface(): () => void {
  */
 let membersTabPrepared = false;
 let releaseMembersTab: (() => void) | null = null;
+/** 「구성원」 탭의 등록 id — 이 탭을 다른 표면(모바일 대화 정보)이 명부가 있는 대화에서만 세우려고 가려낼 때 쓴다. */
+export const CONVERSATION_MEMBERS_TAB_ID = "conversation.members";
 const MEMBERS_TAB = {
-  id: "conversation.members",
+  id: CONVERSATION_MEMBERS_TAB_ID,
   title: (locale: "en" | "ko") => getGroupT(locale)("group.members.tab"),
   icon: MembersGlyph,
   order: 10,

@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 
-import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
-
 import { useT } from "../../i18n/index.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileIcon } from "./mobile-icons.js";
@@ -30,14 +28,8 @@ export function MobileTopBar({ attentionDot }: { readonly attentionDot: boolean 
     else window.history.back();
   };
   const actionsCount = (bar.actions?.length ?? 0) + (bar.menu ? 1 : 0);
-  const title = bar.variant === "operation" ? (
-    <h1 className="mobile-top-bar-title is-left">
-      {bar.avatar ? <OperationStatusIcon operation={bar.avatar.operation} status={bar.avatar.mark} size={24} decorative /> : null}
-      <span className="mobile-top-bar-copy">
-        <span className="mobile-top-bar-name">{bar.title}</span>
-        {bar.subtitle ? <small>{bar.subtitle}</small> : null}
-      </span>
-    </h1>
+  const title = bar.variant === "conversation" && bar.pill ? (
+    <button type="button" className="mobile-conv-pill" aria-label={bar.pill.label} onClick={() => getLiveMobileBar()?.pill?.onPress()}>{bar.pill.node}</button>
   ) : (
     <h1 className="mobile-top-bar-title">
       <span className="mobile-top-bar-name">{bar.title}</span>
@@ -46,7 +38,7 @@ export function MobileTopBar({ attentionDot }: { readonly attentionDot: boolean 
   );
 
   return (
-    <header className="mobile-top-bar">
+    <header className={`mobile-top-bar${bar.variant === "conversation" ? " is-conversation" : ""}`}>
       <button type="button" className="mobile-bar-button" onClick={bar.leading === "menu" ? () => setMobileDrawerOpen(true) : back} aria-label={bar.leading === "menu" ? t("mobile.bar.openMenu") : t("mobile.bar.back")}>
         <MobileIcon name={bar.leading === "menu" ? "menu" : "back"} />
         {bar.leading === "menu" && attentionDot ? <span className="mobile-attention-dot" aria-label={t("mobile.bar.attentionDot")} /> : null}

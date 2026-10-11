@@ -28,6 +28,8 @@ function subscribe(listener: Listener): () => void {
  */
 export type MobileDestination =
   | { readonly kind: "home" }
+  /** 열린 Operation(대화)의 정보 화면 — Operation 화면 머리 pill이 연다. 열린 Operation이 없으면 홈(대화 목록)으로 읽힌다. */
+  | { readonly kind: "info" }
   | { readonly kind: "attention" }
   | { readonly kind: "archive" }
   | { readonly kind: "search"; readonly scope?: "archive" }
@@ -41,7 +43,7 @@ function readDestinationFromUrl(): MobileDestination {
   if (typeof window === "undefined") return { kind: "home" };
   const raw = new URLSearchParams(window.location.search).get(DEST_PARAM);
   if (raw === "search:archive") return { kind: "search", scope: "archive" };
-  if (raw === "attention" || raw === "archive" || raw === "search" || raw === "plugins") return { kind: raw };
+  if (raw === "attention" || raw === "archive" || raw === "search" || raw === "plugins" || raw === "info") return { kind: raw };
   if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) return { kind: "plugin", entryId: raw.slice(7) };
   return { kind: "home" };
 }
@@ -163,12 +165,12 @@ export function closeMobileSheets(): void {
 // ── 상단 막대 ────────────────────────────────────────────────────────────
 
 export interface MobileBarState {
-  /** `operation`은 왼쪽 정렬 제목(아바타 + 두 줄), `centered`는 가운데 제목이다. */
-  readonly variant: "centered" | "operation";
+  /** `centered`는 가운데 제목, `conversation`은 ‹ · 아바타와 제목이 든 pill · ⋮ 이다. */
+  readonly variant: "centered" | "conversation";
+  /** conversation 변형의 pill — 누르면 대화 정보 화면이 열린다. `key`가 바뀌면(아바타 얼굴·제목·상태 줄) 막대를 다시 그린다. */
+  readonly pill?: { readonly key: string; readonly label: string; readonly node: ReactNode; readonly onPress: () => void };
   readonly title: string;
   readonly subtitle?: string;
-  /** operation 변형의 아바타 — 그 Operation과 지금 표식(unseen 포함). 얼굴은 막대가 사이드바와 같은 경로로 고른다. */
-  readonly avatar?: { readonly operation: Pick<OperationNode, "id" | "parentOperationId">; readonly mark: OperationMarkVisual };
   readonly leading: "menu" | "back";
   readonly onBack?: () => void;
   /** 화면이 자기 머리를 그릴 때(도구 시트) 막대를 숨긴다. */
@@ -190,7 +192,7 @@ export function useMobileBar(): MobileBarState | null {
 
 function barSignature(state: MobileBarState): string {
   return JSON.stringify({
-    v: state.variant, t: state.title, s: state.subtitle, g: state.avatar ? [state.avatar.operation.id, state.avatar.operation.parentOperationId ?? null, state.avatar.mark] : null, l: state.leading, b: state.onBack !== undefined, h: state.hidden === true,
+    v: state.variant, p: state.pill?.key, t: state.title, s: state.subtitle, l: state.leading, b: state.onBack !== undefined, h: state.hidden === true,
     a: state.actions?.map((action) => [action.id, action.label]),
     m: state.menu ? [state.menu.label, state.menu.caption, state.menu.items.map((item) => [item.id, item.label, item.destructive, item.disabled])] : null,
   });

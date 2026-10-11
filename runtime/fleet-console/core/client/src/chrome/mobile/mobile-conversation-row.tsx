@@ -26,13 +26,16 @@ export interface MobileConversation {
   readonly isCluster: boolean;
 }
 
-/** 모든 Theater의 최상위 Operation을 대화로 읽는다 — 호출부가 Theater로 거른다. */
-export function useMobileConversations(state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">): readonly MobileConversation[] {
+/**
+ * Operation 하나를 대화로 읽는 함수 — 목록 행·검색 결과·Operation 화면 머리·정보 화면이 같은 셈법을 쓴다. 구성원 Operation도 읽을 수 있고
+ * (묶음의 뿌리가 아니라 미니 아바타 없이 자기 얼굴만 가진다), 상태가 바뀌면 새 함수가 선다.
+ */
+export function useMobileConversationOf(state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">): (operation: OperationNode) => MobileConversation {
   const index = useClusterIndex();
   const clusters = useOperationClusters();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const { operations, nestedOperations, operationRuntime } = state;
-  return useMemo(() => operations.map((operation): MobileConversation => {
+  return useMemo(() => (operation: OperationNode): MobileConversation => {
     const mark = resolveOperationMarkVisual({ activity: resolveOperationActivity(operation, operationRuntime), operationId: operation.id, idleArrivalIds });
     const layout = index.rootOf.get(operation.id);
     const members = layout ? layout.cluster.members.filter((member) => !member.pending && member.operationId !== operation.id) : [];
@@ -43,7 +46,13 @@ export function useMobileConversations(state: Pick<ConsoleState, "operations" | 
       memberCount: members.length,
       isCluster: layout !== undefined,
     };
-  }), [clusters, idleArrivalIds, index, nestedOperations, operationRuntime, operations]);
+  }, [clusters, idleArrivalIds, index, nestedOperations, operationRuntime, operations]);
+}
+
+/** 모든 Theater의 최상위 Operation을 대화로 읽는다 — 호출부가 Theater로 거른다. */
+export function useMobileConversations(state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">): readonly MobileConversation[] {
+  const conversationOf = useMobileConversationOf(state);
+  return useMemo(() => state.operations.map(conversationOf), [conversationOf, state.operations]);
 }
 
 /** 대화 행의 아바타 — 지휘관 얼굴 하나와, 일하는 구성원이 있으면 오른쪽 아래에 겹친 미니 아바타. */
@@ -52,7 +61,7 @@ export function ConversationAvatar({ conversation, size = 52 }: { readonly conve
   const main = minis.length > 0 ? Math.round(size * 0.86) : size;
   return (
     <span className="mobile-conv-avatar" style={{ width: size, height: size }}>
-      <OperationAvatar operation={operation} role="commander" state={face} size={main} label="" decorative />
+      <OperationAvatar operation={operation} state={face} size={main} label="" decorative />
       {minis.length > 0 ? (
         <span className="mobile-conv-avatar-stack" aria-hidden="true">
           {minis.map((entry) => (

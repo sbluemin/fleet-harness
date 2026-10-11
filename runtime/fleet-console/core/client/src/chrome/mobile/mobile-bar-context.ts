@@ -112,11 +112,14 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
 
 /**
  * 코어 화면이 자기 막대를 올리는 훅. 렌더마다 불러도 된다 — 내용이 같으면 막대를 다시 그리지 않고 동작 클로저만 갱신한다.
- * 화면이 내려가면 막대를 거둔다.
+ * 화면이 내려가면 막대를 거둔다. `null`이면 지금은 올리지 않는다(다른 화면이 위를 덮고 있는 동안 막대를 양보한다).
  */
-export function useClaimMobileBar(state: MobileBarState): void {
+export function useClaimMobileBar(state: MobileBarState | null): void {
   const ownerRef = useRef<symbol>(Symbol("mobile-screen-bar"));
-  useEffect(() => { claimMobileBar(ownerRef.current, state); });
+  useEffect(() => {
+    if (state) claimMobileBar(ownerRef.current, state);
+    else releaseMobileBar(ownerRef.current);
+  });
   useEffect(() => {
     const owner = ownerRef.current;
     return () => releaseMobileBar(owner);

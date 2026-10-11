@@ -117,7 +117,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
         <MobileDrawer state={state} attention={rows} activeOperationId={state.activeOperationId} onOpenOperation={openOperation} />
         <MobileRequestBanner
           state={state}
-          viewingOperationId={path === "/operations" && destination.kind === "home" ? state.activeOperationId : null}
+          viewingOperationId={path === "/operations" && (destination.kind === "home" || destination.kind === "info") ? state.activeOperationId : null}
           onOpen={openOperation}
         />
         <MobileSheetHost state={state} onDeferredDeletion={onDeferredDeletion} />
