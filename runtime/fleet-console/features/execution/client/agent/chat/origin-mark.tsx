@@ -15,13 +15,21 @@ export function OriginMark({ by, language, className }: {
   readonly language: "en" | "ko";
   readonly className: string;
 }) {
-  const objectives = by.pluginId === "objectives";
+  const known = pluginOriginIdentity(by.pluginId, language);
   return (
     <span className={className}>
-      <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={objectives ? "plan" : "other"} /></span>
-      <span>{by.label ?? (objectives ? getT(language)("terminal.chat.originObjectives") : by.pluginId)}</span>
+      <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={known?.glyph ?? "other"} /></span>
+      <span>{by.label ?? known?.name ?? by.pluginId}</span>
     </span>
   );
+}
+
+/**
+ * 알려진 플러그인 출처의 지역화 이름과 글리프 — 단일 채팅의 출처 줄과 그룹 대화의 알림 줄이 같은 이름·표식을 쓴다.
+ * 모르는 플러그인은 null 이다: 대체어는 부르는 표면이 고른다.
+ */
+export function pluginOriginIdentity(pluginId: string, language: "en" | "ko"): { readonly name: string; readonly glyph: string } | null {
+  return pluginId === "objectives" ? { name: getT(language)("terminal.chat.originObjectives"), glyph: "plan" } : null;
 }
 
 /**

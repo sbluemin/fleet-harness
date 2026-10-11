@@ -611,7 +611,9 @@ function readHumanInputTag(encoded: string): ConsoleActionInput["humanInput"] {
     const value = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
     if (!value || typeof value.id !== "string" || !/^[0-9a-f-]{36}$/i.test(value.id)) return undefined;
     if (value.targetOperationId !== undefined && (typeof value.targetOperationId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.targetOperationId))) return undefined;
-    return { id: value.id, ...(value.targetOperationId ? { targetOperationId: value.targetOperationId } : {}), ...(value.copy === true ? { copy: true } : {}) };
+    // 행위·작성자는 표시만 바꾼다 — 모르는 값은 버리고 사람 입력 표식 자체는 지킨다(옛 표식과 같은 모양).
+    const act = value.act === "start" || value.act === "plan" || value.act === "steer" ? value.act : undefined;
+    return { id: value.id, ...(value.targetOperationId ? { targetOperationId: value.targetOperationId } : {}), ...(value.copy === true ? { copy: true } : {}), ...(act ? { act } : {}), ...(value.author === "commodore" ? { author: "commodore" as const } : {}) };
   } catch { return undefined; }
 }
 

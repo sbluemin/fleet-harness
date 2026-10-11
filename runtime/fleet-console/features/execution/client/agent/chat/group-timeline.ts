@@ -10,6 +10,8 @@ export interface ConversationJournal {
 }
 export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false };
 const operationSpeaker = (id: string): ConversationSpeaker => ({ kind: "operation", operationId: id, name: id });
+/** 「> 」 인용 한 겹을 걷는다 — 플러그인이 덧붙인 말을 지시 아래 인용으로 실어 보낸 모양이다. */
+const unquote = (text: string): string => text.split("\n").map((line) => line.replace(/^>\s?/, "")).join("\n").trim();
 const atOf = (entry: AgentChatJournalEvent): number | null => {
   const event = entry.event;
   return entry.at ?? ("at" in event && typeof event.at === "number" ? event.at : null);
@@ -27,13 +29,24 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
   switch (event.kind) {
     case "dispatch":
     case "turn-inject": {
-      const human = event.by?.kind === "plugin" ? event.by.humanInput : undefined;
-      const by: ConversationSpeaker = human || !event.by ? { kind: "human", name: "Human" }
-        : event.by.kind === "operation" ? { kind: "operation", operationId: event.by.operationId, name: event.by.title }
-          : { kind: "operation", name: event.by.pluginId };
-      entries.push({ kind: "message", id: human ? `human:${human.id}` : id, at, operationId, speaker: by, text: event.text,
-        ...(by.kind !== "human" ? { format: "markdown" as const } : {}), streaming: false,
-        ...(human?.targetOperationId ? { recipient: operationSpeaker(human.targetOperationId) } : {}), ...(human?.copy ? { copied: true } : {}) });
+      const origin = event.by;
+      // 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시는 발화자가 아니라 출처다 — 말풍선이 아닌 가운데 알림 줄로 선다.
+      if (origin?.kind === "plugin" && !origin.humanInput) {
+        entries.push({ kind: "plugin-notice", id, at, operationId, pluginId: origin.pluginId, recipient: speaker, text: event.text,
+          ...(event.format === "markdown" ? { format: "markdown" as const } : {}) });
+        break;
+      }
+      const human = origin?.kind === "plugin" ? origin.humanInput : undefined;
+      const via = human?.act;
+      const by: ConversationSpeaker = human?.author === "commodore" ? { kind: "commodore", name: "Commodore" }
+        : origin?.kind === "operation" ? { kind: "operation", operationId: origin.operationId, name: origin.title }
+          : { kind: "human", name: "Human" };
+      // 보드 행위에 덧붙인 말은 프롬프트 속 인용 그대로 표시 문면이 된다 — 다시 연 뒤에도 같은 구간이 서도록 인용은 호스트에 두고 여기서 걷는다.
+      const text = via ? unquote(event.text) : event.text;
+      const recipient = human?.targetOperationId ? operationSpeaker(human.targetOperationId) : via ? speaker : undefined;
+      entries.push({ kind: "message", id: human ? `human:${human.id}` : id, at, operationId, speaker: by, text,
+        ...(by.kind !== "human" && !via ? { format: "markdown" as const } : {}), streaming: false,
+        ...(recipient ? { recipient } : {}), ...(human?.copy ? { copied: true } : {}), ...(via ? { via } : {}) });
       break;
     }
     case "text-delta": {
@@ -108,6 +121,7 @@ export function composeGroupTimeline(input: {
         if (previous?.kind !== "message" || previous.copied || !item.copied) entries.set(item.id, { ...item, speaker: resolve(item.speaker), ...(item.recipient ? { recipient: resolve(item.recipient) } : {}) });
         continue;
       }
+      if (item.kind === "plugin-notice") { entries.set(item.id, { ...item, recipient: resolve(item.recipient) }); continue; }
       if (item.kind !== "delegation") continue;
       const senderId = [...speakers.keys()].sort((a, b) => b.length - a.length).find((id) => item.id.startsWith(`delegation:${id}:`));
       const sender = senderId ? speakers.get(senderId)! : resolve(item.sender);

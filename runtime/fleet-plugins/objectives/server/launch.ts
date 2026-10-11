@@ -255,6 +255,16 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return false;
     }
   };
+  /**
+   * 보드 행위(개시·구상·방향 수정)에 덧붙인 말의 출처 — 그룹 대화가 그 말을 쓴 쪽의 말풍선에 행위와 함께 세운다.
+   * 사람이면 사람 입력, 사령관이면 사령관이 쓴 말이다. 덧붙인 말이 없거나 그 밖의 행위자면 없다: 그 지시는 플러그인 알림으로 선다.
+   * 표시 문면은 프롬프트 속 인용(`humanWords`) 그대로라 세션을 다시 연 뒤에도 같은 구간이 선다.
+   */
+  const authoredWords = (context: string | undefined, act: NonNullable<ConsoleActionInput["humanInput"]>["act"], by: ObjectiveActor = "human"): ConsoleActionInput["humanInput"] => {
+    if (!context?.trim()) return undefined;
+    if (by === "human") return { id: randomUUID(), act };
+    return typeof by === "object" && by.kind === "commodore" ? { id: randomUUID(), act, author: "commodore" } : undefined;
+  };
   // 호스트 제어 경로의 거절(invalid_launch_option 등)은 코드 그대로 호출자에게 — 뭉개지 않는다.
   const asStoreError = (error: unknown): never => {
     if (error instanceof ObjectiveStoreError) throw error;
@@ -920,7 +930,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     current = store.setCriteriaOpen(objectiveId, true);
     const firstWake = neverStarted(objectiveId);
     if (firstWake) current = store.setEdited(objectiveId, null);
-    if (!(await send(objectiveId, planTurn(current, language, options?.actor), humanWords(current.planRequest), true))) throw new ObjectiveStoreError("launch_failed");
+    if (!(await send(objectiveId, planTurn(current, language, options?.actor), humanWords(current.planRequest), true, authoredWords(current.planRequest, "plan", current.planRequestBy ?? options?.actor)))) throw new ObjectiveStoreError("launch_failed");
     if (firstWake) announceStarted(objectiveId);
     // 요청이 지휘관에게 닿은 뒤에만 누가 구상을 청했는지 남긴다. 행위자를 받지 않은 호출은 사람의 것이다(옛 관례와 같다).
     if (recordAs) current = store.recordStage(objectiveId, "planned", options?.actor ?? "human");
@@ -1385,7 +1395,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
       const firstWake = neverStarted(objectiveId);
       if (firstWake) current = store.setEdited(objectiveId, null);
-      const delivered = await send(objectiveId, startTurn(current, language, options?.context, options?.actor), humanWords(options?.context), true);
+      const delivered = await send(objectiveId, startTurn(current, language, options?.context, options?.actor), humanWords(options?.context), true, authoredWords(options?.context, "start", options?.actor));
       if (!delivered) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
       // 개시가 닿은 목표는 「진행 중」에 서고, 누가 개시했는지 남는다. 행위자를 받지 않은 호출은 사람의 것이다.
@@ -1590,7 +1600,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 스티어링 턴에서 기준 제안은 불가하다. 전송 전에 닫아 턴 전환 중 계획 쓰기와 경합하지 않는다.
       if (current.criteriaOpen) store.setCriteriaOpen(objectiveId, false);
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
-      await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context, options?.actor), display: humanWords(options?.context), displayFormat: "markdown" }).catch(asStoreError);
+      const authored = authoredWords(options?.context, "steer", options?.actor);
+      await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context, options?.actor), display: humanWords(options?.context), displayFormat: "markdown", ...(authored ? { humanInput: authored } : {}) }).catch(asStoreError);
       touchLive(objectiveId);
       // 지휘관에게 닿았다 — 쌓인 편집을 지우고, 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다. 멈춘 뒤라면 보고 기대도 되살아난다.
       store.setEdited(objectiveId, null);

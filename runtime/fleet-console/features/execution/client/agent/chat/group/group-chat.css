@@ -145,13 +145,13 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 
 /* 위임 줄 — 「보낸이 → 받는이 발췌」 한 줄. 구분 점 대신 간격으로 묶음을 가르고, 받는이가 여럿이면 얼굴을 살짝 겹친다.
    이름 잉크는 신원 톤(구성원)이거나 중립 잉크이고, 줄 안에서는 굵기를 줄 글자에 맞춘다. */
-.group-chat-delegation > .group-chat-line-summary { gap: 6px; }
+:is(.group-chat-delegation, .group-chat-plugin-notice) > .group-chat-line-summary { gap: 6px; }
 .group-chat-delegation-party { flex: none; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .group-chat-delegation-faces { display: inline-flex; align-items: center; }
 .group-chat-delegation-faces > * + * { margin-left: -4px; }
 .group-chat-delegation-party .group-chat-line-sep { margin-left: -4px; }
-.group-chat-delegation .group-chat-name { font-weight: inherit; }
-.group-chat-delegation .group-chat-name:is(.is-commander, .is-commodore, .is-human) { color: var(--text-secondary); }
+:is(.group-chat-delegation, .group-chat-plugin-notice) .group-chat-name { font-weight: inherit; }
+:is(.group-chat-delegation, .group-chat-plugin-notice) .group-chat-name:is(.is-commander, .is-commodore, .is-human) { color: var(--text-secondary); }
 .group-chat-delegation-more { color: var(--text-tertiary); }
 .group-chat-delegation .group-chat-line-excerpt,
 .group-chat-delegation .group-chat-line-status { margin-left: var(--space-1); }
@@ -162,6 +162,25 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 @media (hover: none) {
   .group-chat-delegation > .group-chat-line-summary .group-chat-line-chev { opacity: 1; }
 }
+
+/* 플러그인 알림 줄 — 「목표 → 지휘관 발췌」. 출처는 단일 채팅 출처 줄(.agent-chat-origin-source)과 같은 잉크·글리프다. */
+.group-chat-notice-source {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  color: var(--text-console-use);
+  font-weight: var(--weight-medium);
+}
+/* 글리프 크기는 채팅 글리프 알파벳(.agent-glyph 13px = 12px 줄 글자의 시각 무게)을 그대로 쓴다. */
+.group-chat-notice-glyph { display: inline-flex; }
+.group-chat-plugin-notice .group-chat-line-excerpt { margin-left: var(--space-1); }
+
+/* 보드 행위에 덧붙인 말 — 받는 이 뒤에 행위 낱말이 선다(「→ 지휘관 · 개시하며」). */
+.group-chat-via { color: var(--text-secondary); white-space: nowrap; }
+.group-chat-agent-via { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
+.group-chat-agent-via .group-chat-name:not(:first-child) { font-weight: var(--weight-medium); color: var(--text-secondary); }
 
 .group-chat-line-detail {
   display: flex;

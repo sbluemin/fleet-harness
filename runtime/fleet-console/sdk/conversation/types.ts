@@ -36,9 +36,20 @@ export interface ConversationParticipant {
   readonly activity: "running" | "background" | "awaiting" | "idle" | "ended" | "unknown";
 }
 
+/** 덧붙인 말이 함께 간 보드 행위. */
+export type ConversationMessageVia = "start" | "plan" | "steer";
+
 type EntryCoordinate = { readonly id: string; readonly at: number | null };
 export type GroupTimelineEntry = EntryCoordinate & (
-  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean }
+  /**
+   * `via` — 그 말이 함께 간 보드 행위(개시·구상·방향 수정). 사람·사령관이 그 행위에 덧붙인 말이면 선다.
+   */
+  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia }
+  /**
+   * 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시(구성원 실패·미보고 알림 등). 발화자가 아니라 출처이므로 말풍선이 아닌
+   * 가운데 줄로 선다. `pluginId` 는 출처 이름·표식을 고르는 열쇠일 뿐 화면에 그대로 쓰지 않는다.
+   */
+  | { readonly kind: "plugin-notice"; readonly operationId: string; readonly pluginId: string; readonly recipient: ConversationSpeaker; readonly text: string; readonly format?: "markdown" }
   | { readonly kind: "delegation"; readonly sender: ConversationSpeaker; readonly recipients: readonly ConversationSpeaker[]; readonly text: string; readonly result: string; readonly ok?: boolean; readonly received: boolean }
   | { readonly kind: "member-joined" | "member-left"; readonly speaker: ConversationSpeaker }
   | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: string; readonly text: string }
