@@ -517,6 +517,25 @@
   inset-inline-end: 0;
 }
 
+/* 표면이 가운데 칸 안에 서는 배치(대화 중심 화면)의 대비 경로 — 문서를 칸 위로 펼치지 않고 레일 열 안에서 목록을 덮는다.
+   열은 문서 폭까지 넓어지되(--rail-overlay-reach) 목록 표면은 카드 폭으로 오른쪽에 남아 자기 폭 기억을 지킨다. 문서는 떠 있는
+   카드가 아니라 열의 다른 면이라 테두리·반경·그림자 없이 분할 detail과 같은 재질을 쓴다. */
+.right-rail.has-in-rail-detail-overlay .rail-surface {
+  width: calc(100% - var(--rail-overlay-reach, 0px));
+  margin-inline-start: auto;
+}
+
+.right-rail.has-in-rail-detail-overlay .rail-pane.is-overlay {
+  inset-inline-end: 0;
+  width: calc(100% + var(--rail-overlay-reach, 0px));
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background:
+    linear-gradient(var(--glass-tint-expanded), var(--glass-tint-expanded)),
+    var(--float-underlay);
+}
+
 /* 오버레이는 별도 창이다. 그 위에 남은 카드 손잡이가 문서의 터치를 가로채지 않게 한다. */
 .right-rail.has-detail-overlay .right-rail-resize-handle,
 .right-rail.is-overlay .right-rail-resize-handle {

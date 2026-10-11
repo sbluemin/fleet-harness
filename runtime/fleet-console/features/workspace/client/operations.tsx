@@ -1004,7 +1004,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onClose={handleClose}
         />
         {toastRegion}
-        <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
+        <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} expandedSurfaceInArena />
         {triageActive ? null : <SideBarEdgeDock />}
         {operationMenuLayer}
         <TriageEntryDialog />
