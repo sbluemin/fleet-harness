@@ -92,18 +92,17 @@ Before reproducing a user-reported defect, record the user's installed Fleet ver
 
 ### First-load onboarding state
 
-A fresh slot and a new origin show commissioning, What's New, entry hints, and feature tours, and they can race the scenario's first input. Prepare that state **before the first navigation** instead of dismissing layers mid-scenario. Once the lock exists, run [`scripts/seed-onboarding.mts`](../scripts/seed-onboarding.mts) with the Console package's `tsx`:
+A fresh slot shows commissioning, entry hints, and feature tours, and they can race the scenario's first input. Prepare that state **before the first navigation** instead of dismissing layers mid-scenario. Once the lock exists, run [`scripts/seed-onboarding.mts`](../scripts/seed-onboarding.mts) with the Console package's `tsx`:
 
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$E2E_DIR" --bin pnpm \
   -- pnpm --dir <worktree>/runtime/fleet-console exec tsx \
   <worktree>/.claude/skills/console-e2e/scripts/seed-onboarding.mts \
-  --console-dir "$E2E_DIR/console" --init-script "$E2E_DIR/whats-new.js"
+  --console-dir "$E2E_DIR/console"
 ```
 
 - It derives every key from the current source and merges them into `seenFeatureTours` through the origin-gated `PUT /api/v1/settings/global`, then reads them back and fails when one is missing. The sources are the core contributions, each built-in plugin's `onboarding` read from its client entry as the plugin registry reads it, the seen-store key rules, and the keys stored outside any contribution (commissioning and the effort-confirm tip). `--dry-run` only lists the keys. Commissioning also opens only while no Theater is registered.
-- What's New is a per-origin `localStorage` watermark, so the script writes it as a page script for `--init-script` of the session that opens the page. Every isolated-server restart picks a new port, which is a new origin: rerun the script and reopen the session. The [Fleet Browser fallback](fleet-browser.md) has no init script; there, dismiss What's New through its real control and record that the watermark could not be preset.
-- When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: pass `--keep <key>` (or a prefix ending in `.`, such as `objectives.`) for it, which also clears that key on a reused slot, omit `--init-script` when What's New is under test, and install diagnostics before the first navigation so its appearance and race stay observable.
+- When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: pass `--keep <key>` (or a prefix ending in `.`, such as `objectives.`) for it, which also clears that key on a reused slot, and install diagnostics before the first navigation so its appearance and race stay observable.
 - Confirm the first screenshot shows no unseeded onboarding layer before acting.
 
 The same run can lay down two common fixtures, each opt-in and read back before the script reports success:

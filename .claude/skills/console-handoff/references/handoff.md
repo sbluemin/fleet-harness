@@ -32,7 +32,7 @@ Opened in this Operation's Fleet Browser.
 Stop it with PID <pid> when you are done.
 ```
 
-Say which dialogs greet a fresh runtime directory (commissioning guide, What's New, then the tours) and that `Escape` clears them, or the user's first impression of the change is a modal.
+Say which dialogs greet a fresh runtime directory (commissioning guide, then the tours) and that `Escape` clears them, or the user's first impression of the change is a modal.
 
 ## Gotchas
 

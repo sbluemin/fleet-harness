@@ -352,7 +352,6 @@ export interface ConsoleState {
   readonly releaseNotesSourceRef: "main" | null;
   readonly releaseNotesFetchedAt: number | null;
   readonly releaseNotesStale: boolean;
-  readonly automaticWhatsNewVersion: string | null;
   readonly selectedReleaseNoteKey: string | null;
   readonly onboardingOpen: boolean;
   readonly bootstrapped: boolean;

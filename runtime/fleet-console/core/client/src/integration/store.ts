@@ -1,4 +1,4 @@
-import { readStoredWhatsNewSeenVersion, evaluateAutomaticWhatsNew, remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists, writeStoredWhatsNewSeenVersion } from "../../../../features/updates/client/release-state.js";
+import { remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists } from "../../../../features/updates/client/release-state.js";
 import { rememberSeen } from "../../../../features/onboarding/client/seen-store.js";
 import { normalizeOperationOwner } from "@fleet-console/sdk/operations/browser";
 import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
@@ -126,7 +126,6 @@ let state: ConsoleState = {
   releaseNotesSourceRef: null,
   releaseNotesFetchedAt: null,
   releaseNotesStale: false,
-  automaticWhatsNewVersion: null,
   selectedReleaseNoteKey: null,
   onboardingOpen: false,
   bootstrapped: false,
@@ -322,7 +321,6 @@ export function applyObserverStatus(status: ObserverStatus): void {
     requestedPort: status.requestedPort,
     effectivePort: status.effectivePort,
     portHonored: status.portHonored,
-    ...evaluateAutomaticWhatsNew({ ...state, version: status.version }),
   });
 }
 
@@ -331,9 +329,7 @@ export function beginReleaseNotesFetch(): void {
 }
 
 export function applyReleaseNotes(response: ReleaseNotesResponse, locale: ReleaseNotesLocale): void {
-  const localeChanged = state.releaseNotesLocale !== null && state.releaseNotesLocale !== locale;
-  const next = {
-    ...state,
+  setState({
     releaseNotes: response.notes,
     releaseNotesLocale: locale,
     releaseNotesLoading: false,
@@ -343,20 +339,6 @@ export function applyReleaseNotes(response: ReleaseNotesResponse, locale: Releas
     releaseNotesStale: response.stale,
     // key에는 배열 위치가 들어가므로 refresh가 앞에 릴리스를 추가해도 같은 버전·중복 순번을 다시 찾는다.
     selectedReleaseNoteKey: remapReleaseNoteKey(state.releaseNotes, state.selectedReleaseNoteKey, response.notes),
-  };
-  setState({
-    releaseNotes: next.releaseNotes,
-    releaseNotesLocale: next.releaseNotesLocale,
-    releaseNotesLoading: next.releaseNotesLoading,
-    releaseNotesError: next.releaseNotesError,
-    releaseNotesSourceRef: next.releaseNotesSourceRef,
-    releaseNotesFetchedAt: next.releaseNotesFetchedAt,
-    releaseNotesStale: next.releaseNotesStale,
-    // 본문 언어 전환이나 이미 열린 모달의 refresh는 사용자가 보고 있던 버전과 열림 원인을 보존한다.
-    // 자동 열림 평가는 닫힌 상태에서 받은 첫 로드·동일 언어의 새 데이터에만 필요하다.
-    ...(localeChanged || state.whatsNewOpen
-      ? { selectedReleaseNoteKey: next.selectedReleaseNoteKey }
-      : evaluateAutomaticWhatsNew(next)),
   });
 }
 
@@ -1165,8 +1147,7 @@ export function openWhatsNew(): void {
 
 export function closeWhatsNew(): void {
   if (!state.whatsNewOpen) return;
-  if (state.automaticWhatsNewVersion) writeStoredWhatsNewSeenVersion(state.automaticWhatsNewVersion);
-  setState({ whatsNewOpen: false, automaticWhatsNewVersion: null });
+  setState({ whatsNewOpen: false });
 }
 
 export function selectReleaseNote(key: string): void {
@@ -1233,12 +1214,6 @@ export function resolveOnboardingOnBootstrap(): void {
   const commissioningSeen = settings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)
     || readStoredCommissioningSeen();
   const shouldOpen = state.theaters.length === 0 && !commissioningSeen;
-  // 커미셔닝을 여는 순간이 곧 "이 사람에게 이 제품은 처음"이라는 판정이다. 같은 자리에서
-  // 릴리스 워터마크를 찍어 두면, 릴리스 노트가 언제 도착하든 지난 묶음이 첫 화면에 따라
-  // 붙지 않는다 — 처음 설치한 사람에게 "새 소식"은 성립하지 않는다.
-  if (shouldOpen && state.version && readStoredWhatsNewSeenVersion() === null) {
-    writeStoredWhatsNewSeenVersion(state.version);
-  }
   setState({ bootstrapped: true, onboardingOpen: shouldOpen ? true : state.onboardingOpen });
 }
 

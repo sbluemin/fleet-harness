@@ -7,15 +7,14 @@
 //
 //   pnpm --dir <worktree>/runtime/fleet-console exec tsx \
 //     <worktree>/.claude/skills/console-e2e/scripts/seed-onboarding.mts \
-//     --console-dir "$E2E_DIR/console" [--keep <key> ...] [--init-script <file>] \
+//     --console-dir "$E2E_DIR/console" [--keep <key> ...] \
 //     [--deputy <id> ...] [--wiki <entry-id> --theater <theater-id> --theater-dir <path>] [--dry-run]
 //
 // --keep leaves a key (or every key with that prefix, e.g. `objectives.`) unseeded, removing it if already stored, when that layer is under test.
-// --init-script writes a page script setting the per-origin What's New watermark; pass it to the browser session.
 // --deputy turns on a scuttlebutt deputy and marks the deputy introduction as shown, through the plugin's settings route.
 // --wiki stages one Wiki entry through the product's wiki_ingest tool and approves it for the Theater registered from --theater-dir.
 // Only loopback writes go to the owned Console named by its lock; no token is read or printed.
-import { readdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { createRequire, register } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -36,7 +35,6 @@ const repeated = (name: string) => args.flatMap((arg, index) => (args[index - 1]
 const keep = repeated("--keep");
 const deputies = repeated("--deputy");
 const consoleDir = option("--console-dir");
-const initScript = option("--init-script");
 const wikiId = option("--wiki");
 const theaterId = option("--theater");
 const theaterDir = option("--theater-dir");
@@ -55,7 +53,6 @@ const { CORE_ONBOARDING } = await load(join(consoleSrc, "core/client/src/integra
 const { hintSeenKey, tourSeenKey } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
 const { COMMISSIONING_SEEN_KEY } = await load(join(consoleSrc, "core/client/src/integration/store.ts"));
 const { EFFORT_CONFIRM_TIP_SEEN_KEY } = await load(join(consoleSrc, "features/workspace/client/canvas/canvas-context-menu.tsx"));
-const { WHATS_NEW_SEEN_VERSION_STORAGE_KEY } = await load(join(consoleSrc, "features/updates/client/release-state.ts"));
 
 // The Console composes built-in plugins from each `client/index.tsx` `plugins` export (virtual:fleet-plugins in
 // core/client/vite.config.ts), and its registry takes `onboarding` from each plugin definition.
@@ -98,7 +95,7 @@ if (wikiId) {
 
 if (dryRun) {
   console.log(JSON.stringify({
-    keys, kept: derived.filter(kept), whatsNewStorageKey: WHATS_NEW_SEEN_VERSION_STORAGE_KEY,
+    keys, kept: derived.filter(kept),
     deputies: { requested: deputies, known: deputyIds },
     wiki: wikiId ? { entry: wikiId, theater: theaterId } : null,
   }, null, 2));
@@ -120,7 +117,6 @@ const send = async <T,>(method: "PUT" | "POST", path: string, body: unknown): Pr
   return await response.json() as T;
 };
 
-const status = await getJson<{ version?: string }>("/api/v1/status");
 const current = await getJson<{ seenFeatureTours?: string[] }>("/api/v1/settings/global");
 // A kept key comes off the stored list too, so a reused slot still shows the layer under test.
 const seen = [...new Set([...(current.seenFeatureTours ?? []).filter((key) => !kept(key)), ...keys])];
@@ -131,11 +127,6 @@ const missing = keys.filter((key) => !stored.includes(key));
 if (missing.length > 0) throw new Error(`Settings did not keep: ${missing.join(", ")} (the field is bounded; check its limit).`);
 const lingering = stored.filter(kept);
 if (lingering.length > 0) throw new Error(`Settings still mark kept keys as seen: ${lingering.join(", ")}.`);
-
-if (initScript) {
-  if (!status.version) throw new Error("/api/v1/status returned no version for the What's New watermark.");
-  writeFileSync(initScript, `localStorage.setItem(${JSON.stringify(WHATS_NEW_SEEN_VERSION_STORAGE_KEY)}, ${JSON.stringify(status.version)});\n`);
-}
 
 // The deputy document is written whole, as the plugin's own settings store writes it; unrelated fields survive.
 let deputy: Record<string, unknown> | null = null;
@@ -197,7 +188,6 @@ if (wikiId) {
 
 console.log(JSON.stringify({
   origin, seeded: keys, kept: derived.filter(kept),
-  whatsNew: initScript ? { script: initScript, version: status.version } : null,
   deputy: deputy ? Object.fromEntries([...deputies, "introduced"].map((field) => [field, deputy![field]])) : null,
   wiki,
 }, null, 2));

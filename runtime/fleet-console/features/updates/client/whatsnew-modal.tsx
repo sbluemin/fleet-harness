@@ -14,7 +14,6 @@ import { useViewMode } from "../../../core/client/src/integration/view-mode-stor
 
 interface WhatsNewModalProps {
   readonly state: ConsoleState;
-  readonly automaticSuspended?: boolean;
 }
 
 type WhatsNewSectionStyle = CSSProperties & {
@@ -32,7 +31,7 @@ const FOCUSABLE_SELECTOR = [
 
 const RELEASE_NOTE_PAGE_SIZE = 10;
 
-export function WhatsNewModal({ state, automaticSuspended = false }: WhatsNewModalProps) {
+export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const t = useT();
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const outsideFocusHistoryRef = useRef<HTMLElement[]>([]);
@@ -71,14 +70,11 @@ export function WhatsNewModal({ state, automaticSuspended = false }: WhatsNewMod
     return () => document.removeEventListener("focusin", rememberOutsideFocus, true);
   }, []);
 
-  // What's new는 자동으로 열리므로, 다른 우선 오버레이가 떠 있거나 아직 theater bootstrap이 끝나지 않은
-  // 동안에는 양보한다. 그렇지 않으면 뒤에 숨은 What's new의 window capture 리스너가 stopImmediatePropagation으로
-  // visible 다이얼로그(commissioning·quick search·timeline)의 Esc/Tab을 가로챈다.
-  // bootstrap 전에는 resolveOnboardingOnBootstrap()가 아직 돌지 않아 onboardingOpen이 false라,
-  // /health가 /theaters보다 먼저 도착하면 onboardingOpen만으로는 게이트가 새므로 bootstrapped도 함께 본다.
-  // 억제가 풀리면 whatsNewOpen이 유지된 채 아래 효과/렌더가 다시 살아나 그때 표시된다.
+  // 다른 우선 오버레이가 떠 있거나 아직 theater bootstrap이 끝나지 않은 동안에는 양보한다. 그렇지 않으면
+  // 뒤에 숨은 What's new의 window capture 리스너가 stopImmediatePropagation으로 visible 다이얼로그
+  // (commissioning·quick search·timeline)의 Esc/Tab을 가로챈다. 억제가 풀리면 whatsNewOpen이 유지된 채
+  // 아래 효과/렌더가 다시 살아나 그때 표시된다.
   const whatsNewSuppressed =
-    (automaticSuspended && state.automaticWhatsNewVersion !== null) ||
     !state.bootstrapped ||
     state.onboardingOpen ||
     state.operationSearchOpen ||
