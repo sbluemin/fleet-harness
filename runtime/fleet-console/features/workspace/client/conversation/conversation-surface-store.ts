@@ -38,20 +38,29 @@ export function openConversationSurface(surfaceId: string, params: Readonly<Reco
   if (!isConversationLayoutActive()) return false;
   nonce += 1;
   selection = { surfaceId, params, nonce };
+  watchLayout();
   emit();
   return true;
 }
 
 export function closeConversationSurface(surfaceId?: string): void {
   if (selection === null || (surfaceId !== undefined && selection.surfaceId !== surfaceId)) return;
+  clear();
+}
+
+function clear(): void {
   selection = null;
+  disposeLayoutWatch?.();
+  disposeLayoutWatch = null;
   emit();
 }
 
-// 배치가 꺼지면 선 대화를 걷는다.
-subscribeConversationLayout(() => {
-  if (selection !== null && !isConversationLayoutActive()) {
-    selection = null;
-    emit();
-  }
-});
+// 배치가 꺼지면 선 대화를 걷는다. 대화가 서 있는 동안만 지켜본다 — 모듈을 읽는 것만으로 설정 저장소를 구독하지 않는다.
+let disposeLayoutWatch: (() => void) | null = null;
+
+function watchLayout(): void {
+  if (disposeLayoutWatch) return;
+  disposeLayoutWatch = subscribeConversationLayout(() => {
+    if (selection !== null && !isConversationLayoutActive()) clear();
+  });
+}

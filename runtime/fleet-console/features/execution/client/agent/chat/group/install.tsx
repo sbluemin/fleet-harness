@@ -9,9 +9,9 @@ import {
   registerConversationOperationTab,
   setConversationBodyRenderer,
   useConversationSubject,
-  useOpenBoardActionRecord,
   type ConversationBodyContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
+import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
 import { useGroupTimeline } from "../group-timeline-store.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
