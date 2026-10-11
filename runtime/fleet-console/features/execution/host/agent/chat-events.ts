@@ -235,7 +235,7 @@ export type AgentChatStreamEvent =
       readonly change?: AgentChatChange;
     }
   /** 스텝의 결말. ok는 도구가 돌려준 사실이지 턴의 성패가 아니다. */
-  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail }
+  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail; readonly recipientOperationId?: string }
   /**
    * 다른 세션이 이 세션에 보낸 말 한 통 — 도구 줄 하나로 선다.
    *
@@ -243,14 +243,14 @@ export type AgentChatStreamEvent =
    * 도구 호출과 그 결과다 — 이 경로는 어느 쪽 트랜스크립트도 읽지 않는다. 호출이 성공한 뒤에 서버가
    * 받는 세션의 원장에 이 줄을 세운다.
    *
-   * 그래서 출처는 본문이 아니라 서버가 들고 있는 값이다: `from`은 보낸 Operation의 런치 이름이며,
+   * 그래서 출처는 본문이 아니라 서버가 들고 있는 값이다: `from`은 보낸 Operation의 런치 이름(없으면 표시 제목)이며,
    * 발신자가 본문에 무엇을 적든 그 값은 여기 오지 않는다. `id`는 `<보낸 Operation>:<tool_use id>`
    * 라 같은 호출이 두 번 관측돼도 줄은 하나다.
    *
    * 트랜스크립트 재생에서는 절대 만들어지지 않는다 — 기록을 되읽어 세우면 지난 발신이 오늘의
    * 수신으로 다시 서고, 메모리 원장과 재생본이 서로 다른 원장이 된다.
    */
-  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
+  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly senderOperationId?: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
   /**
    * 모델이 멈춰 서서 사용자를 기다린다. 저널에 남는 이벤트여야 하는 이유는 만료가 없기 때문이다 —
    * 재접속한 브라우저가 이 이벤트로 같은 카드를 다시 세우지 못하면, 대기는 영영 보이지 않는 채로
@@ -1739,6 +1739,8 @@ const CODE_FILE_ROOT = /^\/(?:Users|home|private|var|tmp|Volumes|mnt|media|root|
 function abbreviateAbsolutePaths(value: string, inCode = false): string {
   const fold = (path: string) => !inCode || /^[A-Za-z]:[\\/]|^\\\\/.test(path) || CODE_FILE_ROOT.test(path) ? foldPath(path) : path;
   return value
+    // uds 배송 좌표는 일반 절대 경로 정규식을 빠져나간다. 공개 문면에서 가리고 별도의 Operation id로 해석한다.
+    .replace(/\buds:\/[^\s"'<>]+/gu, "uds:…")
     .replace(QUOTED_ABSOLUTE_PATH, (_match, quote: string, path: string) => `${quote}${fold(path)}${quote}`)
     .replace(BARE_ABSOLUTE_PATH, (match) => fold(match));
 }
