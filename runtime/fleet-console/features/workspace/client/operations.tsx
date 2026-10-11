@@ -95,7 +95,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     readonly fromSidebar?: boolean;
   } | null>(null);
   const triageActive = useTriageActive();
-  // 실험 기능 「대화 중심 화면」 — 켜지면 캔버스 대신 세 칸 셸이 선다. 꺼져 있으면 아래 모든 경로가 지금 그대로다.
+  // 대화 중심 화면(기본) — 캔버스 대신 세 칸 셸이 선다. 「이전 화면으로 돌아가기」가 켜져 있으면 아래 모든 경로가 이전 그대로다.
   const conversation = useConversationLayout();
   const conversationRef = useRef(conversation);
   conversationRef.current = conversation;

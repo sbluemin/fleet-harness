@@ -30,7 +30,7 @@ import "./settings-modal.css";
 export function SettingsModalHost({ visible, layoutOn, mobile }: {
   /** 대화 중심 화면이 지금 그려져 있는가(데스크톱 + Operations 화면). */
   readonly visible: boolean;
-  /** 실험 「대화 중심 화면」이 켜져 있는가 — 화면과 무관하다. */
+  /** 대화 중심 화면인가(「이전 화면으로 돌아가기」가 꺼져 있다) — 화면과 무관하다. */
   readonly layoutOn: boolean;
   readonly mobile: boolean;
 }) {

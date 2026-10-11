@@ -91,16 +91,16 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
       <div className="global-settings-row experiments-row">
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
-            {t("settings.experiments.conversationLayout.title")}
-            <SettingsHelp title={t("settings.experiments.conversationLayout.title")}>{t("settings.experiments.conversationLayout.help")}</SettingsHelp>
+            {t("settings.experiments.classicLayout.title")}
+            <SettingsHelp title={t("settings.experiments.classicLayout.title")}>{t("settings.experiments.classicLayout.help")}</SettingsHelp>
           </p>
         </div>
         <div className="experiments-row-controls">
           <SettingsToggle
-            checked={experiments.conversationLayout}
+            checked={experiments.classicLayout}
             busy={saving}
-            ariaLabel={t("settings.experiments.conversationLayout.title")}
-            onChange={(conversationLayout) => save({ ...experiments, conversationLayout })}
+            ariaLabel={t("settings.experiments.classicLayout.title")}
+            onChange={(classicLayout) => save({ ...experiments, classicLayout })}
           />
         </div>
       </div>
@@ -167,12 +167,12 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
   return (
     <>
     <SettingsCard title={<>{t("settings.experiments.screenCard")}<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge></>}>
-      <SettingsRow label={t("settings.experiments.conversationLayout.title")} hint={t("settings.experiments.conversationLayout.mobileHelp")} icon={<MobileIcon name="layout" />}>
+      <SettingsRow label={t("settings.experiments.classicLayout.title")} hint={t("settings.experiments.classicLayout.mobileHelp")} icon={<MobileIcon name="layout" />}>
         <SettingsToggle
-          checked={experiments.conversationLayout}
+          checked={experiments.classicLayout}
           busy={saving}
-          ariaLabel={t("settings.experiments.conversationLayout.title")}
-          onChange={(conversationLayout) => saveExperiments({ ...experiments, conversationLayout })}
+          ariaLabel={t("settings.experiments.classicLayout.title")}
+          onChange={(classicLayout) => saveExperiments({ ...experiments, classicLayout })}
         />
       </SettingsRow>
     </SettingsCard>

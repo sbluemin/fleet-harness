@@ -113,6 +113,13 @@ vi.mock("../features/settings/client/global-settings-store.js", () => ({
   getGlobalSettingsStoreState: () => ({ state: null }),
   useGlobalSettingsStore: () => ({ state: null }),
 }));
+// 부팅 최소화는 이전 화면(캔버스)의 경로다 — 기본인 대화 중심 화면 대신 그 배치를 고정한다.
+vi.mock("../features/settings/client/use-conversation-layout.js", () => ({
+  useConversationLayout: () => false,
+  isConversationLayoutActive: () => false,
+  subscribeConversationLayout: () => () => undefined,
+  saveClassicLayout: vi.fn(),
+}));
 vi.mock("../core/client/src/integration/operations-sse.js", () => ({ refreshObserverStatus: vi.fn(), subscribeConsoleChannel: vi.fn(() => () => undefined) }));
 // 데스크톱 /settings는 이제 레일 표면으로 번역하는 어댑터다 — 이 테스트의 관심은 "비-operations
 // 라우트에 다녀오기"이므로 어댑터를 옛 페이지 모양의 대역으로 세워 라우트 왕복만 남긴다.

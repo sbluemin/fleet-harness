@@ -12344,6 +12344,76 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   }
 }
 
+/* 대화 중심 화면 웰컴 카드 — 첫 실행 카드의 재질(겹·카드·머리·바닥 줄)을 그대로 빌리고, 닫기·세 칸 그림·두 버튼 줄만 더한다. */
+.conversation-welcome-card {
+  grid-template-rows: auto auto;
+  width: min(440px, 94vw);
+}
+
+.conversation-welcome-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-lg);
+  line-height: 1;
+}
+
+.conversation-welcome-close:hover,
+.conversation-welcome-close:focus-visible {
+  background: color-mix(in oklch, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+}
+
+.conversation-welcome-picture {
+  width: 120px;
+  height: 56px;
+  margin-bottom: var(--space-2);
+}
+
+.conversation-welcome-picture-frame {
+  fill: color-mix(in oklch, var(--surface-glass) 60%, transparent);
+  stroke: var(--hairline-strong);
+}
+
+.conversation-welcome-picture-side {
+  fill: color-mix(in oklch, var(--text-primary) 6%, transparent);
+}
+
+.conversation-welcome-picture-line {
+  fill: color-mix(in oklch, var(--text-tertiary) 45%, transparent);
+}
+
+.conversation-welcome-picture-bubble {
+  fill: color-mix(in oklch, var(--text-primary) 14%, transparent);
+}
+
+.conversation-welcome-picture-composer {
+  fill: none;
+  stroke: color-mix(in oklch, var(--brass) 60%, transparent);
+}
+
+.conversation-welcome-picture-rule {
+  stroke: var(--hairline-strong);
+}
+
+.conversation-welcome-actions {
+  gap: var(--space-4);
+}
+
+.conversation-welcome-actions .commissioning-primary-action {
+  margin-top: 0;
+}
+
 /* 토스트 — 우하단 고정 알림 스택. 재사용 컴포넌트(toast.tsx)가 렌더하며, tone으로 색을 바꾼다 */
 .app-toast-host {
   position: fixed;

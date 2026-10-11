@@ -270,7 +270,7 @@ export type DesktopEntryToken =
 
 /**
  * 창 맨 위 크롬의 기하 — 네이티브 컨트롤(macOS 신호등·Windows 캡션 버튼)이 세로 가운데를 맞출 웹 쪽 맨 위 줄의 CSS 높이다.
- * 기본 배치는 Command Band(36px)이고, 실험 기능 「대화 중심 화면」이 켜지면 세 열의 맨 위 줄(52px)이다.
+ * 기본 배치는 세 열의 맨 위 줄(52px)이고, 실험 기능 「이전 화면으로 돌아가기」가 켜지면 Command Band(36px)다.
  * 이 필드를 모르는 Desktop은 무시하고 36px 계약을 그대로 쓴다.
  */
 export interface DesktopChromeGeometry {
@@ -286,7 +286,7 @@ export interface DesktopThemeSnapshot {
 }
 
 export interface DesktopThemeLayout {
-  /** 실험 기능 「대화 중심 화면」이 켜져 있다. */
+  /** 대화 중심 화면(기본)이다. 실험 기능 「이전 화면으로 돌아가기」가 켜지면 false. */
   readonly conversationLayout: boolean;
 }
 
@@ -364,7 +364,7 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
   },
 };
 
-export function desktopThemeSnapshot(theme: ConsoleThemeId, fonts: ConsoleFontSettings = DEFAULT_FONTS, layout: DesktopThemeLayout = { conversationLayout: false }): DesktopThemeSnapshot {
+export function desktopThemeSnapshot(theme: ConsoleThemeId, fonts: ConsoleFontSettings = DEFAULT_FONTS, layout: DesktopThemeLayout = { conversationLayout: true }): DesktopThemeSnapshot {
   const entry = DESKTOP_ENTRY_PALETTES[theme];
   const overlay = layout.conversationLayout ? DESKTOP_CONVERSATION_OVERLAYS[theme] : DESKTOP_TITLE_BAR_OVERLAYS[theme];
   const chrome: DesktopChromeGeometry = { band: layout.conversationLayout ? CONVERSATION_TOP_ROW : COMMAND_BAND_HEIGHT };

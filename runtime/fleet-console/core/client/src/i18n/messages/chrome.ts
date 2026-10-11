@@ -247,8 +247,18 @@ export const chromeEn = {
   "chrome.commissioning.addingTheater": "Adding Theater…",
   "chrome.commissioning.chooseFolder": "Choose a folder…",
   "chrome.commissioning.step2Title": "Open an Operation",
-  "chrome.commissioning.step2Body": "Start an agent session on the canvas of your Theater.",
+  "chrome.commissioning.step2Body": "Start an agent session in your Theater.",
   "chrome.commissioning.skip": "Later",
+
+  // conversation-welcome
+  "chrome.conversationWelcome.title": "The conversation layout is now the default",
+  "chrome.conversationWelcome.body": "Pick an Operation on the left to open its conversation in the middle, with details on the right. If you prefer the previous layout with panels on a canvas, you can go back any time.",
+  "chrome.conversationWelcome.back": "Go back to the previous layout",
+  "chrome.conversationWelcome.keep": "Keep this layout",
+  "chrome.conversationWelcome.closeAria": "Close",
+  "chrome.conversationWelcome.returned": "Switched back to the previous layout.",
+  "chrome.conversationWelcome.returnedDetail": "You can change it again in Settings › Experiments › Screen.",
+  "chrome.conversationWelcome.undo": "Undo",
 
   // directory-browser
   "chrome.directoryBrowser.dialogAria": "Add Theater",
@@ -800,8 +810,18 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.commissioning.addingTheater": "Theater 추가 중…",
   "chrome.commissioning.chooseFolder": "폴더 선택…",
   "chrome.commissioning.step2Title": "Operation 열기",
-  "chrome.commissioning.step2Body": "Theater의 캔버스에서 에이전트 세션을 시작합니다.",
+  "chrome.commissioning.step2Body": "Theater에서 에이전트 세션을 시작합니다.",
   "chrome.commissioning.skip": "나중에",
+
+  // conversation-welcome
+  "chrome.conversationWelcome.title": "대화 중심 화면이 기본이 되었습니다",
+  "chrome.conversationWelcome.body": "왼쪽에서 Operation을 고르면 가운데에 대화가 열리고, 오른쪽에 세부 정보가 섭니다. 캔버스에 패널을 놓고 쓰던 이전 화면이 편하면 언제든 돌아갈 수 있습니다.",
+  "chrome.conversationWelcome.back": "이전 화면으로 돌아가기",
+  "chrome.conversationWelcome.keep": "이대로 쓰기",
+  "chrome.conversationWelcome.closeAria": "닫기",
+  "chrome.conversationWelcome.returned": "이전 화면으로 돌아왔습니다.",
+  "chrome.conversationWelcome.returnedDetail": "설정 › 실험 기능 › 화면에서 다시 바꿀 수 있습니다.",
+  "chrome.conversationWelcome.undo": "되돌리기",
 
   "chrome.directoryBrowser.dialogAria": "Theater 추가",
   "chrome.directoryBrowser.kicker": "프로젝트 폴더",

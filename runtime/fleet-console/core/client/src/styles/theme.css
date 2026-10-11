@@ -1026,7 +1026,7 @@
   --scrollbar-thumb-classic: oklch(44% 0.015 95 / 45%);
 }
 
-/* 대화 다크 — 실험 기능 「대화 중심 화면」이 켜진 데스크톱에서, 사람이 고른 다크 테마(Instrument·Maritime·Carbon)가 무엇이든 이
+/* 대화 다크 — 대화 중심 화면(기본)인 데스크톱에서, 사람이 고른 다크 테마(Instrument·Maritime·Carbon)가 무엇이든 이
    한 벌로 선다(라이트는 Whites 그대로). 저장된 테마는 바꾸지 않는다 — 토글을 끄면 그 테마로 돌아간다. 기존 토큰 이름에 값만 다시
    준다. Carbon 짝에서 중립 회색(채도 < 0.02)을 채도 0 으로 내리고, 핵심 면·글자는 Grok Bot 다크 스크린샷 실측(sRGB → OKLCH L)을 따른다:
    대화·세부 정보 바탕 #070707(L 12.9%) = --canvas-abyss, 사이드바 #111111(17.8%) = --ink-deep, 말풍선 #262626(26.9%) = --ink-mid(→ 기본 --surface-panel-raised),

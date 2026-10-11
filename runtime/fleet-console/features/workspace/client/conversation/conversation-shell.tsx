@@ -38,7 +38,7 @@ import { closeConversationSurface, useConversationSurface, type ConversationSurf
 import "./conversation.css";
 
 /**
- * 대화 중심 화면 — 실험 기능 「대화 중심 화면」이 켜진 데스크톱의 Operations 셸.
+ * 대화 중심 화면 — 데스크톱 Operations 의 기본 셸. 실험 기능 「이전 화면으로 돌아가기」가 켜지면 캔버스가 선다.
  *
  * 세 칸이다: 왼쪽 사이드바(기존 그룹 트리 + 이 모듈이 더한 위·아래 줄), 가운데 대화 칸(Operation 하나),
  * 오른쪽 패널(기존 레일 카드 + 머리의 글자 탭). 캔버스는 마운트하지 않으므로 패널 좌표·최소화·Map 기록을
