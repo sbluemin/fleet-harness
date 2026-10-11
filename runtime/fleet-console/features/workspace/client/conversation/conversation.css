@@ -909,6 +909,9 @@
   --float-underlay: var(--conversation-surface);
   --glass-tint-expanded: transparent;
   --glass-panel-face: transparent;
+  /* 칸 안쪽 가로 여백 — 목표 표면 본문(objectives.css 의 22px 들여쓰기)과 같은 선에서 글자가 시작한다. 칸 경계선에 글자가
+     붙지 않게, 자기 여백을 갖지 않는 본문(터미널)이 이 값을 쓴다. */
+  --conversation-surface-gutter: 22px;
 }
 
 /* 접어 둔 동안 페인은 산 채로 숨는다(셸·초안 유지) — inert 가 포커스·보조 기술을, visibility 가 그림을 걷는다. */
@@ -930,8 +933,10 @@
   background: var(--conversation-surface);
 }
 
-/* 터미널(Shell)도 대화 본문의 터미널처럼 상자 없이 칸 바탕 위에 놓인다. */
+/* 터미널(Shell)도 대화 본문의 터미널처럼 상자 없이 칸 바탕 위에 놓인다. 격자는 칸 경계에서 가로 여백만큼 물러나 시작한다
+   (위쪽은 부유 조작 아래에서 시작하는 확대 표면의 기존 규칙 그대로). */
 .expanded-surface.is-conversation .terminal-shell {
+  padding-inline: var(--conversation-surface-gutter);
   border: 0;
   border-radius: 0;
 }
