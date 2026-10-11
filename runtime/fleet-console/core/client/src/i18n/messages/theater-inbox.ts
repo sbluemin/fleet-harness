@@ -1,0 +1,32 @@
+/** Theater Inbox — Theater 하나의 설정과 플러그인 섹션(사령관 등)을 함께 여는 시트의 호스트 문구. */
+export const theaterInboxEn = {
+  "theaterInbox.kicker": "Theater Inbox",
+  "theaterInbox.aria": "{theater} Theater Inbox",
+  "theaterInbox.nav": "Theater Inbox sections",
+  "theaterInbox.close": "Close",
+  "theaterInbox.resize": "Drag to resize. Double-click for the default size.",
+  "theaterInbox.applies": "Applies",
+  "theaterInbox.unavailable": "That section is not available, so Theater settings opened instead.",
+  "theaterInbox.settings.title": "Theater settings",
+  "theaterInbox.settings.scope": "Claude Code sessions opened in this Theater",
+  "theaterInbox.settings.directiveNote": "Directives for the Commodore are kept in the Commodore section.",
+  "theaterInbox.settings.directiveLink": "Open Commodore directive",
+  "theaterInbox.applies.prompt": "New Claude Code sessions opened from now on",
+  "theaterInbox.applies.subagents": "Running sessions too, from their next subagent call",
+};
+
+export const theaterInboxKo: Record<keyof typeof theaterInboxEn, string> = {
+  "theaterInbox.kicker": "Theater Inbox",
+  "theaterInbox.aria": "{theater} Theater Inbox",
+  "theaterInbox.nav": "Theater Inbox 칸",
+  "theaterInbox.close": "닫기",
+  "theaterInbox.resize": "끌어서 크기를 조절합니다. 더블클릭하면 기본 크기입니다.",
+  "theaterInbox.applies": "적용",
+  "theaterInbox.unavailable": "그 칸을 열 수 없어 Theater 설정을 열었습니다.",
+  "theaterInbox.settings.title": "Theater 설정",
+  "theaterInbox.settings.scope": "이 Theater에서 여는 Claude Code 세션",
+  "theaterInbox.settings.directiveNote": "사령관에게 주는 지시는 「사령관」 섹션에 따로 있습니다.",
+  "theaterInbox.settings.directiveLink": "사령관 지시 열기",
+  "theaterInbox.applies.prompt": "새로 여는 Claude Code 세션부터",
+  "theaterInbox.applies.subagents": "실행 중인 세션도 다음 서브에이전트 호출부터",
+};

@@ -19,6 +19,7 @@ import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../.
 import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
 import { getCanvasArenaInsets, subscribeCanvasArenaInsets } from "../../../../features/workspace/client/canvas/canvas-store.js";
+import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
@@ -231,6 +232,7 @@ export function createHostCapabilities(
       onReconnect: (listener) => subscribeConsoleReconnect(listener),
     },
     chat: { Transcript: AgentChatTranscript },
+    theaterInbox: theaterInboxCapability,
     composer: {
       open: (options) => {
         const mentionOperationId = options?.mentionOperationId;

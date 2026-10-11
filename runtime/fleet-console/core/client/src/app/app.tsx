@@ -44,6 +44,7 @@ import { syncSettingsSearchPlugins } from "../../../../features/settings/client/
 import { Operations } from "../../../../features/workspace/client/operations.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
+import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
@@ -708,6 +709,7 @@ function ConnectedApp() {
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <ArchiveSheet />
         <TheaterSystemPromptSheet />
+        <TheaterInboxHost />
         <WhatsNewModal state={state} automaticSuspended={terminalFocused} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}
         <OnboardingHost

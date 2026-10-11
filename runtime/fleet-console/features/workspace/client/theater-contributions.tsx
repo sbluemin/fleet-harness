@@ -3,6 +3,7 @@ import type { ConsoleTheaterSummary } from "@fleet-console/sdk/plugin";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { theaterInboxCapability } from "./theater-inbox/store.js";
 
 interface TheaterContributionProps {
   readonly theater: ConsoleTheaterSummary;
@@ -18,7 +19,7 @@ export function TheaterContributionRows({ theater, active }: TheaterContribution
   const language = useConsoleLocale();
   const rows = theaterContributions.filter((contribution) => contribution.row);
   if (rows.length === 0) return null;
-  const context = { theater: { id: theater.id, label: theater.label }, active, language };
+  const context = { theater: { id: theater.id, label: theater.label }, active, language, theaterInbox: theaterInboxCapability };
   return (
     <div className="side-bar-theater-contributions" data-theater-id={theater.id}>
       {rows.map((contribution) => (
@@ -36,7 +37,7 @@ export function TheaterContributionMenuItems({ theater, active, onClose }: Theat
   const language = useConsoleLocale();
   const menus = theaterContributions.filter((contribution) => contribution.menu);
   if (menus.length === 0) return null;
-  const context = { theater: { id: theater.id, label: theater.label }, active, language, onClose };
+  const context = { theater: { id: theater.id, label: theater.label }, active, language, onClose, theaterInbox: theaterInboxCapability };
   return (
     <>
       {menus.map((contribution) => (
