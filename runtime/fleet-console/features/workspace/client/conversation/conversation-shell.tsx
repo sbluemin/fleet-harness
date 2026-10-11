@@ -12,6 +12,9 @@ import { DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry } from "../../../../cor
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
 import { ConsoleHelpMenu, HostSwitcher } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
+import { EnvironmentDiagnosticsButton } from "../../../../core/client/src/chrome/components/command-band.js";
+import { ViewModeToggle } from "../../../../core/client/src/chrome/components/view-mode-toggle.js";
+import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { ToolbarSettingsButton } from "../../../../core/client/src/chrome/toolbar/console-toolbar.js";
 import { RailToolIcons, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
@@ -47,6 +50,12 @@ import "./conversation.css";
 const LAST_PANEL_KEY = "fleet-console.conversation.lastPanel";
 /** 사이드바·레일 카드의 바깥 여백(--space-3)과 같은 값. */
 const STAGE_EDGE_GUTTER = 12;
+/**
+ * 가운데 대화 칸의 최소 폭. 넓은 오른쪽 패널(설정 등)을 열어도 대화가 이보다 좁아지지 않게, 레일은 이 폭과 양쪽 여백을
+ * 남긴 만큼만 넓어진다(RightRail reservedArenaWidth). 채팅 입력과 말풍선이 한 줄에 읽히는 폭이다.
+ */
+export const CONVERSATION_MIN_WIDTH = 480;
+export const CONVERSATION_RESERVED_ARENA_WIDTH = CONVERSATION_MIN_WIDTH + STAGE_EDGE_GUTTER * 2;
 
 function readLastPanel(): string | null {
   try {
@@ -128,13 +137,17 @@ export function ConversationSideBarTop() {
   );
 }
 
-/** 아래쪽 줄 — 호스트(원격 연결), 사용량 요약, 도움말, 설정. 보관함은 바로 위 기존 줄이 그대로 맡는다. */
+/**
+ * 아래쪽 줄 — 환경 진단(밴드 왼쪽 브랜드 마크), 호스트(원격 연결), 사용량 요약, 보기 모드(밴드 오른쪽), 도움말, 설정.
+ * 보관함은 바로 위 기존 줄이 그대로 맡는다. 메뉴·팝오버는 이 줄에서 위로 열린다(conversation.css).
+ */
 export function ConversationSideBarBottom({ connection }: { readonly connection: ConsoleState["connection"] }) {
   const t = useT();
   const { commandBandEntries } = usePluginRegistry();
   const usage = commandBandEntries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID);
   return (
     <div className="conversation-side-bottom" role="group" aria-label={t("conversation.side.systemAria")}>
+      <EnvironmentDiagnosticsButton className="conversation-side-env" />
       <span className="conversation-side-host">
         <HostSwitcher />
         {connection !== "live" ? <span className="conversation-side-link" data-link-state={connection} aria-hidden="true" /> : null}
@@ -146,6 +159,8 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
           </PluginErrorBoundary>
         ))}
       </span>
+      {/* 밴드 오른쪽의 보기 모드 선택 — 밴드와 같은 조건(Desktop 셸이 아닐 때)으로 선다. */}
+      {!isDesktopShell() ? <ViewModeToggle className="command-band-button conversation-side-viewmode" /> : null}
       <ConsoleHelpMenu />
       <ToolbarSettingsButton canvas />
     </div>
@@ -222,6 +237,13 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const { stage, waiting, next } = useWarRoomStage(state, warRoom);
   const subject = warRoom ? stage : cruiseSubject;
   useEffect(() => { publishConversationSubject(subject); }, [subject]);
+  // 가운데 칸에 선 대화가 곧 활성 Operation 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
+  // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
+  const activeOperationId = state.activeOperationId;
+  useEffect(() => {
+    if (warRoom || cruiseSubject === null || activeOperationId === cruiseSubject.id) return;
+    setActiveOperation(cruiseSubject.id);
+  }, [activeOperationId, cruiseSubject, warRoom]);
   useEffect(() => () => publishConversationSubject(null), []);
   const toggleDetails = useToggleDetails();
 

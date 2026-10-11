@@ -49,7 +49,7 @@ import { useViewMode } from "../../../core/client/src/integration/view-mode-stor
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { useWarRoomChromeState } from "../../../core/client/src/integration/war-room-chrome.js";
 import { useConversationLayout } from "../../settings/client/use-conversation-layout.js";
-import { ConversationPanelHeader, ConversationShellHost, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
+import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
 import { SideBarRowStyleContext } from "./sidebar/side-bar-row-style.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
@@ -992,7 +992,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onOpenOperationMenu={openOperationMenu}
         />
         {toastRegion}
-        <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} />
+        <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
         {triageActive ? null : <SideBarEdgeDock />}
         {operationMenuLayer}
         <TriageEntryDialog />

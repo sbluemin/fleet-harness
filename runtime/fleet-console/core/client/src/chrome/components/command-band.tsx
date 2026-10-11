@@ -25,8 +25,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const updateProgress = useUpdateProgress();
   const viewMode = useViewMode();
   const operationsViewVisible = requestedOperationsViewVisible && viewMode.effective !== "mobile";
-  const environmentTriggerRef = useRef<HTMLButtonElement>(null);
-  const environmentPopoverRef = useRef<HTMLDivElement>(null);
+  const environment = useEnvironmentDiagnostics();
   const commandBandRef = useRef<HTMLElement>(null);
   const toolbarHostRef = useRef<HTMLSpanElement | null>(null);
   // 도구모음 자리는 둘이 함께 쥔다 — 도구모음이 옮겨 들어올 자리(toolbar-slots)와 가운데 폭을 재는 이 밴드.
@@ -40,12 +39,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const [leftContentEnd, setLeftContentEnd] = useState(0);
   const [rightContentWidth, setRightContentWidth] = useState(0);
   const [centerContentWidth, setCenterContentWidth] = useState(0);
-  const [environmentOpen, setEnvironmentOpen] = useState(false);
-  const [environment, setEnvironment] = useState<ConsoleEnvironmentDiagnostics | null>(null);
-  const [environmentError, setEnvironmentError] = useState<string | null>(null);
-  const [environmentLoading, setEnvironmentLoading] = useState(false);
-  const [copiedValue, setCopiedValue] = useState<string | null>(null);
-  const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
   // 도구모음은 중앙 트랙의 단독 승객이다. 중앙은 Console 전체 정중앙에 고정하므로 여백 하한은
   // 좌·우 클러스터의 실측 콘텐츠 폭 중 큰 쪽에서 잰다 — 한쪽만 예약하면 중앙이 viewport 중앙에서
   // 밀리거나 우측과 겹친다.
@@ -55,67 +48,12 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 되돌아오는 폭이 흔들리지 않게 하고, CSS에 주입하는 값만 0으로 내린다.
   const centerControlsCentered = commandBandCenterFits(bandWidth, centerGutter, centerContentWidth);
   const injectedCenterGutter = centerControlsCentered ? centerGutter : 0;
-  // 열림/닫힘 전환 시 이벤트 핸들러에서 동기 호출한다 — open effect(폐기 후 fetch)는 paint 뒤에 돌므로
-  // 여기서 지우지 않으면 재오픈 첫 프레임에 이전 절대경로가 그대로 렌더된다.
-  const discardEnvironmentState = () => {
-    setEnvironment(null);
-    setEnvironmentError(null);
-    setEnvironmentLoading(false);
-    setCopiedValue(null);
-    setCopyFailedValue(null);
-  };
   const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
   // 전체화면에서 밴드는 창 모드와 똑같은 흐름 요소다 — 자동 은닉·엣지 스트립·도킹 핀은
   // 퇴역했다. 크롬을 치우는 결정은 War Room 하나가 소유한다(중복 제스처 정리).
   // 이 스냅숏이 남은 이유는 단 하나: darwin 전체화면에서 신호등이 물러난 자리로 좌측
   // 클러스터를 활주시키기 위해서다. 브라우저 전체화면에는 신호등이 없으므로 대상이 아니다.
   const nativeFullscreen = useDesktopFullscreenSnapshot();
-  useEffect(() => {
-    if (!warRoom) return;
-    setEnvironmentOpen(false);
-    discardEnvironmentState();
-  }, [warRoom]);
-
-  useEffect(() => {
-    if (!environmentOpen) return;
-    const controller = new AbortController();
-    setEnvironment(null);
-    setEnvironmentError(null);
-    setEnvironmentLoading(true);
-    fetchConsoleEnvironment(controller.signal)
-      .then((result) => { if (!controller.signal.aborted) setEnvironment(result); })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setEnvironmentError(error instanceof Error ? error.message : t("chrome.commandBand.unableToLoadEnvironment"));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setEnvironmentLoading(false);
-      });
-    return () => controller.abort();
-  }, [environmentOpen, t]);
-
-  useEffect(() => {
-    if (!environmentOpen) return;
-    const closeOnPointer = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node) || environmentTriggerRef.current?.contains(target) || environmentPopoverRef.current?.contains(target)) return;
-      setEnvironmentOpen(false);
-      discardEnvironmentState();
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setEnvironmentOpen(false);
-      discardEnvironmentState();
-      environmentTriggerRef.current?.focus();
-    };
-    document.addEventListener("pointerdown", closeOnPointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnPointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [environmentOpen]);
-
   // 좌·우 클러스터의 실측 콘텐츠 폭이 중앙 여백 하한의 원료이고, 도구모음의 자연 폭이 중앙
   // 소요 폭이다. 사이드바 폭이 아니라 클러스터 폭이 하한을 정하므로 viewport 미디어쿼리로는
   // 판정할 수 없다. 자식 끝을 재는 이유: 칩 폭 변화(연결 상태 라벨·폰트 로드)와 도구모음의
@@ -178,24 +116,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     };
   }, [operationsViewVisible, state.channel, state.connection, nativeFullscreen]);
 
-  useEffect(() => {
-    if (state.channel === "local") return;
-    setEnvironmentOpen(false);
-    setEnvironment(null);
-    setEnvironmentError(null);
-    setEnvironmentLoading(false);
-    setCopiedValue(null);
-    setCopyFailedValue(null);
-  }, [state.channel]);
-
-  const copyEnvironmentValue = (value: string) => {
-    // 복사 실패는 해당 버튼의 인라인 상태로만 알린다 — environmentError는 fetch 실패 전용이며
-    // 세팅하면 팝오버 전체가 에러 화면으로 대체되어 진단 값 자체를 볼 수 없게 된다.
-    void navigator.clipboard.writeText(value)
-      .then(() => { setCopiedValue(value); setCopyFailedValue(null); })
-      .catch(() => { setCopyFailedValue(value); setCopiedValue(null); });
-  };
-
   // War Room만이 밴드를 내린다. 밴드는 마운트된 채 inert로 물러나므로, 그 안에 자리를 빌린
   // 도구모음(과 그 안의 플러그인 항목)은 War Room 트레이로 옮겨 간다(console-toolbar.tsx).
   const commandBandHidden = warRoom;
@@ -215,17 +135,17 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         {state.channel === "local" ? (
           <div className="command-band-brand is-local command-band-environment">
             <button
-              ref={environmentTriggerRef}
+              ref={environment.triggerRef}
               type="button"
               className="command-band-brand-diagnostics"
               aria-label={`${t("chrome.commandBand.environment")}: ${t(desktopShell ? "chrome.commandBand.localDesktop" : "chrome.commandBand.local")}`}
               aria-haspopup="dialog"
-              aria-expanded={environmentOpen}
+              aria-expanded={environment.open}
               onKeyDown={(event) => {
                 // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
                 if (event.code === "Space") event.stopPropagation();
               }}
-              onClick={() => { discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}
+              onClick={environment.toggle}
             >
               <BrandMarkIcon local />
             </button>
@@ -233,11 +153,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
               className="command-band-brand-home"
               to="/operations"
               aria-label={t("chrome.commandBand.operations")}
-              onClick={() => { setEnvironmentOpen(false); discardEnvironmentState(); }}
+              onClick={environment.close}
             >
               <BrandWordmark local />
             </Link>
-            {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
+            {environment.popover}
           </div>
         ) : <BrandHome />}
         {/* 업데이트 중에는 링크 상실이 고장이 아니라 진행이다. 커튼이 그 사실을 말하고 있는
@@ -258,6 +178,131 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       </div>
       </header>
     </>
+  );
+}
+
+/**
+ * 로컬 환경 진단 — 브랜드 마크를 누르면 여는 팝오버의 상태. 밴드와 대화 중심 화면의 사이드바 아래 줄이 같은 것을 쓴다.
+ * 값은 연 뒤에만 가져오고, 닫으면 지운다(절대 경로가 화면에 남지 않게). War Room 진입과 원격 채널에서는 닫힌다.
+ */
+export function useEnvironmentDiagnostics() {
+  const t = useT();
+  const warRoom = useTriageActive();
+  const state = useConsoleState();
+  const environmentTriggerRef = useRef<HTMLButtonElement>(null);
+  const environmentPopoverRef = useRef<HTMLDivElement>(null);
+  const [environmentOpen, setEnvironmentOpen] = useState(false);
+  const [environment, setEnvironment] = useState<ConsoleEnvironmentDiagnostics | null>(null);
+  const [environmentError, setEnvironmentError] = useState<string | null>(null);
+  const [environmentLoading, setEnvironmentLoading] = useState(false);
+  const [copiedValue, setCopiedValue] = useState<string | null>(null);
+  const [copyFailedValue, setCopyFailedValue] = useState<string | null>(null);
+  // 열림/닫힘 전환 시 이벤트 핸들러에서 동기 호출한다 — open effect(폐기 후 fetch)는 paint 뒤에 돌므로
+  // 여기서 지우지 않으면 재오픈 첫 프레임에 이전 절대경로가 그대로 렌더된다.
+  const discardEnvironmentState = () => {
+    setEnvironment(null);
+    setEnvironmentError(null);
+    setEnvironmentLoading(false);
+    setCopiedValue(null);
+    setCopyFailedValue(null);
+  };
+  const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
+  useEffect(() => {
+    if (!warRoom) return;
+    setEnvironmentOpen(false);
+    discardEnvironmentState();
+  }, [warRoom]);
+
+  useEffect(() => {
+    if (!environmentOpen) return;
+    const controller = new AbortController();
+    setEnvironment(null);
+    setEnvironmentError(null);
+    setEnvironmentLoading(true);
+    fetchConsoleEnvironment(controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setEnvironment(result); })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setEnvironmentError(error instanceof Error ? error.message : t("chrome.commandBand.unableToLoadEnvironment"));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setEnvironmentLoading(false);
+      });
+    return () => controller.abort();
+  }, [environmentOpen, t]);
+
+  useEffect(() => {
+    if (!environmentOpen) return;
+    const closeOnPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || environmentTriggerRef.current?.contains(target) || environmentPopoverRef.current?.contains(target)) return;
+      setEnvironmentOpen(false);
+      discardEnvironmentState();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setEnvironmentOpen(false);
+      discardEnvironmentState();
+      environmentTriggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOnPointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [environmentOpen]);
+
+  useEffect(() => {
+    if (state.channel === "local") return;
+    setEnvironmentOpen(false);
+    setEnvironment(null);
+    setEnvironmentError(null);
+    setEnvironmentLoading(false);
+    setCopiedValue(null);
+    setCopyFailedValue(null);
+  }, [state.channel]);
+
+  const copyEnvironmentValue = (value: string) => {
+    // 복사 실패는 해당 버튼의 인라인 상태로만 알린다 — environmentError는 fetch 실패 전용이며
+    // 세팅하면 팝오버 전체가 에러 화면으로 대체되어 진단 값 자체를 볼 수 없게 된다.
+    void navigator.clipboard.writeText(value)
+      .then(() => { setCopiedValue(value); setCopyFailedValue(null); })
+      .catch(() => { setCopyFailedValue(value); setCopiedValue(null); });
+  };
+
+  return {
+    open: environmentOpen,
+    triggerRef: environmentTriggerRef,
+    toggle: () => { discardEnvironmentState(); setEnvironmentOpen((open) => !open); },
+    close: () => { setEnvironmentOpen(false); discardEnvironmentState(); },
+    popover: environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null,
+  };
+}
+
+/** 대화 중심 화면의 사이드바 아래 줄 — 밴드 왼쪽 브랜드 마크와 같은 환경 진단 문. 로컬 채널에서만 선다. */
+export function EnvironmentDiagnosticsButton({ className }: { readonly className?: string }) {
+  const t = useT();
+  const state = useConsoleState();
+  const environment = useEnvironmentDiagnostics();
+  const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
+  if (state.channel !== "local") return null;
+  return (
+    <span className={`command-band-environment${className ? ` ${className}` : ""}`}>
+      <button
+        ref={environment.triggerRef}
+        type="button"
+        className="command-band-brand-diagnostics"
+        aria-label={`${t("chrome.commandBand.environment")}: ${t(desktopShell ? "chrome.commandBand.localDesktop" : "chrome.commandBand.local")}`}
+        title={t("chrome.commandBand.environment")}
+        aria-haspopup="dialog"
+        aria-expanded={environment.open}
+        onClick={environment.toggle}
+      >
+        <BrandMarkIcon local />
+      </button>
+      {environment.popover}
+    </span>
   );
 }
 
