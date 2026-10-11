@@ -965,7 +965,6 @@ export function OperationsSideBar({
 
   const beginTheaterPointerDrag = (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => {
     if (event.button !== 0) return;
-    if (event.target instanceof Element && event.target.closest("button")) return;
     const orderedTheaterIds = theaters.map((theater) => theater.id);
     if (!orderedTheaterIds.includes(theaterId)) return;
     setActiveContextMenu(null);
