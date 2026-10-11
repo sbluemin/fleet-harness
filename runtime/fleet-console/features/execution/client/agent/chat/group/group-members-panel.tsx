@@ -8,10 +8,10 @@ import { SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import "./group-chat.css";
 
 /**
- * 오른쪽 「구성원」 탭 본문 — 그룹 대화의 참여자 목록, 활동 상태, 원장 보기.
+ * 오른쪽 「구성원」 탭 본문 — 그룹 대화의 참여자 목록과 활동 상태.
  *
- * 「원장 보기」는 가운데 칸에 그 참여자의 원장(기존 본문)을 읽기 전용으로 세운다 — 셸의 구성원 본문 선택과 같은 문이다.
- * 보고 있는 참여자에서 다시 누르면 대화로 돌아간다. 정지·제거·추가는 콜백 자리만 둔다 — 쓰기 연결(임무 16) 전에는 단추가 서지 않는다.
+ * 구성원 줄 자체가 원장으로 가는 단추다 — 누르면 가운데 칸에 그 구성원의 원장(기존 본문)을 읽기 전용으로 세운다. 셸의 구성원 본문
+ * 선택과 같은 문이다. 보고 있는 구성원 줄을 다시 누르면 대화로 돌아간다. 지휘관 줄은 원장 대상이 아니라 단추가 아니다. 정지·제거·추가는 콜백 자리만 둔다 — 쓰기 연결(임무 16) 전에는 단추가 서지 않는다.
  * 제거는 지휘관에게 서지 않는다. 지휘관을 빼면 목표가 서지 않는다.
  */
 export interface GroupMembersPanelProps {
@@ -67,24 +67,35 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
     : speaker.kind === "member" ? t("group.member")
       : speaker.kind === "commodore" ? t("group.commodore")
         : speaker.kind === "human" ? t("group.you") : t("group.operation");
-  return (
-    <li className={`group-members-row${showing ? " is-showing" : ""}`}>
+  const identity = (
+    <>
       <SpeakerMark speaker={speaker} />
       <span className="group-members-text">
         <SpeakerName speaker={speaker} className="group-members-name" />
         <span className="group-members-role">{role}</span>
-        {onLedger || onStop || onRemove ? (
-          <span className="group-members-actions">
-            {onLedger ? <button type="button" className="group-chat-link" aria-pressed={showing} onClick={onLedger}>{showing ? t("group.ledger.back") : t("group.members.ledger")}</button> : null}
-            {onStop ? <button type="button" className="group-chat-link" onClick={onStop}>{t("group.members.stop")}</button> : null}
-            {onRemove ? <button type="button" className="group-chat-link is-danger" onClick={onRemove}>{t("group.members.remove")}</button> : null}
-          </span>
-        ) : null}
       </span>
       <span className="group-members-state">
         <span className={`group-members-dot is-${activity}`} aria-hidden="true" />
         {t(activityKey(activity))}
       </span>
+    </>
+  );
+  // 줄의 다른 단추(정지·제거)는 줄 단추 안에 넣지 않고 그 아래 형제로 둔다 — 단추 안의 단추는 서지 않고, 누름이 겹치지 않는다.
+  return (
+    <li className={`group-members-row${onLedger ? " is-openable" : ""}${showing ? " is-showing" : ""}`}>
+      {onLedger ? (
+        <button type="button" className="group-members-main" aria-pressed={showing} onClick={onLedger}>
+          {identity}
+        </button>
+      ) : (
+        <div className="group-members-main">{identity}</div>
+      )}
+      {onStop || onRemove ? (
+        <span className="group-members-actions">
+          {onStop ? <button type="button" className="group-chat-link" onClick={onStop}>{t("group.members.stop")}</button> : null}
+          {onRemove ? <button type="button" className="group-chat-link is-danger" onClick={onRemove}>{t("group.members.remove")}</button> : null}
+        </span>
+      ) : null}
     </li>
   );
 }
