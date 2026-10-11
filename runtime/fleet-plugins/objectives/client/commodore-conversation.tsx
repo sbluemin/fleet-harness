@@ -7,11 +7,11 @@ import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-in
 
 import { errorWord } from "./commodore-chat.js";
 import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreLog, CommodoreSettings } from "./commodore-inbox-section.js";
-import { commodoreSummary } from "./commodore-header.js";
+import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { useObjectiveTheater } from "./objectives-state.js";
+import { readTheater, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -234,7 +234,13 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("objectives.commodore.conversation.readOnly") : null),
   avatar: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId;
-    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("objectives.commodore.name") } : null;
+    // 얼굴은 사이드바 머리 표식과 같은 사실이다 — 사령관이 턴을 도는 동안 pill 과 오른쪽 패널 머리도 작업 중이다.
+    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("objectives.commodore.name"), state: commodoreMongleState(readCommodore(theaterId).view, readTheater(theaterId).objectives) } : null;
+  },
+  subscribe: (listener) => {
+    const offCommodore = subscribeCommodore(listener);
+    const offBoard = subscribeObjective(listener);
+    return () => { offCommodore(); offBoard(); };
   },
   actions: (ctx) => {
     const params = readParams(ctx.params);

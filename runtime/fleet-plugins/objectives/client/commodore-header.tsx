@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent } from "react";
 
+import { mongleStateOf, type MongleState } from "@fleet-console/sdk/avatars";
 import type { TheaterContribution, TheaterContributionContext, TheaterMenuContext } from "@fleet-console/sdk/plugin";
 
 import {
@@ -67,8 +68,7 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
   const { on, meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
   const warn = on && (view?.run.phase === "error" || view?.run.phase === "retrying");
   const status = [`${t("objectives.commodore.name")} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
-  const waiting = board.objectives.some((objective) => objective.operator === "commodore" && isWaitingObjective(objective));
-  const state = !on ? "idle" : warn ? "error" : view?.run.phase === "turn" ? "running" : waiting ? "awaiting" : "idle";
+  const state = commodoreMongleState(view, board.objectives);
   const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("objectives.commodore.name")} decorative className="objectives-commodore-mark-glyph" />;
   const toggleAutonomy = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -122,6 +122,18 @@ function CommodoreAutonomyMenuItem({ theater, language, onClose }: TheaterMenuCo
 }
 
 type CommodoreView = ReturnType<typeof useCommodore>["view"];
+
+/**
+ * 사령관의 지금 얼굴 — 사이드바 머리 표식과 대화 중심 화면(머리 pill·오른쪽 패널 머리)이 같은 사실로 고른다. 자율 운영이 꺼져 있으면
+ * 쉼이고, 실패·재시도는 오류 얼굴(얼굴 기준 `mongleStateOf` 에 없는 사령관 몫)이다. 그 밖에는 턴을 도는 동안 작업 중, 사령관이 운영하는
+ * 목표가 사람을 기다리면 대기, 아니면 쉼이다.
+ */
+export function commodoreMongleState(view: CommodoreView, objectives: readonly Objective[]): MongleState {
+  if (view?.state.autonomy !== true) return "idle";
+  if (view.run.phase === "error" || view.run.phase === "retrying") return "error";
+  const waiting = objectives.some((objective) => objective.operator === "commodore" && isWaitingObjective(objective));
+  return mongleStateOf({ activity: view.run.phase === "turn" ? "running" : waiting ? "awaiting" : "idle" });
+}
 export type CommodoreMetaPart = { readonly key: string; readonly text: string; readonly tone?: "on" | "warn" };
 
 /**

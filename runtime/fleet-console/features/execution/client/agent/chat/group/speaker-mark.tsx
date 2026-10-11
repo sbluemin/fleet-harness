@@ -1,10 +1,13 @@
-import type { ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
+import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { operationAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
+import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
+import type { OperationCluster } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
-import { KeyedAvatar } from "../../../../../workspace/client/avatars.js";
-import { useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
+import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
+import type { ConsoleState } from "../../../../../../core/client/src/integration/types.js";
+import { KeyedAvatar, operationMongleState } from "../../../../../workspace/client/avatars.js";
+import { useConversationClusters, useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { getGroupT } from "./group-chat-i18n.js";
 
 /**
@@ -41,6 +44,33 @@ export function SpeakerMark({ speaker, size = "md", state = "idle" }: { readonly
   const tone = speakerTone(speaker);
   if (tone) return <span className={`cluster-member-glyph is-tone-${tone}${sizeClass}`} aria-hidden="true">{letter}</span>;
   return <span className={`cluster-member-glyph is-neutral${sizeClass}`} aria-hidden="true">{letter}</span>;
+}
+
+/**
+ * 참여자의 지금 얼굴 — 구성원 탭과 말풍선의 최신 표식이 같은 기준으로 고른다. Operation 이 있는 참여자는 다른 표면과 같은
+ * Console 공개 활동 축(지휘관은 구성원 활동을 끌어올린 팀 값)과 묶음의 검토 대기·결정 요청·임무 완료로, 사령관과 Operation 이
+ * 없는 참여자는 그룹 스냅숏의 참여자 활동으로 고른다.
+ */
+export function participantMongleState(
+  speaker: ConversationSpeaker,
+  activity: ConversationParticipant["activity"] | undefined,
+  state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">,
+  clusters: readonly OperationCluster[],
+): MongleState {
+  if (speaker.kind !== "commodore" && speaker.kind !== "human" && speaker.operationId) return operationMongleState(speaker.operationId, state, clusters);
+  return mongleStateOf({ activity: activity === undefined || activity === "unknown" ? null : activity });
+}
+
+/**
+ * 발화자의 지금 상태를 보이는 표식 — 그 발화자의 가장 최근 말풍선 묶음 머리에만 선다. 지난 묶음의 표식은 그 말의 자리라
+ * 쉼(idle)으로 둔다. Console 상태를 구독하므로 최신 머리 몇 개에만 쓴다.
+ */
+export function LiveSpeakerMark({ speaker, participants }: { readonly speaker: ConversationSpeaker; readonly participants: readonly ConversationParticipant[] }) {
+  const state = useConsoleState();
+  const clusters = useConversationClusters();
+  const key = speakerKey(speaker);
+  const activity = participants.find((participant) => speakerKey(participant.speaker) === key)?.activity;
+  return <SpeakerMark speaker={speaker} state={participantMongleState(speaker, activity, state, clusters)} />;
 }
 
 /** 발화자 이름 — 구성원은 표식과 같은 톤의 잉크로, 그 밖은 중립 잉크로 선다. */
