@@ -581,6 +581,45 @@ export function createTranscriptReplayer(
 /** 그룹 대화 리듀서가 읽는 저널 종류. 도구는 세션 간 메시지(`SESSION_MESSAGE_TOOL`)와 그 결과만 남는다. */
 const HISTORY_EVENT_KINDS: ReadonlySet<string> = new Set(["dispatch", "turn-inject", "text", "turn-end"]);
 
+/** 재생의 신원 보정은 읽기 전용이다 — 라이브 발신 관측·수신 전달·턴 발신 기록을 건드리지 않는다. */
+async function resolveReplayRecipients(
+  line: string,
+  resolve: AgentChatSessionSeed["resolveSessionMessageRecipient"],
+  recipients: Map<string, string>,
+): Promise<void> {
+  if (!resolve) return;
+  let message: ClaudeGatewayMessage;
+  try { message = JSON.parse(line) as ClaudeGatewayMessage; } catch { return; }
+  if (!message || message.type !== "assistant" || message["parent_tool_use_id"] != null) return;
+  const content = (message as { readonly message?: { readonly content?: unknown } }).message?.content;
+  if (!Array.isArray(content)) return;
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const { type, name, id, input } = block as { readonly type?: unknown; readonly name?: unknown; readonly id?: unknown; readonly input?: unknown };
+    if (type !== "tool_use" || name !== SESSION_MESSAGE_TOOL || typeof id !== "string" || !id) continue;
+    if (!input || typeof input !== "object" || Array.isArray(input)) continue;
+    const { to, message: text } = input as { readonly to?: unknown; readonly message?: unknown };
+    if (typeof to !== "string" || !to || typeof text !== "string" || !text.trim()) continue;
+    try {
+      const recipient = await resolve(to);
+      if (recipient) recipients.set(id, recipient);
+    } catch {
+      // 읽을 수 없는 등록은 원문 대상으로 남는다 — 재생 자체를 막지 않는다.
+    }
+    if (recipients.size > PENDING_SENT_MESSAGE_CAP) {
+      const oldest = recipients.keys().next();
+      if (!oldest.done) recipients.delete(oldest.value);
+    }
+  }
+}
+
+function withReplayRecipient(event: AgentChatStreamEvent, recipients: Map<string, string>): AgentChatStreamEvent {
+  if (event.kind !== "tool-result") return event;
+  const recipientOperationId = recipients.get(event.id);
+  recipients.delete(event.id);
+  return recipientOperationId ? { ...event, recipientOperationId } : event;
+}
+
 /**
  * 휴면 세션의 지난 대화를 트랜스크립트에서 읽기 전용으로 투영한다 — 재개 재생과 같은 해석
  * (`chatReplayFromTranscriptLine` + `createTranscriptReplayer`)으로, 세션·SDK·자식 프로세스를 세우지 않고.
@@ -591,16 +630,18 @@ const HISTORY_EVENT_KINDS: ReadonlySet<string> = new Set(["dispatch", "turn-inje
  */
 export async function readTranscriptHistory(
   transcriptPath: string,
-  options: { readonly cwd?: string; readonly limit: number; readonly maxBytes: number },
+  options: { readonly cwd?: string; readonly limit: number; readonly maxBytes: number; readonly resolveSessionMessageRecipient?: AgentChatSessionSeed["resolveSessionMessageRecipient"] },
 ): Promise<{ readonly entries: readonly AgentChatJournalEvent[]; readonly truncated: boolean } | null> {
   const stat = await fs.stat(transcriptPath).catch(() => null);
   if (!stat?.isFile()) return null;
   const start = Math.max(0, stat.size - options.maxBytes);
   const toolNames = new Map<string, string>();
+  const recipients = new Map<string, string>();
   const ring: AgentChatJournalEvent[] = [];
   let seq = 0;
   let overflow = false;
-  const keep = (event: AgentChatStreamEvent, at: number | undefined): void => {
+  const keep = (raw: AgentChatStreamEvent, at: number | undefined): void => {
+    const event = withReplayRecipient(raw, recipients);
     if (event.kind === "tool") {
       if (event.name !== SESSION_MESSAGE_TOOL || event.id === undefined) return;
       toolNames.set(event.id, event.name);
@@ -622,6 +663,7 @@ export async function readTranscriptHistory(
     for await (const line of lines) {
       // 꼬리부터 읽으면 첫 줄은 반쪽이다.
       if (first) { first = false; continue; }
+      await resolveReplayRecipients(line, options.resolveSessionMessageRecipient, recipients);
       replayer.line(line);
     }
   } catch {
@@ -1015,18 +1057,22 @@ class AgentChatSession {
       return;
     }
     const transcriptPath = this.seed.origin.transcriptPath;
+    const recipients = new Map<string, string>();
     const replayer = createTranscriptReplayer(
       (line) => chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames, ...(this.seed.resolveAttachmentId ? { resolveAttachmentId: this.seed.resolveAttachmentId } : {}) }),
       (event, at) => {
         this.rememberTool(event);
         // 트랜스크립트 줄의 시각을 저널 시각으로 보존한다. 재연결 클라이언트도 라이브와 같은
         // 시간축으로 턴의 공백과 활동 경계를 복원해야 한다.
-        this.push(event, at ?? Date.now());
+        this.push(withReplayRecipient(event, recipients), at ?? Date.now());
       },
     );
     try {
       const raw = await fs.readFile(transcriptPath, "utf8");
-      for (const line of raw.split("\n")) replayer.line(line);
+      for (const line of raw.split("\n")) {
+        await resolveReplayRecipients(line, this.seed.resolveSessionMessageRecipient, recipients);
+        replayer.line(line);
+      }
       replayer.end();
     } catch {
       // 트랜스크립트를 읽지 못해도 세션은 계속된다 — 로그가 비어 보일 뿐 새 턴은 돌 수 있다.

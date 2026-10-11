@@ -216,6 +216,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const chatRegistry = new AgentChatRegistry(testChatSdkFactory ?? createChatSdkFactory(ctx.spawnAgentProcess), (operationId) => terminalRuntime.awaitWriterExit(operationId, PRIOR_WRITER_EXIT_WAIT_MS));
   // 줄바꿈 URL 확인은 호버마다 온다 — transcript 꼬리는 파일이 바뀔 때만 다시 읽는다.
   const transcriptLinks = createTranscriptLinkReader();
+  const resolveRecipient = createMessageRecipientResolver({
+    claudeConfigDir: resolveClaudeConfigDir(),
+    operations: () => ctx.host.operations.list().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])]),
+  });
   const unbindChatAttach = terminalRuntime.bindChatAttach((socket, context, lifetime) => {
     const sessionId = context.sessionId;
     attachAgentChatSocket(socket, lifetime, async () => {
@@ -2036,7 +2040,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
   /**
    * 그룹 대화의 지난 대화 — 저장된 트랜스크립트를 재개 재생과 같은 해석으로 읽기 전용 투영한다.
-   * 파일을 읽는 것 외에는 아무것도 하지 않는다: 채팅 세션을 세우지도 찾지도 않고(`chatRegistry`),
+   * 트랜스크립트·대상 신원을 읽기 전용으로 조회할 뿐이다: 채팅 세션을 세우지도 찾지도 않고(`chatRegistry`),
    * 시드를 풀지 않으며(`resolveChatSeed`의 게이트웨이 캐시·MCP 토큰), ticket·재개·payload 변경도 없다.
    * 그래서 휴면 세션을 읽어도 휴면은 그대로이고 모델 호출이 생기지 않는다. 언제 부를지는 클라이언트가 정한다.
    * Chat과 터미널은 같은 Claude 트랜스크립트를 쓰므로 chatMode를 가리지 않는다. 응답에는 경로·세션 id가 없다.
@@ -2060,7 +2064,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId) || undefined;
-    const history = await readTranscriptHistory(transcriptPath, { ...(cwd ? { cwd } : {}), limit: CHAT_HISTORY_ENTRY_LIMIT, maxBytes: CHAT_HISTORY_MAX_BYTES });
+    const history = await readTranscriptHistory(transcriptPath, { ...(cwd ? { cwd } : {}), limit: CHAT_HISTORY_ENTRY_LIMIT, maxBytes: CHAT_HISTORY_MAX_BYTES, resolveSessionMessageRecipient: resolveRecipient });
     if (!history) {
       ctx.host.http.writeJson(res, 404, { error: "history_unavailable" });
       return true;
@@ -2167,10 +2171,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
     // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트도 PTY와 같은 Theater 설정을 읽는다.
     const claudeConfigDir = resolveClaudeConfigDir();
-    const resolveRecipient = createMessageRecipientResolver({
-      claudeConfigDir,
-      operations: () => ctx.host.operations.list().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])]),
-    });
     const gatewayBaseUrl = resolveAnalysisGatewayBaseUrl(origin);
     // 공유 홈의 discovery 캐시는 호스트 소유다 — SDK 쪽은 이 홈에 쓰지 않으므로 여기서 세운다.
     // 노출 목록 전체를 쓰는 이유는 같은 홈을 PTY 자식이 함께 읽기 때문이다.

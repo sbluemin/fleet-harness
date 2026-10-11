@@ -443,6 +443,10 @@ describe("agent chat mode routes", () => {
     // 그룹 대화의 지난 대화 읽기 — 파일 읽기뿐이어야 한다. SDK가 서거나 휴면이 풀리면 읽기만으로 재개·과금이 생긴다.
     const harness = await createHarness();
     const sessionId = await harness.createSession();
+    const verifier = await harness.createSession();
+    (harness.operation(verifier)!.payload.session as Record<string, unknown>).sessionName = "verifier";
+    const arrivalReports = vi.spyOn(harness.consoleControl, "reportSessionMessage");
+    cleanups.push(() => arrivalReports.mockRestore());
     harness.attachProviderSession(sessionId);
     await harness.post(sessionId, "chat");
     await harness.post(sessionId, "chat-sleep");
@@ -467,12 +471,19 @@ describe("agent chat mode routes", () => {
     expect(response.status).toBe(200);
     expect(response.body.entries.map(({ event }) => event.kind === "tool" ? `tool:${event.name}` : event.kind)).toEqual(["dispatch", "tool:SendMessage", "tool-result", "text", "turn-end"]);
     expect(response.body.truncated).toBe(false);
+    expect(response.body.entries.find(({ event }) => event.kind === "tool-result")?.event).toMatchObject({ recipientOperationId: verifier });
+    expect(arrivalReports).not.toHaveBeenCalled();
     expect(JSON.stringify(response.body)).not.toContain(harness.fleetDataDir);
     expect(harness.sdkOptions).toHaveLength(sdkBefore);
     expect(harness.openSession.mock.calls).toHaveLength(sessionsBefore);
 
     await harness.postTicket(sessionId, { channel: "chat" });
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_dormant" } });
+    // 재개 재생도 같은 신원을 싣되 지난 발신을 오늘의 수신·도착 보고로 되세우지 않는다.
+    await harness.post(sessionId, "resume", {});
+    const replay = await harness.openChatSocket(sessionId);
+    expect(replay.map(({ raw }) => readChatJournalEvent(raw)?.event).find((event) => event?.kind === "tool-result" && event.id === "send-1")).toMatchObject({ recipientOperationId: verifier });
+    expect(arrivalReports).not.toHaveBeenCalled();
   });
 
   it.each(["pending", "missed"])("preserves first-turn identity after a %s transcript lookup at disposal", async (lookup) => {
