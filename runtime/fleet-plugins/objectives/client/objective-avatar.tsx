@@ -1,4 +1,4 @@
-import { operationAvatarKey, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
+import { mongleStateOf, operationAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
 import { useMongleLook } from "@fleet-console/sdk/avatars/browser";
 import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
 
@@ -23,21 +23,31 @@ export function ObjectiveAvatar({ operationId, role, state, still = true }: {
   return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} size={20} label="" decorative className={`objectives-avatar${still ? " is-still" : ""}`} />;
 }
 
-/** 보드가 읽는 활동 낱말 → 아바타 상태. 세션이 없거나 사라진 자리(closed·unknown)는 시작 전 얼굴이다. */
-export function mongleStateOfActivity(activity: string): MongleState {
+/** 보드가 읽는 활동 낱말 → 얼굴의 활동 사실. 세션이 없거나 사라진 자리(closed·unknown)는 시작 전이다. */
+function activityFacts(activity: string): Pick<MongleFacts, "session" | "activity"> {
   switch (activity) {
     case "running":
-    case "background": return "running";
-    case "awaiting": return "awaiting";
-    case "idle": return "idle";
-    case "ended": return "ended";
-    default: return "fresh";
+    case "background":
+    case "awaiting":
+    case "idle":
+    case "ended": return { activity };
+    default: return { session: false };
   }
 }
 
-/** 지휘관의 얼굴 — 사이드바 목표 줄과 같은 우선순위(검토 대기 › 결정 요청 › 자기 활동)다. */
-export function commanderMongleState(objective: Objective, ownActivity: string): MongleState {
-  if (objective.awaitingReview) return "review";
-  if (objective.decisionRequest && !objective.done) return "decision";
-  return mongleStateOfActivity(ownActivity);
+/**
+ * 구성원의 얼굴 — 사이드바·지휘관 탭 레일과 같은 기준(`mongleStateOf`)이다. 활동은 그 구성원 자기 값이고, 그 Operation 이 맡은
+ * 임무가 모두 끝났으면(지금 기다리거나 일하지 않을 때) 끝난 얼굴이다.
+ */
+export function memberMongleState(objective: Pick<Objective, "missions">, memberId: string, activity: string): MongleState {
+  const own = objective.missions.filter((mission) => mission.operationId === memberId);
+  return mongleStateOf({ ...activityFacts(activity), workDone: own.length > 0 && own.every((mission) => mission.done) });
+}
+
+/**
+ * 지휘관의 얼굴 — 다른 표면과 같은 기준이다(검토 대기 › 결정 요청 › 활동). 활동은 구성원 활동을 끌어올린 값(`activity`)이라,
+ * 구성원이 일하거나 기다리면 지휘관도 그렇게 보인다.
+ */
+export function commanderMongleState(objective: Objective, activity: string): MongleState {
+  return mongleStateOf({ ...activityFacts(activity), awaitingReview: objective.awaitingReview, decisionRequest: !!objective.decisionRequest && !objective.done });
 }

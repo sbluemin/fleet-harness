@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { operationAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
+import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "@fleet-console/sdk/avatars/browser";
 import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
+import type { OperationCluster } from "@fleet-console/sdk/plugin";
 import { MongleAvatarPicker, type MongleAvatarPickerLabels, type MongleAvatarPreviewState } from "@fleet-console/sdk/components/mongle-avatar-picker";
 import { IDENTITY_TONES, type IdentityTone } from "@fleet-console/sdk/operations/identity-tones";
 
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
 import type { ConsoleState, OperationNode } from "../../../core/client/src/integration/types.js";
-import type { OperationMarkVisual } from "../../execution/client/operation-activity.js";
+import { resolveOperationActivity, type OperationMarkVisual } from "../../execution/client/operation-activity.js";
 
 /**
  * 몽글 아바타의 Console 쪽 — 누구에게 어떤 역할이 붙는지, 처음 배정을 누가 맡는지, 대화 중심 화면의 편집기.
@@ -23,16 +24,39 @@ export function operationAvatarRole(operation: Pick<OperationNode, "parentOperat
   return operation.parentOperationId ? "member" : "commander";
 }
 
-/** 사이드바 표식 축(상태 마크) → 아바타 상태. 결정 요청은 활동 축과 별개의 사실이라 따로 받는다. */
-export function mongleStateOfMark(mark: OperationMarkVisual | undefined, decisionRequest = false): MongleState {
-  if (decisionRequest) return "decision";
-  switch (mark) {
-    case "running": return "running";
-    case "awaiting": return "awaiting";
-    case "unseen": return "unseen";
-    case "ended": return "ended";
-    default: return "idle";
+/** 묶음에서 읽는 얼굴 사실 — 뿌리면 검토 대기·결정 요청, 구성원이면 맡은 임무가 모두 끝났는지. */
+export type ClusterFaceFacts = Pick<MongleFacts, "awaitingReview" | "decisionRequest" | "workDone">;
+
+export function clusterFaceFacts(clusters: readonly OperationCluster[], operationId: string): ClusterFaceFacts {
+  for (const cluster of clusters) {
+    if (cluster.root === operationId) return { awaitingReview: cluster.row?.glyph === "review", decisionRequest: cluster.decisionRequest === true };
+    const own = cluster.members.filter((member) => !member.pending && member.operationId === operationId);
+    // 구성원의 진행은 대표 임무의 것이다 — 끝나지 않은 임무가 남아 있으면 그것이 대표라 done 은 「모두 끝남」이다.
+    if (own.length > 0) return { workDone: own.every((member) => member.progress === "done") };
   }
+  return {};
+}
+
+/**
+ * 사이드바 표식 축(상태 마크) → 아바타 상태. 표식의 unseen 은 활동이 쉼이고 안 본 답이 도착한 것이다 — 통일 기준의 예외로
+ * 사이드바만 표식째 넘긴다. 결정 요청·검토 대기·임무 완료는 활동 축과 별개의 사실이라 따로 받는다.
+ */
+export function mongleStateOfMark(mark: OperationMarkVisual | undefined, facts: Omit<MongleFacts, "activity" | "unseen"> = {}): MongleState {
+  return mongleStateOf({ ...facts, activity: mark === "unseen" ? "idle" : mark ?? null, unseen: mark === "unseen" });
+}
+
+/**
+ * Operation 하나의 얼굴 — 사이드바 밖 표면(지휘관 탭 레일·대화 머리·그룹 구성원 탭)이 쓴다. 활동은 Console 의 공개 축이라
+ * 지휘관은 구성원 활동을 끌어올린 값, 구성원은 자기 값이다. Operation 이 없으면 시작 전이다. 안 본 답은 읽지 않는다.
+ */
+export function operationMongleState(
+  operationId: string,
+  state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">,
+  clusters: readonly OperationCluster[],
+): MongleState {
+  const operation = state.nestedOperations.find((node) => node.id === operationId) ?? state.operations.find((node) => node.id === operationId);
+  if (!operation) return mongleStateOf({ session: false });
+  return mongleStateOf({ activity: resolveOperationActivity(operation, state.operationRuntime), ...clusterFaceFacts(clusters, operationId) });
 }
 
 const byCreation = (left: OperationNode, right: OperationNode) => left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);

@@ -15,7 +15,7 @@ import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
 import { ObjectiveResults, ResultsGlyph, ResultsHeadTools, resultGroupKey } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
-import { commanderMongleState, mongleStateOfActivity, ObjectiveAvatar } from "./objective-avatar.js";
+import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { actorDid, criterionApproval } from "./actors.js";
@@ -446,13 +446,16 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 const ROUTING_OFF_REASONS = new Set(["routing_disabled", "routing_off", "no_candidate"]);
 
 /** 구성원 표식 — 그 구성원 Operation 의 몽글 아바타(사이드바와 같은 모습). 세션이 아직 없으면 시작 전 얼굴이다. 이름은 곁의 글자가 말한다. */
-function MemberMark({ member, operationState, still }: { member: ObjectiveMember; operationState: (operationId: string) => string; still?: boolean }) {
-  return <ObjectiveAvatar operationId={member.id} role="member" state={mongleStateOfActivity(member.sessionName !== null ? operationState(member.id) : "closed")} still={still} />;
+function MemberMark({ objective, member, operationState, still }: { objective: Objective; member: ObjectiveMember; operationState: (operationId: string) => string; still?: boolean }) {
+  return <ObjectiveAvatar operationId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? operationState(member.id) : "closed")} still={still} />;
 }
 
-/** 지휘관 표식 — 목표 Operation 의 몽글 아바타. 구성원과는 머리 위 안테나(역할 특징)로 갈린다. 상태는 지휘관 자신의 활동이다. */
-function CommanderMark({ objective, operationOwnState }: { objective: Objective; operationOwnState: (operationId: string) => string }) {
-  return <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, operationOwnState(objective.id))} />;
+/**
+ * 지휘관 표식 — 목표 Operation 의 몽글 아바타. 구성원과는 머리 위 안테나(역할 특징)로 갈린다. 상태는 사이드바·레일과 같은
+ * 기준이라 구성원 활동을 끌어올린 값(`operationState`)을 읽는다 — 자기 활동(ownActivity)은 결정 대기 같은 글자에만 쓴다.
+ */
+function CommanderMark({ objective, operationState }: { objective: Objective; operationState: (operationId: string) => string }) {
+  return <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, operationState(objective.id))} />;
 }
 
 function MemberRoster({ objective, t, call, request, operationState, rows, touchable, expanded, onToggle }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; expanded: boolean; onToggle: () => void }) {
@@ -696,7 +699,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       return (
         <div key={member.id} className="objectives-member-slot">
         <div className="objectives-member">
-          <MemberMark member={member} operationState={operationState} still={false} />
+          <MemberMark objective={objective} member={member} operationState={operationState} still={false} />
           <div className="objectives-member-body">
             <span className="objectives-member-name">
               {/* 너비는 글자 수가 아니라 실제 글자 폭으로 — 숨은 복제(data-value)가 칸을 잡는다(한글처럼 넓은 글자도 잘리지 않게). */}
@@ -802,10 +805,10 @@ function AssignControl({ t, objective, mission, onAssign, onCreate, label, rows,
   return <>
     <button ref={trigger} type="button" className="objectives-launch is-glyph objectives-glyph" aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => { setCreating(false); setOpen((value) => !value); }}><AssignGlyph /></button>
     {open ? createPortal(<div ref={menu} className="objectives-menu objectives-assign-menu" role="menu" aria-label={label} style={{ ...pos, width: 216 }}>
-      <button type="button" role="menuitemradio" aria-checked={!mission.member} className={`objectives-menu-item${!mission.member ? " is-active" : ""}`} onClick={() => pick(null)}><CommanderMark objective={objective} operationOwnState={operationOwnState} /><span className="objectives-menu-label is-commander">{t("objectives.memberSelection.self")}</span></button>
+      <button type="button" role="menuitemradio" aria-checked={!mission.member} className={`objectives-menu-item${!mission.member ? " is-active" : ""}`} onClick={() => pick(null)}><CommanderMark objective={objective} operationState={operationState} /><span className="objectives-menu-label is-commander">{t("objectives.memberSelection.self")}</span></button>
       <div className="objectives-menu-divider" role="separator" />
       <p className="objectives-menu-caption objectives-assign-caption">{t("objectives.members.title")}</p>
-      {objective.members.map((member) => <button key={member.id} type="button" role="menuitemradio" aria-checked={mission.member === member.id} className={`objectives-menu-item${mission.member === member.id ? " is-active" : ""}`} onClick={() => pick(member.id)}><MemberMark member={member} operationState={operationState} /><span className="objectives-menu-label">{member.role}</span>{((display) => <span className="objectives-assign-model" title={display.title}>{display.label}</span>)(memberLaunchDisplay(member, memberLaunched(member, operationState), t, rows))}</button>)}
+      {objective.members.map((member) => <button key={member.id} type="button" role="menuitemradio" aria-checked={mission.member === member.id} className={`objectives-menu-item${mission.member === member.id ? " is-active" : ""}`} onClick={() => pick(member.id)}><MemberMark objective={objective} member={member} operationState={operationState} /><span className="objectives-menu-label">{member.role}</span>{((display) => <span className="objectives-assign-model" title={display.title}>{display.label}</span>)(memberLaunchDisplay(member, memberLaunched(member, operationState), t, rows))}</button>)}
       <div className="objectives-menu-divider" role="separator" />
       {creating ? <div className="objectives-assign-new"><input autoFocus maxLength={40} aria-label={t("objectives.members.new")} placeholder={t("objectives.members.rolePlaceholder")} value={role} onChange={(event) => setRole(event.target.value)} onKeyDown={(event) => { if (submitKey(event) && role.trim() && !creatingRef.current) { creatingRef.current = true; void onCreate(role.trim()).then((created) => { if (created) { setOpen(false); setRole(""); } }).finally(() => { creatingRef.current = false; }); } }} /><span>{t("objectives.members.newHint")}</span></div>
         : <button type="button" role="menuitem" className="objectives-menu-item objectives-assign-create" onClick={() => setCreating(true)}>{t("objectives.members.new")}</button>}
@@ -1439,7 +1442,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   // 결정 — 질문·기록에 붙은 구성원 표식과, 그 세션으로 가는 길(세션이 떠 있을 때만). 임무 줄의 결정 표식이 가리킨 결정은 잠시 비춘다.
   const memberMarkOf = (memberId: string) => {
     const member = objective.members.find((candidate) => candidate.id === memberId);
-    return member ? { mark: <MemberMark member={member} operationState={operationState} />, role: member.role, live: member.sessionName !== null && operationState(member.id) !== "closed" } : null;
+    return member ? { mark: <MemberMark objective={objective} member={member} operationState={operationState} />, role: member.role, live: member.sessionName !== null && operationState(member.id) !== "closed" } : null;
   };
   const [decisionFlash, setDecisionFlash] = useState<string | null>(null);
   const [decisionTrace, setDecisionTrace] = useState<string | null>(null);
@@ -1769,7 +1772,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           if (!options.length) return;
           event.preventDefault(); const next = options[(at + (["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1) + options.length) % options.length]!; next.focus(); next.click();
         }}>
-          {[...objective.members, null].map(option => <button key={option?.id ?? "commander"} type="button" role="radio" aria-checked={mission.member === (option?.id ?? null)} tabIndex={mission.member === (option?.id ?? null) ? 0 : -1} disabled={!allowed} onClick={() => patch({ member: option?.id ?? null })}>{option ? <MemberMark member={option} operationState={operationState} /> : <CommanderMark objective={objective} operationOwnState={operationOwnState} />}{option?.role ?? t("objectives.graph.commander")}</button>)}
+          {[...objective.members, null].map(option => <button key={option?.id ?? "commander"} type="button" role="radio" aria-checked={mission.member === (option?.id ?? null)} tabIndex={mission.member === (option?.id ?? null) ? 0 : -1} disabled={!allowed} onClick={() => patch({ member: option?.id ?? null })}>{option ? <MemberMark objective={objective} member={option} operationState={operationState} /> : <CommanderMark objective={objective} operationState={operationState} />}{option?.role ?? t("objectives.graph.commander")}</button>)}
         </div>
       </div>
       <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.parents")} {mission.prerequisites.length}</div>{mission.prerequisites.map(id => { const parent = objective.missions.find(m => m.id === id); return parent ? edgeRow(parent, parent.id, mission.id) : null; })}{mission.unplaced ? <p className="objectives-popup-hint">{t("objectives.graph.unplacedHint")}</p> : null}</div>
@@ -1792,9 +1795,9 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     return <div key={mission.id} className="objectives-graph-attention" role="status"><span className="objectives-popup-state is-awaiting" aria-hidden="true"><i /></span><span className="objectives-graph-attention-owner">{t("objectives.graph.ownerAwaiting", { owner: ownerName })}</span><button type="button" onClick={() => showMission(mission.id)}>{t("objectives.graph.detail", { n: numberOf(mission.id) })}</button><button type="button" className="objectives-graph-attention-session" onClick={() => focusOperation(owner?.id ?? objective.id)}>{t("objectives.graph.openSession")}</button></div>;
   });
   const ownerMark = (memberId: string | null) => {
-    if (!memberId) return <CommanderMark objective={objective} operationOwnState={operationOwnState} />;
+    if (!memberId) return <CommanderMark objective={objective} operationState={operationState} />;
     const member = objective.members.find((candidate) => candidate.id === memberId);
-    return member ? <MemberMark member={member} operationState={operationState} /> : null;
+    return member ? <MemberMark objective={objective} member={member} operationState={operationState} /> : null;
   };
   const graphProps = { objective, t, states: missionStates, ownerMark, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: closePopupRecords, onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal };
   const missionAdd = touchable ? <div className="objectives-row objectives-mission-add"><span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span><input maxLength={200} aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={event => {
@@ -1828,7 +1831,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             <div className="objectives-mission-body">
               <WrapText key={mission.text} className="objectives-mission-text" label={`${index + 1}`} editLabel={t("objectives.link.edit")} value={mission.text} readOnly={!canEditMission(mission.id)} maxLength={200}
                 onCommit={(value) => { if (!value) return false; if (value !== mission.text) void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { text: value } }); return true; }} />
-              <span className={`objectives-mission-sub${mission.operationId ? ` is-${operationState(mission.operationId)}` : " is-assign"}`} title={mission.operationId ? operationTitle(mission.operationId) : undefined}>{member ? <><MemberMark member={member} operationState={operationState} /><span className="objectives-mission-member-name">{member.role}</span></> : <><CommanderMark objective={objective} operationOwnState={operationOwnState} /><span className="objectives-mission-member-name is-commander">{t("objectives.memberSelection.self")}</span></>}</span>
+              <span className={`objectives-mission-sub${mission.operationId ? ` is-${operationState(mission.operationId)}` : " is-assign"}`} title={mission.operationId ? operationTitle(mission.operationId) : undefined}>{member ? <><MemberMark objective={objective} member={member} operationState={operationState} /><span className="objectives-mission-member-name">{member.role}</span></> : <><CommanderMark objective={objective} operationState={operationState} /><span className="objectives-mission-member-name is-commander">{t("objectives.memberSelection.self")}</span></>}</span>
               <ExtensionChip n={missionExtension(mission.id)} t={t} />
               {mission.unplaced && !mission.done ? <span className="objectives-mission-sub is-unplaced">{t("objectives.missions.unplaced")}</span> : null}
             </div>
@@ -1959,8 +1962,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     return t("objectives.members.idle");
   };
   const recipients: MessageRecipient[] = [
-    { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark objective={objective} operationOwnState={operationOwnState} />, state: operationOwnState(objective.id), outcome: objective.commander.outcome },
-    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark member={member} operationState={operationState} />, state: operationState(member.id), outcome: member.outcome })),
+    { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark objective={objective} operationState={operationState} />, state: operationOwnState(objective.id), outcome: objective.commander.outcome },
+    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark objective={objective} member={member} operationState={operationState} />, state: operationState(member.id), outcome: member.outcome })),
   ].filter((recipient) => recipient.state !== "closed");
   // 재개 띠의 지휘관 상태 — 받는 이와 같이 실패를 먼저 보되, 실패가 아닐 때는 기존 기술어(stateLabel)를 그대로 쓴다.
   // memberStateWord를 통째로 쓰면 closed·ended 같은 비실패 문구까지 명단 말로 바뀌므로, 실패 겹침만 덧씌운다.
@@ -1991,7 +1994,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           onFocusOperation={focusOperation}
           routingTargets={objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, operationState))}
           memberLaunched={(member) => memberLaunched(member, operationState)}
-          memberMark={(memberId) => ((member) => (member ? <MemberMark member={member} operationState={operationState} /> : null))(objective.members.find((candidate) => candidate.id === memberId))}
+          memberMark={(memberId) => ((member) => (member ? <MemberMark objective={objective} member={member} operationState={operationState} /> : null))(objective.members.find((candidate) => candidate.id === memberId))}
         />
       </div>
   );

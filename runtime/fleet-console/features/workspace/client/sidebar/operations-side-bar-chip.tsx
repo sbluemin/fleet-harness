@@ -56,6 +56,8 @@ export interface SideBarChipCluster {
   readonly strip: ReactNode;
   /** 뿌리에게 결정 요청이 섰다 — 이름 옆에 표식이 선다(비콘·상태 칸은 활동 그대로). */
   readonly decisionRequest?: boolean;
+  /** 뿌리의 목표가 사람의 검토를 기다린다 — 아바타가 검토 대기 얼굴이 된다(다른 표면과 같은 기준). */
+  readonly awaitingReview?: boolean;
 }
 
 interface SideBarChipProps {
@@ -389,7 +391,7 @@ export function OperationsSideBarChip({
           몸짓으로 말한다(구성원은 베이스만, 그 밖은 지휘관 안테나). 칩 자체가 상태를 접근성 이름으로
           말하지 않으므로 아바타가 그 이름을 진다. */}
       <span className="side-bar-chip-beacon-button">
-        <OperationAvatar operation={operation} state={mongleStateOfMark(markVisual, cluster?.decisionRequest === true)} size={conversationRow ? 28 : 20} label={operationMarkLabel(markVisual)} className="side-bar-chip-status" />
+        <OperationAvatar operation={operation} state={mongleStateOfMark(markVisual, { decisionRequest: cluster?.decisionRequest === true, awaitingReview: cluster?.awaitingReview === true })} size={conversationRow ? 28 : 20} label={operationMarkLabel(markVisual)} className="side-bar-chip-status" />
       </span>
       <span className="side-bar-chip-text">
         {/* 이름 줄 — 스냅 표식은 이름의 생략 부호 밖에 서므로 제목이 길어도 잘리지 않는다.

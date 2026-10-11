@@ -23,8 +23,8 @@ import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import { useDesktopRailEntries } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
 import { operationAvatarKey } from "@fleet-console/sdk/avatars";
-import { AvatarEditor, OperationAvatar, mongleStateOfMark, operationAvatarRole } from "../avatars.js";
-import { pluginRuntimeState, resolveOperationActivity } from "../../../execution/client/operation-activity.js";
+import { AvatarEditor, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
+import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex } from "../operation-clusters.js";
@@ -310,11 +310,9 @@ function ConversationPanelIdentity() {
   }
   if (subject !== null) {
     // 대상의 몽글 아바타(64px) — 이 화면에서만 눌러 고친다. 일반 화면에는 이 자리도 편집 진입도 없다.
-    const activity = resolveOperationActivity(subject, state.operationRuntime);
-    const decision = clusterIndex.rootOf.get(subject.id)?.cluster.decisionRequest === true;
     return (
       <div className="conversation-panel-identity">
-        <AvatarEditor avatarKey={operationAvatarKey(subject.id)} role={operationAvatarRole(subject)} state={mongleStateOfMark(activity, decision)} size={64} label={subject.title} />
+        <AvatarEditor avatarKey={operationAvatarKey(subject.id)} role={operationAvatarRole(subject)} state={operationMongleState(subject.id, state, clusterIndex.clusters)} size={64} label={subject.title} />
         <strong className="conversation-panel-identity-name">{subject.title}</strong>
       </div>
     );
@@ -671,7 +669,6 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
   const chosen = state.nestedBodySelection[operation.id];
   const bodyOwner = (chosen ? nested.find((candidate) => candidate.id === chosen) : undefined) ?? operation;
   const runtimeState = pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, bodyOwner.id);
-  const activity = resolveOperationActivity(operation, state.operationRuntime);
   const descriptor = operationKinds.find((kind) => kind.pluginId === bodyOwner.pluginId && kind.type === bodyOwner.type)
     ?? operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
 
@@ -727,7 +724,7 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
           onClick={onToggleDetails}
           aria-label={t("conversation.pill.detailsAria", { title: operation.title })}
         >
-          <OperationAvatar operation={operation} state={mongleStateOfMark(activity, clusterRoot?.cluster.decisionRequest === true)} size={20} label={operation.title} decorative className="conversation-pill-mark" />
+          <OperationAvatar operation={operation} state={operationMongleState(operation.id, state, clusterIndex.clusters)} size={20} label={operation.title} decorative className="conversation-pill-mark" />
           <span className="conversation-pill-title">{operation.title}</span>
           {bodyOwner !== operation ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.operationId === bodyOwner.id)?.name ?? clusterRoot?.formation.byOperationId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
           {memberCount > 0 ? (
