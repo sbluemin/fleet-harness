@@ -18,12 +18,10 @@ import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanel
 import { mountConversationOperationTabsHost, registerConversationOperationTab, useConversationOperationTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { useTheaterInboxState } from "../theater-inbox/store.js";
-import { theaterInitials } from "../sidebar/theater-initials.js";
-import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import { useDesktopRailEntries } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { operationAvatarKey } from "@fleet-console/sdk/avatars";
-import { AvatarEditor, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
+import { operationAvatarKey, theaterAvatarKey } from "@fleet-console/sdk/avatars";
+import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
@@ -297,14 +295,25 @@ function ConversationPanelIdentity() {
   const { conversationSurfaces } = usePluginRegistry();
   const state = useConsoleState();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
-  const descriptor = subject === null && surface !== null ? conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null : null;
+  const centerSurface = surface === null ? null : conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null;
+  const descriptor = subject === null ? centerSurface : null;
   const clusterIndex = useClusterIndex();
-  // Theater 를 연 동안 패널은 그 Theater 의 것이다 — 사이드바 머리와 같은 이니셜 표식과 이름.
+  // Theater 를 연 동안 패널은 그 Theater 의 것이다 — Theater 의 몽글 아바타는 그 사령관이다(사이드바 Theater 머리 표식과 같은 얼굴).
+  // 가운데 칸에 그 Theater 를 대신하는 대화(사령관)가 서 있으면 이름은 그 대화의 이름이다 — 패널을 어느 길로 열든 머리가 같다.
   if (inbox !== null && theaterLabel !== null) {
+    const context = centerSurface !== null && surface !== null
+      ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
+      : null;
+    let owner: { readonly title: string; readonly label: string } | null = null;
+    try {
+      if (centerSurface !== null && context !== null && centerSurface.theater?.(context)?.theaterId === inbox.theaterId) {
+        owner = { title: centerSurface.title(context), label: centerSurface.avatar?.(context)?.label ?? centerSurface.title(context) };
+      }
+    } catch { owner = null; }
     return (
       <div className="conversation-panel-identity">
-        <span className="conversation-panel-identity-mark is-theater" aria-hidden="true"><TheaterMonogram compact>{theaterInitials(theaterLabel)}</TheaterMonogram></span>
-        <strong className="conversation-panel-identity-name">{theaterLabel}</strong>
+        <AvatarEditor avatarKey={theaterAvatarKey(inbox.theaterId)} role="commodore" state="idle" size={64} label={owner?.label ?? theaterLabel} />
+        <strong className="conversation-panel-identity-name">{owner?.title ?? theaterLabel}</strong>
       </div>
     );
   }
@@ -637,14 +646,25 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   }, [descriptor.defaultTab, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
+  // 대화의 동작은 Operation 대화처럼 pill 바로 옆 단추 묶음에 선다 — 이 줄 안에 있어야 Desktop 의 창 끌기 자리에서 빠져 눌린다.
+  const actions = descriptor.actions?.(context) ?? null;
+  // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Operation 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
+  const avatar = descriptor.avatar?.(context) ?? null;
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
         <button type="button" className="conversation-pill" onClick={onToggleDetails} aria-label={t("conversation.pill.detailsAria", { title })}>
-          {descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
+          {avatar
+            ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state="idle" size={20} label={avatar.label} decorative className="conversation-pill-mark" />
+            : descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
           <span className="conversation-pill-title">{title}</span>
           {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
         </button>
+        {actions === null || actions === false ? null : (
+          <span className="conversation-pill-actions">
+            <PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary>
+          </span>
+        )}
       </div>
       <div className="conversation-body is-surface">
         <PluginErrorBoundary fallback={null}>{descriptor.render(context)}</PluginErrorBoundary>

@@ -330,14 +330,19 @@ export interface ConversationSurfaceDescriptor {
   /** 머리 pill 의 이름과 부제. */
   readonly title: (ctx: ConversationSurfaceContext) => string;
   readonly subtitle?: (ctx: ConversationSurfaceContext) => string | null;
-  /** 머리 pill 의 표식(16px 안팎). 없으면 글만 선다. */
+  /** 머리 pill 의 표식(16px 안팎) — `avatar` 가 없을 때만 선다. 둘 다 없으면 글만 선다. */
   readonly mark?: () => ReactNode;
   /**
-   * 오른쪽 패널 머리에 설 몽글 아바타 — 이 대화의 주인(예: 사령관 대화면 그 Theater)의 아바타 키와 역할. 있으면 호스트가 64px 아바타를
-   * 세우고 대화 중심 화면에서 고칠 수 있게 한다. 없으면 `mark` 가 그 자리에 선다.
+   * 이 대화의 주인(예: 사령관 대화면 그 Theater)의 몽글 아바타 키와 역할. 있으면 호스트가 머리 pill 에 20px, 오른쪽 패널 머리에 64px
+   * 아바타를 세우고 대화 중심 화면에서 고칠 수 있게 한다. 없으면 `mark` 가 두 자리에 선다.
    */
   readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("../avatars/index.js").MongleRole; readonly label: string } | null;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
+  /**
+   * 머리 pill 바로 오른쪽 단추 묶음(Operation 대화의 pill 단추 묶음과 같은 자리·같은 캡슐)에 설 이 대화의 동작. 호스트가 자리와 면을
+   * 진다 — 그 줄은 Desktop 에서 창을 끄는 자리라, 본문이 맨 위 줄에 단추를 띄우면 pill 밖에서는 눌리지 않는다. 없거나 null 이면 묶음이 서지 않는다.
+   */
+  readonly actions?: (ctx: ConversationSurfaceContext) => ReactNode;
   readonly tabs?: readonly ConversationSurfaceTab[];
   /** 열 때 오른쪽 패널이 닫혀 있으면 이 탭을 연다. */
   readonly defaultTab?: string;

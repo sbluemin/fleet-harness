@@ -7,7 +7,6 @@ import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-in
 
 import { errorWord } from "./commodore-chat.js";
 import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreLog, CommodoreSettings } from "./commodore-inbox-section.js";
-import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, useCommodore } from "./commodore-state.js";
@@ -90,6 +89,39 @@ function useCommodoreReveal(theaterId: string) {
   return current?.theaterId === theaterId ? current : null;
 }
 
+/* ── 실패 한 줄 — 가운데 본문과 머리 pill 옆 지우기 단추가 함께 쓴다 ─────────── */
+
+const failures = new Map<string, string>();
+const failureListeners = new Set<() => void>();
+// 실패 줄이 지금 서 있는 Theater — 본문이 세운다. 닫히거나 다른 Theater 로 바뀐 뒤에 끝난 요청의 실패는 적지 않는다
+// (모듈 공유라 적으면 다음에 열 때 지난 실패가 선다).
+const liveFailureLines = new Map<string, number>();
+
+function setConversationFailure(theaterId: string, failure: string | null): void {
+  if (failure !== null && !liveFailureLines.has(theaterId)) return;
+  if ((failures.get(theaterId) ?? null) === failure) return;
+  if (failure === null) failures.delete(theaterId);
+  else failures.set(theaterId, failure);
+  for (const listener of failureListeners) listener();
+}
+
+function useConversationFailure(theaterId: string): string | null {
+  useEffect(() => {
+    liveFailureLines.set(theaterId, (liveFailureLines.get(theaterId) ?? 0) + 1);
+    return () => {
+      const left = (liveFailureLines.get(theaterId) ?? 1) - 1;
+      if (left > 0) liveFailureLines.set(theaterId, left);
+      else liveFailureLines.delete(theaterId);
+      setConversationFailure(theaterId, null);
+    };
+  }, [theaterId]);
+  return useSyncExternalStore(
+    (listener) => { failureListeners.add(listener); return () => { failureListeners.delete(listener); }; },
+    () => failures.get(theaterId) ?? null,
+    () => null,
+  );
+}
+
 /* ── 가운데 칸 ─────────────────────────────────────────────────────────── */
 
 function readParams(params: Readonly<Record<string, unknown>>): { readonly theaterId: string; readonly readOnly: boolean } | null {
@@ -107,7 +139,8 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
   const board = useObjectiveTheater(theaterId);
   const reveal = useCommodoreReveal(theaterId);
-  const [failure, setFailure] = useState<string | null>(null);
+  const failure = useConversationFailure(theaterId);
+  const setFailure = (next: string | null) => setConversationFailure(theaterId, next);
   useEffect(() => {
     void loadCommodore(theaterId);
     if (!readCommodore(theaterId).transcriptLoaded) void loadTranscript(theaterId);
@@ -117,13 +150,8 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
   return (
     <div className="objectives-commodore-conversation">
-      {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 이 떠 있다) — 기록은 그 밑으로 흘러 올라간다. 여기에는 기록 비우기
-          단추만 오른쪽 위에 떠 있고, 사령관의 지금 상태는 입력 아래 줄이 말한다. 읽기 전용이면 pill 의 부제가 그 사실을 말한다. */}
-      {readOnly ? null : (
-        <div className="objectives-commodore-conversation-float">
-          <CommodoreClearButton t={t} theaterId={theaterId} onFail={fail} onClear={() => setFailure(null)} />
-        </div>
-      )}
+      {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 기록은 그
+          밑으로 흘러 올라간다. 사령관의 지금 상태는 입력 아래 줄이 말한다. 읽기 전용이면 pill 의 부제가 그 사실을 말한다. */}
       {on && (run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("objectives.commodore.meta.error")}</span>
@@ -141,6 +169,20 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
         <span className="objectives-commodore-conversation-status">{[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")}</span>
       </footer>
     </div>
+  );
+}
+
+/** 머리 pill 옆 단추 묶음의 기록 비우기 — 실패는 가운데 본문의 실패 줄이 말한다. */
+function CommodoreConversationActions({ theaterId, language }: { readonly theaterId: string; readonly language: "en" | "ko" }) {
+  const t = getT(language);
+  return (
+    <CommodoreClearButton
+      t={t}
+      theaterId={theaterId}
+      variant="round"
+      onFail={(error) => setConversationFailure(theaterId, failureWord(t, error))}
+      onClear={() => setConversationFailure(theaterId, null)}
+    />
   );
 }
 
@@ -190,10 +232,13 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     return label ? `${name} · ${label}` : name;
   },
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("objectives.commodore.conversation.readOnly") : null),
-  mark: () => <CommodoreMentionGlyph className="objectives-commodore-conversation-mark" />,
   avatar: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId;
     return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("objectives.commodore.name") } : null;
+  },
+  actions: (ctx) => {
+    const params = readParams(ctx.params);
+    return params && !params.readOnly ? <CommodoreConversationActions theaterId={params.theaterId} language={ctx.language} /> : null;
   },
   render: (ctx) => {
     const params = readParams(ctx.params);
