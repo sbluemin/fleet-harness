@@ -6,6 +6,7 @@
  * vendor 타입이 형제 모듈의 `.d.ts`로 새면 소비자 해석 그래프가 다시 vendor를 요구하게 되고,
  * 그것이 이 패키지가 막으려는 바로 그 상태다.
  */
+import { assertClaudeGatewayInput } from "./input.js";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 
@@ -17,6 +18,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 
 import type {
+  ClaudeGatewayInput,
   ClaudeGatewayAgent,
   ClaudeGatewayCommand,
   ClaudeGatewayContextUsage,
@@ -34,7 +36,7 @@ import type {
 
 /** 이미 조립이 끝난 vendor `query()` 인자. 조립 책임은 `./sdk.ts`에 있다. */
 export interface VendorQueryInput {
-  readonly prompt: string;
+  readonly prompt: ClaudeGatewayInput;
   readonly options: Readonly<Record<string, unknown>>;
 }
 
@@ -224,7 +226,7 @@ function readVendorContextUsage(response: unknown): ClaudeGatewayContextUsage | 
 
 export function runVendorQuery(input: VendorQueryInput): ClaudeGatewayRun {
   const run = vendorQuery({
-    prompt: input.prompt,
+    prompt: typeof input.prompt === "string" ? input.prompt : (async function* () { yield vendorUserMessage(input.prompt); })(),
     options: withResolvedExecutable(input.options),
   } as never) as AsyncGenerator<unknown, void> & {
     return?: (value?: unknown) => Promise<unknown>;
@@ -332,11 +334,12 @@ class VendorInputQueue implements AsyncIterable<unknown> {
  * 확인: 대화형 사용자 메시지 생성부가 이 값으로 고정되어 있고, `"now"`는 한 번도 쓰이지 않으며
  * `"later"`는 시스템 알림 전용이다). 이 값을 바꾸면 Console이 CLI와 다른 제품이 된다.
  */
-function vendorUserMessage(text: string, messageId?: string): Record<string, unknown> {
+function vendorUserMessage(text: ClaudeGatewayInput, messageId?: string): Record<string, unknown> {
+  assertClaudeGatewayInput(text);
   return {
     type: "user",
     session_id: "",
-    message: { role: "user", content: [{ type: "text", text }] },
+    message: { role: "user", content: typeof text === "string" ? [{ type: "text", text }] : text },
     parent_tool_use_id: null,
     priority: "next",
     ...(messageId === undefined ? {} : { uuid: messageId }),
@@ -426,7 +429,7 @@ export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySessio
       if (Object.keys(flags).length === 0) return;
       await run.applyFlagSettings(flags);
     },
-    send(text: string, options?: ClaudeGatewaySendOptions): void {
+    send(text: ClaudeGatewayInput, options?: ClaudeGatewaySendOptions): void {
       if (closed) return;
       queue.push(vendorUserMessage(text, options?.messageId));
     },

@@ -104,7 +104,9 @@ export function wrapPlugin(plugin) {
           return {
             async send(text) {
               if (closed) throw new Error("session_disposed");
-              log("send", { id, characters: text.length, held: marker("hold-turn") });
+              const blocks = typeof text === "string" ? [{ type: "text", text }] : text;
+              const images = blocks.filter((block) => block.type === "image");
+              log("send", { id, characters: blocks.reduce((total, block) => total + (block.type === "text" ? block.text.length : 0), 0), imageBlocks: images.length, imageBytes: images.reduce((total, block) => total + Buffer.from(block.source.data, "base64").byteLength, 0), held: marker("hold-turn") });
               if (marker("hold-turn")) {
                 await new Promise((resolve) => { finish = resolve; });
               } else {

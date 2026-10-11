@@ -24,7 +24,11 @@ describe("Console-owned plugin Agent", () => {
     const connect = vi.fn(() => connection as never);
     const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", consoleUse: { connect }, resolveExecutablePath: async () => "/installed/claude", createSdk: async ({ tempRoot, executablePath }) => { root = tempRoot!; executable = executablePath; roots.push(root); return engine; } });
     const session = await host.createSession({ ...options, tools: { consoleUse: { tools: ["console_launcher"], allowControl: true }, builtins: ["WebFetch"], custom: [{ name: "draft", tools: [{ name: "read", description: "Read only this draft", inputSchema: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "draft" }] }) }] }] }, onEvent: event => events.push(event) });
-    await session.send("one"); await session.send("two");
+    await session.send("one");
+    const imageInput = [{ type: "text" as const, text: "two" }, { type: "image" as const, source: { type: "base64" as const, media_type: "image/png" as const, data: "iVBORw0KGgo=" } }];
+    await session.send(imageInput);
+    expect(turns[1]!.prompt).toEqual(imageInput);
+    await expect(session.send([{ type: "image", source: { type: "url", url: "file:///private" } }] as never)).rejects.toThrow("Message required");
     expect(turns[0]).toMatchObject({ tools: ["WebFetch"], allowedTools: ["WebFetch", "mcp__draft__read", "mcp__fleet-console-use__console_launcher"], permissionMode: "dontAsk" });
     expect(Object.keys(turns[0]!.mcpServers!)).toEqual(["draft", "fleet-console-use"]);
     expect(connect).toHaveBeenCalledWith({ tools: ["console_launcher"], allowControl: true, enabled: expect.any(Function) });

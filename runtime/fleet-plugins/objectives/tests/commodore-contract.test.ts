@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { AgentEvent, AgentHost, AgentSessionOptions } from "@fleet-console/sdk/agent";
+// 테스트의 실제 호스트 보관소 fixture만 동적으로 읽는다 — 플러그인 빌드의 rootDir에는 호스트 소스를 싣지 않는다.
+const hostAttachmentFixture = new URL("../../../fleet-console/features/execution/host/agent/launch-attachments.ts", import.meta.url).pathname;
+const { createLaunchAttachmentStore } = await import(hostAttachmentFixture);
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../server/commodore/attachment-budget.js";
+import type { AgentEvent, AgentHost, AgentInput, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { resolveRosterCoordinate, type ModelCoordinate } from "@fleet-console/sdk/models";
 import { defineConsoleTool } from "@fleet-console/sdk/mcp/actions";
@@ -148,7 +152,7 @@ describe("commodore session", () => {
         created.push(options);
         emit = options.onEvent;
         return {
-          send: async (text) => { sent.push(text); await script(text); },
+          send: async (text) => { if (typeof text !== "string") throw new Error("Expected text-only turn"); sent.push(text); await script(text); },
           cancel: () => undefined,
           dispose: async () => { disposed += 1; },
         };
@@ -264,6 +268,57 @@ describe("commodore session", () => {
 });
 
 describe("commodore supervisor", () => {
+  it("owns accepted images beyond the draft TTL, delivers blocks and releases success, clear and undelivered messages", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-11T12:00:00Z"));
+    const h = harness(Date.now);
+    const files = createLaunchAttachmentStore({ dataDir: h.objectivesDir, now: Date.now });
+    const attachments = files.forPlugin("objectives");
+    Object.assign(h.ctx.host, { attachments });
+    const turns: AgentInput[] = [];
+    let fail = true;
+    const agent: AgentHost = { createSession: async (options) => ({
+      send: async (input) => { turns.push(input); options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) }); },
+      cancel() {}, dispose: async () => undefined,
+    }) };
+    const supervisor = createCommodoreSupervisor({ store: h.store, agent, attachments, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+    const hooks = { run: (id: string) => supervisor.status(id), clear: (id: string) => supervisor.clear(id) };
+    const png = Buffer.from("iVBORw0KGgo=", "base64");
+    const sendImage = async (bytes = png) => {
+      const { id } = files.save(bytes);
+      const result = await h.route("commodore/message", { theaterId: "t1", text: "Look at this", attachmentIds: [id] }, hooks);
+      return { id, result, entry: result.value.entry as { messageId: string } };
+    };
+    try {
+      h.store.setAutonomy("t1", true);
+      const accepted = await sendImage();
+      expect(accepted.result.status).toBe(200);
+      files.discard(accepted.id); // 브라우저의 늦은 제거는 서버가 수락한 메시지를 건드리지 못한다.
+      expect(files.forPlugin("other").read("t1", accepted.entry.messageId)).toEqual([]);
+      expect((await h.route("commodore/message", { theaterId: "t1", text: "again", attachmentIds: [accepted.id] }, hooks)).status).toBe(400);
+      await vi.advanceTimersByTimeAsync(31 * 60_000);
+      files.assertSaveCapacity();
+      expect(attachments.read("t1", accepted.entry.messageId)[0]!.bytes).toEqual(png);
+      fail = false;
+      await supervisor.retry("t1");
+      const delivered = turns.at(-1)!;
+      expect(typeof delivered).not.toBe("string");
+      expect(delivered).toEqual(expect.arrayContaining([{ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } }]));
+      expect(attachments.read("t1", accepted.entry.messageId)).toEqual([]);
+      const tooLarge = Buffer.alloc(MAX_COMMODORE_MESSAGE_IMAGE_BYTES + 1); png.copy(tooLarge);
+      const over = await sendImage(tooLarge);
+      expect(over.result).toMatchObject({ status: 400, value: { error: "attachment_budget_exceeded" } });
+      expect(files.resolve([over.id])).toHaveLength(1); files.unreserve([over.id]); files.discard(over.id);
+      const cleared = await sendImage();
+      await supervisor.clear("t1");
+      expect(attachments.read("t1", cleared.entry.messageId)).toEqual([]);
+      const stopped = await sendImage();
+      h.store.setAutonomy("t1", false);
+      await Promise.resolve(); await supervisor.dispose();
+      expect(attachments.read("t1", stopped.entry.messageId)).toEqual([]);
+      expect(h.store.transcriptRead("t1").entries.some((entry) => entry.kind === "undelivered")).toBe(true);
+    } finally { await supervisor.dispose(); attachments.dispose(); files.cleanup(); vi.useRealTimers(); }
+  });
   it("clears the active session and transcript without losing standing state or reviving deleted history", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
@@ -274,7 +329,7 @@ describe("commodore supervisor", () => {
     const agent: AgentHost = { createSession: async (options) => {
       const entry = { options, sent: [] as string[], disposed: false }; sessions.push(entry);
       return {
-        send: async (text) => { entry.sent.push(text); if (hold) await new Promise<void>((resolve) => { cancel = () => { options.onEvent?.({ kind: "cancelled" }); resolve(); }; }); else options.onEvent?.({ kind: "result", isError: false, source: "message" }); },
+        send: async (text) => { if (typeof text !== "string") throw new Error("Expected text-only turn"); entry.sent.push(text); if (hold) await new Promise<void>((resolve) => { cancel = () => { options.onEvent?.({ kind: "cancelled" }); resolve(); }; }); else options.onEvent?.({ kind: "result", isError: false, source: "message" }); },
         cancel: () => cancel?.(), dispose: async () => { entry.disposed = true; },
       };
     } };
@@ -349,7 +404,7 @@ describe("commodore supervisor", () => {
       sessions.push(entry);
       return {
         send: async (text) => {
-          entry.sent.push(text);
+          if (typeof text !== "string") throw new Error("Expected text-only turn"); entry.sent.push(text);
           if (failNotice) throw new Error("rate limit exceeded");
           if (hold) {
             await new Promise<void>((resolve) => { cancel = () => { options.onEvent?.({ kind: "cancelled" }); cancel = undefined; resolve(); }; });
@@ -506,7 +561,7 @@ describe("commodore supervisor", () => {
           sessions.push(entry);
           return {
             send: async (text) => {
-              entry.sent.push(text);
+              if (typeof text !== "string") throw new Error("Expected text-only turn"); entry.sent.push(text);
               if (fail) throw new Error(fail);
               if (holdTurn) {
                 await new Promise<void>((resolve) => { cancelTurn = () => { options.onEvent?.(completeOnCancel ? { kind: "result", isError: false, source: "message" } : { kind: "cancelled" }); cancelTurn = undefined; resolve(); }; });

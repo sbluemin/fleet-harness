@@ -1,4 +1,6 @@
 import type http from "node:http";
+import { randomUUID } from "node:crypto";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "./attachment-budget.js";
 
 import { canonicalModelId } from "@fleet-console/sdk/models";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -76,7 +78,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
     if (error instanceof ObjectiveStoreError) {
-      const status = error.code === "theater_unavailable" || error.code === "unknown_intel" ? 404 : error.code === "invalid_request" ? 400 : 409;
+      const status = error.code === "theater_unavailable" || error.code === "unknown_intel" ? 404 : error.code === "invalid_request" || error.code.startsWith("attachment_") ? 400 : 409;
       ctx.host.http.writeJson(res, status, { error: error.code });
       return;
     }
@@ -119,7 +121,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       if (!hooks.run?.(theaterId)) throw new ObjectiveStoreError("commodore_inactive");
       return view(theaterId, store.setStopAt(theaterId, stopAt));
     }) },
-    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional() }).strict(), ({ theaterId, text, objectiveId }) => {
+    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ theaterId, text, objectiveId, attachmentIds = [] }) => {
       const state = read(theaterId);
       // 서버가 권위다 — 다른 창에서 막 끈 경합도 여기서 거절되고 기록에 남지 않는다. 실험 기능이 꺼졌으면 `commodore_disabled`
       // (자율 운영 켜기와 같은 낱말), 자율 운영이 꺼졌거나 설정 변경 알림 전에 runner가 아직 없으면 `commodore_inactive`.
@@ -129,7 +131,18 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       const objective = objectiveId ? hooks.objective?.(objectiveId) : null;
       if (objectiveId && !objective) throw new ObjectiveStoreError("unknown_objective");
       if (objective && objective.theaterId !== theaterId) throw new ObjectiveStoreError("objective_theater_mismatch");
-      return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text, ...(objective ? { objective: { id: objective.id, title: objective.title } } : {}) }) };
+      const messageId = randomUUID();
+      if (attachmentIds.length && !ctx.host.attachments) throw new ObjectiveStoreError("attachments_unavailable");
+      let imageBytes = 0;
+      try { imageBytes = attachmentIds.length ? ctx.host.attachments!.claim(theaterId, messageId, attachmentIds, MAX_COMMODORE_MESSAGE_IMAGE_BYTES) : 0; }
+      catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code?.startsWith("attachment_")) throw new ObjectiveStoreError(code);
+        throw error;
+      }
+      try {
+        return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text, ...(attachmentIds.length ? { messageId, attachments: attachmentIds.map((id) => ({ id })), imageBytes } : {}), ...(objective ? { objective: { id: objective.id, title: objective.title } } : {}) }) };
+      } catch (error) { if (attachmentIds.length) ctx.host.attachments!.rollbackClaim(theaterId, messageId); throw error; }
     }) },
     { name: "commodore/retry", method: "POST", summary: "Retry now instead of waiting for the next scheduled retry after a failed Commodore turn.", handler: json(theaterRef, async ({ theaterId }) => {
       read(theaterId);

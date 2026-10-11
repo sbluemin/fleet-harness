@@ -162,7 +162,7 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
-  return { launchKinds: api.launchKinds, actions: api.actions, stopForArchive: api.stopForArchive, purgeOperation: api.purgeOperation, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers };
+  return { launchKinds: api.launchKinds, actions: api.actions, stopForArchive: api.stopForArchive, purgeOperation: api.purgeOperation, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
 }
 
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
@@ -2781,7 +2781,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
 
 
-  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, stopForArchive, purgeOperation, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers };
+  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, stopForArchive, purgeOperation, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin };
 
   function methodNotAllowed(res: Parameters<typeof handle>[0]["res"]): true {
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });

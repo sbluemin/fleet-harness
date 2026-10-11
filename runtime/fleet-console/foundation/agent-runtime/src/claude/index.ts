@@ -12,6 +12,8 @@ export { defineTool, createEmbeddedMcpServer } from "../mcp/embedded/server.js";
 export type {
   ClaudeProcessSpawner,
   ClaudeProcessSpawnRequest,
+  ClaudeGatewayInput,
+  ClaudeGatewayInputBlock,
   ClaudeGatewayAgent,
   ClaudeGatewayCanUseTool,
   ClaudeGatewayCommand,
