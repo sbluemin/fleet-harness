@@ -1,5 +1,18 @@
 import type { ConsoleUseMcpHost, PluginMcpTool } from "../mcp/types.js";
 
+export type AgentInputBlock =
+  | { readonly type: "text"; readonly text: string }
+  | { readonly type: "image"; readonly source: { readonly type: "base64"; readonly media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; readonly data: string } };
+export type AgentInput = string | readonly AgentInputBlock[];
+
+/** 플러그인 등록이 소유자를 고정한다. 경로 없이 바이트만 건넨다. */
+export interface PluginAttachmentHost {
+  claim(scopeId: string, messageId: string, ids: readonly string[], maxBytes: number): number;
+  read(scopeId: string, messageId: string): readonly { readonly id: string; readonly mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; readonly bytes: Uint8Array }[];
+  release(scopeId: string, messageId: string): void;
+  rollbackClaim(scopeId: string, messageId: string): void;
+}
+
 export type AgentEffort = "low" | "medium" | "high" | "xhigh" | "max";
 export interface AgentUsage {
   readonly inputTokens: number;
@@ -51,7 +64,7 @@ export interface AgentSessionOptions {
 
 export interface AgentSession {
   /** 같은 세션의 턴은 순서대로 실행한다. */
-  send(text: string): Promise<void>;
+  send(input: AgentInput): Promise<void>;
   /** 현재 턴만 취소한다. 대기 턴과 다음 메시지는 유지한다. */
   cancel(): void;
   /**

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { ComposerInput, ComposerSubmitButton } from "@fleet-console/sdk/composer";
+import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate, ComposerInput, ComposerSubmitButton } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
@@ -23,6 +23,8 @@ import {
   loadCommodore,
   loadTranscript,
   messageCommodore,
+  uploadCommodoreAttachment,
+  discardCommodoreAttachment,
   noteCommodoreLanguage,
   openCommodoreMobile,
   readCommodore,
@@ -704,24 +706,111 @@ export function CommodoreComposer({ t, theaterId, active, context, onFail, onCle
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const clear = useClearConfirmation(theaterId, onFail, onClear);
   const clearKey = useReleasedKey();
+  const [attachments, setAttachments] = useState<readonly { key: string; id: string | null; name: string; previewUrl: string; uploading: boolean }[]>([]);
+  const attachmentsRef = useRef(attachments);
+  const draftEpoch = useRef(0);
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const plusRootRef = useRef<HTMLDivElement | null>(null);
+  const plusRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const menuId = `commodore-composer-menu-${theaterId}`;
+  const publishAttachments = (next: typeof attachments) => { attachmentsRef.current = next; setAttachments(next); };
+  const resetAttachments = (discard: boolean) => {
+    for (const item of attachmentsRef.current) { URL.revokeObjectURL(item.previewUrl); if (discard && item.id) void discardCommodoreAttachment(item.id).catch(() => {}); }
+    publishAttachments([]);
+  };
+  useEffect(() => {
+    setAttachments([]); setMenuOpen(false); setAttachmentNotice(null); setSending(false);
+    return () => {
+      draftEpoch.current += 1;
+      for (const item of attachmentsRef.current) { URL.revokeObjectURL(item.previewUrl); if (item.id) void discardCommodoreAttachment(item.id).catch(() => {}); }
+      // 완료가 늦은 업로드는 아래 then에서 초안에 없음을 보고 서버 파일도 거둔다.
+      attachmentsRef.current = [];
+    };
+  }, [theaterId]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const pointer = (event: PointerEvent) => { if (!plusRootRef.current?.contains(event.target as Node)) setMenuOpen(false); };
+    const key = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setMenuOpen(false); plusRef.current?.focus(); }
+      else if (event.key === "Tab") setMenuOpen(false);
+      else if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") { event.preventDefault(); menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus(); }
+    };
+    document.addEventListener("pointerdown", pointer); document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", pointer); document.removeEventListener("keydown", key); };
+  }, [menuOpen]);
+  useEffect(() => { if (!active) setMenuOpen(false); }, [active]);
+  const addFiles = (files: readonly File[]) => {
+    if (!active || sending || clear.busy) return;
+    setAttachmentNotice(null);
+    for (const file of files.filter(isComposerAttachmentCandidate)) {
+      if (attachmentsRef.current.length >= COMPOSER_MAX_ATTACHMENTS) { setAttachmentNotice(t("objectives.commodore.composer.attachLimit", { count: COMPOSER_MAX_ATTACHMENTS })); break; }
+      if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) { setAttachmentNotice(t("objectives.commodore.composer.attachTooLarge")); continue; }
+      const item = { key: `${Date.now()}-${Math.random().toString(36).slice(2)}`, id: null as string | null, name: file.name || t("objectives.commodore.composer.image"), previewUrl: URL.createObjectURL(file), uploading: true };
+      publishAttachments([...attachmentsRef.current, item]);
+      void uploadCommodoreAttachment(file).then(({ id }) => {
+        if (!attachmentsRef.current.some((known) => known.key === item.key)) { void discardCommodoreAttachment(id).catch(() => {}); return; }
+        publishAttachments(attachmentsRef.current.map((known) => known.key === item.key ? { ...known, id, uploading: false } : known));
+      }).catch(() => {
+        if (!attachmentsRef.current.some((known) => known.key === item.key)) return;
+        URL.revokeObjectURL(item.previewUrl);
+        publishAttachments(attachmentsRef.current.filter((known) => known.key !== item.key));
+        setAttachmentNotice(t("objectives.commodore.composer.attachFailed"));
+      });
+    }
+  };
+  const removeAttachment = (key: string) => {
+    const item = attachmentsRef.current.find((known) => known.key === key);
+    if (!item || sending) return;
+    if (item.id) void discardCommodoreAttachment(item.id).catch(() => {});
+    URL.revokeObjectURL(item.previewUrl); publishAttachments(attachmentsRef.current.filter((known) => known.key !== key));
+    setAttachmentNotice(null); inputRef.current?.focus();
+  };
+  const uploading = attachments.some((item) => item.uploading);
   const isClear = text.trim() === "/clear";
-  const armed = (active || isClear) && !!text.trim() && !sending && !clear.busy;
+  const armed = (active || isClear) && !!text.trim() && !sending && !clear.busy && !uploading;
   const send = () => {
     const value = text.trim();
-    if (isClear) { void clear.request().then((cleared) => { if (cleared) setText(""); }); return; }
-    if (!active || !value || sending) return;
-    onClear();
+    if (sending || uploading || clear.busy) return;
+    if (isClear) { void clear.request().then((cleared) => { if (cleared) { setText(""); resetAttachments(true); } }); return; }
+    if (!active || !value) return;
+    onClear(); setAttachmentNotice(null); setMenuOpen(false);
     setSending(true);
-    void messageCommodore(theaterId, value).then(() => setText("")).catch(onFail).finally(() => { setSending(false); inputRef.current?.focus({ preventScroll: true }); });
+    const epoch = draftEpoch.current;
+    const ids = attachmentsRef.current.flatMap((item) => item.id ? [item.id] : []);
+    void messageCommodore(theaterId, value, ids).then(() => { if (draftEpoch.current !== epoch) return; setText(""); resetAttachments(false); }).catch((error) => {
+      if (draftEpoch.current !== epoch) return;
+      if (error instanceof Error && error.message === "attachment_budget_exceeded") setAttachmentNotice(t("objectives.commodore.composer.attachBudget"));
+      else onFail(error);
+    }).finally(() => { if (draftEpoch.current !== epoch) return; setSending(false); inputRef.current?.focus({ preventScroll: true }); });
   };
   return (
     <>
-    <div className={`objectives-commodore-composer${active ? "" : " is-disabled"}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+    <div className={`objectives-commodore-composer${active ? "" : " is-disabled"}${attachments.length ? " has-attachments" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+      {attachments.length ? <div className="objectives-commodore-composer-attachments" role="group" aria-label={t("objectives.commodore.composer.attachments")}>
+        {attachments.map((item) => <span key={item.key} className={`objectives-commodore-composer-attachment${item.uploading ? " is-uploading" : ""}`}>
+          <img src={item.previewUrl} alt={item.name} />
+          <button type="button" disabled={sending || clear.busy} aria-label={t("objectives.commodore.composer.removeAttachment", { name: item.name })} title={t("objectives.commodore.composer.removeAttachment", { name: item.name })} onClick={() => removeAttachment(item.key)}>×</button>
+        </span>)}
+      </div> : null}
+      <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">
+        {menuOpen ? <div ref={menuRef} id={menuId} className="objectives-commodore-composer-menu" role="menu" aria-label={t("objectives.commodore.composer.more")}>
+          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); fileRef.current?.click(); }}><AttachImageIcon />{t("objectives.commodore.composer.attachImage")}</button>
+        </div> : null}
+        <button ref={plusRef} type="button" className="objectives-commodore-composer-plus" aria-label={t("objectives.commodore.composer.more")} title={t("objectives.commodore.composer.more")} aria-haspopup="menu" aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={!active || sending || clear.busy} onClick={() => setMenuOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setMenuOpen(true); } }}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" /></svg>
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; inputRef.current?.focus(); }} />
+      </div>
       <ComposerInput
         ref={inputRef}
         className="objectives-commodore-composer-input"
         value={text}
-        disabled={clear.busy}
+        disabled={clear.busy || sending}
+        onPaste={(event) => { const images = Array.from(event.clipboardData.files).filter(isComposerAttachmentCandidate); if (!images.length) return; event.preventDefault(); addFiles(images); }}
         aria-describedby={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
         rows={1}
         placeholder={t("objectives.commodore.composer.placeholder")}
@@ -744,6 +833,7 @@ export function CommodoreComposer({ t, theaterId, active, context, onFail, onCle
         onClick={send}
       />
     </div>
+    {attachmentNotice ? <p className="objectives-commodore-composer-notice" role="status">{attachmentNotice}</p> : null}
     {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.enterConfirm")}</p> : null}
     {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("objectives.commodore.composer.idle")}</p>}
     </>

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { assertClaudeGatewayInput } from "./input.js";
 
 import { withLoopbackProxyBypass } from "@fleet-console/process";
 
@@ -150,9 +151,7 @@ export async function createClaudeGatewaySdk(
       const reservation = reserveSlot("turn");
       try {
         assertKnownTurnKeys(turn);
-        if (typeof turn.prompt !== "string" || turn.prompt.length === 0) {
-          throw new TypeError("turn.prompt must be a non-empty string.");
-        }
+        assertClaudeGatewayInput(turn.prompt);
         const model = resolveTurnModel(turn.model, accepted, options.modelPolicy.resolve);
         const env = await prepareLaunch();
         const run = runVendorQuery({

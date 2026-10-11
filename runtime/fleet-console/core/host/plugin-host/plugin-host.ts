@@ -1,4 +1,4 @@
-import type { AgentHost } from "@fleet-console/sdk/agent";
+import type { AgentHost, PluginAttachmentHost } from "@fleet-console/sdk/agent";
 import type {
   DiscoveredFleetPlugin as SdkDiscoveredFleetPlugin,
 } from "@fleet-console/sdk/plugin";
@@ -381,6 +381,7 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
   /** The host binds the plugin id: a plugin cannot start a child in another plugin's name. */
   readonly spawnOwnedProcess?: (pluginId: string, request: FleetPluginOwnedSpawnRequest) => FleetPluginOwnedProcess;
   readonly createAgentHost?: (pluginId: string) => AgentHost & { dispose(): Promise<void> };
+  readonly createAttachmentHost?: (pluginId: string) => (PluginAttachmentHost & { dispose(): void }) | undefined;
   /** 플러그인 id 를 호스트가 묶는 Console 제어 — 플러그인은 다른 이름으로 Operation 을 시작하거나 메시지할 수 없다. */
   readonly consoleControlFor?: (pluginId: string) => NonNullable<FleetPluginHostCapabilities["consoleControl"]>;
   readonly importModule?: (entry: string) => Promise<FleetPluginRouteModule>;
@@ -515,10 +516,12 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
     const register = resolveRegister(mod);
     if (!register) return;
     const agent = deps.createAgentHost?.(plugin.manifest.id);
+    const attachments = deps.createAttachmentHost?.(plugin.manifest.id);
     const consoleControl = deps.consoleControlFor?.(plugin.manifest.id);
     const registrationTransaction = createPluginRegistrationTransaction({
       ...deps.host,
       ...(agent ? { agent } : {}),
+      ...(attachments ? { attachments } : {}),
       ...(consoleControl ? { consoleControl } : {}),
       ...(deps.spawnOwnedProcess ? { processes: { spawnOwned: (request: FleetPluginOwnedSpawnRequest) => deps.spawnOwnedProcess!(plugin.manifest.id, request) } } : {}),
       admiralMcp: {
@@ -531,6 +534,7 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
       },
     }, plugin.manifest.id);
     if (agent) registrationTransaction.host.lifecycle.registerCleanup(() => agent.dispose());
+    if (attachments) registrationTransaction.host.lifecycle.registerCleanup(() => attachments.dispose());
     try {
       await register({
         pluginId: plugin.manifest.id,

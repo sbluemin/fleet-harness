@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore, type ComponentType } from "react";
+import { uploadComposerAttachment, discardComposerAttachment } from "@fleet-console/sdk/composer";
 
 import type { AgentChatTranscriptProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
@@ -393,10 +394,19 @@ export const setCommodoreStopAt = (theaterId: string, stopAt: number | null) => 
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
 export const clearCommodore = (theaterId: string) => write(theaterId, "/commodore/clear", { confirm: true });
 
-export async function messageCommodore(theaterId: string, text: string): Promise<void> {
+export function uploadCommodoreAttachment(file: Blob): Promise<{ readonly id: string }> {
+  if (!installed) return Promise.reject(new Error("not_installed"));
+  return uploadComposerAttachment(file, (path, init) => installed!.api.fetch(null, path, init));
+}
+export function discardCommodoreAttachment(id: string): Promise<void> {
+  if (!installed) return Promise.reject(new Error("not_installed"));
+  return discardComposerAttachment(id, (path, init) => installed!.api.fetch(null, path, init));
+}
+
+export async function messageCommodore(theaterId: string, text: string, attachmentIds?: readonly string[]): Promise<void> {
   const client = api();
   if (!client) throw new Error("not_installed");
-  const result = await post<{ readonly entry?: CommodoreTranscriptEntry }>(client, "/commodore/message", withLanguage({ theaterId, text }));
+  const result = await post<{ readonly entry?: CommodoreTranscriptEntry }>(client, "/commodore/message", withLanguage({ theaterId, text, ...(attachmentIds?.length ? { attachmentIds } : {}) }));
   const entry = result?.entry;
   const current = theaters.get(theaterId);
   if (entry && current?.transcriptLoaded && !current.entries.some((candidate) => candidate.seq === entry.seq)) {

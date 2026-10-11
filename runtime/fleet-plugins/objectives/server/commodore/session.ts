@@ -1,4 +1,4 @@
-import type { AgentEffort, AgentEvent, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
+import type { AgentEffort, AgentEvent, AgentInputBlock, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 
 import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
@@ -49,7 +49,7 @@ export interface CommodoreTurnInput {
   /** 교대·재시작 세션의 첫 턴 — 최근 행위 요약. 깨움 문장 앞에 선다. */
   readonly replacementSummary?: readonly string[];
   /** 사람이 사령관에게 보낸 메시지 — 도구가 없는 유일한 입력이라 깨움 문장 뒤에 그대로 선다. */
-  readonly messages?: readonly string[];
+  readonly messages?: readonly (string | { readonly text: string; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] })[];
 }
 
 export interface CommodoreTurnOutcome {
@@ -198,10 +198,16 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
-        ...(input.messages?.length ? [messageNote(input.messages)] : []),
       ].join("\n\n");
+      const hasImages = input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false;
+      const prompt = hasImages ? [
+        { type: "text" as const, text: note },
+        ...(input.messages ?? []).flatMap((message): AgentInputBlock[] => typeof message === "string"
+          ? [{ type: "text", text: messageNote([message]) }]
+          : [{ type: "text", text: messageNote([message.text]) }, ...message.images]),
+      ] : [note, ...(input.messages?.length ? [messageNote(input.messages.map((message) => typeof message === "string" ? message : message.text))] : [])].join("\n\n");
       turnActive = true;
-      try { await session.send(note); }
+      try { await session.send(prompt); }
       catch (error) {
         flushText(); flushTools();
         const code = failureCode(error);

@@ -1,4 +1,6 @@
+import { assertClaudeGatewayInput } from "./input.js";
 import type {
+  ClaudeGatewayInput,
   ClaudeGatewayMessage,
   ClaudeGatewayRun,
   ClaudeGatewaySdk,
@@ -21,7 +23,7 @@ export type ClaudeExecutionTurn = Omit<ClaudeGatewayTurn, "prompt" | "resume">;
 
 export interface ClaudeExecutionLoopOptions {
   readonly createSdk: () => Promise<ClaudeGatewaySdk>;
-  readonly buildTurn: (prompt: string) => ClaudeExecutionTurn | Promise<ClaudeExecutionTurn>;
+  readonly buildTurn: (prompt: ClaudeGatewayInput) => ClaudeExecutionTurn | Promise<ClaudeExecutionTurn>;
   readonly continuation: ClaudeExecutionContinuation;
   readonly settlement: ClaudeExecutionSettlement;
   readonly onEvent?: (event: ClaudeExecutionEvent) => void;
@@ -29,7 +31,7 @@ export interface ClaudeExecutionLoopOptions {
 
 export interface ClaudeExecutionLoop {
   start(): Promise<void>;
-  run(prompt: string): Promise<void>;
+  run(prompt: ClaudeGatewayInput): Promise<void>;
   cancel(): void;
   dispose(): Promise<void>;
 }
@@ -102,12 +104,11 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
     }
   }
 
-  function run(prompt: string): Promise<void> {
+  function run(prompt: ClaudeGatewayInput): Promise<void> {
     if (disposed) return Promise.reject(new Error("Session disposed"));
     if (!started || sdk === null) return Promise.reject(new Error("Session not started"));
-    if (typeof prompt !== "string" || prompt.trim().length === 0) {
-      return Promise.reject(new Error("Message required"));
-    }
+    try { assertClaudeGatewayInput(prompt); }
+    catch (error) { return Promise.reject(error); }
     const control = createTurnControl();
     // 첫 턴은 Promise microtask가 runTurn에 들어가기 전에도 취소 대상이다. 뒤에 줄 선 턴은
     // 현재 턴이 끝날 때까지 이 자리를 빼앗지 않는다.
@@ -162,7 +163,7 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
     await owned?.dispose().catch(() => undefined);
   }
 
-  async function runTurn(prompt: string, control: TurnControl): Promise<void> {
+  async function runTurn(prompt: ClaudeGatewayInput, control: TurnControl): Promise<void> {
     // 폐기 뒤에 줄 서 있던 턴은 새 SDK 턴을 열지 않는다.
     if (disposed) return;
     const owned = sdk;

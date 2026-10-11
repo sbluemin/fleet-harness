@@ -94,7 +94,11 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
     let tail: Promise<void> = Promise.resolve();
     let pendingCancel: (() => void) | null = null;
     const session: AgentSession = {
-      send(text) {
+      send(input) {
+        // SDK 계약을 substrate 값으로 옮긴다. 큐 대기 중 호출자의 변경이 턴을 바꾸지 않는다.
+        const text = typeof input === "string" ? input : input.map((block) => block.type === "text"
+          ? { type: "text" as const, text: block.text }
+          : { type: "image" as const, source: { ...block.source } });
         if (closed) return Promise.reject(new Error("Session disposed"));
         let skipped = false;
         const cancelQueued = () => { skipped = true; };

@@ -611,6 +611,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 실행 기능이 서야 생긴다. 그 전의 별칭 고정은 받은 값을 돌려준다.
   let ensureClaudeNativeModels: (() => Promise<void>) | undefined;
   let resolveClaudeExecutable: (() => Promise<string | undefined>) | undefined;
+  let attachmentsForPlugin: Awaited<ReturnType<typeof startConsoleExecution>>["attachmentsForPlugin"] | undefined;
   const executionCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
@@ -1235,6 +1236,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Operation 이나 그 자식)을 Console 제어가 따진다.
       transcript: (operationId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, operationId, input, signal),
     }),
+    createAttachmentHost: (pluginId) => attachmentsForPlugin?.(pluginId),
     createAgentHost: (pluginId) => {
       const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp, resolveExecutablePath: async () => {
         // 채팅과 같은 정책이다 — 설치된 Claude Code를 못 풀면 SDK 동봉본으로 폴백하지 않고 실패한다.
@@ -2771,6 +2773,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
       }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
       coreLaunchKinds = execution.launchKinds;
+      attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
       resolveClaudeExecutable = execution.resolveClaudeExecutable;
       sleepOperation = execution.actions.sleep;

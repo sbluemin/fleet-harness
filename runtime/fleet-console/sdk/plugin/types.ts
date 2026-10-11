@@ -2,7 +2,7 @@ import type { ClientNavigateCapability, ClientShellCapability } from "../navigat
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { ClientTheaterInboxCapability, TheaterInboxAddress, TheaterInboxSectionDescriptor } from "../theater-inbox/types.js";
-import type { AgentHost } from "../agent/types.js";
+import type { AgentHost, PluginAttachmentHost } from "../agent/types.js";
 import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
@@ -1116,6 +1116,7 @@ export interface FleetPluginServerContext {
 
 export interface FleetPluginHostCapabilities {
   readonly agent: AgentHost;
+  readonly attachments?: PluginAttachmentHost;
   readonly consoleUse: ConsoleUseMcpHost;
   readonly admiralMcp: PluginAdmiralMcpHost;
   readonly mcpTransport?: PluginMcpTransport;

@@ -1,4 +1,5 @@
-import type { AgentHost } from "@fleet-console/sdk/agent";
+import { Buffer } from "node:buffer";
+import type { AgentHost, AgentInputBlock, PluginAttachmentHost } from "@fleet-console/sdk/agent";
 import type { ConsoleOperationObservation, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
@@ -9,6 +10,7 @@ import type { Objective, ObjectiveEvent } from "../types.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
+import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "./attachment-budget.js";
 import { COMMODORE_CONTEXT_ROTATE_RATIO, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
 
 /**
@@ -41,6 +43,7 @@ const RECENT_ACTIONS = 12;
 export interface CommodoreSupervisorDeps {
   readonly store: CommodoreStore;
   readonly agent: AgentHost;
+  readonly attachments?: PluginAttachmentHost;
   readonly experiments: () => ConsoleExperimentSettings;
   readonly subscribeExperiments?: (listener: () => void) => () => void;
   /**
@@ -153,6 +156,14 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
   }
 }
 
+interface QueuedMessage {
+  readonly seq: number;
+  readonly text: string;
+  readonly messageId?: string;
+  readonly attachments?: readonly { readonly id: string }[];
+  readonly imageBytes?: number;
+}
+
 interface Runner {
   readonly theaterId: string;
   session: CommodoreSession | null;
@@ -162,7 +173,9 @@ interface Runner {
   /** 다음 턴에 실을 이유 — 코드마다 하나, 순서 보존. */
   pending: Map<WakeCode, PendingReason>;
   /** 사람의 메시지 — 다음 턴에 그대로 실린다. seq 는 기록의 그 줄이다(끌 때 싣지 못한 것을 「전달되지 않음」으로 가리킨다). */
-  messages: { readonly seq: number; readonly text: string }[];
+  messages: QueuedMessage[];
+  sessionImageBytes: number;
+  sessionImageBase64Bytes: number;
   coalesce: ReturnType<typeof setTimeout> | null;
   patrol: ReturnType<typeof setTimeout> | null;
   retry: ReturnType<typeof setTimeout> | null;
@@ -203,6 +216,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const cleanups: (() => void)[] = [];
   let disposed = false;
 
+  const releaseMessages = (runner: Runner, messages: readonly QueuedMessage[]) => {
+    for (const message of messages) if (message.messageId) deps.attachments?.release(runner.theaterId, message.messageId);
+  };
+  const takeUndelivered = (runner: Runner) => {
+    const messages = runner.messages.splice(0);
+    releaseMessages(runner, messages);
+    return messages.map((message) => message.seq);
+  };
   const settings = () => { try { return deps.experiments(); } catch { return DEFAULT_EXPERIMENT_SETTINGS; } };
   const shouldRun = (theaterId: string) => settings().commodore && deps.store.read(theaterId)?.autonomy === true && deps.theater(theaterId) !== null;
   const resolveLanguage = (theaterId: string): "en" | "ko" => deps.store.read(theaterId)?.language ?? deps.language?.(theaterId) ?? "en";
@@ -302,6 +323,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.language = language;
     runner.contextWindow = coordinates.contextWindow;
     runner.lastInputTokens = 0;
+    runner.sessionImageBytes = 0;
+    runner.sessionImageBase64Bytes = 0;
     deps.store.addRunTotals(runner.theaterId, { session: 1 });
     record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}) });
     if (coordinates.fallback) console.warn(`[objectives] commodore ${coordinates.fallback}`);
@@ -328,7 +351,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         await previous;
         if (runner.stopping || disposed) return;
         // 메시지는 종료 알림에 섞지 않는다 — 아직 전달되지 않은 일은 사람에게 돌려준다.
-        const undelivered = runner.messages.splice(0).map((message) => message.seq);
+        const undelivered = takeUndelivered(runner);
         for (let index = 0; index < undelivered.length; index += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "undelivered", seqs: undelivered.slice(index, index + MAX_TRANSCRIPT_PAGE) });
         const session = runner.session ?? await openSession(runner, "restarted");
         if (runner.stopping || disposed) return;
@@ -368,11 +391,30 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!runner.pending.size) return;
     clearTimer(runner, "coalesce"); clearTimer(runner, "retry");
     runner.inflight = (async () => {
+      // 이미 수락한 말은 순서를 지키며 나눈다. 초과분은 다음 턴에 남고 빠지지 않는다.
+      let batchBytes = 0;
+      let batchBase64Bytes = 0;
+      let batchChars = 0;
+      let batchCount = 0;
+      for (const message of runner.messages) {
+        if (batchBytes + (message.imageBytes ?? 0) > MAX_COMMODORE_TURN_IMAGE_BYTES || batchChars + message.text.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
+        batchBytes += message.imageBytes ?? 0; batchChars += message.text.length; batchCount += 1;
+      }
+      const selected = runner.messages.slice(0, batchCount);
+      let preparedMessages: (string | { text: string; images: Extract<AgentInputBlock, { type: "image" }>[] })[] = [];
       let session = runner.session;
       let replacementSummary: readonly string[] | undefined;
       try {
         // 교대 — 좌표가 바뀌었거나 문맥이 길어졌거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
-        const rotate = runner.rotateNext ?? (session && needsRotation(runner) ? "replaced" : null);
+        preparedMessages = selected.map((message) => {
+          if (!message.attachments?.length) return message.text;
+          if (!deps.attachments || !message.messageId) throw new Error("attachment_not_found");
+          const images = deps.attachments.read(runner.theaterId, message.messageId);
+          if (images.length !== message.attachments.length || images.some((image, index) => image.id !== message.attachments![index]!.id)) throw new Error("attachment_not_found");
+          return { text: message.text, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
+        });
+        batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
+        const rotate = runner.rotateNext ?? (session && (needsRotation(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES) ? "replaced" : null);
         if (session && rotate) { await session.dispose(); session = null; runner.session = null; }
         if (!session) {
           const event = rotate ?? "opened";
@@ -398,13 +440,17 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       });
       runner.pending.clear();
       if (!pending.length) { setPhase(runner, "idle"); return; }
-      const messages = runner.messages.splice(0);
+      const messages = runner.messages.splice(0, batchCount);
       const reasons = pending.map(([code, reason]) => wakeToken(code, reason.count));
       const sentences = pending.map(([code, reason]) => wakeSentence(code, reason));
       const scope = scopeOf(runner, pending);
       setPhase(runner, "turn");
       runner.patrolSet = false;
-      const outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(replacementSummary ? { replacementSummary } : {}), ...(messages.length ? { messages: messages.map((message) => message.text) } : {}) });
+      // 실패한 턴도 CLI resume 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
+      runner.sessionImageBytes += batchBytes;
+      runner.sessionImageBase64Bytes += batchBase64Bytes;
+      const outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(replacementSummary ? { replacementSummary } : {}), ...(messages.length ? { messages: preparedMessages } : {}) });
+      if (outcome.outcome === "ok") releaseMessages(runner, messages);
       noteOutcome(runner, outcome);
       if (runner.stopping || runner.ending) {
         // 끄기로 끝나지 못한 턴의 메시지도 stop()이 표시한다. 성공한 턴은 이미 전달됐으므로 제외한다.
@@ -412,13 +458,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (outcome.outcome !== "ok") runner.messages.unshift(...messages);
         return;
       }
-      if (outcome.outcome === "error") {
+      if (outcome.outcome !== "ok") {
         for (const [code, reason] of pending) if (!runner.pending.has(code)) runner.pending.set(code, reason);
         runner.messages.unshift(...messages);
         if (outcome.error === "session_disposed" || outcome.error === "session_failed") { runner.session = null; }
         scheduleRetry(runner, outcome.error ?? "turn_failed");
         return;
       }
+      if (runner.messages.length) wake(runner, "message");
       runner.retryAttempt = 0;
       runner.lastTurnAt = now();
       setPhase(runner, "idle");
@@ -452,7 +499,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);
@@ -484,7 +531,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       try { await runner.inflight; } catch { /* 턴 결말은 세션이 삼킨다 */ }
       const opened = runner.session as CommodoreSession | null;
       runner.session = null;
-      const undelivered = runner.messages.splice(0).map((message) => message.seq);
+      const undelivered = takeUndelivered(runner);
       for (let index = 0; index < undelivered.length; index += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "undelivered", seqs: undelivered.slice(index, index + MAX_TRANSCRIPT_PAGE) });
       record(runner, { kind: "session", event: "stopped", reason });
       await session?.dispose();
@@ -522,7 +569,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (event.op === "transcript" && event.entry.kind === "message" && runner) {
       const { entry } = event;
       const text = entry.objective ? `Objective context: ${JSON.stringify(entry.objective)}\n${entry.text}` : entry.text;
-      runner.messages.push({ seq: entry.seq, text }); wake(runner, "message");
+      runner.messages.push({ seq: entry.seq, text, ...(entry.messageId ? { messageId: entry.messageId, attachments: entry.attachments, imageBytes: entry.imageBytes } : {}) }); wake(runner, "message");
     }
   }));
 

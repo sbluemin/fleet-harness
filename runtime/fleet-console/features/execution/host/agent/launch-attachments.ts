@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import type { PluginAttachmentHost } from "@fleet-console/sdk/agent";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -40,7 +41,8 @@ export type LaunchAttachmentErrorCode =
   | "attachment_unsupported"
   | "attachment_not_found"
   | "attachment_limit"
-  | "attachment_storage_exhausted";
+  | "attachment_storage_exhausted"
+  | "attachment_budget_exceeded";
 
 export class LaunchAttachmentError extends Error {
   readonly code: LaunchAttachmentErrorCode;
@@ -56,7 +58,7 @@ export class LaunchAttachmentError extends Error {
  * 선언된 Content-Type이 아니라 실제 바이트로 판정한다 — 업로드 경로는 신뢰 경계라, 라벨만 믿으면
  * 아무 파일이나 이미지 이름표를 달고 에이전트 프롬프트에 실린다.
  */
-export function sniffLaunchAttachmentImage(bytes: Uint8Array): { readonly mime: string; readonly ext: string } | null {
+export function sniffLaunchAttachmentImage(bytes: Uint8Array): { readonly mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; readonly ext: string } | null {
   if (bytes.length >= 8
     && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
     && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) {
@@ -144,7 +146,10 @@ interface LaunchAttachmentEntry {
   readonly id: string;
   readonly dir: string;
   readonly filePath: string;
-  readonly mime: string;
+  readonly mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  readonly byteLength: number;
+  pluginOwner: string | null;
+  ownerIndex: number;
   /** 저장·해석 시점에 갱신된다 — 해석이 만졌다는 것은 발사가 임박했다는 뜻이라 TTL을 되돌린다. */
   createdAt: number;
   sessionId: string | null;
@@ -161,6 +166,8 @@ interface LaunchAttachmentEntry {
 }
 
 export interface LaunchAttachmentStore {
+  /** composition이 등록 id를 고정한다. 대기 메시지는 TTL 대신 release/dispose가 거둔다. */
+  forPlugin(pluginId: string): PluginAttachmentHost & { dispose(): void };
   /** 업로드 본문을 읽기 전에 부른다 — 상한이 찼는데 10MB를 다 받아 놓고 거절하면 상한의 목적이 없다. */
   assertSaveCapacity(): void;
   /** 바이트를 판정·저장하고 불투명 id를 돌려준다. 경로는 돌려주지 않는다. */
@@ -214,7 +221,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
     const cutoff = now() - UNBOUND_LAUNCH_ATTACHMENT_TTL_MS;
     let reclaimed = 0;
     for (const entry of [...entries.values()]) {
-      if (entry.sessionId === null && !entry.reserved && entry.createdAt <= cutoff) {
+      if (entry.sessionId === null && entry.pluginOwner === null && !entry.reserved && entry.createdAt <= cutoff) {
         removeEntry(entry);
         reclaimed += 1;
       }
@@ -251,6 +258,41 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
   }
 
   return {
+    forPlugin(pluginId) {
+      const owner = (scopeId: string, messageId: string) => JSON.stringify([pluginId, scopeId, messageId]);
+      const owned = (scopeId: string, messageId: string) => [...entries.values()].filter((entry) => entry.pluginOwner === owner(scopeId, messageId));
+      return {
+        claim(scopeId, messageId, ids, maxBytes) {
+          sweepExpired();
+          if (ids.length > MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH) throw new LaunchAttachmentError("attachment_limit", "Too many images.");
+          if (new Set(ids).size !== ids.length || owned(scopeId, messageId).length) throw new LaunchAttachmentError("attachment_not_found", "Image already claimed.");
+          const selected = ids.map((id) => {
+            const entry = entries.get(id);
+            if (!entry || entry.sessionId !== null || entry.pluginOwner !== null || entry.reserved) throw new LaunchAttachmentError("attachment_not_found", "Image unavailable.");
+            return entry;
+          });
+          const bytes = selected.reduce((total, entry) => total + entry.byteLength, 0);
+          if (!Number.isFinite(maxBytes) || maxBytes < 0 || bytes > maxBytes) throw new LaunchAttachmentError("attachment_budget_exceeded", "Image message exceeds its byte budget.");
+          selected.forEach((entry, index) => { entry.pluginOwner = owner(scopeId, messageId); entry.ownerIndex = index; });
+          return bytes;
+        },
+        read(scopeId, messageId) {
+          return owned(scopeId, messageId).sort((a, b) => a.ownerIndex - b.ownerIndex).map((entry) => {
+            if (!lstatSync(entry.filePath).isFile()) throw new LaunchAttachmentError("attachment_not_found", "Image unavailable.");
+            const bytes = readFileSync(entry.filePath);
+            if (bytes.byteLength !== entry.byteLength || sniffLaunchAttachmentImage(bytes)?.mime !== entry.mime) throw new LaunchAttachmentError("attachment_not_found", "Image changed.");
+            return { id: entry.id, mime: entry.mime, bytes };
+          });
+        },
+        release(scopeId, messageId) { for (const entry of owned(scopeId, messageId)) removeEntry(entry); },
+        rollbackClaim(scopeId, messageId) {
+          for (const entry of owned(scopeId, messageId)) { entry.pluginOwner = null; entry.createdAt = now(); }
+        },
+        dispose() {
+          for (const entry of [...entries.values()]) if (entry.pluginOwner && JSON.parse(entry.pluginOwner)[0] === pluginId) removeEntry(entry);
+        },
+      };
+    },
     assertSaveCapacity,
     save(bytes) {
       assertSaveCapacity();
@@ -273,7 +315,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
         throw error;
       }
       const id = crypto.randomUUID();
-      entries.set(id, { id, dir, filePath, mime: sniffed.mime, createdAt: now(), sessionId: null, reserved: false, pendingDiscard: false });
+      entries.set(id, { id, dir, filePath, mime: sniffed.mime, byteLength: bytes.byteLength, pluginOwner: null, ownerIndex: 0, createdAt: now(), sessionId: null, reserved: false, pendingDiscard: false });
       return { id };
     },
     resolve(ids) {
@@ -290,7 +332,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
         // 다른 실행에 이미 묶였거나 스폰 창에 예약된 id도 모르는 id다 — 파일 수명이 한 세션을
         // 따르는 동안 두 번째 실행이 같은 경로를 실으면 삭제 시점이 얽힌다(스토어 불변식:
         // 한 id는 한 실행).
-        if (!entry || entry.sessionId !== null || entry.reserved) {
+        if (!entry || entry.sessionId !== null || entry.pluginOwner !== null || entry.reserved) {
           // 부분 해석은 남기지 않는다 — 함께 온 id 중 하나가 거절되면 전부 예약 전으로 돌린다.
           for (const taken of resolved) taken.reserved = false;
           throw new LaunchAttachmentError("attachment_not_found", "An attached image is no longer available.");
@@ -316,7 +358,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
     unreserve(ids) {
       for (const id of ids) {
         const entry = entries.get(id);
-        if (!entry || entry.sessionId !== null) continue;
+        if (!entry || entry.sessionId !== null || entry.pluginOwner !== null) continue;
         // 예약 창에 제거를 요청받은 항목은 풀리는 즉시 거둔다 — 칩 없는 파일이 TTL까지 남지 않는다.
         if (entry.pendingDiscard) {
           removeEntry(entry);
@@ -332,7 +374,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
     },
     discard(id) {
       const entry = entries.get(id);
-      if (!entry || entry.sessionId !== null) return;
+      if (!entry || entry.sessionId !== null || entry.pluginOwner !== null) return;
       // 예약 창의 제거는 미룬다 — 전달 중인 CLI가 읽을 경로를 그 자리에서 지울 수 없다.
       if (entry.reserved) {
         entry.pendingDiscard = true;

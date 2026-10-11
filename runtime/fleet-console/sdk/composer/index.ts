@@ -10,6 +10,8 @@ export {
   COMPOSER_ATTACHMENT_MAX_BYTES,
   COMPOSER_MAX_ATTACHMENTS,
   isComposerAttachmentCandidate,
+  uploadComposerAttachment,
+  discardComposerAttachment,
 } from "./attachments.js";
 export {
   EffortGaugeGlyph,

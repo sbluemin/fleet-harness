@@ -40,10 +40,11 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
         break;
       case "message": {
         const text = entry.objective ? `[${entry.objective.title} · ${entry.objective.id}]\n${entry.text}` : entry.text;
-        if (turnAt !== null) push({ kind: "turn-inject", text, at: entry.at }, entry.at);
+        const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
+        if (turnAt !== null) push({ kind: "turn-inject", text, ...(attachments?.length ? { attachments } : {}), at: entry.at }, entry.at);
         else {
           // 쉬는 동안 받은 말은 말풍선 하나다 — 그 말이 깨운 턴은 뒤따르는 깨움 줄이 연다. 열린 채 두면 빈 턴이 「작업 중」으로 선다.
-          push({ kind: "dispatch", text, at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, entry.at);
+          push({ kind: "dispatch", text, ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, entry.at);
           push({ kind: "turn-end", ok: true }, entry.at);
         }
         break;

@@ -142,6 +142,7 @@ export default definePlugin({
     // 감독자 — 자율 운영이 켜진 Theater 의 사령관을 깨우고, 되살리고, 멈춘다. 보드 도구는 Theater 에 묶인 사령관 전용 사본이다.
     const supervisor = createCommodoreSupervisor({
       store: commodore, agent: ctx.host.agent,
+      ...(ctx.host.attachments ? { attachments: ctx.host.attachments } : {}),
       experiments: () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
       ...(ctx.host.experiments?.subscribe ? { subscribeExperiments: (listener) => ctx.host.experiments!.subscribe!(listener) } : {}),
       // 사령관 좌표는 Console의 모델 로스터에 대조해 연다 — 꺼진 모델은 폴백하고 기록에 남긴다.

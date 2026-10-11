@@ -272,8 +272,13 @@ export interface ClaudeGatewaySdkOptions {
  * 턴 단위로 자식의 지시와 능력을 갈아 끼우는 통로여서 열지 않는다. `systemPrompt`는 호출자가
  * 직접 쓴 지시 하나이므로 턴에서도 열려 있다.
  */
+export type ClaudeGatewayInputBlock =
+  | { readonly type: "text"; readonly text: string }
+  | { readonly type: "image"; readonly source: { readonly type: "base64"; readonly media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; readonly data: string } };
+export type ClaudeGatewayInput = string | readonly ClaudeGatewayInputBlock[];
+
 export interface ClaudeGatewayTurn {
-  readonly prompt: string;
+  readonly prompt: ClaudeGatewayInput;
   /** 호출자가 쓴 시스템 지시. 생략하면 아무것도 주입하지 않는다. */
   readonly systemPrompt?: ClaudeGatewaySystemPrompt;
   /** `models`에 실린 게이트웨이 모델 id. */
@@ -477,7 +482,7 @@ export interface ClaudeGatewaySession extends AsyncIterable<ClaudeGatewayMessage
    * 자식이 자기 큐를 갖고 있으므로 턴 중에 보내도 잃지 않는다. 호출자가 턴을 직렬화하고 싶다면
    * 그 규율은 호출자의 것이다 — 이 계약은 순서만 보장한다.
    */
-  send(text: string, options?: ClaudeGatewaySendOptions): void;
+  send(input: ClaudeGatewayInput, options?: ClaudeGatewaySendOptions): void;
   /**
    * 도는 턴을 끊는다. 자식은 살아남고 백그라운드 작업도 그대로다 — 프로세스를 죽이는 `close()`와
    * 다른 물건이다.
