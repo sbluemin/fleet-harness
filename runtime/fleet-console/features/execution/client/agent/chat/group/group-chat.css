@@ -216,17 +216,16 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 .group-chat-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 .group-chat-link.is-danger { color: var(--coral-ink); }
 
-/* 진행 줄 — 입력창 바로 위. 일하는 이가 없어도 높이를 지켜 입력창이 뛰지 않게 한다. */
+/* 진행 줄 — 입력창 바로 위 왼쪽. 입력 캡슐과 같은 좌우 여백을 써서 칸 폭이 어떻든 왼쪽 끝이 캡슐 왼쪽에 맞는다.
+   일하는 이가 없어도 높이를 지켜 입력창이 뛰지 않게 한다. */
 .group-chat-working {
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-height: 26px;
-  max-width: 720px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 2px var(--space-4);
+  min-width: 0;
+  padding: 2px clamp(var(--space-4), 4cqi, 48px);
   box-sizing: border-box;
   font-family: var(--font-ui);
   font-size: var(--t-sm);
@@ -245,7 +244,8 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 .group-chat-working-stop:focus-visible .cluster-member-glyph { outline: 2px solid var(--brass); outline-offset: 1px; }
 .group-chat-working-stop:focus-visible { outline: none; }
 .group-chat-working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.group-chat-working-hint { flex: none; font-size: var(--t-2xs); color: var(--text-tertiary); }
+/* 좁아지면 안내가 먼저 줄어든다 — 누가 일하는지(낱말)는 끝까지 남는다. */
+.group-chat-working-hint { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
 
 /* 오른쪽 「구성원」 탭 */
 .group-members { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); font-family: var(--font-ui); }
