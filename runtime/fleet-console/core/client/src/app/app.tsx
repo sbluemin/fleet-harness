@@ -794,7 +794,8 @@ function ConnectedApp() {
             title={t("chrome.conversationWelcome.returned")}
             message={t("chrome.conversationWelcome.returnedDetail")}
             actionLabel={t("chrome.conversationWelcome.undo")}
-            onAction={() => { setClassicReturnNotice(false); void saveClassicLayout(false); }}
+            // 저장이 된 뒤에만 거둔다 — 실패하면 화면이 이전 화면으로 남고, 알림이 남아 한 번 더 누를 수 있다.
+            onAction={() => { void saveClassicLayout(false).then((saved) => { if (saved) setClassicReturnNotice(false); }); }}
             onDismiss={() => setClassicReturnNotice(false)}
           />
           <Toast open={promptForgottenNotice !== null} tone="warn" title={t("sidebar.theater.prompt.forgotten", { theater: promptForgottenNotice ?? "" })} onDismiss={() => setPromptForgottenNotice(null)} />
