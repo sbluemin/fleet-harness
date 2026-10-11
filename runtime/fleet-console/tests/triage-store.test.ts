@@ -100,6 +100,11 @@ import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, se
 
 // 덱은 실제 컴포넌트로 검증하되 Vite 호스트가 공급하는 플러그인 카탈로그는 필요하지 않다.
 vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => ({ operationKinds: [], providers: [], theaterContributions: [] }) }));
+// War Room 은 이전 화면(캔버스)에만 선다 — 기본인 대화 중심 화면 대신 그 배치를 고정한다.
+vi.mock("../features/settings/client/use-conversation-layout.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../features/settings/client/use-conversation-layout.js")>(),
+  isConversationLayoutActive: () => false,
+}));
 
 const THEATER_ID = "theater-a";
 const THEATERS = [
