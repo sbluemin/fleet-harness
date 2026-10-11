@@ -774,3 +774,14 @@
     animation: none;
   }
 }
+
+/* 대화 중심 화면의 사이드바 아래 줄 — 칸이 좁거나 값이 두 줄(예: 60%/51%)로 넓어지면 칸 사이에서 다음 줄로 넘어간다.
+   사이드바 경계 밖으로 나가지 않는다. 밴드(토글 끔)의 한 줄 요약은 그대로다. */
+.conversation-side-usage .quota-toolbar-summary {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  max-width: 100%;
+  height: auto;
+  min-height: 26px;
+}

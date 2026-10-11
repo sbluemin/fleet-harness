@@ -331,7 +331,8 @@
   padding: 0 var(--space-1);
 }
 
-.conversation-side-usage > * { flex: none; }
+/* 칩 묶음은 줄 폭을 넘지 않는다 — 플러그인 칩이 한 단추 안에 여럿이면 그 단추가 안에서 줄을 바꾼다(quota.css). */
+.conversation-side-usage > * { flex: 0 1 auto; min-width: 0; max-width: 100%; }
 
 /* 아래 줄의 메뉴(환경 진단·호스트·도움말)는 위로 열린다. 펼친 사이드바는 그 메뉴가 카드 밖으로 나가도록 자르지 않는다 —
    목록은 안쪽 스크롤 칸이 따로 자르고, 접힘 전이 동안은 접힌 상태(.is-closed)가 지금처럼 자른다. */
