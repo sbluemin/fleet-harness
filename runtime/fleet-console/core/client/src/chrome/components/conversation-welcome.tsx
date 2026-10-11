@@ -34,6 +34,11 @@ export function ConversationWelcome({ eligible, onReturned }: ConversationWelcom
   const keepRef = useRef<HTMLButtonElement | null>(null);
   const visible = ready && settled && !dismissed;
 
+  // 「화면 안내 다시 보기」가 본 기록을 지우면 이 화면에서 닫아 둔 표시도 거둔다 — 새로고침 없이 다시 선다.
+  useEffect(() => {
+    if (!seen) setDismissed(false);
+  }, [seen]);
+
   useEffect(() => {
     if (!ready) return;
     const timer = setTimeout(() => setSettled(true), SETTLE_MS);
