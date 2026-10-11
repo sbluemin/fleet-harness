@@ -629,7 +629,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         settled("interrupted");
         return { operationId, delivery: "requested" };
       }
-      await deliverMessage(operationId, input.text!, [], reply, assertCurrent, settled, chatOrigin(caller), input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
+      const assertDeliveryCurrent = () => {
+        assertCurrent();
+        if (input.liveOnly && ctx.consoleControl?.observe(operationId)?.lifecycle !== "live") throw new ConsoleControlError("session_not_live");
+      };
+      assertDeliveryCurrent();
+      const origin = chatOrigin(caller);
+      const authored = origin?.kind === "plugin" && input.humanInput ? { ...origin, humanInput: input.humanInput } : origin;
+      await deliverMessage(operationId, input.text!, [], reply, assertDeliveryCurrent, settled, authored, input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
       return { operationId, delivery: "queued" };
     },
@@ -1494,6 +1501,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       // 휴면한 채팅에 온 메시지는 그 자체가 재개 요청이다(dormant PTY 세션이 재기동 후
       // 전달받는 것과 같은 제품 결정). 소유권을 먼저 세워야 첫 턴의 활동 보고가 자리를 찾는다.
+      assertCurrent();
       const wokeHere = observability.getTerminalSessionInfo(sessionId)?.chatActive !== true;
       if (wokeHere) {
         const woken = observability.setTerminalSessionChatActive(sessionId, true);

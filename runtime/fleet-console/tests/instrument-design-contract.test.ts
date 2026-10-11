@@ -2564,7 +2564,9 @@ describe("Instrument core design contract", () => {
     // 둘레 대비가 0.05까지 무너진 것이 실측으로 확인됐다.
     expect(base).toContain("--surface-panel: var(--ink-deep);");
     expect(theme).not.toContain("--surface-window");
-    expect(theme.match(/--surface-panel:/g)).toHaveLength(4);
+    // 다섯째 정의는 대화 중심 화면의 「대화 다크」(세 다크를 한 벌로 묶는 테마 스코프) — 무채 작업면 21.8%(Grok 선택 면 실측).
+    expect(theme.match(/--surface-panel:/g)).toHaveLength(5);
+    expect(theme).toContain("--surface-panel: oklch(21.8% 0 0);");
     expect(theme).toContain("--surface-panel: oklch(23% 0.03 248);");
     expect(theme).toContain("--surface-panel: oklch(19% 0.008 252);");
     expect(theme).toContain("--surface-panel: oklch(98.2% 0.004 100);");

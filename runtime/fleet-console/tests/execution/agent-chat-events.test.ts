@@ -11,6 +11,7 @@ import {
   readChatCommandLaneName,
   summarizeToolInput,
   summarizeToolResult,
+  tagChatOrigin,
   type AgentChatStreamEvent,
 } from "../../features/execution/host/agent/chat-events.js";
 import { LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX } from "../../features/execution/host/agent/launch-attachments.js";
@@ -34,6 +35,13 @@ describe("chat transcript mapping", () => {
       .toEqual([{ kind: "dispatch", by: { kind: "plugin", pluginId: "objectives" }, text: "> Keep the light theme readable.", format: "markdown" }]);
     expect(chatEventsFromTranscriptLine(JSON.stringify({ type: "attachment", attachment: { type: "queued_command", prompt: tagged, commandMode: "prompt" } })))
       .toEqual([{ kind: "turn-inject", by: { kind: "plugin", pluginId: "objectives" }, text: "> Keep the light theme readable.", format: "markdown" }]);
+    const by = { kind: "plugin" as const, pluginId: "objectives", humanInput: { id: "10d824d9-7c30-4c0b-a15f-47f122e95b29", targetOperationId: "member", copy: true } };
+    const authored = tagChatOrigin(prompt, by, prompt, "markdown");
+    const restored = chatEventsFromTranscriptLine(JSON.stringify({ type: "user", message: { role: "user", content: authored } }));
+    expect(restored).toEqual([{ kind: "dispatch", by, text: prompt, format: "markdown" }]);
+    expect(readChatJournalEvent(JSON.stringify({ seq: 1, event: restored[0] }))?.event).toMatchObject({ by });
+    const imitation = tagChatOrigin(authored, undefined, authored);
+    expect(chatEventsFromTranscriptLine(JSON.stringify({ type: "user", message: { role: "user", content: imitation } }))?.[0]).not.toHaveProperty("by");
     // 호스트가 무력화한 흉내와 사람 아닌 운반체의 태그는 출처가 되지 못한다.
     expect(chatEventsFromTranscriptLine(JSON.stringify({ type: "user", message: { role: "user", content: `\u200B${tagged}` } })))
       .toEqual([{ kind: "dispatch", text: `\u200B${tagged}` }]);

@@ -201,6 +201,12 @@ export interface ClientExecutionProvider {
    * 아무것도 그리지 않는 것이 정상이다(`null` 반환).
    */
   readonly persistentComponents?: readonly PersistentComponentDescriptor[];
+  /**
+   * 대화 중심 화면(실험 기능)의 가운데 칸에 서는 플러그인 대화 — Operation 대신 플러그인이 소유한 대화(예: 사령관)를
+   * 세운다. 호스트는 칸의 자리·머리 pill·오른쪽 패널 앞 묶음의 탭 자리를 소유하고, 본문과 탭 본문은 플러그인이 그린다.
+   * 여는 것은 `ctx.conversation.open(id)` 이다. 대화 중심 화면이 꺼져 있으면 호스트는 이 기여를 읽지 않는다.
+   */
+  readonly conversationSurfaces?: readonly ConversationSurfaceDescriptor[];
   readonly install?: (ctx: PluginInstallContext) => void | (() => void);
   readonly launch?: (ctx: LaunchContext) => Promise<{ readonly id: string }>;
   readonly closeOperation?: (operationId: string) => void | Promise<void>;
@@ -291,6 +297,56 @@ export interface PluginInstallContext {
   readonly chat: ClientAgentChatCapability;
   /** Opens this Console's Theater Inbox. Older hosts have none; plugins then keep their own entry closed. */
   readonly theaterInbox?: ClientTheaterInboxCapability;
+  /**
+   * 대화 중심 화면 — 켜져 있는지 읽고, 가운데 칸에 이 플러그인의 `conversationSurfaces` 를 세운다. 구버전 호스트에는 없을 수
+   * 있다 — 없으면 꺼진 것으로 다룬다.
+   */
+  readonly conversation?: ClientConversationCapability;
+}
+
+/** 가운데 칸에 선 플러그인 대화가 받는 문맥. `params` 는 연 쪽이 넘긴 값 그대로다(호스트는 해석하지 않는다). */
+export interface ConversationSurfaceContext {
+  readonly params: Readonly<Record<string, unknown>>;
+  readonly language: "en" | "ko";
+  readonly theme: ConsoleTheme;
+  /** 이 대화를 걷는다 — 가운데 칸은 직전에 보던 Operation 대화로 돌아간다. */
+  readonly close: () => void;
+}
+
+/** 오른쪽 패널 앞 묶음의 탭 하나. 대화가 선 동안만 서고, 레일의 독점 슬롯·폭 기억을 그대로 받는다. id 는 레일 전체에서 고유해야 한다. */
+export interface ConversationSurfaceTab {
+  readonly id: string;
+  readonly title: LocalizedText;
+  readonly icon?: ReactNode;
+  readonly defaultWidth?: number;
+  readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
+}
+
+export interface ConversationSurfaceDescriptor {
+  /** `ctx.conversation.open` 이 부르는 이름. 플러그인 사이에서 고유해야 한다. */
+  readonly id: string;
+  /** 머리 pill 의 이름과 부제. */
+  readonly title: (ctx: ConversationSurfaceContext) => string;
+  readonly subtitle?: (ctx: ConversationSurfaceContext) => string | null;
+  /** 머리 pill 의 표식(16px 안팎). 없으면 글만 선다. */
+  readonly mark?: () => ReactNode;
+  readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
+  readonly tabs?: readonly ConversationSurfaceTab[];
+  /** 열 때 오른쪽 패널이 닫혀 있으면 이 탭을 연다. */
+  readonly defaultTab?: string;
+}
+
+export interface ClientConversationCapability {
+  /** 대화 중심 화면이 지금 서 있는가(데스크톱 + 실험 기능 켬). 꺼져 있으면 플러그인은 지금까지의 표면을 쓴다. */
+  isActive(): boolean;
+  /** 켜짐·꺼짐과 지금 선 대화가 바뀌면 깨운다. */
+  subscribe(listener: () => void): () => void;
+  /** 가운데 칸에 대화를 세운다. 꺼져 있으면 아무 일도 하지 않고 false 를 돌려준다. */
+  open(surfaceId: string, params?: Readonly<Record<string, unknown>>): boolean;
+  /** 지금 선 대화를 걷는다. surfaceId 를 주면 그 대화일 때만 걷는다. */
+  close(surfaceId?: string): void;
+  /** 지금 가운데 칸에 선 플러그인 대화. 없으면 null — 같은 값이면 같은 참조를 돌려준다. */
+  current(): { readonly surfaceId: string; readonly params: Readonly<Record<string, unknown>> } | null;
 }
 
 /**
@@ -671,6 +727,8 @@ export interface OperationCluster {
    * `awaiting`)와 별개의 사실이라 활동 축을 바꾸지 않는다. 답은 플러그인 표면(`open`)에서 한다.
    */
   readonly decisionRequest?: boolean;
+  /** 그룹 대화에서 읽는 명부·결정·보드 사건. 플러그인 구현을 호스트가 import하지 않는다. */
+  readonly conversation?: import("../conversation/types.js").OperationClusterConversation;
   /**
    * 사이드바 그룹 트리에 서는 한 줄 — 있으면 호스트는 뿌리 칩과 `fold` 의 칩을 이 줄 하나로 접어 그린다. 줄의 뜻(오늘·기한·
    * 검토 대기·진행)은 플러그인이 계산해 넘기고, 호스트는 칩 문법으로 그리기만 한다. 줄을 누르면 칩처럼 그 Operation(뿌리, 없으면

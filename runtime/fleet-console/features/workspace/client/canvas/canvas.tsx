@@ -2512,7 +2512,7 @@ function nestedSubjectName(parent: OperationNode, member: OperationNode): string
   return member.title.startsWith(prefix) && member.title.length > prefix.length ? member.title.slice(prefix.length) : member.title;
 }
 
-function PluginOperationRenderer({
+export function PluginOperationRenderer({
   active,
   keyboardFocusRequestId,
   capabilities,

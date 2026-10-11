@@ -8,6 +8,10 @@ export interface ConsoleActionInput {
   readonly operationId?: string;
   /** launch 의 첫 프롬프트 / send 의 본문. launch 에서는 생략할 수 있다 — 그 세션은 첫 턴 없이 서서 메시지를 기다린다. */
   readonly text?: string;
+  /** send 전용 — 전달 직전에도 live여야 한다. 방송이 휴면 세션을 뜻밖에 깨우지 않게 한다. */
+  readonly liveOnly?: boolean;
+  /** 신뢰된 플러그인 send 전용 표시 출처. 사람 입력을 대행했음을 원장에 명시하며 권한은 바꾸지 않는다. */
+  readonly humanInput?: { readonly id: string; readonly targetOperationId?: string; readonly copy?: boolean };
   readonly model?: string;
   readonly effort?: string;
   readonly viewMode?: "chat" | "terminal";

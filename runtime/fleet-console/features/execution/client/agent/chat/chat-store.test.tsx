@@ -8,6 +8,12 @@ import { connectTerminalSettings } from "../../terminal/shared/terminal-preferen
 import { useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } from "./chat-store.js";
 import { splitAgentChatTurn, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";
 import { AgentChatView } from "./chat-view.js";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
+import type { GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
+import type { OperationClusterSource } from "@fleet-console/sdk/plugin";
+import { clearOperationRuntime, getState, setOperationRuntime, setState } from "../../../../../core/client/src/integration/store.js";
+import { getAgentState, setAgentState } from "../store.js";
+import { GroupClusterProvider, installGroupTimeline, useGroupTimeline } from "./group-timeline-store.js";
 
 class FakeWebSocket implements ChatWebSocketLike {
   static instances: FakeWebSocket[] = [];
@@ -272,4 +278,68 @@ describe("AgentChatView history auto-fold", () => {
     expect(history().hidden).toBe(true);
     expect(stored).toEqual({ chatReadingWidth: "wide", chatHistoryAutoFold: true });
   });
+});
+
+it("keeps independent group journals alive across view closure and merges only confirmed message identities", async () => {
+  const previous = getState();
+  const previousAgent = getAgentState();
+  let group: GroupTimelineSnapshot | undefined;
+  const board = { operationId: "root", members: [{ kind: "member" as const, operationId: "member", name: "Verifier", mark: { number: 1, tone: "teal" } }], events: [], decision: null };
+  const clusters = [{ id: "objective", theaterId: "theater", title: "Objective", root: "root", members: [], conversation: board }];
+  const clusterSource: OperationClusterSource = { get: () => clusters, subscribe: () => () => {} };
+  const session = (id: string) => ({ sessionId: id, terminalSessionId: id, cwdLabel: "fixture", status: "live" as const, turnState: "running" as const, chatActive: true, createdAt: 1, resumeAvailable: true });
+  setState({ operations: [{ id: "root", theaterId: "theater", title: "Commander", type: "agent", pluginId: null, geometry: null,
+    payload: { chatMode: true }, ts: { createdAt: 1, updatedAt: 1 }, childSessions: [{ id: "member", payload: { chatMode: true }, ts: { createdAt: 2, updatedAt: 2 } }] }],
+    operationRuntime: { root: { lifecycle: "live", activity: "running" }, member: { lifecycle: "live", activity: "running" } } });
+  setOperationRuntime("root", { lifecycle: "live", activity: "running" });
+  setOperationRuntime("member", { lifecycle: "live", activity: "running" });
+  setAgentState({ sessions: { root: session("root"), member: session("member") } });
+  const dispose = installGroupTimeline({ experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, conversationLayout: true }), subscribe: () => () => {} } });
+  function GroupProbe() { group = useGroupTimeline("root"); return null; }
+  const render = () => act(() => root!.render(createElement(GroupClusterProvider, { value: clusterSource }, createElement(GroupProbe))));
+  container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+  try {
+    render();
+    await act(async () => { await Promise.resolve(); });
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const source = FakeWebSocket.instances.find((socket) => socket.url.includes("ticket-for-root"))!;
+    const target = FakeWebSocket.instances.find((socket) => socket.url.includes("ticket-for-member"))!;
+    const emit = (socket: FakeWebSocket, seq: number, event: AgentChatStreamEvent) => socket.onmessage?.({ data: JSON.stringify({ seq, at: seq * 100, event }) });
+    act(() => {
+      source.open(); target.open();
+      emit(source, 1, { kind: "dispatch", text: "Start the review" });
+      emit(source, 2, { kind: "text", text: "I will delegate." });
+      emit(source, 3, { kind: "tool", id: "send-1", name: "SendMessage", detail: "Verifier", toolDetail: { sections: [{ kind: "message", text: "→ Verifier\nReview this" }] } });
+      emit(source, 4, { kind: "tool-result", id: "send-1", ok: true, summary: "Delivered" });
+      emit(target, 5, { kind: "received", id: "root:send-1", from: "Commander", text: "Review this", inTurn: false });
+      emit(target, 6, { kind: "text", text: "Review complete" });
+      emit(source, 7, { kind: "snapshot-end", turns: 1 });
+      emit(target, 8, { kind: "snapshot-end", turns: 1 });
+    });
+    expect(group!.entries.filter((entry) => entry.kind === "delegation")).toHaveLength(1);
+    expect(group!.entries.find((entry) => entry.kind === "delegation")).toMatchObject({ received: true, ok: true, result: "Delivered", recipients: [{ operationId: "member", mark: { number: 1, tone: "teal" } }] });
+    expect(group!.working.map((speaker) => speaker.operationId)).toEqual(["root", "member"]);
+    expect(group!.preview).toMatchObject({ text: "Review complete", speaker: { operationId: "member" } });
+    act(() => { root!.render(null); });
+    expect(source.closed || target.closed).toBe(false);
+    act(() => { emit(target, 9, { kind: "received", id: "root:different-call", from: "Commander", text: "Review this", inTurn: false }); });
+    render();
+    expect(group!.entries.filter((entry) => entry.kind === "delegation")).toHaveLength(2);
+    act(() => { emit(source, 10, { kind: "cleared" }); });
+    expect(group!.entries.some((entry) => entry.kind === "message" && entry.operationId === "root")).toBe(false);
+    expect(group!.preview?.text).toBe("Review complete");
+    const humanInput = { id: "10d824d9-7c30-4c0b-a15f-47f122e95b29", targetOperationId: "member" };
+    act(() => {
+      emit(source, 11, { kind: "dispatch", text: "Person told Verifier: exact words", by: { kind: "plugin", pluginId: "objectives", humanInput: { ...humanInput, copy: true } } });
+      emit(target, 12, { kind: "dispatch", text: "exact words", by: { kind: "plugin", pluginId: "objectives", humanInput } });
+    });
+    const authored = group!.entries.filter((entry) => entry.id === `human:${humanInput.id}`);
+    expect(authored).toHaveLength(1);
+    expect(authored[0]).toMatchObject({ text: "exact words", speaker: { kind: "human" }, recipient: { operationId: "member", name: "Verifier" } });
+  } finally {
+    act(() => { dispose(); root?.unmount(); root = null; });
+    clearOperationRuntime("root"); clearOperationRuntime("member");
+    setState(previous); setAgentState(previousAgent);
+  }
+  expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
 });

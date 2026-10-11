@@ -268,11 +268,26 @@ export type DesktopEntryToken =
   | "ink-abyss" | "ink-deep" | "ink-veil" | "ink-rim" | "ink-fog" | "ink-muted" | "ink-spectral" | "ink-pearl"
   | "brass" | "aurora" | "positive" | "coral" | "hairline" | "hairline-strong";
 
+/**
+ * 창 맨 위 크롬의 기하 — 네이티브 컨트롤(macOS 신호등·Windows 캡션 버튼)이 세로 가운데를 맞출 웹 쪽 맨 위 줄의 CSS 높이다.
+ * 기본 배치는 Command Band(36px)이고, 실험 기능 「대화 중심 화면」이 켜지면 세 열의 맨 위 줄(52px)이다.
+ * 이 필드를 모르는 Desktop은 무시하고 36px 계약을 그대로 쓴다.
+ */
+export interface DesktopChromeGeometry {
+  readonly band: number;
+}
+
 export interface DesktopThemeSnapshot {
   readonly theme: ConsoleThemeId;
   readonly titleBarOverlay: DesktopTitleBarOverlay;
   /** 이 필드를 모르는 Desktop은 무시하고, 이 필드가 없는 Console을 만난 Desktop은 기본 판을 쓴다. */
   readonly entry: DesktopEntryPalette;
+  readonly chrome: DesktopChromeGeometry;
+}
+
+export interface DesktopThemeLayout {
+  /** 실험 기능 「대화 중심 화면」이 켜져 있다. */
+  readonly conversationLayout: boolean;
 }
 
 export const DESKTOP_THEME_PATH = "/api/v1/desktop/theme";
@@ -284,6 +299,22 @@ const DESKTOP_TITLE_BAR_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSn
   maritime: { color: "#041729", symbolColor: "#c8c4b7", height: 35 },
   carbon: { color: "#101215", symbolColor: "#bfc1c3", height: 35 },
   whites: { color: "#f1f0ec", symbolColor: "#424038", height: 35 },
+};
+
+/** 대화 중심 화면의 맨 위 줄 높이 — 클라이언트 `--conversation-top-row: 52px`(conversation.css)와 같다. */
+const CONVERSATION_TOP_ROW = 52;
+const COMMAND_BAND_HEIGHT = 36;
+
+/**
+ * 대화 중심 화면의 캡션 버튼 띠 — 오른쪽 위 열(세부 정보 또는 대화)의 바탕과 같은 색으로, 맨 위 줄 높이만큼 선다. 두 열은 같은
+ * 바탕(`--canvas-abyss`)이라 세부 정보가 열려 있든 닫혀 있든 한 색이다. 이 화면의 다크는 고른 다크 테마와 무관하게 「대화 다크」
+ * 한 벌이므로(theme.css) 세 다크가 같은 #070707(L 12.9%)·중립 회색 기호를 쓴다. Whites 는 그 테마의 `--canvas-abyss` sRGB 다.
+ */
+const DESKTOP_CONVERSATION_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSnapshot["titleBarOverlay"]>> = {
+  instrument: { color: "#070707", symbolColor: "#9a9a9a", height: CONVERSATION_TOP_ROW },
+  maritime: { color: "#070707", symbolColor: "#9a9a9a", height: CONVERSATION_TOP_ROW },
+  carbon: { color: "#070707", symbolColor: "#9a9a9a", height: CONVERSATION_TOP_ROW },
+  whites: { color: "#f8f8f5", symbolColor: "#424038", height: CONVERSATION_TOP_ROW },
 };
 
 const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalette>> = {
@@ -333,14 +364,17 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
   },
 };
 
-export function desktopThemeSnapshot(theme: ConsoleThemeId, fonts: ConsoleFontSettings = DEFAULT_FONTS): DesktopThemeSnapshot {
+export function desktopThemeSnapshot(theme: ConsoleThemeId, fonts: ConsoleFontSettings = DEFAULT_FONTS, layout: DesktopThemeLayout = { conversationLayout: false }): DesktopThemeSnapshot {
   const entry = DESKTOP_ENTRY_PALETTES[theme];
-  return { theme, titleBarOverlay: { ...DESKTOP_TITLE_BAR_OVERLAYS[theme] }, entry: { ...entry, tokens: { ...entry.tokens }, fonts: { ui: { family: fontFamilyForAxis(fonts, "ui"), size: fonts.ui.size }, content: { family: fontFamilyForAxis(fonts, "content"), size: fonts.content.size }, code: { family: fontFamilyForAxis(fonts, "code"), size: fonts.code.size } } } };
+  const overlay = layout.conversationLayout ? DESKTOP_CONVERSATION_OVERLAYS[theme] : DESKTOP_TITLE_BAR_OVERLAYS[theme];
+  const chrome: DesktopChromeGeometry = { band: layout.conversationLayout ? CONVERSATION_TOP_ROW : COMMAND_BAND_HEIGHT };
+  return { theme, titleBarOverlay: { ...overlay }, chrome, entry: { ...entry, tokens: { ...entry.tokens }, fonts: { ui: { family: fontFamilyForAxis(fonts, "ui"), size: fonts.ui.size }, content: { family: fontFamilyForAxis(fonts, "content"), size: fonts.content.size }, code: { family: fontFamilyForAxis(fonts, "code"), size: fonts.code.size } } } };
 }
 
 interface DesktopThemeRouteDeps {
   readonly getTheme: () => ConsoleThemeId;
   readonly getFonts?: () => ConsoleFontSettings;
+  readonly getLayout?: () => DesktopThemeLayout;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly subscribe: (res: http.ServerResponse, snapshot: DesktopThemeSnapshot) => void;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
@@ -382,7 +416,7 @@ export function createDesktopThemeRouter(deps: DesktopThemeRouteDeps): (context:
       deps.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    const snapshot = desktopThemeSnapshot(deps.getTheme(), deps.getFonts?.());
+    const snapshot = desktopThemeSnapshot(deps.getTheme(), deps.getFonts?.(), deps.getLayout?.());
     if (pathname === DESKTOP_THEME_PATH) {
       deps.writeJson(res, 200, snapshot);
       return true;

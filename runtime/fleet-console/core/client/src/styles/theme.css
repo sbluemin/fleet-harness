@@ -1010,6 +1010,114 @@
   --scrollbar-thumb-classic: oklch(44% 0.015 95 / 45%);
 }
 
+/* 대화 다크 — 실험 기능 「대화 중심 화면」이 켜진 데스크톱에서, 사람이 고른 다크 테마(Instrument·Maritime·Carbon)가 무엇이든 이
+   한 벌로 선다(라이트는 Whites 그대로). 저장된 테마는 바꾸지 않는다 — 토글을 끄면 그 테마로 돌아간다. 기존 토큰 이름에 값만 다시
+   준다. Carbon 짝에서 중립 회색(채도 < 0.02)을 채도 0 으로 내리고, 핵심 면·글자는 Grok Bot 다크 스크린샷 실측(sRGB → OKLCH L)을 따른다:
+   대화·세부 정보 바탕 #070707(L 12.9%) = --canvas-abyss, 사이드바 #111111(17.8%) = --ink-deep, 말풍선 #262626(26.9%) = --ink-mid(→ 기본 --surface-panel-raised),
+   입력 캡슐 #2f2f2f(30.5%) = --surface-glass-strong, 열 경계 #292929(28.1%)·카드 테두리 #2c2c2c(29.3%) ≈ --hairline 28.5%,
+   선택 면 #1a1a1a(21.8%) = --surface-panel, 본문 글자 #fcfcfc(99%) → --ink-pearl 96%, 보조 글자 #9a9a9a(68.6%) = --ink-muted.
+   강조(brass 금색)·신호·정체성 색은 Carbon 값 그대로다 — 면과 글자만 Grok 처럼 중립이고, 금색 강조는 Fleet 의 것을 지킨다.
+   측정 근거: 목표 증거 impl/theme/measure.md. */
+:root[data-conversation-layout="true"]:not([data-theme="whites"]) {
+  --ink-abyss: oklch(15% 0 0);
+  --ink-deep: oklch(17.8% 0 0);
+  --ink-mid: oklch(26.9% 0 0);
+  --ink-veil: oklch(34.9% 0 0);
+  --ink-rim: oklch(45% 0 0);
+  --ink-fog: oklch(58% 0 0);
+  --ink-muted: oklch(68.6% 0 0);
+  --ink-spectral: oklch(80% 0 0);
+  --ink-pearl: oklch(96% 0 0);
+
+  --ink-brand-dev: oklch(84% 0.04 255);
+
+  --brass: oklch(77% 0.085 64);
+  --brass-bright: oklch(81% 0.085 66);
+  --brass-deep: oklch(54% 0.11 55);
+  --brass-glow: oklch(77% 0.085 64 / 12%);
+  --brass-quiet: oklch(71% 0.04 64);
+
+  --aurora: oklch(79% 0.08 205);
+  --aurora-deep: oklch(56% 0.11 208);
+  --aurora-glow: oklch(79% 0.08 205 / 12%);
+
+  --coral: oklch(69% 0.12 25);
+  --coral-glow: oklch(69% 0.12 25 / 12%);
+  --warn: oklch(77% 0.085 80);
+  --warn-glow: oklch(77% 0.085 80 / 12%);
+  --positive: oklch(77% 0.095 158);
+  --positive-glow: oklch(77% 0.095 158 / 12%);
+
+  --apex: oklch(75% 0.095 292);
+  --apex-glow: oklch(75% 0.095 292 / 12%);
+  --crest: oklch(77% 0.1 46);
+  --crest-glow: oklch(77% 0.1 46 / 12%);
+
+  --canvas-abyss: oklch(12.9% 0 0);
+  --canvas-sea-core: oklch(15% 0 0);
+  --canvas-sea-near: oklch(13.5% 0 0);
+  --canvas-sea-mid: oklch(12.9% 0 0);
+  --canvas-sea-far: oklch(11% 0 0);
+
+  --surface-glass: oklch(26.9% 0 0 / 62%);
+
+  --surface-panel: oklch(21.8% 0 0);
+  --surface-glass-strong: oklch(30.5% 0 0 / 80%);
+  --surface-pillar: oklch(20% 0 0 / 88%);
+  --surface-rim: oklch(100% 0 0 / 12%);
+  --surface-rim-strong: oklch(100% 0 0 / 16%);
+  --surface-band: var(--ink-deep);
+
+  --glass-on-tint-strong: oklch(29% 0 0 / 46%);
+
+  --glass-on-opaque-rail: color-mix(in oklch, color-mix(in oklch, oklch(29% 0 0) clamp(0%, calc((100% - var(--glass-rail-alpha)) / 0.5), 100%), oklch(19.4% 0 0)) calc((var(--glass-rail-alpha) - 8%) / 0.92), transparent);
+  --glass-on-tint-rail: var(--glass-on-opaque-rail, oklch(29% 0 0 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92)));
+  --glass-on-tint-soft: oklch(25% 0 0 / 44%);
+  --glass-on-tint-pillar: oklch(20% 0 0 / 48%);
+  --glass-on-tint-raised: oklch(25% 0 0 / 46%);
+  --glass-on-tint-deep: oklch(18% 0 0 / 46%);
+  --glass-on-tint-abyss: oklch(14% 0 0 / 48%);
+  --glass-on-opaque-chrome: color-mix(in oklch, color-mix(in oklch, oklch(24% 0 0) clamp(0%, calc((100% - var(--glass-side-bar-alpha)) / 0.55), 100%), oklch(16.8% 0 0)) var(--glass-side-bar-alpha), transparent);
+  --glass-on-tint-chrome: var(--glass-on-opaque-chrome, oklch(24% 0 0 / var(--glass-side-bar-alpha, 45%)));
+  --glass-on-opaque-panel: color-mix(in oklch, color-mix(in oklch, oklch(21% 0 0) clamp(0%, calc((100% - var(--glass-window-alpha)) / 0.4), 100%), oklch(16.9% 0 0)) var(--glass-window-alpha), transparent);
+  --glass-on-tint-panel: var(--glass-on-opaque-panel, oklch(21% 0 0 / var(--glass-window-alpha, 60%)));
+  --canvas-on-ambience: oklch(18% 0 0);
+  --glass-on-tint-caption: oklch(19% 0 0 / calc(var(--glass-window-alpha, 60%) + 4%));
+  --glass-on-tint-terminal-floor: oklch(19.8% 0 0);
+  --glass-on-opaque-band: color-mix(in oklch, color-mix(in oklch, oklch(17% 0 0) clamp(0%, calc((100% - var(--glass-bar-alpha)) / 0.5), 100%), oklch(13.7% 0 0)) var(--glass-bar-alpha), transparent);
+  --glass-on-tint-band: var(--glass-on-opaque-band, oklch(17% 0 0 / var(--glass-bar-alpha, 50%)));
+  --glass-on-rim: oklch(95% 0 0 / 16%);
+
+  --hairline: oklch(28.5% 0 0);
+  --hairline-strong: oklch(37% 0 0);
+
+  --control-rest: oklch(95% 0 0 / 5%);
+  --control-rest-hover: oklch(95% 0 0 / 9%);
+  --control-field: oklch(95% 0 0 / 4.5%);
+  --control-wash: oklch(95% 0 0 / 7%);
+  --control-wash-hover: oklch(95% 0 0 / 4%);
+
+  --console-use-badge: oklch(76% 0.1 60);
+  --provider-claude: oklch(76% 0.085 62);
+  --provider-typesafe: oklch(73% 0.085 339);
+  --provider-cursor: oklch(72% 0.08 238);
+  --provider-antigravity: oklch(73% 0.08 288);
+
+  --quiet-choice-fill: color-mix(in oklab, var(--brass) 6%, transparent);
+
+  --id-crimson: oklch(72% 0.052 25);
+  --id-amber: oklch(76% 0.05 70);
+  --id-moss: oklch(74% 0.048 140);
+  --id-teal: oklch(74% 0.047 190);
+  --id-cerulean: oklch(73% 0.05 235);
+  --id-indigo: oklch(71% 0.052 278);
+  --id-plum: oklch(72% 0.052 318);
+  --id-rose: oklch(73% 0.05 350);
+  --text-primary: var(--ink-pearl);
+  --text-secondary: var(--ink-muted);
+  --text-tertiary: var(--ink-fog);
+}
+
 /* ── 반투명 유리 게이트 ────────────────────────────────────────────────
    유리는 흐림 없이 틴트·언더레이로 표현하며, 사람은 묶음별 불투명도(100%는 완전 불투명)를
    조절한다. 다크 테마에서만 열고, 투명도 축소 선호는 같은 특이도의 뒤쪽 media 블록에서

@@ -15,7 +15,7 @@ import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import { deriveFailedOutcome } from "./views.js";
 import {
   MAX_CRITERIA,
-  MAX_OBJECTIVE_ACTIONS, objectiveActorSchema, objectiveActionSchema,
+  MAX_OBJECTIVE_ACTIONS, objectiveActorSchema, objectiveActionSchema, objectiveMemberHistorySchema,
   type ObjectiveActor, type ObjectiveReviewer, type ObjectiveAction,
   MAX_CRITERION_TEXT,
   MAX_FOLLOWUPS,
@@ -452,6 +452,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
         ...(parsed.missions ?? []).flatMap((row) => [row.by, row.memberBy]),
         ...(parsed.followups ?? []).map((row) => row.discardedBy), ...(parsed.followupBatches ?? []).map((row) => row.by)];
       if (actors.some((actor) => actor !== undefined && !objectiveActorSchema.safeParse(actor).success)) throw new ObjectiveStoreError("invalid_stored_actor");
+      if (parsed.memberHistory !== undefined && !objectiveMemberHistorySchema.safeParse(parsed.memberHistory).success) throw new ObjectiveStoreError("invalid_stored_member_history");
       if (parsed.actions !== undefined && (!Array.isArray(parsed.actions) || parsed.actions.some((action) => !objectiveActionSchema.safeParse(action).success))) throw new ObjectiveStoreError("invalid_stored_actions");
       if (parsed.actionCounts !== undefined && (!parsed.actionCounts || typeof parsed.actionCounts !== "object" || Object.entries(parsed.actionCounts).some(([kind, count]) => !objectiveActionSchema.shape.kind.safeParse(kind).success || !Number.isSafeInteger(count) || count! < 0))) throw new ObjectiveStoreError("invalid_stored_actions");
       const extensions = storedExtensionsSchema.safeParse(parsed.extensions ?? []);
@@ -749,6 +750,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       addedBy,
       done: stored.done ? { ...stored.done, by: stored.done.by ?? "human" } : null,
       actions: stored.actions ?? [],
+      memberHistory: stored.memberHistory ?? [],
       actionCounts: stored.actionCounts ?? {},
       boardUpdatedAt: stored.boardUpdatedAt ?? node?.ts.createdAt ?? pending!.createdAt,
       stoppedAt: stored.stoppedAt ?? null,
@@ -889,6 +891,13 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
   /** 쓰기 한 곳 — 그 목표의 파일 한 건이 성공한 뒤에 캐시를 갈고, 마지막에 방송한다. */
   const commit = (theaterId: string, changed: StoredObjective, reordered = false, touch = true): Objective | null => {
+    const previousMembers = load(theaterId).get(changed.operationId)?.members ?? [];
+    const nextMembers = changed.members ?? [];
+    const joined = nextMembers.flatMap((member, index) => previousMembers.some((old) => old.id === member.id) ? []
+      : [{ id: randomUUID(), at: now(), kind: "joined" as const, memberId: member.id, name: member.role, number: index + 1 }]);
+    const left = previousMembers.flatMap((member, index) => nextMembers.some((next) => next.id === member.id) ? []
+      : [{ id: randomUUID(), at: now(), kind: "left" as const, memberId: member.id, name: member.role, number: index + 1 }]);
+    if (joined.length || left.length) changed = { ...changed, memberHistory: [...(changed.memberHistory ?? []), ...left, ...joined].slice(-MAX_OBJECTIVE_ACTIONS) };
     if (touch) changed = { ...changed, boardUpdatedAt: now() };
     writeObjectiveAtomic(objectiveDir(theaterId, changed.operationId), changed);
     load(theaterId).set(changed.operationId, changed);

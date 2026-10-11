@@ -269,6 +269,8 @@ interface TerminalPrefsState {
   readonly inactiveFlush: TerminalInactiveFlush;
   readonly font: TerminalFontSettings;
   readonly chatReadingWidth: ChatReadingWidth;
+  /** 사람이 채팅 폭을 직접 골랐는가(서버에 저장된 값이 있거나 이 실행에서 바꿨다). 고르지 않았으면 화면의 기본 폭이 선다. */
+  readonly chatReadingWidthChosen: boolean;
   /** 새 턴이 설 때 앞선 문답을 밴드 뒤로 접는가. 끄면 펼친 채 둔다. */
   readonly chatHistoryAutoFold: boolean;
   readonly scrollback: TerminalScrollback;
@@ -332,8 +334,33 @@ export function useTerminalPrefs(): TerminalPrefsState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+/**
+ * 채팅 폭이 지금 쓰는 값 — 사람이 고른 값이 있으면 그 값, 없으면 화면의 기본 폭이다. 캔버스의 기본은 읽기 폭이고,
+ * 대화 중심 화면은 서 있는 동안 기본을 전체(Fit)로 바꾼다(setChatReadingWidthDefault). 고른 값은 어느 화면에서나 그대로다.
+ */
 export function useChatReadingWidth(): ChatReadingWidth {
-  return useSyncExternalStore(subscribe, () => state.chatReadingWidth, () => state.chatReadingWidth);
+  const read = () => effectiveChatReadingWidth();
+  return useSyncExternalStore(subscribe, read, read);
+}
+
+let defaultChatReadingWidth: ChatReadingWidth = DEFAULT_CHAT_READING_WIDTH;
+
+function effectiveChatReadingWidth(): ChatReadingWidth {
+  return state.chatReadingWidthChosen ? state.chatReadingWidth : defaultChatReadingWidth;
+}
+
+/** 이 화면의 기본 채팅 폭을 둔다 — 돌려준 함수로 앞의 기본을 되살린다. 사람이 고른 폭은 바꾸지 않는다. */
+export function setChatReadingWidthDefault(width: ChatReadingWidth): () => void {
+  const previous = defaultChatReadingWidth;
+  if (previous !== width) {
+    defaultChatReadingWidth = width;
+    emit();
+  }
+  return () => {
+    if (defaultChatReadingWidth !== width) return;
+    defaultChatReadingWidth = previous;
+    emit();
+  };
 }
 
 export function useChatHistoryAutoFold(): boolean {
@@ -375,7 +402,7 @@ async function pushBehaviorToServer(patch: Record<string, unknown>): Promise<voi
 
 export function setChatReadingWidth(width: ChatReadingWidth): void {
   chatReadingWidthWriteEpoch += 1;
-  patchState({ chatReadingWidth: width });
+  patchState({ chatReadingWidth: width, chatReadingWidthChosen: true });
   void pushChatReadingWidthToServer(width);
 }
 
@@ -405,7 +432,7 @@ async function hydrateTerminalSettingsFromServer(): Promise<void> {
       // 퇴역한 chatComposerWidth 가 남아 있어도 읽지 않는다: 입력창은 이제 이 값을 그대로 따른다.
       const storedWidth = value["chatReadingWidth"];
       if (isChatReadingWidth(storedWidth) && widthEpoch === chatReadingWidthWriteEpoch) {
-        patchState({ chatReadingWidth: storedWidth });
+        patchState({ chatReadingWidth: storedWidth, chatReadingWidthChosen: true });
       }
       // 값이 없으면 기본(켜짐)이 그대로 선다 — 이 설정이 생기기 전 콘솔의 동작이다.
       const storedAutoFold = value["chatHistoryAutoFold"];
@@ -502,7 +529,7 @@ function getSnapshot(): TerminalPrefsState {
 
 function initState(): TerminalPrefsState {
   if (typeof window === "undefined") {
-    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, chatHistoryAutoFold: DEFAULT_CHAT_HISTORY_AUTO_FOLD, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
+    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, chatReadingWidthChosen: false, chatHistoryAutoFold: DEFAULT_CHAT_HISTORY_AUTO_FOLD, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
   }
-  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, chatHistoryAutoFold: DEFAULT_CHAT_HISTORY_AUTO_FOLD, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
+  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH, chatReadingWidthChosen: false, chatHistoryAutoFold: DEFAULT_CHAT_HISTORY_AUTO_FOLD, scrollback: DEFAULT_TERMINAL_SCROLLBACK, copyOnSelect: true };
 }

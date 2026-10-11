@@ -40,6 +40,7 @@ import type { PaletteSearchPanel } from "../integration/operation-search.js";
 import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
 import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration/plugin-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
+import { useConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
@@ -183,6 +184,17 @@ function ConnectedApp() {
   const isTransitionalRoute = pathname === "/";
   const mobileLayout = useViewMode().effective === "mobile";
   const warRoomMode = useTriageActive();
+  // 실험 기능 「대화 중심 화면」은 Operations 화면의 배치다 — 다른 화면(설정 등)에서는 밴드가 그대로 길을 낸다.
+  const conversationLayoutOn = useConversationLayout();
+  const conversationLayout = conversationLayoutOn && operationsViewVisible;
+  // 대화 중심 화면이 켜져 있다는 표식 — 화면과 무관하게 선다. Desktop 셸은 이때 신호등·캡션 버튼을 52px 맨 위 줄에 맞추므로
+  // (desktop-contract 의 chrome), 다른 화면의 밴드도 같은 높이로 선다(layout.css). 브라우저에서는 이 표식이 아무것도 바꾸지 않는다.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (conversationLayoutOn) root.setAttribute("data-conversation-layout", "true");
+    else root.removeAttribute("data-conversation-layout");
+    return () => root.removeAttribute("data-conversation-layout");
+  }, [conversationLayoutOn]);
   const warRoomTransitionActive = useWarRoomTransitionActive();
   const warRoomActive = warRoomMode && operationsViewVisible && !mobileLayout;
   const workFocusRef = useRef<HTMLElement | null>(null);
@@ -657,11 +669,12 @@ function ConnectedApp() {
   return (
     <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
-      <div className={`console-shell${warRoomActive ? " is-war-room" : ""}`}>
+      <div className={`console-shell${warRoomActive ? " is-war-room" : ""}${conversationLayout ? " is-conversation-layout" : ""}`}>
         {/* War Room 트레이 — 작업 표시줄 오른쪽 끝. 막대(작업 표시줄)는 Operations 페이지가 세우고, 이 트레이는
             콘솔 크롬이라 여기 둔다. 도구모음이 War Room 동안 여기에 선다 — 자리는 War Room이 꺼져 있어도 DOM에 남고,
             바 전체가 hidden이라 그려지지는 않는다. */}
-        <WarRoomBar active={warRoomActive} local={state.channel === "local"} />
+        {/* 대화 중심 화면의 War Room 은 가운데 무대·「확인 필요」·pill 의 「다음 ▸」로 선다 — 트레이를 세우지 않는다. */}
+        {conversationLayout ? null : <WarRoomBar active={warRoomActive} local={state.channel === "local"} />}
         <span className="war-room-announcement" role="status" aria-live="polite">{warRoomActive ? t("warRoomChrome.active") : ""}</span>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
             taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
@@ -670,9 +683,11 @@ function ConnectedApp() {
             밴드와 라우트 사이(흐름 바 자리)에 두지 않는다: 그 구간은 언더플로 게이트가
             지키는 화이트리스트라, 그리지 않는 것이라도 끼면 계약이 헐거워진다. */}
         <PersistentPluginComponents />
-        {mobileLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
+        {/* 대화 중심 화면에는 밴드가 없다 — 찾기·새 Operation·호스트·사용량·도움말·설정은 사이드바 위·아래 줄로, 도구는
+            오른쪽 패널 머리의 글자 탭으로 옮겨 갔다(features/workspace/client/conversation). */}
+        {mobileLayout || conversationLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
         {/* 도구모음은 하나다 — 모드는 자리만 바꾼다(상단 바 오른쪽 ↔ War Room 트레이). 모바일 셸은 자기 탭 막대를 쓴다. */}
-        {mobileLayout ? null : <ConsoleToolbar warRoomActive={warRoomActive} canvas={operationsViewVisible} />}
+        {mobileLayout || conversationLayout ? null : <ConsoleToolbar warRoomActive={warRoomActive} canvas={operationsViewVisible} />}
         <FloatingWidgetLayer />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는
             레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만 성립하는데, 그 조건을

@@ -112,10 +112,11 @@ function isConsoleOriginShape(origin: string): boolean {
 }
 
 /** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, War Room 트레이에서는 위로 열린다(CSS가 자리로 판단). */
-export function ConsoleHelpMenu() {
+export function ConsoleHelpMenu({ menuItem = false }: { readonly menuItem?: boolean } = {}) {
   const state = useConsoleState();
   return (
     <HelpMenu
+      menuItem={menuItem}
       version={state.version}
       latestVersion={state.latestVersion}
       updateAvailable={state.updateAvailable}
@@ -137,7 +138,7 @@ export function ConsoleHelpMenu() {
  * 닿는지 여부는 열어 볼 때 확인한다. 목록에 든 것만으로 매번 남의 기계를 두드리면, 보지도
  * 않는 화면 때문에 조용한 네트워크 소음이 계속 흐른다.
  */
-export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext } = {}) {
+export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: HostPickerContext; readonly menuItem?: boolean } = {}) {
   const t = useT();
   const state = useConsoleState();
   const hosts = useRemoteHosts();
@@ -408,6 +409,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
         <button
           ref={triggerRef}
           type="button"
+          role={menuItem ? "menuitem" : undefined}
           className={`command-band-button host-switcher-chip${state.controlHolder !== null ? " is-shared" : standingAtHome ? "" : " is-away"}`}
           aria-haspopup="menu"
           aria-expanded={pickerHome === null && open}
@@ -421,6 +423,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
         >
           {state.controlHolder === null && !standingAtHome ? <RemoteAwayGlyph /> : <RemoteGlyph />}
           {state.controlHolder !== null ? <span className="host-switcher-dot is-shared" aria-hidden="true" /> : null}
+          {menuItem ? <><span className="conversation-dock-label">{t("chrome.hosts.aria")}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
         </button>
       )}
       {open ? (
@@ -647,7 +650,8 @@ function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
   return next.length === afterOnboarding.length ? afterOnboarding : next;
 }
 
-function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, latestVersion, version }: {
+function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, latestVersion, version, menuItem }: {
+  readonly menuItem?: boolean;
   readonly releaseDisabled: boolean;
   readonly updateAvailable: boolean;
   /** 새 Console이 있지만 이 셸이 먼저 바뀌어야 받을 수 있다. Console 쪽에서 누를 것은 없다. */
@@ -706,8 +710,9 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
     {/* 표식은 실행 버튼 위에 있어야 한다. 설정에 붙어 있던 동안 그 점을 따라간 사람은
         업데이트가 없는 화면에 도착했다. 색·크기·위치는 그대로 옮겨 온 것이며, 커맨드 밴드에
         같은 뜻의 표식이 둘이 되지 않도록 설정 쪽은 함께 제거했다. */}
-    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")} data-tip={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")}>
+    <button ref={triggerRef} type="button" role={menuItem ? "menuitem" : undefined} className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")} data-tip={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")}>
       <HelpGlyph />
+      {menuItem ? <><span className="conversation-dock-label">{t("chrome.system.help")}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
       {updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
     </button>
     {!open && !outcomeShowing && notice.kind !== null && !notice.dismissed ? (

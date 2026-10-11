@@ -5,7 +5,7 @@ import { cycleViewModePreference, useViewMode } from "../../integration/view-mod
  * The one control that cycles auto / mobile / desktop. The command band carries it on a desktop
  * layout; the mobile layout carries it in its own header, because that layout hides the band.
  */
-export function ViewModeToggle({ className }: { readonly className?: string }) {
+export function ViewModeToggle({ className, menuItem = false }: { readonly className?: string; readonly menuItem?: boolean }) {
   const t = useT();
   const viewMode = useViewMode();
   const label = t(viewMode.preference === "auto"
@@ -16,6 +16,7 @@ export function ViewModeToggle({ className }: { readonly className?: string }) {
   return (
     <button
       type="button"
+      role={menuItem ? "menuitem" : undefined}
       className={className}
       onClick={cycleViewModePreference}
       aria-label={label}
@@ -23,6 +24,7 @@ export function ViewModeToggle({ className }: { readonly className?: string }) {
       title={label}
     >
       {viewMode.preference === "auto" ? <ViewModeAutoIcon /> : viewMode.preference === "mobile" ? <ViewModeMobileIcon /> : <ViewModeDesktopIcon />}
+      {menuItem ? <><span className="conversation-dock-label">{label}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
     </button>
   );
 }

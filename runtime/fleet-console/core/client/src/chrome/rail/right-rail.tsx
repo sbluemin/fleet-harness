@@ -1,6 +1,6 @@
 import { usePaneOverlay } from "../pane/use-pane-overlay.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
-import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { consoleUseWrapClassName, consoleUseWrapLabel, getPanelWrap, subscribeConsoleUseGestures } from "../../../../../features/console-use/client/gestures.js";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -39,6 +39,15 @@ interface RightRailProps {
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
   readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  /**
+   * 열린 카드 맨 위에 서는 머리 — 대화 중심 화면이 도구 글자 탭을 싣는다. 없으면 카드는 지금처럼 본문뿐이다.
+   */
+  readonly header?: ReactNode;
+  /**
+   * 레일이 남겨 둘 가운데 폭(px). 생략하면 지금처럼 148px — 캔버스 아레나의 최소 노출 폭이다. 대화 중심 화면은 대화 칸의
+   * 최소 폭과 여백을 넘긴다. 카드 폭 상한만 바뀌고, 도구별로 기억한 폭은 그대로 보존된다.
+   */
+  readonly reservedArenaWidth?: number;
 }
 
 /** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */
@@ -61,7 +70,7 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
  * 도구 줄이고(console-toolbar.tsx), 카드는 켜진 도구가 있을 때만 선다.
  */
 // 부모(Operations)는 운영 상태가 바뀔 때마다 다시 그린다 — 받는 값이 그대로면 레일(과 열린 패널 본문)은 따라 그리지 않는다.
-export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps) {
+export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOperation, header, reservedArenaWidth = 148 }: RightRailProps) {
   const t = useT();
   const connection = useSyncExternalStore(subscribe, () => getState().connection, () => "connecting" as const);
   const connectionLostAt = useSyncExternalStore(subscribe, () => getState().connectionLostAt, () => null);
@@ -98,7 +107,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   const sideBarOccupiedPx = sideBarOccupiedWidth(sideBar) > 0 ? sideBarOccupiedWidth(sideBar) + 24 : 0;
   // 카드+extra가 함께 쓰는 가용 예산. 카드 상한은 예산에서 extra를 뺀 값이되, 예산이
   // 바닥나면 MIN 바닥이 이긴다 — 그때 넘치는 쪽은 아래 슬롯 총폭 캡이 extra를 깎아 회수한다.
-  const fullBudget = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - 148 - sideBarOccupiedPx));
+  const fullBudget = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - reservedArenaWidth - sideBarOccupiedPx));
   const dockBudget = Math.max(MIN_PANEL_WIDTH, fullBudget - expandedMinimum);
   const wholeOverlay = expandedMinimum > 0 && primaryPaneOf(activeBinding)?.widthClass === "broad";
   const overlayDetails = !wholeOverlay && expandedMinimum > 0 && requestedExtraWidth > 0
@@ -298,7 +307,8 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
       inert={!hasPanel}
       style={{ "--right-rail-panel-width": `${slotWidth}px` } as CSSProperties}
     >
-      <div className="right-rail-panel-slot">
+      <div className={`right-rail-panel-slot${hasPanel && header ? " has-header" : ""}`}>
+        {hasPanel && header ? <div className="right-rail-panel-header">{header}</div> : null}
         {hasPanel && (
           <div
             className="right-rail-resize-handle"
@@ -376,7 +386,17 @@ export function useRailPanelContext(
  * 레일 도구 아이콘 목록 — 콘솔 도구모음의 도구 칸에 한 줄로 선다(모드와 무관한 하나의 목록·순서·켜짐).
  * 아이콘의 문서 id(rail-tab-*)는 패널 영역의 이름표와 온보딩 앵커가 가리킨다.
  */
-export function RailToolIcons({ context }: { readonly context: RailToolContext }) {
+export function RailToolIcons({ context, variant = "icons", scope = "all" }: {
+  readonly context: RailToolContext;
+  /** "text"는 대화 중심 화면의 패널 머리 — 아이콘 대신 이름 글자로 같은 목록·순서·켜짐을 세운다. */
+  readonly variant?: "icons" | "text";
+  /**
+   * 어느 묶음을 세우는가. "core" 는 코어 탭(대화 중심 화면에서는 가운데 칸 대상의 탭)만, "tools" 는 플러그인 도구만이다.
+   * 대화 중심 화면의 패널 머리가 둘을 다른 줄에 나눠 세운다. 기본 "all" 은 지금처럼 한 줄이다.
+   */
+  readonly scope?: "all" | "core" | "tools";
+}) {
+  const text = variant === "text";
   const t = useT();
   const language = context.language;
   const activePanelId = useRailActivePanelId();
@@ -410,19 +430,23 @@ export function RailToolIcons({ context }: { readonly context: RailToolContext }
     [openSurfaces],
   );
   const divider = <div className="right-rail-divider" role="separator" aria-orientation="vertical" />;
+  const coreTabs = paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID);
 
   return (
     <>
       {/* 아이콘은 배타 전환이다 — 한 번에 하나만 켜지고, 켜진 아이콘을 다시 누르면 닫힌다.
           설정은 문(톱니)으로만 열리므로 탭 목록에는 다시 서지 않는다. */}
-      <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
-        {paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID).map(({ entry }) => (
-          <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id} />
-        ))}
-      </div>
-      {renderRuns(runsByScope.theater)}
-      {runsByScope.theater.length > 0 && runsByScope.fleet.length > 0 ? divider : null}
-      {renderRuns(runsByScope.fleet)}
+      {scope === "tools" ? null : (
+        <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
+          {coreTabs.map(({ entry }) => (
+            <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id} text={text} />
+          ))}
+        </div>
+      )}
+      {scope === "all" && text && coreTabs.length > 0 && runsByScope.theater.length + runsByScope.fleet.length > 0 ? divider : null}
+      {scope === "core" ? null : renderRuns(runsByScope.theater)}
+      {scope !== "core" && runsByScope.theater.length > 0 && runsByScope.fleet.length > 0 ? divider : null}
+      {scope === "core" ? null : renderRuns(runsByScope.fleet)}
       {/* 설정은 여기 없다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류라, 톱니는 도구모음의
           시스템 칸 맨 끝(console-toolbar.tsx)에 선다. */}
     </>
@@ -440,6 +464,7 @@ export function RailToolIcons({ context }: { readonly context: RailToolContext }
               language={language}
               // 확장 표면이나 자기 레일 패널이 열려 있으면 켜짐이다.
               isActive={activePanelId === entry.id || (entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))}
+              text={text}
             />
           ))}
         </Fragment>
@@ -447,7 +472,7 @@ export function RailToolIcons({ context }: { readonly context: RailToolContext }
       : (
         <div key={run.key} className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
           {run.bindings.map(({ entry }) => (
-            <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))} />
+            <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))} text={text} />
           ))}
         </div>
       ));
@@ -577,9 +602,11 @@ interface RailIconProps {
   readonly context: RailPanelContext;
   readonly language: ConsoleLocale;
   readonly isActive: boolean;
+  /** 아이콘 대신 이름 글자를 세운다(대화 중심 화면의 패널 머리). 동작·켜짐·주의 수는 같다. */
+  readonly text?: boolean;
 }
 
-function RailIcon({ entry, context, language, isActive }: RailIconProps) {
+function RailIcon({ entry, context, language, isActive, text = false }: RailIconProps) {
   const t = useT();
   const handleClick = useCallback(() => {
     if (entry.activate) {
@@ -616,7 +643,7 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   return (
     <button
       id={`rail-tab-${entry.id}`}
-      className={`right-rail-ico${pressed ? " is-active" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
+      className={`right-rail-ico${text ? " is-text" : ""}${pressed ? " is-active" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
       type="button"
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
       aria-pressed={pressed}
@@ -628,7 +655,7 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
       data-keep-operation-active={entry.keepsOperationActive ? "" : undefined}
       onClick={handleClick}
     >
-      {icon}
+      {text ? <span className="right-rail-ico-label">{title}</span> : icon}
       {attentionCount > 0 ? <span className="right-rail-ico-badge" aria-hidden="true">{attentionCount > 99 ? "99+" : attentionCount}</span> : null}
     </button>
   );

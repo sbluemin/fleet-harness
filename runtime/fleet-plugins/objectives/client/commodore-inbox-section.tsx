@@ -236,7 +236,7 @@ function UseDefault({ t, onClick }: { readonly t: T; readonly onClick: () => voi
  * 설정 — Console 설정과 같은 줄(제목·설명·오른쪽 컨트롤). 모델·강도는 Console 공유 선택기 하나로 고른다(사령관은 Agent SDK
  * 로스터, 지휘관은 Agent CLI 로스터).
  */
-function CommodoreSettings({ t, language, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+export function CommodoreSettings({ t, language, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const { state, defaults, run } = view;
   const on = state.autonomy === true;
   const modelOverridden = state.model !== undefined;
@@ -424,7 +424,7 @@ const FOLLOW_SLACK_PX = 48;
  * 사령관 기록 — Operation 채팅과 같은 턴 렌더러로 그린다. 진행 중인 턴과 마지막으로 끝난 턴만 펼치고,
  * 그 전 턴은 「출처 · 답 첫 줄 · 걸린 시간 · 시각」 한 줄로 접는다. 줄 자체가 버튼이고, 곁 칸에서 시각을 누르면 그 턴이 펼쳐진다.
  */
-function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
+export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
   const Transcript = commodoreTranscriptRenderer();
   const blocks = useMemo(() => commodoreLogBlocks(t, entries, live), [t, entries, live]);
   const lastFinishedId = useMemo(() => {
@@ -680,7 +680,7 @@ function useReleasedKey() {
   };
 }
 
-function CommodoreClearButton({ t, theaterId, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+export function CommodoreClearButton({ t, theaterId, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const clear = useClearConfirmation(theaterId, onFail, onClear);
   const key = useReleasedKey();
   return <div className="objectives-commodore-clear-wrap">
@@ -691,7 +691,7 @@ function CommodoreClearButton({ t, theaterId, onFail, onClear }: { readonly t: T
   </div>;
 }
 
-function CommodoreComposer({ t, theaterId, active, context, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly context?: CommodoreRunStatus["context"]; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+export function CommodoreComposer({ t, theaterId, active, context, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly context?: CommodoreRunStatus["context"]; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const [text, setText] = useState(() => sheetDraft(theaterId).composer);
   useEffect(() => { rememberSheetDraft(theaterId, { composer: text }); }, [theaterId, text]);
   const [sending, setSending] = useState(false);
@@ -747,7 +747,7 @@ function CommodoreComposer({ t, theaterId, active, context, onFail, onClear }: {
 
 /* ── 지시 ─────────────────────────────────────────────────────────────── */
 
-function CommodoreDirective({ t, theaterId, directive, active, onOpenSystemPrompt, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly directive: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly active: boolean; readonly onOpenSystemPrompt: () => void; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+export function CommodoreDirective({ t, theaterId, directive, active, onOpenSystemPrompt, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly directive: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly active: boolean; readonly onOpenSystemPrompt: () => void; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const [draft, setDraft] = useState(() => sheetDraft(theaterId).directive ?? directive.text);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -790,7 +790,7 @@ function CommodoreDirective({ t, theaterId, directive, active, onOpenSystemPromp
 
 /* ── 정보 ─────────────────────────────────────────────────────────────── */
 
-function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }: {
+export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }: {
   readonly t: T;
   readonly theaterId: string;
   readonly intel: readonly { readonly id: string; readonly at: number; readonly source: string; readonly text: string }[];

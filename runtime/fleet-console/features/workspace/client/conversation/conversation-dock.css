@@ -1,0 +1,128 @@
+/* 대화 화면의 호스트 문과 보관함. 위치·호버는 중립 잉크, 연결 점만 상태색을 쓴다. */
+.conversation-dock {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  min-width: 0;
+}
+.operations-side-bar.is-closed .conversation-dock { display: none; }
+.conversation-dock-host { position: relative; flex: none; }
+.conversation-dock-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 15%, transparent);
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--text-primary) 5%, var(--ink-deep));
+  color: var(--text-primary);
+  font: var(--weight-medium) var(--t-xl)/1 var(--font-ui);
+  cursor: pointer;
+}
+.conversation-dock-avatar:hover,
+.conversation-dock-avatar[aria-expanded="true"] { background: color-mix(in oklch, var(--text-primary) 10%, var(--ink-deep)); }
+.conversation-dock-status {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--ink-deep);
+  border-radius: 50%;
+  background: var(--warn);
+}
+.conversation-dock-status[data-connection="live"] { background: var(--positive); }
+.conversation-dock-status[data-connection="offline"] { background: var(--coral); }
+/* 보관함은 줄어든 캡슐이다 — 남는 폭은 캡슐이 갖되 오른쪽 글리프 둘(War Room·상태별 보기)이 먼저 자리를 잡는다. */
+.conversation-dock .side-bar-archive.is-compact { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; border: 0; }
+.conversation-dock .side-bar-archive-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-dock-toggles { flex: none; display: flex; align-items: center; gap: 6px; }
+.conversation-dock-toggles > :is(.conversation-dock-toggle, .side-bar-status-view-toggle) {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 15%, transparent);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.conversation-dock-toggles > :is(.conversation-dock-toggle, .side-bar-status-view-toggle) > svg { width: 16px; height: 16px; }
+.conversation-dock-toggles > :is(.conversation-dock-toggle, .side-bar-status-view-toggle):hover { color: var(--text-primary); background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
+/* 켜짐은 위치·초점 채널(brass)의 잉크와 옅은 면으로 말한다 — 상태 신호색을 빌리지 않는다. */
+.conversation-dock-toggles > :is(.conversation-dock-toggle, .side-bar-status-view-toggle)[aria-pressed="true"] {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+}
+.conversation-dock .side-bar-archive-button {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  gap: 8px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 15%, transparent);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-primary);
+}
+.conversation-dock .side-bar-archive-button:hover { background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
+.conversation-dock .side-bar-archive-count { color: var(--text-secondary); background: transparent; border: 0; padding: 0; }
+.conversation-dock .side-bar-archive-glyph { color: var(--text-secondary); }
+.conversation-dock-menu {
+  position: absolute;
+  z-index: 90;
+  left: 0;
+  bottom: calc(100% + 12px);
+  width: 276px;
+  max-width: calc(100vw - 32px);
+  padding: 8px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 14%, transparent);
+  border-radius: 18px;
+  background: var(--ink-deep);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-floating);
+}
+.conversation-dock-menu[hidden] { display: none; }
+.conversation-dock-heading { padding: 8px 12px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); color: var(--text-secondary); }
+.conversation-dock-menu > :is(.host-switcher, .command-band-environment, .command-band-system-anchor, .conversation-dock-settings) { position: relative; display: block; width: 100%; }
+.conversation-dock-menu > .conversation-dock-view,
+.conversation-dock-menu > :is(.host-switcher, .command-band-environment, .command-band-system-anchor, .conversation-dock-settings) > button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-base);
+  cursor: pointer;
+}
+.conversation-dock-menu > .conversation-dock-view:hover,
+.conversation-dock-menu > :is(.host-switcher, .command-band-environment, .command-band-system-anchor, .conversation-dock-settings) > button:hover { background: color-mix(in oklch, var(--text-primary) 7%, transparent); }
+.conversation-dock-menu > .conversation-dock-view > svg,
+.conversation-dock-menu > :is(.host-switcher, .command-band-environment, .command-band-system-anchor, .conversation-dock-settings) > button > svg { width: 18px; height: 18px; flex: none; }
+.conversation-dock-label { flex: 1; min-width: 0; text-align: left; }
+.conversation-dock-next { flex: none; font-size: var(--t-xl); color: var(--text-tertiary); }
+.conversation-dock-divider { height: 1px; margin: 7px 4px; background: color-mix(in oklch, var(--text-primary) 10%, transparent); }
+.conversation-dock :is(button, a):focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+/* 자식 메뉴도 위로 열린다. 사이드바 바깥은 스크롤 칸이 아니므로 목록에 잘리지 않는다. */
+.conversation-dock-menu :is(.host-switcher-panel, .command-band-system-menu, .command-band-environment-popover, .command-band-update-bubble) {
+  top: auto;
+  right: auto;
+  bottom: calc(100% + 8px);
+  left: 0;
+  max-width: calc(100vw - 48px);
+  max-height: min(440px, 55vh);
+  overflow-y: auto;
+  border-radius: 16px;
+}

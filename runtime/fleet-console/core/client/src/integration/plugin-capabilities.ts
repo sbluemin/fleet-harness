@@ -20,6 +20,8 @@ import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
 import { getCanvasArenaInsets, subscribeCanvasArenaInsets } from "../../../../features/workspace/client/canvas/canvas-store.js";
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
+import { isConversationLayoutActive, subscribeConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
+import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
@@ -83,6 +85,18 @@ function revealShellOnSuccess(result: ShellOpenAtResult): ShellOpenAtResult {
     revealExpandedSurface({ surfaceId: "shell" });
   }
   return result;
+}
+
+// 능력의 current() 는 같은 대화면 같은 참조를 돌려준다(useSyncExternalStore) — 선택 객체마다 한 번만 만든다.
+const publicSurfaces = new WeakMap<ConversationSurfaceSelection, { readonly surfaceId: string; readonly params: Readonly<Record<string, unknown>> }>();
+function publicSurface(selection: ConversationSurfaceSelection | null) {
+  if (selection === null) return null;
+  let view = publicSurfaces.get(selection);
+  if (!view) {
+    view = { surfaceId: selection.surfaceId, params: selection.params };
+    publicSurfaces.set(selection, view);
+  }
+  return view;
 }
 
 export function createHostCapabilities(
@@ -233,6 +247,22 @@ export function createHostCapabilities(
     },
     chat: { Transcript: AgentChatTranscript },
     theaterInbox: theaterInboxCapability,
+    // 대화 중심 화면 — 켜짐 여부와 가운데 칸의 플러그인 대화. 꺼져 있으면 open 은 아무것도 세우지 않는다.
+    conversation: {
+      isActive: () => isConversationLayoutActive(),
+      subscribe: (listener) => {
+        const disposeLayout = subscribeConversationLayout(listener);
+        const disposeSurface = subscribeConversationSurface(listener);
+        return () => { disposeLayout(); disposeSurface(); };
+      },
+      open: (surfaceId, params) => {
+        const opened = openConversationSurface(surfaceId, params);
+        if (opened) navigateConsoleRoute("/operations");
+        return opened;
+      },
+      close: (surfaceId) => closeConversationSurface(surfaceId),
+      current: () => publicSurface(getConversationSurface()),
+    },
     composer: {
       open: (options) => {
         const mentionOperationId = options?.mentionOperationId;

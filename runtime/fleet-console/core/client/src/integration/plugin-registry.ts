@@ -5,7 +5,7 @@ import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surf
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
 import type {
-  ArchiveSectionDescriptor, OperationCaptionContribution, TheaterContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
+  ArchiveSectionDescriptor, OperationCaptionContribution, TheaterContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, ConversationSurfaceDescriptor, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
@@ -32,6 +32,8 @@ export interface PluginRegistry {
   readonly railEntries: readonly RailEntryDescriptor[];
   readonly panes: readonly PaneDescriptor[];
   readonly persistentComponents: readonly PersistentComponentDescriptor[];
+  /** 대화 중심 화면의 가운데 칸에 서는 플러그인 대화 — id 는 플러그인이 준 그대로다(`ctx.conversation.open` 이 부르는 이름). */
+  readonly conversationSurfaces: readonly ConversationSurfaceDescriptor[];
   readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
   readonly commandBandEntries: readonly CommandBandEntryDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
@@ -68,7 +70,7 @@ type PluginClientModule = {
 // 모듈 평가 때 createPluginRegistry 가 돈다 — 그 안에서 읽는 상수는 이 줄보다 위에 있어야 한다(TDZ).
 const NO_CLUSTERS: readonly OperationCluster[] = [];
 /** 도구모음 Bridge의 끝 자리 — 부관의 글리프. 답 말풍선이 이 글리프를 닻으로 삼아 줄 끝에서 뜬다. */
-const DEPUTY_COMMAND_BAND_ENTRY_ID = "scuttlebutt:dock";
+export const DEPUTY_COMMAND_BAND_ENTRY_ID = "scuttlebutt:dock";
 const EMPTY_PLUGIN_REGISTRY: PluginRegistry = createPluginRegistry(builtInPlugins);
 
 const PluginRegistryContext = createContext<PluginRegistry>(EMPTY_PLUGIN_REGISTRY);
@@ -198,6 +200,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
     providers,
     failures,
     persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),
+    conversationSurfaces: providers.flatMap((plugin) => plugin.conversationSurfaces ?? []),
     onboarding: providers.flatMap((plugin) => (plugin.onboarding ? [plugin.onboarding] : [])),
     operationKinds: providers.flatMap((plugin) => plugin.operationKinds ?? []),
     settingsSections: providers.flatMap((plugin) => plugin.settingsSections ?? []),

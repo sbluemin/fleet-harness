@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ConsoleCaller, ConsoleCoordinatesResult, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
+import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -118,6 +118,8 @@ export interface LaunchService {
    * 구성원에게 갔으면 지휘관에게도 한 줄로 알린다 — 그 통지가 닿았는지는 notified 로 따로 말한다(구성원 전달은 이미 끝났다).
    */
   message(objectiveId: string, memberId: string | null, text: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly notified: boolean | null }>;
+  /** 사람의 방송 — live 대상만 동시에 보내고, 휴면·미관측은 깨우지 않는다. */
+  broadcast(objectiveId: string, text: string, options?: LaunchOptions): Promise<import("@fleet-console/sdk/conversation").GroupWriteResult>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
   stop(objectiveId: string): Promise<{ readonly objective: Objective; readonly interrupted: number; readonly targets: readonly StopTarget[] }>;
   /** 전체 압축 — 지휘관과 operationId 가 있는 모든 구성원에게 "/compact" 를 보낸다. 큐잉·깨움·거절은 호스트 전달 경로가 정한다. */
@@ -228,19 +230,19 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   };
 
   // 오류를 보존해야 하는 통지는 이 경로를 직접 쓴다. 전송 상한도 호스트가 판단하며 원문은 그대로 둔다.
-  const requestSend = async (operationId: string, text: string, display: string): Promise<void> => {
+  const requestSend = async (operationId: string, text: string, display: string, humanInput?: ConsoleActionInput["humanInput"]): Promise<void> => {
     if (!ctx.host.consoleControl) throw new ObjectiveStoreError("launch_unavailable");
     if (!ctx.host.operations.get(operationId)) throw new ObjectiveStoreError("unknown_operation");
-    await ctx.host.consoleControl.request({ kind: "send", operationId, text, display, displayFormat: "markdown" });
+    await ctx.host.consoleControl.request({ kind: "send", operationId, text, display, displayFormat: "markdown", ...(humanInput ? { humanInput } : {}) });
     touchLive(operationId);
   };
   /**
    * 전달됐는지를 돌려준다 — 못 닿은 알림에 기대 상태를 지우면 다음 시작이 같은 변경을 말하지 못한다.
    * `display`는 채팅 원장에 설 사람의 말이다. 프롬프트는 모델의 것이라 원장에 서지 않는다.
    */
-  const send = async (operationId: string, text: string, display: string, reportFailure = false): Promise<boolean> => {
+  const send = async (operationId: string, text: string, display: string, reportFailure = false, humanInput?: ConsoleActionInput["humanInput"]): Promise<boolean> => {
     if (!ctx.host.consoleControl || !ctx.host.operations.get(operationId)) return false;
-    try { await requestSend(operationId, text, display); return true; }
+    try { await requestSend(operationId, text, display, humanInput); return true; }
     catch (error) {
       // 개시·구상은 사람이 재시도해야 할 실패다. 알림의 best-effort 전달과 달리 원인을 보존한다.
       if (reportFailure) asStoreError(error);
@@ -1522,7 +1524,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       await accessOperation(target);
       editableObjective(objectiveId);
       // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
-      await control().request({ kind: "send", operationId: target, text, display: text.trim(), displayFormat: "markdown" }).catch(asStoreError);
+      const humanInput = (options?.actor ?? "human") === "human" ? { id: randomUUID(), ...(member ? { targetOperationId: member.id } : {}) } : undefined;
+      await control().request({ kind: "send", operationId: target, text, display: text.trim(), displayFormat: humanInput ? "text" : "markdown", ...(humanInput ? { humanInput } : {}) }).catch(asStoreError);
       if (member) { store.acknowledgeMemberFailure(member.id); store.refresh(objectiveId); }
       // 보드를 거친 말 — 사람이면 그 구성원의 다음 턴은 사람에게 답하는 턴이고, 지휘관·사령관이면 그 구성원에게 일을 맡긴 발주다(본문은 남기지 않는다).
       if (member) {
@@ -1533,8 +1536,33 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       store.setStopped(objectiveId, false);
       touchLive(target);
       if (!member) return { objective: objective(objectiveId), notified: null };
-      const notified = await accessOperation(current.id).then(() => send(current.id, memberMessageTurn(current, member.role, text, languageOf(options), options?.actor), humanWords(text)), () => false);
+      const notice = memberMessageTurn(current, member.role, text, languageOf(options), options?.actor);
+      const notified = await accessOperation(current.id).then(() => send(current.id, notice, notice, false, humanInput ? { ...humanInput, copy: true } : undefined), () => false);
       return { objective: objective(objectiveId), notified };
+    }),
+
+    broadcast: (objectiveId, text) => orderedOperationRequest(objectiveId, async () => {
+      if (pending.has(objectiveId) || pending.has(`${objectiveId}:muster`)) throw new ObjectiveStoreError("objective_busy");
+      const current = editableObjective(objectiveId);
+      const ids = [current.id, ...current.members.map((member) => member.id)];
+      const humanId = randomUUID();
+      const targets = await Promise.all(ids.map(async (targetId): Promise<import("@fleet-console/sdk/conversation").GroupWriteResult["targets"][number]> => {
+        if (!ctx.host.operations.get(targetId)) return { targetId, outcome: "skipped", reason: "unknown_operation" };
+        if (ctx.host.consoleControl?.observe(targetId)?.lifecycle !== "live") return { targetId, outcome: "skipped", reason: "session_not_live" };
+        try {
+          // 호스트도 live-only를 검사한다. 스냅샷 뒤 휴면이 된 대상을 send가 자동 재개해서는 안 된다.
+          await control().request({ kind: "send", operationId: targetId, text, display: text.trim(), displayFormat: "text", liveOnly: true, humanInput: { id: humanId, ...(targetId !== current.id ? { copy: true } : {}) } });
+          if (targetId !== current.id) { personPrompts.add(targetId); store.acknowledgeMemberFailure(targetId); }
+          touchLive(targetId);
+          return { targetId, outcome: "sent" };
+        } catch (error) {
+          const raw = error instanceof Error ? error.message : "delivery_failed";
+          const reason = /^[a-z_]{1,64}$/.test(raw) ? raw : "delivery_failed";
+          return { targetId, outcome: reason === "session_not_live" ? "skipped" : "failed", reason };
+        }
+      }));
+      if (targets.some((target) => target.outcome === "sent")) store.setStopped(objectiveId, false);
+      return { targets };
     }),
 
     async stop(objectiveId) {

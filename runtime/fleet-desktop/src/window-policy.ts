@@ -9,6 +9,8 @@ export interface SecureWindowOptions {
   /** 지난 실행에 기억해 둔 사용자 테마. 없으면 Instrument 기본값으로 뜬다. */
   readonly backgroundColor?: string;
   readonly titleBarOverlay?: { readonly color: string; readonly symbolColor: string; readonly height: number };
+  /** 지난 실행에 기억해 둔 맨 위 줄 높이(chrome.band). 없으면 Command Band 36px 이다. */
+  readonly chromeBand?: number;
 }
 
 export interface WindowPolicy {
@@ -90,11 +92,15 @@ export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor
  */
 const TRAFFIC_LIGHT_INSET_X = 16;
 const TRAFFIC_LIGHT_HEIGHT = 14;
-const COMMAND_BAND_HEIGHT = 36;
+export const COMMAND_BAND_HEIGHT = 36;
 
-export function trafficLightPosition(zoomFactor: number): { x: number; y: number } {
+/**
+ * 맨 위 줄의 높이(`band`)는 Console 이 테마 스냅샷의 `chrome.band` 로 알린다 — 기본은 Command Band 36px, 실험 기능
+ * 「대화 중심 화면」이면 세 열의 맨 위 줄 52px 이다. 신호등은 그 줄의 세로 가운데에 선다.
+ */
+export function trafficLightPosition(zoomFactor: number, band: number = COMMAND_BAND_HEIGHT): { x: number; y: number } {
   const factor = zoomFactor > 0 ? zoomFactor : 1;
-  return { x: TRAFFIC_LIGHT_INSET_X, y: Math.max(0, Math.round((COMMAND_BAND_HEIGHT * factor - TRAFFIC_LIGHT_HEIGHT) / 2)) };
+  return { x: TRAFFIC_LIGHT_INSET_X, y: Math.max(0, Math.round((band * factor - TRAFFIC_LIGHT_HEIGHT) / 2)) };
 }
 
 const SECURE_RENDERER_PREFERENCES = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } as const;
@@ -108,7 +114,7 @@ function secureShellWindowOptions(options: SecureWindowOptions): BaseWindowConst
     minWidth: 900,
     minHeight: 560,
     // Windows 오버레이 35px + Command Band 하단 divider 1px가 클라이언트 --chrome-band-height: 36px를 채운다. macOS 신호등 계약과 함께 변경 시 양쪽을 동기화한다.
-    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1) } : {}),
+    ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1, options.chromeBand) } : {}),
     ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: options.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
   };
 }

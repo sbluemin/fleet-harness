@@ -82,6 +82,29 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
   const save = (next: ConsoleExperimentSettings) => void setGlobalSettingsField("experiments", next);
 
   return (
+    <>
+    <section className="global-settings-card" data-saving={saving || undefined} aria-label={t("settings.experiments.screenCard")}>
+      <h3 className="global-settings-card-title">
+        {t("settings.experiments.screenCard")}
+        <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
+      </h3>
+      <div className="global-settings-row experiments-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            {t("settings.experiments.conversationLayout.title")}
+            <SettingsHelp title={t("settings.experiments.conversationLayout.title")}>{t("settings.experiments.conversationLayout.help")}</SettingsHelp>
+          </p>
+        </div>
+        <div className="experiments-row-controls">
+          <SettingsToggle
+            checked={experiments.conversationLayout}
+            busy={saving}
+            ariaLabel={t("settings.experiments.conversationLayout.title")}
+            onChange={(conversationLayout) => save({ ...experiments, conversationLayout })}
+          />
+        </div>
+      </div>
+    </section>
     <section className="global-settings-card" data-saving={saving || undefined} aria-label={t("settings.experiments.aiCard")}>
       <h3 className="global-settings-card-title">
         {t("settings.experiments.aiCard")}
@@ -119,6 +142,7 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
       </div>
       <ComputerUseRow enabled={experiments.computerUse} backend={experiments.computerUseBackend} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} onBackendChange={(computerUseBackend) => save({ ...experiments, computerUseBackend, computerUse: false })} />
     </section>
+    </>
   );
 }
 
@@ -166,6 +190,17 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
     </>
   );
   return (
+    <>
+    <SettingsCard title={<>{t("settings.experiments.screenCard")}<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge></>}>
+      <SettingsRow label={t("settings.experiments.conversationLayout.title")} hint={t("settings.experiments.conversationLayout.mobileHelp")} icon={<MobileIcon name="layout" />}>
+        <SettingsToggle
+          checked={experiments.conversationLayout}
+          busy={saving}
+          ariaLabel={t("settings.experiments.conversationLayout.title")}
+          onChange={(conversationLayout) => saveExperiments({ ...experiments, conversationLayout })}
+        />
+      </SettingsRow>
+    </SettingsCard>
     <SettingsCard title={<>{t("settings.experiments.aiCard")}<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge></>}>
       {AIDE_ROWS.map((row) => (
         <SettingsRow key={row.id} label={t(row.titleKey)} hint={t(row.helpKey)} icon={<MobileIcon name={AIDE_ICONS[row.id] ?? "spark"} />}>
@@ -201,5 +236,6 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
         />
       </SettingsRow>
     </SettingsCard>
+    </>
   );
 }

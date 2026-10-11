@@ -72,6 +72,7 @@ export function SideBarViewMenu() {
   const t = useT();
   const settings = useGlobalSettingsStore();
   const doubleClickOpen = settings.state?.sideBarDoubleClickOpen === true;
+  const datum = doubleClickOpen;
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -96,7 +97,7 @@ export function SideBarViewMenu() {
         ref={buttonRef}
         type="button"
         className="side-bar-view-menu-button"
-        data-on={doubleClickOpen ? "true" : undefined}
+        data-on={datum ? "true" : undefined}
         aria-haspopup="menu"
         aria-expanded={anchor !== null}
         aria-label={label}

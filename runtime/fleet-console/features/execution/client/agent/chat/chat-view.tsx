@@ -44,6 +44,8 @@ import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } fro
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
+import { useConversationLayout } from "../../../../settings/client/use-conversation-layout.js";
+import { SoloBoardCards } from "./group/solo-board-cards.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
@@ -150,6 +152,10 @@ export function AgentChatView({
   // 구성원 모드 — 채팅으로 열린 Objectives 구성원(parentOperationId)뿐이다. 이 뷰 자체가
   // chatMode 분기에서만 마운트되므로 터미널(CLI) 구성원은 여기에 오지 않는다.
   const isMemberChat = typeof context.operation.parentOperationId === "string" && context.operation.parentOperationId.length > 0;
+  // 대화 중심 화면의 1:1 대화 — 구성원 없는 지휘관과 일반 채팅은 그룹 대화와 같은 문법(말풍선·캡슐 입력·대화 안 카드)으로
+  // 선다. 기능(도구 단계·생각·변경·첨부·예약·모델·중지)은 이 본문이 그대로 진다 — 바뀌는 것은 모양뿐이다. 구성원 본문(원장
+  // 보기)과 모바일, 토글이 꺼진 캔버스는 지금 모양 그대로다.
+  const conversationStyle = useConversationLayout() && !isMemberChat;
   // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
   // 동안만 정직해지고, 패널을 닫는 순간 사이드바가 다시 휴면으로 돌아간다. 축이 degraded면 호스트가
   // null 을 건네므로 진행 중이라고 주장하지 않는다(그 사실은 전역 배너가 말한다).
@@ -690,7 +696,7 @@ export function AgentChatView({
   return (
     <section
       ref={panelRef}
-      className="agent-chat"
+      className={`agent-chat${conversationStyle && !mobileSurface ? " is-conversation" : ""}`}
       data-reading-width={readingWidth}
       /* CLI 행은 코드 축이다. 터미널을 따로 고른 경우에도 채팅은 코드 축을 유지한다. */
       /* 구성원 모드에서만 초점을 받을 수 있다 — tabIndex=-1이라 패널 안을 누르면 브라우저가
@@ -810,6 +816,8 @@ export function AgentChatView({
           {...(mobileSurface && retryText !== null && !turnRunning ? { onRetry: retry } : {})}
         />
       ) : null}
+      {/* 대화 중심 화면의 1:1 대화 — 지휘관의 결정 요청은 대화 흐름 맨 아래 카드로 선다. */}
+      {conversationStyle && !mobileSurface ? <SoloBoardCards operationId={context.operationId} language={language} /> : null}
       {/* 모바일 끝 안내(impl-spec S-26, D22) — 대화 맨 아래 한 줄. 데스크톱 원장에는 서지 않는다. */}
       {mobileSurface && turns.length > 0 ? <p className="agent-chat-end-note">{t("terminal.mobile.endNote")}</p> : null}
       {state.errorCode === "chat_turn_failed"

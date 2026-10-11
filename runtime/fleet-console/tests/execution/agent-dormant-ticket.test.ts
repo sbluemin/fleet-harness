@@ -45,6 +45,9 @@ describe("agent dormant ticket guards", () => {
     expect(readOperationLaunch(operation.payload)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "chat", started: false });
     expect(operation.payload).toMatchObject({ chatBorn: true, chatMode: true });
     expect(harness.operations).toHaveLength(1);
+    await expect(control.request(caller, { kind: "send", operationId: id, text: "Do not wake", liveOnly: true })).rejects.toThrow("session_not_live");
+    expect(control.observe(id)?.lifecycle).toBe("dormant");
+    expect(harness.attach).not.toHaveBeenCalled();
     harness.patch(id, { payload: withOperationLaunchPreset(operation.payload, { model: "sonnet", effort: "low", viewMode: "terminal" }) });
     expect(harness.operations.find((op) => op.id === id)!.payload).not.toHaveProperty("chatBorn");
     expect(control.observe(id)?.surface).toBe("terminal");

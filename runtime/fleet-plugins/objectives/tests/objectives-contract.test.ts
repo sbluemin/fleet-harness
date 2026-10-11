@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { ConsoleActionInput, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import type { OperationGroupedEvent, OperationNode } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -44,6 +44,7 @@ type Saved = {
   readonly rank: number;
   readonly note?: string;
   readonly members?: readonly { readonly role: string; readonly subagents?: boolean }[];
+  readonly memberHistory?: readonly import("../server/types.js").ObjectiveMemberHistoryEntry[];
   readonly criteriaProposals?: readonly unknown[];
   readonly followupBatches?: readonly { readonly items: readonly unknown[] }[];
   readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active" };
@@ -94,6 +95,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const grouped: ((event: OperationGroupedEvent) => void)[] = [];
   const deleted: string[] = [];
   const sent: { operationId: string; text: string }[] = [];
+  const deliveries: ConsoleActionInput[] = [];
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
   const outcomes = new Map<string, "running" | "succeeded" | "completed" | "failed" | "interrupted" | "unknown">();
   const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure; readonly report?: import("@fleet-console/sdk/mcp").ConsoleTurnReport }>();
@@ -187,8 +189,8 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
       consoleControl: {
         launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
         reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
-        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string; parentOperationId?: string; childSessionId?: string }) => {
-          if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
+        request: async (input: ConsoleActionInput) => {
+          if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } deliveries.push(input); sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
           if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // resume 은 휴면만 세션째 되살린다.
@@ -287,7 +289,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
+  return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, deliveries, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ operationId: id, output });
   }, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; },
@@ -475,6 +477,9 @@ describe("Objectives contract", () => {
     await launch.memberRemoved(objective.id, routed.id);
     expect(operations.has(routed.id)).toBe(false);
     expect(operations.get(objective.id)!.childSessions?.some((child) => child.id === routed.id)).toBe(false);
+    // 합류·제거는 새 명부 쓰기의 사실로 저장한다. 제거 뒤에도 같은 구성원 식별자가 남는다.
+    expect(store.find(objective.id)!.memberHistory?.filter((entry) => entry.memberId === routed.id).map((entry) => entry.kind)).toEqual(["joined", "left"]);
+    expect(savedObjective(objective.id).memberHistory).toEqual(store.find(objective.id)!.memberHistory);
 
     // 살아 있는 지휘관이 터미널로 떠 있어도 새 구성원은 채팅으로 태어난다.
     vi.unstubAllGlobals();
@@ -758,7 +763,7 @@ describe("Objectives contract", () => {
     // 저장 — 목표마다 자기 디렉터리의 objective.json 하나, Operation 이 가진 값은 싣지 않는다.
     expect(savedIds()).toEqual([objective.id]);
     const saved = savedObjective(objective.id);
-    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "boardUpdatedAt", "commenced", "commencedBy", "enlisted", "members", "missions", "note", "operationId", "rank"]);
+    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "boardUpdatedAt", "commenced", "commencedBy", "enlisted", "memberHistory", "members", "missions", "note", "operationId", "rank"]);
     expect(saved.operationId).toBe(objective.id);
     for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.
@@ -1558,7 +1563,7 @@ describe("Objectives contract", () => {
   });
 
   it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
-    const { store, call, launch, route, sent, hostFault } = harness();
+    const { store, call, launch, route, sent, deliveries, activity, hostFault } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Talk", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -1572,6 +1577,22 @@ describe("Objectives contract", () => {
       { operationId: member, text: "use option A" },
       { operationId: commander, text: expect.stringMatching(/"build"[\s\S]*> use option A$/) },
     ]);
+    const original = deliveries.at(-2)!;
+    expect(original.humanInput).toEqual({ id: expect.any(String), targetOperationId: member });
+    expect(deliveries.at(-1)?.humanInput).toEqual({ ...original.humanInput, copy: true });
+    expect(deliveries.at(-1)?.display).toBe(sent.at(-1)?.text);
+    // 방송은 같은 사람 입력 좌표로 live 구성원에게만 보낸다. 휴면 구성원은 깨우지 않는다.
+    activity.set(member, "dormant");
+    expect((await route("conversation/broadcast", { objectiveId: commander, text: "all live" })).value).toMatchObject({ targets: [
+      { targetId: commander, outcome: "sent" }, { targetId: member, outcome: "skipped", reason: "session_not_live" },
+    ] });
+    expect(activity.get(member)).toBe("dormant");
+    expect(deliveries.at(-1)).toMatchObject({ operationId: commander, liveOnly: true });
+    activity.set(member, "idle");
+    hostFault.sendError = "session_awaiting_input";
+    expect((await route("conversation/broadcast", { objectiveId: commander, text: "continue" })).value).toMatchObject({ targets: [
+      { targetId: commander, outcome: "failed", reason: "session_awaiting_input" }, { targetId: member, outcome: "sent" },
+    ] });
     expect((await route("commander/message", { objectiveId: commander, memberId: null, text: "hold on" })).value).toMatchObject({ notified: null });
     expect(sent.at(-1)).toEqual({ operationId: commander, text: "hold on" });
     // 받는 이가 거절하면 그 사유가 돌아오고 지휘관에게 알리지도 않는다. 명단에 없는 구성원과 빈 말은 보내지 않는다.

@@ -303,7 +303,7 @@ function CruiseModeIcon() {
 }
 
 // War Room: 앞에 선 한 장과 뒤의 대기열(대기 중인 패널을 한 건씩).
-function WarRoomModeIcon() {
+export function WarRoomModeIcon() {
   return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="9" height="8.5" rx="1.2" /><path d="M5 3h7.5a1 1 0 0 1 1 1v7" /></svg>;
 }
 
