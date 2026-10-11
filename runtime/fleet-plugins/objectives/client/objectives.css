@@ -1452,7 +1452,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 
 /* ─── 사령관(자율 운영) ──────────────────────────────────────────────────────
    사이드바 Theater 머리의 사령관 표식 — 호스트가 이니셜 칩 자리(18px)에 세우는 사령관 몽글 아바타(베이스 + brass 별 배지)다.
-   켬은 제 색(누르면 끈다), 끔은 흐리고 채도를 뺀 회색(스위치가 아니다). 오류·재시도·턴·부름은 아바타의 얼굴과 몸짓이 말하고,
+   켬은 제 색, 끔은 흐리고 채도를 뺀 회색이며 누르면 바로 켜고 끈다. 오류·재시도·턴·부름은 아바타의 얼굴과 몸짓이 말하고,
    턴을 도는 동안의 물결은 호스트가 Theater 이름에 함께 흘린다. 왼쪽 띠·상자형 필터 단추는 두지 않는다. */
 .objectives-commodore-mark {
   display: grid;
@@ -1463,7 +1463,10 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   border: 0;
   border-radius: 5px;
   background: transparent;
+  cursor: pointer;
 }
+.objectives-commodore-mark:disabled,
+.objectives-commodore-mark[aria-disabled="true"] { cursor: default; }
 .objectives-commodore-mark-glyph {
   display: block;
   width: 18px;
@@ -1471,9 +1474,8 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   transition: opacity var(--duration-fast) var(--ease-spring), filter var(--duration-fast) var(--ease-spring);
 }
 .objectives-commodore-mark.is-off .objectives-commodore-mark-glyph { opacity: 0.55; filter: grayscale(0.8); }
-.objectives-commodore-mark.is-on { cursor: pointer; }
-.objectives-commodore-mark.is-on:hover { background: color-mix(in oklch, var(--ink-spectral) 10%, transparent); }
-.objectives-commodore-mark.is-on:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-mark:not(:disabled):not([aria-disabled="true"]):hover { background: color-mix(in oklch, var(--ink-spectral) 10%, transparent); }
+.objectives-commodore-mark:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .objectives-commodore-mark[aria-busy="true"] .objectives-commodore-mark-glyph { opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) {
   .objectives-commodore-mark-glyph { transition: none; }
