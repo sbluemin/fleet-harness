@@ -642,11 +642,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-mark.is-tone-7 { --member-tone: var(--id-crimson); }
 /* 달성 기준 줄과 같은 문법 — 역할 이름과 설명이 그 자리의 입력칸이다(테두리 없음, 포커스는 brass 밑줄). */
 .objectives-member-body { display: contents; }
-/* 대화 중심 화면에서만 서는 구성원 동작 — 원장 보기·정지. 설명 줄 아래 새 줄에서 역할 칸부터 오른쪽 끝까지, 테두리 없는 글자 단추로 선다. */
-.objectives-member-acts { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.objectives-member-act { padding: 0; border: 0; background: none; font: inherit; font-size: var(--t-xs); color: var(--text-secondary); text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; cursor: pointer; }
-.objectives-member-act:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
-.objectives-member-act:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 .objectives-member-name { grid-area: name; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; }
 .objectives-member-role, .objectives-member-brief { min-width: 0; padding: 0; border: 0; background: transparent; font: inherit; text-overflow: ellipsis; }
 /* 역할 칸은 글자 폭만큼 — 입력과 숨은 복제가 같은 칸(1/1)에 겹쳐, 복제의 폭이 칸 너비가 된다. */

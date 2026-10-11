@@ -21,7 +21,7 @@ import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunchDisplay, memberLaunched, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
-import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, useConversationLayoutActive, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
+import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
   discardedFollowups,
@@ -455,8 +455,6 @@ function CommanderMark() {
 }
 
 function MemberRoster({ objective, t, call, request, operationState, rows, touchable, expanded, onToggle }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; expanded: boolean; onToggle: () => void }) {
-  // 대화 중심 화면에서는 이 섹션이 그 화면의 구성원 목록이다 — 원장 보기(가운데 칸에 그 구성원 본문)와 한 명 정지를 여기서 한다.
-  const conversation = useConversationLayoutActive();
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
   const remove = (member: ObjectiveMember) => void call("/member/remove", { objectiveId: objective.id, memberId: member.id });
   const saving = useRef(new Set<string>());
@@ -710,15 +708,6 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
             </span>
             <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} editLabel={t("objectives.link.edit")} value={member.brief ?? ""} placeholder={touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
-            {conversation && member.sessionName !== null && state !== "closed" ? (
-              <span className="objectives-member-acts">
-                {/* 구성원 Operation 으로 가면 호스트가 부모 패널(가운데 칸)에 그 구성원 본문을 읽기 전용 원장으로 세운다. */}
-                <button type="button" className="objectives-member-act" onClick={() => focusOperation(member.id)}>{t("objectives.members.openLedger")}</button>
-                {state === "running" || state === "awaiting" ? (
-                  <button type="button" className="objectives-member-act" aria-label={t("objectives.members.stopAria", { role: member.role })} onClick={() => void call("/member/stop", { objectiveId: objective.id, memberId: member.id })}>{t("objectives.members.stop")}</button>
-                ) : null}
-              </span>
-            ) : null}
           </div>
           <div className="objectives-member-meta">
             {routed ? <span className={`objectives-member-via is-${routed.via}`} title={t(routed.via === "route" ? "objectives.members.routedTitle" : ROUTING_OFF_REASONS.has(routed.reason) ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle")}>{t(routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback")}</span> : null}
