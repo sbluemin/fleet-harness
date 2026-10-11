@@ -183,15 +183,15 @@ export interface AgentChatSessionSeed {
    * 턴의 첨부는 바이트 없는 자리로 그려진다 — 경로는 어느 쪽이든 브라우저로 가지 않는다.
    */
   readonly resolveAttachmentId?: (filePath: string) => string | null;
+  /** 성공·실패와 무관하게 발신 대상만 해석한다. 반환한 불투명 Operation id는 tool-result에 싣고 전달 부작용은 없다. */
+  readonly resolveSessionMessageRecipient?: (to: string) => string | undefined | Promise<string | undefined>;
   /**
    * 이 세션이 다른 세션으로 **성공적으로 보낸** 말 한 통. 받는 쪽의 원장에 수신 줄을 세우는 유일한 문이다.
    *
-   * 이 경로는 어느 쪽 트랜스크립트도 읽지 않는다. 서버가 여기서 쓰는 사실은 하나뿐이다: 보낸 세션의
-   * 라이브 스트림에서 도구 호출과 그 성공 결과를 보았다. 대상 해석과 전달은 이 훅을 배선한 쪽(호스트
-   * 라우트)이 한다 — 세션은 레지스트리를 모른다. 반환한 불투명 Operation id는 발신 tool-result에
-   * 실어 받는 쪽 원장이 없을 때도 그룹 대화가 수신자를 해석하게 한다.
+   * 라이브 도구 호출과 그 성공 결과만 관측한다. 어느 쪽 트랜스크립트도 읽지 않으며, 실패한 발신에서는
+   * 부르지 않는다. 대상은 이미 서버가 해석한 Operation 좌표다 — 세션은 레지스트리를 모른다.
    */
-  readonly onSessionMessageSent?: (sent: { readonly to: string; readonly text: string; readonly toolUseId: string }) => void | string | Promise<void | string>;
+  readonly onSessionMessageSent?: (sent: { readonly recipientOperationId?: string; readonly text: string; readonly toolUseId: string }) => void;
   /**
    * 다른 세션의 세션 간 메시지가 이 세션에 닿았다 — 자식의 트랜스크립트가 `origin.kind:"peer"` 로 적은 user 레코드에서 보낸 이름과
    * 시각만 읽는다(본문은 읽지 않는다). 보낸 쪽이 터미널이라 발신 관측이 없어도 도착은 여기서 보인다.
@@ -2836,14 +2836,15 @@ class AgentChatSession {
    *
    * 호출과 결말을 잇는 것은 `tool_use` id다. 호출만 보고 세우지 않는 이유는 실패가 조용하기
    * 때문이고(이름이 틀리면 오류가 돌아온다), 결말만 보고 세울 수 없는 이유는 결과에 본문이 없기
-   * 때문이다. 그래서 둘을 붙잡아 두었다가 성공한 쌍만 내보낸다.
+   * 때문이다. 그래서 둘을 붙잡아 두었다가 성공한 쌍의 도착만 내보낸다. 수신자 좌표는 실패에서도
+   * 해석하지만 도착 보고·수신 줄·턴 발신 기록은 성공과 분리한다.
    *
    * 매퍼(`chatEventsFromSdkMessage`)에 두지 않는 이유는 그 문이 트랜스크립트 재생과 공유이기
    * 때문이다 — 거기 두면 재생이 지난 발신을 오늘의 수신으로 다시 세운다.
    */
   private async trackSentMessages(message: ClaudeGatewayMessage): Promise<ReadonlyMap<string, string>> {
     const recipients = new Map<string, string>();
-    if (this.seed.onSessionMessageSent === undefined) return recipients;
+    if (this.seed.resolveSessionMessageRecipient === undefined && this.seed.onSessionMessageSent === undefined) return recipients;
     // 서브에이전트의 발신은 부모의 것이 아니다. 부모 이름으로 세우면 사람이 보내지 않은 말이
     // 부모가 보낸 것으로 남으므로, 자식 호출이 달고 오는 좌표가 있으면 통째로 지나간다.
     if (message["parent_tool_use_id"] != null) return recipients;
@@ -2881,11 +2882,18 @@ class AgentChatSession {
       const sent = this.pendingSentMessages.get(record.tool_use_id);
       if (sent === undefined) continue;
       this.pendingSentMessages.delete(record.tool_use_id);
-      if (record.is_error === true || sentMessageFailed(record.content)) continue;
+      let recipientOperationId: string | undefined;
+      try {
+        // 휴면 구성원에게 보내 실패해도 명부 신원은 해석된다. 해석 자체는 도착 사실이 아니다.
+        recipientOperationId = await this.seed.resolveSessionMessageRecipient?.(sent.to);
+        if (recipientOperationId && !this.disposed) recipients.set(record.tool_use_id, recipientOperationId);
+      } catch {
+        // 대상 등록을 읽을 수 없으면 좌표는 무의견이다. 도구가 돌려준 성공/실패는 그대로 남긴다.
+      }
+      if (this.disposed || record.is_error === true || sentMessageFailed(record.content)) continue;
       if (this.turnOpen) this.turnSentTo.push(sent.to);
       try {
-        const recipientOperationId = await this.seed.onSessionMessageSent({ to: sent.to, text: sent.text, toolUseId: record.tool_use_id });
-        if (recipientOperationId && !this.disposed) recipients.set(record.tool_use_id, recipientOperationId);
+        this.seed.onSessionMessageSent?.({ ...(recipientOperationId ? { recipientOperationId } : {}), text: sent.text, toolUseId: record.tool_use_id });
       } catch {
         // 전달 배선이 넘어져도 보낸 세션은 계속 산다 — 이 관측은 대화의 곁가지지 대화 자체가 아니다.
       }

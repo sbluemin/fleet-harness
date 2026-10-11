@@ -162,10 +162,15 @@ describe("agent chat mode routes", () => {
     await harness.consoleControl.request(caller, { kind: "send", operationId: member, text: "Start the mission" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Start the mission"));
     expect(harness.openSession.mock.calls.at(-1)?.[0]).not.toHaveProperty("disallowedTools");
+    const dormantRecipient = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "dormant-member" })).operationId;
     // 수신 줄의 근거는 **보낸** 자식의 라이브 도구 호출과 그 결과, 그 둘뿐이다. 이 경로는 어느 쪽
     // 트랜스크립트도 읽지 않으며, 성공한 호출만이 받는 쪽 원장에 줄 하나를 세운다.
     const frames = await harness.openChatSocket(commander);
     const sentFrames = await harness.openChatSocket(member);
+    const sentResult = (id: string) => sentFrames.map(({ raw }) => readChatJournalEvent(raw)?.event)
+      .find((event) => event?.kind === "tool-result" && event.id === id);
+    const arrivalReports = vi.spyOn(harness.consoleControl, "reportSessionMessage");
+    cleanups.push(() => { arrivalReports.mockRestore(); });
     const sent = (id: string, to: string, text: string, extra: Record<string, unknown> = {}) => ({
       type: "assistant",
       message: { content: [{ type: "tool_use", id, name: "SendMessage", input: { to, message: text } }] },
@@ -190,8 +195,16 @@ describe("agent chat mode routes", () => {
     delete (harness.operation(member)!.payload.session as Record<string, unknown>).sessionName;
     // 같은 호출을 다시 관측해도, 실패한 호출·서브에이전트 발신·이 Console이 모르는 이름도 줄을 세우지 않는다.
     harness.emitToLatest(settled("call-1", true));
-    harness.emitToLatest(sent("call-2", "commander", "Rejected send."));
+    const reportsBeforeFailure = arrivalReports.mock.calls.length;
+    const sessionsBeforeFailure = harness.openSession.mock.calls.length;
+    harness.emitToLatest(sent("call-2", "dormant-member", "Rejected send."));
     harness.emitToLatest(settled("call-2", false));
+    // 기존 실패 케이스를 휴면 대상에게 보낸다. 수신자는 해석해도 도착·기동은 만들지 않는다.
+    await vi.waitFor(() => expect(sentResult("call-2")).toMatchObject({ recipientOperationId: dormantRecipient }));
+    expect(arrivalReports.mock.calls).toHaveLength(reportsBeforeFailure);
+    expect(frames.filter(({ event }) => event.kind === "received")).toHaveLength(1);
+    expect(harness.consoleControl.observe(dormantRecipient)?.lifecycle).toBe("dormant");
+    expect(harness.openSession.mock.calls).toHaveLength(sessionsBeforeFailure);
     harness.emitToLatest(sent("call-3", "commander", "Subagent send.", { parent_tool_use_id: "job-1" }));
     harness.emitToLatest(settled("call-3", true));
     harness.emitToLatest(sent("call-4", "nobody-here", "Unknown target."));
@@ -203,10 +216,8 @@ describe("agent chat mode routes", () => {
     // 발신자 이름은 본문의 주장이 아니라 서버가 들고 있는 런치 이름이고, 좌표는 발신 Operation과 호출 id다.
     expect(received()[0]).toMatchObject({ id: `${member}:call-1`, from: "member", senderOperationId: member, text: "Check the mobile layout." });
     expect(received()[1]).toMatchObject({ from: harness.operation(member)!.title, senderOperationId: member, text: "Last word." });
-    const sentResult = (id: string) => sentFrames.map(({ raw }) => readChatJournalEvent(raw)?.event)
-      .find((event) => event?.kind === "tool-result" && event.id === id);
     await vi.waitFor(() => expect(sentResult("call-5")).toMatchObject({ recipientOperationId: commander }));
-    expect(sentResult("call-2")).not.toHaveProperty("recipientOperationId");
+    expect(sentResult("call-2")).toMatchObject({ recipientOperationId: dormantRecipient });
     expect(sentResult("call-4")).not.toHaveProperty("recipientOperationId");
     // 그 턴이 닫히면 관측은 결과까지 성공한 최상위 발신의 받는 이름과 최종 응답 원문을 싣는다 — 거절·서브에이전트 발신은 없다.
     // 자식이 스스로 연 턴이라 사람의 턴이 아니다. 플러그인은 이 값으로 "실패 없이 닫혔지만 아무 말도 남기지 못한 턴"을 가른다.

@@ -2271,16 +2271,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
             if (senderId) ctx.consoleControl?.reportSessionMessage(senderId, node.id, at);
           }).catch(() => {});
         },
-        onSessionMessageSent: async ({ to, text, toolUseId }) => {
-          const recipientOperationId = await resolveRecipient(to);
+        resolveSessionMessageRecipient: resolveRecipient,
+        onSessionMessageSent: ({ recipientOperationId, text, toolUseId }) => {
           const sender = ctx.host.operations.get(node.id);
-          if (!recipientOperationId || !sender) return;
+          if (!recipientOperationId || !sender || !ctx.host.operations.get(recipientOperationId)) return;
           // 본문 없이 도착 사실만 Console 제어에 알린다 — 받는 쪽이 터미널·휴면이어도 성공한 발신의 대상 좌표는 확정된다.
           ctx.consoleControl?.reportSessionMessage(node.id, recipientOperationId, Date.now());
           const from = readAgentSession(sender.payload)?.sessionName || sender.title || node.id;
           // 지휘관에게 --name이 없어도 발신 Operation은 확실하다. 이미 있는 원장에만 전달하고 잠든 세션은 깨우지 않는다.
           chatRegistry.get(recipientOperationId)?.noteReceived({ id: `${node.id}:${toolUseId}`, from, senderOperationId: node.id, text });
-          return recipientOperationId;
         },
         cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },
         ...(launchEffort?.ultracode ? { ultracode: true } : {}),
