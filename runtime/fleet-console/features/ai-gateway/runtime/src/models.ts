@@ -82,20 +82,6 @@ export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
 const GATEWAY_CAPABILITY_CLASSES = ["flagship", "standard", "light"] as const;
 export type GatewayCapabilityClass = typeof GATEWAY_CAPABILITY_CLASSES[number];
 
-const GatewayModelPricingSchema = z.object({
-  inputCostPerToken: z.number().nonnegative(),
-  outputCostPerToken: z.number().nonnegative(),
-  cacheReadInputTokenCost: z.number().nonnegative(),
-  cacheCreationInputTokenCost: z.number().nonnegative().optional(),
-  aliases: z.array(z.string().min(1)).min(1),
-}).strict();
-
-const GatewayPricingRegistrySchema = z.object({
-  source: z.literal("openrouter"),
-  observedAt: z.iso.datetime(),
-  models: z.record(z.string().min(1), GatewayModelPricingSchema),
-}).strict();
-
 const GatewayModelEntrySchema = z.object({
   modelId: z.string().min(1),
   name: z.string().min(1),
@@ -131,19 +117,10 @@ const GatewayModelsRegistrySchema = z.object({
     antigravity: GatewayProviderSchema,
     "muse-code": GatewayProviderSchema,
   }).strict(),
-  pricing: GatewayPricingRegistrySchema,
 }).strict();
 
 export type GatewayModelsRegistry = z.infer<typeof GatewayModelsRegistrySchema>;
 type GatewayModelEntry = z.infer<typeof GatewayModelEntrySchema>;
-
-export interface GatewayModelPricing {
-  readonly inputCostPerToken: number;
-  readonly outputCostPerToken: number;
-  readonly cacheReadInputTokenCost: number;
-  readonly cacheCreationInputTokenCost?: number;
-  readonly aliases: readonly string[];
-}
 
 export type GatewayModelEffort =
   | { readonly supported: false }
@@ -252,14 +229,6 @@ export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistr
 const registry = parseGatewayModelsRegistry(modelsData);
 
 export const GATEWAY_MODELS_UPDATED_AT = registry.updatedAt;
-export const GATEWAY_MODEL_PRICING: Readonly<Record<string, GatewayModelPricing>> = Object.freeze(
-  Object.fromEntries(
-    Object.entries(registry.pricing.models).map(([modelId, pricing]) => [
-      modelId,
-      Object.freeze({ ...pricing, aliases: Object.freeze([...pricing.aliases]) }),
-    ]),
-  ),
-);
 
 /** Human-readable provider names as declared by the model registry. */
 export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> = Object.freeze({

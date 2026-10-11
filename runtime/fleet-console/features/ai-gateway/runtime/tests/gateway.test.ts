@@ -146,15 +146,6 @@ describe("model catalog", () => {
     extraField.unexpected = true;
     expect(() => parseGatewayModelsRegistry(extraField)).toThrow();
 
-    const invalidPricing = minimalRegistry();
-    (invalidPricing.pricing.models as Record<string, unknown>)["openai/model"] = {
-      inputCostPerToken: -1,
-      outputCostPerToken: 1,
-      cacheReadInputTokenCost: 0,
-      aliases: ["model"],
-    };
-    expect(() => parseGatewayModelsRegistry(invalidPricing)).toThrow();
-
     const duplicate = minimalRegistry();
     duplicate.providers.codex.models.push({ modelId: "codex-model", name: "Again" });
     expect(() => parseGatewayModelsRegistry(duplicate)).toThrow(/Duplicate gateway model id/);
@@ -363,11 +354,6 @@ function minimalRegistry() {
       opencode: provider("OpenCode", "minimax-m3"),
       xai: provider("Grok", "grok-4.6"),
       "muse-code": provider("Muse Code", "muse-spark-1.3"),
-    },
-    pricing: {
-      source: "openrouter" as const,
-      observedAt: "2026-08-16T00:00:00Z",
-      models: {},
     },
   };
 }
