@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.227.0] - 2026-10-11
+
+### fleet-console
+
+#### Changed
+- 목표 지휘관이 구성원별 모델과 강도를 선택하면 구성원 목록에 반영되고 해당 설정으로 기동합니다.
+- 데스크톱에서 Theater의 시스템 프롬프트·서브에이전트 설정과 사령관의 기록·지시·정보·설정이 하나의 Theater Inbox에 열리며, 「Theater 설정」과 「사령관」 섹션 사이를 바로 오갈 수 있습니다.
+
 ## [1.226.0] - 2026-10-10
 
 ### fleet-console

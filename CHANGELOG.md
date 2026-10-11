@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.227.0] - 2026-10-11
+
+### fleet-console
+
+#### Changed
+- Let objective Commanders optionally choose each member's model and effort, reflected in the roster and used when the member starts.
+- On desktop, a Theater's system prompt, subagent setting, and Commodore log, directive, intel, and settings now open in one Theater Inbox, split into Theater settings and Commodore sections you can move between directly.
+
 ## [1.226.0] - 2026-10-10
 
 ### fleet-console
