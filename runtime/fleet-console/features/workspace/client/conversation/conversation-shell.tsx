@@ -23,6 +23,7 @@ import { useDesktopRailEntries } from "../../../../core/client/src/chrome/pane/p
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
 import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
 import { pluginRuntimeState, resolveOperationActivity } from "../../../execution/client/operation-activity.js";
+import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { ClusterNodeRail } from "../cluster-node-rail.js";
 import { useClusterIndex } from "../operation-clusters.js";
@@ -75,6 +76,9 @@ function writeLastPanel(id: string): void {
 /** 셸이 서 있는 동안 오른쪽 패널 앞 묶음(Operation 탭)을 레일 목록에 싣는다. 그리는 것은 없다. */
 export function ConversationShellHost(): null {
   useEffect(() => mountConversationOperationTabsHost(), []);
+  // 이 화면의 채팅은 가운데 칸 폭에 맞춘다(Fit) — 사람이 「채팅 폭」을 직접 골랐으면 그 값이 그대로 선다. 셸이 걷히면(토글 끔)
+  // 캔버스의 기본(읽기 폭)으로 돌아간다.
+  useEffect(() => setChatReadingWidthDefault("full"), []);
   // 마지막으로 연 오른쪽 패널을 기억한다 — 헤더 pill 이 다시 열 때 쓴다(설정은 문으로만 연다).
   const activePanelId = useRailActivePanelId();
   useEffect(() => {

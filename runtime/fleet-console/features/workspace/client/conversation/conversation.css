@@ -11,7 +11,7 @@
   /* 세 열의 맨 위 줄 높이. Desktop 셸은 신호등·캡션 버튼을 이 줄의 가운데에 세운다(desktop-contract.ts chrome.band). */
   --conversation-top-row: 52px;
   /* 맨 위 줄 밑으로 흐르는 내용을 흐리는 그라디언트의 길이. */
-  --conversation-top-fade: 28px;
+  --conversation-top-fade: 16px;
   background: var(--conversation-surface);
 }
 
@@ -551,29 +551,23 @@
   height: 30px;
 }
 
-/* ── 맨 위 줄의 그라디언트: 끄는 자리를 보이고, 그 밑으로 흐르는 내용을 흐린다 ──────────── */
+/* ── 맨 위 줄: 띠를 칠하지 않고, 그 밑으로 스크롤되는 내용만 살짝 흐린다 ─────────────────────
+   맨 위 줄은 바탕과 같은 면이다(끄는 자리는 Desktop 의 drag 영역이 맡는다). 가운데 칸과 사이드바는 내용이 그 밑으로
+   지나가므로 짧은 페이드 하나를 둔다. 오른쪽 세부 정보는 시각 효과를 두지 않는다 — 머리와 본문이 바로 이어진다. */
 .conversation-pill-row,
-.console-shell.is-conversation-layout .side-bar-top-strip,
-.console-body.is-conversation .right-rail-panel-header {
-  /* 위가 한 단 밝은(라이트는 한 단 짙은) 짧은 그라디언트 — 창을 잡는 자리가 바탕과 갈려 보이되 내용보다 앞서지 않는 세기다. */
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklch, var(--text-primary) 11%, var(--conversation-row-surface)),
-    color-mix(in oklch, var(--text-primary) 4%, var(--conversation-row-surface)) 70%,
-    var(--conversation-row-surface)
-  );
+.console-shell.is-conversation-layout .side-bar-top-strip {
+  background: var(--conversation-row-surface);
 }
 
 .conversation-pill-row::after,
-.console-shell.is-conversation-layout .side-bar-top-strip::after,
-.console-body.is-conversation .right-rail-panel-header::after {
+.console-shell.is-conversation-layout .side-bar-top-strip::after {
   content: "";
   position: absolute;
   top: 100%;
   right: 0;
   left: 0;
   height: var(--conversation-top-fade);
-  background: linear-gradient(to bottom, var(--conversation-row-surface), color-mix(in oklch, var(--conversation-row-surface) 0%, transparent));
+  background: linear-gradient(to bottom, color-mix(in oklch, var(--conversation-row-surface) 85%, transparent), color-mix(in oklch, var(--conversation-row-surface) 0%, transparent));
   pointer-events: none;
 }
 
