@@ -199,10 +199,7 @@ export interface StoredMember {
   readonly role: string;
   readonly brief?: string;
   readonly launch?: MemberLaunch;
-  /**
-   * 지휘관의 모델 제안 — 구성원 정보에 붙는 참고일 뿐 배정이 아니다. 선택(launch)을 바꾸지 않고, 라우팅 구성원이면 AI Gateway
-   * 판단 프롬프트에 「제안 모델」로 실린다. 모델을 정하는 것은 판단(폴백이면 지휘관 프리셋)이다.
-   */
+  /** 옛 저장값의 참고 모델 — launch로 승격하지 않고 기존 라우팅 판단에만 싣는다. 새 편성은 launch를 쓴다. */
   readonly proposal?: MemberProposal;
   /** 서브에이전트 허용. 없거나 false면 강제 차단이다. true만 저장한다. */
   readonly subagents?: true;
@@ -1048,7 +1045,6 @@ export const memberLaunchSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().max(32).optional() }).strict(),
 ]);
 export interface MemberProposal { readonly model: string; readonly effort?: string }
-export const memberProposalSchema = z.object({ model: z.string().trim().min(1).max(128), effort: z.string().trim().min(1).max(32).optional() }).strict();
 export const memberAddSchema = z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional(), launch: memberLaunchSchema.optional(), subagents: z.boolean().optional() }).strict();
 export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.optional(), brief: z.string().max(300).nullable().optional(), launch: memberLaunchSchema.nullable().optional(), subagents: z.boolean().optional() }).strict();
 export const memberBatchLaunchSchema = z.object({ mode: z.enum(["same", "route"]) }).strict();
@@ -1091,8 +1087,8 @@ export const planSchema = z.object({
     /** 구성원 id 또는 역할 이름. 없으면 지휘관 직접. */
     member: ids.optional(),
   })).min(1).max(MAX_MISSIONS),
-  /** 지휘관이 짠 구성원 — proposal 은 판단에 참고로 실리는 제안 모델(gateway_models 로 확인한 값)이고, 선택은 라우팅 그대로다. */
-  members: z.array(memberAddSchema.pick({ role: true, brief: true }).extend({ proposal: memberProposalSchema.optional() })).max(MAX_MISSIONS).optional(),
+  /** 지휘관이 짠 구성원 — gateway_models로 확인한 모델은 launch에 저장하고, 없으면 라우팅 선택으로 남는다. */
+  members: z.array(memberAddSchema.pick({ role: true, brief: true, launch: true })).max(MAX_MISSIONS).optional(),
   criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
 }).strict();
 

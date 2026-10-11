@@ -1784,7 +1784,7 @@ describe("Objectives contract", () => {
       { id: "auto", scope: "auto", isAggregate: false, usedPercent: 20 },
       { id: "total", isAggregate: true, usedPercent: 50 },
     ] } } };
-    // gateway_models — 라우팅 판단이 보는 후보. 지휘관의 모델 제안은 이 목록으로 확인되고, 판단 요청(routing-assign)에 입력으로 실린다.
+    // gateway_models — 라우팅 판단이 보는 후보. 지휘관이 고른 구성원 모델은 이 목록으로 확인된 뒤 그대로 launch 설정값이 된다.
     const gatewayModels = { routing: { enabled: true, mode: "jev" }, quotaPools: {}, models: [{ modelId: "sonnet[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["low"] }] };
     const judged: string[] = [];
     vi.stubGlobal("fetch", async (url: string, init?: { body?: string }) => {
@@ -1876,11 +1876,15 @@ describe("Objectives contract", () => {
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
     // 라우팅으로 뜰 구성원은 개시 전 routing 판단을 거친다 — 판단 없이는 띄우지 않고, 개시는 보여 준 결과 그대로 띄운다.
     expect(await refusal(commodore, { action: "commence", objectiveId: id })).toBe("routing_preview_stale");
-    // 지휘관의 제안은 구성원 정보일 뿐 배정이 아니다 — 선택은 라우팅 그대로, 제안은 판단 요청에 참고로 실리고 모델은 판단이 정한다.
-    expect(store.find(id)!.members[0]).toMatchObject({ launch: { mode: "route" }, proposal: { model: "sonnet[1m]", effort: "low" } });
+    // 지휘관은 기동 전 보드 읽기에서 고른 설정과 라우팅을 구별한다. 설정을 실행값 model/effort로 가장하지 않는다.
+    const memberBoard = (await command("read", {}, id)).objective as { members: readonly Record<string, unknown>[] };
+    expect(memberBoard.members.map(({ launch, model, effort }) => ({ launch, model, effort }))).toEqual([
+      { launch: { mode: "model", model: "sonnet[1m]", effort: "low" }, model: undefined, effort: undefined },
+      { launch: { mode: "route" }, model: undefined, effort: undefined },
+    ]);
     const routed = await board({ action: "routing", objectiveId: id });
-    expect(routed.members).toEqual([expect.objectContaining({ role: "worker" }), expect.objectContaining({ role: "reviewer" })]);
-    expect(judged.join("\n")).toContain("Commander's proposed model: sonnet[1m] (effort low)");
+    expect(routed.members).toEqual([expect.objectContaining({ role: "reviewer" })]);
+    expect(judged.join("\n")).not.toContain("Commander's proposed model");
     expect(await board({ action: "commence", objectiveId: id })).toMatchObject({ objectiveId: id, failed: [] });
     // 구상 요청과 개시도 부른 손으로 남는다. 개시한 손은 행위 기록이 접혀도 commencedBy 로 남아 사이드바가 읽는다.
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ commencedBy: actor, actions: expect.arrayContaining([expect.objectContaining({ kind: "plan", by: actor }), expect.objectContaining({ kind: "commence", by: actor })]) });
@@ -1900,8 +1904,8 @@ describe("Objectives contract", () => {
     expect(recoveredView.objective.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
     const recoveredState = (await route("state", { theaterId: "t1" })).value as { objectives: readonly Objective[] };
     expect(recoveredState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
-    // 뜬 모델은 판단이 보여 준 값이다(이 하네스에서는 판단이 실패해 지휘관 프리셋) — 제안으로 뜨지 않는다.
-    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: (routed.members as readonly { model: string }[])[0]!.model });
+    // 지휘관이 고른 구성원은 라우팅 없이 그 모델로 뜨고, 생략한 구성원은 판단이 보여 준 값으로 뜬다(이 하네스에서는 판단이 실패해 지휘관 프리셋).
+    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
     expect((routed.members as readonly { via: string }[])[0]!.via).toBe("fallback");
     // 떠 있는 채팅의 자식이 모델 변경을 거절하면 — 사람의 모델 칩(member/patch)은 코드만 답하고, 자식이 던진 원 예외는 사령관의 failedSwitches 와
     // 사람의 행에 같은 사유로 남는다. 곧바로 거절된 전환도 턴 뒤 실패와 같은 자리다. 자동 재시도는 없다.

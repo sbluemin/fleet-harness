@@ -29,14 +29,14 @@ const missionRef = { objectiveId: ids, missionId: ids.optional(), n: z.number().
 /** 선행 한 칸 — 번호 n 이나 missionId, 그리고 이유. */
 const prerequisiteRef = z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() }).strict();
 const memberReference = z.string().trim().min(1).max(128);
-/** 구성원 한 명의 편성 — 역할·짧은 소개, 그리고 지휘관의 모델 제안(models 의 행). 모델이 없으면 라우팅이 고른다. */
+/** 구성원 한 명의 편성 — 역할·짧은 소개, 그리고 선택적 기동 모델(models 의 행). 모델이 없으면 라우팅이 고른다. */
 const rosterMember = z.object({
   role: z.string().trim().min(1).max(40),
   brief: z.string().max(MAX_SHORT_INPUT).optional(),
   model: z.string().trim().min(1).max(128).optional(),
   effort: z.string().trim().min(1).max(32).optional(),
 }).strict();
-const MODEL_FACT = "A member may note a proposed model and effort from models (gateway_models); AI Gateway routing reads it and decides the model.";
+const MODEL_FACT = "A member may select a model and effort from models (gateway_models); the selection becomes that member's launch setting and appears on the board. Without a model, AI Gateway routing chooses it.";
 const PIN_FACT = "Appended to the stored text as ` [pin]`: MUST NOT, MUST or MAY, then ASCII detail without brackets; at most 60 characters, and the text with its pin stays within the field limit (text_with_pin_too_long).";
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
 const pin = pinSchema.optional().describe(PIN_FACT);
@@ -139,16 +139,13 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     },
   });
   const modelCatalog = createModelCatalog(ctx);
-  /**
-   * 지휘관의 구성원 편성 — 모델 제안은 라우팅 판단이 보는 gateway_models 로 확인해 구성원 정보(proposal)로만 남긴다. 배정이 아니다:
-   * 선택은 라우팅 그대로이고 모델은 AI Gateway 판단이 정한다. 목록은 한 번만 읽는다.
-   */
+  /** 지휘관의 구성원 편성 — gateway_models로 확인한 모델·강도를 기동 선택에 저장한다. 목록은 한 번만 읽는다. */
   const rosterOf = async (members: readonly z.output<typeof rosterMember>[], signal: AbortSignal | undefined) => {
     if (members.some((member) => member.effort !== undefined && member.model === undefined)) throw new ObjectiveStoreError("effort_needs_model");
     const loadout = members.some((member) => member.model !== undefined) ? await modelCatalog.gatewayModels(signal) : null;
     return Promise.all(members.map(async ({ model, effort, ...member }) => {
       if (model === undefined) return member;
-      return { ...member, proposal: await modelCatalog.checkProposal({ model, effort }, signal, loadout) };
+      return { ...member, launch: { mode: "model" as const, ...await modelCatalog.checkProposal({ model, effort }, signal, loadout) } };
     }));
   };
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Operation 에게는 참여자가 아님을 말한다. */
@@ -224,7 +221,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         return text({ ok: true, missions: stored.missions.map((mission, index) => ({ n: index + 1, missionId: mission.id, text: storedText(mission.text) })),
           ...(args.criteria !== undefined || args.members ? { stored: {
             ...(args.criteria !== undefined ? { criteria: stored.criteriaProposals.map(({ id, kind, target, text: proposed, reason }) => ({ id, kind, ...(target ? { target } : {}), ...(proposed !== undefined ? { text: storedText(proposed) } : {}), ...(reason ? { reason: storedText(reason) } : {}) })) } : {}),
-            ...(args.members ? { members: stored.members.map(({ id, role, brief, proposal }) => ({ id, role, ...(brief ? { brief: storedText(brief) } : {}), ...(proposal ? { proposal } : {}) })) } : {}),
+            ...(args.members ? { members: stored.members.map(({ id, role, brief, launch }) => ({ id, role, ...(brief ? { brief: storedText(brief) } : {}), launch })) } : {}),
           } } : {}) });
       }),
     commanderTool("add_mission", "Add a mission with its prerequisites — each the n or missionId of a mission on the board, finished or not, with an optional why — and optionally its member by roster id or role; none means the Commander. A mission added without prerequisites is ready at once and stands in the lineup's first column, ahead of missions that wait on others. The returned n is its number until the Commander's next read. " + BOARD_REFERENCES,
@@ -288,7 +285,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const existing = new Set(objective.members.map((member) => member.id));
         let current = objective;
         for (const member of roster) current = store.memberAdd(objective.id, member, "commander");
-        return text({ ok: true, members: current.members.filter((member) => !existing.has(member.id)).map((member) => ({ id: member.id, role: member.role, ...(member.proposal ? { proposal: member.proposal } : {}) })) });
+        return text({ ok: true, members: current.members.filter((member) => !existing.has(member.id)).map((member) => ({ id: member.id, role: member.role, launch: member.launch })) });
       }),
     commanderTool("models", "gateway_models: the candidate models, efforts, quota pools, preferences and recent assignments AI Gateway routing judges with.",
       z.object({ objectiveId: ids }).strict(),
