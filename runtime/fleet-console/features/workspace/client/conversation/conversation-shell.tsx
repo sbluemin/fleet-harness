@@ -299,7 +299,6 @@ function isConversationTab(entry: RailEntryDescriptor): boolean {
   return entry.conversationTab === true;
 }
 
-/** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름(Grok 세부 정보의 아바타·이름 자리). 대상이 없으면 서지 않는다. */
 /** 플러그인 대화의 머리 값(아바타 얼굴 등)은 플러그인 저장소에 산다 — 그 대화가 알리면 머리를 다시 그린다. */
 function useConversationSurfaceHead(descriptor: Pick<ConversationSurfaceDescriptor, "subscribe"> | null): void {
   const [, refresh] = useReducer((count: number) => count + 1, 0);
@@ -307,6 +306,7 @@ function useConversationSurfaceHead(descriptor: Pick<ConversationSurfaceDescript
   useEffect(() => (subscribe ? subscribe(refresh) : undefined), [subscribe]);
 }
 
+/** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름(Grok 세부 정보의 아바타·이름 자리). 대상이 없으면 서지 않는다. */
 function ConversationPanelIdentity() {
   const inbox = useTheaterInboxState();
   const theaterLabel = useTheaterLabel(inbox?.theaterId);
