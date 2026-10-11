@@ -3405,7 +3405,7 @@ describe("Instrument core design contract", () => {
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
     expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-name {\n  color: var(--ink-muted);");
-    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-status {\n  opacity: 0.62;");
+    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-status:is(.is-idle, .is-ended, .is-done, .is-fresh) {\n  opacity: 0.62;");
     expect(components).not.toMatch(/\.side-bar-chip--minimized \{[^}]*opacity/);
 
     expect(minimap).not.toContain("is-plugin");
