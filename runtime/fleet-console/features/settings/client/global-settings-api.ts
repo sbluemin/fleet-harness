@@ -185,6 +185,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     // 구서버 응답에는 없다 — 기본은 꺼짐(한 번 클릭으로 열기)이다.
     sideBarDoubleClickOpen: payload.sideBarDoubleClickOpen === true,
     reduceMotion: payload.reduceMotion === true,
+    calmAvatars: payload.calmAvatars === true,
     lowerUnfocusedFrameRate: payload.lowerUnfocusedFrameRate !== false,
     uiFont: normalizeUiFont(payload.uiFont),
     fonts: readFontSettings(payload.fonts) ?? DEFAULT_FONTS,

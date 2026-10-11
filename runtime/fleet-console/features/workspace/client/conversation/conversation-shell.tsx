@@ -22,7 +22,8 @@ import { theaterInitials } from "../sidebar/theater-initials.js";
 import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import { useDesktopRailEntries } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
+import { operationAvatarKey } from "@fleet-console/sdk/avatars";
+import { AvatarEditor, OperationAvatar, mongleStateOfMark, operationAvatarRole } from "../avatars.js";
 import { pluginRuntimeState, resolveOperationActivity } from "../../../execution/client/operation-activity.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
@@ -297,6 +298,7 @@ function ConversationPanelIdentity() {
   const state = useConsoleState();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
   const descriptor = subject === null && surface !== null ? conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null : null;
+  const clusterIndex = useClusterIndex();
   // Theater 를 연 동안 패널은 그 Theater 의 것이다 — 사이드바 머리와 같은 이니셜 표식과 이름.
   if (inbox !== null && theaterLabel !== null) {
     return (
@@ -307,18 +309,24 @@ function ConversationPanelIdentity() {
     );
   }
   if (subject !== null) {
+    // 대상의 몽글 아바타(64px) — 이 화면에서만 눌러 고친다. 일반 화면에는 이 자리도 편집 진입도 없다.
+    const activity = resolveOperationActivity(subject, state.operationRuntime);
+    const decision = clusterIndex.rootOf.get(subject.id)?.cluster.decisionRequest === true;
     return (
       <div className="conversation-panel-identity">
-        <OperationNameMark operation={subject} status={resolveOperationActivity(subject, state.operationRuntime)} decorative className="conversation-panel-identity-mark" />
+        <AvatarEditor avatarKey={operationAvatarKey(subject.id)} role={operationAvatarRole(subject)} state={mongleStateOfMark(activity, decision)} size={64} label={subject.title} />
         <strong className="conversation-panel-identity-name">{subject.title}</strong>
       </div>
     );
   }
   if (descriptor !== null && surface !== null) {
     const context = { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(descriptor.id) } as const;
+    const avatar = descriptor.avatar?.(context) ?? null;
     return (
       <div className="conversation-panel-identity">
-        {descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
+        {avatar
+          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state="idle" size={64} label={avatar.label} />
+          : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
         <strong className="conversation-panel-identity-name">{descriptor.title(context)}</strong>
       </div>
     );
@@ -719,7 +727,7 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
           onClick={onToggleDetails}
           aria-label={t("conversation.pill.detailsAria", { title: operation.title })}
         >
-          <OperationNameMark operation={operation} status={activity} className="conversation-pill-mark" />
+          <OperationAvatar operation={operation} state={mongleStateOfMark(activity, clusterRoot?.cluster.decisionRequest === true)} size={20} label={operation.title} decorative className="conversation-pill-mark" />
           <span className="conversation-pill-title">{operation.title}</span>
           {bodyOwner !== operation ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.operationId === bodyOwner.id)?.name ?? clusterRoot?.formation.byOperationId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
           {memberCount > 0 ? (

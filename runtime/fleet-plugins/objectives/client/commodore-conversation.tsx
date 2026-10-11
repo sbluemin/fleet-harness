@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "@fleet-console/sdk/plugin";
 import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-inbox";
@@ -185,6 +186,10 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   },
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("objectives.commodore.conversation.readOnly") : null),
   mark: () => <CommodoreMentionGlyph className="objectives-commodore-conversation-mark" />,
+  avatar: (ctx) => {
+    const theaterId = readParams(ctx.params)?.theaterId;
+    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("objectives.commodore.name") } : null;
+  },
   render: (ctx) => {
     const params = readParams(ctx.params);
     return params ? <CommodoreConversationBody theaterId={params.theaterId} readOnly={params.readOnly} language={ctx.language} onBack={ctx.close} /> : null;

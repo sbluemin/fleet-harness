@@ -5,6 +5,7 @@ import { DESKTOP_SHELL_UPDATE_API_CATALOG, DESKTOP_THEME_API_CATALOG, DESKTOP_UP
 import { GLOBAL_SETTINGS_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
 import { PLUGIN_SETTINGS_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
 import { OPERATIONS_API_CATALOG } from "../../../features/execution/host/operations/operations-domain.js";
+import { AVATARS_API_CATALOG } from "../../../features/workspace/host/avatars.js";
 import { SERVER_API_CATALOG } from "../bootstrap/server.js";
 import { SYSTEM_FONTS_API_CATALOG } from "../shell/system-fonts.js";
 
@@ -29,6 +30,7 @@ export function buildApiCatalog(extraEntries: readonly ApiCatalogEntry[] = []): 
     ...PLUGIN_SETTINGS_API_CATALOG,
     ...SYSTEM_FONTS_API_CATALOG,
     ...OPERATIONS_API_CATALOG,
+    ...AVATARS_API_CATALOG,
     ...extraEntries,
   ];
   const identities = new Set<string>();

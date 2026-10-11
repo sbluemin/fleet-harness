@@ -83,6 +83,8 @@ export interface ConsoleGeneralSettings {
   readonly sideBarDoubleClickOpen?: boolean;
   /** 무한 모션을 100ms 단계로 낮춘다. 기본은 꺼짐이며 OS 감속 모션의 정지와는 별개다. */
   readonly reduceMotion?: boolean;
+  /** 몽글 아바타를 차분하게 — 사람을 부르는 상태(답을 기다림·결정 요청·오류)만 움직인다. 부재는 꺼짐(몽글)이다. */
+  readonly calmAvatars?: boolean;
   /** 창이 비포커스일 때만 같은 저프레임 모드를 쓴다. 부재는 기본 켜짐이다. */
   readonly lowerUnfocusedFrameRate?: boolean;
   readonly uiFont?: UiFontSettings;
@@ -332,6 +334,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
   const sideBarDoubleClickOpen = typeof value.sideBarDoubleClickOpen === "boolean" ? value.sideBarDoubleClickOpen : undefined;
   const reduceMotion = typeof value.reduceMotion === "boolean" ? value.reduceMotion : undefined;
+  const calmAvatars = typeof value.calmAvatars === "boolean" ? value.calmAvatars : undefined;
   const lowerUnfocusedFrameRate = typeof value.lowerUnfocusedFrameRate === "boolean" ? value.lowerUnfocusedFrameRate : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   const shortcuts = sanitizeShortcutBindings(value.shortcuts);
@@ -346,6 +349,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(unfocusedPanelFade !== undefined ? { unfocusedPanelFade } : {}),
     ...(sideBarDoubleClickOpen !== undefined ? { sideBarDoubleClickOpen } : {}),
     ...(reduceMotion !== undefined ? { reduceMotion } : {}),
+    ...(calmAvatars !== undefined ? { calmAvatars } : {}),
     ...(lowerUnfocusedFrameRate !== undefined ? { lowerUnfocusedFrameRate } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
     ...(fonts ? { fonts } : {}),
@@ -491,6 +495,7 @@ interface GlobalSettingsBody {
   readonly unfocusedPanelFade?: unknown;
   readonly sideBarDoubleClickOpen?: unknown;
   readonly reduceMotion?: unknown;
+  readonly calmAvatars?: unknown;
   readonly lowerUnfocusedFrameRate?: unknown;
   readonly uiFont?: unknown;
   readonly fonts?: unknown;
@@ -628,6 +633,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_reduce_motion" });
     return;
   }
+  if (body.calmAvatars !== undefined && typeof body.calmAvatars !== "boolean") {
+    deps.writeJson(res, 400, { error: "invalid_calm_avatars" });
+    return;
+  }
   if (body.lowerUnfocusedFrameRate !== undefined && typeof body.lowerUnfocusedFrameRate !== "boolean") {
     deps.writeJson(res, 400, { error: "invalid_lower_unfocused_frame_rate" });
     return;
@@ -684,6 +693,7 @@ async function mutateGlobalSettings(
       ...(isUnfocusedPanelFade(body.unfocusedPanelFade) ? { unfocusedPanelFade: body.unfocusedPanelFade } : {}),
       ...(typeof body.sideBarDoubleClickOpen === "boolean" ? { sideBarDoubleClickOpen: body.sideBarDoubleClickOpen } : {}),
       ...(typeof body.reduceMotion === "boolean" ? { reduceMotion: body.reduceMotion } : {}),
+      ...(typeof body.calmAvatars === "boolean" ? { calmAvatars: body.calmAvatars } : {}),
       ...(typeof body.lowerUnfocusedFrameRate === "boolean" ? { lowerUnfocusedFrameRate: body.lowerUnfocusedFrameRate } : {}),
       // uiFont는 한 릴리스 읽기 전용으로 남긴다. 새 쓰기는 세 축만 바꾼다.
       ...(body.fonts !== undefined ? { fonts: readFontSettings(body.fonts)! } : {}),
@@ -757,6 +767,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
     sideBarDoubleClickOpen: general.sideBarDoubleClickOpen ?? false,
     reduceMotion: general.reduceMotion ?? false,
+    calmAvatars: general.calmAvatars ?? false,
     lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     fonts: resolveConsoleFonts(data),

@@ -15,6 +15,7 @@ import {
   subscribeCommodore,
   useCommodore,
 } from "./commodore-state.js";
+import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { getT } from "./i18n/index.js";
 import { useObjectiveTheater } from "./objectives-state.js";
@@ -44,9 +45,10 @@ export const commodoreTheaterContribution: TheaterContribution = {
 };
 
 /**
- * 머리의 사령관 글리프 — 켜진 Theater 는 brass(Quick Launch 사령관 멘션과 같은 마크)이고 누르면 자율 운영을 끈다. 꺼진 Theater 는
- * 흐린 회색이고 스위치가 아니다(켜기는 우클릭 메뉴와 Inbox 사령관 › 설정). 머무는(또는 키보드로 들어온) 동안 사이드바에서 사령관의
- * 목표 표식이 함께 밝아지고, 툴팁이 지금 상태(자율·응답 중·진행·처리 / 사람이 운영·대기)를 말한다. 오류·재시도면 warn 색이다.
+ * 머리의 사령관 표식 — 그 Theater 사령관의 몽글 아바타(베이스 + brass 별 배지)다. 켜진 Theater 는 제 색이고 누르면 자율 운영을 끈다.
+ * 꺼진 Theater 는 흐린 회색이고 스위치가 아니다(켜기는 우클릭 메뉴와 Inbox 사령관 › 설정). 얼굴과 몸짓이 지금을 말한다: 오류·재시도면
+ * 어지러운 얼굴과 땀방울, 턴을 도는 동안 몽글(이름 물결은 호스트가 함께 흘린다), 사령관이 운영하는 목표가 사람을 기다리면 부름 고리,
+ * 그 밖에는 가만히. 머무는(또는 키보드로 들어온) 동안 사이드바에서 사령관의 목표 표식이 함께 밝아지고, 툴팁이 상태 문장을 말한다.
  */
 function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) {
   const t = getT(language);
@@ -64,7 +66,9 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
   const { on, meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
   const warn = on && (view?.run.phase === "error" || view?.run.phase === "retrying");
   const status = [`${t("objectives.commodore.name")} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
-  const glyph = <CommodoreMentionGlyph className="objectives-commodore-mark-glyph" />;
+  const waiting = board.objectives.some((objective) => objective.operator === "commodore" && isWaitingObjective(objective));
+  const state = !on ? "idle" : warn ? "error" : view?.run.phase === "turn" ? "running" : waiting ? "awaiting" : "idle";
+  const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("objectives.commodore.name")} decorative className="objectives-commodore-mark-glyph" />;
   if (!on) {
     return (
       <span

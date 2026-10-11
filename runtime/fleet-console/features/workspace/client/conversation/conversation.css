@@ -382,6 +382,18 @@
   padding-block: var(--space-2);
 }
 
+/* 대화 행의 아바타는 28px 이다 — 칩의 표식 칸과 목표 줄의 첫 칸을 같은 폭으로 넓혀 제목이 같은 x 에서 시작한다. */
+.side-bar-chip--conversation .side-bar-chip-beacon-button {
+  width: 32px;
+  height: 32px;
+}
+.side-bar-cluster-row--conversation {
+  grid-template-columns: 32px 1fr auto;
+}
+.console-shell.is-conversation-layout .side-bar-cluster-avatars-mini {
+  background: var(--conversation-side);
+}
+
 .side-bar-chip-preview {
   min-width: 0;
   overflow: hidden;
@@ -616,6 +628,78 @@
 .conversation-panel-section:hover { color: var(--text-primary); background: var(--control-rest-hover); }
 .conversation-panel-section.is-active { color: var(--brass-ink); background: var(--brass-glow); }
 .conversation-panel-section:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+/* 몽글 아바타 편집 — 아바타 단추 자체는 껍데기가 없고, 머무르면 오른쪽 아래에 연필이 선다. 편집기는 패널 머리 아래로 펼쳐진다. */
+.avatar-editor {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+.avatar-editor.is-inline { justify-items: stretch; }
+.avatar-editor-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.avatar-editor-trigger {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  cursor: pointer;
+}
+.avatar-editor-trigger:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+.avatar-editor-pen {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--text-primary);
+  color: var(--conversation-surface);
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+.avatar-editor.is-inline .avatar-editor-pen { width: 14px; height: 14px; right: -2px; bottom: -2px; }
+.avatar-editor-pen svg { width: 60%; height: 60%; }
+.avatar-editor-trigger:hover .avatar-editor-pen,
+.avatar-editor-trigger:focus-visible .avatar-editor-pen,
+.avatar-editor-trigger[aria-expanded="true"] .avatar-editor-pen { opacity: 1; }
+.avatar-editor-picker {
+  width: 100%;
+  max-width: 300px;
+  text-align: left;
+}
+.avatar-editor.is-inline .avatar-editor-picker { max-width: none; }
+.avatar-editor-undo {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+}
+.avatar-editor-undo-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brass-ink);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+.avatar-editor-undo-button:hover { text-decoration: underline; }
 
 .conversation-panel-identity-name {
   max-width: 100%;

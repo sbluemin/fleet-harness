@@ -1,10 +1,13 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
+import { operationAvatarKey, theaterAvatarKey } from "@fleet-console/sdk/avatars";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import { activityKey, memberActivityVisual } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
+import { AvatarEditor, mongleStateOfMark } from "../../../../../workspace/client/avatars.js";
+import { useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import "./group-chat.css";
 
 /**
@@ -67,9 +70,16 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
     : speaker.kind === "member" ? t("group.member")
       : speaker.kind === "commodore" ? t("group.commodore")
         : speaker.kind === "human" ? t("group.you") : t("group.operation");
+  // Operation 이 있는 참여자(사령관 포함)의 아바타는 이 탭에서 고친다 — 대화 중심 화면에만 서는 탭이다. 사람은 첫 글자 칩 그대로다.
+  const subject = useConversationSubject();
+  const avatar = speaker.kind === "commodore"
+    ? { key: theaterAvatarKey(subject?.theaterId ?? "unknown"), role: "commodore" as const }
+    : speaker.kind !== "human" && speaker.operationId
+      ? { key: operationAvatarKey(speaker.operationId), role: speaker.kind === "member" ? "member" as const : "commander" as const }
+      : null;
   const identity = (
     <>
-      <SpeakerMark speaker={speaker} />
+      {avatar ? null : <SpeakerMark speaker={speaker} />}
       <span className="group-members-text">
         <SpeakerName speaker={speaker} className="group-members-name" />
         <span className="group-members-role">{role}</span>
@@ -81,15 +91,20 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
     </>
   );
   // 줄의 다른 단추(정지·제거)는 줄 단추 안에 넣지 않고 그 아래 형제로 둔다 — 단추 안의 단추는 서지 않고, 누름이 겹치지 않는다.
+  const main = onLedger ? (
+    <button type="button" className={`group-members-main${avatar ? " has-avatar" : ""}`} aria-pressed={showing} onClick={onLedger}>
+      {identity}
+    </button>
+  ) : (
+    <div className={`group-members-main${avatar ? " has-avatar" : ""}`}>{identity}</div>
+  );
   return (
     <li className={`group-members-row${onLedger ? " is-openable" : ""}${showing ? " is-showing" : ""}`}>
-      {onLedger ? (
-        <button type="button" className="group-members-main" aria-pressed={showing} onClick={onLedger}>
-          {identity}
-        </button>
-      ) : (
-        <div className="group-members-main">{identity}</div>
-      )}
+      {avatar ? (
+        <AvatarEditor layout="inline" avatarKey={avatar.key} role={avatar.role} state={mongleStateOfMark(activity === "awaiting" ? "awaiting" : activity === "running" ? "running" : activity === "ended" ? "ended" : "idle")} size={26} label={speaker.name}>
+          {main}
+        </AvatarEditor>
+      ) : main}
       {onStop || onRemove ? (
         <span className="group-members-actions">
           {onStop ? <button type="button" className="group-chat-link" onClick={onStop}>{t("group.members.stop")}</button> : null}

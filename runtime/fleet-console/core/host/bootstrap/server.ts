@@ -4,6 +4,7 @@ import { createWorkspaceActions } from "../../../features/workspace/host/actions
 import { createOperationArchiveStorage, archiveEvent, archiveSessionNodes, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
 import { createOperationArchiveCoordinator } from "../../../features/workspace/host/operation-archive.js";
 import { createOperationArchiveRouter, OPERATION_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/operation-archive-routes.js";
+import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -543,6 +544,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let purgeCoreOperation: ((operation: OperationNode) => void) | null = null;
   let resumeArchivedOperation: ConsoleUseActions["resume"];
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
+  const avatarStore = createAvatarStore(durablePaths.dir);
   // Agent 실행 옵션은 Console 설정 파일의 한 섹션이다. 옛 자리(Fleet 루트의 settings.json)는
   // 인스턴스를 가리지 않는 한 벌이었으므로 이 슬롯으로 한 번 승계한다.
   const agentOptions = createAgentOptionsService({ store: consoleSettingsStore, legacyDirs: [fleetDataDir] });
@@ -1516,6 +1518,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const operationArchiveRouter = createOperationArchiveRouter({ archive: operationArchive, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson, sanitize: (node) => sanitizeArchiveOperation(node, true) });
   routeRegistry.register("/api/v1/operations", async (context) => await operationArchiveRouter(context) || operationsRouter(context));
+  const avatarRouter = createAvatarRouter({ store: avatarStore, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson });
+  routeRegistry.register("/api/v1/avatars", avatarRouter);
   routeRegistry.register("/api/v1/theaters", async (context) => {
     return false;
   });
