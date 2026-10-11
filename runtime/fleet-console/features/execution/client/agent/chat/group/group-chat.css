@@ -9,6 +9,8 @@
   height: 100%;
   /* 말풍선 열과 입력 캡슐의 좌우 여백이 이 칸의 폭(cqi)을 함께 따른다. */
   container-type: inline-size;
+  /* 채팅뷰와 같은 코드 서체 — 말풍선 마크다운이 채팅뷰의 규칙(:is(.agent-chat, .group-chat) …)을 그대로 쓴다. */
+  --agent-chat-font: var(--font-code);
 }
 
 .group-chat-log {

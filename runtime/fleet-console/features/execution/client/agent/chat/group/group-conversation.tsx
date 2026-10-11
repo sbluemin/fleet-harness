@@ -192,7 +192,7 @@ function MessageBubble({ entry, continued, language }: {
         ) : null}
         <div className={`group-chat-bubble is-human${entry.format === "markdown" ? " is-markdown" : ""}`}>
           {entry.format === "markdown"
-            ? <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
+            ? <StreamedMarkdown text={entry.text} streaming={false} className="agent-chat-dispatch-md" language={language} />
             : entry.text}
         </div>
       </div>
@@ -207,7 +207,7 @@ function MessageBubble({ entry, continued, language }: {
         <div className="group-chat-bubble is-agent is-markdown">
           {entry.text.trim().length === 0 && entry.streaming
             ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span>
-            : <StreamedMarkdown text={entry.text} streaming={entry.streaming} className="group-chat-md markdown-body" language={language} />}
+            : <StreamedMarkdown text={entry.text} streaming={entry.streaming} className="agent-chat-answer-body markdown-body group-chat-md" language={language} />}
         </div>
       </div>
     </div>

@@ -1509,9 +1509,10 @@
 }
 
 /* 공유 .markdown-body(리딩 스케일 17px·78ch 중앙 정렬)를 챗 밀도로 오버라이드한다 —
+   그룹 대화 말풍선(.group-chat)도 같은 규칙을 쓴다 — 같은 화면 문법이면 같은 표현이다. 말풍선은 면·반경·여백만 더한다.
    마크다운 문법(brass 인라인 코드·리스트 마커·코드 블록 툴바)은 그대로 상속한다.
    measure는 자체 상한 대신 턴 컬럼 전폭을 따른다. */
-.agent-chat .markdown-body {
+:is(.agent-chat, .group-chat) .markdown-body {
   --font-size-body: var(--font-content-size);
   /* 산문은 공유 마크다운과 같은 콘텐츠 축을 따른다. 작성자·시간·도구 행은 UI 축에 남고,
      코드·인라인 코드는 아래 규칙과 공유 마크다운의 코드 축을 유지한다. */
@@ -1524,7 +1525,7 @@
   overflow-wrap: anywhere;
 }
 
-.agent-chat .markdown-body > * + * {
+:is(.agent-chat, .group-chat) .markdown-body > * + * {
   margin-top: var(--space-3);
 }
 
@@ -1532,8 +1533,8 @@
    한글 UI 라벨(좌표·이전 대화 띠)은 본문 서체로 바꿨다(아래 history-band·coord 규칙).
    합자 해제는 필수다 — Cascadia Code 같은 터미널 서체는 합자로 표의 `|---|`를 선 모양으로
    바꾼다. 공용 마크다운 렌더러는 건드리지 않고 .agent-chat 범위로 덮어쓴다. */
-.agent-chat .markdown-body code,
-.agent-chat .code-block code {
+:is(.agent-chat, .group-chat) .markdown-body code,
+:is(.agent-chat, .group-chat) .code-block code {
   font-family: var(--agent-chat-font);
   font-size: var(--font-code-size);
   font-variant-ligatures: none;
@@ -1541,7 +1542,7 @@
 
 /* 인라인 코드 — 공용의 brass 잉크·테두리를 걷고 중립 면으로 물러난다. 긴 경로는
    anywhere로 끊는다. */
-.agent-chat .markdown-body :not(pre) > code {
+:is(.agent-chat, .group-chat) .markdown-body :not(pre) > code {
   background: var(--control-wash);
   border-color: transparent;
   color: var(--text-primary);
@@ -1549,25 +1550,25 @@
 }
 
 /* 코드 블록 — 공용의 테두리·그림자·어두운 면을 걷고 중립 면 하나만 남긴다. */
-.agent-chat .code-block {
+:is(.agent-chat, .group-chat) .code-block {
   border-color: transparent;
   box-shadow: none;
   background: var(--control-rest);
 }
 
-.agent-chat .code-block code { padding: var(--space-1) var(--space-3) var(--space-3); }
+:is(.agent-chat, .group-chat) .code-block code { padding: var(--space-1) var(--space-3) var(--space-3); }
 
 /* 코드 블록 머리줄 — 장식 점을 지우고 언어 이름을 왼쪽 본문 문법으로 둔다.
    렌더러를 고치지 않으므로 「복사」는 글자 버튼으로 남기고 테두리만 걷는다. */
-.agent-chat .code-block-dots { display: none; }
+:is(.agent-chat, .group-chat) .code-block-dots { display: none; }
 
-.agent-chat .code-block-toolbar {
+:is(.agent-chat, .group-chat) .code-block-toolbar {
   padding: var(--space-1) var(--space-1) 0 var(--space-3);
   background: transparent;
   border-bottom: 0;
 }
 
-.agent-chat .code-block-language {
+:is(.agent-chat, .group-chat) .code-block-language {
   text-align: left;
   font-family: var(--font-code);
   font-size: var(--font-code-size);
@@ -1575,7 +1576,7 @@
   text-transform: none;
 }
 
-.agent-chat .copy-code {
+:is(.agent-chat, .group-chat) .copy-code {
   border-color: transparent;
   background: transparent;
   font-family: var(--font-code);
@@ -1584,7 +1585,7 @@
   letter-spacing: 0;
 }
 
-.agent-chat .copy-code:hover { background: var(--control-rest-hover); }
+:is(.agent-chat, .group-chat) .copy-code:hover { background: var(--control-rest-hover); }
 
 /* 이전 대화 띠 — 공용 .fc-history-band(등폭·자간·대문자)를 채팅의 보조 문법으로 덮는다.
    공용 기본 블록은 건드리지 않는다. */
@@ -1599,8 +1600,8 @@
    되살린다(Quiet Controls C′). 버튼의 ButtonBorder와 같은 문법이다. */
 @media (forced-colors: active) {
   .agent-chat-dispatch-bubble,
-  .agent-chat .code-block,
-  .agent-chat .markdown-body :not(pre) > code,
+  :is(.agent-chat, .group-chat) .code-block,
+  :is(.agent-chat, .group-chat) .markdown-body :not(pre) > code,
   .agent-chat-step-out { border-color: ButtonBorder; }
 }
 
