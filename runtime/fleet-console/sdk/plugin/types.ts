@@ -1040,6 +1040,11 @@ export interface OperationRenderContext extends OperationContext {
   readonly hiddenCompanionPanelIds?: readonly string[];
   /** Requests a volatile host-owned visibility override for one companion panel. */
   readonly onSetCompanionPanelVisible?: (companionPanelId: string, visible: boolean) => void;
+  /**
+   * Companion panels this host offers for the Operation. `undefined` offers every panel the plugin declares; a host
+   * that offers only some lists them, and the plugin does not raise an entry (such as a caption button) for the rest.
+   */
+  readonly companionPanelIds?: readonly string[];
 }
 
 export interface FleetPluginManifest {

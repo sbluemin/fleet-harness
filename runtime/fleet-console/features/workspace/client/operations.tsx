@@ -1002,7 +1002,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           language={language}
           operationKinds={registry.operationKinds}
           onClose={handleClose}
-          onOpenOperationMenu={openOperationMenu}
         />
         {toastRegion}
         <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />

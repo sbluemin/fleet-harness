@@ -102,6 +102,7 @@ interface PluginOperationRendererProps {
   readonly companionsOpen: boolean;
   readonly hiddenCompanionPanelIds: readonly string[];
   readonly onSetCompanionPanelVisible: (companionPanelId: string, visible: boolean) => void;
+  readonly companionPanelIds?: readonly string[];
   readonly bodyLive?: boolean;
   readonly render: (context: OperationRenderContext) => unknown;
 }
@@ -2529,6 +2530,7 @@ export function PluginOperationRenderer({
   companionsOpen,
   hiddenCompanionPanelIds,
   onSetCompanionPanelVisible,
+  companionPanelIds,
   bodyLive,
   render,
 }: PluginOperationRendererProps) {
@@ -2566,6 +2568,7 @@ export function PluginOperationRenderer({
     companionsOpen,
     hiddenCompanionPanelIds,
     onSetCompanionPanelVisible,
+    ...(companionPanelIds === undefined ? {} : { companionPanelIds }),
   }) as ReactNode;
 }
 

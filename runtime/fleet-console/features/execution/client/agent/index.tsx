@@ -452,6 +452,11 @@ function toggleCompanionPanel(
   for (const id of clusterIds) context.onSetCompanionPanelVisible(id, false);
 }
 
+/** 호스트가 그 companion 패널을 내주는가 — 목록을 주지 않은 호스트는 전부 내준다. 대화 중심 화면은 분석가를 내주지 않는다. */
+function offersCompanion(context: OperationRenderContext, companionId: string): boolean {
+  return context.companionPanelIds === undefined || context.companionPanelIds.includes(companionId);
+}
+
 /** 터미널·채팅·휴면 뷰 공용의 Analyst 진입 칩 — 채팅 전환 칩과 같은 자리·같은 문법으로
     드로어를 여닫는다. 세로 ANALYZE/EXIT 핸들의 후계다. */
 /**
@@ -519,7 +524,7 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
 
   // 컴패니언을 열 수 없는 호스트에는 분석가 문을 세우지 않는다 — 모바일 레이아웃은 화면 전부를
   // 세션에 주고 이 콜백을 빼며, 그 부재가 곧 "여기엔 드로어가 없다"는 말이다.
-  const analyst = context.onRequestCompanions === undefined ? null : (
+  const analyst = context.onRequestCompanions === undefined || !offersCompanion(context, ANALYST_CHAT_COMPANION_ID) ? null : (
     <CaptionActionButton
       actionId="analyst"
       label={analystReady ? t(analystOpen ? "terminal.analyst.exit" : "terminal.analyst.open") : t("terminal.analyst.sendMessageFirst")}
@@ -542,7 +547,7 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
   const browserLabel = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
-  const browser = context.onRequestCompanions === undefined ? null : (
+  const browser = context.onRequestCompanions === undefined || !offersCompanion(context, BROWSER_COMPANION_ID) ? null : (
     <CaptionActionButton
       actionId="browser"
       label={browserLabel}

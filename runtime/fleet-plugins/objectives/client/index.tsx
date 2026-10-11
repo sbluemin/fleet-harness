@@ -71,6 +71,8 @@ export const objectivesEntry: RailEntryDescriptor = {
   activate: (ctx) => toggleObjectivePlace(ctx.rail, ctx.surfaces),
   // 표면은 활성 Operation 의 목표로 열린다 — 입구를 누르는 순간 활성이 풀리면 따라갈 목표가 사라진다.
   keepsOperationActive: true,
+  // 대화 중심 화면의 Operation 대화에서 도구 줄이 걷혀도 목표 입구는 「구성원」 곁 글자 단추 「목표」로 남는다.
+  conversationTab: true,
   // 사람의 답을 기다리는 결정 요청 수 — 표면을 닫아 두어도 아이콘 배지로 선다.
   attention: {
     // 사령관 상태도 「확인 필요」 행의 메모(사령관이 답하는 중)를 바꾼다.
