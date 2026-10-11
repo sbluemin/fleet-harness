@@ -10,7 +10,7 @@ import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-drawer.js";
+import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { clockTime, commodoreSummary } from "./commodore-row.js";
 import {
   addCommodoreIntel,

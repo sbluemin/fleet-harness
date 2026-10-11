@@ -5,12 +5,12 @@ import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import { objectivesArchiveSections } from "./archive.js";
 import { objectivesClusterSource } from "./clusters.js";
-import { CommodoreDrawerHost } from "./commodore-drawer.js";
+import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { CommodoreRow } from "./commodore-row.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installLaunchRoster } from "./launch-control.js";
-import { COMMODORE_ENTRY_ID, commodoreDestinationShown, installCommodoreState, subscribeCommodoreMentions } from "./commodore-state.js";
+import { COMMODORE_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, subscribeCommodoreMentions } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
 import { decisionAttentionItems, MobileObjectiveDetail, MobileObjectiveList, OBJECTIVE_MOBILE_DETAIL_PANE, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
@@ -145,8 +145,10 @@ const objectivesPlugin = definePlugin({
   mentionTargets: commodoreMentionTargets,
   subscribeMentionTargets: subscribeCommodoreMentions,
   messageMentionTarget: messageCommodoreMention,
-  // 「사령관 기록」 서랍은 줄이 접혀 사라져도 열린 채로 남는다.
-  persistentComponents: [{ id: "commodore-drawer", render: (context) => <CommodoreDrawerHost {...context} /> }],
+  // 사령관 — Theater Inbox 의 섹션(기록·지시·정보·설정). 시트 틀은 호스트가 그린다.
+  theaterInboxSections: [commodoreInboxSection],
+  // 상주 기여라 사령관 줄·Inbox 가 닫혀 있어도 언어를 알린다 — 리액트 밖의 Quick Launch '@' 행이 이 값으로 문구를 고른다.
+  persistentComponents: [{ id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } }],
 });
 
 export const plugins = [objectivesPlugin] as const;

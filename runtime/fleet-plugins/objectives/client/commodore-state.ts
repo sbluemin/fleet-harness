@@ -83,8 +83,6 @@ export function commodoreLanguage(): "en" | "ko" | undefined {
 
 const withLanguage = <B extends Record<string, unknown>>(body: B): B & { language?: "en" | "ko" } => (language ? { ...body, language } : body);
 
-let drawer: { readonly theaterId: string; readonly tab: CommodoreTab; readonly openedAt: number } | null = null;
-
 let revision = 0;
 
 function notify(): void {
@@ -246,7 +244,6 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     experimentsKnown = known;
     if (next === enabledSnapshot) { notify(); return; }
     enabledSnapshot = next;
-    if (!next) drawer = null;
     // 켜고 끈 결과는 서버의 view(enabled·active)에도 실린다 — 읽어 둔 Theater 를 다시 읽는다.
     for (const [theaterId, current] of theaters) if (current.view) void loadCommodore(theaterId, true);
     if (next && activeTheater) void loadCommodore(activeTheater);
@@ -260,7 +257,6 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     if (installed === ctx) installed = null;
     theaters.clear();
     loading.clear();
-    drawer = null;
     notify();
   };
 }
@@ -318,7 +314,17 @@ export function useCommodore(theaterId: string): TheaterCommodore {
   return useSyncExternalStore(subscribeCommodore, () => readCommodore(theaterId), () => readCommodore(theaterId));
 }
 
-/** 실험 기능 「자율 운영」 — 꺼져 있으면 사령관 줄·메뉴·서랍이 서지 않는다. */
+/** 실험 기능 「자율 운영」을 읽었는가와 켜져 있는가 — Theater Inbox 섹션이 리액트 밖에서 읽는다(부수효과 없음). */
+const EXPERIMENT_STATES = {
+  unknown: { known: false, enabled: false },
+  off: { known: true, enabled: false },
+  on: { known: true, enabled: true },
+} as const;
+export function readCommodoreExperiment(): { readonly known: boolean; readonly enabled: boolean } {
+  return !experimentsKnown ? EXPERIMENT_STATES.unknown : enabledSnapshot ? EXPERIMENT_STATES.on : EXPERIMENT_STATES.off;
+}
+
+/** 실험 기능 「자율 운영」 — 꺼져 있으면 사령관 줄·메뉴가 서지 않고, Theater Inbox 의 사령관 섹션은 안내 한 줄만 남는다. */
 export function useCommodoreEnabled(): boolean {
   return useSyncExternalStore(subscribeCommodore, () => enabledSnapshot, () => enabledSnapshot);
 }
@@ -337,19 +343,11 @@ export function commodoreTheaterLabel(theaterId: string): string {
   return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.label ?? "";
 }
 
-/* ── 서랍 ─────────────────────────────────────────────────────────────── */
-
-export function openCommodoreDrawer(theaterId: string, tab: CommodoreTab = "log"): void {
-  if (!enabledSnapshot) return;
-  drawer = { theaterId, tab, openedAt: Date.now() };
-  void loadCommodore(theaterId);
-  if (!(theaters.get(theaterId)?.transcriptLoaded)) void loadTranscript(theaterId);
-  notify();
-}
+/* ── 폰 사령관 화면 ──────────────────────────────────────────────────── */
 
 export const COMMODORE_ENTRY_ID = "commodore";
 
-/** 폰 사령관 화면의 고른 구역 — 다시 들어와도 유지한다(S-54 CM-2a). 서랍을 열려던 길·Theater 시트 행도 여기에 구역을 남긴다. */
+/** 폰 사령관 화면의 고른 구역 — 다시 들어와도 유지한다(S-54 CM-2a). 데스크톱 Theater Inbox 에서 넘어올 때·Theater 시트 행도 여기에 구역을 남긴다. */
 let mobileTab: CommodoreMobileTab = "log";
 
 export function setCommodoreMobileTab(tab: CommodoreMobileTab): void {
@@ -366,38 +364,6 @@ export function useCommodoreMobileTab(): CommodoreMobileTab {
 export function openCommodoreMobile(tab: CommodoreMobileTab): void {
   setCommodoreMobileTab(tab);
   installed?.rail.open(COMMODORE_ENTRY_ID);
-}
-
-/**
- * 폰 배치에서 서랍이 열려 있으면 — 상주 시트는 폰에서 서지 않는다 — 서랍을 닫고 같은 구역으로 드로어 목적지 「사령관」 화면을 연다.
- */
-export function routeCommodoreDrawerToMobile(): void {
-  if (!drawer) return;
-  const tab = drawer.tab;
-  drawer = null;
-  notify();
-  openCommodoreMobile(tab);
-}
-
-export function setCommodoreTab(tab: CommodoreTab): void {
-  if (!drawer || drawer.tab === tab) return;
-  drawer = { ...drawer, tab };
-  notify();
-}
-
-export function closeCommodoreDrawer(): void {
-  if (!drawer) return;
-  drawer = null;
-  notify();
-}
-
-export function toggleCommodoreDrawer(theaterId: string): void {
-  if (drawer?.theaterId === theaterId) closeCommodoreDrawer();
-  else openCommodoreDrawer(theaterId, "log");
-}
-
-export function useCommodoreDrawer(): typeof drawer {
-  return useSyncExternalStore(subscribeCommodore, () => drawer, () => drawer);
 }
 
 /* ── 사람의 행위 ─────────────────────────────────────────────────────── */
