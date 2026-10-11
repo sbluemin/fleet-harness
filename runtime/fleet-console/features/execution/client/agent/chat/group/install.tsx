@@ -171,7 +171,7 @@ function MemberLedger({ root, member, language, children }: {
   // 지휘관 본문은 평소 입력 틀을 가진 채팅이다 — 이 틀 안에 선 동안만 구성원 원장처럼 입력 틀을 뺀다(commander-ledger).
   React.useLayoutEffect(() => (commander ? frameCommanderLedger(root.id) : undefined), [commander, root.id]);
   return (
-    <GroupLedgerFrame speaker={speaker} language={language} onBack={() => openLedger(root.id, null)}>
+    <GroupLedgerFrame speaker={speaker} language={language}>
       {children}
     </GroupLedgerFrame>
   );

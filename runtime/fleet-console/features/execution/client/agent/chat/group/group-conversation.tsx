@@ -114,14 +114,14 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
 
 /**
  * 한 참여자의 원장을 그룹 대화 자리에 세우는 틀 — 위에 「읽기 전용」 머리, 가운데 그 Operation 의 기존 본문(셸이 주는
- * 기본 본문: 채팅이면 도구 스텝까지 담은 구성원 원장, 터미널이면 터미널), 아래에 「대화로 돌아가기」.
+ * 기본 본문: 채팅이면 도구 스텝까지 담은 구성원 원장, 터미널이면 터미널). 대화로 돌아가는 길은 오른쪽 「구성원」 탭에서 보고 있는 줄을
+ * 다시 누르는 것이다 — 틀 안에 따로 돌아가기 단추를 두지 않는다.
  * 본문은 셸의 기존 구성원 본문 경로가 그리므로 이 틀은 연결을 만들지 않는다. 사람 입력창은 서지 않는다 — 구성원 본문에는
  * 처음부터 입력 틀이 없다.
  */
-export function GroupLedgerFrame({ speaker, language, onBack, children }: {
+export function GroupLedgerFrame({ speaker, language, children }: {
   readonly speaker: ConversationSpeaker;
   readonly language: ConsoleLocale | undefined;
-  readonly onBack: () => void;
   readonly children: React.ReactNode;
 }) {
   const t = getGroupT(language);
@@ -132,9 +132,6 @@ export function GroupLedgerFrame({ speaker, language, onBack, children }: {
         <span>{t("group.ledger.banner", { name: speaker.name })}</span>
       </div>
       <div className="group-ledger-body">{children}</div>
-      <div className="group-chat-return">
-        <button type="button" className="group-chat-return-button" onClick={onBack}>{t("group.ledger.back")}</button>
-      </div>
     </div>
   );
 }

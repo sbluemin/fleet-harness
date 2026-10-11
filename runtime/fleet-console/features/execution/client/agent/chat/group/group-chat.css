@@ -228,21 +228,6 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 .group-chat-working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-chat-working-hint { flex: none; font-size: var(--t-2xs); color: var(--text-tertiary); }
 
-.group-chat-return { flex: none; display: flex; justify-content: center; padding: var(--space-2) var(--space-4) var(--space-4); }
-.group-chat-return-button {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-pill);
-  background: var(--control-rest);
-  font: inherit;
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-.group-chat-return-button:hover { background: var(--control-rest-hover); }
-.group-chat-return-button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
-
 /* 오른쪽 「구성원」 탭 */
 .group-members { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); font-family: var(--font-ui); }
 .group-members-heading {
