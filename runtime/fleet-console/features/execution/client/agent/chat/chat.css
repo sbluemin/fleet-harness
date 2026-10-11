@@ -5130,3 +5130,31 @@
   color: var(--warn-ink);
   font-size: var(--t-xs);
 }
+
+/* ── 대화 중심 화면의 1:1 대화 ──────────────────────────────────────────────
+   구성원 없는 지휘관과 일반 채팅을 그룹 대화와 같은 문법으로 그린다: 사람 말은 오른쪽 말풍선(기존 디스패치 말풍선),
+   답은 왼쪽 말풍선, 입력은 캡슐. 1:1 이라 답 말풍선 위 이름은 두지 않는다(누구의 말인지 헷갈릴 상대가 없다).
+   도구 단계·생각·변경은 지금처럼 답 위의 접힌 줄로 남는다 — 모양만 바뀌고 기능은 이 본문이 그대로 진다.
+   토글이 꺼진 캔버스·구성원 원장·모바일에는 이 클래스가 붙지 않는다. */
+.agent-chat.is-conversation .agent-chat-answer,
+.agent-chat.is-conversation .agent-chat-stream {
+  width: fit-content;
+  max-width: min(680px, 88%);
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: 14px 14px 14px 5px;
+  background: var(--surface-panel-raised);
+}
+.agent-chat.is-conversation .agent-chat-answer .agent-chat-answer-kicker { display: none; }
+.agent-chat.is-conversation .agent-chat-answer-body > :first-child,
+.agent-chat.is-conversation .agent-chat-stream > :first-child { margin-top: 0; }
+.agent-chat.is-conversation .agent-chat-answer-body > :last-child,
+.agent-chat.is-conversation .agent-chat-stream > :last-child { margin-bottom: 0; }
+.agent-chat.is-conversation .agent-chat-composer-frame {
+  border-color: var(--hairline-strong);
+  border-radius: 24px;
+  background: var(--surface-panel-raised);
+}
+.agent-chat.is-conversation .group-solo-cards { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.agent-chat.is-conversation .group-solo-cards .group-card { margin-left: 0; }

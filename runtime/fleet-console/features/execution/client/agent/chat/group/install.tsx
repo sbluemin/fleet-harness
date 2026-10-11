@@ -2,12 +2,14 @@ import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
-import { selectNestedBody } from "../../../../../../core/client/src/integration/store.js";
+import { getState, selectNestedBody, subscribe as subscribeConsole } from "../../../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import type { OperationNode } from "../../../../../../core/client/src/integration/types.js";
 import {
+  getConversationSubject,
   registerConversationOperationTab,
   setConversationBodyRenderer,
+  subscribeConversationSubject,
   useConversationSubject,
   type ConversationBodyContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
@@ -62,7 +64,11 @@ const MEMBERS_TAB = {
   render: (ctx: RailPanelContext) => <MembersTab ctx={ctx} />,
 };
 function syncMembersTab(): void {
-  const hidden = getConversationSurface() !== null;
+  // 1:1 대화(구성원 없는 지휘관·일반 채팅)에는 명부가 없다 — 탭을 세우지 않는다.
+  const subject = getConversationSubject();
+  const rootId = subject ? subject.parentOperationId ?? subject.id : null;
+  const hasMembers = rootId !== null && getState().nestedOperations.some((operation) => operation.parentOperationId === rootId);
+  const hidden = getConversationSurface() !== null || !hasMembers;
   if (hidden && releaseMembersTab) { releaseMembersTab(); releaseMembersTab = null; }
   if (!hidden && !releaseMembersTab) releaseMembersTab = registerConversationOperationTab(MEMBERS_TAB);
 }
@@ -70,7 +76,10 @@ function ensureMembersTab(): void {
   if (membersTabPrepared) return;
   membersTabPrepared = true;
   syncMembersTab();
+  // 대화 표면·가운데 칸의 주인·명부가 바뀔 때만 다시 고른다. 레일 목록 변화는 이 셋을 바꾸지 않으므로 설치 재실행 고리가 없다.
   subscribeConversationSurface(syncMembersTab);
+  subscribeConversationSubject(syncMembersTab);
+  subscribeConsole(syncMembersTab);
 }
 
 function renderConversationBody(context: ConversationBodyContext): React.ReactNode | null {
