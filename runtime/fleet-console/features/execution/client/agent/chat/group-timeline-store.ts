@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineSnapshot, OperationClusterConversation } from "@fleet-console/sdk/conversation";
 import type { OperationClusterSource, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { getState, ownOperationRuntime, subscribe as subscribeConsole } from "../../../../../core/client/src/integration/store.js";
@@ -19,8 +19,36 @@ export function useGroupClusters() {
   return useSyncExternalStore(source.subscribe, source.get, source.get);
 }
 
-type Held = { root: string; generation: string | undefined; journal: ConversationJournal; staging: ConversationJournal; loading: boolean; available: boolean; socket?: ReturnType<typeof createChatSocketSession> };
+/**
+ * `history`는 휴면 참여자의 저장된 지난 대화를 한 번 읽은 상태다(읽기 전용 투영, 재개 없음). live 소켓이 서면
+ * 그 스냅숏이 통째로 갈아 끼운다.
+ */
+type Held = { root: string; generation: string | undefined; journal: ConversationJournal; staging: ConversationJournal; loading: boolean; available: boolean; socket?: ReturnType<typeof createChatSocketSession>; history: "idle" | "loading" | "done" | "failed"; historyAbort?: AbortController };
 const held = new Map<string, Held>();
+/** 지난 대화를 읽을 그룹 루트들. 그룹 화면이 실제로 그 루트를 볼 때만 들어온다 — 휴면 원장 전부를 미리 읽지 않는다. */
+const demanded = new Set<string>();
+let resync: (() => void) | null = null;
+const HISTORY_PATH = (operationId: string) => `/api/v1/agent/sessions/${encodeURIComponent(operationId)}/chat-history`;
+
+/** 서버가 트랜스크립트에서 투영한 지난 대화. 응답 줄은 소켓 저널과 같은 모양이라 같은 해석기를 지난다. */
+async function fetchHistory(operationId: string, signal: AbortSignal): Promise<ConversationJournal | null> {
+  const response = await fetch(HISTORY_PATH(operationId), { signal });
+  if (!response.ok) return null;
+  const payload = await response.json() as { readonly entries?: unknown; readonly truncated?: unknown };
+  if (!Array.isArray(payload.entries)) return null;
+  let journal = EMPTY_CONVERSATION_JOURNAL;
+  for (const entry of payload.entries) {
+    const row = readChatJournalEvent(JSON.stringify(entry));
+    if (row) journal = reduceConversationJournal(journal, row, operationId);
+  }
+  return payload.truncated === true ? { ...journal, truncated: true } : journal;
+}
+
+function stopHistory(record: Held): void {
+  record.historyAbort?.abort();
+  record.historyAbort = undefined;
+  if (record.history === "loading") { record.history = "idle"; record.loading = false; }
+}
 const listeners = new Set<() => void>();
 let revision = 0;
 const notify = () => { revision++; for (const listener of listeners) listener(); };
@@ -38,25 +66,47 @@ export function installGroupTimeline(ctx: { readonly experiments: Pick<PluginIns
     const ids = new Set(all.map((operation) => operation.id));
     const enabled = ctx.experiments.read()?.conversationLayout === true;
     const sessions = getAgentState().sessions;
+    const runtime = ownOperationRuntime();
     for (const [id, record] of held) {
-      if (!roots.has(record.root)) { record.socket?.dispose(); held.delete(id); continue; }
+      if (!roots.has(record.root)) { record.socket?.dispose(); stopHistory(record); held.delete(id); continue; }
+      if (!ids.has(id) || !enabled) stopHistory(record);
       if (!ids.has(id) || !enabled || sessions[id]?.chatActive !== true) {
-        record.socket?.dispose(); record.socket = undefined; record.loading = false; record.available = false;
+        record.socket?.dispose(); record.socket = undefined; record.available = false;
+        if (record.history !== "loading") record.loading = false;
       }
     }
     for (const operation of all) {
       const session = sessions[operation.id];
       let record = held.get(operation.id);
       const root = operation.parentOperationId ?? operation.id;
+      // 휴면에서 읽은 지난 대화는 새 세대의 live 스냅숏이 닿을 때까지 그대로 보인다(재개 순간 빈 화면으로 깜빡이지 않게).
+      let carried: ConversationJournal | undefined;
       if (record && session?.generation !== record.generation && session?.chatActive === true) {
-        record.socket?.dispose(); held.delete(operation.id); record = undefined;
+        record.socket?.dispose(); stopHistory(record);
+        if (record.history === "done") carried = record.journal;
+        held.delete(operation.id); record = undefined;
       }
       if (!record) {
-        record = { root, generation: session?.generation, journal: EMPTY_CONVERSATION_JOURNAL, staging: EMPTY_CONVERSATION_JOURNAL, loading: false, available: false };
+        record = { root, generation: session?.generation, journal: carried ?? EMPTY_CONVERSATION_JOURNAL, staging: EMPTY_CONVERSATION_JOURNAL, loading: false, available: false, history: "idle" };
         held.set(operation.id, record);
       }
       record.root = root;
+      // 휴면 참여자: 저장된 트랜스크립트를 한 번 읽는다. ticket·재개·소켓 없이 파일 읽기 라우트만 부른다.
+      // 이 페이지에서 이미 live로 읽은 원장이 있으면 그것을 보존한다.
+      if (enabled && demanded.has(root) && runtime[operation.id]?.lifecycle === "dormant" && !record.socket && record.history === "idle" && record.journal.entries.length === 0) {
+        const pending = record;
+        const abort = new AbortController();
+        pending.history = "loading"; pending.historyAbort = abort; pending.loading = true;
+        void fetchHistory(operation.id, abort.signal).catch(() => null).then((journal) => {
+          // 그새 live 소켓이 섰거나 토글이 꺼졌다면 abort가 이 응답을 버린다 — 늦은 이력이 live 스냅숏을 덮지 않는다.
+          if (disposed || abort.signal.aborted || held.get(operation.id) !== pending || pending.historyAbort !== abort) return;
+          pending.historyAbort = undefined; pending.loading = false;
+          if (journal) { pending.journal = journal; pending.history = "done"; } else pending.history = "failed";
+          notify();
+        });
+      }
       if (!enabled || session?.chatActive !== true || operation.payload.chatMode !== true || record.socket) continue;
+      stopHistory(record);
       const current = record;
       current.loading = true;
       const socket = createChatSocketSession({
@@ -84,12 +134,16 @@ export function installGroupTimeline(ctx: { readonly experiments: Pick<PluginIns
     notify();
   };
   const cleanups = [subscribeConsole(sync), subscribeAgent(sync), ctx.experiments.subscribe(sync)];
+  resync = sync;
   sync();
   return () => {
     disposed = true;
     for (const off of cleanups) off();
-    for (const record of held.values()) record.socket?.dispose();
+    for (const record of held.values()) { record.socket?.dispose(); stopHistory(record); }
     held.clear();
+    // 수요는 화면이 페이지 수명 동안 건 것이다 — 레일 목록 변화로 설치가 다시 돌 때 비우면, 같은 루트를 보는 화면의
+    // effect는 다시 돌지 않아 지난 대화를 다시 청하지 못한다. 다음 설치의 첫 sync가 이 수요를 그대로 이어받는다.
+    if (resync === sync) resync = null;
     notify();
   };
 }
@@ -116,7 +170,9 @@ function snapshot(rootOperationId: string | null, board: OperationClusterConvers
     if (!id) continue;
     const record = held.get(id);
     if (record?.root === rootOperationId) { journals.set(id, record.journal); loading ||= record.loading; }
-    if (!record?.available) unavailable.push(id);
+    // 휴면 참여자의 지난 대화를 읽었으면 읽을 수 있는 원장이다. 다시 live가 됐는데 소켓이 없으면(터미널 재개) 안내가 다시 선다.
+    const readable = record?.available === true || (record?.history === "done" && runtime[id]?.lifecycle === "dormant");
+    if (!readable) unavailable.push(id);
   }
   // 제거된 구성원의 이미 관측한 말은 부모가 살아 있는 동안 보존한다. 재로드 후 없는 원장은 복원했다고 주장하지 않는다.
   const historical: ConversationParticipant[] = [];
@@ -134,6 +190,12 @@ export function useGroupTimeline(rootOperationId: string | null): GroupTimelineS
   const tick = useSyncExternalStore(subscribe, getRevision, getRevision);
   const state = useConsoleState();
   const clusters = useGroupClusters();
+  // 이 루트를 실제로 보는 화면만 휴면 참여자의 지난 대화를 청한다. 한 번 청한 루트는 페이지 수명 동안 남는다(일회성 읽기, 연결 아님).
+  useEffect(() => {
+    if (!rootOperationId || demanded.has(rootOperationId)) return;
+    demanded.add(rootOperationId);
+    resync?.();
+  }, [rootOperationId]);
   return useMemo(() => snapshot(rootOperationId, clusters.find((cluster) => cluster.conversation?.operationId === rootOperationId)?.conversation, t("cluster.picker.coordinator")), [rootOperationId, clusters, state, tick, t]);
 }
 

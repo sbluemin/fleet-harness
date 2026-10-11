@@ -280,7 +280,7 @@ describe("AgentChatView history auto-fold", () => {
   });
 });
 
-it("keeps independent group journals alive across view closure and merges only confirmed message identities", async () => {
+it("keeps independent group journals alive across view closure, merges only confirmed message identities, and reads dormant history without waking", async () => {
   const previous = getState();
   const previousAgent = getAgentState();
   let group: GroupTimelineSnapshot | undefined;
@@ -289,11 +289,24 @@ it("keeps independent group journals alive across view closure and merges only c
   const clusterSource: OperationClusterSource = { get: () => clusters, subscribe: () => () => {} };
   const session = (id: string) => ({ sessionId: id, terminalSessionId: id, cwdLabel: "fixture", status: "live" as const, turnState: "running" as const, chatActive: true, createdAt: 1, resumeAvailable: true });
   setState({ operations: [{ id: "root", theaterId: "theater", title: "Commander", type: "agent", pluginId: null, geometry: null,
-    payload: { chatMode: true }, ts: { createdAt: 1, updatedAt: 1 }, childSessions: [{ id: "member", payload: { chatMode: true }, ts: { createdAt: 2, updatedAt: 2 } }] }],
+    payload: { chatMode: true }, ts: { createdAt: 1, updatedAt: 1 }, childSessions: [{ id: "member", payload: { chatMode: true }, ts: { createdAt: 2, updatedAt: 2 } },
+      { id: "archived", payload: { chatMode: true }, ts: { createdAt: 3, updatedAt: 3 } }, { id: "waking", payload: { chatMode: true }, ts: { createdAt: 4, updatedAt: 4 } }] }],
     operationRuntime: { root: { lifecycle: "live", activity: "running" }, member: { lifecycle: "live", activity: "running" } } });
   setOperationRuntime("root", { lifecycle: "live", activity: "running" });
   setOperationRuntime("member", { lifecycle: "live", activity: "running" });
-  setAgentState({ sessions: { root: session("root"), member: session("member") } });
+  setOperationRuntime("archived", { lifecycle: "dormant" });
+  setOperationRuntime("waking", { lifecycle: "dormant" });
+  const dormant = (id: string) => ({ ...session(id), status: "dormant" as const, chatActive: false });
+  setAgentState({ sessions: { root: session("root"), member: session("member"), archived: dormant("archived"), waking: dormant("waking") } });
+  // 휴면 참여자의 지난 대화는 파일 읽기 라우트로만 온다. 응답 시점은 테스트가 쥔다.
+  const histories = new Map<string, (text: string) => void>();
+  const ticketOnly = fetch;
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const history = /\/sessions\/([^/]+)\/chat-history$/.exec(String(input));
+    if (!history) return ticketOnly(input, init);
+    const text = await new Promise<string>((resolve) => histories.set(history[1]!, resolve));
+    return { ok: true, json: async () => ({ entries: [{ seq: 1, at: 50, event: { kind: "text", text } }], truncated: false }) } as Response;
+  });
   const dispose = installGroupTimeline({ experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, conversationLayout: true }), subscribe: () => () => {} } });
   function GroupProbe() { group = useGroupTimeline("root"); return null; }
   const render = () => act(() => root!.render(createElement(GroupClusterProvider, { value: clusterSource }, createElement(GroupProbe))));
@@ -320,6 +333,22 @@ it("keeps independent group journals alive across view closure and merges only c
     expect(group!.entries.find((entry) => entry.kind === "delegation")).toMatchObject({ received: true, ok: true, result: "Delivered", recipients: [{ operationId: "member", mark: { number: 1, tone: "teal" } }] });
     expect(group!.working.map((speaker) => speaker.operationId)).toEqual(["root", "member"]);
     expect(group!.preview).toMatchObject({ text: "Review complete", speaker: { operationId: "member" } });
+    // 휴면 참여자: ticket·소켓 없이 지난 대화가 읽기 전용으로 선다.
+    expect(ticketFetches.some(({ body }) => ["archived", "waking"].includes((body as { operationId?: string } | null)?.operationId ?? ""))).toBe(false);
+    expect([...histories.keys()].sort()).toEqual(["archived", "waking"]);
+    await act(async () => { histories.get("archived")!("Earlier verdict"); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(group!.entries.find((entry) => entry.kind === "message" && entry.operationId === "archived")).toMatchObject({ text: "Earlier verdict", at: 50 });
+    expect(group!.unavailableOperationIds).toEqual(["waking"]);
+    // 이력을 받기 전에 재개되면 live 스냅숏이 권위다 — 늦게 도착한 이력이 그것을 덮지 않는다.
+    act(() => {
+      setOperationRuntime("waking", { lifecycle: "live", activity: "idle" });
+      setAgentState({ sessions: { ...getAgentState().sessions, waking: session("waking") } });
+    });
+    await act(async () => { await Promise.resolve(); });
+    const waking = FakeWebSocket.instances.find((socket) => socket.url.includes("ticket-for-waking"))!;
+    act(() => { waking.open(); emit(waking, 1, { kind: "text", text: "Live answer" }); emit(waking, 2, { kind: "snapshot-end", turns: 1 }); });
+    await act(async () => { histories.get("waking")!("Stale history"); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(group!.entries.filter((entry) => entry.kind === "message" && entry.operationId === "waking").map((entry) => entry.kind === "message" ? entry.text : "")).toEqual(["Live answer"]);
     act(() => { root!.render(null); });
     expect(source.closed || target.closed).toBe(false);
     act(() => { emit(target, 9, { kind: "received", id: "root:different-call", from: "Commander", text: "Review this", inTurn: false }); });
@@ -338,7 +367,7 @@ it("keeps independent group journals alive across view closure and merges only c
     expect(authored[0]).toMatchObject({ text: "exact words", speaker: { kind: "human" }, recipient: { operationId: "member", name: "Verifier" } });
   } finally {
     act(() => { dispose(); root?.unmount(); root = null; });
-    clearOperationRuntime("root"); clearOperationRuntime("member");
+    clearOperationRuntime("root"); clearOperationRuntime("member"); clearOperationRuntime("archived"); clearOperationRuntime("waking");
     setState(previous); setAgentState(previousAgent);
   }
   expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);

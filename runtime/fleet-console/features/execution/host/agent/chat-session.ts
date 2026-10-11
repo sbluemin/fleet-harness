@@ -1,7 +1,8 @@
 import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
 import { resolveNativeClaudeModelAlias } from "@fleet-console/agent-runtime/fleet";
 import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { createReadStream, promises as fs } from "node:fs";
+import { createInterface } from "node:readline";
 import path from "node:path";
 
 import {
@@ -471,6 +472,168 @@ export function latestTranscriptCwd(text: string): string | null {
   return null;
 }
 
+/**
+ * 트랜스크립트 줄을 재생 저널 이벤트로 바꾸는 상태 기계. 세션의 재개 재생과 휴면 이력 읽기가 같은 해석을 쓴다.
+ *
+ * `map`은 줄 하나의 해석(`chatReplayFromTranscriptLine`)이고, `emit`은 확정된 이벤트를 받는다. `at`이 없으면 그
+ * 줄에 시각이 없었다는 뜻이다 — 어떤 시각으로 메울지는 호출자가 정한다. 상태(턴 묶기·운반체 접기·압축 경계
+ * 보류)는 이 안에만 있고 파일·세션·SDK에는 닿지 않는다.
+ */
+export function createTranscriptReplayer(
+  map: (line: string) => { readonly at?: number; readonly events: readonly AgentChatStreamEvent[] },
+  emit: (event: AgentChatStreamEvent, at: number | undefined) => void,
+): { line(raw: string): void; end(): void; turns(): number } {
+  let turns = 0;
+  // 재생 턴의 소요 시간은 트랜스크립트가 이미 들고 있다 — 디스패치 줄과 그 턴 마지막 줄의
+  // 시각 차이다. 이것이 없으면 접힘 줄이 과거 턴에서만 시간을 잃는다.
+  let turnAt: number | null = null;
+  let lastAt: number | null = null;
+  // 재생이 지금 턴 안에 있는가. `turnAt`은 시각이 없는 줄에서 null이라 그것만으로는 가를 수 없다.
+  let inReplayedTurn = false;
+  const closeReplayedTurn = (): void => {
+    if (turnAt !== null && lastAt !== null && lastAt > turnAt) {
+      emit({ kind: "turn-end", ok: true, durationMs: lastAt - turnAt }, lastAt);
+    }
+    turnAt = null;
+    lastAt = null;
+    inReplayedTurn = false;
+  };
+  // 사람 발화로는 서지 않지만 모델을 깨우는 주입 운반체는 말풍선 없는 여는 이벤트로 온다.
+  // 그것을 곧바로 발행하지 않고 붙잡아 두는 이유는 두 가지다.
+  //   1) 한 번의 주입이 여러 줄로 온다(슬래시 명령은 command-message·command-name·
+  //      local-command-stdout이 잇따른다). 줄마다 턴을 열면 한 지시가 턴 서넛으로 쪼개진다.
+  //   2) 뒤에 아무 내용도 따라오지 않는 운반체가 있다. 그 자리에 턴을 세우면 화면에는 아무것도
+  //      그려지지 않으면서 "이전 턴 N개 재생됨"의 N만 늘어난다.
+  // 그래서 여는 이벤트는 **실제 내용이 뒤따를 때** 비로소 발행하고, 연달아 온 운반체는 하나로
+  // 접는다. 접힌 턴의 시작 시각은 묶음의 첫 줄이다 — 소요 시간은 그 지점부터 재는 것이 옳다.
+  let pendingOpenAt: number | null | undefined;
+  const openPendingTurn = (): void => {
+    if (pendingOpenAt === undefined) return;
+    const at = pendingOpenAt;
+    pendingOpenAt = undefined;
+    closeReplayedTurn();
+    turns += 1;
+    turnAt = at;
+    inReplayedTurn = true;
+    emit(at === null ? { kind: "turn-start" } : { kind: "turn-start", at }, at ?? undefined);
+  };
+  // 압축 경계는 붙잡아 두었다가 다음 줄을 보고 자리를 정한다. 같은 턴의 내용이 뒤따르면 그 턴 안에서
+  // 일어난 압축이고(라이브의 `inTurn: true`와 같다), 새 턴이 열리거나 파일이 끝나면 턴 사이의 독립 줄이다.
+  // 경계는 턴을 열지 않고 턴의 끝 시각도 늘리지 않는다 — 그러면 재생 턴 수와 소요 시간이 경계 하나로 바뀐다.
+  // `/compact`는 운반체 줄에 둘러싸여 오므로 늘 독립 줄로 선다.
+  let heldCompaction: { readonly event: Extract<AgentChatStreamEvent, { kind: "command-end" }>; readonly at: number | undefined } | null = null;
+  const flushCompaction = (inTurn: boolean): void => {
+    const held = heldCompaction;
+    if (!held) return;
+    heldCompaction = null;
+    if (inTurn) {
+      openPendingTurn();
+    } else {
+      // 앞 턴을 먼저 닫는다. 결말이 독립 줄 뒤에 오면 화면은 그것을 그 줄의 결말로 읽는다.
+      closeReplayedTurn();
+    }
+    emit({ ...held.event, inTurn: inTurn && inReplayedTurn }, held.at);
+  };
+  return {
+    line(line) {
+      if (line.trim().length === 0) return;
+      const mapped = map(line);
+      const boundary = mapped.events.length === 1 && mapped.events[0]!.kind === "command-end" ? mapped.events[0]! : null;
+      if (boundary?.kind === "command-end") {
+        flushCompaction(false);
+        heldCompaction = { event: boundary, at: mapped.at };
+        return;
+      }
+      if (heldCompaction && mapped.events.length > 0) {
+        const opens = mapped.events[0]!.kind === "dispatch" || mapped.events[0]!.kind === "turn-start";
+        flushCompaction(!opens);
+      }
+      for (const event of mapped.events) {
+        if (event.kind === "turn-start") {
+          // 묶음의 첫 줄만 시작 시각으로 남긴다.
+          if (pendingOpenAt === undefined) pendingOpenAt = mapped.at ?? null;
+          continue;
+        }
+        if (event.kind === "dispatch") {
+          // 사람이 친 지시가 왔다 — 앞의 운반체는 응답을 부르지 못한 채 끝났으므로 버린다.
+          pendingOpenAt = undefined;
+          closeReplayedTurn();
+          turns += 1;
+          turnAt = mapped.at ?? null;
+          inReplayedTurn = true;
+        } else {
+          openPendingTurn();
+        }
+        emit(event, mapped.at);
+      }
+      // 붙잡아 둔 운반체는 아직 턴이 아니다 — 그 줄의 시각으로 앞 턴의 끝을 늘리지 않는다.
+      if (mapped.events.length > 0 && mapped.at !== undefined && pendingOpenAt === undefined) lastAt = mapped.at;
+    },
+    end() {
+      flushCompaction(false);
+      closeReplayedTurn();
+    },
+    turns: () => turns,
+  };
+}
+
+/** 그룹 대화 리듀서가 읽는 저널 종류. 도구는 세션 간 메시지(`SESSION_MESSAGE_TOOL`)와 그 결과만 남는다. */
+const HISTORY_EVENT_KINDS: ReadonlySet<string> = new Set(["dispatch", "turn-inject", "text", "turn-end"]);
+
+/**
+ * 휴면 세션의 지난 대화를 트랜스크립트에서 읽기 전용으로 투영한다 — 재개 재생과 같은 해석
+ * (`chatReplayFromTranscriptLine` + `createTranscriptReplayer`)으로, 세션·SDK·자식 프로세스를 세우지 않고.
+ *
+ * 그룹 대화가 쓰는 줄만 남기고(다른 도구의 입출력은 바이트의 대부분인데 그 화면에 쓰이지 않는다) 마지막 `limit`
+ * 줄만 링으로 쥔다. 파일이 `maxBytes`보다 크면 꼬리만 줄 단위로 흘려 읽는다. 시각이 없는 줄은 시각 없이 둔다 —
+ * 과거를 지금 시각으로 꾸미지 않는다. 읽지 못하면 `null`이다.
+ */
+export async function readTranscriptHistory(
+  transcriptPath: string,
+  options: { readonly cwd?: string; readonly limit: number; readonly maxBytes: number },
+): Promise<{ readonly entries: readonly AgentChatJournalEvent[]; readonly truncated: boolean } | null> {
+  const stat = await fs.stat(transcriptPath).catch(() => null);
+  if (!stat?.isFile()) return null;
+  const start = Math.max(0, stat.size - options.maxBytes);
+  const toolNames = new Map<string, string>();
+  const ring: AgentChatJournalEvent[] = [];
+  let seq = 0;
+  let overflow = false;
+  const keep = (event: AgentChatStreamEvent, at: number | undefined): void => {
+    if (event.kind === "tool") {
+      if (event.name !== SESSION_MESSAGE_TOOL || event.id === undefined) return;
+      toolNames.set(event.id, event.name);
+    } else if (event.kind === "tool-result") {
+      if (!toolNames.has(event.id)) return;
+    } else if (!HISTORY_EVENT_KINDS.has(event.kind)) {
+      return;
+    }
+    seq += 1;
+    ring.push(at === undefined ? { seq, event } : { seq, at, event });
+    // 매 줄 shift하지 않는다 — 두 배가 차면 한 번에 앞을 잘라 낸다.
+    if (ring.length >= options.limit * 2) { ring.splice(0, ring.length - options.limit); overflow = true; }
+  };
+  const replayer = createTranscriptReplayer((line) => chatReplayFromTranscriptLine(line, { ...(options.cwd ? { cwd: options.cwd } : {}), toolNames }), keep);
+  const stream = createReadStream(transcriptPath, { encoding: "utf8", start });
+  const lines = createInterface({ input: stream, crlfDelay: Infinity });
+  let first = start > 0;
+  try {
+    for await (const line of lines) {
+      // 꼬리부터 읽으면 첫 줄은 반쪽이다.
+      if (first) { first = false; continue; }
+      replayer.line(line);
+    }
+  } catch {
+    return null;
+  } finally {
+    lines.close();
+    stream.destroy();
+  }
+  replayer.end();
+  const entries = ring.length > options.limit ? ring.slice(-options.limit) : ring;
+  return { entries, truncated: overflow || ring.length > options.limit || start > 0 };
+}
+
 async function readFileTail(file: string, windowBytes: number): Promise<{ readonly text: string; readonly headCut: boolean } | null> {
   const handle = await fs.open(file, "r").catch(() => null);
   if (handle === null) return null;
@@ -851,102 +1014,24 @@ class AgentChatSession {
       return;
     }
     const transcriptPath = this.seed.origin.transcriptPath;
-    let turns = 0;
-    // 재생 턴의 소요 시간은 트랜스크립트가 이미 들고 있다 — 디스패치 줄과 그 턴 마지막 줄의
-    // 시각 차이다. 이것이 없으면 접힘 줄이 과거 턴에서만 시간을 잃는다.
-    let turnAt: number | null = null;
-    let lastAt: number | null = null;
-    // 재생이 지금 턴 안에 있는가. `turnAt`은 시각이 없는 줄에서 null이라 그것만으로는 가를 수 없다.
-    let inReplayedTurn = false;
-    const closeReplayedTurn = (): void => {
-      if (turnAt !== null && lastAt !== null && lastAt > turnAt) {
-        this.push({ kind: "turn-end", ok: true, durationMs: lastAt - turnAt }, lastAt);
-      }
-      turnAt = null;
-      lastAt = null;
-      inReplayedTurn = false;
-    };
-    // 사람 발화로는 서지 않지만 모델을 깨우는 주입 운반체는 말풍선 없는 여는 이벤트로 온다.
-    // 그것을 곧바로 발행하지 않고 붙잡아 두는 이유는 두 가지다.
-    //   1) 한 번의 주입이 여러 줄로 온다(슬래시 명령은 command-message·command-name·
-    //      local-command-stdout이 잇따른다). 줄마다 턴을 열면 한 지시가 턴 서넛으로 쪼개진다.
-    //   2) 뒤에 아무 내용도 따라오지 않는 운반체가 있다. 그 자리에 턴을 세우면 화면에는 아무것도
-    //      그려지지 않으면서 "이전 턴 N개 재생됨"의 N만 늘어난다.
-    // 그래서 여는 이벤트는 **실제 내용이 뒤따를 때** 비로소 발행하고, 연달아 온 운반체는 하나로
-    // 접는다. 접힌 턴의 시작 시각은 묶음의 첫 줄이다 — 소요 시간은 그 지점부터 재는 것이 옳다.
-    let pendingOpenAt: number | null | undefined;
-    const openPendingTurn = (): void => {
-      if (pendingOpenAt === undefined) return;
-      const at = pendingOpenAt;
-      pendingOpenAt = undefined;
-      closeReplayedTurn();
-      turns += 1;
-      turnAt = at;
-      inReplayedTurn = true;
-      this.push(at === null ? { kind: "turn-start" } : { kind: "turn-start", at }, at ?? Date.now());
-    };
-    // 압축 경계는 붙잡아 두었다가 다음 줄을 보고 자리를 정한다. 같은 턴의 내용이 뒤따르면 그 턴 안에서
-    // 일어난 압축이고(라이브의 `inTurn: true`와 같다), 새 턴이 열리거나 파일이 끝나면 턴 사이의 독립 줄이다.
-    // 경계는 턴을 열지 않고 턴의 끝 시각도 늘리지 않는다 — 그러면 재생 턴 수와 소요 시간이 경계 하나로 바뀐다.
-    // `/compact`는 운반체 줄에 둘러싸여 오므로 늘 독립 줄로 선다.
-    let heldCompaction: { readonly event: Extract<AgentChatStreamEvent, { kind: "command-end" }>; readonly at: number } | null = null;
-    const flushCompaction = (inTurn: boolean): void => {
-      const held = heldCompaction;
-      if (!held) return;
-      heldCompaction = null;
-      if (inTurn) {
-        openPendingTurn();
-      } else {
-        // 앞 턴을 먼저 닫는다. 결말이 독립 줄 뒤에 오면 화면은 그것을 그 줄의 결말로 읽는다.
-        closeReplayedTurn();
-      }
-      this.push({ ...held.event, inTurn: inTurn && inReplayedTurn }, held.at);
-    };
+    const replayer = createTranscriptReplayer(
+      (line) => chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames, ...(this.seed.resolveAttachmentId ? { resolveAttachmentId: this.seed.resolveAttachmentId } : {}) }),
+      (event, at) => {
+        this.rememberTool(event);
+        // 트랜스크립트 줄의 시각을 저널 시각으로 보존한다. 재연결 클라이언트도 라이브와 같은
+        // 시간축으로 턴의 공백과 활동 경계를 복원해야 한다.
+        this.push(event, at ?? Date.now());
+      },
+    );
     try {
       const raw = await fs.readFile(transcriptPath, "utf8");
-      for (const line of raw.split("\n")) {
-        if (line.trim().length === 0) continue;
-        const mapped = chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames, ...(this.seed.resolveAttachmentId ? { resolveAttachmentId: this.seed.resolveAttachmentId } : {}) });
-        const boundary = mapped.events.length === 1 && mapped.events[0]!.kind === "command-end" ? mapped.events[0]! : null;
-        if (boundary?.kind === "command-end") {
-          flushCompaction(false);
-          heldCompaction = { event: boundary, at: mapped.at ?? Date.now() };
-          continue;
-        }
-        if (heldCompaction && mapped.events.length > 0) {
-          const opens = mapped.events[0]!.kind === "dispatch" || mapped.events[0]!.kind === "turn-start";
-          flushCompaction(!opens);
-        }
-        for (const event of mapped.events) {
-          if (event.kind === "turn-start") {
-            // 묶음의 첫 줄만 시작 시각으로 남긴다.
-            if (pendingOpenAt === undefined) pendingOpenAt = mapped.at ?? null;
-            continue;
-          }
-          if (event.kind === "dispatch") {
-            // 사람이 친 지시가 왔다 — 앞의 운반체는 응답을 부르지 못한 채 끝났으므로 버린다.
-            pendingOpenAt = undefined;
-            closeReplayedTurn();
-            turns += 1;
-            turnAt = mapped.at ?? null;
-            inReplayedTurn = true;
-          } else {
-            openPendingTurn();
-          }
-          this.rememberTool(event);
-          // 트랜스크립트 줄의 시각을 저널 시각으로 보존한다. 재연결 클라이언트도 라이브와 같은
-          // 시간축으로 턴의 공백과 활동 경계를 복원해야 한다.
-          this.push(event, mapped.at ?? Date.now());
-        }
-        // 붙잡아 둔 운반체는 아직 턴이 아니다 — 그 줄의 시각으로 앞 턴의 끝을 늘리지 않는다.
-        if (mapped.events.length > 0 && mapped.at !== undefined && pendingOpenAt === undefined) lastAt = mapped.at;
-      }
-      flushCompaction(false);
-      closeReplayedTurn();
+      for (const line of raw.split("\n")) replayer.line(line);
+      replayer.end();
     } catch {
       // 트랜스크립트를 읽지 못해도 세션은 계속된다 — 로그가 비어 보일 뿐 새 턴은 돌 수 있다.
       this.push({ kind: "error", code: "chat_replay_unavailable" });
     }
+    const turns = replayer.turns();
     this.push({ kind: "replay-end", turns });
   }
 
