@@ -115,6 +115,13 @@ export const browserEn = {
   "terminal.globalBrowser.dismissClosed": "Dismiss closed tabs",
   "terminal.globalBrowser.unseenTabs": "{count} unseen tabs",
   "terminal.globalBrowser.sharedFallback": "Opened in your browser because the Fleet browser is paused",
+  "terminal.globalBrowser.desktopOnly": "The Fleet Browser opens only in the Fleet Desktop app.",
+  "terminal.globalBrowser.desktopOnlyBody": "Open this Console in Fleet Desktop to browse. Browser tabs and phones can't show it.",
+  "terminal.chooser.aria": "Choose a browser",
+  "terminal.chooser.operationBrowser": "Operation Browser",
+  "terminal.chooser.fleetHelp": "Opens beside the conversation, with your own tabs",
+  "terminal.chooser.operationHelp": "See the same tab as this Operation's agent",
+  "terminal.chooser.noOperation": "No Operation in this view",
 };
 export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.open": "Operation 브라우저 열기 (Alt+B)",
@@ -230,6 +237,13 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.globalBrowser.dismissClosed": "닫힌 탭 치우기",
   "terminal.globalBrowser.unseenTabs": "보지 않은 탭 {count}개",
   "terminal.globalBrowser.sharedFallback": "Fleet 브라우저가 일시 중지되어 내 브라우저로 열었습니다",
+  "terminal.globalBrowser.desktopOnly": "Fleet 브라우저는 Fleet Desktop 앱에서만 열립니다.",
+  "terminal.globalBrowser.desktopOnlyBody": "Fleet Desktop에서 이 Console을 열면 브라우징할 수 있습니다. 브라우저 탭과 휴대폰에서는 보이지 않습니다.",
+  "terminal.chooser.aria": "브라우저 고르기",
+  "terminal.chooser.operationBrowser": "Operation 브라우저",
+  "terminal.chooser.fleetHelp": "대화 옆에 나란히 엽니다. 내 탭을 씁니다",
+  "terminal.chooser.operationHelp": "이 Operation의 에이전트와 같은 탭을 봅니다",
+  "terminal.chooser.noOperation": "이 화면에는 Operation이 없습니다",
 };
 const messages = { en: browserEn, ko: browserKo };
 const translators = { en: createTranslator(messages, "en"), ko: createTranslator(messages, "ko") };

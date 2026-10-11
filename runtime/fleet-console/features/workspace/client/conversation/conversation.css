@@ -97,6 +97,71 @@
   transition: left 200ms ease, right var(--duration-base) var(--ease-spring);
 }
 
+/* ── 오른쪽 분할 칸 — 브라우저가 대화 열 옆에 선다 ─────────────────────────────
+   대화 칸(.conversation-stage)이 right 로 폭을 내주고, 이 칸이 같은 시간·곡선의 width 전이로 그 자리를 채운다. 닫히면 폭 0 으로
+   접힌다(늘 마운트). 펼쳐지는 동안은 대화 바탕 위 고요한 면과 왼쪽 1px 경계만 보인다 — 내용은 정착한 뒤에 선다.
+   Fleet 브라우저는 이 칸의 사각형에 시트가 앉고(global-browser-sheet.css .is-split), Operation 브라우저는 칸 안에 그린다. */
+.conversation-split {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 0;
+  overflow: hidden;
+  background: var(--conversation-surface);
+  /* 경계는 inset 그림자로 그린다 — 폭 0 인 동안에는 아무것도 그리지 않는다. */
+  box-shadow: inset 1px 0 0 var(--hairline);
+  transition: width var(--duration-base) var(--ease-spring), right var(--duration-base) var(--ease-spring);
+  pointer-events: none;
+}
+
+.conversation-split.is-open { pointer-events: auto; }
+
+/* 레일 옆에 둘 자리가 모자라 레일 위로 덮을 때만 레일 위 층에 선다. */
+.conversation-split.is-over-rail { z-index: calc(var(--z-rail, 10) + 1); }
+
+.conversation-split-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.conversation-split-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--conversation-top-row);
+  padding: 0 var(--space-3) 0 var(--space-3);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.conversation-split-head > .op-browser-cap,
+.conversation-split-head > :not(.conversation-split-close) {
+  flex: 1;
+  min-width: 0;
+}
+
+.conversation-split-title {
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+}
+
+.conversation-split-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-split { transition: none; }
+}
+
 .conversation-column {
   position: relative;
   flex: 1;
@@ -1006,6 +1071,17 @@ html[data-desktop-shell="true"] .console-shell.is-conversation-layout :is(.conve
 html[data-desktop-shell="true"] .console-shell.is-conversation-layout .conversation-quota,
 html[data-desktop-shell="true"] .console-shell.is-conversation-layout .expanded-surface-lead,
 html[data-desktop-shell="true"] .console-shell.is-conversation-layout :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
+  -webkit-app-region: no-drag;
+}
+
+/* 창 drag 사각형은 DOM 순서로 합쳐져 뒤의 drag 가 앞의 no-drag 를 다시 덮는다. 오른쪽 분할 칸은 레일보다 앞에 그려지므로, 칸이 레일
+   위로 덮는 동안에는 그 밑에 깔린 레일 머리의 drag 를 걷는다 — 칸 머리의 단추·탭이 클릭을 받게. (칸이 레일 옆에 서면 둘은 겹치지 않는다.) */
+html[data-desktop-shell="true"] .console-body.is-conversation:has(.conversation-split.is-open.is-over-rail) .right-rail-panel-header {
+  -webkit-app-region: no-drag;
+}
+
+/* 칸 자체도 루트째 창 끌기에서 뺀다 — 자식(탭·주소·단추)에만 no-drag 를 달면 겹친 drag 사각형이 다시 덮는다(Fleet 시트와 같은 계약). */
+html[data-desktop-shell="true"] .conversation-split.is-open {
   -webkit-app-region: no-drag;
 }
 
