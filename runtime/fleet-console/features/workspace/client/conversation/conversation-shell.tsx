@@ -247,7 +247,12 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
   const activeOperationId = state.activeOperationId;
   useEffect(() => {
-    if (warRoom || surfaceDescriptor !== null || cruiseSubject === null || activeOperationId === cruiseSubject.id) return;
+    // 플러그인 대화가 선 동안에는 어느 Operation 도 칸에 없다 — 사이드바의 Operation 줄 선택을 걷는다(대화를 걷으면 되돌아온다).
+    if (surfaceDescriptor !== null) {
+      if (activeOperationId !== null) setActiveOperation(null);
+      return;
+    }
+    if (warRoom || cruiseSubject === null || activeOperationId === cruiseSubject.id) return;
     setActiveOperation(cruiseSubject.id);
   }, [activeOperationId, cruiseSubject, surfaceDescriptor, warRoom]);
   useEffect(() => () => publishConversationSubject(null), []);
