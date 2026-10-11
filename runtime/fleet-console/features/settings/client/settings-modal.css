@@ -180,6 +180,12 @@
 .settings-modal .settings-pane .global-settings-card > .global-settings-row + .global-settings-row { margin-top: -8px; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .settings-modal .settings-pane :is(.appearance-controls, .fc-settings-card__body, .settings-group-surface) > :is(p, .global-settings-help, .global-settings-error) { padding: 10px 20px; }
 .settings-modal .settings-pane .theme-card { border-radius: 12px; }
+/* 원격 접속의 카드들도 모달의 둥근 면·여백을 입는다. */
+.settings-modal .settings-pane :is(.remote-card, .remote-notes) { border-color: var(--hairline); border-radius: 16px; background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); padding: 18px 20px; }
+.settings-modal .settings-pane .global-settings-card.remote-section { gap: 28px; }
+.settings-modal .settings-pane .remote-card-title { font-size: var(--t-sm); font-weight: var(--weight-regular); }
+/* 카드 안의 켬/끔 행(공개 엔드포인트)은 소제목이 아니라 행 이름이다. */
+.settings-modal .settings-pane .remote-public-endpoint-head .remote-card-title { font-size: var(--t-base); }
 
 /* 좁은 창 — 범주 목록이 위로 올라가 가로로 흐른다. */
 @media (max-width: 760px) {

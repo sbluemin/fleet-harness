@@ -147,8 +147,8 @@ export const settingsPanes: readonly PaneDescriptor[] = [
 ];
 
 /**
- * 칩이 없는 섹션(다른 칩 안에 묻힌 것)으로 들어온 경로를 그 칩으로 옮긴다 — 연결 설정을 여는 원격 접속
- * 픽커와 경로 어댑터는 여전히 "connectivity"를 말하고, 페인은 그 카드가 사는 실험 기능 칩을 연다.
+ * 칩이 없는 섹션(다른 칩 안에 묻힌 것)으로 들어온 경로를 그 칩으로 옮긴다 — 옛 주소의 표시 언어는 겉모습 칩을,
+ * 실험 묶음의 플러그인 섹션은 실험 기능 칩을 연다.
  */
 export function hostSectionOf(
   requested: string | null,

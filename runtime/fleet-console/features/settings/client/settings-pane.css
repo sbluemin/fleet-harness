@@ -125,3 +125,5 @@
   .settings-pane .backend-api-group-count { grid-column: 2; grid-row: 1; }
   .settings-pane .backend-api-group-prefix { grid-column: 1 / -1; grid-row: 2; }
 }
+/* 원격 접속 섹션은 묶음(소제목 + 카드) 여럿이 이어 서는 범주 페이지다 — 묶음 사이 숨은 다른 카드 사이와 같다. */
+.settings-pane .global-settings-card.remote-section { gap: 22px; }

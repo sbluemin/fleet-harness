@@ -187,10 +187,11 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       entries: [t("settings.shortcuts.title"), t("settings.shortcuts.groupCompanion"), t("settings.core.shortcuts.keywords")],
     },
     {
+      // 원격 접속은 실험 기능에서 승격되어 자기 범주로 선다(기기 묶음, 고급 앞). 원격이 실리지 않은 콘솔(원격 세션)에는
+      // 포트만 남으므로 그때의 이름은 「연결」이다.
       id: "connectivity",
-      group: "experiments",
-      embeddedIn: "experiments",
-      label: t("settings.core.connectivity.label"),
+      group: "machine",
+      label: remoteAvailable ? t("settings.remote.title") : t("settings.core.connectivity.label"),
       entries: [
         t("settings.port.title"),
         t("settings.port.label"),
@@ -268,9 +269,9 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
       return (
         <>
-          <ConsolePortCard state={state} saving={saving.has("consolePortMode") || saving.has("consoleStaticPort")} />
           {/* 목록에서 뺀 것과 별개로 경로도 막는다 — 주소로 직접 들어오는 길이 남으면 숨긴 것이 아니다. */}
           {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving.has("remoteAccess")} />}
+          <ConsolePortCard state={state} saving={saving.has("consolePortMode") || saving.has("consoleStaticPort")} />
         </>
       );
     case "shortcuts":
@@ -283,8 +284,6 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
         <>
           <ExperimentsSection state={state} saving={saving.has("experiments")} />
           {renderEmbeddedPluginSections(pluginSections, t)}
-          <ConsolePortCard state={state} saving={saving.has("consolePortMode") || saving.has("consoleStaticPort")} />
-          {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving.has("remoteAccess")} />}
         </>
       );
   }
