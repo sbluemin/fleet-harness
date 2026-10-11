@@ -195,7 +195,6 @@ function MembersTab({ ctx }: { readonly ctx: RailPanelContext }) {
       language={language}
       ledgerOperationId={state.nestedBodySelection[root.id] ?? (commanderLedger ? root.id : null)}
       onOpenLedger={(operationId) => openLedger(root.id, operationId)}
-      onStop={(speaker) => { void stopOne(speaker).catch(() => undefined); }}
     />
   );
 }

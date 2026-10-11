@@ -16,7 +16,7 @@ import "./group-chat.css";
  *
  * 지휘관·구성원 줄 자체가 원장으로 가는 단추다 — 누르면 가운데 칸에 그 참여자의 원장(기존 본문)을 읽기 전용으로 세운다.
  * 보고 있는 줄을 다시 누르면 대화로 돌아간다. 원장이 없는 참여자(사람·Operation 이 아직 없는 구성원)의 줄은 단추가 아니다.
- * 정지·제거·추가는 콜백 자리만 둔다 — 쓰기 연결(임무 16) 전에는 단추가 서지 않는다.
+ * 제거·추가는 콜백 자리만 둔다 — 쓰기 연결(임무 16) 전에는 단추가 서지 않는다. 정지는 작업 줄과 입력창에 있다.
  * 제거는 지휘관에게 서지 않는다. 지휘관을 빼면 목표가 서지 않는다.
  */
 export interface GroupMembersPanelProps {
@@ -26,12 +26,11 @@ export interface GroupMembersPanelProps {
   readonly ledgerOperationId: string | null;
   /** 원장을 열거나(id) 대화로 돌아간다(null). */
   readonly onOpenLedger?: (operationId: string | null) => void;
-  readonly onStop?: (speaker: ConversationSpeaker) => void;
   readonly onRemove?: (speaker: ConversationSpeaker) => void;
   readonly onAdd?: () => void;
 }
 
-export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus, onOpenLedger, onStop, onRemove, onAdd }: GroupMembersPanelProps) {
+export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus, onOpenLedger, onRemove, onAdd }: GroupMembersPanelProps) {
   const t = getGroupT(language);
   const participants = snapshot.participants;
   return (
@@ -47,7 +46,6 @@ export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus
             onLedger={onOpenLedger && participant.speaker.operationId && (participant.speaker.kind === "member" || participant.speaker.kind === "commander")
               ? () => onOpenLedger(focus === participant.speaker.operationId ? null : participant.speaker.operationId!)
               : undefined}
-            onStop={onStop && (participant.activity === "running" || participant.activity === "background") ? () => onStop(participant.speaker) : undefined}
             onRemove={onRemove && participant.speaker.kind === "member" ? () => onRemove(participant.speaker) : undefined}
           />
         ))}
@@ -57,12 +55,11 @@ export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus
   );
 }
 
-function MemberRow({ participant, language, showing, onLedger, onStop, onRemove }: {
+function MemberRow({ participant, language, showing, onLedger, onRemove }: {
   readonly participant: ConversationParticipant;
   readonly language: ConsoleLocale | undefined;
   readonly showing: boolean;
   readonly onLedger: (() => void) | undefined;
-  readonly onStop: (() => void) | undefined;
   readonly onRemove: (() => void) | undefined;
 }) {
   const t = getGroupT(language);
@@ -95,7 +92,7 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
       </span>
     </>
   );
-  // 줄의 다른 단추(정지·제거)는 줄 단추 안에 넣지 않고 그 아래 형제로 둔다 — 단추 안의 단추는 서지 않고, 누름이 겹치지 않는다.
+  // 줄의 다른 단추(제거)는 줄 단추 안에 넣지 않고 그 아래 형제로 둔다 — 단추 안의 단추는 서지 않고, 누름이 겹치지 않는다.
   const main = onLedger ? (
     <button type="button" className={`group-members-main${avatar ? " has-avatar" : ""}`} aria-pressed={showing} onClick={onLedger}>
       {identity}
@@ -110,10 +107,9 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
           {main}
         </AvatarEditor>
       ) : main}
-      {onStop || onRemove ? (
+      {onRemove ? (
         <span className="group-members-actions">
-          {onStop ? <button type="button" className="group-chat-link" onClick={onStop}>{t("group.members.stop")}</button> : null}
-          {onRemove ? <button type="button" className="group-chat-link is-danger" onClick={onRemove}>{t("group.members.remove")}</button> : null}
+          <button type="button" className="group-chat-link is-danger" onClick={onRemove}>{t("group.members.remove")}</button>
         </span>
       ) : null}
     </li>
