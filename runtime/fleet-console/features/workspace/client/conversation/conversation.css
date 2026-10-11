@@ -470,18 +470,44 @@
   box-sizing: border-box;
 }
 
-/* 도구 글리프 줄 — 넘치는 글리프는 줄에서 걷히고 「⋯」 메뉴에 모인다(ConversationPanelHeader 가 잰다). */
-.conversation-panel-tools {
+.conversation-panel-toolbar-spacer { flex: 1; }
+
+/* 이름 아래 세그먼트 줄 — 대상의 글자 탭 묶음과 도구 글리프 묶음. 둘이 한 줄에 들어가면 한 줄, 아니면 도구 묶음이 통째로
+   다음 줄로 내려간다(사령관처럼 대상 탭이 많을 때 도구가 ⋯ 안으로 사라지지 않게). 각 줄은 가운데 정렬이고, 그래도 넘치는 도구는
+   줄 끝 「⋯」에 모인다(ConversationPanelHeader 가 잰다). */
+.conversation-panel-segments {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.conversation-panel-segment-row {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1) var(--space-3);
   overflow: hidden;
 }
 
-.conversation-panel-tools [data-overflow="true"] { display: none; }
+.conversation-panel-segment-row [data-overflow="true"] { display: none; }
+
+.conversation-panel-segment-row > .conversation-panel-tabs,
+.conversation-panel-segment-row > .conversation-panel-tools {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.conversation-panel-segment-row > .conversation-panel-tabs:not(:has(.right-rail-ico)) { display: none; }
 
 .conversation-panel-tools .right-rail-ico {
   flex: none;
@@ -515,7 +541,29 @@
   flex: none;
 }
 
-.conversation-panel-more-wrap.is-idle { visibility: hidden; pointer-events: none; }
+.conversation-panel-more-wrap.is-idle { display: none; }
+
+.conversation-panel-more {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.conversation-panel-more svg { width: 15px; height: 15px; }
+
+.conversation-panel-more:hover,
+.conversation-panel-more:focus-visible {
+  background: var(--control-rest-hover);
+  color: var(--text-primary);
+  outline: none;
+}
 
 .conversation-panel-more.is-active {
   background: var(--control-wash);
@@ -600,19 +648,9 @@
   white-space: nowrap;
 }
 
-/* 대상의 글자 탭 — 가운데 정렬, 켜진 탭은 둥근 면(Grok 세그먼트). 대상에 탭이 없으면 줄째 서지 않는다. */
-.conversation-panel-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
-  padding: 0 var(--space-4) var(--space-3);
-}
-
-.conversation-panel-tabs:not(:has(.right-rail-ico)) { display: none; }
-
+/* 대상의 글자 탭 — 켜진 탭은 둥근 면(Grok 세그먼트). */
 .conversation-panel-tabs .right-rail-ico.is-text {
+  flex: none;
   width: auto;
   height: auto;
   padding: 5px 12px;
@@ -646,19 +684,11 @@
 
 /* ── 사용량 캡슐: 가운데 칸 맨 위 줄 오른쪽 끝 ─────────────────────────────────────────
    pill 은 가운데에서 대상만 말한다 — 사용량(계정 전역)은 오른쪽 끝에 따로 떠 있다. pill 줄은 그 폭을 양쪽에 같게 비워 pill 이 가운데에
-   남고 둘이 겹치지 않는다. 칸 폭이 줄면 단계를 낮춘다: 전체(두 줄 값) → 표식만 → 첫 칸 하나(quota.css). 넘치지 않는다. */
+   남고 둘이 겹치지 않는다. 실제로 남는 자리가 모자랄 때만 단계를 낮춘다: 전체(두 줄 값) → 표식만 → 첫 칸 하나(data-tier, quota.css). */
 .conversation-stage {
-  container: conversation-stage / inline-size;
   --conversation-caption-reserve: 0px;
-  --conversation-quota-space: 400px;
-}
-
-@container conversation-stage (max-width: 1239px) {
-  .conversation-pill-row, .conversation-body, .conversation-quota { --conversation-quota-space: 210px; }
-}
-
-@container conversation-stage (max-width: 759px) {
-  .conversation-pill-row, .conversation-body, .conversation-quota { --conversation-quota-space: 56px; }
+  /* 사용량 캡슐이 실제로 고른 폭 + 틈 — ConversationQuota 가 재어 심는다(그 전까지는 첫 칸 하나 몫). */
+  --conversation-quota-space: 56px;
 }
 
 .conversation-quota {
@@ -668,7 +698,6 @@
   z-index: 4;
   display: inline-flex;
   align-items: center;
-  max-width: calc(var(--conversation-quota-space) - var(--space-3));
   min-height: 30px;
   padding: 0 var(--space-1);
   box-sizing: border-box;

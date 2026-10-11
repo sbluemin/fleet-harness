@@ -234,16 +234,30 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const hiddenActive = overflow.find((tab) => tab.active) ?? null;
   return (
     <div className="conversation-panel-head">
-      {/* 맨 위 줄 — 작전구역 도구는 글리프 단추(이름은 툴팁·aria-label), 오른쪽 끝은 닫기. 넘치는 도구는 「⋯」에 모인다. */}
+      {/* 맨 위 줄 — Grok 세부 정보처럼 원형 단추(닫기)만 선다. Desktop 에서는 이 줄의 빈 자리가 창을 끄는 자리다. */}
       <div className="conversation-panel-toolbar">
-        <div className="conversation-panel-tools" ref={rowRef}>
-          <RailToolIcons context={context} variant="icons" scope="tools" />
+        <span className="conversation-panel-toolbar-spacer" aria-hidden="true" />
+        <button type="button" className="conversation-round conversation-panel-close" onClick={() => { const active = getRailStoreSnapshot().activePanelId; if (active !== null) closeRailPanel(active); }} aria-label={t("conversation.panel.close")} title={t("conversation.panel.close")}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+      </div>
+      <ConversationPanelIdentity />
+      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)과 작전구역 도구 글리프가 Grok 세그먼트처럼
+          한 줄에 선다. 켜진 것은 둥근 면 하나로 말한다. 넘치는 것은 줄 끝 「⋯」 메뉴에 모인다(뒤쪽 도구부터). */}
+      <div className="conversation-panel-segments">
+        <div className="conversation-panel-segment-row" ref={rowRef}>
+          <span className="conversation-panel-tabs">
+            <RailToolIcons context={context} variant="text" scope="core" />
+          </span>
+          <span className="conversation-panel-tools">
+            <RailToolIcons context={context} variant="icons" scope="tools" />
+          </span>
         </div>
         <span className={`conversation-panel-more-wrap${overflow.length > 0 ? "" : " is-idle"}`}>
           <button
             type="button"
             ref={moreRef}
-            className={`conversation-round conversation-panel-more${hiddenActive ? " is-active" : ""}`}
+            className={`conversation-panel-more${hiddenActive ? " is-active" : ""}`}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label={hiddenActive ? hiddenActive.label : t("conversation.panel.more")}
@@ -271,14 +285,6 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
             </div>
           ) : null}
         </span>
-        <button type="button" className="conversation-round conversation-panel-close" onClick={() => { const active = getRailStoreSnapshot().activePanelId; if (active !== null) closeRailPanel(active); }} aria-label={t("conversation.panel.close")} title={t("conversation.panel.close")}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-        </button>
-      </div>
-      <ConversationPanelIdentity />
-      {/* 가운데 칸 대상의 탭(사령관의 행위 기록·지시·정보·설정 등) — Grok 의 세부 정보 세그먼트 자리, 글자 탭이다. */}
-      <div className="conversation-panel-tabs">
-        <RailToolIcons context={context} variant="text" scope="core" />
       </div>
     </div>
   );
@@ -452,9 +458,42 @@ function ConversationQuota() {
   const t = useT();
   const { commandBandEntries } = usePluginRegistry();
   const usage = commandBandEntries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  // 단계는 칸 폭이 아니라 실제로 남는 자리로 정한다 — pill 묶음(이름·다음·단추)의 원래 폭을 뺀 반쪽에 세 단계(두 줄 값 → 표식만
+  // → 첫 칸)의 실제 폭을 차례로 대어 들어가는 가장 큰 단계를 고른다. pill 줄은 고른 폭만큼 양쪽을 비워 pill 을 가운데에 둔다.
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const stage = box?.closest<HTMLElement>(".conversation-stage") ?? null;
+    if (!box || !stage) return;
+    let frame = 0;
+    const widthAt = (tier: QuotaTier) => {
+      box.dataset.tier = tier;
+      return box.offsetWidth;
+    };
+    const measure = () => {
+      frame = 0;
+      const widths: Record<QuotaTier, number> = { full: widthAt("full"), marks: widthAt("marks"), single: widthAt("single") };
+      const center = pillGroupNaturalWidth(stage);
+      // 오른쪽 끝 여백(--space-3)과 Windows 캡션 버튼 몫은 캡슐의 right 가 이미 진다 — 그 값을 그대로 읽는다.
+      const right = Number.parseFloat(getComputedStyle(box).right) || 0;
+      const available = (stage.clientWidth - center) / 2 - right - QUOTA_PILL_GAP;
+      const tier: QuotaTier = widths.full <= available ? "full" : widths.marks <= available ? "marks" : "single";
+      box.dataset.tier = tier;
+      stage.style.setProperty("--conversation-quota-space", `${Math.ceil(widths[tier] + right + QUOTA_PILL_GAP)}px`);
+    };
+    const schedule = () => { if (frame === 0) frame = requestAnimationFrame(measure); };
+    measure();
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    resize?.observe(stage);
+    for (const child of box.children) resize?.observe(child);
+    // pill 이 바뀌거나(대상·이름) 사용량 값이 들어오면 다시 잰다. 이 캡슐이 다는 data-tier 는 관찰하지 않는다.
+    const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    mutation?.observe(stage, { childList: true, subtree: true, characterData: true });
+    return () => { resize?.disconnect(); mutation?.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
+  }, [usage.length]);
   if (usage.length === 0) return null;
   return (
-    <div className="conversation-quota" role="group" aria-label={t("conversation.quota.aria")}>
+    <div className="conversation-quota" ref={boxRef} data-tier="full" role="group" aria-label={t("conversation.quota.aria")}>
       {usage.map((entry) => (
         <PluginErrorBoundary key={entry.id} fallback={null}>
           <PluginEntry render={entry.render} />
@@ -462,6 +501,29 @@ function ConversationQuota() {
       ))}
     </div>
   );
+}
+
+type QuotaTier = "full" | "marks" | "single";
+/** 사용량 캡슐과 pill 묶음 사이의 최소 틈. */
+const QUOTA_PILL_GAP = 12;
+
+/** pill 줄 가운데 묶음(이름 pill·다음·단추 묶음)의 원래 폭 — 이름이 말줄임으로 줄어든 만큼을 되돌려 센다(최대 620). */
+function pillGroupNaturalWidth(stage: HTMLElement): number {
+  const row = stage.querySelector<HTMLElement>(".conversation-pill-row");
+  if (!row) return 0;
+  const items = [...row.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
+  const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
+  let total = Math.max(0, items.length - 1) * gap;
+  for (const item of items) {
+    if (item.classList.contains("conversation-pill")) {
+      const title = item.querySelector<HTMLElement>(".conversation-pill-title");
+      const natural = item.offsetWidth + (title ? title.scrollWidth - title.clientWidth : 0);
+      total += Math.min(natural, 620);
+    } else {
+      total += item.offsetWidth;
+    }
+  }
+  return total;
 }
 
 /**

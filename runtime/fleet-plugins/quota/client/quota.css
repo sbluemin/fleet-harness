@@ -776,17 +776,14 @@
 }
 
 /* 대화 중심 화면 — 요약은 가운데 칸 맨 위 줄 오른쪽 끝의 캡슐에 선다(conversation.css .conversation-quota). 칸 폭이 줄면 단계를 낮춘다:
-   두 줄 값 전체 → 표식만(값은 누르면 여는 요약 팝업이 말한다) → 첫 칸 하나. 한 줄을 지키고 캡슐 밖으로 넘치지 않는다.
+   실제로 남는 자리에 맞춰 단계를 고른다(conversation-shell ConversationQuota 가 data-tier 를 단다): 두 줄 값 전체 → 표식만(값은
+   누르면 여는 요약 팝업이 말한다) → 첫 칸 하나. 한 줄을 지키고 캡슐 밖으로 넘치지 않는다.
    밴드(토글 끔)의 요약은 그대로다. */
 .conversation-quota .quota-toolbar-summary {
   max-width: 100%;
   overflow: hidden;
 }
 
-@container conversation-stage (max-width: 1239px) {
-  .conversation-quota .quota-toolbar-summary__lines { display: none; }
-}
-
-@container conversation-stage (max-width: 759px) {
-  .conversation-quota .quota-toolbar-summary__cell:not(:first-child) { display: none; }
-}
+.conversation-quota[data-tier="marks"] .quota-toolbar-summary__lines,
+.conversation-quota[data-tier="single"] .quota-toolbar-summary__lines { display: none; }
+.conversation-quota[data-tier="single"] .quota-toolbar-summary__cell:not(:first-child) { display: none; }
