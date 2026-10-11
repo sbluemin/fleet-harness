@@ -3628,21 +3628,6 @@ button.status-glyph.is-actionable:focus-visible {
   outline-offset: 1px;
 }
 
-/* 활동 축의 --activity-glow를 읽으므로 theme.css가 아니라 이 파일에 산다 — 토큰이 선언되는
-   스코프 밖에 키프레임을 두면 커스텀 속성 계약 게이트가 미정의 참조로 잡는다.
-   시작·끝을 모두 완전 점등으로 못박는다: reduced-motion이 1회로 잘라도 켜진 채 남아야 한다. */
-@keyframes beacon-unseen-blink {
-  0%,
-  100% {
-    opacity: 1;
-    box-shadow: 0 0 10px 1px var(--activity-glow);
-  }
-  50% {
-    opacity: 0.38;
-    box-shadow: 0 0 0 0 var(--activity-glow);
-  }
-}
-
 .status-dot--lg {
   width: 10px;
   height: 10px;

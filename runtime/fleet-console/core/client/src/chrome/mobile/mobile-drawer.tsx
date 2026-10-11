@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { resolveOperationActivity, resolveOperationMarkVisual, type OperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
 import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
-import { TheaterAvatar } from "../../../../../features/workspace/client/avatars.js";
+import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { openConsoleSwitcher, useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";

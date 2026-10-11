@@ -40,7 +40,7 @@ export function useMobileDestinationBindings(bindings: readonly RailEntryBinding
   return useMemo(() => mobileDestinationBindings(bindings, theaterId), [bindings, theaterId, key]);
 }
 
-/** 드로어 행 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(glyph·text·tone)이 같으면 다시 그리지 않는다. */
+/** 드로어 행 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(text·tone)이 같으면 다시 그리지 않는다. */
 export function useMobileDestinationTrailing(bindings: readonly RailEntryBinding[], theaterId: string | null): ReadonlyMap<string, RailEntryDestinationTrailingValue> {
   const key = useSyncExternalStore(
     (listener) => {
@@ -64,7 +64,7 @@ export function useMobileDestinationTrailing(bindings: readonly RailEntryBinding
 function trailingVersion(bindings: readonly RailEntryBinding[], theaterId: string | null): string {
   return bindings.map((binding) => {
     const value = binding.entry.mobile?.destination?.trailing?.get(theaterId);
-    return value ? `${binding.entry.id}:${value.glyph ?? ""}\u0001${value.text}\u0001${value.tone ?? ""}` : "";
+    return value ? `${binding.entry.id}:${value.text}\u0001${value.tone ?? ""}` : "";
   }).join("|");
 }
 

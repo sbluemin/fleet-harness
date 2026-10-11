@@ -1805,10 +1805,6 @@ describe("Instrument core design contract", () => {
     expect(components).toMatch(/\.status-glyph\.is-awaiting::before \{[^}]*animation: status-glyph-breathe 1\.8s/);
     expect(components).toMatch(/@keyframes status-glyph-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
     expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.status-glyph,\s*\.status-glyph::before,\s*\.status-glyph::after \{\s*animation: none !important;/);
-    // 키프레임은 --activity-glow가 사는 이 파일에 있어야 하고, 0%/100%가 완전 점등이어야 한다 —
-    // reduced-motion이 iteration-count를 1로 자를 때 꺼진 채 남으면 신호가 사라진다.
-    expect(components).toMatch(/@keyframes beacon-unseen-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
-    expect(theme).not.toContain("@keyframes beacon-unseen-blink");
     // 마크 축과 섹션 축은 갈라진 채로 각자의 자리에 실린다 — 하나로 합치면 색이 칸을 따라간다.
     expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "unseen" : activity;');
     expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "awaiting" : activity;');
@@ -3384,7 +3380,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-brand-foot");
 
     expect(sidebar).toContain("hasCustomGroups && sectionItems.length + foldItems.length > 0");
-    expect(sidebar).toContain("theaterInitials(theater.label)");
+    expect(sidebar).toContain("<TheaterAvatar theaterId={theater.id}");
     expect(chip).toContain("side-bar-chip-status");
     // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 분기를 다시 적으면 같은 사실이 표면 수만큼의
     // 조형으로 갈라진다. 사이드바 칩과 목록 래퍼는 같은 몽글 아바타 모듈(역할·배정·상태 해석)을 지난다.

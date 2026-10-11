@@ -8,7 +8,7 @@ import { pushBackLayer } from "../../../../../core/client/src/chrome/mobile/mobi
 import { reportSheetChrome, reportShellChrome } from "../../../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { resolveRowEffort } from "../../components/effort-track.js";
-import { MobileEffortGateRow, MobileEffortTabs, useMobileEffortGate } from "../../components/mobile-quick-launch.js";
+import { MobileEffortGateRow, MobileEffortTabs, useMobileEffortGate } from "../../components/mobile-effort-gate.js";
 import { getT } from "../i18n/index.js";
 import type { AgentChatCoordinatePair } from "./chat-events.js";
 import "../../components/mobile-quick-launch.css";

@@ -15,7 +15,7 @@ import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLau
 import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import type { QuickLaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
-import { TheaterAvatar } from "../../../workspace/client/avatars.js";
+import { TheaterAvatar } from "../../../workspace/client/theater-avatar.js";
 import { isTriageActive } from "../../../workspace/client/canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../../../../core/client/src/integration/store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";

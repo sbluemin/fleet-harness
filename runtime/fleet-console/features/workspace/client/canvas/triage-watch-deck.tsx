@@ -6,7 +6,7 @@ import { useT } from "../../../../core/client/src/i18n/index.js";
 import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { getIdleArrivalIds, useOperationStatusDetails } from "../../../execution/client/operation-marks.js";
 import { resolveOperationMarkVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../../../execution/client/operation-activity.js";
-import { TheaterAvatar } from "../avatars.js";
+import { TheaterAvatar } from "../theater-avatar.js";
 import type { OperationGeometry, OperationNode, OperationGroup } from "../../../../core/client/src/integration/types.js";
 import { flattenGroupedOrder, operationOrderFromNodes, revealOperationStage } from "../../../../core/client/src/integration/store.js";
 import { FleetMap, type FleetMapDotMark } from "./fleet-map.js";

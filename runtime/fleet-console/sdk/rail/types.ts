@@ -2,7 +2,6 @@ import type { OpenFileRequest, OpenWikiEntryRequest, OpenResult } from "../navig
 import type { PluginInstallContext } from "../plugin/types.js";
 import type { PaneTarget } from "../pane/types.js";
 import type { ReactNode } from "react";
-import type { StatusGlyphState } from "../components/status-glyph.js";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { OpenLinkHandler } from "../link/types.js";
@@ -241,14 +240,12 @@ export interface RailEntryMobile {
 
 /** 모바일 드로어 목적지 행 오른쪽 끝 칸의 내용. 문자열은 이미 현지화되어 있다. */
 export interface RailEntryDestinationTrailingValue {
-  /** 낱말 앞에 서는 12px 상태 글리프. 생략하면 낱말만 선다. */
-  readonly glyph?: StatusGlyphState;
   readonly text: string;
   /** 낱말의 톤 — 기본 `muted`, 꺼짐처럼 가라앉은 상태는 `faint`, 오류는 `danger`. */
   readonly tone?: "muted" | "faint" | "danger";
 }
 
-/** 모바일 드로어 목적지 행 오른쪽 칸의 공급원 — `RailEntryMobile.destination.trailing`. 호스트는 값(glyph·text·tone)으로 비교하므로 매번 새 객체를 돌려줘도 된다. */
+/** 모바일 드로어 목적지 행 오른쪽 칸의 공급원 — `RailEntryMobile.destination.trailing`. 호스트는 값(text·tone)으로 비교하므로 매번 새 객체를 돌려줘도 된다. */
 export interface RailEntryDestinationTrailing {
   readonly subscribe: (listener: () => void) => () => void;
   readonly get: (theaterId: string | null) => RailEntryDestinationTrailingValue | null;

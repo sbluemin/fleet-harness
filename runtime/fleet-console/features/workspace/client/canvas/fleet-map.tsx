@@ -4,7 +4,8 @@ import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-co
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationMarkVisual, resolveOperationActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { getIdleArrivalIds, getOperationStatusDetailSnapshot } from "../../../execution/client/operation-marks.js";
-import { clusterFaceFacts, mongleStateOfMark, OperationAvatar, TheaterAvatar } from "../avatars.js";
+import { clusterFaceFacts, mongleStateOfMark, OperationAvatar } from "../avatars.js";
+import { TheaterAvatar } from "../theater-avatar.js";
 import { useOperationClusters } from "../operation-clusters.js";
 import type { OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveFleetMapDriftStyle, resolveFleetMapMarkerLayout, resolveFleetMapZoneLayout, type FleetMapKeepOut } from "./fleet-map-layout.js";

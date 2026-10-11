@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 import type { PaletteCommandEntry, PaletteCommandGroup, PaletteGlyphId } from "../../integration/palette-commands.js";
-import { TheaterAvatar } from "../../../../../features/workspace/client/avatars.js";
+import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 
 /**
  * 팔레트 행·구역 글리프 한 벌. 16px 상자, 1.5px 선, 둥근 끝 — 시작 화면·상태 아이콘과 같은 굵기다.

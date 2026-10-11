@@ -1,5 +1,5 @@
 import { pluginRuntimeState } from "../../../../../features/execution/client/operation-activity.js";
-import { TheaterAvatar } from "../../../../../features/workspace/client/avatars.js";
+import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { useEffect, useRef, useState } from "react";
 
 import type { ConsoleTheme, OperationKindDescriptor, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";

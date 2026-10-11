@@ -10,7 +10,7 @@ import { openTheaterSystemPrompt, subscribeTheaterSystemPromptOpen } from "../..
 import { closeTheaterInbox, openTheaterInbox, readTheaterInboxForget, readTheaterInboxState, selectTheaterInboxPage, subscribeTheaterInbox, theaterInboxCapability, theaterInboxReturnTarget, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { TheaterInboxPanel } from "../../../../features/workspace/client/theater-inbox/theater-inbox-panel.js";
 import { useConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
-import { TheaterAvatar } from "../../../../features/workspace/client/avatars.js";
+import { TheaterAvatar } from "../../../../features/workspace/client/theater-avatar.js";
 import { TheaterInboxSheet, type ResolvedTheaterInboxSection } from "../../../../features/workspace/client/theater-inbox/theater-inbox-sheet.js";
 
 /** 호스트의 「Theater 설정」 — 정준 id 는 `console:settings`. 플러그인 섹션은 그 뒤에 등록 순서로 선다. */

@@ -11,11 +11,12 @@ import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sh
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { reportSheetChrome, reportShellChrome } from "../../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
-import { buildQuickLaunchEffortDeck, isMentionSelectable, mentionTargetName, type QuickLaunchMentionTarget, type QuickLaunchPluginMentionRow } from "../quick-launch.js";
-import { TheaterAvatar } from "../../../workspace/client/avatars.js";
+import { isMentionSelectable, mentionTargetName, type QuickLaunchMentionTarget, type QuickLaunchPluginMentionRow } from "../quick-launch.js";
+import { TheaterAvatar } from "../../../workspace/client/theater-avatar.js";
 import { resolveOperationMarkVisual } from "../operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { OperationNameMark } from "./operation-name-mark.js";
+import { MobileEffortGateRow, MobileEffortTabs, Toggle, useMobileEffortGate } from "./mobile-effort-gate.js";
 import "./mobile-quick-launch.css";
 
 /**
@@ -67,66 +68,8 @@ const CameraIcon = () => (
   </svg>
 );
 
-function Toggle({ on }: { readonly on: boolean }) {
-  return <span className={`mql-toggle${on ? " is-on" : ""}`} aria-hidden="true" />;
-}
-
 function Radio({ on }: { readonly on: boolean }) {
   return <span className={`mql-radio${on ? " is-on" : ""}`} aria-hidden="true" />;
-}
-
-type EffortDeck = ReturnType<typeof buildQuickLaunchEffortDeck>;
-
-/**
- * 모델 시트의 강도 게이트(S-11e ①) — 새 작업 시트와 Operation 입력창 모델 시트가 같은 규칙을 쓴다.
- * 기본은 일상 단계만 보이고, 「{tiers} 펼치기」를 켜면 게이트 뒤 단계가 탭 끝에 선다. 지금 값이 이미 게이트 단계면
- * 펼친 채로 시작한다(deck이 값으로 문을 붙든다). 펼치기를 끄면 게이트 단은 숨고, 그 단을 고른 상태였으면 바로 아래 일상 단으로 되돌린다.
- */
-export function useMobileEffortGate(
-  row: OperationLaunchVariantRow | null,
-  effort: string | null,
-  autoLabel: string,
-  onEffort: (effort: string | null) => void,
-): { readonly deck: EffortDeck; readonly toggleGate: () => void } {
-  const [opened, setOpened] = useState(false);
-  const deck = buildQuickLaunchEffortDeck(row, effort, autoLabel, "", opened);
-  const toggleGate = () => {
-    if (!deck.gateOpen) { setOpened(true); return; }
-    if (deck.gateHeldByValue && row) {
-      const gated = new Set(row.gatedEfforts ?? []);
-      const everyday = (row.chips ?? []).filter((chip) => !gated.has(chip.id));
-      onEffort(everyday.at(-1)?.id ?? null);
-    }
-    setOpened(false);
-  };
-  return { deck, toggleGate };
-}
-
-/** 「추론 강도」 글자 탭 한 줄 — 고른 칸은 text 600 + 아래 2(S-11b). */
-export function MobileEffortTabs({ deck, label, onPick }: {
-  readonly deck: EffortDeck;
-  readonly label: string;
-  readonly onPick: (effort: string | null) => void;
-}) {
-  return (
-    <div className="mql-efft" role="radiogroup" aria-label={label}>
-      {deck.options.map((option) => (
-        <button key={option.id ?? "auto"} type="button" role="radio" aria-checked={option.checked} className={option.checked ? "is-on" : ""} onClick={() => onPick(option.id)}>{option.label}</button>
-      ))}
-    </div>
-  );
-}
-
-/** 「{tiers} 펼치기」 토글 행 — 고른 모델에 게이트 뒤 단계가 있을 때만 선다. */
-export function MobileEffortGateRow({ deck, onToggle }: { readonly deck: EffortDeck; readonly onToggle: () => void }) {
-  const t = useT();
-  if (!deck.hasGate) return null;
-  return (
-    <button type="button" role="switch" aria-checked={deck.gateOpen} className="mql-gr" onClick={onToggle}>
-      <span className="mql-gr-tx">{t("launchVariants.effort.apexToggle", { tiers: deck.gatedNames })}</span>
-      <Toggle on={deck.gateOpen} />
-    </button>
-  );
 }
 
 export function MobileQuickLaunch(props: MobileQuickLaunchProps) {

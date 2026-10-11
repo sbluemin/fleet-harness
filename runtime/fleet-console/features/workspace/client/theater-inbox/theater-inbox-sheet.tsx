@@ -6,7 +6,7 @@ import type { ConsoleTheaterSummary } from "@fleet-console/sdk/plugin";
 import type { ClientTheaterInboxCapability, TheaterInboxAddress, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { TheaterAvatar } from "../avatars.js";
+import { TheaterAvatar } from "../theater-avatar.js";
 import type { TheaterInboxOpenState } from "./store.js";
 import "./theater-inbox-sheet.css";
 

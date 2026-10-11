@@ -99,7 +99,7 @@ import { triageStageGeometryFor } from "../features/workspace/client/canvas/coor
 import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../features/execution/client/operation-marks.js";
 
 // 덱은 실제 컴포넌트로 검증하되 Vite 호스트가 공급하는 플러그인 카탈로그는 필요하지 않다.
-vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => ({ operationKinds: [], providers: [] }) }));
+vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => ({ operationKinds: [], providers: [], theaterContributions: [] }) }));
 
 const THEATER_ID = "theater-a";
 const THEATERS = [

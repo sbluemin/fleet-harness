@@ -11,7 +11,6 @@ import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
 import type { ConsoleState, OperationNode } from "../../../core/client/src/integration/types.js";
 import { resolveOperationActivity, type OperationMarkVisual } from "../../execution/client/operation-activity.js";
-import { useTheaterContributionFace } from "./theater-contributions.js";
 
 /**
  * 몽글 아바타의 Console 쪽 — 누구에게 어떤 역할이 붙는지, 처음 배정을 누가 맡는지, 대화 중심 화면의 편집기.
@@ -125,22 +124,6 @@ export function KeyedAvatar({ avatarKey, role, state, size, label, decorative, c
 }) {
   const look = useMongleLook(avatarKey);
   return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} size={size} label={label} decorative={decorative} className={className} />;
-}
-
-/**
- * Theater 의 아바타 — 그 Theater 사령관의 몽글 아바타다. 얼굴은 사이드바 Theater 머리 표식과 같은 사실에서 온다: 플러그인이
- * 머리 표식과 함께 주는 얼굴(`header.face`)을 읽고, 아무도 주지 않으면 쉼이다. 머리 표식(자기 단추를 품을 수 있다)을 옮겨 심지
- * 않으므로 칩·메뉴 행·팔레트 옵션처럼 단추 안에도 설 수 있고, 크기는 자리에 맞춘다.
- */
-export function TheaterAvatar({ theaterId, size, label, decorative, className }: {
-  readonly theaterId: string;
-  readonly size: number;
-  readonly label: string;
-  readonly decorative?: boolean;
-  readonly className?: string;
-}) {
-  const face = useTheaterContributionFace(theaterId);
-  return <KeyedAvatar avatarKey={theaterAvatarKey(theaterId)} role="commodore" state={face ?? "idle"} size={size} label={label} decorative={decorative} className={className} />;
 }
 
 function usePickerLabels(): MongleAvatarPickerLabels {
