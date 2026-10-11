@@ -618,17 +618,26 @@ function readHumanInputTag(encoded: string): ConsoleActionInput["humanInput"] {
 }
 
 /** 재생 문면이 호스트 표식으로 시작하면 출처와 원장 문면을 되찾는다. */
-function readChatOriginTag(text: string): { readonly by: ChatOrigin; readonly text: string; readonly format?: "markdown" } | null {
+function readChatOriginTag(text: string, options: ChatEventMapOptions): { readonly by: ChatOrigin; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly ChatAttachment[] } | null {
   const match = CHAT_ORIGIN_TAG.exec(text);
   if (!match) return null;
   const body = text.slice(match[0].length);
   const start = match[2] === undefined ? 0 : Number(match[2]);
   const end = match[3] === undefined ? 0 : Number(match[3]);
+  const attachments = transcriptAttachments(splitLaunchAttachmentInstructions(body).paths, options);
   return {
     by: { kind: "plugin", pluginId: match[1]!, ...(match[5] ? { humanInput: readHumanInputTag(match[5]) } : {}) },
     text: start <= end ? body.slice(start, end).trim() : "",
     ...(match[4] ? { format: "markdown" as const } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
   };
+}
+
+function transcriptAttachments(paths: readonly string[], options: ChatEventMapOptions): readonly ChatAttachment[] {
+  return paths.map((filePath): ChatAttachment => {
+    const id = options.resolveAttachmentId?.(filePath) ?? null;
+    return id === null ? { lapsed: true } : { id };
+  });
 }
 
 function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
@@ -645,7 +654,7 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     if (text === null) return [];
     // 호스트가 붙인 출처 표식은 운반체 판정보다 먼저 읽는다 — SDK로 보낸 줄에 CLI가 어떤 출처를
     // 달든, 이 줄은 플러그인이 보낸 지시이고 라이브에서 그렇게 섰다.
-    const tagged = isInjectedOrigin(line.origin) ? null : readChatOriginTag(text);
+    const tagged = isInjectedOrigin(line.origin) ? null : readChatOriginTag(text, options);
     if (tagged) return [{ kind: "dispatch", ...tagged, ...atField }];
     // 사람이 친 것이 아닌 운반체는 지휘 로그에 사용자 발화로 서지 않는다. 다만 본문만 걷고 턴
     // 경계까지 지우면 뒤따르는 응답이 앞 턴에 얹혀 앞 턴의 Answer를 갈아치우므로, 말풍선 없는
@@ -655,10 +664,7 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     // 문면과 첨부를 갈라 세운다 — 그러지 않으면 새로고침 한 번이 걷어낸 경로를 도로 불러온다.
     const attached = splitLaunchAttachmentInstructions(text);
     if (attached.paths.length === 0) return [{ kind: "dispatch", text, ...atField }];
-    const attachments = attached.paths.map((filePath): ChatAttachment => {
-      const id = options.resolveAttachmentId?.(filePath) ?? null;
-      return id === null ? { lapsed: true } : { id };
-    });
+    const attachments = transcriptAttachments(attached.paths, options);
     return [{ kind: "dispatch", text: attached.text, attachments, ...atField }];
   }
   if (line.type === "assistant") {
@@ -673,7 +679,7 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
   // 전언이 같은 모양으로 오고, 이 자리에서 둘을 가를 근거가 없다.
   if (line.type === "attachment" && line.attachment?.type === "queued_command" && line.attachment.commandMode === "prompt" && !isInjectedOrigin(line.attachment.origin)) {
     const text = readUserText(line.attachment.prompt);
-    const tagged = text === null ? null : readChatOriginTag(text);
+    const tagged = text === null ? null : readChatOriginTag(text, options);
     if (tagged) return [{ kind: "turn-inject", ...tagged, ...atField }];
   }
   return [];

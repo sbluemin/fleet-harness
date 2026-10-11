@@ -45,7 +45,8 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       const text = via ? unquote(event.text) : event.text;
       const recipient = human?.targetOperationId ? operationSpeaker(human.targetOperationId) : via ? speaker : undefined;
       entries.push({ kind: "message", id: human ? `human:${human.id}` : id, at, operationId, speaker: by, text,
-        ...(by.kind !== "human" && !via ? { format: "markdown" as const } : {}), streaming: false,
+        ...((event.format || by.kind !== "human") && !via ? { format: "markdown" as const } : {}),
+        ...(event.attachments?.length ? { attachments: event.attachments } : {}), streaming: false,
         ...(recipient ? { recipient } : {}), ...(human?.copy ? { copied: true } : {}), ...(via ? { via } : {}) });
       break;
     }

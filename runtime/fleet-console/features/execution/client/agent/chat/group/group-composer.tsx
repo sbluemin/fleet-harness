@@ -53,6 +53,7 @@ const MENTION_QUERY = /(?:^|\s)@([^\s@]*)$/u;
 export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupComposerProps) {
   const t = getGroupT(language);
   const [text, setText] = React.useState("");
+  const textRevision = React.useRef(0);
   const [target, setTarget] = React.useState<Candidate | null>(null);
   const [popIndex, setPopIndex] = React.useState(0);
   const [popDismissed, setPopDismissed] = React.useState(false);
@@ -96,6 +97,7 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
 
   // 결과 안내는 다음 행동까지 남는다 — 새로 쓰기 시작하면 걷는다.
   const edit = (value: string) => {
+    textRevision.current += 1;
     setText(value);
     setPopIndex(0);
     setPopDismissed(false);
@@ -103,6 +105,7 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
   };
 
   const choose = (candidate: Candidate) => {
+    textRevision.current += 1;
     setTarget(candidate);
     setText((value) => value.replace(MENTION_QUERY, (match) => (match.startsWith("@") ? "" : match.slice(0, 1))));
     setPopIndex(0);
@@ -213,7 +216,11 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
   const submit = async () => {
     if (busy || !actions || empty || uploading) return;
     const sentTo = target;
-    const ids = attachmentsRef.current.map((attachment) => attachment.id).filter((id): id is string => id !== null);
+    const sentText = text;
+    const sentRevision = textRevision.current;
+    const sentAttachments = attachmentsRef.current;
+    const sentKeys = new Set(sentAttachments.map((attachment) => attachment.key));
+    const ids = sentAttachments.map((attachment) => attachment.id).filter((id): id is string => id !== null);
     if (ids.length > 0 && (sentTo?.kind === "all" || sentTo?.kind === "commodore")) {
       setNotice({ tone: "warn", text: t("group.notice.attachOneTarget", { name: targetName(sentTo) }) });
       return;
@@ -224,14 +231,16 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
     setBusy(true);
     setNotice(null);
     try {
-      const result = await actions.send(groupTarget, text.trim(), ids.length > 0 ? ids : undefined);
-      // 일부만 닿았어도 보낸 말이다 — 지우고, 다시 보내지 않는다. 못 닿은 곳은 안내가 말한다.
-      setText("");
-      setTarget(null);
-      // 보낸 이미지는 받는 세션에 묶였다 — 미리보기만 놓는다(서버 파일은 그 세션이 거둔다).
-      for (const attachment of attachmentsRef.current) URL.revokeObjectURL(attachment.previewUrl);
-      attachmentsRef.current = [];
-      setAttachments([]);
+      const result = await actions.send(groupTarget, sentText.trim(), ids.length > 0 ? ids : undefined);
+      // 일부만 닿았어도 보낸 말이다 — 보낸 스냅샷만 걷고, 기다리는 동안 새로 쓴 말은 남긴다.
+      if (textRevision.current === sentRevision) setText("");
+      setTarget((current) => current === sentTo ? null : current);
+      // 보낸 이미지는 받는 세션에 묶였다 — 그 미리보기만 놓고 새로 붙인 이미지는 남긴다.
+      for (const attachment of attachmentsRef.current) {
+        if (sentKeys.has(attachment.key)) URL.revokeObjectURL(attachment.previewUrl);
+      }
+      attachmentsRef.current = attachmentsRef.current.filter((attachment) => !sentKeys.has(attachment.key));
+      setAttachments((current) => current.filter((attachment) => !sentKeys.has(attachment.key)));
       setNotice(describeSend(result, sentTo));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";

@@ -4,6 +4,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { AgentGlyph } from "../../agent-glyphs.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { pluginOriginIdentity } from "../origin-mark.js";
+import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import { getGroupT } from "./group-chat-i18n.js";
 import { LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
@@ -209,7 +210,7 @@ function MessageBubble({ entry, continued, live, participants, language }: {
   const t = getGroupT(language);
   const time = timeOf(entry.at, language);
   // 문면이 없는 말(표시 문면 없이 보낸 플러그인 지시 등)은 빈 말풍선으로 세우지 않는다. 흐르는 중이면 「쓰는 중」이 선다.
-  if (!entry.streaming && entry.text.trim().length === 0) return null;
+  if (!entry.streaming && entry.text.trim().length === 0 && !entry.attachments?.length) return null;
   // 보드 행위에 덧붙인 말이면 받는 이 뒤에 그 행위를 단다 — 그냥 대화가 아니라 개시·구상·방향 수정과 함께 간 말이다.
   const via = entry.via ? <><span className="group-chat-line-sep" aria-hidden="true">·</span><span className="group-chat-via">{t(`group.via.${entry.via}`)}</span></> : null;
   if (entry.speaker.kind === "human") {
@@ -224,6 +225,7 @@ function MessageBubble({ entry, continued, live, participants, language }: {
           </span>
         ) : null}
         <div className={`group-chat-bubble is-human${entry.format === "markdown" ? " is-markdown" : ""}`}>
+          {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
           {entry.format === "markdown"
             ? <StreamedMarkdown text={entry.text} streaming={false} className="agent-chat-dispatch-md" language={language} />
             : entry.text}

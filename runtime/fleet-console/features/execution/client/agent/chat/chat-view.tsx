@@ -1,6 +1,6 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { UseRequestCards } from "../use-request-card.js";
-import { createPortal } from "react-dom";
+import { ChatDispatchAttachments } from "./chat-dispatch-attachments.js";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
 
@@ -8,7 +8,7 @@ import { getT } from "../i18n/index.js";
 import { MobileGlyph, useMobileSurface } from "../mobile-surface.js";
 import { getTerminalPrefsSnapshot, useChatHistoryAutoFold, useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
-import { agentChatAttachmentPreviewUrl, messageAgentSession, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
+import { messageAgentSession, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { ToolDetail } from "./tool-detail.js";
 import { AgentGlyph } from "../agent-glyphs.js";
@@ -1088,112 +1088,6 @@ function formatCompactTokens(tokens: number): string {
  * 끝을 모른다는 뜻의 왕복 띠이고, 끝난 뒤에야 실제 비율이 선다. 지어낸 퍼센트를 그리면 그 숫자가
  * 처음 몇 초 동안 유일하게 확신에 찬 거짓말이 된다.
  */
-/**
- * 보낸 이미지 — 말풍선 머리에 컴포저 칩과 같은 문법으로 선다.
- *
- * 브라우저가 쥔 것은 미리보기 좌표뿐이고 호스트 경로는 서버에 남는다. 바이트가 이미 회수됐으면
- * (세션이 닫혔거나 지난 프로세스의 재생이면) 자리만 남긴다 — 첨부가 있었다는 사실은 깨진 이미지
- * 아이콘이 아니라 말로 말한다.
- */
-function ChatDispatchAttachments({
-  attachments,
-  language,
-}: {
-  readonly attachments: readonly AgentChatAttachment[];
-  readonly language: "en" | "ko";
-}) {
-  const t = getT(language);
-  const [opened, setOpened] = React.useState<string | null>(null);
-  // 404는 "없는 첨부"가 아니라 "거둬진 첨부"다 — 같은 자리에 lapsed와 같은 말을 세운다.
-  const [lapsed, setLapsed] = React.useState<readonly string[]>([]);
-  const live = attachments.filter((attachment): attachment is { readonly id: string } => (
-    "id" in attachment && !lapsed.includes(attachment.id)
-  ));
-  const lapsedCount = attachments.length - live.length;
-  return (
-    <div className="agent-chat-dispatch-attachments">
-      {live.map((attachment, index) => (
-        <button
-          key={attachment.id}
-          type="button"
-          className="agent-chat-dispatch-attachment"
-          aria-label={t("terminal.chat.attachmentOpen", { index: String(index + 1) })}
-          title={t("terminal.chat.attachmentOpen", { index: String(index + 1) })}
-          onClick={() => setOpened(attachment.id)}
-        >
-          <img
-            src={agentChatAttachmentPreviewUrl(attachment.id)}
-            alt={t("terminal.chat.attachmentAlt", { index: String(index + 1) })}
-            onError={() => setLapsed((current) => (current.includes(attachment.id) ? current : [...current, attachment.id]))}
-          />
-        </button>
-      ))}
-      {lapsedCount > 0 ? (
-        <span className="agent-chat-dispatch-attachment-lapsed">
-          <span className="agent-chat-dispatch-attachment-lapsed-box" aria-hidden="true" />
-          {t("terminal.chat.attachmentLapsed", { count: String(lapsedCount) })}
-        </span>
-      ) : null}
-      {opened !== null ? (
-        <ChatAttachmentViewer
-          id={opened}
-          index={live.findIndex((attachment) => attachment.id === opened) + 1}
-          language={language}
-          onClose={() => setOpened(null)}
-          onLapsed={() => {
-            setLapsed((current) => (current.includes(opened) ? current : [...current, opened]));
-            setOpened(null);
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-/** 첨부 한 장을 크게 본다. 부유 모달의 공용 문법(스크림·Esc·바깥 클릭)을 그대로 쓴다. */
-function ChatAttachmentViewer({
-  id,
-  index,
-  language,
-  onClose,
-  onLapsed,
-}: {
-  readonly id: string;
-  readonly index: number;
-  readonly language: "en" | "ko";
-  readonly onClose: () => void;
-  readonly onLapsed: () => void;
-}) {
-  const t = getT(language);
-  const closeRef = React.useRef<HTMLButtonElement | null>(null);
-  // 포커스는 열릴 때 닫기로 가고 닫히면 부른 자리로 돌아간다 — 키보드 사용자가 원장의 제자리를
-  // 잃지 않게 하는 최소 계약이다.
-  React.useEffect(() => {
-    const returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeRef.current?.focus();
-    return () => returnTo?.focus();
-  }, []);
-  React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // 같은 키가 패널의 다른 닫힘(작업 시트)까지 함께 닫지 않게 여기서 멈춘다.
-      event.stopPropagation();
-      onClose();
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [onClose]);
-  return createPortal(
-    <div className="agent-chat-attachment-scrim" role="dialog" aria-modal="true" aria-label={t("terminal.chat.attachmentAlt", { index: String(index) })} onMouseDown={onClose}>
-      <div className="agent-chat-attachment-frame" onMouseDown={(event) => event.stopPropagation()}>
-        <button ref={closeRef} type="button" className="agent-chat-attachment-close" onClick={onClose} aria-label={t("terminal.chat.attachmentClose")}>✕</button>
-        <img src={agentChatAttachmentPreviewUrl(id)} alt={t("terminal.chat.attachmentAlt", { index: String(index) })} onError={onLapsed} />
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 /** 기록 줄에 서는 좌표 한 쌍. 좌표 표식과 같은 어휘로 읽힌다. */
 function describeCoordinatePair(pair: AgentChatCoordinatePair, t: ReturnType<typeof getT>): string {
   const coordinates = readAgentChatSessionCoordinates({ session: pair });
@@ -1406,7 +1300,7 @@ export const ChatTurn = React.memo(function ChatTurn({
     <>
       {turn.dispatch?.by?.kind === "plugin" ? (
         <div className="agent-chat-received-head">
-          <OriginLine by={turn.dispatch.by} text={turn.dispatch.text} format={turn.dispatch.format} at={turn.dispatch.at} language={language} />
+          <OriginLine by={turn.dispatch.by} text={turn.dispatch.text} format={turn.dispatch.format} attachments={turn.dispatch.attachments} at={turn.dispatch.at} language={language} />
         </div>
       ) : turn.dispatch ? (
         <div className="agent-chat-dispatch">
@@ -1856,7 +1750,7 @@ function Ledger({
               }
               if (part.item.type === "inject") {
                 return part.item.by?.kind === "plugin"
-                  ? <OriginLine key={at} by={part.item.by} text={part.item.text ?? ""} format={part.item.format} at={part.item.at} language={language} />
+                  ? <OriginLine key={at} by={part.item.by} text={part.item.text ?? ""} format={part.item.format} attachments={part.item.attachments} at={part.item.at} language={language} />
                   : <InjectLine key={at} item={part.item} language={language} />;
               }
               if (part.item.type === "received") {
@@ -1940,12 +1834,14 @@ function OriginLine({
   by,
   text,
   format,
+  attachments,
   at,
   language,
 }: {
   readonly by: AgentChatPluginOrigin;
   readonly text: string;
   readonly format: "markdown" | undefined;
+  readonly attachments?: readonly AgentChatAttachment[];
   readonly at: number | undefined;
   readonly language: "en" | "ko";
 }) {
@@ -1958,7 +1854,7 @@ function OriginLine({
     </span>
   );
   const time = at !== undefined ? <span className="agent-chat-origin-time">{ORIGIN_TIME_FORMATS[language].format(new Date(at))}</span> : null;
-  if (body.length === 0) return <div className="agent-chat-tally agent-chat-origin">{line}{time}</div>;
+  if (body.length === 0 && !attachments?.length) return <div className="agent-chat-tally agent-chat-origin">{line}{time}</div>;
   return (
     <details className="agent-chat-tally-fold agent-chat-origin-fold" open>
       <summary className="agent-chat-tally agent-chat-origin">
@@ -1967,6 +1863,7 @@ function OriginLine({
         <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
       </summary>
       <div className="agent-chat-origin-body">
+        {attachments?.length ? <ChatDispatchAttachments attachments={attachments} language={language} /> : null}
         {format === "markdown"
           ? <StreamedMarkdown text={body} streaming={false} className="agent-chat-received-body markdown-body" language={language} />
           : <div className="agent-chat-origin-plain">{body}</div>}
@@ -1995,6 +1892,7 @@ function InjectLine({
   return (
     <div className="agent-chat-turn-inject">
       <span className="agent-chat-turn-inject-caption">{t("terminal.chat.injectCaption")}</span>
+      {item.attachments?.length ? <ChatDispatchAttachments attachments={item.attachments} language={language} /> : null}
       {item.format === "markdown"
         ? <StreamedMarkdown text={item.text ?? ""} streaming={false} className="agent-chat-turn-inject-body agent-chat-dispatch-md" language={language} />
         : <div className="agent-chat-turn-inject-body">{item.text ?? ""}</div>}
