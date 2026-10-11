@@ -1374,7 +1374,8 @@
 
 /* ── 상단 바 글리프 ────────────────────────────────────────────────────────
    커맨드 밴드 우측, 시스템 클러스터 앞. 밴드 버튼 문법(24×24·hover 림·눌림 워시)을 토큰으로
-   다시 그린다 — 호스트 클래스명은 플러그인 계약이 아니다. */
+   다시 그린다 — 호스트 클래스명은 플러그인 계약이 아니다. 더 큰 자리(대화 배치의 사이드바 고정 줄)는
+   호스트가 --command-band-entry-size 로 알리고, 머리는 버튼 안쪽 4px 여백을 지킨 채 함께 커진다. */
 .scuttlebutt-dock {
   display: inline-flex;
   flex: none;
@@ -1385,8 +1386,8 @@
 .scuttlebutt-dock-glyph {
   position: relative;
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: var(--command-band-entry-size, 24px);
+  height: var(--command-band-entry-size, 24px);
   flex: none;
   place-items: center;
   padding: 0;
@@ -1402,8 +1403,8 @@
 
 /* 밴드의 다른 글리프(16px)와 같은 크기다. 잘라 내기는 머리 창 마크의 공통 규칙이 진다. */
 .scuttlebutt-dock-glyph svg {
-  width: 16px;
-  height: 16px;
+  width: calc(var(--command-band-entry-size, 24px) - 8px);
+  height: calc(var(--command-band-entry-size, 24px) - 8px);
   /* 마스코트 색은 테마와 무관하게 고정이라(theme.css --scuttlebutt-qk-*) 라이트 밴드에서는 파스텔 얼굴이
      바탕과 같은 밝기가 되고, 16px에서는 그림 자체의 윤곽선도 0.3px 아래로 사라진다. 색은 그대로 두고
      이웃 밴드 아이콘의 잉크(--text-tertiary)로 실루엣 가장자리만 세운다 — 다크에서는 밝은 얼굴에 묻혀
@@ -1453,7 +1454,7 @@
 /* 새를 밴드까지 끌어올린 동안 보이는 내려놓을 자리. */
 .scuttlebutt-dock-drop {
   display: inline-flex;
-  height: 24px;
+  height: var(--command-band-entry-size, 24px);
   align-items: center;
   padding: 0 var(--space-2);
   border: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent);

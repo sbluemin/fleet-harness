@@ -113,7 +113,9 @@ export interface MentionTargetDescriptor {
 
 /**
  * 커맨드 밴드 우측 클러스터 앞에 서는 플러그인 항목. 밴드의 24×24 버튼 문법을 따르는 것은
- * 플러그인의 책임이고, 호스트는 등록 순서대로 나란히 세울 뿐이다.
+ * 플러그인의 책임이고, 호스트는 등록 순서대로 나란히 세울 뿐이다. 항목을 더 큰 자리에 세우는
+ * 호스트 슬롯(대화 배치의 사이드바 고정 줄)은 그 크기를 `--command-band-entry-size` 로 알린다 —
+ * 버튼 크기를 `var(--command-band-entry-size, 24px)` 로 받으면 두 자리에 모두 맞는다.
  */
 export interface CommandBandEntryDescriptor {
   readonly id: string;
