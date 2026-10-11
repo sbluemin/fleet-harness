@@ -848,6 +848,37 @@
   white-space: nowrap;
 }
 
+.conversation-panel-identity-edit {
+  max-width: 100%;
+  padding: 2px 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+.conversation-panel-identity-edit:hover,
+.conversation-panel-identity-edit:focus-visible {
+  background: color-mix(in oklch, var(--text-primary) 8%, transparent);
+  outline: none;
+}
+
+.conversation-panel-identity-input {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 2px 8px;
+  border: 0;
+  background: none;
+  text-align: center;
+  outline: none;
+}
+
 /* 대상의 글자 탭 — 켜진 탭은 둥근 면(Grok 세그먼트). */
 .conversation-panel-tabs .right-rail-ico.is-text {
   flex: none;

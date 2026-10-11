@@ -112,6 +112,32 @@ export function useConversationBodyRenderer(): ConversationBodyRenderer | null {
   );
 }
 
+// ── Operation 이름 변경 ────────────────────────────────────────────────────
+
+type ConversationOperationRename = (operationId: string, title: string) => void;
+
+let operationRename: ConversationOperationRename | null = null;
+const operationRenameListeners = new Set<() => void>();
+
+/** 오른쪽 패널 머리의 이름 편집이 확정할 길 — Operation 목록을 가진 쪽이 사이드바 칩과 같은 이름 변경 핸들러를 둔다. 돌려준 함수로 걷는다. */
+export function setConversationOperationRename(rename: ConversationOperationRename): () => void {
+  operationRename = rename;
+  for (const listener of operationRenameListeners) listener();
+  return () => {
+    if (operationRename !== rename) return;
+    operationRename = null;
+    for (const listener of operationRenameListeners) listener();
+  };
+}
+
+export function useConversationOperationRename(): ConversationOperationRename | null {
+  return useSyncExternalStore(
+    (listener) => { operationRenameListeners.add(listener); return () => { operationRenameListeners.delete(listener); }; },
+    () => operationRename,
+    () => null,
+  );
+}
+
 // ── 사이드바 행 미리보기 ───────────────────────────────────────────────────
 
 export interface ConversationRowPreview {

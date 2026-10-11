@@ -125,8 +125,10 @@ type ActiveContextMenu =
       readonly anchor: DOMRect;
       readonly returnFocus?: HTMLElement | null;
       readonly requestedAction?: SideBarOperationMenuAction;
-      /** 목표 줄에서 연 메뉴 — 줄 제목은 목표의 것이라 이름 바꾸기를 싣지 않고, 열기는 줄과 같이 선택 알림을 함께 보낸다. */
+      /** 목표 줄에서 연 메뉴 — 줄 제목은 목표의 것이라 플러그인이 이름 변경을 선언한 줄만 이름 바꾸기를 싣고, 열기는 줄과 같이 선택 알림을 함께 보낸다. */
       readonly fromRow?: boolean;
+      /** 목표 줄의 플러그인이 이름 변경을 맡는다고 선언했다 — 줄에서 연 메뉴도 「이름 변경」을 싣는다. */
+      readonly renamable?: boolean;
     }
   | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null }
   | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null; readonly newGroup?: boolean };
@@ -924,7 +926,7 @@ export function OperationsSideBar({
   const openRowContextMenu = (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => {
     if (!item.anchor) return;
     setNewMenu(null);
-    setActiveContextMenu({ kind: "chip", operationId: item.anchor.operation.id, anchor, returnFocus, fromRow: true });
+    setActiveContextMenu({ kind: "chip", operationId: item.anchor.operation.id, anchor, returnFocus, fromRow: true, renamable: item.row.rename !== undefined });
   };
   const renderRow = (item: SideBarRowItem, promoted: boolean) => {
     const sourceId = item.anchor?.operation.id ?? `row:${item.layout.cluster.id}`;
@@ -1472,7 +1474,7 @@ export function OperationsSideBar({
                 if (activeContextMenu.fromRow) for (const provider of registry.providers) provider.onMapOperationSelected?.(contextMenuOperation.id);
               },
             } : {}),
-            ...(activeContextMenu.fromRow ? {} : { onRename: () => requestSideBarOperationAction(contextMenuOperation.id, "rename") }),
+            ...(activeContextMenu.fromRow && !activeContextMenu.renamable ? {} : { onRename: () => requestSideBarOperationAction(contextMenuOperation.id, "rename") }),
           }}
           onClose={closeActiveContextMenu}
         />

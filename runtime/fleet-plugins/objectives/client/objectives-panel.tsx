@@ -14,6 +14,7 @@ import { ActionBand, type MemberAwaiting, type MessageRecipient } from "./action
 import { DecisionGlyph, DecisionList, DecisionRequestBlock } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
+import { useCommodoreConversationActive } from "./commodore-conversation.js";
 import { ObjectiveResults, ResultsGlyph, ResultsHeadTools, resultGroupKey } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
@@ -173,6 +174,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     followActiveOperation();
     return () => { setTimeout(notifyObjectiveSurface, 0); };
   }, []);
+  // 대화 중심 화면의 우측 사이드바 — 목표 상세의 머리(완료·제목·닫기·확대·작업 줄)는 그 화면의 머리가 맡는다.
+  const conversationActive = useCommodoreConversationActive();
+  const hideHead = ctx.place === "rail" && conversationActive;
   const placeButton = (className: string) => <button type="button" className={`objectives-place-button ${className}`} data-objectives-tour="place" aria-label={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} title={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} onClick={ctx.place === "rail" ? expandObjective : dockObjective}>
     {ctx.place === "rail" ? <ExpandGlyph /> : <DockGlyph />}
   </button>;
@@ -416,6 +420,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         detailRef={detailRef}
         layout={two ? "two" : "one"}
         placeButton={placeButton("objectives-place-detail")}
+        hideHead={hideHead}
         onComplete={() => completeObjective(current)}
         onToggleEdge={(from, to, linked) => toggleEdge(current, from, to, linked)}
         onOpenObjective={openObjectiveDetail}
@@ -847,6 +852,8 @@ interface DetailProps {
   /** 1-Pane(운영·판단이 아래로 쌓임) 또는 2-Pane(내용·계획 | 운영·판단) — 같은 상세를 어떻게 나눠 그릴지만 정한다. */
   readonly layout: "one" | "two";
   readonly placeButton: ReactNode;
+  /** 대화 중심 화면 우측 사이드바 — 머리 줄과 작업 중·멈춤 줄을 그리지 않는다. */
+  readonly hideHead: boolean;
   readonly onComplete: () => void;
   readonly onToggleEdge: (from: string, to: string, linked?: boolean) => Promise<void>;
   /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 있는 항목만 연다. */
@@ -1391,7 +1398,7 @@ function ObjectiveCloseButton({ objective, t, call, toast }: { readonly objectiv
   );
 }
 
-function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, switcher, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
+function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, switcher, detailRef, layout, placeButton, hideHead, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
   const launchRows = useLaunchRows();
   const [quietNow, setQuietNow] = useState(() => Date.now());
   // 문장은 경과 분이다. 임계에 닿은 뒤에도 1분마다 다시 읽어, 뱃지가 처음 분수에 멈물지 않게 한다.
@@ -1593,9 +1600,9 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const missionExtension = (id: string) => extensionOf(objective.extensions, id, "mission");
   const criterionExtension = (id: string) => extensionOf(objective.extensions, id, "criterion");
 
-  const sHead = (<>
+  const sHead = hideHead && !extension ? null : (<>
       <div className="objectives-group">
-        <div className="objectives-detail-head">
+        {hideHead ? null : <div className="objectives-detail-head">
           {(() => {
             const n = objective.done || busy ? 0 : followupOpenList.length;
             const selectable = n > 0 && followupSelectableBody;
@@ -1629,14 +1636,16 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           {otherRequests > 0 ? <button type="button" className="objectives-detail-requests" title={t("objectives.requests.othersTip")} onClick={onNextRequest}>{t("objectives.requests.others", { count: otherRequests })}</button> : null}
           {!busy ? <ObjectiveCloseButton objective={objective} t={t} call={call} toast={toast} /> : null}
           {placeButton}
-        </div>
+        </div>}
         {extension ? <div className="objectives-extension-current">
           <div><ExtensionChip n={extension.n} t={t} /><time dateTime={new Date(extension.at).toISOString()}>{t("objectives.extend.started", { date: recordTime(extension.at, language, "") })}</time></div>
           <p className="objectives-extension-request"><b>{t("objectives.extend.request")}</b><LinkText text={extension.context} /></p>
         </div> : null}
+        {hideHead ? null : <>
         {busy ? <div className="objectives-busy-line" role="status"><i aria-hidden="true" /><span>{t(objective.planning ? "objectives.planning" : "objectives.busy")}</span></div> : null}
         {/* 멈춘 목표 — 조용해진 것이지 안 보이게 된 것이 아니다. 지시를 다시 보내면 서버가 stoppedAt 을 거두고 이 줄도 사라진다. */}
         {!busy && !objective.done && objective.stoppedAt !== null ? <div className="objectives-busy-line is-stopped" role="status"><i aria-hidden="true" /><span>{t("objectives.stopped", { time: recordTime(objective.stoppedAt, language, "") })}</span></div> : null}
+        </>}
       </div>
   </>);
   const sFollowupResults = (<>
