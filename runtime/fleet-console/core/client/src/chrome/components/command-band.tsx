@@ -132,34 +132,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         inert={commandBandHidden || undefined}
       >
       <div ref={bandLeftRef} className="command-band-left">
-        {state.channel === "local" ? (
-          <div className="command-band-brand is-local command-band-environment">
-            <button
-              ref={environment.triggerRef}
-              type="button"
-              className="command-band-brand-diagnostics"
-              aria-label={`${t("chrome.commandBand.environment")}: ${t(desktopShell ? "chrome.commandBand.localDesktop" : "chrome.commandBand.local")}`}
-              aria-haspopup="dialog"
-              aria-expanded={environment.open}
-              onKeyDown={(event) => {
-                // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
-                if (event.code === "Space") event.stopPropagation();
-              }}
-              onClick={environment.toggle}
-            >
-              <BrandMarkIcon local />
-            </button>
-            <Link
-              className="command-band-brand-home"
-              to="/operations"
-              aria-label={t("chrome.commandBand.operations")}
-              onClick={environment.close}
-            >
-              <BrandWordmark local />
-            </Link>
-            {environment.popover}
-          </div>
-        ) : <BrandHome />}
+        <CommandBandBrand environment={environment} />
+
         {/* 업데이트 중에는 링크 상실이 고장이 아니라 진행이다. 커튼이 그 사실을 말하고 있는
             동안 이 칩까지 "연결 끊김"이라고 말하면, 한 화면이 두 가지 이야기를 한다. */}
         {state.connection !== "live" && !updateProgress.watching ? (
@@ -344,6 +318,50 @@ function buildEnvironmentRows(
     [t("chrome.commandBand.env.runtimeLock"), environment.lockFile],
     ...(desktopShell ? [[t("chrome.commandBand.env.desktopData"), `${environment.dataDir}/desktop`] as [string, string]] : []),
   ];
+}
+
+/**
+ * 브랜드 자리 — 밴드 왼쪽과 대화 중심 화면의 사이드바 맨 위 줄이 같은 한 벌을 쓴다. 로컬 채널은 앰블럼이 환경 진단을 열고
+ * 워드마크가 홈으로 간다. 진단 상태는 부르는 쪽이 쥔다(밴드는 실측 관찰자와 같은 훅 인스턴스를 공유한다).
+ */
+export function CommandBandBrand({ environment }: { readonly environment: ReturnType<typeof useEnvironmentDiagnostics> }) {
+  const t = useT();
+  const state = useConsoleState();
+  const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
+  if (state.channel !== "local") return <BrandHome />;
+  return (
+    <div className="command-band-brand is-local command-band-environment">
+      <button
+        ref={environment.triggerRef}
+        type="button"
+        className="command-band-brand-diagnostics"
+        aria-label={`${t("chrome.commandBand.environment")}: ${t(desktopShell ? "chrome.commandBand.localDesktop" : "chrome.commandBand.local")}`}
+        aria-haspopup="dialog"
+        aria-expanded={environment.open}
+        onKeyDown={(event) => {
+          // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
+          if (event.code === "Space") event.stopPropagation();
+        }}
+        onClick={environment.toggle}
+      >
+        <BrandMarkIcon local />
+      </button>
+      <Link
+        className="command-band-brand-home"
+        to="/operations"
+        aria-label={t("chrome.commandBand.operations")}
+        onClick={environment.close}
+      >
+        <BrandWordmark local />
+      </Link>
+      {environment.popover}
+    </div>
+  );
+}
+
+/** 밴드 밖(대화 중심 화면의 사이드바)에 서는 브랜드 — 진단 상태를 스스로 쥔다. */
+export function StandaloneBrand() {
+  return <CommandBandBrand environment={useEnvironmentDiagnostics()} />;
 }
 
 function BrandHome() {

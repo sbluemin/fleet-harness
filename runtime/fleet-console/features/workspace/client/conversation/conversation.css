@@ -668,8 +668,8 @@
   box-sizing: border-box;
 }
 
-/* 맨 위 줄은 Grok 처럼 (신호등 자리 다음) 단추 몇 개만 선다 — 「⋯」 보기 메뉴·찾기·새로 만들기. 모드·상태별 보기·접기는
-   「⋯」 메뉴 안이다(SideBarViewMenu compact). 줄은 넘치지 않는다 — 단추는 줄어들지 않고 빈 자리만 줄어든다. */
+/* 맨 위 줄은 Grok 처럼 (신호등 자리 다음) 브랜드와 단추 몇 개만 선다 — 브랜드·찾기·새로 만들기. 모드·상태별 보기는 하단 줄의
+   글리프이고 접기는 단축키다. 줄은 넘치지 않는다 — 단추는 줄어들지 않고 브랜드 워드마크와 빈 자리만 줄어든다. */
 .side-bar-top-strip.is-compact { gap: var(--space-2); overflow: hidden; }
 .side-bar-top-strip.is-compact > * { flex: none; }
 .side-bar-top-strip.is-compact > .side-bar-top-strip-spacer { flex: 1 1 0; min-width: 0; }
@@ -679,6 +679,11 @@
   height: 30px;
   border-radius: var(--radius-pill);
 }
+
+/* 브랜드(앰블럼 = 환경 진단, 워드마크 = 홈)는 밴드 왼쪽과 같은 한 벌이 사이드바 맨 위 줄 왼쪽에 선다. */
+.side-bar-top-strip.is-compact > .command-band-brand { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 0 1 auto; overflow: visible; }
+.side-bar-top-strip.is-compact > .command-band-brand :is(.command-band-brand-glyph, svg) { width: 22px; height: 22px; flex: none; }
+.side-bar-top-strip.is-compact > .command-band-brand .command-band-brand-wordmark { white-space: nowrap; }
 
 .console-shell.is-conversation-layout .side-bar-top-strip .conversation-round {
   width: 30px;

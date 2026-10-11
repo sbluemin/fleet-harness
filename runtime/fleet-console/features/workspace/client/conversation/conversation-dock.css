@@ -36,11 +36,34 @@
 }
 .conversation-dock-status[data-connection="live"] { background: var(--positive); }
 .conversation-dock-status[data-connection="offline"] { background: var(--coral); }
-.conversation-dock .side-bar-archive.is-compact { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; }
+/* 보관함은 줄어든 캡슐이다 — 남는 폭은 캡슐이 갖되 오른쪽 글리프 둘(War Room·상태별 보기)이 먼저 자리를 잡는다. */
+.conversation-dock .side-bar-archive.is-compact { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; border: 0; }
+.conversation-dock .side-bar-archive-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-dock-toggles { flex: none; display: flex; align-items: center; gap: 6px; }
+.conversation-dock-toggles > :is(.conversation-dock-toggle, .side-bar-status-view-toggle) {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 15%, transparent);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.conversation-dock-toggles > :is(.conversation-dock-toggle, .side-bar-status-view-toggle) > svg { width: 16px; height: 16px; }
+.conversation-dock-toggles > :is(.conversation-dock-toggle, .side-bar-status-view-toggle):hover { color: var(--text-primary); background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
+/* 켜짐은 위치·초점 채널(brass)의 잉크와 옅은 면으로 말한다 — 상태 신호색을 빌리지 않는다. */
+.conversation-dock-toggles > :is(.conversation-dock-toggle, .side-bar-status-view-toggle)[aria-pressed="true"] {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+}
 .conversation-dock .side-bar-archive-button {
   width: 100%;
-  height: 42px;
-  padding: 0 14px;
+  height: 40px;
+  padding: 0 12px;
   gap: 8px;
   border: 1px solid color-mix(in oklch, var(--text-primary) 15%, transparent);
   border-radius: var(--radius-pill);

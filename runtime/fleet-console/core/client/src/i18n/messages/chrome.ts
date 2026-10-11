@@ -529,6 +529,7 @@ export const chromeEn = {
   "conversation.side.newOperation": "New Operation",
   "conversation.side.pinnedAria": "Pinned",
   "conversation.side.systemAria": "Host, usage and settings",
+  "conversation.side.warRoom": "War Room",
 } as const;
 
 export const chromeKo: Record<keyof typeof chromeEn, string> = {
@@ -1047,4 +1048,5 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.side.newOperation": "새 Operation",
   "conversation.side.pinnedAria": "고정",
   "conversation.side.systemAria": "호스트 · 사용량 · 설정",
+  "conversation.side.warRoom": "War Room",
 };

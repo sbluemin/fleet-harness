@@ -49,6 +49,7 @@ import { useViewMode } from "../../../core/client/src/integration/view-mode-stor
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { useWarRoomChromeState } from "../../../core/client/src/integration/war-room-chrome.js";
 import { useConversationLayout } from "../../settings/client/use-conversation-layout.js";
+import { StandaloneBrand } from "../../../core/client/src/chrome/components/command-band.js";
 import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
 import { SideBarRowStyleContext } from "./sidebar/side-bar-row-style.js";
 import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
@@ -945,7 +946,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         onCancelAddTheater={cancelAddTheater}
         onForgetTheater={handleForgetTheater}
         {...(warRoomSideBarCap !== null ? { widthCap: warRoomSideBarCap } : {})}
-        {...(conversation ? { topStripVariant: "compact" as const, topStripTrailing: <ConversationSideBarActions />, topAccessory: <ConversationSideBarTop />, archiveInBottomAccessory: true, bottomAccessory: <ConversationSideBarBottom connection={state.connection} /> } : {})}
+        {...(conversation ? { topStripVariant: "compact" as const, topStripLeading: <StandaloneBrand />, topStripTrailing: <ConversationSideBarActions />, topAccessory: <ConversationSideBarTop />, archiveInBottomAccessory: true, bottomAccessory: <ConversationSideBarBottom connection={state.connection} /> } : {})}
       />
     </div>
   );
