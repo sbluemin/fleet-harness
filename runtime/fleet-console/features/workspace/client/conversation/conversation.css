@@ -251,8 +251,6 @@
    본문째 맨 위 줄 아래에서 시작한다 — 무엇이 떠 있는 줄에 가려지지 않게. */
 .conversation-body {
   --conversation-overlay-top: var(--conversation-top-row);
-  /* 맨 위 줄 오른쪽에 떠 있는 본문 단추(사령관 기록 비우기)가 비켜설 폭 — 사용량 캡슐과 Windows 캡션 버튼 몫. */
-  --conversation-overlay-right: calc(var(--conversation-quota-space) + var(--conversation-caption-reserve));
   position: relative;
   flex: 1;
   min-height: 0;
@@ -874,7 +872,7 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is
 }
 
 /* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 맨 위 줄, 닫혔으면
-   가운데 열의 맨 위 줄·사용량 캡슐·떠 있는 본문 단추)이 그 폭을 비운다. 식은 layout.css 밴드 오른쪽 클러스터와 같다
+   가운데 열의 맨 위 줄·사용량 캡슐)이 그 폭을 비운다. 식은 layout.css 밴드 오른쪽 클러스터와 같다
    (env 실측과 46 DIP × 3 계약 중 큰 쪽). */
 html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation {
   --conversation-caption-width: max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1));

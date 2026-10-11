@@ -637,6 +637,8 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   }, [descriptor.defaultTab, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
+  // 대화의 동작은 Operation 대화처럼 pill 바로 옆 단추 묶음에 선다 — 이 줄 안에 있어야 Desktop 의 창 끌기 자리에서 빠져 눌린다.
+  const actions = descriptor.actions?.(context) ?? null;
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
@@ -645,6 +647,11 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
           <span className="conversation-pill-title">{title}</span>
           {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
         </button>
+        {actions === null || actions === false ? null : (
+          <span className="conversation-pill-actions">
+            <PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary>
+          </span>
+        )}
       </div>
       <div className="conversation-body is-surface">
         <PluginErrorBoundary fallback={null}>{descriptor.render(context)}</PluginErrorBoundary>

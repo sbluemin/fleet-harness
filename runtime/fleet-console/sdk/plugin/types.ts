@@ -338,6 +338,11 @@ export interface ConversationSurfaceDescriptor {
    */
   readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("../avatars/index.js").MongleRole; readonly label: string } | null;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
+  /**
+   * 머리 pill 바로 오른쪽 단추 묶음(Operation 대화의 pill 단추 묶음과 같은 자리·같은 캡슐)에 설 이 대화의 동작. 호스트가 자리와 면을
+   * 진다 — 그 줄은 Desktop 에서 창을 끄는 자리라, 본문이 맨 위 줄에 단추를 띄우면 pill 밖에서는 눌리지 않는다. 없거나 null 이면 묶음이 서지 않는다.
+   */
+  readonly actions?: (ctx: ConversationSurfaceContext) => ReactNode;
   readonly tabs?: readonly ConversationSurfaceTab[];
   /** 열 때 오른쪽 패널이 닫혀 있으면 이 탭을 연다. */
   readonly defaultTab?: string;

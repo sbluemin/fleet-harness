@@ -1791,19 +1791,23 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* ── 대화 중심 화면(Console 실험 기능)의 사령관 ─────────────────────────────
    시트와 같은 기록·입력·구역을 가운데 칸과 오른쪽 패널에 세운다. 시트의 머리·구역 목록은 호스트의 머리 pill 과 패널 탭이 대신한다. */
 .objectives-commodore-conversation { position: relative; height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-/* 기록 비우기 — 가운데 칸 맨 위 투명 줄의 오른쪽에 떠 있다. Windows 캡션 버튼이 오른쪽 위에 서면 호스트가 그 폭을
-   --conversation-overlay-right 로 알려 준다(conversation.css). */
-.objectives-commodore-conversation-float {
-  position: absolute;
-  top: calc((var(--conversation-overlay-top, 52px) - 30px) / 2);
-  right: calc(16px + var(--conversation-overlay-right, 0px));
-  z-index: 4;
-  display: inline-flex;
-  padding: 2px;
+/* 기록 비우기 — 머리 pill 바로 옆 단추 묶음(호스트의 .conversation-pill-actions, descriptor actions)에 선다. 단추는 그 묶음의
+   다른 단추(.conversation-round)와 같은 32px 원이고, hover 도 그 원의 테두리·잉크로만 말한다 — 면이 단추 모양을 벗어나지 않는다. */
+.objectives-commodore-clear-wrap.is-round { margin-left: 0; gap: 6px; }
+.objectives-commodore-clear-wrap.is-round .objectives-commodore-clear-confirm { padding-left: 10px; white-space: nowrap; }
+.objectives-commodore-clear.is-round {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--surface-panel) 82%, transparent);
-  backdrop-filter: blur(10px);
+  background: var(--surface-glass);
+  color: var(--text-secondary);
 }
+.objectives-commodore-clear.is-round svg { width: 15px; height: 15px; }
+.objectives-commodore-clear.is-round:hover,
+.objectives-commodore-clear.is-round:focus-visible { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong)); background: var(--surface-glass); color: var(--text-primary); outline: none; }
+.objectives-commodore-clear.is-round.is-armed { border-color: color-mix(in oklch, var(--coral) 45%, var(--surface-rim-strong)); background: color-mix(in oklch, var(--coral) 10%, var(--surface-glass)); color: var(--coral-ink); }
 .objectives-commodore-conversation-status { display: block; min-width: 0; margin-top: 6px; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .objectives-commodore-conversation .objectives-commodore-foot { padding-inline: 20px; }
 .objectives-commodore-conversation-back {
