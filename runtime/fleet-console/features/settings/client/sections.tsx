@@ -196,6 +196,8 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       label: t("settings.core.experiments.label"),
       help: t("settings.experiments.intro"),
       entries: [
+        t("settings.experiments.screenCard"),
+        t("settings.experiments.conversationLayout.title"),
         t("settings.experiments.aiCard"),
         t("settings.computerUse.title"),
         "Computer Use",

@@ -39,6 +39,8 @@ export interface ExperimentAideSelection {
 }
 
 export interface ConsoleExperimentSettings {
+  /** 데스크톱 대화 중심 배치. 실행 세션이나 기존 패널 위치를 바꾸지 않는 표시 선택이다. */
+  readonly conversationLayout: boolean;
   /** 로컬 Computer Use. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
   readonly computerUseBackend: ComputerUseBackendId;
@@ -67,6 +69,7 @@ export const DEFAULT_EXPERIMENT_AIDE_SELECTION: ExperimentAideSelection = { mode
 const COMMODORE_DEFAULT_SELECTION: ExperimentAideSelection = Object.freeze({ model: "opus[1m]", effort: "high" });
 
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
+  conversationLayout: false,
   computerUse: false,
   computerUseBackend: "sky-computer-use",
   coworkModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
@@ -130,6 +133,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     return isExperimentEffort(raw) ? raw : DEFAULT_EXPERIMENT_AIDE_SELECTION.effort;
   };
   return {
+    conversationLayout: record.conversationLayout === true,
     computerUse: record.computerUse === true,
     computerUseBackend: isComputerUseBackendId(record.computerUseBackend) ? record.computerUseBackend : "sky-computer-use",
     coworkModel: aideModel("cowork"),
