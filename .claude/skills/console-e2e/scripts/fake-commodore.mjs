@@ -108,8 +108,10 @@ export function wrapPlugin(plugin) {
               if (marker("hold-turn")) {
                 await new Promise((resolve) => { finish = resolve; });
               } else {
+                const failed = marker("fail-turn");
                 options.onEvent?.({ kind: "text", text: "[fake Commodore: no provider call]" });
-                options.onEvent?.({ kind: "result", isError: false, source: "message", usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } });
+                options.onEvent?.({ kind: "result", isError: failed, source: "message", ...(failed ? { detail: "fake_turn_failed" } : {}), usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } });
+                log("result", { id, isError: failed, ...(failed ? { detail: "fake_turn_failed" } : {}) });
               }
             },
             cancel() { log("cancel", { id }); settle(marker("complete-on-cancel")); },
