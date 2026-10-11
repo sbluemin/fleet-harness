@@ -148,7 +148,7 @@ export function ConsoleToolbar({ warRoomActive, canvas }: ConsoleToolbarProps) {
  * 활성 표식으로 "지금 여기"를 말한다. 문서 id(rail-settings-toggle)는 설정 패널의 이름표(aria-labelledby)와
  * 온보딩 앵커가 가리키므로 그대로 둔다. 레일은 /operations에만 서므로, 다른 화면에서는 캔버스로 돌아간 뒤 연다.
  */
-function ToolbarSettingsButton({ canvas }: { readonly canvas: boolean }) {
+export function ToolbarSettingsButton({ canvas }: { readonly canvas: boolean }) {
   const t = useT();
   const navigate = useNavigate();
   const activePanelId = useRailActivePanelId();

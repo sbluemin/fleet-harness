@@ -68,7 +68,7 @@ type PluginClientModule = {
 // 모듈 평가 때 createPluginRegistry 가 돈다 — 그 안에서 읽는 상수는 이 줄보다 위에 있어야 한다(TDZ).
 const NO_CLUSTERS: readonly OperationCluster[] = [];
 /** 도구모음 Bridge의 끝 자리 — 부관의 글리프. 답 말풍선이 이 글리프를 닻으로 삼아 줄 끝에서 뜬다. */
-const DEPUTY_COMMAND_BAND_ENTRY_ID = "scuttlebutt:dock";
+export const DEPUTY_COMMAND_BAND_ENTRY_ID = "scuttlebutt:dock";
 const EMPTY_PLUGIN_REGISTRY: PluginRegistry = createPluginRegistry(builtInPlugins);
 
 const PluginRegistryContext = createContext<PluginRegistry>(EMPTY_PLUGIN_REGISTRY);

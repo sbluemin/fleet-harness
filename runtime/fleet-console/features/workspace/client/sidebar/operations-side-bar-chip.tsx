@@ -24,6 +24,8 @@ import { SNAP_FULL_ZONES } from "../canvas/snap-layouts.js";
 import { SnapMark } from "../canvas/snap-mark.js";
 import { DecisionRequestMark } from "../decision-request-mark.js";
 import { scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
+import { CONVERSATION_ROW_PHRASE, useSideBarRowStyle } from "./side-bar-row-style.js";
+import { useConversationRowPreview } from "../conversation/conversation-slots.js";
 
 /** 포인터가 잠깐 지나가는 것과 겨누는 것을 가르는 시간. 목록을 훑는 동안 카드가 따라 뜨면 안 된다. */
 const DETAIL_HOVER_DELAY_MS = 400;
@@ -151,7 +153,11 @@ export function OperationsSideBarChip({
   // 폴더는 hover 상세 카드가 진다. 접근성 이름은 여기서도 폴더까지 싣는다.
   const session = useAgentState().sessions[operation.id];
   const context = visibleWorkspace(session?.workspace);
-  const chipContext = chipWorkspace(context);
+  // 대화 중심 화면의 행은 위치 줄 대신 상태 문구 한 줄을 둔다(위치는 겨누면 뜨는 상세 카드가 그대로 말한다).
+  const conversationRow = useSideBarRowStyle() === "conversation";
+  // 미리보기 원천(그룹 타임라인)이 연결되면 마지막 발화가, 아니면 상태 문구가 그 줄에 선다 — 연결 지점은 이 한 곳이다.
+  const rowPreview = useConversationRowPreview(operation.id);
+  const chipContext = conversationRow ? null : chipWorkspace(context);
   const workspaceContext = context ? describeWorkspace(t, context) : "";
   // 상태에 담는 것은 칩의 자리뿐이다: 내용을 스냅샷으로 얼려 두면 열어 둔 채 활동이나 작업 폴더가
   // 바뀌었을 때 카드가 지난 사실을 계속 말한다.
@@ -190,6 +196,7 @@ export function OperationsSideBarChip({
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
     chipContext ? "side-bar-chip--with-context" : "",
+    conversationRow ? "side-bar-chip--conversation" : "",
   ].filter(Boolean).join(" ");
   const chipStyle = {
     "--i": index,
@@ -410,6 +417,11 @@ export function OperationsSideBarChip({
           )}
         </span>
         {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
+        {conversationRow && markVisual ? (
+          <span className="side-bar-chip-preview" aria-hidden="true">
+            {rowPreview?.text ?? t(cluster?.decisionRequest ? "conversation.row.decision" : CONVERSATION_ROW_PHRASE[markVisual])}
+          </span>
+        ) : null}
         {/* 묶음의 단계 띠는 이름·위치 줄 아래 셋째 줄 — 이름 옆에 세우면 제목이 밀려 잘린다. */}
         {cluster ? cluster.strip : null}
       </span>
@@ -431,7 +443,7 @@ export function OperationsSideBarChip({
           style={{ "--group-mark": groupMark.color } as CSSProperties}
         />
       ) : null}
-      {!preview && !minimized && minimizeEnabled ? (
+      {!preview && !minimized && minimizeEnabled && !conversationRow ? (
         <button
           type="button"
           className="side-bar-chip-minimize"

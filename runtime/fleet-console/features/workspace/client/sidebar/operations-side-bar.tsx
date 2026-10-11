@@ -70,6 +70,10 @@ import { AttentionSection } from "../war-room/attention-section.js";
 interface OperationsSideBarProps {
   /** War Room 무대 최소 폭을 지키려는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
   readonly widthCap?: number;
+  /** 위쪽 줄 아래에 서는 셸의 기여(대화 중심 화면의 검색·새 Operation·고정 줄). 없으면 아무것도 서지 않는다. */
+  readonly topAccessory?: ReactNode;
+  /** 보관함 아래에 서는 셸의 기여(대화 중심 화면의 호스트·사용량·설정 줄). */
+  readonly bottomAccessory?: ReactNode;
   readonly theaters: readonly TheaterInfo[];
   readonly activeTheaterId: string | null;
   readonly operations: readonly OperationNode[];
@@ -378,6 +382,8 @@ export function OperationsSideBar({
   onCancelAddTheater,
   onForgetTheater,
   widthCap,
+  topAccessory,
+  bottomAccessory,
 }: OperationsSideBarProps) {
   const t = useT();
   const searchShortcut = useSearchShortcutLabel();
@@ -1108,6 +1114,7 @@ export function OperationsSideBar({
         ) : <span className="side-bar-top-strip-spacer" aria-hidden="true" />}
         <SideBarCollapseControl />
       </div>
+      {topAccessory}
 
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
@@ -1386,6 +1393,7 @@ export function OperationsSideBar({
       </div>
 
       <ArchiveEntry />
+      {bottomAccessory}
 
       <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
 

@@ -48,6 +48,9 @@ import { registerAlignAdmissionProvider, requestAlignAll } from "./canvas/align-
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { useWarRoomChromeState } from "../../../core/client/src/integration/war-room-chrome.js";
+import { useConversationLayout } from "../../settings/client/use-conversation-layout.js";
+import { ConversationPanelHeader, ConversationShellHost, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
+import { SideBarRowStyleContext } from "./sidebar/side-bar-row-style.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
 const DEFAULT_SHELL_WIDTH = 560;
@@ -88,6 +91,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     readonly fromSidebar?: boolean;
   } | null>(null);
   const triageActive = useTriageActive();
+  // 실험 기능 「대화 중심 화면」 — 켜지면 캔버스 대신 세 칸 셸이 선다. 꺼져 있으면 아래 모든 경로가 지금 그대로다.
+  const conversation = useConversationLayout();
+  const conversationRef = useRef(conversation);
+  conversationRef.current = conversation;
 
   // 정렬 중 안내 — 그룹 경계 거부·스냅 단축키 안내를 토스트로 띄운다. 삭제 토스트와 같은 호스트에 산다.
   const [alignNotice, setAlignNotice] = useState<{ readonly key: CoreMessageKey; readonly nonce: number } | null>(null);
@@ -515,6 +522,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   useEffect(() => {
     const operationId = state.pendingOperationFocus;
     if (operationId === null) return;
+    if (conversation && viewMode.effective !== "mobile") {
+      // 대화 중심 화면은 지도를 움직이지 않는다 — 고른 Operation 을 가운데 칸에 세우기만 한다.
+      const operation = state.operations.find((candidate) => candidate.id === operationId);
+      if (operation) focusConversationOperation(operation);
+      consumeOperationFocus();
+      return;
+    }
     if (viewMode.effective === "mobile") {
       const operation = state.operations.find((candidate) => candidate.id === operationId && candidate.theaterId === state.activeTheaterId);
       if (operation) {
@@ -539,7 +553,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     }
     void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
     consumeOperationFocus();
-  }, [focusMapOperation, registry.operationKinds, resumeIfDormant, state.activeTheaterId, state.operations, state.pendingOperationFocus, state.pendingOperationFocusSnap, viewMode.effective]);
+  }, [conversation, focusMapOperation, registry.operationKinds, resumeIfDormant, state.activeTheaterId, state.operations, state.pendingOperationFocus, state.pendingOperationFocusSnap, viewMode.effective]);
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
@@ -629,6 +643,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleFocus = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
+    if (conversationRef.current) {
+      focusConversationOperation(operation);
+      return;
+    }
     // 선별 중에는 전 Theater가 마운트이므로 focusOperation의 Theater 전환을 타지 않고 바로 지목한다 —
     // 전환을 타면 loadForTheater가 목적지의 저장된 focus layer를 선별 위로 부활시킨다.
     if (isTriageActive()) {
@@ -884,32 +902,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     onDeferredDeletion(await forgetTheaterCompletely(theaterId));
   }, [onDeferredDeletion]);
 
-  const shell = viewMode.effective === "mobile" ? (
-    <MobileShell
-      operations={theaterOperations}
-      activeOperationId={state.activeOperationId}
-      operationRuntime={state.operationRuntime}
-      operationRuntimeHydration={state.operationRuntimeHydration}
-      operationNotifications={state.operationNotifications}
-      theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? null}
-      theme={state.activeTheme}
-      language={language}
-      operationKinds={registry.operationKinds}
-      capabilities={poolCapabilities}
-      onSelectOperation={setActiveOperation}
-      onCloseOperation={handleClose}
-    />
-  ) : (
-    <div className="console-body is-canvas">
-      {mutationError ? (
-        <p className="operations-mutation-error" role="alert">
-          {t("operations.mutation.failed")}
-          <button type="button" className="operations-mutation-retry" onClick={mutationError.retry}>
-            {t("operations.mutation.retry")}
-          </button>
-        </p>
-      ) : null}
-      <div className="war-room-sidebar-chrome" inert={warRoomSideBarHidden} data-war-room-hidden={warRoomSideBarHidden || undefined}>
+  const sideBarChrome = (
+    <div className="war-room-sidebar-chrome" inert={warRoomSideBarHidden} data-war-room-hidden={warRoomSideBarHidden || undefined}>
       <OperationsSideBar
         theaters={state.theaters}
         activeTheaterId={state.activeTheaterId}
@@ -942,8 +936,89 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         onCancelAddTheater={cancelAddTheater}
         onForgetTheater={handleForgetTheater}
         {...(warRoomSideBarCap !== null ? { widthCap: warRoomSideBarCap } : {})}
+        {...(conversation ? { topAccessory: <ConversationSideBarTop />, bottomAccessory: <ConversationSideBarBottom connection={state.connection} /> } : {})}
       />
+    </div>
+  );
+  const mutationErrorBanner = mutationError ? (
+    <p className="operations-mutation-error" role="alert">
+      {t("operations.mutation.failed")}
+      <button type="button" className="operations-mutation-retry" onClick={mutationError.retry}>
+        {t("operations.mutation.retry")}
+      </button>
+    </p>
+  ) : null;
+  const toastRegion = (
+    <div className="operations-toast-region" style={{ left: canvasArenaInsets.left, right: canvasArenaInsets.right, bottom: canvasArenaInsets.bottom }}>
+      <div className="app-toast-host">
+        {deletionToast}
+        {alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}
+        {/* Theater 등록 오류는 사이드바가 그린다 — War Room은 사이드바를 숨기므로 같은 오류를 여기서 알린다. */}
+        {triageActive && state.theaterError ? <Toast open tone="error" title={t("operations.addTheaterFailed")} message={state.theaterError} onDismiss={cancelAddTheater} /> : null}
       </div>
+    </div>
+  );
+  const operationMenuLayer = operationMenu && menuOperation ? (
+    <GroupContextMenu
+      kind="chip"
+      operation={menuOperation}
+      groups={state.groups.filter((group) => group.theaterId === menuOperation.theaterId)}
+      accentKey={getTheaterCanvasSnapshot(menuOperation.theaterId).operationAccent[menuOperation.id]
+        ?? operationAccentFromNode(menuOperation)}
+      anchor={operationMenu.anchor}
+      align={operationMenu.align}
+      actions={{
+        onSetAccent: (key) => handleSetAccent(menuOperation.id, key),
+        onSetGroupId: (groupId) => handleSetGroupId(menuOperation.id, groupId),
+        onCreateGroup: (name) => handleCreateGroup(menuOperation.theaterId, name, menuOperation.id),
+        onCloseOperation: () => handleClose(menuOperation.id),
+      }}
+      onClose={closeOperationMenu}
+    />
+  ) : null;
+  // 대화 중심 화면 — 캔버스·Map·정렬 대화상자는 서지 않는다. 사이드바·레일·메뉴·토스트는 같은 것을 쓴다.
+  const conversationShell = (
+    <SideBarRowStyleContext.Provider value="conversation">
+      <div className="console-body is-conversation">
+        <ConversationShellHost />
+        {mutationErrorBanner}
+        {sideBarChrome}
+        <ConversationStage
+          state={state}
+          insets={canvasArenaInsets}
+          language={language}
+          operationKinds={registry.operationKinds}
+          onClose={handleClose}
+          onOpenOperationMenu={openOperationMenu}
+        />
+        {toastRegion}
+        <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} />
+        {triageActive ? null : <SideBarEdgeDock />}
+        {operationMenuLayer}
+        <TriageEntryDialog />
+        <ExpandedSurfaceLayer />
+      </div>
+    </SideBarRowStyleContext.Provider>
+  );
+  const shell = viewMode.effective === "mobile" ? (
+    <MobileShell
+      operations={theaterOperations}
+      activeOperationId={state.activeOperationId}
+      operationRuntime={state.operationRuntime}
+      operationRuntimeHydration={state.operationRuntimeHydration}
+      operationNotifications={state.operationNotifications}
+      theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? null}
+      theme={state.activeTheme}
+      language={language}
+      operationKinds={registry.operationKinds}
+      capabilities={poolCapabilities}
+      onSelectOperation={setActiveOperation}
+      onCloseOperation={handleClose}
+    />
+  ) : conversation ? conversationShell : (
+    <div className="console-body is-canvas">
+      {mutationErrorBanner}
+      {sideBarChrome}
       <div className="operations-center-stage" ref={bodyRef} tabIndex={-1}>
         <OperationsCanvas
           state={state}
@@ -964,38 +1039,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onAlignNotice={handleAlignNotice}
         />
       </div>
-      <div className="operations-toast-region" style={{ left: canvasArenaInsets.left, right: canvasArenaInsets.right, bottom: canvasArenaInsets.bottom }}>
-        <div className="app-toast-host">
-          {deletionToast}
-          {alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}
-          {/* Theater 등록 오류는 사이드바가 그린다 — War Room은 사이드바를 숨기므로 같은 오류를 여기서 알린다. */}
-          {triageActive && state.theaterError ? <Toast open tone="error" title={t("operations.addTheaterFailed")} message={state.theaterError} onDismiss={cancelAddTheater} /> : null}
-        </div>
-      </div>
+      {toastRegion}
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
       {toolbarToolsSlot !== null ? createPortal(<RailToolIcons context={toolsContext} />, toolbarToolsSlot) : null}
       {/* 접힌 Cruise 사이드바의 문 — War Room에는 사이드바도 엣지 드러냄도 없다. */}
       {triageActive ? null : <SideBarEdgeDock />}
       {/* Operation 메뉴는 War Room 전용이 아니다 — 사이드바 우클릭·War Room 카드·패널 캡션의
           More 버튼이 모두 같은 메뉴를 연다. */}
-      {operationMenu && menuOperation ? (
-        <GroupContextMenu
-          kind="chip"
-          operation={menuOperation}
-          groups={state.groups.filter((group) => group.theaterId === menuOperation.theaterId)}
-          accentKey={getTheaterCanvasSnapshot(menuOperation.theaterId).operationAccent[menuOperation.id]
-            ?? operationAccentFromNode(menuOperation)}
-          anchor={operationMenu.anchor}
-          align={operationMenu.align}
-          actions={{
-            onSetAccent: (key) => handleSetAccent(menuOperation.id, key),
-            onSetGroupId: (groupId) => handleSetGroupId(menuOperation.id, groupId),
-            onCreateGroup: (name) => handleCreateGroup(menuOperation.theaterId, name, menuOperation.id),
-            onCloseOperation: () => handleClose(menuOperation.id),
-          }}
-          onClose={closeOperationMenu}
-        />
-      ) : null}
+      {operationMenuLayer}
       <TriageEntryDialog />
       <AlignFitDialog />
       <ExpandedSurfaceLayer />
@@ -1011,6 +1062,19 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       {shell}
     </OperationBodyPool>
   );
+}
+
+// 대화 중심 화면의 포커스 — 지도를 움직이거나 최소화·스냅·companion 을 건드리지 않는다. War Room 이면 무대로 지목하고,
+// 아니면 그 Theater 로 옮겨 활성으로 세운다. 가운데 칸은 활성 Operation 을 본다.
+function focusConversationOperation(operation: OperationNode): void {
+  if (isTriageActive()) {
+    pickTriageOperation(operation.id);
+    requestOperationKeyboardFocus(operation.id);
+    return;
+  }
+  if (getState().activeTheaterId !== operation.theaterId) setActiveTheater(operation.theaterId);
+  setActiveOperation(operation.id);
+  requestOperationKeyboardFocus(operation.id);
 }
 
 // 모든 사용자 포커스 진입점은 현재 로드된 Theater의 live 표시 상태만으로 같은 순서를 적용한다.

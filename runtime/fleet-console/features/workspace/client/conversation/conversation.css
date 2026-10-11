@@ -1,0 +1,336 @@
+/* 대화 중심 화면 — 사이드바 카드와 레일 카드는 지금 자리 그대로 뜨고, 그 사이를 가운데 대화 칸이 채운다.
+   색은 테마 토큰만 쓴다. 선택·위치는 brass 한 채널이 말하고, 상태는 원형 글리프가 말한다. */
+
+.console-body.is-conversation {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── 가운데 대화 칸 ─────────────────────────────────────────────────────── */
+.conversation-stage {
+  position: absolute;
+  top: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition: left 200ms ease, right var(--duration-base) var(--ease-spring);
+}
+
+.conversation-column {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.conversation-pill-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0 var(--space-2);
+}
+
+.conversation-pill,
+.conversation-pill-next {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: 40px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-soft);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.conversation-pill {
+  max-width: min(620px, 100%);
+  padding: 0 var(--space-4) 0 var(--space-3);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+}
+
+.conversation-pill:hover,
+.conversation-pill:focus-visible,
+.conversation-pill-next:hover,
+.conversation-pill-next:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong));
+  outline: none;
+}
+
+.conversation-pill-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-pill-sub {
+  flex: none;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.conversation-pill-next {
+  flex: none;
+  padding: 0 var(--space-4);
+  color: var(--brass-ink);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+}
+
+.conversation-pill-next:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.conversation-pill-queue {
+  color: var(--text-tertiary);
+  font-weight: var(--weight-medium);
+}
+
+.conversation-pill-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.conversation-round {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-glass);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.conversation-round svg { width: 15px; height: 15px; }
+
+.conversation-round:hover,
+.conversation-round:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong));
+  color: var(--text-primary);
+  outline: none;
+}
+
+.conversation-nodes {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.conversation-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-floating);
+}
+
+/* War Room 무대 — 지금 보는 자리(위치)는 brass 채널이 말한다. */
+.conversation-stage.is-war-room .conversation-body {
+  border-color: color-mix(in oklch, var(--brass) 32%, var(--surface-rim));
+}
+
+.conversation-body-slot {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.conversation-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  text-align: center;
+}
+
+.conversation-empty strong {
+  color: var(--text-primary);
+  font-size: var(--t-lg);
+  font-weight: var(--weight-bold);
+}
+
+.conversation-empty-mark {
+  color: var(--brass-ink);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+}
+
+/* 지도 도구(보기 초기화·모두 맞춤·정렬 레이아웃)는 캔버스의 것이다 — 이 배치에는 지도가 없으므로 서랍을 세우지 않는다.
+   눌러도 캔버스 좌표를 바꾸지 않게 하는 것이 목적이다(토글을 끄면 캔버스가 켜기 전 그대로여야 한다). */
+.console-shell.is-conversation-layout .command-band-mode-tray { display: none; }
+
+/* ── 사이드바 위·아래 줄 ────────────────────────────────────────────────── */
+.conversation-side-top {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.conversation-side-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.conversation-side-pinned {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+}
+
+/* 부관이 아무도 출근하지 않으면 고정 줄은 자리를 차지하지 않는다. */
+.conversation-side-pinned:empty { display: none; }
+
+.conversation-side-bottom {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--surface-rim);
+}
+
+.conversation-side-host {
+  position: relative;
+  display: inline-flex;
+}
+
+.conversation-side-link {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--warn);
+}
+
+.conversation-side-link[data-link-state="offline"] { background: var(--coral); }
+
+.conversation-side-usage {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  overflow: hidden;
+}
+
+.operations-side-bar.is-closed .conversation-side-top,
+.operations-side-bar.is-closed .conversation-side-bottom {
+  display: none;
+}
+
+/* ── 사이드바 행: 대화 목록 문법 ───────────────────────────────────────── */
+.side-bar-chip--conversation {
+  padding-block: var(--space-2);
+}
+
+.side-bar-chip-preview {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 오른쪽 패널 머리: 글자 탭 ─────────────────────────────────────────── */
+.right-rail-panel-slot.has-header {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.right-rail-panel-header {
+  position: relative;
+  z-index: 1;
+  min-width: 240px;
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.conversation-panel-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-4) 0;
+}
+
+/* 탭은 글자다 — 상자·채움 없이 굵기와 아래 선(.right-rail-ico.is-active::before)만 켜짐을 말한다. */
+.conversation-panel-tabs .right-rail-ico.is-text {
+  width: auto;
+  height: auto;
+  padding: var(--space-1) 0 var(--space-2);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+.conversation-panel-tabs .right-rail-ico.is-text:hover,
+.conversation-panel-tabs .right-rail-ico.is-text:focus-visible {
+  background: none;
+  color: var(--text-primary);
+}
+
+.conversation-panel-tabs .right-rail-ico.is-text.is-active {
+  background: none;
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
+}
+
+.conversation-panel-tabs .right-rail-ico.is-text.is-active::before {
+  right: 0;
+  left: 0;
+}
+
+.conversation-panel-tabs .right-rail-ico.is-text .right-rail-ico-badge {
+  top: -2px;
+  right: -14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-stage { transition: none; }
+}

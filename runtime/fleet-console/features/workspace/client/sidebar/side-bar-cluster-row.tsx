@@ -12,6 +12,8 @@ import { operationMarkLabel, type OperationMarkVisual } from "../../../execution
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
 import { setSideBarFreshFoldExpanded } from "./operations-side-bar-store.js";
+import { CONVERSATION_ROW_PHRASE, useSideBarRowStyle } from "./side-bar-row-style.js";
+import { useConversationRowPreview } from "../conversation/conversation-slots.js";
 
 /**
  * 묶음 줄 — 플러그인이 `row` 로 선언한 묶음(목표)이 사이드바 그룹 트리에 서는 한 줄.
@@ -223,6 +225,15 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const selected = !active && anchor?.selected === true;
   const selectMode = onSelect !== undefined && anchor !== null;
   const minimized = anchor?.minimized === true;
+  // 대화 중심 화면 — 제목 아래 한 줄에 미리보기(원천이 없으면 상태 문구)를 둔다. 연결 지점은 칩과 같은 한 곳이다.
+  const conversationRow = useSideBarRowStyle() === "conversation";
+  const rowPreview = useConversationRowPreview(anchor?.operation.id ?? "");
+  const conversationLine = !conversationRow
+    ? null
+    : rowPreview?.text
+      ?? (row.decisionRequestedAt !== undefined
+        ? t("conversation.row.decision")
+        : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
   const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" | "accent" | "warn"; readonly prov?: true }[] = [];
   if (row.decisionRequestedAt !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions ?? 1 }), tone: "req" });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `✓ ${row.progress.done}/${row.progress.total}` });
@@ -294,6 +305,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         active ? "side-bar-cluster-row--active" : "",
         selected ? "side-bar-cluster-row--selected" : "",
         minimized ? "side-bar-cluster-row--minimized" : "",
+        conversationRow ? "side-bar-cluster-row--conversation" : "",
         dragging ? "is-dragging" : "",
         dropTarget ? "is-drop-target" : "",
       ].filter(Boolean).join(" ")}
@@ -330,6 +342,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         onKeyUp={selectMode ? (event) => { if (event.key === " ") event.preventDefault(); } : undefined}
       >
         <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>
+        {conversationLine ? <span className="side-bar-chip-preview side-bar-cluster-row-preview" aria-hidden="true">{conversationLine}</span> : null}
         {meta.length > 0 ? (
           <span className="side-bar-cluster-row-meta" aria-hidden="true">
             {meta.map((part) => (
