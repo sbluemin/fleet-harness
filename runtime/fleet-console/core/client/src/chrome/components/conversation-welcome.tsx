@@ -11,6 +11,12 @@ export const CONVERSATION_WELCOME_SEEN_KEY = "conversation-layout.welcome";
 
 // 조건이 이만큼 이어져야 선다 — 부팅 직후 What's New·첫 실행 안내가 자리를 잡기 전에 먼저 뜨지 않게 한다.
 const SETTLE_MS = 1200;
+const POLL_MS = 200;
+
+// 다른 모달(설정 등)이 떠 있으면 셸이 inert 라 카드가 그 안에서 눌리지 않는다 — 그동안은 기다린다.
+function blockedByAnotherModal(): boolean {
+  return document.querySelector<HTMLElement>(".console-shell")?.inert === true || document.querySelector('[aria-modal="true"]') !== null;
+}
 
 interface ConversationWelcomeProps {
   /** 대화 중심 화면이 서 있고, 앞서야 할 다른 안내(첫 실행·What's New·팔레트 등)가 없다. 판정은 호스트가 한다. */
@@ -30,20 +36,27 @@ export function ConversationWelcome({ eligible, onReturned }: ConversationWelcom
   const ready = eligible && globalSettings.loadStatus === "ready" && !seen;
   const [settled, setSettled] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [backFailed, setBackFailed] = useState(false);
   const cardRef = useRef<HTMLElement | null>(null);
   const keepRef = useRef<HTMLButtonElement | null>(null);
   const visible = ready && settled && !dismissed;
 
   // 「화면 안내 다시 보기」가 본 기록을 지우면 이 화면에서 닫아 둔 표시도 거둔다 — 새로고침 없이 다시 선다.
   useEffect(() => {
-    if (!seen) setDismissed(false);
+    if (seen) return;
+    setDismissed(false);
+    setSettled(false);
   }, [seen]);
 
   useEffect(() => {
-    if (!ready) return;
-    const timer = setTimeout(() => setSettled(true), SETTLE_MS);
-    return () => clearTimeout(timer);
-  }, [ready]);
+    if (!ready || settled) return;
+    let since = performance.now();
+    const timer = setInterval(() => {
+      if (blockedByAnotherModal()) since = performance.now();
+      else if (performance.now() - since >= SETTLE_MS) setSettled(true);
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [ready, settled]);
 
   useEffect(() => {
     if (!visible) return;
@@ -52,10 +65,22 @@ export function ConversationWelcome({ eligible, onReturned }: ConversationWelcom
     return () => returnTarget?.focus?.();
   }, [visible]);
 
-  const close = (back: boolean) => {
+  const close = () => {
     setDismissed(true);
     rememberSeen([CONVERSATION_WELCOME_SEEN_KEY]);
-    if (back) void saveClassicLayout(true).then((saved) => { if (saved) onReturned(); });
+  };
+
+  // 저장이 성공한 뒤에만 닫는다 — 실패하면 화면이 대화 중심으로 되돌아오고 카드도 다시 서서 한 번 더 누를 수 있다.
+  const goBack = () => {
+    setBackFailed(false);
+    void saveClassicLayout(true).then((saved) => {
+      if (!saved) {
+        setBackFailed(true);
+        return;
+      }
+      close();
+      onReturned();
+    });
   };
 
   useEffect(() => {
@@ -63,7 +88,7 @@ export function ConversationWelcome({ eligible, onReturned }: ConversationWelcom
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        close(false);
+        close();
       } else if (event.key === "Tab") {
         trapFocus(event, cardRef.current);
       }
@@ -77,17 +102,18 @@ export function ConversationWelcome({ eligible, onReturned }: ConversationWelcom
 
   return (
     <div className="commissioning-overlay" role="dialog" aria-modal="true" aria-labelledby="conversation-welcome-title">
-      <button type="button" className="commissioning-scrim" tabIndex={-1} onClick={() => close(false)} aria-label={t("chrome.conversationWelcome.closeAria")} />
+      <button type="button" className="commissioning-scrim" tabIndex={-1} onClick={() => close()} aria-label={t("chrome.conversationWelcome.closeAria")} />
       <section className="commissioning-card conversation-welcome-card" ref={cardRef}>
-        <button type="button" className="conversation-welcome-close" onClick={() => close(false)} aria-label={t("chrome.conversationWelcome.closeAria")}>×</button>
+        <button type="button" className="conversation-welcome-close" onClick={() => close()} aria-label={t("chrome.conversationWelcome.closeAria")}>×</button>
         <header className="commissioning-header">
           <ConversationLayoutPicture />
           <h2 id="conversation-welcome-title">{t("chrome.conversationWelcome.title")}</h2>
           <p>{t("chrome.conversationWelcome.body")}</p>
+          {backFailed ? <p className="commissioning-error" role="alert">{t("chrome.conversationWelcome.backFailed")}</p> : null}
         </header>
         <footer className="commissioning-footer conversation-welcome-actions">
-          <button type="button" className="commissioning-skip" onClick={() => close(true)}>{t("chrome.conversationWelcome.back")}</button>
-          <button type="button" ref={keepRef} className="commissioning-primary-action" onClick={() => close(false)}>{t("chrome.conversationWelcome.keep")}</button>
+          <button type="button" className="commissioning-skip" onClick={goBack}>{t("chrome.conversationWelcome.back")}</button>
+          <button type="button" ref={keepRef} className="commissioning-primary-action" onClick={() => close()}>{t("chrome.conversationWelcome.keep")}</button>
         </footer>
       </section>
     </div>
