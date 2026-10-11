@@ -469,6 +469,11 @@ function toggleCompanionPanel(
  * 비워 막대 빈칸에 칩이 끼지 않게 한다. 창구의 유무는 한 마운트 동안 바뀌지 않지만, 훅 순서를 판정에
  * 걸지 않으려고 안쪽 컴포넌트로 가른다.
  */
+/** 호스트가 그 companion 패널을 내주는가 — 목록을 주지 않은 호스트는 전부 내준다. 대화 중심 화면은 분석가를 내주지 않는다. */
+function offersCompanion(context: OperationRenderContext, companionId: string): boolean {
+  return context.companionPanelIds === undefined || context.companionPanelIds.includes(companionId);
+}
+
 function AgentCaptionActions({ context }: { readonly context: OperationRenderContext }) {
   if (mobileOperationOf(context)) return null;
   return <AgentCaptionActionsBody context={context} />;
@@ -519,7 +524,7 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
 
   // 컴패니언을 열 수 없는 호스트에는 분석가 문을 세우지 않는다 — 모바일 레이아웃은 화면 전부를
   // 세션에 주고 이 콜백을 빼며, 그 부재가 곧 "여기엔 드로어가 없다"는 말이다.
-  const analyst = context.onRequestCompanions === undefined ? null : (
+  const analyst = context.onRequestCompanions === undefined || !offersCompanion(context, ANALYST_CHAT_COMPANION_ID) ? null : (
     <CaptionActionButton
       actionId="analyst"
       label={analystReady ? t(analystOpen ? "terminal.analyst.exit" : "terminal.analyst.open") : t("terminal.analyst.sendMessageFirst")}
@@ -542,7 +547,7 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
   const browserLabel = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
-  const browser = context.onRequestCompanions === undefined ? null : (
+  const browser = context.onRequestCompanions === undefined || !offersCompanion(context, BROWSER_COMPANION_ID) ? null : (
     <CaptionActionButton
       actionId="browser"
       label={browserLabel}

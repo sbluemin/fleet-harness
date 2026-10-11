@@ -386,7 +386,7 @@ export function useRailPanelContext(
  * 레일 도구 아이콘 목록 — 콘솔 도구모음의 도구 칸에 한 줄로 선다(모드와 무관한 하나의 목록·순서·켜짐).
  * 아이콘의 문서 id(rail-tab-*)는 패널 영역의 이름표와 온보딩 앵커가 가리킨다.
  */
-export function RailToolIcons({ context, variant = "icons", scope = "all", coreFilter }: {
+export function RailToolIcons({ context, variant = "icons", scope = "all", coreFilter, toolFilter }: {
   readonly context: RailToolContext;
   /** "text"는 대화 중심 화면의 패널 머리 — 아이콘 대신 이름 글자로 같은 목록·순서·켜짐을 세운다. */
   readonly variant?: "icons" | "text";
@@ -397,6 +397,8 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
   readonly scope?: "all" | "core" | "tools";
   /** 코어 탭 가운데 세울 것만 고른다 — 대화 중심 화면의 패널 머리가 고른 Theater 섹션의 탭만 세울 때 쓴다. */
   readonly coreFilter?: (entryId: string) => boolean;
+  /** 플러그인 도구 가운데 세울 것만 고른다 — 대화 중심 화면의 Operation 대화가 도구 줄 대신 남길 도구(conversationTab)만 세울 때 쓴다. */
+  readonly toolFilter?: (entry: RailEntryDescriptor) => boolean;
 }) {
   const text = variant === "text";
   const t = useT();
@@ -419,6 +421,7 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
   const runsByScope: Record<"theater" | "fleet", PluginRun[]> = { theater: [], fleet: [] };
   for (const binding of listedBindings) {
     if (binding.core) continue;
+    if (toolFilter && !toolFilter(binding.entry)) continue;
     const runs = runsByScope[binding.entry.scope ?? "theater"];
     const kind = binding.panes.length > 0 ? "panes" : "action";
     const tail = runs[runs.length - 1];

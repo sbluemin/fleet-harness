@@ -2,11 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConversationSurfaceContext, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
+import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { CanvasArenaInsets } from "../canvas/canvas-store.js";
-import type { GroupContextMenuAlign } from "../canvas/group-context-menu.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { openQuickLaunch, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
@@ -23,6 +23,7 @@ import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.
 import { operationAvatarKey, theaterAvatarKey } from "@fleet-console/sdk/avatars";
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
+import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
@@ -153,6 +154,11 @@ function PluginEntry({ render }: { readonly render: () => ReactNode }) {
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
   const t = useT();
   const sections = usePanelSections();
+  // Theater 가 아닌 대화(가운데 칸의 Operation 대화)의 패널은 도구 줄을 세우지 않는다 — 대화에서 곧장 이어 가는 도구
+  // (conversationTab, 목표)만 대상의 글자 탭 오른쪽에 같은 글자 단추로 남는다. Theater 를 연 패널(사령관·Theater 설정)은 그대로다.
+  const subject = useConversationSubject();
+  const inbox = useTheaterInboxState();
+  const operationConversation = subject !== null && inbox === null;
   const rowRef = useRef<HTMLDivElement | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const [overflow, setOverflow] = useState<readonly OverflowTab[]>([]);
@@ -244,10 +250,13 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
         <div className="conversation-panel-segment-row" ref={rowRef}>
           <span className="conversation-panel-tabs">
             <RailToolIcons context={context} variant="text" scope="core" {...(sections.filter ? { coreFilter: sections.filter } : {})} />
+            {operationConversation ? <RailToolIcons context={context} variant="text" scope="tools" toolFilter={isConversationTab} /> : null}
           </span>
-          <span className="conversation-panel-tools">
-            <RailToolIcons context={context} variant="icons" scope="tools" />
-          </span>
+          {operationConversation ? null : (
+            <span className="conversation-panel-tools">
+              <RailToolIcons context={context} variant="icons" scope="tools" />
+            </span>
+          )}
         </div>
         <span className={`conversation-panel-more-wrap${overflow.length > 0 ? "" : " is-idle"}`}>
           <button
@@ -284,6 +293,10 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       </div>
     </div>
   );
+}
+
+function isConversationTab(entry: RailEntryDescriptor): boolean {
+  return entry.conversationTab === true;
 }
 
 /** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름(Grok 세부 정보의 아바타·이름 자리). 대상이 없으면 서지 않는다. */
@@ -399,7 +412,6 @@ interface ConversationStageProps {
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
   readonly onClose: (operationId: string) => void;
-  readonly onOpenOperationMenu: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null, align?: GroupContextMenuAlign) => void;
 }
 
 /** War Room 무대 — 지목이 먼저, 그다음 지금 선 무대(다음을 누르기 전까지 유지), 없으면 대기열 맨 앞. */
@@ -441,7 +453,7 @@ function useCruiseSubject(state: ConsoleState): OperationNode | null {
   return subject;
 }
 
-export function ConversationStage({ state, insets, language, operationKinds, onClose, onOpenOperationMenu }: ConversationStageProps) {
+export function ConversationStage({ state, insets, language, operationKinds, onClose }: ConversationStageProps) {
   const t = useT();
   const warRoom = useTriageActive();
   const cruiseSubject = useCruiseSubject(state);
@@ -498,7 +510,6 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           warRoom={warRoom ? { waiting, next } : null}
           onToggleDetails={toggleDetails}
           onClose={onClose}
-          onOpenOperationMenu={onOpenOperationMenu}
         />
       ) : warRoom ? (
         <div className="conversation-empty">
@@ -673,7 +684,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   );
 }
 
-function ConversationColumn({ state, operation, language, operationKinds, warRoom, onToggleDetails, onClose, onOpenOperationMenu }: {
+function ConversationColumn({ state, operation, language, operationKinds, warRoom, onToggleDetails, onClose }: {
   readonly state: ConsoleState;
   readonly operation: OperationNode;
   readonly language: "en" | "ko";
@@ -681,7 +692,6 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
   readonly warRoom: { readonly waiting: number; readonly next: () => void } | null;
   readonly onToggleDetails: () => void;
   readonly onClose: (operationId: string) => void;
-  readonly onOpenOperationMenu: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null, align?: GroupContextMenuAlign) => void;
 }) {
   const t = useT();
   const capabilities = useHostCapabilities();
@@ -780,21 +790,13 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
                 companionsOpen={false}
                 hiddenCompanionPanelIds={NO_HIDDEN_COMPANIONS}
                 onSetCompanionPanelVisible={() => {}}
+                companionPanelIds={CONVERSATION_COMPANION_PANEL_IDS}
                 bodyLive
                 render={descriptor.captionActions}
               />
             </PluginErrorBoundary>
           )}
-          <button
-            type="button"
-            className="conversation-round conversation-pill-menu"
-            aria-label={t("canvas.frame.openMenuAria", { title: operation.title })}
-            title={t("canvas.frame.openMenuTitle")}
-            aria-haspopup="menu"
-            onClick={(event) => { activate(); onOpenOperationMenu(operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget, "end"); }}
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
-          </button>
+          {/* Operation 메뉴(「...」)는 이 줄에 세우지 않는다 — 같은 메뉴가 사이드바 줄의 우클릭으로 열린다. */}
         </span>
       </div>
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
@@ -807,3 +809,5 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
 }
 
 const NO_HIDDEN_COMPANIONS: readonly string[] = [];
+/** 대화 중심 화면이 캡션 단추로 내주는 companion — 브라우저뿐이다. 세션 분석가는 이 화면에서 지원하지 않는다. */
+const CONVERSATION_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_ID];
