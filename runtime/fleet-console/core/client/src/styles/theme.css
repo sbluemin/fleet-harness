@@ -181,9 +181,16 @@
   --id-plum: oklch(72% 0.065 318);
   --id-rose: oklch(73% 0.06 350);
 
-  /* 몽글 아바타 — 몸은 정체성 톤을 흰색 쪽으로 섞은 파스텔이고(--mongle-tint), 얼굴·볼·안테나 전구·이는 파스텔 몸 위에서
-     읽히는 고정색이다. 몸 색이 테마 바탕이 아니라 파스텔 위에 서므로 얼굴 잉크는 테마마다 다시 정하지 않는다. */
-  --mongle-tint: 62%;
+  /* 몽글 아바타 — 몸은 정체성 8톤(--id-*)과 같은 색상각의 파스텔(L 78–84%, C 0.07–0.085, 승인 시안 v2)이고, 얼굴·볼·안테나
+     전구·이는 그 파스텔 몸 위에서 읽히는 고정색이다. 몸은 테마 바탕이 아니라 캐릭터라 테마마다 다시 정하지 않는다. */
+  --mongle-crimson: oklch(78% 0.085 25);
+  --mongle-amber: oklch(84% 0.08 70);
+  --mongle-moss: oklch(82% 0.075 140);
+  --mongle-teal: oklch(82% 0.07 190);
+  --mongle-cerulean: oklch(80% 0.075 235);
+  --mongle-indigo: oklch(78% 0.075 278);
+  --mongle-plum: oklch(80% 0.075 318);
+  --mongle-rose: oklch(81% 0.075 350);
   --mongle-face: oklch(24% 0.02 260);
   --mongle-blush: oklch(72% 0.11 15 / 45%);
   --mongle-blush-ink: oklch(66% 0.12 15);

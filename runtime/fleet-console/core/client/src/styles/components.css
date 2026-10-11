@@ -3370,32 +3370,32 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 /* ── 몽글 아바타 ─────────────────────────────────────────────────────────────
-   사령관·지휘관·구성원·Operation 의 얼굴. 몸은 정체성 톤(--id-*)의 파스텔이다 — 정체성 톤이 제목 잉크·미니맵 점 밖으로
+   사령관·지휘관·구성원·Operation 의 얼굴. 몸은 정체성 톤(--id-*)과 같은 색상각의 파스텔(--mongle-*)이다 — 정체성 톤이 제목 잉크·미니맵 점 밖으로
    나오는 승인된 예외(목표 5ea85764 시안 v2)이며, 몸은 신호 표면이 아니라 캐릭터라 상태 채널을 칠하지 않는다. 상태는 눈 모양·몸짓·
    작은 배지가 말하고, 그 배지만 신호색(aurora·positive·warn)을 쓴다. 주기는 상태 글리프와 같다(진행 1.4s · 부름 1.8s ·
    안 본 완료 3.6s). 움직임은 --state-motion 으로 창 비활성·감속 모션에서 멈추고, 「차분」은 사람을 부르는 상태만 남긴다. */
 .mongle-avatar {
-  --mongle-tone: var(--id-cerulean);
+  --mongle-tone: var(--mongle-cerulean);
   display: block;
   flex: none;
   overflow: visible;
 }
-.mongle-avatar.is-tone-crimson, .mongle-picker-tone.is-tone-crimson { --mongle-tone: var(--id-crimson); }
-.mongle-avatar.is-tone-amber, .mongle-picker-tone.is-tone-amber { --mongle-tone: var(--id-amber); }
-.mongle-avatar.is-tone-moss, .mongle-picker-tone.is-tone-moss { --mongle-tone: var(--id-moss); }
-.mongle-avatar.is-tone-teal, .mongle-picker-tone.is-tone-teal { --mongle-tone: var(--id-teal); }
-.mongle-avatar.is-tone-cerulean, .mongle-picker-tone.is-tone-cerulean { --mongle-tone: var(--id-cerulean); }
-.mongle-avatar.is-tone-indigo, .mongle-picker-tone.is-tone-indigo { --mongle-tone: var(--id-indigo); }
-.mongle-avatar.is-tone-plum, .mongle-picker-tone.is-tone-plum { --mongle-tone: var(--id-plum); }
-.mongle-avatar.is-tone-rose, .mongle-picker-tone.is-tone-rose { --mongle-tone: var(--id-rose); }
+.mongle-avatar.is-tone-crimson, .mongle-picker-tone.is-tone-crimson { --mongle-tone: var(--mongle-crimson); }
+.mongle-avatar.is-tone-amber, .mongle-picker-tone.is-tone-amber { --mongle-tone: var(--mongle-amber); }
+.mongle-avatar.is-tone-moss, .mongle-picker-tone.is-tone-moss { --mongle-tone: var(--mongle-moss); }
+.mongle-avatar.is-tone-teal, .mongle-picker-tone.is-tone-teal { --mongle-tone: var(--mongle-teal); }
+.mongle-avatar.is-tone-cerulean, .mongle-picker-tone.is-tone-cerulean { --mongle-tone: var(--mongle-cerulean); }
+.mongle-avatar.is-tone-indigo, .mongle-picker-tone.is-tone-indigo { --mongle-tone: var(--mongle-indigo); }
+.mongle-avatar.is-tone-plum, .mongle-picker-tone.is-tone-plum { --mongle-tone: var(--mongle-plum); }
+.mongle-avatar.is-tone-rose, .mongle-picker-tone.is-tone-rose { --mongle-tone: var(--mongle-rose); }
 
 .mongle-avatar-fill {
-  fill: color-mix(in oklch, var(--mongle-tone) var(--mongle-tint), white);
+  fill: var(--mongle-tone);
   transition: fill var(--duration-fast);
 }
 .mongle-avatar.is-ended .mongle-avatar-fill,
 .mongle-avatar.is-done .mongle-avatar-fill {
-  fill: color-mix(in oklch, color-mix(in oklch, var(--mongle-tone) var(--mongle-tint), white) 40%, var(--text-tertiary));
+  fill: color-mix(in oklch, var(--mongle-tone) 40%, var(--text-tertiary));
 }
 .mongle-avatar.is-fresh .mongle-avatar-fill {
   fill: color-mix(in oklch, var(--mongle-tone) 26%, transparent);
@@ -3584,7 +3584,7 @@ button.status-glyph.is-actionable:focus-visible {
   width: 18px;
   height: 18px;
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--mongle-tone) var(--mongle-tint), white);
+  background: var(--mongle-tone);
 }
 .mongle-picker-tone[aria-checked="true"] { border-color: var(--text-primary); }
 .mongle-picker-preview {

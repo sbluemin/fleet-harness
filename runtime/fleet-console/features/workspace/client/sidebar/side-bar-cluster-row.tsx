@@ -7,7 +7,9 @@ import type { OperationClusterRow, OperationClusterRowGlyph, OperationClusterRow
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getClusterWrap, getFirstClusterWrap, getOperationWrap, subscribeConsoleUseGestures, type ConsoleUseWrap } from "../../../console-use/client/gestures.js";
-import { operationMarkLabel, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { operationMarkLabel, resolveOperationActivity, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
+import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
 import { setSideBarFreshFoldExpanded } from "./operations-side-bar-store.js";
@@ -389,7 +391,20 @@ function ClusterRowAvatar({ item, rowState, label, conversation, decorative = fa
     : row.decisionRequestedAt !== undefined
       ? "decision"
       : mongleStateOfMark(anchor ? anchor.mark ?? anchor.status : rowState as OperationMarkVisual);
-  const working = item.fold.filter((entry) => WORKING_MARKS.has(entry.mark ?? entry.status ?? "idle")).slice(0, 3);
+  // 미니는 그 줄 지휘관의 실제 구성원만 — `fold` 에는 뿌리(지휘관) 자신이 함께 들 수 있고 구성원은 사이드바 목록에 없을 수 있으므로,
+  // 묶음의 구성원 목록에서 뿌리를 빼고 상태는 사이드바 표식(있으면)과 런타임 활동에서 읽는다. 구성원이 없는 줄(단독 Operation)은
+  // 미니 없이 제 크기로 선다.
+  const { operations, nestedOperations, operationRuntime } = useConsoleState();
+  const foldMarks = new Map(item.fold.map((entry) => [entry.operation.id, entry.mark ?? entry.status ?? "idle"] as const));
+  const rootId = anchor?.operation.id ?? layout.cluster.root;
+  const working: { readonly operation: OperationNode; readonly mark: OperationMarkVisual }[] = [];
+  for (const member of layout.cluster.members) {
+    if (member.pending || member.operationId === rootId || working.length >= 3) continue;
+    const operation = nestedOperations.find((node) => node.id === member.operationId) ?? operations.find((node) => node.id === member.operationId);
+    if (!operation) continue;
+    const mark = foldMarks.get(operation.id) ?? resolveOperationActivity(operation, operationRuntime);
+    if (WORKING_MARKS.has(mark)) working.push({ operation, mark });
+  }
   const full = conversation ? 28 : 20;
   const size = working.length > 0 ? (conversation ? 24 : 17) : full;
   const commander = anchor
@@ -402,7 +417,7 @@ function ClusterRowAvatar({ item, rowState, label, conversation, decorative = fa
       <span className="side-bar-cluster-avatars-minis" aria-hidden="true">
         {working.map((entry) => (
           <span key={entry.operation.id} className="side-bar-cluster-avatars-mini">
-            <OperationAvatar operation={entry.operation} role="member" state={mongleStateOfMark(entry.mark ?? entry.status)} size={conversation ? 13 : 10} label="" decorative />
+            <OperationAvatar operation={entry.operation} role="member" state={mongleStateOfMark(entry.mark)} size={conversation ? 13 : 10} label="" decorative />
           </span>
         ))}
       </span>
