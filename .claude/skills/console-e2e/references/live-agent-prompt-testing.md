@@ -160,7 +160,7 @@ authentication or whether an arbitrary id exists in the current catalog.
 
 ## Clear the dialogs before the first click
 
-A fresh `FLEET_CONSOLE_DATA_DIR` opens commissioning, What's New, and onboarding tours, and
+A fresh `FLEET_CONSOLE_DATA_DIR` opens commissioning and onboarding tours, and
 each swallows clicks aimed at the page behind it; the failure looks like a missing element,
 not a blocked one. Seed them before the first navigation with the
 [setup onboarding seed](setup.md#first-load-onboarding-state), then assert:

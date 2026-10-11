@@ -739,7 +739,7 @@ function ConnectedApp() {
         {/* 대화 중심 화면의 설정은 레일이 아니라 가운데 모달로 선다(settings-door.ts) — 배치가 바뀌면 열린 설정이 그릇을 갈아탄다. */}
         <SettingsModalHost visible={conversationLayout && !mobileLayout} layoutOn={conversationLayoutOn} mobile={mobileLayout} />
         <TheaterInboxHost />
-        <WhatsNewModal state={state} automaticSuspended={terminalFocused} />
+        <WhatsNewModal state={state} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}
         <OnboardingHost
           toursSuspended={warRoomTransitionActive || terminalFocused || mobileLayout}

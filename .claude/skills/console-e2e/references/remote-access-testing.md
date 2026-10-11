@@ -117,7 +117,7 @@ Check `remote/paired-devices.json` under the isolated `FLEET_CONSOLE_DATA_DIR` t
 
 A full remote session takes control, so the owner's screen raises the control curtain and the standing bar. That is correct behavior, and it will swallow clicks on anything behind it.
 
-Follow the shared [Pointer target preflight](verification.md#pointer-target-preflight) before owner-side pointer input rather than concluding a covered button is broken. A hit on `control-curtain-scrim` means a remote device holds control (expected); `commissioning-card` or `whatsnew-overlay` indicates onboarding covered by [Fresh-window chrome preflight](verification.md#fresh-window-chrome-preflight).
+Follow the shared [Pointer target preflight](verification.md#pointer-target-preflight) before owner-side pointer input rather than concluding a covered button is broken. A hit on `control-curtain-scrim` means a remote device holds control (expected); `commissioning-card` indicates onboarding covered by [Fresh-window chrome preflight](verification.md#fresh-window-chrome-preflight).
 
 Dismiss the curtain with "Keep watching" to reach the standing bar; dismiss again if reload raises it, then repeat the shared preflight before continuing.
 
