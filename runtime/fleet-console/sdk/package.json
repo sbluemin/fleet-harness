@@ -50,6 +50,11 @@
       "import": "./version.ts",
       "default": "./version.ts"
     },
+    "./theater-inbox": {
+      "types": "./theater-inbox/types.ts",
+      "import": "./theater-inbox/types.ts",
+      "default": "./theater-inbox/types.ts"
+    },
     "./floating": {
       "types": "./floating/types.ts",
       "import": "./floating/types.ts",

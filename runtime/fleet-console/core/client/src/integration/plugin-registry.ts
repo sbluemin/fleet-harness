@@ -9,6 +9,7 @@ import type {
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
+import type { TheaterInboxSectionDescriptor } from "@fleet-console/sdk/theater-inbox";
 import { plugins as builtInPlugins } from "virtual:fleet-plugins";
 import { expandedPaneSurface } from "../chrome/pane/expanded-pane-surface.js";
 
@@ -37,6 +38,8 @@ export interface PluginRegistry {
   readonly operationCaptionContributions: readonly OperationCaptionContribution[];
   /** Theater 머리 아래 줄·「…」 메뉴 항목 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
   readonly theaterContributions: readonly TheaterContribution[];
+  /** Theater Inbox 의 플러그인 섹션 — id 는 `<pluginId>:<id>` 로 붙어 있다. 호스트의 「Theater 설정」은 여기에 없다. */
+  readonly theaterInboxSections: readonly TheaterInboxSectionDescriptor[];
   /** 모든 플러그인의 묶음을 한 원천으로 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
   readonly operationClusters: OperationClusterSource;
   /** 보관함 시트의 플러그인 칸 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
@@ -216,6 +219,10 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
       id: `${plugin.id}:${descriptor.id}`,
     }))),
     theaterContributions: providers.flatMap((plugin) => (plugin.theaterContributions ?? []).map((descriptor) => ({
+      ...descriptor,
+      id: `${plugin.id}:${descriptor.id}`,
+    }))),
+    theaterInboxSections: providers.flatMap((plugin) => (plugin.theaterInboxSections ?? []).map((descriptor) => ({
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),

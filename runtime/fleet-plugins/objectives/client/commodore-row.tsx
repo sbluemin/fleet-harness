@@ -1,6 +1,7 @@
-import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 
 import type { TheaterContributionContext } from "@fleet-console/sdk/plugin";
+import type { ClientTheaterInboxCapability, TheaterInboxSnapshot } from "@fleet-console/sdk/theater-inbox";
 
 import {
   isRunningObjective,
@@ -8,10 +9,9 @@ import {
   loadCommodore,
   noteCommodoreLanguage,
   setCommodoreAutonomy,
+  COMMODORE_INBOX_SECTION_ID,
   setCommodorePeek,
-  toggleCommodoreDrawer,
   useCommodore,
-  useCommodoreDrawer,
   useCommodoreEnabled,
 } from "./commodore-state.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
@@ -23,19 +23,30 @@ export const clockTime = (at: number): string => new Date(at).toLocaleTimeString
 
 /**
  * 사이드바 Theater 머리 아래의 사령관 줄. 왼쪽 글리프가 자율 운영 스위치(Quick Launch 사령관 멘션과 같은 마크 — brass = 켬, 흐린 회색 = 끔)이고,
- * 줄을 누르면 「사령관 기록」 서랍이 열린다. 실험 기능 「자율 운영」이 꺼져 있으면 줄이 없다.
+ * 줄을 누르면 Theater Inbox 의 「사령관 › 기록」이 열린다. 실험 기능 「자율 운영」이 꺼져 있으면 줄이 없다.
  */
-export function CommodoreRow({ theater, language }: TheaterContributionContext) {
+export function CommodoreRow({ theater, language, theaterInbox }: TheaterContributionContext) {
   const enabled = useCommodoreEnabled();
   if (!enabled) return null;
-  return <CommodoreRowBody theaterId={theater.id} theaterLabel={theater.label} language={language} />;
+  return <CommodoreRowBody theaterId={theater.id} theaterLabel={theater.label} language={language} inbox={theaterInbox ?? null} />;
 }
 
-function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly theaterId: string; readonly theaterLabel: string; readonly language: "en" | "ko" }) {
+const NO_INBOX = () => () => undefined;
+const CLOSED = (): TheaterInboxSnapshot | null => null;
+
+/** 호스트 Theater Inbox 의 지금 — 없는(옛) 호스트면 늘 닫혀 있다. */
+function useInboxSnapshot(inbox: ClientTheaterInboxCapability | null): TheaterInboxSnapshot | null {
+  return useSyncExternalStore(inbox?.subscribe ?? NO_INBOX, inbox?.read ?? CLOSED, inbox?.read ?? CLOSED);
+}
+
+/** 이 플러그인이 `theaterInboxSections` 에 적은 섹션 id — 줄이 받는 capability 는 플러그인 범위라 이 로컬 id 로 열고 읽는다. */
+const COMMODORE_SECTION_ID = COMMODORE_INBOX_SECTION_ID;
+
+function CommodoreRowBody({ theaterId, theaterLabel, language, inbox }: { readonly theaterId: string; readonly theaterLabel: string; readonly language: "en" | "ko"; readonly inbox: ClientTheaterInboxCapability | null }) {
   const t = getT(language);
   const { view } = useCommodore(theaterId);
   const board = useObjectiveTheater(theaterId);
-  const drawer = useCommodoreDrawer();
+  const snapshot = useInboxSnapshot(inbox);
   const [busy, setBusy] = useState(false);
   // 언어를 먼저 알린다 — 첫 읽기부터 서버가 사람의 언어를 기억한다.
   noteCommodoreLanguage(language);
@@ -47,7 +58,15 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
   const on = view?.state.autonomy === true;
   // 사령관이 턴을 도는 동안 — 제목에 채팅 라이브 줄과 같은 물결이 흐른다. 턴이 끝나면 바로 멈춘다.
   const turn = on && view?.run.phase === "turn";
-  const open = drawer?.theaterId === theaterId;
+  // 이 Theater 의 Inbox 가 사령관 섹션을 보이는 동안 줄이 펼친 상태다.
+  const open = snapshot?.theaterId === theaterId && snapshot.address.sectionId === COMMODORE_SECTION_ID;
+  const onLog = open && snapshot?.address.pageId === "log";
+  // 이미 이 Theater 의 기록 칸이면 닫는다(옛 줄의 여닫기). 다른 칸·다른 Theater 면 기록으로 옮긴다.
+  const activate = (target: HTMLElement) => {
+    if (!inbox) return;
+    if (onLog) inbox.close();
+    else inbox.open({ theaterId, sectionId: COMMODORE_SECTION_ID, pageId: "log", returnFocus: target });
+  };
   const { meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
 
   const toggle = (event: MouseEvent<HTMLButtonElement>) => {
@@ -80,8 +99,8 @@ function CommodoreRowBody({ theaterId, theaterLabel, language }: { readonly thea
         aria-expanded={open}
         aria-label={[t("objectives.commodore.rowAria", { theater: theaterLabel }), ...meta.map((part) => part.text), patrol ?? ""].filter(Boolean).join(", ")}
         title={[meta.map((part) => part.text).join(" · "), patrol, errorReason].filter(Boolean).join("\n")}
-        onClick={() => toggleCommodoreDrawer(theaterId)}
-        onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => { if (event.key === "Escape" && open) { event.preventDefault(); toggleCommodoreDrawer(theaterId); } }}
+        onClick={(event) => activate(event.currentTarget)}
+        onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => { if (event.key === "Escape" && open) { event.preventDefault(); inbox?.close(); } }}
       >
         <span className="objectives-commodore-row-title">{t("objectives.commodore.name")}</span>
         <span className="objectives-commodore-row-meta" aria-hidden="true">

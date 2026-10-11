@@ -1,6 +1,7 @@
 import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
+import type { ClientTheaterInboxCapability, TheaterInboxSectionDescriptor } from "../theater-inbox/types.js";
 import type { AgentHost } from "../agent/types.js";
 import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
 import type http from "node:http";
@@ -169,6 +170,11 @@ export interface ClientExecutionProvider {
    */
   readonly theaterContributions?: readonly TheaterContribution[];
   /**
+   * Theater Inbox 의 섹션 — Theater 하나의 시트에서 호스트의 「Theater 설정」 곁에 서는 플러그인 소유 칸 묶음.
+   * 시트 틀·주소·목록·키보드·포커스 복귀는 호스트가 소유하고, 섹션은 제목·칸·본문만 준다. id 는 `<pluginId>:<id>` 로 붙는다.
+   */
+  readonly theaterInboxSections?: readonly TheaterInboxSectionDescriptor[];
+  /**
    * 한 실행 구조에 묶인 Operation 들 — 뿌리(조율자) 하나와 선후 관계를 가진 구성원(단계)들.
    *
    * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아 뿌리의
@@ -283,6 +289,8 @@ export interface PluginInstallContext {
   readonly models: ClientModelsCapability;
   /** The Operation chat renderer for a plugin-owned agent transcript. */
   readonly chat: ClientAgentChatCapability;
+  /** Opens this Console's Theater Inbox. Older hosts have none; plugins then keep their own entry closed. */
+  readonly theaterInbox?: ClientTheaterInboxCapability;
 }
 
 /**
@@ -567,6 +575,12 @@ export interface TheaterContributionContext {
   /** The Theater whose canvas is mounted. Inactive Theaters still show their rows in the sidebar. */
   readonly active: boolean;
   readonly language: "en" | "ko";
+  /**
+   * The host's Theater Inbox, scoped to the contributing plugin: `open` takes this plugin's own section id (the `id`
+   * it declared in `theaterInboxSections`), and `read` reports this plugin's sections by that same id. Another owner's
+   * section reads with its canonical id. Older hosts have none.
+   */
+  readonly theaterInbox?: ClientTheaterInboxCapability;
 }
 
 /** A Theater menu section also knows how to close the menu; close it before opening another surface. */
