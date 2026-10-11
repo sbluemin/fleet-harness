@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailEntryAttentionItem, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
@@ -152,4 +152,15 @@ function attentionVersion(bindings: readonly RailEntryBinding[], theaterId: stri
     const items = attention.items?.(scopeTheater, locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.reason}`).join("\u0002") ?? "";
     return `${binding.entry.id}:${attention.count(scopeTheater)}:${items}`;
   }).join("|");
+}
+
+/** 엔트리 아이콘 — 플러그인이 모바일용을 따로 주면 그것, 아니면 레일 아이콘이다(함수형이면 불러서 노드로). */
+export function renderEntryIcon(icon: ReactNode | (() => ReactNode)): ReactNode {
+  return typeof icon === "function" ? icon() : icon;
+}
+
+/** 플러그인 「확인 필요」 항목의 머리 — 항목은 원천 Operation을 싣지 않으므로 그 항목이 온 목적지의 아이콘으로 출처를 말한다. */
+export function entryIconOf(bindings: readonly RailEntryBinding[], entryId: string): ReactNode {
+  const entry = bindings.find((binding) => binding.entry.id === entryId)?.entry;
+  return entry ? renderEntryIcon(entry.mobile?.icon ?? entry.icon) : null;
 }

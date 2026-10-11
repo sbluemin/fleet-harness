@@ -1,13 +1,12 @@
 import type { ReactNode } from "react";
 
-import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { useMobileAttentionRows } from "./mobile-attention-context.js";
-import { featuredDestinationBinding, mobilePluginRows, useMobileDestinationBindings, useMobileDestinationTrailing } from "./mobile-destinations.js";
+import { featuredDestinationBinding, mobilePluginRows, renderEntryIcon, useMobileDestinationBindings, useMobileDestinationTrailing } from "./mobile-destinations.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { setMobileDestination } from "./mobile-store.js";
 
@@ -16,7 +15,7 @@ interface ShortcutChip {
   readonly icon: { readonly name: MobileIconName } | { readonly node: ReactNode };
   readonly label: string;
   /** 플러그인이 올린 오른쪽 값(상태 낱말) — 있으면 건수 자리를 이것이 쓴다. */
-  readonly trailing?: { readonly glyph?: Parameters<typeof statusGlyphClassName>[0]; readonly text: string; readonly tone?: string } | null;
+  readonly trailing?: { readonly text: string; readonly tone?: string } | null;
   readonly count: number;
   readonly run: () => void;
 }
@@ -57,7 +56,6 @@ export function MobileShortcutChips({ state }: { readonly state: ConsoleState })
           {chip.label}
           {chip.trailing ? (
             <span className={`mobile-conv-chip-state${chip.trailing.tone ? ` is-${chip.trailing.tone}` : ""}`}>
-              {chip.trailing.glyph ? <span className={statusGlyphClassName(chip.trailing.glyph)} aria-hidden="true" /> : null}
               {chip.trailing.text}
             </span>
           ) : chip.count > 0 ? <span className="mobile-conv-chip-count">{chip.count}</span> : null}
@@ -65,8 +63,4 @@ export function MobileShortcutChips({ state }: { readonly state: ConsoleState })
       ))}
     </nav>
   );
-}
-
-function renderEntryIcon(icon: ReactNode | (() => ReactNode)): ReactNode {
-  return typeof icon === "function" ? icon() : icon;
 }

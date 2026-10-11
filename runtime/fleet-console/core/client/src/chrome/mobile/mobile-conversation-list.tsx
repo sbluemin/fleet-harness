@@ -1,7 +1,5 @@
 import { useMemo } from "react";
 
-import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
-
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
 import { useT } from "../../i18n/index.js";
 import { focusOperation, openQuickLaunch } from "../../integration/store.js";
@@ -13,6 +11,9 @@ import { AttentionReason } from "./mobile-attention-reason.js";
 import { ConversationRow, ConversationSummary, useMobileConversations, type MobileConversation } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
+import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
+import { useRailEntries } from "../pane/pane-registry.js";
+import { entryIconOf } from "./mobile-destinations.js";
 import { MobileHomeFeatured } from "./mobile-home-featured.js";
 import { MobileShortcutChips } from "./mobile-shortcut-chips.js";
 import { pushMobileSheet, setMobileDestination } from "./mobile-store.js";
@@ -27,6 +28,7 @@ const MAX_ATTENTION_ROWS = 3;
 export function MobileConversationList({ state }: { readonly state: ConsoleState }) {
   const t = useT();
   const appearance = useMobileAppearance();
+  const bindings = useRailEntries();
   const attention = useMobileAttentionRows();
   const conversations = useMobileConversations(state);
   // 대화 목록은 몽글 아바타를 보이는 표면이다 — 데스크톱 사이드바처럼 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
@@ -55,7 +57,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
         </button>
         <span className="mobile-conv-gap" />
         <button type="button" data-press="r1" className="mobile-conv-theater" aria-label={t("mobile.list.theaterAria")} onClick={() => pushMobileSheet({ kind: "theater" })}>
-          {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} size={32} /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}
+          {theater ? <TheaterAvatar theaterId={theater.id} size={32} label="" decorative /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}
           <strong>{theater?.label ?? t("mobile.home.noTheater")}</strong>
           <MobileIcon name="down" size={16} />
         </button>
@@ -83,7 +85,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
                 }
                 return (
                   <button type="button" data-press="r1" className="mobile-conv-row" key={row.key} onClick={() => { setMobileDestination({ kind: "plugin", entryId: row.entryId }); row.item.open(); }}>
-                    <span className="mobile-conv-row-av"><span className="mobile-conv-round is-static"><span className={statusGlyphClassName("review")} aria-hidden="true" /></span></span>
+                    <span className="mobile-conv-row-av"><span className="mobile-conv-round is-static">{entryIconOf(bindings, row.entryId)}</span></span>
                     <span className="mobile-conv-row-copy">
                       <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.item.title}</span></span>
                       <span className="mobile-conv-row-sub"><span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span></span>

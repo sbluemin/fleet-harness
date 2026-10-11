@@ -3,8 +3,6 @@ import { useSyncExternalStore, type ReactNode } from "react";
 import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
 import type { MobileBarAction, MobileBarMenuItem } from "@fleet-console/sdk/pane";
 
-import type { OperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
-import type { OperationNode } from "../../integration/types.js";
 
 /**
  * 모바일 셸의 클라이언트 상태. 라우트(/operations·/settings)가 큰 자리를 정하고, 이 스토어는
