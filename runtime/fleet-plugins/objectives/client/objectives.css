@@ -1895,21 +1895,21 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   color: var(--text-tertiary);
 }
 
-.objectives-commodore-conversation { height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.objectives-commodore-conversation-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 44px;
-  padding: 8px 16px 8px 20px;
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  color: var(--text-secondary);
+.objectives-commodore-conversation { position: relative; height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+/* 기록 비우기 — 가운데 칸 맨 위 투명 줄의 오른쪽에 떠 있다. Windows 캡션 버튼이 오른쪽 위에 서면 호스트가 그 폭을
+   --conversation-overlay-right 로 알려 준다(conversation.css). */
+.objectives-commodore-conversation-float {
+  position: absolute;
+  top: calc((var(--conversation-overlay-top, 52px) - 30px) / 2);
+  right: calc(16px + var(--conversation-overlay-right, 0px));
+  z-index: 4;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--surface-panel) 82%, transparent);
+  backdrop-filter: blur(10px);
 }
-.objectives-commodore-conversation-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-commodore-conversation-readonly { flex: none; color: var(--brass-ink); font-weight: var(--weight-medium); }
+.objectives-commodore-conversation-status { display: block; min-width: 0; margin-top: 6px; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .objectives-commodore-conversation .objectives-commodore-foot { padding-inline: 20px; }
 .objectives-commodore-conversation-back {
   display: block;
@@ -1940,8 +1940,11 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 
 /* 대화 중심 화면의 사령관 — 그룹 대화와 같은 한 면이다. 기록과 아래 입력 캡슐은 가운데 칸을 채운다(Fit, 좌우 여백만 칸 폭을 따른다). */
 .objectives-commodore-conversation { container-type: inline-size; }
-.objectives-commodore-conversation .objectives-commodore-log { width: 100%; box-sizing: border-box; padding-inline: clamp(16px, 4cqi, 48px); }
+.objectives-commodore-conversation .objectives-commodore-log { width: 100%; box-sizing: border-box; padding-inline: clamp(16px, 4cqi, 48px); padding-top: calc(16px + var(--conversation-overlay-top, 0px)); }
 .objectives-commodore-conversation .objectives-commodore-foot { border-top: 0; display: flex; flex-direction: column; align-items: stretch; padding-inline: clamp(16px, 4cqi, 48px); }
 .objectives-commodore-conversation .objectives-commodore-composer,
 .objectives-commodore-conversation .objectives-commodore-composer-idle { width: 100%; max-width: none; box-sizing: border-box; }
 .objectives-commodore-conversation .objectives-commodore-composer { min-height: 48px; padding: 7px 7px 7px var(--space-4); border-color: var(--hairline-strong); border-radius: var(--radius-pill); background: var(--surface-panel-raised); }
+/* 재시도 안내가 서면 기록 위의 고정 줄이다 — 투명 맨 위 줄 아래로 내리고, 기록은 그 밑에서 바로 시작한다. */
+.objectives-commodore-conversation > .objectives-commodore-retry { margin-top: var(--conversation-overlay-top, 0px); }
+.objectives-commodore-conversation:has(> .objectives-commodore-retry) .objectives-commodore-log { padding-top: 16px; }

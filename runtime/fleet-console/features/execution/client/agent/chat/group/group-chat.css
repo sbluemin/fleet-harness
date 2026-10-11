@@ -17,7 +17,8 @@
   overflow-y: auto;
   scrollbar-gutter: stable both-edges;
   /* 열은 가운데 칸을 채운다(Fit) — 좌우 여백만 칸 폭을 따라 넓어진다. */
-  padding: var(--space-4) clamp(var(--space-4), 4cqi, 48px) var(--space-2);
+  /* 위쪽은 대화 중심 화면의 투명 맨 위 줄(--conversation-overlay-top) 몫까지 비운다 — 첫 말이 pill 에 가리지 않고, 스크롤하면 그 밑으로 흘러 올라간다. */
+  padding: calc(var(--space-4) + var(--conversation-overlay-top, 0px)) clamp(var(--space-4), 4cqi, 48px) var(--space-2);
 }
 
 .group-chat-column {

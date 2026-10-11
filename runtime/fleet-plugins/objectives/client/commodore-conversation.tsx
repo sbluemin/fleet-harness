@@ -140,12 +140,13 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
   return (
     <div className="objectives-commodore-conversation">
-      <header className="objectives-commodore-conversation-head">
-        <span className="objectives-commodore-conversation-status">{[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")}</span>
-        {readOnly
-          ? <span className="objectives-commodore-conversation-readonly">{t("objectives.commodore.conversation.readOnly")}</span>
-          : <CommodoreClearButton t={t} theaterId={theaterId} onFail={fail} onClear={() => setFailure(null)} />}
-      </header>
+      {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 이 떠 있다) — 기록은 그 밑으로 흘러 올라간다. 여기에는 기록 비우기
+          단추만 오른쪽 위에 떠 있고, 사령관의 지금 상태는 입력 아래 줄이 말한다. 읽기 전용이면 pill 의 부제가 그 사실을 말한다. */}
+      {readOnly ? null : (
+        <div className="objectives-commodore-conversation-float">
+          <CommodoreClearButton t={t} theaterId={theaterId} onFail={fail} onClear={() => setFailure(null)} />
+        </div>
+      )}
       {on && (run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("objectives.commodore.meta.error")}</span>
@@ -160,6 +161,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
         {readOnly
           ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("objectives.commodore.conversation.back")}</button>
           : <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} onFail={fail} onClear={() => setFailure(null)} />}
+        <span className="objectives-commodore-conversation-status">{[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")}</span>
       </footer>
     </div>
   );
