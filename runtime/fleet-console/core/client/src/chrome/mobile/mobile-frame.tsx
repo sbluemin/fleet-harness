@@ -11,7 +11,6 @@ import type { ConsoleState } from "../../integration/types.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { MobileAttentionProvider } from "./mobile-attention-context.js";
 import { useMobileAttention, useMobileDestinationBindings } from "./mobile-destinations.js";
-import { MobileDrawer } from "./mobile-drawer.js";
 import { MobileRequestBanner } from "./mobile-request-banner.js";
 import { MobileToastHost } from "./mobile-toast.js";
 import { MobileSheetHost } from "./mobile-sheet-host.js";
@@ -25,12 +24,12 @@ import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileBackBridge } from "./mobile-back.js";
 import { closeMobileOperation, readMobileOperationId } from "./mobile-operation-url.js";
 import { installMobileHistory } from "./mobile-history.js";
-import { getMobileDestination, useMobileDestination, useMobileDrawerOpen, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl } from "./mobile-store.js";
+import { getMobileDestination, useMobileDestination, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl } from "./mobile-store.js";
 import "../../styles/mobile.css";
 
 /**
- * 모바일 배치의 틀: 상단 막대 · 화면(라우트) · 드로어 · 하단 시트. 탭 막대는 없다 — 목적지는 모두 드로어가 연다.
- * 「확인 필요」를 여기서 한 번 계산해 ≡ 점·드로어 구역·전체 화면이 같은 행을 읽게 한다.
+ * 모바일 배치의 틀: 상단 막대 · 화면(라우트) · 하단 시트. 탭 막대와 드로어는 없다 — 홈(대화 목록)이 루트이고, 목적지는 홈의
+ * 바로가기 칩이 연다. 「확인 필요」를 여기서 한 번 계산해 홈 맨 위 묶음·전체 화면·요청 배너가 같은 행을 읽게 한다.
  */
 export function MobileFrame({ state, bands, onDeferredDeletion, children }: { readonly state: ConsoleState; readonly bands: ReactNode; readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void; readonly children: ReactNode }) {
   const navigate = useNavigate();
@@ -74,8 +73,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   // 앱의 하드웨어 뒤로: 같은 우선순위를 함수 호출로 받는다(history.back을 따로 쓰지 않는다).
   useEffect(() => installMobileBackBridge(() => backRef.current()), []);
 
-  // 시스템 바 색(S-03): 드로어가 열리면 위·아래가 드로어 면, 시트가 열리면 아래가 시트 면. 앱이면 네이티브가 칠하고 브라우저는 무시한다.
-  const drawerOpen = useMobileDrawerOpen();
+  // 시스템 바 색(S-03): 시트가 열리면 아래가 시트 면. 앱이면 네이티브가 칠하고 브라우저는 무시한다.
   const sheetOpen = useMobileSheetStack().length > 0;
   const t = useT();
   const settingsHost = useMemo(() => ({ moreLabel: t("mobile.settings.more"), openChoice: openMobileChoice, openInput: openMobileInput, openSubScreen: openMobileSubScreen, ModelChoice: MobileModelChoice, CoordinateChoice: MobileCoordinateChoice }), [t]);
@@ -84,7 +82,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   const reportChrome = reportShellChrome;
   const reportChromeRef = useRef(reportChrome);
   reportChromeRef.current = reportChrome;
-  useEffect(() => { reportChrome(); }, [drawerOpen, sheetOpen, choiceOpen]);
+  useEffect(() => { reportChrome(); }, [sheetOpen, choiceOpen]);
   // 재연결·페이지 복귀 뒤에는 지금 겹침 상태를 앱에 다시 알린다(NV-7) — 앱이 상태 바를 되돌려 놓았을 수 있다.
   useEffect(() => {
     if (connection !== "live") return;
@@ -109,12 +107,11 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
     <MobileAttentionProvider rows={rows}>
       <div className="mobile-frame" lang={locale}>
         <div className="mobile-frame-head">
-          <MobileTopBar attentionDot={rows.length > 0} />
+          <MobileTopBar />
           {/* 연결·상태 띠는 상단 막대 바로 아래에 선다(S-34). */}
           {bands}
         </div>
         {children}
-        <MobileDrawer state={state} attention={rows} activeOperationId={state.activeOperationId} onOpenOperation={openOperation} />
         <MobileRequestBanner
           state={state}
           viewingOperationId={path === "/operations" && (destination.kind === "home" || destination.kind === "info") ? state.activeOperationId : null}

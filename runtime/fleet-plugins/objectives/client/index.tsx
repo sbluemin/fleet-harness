@@ -82,8 +82,8 @@ export const objectivesEntry: RailEntryDescriptor = {
     // 모바일 「확인 필요」 — 결정 요청마다 한 행, 누르면 그 목표 상세.
     items: decisionAttentionItems,
   },
-  // 모바일 드로어의 고정 목적지 — Theater 다음, 파일·위키 위.
-  // 모바일 드로어·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
+  // 모바일 홈 바로가기 칩 — Theater 다음, 파일·위키 위.
+  // 모바일 바로가기 칩·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
   mobile: { destination: { order: 10, label: (locale) => getT(locale)("objectives.panel.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></svg> },
   search: async ({ query, theaterId, limit, language }) => {
     const api = objectivesApi();
@@ -97,7 +97,7 @@ export const objectivesEntry: RailEntryDescriptor = {
   },
 };
 
-/** 모바일 사령관 화면 — 드로어 목적지 「사령관」의 본문. 데스크톱은 사이드바 줄과 「사령관 기록」 시트를 그대로 쓴다. */
+/** 모바일 사령관 화면 — 바로가기 목적지 「사령관」의 본문. 데스크톱은 사이드바 줄과 「사령관 기록」 시트를 그대로 쓴다. */
 export const commodoreMobilePane: PaneDescriptor = {
   id: COMMODORE_MOBILE_PANE,
   role: "primary",
@@ -108,7 +108,7 @@ export const commodoreMobilePane: PaneDescriptor = {
 };
 
 /**
- * 폰 전용 엔트리 — 실험 기능 「자율 운영」이 켜져 있을 때만 드로어 「목표」 위에 「사령관」 목적지로 선다.
+ * 폰 전용 엔트리 — 실험 기능 「자율 운영」이 켜져 있을 때만 바로가기 「목표」 앞에 「사령관」 목적지로 선다.
  * 데스크톱 레일·팔레트에는 오르지 않는다(`mobile.desktop: false`).
  */
 export const commodoreEntry: RailEntryDescriptor = {
@@ -117,7 +117,7 @@ export const commodoreEntry: RailEntryDescriptor = {
   icon: () => <PennantIcon />,
   scope: "theater",
   panes: [COMMODORE_MOBILE_PANE],
-  // 드로어 「목표」(order 10) 위. 줄 오른쪽 칸은 자율 운영 루프의 상태(S-53 CM-1c)다.
+  // 「목표」(order 10) 앞 칩. 칩 오른쪽 칸은 자율 운영 루프의 상태(S-53 CM-1c)다.
   mobile: { desktop: false, destination: { order: 5, shown: commodoreDestinationShown, trailing: commodoreDestinationTrailing }, icon: () => <PennantIcon /> },
 };
 

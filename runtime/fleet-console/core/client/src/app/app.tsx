@@ -729,7 +729,7 @@ function ConnectedApp() {
               </Routes>
             </main>
           );
-          // The mobile frame sits outside the routes: the top bar and the drawer reach every destination,
+          // The mobile frame sits outside the routes: the home list's shortcut chips reach every destination,
           // so a frame that unmounted with the operations route would strand the way back.
           return mobileLayout ? <MobileFrame state={state} bands={shellBars} onDeferredDeletion={enqueueDeletion}>{routeContent}</MobileFrame> : routeContent;
         })()}

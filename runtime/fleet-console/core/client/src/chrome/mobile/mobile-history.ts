@@ -1,7 +1,7 @@
 /**
  * 모바일 뒤로의 마지막 두 우선순위 (impl-spec S-51 3·4).
  *
- *   [G 가드] [R 지금 루트] [상세 …] [겹침(드로어·시트) …]
+ *   [G 가드] [R 지금 루트] [상세 …] [겹침(시트·팝업) …]
  *
  * 루트(대화 목록·Operation 화면·목적지 루트)끼리의 이동은 history를 늘리지 않는다 — 라우트는 replace, store 목적지와
  * `?op=`는 URL만 바꾼다. 그래서 루트 아래에는 늘 가드 한 칸뿐이고, 뒤로가 그 가드에 닿으면:
@@ -35,7 +35,7 @@ function onPop(event: PopStateEvent): void {
   if (state[GUARD] !== true) return;
   event.stopImmediatePropagation();
   swallowNext += 1;
-  // 되돌아온 뒤에 동작해야 한다 — 되돌리기 전에 드로어가 history를 쌓으면 앞 항목이 지워진다.
+  // 되돌아온 뒤에 동작해야 한다 — 되돌리기 전에 시트가 history를 쌓으면 앞 항목이 지워진다.
   afterSwallow = () => handler?.();
   window.history.go(1);
 }

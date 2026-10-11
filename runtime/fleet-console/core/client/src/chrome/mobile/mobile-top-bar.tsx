@@ -4,22 +4,21 @@ import { useT } from "../../i18n/index.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMenu } from "./mobile-menu.js";
-import { getLiveMobileBar, setMobileDrawerOpen, useMobileBar, type MobileBarState } from "./mobile-store.js";
+import { getLiveMobileBar, useMobileBar, type MobileBarState } from "./mobile-store.js";
 
-const DEFAULT_BAR: MobileBarState = { variant: "centered", title: "", leading: "menu" };
+const DEFAULT_BAR: MobileBarState = { variant: "centered", title: "", leading: "back" };
 
 /**
  * 상단 막대 — 높이 56, 면 없이 화면 배경 그대로. 내용은 화면이 올린다(`claimMobileBar`): 왼쪽 ≡ 또는 ‹,
- * 가운데(또는 Operation 아바타 오른쪽) 제목, 오른쪽 문맥 동작과 ⋮. 확인 필요가 있으면 ≡ 위에 점이 선다.
+ * 가운데(또는 Operation의 왼쪽) 제목, 오른쪽 문맥 동작과 ⋮.
  */
-export function MobileTopBar({ attentionDot }: { readonly attentionDot: boolean }) {
+export function MobileTopBar() {
   const t = useT();
   const claimed = useMobileBar();
   const bar = claimed ?? DEFAULT_BAR;
   const [menuOpen, setMenuOpen] = useState(false);
   // 열린 ⋮ 메뉴는 뒤로가 가장 먼저 닫는 겹침이다.
   useEffect(() => (menuOpen ? pushBackLayer(() => setMenuOpen(false)) : undefined), [menuOpen]);
-  // 화면이 막대를 올리지 않아도 ≡는 늘 서 있어야 한다 — 드로어로 가는 길이 끊기는 화면이 없게.
   if (bar.hidden) return null;
 
   const back = () => {
@@ -39,9 +38,8 @@ export function MobileTopBar({ attentionDot }: { readonly attentionDot: boolean 
 
   return (
     <header className={`mobile-top-bar${bar.variant === "conversation" ? " is-conversation" : ""}`}>
-      <button type="button" className="mobile-bar-button" onClick={bar.leading === "menu" ? () => setMobileDrawerOpen(true) : back} aria-label={bar.leading === "menu" ? t("mobile.bar.openMenu") : t("mobile.bar.back")}>
-        <MobileIcon name={bar.leading === "menu" ? "menu" : "back"} />
-        {bar.leading === "menu" && attentionDot ? <span className="mobile-attention-dot" aria-label={t("mobile.bar.attentionDot")} /> : null}
+      <button type="button" className="mobile-bar-button" onClick={back} aria-label={t("mobile.bar.back")}>
+        <MobileIcon name="back" />
       </button>
       {title}
       {bar.variant === "centered" && actionsCount === 0 ? <span className="mobile-bar-spacer" aria-hidden="true" /> : null}

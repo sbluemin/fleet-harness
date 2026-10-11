@@ -12,7 +12,7 @@ const SHOW_MS = 6000;
 
 /**
  * 위에서 내려오는 알림(S-32) — 지금 보고 있지 않은 Operation에 허용 요청이 새로 오면 6초 동안 선다.
- * 접힌 뒤에도 ≡ 점과 드로어 「확인 필요」에 남는다. 그 Operation을 보고 있으면 띄우지 않는다.
+ * 접힌 뒤에도 홈 맨 위 「확인 필요」 묶음에 남는다. 그 Operation을 보고 있으면 띄우지 않는다.
  */
 export function MobileRequestBanner({ state, viewingOperationId, onOpen }: {
   readonly state: ConsoleState;

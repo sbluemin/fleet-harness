@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import type { ClientMobileBarCapability, MobileBarSpec } from "@fleet-console/sdk/pane";
 
 import { pushBackLayer } from "./mobile-back.js";
-import { claimMobileBar, releaseMobileBar, setMobilePluginDepth, type MobileBarState } from "./mobile-store.js";
+import { claimMobileBar, releaseMobileBar, type MobileBarState } from "./mobile-store.js";
 
 /**
  * 모바일 목적지 화면이 페인에 건네는 상단 막대 창구. 컨텍스트로 두는 이유는 이 값이 있고 없음이 곧
@@ -36,12 +36,12 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
 
   const publish = (spec: MobileBarSpec | null) => {
     const state: MobileBarState = spec === null
-      ? { variant: "centered", title: fallbackTitleRef.current, leading: "menu" }
+      ? { variant: "centered", title: fallbackTitleRef.current, leading: "back" }
       : {
         variant: "centered",
         title: spec.title,
         ...(spec.subtitle ? { subtitle: spec.subtitle } : {}),
-        leading: spec.depth > 0 ? "back" : "menu",
+        leading: "back",
         ...(spec.depth > 0 ? { onBack: () => window.history.back() } : {}),
         ...(spec.actions && spec.actions.length > 0 ? { actions: spec.actions } : {}),
         ...(spec.menu && spec.menu.items.length > 0 ? { menu: { label: spec.menu.label ?? spec.title, ...(spec.menu.caption ? { caption: spec.menu.caption } : {}), items: spec.menu.items } } : {}),
@@ -64,7 +64,6 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       if (landed !== undefined && landed === entriesRef.current.at(-1)) return;
       pushedRef.current -= 1;
       entriesRef.current.pop();
-      setMobilePluginDepth(pushedRef.current);
       fromPopRef.current = true;
       spec.onBack?.();
     };
@@ -73,7 +72,6 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       window.removeEventListener("popstate", onPop);
       layerRef.current?.();
       layerRef.current = null;
-      setMobilePluginDepth(0);
       releaseMobileBar(owner);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,7 +99,6 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
         window.history.go(-surplus);
       }
       fromPopRef.current = false;
-      setMobilePluginDepth(pushedRef.current);
       // 상세가 쌓여 있는 동안 하드웨어 뒤로는 그것을 하나 걷는다(브라우저 뒤로와 같은 history 한 칸).
       if (depth > 0 && layerRef.current === null) layerRef.current = pushBackLayer(() => window.history.back());
       if (depth === 0 && layerRef.current !== null) { layerRef.current(); layerRef.current = null; }

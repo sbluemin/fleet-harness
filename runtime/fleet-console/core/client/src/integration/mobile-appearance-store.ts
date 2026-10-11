@@ -275,7 +275,7 @@ export function setMobileFontScale(fontScale: MobileFontScale): void {
 }
 
 /**
- * 지금 화면의 위·아래 면을 앱에 알린다(드로어·하단 시트 열림/닫힘, impl-spec S-03). 색이 아니라 토큰
+ * 지금 화면의 위·아래 면을 앱에 알린다(하단 시트 열림/닫힘, impl-spec S-03). 색이 아니라 토큰
  * 이름이며 네이티브가 같은 값으로 상태 바·내비게이션 바를 칠한다. 브라우저에서는 아무것도 하지 않는다.
  */
 export function reportMobileChrome(requestedTop: MobileChromeTop, requestedBottom: MobileChromeBottom): void {

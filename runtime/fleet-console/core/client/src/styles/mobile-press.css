@@ -27,10 +27,10 @@
   -webkit-touch-callout: none;
   touch-action: manipulation;
 }
-/* 셸 크롬(상단 막대·드로어·시트·메뉴·선택 팝업·빈 화면 안내·위 알림·토스트)의 글자도 조작부 쪽이다 — 제목·안내 문구를
+/* 셸 크롬(상단 막대·시트·메뉴·선택 팝업·빈 화면 안내·위 알림·토스트)의 글자도 조작부 쪽이다 — 제목·안내 문구를
    길게 눌러도 선택이 남지 않는다. 시트 안 입력칸은 아래 규칙이 다시 연다. */
 :root[data-view-mode="mobile"] :where(
-  .mobile-top-bar, .mobile-drawer, .mobile-sheet, .mobile-menu, .mobile-choice, .mobile-empty, .mobile-empty-home,
+  .mobile-top-bar, .mobile-sheet, .mobile-menu, .mobile-choice, .mobile-empty, .mobile-empty-home,
   .mobile-request-banner, .mobile-toast-host, .app-toast
 ) {
   -webkit-user-select: none;
@@ -50,8 +50,8 @@
 /* ── R1 면이 나타남 ── */
 /* 기준 상자 — 명시도 0이라 제 position(시트 ×의 absolute 등)을 이미 가진 요소는 그대로 둔다. */
 :where(:root[data-view-mode="mobile"]) :where(
-  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
-  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
+  .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
   .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
@@ -60,8 +60,8 @@
   isolation: isolate;
 }
 :root[data-view-mode="mobile"] :is(
-  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
-  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
+  .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
   .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
@@ -79,9 +79,6 @@
 
 /* 모양 — PR-2 표. 들여(--pr-inset)는 요소 상자 안쪽 거리, 음수는 바깥. */
 :root[data-view-mode="mobile"] :is(.mobile-bar-button, .mobile-sheet-close, .agent-chat-answer-action) { --pr-r: 50%; }
-:root[data-view-mode="mobile"] .mobile-drawer-dest { --pr-inset: 0 12px; }
-:root[data-view-mode="mobile"] .mobile-drawer-dest.is-current { --pr-inset: 0; }
-:root[data-view-mode="mobile"] .mobile-drawer-section.is-button { --pr-inset: 10px 12px 0; }
 :root[data-view-mode="mobile"] :is(.mobile-menu button, .mobile-choice-row) { --pr-inset: 0 8px; }
 :root[data-view-mode="mobile"] [data-mobile-surface] .agent-chat-ask-option { --pr-inset: 0 -8px; }
 :root[data-view-mode="mobile"] :is(.mobile-choice-tab, .mql-efft button) { --pr-inset: 0 -10px; --pr-r: 10px; }
@@ -95,8 +92,8 @@
 :root[data-view-mode="mobile"] .mobile-folder-enter { --pr-inset: calc(50% - 22px) 6px; --pr-r: 22px; }
 
 :root[data-view-mode="mobile"] :is(
-  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
-  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
+  .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
   .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
@@ -105,8 +102,8 @@
   transition-duration: 0s;
 }
 :root[data-view-mode="mobile"] :is(
-  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
-  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
+  .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
   .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
@@ -114,8 +111,8 @@
   outline: none;
 }
 :root[data-view-mode="mobile"] :is(
-  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close, .mobile-drawer-dest, .mobile-theater-switch,
-  .mobile-drawer-section.is-button, .mobile-drawer-row, .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
+  [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
+  .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
   .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option

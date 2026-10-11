@@ -1493,8 +1493,6 @@
   --m-selected: #414141;
   --m-hairline: #212120;
   --m-hairline-strong: #3d3c3a;
-  /* bg-deep(드로어) 위에서는 --m-hairline이 보이지 않아 한 단 올린 구분선. */
-  --m-hairline-on-deep: #2a2a28;
   --m-handle: #4a4a48;
   --m-text: #f9f9f7;
   --m-text-nav: #c3c2b7;
@@ -1555,7 +1553,6 @@
   --m-selected: #e2e0d8;
   --m-hairline: #e4e2da;
   --m-hairline-strong: #d3d0c6;
-  --m-hairline-on-deep: #e4e2da;
   --m-handle: #ebe9e3;
   --m-text: #1b1b19;
   --m-text-nav: #45443f;

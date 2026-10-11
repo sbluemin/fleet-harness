@@ -11,7 +11,7 @@ import type { OperationNode, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 
 /**
- * 드로어가 고정 목적지로 올리는 플러그인 엔트리 — `RailEntryDescriptor.mobile.destination`을 선언하고 `shown`이 허락한 것을 order 순으로.
+ * 홈 바로가기 칩 줄이 목적지로 올리는 플러그인 엔트리 — `RailEntryDescriptor.mobile.destination`을 선언하고 `shown`이 허락한 것을 order 순으로.
  * 순수 계산이다 — 화면은 `useMobileDestinationBindings`로 `shown`의 갱신을 구독한다.
  */
 export function mobileDestinationBindings(bindings: readonly RailEntryBinding[], theaterId: string | null): readonly RailEntryBinding[] {
@@ -40,7 +40,7 @@ export function useMobileDestinationBindings(bindings: readonly RailEntryBinding
   return useMemo(() => mobileDestinationBindings(bindings, theaterId), [bindings, theaterId, key]);
 }
 
-/** 드로어 행 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(text·tone)이 같으면 다시 그리지 않는다. */
+/** 바로가기 칩 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(text·tone)이 같으면 다시 그리지 않는다. */
 export function useMobileDestinationTrailing(bindings: readonly RailEntryBinding[], theaterId: string | null): ReadonlyMap<string, RailEntryDestinationTrailingValue> {
   const key = useSyncExternalStore(
     (listener) => {
@@ -72,7 +72,7 @@ function shownVersion(bindings: readonly RailEntryBinding[], theaterId: string |
   return bindings.map((binding) => binding.entry.mobile?.destination?.shown ? `${binding.entry.id}:${binding.entry.mobile.destination.shown.get(theaterId) ? 1 : 0}` : "").join("|");
 }
 
-/** 「플러그인」 줄 — 고정 목적지가 아니고, 설정(드로어가 따로 연다)이 아닌 보이는 엔트리 전부. */
+/** 「플러그인」 줄 — 고정 목적지가 아니고, 설정(프로필 시트가 따로 연다)이 아닌 보이는 엔트리 전부. */
 export function mobilePluginRows(bindings: readonly RailEntryBinding[]): readonly RailEntryBinding[] {
   return bindings.filter((binding) => binding.entry.mobile?.destination === undefined && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && visible(binding));
 }

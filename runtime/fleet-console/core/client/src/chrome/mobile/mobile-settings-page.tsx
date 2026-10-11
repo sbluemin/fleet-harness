@@ -26,7 +26,7 @@ import { setViewModePreference, useViewMode, type ViewModePreference } from "../
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { openMobileChoice, type HostChoiceOption } from "./mobile-choice-store.js";
-import { pushMobileSheet } from "./mobile-store.js";
+import { closeMobileSheets, pushMobileSheet } from "./mobile-store.js";
 import { clearMobileSubScreens, popMobileSubScreen, useMobileSubScreens } from "./mobile-subscreen-store.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import "../../styles/mobile.css";
@@ -83,9 +83,14 @@ interface MobileSettingsGroup {
 /** A detail screen was reached from the list here, so its Back retraces that step. */
 interface MobileSettingsLocationState {
   readonly mobileSettingsEntry?: true;
+  /** 프로필 시트의 행으로 들어왔다 — 상세의 ‹는 목록 화면이 아니라 홈으로 돌아가 그 시트를 다시 연다. */
+  readonly mobileProfileReturn?: true;
 }
 
-export function MobileSettingsPage() {
+export function MobileSettingsPage({ embedded = false }: {
+  /** 프로필 시트 안의 목록 — 상단 막대·라우트 주소를 읽지 않고 목록만 그린다. 행을 열면 시트를 닫고 `/settings` 상세로 간다. */
+  readonly embedded?: boolean;
+} = {}) {
   const settings = useGlobalSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields.size > 0;
@@ -106,31 +111,42 @@ export function MobileSettingsPage() {
 
   const pluginSections = collectPluginSettingsSections(registry.providers, locale, t, "mobile");
   const open = (id: MobileSectionId) => {
+    if (embedded) {
+      const entry: MobileSettingsLocationState = { mobileProfileReturn: true };
+      navigate({ pathname: "/settings", search: `?section=${encodeURIComponent(id)}` }, { replace: true, state: entry });
+      closeMobileSheets();
+      return;
+    }
     const entry: MobileSettingsLocationState = { mobileSettingsEntry: true };
     navigate({ pathname: "/settings", search: `?section=${encodeURIComponent(id)}` }, { state: entry });
   };
   const groups = buildMobileSettingsGroups({ state, savingFields: settings.savingFields, appearance, viewMode: viewMode.preference, version: consoleState.version, consoleLatest: !consoleState.updateAvailable, pluginSections, t, locale });
   const rows = groups.flatMap((group) => group.rows);
-  const requested = new URLSearchParams(location.search).get("section");
+  const requested = embedded ? null : new URLSearchParams(location.search).get("section");
   // 폰 전용 상세는 그대로, 그 밖의 옛 id와 상대 레이아웃이 만든 id는 데스크톱과 같은 판정으로 옮긴다.
   const resolved = requested !== null && LOCAL_IDS.has(requested) ? requested : resolveSettingsSectionId(requested, new Set(rows.map((row) => row.id)));
   const active = resolved === null ? null : rows.find((row) => row.id === resolved && row.act === undefined) ?? null;
 
   const close = () => {
+    if ((location.state as MobileSettingsLocationState | null)?.mobileProfileReturn) {
+      navigate({ pathname: "/operations", search: "" }, { replace: true });
+      pushMobileSheet({ kind: "profile" });
+      return;
+    }
     // Popping is only correct when the entry above is this list. A direct load or a reload has no
     // such entry, and popping there would leave the Console entirely.
     if ((location.state as MobileSettingsLocationState | null)?.mobileSettingsEntry) { navigate(-1); return; }
     navigate({ pathname: "/settings", search: "" }, { replace: true });
   };
 
-  // 막대는 호스트가 그린다 — 목록은 ≡ + ⓘ(버전), 섹션 상세는 ‹(목록에서 왔으면 history 되돌리기).
+  // 막대는 호스트가 그린다 — 목록은 ‹(홈으로) + ⓘ(버전), 섹션 상세는 ‹(목록에서 왔으면 history 되돌리기). 프로필 시트 안에서는 올리지 않는다.
   const subScreens = useMobileSubScreens();
   const subScreen = subScreens.at(-1) ?? null;
-  useClaimMobileBar(subScreen !== null
+  useClaimMobileBar(embedded ? null : subScreen !== null
     ? { variant: "centered", title: subScreen.title, leading: "back", onBack: popMobileSubScreen }
     : active !== null
     ? { variant: "centered", title: active.title, leading: "back", onBack: close }
-    : { variant: "centered", title: t("mobile.drawer.settings"), leading: "menu", actions: [{ id: "about", icon: <MobileIcon name="info" />, label: t("mobile.settings.about"), run: () => document.getElementById("mobile-settings-version")?.scrollIntoView({ block: "center", behavior: "smooth" }) }] });
+    : { variant: "centered", title: t("mobile.home.settings"), leading: "back", actions: [{ id: "about", icon: <MobileIcon name="info" />, label: t("mobile.settings.about"), run: () => document.getElementById("mobile-settings-version")?.scrollIntoView({ block: "center", behavior: "smooth" }) }] });
 
   // 섹션 상세가 열려 있는 동안 하드웨어 뒤로는 그것을 닫는다(목록으로).
   const closeRef = useRef(close);
@@ -198,8 +214,8 @@ export function MobileSettingsPage() {
   // 앱에서는 네이티브가 알려 준 주소만 보인다 — 웹뷰가 보는 루프백 주소는 사용자의 Console 주소가 아니다(NV-5).
   const consoleAddress = appearance.nativeOwned ? appearance.console?.address ?? null : window.location.host;
   return (
-    <section className="mobile-settings-page" aria-labelledby="mobile-settings-title">
-      <h1 id="mobile-settings-title" className="mobile-visually-hidden">{t("mobile.drawer.settings")}</h1>
+    <section className={`mobile-settings-page${embedded ? " is-embedded" : ""}`} aria-labelledby="mobile-settings-title">
+      <h1 id="mobile-settings-title" className="mobile-visually-hidden">{t("mobile.home.settings")}</h1>
       <div className="mobile-settings-scroll">
         <div className="mobile-settings-groups">
           {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
@@ -261,7 +277,7 @@ function LocalDetail({ id: _id }: { readonly id: LocalSectionId }) {
   return (
     <>
       <div className="mobile-group is-flush">
-        {(["drawer", "start", "request", "pairing"] as const).map((topic) => (
+        {(["home", "start", "request", "pairing"] as const).map((topic) => (
           <div className="mobile-group-row" key={topic}>
             <span className="mobile-group-row-icon" aria-hidden="true"><MobileIcon name="help" /></span>
             <span className="mobile-group-row-copy">{t(`mobile.settings.help.${topic}`)}</span>

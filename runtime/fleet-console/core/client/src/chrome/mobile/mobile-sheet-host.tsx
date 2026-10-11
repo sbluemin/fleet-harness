@@ -17,12 +17,13 @@ import { useMobileDestinationBindings } from "./mobile-destinations.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileFolderSheet } from "./mobile-folder-sheet.js";
+import { MobileSettingsPage } from "./mobile-settings-page.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { showMobileToast } from "./mobile-toast.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDestination, setMobileDrawerOpen, useMobileSheetStack } from "./mobile-store.js";
+import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDestination, useMobileSheetStack } from "./mobile-store.js";
 
 /**
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
@@ -53,11 +54,12 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
   if (top.kind === "rename") return <RenameSheet key={top.operationId} state={state} operationId={top.operationId} />;
   if (top.kind === "console") return <ConsoleSheet />;
   if (top.kind === "create") return <CreateSheet state={state} />;
+  if (top.kind === "profile") return <ProfileSheet />;
   if (top.kind === "custom") return <>{top.render(popMobileSheet)}</>;
   if (top.kind === "confirm") return <ConfirmSheet spec={top.spec} resolve={top.resolve} />;
   if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void addTheaterWithToast(path, t); }} />;
   if (top.kind === "forget") return <ForgetSheet key={top.theaterId} state={state} theaterId={top.theaterId} onDeferredDeletion={onDeferredDeletion} />;
-  return <TheaterSheet state={state} fromDrawer={top.kind === "theater" && top.fromDrawer === true} />;
+  return <TheaterSheet state={state} />;
 }
 
 /** 폴더를 Theater로 등록하고, 성공하면 「{이름}을(를) Theater로 추가했습니다」 토스트를 띄운다. 실패는 스토어의 theaterError가 화면에 말한다. */
@@ -103,12 +105,10 @@ function RenameSheet({ state, operationId }: { readonly state: ConsoleState; rea
   );
 }
 
-/** S-07 — 지금 Theater를 바꾼다. 고르면 시트만 닫고 드로어는 그대로 둔다(새 Theater의 최근 목록이 거기 있다). */
-function TheaterSheet({ state, fromDrawer }: { readonly state: ConsoleState; readonly fromDrawer: boolean }) {
+/** S-07 — 지금 Theater를 바꾼다. 고르면 시트를 닫고 홈 목록이 그 Theater의 대화로 바뀐다. */
+function TheaterSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
-  // 드로어에서 연 시트는 드로어를 닫고 서며, 고르거나 닫으면 드로어로 돌아간다(S-07).
-  const leave = () => { if (fromDrawer) setMobileDrawerOpen(true); };
-  const cancel = () => { popMobileSheet(); leave(); };
+  const cancel = () => popMobileSheet();
   const active = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
   const pluginRows = useTheaterSheetPluginRows(active?.id ?? null);
   return (
@@ -124,7 +124,7 @@ function TheaterSheet({ state, fromDrawer }: { readonly state: ConsoleState; rea
               className="mobile-sheet-row"
               key={theater.id}
               aria-current={here ? "true" : undefined}
-              onClick={() => { setActiveTheater(theater.id); closeMobileSheets(); leave(); }}
+              onClick={() => { setActiveTheater(theater.id); closeMobileSheets(); }}
             >
               <TheaterAvatar theaterId={theater.id} size={28} label="" decorative />
               <span className="mobile-sheet-row-copy">
@@ -217,6 +217,19 @@ function ForgetSheet({ state, theaterId, onDeferredDeletion }: { readonly state:
       </>}
     >
       <p className="mobile-sheet-lead">{t("mobile.sheet.forget.body", { name: labelRef.current })}</p>
+    </MobileSheet>
+  );
+}
+
+/**
+ * 프로필·설정 시트 — 홈 머리 왼쪽 아바타가 연다. X로 닫는 전체 높이 시트이고, 본문은 설정 목록(Console 정체 카드 · 화면 · 에이전트 · 사용 ·
+ * 정보)이다. 행을 열면 시트를 닫고 `/settings` 상세 라우트로 가며, 상세의 ‹는 이 시트로 돌아온다. Console 카드는 전환기를 연다.
+ */
+function ProfileSheet() {
+  const t = useT();
+  return (
+    <MobileSheet title={t("mobile.home.settings")} onClose={popMobileSheet} full className="is-profile" focusInputOnTouch={false}>
+      <MobileSettingsPage embedded />
     </MobileSheet>
   );
 }

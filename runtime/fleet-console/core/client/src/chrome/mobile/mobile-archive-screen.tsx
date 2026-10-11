@@ -74,8 +74,8 @@ export function MobileArchiveScreen({ state }: { readonly state: ConsoleState })
   useEffect(() => { void refreshOperationArchive(); }, []);
   useClaimMobileBar({
     variant: "centered",
-    title: t("mobile.drawer.archive"),
-    leading: "menu",
+    title: t("mobile.home.archive"),
+    leading: "back",
     actions: [{ id: "search", icon: <MobileIcon name="search" />, label: t("mobile.archive.search"), run: () => setMobileDestination({ kind: "search", scope: "archive" }) }],
   });
   const entries = (archive.snapshot?.entries ?? []).filter((entry) => !restored.has(entry.operation.id));

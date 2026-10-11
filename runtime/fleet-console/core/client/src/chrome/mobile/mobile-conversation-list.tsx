@@ -13,12 +13,13 @@ import { AttentionReason } from "./mobile-attention-reason.js";
 import { ConversationRow, ConversationSummary, useMobileConversations, type MobileConversation } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
-import { pushMobileSheet, setMobileDestination, setMobileDrawerOpen } from "./mobile-store.js";
+import { MobileShortcutChips } from "./mobile-shortcut-chips.js";
+import { pushMobileSheet, setMobileDestination } from "./mobile-store.js";
 
 const MAX_ATTENTION_ROWS = 3;
 
 /**
- * 홈 — 대화 목록. 머리(프로필 · Theater 알약 · 검색 · +), 지금 Theater의 정체, 맨 위 「확인 필요」 묶음(최대 3건 + 전체 보기), 그 아래 대화 행.
+ * 홈 — 대화 목록. 머리(프로필 · Theater 알약 · 검색 · +), 바로가기 칩 줄, 지금 Theater의 정체(대표 자리), 맨 위 「확인 필요」 묶음(최대 3건 + 전체 보기), 그 아래 대화 행.
  * 행 하나는 지휘관 묶음 하나다. 행을 누르면 그 Operation 화면이 홈 자리에 서고, 뒤로가 이 목록으로 돌아온다.
  * 목록은 고른 Theater 범위이고(전환은 머리의 Theater 알약), 모든 Theater를 가로지르는 것은 검색뿐이다.
  */
@@ -30,7 +31,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
   // 대화 목록은 몽글 아바타를 보이는 표면이다 — 데스크톱 사이드바처럼 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
   useAvatarClaims();
   // 이 화면이 자기 머리를 그린다 — 호스트 상단 막대는 숨긴다.
-  useClaimMobileBar({ variant: "centered", title: "", leading: "menu", hidden: true });
+  useClaimMobileBar({ variant: "centered", title: "", leading: "back", hidden: true });
 
   const theater = state.theaters.find((item) => item.id === state.activeTheaterId) ?? null;
   const consoleName = appearance.console?.label ?? window.location.hostname;
@@ -46,15 +47,15 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
   return (
     <section className="mobile-conv-list">
       <header className="mobile-conv-head">
-        {/* 프로필 자리 — 프로필·설정 시트가 서기 전까지는 기존 드로어(목적지·설정)로 가는 문이다. */}
-        <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.drawer.consoleSwitch", { name: consoleName })} onClick={() => setMobileDrawerOpen(true)}>
+        {/* 프로필 아바타 — Console 정체. 프로필·설정 시트를 연다. */}
+        <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.list.profileAria", { name: consoleName })} onClick={() => pushMobileSheet({ kind: "profile" })}>
           <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? consoleName.charAt(0).toUpperCase()} round size={36} />
           {state.connection !== "live" ? <span className="mobile-avatar-dot" data-state={state.connection === "offline" ? "failed" : "reconnecting"} aria-hidden="true" /> : null}
         </button>
         <span className="mobile-conv-gap" />
         <button type="button" data-press="r1" className="mobile-conv-theater" aria-label={t("mobile.list.theaterAria")} onClick={() => pushMobileSheet({ kind: "theater" })}>
           {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} size={32} /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}
-          <strong>{theater?.label ?? t("mobile.drawer.noTheater")}</strong>
+          <strong>{theater?.label ?? t("mobile.home.noTheater")}</strong>
           <MobileIcon name="down" size={16} />
         </button>
         <span className="mobile-conv-gap" />
@@ -62,6 +63,8 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
         <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.list.create")} onClick={() => pushMobileSheet({ kind: "create" })}><MobileIcon name="plus" /></button>
       </header>
       <div className="mobile-conv-scroll">
+        <MobileShortcutChips state={state} />
+        {/* 대표 자리 — 머리·바로가기 칩과 확인 필요 묶음 사이. 지금은 Theater의 정체만 선다. 이 Theater를 대표하는 대화(사령관 등)가 생기면 이 자리에 행으로 선다. */}
         {theater ? (
           <div className="mobile-conv-hero">
             <MobileMonogram label={theater.label} toneKey={theater.id} size={64} />
@@ -72,7 +75,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
         {attention.length > 0 ? (
           <>
             <div className="mobile-conv-section">
-              <span>{t("mobile.drawer.attention")} {attention.length}</span>
+              <span>{t("mobile.home.attention")} {attention.length}</span>
               <button type="button" data-press="r1" onClick={() => setMobileDestination({ kind: "attention" })}>{t("mobile.list.attentionAll")} ›</button>
             </div>
             <div className="mobile-conv-attention">

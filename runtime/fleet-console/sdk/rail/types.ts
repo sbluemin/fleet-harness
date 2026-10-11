@@ -167,7 +167,7 @@ export interface RailEntryDescriptor {
    */
   readonly attention?: RailEntryAttention;
   /**
-   * 모바일 배치에서 이 도구가 서는 자리. 생략하면 드로어의 「플러그인」 줄에 한 행으로 서고, 현행 도구 시트로 열린다.
+   * 모바일 배치에서 이 도구가 서는 자리. 생략하면 홈 바로가기 줄 끝 「더보기」가 여는 「플러그인」 화면에 한 행으로 서고, 현행 도구 시트로 열린다.
    * 데스크톱 레일은 이 값을 읽지 않는다.
    */
   readonly mobile?: RailEntryMobile;
@@ -193,12 +193,12 @@ export interface RailEntryMobile {
    */
   readonly description?: LocalizedText;
   /**
-   * 모바일 드로어 목적지 행과 「플러그인」 화면 행에 쓸 아이콘(데스크톱 레일 아이콘과 다른 모양이 필요할 때). 24×24 격자에 선 1.7·둥근 끝이고
+   * 모바일 홈 바로가기 칩과 「플러그인」 화면 행에 쓸 아이콘(데스크톱 레일 아이콘과 다른 모양이 필요할 때). 24×24 격자에 선 1.7·둥근 끝이고
    * 색은 글자색(`currentColor`)을 따른다. 생략하면 엔트리의 `icon`을 쓴다.
    */
   readonly icon?: ReactNode | (() => ReactNode);
   /**
-   * 폰에서 쓸 수 있는가. `false`면 모바일 드로어의 「플러그인」 화면에 흐린 행(「데스크톱에서만」)으로 남고 눌러도 열리지 않는다 —
+   * 폰에서 쓸 수 있는가. `false`면 모바일 「플러그인」 화면에 흐린 행(「데스크톱에서만」)으로 남고 눌러도 열리지 않는다 —
    * 쓸 수 없는 도구도 어디서 쓰는지 알 수 있게 목록에는 둔다. 생략하면 쓸 수 있다.
    */
   readonly available?: boolean;
@@ -209,49 +209,49 @@ export interface RailEntryMobile {
    */
   readonly desktop?: false;
   /**
-   * 드로어의 고정 목적지로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
+   * 홈의 바로가기 칩으로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
    * 그 화면의 본문은 이 엔트리의 primary 페인이다 — 모바일 호스트가 페인 컨텍스트에 `mobileBar`를 싣는다.
    * 이름과 아이콘은 엔트리의 `title`·`icon`을 쓴다.
    *
-   * `order`는 정렬 값이다 — 작은 쪽이 위. 「보관함」·「플러그인」·「설정」 줄은 항상 이 목적지들 아래에 서고
+   * `order`는 정렬 값이다 — 작은 쪽이 앞(왼쪽). 「보관함」 칩과 「더보기」는 항상 이 목적지들 뒤에 서고
    * 이 값은 플러그인 목적지끼리의 순서만 정한다. 같으면 등록 순서.
    */
   readonly destination?: {
     readonly order: number;
     /**
-     * 이 목적지 행을 지금 둘지. 상태(실험 기능 켜짐·활성 Theater)에 따라 줄이 서고 사라져야 할 때 쓴다 — 문서 단위의
-     * `visible`은 정적이라 맞지 않다. 생략하면 늘 둔다. `get`이 false면 드로어 행이 없고, 그 목적지를 보고 있던 중에
+     * 이 목적지 칩을 지금 둘지. 상태(실험 기능 켜짐·활성 Theater)에 따라 줄이 서고 사라져야 할 때 쓴다 — 문서 단위의
+     * `visible`은 정적이라 맞지 않다. 생략하면 늘 둔다. `get`이 false면 칩이 없고, 그 목적지를 보고 있던 중에
      * false가 되면 호스트가 홈으로 돌려보낸다. 호스트는 `useSyncExternalStore`로 읽으므로 `get`은 부작용 없이
      * 같은 상태에 같은 값을 돌려준다. 코어 호스트는 `theaterId`로 활성 Theater(없으면 null)를 건넨다.
      */
     readonly shown?: RailEntryDestinationShown;
     /**
-     * 드로어 행 오른쪽 끝 상태 칸 — 「꺼짐」·「판단 중」처럼 이 목적지가 가진 상태를 글리프와 낱말로 말한다. 생략하거나 `get`이 null이면 칸을 비운다.
+     * 칩 오른쪽 끝 상태 칸 — 「꺼짐」·「판단 중」처럼 이 목적지가 가진 상태를 글리프와 낱말로 말한다. 생략하거나 `get`이 null이면 칸을 비운다.
      * 호스트는 값을 그대로 그리기만 하고 플러그인 상태를 읽지 않는다. 사람이 답할 일의 수는 이 칸이 아니라 `attention.count`다.
      */
     readonly trailing?: RailEntryDestinationTrailing;
     /**
-     * 드로어 행과 화면 제목에 쓸 짧은 이름(`title`과 같은 현지화 문자열 — 로케일 함수도 된다). 생략하면 엔트리의 `title`을 쓴다.
-     * 데스크톱 레일 제목이 「Codex — 프로젝트 위키」처럼 길어도 모바일 드로어에는 「위키」가 서게 한다.
+     * 칩과 화면 제목에 쓸 짧은 이름(`title`과 같은 현지화 문자열 — 로케일 함수도 된다). 생략하면 엔트리의 `title`을 쓴다.
+     * 데스크톱 레일 제목이 「Codex — 프로젝트 위키」처럼 길어도 모바일 칩에는 「위키」가 서게 한다.
      */
     readonly label?: LocalizedText;
   };
 }
 
-/** 모바일 드로어 목적지 행 오른쪽 끝 칸의 내용. 문자열은 이미 현지화되어 있다. */
+/** 모바일 바로가기 칩 오른쪽 끝 칸의 내용. 문자열은 이미 현지화되어 있다. */
 export interface RailEntryDestinationTrailingValue {
   readonly text: string;
   /** 낱말의 톤 — 기본 `muted`, 꺼짐처럼 가라앉은 상태는 `faint`, 오류는 `danger`. */
   readonly tone?: "muted" | "faint" | "danger";
 }
 
-/** 모바일 드로어 목적지 행 오른쪽 칸의 공급원 — `RailEntryMobile.destination.trailing`. 호스트는 값(text·tone)으로 비교하므로 매번 새 객체를 돌려줘도 된다. */
+/** 모바일 바로가기 칩 오른쪽 칸의 공급원 — `RailEntryMobile.destination.trailing`. 호스트는 값(text·tone)으로 비교하므로 매번 새 객체를 돌려줘도 된다. */
 export interface RailEntryDestinationTrailing {
   readonly subscribe: (listener: () => void) => () => void;
   readonly get: (theaterId: string | null) => RailEntryDestinationTrailingValue | null;
 }
 
-/** 모바일 드로어 목적지 행의 보임 공급원 — `RailEntryMobile.destination.shown`. */
+/** 모바일 바로가기 칩의 보임 공급원 — `RailEntryMobile.destination.shown`. */
 export interface RailEntryDestinationShown {
   readonly subscribe: (listener: () => void) => () => void;
   /** 지금 이 목적지 행을 둘지. */
@@ -279,7 +279,7 @@ export interface RailEntryAttention {
   /** 배지의 이름 — 아이콘 이름 뒤에 붙어 말풍선과 스크린 리더가 읽는다(예: "결정 요청 2"). */
   readonly label: (count: number, locale: ConsoleLocale) => string;
   /**
-   * 기다리는 일 하나하나. 모바일 드로어의 「확인 필요」 구역이 대기 Operation과 함께 행으로 세운다.
+   * 기다리는 일 하나하나. 모바일 홈 맨 위 「확인 필요」 묶음이 대기 Operation과 함께 행으로 세운다.
    * `count`는 배지, 이 목록은 행이다 — 같은 일을 가리키는 것이 정상이다. 생략하면 배지만 서고 행은 오르지 않는다.
    * 갱신은 위 `subscribe`로 한다. `count`처럼 부작용 없이 같은 상태에 같은 값을 돌려주고,
    * 상태가 바뀌지 않았으면 **같은 배열 참조**를 돌려준다(`useSyncExternalStore` 스냅샷이다).

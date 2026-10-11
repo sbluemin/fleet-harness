@@ -256,7 +256,7 @@ export interface MobileBarSpec {
   /** 제목 아래 한 줄. 생략하면 제목만 선다. */
   readonly subtitle?: string;
   /**
-   * 스택 깊이. 0이면 이 화면의 뿌리(목록) — 막대 왼쪽에 드로어를 여는 ≡가 서고, 1 이상이면 ‹(뒤로)가 선다.
+   * 스택 깊이. 0이면 이 화면의 뿌리(목록) — 막대 왼쪽 ‹는 홈(대화 목록)으로 돌아가고, 1 이상이면 ‹는 한 단 뒤로 간다.
    * 깊이가 오를 때 호스트가 history 항목을 쌓으므로 ‹·Esc·시스템 뒤로가 모두 `onBack` 한 곳으로 모인다.
    */
   readonly depth: number;

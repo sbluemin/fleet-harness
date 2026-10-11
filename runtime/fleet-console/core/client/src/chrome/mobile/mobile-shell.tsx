@@ -149,7 +149,7 @@ function MobileEmptyHome() {
   const t = useT();
   const state = useConsoleState();
   const firstRun = state.bootstrapped && state.theaters.length === 0;
-  useClaimMobileBar({ variant: "centered", title: "", leading: "menu", hidden: true });
+  useClaimMobileBar({ variant: "centered", title: "", leading: "back", hidden: true });
   if (!firstRun) return null;
   return (
     <section className="mobile-first-run">

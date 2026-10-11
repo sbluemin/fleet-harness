@@ -36,7 +36,7 @@ const ignoreMinimum = () => undefined;
 const ignoreDivider = () => undefined;
 
 /**
- * 「플러그인」 화면 — 드로어의 고정 목적지가 되지 못한 도구(저장소·스킬·사용 한도 …)가 한 줄씩 선다.
+ * 「플러그인」 화면 — 바로가기 칩이 되지 못한 도구(저장소·스킬·사용 한도 …)가 한 줄씩 선다.
  * 행을 누르면 도구 시트(레일 페인 한 장씩 / 확대 표면)로 열린다. 본문은 플러그인의 SDK 계약 그대로,
  * 모바일 호스트는 진입·한 장씩 보기·뒤로만 소유한다.
  */
@@ -64,8 +64,8 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
 
   // 시트가 서 있는 동안 상단 막대는 시트 자신의 머리가 대신한다. 목록일 때는 「플러그인」 제목이 선다.
   useClaimMobileBar(tool === null
-    ? { variant: "centered", title: t("mobile.drawer.plugins"), leading: "menu" }
-    : { variant: "centered", title: "", leading: "menu", hidden: true });
+    ? { variant: "centered", title: t("mobile.home.plugins"), leading: "back" }
+    : { variant: "centered", title: "", leading: "back", hidden: true });
 
   useLayoutEffect(() => {
     const node = surfaceRef.current;
@@ -149,7 +149,7 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
   }
 
   const title = binding ? resolveLocalizedText(binding.entry.title, language)
-    : instance?.surfaceId === "shell" ? t("mobile.tools.shell") : instance?.surfaceId === "codex" ? t("mobile.tools.wiki") : t("mobile.drawer.plugins");
+    : instance?.surfaceId === "shell" ? t("mobile.tools.shell") : instance?.surfaceId === "codex" ? t("mobile.tools.wiki") : t("mobile.home.plugins");
   // 플러그인 CSS에 공개하는 배치 신호 — 내부 호스트 클래스 대신 시트 문맥만 판별한다.
   return <section className="mobile-tool-sheet" data-host-surface="mobile-sheet" aria-label={title}>
     <header className="mobile-tool-sheet-bar">

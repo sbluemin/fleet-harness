@@ -1,5 +1,5 @@
-/* The frame holds the top bar, the route content, the drawer and the bottom sheets together, above the
-   routes, so a destination that leaves /operations still has a bar and a drawer to come back with. */
+/* The frame holds the top bar, the route content and the bottom sheets together, above the routes,
+   so a destination that leaves /operations still has a bar to come back with. */
 .mobile-frame {
   position: relative;
   display: grid;
@@ -557,7 +557,7 @@
   }
 }
 
-/* ───────────────────────── 상단 막대 · 드로어 · ⋮ 메뉴 · 하단 시트 ─────────────────────────
+/* ───────────────────────── 상단 막대 · ⋮ 메뉴 · 하단 시트 ─────────────────────────
    색은 var()만 쓴다. 모바일 토큰(--m-*)은 theme.css가 정의하고, 이 파일은 이름으로만 소비한다. */
 
 .mobile-visually-hidden {
@@ -622,17 +622,6 @@
 
 .mobile-top-bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-bar-spacer { flex: none; width: 44px; }
-
-.mobile-attention-dot {
-  position: absolute;
-  top: 9px;
-  right: 8px;
-  width: 8px;
-  height: 8px;
-  background: var(--m-awaiting);
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--m-bg);
-}
 
 /* ⋮ 메뉴 */
 .mobile-menu-cover { position: fixed; inset: 0; z-index: 44; }
@@ -802,41 +791,6 @@
 @keyframes mobile-choice-scrim-in { from { opacity: 0; } }
 @keyframes mobile-choice-card-in { from { opacity: 0; transform: scale(0.94); } }
 
-/* 드로어 */
-/* 가장자리 끌기의 터치 판정 영역(mobile-drawer.tsx DrawerEdgeRegion) — 콘텐츠 아래에 깔려 hit를 받지 않는다. 폭은 EDGE_ZONE. */
-.mobile-drawer-edge-region { position: absolute; top: 0; bottom: 0; left: 0; z-index: -1; }
-
-.mobile-drawer-scrim {
-  position: absolute;
-  inset: 0;
-  z-index: 40;
-  background: var(--m-scrim);
-  transition: opacity 250ms linear;
-}
-.mobile-drawer-scrim[data-dragging] { transition: none; }
-
-.mobile-drawer {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 41;
-  display: flex;
-  flex-direction: column;
-  width: calc(100% - 56px);
-  color: var(--m-text);
-  background: var(--m-bg-deep);
-  transform: translateX(-100%);
-  transition: transform 250ms cubic-bezier(0.3, 0, 0.8, 0.15);
-  will-change: transform;
-  touch-action: pan-y;
-}
-
-.mobile-drawer.is-open { transform: translateX(0); transition-duration: 300ms; transition-timing-function: cubic-bezier(0.05, 0.7, 0.1, 1); }
-.mobile-drawer.is-dragging { transition: none; }
-
-.mobile-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 6px 28px; }
-.mobile-drawer-head .mobile-bar-button { color: var(--m-text-nav); }
 
 .mobile-wordmark {
   font-family: var(--m-reading);
@@ -845,26 +799,6 @@
   line-height: 36px;
   letter-spacing: -0.01em;
 }
-
-.mobile-theater-switch {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: calc(100% - 24px);
-  margin: 6px 12px;
-  padding: 8px 12px 8px 16px;
-  color: inherit;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: 12px;
-}
-.mobile-theater-switch:disabled { opacity: 0.6; }
-.mobile-theater-switch-copy { display: flex; flex-direction: column; min-width: 0; }
-.mobile-theater-switch-copy strong { overflow: hidden; font-size: var(--t-base); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
-.mobile-theater-switch-copy small { display: flex; align-items: center; gap: 6px; color: var(--m-text-muted); font-size: var(--t-sm); }
-.mobile-awaiting-chip { display: inline-flex; align-items: center; gap: 5px; color: var(--m-awaiting); }
-.mobile-theater-switch-caret { margin-left: auto; color: var(--m-text-muted); }
 
 .mobile-monogram {
   display: inline-grid;
@@ -877,93 +811,6 @@
 }
 .mobile-monogram.is-round { border-radius: 50%; }
 .mobile-monogram.is-empty { width: 28px; height: 28px; color: var(--m-text); background: var(--m-chip); }
-
-.mobile-drawer-scroll {
-  flex: 1;
-  min-height: 0;
-  padding-bottom: 88px;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 96px), transparent calc(100% - 40px));
-  mask-image: linear-gradient(to bottom, black calc(100% - 96px), transparent calc(100% - 40px));
-}
-.mobile-drawer-scroll::-webkit-scrollbar { display: none; }
-
-.mobile-drawer-dest {
-  display: flex;
-  align-items: center;
-  gap: 19px;
-  width: 100%;
-  height: 48px;
-  padding: 0 20px 0 28px;
-  color: var(--m-text-nav);
-  font-size: var(--t-base);
-  text-align: left;
-  background: transparent;
-  border: 0;
-}
-.mobile-drawer-dest.is-current { background: var(--m-selected); border-radius: 12px; }
-.mobile-drawer-dest.is-current { width: calc(100% - 24px); margin: 0 12px; padding-left: 16px; }
-.mobile-drawer-dest-icon { display: grid; place-items: center; flex: none; width: 22px; height: 22px; }
-.mobile-drawer-dest-icon svg { width: 22px; height: 22px; }
-.mobile-drawer-cst { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--m-text-muted); font-size: var(--m-fs-caption); font-variant-numeric: tabular-nums; }
-.mobile-drawer-cst.is-faint { color: var(--m-text-faint); font-size: var(--m-fs-small); }
-.mobile-drawer-cst.is-danger { color: var(--m-danger); }
-.mobile-drawer-count { margin-left: auto; color: var(--m-awaiting); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
-
-.mobile-drawer-rule { height: 1px; margin: 8px 20px; background: var(--m-hairline-on-deep); }
-
-.mobile-drawer-section {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 20px 20px 8px 28px;
-  color: var(--m-text-muted);
-  font-size: var(--t-md);
-  font-weight: var(--weight-bold);
-  text-align: left;
-  background: transparent;
-  border: 0;
-}
-.mobile-drawer-section small { font-size: var(--t-sm); font-weight: var(--weight-regular); }
-
-.mobile-drawer-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  width: calc(100% - 24px);
-  min-height: 48px;
-  margin: 0 12px;
-  padding: 0 16px 0 22px;
-  color: var(--m-text);
-  font-size: var(--t-base);
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: 12px;
-}
-.mobile-drawer-row.is-tall { min-height: 60px; }
-.mobile-drawer-row.is-current { background: var(--m-selected); }
-.mobile-drawer-row-glyph { display: grid; place-items: center; flex: none; width: 24px; }
-.mobile-drawer-row-copy { flex: 1; min-width: 0; }
-.mobile-drawer-row-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mobile-drawer-row-copy small { display: block; overflow: hidden; color: var(--m-awaiting); font-size: var(--t-sm); text-overflow: ellipsis; white-space: nowrap; }
-.mobile-drawer-empty { margin: 0; padding: 4px 28px 8px; color: var(--m-text-muted); font-size: var(--t-md); }
-
-.mobile-drawer-foot {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 80px;
-  padding: 0 16px 0 18px;
-}
-.mobile-avatar { display: grid; place-items: center; }
-
 /* 공통 알약 */
 .mobile-pill {
   display: inline-flex;
@@ -1148,8 +995,6 @@
   .mobile-menu,
   .mobile-sheet,
   .mobile-sheet-scrim,
-  .mobile-drawer,
-  .mobile-drawer-scrim { animation: none !important; transition: none !important; }
 }
 
 /* 상단 막대와 연결·상태 띠가 한 덩어리로 위에 선다. */
@@ -1285,10 +1130,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-toast-host .app-toast-title { margin: 0; font-size: var(--t-md); font-weight: var(--weight-regular); }
 .mobile-toast-host .app-toast-action { padding: 8px; color: var(--m-text); font-size: var(--t-md); font-weight: var(--weight-bold); background: transparent; border: 0; }
 
-.mobile-avatar { padding: 0; background: transparent; border: 0; border-radius: 50%; }
-.mobile-avatar:focus-visible { outline: 2px solid var(--m-text); outline-offset: 2px; }
-.mobile-avatar { position: relative; }
-.mobile-avatar-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; background: var(--m-running); border: 2px solid var(--m-bg-deep); border-radius: 50%; }
+.mobile-avatar-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; background: var(--m-running); border: 2px solid var(--m-bg); border-radius: 50%; }
 .mobile-avatar-dot[data-state="failed"] { background: var(--m-danger); }
 
 /* 보관함 · 검색 */
@@ -1296,7 +1138,6 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-archive-screen .mobile-group-row .mobile-pill-secondary { flex: none; }
 .mobile-search-field { padding: 0 16px 8px; }
 .mobile-search-row { width: calc(100% - 24px); }
-.mobile-drawer-row-copy small.is-plain { color: var(--m-text-muted); }
 .mobile-group-row.is-dim { opacity: 0.5; }
 
 
@@ -1524,3 +1365,19 @@ html[data-view-mode="mobile"] .app-toast-action {
 /* 대화 정보가 위를 덮는 동안 아래 대화 화면은 그대로 살아 있다(크기를 바꾸지 않는다) — 보이지도 눌리지도 않을 뿐이다. */
 .mobile-session-view.is-covered { visibility: hidden; pointer-events: none; }
 .mobile-info-screen { position: absolute; inset: 0; z-index: 1; }
+
+/* ── 홈 바로가기 칩 줄(옛 드로어 목적지) · 프로필 시트 안의 설정 목록 ───────────────────────── */
+.mobile-conv-shortcuts { display: flex; flex: none; gap: 8px; padding: 4px 14px 8px; overflow-x: auto; scrollbar-width: none; }
+.mobile-conv-shortcuts::-webkit-scrollbar { display: none; }
+.mobile-conv-chip.is-shortcut { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px 0 10px; font-size: var(--m-fs-meta); }
+.mobile-conv-chip-icon { display: grid; place-items: center; flex: none; width: 18px; height: 18px; }
+.mobile-conv-chip-icon svg { width: 18px; height: 18px; }
+.mobile-conv-chip-count { color: var(--m-awaiting); font-size: var(--m-fs-small); font-variant-numeric: tabular-nums; }
+.mobile-conv-chip-state { display: inline-flex; align-items: center; gap: 5px; color: var(--m-text-muted); font-size: var(--m-fs-small); }
+.mobile-conv-chip-state .status-glyph { flex: none; width: 12px; height: 12px; }
+.mobile-conv-chip-state.is-faint { color: var(--m-text-faint); }
+.mobile-conv-chip-state.is-danger { color: var(--m-danger); }
+.mobile-settings-page.is-embedded { height: auto; }
+.mobile-settings-page.is-embedded .mobile-settings-scroll { overflow: visible; }
+.mobile-sheet.is-profile { background: var(--m-bg); }
+.mobile-sheet.is-profile .mobile-sheet-body { padding-inline: 0; }
