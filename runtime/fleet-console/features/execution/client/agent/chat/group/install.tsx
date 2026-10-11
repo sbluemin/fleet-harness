@@ -17,7 +17,8 @@ import { useOpenBoardActionRecord } from "../../../../../workspace/client/conver
 import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
 import { stopAgentChatTurn } from "../../api.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
-import { useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
+import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
+import { frameCommanderLedger, setCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, SettledDecisionLine, UseRequestGroupCard, type SettledDecision } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
@@ -32,11 +33,11 @@ import { useLocalizedSnapshot } from "./speaker-mark.js";
  * 두 표면 모두 `useGroupTimeline` 의 구독자일 뿐이고, 연결은 같은 설치 수명의 전역 관측이 쥔다.
  *
  * 가운데 칸 규칙:
- * - 구성원을 가진 채팅 루트를 보고 있으면 그룹 대화가 선다. 루트의 기존 본문은 칸에 붙지 않으므로 본문 풀에서
- *   주차되고(bodyLive=false) 자기 소켓을 열지 않는다.
- * - 오른쪽 「구성원」 탭에서 구성원 줄을 눌러 고르면(셸의 구성원 본문 선택) 그 구성원의 기존 본문을 읽기 전용 틀에 넣어 세운다.
- *   구성원 본문에는 처음부터 사람 입력 틀이 없다.
- * - 구성원이 없거나 루트가 터미널(CLI)로 열려 있으면 기본 본문을 그대로 둔다.
+ * - 목표 대화의 뿌리(지휘관)이거나 구성원을 가진 채팅 루트를 보고 있으면 그룹 대화가 선다 — 구성원이 아직 없는 지휘관도
+ *   같은 화면이다. 루트의 기존 본문은 칸에 붙지 않으므로 본문 풀에서 주차되고(bodyLive=false) 자기 소켓을 열지 않는다.
+ * - 오른쪽 「구성원」 탭에서 줄을 눌러 고르면 그 참여자의 기존 본문을 읽기 전용 틀에 넣어 세운다. 구성원은 셸의 구성원 본문
+ *   선택이, 지휘관은 `commander-ledger` 가 고른다(셸의 선택은 루트 자신을 고를 수 없다). 원장에는 사람 입력 틀이 없다.
+ * - 목표가 아닌 1:1 채팅이거나 루트가 터미널(CLI)로 열려 있으면 기본 본문을 그대로 둔다.
  */
 export function installGroupConversationSurface(): () => void {
   ensureMembersTab();
@@ -64,11 +65,10 @@ const MEMBERS_TAB = {
   render: (ctx: RailPanelContext) => <MembersTab ctx={ctx} />,
 };
 function syncMembersTab(): void {
-  // 1:1 대화(구성원 없는 지휘관·일반 채팅)에는 명부가 없다 — 탭을 세우지 않는다.
+  // 목표가 아닌 1:1 채팅에는 명부가 없다 — 탭을 세우지 않는다. 지휘관은 구성원이 아직 없어도 자기 줄이 있다.
   const subject = getConversationSubject();
   const rootId = subject ? subject.parentOperationId ?? subject.id : null;
-  const hasMembers = rootId !== null && getState().nestedOperations.some((operation) => operation.parentOperationId === rootId);
-  const hidden = getConversationSurface() !== null || !hasMembers;
+  const hidden = getConversationSurface() !== null || rootId === null || !hasRoster(rootId);
   if (hidden && releaseMembersTab) { releaseMembersTab(); releaseMembersTab = null; }
   if (!hidden && !releaseMembersTab) releaseMembersTab = registerConversationOperationTab(MEMBERS_TAB);
 }
@@ -80,22 +80,43 @@ function ensureMembersTab(): void {
   subscribeConversationSurface(syncMembersTab);
   subscribeConversationSubject(syncMembersTab);
   subscribeConsole(syncMembersTab);
+  subscribeGroupClusters(syncMembersTab);
+}
+
+/** 명부가 서는 루트 — 구성원이 있거나 목표 대화의 뿌리(지휘관)다. */
+function hasRoster(rootId: string): boolean {
+  return isGroupConversationRoot(rootId) || getState().nestedOperations.some((operation) => operation.parentOperationId === rootId);
+}
+
+/** 원장을 연다 — 루트 id 면 지휘관 원장, 구성원 id 면 그 구성원 원장, null 이면 대화로 돌아간다. 둘은 동시에 서지 않는다. */
+function openLedger(rootId: string, operationId: string | null): void {
+  const commander = operationId === rootId;
+  setCommanderLedger(rootId, commander);
+  selectNestedBody(rootId, commander ? null : operationId);
 }
 
 function renderConversationBody(context: ConversationBodyContext): React.ReactNode | null {
-  if (context.nestedOperations.length === 0) return null;
   if (context.operation.payload.chatMode !== true) return null;
+  if (context.nestedOperations.length === 0 && !isGroupConversationRoot(context.operation.id)) return null;
   if (context.bodyOperation.id !== context.operation.id) {
     return <MemberLedger root={context.operation} member={context.bodyOperation} language={context.language}>{context.defaultBody}</MemberLedger>;
   }
-  return <RootConversation root={context.operation} language={context.language} />;
+  return <RootBody root={context.operation} language={context.language}>{context.defaultBody}</RootBody>;
+}
+
+/** 루트 자리 — 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문). */
+function RootBody({ root, language, children }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly children: React.ReactNode }) {
+  const commanderLedger = useCommanderLedgerChosen(root.id);
+  return commanderLedger
+    ? <MemberLedger root={root} member={root} language={language}>{children}</MemberLedger>
+    : <RootConversation root={root} language={language} />;
 }
 
 function RootConversation({ root, language }: { readonly root: OperationNode; readonly language: "en" | "ko" }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
   const actions = useGroupConversationActions(root.id);
   const useRequests = useGroupUseRequests(root.id);
-  const openLedger = React.useCallback((operationId: string) => selectNestedBody(root.id, operationId), [root.id]);
+  const openMemberLedger = React.useCallback((operationId: string) => openLedger(root.id, operationId), [root.id]);
   // 사령관 행위 줄 → 읽기 전용 사령관 기록(그 턴 위치). 기록을 찾는 일은 묶음을 공급한 플러그인이 한다(임무 14 계약).
   const openRecord = useOpenBoardActionRecord(useGroupClusters());
   // 답한 결정은 보드에서 요청이 걷혀도 이 화면을 보는 동안 한 줄로 남는다.
@@ -123,7 +144,7 @@ function RootConversation({ root, language }: { readonly root: OperationNode; re
     <GroupConversation
       snapshot={snapshot}
       language={language}
-      onOpenLedger={openLedger}
+      onOpenLedger={openMemberLedger}
       onOpenCommodoreRecord={openRecord}
       onStopParticipant={(speaker) => { void stopOne(speaker).catch(() => undefined); }}
       cards={cards}
@@ -144,10 +165,13 @@ function MemberLedger({ root, member, language, children }: {
   readonly children: React.ReactNode;
 }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
+  const commander = member.id === root.id;
   const speaker: ConversationSpeaker = snapshot.participants.find((participant) => participant.speaker.operationId === member.id)?.speaker
-    ?? { kind: "member", name: member.title, operationId: member.id };
+    ?? { kind: commander ? "commander" : "member", name: member.title, operationId: member.id };
+  // 지휘관 본문은 평소 입력 틀을 가진 채팅이다 — 이 틀 안에 선 동안만 구성원 원장처럼 입력 틀을 뺀다(commander-ledger).
+  React.useLayoutEffect(() => (commander ? frameCommanderLedger(root.id) : undefined), [commander, root.id]);
   return (
-    <GroupLedgerFrame speaker={speaker} language={language} onBack={() => selectNestedBody(root.id, null)}>
+    <GroupLedgerFrame speaker={speaker} language={language} onBack={() => openLedger(root.id, null)}>
       {children}
     </GroupLedgerFrame>
   );
@@ -160,14 +184,17 @@ function MembersTab({ ctx }: { readonly ctx: RailPanelContext }) {
   // 구성원의 본문을 보고 있어도 탭은 그 루트의 명부를 보인다.
   const root = subject ? (subject.parentOperationId ? state.operations.find((operation) => operation.id === subject.parentOperationId) ?? subject : subject) : null;
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root?.id ?? null), language);
-  const hasMembers = root !== null && state.nestedOperations.some((operation) => operation.parentOperationId === root.id);
-  if (!root || !hasMembers) return <p className="group-members-empty">{getGroupT(language)("group.members.none")}</p>;
+  const clusters = useGroupClusters();
+  const commanderLedger = useCommanderLedgerChosen(root?.id ?? null);
+  const hasRoster = root !== null && (clusters.some((cluster) => cluster.conversation?.operationId === root.id)
+    || state.nestedOperations.some((operation) => operation.parentOperationId === root.id));
+  if (!root || !hasRoster) return <p className="group-members-empty">{getGroupT(language)("group.members.none")}</p>;
   return (
     <GroupMembersPanel
       snapshot={snapshot}
       language={language}
-      ledgerOperationId={state.nestedBodySelection[root.id] ?? null}
-      onOpenLedger={(operationId) => selectNestedBody(root.id, operationId)}
+      ledgerOperationId={state.nestedBodySelection[root.id] ?? (commanderLedger ? root.id : null)}
+      onOpenLedger={(operationId) => openLedger(root.id, operationId)}
       onStop={(speaker) => { void stopOne(speaker).catch(() => undefined); }}
     />
   );

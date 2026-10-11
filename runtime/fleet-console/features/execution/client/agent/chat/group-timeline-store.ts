@@ -20,6 +20,22 @@ export function useGroupClusters() {
 }
 
 /**
+ * 같은 원천을 훅 밖의 소비자에게도 건넨다 — 대화 중심 화면의 본문 렌더러와 「구성원」 탭 등록은 렌더 함수·모듈 수준에서
+ * 「이 Operation 이 목표 대화의 뿌리(지휘관)인가」를 고른다. 조합 루트가 Provider 에 넘기는 것과 같은 원천을 한 번 묶는다.
+ */
+let boundClusterSource: OperationClusterSource = emptyClusterSource;
+export function bindGroupClusterSource(source: OperationClusterSource): void {
+  boundClusterSource = source;
+}
+/** 목표 대화(보드)의 뿌리인가 — 구성원이 아직 없어도 지휘관이면 참이다. */
+export function isGroupConversationRoot(operationId: string): boolean {
+  return boundClusterSource.get().some((cluster) => cluster.conversation?.operationId === operationId);
+}
+export function subscribeGroupClusters(listener: () => void): () => void {
+  return boundClusterSource.subscribe(listener);
+}
+
+/**
  * `history`는 휴면 참여자의 저장된 지난 대화를 한 번 읽은 상태다(읽기 전용 투영, 재개 없음). live 소켓이 서면
  * 그 스냅숏이 통째로 갈아 끼운다.
  */

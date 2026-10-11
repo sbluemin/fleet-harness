@@ -45,7 +45,7 @@ import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, 
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import { useConversationLayout } from "../../../../settings/client/use-conversation-layout.js";
-import { SoloBoardCards } from "./group/solo-board-cards.js";
+import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
@@ -149,12 +149,14 @@ export function AgentChatView({
   // 채팅 폭 선호 — 콘솔 단위 사용자 선호(플러그인 설정 서버 영속)라 모든 채팅 패널이 함께 따른다.
   // 대화 컬럼과 입력창이 이 값 하나를 함께 따른다.
   const readingWidth = useChatReadingWidth();
-  // 구성원 모드 — 채팅으로 열린 Objectives 구성원(parentOperationId)뿐이다. 이 뷰 자체가
-  // chatMode 분기에서만 마운트되므로 터미널(CLI) 구성원은 여기에 오지 않는다.
-  const isMemberChat = typeof context.operation.parentOperationId === "string" && context.operation.parentOperationId.length > 0;
-  // 대화 중심 화면의 1:1 대화 — 구성원 없는 지휘관과 일반 채팅은 그룹 대화와 같은 문법(말풍선·캡슐 입력·대화 안 카드)으로
-  // 선다. 기능(도구 단계·생각·변경·첨부·예약·모델·중지)은 이 본문이 그대로 진다 — 바뀌는 것은 모양뿐이다. 구성원 본문(원장
-  // 보기)과 모바일, 토글이 꺼진 캔버스는 지금 모양 그대로다.
+  // 구성원 모드 — 채팅으로 열린 Objectives 구성원(parentOperationId)이거나, 그룹 대화의 「구성원」 탭에서 고른 지휘관 원장이다
+  // (지휘관 본문이 읽기 전용 틀 안에 서 있는 동안만). 이 뷰 자체가 chatMode 분기에서만 마운트되므로 터미널(CLI)은 여기에 오지 않는다.
+  const isMember = typeof context.operation.parentOperationId === "string" && context.operation.parentOperationId.length > 0;
+  const commanderLedger = useCommanderLedgerFramed(context.operationId);
+  const isMemberChat = isMember || commanderLedger;
+  // 대화 중심 화면의 1:1 대화 — 목표가 아닌 일반 채팅은 그룹 대화와 같은 문법(말풍선·캡슐 입력)으로 선다(지휘관은 구성원이
+  // 없어도 그룹 대화가 선다). 기능(도구 단계·생각·변경·첨부·예약·모델·중지)은 이 본문이 그대로 진다 — 바뀌는 것은 모양뿐이다.
+  // 원장 보기와 모바일, 토글이 꺼진 캔버스는 지금 모양 그대로다.
   const conversationStyle = useConversationLayout() && !isMemberChat;
   // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
   // 동안만 정직해지고, 패널을 닫는 순간 사이드바가 다시 휴면으로 돌아간다. 축이 degraded면 호스트가
@@ -733,7 +735,8 @@ export function AgentChatView({
       {/* 아직 아무 말도 오가지 않은 패널이 지는 초대. 빈 로그를 그대로 두면 96%가 빈 면이라
           "아직 아무것도 없는 제품"으로 읽힌다 — 이 한 덩어리가 그 자리를 지고, 바로 아래
           가운데에 선 컴포저가 다음 행동을 말한다. 첫 턴이 오면 함께 사라진다. */}
-      {awaitingFirstTurn ? (
+      {/* 지휘관 원장에는 구성원 문구(「지휘관의 메시지를 기다립니다」)도 입력 초대도 맞지 않는다 — 빈 원장은 비워 둔다. */}
+      {awaitingFirstTurn && !(commanderLedger && !isMember) ? (
         isMemberChat ? (
           <>
             <div className="agent-chat-member-spring-top" aria-hidden="true" />
@@ -816,8 +819,6 @@ export function AgentChatView({
           {...(mobileSurface && retryText !== null && !turnRunning ? { onRetry: retry } : {})}
         />
       ) : null}
-      {/* 대화 중심 화면의 1:1 대화 — 지휘관의 결정 요청은 대화 흐름 맨 아래 카드로 선다. */}
-      {conversationStyle && !mobileSurface ? <SoloBoardCards operationId={context.operationId} language={language} /> : null}
       {/* 모바일 끝 안내(impl-spec S-26, D22) — 대화 맨 아래 한 줄. 데스크톱 원장에는 서지 않는다. */}
       {mobileSurface && turns.length > 0 ? <p className="agent-chat-end-note">{t("terminal.mobile.endNote")}</p> : null}
       {state.errorCode === "chat_turn_failed"

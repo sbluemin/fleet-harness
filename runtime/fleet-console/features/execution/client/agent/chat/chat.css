@@ -5157,5 +5157,3 @@
   border-radius: 24px;
   background: var(--surface-panel-raised);
 }
-.agent-chat.is-conversation .group-solo-cards { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
-.agent-chat.is-conversation .group-solo-cards .group-card { margin-left: 0; }
