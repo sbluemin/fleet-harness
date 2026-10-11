@@ -1074,6 +1074,12 @@ html[data-desktop-shell="true"] .console-shell.is-conversation-layout :is(.conve
   -webkit-app-region: no-drag;
 }
 
+/* 창 drag 사각형은 DOM 순서로 합쳐져 뒤의 drag 가 앞의 no-drag 를 다시 덮는다. 오른쪽 분할 칸은 레일보다 앞에 그려지므로, 칸이 레일
+   위로 덮는 동안에는 그 밑에 깔린 레일 머리의 drag 를 걷는다 — 칸 머리의 단추·탭이 클릭을 받게. (칸이 레일 옆에 서면 둘은 겹치지 않는다.) */
+html[data-desktop-shell="true"] .console-body.is-conversation:has(.conversation-split.is-open.is-over-rail) .right-rail-panel-header {
+  -webkit-app-region: no-drag;
+}
+
 /* macOS 신호등 — 셸이 52px 줄의 가운데(y 19, x 16)에 세운다(window-policy.ts trafficLightPosition, chrome.band).
    신호등 세 개가 차지한 76 DIP 를 비우고 그 오른쪽에서 단추가 시작한다. 신호등은 네이티브라 줌을 타지 않으므로
    예약분만 줌으로 나눈다(layout.css 의 밴드 예약과 같은 식). 사이드바가 접혀 있으면 가운데 열의 맨 위 줄이 비운다. */
