@@ -347,6 +347,9 @@ export function commodoreTheaterLabel(theaterId: string): string {
 
 export const COMMODORE_ENTRY_ID = "commodore";
 
+/** Theater Inbox 의 사령관 섹션 id(플러그인 로컬) — 정준 id 의 접두는 호스트가 붙인다. 섹션과 사이드바 줄이 같이 쓴다. */
+export const COMMODORE_INBOX_SECTION_ID = "commodore";
+
 /** 폰 사령관 화면의 고른 구역 — 다시 들어와도 유지한다(S-54 CM-2a). 데스크톱 Theater Inbox 에서 넘어올 때·Theater 시트 행도 여기에 구역을 남긴다. */
 let mobileTab: CommodoreMobileTab = "log";
 

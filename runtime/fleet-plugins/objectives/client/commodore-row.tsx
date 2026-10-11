@@ -9,6 +9,7 @@ import {
   loadCommodore,
   noteCommodoreLanguage,
   setCommodoreAutonomy,
+  COMMODORE_INBOX_SECTION_ID,
   setCommodorePeek,
   useCommodore,
   useCommodoreEnabled,
@@ -38,8 +39,8 @@ function useInboxSnapshot(inbox: ClientTheaterInboxCapability | null): TheaterIn
   return useSyncExternalStore(inbox?.subscribe ?? NO_INBOX, inbox?.read ?? CLOSED, inbox?.read ?? CLOSED);
 }
 
-/** 정준 섹션 id 는 `objectives:commodore` 다 — 호스트가 플러그인 id 를 앞에 붙인다. */
-const COMMODORE_SECTION_ID = "objectives:commodore";
+/** 이 플러그인이 `theaterInboxSections` 에 적은 섹션 id — 줄이 받는 capability 는 플러그인 범위라 이 로컬 id 로 열고 읽는다. */
+const COMMODORE_SECTION_ID = COMMODORE_INBOX_SECTION_ID;
 
 function CommodoreRowBody({ theaterId, theaterLabel, language, inbox }: { readonly theaterId: string; readonly theaterLabel: string; readonly language: "en" | "ko"; readonly inbox: ClientTheaterInboxCapability | null }) {
   const t = getT(language);

@@ -1588,8 +1588,9 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-commodore-toolbar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px 0 28px; }
 .objectives-commodore-inbox.is-compact .objectives-commodore-toolbar { padding-left: 20px; }
 .objectives-commodore-totals { min-width: 0; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+/* 링크는 낫표까지 한 덩어리 — 줄이 바뀌어도 「 와 」가 링크에서 떨어지지 않는다. */
 .objectives-commodore-hint-link {
-  padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer;
+  padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer; white-space: nowrap;
   text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px;
 }
 .objectives-commodore-hint-link:hover { text-decoration-color: var(--brass); }

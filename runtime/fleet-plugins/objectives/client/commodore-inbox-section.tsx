@@ -17,6 +17,7 @@ import { DatePicker, localDateTime } from "./date-picker.js";
 import {
   addCommodoreIntel,
   clearCommodore,
+  COMMODORE_INBOX_SECTION_ID,
   commodoreTranscriptRenderer,
   loadCommodore,
   loadTranscript,
@@ -82,7 +83,7 @@ function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): st
  * 실험 기능 「자율 운영」이 꺼져 있으면 섹션은 제목과 안내 한 줄만 남고 본문을 마운트하지 않는다(읽기·쓰기 없음).
  */
 export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
-  id: "commodore",
+  id: COMMODORE_INBOX_SECTION_ID,
   title: (language) => getT(language)("objectives.commodore.name"),
   icon: () => <CommodoreMentionGlyph className="objectives-commodore-inbox-glyph" />,
   pages: [
@@ -211,7 +212,9 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         ) : null}
         {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={openSystemPrompt} onFail={fail} onClear={() => setFailure(null)} /> : null}
         {tab === "intel" && view ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} /> : null}
-        {tab === "settings" && view ? <CommodoreSettings t={t} language={language} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
+        {/* 설정 칸의 메뉴(순찰·종료 시각·모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
+            설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
+        {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
