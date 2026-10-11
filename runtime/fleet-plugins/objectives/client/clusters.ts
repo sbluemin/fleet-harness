@@ -8,6 +8,7 @@ import { actorKind, actorName, lastAct } from "./actors.js";
 import { objectiveConversation } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
 import { openCommodoreConversation } from "./commodore-conversation.js";
+import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
@@ -250,6 +251,8 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const openDetail = () => {
       revealObjective({ objectiveId: objective.id });
       openObjectiveFromCluster(objective.theaterId, row?.glyph === "fresh" ? "rail" : undefined);
+      // 대화 중심 화면 — 시작 전 목표는 가운데 칸에 시작 화면으로 선다(활성 Operation 이 비고 세 영역이 이 목표를 가리킨다).
+      if (row?.glyph === "fresh") openFreshConversation(objective.id);
     };
     const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, openDetail, (at) => { openCommodoreConversation(objective.theaterId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective));
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
@@ -348,8 +351,9 @@ export const objectivesClusterSource: OperationClusterSource = {
     const offObjective = subscribeObjective(listener);
     const offView = subscribeObjectiveView(listener);
     const offCommodore = subscribeCommodore(listener);
+    const offFresh = subscribeFreshConversation(listener);
     const stallTick = setInterval(listener, STALL_TICK_MS);
-    return () => { offObjective(); offView(); offCommodore(); clearInterval(stallTick); };
+    return () => { offObjective(); offView(); offCommodore(); offFresh(); clearInterval(stallTick); };
   },
   get: () => {
     const summaries = operationSummaries();
@@ -358,7 +362,8 @@ export const objectivesClusterSource: OperationClusterSource = {
     // Operation 이 활성인 동안은 그 줄(칩)이 하이라이트를 가지므로 표면 선택으로는 서지 않는다 — 사이드바 하이라이트는 언제나 한 줄이다.
     const surfaceOpen = isObjectiveSurfaceOpen() && !activeOperationId();
     const theaterId = activeTheaterId();
-    const selected = surfaceOpen ? readObjectiveView(theaterId).selected : null;
+    // 가운데 칸에 시작 전 목표가 서 있으면 그 줄이 하이라이트를 가진다 — 패널을 닫아도 가운데 칸이 가리키는 대상은 그대로다.
+    const selected = freshConversationObjectiveId() ?? (surfaceOpen ? readObjectiveView(theaterId).selected : null);
     // 기한 지남은 날짜로, 정체는 시간으로 판정하므로 날·정체 점검 간격이 바뀌면 다시 셈한다.
     const now = Date.now();
     // 런타임 축이 수화되기 전(pending)과 끊긴 동안(degraded)의 요약 활동은 관측이 아니라 폴백(ended·idle)이다 — 「모름」을
