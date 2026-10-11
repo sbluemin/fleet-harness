@@ -34,6 +34,7 @@ import { writeAgentSessionEvents } from "./observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./osc-agent-activity.js";
 import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
+import { createMessageRecipientResolver } from "./message-recipient.js";
 import { AgentChatRegistry, createChatSdkFactory, readTranscriptHistory, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
 import { maskChatText, neutralizeChatOriginTag, type ChatOrigin } from "./chat-events.js";
 import type { ConsoleUseActions } from "../../../console-use/host/console-use.js";
@@ -2166,6 +2167,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
     // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트도 PTY와 같은 Theater 설정을 읽는다.
     const claudeConfigDir = resolveClaudeConfigDir();
+    const resolveRecipient = createMessageRecipientResolver({
+      claudeConfigDir,
+      operations: () => ctx.host.operations.list().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])]),
+    });
     const gatewayBaseUrl = resolveAnalysisGatewayBaseUrl(origin);
     // 공유 홈의 discovery 캐시는 호스트 소유다 — SDK 쪽은 이 홈에 쓰지 않으므로 여기서 세운다.
     // 노출 목록 전체를 쓰는 이유는 같은 홈을 PTY 자식이 함께 읽기 때문이다.
@@ -2254,32 +2259,28 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 프로세스가 만든 것)는 null이고, 그 자리는 바이트 없는 첨부로 선다.
         resolveAttachmentId: (filePath: string) => launchAttachments.idForPath(filePath),
         /**
-         * 보낸 쪽이 관측한 세션 간 메시지를 받는 쪽 원장에 옮긴다. 대상은 **이름이 아니라 등록**으로
-         * 찾는다: 런치가 CLI에 준 `--name`과 Operation payload에 적힌 `sessionName`이 같은 출처이므로,
-         * 정확히 하나가 걸릴 때만 그 Operation이 그 이름의 주인이다. 0개(이 Console 밖 세션·서브에이전트·
-         * `main`)나 2개 이상이면 아무 줄도 세우지 않는다 — 짐작으로 세운 줄은 남의 말을 남의 원장에 놓는다.
-         *
-         * 보낸 이름도 본문이 아니라 서버가 들고 있는 값을 쓰고, 이미 열려 있는 채팅 세션에만 건넨다.
+         * 보낸 쪽이 관측한 세션 간 메시지를 받는 쪽 원장에 옮긴다. `--name`은 Operation의
+         * sessionName과 정확히 대조하고, uds 주소는 같은 Claude 홈의 live 등록과 실제 provider
+         * 신원을 거쳐 푼다. 0개(이 Console 밖 세션·서브에이전트·main)나 2개 이상이면 해석하지 않는다.
+         * 보낸 이름도 본문 대신 서버 값을 쓰고, 이미 열려 있는 채팅 세션에만 건넨다.
          * 여기서 `ensure`를 부르면 말 한 통이 잠든 Operation의 자식을 깨우게 된다.
          */
         // 받는 쪽 관측 — 보낸 쪽이 터미널이어도 이 세션의 트랜스크립트가 말한 보낸 이름을 등록으로 풀어 같은 도착 사실을 알린다.
         onPeerMessageReceived: ({ fromName, at }) => {
-          const sessions = ctx.host.operations.list().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])]);
-          const senders = sessions.filter((candidate) => candidate.type === AGENT_OPERATION_TYPE && readAgentSession(candidate.payload)?.sessionName === fromName);
-          if (senders.length !== 1) return;
-          ctx.consoleControl?.reportSessionMessage(senders[0]!.id, node.id, at);
+          void resolveRecipient(fromName).then((senderId) => {
+            if (senderId) ctx.consoleControl?.reportSessionMessage(senderId, node.id, at);
+          }).catch(() => {});
         },
-        onSessionMessageSent: ({ to, text, toolUseId }) => {
-          // 받는 쪽은 구성원(부모 안의 자식 세션)일 수 있다 — 부모와 그 자식의 합성 뷰를 함께 본다.
-          const sessions = ctx.host.operations.list().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])]);
-          const matches = sessions.filter((candidate) => candidate.type === AGENT_OPERATION_TYPE
-            && readAgentSession(candidate.payload)?.sessionName === to);
-          if (matches.length !== 1) return;
-          // 본문 없이 도착 사실만 Console 제어에 알린다 — 목표 보드의 발주 흔적이 이 좌표를 읽는다. 받는 쪽이 터미널·휴면이어도 전달은 성공했다.
-          ctx.consoleControl?.reportSessionMessage(node.id, matches[0]!.id, Date.now());
-          const from = readAgentSession(ctx.host.operations.get(node.id)?.payload)?.sessionName;
-          if (!from) return;
-          chatRegistry.get(matches[0]!.id)?.noteReceived({ id: `${node.id}:${toolUseId}`, from, text });
+        onSessionMessageSent: async ({ to, text, toolUseId }) => {
+          const recipientOperationId = await resolveRecipient(to);
+          const sender = ctx.host.operations.get(node.id);
+          if (!recipientOperationId || !sender) return;
+          // 본문 없이 도착 사실만 Console 제어에 알린다 — 받는 쪽이 터미널·휴면이어도 성공한 발신의 대상 좌표는 확정된다.
+          ctx.consoleControl?.reportSessionMessage(node.id, recipientOperationId, Date.now());
+          const from = readAgentSession(sender.payload)?.sessionName || sender.title || node.id;
+          // 지휘관에게 --name이 없어도 발신 Operation은 확실하다. 이미 있는 원장에만 전달하고 잠든 세션은 깨우지 않는다.
+          chatRegistry.get(recipientOperationId)?.noteReceived({ id: `${node.id}:${toolUseId}`, from, senderOperationId: node.id, text });
+          return recipientOperationId;
         },
         cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },
         ...(launchEffort?.ultracode ? { ultracode: true } : {}),

@@ -188,9 +188,10 @@ export interface AgentChatSessionSeed {
    *
    * 이 경로는 어느 쪽 트랜스크립트도 읽지 않는다. 서버가 여기서 쓰는 사실은 하나뿐이다: 보낸 세션의
    * 라이브 스트림에서 도구 호출과 그 성공 결과를 보았다. 대상 해석과 전달은 이 훅을 배선한 쪽(호스트
-   * 라우트)이 한다 — 세션은 레지스트리를 모른다.
+   * 라우트)이 한다 — 세션은 레지스트리를 모른다. 반환한 불투명 Operation id는 발신 tool-result에
+   * 실어 받는 쪽 원장이 없을 때도 그룹 대화가 수신자를 해석하게 한다.
    */
-  readonly onSessionMessageSent?: (sent: { readonly to: string; readonly text: string; readonly toolUseId: string }) => void;
+  readonly onSessionMessageSent?: (sent: { readonly to: string; readonly text: string; readonly toolUseId: string }) => void | string | Promise<void | string>;
   /**
    * 다른 세션의 세션 간 메시지가 이 세션에 닿았다 — 자식의 트랜스크립트가 `origin.kind:"peer"` 로 적은 user 레코드에서 보낸 이름과
    * 시각만 읽는다(본문은 읽지 않는다). 보낸 쪽이 터미널이라 발신 관측이 없어도 도착은 여기서 보인다.
@@ -2779,7 +2780,8 @@ class AgentChatSession {
           // **첫** 좌표가 영영 심기지 않는다 — 그 id는 처음부터 알고 있었으므로 바뀌지 않는다.
           if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
         }
-        this.trackSentMessages(message);
+        const recipients = await this.trackSentMessages(message);
+        if (this.disposed) break;
         this.trackHandover(message);
         // 원장의 답(answer)은 표시용 상한(capText)을 지난다 — 턴 보고에는 SDK result 원문 전체를 싣는다(자르지 않는다).
         if (message.type === "result" && message["parent_tool_use_id"] == null) {
@@ -2811,7 +2813,9 @@ class AgentChatSession {
             this.ingestWorkflowProgress(event, message, mapOptions);
             continue;
           }
-          this.ingest(apiError !== undefined && event.kind === "turn-end" && event.failure ? { ...event, failure: { ...event.failure, error: apiError } } : event);
+          const recipientOperationId = event.kind === "tool-result" ? recipients.get(event.id) : undefined;
+          const resolved = recipientOperationId && event.kind === "tool-result" ? { ...event, recipientOperationId } : event;
+          this.ingest(apiError !== undefined && resolved.kind === "turn-end" && resolved.failure ? { ...resolved, failure: { ...resolved.failure, error: apiError } } : resolved);
         }
       }
     } catch {
@@ -2837,14 +2841,15 @@ class AgentChatSession {
    * 매퍼(`chatEventsFromSdkMessage`)에 두지 않는 이유는 그 문이 트랜스크립트 재생과 공유이기
    * 때문이다 — 거기 두면 재생이 지난 발신을 오늘의 수신으로 다시 세운다.
    */
-  private trackSentMessages(message: ClaudeGatewayMessage): void {
-    if (this.seed.onSessionMessageSent === undefined) return;
+  private async trackSentMessages(message: ClaudeGatewayMessage): Promise<ReadonlyMap<string, string>> {
+    const recipients = new Map<string, string>();
+    if (this.seed.onSessionMessageSent === undefined) return recipients;
     // 서브에이전트의 발신은 부모의 것이 아니다. 부모 이름으로 세우면 사람이 보내지 않은 말이
     // 부모가 보낸 것으로 남으므로, 자식 호출이 달고 오는 좌표가 있으면 통째로 지나간다.
-    if (message["parent_tool_use_id"] != null) return;
+    if (message["parent_tool_use_id"] != null) return recipients;
     if (message.type === "assistant") {
       const content = (message as { readonly message?: { readonly content?: unknown } }).message?.content;
-      if (!Array.isArray(content)) return;
+      if (!Array.isArray(content)) return recipients;
       for (const block of content) {
         if (!block || typeof block !== "object") continue;
         const record = block as { readonly type?: unknown; readonly name?: unknown; readonly id?: unknown; readonly input?: unknown };
@@ -2863,11 +2868,11 @@ class AgentChatSession {
           if (!oldest.done) this.pendingSentMessages.delete(oldest.value);
         }
       }
-      return;
+      return recipients;
     }
-    if (message.type !== "user" || (this.pendingSentMessages.size === 0 && this.pendingWakeCalls.size === 0)) return;
+    if (message.type !== "user" || (this.pendingSentMessages.size === 0 && this.pendingWakeCalls.size === 0)) return recipients;
     const content = (message as { readonly message?: { readonly content?: unknown } }).message?.content;
-    if (!Array.isArray(content)) return;
+    if (!Array.isArray(content)) return recipients;
     for (const block of content) {
       if (!block || typeof block !== "object") continue;
       const record = block as { readonly type?: unknown; readonly tool_use_id?: unknown; readonly is_error?: unknown; readonly content?: unknown };
@@ -2879,11 +2884,13 @@ class AgentChatSession {
       if (record.is_error === true || sentMessageFailed(record.content)) continue;
       if (this.turnOpen) this.turnSentTo.push(sent.to);
       try {
-        this.seed.onSessionMessageSent({ to: sent.to, text: sent.text, toolUseId: record.tool_use_id });
+        const recipientOperationId = await this.seed.onSessionMessageSent({ to: sent.to, text: sent.text, toolUseId: record.tool_use_id });
+        if (recipientOperationId && !this.disposed) recipients.set(record.tool_use_id, recipientOperationId);
       } catch {
         // 전달 배선이 넘어져도 보낸 세션은 계속 산다 — 이 관측은 대화의 곁가지지 대화 자체가 아니다.
       }
     }
+    return recipients;
   }
 
   /**
@@ -2896,7 +2903,7 @@ class AgentChatSession {
    * 본문과 출처는 **둘 다** 같은 문(`maskChatText`)을 지난다. 런치 이름도 사람이 짓는 값이라 경로나
    * 자격증명 모양이 섞일 수 있고, 브라우저로 나가는 값에 masking 없는 자리를 하나라도 두지 않는다.
    */
-  noteReceived(entry: { readonly id: string; readonly from: string; readonly text: string }): void {
+  noteReceived(entry: { readonly id: string; readonly from: string; readonly senderOperationId?: string; readonly text: string }): void {
     if (this.disposed) return;
     if (entry.id.length === 0 || entry.from.length === 0) return;
     if (this.receivedMessageIds.has(entry.id)) return;
@@ -2909,7 +2916,7 @@ class AgentChatSession {
     const text = maskChatText(entry.text, { cwd: this.seed.cwd }).text;
     if (from.length === 0 || text.length === 0) return;
     // 수신 당시 열린 턴인지 원장에 남긴다. 재접속 때 과거 재생 경계로 위치를 추측하지 않는다.
-    this.push({ kind: "received", id: entry.id, from, text, inTurn: this.turnOpen, at: Date.now() });
+    this.push({ kind: "received", id: entry.id, from, ...(entry.senderOperationId ? { senderOperationId: entry.senderOperationId } : {}), text, inTurn: this.turnOpen, at: Date.now() });
   }
 
   /**

@@ -65,11 +65,12 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
     case "tool-result": {
       const target = `delegation:${operationId}:${event.id}`;
       const result = event.toolDetail?.sections.filter((section) => section.kind === "result").map((section) => section.text).join("\n") || event.summary;
-      entries = entries.map((entry) => entry.kind === "delegation" && entry.id === target ? { ...entry, result, ok: event.ok } : entry);
+      entries = entries.map((entry) => entry.kind === "delegation" && entry.id === target ? { ...entry, result, ok: event.ok,
+        ...(event.recipientOperationId ? { recipients: [operationSpeaker(event.recipientOperationId)] } : {}) } : entry);
       break;
     }
     case "received":
-      entries.push({ kind: "delegation", id: `delegation:${event.id}`, at, sender: { kind: "operation", name: event.from }, recipients: [speaker], text: event.text, result: "", received: true });
+      entries.push({ kind: "delegation", id: `delegation:${event.id}`, at, sender: { kind: "operation", name: event.from, ...(event.senderOperationId ? { operationId: event.senderOperationId } : {}) }, recipients: [speaker], text: event.text, result: "", received: true });
       break;
     case "turn-end":
       entries = entries.map((entry) => entry.kind === "message" && entry.streaming ? { ...entry, streaming: false } : entry);

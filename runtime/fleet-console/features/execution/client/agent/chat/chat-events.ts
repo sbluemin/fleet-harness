@@ -137,7 +137,7 @@ export type AgentChatStreamEvent =
    * 다른 세션이 이 세션에 보낸 메시지. 서버가 보낸 쪽의 성공한 도구 호출을 관측해 확정한다 —
    * `from`은 서버가 확정한 보낸 세션 이름, `text`는 서버가 가리고 자른 본문이다. `id`는 중복 없는 좌표다.
    */
-  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
+  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly senderOperationId?: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
   /** 자식이 문맥을 비웠다. 서버가 저널을 비우고 `cleared`를 내므로 화면은 이것을 그리지 않는다. */
   | { readonly kind: "reset"; readonly at?: number }
   /** 이 세션의 기록을 비웠다 — 화면의 원장도 함께 비운다. */
@@ -170,7 +170,7 @@ export type AgentChatStreamEvent =
       readonly outside?: boolean;
       readonly change?: AgentChatChange;
     }
-  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail }
+  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail; readonly recipientOperationId?: string }
   /** 모델이 멈춰 서서 사용자를 기다린다. 저널에 남으므로 재접속해도 같은 카드가 다시 선다. */
   | {
       readonly kind: "ask";
@@ -312,7 +312,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       if (typeof event.id !== "string" || event.id.length === 0) return null;
       if (typeof event.from !== "string" || event.from.length === 0) return null;
       if (typeof event.text !== "string") return null;
-      return { ...journal, event: { kind: "received", id: event.id, from: event.from, text: event.text, inTurn: event.inTurn === true, ...atField(event.at) } };
+      return { ...journal, event: { kind: "received", id: event.id, from: event.from, ...(typeof event.senderOperationId === "string" && event.senderOperationId ? { senderOperationId: event.senderOperationId } : {}), text: event.text, inTurn: event.inTurn === true, ...atField(event.at) } };
     case "reset":
       return { ...journal, event: { kind: "reset", ...atField(event.at) } };
     case "cleared":
@@ -419,6 +419,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           id: event.id,
           ok: event.ok === true,
           summary: typeof event.summary === "string" ? event.summary : "",
+          ...(typeof event.recipientOperationId === "string" && event.recipientOperationId ? { recipientOperationId: event.recipientOperationId } : {}),
           ...(readToolDetail(event.toolDetail) ? { toolDetail: readToolDetail(event.toolDetail) as AgentChatToolDetail } : {}),
         },
       };
