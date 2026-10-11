@@ -484,9 +484,43 @@
   color: var(--text-primary);
 }
 
-/* 목표 줄의 둘째 줄 — 단계·기한·주의 메모가 상태 문구 앞에 같은 크기로 서고, 한 줄을 넘으면 상태 문구만 말줄인다. */
+/* 목표 줄은 두 줄이다 — 제목 줄(제목 + 끝의 기한·주의 메모)과 상태 줄(단계 + 상태 문구). 본문 단추가 줄 끝 표식 칸까지 걸치고
+   (subgrid 로 같은 열을 나눠 쓴다), 제목 줄만 표식 칸 앞에서 멈춘다. 상태 줄은 표식 칸 아래까지 써서 가장 좁은 폭(280px)에서도
+   상태 문구를 끝까지 싣는다. 표식은 제목 줄 높이에 서고 본문 단추 위에 놓여 눌린다. */
+.side-bar-cluster-row--conversation .side-bar-cluster-row-main {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-row: 1;
+  grid-template-columns: subgrid;
+  align-content: center;
+}
+
+.side-bar-cluster-row--conversation .side-bar-cluster-row-aside {
+  position: relative;
+  z-index: 1;
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+}
+
+.side-bar-cluster-row-head {
+  display: flex;
+  grid-column: 1;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 제목이 남는 폭을 다 받아 끝의 기한·주의 메모를 줄 끝(대화 목록의 시각 자리)으로 민다. 좁으면 제목만 말줄인다. */
+.side-bar-cluster-row-head .side-bar-cluster-row-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 상태 줄 — 단계가 상태 문구 앞에 같은 크기로 서고, 한 줄을 넘으면 상태 문구만 말줄인다. */
 .side-bar-cluster-row-line {
   display: flex;
+  grid-column: 1 / -1;
   align-items: baseline;
   gap: 6px;
   min-width: 0;

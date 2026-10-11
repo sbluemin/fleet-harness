@@ -186,6 +186,12 @@ function formatDue(date: string, locale: ConsoleLocale): string {
   return format.format(parsed);
 }
 
+/** 대화 중심 화면의 제목 줄 끝에 서는 짧은 기한 — 월/일 숫자만 쓴다(요일은 접근 이름의 긴 표기가 말한다). */
+function formatDueShort(date: string): string {
+  const parsed = new Date(`${date}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? date : `${parsed.getMonth() + 1}/${parsed.getDate()}`;
+}
+
 interface SideBarClusterRowProps {
   readonly item: SideBarRowItem;
   /** 구역으로 올라간 줄 — 원래 그룹 색 점. */
@@ -250,9 +256,15 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
     const text = resolveLocalizedText(note.text, locale);
     if (text) meta.push({ key: `note-${index}`, text, ...(note.tone ? { tone: note.tone } : {}) });
   });
-  // 대화 중심 화면의 줄은 제목과 상태 한 줄, 두 줄이다 — 단계·기한·주의 메모만 상태 문구 앞에 짧게 서고, 결정 수·후속·출처·맡은 이
-  // 메모는 접근 이름(아래 aria-label 의 meta 전부)으로만 말한다. 결정 요청은 상태 문구가 이미 말한다.
-  const leadMeta = conversationRow ? meta.filter((part) => part.key === "progress" || part.key === "due" || (part.key.startsWith("note-") && part.tone === "warn")) : [];
+  // 대화 중심 화면의 줄은 제목과 상태 한 줄, 두 줄이다 — 단계만 상태 문구 앞에 서고, 기한(짧은 표기)·주의 메모는 대화 목록의 시각
+  // 자리처럼 제목 줄 끝에 선다. 둘째 줄이 상태 문구(다음 행동)를 끝까지 싣게 하려는 자리 나눔이다. 결정 수·후속·출처·맡은 이 메모는
+  // 접근 이름(아래 aria-label 의 meta 전부)으로만 말한다. 결정 요청은 상태 문구가 이미 말한다.
+  const leadMeta = conversationRow ? meta.filter((part) => part.key === "progress") : [];
+  const headMeta = !conversationRow ? [] : meta.flatMap((part) => (
+    part.key === "due" && row.due ? [{ ...part, text: t("sidebar.row.dueShort", { date: formatDueShort(row.due.date) }) }]
+      : part.key.startsWith("note-") && part.tone === "warn" ? [part]
+        : []
+  ));
   // 끌어 놓은 줄은 포인터를 따라왔으니 놓는 순간의 클릭도 이 줄에 떨어진다 — 칩처럼 그 클릭은 여는 동작이 아니다.
   const suppressClickRef = useRef(false);
   const pointerTypeRef = useRef("mouse");
@@ -356,7 +368,14 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         onKeyDown={selectMode ? handleKeyDown : undefined}
         onKeyUp={selectMode ? (event) => { if (event.key === " ") event.preventDefault(); } : undefined}
       >
-        <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>
+        {conversationRow ? (
+          <span className="side-bar-cluster-row-head">
+            <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>
+            {headMeta.map((part) => (
+              <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
+            ))}
+          </span>
+        ) : <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>}
         {conversationRow ? (
           <span className="side-bar-cluster-row-line" aria-hidden="true">
             {leadMeta.map((part) => (
