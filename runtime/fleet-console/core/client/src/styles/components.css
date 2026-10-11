@@ -12905,9 +12905,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   color: var(--brass-bright);
 }
 
-/* 명령 행의 선행 글리프 슬롯과 같은 자리를 Operation 행에서는 활동 상태 마크가 쓴다 —
-   내용물(12px status-glyph)은 자기 치수를 소유하고, 이 슬롯은
-   16px 그리드로 명령 글리프와 같은 정렬 계약만 진다. 마크가 항상 서므로 제목 열이 어긋나지 않는다. */
+/* 명령 행의 선행 글리프 슬롯과 같은 자리를 Operation 행에서는 그 Operation 의 아바타가 쓴다 —
+   아바타(16px)는 사이드바 칩과 같은 얼굴로 활동을 말하고, 이 슬롯은
+   16px 그리드로 명령 글리프와 같은 정렬 계약만 진다. 아바타가 항상 서므로 제목 열이 어긋나지 않는다. */
 .operation-search-op-mark {
   display: grid;
   place-items: center;
@@ -13050,7 +13050,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   opacity: 0.85;
 }
 
-/* 행 글리프 — 16px 상자에 선 글리프·모노그램·레일 아이콘이 같은 자리에 선다. 잉크는 한 채널이고
+/* 행 글리프 — 16px 상자에 선 글리프·Theater 아바타·레일 아이콘이 같은 자리에 선다. 잉크는 한 채널이고
    선택 행만 brass(위치), 파괴 행만 coral(위험)이다. */
 .operation-search-command-glyph {
   display: inline-grid;
@@ -13064,22 +13064,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   height: 16px;
 }
 
-.operation-search-monogram {
-  width: 18px;
-  height: 18px;
-  border: 1px solid color-mix(in oklch, var(--text-tertiary) 55%, transparent);
-  border-radius: var(--radius-xs);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.02em;
-  line-height: 1;
-}
-
-.operation-search-result.is-active .operation-search-monogram {
-  border-color: color-mix(in oklch, var(--brass) 70%, transparent);
-}
-
 .operation-search-rail-icon svg {
   width: 15px;
   height: 15px;
@@ -13088,13 +13072,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 /* 파괴 행 — Theater 메뉴의 잊기 항목(.theater-menu-forget)과 같은 문법: coral 잉크와 옅은 coral 호버 채움. */
 .operation-search-result.is-danger,
 .operation-search-result.is-danger strong,
-.operation-search-result.is-danger .operation-search-command-glyph,
-.operation-search-result.is-danger .operation-search-monogram {
+.operation-search-result.is-danger .operation-search-command-glyph {
   color: var(--coral-ink);
-}
-
-.operation-search-result.is-danger .operation-search-monogram {
-  border-color: color-mix(in oklch, var(--coral) 60%, transparent);
 }
 
 .operation-search-result.is-danger:hover,
@@ -17678,14 +17657,14 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   cursor: not-allowed;
 }
 
-/* Cmd+K Operation 행의 16px 마크 슬롯과 같은 활동 축. Theater 이니셜 다음에 붙어도
-   8px 비콘이 자기 치수를 유지하고, 공급자 글리프가 있던 14px 열보다 좁게 이름을 당긴다. */
+/* 행의 주체인 Operation 의 아바타 칸 — Theater 칸(.quick-launch-mark)과 같은 17px 열이라 /theater 행과 이름 열이 맞는다.
+   Theater 는 위 밴드 머리가 말하므로 행에 두 번째 표식을 두지 않는다. */
 .quick-launch-mention-operation-mark {
   display: grid;
   place-items: center;
   flex: none;
-  width: 10px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
 }
 
 .quick-launch-mention-name {
@@ -18140,19 +18119,14 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   height: 13px;
 }
 
-/* Theater 아이덴티티는 이 마크가 든다 — 카드에 별도 스파인을 두지 않는다. */
+/* Theater 아이덴티티는 이 칸의 사령관 아바타가 든다 — 카드에 별도 스파인을 두지 않는다. 예전 이니셜 칩과 같은 17px 칸이라
+   칩·행 높이는 그대로다. 아바타는 캐릭터라 바탕 칩을 깔지 않는다. */
 .quick-launch-mark {
   display: grid;
   place-items: center;
   width: 17px;
   height: 17px;
   flex: none;
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--surface-pillar) 70%, transparent);
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: 8px;
-  font-weight: var(--weight-bold);
 }
 
 /* 단축키 힌트는 읽히되 만져지지 않아야 한다. 테두리를 두른 배지로 두면 바 위에서 칩·전송과

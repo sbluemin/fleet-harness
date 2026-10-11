@@ -1,5 +1,5 @@
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
-import { Fragment, useEffect, useRef, useState, type ChangeEvent, type MutableRefObject, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type MutableRefObject, type ReactNode } from "react";
 
 import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { isFleetMobileShell } from "@fleet-console/link/core";
@@ -7,12 +7,15 @@ import { isFleetMobileShell } from "@fleet-console/link/core";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { OperationSearchEntry } from "../../../../core/client/src/integration/operation-search.js";
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
-import { MobileMonogram } from "../../../../core/client/src/chrome/mobile/mobile-monogram.js";
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { reportSheetChrome, reportShellChrome } from "../../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { buildQuickLaunchEffortDeck, isMentionSelectable, mentionTargetName, type QuickLaunchMentionTarget, type QuickLaunchPluginMentionRow } from "../quick-launch.js";
+import { TheaterAvatar } from "../../../workspace/client/avatars.js";
+import { resolveOperationMarkVisual } from "../operation-activity.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
+import { OperationNameMark } from "./operation-name-mark.js";
 import "./mobile-quick-launch.css";
 
 /**
@@ -130,6 +133,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
   const t = useT();
   const { inputRef, prompt, theaters, theaterId, groups, selectedRow, effort, onSubmit, onClose } = props;
   const [sub, setSub] = useState<Sub | null>(null);
+  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
   const inApp = isFleetMobileShell();
@@ -218,7 +222,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
       <MobileSheet key="theater" title={t("chrome.quickLaunch.mobile.theater")} onClose={() => setSub(null)} className="mql-sheet">
         {theaters.map((candidate) => (
           <button key={candidate.id} type="button" className="mobile-sheet-row" aria-current={candidate.id === theaterId ? "true" : undefined} onClick={() => { props.onTheater(candidate.id); setSub(null); }}>
-            <MobileMonogram label={candidate.label} toneKey={candidate.id} />
+            <TheaterAvatar theaterId={candidate.id} size={28} label={candidate.label} decorative />
             <span className="mobile-sheet-row-copy">{candidate.label}</span>
             {candidate.id === theaterId ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
           </button>
@@ -286,8 +290,15 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
       const selectable = isMentionSelectable(entry.activity);
       return (
         <button key={`op-${entry.operationId}`} type="button" className="mql-mention-row" disabled={!selectable} onClick={() => props.onPickMention({ kind: "operation", entry })}>
-          <MobileMonogram label={entry.theaterLabel} toneKey={entry.theaterId ?? entry.theaterLabel} size={20} />
-          <span className="mql-mention-name">{entry.operationName}</span>
+          {/* 행의 주체는 Operation 하나다 — 그 아바타가 사이드바 칩과 같은 얼굴로 상태를 말한다. 이 목록은 Theater 머리 없이
+              여러 Theater 를 섞으므로, 예전 이니셜이 하던 소속 구별은 이름 아래 Theater 이름이 잇는다(플러그인 행의 분류 줄과 같은 문법). */}
+          <OperationNameMark
+            operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }}
+            status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
+            size={24}
+           
+          />
+          <span className="mql-mention-name">{entry.operationName}<small>{entry.theaterLabel}</small></span>
         </button>
       );
     }),
@@ -339,7 +350,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
         <div className="mql-chips">
           <button type="button" className="mql-circ" data-press="r3" aria-label={t("chrome.quickLaunch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>
           <button type="button" className="mobile-pill-secondary mql-theater-chip" aria-label={theater ? t("chrome.quickLaunch.mobile.theaterChip", { name: theater.label }) : t("chrome.quickLaunch.mobile.theater")} onClick={() => setSub("theater")} disabled={theaters.length === 0}>
-            {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} size={20} /> : null}
+            {theater ? <TheaterAvatar theaterId={theater.id} size={20} label={theater.label} decorative /> : null}
             <span className="mql-chip-name">{theater?.label ?? t("chrome.quickLaunch.mobile.theater")}</span>
           </button>
           <button type="button" className="mobile-pill-secondary mql-model-chip" onClick={() => setSub("model")} disabled={!selectedRow}>

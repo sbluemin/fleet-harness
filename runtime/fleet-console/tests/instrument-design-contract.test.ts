@@ -147,7 +147,6 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".directory-browser-sector-advance",
   ".whatsnew-close",
   ".skills-overlay-close",
-  ".quick-launch-mark",
   ".alerts-icon-badge",
   ".fexp-refresh-btn",
   ".history-commit-avatar",
