@@ -445,6 +445,19 @@ describe("agent chat mode routes", () => {
     const sessionId = await harness.createSession();
     const verifier = await harness.createSession();
     (harness.operation(verifier)!.payload.session as Record<string, unknown>).sessionName = "verifier";
+    // 지금 유효한 주소라도 과거 발신의 수신 신원으로 쓰지 않는다.
+    const socketPath = path.join(harness.fleetDataDir, "replay.sock");
+    if (process.platform === "darwin" || process.platform === "linux") {
+      const inbox = net.createServer();
+      await new Promise<void>((resolve, reject) => { inbox.once("error", reject); inbox.listen(socketPath, resolve); });
+      cleanups.push(() => new Promise<void>((resolve) => inbox.close(() => resolve())));
+      const registry = path.join(harness.fleetDataDir, "sessions");
+      await fs.mkdir(registry, { recursive: true });
+      const registration = { pid: process.pid, sessionId: "current-socket-owner", messagingSocketPath: socketPath,
+        procStart: execFileSync("ps", ["-o", "lstart=", "-p", String(process.pid)], { env: { ...process.env, LC_ALL: "C", TZ: "UTC" }, encoding: "utf8" }).trim() };
+      (harness.operation(verifier)!.payload.session as Record<string, unknown>).id = registration.sessionId;
+      await fs.writeFile(path.join(registry, `${process.pid}.json`), JSON.stringify(registration));
+    }
     const arrivalReports = vi.spyOn(harness.consoleControl, "reportSessionMessage");
     cleanups.push(() => arrivalReports.mockRestore());
     harness.attachProviderSession(sessionId);
@@ -457,7 +470,9 @@ describe("agent chat mode routes", () => {
       { type: "user", timestamp: at(3), message: { content: [{ type: "tool_result", tool_use_id: "read-1", content: "plan body" }] } },
       { type: "assistant", timestamp: at(4), message: { content: [{ type: "tool_use", id: "send-1", name: "SendMessage", input: { to: "verifier", message: "check the plan" } }] } },
       { type: "user", timestamp: at(5), message: { content: [{ type: "tool_result", tool_use_id: "send-1", content: "delivered" }] } },
-      { type: "assistant", timestamp: at(6), message: { content: [{ type: "text", text: "Sent." }] } },
+      { type: "assistant", timestamp: at(6), message: { content: [{ type: "tool_use", id: "send-address", name: "SendMessage", input: { to: `uds:${socketPath}`, message: "check the old plan" } }] } },
+      { type: "user", timestamp: at(7), message: { content: [{ type: "tool_result", tool_use_id: "send-address", content: "delivered" }] } },
+      { type: "assistant", timestamp: at(8), message: { content: [{ type: "text", text: "Sent." }] } },
     ].map((line) => JSON.stringify(line)).join("\n"));
 
     await harness.postTicket(sessionId, { channel: "chat" });
@@ -467,9 +482,10 @@ describe("agent chat mode routes", () => {
 
     await harness.get(sessionId, "chat-history");
 
-    const response = harness.responses.at(-1) as { readonly status: number; readonly body: { readonly entries: ReadonlyArray<{ readonly event: { readonly kind: string; readonly name?: string } }>; readonly truncated: boolean } };
+    const response = harness.responses.at(-1) as { readonly status: number; readonly body: { readonly entries: ReadonlyArray<{ readonly event: { readonly kind: string; readonly name?: string; readonly id?: string } }>; readonly truncated: boolean } };
     expect(response.status).toBe(200);
-    expect(response.body.entries.map(({ event }) => event.kind === "tool" ? `tool:${event.name}` : event.kind)).toEqual(["dispatch", "tool:SendMessage", "tool-result", "text", "turn-end"]);
+    expect(response.body.entries.map(({ event }) => event.kind === "tool" ? `tool:${event.name}` : event.kind)).toEqual(["dispatch", "tool:SendMessage", "tool-result", "tool:SendMessage", "tool-result", "text", "turn-end"]);
+    expect(response.body.entries.find(({ event }) => event.kind === "tool-result" && event.id === "send-address")?.event).not.toHaveProperty("recipientOperationId");
     expect(response.body.truncated).toBe(false);
     expect(response.body.entries.find(({ event }) => event.kind === "tool-result")?.event).toMatchObject({ recipientOperationId: verifier });
     expect(arrivalReports).not.toHaveBeenCalled();
@@ -482,7 +498,9 @@ describe("agent chat mode routes", () => {
     // 재개 재생도 같은 신원을 싣되 지난 발신을 오늘의 수신·도착 보고로 되세우지 않는다.
     await harness.post(sessionId, "resume", {});
     const replay = await harness.openChatSocket(sessionId);
-    expect(replay.map(({ raw }) => readChatJournalEvent(raw)?.event).find((event) => event?.kind === "tool-result" && event.id === "send-1")).toMatchObject({ recipientOperationId: verifier });
+    const replayed = replay.map(({ raw }) => readChatJournalEvent(raw)?.event);
+    expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-1")).toMatchObject({ recipientOperationId: verifier });
+    expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-address")).not.toHaveProperty("recipientOperationId");
     expect(arrivalReports).not.toHaveBeenCalled();
   });
 

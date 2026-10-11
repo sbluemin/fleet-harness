@@ -600,6 +600,8 @@ async function resolveReplayRecipients(
     if (!input || typeof input !== "object" || Array.isArray(input)) continue;
     const { to, message: text } = input as { readonly to?: unknown; readonly message?: unknown };
     if (typeof to !== "string" || !to || typeof text !== "string" || !text.trim()) continue;
+    // 재생 시점의 소켓 소유자는 발신 당시 수신자가 아니다 — 주소는 원문으로 남긴다.
+    if (to.startsWith("uds:")) continue;
     try {
       const recipient = await resolve(to);
       if (recipient) recipients.set(id, recipient);
