@@ -6,7 +6,7 @@ import type { AgentEvent, AgentHost, AgentSessionOptions } from "@fleet-console/
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { resolveRosterCoordinate, type ModelCoordinate } from "@fleet-console/sdk/models";
 import { defineConsoleTool } from "@fleet-console/sdk/mcp/actions";
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS, resolveExperimentSettings } from "@fleet-console/sdk/settings";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -19,7 +19,7 @@ import type { Objective, ObjectiveEvent } from "../server/types.js";
 
 /**
  * 사령관 Theater 상태의 필수 계약 — 보드 곁 `commodore/` 에 한 건으로 영속되고, 지시 개정은 본문이 바뀔 때만 오르며,
- * 실험 기능이 꺼진 채로는 자율 운영을 켤 수 없고, 기록은 덧붙인 순서대로 쪽을 나눠 읽힌다.
+ * 자율 운영은 Theater 별로 켜고 끄며, 기록은 덧붙인 순서대로 쪽을 나눠 읽힌다.
  */
 
 const dirs: string[] = [];
@@ -50,17 +50,17 @@ function harness(now?: () => number) {
     await createCommodoreRoutes(ctx, store, hooks).find((entry) => entry.name === name)!.handler({ req: { method: "POST" } as never, res: {} as never, pathname: name });
     return routeResult as { status: number; value: Record<string, unknown> & { state?: Record<string, unknown>; error?: string } };
   };
-  return { ctx, store, events, route, objectivesDir, experiments: () => experiments, setExperiments: (next: Partial<typeof experiments>) => { experiments = { ...experiments, ...next }; }, setAuthorized: (next: boolean) => { authorized = next; } };
+  return { ctx, store, events, route, objectivesDir, experiments: () => experiments, setExperiments: (next: Partial<typeof experiments>) => { experiments = resolveExperimentSettings({ ...experiments, ...next }); }, setAuthorized: (next: boolean) => { authorized = next; } };
 }
 
 describe("commodore theater state", () => {
-  it("persists autonomy, directive and intel beside the board and gates autonomy on the experiment", async () => {
+  it("persists per-Theater autonomy, directive and intel beside the board", async () => {
     const h = harness();
     const stateFile = path.join(h.objectivesDir, "commodore", "state.json");
 
-    expect((await h.route("commodore/state", { theaterId: "t1" })).value).toMatchObject({ enabled: false, active: false, run: { phase: "off", totals: { session: 0, costUsd: 0, actions: 0 } }, state: { autonomy: false, directive: { text: "", rev: 0 }, intel: [] } });
+    h.setExperiments({ commodore: false }); // 옛 저장값은 사령관 표면을 숨기지 않는다.
+    expect((await h.route("commodore/state", { theaterId: "t1" })).value).toMatchObject({ enabled: true, active: false, run: { phase: "off", totals: { session: 0, costUsd: 0, actions: 0 } }, state: { autonomy: false, directive: { text: "", rev: 0 }, intel: [] } });
     expect((await h.route("commodore/state", { theaterId: "unknown" })).status).toBe(404);
-    expect((await h.route("commodore/autonomy", { theaterId: "t1", autonomy: true }))).toMatchObject({ status: 409, value: { error: "commodore_disabled" } });
     expect(fs.existsSync(stateFile)).toBe(false);
 
     // 옛 Settings 좌표는 무시하지만 Theater 별 선택은 아래 경로에서 유지된다.
@@ -85,14 +85,14 @@ describe("commodore theater state", () => {
     // Gateway scoped Claude 표기도 받되 정준 id(실행 id)로 접어 저장한다.
     expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "claude--sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet[1m]", effort: "xhigh" });
 
-    // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽고, 실험 기능이 꺼지면 플래그만 꺼진다(저장값은 남는다).
+    // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽는다. 옛 실험 설정은 자율 운영을 바꾸지 않는다.
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, unknown>;
     expect(saved).toMatchObject({ autonomy: true, directive: { rev: 1 }, model: "sonnet[1m]", effort: "xhigh" });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")).toEqual(h.store.read("t1"));
     // 재시작 복원은 등록된 Theater 를 훑는다 — 읽을 수 없는 Theater 는 빠지고 던지지 않는다.
     expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), theaterIds: () => ["t1", "gone"], emit: () => undefined }).autonomousTheaters()).toEqual(["t1"]);
     h.setExperiments({ commodore: false });
-    expect(commodoreActive(h.ctx, h.store, "t1")).toBe(false);
+    expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
     expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["autonomy", "language", "directive", "intel", "intel", "coordinates"]);
 
     // 같은 origin 의 Console 만 지난다.
@@ -105,9 +105,7 @@ describe("commodore theater state", () => {
     h.store.transcriptAppend("t1", { kind: "session", event: "opened" });
     h.store.transcriptAppend("t1", { kind: "wake", reasons: ["directive changed"] });
     h.store.transcriptAppend("t1", { kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o1", title: "Remote pairing" });
-    // 사령관이 돌지 않으면 메시지는 거절되고 기록에 남지 않는다 — 실험 기능 꺼짐, 그 Theater 의 자율 운영 꺼짐 각각.
-    expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_disabled" } });
-    h.setExperiments({ commodore: true });
+    // 그 Theater 의 자율 운영이 꺼져 있으면 메시지는 거절되고 기록에 남지 않는다.
     expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
     h.store.setAutonomy("t1", true);
@@ -122,8 +120,8 @@ describe("commodore theater state", () => {
     expect(sent.value.entry).toMatchObject({ seq: 4, kind: "message", text: "Prefer small objectives.", objective: { id: "o1", title: "Small scope" } });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).transcriptRead("t1").entries.at(-1)).toMatchObject({ objective: { id: "o1", title: "Small scope" } });
     expect(h.events.filter((event) => event.op === "transcript")).toHaveLength(4);
-    h.setExperiments({ commodore: false });
-    expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_disabled" } });
+    h.store.setAutonomy("t1", false);
+    expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
 
     const page = (await h.route("commodore/transcript", { theaterId: "t1", limit: 2 })).value as { entries: { seq: number; kind: string }[]; hasMore: boolean };
     expect(page.entries.map((entry) => entry.seq)).toEqual([3, 4]);

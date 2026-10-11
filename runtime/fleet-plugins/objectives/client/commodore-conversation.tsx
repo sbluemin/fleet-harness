@@ -55,6 +55,11 @@ export interface CommodoreConversationOptions {
   readonly objectiveId?: string;
 }
 
+/** 호스트의 대화 배치 여부 — Theater 머리의 첫 칸 판정도 같은 능력을 읽는다. */
+export function isCommodoreConversationActive(): boolean {
+  return port?.isActive() === true;
+}
+
 /** 가운데 칸에 그 Theater 의 사령관을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 시트로 돌아간다. */
 export function openCommodoreConversation(theaterId: string, options: CommodoreConversationOptions = {}): boolean {
   if (!port || !port.isActive()) return false;

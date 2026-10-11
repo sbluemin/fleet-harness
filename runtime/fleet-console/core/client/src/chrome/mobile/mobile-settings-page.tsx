@@ -381,11 +381,11 @@ function languageLabel(state: GlobalSettingsState, t: (key: CoreMessageKey) => s
  */
 /**
  * 「실험 기능」 행의 보조 줄 — 켜진 실험 기능의 개수(시안 S-47: 「{n}개 켜짐」, 하나도 없으면 「꺼짐」).
- * 세는 것은 이 페이지의 켬/끔 기능(대화 중심 화면 · 자율 운영 · 컴퓨터 사용)이다.
+ * 세는 것은 이 페이지의 켬/끔 기능(대화 중심 화면 · 컴퓨터 사용)이다.
  */
 function describeExperiments(state: GlobalSettingsState | null, t: (key: CoreMessageKey, params?: Record<string, string | number>) => string): string | null {
   if (state === null) return null;
-  const on = [state.experiments.conversationLayout, state.experiments.commodore, state.experiments.computerUse].filter(Boolean).length;
+  const on = [state.experiments.conversationLayout, state.experiments.computerUse].filter(Boolean).length;
   return on === 0 ? t("mobile.settings.off") : t("mobile.settings.experimentsOn", { count: on });
 }
 
