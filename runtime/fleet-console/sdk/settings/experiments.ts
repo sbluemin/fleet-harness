@@ -19,8 +19,7 @@ export function isComputerUseBackendId(value: unknown): value is ComputerUseBack
 }
 
 /**
- * 모델·강도 좌표를 가진 보조 AI 표면. cowork·analyst 는 항상 켜져 있어 스위치가 없고, commodore(Objectives
- * 자율 운영의 사령관)는 옵트인 스위치 `commodore` 를 따로 가진다 — 좌표는 같은 사다리를 쓴다.
+ * 모델·강도 좌표를 가진 보조 AI 표면. 모두 상시 제공하며, 사령관의 자율 운영은 Theater 별로 켜고 끈다.
  */
 export type ExperimentAideId = "cowork" | "analyst" | "commodore";
 
@@ -50,10 +49,7 @@ export interface ConsoleExperimentSettings {
   /** Session Analyst 대화의 모델·강도. 새 분석 세션부터 적용된다. */
   readonly analystModel: string;
   readonly analystEffort: ExperimentEffort;
-  /**
-   * Objectives 자율 운영 — Theater 마다 사령관(Commodore) 세션이 목표 보드의 바깥 루프를 돈다. 꺼져 있으면 사령관
-   * 줄·서랍이 서지 않고 세션도 열리지 않는다. 모델·강도는 사령관 세션의 기본 좌표이고, Theater 별 값이 덮는다.
-   */
+  /** 옛 클라이언트·플러그인 응답 호환 필드. 사령관은 상시 제공하며 옛 false 값도 true로 해석한다. */
   readonly commodore: boolean;
   readonly commodoreModel: string;
   readonly commodoreEffort: ExperimentEffort;
@@ -76,7 +72,7 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   coworkEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
   analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
   analystEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
-  commodore: false,
+  commodore: true,
   commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
   commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
 };
@@ -140,7 +136,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     coworkEffort: aideEffort("cowork"),
     analystModel: aideModel("analyst"),
     analystEffort: aideEffort("analyst"),
-    commodore: record.commodore === true,
+    commodore: true,
     // 옛 설정과 응답의 필드 모양은 유지하되, 저장된 기본 좌표는 더 이상 읽지 않는다.
     commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
     commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
