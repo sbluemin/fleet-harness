@@ -139,7 +139,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const run = view?.run;
   const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
   return (
-    <div className="objectives-commodore-main objectives-commodore-conversation">
+    <div className="objectives-commodore-conversation">
       <header className="objectives-commodore-conversation-head">
         <span className="objectives-commodore-conversation-status">{[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")}</span>
         {readOnly
