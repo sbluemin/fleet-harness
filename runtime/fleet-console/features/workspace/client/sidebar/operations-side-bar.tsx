@@ -30,6 +30,7 @@ import { usePluginRegistry } from "../../../../core/client/src/integration/plugi
 import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive, useTheaterInboxReturnTarget } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
+import { isConversationLayoutActive } from "../../../settings/client/use-conversation-layout.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
@@ -1743,15 +1744,15 @@ function TheaterSectionHeader({
     if (dragging) suppressClickRef.current = true;
   };
 
-  // 이름은 비활성 Theater 면 전환하고, 활성 Theater 면 그 Theater 의 Inbox 를 연다. chevron 은 활성 여부와 무관하게 이 섹션만
-  // 접는다 — 둘을 한 버튼에 합치면 비활성 Theater 를 접으려 해도 먼저 마운트해야 한다.
+  // 이름은 Theater 를 전환한다. 대화 중심 화면은 한 번 누르면 그 Theater 의 대화도 열고, 기존 배치는 활성 Theater 에서만
+  // Inbox 를 연다. chevron 은 활성 여부와 무관하게 이 섹션만 접는다.
   const select = () => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
     if (!active) onSelectTheater(theater.id);
-    else onOpenInbox(theater, activateRef.current);
+    if (active || isConversationLayoutActive()) onOpenInbox(theater, activateRef.current);
   };
   const collapseLabel = collapsed
     ? t("sidebar.theater.expand", { theater: theater.label })

@@ -17,6 +17,7 @@ import {
 } from "./commodore-state.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
+import { isCommodoreConversationActive } from "./commodore-conversation.js";
 import { getT } from "./i18n/index.js";
 import { useObjectiveTheater } from "./objectives-state.js";
 import type { Objective } from "../server/types.js";
@@ -38,8 +39,8 @@ export const commodoreTheaterContribution: TheaterContribution = {
   header: {
     subscribe: subscribeCommodore,
     live: (theaterId) => autonomyOn(theaterId) && readCommodore(theaterId).view?.run.phase === "turn",
-    // 자율 운영이 켜졌으면 머리는 사령관 기록을 연다. 꺼졌으면 호스트의 시스템 프롬프트 칸에 맡긴다.
-    landing: (theaterId) => (autonomyOn(theaterId) ? { sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" } : null),
+    // 대화 중심 화면은 자율 운영 여부와 무관하게 가운데 사령관 대화를 연다. 기존 배치의 첫 칸은 그대로 유지한다.
+    landing: (theaterId) => (isCommodoreConversationActive() || autonomyOn(theaterId) ? { sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" } : null),
   },
   menu: (context) => (readCommodoreExperiment().enabled ? <CommodoreAutonomyMenuItem {...context} /> : null),
 };
