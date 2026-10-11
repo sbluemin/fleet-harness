@@ -776,6 +776,11 @@ export interface OperationCluster {
    * 그런 묶음은 `row` 로만 서고, 캡션 띠·노드 줄·선별 표식에는 서지 않는다.
    */
   readonly root?: string;
+  /**
+   * 뿌리가 아직 없는 묶음의 얼굴이 될 Operation id — 곧 뿌리가 될 그 Operation 이다. 호스트는 뿌리 없는 줄의 지휘관 아바타를 이
+   * id 의 키로 그려, 같은 사람을 그리는 플러그인 표면과 같은 모습이 선다. 없으면 묶음 id 로 그린다.
+   */
+  readonly avatarOperationId?: string;
   readonly members: readonly OperationClusterMember[];
   /** 띠·위치 표시를 누르면 — 플러그인의 표면으로 간다. 구성원 id 가 오면 그 구성원을 집는다. */
   readonly open?: (operationId?: string) => void;
