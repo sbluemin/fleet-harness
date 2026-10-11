@@ -7,6 +7,7 @@ import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sd
 
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { BUILT_IN_RAIL_PANELS } from "../rail/built-in-panels.js";
+import { useConversationOperationTabPanels } from "../rail/operation-tabs.js";
 import { settingsPanes, settingsRailEntry } from "../../../../../features/settings/client/settings-pane.js";
 
 /**
@@ -158,6 +159,8 @@ export function useRailEntries(side: "right" = "right"): readonly RailEntryBindi
   const railPanels = registry.railPanels ?? [];
   const railEntries = registry.railEntries ?? [];
   const panes = registry.panes ?? [];
+  // 대화 중심 화면이 서 있는 동안만 비어 있지 않다 — 꺼진 Console 의 목록은 그대로다.
+  const operationTabs = useConversationOperationTabPanels();
 
   return useMemo(() => {
     // 코어 네이티브 기여 — 설정 표면. 플러그인 레지스트리를 거치지 않는 이유는 소유 때문이다:
@@ -169,12 +172,12 @@ export function useRailEntries(side: "right" = "right"): readonly RailEntryBindi
 
     // 코어가 먼저, 그다음 플러그인 — 합성 순서는 옛 레지스트리와 같다. 같은 id를 가진
     // 네이티브 등록이 있으면 투영을 버린다: 옮겨 온 쪽이 언제나 이긴다.
-    const coreProjected = BUILT_IN_RAIL_PANELS.filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel, true));
+    const coreProjected = [...operationTabs, ...BUILT_IN_RAIL_PANELS].filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel, true));
     const pluginProjected = railPanels.filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel));
 
     return [...coreNative, ...coreProjected, ...native.filter((binding) => !coreNative.some((core) => core.entry.id === binding.entry.id)), ...pluginProjected]
       .filter((binding) => (binding.entry.side ?? "right") === side);
-  }, [panes, railEntries, railPanels, side]);
+  }, [operationTabs, panes, railEntries, railPanels, side]);
 }
 
 /**
