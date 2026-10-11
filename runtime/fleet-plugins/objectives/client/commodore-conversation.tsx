@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -93,8 +93,12 @@ function useCommodoreReveal(theaterId: string) {
 
 const failures = new Map<string, string>();
 const failureListeners = new Set<() => void>();
+// 실패 줄이 지금 서 있는 Theater — 본문이 세운다. 닫히거나 다른 Theater 로 바뀐 뒤에 끝난 요청의 실패는 적지 않는다
+// (모듈 공유라 적으면 다음에 열 때 지난 실패가 선다).
+const liveFailureLines = new Map<string, number>();
 
 function setConversationFailure(theaterId: string, failure: string | null): void {
+  if (failure !== null && !liveFailureLines.has(theaterId)) return;
   if ((failures.get(theaterId) ?? null) === failure) return;
   if (failure === null) failures.delete(theaterId);
   else failures.set(theaterId, failure);
@@ -102,6 +106,15 @@ function setConversationFailure(theaterId: string, failure: string | null): void
 }
 
 function useConversationFailure(theaterId: string): string | null {
+  useEffect(() => {
+    liveFailureLines.set(theaterId, (liveFailureLines.get(theaterId) ?? 0) + 1);
+    return () => {
+      const left = (liveFailureLines.get(theaterId) ?? 1) - 1;
+      if (left > 0) liveFailureLines.set(theaterId, left);
+      else liveFailureLines.delete(theaterId);
+      setConversationFailure(theaterId, null);
+    };
+  }, [theaterId]);
   return useSyncExternalStore(
     (listener) => { failureListeners.add(listener); return () => { failureListeners.delete(listener); }; },
     () => failures.get(theaterId) ?? null,
@@ -128,7 +141,6 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const reveal = useCommodoreReveal(theaterId);
   const failure = useConversationFailure(theaterId);
   const setFailure = (next: string | null) => setConversationFailure(theaterId, next);
-  useEffect(() => () => setConversationFailure(theaterId, null), [theaterId]);
   useEffect(() => {
     void loadCommodore(theaterId);
     if (!readCommodore(theaterId).transcriptLoaded) void loadTranscript(theaterId);
@@ -163,15 +175,12 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
 /** 머리 pill 옆 단추 묶음의 기록 비우기 — 실패는 가운데 본문의 실패 줄이 말한다. */
 function CommodoreConversationActions({ theaterId, language }: { readonly theaterId: string; readonly language: "en" | "ko" }) {
   const t = getT(language);
-  // 대화를 닫은 뒤에 끝난 요청의 실패는 버린다 — 실패 줄은 모듈 공유라, 닫힌 뒤에 적으면 다음에 열 때 지난 실패가 선다.
-  const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   return (
     <CommodoreClearButton
       t={t}
       theaterId={theaterId}
       variant="round"
-      onFail={(error) => { if (mounted.current) setConversationFailure(theaterId, failureWord(t, error)); }}
+      onFail={(error) => setConversationFailure(theaterId, failureWord(t, error))}
       onClear={() => setConversationFailure(theaterId, null)}
     />
   );
