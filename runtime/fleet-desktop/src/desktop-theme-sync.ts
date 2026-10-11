@@ -8,9 +8,15 @@ interface DesktopTitleBarOverlay {
   readonly height: number;
 }
 
+/** 네이티브 컨트롤이 세로 가운데를 맞출 웹 쪽 맨 위 줄의 CSS 높이. 싣지 않는 Console이면 Command Band 36px 계약이다. */
+export interface DesktopChromeGeometry {
+  readonly band: number;
+}
+
 export interface DesktopThemeSnapshot {
   readonly theme: string;
   readonly titleBarOverlay: DesktopTitleBarOverlay;
+  readonly chrome?: DesktopChromeGeometry;
   /** 진입 화면·종료 인사·창 바탕의 색. 이 필드를 싣지 않는 Console이거나 모양이 어긋나면 없다. */
   readonly entry?: EntryPalette;
 }
@@ -64,7 +70,9 @@ export function readDesktopThemeSnapshot(value: unknown): DesktopThemeSnapshot |
   const { color, symbolColor, height } = value.titleBarOverlay;
   if (!isElectronColor(color) || !isElectronColor(symbolColor) || !isTitleBarOverlayHeight(height)) return null;
   const entry = readEntryPalette(value.entry);
-  return { theme: value.theme, titleBarOverlay: { color, symbolColor, height }, ...(entry ? { entry } : {}) };
+  // 크롬 기하가 어긋나면 그 필드만 버린다 — 제목 표시줄 색과 팔레트는 따로 쓰인다.
+  const band = isRecord(value.chrome) && isTitleBarOverlayHeight(value.chrome.band) ? value.chrome.band : null;
+  return { theme: value.theme, titleBarOverlay: { color, symbolColor, height }, ...(band !== null ? { chrome: { band } } : {}), ...(entry ? { entry } : {}) };
 }
 
 function isDesktopThemeId(value: unknown): value is string {

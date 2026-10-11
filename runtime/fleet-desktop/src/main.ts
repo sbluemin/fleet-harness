@@ -174,10 +174,12 @@ async function boot(): Promise<void> {
    * 높이를, macOS는 신호등의 세로 자리를 — 둘 다 페이지 줌을 스스로 따라가지 못한다.
    * 한 창에서 둘 중 하나만 산다.
    */
+  // 맨 위 줄 높이 — Console 이 테마 스냅샷의 chrome.band 로 알린다(대화 중심 화면이면 52px). 신호등은 그 줄 가운데에 선다.
+  let chromeBand: number | undefined;
   const refreshNativeChrome = (): void => {
     overlayRefresher?.refresh();
     if (process.platform !== "darwin" || !window || window.isDestroyed()) return;
-    window.setWindowButtonPosition(trafficLightPosition(window.consoleContents.getZoomFactor()));
+    window.setWindowButtonPosition(trafficLightPosition(window.consoleContents.getZoomFactor(), chromeBand));
   };
   /**
    * 사용자 테마는 Windows 제목 표시줄만의 일이 아니다 — 진입 화면·종료 인사·창 바탕도 따른다. 그래서
@@ -185,6 +187,7 @@ async function boot(): Promise<void> {
    */
   const themeMemory = createThemeMemory(path.join(app.getPath("userData"), "desktop-theme.json"));
   const rememberedTheme = themeMemory.load();
+  chromeBand = rememberedTheme?.chrome?.band;
   let entryPalette: EntryPalette | undefined = rememberedTheme?.entry;
   let themeOrigin: string | null = null;
   const themeSynchronizer = createDesktopThemeSynchronizer({
@@ -199,6 +202,10 @@ async function boot(): Promise<void> {
       window.consoleView.setBackgroundColor(canvas);
       // 리프레셔가 현재 모니터 배율 보정을 소유한다 — 창이 아직 없으면 적용할 곳도 없다.
       overlayRefresher?.applyOverlay(snapshot.titleBarOverlay);
+      if (chromeBand !== snapshot.chrome?.band) {
+        chromeBand = snapshot.chrome?.band;
+        refreshNativeChrome();
+      }
     },
   });
   const synchronizeThemeAt = async (origin: string): Promise<void> => {
@@ -450,6 +457,7 @@ async function boot(): Promise<void> {
           platform: process.platform,
           ...(entryPalette ? { backgroundColor: entryPalette.canvas } : {}),
           ...(rememberedTheme ? { titleBarOverlay: rememberedTheme.titleBarOverlay } : {}),
+          ...(chromeBand !== undefined ? { chromeBand } : {}),
         });
         window = createdWindow;
         fullscreenSynchronizer = createDesktopFullscreenSynchronizer(desktopFullscreenHost(createdWindow), { fetch: consoleFetch });

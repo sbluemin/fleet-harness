@@ -30,7 +30,7 @@ import { createLaunchPromptNamespace } from "../../../features/execution/host/ag
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, readOperationLaunch, withSubagentSpawn, withUserQuestions, type OperationLaunchChangedEvent } from "@fleet-console/sdk/operations";
-import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import { resolveExperimentSettings, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
@@ -75,7 +75,7 @@ import type { TheaterRegistration } from "../../../features/workspace/host/theat
 import { TheaterFolderListError, TheaterRegistry, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "../plugin-host/plugin-host.js";
 import { createFleetPluginHost, createPluginClientAssets } from "../plugin-host/plugin-host.js";
-import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopFullscreenRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopFullscreenSnapshot, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
+import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopFullscreenRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopFullscreenSnapshot, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopThemeLayout, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
 import { readDesktopProtocolEnvironment } from "../shell/desktop-protocol.js";
 import { createConsoleServeLifecycle, type ConsoleServeLifecycle } from "./serve-lifecycle.js";
 import { createAgentProcessSpawner } from "./agent-process.js";
@@ -1301,6 +1301,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
     onThemeChanged: broadcastDesktopThemeChanged,
     onExperimentsChanged: async (next) => {
+      // 「대화 중심 화면」은 Desktop 의 신호등·캡션 띠 자리를 바꾼다 — 테마 이벤트로 셸에 알린다.
+      broadcastDesktopThemeChanged(consoleSettingsStore.load().general?.theme ?? "instrument");
       await computerUse.setPlatform(computerUsePlatforms[next.computerUseBackend]);
       if (!next.computerUse) await computerUse.stop();
       for (const listener of experimentListeners) listener(next);
@@ -1313,6 +1315,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const desktopThemeRouter = createDesktopThemeRouter({
     getTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
     getFonts: () => resolveConsoleFonts(consoleSettingsStore.load()),
+    getLayout: desktopThemeLayout,
     isAuthorized: isExactConsoleOrigin,
     writeJson,
     subscribe: (res, snapshot) => {
@@ -2532,10 +2535,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return { available: true, reason: null, host };
   }
 
+  /** Desktop 크롬이 따르는 배치 — 실험 기능 「대화 중심 화면」이 켜지면 네이티브 컨트롤이 세 열의 맨 위 줄에 선다. */
+  function desktopThemeLayout(): DesktopThemeLayout {
+    return { conversationLayout: resolveExperimentSettings(consoleSettingsStore.load().general?.experiments).conversationLayout };
+  }
+
   function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {
     if (desktopThemeSseSubscribers.size === 0) return;
     settleRemoteExpiry();
-    const data = encodeSseData(DESKTOP_THEME_EVENT, desktopThemeSnapshot(theme, resolveConsoleFonts(consoleSettingsStore.load())));
+    const data = encodeSseData(DESKTOP_THEME_EVENT, desktopThemeSnapshot(theme, resolveConsoleFonts(consoleSettingsStore.load()), desktopThemeLayout()));
     for (const res of desktopThemeSseSubscribers) {
       if (!res.destroyed) res.write(data);
     }
