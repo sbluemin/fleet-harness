@@ -850,11 +850,10 @@
 
 .conversation-panel-identity-edit {
   max-width: 100%;
-  margin: 0 -8px;
   padding: 2px 8px;
   overflow: hidden;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-xs);
   background: none;
   color: inherit;
   font: inherit;
@@ -875,9 +874,8 @@
   margin: 0;
   padding: 2px 8px;
   border: 0;
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--text-primary) 8%, transparent);
-  text-align: inherit;
+  background: none;
+  text-align: center;
   outline: none;
 }
 
