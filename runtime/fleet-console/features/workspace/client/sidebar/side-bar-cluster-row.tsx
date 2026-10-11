@@ -250,6 +250,9 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
     const text = resolveLocalizedText(note.text, locale);
     if (text) meta.push({ key: `note-${index}`, text, ...(note.tone ? { tone: note.tone } : {}) });
   });
+  // 대화 중심 화면의 줄은 제목과 상태 한 줄, 두 줄이다 — 단계·기한·주의 메모만 상태 문구 앞에 짧게 서고, 결정 수·후속·출처·맡은 이
+  // 메모는 접근 이름(아래 aria-label 의 meta 전부)으로만 말한다. 결정 요청은 상태 문구가 이미 말한다.
+  const leadMeta = conversationRow ? meta.filter((part) => part.key === "progress" || part.key === "due" || (part.key.startsWith("note-") && part.tone === "warn")) : [];
   // 끌어 놓은 줄은 포인터를 따라왔으니 놓는 순간의 클릭도 이 줄에 떨어진다 — 칩처럼 그 클릭은 여는 동작이 아니다.
   const suppressClickRef = useRef(false);
   const pointerTypeRef = useRef("mouse");
@@ -354,8 +357,15 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         onKeyUp={selectMode ? (event) => { if (event.key === " ") event.preventDefault(); } : undefined}
       >
         <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>
-        {conversationLine ? <span className="side-bar-chip-preview side-bar-cluster-row-preview" aria-hidden="true">{conversationLine}</span> : null}
-        {meta.length > 0 ? (
+        {conversationRow ? (
+          <span className="side-bar-cluster-row-line" aria-hidden="true">
+            {leadMeta.map((part) => (
+              <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")}>{part.text}</span>
+            ))}
+            {conversationLine ? <span className="side-bar-chip-preview side-bar-cluster-row-preview">{conversationLine}</span> : null}
+          </span>
+        ) : null}
+        {!conversationRow && meta.length > 0 ? (
           <span className="side-bar-cluster-row-meta" aria-hidden="true">
             {meta.map((part) => (
               <span key={part.key} className={[part.tone ? `is-${part.tone}` : "", part.prov ? "is-prov" : ""].filter(Boolean).join(" ") || undefined}>{part.text}</span>
