@@ -2,12 +2,10 @@ import { useRef, useState } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
-import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
+import { clusterFaceFacts, mongleStateOfMark, OperationAvatar } from "../avatars.js";
 import { DecisionRequestMark, hasDecisionRequest } from "../decision-request-mark.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { ClusterRowMark } from "../sidebar/side-bar-cluster-row.js";
-import { theaterInitials } from "../sidebar/theater-initials.js";
-import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import { useAttentionQueue } from "./use-attention-queue.js";
 import "./attention-section.css";
 
@@ -69,11 +67,14 @@ export function AttentionSection({ onFocus, onOpenOperationMenu }: {
               }
             }}>
             {operation.id === next?.id ? <span className="side-bar-attention-next">{t("canvas.triage.next")} ▸</span> : null}
-            <OperationNameMark operation={operation} status={visual} decorative className="side-bar-attention-mark" />
+            {/* 줄의 주체는 Operation 하나다 — 사이드바 칩과 같은 마크 축·묶음 사실로 그린 그 Operation 의 아바타가 상태를 말한다.
+                줄 전체가 버튼이고 이름이 접근 이름이라 아바타는 장식이다. */}
+            <OperationAvatar operation={operation} state={mongleStateOfMark(visual, clusterFaceFacts(clusters.clusters, operation.id))} size={20} label="" decorative className="side-bar-attention-mark" />
             <span className="side-bar-attention-title">{operation.title}</span>
             {decision ? <DecisionRequestMark /> : null}
             {mark ? <ClusterRowMark mark={mark} /> : null}
-            <TheaterMonogram>{theaterInitials(theater)}</TheaterMonogram>
+            {/* 이 목록은 전 Theater 를 섞는다 — 아바타를 둘 쌓지 않고, 어느 Theater 인지는 흐린 글자가 말한다. */}
+            <span className="side-bar-attention-theater">{theater}</span>
           </button>;
         })}
         {entries.length === 0 ? <p className="side-bar-attention-empty">{t("canvas.triage.queueEmpty")}</p> : null}

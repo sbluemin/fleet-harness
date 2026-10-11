@@ -1620,14 +1620,11 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation,");
     // 함대 지도 층의 등장, 덱 당김의 되돌림, 마커 강조 전환도 같은 봉인 안에서 즉시 상태로 떨어진다.
     expect(reducedMotionBlock).toContain(".canvas-fleet-map,");
-    expect(reducedMotionBlock).toContain(".canvas-fleet-map-dot,");
+    expect(reducedMotionBlock).toContain(".canvas-fleet-map-marker,");
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-grid,");
-    expect(reducedMotionBlock).toContain(".canvas-fleet-map-dot-label {");
-    // 지도 점의 대기 링 맥동도 같은 봉인에 들어가고, 대기 신호는 정지 링 폴백으로 남는다.
-    expect(reducedMotionBlock).toContain(".canvas-fleet-map-dot.is-awaiting::after,");
-    expect(reducedMotionBlock).toContain("transform: scale(1.35);");
-    // 미룬 점과 치워둔 점은 모션 설정과 무관하게 맥동하지 않는다 — 이미 보고 밀어 둔 신호다.
-    expect(components).toMatch(/\.canvas-fleet-map-dot:is\(\.is-deferred, \.is-set-aside\)::after \{[^}]*animation: none;/);
+    expect(reducedMotionBlock).toContain(".canvas-fleet-map-marker-label {");
+    // 미룬 마커와 치워둔 마커는 모션 설정과 무관하게 얼굴의 대기 몸짓이 멈춘다 — 이미 보고 밀어 둔 신호다.
+    expect(components).toMatch(/\.canvas-fleet-map-marker:is\(\.is-deferred, \.is-set-aside\) \.canvas-fleet-map-marker-face [^{]*\{[^}]*animation: none;/);
     // 지도는 덱 밀도가 아니라 덱 위의 층이고, Cruise 축소가 세우던 지도는 퇴역했다.
     expect(components).not.toContain(".canvas-triage-deck.is-map-mode");
     expect(components).not.toContain(".operations-canvas.is-fleet-map");
@@ -1756,16 +1753,15 @@ describe("Instrument core design contract", () => {
     // consumes only resolveAccentColor identity values and never repaints the status beacon.
     // The group header does not repeat the circular status glyph; chips and panels already do.
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
-    expect(components).toContain(".canvas-fleet-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
+    expect(components).toContain(".canvas-fleet-map-marker.is-awaiting,\n.side-bar-status-section--awaiting {");
     // 미확인 완료는 유휴와 같은 --positive를 받는다 — 색은 "끝난 일"을 말하고, 미확인은 모션이 말한다.
-    expect(components).toMatch(/\.canvas-fleet-map-dot\.is-idle,\s*\.canvas-fleet-map-dot\.is-unseen,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
-    expect(components).toContain(".canvas-fleet-map-dot.is-ended,\n.side-bar-status-section--ended {");
+    expect(components).toMatch(/\.canvas-fleet-map-marker\.is-idle,\s*\.canvas-fleet-map-marker\.is-unseen,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
+    expect(components).toContain(".canvas-fleet-map-marker.is-ended,\n.side-bar-status-section--ended {");
     expect(components).toContain("--activity-color: var(--ink-fog);");
     // 상태 마크의 조형은 12px 원 하나다(둥근 네모 비콘은 폐지). 테두리가 진행을, 가운데 점·획이 결과를 말한다.
     expect(components).not.toContain(".tenant-beacon");
     expect(components).toMatch(/\.status-glyph \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 1\.3px solid var\(--hairline-strong\);[^}]*border-radius: 50%;/);
     expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.4s linear infinite;/);
-    expect(components).toMatch(/\.canvas-fleet-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
     expect(components).not.toContain(".canvas-triage-deck-card");
     expect(components).toContain("--status-color: var(--activity-color);");
@@ -1813,8 +1809,6 @@ describe("Instrument core design contract", () => {
     // reduced-motion이 iteration-count를 1로 자를 때 꺼진 채 남으면 신호가 사라진다.
     expect(components).toMatch(/@keyframes beacon-unseen-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
     expect(theme).not.toContain("@keyframes beacon-unseen-blink");
-    // 지도 점은 유영 애니메이션이 점 자체를 소유하므로 느린 점등을 ::after 후광에 싣는다.
-    expect(components).toMatch(/\.canvas-fleet-map-dot\.is-unseen::after \{[^}]*animation:\s*beacon-unseen-blink 3\.6s/);
     // 마크 축과 섹션 축은 갈라진 채로 각자의 자리에 실린다 — 하나로 합치면 색이 칸을 따라간다.
     expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "unseen" : activity;');
     expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "awaiting" : activity;');
@@ -3400,7 +3394,7 @@ describe("Instrument core design contract", () => {
     expect(statusIcon).toContain('import { OperationAvatar, clusterFaceFacts, mongleStateOfMark } from "../../../workspace/client/avatars.js";');
     expect(statusIcon).toContain("mongleStateOfMark(status, clusterFaceFacts(clusters, operation.id))");
     // Shell이 Operation을 떠난 뒤로 이 칸에는 활동 비콘만 선다 — 종류 분기가 사라졌다.
-    expect(components).not.toContain(".canvas-fleet-map-dot.is-shell,");
+    expect(components).not.toContain(".canvas-fleet-map-marker.is-shell,");
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
     expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-name {\n  color: var(--ink-muted);");
@@ -4513,13 +4507,13 @@ describe("War Room deck panel grammar", () => {
     expect(launch).toContain("position: fixed;");
     expect(launch).toContain("z-index: var(--z-overlay);");
     // 무대에 선 점은 "지금 여기"다 — 위치 채널(brass)만 쓴다. 신호 토큰이 끼면 상태로 읽힌다.
-    const staged = components.match(/\.canvas-fleet-map-dot\.is-staged,\n\.canvas-fleet-map-dot\.is-peeked \{[^}]*\}/)?.[0] ?? "";
+    const staged = components.match(/\.canvas-fleet-map-marker\.is-staged,\n\.canvas-fleet-map-marker\.is-peeked \{[^}]*\}/)?.[0] ?? "";
     expect(staged).toContain("var(--brass)");
     expect(staged).not.toMatch(/--(?:aurora|warn|coral|positive)\b/);
     // 구역의 점 필드는 지명을 상자로 덮는다 — 포인터를 통과시켜 빈 자리의 우클릭이 구역에 닿고, 점만 되받는다.
     const field = components.match(/\.canvas-fleet-map-zone \.canvas-fleet-map-field \{[^}]*\}/)?.[0] ?? "";
     expect(field).toContain("pointer-events: none;");
-    const zoneDot = components.match(/\.canvas-fleet-map-zone \.canvas-fleet-map-dot \{[^}]*\}/)?.[0] ?? "";
+    const zoneDot = components.match(/\.canvas-fleet-map-zone \.canvas-fleet-map-marker \{[^}]*\}/)?.[0] ?? "";
     expect(zoneDot).toContain("pointer-events: auto;");
   });
 

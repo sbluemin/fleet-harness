@@ -980,7 +980,7 @@ export function TriageWatchDeck({
     }
     // 엿보기는 점과 이름표를 함께 비켜 선다 — 점만 비키면 틀이 그 점의 이름을 덮는다.
     const dot = element.getBoundingClientRect();
-    const label = element.querySelector(".canvas-fleet-map-dot-label")?.getBoundingClientRect() ?? dot;
+    const label = element.querySelector(".canvas-fleet-map-marker-label")?.getBoundingClientRect() ?? dot;
     const left = Math.min(dot.left, label.left);
     const right = Math.max(dot.right, label.right);
     setQuickLook((current) => current?.operationId === operationId ? null : { operationId, anchor: new DOMRect(left, dot.top, right - left, dot.height) });

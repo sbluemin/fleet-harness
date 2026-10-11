@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
-import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
+import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 
 import type { Objective } from "../server/types.js";
 import { memberFailureNote, originTitleOf } from "./clusters.js";
+import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import type { ObjectiveGroup } from "./objectives-state.js";
 
@@ -28,6 +29,11 @@ let refocusTrigger = false;
 
 const todayIso = (): string => new Date().toISOString().slice(0, 10);
 const overdueOf = (objective: Objective) => !!objective.dueDate && objective.dueDate < todayIso();
+/**
+ * 줄의 판정(검토 대기 · 시작 전 · 묶음에서 가장 급한 활동)을 지휘관 얼굴로 옮긴다 — 사이드바 목표 줄과 같은 지휘관 아바타다.
+ * 시작 전은 세션 없는 얼굴, 검토 대기·결정 요청은 목표 자신의 사실이 얼굴을 고른다.
+ */
+const activityOfGlyph = (state: StatusGlyphState): string => (state === "fresh" ? "closed" : state === "review" ? "idle" : state);
 
 export interface SwitcherProps {
   readonly t: T;
@@ -128,7 +134,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
         <button type="button" className="objectives-pop-row" aria-current={selected === objective.id ? "true" : undefined}
           aria-label={[objective.title, glyph.label, ...meta.map((part) => part.text), group?.name ?? ""].filter(Boolean).join(", ")}
           onClick={() => pick(objective.id)}>
-          <StatusGlyph state={glyph.state} label={glyph.label} decorative />
+          <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, activityOfGlyph(glyph.state))} />
           <span className="objectives-pop-body" aria-hidden="true">
             <span className="objectives-pop-title">{objective.title}</span>
             {meta.length ? <span className="objectives-pop-meta">{meta.map((part) => <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{part.text}</span>)}</span> : null}

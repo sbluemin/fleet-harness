@@ -3140,14 +3140,14 @@
 /* OperationActivity 색은 이 축에서 한 번만 선언한다. dormant의 brass는 위치 채널 토큰을
    상태에 쓰는 기존 STATUS 예외다. 함대 지도의 점까지 같은 판독을 공유하도록 예외 범위를 함께 넓힌다.
    상태 글리프(.status-glyph)는 이 축을 읽지 않는다 — 원의 테두리와 가운데 점이 상태마다 다른 신호
-   토큰을 직접 조합하므로 한 색 변수로 접히지 않는다. */
-.canvas-fleet-map-dot.is-awaiting,
+   토큰을 직접 조합하므로 한 색 변수로 접히지 않는다. 지도 마커는 얼굴이 상태를 말하고, 이 색은 「다음」 표식 글자만 읽는다. */
+.canvas-fleet-map-marker.is-awaiting,
 .side-bar-status-section--awaiting {
   --activity-color: var(--aurora);
   --activity-glow: var(--aurora-glow);
 }
 
-.canvas-fleet-map-dot.is-running,
+.canvas-fleet-map-marker.is-running,
 .side-bar-status-section--running {
   --activity-color: var(--warn);
   --activity-glow: var(--warn-glow);
@@ -3156,14 +3156,14 @@
 /* 미확인 완료는 유휴와 같은 초록을 쓴다 — 이미 끝난 일이라는 사실이 색을 정하고, 아직 열지
    않았다는 것은 색이 아니라 느린 점등이 말한다. 상태 섹션에는 자기 칸이 없다(승격되어 AWAITING
    칸에 선다): 색과 칸이 갈리는 자리이며, 놓치지 않게 위로 모으는 쪽을 택한 결과다. */
-.canvas-fleet-map-dot.is-idle,
-.canvas-fleet-map-dot.is-unseen,
+.canvas-fleet-map-marker.is-idle,
+.canvas-fleet-map-marker.is-unseen,
 .side-bar-status-section--idle {
   --activity-color: var(--positive);
   --activity-glow: var(--positive-glow);
 }
 
-.canvas-fleet-map-dot.is-ended,
+.canvas-fleet-map-marker.is-ended,
 .side-bar-status-section--ended {
   --activity-color: var(--ink-fog);
 }
@@ -4569,24 +4569,24 @@ button.status-glyph.is-actionable:focus-visible {
   pointer-events: none;
 }
 
-.canvas-fleet-map-zone .canvas-fleet-map-dot {
+.canvas-fleet-map-zone .canvas-fleet-map-marker {
   pointer-events: auto;
 }
 
-/* 지도 마커도 같은 활동 축을 읽는다. 조형은 목록의 상태 글리프(원)와 다른 채움 표지다 — 지도는
-   글리프를 나열하는 목록이 아니라 위치를 찍는 판이어서, 14px 면적과 유영이 판독을 맡는다(의도된 예외).
-   지도 축척이라 반경만 치수에 맞춰 3px로 든다. 모든 점이 제자리에서 유영한다 — 살아 있는
-   함대의 판에서 정지한 점은 죽은 표시로 읽힌다. 상태 위계는 움직임의 유무가 아니라
-   진폭·주기(JS가 주입하는 --fleet-drift-*)가 만든다. */
-.canvas-fleet-map-dot {
+/* 지도 마커는 그 Operation 의 몽글 아바타다 — 사이드바 칩과 같은 마크 축의 얼굴과 몸짓이 상태를 말하고,
+   버튼은 자리·겨눔·무대만 진다(위치 채널 brass). 지도 축척이라 얼굴은 18px로 작게 선다. 모든 마커가
+   제자리에서 유영한다 — 살아 있는 함대의 판에서 정지한 마커는 죽은 표시로 읽힌다. 상태 위계는 움직임의
+   유무가 아니라 진폭·주기(JS가 주입하는 --fleet-drift-*)가 만든다. */
+.canvas-fleet-map-marker {
   position: absolute;
-  width: 14px;
-  height: 14px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 3px;
-  background: var(--activity-color);
-  opacity: 0.75;
+  border-radius: var(--radius-pill);
+  background: transparent;
   cursor: pointer;
   transform: translate(-50%, -50%);
   transition:
@@ -4596,82 +4596,49 @@ button.status-glyph.is-actionable:focus-visible {
   animation: fleet-map-drift calc(var(--duration-slow) * var(--fleet-drift-mult, 36)) var(--ease-glide) infinite alternate; animation-name: var(--state-motion, fleet-map-drift);
 }
 
-.canvas-fleet-map-dot.is-awaiting {
-  box-shadow: 0 0 14px var(--activity-glow);
-  opacity: 1;
+.canvas-fleet-map-marker-face {
+  display: block;
+  pointer-events: none;
 }
 
-.canvas-fleet-map-dot.is-awaiting::after {
-  content: "";
-  position: absolute;
-  inset: -3px;
-  border: 1px solid var(--activity-color);
-  border-radius: var(--radius-pill);
-  animation: fleet-map-awaiting-ring calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite; animation-name: var(--state-motion, fleet-map-awaiting-ring);
-}
-
-/* 지도의 미확인 — 점 자체의 animation은 유영(fleet-map-drift)이 소유하므로, 느린 점등은
-   ::after 후광이 진다. 비콘과 같은 키프레임을 써서 두 표면의 박자를 맞춘다. */
-.canvas-fleet-map-dot.is-unseen {
-  box-shadow: 0 0 11px var(--activity-glow);
-  opacity: 1;
-}
-
-.canvas-fleet-map-dot.is-unseen::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: 4px;
-  box-shadow: 0 0 12px 2px var(--activity-glow);
-  animation: beacon-unseen-blink 3.6s var(--ease-glide) infinite; animation-name: var(--state-motion, beacon-unseen-blink);
-}
-
-.canvas-fleet-map-dot.is-running {
-  box-shadow: 0 0 11px var(--activity-glow);
-  opacity: 1;
-}
-
-/* 겨눈 점은 유영을 멈춘다 — 이름표를 읽는 동안 점이 흘러가면 어느 점의 이름인지 잃는다. */
-.canvas-fleet-map-dot:hover,
-.canvas-fleet-map-dot:focus-visible {
+/* 겨눈 마커는 유영을 멈춘다 — 이름표를 읽는 동안 마커가 흘러가면 어느 마커의 이름인지 잃는다. */
+.canvas-fleet-map-marker:hover,
+.canvas-fleet-map-marker:focus-visible {
   border-color: var(--brass);
   box-shadow: 0 0 0 3px var(--brass-glow);
   outline: none;
   animation-play-state: paused;
 }
 
-/* 대기열의 점 — 무대에 선 점은 "지금 여기"라 위치 채널(brass) 링을 상시 두른다. 미룬 점과 치워둔 점은
-   사람이 이미 보고 밀어 둔 신호라 대기 링이 맥동하지 않고 멈춘다(치워둔 점은 한 단 더 옅다). 엿보는
-   점은 Quick-Look의 출처라 겨눔과 같은 brass 테두리를 남긴다. */
-.canvas-fleet-map-dot.is-staged,
-.canvas-fleet-map-dot.is-peeked {
+/* 대기열의 마커 — 무대에 선 마커는 "지금 여기"라 위치 채널(brass) 링을 상시 두른다. 미룬 마커와 치워둔
+   마커는 사람이 이미 보고 밀어 둔 신호라 얼굴의 대기 몸짓이 멈춘다(치워둔 마커는 한 단 더 옅다). 엿보는
+   마커는 Quick-Look의 출처라 겨눔과 같은 brass 테두리를 남긴다. */
+.canvas-fleet-map-marker.is-staged,
+.canvas-fleet-map-marker.is-peeked {
   border-color: var(--brass);
   box-shadow: 0 0 0 3px var(--brass-glow);
 }
 
-.canvas-fleet-map-dot:is(.is-deferred, .is-set-aside)::after {
+.canvas-fleet-map-marker:is(.is-deferred, .is-set-aside) .canvas-fleet-map-marker-face :is(.mongle-avatar-body, .mongle-avatar-eyes, .mongle-avatar-halo, .mongle-avatar-ask) {
   animation: none;
-  transform: scale(1.35);
+}
+
+/* 치워둔 마커는 얼굴만 옅어진다 — 마커 전체를 옅게 하면 이름표의 받침까지 비쳐 옆 마커가 글자 위로 드러난다. */
+.canvas-fleet-map-marker.is-set-aside .canvas-fleet-map-marker-face {
   opacity: 0.45;
 }
 
-/* 치워둔 점은 색만 옅어진다 — 점 전체를 옅게 하면 이름표의 받침까지 비쳐 옆 점이 글자 위로 드러난다. */
-.canvas-fleet-map-dot.is-set-aside {
-  background: color-mix(in oklch, var(--activity-color) 45%, transparent);
-  box-shadow: none;
-}
-
-.canvas-fleet-map-dot.is-set-aside .canvas-fleet-map-dot-label {
+.canvas-fleet-map-marker.is-set-aside .canvas-fleet-map-marker-label {
   color: var(--text-tertiary);
 }
 
-/* 모든 점이 이름표를 단다 — 대기열의 점은 무대·「다음」·순번·미룸·치워둠이 이름 앞에 붙는다. 긴 이름은
-   말줄임으로 접고, 같은 줄의 이웃 점 앞에서 멈춘다(폭은 JS가 잰다). 대기열의 이름표는 받침을 깔고
+/* 모든 마커가 이름표를 단다 — 대기열의 마커는 무대·「다음」·순번·미룸·치워둠이 이름 앞에 붙는다. 긴 이름은
+   말줄임으로 접고, 같은 줄의 이웃 마커 앞에서 멈춘다(폭은 JS가 잰다). 대기열의 이름표는 받침을 깔고
    이웃 위에 서서, 붐비는 판에서도 대기의 이름이 먼저 읽힌다. */
-.canvas-fleet-map-dot-label {
+.canvas-fleet-map-marker-label {
   position: absolute;
   top: 50%;
-  left: 130%;
+  left: calc(100% + 4px);
   max-width: 180px;
   overflow: hidden;
   color: var(--text-tertiary);
@@ -4684,41 +4651,41 @@ button.status-glyph.is-actionable:focus-visible {
   pointer-events: none;
 }
 
-.canvas-fleet-map-dot.is-awaiting .canvas-fleet-map-dot-label,
-.canvas-fleet-map-dot.is-running .canvas-fleet-map-dot-label,
-.canvas-fleet-map-dot:hover .canvas-fleet-map-dot-label,
-.canvas-fleet-map-dot:focus-visible .canvas-fleet-map-dot-label {
+.canvas-fleet-map-marker.is-awaiting .canvas-fleet-map-marker-label,
+.canvas-fleet-map-marker.is-running .canvas-fleet-map-marker-label,
+.canvas-fleet-map-marker:hover .canvas-fleet-map-marker-label,
+.canvas-fleet-map-marker:focus-visible .canvas-fleet-map-marker-label {
   color: var(--text-secondary);
 }
 
-/* 대기열의 점은 이웃 점 위에 선다 — 이름표가 옆 점에 덮이면 대기의 이름이 읽히지 않는다. 이름표는
-   바다색 받침을 깔아 뒤로 지나가는 점과 격자를 누른다. 판 오른쪽 끝의 점은 이름표를 왼쪽으로 편다. */
-.canvas-fleet-map-dot.is-marked {
+/* 대기열의 마커는 이웃 마커 위에 선다 — 이름표가 옆 마커에 덮이면 대기의 이름이 읽히지 않는다. 이름표는
+   바다색 받침을 깔아 뒤로 지나가는 마커와 격자를 누른다. 판 오른쪽 끝의 마커는 이름표를 왼쪽으로 편다. */
+.canvas-fleet-map-marker.is-marked {
   z-index: 1;
 }
 
-.canvas-fleet-map-dot.is-marked .canvas-fleet-map-dot-label {
+.canvas-fleet-map-marker.is-marked .canvas-fleet-map-marker-label {
   padding: 1px 5px;
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--canvas-abyss) 92%, transparent);
 }
 
-.canvas-fleet-map-dot.is-label-start .canvas-fleet-map-dot-label {
+.canvas-fleet-map-marker.is-label-start .canvas-fleet-map-marker-label {
   left: auto;
-  right: 130%;
+  right: calc(100% + 4px);
 }
 
-.canvas-fleet-map-dot-mark {
+.canvas-fleet-map-marker-mark {
   margin-right: 6px;
   color: var(--text-tertiary);
   font-weight: var(--weight-bold);
 }
 
-.canvas-fleet-map-dot.is-next .canvas-fleet-map-dot-mark {
+.canvas-fleet-map-marker.is-next .canvas-fleet-map-marker-mark {
   color: var(--activity-color);
 }
 
-.canvas-fleet-map-dot.is-staged .canvas-fleet-map-dot-mark {
+.canvas-fleet-map-marker.is-staged .canvas-fleet-map-marker-mark {
   color: var(--brass-bright);
 }
 
@@ -4751,11 +4718,6 @@ button.status-glyph.is-actionable:focus-visible {
 @keyframes fleet-map-in {
   from { opacity: 0; transform: scale(1.03); }
   to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes fleet-map-awaiting-ring {
-  0% { transform: scale(0.55); opacity: 0.9; }
-  70%, 100% { transform: scale(2.2); opacity: 0; }
 }
 
 @keyframes fleet-map-drift {
@@ -5037,8 +4999,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-fleet-map,
-  .canvas-fleet-map-dot,
-  .canvas-fleet-map-dot.is-awaiting::after,
+  .canvas-fleet-map-marker,
   .canvas-triage-deck-cell.is-landed > .canvas-triage-deck-mount > .canvas-operation,
   .canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation,
   .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation,
@@ -5049,12 +5010,6 @@ button.status-glyph.is-actionable:focus-visible {
   /* 움직임 없이도 대기·확인 전의 서로 다른 신호는 남는다. */
   .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation {
     border-color: var(--triage-signal, var(--aurora));
-  }
-
-  /* 움직임 없이도 대기 신호는 읽혀야 한다 — 정지한 aurora 링으로 폴백한다. */
-  .canvas-fleet-map-dot.is-awaiting::after {
-    transform: scale(1.35);
-    opacity: 0.6;
   }
 
   /* 움직임 없이도 전환 제목은 읽혀야 한다 — 낱말 지연을 걷고 계단으로 켜졌다 꺼진다. */
@@ -5073,8 +5028,8 @@ button.status-glyph.is-actionable:focus-visible {
   /* 덱 줌 전환은 JS 쪽에서 즉시 스냅하고, 당김의 되돌림과 지도 마커 강조 전환은 여기서 끊는다 —
      층은 서거나 없거나 둘 중 하나로 즉시 떨어진다. */
   .canvas-triage-deck-grid,
-  .canvas-fleet-map-dot,
-  .canvas-fleet-map-dot-label {
+  .canvas-fleet-map-marker,
+  .canvas-fleet-map-marker-label {
     transition: none;
   }
 }
@@ -6085,7 +6040,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   }
 }
 
-/* 상태 레일 색 — OperationActivity 매핑 축(.canvas-fleet-map-dot 선언)과 같은 토큰을 쓴다.
+/* 상태 레일 색 — OperationActivity 매핑 축(.canvas-fleet-map-marker 선언)과 같은 토큰을 쓴다.
    turn: warn(에이전트 턴, 턴 뒤에 남은 백그라운드 작업 포함) · awaiting: aurora(운영자 입력 대기)
    · unseen: positive(미확인 완료). idle·dormant는 레일을 켜지 않는다. */
 .canvas-operation.is-running--turn {
@@ -7292,7 +7247,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* 상태 — 마크는 사이드바·작업 표시줄과 같은 조형이고 글자는 신호의 ink 티어다. 입력 대기(aurora)와
    미확인 완료(positive)는 문구와 색이 함께 갈린다. 유휴는 초록 글자를 쓰지 않아 미확인 완료와 섞이지 않고,
-   모름(상태 확인 불가)은 중립 마크와 3티어 글자로 선다. */
+   모름(상태 확인 불가)은 3티어 글자로 선다. */
 .fleet-map-detail-status {
   display: inline-flex;
   align-items: center;
