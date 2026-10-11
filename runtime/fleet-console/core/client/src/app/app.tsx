@@ -9,6 +9,7 @@ import { companionDefaultChord, companionShortcutCommandId, shortcutCommandLabel
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
 import { CommandBand } from "../chrome/components/command-band.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
+import { ConversationWelcome } from "../chrome/components/conversation-welcome.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "../chrome/components/operation-search.js";
@@ -40,7 +41,7 @@ import type { PaletteSearchPanel } from "../integration/operation-search.js";
 import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
 import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration/plugin-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
-import { useConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
+import { saveClassicLayout, useConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
@@ -165,6 +166,8 @@ function ConnectedApp() {
   // 사용자 동작뿐이다. theaters bootstrap 같은 무관한 축에 게이트하면 그 응답이 늦거나 실패하는 동안의
   // 전환이 통째로 소실된다(Settings는 그 전에도 조작 가능하다).
   const [themeNotice, setThemeNotice] = useState<"light" | "dark" | null>(null);
+  // 웰컴 카드에서 이전 화면으로 돌아간 직후의 안내 — 되돌리기 한 번과 설정 위치를 남기고 스스로 거둔다.
+  const [classicReturnNotice, setClassicReturnNotice] = useState(false);
   const [pluginFailuresNotice, setPluginFailuresNotice] = useState(registry.failures.length > 0);
   const themePolarityBaselineRef = useRef<"light" | "dark" | null>(null);
   const activeThemePolarity = themePolarity(state.activeTheme);
@@ -187,12 +190,18 @@ function ConnectedApp() {
     return () => clearTimeout(timer);
   }, [themeNotice]);
 
+  useEffect(() => {
+    if (!classicReturnNotice) return;
+    const timer = setTimeout(() => setClassicReturnNotice(false), THEME_NOTICE_AUTO_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [classicReturnNotice]);
+
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
   const isTransitionalRoute = pathname === "/";
   const mobileLayout = useViewMode().effective === "mobile";
   const warRoomMode = useTriageActive();
-  // 실험 기능 「대화 중심 화면」은 Operations 화면의 배치다 — 다른 화면(설정 등)에서는 밴드가 그대로 길을 낸다.
+  // 대화 중심 화면(기본, 실험 기능 「이전 화면으로 돌아가기」로 끔)은 Operations 화면의 배치다 — 다른 화면(설정 등)에서는 밴드가 그대로 길을 낸다.
   const conversationLayoutOn = useConversationLayout();
   const conversationLayout = conversationLayoutOn && operationsViewVisible;
   // 대화 중심 화면이 켜져 있다는 표식 — 화면과 무관하게 선다. Desktop 셸은 이때 신호등·캡션 버튼을 52px 맨 위 줄에 맞추므로
@@ -742,6 +751,15 @@ function ConnectedApp() {
         <TheaterInboxHost />
         <WhatsNewModal state={state} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}
+        {/* 대화 중심 화면 웰컴 카드 — 앞선 안내(첫 실행·What's New)와 열린 팔레트·컴포저가 모두 물러난 뒤에만 선다. */}
+        <ConversationWelcome
+          eligible={
+            conversationLayout && state.bootstrapped && !state.onboardingOpen && !state.whatsNewOpen
+            && !state.operationSearchOpen && !state.quickLaunchOpen && !state.keyboardShortcutsOpen
+            && (state.controlHolder === null || state.controlCurtainDismissed)
+          }
+          onReturned={() => setClassicReturnNotice(true)}
+        />
         <OnboardingHost
           toursSuspended={warRoomTransitionActive || terminalFocused || mobileLayout}
           core={CORE_ONBOARDING}
@@ -769,6 +787,16 @@ function ConnectedApp() {
             tone="info"
             title={themeNotice === "light" ? t("chrome.toast.themeLight") : t("chrome.toast.themeDark")}
             onDismiss={() => setThemeNotice(null)}
+          />
+          <Toast
+            open={classicReturnNotice}
+            tone="info"
+            title={t("chrome.conversationWelcome.returned")}
+            message={t("chrome.conversationWelcome.returnedDetail")}
+            actionLabel={t("chrome.conversationWelcome.undo")}
+            // 저장이 된 뒤에만 거둔다 — 실패하면 화면이 이전 화면으로 남고, 알림이 남아 한 번 더 누를 수 있다.
+            onAction={() => { void saveClassicLayout(false).then((saved) => { if (saved) setClassicReturnNotice(false); }); }}
+            onDismiss={() => setClassicReturnNotice(false)}
           />
           <Toast open={promptForgottenNotice !== null} tone="warn" title={t("sidebar.theater.prompt.forgotten", { theater: promptForgottenNotice ?? "" })} onDismiss={() => setPromptForgottenNotice(null)} />
           {mobileLayout ? deletionToast : null}

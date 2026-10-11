@@ -53,6 +53,7 @@ const { CORE_ONBOARDING } = await load(join(consoleSrc, "core/client/src/integra
 const { hintSeenKey, tourSeenKey } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
 const { COMMISSIONING_SEEN_KEY } = await load(join(consoleSrc, "core/client/src/integration/store.ts"));
 const { EFFORT_CONFIRM_TIP_SEEN_KEY } = await load(join(consoleSrc, "features/workspace/client/canvas/canvas-context-menu.tsx"));
+const { CONVERSATION_WELCOME_SEEN_KEY } = await load(join(consoleSrc, "core/client/src/chrome/components/conversation-welcome.tsx"));
 
 // The Console composes built-in plugins from each `client/index.tsx` `plugins` export (virtual:fleet-plugins in
 // core/client/vite.config.ts), and its registry takes `onboarding` from each plugin definition.
@@ -68,7 +69,7 @@ for (const plugin of readdirSync(pluginsDir)) {
 // Seen keys outside the contributions: the ones "Replay onboarding" also clears. Their list is the unexported drop set
 // in forgetAllOnboarding (core/client/src/chrome/components/command-band-system-cluster.tsx), so a key added there
 // needs adding here; --dry-run shows what is covered.
-const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY as string];
+const derived = [COMMISSIONING_SEEN_KEY as string, EFFORT_CONFIRM_TIP_SEEN_KEY as string, CONVERSATION_WELCOME_SEEN_KEY as string];
 for (const contribution of contributions) {
   const hint = hintSeenKey(contribution);
   if (hint) derived.push(hint);

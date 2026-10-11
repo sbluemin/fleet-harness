@@ -307,7 +307,7 @@ it("keeps independent group journals alive across view closure, merges only conf
     const text = await new Promise<string>((resolve) => histories.set(history[1]!, resolve));
     return { ok: true, json: async () => ({ entries: [{ seq: 1, at: 50, event: { kind: "text", text } }], truncated: false }) } as Response;
   });
-  const dispose = installGroupTimeline({ experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, conversationLayout: true }), subscribe: () => () => {} } });
+  const dispose = installGroupTimeline({ experiments: { read: () => DEFAULT_EXPERIMENT_SETTINGS, subscribe: () => () => {} } });
   function GroupProbe() { group = useGroupTimeline("root"); return null; }
   const render = () => act(() => root!.render(createElement(GroupClusterProvider, { value: clusterSource }, createElement(GroupProbe))));
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);

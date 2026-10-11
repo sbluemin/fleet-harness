@@ -384,7 +384,7 @@ function languageLabel(state: GlobalSettingsState, t: (key: CoreMessageKey) => s
  */
 function describeExperiments(state: GlobalSettingsState | null, t: (key: CoreMessageKey, params?: Record<string, string | number>) => string): string | null {
   if (state === null) return null;
-  const on = [state.experiments.conversationLayout, state.experiments.computerUse].filter(Boolean).length;
+  const on = [state.experiments.classicLayout, state.experiments.computerUse].filter(Boolean).length;
   return on === 0 ? t("mobile.settings.off") : t("mobile.settings.experimentsOn", { count: on });
 }
 

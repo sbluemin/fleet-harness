@@ -80,7 +80,7 @@ export function installGroupTimeline(ctx: { readonly experiments: Pick<PluginIns
     const all = [...state.operations, ...state.nestedOperations].filter((operation) => operation.type === "agent" && operation.pluginId === null);
     const roots = new Set(state.operations.map((operation) => operation.id));
     const ids = new Set(all.map((operation) => operation.id));
-    const enabled = ctx.experiments.read()?.conversationLayout === true;
+    const enabled = ctx.experiments.read()?.classicLayout === false;
     const sessions = getAgentState().sessions;
     const runtime = ownOperationRuntime();
     for (const [id, record] of held) {

@@ -179,7 +179,7 @@ function CheckGlyph() {
   );
 }
 
-function trapFocus(event: KeyboardEvent, container: HTMLElement | null): void {
+export function trapFocus(event: KeyboardEvent, container: HTMLElement | null): void {
   if (!container) return;
   const focusable = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
   const first = focusable[0];

@@ -129,13 +129,13 @@ function buildThemeOptions(t: T): readonly ThemeOption[] {
 /**
  * 대화 중심 화면의 테마 — 라이트(Whites 그대로)와 다크(고른 다크 테마가 무엇이든 「대화 다크」 한 벌, theme.css) 둘뿐이다.
  * 다크 카드는 지금 다크면 그 값을 그대로 가리키고, 라이트에서 다크로 갈 때만 Instrument 를 저장한다 — 이 화면이 저장된 다크 선택을
- * 덮어쓰지 않는다. 토글을 끄면 저장된 테마 그대로 네 장이 다시 선다.
+ * 덮어쓰지 않는다. 「이전 화면으로 돌아가기」를 켜면 저장된 테마 그대로 네 장이 다시 선다.
  */
 function buildConversationThemeOptions(t: T, activeTheme: ThemeId): readonly ThemeOption[] {
   const dark: ThemeId = activeTheme === "whites" ? "instrument" : activeTheme;
   return [
-    { id: "whites", label: t("settings.theme.group.light"), polarity: t("settings.experiments.conversationLayout.title"), swatch: ["oklch(95.5% 0.005 100)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
-    { id: dark, label: t("settings.theme.group.dark"), polarity: t("settings.experiments.conversationLayout.title"), swatch: ["oklch(12.9% 0 0)", "oklch(26.9% 0 0)", "oklch(77% 0.085 64)"] },
+    { id: "whites", label: t("settings.theme.group.light"), polarity: t("settings.theme.conversationLayout"), swatch: ["oklch(95.5% 0.005 100)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
+    { id: dark, label: t("settings.theme.group.dark"), polarity: t("settings.theme.conversationLayout"), swatch: ["oklch(12.9% 0 0)", "oklch(26.9% 0 0)", "oklch(77% 0.085 64)"] },
   ];
 }
 
@@ -212,7 +212,8 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       help: t("settings.experiments.intro"),
       entries: [
         t("settings.experiments.screenCard"),
-        t("settings.experiments.conversationLayout.title"),
+        t("settings.experiments.classicLayout.title"),
+        t("settings.theme.conversationLayout"),
         t("settings.experiments.aiCard"),
         t("settings.computerUse.title"),
         "Computer Use",
