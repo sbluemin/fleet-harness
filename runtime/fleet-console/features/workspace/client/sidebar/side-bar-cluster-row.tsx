@@ -2,8 +2,8 @@ import { useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, t
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationClusterRow, OperationClusterRowMark } from "@fleet-console/sdk/plugin";
-import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
+import type { OperationClusterRow, OperationClusterRowGlyph, OperationClusterRowMark } from "@fleet-console/sdk/plugin";
+import { StatusGlyph } from "@fleet-console/sdk/components/status-glyph";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
@@ -96,9 +96,9 @@ export interface SideBarRowPlan {
 const foldedFresh = (item: SideBarRowItem) => item.row.glyph === "fresh" && !item.anchor && item.fold.length === 0;
 
 // 칩 칸과 같은 셈법: 사람을 기다리는 것이 먼저, 끝난 것이 마지막.
-const MARK_URGENCY: Record<OperationMarkVisual, number> = { awaiting: 0, unseen: 1, running: 2, background: 3, idle: 4, ended: 5 };
+const MARK_URGENCY: Record<OperationMarkVisual, number> = { awaiting: 0, unseen: 1, running: 2, idle: 4, ended: 5 };
 
-export function rowGlyphState(item: SideBarRowItem): StatusGlyphState {
+export function rowGlyphState(item: SideBarRowItem): OperationClusterRowGlyph | OperationMarkVisual {
   if (item.row.glyph) return item.row.glyph;
   let best: OperationMarkVisual | null = null;
   for (const entry of item.fold) {

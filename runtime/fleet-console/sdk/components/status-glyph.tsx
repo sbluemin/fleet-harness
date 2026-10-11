@@ -9,6 +9,9 @@ import type { MouseEvent } from "react";
  *
  * 클래스 이름은 이 모듈이 고정한다 — 실제 규칙은 코어 `components.css`의 `.status-glyph` 한 곳에 산다.
  * 라벨은 호출부가 자기 로케일로 넘긴다(SDK는 번역을 소유하지 않는다).
+ *
+ * `background`(턴 뒤에 남은 백그라운드 작업)는 계약상 받지만 진행(`running`)과 같은 조형으로 그린다 — 사람에게는
+ * 그 Operation이 아직 일하고 있다는 한 사실이다.
  */
 export type StatusGlyphState =
   | "fresh"
@@ -32,7 +35,7 @@ interface StatusGlyphProps {
 }
 
 export function statusGlyphClassName(state: StatusGlyphState, className?: string): string {
-  return ["status-glyph", `is-${state}`, className].filter(Boolean).join(" ");
+  return ["status-glyph", `is-${state === "background" ? "running" : state}`, className].filter(Boolean).join(" ");
 }
 
 export function StatusGlyph({ state, label, decorative = false, className, onActivate }: StatusGlyphProps) {

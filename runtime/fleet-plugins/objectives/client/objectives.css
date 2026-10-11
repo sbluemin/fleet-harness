@@ -217,7 +217,6 @@
 .objectives-op i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; }
 .objectives-op.is-awaiting i { background: var(--aurora); }
 .objectives-op.is-idle i, .objectives-op.is-ended i, .objectives-op.is-closed i, .objectives-op.is-unknown i { background: var(--text-tertiary); }
-.objectives-op.is-background i { background: color-mix(in oklab, var(--warn) 70%, var(--text-tertiary)); }
 
 /* 한 열에서 추가한 뒤 — 상세를 덮어 열지 않고 「추가됨 · 열기」가 입력줄에 선다. */
 
@@ -359,7 +358,6 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-mission-sub i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; font-style: normal; }
 .objectives-mission-sub.is-awaiting i { background: var(--aurora); }
 .objectives-mission-sub.is-idle i, .objectives-mission-sub.is-ended i, .objectives-mission-sub.is-closed i, .objectives-mission-sub.is-unknown i { background: var(--text-tertiary); }
-.objectives-mission-sub.is-background i { background: color-mix(in oklab, var(--warn) 70%, var(--text-tertiary)); }
 .objectives-mission-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklab, var(--brass-ink) 80%, var(--text-secondary)); }
 /* 임무 기록 — 상자·배경 없이 임무 글자 선(22 + 확인 16 + 간격 12 = 50px)에서 펼쳐진다. */
 .objectives-records-count { flex: none; margin-top: 6px; min-height: 18px; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
@@ -670,7 +668,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-failure pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .objectives-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .objectives-member-status.is-running { color: var(--warn-ink); }
-.objectives-member-status.is-background { color: color-mix(in oklab, var(--warn-ink) 70%, var(--text-tertiary)); }
 .objectives-member-status.is-idle { color: var(--positive); }
 .objectives-member-status.is-awaiting { color: var(--aurora); }
 .objectives-member-status.is-failed { color: var(--coral); }
@@ -808,7 +805,6 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-check.is-linked.is-idle i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--text-tertiary); }
 .objectives-check.is-linked.is-running { border-color: color-mix(in oklch, var(--warn) 35%, transparent); }
 .objectives-check.is-linked.is-running i { border: 1.5px solid transparent; border-top-color: var(--warn); animation: objectives-spin 1.2s linear infinite; animation-name: var(--state-motion, objectives-spin); }
-.objectives-check.is-linked.is-background { border-style: dashed; border-color: var(--warn); }
 .objectives-check.is-linked.is-awaiting { border-color: var(--aurora); animation: objectives-breathe 1.6s ease-in-out infinite; animation-name: var(--state-motion, objectives-breathe); }
 .objectives-check.is-linked.is-awaiting i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--aurora); }
 .objectives-check.is-linked.is-ended, .objectives-check.is-linked.is-unknown, .objectives-check.is-linked.is-closed { border-color: var(--hairline); }

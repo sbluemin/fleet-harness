@@ -18,7 +18,7 @@ export function graphMissionStates(objective: Objective, operationState: (id: st
   for (const mission of objective.missions) {
     const owner = mission.member ?? objective.id, activity = operationState(owner);
     let state: MissionState = mission.done ? "done" : isLoose(mission) ? "unplaced" : missionReady(objective.missions, mission) ? "ready" : "blocked";
-    if (state === "ready" && !activeMembers.has(owner) && ["running", "background", "awaiting"].includes(activity)) {
+    if (state === "ready" && !activeMembers.has(owner) && ["running", "awaiting"].includes(activity)) {
       state = activity === "awaiting" ? "awaiting" : "running";
       activeMembers.add(owner);
     }

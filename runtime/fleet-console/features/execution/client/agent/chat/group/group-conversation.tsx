@@ -350,7 +350,12 @@ export function GroupWorkingLine({ working, language, onStop }: {
   );
 }
 
-/** 참여자 활동 낱말 — 구성원 탭이 쓴다. */
-export function activityKey(activity: ConversationParticipant["activity"]) {
+/** 참여자 활동 낱말 — 구성원 탭이 쓴다. 턴 뒤에 남은 백그라운드 작업은 화면에서 작업 중으로 읽힌다(memberActivityVisual). */
+export function activityKey(activity: Exclude<ConversationParticipant["activity"], "background">) {
   return `group.activity.${activity}` as const;
+}
+
+/** 구성원 점·낱말이 그리는 활동 — Operation 표시 어휘와 같게 background 를 running 으로 접는다. 원시 활동은 중단 버튼 판정이 그대로 읽는다. */
+export function memberActivityVisual(activity: ConversationParticipant["activity"]): Exclude<ConversationParticipant["activity"], "background"> {
+  return activity === "background" ? "running" : activity;
 }

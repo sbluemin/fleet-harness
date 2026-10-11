@@ -509,7 +509,6 @@ export const pagesEn = {
 
   // activity
   "activity.running": "Running",
-  "activity.background": "Background",
   "activity.awaiting": "Awaiting input",
   "activity.ended": "Ended",
   "activity.idle": "Idle",
@@ -560,7 +559,6 @@ export const pagesEn = {
   "mobile.search.empty": "No matching Operation.",
   "mobile.search.state.awaiting": "Waiting for input",
   "mobile.search.state.running": "Running",
-  "mobile.search.state.background": "Background",
   "mobile.search.state.idle": "Idle",
   "mobile.search.state.unseen": "New result",
   "mobile.search.state.ended": "Ended",
@@ -1184,7 +1182,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   // 상태별 명칭은 사이드바 STATUS 축(sidebar.status.*)과 동일해야 한다 — 유휴 카드가 "대기"로
   // 보이면 사이드바의 대기(awaiting) 섹션과 상태가 충돌해 다른 상태로 읽힌다.
   "activity.running": "실행 중",
-  "activity.background": "백그라운드",
   "activity.awaiting": "대기",
   "activity.ended": "종료됨",
   "activity.idle": "유휴",
@@ -1224,7 +1221,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "mobile.search.empty": "찾는 작업이 없습니다.",
   "mobile.search.state.awaiting": "입력 대기",
   "mobile.search.state.running": "진행 중",
-  "mobile.search.state.background": "백그라운드",
   "mobile.search.state.idle": "유휴",
   "mobile.search.state.unseen": "새 결과",
   "mobile.search.state.ended": "끝남",

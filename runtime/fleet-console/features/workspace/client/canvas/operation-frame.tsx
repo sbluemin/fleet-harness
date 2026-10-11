@@ -130,7 +130,7 @@ const ARRIVAL_FLASH_DURATION_MS = 360;
 // 애니메이션이 끝나면 클래스를 거둔다.
 const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
-const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
+const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-call", "caption-rail-tide"]);
 
 export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, snapFull = false, snapHeld = false, resizeDisabled = false, alignHeld = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapZone = null, interactionDisabled = false, triageStage = false, triagePicked = false, triageNext = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, decisionRequest = false, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onToggleSnapFull, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
@@ -752,7 +752,6 @@ function resizeGeometry(geometry: OperationGeometry, direction: ResizeDirection,
 function frameStatusClass(status: OperationActivityVisual | undefined): string {
   const visual = operationActivityVisual(status);
   if (visual === "running") return "is-running is-running--turn";
-  if (visual === "background") return "is-running is-running--background";
   if (visual === "awaiting") return "is-running is-running--awaiting";
   return "";
 }

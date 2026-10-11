@@ -28,7 +28,7 @@ import "./mobile.css";
  */
 
 type T = Translate<ObjectiveMessageKey>;
-type Glyph = "fresh" | "running" | "background" | "awaiting" | "idle" | "ended" | "review" | "done";
+type Glyph = "fresh" | "running" | "awaiting" | "idle" | "ended" | "review" | "done";
 
 export const OBJECTIVE_MOBILE_DETAIL_PANE = "objectives-mobile-detail";
 
@@ -36,10 +36,10 @@ const TOAST_MS = 6_000;
 const SHEET_CLOSE_MS = 220;
 const SHEET_DISMISS_PX = 110;
 const SHEET_DRAG_SLOP_PX = 6;
-const WORKING = new Set(["running", "background"]);
-const URGENCY: Record<string, number> = { awaiting: 0, running: 1, background: 2, idle: 3, ended: 4 };
+const WORKING = new Set(["running"]);
+const URGENCY: Record<string, number> = { awaiting: 0, running: 1, idle: 3, ended: 4 };
 const activityGlyph = (activity: string | undefined): Glyph =>
-  activity === "running" || activity === "background" || activity === "awaiting" || activity === "idle" ? activity : activity === undefined ? "fresh" : "ended";
+  activity === "running" || activity === "awaiting" || activity === "idle" ? activity : activity === undefined ? "fresh" : "ended";
 
 const StatusMark = ({ state }: { readonly state: Glyph }) => <span className={`objectives-m-sg is-${state}`} aria-hidden="true" />;
 /** 시안 아이콘 문법 — 24 viewBox, 선 1.7, 둥근 끝. */
@@ -54,7 +54,14 @@ const StopIcon = () => <Icon><rect x="7.5" y="7.5" width="9" height="9" rx="1.5"
 const CloseIcon = () => <Icon><path d="M6 6l12 12M18 6L6 18" /></Icon>;
 const LockIcon = () => <Icon size={14}><rect x="5.5" y="10.5" width="13" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" /></Icon>;
 
-const operationIndex = (operations: readonly ConsoleOperationSummary[]) => new Map(operations.map((operation) => [operation.id, operation]));
+/** 턴 뒤에 남은 백그라운드 작업(background)은 화면에서 진행 중(running)이다 — 색인을 세울 때 한 번 접는다. */
+const shownActivity = <A extends string | undefined>(activity: A) => (activity === "background" ? "running" : activity) as A;
+const shownOperation = (operation: ConsoleOperationSummary): ConsoleOperationSummary => operation.activity !== "background" && operation.ownActivity !== "background" ? operation : {
+  ...operation,
+  activity: shownActivity(operation.activity),
+  ...(operation.ownActivity === undefined ? {} : { ownActivity: shownActivity(operation.ownActivity) }),
+};
+const operationIndex = (operations: readonly ConsoleOperationSummary[]) => new Map(operations.map((operation) => [operation.id, shownOperation(operation)]));
 type OperationIndex = ReturnType<typeof operationIndex>;
 const activityOf = (operations: OperationIndex, id: string): string => operations.get(id)?.activity ?? "closed";
 /** 지휘관 자신의 활동 — 코어가 구성원 활동을 끌어올리기 전 값. 보드와 같은 셈이다. */
@@ -450,7 +457,7 @@ function ResultsSection({ objective, t, language, openLink }: { readonly objecti
 
 // ── 지휘관·구성원 ──
 
-const COMMANDER_LIVE = new Set(["idle", "running", "background", "awaiting"]);
+const COMMANDER_LIVE = new Set(["idle", "running", "awaiting"]);
 
 /** 거절 코드 → 토스트 한 줄. 라우팅·전환 사유는 사람의 말로, 지휘관이 일하는 중이면 그 사정으로. */
 const launchFailure = (t: T, error: unknown): string => {
@@ -463,12 +470,12 @@ function activityWord(state: string, t: T): string | null {
   if (state === "closed") return null;
   if (state === "ended") return t("objectives.members.dormant");
   if (state === "awaiting") return t("objectives.awaiting.word");
-  return state === "running" || state === "background" ? t("objectives.members.working") : t("objectives.members.idle");
+  return state === "running" ? t("objectives.members.working") : t("objectives.members.idle");
 }
 
 /** 구성원 행 머리의 배지 낱말 — 실패가 먼저, 세션이 없으면 맡은 임무 수, 아니면 상태 낱말. */
 function memberBadge(member: ObjectiveMember, state: string, objective: Objective, t: T): { readonly text: string; readonly failed: boolean } {
-  const working = state === "running" || state === "background" || state === "awaiting";
+  const working = state === "running" || state === "awaiting";
   if ((member.outcome === "failed" || !!member.failure) && !working) return { text: t("objectives.members.failed"), failed: true };
   if (state === "closed") return { text: t("objectives.members.missions", { count: objective.missions.filter((mission) => mission.member === member.id).length }), failed: false };
   return { text: activityWord(state, t) ?? "", failed: false };
