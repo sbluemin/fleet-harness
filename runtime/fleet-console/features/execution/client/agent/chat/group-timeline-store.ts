@@ -141,7 +141,8 @@ export function installGroupTimeline(ctx: { readonly experiments: Pick<PluginIns
     for (const off of cleanups) off();
     for (const record of held.values()) { record.socket?.dispose(); stopHistory(record); }
     held.clear();
-    demanded.clear();
+    // 수요는 화면이 페이지 수명 동안 건 것이다 — 레일 목록 변화로 설치가 다시 돌 때 비우면, 같은 루트를 보는 화면의
+    // effect는 다시 돌지 않아 지난 대화를 다시 청하지 못한다. 다음 설치의 첫 sync가 이 수요를 그대로 이어받는다.
     if (resync === sync) resync = null;
     notify();
   };
