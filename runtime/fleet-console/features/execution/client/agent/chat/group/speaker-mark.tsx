@@ -1,6 +1,6 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 
-import type { ConversationSpeaker } from "./conversation-types.js";
+import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
 
 /**
  * 발화자 표식 — 그룹 대화의 말풍선·위임 줄·진행 줄·구성원 탭이 같은 표식을 쓴다.

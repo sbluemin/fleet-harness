@@ -56,6 +56,7 @@ import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-ga
 import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { installGroupTimeline } from "./chat/group-timeline-store.js";
+import { installGroupConversationSurface } from "./chat/group/index.js";
 import { startAgentConnection } from "./connection.js";
 import { applySessionUpdate, getAgentState, removeSession, selectSession, useAgentState } from "./store.js";
 import type { SessionInfo } from "./types.js";
@@ -263,6 +264,7 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
   setUseRequestApi(ctx.api);
   setInstalledExperiments(ctx.experiments);
   const disposeGroupTimeline = installGroupTimeline(ctx);
+  const disposeGroupConversation = installGroupConversationSurface();
   // Console Use 의 console_reveal — 에이전트가 "여기를 봐 달라"고 한 Operation 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
   // 사용자가 입력 중이면(활성 요소가 편집 가능) 포커스를 빼앗지 않고 말풍선만 띄운다.
   const disposeReveal = ctx.consoleEvents.subscribe(OPERATION_REVEAL_EVENT_CHANNEL, (payload) => {
@@ -299,6 +301,7 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
     setInstalledExperiments(null);
     disposeReveal();
     disposeConnection();
+    disposeGroupConversation();
     disposeGroupTimeline();
     disposeArchive();
   };

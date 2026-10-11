@@ -288,3 +288,5 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 }
 .group-ledger-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .group-ledger-body > * { flex: 1 1 auto; min-height: 0; }
+
+.group-members-empty { margin: 0; padding: var(--space-4); font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-tertiary); }

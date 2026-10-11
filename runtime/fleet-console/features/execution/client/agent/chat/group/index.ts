@@ -5,3 +5,4 @@
  */
 export { GroupConversation, GroupLedgerFrame, GroupWorkingLine, type GroupConversationProps } from "./group-conversation.js";
 export { GroupMembersPanel, type GroupMembersPanelProps } from "./group-members-panel.js";
+export { installGroupConversationSurface } from "./install.js";

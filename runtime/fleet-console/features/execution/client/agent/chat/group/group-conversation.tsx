@@ -2,7 +2,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { StreamedMarkdown } from "../../streamed-markdown.js";
-import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "./conversation-types.js";
+import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
