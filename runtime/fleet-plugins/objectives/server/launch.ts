@@ -122,7 +122,8 @@ export interface LaunchService {
    * 사람의 말 — 지휘관이나 세션이 있는 구성원 하나에게 그대로 보낸다(작업 중이면 큐잉, 휴면이면 깨움, 허용 대기면 거절은 호스트가 정한다).
    * 구성원에게 갔으면 지휘관에게도 한 줄로 알린다 — 그 통지가 닿았는지는 notified 로 따로 말한다(구성원 전달은 이미 끝났다).
    */
-  message(objectiveId: string, memberId: string | null, text: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly notified: boolean | null }>;
+  /** `attachmentIds` 는 사람이 입력창에서 올린 이미지 — 사람 입력(`actor: "human"`)일 때만 받는 세션 한 곳에 실린다. 지휘관 사본에는 싣지 않는다. */
+  message(objectiveId: string, memberId: string | null, text: string, options?: LaunchOptions, attachmentIds?: readonly string[]): Promise<{ readonly objective: Objective; readonly notified: boolean | null }>;
   /** 사람의 방송 — live 대상만 동시에 보내고, 휴면·미관측은 깨우지 않는다. */
   broadcast(objectiveId: string, text: string, options?: LaunchOptions): Promise<import("@fleet-console/sdk/conversation").GroupWriteResult>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
@@ -1597,7 +1598,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return store.clearMet(objectiveId, options?.actor ?? "human");
     },
 
-    message: (objectiveId, memberId, text, options) => orderedOperationRequest(objectiveId, async () => {
+    message: (objectiveId, memberId, text, options, attachmentIds) => orderedOperationRequest(objectiveId, async () => {
       // 개시·구상이 지휘관을 띄우거나 구성원을 모으는 중이다 — 그 사이의 말은 어느 세션에 닿을지 정해지지 않았다.
       if (pending.has(objectiveId) || pending.has(`${objectiveId}:muster`)) throw new ObjectiveStoreError("objective_busy");
       const current = editableObjective(objectiveId);
@@ -1609,7 +1610,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       editableObjective(objectiveId);
       // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
       const humanInput = (options?.actor ?? "human") === "human" ? { id: randomUUID(), ...(member ? { targetOperationId: member.id } : {}) } : undefined;
-      await control().request({ kind: "send", operationId: target, text, display: text.trim(), displayFormat: humanInput ? "text" : "markdown", ...(humanInput ? { humanInput } : {}) }).catch(asStoreError);
+      const attached = humanInput && attachmentIds && attachmentIds.length > 0 ? { attachmentIds } : {};
+      await control().request({ kind: "send", operationId: target, text, display: text.trim(), displayFormat: humanInput ? "text" : "markdown", ...(humanInput ? { humanInput } : {}), ...attached }).catch(asStoreError);
       if (member) { store.acknowledgeMemberFailure(member.id); store.refresh(objectiveId); }
       // 보드를 거친 말 — 사람이면 그 구성원의 다음 턴은 사람에게 답하는 턴이고, 지휘관·사령관이면 그 구성원에게 일을 맡긴 발주다(본문은 남기지 않는다).
       if (member) {

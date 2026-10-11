@@ -89,7 +89,7 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     },
     answer: (body: Ref & DecisionAnswersInput) => launch.answerDecision(body.objectiveId, { requestId: body.requestId, answers: body.answers }, options(body)).then(objective),
     steer: (body: ContextRef) => launch.steer(body.objectiveId, options(body)).then(objective),
-    message: (body: Ref & { memberId?: string | null; text: string }) => launch.message(body.objectiveId, body.memberId ?? null, body.text, options(body)),
+    message: (body: Ref & { memberId?: string | null; text: string; attachmentIds?: readonly string[] }) => launch.message(body.objectiveId, body.memberId ?? null, body.text, options(body), body.attachmentIds),
     stop: ({ objectiveId }: Ref) => launch.stop(objectiveId),
     compact: ({ objectiveId }: Ref) => launch.compact(objectiveId),
     followupDiscard: ({ objectiveId, candidateId }: Ref & { candidateId: string }) => objective(store.followupDiscard(objectiveId, candidateId, actor)),

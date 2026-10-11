@@ -11,14 +11,15 @@ export function objectiveConversationActions(objective: Pick<Objective, "id" | "
     return post<T>(api, path, { ...input, language: commodoreLanguage() ?? "en" });
   };
   return {
-    async send(target, text) {
+    async send(target, text, attachmentIds) {
       if (target.kind === "commodore") {
         await request("/commodore/message", { theaterId: objective.theaterId, objectiveId: objective.id, text });
         return { targets: [{ targetId: `commodore:${objective.theaterId}`, outcome: "sent" }] };
       }
       if (target.kind === "all") return request<GroupWriteResult>("/conversation/broadcast", { objectiveId: objective.id, text });
       const memberId = target.kind === "member" ? target.operationId : null;
-      const result = await request<{ notified: boolean | null }>("/commander/message", { objectiveId: objective.id, memberId, text });
+      const attached = attachmentIds && attachmentIds.length > 0 ? { attachmentIds } : {};
+      const result = await request<{ notified: boolean | null }>("/commander/message", { objectiveId: objective.id, memberId, text, ...attached });
       return { targets: [{ targetId: memberId ?? objective.id, outcome: "sent" }], ...(result.notified !== null ? { commanderNotified: result.notified } : {}) };
     },
     async stopAll() {
