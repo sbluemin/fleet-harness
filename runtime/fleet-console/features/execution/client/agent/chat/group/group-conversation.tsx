@@ -35,6 +35,10 @@ export interface GroupConversationProps {
    * 기록이 없는 줄이면 여는 쪽이 아무 일도 하지 않으므로 단추는 늘 둔다.
    */
   readonly onOpenCommodoreRecord?: (request: BoardActionRecordRequest) => void;
+  /** 대화 끝에 서는 카드(결정 요청·허용 요청과 답한 결정 줄). 원장 흐름 맨 아래, 진행 줄 위다. */
+  readonly cards?: React.ReactNode;
+  /** 진행 줄 아래의 입력창. */
+  readonly composer?: React.ReactNode;
 }
 
 /** 사령관 기록을 그 행위의 자리로 여는 요청 — 임무 14의 `BoardActionRecordRequest` 와 같은 필드. */
@@ -44,13 +48,13 @@ export interface BoardActionRecordRequest {
   readonly at: number | null;
 }
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord, cards, composer }: GroupConversationProps) {
   const t = getGroupT(language);
   const entries = snapshot.entries;
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const nearBottomRef = React.useRef(true);
   const last = entries[entries.length - 1];
-  const growth = `${entries.length}:${last?.id ?? ""}:${last?.kind === "message" ? last.text.length : 0}`;
+  const growth = `${entries.length}:${last?.id ?? ""}:${last?.kind === "message" ? last.text.length : 0}:${snapshot.decision?.id ?? ""}`;
 
   // 바닥을 따라가는 중일 때만 새 말을 따라 내려간다. 위로 올려 읽는 중이면 그 자리를 지킨다.
   React.useLayoutEffect(() => {
@@ -94,9 +98,11 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
               onOpenCommodoreRecord={onOpenCommodoreRecord}
             />
           ))}
+          {cards}
         </div>
       </div>
       <GroupWorkingLine working={snapshot.working} language={language} onStop={onStopParticipant} />
+      {composer}
     </div>
   );
 }
@@ -177,6 +183,13 @@ function MessageBubble({ entry, continued, language }: {
   if (entry.speaker.kind === "human") {
     return (
       <div className="group-chat-human" {...(time ? { title: time } : {})}>
+        {entry.recipient ? (
+          <span className="group-chat-human-to">
+            <span aria-hidden="true">→</span>
+            <SpeakerMark speaker={entry.recipient} size="sm" />
+            <SpeakerName speaker={entry.recipient} />
+          </span>
+        ) : null}
         <div className={`group-chat-bubble is-human${entry.format === "markdown" ? " is-markdown" : ""}`}>
           {entry.format === "markdown"
             ? <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />

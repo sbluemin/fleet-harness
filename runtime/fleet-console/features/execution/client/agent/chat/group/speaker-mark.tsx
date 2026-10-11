@@ -1,6 +1,8 @@
+import type { ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
-import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
+import { getGroupT } from "./group-chat-i18n.js";
 
 /**
  * 발화자 표식 — 그룹 대화의 말풍선·위임 줄·진행 줄·구성원 탭이 같은 표식을 쓴다.
@@ -55,4 +57,30 @@ export function SpeakerMark({ speaker, size = "md" }: { readonly speaker: Conver
 export function SpeakerName({ speaker, className = "" }: { readonly speaker: ConversationSpeaker; readonly className?: string }) {
   const tone = speakerTone(speaker);
   return <span className={`group-chat-name${tone ? ` is-tone-${tone}` : ` is-${speaker.kind}`}${className ? ` ${className}` : ""}`}>{speaker.name}</span>;
+}
+
+/**
+ * 화면 언어로 발화자 이름을 고친다 — 사령관은 데이터가 주는 고정 이름 대신 이 화면의 「사령관」으로 부른다.
+ * 스냅숏 하나를 한 번 고쳐 대화·진행 줄·구성원 탭이 같은 이름을 쓰게 한다.
+ */
+export function useLocalizedSnapshot(snapshot: GroupTimelineSnapshot, language: ConsoleLocale | undefined): GroupTimelineSnapshot {
+  return React.useMemo(() => {
+    const commodore = getGroupT(language)("group.commodore");
+    const fix = (speaker: ConversationSpeaker): ConversationSpeaker => (speaker.kind === "commodore" && speaker.name !== commodore ? { ...speaker, name: commodore } : speaker);
+    const entries = snapshot.entries.map((entry): GroupTimelineEntry => {
+      switch (entry.kind) {
+        case "message": return entry.speaker.kind === "commodore" ? { ...entry, speaker: fix(entry.speaker) } : entry;
+        case "delegation": return entry.sender.kind === "commodore" || entry.recipients.some((recipient) => recipient.kind === "commodore")
+          ? { ...entry, sender: fix(entry.sender), recipients: entry.recipients.map(fix) } : entry;
+        case "board-action": return { ...entry, speaker: fix(entry.speaker) };
+        default: return entry;
+      }
+    });
+    return {
+      ...snapshot,
+      entries,
+      participants: snapshot.participants.map((participant) => (participant.speaker.kind === "commodore" ? { ...participant, speaker: fix(participant.speaker) } : participant)),
+      working: snapshot.working.map(fix),
+    };
+  }, [snapshot, language]);
 }
