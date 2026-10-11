@@ -45,7 +45,7 @@ import { useObjectiveTheater } from "./objectives-state.js";
 import "./commodore-mobile.css";
 
 /**
- * 모바일 드로어 목적지 「사령관」(impl-spec S-53·S-54) — 데스크톱의 사이드바 줄 + 「사령관 기록」 시트를 폰 화면 한 장으로.
+ * 모바일 바로가기 목적지 「사령관」(impl-spec S-53·S-54) — 데스크톱의 사이드바 줄 + 「사령관 기록」 시트를 폰 화면 한 장으로.
  * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 데스크톱 시트와 같은 스토어·같은 API다 — 자율 운영·메시지·지시·정보·
  * 모델·순찰·지휘관 모델·재시도 모두 같은 경로를 탄다. 대상은 지금 Theater 의 사령관이다.
  */
@@ -72,10 +72,10 @@ function failWord(t: T, error: unknown): string {
   return code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code });
 }
 
-/* ── 드로어 줄 오른쪽 상태(S-53 CM-1c) ─────────────────────────────── */
+/* ── 칩 오른쪽 상태(S-53 CM-1c) ─────────────────────────────── */
 
 /**
- * 드로어 「사령관」 줄 오른쪽 칸 — 자율 운영 루프의 상태만 보인다(건수 없음). 상태를 읽기 전이면 칸을 비운다.
+ * 바로가기 「사령관」 칩 오른쪽 칸 — 자율 운영 루프의 상태만 보인다(건수 없음). 상태를 읽기 전이면 칸을 비운다.
  * 호스트는 값(text·tone)으로 비교하므로 같은 상태면 같은 결과면 된다. 상태 글리프는 싣지 않는다 — 사령관의 얼굴은 사령관 화면 머리의 아바타가 말한다.
  */
 export const commodoreDestinationTrailing: RailEntryDestinationTrailing = {

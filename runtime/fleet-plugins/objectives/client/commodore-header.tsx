@@ -152,7 +152,7 @@ export function commodoreMongleState(view: CommodoreView, objectives: readonly O
 export type CommodoreMetaPart = { readonly key: string; readonly text: string; readonly tone?: "on" | "warn" };
 
 /**
- * 사령관의 지금을 말하는 짧은 조각들 — 사이드바 머리 표식의 툴팁과 모바일 드로어·화면이 같은 말을 쓴다.
+ * 사령관의 지금을 말하는 짧은 조각들 — 사이드바 머리 표식의 툴팁과 모바일 바로가기·화면이 같은 말을 쓴다.
  * 켜져 있으면 자율·응답 중·재시도·오류·진행·처리, 꺼져 있으면 수동·대기. 다음 순찰과 오류 사유는 따로 돌려준다.
  */
 export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView, objectives: readonly Objective[]): { readonly on: boolean; readonly meta: readonly CommodoreMetaPart[]; readonly patrol: string | null; readonly errorReason: string | null } {

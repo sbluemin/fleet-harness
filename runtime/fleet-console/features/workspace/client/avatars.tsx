@@ -59,6 +59,37 @@ export function operationMongleState(
   return mongleStateOf({ activity: resolveOperationActivity(operation, state.operationRuntime), ...clusterFaceFacts(clusters, operationId) });
 }
 
+/** 일하는 구성원으로 치는 표식 — 진행·부름·안 본 답. 쉬거나 끝난 구성원은 줄 앞 미니 아바타에 서지 않는다. */
+const WORKING_MARKS: ReadonlySet<OperationMarkVisual> = new Set(["running", "awaiting", "unseen"]);
+
+export interface ClusterWorkingMember {
+  readonly operation: OperationNode;
+  readonly mark: OperationMarkVisual;
+}
+
+/**
+ * 묶음 지휘관 옆에 미니 아바타로 서는, 지금 일하는 구성원(최대 `limit`). 사이드바 줄과 모바일 대화 행이 같은 셈법을 읽는다.
+ * 구성원은 묶음의 구성원 목록에서 뿌리를 뺀 것이고(`fold` 에는 뿌리가 함께 들 수 있다), 표식은 `marks`(사이드바 표식)가 있으면 그것을,
+ * 없으면 런타임 활동을 쓴다. 자리표시(pending)와 Operation 이 아직 없는 구성원은 서지 않는다.
+ */
+export function clusterWorkingMembers(
+  cluster: OperationCluster,
+  rootId: string | undefined,
+  state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">,
+  marks?: ReadonlyMap<string, OperationMarkVisual>,
+  limit = 3,
+): readonly ClusterWorkingMember[] {
+  const working: ClusterWorkingMember[] = [];
+  for (const member of cluster.members) {
+    if (member.pending || member.operationId === rootId || working.length >= limit) continue;
+    const operation = state.nestedOperations.find((node) => node.id === member.operationId) ?? state.operations.find((node) => node.id === member.operationId);
+    if (!operation) continue;
+    const mark = marks?.get(operation.id) ?? resolveOperationActivity(operation, state.operationRuntime);
+    if (WORKING_MARKS.has(mark)) working.push({ operation, mark });
+  }
+  return working;
+}
+
 const byCreation = (left: OperationNode, right: OperationNode) => left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
 
 /** 배정 묶음 — 묶음 안에서는 겹치지 않게 뽑는다. Theater 묶음의 첫 키는 사령관이다. */

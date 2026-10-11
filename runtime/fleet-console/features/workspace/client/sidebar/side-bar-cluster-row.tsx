@@ -7,15 +7,14 @@ import type { OperationClusterRow, OperationClusterRowGlyph, OperationClusterRow
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getClusterWrap, getFirstClusterWrap, getOperationWrap, subscribeConsoleUseGestures, type ConsoleUseWrap } from "../../../console-use/client/gestures.js";
-import { operationMarkLabel, resolveOperationActivity, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { operationMarkLabel, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { subscribeSideBarOperationAction } from "./interaction.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
 import { setSideBarFreshFoldExpanded } from "./operations-side-bar-store.js";
-import { KeyedAvatar, OperationAvatar, mongleStateOfMark } from "../avatars.js";
+import { KeyedAvatar, OperationAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
 import { operationAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
 import { CONVERSATION_ROW_PHRASE, useSideBarRowStyle } from "./side-bar-row-style.js";
 import { useConversationRowPreview } from "../conversation/conversation-slots.js";
@@ -440,8 +439,6 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   );
 }
 
-const WORKING_MARKS: ReadonlySet<OperationMarkVisual> = new Set(["running", "awaiting", "unseen"]);
-
 /**
  * 줄 앞 표식 — 지휘관 아바타와, 지금 일하는(진행·부름·안 본 답) 구성원 미니 아바타 최대 셋. 지휘관의 얼굴은 자기 상태를 말하고
  * (플러그인 글리프·결정 요청이 있으면 그것), 미니가 누가 함께 일하는지 말한다. 접근성 이름은 줄의 가장 급한 상태 하나다.
@@ -467,15 +464,7 @@ function ClusterRowAvatar({ item, rowState, label, conversation, decorative = fa
   // 미니 없이 제 크기로 선다.
   const { operations, nestedOperations, operationRuntime } = useConsoleState();
   const foldMarks = new Map(item.fold.map((entry) => [entry.operation.id, entry.mark ?? entry.status ?? "idle"] as const));
-  const rootId = anchor?.operation.id ?? layout.cluster.root;
-  const working: { readonly operation: OperationNode; readonly mark: OperationMarkVisual }[] = [];
-  for (const member of layout.cluster.members) {
-    if (member.pending || member.operationId === rootId || working.length >= 3) continue;
-    const operation = nestedOperations.find((node) => node.id === member.operationId) ?? operations.find((node) => node.id === member.operationId);
-    if (!operation) continue;
-    const mark = foldMarks.get(operation.id) ?? resolveOperationActivity(operation, operationRuntime);
-    if (WORKING_MARKS.has(mark)) working.push({ operation, mark });
-  }
+  const working = clusterWorkingMembers(layout.cluster, anchor?.operation.id ?? layout.cluster.root, { operations, nestedOperations, operationRuntime }, foldMarks);
   const full = conversation ? 28 : 20;
   const size = working.length > 0 ? (conversation ? 24 : 17) : full;
   const commander = anchor

@@ -14,10 +14,10 @@ import { AttentionReason } from "./mobile-attention-reason.js";
 import { useMobileAttentionRows } from "./mobile-attention-context.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
-import { entryIconOf } from "./mobile-drawer.js";
+import { entryIconOf } from "./mobile-destinations.js";
 import { setMobileDestination } from "./mobile-store.js";
 
-/** S-35 「확인 필요」 전체 화면 — 드로어 구역이 세 건까지만 싣는 것의 전부. 답하면 이 목록에서 빠진다. */
+/** S-35 「확인 필요」 전체 화면 — 홈 맨 위 묶음이 세 건까지만 싣는 것의 전부. 답하면 이 목록에서 빠진다. */
 export function MobileAttentionScreen() {
   const t = useT();
   const rows = useMobileAttentionRows();
@@ -30,7 +30,7 @@ export function MobileAttentionScreen() {
     const entry = bindings.find((binding) => binding.entry.id === entryId)?.entry;
     return entry ? resolveLocalizedText(entry.mobile?.destination?.label ?? entry.title, locale) : null;
   };
-  useClaimMobileBar({ variant: "centered", title: t("mobile.drawer.attention"), leading: "menu" });
+  useClaimMobileBar({ variant: "centered", title: t("mobile.home.attention"), leading: "back" });
   return (
     <section className="mobile-attention-screen">
       {rows.length === 0 ? <p className="mobile-attention-empty">{t("mobile.attention.empty")}</p> : (

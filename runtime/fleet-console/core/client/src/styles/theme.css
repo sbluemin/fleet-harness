@@ -1336,6 +1336,8 @@
   --brass-ink: var(--m-text);
   --brass-quiet-ink: var(--m-text);
   --brass-glow: color-mix(in srgb, var(--m-inverse) 12%, transparent);
+  /* 사령관 별 배지의 원판은 brass(= 반전)라 별(--mongle-face, 늘 어둡다)이 라이트에서 묻힌다 — 별은 반전 위의 글자색으로 뚫는다. */
+  --mongle-star-cut: var(--m-on-inverse);
   /* halo는 합성 목록 안에서도 쓰이므로 none이 아니라 0 0 transparent로 단락한다. */
   --brass-halo: 0 0 transparent;
   --positive-halo: 0 0 transparent;
@@ -1493,8 +1495,6 @@
   --m-selected: #414141;
   --m-hairline: #212120;
   --m-hairline-strong: #3d3c3a;
-  /* bg-deep(드로어) 위에서는 --m-hairline이 보이지 않아 한 단 올린 구분선. */
-  --m-hairline-on-deep: #2a2a28;
   --m-handle: #4a4a48;
   --m-text: #f9f9f7;
   --m-text-nav: #c3c2b7;
@@ -1555,7 +1555,6 @@
   --m-selected: #e2e0d8;
   --m-hairline: #e4e2da;
   --m-hairline-strong: #d3d0c6;
-  --m-hairline-on-deep: #e4e2da;
   --m-handle: #ebe9e3;
   --m-text: #1b1b19;
   --m-text-nav: #45443f;

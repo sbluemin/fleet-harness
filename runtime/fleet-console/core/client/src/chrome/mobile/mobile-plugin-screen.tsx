@@ -16,7 +16,7 @@ import { MobileBarContext, useClaimMobileBar, useMobilePluginBar } from "./mobil
 import "../../styles/rail.css";
 
 /**
- * 플러그인이 드로어의 고정 목적지로 올린 화면. 본문은 엔트리의 primary 페인 그대로 — 호스트는 한 장씩 보여 주고
+ * 플러그인이 홈 바로가기 칩으로 올린 화면. 본문은 엔트리의 primary 페인 그대로 — 호스트는 한 장씩 보여 주고
  * (상세 페인이 서면 그 장만), 상단 막대는 호스트가 그린다. 페인은 `ctx.mobileBar`로 제목·깊이·⋮ 항목만 선언한다.
  * 컨테이너의 `data-host-surface="mobile-screen"`은 플러그인 CSS가 「시트」와 「전체 화면」을 가르는 공개 신호다.
  */
@@ -70,7 +70,7 @@ function MobileSurfaceScreen({ surfaceId, title, theme, language }: { readonly s
   const [width, setWidth] = useState(0);
   const instanceId = instance?.instanceId;
 
-  useClaimMobileBar({ variant: "centered", title, ...(theaterLabel ? { subtitle: theaterLabel } : {}), leading: "menu" });
+  useClaimMobileBar({ variant: "centered", title, ...(theaterLabel ? { subtitle: theaterLabel } : {}), leading: "back" });
 
   // 새로고침 등으로 표면이 아직 서 있지 않으면 연다. 화면을 떠나면 닫는다.
   useEffect(() => {

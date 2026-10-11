@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { RailEntryAttentionItem, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
@@ -11,7 +11,7 @@ import type { OperationNode, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 
 /**
- * 드로어가 고정 목적지로 올리는 플러그인 엔트리 — `RailEntryDescriptor.mobile.destination`을 선언하고 `shown`이 허락한 것을 order 순으로.
+ * 홈 바로가기 칩 줄이 목적지로 올리는 플러그인 엔트리 — `RailEntryDescriptor.mobile.destination`을 선언하고 `shown`이 허락한 것을 order 순으로.
  * 순수 계산이다 — 화면은 `useMobileDestinationBindings`로 `shown`의 갱신을 구독한다.
  */
 export function mobileDestinationBindings(bindings: readonly RailEntryBinding[], theaterId: string | null): readonly RailEntryBinding[] {
@@ -20,6 +20,15 @@ export function mobileDestinationBindings(bindings: readonly RailEntryBinding[],
     .filter((item): item is { binding: RailEntryBinding; index: number; order: number } => item.order !== undefined && visible(item.binding) && destinationShown(item.binding, theaterId))
     .sort((left, right) => left.order - right.order || left.index - right.index)
     .map((item) => item.binding);
+}
+
+/**
+ * 홈 대표 자리에 설 목적지 — 지금 보이는(shown) 목적지 가운데 order가 가장 앞선, 자기 상태 칸(`trailing`)을 선언한 것이다.
+ * 상태를 말하는 목적지(Theater의 사령관처럼 자율 운영의 지금을 가진 것)만 대표가 될 수 있고, 플러그인 id는 읽지 않는다 — `RailEntryMobile.destination`의
+ * 기존 필드(order·shown·trailing)만 소비한다. 없으면 null이고 홈은 Theater의 정체를 대표로 보인다.
+ */
+export function featuredDestinationBinding(shown: readonly RailEntryBinding[]): RailEntryBinding | null {
+  return shown.find((binding) => binding.entry.mobile?.destination?.trailing !== undefined) ?? null;
 }
 
 function destinationShown(binding: RailEntryBinding, theaterId: string | null): boolean {
@@ -40,7 +49,7 @@ export function useMobileDestinationBindings(bindings: readonly RailEntryBinding
   return useMemo(() => mobileDestinationBindings(bindings, theaterId), [bindings, theaterId, key]);
 }
 
-/** 드로어 행 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(text·tone)이 같으면 다시 그리지 않는다. */
+/** 바로가기 칩 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(text·tone)이 같으면 다시 그리지 않는다. */
 export function useMobileDestinationTrailing(bindings: readonly RailEntryBinding[], theaterId: string | null): ReadonlyMap<string, RailEntryDestinationTrailingValue> {
   const key = useSyncExternalStore(
     (listener) => {
@@ -72,7 +81,7 @@ function shownVersion(bindings: readonly RailEntryBinding[], theaterId: string |
   return bindings.map((binding) => binding.entry.mobile?.destination?.shown ? `${binding.entry.id}:${binding.entry.mobile.destination.shown.get(theaterId) ? 1 : 0}` : "").join("|");
 }
 
-/** 「플러그인」 줄 — 고정 목적지가 아니고, 설정(드로어가 따로 연다)이 아닌 보이는 엔트리 전부. */
+/** 「플러그인」 줄 — 고정 목적지가 아니고, 설정(프로필 시트가 따로 연다)이 아닌 보이는 엔트리 전부. */
 export function mobilePluginRows(bindings: readonly RailEntryBinding[]): readonly RailEntryBinding[] {
   return bindings.filter((binding) => binding.entry.mobile?.destination === undefined && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && visible(binding));
 }
@@ -143,4 +152,15 @@ function attentionVersion(bindings: readonly RailEntryBinding[], theaterId: stri
     const items = attention.items?.(scopeTheater, locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.reason}`).join("\u0002") ?? "";
     return `${binding.entry.id}:${attention.count(scopeTheater)}:${items}`;
   }).join("|");
+}
+
+/** 엔트리 아이콘 — 플러그인이 모바일용을 따로 주면 그것, 아니면 레일 아이콘이다(함수형이면 불러서 노드로). */
+export function renderEntryIcon(icon: ReactNode | (() => ReactNode)): ReactNode {
+  return typeof icon === "function" ? icon() : icon;
+}
+
+/** 플러그인 「확인 필요」 항목의 머리 — 항목은 원천 Operation을 싣지 않으므로 그 항목이 온 목적지의 아이콘으로 출처를 말한다. */
+export function entryIconOf(bindings: readonly RailEntryBinding[], entryId: string): ReactNode {
+  const entry = bindings.find((binding) => binding.entry.id === entryId)?.entry;
+  return entry ? renderEntryIcon(entry.mobile?.icon ?? entry.icon) : null;
 }

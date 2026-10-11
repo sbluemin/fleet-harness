@@ -1,5 +1,5 @@
 /*
- * 모바일 드로어 목적지 「사령관」(impl-spec S-54 CM-2) — 호스트 모바일 화면(data-host-surface="mobile-screen") 안에서만 선다.
+ * 모바일 바로가기 목적지 「사령관」(impl-spec S-54 CM-2) — 호스트 모바일 화면(data-host-surface="mobile-screen") 안에서만 선다.
  * 값은 시안 mobile-redesign.html 의 사령관 화면(.band · .cmd-top .trow · .ttabs · .chat · .cw · .cmsg · .dock .comp · .card-pad)
  * 그대로다. 색은 모바일 토큰(--m-*)만 쓴다. 누름은 코어 누름 층(data-press r1·r2·r3, S-52)이 그린다.
  */

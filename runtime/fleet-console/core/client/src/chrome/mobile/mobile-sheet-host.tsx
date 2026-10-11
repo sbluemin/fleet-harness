@@ -9,17 +9,21 @@ import { openTheaterSystemPrompt } from "../../../../../features/settings/client
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
-import { getState, setActiveTheater } from "../../integration/store.js";
+import { getState, openQuickLaunch, setActiveTheater } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
+import { globalShellEntry } from "../../../../../features/execution/client/terminal/global-shell/rail-panel.js";
+import { useRailEntries } from "../pane/pane-registry.js";
+import { useMobileDestinationBindings } from "./mobile-destinations.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileFolderSheet } from "./mobile-folder-sheet.js";
+import { MobileSettingsPage } from "./mobile-settings-page.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { showMobileToast } from "./mobile-toast.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDrawerOpen, useMobileSheetStack } from "./mobile-store.js";
+import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDestination, useMobileSheetStack } from "./mobile-store.js";
 
 /**
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
@@ -49,11 +53,13 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
   if (!top) return null;
   if (top.kind === "rename") return <RenameSheet key={top.operationId} state={state} operationId={top.operationId} />;
   if (top.kind === "console") return <ConsoleSheet />;
+  if (top.kind === "create") return <CreateSheet state={state} />;
+  if (top.kind === "profile") return <ProfileSheet />;
   if (top.kind === "custom") return <>{top.render(popMobileSheet)}</>;
   if (top.kind === "confirm") return <ConfirmSheet spec={top.spec} resolve={top.resolve} />;
   if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void addTheaterWithToast(path, t); }} />;
   if (top.kind === "forget") return <ForgetSheet key={top.theaterId} state={state} theaterId={top.theaterId} onDeferredDeletion={onDeferredDeletion} />;
-  return <TheaterSheet state={state} fromDrawer={top.kind === "theater" && top.fromDrawer === true} />;
+  return <TheaterSheet state={state} />;
 }
 
 /** 폴더를 Theater로 등록하고, 성공하면 「{이름}을(를) Theater로 추가했습니다」 토스트를 띄운다. 실패는 스토어의 theaterError가 화면에 말한다. */
@@ -99,12 +105,10 @@ function RenameSheet({ state, operationId }: { readonly state: ConsoleState; rea
   );
 }
 
-/** S-07 — 지금 Theater를 바꾼다. 고르면 시트만 닫고 드로어는 그대로 둔다(새 Theater의 최근 목록이 거기 있다). */
-function TheaterSheet({ state, fromDrawer }: { readonly state: ConsoleState; readonly fromDrawer: boolean }) {
+/** S-07 — 지금 Theater를 바꾼다. 고르면 시트를 닫고 홈 목록이 그 Theater의 대화로 바뀐다. */
+function TheaterSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
-  // 드로어에서 연 시트는 드로어를 닫고 서며, 고르거나 닫으면 드로어로 돌아간다(S-07).
-  const leave = () => { if (fromDrawer) setMobileDrawerOpen(true); };
-  const cancel = () => { popMobileSheet(); leave(); };
+  const cancel = () => popMobileSheet();
   const active = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
   const pluginRows = useTheaterSheetPluginRows(active?.id ?? null);
   return (
@@ -120,7 +124,7 @@ function TheaterSheet({ state, fromDrawer }: { readonly state: ConsoleState; rea
               className="mobile-sheet-row"
               key={theater.id}
               aria-current={here ? "true" : undefined}
-              onClick={() => { setActiveTheater(theater.id); closeMobileSheets(); leave(); }}
+              onClick={() => { setActiveTheater(theater.id); closeMobileSheets(); }}
             >
               <TheaterAvatar theaterId={theater.id} size={28} label="" decorative />
               <span className="mobile-sheet-row-copy">
@@ -213,6 +217,60 @@ function ForgetSheet({ state, theaterId, onDeferredDeletion }: { readonly state:
       </>}
     >
       <p className="mobile-sheet-lead">{t("mobile.sheet.forget.body", { name: labelRef.current })}</p>
+    </MobileSheet>
+  );
+}
+
+/**
+ * 프로필·설정 시트 — 홈 머리 왼쪽 아바타가 연다. X로 닫는 전체 높이 시트이고, 본문은 설정 목록(Console 정체 카드 · 화면 · 에이전트 · 사용 ·
+ * 정보)이다. 행을 열면 시트를 닫고 `/settings` 상세 라우트로 가며, 상세의 ‹는 이 시트로 돌아온다. Console 카드는 전환기를 연다.
+ */
+function ProfileSheet() {
+  const t = useT();
+  return (
+    <MobileSheet title={t("mobile.home.settings")} onClose={popMobileSheet} full className="is-profile" focusInputOnTouch={false}>
+      <MobileSettingsPage embedded />
+    </MobileSheet>
+  );
+}
+
+/**
+ * 시트를 닫고 다음 일을 한다 — 시트가 쌓아 둔 history 항목이 걷힌 뒤(popstate)에 한다. 걷히기 전에 하면 그 일이 쓰는 history가 걷히는
+ * 항목과 뒤엉킨다: 목적지는 `?dest=`가 걷히는 항목에 쓰여 새로고침이 목록으로 돌아가고, 새 작업 시트는 자기 항목이 걷기에 밀려 표식 없이
+ * 열려 브라우저 뒤로가 시트를 닫지 않고 페이지를 떠난다. 걷을 항목이 없으면 popstate가 없으니 짧은 시간 뒤에 한다.
+ */
+function runAfterSheetRelease(action: () => void): void {
+  const run = () => { window.removeEventListener("popstate", run); window.clearTimeout(timer); action(); };
+  const timer = window.setTimeout(run, 400);
+  window.addEventListener("popstate", run);
+  closeMobileSheets();
+}
+
+/**
+ * 홈 머리 +의 메뉴 — 새 대화(새 작업 시트), 새 터미널(Shell 목적지, 보일 때만), Theater 추가(폴더 시트).
+ * 고르면 이 시트를 닫고 이어서 연다. Theater 추가는 시트 위에 쌓아 닫으면 이 메뉴로 돌아온다.
+ */
+function CreateSheet({ state }: { readonly state: ConsoleState }) {
+  const t = useT();
+  const bindings = useRailEntries();
+  const shell = useMobileDestinationBindings(bindings, state.activeTheaterId).find((binding) => binding.entry.id === globalShellEntry.id);
+  const hasTheater = state.activeTheaterId !== null;
+  return (
+    <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
+      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openQuickLaunch)}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
+      </button>
+      {shell ? (
+        <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(() => setMobileDestination({ kind: "plugin", entryId: shell.entry.id }))}>
+          <span className="mobile-sheet-row-glyph"><MobileIcon name="term" /></span>
+          <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.terminal")}</strong><small>{t("mobile.create.terminalSub")}</small></span>
+        </button>
+      ) : null}
+      <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "folder" })}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="folder" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.sheet.theater.add")}</strong></span>
+      </button>
     </MobileSheet>
   );
 }

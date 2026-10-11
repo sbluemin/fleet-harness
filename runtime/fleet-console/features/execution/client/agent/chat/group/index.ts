@@ -5,4 +5,4 @@
  */
 export { GroupConversation, GroupLedgerFrame, GroupWorkingLine, type BoardActionRecordRequest, type GroupConversationProps } from "./group-conversation.js";
 export { GroupMembersPanel, type GroupMembersPanelProps } from "./group-members-panel.js";
-export { installGroupConversationSurface } from "./install.js";
+export { CONVERSATION_MEMBERS_TAB_ID, installGroupConversationSurface } from "./install.js";

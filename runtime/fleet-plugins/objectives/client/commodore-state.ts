@@ -159,9 +159,9 @@ function readExperimentsKnown(): boolean {
 }
 
 /**
- * 모바일 드로어 「사령관」 목적지의 보임 — 실험 기능 「자율 운영」이 켜져 있을 때만 선다(Theater 가 아직 안 읽힌 부팅 직후에도 판정은 같다).
+ * 모바일 바로가기 「사령관」 목적지의 보임 — 실험 기능 「자율 운영」이 켜져 있을 때만 선다(Theater 가 아직 안 읽힌 부팅 직후에도 판정은 같다).
  * 전역 설정을 아직 읽지 못한 부팅 직후에는 둔다: 이때 false 를 돌려주면 사령관 화면을 보던 새로고침이 홈으로 튕긴다.
- * 드로어는 부팅 직후 닫혀 있으므로 줄이 잠깐 서는 일은 보이지 않는다.
+ * 칩이 부팅 직후 잠깐 서는 일이 없도록 판정을 처음부터 같게 둔다.
  */
 export const commodoreDestinationShown = {
   subscribe: (listener: () => void) => subscribeCommodore(listener),

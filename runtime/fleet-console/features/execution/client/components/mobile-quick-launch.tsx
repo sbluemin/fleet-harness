@@ -97,7 +97,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
     // 열려 있는 동안 한 번 — 닫기 콜백은 store 동작이라 바뀌지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // 시트가 떠 있는 동안 앱의 아래 시스템 바는 시트 면이다(S-03) — 셸 시트와 같은 신호를 보내고, 닫히면 셸 상태(드로어·셸 시트)로 되돌린다.
+  // 시트가 떠 있는 동안 앱의 아래 시스템 바는 시트 면이다(S-03) — 셸 시트와 같은 신호를 보내고, 닫히면 셸 상태(셸 시트)로 되돌린다.
   useEffect(() => {
     reportSheetChrome();
     return () => {
