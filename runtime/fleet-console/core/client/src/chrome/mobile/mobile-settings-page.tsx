@@ -355,6 +355,9 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, 
   });
   agent.push({ id: "advanced", title: t("settings.core.advanced.label"), value: null, icon: <MobileIcon name="gate" /> });
   use.push(
+    // 원격 접속은 실험 기능에서 승격되어 자기 행으로 선다 — 데스크톱의 「원격 접속」 범주와 같은 섹션(connectivity)을 연다.
+    // 원격이 실리지 않은 콘솔(원격 세션)에는 포트만 남으므로 이름도 「연결」이다.
+    { id: "connectivity", title: state?.remoteAccess === undefined ? t("settings.core.connectivity.label") : t("settings.remote.title"), value: null, icon: <MobileIcon name="globe" /> },
     { id: "experiments", title: t("settings.core.experiments.label"), value: describeExperiments(state, t), icon: <MobileIcon name="flask" /> },
   );
   const appVersion = appearance.appVersion;
@@ -378,7 +381,7 @@ function languageLabel(state: GlobalSettingsState, t: (key: CoreMessageKey) => s
  */
 /**
  * 「실험 기능」 행의 보조 줄 — 켜진 실험 기능의 개수(시안 S-47: 「{n}개 켜짐」, 하나도 없으면 「꺼짐」).
- * 세는 것은 이 페이지의 켬/끔 기능(대화 중심 화면 · 자율 운영 · 컴퓨터 사용)이다. 포트·원격 접속은 같은 페이지에 있어도 실험 기능 개수가 아니다.
+ * 세는 것은 이 페이지의 켬/끔 기능(대화 중심 화면 · 자율 운영 · 컴퓨터 사용)이다.
  */
 function describeExperiments(state: GlobalSettingsState | null, t: (key: CoreMessageKey, params?: Record<string, string | number>) => string): string | null {
   if (state === null) return null;

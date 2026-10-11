@@ -7,6 +7,8 @@ import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useT } from "../../i18n/index.js";
 import { useTriageActive } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
+import { openSettingsModal, closeSettingsModal, useSettingsModal } from "../../../../../features/settings/client/settings-door.js";
+import { useConversationLayout } from "../../../../../features/settings/client/use-conversation-layout.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { toggleOperationSearch } from "../../integration/store.js";
 import { setToolbarToolsSlot, useToolbarHost } from "../../integration/toolbar-slots.js";
@@ -152,7 +154,10 @@ export function ToolbarSettingsButton({ canvas, menuItem = false }: { readonly c
   const t = useT();
   const navigate = useNavigate();
   const activePanelId = useRailActivePanelId();
-  const active = canvas && activePanelId === SETTINGS_RAIL_ENTRY_ID;
+  // 대화 중심 화면에서 같은 문은 가운데 모달을 연다(settings-door.ts) — 켜짐도 그 모달이 서 있는가로 읽는다.
+  const conversation = useConversationLayout();
+  const modal = useSettingsModal();
+  const active = conversation ? modal.open : canvas && activePanelId === SETTINGS_RAIL_ENTRY_ID;
   return (
     <button
       id="rail-settings-toggle"
@@ -160,10 +165,16 @@ export function ToolbarSettingsButton({ canvas, menuItem = false }: { readonly c
       role={menuItem ? "menuitem" : undefined}
       className={`right-rail-ico right-rail-settings-btn${active ? " is-active" : ""}`}
       aria-pressed={active}
-      aria-controls={active ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
+      aria-haspopup={conversation ? "dialog" : undefined}
+      aria-controls={active && !conversation ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
       aria-label={t("settings.title")}
       data-tip={t("settings.title")}
       onClick={() => {
+        if (conversation) {
+          if (!canvas) navigate("/operations");
+          if (modal.open) closeSettingsModal(); else openSettingsModal();
+          return;
+        }
         if (canvas) { toggleRailPanel(SETTINGS_RAIL_ENTRY_ID); return; }
         navigate("/operations");
         openRailPanel(SETTINGS_RAIL_ENTRY_ID);

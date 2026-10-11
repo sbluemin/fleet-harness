@@ -12,9 +12,7 @@ import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type LocalConsoleState, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
-import { openPane } from "../pane/pane-store.js";
-import { openRailPanel } from "../rail/rail-store.js";
-import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
+import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
 import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
@@ -387,8 +385,7 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
     setOpen(false);
     // 레일은 /operations에만 마운트된다 — 표면을 부르기 전에 캔버스로 돌아간다.
     navigate("/operations");
-    openRailPanel(SETTINGS_RAIL_ENTRY_ID);
-    openPane({ paneId: SETTINGS_PANE_ID, params: { section: "connectivity" } });
+    openSettingsSurface("connectivity");
   };
   const openAdd = () => {
     // 덮개에서는 판을 접지 않는다 — 접으면 팝업이 닫힌 뒤 빈 덮개만 남는다.

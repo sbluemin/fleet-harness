@@ -1,7 +1,7 @@
 import "@fleet-console/font-picker/styles.css";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
-import { ExperimentalBadge, SettingsGroup, SettingsRow, SettingsSubScreenRow, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
+import { SettingsGroup, SettingsRow, SettingsSubScreenRow, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
@@ -90,33 +90,32 @@ function DesktopRemoteAccess({ remote, saving }: { readonly remote: RemoteAccess
       {/* 안내 카드는 이 섹션 옆에 서고, 세로 위치만 지금 짚는 카드에 맞춘다. 섹션 안에 서면 화면보다 키 큰 카드의
           머리, 곧 안내가 가리키는 컨트롤 위에 떠서 그 클릭을 받아 버린다. */}
       <section className="global-settings-card remote-section" aria-label={t("settings.remote.title")} {...onboardingBoundary("anchor")}>
+        {/* 원격 접속은 이제 자기 범주라 범주 제목이 이름을 말한다 — 머리는 한 줄 소개만 진다(투어의 첫 앵커). */}
         <header className="remote-section-head">
-          {/* 성숙도 표시는 아래 .remote-danger(보안 경고)와 다른 것을 말한다 — 하나는 "아직 바뀔 수
-              있다", 하나는 "켜면 이 기계가 열린다"이므로 한 줄로 합치지 않는다. */}
-          <h3 className="global-settings-card-title">
-            {t("settings.remote.title")}
-            <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
-          </h3>
           <p>{t("settings.remote.lede")}</p>
         </header>
 
-        <p className="remote-positive" role="note">
-          <PositiveIcon />
-          <span>
-            {renderMessage(t("settings.remote.desktop.note"), {
-              releases: (
-                <a href={FLEET_DESKTOP_RELEASES_URL} target="_blank" rel="noopener noreferrer">
-                  {t("settings.remote.desktop.releases")}
-                </a>
-              ),
-            })}
-          </span>
-        </p>
+        {/* 전제(Desktop 필요)와 위험 고지는 한 카드의 두 행이다. 색 띠 배너 둘이 아니라 글리프 색이 채널을 가른다 —
+            positive 는 갖출 것, coral 은 켜면 이 기계가 열린다는 사실. */}
+        <div className="remote-notes">
+          <p className="remote-positive" role="note">
+            <PositiveIcon />
+            <span>
+              {renderMessage(t("settings.remote.desktop.note"), {
+                releases: (
+                  <a href={FLEET_DESKTOP_RELEASES_URL} target="_blank" rel="noopener noreferrer">
+                    {t("settings.remote.desktop.releases")}
+                  </a>
+                ),
+              })}
+            </span>
+          </p>
 
-        <p className="remote-danger" role="note">
-          <WarningIcon />
-          <span><strong>{t("settings.remote.danger.lead")}</strong> {t("settings.remote.danger.rest")}</span>
-        </p>
+          <p className="remote-danger" role="note">
+            <WarningIcon />
+            <span><strong>{t("settings.remote.danger.lead")}</strong> {t("settings.remote.danger.rest")}</span>
+          </p>
+        </div>
 
         <RemoteHostsCard />
 
@@ -184,7 +183,7 @@ function DesktopRemoteAccess({ remote, saving }: { readonly remote: RemoteAccess
 }
 
 /**
- * 폰의 원격 접속(impl-spec S-48 실험 기능의 토글 행). 토글은 데스크톱 카드의 「시작」·「중지」와 같은 저장이고,
+ * 폰의 원격 접속(설정 목록의 「원격 접속」 상세 맨 위 토글 행). 토글은 데스크톱 카드의 「시작」·「중지」와 같은 저장이고,
  * 수신 중일 때 끄기는 데스크톱과 같은 「수신을 중지할까요?」 확인을 거친다. 켜기는 주소가 준비됐을 때만 된다.
  * 리스너·신원·링크·기기 해지는 「세부 설정 ›」가 연 전체 높이 시트에 데스크톱 카드 그대로 선다.
  * (원격 세션에는 서버가 이 설정을 보내지 않고 쓰기도 거절한다 — 이 화면은 이 컴퓨터에서만 선다.)
@@ -212,7 +211,7 @@ function MobileRemoteAccess({ remote, saving }: { readonly remote: RemoteAccessS
   const detail = listening ? status?.listener.origin : status?.listener.lastError;
   return (
     <SettingsGroup ariaLabel={t("settings.remote.title")}>
-      <SettingsRow label={t("settings.remote.title")} hint={t("settings.remote.lede")} badge={<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>} disabled={blocked}>
+      <SettingsRow label={t("settings.remote.title")} hint={t("settings.remote.lede")} disabled={blocked}>
         <SettingsToggle checked={remote.enabled} busy={saving} disabled={blocked} ariaLabel={t("settings.remote.title")} onChange={toggle} />
       </SettingsRow>
       {/* 수신 상태는 세부 설정 행의 요약 줄이다 — 열지 않고도 지금 상태(와 수신 주소·실패 사유)를 읽는다. */}
@@ -263,7 +262,7 @@ function RemoteHostsCard() {
   }, [hosts]);
 
   return (
-    <div className="remote-card" data-remote-card="hosts">
+    <div className="remote-group" data-remote-card="hosts">
       <div className="remote-card-head">
         <p className="remote-card-title">
           {t("settings.remote.hosts.title")}
@@ -276,15 +275,17 @@ function RemoteHostsCard() {
         </button>
       </div>
 
-      {hosts.length === 0 ? (
-        <p className="remote-hosts-empty">{t("settings.remote.hosts.empty")}</p>
-      ) : (
-        <ul className="remote-hosts">
-          {hosts.map((host) => (
-            <RemoteHostRow key={host.id} host={host} reach={reach[host.id]} />
-          ))}
-        </ul>
-      )}
+      <div className="remote-card">
+        {hosts.length === 0 ? (
+          <p className="remote-hosts-empty">{t("settings.remote.hosts.empty")}</p>
+        ) : (
+          <ul className="remote-hosts">
+            {hosts.map((host) => (
+              <RemoteHostRow key={host.id} host={host} reach={reach[host.id]} />
+            ))}
+          </ul>
+        )}
+      </div>
       {addOpen ? <AddHostDialog openerRef={addRef} onClose={() => setAddOpen(false)} /> : null}
     </div>
   );
@@ -448,7 +449,7 @@ function RemoteListenerCard({
   };
 
   return (
-    <div className="remote-card" data-remote-card="listener">
+    <div className="remote-group" data-remote-card="listener">
       <div className="remote-card-head">
         <p className="remote-card-title">
           {t("settings.remote.accept.title")}
@@ -456,158 +457,160 @@ function RemoteListenerCard({
         </p>
         <RemoteListenerLozenge status={status} listening={listening} ready={presentation.ready} />
       </div>
+      <div className="remote-card">
 
-      {presentation.missing.length > 0 ? (
-        <ul className="remote-requirements">
-          {presentation.missing.map((requirement) => (
-            <li key={requirement}>{t(REMOTE_REQUIREMENT_KEYS[requirement])}</li>
-          ))}
-        </ul>
-      ) : null}
+        {presentation.missing.length > 0 ? (
+          <ul className="remote-requirements">
+            {presentation.missing.map((requirement) => (
+              <li key={requirement}>{t(REMOTE_REQUIREMENT_KEYS[requirement])}</li>
+            ))}
+          </ul>
+        ) : null}
 
-      <div className="remote-endpoint-grid">
-        <div className="remote-listen-address-control">
-          <p className="remote-field-legend" id="remote-listen-presets-label">{t("settings.remote.listenPresets")}</p>
-          {candidates.length > 0 ? (
-            <div className="remote-interface-presets" role="group" aria-labelledby="remote-listen-presets-label">
-              {candidates.map((entry) => {
-                const selected = draft.listenAddress === entry.address;
-                return <button key={entry.address} type="button" className={`remote-interface-preset ${selected ? "is-selected" : ""}`}
-                  aria-pressed={selected} disabled={saving}
-                  onClick={() => { if (selected) return; edit({ listenAddress: entry.address }); }}>
-                  <span>{entry.label}</span><code>{entry.address}</code>
-                </button>;
-              })}
-            </div>
-          ) : null}
-          <label className="remote-field">
-            <span>{t("settings.remote.listenAddress")}</span>
-            <input value={draft.listenAddress} disabled={saving} autoComplete="off" spellCheck={false}
-              placeholder={t("settings.remote.listenPlaceholder")}
-              aria-invalid={draft.listenAddress !== "" && !isValidRemoteListenAddress(draft.listenAddress)}
-              onChange={(event) => edit({ listenAddress: event.target.value.trim() })} />
-          </label>
-          <p className="remote-card-help">{t("settings.remote.listenHelp")}</p>
-        </div>
-        <RemotePortControl label={t("settings.remote.listenPort")} errorId="remote-listen-port-error" port={draft.listenPort} raw={portDrafts.listenPort} saving={saving}
-          onMode={(mode) => editPortField("listenPort", { ...draft.listenPort, mode })}
-          onRaw={(raw) => editPortRaw("listenPort", raw)}
-          onRegenerate={() => editPortField("listenPort", { mode: "auto", value: generateRemoteAutoPort() })} />
-      </div>
-      {isWarnableLocalPort(draft.listenPort) ? <p className="remote-card-alert">{t("settings.remote.listenPrivileged")}</p> : null}
-
-      <div className="remote-public-endpoint-head">
-        <p className="remote-card-title">
-          {t("settings.remote.publicEndpoint.title")}
-          <SettingsHelp title={t("settings.remote.publicEndpoint.title")}>{t("settings.remote.publicEndpoint.help")}</SettingsHelp>
-        </p>
-        <SettingsToggle
-          checked={draft.publicEndpointEnabled}
-          busy={saving}
-          ariaLabel={t("settings.remote.publicEndpoint.title")}
-          onChange={(next) => edit({ publicEndpointEnabled: next })}
-        />
-      </div>
-
-      {draft.publicEndpointEnabled ? (
-        <>
-          <div className="remote-endpoint-grid">
+        <div className="remote-endpoint-grid">
+          <div className="remote-listen-address-control">
+            <p className="remote-field-legend" id="remote-listen-presets-label">{t("settings.remote.listenPresets")}</p>
+            {candidates.length > 0 ? (
+              <div className="remote-interface-presets" role="group" aria-labelledby="remote-listen-presets-label">
+                {candidates.map((entry) => {
+                  const selected = draft.listenAddress === entry.address;
+                  return <button key={entry.address} type="button" className={`remote-interface-preset ${selected ? "is-selected" : ""}`}
+                    aria-pressed={selected} disabled={saving}
+                    onClick={() => { if (selected) return; edit({ listenAddress: entry.address }); }}>
+                    <span>{entry.label}</span><code>{entry.address}</code>
+                  </button>;
+                })}
+              </div>
+            ) : null}
             <label className="remote-field">
-              <span>{t("settings.remote.advertisedHost")}</span>
-              <input value={draft.advertisedHost} disabled={saving} autoComplete="off" spellCheck={false}
-                placeholder={t("settings.remote.advertisedPlaceholder")}
-                aria-invalid={draft.advertisedHost !== "" && !isValidRemoteAdvertisedHost(draft.advertisedHost)}
-                onChange={(event) => edit({ advertisedHost: event.target.value.trim().toLowerCase() })} />
+              <span>{t("settings.remote.listenAddress")}</span>
+              <input value={draft.listenAddress} disabled={saving} autoComplete="off" spellCheck={false}
+                placeholder={t("settings.remote.listenPlaceholder")}
+                aria-invalid={draft.listenAddress !== "" && !isValidRemoteListenAddress(draft.listenAddress)}
+                onChange={(event) => edit({ listenAddress: event.target.value.trim() })} />
             </label>
-            <RemotePortControl label={t("settings.remote.advertisedPort")} errorId="remote-advertised-port-error" port={draft.advertisedPort} raw={portDrafts.advertisedPort} saving={saving}
-              onMode={(mode) => editPortField("advertisedPort", { ...draft.advertisedPort, mode })}
-              onRaw={(raw) => editPortRaw("advertisedPort", raw)}
-              onRegenerate={() => editPortField("advertisedPort", { mode: "auto", value: generateRemoteAutoPort() })} />
+            <p className="remote-card-help">{t("settings.remote.listenHelp")}</p>
           </div>
-          <p className="remote-card-help">{t("settings.remote.advertisedAutoHelp")}</p>
-        </>
-      ) : null}
-
-      <RemoteRoutePreview presentation={presentation} live={listening && !dirty} t={t} />
-
-      {draft.publicEndpointEnabled ? (
-        <>
-          {presentation.forward === null ? null : <RemoteForwardRuleCard rule={presentation.forward} t={t} />}
-          {/* 경로와 규칙은 위에서 한 번씩만 그린다. 여기에 다시 적으면 같은 값이 두 서식으로 어긋난다. */}
-          <label className="remote-acknowledgment">
-            <input type="checkbox" checked={draft.acknowledgment !== null}
-              disabled={saving || presentation.origin === null}
-              onChange={(event) => acknowledge(event.target.checked)} />
-            <span>{t("settings.remote.acknowledgment")}</span>
-          </label>
-          <p className="remote-status-note">
-            <strong>{t("settings.remote.publicReachability")}</strong> {t("settings.remote.publicNotTested")}
-          </p>
-          <p className="remote-card-help">{t("settings.remote.publicTestHelp")}</p>
-        </>
-      ) : null}
-
-      {status?.listener.lastError ? <p className="remote-card-alert" role="alert">{t(remoteErrorKey(status.listener.lastError))}</p> : null}
-
-      {/* 거절이 일어나고 있다는 사실은 "지금 열어둘 만한가"의 판단 재료다. 조용히 세고만 있으면 값이 없다. */}
-      {status !== null && status.rejectedJoins.count > 0 ? (
-        <p className="remote-status-note">
-          {renderMessage(t("settings.remote.rejectedJoins"), { count: String(status.rejectedJoins.count) })}
-        </p>
-      ) : null}
-
-      {stale ? (
-        <div className="remote-stale" role="alert">
-          <span>{t("settings.remote.draft.stale")}</span>
-          <button type="button" className="remote-create is-quiet" onClick={discard}>{t("settings.remote.draft.reload")}</button>
+          <RemotePortControl label={t("settings.remote.listenPort")} errorId="remote-listen-port-error" port={draft.listenPort} raw={portDrafts.listenPort} saving={saving}
+            onMode={(mode) => editPortField("listenPort", { ...draft.listenPort, mode })}
+            onRaw={(raw) => editPortRaw("listenPort", raw)}
+            onRegenerate={() => editPortField("listenPort", { mode: "auto", value: generateRemoteAutoPort() })} />
         </div>
-      ) : null}
+        {isWarnableLocalPort(draft.listenPort) ? <p className="remote-card-alert">{t("settings.remote.listenPrivileged")}</p> : null}
 
-      {shelf ? (
-        <RemoteConsequenceShelf kind={shelf.kind} t={t} busy={saving}
-          onConfirm={() => persist(shelf.payload)}
-          onCancel={() => setShelf(null)} />
-      ) : null}
+        <div className="remote-public-endpoint-head">
+          <p className="remote-card-title">
+            {t("settings.remote.publicEndpoint.title")}
+            <SettingsHelp title={t("settings.remote.publicEndpoint.title")}>{t("settings.remote.publicEndpoint.help")}</SettingsHelp>
+          </p>
+          <SettingsToggle
+            checked={draft.publicEndpointEnabled}
+            busy={saving}
+            ariaLabel={t("settings.remote.publicEndpoint.title")}
+            onChange={(next) => edit({ publicEndpointEnabled: next })}
+          />
+        </div>
 
-      <div className="remote-actions">
-        {/* 거부된 포트의 사유는 그 칸 옆에서 말한다 — 여기에 다시 적으면 같은 오류가 두 자리에 흩어진다. */}
-        <span className="remote-actions-note">
-          {dirty && listening ? t("settings.remote.draft.pending")
-            : dirty && !portError && presentation.ready && remoteEndpointImpact(remote, draft) === "none" ? t("settings.remote.impact.none")
-              : ""}
-        </span>
-        <div className="remote-actions-buttons">
-          {dirty ? (
-            <button type="button" className="remote-create is-quiet" disabled={saving} onClick={discard}>
-              {t("settings.remote.action.discard")}
-            </button>
-          ) : null}
-          {listening ? (
-            dirty
-              ? <button type="button" className="remote-create" disabled={blocked || !presentation.ready} onClick={requestApply}>
-                {t("settings.remote.action.apply")}
+        {draft.publicEndpointEnabled ? (
+          <>
+            <div className="remote-endpoint-grid">
+              <label className="remote-field">
+                <span>{t("settings.remote.advertisedHost")}</span>
+                <input value={draft.advertisedHost} disabled={saving} autoComplete="off" spellCheck={false}
+                  placeholder={t("settings.remote.advertisedPlaceholder")}
+                  aria-invalid={draft.advertisedHost !== "" && !isValidRemoteAdvertisedHost(draft.advertisedHost)}
+                  onChange={(event) => edit({ advertisedHost: event.target.value.trim().toLowerCase() })} />
+              </label>
+              <RemotePortControl label={t("settings.remote.advertisedPort")} errorId="remote-advertised-port-error" port={draft.advertisedPort} raw={portDrafts.advertisedPort} saving={saving}
+                onMode={(mode) => editPortField("advertisedPort", { ...draft.advertisedPort, mode })}
+                onRaw={(raw) => editPortRaw("advertisedPort", raw)}
+                onRegenerate={() => editPortField("advertisedPort", { mode: "auto", value: generateRemoteAutoPort() })} />
+            </div>
+            <p className="remote-card-help">{t("settings.remote.advertisedAutoHelp")}</p>
+          </>
+        ) : null}
+
+        <RemoteRoutePreview presentation={presentation} live={listening && !dirty} t={t} />
+
+        {draft.publicEndpointEnabled ? (
+          <>
+            {presentation.forward === null ? null : <RemoteForwardRuleCard rule={presentation.forward} t={t} />}
+            {/* 경로와 규칙은 위에서 한 번씩만 그린다. 여기에 다시 적으면 같은 값이 두 서식으로 어긋난다. */}
+            <label className="remote-acknowledgment">
+              <input type="checkbox" checked={draft.acknowledgment !== null}
+                disabled={saving || presentation.origin === null}
+                onChange={(event) => acknowledge(event.target.checked)} />
+              <span>{t("settings.remote.acknowledgment")}</span>
+            </label>
+            <p className="remote-status-note">
+              <strong>{t("settings.remote.publicReachability")}</strong> {t("settings.remote.publicNotTested")}
+            </p>
+            <p className="remote-card-help">{t("settings.remote.publicTestHelp")}</p>
+          </>
+        ) : null}
+
+        {status?.listener.lastError ? <p className="remote-card-alert" role="alert">{t(remoteErrorKey(status.listener.lastError))}</p> : null}
+
+        {/* 거절이 일어나고 있다는 사실은 "지금 열어둘 만한가"의 판단 재료다. 조용히 세고만 있으면 값이 없다. */}
+        {status !== null && status.rejectedJoins.count > 0 ? (
+          <p className="remote-status-note">
+            {renderMessage(t("settings.remote.rejectedJoins"), { count: String(status.rejectedJoins.count) })}
+          </p>
+        ) : null}
+
+        {stale ? (
+          <div className="remote-stale" role="alert">
+            <span>{t("settings.remote.draft.stale")}</span>
+            <button type="button" className="remote-create is-quiet" onClick={discard}>{t("settings.remote.draft.reload")}</button>
+          </div>
+        ) : null}
+
+        {shelf ? (
+          <RemoteConsequenceShelf kind={shelf.kind} t={t} busy={saving}
+            onConfirm={() => persist(shelf.payload)}
+            onCancel={() => setShelf(null)} />
+        ) : null}
+
+        <div className="remote-actions">
+          {/* 거부된 포트의 사유는 그 칸 옆에서 말한다 — 여기에 다시 적으면 같은 오류가 두 자리에 흩어진다. */}
+          <span className="remote-actions-note">
+            {dirty && listening ? t("settings.remote.draft.pending")
+              : dirty && !portError && presentation.ready && remoteEndpointImpact(remote, draft) === "none" ? t("settings.remote.impact.none")
+                : ""}
+          </span>
+          <div className="remote-actions-buttons">
+            {dirty ? (
+              <button type="button" className="remote-create is-quiet" disabled={saving} onClick={discard}>
+                {t("settings.remote.action.discard")}
               </button>
-              : <button type="button" className="remote-create is-danger" disabled={saving} onClick={() => setShelf({ kind: "stop", payload: { ...draft, enabled: false } })}>
-                {t("settings.remote.action.stop")}
-              </button>
-          ) : (
-            <>
-              {dirty ? (
-                <button type="button" className="remote-create is-quiet" disabled={blocked} onClick={() => persist({ ...draft, enabled: false })}>
-                  {t("settings.remote.action.saveLater")}
+            ) : null}
+            {listening ? (
+              dirty
+                ? <button type="button" className="remote-create" disabled={blocked || !presentation.ready} onClick={requestApply}>
+                  {t("settings.remote.action.apply")}
                 </button>
-              ) : null}
-              {draft.enabled && !dirty ? (
-                <button type="button" className="remote-create is-danger" disabled={saving} onClick={() => persist({ ...draft, enabled: false })}>
+                : <button type="button" className="remote-create is-danger" disabled={saving} onClick={() => setShelf({ kind: "stop", payload: { ...draft, enabled: false } })}>
                   {t("settings.remote.action.stop")}
                 </button>
-              ) : (
-                <button type="button" className="remote-create" disabled={blocked || !presentation.ready} onClick={() => persist({ ...draft, enabled: true })}>
-                  {t("settings.remote.action.start")}
-                </button>
-              )}
-            </>
-          )}
+            ) : (
+              <>
+                {dirty ? (
+                  <button type="button" className="remote-create is-quiet" disabled={blocked} onClick={() => persist({ ...draft, enabled: false })}>
+                    {t("settings.remote.action.saveLater")}
+                  </button>
+                ) : null}
+                {draft.enabled && !dirty ? (
+                  <button type="button" className="remote-create is-danger" disabled={saving} onClick={() => persist({ ...draft, enabled: false })}>
+                    {t("settings.remote.action.stop")}
+                  </button>
+                ) : (
+                  <button type="button" className="remote-create" disabled={blocked || !presentation.ready} onClick={() => persist({ ...draft, enabled: true })}>
+                    {t("settings.remote.action.start")}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -778,12 +781,19 @@ function RemoteIdentityCard({
 }) {
   const t = useT();
   return (
-    <div className="remote-card" data-remote-card="identity">
+    <div className="remote-group" data-remote-card="identity">
       <div className="remote-card-head">
         <p className="remote-card-title">
           {t("settings.remote.identity.title")}
           <SettingsHelp title={t("settings.remote.identity.title")}>{t("settings.remote.identity.help")}</SettingsHelp>
         </p>
+      </div>
+      {/* 지문과 갱신은 한 행이다 — 이름 자리에 지문, 컨트롤 자리에 갱신. */}
+      <div className="remote-card is-row">
+        {/* 지문이 없을 때의 문장은 값이 아니라 안내다 — 지문 서체(모노·청록)를 빌리지 않는다. */}
+        {status?.fingerprint
+          ? <code className="remote-fingerprint">{status.fingerprint}</code>
+          : <p className="remote-fingerprint-empty">{t("settings.remote.identity.none")}</p>}
         <button
           type="button"
           className={`remote-rotate ${armed ? "is-armed" : ""}`}
@@ -797,7 +807,6 @@ function RemoteIdentityCard({
           {busy === "rotate" ? t("settings.remote.rotate.busy") : armed ? t("settings.remote.rotate.arm") : t("settings.remote.rotate")}
         </button>
       </div>
-      <code className="remote-fingerprint">{status?.fingerprint ?? t("settings.remote.identity.none")}</code>
     </div>
   );
 }
@@ -859,7 +868,7 @@ function RemoteLinksCard({
   ];
 
   return (
-    <div className="remote-card" data-remote-card="links">
+    <div className="remote-group" data-remote-card="links">
       <div className="remote-card-head">
         <p className="remote-card-title">
           {t("settings.remote.links.title")}
@@ -871,58 +880,60 @@ function RemoteLinksCard({
           {busy === "create" ? t("settings.remote.creating") : t("settings.remote.create")}
         </button>
       </div>
+      <div className="remote-card">
 
-      {link ? (
-        <>
-          <div className="remote-link-field">
-            <input readOnly value={link.link} aria-label={t("settings.remote.linkLabel")} onFocus={(event) => event.currentTarget.select()} />
-            {/* QR 창은 발급 직후 스스로 열리지만, 닫은 뒤에도 같은 링크로 다시 열 수 있어야 한다 —
-                한 번 닫았다고 링크를 새로 만들게 하면 쓰지 않은 자격이 하나씩 쌓인다. */}
-            <button ref={showQrRef} type="button" onClick={onShowQr}>{t("settings.remote.pair.open")}</button>
-            <button type="button" onClick={onCopy}>{copied ? t("settings.remote.copied") : t("settings.remote.copy")}</button>
-          </div>
-          {/*
-            링크는 인코딩된 봉투일 뿐 암호가 아니다 — 받은 쪽은 물론 그 문자열이 지나간 곳도 풀어
-            볼 수 있다. 섹션 머리의 경고는 원격 접속 전체를 말하므로, 방금 만들어진 이 문자열이
-            무엇을 여는지는 그 문자열 옆에서 다시 말한다. monitoring 링크는 명령을 실행하지
-            못하므로 full일 때만 그 문장을 붙인다.
-          */}
-          {link.access === "full" ? <p className="remote-card-help">{t("settings.remote.warning")}</p> : null}
-        </>
-      ) : null}
+        {link ? (
+          <>
+            <div className="remote-link-field">
+              <input readOnly value={link.link} aria-label={t("settings.remote.linkLabel")} onFocus={(event) => event.currentTarget.select()} />
+              {/* QR 창은 발급 직후 스스로 열리지만, 닫은 뒤에도 같은 링크로 다시 열 수 있어야 한다 —
+                  한 번 닫았다고 링크를 새로 만들게 하면 쓰지 않은 자격이 하나씩 쌓인다. */}
+              <button ref={showQrRef} type="button" onClick={onShowQr}>{t("settings.remote.pair.open")}</button>
+              <button type="button" onClick={onCopy}>{copied ? t("settings.remote.copied") : t("settings.remote.copy")}</button>
+            </div>
+            {/*
+              링크는 인코딩된 봉투일 뿐 암호가 아니다 — 받은 쪽은 물론 그 문자열이 지나간 곳도 풀어
+              볼 수 있다. 섹션 머리의 경고는 원격 접속 전체를 말하므로, 방금 만들어진 이 문자열이
+              무엇을 여는지는 그 문자열 옆에서 다시 말한다. monitoring 링크는 명령을 실행하지
+              못하므로 full일 때만 그 문장을 붙인다.
+            */}
+            {link.access === "full" ? <p className="remote-card-help">{t("settings.remote.warning")}</p> : null}
+          </>
+        ) : null}
 
-      <label className="remote-monitoring">
-        <input type="checkbox" checked={monitoringOnly} disabled={busy !== null} onChange={(event) => onMonitoringOnly(event.target.checked)} />
-        <span>{t("settings.remote.monitoringOnly")}</span>
-      </label>
+        <label className="remote-monitoring">
+          <input type="checkbox" checked={monitoringOnly} disabled={busy !== null} onChange={(event) => onMonitoringOnly(event.target.checked)} />
+          <span>{t("settings.remote.monitoringOnly")}</span>
+        </label>
 
-      <table className="remote-table">
-        <thead>
-          <tr>
-            <th scope="col">{t("settings.remote.table.device")}</th>
-            <th scope="col">{t("settings.remote.table.access")}</th>
-            <th scope="col">{t("settings.remote.table.lastUsedHead")}</th>
-            <th scope="col">{t("settings.remote.table.actionsHead")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr><td colSpan={4} className="remote-table-empty">{t("settings.remote.table.empty")}</td></tr>
-          ) : rows.map((row) => (
-            <tr key={row.key}>
-              <td data-label={t("settings.remote.table.device")}>{row.name}</td>
-              <td data-label={t("settings.remote.table.access")}><span className={`remote-access-chip is-${row.access}`}>{row.access}</span></td>
-              <td data-label={t("settings.remote.table.lastUsedHead")}>{row.when}</td>
-              <td className="remote-row-actions" data-label={t("settings.remote.table.actionsHead")}>
-                {row.disconnect ? (
-                  <button type="button" className="remote-disconnect" disabled={busy !== null} onClick={row.disconnect}>{t("settings.remote.disconnect")}</button>
-                ) : null}
-                <button type="button" className="remote-revoke" disabled={busy !== null} onClick={row.revoke}>{row.revokeLabel}</button>
-              </td>
+        <table className="remote-table">
+          <thead>
+            <tr>
+              <th scope="col">{t("settings.remote.table.device")}</th>
+              <th scope="col">{t("settings.remote.table.access")}</th>
+              <th scope="col">{t("settings.remote.table.lastUsedHead")}</th>
+              <th scope="col">{t("settings.remote.table.actionsHead")}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={4} className="remote-table-empty">{t("settings.remote.table.empty")}</td></tr>
+            ) : rows.map((row) => (
+              <tr key={row.key}>
+                <td data-label={t("settings.remote.table.device")}>{row.name}</td>
+                <td data-label={t("settings.remote.table.access")}><span className={`remote-access-chip is-${row.access}`}>{row.access}</span></td>
+                <td data-label={t("settings.remote.table.lastUsedHead")}>{row.when}</td>
+                <td className="remote-row-actions" data-label={t("settings.remote.table.actionsHead")}>
+                  {row.disconnect ? (
+                    <button type="button" className="remote-disconnect" disabled={busy !== null} onClick={row.disconnect}>{t("settings.remote.disconnect")}</button>
+                  ) : null}
+                  <button type="button" className="remote-revoke" disabled={busy !== null} onClick={row.revoke}>{row.revokeLabel}</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

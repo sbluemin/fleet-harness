@@ -5,9 +5,9 @@ import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
 // 이 기능의 온보딩 문구 — 투어·웰컴의 내용은 기능이 소유하고, 엔진은 순서만 정한다.
 const messagesEn = {
   "remoteAccess.spotlightTitle": "Reach this console from another device",
-  "remoteAccess.spotlightBody": "Remote access is experimental. Open Settings → Remote access to hand another device an access link, or to save another console you can open from Fleet Desktop.",
-  "remoteAccess.step1Title": "Remote access is experimental",
-  "remoteAccess.step1Body": "It works today, but how links and pairings behave can still change between releases. Turning it on opens this console to other devices, so read each card before you use it.",
+  "remoteAccess.spotlightBody": "Open Settings → Remote access to hand another device an access link, or to save another console you can open from Fleet Desktop.",
+  "remoteAccess.step1Title": "Before you turn on remote access",
+  "remoteAccess.step1Body": "Turning it on opens this console to other devices, so read each card before you use it.",
   "remoteAccess.step2Title": "Consoles you can jump to",
   "remoteAccess.step2Body": "Paste an access link from another console and it lands in this list. Opening one from the host chip needs Fleet Desktop, because a browser cannot check a console's certificate.",
   "remoteAccess.step3Title": "Choose the address this console answers on",
@@ -20,9 +20,9 @@ const messagesEn = {
 
 const messagesKo: Record<keyof typeof messagesEn, string> = {
   "remoteAccess.spotlightTitle": "다른 기기에서 이 콘솔에 접속할 수 있습니다",
-  "remoteAccess.spotlightBody": "원격 접속은 실험 기능입니다. 설정 → 원격 접속에서 다른 기기에 액세스 링크를 건네거나, Fleet Desktop으로 열 수 있는 다른 콘솔을 저장할 수 있습니다.",
-  "remoteAccess.step1Title": "원격 접속은 실험 기능입니다",
-  "remoteAccess.step1Body": "지금도 동작하지만, 링크와 페어링이 처리되는 방식은 릴리스마다 달라질 수 있습니다. 켜면 이 콘솔이 다른 기기에 열리므로 각 항목을 읽어 보고 사용하세요.",
+  "remoteAccess.spotlightBody": "설정 → 원격 접속에서 다른 기기에 액세스 링크를 건네거나, Fleet Desktop으로 열 수 있는 다른 콘솔을 저장할 수 있습니다.",
+  "remoteAccess.step1Title": "원격 접속을 켜기 전에",
+  "remoteAccess.step1Body": "켜면 이 콘솔이 다른 기기에 열리므로 각 항목을 읽어 보고 사용하세요.",
   "remoteAccess.step2Title": "건너갈 수 있는 콘솔 목록입니다",
   "remoteAccess.step2Body": "다른 콘솔의 액세스 링크를 붙여넣으면 이 목록에 들어옵니다. 호스트 칩에서 실제로 여는 데는 Fleet Desktop이 필요합니다 — 브라우저는 콘솔의 인증서를 대조할 수 없습니다.",
   "remoteAccess.step3Title": "이 콘솔이 응답할 주소를 고릅니다",
@@ -38,7 +38,7 @@ function T(key: keyof typeof messagesEn): LocalizedText {
 }
 
 /**
- * 원격 접속 — 존재를 먼저 알려야 하는 실험 기능인데 설명할 항목은 전부 설정 화면에 있다. 그래서 어느 화면에서나 보이는
+ * 원격 접속 — 존재를 먼저 알려야 하는 기능인데 설명할 항목은 전부 설정 화면에 있다. 그래서 어느 화면에서나 보이는
  * 호스트 칩에 스포트라이트로 존재만 알리고, 설정의 원격 접속 섹션에 들어온 순간 각 카드를 차례로 짚는다. 두 단계를 한
  * 투어로 묶어야 설정에서 안내를 다 본 사람에게 칩 하이라이트가 뒤늦게 다시 뜨지 않는다.
  */

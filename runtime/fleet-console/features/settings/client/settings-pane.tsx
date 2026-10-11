@@ -60,7 +60,7 @@ export function syncSettingsSearchPlugins(plugins: typeof searchPluginsSnapshot)
   searchPluginsSnapshot = plugins;
 }
 
-interface SettingsChip {
+export interface SettingsChip {
   readonly id: SettingsSectionId;
   readonly group: SettingsSectionGroup;
   readonly label: string;
@@ -70,7 +70,7 @@ interface SettingsChip {
   readonly haystack: string;
 }
 
-function buildChips(
+export function buildChips(
   coreSections: ReturnType<typeof buildCoreSettingsSections>,
   pluginSections: readonly PluginSettingsNavItem[],
 ): readonly SettingsChip[] {
@@ -147,10 +147,10 @@ export const settingsPanes: readonly PaneDescriptor[] = [
 ];
 
 /**
- * 칩이 없는 섹션(다른 칩 안에 묻힌 것)으로 들어온 경로를 그 칩으로 옮긴다 — 연결 설정을 여는 원격 접속
- * 픽커와 경로 어댑터는 여전히 "connectivity"를 말하고, 페인은 그 카드가 사는 실험 기능 칩을 연다.
+ * 칩이 없는 섹션(다른 칩 안에 묻힌 것)으로 들어온 경로를 그 칩으로 옮긴다 — 옛 주소의 표시 언어는 겉모습 칩을,
+ * 실험 묶음의 플러그인 섹션은 실험 기능 칩을 연다.
  */
-function hostSectionOf(
+export function hostSectionOf(
   requested: string | null,
   coreSections: readonly SettingsSectionNavItem[],
   pluginSections: readonly PluginSettingsNavItem[],
@@ -291,7 +291,7 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
  * 전체는 데스크톱 페인만 주입한다: 같은 헬퍼가 사이드바도 레일도 없는 모바일의 본문이라, 직접
  * 넣으면 폰에 죽은 슬라이더가 선다.
  */
-function ChromeMaterialRows() {
+export function ChromeMaterialRows() {
   const t = useT();
   return (
     <section className="global-settings-card" aria-label={t("settings.theme.glassTitle")}><h3 className="global-settings-card-title">{t("settings.theme.glassTitle")}</h3><div className="settings-group-surface">
