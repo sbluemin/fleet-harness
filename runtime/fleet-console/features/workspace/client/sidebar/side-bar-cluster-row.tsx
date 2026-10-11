@@ -422,7 +422,7 @@ function ClusterRowAvatar({ item, rowState, label, conversation, decorative = fa
   const size = working.length > 0 ? (conversation ? 24 : 17) : full;
   const commander = anchor
     ? <OperationAvatar operation={anchor.operation} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />
-    : <KeyedAvatar avatarKey={operationAvatarKey(layout.cluster.id)} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />;
+    : <KeyedAvatar avatarKey={operationAvatarKey(layout.cluster.root ?? layout.cluster.avatarOperationId ?? layout.cluster.id)} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />;
   if (working.length === 0) return commander;
   return (
     <span className="side-bar-cluster-avatars" style={{ width: full, height: full }}>

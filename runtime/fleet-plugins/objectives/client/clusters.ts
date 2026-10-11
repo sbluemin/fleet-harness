@@ -246,7 +246,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, openDetail, (at) => { openCommodoreConversation(objective.theaterId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective));
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
-      if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : {}), members: [], conversation, open: openDetail, row });
+      if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarOperationId: commander }), members: [], conversation, open: openDetail, row });
       continue;
     }
     // 구성원 Operation → 대표 임무. 끝나지 않은 첫 임무가 이기고, 모두 끝났으면 마지막 임무.
