@@ -423,12 +423,12 @@
 
 .conversation-panel-toolbar-spacer { flex: 1; }
 
-/* 이름 아래 세그먼트 줄 — 대상의 글자 탭 묶음과 도구 글리프 묶음. 둘이 한 줄에 들어가면 한 줄, 아니면 도구 묶음이 통째로
-   다음 줄로 내려간다(사령관처럼 대상 탭이 많을 때 도구가 ⋯ 안으로 사라지지 않게). 각 줄은 가운데 정렬이고, 그래도 넘치는 도구는
-   줄 끝 「⋯」에 모인다(ConversationPanelHeader 가 잰다). */
+/* 이름 아래 두 줄 — 대상의 글자 탭 줄(구성원, 사령관의 행위 기록·지시·정보·설정)과 그 아래 도구 글리프 줄. 둘 다 이름처럼 가운데
+   정렬이다(Grok 세부 정보는 표식·이름·세그먼트가 한 축에 선다). 대상 탭이 없으면 탭 줄을 남기지 않고 도구 줄이 이름 바로 아래에
+   선다. 도구 줄이 넘치면 그 줄 끝 「⋯」에 모인다(ConversationPanelHeader 가 잰다). */
 .conversation-panel-segments {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: var(--space-1);
   padding: 0 var(--space-3) var(--space-3);
 }
@@ -437,10 +437,9 @@
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-1) var(--space-3);
+  gap: var(--space-2);
   overflow: hidden;
 }
 
@@ -449,8 +448,8 @@
 .conversation-panel-segment-row > .conversation-panel-tabs,
 .conversation-panel-segment-row > .conversation-panel-tools {
   display: flex;
-  flex: 0 1 auto;
   flex-wrap: nowrap;
+  justify-content: safe center;
   align-items: center;
   gap: 2px;
   min-width: 0;
@@ -478,9 +477,11 @@
 }
 
 /* 켜진 도구는 면 워시 하나로 말한다(Grok 의 선택 세그먼트) — 밑줄·띠를 두지 않는다. */
+/* 켜진 도구는 대상 탭(채운 둥근 면)과 갈리게 테두리 링과 위치 채널(brass) 글리프로 말한다 — 둘이 함께 켜져 있어도 섞이지 않는다. */
 .conversation-panel-tools .right-rail-ico.is-active {
-  background: var(--control-wash);
-  color: var(--text-primary);
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  background: none;
+  color: var(--brass-ink);
 }
 
 .conversation-panel-tools .right-rail-ico.is-active::before { display: none; }

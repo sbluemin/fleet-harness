@@ -162,15 +162,19 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
     let frame = 0;
     const measure = () => {
       frame = 0;
-      const items = [...row.querySelectorAll<HTMLElement>(".right-rail-ico, .right-rail-divider")];
-      for (const item of items) item.removeAttribute("data-overflow");
+      for (const item of row.querySelectorAll<HTMLElement>("[data-overflow]")) item.removeAttribute("data-overflow");
+      // 줄마다 따로 잰다 — 대상 탭 줄과 도구 줄은 서로의 넘침에 끌려가지 않는다. 「⋯」는 도구 줄 끝에 서므로, 아직 서지 않았으면
+      // 도구 줄만 그 자리(MORE_RESERVE)를 남긴다. 넘친 것은 탭이든 도구든 같은 메뉴에 모인다.
       const more = moreRef.current;
-      const limit = row.clientWidth - (more ? more.offsetWidth + 8 : 0);
+      const moreShown = more !== null && more.offsetWidth > 0;
       const rowLeft = row.getBoundingClientRect().left;
-      const fits = (item: HTMLElement) => item.getBoundingClientRect().right - rowLeft <= row.clientWidth;
-      const everythingFits = items.every(fits);
       const hidden: OverflowTab[] = [];
-      if (!everythingFits) {
+      for (const group of row.children) {
+        if (!(group instanceof HTMLElement)) continue;
+        const items = [...group.querySelectorAll<HTMLElement>(".right-rail-ico, .right-rail-divider")];
+        if (items.every((item) => item.getBoundingClientRect().right - rowLeft <= row.clientWidth)) continue;
+        const reserve = group.classList.contains("conversation-panel-tools") && !moreShown ? MORE_RESERVE : 0;
+        const limit = row.clientWidth - reserve;
         let cut = false;
         for (const item of items) {
           if (!cut && item.getBoundingClientRect().right - rowLeft > limit) cut = true;
@@ -289,6 +293,9 @@ function ConversationPanelIdentity() {
   }
   return null;
 }
+
+/** 「⋯」 단추(30px)와 그 틈 — 도구 줄이 넘칠 때 그 끝에 남겨 둘 자리. */
+const MORE_RESERVE = 38;
 
 interface OverflowTab {
   readonly label: string;
