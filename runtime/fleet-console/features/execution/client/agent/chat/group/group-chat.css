@@ -143,6 +143,26 @@
 .group-chat-line-chev { flex: none; margin-left: auto; padding-left: var(--space-1); transition: transform var(--duration-fast); }
 details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rotate(180deg); }
 
+/* 위임 줄 — 「보낸이 → 받는이 발췌」 한 줄. 구분 점 대신 간격으로 묶음을 가르고, 받는이가 여럿이면 얼굴을 살짝 겹친다.
+   이름 잉크는 신원 톤(구성원)이거나 중립 잉크이고, 줄 안에서는 굵기를 줄 글자에 맞춘다. */
+.group-chat-delegation > .group-chat-line-summary { gap: 6px; }
+.group-chat-delegation-party { flex: none; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.group-chat-delegation-faces { display: inline-flex; align-items: center; }
+.group-chat-delegation-faces > * + * { margin-left: -4px; }
+.group-chat-delegation-party .group-chat-line-sep { margin-left: -4px; }
+.group-chat-delegation .group-chat-name { font-weight: inherit; }
+.group-chat-delegation .group-chat-name:is(.is-commander, .is-commodore, .is-human) { color: var(--text-secondary); }
+.group-chat-delegation-more { color: var(--text-tertiary); }
+.group-chat-delegation .group-chat-line-excerpt,
+.group-chat-delegation .group-chat-line-status { margin-left: var(--space-1); }
+/* 펼침 표시는 올리거나 초점이 갈 때, 펼친 동안만 선다. 올릴 수 없는 터치 기기에서는 늘 선다. */
+.group-chat-delegation > .group-chat-line-summary .group-chat-line-chev { opacity: 0; transition: transform var(--duration-fast), opacity var(--duration-fast); }
+.group-chat-delegation > .group-chat-line-summary:is(:hover, :focus-visible) .group-chat-line-chev,
+.group-chat-delegation[open] > .group-chat-line-summary .group-chat-line-chev { opacity: 1; }
+@media (hover: none) {
+  .group-chat-delegation > .group-chat-line-summary .group-chat-line-chev { opacity: 1; }
+}
+
 .group-chat-line-detail {
   display: flex;
   flex-direction: column;
@@ -156,8 +176,8 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 }
 .group-chat-line-label { font-size: var(--t-2xs); font-weight: var(--weight-bold); color: var(--text-tertiary); }
 .group-chat-line-label:not(:first-child) { margin-top: var(--space-2); }
-.group-chat-line-recipient { font-size: var(--t-sm); color: var(--text-secondary); }
 .group-chat-line-result { font-family: var(--font-code); font-size: var(--font-code-size); white-space: pre-wrap; color: var(--text-secondary); }
+.group-chat-line-result.is-failed { color: var(--coral-ink); }
 .group-chat-line-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
 
 /* 글자형 동작 — 테두리·배경 없는 밑줄 낱말. */
@@ -296,6 +316,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 
 @media (prefers-reduced-motion: reduce) {
   .group-chat-line-chev,
+  .group-chat-delegation > .group-chat-line-summary .group-chat-line-chev,
   .group-chat-line-summary { transition: none; }
 }
 

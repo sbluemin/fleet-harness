@@ -220,29 +220,47 @@ function DelegationLine({ entry, language, onOpenLedger }: {
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
 }) {
   const t = getGroupT(language);
-  const names = entry.recipients.map((recipient) => recipient.name).join(", ");
-  const status = entry.ok === false ? t("group.delegation.failed") : !entry.received ? t("group.delegation.unconfirmed") : null;
+  const failed = entry.ok === false;
+  // 받는이 이름은 둘까지 쓰고 나머지는 「외 N명」으로 접는다 — 얼굴 묶음은 모두 선다. 셋째부터의 이름은 펼친 칸의 원장 링크가 말한다.
+  const named = entry.recipients.length > 2 ? entry.recipients.slice(0, 2) : entry.recipients;
+  const more = entry.recipients.length - named.length;
+  const result = entry.result.trim();
   // 지휘관의 원장은 이 그룹 대화 자체가 그 자리이므로 원장 링크를 두지 않는다 — 구성원 본문 선택은 루트를 고를 수 없다.
   const ledgers = dedupe([entry.sender, ...entry.recipients].filter((speaker) => speaker.kind === "member" && speaker.operationId));
   const preview = excerpt(entry.text);
+  // 줄은 「보낸이 → 받는이 발췌」만 말한다. 도착 미확인은 낱말로 세우지 않고, 실패만 신호 잉크로 남긴다.
   return (
     <details className="group-chat-line group-chat-delegation">
       <summary className="group-chat-line-summary">
-        <SpeakerMark speaker={entry.sender} size="sm" />
-        <span className="group-chat-line-who">{entry.sender.name}</span>
+        <span className="group-chat-delegation-party">
+          <SpeakerMark speaker={entry.sender} size="sm" />
+          <SpeakerName speaker={entry.sender} />
+        </span>
         <span className="group-chat-line-arrow" aria-hidden="true">→</span>
-        {entry.recipients.map((recipient) => <SpeakerMark key={speakerKey(recipient)} speaker={recipient} size="sm" />)}
-        <span className="group-chat-line-who">{names}</span>
-        {preview ? <><span className="group-chat-line-sep" aria-hidden="true">·</span><span className="group-chat-line-excerpt">{preview}</span></> : null}
-        {status ? <><span className="group-chat-line-sep" aria-hidden="true">·</span><span className={`group-chat-line-status${entry.ok === false ? " is-failed" : ""}`}>{status}</span></> : null}
+        <span className="group-chat-delegation-party">
+          <span className="group-chat-delegation-faces">
+            {entry.recipients.map((recipient) => <SpeakerMark key={speakerKey(recipient)} speaker={recipient} size="sm" />)}
+          </span>
+          {named.map((recipient, index) => (
+            <React.Fragment key={speakerKey(recipient)}>
+              {index > 0 ? <span className="group-chat-line-sep" aria-hidden="true">,</span> : null}
+              <SpeakerName speaker={recipient} />
+            </React.Fragment>
+          ))}
+          {more > 0 ? <span className="group-chat-delegation-more">{t("group.delegation.more", { count: more })}</span> : null}
+        </span>
+        {preview ? <span className="group-chat-line-excerpt">{preview}</span> : null}
+        {failed ? <span className="group-chat-line-status is-failed">{t("group.delegation.failed")}</span> : null}
         <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
       </summary>
       <div className="group-chat-line-detail">
-        <span className="group-chat-line-label">{t("group.delegation.sent")}</span>
-        <div className="group-chat-line-recipient">→ {names}</div>
         <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
-        <span className="group-chat-line-label">{t("group.delegation.result")}</span>
-        <div className="group-chat-line-result">{entry.result.trim() || t("group.delegation.pending")}</div>
+        {result || failed ? (
+          <>
+            <span className="group-chat-line-label">{t("group.delegation.result")}</span>
+            <div className={`group-chat-line-result${failed ? " is-failed" : ""}`}>{result || t("group.delegation.failed")}</div>
+          </>
+        ) : null}
         {onOpenLedger && ledgers.length > 0 ? (
           <div className="group-chat-line-actions">
             {ledgers.map((speaker) => (
