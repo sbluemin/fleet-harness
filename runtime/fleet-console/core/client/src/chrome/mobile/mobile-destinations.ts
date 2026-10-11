@@ -22,6 +22,15 @@ export function mobileDestinationBindings(bindings: readonly RailEntryBinding[],
     .map((item) => item.binding);
 }
 
+/**
+ * 홈 대표 자리에 설 목적지 — 지금 보이는(shown) 목적지 가운데 order가 가장 앞선, 자기 상태 칸(`trailing`)을 선언한 것이다.
+ * 상태를 말하는 목적지(Theater의 사령관처럼 자율 운영의 지금을 가진 것)만 대표가 될 수 있고, 플러그인 id는 읽지 않는다 — `RailEntryMobile.destination`의
+ * 기존 필드(order·shown·trailing)만 소비한다. 없으면 null이고 홈은 Theater의 정체를 대표로 보인다.
+ */
+export function featuredDestinationBinding(shown: readonly RailEntryBinding[]): RailEntryBinding | null {
+  return shown.find((binding) => binding.entry.mobile?.destination?.trailing !== undefined) ?? null;
+}
+
 function destinationShown(binding: RailEntryBinding, theaterId: string | null): boolean {
   return binding.entry.mobile?.destination?.shown?.get(theaterId) !== false;
 }

@@ -13,6 +13,7 @@ import { AttentionReason } from "./mobile-attention-reason.js";
 import { ConversationRow, ConversationSummary, useMobileConversations, type MobileConversation } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
+import { MobileHomeFeatured } from "./mobile-home-featured.js";
 import { MobileShortcutChips } from "./mobile-shortcut-chips.js";
 import { pushMobileSheet, setMobileDestination } from "./mobile-store.js";
 
@@ -64,14 +65,8 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
       </header>
       <div className="mobile-conv-scroll">
         <MobileShortcutChips state={state} />
-        {/* 대표 자리 — 머리·바로가기 칩과 확인 필요 묶음 사이. 지금은 Theater의 정체만 선다. 이 Theater를 대표하는 대화(사령관 등)가 생기면 이 자리에 행으로 선다. */}
-        {theater ? (
-          <div className="mobile-conv-hero">
-            <MobileMonogram label={theater.label} toneKey={theater.id} size={64} />
-            <strong>{theater.label}</strong>
-            <small>{t("mobile.list.heroSub", { count: inTheater.length })}</small>
-          </div>
-        ) : null}
+        {/* 대표 자리 — 머리·바로가기 칩과 확인 필요 묶음 사이. 상태를 말하는 목적지(사령관)가 보이면 그것이, 아니면 Theater의 정체가 선다. */}
+        {theater ? <MobileHomeFeatured state={state} conversationCount={inTheater.length} /> : null}
         {attention.length > 0 ? (
           <>
             <div className="mobile-conv-section">
