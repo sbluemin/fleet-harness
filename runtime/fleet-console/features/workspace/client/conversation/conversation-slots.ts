@@ -1,5 +1,7 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 
+import type { OperationCluster } from "@fleet-console/sdk/plugin";
+
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 
 export {
@@ -46,6 +48,29 @@ export function useConversationSubject(): OperationNode | null {
     (listener) => { subjectListeners.add(listener); return () => { subjectListeners.delete(listener); }; },
     () => subject,
     () => null,
+  );
+}
+
+// ── 목표 묶음 ─────────────────────────────────────────────────────────────
+
+/**
+ * 셸이 읽은 목표 묶음 — 탭 본문이 아바타 얼굴의 검토 대기·결정 요청·임무 완료를 다른 표면과 같은 사실로 고르게 한다.
+ * 탭은 묶음 훅(플러그인 레지스트리)을 직접 가져오지 않고 이 자리에서 읽는다.
+ */
+let clusters: readonly OperationCluster[] = [];
+const clusterListeners = new Set<() => void>();
+
+export function publishConversationClusters(next: readonly OperationCluster[]): void {
+  if (clusters === next) return;
+  clusters = next;
+  for (const listener of clusterListeners) listener();
+}
+
+export function useConversationClusters(): readonly OperationCluster[] {
+  return useSyncExternalStore(
+    (listener) => { clusterListeners.add(listener); return () => { clusterListeners.delete(listener); }; },
+    () => clusters,
+    () => clusters,
   );
 }
 

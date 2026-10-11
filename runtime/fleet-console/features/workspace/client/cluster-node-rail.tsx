@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { operationAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
+import { operationAvatarKey } from "@fleet-console/sdk/avatars";
 import type { OperationClusterMember, OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
+import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
-import { KeyedAvatar, mongleStateOfMark } from "./avatars.js";
+import { KeyedAvatar, operationMongleState } from "./avatars.js";
 import type { ClusterLayout } from "./operation-clusters.js";
 
 type RootActivity = "idle" | "running" | "awaiting" | "ended" | null;
@@ -15,9 +16,6 @@ const TONE_ORDER: readonly string[] = ["teal", "amber", "plum", "moss", "cerulea
 const awaitingInput = (member: OperationClusterMember): boolean => member.awaitingInput ?? member.progress === "awaiting";
 const chipProgress = (member: OperationClusterMember): OperationClusterProgress =>
   awaitingInput(member) ? "awaiting" : member.progress === "awaiting" ? "open" : member.progress;
-/** 구성원 탭의 얼굴 — 칩 진행이 그대로 상태다. 아직 할 일이 남았거나 막힌 칸(open·blocked)은 쉬는 얼굴이다. */
-const mongleStateOfProgress = (progress: OperationClusterProgress): MongleState =>
-  progress === "running" ? "running" : progress === "awaiting" ? "awaiting" : progress === "done" ? "done" : "idle";
 /** 탭 표식의 한 변 — 탭 높이(20px) 안에 선다. */
 const AVATAR_SIZE = 15;
 
@@ -29,6 +27,10 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   readonly onPick: (operationId: string) => void;
 }) {
   const t = useT();
+  // 탭의 얼굴은 사이드바·목표 보드와 같은 기준이다 — 임무 진행이 아니라 그 사람의 활동(지휘관은 구성원을 끌어올린 값,
+  // 구성원은 자기 값)과 검토 대기·결정 요청·임무 완료. `rootActivity`(자기 활동)는 지휘관 탭의 대기 테두리만 정한다.
+  const consoleState = useConsoleState();
+  const faceOf = (operationId: string) => operationMongleState(operationId, consoleState, [layout.cluster]);
   const railRef = useRef<HTMLDivElement | null>(null);
   const membersRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -244,7 +246,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         onFocus={(event) => showName(event.currentTarget, chefLabel)}
         onBlur={() => setTooltipVisible(false)}
         onClick={() => { setFocusedId(root); onPick(root); }} onKeyDown={onKeyDown}>
-        <KeyedAvatar avatarKey={operationAvatarKey(root)} role="commander" state={mongleStateOfMark(rootActivity ?? undefined, layout.cluster.decisionRequest === true)} size={AVATAR_SIZE} label="" decorative />
+        <KeyedAvatar avatarKey={operationAvatarKey(root)} role="commander" state={faceOf(root)} size={AVATAR_SIZE} label="" decorative />
       </button>
       <span className="cluster-node-div" aria-hidden="true" />
       <div ref={membersRef} className="cluster-node-members" onPointerLeave={stopScroll}>
@@ -271,7 +273,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
                 onFocus={(event) => { keepVisible(event.currentTarget); showName(event.currentTarget, name); }}
                 onBlur={() => setTooltipVisible(false)}
                 onClick={() => { setFocusedId(member.operationId); onPick(member.operationId); }} onKeyDown={onKeyDown}>
-                <KeyedAvatar avatarKey={operationAvatarKey(member.operationId)} role="member" state={mongleStateOfProgress(chipProgress(member))} size={AVATAR_SIZE} label="" decorative />
+                <KeyedAvatar avatarKey={operationAvatarKey(member.operationId)} role="member" state={faceOf(member.operationId)} size={AVATAR_SIZE} label="" decorative />
               </button>;
             })}
           </div>

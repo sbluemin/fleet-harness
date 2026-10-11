@@ -386,11 +386,14 @@ function ClusterRowAvatar({ item, rowState, label, conversation, decorative = fa
   readonly decorative?: boolean;
 }) {
   const { row, anchor, layout } = item;
-  const commanderState: MongleState = row.glyph
-    ? row.glyph
-    : row.decisionRequestedAt !== undefined
-      ? "decision"
-      : mongleStateOfMark(anchor ? anchor.mark ?? anchor.status : rowState as OperationMarkVisual);
+  // 지휘관의 얼굴은 다른 표면과 같은 기준(`mongleStateOf`)을 지난다 — 줄의 글리프는 시작 전·검토 대기·완료라는 사실로,
+  // 활동은 뿌리 칩의 표식(구성원 활동을 끌어올린 공개 축, 안 본 답 포함)으로 넘긴다. 뿌리가 없으면 줄의 가장 급한 표식이다.
+  const commanderState: MongleState = mongleStateOfMark(anchor ? anchor.mark ?? anchor.status : row.glyph ? undefined : rowState as OperationMarkVisual, {
+    session: row.glyph !== "fresh",
+    awaitingReview: row.glyph === "review",
+    decisionRequest: row.decisionRequestedAt !== undefined,
+    workDone: row.glyph === "done",
+  });
   // 미니는 그 줄 지휘관의 실제 구성원만 — `fold` 에는 뿌리(지휘관) 자신이 함께 들 수 있고 구성원은 사이드바 목록에 없을 수 있으므로,
   // 묶음의 구성원 목록에서 뿌리를 빼고 상태는 사이드바 표식(있으면)과 런타임 활동에서 읽는다. 구성원이 없는 줄(단독 Operation)은
   // 미니 없이 제 크기로 선다.

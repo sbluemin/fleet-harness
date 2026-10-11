@@ -59,6 +59,46 @@ export type MongleRole = "commodore" | "commander" | "member";
 /** 얼굴·몸짓이 말하는 상태. Console 표시 어휘(running·awaiting·unseen·idle·ended)와 목표 줄 글리프에 결정 요청·오류를 더했다. */
 export type MongleState = "fresh" | "running" | "awaiting" | "decision" | "unseen" | "idle" | "ended" | "review" | "done" | "error";
 
+/**
+ * 얼굴을 고르는 사실들 — 표면마다 자기 데이터에서 같은 뜻의 값을 모아 넘긴다.
+ *
+ * `activity` 는 그 사람의 활동이다. 지휘관(구성원을 거느린 부모)은 구성원 활동을 끌어올린 값(`liftNestedActivity` 를 거친
+ * Console 의 공개 활동 축)이고, 구성원은 자기 값이다. 원시 낱말(background 포함)을 그대로 받는다.
+ */
+export interface MongleFacts {
+  /** 이 사람의 세션(Operation)이 있다. false 면 시작 전 얼굴이다. 생략하면 있다고 본다. */
+  readonly session?: boolean;
+  readonly activity?: "idle" | "running" | "background" | "awaiting" | "ended" | null;
+  /** 지휘관 — 목표가 사람의 검토를 기다린다. */
+  readonly awaitingReview?: boolean;
+  /** 지휘관 — 끝나지 않은 목표에 사람에게 청한 결정 요청이 섰다. */
+  readonly decisionRequest?: boolean;
+  /**
+   * 안 본 답이 도착했다. 통일 기준의 예외 — 도착 표시를 아는 사이드바만 넘긴다. 다른 표면(레일·대화 머리·목표 보드)은
+   * 이 사실을 읽지 않으므로 같은 순간에 사이드바만 unseen 얼굴일 수 있다.
+   */
+  readonly unseen?: boolean;
+  /** 구성원 — 맡은 임무가 모두 끝났다. 지금 기다리거나 일하지 않을 때만 끝난 얼굴이 된다. */
+  readonly workDone?: boolean;
+}
+
+/**
+ * 한 사람의 얼굴 상태 — 사이드바·지휘관 탭 레일·대화 머리·목표 보드가 모두 이 기준 하나를 지난다.
+ * 우선순위: 시작 전 › 검토 대기 › 결정 요청 › 사람 대기 › 작업 중 › 안 본 답 › 임무 완료 › 휴면 › 쉼.
+ */
+export function mongleStateOf(facts: MongleFacts): MongleState {
+  if (facts.session === false) return "fresh";
+  if (facts.awaitingReview) return "review";
+  if (facts.decisionRequest) return "decision";
+  const activity = facts.activity;
+  if (activity === "awaiting") return "awaiting";
+  if (activity === "running" || activity === "background") return "running";
+  if (facts.unseen) return "unseen";
+  if (facts.workDone) return "done";
+  if (activity === "ended") return "ended";
+  return "idle";
+}
+
 /** 저장된 모습. `tone` 이 null 이면 베이스의 원래 색이다. */
 export interface MongleLook {
   readonly base: number;
