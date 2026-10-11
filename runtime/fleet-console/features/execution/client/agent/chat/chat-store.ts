@@ -126,7 +126,7 @@ export interface ChatWebSocketLike {
   onerror: (() => void) | null;
 }
 
-function createChatSocketSession(options: ChatSocketSessionOptions): ChatSocketSession {
+export function createChatSocketSession(options: ChatSocketSessionOptions): ChatSocketSession {
   const abort = new AbortController();
   const fetchImpl = options.fetchImpl ?? fetch;
   let reconnectDelay = INITIAL_RECONNECT_DELAY_MS;

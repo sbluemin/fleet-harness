@@ -44,6 +44,7 @@ type Saved = {
   readonly rank: number;
   readonly note?: string;
   readonly members?: readonly { readonly role: string; readonly subagents?: boolean }[];
+  readonly memberHistory?: readonly import("../server/types.js").ObjectiveMemberHistoryEntry[];
   readonly criteriaProposals?: readonly unknown[];
   readonly followupBatches?: readonly { readonly items: readonly unknown[] }[];
   readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active" };
@@ -475,6 +476,9 @@ describe("Objectives contract", () => {
     await launch.memberRemoved(objective.id, routed.id);
     expect(operations.has(routed.id)).toBe(false);
     expect(operations.get(objective.id)!.childSessions?.some((child) => child.id === routed.id)).toBe(false);
+    // 합류·제거는 새 명부 쓰기의 사실로 저장한다. 제거 뒤에도 같은 구성원 식별자가 남는다.
+    expect(store.find(objective.id)!.memberHistory?.filter((entry) => entry.memberId === routed.id).map((entry) => entry.kind)).toEqual(["joined", "left"]);
+    expect(savedObjective(objective.id).memberHistory).toEqual(store.find(objective.id)!.memberHistory);
 
     // 살아 있는 지휘관이 터미널로 떠 있어도 새 구성원은 채팅으로 태어난다.
     vi.unstubAllGlobals();
@@ -758,7 +762,7 @@ describe("Objectives contract", () => {
     // 저장 — 목표마다 자기 디렉터리의 objective.json 하나, Operation 이 가진 값은 싣지 않는다.
     expect(savedIds()).toEqual([objective.id]);
     const saved = savedObjective(objective.id);
-    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "boardUpdatedAt", "commenced", "commencedBy", "enlisted", "members", "missions", "note", "operationId", "rank"]);
+    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "boardUpdatedAt", "commenced", "commencedBy", "enlisted", "memberHistory", "members", "missions", "note", "operationId", "rank"]);
     expect(saved.operationId).toBe(objective.id);
     for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.

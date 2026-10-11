@@ -671,6 +671,8 @@ export interface OperationCluster {
    * `awaiting`)와 별개의 사실이라 활동 축을 바꾸지 않는다. 답은 플러그인 표면(`open`)에서 한다.
    */
   readonly decisionRequest?: boolean;
+  /** 그룹 대화에서 읽는 명부·결정·보드 사건. 플러그인 구현을 호스트가 import하지 않는다. */
+  readonly conversation?: import("../conversation/types.js").OperationClusterConversation;
   /**
    * 사이드바 그룹 트리에 서는 한 줄 — 있으면 호스트는 뿌리 칩과 `fold` 의 칩을 이 줄 하나로 접어 그린다. 줄의 뜻(오늘·기한·
    * 검토 대기·진행)은 플러그인이 계산해 넘기고, 호스트는 칩 문법으로 그리기만 한다. 줄을 누르면 칩처럼 그 Operation(뿌리, 없으면

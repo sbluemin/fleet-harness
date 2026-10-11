@@ -5,6 +5,7 @@ import { inboxReasons, stalledObjectives, type BoardObservation, type BoardObser
 import { memberFailureReason } from "../server/signals.js";
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { actorKind, actorName, lastAct } from "./actors.js";
+import { objectiveConversation } from "./conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
@@ -237,9 +238,12 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const row = rowOf(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.theaterId), stalled.has(objective.id), now);
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Operation 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
     const decisionRequest = !!objective.decisionRequest && !objective.done;
+    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, () => {
+      revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId);
+    });
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
-      if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : {}), members: [], open: () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId); }, row });
+      if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : {}), members: [], conversation, open: () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId); }, row });
       continue;
     }
     // 구성원 Operation → 대표 임무. 끝나지 않은 첫 임무가 이기고, 모두 끝났으면 마지막 임무.
@@ -301,7 +305,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       revealObjective(missionId ? { objectiveId: objective.id, missionId } : { objectiveId: objective.id });
       openObjectiveFromCluster(objective.theaterId);
     };
-    out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, root: commander, members, open, ...(decisionRequest ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
+    out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, root: commander, members, conversation, open, ...(decisionRequest ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
   }
   return out;
 }
@@ -310,7 +314,7 @@ const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.group
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
   row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
 const resolveText = (text: LocalizedText): string => (typeof text === "string" ? text : text("en"));
-const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
+const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 /**
  * 보드 줄의 관측 — 호스트 런타임 맵에서 온 요약 활동. 휴면(ended)은 수명주기 dormant 로 넘기고, 목록에 없는 Operation 은

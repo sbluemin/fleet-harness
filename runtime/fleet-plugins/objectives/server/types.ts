@@ -108,6 +108,15 @@ export interface ObjectiveAction {
   readonly proposal?: ObjectiveCriterionProposal;
   readonly handoff?: StoredHandoff;
 }
+export interface ObjectiveMemberHistoryEntry {
+  readonly id: string;
+  readonly at: number;
+  readonly kind: "joined" | "left";
+  readonly memberId: string;
+  readonly name: string;
+  readonly number: number;
+}
+
 export interface ObjectiveEdits {
   readonly at: number;
   readonly kinds: readonly ObjectiveEditKind[];
@@ -573,6 +582,8 @@ export interface StoredObjective {
    */
   readonly edited?: ObjectiveEdits;
   readonly actions?: readonly ObjectiveAction[];
+  /** 새 명부 변경부터 기록한다. 옛 명부의 합류 시각은 추측하지 않는다. */
+  readonly memberHistory?: readonly ObjectiveMemberHistoryEntry[];
   readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
   /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
   readonly boardUpdatedAt?: number;
@@ -730,6 +741,8 @@ export interface Objective {
   readonly criteriaOpen: boolean;
   readonly edited?: ObjectiveEdits;
   readonly actions?: readonly ObjectiveAction[];
+  /** 새 명부 변경부터 기록한다. 옛 명부의 합류 시각은 추측하지 않는다. */
+  readonly memberHistory?: readonly ObjectiveMemberHistoryEntry[];
   readonly actionCounts?: Readonly<Partial<Record<ObjectiveActionKind, number>>>;
   /** 마지막 도메인 변경. 조회·관측 갱신은 시각을 미루지 않는다. */
   readonly boardUpdatedAt?: number;
@@ -1002,6 +1015,10 @@ export const objectiveReviewerSchema = z.union([
   z.object({ kind: z.literal("operation"), operationId: ids, title: z.string().nullable() }).strict(),
 ]);
 export const objectiveActorSchema = z.union([objectiveReviewerSchema, z.literal("commander")]);
+export const objectiveMemberHistorySchema = z.array(z.object({
+  id: ids, at: z.number().finite(), kind: z.enum(["joined", "left"]), memberId: ids,
+  name: z.string().max(40), number: z.number().int().min(1),
+}).strict()).max(MAX_OBJECTIVE_ACTIONS);
 export const objectiveActionSchema = z.object({
   id: ids, at: z.number().finite(), by: objectiveActorSchema,
   kind: z.enum(["edit", "criteria-approved", "criteria-rejected", "hand-off", "complete", "reopen", "followup-selected", "followup-discarded", "extend", "steer", "mission-reopened", "plan", "commence"]),

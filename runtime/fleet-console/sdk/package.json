@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./conversation": {
+      "types": "./conversation/types.ts",
+      "import": "./conversation/types.ts",
+      "default": "./conversation/types.ts"
+    },
     "./mcp": {
       "types": "./mcp/types.ts",
       "import": "./mcp/types.ts",
