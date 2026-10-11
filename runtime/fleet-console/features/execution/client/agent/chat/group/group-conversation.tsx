@@ -340,9 +340,9 @@ export function GroupWorkingLine({ working, language, onStop }: {
       <span className="group-chat-working-stack">
         {working.map((speaker) => onStop ? (
           <button key={speakerKey(speaker)} type="button" className="group-chat-working-stop" aria-label={t("group.working.stop", { name: speaker.name })} title={t("group.working.stop", { name: speaker.name })} onClick={() => onStop(speaker)}>
-            <SpeakerMark speaker={speaker} size="sm" />
+            <SpeakerMark speaker={speaker} size="sm" state="running" />
           </button>
-        ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="sm" />)}
+        ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="sm" state="running" />)}
       </span>
       <span className="group-chat-working-text agent-chat-live-text">{label}</span>
       {onStop ? <span className="group-chat-working-hint">{t("group.working.stopHint")}</span> : null}
