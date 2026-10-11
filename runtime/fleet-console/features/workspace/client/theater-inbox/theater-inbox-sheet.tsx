@@ -6,8 +6,7 @@ import type { ConsoleTheaterSummary } from "@fleet-console/sdk/plugin";
 import type { ClientTheaterInboxCapability, TheaterInboxAddress, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { theaterInitials } from "../sidebar/theater-initials.js";
-import { TheaterMonogram } from "../sidebar/theater-monogram.js";
+import { TheaterAvatar } from "../avatars.js";
 import type { TheaterInboxOpenState } from "./store.js";
 import "./theater-inbox-sheet.css";
 
@@ -335,7 +334,7 @@ export function TheaterInboxSheet({ open, theater, sections, language, navigatio
         <SheetResize label={t("theaterInbox.resize")} width={frame.width} height={frame.height} onResize={resize} onCommit={commit} onReset={reset} />
         <nav className="theater-inbox-nav" aria-label={t("theaterInbox.nav")}>
           <div className="theater-inbox-who">
-            <span className="theater-inbox-who-mark" aria-hidden="true"><TheaterMonogram>{theaterInitials(theater.label)}</TheaterMonogram></span>
+            <TheaterAvatar theaterId={theater.id} size={30} label="" decorative className="theater-inbox-who-mark" />
             <span className="theater-inbox-who-text">
               <small>{t("theaterInbox.kicker")}</small>
               <strong title={theater.label}>{theater.label}</strong>

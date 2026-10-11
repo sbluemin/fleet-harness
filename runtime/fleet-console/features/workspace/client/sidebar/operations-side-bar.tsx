@@ -1,7 +1,5 @@
 import { ArchiveEntry } from "../archive/archive-entry.js";
 import { openTheaterSystemPrompt, subscribeTheaterSystemPromptChange } from "../../../settings/client/theater-system-prompt-sheet.js";
-import { theaterInitials } from "./theater-initials.js";
-import { TheaterMonogram } from "./theater-monogram.js";
 export { theaterInitials } from "./theater-initials.js";
 import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../settings/client/execution-settings.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -40,7 +38,7 @@ import {
   type SideBarOperationMenuAction,
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
-import { useAvatarClaims } from "../avatars.js";
+import { TheaterAvatar, useAvatarClaims } from "../avatars.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
 import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, zoneNoteOf, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
@@ -1791,8 +1789,9 @@ function TheaterSectionHeader({
         title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : active ? t("sidebar.theater.openInbox", { theater: theater.label }) : t("sidebar.theater.switchTo", { theater: theater.label })}
       >
         {mark === null ? (
-          <span className="side-bar-theater-anchor" aria-hidden="true">
-            <TheaterMonogram compact>{theaterInitials(theater.label)}</TheaterMonogram>
+          <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
+            {/* 플러그인 표식이 없을 때도 Theater 는 사령관 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
+            <TheaterAvatar theaterId={theater.id} size={18} label="" decorative />
             {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
                 얹으면 어느 Theater인지가 지워진다. */}
             {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}

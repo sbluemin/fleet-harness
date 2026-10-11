@@ -4491,16 +4491,10 @@ button.status-glyph.is-actionable:focus-visible {
   );
 }
 
+/* 구역 지명 앞의 그 Theater 사령관 아바타 — 사이드바 Theater 머리와 같은 얼굴이다. */
 .canvas-fleet-map-zone-chip {
-  display: inline-grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--zone-tint, var(--brass)) 22%, transparent);
-  color: var(--zone-tint, var(--brass-bright));
-  font-size: var(--t-2xs);
-  letter-spacing: 0.04em;
+  display: block;
+  flex: none;
 }
 
 /* 단일 Theater — 구역을 나눌 이유가 없어 원 없이 판 전체가 dot 필드가 된다. */
@@ -4726,7 +4720,7 @@ button.status-glyph.is-actionable:focus-visible {
   100% { translate: var(--fleet-drift-x2, -10px) var(--fleet-drift-y2, 9px); }
 }
 
-/* Theater 밴드 — 전역 deck 안에서 카드 묶음을 소속별로 갈라 헤더(이니셜 칩+라벨+수치)를 단다.
+/* Theater 밴드 — 전역 deck 안에서 카드 묶음을 소속별로 갈라 헤더(사령관 아바타+라벨+수치)를 단다.
    밴드 카드 그리드는 기존 카드 타일 문법(auto-fill minmax)을 그대로 재사용한다. */
 .canvas-triage-deck-band {
   display: flex;
@@ -4748,22 +4742,10 @@ button.status-glyph.is-actionable:focus-visible {
   text-transform: uppercase;
 }
 
+/* 밴드 머리의 그 Theater 사령관 아바타 — 사이드바 Theater 머리와 같은 얼굴이다. */
 .canvas-triage-deck-band-chip {
-  display: grid;
-  place-items: center;
+  display: block;
   flex: none;
-  width: auto;
-  min-width: 18px;
-  padding: 0 4px;
-  letter-spacing: 0;
-  white-space: nowrap;
-  height: 18px;
-  border-radius: var(--radius-xs);
-  background: var(--quiet-chip-fill);
-  color: var(--quiet-anchor-ink);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
 }
 
 .canvas-triage-deck-band-label {
@@ -6597,7 +6579,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* 플러그인 표식(자율 운영의 사령관 글리프)이 이니셜 칩 자리에 선 경우 — 칩 면·링 없이 표식 그 자체가 선다. 표식이 자기 색(켬·끔)을
    말하므로 활성 위치는 스파인과 이름 명도가 맡는다. 활성화 버튼 밖에 서므로 누르는 자리임을 커서가 말한다. */
-.side-bar-theater-header .side-bar-theater-anchor.side-bar-theater-mark {
+.side-bar-theater-header .side-bar-theater-anchor.side-bar-theater-mark,
+.side-bar-theater-header .side-bar-theater-anchor.is-avatar {
   background: transparent;
   box-shadow: none;
   color: inherit;
