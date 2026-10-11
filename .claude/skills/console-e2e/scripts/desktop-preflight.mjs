@@ -117,7 +117,8 @@ function screenProbe() {
       ObjC.import('Foundation');
       ObjC.import('CoreGraphics');
       ObjC.bindFunction('CGPreflightScreenCaptureAccess', ['bool', []]);
-      const session = ObjC.deepUnwrap($.CGSessionCopyCurrentDictionary());
+      const session = ObjC.deepUnwrap(ObjC.castRefToObject($.CGSessionCopyCurrentDictionary()));
+      const sessionKeyCount = session ? Object.keys(session).length : 0;
       const pid = Number($.NSProcessInfo.processInfo.processIdentifier);
       let responsiblePid = null;
       let responsibilityError = null;
@@ -129,7 +130,8 @@ function screenProbe() {
       } catch (error) { responsibilityError = String(error); }
       JSON.stringify({
         pid, responsiblePid, responsibilityError,
-        screenLocked: session ? Boolean(session.CGSSessionScreenIsLocked) : null,
+        screenLocked: sessionKeyCount > 0 ? Boolean(session.CGSSessionScreenIsLocked) : null,
+        sessionKeyCount,
         screenRecording: Boolean($.CGPreflightScreenCaptureAccess())
       });
     `]));
